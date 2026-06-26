@@ -179,7 +179,11 @@ describe("needsAttention flag derivation", () => {
 // fetchLatestPullRequestForMcp and is covered by integration tests.
 // ---------------------------------------------------------------------------
 
-import { shapePullRequestSummary } from "@/lib/mcp/mcpTools";
+import {
+  shapePullRequestSummary,
+  featureLink,
+  taskLink,
+} from "@/lib/mcp/mcpTools";
 
 describe("shapePullRequestSummary", () => {
   test("returns null when no PR artifact exists", () => {
@@ -289,5 +293,32 @@ describe("shapePullRequestSummary", () => {
       mergeable: false,
       failedChecks: ["build", "lint"],
     });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Canonical link builders
+//
+// These guard against agents fabricating URLs: the read/list tools embed a
+// real `link` built from these helpers so the agent can copy it verbatim
+// rather than guessing a (wrong) host/path.
+// ---------------------------------------------------------------------------
+
+describe("featureLink / taskLink", () => {
+  test("featureLink points at the /plan/<id> page on the canonical host", () => {
+    expect(featureLink("hive", "cmqub5562000oi804pfippkoc")).toBe(
+      "https://hive.sphinx.chat/w/hive/plan/cmqub5562000oi804pfippkoc",
+    );
+  });
+
+  test("taskLink points at the /task/<id> page on the canonical host", () => {
+    expect(taskLink("hive", "cmqub8utw0001l004699htqfp")).toBe(
+      "https://hive.sphinx.chat/w/hive/task/cmqub8utw0001l004699htqfp",
+    );
+  });
+
+  test("uses the workspace slug verbatim", () => {
+    expect(featureLink("my-team", "f1")).toContain("/w/my-team/plan/f1");
+    expect(taskLink("my-team", "t1")).toContain("/w/my-team/task/t1");
   });
 });
