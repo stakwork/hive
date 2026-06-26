@@ -38,6 +38,10 @@ vi.mock("@/lib/helpers/chat-history", () => ({
   fetchChatHistory: vi.fn().mockResolvedValue([]),
 }));
 
+vi.mock("@/services/roadmap/feature-chat", () => ({
+  resolveExtraSwarms: vi.fn().mockResolvedValue([]),
+}));
+
 vi.mock("@/config/env", () => ({
   config: {
     STAKWORK_BASE_URL: "https://api.stakwork.com/api/v1",
@@ -51,6 +55,9 @@ vi.mock("@/config/env", () => ({
 import { triggerWorkflowEditorRun } from "@/services/workflow-editor";
 import { db } from "@/lib/db";
 import { WorkflowStatus, TaskStatus } from "@prisma/client";
+import { resolveExtraSwarms } from "@/services/roadmap/feature-chat";
+
+const mockResolveExtraSwarms = vi.mocked(resolveExtraSwarms);
 
 const mockedDb = vi.mocked(db);
 
@@ -392,6 +399,65 @@ describe("triggerWorkflowEditorRun", () => {
       const body = JSON.parse(fetchCall[1].body as string);
       const vars = body.workflow_params.set_var.attributes.vars;
       expect(Object.prototype.hasOwnProperty.call(vars, "featureContext")).toBe(false);
+    });
+  });
+
+  describe("subAgents (resolveExtraSwarms) injection", () => {
+    const mockSwarm = {
+      name: "other-ws",
+      url: "https://other.sphinx.chat/api",
+      apiKey: "other-key",
+      repoUrls: ["https://github.com/org/other"],
+      toolsConfig: { learn_concepts: true },
+    };
+
+    test("attaches subAgents to vars when message contains resolvable @mentions", async () => {
+      mockResolveExtraSwarms.mockResolvedValueOnce([mockSwarm]);
+      mockFetchSuccess();
+
+      await triggerWorkflowEditorRun({
+        taskId: "task-1",
+        userId: "user-1",
+        message: "Edit workflow using @other-ws context",
+        workflowTask: { workflowId: 99, workflowName: "My Workflow", workflowRefId: "ref-abc" },
+      });
+
+      const fetchCall = (global.fetch as ReturnType<typeof vi.fn>).mock.calls[0];
+      const body = JSON.parse(fetchCall[1].body as string);
+      const vars = body.workflow_params.set_var.attributes.vars;
+      expect(vars.subAgents).toHaveLength(1);
+      expect(vars.subAgents[0].name).toBe("other-ws");
+    });
+
+    test("subAgents absent from vars when no @mentions resolve", async () => {
+      mockResolveExtraSwarms.mockResolvedValueOnce([]);
+      mockFetchSuccess();
+
+      await triggerWorkflowEditorRun({
+        taskId: "task-1",
+        userId: "user-1",
+        message: "Edit the workflow without mentions",
+        workflowTask: { workflowId: 99, workflowName: "My Workflow", workflowRefId: "ref-abc" },
+      });
+
+      const fetchCall = (global.fetch as ReturnType<typeof vi.fn>).mock.calls[0];
+      const body = JSON.parse(fetchCall[1].body as string);
+      const vars = body.workflow_params.set_var.attributes.vars;
+      expect(Object.prototype.hasOwnProperty.call(vars, "subAgents")).toBe(false);
+    });
+
+    test("resolveExtraSwarms is called with the message and userId", async () => {
+      mockResolveExtraSwarms.mockResolvedValueOnce([]);
+      mockFetchSuccess();
+
+      await triggerWorkflowEditorRun({
+        taskId: "task-1",
+        userId: "user-1",
+        message: "@other-ws do something",
+        workflowTask: { workflowId: 99, workflowName: "My Workflow", workflowRefId: "ref-abc" },
+      });
+
+      expect(mockResolveExtraSwarms).toHaveBeenCalledWith("@other-ws do something", "user-1");
     });
   });
 
