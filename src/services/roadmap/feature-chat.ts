@@ -164,9 +164,14 @@ const FEATURE_SELECT_FOR_CHAT = {
 } as const;
 
 /**
- * Parse @workspace-slug mentions from a message, resolve each to swarm
- * credentials, and return them as extraSwarms for the Stakwork workflow.
+ * Parse @workspace-slug mentions from one or more messages, resolve each to
+ * swarm credentials, and return them as extraSwarms for the Stakwork workflow.
  * Silently skips slugs that are not accessible, have no swarm, or have no repos.
+ *
+ * Accepts either a single message string or an array of messages (e.g. the
+ * whole planning conversation). Mentions are accumulated across all messages
+ * and de-duplicated by slug, so a swarm mentioned on any turn stays attached
+ * on every subsequent turn.
  */
 interface SubAgent {
   name: string,
@@ -178,11 +183,17 @@ interface SubAgent {
 }
 
 export async function resolveExtraSwarms(
-  message: string,
+  messages: string | string[],
   userId: string,
 ): Promise<SubAgent[]> {
-  const slugMatches = [...message.matchAll(/\B@([\w-]+)/g)];
-  const uniqueSlugs = [...new Set(slugMatches.map((m) => m[1]))];
+  const texts = Array.isArray(messages) ? messages : [messages];
+  const uniqueSlugs = [
+    ...new Set(
+      texts.flatMap((text) =>
+        [...(text ?? "").matchAll(/\B@([\w-]+)/g)].map((m) => m[1]),
+      ),
+    ),
+  ];
 
   const encryptionService = EncryptionService.getInstance();
   const results: SubAgent[] = [];
@@ -450,7 +461,20 @@ export async function sendFeatureChatMessage({
         ? feature.planUpdatedAt > lastPlanArtifact.createdAt
         : false;
 
-    const extraSwarms = await resolveExtraSwarms(message, userId);
+    // Accumulate @mentions across the WHOLE conversation, not just the
+    // current message. A swarm mentioned on any earlier turn must remain
+    // attached on every subsequent turn, and a newly-mentioned swarm is
+    // added to (not replacing) the previously-mentioned ones.
+    const priorMessageTexts = [...dbHistory, ...(bodyHistory ?? [])]
+      .filter(
+        (m) => String((m as { role?: string }).role).toUpperCase() === "USER",
+      )
+      .map((m) => (m as { message?: string }).message)
+      .filter((t): t is string => typeof t === "string");
+    const extraSwarms = await resolveExtraSwarms(
+      [...priorMessageTexts, message],
+      userId,
+    );
 
     // Generate presigned download URLs for any attachments
     const attachmentUrls = await Promise.all(
