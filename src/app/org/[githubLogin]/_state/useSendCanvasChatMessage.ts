@@ -214,15 +214,45 @@ export function useSendCanvasChatMessage() {
           throw new Error(`HTTP error! status: ${response.status}`);
         }
 
-        // First turn of a fresh conversation: the server created the
-        // `SharedConversation` row and handed its id back here. Adopt it
-        // so the live-sync subscribes to the right channel and later
-        // turns/approvals reference the same row. (Same pattern as the
-        // old autosave POST setting it — now server-driven.)
+        // The server is authoritative about which `SharedConversation`
+        // row this turn actually persisted to, and hands it back here.
+        // We always reconcile to it when it differs from what we hold:
+        //   - First turn of a fresh chat → the row the server just created.
+        //   - Joined `?chat=<id>` room → the same shared id (no change).
+        //   - We tried to adopt an inaccessible `?chat=<id>` (deleted /
+        //     wrong org) → the server forked a fresh owned row and we
+        //     follow it, so the client never diverges from the DB.
+        // Adopting it keeps live-sync subscribed to the right channel and
+        // later turns/approvals referencing the same row.
         const serverConversationIdHeader =
           response.headers.get("X-Conversation-Id");
-        if (serverConversationIdHeader && !conv.serverConversationId) {
+        if (
+          serverConversationIdHeader &&
+          serverConversationIdHeader !== conv.serverConversationId
+        ) {
           setServerConversationId(conversationId, serverConversationIdHeader);
+          // Reflect the live row in the URL (`?chat=<id>`) the moment it
+          // exists, so a reload-for-any-reason re-preloads and RESUMES
+          // this same conversation instead of forking a fresh one. Every
+          // org-canvas row is a joinable room, so this URL is also the
+          // share link — no separate Share step. Only do this for the
+          // active conversation (a backgrounded send must not hijack the
+          // URL). `history.replaceState` (NOT `router.replace`) to avoid
+          // a Next navigation / RSC refetch on this `protected` route.
+          const isActive =
+            useCanvasChatStore.getState().activeConversationId ===
+            conversationId;
+          if (isActive && typeof window !== "undefined") {
+            const params = new URLSearchParams(window.location.search);
+            if (params.get("chat") !== serverConversationIdHeader) {
+              params.set("chat", serverConversationIdHeader);
+              window.history.replaceState(
+                null,
+                "",
+                `${window.location.pathname}?${params.toString()}`,
+              );
+            }
+          }
         }
 
         // The proposal-approval endpoint stamps the structured
