@@ -383,6 +383,45 @@ export async function kgGetNeighbors(
 }
 
 // ---------------------------------------------------------------------------
+// kgGetOntology
+// ---------------------------------------------------------------------------
+
+export interface KgSchemaType {
+  type: string;
+  description: string;
+}
+
+interface JarvisSchemaAllResponse {
+  schemas?: Array<{ type?: string; description?: string }>;
+  edges?: unknown[];
+}
+
+/**
+ * Fetch the workspace's KG node-type ontology from `GET /schema/all?concise=true`.
+ *
+ * Returns a `{ type, description }[]` list parsed from `data.schemas` (edges ignored).
+ * Returns `[]` on non-ok response, thrown fetch, or malformed/missing schemas.
+ * Never throws — matches the behavior of `kgGetNode` / `kgSearch`.
+ */
+export async function kgGetOntology(
+  jarvisUrl: string,
+  swarmApiKey: string,
+): Promise<KgSchemaType[]> {
+  try {
+    const url = `${jarvisUrl}/schema/all?concise=true`;
+    const res = await kgFetch(url, swarmApiKey);
+    if (!res.ok) return [];
+    const data = (await res.json()) as JarvisSchemaAllResponse;
+    if (!Array.isArray(data?.schemas)) return [];
+    return data.schemas
+      .filter((s) => typeof s?.type === "string" && s.type.length > 0)
+      .map((s) => ({ type: s.type as string, description: s.description ?? "" }));
+  } catch {
+    return [];
+  }
+}
+
+// ---------------------------------------------------------------------------
 // kgSearch
 // ---------------------------------------------------------------------------
 

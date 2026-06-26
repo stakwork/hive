@@ -29,7 +29,7 @@ import type { UrnEdgeNeighbor } from "@/lib/urn";
 import { pgNeighbors } from "@/lib/graph-walker";
 import type { NeighborResult, PgNeighborContext } from "@/lib/graph-walker";
 import { resolveKgSeam } from "@/lib/urn/resolvers/kg";
-import { kgGetNode, kgGetNeighbors, kgGetNodesByRefs, kgSearch } from "./kg-adapter";
+import { kgGetNode, kgGetNeighbors, kgGetNodesByRefs, kgSearch, kgGetOntology } from "./kg-adapter";
 import { getSwarmAccessByWorkspaceId } from "@/lib/helpers/swarm-access";
 import { getJarvisUrl } from "@/lib/utils/swarm";
 
@@ -939,6 +939,38 @@ export function buildGraphWalkerTools(
             return { neighbors };
           }
         }
+      },
+    }),
+
+    graph_ontology: tool({
+      description:
+        "Fetch the list of valid KG node types (with descriptions) for a workspace's knowledge graph. " +
+        "Read-only. Call this FIRST before using `graph_search` with `realm: \"kg\"` — " +
+        "the returned `type` values are the exact strings to pass as the `type` filter in `graph_search`. " +
+        "This avoids guessing node type names blind.",
+      inputSchema: z.object({
+        workspace: z.string().describe("Workspace slug whose KG ontology to fetch."),
+      }),
+      execute: async ({ workspace }: { workspace: string }) => {
+        const orgRow = await db.sourceControlOrg.findUnique({
+          where: { id: orgId },
+          select: { githubLogin: true },
+        });
+        if (!orgRow) return { error: "org not found" };
+        const urnOrg = orgRow.githubLogin;
+
+        const syntheticUrn = formatUrn({
+          realm: "kg",
+          org: urnOrg,
+          workspace,
+          type: "node",
+          id: "x",
+        });
+        const seam = await resolveKgSeam(syntheticUrn, { userId });
+        if (!seam) return { error: "swarm not configured or access denied" };
+
+        const node_types = await kgGetOntology(seam.jarvisUrl, seam.swarmApiKey);
+        return { node_types };
       },
     }),
 
