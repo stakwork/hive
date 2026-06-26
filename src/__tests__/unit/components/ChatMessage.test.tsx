@@ -617,8 +617,10 @@ describe('ChatMessage', () => {
         />
       );
 
-      const bubble = screen.getByTestId('markdown-renderer').parentElement!.parentElement!;
-      expect(bubble).toHaveClass('group');
+      // Walk up to the nearest ancestor with the 'group' class (CSS hover wrapper).
+      // Use closest() so DOM restructuring (e.g. tooltip wrappers) doesn't break this.
+      const bubble = screen.getByTestId('markdown-renderer').closest('.group');
+      expect(bubble).toBeInTheDocument();
     });
 
     it('does not attach onMouseEnter or onMouseLeave handlers to the outer motion div', () => {
@@ -797,8 +799,9 @@ describe('ChatMessage', () => {
         />
       );
 
+      // Avatar (user identity badge) is not shown for assistant messages.
+      // Note: a tooltip-trigger may exist for the message bubble timestamp — that's expected.
       expect(screen.queryByTestId('avatar')).not.toBeInTheDocument();
-      expect(screen.queryByTestId('tooltip-trigger')).not.toBeInTheDocument();
     });
 
     it('re-renders when createdBy changes (memoization test)', () => {
@@ -877,6 +880,28 @@ describe('ChatMessage', () => {
       expect(paragraphs[0].textContent).toBe('Alice');
       // Second paragraph is a non-empty timestamp string
       expect(paragraphs[1].textContent).toBeTruthy();
+    });
+
+    it('shows hover timestamp tooltip for ASSISTANT messages with createdAt', () => {
+      const fixedDate = new Date('2025-12-02T14:30:00.000Z');
+      const message = createTestMessage({
+        role: ChatRole.ASSISTANT,
+        message: 'Hello from assistant',
+        createdAt: fixedDate,
+      });
+
+      render(
+        <ChatMessage
+          message={message}
+          onArtifactAction={mockOnArtifactAction}
+        />
+      );
+
+      // The bubble should be wrapped in a TooltipTrigger
+      expect(screen.getByTestId('tooltip-trigger')).toBeInTheDocument();
+      // Tooltip content should contain the timestamp
+      const tooltipContent = screen.getByTestId('tooltip-content');
+      expect(tooltipContent.textContent).toBeTruthy();
     });
   });
 
