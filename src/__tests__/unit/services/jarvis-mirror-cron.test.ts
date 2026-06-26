@@ -146,6 +146,41 @@ describe("runJarvisMirror", () => {
     expect(where.status).toEqual({ not: "SENDING" });
   });
 
+  it("keeps chat scoped to the workspace via AND, with no clobbering top-level OR", async () => {
+    setupDb({ workspaces: [{ id: "w1", slug: "w1", jarvisSyncState: null }] });
+    await runJarvisMirror();
+    const where = (mockedDb.chatMessage as any).findMany.mock.calls[0][0].where;
+    // The workspace scope must live under AND — never as a bare top-level OR
+    // that a spread keyset could overwrite.
+    expect(where.OR).toBeUndefined();
+    expect(where.AND).toEqual([
+      { OR: [{ task: { workspaceId: "w1" } }, { feature: { workspaceId: "w1" } }] },
+      {}, // no cursor yet
+    ]);
+  });
+
+  it("REGRESSION: chat keeps the workspace filter even once a chat cursor exists", async () => {
+    const cursor = { at: AT.toISOString(), id: "m0" };
+    setupDb({
+      workspaces: [{ id: "w1", slug: "w1", jarvisSyncState: { chat: cursor } }],
+    });
+    await runJarvisMirror();
+    const where = (mockedDb.chatMessage as any).findMany.mock.calls[0][0].where;
+    // Both the workspace scope AND the keyset cursor must be present and ANDed.
+    // (Previously the cursor's `OR` overwrote the workspace `OR`, leaking every
+    // workspace's chat into this one.)
+    expect(where.OR).toBeUndefined();
+    expect(where.AND).toEqual([
+      { OR: [{ task: { workspaceId: "w1" } }, { feature: { workspaceId: "w1" } }] },
+      {
+        OR: [
+          { updatedAt: { gt: new Date(cursor.at) } },
+          { updatedAt: new Date(cursor.at), id: { gt: "m0" } },
+        ],
+      },
+    ]);
+  });
+
   it("passes the stored keyset cursor into the feature query", async () => {
     const cursor = { at: AT.toISOString(), id: "f0" };
     setupDb({

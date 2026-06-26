@@ -212,11 +212,21 @@ async function mirrorWorkspace(
       // Skip text-less messages (e.g. artifact-only assistant turns) — they
       // carry no `message` content and are just noise in the graph.
       message: { not: "" },
-      OR: [
-        { task: { workspaceId: workspace.id } },
-        { feature: { workspaceId: workspace.id } },
+      // Both the workspace scope and the keyset cursor are expressed as `OR`
+      // fragments. They MUST be combined under `AND` — a second top-level `OR`
+      // key (from the spread) would otherwise overwrite the first, silently
+      // dropping the workspace filter once a cursor exists and leaking every
+      // workspace's chat into this one. (Feature/Task queries are immune: they
+      // scope by a plain `workspaceId`, not an `OR`.)
+      AND: [
+        {
+          OR: [
+            { task: { workspaceId: workspace.id } },
+            { feature: { workspaceId: workspace.id } },
+          ],
+        },
+        keysetWhere(state.chat),
       ],
-      ...keysetWhere(state.chat),
     },
     orderBy: [{ updatedAt: "asc" }, { id: "asc" }],
     take: maxPerType,
