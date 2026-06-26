@@ -189,7 +189,7 @@ describe("GET /api/workspaces/[slug]/lingo/nodes", () => {
     expect(calledUrl).toContain("limit=10");
     expect(calledUrl).toContain("offset=20");
     expect(calledUrl).toContain("type=Lingo");
-    expect(calledUrl).toContain("namespace=testswarm");
+    expect(calledUrl).not.toContain("namespace=");
   });
 
   test("sets hasMore=true when response length equals limit", async () => {
