@@ -1,5 +1,11 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { parseAgentLogStats } from "@/lib/utils/agent-log-stats";
+
+// Mock gpt-tokenizer so tests are fast and deterministic.
+// We use a simple char-based stub: 1 token per char, so estimateTokens(str) === str.length.
+vi.mock("gpt-tokenizer", () => ({
+  encode: (text: string) => Array.from(text),
+}));
 
 // Helper to build a JSON string from a bare array
 const bare = (messages: unknown[]) => JSON.stringify(messages);
@@ -146,25 +152,45 @@ describe("parseAgentLogStats", () => {
   });
 
   describe("token estimation", () => {
-    it("estimates tokens as Math.ceil(totalChars / 4)", () => {
-      // "user" (4) + "Hello world" (11) = 15 chars → ceil(15/4) = 4
+    // With our mock, encode(str) returns Array.from(str), so estimateTokens(str) === str.length.
+    // The new implementation sums estimateTokens(role + content + reasoning) per message.
+
+    it("estimates tokens using the tokenizer (not chars ÷ 4)", () => {
+      // "user" (4) + "Hello world" (11) = 15 tokens with our stub
       const input = bare([{ role: "user", content: "Hello world" }]);
       const { stats } = parseAgentLogStats(input);
-      const expectedChars = "user".length + "Hello world".length;
-      expect(stats.estimatedTokens).toBe(Math.ceil(expectedChars / 4));
+      const expectedTokens = ("user" + "Hello world").length;
+      expect(stats.estimatedTokens).toBe(expectedTokens);
+      // Ensure it is NOT the old chars/4 formula
+      expect(stats.estimatedTokens).not.toBe(Math.ceil(("user" + "Hello world").length / 4));
     });
 
     it("includes all messages in token count", () => {
       const messages = [
-        { role: "user", content: "AAAA" },       // 4 + 4 = 8
-        { role: "assistant", content: "BBBBBBBB" }, // 9 + 8 = 17
+        { role: "user", content: "AAAA" },
+        { role: "assistant", content: "BBBBBBBB" },
       ];
       const input = bare(messages);
       const { stats } = parseAgentLogStats(input);
-      const totalChars =
-        "user".length + "AAAA".length +
-        "assistant".length + "BBBBBBBB".length;
-      expect(stats.estimatedTokens).toBe(Math.ceil(totalChars / 4));
+      const expectedTokens =
+        ("user" + "AAAA").length +
+        ("assistant" + "BBBBBBBB").length;
+      expect(stats.estimatedTokens).toBe(expectedTokens);
+    });
+
+    it("includes reasoning in the token count", () => {
+      const input = bare([{ role: "assistant", content: "Answer", reasoning: "Thinking" }]);
+      const { stats } = parseAgentLogStats(input);
+      const expectedTokens = ("assistant" + "Answer" + "Thinking").length;
+      expect(stats.estimatedTokens).toBe(expectedTokens);
+    });
+
+    it("includes array content (JSON.stringify) in the token count", () => {
+      const contentArr = [{ type: "text", text: "hi" }];
+      const input = bare([{ role: "assistant", content: contentArr }]);
+      const { stats } = parseAgentLogStats(input);
+      const expectedTokens = ("assistant" + JSON.stringify(contentArr)).length;
+      expect(stats.estimatedTokens).toBe(expectedTokens);
     });
 
     it("returns zero tokens for empty conversation", () => {

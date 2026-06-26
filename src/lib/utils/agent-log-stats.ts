@@ -67,6 +67,8 @@ export function isValidMessage(msg: unknown): msg is ParsedMessage {
   );
 }
 
+import { estimateTokens } from "@/lib/utils/token-estimate";
+
 export function parseAgentLogStats(content: string): AgentLogStatsResult {
   const emptyResult: AgentLogStatsResult = {
     conversation: [],
@@ -106,18 +108,19 @@ export function parseAgentLogStats(content: string): AgentLogStatsResult {
   const conversation = candidates.filter(isValidMessage);
   if (conversation.length === 0) return { ...emptyResult, config: runConfig };
 
-  // Token estimation: total chars across role + content fields ÷ 4
-  let totalChars = 0;
+  // Token estimation: sum estimateTokens() per message across role + content + reasoning
+  let estimatedTokens = 0;
   for (const msg of conversation) {
-    totalChars += msg.role.length;
+    let text = msg.role;
     if (typeof msg.content === "string") {
-      totalChars += msg.content.length;
+      text += msg.content;
     } else if (Array.isArray(msg.content)) {
-      totalChars += JSON.stringify(msg.content).length;
+      text += JSON.stringify(msg.content);
     }
     if (typeof msg.reasoning === "string") {
-      totalChars += msg.reasoning.length;
+      text += msg.reasoning;
     }
+    estimatedTokens += estimateTokens(text);
   }
 
   // Tool call counting
@@ -182,7 +185,7 @@ export function parseAgentLogStats(content: string): AgentLogStatsResult {
     conversation,
     stats: {
       totalMessages: conversation.length,
-      estimatedTokens: Math.ceil(totalChars / 4),
+      estimatedTokens,
       totalToolCalls,
       toolFrequency,
       bashFrequency,
