@@ -138,6 +138,14 @@ describe("runJarvisMirror", () => {
     expect((mockedDb.workspace as any).update).not.toHaveBeenCalled();
   });
 
+  it("excludes text-less messages (artifact-only) and SENDING from the chat query", async () => {
+    setupDb({ workspaces: [{ id: "w1", slug: "w1", jarvisSyncState: null }] });
+    await runJarvisMirror();
+    const where = (mockedDb.chatMessage as any).findMany.mock.calls[0][0].where;
+    expect(where.message).toEqual({ not: "" });
+    expect(where.status).toEqual({ not: "SENDING" });
+  });
+
   it("passes the stored keyset cursor into the feature query", async () => {
     const cursor = { at: AT.toISOString(), id: "f0" };
     setupDb({

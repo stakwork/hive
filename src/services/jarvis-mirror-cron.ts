@@ -177,6 +177,9 @@ async function mirrorWorkspace(
   const messages = await db.chatMessage.findMany({
     where: {
       status: { not: ChatStatus.SENDING },
+      // Skip text-less messages (e.g. artifact-only assistant turns) — they
+      // carry no `message` content and are just noise in the graph.
+      message: { not: "" },
       OR: [
         { task: { workspaceId: workspace.id } },
         { feature: { workspaceId: workspace.id } },
