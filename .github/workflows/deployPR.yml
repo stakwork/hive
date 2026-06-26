@@ -439,6 +439,16 @@ jobs:
             npx prisma migrate resolve --rolled-back "20260302215700_add_prototype_source_type" 2>&1 || true
           fi
 
+          echo "Resolving 20260626160017_add_hive_prompt_models..."
+          PROMPTS_TABLE=$(psql "$DATABASE_URL" -tAc "SELECT COUNT(*) FROM information_schema.tables WHERE table_name='prompts' AND table_schema='public';" 2>/dev/null | tr -d '[:space:]' || echo "0")
+          if [ "$PROMPTS_TABLE" = "1" ]; then
+            echo "  prompts table exists — marking as applied"
+            npx prisma migrate resolve --applied "20260626160017_add_hive_prompt_models" 2>&1 || true
+          else
+            echo "  prompts table absent — rolling back for Prisma to run"
+            npx prisma migrate resolve --rolled-back "20260626160017_add_hive_prompt_models" 2>&1 || true
+          fi
+
           # Retry prisma migrate deploy — Neon endpoint may sleep between steps
           for attempt in 1 2 3 4 5; do
             if npx prisma migrate deploy; then
@@ -502,6 +512,7 @@ jobs:
         id: deploy
         run: |
           export DATABASE_URL="${{ steps.neon.outputs.connection_uri }}"
+          export DIRECT_URL="$(echo "${{ steps.neon.outputs.connection_uri }}" | sed 's/-pooler\././')"
 
           # Retry logic for transient Vercel deployment errors with exponential backoff
           MAX_RETRIES=3
