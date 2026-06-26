@@ -5,7 +5,10 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 // Mock all dependencies before importing the module
 vi.mock("@/lib/db", () => ({ db: {} }));
-vi.mock("@/config/env", () => ({ config: {} }));
+vi.mock("@/config/env", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/config/env")>();
+  return { ...actual, config: { ...actual.config } };
+});
 vi.mock("@/lib/pusher", () => ({
   pusherServer: { trigger: vi.fn() },
   getTaskChannelName: vi.fn(),

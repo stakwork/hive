@@ -33,13 +33,18 @@ vi.mock("@/lib/helpers/chat-history", () => ({
   fetchChatHistory: vi.fn().mockResolvedValue([]),
 }));
 
-vi.mock("@/config/env", () => ({
-  config: {
-    STAKWORK_BASE_URL: "https://api.stakwork.com/api/v1",
-    STAKWORK_API_KEY: "test-api-key",
-    STAKWORK_WORKFLOW_EDITOR_WORKFLOW_ID: "42",
-  },
-}));
+vi.mock("@/config/env", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/config/env")>();
+  return {
+    ...actual,
+    config: {
+      ...actual.config,
+      STAKWORK_BASE_URL: "https://api.stakwork.com/api/v1",
+      STAKWORK_API_KEY: "test-api-key",
+      STAKWORK_WORKFLOW_EDITOR_WORKFLOW_ID: "42",
+    },
+  };
+});
 
 // ─── Subject ──────────────────────────────────────────────────────────────────
 
