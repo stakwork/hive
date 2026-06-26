@@ -159,6 +159,28 @@ describe("runJarvisMirror", () => {
     ]);
   });
 
+  it("skips the swarm (no error) when the bulk endpoint 404s", async () => {
+    mockedAddNodeBulk.mockResolvedValue({
+      success: false,
+      endpointMissing: true,
+      errors: ["Request failed with status 404"],
+    });
+    setupDb({
+      workspaces: [{ id: "w1", slug: "w1", jarvisSyncState: null }],
+      features: [{ id: "f1", title: "F1", updatedAt: AT }],
+      tasks: [{ id: "t1", title: "T1", updatedAt: AT, feature: null }],
+    });
+
+    const res = await runJarvisMirror();
+
+    expect(res.results[0].skipped).toBe("jarvis bulk endpoint missing (404)");
+    expect(res.results[0].errors).toBeUndefined();
+    // Bailed on the first 404 — never attempted the task type.
+    expect(mockedAddNodeBulk).toHaveBeenCalledTimes(1);
+    // No cursor persisted for a skipped swarm.
+    expect((mockedDb.workspace as any).update).not.toHaveBeenCalled();
+  });
+
   it("continues to other workspaces when one throws", async () => {
     setupDb({
       workspaces: [

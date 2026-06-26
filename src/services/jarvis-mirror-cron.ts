@@ -38,6 +38,14 @@ const LOG = "JARVIS_MIRROR";
 export const DEFAULT_MAX_PER_TYPE = 500;
 export const BULK_CHUNK = 100;
 
+// Wall-clock cap for a single workspace's mirror pass. The route allows 300 s
+// total across all workspaces (processed sequentially), so no one swarm —
+// especially an unreachable one whose every request burns the full request
+// timeout — may dominate the budget. Once exceeded, the workspace's remaining
+// entity types are skipped this run and retried (from the unadvanced cursor)
+// on the next.
+export const WORKSPACE_BUDGET_MS = 60_000;
+
 type EntityType = "feature" | "task" | "chat";
 
 interface Cursor {
@@ -85,6 +93,18 @@ function parseState(raw: unknown): SyncState {
   return {};
 }
 
+/**
+ * Signals a 404 from the swarm: the bulk endpoint doesn't exist on this
+ * backend (capability/version mismatch). Thrown to unwind the whole workspace
+ * pass — there's no point sending the remaining entity types or retrying.
+ */
+class EndpointMissingError extends Error {
+  constructor() {
+    super("jarvis bulk endpoint not found (404)");
+    this.name = "EndpointMissingError";
+  }
+}
+
 /** Returns false if any chunk failed (errors collected into `errors`). */
 async function pushNodes(
   config: JarvisConnectionConfig,
@@ -94,6 +114,7 @@ async function pushNodes(
   let ok = true;
   for (const part of chunk(nodes, BULK_CHUNK)) {
     const res = await addNodeBulk(config, part, { reprocess: true });
+    if (res.endpointMissing) throw new EndpointMissingError();
     if (!res.success) {
       ok = false;
       errors.push(...res.errors);
@@ -111,6 +132,7 @@ async function pushEdges(
   let ok = true;
   for (const part of chunk(edges, BULK_CHUNK)) {
     const res = await addEdgeBulk(config, part);
+    if (res.endpointMissing) throw new EndpointMissingError();
     if (!res.success) {
       ok = false;
       errors.push(...res.errors);
@@ -130,6 +152,12 @@ async function mirrorWorkspace(
   const counts: Record<EntityType, number> = { feature: 0, task: 0, chat: 0 };
   let capped = false;
 
+  // Stop starting new entity types once the per-workspace budget is spent, so a
+  // slow/unreachable swarm yields back to the next workspace. Cursors only
+  // advance on a completed type, so skipped types simply retry next run.
+  const deadline = Date.now() + WORKSPACE_BUDGET_MS;
+  const overBudget = () => Date.now() >= deadline;
+
   // --- Features ---
   const features = await db.feature.findMany({
     where: { workspaceId: workspace.id, deleted: false, ...keysetWhere(state.feature) },
@@ -147,6 +175,8 @@ async function mirrorWorkspace(
       if (features.length === maxPerType) capped = true;
     }
   }
+
+  if (overBudget()) return { workspaceId: workspace.id, slug: workspace.slug, counts, capped, errors };
 
   // --- Tasks (+ HAS_TASK edges) ---
   const tasks = await db.task.findMany({
@@ -171,6 +201,8 @@ async function mirrorWorkspace(
       if (tasks.length === maxPerType) capped = true;
     }
   }
+
+  if (overBudget()) return { workspaceId: workspace.id, slug: workspace.slug, counts, capped, errors };
 
   // --- Chat messages (+ HAS_MESSAGE edges) ---
   // No direct workspaceId on ChatMessage — reach it via task or feature.
@@ -261,6 +293,13 @@ export async function runJarvisMirror(
       }
       results.push(result);
     } catch (error) {
+      // A 404 means this swarm's jarvis-backend lacks the bulk endpoints
+      // (version mismatch). Skip it quietly instead of logging an error and
+      // having the route treat it as retryable noise.
+      if (error instanceof EndpointMissingError) {
+        results.push({ workspaceId: ws.id, slug: ws.slug, skipped: "jarvis bulk endpoint missing (404)" });
+        continue;
+      }
       logger.error(`[JARVIS MIRROR] Failed for workspace ${ws.slug}`, LOG, { error });
       results.push({
         workspaceId: ws.id,
