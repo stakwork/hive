@@ -6,8 +6,8 @@ import { NextRequest } from "next/server";
  *
  * Tests verify:
  * - Authentication via CRON_SECRET (401 when missing/invalid)
- * - Feature flag gating (DAILY_RECAP_CRON_ENABLED)
- * - Response shape when cron is disabled
+ * - Config guard (STAKWORK_DAILY_RECAP_WORKFLOW_ID presence)
+ * - Response shape when workflow ID is absent
  * - Response shape when cron is enabled and runs successfully
  */
 
@@ -39,11 +39,11 @@ function createAuthenticatedRequest(): NextRequest {
 
 describe("GET /api/cron/daily-recap", () => {
   let originalCronSecret: string | undefined;
-  let originalEnabled: string | undefined;
+  let originalWorkflowId: string | undefined;
 
   beforeEach(() => {
     originalCronSecret = process.env.CRON_SECRET;
-    originalEnabled = process.env.DAILY_RECAP_CRON_ENABLED;
+    originalWorkflowId = process.env.STAKWORK_DAILY_RECAP_WORKFLOW_ID;
 
     process.env.CRON_SECRET = "test-cron-secret";
 
@@ -52,7 +52,7 @@ describe("GET /api/cron/daily-recap", () => {
 
   afterEach(() => {
     process.env.CRON_SECRET = originalCronSecret;
-    process.env.DAILY_RECAP_CRON_ENABLED = originalEnabled;
+    process.env.STAKWORK_DAILY_RECAP_WORKFLOW_ID = originalWorkflowId;
   });
 
   // ── Auth ──────────────────────────────────────────────────────────────────
@@ -71,36 +71,24 @@ describe("GET /api/cron/daily-recap", () => {
     expect(body.error).toBe("Unauthorized");
   });
 
-  // ── Disabled flag ─────────────────────────────────────────────────────────
+  // ── Config guard ──────────────────────────────────────────────────────────
 
-  it("returns 200 with disabled message when DAILY_RECAP_CRON_ENABLED is not 'true'", async () => {
-    process.env.DAILY_RECAP_CRON_ENABLED = "false";
+  it("returns 200 with not-configured message when STAKWORK_DAILY_RECAP_WORKFLOW_ID is unset", async () => {
+    delete process.env.STAKWORK_DAILY_RECAP_WORKFLOW_ID;
 
     const res = await GET(createAuthenticatedRequest());
     expect(res.status).toBe(200);
 
     const body = await res.json();
     expect(body.success).toBe(true);
-    expect(body.message).toMatch(/disabled/i);
-    expect(body.usersProcessed).toBe(0);
-    expect(body.dispatched).toBe(0);
-    expect(mockExecuteScheduledDailyRecapRuns).not.toHaveBeenCalled();
-  });
-
-  it("returns 200 with disabled message when DAILY_RECAP_CRON_ENABLED is unset", async () => {
-    delete process.env.DAILY_RECAP_CRON_ENABLED;
-
-    const res = await GET(createAuthenticatedRequest());
-    expect(res.status).toBe(200);
-    const body = await res.json();
-    expect(body.success).toBe(true);
+    expect(body.message).toMatch(/not configured/i);
     expect(mockExecuteScheduledDailyRecapRuns).not.toHaveBeenCalled();
   });
 
   // ── Enabled ───────────────────────────────────────────────────────────────
 
-  it("calls executeScheduledDailyRecapRuns and returns summary JSON when enabled", async () => {
-    process.env.DAILY_RECAP_CRON_ENABLED = "true";
+  it("calls executeScheduledDailyRecapRuns and returns summary JSON when workflow ID is set", async () => {
+    process.env.STAKWORK_DAILY_RECAP_WORKFLOW_ID = "12345";
     mockExecuteScheduledDailyRecapRuns.mockResolvedValue({
       usersProcessed: 5,
       dispatched: 4,
@@ -125,7 +113,7 @@ describe("GET /api/cron/daily-recap", () => {
   });
 
   it("returns success=false when errors are present", async () => {
-    process.env.DAILY_RECAP_CRON_ENABLED = "true";
+    process.env.STAKWORK_DAILY_RECAP_WORKFLOW_ID = "12345";
     mockExecuteScheduledDailyRecapRuns.mockResolvedValue({
       usersProcessed: 3,
       dispatched: 2,
@@ -143,7 +131,7 @@ describe("GET /api/cron/daily-recap", () => {
   });
 
   it("returns 500 when executeScheduledDailyRecapRuns throws", async () => {
-    process.env.DAILY_RECAP_CRON_ENABLED = "true";
+    process.env.STAKWORK_DAILY_RECAP_WORKFLOW_ID = "12345";
     mockExecuteScheduledDailyRecapRuns.mockRejectedValue(new Error("unexpected crash"));
 
     const res = await GET(createAuthenticatedRequest());
