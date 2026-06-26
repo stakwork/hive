@@ -743,7 +743,7 @@ Realms: \`pg\` (Postgres roadmap entities), \`canvas\` (canvas nodes), \`kg\` (t
 
 ### Scope reminder
 
-All four realms are live (pg, canvas, kg). The chain that connects roadmap to code: a \`pg:feature\` links to \`kg:concept\` nodes (edge type \`implemented-by\`, surfaced by \`graph_neighbors\`), and from a \`kg:concept\` you can walk to the files/functions that implement it (filter with \`node_type\`, e.g. \`["File"]\`). kg traversal talks to the live swarm, so it can fail if the swarm is unconfigured/unreachable — those calls return an \`{ error }\` you should treat as "unavailable", not "empty". Default \`graph_search\` (no realm) searches pg + canvas; request \`realm: "kg"\` to search the code graph.
+All three realms are live (pg, canvas, kg). The chain that connects roadmap to code: a \`pg:feature\` links to \`kg:concept\` nodes (edge type \`implemented-by\`, surfaced by \`graph_neighbors\`), and from a \`kg:concept\` you can walk to the files/functions that implement it (filter with \`node_type\`, e.g. \`["File"]\`). kg traversal talks to the live swarm, so it can fail if the swarm is unconfigured/unreachable — those calls return an \`{ error }\` you should treat as "unavailable", not "empty". Default \`graph_search\` (no realm) searches pg + canvas; request \`realm: "kg"\` to search the code graph.
 
 ### Read-only
 
