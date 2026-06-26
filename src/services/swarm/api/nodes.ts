@@ -257,6 +257,40 @@ export async function addNodeBulk(
   };
 }
 
+/** A node as returned by the `latest-by-types` read endpoint. */
+export interface JarvisGraphNode {
+  ref_id: string;
+  node_type: string;
+  date_added_to_graph?: number;
+  properties?: Record<string, unknown>;
+}
+
+/**
+ * Read nodes of the given types via `POST /graph/search/latest-by-types`,
+ * newest-ingested-first (ordered `date_added_to_graph` DESC). The endpoint has
+ * no hard cap — it returns up to the requested per-type limit or the real total,
+ * whichever is smaller. `withProperties` is required to read schema properties
+ * (e.g. a PullRequest's `number`/`repo`), at the cost of heavier payloads.
+ * Returns `[]` on any error (never throws).
+ */
+export async function searchLatestByTypes(
+  config: JarvisConnectionConfig,
+  nodeTypes: Record<string, number>,
+  opts?: { withProperties?: boolean },
+): Promise<JarvisGraphNode[]> {
+  const result = await jarvisRequest({
+    config,
+    endpoint: "/graph/search/latest-by-types",
+    method: "POST",
+    data: { nodeTypes, include_properties: opts?.withProperties ?? false },
+  });
+
+  if (!result.ok) return [];
+
+  const body = result.body as { nodes?: JarvisGraphNode[] } | undefined;
+  return Array.isArray(body?.nodes) ? body!.nodes : [];
+}
+
 export async function updateNode(
   config: JarvisConnectionConfig,
   request: UpdateNodeRequest,

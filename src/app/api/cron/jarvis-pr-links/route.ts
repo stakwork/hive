@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse, after } from "next/server";
 import { logger } from "@/lib/logger";
-import { runJarvisMirror } from "@/services/jarvis-mirror-cron";
+import { runJarvisPrLink } from "@/services/jarvis-pr-link-cron";
 
-// Allow up to 5 minutes; one pass is bounded by maxPerType per workspace.
+// Allow up to 5 minutes; one pass is bounded by maxPerRun per workspace.
 export const maxDuration = 300;
 
 // How many times the job may self-chain in a single drain to avoid runaway loops.
@@ -19,14 +19,22 @@ export async function GET(request: NextRequest) {
     }
   }
 
+  // Opt-in kill switch so the code can ship dark and be turned on only once the
+  // PullRequest graph-node shape is confirmed (repo/number resolution) and the
+  // jarvis-backend RESULTED_IN edge schema is deployed.
+  if (process.env.JARVIS_PR_LINK_CRON_ENABLED !== "true") {
+    logger.info("[JARVIS PR LINK] disabled via JARVIS_PR_LINK_CRON_ENABLED", "JARVIS_PR_LINK");
+    return NextResponse.json({ success: true, disabled: true, processed: 0 });
+  }
+
   const depth = Number(request.nextUrl.searchParams.get("d") ?? "0") || 0;
 
-  logger.info(`[JARVIS MIRROR] cron invoked (depth=${depth})`, "JARVIS_MIRROR");
+  logger.info(`[JARVIS PR LINK] cron invoked (depth=${depth})`, "JARVIS_PR_LINK");
 
-  const result = await runJarvisMirror();
+  const result = await runJarvisPrLink();
 
   // Self-chain to drain a backlog quickly: if a batch was capped, immediately
-  // trigger another run that resumes from the advanced cursors.
+  // trigger another run that resumes against still-unlinked tasks.
   if (result.anyCapped && depth < MAX_CHAIN_DEPTH) {
     const url = new URL(request.url);
     url.searchParams.set("d", String(depth + 1));
@@ -37,23 +45,16 @@ export async function GET(request: NextRequest) {
       try {
         await fetch(url.toString(), { headers });
       } catch (error) {
-        logger.warn("[JARVIS MIRROR] self-chain trigger failed", "JARVIS_MIRROR", { error });
+        logger.warn("[JARVIS PR LINK] self-chain trigger failed", "JARVIS_PR_LINK", { error });
       }
     });
   }
-
-  // Surface a quick error sample so a manual curl is self-diagnostic.
-  const errorSamples = result.results
-    .flatMap((r) => r.errors ?? [])
-    .slice(0, 10);
 
   return NextResponse.json({
     success: true,
     processed: result.processed,
     anyCapped: result.anyCapped,
     chained: result.anyCapped && depth < MAX_CHAIN_DEPTH,
-    errorCount: result.results.reduce((n, r) => n + (r.errors?.length ?? 0), 0),
-    errorSamples,
     results: result.results,
   });
 }

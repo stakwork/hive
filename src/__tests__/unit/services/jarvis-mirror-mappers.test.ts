@@ -6,11 +6,15 @@ import {
   chatMessageName,
   taskEdge,
   chatMessageEdge,
+  parsePullRequestUrl,
+  prNodeKey,
+  taskPrEdge,
   HIVE_FEATURE,
   HIVE_TASK,
   HIVE_CHAT_MESSAGE,
   EDGE_HAS_TASK,
   EDGE_HAS_MESSAGE,
+  EDGE_RESULTED_IN,
 } from "@/services/jarvis-mirror/mappers";
 
 const AT = new Date("2026-01-02T03:04:05.000Z");
@@ -123,6 +127,46 @@ describe("jarvis-mirror mappers", () => {
 
     it("returns null when message has no parent", () => {
       expect(chatMessageEdge({ id: "m1", message: "hi", role: "USER" })).toBeNull();
+    });
+  });
+
+  describe("parsePullRequestUrl", () => {
+    it("extracts owner/repo and number from a PR html_url", () => {
+      expect(parsePullRequestUrl("https://github.com/stakwork/hive/pull/4542")).toEqual({
+        repo: "stakwork/hive",
+        number: 4542,
+      });
+    });
+
+    it("ignores trailing path/query and is case-insensitive on host", () => {
+      expect(parsePullRequestUrl("https://GitHub.com/Org/Repo/pull/12/files?x=1")).toEqual({
+        repo: "Org/Repo",
+        number: 12,
+      });
+    });
+
+    it("returns null for non-PR urls and non-strings", () => {
+      expect(parsePullRequestUrl("https://github.com/stakwork/hive/issues/4542")).toBeNull();
+      expect(parsePullRequestUrl("https://github.com/stakwork/hive/pull/abc")).toBeNull();
+      expect(parsePullRequestUrl(undefined)).toBeNull();
+      expect(parsePullRequestUrl(123)).toBeNull();
+    });
+  });
+
+  describe("prNodeKey", () => {
+    it("lowercases repo so url-derived and graph-stored repos match", () => {
+      expect(prNodeKey("Stakwork/Hive", 4542)).toBe("stakwork/hive#4542");
+      expect(prNodeKey("stakwork/hive", 4542)).toBe(prNodeKey("STAKWORK/HIVE", 4542));
+    });
+  });
+
+  describe("taskPrEdge", () => {
+    it("RESULTED_IN edge from HiveTask node_key to PR ref_id", () => {
+      const edge = taskPrEdge("task_1", "My Task", "pr-ref-abc");
+      expect(edge.edge.edge_type).toBe(EDGE_RESULTED_IN);
+      expect(edge.source.node_type).toBe(HIVE_TASK);
+      expect(edge.source.node_data).toEqual({ task_id: "task_1", name: "My Task" });
+      expect(edge.target).toEqual({ ref_id: "pr-ref-abc" });
     });
   });
 });
