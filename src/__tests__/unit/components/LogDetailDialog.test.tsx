@@ -72,6 +72,11 @@ vi.mock("@/lib/utils/agent-log-pairing", () => ({
   getConsumedResultIds: vi.fn(() => new Set()),
 }));
 
+vi.mock("@/hooks/useUserTimezone", () => ({
+  useUserTimezone: () => ({ timezone: "UTC" }),
+  resetTimezoneCache: vi.fn(),
+}));
+
 // --- Import component after mocks ---
 import { LogDetailDialog } from "@/components/agent-logs/LogDetailDialog";
 // ToolCallItem, MessageBubble, StatsBar are now in LogDetailContent and render through the dialog.
