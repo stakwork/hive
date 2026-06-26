@@ -7,7 +7,13 @@ import { describe, test, expect, vi, beforeEach } from "vitest";
 // ─── Mocks ────────────────────────────────────────────────────────────────────
 
 vi.mock("@/lib/db");
-vi.mock("@/config/env", () => ({ config: {} }));
+vi.mock("@/services/roadmap/feature-chat", () => ({
+  resolveExtraSwarms: vi.fn().mockResolvedValue([]),
+}));
+vi.mock("@/config/env", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/config/env")>();
+  return { ...actual, config: { ...actual.config } };
+});
 vi.mock("@/lib/pusher", () => ({
   pusherServer: { trigger: vi.fn() },
   getTaskChannelName: vi.fn(),

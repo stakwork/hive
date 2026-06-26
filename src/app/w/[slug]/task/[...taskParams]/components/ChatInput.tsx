@@ -115,7 +115,9 @@ export function ChatInput({
   const isMobile = useIsMobile();
   const { workspaces } = useWorkspace();
 
-  const filteredWorkspaces = isPlanChat && mentionQuery !== null
+  const mentionsEnabled = isPlanChat || taskMode === "workflow_editor";
+
+  const filteredWorkspaces = mentionsEnabled && mentionQuery !== null
     ? workspaces.filter(
         (ws) =>
           ws.slug !== currentWorkspaceSlug &&
@@ -461,7 +463,7 @@ export function ChatInput({
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     // Intercept keys when mention popup is open
-    if (isPlanChat && mentionQuery !== null && filteredWorkspaces.length > 0) {
+    if (mentionsEnabled && mentionQuery !== null && filteredWorkspaces.length > 0) {
       if (e.key === "ArrowDown") {
         e.preventDefault();
         setMentionIndex((i) => (i + 1) % filteredWorkspaces.length);
@@ -652,7 +654,7 @@ export function ChatInput({
         )}
 
         {/* @mention workspace popup */}
-        {isPlanChat && mentionQuery !== null && filteredWorkspaces.length > 0 && (
+        {mentionsEnabled && mentionQuery !== null && filteredWorkspaces.length > 0 && (
           <div className="absolute bottom-full left-4 right-4 mb-1 z-20 md:left-6 md:right-6">
             <Command className="rounded-lg border shadow-md bg-popover">
               <CommandList>
@@ -686,7 +688,7 @@ export function ChatInput({
           onChange={(e) => {
             const value = e.target.value;
             setInput(value);
-            if (isPlanChat) {
+            if (mentionsEnabled) {
               const cursor = e.target.selectionStart ?? value.length;
               const before = value.slice(0, cursor);
               const match = before.match(/\B@([\w-]*)$/);
