@@ -60,6 +60,7 @@ vi.mock("@/lib/ai/kg-adapter", () => ({
   kgGetNeighbors: vi.fn(),
   kgGetNodesByRefs: vi.fn(),
   kgSearch: vi.fn(),
+  kgGetOntology: vi.fn(),
 }));
 
 vi.mock("@/lib/helpers/swarm-access", () => ({
@@ -107,7 +108,7 @@ import { pgNeighbors } from "@/lib/graph-walker";
 import { buildGraphWalkerTools } from "@/lib/ai/graphWalkerTools";
 import { resolveCapabilities } from "@/lib/ai/capabilities";
 import { resolveKgSeam } from "@/lib/urn/resolvers/kg";
-import { kgGetNode, kgGetNeighbors, kgGetNodesByRefs, kgSearch } from "@/lib/ai/kg-adapter";
+import { kgGetNode, kgGetNeighbors, kgGetNodesByRefs, kgSearch, kgGetOntology } from "@/lib/ai/kg-adapter";
 import { getSwarmAccessByWorkspaceId } from "@/lib/helpers/swarm-access";
 
 // ---------------------------------------------------------------------------
@@ -127,6 +128,7 @@ const mockKgGetNode = kgGetNode as ReturnType<typeof vi.fn>;
 const mockKgGetNeighbors = kgGetNeighbors as ReturnType<typeof vi.fn>;
 const mockKgGetNodesByRefs = kgGetNodesByRefs as ReturnType<typeof vi.fn>;
 const mockKgSearch = kgSearch as ReturnType<typeof vi.fn>;
+const mockKgGetOntology = kgGetOntology as ReturnType<typeof vi.fn>;
 const mockGetSwarmAccessByWorkspaceId = getSwarmAccessByWorkspaceId as ReturnType<typeof vi.fn>;
 
 const dbSourceControlOrg = db.sourceControlOrg as {
@@ -1319,6 +1321,99 @@ describe("buildGraphWalkerTools", () => {
       expect(dbConnection.findMany).not.toHaveBeenCalled();
       expect(dbQueryRaw).not.toHaveBeenCalled();
     });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// graph_ontology
+// ---------------------------------------------------------------------------
+
+describe("graph_ontology", () => {
+  const SEAM = { jarvisUrl: "https://jarvis.example.com", swarmApiKey: "key-abc" };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    dbSourceControlOrg.findUnique.mockResolvedValue({ githubLogin: "my-org" });
+    mockFormatUrn.mockReturnValue("urn:my-org:kg:test-ws:node:x");
+    mockResolveKgSeam.mockResolvedValue(SEAM);
+    mockKgGetOntology.mockResolvedValue([
+      { type: "File", description: "A source file." },
+      { type: "Function", description: "A code function." },
+    ]);
+  });
+
+  it("returns node_types on a resolvable, authorized seam", async () => {
+    const tools = getTools();
+    const result = await tools.graph_ontology.execute(
+      { workspace: "test-ws" },
+      {} as never,
+    );
+
+    expect(result).toEqual({
+      node_types: [
+        { type: "File", description: "A source file." },
+        { type: "Function", description: "A code function." },
+      ],
+    });
+    expect(mockKgGetOntology).toHaveBeenCalledWith(SEAM.jarvisUrl, SEAM.swarmApiKey);
+  });
+
+  it("uses formatUrn to build a synthetic kg URN for the IDOR guard", async () => {
+    const tools = getTools();
+    await tools.graph_ontology.execute({ workspace: "test-ws" }, {} as never);
+
+    expect(mockFormatUrn).toHaveBeenCalledWith(
+      expect.objectContaining({
+        realm: "kg",
+        org: "my-org",
+        workspace: "test-ws",
+        type: "node",
+        id: "x",
+      }),
+    );
+    expect(mockResolveKgSeam).toHaveBeenCalledWith(
+      "urn:my-org:kg:test-ws:node:x",
+      { userId: USER_ID },
+    );
+  });
+
+  it("returns { error } when resolveKgSeam returns null (IDOR denied)", async () => {
+    mockResolveKgSeam.mockResolvedValue(null);
+    const tools = getTools();
+
+    const result = await tools.graph_ontology.execute(
+      { workspace: "test-ws" },
+      {} as never,
+    );
+
+    expect(result).toEqual({ error: "swarm not configured or access denied" });
+    expect(mockKgGetOntology).not.toHaveBeenCalled();
+  });
+
+  it("returns { error } when org is not found", async () => {
+    dbSourceControlOrg.findUnique.mockResolvedValue(null);
+    const tools = getTools();
+
+    const result = await tools.graph_ontology.execute(
+      { workspace: "test-ws" },
+      {} as never,
+    );
+
+    expect(result).toEqual({ error: "org not found" });
+    expect(mockResolveKgSeam).not.toHaveBeenCalled();
+    expect(mockKgGetOntology).not.toHaveBeenCalled();
+  });
+
+  it("forwards empty node_types array when kgGetOntology returns []", async () => {
+    mockKgGetOntology.mockResolvedValue([]);
+    const tools = getTools();
+
+    const result = await tools.graph_ontology.execute(
+      { workspace: "test-ws" },
+      {} as never,
+    );
+
+    expect(result).toEqual({ node_types: [] });
   });
 });
 
