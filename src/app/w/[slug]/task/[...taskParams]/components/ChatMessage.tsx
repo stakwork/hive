@@ -128,50 +128,94 @@ export const ChatMessage = memo(function ChatMessage({
                 </Button>
               </div>
             )}
-            <div
-              className={`px-4 py-1 rounded-md max-w-full min-w-0 overflow-hidden break-words shadow-sm ${
-                message.role === "USER"
-                  ? "bg-primary text-primary-foreground rounded-br-md"
-                  : "bg-background text-foreground rounded-bl-md border"
-              }`}
-            >
-            <MarkdownRenderer variant={message.role === "USER" ? "user" : "assistant"}>
-              {messageContent}
-            </MarkdownRenderer>
-
-            {/* Collapsible Logs Section */}
-            {logs.length > 0 && (
-              <div className="mt-2 border-t pt-2">
-                <button
-                  onClick={() => setLogsExpanded(!logsExpanded)}
-                  className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
-                >
-                  {logsExpanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
-                  <span>Logs</span>
-                </button>
-                {logsExpanded && (
-                  <div className="mt-2 max-h-64 overflow-auto rounded bg-muted/50 p-2 text-xs font-mono whitespace-pre-wrap">
-                    {logs.map((log, index) => (
-                      <div key={index}>{log}</div>
-                    ))}
+            {message.role !== "USER" && message.createdAt ? (
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <div
+                      className="px-4 py-1 rounded-md max-w-full min-w-0 overflow-hidden break-words shadow-sm bg-background text-foreground rounded-bl-md border"
+                    >
+                      <MarkdownRenderer variant="assistant">
+                        {messageContent}
+                      </MarkdownRenderer>
+                      {/* Collapsible Logs Section */}
+                      {logs.length > 0 && (
+                        <div className="mt-2 border-t pt-2">
+                          <button
+                            onClick={() => setLogsExpanded(!logsExpanded)}
+                            className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+                          >
+                            {logsExpanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+                            <span>Logs</span>
+                          </button>
+                          {logsExpanded && (
+                            <div className="mt-2 max-h-64 overflow-auto rounded bg-muted/50 p-2 text-xs font-mono whitespace-pre-wrap">
+                              {logs.map((log, index) => (
+                                <div key={index}>{log}</div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                      {/* Workflow URL Link for message bubble */}
+                      {message.workflowUrl && (
+                        <WorkflowUrlLink workflowUrl={message.workflowUrl} className="opacity-0 group-hover:opacity-100" />
+                      )}
+                      {/* Suggestion chips */}
+                      {suggestions && suggestions.length > 0 && onSuggestionSelect && (
+                        <div className="mt-2.5 pt-2.5 border-t border-border/60">
+                          <SuggestionChips suggestions={suggestions} onSelect={onSuggestionSelect} />
+                        </div>
+                      )}
+                    </div>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p>{formatRelativeOrDateInTz(message.createdAt, timezone)}</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            ) : (
+              <div
+                className={`px-4 py-1 rounded-md max-w-full min-w-0 overflow-hidden break-words shadow-sm ${
+                  message.role === "USER"
+                    ? "bg-primary text-primary-foreground rounded-br-md"
+                    : "bg-background text-foreground rounded-bl-md border"
+                }`}
+              >
+                <MarkdownRenderer variant={message.role === "USER" ? "user" : "assistant"}>
+                  {messageContent}
+                </MarkdownRenderer>
+                {/* Collapsible Logs Section */}
+                {logs.length > 0 && (
+                  <div className="mt-2 border-t pt-2">
+                    <button
+                      onClick={() => setLogsExpanded(!logsExpanded)}
+                      className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+                    >
+                      {logsExpanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+                      <span>Logs</span>
+                    </button>
+                    {logsExpanded && (
+                      <div className="mt-2 max-h-64 overflow-auto rounded bg-muted/50 p-2 text-xs font-mono whitespace-pre-wrap">
+                        {logs.map((log, index) => (
+                          <div key={index}>{log}</div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+                {/* Workflow URL Link for message bubble */}
+                {message.workflowUrl && (
+                  <WorkflowUrlLink workflowUrl={message.workflowUrl} className="opacity-0 group-hover:opacity-100" />
+                )}
+                {/* Suggestion chips */}
+                {message.role !== "USER" && suggestions && suggestions.length > 0 && onSuggestionSelect && (
+                  <div className="mt-2.5 pt-2.5 border-t border-border/60">
+                    <SuggestionChips suggestions={suggestions} onSelect={onSuggestionSelect} />
                   </div>
                 )}
               </div>
             )}
-
-            {/* Workflow URL Link for message bubble */}
-            {message.workflowUrl && (
-              <WorkflowUrlLink workflowUrl={message.workflowUrl} className="opacity-0 group-hover:opacity-100" />
-            )}
-
-            {/* Suggestion chips — docked inside the bubble for the latest
-                assistant turn. Renders only when chips are provided. */}
-            {message.role !== "USER" && suggestions && suggestions.length > 0 && onSuggestionSelect && (
-              <div className="mt-2.5 pt-2.5 border-t border-border/60">
-                <SuggestionChips suggestions={suggestions} onSelect={onSuggestionSelect} />
-              </div>
-            )}
-            </div>
           </div>
         )}
 

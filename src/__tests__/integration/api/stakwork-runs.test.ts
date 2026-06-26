@@ -27,11 +27,16 @@ vi.mock("@/lib/service-factory", () => ({
   })),
 }));
 
-vi.mock("@/config/env", () => ({
-  config: {
-    STAKWORK_AI_GENERATION_WORKFLOW_ID: "123",
-  },
-}));
+vi.mock("@/config/env", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/config/env")>();
+  return {
+    ...actual,
+    config: {
+      ...actual.config,
+      STAKWORK_AI_GENERATION_WORKFLOW_ID: "123",
+    },
+  };
+});
 
 vi.mock("@/lib/pusher", () => ({
   pusherServer: {

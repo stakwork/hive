@@ -26,6 +26,19 @@ vi.mock("@/lib/auth/nextauth", () => ({
   getGithubUsernameAndPAT: vi.fn(),
 }));
 
+vi.mock("@/services/roadmap/feature-chat", () => ({
+  resolveExtraSwarms: vi.fn().mockResolvedValue([]),
+}));
+
+vi.mock("@/services/workflow-editor", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/services/workflow-editor")>();
+  return {
+    ...actual,
+    fetchLatestWorkflowJson: vi.fn().mockResolvedValue(null),
+    buildWorkflowEditorFeatureContext: vi.fn().mockResolvedValue(null),
+  };
+});
+
 vi.mock("@/config/env", () => ({
   config: {
     STAKWORK_API_KEY: "test-stakwork-key",
@@ -52,9 +65,11 @@ vi.mock("@/lib/pusher", () => ({
 // Import mocked functions
 import { getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
 import { config } from "@/config/env";
+import { resolveExtraSwarms } from "@/services/roadmap/feature-chat";
 
 const mockGetGithubUsernameAndPAT = vi.mocked(getGithubUsernameAndPAT);
 const mockFetch = global.fetch as vi.MockedFunction<typeof global.fetch>;
+const mockResolveExtraSwarms = vi.mocked(resolveExtraSwarms);
 
 describe("POST /api/workflow-editor Integration Tests", () => {
   // Helper to create complete test data with all required relationships
@@ -113,6 +128,9 @@ describe("POST /api/workflow-editor Integration Tests", () => {
   beforeEach(async () => {
     vi.clearAllMocks();
     mockFetch.mockClear();
+
+    // Restore default resolveExtraSwarms mock (cleared by clearAllMocks)
+    mockResolveExtraSwarms.mockResolvedValue([]);
 
     // Setup default GitHub credentials mock
     mockGetGithubUsernameAndPAT.mockResolvedValue({
@@ -904,6 +922,115 @@ describe("POST /api/workflow-editor Integration Tests", () => {
         stakworkProjectId: stakworkProjectId,
       });
       expect(updatedTask?.workflowStartedAt).toBeDefined();
+    });
+  });
+
+  describe("Sub-Agent Resolution Tests", () => {
+    test("attaches subAgents to Stakwork vars when message contains resolvable @mentions", async () => {
+      const { user, task } = await createTestDataWithStakworkWorkspace();
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
+
+      const mockSwarm = {
+        name: "other-ws",
+        url: "https://other.sphinx.chat/api",
+        apiKey: "other-key",
+        repoUrls: ["https://github.com/org/other"],
+        toolsConfig: { learn_concepts: true },
+      };
+      mockResolveExtraSwarms.mockResolvedValueOnce([mockSwarm]);
+
+      const stakworkProjectId = 9001;
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ success: true, data: { project_id: stakworkProjectId } }),
+      } as Response);
+
+      const request = createPostRequest("http://localhost:3000/api/workflow-editor", {
+        taskId: task.id,
+        message: "Build a workflow using @other-ws patterns",
+        workflowId: 400,
+        workflowName: "Sub-Agent Workflow",
+        workflowRefId: "workflow-ref-subagent",
+        stepName: "step1",
+        stepUniqueId: "step-unique-1",
+        stepDisplayName: "Step 1",
+        stepType: "human",
+        stepData: {},
+      });
+
+      const response = await POST(request);
+      await expectSuccess(response, 201);
+
+      const fetchCall = mockFetch.mock.calls[0];
+      const body = JSON.parse(fetchCall[1].body as string);
+      const vars = body.workflow_params.set_var.attributes.vars;
+      expect(vars.subAgents).toHaveLength(1);
+      expect(vars.subAgents[0].name).toBe("other-ws");
+    });
+
+    test("subAgents absent from vars when no @mentions resolve", async () => {
+      const { user, task } = await createTestDataWithStakworkWorkspace();
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
+
+      mockResolveExtraSwarms.mockResolvedValueOnce([]);
+
+      const stakworkProjectId = 9002;
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ success: true, data: { project_id: stakworkProjectId } }),
+      } as Response);
+
+      const request = createPostRequest("http://localhost:3000/api/workflow-editor", {
+        taskId: task.id,
+        message: "Build a workflow with no mentions",
+        workflowId: 401,
+        workflowName: "No Sub-Agent Workflow",
+        workflowRefId: "workflow-ref-nosubagent",
+        stepName: "step1",
+        stepUniqueId: "step-unique-2",
+        stepDisplayName: "Step 1",
+        stepType: "human",
+        stepData: {},
+      });
+
+      const response = await POST(request);
+      await expectSuccess(response, 201);
+
+      const fetchCall = mockFetch.mock.calls[0];
+      const body = JSON.parse(fetchCall[1].body as string);
+      const vars = body.workflow_params.set_var.attributes.vars;
+      expect(Object.prototype.hasOwnProperty.call(vars, "subAgents")).toBe(false);
+    });
+
+    test("message still sends when @mention fails to resolve (returns empty)", async () => {
+      const { user, task } = await createTestDataWithStakworkWorkspace();
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
+
+      // resolveExtraSwarms returns empty (inaccessible/unresolvable slug silently skipped)
+      mockResolveExtraSwarms.mockResolvedValueOnce([]);
+
+      const stakworkProjectId = 9003;
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ success: true, data: { project_id: stakworkProjectId } }),
+      } as Response);
+
+      const request = createPostRequest("http://localhost:3000/api/workflow-editor", {
+        taskId: task.id,
+        message: "Build using @inaccessible-workspace",
+        workflowId: 402,
+        workflowName: "Graceful Workflow",
+        workflowRefId: "workflow-ref-graceful",
+        stepName: "step1",
+        stepUniqueId: "step-unique-3",
+        stepDisplayName: "Step 1",
+        stepType: "human",
+        stepData: {},
+      });
+
+      const response = await POST(request);
+      // Should succeed regardless — no 500
+      await expectSuccess(response, 201);
     });
   });
 });
