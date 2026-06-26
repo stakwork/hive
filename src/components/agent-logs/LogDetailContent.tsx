@@ -3,7 +3,7 @@
 import React, { useState } from "react";
 import { formatInUserTz } from "@/lib/date-utils";
 import { useUserTimezone } from "@/hooks/useUserTimezone";
-import { format } from "date-fns";
+import { estimateTokens } from "@/lib/utils/token-estimate";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -161,7 +161,7 @@ export function CopyButton({ value, className }: { value: string; className?: st
 export function SystemMessageBubble({ message }: { message: ParsedMessage }) {
   const [expanded, setExpanded] = useState(false);
   const textContent = extractTextContent(message) ?? "";
-  const charCount = textContent.length;
+  const tokenCount = estimateTokens(textContent);
 
   return (
     <div className="rounded-md border border-dashed bg-muted/30 px-3 py-2">
@@ -176,7 +176,7 @@ export function SystemMessageBubble({ message }: { message: ParsedMessage }) {
         )}
         <span className="font-medium">System prompt</span>
         <Badge variant="secondary" className="text-xs px-1.5 py-0 ml-1">
-          {charCount.toLocaleString()} chars
+          {tokenCount.toLocaleString()} tokens
         </Badge>
       </button>
       {expanded && (
@@ -196,7 +196,7 @@ export function SystemMessageBubble({ message }: { message: ParsedMessage }) {
 
 export function ReasoningSection({ text }: { text: string }) {
   const [expanded, setExpanded] = useState(false);
-  const charCount = text.length;
+  const tokenCount = estimateTokens(text);
 
   return (
     <div className="mb-2 text-xs text-muted-foreground/70 italic border-l-2 border-muted pl-3 py-1">
@@ -211,7 +211,7 @@ export function ReasoningSection({ text }: { text: string }) {
         )}
         <span className="font-medium not-italic">Reasoning</span>
         <Badge variant="secondary" className="text-xs px-1.5 py-0 ml-1 not-italic font-normal">
-          {charCount.toLocaleString()} chars
+          {tokenCount.toLocaleString()} tokens
         </Badge>
       </button>
       {expanded && (
@@ -292,14 +292,6 @@ export function ToolCallItem({
       )}
     </div>
   );
-}
-
-function formatMsgTime(ts: string): string {
-  try {
-    return format(new Date(ts), "HH:mm");
-  } catch {
-    return "";
-  }
 }
 
 // ---------------------------------------------------------------------------
@@ -478,70 +470,120 @@ export function MessageBubble({
           <Bot className="w-3.5 h-3.5 text-muted-foreground" />
         )}
       </div>
-      <div
-        className={cn(
-          "min-w-0 max-w-[90%] rounded-lg px-3 py-2",
-          isUser ? "bg-primary text-primary-foreground" : "bg-muted/50 border",
-        )}
-      >
-        {isUser ? (
-          <>
-            <p className="text-sm whitespace-pre-wrap break-words">
-              {unescapeLogString(displayedText)}
-            </p>
-            {isLong && (
-              <button
-                onClick={() => setShowMore((s) => !s)}
-                className="mt-1 text-xs text-primary-foreground/70 hover:underline"
-              >
-                {showMore ? "Show less" : "Show more"}
-              </button>
-            )}
-          </>
-        ) : (
-          <>
-            {reasoning && <ReasoningSection text={reasoning} />}
-            {textContent && (
-              <>
-                <MarkdownRenderer variant="assistant" size="compact">
-                  {displayedText}
-                </MarkdownRenderer>
-                {isLong && (
-                  <button
-                    onClick={() => setShowMore((s) => !s)}
-                    className="mt-1 text-xs text-primary hover:underline"
-                  >
-                    {showMore ? "Show less" : "Show more"}
-                  </button>
-                )}
-              </>
-            )}
-          </>
-        )}
-        {/* Inline tool calls in assistant messages with text */}
-        {isAssistant && allToolCallNames.length > 0 && (
-          <div className="mt-2 space-y-1 border-t border-border/50 pt-2">
-            {allToolCallNames.map((tc, i) => (
-              <ToolCallItem
-                key={tc.id || i}
-                tc={tc}
-                pairedResult={tc.id ? toolCallIndex?.get(tc.id) : undefined}
-              />
-            ))}
-          </div>
-        )}
-        {/* Timestamp label for user and assistant messages */}
-        {message.timestamp && (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <span className={cn("mt-1 block text-[10px] opacity-50 select-none", isUser && "text-right")}>
-                {formatMsgTime(message.timestamp)}
-              </span>
-            </TooltipTrigger>
-            <TooltipContent>{formatInUserTz(new Date(message.timestamp), timezone)}</TooltipContent>
-          </Tooltip>
-        )}
-      </div>
+      {message.timestamp ? (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <div
+              className={cn(
+                "min-w-0 max-w-[90%] rounded-lg px-3 py-2",
+                isUser ? "bg-primary text-primary-foreground" : "bg-muted/50 border",
+              )}
+            >
+              {isUser ? (
+                <>
+                  <p className="text-sm whitespace-pre-wrap break-words">
+                    {unescapeLogString(displayedText)}
+                  </p>
+                  {isLong && (
+                    <button
+                      onClick={() => setShowMore((s) => !s)}
+                      className="mt-1 text-xs text-primary-foreground/70 hover:underline"
+                    >
+                      {showMore ? "Show less" : "Show more"}
+                    </button>
+                  )}
+                </>
+              ) : (
+                <>
+                  {reasoning && <ReasoningSection text={reasoning} />}
+                  {textContent && (
+                    <>
+                      <MarkdownRenderer variant="assistant" size="compact">
+                        {displayedText}
+                      </MarkdownRenderer>
+                      {isLong && (
+                        <button
+                          onClick={() => setShowMore((s) => !s)}
+                          className="mt-1 text-xs text-primary hover:underline"
+                        >
+                          {showMore ? "Show less" : "Show more"}
+                        </button>
+                      )}
+                    </>
+                  )}
+                </>
+              )}
+              {/* Inline tool calls in assistant messages with text */}
+              {isAssistant && allToolCallNames.length > 0 && (
+                <div className="mt-2 space-y-1 border-t border-border/50 pt-2">
+                  {allToolCallNames.map((tc, i) => (
+                    <ToolCallItem
+                      key={tc.id || i}
+                      tc={tc}
+                      pairedResult={tc.id ? toolCallIndex?.get(tc.id) : undefined}
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
+          </TooltipTrigger>
+          <TooltipContent>{new Date(message.timestamp).toLocaleString()}</TooltipContent>
+        </Tooltip>
+      ) : (
+        <div
+          className={cn(
+            "min-w-0 max-w-[90%] rounded-lg px-3 py-2",
+            isUser ? "bg-primary text-primary-foreground" : "bg-muted/50 border",
+          )}
+        >
+          {isUser ? (
+            <>
+              <p className="text-sm whitespace-pre-wrap break-words">
+                {unescapeLogString(displayedText)}
+              </p>
+              {isLong && (
+                <button
+                  onClick={() => setShowMore((s) => !s)}
+                  className="mt-1 text-xs text-primary-foreground/70 hover:underline"
+                >
+                  {showMore ? "Show less" : "Show more"}
+                </button>
+              )}
+            </>
+          ) : (
+            <>
+              {reasoning && <ReasoningSection text={reasoning} />}
+              {textContent && (
+                <>
+                  <MarkdownRenderer variant="assistant" size="compact">
+                    {displayedText}
+                  </MarkdownRenderer>
+                  {isLong && (
+                    <button
+                      onClick={() => setShowMore((s) => !s)}
+                      className="mt-1 text-xs text-primary hover:underline"
+                    >
+                      {showMore ? "Show less" : "Show more"}
+                    </button>
+                  )}
+                </>
+              )}
+            </>
+          )}
+          {/* Inline tool calls in assistant messages with text */}
+          {isAssistant && allToolCallNames.length > 0 && (
+            <div className="mt-2 space-y-1 border-t border-border/50 pt-2">
+              {allToolCallNames.map((tc, i) => (
+                <ToolCallItem
+                  key={tc.id || i}
+                  tc={tc}
+                  pairedResult={tc.id ? toolCallIndex?.get(tc.id) : undefined}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+      )}
       {onFlag && isAssistant && (
         <Button variant="ghost" size="icon" onClick={onFlag} className="h-6 w-6 shrink-0 mt-0.5 self-start">
           <Flag className="h-3.5 w-3.5" />
@@ -651,7 +693,7 @@ export function StatsBar({ stats }: { stats: AgentLogStats }) {
     <div className="mb-3 rounded-md border bg-muted/30 px-3 py-2 space-y-2">
       <p className="text-xs text-muted-foreground">
         <span className="font-medium text-foreground">{stats.totalMessages}</span> messages
-        {" · "}~
+        {" · "}
         <span className="font-medium text-foreground">
           {stats.estimatedTokens.toLocaleString()}
         </span>{" "}
