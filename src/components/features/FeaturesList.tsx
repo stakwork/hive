@@ -33,7 +33,8 @@ import {
 import { SortableColumnHeader, FilterDropdownHeader } from "./TableColumnHeaders";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { FEATURE_STATUS_LABELS } from "@/types/roadmap";
-import { formatRelativeOrDate } from "@/lib/date-utils";
+import { formatRelativeOrDateInTz, formatInUserTz } from "@/lib/date-utils";
+import { useUserTimezone } from "@/hooks/useUserTimezone";
 import { usePusherConnection, type DeploymentStatusChangeEvent } from "@/hooks/usePusherConnection";
 
 // Priority configuration for filtering
@@ -71,6 +72,7 @@ function FeatureRow({
   onRenameStart: () => void;
   onRenameSave: (featureId: string, newTitle: string) => Promise<void>;
 }) {
+  const { timezone } = useUserTimezone();
   const needsReview = feature.awaitingFeedback;
   const inputRef = useRef<HTMLInputElement>(null);
   const [editValue, setEditValue] = useState(feature.title);
@@ -180,10 +182,10 @@ function FeatureRow({
         />
       </TableCell>
       <TableCell className="w-[150px] text-right text-muted-foreground text-sm">
-        {formatRelativeOrDate(feature.updatedAt)}
+        {formatRelativeOrDateInTz(feature.updatedAt, timezone)}
       </TableCell>
       <TableCell className="w-[150px] text-right text-muted-foreground text-sm">
-        {new Date(feature.createdAt).toLocaleDateString()}
+        {formatInUserTz(feature.createdAt, timezone)}
       </TableCell>
       <TableCell className="w-[50px]" onClick={(e) => e.stopPropagation()}>
         <ActionMenu

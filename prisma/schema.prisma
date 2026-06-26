@@ -268,6 +268,15 @@ model Workspace {
   scorerPatternPrompt     String?                  @map("scorer_pattern_prompt")
   scorerSinglePrompt      String?                  @map("scorer_single_prompt")
   scorerAggregateCache    Json?                    @map("scorer_aggregate_cache")
+  // Shared sync state for the Jarvis crons (read-modify-write; each cron only
+  // touches its own keys, so unknown keys survive). Staggered schedules avoid
+  // same-minute write races. Shape:
+  //   { feature?, task?, chat?: {at,id},   // jarvis-mirror keyset cursors
+  //     prLink?: { highWater?: ISO } }      // jarvis-pr-link PR high-water mark
+  // `prLink.highWater` is the greatest PullRequest `date_added_to_graph` already
+  // covered; absent ⇒ backfill (full PR pull); advanced only on a drained pass.
+  jarvisSyncState         Json?                    @map("jarvis_sync_state")
+  lingoExtractionState    Json                     @default("{}") @map("lingo_extraction_state")
   agentLogs               AgentLog[]
   diagrams                DiagramWorkspace[]
   discordChannels         DiscordChannel[]
@@ -547,6 +556,9 @@ model Task {
   deployedToStagingAt    DateTime?             @map("deployed_to_staging_at")
   deploymentStatus       String?               @map("deployment_status")
   haltRetryAttempted     Boolean               @default(false) @map("halt_retry_attempted")
+  // Set by `jarvis-pr-link-cron` once this task's PR(s) are linked to their
+  // PullRequest graph nodes. Null ⇒ still needs linking (scanned each run).
+  jarvisPrLinkedAt       DateTime?             @map("jarvis_pr_linked_at")
   agentLogs              AgentLog[]
   chatMessages           ChatMessage[]
   deployments            Deployment[]
@@ -575,6 +587,7 @@ model Task {
   @@index([layerType])
   @@index([deploymentStatus])
   @@index([repositoryId])
+  @@index([jarvisPrLinkedAt])
   @@map("tasks")
 }
 
@@ -734,6 +747,7 @@ model JanitorConfig {
   prUseRebaseForUpdates      Boolean      @default(false) @map("pr_use_rebase_for_updates")
   prUseMergeForUpdates       Boolean      @default(true) @map("pr_use_merge_for_updates")
   deduplicationEnabled       Boolean      @default(false) @map("deduplication_enabled")
+  lingoExtractionEnabled     Boolean      @default(false) @map("lingo_extraction_enabled")
   stalePrTasksEnabled        Boolean      @default(false) @map("stale_pr_tasks_enabled")
   stalePrTaskThresholdDays   Int          @default(7)     @map("stale_pr_task_threshold_days")
   workspace                  Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
@@ -1374,6 +1388,7 @@ enum JanitorType {
   MOCK_GENERATION
   GENERAL_REFACTORING
   DEDUPLICATION
+  LINGO_EXTRACTION
 }
 
 enum JanitorStatus {

@@ -284,10 +284,10 @@ export const CAPABILITY_REGISTRY: Record<OrgCapability, CapabilityDefinition> =
       promptSnippet: getGraphWalkerCapabilitySnippet,
       core: false,
       menuBlurb:
-        "**graph_walker** — dereference any URN (`graph_get`), expand 1-hop " +
-        "neighbors (`graph_neighbors`), search across pg/canvas realms " +
-        "(`graph_search`). Load when you need to walk the cross-realm graph " +
-        "or dereference a URN from another tool.",
+        "**graph_walker** — fetch KG node-type ontology (`graph_ontology`), " +
+        "dereference any URN (`graph_get`), expand 1-hop neighbors (`graph_neighbors`), " +
+        "search across pg/canvas/kg realms (`graph_search`). Load when you need to " +
+        "walk the cross-realm graph or dereference a URN from another tool.",
       writeToolNames: [], // read-only
     },
   };

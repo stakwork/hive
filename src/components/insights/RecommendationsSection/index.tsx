@@ -7,10 +7,12 @@ import { toast } from "sonner";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { useInsightsStore } from "@/stores/useInsightsStore";
 import { getPriorityConfig, getJanitorIcon } from "@/lib/constants/janitor";
-import { formatRelativeOrDate } from "@/lib/date-utils";
+import { formatRelativeOrDateInTz } from "@/lib/date-utils";
+import { useUserTimezone } from "@/hooks/useUserTimezone";
 import { JanitorType, Priority } from "@prisma/client";
 
 export function RecommendationsSection() {
+  const { timezone } = useUserTimezone();
   const { workspace } = useWorkspace();
   // Get state and actions from store
   const {
@@ -122,7 +124,7 @@ export function RecommendationsSection() {
                   <div className="flex items-center gap-2">
                     {recommendation.createdAt && (
                       <span className="text-xs text-muted-foreground" data-testid="recommendation-timestamp">
-                        {formatRelativeOrDate(recommendation.createdAt)}
+                        {formatRelativeOrDateInTz(recommendation.createdAt, timezone)}
                       </span>
                     )}
                     {!recommendation.janitorRun && (

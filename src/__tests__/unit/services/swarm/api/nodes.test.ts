@@ -505,6 +505,32 @@ describe("addEdgeBulk", () => {
       expect(result.errors[0]).toBe("Network timeout");
     });
 
+    test("flags endpointMissing on a 404 (endpoint absent on this backend)", async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 404,
+        text: async () => "404 page not found",
+      });
+
+      const result = await addEdgeBulk(config, edgeList);
+
+      expect(result.success).toBe(false);
+      expect(result.endpointMissing).toBe(true);
+    });
+
+    test("does not flag endpointMissing on a non-404 failure", async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 500,
+        text: async () => "boom",
+      });
+
+      const result = await addEdgeBulk(config, edgeList);
+
+      expect(result.success).toBe(false);
+      expect(result.endpointMissing).toBeFalsy();
+    });
+
     test("handles empty edge list gracefully", async () => {
       mockFetch.mockResolvedValueOnce({
         ok: true,

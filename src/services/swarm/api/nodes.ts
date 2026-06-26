@@ -8,18 +8,31 @@ interface JarvisApiResponse {
   status: number;
   error?: string;
   body?: unknown;
+  // True when the swarm answered 404 — the endpoint doesn't exist on this
+  // backend (capability/version mismatch), so callers should skip it rather
+  // than retry. Distinct from a transport failure.
+  notFound?: boolean;
 }
+
+// Cap each request so a single unreachable/hung swarm can't dominate the cron's
+// 300 s budget. undici's default *connect* timeout is 10 s and there's no
+// request timeout at all, so a swarm that accepts the connection then stalls
+// could block far longer — this bounds the whole round-trip. Writes are small
+// and should be fast; heavy reads (e.g. the PR backfill) override via `timeoutMs`.
+const REQUEST_TIMEOUT_MS = 7_000;
 
 async function jarvisRequest({
   config,
   endpoint,
   method = "GET",
   data,
+  timeoutMs = REQUEST_TIMEOUT_MS,
 }: {
   config: JarvisConnectionConfig;
   endpoint: string;
   method?: "GET" | "POST" | "PUT" | "DELETE";
   data?: unknown;
+  timeoutMs?: number;
 }): Promise<JarvisApiResponse> {
   try {
     const url = `${config.jarvisUrl.replace(/\/$/, "")}${endpoint.startsWith("/") ? "" : "/"}${endpoint}`;
@@ -33,6 +46,7 @@ async function jarvisRequest({
       method,
       headers,
       ...(data ? { body: JSON.stringify(data) } : {}),
+      signal: AbortSignal.timeout(timeoutMs),
     });
 
     if (!response.ok) {
@@ -41,6 +55,7 @@ async function jarvisRequest({
       return {
         ok: false,
         status: response.status,
+        notFound: response.status === 404,
         error: `Request failed with status ${response.status}`,
       };
     }
@@ -70,12 +85,15 @@ async function jarvisRequest({
 export async function addNode(
   config: JarvisConnectionConfig,
   payload: { node_type: string; node_data: Record<string, unknown> },
+  opts?: { reprocess?: boolean },
 ): Promise<{ success: boolean; ref_id?: string; alreadyExists?: boolean; error?: string }> {
   const result = await jarvisRequest({
     config,
     endpoint: "/node",
     method: "POST",
-    data: payload,
+    // `reprocess: true` makes Jarvis update an existing node (matched by
+    // node_key) in place instead of returning an "already exists" warning.
+    data: opts?.reprocess ? { ...payload, reprocess: true } : payload,
   });
 
   if (!result.ok) {
@@ -121,12 +139,22 @@ export async function addNode(
   };
 }
 
+/**
+ * An edge endpoint can be specified either by its existing `ref_id`, or by
+ * `{ node_type, node_data }` — in which case Jarvis resolves (or creates) the
+ * node by its schema node_key. The node_key path lets callers wire edges
+ * purely from stable identifiers (e.g. a Postgres id) without tracking ref_ids.
+ */
+export type JarvisEdgeEndpoint =
+  | { ref_id: string }
+  | { node_type: string; node_data: Record<string, unknown> };
+
 export async function addEdge(
   config: JarvisConnectionConfig,
   payload: {
     edge: { edge_type: string; edge_data?: Record<string, unknown> };
-    source: { ref_id: string };
-    target: { ref_id: string };
+    source: JarvisEdgeEndpoint;
+    target: JarvisEdgeEndpoint;
   },
 ): Promise<{ success: boolean; error?: string }> {
   const result = await jarvisRequest({
@@ -162,10 +190,11 @@ export async function addEdgeBulk(
   config: JarvisConnectionConfig,
   edgeList: Array<{
     edge: { edge_type: string; weight?: number; edge_data?: Record<string, unknown> };
-    source: { ref_id: string };
-    target: { ref_id: string };
+    source: JarvisEdgeEndpoint;
+    target: JarvisEdgeEndpoint;
   }>,
-): Promise<{ success: boolean; errors: string[] }> {
+  ): Promise<{ success: boolean; errors: string[]; endpointMissing?: boolean }> {
+  if (edgeList.length === 0) return { success: true, errors: [] };
   const result = await jarvisRequest({
     config,
     endpoint: "/node/edge/bulk",
@@ -176,6 +205,7 @@ export async function addEdgeBulk(
   if (!result.ok) {
     return {
       success: false,
+      endpointMissing: result.notFound,
       errors: [result.error || `Failed to create edges (status: ${result.status})`],
     };
   }
@@ -192,6 +222,113 @@ export async function addEdgeBulk(
     success: body?.status?.toLowerCase() === "success",
     errors,
   };
+}
+
+/**
+ * Bulk create-or-merge nodes in a single request (Jarvis `/node/bulk`).
+ * With `reprocess: true`, existing nodes (matched by node_key) are updated in
+ * place. Jarvis processes the list sequentially in one Neo4j session, so this
+ * collapses many round-trips into one HTTP call. Errors are returned, never
+ * thrown. Callers should chunk large lists (see BULK_CHUNK in the mirror cron).
+ */
+export async function addNodeBulk(
+  config: JarvisConnectionConfig,
+  nodes: Array<{ node_type: string; node_data: Record<string, unknown> }>,
+  opts?: { reprocess?: boolean },
+): Promise<{ success: boolean; errors: string[]; endpointMissing?: boolean }> {
+  if (nodes.length === 0) return { success: true, errors: [] };
+
+  const nodeList = opts?.reprocess
+    ? nodes.map((n) => ({ ...n, reprocess: true }))
+    : nodes;
+
+  const result = await jarvisRequest({
+    config,
+    endpoint: "/node/bulk",
+    method: "POST",
+    data: { node_list: nodeList },
+  });
+
+  if (!result.ok) {
+    return {
+      success: false,
+      endpointMissing: result.notFound,
+      errors: [result.error || `Failed to create nodes (status: ${result.status})`],
+    };
+  }
+
+  const body = result.body as
+    | { status?: string; status_messages?: string[] }
+    | undefined;
+
+  const errors = (body?.status_messages ?? []).filter((m) =>
+    m.toLowerCase().startsWith("error"),
+  );
+
+  // Bulk node returns "Warning" when some nodes already existed (without
+  // reprocess); treat Success and Warning as non-fatal — only collected
+  // "ERROR:" messages indicate real failures.
+  return {
+    success: errors.length === 0,
+    errors,
+  };
+}
+
+/** A node as returned by the `latest-by-types` read endpoint. */
+export interface JarvisGraphNode {
+  ref_id: string;
+  node_type: string;
+  date_added_to_graph?: number;
+  properties?: Record<string, unknown>;
+}
+
+export interface SearchLatestResult {
+  /** False on any transport/HTTP failure — distinct from a successful empty read. */
+  ok: boolean;
+  nodes: JarvisGraphNode[];
+  status?: number;
+  /** True when the endpoint 404s (absent on this backend). */
+  endpointMissing?: boolean;
+  error?: string;
+}
+
+/**
+ * Read nodes of the given types via `POST /graph/search/latest-by-types`,
+ * newest-ingested-first (ordered `date_added_to_graph` DESC). The endpoint has
+ * no hard cap — it returns up to the requested per-type limit or the real total,
+ * whichever is smaller. `withProperties` is required to read schema properties
+ * (e.g. a PullRequest's `number`/`repo`), at the cost of heavier payloads.
+ *
+ * Never throws. Returns `{ ok }` so callers can distinguish a *failed* read
+ * (timeout/404/5xx) from a legitimately *empty* one — the two must not be
+ * conflated, or a transient fetch failure looks like "nothing to link." Heavy
+ * reads (e.g. the PR backfill) should pass a longer `timeoutMs`.
+ */
+export async function searchLatestByTypes(
+  config: JarvisConnectionConfig,
+  nodeTypes: Record<string, number>,
+  opts?: { withProperties?: boolean; timeoutMs?: number },
+): Promise<SearchLatestResult> {
+  const result = await jarvisRequest({
+    config,
+    endpoint: "/graph/search/latest-by-types",
+    method: "POST",
+    data: { nodeTypes, include_properties: opts?.withProperties ?? false },
+    timeoutMs: opts?.timeoutMs,
+  });
+
+  if (!result.ok) {
+    return {
+      ok: false,
+      nodes: [],
+      status: result.status,
+      endpointMissing: result.notFound,
+      error: result.error,
+    };
+  }
+
+  const body = result.body as { nodes?: JarvisGraphNode[] } | undefined;
+  return { ok: true, nodes: Array.isArray(body?.nodes) ? body!.nodes : [], status: result.status };
 }
 
 export async function updateNode(

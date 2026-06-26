@@ -51,10 +51,12 @@ import {
   AlertCircle,
 } from "lucide-react";
 import { toast } from "sonner";
-import { formatDistanceToNow, format } from "date-fns";
+import { formatRelativeOrDateInTz, formatInUserTz } from "@/lib/date-utils";
+import { useUserTimezone } from "@/hooks/useUserTimezone";
 import type { ApiKeyListItem, CreateApiKeyResponse } from "@/lib/schemas/api-keys";
 
 export function ApiKeysSettings() {
+  const { timezone } = useUserTimezone();
   const { workspace } = useWorkspace();
   const { canAdmin } = useWorkspaceAccess();
 
@@ -380,23 +382,19 @@ export function ApiKeysSettings() {
                         </code>
                       </TableCell>
                       <TableCell className="text-muted-foreground">
-                        {formatDistanceToNow(new Date(key.createdAt), {
-                          addSuffix: true,
-                        })}
+                        {formatRelativeOrDateInTz(key.createdAt, timezone)}
                         <div className="text-xs">
                           by {key.createdBy.name || "Unknown"}
                         </div>
                       </TableCell>
                       <TableCell className="text-muted-foreground">
                         {key.lastUsedAt
-                          ? formatDistanceToNow(new Date(key.lastUsedAt), {
-                              addSuffix: true,
-                            })
+                          ? formatRelativeOrDateInTz(key.lastUsedAt, timezone)
                           : "Never"}
                       </TableCell>
                       <TableCell className="text-muted-foreground">
                         {key.expiresAt
-                          ? format(new Date(key.expiresAt), "MMM d, yyyy")
+                          ? formatInUserTz(key.expiresAt, timezone, { month: "short", day: "numeric", year: "numeric", timeZoneName: "short" })
                           : "Never"}
                       </TableCell>
                       <TableCell>

@@ -26,7 +26,8 @@ import { cn } from "@/lib/utils";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { UsageDisplay } from "./UsageDisplay";
 import { CreateConceptModal } from "./CreateConceptModal";
-import { formatRelativeOrDate } from "@/lib/date-utils";
+import { formatRelativeOrDateInTz } from "@/lib/date-utils";
+import { useUserTimezone } from "@/hooks/useUserTimezone";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -97,6 +98,7 @@ export function LearnSidebar({
   isConceptsLoading,
   isDiagramsLoading,
 }: LearnSidebarProps) {
+  const { timezone } = useUserTimezone();
   const { workspace, isPublicViewer } = useWorkspace();
   const repositories = workspace?.repositories ?? [];
 
@@ -626,7 +628,7 @@ export function LearnSidebar({
                 <div className="flex items-center justify-between">
                   <p className="text-xs text-muted-foreground">
                     {lastProcessed
-                      ? `Last processed: ${formatRelativeOrDate(lastProcessed)}`
+                      ? `Last processed: ${formatRelativeOrDateInTz(lastProcessed, timezone)}`
                       : "Never processed"}
                   </p>
                   {cumulativeUsage && <UsageDisplay usage={cumulativeUsage} />}

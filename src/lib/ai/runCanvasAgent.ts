@@ -162,8 +162,8 @@ export interface CanvasAgentHooks {
 export interface CachedConcepts {
   /** Multi-workspace: concepts keyed by workspace slug. */
   conceptsByWorkspace?: Record<string, Record<string, unknown>[]>;
-  /** Single-workspace: the flat concept/feature list. */
-  features?: Record<string, unknown>[];
+  /** Single-workspace: the flat concept list. */
+  concepts?: Record<string, unknown>[];
 }
 
 export interface RunCanvasAgentOptions {
@@ -709,10 +709,10 @@ export async function runCanvasAgent(
     // pre-seeded features) instead of throwing a 500. Mirrors the
     // multi-workspace path's `fetchConceptsForWorkspaces`, which
     // already swallows per-workspace failures.
-    // Cache hit → reuse cached features and skip the swarm fetch.
-    const singleCacheHit = !!cachedConcepts?.features;
+    // Cache hit → reuse cached concepts and skip the swarm fetch.
+    const singleCacheHit = !!cachedConcepts?.concepts;
     if (singleCacheHit) {
-      features = cachedConcepts!.features!;
+      features = cachedConcepts!.concepts!;
     } else {
       let concepts: Record<string, unknown> = {};
       try {
@@ -723,10 +723,10 @@ export async function runCanvasAgent(
           e,
         );
       }
-      features = (concepts.features as Record<string, unknown>[]) || [];
+      features = (concepts.concepts as Record<string, unknown>[]) || [];
     }
     cacheHit = singleCacheHit;
-    cacheableConcepts = { features };
+    cacheableConcepts = { concepts: features };
 
     // Single-workspace + orgId: an org-scope caller (e.g. the org-MCP
     // `org_agent` tool, or the org SidebarChat for an org that

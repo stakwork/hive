@@ -422,14 +422,21 @@ export function registerOrgTools(
               reason: "user-turn",
             });
 
-            // Cache the freshly-fetched concepts for the next turn (skip the
-            // swarm `listConcepts` round-trip). Only on a cache MISS with
-            // non-empty concepts. Best-effort.
-            if (!cacheHit && hasConcepts(cacheableConcepts)) {
+            // Snapshot the rendered prefix for the Agent Logs detail view,
+            // and (when present) cache the freshly-fetched concepts for the
+            // next turn (skip the swarm `listConcepts` round-trip).
+            // Decoupled: the prefix snapshot is written on every cache MISS
+            // so the panel always renders even when the swarm returns no
+            // concepts; the concept cache is gated on non-empty concepts.
+            // Best-effort.
+            if (!cacheHit) {
+              const conceptsToCache = hasConcepts(cacheableConcepts)
+                ? cacheableConcepts
+                : null;
               try {
                 await persistOrgCanvasPromptCache(
                   rowId,
-                  cacheableConcepts,
+                  conceptsToCache,
                   assembledPrefix,
                 );
               } catch (cacheErr) {

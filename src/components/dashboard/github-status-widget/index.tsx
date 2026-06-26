@@ -11,11 +11,13 @@ import {
 import { toast } from "sonner";
 import { useGithubApp } from "@/hooks/useGithubApp";
 import { useWorkspace } from "@/hooks/useWorkspace";
-import { formatRelativeOrDate } from "@/lib/date-utils";
+import { formatRelativeOrDateInTz } from "@/lib/date-utils";
+import { useUserTimezone } from "@/hooks/useUserTimezone";
 import { ExternalLink, Github, Loader2 } from "lucide-react";
 import { useState } from "react";
 
 export function GitHubStatusWidget() {
+  const { timezone } = useUserTimezone();
   const { workspace, slug } = useWorkspace();
   const { hasTokens: hasGithubAppTokens, isLoading: isGithubAppLoading } = useGithubApp(slug);
   const [isInstalling, setIsInstalling] = useState(false);
@@ -99,7 +101,7 @@ export function GitHubStatusWidget() {
                 <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
-                <span>{formatRelativeOrDate(lastUpdated)}</span>
+                <span>{formatRelativeOrDateInTz(lastUpdated, timezone)}</span>
               </div>
             )}
           </div>

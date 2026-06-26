@@ -9,13 +9,15 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { useWorkspace } from "@/hooks/useWorkspace";
-import { formatRelativeOrDate } from "@/lib/date-utils";
+import { formatRelativeOrDateInTz } from "@/lib/date-utils";
+import { useUserTimezone } from "@/hooks/useUserTimezone";
 import { PoolStatusResponse } from "@/types";
 import { Loader2, Server } from "lucide-react";
 import Link from "next/link";
 import React, { useCallback, useEffect, useState } from "react";
 
 export function PoolStatusWidget() {
+  const { timezone } = useUserTimezone();
   const { slug, workspace, updateWorkspace } = useWorkspace();
   const open = useModal();
 
@@ -191,9 +193,9 @@ export function PoolStatusWidget() {
                 )}
                 {poolStatus.status.lastCheck && (
                   <div className="text-muted-foreground">
-                    Updated {formatRelativeOrDate(poolStatus.status.lastCheck.endsWith('Z')
+                    Updated {formatRelativeOrDateInTz(poolStatus.status.lastCheck.endsWith('Z')
                       ? poolStatus.status.lastCheck
-                      : poolStatus.status.lastCheck + 'Z')}
+                      : poolStatus.status.lastCheck + 'Z', timezone)}
                   </div>
                 )}
               </div>
