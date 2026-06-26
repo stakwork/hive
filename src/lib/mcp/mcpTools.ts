@@ -4,6 +4,7 @@ import { createFeature } from "@/services/roadmap/features";
 import { sendFeatureChatMessage } from "@/services/roadmap/feature-chat";
 import { createTicket } from "@/services/roadmap/tickets";
 import { sendMessageToStakwork } from "@/services/task-workflow";
+import { isDevelopmentMode } from "@/lib/runtime";
 import type { PullRequestContent } from "@/lib/chat";
 import {
   ArtifactType,
@@ -31,6 +32,21 @@ export interface McpToolResult {
 
 function mcpError(text: string): McpToolResult {
   return { content: [{ type: "text", text }], isError: true };
+}
+
+/**
+ * Workflow tasks are a Stakwork-workflow concept and are only supported
+ * on the `stakwork` workspace (or any workspace in development mode).
+ * Mirrors the gate used for the workflow editor / execution surface
+ * (see `task-workflow.ts`, `stakwork-run.ts`, `workflow-editor/route.ts`).
+ *
+ * Used as the single source of truth for the `create_workflow_task`
+ * tool — both the MCP handler's runtime guard and the implementation
+ * below short-circuit through it, so the surface cannot widen by
+ * accident.
+ */
+export function isWorkflowTasksEnabled(auth: WorkspaceAuth): boolean {
+  return auth.workspaceSlug === "stakwork" || isDevelopmentMode();
 }
 
 function mcpOk(data: unknown): McpToolResult {
@@ -832,6 +848,12 @@ export async function mcpCreateWorkflowTask(
   creatorHint?: string,
 ): Promise<McpToolResult> {
   try {
+    if (!isWorkflowTasksEnabled(auth)) {
+      return mcpError(
+        "Error: workflow tasks are only supported on the stakwork workspace",
+      );
+    }
+
     const feature = await db.feature.findUnique({
       where: { id: featureId },
       select: { workspaceId: true, createdById: true },

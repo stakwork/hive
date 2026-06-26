@@ -112,9 +112,10 @@ export async function POST(
   const user = requireAuth(ctx);
   if (user instanceof NextResponse) return user;
 
-  const body = await request.json().catch(() => ({})) as { name?: string; definition?: string };
+  const body = await request.json().catch(() => ({})) as { name?: string; definition?: string; lingo_type?: string };
   const name = body.name?.trim() ?? "";
   const definition = body.definition?.trim() || undefined;
+  const lingo_type = body.lingo_type?.trim() || undefined;
 
   if (!name) {
     return NextResponse.json({ success: false, error: "name is required" }, { status: 400 });
@@ -124,7 +125,7 @@ export async function POST(
   if (process.env.USE_MOCKS === "true" && process.env.NODE_ENV !== "production") {
     return NextResponse.json({
       success: true,
-      data: { ref_id: "mock-lingo-ref", name, definition },
+      data: { ref_id: "mock-lingo-ref", name, definition, ...(lingo_type ? { lingo_type } : {}) },
     });
   }
 
@@ -145,7 +146,7 @@ export async function POST(
 
   const result = await addNode(
     { jarvisUrl, apiKey: swarmApiKey },
-    { node_type: "Lingo", node_data: { name, definition } },
+    { node_type: "Lingo", node_data: { name, definition, ...(lingo_type ? { lingo_type } : {}) } },
   );
 
   if (!result.success) {
@@ -157,9 +158,9 @@ export async function POST(
 
   const responseBody: {
     success: boolean;
-    data: { ref_id?: string; name: string; definition?: string };
+    data: { ref_id?: string; name: string; definition?: string; lingo_type?: string };
     alreadyExists?: boolean;
-  } = { success: true, data: { ref_id: result.ref_id, name, definition } };
+  } = { success: true, data: { ref_id: result.ref_id, name, definition, ...(lingo_type ? { lingo_type } : {}) } };
 
   if (result.alreadyExists) {
     responseBody.alreadyExists = true;

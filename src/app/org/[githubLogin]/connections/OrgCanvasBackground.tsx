@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import {
   AddNodeButton,
   SystemCanvas,
@@ -399,7 +399,6 @@ export function OrgCanvasBackground({
   //      We wire `onBreadcrumbClick` to update both `currentRef`
   //      state and the URL so going back to root clears `?canvas=`.
   // -------------------------------------------------------------------
-  const router = useRouter();
   const searchParams = useSearchParams();
   // Stay on the current route when writing canvas URL params. The
   // canvas only lives at `/org/{login}` today, but reading the
@@ -456,16 +455,26 @@ export function OrgCanvasBackground({
    */
   const writeCanvasUrlParam = useCallback(
     (ref: string) => {
-      const params = new URLSearchParams(searchParams.toString());
+      // `history.replaceState`, NOT `router.replace`: drilling into a
+      // sub-canvas is a pure client-side canvas interaction, and this
+      // param is write-only after mount (refresh/share only — see the
+      // deep-link block below). A `router.replace` here re-runs the
+      // route through middleware + the async `page.tsx` DB query on
+      // this `protected` route; any redirect (expired session) or 500
+      // there makes the App Router fall back to a FULL hard reload
+      // (visible browser-tab spinner). `history.replaceState` updates
+      // the URL bar with zero navigation, and still syncs with
+      // `useSearchParams` in Next 15.
+      const params = new URLSearchParams(window.location.search);
       if (ref === "") {
         params.delete("canvas");
       } else {
         params.set("canvas", ref);
       }
       const qs = params.toString();
-      router.replace(`${pathname}${qs ? `?${qs}` : ""}`, { scroll: false });
+      window.history.replaceState(null, "", `${pathname}${qs ? `?${qs}` : ""}`);
     },
-    [router, pathname, searchParams],
+    [pathname],
   );
 
   /**

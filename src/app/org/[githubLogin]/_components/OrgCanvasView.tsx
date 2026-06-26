@@ -8,7 +8,7 @@ import {
   useCallback,
   useRef,
 } from "react";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import type { CanvasEdge, CanvasNode, EdgeUpdate } from "system-canvas";
 import type { ImperativePanelHandle } from "react-resizable-panels";
 import { useWorkspace } from "@/hooks/useWorkspace";
@@ -77,7 +77,6 @@ interface OrgCanvasViewProps {
  * drilling.
  */
 export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProps) {
-  const router = useRouter();
   const searchParams = useSearchParams();
   const pathname = usePathname();
   const { slug: workspaceSlug } = useWorkspace();
@@ -233,13 +232,18 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
 
   const setUrlSlug = useCallback(
     (slug: string | null) => {
-      const params = new URLSearchParams(searchParams.toString());
+      // `history.replaceState` (NOT `router.replace`) so updating this
+      // deep-link param never triggers a Next navigation / RSC fetch on
+      // this `protected` route. A router navigation re-runs middleware +
+      // the async `page.tsx` DB query, and any redirect/500 there
+      // degrades to a full hard reload. See CANVAS.md "Deep links".
+      const params = new URLSearchParams(window.location.search);
       if (slug) params.set("c", slug);
       else params.delete("c");
       const qs = params.toString();
-      router.replace(`${pathname}${qs ? `?${qs}` : ""}`, { scroll: false });
+      window.history.replaceState(null, "", `${pathname}${qs ? `?${qs}` : ""}`);
     },
-    [router, pathname, searchParams],
+    [pathname],
   );
 
   /**
@@ -257,13 +261,15 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
    */
   const setUrlResearchSlug = useCallback(
     (slug: string | null) => {
-      const params = new URLSearchParams(searchParams.toString());
+      // `history.replaceState` (NOT `router.replace`) — see `setUrlSlug`
+      // above for why a router navigation can cause a full page reload.
+      const params = new URLSearchParams(window.location.search);
       if (slug) params.set("r", slug);
       else params.delete("r");
       const qs = params.toString();
-      router.replace(`${pathname}${qs ? `?${qs}` : ""}`, { scroll: false });
+      window.history.replaceState(null, "", `${pathname}${qs ? `?${qs}` : ""}`);
     },
-    [router, pathname, searchParams],
+    [pathname],
   );
 
   useEffect(() => {
