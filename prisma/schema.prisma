@@ -276,6 +276,7 @@ model Workspace {
   // `prLink.highWater` is the greatest PullRequest `date_added_to_graph` already
   // covered; absent ⇒ backfill (full PR pull); advanced only on a drained pass.
   jarvisSyncState         Json?                    @map("jarvis_sync_state")
+  lingoExtractionState    Json                     @default("{}") @map("lingo_extraction_state")
   agentLogs               AgentLog[]
   diagrams                DiagramWorkspace[]
   discordChannels         DiscordChannel[]
@@ -746,6 +747,7 @@ model JanitorConfig {
   prUseRebaseForUpdates      Boolean      @default(false) @map("pr_use_rebase_for_updates")
   prUseMergeForUpdates       Boolean      @default(true) @map("pr_use_merge_for_updates")
   deduplicationEnabled       Boolean      @default(false) @map("deduplication_enabled")
+  lingoExtractionEnabled     Boolean      @default(false) @map("lingo_extraction_enabled")
   stalePrTasksEnabled        Boolean      @default(false) @map("stale_pr_tasks_enabled")
   stalePrTaskThresholdDays   Int          @default(7)     @map("stale_pr_task_threshold_days")
   workspace                  Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
@@ -1386,6 +1388,7 @@ enum JanitorType {
   MOCK_GENERATION
   GENERAL_REFACTORING
   DEDUPLICATION
+  LINGO_EXTRACTION
 }
 
 enum JanitorStatus {
