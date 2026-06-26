@@ -14,12 +14,11 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const cronEnabled = process.env.DAILY_RECAP_CRON_ENABLED === "true";
-    if (!cronEnabled) {
-      console.log("[DailyRecapCron] Cron disabled via DAILY_RECAP_CRON_ENABLED");
+    if (!process.env.STAKWORK_DAILY_RECAP_WORKFLOW_ID) {
+      console.log("[DailyRecapCron] STAKWORK_DAILY_RECAP_WORKFLOW_ID not configured, skipping");
       return NextResponse.json({
         success: true,
-        message: "Daily recap cron is disabled",
+        message: "STAKWORK_DAILY_RECAP_WORKFLOW_ID not configured, skipping",
         usersProcessed: 0,
         dispatched: 0,
         skipped: 0,
