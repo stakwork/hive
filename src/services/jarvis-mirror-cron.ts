@@ -280,6 +280,7 @@ export async function runJarvisMirror(
     try {
       const config = await getJarvisConfigForWorkspace(ws.id);
       if (!config) {
+        logger.info(`[JARVIS MIRROR] ${ws.slug}: skipped (no jarvis config)`, LOG);
         results.push({ workspaceId: ws.id, slug: ws.slug, skipped: "no jarvis config" });
         continue;
       }
@@ -301,12 +302,19 @@ export async function runJarvisMirror(
           errors: result.errors.slice(0, 5),
         });
       }
+      const c = result.counts ?? { feature: 0, task: 0, chat: 0 };
+      logger.info(
+        `[JARVIS MIRROR] ${ws.slug}: synced feature=${c.feature} task=${c.task} chat=${c.chat}` +
+          `${result.capped ? " (capped)" : ""}`,
+        LOG,
+      );
       results.push(result);
     } catch (error) {
       // A 404 means this swarm's jarvis-backend lacks the bulk endpoints
       // (version mismatch). Skip it quietly instead of logging an error and
       // having the route treat it as retryable noise.
       if (error instanceof EndpointMissingError) {
+        logger.info(`[JARVIS MIRROR] ${ws.slug}: skipped (bulk endpoint missing, 404)`, LOG);
         results.push({ workspaceId: ws.id, slug: ws.slug, skipped: "jarvis bulk endpoint missing (404)" });
         continue;
       }
