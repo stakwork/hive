@@ -85,26 +85,38 @@ function parseState(raw: unknown): SyncState {
   return {};
 }
 
+/** Returns false if any chunk failed (errors collected into `errors`). */
 async function pushNodes(
   config: JarvisConnectionConfig,
   nodes: JarvisNodePayload[],
   errors: string[],
-): Promise<void> {
+): Promise<boolean> {
+  let ok = true;
   for (const part of chunk(nodes, BULK_CHUNK)) {
     const res = await addNodeBulk(config, part, { reprocess: true });
-    if (!res.success) errors.push(...res.errors);
+    if (!res.success) {
+      ok = false;
+      errors.push(...res.errors);
+    }
   }
+  return ok;
 }
 
+/** Returns false if any chunk failed (errors collected into `errors`). */
 async function pushEdges(
   config: JarvisConnectionConfig,
   edges: JarvisEdgePayload[],
   errors: string[],
-): Promise<void> {
+): Promise<boolean> {
+  let ok = true;
   for (const part of chunk(edges, BULK_CHUNK)) {
     const res = await addEdgeBulk(config, part);
-    if (!res.success) errors.push(...res.errors);
+    if (!res.success) {
+      ok = false;
+      errors.push(...res.errors);
+    }
   }
+  return ok;
 }
 
 /** Mirror a single workspace. Mutates `state` in place with advanced cursors. */
@@ -125,11 +137,15 @@ async function mirrorWorkspace(
     take: maxPerType,
   });
   if (features.length > 0) {
-    await pushNodes(config, features.map(featureToNode), errors);
-    const last = features[features.length - 1];
-    state.feature = { at: last.updatedAt.toISOString(), id: last.id };
-    counts.feature = features.length;
-    if (features.length === maxPerType) capped = true;
+    const ok = await pushNodes(config, features.map(featureToNode), errors);
+    // Only advance the cursor when the write succeeded — otherwise these rows
+    // would be skipped forever. Re-sends are idempotent (upsert by node_key).
+    if (ok) {
+      const last = features[features.length - 1];
+      state.feature = { at: last.updatedAt.toISOString(), id: last.id };
+      counts.feature = features.length;
+      if (features.length === maxPerType) capped = true;
+    }
   }
 
   // --- Tasks (+ HAS_TASK edges) ---
@@ -145,13 +161,15 @@ async function mirrorWorkspace(
     include: { feature: { select: { id: true, title: true } } },
   });
   if (tasks.length > 0) {
-    await pushNodes(config, tasks.map(taskToNode), errors);
+    const nodesOk = await pushNodes(config, tasks.map(taskToNode), errors);
     const edges = tasks.map(taskEdge).filter((e): e is JarvisEdgePayload => e !== null);
-    await pushEdges(config, edges, errors);
-    const last = tasks[tasks.length - 1];
-    state.task = { at: last.updatedAt.toISOString(), id: last.id };
-    counts.task = tasks.length;
-    if (tasks.length === maxPerType) capped = true;
+    const edgesOk = await pushEdges(config, edges, errors);
+    if (nodesOk && edgesOk) {
+      const last = tasks[tasks.length - 1];
+      state.task = { at: last.updatedAt.toISOString(), id: last.id };
+      counts.task = tasks.length;
+      if (tasks.length === maxPerType) capped = true;
+    }
   }
 
   // --- Chat messages (+ HAS_MESSAGE edges) ---
@@ -173,15 +191,17 @@ async function mirrorWorkspace(
     },
   });
   if (messages.length > 0) {
-    await pushNodes(config, messages.map(chatMessageToNode), errors);
+    const nodesOk = await pushNodes(config, messages.map(chatMessageToNode), errors);
     const edges = messages
       .map(chatMessageEdge)
       .filter((e): e is JarvisEdgePayload => e !== null);
-    await pushEdges(config, edges, errors);
-    const last = messages[messages.length - 1];
-    state.chat = { at: last.updatedAt.toISOString(), id: last.id };
-    counts.chat = messages.length;
-    if (messages.length === maxPerType) capped = true;
+    const edgesOk = await pushEdges(config, edges, errors);
+    if (nodesOk && edgesOk) {
+      const last = messages[messages.length - 1];
+      state.chat = { at: last.updatedAt.toISOString(), id: last.id };
+      counts.chat = messages.length;
+      if (messages.length === maxPerType) capped = true;
+    }
   }
 
   return { workspaceId: workspace.id, slug: workspace.slug, counts, capped, errors };

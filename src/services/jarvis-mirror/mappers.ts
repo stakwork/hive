@@ -9,6 +9,13 @@
  * resolve them by node_key — but node_data must still satisfy the schema's
  * required (non-`?`) attributes, hence the minimal endpoint helpers below
  * always include the required fields (`name`, and `message` for chat).
+ *
+ * NOTE on Neo4j label casing: Jarvis runs `.capitalize()` on every node type
+ * (on both schema registration and writes), so the type names below are stored
+ * as `Hivefeature` / `Hivetask` / `Hivechatmessage` labels in Neo4j (Neo4j
+ * labels are case-sensitive). Query the graph with the capitalized form, e.g.
+ * `MATCH (f:Hivefeature) ...`. The strings here stay PascalCase only so they
+ * read naturally and match the schema-library source.
  */
 
 export const HIVE_FEATURE = "HiveFeature";

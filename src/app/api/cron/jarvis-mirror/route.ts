@@ -42,11 +42,18 @@ export async function GET(request: NextRequest) {
     });
   }
 
+  // Surface a quick error sample so a manual curl is self-diagnostic.
+  const errorSamples = result.results
+    .flatMap((r) => r.errors ?? [])
+    .slice(0, 10);
+
   return NextResponse.json({
     success: true,
     processed: result.processed,
     anyCapped: result.anyCapped,
     chained: result.anyCapped && depth < MAX_CHAIN_DEPTH,
+    errorCount: result.results.reduce((n, r) => n + (r.errors?.length ?? 0), 0),
+    errorSamples,
     results: result.results,
   });
 }
