@@ -7,7 +7,7 @@
 // @vitest-environment node
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { kgGetNode, kgGetNeighbors, kgGetNodesByRefs, kgSearch } from "@/lib/ai/kg-adapter";
+import { kgGetNode, kgGetNeighbors, kgGetNodesByRefs, kgSearch, kgGetOntology } from "@/lib/ai/kg-adapter";
 
 const JARVIS_URL = "https://jarvis.example.com";
 const API_KEY = "test-api-key";
@@ -528,5 +528,103 @@ describe("kgSearch", () => {
     const calledUrl = (globalThis.fetch as ReturnType<typeof vi.fn>).mock
       .calls[0][0] as string;
     expect(calledUrl).toContain("limit=42");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// kgGetOntology
+// ---------------------------------------------------------------------------
+
+describe("kgGetOntology", () => {
+  it("parses data.schemas into { type, description }[] and ignores edges", async () => {
+    const raw = {
+      schemas: [
+        { type: "Person", description: "A human being." },
+        { type: "File", description: "A source file." },
+      ],
+      edges: [{ type: "KNOWS" }],
+    };
+    globalThis.fetch = mockFetch(raw);
+
+    const result = await kgGetOntology(JARVIS_URL, API_KEY);
+
+    expect(result).toEqual([
+      { type: "Person", description: "A human being." },
+      { type: "File", description: "A source file." },
+    ]);
+  });
+
+  it("uses ?concise=true in the request URL", async () => {
+    globalThis.fetch = mockFetch({ schemas: [] });
+
+    await kgGetOntology(JARVIS_URL, API_KEY);
+
+    const calledUrl = (globalThis.fetch as ReturnType<typeof vi.fn>).mock
+      .calls[0][0] as string;
+    expect(calledUrl).toContain("/schema/all?concise=true");
+  });
+
+  it("sends x-api-token header", async () => {
+    globalThis.fetch = mockFetch({ schemas: [] });
+
+    await kgGetOntology(JARVIS_URL, API_KEY);
+
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({ headers: { "x-api-token": API_KEY } }),
+    );
+  });
+
+  it("fills missing description with empty string", async () => {
+    globalThis.fetch = mockFetch({ schemas: [{ type: "Concept" }] });
+
+    const result = await kgGetOntology(JARVIS_URL, API_KEY);
+
+    expect(result).toEqual([{ type: "Concept", description: "" }]);
+  });
+
+  it("filters out entries missing a type", async () => {
+    globalThis.fetch = mockFetch({
+      schemas: [
+        { description: "no type here" },
+        { type: "File", description: "valid" },
+      ],
+    });
+
+    const result = await kgGetOntology(JARVIS_URL, API_KEY);
+
+    expect(result).toEqual([{ type: "File", description: "valid" }]);
+  });
+
+  it("returns [] on non-ok response", async () => {
+    globalThis.fetch = mockFetch(null, false, 503);
+
+    const result = await kgGetOntology(JARVIS_URL, API_KEY);
+
+    expect(result).toEqual([]);
+  });
+
+  it("returns [] on thrown fetch", async () => {
+    globalThis.fetch = mockFetchThrow();
+
+    const result = await kgGetOntology(JARVIS_URL, API_KEY);
+
+    expect(result).toEqual([]);
+  });
+
+  it("returns [] when schemas is missing from response", async () => {
+    globalThis.fetch = mockFetch({ edges: [{ type: "RELATED_TO" }] });
+
+    const result = await kgGetOntology(JARVIS_URL, API_KEY);
+
+    expect(result).toEqual([]);
+  });
+
+  it("returns [] when schemas is not an array", async () => {
+    globalThis.fetch = mockFetch({ schemas: "not-an-array" });
+
+    const result = await kgGetOntology(JARVIS_URL, API_KEY);
+
+    expect(result).toEqual([]);
   });
 });
