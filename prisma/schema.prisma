@@ -304,6 +304,7 @@ model Workspace {
   owner                   User                     @relation("WorkspaceOwner", fields: [ownerId], references: [id], onDelete: Cascade)
   sourceControlOrg        SourceControlOrg?        @relation(fields: [sourceControlOrgId], references: [id])
   defaultForOrg           SourceControlOrg?        @relation("OrgDefaultWorkspace")
+  prompts                 Prompt[]
 
   @@index([ownerId])
   @@index([deleted])
@@ -990,15 +991,17 @@ model StakworkRun {
   decision    StakworkRunDecision?
   createdAt   DateTime             @default(now()) @map("created_at")
   updatedAt   DateTime             @updatedAt @map("updated_at")
-  autoAccept      Boolean              @default(false) @map("auto_accept")
-  promptVersionId Int?                 @map("prompt_version_id")
-  evalSetId       String?              @map("eval_set_id")
-  userId          String?              @map("user_id")
-  agentLogs       AgentLog[]
-  feature         Feature?             @relation(fields: [featureId], references: [id])
-  task            Task?                @relation(fields: [taskId], references: [id])
-  workspace       Workspace            @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  user            User?                @relation(fields: [userId], references: [id], onDelete: SetNull)
+  autoAccept          Boolean              @default(false) @map("auto_accept")
+  promptVersionId     Int?                 @map("prompt_version_id")
+  evalSetId           String?              @map("eval_set_id")
+  userId              String?              @map("user_id")
+  hivePromptVersionId String?              @map("hive_prompt_version_id")
+  agentLogs           AgentLog[]
+  feature             Feature?             @relation(fields: [featureId], references: [id])
+  task                Task?                @relation(fields: [taskId], references: [id])
+  workspace           Workspace            @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user                User?                @relation(fields: [userId], references: [id], onDelete: SetNull)
+  hivePromptVersion   PromptVersion?       @relation(fields: [hivePromptVersionId], references: [id])
 
   @@index([workspaceId])
   @@index([featureId])
@@ -1010,6 +1013,7 @@ model StakworkRun {
   @@index([promptVersionId])
   @@index([evalSetId])
   @@index([userId, type, createdAt])
+  @@index([hivePromptVersionId])
   @@map("stakwork_runs")
 }
 
@@ -1989,4 +1993,50 @@ model UrnEdge {
   @@index([orgId, fromUrn])
   @@index([orgId, toUrn])
   @@map("urn_edges")
+}
+
+enum PromptSyncStatus {
+  OK
+  PENDING
+  FAILED
+}
+
+model Prompt {
+  id                 String           @id @default(cuid())
+  name               String
+  value              String
+  description        String?
+  workspaceId        String           @map("workspace_id")
+  publishedVersionId String?          @map("published_version_id")
+  stakworkId         Int?             @map("stakwork_id")
+  syncStatus         PromptSyncStatus @default(OK) @map("sync_status")
+  lastSyncedAt       DateTime?        @map("last_synced_at")
+  createdAt          DateTime         @default(now()) @map("created_at")
+  updatedAt          DateTime         @updatedAt @map("updated_at")
+  workspace          Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  versions           PromptVersion[]
+  publishedVersion   PromptVersion?   @relation("PublishedVersion", fields: [publishedVersionId], references: [id])
+
+  @@unique([workspaceId, name])
+  @@index([workspaceId])
+  @@index([syncStatus])
+  @@map("prompts")
+}
+
+model PromptVersion {
+  id            String        @id @default(cuid())
+  promptId      String        @map("prompt_id")
+  versionNumber Int           @map("version_number")
+  value         String
+  description   String?
+  whodunnit     String?
+  published     Boolean       @default(false)
+  createdAt     DateTime      @default(now()) @map("created_at")
+  prompt        Prompt        @relation(fields: [promptId], references: [id], onDelete: Cascade)
+  publishedForPrompts Prompt[] @relation("PublishedVersion")
+  stakworkRuns  StakworkRun[]
+
+  @@index([promptId])
+  @@index([promptId, published])
+  @@map("prompt_versions")
 }
