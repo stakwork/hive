@@ -268,9 +268,13 @@ model Workspace {
   scorerPatternPrompt     String?                  @map("scorer_pattern_prompt")
   scorerSinglePrompt      String?                  @map("scorer_single_prompt")
   scorerAggregateCache    Json?                    @map("scorer_aggregate_cache")
-  // Keyset cursors for the Jarvis graph-mirror cron. Managed solely by
-  // `jarvis-mirror-cron`. Shape: { feature?: {at,id}, task?: {at,id}, chat?: {at,id} }
-  // where `at` is an ISO updatedAt and `id` is the row id (composite keyset).
+  // Shared sync state for the Jarvis crons (read-modify-write; each cron only
+  // touches its own keys, so unknown keys survive). Staggered schedules avoid
+  // same-minute write races. Shape:
+  //   { feature?, task?, chat?: {at,id},   // jarvis-mirror keyset cursors
+  //     prLink?: { highWater?: ISO } }      // jarvis-pr-link PR high-water mark
+  // `prLink.highWater` is the greatest PullRequest `date_added_to_graph` already
+  // covered; absent ⇒ backfill (full PR pull); advanced only on a drained pass.
   jarvisSyncState         Json?                    @map("jarvis_sync_state")
   agentLogs               AgentLog[]
   diagrams                DiagramWorkspace[]
@@ -551,6 +555,9 @@ model Task {
   deployedToStagingAt    DateTime?             @map("deployed_to_staging_at")
   deploymentStatus       String?               @map("deployment_status")
   haltRetryAttempted     Boolean               @default(false) @map("halt_retry_attempted")
+  // Set by `jarvis-pr-link-cron` once this task's PR(s) are linked to their
+  // PullRequest graph nodes. Null ⇒ still needs linking (scanned each run).
+  jarvisPrLinkedAt       DateTime?             @map("jarvis_pr_linked_at")
   agentLogs              AgentLog[]
   chatMessages           ChatMessage[]
   deployments            Deployment[]
@@ -579,6 +586,7 @@ model Task {
   @@index([layerType])
   @@index([deploymentStatus])
   @@index([repositoryId])
+  @@index([jarvisPrLinkedAt])
   @@map("tasks")
 }
 
