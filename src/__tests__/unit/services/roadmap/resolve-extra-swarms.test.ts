@@ -143,6 +143,37 @@ describe("resolveExtraSwarms", () => {
     expect(result).toHaveLength(2);
   });
 
+  it("accumulates mentions across an array of messages (conversation)", async () => {
+    mockFindFirst
+      .mockResolvedValueOnce(makeWorkspace({ slug: "ws-a" }))
+      .mockResolvedValueOnce(
+        makeWorkspace({
+          slug: "ws-b",
+          repositories: [{ repositoryUrl: "https://github.com/org/repo-b" }],
+        }),
+      );
+
+    const result = await resolveExtraSwarms(
+      ["first turn mentions @ws-a", "later turn adds @ws-b"],
+      "user-1",
+    );
+
+    expect(result).toHaveLength(2);
+    expect(result.map((r) => r.name)).toEqual(["ws-a", "ws-b"]);
+  });
+
+  it("deduplicates a slug repeated across multiple messages", async () => {
+    mockFindFirst.mockResolvedValueOnce(makeWorkspace());
+
+    const result = await resolveExtraSwarms(
+      ["turn 1 @my-workspace", "turn 2 @my-workspace again"],
+      "user-1",
+    );
+
+    expect(mockFindFirst).toHaveBeenCalledTimes(1);
+    expect(result).toHaveLength(1);
+  });
+
   it("returns an empty array when there are no @ mentions", async () => {
     const result = await resolveExtraSwarms("no mentions here", "user-1");
 
