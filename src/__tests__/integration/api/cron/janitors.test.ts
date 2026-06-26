@@ -51,6 +51,7 @@ vi.mock("@/config/env", () => ({
     STAKWORK_API_KEY: "test-api-key",
     STAKWORK_JANITOR_WORKFLOW_ID: "123",
     STAKWORK_GRAPHMINDSET_WORKFLOW_ID: "999",
+    STAKWORK_LINGO_EXTRACTION_WORKFLOW_ID: "888",
     STAKWORK_BASE_URL: "https://api.stakwork.com/api/v1",
   },
   optionalEnvVars: {
@@ -1697,6 +1698,127 @@ describe("GET /api/cron/janitors", () => {
       // Verify persistence
       const fetched = await db.janitorConfig.findUnique({ where: { workspaceId: testWorkspace.id } });
       expect(fetched?.deduplicationEnabled).toBe(true);
+    });
+  });
+
+  describe("Lingo Extraction Janitor (LINGO_EXTRACTION)", () => {
+    let testUser: { id: string };
+    let testWorkspace: { id: string; slug: string };
+    let testSwarm: { id: string };
+
+    beforeEach(async () => {
+      await resetDatabase();
+
+      process.env.STAKWORK_API_KEY = "test-api-key";
+      process.env.STAKWORK_LINGO_EXTRACTION_WORKFLOW_ID = "888";
+      process.env.STAKWORK_BASE_URL = "https://api.stakwork.com/api/v1";
+
+      mockStakworkRequest = vi.fn().mockResolvedValue({
+        data: { project_id: 888888 },
+      });
+
+      testUser = await db.user.create({
+        data: {
+          id: "user-lingo-ext",
+          email: "lingoext@test.com",
+          name: "Lingo Extraction Test User",
+        },
+      });
+
+      testWorkspace = await db.workspace.create({
+        data: {
+          id: "ws-lingo-ext",
+          slug: "lingo-ext-workspace",
+          name: "Lingo Extraction Workspace",
+          ownerId: testUser.id,
+        },
+      });
+
+      testSwarm = await db.swarm.create({
+        data: {
+          workspaceId: testWorkspace.id,
+          swarmUrl: "https://ai.sphinx.chat/api",
+          swarmSecretAlias: "lingo-secret-alias",
+          name: "lingo-test-swarm",
+        },
+      });
+
+      await db.janitorConfig.create({
+        data: {
+          workspaceId: testWorkspace.id,
+          lingoExtractionEnabled: true,
+        },
+      });
+    });
+
+    it("LINGO_EXTRACTION hits createLingoExtractionJanitorRun (not createGraphMindsetJanitorRun)", async () => {
+      const { createJanitorRun } = await import("@/services/janitor");
+      await createJanitorRun(testWorkspace.slug, testUser.id, "lingo_extraction", "MANUAL");
+
+      expect(mockStakworkRequest).toHaveBeenCalledTimes(1);
+      const [, payload] = mockStakworkRequest.mock.calls[0];
+
+      // Must use STAKWORK_LINGO_EXTRACTION_WORKFLOW_ID (888), not STAKWORK_GRAPHMINDSET_WORKFLOW_ID (999)
+      expect(payload.workflow_id).toBe(888);
+    });
+
+    it("payload vars contain workspaceId and webhookUrl pointing to collect endpoint", async () => {
+      const { createJanitorRun } = await import("@/services/janitor");
+      await createJanitorRun(testWorkspace.slug, testUser.id, "lingo_extraction", "MANUAL");
+
+      const [, payload] = mockStakworkRequest.mock.calls[0];
+      const vars = payload.workflow_params.set_var.attributes.vars;
+
+      expect(vars.workspaceId).toBe(testWorkspace.id);
+      expect(vars.webhookUrl).toContain("/api/lingo/extraction/collect");
+      expect(vars.swarmSecretAlias).toBe("lingo-secret-alias");
+    });
+
+    it("creates a single JanitorRun with no repositoryId (workspace-wide)", async () => {
+      // Add repos — should still produce only one run
+      await db.repository.create({
+        data: {
+          workspaceId: testWorkspace.id,
+          name: "Repo X",
+          repositoryUrl: "https://github.com/org/x",
+          branch: "main",
+        },
+      });
+
+      const { createJanitorRun } = await import("@/services/janitor");
+      await createJanitorRun(testWorkspace.slug, testUser.id, "lingo_extraction", "MANUAL");
+
+      expect(mockStakworkRequest).toHaveBeenCalledTimes(1);
+
+      const runs = await db.janitorRun.findMany({
+        where: {
+          janitorConfig: { workspaceId: testWorkspace.id },
+          janitorType: JanitorType.LINGO_EXTRACTION,
+        },
+      });
+      expect(runs).toHaveLength(1);
+      expect(runs[0].repositoryId).toBeNull();
+    });
+
+    it("lingoExtractionEnabled: false → run throws JANITOR_DISABLED", async () => {
+      await db.janitorConfig.update({
+        where: { workspaceId: testWorkspace.id },
+        data: { lingoExtractionEnabled: false },
+      });
+
+      const { createJanitorRun } = await import("@/services/janitor");
+      await expect(
+        createJanitorRun(testWorkspace.slug, testUser.id, "lingo_extraction", "MANUAL"),
+      ).rejects.toThrow(/not enabled/i);
+    });
+
+    it("fails fast if swarm has no swarmUrl", async () => {
+      await db.swarm.update({ where: { id: testSwarm.id }, data: { swarmUrl: null } });
+
+      const { createJanitorRun } = await import("@/services/janitor");
+      await expect(
+        createJanitorRun(testWorkspace.slug, testUser.id, "lingo_extraction", "MANUAL"),
+      ).rejects.toThrow(/no swarm URL or secret alias/i);
     });
   });
 });

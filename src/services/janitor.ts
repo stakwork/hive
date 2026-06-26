@@ -192,6 +192,119 @@ async function createGraphMindsetJanitorRun(
 }
 
 /**
+ * Internal helper: dispatch a Lingo extraction janitor run (workspace-wide, no repo loop).
+ */
+async function createLingoExtractionJanitorRun(
+  workspaceId: string,
+  triggeredBy: JanitorTrigger,
+  userId: string,
+) {
+  // Fetch config — create if missing
+  let config = await db.janitorConfig.findUnique({ where: { workspaceId } });
+  if (!config) {
+    config = await db.janitorConfig.create({ data: { workspaceId } });
+  }
+
+  // Fetch workspace swarm
+  const workspace = await db.workspace.findUnique({
+    where: { id: workspaceId },
+    select: {
+      slug: true,
+      lingoExtractionState: true,
+      swarm: { select: { swarmUrl: true, swarmSecretAlias: true } },
+    },
+  });
+
+  const swarm = workspace?.swarm;
+  if (!swarm?.swarmUrl || !swarm?.swarmSecretAlias) {
+    throw new Error(`[LingoExtraction] workspace ${workspaceId} has no swarm URL or secret alias`);
+  }
+
+  if (!envConfig.STAKWORK_API_KEY) {
+    throw new Error("STAKWORK_API_KEY is required for Lingo extraction runs");
+  }
+  const workflowId = envConfig.STAKWORK_LINGO_EXTRACTION_WORKFLOW_ID;
+  if (!workflowId) {
+    throw new Error("STAKWORK_LINGO_EXTRACTION_WORKFLOW_ID is required for Lingo extraction runs");
+  }
+
+  const lingoExtractionState = (workspace?.lingoExtractionState as Record<string, unknown>) ?? {};
+  const reachedFloor = lingoExtractionState?.reachedFloor as boolean | undefined;
+  const backwardsCursor = lingoExtractionState?.backwardsCursor as string | undefined;
+
+  const baseUrl = envConfig.STAKWORK_BASE_URL.replace("/api/v1", "");
+  const tokenReference = getStakworkTokenReference();
+
+  // Create the run record
+  let janitorRun = await db.janitorRun.create({
+    data: {
+      janitorConfigId: config.id,
+      janitorType: JanitorType.LINGO_EXTRACTION,
+      triggeredBy,
+      status: "PENDING",
+      repositoryId: null,
+      metadata: { triggeredByUserId: userId, workspaceId },
+    },
+  });
+
+  try {
+    const vars = {
+      workspaceId,
+      swarmUrl: swarm.swarmUrl,
+      swarmSecretAlias: swarm.swarmSecretAlias,
+      webhookUrl: `${baseUrl}/api/lingo/extraction/collect`,
+      tokenReference,
+      lingoExtractionState,
+    };
+
+    console.log(
+      `[LingoExtraction] dispatch — workspaceId=${workspaceId} workflowId=${workflowId} reachedFloor=${reachedFloor} backwardsCursor=${backwardsCursor}`,
+    );
+
+    const stakworkPayload = {
+      name: `lingo-extraction-${Date.now()}`,
+      workflow_id: parseInt(workflowId),
+      workflow_params: {
+        set_var: {
+          attributes: { vars },
+        },
+      },
+    };
+
+    const stakworkProject = await stakworkService().stakworkRequest("/projects", stakworkPayload);
+    const projectId = (stakworkProject as any)?.data?.project_id;
+
+    if (!projectId) {
+      throw new Error("No project ID returned from Stakwork");
+    }
+
+    janitorRun = await db.janitorRun.update({
+      where: { id: janitorRun.id },
+      data: {
+        stakworkProjectId: projectId,
+        status: "RUNNING",
+        startedAt: new Date(),
+      },
+    });
+
+    return janitorRun;
+  } catch (err) {
+    console.error(`[LingoExtraction] dispatch failed for workspace ${workspaceId}:`, err);
+    await db.janitorRun.update({
+      where: { id: janitorRun.id },
+      data: {
+        status: "FAILED",
+        completedAt: new Date(),
+        error: `Failed to initialize Stakwork project: ${err instanceof Error ? err.message : "Unknown error"}`,
+      },
+    });
+    throw new Error(
+      `Failed to start Lingo extraction run: ${err instanceof Error ? err.message : "Stakwork integration failed"}`,
+    );
+  }
+}
+
+/**
  * Create a new janitor run
  */
 export async function createJanitorRun(
@@ -247,6 +360,12 @@ export async function createJanitorRun(
 
   // Allow multiple manual runs - concurrent check removed for manual triggers
   // This will be replaced by cron scheduling in the future
+
+  // ── Lingo extraction dispatch ─────────────────────────────────────────────
+  if (janitorType === JanitorType.LINGO_EXTRACTION) {
+    return await createLingoExtractionJanitorRun(workspaceId, triggeredBy, userId);
+  }
+  // ─────────────────────────────────────────────────────────────────────────
 
   // ── GraphMindset proxy workflow dispatch ──────────────────────────────────
   if (GRAPHMINDSET_JANITOR_TYPES.includes(janitorType)) {
