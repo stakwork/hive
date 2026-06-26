@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useRef } from "react";
 import { toast } from "sonner";
+import { formatDistanceToNow } from "date-fns";
 import {
   Sheet,
   SheetContent,
@@ -31,6 +32,14 @@ interface AddEdgePanelProps {
 const DEFAULT_EDGE_TYPE = "RELATED_TO";
 const COMMON_EDGE_TYPES = ["RELATED_TO", "PART_OF", "DEPENDS_ON", "SYNONYM_OF", "EXTENDS", "HAS_DEFINITION", "SUPERSEDES"];
 
+const EDGE_TYPE_MAP: Record<string, string[]> = {
+  Lingo:            ["RELATED_TO", "PART_OF", "DEPENDS_ON", "SYNONYM_OF", "EXTENDS", "SUPERSEDES"],
+  JargonDefinition: ["HAS_DEFINITION"],
+  HiveFeature:      ["RELATED_TO", "DEPENDS_ON"],
+  HiveTask:         ["RELATED_TO", "HAS_TASK"],
+  HiveChatMessage:  ["HAS_MESSAGE"],
+};
+
 export function AddEdgePanel({
   sourceRefId,
   workspaceSlug,
@@ -40,7 +49,7 @@ export function AddEdgePanel({
   onEdgeCreated,
 }: AddEdgePanelProps) {
   const [nodeTypes, setNodeTypes] = useState<string[]>([]);
-  const [selectedType, setSelectedType] = useState<string>("Lingo");
+  const [selectedType, setSelectedType] = useState<string>("");
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<LingoNode[]>([]);
   const [targetNode, setTargetNode] = useState<LingoNode | null>(null);
@@ -48,6 +57,11 @@ export function AddEdgePanel({
   const [isSearching, setIsSearching] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Derive valid edge types based on selected target
+  const validEdgeTypes = targetNode
+    ? (EDGE_TYPE_MAP[targetNode.node_type] ?? ["RELATED_TO"])
+    : COMMON_EDGE_TYPES;
 
   // Load schema on open
   useEffect(() => {
@@ -62,6 +76,14 @@ export function AddEdgePanel({
         // silently ignore schema load failures
       });
   }, [isOpen, workspaceId]);
+
+  // Reset edgeType when targetNode changes
+  useEffect(() => {
+    if (targetNode) {
+      const valid = EDGE_TYPE_MAP[targetNode.node_type] ?? ["RELATED_TO"];
+      setEdgeType(valid[0]);
+    }
+  }, [targetNode]);
 
   // Debounced search
   useEffect(() => {
@@ -142,6 +164,7 @@ export function AddEdgePanel({
                 <SelectValue placeholder="Any type" />
               </SelectTrigger>
               <SelectContent>
+                <SelectItem value="">All types</SelectItem>
                 <SelectItem value="Lingo">Lingo</SelectItem>
                 {nodeTypes
                   .filter((t) => t !== "Lingo")
@@ -190,7 +213,20 @@ export function AddEdgePanel({
                     onClick={() => setTargetNode(result)}
                     data-testid={`search-result-${result.ref_id}`}
                   >
-                    {result.name}
+                    <span className="font-semibold">{result.name}</span>
+                    <span className="ml-2 rounded px-1.5 py-0.5 text-xs bg-muted text-muted-foreground font-mono">
+                      {result.node_type}
+                    </span>
+                    {result.definition && (
+                      <p className="mt-0.5 text-xs text-muted-foreground truncate">
+                        {result.definition.length > 80
+                          ? result.definition.slice(0, 80) + "…"
+                          : result.definition}
+                      </p>
+                    )}
+                    <p className="mt-0.5 text-xs text-muted-foreground/60">
+                      {formatDistanceToNow(new Date(result.date_added_to_graph * 1000), { addSuffix: true })}
+                    </p>
                   </button>
                 </li>
               ))}
@@ -208,7 +244,16 @@ export function AddEdgePanel({
               className="rounded-lg border border-primary/40 bg-primary/5 px-4 py-2.5 text-sm"
               data-testid="selected-target"
             >
-              <span className="font-medium">Selected:</span> {targetNode.name}
+              <span className="font-medium">Selected:</span>{" "}
+              <span className="font-medium">{targetNode.name}</span>
+              <span className="ml-2 rounded px-1.5 py-0.5 text-xs bg-muted font-mono">
+                {targetNode.node_type}
+              </span>
+              {targetNode.definition && (
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {targetNode.definition.slice(0, 80)}{targetNode.definition.length > 80 ? "…" : ""}
+                </p>
+              )}
             </div>
           )}
 
@@ -220,7 +265,7 @@ export function AddEdgePanel({
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {COMMON_EDGE_TYPES.map((t) => (
+                {validEdgeTypes.map((t) => (
                   <SelectItem key={t} value={t}>
                     {t}
                   </SelectItem>
