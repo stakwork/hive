@@ -18,7 +18,11 @@ vi.mock("@/config/env", () => ({
   },
 }));
 
+import { POST } from "@/app/api/lingo/extraction/upsert/route";
 import { db } from "@/lib/db";
+
+// Prevent real network calls in all test groups (hub-mirror trigger uses fetch)
+vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(null, { status: 200 })));
 import { getJarvisConfigForWorkspace } from "@/lib/helpers/jarvis-config";
 import { searchLatestByTypes, addNodeBulk } from "@/services/swarm/api/nodes";
 
@@ -64,18 +68,15 @@ function makeRequest(body: object, secret = "test-secret"): NextRequest {
 }
 
 describe("POST /api/lingo/extraction/upsert — auth", () => {
-  let POST: (req: NextRequest) => Promise<Response>;
   const origSecret = process.env.JANITOR_WEBHOOK_SECRET;
 
-  beforeEach(async () => {
-    vi.resetModules();
+  beforeEach(() => {
     process.env.JANITOR_WEBHOOK_SECRET = "test-secret";
-    const mod = await import("@/app/api/lingo/extraction/upsert/route");
-    POST = mod.POST;
   });
 
   afterEach(() => {
     process.env.JANITOR_WEBHOOK_SECRET = origSecret;
+    vi.clearAllMocks();
   });
 
   it("returns 401 if secret is missing", async () => {
@@ -96,25 +97,22 @@ describe("POST /api/lingo/extraction/upsert — auth", () => {
 });
 
 describe("POST /api/lingo/extraction/upsert — confidence filtering", () => {
-  let POST: (req: NextRequest) => Promise<Response>;
   const origSecret = process.env.JANITOR_WEBHOOK_SECRET;
 
-  beforeEach(async () => {
-    vi.resetModules();
+  beforeEach(() => {
     process.env.JANITOR_WEBHOOK_SECRET = "test-secret";
-    const mod = await import("@/app/api/lingo/extraction/upsert/route");
-    POST = mod.POST;
-
     mockedDb.workspace.findUnique = vi.fn().mockResolvedValue({ id: WORKSPACE_ID });
     mockedGetJarvisConfig.mockResolvedValue(JARVIS_CONFIG);
     mockedSearchLatest.mockResolvedValue({ ok: true, nodes: [] });
     mockedAddNodeBulk.mockResolvedValue({ success: true, errors: [] });
     mockedDb.workspace.update = vi.fn().mockResolvedValue({});
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(null, { status: 200 })));
   });
 
   afterEach(() => {
     process.env.JANITOR_WEBHOOK_SECRET = origSecret;
     vi.clearAllMocks();
+    vi.unstubAllGlobals();
   });
 
   it("high confidence term is upserted", async () => {
@@ -162,42 +160,38 @@ describe("POST /api/lingo/extraction/upsert — confidence filtering", () => {
 });
 
 describe("POST /api/lingo/extraction/upsert — deduplication", () => {
-  let POST: (req: NextRequest) => Promise<Response>;
   const origSecret = process.env.JANITOR_WEBHOOK_SECRET;
 
-  beforeEach(async () => {
-    vi.resetModules();
+  beforeEach(() => {
     process.env.JANITOR_WEBHOOK_SECRET = "test-secret";
-    const mod = await import("@/app/api/lingo/extraction/upsert/route");
-    POST = mod.POST;
-
     mockedDb.workspace.findUnique = vi.fn().mockResolvedValue({ id: WORKSPACE_ID });
     mockedGetJarvisConfig.mockResolvedValue(JARVIS_CONFIG);
+    mockedAddNodeBulk.mockResolvedValue({ success: true, errors: [] });
     mockedDb.workspace.update = vi.fn().mockResolvedValue({});
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(null, { status: 200 })));
   });
 
   afterEach(() => {
     process.env.JANITOR_WEBHOOK_SECRET = origSecret;
     vi.clearAllMocks();
+    vi.unstubAllGlobals();
   });
 
   it("normalized name match skips term and counts in skipped_dedup", async () => {
-    // Existing node with same name (different casing)
     mockedSearchLatest.mockResolvedValue({
       ok: true,
       nodes: [
         {
           ref_id: "existing-1",
           node_type: "Lingo",
-          properties: { name: "testterm" }, // lowercase
+          properties: { name: "testterm" },
         },
       ],
     });
-    mockedAddNodeBulk.mockResolvedValue({ success: true, errors: [] });
 
     const req = makeRequest({
       workspaceId: WORKSPACE_ID,
-      terms: [HIGH_TERM], // HIGH_TERM.name = "TestTerm" → normalized "testterm"
+      terms: [HIGH_TERM],
       cursor_state: CURSOR_STATE,
     });
 
@@ -219,7 +213,6 @@ describe("POST /api/lingo/extraction/upsert — deduplication", () => {
         },
       ],
     });
-    mockedAddNodeBulk.mockResolvedValue({ success: true, errors: [] });
 
     const req = makeRequest({
       workspaceId: WORKSPACE_ID,
@@ -236,24 +229,21 @@ describe("POST /api/lingo/extraction/upsert — deduplication", () => {
 });
 
 describe("POST /api/lingo/extraction/upsert — cursor persistence", () => {
-  let POST: (req: NextRequest) => Promise<Response>;
   const origSecret = process.env.JANITOR_WEBHOOK_SECRET;
 
-  beforeEach(async () => {
-    vi.resetModules();
+  beforeEach(() => {
     process.env.JANITOR_WEBHOOK_SECRET = "test-secret";
-    const mod = await import("@/app/api/lingo/extraction/upsert/route");
-    POST = mod.POST;
-
     mockedDb.workspace.findUnique = vi.fn().mockResolvedValue({ id: WORKSPACE_ID });
     mockedGetJarvisConfig.mockResolvedValue(JARVIS_CONFIG);
     mockedSearchLatest.mockResolvedValue({ ok: true, nodes: [] });
     mockedDb.workspace.update = vi.fn().mockResolvedValue({});
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(null, { status: 200 })));
   });
 
   afterEach(() => {
     process.env.JANITOR_WEBHOOK_SECRET = origSecret;
     vi.clearAllMocks();
+    vi.unstubAllGlobals();
   });
 
   it("successful addNodeBulk → cursor_state persisted to workspace.lingoExtractionState", async () => {
@@ -294,28 +284,21 @@ describe("POST /api/lingo/extraction/upsert — cursor persistence", () => {
 
     expect(json.errors).toContain("Jarvis error");
     expect(json.upserted).toBe(0);
-    // cursor must NOT be advanced
     expect(mockedDb.workspace.update).not.toHaveBeenCalled();
   });
 });
 
 describe("POST /api/lingo/extraction/upsert — hub mirror", () => {
-  let POST: (req: NextRequest) => Promise<Response>;
   const origSecret = process.env.JANITOR_WEBHOOK_SECRET;
   let fetchSpy: ReturnType<typeof vi.spyOn>;
 
-  beforeEach(async () => {
-    vi.resetModules();
+  beforeEach(() => {
     process.env.JANITOR_WEBHOOK_SECRET = "test-secret";
-    const mod = await import("@/app/api/lingo/extraction/upsert/route");
-    POST = mod.POST;
-
     mockedDb.workspace.findUnique = vi.fn().mockResolvedValue({ id: WORKSPACE_ID });
     mockedGetJarvisConfig.mockResolvedValue(JARVIS_CONFIG);
     mockedSearchLatest.mockResolvedValue({ ok: true, nodes: [] });
     mockedAddNodeBulk.mockResolvedValue({ success: true, errors: [] });
     mockedDb.workspace.update = vi.fn().mockResolvedValue({});
-
     fetchSpy = vi.spyOn(global, "fetch").mockResolvedValue(new Response(null, { status: 200 }));
   });
 
@@ -352,7 +335,6 @@ describe("POST /api/lingo/extraction/upsert — hub mirror", () => {
     const res = await POST(req);
     const json = await res.json();
 
-    // Should still be 200 and upserted count correct
     expect(res.status).toBe(200);
     expect(json.upserted).toBe(1);
   });
