@@ -268,6 +268,10 @@ model Workspace {
   scorerPatternPrompt     String?                  @map("scorer_pattern_prompt")
   scorerSinglePrompt      String?                  @map("scorer_single_prompt")
   scorerAggregateCache    Json?                    @map("scorer_aggregate_cache")
+  // Keyset cursors for the Jarvis graph-mirror cron. Managed solely by
+  // `jarvis-mirror-cron`. Shape: { feature?: {at,id}, task?: {at,id}, chat?: {at,id} }
+  // where `at` is an ISO updatedAt and `id` is the row id (composite keyset).
+  jarvisSyncState         Json?                    @map("jarvis_sync_state")
   agentLogs               AgentLog[]
   diagrams                DiagramWorkspace[]
   discordChannels         DiscordChannel[]
