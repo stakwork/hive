@@ -190,6 +190,30 @@ describe("GET /api/workspaces/[slug]/lingo/nodes", () => {
     expect(calledUrl).toContain("offset=20");
     expect(calledUrl).toContain("type=Lingo");
     expect(calledUrl).not.toContain("namespace=");
+    expect(calledUrl).not.toContain("sort=");
+  });
+
+  test("returns nodes sorted by date_added_to_graph descending", async () => {
+    mockGetWorkspaceSwarmAccess.mockResolvedValueOnce({
+      success: true,
+      data: SWARM_DATA,
+    });
+    const unsortedNodes = [
+      { ref_id: "node-b", node_type: "Lingo", date_added_to_graph: 1000, properties: { name: "Middle" } },
+      { ref_id: "node-c", node_type: "Lingo", date_added_to_graph: 500,  properties: { name: "Oldest" } },
+      { ref_id: "node-a", node_type: "Lingo", date_added_to_graph: 2000, properties: { name: "Newest" } },
+    ];
+    mockFetch.mockResolvedValueOnce(
+      new Response(JSON.stringify({ nodes: unsortedNodes }), { status: 200 }),
+    );
+    const req = makeAuthenticatedRequest(
+      `http://localhost/api/workspaces/${SLUG}/lingo/nodes`,
+    );
+    const res = await GET(req, { params: Promise.resolve({ slug: SLUG }) });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    const dates = body.data.nodes.map((n: { date_added_to_graph: number }) => n.date_added_to_graph);
+    expect(dates).toEqual([2000, 1000, 500]);
   });
 
   test("sets hasMore=true when response length equals limit", async () => {
