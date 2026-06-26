@@ -14,6 +14,7 @@ import { getStakworkTokenReference } from "@/lib/vercel/stakwork-token";
 import { pusherServer, getTaskChannelName, PUSHER_EVENTS } from "@/lib/pusher";
 import { fetchChatHistory } from "@/lib/helpers/chat-history";
 import { getWorkflowJsonFromNode } from "@/lib/workflow/get-workflow-json-from-node";
+import { resolveExtraSwarms } from "@/services/roadmap/feature-chat";
 
 /**
  * Fetch the latest workflow JSON from the graph API for a given workflow ID.
@@ -302,6 +303,13 @@ export async function triggerWorkflowEditorRun(params: {
   }
 
   vars.autoMergePr = task.autoMerge;
+
+  // Resolve @mentioned workspaces as sub-agents and attach to vars
+  const extraSwarms = await resolveExtraSwarms(message, userId);
+  if (extraSwarms.length) {
+    (vars as Record<string, unknown>).subAgents = extraSwarms;
+    console.log("[triggerWorkflowEditorRun] forwarding subAgents:", extraSwarms.map((a) => a.name));
+  }
 
   const stakworkPayload = {
     name: `workflow_editor - ${taskId}`,

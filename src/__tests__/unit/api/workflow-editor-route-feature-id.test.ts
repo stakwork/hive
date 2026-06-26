@@ -9,13 +9,21 @@ import { describe, test, expect, beforeEach, vi } from "vitest";
 // ─── Mocks ────────────────────────────────────────────────────────────────────
 
 vi.mock("@/lib/db");
-vi.mock("@/config/env", () => ({
-  config: {
-    STAKWORK_API_KEY: "test-key",
-    STAKWORK_BASE_URL: "https://api.stakwork.com/api/v1",
-    STAKWORK_WORKFLOW_EDITOR_WORKFLOW_ID: "123",
-  },
+vi.mock("@/services/roadmap/feature-chat", () => ({
+  resolveExtraSwarms: vi.fn().mockResolvedValue([]),
 }));
+vi.mock("@/config/env", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/config/env")>();
+  return {
+    ...actual,
+    config: {
+      ...actual.config,
+      STAKWORK_API_KEY: "test-key",
+      STAKWORK_BASE_URL: "https://api.stakwork.com/api/v1",
+      STAKWORK_WORKFLOW_EDITOR_WORKFLOW_ID: "123",
+    },
+  };
+});
 vi.mock("@/lib/auth/nextauth", () => ({
   authOptions: {},
   getGithubUsernameAndPAT: vi.fn().mockResolvedValue({ username: "user", token: "tok" }),
