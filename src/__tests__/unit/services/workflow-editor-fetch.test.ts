@@ -5,6 +5,9 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 // Mock all dependencies before importing the module
 vi.mock("@/lib/db", () => ({ db: {} }));
+vi.mock("@/services/roadmap/feature-chat", () => ({
+  resolveExtraSwarms: vi.fn().mockResolvedValue([]),
+}));
 vi.mock("@/config/env", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/config/env")>();
   return { ...actual, config: { ...actual.config } };

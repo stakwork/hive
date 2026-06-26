@@ -33,6 +33,10 @@ vi.mock("@/lib/helpers/chat-history", () => ({
   fetchChatHistory: vi.fn().mockResolvedValue([]),
 }));
 
+vi.mock("@/services/roadmap/feature-chat", () => ({
+  resolveExtraSwarms: vi.fn().mockResolvedValue([]),
+}));
+
 vi.mock("@/config/env", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/config/env")>();
   return {
