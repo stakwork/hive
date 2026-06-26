@@ -53,7 +53,6 @@ export async function GET(
 
   const queryParams = new URLSearchParams({
     type: "Lingo",
-    namespace: swarmName,
     limit: String(limit),
     offset: String(offset),
     sort: "created_at:desc",
