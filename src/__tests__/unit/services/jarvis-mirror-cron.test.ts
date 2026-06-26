@@ -107,6 +107,45 @@ describe("runJarvisMirror", () => {
     expect(res.results[0].capped).toBe(true);
   });
 
+  it("does NOT advance the cursor when the node write fails", async () => {
+    mockedAddNodeBulk.mockResolvedValue({
+      success: false,
+      errors: ["Error processing node: Not a valid node_type"],
+    });
+    setupDb({
+      workspaces: [{ id: "w1", slug: "w1", jarvisSyncState: null }],
+      features: [{ id: "f1", title: "F1", updatedAt: AT }],
+    });
+
+    const res = await runJarvisMirror();
+
+    // Write failed → cursor stays put so the row is retried next run.
+    expect(res.results[0].counts?.feature).toBe(0);
+    expect(res.results[0].errors?.length).toBeGreaterThan(0);
+    // Nothing advanced → no cursor persisted.
+    expect((mockedDb.workspace as any).update).not.toHaveBeenCalled();
+  });
+
+  it("does NOT advance the task cursor when the edge write fails", async () => {
+    mockedAddEdgeBulk.mockResolvedValue({ success: false, errors: ["edge boom"] });
+    setupDb({
+      workspaces: [{ id: "w1", slug: "w1", jarvisSyncState: null }],
+      tasks: [{ id: "t1", title: "T1", updatedAt: AT, feature: { id: "f1", title: "F1" } }],
+    });
+
+    const res = await runJarvisMirror();
+    expect(res.results[0].counts?.task).toBe(0);
+    expect((mockedDb.workspace as any).update).not.toHaveBeenCalled();
+  });
+
+  it("excludes text-less messages (artifact-only) and SENDING from the chat query", async () => {
+    setupDb({ workspaces: [{ id: "w1", slug: "w1", jarvisSyncState: null }] });
+    await runJarvisMirror();
+    const where = (mockedDb.chatMessage as any).findMany.mock.calls[0][0].where;
+    expect(where.message).toEqual({ not: "" });
+    expect(where.status).toEqual({ not: "SENDING" });
+  });
+
   it("passes the stored keyset cursor into the feature query", async () => {
     const cursor = { at: AT.toISOString(), id: "f0" };
     setupDb({
