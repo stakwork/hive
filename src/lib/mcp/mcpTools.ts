@@ -4,6 +4,7 @@ import { createFeature } from "@/services/roadmap/features";
 import { sendFeatureChatMessage } from "@/services/roadmap/feature-chat";
 import { createTicket } from "@/services/roadmap/tickets";
 import { sendMessageToStakwork } from "@/services/task-workflow";
+import { isDevelopmentMode } from "@/lib/runtime";
 import type { PullRequestContent } from "@/lib/chat";
 import {
   ArtifactType,
@@ -33,10 +34,49 @@ function mcpError(text: string): McpToolResult {
   return { content: [{ type: "text", text }], isError: true };
 }
 
+/**
+ * Workflow tasks are a Stakwork-workflow concept and are only supported
+ * on the `stakwork` workspace (or any workspace in development mode).
+ * Mirrors the gate used for the workflow editor / execution surface
+ * (see `task-workflow.ts`, `stakwork-run.ts`, `workflow-editor/route.ts`).
+ *
+ * Used as the single source of truth for the `create_workflow_task`
+ * tool — both the MCP handler's runtime guard and the implementation
+ * below short-circuit through it, so the surface cannot widen by
+ * accident.
+ */
+export function isWorkflowTasksEnabled(auth: WorkspaceAuth): boolean {
+  return auth.workspaceSlug === "stakwork" || isDevelopmentMode();
+}
+
 function mcpOk(data: unknown): McpToolResult {
   return {
     content: [{ type: "text", text: JSON.stringify(data, null, 2) }],
   };
+}
+
+// ---------------------------------------------------------------------------
+// Canonical Hive URLs
+// ---------------------------------------------------------------------------
+
+/**
+ * Public base URL for the Hive app. Single source of truth for the
+ * web links surfaced through MCP tool results so agents can hand the
+ * user a real, clickable URL instead of guessing one (the cause of
+ * fabricated links like `hive.stakwork.com/.../features/<id>`).
+ */
+const HIVE_BASE_URL =
+  process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "") ||
+  "https://hive.sphinx.chat";
+
+/** Canonical web link to a feature's plan page. */
+export function featureLink(workspaceSlug: string, featureId: string): string {
+  return `${HIVE_BASE_URL}/w/${workspaceSlug}/plan/${featureId}`;
+}
+
+/** Canonical web link to a task page. */
+export function taskLink(workspaceSlug: string, taskId: string): string {
+  return `${HIVE_BASE_URL}/w/${workspaceSlug}/task/${taskId}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -372,6 +412,7 @@ export async function mcpListFeatures(
         title: f.title,
         status: f.status,
         updatedAt: f.updatedAt.toISOString(),
+        link: featureLink(auth.workspaceSlug, f.id),
       })),
     );
   } catch (error) {
@@ -416,6 +457,7 @@ export async function mcpReadFeature(
       brief: feature!.brief,
       requirements: feature!.requirements,
       architecture: feature!.architecture,
+      link: featureLink(auth.workspaceSlug, feature!.id),
       chatHistory,
     });
   } catch (error) {
@@ -564,6 +606,7 @@ export async function mcpListTasks(
         priority: t.priority,
         featureId: t.featureId,
         updatedAt: t.updatedAt.toISOString(),
+        link: taskLink(auth.workspaceSlug, t.id),
       })),
     );
   } catch (error) {
@@ -613,6 +656,7 @@ export async function mcpReadTask(
       isWorkflowRunning: task!.workflowStatus === "IN_PROGRESS",
       featureId: task!.featureId,
       branch: task!.branch,
+      link: taskLink(auth.workspaceSlug, task!.id),
       chatHistory,
       pullRequest,
     });
@@ -832,6 +876,12 @@ export async function mcpCreateWorkflowTask(
   creatorHint?: string,
 ): Promise<McpToolResult> {
   try {
+    if (!isWorkflowTasksEnabled(auth)) {
+      return mcpError(
+        "Error: workflow tasks are only supported on the stakwork workspace",
+      );
+    }
+
     const feature = await db.feature.findUnique({
       where: { id: featureId },
       select: { workspaceId: true, createdById: true },
@@ -1178,8 +1228,6 @@ async function fetchStatusItems(
     }),
   ]);
 
-  const base = `https://hive.sphinx.chat/w/${auth.workspaceSlug}`;
-
   const merged: StatusItem[] = [
     ...tasks.map((t) => ({
       type: "task" as const,
@@ -1190,7 +1238,7 @@ async function fetchStatusItems(
       workflowStatus: t.workflowStatus,
       needsAttention: t.workflowStatus === "COMPLETED",
       updatedAt: t.updatedAt.toISOString(),
-      link: `${base}/task/${t.id}`,
+      link: taskLink(auth.workspaceSlug, t.id),
       branch: t.branch,
     })),
     ...features.map((f) => ({
@@ -1202,7 +1250,7 @@ async function fetchStatusItems(
       workflowStatus: f.workflowStatus,
       needsAttention: f.workflowStatus === "COMPLETED",
       updatedAt: f.updatedAt.toISOString(),
-      link: `${base}/plan/${f.id}`,
+      link: featureLink(auth.workspaceSlug, f.id),
       brief: f.brief,
     })),
   ];

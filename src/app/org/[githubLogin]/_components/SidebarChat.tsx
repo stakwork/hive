@@ -182,30 +182,17 @@ export function SidebarChat({ githubLogin }: SidebarChatProps) {
   const handleShare = async () => {
     if (!serverConversationId) return;
     try {
-      // Mark the LIVE conversation row as a shared room and hand out its
-      // id. No snapshot/fork: the sharer is already on this row, and
-      // anyone who opens `?chat=<id>` adopts the same row, so everyone
-      // appends to one conversation and live-sync keeps them in step.
-      const res = await fetch(
-        `/api/orgs/${githubLogin}/chat/conversations/${serverConversationId}`,
-        {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          // Empty delta — this PUT only flips the `isShared` flag.
-          body: JSON.stringify({ messages: [], isShared: true }),
-        },
-      );
-
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err.error || "Failed to share conversation");
-      }
+      // Every org-canvas row is already a joinable room (`isShared`
+      // defaults true) and the URL tracks the live row, so sharing is
+      // just copying the `?chat=<id>` link — no flag to flip, no
+      // snapshot, no fork. Anyone in the org who opens it adopts the same
+      // row and live-sync keeps everyone in step.
       const url = `${window.location.origin}/org/${githubLogin}?chat=${serverConversationId}`;
       await navigator.clipboard.writeText(url);
       toast.success("Share link copied to clipboard!");
     } catch (error) {
       console.error("Error sharing conversation:", error);
-      toast.error("Failed to share conversation", {
+      toast.error("Failed to copy share link", {
         description: error instanceof Error ? error.message : "Unknown error",
       });
     }

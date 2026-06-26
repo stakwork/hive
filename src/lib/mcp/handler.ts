@@ -17,6 +17,7 @@ import {
   mcpCreateTask,
   mcpCreateFeatureTask,
   mcpCreateWorkflowTask,
+  isWorkflowTasksEnabled,
   mcpUpdateTask,
   mcpSendToTaskAgent,
   mcpSendMessage,
@@ -238,7 +239,7 @@ function createServer(
     {
       title: "List Features",
       description:
-        "List features in the workspace, ordered by last updated. Returns feature names, IDs, statuses, and last-updated timestamps. Maximum 40 results.",
+        "List features in the workspace, ordered by last updated. Returns feature names, IDs, statuses, last-updated timestamps, and a `link` to the feature's plan page. Maximum 40 results. When sharing a feature with the user, use the `link` field verbatim — never construct a URL yourself.",
       inputSchema: {},
     },
     async (_args, extra) => {
@@ -254,7 +255,7 @@ function createServer(
     {
       title: "Read Feature",
       description:
-        "Read a feature's plan details and full chat message history. Also indicates whether the planning workflow is currently running.",
+        "Read a feature's plan details and full chat message history. Also indicates whether the planning workflow is currently running, and returns a `link` to the feature's plan page. When sharing the feature with the user, use the `link` field verbatim — never construct a URL yourself.",
       inputSchema: {
         featureId: z
           .string()
@@ -313,7 +314,7 @@ function createServer(
     {
       title: "List Tasks",
       description:
-        "List tasks in the workspace, ordered by last updated. Returns task titles, IDs, statuses, priorities, featureIds, and last-updated timestamps. Maximum 40 results. When `featureId` is provided, scopes results to tasks belonging to that feature.",
+        "List tasks in the workspace, ordered by last updated. Returns task titles, IDs, statuses, priorities, featureIds, last-updated timestamps, and a `link` to each task page. Maximum 40 results. When `featureId` is provided, scopes results to tasks belonging to that feature. When sharing a task with the user, use the `link` field verbatim — never construct a URL yourself.",
       inputSchema: {
         featureId: z
           .string()
@@ -336,7 +337,7 @@ function createServer(
     {
       title: "Read Task",
       description:
-        "Read a task's details and full chat message history. Also indicates whether the task workflow is currently running.",
+        "Read a task's details and full chat message history. Also indicates whether the task workflow is currently running, and returns a `link` to the task page. When sharing the task with the user, use the `link` field verbatim — never construct a URL yourself.",
       inputSchema: {
         taskId: z
           .string()
@@ -519,6 +520,8 @@ function createServer(
       description: [
         "Create a WORKFLOW task anchored to a feature in this workspace. Use this when the work is executed by running, building, or configuring a Stakwork **workflow** — a Lambda-based, DAG-style automation pipeline. Do NOT use this for code changes; use `create_feature_task` for those.",
         "",
+        "**Availability.** Workflow tasks are ONLY supported on the `stakwork` workspace. On any other workspace this tool will reject the call — treat the work as a coding task via `create_feature_task` instead.",
+        "",
         "Workflow tasks split into two kinds, both handled by this tool:",
         "- **Existing workflow** — running, triggering, or reconfiguring a workflow that already exists. Pass `workflowId` (integer).",
         "- **New workflow** — building a brand-new workflow in the editor. Omit `workflowId` entirely (never set it to null).",
@@ -629,6 +632,19 @@ function createServer(
       // workspace owner) when no hint matches.
       const result = await getWorkspaceAuth(authExtra, "create_workflow_task");
       if (result.error) return result.error;
+      // Gate: workflow tasks are stakwork-only (belt-and-suspenders with
+      // the same check inside mcpCreateWorkflowTask).
+      if (!isWorkflowTasksEnabled(result.auth!)) {
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: "Error: workflow tasks are only supported on the stakwork workspace",
+            },
+          ],
+          isError: true,
+        };
+      }
       return mcpCreateWorkflowTask(
         result.auth!,
         featureId,

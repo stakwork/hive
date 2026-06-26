@@ -18,6 +18,14 @@ export function LingoCard({ node, onClick }: LingoCardProps) {
       <h3 className="font-semibold text-base text-foreground mb-1 truncate">
         {node.name}
       </h3>
+      {node.lingo_type && (
+        <span
+          className="mt-1 inline-block rounded px-1.5 py-0.5 text-xs bg-muted text-muted-foreground font-mono"
+          data-testid="lingo-type-badge"
+        >
+          {node.lingo_type}
+        </span>
+      )}
       {node.definition && (
         <p className="text-sm text-muted-foreground line-clamp-2">
           {node.definition}

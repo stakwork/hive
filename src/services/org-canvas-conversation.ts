@@ -77,12 +77,12 @@ export async function resolveOrgConversationRowId(args: {
  *   slugs from). Creating a new row on an IDOR-mismatched id is safe:
  *   the caller can only ever write to their own conversation.
  *
- * `isShared` controls the visibility of a NEWLY-created row (default
- * `false`: owner-only until the user clicks Share, matching the
- * interactive chat). The `org_agent` MCP path passes `true` so the
- * `?chat=<id>` link it hands back is openable by any org member. Existing
- * rows keep whatever `isShared` they already had — this only seeds it on
- * create.
+ * `isShared` controls the visibility of a NEWLY-created row. It defaults
+ * to `true`: every org-canvas conversation is a joinable room, so any org
+ * member who opens its `?chat=<id>` URL reads + appends to the SAME row
+ * (no private-until-shared gate, no fork-on-join). The URL is the share
+ * mechanism — there's no separate "Share" step. Existing rows keep
+ * whatever `isShared` they already had — this only seeds it on create.
  */
 export async function persistCanvasUserMessage(args: {
   orgId: string;
@@ -102,7 +102,7 @@ export async function persistCanvasUserMessage(args: {
     content,
     attachments,
     workspaceSlugs,
-    isShared = false,
+    isShared = true,
   } = args;
 
   const userRow: StoredMessage = {
