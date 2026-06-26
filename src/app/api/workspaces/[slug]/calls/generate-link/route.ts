@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
+import { randomBytes } from "crypto";
 import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 import { db } from "@/lib/db";
 import { optionalEnvVars } from "@/config/env";
 import { mintOrgToken } from "@/lib/mcp/orgTokenMint";
+import { redis } from "@/lib/redis";
 import jwt from "jsonwebtoken";
 
 export async function POST(
@@ -169,9 +171,19 @@ export async function POST(
       hiveToken = outcome.token;
     }
 
-    // Generate call URL with token
+    // Store the minted token in Redis behind a short opaque key so the
+    // shareable URL carries a compact callKey instead of the full JWT.
+    const callKey = randomBytes(12).toString("hex"); // 24-char hex
+    try {
+      await redis.set("call-token:" + callKey, hiveToken, "EX", 7200);
+    } catch (err) {
+      console.error("[generate-link] Redis write failed:", err);
+      return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    }
+
+    // Generate call URL with short callKey
     const timestamp = Math.floor(Date.now() / 1000);
-    const callUrl = `${liveKitBaseUrl}${workspace.swarm.name}.sphinx.chat-.${timestamp}?hiveToken=${encodeURIComponent(hiveToken)}`;
+    const callUrl = `${liveKitBaseUrl}${workspace.swarm.name}.sphinx.chat-.${timestamp}?callKey=${callKey}`;
 
     return NextResponse.json({ url: callUrl });
   } catch (error) {
