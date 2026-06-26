@@ -50,6 +50,24 @@ vi.mock("@/components/ui/label", () => ({
   Label: ({ children, htmlFor }: any) => <label htmlFor={htmlFor}>{children}</label>,
 }));
 
+vi.mock("@/components/ui/select", () => ({
+  Select: ({ value, onValueChange, children, disabled }: any) => (
+    <select
+      data-testid="lingo-type-select"
+      value={value}
+      onChange={(e) => onValueChange(e.target.value)}
+      disabled={disabled}
+    >
+      <option value="">Select a type…</option>
+      {children}
+    </select>
+  ),
+  SelectTrigger: () => null,
+  SelectValue: () => null,
+  SelectContent: ({ children }: any) => <>{children}</>,
+  SelectItem: ({ value, children }: any) => <option value={value}>{children}</option>,
+}));
+
 // ─── Import after mocks ────────────────────────────────────────────────────────
 
 import { CreateLingoNodeDialog } from "@/app/w/[slug]/learn/lingo/components/CreateLingoNodeDialog";
@@ -272,6 +290,65 @@ describe("CreateLingoNodeDialog", () => {
           body: JSON.stringify({ name: "Term A", definition: "Definition A" }),
         }),
       );
+    });
+  });
+
+  it("renders a lingo-type-select in the open dialog", () => {
+    renderDialog();
+    expect(screen.getByTestId("lingo-type-select")).toBeInTheDocument();
+  });
+
+  it("includes lingo_type in POST body when a type is selected", async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: () =>
+        Promise.resolve({ success: true, data: { ref_id: "r2", name: "Typed Term", lingo_type: "company_jargon" } }),
+    });
+
+    renderDialog();
+    fireEvent.change(screen.getByTestId("lingo-name-input"), {
+      target: { value: "Typed Term" },
+    });
+    fireEvent.change(screen.getByTestId("lingo-type-select"), {
+      target: { value: "company_jargon" },
+    });
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("lingo-create-submit"));
+    });
+
+    await waitFor(() => {
+      expect(mockFetch).toHaveBeenCalledWith(
+        `/api/workspaces/${SLUG}/lingo/nodes`,
+        expect.objectContaining({
+          method: "POST",
+          body: JSON.stringify({ name: "Typed Term", lingo_type: "company_jargon" }),
+        }),
+      );
+    });
+  });
+
+  it("omits lingo_type from POST body when no type is selected", async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: () =>
+        Promise.resolve({ success: true, data: { ref_id: "r3", name: "Untyped Term" } }),
+    });
+
+    renderDialog();
+    fireEvent.change(screen.getByTestId("lingo-name-input"), {
+      target: { value: "Untyped Term" },
+    });
+    // Do NOT change lingo-type-select — leave it as default ""
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("lingo-create-submit"));
+    });
+
+    await waitFor(() => {
+      const [, callOptions] = mockFetch.mock.calls[0];
+      const parsedBody = JSON.parse(callOptions.body);
+      expect(parsedBody).not.toHaveProperty("lingo_type");
     });
   });
 });
