@@ -238,7 +238,7 @@ function createServer(
     {
       title: "List Features",
       description:
-        "List features in the workspace, ordered by last updated. Returns feature names, IDs, statuses, and last-updated timestamps. Maximum 40 results.",
+        "List features in the workspace, ordered by last updated. Returns feature names, IDs, statuses, last-updated timestamps, and a `link` to the feature's plan page. Maximum 40 results. When sharing a feature with the user, use the `link` field verbatim — never construct a URL yourself.",
       inputSchema: {},
     },
     async (_args, extra) => {
@@ -254,7 +254,7 @@ function createServer(
     {
       title: "Read Feature",
       description:
-        "Read a feature's plan details and full chat message history. Also indicates whether the planning workflow is currently running.",
+        "Read a feature's plan details and full chat message history. Also indicates whether the planning workflow is currently running, and returns a `link` to the feature's plan page. When sharing the feature with the user, use the `link` field verbatim — never construct a URL yourself.",
       inputSchema: {
         featureId: z
           .string()
@@ -313,7 +313,7 @@ function createServer(
     {
       title: "List Tasks",
       description:
-        "List tasks in the workspace, ordered by last updated. Returns task titles, IDs, statuses, priorities, featureIds, and last-updated timestamps. Maximum 40 results. When `featureId` is provided, scopes results to tasks belonging to that feature.",
+        "List tasks in the workspace, ordered by last updated. Returns task titles, IDs, statuses, priorities, featureIds, last-updated timestamps, and a `link` to each task page. Maximum 40 results. When `featureId` is provided, scopes results to tasks belonging to that feature. When sharing a task with the user, use the `link` field verbatim — never construct a URL yourself.",
       inputSchema: {
         featureId: z
           .string()
@@ -336,7 +336,7 @@ function createServer(
     {
       title: "Read Task",
       description:
-        "Read a task's details and full chat message history. Also indicates whether the task workflow is currently running.",
+        "Read a task's details and full chat message history. Also indicates whether the task workflow is currently running, and returns a `link` to the task page. When sharing the task with the user, use the `link` field verbatim — never construct a URL yourself.",
       inputSchema: {
         taskId: z
           .string()
