@@ -39,6 +39,7 @@ export async function getWorkspacesWithEnabledJanitors(): Promise<
       mockGenerationEnabled: boolean;
       generalRefactoringEnabled: boolean;
       deduplicationEnabled: boolean;
+      lingoExtractionEnabled: boolean;
     } | null;
     swarm: {
       swarmUrl: string | null;
@@ -74,6 +75,7 @@ export async function getWorkspacesWithEnabledJanitors(): Promise<
           mockGenerationEnabled: true,
           generalRefactoringEnabled: true,
           deduplicationEnabled: true,
+          lingoExtractionEnabled: true,
         },
       },
       swarm: {
