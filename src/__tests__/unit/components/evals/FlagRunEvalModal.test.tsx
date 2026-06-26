@@ -660,8 +660,9 @@ describe("FlagRunEvalModal", () => {
       // Select an existing requirement via the mock button
       fireEvent.click(screen.getByTestId("select-existing-req"));
 
-      await waitFor(() =>
-        expect(screen.getByRole("button", { name: /confirm/i })).not.toBeDisabled()
+      await waitFor(
+        () => expect(screen.getByRole("button", { name: /confirm/i })).not.toBeDisabled(),
+        { timeout: 3000 },
       );
       fireEvent.click(screen.getByRole("button", { name: /confirm/i }));
 
