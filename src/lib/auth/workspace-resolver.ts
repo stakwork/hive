@@ -1,6 +1,7 @@
 import {
   getDefaultWorkspaceForUser,
   getUserWorkspaces,
+  getWorkspaceOrgGithubLogin,
 } from "@/services/workspace";
 import { Session } from "next-auth";
 import { redirect } from "next/navigation";
@@ -14,6 +15,19 @@ export interface WorkspaceResolutionResult {
 
 /** Routes that workspace-less authenticated users may access without onboarding redirect. */
 export const WORKSPACE_FREE_ROUTES = ['/settings', '/profile'];
+
+/**
+ * Builds the redirect URL for a resolved workspace.
+ * Prefers `/org/<githubLogin>` when the workspace has an associated org,
+ * falling back to `/w/<slug>`.
+ */
+async function buildWorkspaceRedirectUrl(
+  workspaceId: string,
+  slug: string,
+): Promise<string> {
+  const githubLogin = await getWorkspaceOrgGithubLogin(workspaceId);
+  return githubLogin ? `/org/${githubLogin}` : `/w/${slug}`;
+}
 
 /**
  * Resolves where a user should be redirected based on their workspace access
@@ -57,9 +71,10 @@ export async function resolveUserWorkspaceRedirect(
     if (userWorkspaces.length === 1) {
       // User has exactly one workspace - redirect to it
       const workspace = userWorkspaces[0];
+      const redirectUrl = await buildWorkspaceRedirectUrl(workspace.id, workspace.slug);
       return {
         shouldRedirect: true,
-        redirectUrl: `/w/${workspace.slug}`,
+        redirectUrl,
         workspaceCount: 1,
         defaultWorkspaceSlug: workspace.slug,
       };
@@ -69,9 +84,10 @@ export async function resolveUserWorkspaceRedirect(
     const defaultWorkspace = await getDefaultWorkspaceForUser(userId);
 
     if (defaultWorkspace) {
+      const redirectUrl = await buildWorkspaceRedirectUrl(defaultWorkspace.id, defaultWorkspace.slug);
       return {
         shouldRedirect: true,
-        redirectUrl: `/w/${defaultWorkspace.slug}`,
+        redirectUrl,
         workspaceCount: userWorkspaces.length,
         defaultWorkspaceSlug: defaultWorkspace.slug,
       };
@@ -79,9 +95,10 @@ export async function resolveUserWorkspaceRedirect(
 
     // Fallback to first workspace
     const fallbackWorkspace = userWorkspaces[0];
+    const redirectUrl = await buildWorkspaceRedirectUrl(fallbackWorkspace.id, fallbackWorkspace.slug);
     return {
       shouldRedirect: true,
-      redirectUrl: `/w/${fallbackWorkspace.slug}`,
+      redirectUrl,
       workspaceCount: userWorkspaces.length,
       defaultWorkspaceSlug: fallbackWorkspace.slug,
     };
