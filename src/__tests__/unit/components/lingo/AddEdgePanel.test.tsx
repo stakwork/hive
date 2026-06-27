@@ -183,7 +183,7 @@ describe("AddEdgePanel", () => {
   });
 
   describe("Default 'All types' state", () => {
-    it("node-type select defaults to empty string (All types)", async () => {
+    it("node-type select defaults to __all__ (All types)", async () => {
       mockFetch.mockResolvedValueOnce({
         ok: true,
         json: () => Promise.resolve({ node_types: [] }),
@@ -193,10 +193,10 @@ describe("AddEdgePanel", () => {
 
       // The first select-wrapper rendered is the node-type select
       const wrappers = screen.getAllByTestId("select-wrapper");
-      expect(wrappers[0]).toHaveAttribute("data-value", "");
+      expect(wrappers[0]).toHaveAttribute("data-value", "__all__");
     });
 
-    it("renders 'All types' SelectItem with empty value", async () => {
+    it("renders 'All types' SelectItem with __all__ value", async () => {
       mockFetch.mockResolvedValueOnce({
         ok: true,
         json: () => Promise.resolve({ node_types: [] }),
@@ -205,13 +205,13 @@ describe("AddEdgePanel", () => {
       render(<AddEdgePanel {...defaultProps} />);
 
       await waitFor(() => {
-        const allTypesItem = screen.getByTestId("select-item-");
+        const allTypesItem = screen.getByTestId("select-item-__all__");
         expect(allTypesItem).toBeInTheDocument();
         expect(allTypesItem).toHaveTextContent("All types");
       });
     });
 
-    it("search does not include type= param when selectedType is empty", async () => {
+    it("search does not include type= param when selectedType is __all__", async () => {
       vi.useFakeTimers({ shouldAdvanceTime: true });
 
       mockFetch
