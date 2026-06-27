@@ -139,17 +139,6 @@ const LINKED_EDGE_COLOR = "#a4b3cc";
 
 type DirtyMap = Map<string, CanvasData>;
 
-type LastAction =
-  | {
-      kind: "hide"; // user hid a live node → undo = show
-      canvasRef: string | undefined;
-      id: string;
-    }
-  | {
-      kind: "show"; // user restored a live node → undo = hide
-      canvasRef: string | undefined;
-      id: string;
-    };
 
 async function fetchRoot(githubLogin: string): Promise<CanvasData> {
   const res = await fetch(`/api/orgs/${githubLogin}/canvas`);
@@ -676,7 +665,7 @@ export function OrgCanvasBackground({
   // Map keyed by ROOT_KEY or sub-canvas ref -> latest data waiting to flush.
   const dirtyRef = useRef<DirtyMap>(new Map());
   const flushTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const lastActionRef = useRef<LastAction | null>(null);
+
 
   const scheduleFlush = useCallback(() => {
     if (flushTimer.current) clearTimeout(flushTimer.current);
@@ -1385,6 +1374,23 @@ export function OrgCanvasBackground({
 
   const handleNodeAdd = useCallback(
     (node: CanvasNode, canvasRef: string | undefined) => {
+      // Live-node re-add — fired by the library's undo when reversing a
+      // hide. Add the node back locally for instant display, then tell the
+      // server to un-hide it so the projector picks it up on next fetch.
+      if (isLiveId(node.id)) {
+        applyMutation(canvasRef, (c) => addNode(c, node));
+        void toggleLiveVisibility(githubLogin, canvasRef, node.id, "show").then(
+          () => {
+            if (!canvasRef) {
+              refreshRootHiddenLive();
+            } else if (canvasRef === currentRefRef.current) {
+              refreshHiddenLive();
+            }
+          },
+        );
+        return;
+      }
+
       const category = node.category ?? "";
       const ref = canvasRef ?? "";
 
@@ -1429,6 +1435,9 @@ export function OrgCanvasBackground({
     },
     [
       applyMutation,
+      githubLogin,
+      refreshHiddenLive,
+      refreshRootHiddenLive,
       startInitiativeCreate,
       startMilestoneCreate,
       startFeatureCreate,
@@ -2045,13 +2054,9 @@ export function OrgCanvasBackground({
       // endpoint is idempotent, so a race with a concurrent hide is
       // harmless.
       if (isLiveId(id)) {
-        lastActionRef.current = { kind: "hide", canvasRef, id };
         applyMutation(canvasRef, (c) => removeNode(c, id));
         void toggleLiveVisibility(githubLogin, canvasRef, id, "hide").then(
           () => {
-            // Refresh whichever hidden list this hide affected so the
-            // pill picks up the new entry. Hides on root also feed the
-            // chat workspace seed (`rootHiddenLive`).
             if (!canvasRef) {
               refreshRootHiddenLive();
             } else if (canvasRef === currentRefRef.current) {
@@ -2062,6 +2067,31 @@ export function OrgCanvasBackground({
         return;
       }
       applyMutation(canvasRef, (c) => removeNode(c, id));
+    },
+    [applyMutation, githubLogin, refreshHiddenLive, refreshRootHiddenLive],
+  );
+
+  const handleNodesDelete = useCallback(
+    (ids: string[], canvasRef: string | undefined) => {
+      if (ids.length === 0) return;
+
+      const liveIds = ids.filter(isLiveId);
+
+      applyMutation(canvasRef, (c) =>
+        ids.reduce((acc, id) => removeNode(acc, id), c),
+      );
+
+      for (const id of liveIds) {
+        void toggleLiveVisibility(githubLogin, canvasRef, id, "hide").then(
+          () => {
+            if (!canvasRef) {
+              refreshRootHiddenLive();
+            } else if (canvasRef === currentRefRef.current) {
+              refreshHiddenLive();
+            }
+          },
+        );
+      }
     },
     [applyMutation, githubLogin, refreshHiddenLive, refreshRootHiddenLive],
   );
@@ -2079,11 +2109,6 @@ export function OrgCanvasBackground({
     async (id: string) => {
       const ref = currentRefRef.current;
       const isRoot = ref === "";
-      lastActionRef.current = {
-        kind: "show",
-        canvasRef: isRoot ? undefined : ref,
-        id,
-      };
       // Optimistic: remove from the pill immediately so users don't
       // wait on a round-trip before the popover reflects their click.
       // The pill is only ever shown after the initial fetch resolved
@@ -2127,57 +2152,6 @@ export function OrgCanvasBackground({
     },
     [githubLogin, refreshHiddenLive, refreshRootHiddenLive],
   );
-
-  const handleUndo = useCallback(async () => {
-    const action = lastActionRef.current;
-    if (!action) return;
-    lastActionRef.current = null; // consume — ctrl-z twice is a no-op
-
-    if (action.kind === "hide") {
-      // Undo a hide → reuse the existing handleRestoreLive path exactly
-      await handleRestoreLive(action.id);
-      return;
-    }
-
-    if (action.kind === "show") {
-      // Undo a restore → re-hide (mirror of handleNodeDelete live path)
-      const ref = action.canvasRef;
-      applyMutation(ref, (c) => removeNode(c, action.id));
-      await toggleLiveVisibility(githubLogin, ref, action.id, "hide");
-      if (!ref) {
-        refreshRootHiddenLive();
-      } else if (ref === currentRefRef.current) {
-        refreshHiddenLive();
-      }
-    }
-  }, [
-    markDirty,
-    applyMutation,
-    githubLogin,
-    handleRestoreLive,
-    refreshHiddenLive,
-    refreshRootHiddenLive,
-  ]);
-
-  // Ctrl-Z / Cmd-Z undo listener — scoped to canvas mount lifetime.
-  useEffect(() => {
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (!e.ctrlKey && !e.metaKey) return;
-      if (e.key !== "z") return;
-      // Don't intercept undo inside text inputs / rich-text editors
-      const tag = (e.target as HTMLElement).tagName;
-      if (
-        tag === "INPUT" ||
-        tag === "TEXTAREA" ||
-        (e.target as HTMLElement).isContentEditable
-      )
-        return;
-      e.preventDefault();
-      void handleUndo();
-    };
-    document.addEventListener("keydown", onKeyDown);
-    return () => document.removeEventListener("keydown", onKeyDown);
-  }, [handleUndo]);
 
   // Real-time canvas presence — cursors, selection halos, conflict flash
   const { collaborators } = useCanvasCollaboration({
@@ -2728,9 +2702,7 @@ export function OrgCanvasBackground({
       sourceNode: CanvasNode,
       targetCanvasRef: string,
     ) => {
-      // Step 1: optimistic remove from source canvas. `applyMutation`
-      // also stamps `lastActionRef` so Ctrl-Z restores the node to
-      // its pre-move position on the source canvas.
+      // Step 1: optimistic remove from source canvas.
       applyMutation(sourceCanvasRef, (c) => removeNode(c, sourceNode.id));
 
       // Step 2: read-modify-write add to target canvas. Direct fetch
@@ -3268,6 +3240,7 @@ export function OrgCanvasBackground({
           onNodeUpdate={handleNodeUpdate}
           onNodesUpdate={handleNodesUpdate}
           onNodeDelete={handleNodeDelete}
+          onNodesDelete={handleNodesDelete}
           onEdgeAdd={handleEdgeAdd}
           onEdgeUpdate={handleEdgeUpdate}
           onEdgeDelete={handleEdgeDelete}
