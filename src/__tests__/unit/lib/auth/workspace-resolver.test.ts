@@ -1,4 +1,4 @@
-import { mockData } from "@/__tests__/utils/test-helpers";
+import { mockData } from "@/__tests__/support/fixtures/mock-data";
 import {
   resolveUserWorkspaceRedirect,
   WORKSPACE_FREE_ROUTES,
@@ -6,6 +6,7 @@ import {
 import {
   getDefaultWorkspaceForUser,
   getUserWorkspaces,
+  getWorkspaceOrgGithubLogin,
 } from "@/services/workspace";
 import { Session } from "next-auth";
 import { beforeEach, describe, expect, test, vi } from "vitest";
@@ -13,10 +14,12 @@ import { beforeEach, describe, expect, test, vi } from "vitest";
 vi.mock("@/services/workspace", () => ({
   getDefaultWorkspaceForUser: vi.fn(),
   getUserWorkspaces: vi.fn(),
+  getWorkspaceOrgGithubLogin: vi.fn(),
 }));
 
 const mockedGetUserWorkspaces = vi.mocked(getUserWorkspaces);
 const mockedGetDefaultWorkspaceForUser = vi.mocked(getDefaultWorkspaceForUser);
+const mockedGetWorkspaceOrgGithubLogin = vi.mocked(getWorkspaceOrgGithubLogin);
 
 describe("resolveUserWorkspaceRedirect", () => {
   beforeEach(() => {
@@ -45,13 +48,35 @@ describe("resolveUserWorkspaceRedirect", () => {
       expect(mockedGetUserWorkspaces).toHaveBeenCalledWith("user1");
     });
 
-    test("should redirect to workspace when user has one workspace", async () => {
+    test("should redirect to org canvas when user has one workspace with org", async () => {
       const session = mockData.session("user1");
       const mockWorkspace = mockData.workspaceResponse({
+        id: "ws-1",
         slug: "test-workspace",
         ownerId: "user1",
       });
       mockedGetUserWorkspaces.mockResolvedValue([mockWorkspace]);
+      mockedGetWorkspaceOrgGithubLogin.mockResolvedValue("my-org");
+
+      const result = await resolveUserWorkspaceRedirect(session);
+
+      expect(result).toEqual({
+        shouldRedirect: true,
+        redirectUrl: "/org/my-org",
+        workspaceCount: 1,
+        defaultWorkspaceSlug: "test-workspace",
+      });
+    });
+
+    test("should fallback to /w/<slug> when user has one workspace without org", async () => {
+      const session = mockData.session("user1");
+      const mockWorkspace = mockData.workspaceResponse({
+        id: "ws-1",
+        slug: "test-workspace",
+        ownerId: "user1",
+      });
+      mockedGetUserWorkspaces.mockResolvedValue([mockWorkspace]);
+      mockedGetWorkspaceOrgGithubLogin.mockResolvedValue(null);
 
       const result = await resolveUserWorkspaceRedirect(session);
 
@@ -63,19 +88,48 @@ describe("resolveUserWorkspaceRedirect", () => {
       });
     });
 
-    test("should redirect to default workspace when user has multiple", async () => {
+    test("should redirect to org canvas for default workspace with org", async () => {
       const session = mockData.session("user1");
       const mockWorkspaces = mockData.workspaces(2, [
         { slug: "workspace-1", ownerId: "user1", userRole: "OWNER" },
         { slug: "workspace-2", ownerId: "user2", userRole: "DEVELOPER" },
       ]);
       const defaultWorkspace = mockData.workspaceResponse({
+        id: "ws2",
         slug: "workspace-2",
         ownerId: "user2",
       });
 
       mockedGetUserWorkspaces.mockResolvedValue(mockWorkspaces);
       mockedGetDefaultWorkspaceForUser.mockResolvedValue(defaultWorkspace);
+      mockedGetWorkspaceOrgGithubLogin.mockResolvedValue("stakwork");
+
+      const result = await resolveUserWorkspaceRedirect(session);
+
+      expect(result).toEqual({
+        shouldRedirect: true,
+        redirectUrl: "/org/stakwork",
+        workspaceCount: 2,
+        defaultWorkspaceSlug: "workspace-2",
+      });
+      expect(mockedGetDefaultWorkspaceForUser).toHaveBeenCalledWith("user1");
+    });
+
+    test("should fallback to /w/<slug> for default workspace without org", async () => {
+      const session = mockData.session("user1");
+      const mockWorkspaces = mockData.workspaces(2, [
+        { slug: "workspace-1", ownerId: "user1", userRole: "OWNER" },
+        { slug: "workspace-2", ownerId: "user2", userRole: "DEVELOPER" },
+      ]);
+      const defaultWorkspace = mockData.workspaceResponse({
+        id: "ws2",
+        slug: "workspace-2",
+        ownerId: "user2",
+      });
+
+      mockedGetUserWorkspaces.mockResolvedValue(mockWorkspaces);
+      mockedGetDefaultWorkspaceForUser.mockResolvedValue(defaultWorkspace);
+      mockedGetWorkspaceOrgGithubLogin.mockResolvedValue(null);
 
       const result = await resolveUserWorkspaceRedirect(session);
 
@@ -85,10 +139,9 @@ describe("resolveUserWorkspaceRedirect", () => {
         workspaceCount: 2,
         defaultWorkspaceSlug: "workspace-2",
       });
-      expect(mockedGetDefaultWorkspaceForUser).toHaveBeenCalledWith("user1");
     });
 
-    test("should fallback to first workspace when no default and POD_URL set", async () => {
+    test("should fallback to first workspace org canvas when no default and POD_URL set", async () => {
       const session = mockData.session("user1");
       const mockWorkspaces = mockData.workspaces(2, [
         { slug: "workspace-1", ownerId: "user1", userRole: "OWNER" },
@@ -97,12 +150,13 @@ describe("resolveUserWorkspaceRedirect", () => {
 
       mockedGetUserWorkspaces.mockResolvedValue(mockWorkspaces);
       mockedGetDefaultWorkspaceForUser.mockResolvedValue(null);
+      mockedGetWorkspaceOrgGithubLogin.mockResolvedValue("fallback-org");
 
       const result = await resolveUserWorkspaceRedirect(session);
 
       expect(result).toEqual({
         shouldRedirect: true,
-        redirectUrl: "/w/workspace-1",
+        redirectUrl: "/org/fallback-org",
         workspaceCount: 2,
         defaultWorkspaceSlug: "workspace-1",
       });
@@ -124,13 +178,35 @@ describe("resolveUserWorkspaceRedirect", () => {
       expect(mockedGetUserWorkspaces).toHaveBeenCalledWith("user1");
     });
 
-    test("should redirect to single workspace when user has exactly one", async () => {
+    test("should redirect to org canvas when user has exactly one workspace with org", async () => {
       const session = mockData.session("user1");
       const mockWorkspace = mockData.workspaceResponse({
+        id: "ws-1",
         slug: "test-workspace",
         ownerId: "user1",
       });
       mockedGetUserWorkspaces.mockResolvedValue([mockWorkspace]);
+      mockedGetWorkspaceOrgGithubLogin.mockResolvedValue("test-org");
+
+      const result = await resolveUserWorkspaceRedirect(session);
+
+      expect(result).toEqual({
+        shouldRedirect: true,
+        redirectUrl: "/org/test-org",
+        workspaceCount: 1,
+        defaultWorkspaceSlug: "test-workspace",
+      });
+    });
+
+    test("should fallback to /w/<slug> when user has exactly one workspace without org", async () => {
+      const session = mockData.session("user1");
+      const mockWorkspace = mockData.workspaceResponse({
+        id: "ws-1",
+        slug: "test-workspace",
+        ownerId: "user1",
+      });
+      mockedGetUserWorkspaces.mockResolvedValue([mockWorkspace]);
+      mockedGetWorkspaceOrgGithubLogin.mockResolvedValue(null);
 
       const result = await resolveUserWorkspaceRedirect(session);
 
@@ -142,7 +218,7 @@ describe("resolveUserWorkspaceRedirect", () => {
       });
     });
 
-    test("should redirect to default workspace when user has multiple", async () => {
+    test("should redirect to org canvas for default workspace with org", async () => {
       const session = mockData.session("user1");
       const mockWorkspaces = mockData.workspaces(2, [
         { slug: "workspace-1", ownerId: "user1", userRole: "OWNER" },
@@ -156,6 +232,34 @@ describe("resolveUserWorkspaceRedirect", () => {
 
       mockedGetUserWorkspaces.mockResolvedValue(mockWorkspaces);
       mockedGetDefaultWorkspaceForUser.mockResolvedValue(defaultWorkspace);
+      mockedGetWorkspaceOrgGithubLogin.mockResolvedValue("hive-org");
+
+      const result = await resolveUserWorkspaceRedirect(session);
+
+      expect(result).toEqual({
+        shouldRedirect: true,
+        redirectUrl: "/org/hive-org",
+        workspaceCount: 2,
+        defaultWorkspaceSlug: "workspace-2",
+      });
+      expect(mockedGetDefaultWorkspaceForUser).toHaveBeenCalledWith("user1");
+    });
+
+    test("should fallback to /w/<slug> for default workspace without org", async () => {
+      const session = mockData.session("user1");
+      const mockWorkspaces = mockData.workspaces(2, [
+        { slug: "workspace-1", ownerId: "user1", userRole: "OWNER" },
+        { slug: "workspace-2", ownerId: "user2", userRole: "DEVELOPER" },
+      ]);
+      const defaultWorkspace = mockData.workspaceResponse({
+        id: "ws2",
+        slug: "workspace-2",
+        ownerId: "user2",
+      });
+
+      mockedGetUserWorkspaces.mockResolvedValue(mockWorkspaces);
+      mockedGetDefaultWorkspaceForUser.mockResolvedValue(defaultWorkspace);
+      mockedGetWorkspaceOrgGithubLogin.mockResolvedValue(null);
 
       const result = await resolveUserWorkspaceRedirect(session);
 
@@ -165,10 +269,9 @@ describe("resolveUserWorkspaceRedirect", () => {
         workspaceCount: 2,
         defaultWorkspaceSlug: "workspace-2",
       });
-      expect(mockedGetDefaultWorkspaceForUser).toHaveBeenCalledWith("user1");
     });
 
-    test("should fallback to first workspace when no default workspace", async () => {
+    test("should redirect to org canvas for fallback first workspace with org", async () => {
       const session = mockData.session("user1");
       const mockWorkspaces = mockData.workspaces(2, [
         { slug: "workspace-1", ownerId: "user1", userRole: "OWNER" },
@@ -177,6 +280,28 @@ describe("resolveUserWorkspaceRedirect", () => {
 
       mockedGetUserWorkspaces.mockResolvedValue(mockWorkspaces);
       mockedGetDefaultWorkspaceForUser.mockResolvedValue(null);
+      mockedGetWorkspaceOrgGithubLogin.mockResolvedValue("first-org");
+
+      const result = await resolveUserWorkspaceRedirect(session);
+
+      expect(result).toEqual({
+        shouldRedirect: true,
+        redirectUrl: "/org/first-org",
+        workspaceCount: 2,
+        defaultWorkspaceSlug: "workspace-1",
+      });
+    });
+
+    test("should fallback to /w/<slug> for first workspace without org", async () => {
+      const session = mockData.session("user1");
+      const mockWorkspaces = mockData.workspaces(2, [
+        { slug: "workspace-1", ownerId: "user1", userRole: "OWNER" },
+        { slug: "workspace-2", ownerId: "user2", userRole: "DEVELOPER" },
+      ]);
+
+      mockedGetUserWorkspaces.mockResolvedValue(mockWorkspaces);
+      mockedGetDefaultWorkspaceForUser.mockResolvedValue(null);
+      mockedGetWorkspaceOrgGithubLogin.mockResolvedValue(null);
 
       const result = await resolveUserWorkspaceRedirect(session);
 
@@ -308,10 +433,27 @@ describe("resolveUserWorkspaceRedirect", () => {
       });
     });
 
-    test("should still apply workspace redirect normally when requestedPath is /settings but user has workspaces", async () => {
+    test("should still apply org redirect when requestedPath is /settings but user has a workspace with org", async () => {
       const session = mockData.session("user1");
-      const mockWorkspace = mockData.workspaceResponse({ slug: "my-workspace", ownerId: "user1" });
+      const mockWorkspace = mockData.workspaceResponse({ id: "ws-1", slug: "my-workspace", ownerId: "user1" });
       mockedGetUserWorkspaces.mockResolvedValue([mockWorkspace]);
+      mockedGetWorkspaceOrgGithubLogin.mockResolvedValue("settings-org");
+
+      const result = await resolveUserWorkspaceRedirect(session, '/settings');
+
+      expect(result).toEqual({
+        shouldRedirect: true,
+        redirectUrl: "/org/settings-org",
+        workspaceCount: 1,
+        defaultWorkspaceSlug: "my-workspace",
+      });
+    });
+
+    test("should still apply /w/<slug> redirect when requestedPath is /settings but user has workspace without org", async () => {
+      const session = mockData.session("user1");
+      const mockWorkspace = mockData.workspaceResponse({ id: "ws-1", slug: "my-workspace", ownerId: "user1" });
+      mockedGetUserWorkspaces.mockResolvedValue([mockWorkspace]);
+      mockedGetWorkspaceOrgGithubLogin.mockResolvedValue(null);
 
       const result = await resolveUserWorkspaceRedirect(session, '/settings');
 
@@ -371,29 +513,32 @@ describe("resolveUserWorkspaceRedirect", () => {
 
     test("should handle large workspace arrays without performance issues", async () => {
       const session = mockData.session("user1");
-      const mockWorkspaces = mockData.workspaces(100); // Large array test
-      const defaultWorkspace = mockData.workspaceResponse({ slug: "workspace-50" });
+      const mockWorkspaces = mockData.workspaces(100);
+      const defaultWorkspace = mockData.workspaceResponse({ id: "ws-50", slug: "workspace-50" });
 
       mockedGetUserWorkspaces.mockResolvedValue(mockWorkspaces);
       mockedGetDefaultWorkspaceForUser.mockResolvedValue(defaultWorkspace);
+      mockedGetWorkspaceOrgGithubLogin.mockResolvedValue("large-org");
 
       const result = await resolveUserWorkspaceRedirect(session);
 
       expect(result).toEqual({
         shouldRedirect: true,
-        redirectUrl: "/w/workspace-50",
+        redirectUrl: "/org/large-org",
         workspaceCount: 100,
         defaultWorkspaceSlug: "workspace-50",
       });
     });
 
-    test("should handle workspace with special characters in slug", async () => {
+    test("should handle workspace with special characters in slug (no org)", async () => {
       const session = mockData.session("user1");
       const mockWorkspace = mockData.workspaceResponse({
+        id: "ws-1",
         slug: "test-workspace-123",
         ownerId: "user1",
       });
       mockedGetUserWorkspaces.mockResolvedValue([mockWorkspace]);
+      mockedGetWorkspaceOrgGithubLogin.mockResolvedValue(null);
 
       const result = await resolveUserWorkspaceRedirect(session);
 
@@ -443,3 +588,5 @@ describe("resolveUserWorkspaceRedirect", () => {
     });
   });
 });
+
+
