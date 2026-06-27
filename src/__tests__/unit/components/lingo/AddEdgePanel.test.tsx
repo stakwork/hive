@@ -113,21 +113,22 @@ function makeNode(overrides: Partial<{
   };
 }
 
-// Helper: render open panel, schema returns empty, search returns given nodes
+// Helper: render open panel, listing returns empty, search returns given nodes
 async function renderWithSearch(nodes: ReturnType<typeof makeNode>[]) {
   vi.useFakeTimers({ shouldAdvanceTime: true });
 
   mockFetch
     .mockResolvedValueOnce({
       ok: true,
-      json: () => Promise.resolve({ node_types: [] }),
+      json: () => Promise.resolve({ data: { nodes: [], hasMore: false } }), // listing on open
     })
     .mockResolvedValueOnce({
       ok: true,
-      json: () => Promise.resolve({ data: nodes }),
+      json: () => Promise.resolve({ data: nodes }), // search after typing
     });
 
   render(<AddEdgePanel {...defaultProps} />);
+  await act(async () => { await Promise.resolve(); }); // let listing fetch settle
   fireEvent.change(screen.getByTestId("node-search-input"), {
     target: { value: "test" },
   });
@@ -147,77 +148,121 @@ async function renderWithSearch(nodes: ReturnType<typeof makeNode>[]) {
 // ─── Tests ─────────────────────────────────────────────────────────────────────
 
 describe("AddEdgePanel", () => {
-  describe("Schema loading", () => {
-    it("fetches schema on open", async () => {
+  it("does not render when closed", () => {
+    render(<AddEdgePanel {...defaultProps} isOpen={false} />);
+    expect(screen.queryByTestId("sheet")).not.toBeInTheDocument();
+  });
+
+  describe("Empty query on open", () => {
+    it("calls listing endpoint immediately on mount with isOpen: true", async () => {
       mockFetch.mockResolvedValueOnce({
         ok: true,
-        json: () => Promise.resolve({ node_types: ["Jargon", "Feature", "Task"] }),
+        json: () => Promise.resolve({ data: { nodes: [], hasMore: false } }),
       });
 
       render(<AddEdgePanel {...defaultProps} />);
 
       await waitFor(() => {
         expect(mockFetch).toHaveBeenCalledWith(
-          `/api/swarm/jarvis/schema?id=${defaultProps.workspaceId}`,
+          `/api/workspaces/${defaultProps.workspaceSlug}/lingo/nodes`,
         );
       });
     });
 
-    it("does not render when closed", () => {
-      render(<AddEdgePanel {...defaultProps} isOpen={false} />);
-      expect(screen.queryByTestId("sheet")).not.toBeInTheDocument();
-    });
-
-    it("populates node type dropdown with schema types", async () => {
+    it("does not call schema endpoint", async () => {
       mockFetch.mockResolvedValueOnce({
         ok: true,
-        json: () => Promise.resolve({ node_types: ["Jargon", "Feature"] }),
+        json: () => Promise.resolve({ data: { nodes: [], hasMore: false } }),
+      });
+
+      render(<AddEdgePanel {...defaultProps} />);
+      await act(async () => { await Promise.resolve(); });
+
+      const calls = mockFetch.mock.calls.map((c) => c[0] as string);
+      expect(calls.every((url) => !url.includes("schema"))).toBe(true);
+    });
+
+    it("renders results from listing data.nodes", async () => {
+      const node = makeNode({ ref_id: "listed-1", name: "Listed Node" });
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ data: { nodes: [node], hasMore: false } }),
       });
 
       render(<AddEdgePanel {...defaultProps} />);
 
       await waitFor(() => {
-        expect(screen.getByTestId("select-item-Feature")).toBeInTheDocument();
-      });
-    });
-  });
-
-  describe("Default 'All types' state", () => {
-    it("node-type select defaults to __all__ (All types)", async () => {
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: () => Promise.resolve({ node_types: [] }),
-      });
-
-      render(<AddEdgePanel {...defaultProps} />);
-
-      // The first select-wrapper rendered is the node-type select
-      const wrappers = screen.getAllByTestId("select-wrapper");
-      expect(wrappers[0]).toHaveAttribute("data-value", "__all__");
-    });
-
-    it("renders 'All types' SelectItem with __all__ value", async () => {
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: () => Promise.resolve({ node_types: [] }),
-      });
-
-      render(<AddEdgePanel {...defaultProps} />);
-
-      await waitFor(() => {
-        const allTypesItem = screen.getByTestId("select-item-__all__");
-        expect(allTypesItem).toBeInTheDocument();
-        expect(allTypesItem).toHaveTextContent("All types");
+        expect(screen.getByTestId("search-result-listed-1")).toBeInTheDocument();
       });
     });
 
-    it("search does not include type= param when selectedType is __all__", async () => {
+    it("re-fetches listing when input is cleared back to empty", async () => {
       vi.useFakeTimers({ shouldAdvanceTime: true });
 
       mockFetch
         .mockResolvedValueOnce({
           ok: true,
-          json: () => Promise.resolve({ node_types: [] }),
+          json: () => Promise.resolve({ data: { nodes: [], hasMore: false } }), // initial open
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({ data: [] }), // search call
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({ data: { nodes: [], hasMore: false } }), // re-fetch listing on clear
+        });
+
+      render(<AddEdgePanel {...defaultProps} />);
+      await act(async () => { await Promise.resolve(); });
+
+      // Type something to trigger search
+      fireEvent.change(screen.getByTestId("node-search-input"), { target: { value: "foo" } });
+      await act(async () => { vi.advanceTimersByTime(300); await Promise.resolve(); });
+
+      // Clear input → should re-fetch listing
+      fireEvent.change(screen.getByTestId("node-search-input"), { target: { value: "" } });
+      await act(async () => { await Promise.resolve(); });
+
+      const listingCalls = mockFetch.mock.calls.filter((c) =>
+        (c[0] as string).endsWith("/lingo/nodes"),
+      );
+      expect(listingCalls.length).toBeGreaterThanOrEqual(2);
+
+      vi.useRealTimers();
+    });
+  });
+
+  describe("Debounced search", () => {
+    it("does not fire search before 300ms", async () => {
+      vi.useFakeTimers({ shouldAdvanceTime: true });
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ data: { nodes: [], hasMore: false } }),
+      });
+
+      render(<AddEdgePanel {...defaultProps} />);
+      await act(async () => { await Promise.resolve(); });
+
+      const input = screen.getByTestId("node-search-input");
+      fireEvent.change(input, { target: { value: "test" } });
+
+      act(() => { vi.advanceTimersByTime(200); });
+
+      // Only the listing call; no search yet
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+
+      vi.useRealTimers();
+    });
+
+    it("fires search after 300ms debounce with q= and no type= param", async () => {
+      vi.useFakeTimers({ shouldAdvanceTime: true });
+
+      mockFetch
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({ data: { nodes: [], hasMore: false } }),
         })
         .mockResolvedValueOnce({
           ok: true,
@@ -225,9 +270,9 @@ describe("AddEdgePanel", () => {
         });
 
       render(<AddEdgePanel {...defaultProps} />);
-      fireEvent.change(screen.getByTestId("node-search-input"), {
-        target: { value: "pod" },
-      });
+      await act(async () => { await Promise.resolve(); });
+
+      fireEvent.change(screen.getByTestId("node-search-input"), { target: { value: "pod" } });
 
       await act(async () => {
         vi.advanceTimersByTime(300);
@@ -241,68 +286,6 @@ describe("AddEdgePanel", () => {
 
       vi.useRealTimers();
     });
-  });
-
-  describe("Debounced search", () => {
-    it("fires search after 300ms debounce with type when selectedType is set", async () => {
-      vi.useFakeTimers({ shouldAdvanceTime: true });
-
-      mockFetch
-        .mockResolvedValueOnce({
-          ok: true,
-          json: () => Promise.resolve({ node_types: ["Jargon"] }),
-        })
-        .mockResolvedValueOnce({
-          ok: true,
-          json: () =>
-            Promise.resolve({
-              data: [makeNode({ ref_id: "n1", name: "Pod" })],
-            }),
-        });
-
-      render(<AddEdgePanel {...defaultProps} />);
-
-      // Select "Lingo" type explicitly
-      await waitFor(() => screen.getByTestId("select-item-Lingo"));
-      fireEvent.click(screen.getByTestId("select-item-Lingo"));
-
-      const input = screen.getByTestId("node-search-input");
-      fireEvent.change(input, { target: { value: "pod" } });
-
-      await act(async () => {
-        vi.advanceTimersByTime(300);
-        await Promise.resolve();
-      });
-
-      await waitFor(() => {
-        const searchCall = mockFetch.mock.calls.find((c) =>
-          (c[0] as string).includes("lingo/nodes/search"),
-        );
-        expect(searchCall).toBeDefined();
-        expect(searchCall![0]).toContain("type=Lingo");
-      });
-
-      vi.useRealTimers();
-    });
-
-    it("does not fire search before 300ms", async () => {
-      vi.useFakeTimers({ shouldAdvanceTime: true });
-
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: () => Promise.resolve({ node_types: [] }),
-      });
-
-      render(<AddEdgePanel {...defaultProps} />);
-      const input = screen.getByTestId("node-search-input");
-      fireEvent.change(input, { target: { value: "test" } });
-
-      act(() => { vi.advanceTimersByTime(200); });
-
-      expect(mockFetch).toHaveBeenCalledTimes(1); // only schema
-
-      vi.useRealTimers();
-    });
 
     it("renders search results after search fires", async () => {
       vi.useFakeTimers({ shouldAdvanceTime: true });
@@ -310,7 +293,7 @@ describe("AddEdgePanel", () => {
       mockFetch
         .mockResolvedValueOnce({
           ok: true,
-          json: () => Promise.resolve({ node_types: [] }),
+          json: () => Promise.resolve({ data: { nodes: [], hasMore: false } }),
         })
         .mockResolvedValueOnce({
           ok: true,
@@ -321,6 +304,8 @@ describe("AddEdgePanel", () => {
         });
 
       render(<AddEdgePanel {...defaultProps} />);
+      await act(async () => { await Promise.resolve(); });
+
       fireEvent.change(screen.getByTestId("node-search-input"), {
         target: { value: "result" },
       });
@@ -336,10 +321,34 @@ describe("AddEdgePanel", () => {
 
       vi.useRealTimers();
     });
+
+    it("result card shows node_type badge (span.font-mono) and ref_id (p.font-mono)", async () => {
+      const node = makeNode({
+        ref_id: "badge-1",
+        name: "Badge Node",
+        node_type: "HiveFeature",
+        definition: null,
+        date_added_to_graph: 1750000000,
+      });
+
+      await renderWithSearch([node]);
+
+      const resultBtn = screen.getByTestId("search-result-badge-1");
+
+      // node_type badge is a span with font-mono
+      const badgeSpan = resultBtn.querySelector("span.font-mono");
+      expect(badgeSpan).toBeInTheDocument();
+      expect(badgeSpan).toHaveTextContent("HiveFeature");
+
+      // ref_id is a p with font-mono
+      const refIdP = resultBtn.querySelector("p.font-mono");
+      expect(refIdP).toBeInTheDocument();
+      expect(refIdP).toHaveTextContent("badge-1");
+    });
   });
 
   describe("Richer search result rows", () => {
-    it("displays bold name, node_type badge, definition, and relative date in result row", async () => {
+    it("displays bold name, node_type badge, ref_id, definition, and relative date in result row", async () => {
       const node = makeNode({
         ref_id: "rich-1",
         name: "Rich Node",
@@ -362,6 +371,11 @@ describe("AddEdgePanel", () => {
       const badgeSpan = resultBtn.querySelector("span.font-mono");
       expect(badgeSpan).toBeInTheDocument();
       expect(badgeSpan).toHaveTextContent("HiveFeature");
+
+      // ref_id
+      const refIdP = resultBtn.querySelector("p.font-mono");
+      expect(refIdP).toBeInTheDocument();
+      expect(refIdP).toHaveTextContent("rich-1");
 
       // Definition text
       expect(resultBtn).toHaveTextContent("A short definition");
@@ -392,10 +406,34 @@ describe("AddEdgePanel", () => {
       await renderWithSearch([node]);
 
       const resultBtn = screen.getByTestId("search-result-no-def-1");
-      // Should have name and relative date but no definition <p>
-      const paragraphs = resultBtn.querySelectorAll("p");
-      // Only the relative date paragraph, no definition paragraph
-      expect(paragraphs).toHaveLength(1);
+      // p.font-mono is ref_id; the non-mono p is relative date; no definition p
+      const allParagraphs = resultBtn.querySelectorAll("p");
+      // ref_id (font-mono) + relative date = 2 paragraphs, no definition
+      expect(allParagraphs).toHaveLength(2);
+    });
+  });
+
+  describe("Lingo → Lingo RELATED_TO", () => {
+    it("RELATED_TO is available when a Lingo node is selected as target", async () => {
+      const lingoNode = makeNode({ ref_id: "lingo-target-1", name: "Lingo Target", node_type: "Lingo" });
+      await renderWithSearch([lingoNode]);
+
+      fireEvent.click(screen.getByTestId("search-result-lingo-target-1"));
+
+      await waitFor(() => {
+        expect(screen.getByTestId("select-item-RELATED_TO")).toBeInTheDocument();
+      });
+    });
+
+    it("HAS_DEFINITION is absent when a Lingo node is selected (EDGE_TYPE_MAP filtering)", async () => {
+      const lingoNode = makeNode({ ref_id: "lingo-target-2", name: "Lingo Target 2", node_type: "Lingo" });
+      await renderWithSearch([lingoNode]);
+
+      fireEvent.click(screen.getByTestId("search-result-lingo-target-2"));
+
+      await waitFor(() => {
+        expect(screen.queryByTestId("select-item-HAS_DEFINITION")).not.toBeInTheDocument();
+      });
     });
   });
 
@@ -403,11 +441,11 @@ describe("AddEdgePanel", () => {
     it("shows all COMMON_EDGE_TYPES when no target is selected", async () => {
       mockFetch.mockResolvedValueOnce({
         ok: true,
-        json: () => Promise.resolve({ node_types: [] }),
+        json: () => Promise.resolve({ data: { nodes: [], hasMore: false } }),
       });
 
       render(<AddEdgePanel {...defaultProps} />);
-      await waitFor(() => expect(mockFetch).toHaveBeenCalledTimes(1));
+      await act(async () => { await Promise.resolve(); });
 
       const commonEdgeTypes = ["RELATED_TO", "PART_OF", "DEPENDS_ON", "SYNONYM_OF", "EXTENDS", "HAS_DEFINITION", "SUPERSEDES"];
       for (const t of commonEdgeTypes) {
@@ -447,10 +485,12 @@ describe("AddEdgePanel", () => {
       const lingoNode = makeNode({ ref_id: "lingo-2", name: "Lingo Node", node_type: "Lingo" });
 
       mockFetch
-        .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ node_types: [] }) })
+        .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ data: { nodes: [], hasMore: false } }) })
         .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ data: [jdNode, lingoNode] }) });
 
       render(<AddEdgePanel {...defaultProps} />);
+      await act(async () => { await Promise.resolve(); });
+
       fireEvent.change(screen.getByTestId("node-search-input"), { target: { value: "node" } });
 
       await act(async () => {
@@ -462,9 +502,8 @@ describe("AddEdgePanel", () => {
       // Select JargonDefinition → edgeType should be HAS_DEFINITION
       fireEvent.click(screen.getByTestId("search-result-jd-2"));
       await waitFor(() => {
-        // edge type select-wrapper (second one) should have value HAS_DEFINITION
         const wrappers = screen.getAllByTestId("select-wrapper");
-        const edgeWrapper = wrappers[1];
+        const edgeWrapper = wrappers[0]; // only one select now (edge-type)
         expect(edgeWrapper).toHaveAttribute("data-value", "HAS_DEFINITION");
       });
 
@@ -472,7 +511,7 @@ describe("AddEdgePanel", () => {
       fireEvent.click(screen.getByTestId("search-result-lingo-2"));
       await waitFor(() => {
         const wrappers = screen.getAllByTestId("select-wrapper");
-        const edgeWrapper = wrappers[1];
+        const edgeWrapper = wrappers[0];
         expect(edgeWrapper).toHaveAttribute("data-value", "RELATED_TO");
       });
 
@@ -540,12 +579,12 @@ describe("AddEdgePanel", () => {
     it("confirm button is disabled when no target selected", async () => {
       mockFetch.mockResolvedValueOnce({
         ok: true,
-        json: () => Promise.resolve({ node_types: [] }),
+        json: () => Promise.resolve({ data: { nodes: [], hasMore: false } }),
       });
 
       render(<AddEdgePanel {...defaultProps} />);
+      await act(async () => { await Promise.resolve(); });
 
-      await waitFor(() => expect(mockFetch).toHaveBeenCalledTimes(1));
       expect(screen.getByTestId("confirm-add-edge")).toBeDisabled();
     });
 
@@ -555,7 +594,7 @@ describe("AddEdgePanel", () => {
       mockFetch
         .mockResolvedValueOnce({
           ok: true,
-          json: () => Promise.resolve({ node_types: [] }),
+          json: () => Promise.resolve({ data: { nodes: [], hasMore: false } }),
         })
         .mockResolvedValueOnce({
           ok: true,
@@ -567,12 +606,18 @@ describe("AddEdgePanel", () => {
         .mockResolvedValueOnce({
           ok: true,
           json: () => Promise.resolve({ success: true }),
+        })
+        // handleClose resets searchQuery → "" → re-fetches listing
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({ data: { nodes: [], hasMore: false } }),
         });
 
       const onEdgeCreated = vi.fn();
       const onClose = vi.fn();
 
       render(<AddEdgePanel {...defaultProps} onEdgeCreated={onEdgeCreated} onClose={onClose} />);
+      await act(async () => { await Promise.resolve(); });
 
       fireEvent.change(screen.getByTestId("node-search-input"), {
         target: { value: "target" },
@@ -616,7 +661,7 @@ describe("AddEdgePanel", () => {
       mockFetch
         .mockResolvedValueOnce({
           ok: true,
-          json: () => Promise.resolve({ node_types: [] }),
+          json: () => Promise.resolve({ data: { nodes: [], hasMore: false } }),
         })
         .mockResolvedValueOnce({
           ok: true,
@@ -631,6 +676,8 @@ describe("AddEdgePanel", () => {
         });
 
       render(<AddEdgePanel {...defaultProps} />);
+      await act(async () => { await Promise.resolve(); });
+
       fireEvent.change(screen.getByTestId("node-search-input"), { target: { value: "T1" } });
 
       await act(async () => {
