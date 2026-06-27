@@ -49,7 +49,7 @@ export function AddEdgePanel({
   onEdgeCreated,
 }: AddEdgePanelProps) {
   const [nodeTypes, setNodeTypes] = useState<string[]>([]);
-  const [selectedType, setSelectedType] = useState<string>("");
+  const [selectedType, setSelectedType] = useState<string>("__all__");
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<LingoNode[]>([]);
   const [targetNode, setTargetNode] = useState<LingoNode | null>(null);
@@ -96,7 +96,7 @@ export function AddEdgePanel({
       setIsSearching(true);
       try {
         const params = new URLSearchParams({ q: searchQuery });
-        if (selectedType) params.set("type", selectedType);
+        if (selectedType !== "__all__") params.set("type", selectedType);
         const res = await fetch(
           `/api/workspaces/${workspaceSlug}/lingo/nodes/search?${params}`,
         );
@@ -164,7 +164,7 @@ export function AddEdgePanel({
                 <SelectValue placeholder="Any type" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="">All types</SelectItem>
+                <SelectItem value="__all__">All types</SelectItem>
                 <SelectItem value="Lingo">Lingo</SelectItem>
                 {nodeTypes
                   .filter((t) => t !== "Lingo")
