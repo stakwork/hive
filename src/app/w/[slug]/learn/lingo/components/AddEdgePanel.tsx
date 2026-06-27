@@ -48,8 +48,6 @@ export function AddEdgePanel({
   onClose,
   onEdgeCreated,
 }: AddEdgePanelProps) {
-  const [nodeTypes, setNodeTypes] = useState<string[]>([]);
-  const [selectedType, setSelectedType] = useState<string>("__all__");
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<LingoNode[]>([]);
   const [targetNode, setTargetNode] = useState<LingoNode | null>(null);
@@ -63,20 +61,6 @@ export function AddEdgePanel({
     ? (EDGE_TYPE_MAP[targetNode.node_type] ?? ["RELATED_TO"])
     : COMMON_EDGE_TYPES;
 
-  // Load schema on open
-  useEffect(() => {
-    if (!isOpen) return;
-    fetch(`/api/swarm/jarvis/schema?id=${workspaceId}`)
-      .then((r) => r.json())
-      .then((data) => {
-        const types: string[] = data?.node_types ?? data?.types ?? [];
-        if (types.length > 0) setNodeTypes(types);
-      })
-      .catch(() => {
-        // silently ignore schema load failures
-      });
-  }, [isOpen, workspaceId]);
-
   // Reset edgeType when targetNode changes
   useEffect(() => {
     if (targetNode) {
@@ -85,20 +69,26 @@ export function AddEdgePanel({
     }
   }, [targetNode]);
 
-  // Debounced search
+  // Search: empty query loads recent nodes from listing; typed query debounces to search endpoint
   useEffect(() => {
+    if (!isOpen) return;
     if (debounceRef.current) clearTimeout(debounceRef.current);
+
     if (!searchQuery.trim()) {
-      setSearchResults([]);
+      setIsSearching(true);
+      fetch(`/api/workspaces/${workspaceSlug}/lingo/nodes`)
+        .then((r) => r.json())
+        .then((json) => setSearchResults(Array.isArray(json.data?.nodes) ? json.data.nodes : []))
+        .catch(() => setSearchResults([]))
+        .finally(() => setIsSearching(false));
       return;
     }
+
     debounceRef.current = setTimeout(async () => {
       setIsSearching(true);
       try {
-        const params = new URLSearchParams({ q: searchQuery });
-        if (selectedType !== "__all__") params.set("type", selectedType);
         const res = await fetch(
-          `/api/workspaces/${workspaceSlug}/lingo/nodes/search?${params}`,
+          `/api/workspaces/${workspaceSlug}/lingo/nodes/search?q=${encodeURIComponent(searchQuery)}`,
         );
         const data = await res.json();
         setSearchResults(Array.isArray(data?.data) ? data.data : []);
@@ -108,10 +98,11 @@ export function AddEdgePanel({
         setIsSearching(false);
       }
     }, 300);
+
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
     };
-  }, [searchQuery, selectedType, workspaceSlug]);
+  }, [isOpen, searchQuery, workspaceSlug]);
 
   function handleClose() {
     setSearchQuery("");
@@ -156,27 +147,6 @@ export function AddEdgePanel({
         </SheetHeader>
 
         <div className="flex-1 overflow-y-auto px-6 py-4 flex flex-col gap-4">
-          {/* Node type filter */}
-          <div className="flex flex-col gap-1.5">
-            <label className="text-sm font-medium">Node type</label>
-            <Select value={selectedType} onValueChange={setSelectedType}>
-              <SelectTrigger data-testid="node-type-select">
-                <SelectValue placeholder="Any type" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="__all__">All types</SelectItem>
-                <SelectItem value="Lingo">Lingo</SelectItem>
-                {nodeTypes
-                  .filter((t) => t !== "Lingo")
-                  .map((t) => (
-                    <SelectItem key={t} value={t}>
-                      {t}
-                    </SelectItem>
-                  ))}
-              </SelectContent>
-            </Select>
-          </div>
-
           {/* Search */}
           <div className="flex flex-col gap-1.5">
             <label className="text-sm font-medium">Search for a node</label>
@@ -217,6 +187,7 @@ export function AddEdgePanel({
                     <span className="ml-2 rounded px-1.5 py-0.5 text-xs bg-muted text-muted-foreground font-mono">
                       {result.node_type}
                     </span>
+                    <p className="mt-0.5 text-xs text-muted-foreground/60 font-mono">{result.ref_id}</p>
                     {result.definition && (
                       <p className="mt-0.5 text-xs text-muted-foreground truncate">
                         {result.definition.length > 80
