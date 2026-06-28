@@ -73,13 +73,21 @@ export async function GET(
 
     const data = await response.json();
     const rawNodes = Array.isArray(data) ? data : (data?.nodes ?? []);
-    const nodes = rawNodes.map((n: Record<string, unknown>) => ({
-      ref_id: n.ref_id,
-      node_type: n.node_type,
-      name: (n.title ?? n.name ?? "") as string,
-      definition: (n.definition ?? null) as string | null,
-      date_added_to_graph: (n.date_added_to_graph ?? 0) as number,
-    }));
+    const nodes = rawNodes
+      .filter((n: Record<string, unknown>) => {
+        if (!n?.ref_id) {
+          console.warn("[Lingo nodes/search] Dropping item missing ref_id", n);
+          return false;
+        }
+        return true;
+      })
+      .map((n: Record<string, unknown>) => ({
+        ref_id: n.ref_id,
+        node_type: n.node_type,
+        name: (n.title ?? n.name ?? "") as string,
+        definition: (n.definition ?? null) as string | null,
+        date_added_to_graph: (n.date_added_to_graph ?? 0) as number,
+      }));
     return NextResponse.json({ success: true, data: nodes });
   } catch (err) {
     console.error("[Lingo nodes/search] Jarvis fetch failed", err);

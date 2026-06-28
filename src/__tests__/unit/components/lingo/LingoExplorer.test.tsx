@@ -632,6 +632,33 @@ describe("LingoExplorer", () => {
       expect(screen.queryByTestId("new-lingo-node-button")).not.toBeInTheDocument();
     });
 
+    it("renders without crash when a node is missing ref_id (key falls back to name)", async () => {
+      mockFetch
+        .mockResolvedValueOnce(
+          new Response(
+            JSON.stringify({
+              success: true,
+              data: {
+                nodes: [
+                  { ref_id: "valid-ref", name: "Valid Term", node_type: "Lingo", definition: null, date_added_to_graph: 1750000000 },
+                  // malformed: no ref_id, but has name for key fallback
+                  { name: "No Ref Term", node_type: "Lingo", definition: null, date_added_to_graph: 1749000000 },
+                ],
+                hasMore: false,
+              },
+            }),
+            { status: 200 },
+          ),
+        );
+
+      expect(() => render(<LingoExplorer workspaceSlug={SLUG} />)).not.toThrow();
+
+      // Valid node still renders
+      await waitFor(() =>
+        expect(screen.getByTestId("lingo-card-valid-ref")).toBeInTheDocument(),
+      );
+    });
+
     it("handleNodeCreated prepends node to list and navigates to detail view", async () => {
       mockFetch
         .mockResolvedValueOnce({
