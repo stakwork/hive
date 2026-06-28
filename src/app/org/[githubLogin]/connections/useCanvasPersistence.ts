@@ -54,6 +54,7 @@ interface UseCanvasPersistenceReturn {
   subCanvases: Record<string, CanvasData>;
   setSubCanvases: React.Dispatch<React.SetStateAction<Record<string, CanvasData>>>;
   loadError: string | null;
+  retryLoad: () => void;
   rootRef: React.RefObject<CanvasData | null>;
   subCanvasesRef: React.RefObject<Record<string, CanvasData>>;
   dirtyRef: React.RefObject<DirtyMap>;
@@ -140,6 +141,16 @@ export function useCanvasPersistence({
     };
   }, [githubLogin]);
 
+  const retryLoad = useCallback(() => {
+    setLoadError(null);
+    fetchRoot(githubLogin)
+      .then((data) => setRoot(data))
+      .catch((err) => {
+        console.error("[useCanvasPersistence] retry load failed", err);
+        setLoadError("Failed to load canvas");
+      });
+  }, [githubLogin]);
+
   const applyMutation = useCallback(
     (
       canvasRef: string | undefined,
@@ -179,6 +190,7 @@ export function useCanvasPersistence({
     subCanvases,
     setSubCanvases,
     loadError,
+    retryLoad,
     rootRef,
     subCanvasesRef,
     dirtyRef,

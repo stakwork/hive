@@ -37,6 +37,8 @@ import { useCanvasChatStore } from "../_state/canvasChatStore";
 import { useSession } from "next-auth/react";
 import { useCanvasCollaboration } from "@/hooks/useCanvasCollaboration";
 import { toast } from "sonner";
+import { Spinner } from "@/components/ui/spinner";
+import { Button } from "@/components/ui/button";
 import { computeNodeFocusZoom } from "@/lib/canvas/nodeZoom";
 import { isLiveId } from "@/lib/canvas";
 import {
@@ -210,6 +212,7 @@ export function OrgCanvasBackground({
     subCanvases,
     setSubCanvases,
     loadError,
+    retryLoad,
     rootRef,
     subCanvasesRef,
     dirtyRef,
@@ -1151,13 +1154,22 @@ export function OrgCanvasBackground({
   };
 
   if (loadError) {
-    // Fail quiet: the canvas is a background; if it can't load, fall back
-    // to a plain dark surface rather than blocking the page.
-    return <div className="absolute inset-0 bg-[#15171c]" aria-hidden />;
+    return (
+      <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 bg-[#15171c]">
+        <p className="text-sm text-muted-foreground">Failed to load canvas</p>
+        <Button variant="outline" size="sm" onClick={retryLoad}>
+          Retry
+        </Button>
+      </div>
+    );
   }
 
   if (!root) {
-    return <div className="absolute inset-0 bg-[#15171c]" aria-hidden />;
+    return (
+      <div className="absolute inset-0 flex items-center justify-center bg-[#15171c]">
+        <Spinner className="size-6 text-muted-foreground" />
+      </div>
+    );
   }
 
   return (

@@ -9,6 +9,7 @@ import {
   type CanvasNode,
   type NodeUpdate,
 } from "system-canvas-react";
+import { toast } from "sonner";
 import { isLiveId } from "@/lib/canvas";
 import { toggleLiveVisibility } from "./useCanvasHiddenLive";
 import { fetchRoot, fetchSub } from "./useCanvasPersistence";
@@ -492,6 +493,7 @@ export function useCanvasNodeOps({
           "[OrgCanvasBackground] create initiative failed",
           res.status,
         );
+        toast.error("Failed to create initiative");
         return;
       }
       const created: InitiativeResponse = await res.json();
@@ -615,6 +617,7 @@ export function useCanvasNodeOps({
           res.status,
           detail,
         );
+        toast.error("Failed to create feature");
         return;
       }
       const payload = await res.json();
@@ -794,6 +797,7 @@ export function useCanvasNodeOps({
           res.status,
           detail,
         );
+        toast.error("Failed to assign feature");
         return;
       }
 
@@ -843,12 +847,14 @@ export function useCanvasNodeOps({
           console.error(
             `[OrgCanvasBackground] PATCH milestone status failed (${res.status})`,
           );
+          toast.error("Failed to update milestone status");
         }
       } catch (err) {
         console.error(
           "[OrgCanvasBackground] PATCH milestone status threw",
           err,
         );
+        toast.error("Failed to update milestone status");
       }
     },
     [githubLogin],
@@ -872,12 +878,14 @@ export function useCanvasNodeOps({
             res.status,
             detail,
           );
+          toast.error("Failed to rename milestone");
         }
       } catch (err) {
         console.error(
           "[OrgCanvasBackground] PATCH milestone name threw",
           err,
         );
+        toast.error("Failed to rename milestone");
       }
     },
     [githubLogin],
@@ -911,9 +919,11 @@ export function useCanvasNodeOps({
             res.status,
             detail,
           );
+          toast.error("Failed to rename feature");
         }
       } catch (err) {
         console.error("[OrgCanvasBackground] PATCH feature title threw", err);
+        toast.error("Failed to rename feature");
       }
     },
     [],
