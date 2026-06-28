@@ -177,6 +177,22 @@ export function SidebarChat({ githubLogin }: SidebarChatProps) {
       undefined,
       0,
     );
+    // Drop the stale `?chat=<id>` deep link so a reload/preload doesn't
+    // re-adopt the conversation we just left. `history.replaceState`
+    // (NOT `router.replace`) to avoid a Next navigation / RSC refetch on
+    // this `protected` route — same reasoning as `setUrlSlug` (`?c=`) and
+    // `setUrlResearchSlug` (`?r=`) in OrgCanvasView, and the `?chat=`
+    // writer in useSendCanvasChatMessage.
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      params.delete("chat");
+      const qs = params.toString();
+      window.history.replaceState(
+        null,
+        "",
+        `${window.location.pathname}${qs ? `?${qs}` : ""}`,
+      );
+    }
   };
 
   const handleShare = async () => {

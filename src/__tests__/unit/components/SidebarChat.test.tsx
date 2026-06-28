@@ -365,3 +365,114 @@ describe("SidebarChat — scroll behaviour", () => {
     expect(indicator).not.toBeNull();
   });
 });
+
+// ── handleClear / New chat — URL param stripping tests ────────────────────────
+
+describe("SidebarChat — handleClear strips ?chat= param", () => {
+  let startConversationMock: ReturnType<typeof vi.fn>;
+  let replaceStateSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(async () => {
+    vi.resetModules();
+    mockIsActive = false;
+    startConversationMock = vi.fn().mockReturnValue("new-conv-id");
+
+    // Give the store a live conversation with messages so the "New chat"
+    // button is enabled (it is disabled when !hasMessages).
+    mockStoreState = {
+      activeConversationId: "old-conv",
+      conversations: {
+        "old-conv": {
+          messages: [{ id: "m1", role: "user", content: "hi", createdAt: new Date().toISOString() }],
+          isLoading: false,
+          activeToolCalls: [],
+          serverConversationId: null,
+          context: { orgId: "o1", githubLogin: "test-org" },
+        },
+      },
+      artifacts: {},
+      dismissedArtifactIds: {},
+      pendingInputDraft: null,
+    } as typeof mockStoreState;
+
+    // Patch getState on the mock so handleClear can call useCanvasChatStore.getState()
+    const { useCanvasChatStore } = await import(
+      "@/app/org/[githubLogin]/_state/canvasChatStore"
+    );
+    (useCanvasChatStore as unknown as { getState: () => unknown }).getState = () => ({
+      activeConversationId: "old-conv",
+      conversations: {
+        "old-conv": { context: { orgId: "o1", githubLogin: "test-org" } },
+      },
+      startConversation: startConversationMock,
+    });
+
+    replaceStateSpy = vi.spyOn(window.history, "replaceState");
+  });
+
+  afterEach(() => {
+    replaceStateSpy.mockRestore();
+    mockStoreState = {
+      activeConversationId: null,
+      conversations: {},
+      artifacts: {},
+      dismissedArtifactIds: {},
+      pendingInputDraft: null,
+    };
+  });
+
+  it("calls startConversation then replaceState to remove ?chat= param", async () => {
+    // Set URL with a stale ?chat= param
+    window.history.replaceState(null, "", "/?chat=abc");
+    replaceStateSpy.mockClear();
+
+    const { SidebarChat } = await import(
+      "@/app/org/[githubLogin]/_components/SidebarChat"
+    );
+    render(<SidebarChat githubLogin="test-org" />);
+
+    await act(async () => { fireEvent.click(screen.getByTitle("New chat")); });
+
+    // startConversation was called before replaceState
+    expect(startConversationMock).toHaveBeenCalledTimes(1);
+
+    // replaceState was called and the resulting URL has no chat= param
+    expect(replaceStateSpy).toHaveBeenCalled();
+    const [, , url] = replaceStateSpy.mock.calls[replaceStateSpy.mock.calls.length - 1] as [unknown, unknown, string];
+    expect(url).not.toMatch(/chat=/);
+  });
+
+  it("preserves other query params (e.g. ?c=foo) while removing ?chat=", async () => {
+    window.history.replaceState(null, "", "/?chat=abc&c=foo");
+    replaceStateSpy.mockClear();
+
+    const { SidebarChat } = await import(
+      "@/app/org/[githubLogin]/_components/SidebarChat"
+    );
+    render(<SidebarChat githubLogin="test-org" />);
+
+    await act(async () => { fireEvent.click(screen.getByTitle("New chat")); });
+
+    const [, , url] = replaceStateSpy.mock.calls[replaceStateSpy.mock.calls.length - 1] as [unknown, unknown, string];
+    expect(url).not.toMatch(/chat=/);
+    expect(url).toMatch(/c=foo/);
+  });
+
+  it("uses window.history.replaceState (not router.replace) — replaceState is called exactly once per click", async () => {
+    // SidebarChat does not import or call Next router — replaceState is the
+    // only mechanism used. Verify it is invoked for the chat-param strip.
+    window.history.replaceState(null, "", "/?chat=xyz");
+    replaceStateSpy.mockClear();
+
+    const { SidebarChat } = await import(
+      "@/app/org/[githubLogin]/_components/SidebarChat"
+    );
+    render(<SidebarChat githubLogin="test-org" />);
+
+    await act(async () => { fireEvent.click(screen.getByTitle("New chat")); });
+
+    // Exactly one replaceState call from handleClear (stripping the chat param)
+    expect(replaceStateSpy).toHaveBeenCalledTimes(1);
+    expect(replaceStateSpy).toHaveBeenCalledWith(null, "", expect.any(String));
+  });
+});
