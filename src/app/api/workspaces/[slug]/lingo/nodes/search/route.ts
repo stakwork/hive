@@ -58,7 +58,7 @@ export async function GET(
   if (type) queryParams.set("type", type);
 
   try {
-    const response = await fetch(`${jarvisUrl}/nodes/search?${queryParams}`, {
+    const response = await fetch(`${jarvisUrl}/v2/nodes/search?${queryParams}`, {
       method: "GET",
       headers: {
         "x-api-token": swarmApiKey,
