@@ -43,7 +43,7 @@ const EDGE_TYPE_MAP: Record<string, string[]> = {
 export function AddEdgePanel({
   sourceRefId,
   workspaceSlug,
-  workspaceId,
+  workspaceId: _workspaceId,
   isOpen,
   onClose,
   onEdgeCreated,
@@ -69,7 +69,7 @@ export function AddEdgePanel({
     }
   }, [targetNode]);
 
-  // Search: empty query loads recent nodes from listing; typed query debounces to search endpoint
+  // Search effect: empty query loads recent nodes from listing; typed query debounces to search
   useEffect(() => {
     if (!isOpen) return;
     if (debounceRef.current) clearTimeout(debounceRef.current);
@@ -98,7 +98,6 @@ export function AddEdgePanel({
         setIsSearching(false);
       }
     }, 300);
-
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
     };
