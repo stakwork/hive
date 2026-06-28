@@ -92,6 +92,8 @@ export function usePlanPresence({
 
     let channel: ReturnType<ReturnType<typeof getPusherClient>["subscribe"]> | null = null;
     let pusherClient: ReturnType<typeof getPusherClient> | null = null;
+    let heartbeatInterval: ReturnType<typeof setInterval> | null = null;
+    let visibilityHandler: (() => void) | null = null;
 
     try {
       pusherClient = getPusherClient();
@@ -148,6 +150,25 @@ export function usePlanPresence({
       channel.bind(PUSHER_EVENTS.PLAN_TYPING_STOP, handleTypingStop);
 
       sendJoin();
+
+      const sendHeartbeat = () => {
+        if (document.visibilityState !== "visible") return;
+        fetch(presenceUrl, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ type: "heartbeat" }),
+        }).catch(() => {});
+      };
+
+      heartbeatInterval = setInterval(sendHeartbeat, 30_000);
+
+      visibilityHandler = () => {
+        if (document.visibilityState !== "visible" && heartbeatInterval) {
+          clearInterval(heartbeatInterval);
+          heartbeatInterval = null;
+        }
+      };
+      document.addEventListener("visibilitychange", visibilityHandler);
     } catch {
       // Pusher not configured in this environment
       return;
@@ -166,6 +187,8 @@ export function usePlanPresence({
 
     return () => {
       window.removeEventListener("beforeunload", sendLeaveBeacon);
+      if (heartbeatInterval) clearInterval(heartbeatInterval);
+      if (visibilityHandler) document.removeEventListener("visibilitychange", visibilityHandler);
       channel?.unbind_all();
       if (pusherClient && channel) {
         const channelName = getFeatureChannelName(featureId);
