@@ -47,6 +47,33 @@ export async function createAndSendNotification(input: {
       }),
     ]);
 
+    // 1b. Self-assignment suppression — skip if originator === target for assignment types
+    if (
+      input.originatingUserId &&
+      input.originatingUserId === input.targetUserId &&
+      (input.notificationType === NotificationTriggerType.TASK_ASSIGNED ||
+        input.notificationType === NotificationTriggerType.FEATURE_ASSIGNED)
+    ) {
+      await db.notificationTrigger.create({
+        data: {
+          targetUserId: input.targetUserId,
+          originatingUserId: input.originatingUserId,
+          taskId,
+          featureId,
+          notificationType: input.notificationType,
+          status: NotificationTriggerStatus.SUPPRESSED,
+          notificationMethod: NotificationMethod.SPHINX,
+          notificationTimestamps: [],
+        },
+      });
+      logger.info(
+        `[Notifications] Suppressed ${input.notificationType} — self-assignment`,
+        "NOTIFICATIONS",
+        { userId: input.targetUserId }
+      );
+      return;
+    }
+
     // 2. Preference gate — skip if the user has disabled this notification type
     if (!isNotificationEnabled(targetUser?.notificationPreferences, input.notificationType)) {
       await db.notificationTrigger.create({
@@ -67,6 +94,34 @@ export async function createAndSendNotification(input: {
         { targetUserId: input.targetUserId, taskId, featureId }
       );
       return;
+    }
+
+    // 2b. Presence suppression — skip if recipient is actively viewing this feature
+    if (featureId) {
+      const presence = await db.userFeaturePresence.findUnique({
+        where: { userId_featureId: { userId: input.targetUserId, featureId } },
+        select: { lastSeenAt: true },
+      });
+      if (presence && presence.lastSeenAt > new Date(Date.now() - 5 * 60 * 1000)) {
+        await db.notificationTrigger.create({
+          data: {
+            targetUserId: input.targetUserId,
+            originatingUserId: input.originatingUserId ?? null,
+            taskId,
+            featureId,
+            notificationType: input.notificationType,
+            status: NotificationTriggerStatus.SUPPRESSED,
+            notificationMethod: NotificationMethod.SPHINX,
+            notificationTimestamps: [],
+          },
+        });
+        logger.info(
+          `[Notifications] Suppressed ${input.notificationType} — user actively present`,
+          "NOTIFICATIONS",
+          { targetUserId: input.targetUserId, featureId }
+        );
+        return;
+      }
     }
 
     // 3. Idempotency check — skip if PENDING or FAILED record already exists.
