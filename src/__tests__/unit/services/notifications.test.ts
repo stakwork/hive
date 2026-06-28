@@ -31,6 +31,7 @@ let create: ReturnType<typeof vi.fn>;
 let update: ReturnType<typeof vi.fn>;
 let userFindUnique: ReturnType<typeof vi.fn>;
 let workspaceFindUnique: ReturnType<typeof vi.fn>;
+let presenceFindUnique: ReturnType<typeof vi.fn>;
 
 const baseInput = {
   targetUserId: "user-1",
@@ -71,11 +72,13 @@ describe("createAndSendNotification", () => {
     update = vi.fn();
     userFindUnique = vi.fn();
     workspaceFindUnique = vi.fn();
+    presenceFindUnique = vi.fn().mockResolvedValue(null); // default: no presence row
 
     Object.assign(db, {
       notificationTrigger: { findFirst, create, update },
       user: { findUnique: userFindUnique },
       workspace: { findUnique: workspaceFindUnique },
+      userFeaturePresence: { findUnique: presenceFindUnique },
     });
 
     mockedIsDirectMessageConfigured.mockReturnValue(true);
@@ -423,6 +426,149 @@ describe("createAndSendNotification", () => {
           data: expect.objectContaining({ status: NotificationTriggerStatus.PENDING }),
         })
       );
+    });
+  });
+
+  describe("self-assignment suppression", () => {
+    it("suppresses TASK_ASSIGNED when originatingUserId === targetUserId", async () => {
+      userFindUnique.mockResolvedValue(userWithPubkey);
+      create.mockResolvedValue({ ...mockRecord, status: NotificationTriggerStatus.SUPPRESSED });
+
+      await createAndSendNotification({
+        ...baseInput,
+        notificationType: NotificationTriggerType.TASK_ASSIGNED,
+        originatingUserId: baseInput.targetUserId, // self-assign
+      });
+
+      expect(create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ status: NotificationTriggerStatus.SUPPRESSED }),
+        })
+      );
+      expect(mockedSendDirectMessage).not.toHaveBeenCalled();
+      // Should not proceed to preference gate or idempotency check
+      expect(findFirst).not.toHaveBeenCalled();
+    });
+
+    it("suppresses FEATURE_ASSIGNED when originatingUserId === targetUserId", async () => {
+      userFindUnique.mockResolvedValue(userWithPubkey);
+      create.mockResolvedValue({ ...mockRecord, status: NotificationTriggerStatus.SUPPRESSED });
+
+      await createAndSendNotification({
+        ...baseInput,
+        notificationType: NotificationTriggerType.FEATURE_ASSIGNED,
+        originatingUserId: baseInput.targetUserId,
+      });
+
+      expect(create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ status: NotificationTriggerStatus.SUPPRESSED }),
+        })
+      );
+      expect(mockedSendDirectMessage).not.toHaveBeenCalled();
+    });
+
+    it("does NOT suppress when originator differs from target (normal assignment)", async () => {
+      userFindUnique.mockResolvedValue(userWithPubkey);
+      workspaceFindUnique.mockResolvedValue(mockWorkspace);
+      findFirst.mockResolvedValue(null);
+      create.mockResolvedValue(mockRecord);
+      update.mockResolvedValue({});
+
+      await createAndSendNotification({
+        ...baseInput,
+        notificationType: NotificationTriggerType.TASK_ASSIGNED,
+        originatingUserId: "other-user-id",
+      });
+
+      // Should reach the idempotency check
+      expect(findFirst).toHaveBeenCalled();
+    });
+
+    it("does NOT suppress when originatingUserId is absent (system-generated)", async () => {
+      userFindUnique.mockResolvedValue(userWithPubkey);
+      workspaceFindUnique.mockResolvedValue(mockWorkspace);
+      findFirst.mockResolvedValue(null);
+      create.mockResolvedValue(mockRecord);
+      update.mockResolvedValue({});
+
+      await createAndSendNotification({
+        ...baseInput,
+        notificationType: NotificationTriggerType.TASK_ASSIGNED,
+        // no originatingUserId
+      });
+
+      expect(findFirst).toHaveBeenCalled();
+    });
+  });
+
+  describe("presence suppression", () => {
+    const featureInput = {
+      ...baseInput,
+      featureId: "feature-1",
+      notificationType: NotificationTriggerType.PLAN_AWAITING_APPROVAL,
+    };
+
+    it("writes SUPPRESSED record and returns early when user lastSeenAt is within 5 minutes", async () => {
+      userFindUnique.mockResolvedValue(userWithPubkey);
+      presenceFindUnique.mockResolvedValue({
+        lastSeenAt: new Date(Date.now() - 2 * 60 * 1000), // 2 min ago — within window
+      });
+      create.mockResolvedValue({ ...mockRecord, status: NotificationTriggerStatus.SUPPRESSED });
+
+      await createAndSendNotification(featureInput);
+
+      expect(presenceFindUnique).toHaveBeenCalledWith({
+        where: { userId_featureId: { userId: baseInput.targetUserId, featureId: "feature-1" } },
+        select: { lastSeenAt: true },
+      });
+      expect(create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ status: NotificationTriggerStatus.SUPPRESSED }),
+        })
+      );
+      expect(mockedSendDirectMessage).not.toHaveBeenCalled();
+      expect(findFirst).not.toHaveBeenCalled(); // short-circuits before idempotency
+    });
+
+    it("falls through normally when lastSeenAt is stale (> 5 minutes)", async () => {
+      userFindUnique.mockResolvedValue(userWithPubkey);
+      presenceFindUnique.mockResolvedValue({
+        lastSeenAt: new Date(Date.now() - 10 * 60 * 1000), // 10 min ago — stale
+      });
+      findFirst.mockResolvedValue(null);
+      create.mockResolvedValue(mockRecord);
+      update.mockResolvedValue({});
+
+      await createAndSendNotification(featureInput);
+
+      // Should proceed past the presence check
+      expect(findFirst).toHaveBeenCalled();
+    });
+
+    it("falls through normally when there is no presence row", async () => {
+      userFindUnique.mockResolvedValue(userWithPubkey);
+      presenceFindUnique.mockResolvedValue(null);
+      findFirst.mockResolvedValue(null);
+      create.mockResolvedValue(mockRecord);
+      update.mockResolvedValue({});
+
+      await createAndSendNotification(featureInput);
+
+      expect(findFirst).toHaveBeenCalled();
+    });
+
+    it("skips presence check entirely when featureId is null", async () => {
+      userFindUnique.mockResolvedValue(userWithPubkey);
+      findFirst.mockResolvedValue(null);
+      create.mockResolvedValue(mockRecord);
+      update.mockResolvedValue({});
+
+      // baseInput has no featureId
+      await createAndSendNotification(baseInput);
+
+      expect(presenceFindUnique).not.toHaveBeenCalled();
+      expect(findFirst).toHaveBeenCalled();
     });
   });
 });
