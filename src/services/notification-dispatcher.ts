@@ -125,6 +125,7 @@ export async function dispatchPendingNotifications(): Promise<DispatchResult> {
 
   let due: Array<{
     id: string;
+    targetUserId: string;
     notificationType: NotificationTriggerType;
     taskId: string | null;
     featureId: string | null;
@@ -210,6 +211,26 @@ export async function dispatchPendingNotifications(): Promise<DispatchResult> {
         );
         result.cancelled++;
         continue;
+      }
+
+      // Presence suppression — cancel if user is actively viewing the feature
+      if (record.featureId) {
+        const presence = await db.userFeaturePresence.findUnique({
+          where: { userId_featureId: { userId: record.targetUserId, featureId: record.featureId } },
+          select: { lastSeenAt: true },
+        });
+        if (presence && presence.lastSeenAt > new Date(Date.now() - 5 * 60 * 1000)) {
+          await db.notificationTrigger.update({
+            where: { id: record.id },
+            data: { status: NotificationTriggerStatus.SUPPRESSED },
+          });
+          logger.info(
+            `[NotificationDispatcher] Suppressed ${record.notificationType} (${record.id}) — user actively present`,
+            "NOTIFICATION_DISPATCHER"
+          );
+          result.cancelled++;
+          continue;
+        }
       }
 
       // Defensive: re-check that the recipient still has a pubkey and decrypt it

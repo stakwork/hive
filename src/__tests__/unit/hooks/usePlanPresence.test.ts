@@ -1,5 +1,6 @@
+// @vitest-environment jsdom
 import { renderHook, waitFor, act } from "@testing-library/react";
-import { vi, describe, it, expect, beforeEach } from "vitest";
+import { vi, describe, it, expect, beforeEach, afterEach } from "vitest";
 import { usePlanPresence } from "@/hooks/usePlanPresence";
 import type { CollaboratorInfo } from "@/types/whiteboard-collaboration";
 
@@ -650,6 +651,104 @@ describe("usePlanPresence", () => {
       // No subscription should be attempted
       expect(mockPusherClient.subscribe).not.toHaveBeenCalled();
       expect(mockChannel.bind).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("heartbeat interval", () => {
+    beforeEach(async () => {
+      // The "Pusher error handling" test may have left getPusherClient in a throwing state.
+      // Reset it back to the default (return mockPusherClient) before each heartbeat test.
+      const pusherModule = await import("@/lib/pusher");
+      vi.mocked(pusherModule.getPusherClient).mockReturnValue(mockPusherClient as ReturnType<typeof pusherModule.getPusherClient>);
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it("fires a heartbeat POST every 30 seconds while tab is visible", async () => {
+      vi.useFakeTimers();
+      Object.defineProperty(document, "visibilityState", {
+        configurable: true,
+        get: () => "visible",
+      });
+
+      const { unmount } = renderHook(() => usePlanPresence({ featureId }));
+
+      // Let the join fire (microtask flush)
+      await act(async () => { await Promise.resolve(); });
+
+      vi.mocked(global.fetch).mockClear();
+
+      // Advance 30 seconds → first heartbeat
+      await act(async () => { vi.advanceTimersByTime(30_000); });
+
+      const heartbeatCalls = vi.mocked(global.fetch).mock.calls.filter((c) => {
+        const body = JSON.parse(c[1]?.body as string);
+        return body.type === "heartbeat";
+      });
+      expect(heartbeatCalls.length).toBe(1);
+      expect(heartbeatCalls[0][0]).toBe("/api/features/feature-123/presence");
+
+      // Advance another 30 seconds → second heartbeat
+      await act(async () => { vi.advanceTimersByTime(30_000); });
+
+      const heartbeatCalls2 = vi.mocked(global.fetch).mock.calls.filter((c) => {
+        const body = JSON.parse(c[1]?.body as string);
+        return body.type === "heartbeat";
+      });
+      expect(heartbeatCalls2.length).toBe(2);
+
+      unmount();
+    });
+
+    it("does NOT fire heartbeat when visibilityState is hidden", async () => {
+      vi.useFakeTimers();
+      Object.defineProperty(document, "visibilityState", {
+        configurable: true,
+        get: () => "hidden",
+      });
+
+      const { unmount } = renderHook(() => usePlanPresence({ featureId }));
+
+      await act(async () => { await Promise.resolve(); });
+      vi.mocked(global.fetch).mockClear();
+
+      await act(async () => { vi.advanceTimersByTime(30_000); });
+
+      const heartbeatCalls = vi.mocked(global.fetch).mock.calls.filter((c) => {
+        try {
+          const body = JSON.parse(c[1]?.body as string);
+          return body.type === "heartbeat";
+        } catch { return false; }
+      });
+      expect(heartbeatCalls.length).toBe(0);
+
+      unmount();
+
+      // Reset visibility state
+      Object.defineProperty(document, "visibilityState", {
+        configurable: true,
+        get: () => "visible",
+      });
+    });
+
+    it("clears heartbeat interval on unmount", async () => {
+      vi.useFakeTimers();
+      Object.defineProperty(document, "visibilityState", {
+        configurable: true,
+        get: () => "visible",
+      });
+
+      const clearIntervalSpy = vi.spyOn(globalThis, "clearInterval");
+
+      const { unmount } = renderHook(() => usePlanPresence({ featureId }));
+      await act(async () => { await Promise.resolve(); });
+
+      unmount();
+
+      expect(clearIntervalSpy).toHaveBeenCalled();
+      clearIntervalSpy.mockRestore();
     });
   });
 });
