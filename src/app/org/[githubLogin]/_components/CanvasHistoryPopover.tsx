@@ -91,6 +91,7 @@ export function CanvasHistoryPopover({ githubLogin }: CanvasHistoryPopoverProps)
           rejection: m.rejection,
           approvalResult: m.approvalResult,
           source: m.source,
+          senderId: m.senderId as string | undefined,
         }));
 
       const store = useCanvasChatStore.getState();
@@ -118,6 +119,12 @@ export function CanvasHistoryPopover({ githubLogin }: CanvasHistoryPopoverProps)
         messages.length, // ephemeralSeedCount prevents re-saving already-persisted messages
       );
       store.setServerConversationId(newId, item.id);
+
+      // Store the batch-resolved sender profiles so SidebarChat can render
+      // attribution on non-own user messages in this historical conversation.
+      if (conv.senderProfiles && typeof conv.senderProfiles === "object") {
+        store.setSenderProfiles(newId, conv.senderProfiles);
+      }
 
       // Opening the chat clears its unread flag — optimistically locally,
       // and persisted so the next list load agrees. Fire-and-forget.

@@ -251,6 +251,99 @@ describe("SidebarChatMessage — attachment rendering", () => {
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
+// Sender attribution tests
+// ═══════════════════════════════════════════════════════════════════════════
+
+describe("SidebarChatMessage — sender attribution", () => {
+  it("no senderId → right-aligned bubble, no avatar", () => {
+    const { container } = render(
+      <SidebarChatMessage
+        message={{ ...baseMessage }}
+        currentUserId="user-A"
+      />,
+    );
+    // items-end means right-aligned
+    const wrapper = container.querySelector(".items-end");
+    expect(wrapper).toBeInTheDocument();
+    // No avatar rendered
+    expect(container.querySelector("[data-testid=avatar]")).toBeNull();
+    expect(container.querySelector("img[alt]")).toBeNull();
+  });
+
+  it("senderId === currentUserId → right-aligned, no attribution label", () => {
+    const { container } = render(
+      <SidebarChatMessage
+        message={{ ...baseMessage, senderId: "user-A" }}
+        currentUserId="user-A"
+        senderProfile={{ username: "alice", avatarUrl: "https://example.com/alice.png" }}
+      />,
+    );
+    const wrapper = container.querySelector(".items-end");
+    expect(wrapper).toBeInTheDocument();
+    // No username label
+    expect(container.querySelector(".text-muted-foreground")).toBeNull();
+  });
+
+  it("senderId !== currentUserId + senderProfile → left-aligned, avatar + username shown", () => {
+    const { container } = render(
+      <SidebarChatMessage
+        message={{ ...baseMessage, senderId: "user-B" }}
+        currentUserId="user-A"
+        senderProfile={{ username: "bob", avatarUrl: "https://example.com/bob.png" }}
+      />,
+    );
+    // items-start means left-aligned
+    const wrapper = container.querySelector(".items-start");
+    expect(wrapper).toBeInTheDocument();
+    // Username label present
+    expect(container.querySelector(".text-muted-foreground")?.textContent).toBe("bob");
+    // Avatar element present (Radix Avatar renders a span[data-slot="avatar"] in jsdom)
+    const avatarEl = container.querySelector("[data-slot='avatar']");
+    expect(avatarEl).toBeInTheDocument();
+  });
+
+  it("senderId !== currentUserId but no senderProfile → left-aligned, no attribution header", () => {
+    const { container } = render(
+      <SidebarChatMessage
+        message={{ ...baseMessage, senderId: "user-B" }}
+        currentUserId="user-A"
+      />,
+    );
+    const wrapper = container.querySelector(".items-start");
+    expect(wrapper).toBeInTheDocument();
+    // No username label
+    expect(container.querySelector(".text-muted-foreground")).toBeNull();
+  });
+
+  it("assistant message → left-aligned, no attribution regardless of senderId", () => {
+    const { container } = render(
+      <SidebarChatMessage
+        message={{ ...baseMessage, role: "assistant", senderId: "user-B" }}
+        currentUserId="user-A"
+        senderProfile={{ username: "bot", avatarUrl: undefined }}
+      />,
+    );
+    const wrapper = container.querySelector(".items-start");
+    expect(wrapper).toBeInTheDocument();
+    // No attribution header for assistant messages
+    expect(container.querySelector(".text-muted-foreground")).toBeNull();
+  });
+
+  it("AvatarFallback shows first letter of username when no avatarUrl", () => {
+    const { container } = render(
+      <SidebarChatMessage
+        message={{ ...baseMessage, senderId: "user-B" }}
+        currentUserId="user-A"
+        senderProfile={{ username: "bob" }}
+      />,
+    );
+    // The fallback span contains the first letter
+    const fallback = container.querySelector(".text-\\[10px\\]");
+    expect(fallback?.textContent).toBe("B");
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
 // Link renderer tests — deeplink chips and in-page routing
 // ═══════════════════════════════════════════════════════════════════════════
 

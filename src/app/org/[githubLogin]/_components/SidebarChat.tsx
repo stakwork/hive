@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useSession } from "next-auth/react";
 import { motion } from "framer-motion";
 import { FileIcon, Loader2, Mic, MicOff, Paperclip, Plus, RefreshCw, Send, Share2, X } from "lucide-react";
 import { useSpeechRecognition } from "@/hooks/useSpeechRecognition";
@@ -108,6 +109,13 @@ export function SidebarChat({ githubLogin }: SidebarChatProps) {
       (activeId ? s.conversations[activeId]?.serverConversationId : null) ??
       null,
   );
+
+  const senderProfiles = useCanvasChatStore(
+    (s) => (activeId ? s.conversations[activeId]?.senderProfiles : undefined) ?? EMPTY_SENDER_PROFILES,
+  );
+
+  const { data: session } = useSession();
+  const currentUserId = session?.user?.id;
 
   const { id: workspaceId } = useWorkspace();
   const { isActive } = useCanvasAgentActivity(activeId, workspaceId);
@@ -470,6 +478,12 @@ export function SidebarChat({ githubLogin }: SidebarChatProps) {
                   <SidebarChatMessage
                     message={message}
                     isStreaming={isMessageStreaming}
+                    currentUserId={currentUserId}
+                    senderProfile={
+                      message.senderId
+                        ? senderProfiles[message.senderId]
+                        : undefined
+                    }
                   />
                 )}
                 {proposals.length > 0 && (
@@ -575,6 +589,7 @@ export function SidebarChat({ githubLogin }: SidebarChatProps) {
  */
 const EMPTY_MESSAGES: CanvasChatMessage[] = [];
 const EMPTY_TOOL_CALLS: ToolCall[] = [];
+const EMPTY_SENDER_PROFILES: Record<string, { username: string; avatarUrl?: string }> = {};
 
 /**
  * Dispatch point for rich agent artifacts. Selects `state.artifacts`

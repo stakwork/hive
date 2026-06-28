@@ -8,6 +8,11 @@ import { MarkdownRenderer } from "@/components/MarkdownRenderer";
 import { FileIcon } from "lucide-react";
 import type { CanvasAttachment } from "../_state/canvasChatStore";
 import { CanvasDeeplinkChip } from "./CanvasDeeplinkChip";
+import {
+  Avatar,
+  AvatarFallback,
+  AvatarImage,
+} from "@/components/ui/avatar";
 
 /**
  * Sidebar-flavored chat bubble. Forked from
@@ -48,15 +53,36 @@ interface SidebarChatMessageProps {
     content: string;
     timestamp: Date;
     attachments?: CanvasAttachment[];
+    senderId?: string;
   };
   isStreaming?: boolean;
+  /** The currently logged-in user's id. Used to distinguish own vs others' messages. */
+  currentUserId?: string;
+  /** Resolved display info for the sender (looked up by senderId in SidebarChat). */
+  senderProfile?: { username: string; avatarUrl?: string };
 }
 
 export function SidebarChatMessage({
   message,
   isStreaming = false,
+  currentUserId,
+  senderProfile,
 }: SidebarChatMessageProps) {
-  const isUser = message.role === "user";
+  /**
+   * Own message: no senderId (optimistic local message), or senderId matches
+   * current user → right-aligned, no attribution label.
+   * Other user's message: senderId set and different from current user
+   * → left-aligned with avatar + username rendered above the bubble.
+   */
+  const isMine =
+    message.role === "user" &&
+    (!message.senderId || message.senderId === currentUserId);
+  const isOtherUser =
+    message.role === "user" &&
+    !!message.senderId &&
+    message.senderId !== currentUserId;
+  // For alignment/styling purposes "isUser" means "treat as own user bubble"
+  const isUser = isMine;
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -168,6 +194,23 @@ export function SidebarChatMessage({
         transition={{ duration: 0.2 }}
         className={`flex w-full flex-col gap-1.5 ${isUser ? "items-end" : "items-start"}`}
       >
+        {/* Sender attribution — shown above the bubble for other users' messages */}
+        {isOtherUser && senderProfile && (
+          <div className="flex items-center gap-1.5 mb-0.5">
+            <Avatar className="h-5 w-5">
+              <AvatarImage
+                src={senderProfile.avatarUrl}
+                alt={senderProfile.username}
+              />
+              <AvatarFallback className="text-[10px]">
+                {senderProfile.username[0]?.toUpperCase()}
+              </AvatarFallback>
+            </Avatar>
+            <span className="text-xs text-muted-foreground">
+              {senderProfile.username}
+            </span>
+          </div>
+        )}
         {/* Text bubble */}
         {hasContent && (
           <div className={`${isUser ? "max-w-[85%]" : "w-full"}`}>

@@ -9,6 +9,7 @@ import {
 } from "@/lib/ai/conversationHelpers";
 import { notifyCanvasConversationUpdated } from "@/lib/pusher";
 import type { ConversationDetail, UpdateConversationRequest } from "@/types/shared-conversation";
+import type { StoredMessage } from "@/services/canvas-turn-persistence";
 
 async function resolveOrg(githubLogin: string) {
   return db.sourceControlOrg.findUnique({
@@ -79,7 +80,42 @@ export async function GET(
       return NextResponse.json({ error: "Conversation not found" }, { status: 404 });
     }
 
-    const response: ConversationDetail = {
+    // Batch-resolve sender display info for all unique senderIds in the
+    // conversation. One query covers all senders — keeps the write path
+    // lean (only userId is stored) while ensuring names/avatars are fresh.
+    const senderIds = [
+      ...new Set(
+        (Array.isArray(conversation.messages)
+          ? (conversation.messages as unknown as StoredMessage[])
+          : []
+        )
+          .map((m) => m.senderId)
+          .filter((id): id is string => !!id),
+      ),
+    ];
+
+    const senderUsers = senderIds.length
+      ? await db.user.findMany({
+          where: { id: { in: senderIds } },
+          select: {
+            id: true,
+            image: true,
+            githubAuth: { select: { githubUsername: true } },
+          },
+        })
+      : [];
+
+    const senderProfiles: Record<string, { username: string; avatarUrl?: string }> = {};
+    for (const u of senderUsers) {
+      senderProfiles[u.id] = {
+        username: u.githubAuth?.githubUsername ?? u.id,
+        avatarUrl: u.image ?? undefined,
+      };
+    }
+
+    const response: ConversationDetail & {
+      senderProfiles: Record<string, { username: string; avatarUrl?: string }>;
+    } = {
       id: conversation.id,
       workspaceId: null as any, // org-scoped; no workspace
       userId: conversation.userId,
@@ -100,6 +136,7 @@ export async function GET(
             email: conversation.user.email,
           }
         : null,
+      senderProfiles,
     };
 
     return NextResponse.json(response);
