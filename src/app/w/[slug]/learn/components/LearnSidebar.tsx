@@ -10,6 +10,8 @@ import {
   Pencil,
   RefreshCw,
   Sprout,
+  Search,
+  X,
 } from "lucide-react";
 import { AnimatePresence, motion } from "framer-motion";
 import { Badge } from "@/components/ui/badge";
@@ -23,7 +25,9 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
+import { Input } from "@/components/ui/input";
 import { useWorkspace } from "@/hooks/useWorkspace";
+import { useDebounce } from "@/hooks/useDebounce";
 import { UsageDisplay } from "./UsageDisplay";
 import { CreateConceptModal } from "./CreateConceptModal";
 import { formatRelativeOrDateInTz } from "@/lib/date-utils";
@@ -119,6 +123,15 @@ export function LearnSidebar({
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isLearningDoc, setIsLearningDoc] = useState(false);
 
+  // Concept search state
+  const [searchQuery, setSearchQuery] = useState("");
+  const [isSearching, setIsSearching] = useState(false);
+  const [searchResults, setSearchResults] = useState<{
+    literal: { id: string; name: string }[];
+    semantic: { id: string; name: string }[];
+  } | null>(null);
+  const debouncedSearch = useDebounce(searchQuery, 300);
+
   const processLabel = repositories.length > 1 ? "Process Repositories" : "Process Repository";
 
   const unlearnedRepos = repositories.filter(
@@ -207,6 +220,22 @@ export function LearnSidebar({
 
     fetchLearnConfig();
   }, [workspaceSlug]);
+
+  // Fetch concept search results when debounced query changes
+  useEffect(() => {
+    if (debouncedSearch.trim().length < 2) {
+      setSearchResults(null);
+      return;
+    }
+    setIsSearching(true);
+    fetch(
+      `/api/learnings/concepts/search?workspace=${encodeURIComponent(workspaceSlug)}&q=${encodeURIComponent(debouncedSearch)}`
+    )
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => setSearchResults(data ?? { literal: [], semantic: [] }))
+      .catch(() => setSearchResults({ literal: [], semantic: [] }))
+      .finally(() => setIsSearching(false));
+  }, [debouncedSearch, workspaceSlug]);
 
   const handleSeedKnowledge = async () => {
     if (isSeeding) return;
@@ -517,6 +546,28 @@ export function LearnSidebar({
                 transition={{ duration: 0.2 }}
                 className="overflow-hidden"
               >
+                {/* Search input */}
+                <div className="relative mt-2 mb-1">
+                  <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+                  <Input
+                    data-testid="concept-search-input"
+                    placeholder="Search concepts…"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="pl-7 pr-7 h-8 text-xs"
+                  />
+                  {searchQuery && (
+                    <button
+                      type="button"
+                      onClick={() => setSearchQuery("")}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                      aria-label="Clear search"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  )}
+                </div>
+
                 <div className="mt-2 space-y-1">
                   {isConceptsLoading ? (
                     <div className="space-y-2 p-2">
@@ -524,11 +575,66 @@ export function LearnSidebar({
                         <div key={i} className="h-8 bg-muted/30 rounded animate-pulse" />
                       ))}
                     </div>
+                  ) : searchQuery.trim().length >= 2 ? (
+                    // Search-active view
+                    isSearching ? (
+                      <div className="space-y-2 p-2">
+                        {[1, 2, 3].map((i) => (
+                          <div key={i} className="h-8 bg-muted/30 rounded animate-pulse" />
+                        ))}
+                      </div>
+                    ) : searchResults && (searchResults.literal.length > 0 || searchResults.semantic.length > 0) ? (
+                      <div className="mt-1 space-y-1">
+                        {searchResults.literal.length > 0 && (
+                          <>
+                            <p className="px-2 pt-1 text-xs font-medium text-muted-foreground">Matches</p>
+                            {searchResults.literal.map((concept) => (
+                              <button
+                                key={concept.id}
+                                data-testid="concept-search-result-literal"
+                                onClick={() => onConceptClick(concept.id, concept.name, "")}
+                                className={cn(
+                                  "w-full text-left p-2 rounded-md text-sm transition-colors",
+                                  activeItemKey === `concept-${concept.id}`
+                                    ? "bg-muted/60 font-medium"
+                                    : "bg-muted/30 hover:bg-muted/50"
+                                )}
+                              >
+                                {concept.name}
+                              </button>
+                            ))}
+                          </>
+                        )}
+                        {searchResults.semantic.length > 0 && (
+                          <>
+                            <p className="px-2 pt-2 text-xs font-medium text-muted-foreground">Related</p>
+                            {searchResults.semantic.map((concept) => (
+                              <button
+                                key={concept.id}
+                                data-testid="concept-search-result-semantic"
+                                onClick={() => onConceptClick(concept.id, concept.name, "")}
+                                className={cn(
+                                  "w-full text-left p-2 rounded-md text-sm transition-colors",
+                                  activeItemKey === `concept-${concept.id}`
+                                    ? "bg-muted/60 font-medium"
+                                    : "bg-muted/30 hover:bg-muted/50"
+                                )}
+                              >
+                                {concept.name}
+                              </button>
+                            ))}
+                          </>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="p-4 text-sm text-muted-foreground text-center">No concepts match</div>
+                    )
                   ) : concepts.length === 0 ? (
                     <div className="p-4 text-sm text-muted-foreground text-center">
                       No concepts discovered yet
                     </div>
                   ) : (
+                    // Normal grouped-by-repo view
                     groupedConcepts.map(({ repo, concepts: group }) => {
                       const shortName = repo.split("/")[1] ?? repo;
                       const isGroupExpanded = expandedRepoGroups[repo] ?? true;
