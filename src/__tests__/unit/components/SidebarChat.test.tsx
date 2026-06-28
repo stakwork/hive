@@ -18,6 +18,11 @@ beforeAll(() => {
   window.HTMLElement.prototype.scrollIntoView = vi.fn();
 });
 
+// ── next-auth mock ────────────────────────────────────────────────────────────
+vi.mock("next-auth/react", () => ({
+  useSession: () => ({ data: { user: { id: "user-test" } } }),
+}));
+
 // ── Activity indicator hook mock ──────────────────────────────────────────────
 let mockIsActive = false;
 vi.mock("@/hooks/useCanvasAgentActivity", () => ({
