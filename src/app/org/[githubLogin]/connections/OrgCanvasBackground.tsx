@@ -3343,6 +3343,7 @@ export function OrgCanvasBackground({
           // so this just keeps it dormant until the fetch lands.
           entries={hiddenLive ?? []}
           onRestore={handleRestoreLive}
+          rightInset={rightInset}
         />
 
 
