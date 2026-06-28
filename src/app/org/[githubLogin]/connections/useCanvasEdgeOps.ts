@@ -11,6 +11,7 @@ import {
   type CanvasData,
   type EdgeUpdate,
 } from "system-canvas-react";
+import { toast } from "sonner";
 import { isLiveId } from "@/lib/canvas";
 
 /**
@@ -111,9 +112,11 @@ export function useCanvasEdgeOps({
             res.status,
             detail,
           );
+          toast.error("Failed to assign feature to milestone");
         }
       } catch (err) {
         console.error("[OrgCanvasBackground] patchFeatureMilestone threw", err);
+        toast.error("Failed to assign feature to milestone");
       }
     },
     [],
@@ -200,9 +203,11 @@ export function useCanvasEdgeOps({
             res.status,
             detail,
           );
+          toast.error("Failed to update dependency");
         }
       } catch (err) {
         console.error("[OrgCanvasBackground] patchFeatureBlocks threw", err);
+        toast.error("Failed to update dependency");
       }
     },
     [],
@@ -499,12 +504,14 @@ export function useCanvasEdgeOps({
             res.status,
             detail,
           );
+          toast.error("Failed to reassign feature");
         }
       } catch (err) {
         console.error(
           "[OrgCanvasBackground] reassign feature threw",
           err,
         );
+        toast.error("Failed to reassign feature");
       }
     },
     [],
@@ -540,12 +547,14 @@ export function useCanvasEdgeOps({
             res.status,
             detail,
           );
+          toast.error("Failed to reassign research");
         }
       } catch (err) {
         console.error(
           "[OrgCanvasBackground] reassign research threw",
           err,
         );
+        toast.error("Failed to reassign research");
       }
     },
     [githubLogin],
@@ -607,6 +616,7 @@ export function useCanvasEdgeOps({
             "[useCanvasEdgeOps] moveAuthoredNodesToCanvas read failed",
             res.status,
           );
+          toast.error("Failed to move node");
           return;
         }
         const body = await res.json();
@@ -626,12 +636,14 @@ export function useCanvasEdgeOps({
             "[useCanvasEdgeOps] moveAuthoredNodesToCanvas write failed",
             putRes.status,
           );
+          toast.error("Failed to move node");
         }
       } catch (err) {
         console.error(
           "[useCanvasEdgeOps] moveAuthoredNodesToCanvas threw",
           err,
         );
+        toast.error("Failed to move node");
       }
     },
     [applyMutation, githubLogin],
