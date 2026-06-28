@@ -9,7 +9,8 @@ type PresencePayload =
   | { type: "join"; user: CollaboratorInfo; rebroadcast?: boolean }
   | { type: "leave" }
   | { type: "typing-start"; name: string }
-  | { type: "typing-stop" };
+  | { type: "typing-stop" }
+  | { type: "heartbeat" };
 
 /**
  * POST /api/features/[featureId]/presence
@@ -68,16 +69,27 @@ export async function POST(
 
     const channelName = getFeatureChannelName(featureId);
 
-    if (body.type === "join") {
-      // Broadcast user join event
-      await pusherServer.trigger(channelName, PUSHER_EVENTS.PLAN_USER_JOIN, {
-        user: {
-          ...body.user,
-          odinguserId: userOrResponse.id,
-          name: userOrResponse.name || body.user.name,
-        },
-        ...(body.rebroadcast && { rebroadcast: true }),
+    // Shared helper: upsert presence row for the authenticated user + feature
+    const upsertPresence = () =>
+      db.userFeaturePresence.upsert({
+        where: { userId_featureId: { userId: userOrResponse.id, featureId } },
+        create: { userId: userOrResponse.id, featureId, lastSeenAt: new Date() },
+        update: { lastSeenAt: new Date() },
       });
+
+    if (body.type === "join") {
+      // Broadcast user join event and record presence
+      await Promise.all([
+        pusherServer.trigger(channelName, PUSHER_EVENTS.PLAN_USER_JOIN, {
+          user: {
+            ...body.user,
+            odinguserId: userOrResponse.id,
+            name: userOrResponse.name || body.user.name,
+          },
+          ...(body.rebroadcast && { rebroadcast: true }),
+        }),
+        upsertPresence(),
+      ]);
 
       return NextResponse.json({ success: true });
     }
@@ -103,6 +115,11 @@ export async function POST(
       await pusherServer.trigger(channelName, PUSHER_EVENTS.PLAN_TYPING_STOP, {
         userId: userOrResponse.id,
       });
+      return NextResponse.json({ success: true });
+    }
+
+    if (body.type === "heartbeat") {
+      await upsertPresence();
       return NextResponse.json({ success: true });
     }
 
