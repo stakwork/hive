@@ -278,7 +278,9 @@ jobs:
       - name: Resolve Failed Migrations
         run: |
           export DATABASE_URL="${{ steps.neon.outputs.connection_uri }}"
-          export DIRECT_URL="${{ steps.neon.outputs.connection_uri }}"
+          # Neon pooler URLs contain "-pooler" in the hostname; Prisma migrate deploy
+          # requires a direct (non-pooled) connection to acquire advisory locks (P1002).
+          export DIRECT_URL="$(echo "${{ steps.neon.outputs.connection_uri }}" | sed 's/-pooler\././')"
           echo "Checking for failed migrations..."
 
           # Helper: resolve a migration based on whether its DDL column/table already exists
@@ -345,7 +347,9 @@ jobs:
       - name: Build
         run: |
           export DATABASE_URL="${{ steps.neon.outputs.connection_uri }}"
-          export DIRECT_URL="${{ steps.neon.outputs.connection_uri }}"
+          # Neon pooler URLs contain "-pooler" in the hostname; Prisma migrate deploy
+          # requires a direct (non-pooled) connection to acquire advisory locks (P1002).
+          export DIRECT_URL="$(echo "${{ steps.neon.outputs.connection_uri }}" | sed 's/-pooler\././')"
           echo "DATABASE_URL is set (masked)"
           npx prisma generate
 
@@ -435,53 +439,156 @@ jobs:
             npx prisma migrate resolve --rolled-back "20260302215700_add_prototype_source_type" 2>&1 || true
           fi
 
-          # Retry prisma migrate deploy — Neon endpoint may sleep between steps
-          for attempt in 1 2 3 4 5; do
-            if npx prisma migrate deploy; then
-              echo "✅ Migrations deployed successfully (attempt $attempt)"
-              break
-            fi
-            if [ $attempt -eq 5 ]; then
-              echo "❌ prisma migrate deploy failed after 5 attempts"
-              exit 1
-            fi
-            echo "⚠️  Migration attempt $attempt failed, waiting 15s before retry..."
-            # Re-resolve before each retry in case the previous attempt re-failed it
-            npx prisma migrate resolve --applied "20260401174012" 2>&1 || true
-            # Resolve plan_updated_at migration: column already exists on this DB
-            PLAN_COL=$(psql "$DATABASE_URL" -tAc "SELECT COUNT(*) FROM information_schema.columns WHERE table_name='features' AND column_name='plan_updated_at';" 2>/dev/null | tr -d '[:space:]' || echo "0")
-            if [ "$PLAN_COL" = "1" ]; then
-              npx prisma migrate resolve --applied "20260302183303_add_plan_updated_at_to_feature" 2>&1 || true
-            else
-              npx prisma migrate resolve --rolled-back "20260302183303_add_plan_updated_at_to_feature" 2>&1 || true
-            fi
-            npx prisma migrate resolve --rolled-back "20260517120000_add_macaroon_org_and_trust_fields" 2>&1 || true
-            npx prisma migrate resolve --rolled-back "20260411162658_add_connection_model" 2>&1 || true
-            npx prisma migrate resolve --applied "20260411162658_add_connection_model" 2>&1 || true
-            CONN_TABLE=$(psql "$DATABASE_URL" -tAc "SELECT COUNT(*) FROM information_schema.tables WHERE table_name='connections' AND table_schema='public';" 2>/dev/null | tr -d '[:space:]' || echo "0")
-            if [ "$CONN_TABLE" = "1" ]; then
-              ARCH_COL=$(psql "$DATABASE_URL" -tAc "SELECT COUNT(*) FROM information_schema.columns WHERE table_name='connections' AND column_name='architecture';" 2>/dev/null | tr -d '[:space:]' || echo "0")
-              if [ "$ARCH_COL" = "1" ]; then
-                npx prisma migrate resolve --applied "20260412042654_add_connection_architecture" 2>&1 || true
-              else
-                npx prisma migrate resolve --rolled-back "20260412042654_add_connection_architecture" 2>&1 || true
+          # Apply 20260626160017_add_hive_prompt_models directly via psql, bypassing
+          # Prisma's advisory lock. All DDL statements are idempotent (IF NOT EXISTS /
+          # DO $$ ... END guards). After applying the SQL, insert the migration record
+          # directly into _prisma_migrations so that subsequent prisma migrate deploy
+          # calls see it as already applied and skip acquiring the advisory lock for it.
+          echo "Applying 20260626160017_add_hive_prompt_models via psql (no advisory lock)..."
+          MIGRATION_NAME="20260626160017_add_hive_prompt_models"
+
+          # Check whether the migration is already recorded as successfully applied
+          ALREADY_APPLIED=$(psql "$DATABASE_URL" -tAc \
+            "SELECT COUNT(*) FROM _prisma_migrations WHERE migration_name='${MIGRATION_NAME}' AND finished_at IS NOT NULL;" \
+            2>/dev/null | tr -d '[:space:]' || echo "0")
+
+          if [ "$ALREADY_APPLIED" != "1" ]; then
+            echo "  Migration not yet applied — running DDL directly via psql..."
+
+            # Remove any failed/partial record so we can insert fresh
+            psql "$DATABASE_URL" -c \
+              "DELETE FROM _prisma_migrations WHERE migration_name='${MIGRATION_NAME}';" \
+              2>/dev/null || true
+
+            # Apply DDL idempotently
+            psql "$DATABASE_URL" <<'EOSQL'
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'PromptSyncStatus') THEN
+    CREATE TYPE "PromptSyncStatus" AS ENUM ('OK', 'PENDING', 'FAILED');
+  END IF;
+END $$;
+
+ALTER TABLE "stakwork_runs" ADD COLUMN IF NOT EXISTS "hive_prompt_version_id" TEXT;
+
+CREATE TABLE IF NOT EXISTS "prompts" (
+    "id" TEXT NOT NULL,
+    "name" TEXT NOT NULL,
+    "value" TEXT NOT NULL,
+    "description" TEXT,
+    "workspace_id" TEXT NOT NULL,
+    "published_version_id" TEXT,
+    "stakwork_id" INTEGER,
+    "sync_status" "PromptSyncStatus" NOT NULL DEFAULT 'OK',
+    "last_synced_at" TIMESTAMP(3),
+    "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updated_at" TIMESTAMP(3) NOT NULL,
+    CONSTRAINT "prompts_pkey" PRIMARY KEY ("id")
+);
+
+CREATE TABLE IF NOT EXISTS "prompt_versions" (
+    "id" TEXT NOT NULL,
+    "prompt_id" TEXT NOT NULL,
+    "version_number" INTEGER NOT NULL,
+    "value" TEXT NOT NULL,
+    "description" TEXT,
+    "whodunnit" TEXT,
+    "published" BOOLEAN NOT NULL DEFAULT false,
+    "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT "prompt_versions_pkey" PRIMARY KEY ("id")
+);
+
+CREATE INDEX IF NOT EXISTS "prompts_workspace_id_idx" ON "prompts"("workspace_id");
+CREATE INDEX IF NOT EXISTS "prompts_sync_status_idx" ON "prompts"("sync_status");
+CREATE UNIQUE INDEX IF NOT EXISTS "prompts_workspace_id_name_key" ON "prompts"("workspace_id", "name");
+CREATE INDEX IF NOT EXISTS "prompt_versions_prompt_id_idx" ON "prompt_versions"("prompt_id");
+CREATE INDEX IF NOT EXISTS "prompt_versions_prompt_id_published_idx" ON "prompt_versions"("prompt_id", "published");
+CREATE INDEX IF NOT EXISTS "stakwork_runs_hive_prompt_version_id_idx" ON "stakwork_runs"("hive_prompt_version_id");
+
+DO $$ BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'stakwork_runs_hive_prompt_version_id_fkey'
+  ) THEN
+    ALTER TABLE "stakwork_runs" ADD CONSTRAINT "stakwork_runs_hive_prompt_version_id_fkey"
+      FOREIGN KEY ("hive_prompt_version_id") REFERENCES "prompt_versions"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+  END IF;
+END $$;
+
+DO $$ BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'prompts_workspace_id_fkey'
+  ) THEN
+    ALTER TABLE "prompts" ADD CONSTRAINT "prompts_workspace_id_fkey"
+      FOREIGN KEY ("workspace_id") REFERENCES "workspaces"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+  END IF;
+END $$;
+
+DO $$ BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'prompts_published_version_id_fkey'
+  ) THEN
+    ALTER TABLE "prompts" ADD CONSTRAINT "prompts_published_version_id_fkey"
+      FOREIGN KEY ("published_version_id") REFERENCES "prompt_versions"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+  END IF;
+END $$;
+
+DO $$ BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'prompt_versions_prompt_id_fkey'
+  ) THEN
+    ALTER TABLE "prompt_versions" ADD CONSTRAINT "prompt_versions_prompt_id_fkey"
+      FOREIGN KEY ("prompt_id") REFERENCES "prompts"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+  END IF;
+END $$;
+EOSQL
+
+            # Record migration as applied in _prisma_migrations
+            MIGRATION_CHECKSUM=$(md5sum prisma/migrations/${MIGRATION_NAME}/migration.sql | awk '{print $1}')
+            psql "$DATABASE_URL" -c "
+              INSERT INTO _prisma_migrations (id, checksum, finished_at, migration_name, logs, rolled_back_at, started_at, applied_steps_count)
+              VALUES (
+                gen_random_uuid()::text,
+                '${MIGRATION_CHECKSUM}',
+                NOW(),
+                '${MIGRATION_NAME}',
+                NULL,
+                NULL,
+                NOW(),
+                1
+              )
+              ON CONFLICT DO NOTHING;
+            " 2>/dev/null || echo "  Could not record migration (may already exist)"
+
+            echo "  ✅ Migration applied via psql"
+          else
+            echo "  Migration already applied — skipping"
+          fi
+
+          # Count how many migration files are NOT yet recorded as successfully applied.
+          # Prisma always acquires the advisory lock before checking, so we skip
+          # migrate deploy entirely when there is nothing to do — avoiding P1002.
+          MIGRATION_FILES=$(ls prisma/migrations/ | grep -v migration_lock.toml | wc -l | tr -d '[:space:]')
+          APPLIED_COUNT=$(psql "$DATABASE_URL" -tAc \
+            "SELECT COUNT(*) FROM _prisma_migrations WHERE finished_at IS NOT NULL;" \
+            2>/dev/null | tr -d '[:space:]' || echo "0")
+          PENDING=$((MIGRATION_FILES - APPLIED_COUNT))
+          echo "Migration files: $MIGRATION_FILES | Applied: $APPLIED_COUNT | Pending: $PENDING"
+
+          if [ "$PENDING" -gt 0 ]; then
+            for attempt in 1 2 3 4 5; do
+              if npx prisma migrate deploy; then
+                echo "✅ Migrations deployed successfully (attempt $attempt)"
+                break
               fi
-            else
-              npx prisma migrate resolve --applied "20260412042654_add_connection_architecture" 2>&1 || true
-            fi
-            CONN_TABLE2=$(psql "$DATABASE_URL" -tAc "SELECT COUNT(*) FROM information_schema.tables WHERE table_name='connections' AND table_schema='public';" 2>/dev/null | tr -d '[:space:]' || echo "0")
-            if [ "$CONN_TABLE2" = "1" ]; then
-              SLUG_COL=$(psql "$DATABASE_URL" -tAc "SELECT COUNT(*) FROM information_schema.columns WHERE table_name='connections' AND column_name='slug';" 2>/dev/null | tr -d '[:space:]' || echo "0")
-              if [ "$SLUG_COL" = "1" ]; then
-                npx prisma migrate resolve --applied "20260412050000_add_connection_slug" 2>&1 || true
-              else
-                npx prisma migrate resolve --rolled-back "20260412050000_add_connection_slug" 2>&1 || true
+              if [ $attempt -eq 5 ]; then
+                echo "❌ prisma migrate deploy failed after 5 attempts"
+                exit 1
               fi
-            else
-              npx prisma migrate resolve --applied "20260412050000_add_connection_slug" 2>&1 || true
-            fi
-            sleep 15
-          done
+              echo "⚠️  Migration attempt $attempt failed, waiting 15s before retry..."
+              sleep 15
+            done
+          else
+            echo "✅ All migrations already applied — skipping prisma migrate deploy"
+          fi
 
           vercel build --scope=${{ secrets.VERCEL_ORG_ID }} --token=${{ secrets.VERCEL_TOKEN }}
 
@@ -492,6 +599,7 @@ jobs:
         id: deploy
         run: |
           export DATABASE_URL="${{ steps.neon.outputs.connection_uri }}"
+          export DIRECT_URL="$(echo "${{ steps.neon.outputs.connection_uri }}" | sed 's/-pooler\././')"
 
           # Retry logic for transient Vercel deployment errors with exponential backoff
           MAX_RETRIES=3

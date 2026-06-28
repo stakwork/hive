@@ -90,6 +90,9 @@ export async function resetDatabase() {
     await db.lightningPayment.deleteMany();
     await db.fiatPayment.deleteMany();
     await db.workspaceMember.deleteMany();
+    // Prompt versions must be deleted before prompts (FK constraint)
+    try { await db.promptVersion.deleteMany(); } catch { /* table may not exist */ }
+    try { await db.prompt.deleteMany(); } catch { /* table may not exist */ }
     await db.workspace.deleteMany();
     await db.llmModel.deleteMany();
     await db.session.deleteMany();
@@ -133,6 +136,8 @@ async function aggressiveReset() {
       "lightning_payments",
       "fiat_payments",
       "workspace_members",
+      "prompt_versions",
+      "prompts",
       "workspaces",
       "llm_models",
       "sessions",

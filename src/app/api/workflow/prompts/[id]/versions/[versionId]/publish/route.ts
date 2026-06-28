@@ -2,130 +2,67 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
-import { config } from "@/config/env";
-import { isDevelopmentMode } from "@/lib/runtime";
+import { publishVersion } from "@/services/prompts/prompt-sync";
 
 export const runtime = "nodejs";
 export const fetchCache = "force-no-store";
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string; versionId: string }> }
+  { params }: { params: Promise<{ id: string; versionId: string }> },
 ) {
   try {
     const session = await getServerSession(authOptions);
-    if (!session?.user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
+    if (!session?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     const userId = (session.user as { id?: string })?.id;
-    if (!userId) {
-      return NextResponse.json({ error: "Invalid user session" }, { status: 401 });
-    }
-
-    // Verify user has access to stakwork workspace
-    const stakworkWorkspace = await db.workspace.findFirst({
-      where: {
-        slug: "stakwork",
-        OR: [{ ownerId: userId }, { members: { some: { userId } } }],
-      },
-    });
-
-    const devMode = isDevelopmentMode();
-
-    if (!stakworkWorkspace && !devMode) {
-      return NextResponse.json(
-        { error: "Access denied - not a member of stakwork workspace" },
-        { status: 403 }
-      );
-    }
+    if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     const { id, versionId } = await params;
 
-    if (!id) {
-      return NextResponse.json({ error: "Prompt ID is required" }, { status: 400 });
-    }
-
-    if (!versionId) {
-      return NextResponse.json({ error: "Version ID is required" }, { status: 400 });
-    }
-
-    const body = await request.json().catch(() => ({})) as { artifactId?: string };
-    const { artifactId } = body;
-
-    // In dev mode, delegate to mock handler to avoid SSL issues
-    if (devMode) {
-      const { POST: mockPOST } = await import(
-        "@/app/api/mock/stakwork/prompts/[id]/versions/[versionId]/publish/route"
-      );
-      const mockResult = await mockPOST(request, { params: Promise.resolve({ id, versionId }) });
-
-      if (artifactId) {
-        await updateArtifactPublished(artifactId, stakworkWorkspace?.id ?? null, devMode);
-      }
-
-      return mockResult;
-    }
-
-    // Publish the version via Stakwork API
-    const publishUrl = `${config.STAKWORK_BASE_URL}/prompts/${id}/versions/${versionId}/publish`;
-
-    const response = await fetch(publishUrl, {
-      method: "POST",
-      headers: {
-        Authorization: `Token token=${config.STAKWORK_API_KEY}`,
-        "Content-Type": "application/json",
-      },
+    // Resolve workspace for IDOR
+    const prompt = await db.prompt.findUnique({
+      where: { id },
+      select: { workspaceId: true, workspace: { select: { ownerId: true } } },
     });
+    if (!prompt) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error(
-        `Failed to publish prompt version ${versionId} for prompt ${id}:`,
-        errorText
-      );
-      return NextResponse.json(
-        { error: "Failed to publish prompt version", details: errorText },
-        { status: response.status }
-      );
+    const member = await db.workspaceMember.findFirst({
+      where: { workspaceId: prompt.workspaceId, userId },
+    });
+    if (!member && prompt.workspace.ownerId !== userId) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
-    if (artifactId) {
-      await updateArtifactPublished(artifactId, stakworkWorkspace?.id ?? null, devMode);
+    await publishVersion(id, versionId, prompt.workspaceId);
+
+    // Optionally update artifact published state (keep backwards compat)
+    const body = await request.json().catch(() => ({})) as { artifactId?: string };
+    if (body.artifactId) {
+      await updateArtifactPublished(body.artifactId, prompt.workspaceId);
     }
 
     return NextResponse.json({ success: true });
   } catch (error) {
+    const e = error as { code?: string; message?: string };
+    if (e.code === "NOT_FOUND") {
+      return NextResponse.json({ error: "Not found" }, { status: 404 });
+    }
     console.error("Error publishing prompt version:", error);
-    return NextResponse.json(
-      { error: "Failed to publish prompt version" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Failed to publish prompt version" }, { status: 500 });
   }
 }
 
 async function updateArtifactPublished(
   artifactId: string,
-  workspaceId: string | null,
-  devMode: boolean,
+  workspaceId: string,
 ): Promise<void> {
   try {
     const artifact = await db.artifact.findUnique({
       where: { id: artifactId },
-      include: {
-        message: {
-          include: {
-            task: { select: { workspaceId: true } },
-          },
-        },
-      },
+      include: { message: { include: { task: { select: { workspaceId: true } } } } },
     });
-
     if (!artifact) return;
-
-    const artifactWorkspaceId = artifact.message?.task?.workspaceId;
-    const callerHasAccess = devMode || (workspaceId && artifactWorkspaceId === workspaceId);
-    if (!callerHasAccess) return;
+    if (artifact.message?.task?.workspaceId !== workspaceId) return;
 
     const current = (artifact.content as Record<string, unknown>) ?? {};
     await db.artifact.update({

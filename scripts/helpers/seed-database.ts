@@ -12,6 +12,7 @@ import {
   InitiativeStatus,
   MilestoneStatus,
   DeferredChatActionStatus,
+  PromptSyncStatus,
 } from "@prisma/client";
 import { config as dotenvConfig } from "dotenv";
 import { seedDeploymentTracking } from "./seed-deployment-tracking";
@@ -1782,6 +1783,96 @@ async function seedDailyRecapRun(
   console.log("✓ Seeded 1 DAILY_RECAP StakworkRun");
 }
 
+async function seedPrompts() {
+  const workspace = await prisma.workspace.findFirst({
+    where: { slug: "alpha-workspace" },
+    select: { id: true },
+  });
+  if (!workspace) {
+    console.log("⚠ alpha-workspace not found, skipping prompt seed");
+    return;
+  }
+  const workspaceId = workspace.id;
+
+  // Helper: upsert a prompt + its versions from scratch
+  async function upsertPrompt(
+    name: string,
+    versions: { value: string; description?: string }[],
+    publishedIndex: number, // 0-based index into versions array
+  ) {
+    // Remove existing to allow re-seeding
+    const existing = await prisma.prompt.findUnique({
+      where: { workspaceId_name: { workspaceId, name } },
+    });
+    if (existing) {
+      await prisma.promptVersion.deleteMany({ where: { promptId: existing.id } });
+      await prisma.prompt.delete({ where: { id: existing.id } });
+    }
+
+    const prompt = await prisma.prompt.create({
+      data: { name, value: versions[publishedIndex].value, description: versions[publishedIndex].description, workspaceId, syncStatus: PromptSyncStatus.OK },
+    });
+
+    let publishedVersionId: string | null = null;
+    for (let i = 0; i < versions.length; i++) {
+      const v = versions[i];
+      const isPublished = i === publishedIndex;
+      const pv = await prisma.promptVersion.create({
+        data: {
+          promptId: prompt.id,
+          versionNumber: i + 1,
+          value: v.value,
+          description: v.description,
+          published: isPublished,
+          whodunnit: "seed",
+        },
+      });
+      if (isPublished) publishedVersionId = pv.id;
+    }
+
+    await prisma.prompt.update({
+      where: { id: prompt.id },
+      data: { publishedVersionId },
+    });
+
+    console.log(`  ✓ seeded prompt ${name} (${versions.length} versions, published=v${publishedIndex + 1})`);
+  }
+
+  // SUMMARIZE_CODE — 3 versions, version 3 is published
+  await upsertPrompt(
+    "SUMMARIZE_CODE",
+    [
+      { value: "Summarize the following code briefly.", description: "v1 — initial" },
+      { value: "Provide a concise summary of the code below, focusing on its purpose.", description: "v2 — improved" },
+      { value: "Analyze and summarize the following code. Describe what it does, its key functions, and any notable patterns.", description: "v3 — detailed" },
+    ],
+    2, // publish v3 (index 2)
+  );
+
+  // CHILD_PROMPT — single version, published
+  await upsertPrompt(
+    "CHILD_PROMPT",
+    [{ value: "I am the child.", description: "Base child prompt for nesting tests" }],
+    0,
+  );
+
+  // PARENT_PROMPT — references CHILD_PROMPT
+  await upsertPrompt(
+    "PARENT_PROMPT",
+    [{ value: "Parent says: <<CHILD_PROMPT>>", description: "Demonstrates nested prompt expansion" }],
+    0,
+  );
+
+  // MIXED_PROMPT — nesting + step variables + secrets
+  await upsertPrompt(
+    "MIXED_PROMPT",
+    [{ value: "Context: <<CHILD_PROMPT>> | step: [$(input).code] | secret: {{SOME_SECRET}}", description: "Only <<>> is expanded; [var] and {{SECRET}} are left as-is" }],
+    0,
+  );
+
+  console.log("  Prompt seed complete.");
+}
+
 async function main() {
   await prisma.$connect();
 
@@ -1800,6 +1891,7 @@ async function main() {
   await seedStakworkSecrets();
   await seedDeferredChatAction(users);
   await seedDailyRecapRun(users);
+  await seedPrompts();
 
   console.log("Seed completed.");
 }
