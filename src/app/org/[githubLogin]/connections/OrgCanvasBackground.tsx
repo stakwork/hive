@@ -2690,59 +2690,79 @@ export function OrgCanvasBackground({
   );
 
   /**
-   * Move an authored node from the source canvas blob to the target's
-   * sub-canvas blob. Two side-effects:
+   * Move one or more authored nodes from the source canvas blob to the
+   * target's sub-canvas blob. Two side-effects:
    *
-   *   1. **Remove** the node from `currentRef` (the canvas the user is
-   *      looking at). Routes through `applyMutation` so it's
-   *      optimistic, undoable via Ctrl-Z, and rides the standard
-   *      autosave flush that already covers in-flight blob writes.
+   *   1. **Remove** the nodes from `currentRef` (the canvas the user is
+   *      looking at) in a single `applyMutation` so it's optimistic,
+   *      undoable via one Ctrl-Z (the whole multi-move reverses
+   *      atomically), and rides the standard autosave flush that
+   *      already covers in-flight blob writes.
    *
-   *   2. **Add** the node to the target's sub-canvas via a direct
-   *      read-modify-write PUT. The target canvas may not be cached
-   *      locally (the user might never have drilled into it), so
+   *   2. **Add** the nodes to the target's sub-canvas via a single
+   *      direct read-modify-write PUT. The target canvas may not be
+   *      cached locally (the user might never have drilled into it), so
    *      we use the same pattern as `savePositionForLiveId`: fetch
-   *      the latest blob, append the node, PUT it back. The PUT
+   *      the latest blob, append the whole batch, PUT it back. The PUT
    *      emits `CANVAS_UPDATED` server-side; both canvases (the one
    *      we removed from + the one we added to) refetch via the
    *      existing Pusher handler, so the user sees the move land on
    *      the target if they drill in.
    *
-   * The node's `id` / `text` / `category` / `customData` survive the
+   * The batch matters: a fetch+PUT per node races against itself —
+   * every PUT reads the same starting blob, appends only its own node,
+   * and the last write clobbers the rest, so only one node would land.
+   * One read-modify-write covering the whole batch avoids that.
+   *
+   * Each node's `id` / `text` / `category` / `customData` survives the
    * move verbatim. Position is preserved as-is from the source — the
-   * user can drag it once they drill into the target. Resetting `(x,
-   * y)` to a projector-default would be marginally nicer but means
+   * user can drag them once they drill into the target. Nodes dropped
+   * from similar source positions may overlap in the target; resetting
+   * `(x, y)` to a projector-default would be marginally nicer but means
    * computing each target's empty-canvas anchor; not worth the
    * complexity for v1.
    *
    * On a server-side write failure, the source-canvas remove already
    * landed locally. The autosave will eventually flush that removal,
-   * leaving the user with a "lost note" if the target write also
+   * leaving the user with "lost notes" if the target write also
    * failed. Acceptable for v1 (Ctrl-Z undoes the source removal); a
    * proper rollback would need the consumer-side undo stack to track
    * cross-canvas paired actions, which is overkill here.
    */
-  const moveAuthoredNodeToCanvas = useCallback(
+  const moveAuthoredNodesToCanvas = useCallback(
     async (
       sourceCanvasRef: string | undefined,
-      sourceNode: CanvasNode,
+      sourceNodes: CanvasNode[],
       targetCanvasRef: string,
     ) => {
-      // Step 1: optimistic remove from source canvas. `applyMutation`
-      // also stamps `lastActionRef` so Ctrl-Z restores the node to
-      // its pre-move position on the source canvas.
-      applyMutation(sourceCanvasRef, (c) => removeNode(c, sourceNode.id));
+      if (sourceNodes.length === 0) return;
 
-      // Step 2: read-modify-write add to target canvas. Direct fetch
-      // (not `applyMutation`) because the target canvas may not be
-      // in `subCanvases` yet — the user could be on root and dropping
-      // onto an initiative they've never drilled into.
+      // Step 1: optimistic remove of every moved node from the source
+      // canvas in a SINGLE mutation. `applyMutation` also stamps
+      // `lastActionRef` so Ctrl-Z restores the nodes to their pre-move
+      // positions on the source canvas. One mutation keeps the undo
+      // entry atomic (the whole multi-move reverses in one Ctrl-Z).
+      const movedIds = new Set(sourceNodes.map((n) => n.id));
+      applyMutation(sourceCanvasRef, (c) => {
+        let next = c;
+        for (const id of movedIds) next = removeNode(next, id);
+        return next;
+      });
+
+      // Step 2: ONE read-modify-write that appends ALL moved nodes to
+      // the target canvas. Doing a fetch+PUT per node races: each PUT
+      // reads the same starting blob, appends only its own node, and
+      // the last write clobbers the rest — so only one node lands. We
+      // append the whole batch in a single PUT instead. Direct fetch
+      // (not `applyMutation`) because the target canvas may not be in
+      // `subCanvases` yet — the user could be on root and dropping onto
+      // an initiative they've never drilled into.
       try {
         const url = `/api/orgs/${githubLogin}/canvas/${encodeURIComponent(targetCanvasRef)}`;
         const res = await fetch(url);
         if (!res.ok) {
           console.error(
-            "[OrgCanvasBackground] moveAuthoredNodeToCanvas read failed",
+            "[OrgCanvasBackground] moveAuthoredNodesToCanvas read failed",
             res.status,
           );
           return;
@@ -2751,11 +2771,12 @@ export function OrgCanvasBackground({
         const data: CanvasData = body.data ?? { nodes: [], edges: [] };
         const existingNodes = data.nodes ?? [];
         // De-dupe by id in case the user did rapid double-drops or a
-        // Pusher refresh interleaved — same id should never appear
-        // twice on a single canvas.
+        // Pusher refresh interleaved — a moved id should never appear
+        // twice on a single canvas. Drop any existing copies of the
+        // moved ids, then append the fresh batch.
         const nextNodes: CanvasNode[] = [
-          ...existingNodes.filter((n) => n.id !== sourceNode.id),
-          sourceNode,
+          ...existingNodes.filter((n) => !movedIds.has(n.id)),
+          ...sourceNodes,
         ];
         const putRes = await fetch(url, {
           method: "PUT",
@@ -2764,13 +2785,13 @@ export function OrgCanvasBackground({
         });
         if (!putRes.ok) {
           console.error(
-            "[OrgCanvasBackground] moveAuthoredNodeToCanvas write failed",
+            "[OrgCanvasBackground] moveAuthoredNodesToCanvas write failed",
             putRes.status,
           );
         }
       } catch (err) {
         console.error(
-          "[OrgCanvasBackground] moveAuthoredNodeToCanvas threw",
+          "[OrgCanvasBackground] moveAuthoredNodesToCanvas threw",
           err,
         );
       }
@@ -2784,10 +2805,17 @@ export function OrgCanvasBackground({
       target: CanvasNode,
       ctx: { canvasRef: string | undefined },
     ) => {
-      // Iterate over every dropped source and dispatch the correct
-      // action for each valid pairing. Sources with no matching
-      // pairing are silently skipped — this handles mixed multi-
-      // selections where only some nodes are droppable onto the target.
+      // Classify every dropped source by pairing. The DB-reassign
+      // pairings (1 and 3) hit independent per-id endpoints, so they're
+      // safe to fire one PATCH per source. The canvas-move pairing (2)
+      // writes a SINGLE shared blob, so we must collect all of its
+      // sources and issue one batched read-modify-write — firing a
+      // fetch+PUT per node races (each PUT clobbers the others, leaving
+      // only one node in the target). Sources with no matching pairing
+      // are silently skipped — this handles mixed multi-selections where
+      // only some nodes are droppable onto the target.
+      const authoredToMove: CanvasNode[] = [];
+
       for (const source of sources) {
         if (!source) continue;
 
@@ -2812,13 +2840,14 @@ export function OrgCanvasBackground({
         // node into. Defensive: if the projector ever stops emitting a
         // `ref` on a container we'd silently no-op, which is the right
         // failure mode (better than writing to an unknown scope).
+        // Collect here; the actual move is batched below.
         if (
           AUTHORED_DROPPABLE_CATEGORIES.includes(source.category ?? "") &&
           !isLiveId(source.id) &&
           LIVE_CONTAINER_CATEGORIES.includes(target.category ?? "") &&
           target.ref
         ) {
-          void moveAuthoredNodeToCanvas(ctx.canvasRef, source, target.ref);
+          authoredToMove.push(source);
           continue;
         }
 
@@ -2839,10 +2868,17 @@ export function OrgCanvasBackground({
 
         // No matching pairing — skip this source.
       }
+
+      // Batched canvas-move: one remove + one append covering every
+      // authored node dropped onto this container. `target.ref` is
+      // guaranteed present because it's part of the pairing-2 predicate.
+      if (authoredToMove.length > 0 && target.ref) {
+        void moveAuthoredNodesToCanvas(ctx.canvasRef, authoredToMove, target.ref);
+      }
     },
     [
       reassignFeatureToMilestone,
-      moveAuthoredNodeToCanvas,
+      moveAuthoredNodesToCanvas,
       reassignResearchToInitiative,
     ],
   );
