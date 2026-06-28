@@ -31,6 +31,7 @@ let triggerFindMany: ReturnType<typeof vi.fn>;
 let triggerUpdate: ReturnType<typeof vi.fn>;
 let taskFindUnique: ReturnType<typeof vi.fn>;
 let featureFindUnique: ReturnType<typeof vi.fn>;
+let presenceFindUnique: ReturnType<typeof vi.fn>;
 let queryRaw: ReturnType<typeof vi.fn>;
 let transaction: ReturnType<typeof vi.fn>;
 
@@ -61,6 +62,7 @@ describe("dispatchPendingNotifications", () => {
     triggerUpdate = vi.fn().mockResolvedValue({});
     taskFindUnique = vi.fn();
     featureFindUnique = vi.fn();
+    presenceFindUnique = vi.fn().mockResolvedValue(null); // default: no active presence
     queryRaw = vi.fn();
 
     // No longer used — kept for type compatibility; code now calls db.$queryRaw directly
@@ -72,6 +74,7 @@ describe("dispatchPendingNotifications", () => {
       notificationTrigger: { findMany: triggerFindMany, update: triggerUpdate },
       task: { findUnique: taskFindUnique },
       feature: { findUnique: featureFindUnique },
+      userFeaturePresence: { findUnique: presenceFindUnique },
     });
 
     // Default: $queryRaw returns one claimed ID, findMany returns the matching record
@@ -371,6 +374,81 @@ describe("dispatchPendingNotifications", () => {
 
       expect(result.dispatched).toBe(1);
       expect(result.cancelled).toBe(0);
+    });
+  });
+
+  describe("presence suppression", () => {
+    function makeFeatureRecord(overrides: Partial<Record<string, unknown>> = {}) {
+      return makeRecord({
+        notificationType: NotificationTriggerType.FEATURE_ASSIGNED,
+        taskId: null,
+        featureId: "feature-1",
+        targetUserId: "user-1",
+        feature: { workspace: { slug: "my-workspace" } },
+        task: null,
+        ...overrides,
+      });
+    }
+
+    it("marks SUPPRESSED and increments cancelled when user lastSeenAt is within 5 minutes", async () => {
+      triggerFindMany.mockResolvedValue([makeFeatureRecord()]);
+      featureFindUnique.mockResolvedValue({ status: "IN_PROGRESS" });
+      presenceFindUnique.mockResolvedValue({
+        lastSeenAt: new Date(Date.now() - 2 * 60 * 1000), // 2 min ago — within window
+      });
+
+      const result = await dispatchPendingNotifications();
+
+      expect(result.cancelled).toBe(1);
+      expect(result.dispatched).toBe(0);
+      expect(triggerUpdate).toHaveBeenCalledWith({
+        where: { id: "record-1" },
+        data: { status: NotificationTriggerStatus.SUPPRESSED },
+      });
+      expect(mockedSendDirectMessage).not.toHaveBeenCalled();
+    });
+
+    it("sends normally when user lastSeenAt is stale (> 5 minutes)", async () => {
+      triggerFindMany.mockResolvedValue([makeFeatureRecord()]);
+      featureFindUnique.mockResolvedValue({ status: "IN_PROGRESS" });
+      presenceFindUnique.mockResolvedValue({
+        lastSeenAt: new Date(Date.now() - 10 * 60 * 1000), // 10 min ago — stale
+      });
+      mockedSendDirectMessage.mockResolvedValue({ success: true });
+
+      const result = await dispatchPendingNotifications();
+
+      expect(result.dispatched).toBe(1);
+      expect(result.cancelled).toBe(0);
+      expect(triggerUpdate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ status: NotificationTriggerStatus.SENT }),
+        })
+      );
+    });
+
+    it("sends normally when there is no presence row for the feature", async () => {
+      triggerFindMany.mockResolvedValue([makeFeatureRecord()]);
+      featureFindUnique.mockResolvedValue({ status: "IN_PROGRESS" });
+      presenceFindUnique.mockResolvedValue(null); // no row
+      mockedSendDirectMessage.mockResolvedValue({ success: true });
+
+      const result = await dispatchPendingNotifications();
+
+      expect(result.dispatched).toBe(1);
+      expect(result.cancelled).toBe(0);
+    });
+
+    it("skips presence check when featureId is null (task-only record)", async () => {
+      // Default makeRecord has featureId: null — presence check should be skipped
+      triggerFindMany.mockResolvedValue([makeRecord()]);
+      taskFindUnique.mockResolvedValue({ status: "IN_PROGRESS" });
+      mockedSendDirectMessage.mockResolvedValue({ success: true });
+
+      const result = await dispatchPendingNotifications();
+
+      expect(presenceFindUnique).not.toHaveBeenCalled();
+      expect(result.dispatched).toBe(1);
     });
   });
 });
