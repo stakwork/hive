@@ -76,9 +76,9 @@ export async function GET(
     const nodes = rawNodes.map((n: Record<string, unknown>) => ({
       ref_id: n.ref_id,
       node_type: n.node_type,
-      name: n.title ?? n.name ?? "",
-      definition: n.definition ?? null,
-      date_added_to_graph: n.date_added_to_graph ?? 0,
+      name: (n.title ?? n.name ?? "") as string,
+      definition: (n.definition ?? null) as string | null,
+      date_added_to_graph: (n.date_added_to_graph ?? 0) as number,
     }));
     return NextResponse.json({ success: true, data: nodes });
   } catch (err) {
