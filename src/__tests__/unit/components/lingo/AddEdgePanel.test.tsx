@@ -120,11 +120,11 @@ async function renderWithSearch(nodes: ReturnType<typeof makeNode>[]) {
   mockFetch
     .mockResolvedValueOnce({
       ok: true,
-      json: () => Promise.resolve({ data: { nodes: [], hasMore: false } }), // listing on open
+      json: () => Promise.resolve({ success: true, data: { nodes: [], hasMore: false } }), // listing on open
     })
     .mockResolvedValueOnce({
       ok: true,
-      json: () => Promise.resolve({ data: nodes }), // search after typing
+      json: () => Promise.resolve({ success: true, data: nodes }), // search after typing
     });
 
   render(<AddEdgePanel {...defaultProps} />);
@@ -157,7 +157,7 @@ describe("AddEdgePanel", () => {
     it("calls listing endpoint immediately on mount", async () => {
       mockFetch.mockResolvedValueOnce({
         ok: true,
-        json: () => Promise.resolve({ data: { nodes: [], hasMore: false } }),
+        json: () => Promise.resolve({ success: true, data: { nodes: [], hasMore: false } }),
       });
 
       render(<AddEdgePanel {...defaultProps} />);
@@ -175,7 +175,7 @@ describe("AddEdgePanel", () => {
       const node = makeNode({ ref_id: "listed-1", name: "Listed Node", node_type: "Lingo" });
       mockFetch.mockResolvedValueOnce({
         ok: true,
-        json: () => Promise.resolve({ data: { nodes: [node], hasMore: false } }),
+        json: () => Promise.resolve({ success: true, data: { nodes: [node], hasMore: false } }),
       });
 
       render(<AddEdgePanel {...defaultProps} />);
@@ -192,17 +192,17 @@ describe("AddEdgePanel", () => {
       // First open → listing
       mockFetch.mockResolvedValueOnce({
         ok: true,
-        json: () => Promise.resolve({ data: { nodes: [], hasMore: false } }),
+        json: () => Promise.resolve({ success: true, data: { nodes: [], hasMore: false } }),
       });
       // After typing → search
       mockFetch.mockResolvedValueOnce({
         ok: true,
-        json: () => Promise.resolve({ data: [] }),
+        json: () => Promise.resolve({ success: true, data: [] }),
       });
       // After clearing → listing again
       mockFetch.mockResolvedValueOnce({
         ok: true,
-        json: () => Promise.resolve({ data: { nodes: [], hasMore: false } }),
+        json: () => Promise.resolve({ success: true, data: { nodes: [], hasMore: false } }),
       });
 
       render(<AddEdgePanel {...defaultProps} />);
@@ -233,7 +233,7 @@ describe("AddEdgePanel", () => {
 
       mockFetch.mockResolvedValueOnce({
         ok: true,
-        json: () => Promise.resolve({ data: { nodes: [], hasMore: false } }),
+        json: () => Promise.resolve({ success: true, data: { nodes: [], hasMore: false } }),
       });
 
       render(<AddEdgePanel {...defaultProps} />);
@@ -256,12 +256,13 @@ describe("AddEdgePanel", () => {
       mockFetch
         .mockResolvedValueOnce({
           ok: true,
-          json: () => Promise.resolve({ data: { nodes: [], hasMore: false } }),
+          json: () => Promise.resolve({ success: true, data: { nodes: [], hasMore: false } }),
         })
         .mockResolvedValueOnce({
           ok: true,
           json: () =>
             Promise.resolve({
+              success: true,
               data: [makeNode({ ref_id: "result-1", name: "Result Node" })],
             }),
         });
@@ -292,11 +293,11 @@ describe("AddEdgePanel", () => {
       mockFetch
         .mockResolvedValueOnce({
           ok: true,
-          json: () => Promise.resolve({ data: { nodes: [], hasMore: false } }),
+          json: () => Promise.resolve({ success: true, data: { nodes: [], hasMore: false } }),
         })
         .mockResolvedValueOnce({
           ok: true,
-          json: () => Promise.resolve({ data: [] }),
+          json: () => Promise.resolve({ success: true, data: [] }),
         });
 
       render(<AddEdgePanel {...defaultProps} />);
@@ -422,7 +423,7 @@ describe("AddEdgePanel", () => {
     it("shows all COMMON_EDGE_TYPES when no target is selected", async () => {
       mockFetch.mockResolvedValueOnce({
         ok: true,
-        json: () => Promise.resolve({ data: { nodes: [], hasMore: false } }),
+        json: () => Promise.resolve({ success: true, data: { nodes: [], hasMore: false } }),
       });
 
       render(<AddEdgePanel {...defaultProps} />);
@@ -466,8 +467,8 @@ describe("AddEdgePanel", () => {
       const lingoNode = makeNode({ ref_id: "lingo-2", name: "Lingo Node", node_type: "Lingo" });
 
       mockFetch
-        .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ data: { nodes: [], hasMore: false } }) })
-        .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ data: [jdNode, lingoNode] }) });
+        .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ success: true, data: { nodes: [], hasMore: false } }) })
+        .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ success: true, data: [jdNode, lingoNode] }) });
 
       render(<AddEdgePanel {...defaultProps} />);
       await act(async () => { await Promise.resolve(); });
@@ -554,11 +555,150 @@ describe("AddEdgePanel", () => {
     });
   });
 
+  describe("Search error state", () => {
+    it("shows search-error when debounced search returns success:false", async () => {
+      vi.useFakeTimers({ shouldAdvanceTime: true });
+
+      mockFetch
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({ success: true, data: { nodes: [], hasMore: false } }),
+        })
+        .mockResolvedValueOnce({
+          ok: false,
+          json: () => Promise.resolve({ success: false, error: "Search unavailable" }),
+        });
+
+      render(<AddEdgePanel {...defaultProps} />);
+      await act(async () => { await Promise.resolve(); });
+
+      fireEvent.change(screen.getByTestId("node-search-input"), { target: { value: "fail" } });
+      await act(async () => { vi.advanceTimersByTime(300); await Promise.resolve(); });
+
+      await waitFor(() => {
+        expect(screen.getByTestId("search-error")).toBeInTheDocument();
+        expect(screen.queryByTestId("no-results")).not.toBeInTheDocument();
+      });
+
+      vi.useRealTimers();
+    });
+
+    it("shows search-error when debounced search fetch throws", async () => {
+      vi.useFakeTimers({ shouldAdvanceTime: true });
+
+      mockFetch
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({ success: true, data: { nodes: [], hasMore: false } }),
+        })
+        .mockRejectedValueOnce(new Error("Network error"));
+
+      render(<AddEdgePanel {...defaultProps} />);
+      await act(async () => { await Promise.resolve(); });
+
+      fireEvent.change(screen.getByTestId("node-search-input"), { target: { value: "oops" } });
+      await act(async () => { vi.advanceTimersByTime(300); await Promise.resolve(); });
+
+      await waitFor(() => {
+        expect(screen.getByTestId("search-error")).toBeInTheDocument();
+        expect(screen.queryByTestId("no-results")).not.toBeInTheDocument();
+      });
+
+      vi.useRealTimers();
+    });
+
+    it("clears searchError when query changes after an error", async () => {
+      vi.useFakeTimers({ shouldAdvanceTime: true });
+
+      mockFetch
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({ success: true, data: { nodes: [], hasMore: false } }),
+        })
+        // first search → error
+        .mockRejectedValueOnce(new Error("Network error"))
+        // second search (query change) → still loading, we check error gone before resolve
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({ success: true, data: [] }),
+        });
+
+      render(<AddEdgePanel {...defaultProps} />);
+      await act(async () => { await Promise.resolve(); });
+
+      // Trigger error
+      fireEvent.change(screen.getByTestId("node-search-input"), { target: { value: "bad" } });
+      await act(async () => { vi.advanceTimersByTime(300); await Promise.resolve(); });
+      await waitFor(() => expect(screen.getByTestId("search-error")).toBeInTheDocument());
+
+      // Change query — error should clear (useEffect runs setSearchError(false) before debounce)
+      fireEvent.change(screen.getByTestId("node-search-input"), { target: { value: "new" } });
+      // After the synchronous state update (setSearchError(false)) but before debounce fires
+      await act(async () => { await Promise.resolve(); });
+
+      expect(screen.queryByTestId("search-error")).not.toBeInTheDocument();
+
+      vi.useRealTimers();
+    });
+
+    it("clears searchError when panel is closed", async () => {
+      vi.useFakeTimers({ shouldAdvanceTime: true });
+
+      const onClose = vi.fn();
+
+      mockFetch
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({ success: true, data: { nodes: [], hasMore: false } }),
+        })
+        .mockRejectedValueOnce(new Error("Network error"))
+        // after re-open
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({ success: true, data: { nodes: [], hasMore: false } }),
+        });
+
+      const { rerender } = render(<AddEdgePanel {...defaultProps} onClose={onClose} />);
+      await act(async () => { await Promise.resolve(); });
+
+      fireEvent.change(screen.getByTestId("node-search-input"), { target: { value: "bad" } });
+      await act(async () => { vi.advanceTimersByTime(300); await Promise.resolve(); });
+      await waitFor(() => expect(screen.getByTestId("search-error")).toBeInTheDocument());
+
+      // Close the panel via Cancel button
+      fireEvent.click(screen.getByText("Cancel"));
+      await act(async () => { await Promise.resolve(); });
+
+      // Re-open
+      rerender(<AddEdgePanel {...defaultProps} onClose={onClose} isOpen={true} />);
+      await act(async () => { await Promise.resolve(); });
+
+      // searchError should be gone
+      expect(screen.queryByTestId("search-error")).not.toBeInTheDocument();
+
+      vi.useRealTimers();
+    });
+
+    it("shows search-error when listing endpoint (empty query) returns success:false", async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ success: false, error: "Search unavailable" }),
+      });
+
+      render(<AddEdgePanel {...defaultProps} />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId("search-error")).toBeInTheDocument();
+        expect(screen.queryByTestId("no-results")).not.toBeInTheDocument();
+      });
+    });
+  });
+
   describe("Confirm / POST edge", () => {
     it("confirm button is disabled when no target selected", async () => {
       mockFetch.mockResolvedValueOnce({
         ok: true,
-        json: () => Promise.resolve({ data: { nodes: [], hasMore: false } }),
+        json: () => Promise.resolve({ success: true, data: { nodes: [], hasMore: false } }),
       });
 
       render(<AddEdgePanel {...defaultProps} />);
@@ -573,12 +713,13 @@ describe("AddEdgePanel", () => {
       mockFetch
         .mockResolvedValueOnce({
           ok: true,
-          json: () => Promise.resolve({ data: { nodes: [], hasMore: false } }), // listing on open
+          json: () => Promise.resolve({ success: true, data: { nodes: [], hasMore: false } }), // listing on open
         })
         .mockResolvedValueOnce({
           ok: true,
           json: () =>
             Promise.resolve({
+              success: true,
               data: [makeNode({ ref_id: "target-node", name: "Target" })],
             }), // search
         })
@@ -588,7 +729,7 @@ describe("AddEdgePanel", () => {
         })
         .mockResolvedValueOnce({
           ok: true,
-          json: () => Promise.resolve({ data: { nodes: [], hasMore: false } }), // listing after close resets query
+          json: () => Promise.resolve({ success: true, data: { nodes: [], hasMore: false } }), // listing after close resets query
         });
 
       const onEdgeCreated = vi.fn();
@@ -639,12 +780,13 @@ describe("AddEdgePanel", () => {
       mockFetch
         .mockResolvedValueOnce({
           ok: true,
-          json: () => Promise.resolve({ data: { nodes: [], hasMore: false } }),
+          json: () => Promise.resolve({ success: true, data: { nodes: [], hasMore: false } }),
         })
         .mockResolvedValueOnce({
           ok: true,
           json: () =>
             Promise.resolve({
+              success: true,
               data: [makeNode({ ref_id: "t1", name: "T1" })],
             }),
         })
