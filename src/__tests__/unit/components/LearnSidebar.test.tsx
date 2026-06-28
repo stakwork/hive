@@ -94,6 +94,18 @@ vi.mock("lucide-react", () => ({
   Pencil: () => <span data-testid="pencil-icon" />,
   RefreshCw: () => <span data-testid="refresh-icon" />,
   Sprout: () => <span data-testid="sprout-icon" />,
+  Search: () => <span data-testid="search-icon" />,
+  X: () => <span data-testid="x-icon" />,
+}));
+
+vi.mock("@/components/ui/input", () => ({
+  Input: ({ value, onChange, ...props }: any) => (
+    <input value={value} onChange={onChange} {...props} />
+  ),
+}));
+
+vi.mock("@/hooks/useDebounce", () => ({
+  useDebounce: (value: string) => value,
 }));
 
 const diagram = {
@@ -457,5 +469,199 @@ describe("LearnSidebar — Docs + button (learn_docs)", () => {
         "Failed to trigger documentation learning."
       );
     });
+  });
+});
+
+describe("LearnSidebar — concept search", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockUseWorkspace.mockReturnValue({ workspace: { repositories: [] } });
+    global.fetch = vi.fn().mockResolvedValue({ ok: false });
+  });
+
+  it("renders search input inside concepts section", () => {
+    render(<LearnSidebar {...defaultProps} concepts={multiRepoConcepts} />);
+    expect(screen.getByTestId("concept-search-input")).toBeTruthy();
+  });
+
+  it("typing fewer than 2 chars does not call fetch for search and keeps grouped list", async () => {
+    render(<LearnSidebar {...defaultProps} concepts={multiRepoConcepts} />);
+    const input = screen.getByTestId("concept-search-input");
+
+    // Clear any fetch calls from component mount effects
+    vi.clearAllMocks();
+    global.fetch = vi.fn().mockResolvedValue({ ok: false });
+
+    fireEvent.change(input, { target: { value: "a" } });
+
+    await waitFor(() => {
+      // grouped list still visible
+      expect(screen.getAllByTestId("learn-concept-item").length).toBeGreaterThan(0);
+    });
+
+    // fetch should NOT have been called for search (only background effects may call it)
+    const searchCalls = (global.fetch as ReturnType<typeof vi.fn>).mock.calls.filter(
+      (args: unknown[]) => typeof args[0] === "string" && (args[0] as string).includes("/concepts/search")
+    );
+    expect(searchCalls).toHaveLength(0);
+  });
+
+  it("typing ≥ 2 chars calls search endpoint with correct params", async () => {
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ literal: [], semantic: [] }),
+    });
+
+    render(<LearnSidebar {...defaultProps} concepts={multiRepoConcepts} />);
+    const input = screen.getByTestId("concept-search-input");
+    fireEvent.change(input, { target: { value: "au" } });
+
+    await waitFor(() => {
+      const searchCalls = (global.fetch as ReturnType<typeof vi.fn>).mock.calls.filter(
+        (args: unknown[]) => typeof args[0] === "string" && (args[0] as string).includes("/concepts/search")
+      );
+      expect(searchCalls.length).toBeGreaterThan(0);
+      expect(searchCalls[0][0]).toContain("workspace=test-workspace");
+      expect(searchCalls[0][0]).toContain("q=au");
+    });
+  });
+
+  it("renders literal results under Matches label", async () => {
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        literal: [{ id: "stakwork/hive/auth", name: "Authentication" }],
+        semantic: [],
+      }),
+    });
+
+    render(<LearnSidebar {...defaultProps} concepts={multiRepoConcepts} />);
+    const input = screen.getByTestId("concept-search-input");
+    fireEvent.change(input, { target: { value: "auth" } });
+
+    await waitFor(() => {
+      expect(screen.getByText("Matches")).toBeTruthy();
+      expect(screen.getByTestId("concept-search-result-literal")).toBeTruthy();
+      expect(screen.getByTestId("concept-search-result-literal").textContent).toBe("Authentication");
+    });
+  });
+
+  it("renders semantic results under Related label", async () => {
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        literal: [],
+        semantic: [{ id: "stakwork/hive/tasks", name: "Tasks" }],
+      }),
+    });
+
+    render(<LearnSidebar {...defaultProps} concepts={multiRepoConcepts} />);
+    const input = screen.getByTestId("concept-search-input");
+    fireEvent.change(input, { target: { value: "ta" } });
+
+    await waitFor(() => {
+      expect(screen.getByText("Related")).toBeTruthy();
+      expect(screen.getByTestId("concept-search-result-semantic")).toBeTruthy();
+      expect(screen.getByTestId("concept-search-result-semantic").textContent).toBe("Tasks");
+    });
+  });
+
+  it("shows 'No concepts match' when results are empty", async () => {
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ literal: [], semantic: [] }),
+    });
+
+    render(<LearnSidebar {...defaultProps} concepts={multiRepoConcepts} />);
+    const input = screen.getByTestId("concept-search-input");
+    fireEvent.change(input, { target: { value: "xyz" } });
+
+    await waitFor(() => {
+      expect(screen.getByText("No concepts match")).toBeTruthy();
+    });
+  });
+
+  it("clearing input restores grouped concept list", async () => {
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        literal: [{ id: "stakwork/hive/auth", name: "Authentication" }],
+        semantic: [],
+      }),
+    });
+
+    render(<LearnSidebar {...defaultProps} concepts={multiRepoConcepts} />);
+    const input = screen.getByTestId("concept-search-input");
+
+    // Type to trigger search
+    fireEvent.change(input, { target: { value: "auth" } });
+    await waitFor(() => {
+      expect(screen.queryByTestId("learn-concept-item")).toBeNull();
+    });
+
+    // Click X to clear
+    fireEvent.click(screen.getByLabelText("Clear search"));
+
+    await waitFor(() => {
+      expect(screen.getAllByTestId("learn-concept-item").length).toBeGreaterThan(0);
+    });
+  });
+
+  it("clicking a literal search result calls onConceptClick with correct id and name", async () => {
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        literal: [{ id: "stakwork/hive/auth", name: "Authentication" }],
+        semantic: [],
+      }),
+    });
+
+    const onConceptClick = vi.fn();
+    render(
+      <LearnSidebar
+        {...defaultProps}
+        concepts={multiRepoConcepts}
+        onConceptClick={onConceptClick}
+      />
+    );
+
+    const input = screen.getByTestId("concept-search-input");
+    fireEvent.change(input, { target: { value: "auth" } });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("concept-search-result-literal")).toBeTruthy();
+    });
+
+    fireEvent.click(screen.getByTestId("concept-search-result-literal"));
+    expect(onConceptClick).toHaveBeenCalledWith("stakwork/hive/auth", "Authentication", "");
+  });
+
+  it("clicking a semantic search result calls onConceptClick with correct id and name", async () => {
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        literal: [],
+        semantic: [{ id: "stakwork/hive/tasks", name: "Tasks" }],
+      }),
+    });
+
+    const onConceptClick = vi.fn();
+    render(
+      <LearnSidebar
+        {...defaultProps}
+        concepts={multiRepoConcepts}
+        onConceptClick={onConceptClick}
+      />
+    );
+
+    const input = screen.getByTestId("concept-search-input");
+    fireEvent.change(input, { target: { value: "ta" } });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("concept-search-result-semantic")).toBeTruthy();
+    });
+
+    fireEvent.click(screen.getByTestId("concept-search-result-semantic"));
+    expect(onConceptClick).toHaveBeenCalledWith("stakwork/hive/tasks", "Tasks", "");
   });
 });
