@@ -505,6 +505,7 @@ describe("GET /api/workspaces/[slug]/lingo/nodes/search", () => {
     );
     await GET(req, { params: Promise.resolve({ slug: SLUG }) });
     const [calledUrl] = mockFetch.mock.calls[0] as [string];
+    expect(calledUrl).toContain("/v2/nodes/search");
     expect(calledUrl).toContain("q=pod");
     expect(calledUrl).toContain("type=Jargon");
   });
