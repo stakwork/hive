@@ -4,6 +4,10 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { NextRequest } from "next/server";
 
+// Prevent real HTTP calls from the best-effort hub-mirror trigger in the route.
+// Tests that need specific fetch behaviour can override via vi.spyOn in their own beforeEach.
+vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(null, { status: 200 })));
+
 vi.mock("@/lib/db");
 vi.mock("@/lib/helpers/jarvis-config", () => ({
   getJarvisConfigForWorkspace: vi.fn(),
