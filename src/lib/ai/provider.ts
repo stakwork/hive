@@ -113,6 +113,44 @@ export function getModel(
 }
 
 /**
+ * Bifrost gateway reachability probe.
+ *
+ * Bifrost-routed LLM calls go through ONE gateway — the primary
+ * workspace's swarm proxy (`baseUrl`, e.g.
+ * `https://swarm38.sphinx.chat:8181`). When that swarm is unreachable
+ * (expired/self-signed TLS cert, connection refused, DNS, timeout) the
+ * call dies even when the default gateway is healthy.
+ *
+ * So before committing to the swarm route, callers pre-flight it: any
+ * resolved HTTP response (even a 404/401) means the TLS handshake + TCP
+ * connect succeeded → the gateway is reachable, keep the Bifrost route.
+ * A *rejection* (CERT_HAS_EXPIRED, ECONNREFUSED, timeout, fetch failed)
+ * means we can't talk to it → drop the entire Bifrost bundle (baseUrl +
+ * VK + macaroon) and fall back to the plain default gateway.
+ *
+ * We probe rather than catch a mid-stream `streamText` error because by
+ * the time that surfaces, the HTTP response is already returned to the
+ * client and the stream can't be restarted.
+ */
+export const GATEWAY_PROBE_TIMEOUT_MS = 3000;
+export async function isGatewayReachable(
+  baseUrl: string,
+  timeoutMs: number = GATEWAY_PROBE_TIMEOUT_MS,
+): Promise<boolean> {
+  try {
+    await fetch(baseUrl, {
+      method: "GET",
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+    // Any resolved response (any status) means the connection — and
+    // therefore the certificate — is fine. We don't care about the body.
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Get provider tool with mock support
  */
 export function getProviderTool(
