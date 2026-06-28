@@ -122,6 +122,7 @@ model User {
   createdMilestones        Milestone[]              @relation("MilestoneCreator")
   automations              Automation[]
   stakworkRuns             StakworkRun[]
+  featurePresence          UserFeaturePresence[]
 
   @@index([createdAt])
   @@index([deleted])
@@ -924,6 +925,7 @@ model Feature {
   tasks               Task[]
   userStories         UserStory[]
   whiteboard          Whiteboard?
+  activeViewers       UserFeaturePresence[]
 
   @@index([workspaceId])
   @@index([assigneeId])
@@ -953,6 +955,19 @@ model UserStory {
   @@index([featureId])
   @@index([order])
   @@map("user_stories")
+}
+
+model UserFeaturePresence {
+  userId     String   @map("user_id")
+  featureId  String   @map("feature_id")
+  lastSeenAt DateTime @map("last_seen_at")
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  feature Feature @relation(fields: [featureId], references: [id], onDelete: Cascade)
+
+  @@id([userId, featureId])
+  @@index([userId, featureId, lastSeenAt])
+  @@map("user_feature_presence")
 }
 
 model Phase {
@@ -1519,6 +1534,7 @@ enum NotificationTriggerStatus {
   FAILED
   SKIPPED
   CANCELLED
+  SUPPRESSED // user was actively present or self-assigned; notification intentionally withheld
 }
 
 enum NotificationMethod {
