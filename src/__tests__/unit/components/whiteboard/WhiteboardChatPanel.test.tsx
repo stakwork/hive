@@ -25,10 +25,6 @@ const mockSpeechRecognition = {
   resetTranscript: vi.fn(),
 };
 
-vi.mock("@/hooks/useWorkspace", () => ({
-  useWorkspace: () => ({ id: "ws-test-123" }),
-}));
-
 vi.mock("@/hooks/useVoiceLearningPreference", () => ({
   useVoiceLearningPreference: () => ({ enabled: false, loading: false, nudgeIfNeeded: () => {} }),
   resetVoiceLearningCache: () => {},

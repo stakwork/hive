@@ -26,7 +26,6 @@ import { useSpeechRecognition } from "@/hooks/useSpeechRecognition";
 import { useControlKeyHold } from "@/hooks/useControlKeyHold";
 import { useVoiceCorrectionCapture } from "@/hooks/useVoiceCorrectionCapture";
 import { useVoiceLearningPreference } from "@/hooks/useVoiceLearningPreference";
-import { useWorkspace } from "@/hooks/useWorkspace";
 import { ChevronDown, ChevronLeft, ChevronRight, HelpCircle, Loader2, Mic, MicOff, Send } from "lucide-react";
 import { toast } from "sonner";
 import { ClarifyingQuestionsPreview } from "@/components/features/ClarifyingQuestionsPreview";
@@ -143,9 +142,8 @@ export function WhiteboardChatPanel({
   const pusherRef = useRef<ReturnType<typeof getPusherClient> | null>(null);
   const preVoiceInputRef = useRef("");
   const parsedDiagramRef = useRef<ParsedDiagram | null>(null);
-  const { id: workspaceId } = useWorkspace();
   const { nudgeIfNeeded } = useVoiceLearningPreference();
-  const { capture } = useVoiceCorrectionCapture({ surface: "whiteboard", workspaceId: workspaceId ?? undefined });
+  const { capture } = useVoiceCorrectionCapture({ surface: "whiteboard" });
 
   const { isListening, transcript, isSupported, startListening, stopListening, resetTranscript } =
     useSpeechRecognition();
