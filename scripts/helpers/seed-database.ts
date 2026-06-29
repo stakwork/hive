@@ -1782,6 +1782,74 @@ async function seedDailyRecapRun(
   console.log("✓ Seeded 1 DAILY_RECAP StakworkRun");
 }
 
+async function seedVoiceCorrections(users: Array<{ id: string; email: string }>) {
+  if (users.length === 0) {
+    console.log("Skipping voice corrections seed: no users");
+    return;
+  }
+
+  const existing = await prisma.voiceCorrectionLearning.count();
+  if (existing > 0) {
+    console.log("✓ Voice corrections already seeded — skipping");
+    return;
+  }
+
+  const surfaces = ["task_chat", "plan_chat", "plan_start", "task_start", "whiteboard", "sidebar"] as const;
+
+  // Repeated pairs for meaningful aggregate data
+  const repeatedPairs = [
+    { raw: "ficks the log in", final: "fix the login" },
+    { raw: "create a knew branch", final: "create a new branch" },
+    { raw: "run the test sweet", final: "run the test suite" },
+  ];
+
+  const rows: Array<{
+    userId: string;
+    surface: string;
+    rawTranscript: string;
+    preVoiceText: string;
+    finalText: string;
+  }> = [];
+
+  // Add 4 occurrences of each repeated pair across users/surfaces
+  for (const pair of repeatedPairs) {
+    for (let i = 0; i < 4; i++) {
+      rows.push({
+        userId: users[i % users.length].id,
+        surface: surfaces[(i + repeatedPairs.indexOf(pair)) % surfaces.length],
+        rawTranscript: pair.raw,
+        preVoiceText: "",
+        finalText: pair.final,
+      });
+    }
+  }
+
+  // Fill remaining rows with varied one-off corrections
+  const oneOffs = [
+    { raw: "merge the pull request", final: "merge the pull request to main", surface: "task_chat" },
+    { raw: "add unit tests four the auth module", final: "add unit tests for the auth module", surface: "plan_chat" },
+    { raw: "deploy two staging environment", final: "deploy to staging environment", surface: "whiteboard" },
+    { raw: "update the read me file", final: "update the README file", surface: "sidebar" },
+    { raw: "refactor the data base queries", final: "refactor the database queries", surface: "task_start" },
+    { raw: "open a pull request four review", final: "open a pull request for review", surface: "plan_start" },
+    { raw: "resolve the merge conflict", final: "resolve the merge conflicts", surface: "task_chat" },
+    { raw: "write integration test", final: "write integration tests", surface: "plan_chat" },
+  ];
+
+  for (const item of oneOffs) {
+    rows.push({
+      userId: users[rows.length % users.length].id,
+      surface: item.surface,
+      rawTranscript: item.raw,
+      preVoiceText: "",
+      finalText: item.final,
+    });
+  }
+
+  await prisma.voiceCorrectionLearning.createMany({ data: rows });
+  console.log(`✓ Seeded ${rows.length} voice correction learning rows`);
+}
+
 async function main() {
   await prisma.$connect();
 
@@ -1800,6 +1868,7 @@ async function main() {
   await seedStakworkSecrets();
   await seedDeferredChatAction(users);
   await seedDailyRecapRun(users);
+  await seedVoiceCorrections(users);
 
   console.log("Seed completed.");
 }
