@@ -69,7 +69,7 @@ vi.mock("@/components/ui/input", () => ({
 
 // ─── Import after mocks ───────────────────────────────────────────────────────
 
-import { AddEdgePanel } from "@/app/w/[slug]/learn/lingo/components/AddEdgePanel";
+import { AddEdgePanel } from "@/app/w/[slug]/lingo/components/AddEdgePanel";
 import { toast } from "sonner";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
