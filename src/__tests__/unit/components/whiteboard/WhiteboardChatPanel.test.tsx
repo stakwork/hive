@@ -25,6 +25,15 @@ const mockSpeechRecognition = {
   resetTranscript: vi.fn(),
 };
 
+vi.mock("@/hooks/useVoiceLearningPreference", () => ({
+  useVoiceLearningPreference: () => ({ enabled: false, loading: false, nudgeIfNeeded: () => {} }),
+  resetVoiceLearningCache: () => {},
+}));
+
+vi.mock("@/hooks/useVoiceCorrectionCapture", () => ({
+  useVoiceCorrectionCapture: () => ({ capture: () => {} }),
+}));
+
 vi.mock("@/hooks/useSpeechRecognition", () => ({
   useSpeechRecognition: () => mockSpeechRecognition,
 }));
