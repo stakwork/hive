@@ -45,6 +45,8 @@ import { useFeatureFlag } from "@/hooks/useFeatureFlag";
 import { FEATURE_FLAGS } from "@/lib/feature-flags";
 import { useSpeechRecognition } from "@/hooks/useSpeechRecognition";
 import { useControlKeyHold } from "@/hooks/useControlKeyHold";
+import { useVoiceCorrectionCapture } from "@/hooks/useVoiceCorrectionCapture";
+import { useVoiceLearningPreference } from "@/hooks/useVoiceLearningPreference";
 import { WorkflowNode } from "@/hooks/useWorkflowNodes";
 import { useWorkflowVersions } from "@/hooks/useWorkflowVersions";
 import { WorkflowVersionSelector } from "@/components/workflow/WorkflowVersionSelector";
@@ -103,7 +105,9 @@ export function TaskStartInput({
   onModelChange,
 }: TaskStartInputProps) {
   const searchParams = useSearchParams();
-  const { workspace } = useWorkspace();
+  const { workspace, id: workspaceId } = useWorkspace();
+  const { nudgeIfNeeded } = useVoiceLearningPreference();
+  const { capture } = useVoiceCorrectionCapture({ surface: "task_start", workspaceId: workspaceId ?? undefined });
   const [value, setValue] = useState("");
   const [workflowIdValue, setWorkflowIdValue] = useState("");
   const [hasInteractedWithWorkflowInput, setHasInteractedWithWorkflowInput] = useState(false);
@@ -229,16 +233,18 @@ export function TaskStartInput({
     if (isListening) {
       stopListening();
     } else {
+      nudgeIfNeeded();
       // Store the current value when starting to listen
       initialValueRef.current = value;
       startListening();
     }
-  }, [isListening, stopListening, startListening, value]);
+  }, [isListening, stopListening, startListening, value, nudgeIfNeeded]);
 
   const handleStartListening = useCallback(() => {
+    nudgeIfNeeded();
     initialValueRef.current = value;
     startListening();
-  }, [value, startListening]);
+  }, [value, startListening, nudgeIfNeeded]);
 
   useControlKeyHold({
     onStart: handleStartListening,
@@ -390,6 +396,11 @@ export function TaskStartInput({
       if (isListening) {
         stopListening();
       }
+      capture({
+        rawTranscript: transcript,
+        preVoiceText: initialValueRef.current,
+        finalText: value.trim(),
+      });
       resetTranscript();
       
       // Extract files from pending images

@@ -69,6 +69,12 @@ export default async function AdminLayout({
                 >
                   Scorer
                 </Link>
+                <Link
+                  href="/admin/voice-corrections"
+                  className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  Voice Corrections
+                </Link>
               </nav>
             </div>
             <Link
