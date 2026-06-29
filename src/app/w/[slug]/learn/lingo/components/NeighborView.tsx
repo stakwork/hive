@@ -11,6 +11,7 @@ interface NeighborViewProps {
   edges: NeighborEdge[];
   deletedEdgeIds: Set<string>;
   onDeleteEdge: (edgeRefId: string) => void;
+  onDeleteNode: (refId: string) => void;
   onNavigate: (node: NeighborNode) => void;
   onAddEdge: () => void;
 }
@@ -20,6 +21,7 @@ export function NeighborView({
   edges,
   deletedEdgeIds,
   onDeleteEdge,
+  onDeleteNode,
   onNavigate,
   onAddEdge,
 }: NeighborViewProps) {
@@ -39,16 +41,27 @@ export function NeighborView({
             </p>
           )}
         </div>
-        <Button
-          size="sm"
-          variant="outline"
-          className="shrink-0"
-          onClick={onAddEdge}
-          data-testid="add-connection-button"
-        >
-          <Plus className="w-4 h-4 mr-1.5" />
-          Add connection
-        </Button>
+        <div className="flex items-center gap-2 shrink-0">
+          <button
+            onClick={() => onDeleteNode(node.ref_id)}
+            className="shrink-0 p-1.5 rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
+            aria-label={`Delete node ${node.name}`}
+            data-testid="delete-node-button"
+          >
+            <Trash2 className="w-4 h-4" />
+            <span className="sr-only">Delete node</span>
+          </button>
+          <Button
+            size="sm"
+            variant="outline"
+            className="shrink-0"
+            onClick={onAddEdge}
+            data-testid="add-connection-button"
+          >
+            <Plus className="w-4 h-4 mr-1.5" />
+            Add connection
+          </Button>
+        </div>
       </div>
 
       {/* Connections */}
