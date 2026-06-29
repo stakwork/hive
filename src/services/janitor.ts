@@ -255,6 +255,7 @@ async function createLingoExtractionJanitorRun(
       webhookUrl: `${baseUrl}/api/lingo/extraction/collect`,
       tokenReference,
       lingoExtractionState,
+      limit: Number(process.env.LINGO_EXTRACTION_BATCH_LIMIT ?? 200),
     };
 
     console.log(
