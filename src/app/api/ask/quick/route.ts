@@ -34,6 +34,7 @@ import {
   loadOrgCanvasPromptCache,
   hasConcepts,
   persistOrgCanvasPromptCache,
+  fetchOrgCanvasConversationMessages,
 } from "@/services/org-canvas-conversation";
 import {
   emitFollowUpQuestions,
@@ -281,11 +282,22 @@ export async function POST(request: NextRequest) {
       if (!memberAccess.hasAccess) {
         throw forbiddenError("Access denied for workspace");
       }
-      const stored = await fetchStoredConversationMessages({
+      let stored = await fetchStoredConversationMessages({
         conversationId: conversationId as string,
         userId: userId!,
         workspaceSlug: primarySlug,
       });
+      // IDOR-safe fallback for org-canvas conversations (workspaceId = null):
+      // fetchOrgCanvasConversationMessages scopes the query by sourceControlOrgId
+      // AND OR[userId / isShared], so it can only return rows the caller may see.
+      // The validateUserBelongsToOrg gate further down still runs before any DB write.
+      if (!stored && orgId) {
+        stored = await fetchOrgCanvasConversationMessages({
+          conversationId: conversationId as string,
+          userId: userId!,
+          orgId: orgId as string,
+        });
+      }
       if (!stored) {
         throw validationError("Conversation not found or access denied");
       }
