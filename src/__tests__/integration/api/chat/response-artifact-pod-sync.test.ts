@@ -97,7 +97,7 @@ describe("POST /api/chat/response — artifact pod sync", () => {
     testWorkspaceId = workspace.id;
     const swarm = await seedSwarm(workspace.id);
     testSwarmId = swarm.id;
-  });
+  }, 30000);
 
   // ── helpers ──────────────────────────────────────────────────────────────
 

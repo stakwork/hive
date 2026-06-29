@@ -176,25 +176,25 @@ describe("createAndSendNotification", () => {
   });
 
   describe("deferred types (e.g. TASK_ASSIGNED)", () => {
-    it("creates record with sendAfter + message and does NOT call sendDirectMessage", async () => {
+    it("creates record with sendAfter + message atomically and does NOT call sendDirectMessage", async () => {
       findFirst.mockResolvedValue(null);
       create.mockResolvedValue(mockRecord);
       userFindUnique.mockResolvedValue(userWithPubkey);
-      update.mockResolvedValue({ ...mockRecord });
 
       await createAndSendNotification(baseInput);
 
       expect(create).toHaveBeenCalledOnce();
-      expect(mockedSendDirectMessage).not.toHaveBeenCalled();
-      expect(update).toHaveBeenCalledWith(
+      expect(create).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: { id: "notif-1" },
           data: expect.objectContaining({
+            status: NotificationTriggerStatus.PENDING,
             sendAfter: expect.any(Date),
             message: baseInput.message,
           }),
         })
       );
+      expect(mockedSendDirectMessage).not.toHaveBeenCalled();
+      expect(update).not.toHaveBeenCalled();
     });
   });
 
