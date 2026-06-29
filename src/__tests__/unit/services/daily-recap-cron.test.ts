@@ -270,12 +270,24 @@ describe("executeScheduledDailyRecapRuns", () => {
     vi.mocked(mockedDb.stakworkRun.update).mockResolvedValue(makeRun("x") as any);
     mockedGetUserActivityFeed.mockResolvedValue(makeActivityItems(1));
 
-    mockCreateBatchProjects.mockRejectedValue(new Error("network failure"));
+    // Reject with an ApiError object literal — matching what handleRequest actually throws
+    mockCreateBatchProjects.mockRejectedValue({
+      message: "stakwork stakworkRequest /projects/batch: HTTP 400 Bad Request",
+      status: 400,
+      service: "stakwork",
+      details: { body: "param is missing or the value is empty: project" },
+    });
 
     const result = await executeScheduledDailyRecapRuns();
 
-    // Both users error-logged
+    // Both users error-logged with the real message (not '[object Object]')
     expect(result.errors.length).toBe(2);
     expect(result.dispatched).toBe(0);
+    expect(result.errors[0].error).toBe(
+      "stakwork stakworkRequest /projects/batch: HTTP 400 Bad Request",
+    );
+    expect(result.errors[1].error).toBe(
+      "stakwork stakworkRequest /projects/batch: HTTP 400 Bad Request",
+    );
   });
 });
