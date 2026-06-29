@@ -6,6 +6,8 @@ import { motion } from "framer-motion";
 import { FileIcon, Loader2, Mic, MicOff, Paperclip, Plus, RefreshCw, Send, Share2, X } from "lucide-react";
 import { useSpeechRecognition } from "@/hooks/useSpeechRecognition";
 import { useControlKeyHold } from "@/hooks/useControlKeyHold";
+import { useVoiceCorrectionCapture } from "@/hooks/useVoiceCorrectionCapture";
+import { useVoiceLearningPreference } from "@/hooks/useVoiceLearningPreference";
 import {
   Tooltip,
   TooltipContent,
@@ -707,6 +709,8 @@ function SidebarChatInput({
   } = useSpeechRecognition();
 
   const preVoiceInputRef = useRef("");
+  const { nudgeIfNeeded } = useVoiceLearningPreference();
+  const { capture } = useVoiceCorrectionCapture({ surface: "sidebar", workspaceId });
 
   // Append transcript to existing input (do not overwrite)
   useEffect(() => {
@@ -722,13 +726,15 @@ function SidebarChatInput({
     if (isListening) {
       stopListening();
     } else {
+      nudgeIfNeeded();
       preVoiceInputRef.current = input;
       startListening();
     }
-  }, [isListening, stopListening, startListening, input]);
+  }, [isListening, stopListening, startListening, input, nudgeIfNeeded]);
 
   useControlKeyHold({
     onStart: () => {
+      nudgeIfNeeded();
       preVoiceInputRef.current = input;
       startListening();
     },
@@ -843,6 +849,11 @@ function SidebarChatInput({
     }
 
     const message = input.trim();
+    capture({
+      rawTranscript: transcript,
+      preVoiceText: preVoiceInputRef.current,
+      finalText: message,
+    });
     if (isListening) stopListening();
     resetTranscript();
     preVoiceInputRef.current = "";
