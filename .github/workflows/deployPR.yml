@@ -278,9 +278,7 @@ jobs:
       - name: Resolve Failed Migrations
         run: |
           export DATABASE_URL="${{ steps.neon.outputs.connection_uri }}"
-          # Neon pooler URLs contain "-pooler" in the hostname; Prisma migrate deploy
-          # requires a direct (non-pooled) connection to acquire advisory locks (P1002).
-          export DIRECT_URL="$(echo "${{ steps.neon.outputs.connection_uri }}" | sed 's/-pooler\././')"
+          export DIRECT_URL="${{ steps.neon.outputs.connection_uri }}"
           echo "Checking for failed migrations..."
 
           # Helper: resolve a migration based on whether its DDL column/table already exists
@@ -347,9 +345,7 @@ jobs:
       - name: Build
         run: |
           export DATABASE_URL="${{ steps.neon.outputs.connection_uri }}"
-          # Neon pooler URLs contain "-pooler" in the hostname; Prisma migrate deploy
-          # requires a direct (non-pooled) connection to acquire advisory locks (P1002).
-          export DIRECT_URL="$(echo "${{ steps.neon.outputs.connection_uri }}" | sed 's/-pooler\././')"
+          export DIRECT_URL="${{ steps.neon.outputs.connection_uri }}"
           echo "DATABASE_URL is set (masked)"
           npx prisma generate
 
@@ -599,7 +595,6 @@ EOSQL
         id: deploy
         run: |
           export DATABASE_URL="${{ steps.neon.outputs.connection_uri }}"
-          export DIRECT_URL="$(echo "${{ steps.neon.outputs.connection_uri }}" | sed 's/-pooler\././')"
 
           # Retry logic for transient Vercel deployment errors with exponential backoff
           MAX_RETRIES=3
