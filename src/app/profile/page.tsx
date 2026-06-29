@@ -5,6 +5,7 @@ import Image from "next/image";
 import { ActivityFeed } from "./_components/ActivityFeed";
 import { BackButton } from "./_components/BackButton";
 import { TimezoneSettings } from "./_components/TimezoneSettings";
+import { VoiceLearningSettings } from "./_components/VoiceLearningSettings";
 import { DailyRecapCard } from "@/components/daily-recap/DailyRecapCard";
 
 export default async function ProfilePage() {
@@ -54,6 +55,7 @@ export default async function ProfilePage() {
         <div className="mb-8">
           <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">Preferences</h2>
           <TimezoneSettings />
+          <VoiceLearningSettings />
         </div>
 
         <DailyRecapCard />
