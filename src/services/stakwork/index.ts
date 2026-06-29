@@ -224,7 +224,7 @@ export class StakworkService extends BaseServiceClass {
             error?: string;
           }>;
         };
-      }>(endpoint, { projects }, headers, this.serviceName);
+      }>(endpoint, { projects: projects.map((p) => ({ project: p })) }, headers, this.serviceName);
     };
 
     return this.handleRequest(requestFn, `stakworkRequest ${endpoint}`);
