@@ -1774,6 +1774,15 @@ describe("GET /api/cron/janitors", () => {
       expect(vars.swarmSecretAlias).toBe("lingo-secret-alias");
     });
 
+    it("payload vars include limit defaulting to 200", async () => {
+      const { createJanitorRun } = await import("@/services/janitor");
+      await createJanitorRun(testWorkspace.slug, testUser.id, "lingo_extraction", "MANUAL");
+
+      const [, payload] = mockStakworkRequest.mock.calls[0];
+      const vars = payload.workflow_params.set_var.attributes.vars;
+      expect(vars.limit).toBe(200);
+    });
+
     it("creates a single JanitorRun with no repositoryId (workspace-wide)", async () => {
       // Add repos — should still produce only one run
       await db.repository.create({
