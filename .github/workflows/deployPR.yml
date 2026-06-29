@@ -435,6 +435,17 @@ jobs:
             npx prisma migrate resolve --rolled-back "20260302215700_add_prototype_source_type" 2>&1 || true
           fi
 
+          echo "Resolving 20260623180704_add_urn_edge..."
+          psql "$DATABASE_URL" -c "DELETE FROM _prisma_migrations WHERE migration_name='20260623180704_add_urn_edge' AND finished_at IS NULL;" 2>/dev/null || true
+          URN_EDGE_TABLE=$(psql "$DATABASE_URL" -tAc "SELECT COUNT(*) FROM information_schema.tables WHERE table_name='urn_edges' AND table_schema='public';" 2>/dev/null | tr -d '[:space:]' || echo "0")
+          if [ "$URN_EDGE_TABLE" = "1" ]; then
+            echo "  urn_edges table exists — marking as applied"
+            npx prisma migrate resolve --applied "20260623180704_add_urn_edge" 2>&1 || true
+          else
+            echo "  urn_edges table absent — rolling back for Prisma to re-run"
+            npx prisma migrate resolve --rolled-back "20260623180704_add_urn_edge" 2>&1 || true
+          fi
+
           echo "Resolving 20260629123213_add_prompt_models..."
           PROMPTS_TABLE=$(psql "$DATABASE_URL" -tAc "SELECT COUNT(*) FROM information_schema.tables WHERE table_name='prompts' AND table_schema='public';" 2>/dev/null | tr -d '[:space:]' || echo "0")
           if [ "$PROMPTS_TABLE" = "1" ]; then
@@ -487,6 +498,13 @@ jobs:
               fi
             else
               npx prisma migrate resolve --applied "20260412050000_add_connection_slug" 2>&1 || true
+            fi
+            psql "$DATABASE_URL" -c "DELETE FROM _prisma_migrations WHERE migration_name='20260623180704_add_urn_edge' AND finished_at IS NULL;" 2>/dev/null || true
+            URN_EDGE_TABLE=$(psql "$DATABASE_URL" -tAc "SELECT COUNT(*) FROM information_schema.tables WHERE table_name='urn_edges' AND table_schema='public';" 2>/dev/null | tr -d '[:space:]' || echo "0")
+            if [ "$URN_EDGE_TABLE" = "1" ]; then
+              npx prisma migrate resolve --applied "20260623180704_add_urn_edge" 2>&1 || true
+            else
+              npx prisma migrate resolve --rolled-back "20260623180704_add_urn_edge" 2>&1 || true
             fi
             sleep 15
           done

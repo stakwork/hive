@@ -234,33 +234,54 @@ export function LingoExplorer({ workspaceSlug }: LingoExplorerProps) {
   // ── Optimistic node delete ────────────────────────────────────────────────
 
   const handleDeleteNode = (refId: string) => {
-    // Optimistically hide + navigate back to list immediately
+    const snapshot = selectedNode; // capture before state clear
+
     setDeletedNodeIds((prev) => new Set([...prev, refId]));
     setView("list");
     setSelectedNode(null);
     setBreadcrumbs([]);
 
-    let undone = false;
+    confirmDeleteNode(refId); // fire immediately
+
     toast("Node removed", {
       duration: 5000,
       action: {
         label: "Undo",
         onClick: () => {
-          undone = true;
-          setDeletedNodeIds((prev) => {
-            const next = new Set(prev);
-            next.delete(refId);
-            return next;
-          });
+          if (snapshot) restoreDeletedNode(snapshot);
         },
       },
-      onDismiss: () => {
-        if (!undone) confirmDeleteNode(refId);
-      },
-      onAutoClose: () => {
-        if (!undone) confirmDeleteNode(refId);
-      },
     });
+  };
+
+  const restoreDeletedNode = async (snapshot: LingoNode) => {
+    try {
+      const res = await fetch(`/api/workspaces/${workspaceSlug}/lingo/nodes`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: snapshot.name,
+          ...(snapshot.definition ? { definition: snapshot.definition } : {}),
+          ...(snapshot.lingo_type ? { lingo_type: snapshot.lingo_type } : {}),
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok || !json.success) throw new Error("Restore failed");
+
+      const restoredNode: LingoNode = {
+        ref_id: json.data.ref_id,
+        name: json.data.name,
+        node_type: "Lingo",
+        definition: json.data.definition ?? null,
+        lingo_type: json.data.lingo_type,
+        date_added_to_graph: Date.now() / 1000,
+      };
+
+      setNodes((prev) => [restoredNode, ...prev]);
+      openDetail(restoredNode, true);
+    } catch {
+      toast.error("Failed to restore node");
+    }
   };
 
   const confirmDeleteNode = async (refId: string) => {
