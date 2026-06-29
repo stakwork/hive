@@ -43,9 +43,12 @@ vi.mock("@/app/w/[slug]/learn/lingo/components/LingoCard", () => ({
 }));
 
 vi.mock("@/app/w/[slug]/learn/lingo/components/NeighborView", () => ({
-  NeighborView: ({ node, edges, onDeleteEdge, onNavigate, onAddEdge }: any) => (
+  NeighborView: ({ node, edges, onDeleteEdge, onDeleteNode, onNavigate, onAddEdge }: any) => (
     <div data-testid="neighbor-view">
       <span data-testid="detail-node-name">{node.name}</span>
+      <button data-testid="delete-node-button" onClick={() => onDeleteNode(node.ref_id)}>
+        Delete node
+      </button>
       {edges.map((e: any) => (
         <div key={e.edge_ref_id}>
           <button
@@ -633,6 +636,7 @@ describe("LingoExplorer", () => {
     });
 
     it("handleNodeCreated prepends node to list and navigates to detail view", async () => {
+
       mockFetch
         .mockResolvedValueOnce({
           ok: true,
@@ -672,6 +676,142 @@ describe("LingoExplorer", () => {
         expect(screen.queryByTestId("create-lingo-node-dialog")).not.toBeInTheDocument();
         expect(screen.getByTestId("neighbor-view")).toBeInTheDocument();
       });
+    });
+  });
+
+  describe("Optimistic node delete", () => {
+    async function setupDetailView() {
+      const nodes = makeNodes(2);
+      mockFetch
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({ success: true, data: { nodes, hasMore: false } }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve(makeNeighborData("jargon-1")),
+        });
+
+      render(<LingoExplorer workspaceSlug={SLUG} />);
+      await waitFor(() => screen.getByTestId("lingo-card-jargon-1"));
+      fireEvent.click(screen.getByTestId("lingo-card-jargon-1"));
+      await waitFor(() => screen.getByTestId("neighbor-view"));
+    }
+
+    it("clicking delete button hides the node from the list and navigates back to list view", async () => {
+      await setupDetailView();
+
+      fireEvent.click(screen.getByTestId("delete-node-button"));
+
+      // Navigates back to list view
+      await waitFor(() => {
+        expect(screen.queryByTestId("neighbor-view")).not.toBeInTheDocument();
+        expect(screen.getByTestId("lingo-card-grid")).toBeInTheDocument();
+      });
+
+      // Node is hidden from list
+      expect(screen.queryByTestId("lingo-card-jargon-1")).not.toBeInTheDocument();
+      // Other node still visible
+      expect(screen.getByTestId("lingo-card-jargon-2")).toBeInTheDocument();
+
+      // Toast shown
+      expect(toast).toHaveBeenCalledWith(
+        "Node removed",
+        expect.objectContaining({ action: expect.objectContaining({ label: "Undo" }) }),
+      );
+    });
+
+    it("clicking Undo in the toast restores the node in the list", async () => {
+      await setupDetailView();
+
+      let capturedToastOptions: any;
+      vi.mocked(toast).mockImplementationOnce((_msg: any, opts: any) => {
+        capturedToastOptions = opts;
+        return "toast-id";
+      });
+
+      fireEvent.click(screen.getByTestId("delete-node-button"));
+
+      // Node hidden initially
+      await waitFor(() =>
+        expect(screen.queryByTestId("lingo-card-jargon-1")).not.toBeInTheDocument(),
+      );
+
+      // Undo
+      act(() => {
+        capturedToastOptions?.action?.onClick?.();
+      });
+
+      // Node reappears
+      await waitFor(() => {
+        expect(screen.getByTestId("lingo-card-jargon-1")).toBeInTheDocument();
+      });
+
+      // No DELETE fetch called
+      const deleteCalls = mockFetch.mock.calls.filter(
+        (c: any[]) => typeof c[0] === "string" && c[0].includes("/lingo/nodes/jargon-1") && c[1]?.method === "DELETE",
+      );
+      expect(deleteCalls).toHaveLength(0);
+    });
+
+    it("confirming (toast dismiss without undo) calls DELETE endpoint", async () => {
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({ success: true }),
+      });
+
+      await setupDetailView();
+
+      let capturedToastOptions: any;
+      vi.mocked(toast).mockImplementationOnce((_msg: any, opts: any) => {
+        capturedToastOptions = opts;
+        return "toast-id";
+      });
+
+      fireEvent.click(screen.getByTestId("delete-node-button"));
+
+      await act(async () => {
+        capturedToastOptions?.onAutoClose?.();
+      });
+
+      await waitFor(() => {
+        expect(mockFetch).toHaveBeenCalledWith(
+          `/api/workspaces/${SLUG}/lingo/nodes/jargon-1`,
+          expect.objectContaining({ method: "DELETE" }),
+        );
+      });
+    });
+
+    it("API failure reverts the optimistic hide and shows an error toast", async () => {
+      await setupDetailView();
+
+      let capturedToastOptions: any;
+      vi.mocked(toast).mockImplementationOnce((_msg: any, opts: any) => {
+        capturedToastOptions = opts;
+        return "toast-id";
+      });
+
+      fireEvent.click(screen.getByTestId("delete-node-button"));
+
+      // Node hidden initially
+      await waitFor(() =>
+        expect(screen.queryByTestId("lingo-card-jargon-1")).not.toBeInTheDocument(),
+      );
+
+      // Simulate API failure
+      mockFetch.mockResolvedValueOnce({ ok: false });
+
+      await act(async () => {
+        capturedToastOptions?.onAutoClose?.();
+      });
+
+      // Node reappears after error
+      await waitFor(() => {
+        expect(screen.getByTestId("lingo-card-jargon-1")).toBeInTheDocument();
+      });
+
+      // Error toast shown
+      expect(toast.error).toHaveBeenCalledWith("Failed to delete node");
     });
   });
 });
