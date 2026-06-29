@@ -1,5 +1,5 @@
 -- DropIndex
-DROP INDEX "features_depends_on_feature_ids_gin_idx";
+DROP INDEX IF EXISTS "features_depends_on_feature_ids_gin_idx";
 
 -- CreateTable
 CREATE TABLE "urn_edges" (
