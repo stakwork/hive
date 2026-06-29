@@ -3,6 +3,7 @@ import { StakworkRunType, WorkflowStatus } from "@prisma/client";
 import { getUserActivityFeed } from "@/services/roadmap/user-activity";
 import { stakworkService } from "@/lib/service-factory";
 import { config } from "@/config/env";
+import { ApiError } from "@/types/common";
 import { getBaseUrl } from "@/lib/utils";
 
 export interface DailyRecapCronResult {
@@ -219,8 +220,14 @@ export async function executeScheduledDailyRecapRuns(): Promise<DailyRecapCronRe
         }
       }
     } catch (error) {
-      const msg = error instanceof Error ? error.message : String(error);
-      console.error(`[DailyRecapCron] Chunk ${chunkIdx + 1} dispatch failed: ${msg}`);
+      const apiError = error as ApiError;
+      const msg = apiError?.message ?? String(error);
+      console.error(
+        `[DailyRecapCron] Chunk ${chunkIdx + 1} dispatch failed` +
+        ` | status=${apiError?.status ?? 'unknown'}` +
+        ` | message=${msg}` +
+        ` | details=${JSON.stringify(apiError?.details ?? null)}`,
+      );
 
       // Mark all runs in this chunk as FAILED
       for (const { run, userId } of chunk) {
