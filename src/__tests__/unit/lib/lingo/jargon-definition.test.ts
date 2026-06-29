@@ -193,7 +193,7 @@ describe("AddEdgePanel COMMON_EDGE_TYPES includes HAS_DEFINITION and SUPERSEDES"
   it("COMMON_EDGE_TYPES contains HAS_DEFINITION", async () => {
     // Dynamically import to get the exported constant
     const mod = await import(
-      "@/app/w/[slug]/learn/lingo/components/AddEdgePanel"
+      "@/app/w/[slug]/lingo/components/AddEdgePanel"
     );
     // The component doesn't export COMMON_EDGE_TYPES directly, so we verify
     // by inspecting the module source via a regex on the raw export.
