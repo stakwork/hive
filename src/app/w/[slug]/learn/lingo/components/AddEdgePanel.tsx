@@ -172,7 +172,7 @@ export function AddEdgePanel({
               data-testid="search-results"
             >
               {searchResults.map((result) => (
-                <li key={result.ref_id}>
+                <li key={result.ref_id ?? result.name}>
                   <button
                     className={`w-full text-left px-4 py-2.5 text-sm transition-colors hover:bg-accent/60 ${
                       targetNode?.ref_id === result.ref_id

@@ -76,18 +76,26 @@ export async function GET(
 
     const data = await response.json();
     const rawNodes = Array.isArray(data) ? data : (data?.nodes ?? []);
-    const nodes = rawNodes.map((n: {
-      ref_id: string;
-      node_type: string;
-      date_added_to_graph: number;
-      properties?: { name?: string; definition?: string };
-    }) => ({
-      ref_id: n.ref_id,
-      node_type: n.node_type,
-      name: n.properties?.name,
-      definition: n.properties?.definition ?? null,
-      date_added_to_graph: n.date_added_to_graph,
-    }));
+    const nodes = rawNodes
+      .filter((n: { ref_id?: string; node_type?: string; date_added_to_graph?: number; properties?: { name?: string; definition?: string } }) => {
+        if (!n?.ref_id) {
+          console.warn("[Lingo nodes] Dropping item missing ref_id", n);
+          return false;
+        }
+        return true;
+      })
+      .map((n: {
+        ref_id: string;
+        node_type: string;
+        date_added_to_graph: number;
+        properties?: { name?: string; definition?: string };
+      }) => ({
+        ref_id: n.ref_id,
+        node_type: n.node_type,
+        name: n.properties?.name,
+        definition: n.properties?.definition ?? null,
+        date_added_to_graph: n.date_added_to_graph,
+      }));
 
     nodes.sort((a: { date_added_to_graph: number }, b: { date_added_to_graph: number }) => (b.date_added_to_graph ?? 0) - (a.date_added_to_graph ?? 0));
 
