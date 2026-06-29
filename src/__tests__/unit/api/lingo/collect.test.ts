@@ -101,20 +101,19 @@ describe("POST /api/lingo/extraction/collect — backwards mode (no prior state)
     const res = await POST(req);
     expect(res.status).toBe(200);
     const json = await res.json();
-    // cursor_state should have reachedFloor: true (empty batch < 500)
+    // cursor_state should have reachedFloor: true (empty batch < 200 default)
     expect(json.cursor_state.reachedFloor).toBe(true);
-    // Verify the findMany was called with desc order (backwards mode)
+    // Verify the findMany was called with desc order (backwards mode) and default limit 200
     expect(mockedDb.chatMessage.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         orderBy: { createdAt: "desc" },
-        take: 500,
+        take: 200,
       }),
     );
   });
 
   it("batch of exactly 500 keeps reachedFloor false and advances backwardsCursor", async () => {
     const now = new Date();
-    const oldest = new Date(now.getTime() - 100_000);
     const batch = Array.from({ length: 500 }, (_, i) => ({
       id: `msg-${i}`,
       message: "JARGON content here",
@@ -122,7 +121,8 @@ describe("POST /api/lingo/extraction/collect — backwards mode (no prior state)
     }));
     mockedDb.chatMessage.findMany = vi.fn().mockResolvedValue(batch);
 
-    const req = makeRequest({ workspaceId: WORKSPACE_ID });
+    // Pass limit: 500 explicitly so the batch hits the limit
+    const req = makeRequest({ workspaceId: WORKSPACE_ID, limit: 500 });
     const res = await POST(req);
     const json = await res.json();
 
@@ -341,5 +341,118 @@ describe("POST /api/lingo/extraction/collect — Jarvis sources", () => {
     const json = await res.json();
 
     expect(json.total_before_filter).toBe(0);
+  });
+});
+
+describe("POST /api/lingo/extraction/collect — configurable limit and hasMore", () => {
+  let POST: (req: NextRequest) => Promise<Response>;
+  const origSecret = process.env.JANITOR_WEBHOOK_SECRET;
+
+  beforeEach(async () => {
+    vi.resetModules();
+    process.env.JANITOR_WEBHOOK_SECRET = "test-secret";
+    const mod = await import("@/app/api/lingo/extraction/collect/route");
+    POST = mod.POST;
+
+    mockedDb.workspace.findUnique = vi.fn().mockResolvedValue({
+      lingoExtractionState: {},
+    });
+    mockedGetJarvisConfig.mockResolvedValue(null);
+  });
+
+  afterEach(() => {
+    process.env.JANITOR_WEBHOOK_SECRET = origSecret;
+    vi.clearAllMocks();
+  });
+
+  it("default limit of 200 — findMany called with take: 200 when no limit in body", async () => {
+    mockedDb.chatMessage.findMany = vi.fn().mockResolvedValue([]);
+    const req = makeRequest({ workspaceId: WORKSPACE_ID });
+    await POST(req);
+
+    expect(mockedDb.chatMessage.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ take: 200 }),
+    );
+  });
+
+  it("custom limit param — findMany called with take: 50 when limit: 50 passed", async () => {
+    mockedDb.chatMessage.findMany = vi.fn().mockResolvedValue([]);
+    const req = makeRequest({ workspaceId: WORKSPACE_ID, limit: 50 });
+    await POST(req);
+
+    expect(mockedDb.chatMessage.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ take: 50 }),
+    );
+  });
+
+  it("hasMore: true when batch length equals limit", async () => {
+    const batch = Array.from({ length: 200 }, (_, i) => ({
+      id: `msg-${i}`,
+      message: "plain text",
+      createdAt: new Date(Date.now() - i * 1000),
+    }));
+    mockedDb.chatMessage.findMany = vi.fn().mockResolvedValue(batch);
+
+    const req = makeRequest({ workspaceId: WORKSPACE_ID });
+    const res = await POST(req);
+    const json = await res.json();
+
+    expect(json.cursor_state.hasMore).toBe(true);
+  });
+
+  it("hasMore: false when batch length is less than limit", async () => {
+    const batch = Array.from({ length: 5 }, (_, i) => ({
+      id: `msg-${i}`,
+      message: "plain text",
+      createdAt: new Date(Date.now() - i * 1000),
+    }));
+    mockedDb.chatMessage.findMany = vi.fn().mockResolvedValue(batch);
+
+    const req = makeRequest({ workspaceId: WORKSPACE_ID });
+    const res = await POST(req);
+    const json = await res.json();
+
+    expect(json.cursor_state.hasMore).toBe(false);
+  });
+
+  it("hasMore: true in forward mode when batch equals limit", async () => {
+    mockedDb.workspace.findUnique = vi.fn().mockResolvedValue({
+      lingoExtractionState: {
+        reachedFloor: true,
+        lastProcessedAt: "2024-06-01T00:00:00.000Z",
+      },
+    });
+
+    const batch = Array.from({ length: 200 }, (_, i) => ({
+      id: `msg-${i}`,
+      message: "plain text",
+      createdAt: new Date(Date.now() - i * 1000),
+    }));
+    mockedDb.chatMessage.findMany = vi.fn().mockResolvedValue(batch);
+
+    const req = makeRequest({ workspaceId: WORKSPACE_ID });
+    const res = await POST(req);
+    const json = await res.json();
+
+    expect(json.cursor_state.hasMore).toBe(true);
+  });
+
+  it("hasMore: false in forward mode when batch is under limit", async () => {
+    mockedDb.workspace.findUnique = vi.fn().mockResolvedValue({
+      lingoExtractionState: {
+        reachedFloor: true,
+        lastProcessedAt: "2024-06-01T00:00:00.000Z",
+      },
+    });
+
+    mockedDb.chatMessage.findMany = vi.fn().mockResolvedValue([
+      { id: "msg-1", message: "plain text", createdAt: new Date() },
+    ]);
+
+    const req = makeRequest({ workspaceId: WORKSPACE_ID });
+    const res = await POST(req);
+    const json = await res.json();
+
+    expect(json.cursor_state.hasMore).toBe(false);
   });
 });
