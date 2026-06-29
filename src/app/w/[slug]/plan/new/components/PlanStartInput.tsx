@@ -22,6 +22,8 @@ import { ArrowUp, Mic, MicOff, Loader2, Sparkles, ImageIcon, Upload, X, Code2 } 
 import { useSpeechRecognition } from "@/hooks/useSpeechRecognition";
 import { useControlKeyHold } from "@/hooks/useControlKeyHold";
 import { useWorkspace } from "@/hooks/useWorkspace";
+import { useVoiceCorrectionCapture } from "@/hooks/useVoiceCorrectionCapture";
+import { useVoiceLearningPreference } from "@/hooks/useVoiceLearningPreference";
 import { cn } from "@/lib/utils";
 import { getModelValue, getStoredPlanModelPreference, setStoredPlanModelPreference, getPlanRepoPreference, setPlanRepoPreference, type LlmModelOption } from "@/lib/ai/models";
 import { TargetSelector, encodeTargetValue, type TargetSelection } from "@/components/shared/TargetSelector";
@@ -57,9 +59,11 @@ export function PlanStartInput({ onSubmit, isLoading = false, loadingStatus, ini
   const { isListening, transcript, isSupported, startListening, stopListening, resetTranscript } =
     useSpeechRecognition();
 
-  const { workspace, workspaces } = useWorkspace();
+  const { workspace, workspaces, id: workspaceId } = useWorkspace();
   const repositories = workspace?.repositories ?? [];
   const workspaceSlug = workspace?.slug ?? "";
+  const { nudgeIfNeeded } = useVoiceLearningPreference();
+  const { capture } = useVoiceCorrectionCapture({ surface: "plan_start", workspaceId: workspaceId ?? undefined });
 
   // Repo context selector state — initialised from localStorage per workspace slug
   const [selectedRepoIds, setSelectedRepoIds] = useState<string[]>(() => {
@@ -167,15 +171,17 @@ export function PlanStartInput({ onSubmit, isLoading = false, loadingStatus, ini
     if (isListening) {
       stopListening();
     } else {
+      nudgeIfNeeded();
       initialValueRef.current = value;
       startListening();
     }
-  }, [isListening, stopListening, startListening, value]);
+  }, [isListening, stopListening, startListening, value, nudgeIfNeeded]);
 
   const handleStartListening = useCallback(() => {
+    nudgeIfNeeded();
     initialValueRef.current = value;
     startListening();
-  }, [value, startListening]);
+  }, [value, startListening, nudgeIfNeeded]);
 
   useControlKeyHold({
     onStart: handleStartListening,
@@ -282,6 +288,11 @@ export function PlanStartInput({ onSubmit, isLoading = false, loadingStatus, ini
       if (isListening) {
         stopListening();
       }
+      capture({
+        rawTranscript: transcript,
+        preVoiceText: initialValueRef.current,
+        finalText: value.trim(),
+      });
       resetTranscript();
       setStoredPlanModelPreference(selectedModel);
       setPlanRepoPreference(workspaceSlug, selectedRepoIds);
