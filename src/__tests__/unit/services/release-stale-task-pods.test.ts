@@ -59,6 +59,7 @@ describe("releaseStaleTaskPods", () => {
         workspaceId: "workspace-1",
         updatedAt: twentyFiveHoursAgo,
         podId: "pod-1",
+        mode: "live",
         status: "IN_PROGRESS",
         workflowStatus: "IN_PROGRESS",
         chatMessages: [],
@@ -69,6 +70,7 @@ describe("releaseStaleTaskPods", () => {
         workspaceId: "workspace-1",
         updatedAt: twentyFiveHoursAgo,
         podId: "pod-2",
+        mode: "live",
         status: "IN_PROGRESS",
         workflowStatus: "IN_PROGRESS",
         chatMessages: [],
@@ -98,6 +100,7 @@ describe("releaseStaleTaskPods", () => {
       },
       select: {
         id: true,
+        mode: true,
         title: true,
         workspaceId: true,
         updatedAt: true,
@@ -153,6 +156,7 @@ describe("releaseStaleTaskPods", () => {
         workspaceId: "workspace-1",
         updatedAt: twentyFiveHoursAgo,
         podId: "pod-1",
+        mode: "live",
         status: "DONE",
         workflowStatus: "COMPLETED",
         chatMessages: [],
@@ -163,6 +167,7 @@ describe("releaseStaleTaskPods", () => {
         workspaceId: "workspace-1",
         updatedAt: twentyFiveHoursAgo,
         podId: "pod-2",
+        mode: "live",
         status: "DONE",
         workflowStatus: "FAILED",
         chatMessages: [],
@@ -231,6 +236,7 @@ describe("releaseStaleTaskPods", () => {
         workspaceId: "workspace-1",
         updatedAt: twentyFiveHoursAgo,
         podId: "pod-1",
+        mode: "live",
         status: "IN_PROGRESS",
         workflowStatus: "IN_PROGRESS",
         chatMessages: [],
@@ -241,6 +247,7 @@ describe("releaseStaleTaskPods", () => {
         workspaceId: "workspace-1",
         updatedAt: twentyFiveHoursAgo,
         podId: "pod-2",
+        mode: "live",
         status: "IN_PROGRESS",
         workflowStatus: "IN_PROGRESS",
         chatMessages: [],
@@ -324,6 +331,7 @@ describe("releaseStaleTaskPods", () => {
         updatedAt: twentyFiveHoursAgo,
         podId: null, // No pod
         agentPassword: null,
+        mode: "live",
         status: "IN_PROGRESS",
         workflowStatus: "PENDING",
         chatMessages: [],
@@ -406,6 +414,7 @@ describe("releaseStaleTaskPods", () => {
         workspaceId: "workspace-1",
         updatedAt: twentyFiveHoursAgo,
         podId: "pod-1",
+        mode: "live",
         status: "IN_PROGRESS",
         workflowStatus: "IN_PROGRESS",
         chatMessages: [],
@@ -469,6 +478,7 @@ describe("releaseStaleTaskPods", () => {
         workspaceId: "workspace-1",
         updatedAt: twentyFiveHoursAgo,
         podId: "pod-1",
+        mode: "live",
         status: "IN_PROGRESS",
         workflowStatus: "IN_PROGRESS",
         chatMessages: [
@@ -487,6 +497,7 @@ describe("releaseStaleTaskPods", () => {
         workspaceId: "workspace-1",
         updatedAt: twentyFiveHoursAgo,
         podId: "pod-2",
+        mode: "live",
         status: "IN_PROGRESS",
         workflowStatus: "IN_PROGRESS",
         chatMessages: [
@@ -552,6 +563,7 @@ describe("releaseStaleTaskPods", () => {
         updatedAt: twentyFiveHoursAgo,
         podId: null,
         agentPassword: null,
+        mode: "live",
         status: "IN_PROGRESS",
         workflowStatus: "IN_PROGRESS",
         chatMessages: [
@@ -580,6 +592,140 @@ describe("releaseStaleTaskPods", () => {
     expect(result.success).toBe(true);
     expect(result.podsReleased).toBe(0);
     expect(result.tasksHalted).toBe(0);
+
+    vi.useRealTimers();
+  });
+
+  // ── workflow_editor mode guard tests ───────────────────────────────────────
+
+  test("should release pod but NOT halt a stale workflow_editor task", async () => {
+    const now = new Date("2024-10-24T12:00:00Z");
+    vi.setSystemTime(now);
+
+    const twentyFiveHoursAgo = new Date(now);
+    twentyFiveHoursAgo.setHours(twentyFiveHoursAgo.getHours() - 25);
+
+    const staleTasks = [
+      {
+        id: "task-we-1",
+        title: "Workflow Editor Task With Pod",
+        workspaceId: "workspace-1",
+        updatedAt: twentyFiveHoursAgo,
+        podId: "pod-we-1",
+        mode: "workflow_editor",
+        status: "IN_PROGRESS",
+        workflowStatus: "IN_PROGRESS",
+        chatMessages: [],
+      },
+    ];
+
+    vi.mocked(mockDb.task.findMany).mockResolvedValue(staleTasks as any);
+    vi.mocked(mockReleaseTaskPod).mockResolvedValue({
+      success: true,
+      podDropped: true,
+      taskCleared: true,
+    });
+
+    const result = await releaseStaleTaskPods();
+
+    // Pod should be released with newWorkflowStatus: null (preserve IN_PROGRESS)
+    expect(mockReleaseTaskPod).toHaveBeenCalledWith(
+      expect.objectContaining({
+        taskId: "task-we-1",
+        newWorkflowStatus: null,
+      })
+    );
+
+    // Should NOT be halted
+    expect(result.tasksHalted).toBe(0);
+    expect(result.podsReleased).toBe(1);
+    expect(result.success).toBe(true);
+
+    vi.useRealTimers();
+  });
+
+  test("should skip halt for stale workflow_editor task with no pod", async () => {
+    const now = new Date("2024-10-24T12:00:00Z");
+    vi.setSystemTime(now);
+
+    const twentyFiveHoursAgo = new Date(now);
+    twentyFiveHoursAgo.setHours(twentyFiveHoursAgo.getHours() - 25);
+
+    const staleTasks = [
+      {
+        id: "task-we-2",
+        title: "Workflow Editor Task Without Pod",
+        workspaceId: "workspace-1",
+        updatedAt: twentyFiveHoursAgo,
+        podId: null,
+        mode: "workflow_editor",
+        status: "IN_PROGRESS",
+        workflowStatus: "IN_PROGRESS",
+        chatMessages: [],
+      },
+    ];
+
+    vi.mocked(mockDb.task.findMany).mockResolvedValue(staleTasks as any);
+
+    const result = await releaseStaleTaskPods();
+
+    // Should NOT call releaseTaskPod (no pod)
+    expect(mockReleaseTaskPod).not.toHaveBeenCalled();
+
+    // Should NOT call haltTask (workflow_editor guard)
+    expect(mockDb.task.update).not.toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ workflowStatus: "HALTED" }),
+      })
+    );
+
+    expect(result.tasksHalted).toBe(0);
+    expect(result.podsReleased).toBe(0);
+    expect(result.success).toBe(true);
+
+    vi.useRealTimers();
+  });
+
+  test("should still halt a stale live-mode IN_PROGRESS task with no pod", async () => {
+    const now = new Date("2024-10-24T12:00:00Z");
+    vi.setSystemTime(now);
+
+    const twentyFiveHoursAgo = new Date(now);
+    twentyFiveHoursAgo.setHours(twentyFiveHoursAgo.getHours() - 25);
+
+    const staleTasks = [
+      {
+        id: "task-live-1",
+        title: "Live Mode Task Without Pod",
+        workspaceId: "workspace-1",
+        updatedAt: twentyFiveHoursAgo,
+        podId: null,
+        mode: "live",
+        status: "IN_PROGRESS",
+        workflowStatus: "IN_PROGRESS",
+        chatMessages: [],
+      },
+    ];
+
+    vi.mocked(mockDb.task.findMany).mockResolvedValue(staleTasks as any);
+    vi.mocked(mockDb.task.update).mockResolvedValue({} as any);
+
+    const result = await releaseStaleTaskPods();
+
+    // Should NOT call releaseTaskPod (no pod)
+    expect(mockReleaseTaskPod).not.toHaveBeenCalled();
+
+    // Should call haltTask via db.task.update with HALTED
+    expect(mockDb.task.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "task-live-1" },
+        data: expect.objectContaining({ workflowStatus: "HALTED" }),
+      })
+    );
+
+    expect(result.tasksHalted).toBe(1);
+    expect(result.podsReleased).toBe(0);
+    expect(result.success).toBe(true);
 
     vi.useRealTimers();
   });
