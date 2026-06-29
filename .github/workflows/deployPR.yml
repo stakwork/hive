@@ -436,6 +436,10 @@ jobs:
           fi
 
           echo "Resolving 20260623180704_add_urn_edge..."
+          # This migration has a dangling failed row in _prisma_migrations (started 2026-06-29 15:49:49)
+          # alongside a completed applied row. prisma resolve commands fail with P3008/P3012 because
+          # they only see the applied row. Delete the failed row directly so migrate deploy can proceed.
+          psql "$DATABASE_URL" -c "DELETE FROM _prisma_migrations WHERE migration_name='20260623180704_add_urn_edge' AND finished_at IS NULL;" 2>/dev/null || true
           URN_EDGE_TABLE=$(psql "$DATABASE_URL" -tAc "SELECT COUNT(*) FROM information_schema.tables WHERE table_name='urn_edges' AND table_schema='public';" 2>/dev/null | tr -d '[:space:]' || echo "0")
           if [ "$URN_EDGE_TABLE" = "1" ]; then
             echo "  urn_edges table exists — marking as applied"
@@ -490,6 +494,7 @@ jobs:
             else
               npx prisma migrate resolve --applied "20260412050000_add_connection_slug" 2>&1 || true
             fi
+            psql "$DATABASE_URL" -c "DELETE FROM _prisma_migrations WHERE migration_name='20260623180704_add_urn_edge' AND finished_at IS NULL;" 2>/dev/null || true
             URN_EDGE_TABLE=$(psql "$DATABASE_URL" -tAc "SELECT COUNT(*) FROM information_schema.tables WHERE table_name='urn_edges' AND table_schema='public';" 2>/dev/null | tr -d '[:space:]' || echo "0")
             if [ "$URN_EDGE_TABLE" = "1" ]; then
               npx prisma migrate resolve --applied "20260623180704_add_urn_edge" 2>&1 || true
