@@ -258,3 +258,79 @@ describe("PATCH /api/user/preferences — dailyRecapEnabled", () => {
     );
   });
 });
+
+describe("PATCH /api/user/preferences — voiceLearningEnabled", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockGetServerSession.mockResolvedValue({ user: { id: "user-1" } });
+  });
+
+  test("rejects non-boolean voiceLearningEnabled with 400", async () => {
+    const req = makeRequest({ voiceLearningEnabled: "yes" });
+    const res = await PATCH(req);
+    const body = await res.json();
+
+    expect(res.status).toBe(400);
+    expect(body.error).toBe("voiceLearningEnabled must be a boolean");
+    expect(mockUserUpdate).not.toHaveBeenCalled();
+  });
+
+  test("updates voiceLearningEnabled to true and returns it", async () => {
+    mockUserUpdate.mockResolvedValue({
+      canvasAutonomousTurns: false,
+      chatAgentModel: null,
+      timezone: "UTC",
+      dailyRecapEnabled: true,
+      voiceLearningEnabled: true,
+    });
+
+    const req = makeRequest({ voiceLearningEnabled: true });
+    const res = await PATCH(req);
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body.voiceLearningEnabled).toBe(true);
+    expect(mockUserUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ voiceLearningEnabled: true }),
+      }),
+    );
+  });
+
+  test("updates voiceLearningEnabled to false", async () => {
+    mockUserUpdate.mockResolvedValue({
+      canvasAutonomousTurns: false,
+      chatAgentModel: null,
+      timezone: "UTC",
+      dailyRecapEnabled: true,
+      voiceLearningEnabled: false,
+    });
+
+    const req = makeRequest({ voiceLearningEnabled: false });
+    const res = await PATCH(req);
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body.voiceLearningEnabled).toBe(false);
+  });
+
+  test("does not include voiceLearningEnabled in update when not provided", async () => {
+    mockUserUpdate.mockResolvedValue({
+      canvasAutonomousTurns: false,
+      chatAgentModel: null,
+      timezone: "UTC",
+      dailyRecapEnabled: true,
+      voiceLearningEnabled: false,
+    });
+
+    const req = makeRequest({ canvasAutonomousTurns: false });
+    const res = await PATCH(req);
+
+    expect(res.status).toBe(200);
+    expect(mockUserUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.not.objectContaining({ voiceLearningEnabled: expect.anything() }),
+      }),
+    );
+  });
+});
