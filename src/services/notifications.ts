@@ -153,7 +153,12 @@ export async function createAndSendNotification(input: {
       : null;
     const dmReady = isDirectMessageConfigured() && !!decryptedPubkey;
 
-    // 5. Always insert a row — use SKIPPED when DM is not ready
+    // Deferred types are always stored as PENDING with sendAfter set, even when DM
+    // is not currently configured — the dispatcher will attempt delivery later.
+    const isDeferred = DEFERRED_NOTIFICATION_TYPES.has(input.notificationType);
+    const sendAfter = isDeferred ? new Date(Date.now() + DEFERRED_DELAY_MS) : null;
+
+    // 5. Always insert a row — SKIPPED only for immediate types when DM is not ready
     const record = await db.notificationTrigger.create({
       data: {
         targetUserId: input.targetUserId,
@@ -161,35 +166,31 @@ export async function createAndSendNotification(input: {
         taskId,
         featureId,
         notificationType: input.notificationType,
-        status: dmReady
+        status: isDeferred || dmReady
           ? NotificationTriggerStatus.PENDING
           : NotificationTriggerStatus.SKIPPED,
         notificationMethod: NotificationMethod.SPHINX,
         notificationTimestamps: [],
+        ...(isDeferred ? { sendAfter, message: input.message } : {}),
       },
     });
 
-    // 6. Stop here if DM is not configured — no send attempted
+    // 6. Deferred types: sendAfter + message written atomically — nothing more to do now
+    if (isDeferred) {
+      logger.info(
+        `[Notifications] Deferred ${input.notificationType} — will dispatch after ${sendAfter!.toISOString()}`,
+        "NOTIFICATIONS",
+        { recordId: record.id, targetUserId: input.targetUserId, taskId, featureId }
+      );
+      return;
+    }
+
+    // 7. Immediate types: stop here if DM is not configured
     if (!dmReady) {
       logger.info(
         `[Notifications] DM not ready — record created as SKIPPED for ${input.notificationType}`,
         "NOTIFICATIONS",
         { recordId: record.id, targetUserId: input.targetUserId, dmConfigured: isDirectMessageConfigured(), hasPubkey: !!targetUser?.lightningPubkey }
-      );
-      return;
-    }
-
-    // 7. Deferred types: store sendAfter + message, return without sending
-    if (DEFERRED_NOTIFICATION_TYPES.has(input.notificationType)) {
-      const sendAfter = new Date(Date.now() + DEFERRED_DELAY_MS);
-      await db.notificationTrigger.update({
-        where: { id: record.id },
-        data: { sendAfter, message: input.message },
-      });
-      logger.info(
-        `[Notifications] Deferred ${input.notificationType} — will dispatch after ${sendAfter.toISOString()}`,
-        "NOTIFICATIONS",
-        { recordId: record.id, targetUserId: input.targetUserId, taskId, featureId }
       );
       return;
     }
