@@ -35,6 +35,7 @@ import {
   hasConcepts,
   persistOrgCanvasPromptCache,
   fetchOrgCanvasConversationMessages,
+  persistOrgCanvasPromptResolutions,
 } from "@/services/org-canvas-conversation";
 import {
   emitFollowUpQuestions,
@@ -474,6 +475,7 @@ export async function POST(request: NextRequest) {
         assembledPrefix,
         cacheableConcepts,
         cacheHit,
+        promptResolutions,
       } = await runCanvasAgent({
           userId,
           orgId: orgId && isMultiWorkspace ? orgId : undefined,
@@ -589,6 +591,23 @@ export async function POST(request: NextRequest) {
           } catch (err) {
             console.error(
               "❌ [quick-ask] Failed to persist prompt cache:",
+              err,
+            );
+          }
+        });
+      }
+
+      // Record which Prompt-Manager prompt versions produced this turn
+      // onto `settings.prompts`. Unlike the concept cache (miss-only),
+      // the prompt is resolved every turn, so persist every turn (latest
+      // wins). Best-effort + off the response path via `after()`.
+      if (cacheRowId && Object.keys(promptResolutions).length > 0) {
+        after(async () => {
+          try {
+            await persistOrgCanvasPromptResolutions(cacheRowId, promptResolutions);
+          } catch (err) {
+            console.error(
+              "❌ [quick-ask] Failed to persist prompt resolutions:",
               err,
             );
           }
