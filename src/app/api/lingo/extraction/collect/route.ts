@@ -11,6 +11,7 @@ export type LingoExtractionState = {
   backwardsCursor?: string; // ISO — oldest createdAt seen so far
   reachedFloor?: boolean; // true once backfill complete
   lastProcessedAt?: string; // ISO — forward cursor after floor reached
+  hasMore?: boolean; // true when batch hit the limit (more pages available)
 };
 
 type SourceEntry = {
@@ -27,14 +28,15 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  let body: { workspaceId: string };
+  let body: { workspaceId: string; limit?: number };
   try {
     body = await request.json();
   } catch {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
-  const { workspaceId } = body;
+  const { workspaceId, limit: rawLimit } = body;
+  const limit = typeof rawLimit === "number" && rawLimit > 0 ? rawLimit : 200;
   if (!workspaceId) {
     return NextResponse.json({ error: "workspaceId required" }, { status: 400 });
   }
@@ -70,7 +72,7 @@ export async function POST(request: NextRequest) {
         task: { workspaceId },
       },
       orderBy: { createdAt: "desc" },
-      take: 500,
+      take: limit,
       select: { id: true, message: true, createdAt: true },
     });
 
@@ -90,7 +92,8 @@ export async function POST(request: NextRequest) {
     cursorState = {
       ...state,
       backwardsCursor: newBackwardsCursor,
-      reachedFloor: batch.length < 500,
+      reachedFloor: batch.length < limit,
+      hasMore: batch.length >= limit,
     };
   } else {
     // Forward mode — pick up new messages since last run
@@ -104,7 +107,7 @@ export async function POST(request: NextRequest) {
         task: { workspaceId },
       },
       orderBy: { createdAt: "asc" },
-      take: 500,
+      take: limit,
       select: { id: true, message: true, createdAt: true },
     });
 
@@ -116,7 +119,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    cursorState = { ...state };
+    cursorState = { ...state, hasMore: batch.length >= limit };
   }
 
   // --- Jarvis sources (Episodes/Calls + HiveChatMessage/Sphinx) ---
