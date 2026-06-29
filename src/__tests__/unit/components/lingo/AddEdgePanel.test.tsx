@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, fireEvent, waitFor, act } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor, act, cleanup } from "@testing-library/react";
 import React from "react";
 
 // ─── Mocks ────────────────────────────────────────────────────────────────────
@@ -69,7 +69,7 @@ vi.mock("@/components/ui/input", () => ({
 
 // ─── Import after mocks ───────────────────────────────────────────────────────
 
-import { AddEdgePanel } from "@/app/w/[slug]/lingo/components/AddEdgePanel";
+import { AddEdgePanel } from "@/app/w/[slug]/learn/lingo/components/AddEdgePanel";
 import { toast } from "sonner";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -78,10 +78,19 @@ let mockFetch: ReturnType<typeof vi.fn>;
 
 beforeEach(() => {
   mockFetch = vi.fn();
+  // Default fallback: any unexpected/leftover fetch from a previous test resolves
+  // to an empty-but-valid listing response so it never consumes error-state mocks.
+  mockFetch.mockResolvedValue({
+    ok: true,
+    json: () => Promise.resolve({ success: true, data: { nodes: [], hasMore: false } }),
+  });
   vi.stubGlobal("fetch", mockFetch);
 });
 
-afterEach(() => {
+afterEach(async () => {
+  // Unmount all components before restoring mocks so pending async chains
+  // in still-mounted components don't consume the next test's mock calls.
+  cleanup();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
   vi.useRealTimers();
@@ -115,9 +124,8 @@ function makeNode(overrides: Partial<{
 }
 
 // Helper: render open panel, listing returns empty, search returns given nodes
+// Uses real timers so the debounce+fetch chain fully completes before returning.
 async function renderWithSearch(nodes: ReturnType<typeof makeNode>[]) {
-  vi.useFakeTimers({ shouldAdvanceTime: true });
-
   mockFetch
     .mockResolvedValueOnce({
       ok: true,
@@ -129,21 +137,15 @@ async function renderWithSearch(nodes: ReturnType<typeof makeNode>[]) {
     });
 
   render(<AddEdgePanel {...defaultProps} />);
-  await act(async () => { await Promise.resolve(); }); // let listing settle
+  await waitFor(() => expect(mockFetch).toHaveBeenCalledTimes(1)); // listing settled
+
   fireEvent.change(screen.getByTestId("node-search-input"), {
     target: { value: "test" },
   });
 
-  await act(async () => {
-    vi.advanceTimersByTime(300);
-    await Promise.resolve();
-  });
-
   await waitFor(() => {
     expect(screen.getByTestId("search-results")).toBeInTheDocument();
-  });
-
-  vi.useRealTimers();
+  }, { timeout: 2000 });
 }
 
 // ─── Tests ─────────────────────────────────────────────────────────────────────
@@ -188,8 +190,6 @@ describe("AddEdgePanel", () => {
     });
 
     it("re-fetches listing when input is cleared", async () => {
-      vi.useFakeTimers({ shouldAdvanceTime: true });
-
       // First open → listing
       mockFetch.mockResolvedValueOnce({
         ok: true,
@@ -207,24 +207,21 @@ describe("AddEdgePanel", () => {
       });
 
       render(<AddEdgePanel {...defaultProps} />);
-      await act(async () => { await Promise.resolve(); });
+      await waitFor(() => expect(mockFetch).toHaveBeenCalledTimes(1));
 
-      // Type something
+      // Type something — debounce fires after 300ms
       fireEvent.change(screen.getByTestId("node-search-input"), { target: { value: "hello" } });
-      await act(async () => { vi.advanceTimersByTime(300); await Promise.resolve(); });
+      await waitFor(() => expect(mockFetch).toHaveBeenCalledTimes(2));
 
-      // Clear input
+      // Clear input — listing fires immediately
       fireEvent.change(screen.getByTestId("node-search-input"), { target: { value: "" } });
-      await act(async () => { await Promise.resolve(); });
 
       await waitFor(() => {
         const listingCalls = mockFetch.mock.calls.filter(
           (c) => (c[0] as string).endsWith("/lingo/nodes"),
         );
         expect(listingCalls.length).toBe(2);
-      });
-
-      vi.useRealTimers();
+      }, { timeout: 2000 });
     });
   });
 
@@ -238,22 +235,23 @@ describe("AddEdgePanel", () => {
       });
 
       render(<AddEdgePanel {...defaultProps} />);
-      await act(async () => { await Promise.resolve(); }); // listing settles
+      // Drain the listing fetch fully with runAllTimersAsync
+      await act(async () => { await vi.runAllTimersAsync(); });
 
       const input = screen.getByTestId("node-search-input");
       fireEvent.change(input, { target: { value: "test" } });
 
+      // Advance only 200ms — debounce (300ms) should not fire yet
       act(() => { vi.advanceTimersByTime(200); });
 
       // Only the listing call, no search call yet
       expect(mockFetch).toHaveBeenCalledTimes(1);
 
-      vi.useRealTimers();
+      // Drain remaining timer so it doesn't leak into the next test
+      await act(async () => { await vi.runAllTimersAsync(); });
     });
 
     it("renders search results after search fires", async () => {
-      vi.useFakeTimers({ shouldAdvanceTime: true });
-
       mockFetch
         .mockResolvedValueOnce({
           ok: true,
@@ -269,28 +267,19 @@ describe("AddEdgePanel", () => {
         });
 
       render(<AddEdgePanel {...defaultProps} />);
-      await act(async () => { await Promise.resolve(); });
+      await waitFor(() => expect(mockFetch).toHaveBeenCalledTimes(1));
       fireEvent.change(screen.getByTestId("node-search-input"), {
         target: { value: "result" },
       });
 
-      await act(async () => {
-        vi.advanceTimersByTime(300);
-        await Promise.resolve();
-      });
-
       await waitFor(() => {
         expect(screen.getByTestId("search-result-result-1")).toBeInTheDocument();
-      });
-
-      vi.useRealTimers();
+      }, { timeout: 2000 });
     });
   });
 
   describe("Typed query", () => {
     it("search URL contains q= and no type= param", async () => {
-      vi.useFakeTimers({ shouldAdvanceTime: true });
-
       mockFetch
         .mockResolvedValueOnce({
           ok: true,
@@ -302,20 +291,13 @@ describe("AddEdgePanel", () => {
         });
 
       render(<AddEdgePanel {...defaultProps} />);
-      await act(async () => { await Promise.resolve(); });
+      await waitFor(() => expect(mockFetch).toHaveBeenCalledTimes(1));
       fireEvent.change(screen.getByTestId("node-search-input"), { target: { value: "pod" } });
 
-      await act(async () => {
-        vi.advanceTimersByTime(300);
-        await Promise.resolve();
-      });
-
-      await waitFor(() => expect(mockFetch).toHaveBeenCalledTimes(2));
+      await waitFor(() => expect(mockFetch).toHaveBeenCalledTimes(2), { timeout: 2000 });
       const searchUrl = mockFetch.mock.calls[1][0] as string;
       expect(searchUrl).toContain("q=pod");
       expect(searchUrl).not.toContain("type=");
-
-      vi.useRealTimers();
     });
 
     it("result card shows node_type badge (span.font-mono) and ref_id (p.font-mono)", async () => {
@@ -462,8 +444,6 @@ describe("AddEdgePanel", () => {
     });
 
     it("resets edgeType to first valid type when targetNode changes", async () => {
-      vi.useFakeTimers({ shouldAdvanceTime: true });
-
       const jdNode = makeNode({ ref_id: "jd-2", name: "Def Node", node_type: "JargonDefinition" });
       const lingoNode = makeNode({ ref_id: "lingo-2", name: "Lingo Node", node_type: "Lingo" });
 
@@ -472,32 +452,24 @@ describe("AddEdgePanel", () => {
         .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ success: true, data: [jdNode, lingoNode] }) });
 
       render(<AddEdgePanel {...defaultProps} />);
-      await act(async () => { await Promise.resolve(); });
+      await waitFor(() => expect(mockFetch).toHaveBeenCalledTimes(1));
       fireEvent.change(screen.getByTestId("node-search-input"), { target: { value: "node" } });
 
-      await act(async () => {
-        vi.advanceTimersByTime(300);
-        await Promise.resolve();
-      });
-      await waitFor(() => screen.getByTestId("search-result-jd-2"));
+      await waitFor(() => screen.getByTestId("search-result-jd-2"), { timeout: 2000 });
 
       // Select JargonDefinition → edgeType should be HAS_DEFINITION
       fireEvent.click(screen.getByTestId("search-result-jd-2"));
       await waitFor(() => {
         const wrappers = screen.getAllByTestId("select-wrapper");
-        const edgeWrapper = wrappers[0];
-        expect(edgeWrapper).toHaveAttribute("data-value", "HAS_DEFINITION");
+        expect(wrappers[0]).toHaveAttribute("data-value", "HAS_DEFINITION");
       });
 
       // Now select Lingo node → edgeType should reset to RELATED_TO
       fireEvent.click(screen.getByTestId("search-result-lingo-2"));
       await waitFor(() => {
         const wrappers = screen.getAllByTestId("select-wrapper");
-        const edgeWrapper = wrappers[0];
-        expect(edgeWrapper).toHaveAttribute("data-value", "RELATED_TO");
+        expect(wrappers[0]).toHaveAttribute("data-value", "RELATED_TO");
       });
-
-      vi.useRealTimers();
     });
   });
 
@@ -558,8 +530,6 @@ describe("AddEdgePanel", () => {
 
   describe("Search error state", () => {
     it("shows search-error when debounced search returns success:false", async () => {
-      vi.useFakeTimers({ shouldAdvanceTime: true });
-
       mockFetch
         .mockResolvedValueOnce({
           ok: true,
@@ -571,20 +541,15 @@ describe("AddEdgePanel", () => {
         });
 
       render(<AddEdgePanel {...defaultProps} />);
-      await act(async () => { await vi.runAllTimersAsync(); });
+      await waitFor(() => expect(mockFetch).toHaveBeenCalledTimes(1));
 
       fireEvent.change(screen.getByTestId("node-search-input"), { target: { value: "fail" } });
-      await act(async () => { await vi.runAllTimersAsync(); });
 
-      expect(screen.getByTestId("search-error")).toBeInTheDocument();
+      await waitFor(() => expect(screen.getByTestId("search-error")).toBeInTheDocument(), { timeout: 2000 });
       expect(screen.queryByTestId("no-results")).not.toBeInTheDocument();
-
-      vi.useRealTimers();
     });
 
     it("shows search-error when debounced search fetch throws", async () => {
-      vi.useFakeTimers({ shouldAdvanceTime: true });
-
       mockFetch
         .mockResolvedValueOnce({
           ok: true,
@@ -593,20 +558,15 @@ describe("AddEdgePanel", () => {
         .mockRejectedValueOnce(new Error("Network error"));
 
       render(<AddEdgePanel {...defaultProps} />);
-      await act(async () => { await vi.runAllTimersAsync(); });
+      await waitFor(() => expect(mockFetch).toHaveBeenCalledTimes(1));
 
       fireEvent.change(screen.getByTestId("node-search-input"), { target: { value: "oops" } });
-      await act(async () => { await vi.runAllTimersAsync(); });
 
-      expect(screen.getByTestId("search-error")).toBeInTheDocument();
+      await waitFor(() => expect(screen.getByTestId("search-error")).toBeInTheDocument(), { timeout: 2000 });
       expect(screen.queryByTestId("no-results")).not.toBeInTheDocument();
-
-      vi.useRealTimers();
     });
 
     it("clears searchError when query changes after an error", async () => {
-      vi.useFakeTimers({ shouldAdvanceTime: true });
-
       mockFetch
         .mockResolvedValueOnce({
           ok: true,
@@ -619,25 +579,18 @@ describe("AddEdgePanel", () => {
         });
 
       render(<AddEdgePanel {...defaultProps} />);
-      await act(async () => { await vi.runAllTimersAsync(); });
+      await waitFor(() => expect(mockFetch).toHaveBeenCalledTimes(1));
 
       // Trigger error
       fireEvent.change(screen.getByTestId("node-search-input"), { target: { value: "bad" } });
-      await act(async () => { await vi.runAllTimersAsync(); });
-      expect(screen.getByTestId("search-error")).toBeInTheDocument();
+      await waitFor(() => expect(screen.getByTestId("search-error")).toBeInTheDocument(), { timeout: 2000 });
 
       // Change query — useEffect sets setSearchError(false) synchronously before debounce
       fireEvent.change(screen.getByTestId("node-search-input"), { target: { value: "new" } });
-      await act(async () => { await Promise.resolve(); });
-
-      expect(screen.queryByTestId("search-error")).not.toBeInTheDocument();
-
-      vi.useRealTimers();
+      await waitFor(() => expect(screen.queryByTestId("search-error")).not.toBeInTheDocument());
     });
 
     it("clears searchError when panel is closed", async () => {
-      vi.useFakeTimers({ shouldAdvanceTime: true });
-
       const onClose = vi.fn();
 
       mockFetch
@@ -652,23 +605,18 @@ describe("AddEdgePanel", () => {
         });
 
       const { rerender } = render(<AddEdgePanel {...defaultProps} onClose={onClose} />);
-      await act(async () => { await vi.runAllTimersAsync(); });
+      await waitFor(() => expect(mockFetch).toHaveBeenCalledTimes(1));
 
       fireEvent.change(screen.getByTestId("node-search-input"), { target: { value: "bad" } });
-      await act(async () => { await vi.runAllTimersAsync(); });
-      expect(screen.getByTestId("search-error")).toBeInTheDocument();
+      await waitFor(() => expect(screen.getByTestId("search-error")).toBeInTheDocument(), { timeout: 2000 });
 
-      // Close the panel via Cancel button
+      // Close the panel via Cancel button — handleClose sets searchError to false
       fireEvent.click(screen.getByText("Cancel"));
-      await act(async () => { await Promise.resolve(); });
 
-      // Re-open
+      // Re-open with fresh props
       rerender(<AddEdgePanel {...defaultProps} onClose={onClose} isOpen={true} />);
-      await act(async () => { await vi.runAllTimersAsync(); });
-
+      await waitFor(() => expect(mockFetch).toHaveBeenCalledTimes(3));
       expect(screen.queryByTestId("search-error")).not.toBeInTheDocument();
-
-      vi.useRealTimers();
     });
 
     it("shows search-error when listing endpoint (empty query) returns success:false", async () => {
@@ -700,8 +648,6 @@ describe("AddEdgePanel", () => {
     });
 
     it("calls POST with correct body on confirm", async () => {
-      vi.useFakeTimers({ shouldAdvanceTime: true });
-
       mockFetch
         .mockResolvedValueOnce({
           ok: true,
@@ -718,35 +664,23 @@ describe("AddEdgePanel", () => {
         .mockResolvedValueOnce({
           ok: true,
           json: () => Promise.resolve({ success: true }), // POST
-        })
-        .mockResolvedValueOnce({
-          ok: true,
-          json: () => Promise.resolve({ success: true, data: { nodes: [], hasMore: false } }), // listing after close resets query
         });
 
       const onEdgeCreated = vi.fn();
       const onClose = vi.fn();
 
       render(<AddEdgePanel {...defaultProps} onEdgeCreated={onEdgeCreated} onClose={onClose} />);
-      await act(async () => { await Promise.resolve(); });
+      await waitFor(() => expect(mockFetch).toHaveBeenCalledTimes(1));
 
       fireEvent.change(screen.getByTestId("node-search-input"), {
         target: { value: "target" },
       });
 
-      await act(async () => {
-        vi.advanceTimersByTime(300);
-        await Promise.resolve();
-      });
-
-      await waitFor(() => screen.getByTestId("search-result-target-node"));
+      await waitFor(() => screen.getByTestId("search-result-target-node"), { timeout: 2000 });
       fireEvent.click(screen.getByTestId("search-result-target-node"));
-
       expect(screen.getByTestId("selected-target")).toBeInTheDocument();
 
-      await act(async () => {
-        fireEvent.click(screen.getByTestId("confirm-add-edge"));
-      });
+      fireEvent.click(screen.getByTestId("confirm-add-edge"));
 
       await waitFor(() => {
         expect(mockFetch).toHaveBeenCalledWith(
@@ -762,13 +696,9 @@ describe("AddEdgePanel", () => {
         );
         expect(onEdgeCreated).toHaveBeenCalled();
       });
-
-      vi.useRealTimers();
     });
 
     it("shows error toast on POST failure", async () => {
-      vi.useFakeTimers({ shouldAdvanceTime: true });
-
       mockFetch
         .mockResolvedValueOnce({
           ok: true,
@@ -788,26 +718,17 @@ describe("AddEdgePanel", () => {
         });
 
       render(<AddEdgePanel {...defaultProps} />);
-      await act(async () => { await Promise.resolve(); });
+      await waitFor(() => expect(mockFetch).toHaveBeenCalledTimes(1));
       fireEvent.change(screen.getByTestId("node-search-input"), { target: { value: "T1" } });
 
-      await act(async () => {
-        vi.advanceTimersByTime(300);
-        await Promise.resolve();
-      });
-
-      await waitFor(() => screen.getByTestId("search-result-t1"));
+      await waitFor(() => screen.getByTestId("search-result-t1"), { timeout: 2000 });
       fireEvent.click(screen.getByTestId("search-result-t1"));
 
-      await act(async () => {
-        fireEvent.click(screen.getByTestId("confirm-add-edge"));
-      });
+      fireEvent.click(screen.getByTestId("confirm-add-edge"));
 
       await waitFor(() => {
         expect(toast.error).toHaveBeenCalledWith("Server error");
       });
-
-      vi.useRealTimers();
     });
   });
 });
