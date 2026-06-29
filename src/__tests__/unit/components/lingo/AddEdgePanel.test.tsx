@@ -84,6 +84,7 @@ beforeEach(() => {
 afterEach(() => {
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
+  vi.useRealTimers();
 });
 
 const defaultProps = {
@@ -570,15 +571,13 @@ describe("AddEdgePanel", () => {
         });
 
       render(<AddEdgePanel {...defaultProps} />);
-      await act(async () => { await Promise.resolve(); });
+      await act(async () => { await vi.runAllTimersAsync(); });
 
       fireEvent.change(screen.getByTestId("node-search-input"), { target: { value: "fail" } });
-      await act(async () => { vi.advanceTimersByTime(300); await Promise.resolve(); });
+      await act(async () => { await vi.runAllTimersAsync(); });
 
-      await waitFor(() => {
-        expect(screen.getByTestId("search-error")).toBeInTheDocument();
-        expect(screen.queryByTestId("no-results")).not.toBeInTheDocument();
-      });
+      expect(screen.getByTestId("search-error")).toBeInTheDocument();
+      expect(screen.queryByTestId("no-results")).not.toBeInTheDocument();
 
       vi.useRealTimers();
     });
@@ -594,15 +593,13 @@ describe("AddEdgePanel", () => {
         .mockRejectedValueOnce(new Error("Network error"));
 
       render(<AddEdgePanel {...defaultProps} />);
-      await act(async () => { await Promise.resolve(); });
+      await act(async () => { await vi.runAllTimersAsync(); });
 
       fireEvent.change(screen.getByTestId("node-search-input"), { target: { value: "oops" } });
-      await act(async () => { vi.advanceTimersByTime(300); await Promise.resolve(); });
+      await act(async () => { await vi.runAllTimersAsync(); });
 
-      await waitFor(() => {
-        expect(screen.getByTestId("search-error")).toBeInTheDocument();
-        expect(screen.queryByTestId("no-results")).not.toBeInTheDocument();
-      });
+      expect(screen.getByTestId("search-error")).toBeInTheDocument();
+      expect(screen.queryByTestId("no-results")).not.toBeInTheDocument();
 
       vi.useRealTimers();
     });
@@ -615,25 +612,22 @@ describe("AddEdgePanel", () => {
           ok: true,
           json: () => Promise.resolve({ success: true, data: { nodes: [], hasMore: false } }),
         })
-        // first search → error
         .mockRejectedValueOnce(new Error("Network error"))
-        // second search (query change) → still loading, we check error gone before resolve
         .mockResolvedValueOnce({
           ok: true,
           json: () => Promise.resolve({ success: true, data: [] }),
         });
 
       render(<AddEdgePanel {...defaultProps} />);
-      await act(async () => { await Promise.resolve(); });
+      await act(async () => { await vi.runAllTimersAsync(); });
 
       // Trigger error
       fireEvent.change(screen.getByTestId("node-search-input"), { target: { value: "bad" } });
-      await act(async () => { vi.advanceTimersByTime(300); await Promise.resolve(); });
-      await waitFor(() => expect(screen.getByTestId("search-error")).toBeInTheDocument());
+      await act(async () => { await vi.runAllTimersAsync(); });
+      expect(screen.getByTestId("search-error")).toBeInTheDocument();
 
-      // Change query — error should clear (useEffect runs setSearchError(false) before debounce)
+      // Change query — useEffect sets setSearchError(false) synchronously before debounce
       fireEvent.change(screen.getByTestId("node-search-input"), { target: { value: "new" } });
-      // After the synchronous state update (setSearchError(false)) but before debounce fires
       await act(async () => { await Promise.resolve(); });
 
       expect(screen.queryByTestId("search-error")).not.toBeInTheDocument();
@@ -652,18 +646,17 @@ describe("AddEdgePanel", () => {
           json: () => Promise.resolve({ success: true, data: { nodes: [], hasMore: false } }),
         })
         .mockRejectedValueOnce(new Error("Network error"))
-        // after re-open
         .mockResolvedValueOnce({
           ok: true,
           json: () => Promise.resolve({ success: true, data: { nodes: [], hasMore: false } }),
         });
 
       const { rerender } = render(<AddEdgePanel {...defaultProps} onClose={onClose} />);
-      await act(async () => { await Promise.resolve(); });
+      await act(async () => { await vi.runAllTimersAsync(); });
 
       fireEvent.change(screen.getByTestId("node-search-input"), { target: { value: "bad" } });
-      await act(async () => { vi.advanceTimersByTime(300); await Promise.resolve(); });
-      await waitFor(() => expect(screen.getByTestId("search-error")).toBeInTheDocument());
+      await act(async () => { await vi.runAllTimersAsync(); });
+      expect(screen.getByTestId("search-error")).toBeInTheDocument();
 
       // Close the panel via Cancel button
       fireEvent.click(screen.getByText("Cancel"));
@@ -671,9 +664,8 @@ describe("AddEdgePanel", () => {
 
       // Re-open
       rerender(<AddEdgePanel {...defaultProps} onClose={onClose} isOpen={true} />);
-      await act(async () => { await Promise.resolve(); });
+      await act(async () => { await vi.runAllTimersAsync(); });
 
-      // searchError should be gone
       expect(screen.queryByTestId("search-error")).not.toBeInTheDocument();
 
       vi.useRealTimers();
