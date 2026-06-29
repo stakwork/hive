@@ -1144,6 +1144,157 @@ describe('POST /api/ask/quick - Quick Ask Integration Tests', () => {
       expect(response.status).toBe(401);
     });
 
+    it('org-canvas second turn succeeds via fallback lookup (happy path)', async () => {
+      // Create user, org, workspace, swarm so validateUserBelongsToOrg passes
+      const user = await createTestUser({
+        email: generateUniqueId('user') + '@example.com',
+        withGitHubAuth: true,
+      });
+      const org = await db.sourceControlOrg.create({
+        data: {
+          githubLogin: generateUniqueId('org'),
+          githubInstallationId: Math.floor(Math.random() * 1_000_000),
+          type: 'ORG',
+          name: generateUniqueId('org'),
+        },
+      });
+      const workspace = await createTestWorkspace({
+        slug: generateUniqueId('workspace'),
+        ownerId: user.id,
+        sourceControlOrgId: org.id,
+      });
+      await createTestSwarm({
+        workspaceId: workspace.id,
+        swarmUrl: 'https://test-swarm.sphinx.chat',
+        swarmApiKey: 'test-key',
+      });
+      await createTestRepository({
+        workspaceId: workspace.id,
+        repositoryUrl: 'https://github.com/test-org/test-repo',
+      });
+      // Create a SourceControlToken so getGithubUsernameAndPAT can decrypt a PAT
+      // for this org-linked workspace (workspace.sourceControlOrgId = org.id).
+      await db.sourceControlToken.create({
+        data: {
+          userId: user.id,
+          sourceControlOrgId: org.id,
+          token: JSON.stringify(
+            encryptionService.encryptField('source_control_token', 'gho_test_org_token')
+          ),
+        },
+      });
+
+      // Simulate an org-canvas conversation (workspaceId = null)
+      const storedMessages = [
+        { id: 'm1', role: 'user', content: 'First org question', timestamp: new Date().toISOString() },
+        { id: 'm2', role: 'assistant', content: 'First org answer', timestamp: new Date().toISOString() },
+      ];
+      const conversation = await db.sharedConversation.create({
+        data: {
+          userId: user.id,
+          workspaceId: null,
+          sourceControlOrgId: org.id,
+          messages: storedMessages as never,
+          followUpQuestions: [] as never,
+          title: 'Org canvas conversation',
+        },
+      });
+
+      const mockStream = {
+        toUIMessageStreamResponse: vi.fn(() =>
+          new Response('test', { headers: { 'Content-Type': 'text/plain' } })
+        ),
+      };
+      vi.mocked(streamText).mockReturnValue(mockStream as any);
+
+      const request = createAuthenticatedPostRequest(
+        '/api/ask/quick',
+        {
+          message: 'Second org question from mobile',
+          conversationId: conversation.id,
+          workspaceSlugs: [workspace.slug],
+          orgId: org.id,
+        },
+        user
+      );
+
+      const response = await POST(request);
+      expect(response.status).not.toBe(400);
+      expect(streamText).toHaveBeenCalledWith(
+        expect.objectContaining({
+          messages: expect.arrayContaining([
+            expect.objectContaining({ role: 'user', content: 'First org question' }),
+            expect.objectContaining({ role: 'assistant', content: 'First org answer' }),
+            expect.objectContaining({ role: 'user', content: 'Second org question from mobile' }),
+          ]),
+        })
+      );
+    });
+
+    it('returns 400 for org-canvas conversation owned by a different user (IDOR guard)', async () => {
+      const userA = await createTestUser({
+        email: generateUniqueId('userA') + '@example.com',
+        withGitHubAuth: true,
+      });
+      const userB = await createTestUser({
+        email: generateUniqueId('userB') + '@example.com',
+        withGitHubAuth: true,
+      });
+      const org = await db.sourceControlOrg.create({
+        data: {
+          githubLogin: generateUniqueId('org'),
+          githubInstallationId: Math.floor(Math.random() * 1_000_000),
+          type: 'ORG',
+          name: generateUniqueId('org'),
+        },
+      });
+      const workspace = await createTestWorkspace({
+        slug: generateUniqueId('workspace'),
+        ownerId: userA.id,
+        sourceControlOrgId: org.id,
+      });
+      // Give userB workspace membership so workspace-level auth passes
+      await db.workspaceMember.create({
+        data: {
+          userId: userB.id,
+          workspaceId: workspace.id,
+          role: WorkspaceRole.DEVELOPER,
+        },
+      });
+
+      // Org-canvas conversation owned by userA, NOT shared
+      const conversation = await db.sharedConversation.create({
+        data: {
+          userId: userA.id,
+          workspaceId: null,
+          sourceControlOrgId: org.id,
+          isShared: false,
+          messages: [
+            { id: 'm1', role: 'user', content: 'Secret', timestamp: new Date().toISOString() },
+          ] as never,
+          followUpQuestions: [] as never,
+          title: 'Private org conversation',
+        },
+      });
+
+      // userB tries to access userA's private org-canvas conversation
+      const request = createAuthenticatedPostRequest(
+        '/api/ask/quick',
+        {
+          message: 'Trying to read your history',
+          conversationId: conversation.id,
+          workspaceSlugs: [workspace.slug],
+          orgId: org.id,
+        },
+        userB
+      );
+
+      const response = await POST(request);
+      expect(response.status).toBe(400);
+      const data = await response.json();
+      expect(data.error).toMatch(/not found|access denied/i);
+    });
+
     it('falls through to normal messages[] path when both message and messages[] are provided', async () => {
       const storedMessages = [
         { id: 'm1', role: 'user', content: 'Stored', timestamp: new Date().toISOString() },
