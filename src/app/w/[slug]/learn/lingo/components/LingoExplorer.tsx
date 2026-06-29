@@ -35,6 +35,7 @@ export function LingoExplorer({ workspaceSlug }: LingoExplorerProps) {
   const [edges, setEdges] = useState<NeighborEdge[]>([]);
   const [breadcrumbs, setBreadcrumbs] = useState<BreadcrumbItem[]>([]);
   const [deletedEdgeIds, setDeletedEdgeIds] = useState<Set<string>>(new Set());
+  const [deletedNodeIds, setDeletedNodeIds] = useState<Set<string>>(new Set());
   const [isAddEdgePanelOpen, setIsAddEdgePanelOpen] = useState(false);
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [isLoadingDetail, setIsLoadingDetail] = useState(false);
@@ -230,6 +231,56 @@ export function LingoExplorer({ workspaceSlug }: LingoExplorerProps) {
     }
   };
 
+  // ── Optimistic node delete ────────────────────────────────────────────────
+
+  const handleDeleteNode = (refId: string) => {
+    // Optimistically hide + navigate back to list immediately
+    setDeletedNodeIds((prev) => new Set([...prev, refId]));
+    setView("list");
+    setSelectedNode(null);
+    setBreadcrumbs([]);
+
+    let undone = false;
+    toast("Node removed", {
+      duration: 5000,
+      action: {
+        label: "Undo",
+        onClick: () => {
+          undone = true;
+          setDeletedNodeIds((prev) => {
+            const next = new Set(prev);
+            next.delete(refId);
+            return next;
+          });
+        },
+      },
+      onDismiss: () => {
+        if (!undone) confirmDeleteNode(refId);
+      },
+      onAutoClose: () => {
+        if (!undone) confirmDeleteNode(refId);
+      },
+    });
+  };
+
+  const confirmDeleteNode = async (refId: string) => {
+    try {
+      const res = await fetch(
+        `/api/workspaces/${workspaceSlug}/lingo/nodes/${encodeURIComponent(refId)}`,
+        { method: "DELETE" },
+      );
+      if (!res.ok) throw new Error("Delete failed");
+    } catch {
+      // Revert optimistic removal
+      setDeletedNodeIds((prev) => {
+        const next = new Set(prev);
+        next.delete(refId);
+        return next;
+      });
+      toast.error("Failed to delete node");
+    }
+  };
+
   // ── Node creation ─────────────────────────────────────────────────────────
 
   const handleNodeCreated = useCallback(
@@ -243,9 +294,9 @@ export function LingoExplorer({ workspaceSlug }: LingoExplorerProps) {
 
   // ── Filtered nodes ────────────────────────────────────────────────────────
 
-  const filteredNodes = nameFilter
-    ? nodes.filter((n) => n.name.toLowerCase().includes(nameFilter.toLowerCase()))
-    : nodes;
+  const filteredNodes = nodes
+    .filter((n) => !deletedNodeIds.has(n.ref_id))
+    .filter((n) => !nameFilter || n.name.toLowerCase().includes(nameFilter.toLowerCase()));
 
   // ── Render ────────────────────────────────────────────────────────────────
 
@@ -366,6 +417,7 @@ export function LingoExplorer({ workspaceSlug }: LingoExplorerProps) {
                 edges={edges}
                 deletedEdgeIds={deletedEdgeIds}
                 onDeleteEdge={handleDeleteEdge}
+                onDeleteNode={handleDeleteNode}
                 onNavigate={handleNavigateNeighbor}
                 onAddEdge={() => setIsAddEdgePanelOpen(true)}
               />
