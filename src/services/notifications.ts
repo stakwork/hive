@@ -153,7 +153,12 @@ export async function createAndSendNotification(input: {
       : null;
     const dmReady = isDirectMessageConfigured() && !!decryptedPubkey;
 
-    // 5. Always insert a row — use SKIPPED when DM is not ready
+    const isDeferred = dmReady && DEFERRED_NOTIFICATION_TYPES.has(input.notificationType);
+    const sendAfter = isDeferred ? new Date(Date.now() + DEFERRED_DELAY_MS) : null;
+
+    // 5. Always insert a row — use SKIPPED when DM is not ready.
+    //    For deferred types write sendAfter + message atomically to avoid a race
+    //    where a polling reader finds the row before the subsequent update lands.
     const record = await db.notificationTrigger.create({
       data: {
         targetUserId: input.targetUserId,
@@ -166,6 +171,7 @@ export async function createAndSendNotification(input: {
           : NotificationTriggerStatus.SKIPPED,
         notificationMethod: NotificationMethod.SPHINX,
         notificationTimestamps: [],
+        ...(isDeferred ? { sendAfter, message: input.message } : {}),
       },
     });
 
@@ -179,15 +185,10 @@ export async function createAndSendNotification(input: {
       return;
     }
 
-    // 7. Deferred types: store sendAfter + message, return without sending
-    if (DEFERRED_NOTIFICATION_TYPES.has(input.notificationType)) {
-      const sendAfter = new Date(Date.now() + DEFERRED_DELAY_MS);
-      await db.notificationTrigger.update({
-        where: { id: record.id },
-        data: { sendAfter, message: input.message },
-      });
+    // 7. Deferred types: sendAfter + message already written atomically in step 5
+    if (isDeferred) {
       logger.info(
-        `[Notifications] Deferred ${input.notificationType} — will dispatch after ${sendAfter.toISOString()}`,
+        `[Notifications] Deferred ${input.notificationType} — will dispatch after ${sendAfter!.toISOString()}`,
         "NOTIFICATIONS",
         { recordId: record.id, targetUserId: input.targetUserId, taskId, featureId }
       );
