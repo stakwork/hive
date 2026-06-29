@@ -27,6 +27,11 @@ const nextConfig: NextConfig = {
         destination: "/w/:slug/settings?tab=pool",
         permanent: false,
       },
+      {
+        source: "/w/:slug/learn/lingo",
+        destination: "/w/:slug/lingo",
+        permanent: true,
+      },
     ];
   },
   distDir: process.env.NODE_ENV === "development" ? ".next-dev" : ".next",

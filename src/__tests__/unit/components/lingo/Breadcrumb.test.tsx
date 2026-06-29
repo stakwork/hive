@@ -2,7 +2,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import React from "react";
-import { LingoBreadcrumb } from "@/app/w/[slug]/learn/lingo/components/Breadcrumb";
+import { LingoBreadcrumb } from "@/app/w/[slug]/lingo/components/Breadcrumb";
 
 describe("LingoBreadcrumb", () => {
   const items = [
