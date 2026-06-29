@@ -83,12 +83,18 @@ interface CanvasPromptCacheStore {
   inFlight?: Promise<CanvasSystemPromptResult>;
 }
 
-const DEFAULT_RESULT: CanvasSystemPromptResult = {
-  value: DEFAULT_CANVAS_SYSTEM_PROMPT,
-  name: PROMPT_NAME,
-  promptId: null,
-  promptVersionId: null,
-};
+// Built lazily (not a module-level const) so importing this module does
+// NOT eagerly read `DEFAULT_CANVAS_SYSTEM_PROMPT` — tests that mock
+// `@/lib/constants/prompt` without that export would otherwise crash at
+// import time.
+function defaultResult(): CanvasSystemPromptResult {
+  return {
+    value: DEFAULT_CANVAS_SYSTEM_PROMPT,
+    name: PROMPT_NAME,
+    promptId: null,
+    promptVersionId: null,
+  };
+}
 
 // Anchor the cache on globalThis so it survives module re-evaluation
 // within a single (warm) serverless instance / dev process.
@@ -104,11 +110,11 @@ export async function getCanvasSystemPrompt(): Promise<CanvasSystemPromptResult>
   // and we can't reach the real Stakwork API, so use the in-repo copy.
   // (Not cached — it's a constant.)
   if (isDevelopmentMode()) {
-    return DEFAULT_RESULT;
+    return defaultResult();
   }
 
   if (!config.STAKWORK_API_KEY || !config.STAKWORK_BASE_URL) {
-    return DEFAULT_RESULT;
+    return defaultResult();
   }
 
   // Fresh cache hit.
@@ -147,10 +153,10 @@ async function fetchAndCache(): Promise<CanvasSystemPromptResult> {
     // outage.
     console.error("getCanvasSystemPrompt: falling back to default:", error);
     cacheStore.entry = {
-      result: DEFAULT_RESULT,
+      result: defaultResult(),
       expiresAt: Date.now() + FALLBACK_TTL_MS,
     };
-    return DEFAULT_RESULT;
+    return defaultResult();
   } finally {
     clearTimeout(timer);
   }
