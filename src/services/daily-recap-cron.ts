@@ -6,6 +6,12 @@ import { config } from "@/config/env";
 import { ApiError } from "@/types/common";
 import { getBaseUrl } from "@/lib/utils";
 
+/** How long a DAILY_RECAP run may stay PENDING/IN_PROGRESS before the reaper flips it to FAILED. */
+const RECAP_STALE_REAPER_MS = 15 * 60_000; // 15 min
+
+/** How young a PENDING/IN_PROGRESS DAILY_RECAP run must be for the in-flight guard to skip the user. */
+const RECAP_INFLIGHT_GUARD_MS = 45 * 60_000; // 45 min
+
 export interface DailyRecapCronResult {
   usersProcessed: number;
   dispatched: number;
@@ -52,6 +58,20 @@ export async function executeScheduledDailyRecapRuns(): Promise<DailyRecapCronRe
 
   const baseUrl = getBaseUrl();
   console.log(`[DailyRecapCron] Starting at ${new Date().toISOString()}`);
+
+  // ── 0. Reap stale DAILY_RECAP runs ──────────────────────────────────────
+  const reaperCutoff = new Date(Date.now() - RECAP_STALE_REAPER_MS);
+  const reaped = await db.stakworkRun.updateMany({
+    where: {
+      type: StakworkRunType.DAILY_RECAP,
+      status: { in: [WorkflowStatus.PENDING, WorkflowStatus.IN_PROGRESS] },
+      createdAt: { lt: reaperCutoff },
+    },
+    data: { status: WorkflowStatus.FAILED },
+  });
+  if (reaped.count > 0) {
+    console.warn(`[DailyRecapCron] Reaped ${reaped.count} stale DAILY_RECAP run(s) → FAILED`);
+  }
 
   // ── 1. Query eligible users ──────────────────────────────────────────────
   const users = await db.user.findMany({
@@ -100,9 +120,9 @@ export async function executeScheduledDailyRecapRuns(): Promise<DailyRecapCronRe
         continue;
       }
 
-      // 3. Compute activity window
+      // 3. Compute activity window (cursor: last COMPLETED run only)
       const lastRun = await db.stakworkRun.findFirst({
-        where: { userId, type: StakworkRunType.DAILY_RECAP },
+        where: { userId, type: StakworkRunType.DAILY_RECAP, status: WorkflowStatus.COMPLETED },
         orderBy: { createdAt: "desc" },
         select: { createdAt: true },
       });
@@ -128,6 +148,26 @@ export async function executeScheduledDailyRecapRuns(): Promise<DailyRecapCronRe
         workspaceName,
       }));
       const activity = JSON.stringify(digest);
+
+      // 5b. In-flight guard — skip if a recent run is still active
+      const guardCutoff = new Date(Date.now() - RECAP_INFLIGHT_GUARD_MS);
+      const inflightRun = await db.stakworkRun.findFirst({
+        where: {
+          userId,
+          type: StakworkRunType.DAILY_RECAP,
+          status: { in: [WorkflowStatus.PENDING, WorkflowStatus.IN_PROGRESS] },
+          createdAt: { gte: guardCutoff },
+        },
+        select: { id: true, createdAt: true },
+      });
+      if (inflightRun) {
+        const ageMin = Math.round((Date.now() - inflightRun.createdAt.getTime()) / 60_000);
+        console.log(
+          `[DailyRecapCron] Skipping user ${userId}: in-flight run ${inflightRun.id} is ${ageMin}min old`,
+        );
+        result.skipped++;
+        continue;
+      }
 
       // 6. Create PENDING row
       const run = await db.stakworkRun.create({
