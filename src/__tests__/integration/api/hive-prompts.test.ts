@@ -17,6 +17,7 @@ import { db } from "@/lib/db";
 import { PromptSyncStatus } from "@prisma/client";
 import {
   getPromptReadThrough,
+  seedWorkspacePromptsFromStakwork,
   writePromptThrough,
   publishVersion,
   PromptNotFoundError,
@@ -634,5 +635,336 @@ describe("Unauthenticated requests return 401", () => {
     const req = makeRequest("POST", "http://localhost/api/workflow/prompts", { name: "X", value: "y", workspace_slug: workspace.slug });
     const res = await POST(req);
     expect(res.status).toBe(401);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 8. Bulk workspace seed — seedWorkspacePromptsFromStakwork
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("seedWorkspacePromptsFromStakwork", () => {
+  // seedWorkspacePromptsFromStakwork only fires when the workspace has its OWN
+  // Stakwork token (no global-key fallback — that would import cross-customer data).
+  // Store a plain string: decryptField catches JSON.parse failure and returns it as-is.
+  let seedWorkspace: { id: string; slug: string };
+  beforeEach(async () => {
+    seedWorkspace = await createTestWorkspace({
+      ownerId: testUser.id,
+      slug: `seed-ws-${Date.now()}`,
+      stakworkApiKey: "fake-test-token",
+    });
+  });
+
+  it("empty workspace: seeds all Stakwork prompts, stamps promptsSyncedAt", async () => {
+    const mockFetch = vi.mocked(global.fetch);
+
+    // Page 1: 2 prompts, total=2 (< 20 so no page 2)
+    mockFetch
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          success: true,
+          data: {
+            total: 2,
+            size: 2,
+            prompts: [
+              { id: 101, name: "ALPHA_PROMPT", description: "alpha" },
+              { id: 102, name: "BETA_PROMPT", description: "beta" },
+            ],
+          },
+        }),
+      } as Response)
+      // Detail for ALPHA_PROMPT
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          success: true,
+          data: { id: 101, name: "ALPHA_PROMPT", value: "Alpha prompt value", description: "alpha" },
+        }),
+      } as Response)
+      // Detail for BETA_PROMPT
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          success: true,
+          data: { id: 102, name: "BETA_PROMPT", value: "Beta prompt value", description: "beta" },
+        }),
+      } as Response);
+
+    await seedWorkspacePromptsFromStakwork(seedWorkspace.id);
+
+    // Both prompts should now be in Hive
+    const alpha = await db.prompt.findUnique({
+      where: { workspaceId_name: { workspaceId: seedWorkspace.id, name: "ALPHA_PROMPT" } },
+      include: { versions: true },
+    });
+    expect(alpha).not.toBeNull();
+    expect(alpha?.value).toBe("Alpha prompt value");
+    expect(alpha?.stakworkId).toBe(101);
+    expect(alpha?.versions).toHaveLength(1);
+    expect(alpha?.versions[0].published).toBe(true);
+    expect(alpha?.versions[0].whodunnit).toBe("stakwork-import");
+
+    const beta = await db.prompt.findUnique({
+      where: { workspaceId_name: { workspaceId: seedWorkspace.id, name: "BETA_PROMPT" } },
+    });
+    expect(beta?.value).toBe("Beta prompt value");
+
+    // Workspace should be stamped
+    const ws = await db.workspace.findUnique({ where: { id: seedWorkspace.id }, select: { promptsSyncedAt: true } });
+    expect(ws?.promptsSyncedAt).not.toBeNull();
+  });
+
+  it("local-wins: existing Hive prompts are not overwritten", async () => {
+    const mockFetch = vi.mocked(global.fetch);
+
+    // Pre-seed a local prompt with a specific value
+    const local = await db.prompt.create({
+      data: { name: "EXISTING_PROMPT", value: "local value", workspaceId: seedWorkspace.id },
+    });
+    const localVersion = await db.promptVersion.create({
+      data: { promptId: local.id, versionNumber: 1, value: "local value", published: true },
+    });
+    await db.prompt.update({ where: { id: local.id }, data: { publishedVersionId: localVersion.id } });
+
+    // Stakwork returns the same-named prompt with a different value
+    mockFetch
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          success: true,
+          data: { total: 1, size: 1, prompts: [{ id: 200, name: "EXISTING_PROMPT" }] },
+        }),
+      } as Response)
+      // Detail fetch — should not be called because local-wins skips it
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          success: true,
+          data: { id: 200, name: "EXISTING_PROMPT", value: "STAKWORK OVERWRITE" },
+        }),
+      } as Response);
+
+    await seedWorkspacePromptsFromStakwork(seedWorkspace.id);
+
+    // The local prompt must retain its original value
+    const after = await db.prompt.findUnique({ where: { id: local.id } });
+    expect(after?.value).toBe("local value");
+
+    // Detail fetch must not have been called (only 1 fetch: the list page)
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("pagination: drains multiple pages", async () => {
+    const mockFetch = vi.mocked(global.fetch);
+
+    // Page 1: full page of 20, total=22
+    const page1Prompts = Array.from({ length: 20 }, (_, i) => ({
+      id: 300 + i,
+      name: `PAGE_ONE_PROMPT_${String(i).padStart(2, "0")}`,
+    }));
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        success: true,
+        data: { total: 22, size: 20, prompts: page1Prompts },
+      }),
+    } as Response);
+
+    // Detail fetches for page 1 (20 prompts)
+    for (const p of page1Prompts) {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          success: true,
+          data: { id: p.id, name: p.name, value: `value for ${p.name}` },
+        }),
+      } as Response);
+    }
+
+    // Page 2: 2 prompts, size=2 < PAGE_SIZE so loop ends
+    const page2Prompts = [
+      { id: 320, name: "PAGE_TWO_PROMPT_A" },
+      { id: 321, name: "PAGE_TWO_PROMPT_B" },
+    ];
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        success: true,
+        data: { total: 22, size: 2, prompts: page2Prompts },
+      }),
+    } as Response);
+
+    for (const p of page2Prompts) {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          success: true,
+          data: { id: p.id, name: p.name, value: `value for ${p.name}` },
+        }),
+      } as Response);
+    }
+
+    await seedWorkspacePromptsFromStakwork(seedWorkspace.id);
+
+    const count = await db.prompt.count({ where: { workspaceId: seedWorkspace.id } });
+    expect(count).toBe(22);
+  });
+
+  it("no-token workspace: returns without calling Stakwork, stamps promptsSyncedAt", async () => {
+    const mockFetch = vi.mocked(global.fetch);
+
+    // Workspace with no workspace-specific stakworkApiKey — seedWorkspacePromptsFromStakwork
+    // uses workspace-own token only (no global fallback), so this is a no-op.
+    const noTokenWs = await db.workspace.create({
+      data: {
+        name: "No Token WS",
+        slug: `no-token-ws-${Date.now()}`,
+        ownerId: testUser.id,
+        stakworkApiKey: null,
+      },
+    });
+
+    await seedWorkspacePromptsFromStakwork(noTokenWs.id);
+
+    // No Stakwork calls
+    expect(mockFetch).not.toHaveBeenCalled();
+
+    // promptsSyncedAt is stamped (so we don't retry on next list call)
+    const ws = await db.workspace.findUnique({ where: { id: noTokenWs.id }, select: { promptsSyncedAt: true } });
+    expect(ws?.promptsSyncedAt).not.toBeNull();
+
+    // Cleanup
+    await db.workspace.delete({ where: { id: noTokenWs.id } });
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 9. GET list route — bulk seed via read-through on first call
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("GET /api/workflow/prompts — bulk seed on first empty-workspace call", () => {
+  // Use a workspace with its own Stakwork token so seed fires for the "triggers"
+  // tests. The plain "workspace" fixture has no token, so tests that expect no
+  // seed call can reuse it directly.
+  let tokenWorkspace: { id: string; slug: string };
+
+  beforeEach(async () => {
+    mockGetServerSession.mockResolvedValue(makeSession(testUser.id));
+    tokenWorkspace = await createTestWorkspace({
+      ownerId: testUser.id,
+      slug: `token-ws-${Date.now()}`,
+      stakworkApiKey: "fake-test-token",
+    });
+  });
+
+  it("empty workspace triggers seed and returns seeded prompts", async () => {
+    const mockFetch = vi.mocked(global.fetch);
+
+    // Stakwork list returns one prompt
+    mockFetch
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          success: true,
+          data: {
+            total: 1,
+            size: 1,
+            prompts: [{ id: 500, name: "SEEDED_ON_LIST" }],
+          },
+        }),
+      } as Response)
+      // Detail
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          success: true,
+          data: { id: 500, name: "SEEDED_ON_LIST", value: "seeded value" },
+        }),
+      } as Response);
+
+    const req = makeRequest("GET", `http://localhost/api/workflow/prompts?workspace_slug=${tokenWorkspace.slug}`);
+    const res = await GET(req);
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body.data.prompts).toHaveLength(1);
+    expect(body.data.prompts[0].name).toBe("SEEDED_ON_LIST");
+    expect(body.data.total).toBe(1);
+
+    // Workspace stamped
+    const ws = await db.workspace.findUnique({ where: { id: tokenWorkspace.id }, select: { promptsSyncedAt: true } });
+    expect(ws?.promptsSyncedAt).not.toBeNull();
+  });
+
+  it("non-empty workspace does NOT trigger seed (promptsSyncedAt null)", async () => {
+    const mockFetch = vi.mocked(global.fetch);
+
+    // Pre-seed one local prompt so localCount > 0
+    const p = await db.prompt.create({ data: { name: "LOCAL_ONLY", value: "v", workspaceId: workspace.id } });
+    const v = await db.promptVersion.create({ data: { promptId: p.id, versionNumber: 1, value: "v", published: true } });
+    await db.prompt.update({ where: { id: p.id }, data: { publishedVersionId: v.id } });
+
+    const req = makeRequest("GET", `http://localhost/api/workflow/prompts?workspace_slug=${workspace.slug}`);
+    const res = await GET(req);
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body.data.total).toBe(1);
+    // No Stakwork call
+    expect(mockFetch).not.toHaveBeenCalled();
+  });
+
+  it("already-seeded workspace (promptsSyncedAt set) does NOT re-trigger seed", async () => {
+    const mockFetch = vi.mocked(global.fetch);
+
+    // Mark workspace as already seeded
+    await db.workspace.update({ where: { id: workspace.id }, data: { promptsSyncedAt: new Date() } });
+
+    const req = makeRequest("GET", `http://localhost/api/workflow/prompts?workspace_slug=${workspace.slug}`);
+    const res = await GET(req);
+
+    expect(res.status).toBe(200);
+    expect(mockFetch).not.toHaveBeenCalled();
+  });
+
+  it("workspace with no Stakwork token: GET list returns empty set without error", async () => {
+    // workspace has no stakworkApiKey — seed uses workspace-own token only, so
+    // no Stakwork call is made and the route returns an empty (but successful) list.
+    const noTokenWs = await db.workspace.create({
+      data: {
+        name: "No Token List WS",
+        slug: `no-token-list-${Date.now()}`,
+        ownerId: testUser.id,
+        stakworkApiKey: null,
+      },
+    });
+    await db.workspaceMember.create({ data: { workspaceId: noTokenWs.id, userId: testUser.id, role: "OWNER" } }).catch(() => {});
+
+    try {
+      const req = makeRequest("GET", `http://localhost/api/workflow/prompts?workspace_slug=${noTokenWs.slug}`);
+      const res = await GET(req);
+      const body = await res.json();
+
+      expect(res.status).toBe(200);
+      expect(body.data.prompts).toHaveLength(0);
+      expect(body.data.total).toBe(0);
+
+      // No Stakwork HTTP calls
+      expect(vi.mocked(global.fetch)).not.toHaveBeenCalled();
+    } finally {
+      await db.workspace.delete({ where: { id: noTokenWs.id } });
+    }
   });
 });

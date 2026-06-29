@@ -4,6 +4,7 @@ import { authOptions } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
 import {
   writePromptThrough,
+  seedWorkspacePromptsFromStakwork,
   PromptNameInvalidError,
   PromptConflictError,
 } from "@/services/prompts/prompt-sync";
@@ -87,10 +88,21 @@ export async function GET(request: NextRequest) {
         slug,
         OR: [{ ownerId: userId }, { members: { some: { userId } } }],
       },
-      select: { id: true },
+      select: { id: true, promptsSyncedAt: true },
     });
     if (!workspace) {
       return NextResponse.json({ error: "Workspace not found or access denied" }, { status: 403 });
+    }
+
+    // Bulk seed: runs once per workspace when the local prompt set is empty and
+    // we haven't seeded before. Uses promptsSyncedAt as a one-time marker so a
+    // workspace that genuinely has zero Stakwork prompts doesn't re-hit the API
+    // on every list call.
+    if (!workspace.promptsSyncedAt && !search) {
+      const localCount = await db.prompt.count({ where: { workspaceId: workspace.id } });
+      if (localCount === 0) {
+        await seedWorkspacePromptsFromStakwork(workspace.id);
+      }
     }
 
     const where = {

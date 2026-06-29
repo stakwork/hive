@@ -559,6 +559,40 @@ EOSQL
             echo "  Migration already applied — skipping"
           fi
 
+          # Apply 20260629101116_add_workspace_prompts_synced_at directly via psql
+          MIGRATION_NAME_2="20260629101116_add_workspace_prompts_synced_at"
+          ALREADY_APPLIED_2=$(psql "$DATABASE_URL" -tAc \
+            "SELECT COUNT(*) FROM _prisma_migrations WHERE migration_name='${MIGRATION_NAME_2}' AND finished_at IS NOT NULL;" \
+            2>/dev/null | tr -d '[:space:]' || echo "0")
+
+          if [ "$ALREADY_APPLIED_2" != "1" ]; then
+            echo "  Applying ${MIGRATION_NAME_2} via psql..."
+            psql "$DATABASE_URL" -c \
+              "DELETE FROM _prisma_migrations WHERE migration_name='${MIGRATION_NAME_2}';" \
+              2>/dev/null || true
+            psql "$DATABASE_URL" -c \
+              "ALTER TABLE \"workspaces\" ADD COLUMN IF NOT EXISTS \"prompts_synced_at\" TIMESTAMP(3);" \
+              2>/dev/null
+            MIGRATION_CHECKSUM_2=$(md5sum prisma/migrations/${MIGRATION_NAME_2}/migration.sql | awk '{print $1}')
+            psql "$DATABASE_URL" -c "
+              INSERT INTO _prisma_migrations (id, checksum, finished_at, migration_name, logs, rolled_back_at, started_at, applied_steps_count)
+              VALUES (
+                gen_random_uuid()::text,
+                '${MIGRATION_CHECKSUM_2}',
+                NOW(),
+                '${MIGRATION_NAME_2}',
+                NULL,
+                NULL,
+                NOW(),
+                1
+              )
+              ON CONFLICT DO NOTHING;
+            " 2>/dev/null || echo "  Could not record migration (may already exist)"
+            echo "  ✅ ${MIGRATION_NAME_2} applied"
+          else
+            echo "  ${MIGRATION_NAME_2} already applied — skipping"
+          fi
+
           # Count how many migration files are NOT yet recorded as successfully applied.
           # Prisma always acquires the advisory lock before checking, so we skip
           # migrate deploy entirely when there is nothing to do — avoiding P1002.

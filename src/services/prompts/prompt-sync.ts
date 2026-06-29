@@ -55,6 +55,32 @@ async function getStakworkToken(workspaceId: string): Promise<string> {
   return config.STAKWORK_API_KEY ?? "";
 }
 
+/**
+ * Returns the workspace-specific Stakwork token only — no global fallback.
+ * Used for bulk seeding: we only seed if the workspace has its own token
+ * (seeding with a global admin key would import prompts that don't belong
+ * to this workspace's customer scope).
+ */
+async function getWorkspaceOwnToken(workspaceId: string): Promise<string | null> {
+  const workspace = await db.workspace.findUnique({
+    where: { id: workspaceId },
+    select: { stakworkApiKey: true },
+  });
+
+  if (workspace?.stakworkApiKey) {
+    try {
+      return EncryptionService.getInstance().decryptField(
+        "stakworkApiKey",
+        workspace.stakworkApiKey,
+      );
+    } catch {
+      return null;
+    }
+  }
+
+  return null;
+}
+
 function stakworkHeaders(token: string) {
   return {
     Authorization: `Token token=${token}`,
@@ -164,6 +190,192 @@ export async function getPromptReadThrough(
   );
 
   return created;
+}
+
+// ─── bulk workspace seed ─────────────────────────────────────────────────────
+
+interface StakworkSlimPrompt {
+  id: number;
+  name: string;
+  description?: string;
+}
+
+interface StakworkDetailData {
+  id: number;
+  name: string;
+  value: string;
+  description?: string;
+  published_version_id?: string;
+}
+
+async function fetchStakworkPromptPage(
+  baseUrl: string,
+  token: string,
+  page: number,
+): Promise<{ prompts: StakworkSlimPrompt[]; total: number; size: number }> {
+  const res = await fetch(`${baseUrl}/prompts?page=${page}`, {
+    headers: stakworkHeaders(token),
+  });
+  if (!res.ok) {
+    throw new Error(`Stakwork /prompts?page=${page} returned ${res.status}`);
+  }
+  const json = await res.json();
+  const data = json?.data ?? {};
+  return {
+    prompts: (data.prompts ?? []) as StakworkSlimPrompt[],
+    total: Number(data.total ?? 0),
+    size: Number(data.size ?? (data.prompts?.length ?? 0)),
+  };
+}
+
+async function fetchStakworkPromptDetail(
+  baseUrl: string,
+  token: string,
+  stakworkId: number,
+): Promise<StakworkDetailData | null> {
+  try {
+    const res = await fetch(`${baseUrl}/prompts/${stakworkId}`, {
+      headers: stakworkHeaders(token),
+    });
+    if (!res.ok) return null;
+    const json = await res.json();
+    return (json?.data ?? json) as StakworkDetailData;
+  } catch {
+    return null;
+  }
+}
+
+async function persistSeededPrompt(
+  name: string,
+  value: string,
+  description: string | undefined,
+  stakworkId: number,
+  workspaceId: string,
+): Promise<void> {
+  await db.$transaction(async (tx) => {
+    const prompt = await tx.prompt.create({
+      data: {
+        name,
+        value,
+        description,
+        workspaceId,
+        stakworkId,
+        syncStatus: PromptSyncStatus.OK,
+        lastSyncedAt: new Date(),
+      },
+    });
+    const version = await tx.promptVersion.create({
+      data: {
+        promptId: prompt.id,
+        versionNumber: 1,
+        value,
+        description,
+        published: true,
+        whodunnit: "stakwork-import",
+      },
+    });
+    await tx.prompt.update({
+      where: { id: prompt.id },
+      data: { publishedVersionId: version.id },
+    });
+  });
+}
+
+/**
+ * Bulk-seeds all Stakwork prompts (customer-scoped + globals) into Hive for
+ * the given workspace. Respects local-wins: names already present in Hive are
+ * never overwritten. Stamps `promptsSyncedAt` on the workspace when done so
+ * this is only triggered once per workspace.
+ *
+ * If the workspace has no Stakwork token, this is a no-op (does not throw).
+ */
+export async function seedWorkspacePromptsFromStakwork(
+  workspaceId: string,
+): Promise<void> {
+  const token = await getWorkspaceOwnToken(workspaceId);
+  if (!token) {
+    // No workspace-specific token — stamp the marker so we don't retry on every list call
+    await db.workspace.update({
+      where: { id: workspaceId },
+      data: { promptsSyncedAt: new Date() },
+    });
+    return;
+  }
+
+  const baseUrl = config.STAKWORK_BASE_URL ?? "https://api.stakwork.com/api/v1";
+  const PAGE_SIZE = 20;
+  let page = 1;
+  let seeded = 0;
+
+  try {
+    while (true) {
+      const { prompts, total, size } = await fetchStakworkPromptPage(baseUrl, token, page);
+
+      for (const slim of prompts) {
+        if (!slim.name || !/^[A-Z0-9_]+$/.test(slim.name)) {
+          // Skip prompts whose names don't meet the Hive format requirement
+          continue;
+        }
+
+        // Local-wins: skip if already in Hive
+        const existing = await db.prompt.findUnique({
+          where: { workspaceId_name: { workspaceId, name: slim.name } },
+          select: { id: true },
+        });
+        if (existing) continue;
+
+        // N+1 detail fetch
+        const detail = await fetchStakworkPromptDetail(baseUrl, token, slim.id);
+        if (!detail?.value) continue;
+
+        try {
+          await persistSeededPrompt(
+            slim.name,
+            detail.value,
+            detail.description || undefined,
+            slim.id,
+            workspaceId,
+          );
+          seeded++;
+        } catch (err) {
+          // Unique-constraint race: another process seeded it — skip
+          const msg = err instanceof Error ? err.message : String(err);
+          if (!msg.includes("Unique constraint")) {
+            logger.warn(
+              `[prompt-sync] seed skipped: name=${slim.name} workspaceId=${workspaceId}`,
+              "prompt-sync",
+              { error: msg },
+            );
+          }
+        }
+      }
+
+      // Pagy: no page field in response — loop while page returned full SIZE
+      if (size < PAGE_SIZE || page * PAGE_SIZE >= total) break;
+      page++;
+    }
+  } catch (err) {
+    logger.error(
+      `[prompt-sync] bulk seed failed at page=${page} workspaceId=${workspaceId}`,
+      "prompt-sync",
+      { error: err instanceof Error ? err.message : String(err) },
+    );
+    // Don't stamp promptsSyncedAt — let the next call retry
+    return;
+  }
+
+  // Stamp workspace so we never re-run bulk seed for this workspace
+  await db.workspace.update({
+    where: { id: workspaceId },
+    data: { promptsSyncedAt: new Date() },
+  });
+
+  if (seeded > 0) {
+    logger.info(
+      `[prompt-sync] bulk seed complete: workspaceId=${workspaceId} seeded=${seeded}`,
+      "prompt-sync",
+    );
+  }
 }
 
 // ─── write-through ────────────────────────────────────────────────────────────

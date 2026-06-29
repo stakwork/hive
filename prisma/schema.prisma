@@ -278,6 +278,7 @@ model Workspace {
   // covered; absent ⇒ backfill (full PR pull); advanced only on a drained pass.
   jarvisSyncState         Json?                    @map("jarvis_sync_state")
   lingoExtractionState    Json                     @default("{}") @map("lingo_extraction_state")
+  promptsSyncedAt         DateTime?                @map("prompts_synced_at")
   agentLogs               AgentLog[]
   diagrams                DiagramWorkspace[]
   discordChannels         DiscordChannel[]
