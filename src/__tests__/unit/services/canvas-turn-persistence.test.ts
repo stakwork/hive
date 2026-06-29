@@ -362,6 +362,21 @@ describe("fetchStoredConversationMessages", () => {
     expect(result).toBeNull();
   });
 
+  test("returns null for org-canvas rows (workspaceId = null) — documents the gap the org-canvas fallback compensates for", async () => {
+    // The workspace predicate { workspace: { slug, deleted: false } } can never
+    // match a SharedConversation row that has workspaceId = null, so Prisma
+    // returns null here. This is the existing behavior that causes HTTP 400 on
+    // 2nd+ turns from Sphinx iOS/macOS — the fix adds an org-canvas fallback
+    // in /api/ask/quick/route.ts after this call returns null.
+    findFirst.mockResolvedValue(null);
+    const result = await fetchStoredConversationMessages({
+      conversationId: "org-conv-1",
+      userId: "user-1",
+      workspaceSlug: "any-slug",
+    });
+    expect(result).toBeNull();
+  });
+
   test("returns [] (not null) when conversation exists but messages column is empty", async () => {
     findFirst.mockResolvedValue({ messages: null });
     const result = await fetchStoredConversationMessages(baseArgs);
