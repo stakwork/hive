@@ -32,7 +32,8 @@ import { DEFAULT_CANVAS_SYSTEM_PROMPT } from "@/lib/constants/prompt";
  * also memoized to dedupe concurrent turns (no thundering herd).
  */
 
-const PROMPT_NAME = "CANVAS_AGENT_SYSTEM_PROMPT";
+export const CANVAS_SYSTEM_PROMPT_NAME = "CANVAS_AGENT_SYSTEM_PROMPT";
+const PROMPT_NAME = CANVAS_SYSTEM_PROMPT_NAME;
 // Covers all 3 sequential Stakwork calls (search → detail → version).
 const TIMEOUT_MS = 15_000;
 // Cache a successful resolution for 5 min. Cache a fallback (Stakwork
@@ -58,15 +59,36 @@ interface StakworkPromptVersionDetail {
   value: string;
 }
 
-interface CanvasPromptCacheEntry {
+/**
+ * The resolved canvas system prompt plus the Prompt-Manager coordinates
+ * it came from. `promptId` / `promptVersionId` are null whenever the
+ * value is the in-repo `DEFAULT_CANVAS_SYSTEM_PROMPT` (dev/mock mode,
+ * missing config, Stakwork outage, or a prompt with no published
+ * version) — i.e. when there is no Prompt-Manager version to attribute.
+ */
+export interface CanvasSystemPromptResult {
   value: string;
+  name: string;
+  promptId: number | null;
+  promptVersionId: number | null;
+}
+
+interface CanvasPromptCacheEntry {
+  result: CanvasSystemPromptResult;
   expiresAt: number;
 }
 
 interface CanvasPromptCacheStore {
   entry?: CanvasPromptCacheEntry;
-  inFlight?: Promise<string>;
+  inFlight?: Promise<CanvasSystemPromptResult>;
 }
+
+const DEFAULT_RESULT: CanvasSystemPromptResult = {
+  value: DEFAULT_CANVAS_SYSTEM_PROMPT,
+  name: PROMPT_NAME,
+  promptId: null,
+  promptVersionId: null,
+};
 
 // Anchor the cache on globalThis so it survives module re-evaluation
 // within a single (warm) serverless instance / dev process.
@@ -77,22 +99,22 @@ const cacheStore: CanvasPromptCacheStore =
   globalForCanvasPrompt.__canvasSystemPromptCache ??
   (globalForCanvasPrompt.__canvasSystemPromptCache = {});
 
-export async function getCanvasSystemPrompt(): Promise<string> {
+export async function getCanvasSystemPrompt(): Promise<CanvasSystemPromptResult> {
   // Dev/mock mode: the in-memory mock store has no CANVAS_AGENT_SYSTEM_PROMPT
   // and we can't reach the real Stakwork API, so use the in-repo copy.
   // (Not cached — it's a constant.)
   if (isDevelopmentMode()) {
-    return DEFAULT_CANVAS_SYSTEM_PROMPT;
+    return DEFAULT_RESULT;
   }
 
   if (!config.STAKWORK_API_KEY || !config.STAKWORK_BASE_URL) {
-    return DEFAULT_CANVAS_SYSTEM_PROMPT;
+    return DEFAULT_RESULT;
   }
 
   // Fresh cache hit.
   const cached = cacheStore.entry;
   if (cached && cached.expiresAt > Date.now()) {
-    return cached.value;
+    return cached.result;
   }
 
   // Dedupe concurrent refreshes: the first caller starts the fetch and
@@ -110,14 +132,14 @@ export async function getCanvasSystemPrompt(): Promise<string> {
   }
 }
 
-async function fetchAndCache(): Promise<string> {
+async function fetchAndCache(): Promise<CanvasSystemPromptResult> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
 
   try {
-    const value = await resolvePublishedPrompt(controller.signal);
-    cacheStore.entry = { value, expiresAt: Date.now() + SUCCESS_TTL_MS };
-    return value;
+    const result = await resolvePublishedPrompt(controller.signal);
+    cacheStore.entry = { result, expiresAt: Date.now() + SUCCESS_TTL_MS };
+    return result;
   } catch (error) {
     // Timeout (AbortError), network failure, bad JSON, missing prompt —
     // all collapse to the in-repo default, cached briefly to avoid
@@ -125,16 +147,18 @@ async function fetchAndCache(): Promise<string> {
     // outage.
     console.error("getCanvasSystemPrompt: falling back to default:", error);
     cacheStore.entry = {
-      value: DEFAULT_CANVAS_SYSTEM_PROMPT,
+      result: DEFAULT_RESULT,
       expiresAt: Date.now() + FALLBACK_TTL_MS,
     };
-    return DEFAULT_CANVAS_SYSTEM_PROMPT;
+    return DEFAULT_RESULT;
   } finally {
     clearTimeout(timer);
   }
 }
 
-async function resolvePublishedPrompt(signal: AbortSignal): Promise<string> {
+async function resolvePublishedPrompt(
+  signal: AbortSignal,
+): Promise<CanvasSystemPromptResult> {
   const headers = {
     Authorization: `Token token=${config.STAKWORK_API_KEY}`,
     "Content-Type": "application/json",
@@ -173,13 +197,25 @@ async function resolvePublishedPrompt(signal: AbortSignal): Promise<string> {
       const versionJson = await versionRes.json();
       const version: StakworkPromptVersionDetail | undefined = versionJson?.data;
       if (version?.value) {
-        return version.value;
+        return {
+          value: version.value,
+          name: PROMPT_NAME,
+          promptId: match.id,
+          promptVersionId: detail.published_version_id,
+        };
       }
     }
   }
 
+  // Unpublished prompt: we know the prompt id but there's no version to
+  // attribute, so leave `promptVersionId` null.
   if (detail.value) {
-    return detail.value;
+    return {
+      value: detail.value,
+      name: PROMPT_NAME,
+      promptId: match.id,
+      promptVersionId: null,
+    };
   }
 
   throw new Error("prompt has no usable value");
