@@ -1072,3 +1072,104 @@ describe("DELETE /api/workspaces/[slug]/lingo/nodes/[ref_id]", () => {
     expect(json.success).toBe(false);
   });
 });
+
+// ─── ref_id filter guards ─────────────────────────────────────────────────────
+
+describe("GET /api/workspaces/[slug]/lingo/nodes — ref_id filter", () => {
+  let GET: typeof import("@/app/api/workspaces/[slug]/lingo/nodes/route").GET;
+
+  beforeEach(async () => {
+    vi.resetAllMocks();
+    delete process.env.USE_MOCKS;
+    ({ GET } = await import("@/app/api/workspaces/[slug]/lingo/nodes/route"));
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  test("drops items missing ref_id and returns only valid nodes", async () => {
+    mockGetWorkspaceSwarmAccess.mockResolvedValueOnce({ success: true, data: SWARM_DATA });
+    const rawNodes = [
+      { ref_id: "valid-1", node_type: "Lingo", date_added_to_graph: 2000, properties: { name: "Valid Node" } },
+      { node_type: "Lingo", date_added_to_graph: 1000, properties: { name: "Missing ref_id" } },
+      null,
+      undefined,
+      { ref_id: "valid-2", node_type: "Lingo", date_added_to_graph: 500, properties: { name: "Another Valid" } },
+    ];
+    mockFetch.mockResolvedValueOnce(
+      new Response(JSON.stringify({ nodes: rawNodes }), { status: 200 }),
+    );
+    const req = makeAuthenticatedRequest(
+      `http://localhost/api/workspaces/${SLUG}/lingo/nodes`,
+    );
+    const res = await GET(req, { params: Promise.resolve({ slug: SLUG }) });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.success).toBe(true);
+    expect(body.data.nodes).toHaveLength(2);
+    expect(body.data.nodes.map((n: { ref_id: string }) => n.ref_id)).toEqual(["valid-1", "valid-2"]);
+  });
+
+  test("returns empty array when all items lack ref_id", async () => {
+    mockGetWorkspaceSwarmAccess.mockResolvedValueOnce({ success: true, data: SWARM_DATA });
+    mockFetch.mockResolvedValueOnce(
+      new Response(JSON.stringify({ nodes: [null, { node_type: "Lingo" }] }), { status: 200 }),
+    );
+    const req = makeAuthenticatedRequest(
+      `http://localhost/api/workspaces/${SLUG}/lingo/nodes`,
+    );
+    const res = await GET(req, { params: Promise.resolve({ slug: SLUG }) });
+    const body = await res.json();
+    expect(body.data.nodes).toEqual([]);
+  });
+});
+
+describe("GET /api/workspaces/[slug]/lingo/nodes/search — ref_id filter", () => {
+  let GET: typeof import("@/app/api/workspaces/[slug]/lingo/nodes/search/route").GET;
+
+  beforeEach(async () => {
+    vi.resetAllMocks();
+    delete process.env.USE_MOCKS;
+    ({ GET } = await import("@/app/api/workspaces/[slug]/lingo/nodes/search/route"));
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  test("drops items missing ref_id and returns only valid search results", async () => {
+    mockGetWorkspaceSwarmAccess.mockResolvedValueOnce({ success: true, data: SWARM_DATA });
+    const rawNodes = [
+      { ref_id: "search-1", node_type: "Lingo", name: "Pod", date_added_to_graph: 1000 },
+      { node_type: "Lingo", name: "No ref_id item", date_added_to_graph: 900 },
+      null,
+      { ref_id: "search-2", node_type: "Lingo", name: "Pod Runner", date_added_to_graph: 800 },
+    ];
+    mockFetch.mockResolvedValueOnce(
+      new Response(JSON.stringify(rawNodes), { status: 200 }),
+    );
+    const req = makeAuthenticatedRequest(
+      `http://localhost/api/workspaces/${SLUG}/lingo/nodes/search?q=pod`,
+    );
+    const res = await GET(req, { params: Promise.resolve({ slug: SLUG }) });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.success).toBe(true);
+    expect(body.data).toHaveLength(2);
+    expect(body.data.map((n: { ref_id: string }) => n.ref_id)).toEqual(["search-1", "search-2"]);
+  });
+
+  test("returns empty array when all search results lack ref_id", async () => {
+    mockGetWorkspaceSwarmAccess.mockResolvedValueOnce({ success: true, data: SWARM_DATA });
+    mockFetch.mockResolvedValueOnce(
+      new Response(JSON.stringify([null, { name: "ghost" }]), { status: 200 }),
+    );
+    const req = makeAuthenticatedRequest(
+      `http://localhost/api/workspaces/${SLUG}/lingo/nodes/search?q=ghost`,
+    );
+    const res = await GET(req, { params: Promise.resolve({ slug: SLUG }) });
+    const body = await res.json();
+    expect(body.data).toEqual([]);
+  });
+});
