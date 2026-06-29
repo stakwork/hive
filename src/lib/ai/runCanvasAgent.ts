@@ -367,6 +367,17 @@ export interface RunCanvasAgentResult {
    * signal for the caller to persist `cacheableConcepts`.
    */
   cacheHit: boolean;
+  /**
+   * Prompt-Manager coordinates of the system prompts resolved this turn,
+   * keyed by prompt name (e.g. `CANVAS_AGENT_SYSTEM_PROMPT`). The caller
+   * persists this onto `SharedConversation.settings.prompts`. Empty when
+   * every prompt resolved to its in-repo default (dev/mock, missing
+   * config, Stakwork outage) — there is no version to attribute then.
+   */
+  promptResolutions: Record<
+    string,
+    { prompt_id: number; prompt_version_id: number | null }
+  >;
 }
 
 // ---------------------------------------------------------------------------
@@ -589,6 +600,16 @@ export async function runCanvasAgent(
   // and the rollout flag's per-slug allow-list semantics.
   let primaryWorkspaceId: string | undefined;
   let primaryUserId: string | undefined;
+  // Prompt-Manager coordinates of the system prompts resolved this turn,
+  // keyed by prompt name (e.g. CANVAS_AGENT_SYSTEM_PROMPT). Populated in
+  // the multi-workspace (org-canvas) branch; the caller persists it onto
+  // `SharedConversation.settings.prompts` so each conversation records
+  // which prompt versions produced its turns. Empty when the prompt
+  // resolved to the in-repo default (no version to attribute).
+  const promptResolutions: Record<
+    string,
+    { prompt_id: number; prompt_version_id: number | null }
+  > = {};
   // Per-call web_search capture, used by `update_research`'s execute
   // closure to linkify Anthropic `<cite index="N-M">` tags. Empty
   // (and unused) when no org-tool branch is built.
@@ -670,6 +691,15 @@ export async function runCanvasAgent(
     // Manager (published CANVAS_AGENT_SYSTEM_PROMPT). Bounded by a 10s
     // deadline and always falls back to the in-repo default.
     const canvasSystemPrompt = await getCanvasSystemPrompt();
+    // Record the Prompt-Manager version only when it actually came from
+    // the manager (default-fallback has a null promptId — nothing to
+    // attribute).
+    if (canvasSystemPrompt.promptId != null) {
+      promptResolutions[canvasSystemPrompt.name] = {
+        prompt_id: canvasSystemPrompt.promptId,
+        prompt_version_id: canvasSystemPrompt.promptVersionId,
+      };
+    }
 
     // Always rebuilt fresh (cheap string work) so the scope hint reflects
     // the user's CURRENT canvas/selection, even on a concept-cache hit.
@@ -680,7 +710,7 @@ export async function runCanvasAgent(
       orgId,
       buildScopeHint(scope, linkedWorkspaces),
       orgPromptSuffix,
-      canvasSystemPrompt,
+      canvasSystemPrompt.value,
       userTimezone,
     );
     cacheHit = multiCacheHit;
@@ -971,6 +1001,7 @@ export async function runCanvasAgent(
     assembledPrefix: prefixMessages,
     cacheableConcepts,
     cacheHit,
+    promptResolutions,
   };
 }
 

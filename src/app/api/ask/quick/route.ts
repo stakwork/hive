@@ -34,6 +34,8 @@ import {
   loadOrgCanvasPromptCache,
   hasConcepts,
   persistOrgCanvasPromptCache,
+  fetchOrgCanvasConversationMessages,
+  persistOrgCanvasPromptResolutions,
 } from "@/services/org-canvas-conversation";
 import {
   emitFollowUpQuestions,
@@ -281,11 +283,22 @@ export async function POST(request: NextRequest) {
       if (!memberAccess.hasAccess) {
         throw forbiddenError("Access denied for workspace");
       }
-      const stored = await fetchStoredConversationMessages({
+      let stored = await fetchStoredConversationMessages({
         conversationId: conversationId as string,
         userId: userId!,
         workspaceSlug: primarySlug,
       });
+      // IDOR-safe fallback for org-canvas conversations (workspaceId = null):
+      // fetchOrgCanvasConversationMessages scopes the query by sourceControlOrgId
+      // AND OR[userId / isShared], so it can only return rows the caller may see.
+      // The validateUserBelongsToOrg gate further down still runs before any DB write.
+      if (!stored && orgId) {
+        stored = await fetchOrgCanvasConversationMessages({
+          conversationId: conversationId as string,
+          userId: userId!,
+          orgId: orgId as string,
+        });
+      }
       if (!stored) {
         throw validationError("Conversation not found or access denied");
       }
@@ -462,6 +475,7 @@ export async function POST(request: NextRequest) {
         assembledPrefix,
         cacheableConcepts,
         cacheHit,
+        promptResolutions,
       } = await runCanvasAgent({
           userId,
           orgId: orgId && isMultiWorkspace ? orgId : undefined,
@@ -577,6 +591,23 @@ export async function POST(request: NextRequest) {
           } catch (err) {
             console.error(
               "❌ [quick-ask] Failed to persist prompt cache:",
+              err,
+            );
+          }
+        });
+      }
+
+      // Record which Prompt-Manager prompt versions produced this turn
+      // onto `settings.prompts`. Unlike the concept cache (miss-only),
+      // the prompt is resolved every turn, so persist every turn (latest
+      // wins). Best-effort + off the response path via `after()`.
+      if (cacheRowId && Object.keys(promptResolutions).length > 0) {
+        after(async () => {
+          try {
+            await persistOrgCanvasPromptResolutions(cacheRowId, promptResolutions);
+          } catch (err) {
+            console.error(
+              "❌ [quick-ask] Failed to persist prompt resolutions:",
               err,
             );
           }

@@ -261,3 +261,30 @@ export async function persistOrgCanvasPromptCache(
     WHERE id = ${rowId}
   `;
 }
+
+/**
+ * Record which Prompt-Manager prompt versions produced this
+ * conversation's turns, at `settings.prompts` keyed by prompt name:
+ * `{ prompts: { CANVAS_AGENT_SYSTEM_PROMPT: { prompt_id, prompt_version_id } } }`.
+ *
+ * Conversation-level + latest-wins: the jsonb `||` merge replaces the
+ * whole `prompts` key each turn, so it reflects the versions used by the
+ * most recent turn (good enough — prompt versions change rarely and the
+ * canvas chat is single-owner). Race-free against the client autosave's
+ * concurrent `settings` writes for the same reason `persistOrgCanvasPromptCache`
+ * is: both sides merge into the blob rather than overwriting it. No-op
+ * when `resolutions` is empty (every prompt fell back to its in-repo
+ * default, so there's nothing to attribute). Caller has validated `rowId`.
+ */
+export async function persistOrgCanvasPromptResolutions(
+  rowId: string,
+  resolutions: Record<string, { prompt_id: number; prompt_version_id: number | null }>,
+): Promise<void> {
+  if (Object.keys(resolutions).length === 0) return;
+  const patch = JSON.stringify({ prompts: resolutions });
+  await db.$executeRaw`
+    UPDATE shared_conversations
+    SET settings = COALESCE(settings, '{}'::jsonb) || ${patch}::jsonb
+    WHERE id = ${rowId}
+  `;
+}
