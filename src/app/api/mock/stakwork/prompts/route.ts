@@ -37,7 +37,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   const body = await request.json();
 
-  const PROMPT_NAME_REGEX = /^[A-Z0-9_]+$/;
+  const PROMPT_NAME_REGEX = /^[A-Z_]+$/;
   if (!body.name || !PROMPT_NAME_REGEX.test(body.name)) {
     return NextResponse.json(
       { error: "Prompt name must contain only uppercase letters and underscores" },

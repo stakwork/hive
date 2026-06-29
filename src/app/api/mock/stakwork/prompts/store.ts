@@ -25,7 +25,7 @@ export const mockPromptsStore: Map<number, MockPromptEntry> = new Map([
       usage_notation: null as unknown as undefined,
       run_count: 0,
       current_version_id: 3,
-      published_version_id: 3,
+      published_version_id: 2,
       created_at: "2024-01-15T10:00:00Z",
       updated_at: "2024-02-20T15:30:00Z",
     },
