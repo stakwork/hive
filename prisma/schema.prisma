@@ -1987,6 +1987,49 @@ model WorkflowSummary {
   @@map("workflow_summaries")
 }
 
+// ─── Shared/global prompt management ────────────────────────────────────────
+
+enum PromptSyncStatus {
+  OK
+  PENDING // local write succeeded; Stakwork push failed — needs retry
+  FAILED
+}
+
+model Prompt {
+  id                 String           @id @default(cuid())
+  name               String           @unique // shared/global scope; UPPERCASE_UNDERSCORE
+  value              String // LIVE value — mirrors the PUBLISHED version (see invariant)
+  description        String?
+  publishedVersionId String?          @map("published_version_id")
+  stakworkId         Int?             @map("stakwork_id") // Stakwork numeric prompt id, for sync
+  syncStatus         PromptSyncStatus @default(OK) @map("sync_status")
+  lastSyncedAt       DateTime?        @map("last_synced_at")
+  createdAt          DateTime         @default(now()) @map("created_at")
+  updatedAt          DateTime         @updatedAt @map("updated_at")
+  versions           PromptVersion[]
+  publishedVersion   PromptVersion?   @relation("PublishedVersion", fields: [publishedVersionId], references: [id])
+
+  @@index([syncStatus])
+  @@map("prompts")
+}
+
+model PromptVersion {
+  id            String   @id @default(cuid())
+  promptId      String   @map("prompt_id")
+  versionNumber Int      @map("version_number")
+  value         String // FULL snapshot of THIS version's text — exact replay is a plain DB read
+  description   String?
+  whodunnit     String? // userId or system label (e.g. "stakwork-seed")
+  published     Boolean  @default(false)
+  createdAt     DateTime @default(now()) @map("created_at")
+  prompt        Prompt   @relation(fields: [promptId], references: [id], onDelete: Cascade)
+  publishedForPrompts Prompt[] @relation("PublishedVersion")
+
+  @@index([promptId])
+  @@index([promptId, published])
+  @@map("prompt_versions")
+}
+
 /// Cross-realm typed edge between two URN-addressed nodes.
 /// Persists relationships between Postgres entities, Canvas authored nodes,
 /// and KG concepts that cannot be expressed via FK columns alone.
