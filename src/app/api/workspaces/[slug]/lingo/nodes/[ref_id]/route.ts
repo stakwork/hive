@@ -46,7 +46,7 @@ export async function GET(
 
   try {
     const response = await fetch(
-      `${jarvisUrl}/v2/nodes/${encodeURIComponent(ref_id)}?expand=true`,
+      `${jarvisUrl}/v2/nodes/${encodeURIComponent(ref_id)}?expand=edges`,
       {
         method: "GET",
         headers: {
@@ -62,7 +62,43 @@ export async function GET(
     }
 
     const data = await response.json();
-    return NextResponse.json({ success: true, data });
+
+    const jarvisNodes: Record<string, unknown>[] = data.nodes ?? [];
+    const jarvisEdges: Record<string, unknown>[] = data.edges ?? [];
+
+    const nodeMap = Object.fromEntries(
+      jarvisNodes.map((n) => [n.ref_id as string, n]),
+    );
+
+    const edges = jarvisEdges
+      .map((e) => {
+        const neighborRefId = e.source === ref_id ? e.target : e.source;
+        const neighborNode = nodeMap[neighborRefId as string];
+        return {
+          edge_ref_id: e.ref_id as string,
+          edge_type: e.edge_type as string,
+          neighbor_node: {
+            ref_id: neighborNode?.ref_id as string,
+            name: ((neighborNode?.properties as Record<string, unknown>)?.name ??
+                   neighborNode?.name) as string,
+            node_type: neighborNode?.node_type as string,
+          },
+        };
+      })
+      .filter((e) => e.neighbor_node?.ref_id);
+
+    const rawNode = nodeMap[ref_id] ?? data;
+    const props = (rawNode?.properties as Record<string, unknown>) ?? {};
+    const node = {
+      ref_id: rawNode?.ref_id as string,
+      node_type: rawNode?.node_type as string,
+      name: (props.name ?? rawNode?.name) as string,
+      definition: (props.definition ?? rawNode?.definition) as string | null | undefined,
+      lingo_type: (props.lingo_type ?? rawNode?.lingo_type) as string | undefined,
+      date_added_to_graph: (rawNode?.date_added_to_graph as number) ?? 0,
+    };
+
+    return NextResponse.json({ success: true, data: { node, edges } });
   } catch (err) {
     console.error("[Lingo nodes/[ref_id]] Jarvis fetch failed", err);
     return NextResponse.json({ success: false, error: "Node not found" }, { status: 404 });
