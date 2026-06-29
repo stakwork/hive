@@ -59,6 +59,7 @@ model User {
   // layered above this flag.
   canvasAutonomousTurns    Boolean                  @default(false) @map("canvas_autonomous_turns")
   dailyRecapEnabled        Boolean                  @default(true)  @map("daily_recap_enabled")
+  voiceLearningEnabled     Boolean                  @default(false) @map("voice_learning_enabled")
   // Per-user default model for the canvas Agent chat, stored in
   // `getModelValue()` "provider/name" form (e.g. "anthropic/claude-sonnet-4").
   // Null = fall back to the admin-configured default. Set from the gear
@@ -123,6 +124,7 @@ model User {
   automations              Automation[]
   stakworkRuns             StakworkRun[]
   featurePresence          UserFeaturePresence[]
+  voiceCorrectionLearnings VoiceCorrectionLearning[]
 
   @@index([createdAt])
   @@index([deleted])
@@ -305,6 +307,7 @@ model Workspace {
   owner                   User                     @relation("WorkspaceOwner", fields: [ownerId], references: [id], onDelete: Cascade)
   sourceControlOrg        SourceControlOrg?        @relation(fields: [sourceControlOrgId], references: [id])
   defaultForOrg           SourceControlOrg?        @relation("OrgDefaultWorkspace")
+  voiceCorrectionLearnings VoiceCorrectionLearning[]
 
   @@index([ownerId])
   @@index([deleted])
@@ -1987,6 +1990,49 @@ model WorkflowSummary {
   @@map("workflow_summaries")
 }
 
+// ─── Shared/global prompt management ────────────────────────────────────────
+
+enum PromptSyncStatus {
+  OK
+  PENDING // local write succeeded; Stakwork push failed — needs retry
+  FAILED
+}
+
+model Prompt {
+  id                 String           @id @default(cuid())
+  name               String           @unique // shared/global scope; UPPERCASE_UNDERSCORE
+  value              String // LIVE value — mirrors the PUBLISHED version (see invariant)
+  description        String?
+  publishedVersionId String?          @map("published_version_id")
+  stakworkId         Int?             @map("stakwork_id") // Stakwork numeric prompt id, for sync
+  syncStatus         PromptSyncStatus @default(OK) @map("sync_status")
+  lastSyncedAt       DateTime?        @map("last_synced_at")
+  createdAt          DateTime         @default(now()) @map("created_at")
+  updatedAt          DateTime         @updatedAt @map("updated_at")
+  versions           PromptVersion[]
+  publishedVersion   PromptVersion?   @relation("PublishedVersion", fields: [publishedVersionId], references: [id])
+
+  @@index([syncStatus])
+  @@map("prompts")
+}
+
+model PromptVersion {
+  id            String   @id @default(cuid())
+  promptId      String   @map("prompt_id")
+  versionNumber Int      @map("version_number")
+  value         String // FULL snapshot of THIS version's text — exact replay is a plain DB read
+  description   String?
+  whodunnit     String? // userId or system label (e.g. "stakwork-seed")
+  published     Boolean  @default(false)
+  createdAt     DateTime @default(now()) @map("created_at")
+  prompt        Prompt   @relation(fields: [promptId], references: [id], onDelete: Cascade)
+  publishedForPrompts Prompt[] @relation("PublishedVersion")
+
+  @@index([promptId])
+  @@index([promptId, published])
+  @@map("prompt_versions")
+}
+
 /// Cross-realm typed edge between two URN-addressed nodes.
 /// Persists relationships between Postgres entities, Canvas authored nodes,
 /// and KG concepts that cannot be expressed via FK columns alone.
@@ -2005,4 +2051,25 @@ model UrnEdge {
   @@index([orgId, fromUrn])
   @@index([orgId, toUrn])
   @@map("urn_edges")
+}
+
+/// Captures raw STT transcript → final submitted text correction pairs for
+/// voice dictation improvement. Opt-in only; recorded when a user edits
+/// a voice-transcribed message before submitting.
+model VoiceCorrectionLearning {
+  id            String     @id @default(cuid())
+  userId        String     @map("user_id")
+  workspaceId   String?    @map("workspace_id")
+  surface       String     // task_chat | plan_chat | plan_start | task_start | whiteboard | sidebar
+  rawTranscript String     @db.Text @map("raw_transcript")
+  preVoiceText  String     @db.Text @map("pre_voice_text")
+  finalText     String     @db.Text @map("final_text")
+  createdAt     DateTime   @default(now()) @map("created_at")
+  user          User       @relation(fields: [userId], references: [id])
+  workspace     Workspace? @relation(fields: [workspaceId], references: [id])
+
+  @@index([userId])
+  @@index([surface])
+  @@index([createdAt])
+  @@map("voice_correction_learnings")
 }

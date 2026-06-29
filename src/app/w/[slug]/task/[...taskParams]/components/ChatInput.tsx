@@ -18,6 +18,8 @@ import { InputDebugAttachment } from "@/components/InputDebugAttachment";
 import { InputStepAttachment } from "@/components/InputStepAttachment";
 import { useSpeechRecognition } from "@/hooks/useSpeechRecognition";
 import { useControlKeyHold } from "@/hooks/useControlKeyHold";
+import { useVoiceCorrectionCapture } from "@/hooks/useVoiceCorrectionCapture";
+import { useVoiceLearningPreference } from "@/hooks/useVoiceLearningPreference";
 import { WorkflowTransition } from "@/types/stakwork/workflow";
 import { toast } from "sonner";
 import { useFeatureFlag } from "@/hooks/useFeatureFlag";
@@ -113,7 +115,12 @@ export function ChatInput({
   onTypingStartRef.current = onTypingStart;
   onTypingStopRef.current = onTypingStop;
   const isMobile = useIsMobile();
-  const { workspaces } = useWorkspace();
+  const { workspaces, id: workspaceId } = useWorkspace();
+  const { nudgeIfNeeded } = useVoiceLearningPreference();
+  const { capture } = useVoiceCorrectionCapture({
+    surface: isPlanChat ? "plan_chat" : "task_chat",
+    workspaceId: workspaceId ?? undefined,
+  });
 
   const mentionsEnabled = isPlanChat || taskMode === "workflow_editor";
 
@@ -362,13 +369,15 @@ export function ChatInput({
     if (isListening) {
       stopListening();
     } else {
+      nudgeIfNeeded();
       preVoiceInputRef.current = input;
       startListening();
     }
-  }, [isListening, stopListening, startListening, input]);
+  }, [isListening, stopListening, startListening, input, nudgeIfNeeded]);
 
   useControlKeyHold({
     onStart: () => {
+      nudgeIfNeeded();
       preVoiceInputRef.current = input;
       startListening();
     },
@@ -405,6 +414,13 @@ export function ChatInput({
     }
 
     const message = input.trim();
+
+    // Capture voice correction before clearing state
+    capture({
+      rawTranscript: transcript,
+      preVoiceText: preVoiceInputRef.current,
+      finalText: message,
+    });
 
     // Stop typing indicator on submit
     if (typingDebounceRef.current) {

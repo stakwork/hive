@@ -77,16 +77,20 @@ function setupDb(overrides: Partial<{
   ownedWorkspace: unknown;
   membership: unknown;
   lastRun: unknown;
+  inflightRun: unknown;
   stakworkRunCreate: unknown;
   stakworkRunUpdate: unknown;
+  reaperCount: number;
 }> = {}) {
   const {
     users = [{ id: "user-1" }],
     ownedWorkspace = { id: "ws-1" },
     membership = null,
     lastRun = null,
+    inflightRun = null,
     stakworkRunCreate = makeRun("run-1"),
     stakworkRunUpdate = makeRun("run-1"),
+    reaperCount = 0,
   } = overrides;
 
   Object.assign(db, {
@@ -100,9 +104,13 @@ function setupDb(overrides: Partial<{
       findFirst: vi.fn().mockResolvedValue(membership),
     },
     stakworkRun: {
-      findFirst: vi.fn().mockResolvedValue(lastRun),
+      findFirst: vi.fn()
+        .mockResolvedValueOnce(lastRun)       // cursor (COMPLETED run)
+        .mockResolvedValueOnce(inflightRun)   // guard check
+        .mockResolvedValue(null),             // subsequent users (cursor + guard → null)
       create: vi.fn().mockResolvedValue(stakworkRunCreate),
       update: vi.fn().mockResolvedValue(stakworkRunUpdate),
+      updateMany: vi.fn().mockResolvedValue({ count: reaperCount }),
     },
   });
 }
@@ -270,12 +278,203 @@ describe("executeScheduledDailyRecapRuns", () => {
     vi.mocked(mockedDb.stakworkRun.update).mockResolvedValue(makeRun("x") as any);
     mockedGetUserActivityFeed.mockResolvedValue(makeActivityItems(1));
 
-    mockCreateBatchProjects.mockRejectedValue(new Error("network failure"));
+    // Reject with an ApiError object literal — matching what handleRequest actually throws
+    mockCreateBatchProjects.mockRejectedValue({
+      message: "stakwork stakworkRequest /projects/batch: HTTP 400 Bad Request",
+      status: 400,
+      service: "stakwork",
+      details: { body: "param is missing or the value is empty: project" },
+    });
 
     const result = await executeScheduledDailyRecapRuns();
 
-    // Both users error-logged
+    // Both users error-logged with the real message (not '[object Object]')
     expect(result.errors.length).toBe(2);
     expect(result.dispatched).toBe(0);
+    expect(result.errors[0].error).toBe(
+      "stakwork stakworkRequest /projects/batch: HTTP 400 Bad Request",
+    );
+    expect(result.errors[1].error).toBe(
+      "stakwork stakworkRequest /projects/batch: HTTP 400 Bad Request",
+    );
+  });
+});
+
+// ── Staleness reaper ─────────────────────────────────────────────────────────
+
+describe("Staleness reaper", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("calls updateMany with correct filters to reap stale PENDING/IN_PROGRESS runs", async () => {
+    setupDb();
+    mockedGetUserActivityFeed.mockResolvedValue([]);
+
+    await executeScheduledDailyRecapRuns();
+
+    expect(mockedDb.stakworkRun.updateMany).toHaveBeenCalledOnce();
+    const call = vi.mocked(mockedDb.stakworkRun.updateMany).mock.calls[0][0];
+    expect(call.where).toMatchObject({
+      type: StakworkRunType.DAILY_RECAP,
+      status: { in: [WorkflowStatus.PENDING, WorkflowStatus.IN_PROGRESS] },
+    });
+    expect(call.where.createdAt).toHaveProperty("lt");
+    expect(call.data).toEqual({ status: WorkflowStatus.FAILED });
+  });
+
+  it("logs a warning when reaped.count > 0", async () => {
+    setupDb({ reaperCount: 3 });
+    mockedGetUserActivityFeed.mockResolvedValue([]);
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    await executeScheduledDailyRecapRuns();
+
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining("Reaped 3 stale DAILY_RECAP run(s)"),
+    );
+    warnSpy.mockRestore();
+  });
+
+  it("does NOT log a warning when reaped.count === 0", async () => {
+    setupDb({ reaperCount: 0 });
+    mockedGetUserActivityFeed.mockResolvedValue([]);
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    await executeScheduledDailyRecapRuns();
+
+    expect(warnSpy).not.toHaveBeenCalledWith(expect.stringContaining("Reaped"));
+    warnSpy.mockRestore();
+  });
+});
+
+// ── COMPLETED-only cursor ─────────────────────────────────────────────────────
+
+describe("COMPLETED-only cursor", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("includes status: COMPLETED in the lastRun findFirst query", async () => {
+    setupDb();
+    mockedGetUserActivityFeed.mockResolvedValue([]);
+
+    await executeScheduledDailyRecapRuns();
+
+    // First findFirst call is the cursor
+    const cursorCall = vi.mocked(mockedDb.stakworkRun.findFirst).mock.calls[0][0];
+    expect(cursorCall?.where).toMatchObject({ status: WorkflowStatus.COMPLETED });
+  });
+
+  it("defaults since to 24h ago when no prior COMPLETED run exists", async () => {
+    setupDb({ lastRun: null });
+    mockedGetUserActivityFeed.mockResolvedValue(makeActivityItems(1));
+    mockCreateBatchProjects.mockResolvedValue({
+      data: { ref_id: "r", projects: [{ name: "daily-recap-run-1", project_id: 1 }] },
+    });
+
+    const before = Date.now();
+    await executeScheduledDailyRecapRuns();
+    const after = Date.now();
+
+    // The `since` value passed to getUserActivityFeed is derived from days (1–30)
+    // days = ceil((now - since) / 86400000); if since = 24h ago, days = 1
+    const activityCall = mockedGetUserActivityFeed.mock.calls[0][0];
+    expect(activityCall.days).toBe(1);
+    void before; void after; // suppress unused warning
+  });
+
+  it("uses lastRun.createdAt as the since date when a COMPLETED run exists", async () => {
+    // Subtract slightly less than 2 full days so Math.ceil reliably gives 2
+    // (exact 2 days can tick over to 3 due to milliseconds elapsed during test)
+    const twoDaysAgo = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000 + 5 * 60_000);
+    setupDb({ lastRun: { createdAt: twoDaysAgo } });
+    mockedGetUserActivityFeed.mockResolvedValue(makeActivityItems(1));
+    mockCreateBatchProjects.mockResolvedValue({
+      data: { ref_id: "r", projects: [{ name: "daily-recap-run-1", project_id: 1 }] },
+    });
+
+    await executeScheduledDailyRecapRuns();
+
+    const activityCall = mockedGetUserActivityFeed.mock.calls[0][0];
+    expect(activityCall.days).toBe(2);
+  });
+});
+
+// ── In-flight guard ───────────────────────────────────────────────────────────
+
+describe("In-flight guard", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("skips user and increments skipped when a fresh in-flight run exists", async () => {
+    const freshRun = { id: "run-inflight", createdAt: new Date(Date.now() - 5 * 60_000) }; // 5 min old
+    setupDb({ inflightRun: freshRun });
+    mockedGetUserActivityFeed.mockResolvedValue(makeActivityItems(3));
+
+    const result = await executeScheduledDailyRecapRuns();
+
+    expect(result.skipped).toBe(1);
+    expect(result.dispatched).toBe(0);
+    expect(mockedDb.stakworkRun.create).not.toHaveBeenCalled();
+  });
+
+  it("does NOT skip user when guard findFirst returns null (no in-flight run)", async () => {
+    setupDb({ inflightRun: null });
+    mockedGetUserActivityFeed.mockResolvedValue(makeActivityItems(2));
+    mockCreateBatchProjects.mockResolvedValue({
+      data: { ref_id: "r", projects: [{ name: "daily-recap-run-1", project_id: 1 }] },
+    });
+
+    const result = await executeScheduledDailyRecapRuns();
+
+    expect(result.skipped).toBe(0);
+    expect(mockedDb.stakworkRun.create).toHaveBeenCalledOnce();
+  });
+
+  it("logs the userId and run age when skipping due to in-flight guard", async () => {
+    const freshRun = { id: "run-inflight", createdAt: new Date(Date.now() - 10 * 60_000) }; // 10 min old
+    setupDb({ inflightRun: freshRun });
+    mockedGetUserActivityFeed.mockResolvedValue(makeActivityItems(1));
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+
+    await executeScheduledDailyRecapRuns();
+
+    expect(logSpy).toHaveBeenCalledWith(
+      expect.stringContaining("Skipping user user-1"),
+    );
+    expect(logSpy).toHaveBeenCalledWith(
+      expect.stringContaining("in-flight run run-inflight"),
+    );
+    logSpy.mockRestore();
+  });
+
+  it("does NOT call db.stakworkRun.create for a guarded user", async () => {
+    const freshRun = { id: "run-inf", createdAt: new Date(Date.now() - 2 * 60_000) };
+    setupDb({ inflightRun: freshRun });
+    mockedGetUserActivityFeed.mockResolvedValue(makeActivityItems(3));
+
+    await executeScheduledDailyRecapRuns();
+
+    expect(mockedDb.stakworkRun.create).not.toHaveBeenCalled();
+  });
+
+  it("queries guard with status IN [PENDING, IN_PROGRESS] and createdAt >= guardCutoff", async () => {
+    setupDb({ inflightRun: null });
+    mockedGetUserActivityFeed.mockResolvedValue(makeActivityItems(1));
+    mockCreateBatchProjects.mockResolvedValue({
+      data: { ref_id: "r", projects: [{ name: "daily-recap-run-1", project_id: 1 }] },
+    });
+
+    await executeScheduledDailyRecapRuns();
+
+    // Second findFirst call is the guard
+    const guardCall = vi.mocked(mockedDb.stakworkRun.findFirst).mock.calls[1][0];
+    expect(guardCall?.where).toMatchObject({
+      type: StakworkRunType.DAILY_RECAP,
+      status: { in: [WorkflowStatus.PENDING, WorkflowStatus.IN_PROGRESS] },
+    });
+    expect(guardCall?.where?.createdAt).toHaveProperty("gte");
   });
 });

@@ -1472,6 +1472,20 @@ export async function getUserOrganizations(userId: string): Promise<OrgResponse[
 }
 
 /**
+ * Returns the githubLogin of the SourceControlOrg associated with the given workspace,
+ * or null if the workspace has no org association.
+ */
+export async function getWorkspaceOrgGithubLogin(
+  workspaceId: string,
+): Promise<string | null> {
+  const workspace = await db.workspace.findUnique({
+    where: { id: workspaceId },
+    select: { sourceControlOrg: { select: { githubLogin: true } } },
+  });
+  return workspace?.sourceControlOrg?.githubLogin ?? null;
+}
+
+/**
  * Returns true when the user owns or is an active member of at least one
  * non-deleted workspace that belongs to the given SourceControlOrg.
  * Accepts either the org's `githubLogin` (string) or its database `id`.

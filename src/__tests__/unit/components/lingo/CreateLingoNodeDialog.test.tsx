@@ -70,7 +70,7 @@ vi.mock("@/components/ui/select", () => ({
 
 // ─── Import after mocks ────────────────────────────────────────────────────────
 
-import { CreateLingoNodeDialog } from "@/app/w/[slug]/learn/lingo/components/CreateLingoNodeDialog";
+import { CreateLingoNodeDialog } from "@/app/w/[slug]/lingo/components/CreateLingoNodeDialog";
 import { toast } from "sonner";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
