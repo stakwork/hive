@@ -16,6 +16,7 @@ vi.mock("@/services/swarm/api/nodes", () => ({
   addNode: vi.fn(),
   addEdge: vi.fn(),
   patchEdge: vi.fn(),
+  deleteNode: vi.fn(),
 }));
 
 const mockFetch = vi.fn();
@@ -24,12 +25,13 @@ vi.stubGlobal("fetch", mockFetch);
 // ─── Imports after mocks ──────────────────────────────────────────────────────
 
 import { getWorkspaceSwarmAccess } from "@/lib/helpers/swarm-access";
-import { addNode, addEdge, patchEdge } from "@/services/swarm/api/nodes";
+import { addNode, addEdge, patchEdge, deleteNode } from "@/services/swarm/api/nodes";
 
 const mockGetWorkspaceSwarmAccess = vi.mocked(getWorkspaceSwarmAccess);
 const mockAddNode = vi.mocked(addNode);
 const mockAddEdge = vi.mocked(addEdge);
 const mockPatchEdge = vi.mocked(patchEdge);
+const mockDeleteNode = vi.mocked(deleteNode);
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -955,5 +957,133 @@ describe("POST /api/workspaces/[slug]/lingo/nodes", () => {
     expect(json.data.ref_id).toBe("mock-lingo-ref");
     expect(json.data.name).toBe("Mock Term");
     expect(mockAddNode).not.toHaveBeenCalled();
+  });
+});
+
+// ─── DELETE /lingo/nodes/[ref_id] ─────────────────────────────────────────────
+
+describe("DELETE /api/workspaces/[slug]/lingo/nodes/[ref_id]", () => {
+  let DELETE: typeof import("@/app/api/workspaces/[slug]/lingo/nodes/[ref_id]/route").DELETE;
+
+  beforeEach(async () => {
+    vi.resetAllMocks();
+    delete process.env.USE_MOCKS;
+    ({ DELETE } = await import("@/app/api/workspaces/[slug]/lingo/nodes/[ref_id]/route"));
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  test("returns 401 for unauthenticated request", async () => {
+    const req = new NextRequest(
+      `http://localhost/api/workspaces/${SLUG}/lingo/nodes/node-001`,
+      { method: "DELETE" },
+    );
+    const res = await DELETE(req, {
+      params: Promise.resolve({ slug: SLUG, ref_id: "node-001" }),
+    });
+    expect(res.status).toBe(401);
+  });
+
+  test("returns 403 on ACCESS_DENIED — deleteNode must NOT be called", async () => {
+    mockGetWorkspaceSwarmAccess.mockResolvedValueOnce({
+      success: false,
+      error: { type: "ACCESS_DENIED" },
+    });
+    const req = makeAuthenticatedRequest(
+      `http://localhost/api/workspaces/${SLUG}/lingo/nodes/node-001`,
+      { method: "DELETE" },
+    );
+    const res = await DELETE(req, {
+      params: Promise.resolve({ slug: SLUG, ref_id: "node-001" }),
+    });
+    expect(res.status).toBe(403);
+    expect(mockDeleteNode).not.toHaveBeenCalled();
+  });
+
+  test("returns 404 on WORKSPACE_NOT_FOUND", async () => {
+    mockGetWorkspaceSwarmAccess.mockResolvedValueOnce({
+      success: false,
+      error: { type: "WORKSPACE_NOT_FOUND" },
+    });
+    const req = makeAuthenticatedRequest(
+      `http://localhost/api/workspaces/bad-slug/lingo/nodes/node-001`,
+      { method: "DELETE" },
+    );
+    const res = await DELETE(req, {
+      params: Promise.resolve({ slug: "bad-slug", ref_id: "node-001" }),
+    });
+    expect(res.status).toBe(404);
+  });
+
+  test("returns 503 on SWARM_NOT_CONFIGURED", async () => {
+    mockGetWorkspaceSwarmAccess.mockResolvedValueOnce({
+      success: false,
+      error: { type: "SWARM_NOT_CONFIGURED" },
+    });
+    const req = makeAuthenticatedRequest(
+      `http://localhost/api/workspaces/${SLUG}/lingo/nodes/node-001`,
+      { method: "DELETE" },
+    );
+    const res = await DELETE(req, {
+      params: Promise.resolve({ slug: SLUG, ref_id: "node-001" }),
+    });
+    expect(res.status).toBe(503);
+  });
+
+  test("returns { success: true } when USE_MOCKS=true without calling deleteNode", async () => {
+    process.env.USE_MOCKS = "true";
+    const req = makeAuthenticatedRequest(
+      `http://localhost/api/workspaces/${SLUG}/lingo/nodes/node-001`,
+      { method: "DELETE" },
+    );
+    const res = await DELETE(req, {
+      params: Promise.resolve({ slug: SLUG, ref_id: "node-001" }),
+    });
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json.success).toBe(true);
+    expect(mockDeleteNode).not.toHaveBeenCalled();
+  });
+
+  test("returns 200 { success: true } when deleteNode succeeds", async () => {
+    mockGetWorkspaceSwarmAccess.mockResolvedValueOnce({
+      success: true,
+      data: SWARM_DATA,
+    });
+    mockDeleteNode.mockResolvedValueOnce({ success: true });
+    const req = makeAuthenticatedRequest(
+      `http://localhost/api/workspaces/${SLUG}/lingo/nodes/node-001`,
+      { method: "DELETE" },
+    );
+    const res = await DELETE(req, {
+      params: Promise.resolve({ slug: SLUG, ref_id: "node-001" }),
+    });
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json.success).toBe(true);
+    expect(mockDeleteNode).toHaveBeenCalledWith(
+      { jarvisUrl: expect.any(String), apiKey: SWARM_DATA.swarmApiKey },
+      "node-001",
+    );
+  });
+
+  test("returns 500 { success: false } when deleteNode fails", async () => {
+    mockGetWorkspaceSwarmAccess.mockResolvedValueOnce({
+      success: true,
+      data: SWARM_DATA,
+    });
+    mockDeleteNode.mockResolvedValueOnce({ success: false, error: "Jarvis error" });
+    const req = makeAuthenticatedRequest(
+      `http://localhost/api/workspaces/${SLUG}/lingo/nodes/node-001`,
+      { method: "DELETE" },
+    );
+    const res = await DELETE(req, {
+      params: Promise.resolve({ slug: SLUG, ref_id: "node-001" }),
+    });
+    expect(res.status).toBe(500);
+    const json = await res.json();
+    expect(json.success).toBe(false);
   });
 });
