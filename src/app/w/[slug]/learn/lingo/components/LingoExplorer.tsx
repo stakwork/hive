@@ -348,7 +348,7 @@ export function LingoExplorer({ workspaceSlug }: LingoExplorerProps) {
             >
               {filteredNodes.map((node) => (
                 <LingoCard
-                  key={node.ref_id}
+                  key={node.ref_id ?? node.name}
                   node={node}
                   onClick={() => handleCardClick(node)}
                 />
