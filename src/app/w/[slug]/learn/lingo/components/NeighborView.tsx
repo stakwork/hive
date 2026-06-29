@@ -25,7 +25,9 @@ export function NeighborView({
   onNavigate,
   onAddEdge,
 }: NeighborViewProps) {
-  const visibleEdges = edges.filter((e) => !deletedEdgeIds.has(e.edge_ref_id));
+  const visibleEdges = edges.filter(
+    (e) => !deletedEdgeIds.has(e.edge_ref_id) && e.neighbor_node?.ref_id,
+  );
 
   return (
     <div className="flex flex-col gap-4" data-testid="neighbor-view">
