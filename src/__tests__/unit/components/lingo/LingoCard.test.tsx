@@ -2,7 +2,7 @@
 import { describe, it, expect } from "vitest";
 import { render, screen } from "@testing-library/react";
 import React from "react";
-import { LingoCard } from "@/app/w/[slug]/learn/lingo/components/LingoCard";
+import { LingoCard } from "@/app/w/[slug]/lingo/components/LingoCard";
 import type { LingoNode } from "@/app/api/mock/lingo/nodes";
 
 const baseNode: LingoNode = {
