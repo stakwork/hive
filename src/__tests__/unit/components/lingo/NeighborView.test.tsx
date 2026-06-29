@@ -20,7 +20,7 @@ vi.mock("@/components/ui/button", () => ({
 
 // ─── Import after mocks ────────────────────────────────────────────────────────
 
-import { NeighborView } from "@/app/w/[slug]/learn/lingo/components/NeighborView";
+import { NeighborView } from "@/app/w/[slug]/lingo/components/NeighborView";
 import type { LingoNode } from "@/app/api/mock/lingo/nodes";
 import type { NeighborEdge, NeighborNode } from "@/app/api/mock/lingo/neighbors";
 
