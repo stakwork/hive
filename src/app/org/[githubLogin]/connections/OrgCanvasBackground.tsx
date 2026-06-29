@@ -761,6 +761,8 @@ export function OrgCanvasBackground({
     githubLogin,
     applyMutation,
     edgePatchHandleRef,
+    canvasHandleRef,
+    subCanvasesRef,
   });
   /**
    * Visually highlight edges that have a linked Connection doc. The

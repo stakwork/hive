@@ -3,6 +3,7 @@
 import { useCallback, useEffect } from "react";
 import {
   addEdge,
+  addNode,
   removeEdge,
   removeNode,
   updateEdge,
@@ -10,6 +11,7 @@ import {
   type CanvasNode,
   type CanvasData,
   type EdgeUpdate,
+  type SystemCanvasHandle,
 } from "system-canvas-react";
 import { toast } from "sonner";
 import { isLiveId } from "@/lib/canvas";
@@ -40,7 +42,9 @@ export const LIVE_CONTAINER_CATEGORIES = ["workspace", "initiative"];
 interface UseCanvasEdgeOpsOptions {
   githubLogin: string;
   applyMutation: (canvasRef: string | undefined, mutate: (data: CanvasData) => CanvasData) => void;
-  edgePatchHandleRef?: React.MutableRefObject<((id: string, patch: EdgeUpdate, canvasRef: string | undefined) => void) | null>;
+  edgePatchHandleRef?: React.RefObject<((id: string, patch: EdgeUpdate, canvasRef: string | undefined) => void) | null>;
+  canvasHandleRef: React.RefObject<SystemCanvasHandle | null>;
+  subCanvasesRef: React.RefObject<Record<string, CanvasData>>;
 }
 
 interface UseCanvasEdgeOpsReturn {
@@ -55,6 +59,8 @@ export function useCanvasEdgeOps({
   githubLogin,
   applyMutation,
   edgePatchHandleRef,
+  canvasHandleRef,
+  subCanvasesRef,
 }: UseCanvasEdgeOpsOptions): UseCanvasEdgeOpsReturn {
   /**
    * Detect a user-drawn edge whose endpoints are a feature card and a
@@ -668,7 +674,24 @@ export function useCanvasEdgeOps({
         ) {
           const featureId = source.id.slice("feature:".length);
           const milestoneId = target.id.slice("milestone:".length);
+
+          // Resolve old milestoneId from the synthetic edge the projector
+          // emitted for this feature's current membership (if any).
+          const canvas = ctx.canvasRef
+            ? subCanvasesRef.current[ctx.canvasRef]
+            : undefined;
+          const syntheticEdgeId = `synthetic:feature-milestone:${featureId}`;
+          const oldEdge = canvas?.edges?.find((e) => e.id === syntheticEdgeId);
+          const oldMilestoneId = oldEdge
+            ? oldEdge.toNode.slice("milestone:".length)
+            : null;
+
           void reassignFeatureToMilestone(featureId, milestoneId);
+          canvasHandleRef.current?.pushUndoEntry({
+            forward: () => void reassignFeatureToMilestone(featureId, milestoneId),
+            backward: () => void patchFeatureMilestone(featureId, oldMilestoneId),
+            canvasRef: ctx.canvasRef,
+          });
           continue;
         }
 
@@ -690,19 +713,71 @@ export function useCanvasEdgeOps({
         ) {
           const researchId = source.id.slice("research:".length);
           const initiativeId = target.id.slice("initiative:".length);
+
+          // Derive old initiativeId from the canvas the research currently
+          // lives on. If the user is on `initiative:X`, old = X; if on
+          // root, old = null (the research was unscoped).
+          const oldInitiativeId = ctx.canvasRef?.startsWith("initiative:")
+            ? ctx.canvasRef.slice("initiative:".length)
+            : null;
+
           void reassignResearchToInitiative(researchId, initiativeId);
+          canvasHandleRef.current?.pushUndoEntry({
+            forward: () => void reassignResearchToInitiative(researchId, initiativeId),
+            backward: () => void reassignResearchToInitiative(researchId, oldInitiativeId),
+            canvasRef: ctx.canvasRef,
+          });
           continue;
         }
       }
 
       if (authoredToMove.length > 0 && target.ref) {
-        void moveAuthoredNodesToCanvas(ctx.canvasRef, authoredToMove, target.ref);
+        const targetRef = target.ref;
+        const sourceRef = ctx.canvasRef;
+
+        void moveAuthoredNodesToCanvas(sourceRef, authoredToMove, targetRef);
+        canvasHandleRef.current?.pushUndoEntry({
+          forward: () => void moveAuthoredNodesToCanvas(sourceRef, authoredToMove, targetRef),
+          backward: () => {
+            // Re-add to source canvas locally (applyMutation queues autosave)
+            applyMutation(sourceRef, (c) => {
+              let next = c;
+              for (const node of authoredToMove) next = addNode(next, node);
+              return next;
+            });
+            // Remove from target canvas via read-modify-write PUT
+            const movedIds = new Set(authoredToMove.map((n) => n.id));
+            void (async () => {
+              try {
+                const url = `/api/orgs/${githubLogin}/canvas/${encodeURIComponent(targetRef)}`;
+                const res = await fetch(url);
+                if (!res.ok) return;
+                const body = await res.json();
+                const data: CanvasData = body.data ?? { nodes: [], edges: [] };
+                const nextNodes = (data.nodes ?? []).filter((n) => !movedIds.has(n.id));
+                await fetch(url, {
+                  method: "PUT",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ data: { ...data, nodes: nextNodes } }),
+                });
+              } catch {
+                // Best-effort undo — the Pusher refetch will reconcile
+              }
+            })();
+          },
+          canvasRef: ctx.canvasRef,
+        });
       }
     },
     [
       reassignFeatureToMilestone,
+      patchFeatureMilestone,
       moveAuthoredNodesToCanvas,
       reassignResearchToInitiative,
+      applyMutation,
+      githubLogin,
+      canvasHandleRef,
+      subCanvasesRef,
     ],
   );
 
