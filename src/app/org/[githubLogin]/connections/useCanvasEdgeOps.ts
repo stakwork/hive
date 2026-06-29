@@ -247,6 +247,17 @@ export function useCanvasEdgeOps({
       // would silently double-render edges across the round-trip.
       const link = detectFeatureMilestoneEdge(edge);
       if (link) {
+        // Capture old milestoneId before the optimistic swap overwrites
+        // the synthetic edge (if one exists for this feature).
+        const canvas = canvasRef
+          ? subCanvasesRef.current[canvasRef]
+          : undefined;
+        const oldSyntheticId = `synthetic:feature-milestone:${link.featureId}`;
+        const oldEdge = canvas?.edges?.find((e) => e.id === oldSyntheticId);
+        const oldMilestoneId = oldEdge
+          ? oldEdge.toNode.slice("milestone:".length)
+          : null;
+
         const syntheticId = `synthetic:feature-milestone:${link.featureId}`;
         // Canonicalize the optimistic edge to match exactly what
         // `milestoneTimelineProjector` will emit on the next refetch
@@ -273,6 +284,11 @@ export function useCanvasEdgeOps({
           } as CanvasEdge);
         });
         void patchFeatureMilestone(link.featureId, link.milestoneId);
+        canvasHandleRef.current?.pushUndoEntry({
+          forward: () => void patchFeatureMilestone(link.featureId, link.milestoneId),
+          backward: () => void patchFeatureMilestone(link.featureId, oldMilestoneId),
+          canvasRef,
+        });
         return;
       }
 
@@ -305,6 +321,11 @@ export function useCanvasEdgeOps({
           blocksLink.blockerId,
           "add",
         );
+        canvasHandleRef.current?.pushUndoEntry({
+          forward: () => void patchFeatureBlocks(blocksLink.blockedId, blocksLink.blockerId, "add"),
+          backward: () => void patchFeatureBlocks(blocksLink.blockedId, blocksLink.blockerId, "remove"),
+          canvasRef,
+        });
         return;
       }
 
@@ -316,6 +337,8 @@ export function useCanvasEdgeOps({
       patchFeatureMilestone,
       detectFeatureBlocksEdge,
       patchFeatureBlocks,
+      canvasHandleRef,
+      subCanvasesRef,
     ],
   );
   const handleEdgeUpdate = useCallback(
@@ -345,8 +368,27 @@ export function useCanvasEdgeOps({
       // extraneous authored-edge delete in the persisted blob.
       if (id.startsWith("synthetic:feature-milestone:")) {
         const featureId = id.slice("synthetic:feature-milestone:".length);
+
+        // Capture the milestoneId from the edge before removing it so
+        // undo can re-attach the feature to the same milestone.
+        const canvas = canvasRef
+          ? subCanvasesRef.current[canvasRef]
+          : undefined;
+        const deletedEdge = canvas?.edges?.find((e) => e.id === id);
+        const milestoneId = deletedEdge?.toNode?.startsWith("milestone:")
+          ? deletedEdge.toNode.slice("milestone:".length)
+          : null;
+
         applyMutation(canvasRef, (c) => removeEdge(c, id));
         void patchFeatureMilestone(featureId, null);
+
+        if (milestoneId) {
+          canvasHandleRef.current?.pushUndoEntry({
+            forward: () => void patchFeatureMilestone(featureId, null),
+            backward: () => void patchFeatureMilestone(featureId, milestoneId),
+            canvasRef,
+          });
+        }
         return;
       }
       // Deleting a synthetic dependency edge means "this feature no
@@ -360,12 +402,17 @@ export function useCanvasEdgeOps({
           const [blockerId, blockedId] = ids;
           applyMutation(canvasRef, (c) => removeEdge(c, id));
           void patchFeatureBlocks(blockedId, blockerId, "remove");
+          canvasHandleRef.current?.pushUndoEntry({
+            forward: () => void patchFeatureBlocks(blockedId, blockerId, "remove"),
+            backward: () => void patchFeatureBlocks(blockedId, blockerId, "add"),
+            canvasRef,
+          });
           return;
         }
       }
       applyMutation(canvasRef, (c) => removeEdge(c, id));
     },
-    [applyMutation, patchFeatureMilestone, patchFeatureBlocks],
+    [applyMutation, patchFeatureMilestone, patchFeatureBlocks, canvasHandleRef, subCanvasesRef],
   );
 
   // Expose the edge-patch path through the parent-supplied ref so
