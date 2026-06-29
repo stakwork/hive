@@ -18,6 +18,7 @@ import {
 } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import type { OrgView } from "./useOrgView";
+import { NavUser } from "@/components/NavUser";
 
 interface RailItem {
   view: OrgView;
@@ -40,6 +41,7 @@ const ITEMS: RailItem[] = [
 interface OrgRailProps {
   githubLogin: string;
   activeView: OrgView;
+  user: { name: string; email: string; avatar: string };
 }
 
 /**
@@ -47,12 +49,12 @@ interface OrgRailProps {
  * each icon a name without taking up horizontal space — the rail
  * stays narrow so the canvas (the default view) gets the real estate.
  */
-export function OrgRail({ githubLogin, activeView }: OrgRailProps) {
+export function OrgRail({ githubLogin, activeView, user }: OrgRailProps) {
   return (
     <TooltipProvider delayDuration={200}>
       <nav
         aria-label="Org navigation"
-        className="flex flex-col items-center gap-1 w-14 shrink-0 border-r bg-background py-3 z-30"
+        className="flex flex-col items-center gap-1 w-14 shrink-0 border-r bg-background py-3 z-30 h-full"
       >
         {ITEMS.map((item) => {
           const Icon = item.icon;
@@ -82,6 +84,11 @@ export function OrgRail({ githubLogin, activeView }: OrgRailProps) {
             </Tooltip>
           );
         })}
+
+        {/* Bottom: user avatar / profile menu */}
+        <div className="mt-auto">
+          <NavUser user={user} variant="compact" />
+        </div>
       </nav>
     </TooltipProvider>
   );

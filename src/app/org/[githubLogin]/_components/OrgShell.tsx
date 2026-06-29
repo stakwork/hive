@@ -10,6 +10,7 @@ interface OrgShellProps {
   orgId: string;
   orgName: string | null;
   avatarUrl: string | null;
+  user: { name: string; email: string; avatar: string };
   children: React.ReactNode;
 }
 
@@ -32,6 +33,7 @@ export function OrgShell({
   orgId: _orgId,
   orgName,
   avatarUrl,
+  user,
   children,
 }: OrgShellProps) {
   const view = useOrgView(githubLogin);
@@ -40,7 +42,7 @@ export function OrgShell({
 
   return (
     <div className="flex h-screen w-full overflow-hidden bg-background text-foreground">
-      <OrgRail githubLogin={githubLogin} activeView={view} />
+      <OrgRail githubLogin={githubLogin} activeView={view} user={user} />
 
       <div className="flex-1 min-w-0 flex flex-col overflow-hidden">
         {fullBleed ? (
