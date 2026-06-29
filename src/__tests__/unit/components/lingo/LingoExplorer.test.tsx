@@ -33,7 +33,7 @@ vi.mock("@/components/ui/input", () => ({
   ),
 }));
 
-vi.mock("@/app/w/[slug]/learn/lingo/components/LingoCard", () => ({
+vi.mock("@/app/w/[slug]/lingo/components/LingoCard", () => ({
   LingoCard: ({ node, onClick }: any) => (
     <div data-testid={`lingo-card-${node.ref_id}`} onClick={onClick}>
       {node.name}
@@ -42,7 +42,7 @@ vi.mock("@/app/w/[slug]/learn/lingo/components/LingoCard", () => ({
   LingoCardSkeleton: () => <div data-testid="lingo-card-skeleton" />,
 }));
 
-vi.mock("@/app/w/[slug]/learn/lingo/components/NeighborView", () => ({
+vi.mock("@/app/w/[slug]/lingo/components/NeighborView", () => ({
   NeighborView: ({ node, edges, onDeleteEdge, onDeleteNode, onNavigate, onAddEdge }: any) => (
     <div data-testid="neighbor-view">
       <span data-testid="detail-node-name">{node.name}</span>
@@ -72,7 +72,7 @@ vi.mock("@/app/w/[slug]/learn/lingo/components/NeighborView", () => ({
   ),
 }));
 
-vi.mock("@/app/w/[slug]/learn/lingo/components/Breadcrumb", () => ({
+vi.mock("@/app/w/[slug]/lingo/components/Breadcrumb", () => ({
   LingoBreadcrumb: ({ items, onNavigate }: any) => (
     <nav data-testid="lingo-breadcrumb">
       <button data-testid="breadcrumb-home" onClick={() => onNavigate(-1)}>
@@ -91,7 +91,7 @@ vi.mock("@/app/w/[slug]/learn/lingo/components/Breadcrumb", () => ({
   ),
 }));
 
-vi.mock("@/app/w/[slug]/learn/lingo/components/AddEdgePanel", () => ({
+vi.mock("@/app/w/[slug]/lingo/components/AddEdgePanel", () => ({
   AddEdgePanel: ({ isOpen, onClose, onEdgeCreated }: any) =>
     isOpen ? (
       <div data-testid="add-edge-panel">
@@ -105,7 +105,7 @@ vi.mock("@/app/w/[slug]/learn/lingo/components/AddEdgePanel", () => ({
     ) : null,
 }));
 
-vi.mock("@/app/w/[slug]/learn/lingo/components/CreateLingoNodeDialog", () => ({
+vi.mock("@/app/w/[slug]/lingo/components/CreateLingoNodeDialog", () => ({
   CreateLingoNodeDialog: ({ isOpen, onClose, onCreated }: any) =>
     isOpen ? (
       <div data-testid="create-lingo-node-dialog">
@@ -133,7 +133,7 @@ vi.mock("@/app/w/[slug]/learn/lingo/components/CreateLingoNodeDialog", () => ({
 
 // ─── Import after mocks ────────────────────────────────────────────────────────
 
-import { LingoExplorer } from "@/app/w/[slug]/learn/lingo/components/LingoExplorer";
+import { LingoExplorer } from "@/app/w/[slug]/lingo/components/LingoExplorer";
 import { toast } from "sonner";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────

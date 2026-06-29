@@ -28,6 +28,7 @@ import { SuggestionChips } from "@/components/plan/SuggestionChips";
  */
 function parseLogsFromMessage(message: string): { content: string; logs: string[] } {
   const logsRegex = /<logs>([\s\S]*?)<\/logs>/g;
+  const nextStepRegex = /<next_step>[\s\S]*?<\/next_step>/g;
   const logs: string[] = [];
   let match;
 
@@ -35,7 +36,10 @@ function parseLogsFromMessage(message: string): { content: string; logs: string[
     logs.push(match[1].trim());
   }
 
-  const content = message.replace(logsRegex, "").trim();
+  const content = message
+    .replace(logsRegex, "")
+    .replace(nextStepRegex, "")
+    .trim();
   return { content, logs };
 }
 
