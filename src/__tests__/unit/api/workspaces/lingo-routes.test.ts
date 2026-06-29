@@ -386,7 +386,7 @@ describe("GET /api/workspaces/[slug]/lingo/nodes/[ref_id]", () => {
     });
     const [calledUrl] = mockFetch.mock.calls[0] as [string];
     expect(calledUrl).toContain("node%20ref%2F1");
-    expect(calledUrl).toContain("expand=true");
+    expect(calledUrl).toContain("expand=edges");
   });
 
   test("returns 404 when Jarvis returns non-2xx", async () => {
@@ -435,6 +435,133 @@ describe("GET /api/workspaces/[slug]/lingo/nodes/[ref_id]", () => {
     expect(res.status).toBe(404);
     const body = await res.json();
     expect(body.success).toBe(false);
+  });
+
+  test("calls Jarvis with expand=edges", async () => {
+    mockGetWorkspaceSwarmAccess.mockResolvedValueOnce({ success: true, data: SWARM_DATA });
+    mockFetch.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          nodes: [{ ref_id: "jargon-001", node_type: "Lingo", properties: { name: "Term" } }],
+          edges: [],
+        }),
+        { status: 200 },
+      ),
+    );
+    const req = makeAuthenticatedRequest(
+      `http://localhost/api/workspaces/${SLUG}/lingo/nodes/jargon-001`,
+    );
+    await GET(req, { params: Promise.resolve({ slug: SLUG, ref_id: "jargon-001" }) });
+    const [calledUrl] = mockFetch.mock.calls[0] as [string];
+    expect(calledUrl).toContain("expand=edges");
+  });
+
+  test("maps edges where source === currentRefId", async () => {
+    mockGetWorkspaceSwarmAccess.mockResolvedValueOnce({ success: true, data: SWARM_DATA });
+    mockFetch.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          nodes: [
+            { ref_id: "jargon-001", node_type: "Lingo", properties: { name: "Source Node" } },
+            { ref_id: "neighbor-001", node_type: "Lingo", properties: { name: "Neighbor" } },
+          ],
+          edges: [
+            { ref_id: "edge-001", edge_type: "HAS_DEFINITION", source: "jargon-001", target: "neighbor-001" },
+          ],
+        }),
+        { status: 200 },
+      ),
+    );
+    const req = makeAuthenticatedRequest(
+      `http://localhost/api/workspaces/${SLUG}/lingo/nodes/jargon-001`,
+    );
+    const res = await GET(req, { params: Promise.resolve({ slug: SLUG, ref_id: "jargon-001" }) });
+    const body = await res.json();
+    expect(body.success).toBe(true);
+    expect(body.data.edges).toHaveLength(1);
+    expect(body.data.edges[0].neighbor_node.ref_id).toBe("neighbor-001");
+    expect(body.data.edges[0].edge_type).toBe("HAS_DEFINITION");
+  });
+
+  test("maps edges where target === currentRefId", async () => {
+    mockGetWorkspaceSwarmAccess.mockResolvedValueOnce({ success: true, data: SWARM_DATA });
+    mockFetch.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          nodes: [
+            { ref_id: "jargon-001", node_type: "Lingo", properties: { name: "Current Node" } },
+            { ref_id: "source-node", node_type: "Lingo", properties: { name: "The Source" } },
+          ],
+          edges: [
+            { ref_id: "edge-002", edge_type: "SUPERSEDES", source: "source-node", target: "jargon-001" },
+          ],
+        }),
+        { status: 200 },
+      ),
+    );
+    const req = makeAuthenticatedRequest(
+      `http://localhost/api/workspaces/${SLUG}/lingo/nodes/jargon-001`,
+    );
+    const res = await GET(req, { params: Promise.resolve({ slug: SLUG, ref_id: "jargon-001" }) });
+    const body = await res.json();
+    expect(body.success).toBe(true);
+    expect(body.data.edges).toHaveLength(1);
+    expect(body.data.edges[0].neighbor_node.ref_id).toBe("source-node");
+  });
+
+  test("filters out edges with missing neighbor nodes", async () => {
+    mockGetWorkspaceSwarmAccess.mockResolvedValueOnce({ success: true, data: SWARM_DATA });
+    mockFetch.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          nodes: [
+            { ref_id: "jargon-001", node_type: "Lingo", properties: { name: "Current Node" } },
+          ],
+          edges: [
+            { ref_id: "edge-003", edge_type: "RELATED_TO", source: "jargon-001", target: "missing-node" },
+          ],
+        }),
+        { status: 200 },
+      ),
+    );
+    const req = makeAuthenticatedRequest(
+      `http://localhost/api/workspaces/${SLUG}/lingo/nodes/jargon-001`,
+    );
+    const res = await GET(req, { params: Promise.resolve({ slug: SLUG, ref_id: "jargon-001" }) });
+    const body = await res.json();
+    expect(body.success).toBe(true);
+    expect(body.data.edges).toHaveLength(0);
+  });
+
+  test("promotes name and definition from properties into node", async () => {
+    mockGetWorkspaceSwarmAccess.mockResolvedValueOnce({ success: true, data: SWARM_DATA });
+    mockFetch.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          nodes: [
+            {
+              ref_id: "jargon-001",
+              node_type: "Lingo",
+              date_added_to_graph: 9999,
+              properties: { name: "Foo", definition: "Bar", lingo_type: "acronym" },
+            },
+          ],
+          edges: [],
+        }),
+        { status: 200 },
+      ),
+    );
+    const req = makeAuthenticatedRequest(
+      `http://localhost/api/workspaces/${SLUG}/lingo/nodes/jargon-001`,
+    );
+    const res = await GET(req, { params: Promise.resolve({ slug: SLUG, ref_id: "jargon-001" }) });
+    const body = await res.json();
+    expect(body.success).toBe(true);
+    expect(body.data.node.name).toBe("Foo");
+    expect(body.data.node.definition).toBe("Bar");
+    expect(body.data.node.lingo_type).toBe("acronym");
+    expect(body.data.node.ref_id).toBe("jargon-001");
+    expect(body.data.node.date_added_to_graph).toBe(9999);
   });
 });
 
