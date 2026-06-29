@@ -24,7 +24,7 @@ export async function GET() {
 
   const user = await db.user.findUnique({
     where: { id: session.user.id },
-    select: { canvasAutonomousTurns: true, chatAgentModel: true, timezone: true, dailyRecapEnabled: true },
+    select: { canvasAutonomousTurns: true, chatAgentModel: true, timezone: true, dailyRecapEnabled: true, voiceLearningEnabled: true },
   });
   if (!user) {
     return NextResponse.json({ error: "User not found" }, { status: 404 });
@@ -35,6 +35,7 @@ export async function GET() {
     chatAgentModel: user.chatAgentModel,
     timezone: user.timezone ?? "UTC",
     dailyRecapEnabled: user.dailyRecapEnabled,
+    voiceLearningEnabled: user.voiceLearningEnabled,
   });
 }
 
@@ -47,7 +48,7 @@ export async function PATCH(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { canvasAutonomousTurns, chatAgentModel, timezone, dailyRecapEnabled } = body;
+    const { canvasAutonomousTurns, chatAgentModel, timezone, dailyRecapEnabled, voiceLearningEnabled } = body;
 
     if (
       canvasAutonomousTurns !== undefined &&
@@ -86,6 +87,13 @@ export async function PATCH(request: NextRequest) {
       );
     }
 
+    if (voiceLearningEnabled !== undefined && typeof voiceLearningEnabled !== "boolean") {
+      return NextResponse.json(
+        { error: "voiceLearningEnabled must be a boolean" },
+        { status: 400 },
+      );
+    }
+
     const updated = await db.user.update({
       where: { id: session.user.id },
       data: {
@@ -93,8 +101,9 @@ export async function PATCH(request: NextRequest) {
         ...(chatAgentModel !== undefined && { chatAgentModel }),
         ...(timezone !== undefined && { timezone }),
         ...(dailyRecapEnabled !== undefined && { dailyRecapEnabled }),
+        ...(voiceLearningEnabled !== undefined && { voiceLearningEnabled }),
       },
-      select: { canvasAutonomousTurns: true, chatAgentModel: true, timezone: true, dailyRecapEnabled: true },
+      select: { canvasAutonomousTurns: true, chatAgentModel: true, timezone: true, dailyRecapEnabled: true, voiceLearningEnabled: true },
     });
 
     logger.info("User preferences updated", "USER_PREFERENCES_UPDATE", {
@@ -103,6 +112,7 @@ export async function PATCH(request: NextRequest) {
       chatAgentModel: updated.chatAgentModel,
       timezone: updated.timezone,
       dailyRecapEnabled: updated.dailyRecapEnabled,
+      voiceLearningEnabled: updated.voiceLearningEnabled,
     });
 
     return NextResponse.json({
@@ -110,6 +120,7 @@ export async function PATCH(request: NextRequest) {
       chatAgentModel: updated.chatAgentModel,
       timezone: updated.timezone ?? "UTC",
       dailyRecapEnabled: updated.dailyRecapEnabled,
+      voiceLearningEnabled: updated.voiceLearningEnabled,
     });
   } catch (error) {
     logger.error(
