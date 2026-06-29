@@ -97,6 +97,7 @@ export async function POST(request: NextRequest) {
         where: { id: workspaceId },
         data: {
           lingoExtractionState: {
+            // Spread intentionally preserves all cursor fields (including hasMore) set by collect
             ...cursor_state,
             lastProcessedAt: new Date().toISOString(),
           },
@@ -143,6 +144,7 @@ export async function POST(request: NextRequest) {
       where: { id: workspaceId },
       data: {
         lingoExtractionState: {
+          // Spread intentionally preserves all cursor fields (including hasMore) set by collect
           ...cursor_state,
           lastProcessedAt: new Date().toISOString(),
         },

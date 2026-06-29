@@ -446,6 +446,7 @@ export async function releaseStaleTaskPods(): Promise<{
       },
       select: {
         id: true,
+        mode: true,
         title: true,
         workspaceId: true,
         updatedAt: true,
@@ -484,8 +485,20 @@ export async function releaseStaleTaskPods(): Promise<{
           );
         }
 
-        // Determine if this task should be halted (only IN_PROGRESS tasks not already halted, and no open PR)
-        const shouldHalt = task.status === "IN_PROGRESS" && task.workflowStatus !== "HALTED" && !hasOpenPr;
+        const isWorkflowEditor = task.mode === "workflow_editor";
+
+        if (isWorkflowEditor) {
+          console.log(
+            `[ReleaseStaleTaskPods] Skipping halt for task ${task.id} - workflow_editor mode`
+          );
+        }
+
+        // Determine if this task should be halted (only IN_PROGRESS tasks not already halted, no open PR, and not workflow_editor)
+        const shouldHalt =
+          task.status === "IN_PROGRESS" &&
+          task.workflowStatus !== "HALTED" &&
+          !hasOpenPr &&
+          !isWorkflowEditor;
 
         if (task.podId) {
           // Task has a pod - use releaseTaskPod to release it
