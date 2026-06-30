@@ -219,3 +219,73 @@ export interface TrustOrgRow {
   grace_pubkeys?: string[];
   grace_until?: string;
 }
+
+// ─── Agent catalog seed ────────────────────────────────────────────────
+//
+// Wire shapes for the gateway's `POST /_plugin/agents` catalog write.
+// Matches `catalogPushRequest` / `catalogPushAgent` in
+// `gateway/internal/adminapi/catalog.go`. Hive seeds the default agent
+// set (names + default model); prompts/tools/skills are left empty for
+// now — the catalog is a registry, edited later in the gateway UI.
+
+/** A prompt the agent uses (system/role instruction). */
+export interface AgentCatalogManifestPrompt {
+  name: string;
+  role?: string;
+  body?: string;
+  /** Optional per-item source override; defaults to the manifest source. */
+  source?: string;
+}
+
+/** A tool the agent can call. */
+export interface AgentCatalogManifestTool {
+  name: string;
+  description?: string;
+  /** JSON parameter schema, passed through opaque. */
+  schema?: unknown;
+  source?: string;
+}
+
+/** A skill loaded for the agent. */
+export interface AgentCatalogManifestSkill {
+  name: string;
+  description?: string;
+  source?: string;
+}
+
+/**
+ * One agent in the seed manifest. Mirrors `catalogPushAgent` in
+ * `gateway/internal/adminapi/catalog.go`.
+ *
+ * `name` / `display_name` / `description` / `default_model` are the
+ * agent's identity; `prompts` / `tools` / `skills` are its
+ * capabilities. The Hive seed currently sends identity only — the
+ * capability fields are part of the contract but left undefined until
+ * they're authored (in the gateway UI, or by a future richer push).
+ */
+export interface AgentCatalogManifestAgent {
+  name: string;
+  display_name?: string;
+  description?: string;
+  /** Default LLM for this agent (full model id or shortcut). */
+  default_model?: string;
+  prompts?: AgentCatalogManifestPrompt[];
+  tools?: AgentCatalogManifestTool[];
+  skills?: AgentCatalogManifestSkill[];
+}
+
+/** POST /_plugin/agents request body (whole-fleet, replace-by-source). */
+export interface AgentCatalogManifest {
+  source: string;
+  agents: AgentCatalogManifestAgent[];
+}
+
+/** POST /_plugin/agents response body — counts of nodes written. */
+export interface SeedAgentsResponse {
+  written: {
+    agents: number;
+    prompts: number;
+    tools: number;
+    skills: number;
+  };
+}
