@@ -161,12 +161,11 @@ describe("jarvis-mirror mappers", () => {
   });
 
   describe("taskPrEdge", () => {
-    it("RESULTED_IN edge from HiveTask node_key to PR ref_id", () => {
-      const edge = taskPrEdge("task_1", "My Task", "pr-ref-abc");
+    it("RESULTED_IN edge from HiveTask ref_id to PR ref_id", () => {
+      const edge = taskPrEdge("task-ref-1", "pr-ref-abc");
       expect(edge.edge.edge_type).toBe(EDGE_RESULTED_IN);
-      expect(edge.source.node_type).toBe(HIVE_TASK);
-      expect(edge.source.node_data).toEqual({ task_id: "task_1", name: "My Task" });
-      expect(edge.target).toEqual({ ref_id: "pr-ref-abc" });
+      expect(edge.source_ref_id).toBe("task-ref-1");
+      expect(edge.target_ref_id).toBe("pr-ref-abc");
     });
   });
 });

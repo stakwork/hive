@@ -22,6 +22,11 @@ export const HIVE_FEATURE = "HiveFeature";
 export const HIVE_TASK = "HiveTask";
 export const HIVE_CHAT_MESSAGE = "HiveChatMessage";
 
+// Jarvis capitalizes node types on write, so a `HiveTask` node is stored (and
+// must be queried) under the Neo4j label `Hivetask` (see the casing note above).
+// Used by the PR-link cron to read back HiveTask nodes' ref_ids.
+export const HIVE_TASK_LABEL = "Hivetask";
+
 export const EDGE_HAS_TASK = "HAS_TASK";
 export const EDGE_HAS_MESSAGE = "HAS_MESSAGE";
 
@@ -221,23 +226,30 @@ export function prNodeKey(repo: string, number: number): string {
 }
 
 /**
- * HiveTask -RESULTED_IN-> PullRequest. Source resolves by Hive node_key
- * (`task_id` + required `name`); target is the *existing* ingested PR node,
- * addressed by `ref_id` so we never create a stub.
+ * HiveTask -RESULTED_IN-> PullRequest. BOTH endpoints are addressed by `ref_id`
+ * (the existing HiveTask node mirrored from Postgres, and the existing ingested
+ * PR node) so we never create a stub.
+ *
+ * This is written for the jarvis-backend `/node/edge/ref/bulk` endpoint, which
+ * matches each node by ref_id against its real Neo4j label. The older
+ * `/node/edge/bulk` endpoint can't be used here: (1) it runs a case-sensitive
+ * (source_type, target_type) schema lookup that never matches the stakgraph PR
+ * label `PullRequest` (the schema records the capitalized `Pullrequest`), and
+ * (2) it mis-pairs a node_key-source + ref_id-target combination. Both are
+ * avoided by addressing both ends with ref_id.
  */
 export function taskPrEdge(
-  taskId: string,
-  taskName: string,
+  taskRefId: string,
   prRefId: string,
 ): {
   edge: { edge_type: string };
-  source: { node_type: string; node_data: Record<string, unknown> };
-  target: { ref_id: string };
+  source_ref_id: string;
+  target_ref_id: string;
 } {
   return {
     edge: { edge_type: EDGE_RESULTED_IN },
-    source: taskEndpoint(taskId, taskName),
-    target: { ref_id: prRefId },
+    source_ref_id: taskRefId,
+    target_ref_id: prRefId,
   };
 }
 
