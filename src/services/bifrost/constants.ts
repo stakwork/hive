@@ -131,3 +131,30 @@ export const MACAROON_DEFAULT_MAX_STEPS = 2000;
  * do material damage. Caller can shorten per call site.
  */
 export const MACAROON_DEFAULT_TTL_SECONDS = 3600;
+
+// ─── Agent catalog seed ──────────────────────────────────────────────
+//
+// Hive seeds the gateway's neo4j agent catalog with the default agent
+// set on the first LLM call per swarm. Content-addressed by a manifest
+// hash on the Swarm row — only re-pushes when the default set or a
+// default model changes. Lazy + best-effort, triggered from
+// `getBifrostForLLM` right after the trust reconcile. See
+// `gateway/plans/agent-catalog.md`.
+
+/** Default LLM seeded for every default agent. */
+export const DEFAULT_AGENT_MODEL = "claude-sonnet-4-6";
+
+/** `source` tag on the catalog push — replace-by-source key. */
+export const AGENT_CATALOG_SOURCE = "hive";
+
+/** Redis key prefix for the per-workspace agent-catalog seed mutex. */
+export const BIFROST_AGENT_CATALOG_LOCK_PREFIX = "bifrost-agents:lock";
+
+/** TTL for the agent-catalog seed lock. */
+export const BIFROST_AGENT_CATALOG_LOCK_TTL_MS = 30_000;
+
+/** How long to wait to acquire the agent-catalog seed lock. */
+export const BIFROST_AGENT_CATALOG_LOCK_ACQUIRE_TIMEOUT_MS = 20_000;
+
+/** Log tag for agent-catalog seeding. */
+export const BIFROST_AGENT_CATALOG_LOG_TAG = "BIFROST_AGENTS";
