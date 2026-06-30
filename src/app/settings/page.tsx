@@ -10,6 +10,7 @@ import {
 } from "@/components/ui/card";
 import { DisconnectAccount } from "@/components/DisconnectAccount";
 import { ThemeSettings } from "@/components/ThemeSettings";
+import { TimezoneSettings } from "@/components/settings/TimezoneSettings";
 import { SphinxLinkSettings } from "@/components/settings/SphinxLinkSettings";
 import { VoiceSignatureSettings } from "@/components/settings/VoiceSignatureSettings";
 import { VoiceLearningSettings } from "@/components/settings/VoiceLearningSettings";
@@ -60,6 +61,8 @@ export default async function UserSettingsPage() {
           </div>
           
           <ThemeSettings />
+
+          <TimezoneSettings />
 
           <SphinxLinkSettings />
 
