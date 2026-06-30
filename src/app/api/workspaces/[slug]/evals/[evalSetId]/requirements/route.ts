@@ -51,8 +51,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     console.log(`[Evals Requirements GET] Jarvis URL: ${jarvisUrl}`);
 
     const edgeType = encodeURIComponent("['HAS_REQUIREMENT']");
-    const nodeType = encodeURIComponent("['EvalRequirement']");
-    const url = `${jarvisUrl}/v2/nodes/${evalSetId}?expand=edges&edge_type=${edgeType}&node_type=${nodeType}&depth=1`;
+    const url = `${jarvisUrl}/v2/nodes/${evalSetId}?expand=edges&edge_type=${edgeType}&depth=1`;
 
     const jarvisRes = await fetch(url, {
       headers: { "x-api-token": swarmApiKey },
