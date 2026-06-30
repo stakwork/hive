@@ -10,8 +10,13 @@
  * Design:
  *  - A task's PR reference is the `content.url` of its `PULL_REQUEST` artifact
  *    (repo + number parsed from the URL — the only reliable source).
- *  - PR nodes are matched on the stable `repo` + `number` properties and linked
- *    by `ref_id` (never node_key) so we never create a stub.
+ *  - PR nodes are matched on the stable `repo` + `number` properties; the edge
+ *    is then drawn between two EXISTING nodes both addressed by `ref_id` (the
+ *    PR node's ref_id, and the mirrored HiveTask node's ref_id resolved via a
+ *    `task_id → ref_id` map) so we never create a stub. This uses the
+ *    `/node/edge/ref/bulk` endpoint, which matches each node by ref_id against
+ *    its real Neo4j label — required because the stakgraph PR label is
+ *    `PullRequest`, which the capitalize-on-write schema system can't address.
  *  - PR fetch: `latest-by-types` is newest-ingested-first. First run / backfill
  *    pulls the full set; later runs pull only PRs newer than a per-workspace
  *    high-water (`jarvisSyncState.prLink.highWater`). The high-water is advanced
@@ -26,11 +31,12 @@ import { db } from "@/lib/db";
 import { logger } from "@/lib/logger";
 import { ArtifactType } from "@prisma/client";
 import { getJarvisConfigForWorkspace } from "@/lib/helpers/jarvis-config";
-import { addEdgeBulk, searchLatestByTypes } from "@/services/swarm/api/nodes";
+import { addEdgeByRefBulk, searchLatestByTypes } from "@/services/swarm/api/nodes";
 import type { JarvisGraphNode } from "@/services/swarm/api/nodes";
 import type { JarvisConnectionConfig } from "@/types/jarvis";
 import {
   PULL_REQUEST,
+  HIVE_TASK_LABEL,
   parsePullRequestUrl,
   prNodeKey,
   taskPrEdge,
@@ -78,12 +84,6 @@ export interface PrLinkRunResult {
   processed: number;
   anyCapped: boolean;
   results: WorkspacePrLinkResult[];
-}
-
-function chunk<T>(arr: T[], size: number): T[][] {
-  const out: T[][] = [];
-  for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
-  return out;
 }
 
 function parseState(raw: unknown): SyncState {
@@ -156,6 +156,38 @@ function buildPrMap(nodes: JarvisGraphNode[]): Map<string, string> {
     }
   }
   return map;
+}
+
+type TaskRefFetch =
+  | { ok: true; map: Map<string, string> }
+  | { ok: false; endpointMissing: boolean; error?: string };
+
+/**
+ * Fetch all HiveTask graph nodes and build a `task_id → ref_id` map. The edge is
+ * drawn between two existing nodes both addressed by ref_id (see taskPrEdge), so
+ * we need the mirrored HiveTask node's ref_id keyed by its Postgres id. Returns
+ * `ok:false` on a failed read (NOT an empty map) so the caller retries instead
+ * of treating a transient failure as "no tasks to link." Full set each run:
+ * candidates may reference old tasks, so a newest-window fetch wouldn't cover
+ * them; task ref_ids are stable, so the map is purely additive.
+ */
+async function fetchTaskRefMap(
+  config: JarvisConnectionConfig,
+): Promise<TaskRefFetch> {
+  const res = await searchLatestByTypes(
+    config,
+    { [HIVE_TASK_LABEL]: FULL_LIMIT },
+    { withProperties: true, timeoutMs: PR_FETCH_TIMEOUT_MS },
+  );
+  if (!res.ok) {
+    return { ok: false, endpointMissing: !!res.endpointMissing, error: res.error };
+  }
+  const map = new Map<string, string>();
+  for (const n of res.nodes) {
+    const taskId = n.properties?.task_id;
+    if (typeof taskId === "string" && n.ref_id) map.set(taskId, n.ref_id);
+  }
+  return { ok: true, map };
 }
 
 type CandidateTask = {
@@ -233,6 +265,25 @@ async function linkWorkspace(
   const { nodes, newestSec } = fetched;
   const prMap = buildPrMap(nodes);
 
+  // We address both edge endpoints by ref_id, so we also need the mirrored
+  // HiveTask node's ref_id (keyed by Postgres task id). A task whose node isn't
+  // mirrored yet is left pending and retried once the mirror creates it.
+  const taskFetch = await fetchTaskRefMap(config);
+  if (!taskFetch.ok) {
+    if (taskFetch.endpointMissing) {
+      return { workspaceId: workspace.id, slug: workspace.slug, skipped: "jarvis search endpoint missing (404)" };
+    }
+    return {
+      workspaceId: workspace.id,
+      slug: workspace.slug,
+      linked: 0,
+      pending: tasks.length,
+      capped: false,
+      errors: [`HiveTask fetch failed: ${taskFetch.error ?? "unknown"}`],
+    };
+  }
+  const taskRefMap = taskFetch.map;
+
   // Tasks with no resolvable PR URL are marked unconditionally (no edge to
   // write). Tasks whose PRs all resolve are queued with their edges so they can
   // be marked only once those edges actually land.
@@ -246,13 +297,19 @@ async function linkWorkspace(
       noEdgeTaskIds.push(task.id);
       continue;
     }
+    const taskRefId = taskRefMap.get(task.id);
+    if (!taskRefId) {
+      // HiveTask node not mirrored yet — retry next run, don't mark.
+      pending++;
+      continue;
+    }
     const refIds = refs.map((r) => prMap.get(prNodeKey(r.repo, r.number)));
     if (refIds.some((id) => !id)) {
       // At least one PR not ingested yet — retry next run, don't mark.
       pending++;
       continue;
     }
-    resolved.push({ taskId: task.id, edges: refIds.map((id) => taskPrEdge(task.id, task.title, id!)) });
+    resolved.push({ taskId: task.id, edges: refIds.map((id) => taskPrEdge(taskRefId, id!)) });
   }
 
   const linkedTaskIds: string[] = [...noEdgeTaskIds];
@@ -268,7 +325,7 @@ async function linkWorkspace(
 
   const flush = async (): Promise<boolean> => {
     if (batchEdges.length === 0) return true;
-    const res = await addEdgeBulk(config, batchEdges);
+    const res = await addEdgeByRefBulk(config, batchEdges);
     if (res.endpointMissing) {
       endpointMissing = true;
       batchEdges = [];
