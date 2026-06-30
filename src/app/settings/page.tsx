@@ -12,6 +12,7 @@ import { DisconnectAccount } from "@/components/DisconnectAccount";
 import { ThemeSettings } from "@/components/ThemeSettings";
 import { SphinxLinkSettings } from "@/components/settings/SphinxLinkSettings";
 import { VoiceSignatureSettings } from "@/components/settings/VoiceSignatureSettings";
+import { VoiceLearningSettings } from "@/components/settings/VoiceLearningSettings";
 import { Github } from "lucide-react";
 import { BackButton } from "@/components/BackButton";
 
@@ -63,6 +64,8 @@ export default async function UserSettingsPage() {
           <SphinxLinkSettings />
 
           <VoiceSignatureSettings />
+
+          <VoiceLearningSettings />
 
           <Card>
             <CardHeader>
