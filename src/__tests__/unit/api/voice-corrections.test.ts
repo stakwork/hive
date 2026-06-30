@@ -13,6 +13,8 @@ vi.mock("@/lib/auth/nextauth", () => ({
 
 const mockFindFirst = vi.fn();
 const mockCreate = vi.fn();
+const mockFindUnique = vi.fn();
+const mockSourceControlOrgFindFirst = vi.fn();
 
 vi.mock("@/lib/db", () => ({
   db: {
@@ -21,6 +23,12 @@ vi.mock("@/lib/db", () => ({
     },
     voiceCorrectionLearning: {
       create: (...args: unknown[]) => mockCreate(...args),
+    },
+    workspace: {
+      findUnique: (...args: unknown[]) => mockFindUnique(...args),
+    },
+    sourceControlOrg: {
+      findFirst: (...args: unknown[]) => mockSourceControlOrgFindFirst(...args),
     },
   },
 }));
@@ -54,6 +62,7 @@ describe("POST /api/voice-corrections", () => {
     vi.clearAllMocks();
     mockGetServerSession.mockResolvedValue({ user: { id: "user-session-id" } });
     mockCreate.mockResolvedValue({ id: "rec-1" });
+    mockFindUnique.mockResolvedValue({ id: "ws-123" }); // workspace exists by default
   });
 
   test("returns 401 when unauthenticated", async () => {
@@ -87,6 +96,7 @@ describe("POST /api/voice-corrections", () => {
 
   test("returns 403 when workspaceId is supplied but caller is not a member", async () => {
     mockFindFirst.mockResolvedValue(null); // no membership
+    mockFindUnique.mockResolvedValue({ id: "ws-123" });
 
     const req = makeRequest({ ...validBody, workspaceId: "ws-123" });
     const res = await POST(req);
@@ -98,7 +108,6 @@ describe("POST /api/voice-corrections", () => {
         where: expect.objectContaining({
           workspaceId: "ws-123",
           userId: "user-session-id",
-          leftAt: null,
         }),
       }),
     );
@@ -128,6 +137,7 @@ describe("POST /api/voice-corrections", () => {
 
   test("allows valid workspaceId when user is a member", async () => {
     mockFindFirst.mockResolvedValue({ id: "member-1" });
+    mockFindUnique.mockResolvedValue({ id: "ws-456" });
     mockCreate.mockResolvedValue({ id: "rec-ws" });
 
     const req = makeRequest({ ...validBody, workspaceId: "ws-456" });
@@ -158,4 +168,120 @@ describe("POST /api/voice-corrections", () => {
       expect(res.status).toBe(201);
     },
   );
+
+  // --- New tests for empty workspaceId normalization and org resolution ---
+
+  test("workspaceId: '' creates row with workspaceId: null (not a 500)", async () => {
+    const req = makeRequest({ ...validBody, workspaceId: "" });
+    const res = await POST(req);
+
+    expect(res.status).toBe(201);
+    expect(mockFindFirst).not.toHaveBeenCalled(); // membership check skipped
+    expect(mockCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ workspaceId: null }),
+      }),
+    );
+  });
+
+  test("resolves org defaultWorkspaceId when workspaceId is absent and orgGithubLogin is provided, and caller is a member", async () => {
+    mockSourceControlOrgFindFirst.mockResolvedValue({ defaultWorkspaceId: "ws-org-default" });
+    mockFindFirst.mockResolvedValue({ id: "member-1" }); // caller is a member of the resolved workspace
+    mockFindUnique.mockResolvedValue({ id: "ws-org-default" });
+    mockCreate.mockResolvedValue({ id: "rec-org" });
+
+    const req = makeRequest({ ...validBody, orgGithubLogin: "stakwork" });
+    const res = await POST(req);
+    const body = await res.json();
+
+    expect(res.status).toBe(201);
+    expect(mockSourceControlOrgFindFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { githubLogin: "stakwork" },
+        select: { defaultWorkspaceId: true },
+      }),
+    );
+    expect(mockFindFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ workspaceId: "ws-org-default", userId: "user-session-id" }),
+      }),
+    );
+    expect(mockCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ workspaceId: "ws-org-default" }),
+      }),
+    );
+    expect(body.id).toBe("rec-org");
+  });
+
+  test("falls back to workspaceId: null when caller is not a member of the org's default workspace", async () => {
+    mockSourceControlOrgFindFirst.mockResolvedValue({ defaultWorkspaceId: "ws-org-default" });
+    mockFindFirst.mockResolvedValue(null); // caller is NOT a member
+    mockCreate.mockResolvedValue({ id: "rec-fallback" });
+
+    const req = makeRequest({ ...validBody, orgGithubLogin: "stakwork" });
+    const res = await POST(req);
+
+    expect(res.status).toBe(201);
+    expect(mockCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ workspaceId: null }),
+      }),
+    );
+  });
+
+  test("falls back to workspaceId: null when org has no defaultWorkspaceId", async () => {
+    mockSourceControlOrgFindFirst.mockResolvedValue({ defaultWorkspaceId: null });
+
+    const req = makeRequest({ ...validBody, orgGithubLogin: "stakwork" });
+    const res = await POST(req);
+
+    expect(res.status).toBe(201);
+    expect(mockCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ workspaceId: null }),
+      }),
+    );
+  });
+
+  test("falls back to workspaceId: null when org is not found", async () => {
+    mockSourceControlOrgFindFirst.mockResolvedValue(null);
+
+    const req = makeRequest({ ...validBody, orgGithubLogin: "unknown-org" });
+    const res = await POST(req);
+
+    expect(res.status).toBe(201);
+    expect(mockCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ workspaceId: null }),
+      }),
+    );
+  });
+
+  test("falls back to workspaceId: null when resolved workspaceId does not exist in DB", async () => {
+    mockFindFirst.mockResolvedValue({ id: "member-1" }); // member check passes
+    mockFindUnique.mockResolvedValue(null); // but workspace not found
+    mockCreate.mockResolvedValue({ id: "rec-fallback" });
+
+    const req = makeRequest({ ...validBody, workspaceId: "ws-stale" });
+    const res = await POST(req);
+
+    expect(res.status).toBe(201);
+    expect(mockCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ workspaceId: null }),
+      }),
+    );
+  });
+
+  test("returns 200 { skipped: true } instead of 500 when Prisma throws unexpectedly", async () => {
+    mockCreate.mockRejectedValue(new Error("DB connection lost"));
+
+    const req = makeRequest(validBody);
+    const res = await POST(req);
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body).toEqual({ skipped: true });
+  });
 });
