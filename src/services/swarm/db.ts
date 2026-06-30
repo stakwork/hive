@@ -96,6 +96,8 @@ export const select = {
   bifrostTrustedOrgId: true,
   bifrostTrustedPubkey: true,
   bifrostTrustSyncedAt: true,
+  bifrostAgentsSeedHash: true,
+  bifrostAgentsSeedAt: true,
 };
 
 export async function saveOrUpdateSwarm(params: SaveOrUpdateSwarmParams) {
