@@ -9,7 +9,7 @@ beforeEach(() => {
   global.fetch = mockFetch;
 });
 
-const { addNode, addEdge, addEdgeBulk, updateNode, deleteNode, deleteEdge } = await import("@/services/swarm/api/nodes");
+const { addNode, addEdge, addEdgeBulk, addEdgeByRefBulk, updateNode, deleteNode, deleteEdge } = await import("@/services/swarm/api/nodes");
 
 const config = {
   jarvisUrl: "https://test-swarm.sphinx.chat:8444",
@@ -543,6 +543,75 @@ describe("addEdgeBulk", () => {
       expect(result.success).toBe(true);
       expect(result.errors).toHaveLength(0);
     });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// addEdgeByRefBulk
+// ---------------------------------------------------------------------------
+
+describe("addEdgeByRefBulk", () => {
+  const edgeList = [
+    {
+      edge: { edge_type: "RESULTED_IN" },
+      source_ref_id: "task-ref-1",
+      target_ref_id: "pr-ref-1",
+    },
+  ];
+
+  test("calls POST /node/edge/ref/bulk with the ref_id-pair body", async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({ status: "Success", status_messages: [] }),
+    });
+
+    const result = await addEdgeByRefBulk(config, edgeList);
+
+    expect(result).toEqual({ success: true, errors: [] });
+    expect(mockFetch).toHaveBeenCalledWith(
+      "https://test-swarm.sphinx.chat:8444/node/edge/ref/bulk",
+      expect.objectContaining({
+        method: "POST",
+        headers: expect.objectContaining({ "x-api-token": "test-api-key" }),
+        body: JSON.stringify({ edge_list: edgeList }),
+      }),
+    );
+  });
+
+  test("surfaces error-prefixed status_messages", async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        status: "Warning",
+        status_messages: ["ERROR: source or target ref_id not found: a->b"],
+      }),
+    });
+
+    const result = await addEdgeByRefBulk(config, edgeList);
+
+    expect(result.success).toBe(false);
+    expect(result.errors).toHaveLength(1);
+  });
+
+  test("flags endpointMissing on a 404", async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: false,
+      status: 404,
+      text: async () => "404 page not found",
+    });
+
+    const result = await addEdgeByRefBulk(config, edgeList);
+
+    expect(result.success).toBe(false);
+    expect(result.endpointMissing).toBe(true);
+  });
+
+  test("handles empty edge list without a request", async () => {
+    const result = await addEdgeByRefBulk(config, []);
+    expect(result).toEqual({ success: true, errors: [] });
+    expect(mockFetch).not.toHaveBeenCalled();
   });
 });
 
