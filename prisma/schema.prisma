@@ -440,6 +440,13 @@ model Swarm {
   bifrostTrustedOrgId     String?               @map("bifrost_trusted_org_id")
   bifrostTrustedPubkey    String?               @map("bifrost_trusted_pubkey")
   bifrostTrustSyncedAt    DateTime?             @map("bifrost_trust_synced_at")
+  // Agent-catalog seed reconcile cache. Content-addressed by a hash
+  // of the default-agent manifest Hive pushes to the gateway's
+  // `POST /_plugin/agents`. When the manifest changes (new agent,
+  // changed default model), the hash differs and the next LLM call
+  // re-seeds. See gateway/plans/agent-catalog.md.
+  bifrostAgentsSeedHash   String?               @map("bifrost_agents_seed_hash")
+  bifrostAgentsSeedAt     DateTime?             @map("bifrost_agents_seed_at")
   environmentVariablesNew EnvironmentVariable[] @relation("SwarmEnvironmentVariables")
   pods                    Pod[]
   workspace               Workspace             @relation(fields: [workspaceId], references: [id], onDelete: Cascade)

@@ -1,6 +1,8 @@
 import { BIFROST_HTTP_TIMEOUT_MS } from "./constants";
 import { BifrostHttpError } from "./BifrostClient";
 import type {
+  AgentCatalogManifest,
+  SeedAgentsResponse,
   TrustOrgRow,
   TrustOrgUpsert,
   TrustRealmIDRequest,
@@ -106,6 +108,24 @@ export class BifrostPluginClient {
       "PUT",
       "/_plugin/trust/realm_id",
       body,
+    );
+  }
+
+  /**
+   * POST /_plugin/agents — seed the gateway's neo4j agent catalog.
+   * Whole-fleet, replace-by-source: the manifest is the complete set
+   * of agents this `source` knows about, so the plugin replaces that
+   * source's existing entries in one transaction. Idempotent — safe to
+   * re-send the same manifest (the seed reconciler gates re-sends on a
+   * content hash, but the endpoint tolerates duplicates regardless).
+   */
+  async seedAgentCatalog(
+    manifest: AgentCatalogManifest,
+  ): Promise<SeedAgentsResponse> {
+    return this.request<SeedAgentsResponse>(
+      "POST",
+      "/_plugin/agents",
+      manifest,
     );
   }
 
