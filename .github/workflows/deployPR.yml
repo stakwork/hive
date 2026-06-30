@@ -509,15 +509,6 @@ jobs:
             sleep 15
           done
 
-          ############################################################
-          # Seed global Stakwork prompts into Hive (idempotent / skip-existing)
-          ############################################################
-          echo "⏳ Seeding Stakwork prompts into Hive..."
-          STAKWORK_API_KEY="${{ secrets.STAKWORK_API_KEY }}" \
-          STAKWORK_BASE_URL="${{ secrets.STAKWORK_BASE_URL }}" \
-          DATABASE_URL="${{ steps.neon.outputs.connection_uri }}" \
-          npm run seed:prompts || echo "⚠️  seed:prompts exited with errors — continuing deploy"
-
           vercel build --scope=${{ secrets.VERCEL_ORG_ID }} --token=${{ secrets.VERCEL_TOKEN }}
 
       ############################################################
