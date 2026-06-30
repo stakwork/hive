@@ -140,6 +140,7 @@ describe("useVoiceCorrectionCapture", () => {
           finalText: "fix the login",
           surface: "task_chat",
           workspaceId: "ws-123",
+          orgGithubLogin: undefined,
         }),
       })
     );
@@ -169,9 +170,52 @@ describe("useVoiceCorrectionCapture", () => {
           finalText: "hello world",
           surface: "sidebar",
           workspaceId: undefined,
+          orgGithubLogin: undefined,
         }),
       })
     );
+  });
+
+  it("strips empty workspaceId string — sends undefined in the fetch body", () => {
+    mockEnabled.value = true;
+    const { result } = renderHook(() =>
+      useVoiceCorrectionCapture({ surface: "sidebar", workspaceId: "" })
+    );
+
+    act(() => {
+      result.current.capture({
+        rawTranscript: "ficks the log in",
+        preVoiceText: "",
+        finalText: "fix the login",
+      });
+    });
+
+    expect(global.fetch).toHaveBeenCalledOnce();
+    const call = (global.fetch as ReturnType<typeof vi.fn>).mock.calls[0];
+    const sentBody = JSON.parse(call[1].body);
+    // empty string is stripped to undefined, so it should not appear in the serialized body
+    expect(sentBody.workspaceId).toBeUndefined();
+  });
+
+  it("passes orgGithubLogin through to the fetch body", () => {
+    mockEnabled.value = true;
+    const { result } = renderHook(() =>
+      useVoiceCorrectionCapture({ surface: "sidebar", orgGithubLogin: "stakwork" })
+    );
+
+    act(() => {
+      result.current.capture({
+        rawTranscript: "ficks the log in",
+        preVoiceText: "",
+        finalText: "fix the login",
+      });
+    });
+
+    expect(global.fetch).toHaveBeenCalledOnce();
+    const call = (global.fetch as ReturnType<typeof vi.fn>).mock.calls[0];
+    const sentBody = JSON.parse(call[1].body);
+    expect(sentBody.orgGithubLogin).toBe("stakwork");
+    expect(sentBody.workspaceId).toBeUndefined();
   });
 
   it("never throws even if fetch rejects", async () => {
