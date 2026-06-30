@@ -499,8 +499,49 @@ describe("Evals API — Integration Tests", () => {
         expect(calledUrl).toContain("/v2/nodes/my-eval-set");
         expect(calledUrl).toContain("expand=edges");
         expect(calledUrl).toContain(encodeURIComponent("['HAS_REQUIREMENT']"));
-        expect(calledUrl).toContain(encodeURIComponent("['EvalRequirement']"));
+        expect(calledUrl).not.toContain("node_type");
         expect(calledUrl).toContain("depth=1");
+      });
+
+      test("keeps neighbors whose node_type is Evalrequirement (no server-side node_type filter)", async () => {
+        const owner = await createTestUser();
+        const workspace = await createTestWorkspace({ ownerId: owner.id });
+        await createTestMembership({ workspaceId: workspace.id, userId: owner.id, role: "OWNER" });
+        await createTestSwarm({ workspaceId: workspace.id, swarmApiKey: "test-key" });
+
+        const evalSetId = "eval-set-casing";
+        const fetchMock = vi.fn().mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({
+            nodes: [
+              { ref_id: evalSetId, node_type: "Evalset", properties: { name: "The set" } },
+              { ref_id: "req-1", node_type: "Evalrequirement", properties: { name: "Req A" } },
+              { ref_id: "req-2", node_type: "Evalrequirement", properties: { name: "Req B" } },
+            ],
+            edges: [],
+          }),
+        } as any);
+        global.fetch = fetchMock;
+
+        const request = createAuthenticatedGetRequest(
+          `http://localhost:3000/api/workspaces/${workspace.slug}/evals/${evalSetId}/requirements`,
+          owner,
+        );
+
+        const response = await getRequirements(request, {
+          params: Promise.resolve({ slug: workspace.slug, evalSetId }),
+        });
+
+        const data = await response.json();
+        expect(data.success).toBe(true);
+        expect(data.data.total).toBe(2);
+        const returnedIds = data.data.nodes.map((n: { ref_id: string }) => n.ref_id);
+        expect(returnedIds).toContain("req-1");
+        expect(returnedIds).toContain("req-2");
+        expect(returnedIds).not.toContain(evalSetId);
+
+        const calledUrl: string = fetchMock.mock.calls[0][0];
+        expect(calledUrl).not.toContain("node_type");
       });
     });
 
