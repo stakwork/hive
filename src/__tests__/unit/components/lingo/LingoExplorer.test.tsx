@@ -33,7 +33,7 @@ vi.mock("@/components/ui/input", () => ({
   ),
 }));
 
-vi.mock("@/app/w/[slug]/learn/lingo/components/LingoCard", () => ({
+vi.mock("@/app/w/[slug]/lingo/components/LingoCard", () => ({
   LingoCard: ({ node, onClick }: any) => (
     <div data-testid={`lingo-card-${node.ref_id}`} onClick={onClick}>
       {node.name}
@@ -42,7 +42,7 @@ vi.mock("@/app/w/[slug]/learn/lingo/components/LingoCard", () => ({
   LingoCardSkeleton: () => <div data-testid="lingo-card-skeleton" />,
 }));
 
-vi.mock("@/app/w/[slug]/learn/lingo/components/NeighborView", () => ({
+vi.mock("@/app/w/[slug]/lingo/components/NeighborView", () => ({
   NeighborView: ({ node, edges, onDeleteEdge, onDeleteNode, onNavigate, onAddEdge }: any) => (
     <div data-testid="neighbor-view">
       <span data-testid="detail-node-name">{node.name}</span>
@@ -72,7 +72,7 @@ vi.mock("@/app/w/[slug]/learn/lingo/components/NeighborView", () => ({
   ),
 }));
 
-vi.mock("@/app/w/[slug]/learn/lingo/components/Breadcrumb", () => ({
+vi.mock("@/app/w/[slug]/lingo/components/Breadcrumb", () => ({
   LingoBreadcrumb: ({ items, onNavigate }: any) => (
     <nav data-testid="lingo-breadcrumb">
       <button data-testid="breadcrumb-home" onClick={() => onNavigate(-1)}>
@@ -91,7 +91,7 @@ vi.mock("@/app/w/[slug]/learn/lingo/components/Breadcrumb", () => ({
   ),
 }));
 
-vi.mock("@/app/w/[slug]/learn/lingo/components/AddEdgePanel", () => ({
+vi.mock("@/app/w/[slug]/lingo/components/AddEdgePanel", () => ({
   AddEdgePanel: ({ isOpen, onClose, onEdgeCreated }: any) =>
     isOpen ? (
       <div data-testid="add-edge-panel">
@@ -105,7 +105,7 @@ vi.mock("@/app/w/[slug]/learn/lingo/components/AddEdgePanel", () => ({
     ) : null,
 }));
 
-vi.mock("@/app/w/[slug]/learn/lingo/components/CreateLingoNodeDialog", () => ({
+vi.mock("@/app/w/[slug]/lingo/components/CreateLingoNodeDialog", () => ({
   CreateLingoNodeDialog: ({ isOpen, onClose, onCreated }: any) =>
     isOpen ? (
       <div data-testid="create-lingo-node-dialog">
@@ -133,7 +133,7 @@ vi.mock("@/app/w/[slug]/learn/lingo/components/CreateLingoNodeDialog", () => ({
 
 // ─── Import after mocks ────────────────────────────────────────────────────────
 
-import { LingoExplorer } from "@/app/w/[slug]/learn/lingo/components/LingoExplorer";
+import { LingoExplorer } from "@/app/w/[slug]/lingo/components/LingoExplorer";
 import { toast } from "sonner";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -725,7 +725,12 @@ describe("LingoExplorer", () => {
       await waitFor(() => screen.getByTestId("neighbor-view"));
     }
 
-    it("clicking delete button hides the node from the list and navigates back to list view", async () => {
+    it("clicking delete button hides the node, navigates back to list, and fires DELETE immediately", async () => {
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({ success: true }),
+      });
+
       await setupDetailView();
 
       fireEvent.click(screen.getByTestId("delete-node-button"));
@@ -746,9 +751,19 @@ describe("LingoExplorer", () => {
         "Node removed",
         expect.objectContaining({ action: expect.objectContaining({ label: "Undo" }) }),
       );
+
+      // DELETE fired immediately (not via toast callback)
+      await waitFor(() => {
+        expect(mockFetch).toHaveBeenCalledWith(
+          `/api/workspaces/${SLUG}/lingo/nodes/jargon-1`,
+          expect.objectContaining({ method: "DELETE" }),
+        );
+      });
     });
 
-    it("clicking Undo in the toast restores the node in the list", async () => {
+    it("clicking Undo in the toast calls POST to restore the node and opens detail view", async () => {
+      const restoredRefId = "jargon-1-restored";
+
       await setupDetailView();
 
       let capturedToastOptions: any;
@@ -756,6 +771,41 @@ describe("LingoExplorer", () => {
         capturedToastOptions = opts;
         return "toast-id";
       });
+
+      // Mock DELETE (fires immediately on button click), then POST (restore), then GET (openDetail)
+      mockFetch
+        .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ success: true }) })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () =>
+            Promise.resolve({
+              success: true,
+              data: {
+                ref_id: restoredRefId,
+                name: "Term from detail",
+                node_type: "Lingo",
+                definition: "Detailed definition",
+                lingo_type: null,
+              },
+            }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () =>
+            Promise.resolve({
+              success: true,
+              data: {
+                node: {
+                  ref_id: restoredRefId,
+                  name: "Term from detail",
+                  node_type: "Lingo",
+                  definition: "Detailed definition",
+                  date_added_to_graph: 1750000000,
+                },
+                edges: [],
+              },
+            }),
+        });
 
       fireEvent.click(screen.getByTestId("delete-node-button"));
 
@@ -764,24 +814,31 @@ describe("LingoExplorer", () => {
         expect(screen.queryByTestId("lingo-card-jargon-1")).not.toBeInTheDocument(),
       );
 
-      // Undo
-      act(() => {
+      // Click Undo
+      await act(async () => {
         capturedToastOptions?.action?.onClick?.();
       });
 
-      // Node reappears
+      // POST called with the original node's data
       await waitFor(() => {
-        expect(screen.getByTestId("lingo-card-jargon-1")).toBeInTheDocument();
+        const postCalls = mockFetch.mock.calls.filter(
+          (c: any[]) =>
+            typeof c[0] === "string" &&
+            c[0].includes("/lingo/nodes") &&
+            c[1]?.method === "POST",
+        );
+        expect(postCalls).toHaveLength(1);
+        const body = JSON.parse(postCalls[0][1].body);
+        expect(body.name).toBe("Term from detail");
       });
 
-      // No DELETE fetch called
-      const deleteCalls = mockFetch.mock.calls.filter(
-        (c: any[]) => typeof c[0] === "string" && c[0].includes("/lingo/nodes/jargon-1") && c[1]?.method === "DELETE",
-      );
-      expect(deleteCalls).toHaveLength(0);
+      // Detail view opens with restored node
+      await waitFor(() => {
+        expect(screen.getByTestId("neighbor-view")).toBeInTheDocument();
+      });
     });
 
-    it("confirming (toast dismiss without undo) calls DELETE endpoint", async () => {
+    it("confirming (without undo) calls DELETE immediately on button click — no toast callback needed", async () => {
       mockFetch.mockResolvedValue({
         ok: true,
         json: () => Promise.resolve({ success: true }),
@@ -789,18 +846,9 @@ describe("LingoExplorer", () => {
 
       await setupDetailView();
 
-      let capturedToastOptions: any;
-      vi.mocked(toast).mockImplementationOnce((_msg: any, opts: any) => {
-        capturedToastOptions = opts;
-        return "toast-id";
-      });
-
       fireEvent.click(screen.getByTestId("delete-node-button"));
 
-      await act(async () => {
-        capturedToastOptions?.onAutoClose?.();
-      });
-
+      // DELETE is fired immediately — no need to invoke any toast callback
       await waitFor(() => {
         expect(mockFetch).toHaveBeenCalledWith(
           `/api/workspaces/${SLUG}/lingo/nodes/jargon-1`,
@@ -812,11 +860,8 @@ describe("LingoExplorer", () => {
     it("API failure reverts the optimistic hide and shows an error toast", async () => {
       await setupDetailView();
 
-      let capturedToastOptions: any;
-      vi.mocked(toast).mockImplementationOnce((_msg: any, opts: any) => {
-        capturedToastOptions = opts;
-        return "toast-id";
-      });
+      // DELETE fires immediately and fails
+      mockFetch.mockResolvedValueOnce({ ok: false });
 
       fireEvent.click(screen.getByTestId("delete-node-button"));
 
@@ -825,14 +870,7 @@ describe("LingoExplorer", () => {
         expect(screen.queryByTestId("lingo-card-jargon-1")).not.toBeInTheDocument(),
       );
 
-      // Simulate API failure
-      mockFetch.mockResolvedValueOnce({ ok: false });
-
-      await act(async () => {
-        capturedToastOptions?.onAutoClose?.();
-      });
-
-      // Node reappears after error
+      // Node reappears after DELETE failure is caught by confirmDeleteNode
       await waitFor(() => {
         expect(screen.getByTestId("lingo-card-jargon-1")).toBeInTheDocument();
       });

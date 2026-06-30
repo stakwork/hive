@@ -153,6 +153,62 @@ const createTestArtifact = (type: ArtifactType, content: any, id = 'test-artifac
   updatedAt: new Date(),
 });
 
+// Local mirror of parseLogsFromMessage — must stay in sync with source
+function parseLogsFromMessage(message: string): { content: string; logs: string[] } {
+  const logsRegex = /<logs>([\s\S]*?)<\/logs>/g;
+  const nextStepRegex = /<next_step>[\s\S]*?<\/next_step>/g;
+  const logs: string[] = [];
+  let match;
+  while ((match = logsRegex.exec(message)) !== null) {
+    logs.push(match[1].trim());
+  }
+  const content = message
+    .replace(logsRegex, "")
+    .replace(nextStepRegex, "")
+    .trim();
+  return { content, logs };
+}
+
+describe('parseLogsFromMessage', () => {
+  it('strips a single <next_step> tag leaving surrounding text', () => {
+    const { content, logs } = parseLogsFromMessage('Here is a tip<next_step>Do X</next_step>');
+    expect(content).toBe('Here is a tip');
+    expect(logs).toEqual([]);
+  });
+
+  it('strips multiple <next_step> tags from content', () => {
+    const msg = 'Intro<next_step>Step one</next_step> middle <next_step>Step two</next_step> end <next_step>Step three</next_step>';
+    const { content, logs } = parseLogsFromMessage(msg);
+    expect(content).not.toContain('<next_step>');
+    expect(content).not.toContain('</next_step>');
+    expect(logs).toEqual([]);
+  });
+
+  it('handles combined <logs> and <next_step> tags correctly', () => {
+    const msg = 'Some text<logs>log line one\nlog line two</logs><next_step>Do Y</next_step>Trailing text';
+    const { content, logs } = parseLogsFromMessage(msg);
+    expect(logs).toEqual(['log line one\nlog line two']);
+    expect(content).not.toContain('<logs>');
+    expect(content).not.toContain('<next_step>');
+    expect(content).toBe('Some textTrailing text');
+  });
+
+  it('passes plain text through unchanged when no tags are present', () => {
+    const msg = 'Just a plain message with no special tags.';
+    const { content, logs } = parseLogsFromMessage(msg);
+    expect(content).toBe(msg);
+    expect(logs).toEqual([]);
+  });
+
+  it('removes all <next_step> blocks and returns empty logs when no <logs> tags', () => {
+    const msg = '<next_step>Alpha</next_step>Some content<next_step>Beta</next_step>';
+    const { content, logs } = parseLogsFromMessage(msg);
+    expect(logs).toEqual([]);
+    expect(content).not.toContain('<next_step>');
+    expect(content).toBe('Some content');
+  });
+});
+
 describe('ChatMessage', () => {
   const mockOnArtifactAction = vi.fn();
 

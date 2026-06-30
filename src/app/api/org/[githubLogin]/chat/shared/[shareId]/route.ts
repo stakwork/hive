@@ -1,7 +1,8 @@
 import { authOptions } from "@/lib/auth/nextauth";
+import { validateApiToken } from "@/lib/auth/api-token";
 import { db } from "@/lib/db";
 import { getServerSession } from "next-auth/next";
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 
 /**
  * GET a single org-scoped shared conversation. Mirrors the
@@ -15,17 +16,27 @@ import { NextResponse } from "next/server";
  * viewer page at `/org/[githubLogin]/chat/shared/[shareId]/page.tsx`
  * fetches directly from Prisma; this route exposes the same data to
  * the client.
+ *
+ * External systems can also fetch via the `x-api-token` header
+ * (`API_TOKEN`). A valid token is treated as a trusted service
+ * credential and bypasses the per-user org-membership check; the row
+ * is still verified to belong to the requested org.
  */
 export async function GET(
-  _request: Request,
+  request: NextRequest,
   { params }: { params: Promise<{ githubLogin: string; shareId: string }> },
 ) {
-  const session = await getServerSession(authOptions);
-  if (!session?.user || !(session.user as { id?: string }).id) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const isApiToken = validateApiToken(request);
+
+  let userId: string | null = null;
+  if (!isApiToken) {
+    const session = await getServerSession(authOptions);
+    if (!session?.user || !(session.user as { id?: string }).id) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    userId = (session.user as { id: string }).id;
   }
 
-  const userId = (session.user as { id: string }).id;
   const { githubLogin, shareId } = await params;
 
   try {
@@ -42,16 +53,19 @@ export async function GET(
     }
 
     // Verify caller has access to this org via SourceControlToken,
-    // matching the share POST's auth check.
-    const token = await db.sourceControlToken.findFirst({
-      where: { userId, sourceControlOrgId: org.id },
-    });
+    // matching the share POST's auth check. Skipped for trusted
+    // API_TOKEN callers (the token itself is the authority).
+    if (!isApiToken) {
+      const token = await db.sourceControlToken.findFirst({
+        where: { userId: userId!, sourceControlOrgId: org.id },
+      });
 
-    if (!token) {
-      return NextResponse.json(
-        { error: "Access denied. You must be an organization member." },
-        { status: 403 },
-      );
+      if (!token) {
+        return NextResponse.json(
+          { error: "Access denied. You must be an organization member." },
+          { status: 403 },
+        );
+      }
     }
 
     const sharedConversation = await db.sharedConversation.findUnique({
@@ -61,6 +75,9 @@ export async function GET(
         sourceControlOrgId: true,
         title: true,
         messages: true,
+        // Only needed to expose `settings.prompts` to trusted
+        // API_TOKEN callers (see response below).
+        ...(isApiToken ? { settings: true } : {}),
       },
     });
 
@@ -80,11 +97,27 @@ export async function GET(
       );
     }
 
+    // Trusted API_TOKEN callers (e.g. external eval clients) get the
+    // prompt-version resolutions used for this conversation's turns,
+    // stored at `settings.prompts` keyed by prompt name. Returned as
+    // `_metadata.prompts` (unflattened) and never exposed to browser
+    // callers.
+    let metadata: { prompts: unknown } | undefined;
+    if (isApiToken) {
+      const settings = (sharedConversation.settings ?? {}) as {
+        prompts?: unknown;
+      };
+      if (settings.prompts != null) {
+        metadata = { prompts: settings.prompts };
+      }
+    }
+
     return NextResponse.json(
       {
         id: sharedConversation.id,
         title: sharedConversation.title,
         messages: sharedConversation.messages,
+        ...(metadata ? { _metadata: metadata } : {}),
       },
       { status: 200 },
     );

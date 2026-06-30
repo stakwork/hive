@@ -59,6 +59,7 @@ model User {
   // layered above this flag.
   canvasAutonomousTurns    Boolean                  @default(false) @map("canvas_autonomous_turns")
   dailyRecapEnabled        Boolean                  @default(true)  @map("daily_recap_enabled")
+  voiceLearningEnabled     Boolean                  @default(false) @map("voice_learning_enabled")
   // Per-user default model for the canvas Agent chat, stored in
   // `getModelValue()` "provider/name" form (e.g. "anthropic/claude-sonnet-4").
   // Null = fall back to the admin-configured default. Set from the gear
@@ -123,6 +124,7 @@ model User {
   automations              Automation[]
   stakworkRuns             StakworkRun[]
   featurePresence          UserFeaturePresence[]
+  voiceCorrectionLearnings VoiceCorrectionLearning[]
 
   @@index([createdAt])
   @@index([deleted])
@@ -305,6 +307,7 @@ model Workspace {
   owner                   User                     @relation("WorkspaceOwner", fields: [ownerId], references: [id], onDelete: Cascade)
   sourceControlOrg        SourceControlOrg?        @relation(fields: [sourceControlOrgId], references: [id])
   defaultForOrg           SourceControlOrg?        @relation("OrgDefaultWorkspace")
+  voiceCorrectionLearnings VoiceCorrectionLearning[]
 
   @@index([ownerId])
   @@index([deleted])
@@ -437,6 +440,13 @@ model Swarm {
   bifrostTrustedOrgId     String?               @map("bifrost_trusted_org_id")
   bifrostTrustedPubkey    String?               @map("bifrost_trusted_pubkey")
   bifrostTrustSyncedAt    DateTime?             @map("bifrost_trust_synced_at")
+  // Agent-catalog seed reconcile cache. Content-addressed by a hash
+  // of the default-agent manifest Hive pushes to the gateway's
+  // `POST /_plugin/agents`. When the manifest changes (new agent,
+  // changed default model), the hash differs and the next LLM call
+  // re-seeds. See gateway/plans/agent-catalog.md.
+  bifrostAgentsSeedHash   String?               @map("bifrost_agents_seed_hash")
+  bifrostAgentsSeedAt     DateTime?             @map("bifrost_agents_seed_at")
   environmentVariablesNew EnvironmentVariable[] @relation("SwarmEnvironmentVariables")
   pods                    Pod[]
   workspace               Workspace             @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
@@ -2048,4 +2058,25 @@ model UrnEdge {
   @@index([orgId, fromUrn])
   @@index([orgId, toUrn])
   @@map("urn_edges")
+}
+
+/// Captures raw STT transcript → final submitted text correction pairs for
+/// voice dictation improvement. Opt-in only; recorded when a user edits
+/// a voice-transcribed message before submitting.
+model VoiceCorrectionLearning {
+  id            String     @id @default(cuid())
+  userId        String     @map("user_id")
+  workspaceId   String?    @map("workspace_id")
+  surface       String     // task_chat | plan_chat | plan_start | task_start | whiteboard | sidebar
+  rawTranscript String     @db.Text @map("raw_transcript")
+  preVoiceText  String     @db.Text @map("pre_voice_text")
+  finalText     String     @db.Text @map("final_text")
+  createdAt     DateTime   @default(now()) @map("created_at")
+  user          User       @relation(fields: [userId], references: [id])
+  workspace     Workspace? @relation(fields: [workspaceId], references: [id])
+
+  @@index([userId])
+  @@index([surface])
+  @@index([createdAt])
+  @@map("voice_correction_learnings")
 }
