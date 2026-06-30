@@ -42,12 +42,20 @@ vi.mock("@/components/SphinxLinkModal", () => ({
   SphinxLinkModal: () => null,
 }));
 
+// Mock tooltip
+vi.mock("@/components/ui/tooltip", () => ({
+  Tooltip: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+  TooltipTrigger: ({ children }: { children: React.ReactNode; asChild?: boolean }) => <div>{children}</div>,
+  TooltipContent: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+  TooltipProvider: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+}));
+
 // Mock dropdown menu
 vi.mock("@/components/ui/dropdown-menu", () => ({
   DropdownMenu: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
   DropdownMenuTrigger: ({ children }: { children: React.ReactNode; asChild?: boolean }) => <div>{children}</div>,
-  DropdownMenuContent: ({ children }: { children: React.ReactNode }) => (
-    <div data-testid="dropdown-content">{children}</div>
+  DropdownMenuContent: ({ children, ...props }: { children: React.ReactNode; [key: string]: unknown }) => (
+    <div data-testid="dropdown-content" {...props}>{children}</div>
   ),
   DropdownMenuLabel: ({ children, className }: { children: React.ReactNode; className?: string }) => (
     <div className={className}>{children}</div>
@@ -167,5 +175,32 @@ describe("NavUser - Organizations section", () => {
 
     // Fallback should show "T" (first letter of "tomsmith8")
     expect(screen.getByText("T")).toBeDefined();
+  });
+});
+
+describe("NavUser - compact variant", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockUseSession.mockReturnValue({ data: null });
+    mockUseWorkspace.mockReturnValue({ workspace: null });
+    mockUseSidebar.mockReturnValue({ isMobile: false });
+    global.fetch = vi.fn().mockResolvedValue({ ok: true, json: async () => [] });
+  });
+
+  test("compact variant renders avatar trigger without name or chevron", () => {
+    render(<NavUser user={mockUser} variant="compact" />);
+    // Avatar image should be present
+    expect(screen.getAllByRole("img", { name: mockUser.name }).length).toBeGreaterThan(0);
+    // Name text should NOT be in the trigger button
+    const trigger = screen.getByTestId("user-menu-trigger");
+    expect(trigger.textContent).not.toContain(mockUser.name);
+  });
+
+  test("compact variant dropdown still contains My Activity, Account Settings, and Log out", async () => {
+    render(<NavUser user={mockUser} variant="compact" />);
+    const dropdown = screen.getByTestId("dropdown-content");
+    expect(dropdown.textContent).toContain("My Activity");
+    expect(dropdown.textContent).toContain("Account Settings");
+    expect(dropdown.textContent).toContain("Log out");
   });
 });
