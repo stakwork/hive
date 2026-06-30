@@ -72,7 +72,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       inputs?: Record<string, unknown> | null;
       outputs?: unknown;
       evalSetId?: string;
-      prompts?: Array<{ name: string; prompt_id: number; prompt_version_id: number }>;
+      prompts?: Array<{ name: string; prompt_id: number; prompt_version_id: number; resolution?: string }>;
     };
 
     if (!requirement?.trim() && !requirementId?.trim()) {
