@@ -23,9 +23,11 @@ interface CaptureParams {
 export function useVoiceCorrectionCapture({
   surface,
   workspaceId,
+  orgGithubLogin,
 }: {
   surface: VoiceSurface;
   workspaceId?: string;
+  orgGithubLogin?: string;
 }) {
   const { enabled } = useVoiceLearningPreference();
 
@@ -44,11 +46,12 @@ export function useVoiceCorrectionCapture({
           preVoiceText,
           finalText,
           surface,
-          workspaceId,
+          workspaceId: workspaceId || undefined, // strip empty strings client-side
+          orgGithubLogin,
         }),
       }).catch(() => {}); // fire-and-forget, never throws
     },
-    [enabled, surface, workspaceId]
+    [enabled, surface, workspaceId, orgGithubLogin]
   );
 
   return { capture };
