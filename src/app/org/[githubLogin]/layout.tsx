@@ -2,6 +2,7 @@ import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth/nextauth";
 import { redirect, notFound } from "next/navigation";
 import { db } from "@/lib/db";
+import { validateUserBelongsToOrg } from "@/services/workspace";
 import { OrgShell } from "./_components/OrgShell";
 
 interface OrgLayoutProps {
@@ -32,12 +33,22 @@ export default async function OrgLayout({ children, params }: OrgLayoutProps) {
     notFound();
   }
 
+  const isMember = await validateUserBelongsToOrg(githubLogin, session.user.id);
+  if (!isMember) {
+    notFound();
+  }
+
   return (
     <OrgShell
       githubLogin={githubLogin}
       orgId={org.id}
       orgName={org.name}
       avatarUrl={org.avatarUrl}
+      user={{
+        name: session.user.name ?? "User",
+        email: session.user.email ?? "",
+        avatar: session.user.image ?? "",
+      }}
     >
       {children}
     </OrgShell>
