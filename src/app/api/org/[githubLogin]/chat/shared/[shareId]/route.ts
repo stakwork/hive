@@ -75,6 +75,9 @@ export async function GET(
         sourceControlOrgId: true,
         title: true,
         messages: true,
+        // Only needed to expose `settings.prompts` to trusted
+        // API_TOKEN callers (see response below).
+        ...(isApiToken ? { settings: true } : {}),
       },
     });
 
@@ -94,11 +97,27 @@ export async function GET(
       );
     }
 
+    // Trusted API_TOKEN callers (e.g. external eval clients) get the
+    // prompt-version resolutions used for this conversation's turns,
+    // stored at `settings.prompts` keyed by prompt name. Returned as
+    // `_metadata.prompts` (unflattened) and never exposed to browser
+    // callers.
+    let metadata: { prompts: unknown } | undefined;
+    if (isApiToken) {
+      const settings = (sharedConversation.settings ?? {}) as {
+        prompts?: unknown;
+      };
+      if (settings.prompts != null) {
+        metadata = { prompts: settings.prompts };
+      }
+    }
+
     return NextResponse.json(
       {
         id: sharedConversation.id,
         title: sharedConversation.title,
         messages: sharedConversation.messages,
+        ...(metadata ? { _metadata: metadata } : {}),
       },
       { status: 200 },
     );
