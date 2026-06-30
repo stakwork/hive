@@ -177,6 +177,13 @@ export async function getBifrostForLLM(
   // `ensureBifrostTrust` and we fall through to VK reconcile.
   await runTrustReconcile(workspaceAuth.workspaceId);
 
+  // 2b. Agent-catalog seed. Pushes the default agent set into the
+  // swarm's gateway neo4j catalog. Content-addressed-cached on the
+  // Swarm row, so this is a single DB read on the hot path. Non-fatal
+  // and independent of trust — a stale/absent catalog never blocks an
+  // LLM call. See `gateway/plans/agent-catalog.md`.
+  await runAgentCatalogReconcile(workspaceAuth.workspaceId);
+
   // 3. VK reconcile (phase 1). Without this, the LLM call can't
   // route through Bifrost at all — return undefined and let the
   // caller fall back to the swarm-default key.
@@ -215,6 +222,28 @@ async function runTrustReconcile(workspaceId: string): Promise<void> {
     logger.warn(
       "Bifrost trust reconcile threw unexpectedly; continuing to VK reconcile",
       "BIFROST_TRUST",
+      {
+        workspaceId,
+        error: err instanceof Error ? err.message : String(err),
+      },
+    );
+  }
+}
+
+async function runAgentCatalogReconcile(workspaceId: string): Promise<void> {
+  try {
+    const { ensureBifrostAgentCatalog } = await import(
+      "./agent-catalog-reconciler"
+    );
+    await ensureBifrostAgentCatalog(workspaceId);
+  } catch (err) {
+    // Defensive — ensureBifrostAgentCatalog catches its own errors and
+    // returns `failed`; this is for unexpected throws (lock-acquire
+    // timeout, DB drop). Swallow so catalog seeding never blocks an
+    // LLM call.
+    logger.warn(
+      "Bifrost agent catalog reconcile threw unexpectedly; continuing",
+      "BIFROST_AGENTS",
       {
         workspaceId,
         error: err instanceof Error ? err.message : String(err),
