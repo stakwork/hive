@@ -710,7 +710,11 @@ function SidebarChatInput({
 
   const preVoiceInputRef = useRef("");
   const { nudgeIfNeeded } = useVoiceLearningPreference();
-  const { capture } = useVoiceCorrectionCapture({ surface: "sidebar", workspaceId });
+  const { capture } = useVoiceCorrectionCapture({
+    surface: "sidebar",
+    workspaceId: workspaceId || undefined, // empty string → absent
+    orgGithubLogin: orgId,                 // orgId prop is already githubLogin
+  });
 
   // Append transcript to existing input (do not overwrite)
   useEffect(() => {
