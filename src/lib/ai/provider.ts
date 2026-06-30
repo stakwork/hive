@@ -102,13 +102,35 @@ export function getModel(
   // overrides are present, they replace the provider's default
   // baseUrl and add per-request headers (e.g. `x-macaroon`). aieo
   // 0.1.33+ accepts `headers` on GetModelOptions.
+  //
+  // Bifrost raw-passthrough opt-in: when an Anthropic call is routed
+  // through Bifrost (`overrides.baseUrl` set), present a Claude-Code
+  // `user-agent`. Bifrost's `checkAnthropicPassthrough` engages raw
+  // passthrough when the UA matches `claude-cli`/`claude-code`/
+  // `claude-vscode` AND the model is a Claude model — forwarding our
+  // EXACT request body and streaming back Anthropic's RAW response.
+  // This deliberately bypasses Bifrost's request/response conversion
+  // pipeline, which otherwise:
+  //   (a) silently upgrades the `web_search_20250305` tool aieo sends
+  //       to the agentic `web_search_20260209` variant on Opus 4.7+,
+  //       pulling in server-side `code_execution` blocks the AI SDK
+  //       has no handler for ("unavailable tool 'code_execution'"); and
+  //   (b) carries its own streaming-reconstruction bugs for server
+  //       tools.
+  // The AI SDK keeps our value as the UA prefix (it only appends its
+  // own suffix), so the substring match still fires. Cost tracking is
+  // unaffected — Bifrost still runs its governance/macaroon plugins in
+  // passthrough mode and parses usage from the raw response.
+  const headers =
+    overrides?.baseUrl && provider === "anthropic"
+      ? { ...overrides.headers, "user-agent": "claude-code" }
+      : overrides?.headers;
+
   return getModelAieo(provider, {
     apiKey,
     modelName: modelType,
     ...(overrides?.baseUrl ? { baseUrl: overrides.baseUrl } : {}),
-    ...(overrides?.headers && Object.keys(overrides.headers).length > 0
-      ? { headers: overrides.headers }
-      : {}),
+    ...(headers && Object.keys(headers).length > 0 ? { headers } : {}),
   });
 }
 
