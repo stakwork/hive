@@ -225,6 +225,52 @@ export async function addEdgeBulk(
 }
 
 /**
+ * Bulk create-or-merge edges where BOTH endpoints are addressed by `ref_id`
+ * (Jarvis `/node/edge/ref/bulk`). Unlike `addEdgeBulk`, each node is matched by
+ * ref_id against its real Neo4j label, bypassing the capitalize-based
+ * (source_type, target_type) schema lookup — required to link to stakgraph nodes
+ * such as `PullRequest` whose label isn't the capitalized form. Idempotent on
+ * the backend via the edge_key. Errors are returned, never thrown.
+ */
+export async function addEdgeByRefBulk(
+  config: JarvisConnectionConfig,
+  edgeList: Array<{
+    edge: { edge_type: string; weight?: number; edge_data?: Record<string, unknown> };
+    source_ref_id: string;
+    target_ref_id: string;
+  }>,
+): Promise<{ success: boolean; errors: string[]; endpointMissing?: boolean }> {
+  if (edgeList.length === 0) return { success: true, errors: [] };
+  const result = await jarvisRequest({
+    config,
+    endpoint: "/node/edge/ref/bulk",
+    method: "POST",
+    data: { edge_list: edgeList },
+  });
+
+  if (!result.ok) {
+    return {
+      success: false,
+      endpointMissing: result.notFound,
+      errors: [result.error || `Failed to create edges (status: ${result.status})`],
+    };
+  }
+
+  const body = result.body as
+    | { status?: string; status_messages?: string[] }
+    | undefined;
+
+  const errors = (body?.status_messages ?? []).filter((m) =>
+    m.toLowerCase().startsWith("error"),
+  );
+
+  return {
+    success: body?.status?.toLowerCase() === "success",
+    errors,
+  };
+}
+
+/**
  * Bulk create-or-merge nodes in a single request (Jarvis `/node/bulk`).
  * With `reprocess: true`, existing nodes (matched by node_key) are updated in
  * place. Jarvis processes the list sequentially in one Neo4j session, so this
