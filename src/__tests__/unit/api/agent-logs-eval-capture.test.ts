@@ -588,6 +588,59 @@ describe("POST /api/workspaces/[slug]/agent-logs/[logId]/eval/capture", () => {
     ]);
   });
 
+  test("PromptResolution map with resolution.value is normalised to include resolution string", async () => {
+    (db.agentLog.findUnique as Mock).mockResolvedValue({
+      ...BASE_AGENT_LOG,
+      metadata: {
+        prompts: {
+          MY_PROMPT: { prompt_id: 1, prompt_version_id: 2, resolution: { value: "You are a coding agent." } },
+        },
+      },
+    });
+
+    await POST(
+      makeRequest({ evalSetId: "eval-set-1", requirement: "resolution passthrough" }),
+      makeParams(),
+    );
+
+    const triggerCall = (addNode as Mock).mock.calls.find(
+      ([, node]) => node.node_type === "EvalTrigger",
+    );
+    expect(triggerCall).toBeDefined();
+    const prompts = triggerCall![1].node_data.prompts;
+    expect(prompts).toHaveLength(1);
+    const entry = JSON.parse(prompts[0]);
+    expect(entry).toEqual({
+      name: "MY_PROMPT",
+      prompt_id: 1,
+      prompt_version_id: 2,
+      resolution: "You are a coding agent.",
+    });
+  });
+
+  test("PromptResolution map with object resolution.value is flattened to string", async () => {
+    (db.agentLog.findUnique as Mock).mockResolvedValue({
+      ...BASE_AGENT_LOG,
+      metadata: {
+        prompts: {
+          JSON_PROMPT: { prompt_id: 3, prompt_version_id: 4, resolution: { value: { key: "val" } } },
+        },
+      },
+    });
+
+    await POST(
+      makeRequest({ evalSetId: "eval-set-1", requirement: "json resolution" }),
+      makeParams(),
+    );
+
+    const triggerCall = (addNode as Mock).mock.calls.find(
+      ([, node]) => node.node_type === "EvalTrigger",
+    );
+    const entry = JSON.parse(triggerCall![1].node_data.prompts[0]);
+    expect(typeof entry.resolution).toBe("string");
+    expect(entry.resolution).toBe(String({ key: "val" }));
+  });
+
   // ── fallback: DB config null → blob-parsed config ───────────────────────
 
   test("falls back to blob-parsed config for request_params when DB config column is null", async () => {
