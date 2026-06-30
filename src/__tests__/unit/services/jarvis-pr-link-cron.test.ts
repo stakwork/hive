@@ -8,17 +8,17 @@ vi.mock("@/lib/helpers/jarvis-config", () => ({
 }));
 
 vi.mock("@/services/swarm/api/nodes", () => ({
-  addEdgeBulk: vi.fn(async () => ({ success: true, errors: [] })),
+  addEdgeByRefBulk: vi.fn(async () => ({ success: true, errors: [] })),
   searchLatestByTypes: vi.fn(async () => ({ ok: true, nodes: [] })),
 }));
 
 import { getJarvisConfigForWorkspace } from "@/lib/helpers/jarvis-config";
-import { addEdgeBulk, searchLatestByTypes } from "@/services/swarm/api/nodes";
+import { addEdgeByRefBulk, searchLatestByTypes } from "@/services/swarm/api/nodes";
 import { runJarvisPrLink } from "@/services/jarvis-pr-link-cron";
 
 const mockedDb = vi.mocked(db, true);
 const mockedConfig = vi.mocked(getJarvisConfigForWorkspace);
-const mockedAddEdgeBulk = vi.mocked(addEdgeBulk);
+const mockedAddEdge = vi.mocked(addEdgeByRefBulk);
 const mockedSearch = vi.mocked(searchLatestByTypes);
 
 const CFG = { jarvisUrl: "https://sw.sphinx.chat:8444", apiKey: "key" };
@@ -32,6 +32,26 @@ function prNode(repo: string, number: number, ref_id: string, dateSec: number) {
     date_added_to_graph: dateSec,
     properties: { repo, number },
   };
+}
+
+function taskNode(taskId: string, ref_id: string) {
+  return { ref_id, node_type: "Hivetask", date_added_to_graph: 0, properties: { task_id: taskId } };
+}
+
+/**
+ * The cron now calls searchLatestByTypes twice per workspace: once for
+ * `PullRequest` nodes and once for `Hivetask` nodes (to resolve task ref_ids).
+ * Dispatch on the requested node type so each call gets the right payload.
+ */
+function mockSearch(
+  prResult: { ok: boolean; nodes: any[]; status?: number; endpointMissing?: boolean; error?: string },
+  taskNodes: ReturnType<typeof taskNode>[] = [],
+) {
+  mockedSearch.mockImplementation(async (_cfg: any, nodeTypes: any) => {
+    if ("PullRequest" in nodeTypes) return prResult as any;
+    if ("Hivetask" in nodeTypes) return { ok: true, nodes: taskNodes } as any;
+    return { ok: true, nodes: [] } as any;
+  });
 }
 
 function setupDb(opts: { workspaces?: any[]; tasks?: any[] }) {
@@ -49,7 +69,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   delete process.env.USE_MOCKS;
   mockedConfig.mockResolvedValue(CFG as any);
-  mockedAddEdgeBulk.mockResolvedValue({ success: true, errors: [] });
+  mockedAddEdge.mockResolvedValue({ success: true, errors: [] });
   mockedSearch.mockResolvedValue({ ok: true, nodes: [] });
 });
 
@@ -87,7 +107,7 @@ describe("runJarvisPrLink", () => {
         { id: "t1", title: "T1", chatMessages: [prArtifact("https://github.com/stakwork/hive/pull/4542")] },
       ],
     });
-    mockedSearch.mockResolvedValue(found(prNode("stakwork/hive", 4542, "ref-4542", 1782430995)));
+    mockSearch(found(prNode("stakwork/hive", 4542, "ref-4542", 1782430995)), [taskNode("t1", "tref-1")]);
 
     const res = await runJarvisPrLink();
 
@@ -96,14 +116,15 @@ describe("runJarvisPrLink", () => {
       withProperties: true,
       timeoutMs: expect.any(Number),
     });
-
-    const edgeArg = mockedAddEdgeBulk.mock.calls[0][1];
-    expect(edgeArg).toHaveLength(1);
-    expect(edgeArg[0].target).toEqual({ ref_id: "ref-4542" });
-    expect((edgeArg[0].source as { node_data: unknown }).node_data).toEqual({
-      task_id: "t1",
-      name: "T1",
+    // task ref_ids are resolved via a full HiveTask pull
+    expect(mockedSearch).toHaveBeenCalledWith(CFG, { Hivetask: 100_000 }, {
+      withProperties: true,
+      timeoutMs: expect.any(Number),
     });
+
+    const edgeArg = mockedAddEdge.mock.calls[0][1];
+    expect(edgeArg).toHaveLength(1);
+    expect(edgeArg[0]).toMatchObject({ source_ref_id: "tref-1", target_ref_id: "ref-4542" });
 
     expect((mockedDb.task as any).updateMany).toHaveBeenCalledWith({
       where: { id: { in: ["t1"] } },
@@ -124,12 +145,12 @@ describe("runJarvisPrLink", () => {
         { id: "t1", title: "T1", chatMessages: [prArtifact("https://github.com/stakwork/hive/pull/9999")] },
       ],
     });
-    mockedSearch.mockResolvedValue(found(prNode("stakwork/hive", 4542, "ref-4542", 1782430995)));
+    mockSearch(found(prNode("stakwork/hive", 4542, "ref-4542", 1782430995)), [taskNode("t1", "tref-1")]);
 
     const res = await runJarvisPrLink();
 
     // No edge, and the task is NOT marked — it retries next run.
-    expect(mockedAddEdgeBulk).not.toHaveBeenCalled();
+    expect(mockedAddEdge).not.toHaveBeenCalled();
     expect((mockedDb.task as any).updateMany).not.toHaveBeenCalled();
     expect(res.results[0]).toMatchObject({ linked: 0, pending: 1 });
     // Backfill coverage was complete (uncapped full pull), so the high-water
@@ -154,11 +175,12 @@ describe("runJarvisPrLink", () => {
       ],
     });
     // Newest node is above the high-water, oldest returned is below it ⇒ boundary reached.
-    mockedSearch.mockResolvedValue(
+    mockSearch(
       found(
         prNode("stakwork/hive", 4542, "ref-4542", 1782430995),
         prNode("stakwork/hive", 4000, "ref-old", 1781000000),
       ),
+      [taskNode("t1", "tref-1")],
     );
 
     await runJarvisPrLink();
@@ -177,7 +199,7 @@ describe("runJarvisPrLink", () => {
 
     const res = await runJarvisPrLink();
 
-    expect(mockedAddEdgeBulk).not.toHaveBeenCalled();
+    expect(mockedAddEdge).not.toHaveBeenCalled();
     expect((mockedDb.task as any).updateMany).toHaveBeenCalledWith({
       where: { id: { in: ["t1"] } },
       data: { jarvisPrLinkedAt: expect.any(Date) },
@@ -201,7 +223,7 @@ describe("runJarvisPrLink", () => {
 
     const res = await runJarvisPrLink();
 
-    expect(mockedAddEdgeBulk).not.toHaveBeenCalled();
+    expect(mockedAddEdge).not.toHaveBeenCalled();
     expect((mockedDb.task as any).updateMany).not.toHaveBeenCalled();
     expect((mockedDb.workspace as any).update).not.toHaveBeenCalled();
     expect(res.results[0]).toMatchObject({ linked: 0, pending: 1 });
@@ -221,7 +243,7 @@ describe("runJarvisPrLink", () => {
 
     expect(res.results[0].skipped).toBe("jarvis search endpoint missing (404)");
     expect(res.results[0].errors).toBeUndefined();
-    expect(mockedAddEdgeBulk).not.toHaveBeenCalled();
+    expect(mockedAddEdge).not.toHaveBeenCalled();
     expect((mockedDb.task as any).updateMany).not.toHaveBeenCalled();
   });
 
@@ -232,8 +254,8 @@ describe("runJarvisPrLink", () => {
         { id: "t1", title: "T1", chatMessages: [prArtifact("https://github.com/stakwork/hive/pull/4542")] },
       ],
     });
-    mockedSearch.mockResolvedValue(found(prNode("stakwork/hive", 4542, "ref-4542", 1782430995)));
-    mockedAddEdgeBulk.mockResolvedValue({ success: false, endpointMissing: true, errors: ["404"] });
+    mockSearch(found(prNode("stakwork/hive", 4542, "ref-4542", 1782430995)), [taskNode("t1", "tref-1")]);
+    mockedAddEdge.mockResolvedValue({ success: false, endpointMissing: true, errors: ["404"] });
 
     const res = await runJarvisPrLink();
 
@@ -248,11 +270,12 @@ describe("runJarvisPrLink", () => {
       chatMessages: [prArtifact(`https://github.com/stakwork/hive/pull/${4000 + i}`)],
     }));
     setupDb({ workspaces: [{ id: "w1", slug: "w1", jarvisSyncState: null }], tasks });
-    mockedSearch.mockResolvedValue(
+    mockSearch(
       found(
         prNode("stakwork/hive", 4000, "r0", 1782430000),
         prNode("stakwork/hive", 4001, "r1", 1782430995),
       ),
+      [taskNode("t0", "tref-0"), taskNode("t1", "tref-1")],
     );
 
     const res = await runJarvisPrLink({ maxPerRun: 2 });
