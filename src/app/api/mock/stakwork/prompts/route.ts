@@ -1,90 +1,39 @@
 import { NextRequest, NextResponse } from "next/server";
+import { mockPromptsStore } from "./store";
+export type { MockPromptEntry } from "./store";
 
-// Mock prompts data
-const mockPrompts = [
-  {
-    id: 1,
-    name: "system-prompt-v1",
-    value: "You are a helpful AI assistant. Always be polite and professional.",
-    description: "Basic system prompt for general assistance",
-    created_at: "2024-01-15T10:00:00Z",
-    updated_at: "2024-02-20T15:30:00Z",
-    current_version_id: 3,
-    version_count: 5,
-    versions: [
-      {
-        id: 1,
-        prompt_id: 1,
-        value: "You are an AI assistant.",
-        created_at: "2024-01-15T10:00:00Z",
-      },
-      {
-        id: 2,
-        prompt_id: 1,
-        value: "You are a helpful AI assistant.",
-        created_at: "2024-01-20T14:00:00Z",
-      },
-      {
-        id: 3,
-        prompt_id: 1,
-        value: "You are a helpful AI assistant. Always be polite and professional.",
-        created_at: "2024-02-20T15:30:00Z",
-      },
-    ],
-  },
-  {
-    id: 2,
-    name: "code-review-prompt",
-    value: "Review this code for:\n- Bugs\n- Performance issues\n- Security vulnerabilities\n- Best practices\n\nProvide detailed feedback.",
-    description: "Prompt for AI code review tasks",
-    created_at: "2024-02-01T09:00:00Z",
-    updated_at: "2024-02-25T11:20:00Z",
-    current_version_id: 5,
-    version_count: 2,
-    versions: [
-      {
-        id: 4,
-        prompt_id: 2,
-        value: "Review this code and provide feedback.",
-        created_at: "2024-02-01T09:00:00Z",
-      },
-      {
-        id: 5,
-        prompt_id: 2,
-        value: "Review this code for:\n- Bugs\n- Performance issues\n- Security vulnerabilities\n- Best practices\n\nProvide detailed feedback.",
-        created_at: "2024-02-25T11:20:00Z",
-      },
-    ],
-  },
-  {
-    id: 3,
-    name: "new-prompt-no-history",
-    value: "This is a brand new prompt with no version history yet.",
-    description: "Testing empty history state",
-    created_at: "2024-02-27T12:00:00Z",
-    updated_at: "2024-02-27T12:00:00Z",
-    current_version_id: 6,
-    version_count: 1,
-    versions: [],
-  },
-];
-
+// ── GET /api/mock/stakwork/prompts ─────────────────────────────────────────────
+// Returns a Pagy-style paginated list (slim — no `value` field).
+// Shape: { data: { total, size, prompts: [...slim] } }
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
-  const page = parseInt(searchParams.get("page") || "1");
-  const size = parseInt(searchParams.get("size") || "10");
+  const page = parseInt(searchParams.get("page") || "1", 10);
+  const PAGE_SIZE = 20;
+
+  const all = Array.from(mockPromptsStore.values());
+  const start = (page - 1) * PAGE_SIZE;
+  const pageItems = all.slice(start, start + PAGE_SIZE);
+
+  // Slim list shape — no `value`
+  const slim = pageItems.map(({ id, name, description, usage_notation, run_count }) => ({
+    id,
+    name,
+    description,
+    usage_notation,
+    run_count,
+  }));
 
   return NextResponse.json({
     success: true,
     data: {
-      prompts: mockPrompts,
-      total: mockPrompts.length,
-      size,
-      page,
+      total: all.length,
+      size: pageItems.length,
+      prompts: slim,
     },
   });
 }
 
+// ── POST /api/mock/stakwork/prompts ────────────────────────────────────────────
 export async function POST(request: NextRequest) {
   const body = await request.json();
 
@@ -100,20 +49,22 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  const newId = Math.max(0, ...mockPromptsStore.keys()) + 1;
+  const newVersionId = newId * 10;
+
   const newPrompt = {
-    id: mockPrompts.length + 1,
+    id: newId,
     name: promptPayload.name,
-    value: promptPayload.value,
-    description: promptPayload.description || "",
+    value: promptPayload.value ?? "",
+    description: promptPayload.description ?? "",
+    current_version_id: newVersionId,
+    published_version_id: newVersionId,
     hive_version_id: hiveVersionId ?? null,
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
-    current_version_id: mockPrompts.length + 10,
-    version_count: 1,
-    versions: [] as { id: number; prompt_id: number; value: string; created_at: string }[],
   };
 
-  mockPrompts.push(newPrompt);
+  mockPromptsStore.set(newId, newPrompt);
 
   return NextResponse.json({
     success: true,
