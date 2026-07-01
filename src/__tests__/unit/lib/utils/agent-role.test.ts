@@ -7,7 +7,7 @@ describe("extractAgentRoleName", () => {
   });
 
   test("strips random suffix for other agent types", () => {
-    expect(extractAgentRoleName("coder-agent-xyz")).toBe("coder-agent");
+    expect(extractAgentRoleName("coder-agent-xyz")).toBe("coding-agent");
   });
 
   test("returns full string when no -agent pattern", () => {

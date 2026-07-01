@@ -256,7 +256,7 @@ describe("getBifrostForLLM (master reconciler)", () => {
     mockVKOk();
     mockMintOk();
 
-    const result = await getBifrostForLLM(auth, { agentName: "coder-agent" });
+    const result = await getBifrostForLLM(auth, { agentName: "coding-agent" });
     expect(result).toBeDefined();
     expect(reconcilerModule.reconcileBifrostVK).toHaveBeenCalledTimes(1);
   });
@@ -268,7 +268,7 @@ describe("getBifrostForLLM (master reconciler)", () => {
     mockVKOk({ vkValue: "sk-bf-AGENT" });
     mockMintOk();
 
-    const result = await getBifrostForLLM(auth, { agentName: "coder-agent" });
+    const result = await getBifrostForLLM(auth, { agentName: "coding-agent" });
     expect(result?.apiKey).toBe("sk-bf-AGENT");
     expect(reconcilerModule.reconcileBifrostVK).toHaveBeenCalledTimes(1);
   });

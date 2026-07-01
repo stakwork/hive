@@ -352,7 +352,7 @@ async function createAgentSession(
   // shows up on `logs.db` as `agent-name=coder-agent`. When the flag
   // is off, falls back to the model-resolved key (unchanged).
   const bifrost = await getBifrostForLLM(bifrostAuth, {
-    agentName: "coder-agent",
+    agentName: "coding-agent",
     // Pass the selected model so the Bifrost VK reconciler resolves
     // the correct provider suffix on `baseUrl` (e.g. `/genai/v1beta`
     // for google/* models). Without this it defaults to anthropic.

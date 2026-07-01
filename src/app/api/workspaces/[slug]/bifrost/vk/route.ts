@@ -25,7 +25,7 @@ const DEV_MACAROON_MAX_COST_USD = 2;
  * `logs.db` so operators can tell spend that came from a developer
  * curling the gateway apart from real agent traffic.
  */
-const DEV_MACAROON_AGENT_NAME = "coder-agent";
+const DEV_MACAROON_AGENT_NAME = "coding-agent";
 
 /**
  * GET /api/workspaces/[slug]/bifrost/vk[?model=<name>]

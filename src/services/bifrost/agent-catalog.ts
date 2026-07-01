@@ -58,7 +58,7 @@ const DEFAULT_AGENT_SPECS: Record<BifrostAgentName, DefaultAgentSpec> = {
     displayName: "Plan Agent",
     description: "Breaks work into an actionable plan.",
   },
-  "coder-agent": {
+  "coding-agent": {
     displayName: "Coder Agent",
     description: "Writes and modifies code.",
   },

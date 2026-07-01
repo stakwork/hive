@@ -819,7 +819,7 @@ export async function callStakworkAPI(params: {
   // `agentName` splits on `mode`:
   //   - `plan_mode` → "plan-agent"  (planning workflow, conversational)
   //   - everything else (`live` / `unit` / `integration` / `default`)
-  //                  → "coder-agent" (hive4 / goose-style task workflow)
+  //                  → "coding-agent" (hive4 / goose-style task workflow)
   //
   // Workflows can run for hours and burn through many LLM steps, but
   // the orchestrator's defaults are tuned for chat turns — caller
@@ -828,7 +828,7 @@ export async function callStakworkAPI(params: {
   const bifrost = await getBifrostForLLM(
     { workspaceId, workspaceSlug, userId },
     {
-      agentName: mode === "plan_mode" ? "plan-agent" : "coder-agent",
+      agentName: mode === "plan_mode" ? "plan-agent" : "coding-agent",
       // Pass the selected model so the Bifrost VK reconciler resolves
       // the correct provider suffix on `baseUrl` (e.g. `/genai/v1beta`
       // for google/* models). Without this it defaults to anthropic
