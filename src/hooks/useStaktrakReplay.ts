@@ -19,47 +19,16 @@ export function usePlaywrightReplay(
   >([]);
   const [replayScreenshots, setReplayScreenshots] = useState<Screenshot[]>([]);
   const [replayActions, setReplayActions] = useState<unknown[]>([]);
-  const [previewActions, setPreviewActions] = useState<unknown[]>([]);
 
-  const previewPlaywrightReplay = (testCode: string) => {
+  // Structured replay (P3): send the recorded steps straight to the iframe executor —
+  // no generated-text round-trip, no re-parse. `steps` comes from useStaktrak's
+  // getReplaySteps(). The app is reloaded first so accumulating state (counters, etc.)
+  // reproduces cleanly.
+  const startStructuredReplay = (steps: unknown[]) => {
     if (!iframeRef?.current?.contentWindow) {
       return false;
     }
-
-    if (!testCode || typeof testCode !== "string") {
-      return false;
-    }
-
-    if (!testCode.includes("page.") || !testCode.includes("test(")) {
-      return false;
-    }
-
-    try {
-      iframeRef.current.contentWindow.postMessage(
-        {
-          type: "staktrak-playwright-replay-preview",
-          testCode,
-        },
-        "*",
-      );
-
-      return true;
-    } catch (error) {
-      console.error("Error previewing Playwright test:", error);
-      return false;
-    }
-  };
-
-  const startPlaywrightReplay = (testCode: string) => {
-    if (!iframeRef?.current?.contentWindow) {
-      return false;
-    }
-
-    if (!testCode || typeof testCode !== "string") {
-      return false;
-    }
-
-    if (!testCode.includes("page.") || !testCode.includes("test(")) {
+    if (!Array.isArray(steps) || steps.length === 0) {
       return false;
     }
 
@@ -71,32 +40,45 @@ export function usePlaywrightReplay(
     setReplayScreenshots([]);
     setReplayActions([]);
 
-    try {
-      const container = document.querySelector(".iframe-container");
-      if (container) {
-        container.classList.add("playwright-replaying");
-      }
-
-      iframeRef.current.contentWindow.postMessage(
-        {
-          type: "staktrak-playwright-replay-start",
-          testCode,
-        },
-        "*",
-      );
-
-      return true;
-    } catch (error) {
-      console.error("Error starting Playwright replay:", error);
-      setIsPlaywrightReplaying(false);
-
-      const container = document.querySelector(".iframe-container");
-      if (container) {
-        container.classList.remove("playwright-replaying");
-      }
-
-      return false;
+    const iframe = iframeRef.current;
+    const container = document.querySelector(".iframe-container");
+    if (container) {
+      container.classList.add("playwright-replaying");
     }
+
+    const send = () => {
+      try {
+        iframe.contentWindow?.postMessage(
+          { type: "staktrak-playwright-replay-structured", actions: steps },
+          "*",
+        );
+      } catch (error) {
+        console.error("Error starting structured replay:", error);
+        setIsPlaywrightReplaying(false);
+        if (container) {
+          container.classList.remove("playwright-replaying");
+        }
+      }
+    };
+
+    // The iframe is a cross-origin pod, so contentWindow.location.reload() would throw.
+    // Reload by reassigning src (allowed cross-origin), then send the steps once the
+    // fresh document has loaded and staktrak's replay listener is ready.
+    const onLoad = () => {
+      iframe.removeEventListener("load", onLoad);
+      setTimeout(send, 250); // let initial render + listeners settle
+    };
+    iframe.addEventListener("load", onLoad);
+
+    try {
+      // eslint-disable-next-line no-self-assign
+      iframe.src = iframe.src; // trigger reload
+    } catch (error) {
+      console.error("Error reloading iframe for replay:", error);
+      iframe.removeEventListener("load", onLoad);
+      send(); // fallback: replay without a reset
+    }
+    return true;
   };
 
   const pausePlaywrightReplay = () => {
@@ -149,15 +131,6 @@ export function usePlaywrightReplay(
       if (!data || !data.type) return;
 
       switch (data.type) {
-        case "staktrak-playwright-replay-preview-ready":
-          setPreviewActions(data.actions || []);
-          break;
-
-        case "staktrak-playwright-replay-preview-error":
-          console.error("Playwright preview error:", data.error);
-          setPreviewActions([]);
-          break;
-
         case "staktrak-playwright-replay-started":
           setPlaywrightProgress({ current: 0, total: data.totalActions || 0 });
           setReplayActions(data.actions || []);
@@ -303,9 +276,7 @@ export function usePlaywrightReplay(
     replayErrors,
     replayScreenshots,
     replayActions,
-    previewActions,
-    previewPlaywrightReplay,
-    startPlaywrightReplay,
+    startStructuredReplay,
     pausePlaywrightReplay,
     resumePlaywrightReplay,
     stopPlaywrightReplay,
