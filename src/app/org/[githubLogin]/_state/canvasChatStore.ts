@@ -229,6 +229,13 @@ export interface CanvasChatMessage {
     fireAt: string; // ISO timestamp
     status: "PENDING" | "FIRED" | "CANCELLED" | "FAILED";
   };
+  /**
+   * userId of the human who sent this user message. Absent on assistant rows
+   * and on optimistic local messages (treated as "own" by the renderer).
+   * Stamped server-side in `persistCanvasUserMessage`; never accepted from
+   * the client (IDOR-safe).
+   */
+  senderId?: string;
 }
 
 /**
@@ -282,6 +289,14 @@ export interface CanvasConversation {
    */
   forkedFromShareId: string | null;
   messages: CanvasChatMessage[];
+  /**
+   * Batch-resolved display info for all human senders in this conversation.
+   * Keyed by userId (`senderId` on `CanvasChatMessage`). Populated when the
+   * conversation is loaded from the server (history popover, `?chat=` preload,
+   * live-sync). Used by `SidebarChat` to render avatar + username above
+   * other-user bubbles.
+   */
+  senderProfiles: Record<string, { username: string; avatarUrl?: string }>;
   isLoading: boolean;
   /**
    * `true` for the full lifetime of a streaming response — from the
@@ -479,6 +494,15 @@ interface CanvasChatState {
     conversationId: string,
     serverId: string,
   ) => void;
+  /**
+   * Store the batch-resolved sender profiles for a conversation. Called after
+   * loading a conversation from the server so `SidebarChat` can render
+   * attribution on non-own user messages.
+   */
+  setSenderProfiles: (
+    conversationId: string,
+    profiles: Record<string, { username: string; avatarUrl?: string }>,
+  ) => void;
 
   // ─── Message actions ─────────────────────────────────────────────────
   appendUserMessage: (
@@ -598,6 +622,7 @@ export const useCanvasChatStore = create<CanvasChatState>()(
           serverConversationId: serverConversationId ?? null,
           forkedFromShareId: forkedFromShareId ?? null,
           messages: seedMessages ?? [],
+          senderProfiles: {},
           isLoading: false,
           isStreaming: false,
           activeToolCalls: [],
@@ -711,6 +736,22 @@ export const useCanvasChatStore = create<CanvasChatState>()(
           },
           false,
           "setServerConversationId",
+        ),
+
+      setSenderProfiles: (conversationId, profiles) =>
+        set(
+          (s) => {
+            const conv = s.conversations[conversationId];
+            if (!conv) return s;
+            return {
+              conversations: {
+                ...s.conversations,
+                [conversationId]: { ...conv, senderProfiles: profiles },
+              },
+            };
+          },
+          false,
+          "setSenderProfiles",
         ),
 
       appendUserMessage: (conversationId, message) =>

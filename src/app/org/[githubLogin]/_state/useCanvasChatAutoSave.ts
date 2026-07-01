@@ -68,7 +68,8 @@ interface AutoSaveArgs {
  * `CanvasChatMessage[]` (timestamps → `Date`). Mirrors the hydration in
  * `CanvasHistoryPopover.handleItemClick`.
  */
-function hydrateServerMessages(raw: unknown[]): CanvasChatMessage[] {
+/** @internal exported for unit-testing only */
+export function hydrateServerMessages(raw: unknown[]): CanvasChatMessage[] {
   return raw
     .filter(
       (m): m is Record<string, unknown> =>
@@ -91,6 +92,7 @@ function hydrateServerMessages(raw: unknown[]): CanvasChatMessage[] {
       approvalResult: m.approvalResult as CanvasChatMessage["approvalResult"],
       deferredCheck: m.deferredCheck as CanvasChatMessage["deferredCheck"],
       source: m.source as CanvasChatMessage["source"],
+      senderId: m.senderId as string | undefined,
     }));
 }
 
@@ -197,8 +199,15 @@ export function useCanvasChatAutoSave({ githubLogin }: AutoSaveArgs) {
         // rows, so the no-message-loss invariant holds.
         const reconciled = reconcilePlannerSources(merged.messages, mapped);
 
-        if (merged.added.length === 0 && !reconciled.changed) return; // in sync
         const store = useCanvasChatStore.getState();
+
+        // Always refresh sender profiles from the latest server response so
+        // avatars/usernames are fresh even when no new messages arrived.
+        if (body.senderProfiles && typeof body.senderProfiles === "object") {
+          store.setSenderProfiles(conversationId, body.senderProfiles);
+        }
+
+        if (merged.added.length === 0 && !reconciled.changed) return; // in sync
         store.setConversationMessages(conversationId, reconciled.messages);
 
         // The user is looking at this chat (only the active conv is

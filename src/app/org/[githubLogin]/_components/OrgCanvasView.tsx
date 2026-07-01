@@ -218,6 +218,8 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
   const sharedChatId = searchParams.get("chat");
   const [chatInitialMessages, setChatInitialMessages] =
     useState<CanvasChatMessage[] | null>(null);
+  const [chatInitialSenderProfiles, setChatInitialSenderProfiles] =
+    useState<Record<string, { username: string; avatarUrl?: string }>>({});
   const [chatLoadComplete, setChatLoadComplete] = useState(false);
 
   // Synthetic "My Activity" intro — fetched from /api/profile/activity.
@@ -314,6 +316,9 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
             timestamp: new Date(m.timestamp as unknown as string),
           }));
           setChatInitialMessages(seeded);
+        }
+        if (data?.senderProfiles && typeof data.senderProfiles === "object") {
+          setChatInitialSenderProfiles(data.senderProfiles);
         }
       })
       .catch(() => {})
@@ -892,6 +897,12 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
           conversationId,
         });
       }
+    }
+
+    // Seed sender profiles from the preloaded ?chat= conversation so
+    // SidebarChat can render attribution on non-own user messages.
+    if (Object.keys(chatInitialSenderProfiles).length > 0) {
+      useCanvasChatStore.getState().setSenderProfiles(conversationId, chatInitialSenderProfiles);
     }
 
     setConversationStarted(true);

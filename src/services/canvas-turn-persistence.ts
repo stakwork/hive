@@ -97,6 +97,8 @@ export interface StoredMessage {
   toolCalls?: StoredToolCall[];
   attachments?: StoredAttachment[];
   source?: { kind: string; featureId?: string; plannerMessageId?: string };
+  /** userId of the human who sent this message; absent on assistant rows. */
+  senderId?: string;
   // Approval-flow metadata round-tripping through the JSON. Untyped here
   // (the canonical types live in `src/lib/proposals/types.ts`); the
   // render-side store re-narrows them.

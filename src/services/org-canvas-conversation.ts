@@ -110,6 +110,7 @@ export async function persistCanvasUserMessage(args: {
     role: "user",
     content,
     timestamp: new Date().toISOString(),
+    senderId: userId,
     ...(attachments && attachments.length > 0 ? { attachments } : {}),
   };
 
