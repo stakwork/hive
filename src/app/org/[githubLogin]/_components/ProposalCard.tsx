@@ -232,9 +232,33 @@ export function ProposalCard({
   const approvedSubtext = useMemo(() => {
     if (status.status !== "approved") return null;
     const r = status.result;
+
+    // Feature approvals always link to the feature plan page.
+    if (r.kind === "feature" && r.createdEntityId && r.workspaceSlug) {
+      const onCurrent = r.landedOn === currentRef;
+      const text = onCurrent
+        ? "Created on this canvas"
+        : `Created on ${r.landedOnName ?? (r.landedOn === "" ? "the org canvas" : labelForRef(r.landedOn))}`;
+      return {
+        text,
+        deepLink: `/w/${r.workspaceSlug}/plan/${r.createdEntityId}` as string | null,
+        newTab: true,
+      };
+    }
+
+    // Feature approval without slug (older result) — text only, no link.
+    if (r.kind === "feature") {
+      const onCurrent = r.landedOn === currentRef;
+      const text = onCurrent
+        ? "Created on this canvas"
+        : `Created on ${r.landedOnName ?? (r.landedOn === "" ? "the org canvas" : labelForRef(r.landedOn))}`;
+      return { text, deepLink: null as string | null, newTab: false };
+    }
+
+    // Initiative / milestone: keep existing behavior unchanged.
     const onCurrent = r.landedOn === currentRef;
     if (onCurrent) {
-      return { text: "Created on this canvas", deepLink: null as string | null };
+      return { text: "Created on this canvas", deepLink: null as string | null, newTab: false };
     }
     const label =
       r.landedOnName ??
@@ -243,7 +267,7 @@ export function ProposalCard({
       r.landedOn === ""
         ? `/org/${githubLogin}`
         : `/org/${githubLogin}?canvas=${encodeURIComponent(r.landedOn)}`;
-    return { text: `Created on ${label}`, deepLink: href };
+    return { text: `Created on ${label}`, deepLink: href, newTab: false };
   }, [status, currentRef, githubLogin]);
 
   return (
@@ -321,6 +345,10 @@ export function ProposalCard({
                   href={approvedSubtext.deepLink}
                   className="inline-flex items-center hover:underline"
                   title="Open"
+                  {...(approvedSubtext.newTab && {
+                    target: "_blank",
+                    rel: "noopener noreferrer",
+                  })}
                 >
                   <ExternalLink className="ml-0.5 h-3 w-3" />
                 </a>
