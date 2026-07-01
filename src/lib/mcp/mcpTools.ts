@@ -4,6 +4,7 @@ import { createFeature } from "@/services/roadmap/features";
 import { sendFeatureChatMessage } from "@/services/roadmap/feature-chat";
 import { createTicket } from "@/services/roadmap/tickets";
 import { sendMessageToStakwork } from "@/services/task-workflow";
+import { writePromptThrough } from "@/services/prompts/prompt-sync";
 import { isDevelopmentMode } from "@/lib/runtime";
 import type { PullRequestContent } from "@/lib/chat";
 import {
@@ -1257,4 +1258,104 @@ async function fetchStatusItems(
 
   merged.sort(statusItemComparator);
   return merged;
+}
+
+// ---------------------------------------------------------------------------
+// Prompt tools (stakwork-workspace-gated)
+// ---------------------------------------------------------------------------
+
+/**
+ * Create a new versioned prompt template in the Hive prompt library.
+ * Name must be UPPERCASE_UNDERSCORE; duplicate names are rejected.
+ * Gated to the stakwork workspace (same as `create_workflow_task`).
+ */
+export async function mcpCreatePrompt(
+  auth: WorkspaceAuth,
+  name: string,
+  value: string,
+  description?: string,
+): Promise<McpToolResult> {
+  if (!isWorkflowTasksEnabled(auth)) {
+    return mcpError(
+      "Error: prompt tools are only supported on the stakwork workspace",
+    );
+  }
+
+  try {
+    const { prompt, version } = await writePromptThrough({
+      name,
+      value,
+      description,
+      userId: auth.userId,
+    });
+
+    return mcpOk({
+      id: prompt.id,
+      name: prompt.name,
+      value: prompt.value,
+      description: prompt.description,
+      versionId: version.id,
+      versionNumber: version.versionNumber,
+    });
+  } catch (error) {
+    console.error("Error creating prompt:", error);
+    const status = (error as { status?: number }).status;
+    if (status === 400) {
+      return mcpError(
+        "Error: prompt name must contain only uppercase letters, digits, and underscores",
+      );
+    }
+    if (status === 409) {
+      return mcpError("Error: a prompt with that name already exists");
+    }
+    const msg =
+      error instanceof Error ? error.message : "Could not create prompt";
+    return mcpError(`Error: ${msg}`);
+  }
+}
+
+/**
+ * Push a new version of an existing prompt. Prior versions are preserved —
+ * this does NOT overwrite history. Only value and description are updatable
+ * (no rename). Gated to the stakwork workspace.
+ */
+export async function mcpUpdatePrompt(
+  auth: WorkspaceAuth,
+  promptId: string,
+  value: string,
+  description?: string,
+): Promise<McpToolResult> {
+  if (!isWorkflowTasksEnabled(auth)) {
+    return mcpError(
+      "Error: prompt tools are only supported on the stakwork workspace",
+    );
+  }
+
+  try {
+    const { prompt, version } = await writePromptThrough({
+      promptId,
+      name: "", // resolved internally by writePromptThrough when promptId is set
+      value,
+      description,
+      userId: auth.userId,
+    });
+
+    return mcpOk({
+      id: prompt.id,
+      name: prompt.name,
+      value: prompt.value,
+      description: prompt.description,
+      versionId: version.id,
+      versionNumber: version.versionNumber,
+    });
+  } catch (error) {
+    console.error("Error updating prompt:", error);
+    const status = (error as { status?: number }).status;
+    if (status === 404) {
+      return mcpError("Error: prompt not found");
+    }
+    const msg =
+      error instanceof Error ? error.message : "Could not update prompt";
+    return mcpError(`Error: ${msg}`);
+  }
 }
