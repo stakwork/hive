@@ -4,6 +4,12 @@ import { createFeature } from "@/services/roadmap/features";
 import { sendFeatureChatMessage } from "@/services/roadmap/feature-chat";
 import { createTicket } from "@/services/roadmap/tickets";
 import { sendMessageToStakwork } from "@/services/task-workflow";
+import { writePromptThrough } from "@/services/prompts/prompt-sync";
+import {
+  getResolvedPrompt,
+  listPromptVersions,
+  getResolvedPromptVersion,
+} from "@/services/prompts/prompt-read";
 import { isDevelopmentMode } from "@/lib/runtime";
 import type { PullRequestContent } from "@/lib/chat";
 import {
@@ -1257,4 +1263,183 @@ async function fetchStatusItems(
 
   merged.sort(statusItemComparator);
   return merged;
+}
+
+// ---------------------------------------------------------------------------
+// Prompt tools (stakwork-workspace-gated)
+// ---------------------------------------------------------------------------
+
+/**
+ * Create a new versioned prompt template in the Hive prompt library.
+ * Name must be UPPERCASE_UNDERSCORE; duplicate names are rejected.
+ * Gated to the stakwork workspace (same as `create_workflow_task`).
+ */
+export async function mcpCreatePrompt(
+  auth: WorkspaceAuth,
+  name: string,
+  value: string,
+  description?: string,
+): Promise<McpToolResult> {
+  if (!isWorkflowTasksEnabled(auth)) {
+    return mcpError(
+      "Error: prompt tools are only supported on the stakwork workspace",
+    );
+  }
+
+  try {
+    const { prompt, version } = await writePromptThrough({
+      name,
+      value,
+      description,
+      userId: auth.userId,
+    });
+
+    return mcpOk({
+      id: prompt.id,
+      name: prompt.name,
+      value: prompt.value,
+      description: prompt.description,
+      versionId: version.id,
+      versionNumber: version.versionNumber,
+    });
+  } catch (error) {
+    console.error("Error creating prompt:", error);
+    const status = (error as { status?: number }).status;
+    if (status === 400) {
+      return mcpError(
+        "Error: prompt name must contain only uppercase letters, digits, and underscores",
+      );
+    }
+    if (status === 409) {
+      return mcpError("Error: a prompt with that name already exists");
+    }
+    const msg =
+      error instanceof Error ? error.message : "Could not create prompt";
+    return mcpError(`Error: ${msg}`);
+  }
+}
+
+/**
+ * Push a new version of an existing prompt. Prior versions are preserved —
+ * this does NOT overwrite history. Only value and description are updatable
+ * (no rename). Gated to the stakwork workspace.
+ */
+export async function mcpUpdatePrompt(
+  auth: WorkspaceAuth,
+  promptId: string,
+  value: string,
+  description?: string,
+): Promise<McpToolResult> {
+  if (!isWorkflowTasksEnabled(auth)) {
+    return mcpError(
+      "Error: prompt tools are only supported on the stakwork workspace",
+    );
+  }
+
+  try {
+    const { prompt, version } = await writePromptThrough({
+      promptId,
+      name: "", // resolved internally by writePromptThrough when promptId is set
+      value,
+      description,
+      userId: auth.userId,
+    });
+
+    return mcpOk({
+      id: prompt.id,
+      name: prompt.name,
+      value: prompt.value,
+      description: prompt.description,
+      versionId: version.id,
+      versionNumber: version.versionNumber,
+    });
+  } catch (error) {
+    console.error("Error updating prompt:", error);
+    const status = (error as { status?: number }).status;
+    if (status === 404) {
+      return mcpError("Error: prompt not found");
+    }
+    const msg =
+      error instanceof Error ? error.message : "Could not update prompt";
+    return mcpError(`Error: ${msg}`);
+  }
+}
+
+// ─── Prompt Read Tools ────────────────────────────────────────────────────────
+
+/**
+ * Fetch a prompt by id or name and return the fully resolved text of its
+ * published/live version. No workspace gate — available to all authenticated callers.
+ */
+export async function mcpGetPrompt(
+  _auth: WorkspaceAuth,
+  idOrName: string,
+  variables: Record<string, string>,
+): Promise<McpToolResult> {
+  const result = await getResolvedPrompt(idOrName, variables);
+
+  if ("notFound" in result) {
+    return mcpError(`Error: prompt '${idOrName}' not found`);
+  }
+  if ("error" in result) {
+    return mcpError(`Error: ${result.error}`);
+  }
+
+  return mcpOk({
+    id: result.id,
+    name: result.name,
+    versionId: result.versionId,
+    versionNumber: result.versionNumber,
+    resolvedText: result.resolvedText,
+    missingVariables: result.missingVariables,
+  });
+}
+
+/**
+ * List all versions of a prompt with published/current markers.
+ * Use to pick a specific version for deterministic eval replay via get_prompt_version.
+ */
+export async function mcpGetPromptVersions(
+  _auth: WorkspaceAuth,
+  idOrName: string,
+): Promise<McpToolResult> {
+  const result = await listPromptVersions(idOrName);
+
+  if ("notFound" in result) {
+    return mcpError(`Error: prompt '${idOrName}' not found`);
+  }
+  if ("error" in result) {
+    return mcpError(`Error: ${result.error}`);
+  }
+
+  return mcpOk(result);
+}
+
+/**
+ * Fetch and resolve a specific version of a prompt by version id.
+ * IDOR-guarded: versionId must belong to the prompt resolved from idOrName.
+ */
+export async function mcpGetPromptVersion(
+  _auth: WorkspaceAuth,
+  idOrName: string,
+  versionId: string,
+  variables: Record<string, string>,
+): Promise<McpToolResult> {
+  const result = await getResolvedPromptVersion(idOrName, versionId, variables);
+
+  if ("notFound" in result) {
+    return mcpError(`Error: version '${versionId}' not found for prompt '${idOrName}'`);
+  }
+  if ("error" in result) {
+    return mcpError(`Error: ${result.error}`);
+  }
+
+  return mcpOk({
+    id: result.id,
+    name: result.name,
+    versionId: result.versionId,
+    versionNumber: result.versionNumber,
+    resolvedText: result.resolvedText,
+    missingVariables: result.missingVariables,
+  });
 }

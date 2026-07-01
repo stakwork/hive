@@ -16,6 +16,11 @@ import {
   mcpReadTask,
   mcpCreateTask,
   mcpCreateFeatureTask,
+  mcpCreatePrompt,
+  mcpUpdatePrompt,
+  mcpGetPrompt,
+  mcpGetPromptVersions,
+  mcpGetPromptVersion,
   mcpCreateWorkflowTask,
   isWorkflowTasksEnabled,
   mcpUpdateTask,
@@ -50,6 +55,11 @@ const AVAILABLE_TOOLS = [
   "create_feature_task",
   "create_workflow_task",
   "update_task",
+  "create_prompt",
+  "update_prompt",
+  "get_prompt",
+  "get_prompt_versions",
+  "get_prompt_version",
   "send_to_task_agent",
   "check_status",
   "send_message",
@@ -713,6 +723,173 @@ function createServer(
       const result = await getWorkspaceAuth(authExtra, "update_task", editor);
       if (result.error) return result.error;
       return mcpUpdateTask(result.auth!, taskId, { title, description, priority, dependsOnTaskIds });
+    },
+  );
+
+  server.registerTool(
+    "create_prompt",
+    {
+      title: "Create Prompt",
+      description: [
+        "Create a new versioned prompt template in the stakwork prompt library.",
+        "",
+        "**Availability.** Only supported on the `stakwork` workspace.",
+        "",
+        "**Name format.** Must be UPPERCASE letters, digits, and underscores only (e.g. `MY_PROMPT_V2`). Duplicate names are rejected.",
+        "",
+        "Returns the new prompt id, name, and initial version info.",
+      ].join("\n"),
+      inputSchema: {
+        name: z
+          .string()
+          .describe(
+            "Prompt name — UPPERCASE_UNDERSCORE format only (e.g. MY_PROMPT). Must be unique.",
+          ),
+        value: z.string().describe("The prompt text/template content."),
+        description: z
+          .string()
+          .optional()
+          .describe("Optional human-readable description of what this prompt does."),
+      },
+    },
+    async (
+      { name, value, description }: { name: string; value: string; description?: string },
+      extra,
+    ) => {
+      const authExtra = extra.authInfo?.extra as McpAuthExtra | undefined;
+      const result = await getWorkspaceAuth(authExtra, "create_prompt");
+      if (result.error) return result.error;
+      if (!isWorkflowTasksEnabled(result.auth!)) {
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: "Error: prompt tools are only supported on the stakwork workspace",
+            },
+          ],
+          isError: true,
+        };
+      }
+      return mcpCreatePrompt(result.auth!, name, value, description);
+    },
+  );
+
+  server.registerTool(
+    "update_prompt",
+    {
+      title: "Update Prompt",
+      description: [
+        "Push a new version of an existing prompt. The prior versions are preserved — this does NOT overwrite history.",
+        "",
+        "**Availability.** Only supported on the `stakwork` workspace.",
+        "",
+        "Pass the prompt `id` (not name) and the new `value`. Optionally update `description`. The prompt name cannot be changed via this tool.",
+      ].join("\n"),
+      inputSchema: {
+        promptId: z.string().describe("ID of the prompt to update."),
+        value: z
+          .string()
+          .describe("New prompt content — creates a new PromptVersion."),
+        description: z
+          .string()
+          .optional()
+          .describe("Updated description. Omit to keep the existing description."),
+      },
+    },
+    async (
+      { promptId, value, description }: { promptId: string; value: string; description?: string },
+      extra,
+    ) => {
+      const authExtra = extra.authInfo?.extra as McpAuthExtra | undefined;
+      const result = await getWorkspaceAuth(authExtra, "update_prompt");
+      if (result.error) return result.error;
+      if (!isWorkflowTasksEnabled(result.auth!)) {
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: "Error: prompt tools are only supported on the stakwork workspace",
+            },
+          ],
+          isError: true,
+        };
+      }
+      return mcpUpdatePrompt(result.auth!, promptId, value, description);
+    },
+  );
+
+  server.registerTool(
+    "get_prompt",
+    {
+      title: "Get Prompt",
+      description:
+        "Fetch a prompt by id or name. Returns the fully resolved text (nested prompt references expanded, variables interpolated) of the published/live version. Pass variables as a record to fill {{VARIABLE_NAME}} placeholders; any unfilled placeholder is left intact and listed in missingVariables.",
+      inputSchema: {
+        idOrName: z
+          .string()
+          .describe(
+            "Prompt cuid id OR UPPERCASE_UNDERSCORE name (e.g. CANVAS_AGENT_SYSTEM_PROMPT).",
+          ),
+        variables: z
+          .record(z.string(), z.string())
+          .optional()
+          .describe(
+            "Variable values to interpolate into the prompt. Keys match {{VARIABLE_NAME}} placeholders.",
+          ),
+      },
+    },
+    async ({ idOrName, variables }, extra) => {
+      const authExtra = extra.authInfo?.extra as McpAuthExtra | undefined;
+      const result = await getWorkspaceAuth(authExtra, "get_prompt");
+      if (result.error) return result.error;
+      return mcpGetPrompt(result.auth!, idOrName, variables ?? {});
+    },
+  );
+
+  server.registerTool(
+    "get_prompt_versions",
+    {
+      title: "Get Prompt Versions",
+      description:
+        "List all versions of a prompt (by id or name). Returns version ids, version numbers, published/current markers, and timestamps — use to pick a specific version for eval replay with get_prompt_version.",
+      inputSchema: {
+        idOrName: z.string().describe("Prompt cuid id OR name."),
+      },
+    },
+    async ({ idOrName }, extra) => {
+      const authExtra = extra.authInfo?.extra as McpAuthExtra | undefined;
+      const result = await getWorkspaceAuth(authExtra, "get_prompt_versions");
+      if (result.error) return result.error;
+      return mcpGetPromptVersions(result.auth!, idOrName);
+    },
+  );
+
+  server.registerTool(
+    "get_prompt_version",
+    {
+      title: "Get Prompt Version",
+      description:
+        "Fetch and resolve a specific version of a prompt by version id. Use for deterministic eval replay — the version's text is snapshotted at creation so it never changes. Variables are interpolated (soft mode: unfilled placeholders stay intact).",
+      inputSchema: {
+        idOrName: z.string().describe("Prompt cuid id OR name."),
+        versionId: z
+          .string()
+          .describe(
+            "Specific PromptVersion id to fetch — enables deterministic eval replay.",
+          ),
+        variables: z
+          .record(z.string(), z.string())
+          .optional()
+          .describe(
+            "Variable values to interpolate. Missing vars are returned in missingVariables; their placeholders remain intact.",
+          ),
+      },
+    },
+    async ({ idOrName, versionId, variables }, extra) => {
+      const authExtra = extra.authInfo?.extra as McpAuthExtra | undefined;
+      const result = await getWorkspaceAuth(authExtra, "get_prompt_version");
+      if (result.error) return result.error;
+      return mcpGetPromptVersion(result.auth!, idOrName, versionId, variables ?? {});
     },
   );
 
