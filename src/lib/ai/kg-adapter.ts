@@ -315,6 +315,11 @@ export async function kgGetNeighbors(
       expand: "edges",
       limit: String(KG_QUERY_LIMIT),
       sort_by: "importance",
+      // Resolve the node_type filter to the REAL Neo4j label (not the
+      // capitalize-normalized schema type) so multi-hump labels like
+      // `PullRequest` match. Single-word types are unaffected. See
+      // docs/plans/graph-walker-label-canonicalization.md.
+      canonicalize: "false",
     });
     if (opts?.edgeTypes && opts.edgeTypes.length > 0) {
       params.set("edge_type", toPythonListLiteral(opts.edgeTypes));
@@ -391,16 +396,22 @@ export interface KgSchemaType {
   description: string;
 }
 
-interface JarvisSchemaAllResponse {
-  schemas?: Array<{ type?: string; description?: string }>;
-  edges?: unknown[];
+interface JarvisGraphLabelsResponse {
+  labels?: Array<{ type?: string; description?: string }>;
 }
 
 /**
- * Fetch the workspace's KG node-type ontology from `GET /schema/all?concise=true`.
+ * Fetch the workspace's KG node-type ontology from `GET /graph/labels`.
  *
- * Returns a `{ type, description }[]` list parsed from `data.schemas` (edges ignored).
- * Returns `[]` on non-ok response, thrown fetch, or malformed/missing schemas.
+ * Unlike `/schema/all` (which reports capitalize-normalized schema types —
+ * e.g. `Pullrequest`), `/graph/labels` returns the REAL Neo4j labels via
+ * `db.labels()` (e.g. `PullRequest`), merged with schema descriptions where
+ * available and including newly-ingested types that have no schema yet. This is
+ * the correct discovery source for the graph-walker type filters, which now
+ * match against real labels. See docs/plans/graph-walker-label-canonicalization.md.
+ *
+ * Returns a `{ type, description }[]` list parsed from `data.labels`.
+ * Returns `[]` on non-ok response, thrown fetch, or malformed/missing labels.
  * Never throws — matches the behavior of `kgGetNode` / `kgSearch`.
  */
 export async function kgGetOntology(
@@ -408,12 +419,12 @@ export async function kgGetOntology(
   swarmApiKey: string,
 ): Promise<KgSchemaType[]> {
   try {
-    const url = `${jarvisUrl}/schema/all?concise=true`;
+    const url = `${jarvisUrl.replace(/\/$/, "")}/graph/labels`;
     const res = await kgFetch(url, swarmApiKey);
     if (!res.ok) return [];
-    const data = (await res.json()) as JarvisSchemaAllResponse;
-    if (!Array.isArray(data?.schemas)) return [];
-    return data.schemas
+    const data = (await res.json()) as JarvisGraphLabelsResponse;
+    if (!Array.isArray(data?.labels)) return [];
+    return data.labels
       .filter((s) => typeof s?.type === "string" && s.type.length > 0)
       .map((s) => ({ type: s.type as string, description: s.description ?? "" }));
   } catch {
@@ -491,6 +502,10 @@ export async function kgSearch(
     const params = new URLSearchParams({
       q: query,
       limit: String(opts?.limit ?? 20),
+      // Match against the REAL Neo4j label so multi-hump types (e.g.
+      // `PullRequest`) resolve. Unresolved types simply match nothing (no 400).
+      // See docs/plans/graph-walker-label-canonicalization.md.
+      canonicalize: "false",
     });
     if (opts?.type) {
       params.set("node_type", opts.type);

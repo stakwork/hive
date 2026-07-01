@@ -24,26 +24,26 @@ describe("isBifrostEnabledForAgent", () => {
   describe("default-open states", () => {
     it("returns true when env var is unset (back-compat)", () => {
       delete process.env.BIFROST_ENABLED_AGENTS;
-      expect(isBifrostEnabledForAgent("coder-agent")).toBe(true);
+      expect(isBifrostEnabledForAgent("coding-agent")).toBe(true);
       expect(isBifrostEnabledForAgent("plan-agent")).toBe(true);
       expect(isBifrostEnabledForAgent("repo-agent")).toBe(true);
     });
 
     it("returns true when env var is empty string", () => {
       process.env.BIFROST_ENABLED_AGENTS = "";
-      expect(isBifrostEnabledForAgent("coder-agent")).toBe(true);
+      expect(isBifrostEnabledForAgent("coding-agent")).toBe(true);
     });
 
     it("returns true for whitespace-only env value", () => {
       process.env.BIFROST_ENABLED_AGENTS = "   ";
-      expect(isBifrostEnabledForAgent("coder-agent")).toBe(true);
+      expect(isBifrostEnabledForAgent("coding-agent")).toBe(true);
     });
 
     it.each(["true", "all", "*", "TRUE", "All", " true ", " * "])(
       'returns true for any agentName when env is %j',
       (value) => {
         process.env.BIFROST_ENABLED_AGENTS = value;
-        expect(isBifrostEnabledForAgent("coder-agent")).toBe(true);
+        expect(isBifrostEnabledForAgent("coding-agent")).toBe(true);
         expect(isBifrostEnabledForAgent("unknown-future-agent")).toBe(true);
       },
     );
@@ -52,68 +52,68 @@ describe("isBifrostEnabledForAgent", () => {
   describe("explicit off state", () => {
     it('returns false when env is "false"', () => {
       process.env.BIFROST_ENABLED_AGENTS = "false";
-      expect(isBifrostEnabledForAgent("coder-agent")).toBe(false);
+      expect(isBifrostEnabledForAgent("coding-agent")).toBe(false);
       expect(isBifrostEnabledForAgent("plan-agent")).toBe(false);
     });
 
     it('returns false for "false" regardless of case', () => {
       process.env.BIFROST_ENABLED_AGENTS = "False";
-      expect(isBifrostEnabledForAgent("coder-agent")).toBe(false);
+      expect(isBifrostEnabledForAgent("coding-agent")).toBe(false);
       process.env.BIFROST_ENABLED_AGENTS = "FALSE";
-      expect(isBifrostEnabledForAgent("coder-agent")).toBe(false);
+      expect(isBifrostEnabledForAgent("coding-agent")).toBe(false);
     });
   });
 
   describe("CSV allow-list", () => {
     it("returns true for an exact-match agentName", () => {
       process.env.BIFROST_ENABLED_AGENTS =
-        "plan-agent,coder-agent,pr-monitor";
+        "plan-agent,coding-agent,pr-monitor";
       expect(isBifrostEnabledForAgent("plan-agent")).toBe(true);
-      expect(isBifrostEnabledForAgent("coder-agent")).toBe(true);
+      expect(isBifrostEnabledForAgent("coding-agent")).toBe(true);
       expect(isBifrostEnabledForAgent("pr-monitor")).toBe(true);
     });
 
     it("returns false for agentNames absent from the allow-list", () => {
-      process.env.BIFROST_ENABLED_AGENTS = "plan-agent,coder-agent";
+      process.env.BIFROST_ENABLED_AGENTS = "plan-agent,coding-agent";
       expect(isBifrostEnabledForAgent("repo-agent")).toBe(false);
       expect(isBifrostEnabledForAgent("chat-agent")).toBe(false);
       expect(isBifrostEnabledForAgent("pr-monitor")).toBe(false);
     });
 
     it("matches case-insensitively", () => {
-      process.env.BIFROST_ENABLED_AGENTS = "Plan-Agent,Coder-Agent";
+      process.env.BIFROST_ENABLED_AGENTS = "Plan-Agent,Coding-Agent";
       expect(isBifrostEnabledForAgent("plan-agent")).toBe(true);
       expect(isBifrostEnabledForAgent("PLAN-AGENT")).toBe(true);
-      expect(isBifrostEnabledForAgent("coder-agent")).toBe(true);
+      expect(isBifrostEnabledForAgent("coding-agent")).toBe(true);
     });
 
     it("trims whitespace in both env entries and input agentName", () => {
       process.env.BIFROST_ENABLED_AGENTS =
-        " plan-agent , coder-agent  ,  pr-monitor ";
+        " plan-agent , coding-agent  ,  pr-monitor ";
       expect(isBifrostEnabledForAgent("plan-agent")).toBe(true);
-      expect(isBifrostEnabledForAgent("  coder-agent  ")).toBe(true);
+      expect(isBifrostEnabledForAgent("  coding-agent  ")).toBe(true);
       expect(isBifrostEnabledForAgent("pr-monitor")).toBe(true);
     });
 
     it("filters out empty CSV entries", () => {
-      process.env.BIFROST_ENABLED_AGENTS = "plan-agent,,coder-agent,,,";
+      process.env.BIFROST_ENABLED_AGENTS = "plan-agent,,coding-agent,,,";
       expect(isBifrostEnabledForAgent("plan-agent")).toBe(true);
-      expect(isBifrostEnabledForAgent("coder-agent")).toBe(true);
+      expect(isBifrostEnabledForAgent("coding-agent")).toBe(true);
       expect(isBifrostEnabledForAgent("")).toBe(false);
       expect(isBifrostEnabledForAgent("  ")).toBe(false);
     });
 
     it("returns false for empty / null / undefined agentName on a CSV list", () => {
-      process.env.BIFROST_ENABLED_AGENTS = "plan-agent,coder-agent";
+      process.env.BIFROST_ENABLED_AGENTS = "plan-agent,coding-agent";
       expect(isBifrostEnabledForAgent("")).toBe(false);
       expect(isBifrostEnabledForAgent(null)).toBe(false);
       expect(isBifrostEnabledForAgent(undefined)).toBe(false);
     });
 
     it("does not do partial / substring matching", () => {
-      process.env.BIFROST_ENABLED_AGENTS = "coder-agent,plan-agent";
+      process.env.BIFROST_ENABLED_AGENTS = "coding-agent,plan-agent";
       expect(isBifrostEnabledForAgent("coder")).toBe(false);
-      expect(isBifrostEnabledForAgent("coder-agent-extra")).toBe(false);
+      expect(isBifrostEnabledForAgent("coding-agent-extra")).toBe(false);
       expect(isBifrostEnabledForAgent("plan")).toBe(false);
     });
 
@@ -127,10 +127,10 @@ describe("isBifrostEnabledForAgent", () => {
   describe("realistic rollout shapes", () => {
     it('"workflow agents only" — the 3 PR-4079 surfaces opt in', () => {
       process.env.BIFROST_ENABLED_AGENTS =
-        "plan-agent,coder-agent,pr-monitor";
+        "plan-agent,coding-agent,pr-monitor";
       // Workflow surfaces opted in:
       expect(isBifrostEnabledForAgent("plan-agent")).toBe(true);
-      expect(isBifrostEnabledForAgent("coder-agent")).toBe(true);
+      expect(isBifrostEnabledForAgent("coding-agent")).toBe(true);
       expect(isBifrostEnabledForAgent("pr-monitor")).toBe(true);
       // Chat surfaces stay off:
       expect(isBifrostEnabledForAgent("repo-agent")).toBe(false);
@@ -145,7 +145,7 @@ describe("isBifrostEnabledForAgent", () => {
         "repo-agent,chat-agent,canvas-agent,diagram-agent,logs-agent";
       expect(isBifrostEnabledForAgent("repo-agent")).toBe(true);
       expect(isBifrostEnabledForAgent("plan-agent")).toBe(false);
-      expect(isBifrostEnabledForAgent("coder-agent")).toBe(false);
+      expect(isBifrostEnabledForAgent("coding-agent")).toBe(false);
       expect(isBifrostEnabledForAgent("pr-monitor")).toBe(false);
     });
   });
