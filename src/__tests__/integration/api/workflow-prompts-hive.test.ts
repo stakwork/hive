@@ -204,12 +204,13 @@ describe("Hive-native Prompt CRUD + Write-through Sync", () => {
       expect(prompt!.publishedVersion!.published).toBe(true);
       expect(prompt!.publishedVersion!.versionNumber).toBe(1);
 
-      // Stakwork was called with hive_version_id
+      // Stakwork was called with hive_version_id nested inside prompt
       expect(mockFetch).toHaveBeenCalledTimes(1);
       const [url, opts] = mockFetch.mock.calls[0];
       expect(url).toMatch(/\/prompts\//);
       const body = JSON.parse(opts.body as string);
-      expect(body.hive_version_id).toBe(prompt!.publishedVersionId);
+      expect(body.hive_version_id).toBeUndefined(); // must NOT be top-level
+      expect(body.prompt.hive_version_id).toBe(prompt!.publishedVersionId);
       expect(body.prompt.name).toBe("MY_PROMPT");
     });
 
@@ -281,7 +282,8 @@ describe("Hive-native Prompt CRUD + Write-through Sync", () => {
         include: { publishedVersion: true },
       });
       const sentBody = JSON.parse(mockFetch.mock.calls[0][1].body as string);
-      expect(sentBody.hive_version_id).toBe(prompt!.publishedVersionId);
+      expect(sentBody.hive_version_id).toBeUndefined(); // must NOT be top-level
+      expect(sentBody.prompt.hive_version_id).toBe(prompt!.publishedVersionId);
     });
   });
 
@@ -386,10 +388,11 @@ describe("Hive-native Prompt CRUD + Write-through Sync", () => {
       expect(prompt!.versions[0].published).toBe(false); // v1 unpublished
       expect(prompt!.publishedVersion!.value).toBe("updated value");
 
-      // Stakwork payload includes hive_version_id
+      // Stakwork payload nests hive_version_id inside prompt
       const updateFetchCall = mockFetch.mock.calls[1]; // second call is the PUT
       const sentBody = JSON.parse(updateFetchCall[1].body as string);
-      expect(sentBody.hive_version_id).toBe(prompt!.publishedVersionId);
+      expect(sentBody.hive_version_id).toBeUndefined(); // must NOT be top-level
+      expect(sentBody.prompt.hive_version_id).toBe(prompt!.publishedVersionId);
     });
 
     test("Stakwork update failure → local write succeeds, syncStatus = PENDING", async () => {
@@ -455,6 +458,7 @@ describe("Hive-native Prompt CRUD + Write-through Sync", () => {
 
       // Now publish v1 (older version) as live
       authAs(testUser);
+      stakworkOkUpdate(); // best-effort publish push
       const publishRes = await PUBLISH(
         makeReq(`http://localhost/publish`, "POST"),
         { params: Promise.resolve({ id: created.id, versionId: v1Id }) },
@@ -472,6 +476,14 @@ describe("Hive-native Prompt CRUD + Write-through Sync", () => {
       // v1 is published, v2 is not
       expect(afterPublish!.versions[0].published).toBe(true); // v1
       expect(afterPublish!.versions[1].published).toBe(false); // v2
+
+      // Stakwork publish push sends { prompt: { hive_version_id } } — no top-level key
+      // publish is 3rd fetch call (create + update + publish)
+      const publishFetchCall = mockFetch.mock.calls[2];
+      expect(publishFetchCall).toBeDefined();
+      const publishBody = JSON.parse(publishFetchCall[1].body as string);
+      expect(publishBody.hive_version_id).toBeUndefined();
+      expect(publishBody).toEqual({ prompt: { hive_version_id: v1Id } });
     });
 
     test("returns 404 if version does not belong to prompt", async () => {
