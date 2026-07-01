@@ -287,8 +287,8 @@ export const CAPABILITY_REGISTRY: Record<OrgCapability, CapabilityDefinition> =
         "**graph_walker** — fetch KG node-type ontology (`graph_ontology`), " +
         "dereference any URN (`graph_get`), expand 1-hop neighbors (`graph_neighbors`), " +
         "search the swarm knowledge graph (`graph_search`, realm `kg`) — Hive " +
-        "Features/Tasks/ChatMessages now live there as HiveFeature/HiveTask/" +
-        "HiveChatMessage, alongside the code graph. Load when you need to walk the " +
+        "Features/Tasks/ChatMessages now live there as Hivefeature/Hivetask/" +
+        "Hivechatmessage, alongside the code graph. Load when you need to walk the " +
         "knowledge graph or dereference a URN from another tool. (The `pg` realm is disabled.)",
       writeToolNames: [], // read-only
     },

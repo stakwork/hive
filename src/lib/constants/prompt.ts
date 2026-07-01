@@ -718,7 +718,7 @@ You have four **read-only** tools for graph traversal, focused on the swarm know
 
 ### Where the data lives now
 
-Hive **Features, Tasks, and ChatMessages are mirrored directly into each workspace's knowledge graph (kg realm)** as \`HiveFeature\` / \`HiveTask\` / \`HiveChatMessage\` nodes — alongside the ingested code graph (files, functions, data models, concepts). Search and traverse them there via the \`kg\` realm.
+Hive **Features, Tasks, and ChatMessages are mirrored directly into each workspace's knowledge graph (kg realm)** as \`Hivefeature\` / \`Hivetask\` / \`Hivechatmessage\` nodes — alongside the ingested code graph (files, functions, data models, concepts). Search and traverse them there via the \`kg\` realm.
 
 The \`pg\` realm is **DISABLED**: \`graph_search\` with \`realm: "pg"\` returns nothing, and \`graph_get\` / \`graph_neighbors\` refuse pg URNs. Do not try to reach roadmap/chat data through pg — use the kg realm.
 
@@ -731,18 +731,18 @@ canvas  →  urn:{org}:canvas:{type}:{id}
 kg      →  urn:{org}:kg:{workspace}:{type}:{id}
 \`\`\`
 
-Realms: \`kg\` (the swarm knowledge-graph — HiveFeature/HiveTask/HiveChatMessage plus code concepts, files, functions, data models) and \`canvas\` (canvas nodes). \`pg\` is disabled.
+Realms: \`kg\` (the swarm knowledge-graph — Hivefeature/Hivetask/Hivechatmessage plus code concepts, files, functions, data models) and \`canvas\` (canvas nodes). \`pg\` is disabled.
 
 ### Tools
 
-- **\`graph_ontology({ workspace })\`** — Fetch the list of valid KG node types (with descriptions) for a workspace's knowledge graph. **Call this first** before using \`graph_search\` with \`realm: "kg"\` — the returned \`type\` values are the exact strings to pass as the \`type\` filter in \`graph_search\`. This is how you discover the Hive node types (e.g. \`HiveFeature\`, \`HiveTask\`, \`HiveChatMessage\`) and the code node types. Returns \`{ node_types: [{ type, description }] }\`.
+- **\`graph_ontology({ workspace })\`** — Fetch the list of valid KG node types (with descriptions) for a workspace's knowledge graph. **Call this first** before using \`graph_search\` with \`realm: "kg"\` — the returned \`type\` values are the exact strings to pass as the \`type\` filter in \`graph_search\`. This is how you discover the Hive node types (e.g. \`Hivefeature\`, \`Hivetask\`, \`Hivechatmessage\`) and the code node types. Returns \`{ node_types: [{ type, description }] }\`.
 
 - **\`graph_get({ urn })\`** — Resolve a single URN to its full node content. Use this when you have a specific URN and need the entity's complete data.
 
 - **\`graph_neighbors({ urn, depth?, edge_type?, node_type? })\`** — Return all adjacent URNs reachable in one hop, each with \`edgeType\`, \`direction\`, and a best-effort \`title\` (a human-readable label — e.g. a feature's title, a file's name, a concept's name). Use the \`title\` to decide which neighbor to follow without having to \`graph_get\` every one. kg neighbors also carry \`node_type\` and \`ref_id\`; \`title\` may be absent for a node type that exposes no recognizable label. Filter kg edges/nodes with \`edge_type\` / \`node_type\`.
 
 - **\`graph_search({ query, realm?, type?, workspace?, limit? })\`** — Discover nodes by keyword. Returns \`{ urn, type, title, realm }[]\` ranked results. Scope with \`realm\` and/or \`type\` to narrow results:
-  - \`realm: "kg"\` — searches the swarm knowledge-graph: Hive Features/Tasks/ChatMessages (\`HiveFeature\` / \`HiveTask\` / \`HiveChatMessage\`) plus code nodes (concepts, files, functions, …). **First call \`graph_ontology({ workspace })\` to get valid \`type\` values**, then pass the desired type as the \`type\` filter. Provide \`workspace\` to search one workspace's swarm, or omit it to fan out across all your member workspaces.
+  - \`realm: "kg"\` — searches the swarm knowledge-graph: Hive Features/Tasks/ChatMessages (\`Hivefeature\` / \`Hivetask\` / \`Hivechatmessage\`) plus code nodes (concepts, files, functions, …). **First call \`graph_ontology({ workspace })\` to get valid \`type\` values**, then pass the desired type as the \`type\` filter. Provide \`workspace\` to search one workspace's swarm, or omit it to fan out across all your member workspaces.
   - \`realm: "canvas"\` — searches **authored** canvas nodes by text/label only.
   - Omit \`realm\` to search canvas + kg simultaneously (kg fans out across all your member workspaces).
   - \`realm: "pg"\` is disabled and returns nothing.
@@ -750,12 +750,12 @@ Realms: \`kg\` (the swarm knowledge-graph — HiveFeature/HiveTask/HiveChatMessa
 ### kg realm workflow
 
 1. Call \`graph_ontology({ workspace })\` → get the list of valid node types for the workspace's KG.
-2. Pick the relevant \`type\` values from the returned list (e.g. \`HiveFeature\`, \`HiveTask\`, \`HiveChatMessage\`, \`File\`, \`Function\`).
+2. Pick the relevant \`type\` values from the returned list (e.g. \`Hivefeature\`, \`Hivetask\`, \`Hivechatmessage\`, \`File\`, \`Function\`).
 3. Call \`graph_search({ query, realm: "kg", workspace, type: "<chosen type>" })\` with the exact type string from step 2.
 
 ### Scope reminder
 
-The chain that connects roadmap to code lives entirely in the kg now: a \`HiveFeature\` \`HAS_TASK\` \`HiveTask\`, which \`HAS_MESSAGE\` \`HiveChatMessage\`, and links out to the files/functions that implement it. Walk these with \`graph_neighbors\` (filter with \`node_type\`, e.g. \`["File"]\`). kg traversal talks to the live swarm, so it can fail if the swarm is unconfigured/unreachable — those calls return an \`{ error }\` you should treat as "unavailable", not "empty".
+The chain that connects roadmap to code lives entirely in the kg now: a \`Hivefeature\` \`HAS_TASK\` \`Hivetask\`, which \`HAS_MESSAGE\` \`Hivechatmessage\`, and links out to the files/functions that implement it. Walk these with \`graph_neighbors\` (filter with \`node_type\`, e.g. \`["File"]\`). kg traversal talks to the live swarm, so it can fail if the swarm is unconfigured/unreachable — those calls return an \`{ error }\` you should treat as "unavailable", not "empty".
 
 ### Read-only
 
