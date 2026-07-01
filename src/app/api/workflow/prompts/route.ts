@@ -2,124 +2,122 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
-import { config } from "@/config/env";
 import { isDevelopmentMode } from "@/lib/runtime";
+import { writePromptThrough } from "@/services/prompts/prompt-sync";
 
 export const runtime = "nodejs";
 export const fetchCache = "force-no-store";
 
-interface StakworkPrompt {
-  id: number;
-  name: string;
-  description: string;
-  usage_notation: string;
-  value?: string;
+// ─── Auth helper ──────────────────────────────────────────────────────────────
+
+async function getAuthenticatedUserId(
+  devMode: boolean,
+): Promise<{ userId: string } | NextResponse> {
+  if (devMode) {
+    // In dev mode allow any authenticated session; fall back to a dev user id
+    const session = await getServerSession(authOptions);
+    return { userId: (session?.user as { id?: string })?.id ?? "dev-user" };
+  }
+
+  const session = await getServerSession(authOptions);
+  if (!session?.user) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  const userId = (session.user as { id?: string })?.id;
+  if (!userId) {
+    return NextResponse.json({ error: "Invalid user session" }, { status: 401 });
+  }
+  return { userId };
 }
 
-interface StakworkPromptsResponse {
-  success: boolean;
-  data: {
-    total: number;
-    size: number;
-    prompts: StakworkPrompt[];
+async function requireWriteAccess(
+  userId: string,
+  devMode: boolean,
+): Promise<NextResponse | null> {
+  if (devMode) return null;
+  const workspace = await db.workspace.findFirst({
+    where: {
+      slug: "stakwork",
+      OR: [{ ownerId: userId }, { members: { some: { userId } } }],
+    },
+  });
+  if (!workspace) {
+    return NextResponse.json(
+      { error: "Access denied - not a member of stakwork workspace" },
+      { status: 403 },
+    );
+  }
+  return null;
+}
+
+// ─── Shape helpers ────────────────────────────────────────────────────────────
+
+function shapePrompt(p: {
+  id: string;
+  name: string;
+  value: string;
+  description: string | null;
+  publishedVersionId: string | null;
+  stakworkId: number | null;
+  syncStatus: string;
+  createdAt: Date;
+  updatedAt: Date;
+  versions?: { id: string }[];
+}) {
+  return {
+    id: p.id,
+    name: p.name,
+    value: p.value,
+    description: p.description ?? "",
+    published_version_id: p.publishedVersionId,
+    current_version_id: p.publishedVersionId, // mirrors published for UI compat
+    stakwork_id: p.stakworkId,
+    sync_status: p.syncStatus,
+    version_count: p.versions?.length ?? undefined,
+    created_at: p.createdAt.toISOString(),
+    updated_at: p.updatedAt.toISOString(),
   };
 }
 
-interface CreatePromptRequest {
-  name: string;
-  value: string;
-  description?: string;
-}
-
-interface CreatePromptResponse {
-  success: boolean;
-  data: string;
-}
+// ─── GET /api/workflow/prompts ────────────────────────────────────────────────
 
 export async function GET(request: NextRequest) {
   try {
     const devMode = isDevelopmentMode();
+    const authResult = await getAuthenticatedUserId(devMode);
+    if (authResult instanceof NextResponse) return authResult;
 
-    // In dev mode, skip authentication checks
-    if (!devMode) {
-      const session = await getServerSession(authOptions);
-      if (!session?.user) {
-        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-      }
-
-      const userId = (session.user as { id?: string })?.id;
-      if (!userId) {
-        return NextResponse.json({ error: "Invalid user session" }, { status: 401 });
-      }
-
-      // Verify user has access to stakwork workspace
-      const stakworkWorkspace = await db.workspace.findFirst({
-        where: {
-          slug: "stakwork",
-          OR: [{ ownerId: userId }, { members: { some: { userId } } }],
-        },
-      });
-
-      if (!stakworkWorkspace) {
-        return NextResponse.json({ error: "Access denied - not a member of stakwork workspace" }, { status: 403 });
-      }
-    }
-
-    // Get pagination and filter params
     const { searchParams } = new URL(request.url);
-    const page = parseInt(searchParams.get("page") || "1", 10);
-    const workflowId = searchParams.get("workflow_id");
-    const includeUsages = searchParams.get("include_usages") === "true";
+    const page = Math.max(1, parseInt(searchParams.get("page") || "1", 10));
+    const pageSize = 20;
     const search = searchParams.get("search");
 
-    // In dev mode, call mock API directly to avoid SSL issues
-    if (devMode) {
-      const { GET: mockGET } = await import("@/app/api/mock/stakwork/prompts/route");
-      return mockGET(request);
-    }
+    const where = search
+      ? {
+          OR: [
+            { name: { contains: search, mode: "insensitive" as const } },
+            { description: { contains: search, mode: "insensitive" as const } },
+          ],
+        }
+      : {};
 
-    // Fetch prompts from Stakwork API
-    let promptsUrl = `${config.STAKWORK_BASE_URL}/prompts?page=${page}`;
-    
-    if (workflowId) {
-      promptsUrl += `&workflow_id=${workflowId}`;
-    }
-    if (includeUsages) {
-      promptsUrl += `&include_usages=true`;
-    }
-    if (search) {
-      promptsUrl += `&search=${encodeURIComponent(search)}`;
-    }
-
-    const response = await fetch(promptsUrl, {
-      method: "GET",
-      headers: {
-        Authorization: `Token token=${config.STAKWORK_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error("Failed to fetch prompts from Stakwork:", errorText);
-      return NextResponse.json(
-        { error: "Failed to fetch prompts", details: errorText },
-        { status: response.status },
-      );
-    }
-
-    const result: StakworkPromptsResponse = await response.json();
-
-    if (!result.success) {
-      return NextResponse.json({ error: "Failed to fetch prompts from Stakwork" }, { status: 400 });
-    }
+    const [prompts, total] = await Promise.all([
+      db.prompt.findMany({
+        where,
+        orderBy: { createdAt: "asc" },
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+        include: { versions: { select: { id: true } } },
+      }),
+      db.prompt.count({ where }),
+    ]);
 
     return NextResponse.json({
       success: true,
       data: {
-        prompts: result.data.prompts,
-        total: result.data.total,
-        size: result.data.size,
+        prompts: prompts.map(shapePrompt),
+        total,
+        size: pageSize,
         page,
       },
     });
@@ -129,88 +127,50 @@ export async function GET(request: NextRequest) {
   }
 }
 
+// ─── POST /api/workflow/prompts ───────────────────────────────────────────────
+
+const PROMPT_NAME_REGEX = /^[A-Z0-9_]+$/;
+
 export async function POST(request: NextRequest) {
   try {
     const devMode = isDevelopmentMode();
+    const authResult = await getAuthenticatedUserId(devMode);
+    if (authResult instanceof NextResponse) return authResult;
+    const { userId } = authResult;
 
-    // In dev mode, skip authentication checks
-    if (!devMode) {
-      const session = await getServerSession(authOptions);
-      if (!session?.user) {
-        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-      }
+    const denied = await requireWriteAccess(userId, devMode);
+    if (denied) return denied;
 
-      const userId = (session.user as { id?: string })?.id;
-      if (!userId) {
-        return NextResponse.json({ error: "Invalid user session" }, { status: 401 });
-      }
+    const body = await request.json();
+    const { name, value, description } = body as {
+      name?: string;
+      value?: string;
+      description?: string;
+    };
 
-      // Verify user has access to stakwork workspace
-      const stakworkWorkspace = await db.workspace.findFirst({
-        where: {
-          slug: "stakwork",
-          OR: [{ ownerId: userId }, { members: { some: { userId } } }],
-        },
-      });
-
-      if (!stakworkWorkspace) {
-        return NextResponse.json({ error: "Access denied - not a member of stakwork workspace" }, { status: 403 });
-      }
-    }
-
-    const body: CreatePromptRequest = await request.json();
-
-    if (!body.name || !body.value) {
+    if (!name || !value) {
       return NextResponse.json({ error: "Name and value are required" }, { status: 400 });
     }
 
-    const PROMPT_NAME_REGEX = /^[A-Z_]+$/;
-    if (!PROMPT_NAME_REGEX.test(body.name)) {
+    if (!PROMPT_NAME_REGEX.test(name)) {
       return NextResponse.json(
         { error: "Prompt name must contain only uppercase letters and underscores" },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
-    // Create prompt via Stakwork API (or mock in dev mode)
-    const promptsUrl = devMode
-      ? `${request.nextUrl.origin}/api/mock/stakwork/prompts`
-      : `${config.STAKWORK_BASE_URL}/prompts/`;
-
-    const response = await fetch(promptsUrl, {
-      method: "POST",
-      headers: devMode ? { "Content-Type": "application/json" } : {
-        Authorization: `Token token=${config.STAKWORK_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        name: body.name,
-        value: body.value,
-        description: body.description || "",
-      }),
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error("Failed to create prompt:", errorText);
-      return NextResponse.json(
-        { error: "Failed to create prompt", details: errorText },
-        { status: response.status },
-      );
-    }
-
-    const result: CreatePromptResponse = await response.json();
-
-    if (!result.success) {
-      return NextResponse.json({ error: "Failed to create prompt" }, { status: 400 });
-    }
+    const { prompt } = await writePromptThrough({ name, value, description, userId });
 
     return NextResponse.json({
       success: true,
-      data: result.data,
+      data: shapePrompt(prompt),
     });
-  } catch (error) {
-    console.error("Error creating prompt:", error);
+  } catch (err: unknown) {
+    const e = err as { status?: number; message?: string };
+    if (e.status === 409) {
+      return NextResponse.json({ error: e.message }, { status: 409 });
+    }
+    console.error("Error creating prompt:", err);
     return NextResponse.json({ error: "Failed to create prompt" }, { status: 500 });
   }
 }

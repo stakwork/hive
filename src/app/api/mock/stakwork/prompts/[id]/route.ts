@@ -88,6 +88,10 @@ export async function PUT(
     const promptId = parseInt(id);
     const body = await request.json();
 
+    // Accept prompt wrapped or unwrapped (Hive sends { prompt: {...}, hive_version_id })
+    const promptPayload = body.prompt ?? body;
+    const hiveVersionId: string | undefined = body.hive_version_id;
+
     const existingPrompt = mockPrompts.get(promptId);
 
     if (!existingPrompt) {
@@ -99,9 +103,10 @@ export async function PUT(
 
     const updatedPrompt = {
       ...existingPrompt,
-      name: body.name ?? existingPrompt.name,
-      value: body.value ?? existingPrompt.value,
-      description: body.description ?? existingPrompt.description,
+      name: promptPayload.name ?? existingPrompt.name,
+      value: promptPayload.value ?? existingPrompt.value,
+      description: promptPayload.description ?? existingPrompt.description,
+      hive_version_id: hiveVersionId ?? (existingPrompt as any).hive_version_id ?? null,
       current_version_id: (existingPrompt.current_version_id ?? 0) + 1,
       // published_version_id is not changed on save — only updated by publish action
       updated_at: new Date().toISOString(),
