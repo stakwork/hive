@@ -17,17 +17,20 @@ import type { ProposalOutput } from "@/lib/proposals/types";
 
 // ── Mocks ─────────────────────────────────────────────────────────────────────
 
+// Mutable store state — tests can reassign this before rendering.
+// Named with "mock" prefix so Vitest hoists it alongside vi.mock().
+let mockStoreState: any = {
+  activeConversationId: "conv-1",
+  conversations: {
+    "conv-1": {
+      messages: [] as any[],
+      context: { currentCanvasRef: "root" },
+    },
+  },
+};
+
 vi.mock("@/app/org/[githubLogin]/_state/canvasChatStore", () => ({
-  useCanvasChatStore: (selector: (s: any) => any) =>
-    selector({
-      activeConversationId: "conv-1",
-      conversations: {
-        "conv-1": {
-          messages: [],
-          context: { currentCanvasRef: "root" },
-        },
-      },
-    }),
+  useCanvasChatStore: (selector: (s: any) => any) => selector(mockStoreState),
 }));
 
 vi.mock("@/app/org/[githubLogin]/_state/useSendCanvasChatMessage", () => ({
@@ -73,6 +76,19 @@ vi.mock("react-markdown", () => ({
     <div data-testid="markdown">{children}</div>
   ),
 }));
+
+// Reset store to default empty state before each test.
+beforeEach(() => {
+  mockStoreState = {
+    activeConversationId: "conv-1",
+    conversations: {
+      "conv-1": {
+        messages: [] as any[],
+        context: { currentCanvasRef: "root" },
+      },
+    },
+  };
+});
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
 
@@ -556,6 +572,138 @@ describe("sortProposalsByDependency", () => {
   });
 });
 
+// ── ProposalCard — approved feature subtext link ──────────────────────────────
+
+describe("ProposalCard — approved feature subtext link", () => {
+  function renderWithApprovalResult(
+    approvalResult: Record<string, unknown>,
+    currentCanvasRef: string,
+  ) {
+    mockStoreState = {
+      activeConversationId: "conv-appr",
+      conversations: {
+        "conv-appr": {
+          messages: [{ role: "assistant", approvalResult }],
+          context: { currentCanvasRef },
+        },
+      },
+    };
+  }
+
+  it("renders plan-page link with target=_blank for feature approved on a DIFFERENT canvas", () => {
+    renderWithApprovalResult(
+      {
+        proposalId: "prop-feat-1",
+        kind: "feature",
+        createdEntityId: "feature-id-abc",
+        landedOn: "initiative:init-123",
+        landedOnName: "Auth Initiative",
+        workspaceSlug: "my-workspace",
+      },
+      "root",
+    );
+
+    const proposal = makeFeatureProposal({ proposalId: "prop-feat-1" });
+    const { getByTitle } = render(
+      <ProposalCard proposal={proposal} messageId="msg-appr-1" githubLogin="myorg" />,
+    );
+
+    const anchor = getByTitle("Open") as HTMLAnchorElement;
+    expect(anchor).toBeTruthy();
+    expect(anchor.getAttribute("href")).toBe("/w/my-workspace/plan/feature-id-abc");
+    expect(anchor.getAttribute("target")).toBe("_blank");
+    expect(anchor.getAttribute("rel")).toBe("noopener noreferrer");
+  });
+
+  it("renders plan-page link even when landedOn === currentRef (same canvas)", () => {
+    renderWithApprovalResult(
+      {
+        proposalId: "prop-feat-2",
+        kind: "feature",
+        createdEntityId: "feature-id-xyz",
+        landedOn: "initiative:init-456",
+        workspaceSlug: "my-workspace",
+      },
+      "initiative:init-456", // same as landedOn
+    );
+
+    const proposal = makeFeatureProposal({ proposalId: "prop-feat-2" });
+    const { getByTitle } = render(
+      <ProposalCard proposal={proposal} messageId="msg-appr-2" githubLogin="myorg" />,
+    );
+
+    const anchor = getByTitle("Open") as HTMLAnchorElement;
+    expect(anchor).toBeTruthy();
+    expect(anchor.getAttribute("href")).toBe("/w/my-workspace/plan/feature-id-xyz");
+    expect(anchor.getAttribute("target")).toBe("_blank");
+    expect(anchor.getAttribute("rel")).toBe("noopener noreferrer");
+  });
+
+  it("shows text but NO anchor when feature approved without workspaceSlug (older result)", () => {
+    renderWithApprovalResult(
+      {
+        proposalId: "prop-feat-3",
+        kind: "feature",
+        createdEntityId: "feature-id-old",
+        landedOn: "initiative:init-789",
+        landedOnName: "Old Initiative",
+        // workspaceSlug intentionally absent
+      },
+      "root",
+    );
+
+    const proposal = makeFeatureProposal({ proposalId: "prop-feat-3" });
+    const { queryByTitle } = render(
+      <ProposalCard proposal={proposal} messageId="msg-appr-3" githubLogin="myorg" />,
+    );
+
+    expect(queryByTitle("Open")).toBeNull();
+  });
+
+  it("renders NO anchor for initiative approved on the CURRENT canvas", () => {
+    renderWithApprovalResult(
+      {
+        proposalId: "prop-init-1",
+        kind: "initiative",
+        createdEntityId: "init-id-abc",
+        landedOn: "root",
+      },
+      "root", // same as landedOn (onCurrent = true)
+    );
+
+    const proposal = makeInitiativeProposal({ proposalId: "prop-init-1" });
+    const { queryByTitle } = render(
+      <ProposalCard proposal={proposal} messageId="msg-appr-4" githubLogin="myorg" />,
+    );
+
+    expect(queryByTitle("Open")).toBeNull();
+  });
+
+  it("renders org-canvas anchor WITHOUT target=_blank for initiative approved on a different canvas", () => {
+    renderWithApprovalResult(
+      {
+        proposalId: "prop-init-2",
+        kind: "initiative",
+        createdEntityId: "init-id-def",
+        landedOn: "",
+        landedOnName: undefined,
+      },
+      "initiative:some-other",
+    );
+
+    const proposal = makeInitiativeProposal({ proposalId: "prop-init-2" });
+    const { getByTitle } = render(
+      <ProposalCard proposal={proposal} messageId="msg-appr-5" githubLogin="myorg" />,
+    );
+
+    const anchor = getByTitle("Open") as HTMLAnchorElement;
+    expect(anchor).toBeTruthy();
+    expect(anchor.getAttribute("href")).toBe("/org/myorg");
+    expect(anchor.getAttribute("target")).toBeNull();
+    expect(anchor.getAttribute("rel")).toBeNull();
+  });
+});
+
 // ── ProposalCard — allBlockersApproved (approve button gating) ────────────────
 
 describe("ProposalCard — approve button blocked by pending blocker", () => {
@@ -573,28 +721,17 @@ describe("ProposalCard — approve button blocked by pending blocker", () => {
 
   function renderWithBlocker(blockerApproved: boolean) {
     const messages = makeMessages(blockerApproved ? ["blocker-id"] : []);
-    vi.mocked(
-      vi.importActual as unknown as typeof vi.mock,
-    );
 
     // Re-configure the store mock for this test group
-    const storeMock = {
-      useCanvasChatStore: (selector: (s: any) => any) =>
-        selector({
-          activeConversationId: "conv-1",
-          conversations: {
-            "conv-1": {
-              messages,
-              context: { currentCanvasRef: "root" },
-            },
-          },
-        }),
+    mockStoreState = {
+      activeConversationId: "conv-1",
+      conversations: {
+        "conv-1": {
+          messages,
+          context: { currentCanvasRef: "root" },
+        },
+      },
     };
-
-    vi.doMock(
-      "@/app/org/[githubLogin]/_state/canvasChatStore",
-      () => storeMock,
-    );
 
     const proposal = makeFeatureProposal({
       proposalId: "dependent-id",
