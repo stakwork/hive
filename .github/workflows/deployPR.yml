@@ -377,6 +377,12 @@ jobs:
           echo "Resolving any previously-failed migration 20260517120000_add_macaroon_org_and_trust_fields..."
           npx prisma migrate resolve --rolled-back "20260517120000_add_macaroon_org_and_trust_fields" 2>&1 || true
 
+          # If 20260401_add_user_id_to_payments is stuck in a failed state, roll it
+          # back so Prisma re-runs it. The migration SQL is fully idempotent (all DDL
+          # is guarded by IF NOT EXISTS), so re-running is safe.
+          echo "Resolving any previously-failed migration 20260401_add_user_id_to_payments..."
+          npx prisma migrate resolve --rolled-back "20260401_add_user_id_to_payments" 2>&1 || true
+
           # If 20260411162658_add_connection_model is stuck in a failed state
           # (relation "connections" already exists from a prior partial run), roll it
           # back and re-mark it as applied so Prisma unblocks subsequent migrations.
@@ -475,6 +481,7 @@ jobs:
               npx prisma migrate resolve --rolled-back "20260302183303_add_plan_updated_at_to_feature" 2>&1 || true
             fi
             npx prisma migrate resolve --rolled-back "20260517120000_add_macaroon_org_and_trust_fields" 2>&1 || true
+            npx prisma migrate resolve --rolled-back "20260401_add_user_id_to_payments" 2>&1 || true
             npx prisma migrate resolve --rolled-back "20260411162658_add_connection_model" 2>&1 || true
             npx prisma migrate resolve --applied "20260411162658_add_connection_model" 2>&1 || true
             CONN_TABLE=$(psql "$DATABASE_URL" -tAc "SELECT COUNT(*) FROM information_schema.tables WHERE table_name='connections' AND table_schema='public';" 2>/dev/null | tr -d '[:space:]' || echo "0")

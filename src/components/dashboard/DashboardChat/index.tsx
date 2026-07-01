@@ -32,7 +32,7 @@ interface Message {
   role: "user" | "assistant";
   content: string;
   timestamp: Date;
-  imageData?: string;
+  imageData?: string[];
   toolCalls?: ToolCall[];
 }
 
@@ -174,12 +174,12 @@ export function DashboardChat({
     };
   }, [slug]);
 
-  // Get the most recent image from the messages array
-  const currentImageData =
+  // Get the most recent image array from the messages array
+  const currentImageData: string[] | null =
     messages
       .slice()
       .reverse()
-      .find((m) => m.imageData)?.imageData || null;
+      .find((m) => m.imageData?.length)?.imageData ?? null;
 
   // Auto-save helpers. `autoSaveCreate` returns a Promise resolving to
   // the new conversation id so callers can await it when they need the
@@ -339,13 +339,13 @@ export function DashboardChat({
             .filter((m) => m.content.trim() || m.toolCalls) // Keep messages with content or tool calls
             .flatMap((m): ModelMessage[] => {
               // Handle content with images (always from user)
-              if (m.imageData) {
+              if (m.imageData?.length) {
                 return [
                   {
                     role: "user" as const,
                     content: [
-                      { type: "image", image: m.imageData },
-                      { type: "text", text: m.content },
+                      ...m.imageData.map((img) => ({ type: "image" as const, image: img })),
+                      { type: "text" as const, text: m.content },
                     ],
                   },
                 ];
@@ -600,28 +600,30 @@ export function DashboardChat({
     setIsReadOnly(false);
   };
 
-  const handleImageUpload = (imageData: string) => {
-    // Add a new user message with just the image (no text yet)
+  const handleImageUpload = (images: string[]) => {
+    // Add a new user message with just the images (no text yet)
     const imageMessage: Message = {
       id: Date.now().toString(),
       role: "user",
       content: "", // Empty content, will be filled when user sends
       timestamp: new Date(),
-      imageData,
+      imageData: images,
     };
     setMessages((prev) => [...prev, imageMessage]);
   };
 
   const handleImageRemove = () => {
-    // Remove the most recent message with an image
+    // Clear imageData from the most recent message that has images
     setMessages((prev) => {
       const lastImageIndex = prev
         .map((m, i) => ({ msg: m, index: i }))
         .reverse()
-        .find((item) => item.msg.imageData)?.index;
+        .find((item) => item.msg.imageData?.length)?.index;
 
       if (lastImageIndex === undefined) return prev;
-      return prev.filter((_, i) => i !== lastImageIndex);
+      return prev.map((m, i) =>
+        i === lastImageIndex ? { ...m, imageData: undefined } : m
+      );
     });
   };
 
@@ -631,7 +633,16 @@ export function DashboardChat({
     conversationId,
     isReadOnly: readOnly,
   }: LoadConversationParams) => {
-    setMessages(loadedMessages as Message[]);
+    // Normalize imageData for backward compat (persisted as string in older records)
+    const normalizedMessages = (loadedMessages as Message[]).map((m) => ({
+      ...m,
+      imageData: Array.isArray(m.imageData)
+        ? m.imageData
+        : (m.imageData as unknown as string)
+        ? [(m.imageData as unknown as string)]
+        : undefined,
+    }));
+    setMessages(normalizedMessages);
     setExtraWorkspaceSlugs(loadedSlugs);
     conversationIdRef.current = conversationId;
     setIsReadOnly(readOnly);
@@ -656,12 +667,12 @@ export function DashboardChat({
     messages
       .filter((m) => m.content.trim() || m.toolCalls)
       .flatMap((m): ModelMessage[] => {
-        if (m.imageData) {
+        if (m.imageData?.length) {
           return [
             {
               role: "user" as const,
               content: [
-                { type: "image" as const, image: m.imageData },
+                ...m.imageData.map((img) => ({ type: "image" as const, image: img })),
                 { type: "text" as const, text: m.content },
               ],
             },
