@@ -380,9 +380,8 @@ describe("POST /api/workflow/prompts Integration Tests", () => {
         "Content-Type": "application/json",
       });
       const body = JSON.parse(opts.body as string);
-      // New format: wrapped with prompt + hive_version_id
       expect(body.prompt).toMatchObject({ name, value: "API value", description: "Body description" });
-      expect(body.hive_version_id).toBeTruthy();
+      expect(body.prompt.hive_version_id).toBeTruthy();
     });
 
     test("Stakwork failure is best-effort: local write succeeds, syncStatus=PENDING", async () => {
@@ -876,7 +875,7 @@ describe("PUT /api/workflow/prompts/[id] Integration Tests", () => {
       expect(mockFetch).toHaveBeenCalledTimes(1);
       const [, opts] = mockFetch.mock.calls[0];
       const body = JSON.parse(opts.body as string);
-      expect(body.hive_version_id).toBeTruthy();
+      expect(body.prompt.hive_version_id).toBeTruthy();
       expect(body.prompt.value).toBe("Updated");
     });
 
