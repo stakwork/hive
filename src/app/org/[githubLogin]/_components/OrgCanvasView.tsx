@@ -26,7 +26,6 @@ import {
 } from "../_state/canvasChatStore";
 import { useCanvasChatAutoSave } from "../_state/useCanvasChatAutoSave";
 import { useSubAgentStatusRefresh } from "../_state/useSubAgentStatusRefresh";
-import type { ActivityItem } from "@/app/api/profile/activity/route";
 import {
   ResizableHandle,
   ResizablePanel,
@@ -220,15 +219,6 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
     useState<CanvasChatMessage[] | null>(null);
   const [chatLoadComplete, setChatLoadComplete] = useState(false);
 
-  // Synthetic "My Activity" intro — fetched from /api/profile/activity.
-  // Resolved before `startConversation` fires so the seed lands cleanly
-  // into the new conversation. Intentionally skipped when:
-  //   - `?chat=<id>` is present (resuming/joining an existing room — we'd
-  //     be polluting an established transcript with the intro).
-  //   - The user dismissed the intro during this session (×).
-  // See `_components/MyActivityPanel.tsx` for the rendered card.
-  const [activityData, setActivityData] = useState<ActivityItem[] | null>(null);
-  const [activityLoadComplete, setActivityLoadComplete] = useState(false);
 
   const setUrlSlug = useCallback(
     (slug: string | null) => {
@@ -342,55 +332,6 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
     [workspaces, hiddenWorkspaceIds],
   );
 
-  // Resolve the synthetic intro's data BEFORE starting the
-  // conversation so the seed messages land atomically with
-  // `startConversation` (avoiding a flicker of empty chat → seed
-  // populated). Skipped when resuming/joining a `?chat=` room or when
-  // the user dismissed during this session.
-  //
-  // We wait for `hiddenInitialized` so the slug allow-list we send
-  // matches what the user actually sees on the root canvas — without
-  // it, attention items from a hidden workspace would leak into the
-  // intro card on first paint, then jump away on the next refresh.
-  useEffect(() => {
-    if (sharedChatId) {
-      // Resuming/joining an existing room — never inject our intro.
-      setActivityLoadComplete(true);
-      return;
-    }
-    if (!hiddenInitialized) return; // wait for the hidden-workspace list
-    // Per-session dismissal. Wrapped in a try/catch because some
-    // browsers throw on `sessionStorage` access in private modes.
-    try {
-      const dismissed = sessionStorage.getItem(
-        `hive:my-activity-dismissed:${githubLogin}`,
-      );
-      if (dismissed === "1") {
-        setActivityLoadComplete(true);
-        return;
-      }
-    } catch {
-      // Storage unavailable — fall through and just always show.
-    }
-    let cancelled = false;
-    // User-scoped feed — no workspace slug filtering needed; the API
-    // already scopes to the authenticated user across all workspaces.
-    fetch(`/api/profile/activity?limit=5`)
-      .then((r) => (r.ok ? r.json() : null))
-      .then((data) => {
-        if (cancelled || !data) return;
-        if (Array.isArray(data.items) && data.items.length > 0) {
-          setActivityData(data.items);
-        }
-      })
-      .catch(() => {})
-      .finally(() => {
-        if (!cancelled) setActivityLoadComplete(true);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [sharedChatId, githubLogin, hiddenInitialized, chatWorkspaceSlugs]);
 
   const fetchConnections = useCallback(async () => {
     try {
@@ -803,8 +744,7 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
   const chatReady =
     !loadingWorkspaces &&
     hiddenInitialized &&
-    chatLoadComplete &&
-    activityLoadComplete;
+    chatLoadComplete;
 
   useEffect(() => {
     if (!chatReady || conversationStarted) return;
@@ -817,37 +757,6 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
     let seedMessages: CanvasChatMessage[] | undefined =
       chatInitialMessages ?? undefined;
     let ephemeralSeedCount = 0;
-    let activityArtifactId: string | null = null;
-
-    if (!chatInitialMessages && activityData && activityData.length > 0) {
-      // Synthesize the intro assistant message + register a single
-      // artifact carrying the items list. Mirrors the
-      // `appendAssistantError` factory pattern (id prefix + role +
-      // timestamp), with `artifactIds` pointing at the registered
-      // entry.
-      const introId = `intro-${Date.now().toString(36)}`;
-      activityArtifactId = `my-activity-${introId}`;
-      useCanvasChatStore.getState().registerArtifact({
-        id: activityArtifactId,
-        type: "my-activity",
-        // `conversationId` is unknown at this point (the conversation
-        // doesn't exist yet); we set it after `startConversation`
-        // returns. Renderer doesn't use it today; future canvas-side
-        // subscribers may.
-        conversationId: "",
-        messageId: introId,
-        data: { items: activityData },
-      });
-      const intro: CanvasChatMessage = {
-        id: introId,
-        role: "assistant",
-        content: "Here's your recent activity:",
-        timestamp: new Date(),
-        artifactIds: [activityArtifactId],
-      };
-      seedMessages = [intro];
-      ephemeralSeedCount = 1;
-    }
 
     // Resume / join, never fork. When the URL carries `?chat=<id>` we
     // always adopt that row as our server conversation so new turns
@@ -864,7 +773,7 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
       ephemeralSeedCount = chatInitialMessages.length;
     }
 
-    const conversationId = useCanvasChatStore.getState().startConversation(
+    useCanvasChatStore.getState().startConversation(
       {
         workspaceSlug,
         workspaceSlugs: chatWorkspaceSlugs,
@@ -881,50 +790,11 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
       joinServerConversationId,
     );
 
-    // Backfill the artifact's `conversationId` now that we have one,
-    // so future canvas-side selectors can scope by conversation.
-    if (activityArtifactId) {
-      const existing =
-        useCanvasChatStore.getState().artifacts[activityArtifactId];
-      if (existing) {
-        useCanvasChatStore.getState().registerArtifact({
-          ...existing,
-          conversationId,
-        });
-      }
-    }
-
     setConversationStarted(true);
     // Mount-once on chat-ready. Subsequent context changes go through
     // the patch effect below, not by restarting the conversation.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [chatReady]);
-
-  // When the user dismisses the synthetic intro (× button), persist
-  // that decision for the rest of the browser session so refreshes
-  // don't immediately re-seed it. Subscribes to the store rather
-  // than passing a callback through the artifact data so the
-  // dismissal flow stays a pure store mutation.
-  useEffect(() => {
-    const unsub = useCanvasChatStore.subscribe((state, prev) => {
-      const before = prev.dismissedArtifactIds;
-      const after = state.dismissedArtifactIds;
-      if (before === after) return;
-      for (const id of Object.keys(after)) {
-        if (before[id]) continue;
-        if (!id.startsWith("my-activity-")) continue;
-        try {
-          sessionStorage.setItem(
-            `hive:my-activity-dismissed:${githubLogin}`,
-            "1",
-          );
-        } catch {
-          // Storage unavailable — silently swallow.
-        }
-      }
-    });
-    return () => unsub();
-  }, [githubLogin]);
 
   // Keep the active conversation's `context` in sync with what the
   // user is currently looking at. The store does an Object.is check

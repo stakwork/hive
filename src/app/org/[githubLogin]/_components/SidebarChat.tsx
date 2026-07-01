@@ -38,10 +38,9 @@ import {
 } from "./ResearchRunCard";
 import { PlannerFormSlot } from "./PlannerFormSlot";
 import { StartTasksSlot } from "./StartTasksSlot";
-import { MyActivityPanel } from "./MyActivityPanel";
 import { DeferredCheckCard } from "./DeferredCheckCard";
 import { DailyRecapCard } from "@/components/daily-recap/DailyRecapCard";
-import type { ActivityItem } from "@/app/api/profile/activity/route";
+
 import {
   useCanvasChatStore,
   timelineFromToolCalls,
@@ -350,7 +349,7 @@ export function SidebarChat({ githubLogin }: SidebarChatProps) {
           </div>
         )}
         <div className="space-y-2">
-          <DailyRecapCard />
+          <DailyRecapCard dismissible showActivityLink />
           {messages.map((message, index) => {
             const isLastMessage = index === messages.length - 1;
             const isMessageStreaming = isLastMessage && isLoading;
@@ -583,12 +582,6 @@ const EMPTY_TOOL_CALLS: ToolCall[] = [];
  * by id (via `useShallow` so streaming text-deltas don't re-render
  * here) and switches on `artifact.type`.
  *
- * Currently registered types:
- *   - `my-activity` — compact "My Activity" intro card showing the user's
- *     recent tasks, chats, plans, and milestones. Seeded by `OrgCanvasView`
- *     on fresh canvas entry; data shape is `ActivityItem[]` from
- *     `services/roadmap/user-activity.ts`.
- *
  * Future canvas-bound types (proposals' canvas halos, sub-agent
  * status pills, etc.) layer in additional cases here.
  */
@@ -605,23 +598,12 @@ function MessageArtifacts({ artifactIds }: { artifactIds?: string[] }) {
         .filter(Boolean),
     ),
   );
-  const dismissArtifact = useCanvasChatStore((s) => s.dismissArtifact);
   if (ids.length === 0 || artifacts.length === 0) return null;
   return (
     <div className="space-y-1.5">
       {artifacts.map((artifact) => {
-        if (artifact.type === "my-activity") {
-          const data = artifact.data as { items: ActivityItem[] } | undefined;
-          if (!data || !Array.isArray(data.items)) return null;
-          return (
-            <MyActivityPanel
-              key={artifact.id}
-              initialItems={data.items}
-              onDismiss={() => dismissArtifact(artifact.id)}
-            />
-          );
-        }
         // Unknown artifact type — render nothing rather than crash.
+        void artifact;
         return null;
       })}
     </div>
