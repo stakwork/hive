@@ -425,6 +425,8 @@ function SidebarContent({
   );
 }
 
+const STAK_TOOLKIT_SLUGS = ["stakwork", "hive"];
+
 export function Sidebar({ user }: SidebarProps) {
   const { slug: workspaceSlug, workspace, waitingForInputCount, refreshTaskNotifications, isPublicViewer } = useWorkspace();
   const { canAdmin } = useWorkspaceAccess();
@@ -454,7 +456,8 @@ export function Sidebar({ user }: SidebarProps) {
 
   // Create Stak Toolkit items if in stakwork workspace or dev mode
   const devMode = isDevelopmentMode();
-  const stakToolkitItems: NavigationItem[] = (workspaceSlug === "stakwork" || devMode) ? [
+  const showStakTools = STAK_TOOLKIT_SLUGS.includes(workspaceSlug ?? "") || devMode;
+  const stakToolkitItems: NavigationItem[] = showStakTools ? [
     {
       icon: Workflow,
       label: "Stak Toolkit",
@@ -505,7 +508,7 @@ export function Sidebar({ user }: SidebarProps) {
         };
       }
       // Filter Evals child from Protect for non-stakwork workspaces
-      if (item.label === "Protect" && item.children && !(workspaceSlug === "stakwork" || devMode)) {
+      if (item.label === "Protect" && item.children && !showStakTools) {
         return {
           ...item,
           children: item.children.filter((child) => child.label !== "Evals"),

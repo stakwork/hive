@@ -242,7 +242,28 @@ export async function sanitizeAndCompleteToolCalls(
       if (Array.isArray(msg.content)) {
         const normalizedContent = msg.content.map((item) => {
           const toolResult = item as any;
-          if (toolResult.type === "tool-result" && toolResult.output !== undefined) {
+          if (toolResult.type === "tool-result") {
+            // Missing/nullish output — a malformed tool-result. This happens
+            // when a tool-call's args fail to parse (e.g. invalid JSON), so the
+            // call errors before any result is recorded, yet a tool-result
+            // placeholder still gets persisted with no `output`. The AI SDK's
+            // ModelMessage schema REQUIRES `output` to be a structured object,
+            // so a single such message poisons the ENTIRE conversation: every
+            // subsequent turn throws AI_InvalidPromptError ("messages do not
+            // match the ModelMessage[] schema"). Coerce it to a valid error
+            // result so already-corrupted histories self-heal.
+            if (toolResult.output === undefined || toolResult.output === null) {
+              console.log(
+                `🔧 [message-sanitizer] Backfilling missing output for tool: ${toolResult.toolName}`,
+              );
+              return {
+                ...toolResult,
+                output: {
+                  type: "json",
+                  value: { error: "Tool result was not recorded." },
+                },
+              };
+            }
             // Check if output is a raw string or primitive instead of object format
             if (
               typeof toolResult.output === "string" ||
