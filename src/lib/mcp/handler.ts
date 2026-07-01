@@ -16,6 +16,8 @@ import {
   mcpReadTask,
   mcpCreateTask,
   mcpCreateFeatureTask,
+  mcpCreatePrompt,
+  mcpUpdatePrompt,
   mcpCreateWorkflowTask,
   isWorkflowTasksEnabled,
   mcpUpdateTask,
@@ -50,6 +52,8 @@ const AVAILABLE_TOOLS = [
   "create_feature_task",
   "create_workflow_task",
   "update_task",
+  "create_prompt",
+  "update_prompt",
   "send_to_task_agent",
   "check_status",
   "send_message",
@@ -713,6 +717,98 @@ function createServer(
       const result = await getWorkspaceAuth(authExtra, "update_task", editor);
       if (result.error) return result.error;
       return mcpUpdateTask(result.auth!, taskId, { title, description, priority, dependsOnTaskIds });
+    },
+  );
+
+  server.registerTool(
+    "create_prompt",
+    {
+      title: "Create Prompt",
+      description: [
+        "Create a new versioned prompt template in the stakwork prompt library.",
+        "",
+        "**Availability.** Only supported on the `stakwork` workspace.",
+        "",
+        "**Name format.** Must be UPPERCASE letters, digits, and underscores only (e.g. `MY_PROMPT_V2`). Duplicate names are rejected.",
+        "",
+        "Returns the new prompt id, name, and initial version info.",
+      ].join("\n"),
+      inputSchema: {
+        name: z
+          .string()
+          .describe(
+            "Prompt name — UPPERCASE_UNDERSCORE format only (e.g. MY_PROMPT). Must be unique.",
+          ),
+        value: z.string().describe("The prompt text/template content."),
+        description: z
+          .string()
+          .optional()
+          .describe("Optional human-readable description of what this prompt does."),
+      },
+    },
+    async (
+      { name, value, description }: { name: string; value: string; description?: string },
+      extra,
+    ) => {
+      const authExtra = extra.authInfo?.extra as McpAuthExtra | undefined;
+      const result = await getWorkspaceAuth(authExtra, "create_prompt");
+      if (result.error) return result.error;
+      if (!isWorkflowTasksEnabled(result.auth!)) {
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: "Error: prompt tools are only supported on the stakwork workspace",
+            },
+          ],
+          isError: true,
+        };
+      }
+      return mcpCreatePrompt(result.auth!, name, value, description);
+    },
+  );
+
+  server.registerTool(
+    "update_prompt",
+    {
+      title: "Update Prompt",
+      description: [
+        "Push a new version of an existing prompt. The prior versions are preserved — this does NOT overwrite history.",
+        "",
+        "**Availability.** Only supported on the `stakwork` workspace.",
+        "",
+        "Pass the prompt `id` (not name) and the new `value`. Optionally update `description`. The prompt name cannot be changed via this tool.",
+      ].join("\n"),
+      inputSchema: {
+        promptId: z.string().describe("ID of the prompt to update."),
+        value: z
+          .string()
+          .describe("New prompt content — creates a new PromptVersion."),
+        description: z
+          .string()
+          .optional()
+          .describe("Updated description. Omit to keep the existing description."),
+      },
+    },
+    async (
+      { promptId, value, description }: { promptId: string; value: string; description?: string },
+      extra,
+    ) => {
+      const authExtra = extra.authInfo?.extra as McpAuthExtra | undefined;
+      const result = await getWorkspaceAuth(authExtra, "update_prompt");
+      if (result.error) return result.error;
+      if (!isWorkflowTasksEnabled(result.auth!)) {
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: "Error: prompt tools are only supported on the stakwork workspace",
+            },
+          ],
+          isError: true,
+        };
+      }
+      return mcpUpdatePrompt(result.auth!, promptId, value, description);
     },
   );
 
