@@ -43,7 +43,7 @@ export async function createAndSendNotification(input: {
       }),
       db.workspace.findUnique({
         where: { id: input.workspaceId },
-        select: { slug: true },
+        select: { slug: true, sphinxEnabled: true },
       }),
     ]);
 
@@ -151,7 +151,7 @@ export async function createAndSendNotification(input: {
     const decryptedPubkey = targetUser?.lightningPubkey
       ? encryptionService.decryptField("lightningPubkey", targetUser.lightningPubkey)
       : null;
-    const dmReady = isDirectMessageConfigured() && !!decryptedPubkey;
+    const dmReady = isDirectMessageConfigured() && !!decryptedPubkey && (workspace?.sphinxEnabled ?? false);
 
     const isDeferred = dmReady && DEFERRED_NOTIFICATION_TYPES.has(input.notificationType);
     const sendAfter = isDeferred ? new Date(Date.now() + DEFERRED_DELAY_MS) : null;

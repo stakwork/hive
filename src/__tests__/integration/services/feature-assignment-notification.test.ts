@@ -51,6 +51,7 @@ describe("FEATURE_ASSIGNED notification", () => {
       ownerId: owner.id,
       name: "Test Workspace",
       slug: "test-ws-feat-assign",
+      sphinxEnabled: true,
     });
 
     await db.workspaceMember.create({
