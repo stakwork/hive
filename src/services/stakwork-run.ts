@@ -375,7 +375,7 @@ export async function createStakworkRun(
           workspaceSlug: workspace.slug,
           userId,
         },
-        { agentName: "task-generation", runId: run.id },
+        { agentName: "plan-agent", runId: run.id },
       );
       if (bifrost) {
         vars.apiKey = bifrost.apiKey;
