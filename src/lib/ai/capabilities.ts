@@ -286,8 +286,10 @@ export const CAPABILITY_REGISTRY: Record<OrgCapability, CapabilityDefinition> =
       menuBlurb:
         "**graph_walker** — fetch KG node-type ontology (`graph_ontology`), " +
         "dereference any URN (`graph_get`), expand 1-hop neighbors (`graph_neighbors`), " +
-        "search across pg/canvas/kg realms (`graph_search`). Load when you need to " +
-        "walk the cross-realm graph or dereference a URN from another tool.",
+        "search the swarm knowledge graph (`graph_search`, realm `kg`) — Hive " +
+        "Features/Tasks/ChatMessages now live there as HiveFeature/HiveTask/" +
+        "HiveChatMessage, alongside the code graph. Load when you need to walk the " +
+        "knowledge graph or dereference a URN from another tool. (The `pg` realm is disabled.)",
       writeToolNames: [], // read-only
     },
   };
@@ -341,9 +343,14 @@ function buildLearnCapabilityTool(resolved: readonly OrgCapability[]): ToolSet {
         loadable.join(", ") +
         ". Call this FIRST whenever the user wants to: draw / diagram / " +
         "annotate / re-lay-out the canvas (`whiteboard`), create a saved " +
-        "research writeup (`research`), or document a system integration " +
-        "(`connections`). Returns the full rules for that capability; " +
-        "don't call the capability's tools until you've loaded them.",
+        "research writeup (`research`), document a system integration " +
+        "(`connections`), or search / walk / traverse the knowledge graph or " +
+        "dereference a URN (`graph_walker` — this covers ANY use of " +
+        "`graph_search`, `graph_ontology`, `graph_get`, or `graph_neighbors`). " +
+        "You MUST load a capability before calling any of its tools; if you " +
+        "find yourself about to call one of those tools without having loaded " +
+        "its capability this turn, call `learn_capability` first. Returns the " +
+        "full rules for that capability.",
       inputSchema: z.object({
         capability: z
           .enum(loadable as [OrgCapability, ...OrgCapability[]])
@@ -416,11 +423,11 @@ export function composeCapabilityPromptSuffix(
 
 ## More capabilities (load on demand)
 
-These advanced capabilities are available but their detailed rules are NOT loaded yet. Before using any of their tools, call \`learn_capability(<name>)\` to load the instructions:
+These advanced capabilities are available but their detailed rules are NOT loaded yet. Before using ANY of their tools, you MUST call \`learn_capability(<name>)\` first to load the instructions — do not call a capability's tools until you have loaded it this session:
 
 ${menu}
 
-Only load a capability when the user's request actually calls for it; for the common "propose a feature, then send it to its planner" flow you don't need any of these.`
+Only load a capability when the user's request actually calls for it; for the common "propose a feature, then send it to its planner" flow you don't need any of these. But whenever the user asks you to search, walk, or traverse the graph / knowledge graph, or to look up an entity by URN, that REQUIRES the \`graph_walker\` capability — call \`learn_capability("graph_walker")\` before using \`graph_search\` / \`graph_ontology\` / \`graph_get\` / \`graph_neighbors\`.`
   );
 }
 

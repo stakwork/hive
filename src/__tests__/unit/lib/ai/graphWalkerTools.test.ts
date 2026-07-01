@@ -212,15 +212,14 @@ describe("buildGraphWalkerTools", () => {
       expect(mockResolveCanvasNode).not.toHaveBeenCalled();
     });
 
-    it("calls resolvePgNode for pg realm and returns node", async () => {
+    it("pg realm is DISABLED: returns a disabled note without calling resolvePgNode", async () => {
       mockParseUrn.mockReturnValue({
         realm: "pg",
         org: "myorg",
         type: "feature",
         id: "feat-1",
       });
-      const fakeNode = { id: "feat-1", title: "My Feature" };
-      mockResolvePgNode.mockResolvedValue(fakeNode);
+      mockResolvePgNode.mockResolvedValue({ id: "feat-1", title: "My Feature" });
 
       const tools = getTools();
       const result = await tools.graph_get.execute(
@@ -228,25 +227,10 @@ describe("buildGraphWalkerTools", () => {
         {} as never,
       );
 
-      expect(mockResolvePgNode).toHaveBeenCalledWith("urn:myorg:pg:feature:feat-1");
-      expect(result).toEqual(fakeNode);
-    });
-
-    it("returns access denied error when resolvePgNode returns null", async () => {
-      mockParseUrn.mockReturnValue({
-        realm: "pg",
-        org: "myorg",
-        type: "feature",
-        id: "feat-missing",
-      });
-      mockResolvePgNode.mockResolvedValue(null);
-
-      const tools = getTools();
-      const result = await tools.graph_get.execute(
-        { urn: "urn:myorg:pg:feature:feat-missing" },
-        {} as never,
-      );
-      expect(result).toEqual({ error: "not found or access denied" });
+      // pg is gated off — the resolver is never consulted and the caller is
+      // told to use the kg realm instead.
+      expect(mockResolvePgNode).not.toHaveBeenCalled();
+      expect(result).toMatchObject({ error: expect.stringContaining("pg realm is disabled") });
     });
 
     it("calls resolveCanvasNode for canvas realm and returns node", async () => {
@@ -374,50 +358,16 @@ describe("buildGraphWalkerTools", () => {
       expect(result).toEqual({ error: "invalid URN" });
     });
 
-    it("pg arm delegates entirely to pgNeighbors and passes through result", async () => {
+    it("pg realm is DISABLED: returns a disabled note without calling pgNeighbors", async () => {
       mockParseUrn.mockReturnValue({
         realm: "pg",
         org: "myorg",
         type: "feature",
         id: "feat-1",
       });
-      const fakeNeighbors = [
+      mockPgNeighbors.mockResolvedValue([
         { urn: "urn:myorg:pg:initiative:init-1", edgeType: "initiative", direction: "forward" },
-      ];
-      mockPgNeighbors.mockResolvedValue(fakeNeighbors);
-
-      const tools = getTools();
-      const result = await tools.graph_neighbors.execute(
-        { urn: "urn:myorg:pg:feature:feat-1" },
-        {} as never,
-      );
-
-      expect(mockPgNeighbors).toHaveBeenCalledWith(
-        "urn:myorg:pg:feature:feat-1",
-        { userId: USER_ID, orgId: ORG_ID },
-      );
-      expect(result).toEqual({ neighbors: fakeNeighbors });
-    });
-
-    it("pg arm attaches a human-readable title to each neighbor (batched per type)", async () => {
-      // Real-ish URN parser so attachPgTitles groups neighbors by type/id.
-      mockParseUrn.mockImplementation((urn: string) => {
-        const [, org, realm, type, ...idParts] = urn.split(":");
-        if (realm === "kg") {
-          const [workspace, kgType, ...rest] = [type, ...idParts];
-          return { realm, org, workspace, type: kgType, id: rest.join(":") };
-        }
-        return { realm, org, type, id: idParts.join(":") };
-      });
-
-      mockPgNeighbors.mockResolvedValue([
-        { urn: "urn:myorg:pg:initiative:init-1", edgeType: "BELONGS_TO_INITIATIVE", direction: "forward" },
-        { urn: "urn:myorg:pg:milestone:ms-1", edgeType: "BELONGS_TO_MILESTONE", direction: "forward" },
-        // opaque-external neighbor — no pg recipe, must pass through untouched
-        { urn: "stakwork:workflow:42", edgeType: "REFERENCES_WORKFLOW", direction: "forward" },
       ]);
-      dbInitiative.findMany.mockResolvedValue([{ id: "init-1", name: "Canvas Chat" }]);
-      dbMilestone.findMany.mockResolvedValue([{ id: "ms-1", name: "Planner Agent & Tooling" }]);
 
       const tools = getTools();
       const result = await tools.graph_neighbors.execute(
@@ -425,71 +375,8 @@ describe("buildGraphWalkerTools", () => {
         {} as never,
       );
 
-      // Batched: one query per distinct neighbor type
-      expect(dbInitiative.findMany).toHaveBeenCalledWith({
-        where: { id: { in: ["init-1"] } },
-        select: { id: true, name: true },
-      });
-      const neighbors = (result as { neighbors: Array<{ urn: string; title?: string }> }).neighbors;
-      expect(neighbors.find((n) => n.urn.includes("init-1"))?.title).toBe("Canvas Chat");
-      expect(neighbors.find((n) => n.urn.includes("ms-1"))?.title).toBe(
-        "Planner Agent & Tooling",
-      );
-      // opaque-external neighbor stays untouched (no title)
-      expect(neighbors.find((n) => n.urn === "stakwork:workflow:42")?.title).toBeUndefined();
-    });
-
-    it("pg arm labels cross-realm kg neighbors (implemented-by concepts) via a batched by-refs call", async () => {
-      // Real-ish parser so both pg and kg URNs resolve to {realm,type,id,workspace}.
-      mockParseUrn.mockImplementation((urn: string) => {
-        const [, org, realm, type, ...idParts] = urn.split(":");
-        if (realm === "kg") {
-          const [workspace, kgType, ...rest] = [type, ...idParts];
-          return { realm, org, workspace, type: kgType, id: rest.join(":") };
-        }
-        return { realm, org, type, id: idParts.join(":") };
-      });
-
-      // A pg feature whose neighbors include pg siblings AND kg concepts that
-      // arrived through the Postgres UrnEdge bridge (no title from pgNeighbors).
-      mockPgNeighbors.mockResolvedValue([
-        { urn: "urn:myorg:pg:milestone:ms-1", edgeType: "BELONGS_TO_MILESTONE", direction: "forward" },
-        { urn: "urn:myorg:kg:my-ws:concept:c1", edgeType: "implemented-by", direction: "forward" },
-        { urn: "urn:myorg:kg:my-ws:concept:c2", edgeType: "implemented-by", direction: "forward" },
-      ]);
-      dbMilestone.findMany.mockResolvedValue([{ id: "ms-1", name: "Canvas Workflow" }]);
-
-      mockResolveKgSeam.mockResolvedValue({
-        workspace: "my-ws",
-        swarmUrl: "https://jarvis.example.com",
-        jarvisUrl: "https://jarvis.example.com",
-        swarmApiKey: "key-123",
-      });
-      mockKgGetNodesByRefs.mockResolvedValue(
-        new Map([
-          ["c1", "Integration Tests"],
-          ["c2", "Org Canvas"],
-        ]),
-      );
-
-      const tools = getTools();
-      const result = await tools.graph_neighbors.execute(
-        { urn: "urn:myorg:pg:feature:feat-1" },
-        {} as never,
-      );
-
-      // One batched call covering both concept ref_ids
-      expect(mockKgGetNodesByRefs).toHaveBeenCalledTimes(1);
-      expect(mockKgGetNodesByRefs).toHaveBeenCalledWith(
-        "https://jarvis.example.com",
-        "key-123",
-        expect.arrayContaining(["c1", "c2"]),
-      );
-
-      const neighbors = (result as { neighbors: Array<{ urn: string; title?: string }> }).neighbors;
-      expect(neighbors.find((n) => n.urn.includes("ms-1"))?.title).toBe("Canvas Workflow");
-      expect(neighbors.find((n) => n.urn.includes("concept:c1"))?.title).toBe("Integration Tests");
-      expect(neighbors.find((n) => n.urn.includes("concept:c2"))?.title).toBe("Org Canvas");
+      expect(mockPgNeighbors).not.toHaveBeenCalled();
+      expect(result).toMatchObject({ error: expect.stringContaining("pg realm is disabled") });
     });
 
     it("kg arm maps the derived node name onto each neighbor's title", async () => {
@@ -845,8 +732,8 @@ describe("buildGraphWalkerTools", () => {
       dbQueryRaw.mockResolvedValue([]);
     });
 
-    it("searches pg + canvas when no realm specified", async () => {
-      // pg returns a feature
+    it("searches canvas + kg (fan-out) when no realm specified; pg is skipped", async () => {
+      // pg is disabled — even though a feature exists, the pg arm must not run.
       dbFeature.findMany.mockResolvedValue([{ id: "feat-1", title: "Auth system" }]);
       // canvas returns a node
       dbCanvas.findMany.mockResolvedValue([
@@ -860,6 +747,19 @@ describe("buildGraphWalkerTools", () => {
         nodes: [{ id: "n1", type: "text", text: "Auth system design" }],
         edges: [],
       });
+      // kg fan-out: one member workspace with a reachable swarm.
+      dbWorkspace.findMany.mockResolvedValue([{ id: "ws-1", slug: "workspace-one" }]);
+      mockGetSwarmAccessByWorkspaceId.mockResolvedValue({
+        success: true,
+        data: { swarmUrl: "https://jarvis1.example.com", swarmName: "swarm-one", swarmApiKey: "key-1" },
+      });
+      mockKgSearch.mockResolvedValue([
+        { ref_id: "hf-1", node_type: "HiveFeature", name: "Auth system" },
+      ]);
+      mockFormatUrn.mockImplementation(
+        (p: { realm: string; org: string; workspace?: string; type: string; id: string }) =>
+          `urn:${p.org}:${p.realm}:${p.workspace ? p.workspace + ":" : ""}${p.type}:${p.id}`,
+      );
 
       const tools = getTools();
       const result = await tools.graph_search.execute(
@@ -867,14 +767,15 @@ describe("buildGraphWalkerTools", () => {
         {} as never,
       );
 
-      expect(result).toHaveProperty("results");
+      // pg arm never runs
+      expect(dbFeature.findMany).not.toHaveBeenCalled();
       const results = (result as { results: Array<{ realm: string }> }).results;
-      // Should have both pg and canvas results
-      expect(results.some((r) => r.realm === "pg")).toBe(true);
+      expect(results.some((r) => r.realm === "pg")).toBe(false);
       expect(results.some((r) => r.realm === "canvas")).toBe(true);
+      expect(results.some((r) => r.realm === "kg")).toBe(true);
     });
 
-    it("only searches pg when realm='pg'", async () => {
+    it("returns nothing for realm='pg' (disabled) and never queries Postgres", async () => {
       dbFeature.findMany.mockResolvedValue([
         { id: "feat-2", title: "Search feature" },
       ]);
@@ -885,9 +786,11 @@ describe("buildGraphWalkerTools", () => {
         {} as never,
       );
 
+      // pg disabled: no arms run, empty results.
+      expect(dbFeature.findMany).not.toHaveBeenCalled();
       expect(dbCanvas.findMany).not.toHaveBeenCalled();
       const results = (result as { results: Array<{ realm: string }> }).results;
-      expect(results.every((r) => r.realm === "pg")).toBe(true);
+      expect(results).toEqual([]);
     });
 
     it("only searches canvas when realm='canvas'", async () => {
@@ -998,47 +901,6 @@ describe("buildGraphWalkerTools", () => {
       expect(results[0]).toMatchObject({ title: "utils.ts", realm: "kg" });
     });
 
-    it("pg results include correct urn, type, title, realm fields", async () => {
-      dbFeature.findMany.mockResolvedValue([{ id: "feat-3", title: "Feature Alpha" }]);
-
-      const tools = getTools();
-      const result = await tools.graph_search.execute(
-        { query: "Alpha", realm: "pg" },
-        {} as never,
-      );
-
-      const results = (
-        result as {
-          results: Array<{ urn: string; type: string; title: string; realm: string }>;
-        }
-      ).results;
-
-      expect(mockFormatUrn).toHaveBeenCalledWith(
-        expect.objectContaining({ realm: "pg", type: "feature", id: "feat-3" }),
-      );
-      expect(results[0]).toMatchObject({
-        type: "feature",
-        title: "Feature Alpha",
-        realm: "pg",
-      });
-    });
-
-    it("pg URNs embed the org githubLogin, not the cuid", async () => {
-      dbFeature.findMany.mockResolvedValue([{ id: "feat-9", title: "X" }]);
-
-      const tools = getTools();
-      await tools.graph_search.execute({ query: "X", realm: "pg" }, {} as never);
-
-      // org segment must be the githubLogin so URNs round-trip through graph_get
-      expect(mockFormatUrn).toHaveBeenCalledWith(
-        expect.objectContaining({ org: "myorg", type: "feature", id: "feat-9" }),
-      );
-      expect(dbSourceControlOrg.findUnique).toHaveBeenCalledWith({
-        where: { id: ORG_ID },
-        select: { githubLogin: true },
-      });
-    });
-
     it("returns { results: [] } when the org cannot be resolved", async () => {
       dbSourceControlOrg.findUnique.mockResolvedValue(null);
       dbFeature.findMany.mockResolvedValue([{ id: "feat-1", title: "Auth" }]);
@@ -1054,8 +916,12 @@ describe("buildGraphWalkerTools", () => {
       expect(dbFeature.findMany).not.toHaveBeenCalled();
     });
 
-    it("matches features on title and plan columns (brief/requirements/architecture)", async () => {
+    it("pg-realm entities (features/tasks/etc.) are never queried in Postgres", async () => {
+      // pg is disabled — regardless of realm/type, none of the pg-backed
+      // Prisma models are touched. Roadmap/chat discovery flows through kg now
+      // (HiveFeature / HiveTask / HiveChatMessage).
       dbFeature.findMany.mockResolvedValue([{ id: "feat-7", title: "Billing" }]);
+      dbTask.findMany.mockResolvedValue([{ id: "task-1", title: "Fix login" }]);
 
       const tools = getTools();
       await tools.graph_search.execute(
@@ -1063,257 +929,7 @@ describe("buildGraphWalkerTools", () => {
         {} as never,
       );
 
-      expect(dbFeature.findMany).toHaveBeenCalledWith(
-        expect.objectContaining({
-          where: expect.objectContaining({
-            deleted: false,
-            workspace: { sourceControlOrgId: ORG_ID },
-            OR: [
-              { title: { contains: "webhook", mode: "insensitive" } },
-              { brief: { contains: "webhook", mode: "insensitive" } },
-              { requirements: { contains: "webhook", mode: "insensitive" } },
-              { architecture: { contains: "webhook", mode: "insensitive" } },
-            ],
-          }),
-        }),
-      );
-    });
-
-    it("searches tasks in the pg arm", async () => {
-      dbTask.findMany.mockResolvedValue([
-        { id: "task-1", title: "Fix login bug" },
-      ]);
-
-      const tools = getTools();
-      const result = await tools.graph_search.execute(
-        { query: "login", realm: "pg" },
-        {} as never,
-      );
-
-      // Tasks scoped to the org via workspace, excluding deleted/archived
-      expect(dbTask.findMany).toHaveBeenCalledWith(
-        expect.objectContaining({
-          where: expect.objectContaining({
-            deleted: false,
-            archived: false,
-            workspace: { sourceControlOrgId: ORG_ID, deleted: false },
-            OR: [
-              { title: { contains: "login", mode: "insensitive" } },
-              { description: { contains: "login", mode: "insensitive" } },
-            ],
-          }),
-        }),
-      );
-      expect(mockFormatUrn).toHaveBeenCalledWith(
-        expect.objectContaining({ realm: "pg", type: "task", id: "task-1" }),
-      );
-      const results = (
-        result as { results: Array<{ type: string; title: string }> }
-      ).results;
-      expect(results).toContainEqual(
-        expect.objectContaining({ type: "task", title: "Fix login bug", realm: "pg" }),
-      );
-    });
-
-    it("searches workspaces in the pg arm (name/description/mission)", async () => {
-      dbWorkspace.findMany.mockResolvedValue([
-        { id: "ws-1", name: "Core Platform" },
-      ]);
-
-      const tools = getTools();
-      const result = await tools.graph_search.execute(
-        { query: "platform", realm: "pg", type: "workspace" },
-        {} as never,
-      );
-
-      expect(dbWorkspace.findMany).toHaveBeenCalledWith(
-        expect.objectContaining({
-          where: expect.objectContaining({
-            sourceControlOrgId: ORG_ID,
-            deleted: false,
-            OR: [
-              { name: { contains: "platform", mode: "insensitive" } },
-              { description: { contains: "platform", mode: "insensitive" } },
-              { mission: { contains: "platform", mode: "insensitive" } },
-            ],
-          }),
-        }),
-      );
-      expect(mockFormatUrn).toHaveBeenCalledWith(
-        expect.objectContaining({ realm: "pg", type: "workspace", id: "ws-1" }),
-      );
-      const results = (
-        result as { results: Array<{ type: string; title: string }> }
-      ).results;
-      expect(results).toContainEqual(
-        expect.objectContaining({ type: "workspace", title: "Core Platform", realm: "pg" }),
-      );
-    });
-
-    it("searches repositories in the pg arm (name/description/URL)", async () => {
-      dbRepository.findMany.mockResolvedValue([
-        { id: "repo-1", name: "hive" },
-      ]);
-
-      const tools = getTools();
-      const result = await tools.graph_search.execute(
-        { query: "hive", realm: "pg", type: "repository" },
-        {} as never,
-      );
-
-      expect(dbRepository.findMany).toHaveBeenCalledWith(
-        expect.objectContaining({
-          where: expect.objectContaining({
-            workspace: { sourceControlOrgId: ORG_ID, deleted: false },
-            OR: [
-              { name: { contains: "hive", mode: "insensitive" } },
-              { description: { contains: "hive", mode: "insensitive" } },
-              { repositoryUrl: { contains: "hive", mode: "insensitive" } },
-            ],
-          }),
-        }),
-      );
-      expect(mockFormatUrn).toHaveBeenCalledWith(
-        expect.objectContaining({ realm: "pg", type: "repository", id: "repo-1" }),
-      );
-      const results = (
-        result as { results: Array<{ type: string; title: string }> }
-      ).results;
-      expect(results).toContainEqual(
-        expect.objectContaining({ type: "repository", title: "hive", realm: "pg" }),
-      );
-    });
-
-    it("searches research docs in the pg arm (title/topic/summary/content)", async () => {
-      dbResearch.findMany.mockResolvedValue([
-        { id: "res-1", title: "OAuth deep-dive", topic: "oauth" },
-      ]);
-
-      const tools = getTools();
-      const result = await tools.graph_search.execute(
-        { query: "oauth", realm: "pg", type: "research" },
-        {} as never,
-      );
-
-      expect(dbResearch.findMany).toHaveBeenCalledWith(
-        expect.objectContaining({
-          where: expect.objectContaining({
-            orgId: ORG_ID,
-            OR: [
-              { title: { contains: "oauth", mode: "insensitive" } },
-              { topic: { contains: "oauth", mode: "insensitive" } },
-              { summary: { contains: "oauth", mode: "insensitive" } },
-              { content: { contains: "oauth", mode: "insensitive" } },
-            ],
-          }),
-        }),
-      );
-      expect(mockFormatUrn).toHaveBeenCalledWith(
-        expect.objectContaining({ realm: "pg", type: "research", id: "res-1" }),
-      );
-      const results = (
-        result as { results: Array<{ type: string; title: string }> }
-      ).results;
-      expect(results).toContainEqual(
-        expect.objectContaining({ type: "research", title: "OAuth deep-dive", realm: "pg" }),
-      );
-    });
-
-    it("falls back to topic when a research title is empty", async () => {
-      dbResearch.findMany.mockResolvedValue([
-        { id: "res-2", title: "", topic: "rate limiting" },
-      ]);
-
-      const tools = getTools();
-      const result = await tools.graph_search.execute(
-        { query: "rate", realm: "pg", type: "research" },
-        {} as never,
-      );
-
-      const results = (
-        result as { results: Array<{ title: string }> }
-      ).results;
-      expect(results).toContainEqual(
-        expect.objectContaining({ title: "rate limiting" }),
-      );
-    });
-
-    it("searches connection docs in the pg arm (name/summary/architecture)", async () => {
-      dbConnection.findMany.mockResolvedValue([
-        { id: "conn-1", name: "Sphinx ↔ Hive" },
-      ]);
-
-      const tools = getTools();
-      const result = await tools.graph_search.execute(
-        { query: "sphinx", realm: "pg", type: "connection" },
-        {} as never,
-      );
-
-      expect(dbConnection.findMany).toHaveBeenCalledWith(
-        expect.objectContaining({
-          where: expect.objectContaining({
-            orgId: ORG_ID,
-            OR: [
-              { name: { contains: "sphinx", mode: "insensitive" } },
-              { summary: { contains: "sphinx", mode: "insensitive" } },
-              { architecture: { contains: "sphinx", mode: "insensitive" } },
-            ],
-          }),
-        }),
-      );
-      expect(mockFormatUrn).toHaveBeenCalledWith(
-        expect.objectContaining({ realm: "pg", type: "connection", id: "conn-1" }),
-      );
-      const results = (
-        result as { results: Array<{ type: string; title: string }> }
-      ).results;
-      expect(results).toContainEqual(
-        expect.objectContaining({ type: "connection", title: "Sphinx ↔ Hive", realm: "pg" }),
-      );
-    });
-
-    it("searches conversations in the pg arm via raw query", async () => {
-      dbQueryRaw.mockResolvedValue([
-        { id: "convo-1", title: "Roadmap chat" },
-        { id: "convo-2", title: null },
-      ]);
-
-      const tools = getTools();
-      const result = await tools.graph_search.execute(
-        { query: "roadmap", realm: "pg" },
-        {} as never,
-      );
-
-      expect(dbQueryRaw).toHaveBeenCalled();
-      expect(mockFormatUrn).toHaveBeenCalledWith(
-        expect.objectContaining({
-          realm: "pg",
-          type: "conversation",
-          id: "convo-1",
-        }),
-      );
-      const results = (
-        result as { results: Array<{ type: string; title: string }> }
-      ).results;
-      expect(results).toContainEqual(
-        expect.objectContaining({ type: "conversation", title: "Roadmap chat" }),
-      );
-      // Null titles fall back to a placeholder
-      expect(results).toContainEqual(
-        expect.objectContaining({
-          type: "conversation",
-          title: "(untitled conversation)",
-        }),
-      );
-    });
-
-    it("does not search conversations or tasks when type filters them out", async () => {
-      const tools = getTools();
-      await tools.graph_search.execute(
-        { query: "x", realm: "pg", type: "feature" },
-        {} as never,
-      );
-
+      expect(dbFeature.findMany).not.toHaveBeenCalled();
       expect(dbTask.findMany).not.toHaveBeenCalled();
       expect(dbWorkspace.findMany).not.toHaveBeenCalled();
       expect(dbRepository.findMany).not.toHaveBeenCalled();

@@ -4,10 +4,20 @@
  * Exposes three agent tools:
  *   - `graph_get`       — resolve a single URN to its full node content
  *   - `graph_neighbors` — return all adjacent URNs reachable in one hop
- *   - `graph_search`    — keyword search across pg, canvas, and kg realms
+ *   - `graph_search`    — keyword search across canvas and kg realms
  *
- * All three realms are live: pg (Postgres roadmap), canvas (canvas nodes), and
- * kg (the swarm knowledge graph, served by Jarvis v2 over HTTP).
+ * The primary realm is `kg` (the swarm knowledge graph, served by Jarvis v2 over
+ * HTTP); `canvas` (canvas nodes) is also live.
+ *
+ * ## pg realm is DISABLED (see PG_REALM_ENABLED)
+ *
+ * Hive Features, Tasks, and ChatMessages are now mirrored directly into each
+ * workspace's knowledge graph (kg realm) as `HiveFeature` / `HiveTask` /
+ * `HiveChatMessage` nodes — see `src/services/jarvis-mirror`. The pg-realm
+ * search/resolve code below is retained for reference but gated off behind
+ * `PG_REALM_ENABLED`, so all roadmap + conversation discovery now flows through
+ * the kg realm. Flip `PG_REALM_ENABLED` back to `true` to re-enable the
+ * Postgres-backed roadmap traversal.
  *
  * All tools are read-only — no node creation, edge writes, or swarm mutations.
  */
@@ -49,6 +59,26 @@ async function urnOrgMatchesContext(
   });
   return row?.id === orgId;
 }
+
+// ---------------------------------------------------------------------------
+// Feature gate
+// ---------------------------------------------------------------------------
+
+/**
+ * When `false`, the pg realm is inert: `graph_search` skips its pg arms (and
+ * default no-realm search falls through to canvas + kg), and `graph_get` /
+ * `graph_neighbors` refuse to resolve pg URNs. Hive Features, Tasks, and
+ * ChatMessages now live in the kg realm (HiveFeature / HiveTask /
+ * HiveChatMessage) via the jarvis-mirror sync, so pg is no longer the source of
+ * truth for roadmap discovery. Flip to `true` to re-enable Postgres traversal.
+ */
+const PG_REALM_ENABLED = false;
+
+/** Shared message returned when a pg-realm operation is attempted while disabled. */
+const PG_DISABLED_MESSAGE =
+  "pg realm is disabled — Hive features, tasks, and chat messages now live in " +
+  "the kg realm as HiveFeature / HiveTask / HiveChatMessage nodes. Use " +
+  'graph_search with realm: "kg" (and graph_ontology to discover node types).';
 
 // ---------------------------------------------------------------------------
 // Internal types
@@ -804,8 +834,9 @@ export function buildGraphWalkerTools(
     graph_get: tool({
       description:
         "Resolve a single URN to its full node content. " +
-        "Routes by realm: `pg` and `canvas` URNs are resolved locally; " +
+        "Routes by realm: `canvas` URNs are resolved locally; " +
         "`kg` URNs are resolved live from the swarm knowledge graph (Jarvis). " +
+        "The `pg` realm is DISABLED (its entities now live in the kg). " +
         "Use this when you have a specific URN and need the entity's data.",
       inputSchema: z.object({
         urn: z.string().describe(
@@ -824,6 +855,7 @@ export function buildGraphWalkerTools(
 
         switch (parsed.realm) {
           case "pg": {
+            if (!PG_REALM_ENABLED) return { error: PG_DISABLED_MESSAGE };
             const node = await resolvePgNode(urn);
             return node ?? { error: "not found or access denied" };
           }
@@ -846,9 +878,9 @@ export function buildGraphWalkerTools(
       description:
         "Return all adjacent URNs reachable in one hop from the given node, " +
         "with edgeType and direction. " +
-        "For `pg` URNs, delegates to the full pgNeighbors registry (FK traversal + UrnEdge). " +
         "For `canvas` URNs, unions structural canvas edges with UrnEdge cross-realm edges. " +
-        "For `kg` URNs, calls Jarvis v2 with optional edge_type / node_type filters (kg-specific, ignored by other realms).",
+        "For `kg` URNs, calls Jarvis v2 with optional edge_type / node_type filters (kg-specific, ignored by other realms). " +
+        "The `pg` realm is DISABLED (its entities now live in the kg).",
       inputSchema: z.object({
         urn: z.string().describe("Canonical URN of the node to expand."),
         depth: z
@@ -886,6 +918,7 @@ export function buildGraphWalkerTools(
 
         switch (parsed.realm) {
           case "pg": {
+            if (!PG_REALM_ENABLED) return { error: PG_DISABLED_MESSAGE };
             const ctx: PgNeighborContext = { userId, orgId };
             const results = await pgNeighbors(urn, ctx);
             // pg-native neighbors get labels from Postgres; cross-realm kg
@@ -976,13 +1009,16 @@ export function buildGraphWalkerTools(
 
     graph_search: tool({
       description:
-        "Search for nodes by keyword across pg, canvas, and kg realms, " +
+        "Search for nodes by keyword across the canvas and kg realms, " +
         "returning ranked results with URN, type, title, and realm. " +
-        "The pg realm covers features, initiatives, milestones, tasks, and " +
-        "org-canvas chat conversations; the canvas realm covers canvas nodes; " +
-        "the kg realm searches Jarvis knowledge-graph nodes. " +
+        "The kg realm searches Jarvis knowledge-graph nodes — including Hive " +
+        "Features, Tasks, and ChatMessages, which are mirrored into the kg as " +
+        "HiveFeature / HiveTask / HiveChatMessage nodes; the canvas realm covers " +
+        "canvas nodes. " +
+        "The `pg` realm is DISABLED (roadmap/chat data now lives in the kg). " +
         "Scope with `realm`, `type`, or `workspace` to narrow results. " +
-        "Default (no realm) searches pg + canvas. " +
+        "Default (no realm) searches canvas + kg (kg fanned out across all " +
+        "member workspaces). " +
         "For kg: provide `workspace` to search one workspace, or omit to fan-out across all member workspaces.",
       inputSchema: z.object({
         query: z.string().min(1).describe("Keyword(s) to search for."),
@@ -990,7 +1026,8 @@ export function buildGraphWalkerTools(
           .enum(["pg", "canvas", "kg"])
           .optional()
           .describe(
-            "Limit search to a specific realm. Omit to search pg + canvas.",
+            "Limit search to a specific realm. Omit to search canvas + kg. " +
+              "`pg` is DISABLED and returns nothing — use `kg` instead.",
           ),
         workspace: z
           .string()
@@ -1000,7 +1037,9 @@ export function buildGraphWalkerTools(
           .string()
           .optional()
           .describe(
-            "Filter by node type (e.g. 'feature', 'initiative', 'milestone', 'task', 'conversation', 'node').",
+            "Filter by node type. For kg use the exact type from graph_ontology " +
+              "(e.g. 'HiveFeature', 'HiveTask', 'HiveChatMessage', 'File', 'Function'); " +
+              "for canvas use 'node' / 'text'.",
           ),
         limit: z
           .number()
@@ -1036,14 +1075,20 @@ export function buildGraphWalkerTools(
         if (!orgRow) return { results: [] };
         const urnOrg = orgRow.githubLogin;
 
-        if (!realm || realm === "pg") {
+        // pg realm is disabled (see PG_REALM_ENABLED) — features/tasks/chat are
+        // discovered through the kg realm now. When re-enabled, pg re-joins the
+        // default (no-realm) fan-out alongside canvas.
+        if (PG_REALM_ENABLED && (!realm || realm === "pg")) {
           arms.push(searchPg(query, { orgId, urnOrg, type, limit }));
           arms.push(searchConversations(query, { orgId, urnOrg, type, limit }));
         }
         if (!realm || realm === "canvas") {
           arms.push(searchCanvas(query, { orgId, urnOrg, type, limit }));
         }
-        if (realm === "kg") {
+        // kg runs on an explicit realm:"kg" request, and — now that pg is
+        // disabled — also on the default no-realm search (fan-out across the
+        // user's member workspaces when no `workspace` is given).
+        if (realm === "kg" || !realm) {
           arms.push(
             searchKg(query, { orgId, urnOrg, userId, workspace, type, limit }),
           );
