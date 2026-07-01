@@ -1392,7 +1392,7 @@ export async function triggerAgentModeFix(
         workspaceSlug: task.workspace.slug,
         userId: bifrostUserId,
       },
-      { agentName: "pr-monitor" },
+      { agentName: "coding-agent" },
     );
 
     const sessionBody: Record<string, unknown> = {
