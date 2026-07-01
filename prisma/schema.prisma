@@ -308,6 +308,8 @@ model Workspace {
   sourceControlOrg        SourceControlOrg?        @relation(fields: [sourceControlOrgId], references: [id])
   defaultForOrg           SourceControlOrg?        @relation("OrgDefaultWorkspace")
   voiceCorrectionLearnings VoiceCorrectionLearning[]
+  errorIssues             ErrorIssue[]
+  errorEvents             ErrorEvent[]
 
   @@index([ownerId])
   @@index([deleted])
@@ -2058,6 +2060,66 @@ model UrnEdge {
   @@index([orgId, fromUrn])
   @@index([orgId, toUrn])
   @@map("urn_edges")
+}
+
+// ── Error Tracking ─────────────────────────────────────────────────────────
+
+enum ErrorIssueStatus {
+  UNRESOLVED
+  RESOLVED
+  IGNORED
+}
+
+/// Grouped error issue — one per unique fingerprint per workspace.
+/// Occurrence count, first/last-seen, and status are maintained here.
+/// Raw payloads live in Vercel Blob; only the grouped issue is projected
+/// to the knowledge graph.
+model ErrorIssue {
+  id             String           @id @default(cuid())
+  workspaceId    String           @map("workspace_id")
+  fingerprint    String
+  exceptionType  String           @map("exception_type")
+  title          String           // Representative message for display
+  status         ErrorIssueStatus @default(UNRESOLVED)
+  occurrenceCount Int             @default(1) @map("occurrence_count")
+  firstSeenAt    DateTime         @map("first_seen_at")
+  lastSeenAt     DateTime         @map("last_seen_at")
+  environment    String?
+  release        String?
+  metadata       Json?
+  kgRefId        String?          @map("kg_ref_id") // KG node ref_id after projection
+  workspace      Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  events         ErrorEvent[]
+
+  @@unique([workspaceId, fingerprint])
+  @@index([workspaceId])
+  @@index([lastSeenAt])
+  @@map("error_issues")
+}
+
+/// Individual error occurrence. Raw payload written to Vercel Blob;
+/// canonical fields stored in Postgres. Never projected to the KG —
+/// only the parent ErrorIssue is.
+model ErrorEvent {
+  id             String      @id @default(cuid())
+  issueId        String      @map("issue_id")
+  workspaceId    String      @map("workspace_id")
+  blobUrl        String      @map("blob_url")
+  exceptionType  String      @map("exception_type")
+  message        String
+  environment    String?
+  release        String?
+  requestContext Json?       @map("request_context")
+  metadata       Json?
+  fingerprint    String
+  createdAt      DateTime    @default(now()) @map("created_at")
+  issue          ErrorIssue  @relation(fields: [issueId], references: [id], onDelete: Cascade)
+  workspace      Workspace   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([issueId])
+  @@index([workspaceId])
+  @@index([createdAt])
+  @@map("error_events")
 }
 
 /// Captures raw STT transcript → final submitted text correction pairs for

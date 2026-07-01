@@ -90,6 +90,7 @@ export const PUSHER_EVENTS = {
   CANVAS_SELECTION_UPDATE: "canvas-selection-update",
   // Agent log upserted for a feature — triggers live Logs tab updates in plan view
   AGENT_LOG_UPDATED: "agent-log-updated",
+  ERROR_ISSUE_UPDATED: "error-issue-updated",
   // A canvas conversation's `messages` JSON changed server-side (planner
   // fan-out, autonomous canvas-agent turn, or a planner-form answer). The
   // payload is a lightweight nudge `{ conversationId, reason }`; the client
