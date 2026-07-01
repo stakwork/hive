@@ -422,6 +422,46 @@ export async function kgGetOntology(
 }
 
 // ---------------------------------------------------------------------------
+// kgGetNodesByType
+// ---------------------------------------------------------------------------
+
+/**
+ * Fetch nodes of a given type via `GET /v2/nodes?type=X&limit=N`.
+ *
+ * Handles both response shapes Jarvis may emit:
+ * - Raw array: `[{ ref_id, node_type, properties, ... }]`
+ * - Wrapped object: `{ nodes: [...] }`
+ *
+ * Returns `[]` on non-ok response, thrown fetch, or missing/empty results.
+ * Never throws.
+ */
+export async function kgGetNodesByType(
+  jarvisUrl: string,
+  swarmApiKey: string,
+  nodeType: string,
+  limit: number,
+): Promise<KgNode[]> {
+  try {
+    const params = new URLSearchParams({ type: nodeType, limit: String(limit) });
+    const url = `${jarvisUrl.replace(/\/$/, "")}/v2/nodes?${params.toString()}`;
+    const res = await kgFetch(url, swarmApiKey);
+    if (!res.ok) return [];
+    const data = (await res.json()) as JarvisNode[] | { nodes?: JarvisNode[] };
+    const raw = Array.isArray(data) ? data : (data?.nodes ?? []);
+    return raw
+      .filter((n) => n.ref_id)
+      .map((n) => ({
+        ref_id: n.ref_id,
+        node_type: n.node_type,
+        name: deriveNodeName(n, (n.properties ?? {}) as Record<string, unknown>),
+        properties: n.properties,
+      }));
+  } catch {
+    return [];
+  }
+}
+
+// ---------------------------------------------------------------------------
 // kgSearch
 // ---------------------------------------------------------------------------
 
