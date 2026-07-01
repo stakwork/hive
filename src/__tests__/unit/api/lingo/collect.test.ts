@@ -8,8 +8,8 @@ vi.mock("@/lib/db");
 vi.mock("@/lib/helpers/jarvis-config", () => ({
   getJarvisConfigForWorkspace: vi.fn(),
 }));
-vi.mock("@/services/swarm/api/nodes", () => ({
-  searchLatestByTypes: vi.fn(),
+vi.mock("@/lib/ai/kg-adapter", () => ({
+  kgGetNodesByType: vi.fn(),
 }));
 vi.mock("@/lib/utils/lingo-extraction", () => ({
   jargonScore: vi.fn((text: string) => {
@@ -20,11 +20,11 @@ vi.mock("@/lib/utils/lingo-extraction", () => ({
 
 import { db } from "@/lib/db";
 import { getJarvisConfigForWorkspace } from "@/lib/helpers/jarvis-config";
-import { searchLatestByTypes } from "@/services/swarm/api/nodes";
+import { kgGetNodesByType } from "@/lib/ai/kg-adapter";
 
 const mockedDb = vi.mocked(db);
 const mockedGetJarvisConfig = vi.mocked(getJarvisConfigForWorkspace);
-const mockedSearchLatest = vi.mocked(searchLatestByTypes);
+const mockedKgGetNodesByType = vi.mocked(kgGetNodesByType);
 
 function makeRequest(body: object, secret = "test-secret"): NextRequest {
   return new NextRequest("http://localhost/api/lingo/extraction/collect", {
@@ -287,6 +287,8 @@ describe("POST /api/lingo/extraction/collect — Jarvis sources", () => {
     });
     mockedDb.chatMessage.findMany = vi.fn().mockResolvedValue([]);
     mockedGetJarvisConfig.mockResolvedValue({ jarvisUrl: "http://jarvis", apiKey: "key" });
+    // Default: return empty arrays for all node type requests
+    mockedKgGetNodesByType.mockResolvedValue([]);
   });
 
   afterEach(() => {
@@ -294,46 +296,25 @@ describe("POST /api/lingo/extraction/collect — Jarvis sources", () => {
     vi.clearAllMocks();
   });
 
-  it("HiveChatMessage with node_data.role === 'assistant' is excluded", async () => {
-    mockedSearchLatest.mockImplementation(async (config, types) => {
-      if (types.HiveChatMessage) {
-        return {
-          ok: true,
-          nodes: [
-            {
-              ref_id: "sphinx-1",
-              node_type: "HiveChatMessage",
-              node_data: { role: "assistant", content: "JARGON assistant message" },
-            },
-          ],
-        };
-      }
-      return { ok: true, nodes: [] };
-    });
-
+  it("Source 2: fetches Episode and Call in parallel (exactly two calls with those types)", async () => {
     const req = makeRequest({ workspaceId: WORKSPACE_ID });
-    const res = await POST(req);
-    const json = await res.json();
+    await POST(req);
 
-    // Assistant message must be excluded
-    expect(json.texts).toHaveLength(0);
+    const calls = mockedKgGetNodesByType.mock.calls;
+    const episodeCall = calls.find((c) => c[2] === "Episode");
+    const callCall = calls.find((c) => c[2] === "Call");
+    expect(episodeCall).toBeDefined();
+    expect(callCall).toBeDefined();
+    expect(episodeCall![3]).toBe(50);
+    expect(callCall![3]).toBe(50);
   });
 
-  it("Episode/Call with neither description nor transcript is silently skipped", async () => {
-    mockedSearchLatest.mockImplementation(async (config, types) => {
-      if (types.Episode || types.Call) {
-        return {
-          ok: true,
-          nodes: [
-            {
-              ref_id: "episode-1",
-              node_type: "Episode",
-              properties: {}, // no description or transcript
-            },
-          ],
-        };
+  it("Source 2: Episode/Call with neither description nor transcript is silently skipped", async () => {
+    mockedKgGetNodesByType.mockImplementation(async (_url, _key, nodeType) => {
+      if (nodeType === "Episode") {
+        return [{ ref_id: "episode-1", node_type: "Episode", name: "", properties: {} }];
       }
-      return { ok: true, nodes: [] };
+      return [];
     });
 
     const req = makeRequest({ workspaceId: WORKSPACE_ID });
@@ -341,6 +322,144 @@ describe("POST /api/lingo/extraction/collect — Jarvis sources", () => {
     const json = await res.json();
 
     expect(json.total_before_filter).toBe(0);
+  });
+
+  it("Source 2: Episode node with description is included", async () => {
+    mockedKgGetNodesByType.mockImplementation(async (_url, _key, nodeType) => {
+      if (nodeType === "Episode") {
+        return [
+          {
+            ref_id: "ep-1",
+            node_type: "Episode",
+            name: "ep",
+            properties: { description: "JARGON episode description" },
+          },
+        ];
+      }
+      return [];
+    });
+
+    const req = makeRequest({ workspaceId: WORKSPACE_ID });
+    const res = await POST(req);
+    const json = await res.json();
+
+    expect(json.total_before_filter).toBeGreaterThanOrEqual(1);
+    expect(json.source_map.some((e: { source_id: string }) => e.source_id === "ep-1")).toBe(true);
+  });
+
+  it("Source 3: fetches HiveChatMessage nodes with limit 200", async () => {
+    const req = makeRequest({ workspaceId: WORKSPACE_ID });
+    await POST(req);
+
+    const calls = mockedKgGetNodesByType.mock.calls;
+    const hiveCall = calls.find((c) => c[2] === "HiveChatMessage");
+    expect(hiveCall).toBeDefined();
+    expect(hiveCall![3]).toBe(200);
+  });
+
+  it("Source 3: HiveChatMessage with role === 'assistant' is excluded", async () => {
+    mockedKgGetNodesByType.mockImplementation(async (_url, _key, nodeType) => {
+      if (nodeType === "HiveChatMessage") {
+        return [
+          {
+            ref_id: "hive-1",
+            node_type: "HiveChatMessage",
+            name: "",
+            properties: { role: "assistant", content: "JARGON assistant message" },
+          },
+        ];
+      }
+      return [];
+    });
+
+    const req = makeRequest({ workspaceId: WORKSPACE_ID });
+    const res = await POST(req);
+    const json = await res.json();
+
+    expect(json.texts).toHaveLength(0);
+  });
+
+  it("Source 3: HiveChatMessage with user role and content is included", async () => {
+    mockedKgGetNodesByType.mockImplementation(async (_url, _key, nodeType) => {
+      if (nodeType === "HiveChatMessage") {
+        return [
+          {
+            ref_id: "hive-2",
+            node_type: "HiveChatMessage",
+            name: "",
+            properties: { role: "user", content: "JARGON user message" },
+          },
+        ];
+      }
+      return [];
+    });
+
+    const req = makeRequest({ workspaceId: WORKSPACE_ID });
+    const res = await POST(req);
+    const json = await res.json();
+
+    expect(json.source_map.some((e: { source_id: string }) => e.source_id === "hive-2")).toBe(true);
+  });
+
+  it("Source 4: fetches Sphinx tribe Message nodes with limit 200", async () => {
+    const req = makeRequest({ workspaceId: WORKSPACE_ID });
+    await POST(req);
+
+    const calls = mockedKgGetNodesByType.mock.calls;
+    const msgCall = calls.find((c) => c[2] === "Message");
+    expect(msgCall).toBeDefined();
+    expect(msgCall![3]).toBe(200);
+  });
+
+  it("Source 4: Message node with empty content is skipped", async () => {
+    mockedKgGetNodesByType.mockImplementation(async (_url, _key, nodeType) => {
+      if (nodeType === "Message") {
+        return [
+          { ref_id: "msg-empty", node_type: "Message", name: "", properties: { content: "   " } },
+          { ref_id: "msg-none", node_type: "Message", name: "", properties: {} },
+        ];
+      }
+      return [];
+    });
+
+    const req = makeRequest({ workspaceId: WORKSPACE_ID });
+    const res = await POST(req);
+    const json = await res.json();
+
+    expect(json.total_before_filter).toBe(0);
+  });
+
+  it("Source 4: Message node with content is included with source_type 'Message'", async () => {
+    mockedKgGetNodesByType.mockImplementation(async (_url, _key, nodeType) => {
+      if (nodeType === "Message") {
+        return [
+          {
+            ref_id: "msg-1",
+            node_type: "Message",
+            name: "",
+            properties: { content: "JARGON sphinx tribe message" },
+          },
+        ];
+      }
+      return [];
+    });
+
+    const req = makeRequest({ workspaceId: WORKSPACE_ID });
+    const res = await POST(req);
+    const json = await res.json();
+
+    expect(json.source_map.some((e: { source_id: string; source_type: string }) =>
+      e.source_id === "msg-1" && e.source_type === "Message"
+    )).toBe(true);
+  });
+
+  it("skips all Jarvis sources when jarvisConfig is null", async () => {
+    mockedGetJarvisConfig.mockResolvedValue(null);
+
+    const req = makeRequest({ workspaceId: WORKSPACE_ID });
+    await POST(req);
+
+    expect(mockedKgGetNodesByType).not.toHaveBeenCalled();
   });
 });
 
