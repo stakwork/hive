@@ -67,7 +67,7 @@ describe("useAgentLogs", () => {
       ok: true,
       json: async () => ({
         data: [
-          { id: "log-b", agent: "coder-agent-x", createdAt: "2026-05-28T10:00:00Z" },
+          { id: "log-b", agent: "coding-agent-x", createdAt: "2026-05-28T10:00:00Z" },
           { id: "log-a", agent: "plan-agent-x", createdAt: "2026-05-28T09:00:00Z" },
         ],
         total: 2,
@@ -133,7 +133,7 @@ describe("useAgentLogs", () => {
     act(() => {
       handler!({
         id: "log-b",
-        agent: "coder-agent-x",
+        agent: "coding-agent-x",
         createdAt: "2026-05-28T10:00:00Z",
         isNew: true,
       });
@@ -150,7 +150,7 @@ describe("useAgentLogs", () => {
       json: async () => ({
         data: [
           { id: "log-a", agent: "plan-agent-x", createdAt: "2026-05-28T09:00:00Z" },
-          { id: "log-b", agent: "coder-agent-x", createdAt: "2026-05-28T10:00:00Z" },
+          { id: "log-b", agent: "coding-agent-x", createdAt: "2026-05-28T10:00:00Z" },
         ],
         total: 2,
         hasMore: false,
@@ -209,7 +209,7 @@ describe("useAgentLogs", () => {
     mockFetch.mockResolvedValueOnce({
       ok: true,
       json: async () => ({
-        data: [{ id: "log-c", agent: "coder-agent-x", createdAt: "2026-05-28T11:00:00Z" }],
+        data: [{ id: "log-c", agent: "coding-agent-x", createdAt: "2026-05-28T11:00:00Z" }],
         total: 1,
         hasMore: false,
       }),

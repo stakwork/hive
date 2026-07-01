@@ -189,7 +189,7 @@ describe("POST /api/webhook/agent-logs — Pusher broadcast", () => {
 
     try {
       const request = buildRequest({
-        agent: "coder-agent-xyz",
+        agent: "coding-agent-xyz",
         workspace_id: workspace.id,
         task_id: task.id,
         logs: [{ role: "assistant", content: "No feature" }],
@@ -203,7 +203,7 @@ describe("POST /api/webhook/agent-logs — Pusher broadcast", () => {
       const [channel, event, payload] = mockPusherTrigger.mock.calls[0];
       expect(channel).toBe(`task-${task.id}`);
       expect(event).toBe("agent-log-updated");
-      expect(payload.agent).toBe("coder-agent-xyz");
+      expect(payload.agent).toBe("coding-agent-xyz");
       expect(payload.isNew).toBe(true);
     } finally {
       await db.agentLog.deleteMany({ where: { taskId: task.id } });
@@ -330,7 +330,7 @@ describe("POST /api/webhook/agent-logs — Jarvis graph write (best-effort)", ()
 
     const response = await POST(
       buildRequest({
-        agent: "coder-agent-xyz",
+        agent: "coding-agent-xyz",
         workspace_id: workspace.id,
         feature_id: feature.id,
         logs: [],

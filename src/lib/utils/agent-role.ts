@@ -4,7 +4,7 @@
  *
  * Examples:
  *   "plan-agent-abc123" → "plan-agent"
- *   "coder-agent-xyz"  → "coder-agent"
+ *   "coding-agent-xyz"  → "coding-agent"
  *   "researcher"        → "researcher"
  *   "plan-agent"        → "plan-agent"
  */
