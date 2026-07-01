@@ -37,8 +37,12 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   const body = await request.json();
 
+  // Accept prompt wrapped or unwrapped (Hive sends { prompt: {...}, hive_version_id })
+  const promptPayload = body.prompt ?? body;
+  const hiveVersionId: string | undefined = body.hive_version_id;
+
   const PROMPT_NAME_REGEX = /^[A-Z_]+$/;
-  if (!body.name || !PROMPT_NAME_REGEX.test(body.name)) {
+  if (!promptPayload.name || !PROMPT_NAME_REGEX.test(promptPayload.name)) {
     return NextResponse.json(
       { error: "Prompt name must contain only uppercase letters and underscores" },
       { status: 400 }
@@ -50,14 +54,14 @@ export async function POST(request: NextRequest) {
 
   const newPrompt = {
     id: newId,
-    name: body.name,
-    value: body.value ?? "",
-    description: body.description ?? "",
+    name: promptPayload.name,
+    value: promptPayload.value ?? "",
+    description: promptPayload.description ?? "",
     current_version_id: newVersionId,
     published_version_id: newVersionId,
+    hive_version_id: hiveVersionId ?? null,
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
-    hive_version_id: body.hive_version_id ?? null,
   };
 
   mockPromptsStore.set(newId, newPrompt);
