@@ -488,7 +488,7 @@ async function approveFeature(args: {
       sourceControlOrgId: orgId,
       deleted: false,
     },
-    select: { id: true },
+    select: { id: true, slug: true },
   });
   if (!workspace) {
     return {
@@ -912,6 +912,7 @@ async function approveFeature(args: {
         createdEntityId: feature.id,
         landedOn,
         ...(landedOnName && { landedOnName }),
+        workspaceSlug: workspace.slug,
       },
     };
   } catch (e) {
