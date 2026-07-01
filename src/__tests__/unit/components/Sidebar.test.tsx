@@ -1380,6 +1380,54 @@ describe('Sidebar - Evals link visibility under Protect', () => {
     });
   });
 
+  it('shows Evals under Protect for hive workspace in production mode', async () => {
+    const user = userEvent.setup();
+
+    vi.mocked(useWorkspaceModule.useWorkspace).mockReturnValue({
+      workspace: { id: 'ws-2', name: 'Hive', slug: 'hive', poolState: 'COMPLETE' },
+      slug: 'hive',
+      loading: false,
+      error: null,
+      waitingForInputCount: 0,
+      refreshTaskNotifications: vi.fn(),
+    } as any);
+
+    vi.mocked(runtimeModule.isDevelopmentMode).mockReturnValue(false);
+
+    render(<Sidebar user={mockUser} />);
+
+    const protectButtons = screen.getAllByTestId('nav-protect');
+    await user.click(protectButtons[0]);
+
+    await waitFor(() => {
+      expect(screen.getAllByTestId('nav-evals').length).toBeGreaterThan(0);
+    });
+  });
+
+  it('hides Evals under Protect for arbitrary workspace (acme) in production mode', async () => {
+    const user = userEvent.setup();
+
+    vi.mocked(useWorkspaceModule.useWorkspace).mockReturnValue({
+      workspace: { id: 'ws-3', name: 'Acme', slug: 'acme', poolState: 'COMPLETE' },
+      slug: 'acme',
+      loading: false,
+      error: null,
+      waitingForInputCount: 0,
+      refreshTaskNotifications: vi.fn(),
+    } as any);
+
+    vi.mocked(runtimeModule.isDevelopmentMode).mockReturnValue(false);
+
+    render(<Sidebar user={mockUser} />);
+
+    const protectButtons = screen.getAllByTestId('nav-protect');
+    await user.click(protectButtons[0]);
+
+    await waitFor(() => {
+      expect(screen.queryAllByTestId('nav-evals')).toHaveLength(0);
+    });
+  });
+
   it('shows Evals under Protect in dev mode for any workspace', async () => {
     const user = userEvent.setup();
 
