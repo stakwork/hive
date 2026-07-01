@@ -6,6 +6,7 @@
 import { db } from "@/lib/db";
 import { config } from "@/config/env";
 import { logger } from "@/lib/logger";
+import { stakworkService } from "@/lib/service-factory";
 import { Prisma } from "@prisma/client";
 
 const PROMPT_NAME_REGEX = /^[A-Z0-9_]+$/;
@@ -106,6 +107,73 @@ async function pushPublishToStakwork(stakworkId: number, hiveVersionId: string):
   });
   if (!response.ok) {
     throw new Error(`Stakwork PUT /prompts/${stakworkId} (publish) failed: ${response.status}`);
+  }
+}
+
+// ─── Graph recorder ───────────────────────────────────────────────────────────
+
+/**
+ * Best-effort: fire Stakwork workflow to record the prompt version in the knowledge graph.
+ * Never throws — a failure here must never affect the caller.
+ */
+async function recordPromptOnGraph(
+  params: {
+    prompt: { id: string; name: string; description: string | null; createdAt: Date };
+    versionId: string;
+    value: string;
+  },
+  trigger: "create" | "update" | "publish",
+): Promise<void> {
+  const { prompt, versionId, value } = params;
+  const promptId = prompt.id;
+  const promptName = prompt.name;
+
+  if (!config.WORKFLOW_GRAPH_PROMPT_STORAGE_ID) {
+    logger.warn(
+      "[prompt-sync] Prompt graph recorder skipped — WORKFLOW_GRAPH_PROMPT_STORAGE_ID not set",
+      "prompt-sync",
+      { promptId, promptName, versionId, trigger },
+    );
+    return;
+  }
+
+  try {
+    await stakworkService().stakworkRequest("/projects", {
+      name: `Prompt Graph Recorder ${prompt.id}`,
+      workflow_id: Number(config.WORKFLOW_GRAPH_PROMPT_STORAGE_ID),
+      workflow_params: {
+        set_var: {
+          attributes: {
+            vars: {
+              prompt: {
+                id: prompt.id,
+                prompt_id: prompt.id,
+                prompt_version_id: versionId,
+                name: prompt.name,
+                description: prompt.description ?? "",
+                value,
+                published_at: prompt.createdAt,
+                customer_id: null,
+              },
+            },
+          },
+        },
+      },
+    });
+    logger.info("[prompt-sync] Prompt graph recorder launched", "prompt-sync", {
+      promptId,
+      promptName,
+      versionId,
+      trigger,
+    });
+  } catch (err) {
+    logger.warn("[prompt-sync] Prompt graph recorder launch failed (non-fatal)", "prompt-sync", {
+      promptId,
+      promptName,
+      versionId,
+      trigger,
+      error: String(err),
+    });
   }
 }
 
@@ -289,6 +357,12 @@ export async function writePromptThrough(
     prompt = { ...prompt, syncStatus: "PENDING" };
   }
 
+  // ── 3. Best-effort graph recorder ────────────────────────────────────────
+  await recordPromptOnGraph(
+    { prompt, versionId: version.id, value },
+    promptId ? "update" : "create",
+  );
+
   return { prompt, version };
 }
 
@@ -336,6 +410,12 @@ export async function publishVersion(
     versionId,
     versionNumber: targetVersion.versionNumber,
   });
+
+  // Best-effort graph recorder (independent of Stakwork /prompts push)
+  await recordPromptOnGraph(
+    { prompt, versionId, value: targetVersion.value },
+    "publish",
+  );
 
   // Best-effort Stakwork push
   if (prompt.stakworkId) {
