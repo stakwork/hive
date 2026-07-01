@@ -76,9 +76,10 @@ export const BIFROST_AGENT_NAMES = [
   "logs-agent",
   // Workflow / agent-session surfaces (PR #4079)
   "plan-agent",
-  "coder-agent",
-  "pr-monitor",
-  "task-generation",
+  "coding-agent",
+  "test-agent",
+  "build-agent",
+  "browser-agent",
 ] as const;
 
 export type BifrostAgentName = (typeof BIFROST_AGENT_NAMES)[number];
