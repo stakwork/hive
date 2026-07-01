@@ -93,7 +93,7 @@ describe("useWorkflowLogs", () => {
 
   it("fetches by task_id when only taskId is provided", async () => {
     mockFetch.mockResolvedValueOnce(
-      makeFetchResponse([{ id: "log-t1", agent: "coder-agent", createdAt: "2026-05-28T10:00:00Z" }])
+      makeFetchResponse([{ id: "log-t1", agent: "coding-agent", createdAt: "2026-05-28T10:00:00Z" }])
     );
 
     const { result } = renderHook(() => useWorkflowLogs("task-1", null, "ws-1"));
@@ -126,7 +126,7 @@ describe("useWorkflowLogs", () => {
   it("fires both fetches when both taskId and featureId are provided", async () => {
     mockFetch
       .mockResolvedValueOnce(
-        makeFetchResponse([{ id: "log-t1", agent: "coder-agent", createdAt: "2026-05-28T10:00:00Z" }])
+        makeFetchResponse([{ id: "log-t1", agent: "coding-agent", createdAt: "2026-05-28T10:00:00Z" }])
       )
       .mockResolvedValueOnce(
         makeFetchResponse([{ id: "log-f1", agent: "plan-agent", createdAt: "2026-05-28T09:00:00Z" }])
@@ -140,7 +140,7 @@ describe("useWorkflowLogs", () => {
   });
 
   it("deduplicates logs by id when same log appears in both responses", async () => {
-    const sharedLog = { id: "log-shared", agent: "coder-agent", createdAt: "2026-05-28T10:00:00Z" };
+    const sharedLog = { id: "log-shared", agent: "coding-agent", createdAt: "2026-05-28T10:00:00Z" };
     mockFetch
       .mockResolvedValueOnce(makeFetchResponse([sharedLog]))
       .mockResolvedValueOnce(makeFetchResponse([sharedLog]));
@@ -229,7 +229,7 @@ describe("useWorkflowLogs", () => {
     expect(handler).toBeDefined();
 
     act(() => {
-      handler!({ id: "log-b", agent: "coder-agent", createdAt: "2026-05-28T10:00:00Z", isNew: true });
+      handler!({ id: "log-b", agent: "coding-agent", createdAt: "2026-05-28T10:00:00Z", isNew: true });
     });
 
     expect(result.current.agentLogs).toHaveLength(2);
@@ -241,7 +241,7 @@ describe("useWorkflowLogs", () => {
     mockFetch.mockResolvedValueOnce(
       makeFetchResponse([
         { id: "log-a", agent: "plan-agent", createdAt: "2026-05-28T09:00:00Z" },
-        { id: "log-b", agent: "coder-agent", createdAt: "2026-05-28T10:00:00Z" },
+        { id: "log-b", agent: "coding-agent", createdAt: "2026-05-28T10:00:00Z" },
       ])
     );
 
@@ -295,7 +295,7 @@ describe("useWorkflowLogs", () => {
     // Both channels receive the same log event
     const sharedEvent: AgentLogUpdateEvent = {
       id: "log-shared",
-      agent: "coder-agent",
+      agent: "coding-agent",
       createdAt: "2026-05-28T10:00:00Z",
       isNew: true,
     };

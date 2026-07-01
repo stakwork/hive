@@ -37,9 +37,9 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   const body = await request.json();
 
-  // Accept prompt wrapped or unwrapped (Hive sends { prompt: {...}, hive_version_id })
+  // Accept prompt wrapped or unwrapped; hive_version_id is nested inside prompt
   const promptPayload = body.prompt ?? body;
-  const hiveVersionId: string | undefined = body.hive_version_id;
+  const hiveVersionId: string | undefined = promptPayload.hive_version_id;
 
   const PROMPT_NAME_REGEX = /^[A-Z_]+$/;
   if (!promptPayload.name || !PROMPT_NAME_REGEX.test(promptPayload.name)) {

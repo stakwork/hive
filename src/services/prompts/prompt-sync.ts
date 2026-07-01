@@ -58,8 +58,7 @@ async function pushCreateToStakwork(
 ): Promise<number | null> {
   const url = `${config.STAKWORK_BASE_URL}/prompts/`;
   const body = JSON.stringify({
-    prompt: { name, value, description: description ?? "" },
-    hive_version_id: hiveVersionId,
+    prompt: { name, value, description: description ?? "", hive_version_id: hiveVersionId },
   });
   const response = await fetch(url, { method: "POST", headers: stakworkHeaders(), body });
   if (!response.ok) {
@@ -79,8 +78,7 @@ async function pushUpdateToStakwork(
 ): Promise<void> {
   const url = `${config.STAKWORK_BASE_URL}/prompts/${stakworkId}`;
   const body = JSON.stringify({
-    prompt: { name, value, description: description ?? "" },
-    hive_version_id: hiveVersionId,
+    prompt: { name, value, description: description ?? "", hive_version_id: hiveVersionId },
   });
   const response = await fetch(url, { method: "PUT", headers: stakworkHeaders(), body });
   if (!response.ok) {
@@ -104,7 +102,7 @@ async function pushPublishToStakwork(stakworkId: number, hiveVersionId: string):
   const response = await fetch(url, {
     method: "PUT",
     headers: stakworkHeaders(),
-    body: JSON.stringify({ hive_version_id: hiveVersionId }),
+    body: JSON.stringify({ prompt: { hive_version_id: hiveVersionId } }),
   });
   if (!response.ok) {
     throw new Error(`Stakwork PUT /prompts/${stakworkId} (publish) failed: ${response.status}`);
