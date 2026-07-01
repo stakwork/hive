@@ -58,17 +58,21 @@ const DEFAULT_AGENT_SPECS: Record<BifrostAgentName, DefaultAgentSpec> = {
     displayName: "Plan Agent",
     description: "Breaks work into an actionable plan.",
   },
-  "coder-agent": {
+  "coding-agent": {
     displayName: "Coder Agent",
     description: "Writes and modifies code.",
   },
-  "pr-monitor": {
-    displayName: "PR Monitor",
-    description: "Watches and reports on pull requests.",
+  "test-agent": {
+    displayName: "Test Agent",
+    description: "Runs tests and fixes test failures.",
   },
-  "task-generation": {
-    displayName: "Task Generation",
-    description: "Generates structured task tickets.",
+  "build-agent": {
+    displayName: "Build Agent",
+    description: "Runs the project build and fixes build errors.",
+  },
+  "browser-agent": {
+    displayName: "Browser Agent",
+    description: "Takes screenshots and validates UI changes in the browser.",
   },
 };
 

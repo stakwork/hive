@@ -321,7 +321,7 @@ async function getOrCreateWebhookSecret(taskId: string, existingSecret: string |
 
 /**
  * Create a session on the remote agent server (the hive4 / goose
- * coder-agent). The agent reads `apiKey` / `baseUrl` / `headers` off
+ * coding-agent). The agent reads `apiKey` / `baseUrl` / `headers` off
  * the session body and threads them onto every outbound LLM HTTP
  * call it makes during the session.
  */
@@ -349,10 +349,10 @@ async function createAgentSession(
   // flag covers this workspace, mint a per-session VK + macaroon and
   // override `apiKey` + inject `baseUrl` / `headers` on the session
   // body. The agent forwards them onto every LLM call so the spend
-  // shows up on `logs.db` as `agent-name=coder-agent`. When the flag
+  // shows up on `logs.db` as `agent-name=coding-agent`. When the flag
   // is off, falls back to the model-resolved key (unchanged).
   const bifrost = await getBifrostForLLM(bifrostAuth, {
-    agentName: "coder-agent",
+    agentName: "coding-agent",
     // Pass the selected model so the Bifrost VK reconciler resolves
     // the correct provider suffix on `baseUrl` (e.g. `/genai/v1beta`
     // for google/* models). Without this it defaults to anthropic.

@@ -442,7 +442,7 @@ describe("LogsArtifactPanel — lastUpdated cache invalidation", () => {
     const { rerender } = render(
       React.createElement(LogsArtifactPanel, {
         logs: [
-          { id: otherId, agent: "coder-agent-x" },
+          { id: otherId, agent: "coding-agent-x" },
           { id: selectedId, agent: "plan-agent-x" },
         ],
         lastUpdated: {},
@@ -460,7 +460,7 @@ describe("LogsArtifactPanel — lastUpdated cache invalidation", () => {
       rerender(
         React.createElement(LogsArtifactPanel, {
           logs: [
-            { id: otherId, agent: "coder-agent-x" },
+            { id: otherId, agent: "coding-agent-x" },
             { id: selectedId, agent: "plan-agent-x" },
           ],
           lastUpdated: { [otherId]: Date.now() },
