@@ -40,9 +40,9 @@ export async function PUT(
     const promptId = parseInt(id, 10);
     const body = await request.json();
 
-    // Accept prompt wrapped or unwrapped (Hive sends { prompt: {...}, hive_version_id })
+    // Accept prompt wrapped or unwrapped; hive_version_id is nested inside prompt
     const promptPayload = body.prompt ?? body;
-    const hiveVersionId: string | undefined = body.hive_version_id;
+    const hiveVersionId: string | undefined = promptPayload.hive_version_id;
 
     const existing = mockPromptsStore.get(promptId);
 
