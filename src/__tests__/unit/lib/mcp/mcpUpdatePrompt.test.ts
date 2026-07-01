@@ -98,15 +98,19 @@ describe("mcpUpdatePrompt — happy path", () => {
   });
 });
 
-describe("mcpUpdatePrompt — stakwork-only gate", () => {
-  beforeEach(() => vi.clearAllMocks());
+describe("mcpUpdatePrompt — non-stakwork workspace allowed", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockWritePromptThrough.mockResolvedValue(makeResult(2));
+  });
 
-  it("rejects update on a non-stakwork workspace", async () => {
+  it("succeeds on a non-stakwork workspace and calls writePromptThrough", async () => {
     const result = await mcpUpdatePrompt(OTHER_AUTH, "prompt-1", "content");
 
-    expect(result.isError).toBe(true);
-    expect((result.content[0] as { text: string }).text).toMatch(/stakwork workspace/i);
-    expect(mockWritePromptThrough).not.toHaveBeenCalled();
+    expect(result.isError).toBeFalsy();
+    expect(mockWritePromptThrough).toHaveBeenCalledWith(
+      expect.objectContaining({ userId: "user-2", promptId: "prompt-1", value: "content" }),
+    );
   });
 });
 

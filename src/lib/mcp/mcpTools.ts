@@ -1272,7 +1272,6 @@ async function fetchStatusItems(
 /**
  * Create a new versioned prompt template in the Hive prompt library.
  * Name must be UPPERCASE_UNDERSCORE; duplicate names are rejected.
- * Gated to the stakwork workspace (same as `create_workflow_task`).
  */
 export async function mcpCreatePrompt(
   auth: WorkspaceAuth,
@@ -1280,12 +1279,6 @@ export async function mcpCreatePrompt(
   value: string,
   description?: string,
 ): Promise<McpToolResult> {
-  if (!isWorkflowTasksEnabled(auth)) {
-    return mcpError(
-      "Error: prompt tools are only supported on the stakwork workspace",
-    );
-  }
-
   try {
     const { prompt, version } = await writePromptThrough({
       name,
@@ -1322,7 +1315,7 @@ export async function mcpCreatePrompt(
 /**
  * Push a new version of an existing prompt. Prior versions are preserved —
  * this does NOT overwrite history. Only value and description are updatable
- * (no rename). Gated to the stakwork workspace.
+ * (no rename).
  */
 export async function mcpUpdatePrompt(
   auth: WorkspaceAuth,
@@ -1330,12 +1323,6 @@ export async function mcpUpdatePrompt(
   value: string,
   description?: string,
 ): Promise<McpToolResult> {
-  if (!isWorkflowTasksEnabled(auth)) {
-    return mcpError(
-      "Error: prompt tools are only supported on the stakwork workspace",
-    );
-  }
-
   try {
     const { prompt, version } = await writePromptThrough({
       promptId,

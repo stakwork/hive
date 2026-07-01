@@ -91,15 +91,19 @@ describe("mcpCreatePrompt — happy path", () => {
   });
 });
 
-describe("mcpCreatePrompt — stakwork-only gate", () => {
-  beforeEach(() => vi.clearAllMocks());
+describe("mcpCreatePrompt — non-stakwork workspace allowed", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockWritePromptThrough.mockResolvedValue(PROMPT_RESULT);
+  });
 
-  it("rejects creation on a non-stakwork workspace", async () => {
+  it("succeeds on a non-stakwork workspace and calls writePromptThrough", async () => {
     const result = await mcpCreatePrompt(OTHER_AUTH, "MY_PROMPT", "Hello world");
 
-    expect(result.isError).toBe(true);
-    expect((result.content[0] as { text: string }).text).toMatch(/stakwork workspace/i);
-    expect(mockWritePromptThrough).not.toHaveBeenCalled();
+    expect(result.isError).toBeFalsy();
+    expect(mockWritePromptThrough).toHaveBeenCalledWith(
+      expect.objectContaining({ userId: "user-2", name: "MY_PROMPT", value: "Hello world" }),
+    );
   });
 });
 
