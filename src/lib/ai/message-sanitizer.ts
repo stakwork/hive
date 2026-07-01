@@ -2,6 +2,38 @@ import { ModelMessage } from "ai";
 import { swarmFetch } from "./concepts";
 
 /**
+ * Coerce a tool-call `input` into a plain object.
+ *
+ * When a tool-call is streamed with malformed args, its `input` can end up a
+ * raw string (unparsed JSON) rather than an object. The AI SDK's ModelMessage
+ * Zod schema tolerates this, so `streamText` proceeds — but the Anthropic API
+ * rejects it with `tool_use.input: Input should be an object` (HTTP 400),
+ * killing the whole turn. We normalize every persisted tool-call's input to a
+ * guaranteed object: parse a JSON string when possible, otherwise fall back to
+ * `{}` (these calls are typically already paired with an error result, so the
+ * exact args no longer matter — what matters is the request being well-formed).
+ */
+function normalizeToolInput(input: unknown): Record<string, unknown> {
+  if (input !== null && typeof input === "object" && !Array.isArray(input)) {
+    return input as Record<string, unknown>;
+  }
+  if (typeof input === "string") {
+    const trimmed = input.trim();
+    if (trimmed !== "") {
+      try {
+        const parsed = JSON.parse(trimmed);
+        if (parsed !== null && typeof parsed === "object" && !Array.isArray(parsed)) {
+          return parsed as Record<string, unknown>;
+        }
+      } catch {
+        // not valid JSON — fall through to empty object
+      }
+    }
+  }
+  return {};
+}
+
+/**
  * Intelligently sanitize messages to ensure every tool-call has a corresponding tool-result.
  * For incomplete tool-calls (like learn_concept), this function will execute them to get results.
  * This prevents API errors when tool calls fail or don't complete properly during streaming.
@@ -188,14 +220,32 @@ export async function sanitizeAndCompleteToolCalls(
       const hasToolCalls = msg.content.some((item: any) => item.type === "tool-call");
 
       if (hasToolCalls) {
-        // Filter out tool-calls without results (that we couldn't execute)
-        const filteredContent = msg.content.filter((item) => {
-          const toolCall = item as any;
-          if (toolCall.type === "tool-call") {
-            return toolCallIdsWithResults.has(toolCall.toolCallId);
-          }
-          return true; // Keep non-tool-call content
-        });
+        // Filter out tool-calls without results (that we couldn't execute),
+        // then normalize the input of every surviving tool-call to a plain
+        // object. A tool-call with a string/null input passes the AI SDK's
+        // schema but is rejected by the Anthropic API
+        // (`tool_use.input: Input should be an object`, HTTP 400).
+        const filteredContent = msg.content
+          .filter((item) => {
+            const toolCall = item as any;
+            if (toolCall.type === "tool-call") {
+              return toolCallIdsWithResults.has(toolCall.toolCallId);
+            }
+            return true; // Keep non-tool-call content
+          })
+          .map((item) => {
+            const toolCall = item as any;
+            if (toolCall.type === "tool-call") {
+              const normalizedInput = normalizeToolInput(toolCall.input);
+              if (normalizedInput !== toolCall.input) {
+                console.log(
+                  `🔧 [message-sanitizer] Normalizing non-object input for tool: ${toolCall.toolName}`,
+                );
+                return { ...toolCall, input: normalizedInput };
+              }
+            }
+            return item;
+          });
 
         // Only include this message if it has content after filtering
         if (filteredContent.length > 0) {
