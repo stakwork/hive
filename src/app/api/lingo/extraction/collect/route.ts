@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getJarvisConfigForWorkspace } from "@/lib/helpers/jarvis-config";
-import { searchLatestByTypes } from "@/services/swarm/api/nodes";
+import { kgGetNodesByType } from "@/lib/ai/kg-adapter";
 import { jargonScore } from "@/lib/utils/lingo-extraction";
 
 export const runtime = "nodejs";
@@ -122,36 +122,49 @@ export async function POST(request: NextRequest) {
     cursorState = { ...state, hasMore: batch.length >= limit };
   }
 
-  // --- Jarvis sources (Episodes/Calls + HiveChatMessage/Sphinx) ---
+  // --- Jarvis sources (Episodes/Calls + HiveChatMessage + Sphinx Message) ---
   const jarvisConfig = await getJarvisConfigForWorkspace(workspaceId);
   if (jarvisConfig) {
-    // Source 2: Episodes and Calls
-    const episodeCallResult = await searchLatestByTypes(jarvisConfig, { Episode: 50, Call: 50 });
-    if (episodeCallResult.ok) {
-      for (const node of episodeCallResult.nodes) {
-        const text =
-          (node.properties?.description as string | undefined) ??
-          (node.properties?.transcript as string | undefined);
-        if (!text) continue; // silently skip
-        allTexts.push(text);
-        allSourceIds.push(node.ref_id);
-        allSourceTypes.push(node.node_type ?? "Episode");
-      }
+    const { jarvisUrl, apiKey } = jarvisConfig;
+
+    // Source 2: Episodes and Calls — parallel fetch, 50 each
+    const [episodeNodes, callNodes] = await Promise.all([
+      kgGetNodesByType(jarvisUrl, apiKey, "Episode", 50),
+      kgGetNodesByType(jarvisUrl, apiKey, "Call", 50),
+    ]);
+    for (const node of [...episodeNodes, ...callNodes]) {
+      const props = node.properties as Record<string, unknown> | undefined;
+      const text =
+        (props?.description as string | undefined) ??
+        (props?.transcript as string | undefined);
+      if (!text) continue;
+      allTexts.push(text);
+      allSourceIds.push(node.ref_id);
+      allSourceTypes.push(node.node_type ?? "Episode");
     }
 
-    // Source 3: Sphinx HiveChatMessage nodes
-    const sphinxResult = await searchLatestByTypes(jarvisConfig, { HiveChatMessage: 200 });
-    if (sphinxResult.ok) {
-      for (const node of sphinxResult.nodes) {
-        // Skip assistant messages
-        const nodeData = node.properties as Record<string, unknown> | undefined;
-        if (nodeData?.role === "assistant") continue;
-        const text = nodeData?.content as string | undefined;
-        if (!text || !text.trim()) continue;
-        allTexts.push(text);
-        allSourceIds.push(node.ref_id);
-        allSourceTypes.push("HiveChatMessage");
-      }
+    // Source 3: HiveChatMessage nodes
+    const hiveChatNodes = await kgGetNodesByType(jarvisUrl, apiKey, "HiveChatMessage", 200);
+    for (const node of hiveChatNodes) {
+      const props = node.properties as Record<string, unknown> | undefined;
+      if (props?.role === "assistant") continue;
+      const text = props?.content as string | undefined;
+      if (!text || !text.trim()) continue;
+      allTexts.push(text);
+      allSourceIds.push(node.ref_id);
+      allSourceTypes.push("HiveChatMessage");
+    }
+
+    // Source 4: Sphinx tribe Message nodes
+    // node_key: message-uuid | text field: content | skip empty content
+    const messageNodes = await kgGetNodesByType(jarvisUrl, apiKey, "Message", 200);
+    for (const node of messageNodes) {
+      const props = node.properties as Record<string, unknown> | undefined;
+      const text = props?.content as string | undefined;
+      if (!text || !text.trim()) continue;
+      allTexts.push(text);
+      allSourceIds.push(node.ref_id);
+      allSourceTypes.push("Message");
     }
   }
 
