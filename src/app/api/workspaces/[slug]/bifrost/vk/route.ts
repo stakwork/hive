@@ -25,7 +25,7 @@ const DEV_MACAROON_MAX_COST_USD = 2;
  * `logs.db` so operators can tell spend that came from a developer
  * curling the gateway apart from real agent traffic.
  */
-const DEV_MACAROON_AGENT_NAME = "coder-agent";
+const DEV_MACAROON_AGENT_NAME = "coding-agent";
 
 /**
  * GET /api/workspaces/[slug]/bifrost/vk[?model=<name>]
@@ -143,7 +143,7 @@ export async function GET(
         // Surface whether this call created the VK (vs hit the cache)
         // so a developer can tell whether they tripped the slow path.
         created: result.created,
-        // Dev macaroon — small per-call cap, `agent-name=coder-agent`.
+        // Dev macaroon — small per-call cap, `agent-name=coding-agent`.
         // `null` when minting failed (e.g. workspace not yet wired
         // up to a SourceControlOrg); `macaroonError` carries the
         // reason in that case.
