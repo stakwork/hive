@@ -1373,7 +1373,7 @@ export async function triggerAgentModeFix(
     //
     // Bifrost routing: mint a macaroon under `agent-name=pr-monitor`
     // so the automated-fix LLM spend lands on `logs.db` as its own
-    // dim, distinct from user-initiated `coder-agent` traffic.
+    // dim, distinct from user-initiated `coding-agent` traffic.
     // Identity is the task creator (or workspace owner if the task
     // was system-created). Falls back to the default Anthropic key
     // when the rollout flag doesn't cover this workspace.
@@ -1392,7 +1392,7 @@ export async function triggerAgentModeFix(
         workspaceSlug: task.workspace.slug,
         userId: bifrostUserId,
       },
-      { agentName: "pr-monitor" },
+      { agentName: "coding-agent" },
     );
 
     const sessionBody: Record<string, unknown> = {
