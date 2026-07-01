@@ -7,7 +7,7 @@
 // @vitest-environment node
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { kgGetNode, kgGetNeighbors, kgGetNodesByRefs, kgSearch, kgGetOntology } from "@/lib/ai/kg-adapter";
+import { kgGetNode, kgGetNeighbors, kgGetNodesByRefs, kgSearch, kgGetOntology, kgGetNodesByType } from "@/lib/ai/kg-adapter";
 
 const JARVIS_URL = "https://jarvis.example.com";
 const API_KEY = "test-api-key";
@@ -626,5 +626,117 @@ describe("kgGetOntology", () => {
     const result = await kgGetOntology(JARVIS_URL, API_KEY);
 
     expect(result).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// kgGetNodesByType
+// ---------------------------------------------------------------------------
+
+describe("kgGetNodesByType", () => {
+  it("raw-array response: maps nodes correctly", async () => {
+    const raw = [
+      { ref_id: "ep-1", node_type: "Episode", name: "My Episode", properties: { description: "desc" } },
+      { ref_id: "ep-2", node_type: "Episode", properties: { title: "Ep 2" } },
+    ];
+    globalThis.fetch = mockFetch(raw);
+
+    const result = await kgGetNodesByType(JARVIS_URL, API_KEY, "Episode", 50);
+
+    expect(result).toHaveLength(2);
+    expect(result[0]).toMatchObject({ ref_id: "ep-1", node_type: "Episode", name: "My Episode" });
+    expect(result[1]).toMatchObject({ ref_id: "ep-2", node_type: "Episode", name: "Ep 2" });
+  });
+
+  it("wrapped { nodes: [] } response: maps nodes correctly", async () => {
+    const raw = {
+      nodes: [
+        { ref_id: "msg-1", node_type: "Message", properties: { content: "hello" } },
+      ],
+    };
+    globalThis.fetch = mockFetch(raw);
+
+    const result = await kgGetNodesByType(JARVIS_URL, API_KEY, "Message", 200);
+
+    expect(result).toHaveLength(1);
+    expect(result[0]).toMatchObject({ ref_id: "msg-1", node_type: "Message" });
+    expect(result[0].properties).toMatchObject({ content: "hello" });
+  });
+
+  it("filters out nodes with missing ref_id", async () => {
+    const raw = [
+      { ref_id: "good-1", node_type: "Episode", name: "Good" },
+      { node_type: "Episode", name: "No ref" }, // no ref_id
+    ];
+    globalThis.fetch = mockFetch(raw);
+
+    const result = await kgGetNodesByType(JARVIS_URL, API_KEY, "Episode", 50);
+
+    expect(result).toHaveLength(1);
+    expect(result[0].ref_id).toBe("good-1");
+  });
+
+  it("sends correct URL with type and limit params", async () => {
+    globalThis.fetch = mockFetch([]);
+
+    await kgGetNodesByType(JARVIS_URL, API_KEY, "HiveChatMessage", 200);
+
+    const calledUrl = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
+    expect(calledUrl).toContain("/v2/nodes");
+    expect(calledUrl).toContain("type=HiveChatMessage");
+    expect(calledUrl).toContain("limit=200");
+  });
+
+  it("sends x-api-token auth header", async () => {
+    globalThis.fetch = mockFetch([]);
+
+    await kgGetNodesByType(JARVIS_URL, API_KEY, "Episode", 50);
+
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({ headers: { "x-api-token": API_KEY } }),
+    );
+  });
+
+  it("returns [] on non-ok HTTP response", async () => {
+    globalThis.fetch = mockFetch(null, false, 500);
+
+    const result = await kgGetNodesByType(JARVIS_URL, API_KEY, "Episode", 50);
+
+    expect(result).toEqual([]);
+  });
+
+  it("returns [] on thrown fetch error", async () => {
+    globalThis.fetch = mockFetchThrow();
+
+    const result = await kgGetNodesByType(JARVIS_URL, API_KEY, "Message", 200);
+
+    expect(result).toEqual([]);
+  });
+
+  it("returns [] when response is empty array", async () => {
+    globalThis.fetch = mockFetch([]);
+
+    const result = await kgGetNodesByType(JARVIS_URL, API_KEY, "Call", 50);
+
+    expect(result).toEqual([]);
+  });
+
+  it("returns [] when wrapped response has empty nodes array", async () => {
+    globalThis.fetch = mockFetch({ nodes: [] });
+
+    const result = await kgGetNodesByType(JARVIS_URL, API_KEY, "Call", 50);
+
+    expect(result).toEqual([]);
+  });
+
+  it("strips trailing slash from jarvisUrl", async () => {
+    globalThis.fetch = mockFetch([]);
+
+    await kgGetNodesByType(`${JARVIS_URL}/`, API_KEY, "Episode", 50);
+
+    const calledUrl = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
+    expect(calledUrl).not.toContain("//v2");
+    expect(calledUrl).toContain("/v2/nodes");
   });
 });
