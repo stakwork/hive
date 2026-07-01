@@ -5,6 +5,11 @@ import { sendFeatureChatMessage } from "@/services/roadmap/feature-chat";
 import { createTicket } from "@/services/roadmap/tickets";
 import { sendMessageToStakwork } from "@/services/task-workflow";
 import { writePromptThrough } from "@/services/prompts/prompt-sync";
+import {
+  getResolvedPrompt,
+  listPromptVersions,
+  getResolvedPromptVersion,
+} from "@/services/prompts/prompt-read";
 import { isDevelopmentMode } from "@/lib/runtime";
 import type { PullRequestContent } from "@/lib/chat";
 import {
@@ -1358,4 +1363,83 @@ export async function mcpUpdatePrompt(
       error instanceof Error ? error.message : "Could not update prompt";
     return mcpError(`Error: ${msg}`);
   }
+}
+
+// ─── Prompt Read Tools ────────────────────────────────────────────────────────
+
+/**
+ * Fetch a prompt by id or name and return the fully resolved text of its
+ * published/live version. No workspace gate — available to all authenticated callers.
+ */
+export async function mcpGetPrompt(
+  _auth: WorkspaceAuth,
+  idOrName: string,
+  variables: Record<string, string>,
+): Promise<McpToolResult> {
+  const result = await getResolvedPrompt(idOrName, variables);
+
+  if ("notFound" in result) {
+    return mcpError(`Error: prompt '${idOrName}' not found`);
+  }
+  if ("error" in result) {
+    return mcpError(`Error: ${result.error}`);
+  }
+
+  return mcpOk({
+    id: result.id,
+    name: result.name,
+    versionId: result.versionId,
+    versionNumber: result.versionNumber,
+    resolvedText: result.resolvedText,
+    missingVariables: result.missingVariables,
+  });
+}
+
+/**
+ * List all versions of a prompt with published/current markers.
+ * Use to pick a specific version for deterministic eval replay via get_prompt_version.
+ */
+export async function mcpGetPromptVersions(
+  _auth: WorkspaceAuth,
+  idOrName: string,
+): Promise<McpToolResult> {
+  const result = await listPromptVersions(idOrName);
+
+  if ("notFound" in result) {
+    return mcpError(`Error: prompt '${idOrName}' not found`);
+  }
+  if ("error" in result) {
+    return mcpError(`Error: ${result.error}`);
+  }
+
+  return mcpOk(result);
+}
+
+/**
+ * Fetch and resolve a specific version of a prompt by version id.
+ * IDOR-guarded: versionId must belong to the prompt resolved from idOrName.
+ */
+export async function mcpGetPromptVersion(
+  _auth: WorkspaceAuth,
+  idOrName: string,
+  versionId: string,
+  variables: Record<string, string>,
+): Promise<McpToolResult> {
+  const result = await getResolvedPromptVersion(idOrName, versionId, variables);
+
+  if ("notFound" in result) {
+    return mcpError(`Error: version '${versionId}' not found for prompt '${idOrName}'`);
+  }
+  if ("error" in result) {
+    return mcpError(`Error: ${result.error}`);
+  }
+
+  return mcpOk({
+    id: result.id,
+    name: result.name,
+    versionId: result.versionId,
+    versionNumber: result.versionNumber,
+    resolvedText: result.resolvedText,
+    missingVariables: result.missingVariables,
+  });
 }
