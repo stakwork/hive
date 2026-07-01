@@ -386,6 +386,13 @@ export interface ApprovalResult {
    * consuming it must fall back to a kind-based label.
    */
   landedOnName?: string;
+  /**
+   * Slug of the workspace the feature belongs to.
+   * Present only for `kind === "feature"` approvals.
+   * Absent on older results that pre-date this field — client must
+   * degrade gracefully (text-only, no link) when missing.
+   */
+  workspaceSlug?: string;
 }
 
 // ─── Status derivation (pure helper) ───────────────────────────────────
