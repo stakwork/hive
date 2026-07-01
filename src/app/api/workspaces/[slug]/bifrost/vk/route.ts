@@ -143,7 +143,7 @@ export async function GET(
         // Surface whether this call created the VK (vs hit the cache)
         // so a developer can tell whether they tripped the slow path.
         created: result.created,
-        // Dev macaroon — small per-call cap, `agent-name=coder-agent`.
+        // Dev macaroon — small per-call cap, `agent-name=coding-agent`.
         // `null` when minting failed (e.g. workspace not yet wired
         // up to a SourceControlOrg); `macaroonError` carries the
         // reason in that case.

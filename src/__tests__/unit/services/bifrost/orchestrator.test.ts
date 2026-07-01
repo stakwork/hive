@@ -264,7 +264,7 @@ describe("getBifrostForLLM (master reconciler)", () => {
   it("calls the reconciler when agentName is in the CSV allow-list", async () => {
     process.env.BIFROST_ENABLED = "true";
     process.env.BIFROST_ENABLED_AGENTS =
-      "plan-agent,coder-agent,pr-monitor";
+      "plan-agent,coding-agent,pr-monitor";
     mockVKOk({ vkValue: "sk-bf-AGENT" });
     mockMintOk();
 
@@ -275,7 +275,7 @@ describe("getBifrostForLLM (master reconciler)", () => {
 
   it("does NOT call the reconciler when agentName is absent from the CSV allow-list", async () => {
     process.env.BIFROST_ENABLED = "true";
-    process.env.BIFROST_ENABLED_AGENTS = "plan-agent,coder-agent,pr-monitor";
+    process.env.BIFROST_ENABLED_AGENTS = "plan-agent,coding-agent,pr-monitor";
     // `repo-agent` is a chat surface, not in the workflow-only list.
     const result = await getBifrostForLLM(auth, { agentName: "repo-agent" });
     expect(result).toBeUndefined();
