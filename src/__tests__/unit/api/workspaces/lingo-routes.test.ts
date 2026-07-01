@@ -652,7 +652,7 @@ describe("GET /api/workspaces/[slug]/lingo/nodes/search", () => {
     expect(mockFetch).not.toHaveBeenCalled();
   });
 
-  test("returns empty array when Jarvis returns non-2xx", async () => {
+  test("returns 502 with success:false when Jarvis returns non-2xx", async () => {
     mockGetWorkspaceSwarmAccess.mockResolvedValueOnce({ success: true, data: SWARM_DATA });
     mockFetch.mockResolvedValueOnce(
       new Response(JSON.stringify({ error: "bad request" }), { status: 400 }),
@@ -661,15 +661,30 @@ describe("GET /api/workspaces/[slug]/lingo/nodes/search", () => {
       `http://localhost/api/workspaces/${SLUG}/lingo/nodes/search?q=Swarm`,
     );
     const res = await GET(req, { params: Promise.resolve({ slug: SLUG }) });
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(502);
     const body = await res.json();
-    expect(body.success).toBe(true);
-    expect(body.data).toEqual([]);
+    expect(body.success).toBe(false);
+    expect(body.error).toBe("Search unavailable");
   });
 
-  test("returns empty array when Jarvis fetch throws", async () => {
+  test("returns 502 with success:false when Jarvis fetch throws", async () => {
     mockGetWorkspaceSwarmAccess.mockResolvedValueOnce({ success: true, data: SWARM_DATA });
     mockFetch.mockRejectedValueOnce(new Error("Network error"));
+    const req = makeAuthenticatedRequest(
+      `http://localhost/api/workspaces/${SLUG}/lingo/nodes/search?q=test`,
+    );
+    const res = await GET(req, { params: Promise.resolve({ slug: SLUG }) });
+    expect(res.status).toBe(502);
+    const body = await res.json();
+    expect(body.success).toBe(false);
+    expect(body.error).toBe("Search unavailable");
+  });
+
+  test("swarm-not-configured still returns success:true with empty array (status 200)", async () => {
+    mockGetWorkspaceSwarmAccess.mockResolvedValueOnce({
+      success: false,
+      error: { type: "SWARM_NOT_CONFIGURED" },
+    });
     const req = makeAuthenticatedRequest(
       `http://localhost/api/workspaces/${SLUG}/lingo/nodes/search?q=test`,
     );

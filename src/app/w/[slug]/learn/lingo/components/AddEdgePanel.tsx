@@ -54,6 +54,7 @@ export function AddEdgePanel({
   const [edgeType, setEdgeType] = useState(DEFAULT_EDGE_TYPE);
   const [isSearching, setIsSearching] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [searchError, setSearchError] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Derive valid edge types based on selected target
@@ -74,12 +75,17 @@ export function AddEdgePanel({
     if (!isOpen) return;
     if (debounceRef.current) clearTimeout(debounceRef.current);
 
+    setSearchError(false);
+
     if (!searchQuery.trim()) {
       setIsSearching(true);
       fetch(`/api/workspaces/${workspaceSlug}/lingo/nodes`)
         .then((r) => r.json())
-        .then((json) => setSearchResults(Array.isArray(json.data?.nodes) ? json.data.nodes : []))
-        .catch(() => setSearchResults([]))
+        .then((json) => {
+          if (!json.success) { setSearchError(true); setSearchResults([]); return; }
+          setSearchResults(Array.isArray(json.data?.nodes) ? json.data.nodes : []);
+        })
+        .catch(() => { setSearchError(true); setSearchResults([]); })
         .finally(() => setIsSearching(false));
       return;
     }
@@ -91,8 +97,14 @@ export function AddEdgePanel({
           `/api/workspaces/${workspaceSlug}/lingo/nodes/search?q=${encodeURIComponent(searchQuery)}`,
         );
         const data = await res.json();
-        setSearchResults(Array.isArray(data?.data) ? data.data : []);
+        if (!data.success) {
+          setSearchError(true);
+          setSearchResults([]);
+        } else {
+          setSearchResults(Array.isArray(data?.data) ? data.data : []);
+        }
       } catch {
+        setSearchError(true);
         setSearchResults([]);
       } finally {
         setIsSearching(false);
@@ -108,6 +120,7 @@ export function AddEdgePanel({
     setSearchResults([]);
     setTargetNode(null);
     setEdgeType(DEFAULT_EDGE_TYPE);
+    setSearchError(false);
     onClose();
   }
 
@@ -202,7 +215,12 @@ export function AddEdgePanel({
               ))}
             </ul>
           )}
-          {!isSearching && searchQuery.trim() && searchResults.length === 0 && (
+          {!isSearching && searchError && (
+            <p className="text-sm text-destructive" data-testid="search-error">
+              Search unavailable — try again
+            </p>
+          )}
+          {!isSearching && !searchError && searchQuery.trim() && searchResults.length === 0 && (
             <p className="text-sm text-muted-foreground" data-testid="no-results">
               No nodes found for &quot;{searchQuery}&quot;
             </p>

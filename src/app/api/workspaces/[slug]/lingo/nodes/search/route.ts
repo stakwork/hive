@@ -68,7 +68,7 @@ export async function GET(
 
     if (!response.ok) {
       console.warn(`[Lingo nodes/search] Jarvis returned ${response.status}`);
-      return NextResponse.json({ success: true, data: [] });
+      return NextResponse.json({ success: false, error: "Search unavailable" }, { status: 502 });
     }
 
     const data = await response.json();
@@ -91,6 +91,6 @@ export async function GET(
     return NextResponse.json({ success: true, data: nodes });
   } catch (err) {
     console.error("[Lingo nodes/search] Jarvis fetch failed", err);
-    return NextResponse.json({ success: true, data: [] });
+    return NextResponse.json({ success: false, error: "Search unavailable" }, { status: 502 });
   }
 }
