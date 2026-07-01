@@ -128,3 +128,126 @@ describe("sanitizeAndCompleteToolCalls — missing output repair", () => {
     expect(part.output).toEqual({ type: "json", value: "hello" });
   });
 });
+
+function assistantToolCallPart(msg: ModelMessage) {
+  const content = msg.content as Array<Record<string, unknown>>;
+  return content.find((c) => c.type === "tool-call") as { input?: unknown; toolCallId?: string };
+}
+
+describe("sanitizeAndCompleteToolCalls — tool-call input normalization", () => {
+  test("parses a valid JSON-string input into an object", async () => {
+    const messages: ModelMessage[] = [
+      {
+        role: "assistant",
+        content: [
+          {
+            type: "tool-call",
+            toolCallId: "c1",
+            toolName: "propose_feature",
+            input: '{"proposalId":"p1","title":"X"}',
+          } as never,
+        ],
+      },
+      {
+        role: "tool",
+        content: [
+          {
+            type: "tool-result",
+            toolCallId: "c1",
+            toolName: "propose_feature",
+            output: { type: "json", value: { ok: true } },
+          } as never,
+        ],
+      },
+    ];
+
+    const out = await sanitizeAndCompleteToolCalls(messages, "http://swarm", "key");
+    const part = assistantToolCallPart(out.find((m) => m.role === "assistant")!);
+    expect(part.input).toEqual({ proposalId: "p1", title: "X" });
+  });
+
+  test("coerces an unparseable string input to an empty object", async () => {
+    const messages: ModelMessage[] = [
+      {
+        role: "assistant",
+        content: [
+          {
+            type: "tool-call",
+            toolCallId: "c2",
+            toolName: "propose_feature",
+            input: '{ "dependsOnFeatureIds": cmr2i71ez, }', // invalid JSON (unquoted value)
+          } as never,
+        ],
+      },
+      {
+        role: "tool",
+        content: [
+          {
+            type: "tool-result",
+            toolCallId: "c2",
+            toolName: "propose_feature",
+            output: { type: "json", value: { error: "x" } },
+          } as never,
+        ],
+      },
+    ];
+
+    const out = await sanitizeAndCompleteToolCalls(messages, "http://swarm", "key");
+    const part = assistantToolCallPart(out.find((m) => m.role === "assistant")!);
+    expect(part.input).toEqual({});
+  });
+
+  test("normalizes the input even when the result was a backfilled placeholder", async () => {
+    // Mirrors the real corruption: a tool-call with an unparseable string
+    // input AND a missing result. The orphan-repair path creates a placeholder
+    // result (keeping the call), so its string input must still be normalized
+    // to an object or Anthropic 400s.
+    const messages: ModelMessage[] = [
+      {
+        role: "assistant",
+        content: [
+          {
+            type: "tool-call",
+            toolCallId: "orphan-1",
+            toolName: "propose_feature",
+            input: "{ malformed",
+          } as never,
+        ],
+      },
+    ];
+
+    const out = await sanitizeAndCompleteToolCalls(messages, "http://swarm", "key");
+    const assistant = out.find((m) => m.role === "assistant")!;
+    const part = assistantToolCallPart(assistant);
+    expect(part.input).toEqual({});
+    // and the orphan got a result so the pair is complete
+    expect(out.some((m) => m.role === "tool")).toBe(true);
+  });
+
+  test("leaves a well-formed object input untouched (same reference)", async () => {
+    const input = { a: 1, b: { c: 2 } };
+    const messages: ModelMessage[] = [
+      {
+        role: "assistant",
+        content: [
+          { type: "tool-call", toolCallId: "c3", toolName: "read_canvas", input } as never,
+        ],
+      },
+      {
+        role: "tool",
+        content: [
+          {
+            type: "tool-result",
+            toolCallId: "c3",
+            toolName: "read_canvas",
+            output: { type: "json", value: {} },
+          } as never,
+        ],
+      },
+    ];
+
+    const out = await sanitizeAndCompleteToolCalls(messages, "http://swarm", "key");
+    const part = assistantToolCallPart(out.find((m) => m.role === "assistant")!);
+    expect(part.input).toEqual(input);
+  });
+});
