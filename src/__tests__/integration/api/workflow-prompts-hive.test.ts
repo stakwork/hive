@@ -23,6 +23,12 @@ vi.mock("@/config/env", () => ({
   config: {
     STAKWORK_BASE_URL: "https://api.stakwork.test",
     STAKWORK_API_KEY: "test-stakwork-key-123",
+    WORKFLOW_GRAPH_PROMPT_STORAGE_ID: "54286",
+  },
+  optionalEnvVars: {
+    STAKWORK_BASE_URL: "https://api.stakwork.test",
+    POOL_MANAGER_BASE_URL: "https://workspaces.sphinx.chat/api",
+    API_TIMEOUT: 10000,
   },
 }));
 
@@ -35,12 +41,20 @@ vi.mock("@/lib/auth/nextauth", () => ({
   authOptions: {},
 }));
 
+const mockStakworkRequest = vi.fn().mockResolvedValue({ id: 1 });
+vi.mock("@/lib/service-factory", () => ({
+  stakworkService: vi.fn(() => ({
+    stakworkRequest: mockStakworkRequest,
+  })),
+}));
+
 import { isDevelopmentMode } from "@/lib/runtime";
+import { config } from "@/config/env";
 
 const mockGetServerSession = getMockedSession();
 const mockIsDevelopmentMode = vi.mocked(isDevelopmentMode);
 
-// Mock global fetch for Stakwork push
+// Mock global fetch for Stakwork /prompts push
 global.fetch = vi.fn();
 const mockFetch = global.fetch as ReturnType<typeof vi.fn>;
 
@@ -87,6 +101,8 @@ describe("Hive-native Prompt CRUD + Write-through Sync", () => {
   beforeEach(async () => {
     vi.clearAllMocks();
     mockFetch.mockReset();
+    mockStakworkRequest.mockReset();
+    mockStakworkRequest.mockResolvedValue({ id: 1 });
     mockIsDevelopmentMode.mockReturnValue(false);
 
     testUser = await createTestUser();
@@ -632,6 +648,214 @@ describe("Hive-native Prompt CRUD + Write-through Sync", () => {
       expect(delRes.status).toBe(200);
       const promptAfter = await db.prompt.findUnique({ where: { id: created.id } });
       expect(promptAfter).toBeNull();
+    });
+  });
+
+  // ─── Prompt Graph Recorder ───────────────────────────────────────────────────
+
+  describe("Prompt graph recorder (recordPromptOnGraph)", () => {
+    test("create: launches graph-recorder workflow with correct payload shape", async () => {
+      authAs(testUser);
+      stakworkOkCreate(50);
+
+      const req = makeReq("http://localhost/api/workflow/prompts", "POST", {
+        name: "GRAPH_RECORDER_CREATE",
+        value: "initial value",
+        description: "graph recorder test",
+      });
+      const res = await POST(req);
+      expect(res.status).toBe(200);
+      const data = (await res.json()).data;
+      createdPromptIds.push(data.id);
+
+      // Find the graph-recorder call (stakworkRequest for /projects)
+      const graphCall = mockStakworkRequest.mock.calls.find(
+        ([endpoint]: [string]) => endpoint === "/projects",
+      );
+      expect(graphCall).toBeDefined();
+      const [, payload] = graphCall as [string, Record<string, unknown>];
+
+      expect(payload.workflow_id).toBe(54286);
+      expect(payload.name).toBe(`Prompt Graph Recorder ${data.id}`);
+
+      const vars = (payload as { workflow_params: { set_var: { attributes: { vars: { prompt: Record<string, unknown> } } } } })
+        .workflow_params.set_var.attributes.vars.prompt;
+
+      expect(vars.id).toBe(data.id);
+      expect(vars.prompt_id).toBe(data.id);
+      expect(vars.prompt_version_id).toBe(data.published_version_id);
+      expect(vars.name).toBe("GRAPH_RECORDER_CREATE");
+      expect(vars.description).toBe("graph recorder test");
+      expect(vars.value).toBe("initial value");
+      expect(vars.customer_id).toBeNull();
+    });
+
+    test("update: launches graph-recorder with new version id and updated value", async () => {
+      authAs(testUser);
+      stakworkOkCreate(51);
+
+      const createRes = await POST(
+        makeReq("http://localhost/api/workflow/prompts", "POST", {
+          name: "GRAPH_RECORDER_UPDATE",
+          value: "v1 value",
+        }),
+      );
+      const created = (await createRes.json()).data;
+      createdPromptIds.push(created.id);
+      mockStakworkRequest.mockClear();
+
+      authAs(testUser);
+      stakworkOkUpdate();
+
+      const putRes = await PUT(
+        makeReq(`http://localhost/api/workflow/prompts/${created.id}`, "PUT", {
+          value: "v2 value",
+          description: "updated desc",
+        }),
+        { params: Promise.resolve({ id: created.id }) },
+      );
+      expect(putRes.status).toBe(200);
+      const updated = (await putRes.json()).data;
+
+      const graphCall = mockStakworkRequest.mock.calls.find(
+        ([endpoint]: [string]) => endpoint === "/projects",
+      );
+      expect(graphCall).toBeDefined();
+      const [, payload] = graphCall as [string, Record<string, unknown>];
+
+      const vars = (payload as { workflow_params: { set_var: { attributes: { vars: { prompt: Record<string, unknown> } } } } })
+        .workflow_params.set_var.attributes.vars.prompt;
+
+      // version id must be the NEW version (different from v1)
+      expect(vars.prompt_version_id).toBe(updated.published_version_id);
+      expect(vars.prompt_version_id).not.toBe(created.published_version_id);
+      expect(vars.value).toBe("v2 value");
+      expect(vars.id).toBe(created.id);
+      expect(vars.prompt_id).toBe(created.id);
+      expect(vars.customer_id).toBeNull();
+    });
+
+    test("publish: launches graph-recorder with published version id and value", async () => {
+      authAs(testUser);
+      stakworkOkCreate(52);
+
+      // Create with v1
+      const createRes = await POST(
+        makeReq("http://localhost/api/workflow/prompts", "POST", {
+          name: "GRAPH_RECORDER_PUBLISH",
+          value: "v1 value",
+        }),
+      );
+      const created = (await createRes.json()).data;
+      createdPromptIds.push(created.id);
+      const v1Id = created.published_version_id as string;
+
+      // Add v2
+      authAs(testUser);
+      stakworkOkUpdate();
+      mockStakworkRequest.mockClear();
+      await PUT(
+        makeReq(`http://localhost/api/workflow/prompts/${created.id}`, "PUT", {
+          value: "v2 value",
+        }),
+        { params: Promise.resolve({ id: created.id }) },
+      );
+      mockStakworkRequest.mockClear();
+
+      // Publish v1 (roll back)
+      authAs(testUser);
+      const publishRes = await PUBLISH(
+        makeReq(`http://localhost/api/workflow/prompts/${created.id}/versions/${v1Id}/publish`, "POST"),
+        { params: Promise.resolve({ id: created.id, versionId: v1Id }) },
+      );
+      expect(publishRes.status).toBe(200);
+
+      const graphCall = mockStakworkRequest.mock.calls.find(
+        ([endpoint]: [string]) => endpoint === "/projects",
+      );
+      expect(graphCall).toBeDefined();
+      const [, payload] = graphCall as [string, Record<string, unknown>];
+
+      const vars = (payload as { workflow_params: { set_var: { attributes: { vars: { prompt: Record<string, unknown> } } } } })
+        .workflow_params.set_var.attributes.vars.prompt;
+
+      expect(vars.prompt_version_id).toBe(v1Id);
+      expect(vars.value).toBe("v1 value");
+      expect(vars.id).toBe(created.id);
+      expect(vars.customer_id).toBeNull();
+    });
+
+    test("unset env var: graph recorder is skipped, operation still succeeds", async () => {
+      // Override config to remove the workflow id (cast to bypass as const)
+      const mutableConfig = config as Record<string, unknown>;
+      const original = mutableConfig.WORKFLOW_GRAPH_PROMPT_STORAGE_ID;
+      mutableConfig.WORKFLOW_GRAPH_PROMPT_STORAGE_ID = undefined;
+
+      authAs(testUser);
+      stakworkOkCreate(53);
+
+      const req = makeReq("http://localhost/api/workflow/prompts", "POST", {
+        name: "GRAPH_RECORDER_NO_ENV",
+        value: "some value",
+      });
+      const res = await POST(req);
+      expect(res.status).toBe(200);
+      const data = (await res.json()).data;
+      createdPromptIds.push(data.id);
+
+      // No /projects call should have been made
+      const graphCall = mockStakworkRequest.mock.calls.find(
+        ([endpoint]: [string]) => endpoint === "/projects",
+      );
+      expect(graphCall).toBeUndefined();
+
+      // Restore
+      mutableConfig.WORKFLOW_GRAPH_PROMPT_STORAGE_ID = original;
+    });
+
+    test("stakworkRequest throws: error is swallowed, operation still succeeds", async () => {
+      authAs(testUser);
+      stakworkOkCreate(54);
+
+      // Graph recorder request will throw
+      mockStakworkRequest.mockRejectedValueOnce(new Error("Graph recorder network error"));
+
+      const req = makeReq("http://localhost/api/workflow/prompts", "POST", {
+        name: "GRAPH_RECORDER_THROW",
+        value: "value",
+      });
+      const res = await POST(req);
+      // Must still succeed despite graph recorder throwing
+      expect(res.status).toBe(200);
+      const data = (await res.json()).data;
+      expect(data.name).toBe("GRAPH_RECORDER_THROW");
+      expect(data.id).toBeTruthy();
+      createdPromptIds.push(data.id);
+    });
+
+    test("graph recorder fires even when /prompts push fails", async () => {
+      authAs(testUser);
+      // Simulate /prompts push failure
+      stakworkFail();
+
+      // Graph recorder will still succeed
+      mockStakworkRequest.mockResolvedValue({ id: 1 });
+
+      const req = makeReq("http://localhost/api/workflow/prompts", "POST", {
+        name: "GRAPH_RECORDER_INDEPENDENT",
+        value: "value",
+      });
+      const res = await POST(req);
+      // Local write succeeds (syncStatus=PENDING)
+      expect(res.status).toBe(200);
+      const data = (await res.json()).data;
+      createdPromptIds.push(data.id);
+
+      // Graph recorder call must still have fired
+      const graphCall = mockStakworkRequest.mock.calls.find(
+        ([endpoint]: [string]) => endpoint === "/projects",
+      );
+      expect(graphCall).toBeDefined();
     });
   });
 });

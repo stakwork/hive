@@ -30,6 +30,11 @@ vi.mock("@/config/env", () => ({
     STAKWORK_BASE_URL: "https://api.stakwork.test",
     STAKWORK_API_KEY: "test-stakwork-key-123",
   },
+  optionalEnvVars: {
+    STAKWORK_BASE_URL: "https://api.stakwork.test",
+    POOL_MANAGER_BASE_URL: "https://workspaces.sphinx.chat/api",
+    API_TIMEOUT: 10000,
+  },
 }));
 
 vi.mock("@/lib/runtime", () => ({
@@ -39,6 +44,12 @@ vi.mock("@/lib/runtime", () => ({
 
 vi.mock("@/lib/auth/nextauth", () => ({
   authOptions: {},
+}));
+
+vi.mock("@/lib/service-factory", () => ({
+  stakworkService: vi.fn(() => ({
+    stakworkRequest: vi.fn().mockResolvedValue({ id: 1 }),
+  })),
 }));
 
 import { isDevelopmentMode } from "@/lib/runtime";
