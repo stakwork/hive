@@ -39,8 +39,8 @@ const makeArtifact = (overrides: Record<string, unknown> = {}) => ({
   id: "artifact-2",
   type: ArtifactType.PUBLISH_PROMPT,
   content: {
-    promptId: 42,
-    promptVersionId: 7,
+    promptId: "clprompt0000000000000042",
+    promptVersionId: "clversion000000000000007",
     promptName: "My Prompt",
     published: false,
     ...overrides,
@@ -75,7 +75,7 @@ describe("PublishPromptArtifact", () => {
 
     await waitFor(() => {
       expect(global.fetch).toHaveBeenCalledWith(
-        "/api/workflow/prompts/42/versions/7/publish",
+        "/api/workflow/prompts/clprompt0000000000000042/versions/clversion000000000000007/publish",
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -154,11 +154,11 @@ describe("PublishPromptArtifact", () => {
   it("renders version chip and link when promptVersionId is present", () => {
     render(<PublishPromptArtifact artifact={makeArtifact() as any} />);
     expect(screen.getByTestId("prompt-version-chip")).toBeInTheDocument();
-    expect(screen.getByTestId("prompt-version-chip")).toHaveTextContent("v7");
+    expect(screen.getByTestId("prompt-version-chip")).toHaveTextContent("vclversion000000000000007");
     expect(screen.getByTestId("prompt-version-link")).toBeInTheDocument();
     expect(screen.getByTestId("prompt-version-link")).toHaveAttribute(
       "href",
-      "/w/stakwork/prompts?prompt=42&version=7"
+      "/w/stakwork/prompts?prompt=clprompt0000000000000042&version=clversion000000000000007"
     );
   });
 
