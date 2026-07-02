@@ -62,15 +62,17 @@ function shapePrompt(p: {
   syncStatus: string;
   createdAt: Date;
   updatedAt: Date;
-  versions?: { id: string }[];
+  // versions are pre-sorted versionNumber desc so [0] is always the latest.
+  versions?: { id: string; versionNumber: number }[];
 }) {
+  const latestVersionId = p.versions?.[0]?.id ?? p.publishedVersionId;
   return {
     id: p.id,
     name: p.name,
     value: p.value,
     description: p.description ?? "",
     published_version_id: p.publishedVersionId,
-    current_version_id: p.publishedVersionId, // mirrors published for UI compat
+    current_version_id: latestVersionId,
     stakwork_id: p.stakworkId,
     sync_status: p.syncStatus,
     version_count: p.versions?.length ?? undefined,
@@ -107,7 +109,12 @@ export async function GET(request: NextRequest) {
         orderBy: { createdAt: "asc" },
         skip: (page - 1) * pageSize,
         take: pageSize,
-        include: { versions: { select: { id: true } } },
+        include: {
+          versions: {
+            select: { id: true, versionNumber: true },
+            orderBy: { versionNumber: "desc" },
+          },
+        },
       }),
       db.prompt.count({ where }),
     ]);
