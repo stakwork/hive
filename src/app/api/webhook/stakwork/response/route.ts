@@ -19,6 +19,7 @@ export async function POST(request: NextRequest) {
     const feature_id = url.searchParams.get("feature_id");
     const whiteboard_id = url.searchParams.get("whiteboard_id");
     const layout = url.searchParams.get("layout");
+    const run_id = url.searchParams.get("run_id");
 
     // Validate required query params
     if (!type || !workspace_id) {
@@ -60,6 +61,7 @@ export async function POST(request: NextRequest) {
       feature_id: feature_id || undefined,
       whiteboard_id: whiteboard_id || undefined,
       layout: layout || undefined,
+      run_id: run_id || undefined,
     });
 
     return NextResponse.json(
