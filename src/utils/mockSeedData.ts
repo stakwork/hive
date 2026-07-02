@@ -728,8 +728,11 @@ async function seedTasks(
     }
   }
 
+  // Seed prompt rows used by PUBLISH_PROMPT artifact and canvas agent
+  const seededPromptIds = await seedPrompts();
+
   // Add chat messages with artifacts to some tasks
-  await seedChatMessagesWithArtifacts(createdTasks.slice(0, 5));
+  await seedChatMessagesWithArtifacts(createdTasks.slice(0, 5), seededPromptIds);
 
   // Add diverse PR artifacts for last 72 hours testing
   await seedPullRequestArtifacts(userId, workspaceId, features);
@@ -840,11 +843,85 @@ async function seedTasks(
 }
 
 /**
+ * Seeds Prompt and PromptVersion rows used by the PUBLISH_PROMPT artifact
+ * and the canvas agent system prompt read path.
+ * Idempotent — skips creation if a prompt named "Mock Prompt" already exists.
+ */
+async function seedPrompts(): Promise<{ promptId: string; promptVersionId: string }> {
+  const CANVAS_PROMPT_NAME = "CANVAS_AGENT_SYSTEM_PROMPT";
+  const MOCK_PROMPT_NAME = "Mock Prompt";
+
+  const CANVAS_DEFAULT_VALUE = "You are a helpful canvas agent assistant.";
+  const MOCK_PROMPT_VALUE = "This is a mock prompt value for dev seeding.";
+
+  // Seed CANVAS_AGENT_SYSTEM_PROMPT so the Hive-native read path resolves in dev.
+  const existingCanvas = await db.prompt.findUnique({ where: { name: CANVAS_PROMPT_NAME } });
+  if (!existingCanvas) {
+    const canvasPrompt = await db.prompt.create({
+      data: {
+        name: CANVAS_PROMPT_NAME,
+        value: CANVAS_DEFAULT_VALUE,
+        description: "Canvas agent persona prompt (seeded for dev)",
+        versions: {
+          create: { versionNumber: 1, value: CANVAS_DEFAULT_VALUE },
+        },
+      },
+      include: { versions: true },
+    });
+    const canvasVersion = canvasPrompt.versions[0];
+    if (canvasVersion) {
+      await db.prompt.update({
+        where: { id: canvasPrompt.id },
+        data: { publishedVersionId: canvasVersion.id },
+      });
+    }
+  }
+
+  // Seed Mock Prompt used by the PUBLISH_PROMPT artifact.
+  const existingMock = await db.prompt.findUnique({ where: { name: MOCK_PROMPT_NAME } });
+  if (existingMock) {
+    const publishedVersion = existingMock.publishedVersionId
+      ? await db.promptVersion.findUnique({ where: { id: existingMock.publishedVersionId } })
+      : await db.promptVersion.findFirst({
+          where: { promptId: existingMock.id },
+          orderBy: { versionNumber: "desc" },
+        });
+    const versionId = publishedVersion?.id ?? existingMock.publishedVersionId ?? "";
+    return { promptId: existingMock.id, promptVersionId: versionId };
+  }
+
+  const mockPrompt = await db.prompt.create({
+    data: {
+      name: MOCK_PROMPT_NAME,
+      value: MOCK_PROMPT_VALUE,
+      description: "Mock prompt for dev/test PUBLISH_PROMPT artifact",
+      versions: {
+        create: { versionNumber: 1, value: MOCK_PROMPT_VALUE },
+      },
+    },
+    include: { versions: true },
+  });
+
+  const mockVersion = mockPrompt.versions[0];
+  if (mockVersion) {
+    await db.prompt.update({
+      where: { id: mockPrompt.id },
+      data: { publishedVersionId: mockVersion.id },
+    });
+    return { promptId: mockPrompt.id, promptVersionId: mockVersion.id };
+  }
+
+  // Fallback — should never happen
+  return { promptId: mockPrompt.id, promptVersionId: "" };
+}
+
+/**
  * Creates chat messages with artifacts for tasks
  * Each task gets BROWSER, IDE, and DIFF artifacts at minimum
  */
 async function seedChatMessagesWithArtifacts(
-  tasks: Array<{ id: string; title: string; status: TaskStatus }>
+  tasks: Array<{ id: string; title: string; status: TaskStatus }>,
+  promptIds: { promptId: string; promptVersionId: string }
 ): Promise<void> {
   for (const task of tasks) {
     // User starts the conversation
@@ -1368,8 +1445,8 @@ Deployed via Docker containers on AWS ECS with auto-scaling enabled.`,
           messageId: publishPromptMsg.id,
           type: ArtifactType.PUBLISH_PROMPT,
           content: {
-            promptId: 1,
-            promptVersionId: 3,
+            promptId: promptIds.promptId,
+            promptVersionId: promptIds.promptVersionId,
             promptName: "Mock Prompt",
             published: false,
           },

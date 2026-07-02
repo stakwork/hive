@@ -112,8 +112,8 @@ export interface PublishScriptContent {
 }
 
 export interface PublishPromptContent {
-  promptId: number; // Prompt ID to publish
-  promptVersionId: number; // Prompt version ID to publish
+  promptId: string; // Prompt ID to publish (Hive cuid)
+  promptVersionId: string; // Prompt version ID to publish (Hive cuid)
   promptName?: string; // Prompt name for display
   published?: boolean; // Whether the prompt has been published
 }
