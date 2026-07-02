@@ -57,7 +57,12 @@ import { tool, type ToolSet } from "ai";
 import { z } from "zod";
 import { buildCanvasTools } from "@/lib/ai/canvasTools";
 import { buildConnectionTools } from "@/lib/ai/connectionTools";
+import {
+  buildGraphWalkDispatchTools,
+  type DispatchedGraphWalkIntent,
+} from "@/lib/ai/graphWalkDispatchTools";
 import { buildGraphWalkerTools } from "@/lib/ai/graphWalkerTools";
+import { buildInfraTools } from "@/lib/ai/infraTools";
 import { buildInitiativeTools } from "@/lib/ai/initiativeTools";
 import {
   buildResearchTools,
@@ -72,6 +77,7 @@ import {
 import {
   getConnectionsCapabilitySnippet,
   getGraphWalkerCapabilitySnippet,
+  getInfraCapabilitySnippet,
   getPlannerCapabilitySnippet,
   getResearchCapabilitySnippet,
   getRoadmapCapabilitySnippet,
@@ -84,7 +90,8 @@ export type OrgCapability =
   | "whiteboard"
   | "research"
   | "connections"
-  | "graph_walker";
+  | "graph_walker"
+  | "infra";
 
 /**
  * Everything a capability's `buildTools` may need. Mirrors the
@@ -105,7 +112,12 @@ export interface CapabilityContext {
   chatAgentModel?: string;
   capturedWebSearchResults: CapturedSearchResult[];
   dispatchedResearch?: DispatchedResearchIntent[];
+  dispatchedGraphWalks?: DispatchedGraphWalkIntent[];
+  graphWalkAnswerSink?: { answer: string | null };
 }
+
+// Re-export so callers can import from a single location.
+export type { DispatchedGraphWalkIntent };
 
 interface CapabilityDefinition {
   buildTools(ctx: CapabilityContext): ToolSet;
@@ -175,6 +187,7 @@ export const ALL_CAPABILITIES: readonly OrgCapability[] = [
   "research",
   "connections",
   "graph_walker",
+  "infra",
 ];
 
 export const CAPABILITY_REGISTRY: Record<OrgCapability, CapabilityDefinition> =
@@ -211,7 +224,7 @@ export const CAPABILITY_REGISTRY: Record<OrgCapability, CapabilityDefinition> =
       // Pull the loadable set in so their tools are registered and the
       // learn_capability menu lists them whenever roadmap is selected
       // (the org canvas surface always carried all of these).
-      includes: ["whiteboard", "research", "connections", "graph_walker"],
+      includes: ["whiteboard", "research", "connections", "graph_walker", "infra"],
     },
     planner: {
       buildTools: (ctx) =>
@@ -280,17 +293,36 @@ export const CAPABILITY_REGISTRY: Record<OrgCapability, CapabilityDefinition> =
       writeToolNames: ["save_connection", "update_connection"],
     },
     graph_walker: {
-      buildTools: (ctx) => buildGraphWalkerTools(ctx.orgId, ctx.userId),
+      buildTools: (ctx) => ({
+        ...buildGraphWalkerTools(ctx.orgId, ctx.userId),
+        ...buildGraphWalkDispatchTools(ctx),
+      }),
       promptSnippet: getGraphWalkerCapabilitySnippet,
       core: false,
       menuBlurb:
         "**graph_walker** — fetch KG node-type ontology (`graph_ontology`), " +
         "dereference any URN (`graph_get`), expand 1-hop neighbors (`graph_neighbors`), " +
         "search the swarm knowledge graph (`graph_search`, realm `kg`) — Hive " +
-        "Features/Tasks/ChatMessages now live there as Hivefeature/Hivetask/" +
-        "Hivechatmessage, alongside the code graph. Load when you need to walk the " +
-        "knowledge graph or dereference a URN from another tool. (The `pg` realm is disabled.)",
-      writeToolNames: [], // read-only
+        "Features/Tasks/ChatMessages now live there as HiveFeature/HiveTask/" +
+        "HiveChatMessage, alongside the code graph. Load when you need to walk the " +
+        "knowledge graph or dereference a URN from another tool. (The `pg` realm is disabled.) " +
+        "For multi-hop or slow graph queries, use `dispatch_graph_walk` to run them in the " +
+        "background and receive the answer as an assistant bubble; for quick single-node " +
+        "lookups or a single `graph_search`, use the inline tools directly.",
+      // dispatch_graph_walk and finalize_graph_walk are stripped in readonly mode
+      // to prevent sub-agents from re-dispatching themselves.
+      writeToolNames: ["dispatch_graph_walk", "finalize_graph_walk"],
+    },
+    infra: {
+      buildTools: (ctx) => buildInfraTools(ctx.orgId, ctx.userId),
+      promptSnippet: getInfraCapabilitySnippet,
+      core: false,
+      menuBlurb:
+        "**infra** — read a workspace's stored pod config files " +
+        "(Dockerfile, pm2.config.js, docker-compose.yml, devcontainer.json) via " +
+        "`read_pod_infra`; env values masked. Load when the user asks about a " +
+        "workspace's pod/Docker/build setup.",
+      writeToolNames: [],
     },
   };
 

@@ -29,9 +29,9 @@ function makeResult(versionNumber: number) {
     prompt: {
       id: "prompt-1",
       name: "MY_PROMPT",
-      value: "Updated content",
-      description: "A description",
-      publishedVersionId: `version-${versionNumber}`,
+      value: "Old published content",
+      description: "Old published desc",
+      publishedVersionId: `version-${versionNumber - 1}`,
       stakworkId: null,
       syncStatus: "OK",
       createdAt: new Date(),
@@ -41,7 +41,8 @@ function makeResult(versionNumber: number) {
       id: `version-${versionNumber}`,
       versionNumber,
       value: "Updated content",
-      published: true,
+      description: "New desc",
+      published: false,
       createdAt: new Date(),
     },
   };
@@ -62,6 +63,19 @@ describe("mcpUpdatePrompt — happy path", () => {
     expect(data.name).toBe("MY_PROMPT");
     expect(data.versionId).toBe("version-2");
     expect(data.versionNumber).toBe(2);
+  });
+
+  it("returns the newly-saved draft value/description, not the stale published content", async () => {
+    const result = await mcpUpdatePrompt(STAKWORK_AUTH, "prompt-1", "Updated content", "New desc");
+
+    expect(result.isError).toBeFalsy();
+    const data = JSON.parse((result.content[0] as { text: string }).text);
+    // Must reflect the draft version, not the published prompt
+    expect(data.value).toBe("Updated content");
+    expect(data.description).toBe("New desc");
+    // Must NOT return stale published content
+    expect(data.value).not.toBe("Old published content");
+    expect(data.description).not.toBe("Old published desc");
   });
 
   it("forwards auth.userId as userId to writePromptThrough", async () => {
@@ -98,15 +112,19 @@ describe("mcpUpdatePrompt — happy path", () => {
   });
 });
 
-describe("mcpUpdatePrompt — stakwork-only gate", () => {
-  beforeEach(() => vi.clearAllMocks());
+describe("mcpUpdatePrompt — non-stakwork workspace allowed", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockWritePromptThrough.mockResolvedValue(makeResult(2));
+  });
 
-  it("rejects update on a non-stakwork workspace", async () => {
+  it("succeeds on a non-stakwork workspace and calls writePromptThrough", async () => {
     const result = await mcpUpdatePrompt(OTHER_AUTH, "prompt-1", "content");
 
-    expect(result.isError).toBe(true);
-    expect((result.content[0] as { text: string }).text).toMatch(/stakwork workspace/i);
-    expect(mockWritePromptThrough).not.toHaveBeenCalled();
+    expect(result.isError).toBeFalsy();
+    expect(mockWritePromptThrough).toHaveBeenCalledWith(
+      expect.objectContaining({ userId: "user-2", promptId: "prompt-1", value: "content" }),
+    );
   });
 });
 

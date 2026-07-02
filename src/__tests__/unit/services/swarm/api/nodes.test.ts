@@ -9,7 +9,7 @@ beforeEach(() => {
   global.fetch = mockFetch;
 });
 
-const { addNode, addEdge, addEdgeBulk, addEdgeByRefBulk, updateNode, deleteNode, deleteEdge } = await import("@/services/swarm/api/nodes");
+const { addNode, addEdge, addEdgeBulk, addEdgeByRefBulk, addNodeBulk, updateNode, deleteNode, deleteEdge } = await import("@/services/swarm/api/nodes");
 
 const config = {
   jarvisUrl: "https://test-swarm.sphinx.chat:8444",
@@ -41,7 +41,7 @@ describe("addNode", () => {
       expect(result).toEqual({ success: true, ref_id: "node-abc-123" });
 
       expect(mockFetch).toHaveBeenCalledWith(
-        "https://test-swarm.sphinx.chat:8444/node",
+        "https://test-swarm.sphinx.chat:8444/v2/nodes",
         expect.objectContaining({
           method: "POST",
           headers: expect.objectContaining({
@@ -235,7 +235,7 @@ describe("addNode", () => {
       );
 
       const calledUrl = mockFetch.mock.calls[0][0] as string;
-      expect(calledUrl).toBe("https://test.sphinx.chat:8444/node");
+      expect(calledUrl).toBe("https://test.sphinx.chat:8444/v2/nodes");
     });
   });
 });
@@ -384,7 +384,7 @@ describe("addEdgeBulk", () => {
   ];
 
   describe("Success cases", () => {
-    test("calls POST /node/edge/bulk with correct body and headers", async () => {
+    test("calls POST /v2/edges/bulk with correct body and headers", async () => {
       mockFetch.mockResolvedValueOnce({
         ok: true,
         status: 200,
@@ -399,7 +399,7 @@ describe("addEdgeBulk", () => {
       expect(result).toEqual({ success: true, errors: [] });
 
       expect(mockFetch).toHaveBeenCalledWith(
-        "https://test-swarm.sphinx.chat:8444/node/edge/bulk",
+        "https://test-swarm.sphinx.chat:8444/v2/edges/bulk",
         expect.objectContaining({
           method: "POST",
           headers: expect.objectContaining({
@@ -559,7 +559,7 @@ describe("addEdgeByRefBulk", () => {
     },
   ];
 
-  test("calls POST /node/edge/ref/bulk with the ref_id-pair body", async () => {
+  test("calls POST /v2/edges/bulk and transforms flat ref_id fields to nested v2 shape", async () => {
     mockFetch.mockResolvedValueOnce({
       ok: true,
       status: 200,
@@ -569,14 +569,49 @@ describe("addEdgeByRefBulk", () => {
     const result = await addEdgeByRefBulk(config, edgeList);
 
     expect(result).toEqual({ success: true, errors: [] });
+
+    // Verify the URL is now /v2/edges/bulk (not the legacy /node/edge/ref/bulk)
     expect(mockFetch).toHaveBeenCalledWith(
-      "https://test-swarm.sphinx.chat:8444/node/edge/ref/bulk",
+      "https://test-swarm.sphinx.chat:8444/v2/edges/bulk",
       expect.objectContaining({
         method: "POST",
         headers: expect.objectContaining({ "x-api-token": "test-api-key" }),
-        body: JSON.stringify({ edge_list: edgeList }),
+        // The flat source_ref_id/target_ref_id must be transformed into nested { ref_id } objects
+        body: JSON.stringify({
+          edge_list: [
+            {
+              edge: { edge_type: "RESULTED_IN" },
+              source: { ref_id: "task-ref-1" },
+              target: { ref_id: "pr-ref-1" },
+            },
+          ],
+        }),
       }),
     );
+  });
+
+  test("correctly transforms source_ref_id/target_ref_id into nested {ref_id} objects", async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({ status: "Success", status_messages: [] }),
+    });
+
+    const multiEdgeList = [
+      { edge: { edge_type: "RESULTED_IN" }, source_ref_id: "src-a", target_ref_id: "tgt-b" },
+      { edge: { edge_type: "RELATED_TO", weight: 2 }, source_ref_id: "src-c", target_ref_id: "tgt-d" },
+    ];
+
+    await addEdgeByRefBulk(config, multiEdgeList);
+
+    const sentBody = JSON.parse(mockFetch.mock.calls[0][1].body as string);
+    expect(sentBody.edge_list).toEqual([
+      { edge: { edge_type: "RESULTED_IN" }, source: { ref_id: "src-a" }, target: { ref_id: "tgt-b" } },
+      { edge: { edge_type: "RELATED_TO", weight: 2 }, source: { ref_id: "src-c" }, target: { ref_id: "tgt-d" } },
+    ]);
+    // Confirm flat fields are NOT present in the sent body
+    expect(sentBody.edge_list[0]).not.toHaveProperty("source_ref_id");
+    expect(sentBody.edge_list[0]).not.toHaveProperty("target_ref_id");
   });
 
   test("surfaces error-prefixed status_messages", async () => {
@@ -856,7 +891,7 @@ describe("deleteNode", () => {
 
 describe("deleteEdge", () => {
   describe("Success cases", () => {
-    test("calls DELETE /node/edge/{refId} without X-Is-Admin header", async () => {
+    test("calls DELETE /v2/edges/{refId} without X-Is-Admin header", async () => {
       mockFetch.mockResolvedValueOnce({
         ok: true,
         status: 200,
@@ -868,7 +903,7 @@ describe("deleteEdge", () => {
       expect(result).toEqual({ success: true });
 
       expect(mockFetch).toHaveBeenCalledWith(
-        "https://test-swarm.sphinx.chat:8444/node/edge/edge-ref-123",
+        "https://test-swarm.sphinx.chat:8444/v2/edges/edge-ref-123",
         expect.objectContaining({
           method: "DELETE",
           headers: expect.objectContaining({
@@ -877,7 +912,7 @@ describe("deleteEdge", () => {
         }),
       );
 
-      // Verify X-Is-Admin is NOT present
+      // Verify X-Is-Admin is NOT present (deleteEdge doesn't require admin)
       const calledHeaders = mockFetch.mock.calls[0][1].headers as Record<string, string>;
       expect(calledHeaders).not.toHaveProperty("X-Is-Admin");
     });
@@ -893,8 +928,21 @@ describe("deleteEdge", () => {
 
       const calledUrl = mockFetch.mock.calls[0][0] as string;
       expect(calledUrl).toBe(
-        "https://test-swarm.sphinx.chat:8444/node/edge/edge%2Fwith%2Fslashes",
+        "https://test-swarm.sphinx.chat:8444/v2/edges/edge%2Fwith%2Fslashes",
       );
+    });
+
+    test("surfaces notFound:true on a 404 response", async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 404,
+        text: async () => "Not found",
+      });
+
+      const result = await deleteEdge(config, "edge-ref-missing");
+
+      expect(result.success).toBe(false);
+      expect(result.notFound).toBe(true);
     });
   });
 
@@ -920,5 +968,102 @@ describe("deleteEdge", () => {
       expect(result.success).toBe(false);
       expect(result.error).toBe("Timeout");
     });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// addNodeBulk
+// ---------------------------------------------------------------------------
+
+describe("addNodeBulk", () => {
+  const nodes = [
+    { node_type: "HiveTask", node_data: { task_id: "t1", name: "Task 1" } },
+    { node_type: "HiveTask", node_data: { task_id: "t2", name: "Task 2" } },
+  ];
+
+  test("calls POST /node/bulk with nodes wrapped in node_list", async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({ status: "Success", status_messages: [] }),
+    });
+
+    const result = await addNodeBulk(config, nodes);
+
+    expect(result).toEqual({ success: true, errors: [] });
+    expect(mockFetch).toHaveBeenCalledWith(
+      "https://test-swarm.sphinx.chat:8444/node/bulk",
+      expect.objectContaining({
+        method: "POST",
+        headers: expect.objectContaining({ "x-api-token": "test-api-key" }),
+        body: JSON.stringify({ node_list: nodes }),
+      }),
+    );
+  });
+
+  test("injects reprocess:true on each node when opts.reprocess is set", async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({ status: "Success", status_messages: [] }),
+    });
+
+    await addNodeBulk(config, nodes, { reprocess: true });
+
+    const sentBody = JSON.parse(mockFetch.mock.calls[0][1].body as string);
+    expect(sentBody).toEqual({
+      node_list: nodes.map((n) => ({ ...n, reprocess: true })),
+    });
+  });
+
+  test("returns success:true even when status is Warning (some nodes already existed)", async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        status: "Warning",
+        status_messages: ["Node already exists (skipped)"],
+      }),
+    });
+
+    const result = await addNodeBulk(config, nodes);
+
+    expect(result.success).toBe(true);
+    expect(result.errors).toHaveLength(0);
+  });
+
+  test("collects error-prefixed status_messages as errors", async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        status: "Warning",
+        status_messages: ["Error: invalid node_type for item 1"],
+      }),
+    });
+
+    const result = await addNodeBulk(config, nodes);
+
+    expect(result.success).toBe(false);
+    expect(result.errors).toEqual(["Error: invalid node_type for item 1"]);
+  });
+
+  test("flags endpointMissing on a 404 (older swarm without v2)", async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: false,
+      status: 404,
+      text: async () => "404 page not found",
+    });
+
+    const result = await addNodeBulk(config, nodes);
+
+    expect(result.success).toBe(false);
+    expect(result.endpointMissing).toBe(true);
+  });
+
+  test("handles empty node list without making a request", async () => {
+    const result = await addNodeBulk(config, []);
+    expect(result).toEqual({ success: true, errors: [] });
+    expect(mockFetch).not.toHaveBeenCalled();
   });
 });

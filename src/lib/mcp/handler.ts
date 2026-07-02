@@ -731,9 +731,7 @@ function createServer(
     {
       title: "Create Prompt",
       description: [
-        "Create a new versioned prompt template in the stakwork prompt library.",
-        "",
-        "**Availability.** Only supported on the `stakwork` workspace.",
+        "Create a new versioned prompt template in the prompt library.",
         "",
         "**Name format.** Must be UPPERCASE letters, digits, and underscores only (e.g. `MY_PROMPT_V2`). Duplicate names are rejected.",
         "",
@@ -759,17 +757,6 @@ function createServer(
       const authExtra = extra.authInfo?.extra as McpAuthExtra | undefined;
       const result = await getWorkspaceAuth(authExtra, "create_prompt");
       if (result.error) return result.error;
-      if (!isWorkflowTasksEnabled(result.auth!)) {
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: "Error: prompt tools are only supported on the stakwork workspace",
-            },
-          ],
-          isError: true,
-        };
-      }
       return mcpCreatePrompt(result.auth!, name, value, description);
     },
   );
@@ -780,8 +767,6 @@ function createServer(
       title: "Update Prompt",
       description: [
         "Push a new version of an existing prompt. The prior versions are preserved — this does NOT overwrite history.",
-        "",
-        "**Availability.** Only supported on the `stakwork` workspace.",
         "",
         "Pass the prompt `id` (not name) and the new `value`. Optionally update `description`. The prompt name cannot be changed via this tool.",
       ].join("\n"),
@@ -803,17 +788,6 @@ function createServer(
       const authExtra = extra.authInfo?.extra as McpAuthExtra | undefined;
       const result = await getWorkspaceAuth(authExtra, "update_prompt");
       if (result.error) return result.error;
-      if (!isWorkflowTasksEnabled(result.auth!)) {
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: "Error: prompt tools are only supported on the stakwork workspace",
-            },
-          ],
-          isError: true,
-        };
-      }
       return mcpUpdatePrompt(result.auth!, promptId, value, description);
     },
   );

@@ -93,6 +93,16 @@ function authHeaders(swarmApiKey: string): Record<string, string> {
   return { "x-api-token": swarmApiKey };
 }
 
+/**
+ * Node types that must never surface in graph-walker search or neighbor
+ * expansion. These are internal / low-signal types (hint nodes, agent memory,
+ * media clips, transcript turns) that pollute results without helping the
+ * agent. Excluded server-side by Jarvis (in the Cypher, before LIMIT) via the
+ * `exclude_type` / `exclude_node_type` params, so they never consume the result
+ * budget. Case-insensitive.
+ */
+const EXCLUDED_NODE_TYPES = ["Hint", "Memory", "Clip", "Turn"];
+
 /** fetch with an abort timeout so a slow/overloaded swarm fails fast. */
 async function kgFetch(url: string, swarmApiKey: string): Promise<Response> {
   const controller = new AbortController();
@@ -320,6 +330,10 @@ export async function kgGetNeighbors(
       // `PullRequest` match. Single-word types are unaffected. See
       // docs/plans/graph-walker-label-canonicalization.md.
       canonicalize: "false",
+      // Denylist internal/low-signal neighbor types (Hint/Memory/Clip/Turn).
+      // Jarvis drops them in the Cypher before LIMIT so they don't crowd out
+      // real neighbors. Python-list-literal format, matching node_type/edge_type.
+      exclude_node_type: toPythonListLiteral(EXCLUDED_NODE_TYPES),
     });
     if (opts?.edgeTypes && opts.edgeTypes.length > 0) {
       params.set("edge_type", toPythonListLiteral(opts.edgeTypes));
@@ -506,6 +520,10 @@ export async function kgSearch(
       // `PullRequest`) resolve. Unresolved types simply match nothing (no 400).
       // See docs/plans/graph-walker-label-canonicalization.md.
       canonicalize: "false",
+      // Denylist internal/low-signal types (Hint/Memory/Clip/Turn). Jarvis
+      // drops them in the Cypher before LIMIT so they don't fill result slots.
+      // Comma-separated, matching this endpoint's node_type convention.
+      exclude_type: EXCLUDED_NODE_TYPES.join(","),
     });
     if (opts?.type) {
       params.set("node_type", opts.type);

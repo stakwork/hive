@@ -22,6 +22,18 @@ export interface StoredChatMessage {
   imageData?: string;
   toolCalls?: StoredChatToolCall[];
   timestamp?: string | null;
+  /**
+   * Provenance tag for fanned-out sub-agent rows. For graph-walk
+   * results (`kind === "graph_walk"`) `detailConversationId` points at
+   * the standalone trace conversation so the detail view can link into
+   * it.
+   */
+  source?: {
+    kind?: string;
+    detailConversationId?: string;
+    title?: string;
+    status?: string;
+  };
 }
 
 /**
@@ -95,7 +107,18 @@ export function chatMessagesToParsedMessages(
     if (m.imageData) {
       content = content ? `[image attached]\n${content}` : "[image attached]";
     }
-    out.push({ role: m.role, content, timestamp: m.timestamp ?? null });
+    const parsed: ParsedMessage = { role: m.role, content, timestamp: m.timestamp ?? null };
+    // Graph-walk result rows carry a link down into their standalone
+    // tool-call trace conversation — surface it so the detail view can
+    // render a "view trace" drill-in.
+    if (m.source?.kind === "graph_walk" && m.source.detailConversationId) {
+      parsed.graphWalkTrace = {
+        detailConversationId: m.source.detailConversationId,
+        title: m.source.title,
+        status: m.source.status,
+      };
+    }
+    out.push(parsed);
   }
 
   return out;

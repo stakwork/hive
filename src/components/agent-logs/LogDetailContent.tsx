@@ -7,7 +7,7 @@ import { estimateTokens } from "@/lib/utils/token-estimate";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { Loader2, User, Bot, Wrench, Code2, ChevronDown, ChevronRight, Copy, Check, Flag } from "lucide-react";
+import { Loader2, User, Bot, Wrench, Code2, ChevronDown, ChevronRight, Copy, Check, Flag, Waypoints } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { MarkdownRenderer } from "@/components/MarkdownRenderer";
 import { cn } from "@/lib/utils";
@@ -29,6 +29,12 @@ export interface LogDetailContentProps {
   error: string | null;
   variant?: "modal" | "page";
   onFlagTurn?: (turnIndex: number) => void;
+  /**
+   * Workspace slug used to build in-app deep links from a message
+   * (e.g. a graph-walk result's "view trace" link into its sub-agent
+   * conversation). Omit to suppress such links.
+   */
+  workspaceSlug?: string;
 }
 
 /** Characters before assistant text is truncated with a "Show more" button */
@@ -303,11 +309,13 @@ export function MessageBubble({
   toolCallIndex,
   consumedResultIds,
   onFlag,
+  workspaceSlug,
 }: {
   message: ParsedMessage;
   toolCallIndex?: Map<string, ToolResultContent>;
   consumedResultIds?: Set<string>;
   onFlag?: () => void;
+  workspaceSlug?: string;
 }) {
   const { timezone } = useUserTimezone();
   const [showToolDetails, setShowToolDetails] = useState(false);
@@ -327,6 +335,19 @@ export function MessageBubble({
   const isUser = role === "user";
   const isTool = role === "tool";
   const isAssistant = role === "assistant";
+
+  // Graph-walk result rows link into their standalone sub-agent trace.
+  const graphWalkTrace = message.graphWalkTrace;
+  const graphWalkTraceLink =
+    graphWalkTrace?.detailConversationId && workspaceSlug ? (
+      <a
+        href={`/w/${workspaceSlug}/agent-logs/chat/${graphWalkTrace.detailConversationId}?from=canvas`}
+        className="mt-2 inline-flex items-center gap-1 text-xs text-primary hover:underline"
+      >
+        <Waypoints className="h-3 w-3" />
+        View graph walk trace
+      </a>
+    ) : null;
 
   // --- System message ---
   if (role === "system") {
@@ -525,6 +546,7 @@ export function MessageBubble({
                   ))}
                 </div>
               )}
+              {graphWalkTraceLink}
             </div>
           </TooltipTrigger>
           <TooltipContent>{new Date(message.timestamp).toLocaleString()}</TooltipContent>
@@ -582,6 +604,7 @@ export function MessageBubble({
               ))}
             </div>
           )}
+          {graphWalkTraceLink}
         </div>
       )}
       {onFlag && isAssistant && (
@@ -766,6 +789,7 @@ export function LogDetailContent({
   error,
   variant = "modal",
   onFlagTurn,
+  workspaceSlug,
 }: LogDetailContentProps) {
   const scrollHeight = variant === "page" ? "h-[calc(100vh-12rem)]" : "h-[400px]";
   const hasContent = conversation !== null || rawContent !== "";
@@ -806,6 +830,7 @@ export function LogDetailContent({
                     toolCallIndex={toolCallIndex}
                     consumedResultIds={consumedResultIds}
                     onFlag={onFlagTurn && msg.role === "assistant" ? () => onFlagTurn(i - 1) : undefined}
+                    workspaceSlug={workspaceSlug}
                   />
                 ))}
               </div>

@@ -25,6 +25,18 @@ export interface ParsedMessage {
   tool_calls?: OpenAIToolCall[];
   tool_call_id?: string;
   timestamp?: string | null;
+  /**
+   * Set on a graph-walk result message (fanned out with
+   * `source.kind === "graph_walk"`). Points at the standalone
+   * `SharedConversation` row holding the sub-agent's full tool-call
+   * trace, so the detail view can render a "view trace" drill-in.
+   * Survives the `JSON.stringify` → `parseAgentLogStats` round-trip.
+   */
+  graphWalkTrace?: {
+    detailConversationId: string;
+    title?: string;
+    status?: string;
+  };
 }
 
 export interface AgentLogStats {

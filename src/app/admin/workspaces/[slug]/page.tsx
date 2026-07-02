@@ -146,6 +146,10 @@ export default async function AdminWorkspaceDetailPage({
                 </p>
               </div>
               <div>
+                <p className="text-sm text-muted-foreground">Swarm ID</p>
+                <p className="font-medium">{workspace.swarm?.swarmId || "N/A"}</p>
+              </div>
+              <div>
                 <p className="text-sm text-muted-foreground">EC2 ID</p>
                 <p className="font-medium">{workspace.swarm?.ec2Id || "N/A"}</p>
               </div>

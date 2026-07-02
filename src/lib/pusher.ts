@@ -104,6 +104,8 @@ export const PUSHER_EVENTS = {
   PROMPT_EVAL_RESULT: "prompt-eval-result",
   // Agent trace visualization ready (Arize Phoenix trace URL available)
   AGENT_TRACE_READY: "agent-trace-ready",
+  // Error issue created or updated (new occurrence ingested via /api/webhook/errors)
+  ERROR_ISSUE_UPDATED: "error-issue-updated",
 } as const;
 
 /**
@@ -137,7 +139,10 @@ export type CanvasConversationUpdateReason =
   | "deferred-check-fired"
   // A recurring automation fired: the cron created a fresh org-canvas
   // conversation and appended the agent's response to it.
-  | "automation";
+  | "automation"
+  // A graph-walk sub-agent completed and fanned its synthesized answer
+  // back into the conversation as an assistant bubble.
+  | "graph_walk";
 
 /**
  * Fire-and-forget broadcast that a canvas conversation's `messages` JSON

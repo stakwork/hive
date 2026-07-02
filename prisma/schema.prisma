@@ -281,6 +281,8 @@ model Workspace {
   jarvisSyncState         Json?                    @map("jarvis_sync_state")
   lingoExtractionState    Json                     @default("{}") @map("lingo_extraction_state")
   agentLogs               AgentLog[]
+  errorIssues             ErrorIssue[]
+  errorEvents             ErrorEvent[]
   diagrams                DiagramWorkspace[]
   discordChannels         DiscordChannel[]
   features                Feature[]
@@ -509,6 +511,8 @@ model Repository {
   deployments           Deployment[]
   recommendations       JanitorRecommendation[]
   janitorRuns           JanitorRun[]
+  errorIssues           ErrorIssue[]
+  errorEvents           ErrorEvent[]
   workspace             Workspace               @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   tasks                 Task[]
 
@@ -2008,7 +2012,7 @@ enum PromptSyncStatus {
 model Prompt {
   id                 String           @id @default(cuid())
   name               String           @unique // shared/global scope; UPPERCASE_UNDERSCORE
-  value              String // LIVE value — mirrors the PUBLISHED version (see invariant)
+  value              String // LIVE value — cache of the PUBLISHED version only; drafts do NOT update this field
   description        String?
   publishedVersionId String?          @map("published_version_id")
   stakworkId         Int?             @map("stakwork_id") // Stakwork numeric prompt id, for sync
@@ -2035,9 +2039,77 @@ model PromptVersion {
   prompt        Prompt   @relation(fields: [promptId], references: [id], onDelete: Cascade)
   publishedForPrompts Prompt[] @relation("PublishedVersion")
 
+  @@unique([promptId, versionNumber])
   @@index([promptId])
   @@index([promptId, published])
   @@map("prompt_versions")
+}
+
+// ── Error tracking ───────────────────────────────────────────────────────────
+
+enum ErrorIssueStatus {
+  UNRESOLVED
+  RESOLVED
+  IGNORED
+}
+
+/// Grouped error issue — one row per unique (workspace, repoKey, fingerprint).
+/// repoKey is non-null: it is the resolved repositoryId when the repo matched,
+/// otherwise a normalised raw identifier from the client, or the literal
+/// "unknown". This avoids the Postgres NULL-uniqueness pitfall.
+model ErrorIssue {
+  id             String           @id @default(cuid())
+  workspaceId    String           @map("workspace_id")
+  repositoryId   String?          @map("repository_id")
+  repoKey        String           @map("repo_key")
+  fingerprint    String
+  exceptionType  String           @map("exception_type")
+  title          String
+  status         ErrorIssueStatus @default(UNRESOLVED)
+  occurrenceCount Int             @default(1) @map("occurrence_count")
+  firstSeenAt    DateTime         @map("first_seen_at")
+  lastSeenAt     DateTime         @map("last_seen_at")
+  environment    String?
+  release        String?
+  metadata       Json?
+  kgRefId        String?          @map("kg_ref_id")
+  workspace      Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  repository     Repository?      @relation(fields: [repositoryId], references: [id], onDelete: SetNull)
+  events         ErrorEvent[]
+
+  @@unique([workspaceId, repoKey, fingerprint])
+  @@index([workspaceId])
+  @@index([repositoryId])
+  @@index([lastSeenAt])
+  @@map("error_issues")
+}
+
+/// Individual occurrence of an error linked to its grouped ErrorIssue.
+model ErrorEvent {
+  id             String      @id @default(cuid())
+  issueId        String      @map("issue_id")
+  workspaceId    String      @map("workspace_id")
+  repositoryId   String?     @map("repository_id")
+  repoKey        String      @map("repo_key")
+  blobUrl        String      @map("blob_url")
+  exceptionType  String      @map("exception_type")
+  message        String
+  environment    String?
+  release        String?
+  requestContext Json?       @map("request_context")
+  metadata       Json?
+  fingerprint    String
+  commitSha      String?     @map("commit_sha")
+  createdAt      DateTime    @default(now()) @map("created_at")
+  issue          ErrorIssue  @relation(fields: [issueId], references: [id], onDelete: Cascade)
+  workspace      Workspace   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  repository     Repository? @relation(fields: [repositoryId], references: [id], onDelete: SetNull)
+
+  @@index([issueId])
+  @@index([workspaceId])
+  @@index([repositoryId])
+  @@index([createdAt])
+  @@map("error_events")
 }
 
 /// Cross-realm typed edge between two URN-addressed nodes.
