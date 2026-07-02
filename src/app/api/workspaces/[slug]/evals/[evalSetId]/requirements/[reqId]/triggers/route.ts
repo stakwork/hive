@@ -4,6 +4,8 @@ import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 import { getJarvisUrl } from "@/lib/utils/swarm";
 import { getWorkspaceSwarmAccess } from "@/lib/helpers/swarm-access";
 import { addNode, addEdge } from "@/services/swarm/api/nodes";
+import { resolveHiveAgentName, isBifrostAgentName } from "@/lib/utils/hive-agent";
+import { DEFAULT_AGENT_SPECS } from "@/services/bifrost/agent-catalog";
 
 type RouteParams = {
   params: Promise<{ slug: string; evalSetId: string; reqId: string }>;
@@ -105,6 +107,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     const body = await request.json();
     const {
       agent,
+      agentName: agentNameRaw,
       start_point,
       end_point,
       environment,
@@ -115,8 +118,21 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       undesirable_cases,
     } = body ?? {};
 
-    // Validate required fields
-    if (!agent || typeof agent !== "string" || !agent.trim()) {
+    // Resolve canonical agent name:
+    // - prefer explicit `agentName` if it is a valid BifrostAgentName
+    // - else try to resolve from free-text `agent` (legacy, kept for back-compat)
+    // - else fall back to source-bucket default (no fine-grained signal here)
+    const agentOverride = isBifrostAgentName(agentNameRaw)
+      ? agentNameRaw
+      : isBifrostAgentName(agent)
+      ? agent
+      : undefined;
+    const resolvedAgent = resolveHiveAgentName("repo_agent", agentOverride);
+
+    // `agent` is still required as a field for backward-compat validation, but we
+    // accept either `agent` or `agentName` to satisfy the check.
+    const agentInput = agentNameRaw ?? agent;
+    if (!agentInput || typeof agentInput !== "string" || !agentInput.trim()) {
       return NextResponse.json({ error: "agent is required" }, { status: 400 });
     }
     if (!start_point || typeof start_point !== "string" || !start_point.trim()) {
@@ -155,11 +171,13 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     const jarvisUrl = getJarvisUrl(swarmName);
     const config = { jarvisUrl, apiKey: swarmApiKey };
 
+    console.log(`[Evals Triggers POST] Resolved agent: ${resolvedAgent} (override=${agentNameRaw ?? agent ?? "none"})`);
+
     // Step 1: Create EvalTrigger node
     const triggerId = randomUUID();
     const nodeData: Record<string, unknown> = {
       id: triggerId,
-      agent: agent.trim(),
+      agent: resolvedAgent,
       start_point: start_point.trim(),
       end_point: end_point.trim(),
       environment: environment.trim(),
@@ -214,7 +232,39 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       );
     }
 
-    return NextResponse.json({ success: true, data: { ref_id: createdTriggerId } });
+    // Step 4: Upsert HiveAgent node + ATTRIBUTED_TO edge (non-fatal)
+    try {
+      const agentSpec = DEFAULT_AGENT_SPECS[resolvedAgent];
+      const hiveAgentResult = await addNode(config, {
+        node_type: "HiveAgent",
+        node_data: {
+          name: resolvedAgent,
+          display_name: agentSpec.displayName,
+          description: agentSpec.description,
+        },
+      });
+      console.log(
+        `[Evals Triggers POST] HiveAgent upsert: success=${hiveAgentResult.success} alreadyExists=${hiveAgentResult.alreadyExists ?? false} ref_id=${hiveAgentResult.ref_id ?? "n/a"}`,
+      );
+
+      if (hiveAgentResult.success) {
+        const attrEdgeResult = await addEdge(config, {
+          edge: { edge_type: "ATTRIBUTED_TO" },
+          source: { ref_id: createdTriggerId },
+          target: { node_type: "HiveAgent", node_data: { name: resolvedAgent } },
+        });
+        console.log(`[Evals Triggers POST] ATTRIBUTED_TO edge: success=${attrEdgeResult.success}`);
+        if (!attrEdgeResult.success) {
+          console.warn(`[Evals Triggers POST] ATTRIBUTED_TO edge failed (non-fatal): ${attrEdgeResult.error}`);
+        }
+      } else {
+        console.warn(`[Evals Triggers POST] HiveAgent upsert failed (non-fatal): ${hiveAgentResult.error}`);
+      }
+    } catch (err) {
+      console.warn(`[Evals Triggers POST] HiveAgent/ATTRIBUTED_TO step threw (non-fatal): ${String(err)}`);
+    }
+
+    return NextResponse.json({ success: true, data: { ref_id: createdTriggerId, agentName: resolvedAgent } });
   } catch (error) {
     console.error("[Evals/Triggers] POST error:", error);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
