@@ -34,6 +34,9 @@ function sendCommand(iframeRef: React.RefObject<HTMLIFrameElement | null>, comma
 interface RecordingManager {
   handleEvent(eventType: string, eventData: any): any;
   generateTest(url: string, options?: any): string;
+  // Structured replay steps for the current recording — consumed directly by the
+  // in-iframe executor (no generated-text round-trip). Added in the P3 bundle.
+  getReplaySteps(url: string): any[];
   getActions(): any[];
   getTrackingData(): any;
   clear(): void;
@@ -365,6 +368,19 @@ export const useStaktrak = (
     }
   };
 
+  // Structured replay steps for the CURRENT recording — sent straight to the iframe
+  // executor (no generated-text round-trip). Uses the same URL logic as generateTest.
+  const getReplaySteps = (): any[] => {
+    const urlToUse = recordingStartUrl.current || initialUrl;
+    if (!recorderRef.current || !urlToUse) return [];
+    try {
+      return recorderRef.current.getReplaySteps(cleanInitialUrl(urlToUse));
+    } catch (error) {
+      console.error("[useStaktrak] getReplaySteps failed", error);
+      return [];
+    }
+  };
+
   return {
     currentUrl,
     isSetup,
@@ -385,5 +401,6 @@ export const useStaktrak = (
     toggleActionsView,
     isRecorderReady,
     navigateToUrl,
+    getReplaySteps,
   };
 };

@@ -97,8 +97,6 @@ export default function UserJourneys({ onBrowserModeChange }: UserJourneysProps)
   ) || [];
 
   // Replay-related state
-  const [replayTestCode, setReplayTestCode] = useState<string | null>(null);
-  const [replayTitle, setReplayTitle] = useState<string | null>(null);
   const [isReplayingTask, setIsReplayingTask] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<"table" | "video">("table");
   const [activeVideoData, setActiveVideoData] = useState<{
@@ -274,8 +272,6 @@ export default function UserJourneys({ onBrowserModeChange }: UserJourneysProps)
     setFrontend(null);
     dropPod();
     setClaimedPodId(null);
-    setReplayTestCode(null);
-    setReplayTitle(null);
     setIsReplayingTask(null);
   };
 
@@ -556,8 +552,6 @@ export default function UserJourneys({ onBrowserModeChange }: UserJourneysProps)
             ide={false}
             workspaceId={id || workspace?.id}
             onUserJourneySave={saveUserJourneyTest}
-            externalTestCode={replayTestCode}
-            externalTestTitle={replayTitle}
             onClose={handleCloseBrowser}
           />
         </div>
