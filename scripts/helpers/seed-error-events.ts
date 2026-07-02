@@ -54,6 +54,20 @@ const STACK_TRACES = [
 const ENVIRONMENTS = ["production", "staging"];
 const RELEASES = ["v1.2.0", "v1.2.1", "v1.3.0", "v1.3.1", "v1.4.0"];
 
+// Realistic fake commit SHAs (40-char hex). null entries exercise the default-branch fallback path.
+const COMMIT_SHAS: (string | null)[] = [
+  "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2",
+  "deadbeefcafe1234567890abcdef1234567890ab",
+  "f0e1d2c3b4a5f0e1d2c3b4a5f0e1d2c3b4a5f0e1",
+  null, // exercises default-branch fallback
+  "1a2b3c4d5e6f1a2b3c4d5e6f1a2b3c4d5e6f1a2b",
+  "cafebabe1234cafebabe1234cafebabe1234cafe",
+  null, // exercises default-branch fallback
+  "0987654321fedcba0987654321fedcba09876543",
+  "abcdef1234567890abcdef1234567890abcdef12",
+  "9f8e7d6c5b4a9f8e7d6c5b4a9f8e7d6c5b4a9f8e",
+];
+
 const STATUSES: ErrorIssueStatus[] = [
   ErrorIssueStatus.UNRESOLVED,
   ErrorIssueStatus.UNRESOLVED,
@@ -142,6 +156,7 @@ export async function seedErrorEvents() {
     const environment = ENVIRONMENTS[cfg.envIdx];
     const release = RELEASES[cfg.releaseIdx];
     const status = STATUSES[cfg.statusIdx];
+    const commitSha = COMMIT_SHAS[i % COMMIT_SHAS.length];
 
     // Generate a stable fingerprint for the seed
     const fingerprint = `seed-fp-${i}-${repo.id.slice(0, 8)}`;
@@ -207,6 +222,7 @@ export async function seedErrorEvents() {
             message,
             environment,
             release,
+            commitSha: j === 0 ? commitSha : null, // first event pinned to commit; remainder exercise fallback
             fingerprint,
             requestContext: { method: "GET", path: `/api/example/${i}`, userAgent: "Mozilla/5.0" },
             metadata: { seedRun: true, eventIndex: j },
