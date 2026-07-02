@@ -12,6 +12,50 @@ vi.mock("sonner", () => ({
   toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() },
 }));
 
+vi.mock("@/components/ui/select", () => ({
+  Select: ({
+    value,
+    onValueChange,
+    children,
+  }: {
+    value?: string;
+    onValueChange?: (v: string) => void;
+    children?: React.ReactNode;
+  }) => {
+    const items: { value: string; label: string }[] = [];
+    React.Children.forEach(children, (child: any) => {
+      if (child?.props?.children) {
+        React.Children.forEach(child.props.children, (item: any) => {
+          if (item?.props?.value !== undefined) {
+            items.push({ value: item.props.value, label: item.props.children });
+          }
+        });
+      }
+    });
+    return (
+      <select
+        data-testid="step-agent-select"
+        value={value ?? ""}
+        onChange={(e) => onValueChange?.(e.target.value)}
+      >
+        {items.map((i) => (
+          <option key={i.value} value={i.value}>
+            {i.label}
+          </option>
+        ))}
+      </select>
+    );
+  },
+  SelectTrigger: ({ children }: any) => <>{children}</>,
+  SelectValue: ({ placeholder }: any) => <span>{placeholder}</span>,
+  SelectContent: ({ children }: any) => <>{children}</>,
+  SelectItem: ({ value, children }: any) => <option value={value}>{children}</option>,
+}));
+
+vi.mock("@/components/ui/label", () => ({
+  Label: ({ children, htmlFor }: any) => <label htmlFor={htmlFor}>{children}</label>,
+}));
+
 const { CREATE_NEW_VALUE } = vi.hoisted(() => ({ CREATE_NEW_VALUE: "__create_new__" }));
 
 vi.mock("@/components/evals/CaptureEvalForm", () => ({
@@ -490,6 +534,120 @@ describe("StepDetailsModal — Flag for eval capture", () => {
   it("hides Flag for eval button while form is open", async () => {
     await openFlagForm();
     expect(screen.queryByRole("button", { name: /flag for eval/i })).not.toBeInTheDocument();
+  });
+
+  it("renders agentName Select dropdown when flag form is open", async () => {
+    await openFlagForm();
+    expect(screen.getByTestId("step-agent-select")).toBeInTheDocument();
+  });
+
+  it("agentName Select defaults to the first HIVE_AGENT_OPTIONS entry", async () => {
+    const { HIVE_AGENT_OPTIONS } = await import("@/lib/utils/hive-agent");
+    await openFlagForm();
+    const select = screen.getByTestId("step-agent-select") as HTMLSelectElement;
+    expect(select.value).toBe(HIVE_AGENT_OPTIONS[0].name);
+  });
+
+  it("sends agentName in the capture payload", async () => {
+    const { HIVE_AGENT_OPTIONS } = await import("@/lib/utils/hive-agent");
+    const fetchMock = vi.fn().mockImplementation((url: string) => {
+      if (String(url).includes("/io")) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            data: { inputs: { model: "gpt-4o" }, outputs: "result" },
+          }),
+        });
+      }
+      if (String(url).endsWith("/evals")) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            success: true,
+            data: {
+              nodes: [{ ref_id: "set-1", properties: { name: "Eval Set Alpha" } }],
+              total: 1,
+            },
+          }),
+        });
+      }
+      if (String(url).includes("/eval/capture")) {
+        return Promise.resolve({ ok: true, json: async () => ({}) });
+      }
+      return Promise.resolve({ ok: true, json: async () => ({}) });
+    });
+
+    await openFlagForm(fetchMock);
+    await waitFor(() =>
+      expect(fetchMock.mock.calls.some(([url]: [string]) => String(url).endsWith("/evals"))).toBe(true),
+    );
+
+    fireEvent.change(screen.getByRole("textbox", { name: /requirement/i }), {
+      target: { value: "Must always respond" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /capture/i }));
+
+    await waitFor(() => {
+      const captureCall = fetchMock.mock.calls.find(([url]: [string]) =>
+        String(url).includes("/eval/capture"),
+      );
+      expect(captureCall).toBeDefined();
+      const body = JSON.parse((captureCall![1] as RequestInit).body as string);
+      expect(body.agentName).toBe(HIVE_AGENT_OPTIONS[0].name);
+    });
+  });
+
+  it("changing agentName Select sends the overridden value in the capture payload", async () => {
+    const fetchMock = vi.fn().mockImplementation((url: string) => {
+      if (String(url).includes("/io")) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            data: { inputs: { model: "gpt-4o" }, outputs: "result" },
+          }),
+        });
+      }
+      if (String(url).endsWith("/evals")) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            success: true,
+            data: {
+              nodes: [{ ref_id: "set-1", properties: { name: "Eval Set Alpha" } }],
+              total: 1,
+            },
+          }),
+        });
+      }
+      if (String(url).includes("/eval/capture")) {
+        return Promise.resolve({ ok: true, json: async () => ({}) });
+      }
+      return Promise.resolve({ ok: true, json: async () => ({}) });
+    });
+
+    await openFlagForm(fetchMock);
+    await waitFor(() =>
+      expect(fetchMock.mock.calls.some(([url]: [string]) => String(url).endsWith("/evals"))).toBe(true),
+    );
+
+    // Change agent to canvas-agent
+    const select = screen.getByTestId("step-agent-select") as HTMLSelectElement;
+    fireEvent.change(select, { target: { value: "canvas-agent" } });
+    expect(select.value).toBe("canvas-agent");
+
+    fireEvent.change(screen.getByRole("textbox", { name: /requirement/i }), {
+      target: { value: "Must always respond" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /capture/i }));
+
+    await waitFor(() => {
+      const captureCall = fetchMock.mock.calls.find(([url]: [string]) =>
+        String(url).includes("/eval/capture"),
+      );
+      expect(captureCall).toBeDefined();
+      const body = JSON.parse((captureCall![1] as RequestInit).body as string);
+      expect(body.agentName).toBe("canvas-agent");
+    });
   });
 
   it("fetches eval sets when flag form opens", async () => {
