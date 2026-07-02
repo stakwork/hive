@@ -62,6 +62,7 @@ import {
   type DispatchedGraphWalkIntent,
 } from "@/lib/ai/graphWalkDispatchTools";
 import { buildGraphWalkerTools } from "@/lib/ai/graphWalkerTools";
+import { buildInfraTools } from "@/lib/ai/infraTools";
 import { buildInitiativeTools } from "@/lib/ai/initiativeTools";
 import {
   buildResearchTools,
@@ -76,6 +77,7 @@ import {
 import {
   getConnectionsCapabilitySnippet,
   getGraphWalkerCapabilitySnippet,
+  getInfraCapabilitySnippet,
   getPlannerCapabilitySnippet,
   getResearchCapabilitySnippet,
   getRoadmapCapabilitySnippet,
@@ -88,7 +90,8 @@ export type OrgCapability =
   | "whiteboard"
   | "research"
   | "connections"
-  | "graph_walker";
+  | "graph_walker"
+  | "infra";
 
 /**
  * Everything a capability's `buildTools` may need. Mirrors the
@@ -184,6 +187,7 @@ export const ALL_CAPABILITIES: readonly OrgCapability[] = [
   "research",
   "connections",
   "graph_walker",
+  "infra",
 ];
 
 export const CAPABILITY_REGISTRY: Record<OrgCapability, CapabilityDefinition> =
@@ -220,7 +224,7 @@ export const CAPABILITY_REGISTRY: Record<OrgCapability, CapabilityDefinition> =
       // Pull the loadable set in so their tools are registered and the
       // learn_capability menu lists them whenever roadmap is selected
       // (the org canvas surface always carried all of these).
-      includes: ["whiteboard", "research", "connections", "graph_walker"],
+      includes: ["whiteboard", "research", "connections", "graph_walker", "infra"],
     },
     planner: {
       buildTools: (ctx) =>
@@ -308,6 +312,17 @@ export const CAPABILITY_REGISTRY: Record<OrgCapability, CapabilityDefinition> =
       // dispatch_graph_walk and finalize_graph_walk are stripped in readonly mode
       // to prevent sub-agents from re-dispatching themselves.
       writeToolNames: ["dispatch_graph_walk", "finalize_graph_walk"],
+    },
+    infra: {
+      buildTools: (ctx) => buildInfraTools(ctx.orgId, ctx.userId),
+      promptSnippet: getInfraCapabilitySnippet,
+      core: false,
+      menuBlurb:
+        "**infra** — read a workspace's stored pod config files " +
+        "(Dockerfile, pm2.config.js, docker-compose.yml, devcontainer.json) via " +
+        "`read_pod_infra`; env values masked. Load when the user asks about a " +
+        "workspace's pod/Docker/build setup.",
+      writeToolNames: [],
     },
   };
 

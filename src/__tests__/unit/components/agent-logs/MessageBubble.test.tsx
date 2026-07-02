@@ -64,6 +64,8 @@ vi.mock("lucide-react", () => ({
   ChevronRight: () => React.createElement("span", { "data-testid": "chevron-right" }),
   Copy: () => React.createElement("span", { "data-testid": "icon-copy" }),
   Check: () => React.createElement("span", { "data-testid": "icon-check" }),
+  Flag: () => React.createElement("span", { "data-testid": "icon-flag" }),
+  Waypoints: () => React.createElement("span", { "data-testid": "icon-waypoints" }),
 }));
 
 describe("MessageBubble reasoning rendering", () => {
@@ -181,5 +183,42 @@ describe("MessageBubble timestamp rendering", () => {
     render(React.createElement(MessageBubble, { message }));
 
     expect(screen.queryByTestId("tooltip-content")).toBeNull();
+  });
+});
+
+describe("MessageBubble graph-walk trace link", () => {
+  const graphWalkMessage: ParsedMessage = {
+    role: "assistant",
+    content: "Found 3 File nodes.",
+    graphWalkTrace: { detailConversationId: "gw-conv-1", status: "ready" },
+  };
+
+  it("renders a 'View graph walk trace' link to the sub-conversation when slug is provided", () => {
+    render(
+      React.createElement(MessageBubble, {
+        message: graphWalkMessage,
+        workspaceSlug: "hive",
+      }),
+    );
+    const link = screen.getByText("View graph walk trace").closest("a");
+    expect(link).not.toBeNull();
+    expect(link?.getAttribute("href")).toBe(
+      "/w/hive/agent-logs/chat/gw-conv-1?from=canvas",
+    );
+  });
+
+  it("does not render the link when workspaceSlug is absent", () => {
+    render(React.createElement(MessageBubble, { message: graphWalkMessage }));
+    expect(screen.queryByText("View graph walk trace")).toBeNull();
+  });
+
+  it("does not render the link for a normal assistant message", () => {
+    render(
+      React.createElement(MessageBubble, {
+        message: { role: "assistant", content: "just text" },
+        workspaceSlug: "hive",
+      }),
+    );
+    expect(screen.queryByText("View graph walk trace")).toBeNull();
   });
 });

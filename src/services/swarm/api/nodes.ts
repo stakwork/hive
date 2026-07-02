@@ -17,9 +17,11 @@ interface JarvisApiResponse {
 // Cap each request so a single unreachable/hung swarm can't dominate the cron's
 // 300 s budget. undici's default *connect* timeout is 10 s and there's no
 // request timeout at all, so a swarm that accepts the connection then stalls
-// could block far longer — this bounds the whole round-trip. Writes are small
-// and should be fast; heavy reads (e.g. the PR backfill) override via `timeoutMs`.
-const REQUEST_TIMEOUT_MS = 7_000;
+// could block far longer — this bounds the whole round-trip. 7 s proved too
+// tight for bulk writes: a 100-node Neo4j upsert legitimately takes longer than
+// that, so healthy swarms were timing out mid-batch and the mirror cursor could
+// never advance. Heavy reads (e.g. the PR backfill) still override via `timeoutMs`.
+const REQUEST_TIMEOUT_MS = 30_000;
 
 async function jarvisRequest({
   config,
