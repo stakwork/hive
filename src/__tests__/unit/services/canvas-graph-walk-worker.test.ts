@@ -22,6 +22,7 @@ vi.mock("@/lib/db", () => ({
   db: {
     sharedConversation: {
       findUnique: vi.fn(),
+      upsert: vi.fn(async () => ({})),
     },
     $queryRaw: vi.fn(),
   },
@@ -94,6 +95,8 @@ describe("runGraphWalkSubAgent", () => {
     (db.sharedConversation.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(
       VALID_CONVERSATION,
     );
+    // Default: trace-conversation upsert succeeds
+    (db.sharedConversation.upsert as ReturnType<typeof vi.fn>).mockResolvedValue({});
     // Default: agent writes an answer
     mockAgentWithAnswer("The answer is 42.");
   });
@@ -212,6 +215,48 @@ describe("runGraphWalkSubAgent", () => {
         status: "ready",
       }),
     );
+  });
+
+  // ─── Trace persistence ─────────────────────────────────────────────
+
+  test("persists the tool-call trace to a standalone graph-walk conversation", async () => {
+    await runGraphWalkSubAgent(BASE_ARGS);
+
+    expect(db.sharedConversation.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: `gw-conv-${BASE_ARGS.graphWalkId}` },
+        create: expect.objectContaining({
+          id: `gw-conv-${BASE_ARGS.graphWalkId}`,
+          source: "graph-walk",
+          sourceControlOrgId: BASE_ARGS.orgId,
+          userId: BASE_ARGS.userId,
+          title: BASE_ARGS.title,
+        }),
+      }),
+    );
+  });
+
+  test("passes detailConversationId backlink to fan-out on success", async () => {
+    await runGraphWalkSubAgent(BASE_ARGS);
+
+    expect(fanOutGraphWalkToCanvas).toHaveBeenCalledWith(
+      BASE_ARGS.conversationId,
+      expect.objectContaining({
+        detailConversationId: `gw-conv-${BASE_ARGS.graphWalkId}`,
+      }),
+    );
+  });
+
+  test("trace persist failure is non-fatal → still fans out without backlink", async () => {
+    (db.sharedConversation.upsert as ReturnType<typeof vi.fn>).mockRejectedValue(
+      new Error("db down"),
+    );
+    await runGraphWalkSubAgent(BASE_ARGS);
+
+    const payload = (fanOutGraphWalkToCanvas as ReturnType<typeof vi.fn>).mock
+      .calls[0][1];
+    expect(payload.status).toBe("ready");
+    expect(payload.detailConversationId).toBeUndefined();
   });
 
   // ─── Failure paths ─────────────────────────────────────────────────
