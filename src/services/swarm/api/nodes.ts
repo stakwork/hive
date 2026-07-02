@@ -227,10 +227,9 @@ export async function addEdgeBulk(
 /**
  * Bulk create-or-merge edges where BOTH endpoints are addressed by `ref_id`
  * (Jarvis `/node/edge/ref/bulk`). Unlike `addEdgeBulk`, each node is matched by
- * ref_id against its real Neo4j label, bypassing the capitalize-based
- * (source_type, target_type) schema lookup — required to link to stakgraph nodes
- * such as `PullRequest` whose label isn't the capitalized form. Idempotent on
- * the backend via the edge_key. Errors are returned, never thrown.
+ * ref_id against its real Neo4j label — required to link to stakgraph nodes such
+ * as `PullRequest` that aren't Hive-owned node types. Idempotent on the backend
+ * via the edge_key. Errors are returned, never thrown.
  */
 export async function addEdgeByRefBulk(
   config: JarvisConnectionConfig,
