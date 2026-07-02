@@ -1335,8 +1335,8 @@ export async function mcpUpdatePrompt(
     return mcpOk({
       id: prompt.id,
       name: prompt.name,
-      value: prompt.value,
-      description: prompt.description,
+      value: version.value,
+      description: version.description,
       versionId: version.id,
       versionNumber: version.versionNumber,
     });
