@@ -4,21 +4,9 @@
  * Tests cover:
  *  - computeTraceSignature: stability/normalization, span ordering, client override passthrough
  *  - deriveDbTimeMs: correct DB op detection, non-DB spans excluded
+ *  - resolveRepoKey: confirmed re-exported (DB behaviour tested in error-fingerprint.test.ts)
  */
-import { describe, it, expect, vi, beforeEach } from "vitest";
-
-// ── DB mock (needed by resolveRepoKey which is re-exported) ───────────────────
-const { mockFindMany } = vi.hoisted(() => ({
-  mockFindMany: vi.fn(),
-}));
-
-vi.mock("@/lib/db", () => ({
-  db: {
-    repository: {
-      findMany: mockFindMany,
-    },
-  },
-}));
+import { describe, it, expect } from "vitest";
 
 import { computeTraceSignature, deriveDbTimeMs, resolveRepoKey, type Span } from "@/lib/utils/trace-signature";
 
@@ -196,29 +184,12 @@ describe("deriveDbTimeMs", () => {
 });
 
 // ── resolveRepoKey (re-export sanity check) ───────────────────────────────────
+// DB-level behaviour (URL matching, fallback repoKey) is fully covered by
+// error-fingerprint.test.ts which owns resolveRepoKey's implementation.
+// Here we only verify the symbol is correctly re-exported.
 
 describe("resolveRepoKey (re-exported from error-fingerprint)", () => {
-  const REPOS = [
-    { id: "repo-1", name: "hive", repositoryUrl: "https://github.com/stakwork/hive" },
-  ];
-
-  beforeEach(() => {
-    mockFindMany.mockResolvedValue(REPOS);
-  });
-
-  it("is correctly re-exported (not duplicated)", async () => {
+  it("is correctly re-exported as a function", () => {
     expect(typeof resolveRepoKey).toBe("function");
-    const result = await resolveRepoKey({
-      workspaceId: "ws-1",
-      repository: "https://github.com/stakwork/hive",
-    });
-    expect(result.repositoryId).toBe("repo-1");
-    expect(result.repoKey).toBe("repo-1");
-  });
-
-  it('returns "unknown" when no repository provided', async () => {
-    const result = await resolveRepoKey({ workspaceId: "ws-1" });
-    expect(result.repositoryId).toBeNull();
-    expect(result.repoKey).toBe("unknown");
   });
 });
