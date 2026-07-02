@@ -12,9 +12,9 @@
  *
  * NOTE on Neo4j label casing: Jarvis runs `.capitalize()` on every node type
  * (on both schema registration and writes), so the type names below are stored
- * as `Hivefeature` / `Hivetask` / `Hivechatmessage` labels in Neo4j (Neo4j
+ * as `HiveFeature` / `HiveTask` / `HiveChatMessage` labels in Neo4j (Neo4j
  * labels are case-sensitive). Query the graph with the capitalized form, e.g.
- * `MATCH (f:Hivefeature) ...`. The strings here stay PascalCase only so they
+ * `MATCH (f:HiveFeature) ...`. The strings here stay PascalCase only so they
  * read naturally and match the schema-library source.
  */
 
@@ -23,9 +23,9 @@ export const HIVE_TASK = "HiveTask";
 export const HIVE_CHAT_MESSAGE = "HiveChatMessage";
 
 // Jarvis capitalizes node types on write, so a `HiveTask` node is stored (and
-// must be queried) under the Neo4j label `Hivetask` (see the casing note above).
+// must be queried) under the Neo4j label `HiveTask` (see the casing note above).
 // Used by the PR-link cron to read back HiveTask nodes' ref_ids.
-export const HIVE_TASK_LABEL = "Hivetask";
+export const HIVE_TASK_LABEL = "HiveTask";
 
 export const EDGE_HAS_TASK = "HAS_TASK";
 export const EDGE_HAS_MESSAGE = "HAS_MESSAGE";
