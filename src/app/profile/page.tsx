@@ -5,6 +5,7 @@ import Image from "next/image";
 import { ActivityFeed } from "./_components/ActivityFeed";
 import { BackButton } from "./_components/BackButton";
 import { DailyRecapCard } from "@/components/daily-recap/DailyRecapCard";
+import { DailyRecapSettings } from "@/components/settings/DailyRecapSettings";
 
 export default async function ProfilePage() {
   const session = await getServerSession(authOptions);
@@ -51,6 +52,9 @@ export default async function ProfilePage() {
         </div>
 
         <DailyRecapCard />
+        <div className="mt-6">
+          <DailyRecapSettings />
+        </div>
         <ActivityFeed userId={session.user.id as string} />
       </div>
     </div>
