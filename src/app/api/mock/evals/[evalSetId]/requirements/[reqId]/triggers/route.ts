@@ -85,7 +85,15 @@ export async function GET(_request: NextRequest, { params }: RouteParams) {
   return NextResponse.json({ success: true, data: { nodes, total: nodes.length } });
 }
 
-export async function POST(_request: NextRequest, _ctx: RouteParams) {
+export async function POST(request: NextRequest, _ctx: RouteParams) {
+  const body = await request.json().catch(() => ({}));
   const ref_id = crypto.randomUUID();
-  return NextResponse.json({ success: true, data: { ref_id } });
+  return NextResponse.json({
+    success: true,
+    data: {
+      ref_id,
+      // Echo back the canonical agentName if provided (dev parity with production route)
+      ...(body?.agentName ? { agentName: body.agentName } : {}),
+    },
+  });
 }
