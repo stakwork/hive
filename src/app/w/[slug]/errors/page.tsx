@@ -12,6 +12,7 @@ import { PageHeader } from "@/components/ui/page-header";
 import { ErrorIssuesTable } from "@/components/errors";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { useErrorIssues } from "@/hooks/useErrorIssues";
+import { canonicalRepoKey } from "@/lib/utils/error-fingerprint";
 import type { ErrorIssueStatus } from "@/types/error-issues";
 
 const ISSUES_PER_PAGE = 20;
@@ -46,8 +47,10 @@ export default function ErrorsPage() {
   // Derive unique repo keys from current issues for the repo filter
   const repoKeys = Array.from(new Set(issues.map((i) => i.repoKey).filter(Boolean)));
 
-  // Also include workspace repositories for pre-filtering
-  const workspaceRepoKeys = (workspace?.repositories ?? []).map((r) => r.name);
+  // Also include workspace repositories for pre-filtering (canonical form)
+  const workspaceRepoKeys = (workspace?.repositories ?? []).map((r) =>
+    canonicalRepoKey(r.repositoryUrl || r.name),
+  );
   const allRepoKeys = Array.from(new Set([...workspaceRepoKeys, ...repoKeys]));
 
   const handleStatusChange = (val: string) => {
