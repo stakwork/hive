@@ -5,6 +5,8 @@ import { db } from "@/lib/db";
 import { validateApiKey } from "@/lib/api-keys";
 import { pusherServer, getWorkspaceChannelName, PUSHER_EVENTS } from "@/lib/pusher";
 import { resolveRepoKey, computeFingerprint } from "@/lib/utils/error-fingerprint";
+import { getJarvisConfigForWorkspace } from "@/lib/helpers/jarvis-config";
+import { addNode, addEdge, searchLatestByTypes } from "@/services/swarm/api/nodes";
 
 export const fetchCache = "force-no-store";
 
@@ -217,6 +219,148 @@ export async function POST(request: NextRequest) {
       console.error("[error-ingest] Pusher broadcast failed (non-fatal)", err);
     }
 
+    // ── Best-effort KG projection ─────────────────────────────────────────────
+    // Mirrors the pattern used by /api/webhook/agent-logs: graph writes happen
+    // after DB/Pusher work completes and are isolated in their own try/catch so
+    // any graph failure NEVER fails the ingest response.
+    // Only the grouped ErrorIssue is projected — individual ErrorEvent rows are
+    // deliberately excluded from the graph.
+    try {
+      const jarvisConfig = await getJarvisConfigForWorkspace(workspace.id);
+      if (!jarvisConfig) {
+        console.info("[error-ingest] KG projection skipped: no swarm config", { workspaceId: workspace.id });
+      } else {
+        // (1) Upsert ErrorIssue node — reprocess:true so repeat occurrences
+        //     update the existing node in place instead of being rejected.
+        const issueNodeResult = await addNode(
+          jarvisConfig,
+          {
+            node_type: "ErrorIssue",
+            node_data: {
+              fingerprint,
+              exceptionType,
+              title: issue.title,
+              status: issue.status,
+              occurrenceCount: issue.occurrenceCount,
+              workspace_id: workspace.id,
+              repository_id: issue.repositoryId ?? null,
+              repo_key: issue.repoKey,
+              first_seen_at: issue.firstSeenAt.toISOString(),
+              last_seen_at: issue.lastSeenAt.toISOString(),
+            },
+          },
+          { reprocess: true },
+        );
+
+        console.info("[error-ingest] ErrorIssue KG node upsert", {
+          success: issueNodeResult.success,
+          ref_id: issueNodeResult.ref_id,
+          isNew,
+        });
+
+        // (2) Persist the returned ref_id onto the ErrorIssue row so it is
+        //     stable across repeat occurrences.
+        if (issueNodeResult.ref_id) {
+          await db.errorIssue.update({
+            where: { id: issue.id },
+            data: { kgRefId: issueNodeResult.ref_id },
+          });
+        }
+
+        // (3) Skip file/function edge resolution when the repo could not be
+        //     resolved — there is no reliable scope to search within.
+        if (!issue.repositoryId) {
+          console.info("[error-ingest] KG file/function edges skipped: unresolved repositoryId", {
+            issueId: issue.id,
+            repoKey: issue.repoKey,
+          });
+        } else if (issueNodeResult.ref_id && stackTrace) {
+          // (4) Parse file paths and function names from the top stack frames.
+          const stackFrames = parseStackFrames(stackTrace);
+
+          if (stackFrames.length > 0) {
+            // Fetch File and Function nodes scoped to this repo via the graph
+            // search endpoint.  We request a generous limit per type — workspace
+            // graph sets are typically small, but we want to avoid missing a
+            // frame because of a tight cap.
+            const searchResult = await searchLatestByTypes(
+              jarvisConfig,
+              { File: 1000, Function: 1000 },
+              { withProperties: true },
+            );
+
+            if (!searchResult.ok) {
+              console.warn("[error-ingest] KG code-node search failed (skipping edges)", {
+                error: searchResult.error,
+              });
+            } else {
+              // Filter nodes to only those belonging to this issue's own repo
+              // by matching the repository_id property on the node.  Never draw
+              // edges to nodes from a different repo in the same workspace.
+              const repoNodes = searchResult.nodes.filter((n) => {
+                const props = n.properties ?? {};
+                return (
+                  props.repository_id === issue.repositoryId ||
+                  props.repo_id === issue.repositoryId
+                );
+              });
+
+              let edgesDrawn = 0;
+              for (const frame of stackFrames) {
+                // Try to match a File node by path/name, then a Function node
+                // by function name within the same file.
+                const fileNode = repoNodes.find(
+                  (n) =>
+                    n.node_type === "File" &&
+                    matchesFilePath(n.properties?.file_path as string | undefined, frame.filePath),
+                );
+                const funcNode =
+                  frame.functionName
+                    ? repoNodes.find(
+                        (n) =>
+                          n.node_type === "Function" &&
+                          (n.properties?.name as string | undefined) === frame.functionName &&
+                          (!frame.filePath ||
+                            matchesFilePath(
+                              n.properties?.file_path as string | undefined,
+                              frame.filePath,
+                            )),
+                      )
+                    : undefined;
+
+                for (const targetNode of [fileNode, funcNode]) {
+                  if (!targetNode?.ref_id) continue;
+                  const edgeResult = await addEdge(jarvisConfig, {
+                    edge: { edge_type: "REFERENCES" },
+                    source: { ref_id: issueNodeResult.ref_id },
+                    target: { ref_id: targetNode.ref_id },
+                  });
+                  if (edgeResult.success) {
+                    edgesDrawn++;
+                  } else {
+                    console.warn("[error-ingest] REFERENCES edge failed (skipped)", {
+                      targetRefId: targetNode.ref_id,
+                      nodeType: targetNode.node_type,
+                      error: edgeResult.error,
+                    });
+                  }
+                }
+              }
+
+              console.info("[error-ingest] KG edges drawn", {
+                issueId: issue.id,
+                framesScanned: stackFrames.length,
+                edgesDrawn,
+                repoNodesAvailable: repoNodes.length,
+              });
+            }
+          }
+        }
+      }
+    } catch (err) {
+      console.error("[error-ingest] KG projection failed (non-fatal)", err);
+    }
+
     return NextResponse.json(
       {
         success: true,
@@ -235,4 +379,80 @@ export async function POST(request: NextRequest) {
     console.error("[error-ingest] unexpected error", error);
     return NextResponse.json({ error: "Failed to process error report" }, { status: 500 });
   }
+}
+
+// ── Stack-frame parsing helpers ───────────────────────────────────────────────
+
+interface StackFrame {
+  filePath: string | null;
+  functionName: string | null;
+}
+
+const TOP_FRAME_COUNT = 5;
+
+/**
+ * Extract the top N file paths and function names from a raw stack trace.
+ * Handles the common V8/Node format: "  at FnName (path/to/file.ts:10:5)"
+ * and the Firefox/Safari format:  "FnName@path/to/file.ts:10:5"
+ */
+function parseStackFrames(stackTrace: string): StackFrame[] {
+  const lines = stackTrace
+    .split("\n")
+    .map((l) => l.trim())
+    .filter(Boolean)
+    .slice(0, TOP_FRAME_COUNT);
+
+  return lines
+    .map((line): StackFrame => {
+      // V8: "at FunctionName (file.ts:10:5)" or "at file.ts:10:5"
+      const v8Match = line.match(/^\s*at\s+(?:(.+?)\s+\()?(.+?)(?::\d+:\d+)?\)?\s*$/);
+      if (v8Match) {
+        const rawFn = v8Match[1] ?? null;
+        const rawPath = v8Match[2] ?? null;
+        return {
+          filePath: rawPath ? extractFileName(rawPath) : null,
+          functionName: rawFn && rawFn !== "<anonymous>" ? cleanFunctionName(rawFn) : null,
+        };
+      }
+
+      // Firefox/Safari: "FnName@http://...file.js:10:5" or "FnName@file.js:10:5"
+      const ffMatch = line.match(/^(.+?)@(.+?)(?::\d+:\d+)?$/);
+      if (ffMatch) {
+        return {
+          filePath: extractFileName(ffMatch[2]),
+          functionName: ffMatch[1] && ffMatch[1] !== "<anonymous>" ? ffMatch[1] : null,
+        };
+      }
+
+      return { filePath: null, functionName: null };
+    })
+    .filter((f) => f.filePath !== null || f.functionName !== null);
+}
+
+/** Keep only the basename to match graph node file_path properties. */
+function extractFileName(raw: string): string | null {
+  if (!raw) return null;
+  // Strip line:col if present
+  const stripped = raw.replace(/:\d+:\d+$/, "").replace(/\)$/, "");
+  // Return the last path segment
+  const parts = stripped.split(/[/\\]/);
+  const last = parts[parts.length - 1];
+  return last || null;
+}
+
+/** Trim common wrapper noise from function names (e.g. "Object.<anonymous>"). */
+function cleanFunctionName(raw: string): string {
+  return raw.replace(/^Object\.<anonymous>$/, "<anonymous>").trim();
+}
+
+/**
+ * Return true when the node's file_path ends with or equals `framePath`.
+ * This lets a graph node whose path is "src/foo/bar.ts" match a frame that
+ * recorded only "bar.ts".
+ */
+function matchesFilePath(nodePath: string | undefined, framePath: string | null): boolean {
+  if (!nodePath || !framePath) return false;
+  const norm = nodePath.replace(/\\/g, "/");
+  const frame = framePath.replace(/\\/g, "/");
+  return norm === frame || norm.endsWith("/" + frame) || norm.endsWith(frame);
 }
