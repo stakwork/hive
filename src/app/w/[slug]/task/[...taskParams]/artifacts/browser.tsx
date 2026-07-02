@@ -36,8 +36,6 @@ export function BrowserArtifactPanel({
   podId,
   onDebugMessage,
   onUserJourneySave,
-  externalTestCode,
-  externalTestTitle,
   onClose,
   browserRefreshTrigger,
 }: {
@@ -49,8 +47,6 @@ export function BrowserArtifactPanel({
   podId?: string | null;
   onDebugMessage?: (message: string, debugArtifact?: Artifact) => Promise<void>;
   onUserJourneySave?: (testName: string, generatedCode: string) => void;
-  externalTestCode?: string | null;
-  externalTestTitle?: string | null;
   isMobile?: boolean;
   onClose?: () => void;
   browserRefreshTrigger?: number;
@@ -98,6 +94,7 @@ export function BrowserArtifactPanel({
     toggleActionsView,
     isRecorderReady,
     navigateToUrl,
+    getReplaySteps,
   } = useStaktrak(
     activeContent?.url,
     (test: string, error?: string) => {
@@ -119,12 +116,10 @@ export function BrowserArtifactPanel({
   const {
     isPlaywrightReplaying,
     playwrightProgress,
-    startPlaywrightReplay,
+    startStructuredReplay,
     stopPlaywrightReplay,
     replayScreenshots,
     replayActions,
-    previewActions,
-    previewPlaywrightReplay,
   } = usePlaywrightReplay(iframeRef, workspaceId, taskId, featureId, (message) => {
     showActionToast("Screenshot Error", message);
   });
@@ -142,20 +137,6 @@ export function BrowserArtifactPanel({
       toggleActionsView();
     }
   }, [isRecording, showActions, toggleActionsView]);
-
-  // Auto-show actions list when externalTestCode is loaded and recorder is ready
-  useEffect(() => {
-    if (externalTestCode && isSetup && isRecorderReady && !showActions) {
-      toggleActionsView();
-    }
-  }, [externalTestCode, isSetup, isRecorderReady, showActions, toggleActionsView]);
-
-  // Preview test code when loaded (parse actions without starting replay)
-  useEffect(() => {
-    if (externalTestCode && isRecorderReady && previewActions.length === 0) {
-      previewPlaywrightReplay(externalTestCode);
-    }
-  }, [externalTestCode, isRecorderReady, previewActions.length, previewPlaywrightReplay]);
 
   // Auto-refresh iframe when live mode workflow completes
   const prevRefreshTriggerRef = useRef<number>(0);
@@ -244,10 +225,10 @@ export function BrowserArtifactPanel({
     if (isPlaywrightReplaying) {
       stopPlaywrightReplay();
     } else {
-      // Use externalTestCode if available, otherwise use generated test
-      const testCode = externalTestCode || generatedPlaywrightTest;
-      if (testCode) {
-        startPlaywrightReplay(testCode);
+      // Structured replay of the current recording — no generated-text round-trip.
+      const steps = getReplaySteps();
+      if (steps.length > 0) {
+        startStructuredReplay(steps);
       }
     }
   };
@@ -463,13 +444,7 @@ export function BrowserArtifactPanel({
                   className={`fixed top-0 left-0 bottom-0 z-40 ${SIDEBAR_WIDTH} transition-all duration-300 ease-in-out`}
                 >
                   <ActionsList
-                    actions={
-                      replayActions.length > 0
-                        ? replayActions
-                        : previewActions.length > 0
-                          ? previewActions
-                          : capturedActions
-                    }
+                    actions={replayActions.length > 0 ? replayActions : capturedActions}
                     onRemoveAction={removeAction}
                     onClearAll={clearAllActions}
                     isRecording={isRecording}
@@ -477,8 +452,9 @@ export function BrowserArtifactPanel({
                     currentActionIndex={playwrightProgress.current - 1}
                     totalActions={playwrightProgress.total}
                     screenshots={replayScreenshots}
-                    title={externalTestTitle || undefined}
-                    onReplayToggle={generatedPlaywrightTest || externalTestCode ? handleReplayToggle : undefined}
+                    onReplayToggle={
+                      capturedActions.length > 0 || isPlaywrightReplaying ? handleReplayToggle : undefined
+                    }
                   />
                 </div>
               )}
