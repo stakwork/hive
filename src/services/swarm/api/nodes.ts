@@ -17,9 +17,11 @@ interface JarvisApiResponse {
 // Cap each request so a single unreachable/hung swarm can't dominate the cron's
 // 300 s budget. undici's default *connect* timeout is 10 s and there's no
 // request timeout at all, so a swarm that accepts the connection then stalls
-// could block far longer — this bounds the whole round-trip. Writes are small
-// and should be fast; heavy reads (e.g. the PR backfill) override via `timeoutMs`.
-const REQUEST_TIMEOUT_MS = 7_000;
+// could block far longer — this bounds the whole round-trip. 7 s proved too
+// tight for bulk writes: a 100-node Neo4j upsert legitimately takes longer than
+// that, so healthy swarms were timing out mid-batch and the mirror cursor could
+// never advance. Heavy reads (e.g. the PR backfill) still override via `timeoutMs`.
+const REQUEST_TIMEOUT_MS = 30_000;
 
 async function jarvisRequest({
   config,
@@ -265,6 +267,14 @@ export async function addEdgeByRefBulk(
  * place. Jarvis processes the list sequentially in one Neo4j session, so this
  * collapses many round-trips into one HTTP call. Errors are returned, never
  * thrown. Callers should chunk large lists (see BULK_CHUNK in the mirror cron).
+ *
+ * NOTE: this must target `/node/bulk`, NOT `/v2/nodes`. The swarm's boltwall
+ * gateway reserves `POST /v2/nodes` for its *single-node* handler (`addNodeV2`),
+ * which destructures `{ node_type, node_data }` off the body and 400s on an
+ * array. `/node/bulk` has no explicit boltwall route, so it falls through the
+ * catch-all proxy to jarvis-backend's `create_or_merge_node_bulk` (which reads
+ * `node_list`). A prior "v2 migration" pointed this at `/v2/nodes` and silently
+ * broke every bulk write with `400 node_type and node_data are required`.
  */
 export async function addNodeBulk(
   config: JarvisConnectionConfig,
@@ -279,9 +289,9 @@ export async function addNodeBulk(
 
   const result = await jarvisRequest({
     config,
-    endpoint: "/v2/nodes",
+    endpoint: "/node/bulk",
     method: "POST",
-    data: nodeList,
+    data: { node_list: nodeList },
   });
 
   if (!result.ok) {

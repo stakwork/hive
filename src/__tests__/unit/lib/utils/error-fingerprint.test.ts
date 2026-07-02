@@ -20,7 +20,7 @@ vi.mock("@/lib/db", () => ({
   },
 }));
 
-import { resolveRepoKey, computeFingerprint } from "@/lib/utils/error-fingerprint";
+import { resolveRepoKey, computeFingerprint, canonicalRepoKey } from "@/lib/utils/error-fingerprint";
 
 // ── Test repos ────────────────────────────────────────────────────────────────
 const REPOS = [
@@ -28,27 +28,93 @@ const REPOS = [
   { id: "repo-2", name: "workspaces", repositoryUrl: "https://github.com/stakwork/workspaces" },
 ];
 
+// ── canonicalRepoKey ──────────────────────────────────────────────────────────
+
+describe("canonicalRepoKey", () => {
+  it("canonicalizes SSH URL to owner/repo", () => {
+    expect(canonicalRepoKey("git@github.com:stakwork/hive")).toBe("stakwork/hive");
+  });
+
+  it("canonicalizes SSH URL with .git suffix", () => {
+    expect(canonicalRepoKey("git@github.com:stakwork/hive.git")).toBe("stakwork/hive");
+  });
+
+  it("canonicalizes HTTPS URL to owner/repo", () => {
+    expect(canonicalRepoKey("https://github.com/stakwork/hive")).toBe("stakwork/hive");
+  });
+
+  it("canonicalizes HTTPS URL with .git suffix", () => {
+    expect(canonicalRepoKey("https://github.com/stakwork/hive.git")).toBe("stakwork/hive");
+  });
+
+  it("lowercases SSH URL with mixed case", () => {
+    expect(canonicalRepoKey("git@github.com:StakWork/Hive.git")).toBe("stakwork/hive");
+  });
+
+  it("lowercases HTTPS URL with mixed case", () => {
+    expect(canonicalRepoKey("HTTPS://GitHub.com/StakWork/Hive")).toBe("stakwork/hive");
+  });
+
+  it("handles shorthand owner/repo via normalizeRepo fallback", () => {
+    expect(canonicalRepoKey("stakwork/hive")).toBe("stakwork/hive");
+  });
+
+  it("handles shorthand owner/repo with mixed case", () => {
+    expect(canonicalRepoKey("StakWork/Hive")).toBe("stakwork/hive");
+  });
+
+  it("handles shorthand with .git via normalizeRepo fallback", () => {
+    expect(canonicalRepoKey("stakwork/hive.git")).toBe("stakwork/hive");
+  });
+
+  it("falls back for non-GitHub URL (normalizeRepo)", () => {
+    expect(canonicalRepoKey("https://gitlab.com/org/repo")).toBe(
+      "https://gitlab.com/org/repo",
+    );
+  });
+
+  it('returns "unknown" for empty string', () => {
+    expect(canonicalRepoKey("")).toBe("unknown");
+  });
+
+  it('returns "unknown" for whitespace-only string', () => {
+    expect(canonicalRepoKey("   ")).toBe("unknown");
+  });
+
+  it("SSH and HTTPS and shorthand all produce the same canonical key", () => {
+    const ssh = canonicalRepoKey("git@github.com:stakwork/senza-lnd.git");
+    const https = canonicalRepoKey("https://github.com/stakwork/senza-lnd.git");
+    const shorthand = canonicalRepoKey("stakwork/senza-lnd");
+    expect(ssh).toBe("stakwork/senza-lnd");
+    expect(https).toBe("stakwork/senza-lnd");
+    expect(shorthand).toBe("stakwork/senza-lnd");
+  });
+});
+
+// ── resolveRepoKey ────────────────────────────────────────────────────────────
+
 describe("resolveRepoKey", () => {
   beforeEach(() => {
     mockFindMany.mockResolvedValue(REPOS);
   });
 
-  it("matches by exact repositoryUrl", async () => {
+  it("matches by exact repositoryUrl and returns canonical repoKey", async () => {
     const result = await resolveRepoKey({
       workspaceId: "ws-1",
       repository: "https://github.com/stakwork/hive",
     });
     expect(result.repositoryId).toBe("repo-1");
-    expect(result.repoKey).toBe("repo-1");
+    // canonical form of repo.repositoryUrl, not the DB id
+    expect(result.repoKey).toBe("stakwork/hive");
   });
 
-  it("matches by repo name", async () => {
+  it("matches by repo name and returns canonical repoKey derived from repositoryUrl", async () => {
     const result = await resolveRepoKey({
       workspaceId: "ws-1",
       repository: "workspaces",
     });
     expect(result.repositoryId).toBe("repo-2");
-    expect(result.repoKey).toBe("repo-2");
+    expect(result.repoKey).toBe("stakwork/workspaces");
   });
 
   it("matches URL with trailing slash (normalize)", async () => {
@@ -57,6 +123,7 @@ describe("resolveRepoKey", () => {
       repository: "https://github.com/stakwork/hive/",
     });
     expect(result.repositoryId).toBe("repo-1");
+    expect(result.repoKey).toBe("stakwork/hive");
   });
 
   it("matches URL with .git suffix (normalize)", async () => {
@@ -65,6 +132,20 @@ describe("resolveRepoKey", () => {
       repository: "https://github.com/stakwork/hive.git",
     });
     expect(result.repositoryId).toBe("repo-1");
+    expect(result.repoKey).toBe("stakwork/hive");
+  });
+
+  it("matches SSH URL and returns canonical repoKey", async () => {
+    // Simulate incoming SSH URL matching the hive repo
+    mockFindMany.mockResolvedValueOnce([
+      { id: "repo-1", name: "hive", repositoryUrl: "git@github.com:stakwork/hive.git" },
+    ]);
+    const result = await resolveRepoKey({
+      workspaceId: "ws-1",
+      repository: "git@github.com:stakwork/hive.git",
+    });
+    expect(result.repositoryId).toBe("repo-1");
+    expect(result.repoKey).toBe("stakwork/hive");
   });
 
   it("matches URL case-insensitively (normalize)", async () => {
@@ -73,6 +154,7 @@ describe("resolveRepoKey", () => {
       repository: "HTTPS://GitHub.com/StakWork/Hive",
     });
     expect(result.repositoryId).toBe("repo-1");
+    expect(result.repoKey).toBe("stakwork/hive");
   });
 
   it("matches repo name case-insensitively", async () => {
@@ -81,25 +163,34 @@ describe("resolveRepoKey", () => {
       repository: "HIVE",
     });
     expect(result.repositoryId).toBe("repo-1");
+    expect(result.repoKey).toBe("stakwork/hive");
   });
 
-  it("falls back to normalised raw identifier when no repo matches", async () => {
+  it("falls back to canonical form of raw identifier when no repo matches (HTTPS URL)", async () => {
     const result = await resolveRepoKey({
       workspaceId: "ws-1",
       repository: "https://github.com/other-org/other-repo",
     });
     expect(result.repositoryId).toBeNull();
-    expect(result.repoKey).toBe("https://github.com/other-org/other-repo");
+    expect(result.repoKey).toBe("other-org/other-repo");
   });
 
-  it("falls back and normalizes the raw identifier (lowercased, trailing slash stripped)", async () => {
+  it("falls back to canonical form for SSH URL when no repo matches", async () => {
     const result = await resolveRepoKey({
       workspaceId: "ws-1",
-      repository: "  MyCustomApp/  ",
+      repository: "git@github.com:other-org/other-repo.git",
     });
     expect(result.repositoryId).toBeNull();
-    // trailing slash is stripped, whitespace trimmed, lowercased
-    expect(result.repoKey).toBe("mycustomapp");
+    expect(result.repoKey).toBe("other-org/other-repo");
+  });
+
+  it("falls back and normalizes shorthand (lowercased)", async () => {
+    const result = await resolveRepoKey({
+      workspaceId: "ws-1",
+      repository: "  MyOrg/MyApp  ",
+    });
+    expect(result.repositoryId).toBeNull();
+    expect(result.repoKey).toBe("myorg/myapp");
   });
 
   it('returns repoKey "unknown" when repository is null', async () => {
@@ -125,6 +216,16 @@ describe("resolveRepoKey", () => {
     expect(mockFindMany).toHaveBeenCalledWith(
       expect.objectContaining({ where: { workspaceId: "ws-99" } })
     );
+  });
+
+  it("SSH, HTTPS, and shorthand all produce the same repoKey for unmatched repos", async () => {
+    mockFindMany.mockResolvedValue([]); // no workspace repos
+    const ssh = await resolveRepoKey({ workspaceId: "ws-1", repository: "git@github.com:stakwork/senza-lnd.git" });
+    const https = await resolveRepoKey({ workspaceId: "ws-1", repository: "https://github.com/stakwork/senza-lnd.git" });
+    const shorthand = await resolveRepoKey({ workspaceId: "ws-1", repository: "stakwork/senza-lnd" });
+    expect(ssh.repoKey).toBe("stakwork/senza-lnd");
+    expect(https.repoKey).toBe("stakwork/senza-lnd");
+    expect(shorthand.repoKey).toBe("stakwork/senza-lnd");
   });
 });
 
