@@ -10,20 +10,19 @@
  * required (non-`?`) attributes, hence the minimal endpoint helpers below
  * always include the required fields (`name`, and `message` for chat).
  *
- * NOTE on Neo4j label casing: Jarvis runs `.capitalize()` on every node type
- * (on both schema registration and writes), so the type names below are stored
- * as `HiveFeature` / `HiveTask` / `HiveChatMessage` labels in Neo4j (Neo4j
- * labels are case-sensitive). Query the graph with the capitalized form, e.g.
- * `MATCH (f:HiveFeature) ...`. The strings here stay PascalCase only so they
- * read naturally and match the schema-library source.
+ * NOTE on Neo4j label casing: Jarvis preserves node-type casing via its
+ * `canonical_type()` resolver (it no longer runs `.capitalize()`), so the type
+ * names below are stored verbatim as `HiveFeature` / `HiveTask` /
+ * `HiveChatMessage` labels in Neo4j (labels are case-sensitive). Query the graph
+ * with those exact PascalCase forms, e.g. `MATCH (f:HiveFeature) ...`.
  */
 
 export const HIVE_FEATURE = "HiveFeature";
 export const HIVE_TASK = "HiveTask";
 export const HIVE_CHAT_MESSAGE = "HiveChatMessage";
 
-// Jarvis capitalizes node types on write, so a `HiveTask` node is stored (and
-// must be queried) under the Neo4j label `HiveTask` (see the casing note above).
+// Jarvis stores node types verbatim (see the casing note above), so a `HiveTask`
+// node lives under the Neo4j label `HiveTask` and must be queried as such.
 // Used by the PR-link cron to read back HiveTask nodes' ref_ids.
 export const HIVE_TASK_LABEL = "HiveTask";
 
@@ -32,8 +31,8 @@ export const EDGE_HAS_MESSAGE = "HAS_MESSAGE";
 
 // PR-link cron: HiveTask -RESULTED_IN-> PullRequest (the ingested code node).
 // `PULL_REQUEST` is codegraph's node_type, not a Hive-owned one. Verified on
-// prod: these nodes are labeled `PullRequest` (stakgraph ingests them directly,
-// bypassing Jarvis's capitalize-on-write) and carry `repo` + `number` props.
+// prod: these nodes are labeled `PullRequest` (stakgraph ingests them directly)
+// and carry `repo` + `number` props.
 export const EDGE_RESULTED_IN = "RESULTED_IN";
 export const PULL_REQUEST = "PullRequest";
 
@@ -231,12 +230,9 @@ export function prNodeKey(repo: string, number: number): string {
  * PR node) so we never create a stub.
  *
  * This is written for the jarvis-backend `/node/edge/ref/bulk` endpoint, which
- * matches each node by ref_id against its real Neo4j label. The older
- * `/node/edge/bulk` endpoint can't be used here: (1) it runs a case-sensitive
- * (source_type, target_type) schema lookup that never matches the stakgraph PR
- * label `PullRequest` (the schema records the capitalized `Pullrequest`), and
- * (2) it mis-pairs a node_key-source + ref_id-target combination. Both are
- * avoided by addressing both ends with ref_id.
+ * matches each node by ref_id against its real Neo4j label — so it links to the
+ * stakgraph PR node (label `PullRequest`) regardless of node-type casing, and
+ * addresses two nodes we already know exist, so it never creates a stub.
  */
 export function taskPrEdge(
   taskRefId: string,

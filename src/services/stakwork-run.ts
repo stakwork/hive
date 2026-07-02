@@ -791,16 +791,18 @@ export async function processStakworkRunWebhook(
     feature_id?: string;
     whiteboard_id?: string;
     layout?: string;
+    run_id?: string;
   }
 ) {
   const { result, project_status, project_id } = webhookData;
-  const { workspace_id, feature_id, type } = queryParams;
+  const { workspace_id, feature_id, type, run_id } = queryParams;
 
   logger.info("[webhook] processStakworkRunWebhook called", "stakwork-run", {
     type,
     workspace_id,
     feature_id,
     project_id,
+    run_id,
     project_status,
     hasResult: result !== undefined && result !== null,
     resultType: typeof result,
@@ -810,17 +812,24 @@ export async function processStakworkRunWebhook(
   let run = await db.stakworkRun.findFirst({
     where: {
       OR: [
+        // Preferred: resolve by exact run ID — eliminates cross-user collision in shared workspaces.
+        // Scoped to workspaceId so a webhook cannot target a run in a different workspace.
+        // Only include this arm when run_id is present to avoid match-all behaviour.
+        ...(run_id ? [{ id: run_id, workspaceId: workspace_id }] : []),
         // Only include projectId arm when it is actually present; omitting it
         // avoids `{ projectId: undefined }` which Prisma treats as match-all.
         ...(project_id ? [{ projectId: project_id }] : []),
-        {
+        // Workspace-scoped fallback — only when no exact run_id was supplied.
+        // When run_id is present the exact-id arm above is the sole resolver,
+        // preventing findFirst from silently picking a different user's run.
+        ...(!run_id ? [{
           workspaceId: workspace_id,
           type: type as StakworkRunType,
           featureId: feature_id || null,
           // COMPLETED included so result webhooks can find runs already
           // transitioned to COMPLETED by a prior status-only webhook.
           status: { in: [WorkflowStatus.PENDING, WorkflowStatus.IN_PROGRESS, WorkflowStatus.COMPLETED] },
-        },
+        }] : []),
       ],
     },
     include: {
@@ -849,7 +858,7 @@ export async function processStakworkRunWebhook(
     throw new Error("StakworkRun not found");
   }
 
-  logger.info("[webhook] Found run", "stakwork-run", { runId: run.id, runStatus: run.status, runType: run.type });
+  logger.info("[webhook] Found run", "stakwork-run", { runId: run.id, run_id, runStatus: run.status, runType: run.type });
 
   // Map Stakwork status to our internal status
   const status = project_status
