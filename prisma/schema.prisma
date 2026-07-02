@@ -283,6 +283,8 @@ model Workspace {
   agentLogs               AgentLog[]
   errorIssues             ErrorIssue[]
   errorEvents             ErrorEvent[]
+  performanceTraceGroups  PerformanceTraceGroup[]
+  performanceTraceEvents  PerformanceTraceEvent[]
   diagrams                DiagramWorkspace[]
   discordChannels         DiscordChannel[]
   features                Feature[]
@@ -511,9 +513,11 @@ model Repository {
   deployments           Deployment[]
   recommendations       JanitorRecommendation[]
   janitorRuns           JanitorRun[]
-  errorIssues           ErrorIssue[]
-  errorEvents           ErrorEvent[]
-  workspace             Workspace               @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  errorIssues              ErrorIssue[]
+  errorEvents              ErrorEvent[]
+  performanceTraceGroups   PerformanceTraceGroup[]
+  performanceTraceEvents   PerformanceTraceEvent[]
+  workspace                Workspace               @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   tasks                 Task[]
 
   @@unique([repositoryUrl, workspaceId], name: "repositoryUrl_workspaceId")
@@ -2109,6 +2113,59 @@ model ErrorEvent {
   @@index([repositoryId])
   @@index([createdAt])
   @@map("error_events")
+}
+
+/// Deduplicated performance trace group — one row per unique (workspace, repoKey, signature).
+/// repoKey is non-null: resolved repositoryId when matched, normalised raw identifier, or "unknown".
+/// sketchState stores the serialized latency sketch for streaming p50/p95/p99 updates.
+model PerformanceTraceGroup {
+  id              String                  @id @default(cuid())
+  workspaceId     String                  @map("workspace_id")
+  repositoryId    String?                 @map("repository_id")
+  repoKey         String                  @map("repo_key")
+  transactionName String                  @map("transaction_name")
+  signature       String
+  sampleCount     Int                     @default(1) @map("sample_count")
+  p50Ms           Float                   @map("p50_ms")
+  p95Ms           Float                   @map("p95_ms")
+  p99Ms           Float                   @map("p99_ms")
+  throughput      Float
+  dbTimeMs        Float                   @map("db_time_ms")
+  sketchState     Json                    @map("sketch_state")
+  firstSeenAt     DateTime                @map("first_seen_at")
+  lastSeenAt      DateTime                @map("last_seen_at")
+  workspace       Workspace               @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  repository      Repository?             @relation(fields: [repositoryId], references: [id], onDelete: SetNull)
+  events          PerformanceTraceEvent[]
+
+  @@unique([workspaceId, repoKey, signature])
+  @@index([workspaceId])
+  @@index([repositoryId])
+  @@index([lastSeenAt])
+  @@map("performance_trace_groups")
+}
+
+/// Individual performance trace sample linked to its deduplicated group.
+model PerformanceTraceEvent {
+  id              String                 @id @default(cuid())
+  groupId         String                 @map("group_id")
+  workspaceId     String                 @map("workspace_id")
+  repositoryId    String?                @map("repository_id")
+  repoKey         String                 @map("repo_key")
+  blobUrl         String                 @map("blob_url")
+  transactionName String                 @map("transaction_name")
+  totalDurationMs Float                  @map("total_duration_ms")
+  spans           Json
+  createdAt       DateTime               @default(now()) @map("created_at")
+  group           PerformanceTraceGroup  @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  workspace       Workspace              @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  repository      Repository?            @relation(fields: [repositoryId], references: [id], onDelete: SetNull)
+
+  @@index([groupId])
+  @@index([workspaceId])
+  @@index([repositoryId])
+  @@index([createdAt])
+  @@map("performance_trace_events")
 }
 
 /// Cross-realm typed edge between two URN-addressed nodes.
