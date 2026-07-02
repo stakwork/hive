@@ -376,7 +376,7 @@ export interface RunCanvasAgentResult {
    */
   promptResolutions: Record<
     string,
-    { prompt_id: number; prompt_version_id: number | null }
+    { prompt_id: string; prompt_version_id: string | null }
   >;
 }
 
@@ -608,7 +608,7 @@ export async function runCanvasAgent(
   // resolved to the in-repo default (no version to attribute).
   const promptResolutions: Record<
     string,
-    { prompt_id: number; prompt_version_id: number | null }
+    { prompt_id: string; prompt_version_id: string | null }
   > = {};
   // Per-call web_search capture, used by `update_research`'s execute
   // closure to linkify Anthropic `<cite index="N-M">` tags. Empty
