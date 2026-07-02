@@ -183,7 +183,7 @@ export async function executeScheduledDailyRecapRuns(): Promise<DailyRecapCronRe
       });
 
       const workflowWebhookUrl = `${baseUrl}/api/stakwork/webhook?run_id=${run.id}`;
-      const webhookUrl = `${baseUrl}/api/webhook/stakwork/response?type=DAILY_RECAP&workspace_id=${workspaceId}`;
+      const webhookUrl = `${baseUrl}/api/webhook/stakwork/response?type=DAILY_RECAP&workspace_id=${workspaceId}&run_id=${run.id}`;
 
       await db.stakworkRun.update({
         where: { id: run.id },
