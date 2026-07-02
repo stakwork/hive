@@ -12,12 +12,13 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
   void workflowId;
 
   const body = await request.json().catch(() => ({}));
-  const { inputs, outputs, evalSetId, prompts, requirementId } = body as {
+  const { inputs, outputs, evalSetId, prompts, requirementId, agentName } = body as {
     inputs?: unknown;
     outputs?: unknown;
     evalSetId?: string;
     prompts?: unknown;
     requirementId?: string;
+    agentName?: string;
   };
 
   if (requirementId) {
@@ -32,6 +33,8 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
         output_snapshot: JSON.stringify(outputs ?? null),
         prompts: prompts ?? [],
         attachedToExisting: true,
+        // Echo back canonical agentName for dev parity
+        ...(agentName ? { agentName } : {}),
       },
     });
   }
@@ -45,6 +48,8 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       prompt_snapshot: JSON.stringify(inputs ?? null),
       output_snapshot: JSON.stringify(outputs ?? null),
       prompts: prompts ?? [],
+      // Echo back canonical agentName for dev parity
+      ...(agentName ? { agentName } : {}),
     },
   });
 }
