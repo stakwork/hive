@@ -65,6 +65,7 @@ async function createTestSetup() {
       id: generateUniqueId("repo-a"),
       name: "hive",
       repositoryUrl: "https://github.com/stakwork/hive",
+      branch: "master",
       workspaceId: workspaceA.id,
     },
   });
@@ -149,6 +150,7 @@ async function createTestSetup() {
       exceptionType: "TypeError",
       message: "cannot read property x of undefined",
       fingerprint: issueA1.fingerprint,
+      commitSha: "deadbeef1234567890abcdef1234567890abcdef",
     },
   });
 
@@ -375,6 +377,23 @@ describe("GET /api/errors/[issueId]", () => {
     const body = await res.json();
     expect(body.events.length).toBe(1);
     expect(body.events[0].id).toBe(ctx.eventA1.id);
+  });
+
+  test("event includes commitSha, repositoryUrl, and defaultBranch", async () => {
+    mockRequireAuth.mockReturnValueOnce({ id: ctx.ownerA.id, email: ctx.ownerA.email, name: ctx.ownerA.name });
+    const req = buildGetRequest(`/api/errors/${ctx.issueA1.id}`);
+    const res = await getIssue(req, {
+      params: Promise.resolve({ issueId: ctx.issueA1.id }),
+    });
+
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    const event = body.events[0];
+    expect(event.commitSha).toBe("deadbeef1234567890abcdef1234567890abcdef");
+    expect(event.repositoryUrl).toBe("https://github.com/stakwork/hive");
+    expect(event.defaultBranch).toBe("master");
+    // raw nested repository should not be exposed
+    expect(event.repository).toBeUndefined();
   });
 });
 

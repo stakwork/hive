@@ -26,14 +26,14 @@ import type {
  * the catalog with a sensible display name (the `display` fallback
  * covers the case where someone forgets).
  */
-interface DefaultAgentSpec {
+export interface DefaultAgentSpec {
   displayName: string;
   description: string;
   /** Override `DEFAULT_AGENT_MODEL` for this agent (none do yet). */
   defaultModel?: string;
 }
 
-const DEFAULT_AGENT_SPECS: Record<BifrostAgentName, DefaultAgentSpec> = {
+export const DEFAULT_AGENT_SPECS: Record<BifrostAgentName, DefaultAgentSpec> = {
   "repo-agent": {
     displayName: "Repo Agent",
     description: "Answers questions about a repository's code.",
