@@ -66,7 +66,9 @@ export async function GET(
           published: v.published,
           created_at: v.createdAt.toISOString(),
         })),
-        current_version_id: prompt.publishedVersionId,
+        // current_version_id = latest version (highest versionNumber); may differ from published_version_id when a draft exists.
+        current_version_id: versions[0]?.id ?? prompt.publishedVersionId,
+        published_version_id: prompt.publishedVersionId,
         version_count: versions.length,
       },
     });
