@@ -18,6 +18,7 @@ import {
   extractConceptIdsFromStep,
 } from "@/lib/ai/runCanvasAgent";
 import type { DispatchedResearchIntent } from "@/lib/ai/researchTools";
+import type { DispatchedGraphWalkIntent } from "@/lib/ai/graphWalkDispatchTools";
 import { toModelMessages } from "@/lib/ai/conversationHelpers";
 import {
   messagesFromSteps,
@@ -465,6 +466,10 @@ export async function POST(request: NextRequest) {
       // internally-wired dispatch_research tool; consumed in after() to
       // schedule one research sub-agent worker per dispatched intent.
       const dispatchedResearch: DispatchedResearchIntent[] = [];
+      // Collector for dispatch_graph_walk intents. Populated by the
+      // internally-wired dispatch_graph_walk tool; consumed in after()
+      // to schedule one graph-walk sub-agent worker per dispatched intent.
+      const dispatchedGraphWalks: DispatchedGraphWalkIntent[] = [];
 
       const {
         result,
@@ -525,6 +530,7 @@ export async function POST(request: NextRequest) {
           silentPusher: false,
           userTimezone,
           dispatchedResearch,
+          dispatchedGraphWalks,
           // Inject the schedule_check tool when we have a fully-resolved
           // canvas conversation (org + user + server-owned row). All three
           // context values are server-side only — the LLM cannot override them.
@@ -705,15 +711,32 @@ export async function POST(request: NextRequest) {
           // Stream errors are surfaced/logged elsewhere; we still want to
           // schedule whatever intents were collected before the failure.
         }
-        if (dispatchedResearch.length === 0) return;
-        const { runResearchSubAgent } = await import(
-          "@/services/canvas-research-worker"
-        );
-        for (const intent of dispatchedResearch) {
-          await runResearchSubAgent({
-            ...intent,
-            workspaceSlugs: slugs,
-          });
+        if (dispatchedResearch.length > 0) {
+          const { runResearchSubAgent } = await import(
+            "@/services/canvas-research-worker"
+          );
+          for (const intent of dispatchedResearch) {
+            await runResearchSubAgent({
+              ...intent,
+              workspaceSlugs: slugs,
+            });
+          }
+        }
+
+        // Schedule graph-walk sub-agent workers for each dispatched intent.
+        // CRITICAL: same pattern as dispatchedResearch — the collector is
+        // populated during stream consumption, so we must consume first
+        // (already done above) then iterate.
+        if (dispatchedGraphWalks.length > 0) {
+          const { runGraphWalkSubAgent } = await import(
+            "@/services/canvas-graph-walk-worker"
+          );
+          for (const intent of dispatchedGraphWalks) {
+            await runGraphWalkSubAgent({
+              ...intent,
+              workspaceSlugs: slugs,
+            });
+          }
         }
       });
 
