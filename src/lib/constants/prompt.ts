@@ -719,7 +719,7 @@ export function getGraphWalkDispatchSnippet(): string {
 ### When to dispatch vs. use inline graph_walker tools
 
 - **Use \`dispatch_graph_walk\`** (background sub-agent) when the graph task is:
-  - Multi-hop traversals (e.g. "find all Files linked to this Feature through Tasks and Messages")
+  - Multi-hop traversals (e.g. "find all Files this Feature touched, via its Tasks and PullRequests")
   - Large ontology scans across many node types
   - Expected to take more than a few seconds
   - Something you want to happen off the critical path while you continue the current turn
@@ -810,9 +810,24 @@ Realms: \`kg\` (the swarm knowledge-graph — HiveFeature/HiveTask/HiveChatMessa
 2. Pick the relevant \`type\` values from the returned list (e.g. \`HiveFeature\`, \`HiveTask\`, \`HiveChatMessage\`, \`File\`, \`Function\`).
 3. Call \`graph_search({ query, realm: "kg", workspace, type: "<chosen type>" })\` with the exact type string from step 2.
 
-### Scope reminder
+### Canonical flow: roadmap → code (find where to focus)
 
-The chain that connects roadmap to code lives entirely in the kg now: a \`HiveFeature\` \`HAS_TASK\` \`HiveTask\`, which \`HAS_MESSAGE\` \`HiveChatMessage\`, and links out to the files/functions that implement it. Walk these with \`graph_neighbors\` (filter with \`node_type\`, e.g. \`["File"]\`). kg traversal talks to the live swarm, so it can fail if the swarm is unconfigured/unreachable — those calls return an \`{ error }\` you should treat as "unavailable", not "empty".
+The chain that connects roadmap to code lives entirely in the kg. The canonical walk — and the fastest way to learn **where in the codebase a feature is implemented** — is:
+
+\`\`\`
+HiveFeature  --HAS_TASK-->  HiveTask  --RESULTED_IN-->  PullRequest  -->  File
+\`\`\`
+
+**Use it when starting a NEW feature:** first \`graph_search\` (realm \`kg\`, type \`HiveFeature\`) for similar existing features, then walk this chain on them to see which Tasks were done, which PullRequests those Tasks produced, and which Files those PRs changed. Those Files are your worked examples — they tell you where to focus first.
+
+Walk it hop-by-hop with \`graph_neighbors\`, filtering by \`node_type\` at each step:
+1. From a \`HiveFeature\` → \`node_type: ["HiveTask"]\` (edge \`HAS_TASK\`) — the tasks.
+2. From a \`HiveTask\` → \`node_type: ["PullRequest"]\` (edge \`RESULTED_IN\`) — the PRs that implemented it.
+3. From a \`PullRequest\` → \`node_type: ["File"]\` — the files it changed. (A \`PullRequest\` node also carries a \`files\` property you can read via \`graph_get\`.)
+
+Also available: \`HiveFeature\` / \`HiveTask\` \`HAS_MESSAGE\` \`HiveChatMessage\` for the conversation history behind a task.
+
+kg traversal talks to the live swarm, so it can fail if the swarm is unconfigured/unreachable — those calls return an \`{ error }\` you should treat as "unavailable", not "empty".
 
 ### Read-only
 

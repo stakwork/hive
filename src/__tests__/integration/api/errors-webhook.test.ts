@@ -278,7 +278,7 @@ describe("POST /api/webhook/errors — happy path", () => {
     expect(issue?.occurrenceCount).toBe(1);
     expect(issue?.workspaceId).toBe(ctx.workspace.id);
     expect(issue?.repositoryId).toBe(ctx.repo.id);
-    expect(issue?.repoKey).toBe(ctx.repo.id);
+    expect(issue?.repoKey).toBe("stakwork/hive");
 
     const event = await db.errorEvent.findUnique({ where: { id: body.data.eventId } });
     expect(event).not.toBeNull();
@@ -436,6 +436,82 @@ describe("POST /api/webhook/errors — happy path", () => {
     });
     expect(typeof payload.id).toBe("string");
     expect(typeof payload.fingerprint).toBe("string");
+  });
+
+  test("commitSha is persisted on first occurrence when provided", async () => {
+    const sha = "abc1234def5678abc1234def5678abc1234def56";
+    const res = await POST(
+      buildRequest(
+        {
+          exceptionType: "TypeError",
+          message: "sha test error",
+          commitSha: sha,
+          repository: "https://github.com/stakwork/hive",
+        },
+        RAW_KEY
+      )
+    );
+    expect(res.status).toBe(201);
+    const body = await res.json();
+    const event = await db.errorEvent.findUnique({ where: { id: body.data.eventId } });
+    expect(event?.commitSha).toBe(sha);
+  });
+
+  test("commitSha defaults to null when omitted", async () => {
+    const res = await POST(
+      buildRequest(
+        {
+          exceptionType: "TypeError",
+          message: "no sha error",
+        },
+        RAW_KEY
+      )
+    );
+    expect(res.status).toBe(201);
+    const body = await res.json();
+    const event = await db.errorEvent.findUnique({ where: { id: body.data.eventId } });
+    expect(event?.commitSha).toBeNull();
+  });
+
+  test("empty string commitSha is treated as null", async () => {
+    const res = await POST(
+      buildRequest(
+        {
+          exceptionType: "TypeError",
+          message: "empty sha error",
+          commitSha: "",
+        },
+        RAW_KEY
+      )
+    );
+    expect(res.status).toBe(201);
+    const body = await res.json();
+    const event = await db.errorEvent.findUnique({ where: { id: body.data.eventId } });
+    expect(event?.commitSha).toBeNull();
+  });
+
+  test("each occurrence stores its own commitSha independently", async () => {
+    const sha1 = "aaaa1111bbbb2222cccc3333dddd4444eeee5555";
+    const sha2 = "ffff6666aaaa1111bbbb2222cccc3333dddd4444";
+    const payload = {
+      exceptionType: "TypeError",
+      message: "repeated sha error",
+      stackTrace: "  at foo (bar.ts:10:5)",
+      repository: "hive",
+    };
+
+    const res1 = await POST(buildRequest({ ...payload, commitSha: sha1 }, RAW_KEY));
+    expect(res1.status).toBe(201);
+    const body1 = await res1.json();
+    const event1 = await db.errorEvent.findUnique({ where: { id: body1.data.eventId } });
+    expect(event1?.commitSha).toBe(sha1);
+
+    const res2 = await POST(buildRequest({ ...payload, commitSha: sha2 }, RAW_KEY));
+    expect(res2.status).toBe(201);
+    const body2 = await res2.json();
+    expect(body2.data.issueId).toBe(body1.data.issueId); // same issue
+    const event2 = await db.errorEvent.findUnique({ where: { id: body2.data.eventId } });
+    expect(event2?.commitSha).toBe(sha2);
   });
 
   test("201 is returned even when Pusher broadcast throws", async () => {

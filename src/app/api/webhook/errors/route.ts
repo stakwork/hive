@@ -27,6 +27,7 @@ export const fetchCache = "force-no-store";
  *   stackTrace?    string   — optional. raw stack trace text
  *   environment?   string   — optional. e.g. "production", "staging"
  *   release?       string   — optional. version/release tag
+ *   commitSha?     string   — optional. commit SHA the error occurred on (pins stack frames to exact source)
  *   repository?    string   — optional. URL or name; resolved to a Repository
  *   requestContext? object  — optional. HTTP request details, headers, etc.
  *   metadata?      object   — optional. arbitrary free-form fields
@@ -79,6 +80,8 @@ export async function POST(request: NextRequest) {
     const stackTrace = typeof body.stackTrace === "string" ? body.stackTrace : null;
     const environment = typeof body.environment === "string" ? body.environment.trim() : null;
     const release = typeof body.release === "string" ? body.release.trim() : null;
+    const commitShaRaw = typeof body.commitSha === "string" ? body.commitSha.trim() : null;
+    const commitSha = commitShaRaw || null;
     const repository = typeof body.repository === "string" ? body.repository : null;
     const requestContext =
       body.requestContext && typeof body.requestContext === "object" && !Array.isArray(body.requestContext)
@@ -95,6 +98,7 @@ export async function POST(request: NextRequest) {
       hasStack: !!stackTrace,
       hasRepo: !!repository,
       hasClientFingerprint: !!clientFingerprint,
+      commitSha,
     });
 
     // ── Repo resolution (IDOR-safe: scoped to authenticated workspace only) ──
@@ -212,6 +216,7 @@ export async function POST(request: NextRequest) {
         message,
         environment: environment ?? undefined,
         release: release ?? undefined,
+        commitSha: commitSha ?? undefined,
         requestContext: requestContext as Prisma.InputJsonValue ?? undefined,
         metadata: metadata as Prisma.InputJsonValue ?? undefined,
         fingerprint,
