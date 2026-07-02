@@ -267,6 +267,14 @@ export async function addEdgeByRefBulk(
  * place. Jarvis processes the list sequentially in one Neo4j session, so this
  * collapses many round-trips into one HTTP call. Errors are returned, never
  * thrown. Callers should chunk large lists (see BULK_CHUNK in the mirror cron).
+ *
+ * NOTE: this must target `/node/bulk`, NOT `/v2/nodes`. The swarm's boltwall
+ * gateway reserves `POST /v2/nodes` for its *single-node* handler (`addNodeV2`),
+ * which destructures `{ node_type, node_data }` off the body and 400s on an
+ * array. `/node/bulk` has no explicit boltwall route, so it falls through the
+ * catch-all proxy to jarvis-backend's `create_or_merge_node_bulk` (which reads
+ * `node_list`). A prior "v2 migration" pointed this at `/v2/nodes` and silently
+ * broke every bulk write with `400 node_type and node_data are required`.
  */
 export async function addNodeBulk(
   config: JarvisConnectionConfig,
@@ -281,9 +289,9 @@ export async function addNodeBulk(
 
   const result = await jarvisRequest({
     config,
-    endpoint: "/v2/nodes",
+    endpoint: "/node/bulk",
     method: "POST",
-    data: nodeList,
+    data: { node_list: nodeList },
   });
 
   if (!result.ok) {
