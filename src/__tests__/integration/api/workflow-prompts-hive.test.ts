@@ -6,7 +6,7 @@ import { describe, test, expect, beforeEach, afterEach, vi } from "vitest";
 import { NextRequest } from "next/server";
 import { GET, POST } from "@/app/api/workflow/prompts/route";
 import { GET as GET_BY_ID, PUT, DELETE } from "@/app/api/workflow/prompts/[id]/route";
-import { GET as GET_VERSIONS } from "@/app/api/workflow/prompts/[id]/versions/route";
+import { GET as GET_VERSIONS, } from "@/app/api/workflow/prompts/[id]/versions/route";
 import { GET as GET_VERSION_BY_ID } from "@/app/api/workflow/prompts/[id]/versions/[versionId]/route";
 import { POST as PUBLISH } from "@/app/api/workflow/prompts/[id]/versions/[versionId]/publish/route";
 import {
@@ -364,7 +364,7 @@ describe("Hive-native Prompt CRUD + Write-through Sync", () => {
   // ─── Update ──────────────────────────────────────────────────────────────────
 
   describe("Update prompt (PUT /api/workflow/prompts/[id])", () => {
-    test("update creates new published version; Prompt.value mirrors it", async () => {
+    test("update creates new UNPUBLISHED draft; Prompt.value and publishedVersionId remain unchanged", async () => {
       // Create
       authAs(testUser);
       stakworkOkCreate(10);
@@ -376,6 +376,7 @@ describe("Hive-native Prompt CRUD + Write-through Sync", () => {
       );
       const created = (await createRes.json()).data;
       createdPromptIds.push(created.id);
+      const originalPublishedVersionId = created.published_version_id as string;
 
       // Update
       authAs(testUser);
@@ -388,8 +389,14 @@ describe("Hive-native Prompt CRUD + Write-through Sync", () => {
         { params: Promise.resolve({ id: created.id }) },
       );
       expect(updateRes.status).toBe(200);
+      const updatedData = (await updateRes.json()).data;
 
-      // DB: new version is published, Prompt.value updated
+      // API response: current_version_id = new draft, published_version_id = original
+      expect(updatedData.current_version_id).not.toBe(updatedData.published_version_id);
+      expect(updatedData.published_version_id).toBe(originalPublishedVersionId);
+      expect(updatedData.value).toBe("updated value"); // shows latest draft value
+
+      // DB: new draft is NOT published; Prompt.value + publishedVersionId unchanged
       const prompt = await db.prompt.findUnique({
         where: { id: created.id },
         include: {
@@ -397,18 +404,23 @@ describe("Hive-native Prompt CRUD + Write-through Sync", () => {
           publishedVersion: true,
         },
       });
-      expect(prompt!.value).toBe("updated value");
+      // Prompt.value still mirrors the published version, not the draft
+      expect(prompt!.value).toBe("original value");
+      expect(prompt!.publishedVersionId).toBe(originalPublishedVersionId);
       expect(prompt!.versions).toHaveLength(2);
+      // v2 = draft, unpublished
       expect(prompt!.versions[1].versionNumber).toBe(2);
-      expect(prompt!.versions[1].published).toBe(true);
-      expect(prompt!.versions[0].published).toBe(false); // v1 unpublished
-      expect(prompt!.publishedVersion!.value).toBe("updated value");
+      expect(prompt!.versions[1].published).toBe(false);
+      // v1 = still published
+      expect(prompt!.versions[0].published).toBe(true);
+      expect(prompt!.publishedVersion!.value).toBe("original value");
 
-      // Stakwork payload nests hive_version_id inside prompt
+      // Stakwork payload uses the new draft version id
       const updateFetchCall = mockFetch.mock.calls[1]; // second call is the PUT
       const sentBody = JSON.parse(updateFetchCall[1].body as string);
       expect(sentBody.hive_version_id).toBeUndefined(); // must NOT be top-level
-      expect(sentBody.prompt.hive_version_id).toBe(prompt!.publishedVersionId);
+      expect(sentBody.prompt.hive_version_id).toBe(updatedData.current_version_id);
+      expect(sentBody.prompt.hive_version_id).not.toBe(originalPublishedVersionId);
     });
 
     test("Stakwork update failure → local write succeeds, syncStatus = PENDING", async () => {
@@ -444,10 +456,78 @@ describe("Hive-native Prompt CRUD + Write-through Sync", () => {
   // ─── Publish version ─────────────────────────────────────────────────────────
 
   describe("Publish version (POST /api/workflow/prompts/[id]/versions/[versionId]/publish)", () => {
-    test("publishing an older version updates Prompt.value atomically", async () => {
-      // Create
+    test("publishing a draft re-aligns current_version_id === published_version_id", async () => {
+      // Create (v1, published)
       authAs(testUser);
       stakworkOkCreate(20);
+      const createRes = await POST(
+        makeReq("http://localhost/api/workflow/prompts", "POST", {
+          name: "PUBLISH_DRAFT_VERSION",
+          value: "v1 value",
+        }),
+      );
+      const created = (await createRes.json()).data;
+      createdPromptIds.push(created.id);
+      const v1Id = created.published_version_id as string;
+
+      // Update (creates v2 draft, unpublished)
+      authAs(testUser);
+      stakworkOkUpdate();
+      const updateRes = await PUT(
+        makeReq(`http://localhost/api/workflow/prompts/${created.id}`, "PUT", {
+          value: "v2 value",
+        }),
+        { params: Promise.resolve({ id: created.id }) },
+      );
+      const updatedData = (await updateRes.json()).data;
+      const v2Id = updatedData.current_version_id as string;
+
+      // Before publish: current !== published
+      expect(updatedData.current_version_id).not.toBe(updatedData.published_version_id);
+      expect(updatedData.published_version_id).toBe(v1Id);
+
+      // Verify v1 is still live in DB
+      const afterUpdate = await db.prompt.findUnique({ where: { id: created.id } });
+      expect(afterUpdate!.value).toBe("v1 value");
+      expect(afterUpdate!.publishedVersionId).toBe(v1Id);
+
+      // Publish the draft (v2) as live
+      authAs(testUser);
+      stakworkOkUpdate(); // best-effort publish push
+      const publishRes = await PUBLISH(
+        makeReq(`http://localhost/publish`, "POST"),
+        { params: Promise.resolve({ id: created.id, versionId: v2Id }) },
+      );
+      expect(publishRes.status).toBe(200);
+
+      // DB: Prompt.value should now mirror v2; publishedVersionId = v2Id
+      const afterPublish = await db.prompt.findUnique({
+        where: { id: created.id },
+        include: { versions: { orderBy: { versionNumber: "asc" } } },
+      });
+      expect(afterPublish!.value).toBe("v2 value");
+      expect(afterPublish!.publishedVersionId).toBe(v2Id);
+
+      // current_version_id now equals published_version_id
+      expect(afterPublish!.publishedVersionId).toBe(v2Id);
+
+      // v2 is published, v1 is not
+      expect(afterPublish!.versions[0].published).toBe(false); // v1
+      expect(afterPublish!.versions[1].published).toBe(true);  // v2
+
+      // Stakwork publish push sends { prompt: { hive_version_id } } — no top-level key
+      // 3rd fetch call: create + update PUT + publish
+      const publishFetchCall = mockFetch.mock.calls[2];
+      expect(publishFetchCall).toBeDefined();
+      const publishBody = JSON.parse(publishFetchCall[1].body as string);
+      expect(publishBody.hive_version_id).toBeUndefined();
+      expect(publishBody).toEqual({ prompt: { hive_version_id: v2Id } });
+    });
+
+    test("publishing an older version rolls back live value correctly", async () => {
+      // Create v1 (published)
+      authAs(testUser);
+      stakworkOkCreate(21);
       const createRes = await POST(
         makeReq("http://localhost/api/workflow/prompts", "POST", {
           name: "PUBLISH_OLD_VERSION",
@@ -458,7 +538,7 @@ describe("Hive-native Prompt CRUD + Write-through Sync", () => {
       createdPromptIds.push(created.id);
       const v1Id = created.published_version_id as string;
 
-      // Update (creates v2)
+      // Update (creates v2 draft)
       authAs(testUser);
       stakworkOkUpdate();
       await PUT(
@@ -468,38 +548,42 @@ describe("Hive-native Prompt CRUD + Write-through Sync", () => {
         { params: Promise.resolve({ id: created.id }) },
       );
 
-      // Verify v2 is current
-      const afterUpdate = await db.prompt.findUnique({ where: { id: created.id } });
-      expect(afterUpdate!.value).toBe("v2 value");
-
-      // Now publish v1 (older version) as live
+      // Publish v2 (makes v2 live)
       authAs(testUser);
-      stakworkOkUpdate(); // best-effort publish push
+      stakworkOkUpdate();
+      const versionsRes = await GET_VERSIONS(
+        makeReq(`http://localhost/api/workflow/prompts/${created.id}/versions`, "GET"),
+        { params: Promise.resolve({ id: created.id }) },
+      );
+      const versionsBody = await versionsRes.json();
+      const v2Id = versionsBody.data.current_version_id as string;
+
+      mockGetServerSession.mockResolvedValue(
+        createAuthenticatedSession({ id: testUser.id, email: testUser.email ?? "" }),
+      );
+      stakworkOkUpdate();
+      await PUBLISH(
+        makeReq(`http://localhost/publish`, "POST"),
+        { params: Promise.resolve({ id: created.id, versionId: v2Id }) },
+      );
+
+      // Now publish v1 (roll back to older version)
+      authAs(testUser);
+      stakworkOkUpdate();
       const publishRes = await PUBLISH(
         makeReq(`http://localhost/publish`, "POST"),
         { params: Promise.resolve({ id: created.id, versionId: v1Id }) },
       );
       expect(publishRes.status).toBe(200);
 
-      // DB: Prompt.value should now mirror v1
       const afterPublish = await db.prompt.findUnique({
         where: { id: created.id },
         include: { versions: { orderBy: { versionNumber: "asc" } } },
       });
       expect(afterPublish!.value).toBe("v1 value");
       expect(afterPublish!.publishedVersionId).toBe(v1Id);
-
-      // v1 is published, v2 is not
       expect(afterPublish!.versions[0].published).toBe(true); // v1
       expect(afterPublish!.versions[1].published).toBe(false); // v2
-
-      // Stakwork publish push sends { prompt: { hive_version_id } } — no top-level key
-      // publish is 3rd fetch call (create + update + publish)
-      const publishFetchCall = mockFetch.mock.calls[2];
-      expect(publishFetchCall).toBeDefined();
-      const publishBody = JSON.parse(publishFetchCall[1].body as string);
-      expect(publishBody.hive_version_id).toBeUndefined();
-      expect(publishBody).toEqual({ prompt: { hive_version_id: v1Id } });
     });
 
     test("returns 404 if version does not belong to prompt", async () => {
@@ -690,7 +774,7 @@ describe("Hive-native Prompt CRUD + Write-through Sync", () => {
       expect(vars.customer_id).toBeNull();
     });
 
-    test("update: launches graph-recorder with new version id and updated value", async () => {
+    test("update (save): does NOT launch graph-recorder (draft must not be recorded as live)", async () => {
       authAs(testUser);
       stakworkOkCreate(51);
 
@@ -702,6 +786,7 @@ describe("Hive-native Prompt CRUD + Write-through Sync", () => {
       );
       const created = (await createRes.json()).data;
       createdPromptIds.push(created.id);
+      // Clear graph-recorder calls from the create step
       mockStakworkRequest.mockClear();
 
       authAs(testUser);
@@ -715,24 +800,12 @@ describe("Hive-native Prompt CRUD + Write-through Sync", () => {
         { params: Promise.resolve({ id: created.id }) },
       );
       expect(putRes.status).toBe(200);
-      const updated = (await putRes.json()).data;
 
+      // Graph recorder must NOT have been called on a plain save
       const graphCall = mockStakworkRequest.mock.calls.find(
         ([endpoint]: [string]) => endpoint === "/projects",
       );
-      expect(graphCall).toBeDefined();
-      const [, payload] = graphCall as [string, Record<string, unknown>];
-
-      const vars = (payload as { workflow_params: { set_var: { attributes: { vars: { prompt: Record<string, unknown> } } } } })
-        .workflow_params.set_var.attributes.vars.prompt;
-
-      // version id must be the NEW version (different from v1)
-      expect(vars.prompt_version_id).toBe(updated.published_version_id);
-      expect(vars.prompt_version_id).not.toBe(created.published_version_id);
-      expect(vars.value).toBe("v2 value");
-      expect(vars.id).toBe(created.id);
-      expect(vars.prompt_id).toBe(created.id);
-      expect(vars.customer_id).toBeNull();
+      expect(graphCall).toBeUndefined();
     });
 
     test("publish: launches graph-recorder with published version id and value", async () => {

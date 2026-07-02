@@ -2012,7 +2012,7 @@ enum PromptSyncStatus {
 model Prompt {
   id                 String           @id @default(cuid())
   name               String           @unique // shared/global scope; UPPERCASE_UNDERSCORE
-  value              String // LIVE value — mirrors the PUBLISHED version (see invariant)
+  value              String // LIVE value — cache of the PUBLISHED version only; drafts do NOT update this field
   description        String?
   publishedVersionId String?          @map("published_version_id")
   stakworkId         Int?             @map("stakwork_id") // Stakwork numeric prompt id, for sync
@@ -2039,6 +2039,7 @@ model PromptVersion {
   prompt        Prompt   @relation(fields: [promptId], references: [id], onDelete: Cascade)
   publishedForPrompts Prompt[] @relation("PublishedVersion")
 
+  @@unique([promptId, versionNumber])
   @@index([promptId])
   @@index([promptId, published])
   @@map("prompt_versions")

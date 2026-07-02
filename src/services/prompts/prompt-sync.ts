@@ -192,52 +192,62 @@ export async function writePromptThrough(
   let version: WritePromptThroughResult["version"];
 
   if (promptId) {
-    // UPDATE: create new version, unpublish others, update Prompt.value
+    // UPDATE: create a new UNPUBLISHED draft version; leave published pointer and Prompt.value unchanged.
     const existing = await db.prompt.findUnique({ where: { id: promptId } });
     if (!existing) {
       throw Object.assign(new Error("Prompt not found"), { status: 404 });
     }
 
-    const maxVersionRow = await db.promptVersion.aggregate({
-      where: { promptId },
-      _max: { versionNumber: true },
+    try {
+      const result = await db.$transaction(async (tx) => {
+        // Compute nextVersionNumber inside the transaction to be safe under concurrent saves.
+        const maxRow = await tx.promptVersion.aggregate({
+          where: { promptId },
+          _max: { versionNumber: true },
+        });
+        const nextVersionNumber = (maxRow._max.versionNumber ?? 0) + 1;
+
+        // Create new UNPUBLISHED draft — leave existing published version intact.
+        const newVersion = await tx.promptVersion.create({
+          data: {
+            promptId,
+            versionNumber: nextVersionNumber,
+            value,
+            description: description ?? null,
+            whodunnit: userId,
+            published: false,
+          },
+        });
+
+        // Only bump updatedAt; do NOT touch value/description/publishedVersionId.
+        const updatedPrompt = await tx.prompt.update({
+          where: { id: promptId },
+          data: { updatedAt: new Date() },
+        });
+
+        return { prompt: updatedPrompt, version: newVersion };
+      });
+
+      prompt = result.prompt;
+      version = result.version;
+    } catch (err) {
+      if (
+        err instanceof Prisma.PrismaClientKnownRequestError &&
+        err.code === "P2002"
+      ) {
+        throw Object.assign(
+          new Error("Concurrent save conflict — please retry"),
+          { status: 409 },
+        );
+      }
+      throw err;
+    }
+
+    logger.info("[prompt-sync] Created unpublished draft version", "prompt-sync", {
+      promptId,
+      versionId: version.id,
+      versionNumber: version.versionNumber,
     });
-    const nextVersionNumber = (maxVersionRow._max.versionNumber ?? 0) + 1;
-
-    const result = await db.$transaction(async (tx) => {
-      // Unpublish all existing versions
-      await tx.promptVersion.updateMany({
-        where: { promptId },
-        data: { published: false },
-      });
-
-      // Create new published version
-      const newVersion = await tx.promptVersion.create({
-        data: {
-          promptId,
-          versionNumber: nextVersionNumber,
-          value,
-          description: description ?? null,
-          whodunnit: userId,
-          published: true,
-        },
-      });
-
-      // Update prompt — LIVE = PUBLISHED invariant
-      const updatedPrompt = await tx.prompt.update({
-        where: { id: promptId },
-        data: {
-          value,
-          description: description ?? existing.description,
-          publishedVersionId: newVersion.id,
-        },
-      });
-
-      return { prompt: updatedPrompt, version: newVersion };
-    });
-
-    prompt = result.prompt;
-    version = result.version;
   } else {
     // CREATE: validate name, create Prompt + initial version
     if (!PROMPT_NAME_REGEX.test(name)) {
@@ -358,10 +368,15 @@ export async function writePromptThrough(
   }
 
   // ── 3. Best-effort graph recorder ────────────────────────────────────────
-  await recordPromptOnGraph(
-    { prompt, versionId: version.id, value },
-    promptId ? "update" : "create",
-  );
+  // Only fire on CREATE — firing on UPDATE (draft save) would misrepresent
+  // an unpublished draft as the live/published snapshot in the knowledge graph.
+  // publishVersion() handles the "publish" trigger independently.
+  if (!promptId) {
+    await recordPromptOnGraph(
+      { prompt, versionId: version.id, value },
+      "create",
+    );
+  }
 
   return { prompt, version };
 }
