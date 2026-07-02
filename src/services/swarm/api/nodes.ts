@@ -89,7 +89,7 @@ export async function addNode(
 ): Promise<{ success: boolean; ref_id?: string; alreadyExists?: boolean; error?: string }> {
   const result = await jarvisRequest({
     config,
-    endpoint: "/node",
+    endpoint: "/v2/nodes",
     method: "POST",
     // `reprocess: true` makes Jarvis update an existing node (matched by
     // node_key) in place instead of returning an "already exists" warning.
@@ -186,18 +186,14 @@ export async function addEdge(
   return { success: false, error: "Edge creation returned unexpected status" };
 }
 
-export async function addEdgeBulk(
+/** Shared fetch+parse logic for both bulk-edge functions. */
+async function executeBulkEdgeRequest(
   config: JarvisConnectionConfig,
-  edgeList: Array<{
-    edge: { edge_type: string; weight?: number; edge_data?: Record<string, unknown> };
-    source: JarvisEdgeEndpoint;
-    target: JarvisEdgeEndpoint;
-  }>,
-  ): Promise<{ success: boolean; errors: string[]; endpointMissing?: boolean }> {
-  if (edgeList.length === 0) return { success: true, errors: [] };
+  edgeList: unknown[],
+): Promise<{ success: boolean; errors: string[]; endpointMissing?: boolean }> {
   const result = await jarvisRequest({
     config,
-    endpoint: "/node/edge/bulk",
+    endpoint: "/v2/edges/bulk",
     method: "POST",
     data: { edge_list: edgeList },
   });
@@ -224,13 +220,24 @@ export async function addEdgeBulk(
   };
 }
 
+export async function addEdgeBulk(
+  config: JarvisConnectionConfig,
+  edgeList: Array<{
+    edge: { edge_type: string; weight?: number; edge_data?: Record<string, unknown> };
+    source: JarvisEdgeEndpoint;
+    target: JarvisEdgeEndpoint;
+  }>,
+): Promise<{ success: boolean; errors: string[]; endpointMissing?: boolean }> {
+  if (edgeList.length === 0) return { success: true, errors: [] };
+  return executeBulkEdgeRequest(config, edgeList);
+}
+
 /**
  * Bulk create-or-merge edges where BOTH endpoints are addressed by `ref_id`
- * (Jarvis `/node/edge/ref/bulk`). Unlike `addEdgeBulk`, each node is matched by
- * ref_id against its real Neo4j label, bypassing the capitalize-based
- * (source_type, target_type) schema lookup — required to link to stakgraph nodes
- * such as `PullRequest` whose label isn't the capitalized form. Idempotent on
- * the backend via the edge_key. Errors are returned, never thrown.
+ * (Jarvis `/v2/edges/bulk`). Each edge is transformed from flat
+ * `source_ref_id`/`target_ref_id` fields into the nested v2 shape
+ * `{ source: { ref_id }, target: { ref_id } }`. Idempotent on the backend via
+ * the edge_key. Errors are returned, never thrown.
  */
 export async function addEdgeByRefBulk(
   config: JarvisConnectionConfig,
@@ -241,33 +248,15 @@ export async function addEdgeByRefBulk(
   }>,
 ): Promise<{ success: boolean; errors: string[]; endpointMissing?: boolean }> {
   if (edgeList.length === 0) return { success: true, errors: [] };
-  const result = await jarvisRequest({
-    config,
-    endpoint: "/node/edge/ref/bulk",
-    method: "POST",
-    data: { edge_list: edgeList },
-  });
 
-  if (!result.ok) {
-    return {
-      success: false,
-      endpointMissing: result.notFound,
-      errors: [result.error || `Failed to create edges (status: ${result.status})`],
-    };
-  }
+  // Transform flat ref_id fields into the nested v2 shape.
+  const v2EdgeList = edgeList.map(({ edge, source_ref_id, target_ref_id }) => ({
+    edge,
+    source: { ref_id: source_ref_id },
+    target: { ref_id: target_ref_id },
+  }));
 
-  const body = result.body as
-    | { status?: string; status_messages?: string[] }
-    | undefined;
-
-  const errors = (body?.status_messages ?? []).filter((m) =>
-    m.toLowerCase().startsWith("error"),
-  );
-
-  return {
-    success: body?.status?.toLowerCase() === "success",
-    errors,
-  };
+  return executeBulkEdgeRequest(config, v2EdgeList);
 }
 
 /**
@@ -290,9 +279,9 @@ export async function addNodeBulk(
 
   const result = await jarvisRequest({
     config,
-    endpoint: "/node/bulk",
+    endpoint: "/v2/nodes",
     method: "POST",
-    data: { node_list: nodeList },
+    data: nodeList,
   });
 
   if (!result.ok) {
@@ -479,32 +468,20 @@ export async function patchEdge(
 export async function deleteEdge(
   config: JarvisConnectionConfig,
   edgeRefId: string,
-): Promise<{ success: boolean; error?: string }> {
-  try {
-    const url = `${config.jarvisUrl.replace(/\/$/, "")}/node/edge/${encodeURIComponent(edgeRefId)}`;
-    const response = await fetch(url, {
-      method: "DELETE",
-      headers: {
-        "x-api-token": config.apiKey,
-        "Content-Type": "application/json",
-      },
-    });
+): Promise<{ success: boolean; notFound?: boolean; error?: string }> {
+  const result = await jarvisRequest({
+    config,
+    endpoint: `/v2/edges/${encodeURIComponent(edgeRefId)}`,
+    method: "DELETE",
+  });
 
-    if (!response.ok) {
-      const responseText = await response.text();
-      console.error("[Jarvis Nodes] deleteEdge failed:", response.status, responseText);
-      return {
-        success: false,
-        error: `Request failed with status ${response.status}`,
-      };
-    }
-
-    return { success: true };
-  } catch (error) {
-    console.error("[Jarvis Nodes] deleteEdge error:", error);
+  if (!result.ok) {
     return {
       success: false,
-      error: error instanceof Error ? error.message : "Request failed",
+      notFound: result.notFound,
+      error: result.error || `Request failed with status ${result.status}`,
     };
   }
+
+  return { success: true };
 }
