@@ -16,7 +16,7 @@
  *    `task_id → ref_id` map) so we never create a stub. This uses the
  *    `/node/edge/ref/bulk` endpoint, which matches each node by ref_id against
  *    its real Neo4j label — required because the stakgraph PR label is
- *    `PullRequest`, which the capitalize-on-write schema system can't address.
+ *    `PullRequest`, which isn't a Hive-owned schema type.
  *  - PR fetch: `latest-by-types` is newest-ingested-first. First run / backfill
  *    pulls the full set; later runs pull only PRs newer than a per-workspace
  *    high-water (`jarvisSyncState.prLink.highWater`). The high-water is advanced
