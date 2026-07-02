@@ -142,6 +142,7 @@ const baseNavigationItems: NavigationItem[] = [
       { icon: Languages, label: "Lingo", href: "/lingo" },
       { icon: Phone, label: "Calls", href: "/calls" },
       { icon: FileText, label: "Agent Logs", href: "/agent-logs" },
+      { icon: Bug, label: "Errors", href: "/errors" },
       { icon: Share2, label: "Graph", href: "/context/graph" },
     ],
   },
@@ -501,7 +502,7 @@ export function Sidebar({ user }: SidebarProps) {
       // Public viewers can't see Agent Logs (raw agent output with PII/secrets)
       // or Calls (voice recordings — entirely auth-gated).
       if (item.label === "Context" && item.children && isPublicViewer) {
-        const hidden = new Set(["Agent Logs", "Calls"]);
+        const hidden = new Set(["Agent Logs", "Calls", "Errors"]);
         return {
           ...item,
           children: item.children.filter((child) => !hidden.has(child.label)),
