@@ -83,9 +83,12 @@ export async function GET(
       select: conversationSelect,
     });
 
-    // Fallback: an org-canvas conversation for this workspace's parent
-    // org. These are org-scoped (`workspaceId` null) so they miss the
-    // query above — but the Canvas tab links here, so resolve them too.
+    // Fallback: an org-scoped conversation for this workspace's parent
+    // org. These have `workspaceId` null so they miss the query above,
+    // but are still deep-linked from the Canvas tab and its detail view:
+    //   - "org-canvas" — the canvas chat sessions themselves.
+    //   - "graph-walk" — standalone sub-agent tool-call traces
+    //     (`gw-conv-*`), linked from a graph-walk result bubble.
     // Access is already gated by `validateWorkspaceAccess` above, so
     // any caller is an authenticated workspace member — IDOR safety is
     // preserved at that layer. No per-user filter here keeps this
@@ -95,7 +98,7 @@ export async function GET(
         where: {
           id: conversationId,
           sourceControlOrgId: workspace.sourceControlOrgId,
-          source: "org-canvas",
+          source: { in: ["org-canvas", "graph-walk"] },
         },
         select: conversationSelect,
       });
