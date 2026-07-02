@@ -1,5 +1,6 @@
 import * as crypto from "crypto";
 import { db } from "@/lib/db";
+import { parseGithubOwnerRepo } from "@/utils/repositoryParser";
 
 /**
  * Normalise a raw repository identifier (URL or name) so that trivial
@@ -17,12 +18,32 @@ function normalizeRepo(raw: string): string {
 }
 
 /**
+ * Canonicalize any repository identifier (SSH URL, HTTPS URL, or owner/repo
+ * shorthand) to lowercase `owner/repo` form.
+ *
+ * - Uses `parseGithubOwnerRepo` to handle SSH and HTTPS GitHub URLs.
+ * - Falls back to `normalizeRepo` for shorthand `owner/repo` strings and
+ *   non-GitHub URLs (which still benefit from trim/lowercase/.git stripping).
+ * - Returns `"unknown"` when the result is empty.
+ */
+export function canonicalRepoKey(raw: string): string {
+  if (!raw || !raw.trim()) return "unknown";
+  try {
+    const { owner, repo } = parseGithubOwnerRepo(raw.trim());
+    return `${owner}/${repo}`.toLowerCase();
+  } catch {
+    const normalized = normalizeRepo(raw);
+    return normalized || "unknown";
+  }
+}
+
+/**
  * Resolve a client-supplied `repository` string (URL or name) to a
  * `Repository` row scoped strictly to the given workspace.
  *
  * Returns:
- *   - `{ repositoryId, repoKey: repositoryId }` when a match is found
- *   - `{ repositoryId: null, repoKey: normalizedRaw }` for unresolved but
+ *   - `{ repositoryId, repoKey: canonicalRepoKey(repo.repositoryUrl || repo.name) }` when a match is found
+ *   - `{ repositoryId: null, repoKey: canonicalRepoKey(repository) }` for unresolved but
  *     non-empty identifiers (so repeat calls with identical raw strings still
  *     land on the same issue)
  *   - `{ repositoryId: null, repoKey: "unknown" }` when `repository` is
@@ -53,13 +74,15 @@ export async function resolveRepoKey({
       normalizeRepo(repo.repositoryUrl) === normalized ||
       normalizeRepo(repo.name) === normalized
     ) {
-      return { repositoryId: repo.id, repoKey: repo.id };
+      return {
+        repositoryId: repo.id,
+        repoKey: canonicalRepoKey(repo.repositoryUrl || repo.name),
+      };
     }
   }
 
-  // No match — fall back to normalised raw identifier (or "unknown" if empty
-  // after normalization)
-  return { repositoryId: null, repoKey: normalized || "unknown" };
+  // No match — fall back to canonical form of the raw identifier
+  return { repositoryId: null, repoKey: canonicalRepoKey(repository) };
 }
 
 // ── Fingerprint ───────────────────────────────────────────────────────────────
