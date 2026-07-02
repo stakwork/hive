@@ -131,18 +131,34 @@ export async function POST(request: NextRequest) {
     // Unique key: (workspaceId, repoKey, fingerprint).
     // On conflict: increment occurrenceCount, bump lastSeenAt, refresh
     //   environment/release to the latest occurrence's values.
-    // We deliberately do NOT reset status on repeat occurrences — a
-    //   RESOLVED or IGNORED issue should not automatically reopen when a new
-    //   event arrives; re-opening is a deliberate triage action.
+    // Status on repeat occurrences:
+    //   RESOLVED → UNRESOLVED: a new occurrence is a regression and reopens the issue.
+    //   IGNORED  → IGNORED:    a deliberately dismissed issue stays dismissed on new events.
+    //   UNRESOLVED → UNRESOLVED: already open, no change needed.
     const now = new Date();
     const existingIssue = await db.errorIssue.findUnique({
       where: {
         workspaceId_repoKey_fingerprint: { workspaceId: workspace.id, repoKey, fingerprint },
       },
-      select: { id: true },
+      select: { id: true, status: true },
     });
 
     const isNew = !existingIssue;
+
+    // Regression reopen: a new occurrence on a RESOLVED issue reopens it to UNRESOLVED.
+    // IGNORED issues are a deliberate no-reopen dismissal — they stay IGNORED.
+    // UNRESOLVED issues are already open — no status change needed.
+    const isRegression = existingIssue?.status === "RESOLVED";
+    if (isRegression) {
+      console.info("[error-ingest] regression reopen", {
+        fingerprint,
+        repoKey,
+        workspaceId: workspace.id,
+        issueId: existingIssue.id,
+        previousStatus: "RESOLVED",
+        newStatus: "UNRESOLVED",
+      });
+    }
 
     const issue = existingIssue
       ? await db.errorIssue.update({
@@ -155,6 +171,9 @@ export async function POST(request: NextRequest) {
             // Refresh env/release to the values from the latest occurrence
             environment: environment ?? undefined,
             release: release ?? undefined,
+            // Reopen RESOLVED issues on new occurrence (regression).
+            // IGNORED remains dismissed; UNRESOLVED stays open.
+            ...(isRegression ? { status: "UNRESOLVED" } : {}),
           },
         })
       : await db.errorIssue.create({
