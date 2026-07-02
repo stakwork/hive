@@ -184,6 +184,7 @@ export default async function ChatDetailPage({ params, searchParams }: ChatDetai
             loading={false}
             error={null}
             variant="page"
+            workspaceSlug={slug}
           />
         )}
       </div>
