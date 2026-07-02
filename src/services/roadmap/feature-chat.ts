@@ -23,6 +23,7 @@ import { joinRepoUrls } from "@/lib/helpers/repository";
 import { scoutOrgContext } from "@/services/roadmap/orgContextScout";
 import { mintOrgToken } from "@/lib/mcp/orgTokenMint";
 import { mintWorkspaceToken } from "@/lib/mcp/workspaceTokenMint";
+import { isDevelopmentMode } from "@/lib/runtime";
 import type { McpServerConfig } from "@/services/mcpServers";
 
 /**
@@ -182,6 +183,44 @@ interface SubAgent {
   toolsConfig?: Record<string, string | boolean>;
 }
 
+type WorkspaceForSubAgent = {
+  slug: string;
+  description?: string | null;
+  swarm: {
+    swarmUrl: string | null;
+    swarmApiKey?: string | null;
+  } | null;
+  repositories: { repositoryUrl: string }[];
+};
+
+/**
+ * Map a workspace record to a SubAgent payload.
+ * Returns null when the workspace has no swarm URL or no repositories
+ * (callers should silently skip nulls).
+ */
+export function workspaceToSubAgent(
+  workspace: WorkspaceForSubAgent,
+): SubAgent | null {
+  if (!workspace.swarm?.swarmUrl || !workspace.repositories.length) {
+    return null;
+  }
+  const encryptionService = EncryptionService.getInstance();
+  const url = transformSwarmUrlToRepo2Graph(workspace.swarm.swarmUrl);
+  const apiKey = encryptionService.decryptField(
+    "swarmApiKey",
+    workspace.swarm.swarmApiKey ?? "",
+  );
+  const repoUrls = workspace.repositories.map((r) => r.repositoryUrl).join(",");
+  return {
+    name: workspace.slug,
+    description: workspace.description ?? undefined,
+    url,
+    apiKey,
+    repoUrls,
+    toolsConfig: { learn_concepts: true },
+  };
+}
+
 export async function resolveExtraSwarms(
   messages: string | string[],
   userId: string,
@@ -195,7 +234,6 @@ export async function resolveExtraSwarms(
     ),
   ];
 
-  const encryptionService = EncryptionService.getInstance();
   const results: SubAgent[] = [];
 
   for (const slug of uniqueSlugs) {
@@ -212,34 +250,81 @@ export async function resolveExtraSwarms(
         },
       });
 
-      if (!workspace?.swarm?.swarmUrl || !workspace.repositories.length) {
-        continue;
-      }
-
-      const { swarm, repositories } = workspace;
-      const url = transformSwarmUrlToRepo2Graph(swarm.swarmUrl);
-      const apiKey = encryptionService.decryptField(
-        "swarmApiKey",
-        swarm.swarmApiKey ?? "",
-      );
-      const repoUrls = repositories
-        .map((r) => r.repositoryUrl)
-        .join(",");
-
-      results.push({
-        name: slug,
-        description: workspace.description ?? undefined,
-        url,
-        apiKey,
-        repoUrls,
-        toolsConfig: { learn_concepts: true },
-      });
+      const agent = workspace ? workspaceToSubAgent(workspace) : null;
+      if (agent) results.push(agent);
     } catch {
       // Silently skip any workspace that fails to resolve
     }
   }
 
   return results;
+}
+
+/**
+ * Batch-fetch all workspaces under the same org that the user owns or is
+ * an active member of, and resolve each to a SubAgent. A single DB query
+ * replaces the per-slug loop in resolveExtraSwarms.
+ *
+ * Authorization: only workspaces the user owns or is an ACTIVE member of
+ * (leftAt: null) are returned — membership is enforced in-query before any
+ * swarmApiKey decrypt.
+ */
+export async function resolveOrgMemberSwarms(
+  userId: string,
+  sourceControlOrgId: string,
+): Promise<SubAgent[]> {
+  const workspaces = await db.workspace.findMany({
+    where: {
+      sourceControlOrgId,
+      deleted: false,
+      OR: [
+        { ownerId: userId },
+        { members: { some: { userId, leftAt: null } } },
+      ],
+    },
+    include: {
+      swarm: true,
+      repositories: { orderBy: { createdAt: "asc" } },
+    },
+  });
+
+  const results: SubAgent[] = [];
+  for (const ws of workspaces) {
+    const agent = workspaceToSubAgent(ws);
+    if (agent) results.push(agent);
+  }
+  return results;
+}
+
+/**
+ * Union of resolveExtraSwarms (manual @-mentions) and resolveOrgMemberSwarms
+ * (all org workspaces the user belongs to), deduped by slug/name.
+ * Manual @-mentions win on conflict (their entry is kept as-is).
+ */
+export async function resolveSubAgents({
+  message,
+  userId,
+  sourceControlOrgId,
+}: {
+  message: string | string[];
+  userId: string;
+  sourceControlOrgId: string;
+}): Promise<SubAgent[]> {
+  const [mentionAgents, orgAgents] = await Promise.all([
+    resolveExtraSwarms(message, userId),
+    resolveOrgMemberSwarms(userId, sourceControlOrgId),
+  ]);
+
+  // Mentions take precedence; org agents fill in slugs not already present
+  const seen = new Set(mentionAgents.map((a) => a.name));
+  const merged = [...mentionAgents];
+  for (const agent of orgAgents) {
+    if (!seen.has(agent.name)) {
+      seen.add(agent.name);
+      merged.push(agent);
+    }
+  }
+  return merged;
 }
 
 /**
@@ -471,10 +556,23 @@ export async function sendFeatureChatMessage({
       )
       .map((m) => (m as { message?: string }).message)
       .filter((t): t is string => typeof t === "string");
-    const extraSwarms = await resolveExtraSwarms(
-      [...priorMessageTexts, message],
-      userId,
-    );
+    const allMessages = [...priorMessageTexts, message];
+
+    const workspaceSlug = feature.workspace.slug;
+    const sourceControlOrgId = feature.workspace.sourceControlOrgId;
+    let extraSwarms: SubAgent[];
+    if ((workspaceSlug === "stakwork" || isDevelopmentMode()) && sourceControlOrgId) {
+      extraSwarms = await resolveSubAgents({
+        message: allMessages,
+        userId,
+        sourceControlOrgId,
+      });
+      console.log(
+        `[feature-chat] subAgents: ${extraSwarms.filter((a) => allMessages.some((m) => m?.includes(`@${a.name}`))).length} from @-mentions, ${extraSwarms.length} total (org auto-attach)`,
+      );
+    } else {
+      extraSwarms = await resolveExtraSwarms(allMessages, userId);
+    }
 
     // Generate presigned download URLs for any attachments
     const attachmentUrls = await Promise.all(

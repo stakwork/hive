@@ -13,7 +13,7 @@ import { pusherServer, getTaskChannelName, PUSHER_EVENTS } from "@/lib/pusher";
 import { getStakworkTokenReference } from "@/lib/vercel/stakwork-token";
 import { fetchChatHistory } from "@/lib/helpers/chat-history";
 import { fetchLatestWorkflowJson, buildWorkflowEditorFeatureContext } from "@/services/workflow-editor";
-import { resolveExtraSwarms } from "@/services/roadmap/feature-chat";
+import { resolveSubAgents } from "@/services/roadmap/feature-chat";
 
 
 export const runtime = "nodejs";
@@ -99,6 +99,7 @@ export async function POST(request: NextRequest) {
           select: {
             slug: true,
             ownerId: true,
+            sourceControlOrgId: true,
             swarm: {
               select: {
                 swarmUrl: true,
@@ -213,11 +214,15 @@ export async function POST(request: NextRequest) {
       tokenReference: getStakworkTokenReference(),
     };
 
-    // Resolve @mentioned workspaces as sub-agents and attach to vars
-    const extraSwarms = await resolveExtraSwarms(message, userId);
-    if (extraSwarms.length) {
-      (vars as Record<string, unknown>).subAgents = extraSwarms;
-      console.log("[workflow-editor] forwarding subAgents:", extraSwarms.map((a) => a.name));
+    // Resolve org member workspaces + @mentioned workspaces as sub-agents
+    // Route is already stakwork/dev-gated above, so no extra guard needed.
+    const sourceControlOrgId = task.workspace.sourceControlOrgId;
+    const subAgents = sourceControlOrgId
+      ? await resolveSubAgents({ message, userId, sourceControlOrgId })
+      : [];
+    if (subAgents.length) {
+      (vars as Record<string, unknown>).subAgents = subAgents;
+      console.log("[workflow-editor] forwarding subAgents:", subAgents.map((a) => a.name));
     }
 
     // Enrich payload with feature context when this task is linked to a feature
