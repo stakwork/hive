@@ -25,6 +25,7 @@ vi.mock("@/lib/ai/connectionTools", () => ({ buildConnectionTools: vi.fn(() => (
 vi.mock("@/lib/ai/canvasTools", () => ({ buildCanvasTools: vi.fn(() => ({})) }));
 vi.mock("@/lib/ai/initiativeTools", () => ({ buildInitiativeTools: vi.fn(() => ({})) }));
 vi.mock("@/lib/ai/researchTools", () => ({ buildResearchTools: vi.fn(() => ({})) }));
+vi.mock("@/lib/ai/infraTools", () => ({ buildInfraTools: vi.fn(() => ({})) }));
 vi.mock("@/lib/canvas/linkedWorkspaces", () => ({ getLinkedWorkspacesForInitiative: vi.fn(() => []) }));
 vi.mock("@/lib/ai/message-sanitizer", () => ({ sanitizeAndCompleteToolCalls: vi.fn(async (msgs: unknown) => msgs) }));
 vi.mock("@/lib/ai/provider", () => ({ getModel: vi.fn(() => ({})), getApiKeyForProvider: vi.fn(() => "key") }));
@@ -42,6 +43,7 @@ vi.mock("@/lib/constants/prompt", () => ({
   getResearchCapabilitySnippet: vi.fn(() => ""),
   getConnectionsCapabilitySnippet: vi.fn(() => ""),
   getGraphWalkerCapabilitySnippet: vi.fn(() => ""),
+  getInfraCapabilitySnippet: vi.fn(() => ""),
   getCanvasPromptSuffix: vi.fn(() => ""),
 }));
 
