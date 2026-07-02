@@ -139,7 +139,10 @@ export type CanvasConversationUpdateReason =
   | "deferred-check-fired"
   // A recurring automation fired: the cron created a fresh org-canvas
   // conversation and appended the agent's response to it.
-  | "automation";
+  | "automation"
+  // A graph-walk sub-agent completed and fanned its synthesized answer
+  // back into the conversation as an assistant bubble.
+  | "graph_walk";
 
 /**
  * Fire-and-forget broadcast that a canvas conversation's `messages` JSON

@@ -57,6 +57,7 @@ import {
   fetchConceptsForWorkspaces,
 } from "@/lib/ai/workspaceConfig";
 import type { CapturedSearchResult, DispatchedResearchIntent } from "@/lib/ai/researchTools";
+import type { DispatchedGraphWalkIntent } from "@/lib/ai/graphWalkDispatchTools";
 import {
   ALL_CAPABILITIES,
   composeCapabilityPromptSuffix,
@@ -287,6 +288,20 @@ export interface RunCanvasAgentOptions {
    */
   dispatchedResearch?: DispatchedResearchIntent[];
   /**
+   * Mutable collector for `dispatch_graph_walk` intents. When provided,
+   * the internally-wired `dispatch_graph_walk` tool will push each
+   * dispatched intent here so the caller's `after()` block can schedule
+   * graph-walk workers. Sibling pattern to `dispatchedResearch`.
+   */
+  dispatchedGraphWalks?: DispatchedGraphWalkIntent[];
+  /**
+   * Sink for the sub-agent's synthesized graph-walk answer. Only
+   * meaningful in a graph-walk sub-agent context (set by the worker);
+   * absent in the parent canvas agent. When present, `finalize_graph_walk`
+   * writes the answer here instead of being a no-op.
+   */
+  graphWalkAnswerSink?: { answer: string | null };
+  /**
    * Per-step override hook, forwarded verbatim to `streamText`. Lets a
    * caller change tools / tool-choice / messages between steps (e.g. the
    * research sub-agent injecting an elapsed-time note and, past its hard
@@ -376,7 +391,7 @@ export interface RunCanvasAgentResult {
    */
   promptResolutions: Record<
     string,
-    { prompt_id: number; prompt_version_id: number | null }
+    { prompt_id: string; prompt_version_id: string | null }
   >;
 }
 
@@ -540,6 +555,8 @@ export async function runCanvasAgent(
     currentCanvasConversationId,
     additionalTools,
     dispatchedResearch,
+    dispatchedGraphWalks,
+    graphWalkAnswerSink,
     cachedConcepts,
     prepareStep,
     extraStopConditions,
@@ -608,7 +625,7 @@ export async function runCanvasAgent(
   // resolved to the in-repo default (no version to attribute).
   const promptResolutions: Record<
     string,
-    { prompt_id: number; prompt_version_id: number | null }
+    { prompt_id: string; prompt_version_id: string | null }
   > = {};
   // Per-call web_search capture, used by `update_research`'s execute
   // closure to linkify Anthropic `<cite index="N-M">` tags. Empty
@@ -659,6 +676,8 @@ export async function runCanvasAgent(
           chatAgentModel: modelName,
           capturedWebSearchResults,
           dispatchedResearch,
+          dispatchedGraphWalks,
+          graphWalkAnswerSink,
         }),
       };
     }
@@ -779,6 +798,8 @@ export async function runCanvasAgent(
           chatAgentModel: modelName,
           capturedWebSearchResults,
           dispatchedResearch,
+          dispatchedGraphWalks,
+          graphWalkAnswerSink,
         }),
       };
     }
