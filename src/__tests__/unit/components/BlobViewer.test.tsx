@@ -88,7 +88,13 @@ function makeBlobJson(stackTrace: string = SAMPLE_STACK): string {
 async function expandEvent(eventId: string) {
   const toggle = screen.getByTestId(`event-toggle-${eventId}`);
   fireEvent.click(toggle);
-  await waitFor(() => screen.getByTestId(`event-blob-${eventId}`));
+  // Wait for the blob container AND for loading to finish (skeleton gone)
+  await waitFor(() => {
+    const container = screen.getByTestId(`event-blob-${eventId}`);
+    const skeleton = container.querySelector(".animate-pulse");
+    if (skeleton) throw new Error("Still loading");
+    return container;
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -218,8 +224,9 @@ describe("BlobViewer — stack trace rendering", () => {
     render(<ErrorIssueDetail detail={makeDetail(event)} />);
     await expandEvent("evt-1");
 
+    // No anchor links should be present (queryAllByRole won't throw when empty)
     expect(screen.queryAllByRole("link")).toHaveLength(0);
-    // Text still visible
+    // But the raw frame text is still rendered
     expect(screen.getByText(/ProductList/, { exact: false })).toBeInTheDocument();
   });
 
