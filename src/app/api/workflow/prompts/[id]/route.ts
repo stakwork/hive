@@ -56,15 +56,21 @@ function shapePromptDetail(p: {
   syncStatus: string;
   createdAt: Date;
   updatedAt: Date;
-  versions: { id: string }[];
+  versions: { id: string; versionNumber: number; value: string }[];
 }) {
+  // current_version_id = latest (highest versionNumber) version id.
+  // This differs from published_version_id when an unpublished draft exists.
+  const latestVersion = p.versions[0]; // already ordered versionNumber desc
+  const currentVersionId = latestVersion?.id ?? p.publishedVersionId;
+  const currentValue = latestVersion?.value ?? p.value;
+
   return {
     id: p.id,
     name: p.name,
-    value: p.value,
+    value: currentValue,
     description: p.description ?? "",
     published_version_id: p.publishedVersionId,
-    current_version_id: p.publishedVersionId,
+    current_version_id: currentVersionId,
     stakwork_id: p.stakworkId,
     sync_status: p.syncStatus,
     version_count: p.versions.length,
@@ -91,7 +97,12 @@ export async function GET(
 
     const prompt = await db.prompt.findUnique({
       where: { id },
-      include: { versions: { select: { id: true } } },
+      include: {
+        versions: {
+          select: { id: true, versionNumber: true, value: true },
+          orderBy: { versionNumber: "desc" },
+        },
+      },
     });
     if (!prompt) {
       return NextResponse.json({ error: "Prompt not found" }, { status: 404 });
@@ -141,7 +152,7 @@ export async function PUT(
       return NextResponse.json({ error: "Prompt not found" }, { status: 404 });
     }
 
-    const { prompt } = await writePromptThrough({
+    await writePromptThrough({
       promptId: id,
       name: name ?? existing.name,
       value,
@@ -149,11 +160,28 @@ export async function PUT(
       userId,
     });
 
-    return NextResponse.json({ success: true, data: shapePromptDetail({ ...prompt, versions: [] }) });
+    // Refetch with versions (ordered desc) so shapePromptDetail can expose current_version_id = latest draft.
+    const updated = await db.prompt.findUnique({
+      where: { id },
+      include: {
+        versions: {
+          select: { id: true, versionNumber: true, value: true },
+          orderBy: { versionNumber: "desc" },
+        },
+      },
+    });
+    if (!updated) {
+      return NextResponse.json({ error: "Prompt not found after update" }, { status: 404 });
+    }
+
+    return NextResponse.json({ success: true, data: shapePromptDetail(updated) });
   } catch (err: unknown) {
     const e = err as { status?: number; message?: string };
     if (e.status === 404) {
       return NextResponse.json({ error: e.message }, { status: 404 });
+    }
+    if (e.status === 409) {
+      return NextResponse.json({ error: e.message }, { status: 409 });
     }
     console.error("Error updating prompt:", err);
     return NextResponse.json({ error: "Failed to update prompt" }, { status: 500 });
