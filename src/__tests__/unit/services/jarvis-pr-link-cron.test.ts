@@ -35,12 +35,12 @@ function prNode(repo: string, number: number, ref_id: string, dateSec: number) {
 }
 
 function taskNode(taskId: string, ref_id: string) {
-  return { ref_id, node_type: "Hivetask", date_added_to_graph: 0, properties: { task_id: taskId } };
+  return { ref_id, node_type: "HiveTask", date_added_to_graph: 0, properties: { task_id: taskId } };
 }
 
 /**
  * The cron now calls searchLatestByTypes twice per workspace: once for
- * `PullRequest` nodes and once for `Hivetask` nodes (to resolve task ref_ids).
+ * `PullRequest` nodes and once for `HiveTask` nodes (to resolve task ref_ids).
  * Dispatch on the requested node type so each call gets the right payload.
  */
 function mockSearch(
@@ -49,7 +49,7 @@ function mockSearch(
 ) {
   mockedSearch.mockImplementation(async (_cfg: any, nodeTypes: any) => {
     if ("PullRequest" in nodeTypes) return prResult as any;
-    if ("Hivetask" in nodeTypes) return { ok: true, nodes: taskNodes } as any;
+    if ("HiveTask" in nodeTypes) return { ok: true, nodes: taskNodes } as any;
     return { ok: true, nodes: [] } as any;
   });
 }
@@ -117,7 +117,7 @@ describe("runJarvisPrLink", () => {
       timeoutMs: expect.any(Number),
     });
     // task ref_ids are resolved via a full HiveTask pull
-    expect(mockedSearch).toHaveBeenCalledWith(CFG, { Hivetask: 100_000 }, {
+    expect(mockedSearch).toHaveBeenCalledWith(CFG, { HiveTask: 100_000 }, {
       withProperties: true,
       timeoutMs: expect.any(Number),
     });
