@@ -731,6 +731,41 @@ export function getGraphWalkDispatchSnippet(): string {
   - The traversal is shallow (1–2 hops)`;
 }
 
+export function getInfraCapabilitySnippet(): string {
+  return `
+
+## Infra Tools
+
+You have one **read-only** tool for inspecting a workspace's stored pod infrastructure config files.
+
+### Tool
+
+- **\`read_pod_infra({ workspace, file?, listOnly? })\`** — Read the pod config files stored on a workspace's swarm: \`Dockerfile\`, \`pm2.config.js\`, \`docker-compose.yml\`, \`devcontainer.json\`, and any other provisioned files. Env-var values inside \`pm2.config.js\` are **automatically masked** (replaced with \`****\`); non-sensitive service-config vars (e.g. port, name) are preserved.
+
+### Input
+
+- \`workspace\` (**required**) — slug or id of the workspace to read from. Must belong to this org and be accessible to you.
+- \`listOnly\` (**optional**, boolean) — Return only the filenames present and a compact services summary; no file bodies. Use this first to see what's available before pulling large files.
+- \`file\` (**optional**, string) — Return only a single named file (e.g. \`"Dockerfile"\` or \`"pm2.config.js"\`). If the named file isn't present, an error lists available filenames.
+
+### Modes
+
+1. **\`listOnly: true\`** — Filenames + service count/names. Cheapest; use first when you're not sure what's provisioned.
+2. **\`file: "<name>"\`** — Single decoded (masked if pm2) file body.
+3. **Default (no \`listOnly\` or \`file\`)** — All decoded (masked) files + full services list.
+
+### Caveats
+
+- Env-var values in \`pm2.config.js\` are **always masked** — do not attempt to reconstruct secrets from this output. Use it to understand the service topology and config structure, not to read credentials.
+- This tool is **read-only**: it never modifies, proposes, or creates anything.
+- If the workspace has no swarm or hasn't been provisioned yet, you'll receive a clear \`not_provisioned\` message — not an error.
+
+### When to load this capability
+
+Load \`infra\` when the user asks about a workspace's Docker setup, Dockerfile, pm2 services, docker-compose config, build environment, pod provisioning, or container configuration — but NOT when they want to edit or change env vars (this tool cannot write anything).
+`;
+}
+
 export function getGraphWalkerCapabilitySnippet(): string {
   return `
 

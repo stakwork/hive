@@ -23,7 +23,15 @@ export interface GraphWalkFanOutPayload {
   answer: string;
   /** "ready" when the sub-agent produced an answer; "failed" otherwise. */
   status: "ready" | "failed";
-}
+  /**
+   * Id of the standalone (history-hidden, `source: "graph-walk"`)
+   * SharedConversation row that holds the sub-agent's full tool-call
+   * trace. Stashed on the result bubble's `source` so the UI can
+   * deep-link to "view graph walk trace". Absent when the trace write
+   * failed (non-fatal — the answer bubble still lands).
+   */
+  detailConversationId?: string;
+};
 
 /** Row shape written into SharedConversation.messages. */
 type GraphWalkMessageRow = {
@@ -36,6 +44,7 @@ type GraphWalkMessageRow = {
     graphWalkId: string;
     title: string;
     status: string;
+    detailConversationId?: string;
   };
 };
 
@@ -49,7 +58,7 @@ export async function fanOutGraphWalkToCanvas(
   conversationId: string,
   payload: GraphWalkFanOutPayload,
 ): Promise<void> {
-  const { graphWalkId, title, answer, status } = payload;
+  const { graphWalkId, title, answer, status, detailConversationId } = payload;
 
   try {
     let didAppend = false;
@@ -93,6 +102,7 @@ export async function fanOutGraphWalkToCanvas(
           graphWalkId,
           title,
           status,
+          ...(detailConversationId ? { detailConversationId } : {}),
         },
       };
 
