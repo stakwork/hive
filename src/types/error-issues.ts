@@ -31,6 +31,9 @@ export interface ErrorEventRecord {
   environment: string | null;
   release: string | null;
   fingerprint: string;
+  commitSha: string | null;
+  repositoryUrl: string | null;
+  defaultBranch: string | null;
   createdAt: string;
 }
 
