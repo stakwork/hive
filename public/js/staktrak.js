@@ -579,6 +579,9 @@ var userBehaviour = (() => {
       return `[data-testid="${meta.testId}"]`;
     if (meta.id && /^[a-zA-Z][\w-]*$/.test(meta.id))
       return `#${meta.id}`;
+    if (meta.role && meta.accessibleName && meta.accessibleName.length < 60) {
+      return `role:${meta.role}[name="${meta.accessibleName.replace(/"/g, '\\"')}"]`;
+    }
     if (typeof document !== "undefined") {
       const structural = [current, ...fallbacks].filter((s) => s && !s.startsWith("text=") && !s.startsWith("[") && !s.startsWith("#"));
       for (const s of structural) {
@@ -589,9 +592,6 @@ var userBehaviour = (() => {
         } catch (e) {
         }
       }
-    }
-    if (meta.role && meta.accessibleName && meta.accessibleName.length < 60) {
-      return `role:${meta.role}[name="${meta.accessibleName.replace(/"/g, '\\"')}"]`;
     }
     if (meta.accessibleName && meta.accessibleName.length < 40) {
       return `text=${meta.accessibleName.replace(/"/g, '\\"')}:exact`;
@@ -982,741 +982,9 @@ var userBehaviour = (() => {
     }
   }
 
-  // src/playwright-replay/parser.ts
-  function parsePlaywrightTest(testCode) {
-    var _a2, _b;
-    const actions = [];
-    const lines = testCode.split("\n");
-    let lineNumber = 0;
-    const variables = /* @__PURE__ */ new Map();
-    for (const line of lines) {
-      lineNumber++;
-      const trimmed = line.trim();
-      if (!trimmed || trimmed.startsWith("//") || trimmed.startsWith("import") || trimmed.startsWith("test(") || trimmed.includes("async ({ page })") || trimmed === "}); " || trimmed === "});") {
-        continue;
-      }
-      const commentMatch = line.match(/^\s*\/\/\s*(.+)/);
-      const comment = commentMatch ? commentMatch[1] : void 0;
-      try {
-        const variableMatch = trimmed.match(/^const\s+(\w+)\s*=\s*page\.(.+);$/);
-        if (variableMatch) {
-          const [, varName, locatorCall] = variableMatch;
-          const selector = parseLocatorCall(locatorCall);
-          variables.set(varName, selector);
-          continue;
-        }
-        const chainedVariableMatch = trimmed.match(
-          /^const\s+(\w+)\s*=\s*(\w+)\.(.+);$/
-        );
-        if (chainedVariableMatch) {
-          const [, newVarName, baseVarName, chainCall] = chainedVariableMatch;
-          if (variables.has(baseVarName)) {
-            const baseSelector = variables.get(baseVarName);
-            const chainedSelector = parseChainedCall(baseSelector, chainCall);
-            variables.set(newVarName, chainedSelector);
-            continue;
-          }
-        }
-        const awaitVariableCallMatch = trimmed.match(
-          /^await\s+(\w+)\.(\w+)\((.*?)\);?$/
-        );
-        if (awaitVariableCallMatch) {
-          const [, varName, method, args] = awaitVariableCallMatch;
-          if (variables.has(varName)) {
-            const selector = variables.get(varName);
-            const action = parseVariableMethodCall(
-              varName,
-              method,
-              args,
-              comment,
-              lineNumber,
-              selector
-            );
-            if (action) {
-              actions.push(action);
-            }
-            continue;
-          }
-        }
-        const variableCallMatch = trimmed.match(/^(\w+)\.(\w+)\((.*?)\);?$/);
-        if (variableCallMatch) {
-          const [, varName, method, args] = variableCallMatch;
-          if (variables.has(varName)) {
-            const selector = variables.get(varName);
-            const action = parseVariableMethodCall(
-              varName,
-              method,
-              args,
-              comment,
-              lineNumber,
-              selector
-            );
-            if (action) {
-              actions.push(action);
-            }
-            continue;
-          }
-        }
-        const pageLocatorActionMatch = trimmed.match(
-          /^(?:await\s+)?page\.locator\(([^)]+)\)\.(\w+)\((.*?)\);?$/
-        );
-        if (pageLocatorActionMatch) {
-          const [, selectorArg, method, args] = pageLocatorActionMatch;
-          const selector = extractSelectorFromArg(selectorArg);
-          const action = parseDirectAction(
-            method,
-            args,
-            comment,
-            lineNumber,
-            selector
-          );
-          if (action) {
-            actions.push(action);
-          }
-          continue;
-        }
-        const expectVariableMatch = trimmed.match(
-          /^(?:await\s+)?expect\((\w+)\)\.(.+)$/
-        );
-        if (expectVariableMatch) {
-          const [, varName, expectation] = expectVariableMatch;
-          if (variables.has(varName)) {
-            const selector = variables.get(varName);
-            const action = parseExpectStatement(
-              expectation,
-              comment,
-              lineNumber,
-              selector
-            );
-            if (action) {
-              actions.push(action);
-            }
-            continue;
-          }
-        }
-        const expectLocatorMatch = trimmed.match(
-          /^(?:await\s+)?expect\(page\.locator\(([^)]+)\)\)\.(.+)$/
-        );
-        if (expectLocatorMatch) {
-          const [, selectorArg, expectation] = expectLocatorMatch;
-          const selector = extractSelectorFromArg(selectorArg);
-          const action = parseExpectStatement(
-            expectation,
-            comment,
-            lineNumber,
-            selector
-          );
-          if (action) {
-            actions.push(action);
-          }
-          continue;
-        }
-        const waitForSelectorMatch = trimmed.match(
-          /^(?:await\s+)?page\.waitForSelector\(['"](.*?)['"]\);?$/
-        );
-        if (waitForSelectorMatch) {
-          actions.push({
-            type: "waitForSelector",
-            selector: waitForSelectorMatch[1],
-            comment,
-            lineNumber
-          });
-          continue;
-        }
-        if (trimmed.includes("page.goto(")) {
-          const urlMatch = trimmed.match(/page\.goto\(['"](.*?)['"]\)/);
-          if (urlMatch) {
-            actions.push({
-              type: "goto",
-              value: urlMatch[1],
-              comment,
-              lineNumber
-            });
-          }
-        } else if (trimmed.includes("page.setViewportSize(")) {
-          const sizeMatch = trimmed.match(
-            /page\.setViewportSize\(\s*{\s*width:\s*(\d+),\s*height:\s*(\d+)\s*}\s*\)/
-          );
-          if (sizeMatch) {
-            actions.push({
-              type: "setViewportSize",
-              options: {
-                width: parseInt(sizeMatch[1]),
-                height: parseInt(sizeMatch[2])
-              },
-              comment,
-              lineNumber
-            });
-          }
-        } else if (trimmed.includes("page.waitForLoadState(")) {
-          const stateMatch = trimmed.match(
-            /page\.waitForLoadState\(['"](.*?)['"]\)/
-          );
-          actions.push({
-            type: "waitForLoadState",
-            value: stateMatch ? stateMatch[1] : "networkidle",
-            comment,
-            lineNumber
-          });
-        } else if (trimmed.includes("page.click(")) {
-          const selectorMatch = trimmed.match(/page\.click\(['"](.*?)['"]\)/);
-          if (selectorMatch) {
-            actions.push({
-              type: "click",
-              selector: selectorMatch[1],
-              comment,
-              lineNumber
-            });
-          }
-        } else if (trimmed.includes("page.fill(")) {
-          const fillMatch = trimmed.match(
-            /page\.fill\(['"](.*?)['"],\s*['"](.*?)['"]\)/
-          );
-          if (fillMatch) {
-            actions.push({
-              type: "fill",
-              selector: fillMatch[1],
-              value: fillMatch[2],
-              comment,
-              lineNumber
-            });
-          }
-        } else if (trimmed.includes("page.check(")) {
-          const selectorMatch = trimmed.match(/page\.check\(['"](.*?)['"]\)/);
-          if (selectorMatch) {
-            actions.push({
-              type: "check",
-              selector: selectorMatch[1],
-              comment,
-              lineNumber
-            });
-          }
-        } else if (trimmed.includes("page.uncheck(")) {
-          const selectorMatch = trimmed.match(/page\.uncheck\(['"](.*?)['"]\)/);
-          if (selectorMatch) {
-            actions.push({
-              type: "uncheck",
-              selector: selectorMatch[1],
-              comment,
-              lineNumber
-            });
-          }
-        } else if (trimmed.includes("page.selectOption(")) {
-          const selectMatch = trimmed.match(
-            /page\.selectOption\(['"](.*?)['"],\s*['"](.*?)['"]\)/
-          );
-          if (selectMatch) {
-            actions.push({
-              type: "selectOption",
-              selector: selectMatch[1],
-              value: selectMatch[2],
-              comment,
-              lineNumber
-            });
-          }
-        } else if (trimmed.includes("page.waitForTimeout(")) {
-          const timeoutMatch = trimmed.match(/page\.waitForTimeout\((\d+)\)/);
-          if (timeoutMatch) {
-            actions.push({
-              type: "waitForTimeout",
-              value: parseInt(timeoutMatch[1]),
-              comment,
-              lineNumber
-            });
-          }
-        } else if (trimmed.includes("page.waitForSelector(")) {
-          const selectorMatch = trimmed.match(
-            /page\.waitForSelector\(['"](.*?)['"]\)/
-          );
-          if (selectorMatch) {
-            actions.push({
-              type: "waitForSelector",
-              selector: selectorMatch[1],
-              comment,
-              lineNumber
-            });
-          }
-        } else if (trimmed.includes("page.waitForURL(")) {
-          const urlMatch = trimmed.match(/page\.waitForURL\(['\"](.*?)['\"]\)/);
-          if (urlMatch) {
-            actions.push({
-              type: "waitForURL",
-              value: urlMatch[1],
-              comment,
-              lineNumber
-            });
-          }
-        } else if (/page\.[a-zA-Z]+\([^)]*\)\.click\([^)]*\)\s*;?$/.test(trimmed)) {
-          const locatorCallMatch = trimmed.match(/page\.([a-zA-Z]+\([^)]*\))\.click\([^)]*\)/);
-          if (locatorCallMatch) {
-            const selector = parseLocatorCall(locatorCallMatch[1]);
-            actions.push({
-              type: "click",
-              selector,
-              comment,
-              lineNumber
-            });
-          }
-        } else if (trimmed.startsWith("await Promise.all([") && trimmed.includes("waitForURL")) {
-          const blockLines = [trimmed];
-          let j = lineNumber;
-          for (let k = 1; k <= 6 && lineNumber + k - 1 < lines.length; k++) {
-            const peek = lines[lineNumber + k - 1].trim();
-            blockLines.push(peek);
-            if (peek.endsWith("]);"))
-              break;
-          }
-          const block = blockLines.join(" ");
-          const url = (_a2 = block.match(/page\.waitForURL\(['\"](.*?)['\"]\)/)) == null ? void 0 : _a2[1];
-          const clickSelector = (_b = block.match(/page\.(getBy[^.]+\([^)]*\)|locator\([^)]*\))\.click\(\)/)) == null ? void 0 : _b[1];
-          if (url) {
-            actions.push({ type: "waitForURL", value: url, comment: (comment ? comment + " " : "") + "(compound)", lineNumber });
-          }
-          if (clickSelector) {
-            const selector = parseLocatorCall(clickSelector);
-            actions.push({ type: "click", selector, comment, lineNumber });
-          }
-        } else if (trimmed.includes("page.getByRole(")) {
-          const roleMatch = trimmed.match(
-            /page\.getByRole\(['"](.*?)['"](?:,\s*\{\s*name:\s*['"](.*?)['"]\s*\})?\)/
-          );
-          if (roleMatch) {
-            const [, role, name] = roleMatch;
-            const selector = name ? `role:${role}[name="${name}"]` : `role:${role}`;
-            actions.push({
-              type: "click",
-              selector,
-              comment,
-              lineNumber
-            });
-          }
-        } else if (trimmed.includes("page.getByLabel(")) {
-          const labelMatch = trimmed.match(/page\.getByLabel\(['"](.*?)['"]\)/);
-          if (labelMatch) {
-            actions.push({
-              type: "click",
-              selector: `getByLabel:${labelMatch[1]}`,
-              comment,
-              lineNumber
-            });
-          }
-        } else if (trimmed.includes("page.getByPlaceholder(")) {
-          const placeholderMatch = trimmed.match(
-            /page\.getByPlaceholder\(['"](.*?)['"]\)/
-          );
-          if (placeholderMatch) {
-            actions.push({
-              type: "click",
-              selector: `getByPlaceholder:${placeholderMatch[1]}`,
-              comment,
-              lineNumber
-            });
-          }
-        } else if (trimmed.includes("page.getByTestId(")) {
-          const testIdMatch = trimmed.match(/page\.getByTestId\(['"](.*?)['"]\)/);
-          if (testIdMatch) {
-            actions.push({
-              type: "click",
-              selector: `getByTestId:${testIdMatch[1]}`,
-              comment,
-              lineNumber
-            });
-          }
-        } else if (trimmed.includes("page.getByTitle(")) {
-          const titleMatch = trimmed.match(/page\.getByTitle\(['"](.*?)['"]\)/);
-          if (titleMatch) {
-            actions.push({
-              type: "click",
-              selector: `getByTitle:${titleMatch[1]}`,
-              comment,
-              lineNumber
-            });
-          }
-        } else if (trimmed.includes("page.getByAltText(")) {
-          const altMatch = trimmed.match(/page\.getByAltText\(['"](.*?)['"]\)/);
-          if (altMatch) {
-            actions.push({
-              type: "click",
-              selector: `getByAltText:${altMatch[1]}`,
-              comment,
-              lineNumber
-            });
-          }
-        } else if (trimmed.includes("expect(") && trimmed.includes("toBeVisible()")) {
-          const getByTextMatch = trimmed.match(
-            /expect\(page\.getByText\(['"](.*?)['"](?:,\s*\{\s*exact:\s*(true|false)\s*\})?\)\)\.toBeVisible\(\)/
-          );
-          if (getByTextMatch) {
-            const text = getByTextMatch[1];
-            const exact = getByTextMatch[2] === "true";
-            actions.push({
-              type: "expect",
-              selector: `getByText:${text}`,
-              expectation: "toBeVisible",
-              options: { exact },
-              comment,
-              lineNumber
-            });
-          } else {
-            const locatorFilterMatch = trimmed.match(
-              /expect\(page\.locator\(['"](.*?)['"]\)\.filter\(\{\s*hasText:\s*['"](.*?)['"]\s*\}\)\)\.toBeVisible\(\)/
-            );
-            if (locatorFilterMatch) {
-              const selector = locatorFilterMatch[1];
-              const filterText = locatorFilterMatch[2];
-              actions.push({
-                type: "expect",
-                selector: `${selector}:has-text("${filterText}")`,
-                expectation: "toBeVisible",
-                comment,
-                lineNumber
-              });
-            } else {
-              const expectMatch = trimmed.match(
-                /expect\(page\.locator\(['"](.*?)['"]\)\)\.toBeVisible\(\)/
-              );
-              if (expectMatch) {
-                actions.push({
-                  type: "expect",
-                  selector: expectMatch[1],
-                  expectation: "toBeVisible",
-                  comment,
-                  lineNumber
-                });
-              }
-            }
-          }
-        } else if (trimmed.includes("expect(") && trimmed.includes("toContainText(")) {
-          const expectMatch = trimmed.match(
-            /expect\(page\.locator\(['"](.*?)['"]\)\)\.toContainText\(['"](.*?)['"]\)/
-          );
-          if (expectMatch) {
-            actions.push({
-              type: "expect",
-              selector: expectMatch[1],
-              value: expectMatch[2],
-              expectation: "toContainText",
-              comment,
-              lineNumber
-            });
-          }
-        } else if (trimmed.includes("expect(") && trimmed.includes("toBeChecked()")) {
-          const expectMatch = trimmed.match(
-            /expect\(page\.locator\(['"](.*?)['"]\)\)\.toBeChecked\(\)/
-          );
-          if (expectMatch) {
-            actions.push({
-              type: "expect",
-              selector: expectMatch[1],
-              expectation: "toBeChecked",
-              comment,
-              lineNumber
-            });
-          }
-        } else if (trimmed.includes("expect(") && trimmed.includes("not.toBeChecked()")) {
-          const expectMatch = trimmed.match(
-            /expect\(page\.locator\(['"](.*?)['"]\)\)\.not\.toBeChecked\(\)/
-          );
-          if (expectMatch) {
-            actions.push({
-              type: "expect",
-              selector: expectMatch[1],
-              expectation: "not.toBeChecked",
-              comment,
-              lineNumber
-            });
-          }
-        }
-      } catch (error) {
-        console.warn(`Failed to parse line ${lineNumber}: ${trimmed}`, error);
-      }
-    }
-    return actions;
-  }
-  function parseVariableMethodCall(varName, method, args, comment, lineNumber, selector) {
-    var _a2, _b;
-    const actualSelector = selector || `variable:${varName}`;
-    switch (method) {
-      case "click":
-        return { type: "click", selector: actualSelector, comment, lineNumber };
-      case "fill":
-        const fillValue = ((_a2 = args.match(/['"](.*?)['"]/)) == null ? void 0 : _a2[1]) || "";
-        return {
-          type: "fill",
-          selector: actualSelector,
-          value: fillValue,
-          comment,
-          lineNumber
-        };
-      case "check":
-        return { type: "check", selector: actualSelector, comment, lineNumber };
-      case "uncheck":
-        return { type: "uncheck", selector: actualSelector, comment, lineNumber };
-      case "selectOption":
-        const optionValue = ((_b = args.match(/['"](.*?)['"]/)) == null ? void 0 : _b[1]) || "";
-        return {
-          type: "selectOption",
-          selector: actualSelector,
-          value: optionValue,
-          comment,
-          lineNumber
-        };
-      case "waitFor":
-        const stateMatch = args.match(/{\s*state:\s*['"](.*?)['"]\s*}/);
-        return {
-          type: "waitFor",
-          selector: actualSelector,
-          options: stateMatch ? { state: stateMatch[1] } : {},
-          comment,
-          lineNumber
-        };
-      case "hover":
-        return { type: "hover", selector: actualSelector, comment, lineNumber };
-      case "focus":
-        return { type: "focus", selector: actualSelector, comment, lineNumber };
-      case "blur":
-        return { type: "blur", selector: actualSelector, comment, lineNumber };
-      case "scrollIntoViewIfNeeded":
-        return {
-          type: "scrollIntoView",
-          selector: actualSelector,
-          comment,
-          lineNumber
-        };
-      default:
-        return null;
-    }
-  }
-  function parseLocatorCall(locatorCall) {
-    const roleMatch = locatorCall.match(
-      /getByRole\(['"](.*?)['"](?:,\s*\{\s*name:\s*([^}]+)\s*\})?\)/
-    );
-    if (roleMatch) {
-      const [, role, nameArg] = roleMatch;
-      if (nameArg) {
-        const regexMatch = nameArg.match(/\/(.*?)\/([gimuy]*)/);
-        if (regexMatch) {
-          return `role:${role}[name-regex="/${regexMatch[1]}/${regexMatch[2]}"]`;
-        }
-        const stringMatch = nameArg.match(/['"](.*?)['"]/);
-        if (stringMatch) {
-          return `role:${role}[name="${stringMatch[1]}"]`;
-        }
-      }
-      return `role:${role}`;
-    }
-    const textMatch = locatorCall.match(/getByText\(([^)]+)\)/);
-    if (textMatch) {
-      const args = textMatch[1];
-      const regexMatch = args.match(/\/(.*?)\/([gimuy]*)/);
-      if (regexMatch) {
-        return `getByText-regex:/${regexMatch[1]}/${regexMatch[2]}`;
-      }
-      const stringMatch = args.match(
-        /['"](.*?)['"](?:,\s*\{\s*exact:\s*(true|false)\s*\})?/
-      );
-      if (stringMatch) {
-        const [, text, exact] = stringMatch;
-        return `getByText:${text}${exact === "true" ? ":exact" : ""}`;
-      }
-    }
-    const labelMatch = locatorCall.match(/getByLabel\(['"](.*?)['"]\)/);
-    if (labelMatch)
-      return `getByLabel:${labelMatch[1]}`;
-    const placeholderMatch = locatorCall.match(
-      /getByPlaceholder\(['"](.*?)['"]\)/
-    );
-    if (placeholderMatch)
-      return `getByPlaceholder:${placeholderMatch[1]}`;
-    const testIdMatch = locatorCall.match(/getByTestId\(['"](.*?)['"]\)/);
-    if (testIdMatch)
-      return `getByTestId:${testIdMatch[1]}`;
-    const titleMatch = locatorCall.match(/getByTitle\(['"](.*?)['"]\)/);
-    if (titleMatch)
-      return `getByTitle:${titleMatch[1]}`;
-    const altMatch = locatorCall.match(/getByAltText\(['"](.*?)['"]\)/);
-    if (altMatch)
-      return `getByAltText:${altMatch[1]}`;
-    const locatorMatch = locatorCall.match(/locator\(['"](.*?)['"]\)/);
-    if (locatorMatch)
-      return locatorMatch[1];
-    const locatorWithOptionsMatch = locatorCall.match(
-      /locator\(['"](.*?)['"],\s*\{\s*hasText:\s*['"](.*?)['"]\s*\}/
-    );
-    if (locatorWithOptionsMatch) {
-      const [, selector, text] = locatorWithOptionsMatch;
-      return `${selector}:has-text("${text}")`;
-    }
-    return locatorCall;
-  }
-  function parseChainedCall(baseSelector, chainCall) {
-    const filterTextMatch = chainCall.match(
-      /filter\(\{\s*hasText:\s*['"](.*?)['"]\s*\}/
-    );
-    if (filterTextMatch)
-      return `${baseSelector}:filter-text("${filterTextMatch[1]}")`;
-    const filterRegexMatch = chainCall.match(
-      /filter\(\{\s*hasText:\s*\/(.*?)\/([gimuy]*)\s*\}/
-    );
-    if (filterRegexMatch)
-      return `${baseSelector}:filter-regex("/${filterRegexMatch[1]}/${filterRegexMatch[2]}")`;
-    const filterHasMatch = chainCall.match(
-      /filter\(\{\s*has:\s*page\.(.+?)\s*\}/
-    );
-    if (filterHasMatch) {
-      const innerSelector = parseLocatorCall(filterHasMatch[1]);
-      return `${baseSelector}:filter-has("${innerSelector}")`;
-    }
-    const filterHasNotMatch = chainCall.match(
-      /filter\(\{\s*hasNot:\s*page\.(.+?)\s*\}/
-    );
-    if (filterHasNotMatch) {
-      const innerSelector = parseLocatorCall(filterHasNotMatch[1]);
-      return `${baseSelector}:filter-has-not("${innerSelector}")`;
-    }
-    if (chainCall.includes("first()"))
-      return `${baseSelector}:first`;
-    if (chainCall.includes("last()"))
-      return `${baseSelector}:last`;
-    const nthMatch = chainCall.match(/nth\((\d+)\)/);
-    if (nthMatch)
-      return `${baseSelector}:nth(${nthMatch[1]})`;
-    const andMatch = chainCall.match(/and\(page\.(.+?)\)/);
-    if (andMatch) {
-      const otherSelector = parseLocatorCall(andMatch[1]);
-      return `${baseSelector}:and("${otherSelector}")`;
-    }
-    const orMatch = chainCall.match(/or\(page\.(.+?)\)/);
-    if (orMatch) {
-      const otherSelector = parseLocatorCall(orMatch[1]);
-      return `${baseSelector}:or("${otherSelector}")`;
-    }
-    const getByMatch = chainCall.match(/^(getBy\w+\([^)]+\))/);
-    if (getByMatch) {
-      const innerSelector = parseLocatorCall(getByMatch[1]);
-      return `${baseSelector} >> ${innerSelector}`;
-    }
-    const locatorChainMatch = chainCall.match(/^locator\(['"](.*?)['"]\)/);
-    if (locatorChainMatch)
-      return `${baseSelector} >> ${locatorChainMatch[1]}`;
-    return `${baseSelector}:${chainCall}`;
-  }
-  function extractSelectorFromArg(selectorArg) {
-    return selectorArg.trim().replace(/^['"]|['"]$/g, "");
-  }
-  function parseDirectAction(method, args, comment, lineNumber, selector) {
-    var _a2, _b;
-    switch (method) {
-      case "click":
-        return { type: "click", selector, comment, lineNumber };
-      case "fill":
-        const fillValue = ((_a2 = args.match(/['"](.*?)['"]/)) == null ? void 0 : _a2[1]) || "";
-        return { type: "fill", selector, value: fillValue, comment, lineNumber };
-      case "check":
-        return { type: "check", selector, comment, lineNumber };
-      case "uncheck":
-        return { type: "uncheck", selector, comment, lineNumber };
-      case "selectOption":
-        const optionValue = ((_b = args.match(/['"](.*?)['"]/)) == null ? void 0 : _b[1]) || "";
-        return {
-          type: "selectOption",
-          selector,
-          value: optionValue,
-          comment,
-          lineNumber
-        };
-      case "waitFor":
-        const stateMatch = args.match(/{\s*state:\s*['"](.*?)['"]\s*}/);
-        return {
-          type: "waitFor",
-          selector,
-          options: stateMatch ? { state: stateMatch[1] } : {},
-          comment,
-          lineNumber
-        };
-      case "hover":
-        return { type: "hover", selector, comment, lineNumber };
-      case "focus":
-        return { type: "focus", selector, comment, lineNumber };
-      case "blur":
-        return { type: "blur", selector, comment, lineNumber };
-      case "scrollIntoViewIfNeeded":
-        return { type: "scrollIntoView", selector, comment, lineNumber };
-      default:
-        return null;
-    }
-  }
-  function parseExpectStatement(expectation, comment, lineNumber, selector) {
-    if (expectation.includes("toBeVisible()")) {
-      return {
-        type: "expect",
-        selector,
-        expectation: "toBeVisible",
-        comment,
-        lineNumber
-      };
-    }
-    const toContainTextMatch = expectation.match(
-      /toContainText\(['"](.*?)['"]\)/
-    );
-    if (toContainTextMatch) {
-      return {
-        type: "expect",
-        selector,
-        expectation: "toContainText",
-        value: toContainTextMatch[1],
-        comment,
-        lineNumber
-      };
-    }
-    const toHaveTextMatch = expectation.match(/toHaveText\(['"](.*?)['"]\)/);
-    if (toHaveTextMatch) {
-      return {
-        type: "expect",
-        selector,
-        expectation: "toHaveText",
-        value: toHaveTextMatch[1],
-        comment,
-        lineNumber
-      };
-    }
-    if (expectation.includes("toBeChecked()")) {
-      return {
-        type: "expect",
-        selector,
-        expectation: "toBeChecked",
-        comment,
-        lineNumber
-      };
-    }
-    if (expectation.includes("not.toBeChecked()")) {
-      return {
-        type: "expect",
-        selector,
-        expectation: "not.toBeChecked",
-        comment,
-        lineNumber
-      };
-    }
-    const toHaveCountMatch = expectation.match(/toHaveCount\((\d+)\)/);
-    if (toHaveCountMatch) {
-      return {
-        type: "expect",
-        selector,
-        expectation: "toHaveCount",
-        value: parseInt(toHaveCountMatch[1]),
-        comment,
-        lineNumber
-      };
-    }
-    return null;
-  }
-
   // src/playwright-replay/executor.ts
   var __stakReplayMatch = window.__stakTrakReplayMatch || { last: null };
   window.__stakTrakReplayMatch = __stakReplayMatch;
-  var __stakReplayState = window.__stakTrakReplayState || { lastStructural: null, lastEl: null };
-  window.__stakTrakReplayState = __stakReplayState;
   window.__stakTrakSelectorMap = window.__stakTrakSelectorMap || {};
   var __stakWarned = window.__stakTrakWarned || {};
   window.__stakTrakWarned = __stakWarned;
@@ -1726,11 +994,17 @@ var userBehaviour = (() => {
     } catch (e) {
     }
     const htmlElement = element;
-    const original = {
-      border: htmlElement.style.border,
-      boxShadow: htmlElement.style.boxShadow,
-      backgroundColor: htmlElement.style.backgroundColor
-    };
+    const anyEl = htmlElement;
+    if (anyEl.__stakRevertTimer) {
+      clearTimeout(anyEl.__stakRevertTimer);
+    } else {
+      anyEl.__stakOriginalStyle = {
+        border: htmlElement.style.border,
+        boxShadow: htmlElement.style.boxShadow,
+        backgroundColor: htmlElement.style.backgroundColor,
+        transition: htmlElement.style.transition
+      };
+    }
     htmlElement.style.border = "3px solid #ff6b6b";
     htmlElement.style.boxShadow = "0 0 20px rgba(255, 107, 107, 0.8)";
     htmlElement.style.backgroundColor = "rgba(255, 107, 107, 0.2)";
@@ -1742,11 +1016,14 @@ var userBehaviour = (() => {
       if (last.text)
         htmlElement.setAttribute("data-staktrak-matched-text", last.text);
     }
-    setTimeout(() => {
-      htmlElement.style.border = original.border;
-      htmlElement.style.boxShadow = original.boxShadow;
-      htmlElement.style.backgroundColor = original.backgroundColor;
-      htmlElement.style.transition = "";
+    anyEl.__stakRevertTimer = setTimeout(() => {
+      const o = anyEl.__stakOriginalStyle || {};
+      htmlElement.style.border = o.border || "";
+      htmlElement.style.boxShadow = o.boxShadow || "";
+      htmlElement.style.backgroundColor = o.backgroundColor || "";
+      htmlElement.style.transition = o.transition || "";
+      delete anyEl.__stakRevertTimer;
+      delete anyEl.__stakOriginalStyle;
     }, 1500);
   }
   function normalizeUrl(u) {
@@ -1785,6 +1062,17 @@ var userBehaviour = (() => {
     try {
       switch (action.type) {
         case "goto" /* GOTO */:
+          if (action.value && typeof action.value === "string") {
+            try {
+              const dest = new URL(action.value, window.location.href);
+              if (dest.origin === window.location.origin && dest.href !== window.location.href) {
+                history.pushState({}, "", dest.href);
+                window.dispatchEvent(new PopStateEvent("popstate"));
+                await new Promise((r) => setTimeout(r, 150));
+              }
+            } catch (e) {
+            }
+          }
           break;
         case "setViewportSize" /* SET_VIEWPORT_SIZE */:
           if (action.options) {
@@ -1900,13 +1188,6 @@ var userBehaviour = (() => {
                 );
                 await new Promise((resolve) => setTimeout(resolve, 10));
                 htmlElement.click();
-                element.dispatchEvent(
-                  new MouseEvent("click", {
-                    bubbles: true,
-                    cancelable: true,
-                    view: window
-                  })
-                );
               } catch (clickError) {
                 throw clickError;
               }
@@ -2116,21 +1397,7 @@ var userBehaviour = (() => {
       try {
         const matches = document.querySelectorAll(selector);
         if (matches.length === 1) {
-          __stakReplayState.lastStructural = selector;
-          __stakReplayState.lastEl = matches[0];
           return matches[0];
-        }
-      } catch (e) {
-      }
-    }
-    if ((selector.startsWith("role:") || selector.startsWith("text=")) && __stakReplayState.lastStructural && __stakReplayState.lastEl) {
-      try {
-        if (document.contains(__stakReplayState.lastEl)) {
-          const acc = getAccessibleName(__stakReplayState.lastEl);
-          const nameMatch = selector.includes('name="') ? selector.includes(`name="${acc}`) : selector.includes(acc || "");
-          if (acc && nameMatch) {
-            return __stakReplayState.lastEl;
-          }
         }
       } catch (e) {
       }
@@ -4276,50 +3543,31 @@ var userBehaviour = (() => {
       console.error(`[Screenshot] Error capturing for actionIndex=${actionIndex}:`, error);
     }
   }
-  function previewPlaywrightTest(testCode) {
-    try {
-      const actions = parsePlaywrightTest(testCode);
-      window.parent.postMessage(
-        {
-          type: "staktrak-playwright-replay-preview-ready",
-          totalActions: actions.length,
-          actions
-        },
-        getParentOrigin()
-      );
-    } catch (error) {
-      window.parent.postMessage(
-        {
-          type: "staktrak-playwright-replay-preview-error",
-          error: error instanceof Error ? error.message : "Unknown error"
-        },
-        getParentOrigin()
-      );
+  function beginReplay(actions, testCode) {
+    if (actions.length === 0) {
+      throw new Error("No valid actions found");
     }
+    playwrightReplayRef.current = {
+      actions,
+      status: "playing" /* PLAYING */,
+      currentActionIndex: 0,
+      testCode,
+      errors: [],
+      timeouts: []
+    };
+    window.parent.postMessage(
+      {
+        type: "staktrak-playwright-replay-started",
+        totalActions: actions.length,
+        actions
+      },
+      getParentOrigin()
+    );
+    executeNextPlaywrightAction();
   }
-  async function startPlaywrightReplay(testCode) {
+  async function startStructuredReplay(actions) {
     try {
-      const actions = parsePlaywrightTest(testCode);
-      if (actions.length === 0) {
-        throw new Error("No valid actions found in test code");
-      }
-      playwrightReplayRef.current = {
-        actions,
-        status: "playing" /* PLAYING */,
-        currentActionIndex: 0,
-        testCode,
-        errors: [],
-        timeouts: []
-      };
-      window.parent.postMessage(
-        {
-          type: "staktrak-playwright-replay-started",
-          totalActions: actions.length,
-          actions
-        },
-        getParentOrigin()
-      );
-      executeNextPlaywrightAction();
+      beginReplay(Array.isArray(actions) ? actions : [], "");
     } catch (error) {
       window.parent.postMessage(
         {
@@ -4365,7 +3613,7 @@ var userBehaviour = (() => {
       state.currentActionIndex++;
       setTimeout(() => {
         executeNextPlaywrightAction();
-      }, 300);
+      }, 500);
     } catch (error) {
       state.errors.push(
         `Action ${state.currentActionIndex + 1}: ${error instanceof Error ? error.message : "Unknown error"}`
@@ -4467,14 +3715,9 @@ var userBehaviour = (() => {
         parentOrigin = event.origin;
       }
       switch (data.type) {
-        case "staktrak-playwright-replay-preview":
-          if (data.testCode) {
-            previewPlaywrightTest(data.testCode);
-          }
-          break;
-        case "staktrak-playwright-replay-start":
-          if (data.testCode) {
-            startPlaywrightReplay(data.testCode);
+        case "staktrak-playwright-replay-structured":
+          if (Array.isArray(data.actions)) {
+            startStructuredReplay(data.actions);
           }
           break;
         case "staktrak-playwright-replay-pause":
@@ -4526,6 +3769,7 @@ var userBehaviour = (() => {
       actions.push({
         type: "click",
         timestamp: cd.timestamp,
+        seq: cd.seq,
         locator: {
           primary: cd.selectors.stabilizedPrimary || cd.selectors.primary,
           fallbacks: cd.selectors.fallbacks || [],
@@ -4543,6 +3787,8 @@ var userBehaviour = (() => {
           type: "waitForURL",
           timestamp: nav.timestamp - 1,
           // ensure ordering between click and nav
+          // Order right after the click that caused it: the nav's own seq is > the click's.
+          seq: nav.seq,
           expectedUrl: nav.url,
           normalizedUrl: normalize(nav.url),
           navRefTimestamp: nav.timestamp
@@ -4551,7 +3797,7 @@ var userBehaviour = (() => {
     }
     for (const nav of navigations) {
       if (!navTimestampsFromClicks.has(nav.timestamp)) {
-        actions.push({ type: "goto", timestamp: nav.timestamp, url: nav.url, normalizedUrl: normalize(nav.url) });
+        actions.push({ type: "goto", timestamp: nav.timestamp, seq: nav.seq, url: nav.url, normalizedUrl: normalize(nav.url) });
       }
     }
     if (results.inputChanges) {
@@ -4560,6 +3806,7 @@ var userBehaviour = (() => {
           actions.push({
             type: "input",
             timestamp: input.timestamp,
+            seq: input.seq,
             locator: { primary: input.elementSelector, fallbacks: [] },
             value: input.value
           });
@@ -4571,6 +3818,7 @@ var userBehaviour = (() => {
         actions.push({
           type: "form",
           timestamp: fe.timestamp,
+          seq: fe.seq,
           locator: { primary: fe.elementSelector, fallbacks: [] },
           formType: fe.type,
           value: fe.value,
@@ -4583,12 +3831,17 @@ var userBehaviour = (() => {
         actions.push({
           type: "assertion",
           timestamp: asrt.timestamp,
+          seq: asrt.seq,
           locator: { primary: asrt.selector, fallbacks: [] },
           value: asrt.value
         });
       }
     }
-    actions.sort((a, b) => a.timestamp - b.timestamp || weightOrder(a.type) - weightOrder(b.type));
+    actions.sort((a, b) => {
+      if (a.seq != null && b.seq != null)
+        return a.seq - b.seq || weightOrder(a.type) - weightOrder(b.type);
+      return a.timestamp - b.timestamp || weightOrder(a.type) - weightOrder(b.type);
+    });
     refineLocators(actions);
     for (let i = actions.length - 1; i > 0; i--) {
       const current = actions[i];
@@ -4716,7 +3969,8 @@ var userBehaviour = (() => {
           this.trackingData.pageNavigation.push({
             type: "navigation",
             url: eventData.url,
-            timestamp: eventData.timestamp
+            timestamp: eventData.timestamp,
+            seq: eventData.seq
           });
           break;
         case "input":
@@ -4724,7 +3978,8 @@ var userBehaviour = (() => {
             elementSelector: eventData.selector || "",
             value: eventData.value,
             timestamp: eventData.timestamp,
-            action: "complete"
+            action: "complete",
+            seq: eventData.seq
           });
           break;
         case "form":
@@ -4734,7 +3989,8 @@ var userBehaviour = (() => {
             checked: eventData.checked,
             value: eventData.value || "",
             text: eventData.text,
-            timestamp: eventData.timestamp
+            timestamp: eventData.timestamp,
+            seq: eventData.seq
           });
           break;
         case "assertion":
@@ -4743,7 +3999,8 @@ var userBehaviour = (() => {
             type: eventData.type || "hasText",
             selector: eventData.selector,
             value: eventData.value || "",
-            timestamp: eventData.timestamp
+            timestamp: eventData.timestamp,
+            seq: eventData.seq
           });
           break;
         default:
@@ -4859,6 +4116,14 @@ var userBehaviour = (() => {
       }, options));
     }
     /**
+     * Structured replay steps for the CURRENT recording — the executor consumes these
+     * directly (no generated text, no re-parse). Single source of truth = trackingData.
+     */
+    getReplaySteps(url) {
+      const actions = resultsToActions(this.trackingData);
+      return actionsToReplaySteps(actions, { baseUrl: url });
+    }
+    /**
      * Get current actions for UI display
      */
     getActions() {
@@ -4899,10 +4164,34 @@ var userBehaviour = (() => {
       this.clear();
     }
   };
-  function escapeTextForAssertion(text) {
-    if (!text)
-      return "";
-    return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  function q(s) {
+    return String(s != null ? s : "").replace(/\\/g, "\\\\").replace(/'/g, "\\'").replace(/\r/g, "").replace(/\n/g, "\\n");
+  }
+  function extractTestId(locator) {
+    if (!locator)
+      return null;
+    for (const cand of [locator.primary, ...locator.fallbacks || []]) {
+      const m = cand && cand.match(/\[data-testid=["']([^"']+)["']\]/);
+      if (m)
+        return m[1];
+    }
+    return null;
+  }
+  function clickExpr(locator) {
+    const testId = extractTestId(locator);
+    if (testId)
+      return `page.getByTestId('${q(testId)}')`;
+    const sel = (locator == null ? void 0 : locator.stableSelector) || (locator == null ? void 0 : locator.primary) || "";
+    const roleM = sel.match(/^role:([a-zA-Z]+)(?:\[name(?:-regex)?="([\s\S]*)"\])?$/);
+    if (roleM) {
+      const [, role, name] = roleM;
+      return name ? `page.getByRole('${q(role)}', { name: '${q(name)}' })` : `page.getByRole('${q(role)}')`;
+    }
+    return cssLocator(locator);
+  }
+  function cssLocator(locator) {
+    const sel = (locator == null ? void 0 : locator.stableSelector) || (locator == null ? void 0 : locator.primary) || "";
+    return `page.locator('${q(sel)}')`;
   }
   function generatePlaywrightTestFromActions(actions, options = {}) {
     const { baseUrl = "" } = options;
@@ -4920,39 +4209,30 @@ var userBehaviour = (() => {
           }
           return "";
         case "click": {
-          const selector = ((_a2 = action.locator) == null ? void 0 : _a2.stableSelector) || ((_b = action.locator) == null ? void 0 : _b.primary);
-          if (!selector)
+          if (!((_a2 = action.locator) == null ? void 0 : _a2.primary) && !((_b = action.locator) == null ? void 0 : _b.stableSelector))
             return "";
-          return `  await page.click('${selector}');`;
+          return `  await ${clickExpr(action.locator)}.click();`;
         }
         case "input": {
-          const selector = (_c = action.locator) == null ? void 0 : _c.primary;
-          if (!selector || action.value === void 0)
+          if (!((_c = action.locator) == null ? void 0 : _c.primary) || action.value === void 0)
             return "";
-          const value = action.value.replace(/'/g, "\\'");
-          return `  await page.fill('${selector}', '${value}');`;
+          return `  await ${cssLocator(action.locator)}.fill('${q(action.value)}');`;
         }
         case "form": {
-          const selector = (_d = action.locator) == null ? void 0 : _d.primary;
-          if (!selector)
+          if (!((_d = action.locator) == null ? void 0 : _d.primary))
             return "";
+          const target = cssLocator(action.locator);
           if (action.formType === "checkbox" || action.formType === "radio") {
-            if (action.checked) {
-              return `  await page.check('${selector}');`;
-            } else {
-              return `  await page.uncheck('${selector}');`;
-            }
-          } else if (action.formType === "select" && action.value) {
-            return `  await page.selectOption('${selector}', '${action.value}');`;
+            return action.checked ? `  await ${target}.check();` : `  await ${target}.uncheck();`;
+          } else if (action.formType === "select" && action.value !== void 0) {
+            return `  await ${target}.selectOption('${q(action.value)}');`;
           }
           return "";
         }
         case "assertion": {
-          const selector = (_e = action.locator) == null ? void 0 : _e.primary;
-          if (!selector || action.value === void 0)
+          if (!((_e = action.locator) == null ? void 0 : _e.primary) || action.value === void 0)
             return "";
-          const escapedValue = escapeTextForAssertion(action.value);
-          return `  await expect(page.locator('${selector}')).toContainText('${escapedValue}');`;
+          return `  await expect(${cssLocator(action.locator)}).toContainText('${q(action.value)}');`;
         }
         default:
           return "";
@@ -4965,6 +4245,66 @@ var userBehaviour = (() => {
 test('Recorded test', async ({ page }) => {
 ${initialGoto}${body.split("\n").filter((l) => l.trim()).map((l) => l).join("\n")}
 });`;
+  }
+  function executorSelector(locator) {
+    if (!locator)
+      return "";
+    const sel = locator.stableSelector || locator.primary || "";
+    if (sel.startsWith("role:") || sel.startsWith("text="))
+      return sel;
+    const testId = extractTestId(locator);
+    if (testId)
+      return `getByTestId:${testId}`;
+    return sel;
+  }
+  function actionsToReplaySteps(actions, options = {}) {
+    const { baseUrl } = options;
+    const steps = [];
+    if (baseUrl && (actions.length === 0 || actions[0].type !== "goto")) {
+      steps.push({ type: "goto", value: baseUrl });
+    }
+    for (const a of actions) {
+      switch (a.type) {
+        case "goto":
+          steps.push({ type: "goto", value: getRelativeUrl(a.url || baseUrl || "") });
+          break;
+        case "waitForURL":
+          if (a.normalizedUrl)
+            steps.push({ type: "waitForURL", value: a.normalizedUrl });
+          break;
+        case "click": {
+          const selector = executorSelector(a.locator);
+          if (selector)
+            steps.push({ type: "click", selector });
+          break;
+        }
+        case "input": {
+          const selector = executorSelector(a.locator);
+          if (selector && a.value !== void 0)
+            steps.push({ type: "fill", selector, value: a.value });
+          break;
+        }
+        case "form": {
+          const selector = executorSelector(a.locator);
+          if (!selector)
+            break;
+          if (a.formType === "checkbox" || a.formType === "radio") {
+            steps.push({ type: a.checked ? "check" : "uncheck", selector });
+          } else if (a.formType === "select" && a.value !== void 0) {
+            steps.push({ type: "selectOption", selector, value: a.value });
+          }
+          break;
+        }
+        case "assertion": {
+          const selector = executorSelector(a.locator);
+          if (selector && a.value !== void 0) {
+            steps.push({ type: "expect", selector, expectation: "toContainText", value: a.value });
+          }
+          break;
+        }
+      }
+    }
+    return steps;
   }
   function generatePlaywrightTest(url, trackingData) {
     try {
@@ -4980,6 +4320,7 @@ ${initialGoto}${body.split("\n").filter((l) => l.trim()).map((l) => l).join("\n"
     existing.RecordingManager = RecordingManager;
     existing.generatePlaywrightTestFromActions = generatePlaywrightTestFromActions;
     existing.generatePlaywrightTest = generatePlaywrightTest;
+    existing.actionsToReplaySteps = actionsToReplaySteps;
     window.PlaywrightGenerator = existing;
   }
 
@@ -5021,6 +4362,13 @@ ${initialGoto}${body.split("\n").filter((l) => l.trim()).map((l) => l).join("\n"
         healthCheckInterval: null
       };
       this.isRunning = false;
+      // Monotonic capture-order counter. Assigned at the TRUE moment an action occurs
+      // (not at debounce/blur fire time), so downstream ordering never depends on
+      // wall-clock timestamps. See notes-staktrak-architecture.md P1.
+      this.eventSeq = 0;
+    }
+    nextSeq() {
+      return ++this.eventSeq;
     }
     /**
      * Send event data to parent for recording
@@ -5091,6 +4439,7 @@ ${initialGoto}${body.split("\n").filter((l) => l.trim()).map((l) => l).join("\n"
     resetResults() {
       this.memory.assertions = [];
       this.results = this.createEmptyResults();
+      this.eventSeq = 0;
       if (this.config.userInfo) {
         this.results.userInfo = {
           url: document.URL,
@@ -5157,6 +4506,7 @@ ${initialGoto}${body.split("\n").filter((l) => l.trim()).map((l) => l).join("\n"
           if (!isFormElement) {
             this.results.clicks.clickCount++;
             const clickDetail = createClickDetail(e);
+            clickDetail.seq = this.nextSeq();
             this.results.clicks.clickDetails.push(clickDetail);
             this.sendEventToParent("click", clickDetail);
             window.parent.postMessage(
@@ -5265,7 +4615,8 @@ ${initialGoto}${body.split("\n").filter((l) => l.trim()).map((l) => l).join("\n"
                   type: "select",
                   value: selectEl.value,
                   text: (selectedOption == null ? void 0 : selectedOption.text) || "",
-                  timestamp: getTimeStamp()
+                  timestamp: getTimeStamp(),
+                  seq: this.nextSeq()
                 };
                 this.results.formElementChanges.push(formChange);
                 this.sendEventToParent("form", {
@@ -5273,7 +4624,8 @@ ${initialGoto}${body.split("\n").filter((l) => l.trim()).map((l) => l).join("\n"
                   formType: "select",
                   value: selectEl.value,
                   text: (selectedOption == null ? void 0 : selectedOption.text) || "",
-                  timestamp: formChange.timestamp
+                  timestamp: formChange.timestamp,
+                  seq: formChange.seq
                 });
                 window.parent.postMessage(
                   {
@@ -5294,7 +4646,8 @@ ${initialGoto}${body.split("\n").filter((l) => l.trim()).map((l) => l).join("\n"
                   type: inputEl.type,
                   checked: inputEl.checked,
                   value: inputEl.value,
-                  timestamp: getTimeStamp()
+                  timestamp: getTimeStamp(),
+                  seq: this.nextSeq()
                 };
                 this.results.formElementChanges.push(formChange);
                 this.sendEventToParent("form", {
@@ -5302,7 +4655,8 @@ ${initialGoto}${body.split("\n").filter((l) => l.trim()).map((l) => l).join("\n"
                   formType: inputEl.type,
                   checked: inputEl.checked,
                   value: inputEl.value,
-                  timestamp: formChange.timestamp
+                  timestamp: formChange.timestamp,
+                  seq: formChange.seq
                 });
                 window.parent.postMessage(
                   {
@@ -5326,6 +4680,8 @@ ${initialGoto}${body.split("\n").filter((l) => l.trim()).map((l) => l).join("\n"
             const inputHandler = () => {
               const selector = getElementSelector(htmlEl);
               const elementId = inputEl.id || selector;
+              const eventSeq = this.nextSeq();
+              const eventTs = getTimeStamp();
               if (this.memory.inputDebounceTimers[elementId]) {
                 clearTimeout(this.memory.inputDebounceTimers[elementId]);
               }
@@ -5333,14 +4689,16 @@ ${initialGoto}${body.split("\n").filter((l) => l.trim()).map((l) => l).join("\n"
                 const inputAction2 = {
                   elementSelector: selector,
                   value: inputEl.value,
-                  timestamp: getTimeStamp(),
-                  action: "complete"
+                  timestamp: eventTs,
+                  action: "complete",
+                  seq: eventSeq
                 };
                 this.results.inputChanges.push(inputAction2);
                 this.sendEventToParent("input", {
                   selector,
                   value: inputEl.value,
-                  timestamp: inputAction2.timestamp
+                  timestamp: inputAction2.timestamp,
+                  seq: inputAction2.seq
                 });
                 window.parent.postMessage(
                   {
@@ -5361,8 +4719,9 @@ ${initialGoto}${body.split("\n").filter((l) => l.trim()).map((l) => l).join("\n"
               const inputAction = {
                 elementSelector: selector,
                 value: inputEl.value,
-                timestamp: getTimeStamp(),
-                action: "intermediate"
+                timestamp: eventTs,
+                action: "intermediate",
+                seq: eventSeq
               };
               this.results.inputChanges.push(inputAction);
               window.parent.postMessage(
@@ -5395,13 +4754,15 @@ ${initialGoto}${body.split("\n").filter((l) => l.trim()).map((l) => l).join("\n"
                     elementSelector: selector,
                     value: inputEl.value,
                     timestamp: getTimeStamp(),
-                    action: "complete"
+                    action: "complete",
+                    seq: this.nextSeq()
                   };
                   this.results.inputChanges.push(inputAction);
                   this.sendEventToParent("input", {
                     selector,
                     value: inputEl.value,
-                    timestamp: inputAction.timestamp
+                    timestamp: inputAction.timestamp,
+                    seq: inputAction.seq
                   });
                   window.parent.postMessage(
                     {
@@ -5453,7 +4814,8 @@ ${initialGoto}${body.split("\n").filter((l) => l.trim()).map((l) => l).join("\n"
         const navAction = {
           type,
           url: document.URL,
-          timestamp: getTimeStamp()
+          timestamp: getTimeStamp(),
+          seq: this.nextSeq()
         };
         if (this.isRunning) {
           this.results.pageNavigation.push(navAction);
@@ -5503,7 +4865,7 @@ ${initialGoto}${body.split("\n").filter((l) => l.trim()).map((l) => l).join("\n"
         try {
           const dest = new URL(href, window.location.href);
           if (dest.origin === window.location.origin) {
-            const navAction = { type: "anchorClick", url: getRelativeUrl(dest.href), timestamp: getTimeStamp() };
+            const navAction = { type: "anchorClick", url: getRelativeUrl(dest.href), timestamp: getTimeStamp(), seq: this.nextSeq() };
             if (this.isRunning) {
               this.results.pageNavigation.push(navAction);
               window.parent.postMessage(
@@ -5703,7 +5065,8 @@ ${initialGoto}${body.split("\n").filter((l) => l.trim()).map((l) => l).join("\n"
                 type: "hasText",
                 selector,
                 value: text,
-                timestamp: getTimeStamp()
+                timestamp: getTimeStamp(),
+                seq: this.nextSeq()
               };
               this.memory.assertions.push(assertion);
               this.sendEventToParent("assertion", assertion);
