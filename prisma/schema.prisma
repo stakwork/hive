@@ -2103,6 +2103,7 @@ model ErrorEvent {
   requestContext Json?       @map("request_context")
   metadata       Json?
   fingerprint    String
+  commitSha      String?     @map("commit_sha")
   createdAt      DateTime    @default(now()) @map("created_at")
   issue          ErrorIssue  @relation(fields: [issueId], references: [id], onDelete: Cascade)
   workspace      Workspace   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
