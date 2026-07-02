@@ -277,7 +277,7 @@ export async function persistOrgCanvasPromptCache(
  */
 export async function persistOrgCanvasPromptResolutions(
   rowId: string,
-  resolutions: Record<string, { prompt_id: number; prompt_version_id: number | null }>,
+  resolutions: Record<string, { prompt_id: string; prompt_version_id: string | null }>,
 ): Promise<void> {
   if (Object.keys(resolutions).length === 0) return;
   const patch = JSON.stringify({ prompts: resolutions });
