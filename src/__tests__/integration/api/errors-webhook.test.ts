@@ -278,7 +278,7 @@ describe("POST /api/webhook/errors — happy path", () => {
     expect(issue?.occurrenceCount).toBe(1);
     expect(issue?.workspaceId).toBe(ctx.workspace.id);
     expect(issue?.repositoryId).toBe(ctx.repo.id);
-    expect(issue?.repoKey).toBe(ctx.repo.id);
+    expect(issue?.repoKey).toBe("stakwork/hive");
 
     const event = await db.errorEvent.findUnique({ where: { id: body.data.eventId } });
     expect(event).not.toBeNull();
