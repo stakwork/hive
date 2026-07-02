@@ -77,7 +77,7 @@ const PG_REALM_ENABLED = false;
 /** Shared message returned when a pg-realm operation is attempted while disabled. */
 const PG_DISABLED_MESSAGE =
   "pg realm is disabled — Hive features, tasks, and chat messages now live in " +
-  "the kg realm as Hivefeature / Hivetask / Hivechatmessage nodes. Use " +
+  "the kg realm as HiveFeature / HiveTask / HiveChatMessage nodes. Use " +
   'graph_search with realm: "kg" (and graph_ontology to discover node types).';
 
 // ---------------------------------------------------------------------------
@@ -1013,7 +1013,7 @@ export function buildGraphWalkerTools(
         "returning ranked results with URN, type, title, and realm. " +
         "The kg realm searches Jarvis knowledge-graph nodes — including Hive " +
         "Features, Tasks, and ChatMessages, which are mirrored into the kg as " +
-        "Hivefeature / Hivetask / Hivechatmessage nodes; the canvas realm covers " +
+        "HiveFeature / HiveTask / HiveChatMessage nodes; the canvas realm covers " +
         "canvas nodes. " +
         "The `pg` realm is DISABLED (roadmap/chat data now lives in the kg). " +
         "Scope with `realm`, `type`, or `workspace` to narrow results. " +
