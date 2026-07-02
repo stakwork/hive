@@ -981,7 +981,7 @@ describe("addNodeBulk", () => {
     { node_type: "HiveTask", node_data: { task_id: "t2", name: "Task 2" } },
   ];
 
-  test("calls POST /v2/nodes with node array as body (not wrapped in node_list)", async () => {
+  test("calls POST /node/bulk with nodes wrapped in node_list", async () => {
     mockFetch.mockResolvedValueOnce({
       ok: true,
       status: 200,
@@ -992,11 +992,11 @@ describe("addNodeBulk", () => {
 
     expect(result).toEqual({ success: true, errors: [] });
     expect(mockFetch).toHaveBeenCalledWith(
-      "https://test-swarm.sphinx.chat:8444/v2/nodes",
+      "https://test-swarm.sphinx.chat:8444/node/bulk",
       expect.objectContaining({
         method: "POST",
         headers: expect.objectContaining({ "x-api-token": "test-api-key" }),
-        body: JSON.stringify(nodes),
+        body: JSON.stringify({ node_list: nodes }),
       }),
     );
   });
@@ -1011,7 +1011,9 @@ describe("addNodeBulk", () => {
     await addNodeBulk(config, nodes, { reprocess: true });
 
     const sentBody = JSON.parse(mockFetch.mock.calls[0][1].body as string);
-    expect(sentBody).toEqual(nodes.map((n) => ({ ...n, reprocess: true })));
+    expect(sentBody).toEqual({
+      node_list: nodes.map((n) => ({ ...n, reprocess: true })),
+    });
   });
 
   test("returns success:true even when status is Warning (some nodes already existed)", async () => {
