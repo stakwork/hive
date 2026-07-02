@@ -37,6 +37,7 @@ export interface WritePromptThroughResult {
     id: string;
     versionNumber: number;
     value: string;
+    description: string | null;
     published: boolean;
     createdAt: Date;
   };
