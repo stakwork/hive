@@ -20,33 +20,37 @@ describe("Prompt + PromptVersion data models", () => {
 
   // ─── Core invariant ─────────────────────────────────────────────────────────
 
-  describe("LIVE = PUBLISHED invariant", () => {
-    it("creates a Prompt with 3 PromptVersions and published state is consistent", async () => {
+  describe("LIVE = PUBLISHED invariant (Prompt.value = published version cache)", () => {
+    it("creates a Prompt with 3 PromptVersions: v2 published, v3 is an unpublished draft", async () => {
       const name = `${prefix}_V3`;
 
-      // Create prompt with 3 versions, publish the second one
+      // Create prompt with 3 versions: v2 is the published/live one, v3 is an unpublished draft.
+      // This mirrors the new save behavior: Save creates an unpublished draft (v3),
+      // leaving the prior published version (v2) as live.
       const prompt = await db.prompt.create({
         data: {
           name,
-          value: "initial value",
+          value: "version 2 text", // Prompt.value = published cache (v2), NOT the draft (v3)
           description: "Test prompt",
           versions: {
             create: [
               { versionNumber: 1, value: "version 1 text", whodunnit: "user-1", published: false },
               { versionNumber: 2, value: "version 2 text", whodunnit: "user-2", published: true },
-              { versionNumber: 3, value: "version 3 text", whodunnit: "user-3", published: false },
+              { versionNumber: 3, value: "version 3 text", whodunnit: "user-3", published: false }, // draft
             ],
           },
         },
         include: { versions: { orderBy: { versionNumber: "asc" } } },
       });
 
-      // Point publishedVersionId at the published version and set Prompt.value to match
+      // Point publishedVersionId at v2 (the published version), leaving v3 as unpublished draft.
       const publishedVersion = prompt.versions.find((v) => v.published)!;
+      const latestDraft = prompt.versions.find((v) => v.versionNumber === 3)!;
       const updated = await db.prompt.update({
         where: { id: prompt.id },
         data: {
           publishedVersionId: publishedVersion.id,
+          // Prompt.value stays as published value — draft does NOT overwrite this
           value: publishedVersion.value,
         },
         include: {
@@ -58,12 +62,20 @@ describe("Prompt + PromptVersion data models", () => {
       // Assertions
       expect(updated.versions).toHaveLength(3);
       expect(updated.publishedVersionId).toBe(publishedVersion.id);
-      // LIVE = PUBLISHED: Prompt.value mirrors the published version's text
+      // Prompt.value mirrors the PUBLISHED (live) version, not the draft
       expect(updated.value).toBe("version 2 text");
       expect(updated.publishedVersion?.value).toBe("version 2 text");
       expect(updated.publishedVersion?.published).toBe(true);
 
-      // The other versions are not published
+      // The draft (v3) exists but is NOT published — current != published
+      const draft = updated.versions.find((v) => v.id === latestDraft.id)!;
+      expect(draft.published).toBe(false);
+      expect(draft.versionNumber).toBe(3);
+
+      // published_version_id != current (latest) version id — that's the whole point
+      expect(updated.publishedVersionId).not.toBe(draft.id);
+
+      // Only v2 is published; v1 and v3 are not
       const unpublished = updated.versions.filter((v) => !v.published);
       expect(unpublished).toHaveLength(2);
     });
@@ -150,6 +162,62 @@ describe("Prompt + PromptVersion data models", () => {
         where: { id: { in: versionIds } },
       });
       expect(foundVersions).toHaveLength(0);
+    });
+  });
+
+  // ─── PromptVersion unique (promptId, versionNumber) constraint ──────────────
+
+  describe("PromptVersion unique (promptId, versionNumber) constraint", () => {
+    it("rejects a duplicate versionNumber for the same prompt", async () => {
+      const name = `${prefix}_UNIQUE_VER`;
+
+      const prompt = await db.prompt.create({
+        data: {
+          name,
+          value: "v1",
+          versions: { create: [{ versionNumber: 1, value: "v1", published: true }] },
+        },
+        include: { versions: true },
+      });
+      await db.prompt.update({
+        where: { id: prompt.id },
+        data: { publishedVersionId: prompt.versions[0].id },
+      });
+
+      // Attempting to create a second versionNumber=1 for the same prompt should fail
+      await expect(
+        db.promptVersion.create({
+          data: { promptId: prompt.id, versionNumber: 1, value: "duplicate v1", published: false },
+        }),
+      ).rejects.toThrow(Prisma.PrismaClientKnownRequestError);
+
+      try {
+        await db.promptVersion.create({
+          data: { promptId: prompt.id, versionNumber: 1, value: "duplicate v1", published: false },
+        });
+      } catch (err) {
+        expect(err).toBeInstanceOf(Prisma.PrismaClientKnownRequestError);
+        expect((err as Prisma.PrismaClientKnownRequestError).code).toBe("P2002");
+      }
+    });
+
+    it("allows the same versionNumber for DIFFERENT prompts", async () => {
+      const nameA = `${prefix}_UNIQUE_VER_A`;
+      const nameB = `${prefix}_UNIQUE_VER_B`;
+
+      const promptA = await db.prompt.create({ data: { name: nameA, value: "a" } });
+      const promptB = await db.prompt.create({ data: { name: nameB, value: "b" } });
+
+      // Both can have versionNumber=1
+      const vA = await db.promptVersion.create({
+        data: { promptId: promptA.id, versionNumber: 1, value: "a v1", published: true },
+      });
+      const vB = await db.promptVersion.create({
+        data: { promptId: promptB.id, versionNumber: 1, value: "b v1", published: true },
+      });
+
+      expect(vA.versionNumber).toBe(1);
+      expect(vB.versionNumber).toBe(1);
     });
   });
 
