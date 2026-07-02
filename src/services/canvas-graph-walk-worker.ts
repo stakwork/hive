@@ -8,8 +8,15 @@
  *   - NOT call `dispatch_graph_walk` (stripped — prevents self-redispatch).
  *   - NOT call any other write tools (canvas mutations, proposals, etc.).
  *
- * After the loop completes, fans the answer back into the owning canvas
- * conversation via `fanOutGraphWalkToCanvas`.
+ * After the loop completes, it:
+ *   - Persists the sub-agent's full tool-call trace to a standalone
+ *     `SharedConversation` row (`source: "graph-walk"`, id
+ *     `gw-conv-${graphWalkId}`) via `messagesFromSteps`. That `source`
+ *     keeps the row out of every history list; it exists so the trace
+ *     is reviewable and deep-linkable.
+ *   - Fans the answer back into the owning canvas conversation via
+ *     `fanOutGraphWalkToCanvas`, stashing the trace row's id on the
+ *     result bubble's `source.detailConversationId` as a backlink.
  *
  * Mirrors `canvas-research-worker.ts`:
  *   - Best-effort advisory lock prevents duplicate concurrent runs.
@@ -32,6 +39,7 @@ import {
 import { db } from "@/lib/db";
 import { runCanvasAgent } from "@/lib/ai/runCanvasAgent";
 import { fanOutGraphWalkToCanvas } from "@/services/canvas-graph-walk-fanout";
+import { messagesFromSteps } from "@/services/canvas-turn-persistence";
 import type { DispatchedGraphWalkIntent } from "@/lib/ai/graphWalkDispatchTools";
 
 /**
@@ -50,6 +58,66 @@ const SOFT_BUDGET_MS = 300_000; // 5 min — communicated to the agent
 const HARD_BUDGET_MS = 240_000; // 4 min — forced finalize cutover
 
 const FINALIZE_TOOL = "finalize_graph_walk";
+
+/**
+ * Tool names stripped from the persisted trace. `finalize_graph_walk`
+ * carries the synthesized answer as its input — that text is already the
+ * fan-out bubble's content, so showing it again as a tool row is noise.
+ * The trace we keep is the graph traversal itself (graph_search, etc.).
+ */
+const TRACE_STRIP_TOOLS: ReadonlySet<string> = new Set([FINALIZE_TOOL]);
+
+/**
+ * Persist the sub-agent's full tool-call trace to a standalone
+ * `SharedConversation` row. The row uses `source: "graph-walk"` so it is
+ * invisible to every history-list query (they allow-list `"org-canvas"`
+ * / `"dashboard"` / `"logs-agent"`); it exists purely so the trace is
+ * reviewable and deep-linkable from the parent's result bubble.
+ *
+ * The row id is deterministic (`gw-conv-${graphWalkId}`) and the write is
+ * an upsert, so a worker retry overwrites rather than duplicates.
+ *
+ * Non-fatal: on any failure we log and return `undefined`; the caller
+ * still fans the answer bubble out, just without a backlink.
+ */
+async function persistGraphWalkTrace(args: {
+  graphWalkId: string;
+  title: string;
+  orgId: string;
+  userId: string;
+  steps: Parameters<typeof messagesFromSteps>[0];
+}): Promise<string | undefined> {
+  const { graphWalkId, title, orgId, userId, steps } = args;
+  const id = `gw-conv-${graphWalkId}`;
+  try {
+    const rows = messagesFromSteps(steps, "gw-", TRACE_STRIP_TOOLS);
+    await db.sharedConversation.upsert({
+      where: { id },
+      create: {
+        id,
+        sourceControlOrgId: orgId,
+        userId,
+        source: "graph-walk",
+        title,
+        messages: rows as unknown as never,
+        followUpQuestions: [] as unknown as never,
+        lastMessageAt: new Date(),
+      },
+      update: {
+        messages: rows as unknown as never,
+        lastMessageAt: new Date(),
+      },
+    });
+    return id;
+  } catch (e) {
+    console.error("[canvas-graph-walk] persist trace failed (non-fatal)", {
+      graphWalkId,
+      title,
+      error: e instanceof Error ? e.message : String(e),
+    });
+    return undefined;
+  }
+}
 
 /**
  * Build the per-step budget hook for a single graph-walk run.
@@ -255,7 +323,7 @@ export async function runGraphWalkSubAgent(
 
     // Drive the stream to completion.
     await result.text;
-    await result.steps;
+    const steps = await result.steps;
 
     const answer = graphWalkAnswerSink.answer;
     const status: "ready" | "failed" =
@@ -268,11 +336,22 @@ export async function runGraphWalkSubAgent(
       status,
     });
 
+    // Persist the full tool-call trace to a hidden standalone
+    // conversation, then link it from the fan-out bubble.
+    const detailConversationId = await persistGraphWalkTrace({
+      graphWalkId,
+      title,
+      orgId,
+      userId,
+      steps: steps as Parameters<typeof messagesFromSteps>[0],
+    });
+
     await fanOutGraphWalkToCanvas(conversationId, {
       graphWalkId,
       title,
       answer: answer ?? "",
       status,
+      detailConversationId,
     });
   } catch (e) {
     console.error("[canvas-graph-walk] failed (non-fatal)", {

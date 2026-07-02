@@ -154,6 +154,53 @@ describe("chatMessagesToParsedMessages", () => {
     expect(out[1].timestamp).toBeUndefined();
   });
 
+  it("attaches graphWalkTrace from a graph_walk source row", () => {
+    const stored: StoredChatMessage[] = [
+      {
+        id: "graph-walk-w1",
+        role: "assistant",
+        content: "Found 3 File nodes linked to AuthFeature.",
+        source: {
+          kind: "graph_walk",
+          detailConversationId: "gw-conv-w1",
+          title: "Files linked to AuthFeature",
+          status: "ready",
+        },
+      },
+    ];
+    const out = chatMessagesToParsedMessages(stored);
+    expect(out).toHaveLength(1);
+    expect(out[0].graphWalkTrace).toEqual({
+      detailConversationId: "gw-conv-w1",
+      title: "Files linked to AuthFeature",
+      status: "ready",
+    });
+  });
+
+  it("does not attach graphWalkTrace when detailConversationId is absent", () => {
+    const stored: StoredChatMessage[] = [
+      {
+        role: "assistant",
+        content: "answer",
+        source: { kind: "graph_walk", status: "ready" },
+      },
+    ];
+    expect(chatMessagesToParsedMessages(stored)[0].graphWalkTrace).toBeUndefined();
+  });
+
+  it("graphWalkTrace survives the JSON.stringify → parseAgentLogStats round-trip", () => {
+    const stored: StoredChatMessage[] = [
+      {
+        role: "assistant",
+        content: "answer",
+        source: { kind: "graph_walk", detailConversationId: "gw-conv-x" },
+      },
+    ];
+    const parsed = chatMessagesToParsedMessages(stored);
+    const { conversation } = parseAgentLogStats(JSON.stringify(parsed));
+    expect(conversation[0].graphWalkTrace?.detailConversationId).toBe("gw-conv-x");
+  });
+
   it("produces output the agent-log parser + pairing helpers consume correctly", () => {
     const stored: StoredChatMessage[] = [
       { role: "user", content: "find auth" },
