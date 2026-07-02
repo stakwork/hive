@@ -95,7 +95,7 @@ export async function getErrorIssueDetail(
 
   if (!issue) return null;
 
-  const [events, eventsTotal] = await Promise.all([
+  const [rawEvents, eventsTotal] = await Promise.all([
     db.errorEvent.findMany({
       where: { issueId },
       orderBy: { createdAt: "desc" },
@@ -112,12 +112,21 @@ export async function getErrorIssueDetail(
         environment: true,
         release: true,
         fingerprint: true,
+        commitSha: true,
         createdAt: true,
         // blobUrl is intentionally omitted — callers fetch via getErrorEventBlob
+        repository: { select: { repositoryUrl: true, branch: true } },
       },
     }),
     db.errorEvent.count({ where: { issueId } }),
   ]);
+
+  // Flatten repository fields so callers get a consistent, serializable shape
+  const events = rawEvents.map(({ repository, ...event }) => ({
+    ...event,
+    repositoryUrl: repository?.repositoryUrl ?? null,
+    defaultBranch: repository?.branch ?? null,
+  }));
 
   return {
     issue,
