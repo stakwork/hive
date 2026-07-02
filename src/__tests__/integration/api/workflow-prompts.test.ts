@@ -819,9 +819,13 @@ describe("PUT /api/workflow/prompts/[id] Integration Tests", () => {
   });
 
   describe("Update Tests", () => {
-    test("successfully updates prompt value; creates new published version", async () => {
+    test("successfully updates prompt value; creates new UNPUBLISHED draft, leaving published version live", async () => {
       authAs(testUser);
       stakworkOkUpdate();
+
+      // Capture original published version id from the pre-existing prompt
+      const before = await db.prompt.findUnique({ where: { id: existingPromptId } });
+      const originalPublishedVersionId = before!.publishedVersionId;
 
       const response = await PUT(
         makeReq(`http://localhost/api/workflow/prompts/${existingPromptId}`, "PUT", {
@@ -831,20 +835,27 @@ describe("PUT /api/workflow/prompts/[id] Integration Tests", () => {
       );
       const data = await expectSuccess(response, 200);
       expect(data.success).toBe(true);
+      // API returns latest draft value
       expect(data.data.value).toBe("Updated value");
+      // current_version_id != published_version_id (draft exists)
+      expect(data.data.current_version_id).not.toBe(data.data.published_version_id);
+      expect(data.data.published_version_id).toBe(originalPublishedVersionId);
 
-      // Verify Hive DB invariant: Prompt.value mirrors published version
+      // DB: Prompt.value still mirrors original published version (not the draft)
       const prompt = await db.prompt.findUnique({
         where: { id: existingPromptId },
         include: { versions: { orderBy: { versionNumber: "asc" } } },
       });
-      expect(prompt!.value).toBe("Updated value");
+      expect(prompt!.value).toBe("original value"); // unchanged
+      expect(prompt!.publishedVersionId).toBe(originalPublishedVersionId); // unchanged
       expect(prompt!.versions).toHaveLength(2);
-      expect(prompt!.versions[1].published).toBe(true);
-      expect(prompt!.versions[0].published).toBe(false);
+      // v2 = new draft, NOT published
+      expect(prompt!.versions[1].published).toBe(false);
+      // v1 = still published
+      expect(prompt!.versions[0].published).toBe(true);
     });
 
-    test("updates prompt with optional description", async () => {
+    test("updates prompt with optional description (stored on draft version)", async () => {
       authAs(testUser);
       stakworkOkUpdate();
 
@@ -856,7 +867,12 @@ describe("PUT /api/workflow/prompts/[id] Integration Tests", () => {
         { params: Promise.resolve({ id: existingPromptId }) },
       );
       const data = await expectSuccess(response, 200);
-      expect(data.data.description).toBe("New description");
+      // The draft version has the new description
+      const draftVersion = await db.promptVersion.findFirst({
+        where: { promptId: existingPromptId, published: false },
+        orderBy: { versionNumber: "desc" },
+      });
+      expect(draftVersion?.description).toBe("New description");
     });
 
     test("returns 404 for non-existent id", async () => {
@@ -1080,7 +1096,7 @@ describe("GET /api/workflow/prompts/[id]/versions Integration Tests", () => {
       );
     });
 
-    test("response includes prompt_id, prompt_name, current_version_id", async () => {
+    test("response includes prompt_id, prompt_name, current_version_id, published_version_id", async () => {
       authAs(testUser);
 
       const response = await GET_VERSIONS(
@@ -1091,6 +1107,13 @@ describe("GET /api/workflow/prompts/[id]/versions Integration Tests", () => {
       expect(data.data).toHaveProperty("prompt_id");
       expect(data.data).toHaveProperty("prompt_name");
       expect(data.data).toHaveProperty("current_version_id");
+      expect(data.data).toHaveProperty("published_version_id");
+
+      // current_version_id = latest version (v2 draft after PUT); published_version_id = v1
+      expect(data.data.current_version_id).toBeTruthy();
+      expect(data.data.published_version_id).toBeTruthy();
+      // After a PUT (draft), the two should differ
+      expect(data.data.current_version_id).not.toBe(data.data.published_version_id);
     });
 
     test("returns 404 for non-existent prompt", async () => {
@@ -1279,19 +1302,19 @@ describe("GET /api/workflow/prompts/[id]/versions/[versionId] Integration Tests"
     test("handles version with long prompt value", async () => {
       authAs(testUser);
 
-      // Update to a long value, then read the new version
+      // Update to a long value, then read the new draft version
       mockGetServerSession.mockResolvedValueOnce(
         createAuthenticatedSession({ id: testUser.id, email: testUser.email ?? "" }),
       );
       stakworkOkUpdate();
       const longValue = "A".repeat(5000);
-      await PUT(
+      const putRes = await PUT(
         makeReq(`http://localhost/api/workflow/prompts/${promptId}`, "PUT", { value: longValue }),
         { params: Promise.resolve({ id: promptId }) },
       );
-
-      const prompt = await db.prompt.findUnique({ where: { id: promptId } });
-      const longVersionId = prompt!.publishedVersionId!;
+      // The PUT response returns current_version_id = the new draft version
+      const putData = (await putRes.json()).data;
+      const longVersionId = putData.current_version_id as string;
 
       authAs(testUser);
       const response = await GET_VERSION_BY_ID(
