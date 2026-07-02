@@ -57,6 +57,10 @@ import { tool, type ToolSet } from "ai";
 import { z } from "zod";
 import { buildCanvasTools } from "@/lib/ai/canvasTools";
 import { buildConnectionTools } from "@/lib/ai/connectionTools";
+import {
+  buildGraphWalkDispatchTools,
+  type DispatchedGraphWalkIntent,
+} from "@/lib/ai/graphWalkDispatchTools";
 import { buildGraphWalkerTools } from "@/lib/ai/graphWalkerTools";
 import { buildInitiativeTools } from "@/lib/ai/initiativeTools";
 import {
@@ -105,7 +109,12 @@ export interface CapabilityContext {
   chatAgentModel?: string;
   capturedWebSearchResults: CapturedSearchResult[];
   dispatchedResearch?: DispatchedResearchIntent[];
+  dispatchedGraphWalks?: DispatchedGraphWalkIntent[];
+  graphWalkAnswerSink?: { answer: string | null };
 }
+
+// Re-export so callers can import from a single location.
+export type { DispatchedGraphWalkIntent };
 
 interface CapabilityDefinition {
   buildTools(ctx: CapabilityContext): ToolSet;
@@ -280,7 +289,10 @@ export const CAPABILITY_REGISTRY: Record<OrgCapability, CapabilityDefinition> =
       writeToolNames: ["save_connection", "update_connection"],
     },
     graph_walker: {
-      buildTools: (ctx) => buildGraphWalkerTools(ctx.orgId, ctx.userId),
+      buildTools: (ctx) => ({
+        ...buildGraphWalkerTools(ctx.orgId, ctx.userId),
+        ...buildGraphWalkDispatchTools(ctx),
+      }),
       promptSnippet: getGraphWalkerCapabilitySnippet,
       core: false,
       menuBlurb:
@@ -289,8 +301,13 @@ export const CAPABILITY_REGISTRY: Record<OrgCapability, CapabilityDefinition> =
         "search the swarm knowledge graph (`graph_search`, realm `kg`) — Hive " +
         "Features/Tasks/ChatMessages now live there as HiveFeature/HiveTask/" +
         "HiveChatMessage, alongside the code graph. Load when you need to walk the " +
-        "knowledge graph or dereference a URN from another tool. (The `pg` realm is disabled.)",
-      writeToolNames: [], // read-only
+        "knowledge graph or dereference a URN from another tool. (The `pg` realm is disabled.) " +
+        "For multi-hop or slow graph queries, use `dispatch_graph_walk` to run them in the " +
+        "background and receive the answer as an assistant bubble; for quick single-node " +
+        "lookups or a single `graph_search`, use the inline tools directly.",
+      // dispatch_graph_walk and finalize_graph_walk are stripped in readonly mode
+      // to prevent sub-agents from re-dispatching themselves.
+      writeToolNames: ["dispatch_graph_walk", "finalize_graph_walk"],
     },
   };
 
