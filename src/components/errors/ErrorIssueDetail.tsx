@@ -9,6 +9,7 @@ import { ErrorStatusBadge } from "./ErrorStatusBadge";
 import { TriageActions } from "./TriageActions";
 import { ChevronDown, ChevronRight, AlertTriangle } from "lucide-react";
 import type { ErrorIssueDetailResponse, ErrorIssueStatus, ErrorEventRecord } from "@/types/error-issues";
+import { parseStackFrameLines, buildBlobUrl, resolveRef } from "@/lib/utils/github-links";
 
 const dateFormatter = new Intl.DateTimeFormat("en-US", {
   year: "numeric",
@@ -18,6 +19,55 @@ const dateFormatter = new Intl.DateTimeFormat("en-US", {
   minute: "2-digit",
   second: "2-digit",
 });
+
+interface StackTraceViewerProps {
+  rawStackTrace: string;
+  repositoryUrl: string | null;
+  commitSha: string | null;
+  release: string | null;
+  defaultBranch: string | null;
+}
+
+function StackTraceViewer({
+  rawStackTrace,
+  repositoryUrl,
+  commitSha,
+  release,
+  defaultBranch,
+}: StackTraceViewerProps) {
+  const frames = parseStackFrameLines(rawStackTrace);
+  const ref = resolveRef({ commitSha, release, defaultBranch });
+
+  return (
+    <pre className="text-xs font-mono overflow-auto max-h-96 whitespace-pre-wrap break-all">
+      {frames.map((frame, idx) => {
+        if (frame.resolvable && repositoryUrl && frame.path && frame.line !== null) {
+          let href: string;
+          try {
+            href = buildBlobUrl({ repositoryUrl, ref, path: frame.path, line: frame.line });
+          } catch {
+            return <span key={idx}>{frame.raw}{"\n"}</span>;
+          }
+          return (
+            <a
+              key={idx}
+              href={href}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="underline hover:text-blue-400 transition-colors"
+            >
+              {frame.raw}
+            </a>
+          );
+        }
+        return <span key={idx}>{frame.raw}</span>;
+      }).reduce<React.ReactNode[]>((acc, el, idx) => {
+        if (idx === 0) return [el];
+        return [...acc, "\n", el];
+      }, [])}
+    </pre>
+  );
+}
 
 interface BlobViewerProps {
   issueId: string;
@@ -41,7 +91,13 @@ function BlobViewer({ issueId, event }: BlobViewerProps) {
         throw new Error(data?.error ?? `Blob fetch failed (${res.status})`);
       }
       const text = await res.text();
-      setContent(text);
+      // Extract stackTrace from JSON payload if possible; fall back to raw text
+      try {
+        const parsed = JSON.parse(text);
+        setContent(typeof parsed?.stackTrace === "string" ? parsed.stackTrace : text);
+      } catch {
+        setContent(text);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load stack trace");
     } finally {
@@ -86,9 +142,13 @@ function BlobViewer({ issueId, event }: BlobViewerProps) {
             </div>
           )}
           {content !== null && !loading && (
-            <pre className="text-xs font-mono overflow-auto max-h-96 whitespace-pre-wrap break-all">
-              {content}
-            </pre>
+            <StackTraceViewer
+              rawStackTrace={content}
+              repositoryUrl={event.repositoryUrl}
+              commitSha={event.commitSha}
+              release={event.release}
+              defaultBranch={event.defaultBranch}
+            />
           )}
         </div>
       )}
