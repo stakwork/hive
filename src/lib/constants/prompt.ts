@@ -709,6 +709,28 @@ Assign every node to a class. No unstyled nodes.
 - Make sure to create valid mermaid syntax, avoid special characters in node names in general.`;
 }
 
+/**
+ * Short dispatch-vs-inline guidance snippet for graph_walker dispatch.
+ * Referenced from the graph_walker menuBlurb and capability snippet.
+ */
+export function getGraphWalkDispatchSnippet(): string {
+  return `
+
+### When to dispatch vs. use inline graph_walker tools
+
+- **Use \`dispatch_graph_walk\`** (background sub-agent) when the graph task is:
+  - Multi-hop traversals (e.g. "find all Files linked to this Feature through Tasks and Messages")
+  - Large ontology scans across many node types
+  - Expected to take more than a few seconds
+  - Something you want to happen off the critical path while you continue the current turn
+  The sub-agent runs the full query independently and fans its synthesized answer back as an assistant bubble.
+
+- **Use the inline graph_walker tools directly** (after \`learn_capability("graph_walker")\`) when:
+  - A single \`graph_search\` or \`graph_get\` call suffices
+  - You need the answer synchronously in this turn before continuing
+  - The traversal is shallow (1–2 hops)`;
+}
+
 export function getGraphWalkerCapabilitySnippet(): string {
   return `
 
@@ -759,7 +781,9 @@ The chain that connects roadmap to code lives entirely in the kg now: a \`HiveFe
 
 ### Read-only
 
-These tools are purely read-only. They never create, modify, or delete nodes or edges in any realm.`;
+These tools are purely read-only. They never create, modify, or delete nodes or edges in any realm.
+` + getGraphWalkDispatchSnippet() + `
+`;
 }
 
 /**
