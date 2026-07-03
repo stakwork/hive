@@ -82,13 +82,15 @@ export async function executeScheduledActivityRecapRuns(): Promise<DailyRecapCro
   console.log(`[ActivityRecapCron] Found ${users.length} eligible user(s)`);
   result.usersProcessed = users.length;
 
-  // Pending runs to batch-dispatch: { run, workflowWebhookUrl, since, activity, webhookUrl }
+  // Pending runs to batch-dispatch
   const pendingRuns: Array<{
     run: { id: string };
     userId: string;
     workflowWebhookUrl: string;
     since: Date;
     activity: string;
+    previousRecap: string;
+    windowStart: string;
     webhookUrl: string;
   }> = [];
 
@@ -120,7 +122,7 @@ export async function executeScheduledActivityRecapRuns(): Promise<DailyRecapCro
         continue;
       }
 
-      // 3. Compute activity window (cursor: last COMPLETED run only)
+      // 3. Compute cursor: last COMPLETED run's createdAt (fallback: now - 24h)
       const lastRun = await db.stakworkRun.findFirst({
         where: { userId, type: StakworkRunType.DAILY_RECAP, status: WorkflowStatus.COMPLETED },
         orderBy: { createdAt: "desc" },
@@ -128,16 +130,30 @@ export async function executeScheduledActivityRecapRuns(): Promise<DailyRecapCro
       });
 
       const since = lastRun?.createdAt ?? new Date(Date.now() - 24 * 60 * 60 * 1000);
-      const days = Math.min(30, Math.max(1, Math.ceil((Date.now() - since.getTime()) / 86_400_000)));
 
-      // 4. Fetch activity (skip check + digest in one call)
-      const items = await getUserActivityFeed({ userId, days, limit: 40 });
+      // 4. Fetch activity strictly after the cursor
+      const items = await getUserActivityFeed({ userId, since, limit: 40 });
 
       if (items.length === 0) {
-        console.log(`[ActivityRecapCron] Skipping user ${userId}: no activity in last ${days} day(s)`);
+        console.log(
+          `[ActivityRecapCron] Skipping user ${userId}: no activity since ${since.toISOString()} (0 items)`,
+        );
         result.skipped++;
         continue;
       }
+
+      // 4b. Resolve previous_recap: last COMPLETED run with a non-null result
+      const lastResultRun = await db.stakworkRun.findFirst({
+        where: {
+          userId,
+          type: StakworkRunType.DAILY_RECAP,
+          status: WorkflowStatus.COMPLETED,
+          result: { not: null },
+        },
+        orderBy: { createdAt: "desc" },
+        select: { result: true },
+      });
+      const previousRecap = lastResultRun?.result ?? "";
 
       // 5. Build 5-field digest
       const digest = items.map(({ kind, action, title, timestamp, workspaceName }) => ({
@@ -190,7 +206,10 @@ export async function executeScheduledActivityRecapRuns(): Promise<DailyRecapCro
         data: { webhookUrl },
       });
 
-      pendingRuns.push({ run, userId, workflowWebhookUrl, since, activity, webhookUrl });
+      // Compute rolling-window aging horizon (never persisted)
+      const windowStart = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+
+      pendingRuns.push({ run, userId, workflowWebhookUrl, since, activity, previousRecap, windowStart, webhookUrl });
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error);
       console.error(`[ActivityRecapCron] Error preparing user ${userId}: ${msg}`);
@@ -210,7 +229,7 @@ export async function executeScheduledActivityRecapRuns(): Promise<DailyRecapCro
   for (let chunkIdx = 0; chunkIdx < chunks.length; chunkIdx++) {
     const chunk = chunks[chunkIdx];
 
-    const batchPayload = chunk.map(({ run, workflowWebhookUrl, since, activity, webhookUrl }) => ({
+    const batchPayload = chunk.map(({ run, workflowWebhookUrl, since, activity, previousRecap, windowStart, webhookUrl }) => ({
       name: `daily-recap-${run.id}`,
       workflow_id: parseInt(workflowId),
       webhook_url: workflowWebhookUrl,
@@ -218,8 +237,10 @@ export async function executeScheduledActivityRecapRuns(): Promise<DailyRecapCro
         set_var: {
           attributes: {
             vars: {
+              previous_recap: previousRecap,
               since: since.toISOString(),
               activity,
+              window_start: windowStart,
               webhookUrl,
             },
           },

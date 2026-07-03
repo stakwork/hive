@@ -405,3 +405,76 @@ describe("getUserActivityFeed — completed field", () => {
     expect(plan?.completed).toBe(true);
   });
 });
+
+// ── since exact lower bound ────────────────────────────────────────────────
+
+describe("getUserActivityFeed — since exact lower bound", () => {
+  it("uses since directly as cutoff when provided (not days-based)", async () => {
+    const since = new Date("2026-06-01T12:00:00Z");
+    setupEmptyMocks();
+    mockedDb.task.findMany.mockResolvedValue([]);
+
+    await getUserActivityFeed({ userId: USER_ID, since });
+
+    const taskCall = mockedDb.task.findMany.mock.calls[0][0];
+    // createdAt filter should be { gte: since, ... } — not a days-based date
+    expect(taskCall.where.createdAt.gte).toEqual(since);
+  });
+
+  it("since overrides the days parameter when both supplied", async () => {
+    const since = new Date("2026-06-01T00:00:00Z");
+    setupEmptyMocks();
+    mockedDb.task.findMany.mockResolvedValue([]);
+
+    await getUserActivityFeed({ userId: USER_ID, since, days: 30 });
+
+    const taskCall = mockedDb.task.findMany.mock.calls[0][0];
+    expect(taskCall.where.createdAt.gte).toEqual(since);
+  });
+
+  it("falls back to days-based cutoff when since is omitted", async () => {
+    setupEmptyMocks();
+    mockedDb.task.findMany.mockResolvedValue([]);
+
+    const before = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000 - 1000);
+    await getUserActivityFeed({ userId: USER_ID, days: 30 });
+    const after = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000 + 1000);
+
+    const taskCall = mockedDb.task.findMany.mock.calls[0][0];
+    const cutoff: Date = taskCall.where.createdAt.gte;
+    expect(cutoff.getTime()).toBeGreaterThanOrEqual(before.getTime());
+    expect(cutoff.getTime()).toBeLessThanOrEqual(after.getTime());
+  });
+
+  it("passes since to feature.findMany createdAt filter", async () => {
+    const since = new Date("2026-05-15T08:00:00Z");
+    setupEmptyMocks();
+    mockedDb.feature.findMany.mockResolvedValue([]);
+
+    await getUserActivityFeed({ userId: USER_ID, since });
+
+    const featureCall = mockedDb.feature.findMany.mock.calls[0][0];
+    expect(featureCall.where.createdAt.gte).toEqual(since);
+  });
+
+  it("passes since to sharedConversation.findMany lastMessageAt filter", async () => {
+    const since = new Date("2026-05-20T10:00:00Z");
+    setupEmptyMocks();
+
+    await getUserActivityFeed({ userId: USER_ID, since });
+
+    const convCall = mockedDb.sharedConversation.findMany.mock.calls[0][0];
+    expect(convCall.where.lastMessageAt.gte).toEqual(since);
+  });
+
+  it("passes since to milestone.findMany updatedAt filter", async () => {
+    const since = new Date("2026-05-10T00:00:00Z");
+    setupEmptyMocks();
+    mockedDb.milestone.findMany.mockResolvedValue([]);
+
+    await getUserActivityFeed({ userId: USER_ID, since });
+
+    const msCall = mockedDb.milestone.findMany.mock.calls[0][0];
+    expect(msCall.where.updatedAt.gte).toEqual(since);
+  });
+});

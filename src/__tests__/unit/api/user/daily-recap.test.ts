@@ -87,4 +87,32 @@ describe("GET /api/user/daily-recap", () => {
       }),
     );
   });
+
+  it("filters result: { not: null } so recap_unchanged (null-result) runs are skipped", async () => {
+    mockStakworkRunFindFirst.mockResolvedValue(null);
+    await GET();
+
+    expect(mockStakworkRunFindFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          result: { not: null },
+        }),
+      }),
+    );
+  });
+
+  it("returns the last non-null result even when a newer null-result run exists", async () => {
+    // Simulate: findFirst skips null-result run and returns the last real recap
+    const createdAt = new Date("2026-01-15T08:00:00Z");
+    mockStakworkRunFindFirst.mockResolvedValue({
+      result: "My prior recap",
+      createdAt,
+    });
+
+    const res = await GET();
+    const body = await res.json();
+
+    expect(body.recap).toBe("My prior recap");
+    expect(body.generatedAt).toBe(createdAt.toISOString());
+  });
 });
