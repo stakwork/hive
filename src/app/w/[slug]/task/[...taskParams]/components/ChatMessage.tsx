@@ -22,6 +22,11 @@ import { ClarifyingQuestionsPreview } from "@/components/features/ClarifyingQues
 import { AnsweredClarifyingQuestions } from "@/components/features/ClarifyingQuestionsPreview/AnsweredClarifyingQuestions";
 import { SuggestionChips } from "@/components/plan/SuggestionChips";
 
+/** Format a token count: ≤10k → localeString, >10k → "12.3k" */
+function formatTokens(n: number): string {
+  return n > 10_000 ? `${(n / 1000).toFixed(1)}k` : n.toLocaleString();
+}
+
 /**
  * Parse message content to extract <logs> sections
  * Returns the message without logs and an array of log sections
@@ -165,6 +170,16 @@ export const ChatMessage = memo(function ChatMessage({
                       {message.workflowUrl && (
                         <WorkflowUrlLink workflowUrl={message.workflowUrl} className="opacity-0 group-hover:opacity-100" />
                       )}
+                      {/* Per-turn token usage footer */}
+                      {(message.inputTokens || message.outputTokens) && (
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          {message.inputTokens != null && <>↑{formatTokens(message.inputTokens)}</>}
+                          {message.outputTokens != null && <> ↓{formatTokens(message.outputTokens)}</>}
+                          {(message.cacheReadTokens || message.cacheWriteTokens) ? (
+                            <> · cache: {formatTokens((message.cacheReadTokens ?? 0) + (message.cacheWriteTokens ?? 0))}</>
+                          ) : null}
+                        </p>
+                      )}
                       {/* Suggestion chips */}
                       {suggestions && suggestions.length > 0 && onSuggestionSelect && (
                         <div className="mt-2.5 pt-2.5 border-t border-border/60">
@@ -211,6 +226,16 @@ export const ChatMessage = memo(function ChatMessage({
                 {/* Workflow URL Link for message bubble */}
                 {message.workflowUrl && (
                   <WorkflowUrlLink workflowUrl={message.workflowUrl} className="opacity-0 group-hover:opacity-100" />
+                )}
+                {/* Per-turn token usage footer */}
+                {message.role !== "USER" && (message.inputTokens || message.outputTokens) && (
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {message.inputTokens != null && <>↑{formatTokens(message.inputTokens)}</>}
+                    {message.outputTokens != null && <> ↓{formatTokens(message.outputTokens)}</>}
+                    {(message.cacheReadTokens || message.cacheWriteTokens) ? (
+                      <> · cache: {formatTokens((message.cacheReadTokens ?? 0) + (message.cacheWriteTokens ?? 0))}</>
+                    ) : null}
+                  </p>
                 )}
                 {/* Suggestion chips */}
                 {message.role !== "USER" && suggestions && suggestions.length > 0 && onSuggestionSelect && (
