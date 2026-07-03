@@ -12,6 +12,8 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       evalSetRef: body?.evalSetId ?? "mock-evalset-ref",
       requirementRef: `mock-req-ref-${logId}`,
       triggerRef: "mock-trigger-ref",
+      // Echo back canonical agentName for dev parity
+      ...(body?.agentName ? { agentName: body.agentName } : {}),
     },
   });
 }

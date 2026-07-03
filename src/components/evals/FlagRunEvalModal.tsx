@@ -15,6 +15,15 @@ import { cn } from "@/lib/utils";
 import { CaptureEvalForm, CREATE_NEW_VALUE, CREATE_NEW_REQ } from "@/components/evals/CaptureEvalForm";
 import { PromptResolution, mapPromptResolutions } from "@/types/evals";
 import { useEvalRequirements } from "@/hooks/useEvalRequirements";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Label } from "@/components/ui/label";
+import { HIVE_AGENT_OPTIONS } from "@/lib/utils/hive-agent";
 
 interface RequestStep {
   stepId: string;
@@ -69,6 +78,7 @@ export function FlagRunEvalModal({
   const [requirement, setRequirement] = useState("");
   const [reason, setReason] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [selectedAgentName, setSelectedAgentName] = useState<string>(HIVE_AGENT_OPTIONS[0].name);
 
   // Eval set state
   const [evalSets, setEvalSets] = useState<Array<{ ref_id: string; name: string }>>([]);
@@ -161,6 +171,7 @@ export function FlagRunEvalModal({
       setSelectedEvalSetId("");
       setNewEvalSetName("");
       setSelectedRequirementId(null);
+      setSelectedAgentName(HIVE_AGENT_OPTIONS[0].name);
     }
   }, [open]);
 
@@ -230,6 +241,7 @@ export function FlagRunEvalModal({
         outputs,
         prompts: mapPromptResolutions(promptResolutions),
         evalSetId: resolvedEvalSetId,
+        agentName: selectedAgentName,
       };
 
       if (attachingExisting) {
@@ -334,25 +346,45 @@ export function FlagRunEvalModal({
         )}
 
         {step === 2 && (
-          <CaptureEvalForm
-            requirement={requirement}
-            reason={reason}
-            onRequirementChange={setRequirement}
-            onReasonChange={setReason}
-            submitting={submitting}
-            evalSets={evalSets}
-            loadingEvalSets={loadingEvalSets}
-            evalSetsError={evalSetsError}
-            selectedEvalSetId={selectedEvalSetId}
-            onSelectEvalSet={setSelectedEvalSetId}
-            newEvalSetName={newEvalSetName}
-            onNewEvalSetNameChange={setNewEvalSetName}
-            requirements={requirements}
-            loadingRequirements={loadingRequirements}
-            requirementsError={requirementsError}
-            selectedRequirementId={selectedRequirementId}
-            onSelectRequirement={setSelectedRequirementId}
-          />
+          <div className="space-y-4">
+            <div className="space-y-1.5">
+              <Label htmlFor="flag-run-agent-select">Agent</Label>
+              <Select
+                value={selectedAgentName}
+                onValueChange={setSelectedAgentName}
+              >
+                <SelectTrigger id="flag-run-agent-select" data-testid="agent-select">
+                  <SelectValue placeholder="Select agent" />
+                </SelectTrigger>
+                <SelectContent>
+                  {HIVE_AGENT_OPTIONS.map((opt) => (
+                    <SelectItem key={opt.name} value={opt.name}>
+                      {opt.displayName}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <CaptureEvalForm
+              requirement={requirement}
+              reason={reason}
+              onRequirementChange={setRequirement}
+              onReasonChange={setReason}
+              submitting={submitting}
+              evalSets={evalSets}
+              loadingEvalSets={loadingEvalSets}
+              evalSetsError={evalSetsError}
+              selectedEvalSetId={selectedEvalSetId}
+              onSelectEvalSet={setSelectedEvalSetId}
+              newEvalSetName={newEvalSetName}
+              onNewEvalSetNameChange={setNewEvalSetName}
+              requirements={requirements}
+              loadingRequirements={loadingRequirements}
+              requirementsError={requirementsError}
+              selectedRequirementId={selectedRequirementId}
+              onSelectRequirement={setSelectedRequirementId}
+            />
+          </div>
         )}
 
         <DialogFooter className="gap-2">
