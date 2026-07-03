@@ -35,8 +35,21 @@ beforeAll(async () => {
   process.env.DATABASE_URL = TEST_DATABASE_URL;
 
   // Establish the Prisma connection once before any tests run.
+  // Retry the probe query: $connect() may resolve before the native engine
+  // binary is fully ready (known Prisma race), so we back off and retry
+  // rather than failing the entire suite on first attempt.
   await db.$connect();
-  await db.$queryRaw`SELECT 1`;
+
+  const maxAttempts = 5;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      await db.$queryRaw`SELECT 1`;
+      break;
+    } catch (err) {
+      if (attempt === maxAttempts) throw err;
+      await new Promise((resolve) => setTimeout(resolve, attempt * 500));
+    }
+  }
 }, 30_000);
 
 // Reset database before each test to ensure clean state.
