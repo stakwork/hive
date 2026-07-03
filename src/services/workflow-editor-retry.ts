@@ -9,6 +9,8 @@ import { getBaseUrl } from "@/lib/utils";
 import { WorkflowContent } from "@/lib/chat";
 import { fetchChatHistory } from "@/lib/helpers/chat-history";
 import { buildWorkflowEditorFeatureContext } from "@/services/workflow-editor";
+import { resolveExtraSwarms, resolveSubAgents } from "@/services/roadmap/feature-chat";
+import { isDevelopmentMode } from "@/lib/runtime";
 
 interface WorkflowContext {
   workflowId: string | number;
@@ -46,6 +48,11 @@ export async function executeWorkflowEditorRetry(
         select: {
           slug: true,
           ownerId: true,
+          sourceControlOrgId: true,
+          members: {
+            where: { userId },
+            select: { role: true },
+          },
           swarm: {
             select: {
               swarmUrl: true,
@@ -74,6 +81,11 @@ export async function executeWorkflowEditorRetry(
   });
 
   if (!task) return false;
+
+  // Authorization: caller must be workspace owner or active member before any credential access
+  const isOwner = task.workspace.ownerId === userId;
+  const isMember = task.workspace.members.length > 0;
+  if (!isOwner && !isMember) return false;
 
   // Recover workflow context by scanning WORKFLOW artifacts oldest→newest (last match wins)
   const workflowContext = recoverWorkflowContext(task.chatMessages);
@@ -148,6 +160,24 @@ export async function executeWorkflowEditorRetry(
       if (featureContext) {
         (vars as Record<string, unknown>).featureContext = featureContext;
       }
+    }
+
+    // Resolve org member workspaces + @mentioned workspaces as sub-agents (net-new on retry)
+    const workspaceSlug = task.workspace.slug;
+    const sourceControlOrgId = task.workspace.sourceControlOrgId;
+    let subAgents: Awaited<ReturnType<typeof resolveExtraSwarms>>;
+    if ((workspaceSlug === "stakwork" || isDevelopmentMode()) && sourceControlOrgId) {
+      subAgents = await resolveSubAgents({
+        message: lastUserMessage.message,
+        userId: task.createdById,
+        sourceControlOrgId,
+      });
+    } else {
+      subAgents = await resolveExtraSwarms(lastUserMessage.message, task.createdById);
+    }
+    if (subAgents.length) {
+      (vars as Record<string, unknown>).subAgents = subAgents;
+      console.log("[workflow-editor-retry] forwarding subAgents:", subAgents.map((a) => a.name));
     }
 
     const stakworkPayload = {

@@ -164,6 +164,10 @@ vi.mock("sonner", () => ({
   toast: { success: vi.fn(), error: vi.fn() },
 }));
 
+vi.mock("@/components/daily-recap/DailyRecapCard", () => ({
+  DailyRecapCard: () => <div data-testid="daily-recap-card" />,
+}));
+
 vi.mock("@/components/dashboard/DashboardChat/StreamScrollIndicator", () => ({
   StreamScrollIndicator: ({
     userScrolledUp,
@@ -474,5 +478,73 @@ describe("SidebarChat — handleClear strips ?chat= param", () => {
     // Exactly one replaceState call from handleClear (stripping the chat param)
     expect(replaceStateSpy).toHaveBeenCalledTimes(1);
     expect(replaceStateSpy).toHaveBeenCalledWith(null, "", expect.any(String));
+  });
+});
+
+describe("SidebarChat — DailyRecapCard placement", () => {
+  beforeEach(() => {
+    vi.resetModules();
+    mockIsActive = false;
+    mockStoreState = {
+      activeConversationId: null,
+      conversations: {},
+      artifacts: {},
+      dismissedArtifactIds: {},
+      pendingInputDraft: null,
+    };
+  });
+
+  it("renders exactly one DailyRecapCard on initial load with no messages", async () => {
+    const { SidebarChat } = await import(
+      "@/app/org/[githubLogin]/_components/SidebarChat"
+    );
+    render(<SidebarChat githubLogin="test-org" />);
+
+    const cards = screen.getAllByTestId("daily-recap-card");
+    expect(cards).toHaveLength(1);
+  });
+
+  it("renders DailyRecapCard before the empty-state placeholder in DOM order", async () => {
+    const { SidebarChat } = await import(
+      "@/app/org/[githubLogin]/_components/SidebarChat"
+    );
+    const { container } = render(<SidebarChat githubLogin="test-org" />);
+
+    const card = container.querySelector("[data-testid='daily-recap-card']");
+    const placeholder = screen.getByText("Ask the agent about anything on this canvas.");
+
+    expect(card).not.toBeNull();
+    // card should come before placeholder in the DOM
+    expect(
+      card!.compareDocumentPosition(placeholder) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
+  it("renders exactly one DailyRecapCard when messages are present", async () => {
+    mockStoreState = {
+      activeConversationId: "conv-1",
+      conversations: {
+        "conv-1": {
+          id: "conv-1",
+          messages: [
+            { id: "m1", role: "user", content: [{ type: "text", text: "hello" }] },
+          ],
+          activeToolCalls: [],
+          isLoading: false,
+          streamingArtifacts: {},
+        },
+      },
+      artifacts: {},
+      dismissedArtifactIds: {},
+      pendingInputDraft: null,
+    };
+
+    const { SidebarChat } = await import(
+      "@/app/org/[githubLogin]/_components/SidebarChat"
+    );
+    render(<SidebarChat githubLogin="test-org" />);
+
+    const cards = screen.getAllByTestId("daily-recap-card");
+    expect(cards).toHaveLength(1);
   });
 });
