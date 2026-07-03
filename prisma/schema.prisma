@@ -926,6 +926,16 @@ model Feature {
    * false = never auto-respond for this feature (even if global is on)
    */
   autoRespond         Boolean?              @map("auto_respond")
+  /**
+   * The originating ErrorIssue this Feature was created to fix — set
+   * when the Feature is created via "Fix in Plan Mode" from the Errors
+   * dashboard. Nullable (most Features have no linked error).
+   * Many Features may point to the same ErrorIssue across repeated
+   * fix attempts; onDelete: SetNull so deleting a Feature never
+   * cascades to the error.
+   */
+  errorIssueId        String?               @map("error_issue_id")
+  errorIssue          ErrorIssue?           @relation(fields: [errorIssueId], references: [id], onDelete: SetNull)
   agentLogs           AgentLog[]
   chatMessages        ChatMessage[]
   assignee            User?                 @relation("FeatureAssignee", fields: [assigneeId], references: [id])
@@ -952,6 +962,7 @@ model Feature {
   @@index([milestoneId])
   @@index([initiativeId])
   @@index([parentCanvasConversationId])
+  @@index([errorIssueId])
   @@map("features")
 }
 
@@ -2083,6 +2094,7 @@ model ErrorIssue {
   workspace      Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   repository     Repository?      @relation(fields: [repositoryId], references: [id], onDelete: SetNull)
   events         ErrorEvent[]
+  features       Feature[]
 
   @@unique([workspaceId, repoKey, fingerprint])
   @@index([workspaceId])
