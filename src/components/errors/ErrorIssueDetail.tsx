@@ -10,8 +10,8 @@ import { TriageActions } from "./TriageActions";
 import { ChevronDown, ChevronRight, AlertTriangle } from "lucide-react";
 import type { ErrorIssueDetailResponse, ErrorIssueStatus, ErrorEventRecord } from "@/types/error-issues";
 import { parseStackFrameLines, buildBlobUrl, resolveRef } from "@/lib/utils/github-links";
-import type { StructuredFrame } from "@/lib/utils/error-frames";
-import { sanitizeFrames } from "@/lib/utils/error-frames";
+import type { StructuredFrame, ParsedBlob } from "@/lib/utils/error-frames";
+import { parseBlobContent } from "@/lib/utils/error-frames";
 
 const dateFormatter = new Intl.DateTimeFormat("en-US", {
   year: "numeric",
@@ -120,22 +120,6 @@ function StackTraceViewer({
 }
 
 // ── Parsed blob state ─────────────────────────────────────────────────────────
-
-interface ParsedBlob {
-  stackTrace: string;
-  frames: StructuredFrame[];
-}
-
-function parseBlobContent(text: string): ParsedBlob {
-  try {
-    const parsed = JSON.parse(text);
-    const stackTrace = typeof parsed?.stackTrace === "string" ? parsed.stackTrace : text;
-    const frames = sanitizeFrames(parsed?.frames);
-    return { stackTrace, frames };
-  } catch {
-    return { stackTrace: text, frames: [] };
-  }
-}
 
 interface BlobViewerProps {
   issueId: string;
