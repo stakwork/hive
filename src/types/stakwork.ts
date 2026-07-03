@@ -83,6 +83,7 @@ export const StakworkRunWebhookSchema = z.object({
   project_status: z.string().optional(),
   project_id: z.number().optional(),
   project_output: z.record(z.string(), z.unknown()).optional(),
+  recap_unchanged: z.boolean().optional(),
 });
 
 export const UpdateStakworkRunDecisionSchema = z.object({
