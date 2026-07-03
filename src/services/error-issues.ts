@@ -205,6 +205,47 @@ export async function fetchRedactedBlobContent(blobUrl: string): Promise<string>
   }
 }
 
+// ── Auto-resolve ──────────────────────────────────────────────────────────────
+
+/**
+ * Resolves all ErrorIssues linked to the given Feature IDs that are not yet
+ * RESOLVED or IGNORED.
+ *
+ * - Idempotent: already-RESOLVED issues are silently skipped (notIn filter).
+ * - IGNORED protection: IGNORED issues are never touched (notIn filter).
+ * - Partial failure: one issue failing does not block others.
+ * - Returns the list of issue IDs that were actually resolved.
+ */
+export async function autoResolveErrorIssuesForFeatures(
+  featureIds: string[],
+): Promise<{ resolvedIssueIds: string[] }> {
+  if (featureIds.length === 0) return { resolvedIssueIds: [] };
+
+  const issues = await db.errorIssue.findMany({
+    where: {
+      features: { some: { id: { in: featureIds } } },
+      status: { notIn: ["RESOLVED", "IGNORED"] },
+    },
+    select: { id: true },
+  });
+
+  const resolvedIssueIds: string[] = [];
+
+  for (const { id } of issues) {
+    try {
+      await updateErrorIssueStatus(id, "RESOLVED");
+      resolvedIssueIds.push(id);
+    } catch (err) {
+      console.error("[error-auto-resolve] failed to resolve issue (non-blocking)", {
+        issueId: id,
+        error: err,
+      });
+    }
+  }
+
+  return { resolvedIssueIds };
+}
+
 // ── Triage ────────────────────────────────────────────────────────────────────
 
 export class InvalidStatusError extends Error {
