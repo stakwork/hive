@@ -22,6 +22,7 @@ export const BIFROST_AGENT_NAMES = [
   "test-agent",
   "build-agent",
   "browser-agent",
+  "security-review-agent",
 ] as const;
 
 export type BifrostAgentName = (typeof BIFROST_AGENT_NAMES)[number];
