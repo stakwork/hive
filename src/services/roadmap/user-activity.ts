@@ -73,6 +73,8 @@ export async function getUserActivityFeed(params: {
   days?: number;
   /** Optional exclusive upper-bound timestamp for cursor-based pagination (used by route). */
   cursor?: Date | null;
+  /** Optional exact exclusive lower bound for activity window (overrides days-based cutoff when provided). */
+  since?: Date;
 }): Promise<ActivityItem[]> {
   const { userId, category = null, cursor = null } = params;
 
@@ -80,7 +82,8 @@ export async function getUserActivityFeed(params: {
   const limit = clampLimit(params.limit ?? DEFAULT_LIMIT);
   const q = (params.q ?? "").trim();
 
-  const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+  // When `since` is provided use it directly as the lower bound; otherwise derive from `days`.
+  const cutoff = params.since ?? new Date(Date.now() - days * 24 * 60 * 60 * 1000);
 
   const runChat = !category || category === "chat";
   const runPlan = !category || category === "plan";

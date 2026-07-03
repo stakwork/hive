@@ -794,7 +794,7 @@ export async function processStakworkRunWebhook(
     run_id?: string;
   }
 ) {
-  const { result, project_status, project_id } = webhookData;
+  const { result, project_status, project_id, recap_unchanged } = webhookData;
   const { workspace_id, feature_id, type, run_id } = queryParams;
 
   logger.info("[webhook] processStakworkRunWebhook called", "stakwork-run", {
@@ -891,6 +891,20 @@ export async function processStakworkRunWebhook(
   // Step 1: Atomic update to prevent race conditions
   // Include COMPLETED in the status filter so the result webhook can still
   // write data even if the status-only webhook (/api/stakwork/webhook) arrived first.
+  //
+  // DAILY_RECAP + recap_unchanged: mark COMPLETED (so createdAt advances the cursor)
+  // but do NOT overwrite result — leave it null so the card surfaces the last real recap.
+  const isRecapUnchanged =
+    run.type === StakworkRunType.DAILY_RECAP && recap_unchanged === true;
+
+  if (isRecapUnchanged) {
+    logger.info(
+      "[webhook] DAILY_RECAP recap_unchanged — completing run without overwriting result",
+      "stakwork-run",
+      { runId: run.id },
+    );
+  }
+
   const updateResult = await db.stakworkRun.updateMany({
     where: {
       id: run.id,
@@ -898,7 +912,7 @@ export async function processStakworkRunWebhook(
     },
     data: {
       status,
-      result: serializedResult,
+      ...(isRecapUnchanged ? {} : { result: serializedResult }),
       dataType,
       updatedAt: new Date(),
     },
