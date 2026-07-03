@@ -11,20 +11,31 @@ import { ErrorIssueStatus } from "@prisma/client";
 
 // ── Mocks ─────────────────────────────────────────────────────────────────────
 
-const { mockFindUnique, mockUpdate, mockPusherTrigger, mockEventFindMany, mockEventCount } =
-  vi.hoisted(() => ({
-    mockFindUnique: vi.fn(),
-    mockUpdate: vi.fn(),
-    mockPusherTrigger: vi.fn(),
-    mockEventFindMany: vi.fn(),
-    mockEventCount: vi.fn(),
-  }));
+const {
+  mockFindUnique,
+  mockUpdate,
+  mockIssueFindMany,
+  mockIssueCount,
+  mockPusherTrigger,
+  mockEventFindMany,
+  mockEventCount,
+} = vi.hoisted(() => ({
+  mockFindUnique: vi.fn(),
+  mockUpdate: vi.fn(),
+  mockIssueFindMany: vi.fn(),
+  mockIssueCount: vi.fn(),
+  mockPusherTrigger: vi.fn(),
+  mockEventFindMany: vi.fn(),
+  mockEventCount: vi.fn(),
+}));
 
 vi.mock("@/lib/db", () => ({
   db: {
     errorIssue: {
       findUnique: mockFindUnique,
       update: mockUpdate,
+      findMany: mockIssueFindMany,
+      count: mockIssueCount,
     },
     errorEvent: {
       findMany: mockEventFindMany,
@@ -39,7 +50,7 @@ vi.mock("@/lib/pusher", () => ({
   PUSHER_EVENTS: { ERROR_ISSUE_UPDATED: "error-issue-updated" },
 }));
 
-import { updateErrorIssueStatus, InvalidStatusError, getErrorIssueDetail } from "@/services/error-issues";
+import { updateErrorIssueStatus, InvalidStatusError, getErrorIssueDetail, listErrorIssues } from "@/services/error-issues";
 
 const MOCK_ISSUE = {
   id: "issue-1",
@@ -217,5 +228,82 @@ describe("getErrorIssueDetail", () => {
     const result = await getErrorIssueDetail("issue-1", 20, 0);
     expect(result!.eventsTotal).toBe(25);
     expect(result!.eventsHasMore).toBe(true);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// listErrorIssues
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("listErrorIssues", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockIssueFindMany.mockResolvedValue([]);
+    mockIssueCount.mockResolvedValue(0);
+  });
+
+  it("applies notIn([RESOLVED, IGNORED]) by default (no status, no includeAll)", async () => {
+    await listErrorIssues({ workspaceId: "ws-1" });
+
+    const expectedWhere = {
+      workspaceId: "ws-1",
+      status: { notIn: ["RESOLVED", "IGNORED"] },
+    };
+    expect(mockIssueFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expectedWhere }),
+    );
+    expect(mockIssueCount).toHaveBeenCalledWith({ where: expectedWhere });
+  });
+
+  it("applies no status constraint when includeAll is true", async () => {
+    await listErrorIssues({ workspaceId: "ws-1", includeAll: true });
+
+    const expectedWhere = { workspaceId: "ws-1" };
+    expect(mockIssueFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expectedWhere }),
+    );
+    expect(mockIssueCount).toHaveBeenCalledWith({ where: expectedWhere });
+  });
+
+  it("applies exact status match when a concrete status is provided", async () => {
+    await listErrorIssues({ workspaceId: "ws-1", status: "RESOLVED" });
+
+    const expectedWhere = { workspaceId: "ws-1", status: "RESOLVED" };
+    expect(mockIssueFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expectedWhere }),
+    );
+    expect(mockIssueCount).toHaveBeenCalledWith({ where: expectedWhere });
+  });
+
+  it("uses the same where clause for both findMany and count (pagination totals are consistent)", async () => {
+    await listErrorIssues({ workspaceId: "ws-1", status: "UNRESOLVED" });
+
+    const findManyWhere = mockIssueFindMany.mock.calls[0][0].where;
+    const countWhere = mockIssueCount.mock.calls[0][0].where;
+    expect(findManyWhere).toEqual(countWhere);
+  });
+
+  it("includes repoKey in where clause when provided", async () => {
+    await listErrorIssues({ workspaceId: "ws-1", repoKey: "stakwork/hive" });
+
+    expect(mockIssueFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ repoKey: "stakwork/hive" }),
+      }),
+    );
+  });
+
+  it("returns hasMore: true when total exceeds skip+limit", async () => {
+    mockIssueCount.mockResolvedValue(50);
+    mockIssueFindMany.mockResolvedValue([]);
+    const result = await listErrorIssues({ workspaceId: "ws-1", skip: 0, limit: 20 });
+    expect(result.hasMore).toBe(true);
+  });
+
+  it("returns hasMore: false when total is within skip+limit", async () => {
+    mockIssueCount.mockResolvedValue(5);
+    mockIssueFindMany.mockResolvedValue([]);
+    const result = await listErrorIssues({ workspaceId: "ws-1", skip: 0, limit: 20 });
+    expect(result.hasMore).toBe(false);
   });
 });
