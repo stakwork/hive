@@ -1,4 +1,4 @@
-import { BIFROST_AGENT_NAMES, type BifrostAgentName } from "@/services/bifrost/orchestrator";
+import { BIFROST_AGENT_NAMES, type BifrostAgentName } from "@/services/bifrost/agent-names";
 import { DEFAULT_AGENT_SPECS } from "@/services/bifrost/agent-catalog";
 import type { EvalTriggerSource } from "@/lib/utils/eval-source";
 
