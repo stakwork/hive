@@ -1869,6 +1869,47 @@ async function seedVoiceCorrections(users: Array<{ id: string; email: string }>)
   console.log(`✓ Seeded ${rows.length} voice correction learning rows`);
 }
 
+async function seedFeatureErrorIssueLink() {
+  // Find the first UNRESOLVED ErrorIssue and link it to the first Feature
+  // in the same workspace to demonstrate the Fix-in-Plan-Mode → auto-resolve loop.
+  const errorIssue = await prisma.errorIssue.findFirst({
+    where: { status: "UNRESOLVED" },
+    select: { id: true, workspaceId: true },
+  });
+
+  if (!errorIssue) {
+    console.log("✓ No UNRESOLVED ErrorIssue found — skipping Feature→ErrorIssue link seed");
+    return;
+  }
+
+  // Check if any Feature already has this errorIssueId (idempotency guard)
+  const alreadyLinked = await prisma.feature.count({
+    where: { errorIssueId: errorIssue.id },
+  });
+
+  if (alreadyLinked > 0) {
+    console.log("✓ Feature→ErrorIssue link already seeded — skipping");
+    return;
+  }
+
+  const feature = await prisma.feature.findFirst({
+    where: { workspaceId: errorIssue.workspaceId, deleted: false },
+    select: { id: true },
+  });
+
+  if (!feature) {
+    console.log("✓ No Feature found in the same workspace as the UNRESOLVED ErrorIssue — skipping");
+    return;
+  }
+
+  await prisma.feature.update({
+    where: { id: feature.id },
+    data: { errorIssueId: errorIssue.id },
+  });
+
+  console.log(`✓ Linked Feature ${feature.id} → ErrorIssue ${errorIssue.id} for end-to-end demo`);
+}
+
 async function main() {
   await prisma.$connect();
 
@@ -1889,6 +1930,7 @@ async function main() {
   await seedDeferredChatAction(users);
   await seedDailyRecapRun(users);
   await seedVoiceCorrections(users);
+  await seedFeatureErrorIssueLink();
 
   console.log("Seed completed.");
 }

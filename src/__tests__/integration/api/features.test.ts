@@ -772,6 +772,95 @@ describe("Features API - Integration Tests", () => {
       });
       expect(feature?.isFastTrack).toBe(false);
     });
+
+    test("creates feature with errorIssueId when it belongs to the same workspace", async () => {
+      const user = await createTestUser();
+      const workspace = await createTestWorkspace({
+        ownerId: user.id,
+        name: "Test Workspace",
+        slug: "test-workspace",
+      });
+
+      // Create an ErrorIssue in the same workspace
+      const errorIssue = await db.errorIssue.create({
+        data: {
+          workspaceId: workspace.id,
+          repoKey: "owner/repo",
+          fingerprint: "fp-test-001",
+          exceptionType: "TypeError",
+          title: "TypeError: cannot read property of null",
+          status: "UNRESOLVED",
+          firstSeenAt: new Date(),
+          lastSeenAt: new Date(),
+        },
+      });
+
+      const request = createAuthenticatedPostRequest("http://localhost:3000/api/features", {
+        title: "Fix: TypeError",
+        workspaceId: workspace.id,
+        errorIssueId: errorIssue.id,
+      }, user);
+
+      const response = await POST(request);
+
+      const data = await expectSuccess(response, 201);
+      expect(data.data.id).toBeDefined();
+
+      // Verify the link is persisted in the database
+      const feature = await db.feature.findUnique({
+        where: { id: data.data.id },
+        select: { errorIssueId: true },
+      });
+      expect(feature?.errorIssueId).toBe(errorIssue.id);
+    });
+
+    test("creates feature without errorIssueId when it belongs to a different workspace (IDOR guard)", async () => {
+      const user = await createTestUser();
+      const workspace = await createTestWorkspace({
+        ownerId: user.id,
+        name: "Test Workspace",
+        slug: "test-workspace",
+      });
+      const otherOwner = await createTestUser();
+      const otherWorkspace = await createTestWorkspace({
+        ownerId: otherOwner.id,
+        name: "Other Workspace",
+        slug: "other-workspace",
+      });
+
+      // ErrorIssue in a DIFFERENT workspace
+      const errorIssue = await db.errorIssue.create({
+        data: {
+          workspaceId: otherWorkspace.id,
+          repoKey: "owner/other-repo",
+          fingerprint: "fp-test-002",
+          exceptionType: "RangeError",
+          title: "RangeError: out of range",
+          status: "UNRESOLVED",
+          firstSeenAt: new Date(),
+          lastSeenAt: new Date(),
+        },
+      });
+
+      const request = createAuthenticatedPostRequest("http://localhost:3000/api/features", {
+        title: "Fix: RangeError",
+        workspaceId: workspace.id,
+        errorIssueId: errorIssue.id,
+      }, user);
+
+      const response = await POST(request);
+
+      // Feature is still created successfully
+      const data = await expectSuccess(response, 201);
+      expect(data.data.id).toBeDefined();
+
+      // But errorIssueId should be null (cross-workspace link silently dropped)
+      const feature = await db.feature.findUnique({
+        where: { id: data.data.id },
+        select: { errorIssueId: true },
+      });
+      expect(feature?.errorIssueId).toBeNull();
+    });
   });
 
   describe("GET /api/features - needsAttention filter", () => {
