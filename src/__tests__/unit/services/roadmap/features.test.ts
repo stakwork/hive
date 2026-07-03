@@ -15,6 +15,9 @@ vi.mock("@/lib/db", () => ({
       findUnique: vi.fn(),
       update: vi.fn(),
     },
+    errorIssue: {
+      findFirst: vi.fn(),
+    },
   },
 }));
 
@@ -661,6 +664,8 @@ describe("createFeature", () => {
           // Dependency array defaults to [] when not supplied. Mirrors
           // `Task.dependsOnTaskIds`'s posture.
           dependsOnFeatureIds: [],
+          // errorIssueId is null when not provided (no linked error).
+          errorIssueId: null,
           createdById: mockUserId,
           updatedById: mockUserId,
           phases: {
@@ -809,6 +814,78 @@ describe("createFeature", () => {
           data: expect.objectContaining({
             createdById: mockUserId,
             updatedById: mockUserId,
+          }),
+        })
+      );
+    });
+  });
+
+  describe("errorIssueId IDOR guard and persistence", () => {
+    const mockErrorIssueId = "error-issue-abc";
+
+    beforeEach(() => {
+      // Default: errorIssue.findFirst returns null (not found / wrong workspace)
+      vi.mocked(db.errorIssue.findFirst).mockResolvedValue(null);
+    });
+
+    test("persists errorIssueId when ErrorIssue belongs to the same workspace", async () => {
+      vi.mocked(db.errorIssue.findFirst).mockResolvedValue({ id: mockErrorIssueId } as any);
+
+      await createFeature(mockUserId, {
+        title: "Fix Feature",
+        workspaceId: mockWorkspaceId,
+        errorIssueId: mockErrorIssueId,
+      });
+
+      expect(db.errorIssue.findFirst).toHaveBeenCalledWith({
+        where: { id: mockErrorIssueId, workspaceId: mockWorkspaceId },
+        select: { id: true },
+      });
+
+      expect(db.feature.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            errorIssueId: mockErrorIssueId,
+          }),
+        })
+      );
+    });
+
+    test("ignores errorIssueId when ErrorIssue belongs to a different workspace", async () => {
+      // findFirst returns null because workspaceId doesn't match
+      vi.mocked(db.errorIssue.findFirst).mockResolvedValue(null);
+
+      const result = await createFeature(mockUserId, {
+        title: "Fix Feature",
+        workspaceId: mockWorkspaceId,
+        errorIssueId: "error-issue-other-workspace",
+      });
+
+      // Feature is still created (no error thrown)
+      expect(result).toBeDefined();
+
+      // errorIssueId is set to null, not the untrusted value
+      expect(db.feature.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            errorIssueId: null,
+          }),
+        })
+      );
+    });
+
+    test("works unchanged when errorIssueId is omitted (no DB call for errorIssue)", async () => {
+      await createFeature(mockUserId, {
+        title: "Regular Feature",
+        workspaceId: mockWorkspaceId,
+      });
+
+      expect(db.errorIssue.findFirst).not.toHaveBeenCalled();
+
+      expect(db.feature.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            errorIssueId: null,
           }),
         })
       );
