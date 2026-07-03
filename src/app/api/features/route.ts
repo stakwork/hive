@@ -175,7 +175,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const feature = await createFeature(userOrResponse.id, body);
+    const feature = await createFeature(userOrResponse.id, {
+      ...body,
+      errorIssueId: body.errorIssueId,
+    });
 
     // Canvas-side: fire `CANVAS_UPDATED` on the most-specific scope the
     // new feature lives on so any open org canvases refetch and pick up
