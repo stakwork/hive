@@ -31,6 +31,100 @@ import { RunEvalsModal } from "@/components/prompts/RunEvalsModal";
 // Sentinel ID for representing the current live version
 const CURRENT_VERSION_SENTINEL = -1;
 
+// ─── AgentNamesEditor ────────────────────────────────────────────────────────
+
+function AgentNamesEditor({
+  agentNames,
+  onChange,
+  disabled,
+}: {
+  agentNames: string[];
+  onChange: (names: string[]) => void;
+  disabled?: boolean;
+}) {
+  const [inputValue, setInputValue] = React.useState("");
+  const [inputError, setInputError] = React.useState<string | null>(null);
+
+  const handleAdd = () => {
+    const trimmed = inputValue.trim();
+    if (!trimmed) {
+      setInputError("Agent name cannot be blank.");
+      return;
+    }
+    if (agentNames.some((n) => n.toLowerCase() === trimmed.toLowerCase())) {
+      setInputError("Agent name already added.");
+      return;
+    }
+    onChange([...agentNames, trimmed]);
+    setInputValue("");
+    setInputError(null);
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      handleAdd();
+    }
+  };
+
+  const handleRemove = (name: string) => {
+    onChange(agentNames.filter((n) => n !== name));
+  };
+
+  return (
+    <div className="space-y-2">
+      <div className="flex gap-2">
+        <Input
+          className="mt-0 flex-1"
+          placeholder="Add agent name..."
+          value={inputValue}
+          onChange={(e) => {
+            setInputValue(e.target.value);
+            setInputError(null);
+          }}
+          onKeyDown={handleKeyDown}
+          disabled={disabled}
+        />
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={handleAdd}
+          disabled={disabled || !inputValue.trim()}
+        >
+          <Plus className="h-4 w-4" />
+          Add
+        </Button>
+      </div>
+      {inputError && <p className="text-xs text-destructive">{inputError}</p>}
+      {agentNames.length === 0 ? (
+        <p className="text-xs text-muted-foreground italic">No agents assigned.</p>
+      ) : (
+        <div className="flex flex-wrap gap-2">
+          {agentNames.map((name) => (
+            <span
+              key={name}
+              className="inline-flex items-center gap-1 rounded-full bg-muted px-3 py-1 text-xs font-medium"
+            >
+              {name}
+              {!disabled && (
+                <button
+                  type="button"
+                  onClick={() => handleRemove(name)}
+                  className="ml-1 text-muted-foreground hover:text-destructive transition-colors"
+                  aria-label={`Remove ${name}`}
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              )}
+            </span>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 interface PromptUsage {
   workflow_id: number;
   workflow_name: string;
@@ -43,6 +137,7 @@ interface Prompt {
   name: string;
   description: string;
   usage_notation: string;
+  agent_names?: string[];
   value?: string;
   usages?: PromptUsage[];
 }
@@ -53,6 +148,7 @@ interface PromptDetail {
   value: string;
   description: string;
   usage_notation: string;
+  agent_names: string[];
   current_version_id: number | null;
   published_version_id: number | null;
   version_count: number;
@@ -165,6 +261,7 @@ export function PromptsPanel({ workflowId, variant = "panel", onNavigateToWorkfl
   const [formName, setFormName] = useState("");
   const [formValue, setFormValue] = useState("");
   const [formDescription, setFormDescription] = useState("");
+  const [formAgentNames, setFormAgentNames] = useState<string[]>([]);
 
   // Debounced form value for live token count
   const debouncedFormValue = useDebounce(formValue, 300);
@@ -267,6 +364,7 @@ export function PromptsPanel({ workflowId, variant = "panel", onNavigateToWorkfl
         setSelectedPrompt(data.data);
         setFormValue(data.data.value);
         setFormDescription(data.data.description);
+        setFormAgentNames(data.data.agent_names ?? []);
       } else {
         throw new Error("Failed to fetch prompt details");
       }
@@ -502,6 +600,7 @@ export function PromptsPanel({ workflowId, variant = "panel", onNavigateToWorkfl
     setFormName("");
     setFormValue("");
     setFormDescription("");
+    setFormAgentNames([]);
     updateUrlWithPrompt(null);
   };
 
@@ -510,12 +609,14 @@ export function PromptsPanel({ workflowId, variant = "panel", onNavigateToWorkfl
     setFormName("");
     setFormValue("");
     setFormDescription("");
+    setFormAgentNames([]);
   };
 
   const handleEditClick = () => {
     if (selectedPrompt) {
       setFormValue(selectedPrompt.value);
       setFormDescription(selectedPrompt.description);
+      setFormAgentNames(selectedPrompt.agent_names ?? []);
       setIsEditing(true);
     }
   };
@@ -524,6 +625,7 @@ export function PromptsPanel({ workflowId, variant = "panel", onNavigateToWorkfl
     if (selectedPrompt) {
       setFormValue(selectedPrompt.value);
       setFormDescription(selectedPrompt.description);
+      setFormAgentNames(selectedPrompt.agent_names ?? []);
     }
     setIsEditing(false);
   };
@@ -553,6 +655,7 @@ export function PromptsPanel({ workflowId, variant = "panel", onNavigateToWorkfl
           name: formName.trim(),
           value: formValue.trim(),
           description: formDescription.trim(),
+          agentNames: formAgentNames,
         }),
       });
 
@@ -591,6 +694,7 @@ export function PromptsPanel({ workflowId, variant = "panel", onNavigateToWorkfl
         body: JSON.stringify({
           value: formValue.trim(),
           description: formDescription.trim(),
+          agentNames: formAgentNames,
         }),
       });
 
@@ -882,6 +986,19 @@ export function PromptsPanel({ workflowId, variant = "panel", onNavigateToWorkfl
 
             <div>
               <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                Agent Names
+              </label>
+              <div className="mt-1">
+                <AgentNamesEditor
+                  agentNames={formAgentNames}
+                  onChange={setFormAgentNames}
+                  disabled={isSaving}
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
                 Value <span className="text-destructive">*</span>
               </label>
               <Textarea
@@ -1092,6 +1209,38 @@ export function PromptsPanel({ workflowId, variant = "panel", onNavigateToWorkfl
                   <p className="mt-1 text-sm">
                     {selectedPrompt.description || <span className="text-muted-foreground italic">No description</span>}
                   </p>
+                )}
+              </div>
+
+              <div>
+                <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                  Agent Names
+                </label>
+                {isEditing ? (
+                  <div className="mt-1">
+                    <AgentNamesEditor
+                      agentNames={formAgentNames}
+                      onChange={setFormAgentNames}
+                      disabled={isSaving}
+                    />
+                  </div>
+                ) : (
+                  <div className="mt-1">
+                    {(selectedPrompt.agent_names ?? []).length === 0 ? (
+                      <p className="text-xs text-muted-foreground italic">No agents assigned.</p>
+                    ) : (
+                      <div className="flex flex-wrap gap-2">
+                        {(selectedPrompt.agent_names ?? []).map((name) => (
+                          <span
+                            key={name}
+                            className="inline-flex items-center rounded-full bg-muted px-3 py-1 text-xs font-medium"
+                          >
+                            {name}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 )}
               </div>
 

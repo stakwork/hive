@@ -52,11 +52,28 @@ async function requireWriteAccess(
 
 // ─── Shape helpers ────────────────────────────────────────────────────────────
 
+function normalizeAgentNames(names: unknown): string[] {
+  if (!Array.isArray(names)) return [];
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const n of names) {
+    if (typeof n !== "string") continue;
+    const trimmed = n.trim();
+    if (!trimmed) continue;
+    const lower = trimmed.toLowerCase();
+    if (seen.has(lower)) continue;
+    seen.add(lower);
+    result.push(trimmed);
+  }
+  return result;
+}
+
 function shapePrompt(p: {
   id: string;
   name: string;
   value: string;
   description: string | null;
+  agentNames: string[];
   publishedVersionId: string | null;
   stakworkId: number | null;
   syncStatus: string;
@@ -71,6 +88,7 @@ function shapePrompt(p: {
     name: p.name,
     value: p.value,
     description: p.description ?? "",
+    agent_names: p.agentNames,
     published_version_id: p.publishedVersionId,
     current_version_id: latestVersionId,
     stakwork_id: p.stakworkId,
@@ -149,10 +167,11 @@ export async function POST(request: NextRequest) {
     if (denied) return denied;
 
     const body = await request.json();
-    const { name, value, description } = body as {
+    const { name, value, description, agentNames } = body as {
       name?: string;
       value?: string;
       description?: string;
+      agentNames?: unknown;
     };
 
     if (!name || !value) {
@@ -166,7 +185,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { prompt } = await writePromptThrough({ name, value, description, userId });
+    const normalizedAgentNames = normalizeAgentNames(agentNames);
+    const { prompt } = await writePromptThrough({ name, value, description, agentNames: normalizedAgentNames, userId });
 
     return NextResponse.json({
       success: true,

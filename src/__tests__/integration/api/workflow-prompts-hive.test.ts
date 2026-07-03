@@ -735,6 +735,190 @@ describe("Hive-native Prompt CRUD + Write-through Sync", () => {
     });
   });
 
+  // ─── agentNames ──────────────────────────────────────────────────────────────
+
+  describe("agentNames field", () => {
+    test("create with agentNames → persisted and returned in response", async () => {
+      authAs(testUser);
+      stakworkOkCreate(200);
+
+      const req = makeReq("http://localhost/api/workflow/prompts", "POST", {
+        name: "AGENT_NAMES_CREATE",
+        value: "v1",
+        agentNames: ["AgentA", "AgentB"],
+      });
+      const res = await POST(req);
+      expect(res.status).toBe(200);
+      const data = (await res.json()).data;
+      createdPromptIds.push(data.id);
+
+      expect(data.agent_names).toEqual(["AgentA", "AgentB"]);
+
+      // DB check
+      const prompt = await db.prompt.findUnique({ where: { id: data.id } });
+      expect(prompt!.agentNames).toEqual(["AgentA", "AgentB"]);
+    });
+
+    test("existing prompts (no agentNames supplied) default to empty array", async () => {
+      authAs(testUser);
+      stakworkOkCreate(201);
+
+      const req = makeReq("http://localhost/api/workflow/prompts", "POST", {
+        name: "AGENT_NAMES_EMPTY",
+        value: "v1",
+      });
+      const res = await POST(req);
+      expect(res.status).toBe(200);
+      const data = (await res.json()).data;
+      createdPromptIds.push(data.id);
+
+      expect(data.agent_names).toEqual([]);
+    });
+
+    test("update preserves / updates agentNames on Prompt row across draft versions", async () => {
+      authAs(testUser);
+      stakworkOkCreate(202);
+
+      // Create with initial agent names
+      const createRes = await POST(
+        makeReq("http://localhost/api/workflow/prompts", "POST", {
+          name: "AGENT_NAMES_UPDATE",
+          value: "v1",
+          agentNames: ["InitialAgent"],
+        }),
+      );
+      const created = (await createRes.json()).data;
+      createdPromptIds.push(created.id);
+
+      // Update prompt value + change agent names
+      authAs(testUser);
+      stakworkOkUpdate();
+      const updateRes = await PUT(
+        makeReq(`http://localhost/api/workflow/prompts/${created.id}`, "PUT", {
+          value: "v2",
+          agentNames: ["InitialAgent", "NewAgent"],
+        }),
+        { params: Promise.resolve({ id: created.id }) },
+      );
+      expect(updateRes.status).toBe(200);
+      const updatedData = (await updateRes.json()).data;
+
+      // A new draft version was created (version count = 2)
+      const prompt = await db.prompt.findUnique({
+        where: { id: created.id },
+        include: { versions: { orderBy: { versionNumber: "asc" } } },
+      });
+      expect(prompt!.versions).toHaveLength(2);
+
+      // agentNames updated on Prompt row
+      expect(prompt!.agentNames).toEqual(["InitialAgent", "NewAgent"]);
+
+      // GET by id also returns updated agent_names
+      authAs(testUser);
+      const getRes = await GET_BY_ID(
+        makeReq(`http://localhost/api/workflow/prompts/${created.id}`, "GET"),
+        { params: Promise.resolve({ id: created.id }) },
+      );
+      const getData = (await getRes.json()).data;
+      expect(getData.agent_names).toEqual(["InitialAgent", "NewAgent"]);
+
+      // Stakwork payload must NOT include agentNames
+      const updateFetchCall = mockFetch.mock.calls[1];
+      const sentBody = JSON.parse(updateFetchCall[1].body as string);
+      expect(sentBody.prompt.agentNames).toBeUndefined();
+      expect(sentBody.prompt.agent_names).toBeUndefined();
+      expect((updatedData as Record<string, unknown>).agentNames).toBeUndefined();
+    });
+
+    test("update without agentNames does not erase existing agentNames", async () => {
+      authAs(testUser);
+      stakworkOkCreate(203);
+
+      const createRes = await POST(
+        makeReq("http://localhost/api/workflow/prompts", "POST", {
+          name: "AGENT_NAMES_PRESERVE",
+          value: "v1",
+          agentNames: ["KeepMe"],
+        }),
+      );
+      const created = (await createRes.json()).data;
+      createdPromptIds.push(created.id);
+
+      // Update without providing agentNames at all
+      authAs(testUser);
+      stakworkOkUpdate();
+      await PUT(
+        makeReq(`http://localhost/api/workflow/prompts/${created.id}`, "PUT", {
+          value: "v2",
+        }),
+        { params: Promise.resolve({ id: created.id }) },
+      );
+
+      // agentNames should remain ["KeepMe"]
+      const prompt = await db.prompt.findUnique({ where: { id: created.id } });
+      expect(prompt!.agentNames).toEqual(["KeepMe"]);
+    });
+
+    test("server-side: blank entries are stripped from agentNames", async () => {
+      authAs(testUser);
+      stakworkOkCreate(204);
+
+      const req = makeReq("http://localhost/api/workflow/prompts", "POST", {
+        name: "AGENT_NAMES_BLANK",
+        value: "v1",
+        agentNames: ["AgentA", "  ", "", "AgentB"],
+      });
+      const res = await POST(req);
+      expect(res.status).toBe(200);
+      const data = (await res.json()).data;
+      createdPromptIds.push(data.id);
+
+      expect(data.agent_names).toEqual(["AgentA", "AgentB"]);
+    });
+
+    test("server-side: case-insensitive duplicates are de-duped in agentNames", async () => {
+      authAs(testUser);
+      stakworkOkCreate(205);
+
+      const req = makeReq("http://localhost/api/workflow/prompts", "POST", {
+        name: "AGENT_NAMES_DEDUPE",
+        value: "v1",
+        agentNames: ["AgentA", "agenta", "AGENTA", "AgentB"],
+      });
+      const res = await POST(req);
+      expect(res.status).toBe(200);
+      const data = (await res.json()).data;
+      createdPromptIds.push(data.id);
+
+      // Only the first occurrence survives
+      expect(data.agent_names).toEqual(["AgentA", "AgentB"]);
+    });
+
+    test("Stakwork push payload does NOT include agentNames on create", async () => {
+      authAs(testUser);
+      stakworkOkCreate(206);
+
+      const req = makeReq("http://localhost/api/workflow/prompts", "POST", {
+        name: "AGENT_NAMES_PAYLOAD_CHECK",
+        value: "v1",
+        agentNames: ["SomeAgent"],
+      });
+      const res = await POST(req);
+      expect(res.status).toBe(200);
+      const data = (await res.json()).data;
+      createdPromptIds.push(data.id);
+
+      const [, opts] = mockFetch.mock.calls[0];
+      const sentBody = JSON.parse(opts.body as string);
+      // top-level: no agentNames / agent_names
+      expect(sentBody.agentNames).toBeUndefined();
+      expect(sentBody.agent_names).toBeUndefined();
+      // nested prompt object: no agentNames / agent_names
+      expect(sentBody.prompt.agentNames).toBeUndefined();
+      expect(sentBody.prompt.agent_names).toBeUndefined();
+    });
+  });
+
   // ─── Prompt Graph Recorder ───────────────────────────────────────────────────
 
   describe("Prompt graph recorder (recordPromptOnGraph)", () => {
