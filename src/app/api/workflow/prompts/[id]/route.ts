@@ -4,6 +4,7 @@ import { authOptions } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
 import { isDevelopmentMode } from "@/lib/runtime";
 import { writePromptThrough, deletePrompt } from "@/services/prompts/prompt-sync";
+import { BIFROST_AGENT_NAMES } from "@/services/bifrost/agent-names";
 
 export const runtime = "nodejs";
 export const fetchCache = "force-no-store";
@@ -46,11 +47,32 @@ async function requireWriteAccess(
 
 // ─── Shape helper ─────────────────────────────────────────────────────────────
 
+const VALID_AGENT_NAMES = new Set<string>(BIFROST_AGENT_NAMES);
+
+function normalizeAgentNames(names: unknown): string[] | { error: string } {
+  if (!Array.isArray(names)) return [];
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const n of names) {
+    if (typeof n !== "string") continue;
+    const trimmed = n.trim();
+    if (!trimmed) continue;
+    if (!VALID_AGENT_NAMES.has(trimmed)) {
+      return { error: `Invalid agent name: "${trimmed}"` };
+    }
+    if (seen.has(trimmed)) continue;
+    seen.add(trimmed);
+    result.push(trimmed);
+  }
+  return result;
+}
+
 function shapePromptDetail(p: {
   id: string;
   name: string;
   value: string;
   description: string | null;
+  agentNames: string[];
   publishedVersionId: string | null;
   stakworkId: number | null;
   syncStatus: string;
@@ -69,6 +91,7 @@ function shapePromptDetail(p: {
     name: p.name,
     value: currentValue,
     description: p.description ?? "",
+    agent_names: p.agentNames,
     published_version_id: p.publishedVersionId,
     current_version_id: currentVersionId,
     stakwork_id: p.stakworkId,
@@ -136,10 +159,11 @@ export async function PUT(
     }
 
     const body = await request.json();
-    const { name, value, description } = body as {
+    const { name, value, description, agentNames } = body as {
       name?: string;
       value?: string;
       description?: string;
+      agentNames?: unknown;
     };
 
     if (!value) {
@@ -152,11 +176,17 @@ export async function PUT(
       return NextResponse.json({ error: "Prompt not found" }, { status: 404 });
     }
 
+    const normalizedAgentNames = agentNames !== undefined ? normalizeAgentNames(agentNames) : undefined;
+    if (normalizedAgentNames !== undefined && !Array.isArray(normalizedAgentNames)) {
+      return NextResponse.json({ error: normalizedAgentNames.error }, { status: 400 });
+    }
+
     await writePromptThrough({
       promptId: id,
       name: name ?? existing.name,
       value,
       description,
+      agentNames: normalizedAgentNames,
       userId,
     });
 
