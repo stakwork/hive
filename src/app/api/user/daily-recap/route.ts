@@ -21,6 +21,7 @@ export async function GET() {
       userId: session.user.id,
       type: StakworkRunType.DAILY_RECAP,
       status: WorkflowStatus.COMPLETED,
+      result: { not: null },
     },
     orderBy: { createdAt: "desc" },
     select: { result: true, createdAt: true },
