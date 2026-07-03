@@ -130,6 +130,34 @@ export async function seedErrorEvents() {
   const repos = workspace.repositories.slice(0, 3); // Use up to 3 repos
   const now = new Date();
 
+  // impactScore values: varied so UI + manual QA can exercise high/low/null states.
+  // null = unscored (no Jarvis connection), 0.85 = high/central, 0.12 = low/peripheral.
+  const IMPACT_SCORES: (number | null)[] = [
+    0.85,  // high impact — touches heavily-depended-upon code path
+    null,  // unscored — no KG projection (exercises graceful degradation)
+    0.12,  // low impact — peripheral file
+    0.91,  // very high — central API route
+    null,  // unscored
+    0.44,  // moderate
+    0.07,  // very low / peripheral
+    0.72,  // high
+    null,  // unscored
+    0.33,  // moderate-low
+  ];
+
+  const IMPACT_METAS: (object | null)[] = [
+    { topNodeName: "api-client.ts", topNodeType: "File", topPagerank: 0.82, topInDegree: 145, nodeCount: 3 },
+    null,
+    { topNodeName: "utils.ts", topNodeType: "File", topPagerank: 0.10, topInDegree: 8, nodeCount: 1 },
+    { topNodeName: "GET /api/users/route.ts", topNodeType: "Function", topPagerank: 0.89, topInDegree: 210, nodeCount: 5 },
+    null,
+    { topNodeName: "ProductList.tsx", topNodeType: "File", topPagerank: 0.38, topInDegree: 42, nodeCount: 2 },
+    { topNodeName: "seed-helper.ts", topNodeType: "File", topPagerank: 0.05, topInDegree: 2, nodeCount: 1 },
+    { topNodeName: "user-service.ts", topNodeType: "File", topPagerank: 0.68, topInDegree: 98, nodeCount: 4 },
+    null,
+    { topNodeName: "auth/jwt.ts", topNodeType: "File", topPagerank: 0.29, topInDegree: 31, nodeCount: 2 },
+  ];
+
   // We'll create 10 issues spread across repos with varied attributes
   const issueConfigs = [
     { repoIdx: 0, statusIdx: 0, occurrenceCount: 142, daysAgoFirst: 30, daysAgoLast: 1, envIdx: 0, releaseIdx: 4 },
@@ -182,6 +210,9 @@ export async function seedErrorEvents() {
         addRandomSuffix: true,
       });
 
+      const impactScore = IMPACT_SCORES[i] ?? null;
+      const impactMeta = IMPACT_METAS[i] ?? null;
+
       // Create the ErrorIssue
       const issue = await prisma.errorIssue.create({
         data: {
@@ -198,6 +229,9 @@ export async function seedErrorEvents() {
           environment,
           release,
           metadata: { source: "seed" },
+          impactScore,
+          impactScoredAt: impactScore !== null ? new Date() : null,
+          impactMeta: impactMeta ?? undefined,
         },
       });
       issueCount++;

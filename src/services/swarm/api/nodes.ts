@@ -440,6 +440,73 @@ export async function deleteNode(
   }
 }
 
+// ── Error impact: centrality read ────────────────────────────────────────────
+
+/** Centrality properties returned per referenced node. */
+export interface CentralityNode {
+  ref_id: string;
+  node_type: string;
+  name?: string;
+  pagerank?: number;
+  in_degree?: number;
+  hub_score?: number;
+  importance_tag?: string;
+}
+
+export interface ReferencedNodeCentralityResult {
+  ok: boolean;
+  nodes: CentralityNode[];
+  error?: string;
+}
+
+/**
+ * Fetches the REFERENCES neighbors of an ErrorIssue node from the Jarvis graph,
+ * including their centrality properties (pagerank, in_degree, hub_score, importance_tag).
+ *
+ * Uses `POST /graph/search/neighbors` with the issue's ref_id and edge_type=REFERENCES.
+ * Never throws — returns { ok: false, nodes: [] } on any failure.
+ */
+export async function getReferencedNodeCentrality(
+  config: JarvisConnectionConfig,
+  issueRefId: string,
+  opts?: { timeoutMs?: number },
+): Promise<ReferencedNodeCentralityResult> {
+  const result = await jarvisRequest({
+    config,
+    endpoint: "/graph/search/neighbors",
+    method: "POST",
+    data: {
+      ref_id: issueRefId,
+      edge_type: "REFERENCES",
+      direction: "outbound",
+      include_properties: true,
+    },
+    timeoutMs: opts?.timeoutMs ?? REQUEST_TIMEOUT_MS,
+  });
+
+  if (!result.ok) {
+    return { ok: false, nodes: [], error: result.error };
+  }
+
+  const body = result.body as { nodes?: Array<Record<string, unknown>> } | undefined;
+  const rawNodes = Array.isArray(body?.nodes) ? body!.nodes : [];
+
+  const nodes: CentralityNode[] = rawNodes.map((n) => {
+    const props = (n.properties as Record<string, unknown> | undefined) ?? {};
+    return {
+      ref_id: String(n.ref_id ?? ""),
+      node_type: String(n.node_type ?? ""),
+      name: (props.name ?? props.function_name ?? props.file_path) as string | undefined,
+      pagerank: typeof props.pagerank === "number" ? props.pagerank : undefined,
+      in_degree: typeof props.in_degree === "number" ? props.in_degree : undefined,
+      hub_score: typeof props.hub_score === "number" ? props.hub_score : undefined,
+      importance_tag: typeof props.importance_tag === "string" ? props.importance_tag : undefined,
+    };
+  });
+
+  return { ok: true, nodes };
+}
+
 export async function patchEdge(
   config: JarvisConnectionConfig,
   edgeRefId: string,

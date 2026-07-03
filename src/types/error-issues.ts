@@ -2,6 +2,16 @@ import type { ErrorIssueStatus } from "@prisma/client";
 
 export type { ErrorIssueStatus };
 
+export type ErrorIssueSort = "recent" | "impact";
+
+export interface ImpactMeta {
+  topNodeName: string | null;
+  topNodeType: string | null;
+  topPagerank: number;
+  topInDegree: number;
+  nodeCount: number;
+}
+
 export interface ErrorIssueRecord {
   id: string;
   workspaceId: string;
@@ -18,6 +28,9 @@ export interface ErrorIssueRecord {
   release: string | null;
   metadata: Record<string, unknown> | null;
   kgRefId: string | null;
+  impactScore: number | null;
+  impactScoredAt: string | null;
+  impactMeta: ImpactMeta | null;
 }
 
 export interface ErrorEventRecord {

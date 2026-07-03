@@ -344,6 +344,102 @@ describe("GET /api/errors", () => {
     const a2Idx = ids.indexOf(ctx.issueA2.id);
     expect(a1Idx).toBeLessThan(a2Idx);
   });
+
+  test("returns 400 for invalid sort value", async () => {
+    mockRequireAuth.mockReturnValueOnce({ id: ctx.ownerA.id, email: ctx.ownerA.email, name: ctx.ownerA.name });
+    const req = buildGetRequest(
+      `/api/errors?workspace_id=${ctx.workspaceA.id}&sort=popularity`,
+    );
+    const res = await listErrors(req);
+    expect(res.status).toBe(400);
+  });
+
+  test("sort=recent is accepted and returns 200", async () => {
+    mockRequireAuth.mockReturnValueOnce({ id: ctx.ownerA.id, email: ctx.ownerA.email, name: ctx.ownerA.name });
+    const req = buildGetRequest(`/api/errors?workspace_id=${ctx.workspaceA.id}&sort=recent&status=all`);
+    const res = await listErrors(req);
+    expect(res.status).toBe(200);
+  });
+
+  test("sort=impact is accepted and returns 200", async () => {
+    mockRequireAuth.mockReturnValueOnce({ id: ctx.ownerA.id, email: ctx.ownerA.email, name: ctx.ownerA.name });
+    const req = buildGetRequest(`/api/errors?workspace_id=${ctx.workspaceA.id}&sort=impact&status=all`);
+    const res = await listErrors(req);
+    expect(res.status).toBe(200);
+  });
+
+  test("sort=impact orders high-impact issue before null-impact issue", async () => {
+    // Create two additional issues: one with high impact score, one without
+    const now = new Date();
+    const highImpactIssue = await db.errorIssue.create({
+      data: {
+        id: generateUniqueId("issue-hi"),
+        workspaceId: ctx.workspaceA.id,
+        repositoryId: ctx.repoA.id,
+        repoKey: ctx.repoA.id,
+        fingerprint: `fp-hi-${generateUniqueId()}`,
+        exceptionType: "TypeError",
+        title: "High impact error",
+        occurrenceCount: 1,
+        firstSeenAt: now,
+        lastSeenAt: now,
+        status: "UNRESOLVED",
+        impactScore: 0.9,
+        impactScoredAt: now,
+      },
+    });
+    const nullImpactIssue = await db.errorIssue.create({
+      data: {
+        id: generateUniqueId("issue-null"),
+        workspaceId: ctx.workspaceA.id,
+        repositoryId: ctx.repoA.id,
+        repoKey: ctx.repoA.id,
+        fingerprint: `fp-null-${generateUniqueId()}`,
+        exceptionType: "ReferenceError",
+        title: "Unscored error",
+        occurrenceCount: 999, // many occurrences but no impact score
+        firstSeenAt: now,
+        lastSeenAt: now,
+        status: "UNRESOLVED",
+        impactScore: null,
+      },
+    });
+
+    mockRequireAuth.mockReturnValueOnce({ id: ctx.ownerA.id, email: ctx.ownerA.email, name: ctx.ownerA.name });
+    const req = buildGetRequest(
+      `/api/errors?workspace_id=${ctx.workspaceA.id}&sort=impact&status=UNRESOLVED`,
+    );
+    const res = await listErrors(req);
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    const ids: string[] = body.issues.map((i: { id: string }) => i.id);
+
+    const hiIdx = ids.indexOf(highImpactIssue.id);
+    const nullIdx = ids.indexOf(nullImpactIssue.id);
+    // High impact must appear before null (nulls last)
+    expect(hiIdx).toBeGreaterThanOrEqual(0);
+    expect(nullIdx).toBeGreaterThanOrEqual(0);
+    expect(hiIdx).toBeLessThan(nullIdx);
+
+    // Cleanup
+    await db.errorIssue.deleteMany({ where: { id: { in: [highImpactIssue.id, nullImpactIssue.id] } } });
+  });
+
+  test("sort=impact exposes impactScore/impactScoredAt/impactMeta in response", async () => {
+    mockRequireAuth.mockReturnValueOnce({ id: ctx.ownerA.id, email: ctx.ownerA.email, name: ctx.ownerA.name });
+    const req = buildGetRequest(
+      `/api/errors?workspace_id=${ctx.workspaceA.id}&sort=impact&status=all`,
+    );
+    const res = await listErrors(req);
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    // All issues should have these fields present (may be null)
+    for (const issue of body.issues) {
+      expect(issue).toHaveProperty("impactScore");
+      expect(issue).toHaveProperty("impactScoredAt");
+      expect(issue).toHaveProperty("impactMeta");
+    }
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────

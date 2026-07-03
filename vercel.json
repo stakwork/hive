@@ -61,6 +61,10 @@
     {
       "path": "/api/cron/jarvis-pr-links",
       "schedule": "30 * * * *"
+    },
+    {
+      "path": "/api/cron/error-impact",
+      "schedule": "0 * * * *"
     }
   ]
 }

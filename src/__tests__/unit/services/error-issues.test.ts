@@ -306,4 +306,39 @@ describe("listErrorIssues", () => {
     const result = await listErrorIssues({ workspaceId: "ws-1", skip: 0, limit: 20 });
     expect(result.hasMore).toBe(false);
   });
+
+  it("orders by lastSeenAt desc by default (recent sort)", async () => {
+    await listErrorIssues({ workspaceId: "ws-1" });
+    expect(mockIssueFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({ orderBy: [{ lastSeenAt: "desc" }] }),
+    );
+  });
+
+  it("orders by lastSeenAt desc when sort=recent is explicit", async () => {
+    await listErrorIssues({ workspaceId: "ws-1", sort: "recent" });
+    expect(mockIssueFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({ orderBy: [{ lastSeenAt: "desc" }] }),
+    );
+  });
+
+  it("orders by impactScore desc (nulls last), then occurrenceCount, then lastSeenAt when sort=impact", async () => {
+    await listErrorIssues({ workspaceId: "ws-1", sort: "impact" });
+    expect(mockIssueFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        orderBy: [
+          { impactScore: { sort: "desc", nulls: "last" } },
+          { occurrenceCount: "desc" },
+          { lastSeenAt: "desc" },
+        ],
+      }),
+    );
+  });
+
+  it("selects impactScore, impactScoredAt, impactMeta in the result set", async () => {
+    await listErrorIssues({ workspaceId: "ws-1" });
+    const selectArg = mockIssueFindMany.mock.calls[0][0].select;
+    expect(selectArg).toHaveProperty("impactScore", true);
+    expect(selectArg).toHaveProperty("impactScoredAt", true);
+    expect(selectArg).toHaveProperty("impactMeta", true);
+  });
 });

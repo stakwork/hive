@@ -2077,6 +2077,9 @@ model ErrorIssue {
   release        String?
   metadata       Json?
   kgRefId        String?          @map("kg_ref_id")
+  impactScore    Float?           @map("impact_score")
+  impactScoredAt DateTime?        @map("impact_scored_at")
+  impactMeta     Json?            @map("impact_meta")
   workspace      Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   repository     Repository?      @relation(fields: [repositoryId], references: [id], onDelete: SetNull)
   events         ErrorEvent[]
@@ -2085,6 +2088,7 @@ model ErrorIssue {
   @@index([workspaceId])
   @@index([repositoryId])
   @@index([lastSeenAt])
+  @@index([impactScore])
   @@map("error_issues")
 }
 
