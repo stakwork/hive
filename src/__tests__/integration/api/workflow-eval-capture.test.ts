@@ -6,7 +6,7 @@
  * - 404/403 for non-member / no swarm
  * - 400 for missing `requirement`
  * - 400 for missing `evalSetId`
- * - 200 happy path: addNode called 2× (EvalRequirement + EvalTrigger), addEdge called exactly 2×
+ * - 200 happy path: addNode called 3× (EvalRequirement + EvalTrigger + HiveAgent), addEdge called 3×
  * - HAS_REQUIREMENT edge source is the provided evalSetId (not auto-generated)
  * - prompt_snapshot and output_snapshot stored from posted inputs/outputs
  * - EvalTrigger body has no `model` or `provider` fields
@@ -15,7 +15,9 @@
  * - No outbound fetch to STAKWORK_BASE_URL/projects/...
  * - No EVALUATED edge is created
  * - prompts is an array of JSON strings (not a single big string, not a raw object array)
- * - agent is always a string even when step_id is sent as a number
+ * - EvalTrigger.agent is a canonical BifrostAgentName; caller override via agentName body field
+ * - HiveAgent node upserted with display_name/description from catalog
+ * - ATTRIBUTED_TO edge written from EvalTrigger → HiveAgent (non-fatal)
  */
 
 import { describe, test, expect, beforeEach, afterEach, vi } from "vitest";
@@ -133,10 +135,11 @@ afterEach(async () => {
 // ── Helper: setup node mocks for happy path ───────────────────────────────────
 
 function setupNodeMocks() {
-  // addNode: EvalRequirement, EvalTrigger (no EvalSet creation — provided by client)
+  // addNode: EvalRequirement, EvalTrigger, HiveAgent (no EvalSet creation — provided by client)
   vi.mocked(nodesService.addNode)
     .mockResolvedValueOnce({ success: true, ref_id: "req-ref-1" })
-    .mockResolvedValueOnce({ success: true, ref_id: "trigger-ref-1" });
+    .mockResolvedValueOnce({ success: true, ref_id: "trigger-ref-1" })
+    .mockResolvedValueOnce({ success: true, ref_id: "hive-agent-ref-1" });
 
   vi.mocked(nodesService.addEdge).mockResolvedValue({ success: true });
 }
@@ -253,7 +256,7 @@ describe("POST .../workflows/[workflowId]/eval/capture", () => {
   });
 
   describe("Happy path", () => {
-    test("returns 200 and calls addNode twice (EvalRequirement + EvalTrigger)", async () => {
+    test("returns 200 and calls addNode three times (EvalRequirement + EvalTrigger + HiveAgent)", async () => {
       const { user, workspace } = await createTestFixtures();
       setupNodeMocks();
 
@@ -263,14 +266,15 @@ describe("POST .../workflows/[workflowId]/eval/capture", () => {
       });
 
       expect(response.status).toBe(200);
-      expect(nodesService.addNode).toHaveBeenCalledTimes(2);
+      expect(nodesService.addNode).toHaveBeenCalledTimes(3);
 
       const nodeTypes = vi.mocked(nodesService.addNode).mock.calls.map((c) => c[1].node_type);
       expect(nodeTypes).toContain("EvalRequirement");
       expect(nodeTypes).toContain("EvalTrigger");
+      expect(nodeTypes).toContain("HiveAgent");
     });
 
-    test("calls addEdge exactly twice (HAS_REQUIREMENT + HAS_TRIGGER)", async () => {
+    test("calls addEdge three times (HAS_REQUIREMENT + HAS_TRIGGER + ATTRIBUTED_TO)", async () => {
       const { user, workspace } = await createTestFixtures();
       setupNodeMocks();
 
@@ -279,10 +283,11 @@ describe("POST .../workflows/[workflowId]/eval/capture", () => {
         params: Promise.resolve({ slug: workspace.slug, workflowId: "42" }),
       });
 
-      expect(nodesService.addEdge).toHaveBeenCalledTimes(2);
+      expect(nodesService.addEdge).toHaveBeenCalledTimes(3);
       const edgeTypes = vi.mocked(nodesService.addEdge).mock.calls.map((c) => c[1].edge.edge_type);
       expect(edgeTypes).toContain("HAS_REQUIREMENT");
       expect(edgeTypes).toContain("HAS_TRIGGER");
+      expect(edgeTypes).toContain("ATTRIBUTED_TO");
       expect(edgeTypes).not.toContain("EVALUATED");
     });
 
@@ -496,18 +501,14 @@ describe("POST .../workflows/[workflowId]/eval/capture", () => {
     });
 
     /**
-     * agent fix: step_id may arrive as a number from the client (e.g. step_id: 42).
-     * The downstream Python API declares `agent` as a string and rejects integers with:
-     *   "expected type string for: agent, got <class 'int'>"
-     * The route must always coerce step_id to a string via String().
+     * agent is now a canonical BifrostAgentName, not the raw step_id.
+     * Default for the workflow-capture path (provider_direct) is "plan-agent".
      */
-    test("EvalTrigger agent is always a string even when step_id is sent as a number", async () => {
+    test("EvalTrigger agent is a canonical BifrostAgentName (defaults to plan-agent for provider_direct)", async () => {
       const { user, workspace } = await createTestFixtures();
       setupNodeMocks();
 
-      // Send a numeric step_id to simulate the scenario that caused the log error
-      const body = { ...validBody, step_id: 42 };
-      const request = makeRequest(workspace.slug, "42", body, user);
+      const request = makeRequest(workspace.slug, "42", validBody, user);
       const response = await POST(request, {
         params: Promise.resolve({ slug: workspace.slug, workflowId: "42" }),
       });
@@ -520,17 +521,17 @@ describe("POST .../workflows/[workflowId]/eval/capture", () => {
       expect(triggerCall).toBeDefined();
 
       const { agent } = triggerCall![1].node_data;
-      // Must be "42" (string), never 42 (number)
       expect(typeof agent).toBe("string");
-      expect(agent).toBe("42");
+      // Default for provider_direct bucket
+      expect(agent).toBe("plan-agent");
     });
 
-    test("EvalTrigger agent falls back to 'unknown_step' string when step_id is omitted", async () => {
+    test("EvalTrigger agent uses caller-supplied agentName override when valid", async () => {
       const { user, workspace } = await createTestFixtures();
       setupNodeMocks();
 
-      const { step_id: _omitted, ...bodyWithoutStepId } = validBody;
-      const request = makeRequest(workspace.slug, "42", bodyWithoutStepId, user);
+      const body = { ...validBody, agentName: "coding-agent" };
+      const request = makeRequest(workspace.slug, "42", body, user);
       const response = await POST(request, {
         params: Promise.resolve({ slug: workspace.slug, workflowId: "42" }),
       });
@@ -541,8 +542,27 @@ describe("POST .../workflows/[workflowId]/eval/capture", () => {
         (c) => c[1].node_type === "EvalTrigger",
       );
       expect(triggerCall).toBeDefined();
-      expect(typeof triggerCall![1].node_data.agent).toBe("string");
-      expect(triggerCall![1].node_data.agent).toBe("unknown_step");
+      expect(triggerCall![1].node_data.agent).toBe("coding-agent");
+    });
+
+    test("EvalTrigger agent ignores invalid agentName and falls back to default", async () => {
+      const { user, workspace } = await createTestFixtures();
+      setupNodeMocks();
+
+      const body = { ...validBody, agentName: "free-text-agent" };
+      const request = makeRequest(workspace.slug, "42", body, user);
+      const response = await POST(request, {
+        params: Promise.resolve({ slug: workspace.slug, workflowId: "42" }),
+      });
+
+      expect(response.status).toBe(200);
+
+      const triggerCall = vi.mocked(nodesService.addNode).mock.calls.find(
+        (c) => c[1].node_type === "EvalTrigger",
+      );
+      expect(triggerCall).toBeDefined();
+      // Falls back to provider_direct default
+      expect(triggerCall![1].node_data.agent).toBe("plan-agent");
     });
 
     test("EvalTrigger node_data omits prompts key when prompts is absent", async () => {
@@ -573,10 +593,11 @@ describe("POST .../workflows/[workflowId]/eval/capture", () => {
       });
       expect(response1.status).toBe(200);
 
-      // Second capture — same evalSetId provided, new nodes created
+      // Second capture — same evalSetId provided, new nodes created (EvalReq + EvalTrigger + HiveAgent)
       vi.mocked(nodesService.addNode)
         .mockResolvedValueOnce({ success: true, ref_id: "req-ref-2" })
-        .mockResolvedValueOnce({ success: true, ref_id: "trigger-ref-2" });
+        .mockResolvedValueOnce({ success: true, ref_id: "trigger-ref-2" })
+        .mockResolvedValueOnce({ success: true, ref_id: "hive-agent-ref-2" });
       vi.mocked(nodesService.addEdge).mockResolvedValue({ success: true });
 
       const request2 = makeRequest(workspace.slug, "42", validBody, user);
@@ -588,6 +609,65 @@ describe("POST .../workflows/[workflowId]/eval/capture", () => {
       const data2 = await response2.json();
       expect(data2.data.requirementRef).toBe("req-ref-2");
       expect(data2.data.triggerRef).toBe("trigger-ref-2");
+    });
+
+    test("HiveAgent node is created with canonical name, display_name, and description from catalog", async () => {
+      const { user, workspace } = await createTestFixtures();
+      setupNodeMocks();
+
+      const request = makeRequest(workspace.slug, "42", validBody, user);
+      await POST(request, {
+        params: Promise.resolve({ slug: workspace.slug, workflowId: "42" }),
+      });
+
+      const hiveAgentCall = vi.mocked(nodesService.addNode).mock.calls.find(
+        (c) => c[1].node_type === "HiveAgent",
+      );
+      expect(hiveAgentCall).toBeDefined();
+      expect(hiveAgentCall![1].node_data.name).toBe("plan-agent");
+      expect(typeof hiveAgentCall![1].node_data.display_name).toBe("string");
+      expect((hiveAgentCall![1].node_data.display_name as string).length).toBeGreaterThan(0);
+      expect(typeof hiveAgentCall![1].node_data.description).toBe("string");
+    });
+
+    test("ATTRIBUTED_TO edge is written from trigger ref_id to HiveAgent node", async () => {
+      const { user, workspace } = await createTestFixtures();
+      setupNodeMocks();
+
+      const request = makeRequest(workspace.slug, "42", validBody, user);
+      await POST(request, {
+        params: Promise.resolve({ slug: workspace.slug, workflowId: "42" }),
+      });
+
+      const attrEdge = vi.mocked(nodesService.addEdge).mock.calls.find(
+        (c) => c[1].edge.edge_type === "ATTRIBUTED_TO",
+      );
+      expect(attrEdge).toBeDefined();
+      expect(attrEdge![1].source.ref_id).toBe("trigger-ref-1");
+      // Target uses node_type+node_data (Jarvis resolves by node_key)
+      expect((attrEdge![1].target as { node_type: string; node_data: { name: string } }).node_type).toBe("HiveAgent");
+      expect((attrEdge![1].target as { node_type: string; node_data: { name: string } }).node_data.name).toBe("plan-agent");
+    });
+
+    test("HiveAgent failure is non-fatal — route still returns 200", async () => {
+      const { user, workspace } = await createTestFixtures();
+
+      // EvalRequirement + EvalTrigger succeed; HiveAgent addNode fails
+      vi.mocked(nodesService.addNode)
+        .mockResolvedValueOnce({ success: true, ref_id: "req-ref-1" })
+        .mockResolvedValueOnce({ success: true, ref_id: "trigger-ref-1" })
+        .mockResolvedValueOnce({ success: false, error: "Jarvis schema not deployed yet" });
+      vi.mocked(nodesService.addEdge).mockResolvedValue({ success: true });
+
+      const request = makeRequest(workspace.slug, "42", validBody, user);
+      const response = await POST(request, {
+        params: Promise.resolve({ slug: workspace.slug, workflowId: "42" }),
+      });
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.success).toBe(true);
+      expect(data.data.triggerRef).toBe("trigger-ref-1");
     });
   });
 
@@ -601,8 +681,10 @@ describe("POST .../workflows/[workflowId]/eval/capture", () => {
         json: async () => ({ node_type: "EvalRequirement", ref_id: "existing-req-ref" }),
       } as Response);
 
-      // addNode only called once for EvalTrigger
-      vi.mocked(nodesService.addNode).mockResolvedValueOnce({ success: true, ref_id: "trigger-ref-1" });
+      // addNode called for EvalTrigger then HiveAgent (non-fatal)
+      vi.mocked(nodesService.addNode)
+        .mockResolvedValueOnce({ success: true, ref_id: "trigger-ref-1" })
+        .mockResolvedValueOnce({ success: true, ref_id: "hive-agent-ref-1" });
       vi.mocked(nodesService.addEdge).mockResolvedValue({ success: true });
 
       const body = {
@@ -622,15 +704,19 @@ describe("POST .../workflows/[workflowId]/eval/capture", () => {
 
       expect(response.status).toBe(200);
 
-      // Only EvalTrigger created, no EvalRequirement
-      expect(nodesService.addNode).toHaveBeenCalledTimes(1);
-      const nodeType = vi.mocked(nodesService.addNode).mock.calls[0][1].node_type;
-      expect(nodeType).toBe("EvalTrigger");
+      // EvalTrigger + HiveAgent (non-fatal), no EvalRequirement
+      expect(nodesService.addNode).toHaveBeenCalledTimes(2);
+      const nodeTypes2 = vi.mocked(nodesService.addNode).mock.calls.map((c) => c[1].node_type);
+      expect(nodeTypes2).toContain("EvalTrigger");
+      expect(nodeTypes2).toContain("HiveAgent");
+      expect(nodeTypes2).not.toContain("EvalRequirement");
 
-      // Only HAS_TRIGGER edge, no HAS_REQUIREMENT
-      expect(nodesService.addEdge).toHaveBeenCalledTimes(1);
-      const edgeType = vi.mocked(nodesService.addEdge).mock.calls[0][1].edge.edge_type;
-      expect(edgeType).toBe("HAS_TRIGGER");
+      // HAS_TRIGGER + ATTRIBUTED_TO edges; no HAS_REQUIREMENT
+      expect(nodesService.addEdge).toHaveBeenCalledTimes(2);
+      const edgeTypes2 = vi.mocked(nodesService.addEdge).mock.calls.map((c) => c[1].edge.edge_type);
+      expect(edgeTypes2).toContain("HAS_TRIGGER");
+      expect(edgeTypes2).toContain("ATTRIBUTED_TO");
+      expect(edgeTypes2).not.toContain("HAS_REQUIREMENT");
 
       // requirementRef is the provided requirementId
       const data = await response.json();
@@ -716,7 +802,9 @@ describe("POST .../workflows/[workflowId]/eval/capture", () => {
         json: async () => ({ node_type: "EvalRequirement", ref_id: "existing-req-ref" }),
       } as Response);
 
-      vi.mocked(nodesService.addNode).mockResolvedValueOnce({ success: true, ref_id: "trigger-ref-1" });
+      vi.mocked(nodesService.addNode)
+        .mockResolvedValueOnce({ success: true, ref_id: "trigger-ref-1" })
+        .mockResolvedValueOnce({ success: true, ref_id: "hive-agent-ref-1" });
       vi.mocked(nodesService.addEdge).mockResolvedValue({ success: true });
 
       const body = {
@@ -733,9 +821,11 @@ describe("POST .../workflows/[workflowId]/eval/capture", () => {
       });
 
       const edgeCalls = vi.mocked(nodesService.addEdge).mock.calls;
-      expect(edgeCalls).toHaveLength(1);
-      expect(edgeCalls[0][1].edge.edge_type).toBe("HAS_TRIGGER");
-      expect(edgeCalls[0][1].source.ref_id).toBe("existing-req-ref");
+      // HAS_TRIGGER + ATTRIBUTED_TO
+      expect(edgeCalls).toHaveLength(2);
+      const hasTriggerEdge = edgeCalls.find((c) => c[1].edge.edge_type === "HAS_TRIGGER");
+      expect(hasTriggerEdge).toBeDefined();
+      expect(hasTriggerEdge![1].source.ref_id).toBe("existing-req-ref");
     });
   });
 });
