@@ -164,8 +164,8 @@ vi.mock("sonner", () => ({
   toast: { success: vi.fn(), error: vi.fn() },
 }));
 
-vi.mock("@/components/daily-recap/DailyRecapCard", () => ({
-  DailyRecapCard: () => <div data-testid="daily-recap-card" />,
+vi.mock("@/components/daily-recap/ActivityRecapCard", () => ({
+  ActivityRecapCard: () => <div data-testid="daily-recap-card" />,
 }));
 
 vi.mock("@/components/dashboard/DashboardChat/StreamScrollIndicator", () => ({
