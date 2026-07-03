@@ -8,6 +8,7 @@ import { db } from "@/lib/db";
 import { fetchBlobContent } from "@/lib/utils/blob-fetch";
 import { parseAgentLogStats } from "@/lib/utils/agent-log-stats";
 import { deriveEvalTriggerSource } from "@/lib/utils/eval-source";
+import { parseCanonicalAgent, resolveHiveAgentName, getCaptureAgentSpec } from "@/lib/utils/hive-agent";
 import { mapPromptResolutions, type PromptResolution } from "@/types/evals";
 import { logger } from "@/lib/logger";
 
@@ -166,6 +167,14 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       (effectiveConfig as { resolvedRequestUrl?: string } | undefined)?.resolvedRequestUrl,
     );
 
+    // 10b. Resolve canonical agent name: parse from AgentLog.agent (primary),
+    //      fall back to source-bucket default.
+    const parsedAgent = parseCanonicalAgent(agentLog.agent ?? "");
+    const resolvedAgent =
+      parsedAgent ??
+      resolveHiveAgentName(evalTriggerSource);
+    logger.info(`[AgentEvalCapture] Resolved agent: ${resolvedAgent} (parsed=${parsedAgent ?? "none"}, source=${evalTriggerSource})`);
+
     const { swarmName, swarmApiKey } = swarmAccessResult.data;
     const jarvisUrl = getJarvisUrl(swarmName);
     const nodeConfig = { jarvisUrl, apiKey: swarmApiKey };
@@ -196,7 +205,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       node_type: "EvalTrigger",
       node_data: {
         id: randomUUID(),
-        agent: agentLog.agent ?? "swarm_agent",
+        agent: resolvedAgent,
         environment: logId,
         change_type: changeType,
         source: evalTriggerSource,
@@ -221,7 +230,38 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     const triggerRef = triggerResult.ref_id;
     logger.info(`[AgentEvalCapture] EvalTrigger created, ref_id: ${triggerRef}`);
 
-    // 13. Wire edges
+    // 13. Upsert HiveAgent node + ATTRIBUTED_TO edge (non-fatal)
+    try {
+      const agentSpec = getCaptureAgentSpec(resolvedAgent);
+      const hiveAgentResult = await addNode(nodeConfig, {
+        node_type: "HiveAgent",
+        node_data: {
+          name: resolvedAgent,
+          display_name: agentSpec.displayName,
+          description: agentSpec.description,
+        },
+      });
+      logger.info(
+        `[AgentEvalCapture] HiveAgent upsert: success=${hiveAgentResult.success} alreadyExists=${hiveAgentResult.alreadyExists ?? false} ref_id=${hiveAgentResult.ref_id ?? "n/a"}`,
+      );
+
+      if (hiveAgentResult.success) {
+        const attrEdgeResult = await addEdge(nodeConfig, {
+          edge: { edge_type: "ATTRIBUTED_TO" },
+          source: { ref_id: triggerRef },
+          target: { node_type: "HiveAgent", node_data: { name: resolvedAgent } },
+        });
+        logger.info(`[AgentEvalCapture] ATTRIBUTED_TO edge: success=${attrEdgeResult.success}`);
+        if (!attrEdgeResult.success) {
+          logger.warn(`[AgentEvalCapture] ATTRIBUTED_TO edge failed (non-fatal): ${attrEdgeResult.error}`);
+        }
+      } else {
+        logger.warn(`[AgentEvalCapture] HiveAgent upsert failed (non-fatal): ${hiveAgentResult.error}`);
+      }
+    } catch (err) {
+      logger.warn(`[AgentEvalCapture] HiveAgent/ATTRIBUTED_TO step threw (non-fatal): ${String(err)}`);
+    }
+
     // EvalSet -[HAS_REQUIREMENT]-> EvalRequirement
     await addEdge(nodeConfig, {
       edge: { edge_type: "HAS_REQUIREMENT" },
@@ -238,10 +278,10 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     });
     logger.info("[AgentEvalCapture] HAS_TRIGGER edge created");
 
-    // 14. Return success
+    // 15. Return success
     return NextResponse.json({
       success: true,
-      data: { evalSetRef, requirementRef, triggerRef },
+      data: { evalSetRef, requirementRef, triggerRef, agentName: resolvedAgent },
     });
   } catch (error) {
     logger.error("[AgentEvalCapture] Unexpected error", String(error));

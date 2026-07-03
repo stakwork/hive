@@ -470,6 +470,210 @@ describe("POST /api/workspaces/[slug]/agent-logs/[logId]/eval/capture", () => {
     expect(triggerCall[1].node_data.prompts).toBeUndefined();
   });
 
+  // ── agent auto-detection from AgentLog.agent ────────────────────────────
+
+  test("parses canonical agent from agentLog.agent cuid-suffixed value", async () => {
+    (db.agentLog.findUnique as Mock).mockResolvedValue({
+      ...BASE_AGENT_LOG,
+      agent: "coding-agent-cmr3lw4o5abc",
+    });
+
+    await POST(
+      makeRequest({ evalSetId: "eval-set-1", requirement: "Agent parse test" }),
+      makeParams(),
+    );
+
+    const triggerCall = (addNode as Mock).mock.calls.find(
+      ([, node]) => node.node_type === "EvalTrigger",
+    );
+    expect(triggerCall).toBeDefined();
+    expect(triggerCall[1].node_data.agent).toBe("coding-agent");
+  });
+
+  test("parses wfe-agent from agentLog.agent", async () => {
+    (db.agentLog.findUnique as Mock).mockResolvedValue({
+      ...BASE_AGENT_LOG,
+      agent: "wfe-agent-cmr3abc123xyz",
+    });
+
+    await POST(
+      makeRequest({ evalSetId: "eval-set-1", requirement: "WFE agent test" }),
+      makeParams(),
+    );
+
+    const triggerCall = (addNode as Mock).mock.calls.find(
+      ([, node]) => node.node_type === "EvalTrigger",
+    );
+    expect(triggerCall).toBeDefined();
+    expect(triggerCall[1].node_data.agent).toBe("wfe-agent");
+  });
+
+  test("falls back to resolveHiveAgentName when agentLog.agent is not parseable", async () => {
+    (db.agentLog.findUnique as Mock).mockResolvedValue({
+      ...BASE_AGENT_LOG,
+      agent: "unknown-bot-xyz",
+      source: "canvas_chat", // jamie_agent source → canvas-agent default
+    });
+
+    await POST(
+      makeRequest({ evalSetId: "eval-set-1", requirement: "Fallback agent test" }),
+      makeParams(),
+    );
+
+    const triggerCall = (addNode as Mock).mock.calls.find(
+      ([, node]) => node.node_type === "EvalTrigger",
+    );
+    expect(triggerCall).toBeDefined();
+    expect(triggerCall[1].node_data.agent).toBe("canvas-agent");
+  });
+
+  test("falls back to source-bucket default when agentLog.agent is null", async () => {
+    (db.agentLog.findUnique as Mock).mockResolvedValue({
+      ...BASE_AGENT_LOG,
+      agent: null,
+      source: "repo_agent",
+    });
+
+    await POST(
+      makeRequest({ evalSetId: "eval-set-1", requirement: "Null agent test" }),
+      makeParams(),
+    );
+
+    const triggerCall = (addNode as Mock).mock.calls.find(
+      ([, node]) => node.node_type === "EvalTrigger",
+    );
+    expect(triggerCall).toBeDefined();
+    expect(triggerCall[1].node_data.agent).toBe("repo-agent");
+  });
+
+  // ── HiveAgent upsert + ATTRIBUTED_TO edge (non-fatal) ────────────────────
+
+  test("upserts HiveAgent node after EvalTrigger creation", async () => {
+    (db.agentLog.findUnique as Mock).mockResolvedValue({
+      ...BASE_AGENT_LOG,
+      agent: "coding-agent-cmr3lw4o5abc",
+    });
+
+    await POST(
+      makeRequest({ evalSetId: "eval-set-1", requirement: "HiveAgent upsert" }),
+      makeParams(),
+    );
+
+    const hiveAgentCall = (addNode as Mock).mock.calls.find(
+      ([, node]) => node.node_type === "HiveAgent",
+    );
+    expect(hiveAgentCall).toBeDefined();
+    expect(hiveAgentCall[1].node_data.name).toBe("coding-agent");
+    expect(hiveAgentCall[1].node_data.display_name).toBeTruthy();
+    expect(hiveAgentCall[1].node_data.description).toBeTruthy();
+  });
+
+  test("upserts HiveAgent node with correct spec for wfe-agent", async () => {
+    (db.agentLog.findUnique as Mock).mockResolvedValue({
+      ...BASE_AGENT_LOG,
+      agent: "wfe-agent-cmr3abc",
+    });
+
+    await POST(
+      makeRequest({ evalSetId: "eval-set-1", requirement: "WFE HiveAgent test" }),
+      makeParams(),
+    );
+
+    const hiveAgentCall = (addNode as Mock).mock.calls.find(
+      ([, node]) => node.node_type === "HiveAgent",
+    );
+    expect(hiveAgentCall).toBeDefined();
+    expect(hiveAgentCall[1].node_data.name).toBe("wfe-agent");
+    expect(hiveAgentCall[1].node_data.display_name).toBeTruthy();
+  });
+
+  test("writes ATTRIBUTED_TO edge from EvalTrigger to HiveAgent", async () => {
+    await POST(
+      makeRequest({ evalSetId: "eval-set-1", requirement: "ATTRIBUTED_TO test" }),
+      makeParams(),
+    );
+
+    const attrEdge = (addEdge as Mock).mock.calls.find(
+      ([, e]) => e.edge.edge_type === "ATTRIBUTED_TO",
+    );
+    expect(attrEdge).toBeDefined();
+    expect(attrEdge[1].source.ref_id).toBe("ref-EvalTrigger");
+    expect(attrEdge[1].target.node_type).toBe("HiveAgent");
+    expect(attrEdge[1].target.node_data.name).toBeTruthy();
+  });
+
+  test("HiveAgent upsert failure does not fail the capture (non-fatal)", async () => {
+    (addNode as Mock).mockImplementation((_cfg, node) => {
+      if (node.node_type === "HiveAgent") {
+        return Promise.resolve({ success: false, error: "HiveAgent upsert failed" });
+      }
+      return Promise.resolve({ success: true, ref_id: `ref-${node.node_type}` });
+    });
+
+    const res = await POST(
+      makeRequest({ evalSetId: "eval-set-1", requirement: "Non-fatal test" }),
+      makeParams(),
+    );
+
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.success).toBe(true);
+  });
+
+  test("ATTRIBUTED_TO edge failure does not fail the capture (non-fatal)", async () => {
+    (addEdge as Mock).mockImplementation((_cfg, edge) => {
+      if (edge.edge.edge_type === "ATTRIBUTED_TO") {
+        return Promise.resolve({ success: false, error: "Edge type not registered" });
+      }
+      return Promise.resolve({ success: true });
+    });
+
+    const res = await POST(
+      makeRequest({ evalSetId: "eval-set-1", requirement: "ATTRIBUTED_TO non-fatal" }),
+      makeParams(),
+    );
+
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.success).toBe(true);
+  });
+
+  test("HiveAgent/ATTRIBUTED_TO throws does not fail the capture (non-fatal)", async () => {
+    (addNode as Mock).mockImplementation((_cfg, node) => {
+      if (node.node_type === "HiveAgent") {
+        throw new Error("Unexpected Jarvis error");
+      }
+      return Promise.resolve({ success: true, ref_id: `ref-${node.node_type}` });
+    });
+
+    const res = await POST(
+      makeRequest({ evalSetId: "eval-set-1", requirement: "HiveAgent throw" }),
+      makeParams(),
+    );
+
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.success).toBe(true);
+  });
+
+  // ── agentName in response ────────────────────────────────────────────────
+
+  test("response includes agentName in data", async () => {
+    (db.agentLog.findUnique as Mock).mockResolvedValue({
+      ...BASE_AGENT_LOG,
+      agent: "plan-agent-cmr3xyz",
+    });
+
+    const res = await POST(
+      makeRequest({ evalSetId: "eval-set-1", requirement: "Response agentName test" }),
+      makeParams(),
+    );
+
+    const body = await res.json();
+    expect(body.success).toBe(true);
+    expect(body.data.agentName).toBe("plan-agent");
+  });
+
   // ── edges and success response ───────────────────────────────────────────
 
   test("wires HAS_REQUIREMENT and HAS_TRIGGER edges and returns success", async () => {

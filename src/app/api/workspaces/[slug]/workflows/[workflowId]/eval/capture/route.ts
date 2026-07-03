@@ -5,8 +5,7 @@ import { getJarvisUrl } from "@/lib/utils/swarm";
 import { getWorkspaceSwarmAccess } from "@/lib/helpers/swarm-access";
 import { addNode, addEdge } from "@/services/swarm/api/nodes";
 import { logger } from "@/lib/logger";
-import { resolveHiveAgentName } from "@/lib/utils/hive-agent";
-import { DEFAULT_AGENT_SPECS } from "@/services/bifrost/agent-catalog";
+import { resolveHiveAgentName, getCaptureAgentSpec } from "@/lib/utils/hive-agent";
 
 async function verifyRequirementOwnership(
   jarvisUrl: string,
@@ -190,7 +189,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
 
     // ── 4. Upsert HiveAgent node + ATTRIBUTED_TO edge (non-fatal) ────────────
     try {
-      const agentSpec = DEFAULT_AGENT_SPECS[resolvedAgent];
+      const agentSpec = getCaptureAgentSpec(resolvedAgent);
       const hiveAgentResult = await addNode(nodeConfig, {
         node_type: "HiveAgent",
         node_data: {
