@@ -52,7 +52,7 @@ const STRIP_PREFIXES = [
   /^\/home\/[^/]+\/[^/]+\//,   // common Docker working dirs
 ];
 
-/** Patterns that mark a frame as non-resolvable */
+/** Patterns that mark a JS/Node frame as non-resolvable */
 const UNRESOLVABLE_PATTERNS = [
   /node_modules/,
   /webpack-internal/,
@@ -83,71 +83,143 @@ function isResolvable(rawPath: string, normalizedPath: string): boolean {
   return true;
 }
 
+// ── Dialect registry ──────────────────────────────────────────────────────────
+
+interface Dialect {
+  /** Returns true if this dialect can parse the (trimmed) line */
+  test(line: string): boolean;
+  /** Parses the raw line (untrimmed) into a StackFrameLine */
+  parse(raw: string): StackFrameLine;
+}
+
+const DIALECTS: Dialect[] = [
+  // ── V8: `at FunctionName (file:line:col)` ─────────────────────────────────
+  {
+    test: (line) => /^at\s+.+\s+\(.+:\d+:\d+\)$/.test(line),
+    parse: (raw): StackFrameLine => {
+      const line = raw.trim();
+      const m = line.match(/^at\s+(.+?)\s+\((.+):(\d+):\d+\)$/);
+      if (!m) return { raw, functionName: null, path: null, line: null, resolvable: false };
+      const [, fn, filePath, lineNum] = m;
+      const normalized = stripBuildPrefixes(filePath);
+      return {
+        raw,
+        functionName: fn.trim() || null,
+        path: normalized || null,
+        line: parseInt(lineNum, 10),
+        resolvable: isResolvable(filePath, normalized),
+      };
+    },
+  },
+
+  // ── V8 without function name: `at file:line:col` ──────────────────────────
+  {
+    test: (line) => /^at\s+.+:\d+:\d+$/.test(line),
+    parse: (raw): StackFrameLine => {
+      const line = raw.trim();
+      const m = line.match(/^at\s+(.+):(\d+):\d+$/);
+      if (!m) return { raw, functionName: null, path: null, line: null, resolvable: false };
+      const [, filePath, lineNum] = m;
+      const normalized = stripBuildPrefixes(filePath);
+      return {
+        raw,
+        functionName: null,
+        path: normalized || null,
+        line: parseInt(lineNum, 10),
+        resolvable: isResolvable(filePath, normalized),
+      };
+    },
+  },
+
+  // ── Firefox/Safari: `functionName@file:line:col` ──────────────────────────
+  {
+    test: (line) => /^.+@.+:\d+:\d+$/.test(line),
+    parse: (raw): StackFrameLine => {
+      const line = raw.trim();
+      const m = line.match(/^(.+?)@(.+):(\d+):\d+$/);
+      if (!m) return { raw, functionName: null, path: null, line: null, resolvable: false };
+      const [, fn, filePath, lineNum] = m;
+      const normalized = stripBuildPrefixes(filePath);
+      return {
+        raw,
+        functionName: fn.trim() || null,
+        path: normalized || null,
+        line: parseInt(lineNum, 10),
+        resolvable: isResolvable(filePath, normalized),
+      };
+    },
+  },
+
+  // ── Ruby/Rails: `path/to/file.rb:LINE:in `method'` ────────────────────────
+  // App frames (containing /app/ in path) are resolvable; gem frames are not.
+  {
+    test: (line) => /\.rb:\d+/.test(line),
+    parse: (raw): StackFrameLine => {
+      const line = raw.trim();
+      const m = line.match(/^(.+\.rb):(\d+)(?::in [`'](.*)['`])?/);
+      if (!m) return { raw, functionName: null, path: null, line: null, resolvable: false };
+      const [, filePath, lineNum, methodName] = m;
+      const isGem = /\/gems\//.test(filePath);
+
+      if (isGem) {
+        return {
+          raw,
+          functionName: methodName?.trim() || null,
+          path: filePath,
+          line: parseInt(lineNum, 10),
+          resolvable: false,
+        };
+      }
+
+      // Strip absolute prefix up to `app/` to get a repo-relative path.
+      // Use lastIndexOf so `/usr/src/app/app/models/user.rb` becomes `app/models/user.rb`
+      // rather than `app/app/models/user.rb`.
+      let normalizedPath = filePath;
+      const appIdx = filePath.lastIndexOf("/app/");
+      if (appIdx !== -1) {
+        normalizedPath = filePath.substring(appIdx + 1); // "app/controllers/..."
+      }
+
+      const resolvable = !normalizedPath.startsWith("/") && /[./]/.test(normalizedPath);
+      return {
+        raw,
+        functionName: methodName?.trim() || null,
+        path: normalizedPath || null,
+        line: parseInt(lineNum, 10),
+        resolvable,
+      };
+    },
+  },
+];
+
 /**
  * Parses a raw stack trace string into structured frame objects.
- * Supports V8 (`at Fn (path:line:col)`) and Firefox/Safari (`Fn@path:line:col`) formats.
+ * Supports V8 (`at Fn (path:line:col)`), Firefox/Safari (`Fn@path:line:col`),
+ * and Ruby/Rails (`path.rb:line:in \`method'`) formats via an ordered dialect registry.
  * Does NOT replace the server-side `parseStackFrames` (for KG matching) — this is
  * a client-facing parser that preserves full paths and line numbers for GitHub linking.
  */
 export function parseStackFrameLines(rawStackTrace: string): StackFrameLine[] {
   if (!rawStackTrace) return [];
 
-  return rawStackTrace
-    .split("\n")
-    .map((raw): StackFrameLine => {
-      const line = raw.trim();
+  return rawStackTrace.split("\n").map((raw): StackFrameLine => {
+    const line = raw.trim();
 
-      // ── V8 format: `at FunctionName (file:line:col)` or `at file:line:col`
-      const v8WithFn = line.match(/^at\s+(.+?)\s+\((.+):(\d+):\d+\)$/);
-      if (v8WithFn) {
-        const [, fn, filePath, lineNum] = v8WithFn;
-        const normalized = stripBuildPrefixes(filePath);
-        return {
-          raw,
-          functionName: fn.trim() || null,
-          path: normalized || null,
-          line: parseInt(lineNum, 10),
-          resolvable: isResolvable(filePath, normalized),
-        };
+    for (const dialect of DIALECTS) {
+      if (dialect.test(line)) {
+        return dialect.parse(raw);
       }
+    }
 
-      // V8 without function name: `at file:line:col`
-      const v8NoFn = line.match(/^at\s+(.+):(\d+):\d+$/);
-      if (v8NoFn) {
-        const [, filePath, lineNum] = v8NoFn;
-        const normalized = stripBuildPrefixes(filePath);
-        return {
-          raw,
-          functionName: null,
-          path: normalized || null,
-          line: parseInt(lineNum, 10),
-          resolvable: isResolvable(filePath, normalized),
-        };
-      }
-
-      // ── Firefox/Safari format: `functionName@file:line:col`
-      const firefox = line.match(/^(.+?)@(.+):(\d+):\d+$/);
-      if (firefox) {
-        const [, fn, filePath, lineNum] = firefox;
-        const normalized = stripBuildPrefixes(filePath);
-        return {
-          raw,
-          functionName: fn.trim() || null,
-          path: normalized || null,
-          line: parseInt(lineNum, 10),
-          resolvable: isResolvable(filePath, normalized),
-        };
-      }
-
-      // ── Unrecognised line (e.g. error message header, blank line)
-      return {
-        raw,
-        functionName: null,
-        path: null,
-        line: null,
-        resolvable: false,
-      };
-    });
+    // Unrecognised line (e.g. error message header, blank line)
+    return {
+      raw,
+      functionName: null,
+      path: null,
+      line: null,
+      resolvable: false,
+    };
+  });
 }
 
 // ── buildBlobUrl ─────────────────────────────────────────────────────────────

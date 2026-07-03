@@ -322,3 +322,77 @@ describe("resolveRef", () => {
     ).toBe("main");
   });
 });
+
+// ── Ruby/Rails dialect ────────────────────────────────────────────────────────
+
+describe("parseStackFrameLines — Ruby/Rails dialect", () => {
+  it("parses a Rails app frame (app/controllers) as resolvable", () => {
+    const raw = "/rails/app/controllers/sessions_controller.rb:56:in `edit'";
+    const [frame] = parseStackFrameLines(raw);
+    expect(frame.path).toBe("app/controllers/sessions_controller.rb");
+    expect(frame.line).toBe(56);
+    expect(frame.functionName).toBe("edit");
+    expect(frame.resolvable).toBe(true);
+  });
+
+  it("parses a Rails app frame under app/models as resolvable", () => {
+    const raw = "/usr/src/app/app/models/user.rb:12:in `validate'";
+    const [frame] = parseStackFrameLines(raw);
+    expect(frame.path).toBe("app/models/user.rb");
+    expect(frame.line).toBe(12);
+    expect(frame.resolvable).toBe(true);
+  });
+
+  it("parses a gem frame as non-resolvable", () => {
+    const raw = "/usr/local/bundle/ruby/3.2.0/gems/activerecord-7.0.4/lib/active_record/persistence.rb:120:in `save'";
+    const [frame] = parseStackFrameLines(raw);
+    expect(frame.line).toBe(120);
+    expect(frame.functionName).toBe("save");
+    expect(frame.resolvable).toBe(false);
+  });
+
+  it("parses a bundled gems frame as non-resolvable", () => {
+    const raw = "/bundle/gems/rack-2.2.6/lib/rack/handler/webrick.rb:43:in `run'";
+    const [frame] = parseStackFrameLines(raw);
+    expect(frame.resolvable).toBe(false);
+    expect(frame.path).toBe("/bundle/gems/rack-2.2.6/lib/rack/handler/webrick.rb");
+  });
+
+  it("parses a Ruby frame without in-method clause", () => {
+    const raw = "/rails/app/lib/my_service.rb:8";
+    const [frame] = parseStackFrameLines(raw);
+    expect(frame.path).toBe("app/lib/my_service.rb");
+    expect(frame.line).toBe(8);
+    expect(frame.functionName).toBeNull();
+    expect(frame.resolvable).toBe(true);
+  });
+
+  it("parses a full mixed Ruby trace correctly", () => {
+    const trace = [
+      "NoMethodError: undefined method `foo' for nil",
+      "/rails/app/controllers/posts_controller.rb:22:in `show'",
+      "/usr/local/bundle/ruby/3.2.0/gems/actionpack-7.0.4/lib/action_dispatch/routing/route_set.rb:50:in `call'",
+      "/rails/app/models/post.rb:10:in `build'",
+    ].join("\n");
+
+    const frames = parseStackFrameLines(trace);
+    expect(frames).toHaveLength(4);
+
+    const [header, controller, gem, model] = frames;
+    expect(header.resolvable).toBe(false);
+    expect(controller.resolvable).toBe(true);
+    expect(controller.path).toBe("app/controllers/posts_controller.rb");
+    expect(gem.resolvable).toBe(false);
+    expect(model.resolvable).toBe(true);
+    expect(model.path).toBe("app/models/post.rb");
+  });
+
+  it("does not affect existing JS V8 frames (Ruby dialect only triggers on .rb)", () => {
+    const raw = "    at ProductList (src/components/ProductList.tsx:42:18)";
+    const [frame] = parseStackFrameLines(raw);
+    // Should still be parsed by V8 dialect
+    expect(frame.functionName).toBe("ProductList");
+    expect(frame.path).toBe("src/components/ProductList.tsx");
+    expect(frame.resolvable).toBe(true);
+  });
+});
