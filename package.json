@@ -36,6 +36,7 @@
     "seed:workflow-versions": "tsx scripts/helpers/seed-workflow-versions.ts",
     "test:decrypt": "tsx scripts/helpers/decrypt-and-log.ts",
     "backfill:feature-concepts": "tsx scripts/backfill-feature-concepts.ts",
+    "backfill:prompt-graph": "tsx scripts/backfill-prompt-graph.ts",
     "test:pr-docs": "tsx scripts/test-pr-docs.ts",
     "decrypt-json": "tsx scripts/decrypt-json-file.ts"
   },
