@@ -49,7 +49,7 @@ export function useFixInPlanMode(
       const featureRes = await fetch("/api/features", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title, workspaceId }),
+        body: JSON.stringify({ title, workspaceId, errorIssueId: issue.id }),
       });
 
       if (!featureRes.ok) {
