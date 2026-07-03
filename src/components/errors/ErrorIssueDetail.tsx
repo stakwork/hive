@@ -10,6 +10,8 @@ import { TriageActions } from "./TriageActions";
 import { ChevronDown, ChevronRight, AlertTriangle } from "lucide-react";
 import type { ErrorIssueDetailResponse, ErrorIssueStatus, ErrorEventRecord } from "@/types/error-issues";
 import { parseStackFrameLines, buildBlobUrl, resolveRef } from "@/lib/utils/github-links";
+import type { StructuredFrame } from "@/lib/utils/error-frames";
+import { sanitizeFrames } from "@/lib/utils/error-frames";
 
 const dateFormatter = new Intl.DateTimeFormat("en-US", {
   year: "numeric",
@@ -26,6 +28,7 @@ interface StackTraceViewerProps {
   commitSha: string | null;
   release: string | null;
   defaultBranch: string | null;
+  frames?: StructuredFrame[];
 }
 
 function StackTraceViewer({
@@ -34,13 +37,60 @@ function StackTraceViewer({
   commitSha,
   release,
   defaultBranch,
+  frames,
 }: StackTraceViewerProps) {
-  const frames = parseStackFrameLines(rawStackTrace);
   const ref = resolveRef({ commitSha, release, defaultBranch });
+
+  // ── Structured frames path ───────────────────────────────────────────────
+  if (frames && frames.length > 0) {
+    return (
+      <pre className="text-xs font-mono overflow-auto max-h-96 whitespace-pre-wrap break-all">
+        {frames.map((frame, idx) => {
+          const label = [
+            frame.filename,
+            frame.lineno != null ? `:${frame.lineno}` : "",
+            frame.function ? ` in ${frame.function}` : "",
+          ].join("");
+
+          if (frame.inApp && repositoryUrl && frame.lineno != null) {
+            let href: string;
+            try {
+              href = buildBlobUrl({ repositoryUrl, ref, path: frame.filename, line: frame.lineno });
+            } catch {
+              return <span key={idx}>{label}{"\n"}</span>;
+            }
+            return (
+              <React.Fragment key={idx}>
+                <a
+                  href={href}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="underline hover:text-blue-400 transition-colors"
+                >
+                  {label}
+                </a>
+                {"\n"}
+              </React.Fragment>
+            );
+          }
+
+          // inApp:false or missing — dimmed, non-clickable
+          return (
+            <span key={idx} className="text-muted-foreground/50">
+              {label}{"\n"}
+            </span>
+          );
+        })}
+      </pre>
+    );
+  }
+
+  // ── Legacy raw-string fallback path ─────────────────────────────────────
+  const parsedFrames = parseStackFrameLines(rawStackTrace);
 
   return (
     <pre className="text-xs font-mono overflow-auto max-h-96 whitespace-pre-wrap break-all">
-      {frames.map((frame, idx) => {
+      {parsedFrames.map((frame, idx) => {
         if (frame.resolvable && repositoryUrl && frame.path && frame.line !== null) {
           let href: string;
           try {
@@ -69,19 +119,37 @@ function StackTraceViewer({
   );
 }
 
+// ── Parsed blob state ─────────────────────────────────────────────────────────
+
+interface ParsedBlob {
+  stackTrace: string;
+  frames: StructuredFrame[];
+}
+
+function parseBlobContent(text: string): ParsedBlob {
+  try {
+    const parsed = JSON.parse(text);
+    const stackTrace = typeof parsed?.stackTrace === "string" ? parsed.stackTrace : text;
+    const frames = sanitizeFrames(parsed?.frames);
+    return { stackTrace, frames };
+  } catch {
+    return { stackTrace: text, frames: [] };
+  }
+}
+
 interface BlobViewerProps {
   issueId: string;
   event: ErrorEventRecord;
 }
 
 function BlobViewer({ issueId, event }: BlobViewerProps) {
-  const [content, setContent] = useState<string | null>(null);
+  const [blob, setBlob] = useState<ParsedBlob | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [expanded, setExpanded] = useState(false);
 
   const fetchBlob = useCallback(async () => {
-    if (content !== null || loading) return;
+    if (blob !== null || loading) return;
     setLoading(true);
     setError(null);
     try {
@@ -91,19 +159,13 @@ function BlobViewer({ issueId, event }: BlobViewerProps) {
         throw new Error(data?.error ?? `Blob fetch failed (${res.status})`);
       }
       const text = await res.text();
-      // Extract stackTrace from JSON payload if possible; fall back to raw text
-      try {
-        const parsed = JSON.parse(text);
-        setContent(typeof parsed?.stackTrace === "string" ? parsed.stackTrace : text);
-      } catch {
-        setContent(text);
-      }
+      setBlob(parseBlobContent(text));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load stack trace");
     } finally {
       setLoading(false);
     }
-  }, [issueId, event.id, content, loading]);
+  }, [issueId, event.id, blob, loading]);
 
   const toggle = () => {
     if (!expanded) fetchBlob();
@@ -141,13 +203,14 @@ function BlobViewer({ issueId, event }: BlobViewerProps) {
               <span>Stack trace unavailable: {error}</span>
             </div>
           )}
-          {content !== null && !loading && (
+          {blob !== null && !loading && (
             <StackTraceViewer
-              rawStackTrace={content}
+              rawStackTrace={blob.stackTrace}
               repositoryUrl={event.repositoryUrl}
               commitSha={event.commitSha}
               release={event.release}
               defaultBranch={event.defaultBranch}
+              frames={blob.frames}
             />
           )}
         </div>

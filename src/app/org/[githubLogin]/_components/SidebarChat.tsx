@@ -343,6 +343,7 @@ export function SidebarChat({ githubLogin }: SidebarChatProps) {
 
       <div className="relative flex-1 min-h-0">
       <div ref={scrollRef} onScroll={handleScroll} className="flex-1 min-h-0 overflow-y-auto h-full px-4 py-3">
+        <DailyRecapCard dismissible showActivityLink />
         {!hasMessages && activeToolCalls.length === 0 && (
           <div className="h-full flex items-center justify-center px-4 text-center text-muted-foreground text-sm">
             Ask the agent about anything on this canvas.
