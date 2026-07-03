@@ -216,8 +216,17 @@ async function executeBulkEdgeRequest(
     m.toLowerCase().startsWith("error"),
   );
 
+  // Success means "no real errors" — NOT status === "success". Jarvis returns
+  // status "Warning" whenever status_messages is non-empty, which includes
+  // benign notices like duplicate edges being skipped on re-runs
+  // (skipped_dup). Treating "Warning" as failure caused the jarvis-mirror
+  // cursor (advanced only when nodes AND edges succeed) to freeze for any
+  // entity type that writes edges: on the second pass every edge is a dup →
+  // "Warning" → edgesOk=false → cursor never advances (tasks/chat stuck while
+  // edge-less features advanced fine). Mirror `addNodeBulk`, which already
+  // keys success off the error count.
   return {
-    success: body?.status?.toLowerCase() === "success",
+    success: errors.length === 0,
     errors,
   };
 }
