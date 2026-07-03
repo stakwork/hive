@@ -114,10 +114,12 @@ async function pushPublishToStakwork(stakworkId: number, hiveVersionId: string):
 // ─── Graph recorder ───────────────────────────────────────────────────────────
 
 /**
- * Best-effort: fire Stakwork workflow to record the prompt version in the knowledge graph.
- * Never throws — a failure here must never affect the caller.
+ * Dispatch a Stakwork graph-recorder workflow for the given prompt version.
+ * Contains the single-source-of-truth payload shape.
+ * Throws on failure — callers decide how to handle errors.
+ * No-ops (with a warn log) when WORKFLOW_GRAPH_PROMPT_STORAGE_ID is unset.
  */
-async function recordPromptOnGraph(
+export async function sendPromptGraphRequest(
   params: {
     prompt: { id: string; name: string; description: string | null; createdAt: Date };
     versionId: string;
@@ -138,29 +140,48 @@ async function recordPromptOnGraph(
     return;
   }
 
-  try {
-    await stakworkService().stakworkRequest("/projects", {
-      name: `Prompt Graph Recorder ${prompt.id}`,
-      workflow_id: Number(config.WORKFLOW_GRAPH_PROMPT_STORAGE_ID),
-      workflow_params: {
-        set_var: {
-          attributes: {
-            vars: {
-              prompt: {
-                id: prompt.id,
-                prompt_id: prompt.id,
-                prompt_version_id: versionId,
-                name: prompt.name,
-                description: prompt.description ?? "",
-                value,
-                published_at: prompt.createdAt,
-                customer_id: null,
-              },
+  await stakworkService().stakworkRequest("/projects", {
+    name: `Prompt Graph Recorder ${prompt.id}`,
+    workflow_id: Number(config.WORKFLOW_GRAPH_PROMPT_STORAGE_ID),
+    workflow_params: {
+      set_var: {
+        attributes: {
+          vars: {
+            prompt: {
+              id: prompt.id,
+              prompt_id: prompt.id,
+              prompt_version_id: versionId,
+              name: prompt.name,
+              description: prompt.description ?? "",
+              value,
+              published_at: prompt.createdAt,
+              customer_id: null,
             },
           },
         },
       },
-    });
+    },
+  });
+}
+
+/**
+ * Best-effort: fire Stakwork workflow to record the prompt version in the knowledge graph.
+ * Never throws — a failure here must never affect the caller.
+ */
+async function recordPromptOnGraph(
+  params: {
+    prompt: { id: string; name: string; description: string | null; createdAt: Date };
+    versionId: string;
+    value: string;
+  },
+  trigger: "create" | "update" | "publish",
+): Promise<void> {
+  const { prompt, versionId } = params;
+  const promptId = prompt.id;
+  const promptName = prompt.name;
+
+  try {
+    await sendPromptGraphRequest(params, trigger);
     logger.info("[prompt-sync] Prompt graph recorder launched", "prompt-sync", {
       promptId,
       promptName,

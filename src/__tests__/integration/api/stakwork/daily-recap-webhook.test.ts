@@ -190,6 +190,93 @@ describe("processStakworkRunWebhook — DAILY_RECAP exact-run targeting", () => 
     expect(afterRun?.result).not.toBeNull();
   });
 
+  it("recap_unchanged: true — marks run COMPLETED but leaves result null", async () => {
+    const user = await createUser();
+    const workspace = await createWorkspace(user.id);
+
+    const run = await createDailyRecapRun(user.id, workspace.id);
+
+    await processStakworkRunWebhook(
+      { result: null, project_status: "completed", recap_unchanged: true },
+      { type: "DAILY_RECAP", workspace_id: workspace.id, run_id: run.id },
+    );
+
+    const afterRun = await db.stakworkRun.findUnique({ where: { id: run.id } });
+
+    expect(afterRun?.status).toBe(WorkflowStatus.COMPLETED);
+    expect(afterRun?.result).toBeNull();
+  });
+
+  it("recap_unchanged: true — cursor advances; GET /daily-recap still returns prior non-null result", async () => {
+    const user = await createUser();
+    const workspace = await createWorkspace(user.id);
+
+    // 1. First run completes with real result — this is the "prior recap"
+    const firstRun = await createDailyRecapRun(user.id, workspace.id);
+    await processStakworkRunWebhook(
+      { result: "Prior recap content", project_status: "completed" },
+      { type: "DAILY_RECAP", workspace_id: workspace.id, run_id: firstRun.id },
+    );
+
+    const afterFirst = await db.stakworkRun.findUnique({ where: { id: firstRun.id } });
+    expect(afterFirst?.status).toBe(WorkflowStatus.COMPLETED);
+    expect(afterFirst?.result).toBe("Prior recap content");
+
+    // 2. Second run comes back recap_unchanged: true — completes but no result written
+    const secondRun = await createDailyRecapRun(user.id, workspace.id);
+    await processStakworkRunWebhook(
+      { result: null, project_status: "completed", recap_unchanged: true },
+      { type: "DAILY_RECAP", workspace_id: workspace.id, run_id: secondRun.id },
+    );
+
+    const afterSecond = await db.stakworkRun.findUnique({ where: { id: secondRun.id } });
+    expect(afterSecond?.status).toBe(WorkflowStatus.COMPLETED);
+    expect(afterSecond?.result).toBeNull();
+
+    // 3. The GET endpoint (result: { not: null } filter) still surfaces the first run's result
+    const latestWithResult = await db.stakworkRun.findFirst({
+      where: {
+        userId: user.id,
+        type: StakworkRunType.DAILY_RECAP,
+        status: WorkflowStatus.COMPLETED,
+        result: { not: null },
+      },
+      orderBy: { createdAt: "desc" },
+      select: { result: true, createdAt: true },
+    });
+    expect(latestWithResult?.result).toBe("Prior recap content");
+  });
+
+  it("recap_unchanged: true — cursor (createdAt) of second run is newer than first, advancing the since window", async () => {
+    const user = await createUser();
+    const workspace = await createWorkspace(user.id);
+
+    // First run completes normally
+    const firstRun = await createDailyRecapRun(user.id, workspace.id);
+    await processStakworkRunWebhook(
+      { result: "Initial recap", project_status: "completed" },
+      { type: "DAILY_RECAP", workspace_id: workspace.id, run_id: firstRun.id },
+    );
+
+    // Slight delay ensures second run's updatedAt > first run's
+    await new Promise((r) => setTimeout(r, 10));
+
+    // Second run is recap_unchanged
+    const secondRun = await createDailyRecapRun(user.id, workspace.id);
+    await processStakworkRunWebhook(
+      { result: null, project_status: "completed", recap_unchanged: true },
+      { type: "DAILY_RECAP", workspace_id: workspace.id, run_id: secondRun.id },
+    );
+
+    // The COMPLETED cursor (latest by createdAt) should now be the second run
+    const cursorRun = await db.stakworkRun.findFirst({
+      where: { userId: user.id, type: StakworkRunType.DAILY_RECAP, status: WorkflowStatus.COMPLETED },
+      orderBy: { createdAt: "desc" },
+      select: { id: true },
+    });
+    expect(cursorRun?.id).toBe(secondRun.id);
+  });
+
   it("three users in one workspace: each webhook with its own run_id completes only the correct run", async () => {
     const userA = await createUser();
     const workspace = await createWorkspace(userA.id);
