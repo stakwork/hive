@@ -11,8 +11,16 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { TagInput } from "@/components/ui/tag-input";
 import { useWorkspace } from "@/hooks/useWorkspace";
+import { HIVE_AGENT_OPTIONS } from "@/lib/utils/hive-agent";
 import type { JarvisNode } from "@/types/jarvis";
 
 export interface CaptureEvalTriggerModalProps {
@@ -24,7 +32,7 @@ export interface CaptureEvalTriggerModalProps {
 }
 
 interface Step1Fields {
-  agent: string;
+  agentName: string;
   start_point: string;
   end_point: string;
   environment: string;
@@ -50,8 +58,10 @@ interface AgentSession extends JarvisNode {
   };
 }
 
+const DEFAULT_AGENT = HIVE_AGENT_OPTIONS[0].name;
+
 const INITIAL_STEP1: Step1Fields = {
-  agent: "",
+  agentName: DEFAULT_AGENT,
   start_point: "",
   end_point: "",
   environment: "",
@@ -152,7 +162,7 @@ export function CaptureEvalTriggerModal({
 
   function isStep1Valid() {
     return (
-      fields.agent.trim() &&
+      fields.agentName &&
       fields.start_point.trim() &&
       fields.end_point.trim() &&
       fields.environment.trim() &&
@@ -168,7 +178,8 @@ export function CaptureEvalTriggerModal({
     setSubmitting(true);
     try {
       const payload: Record<string, unknown> = {
-        agent: fields.agent,
+        agent: fields.agentName,
+        agentName: fields.agentName,
         start_point: fields.start_point,
         end_point: fields.end_point,
         environment: fields.environment,
@@ -212,13 +223,22 @@ export function CaptureEvalTriggerModal({
         {step === 1 && (
           <div className="space-y-4">
             <div className="space-y-1.5">
-              <Label htmlFor="agent">Agent *</Label>
-              <Input
-                id="agent"
-                value={fields.agent}
-                onChange={(e) => handleField("agent", e.target.value)}
-                placeholder="e.g. Code Reviewer"
-              />
+              <Label htmlFor="agent-select">Agent *</Label>
+              <Select
+                value={fields.agentName}
+                onValueChange={(val) => handleField("agentName", val)}
+              >
+                <SelectTrigger id="agent-select" data-testid="agent-select">
+                  <SelectValue placeholder="Select agent…" />
+                </SelectTrigger>
+                <SelectContent>
+                  {HIVE_AGENT_OPTIONS.map((opt) => (
+                    <SelectItem key={opt.name} value={opt.name}>
+                      {opt.displayName}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1.5">
