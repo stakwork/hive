@@ -11,7 +11,9 @@ import { listErrorIssues } from "@/services/error-issues";
  *
  * Query params:
  *   workspace_id: string  — required; IDOR guard: user must be a member.
- *   status?:      string  — optional; filter by ErrorIssueStatus.
+ *   status?:      string  — optional; filter by ErrorIssueStatus enum value,
+ *                           or "all" (case-insensitive) to include every status.
+ *                           When absent, defaults to active-only (excludes RESOLVED/IGNORED).
  *   repoKey?:     string  — optional; filter by repo key.
  *   skip?:        number  — pagination offset (default: 0).
  *   limit?:       number  — pagination limit (default: 20, max: 100).
@@ -39,13 +41,20 @@ export async function GET(request: NextRequest) {
     const repoKey = searchParams.get("repoKey") ?? undefined;
 
     const validStatuses: ErrorIssueStatus[] = ["UNRESOLVED", "RESOLVED", "IGNORED"];
-    if (statusParam && !validStatuses.includes(statusParam as ErrorIssueStatus)) {
+    const isAll = statusParam?.toLowerCase() === "all";
+
+    if (statusParam && !isAll && !validStatuses.includes(statusParam as ErrorIssueStatus)) {
       return NextResponse.json(
         { error: `Invalid status. Must be one of: ${validStatuses.join(", ")}` },
         { status: 400 },
       );
     }
-    const status = statusParam ? (statusParam as ErrorIssueStatus) : undefined;
+
+    // "all" → includeAll: true (no status constraint)
+    // concrete enum value → exact match
+    // absent → service applies active-only default (notIn RESOLVED/IGNORED)
+    const status = !statusParam || isAll ? undefined : (statusParam as ErrorIssueStatus);
+    const includeAll = isAll ? true : undefined;
 
     // Pagination
     const limitParam = searchParams.get("limit");
@@ -60,7 +69,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "skip must be a non-negative number" }, { status: 400 });
     }
 
-    const result = await listErrorIssues({ workspaceId, status, repoKey, skip, limit });
+    const result = await listErrorIssues({ workspaceId, status, includeAll, repoKey, skip, limit });
 
     return NextResponse.json(result, { status: 200 });
   } catch (error) {
