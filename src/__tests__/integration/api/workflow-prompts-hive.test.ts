@@ -735,6 +735,191 @@ describe("Hive-native Prompt CRUD + Write-through Sync", () => {
     });
   });
 
+  // ─── agentNames ──────────────────────────────────────────────────────────────
+
+  describe("agentNames field", () => {
+    test("create with agentNames → persisted and returned in response", async () => {
+      authAs(testUser);
+      stakworkOkCreate(200);
+
+      const req = makeReq("http://localhost/api/workflow/prompts", "POST", {
+        name: "AGENT_NAMES_CREATE",
+        value: "v1",
+        agentNames: ["repo-agent", "chat-agent"],
+      });
+      const res = await POST(req);
+      expect(res.status).toBe(200);
+      const data = (await res.json()).data;
+      createdPromptIds.push(data.id);
+
+      expect(data.agent_names).toEqual(["repo-agent", "chat-agent"]);
+
+      const prompt = await db.prompt.findUnique({ where: { id: data.id } });
+      expect(prompt!.agentNames).toEqual(["repo-agent", "chat-agent"]);
+    });
+
+    test("existing prompts (no agentNames supplied) default to empty array", async () => {
+      authAs(testUser);
+      stakworkOkCreate(201);
+
+      const req = makeReq("http://localhost/api/workflow/prompts", "POST", {
+        name: "AGENT_NAMES_EMPTY",
+        value: "v1",
+      });
+      const res = await POST(req);
+      expect(res.status).toBe(200);
+      const data = (await res.json()).data;
+      createdPromptIds.push(data.id);
+
+      expect(data.agent_names).toEqual([]);
+    });
+
+    test("update preserves / updates agentNames on Prompt row across draft versions", async () => {
+      authAs(testUser);
+      stakworkOkCreate(202);
+
+      const createRes = await POST(
+        makeReq("http://localhost/api/workflow/prompts", "POST", {
+          name: "AGENT_NAMES_UPDATE",
+          value: "v1",
+          agentNames: ["canvas-agent"],
+        }),
+      );
+      const created = (await createRes.json()).data;
+      createdPromptIds.push(created.id);
+
+      authAs(testUser);
+      stakworkOkUpdate();
+      const updateRes = await PUT(
+        makeReq(`http://localhost/api/workflow/prompts/${created.id}`, "PUT", {
+          value: "v2",
+          agentNames: ["canvas-agent", "coding-agent"],
+        }),
+        { params: Promise.resolve({ id: created.id }) },
+      );
+      expect(updateRes.status).toBe(200);
+      const updatedData = (await updateRes.json()).data;
+
+      const prompt = await db.prompt.findUnique({
+        where: { id: created.id },
+        include: { versions: { orderBy: { versionNumber: "asc" } } },
+      });
+      expect(prompt!.versions).toHaveLength(2);
+      expect(prompt!.agentNames).toEqual(["canvas-agent", "coding-agent"]);
+
+      authAs(testUser);
+      const getRes = await GET_BY_ID(
+        makeReq(`http://localhost/api/workflow/prompts/${created.id}`, "GET"),
+        { params: Promise.resolve({ id: created.id }) },
+      );
+      const getData = (await getRes.json()).data;
+      expect(getData.agent_names).toEqual(["canvas-agent", "coding-agent"]);
+
+      const updateFetchCall = mockFetch.mock.calls[1];
+      const sentBody = JSON.parse(updateFetchCall[1].body as string);
+      expect(sentBody.prompt.agentNames).toBeUndefined();
+      expect(sentBody.prompt.agent_names).toBeUndefined();
+      expect((updatedData as Record<string, unknown>).agentNames).toBeUndefined();
+    });
+
+    test("update without agentNames does not erase existing agentNames", async () => {
+      authAs(testUser);
+      stakworkOkCreate(203);
+
+      const createRes = await POST(
+        makeReq("http://localhost/api/workflow/prompts", "POST", {
+          name: "AGENT_NAMES_PRESERVE",
+          value: "v1",
+          agentNames: ["plan-agent"],
+        }),
+      );
+      const created = (await createRes.json()).data;
+      createdPromptIds.push(created.id);
+
+      authAs(testUser);
+      stakworkOkUpdate();
+      await PUT(
+        makeReq(`http://localhost/api/workflow/prompts/${created.id}`, "PUT", {
+          value: "v2",
+        }),
+        { params: Promise.resolve({ id: created.id }) },
+      );
+
+      const prompt = await db.prompt.findUnique({ where: { id: created.id } });
+      expect(prompt!.agentNames).toEqual(["plan-agent"]);
+    });
+
+    test("server-side: blank entries are stripped from agentNames", async () => {
+      authAs(testUser);
+      stakworkOkCreate(204);
+
+      const req = makeReq("http://localhost/api/workflow/prompts", "POST", {
+        name: "AGENT_NAMES_BLANK",
+        value: "v1",
+        agentNames: ["repo-agent", "  ", "", "chat-agent"],
+      });
+      const res = await POST(req);
+      expect(res.status).toBe(200);
+      const data = (await res.json()).data;
+      createdPromptIds.push(data.id);
+
+      expect(data.agent_names).toEqual(["repo-agent", "chat-agent"]);
+    });
+
+    test("server-side: duplicate entries are de-duped in agentNames", async () => {
+      authAs(testUser);
+      stakworkOkCreate(205);
+
+      const req = makeReq("http://localhost/api/workflow/prompts", "POST", {
+        name: "AGENT_NAMES_DEDUPE",
+        value: "v1",
+        agentNames: ["repo-agent", "repo-agent", "chat-agent"],
+      });
+      const res = await POST(req);
+      expect(res.status).toBe(200);
+      const data = (await res.json()).data;
+      createdPromptIds.push(data.id);
+
+      expect(data.agent_names).toEqual(["repo-agent", "chat-agent"]);
+    });
+
+    test("server-side: unknown agent name is rejected with 400", async () => {
+      authAs(testUser);
+
+      const req = makeReq("http://localhost/api/workflow/prompts", "POST", {
+        name: "AGENT_NAMES_INVALID",
+        value: "v1",
+        agentNames: ["not-a-real-agent"],
+      });
+      const res = await POST(req);
+      expect(res.status).toBe(400);
+      const body = await res.json();
+      expect(body.error).toMatch(/Invalid agent name/);
+    });
+
+    test("Stakwork push payload does NOT include agentNames on create", async () => {
+      authAs(testUser);
+      stakworkOkCreate(206);
+
+      const req = makeReq("http://localhost/api/workflow/prompts", "POST", {
+        name: "AGENT_NAMES_PAYLOAD_CHECK",
+        value: "v1",
+        agentNames: ["build-agent"],
+      });
+      const res = await POST(req);
+      expect(res.status).toBe(200);
+      const data = (await res.json()).data;
+      createdPromptIds.push(data.id);
+
+      const [, opts] = mockFetch.mock.calls[0];
+      const sentBody = JSON.parse(opts.body as string);
+      expect(sentBody.agentNames).toBeUndefined();
+      expect(sentBody.agent_names).toBeUndefined();
+      expect(sentBody.prompt.agentNames).toBeUndefined();
+      expect(sentBody.prompt.agent_names).toBeUndefined();
+    });
+  });
+
   // ─── Prompt Graph Recorder ───────────────────────────────────────────────────
 
   describe("Prompt graph recorder (recordPromptOnGraph)", () => {
