@@ -4,6 +4,7 @@ import { authOptions } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
 import { isDevelopmentMode } from "@/lib/runtime";
 import { writePromptThrough } from "@/services/prompts/prompt-sync";
+import { BIFROST_AGENT_NAMES } from "@/services/bifrost/agent-names";
 
 export const runtime = "nodejs";
 export const fetchCache = "force-no-store";
@@ -52,11 +53,32 @@ async function requireWriteAccess(
 
 // ─── Shape helpers ────────────────────────────────────────────────────────────
 
+const VALID_AGENT_NAMES = new Set<string>(BIFROST_AGENT_NAMES);
+
+function normalizeAgentNames(names: unknown): string[] | { error: string } {
+  if (!Array.isArray(names)) return [];
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const n of names) {
+    if (typeof n !== "string") continue;
+    const trimmed = n.trim();
+    if (!trimmed) continue;
+    if (!VALID_AGENT_NAMES.has(trimmed)) {
+      return { error: `Invalid agent name: "${trimmed}"` };
+    }
+    if (seen.has(trimmed)) continue;
+    seen.add(trimmed);
+    result.push(trimmed);
+  }
+  return result;
+}
+
 function shapePrompt(p: {
   id: string;
   name: string;
   value: string;
   description: string | null;
+  agentNames: string[];
   publishedVersionId: string | null;
   stakworkId: number | null;
   syncStatus: string;
@@ -71,6 +93,7 @@ function shapePrompt(p: {
     name: p.name,
     value: p.value,
     description: p.description ?? "",
+    agent_names: p.agentNames,
     published_version_id: p.publishedVersionId,
     current_version_id: latestVersionId,
     stakwork_id: p.stakworkId,
@@ -149,10 +172,11 @@ export async function POST(request: NextRequest) {
     if (denied) return denied;
 
     const body = await request.json();
-    const { name, value, description } = body as {
+    const { name, value, description, agentNames } = body as {
       name?: string;
       value?: string;
       description?: string;
+      agentNames?: unknown;
     };
 
     if (!name || !value) {
@@ -166,7 +190,11 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { prompt } = await writePromptThrough({ name, value, description, userId });
+    const normalizedAgentNames = normalizeAgentNames(agentNames);
+    if (!Array.isArray(normalizedAgentNames)) {
+      return NextResponse.json({ error: normalizedAgentNames.error }, { status: 400 });
+    }
+    const { prompt } = await writePromptThrough({ name, value, description, agentNames: normalizedAgentNames, userId });
 
     return NextResponse.json({
       success: true,
