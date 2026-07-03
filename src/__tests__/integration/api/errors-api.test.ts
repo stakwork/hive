@@ -237,7 +237,8 @@ describe("GET /api/errors", () => {
 
   test("returns list of issues for authenticated owner", async () => {
     mockRequireAuth.mockReturnValueOnce({ id: ctx.ownerA.id, email: ctx.ownerA.email, name: ctx.ownerA.name });
-    const req = buildGetRequest(`/api/errors?workspace_id=${ctx.workspaceA.id}`);
+    // Use status=all to fetch every issue regardless of status
+    const req = buildGetRequest(`/api/errors?workspace_id=${ctx.workspaceA.id}&status=all`);
     const res = await listErrors(req);
 
     expect(res.status).toBe(200);
@@ -291,9 +292,48 @@ describe("GET /api/errors", () => {
     expect(res.status).toBe(400);
   });
 
+  test("default (no status param) returns only active issues, excluding RESOLVED/IGNORED", async () => {
+    mockRequireAuth.mockReturnValueOnce({ id: ctx.ownerA.id, email: ctx.ownerA.email, name: ctx.ownerA.name });
+    // issueA1 = UNRESOLVED, issueA2 = RESOLVED — only A1 should appear
+    const req = buildGetRequest(`/api/errors?workspace_id=${ctx.workspaceA.id}`);
+    const res = await listErrors(req);
+
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    const ids = body.issues.map((i: { id: string }) => i.id);
+    expect(ids).toContain(ctx.issueA1.id);
+    expect(ids).not.toContain(ctx.issueA2.id); // RESOLVED — excluded from default view
+    expect(body.total).not.toBeGreaterThan(1);  // total reflects filtered set
+  });
+
+  test("status=all returns every issue regardless of status", async () => {
+    mockRequireAuth.mockReturnValueOnce({ id: ctx.ownerA.id, email: ctx.ownerA.email, name: ctx.ownerA.name });
+    const req = buildGetRequest(`/api/errors?workspace_id=${ctx.workspaceA.id}&status=all`);
+    const res = await listErrors(req);
+
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    const ids = body.issues.map((i: { id: string }) => i.id);
+    expect(ids).toContain(ctx.issueA1.id);
+    expect(ids).toContain(ctx.issueA2.id); // RESOLVED — included when all requested
+  });
+
+  test("status=ALL (uppercase) also returns all issues (case-insensitive)", async () => {
+    mockRequireAuth.mockReturnValueOnce({ id: ctx.ownerA.id, email: ctx.ownerA.email, name: ctx.ownerA.name });
+    const req = buildGetRequest(`/api/errors?workspace_id=${ctx.workspaceA.id}&status=ALL`);
+    const res = await listErrors(req);
+
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    const ids = body.issues.map((i: { id: string }) => i.id);
+    expect(ids).toContain(ctx.issueA1.id);
+    expect(ids).toContain(ctx.issueA2.id);
+  });
+
   test("issues are ordered by lastSeenAt desc", async () => {
     mockRequireAuth.mockReturnValueOnce({ id: ctx.ownerA.id, email: ctx.ownerA.email, name: ctx.ownerA.name });
-    const req = buildGetRequest(`/api/errors?workspace_id=${ctx.workspaceA.id}`);
+    // Use status=all so both UNRESOLVED and RESOLVED issues are present for ordering check
+    const req = buildGetRequest(`/api/errors?workspace_id=${ctx.workspaceA.id}&status=all`);
     const res = await listErrors(req);
 
     expect(res.status).toBe(200);

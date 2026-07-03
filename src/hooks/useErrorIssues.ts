@@ -12,7 +12,7 @@ import type {
 interface UseErrorIssuesParams {
   workspaceId: string | null | undefined;
   slug: string | null | undefined;
-  status?: ErrorIssueStatus;
+  status?: ErrorIssueStatus | "all";
   repoKey?: string;
   skip?: number;
   limit?: number;
