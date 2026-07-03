@@ -257,7 +257,7 @@ async function mirrorWorkspace(
  * Returns `anyCapped` so the caller can self-chain to drain a backlog.
  */
 export async function runJarvisMirror(
-  opts: { maxPerType?: number } = {},
+  opts: { maxPerType?: number; workspace?: string } = {},
 ): Promise<MirrorRunResult> {
   const maxPerType = opts.maxPerType ?? DEFAULT_MAX_PER_TYPE;
 
@@ -266,8 +266,16 @@ export async function runJarvisMirror(
     return { processed: 0, anyCapped: false, results: [] };
   }
 
+  // Optional single-workspace scope (by slug or id) for targeted debugging.
+  // Keeps a slow/unreachable swarm's noise out of the run while iterating.
+  const scope = opts.workspace?.trim();
+
   const workspaces = await db.workspace.findMany({
-    where: { deleted: false, swarm: { isNot: null } },
+    where: {
+      deleted: false,
+      swarm: { isNot: null },
+      ...(scope ? { OR: [{ slug: scope }, { id: scope }] } : {}),
+    },
     select: { id: true, slug: true, jarvisSyncState: true },
   });
 
