@@ -44,13 +44,13 @@ vi.mock("@/lib/vercel/stakwork-token", () => ({
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-async function createUser(opts: { dailyRecapEnabled?: boolean } = {}) {
+async function createUser(opts: { activityRecapEnabled?: boolean } = {}) {
   return db.user.create({
     data: {
       id: generateUniqueId("user"),
       email: `user-${generateUniqueId()}@test.com`,
       name: "Test User",
-      dailyRecapEnabled: opts.dailyRecapEnabled ?? false,
+      activityRecapEnabled: opts.activityRecapEnabled ?? false,
     },
   });
 }

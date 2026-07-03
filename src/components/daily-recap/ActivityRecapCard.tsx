@@ -5,12 +5,12 @@ import { formatDistanceToNow } from "date-fns";
 import { Sparkles, X } from "lucide-react";
 import Link from "next/link";
 
-interface DailyRecapData {
+interface ActivityRecapData {
   recap: string | null;
   generatedAt: string | null;
 }
 
-interface DailyRecapCardProps {
+interface ActivityRecapCardProps {
   /** When true, renders an X button that hides the card for the session. */
   dismissible?: boolean;
   /** When true, renders a "My Activity →" link to /profile. */
@@ -24,8 +24,8 @@ const SESSION_KEY = "hive:daily-recap-dismissed";
  * Fetches GET /api/user/daily-recap on mount.
  * Returns null while loading or when no completed recap exists.
  */
-export function DailyRecapCard({ dismissible, showActivityLink }: DailyRecapCardProps = {}) {
-  const [data, setData] = useState<DailyRecapData | null>(null);
+export function ActivityRecapCard({ dismissible, showActivityLink }: ActivityRecapCardProps = {}) {
+  const [data, setData] = useState<ActivityRecapData | null>(null);
   const [dismissed, setDismissed] = useState(false);
 
   // Check session-dismissed flag on mount (dismissible mode only).
@@ -43,7 +43,7 @@ export function DailyRecapCard({ dismissible, showActivityLink }: DailyRecapCard
   useEffect(() => {
     fetch("/api/user/daily-recap")
       .then((r) => (r.ok ? r.json() : null))
-      .then((json: DailyRecapData | null) => {
+      .then((json: ActivityRecapData | null) => {
         if (json?.recap) setData(json);
       })
       .catch(() => {/* silent — card simply doesn't render */});

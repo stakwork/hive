@@ -39,7 +39,7 @@ import {
 import { PlannerFormSlot } from "./PlannerFormSlot";
 import { StartTasksSlot } from "./StartTasksSlot";
 import { DeferredCheckCard } from "./DeferredCheckCard";
-import { DailyRecapCard } from "@/components/daily-recap/DailyRecapCard";
+import { ActivityRecapCard } from "@/components/daily-recap/ActivityRecapCard";
 
 import {
   useCanvasChatStore,
@@ -349,7 +349,7 @@ export function SidebarChat({ githubLogin }: SidebarChatProps) {
           </div>
         )}
         <div className="space-y-2">
-          <DailyRecapCard dismissible showActivityLink />
+          <ActivityRecapCard dismissible showActivityLink />
           {messages.map((message, index) => {
             const isLastMessage = index === messages.length - 1;
             const isMessageStreaming = isLastMessage && isLoading;

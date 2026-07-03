@@ -48,7 +48,7 @@ afterEach(() => {
 
 // ── Import after mocks ────────────────────────────────────────────────────────
 
-import { DailyRecapCard } from "@/components/daily-recap/DailyRecapCard";
+import { ActivityRecapCard } from "@/components/daily-recap/ActivityRecapCard";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -64,7 +64,7 @@ const GENERATED_AT = new Date().toISOString();
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
-describe("DailyRecapCard", () => {
+describe("ActivityRecapCard", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
@@ -73,13 +73,13 @@ describe("DailyRecapCard", () => {
 
   it("renders null (nothing in DOM) while loading", () => {
     fetchMock.mockReturnValueOnce(new Promise(() => {}));
-    const { container } = render(<DailyRecapCard />);
+    const { container } = render(<ActivityRecapCard />);
     expect(container.firstChild).toBeNull();
   });
 
   it("renders null when API returns { recap: null }", async () => {
     mockFetch({ recap: null, generatedAt: null });
-    const { container } = render(<DailyRecapCard />);
+    const { container } = render(<ActivityRecapCard />);
     await waitFor(() => expect(fetchMock).toHaveBeenCalledOnce());
     expect(container.firstChild).toBeNull();
     expect(screen.queryByTestId("daily-recap-card")).toBeNull();
@@ -87,7 +87,7 @@ describe("DailyRecapCard", () => {
 
   it("renders recap text when a recap is present", async () => {
     mockFetch({ recap: RECAP_TEXT, generatedAt: GENERATED_AT });
-    render(<DailyRecapCard />);
+    render(<ActivityRecapCard />);
     await waitFor(() => expect(screen.getByTestId("daily-recap-card")).toBeInTheDocument());
     expect(screen.getByText(RECAP_TEXT)).toBeInTheDocument();
   });
@@ -96,7 +96,7 @@ describe("DailyRecapCard", () => {
 
   it("heading reads \"Recap\" (not \"Daily Recap\")", async () => {
     mockFetch({ recap: RECAP_TEXT, generatedAt: GENERATED_AT });
-    render(<DailyRecapCard />);
+    render(<ActivityRecapCard />);
     await waitFor(() => expect(screen.getByTestId("daily-recap-card")).toBeInTheDocument());
     expect(screen.getByText("Recap")).toBeInTheDocument();
     expect(screen.queryByText(/Daily Recap/i)).toBeNull();
@@ -106,7 +106,7 @@ describe("DailyRecapCard", () => {
 
   it("shows relative timestamp without \"Generated\" prefix", async () => {
     mockFetch({ recap: "Solid day.", generatedAt: GENERATED_AT });
-    render(<DailyRecapCard />);
+    render(<ActivityRecapCard />);
     await waitFor(() => expect(screen.getByTestId("daily-recap-card")).toBeInTheDocument());
     expect(screen.getByText(/2 hours ago/)).toBeInTheDocument();
     expect(screen.queryByText(/Generated/)).toBeNull();
@@ -114,7 +114,7 @@ describe("DailyRecapCard", () => {
 
   it("does not show a timestamp line when generatedAt is null", async () => {
     mockFetch({ recap: "Solid day.", generatedAt: null });
-    render(<DailyRecapCard />);
+    render(<ActivityRecapCard />);
     await waitFor(() => expect(screen.getByTestId("daily-recap-card")).toBeInTheDocument());
     expect(screen.queryByText(/Generated/)).toBeNull();
     expect(screen.queryByText(/hours ago/)).toBeNull();
@@ -124,21 +124,21 @@ describe("DailyRecapCard", () => {
 
   it("renders X dismiss button when dismissible prop is set", async () => {
     mockFetch({ recap: RECAP_TEXT, generatedAt: GENERATED_AT });
-    render(<DailyRecapCard dismissible />);
+    render(<ActivityRecapCard dismissible />);
     await waitFor(() => expect(screen.getByTestId("daily-recap-card")).toBeInTheDocument());
     expect(screen.getByRole("button", { name: /dismiss/i })).toBeInTheDocument();
   });
 
   it("does not render X button when dismissible is not set", async () => {
     mockFetch({ recap: RECAP_TEXT, generatedAt: GENERATED_AT });
-    render(<DailyRecapCard />);
+    render(<ActivityRecapCard />);
     await waitFor(() => expect(screen.getByTestId("daily-recap-card")).toBeInTheDocument());
     expect(screen.queryByRole("button", { name: /dismiss/i })).toBeNull();
   });
 
   it("clicking X hides the card and sets sessionStorage flag", async () => {
     mockFetch({ recap: RECAP_TEXT, generatedAt: GENERATED_AT });
-    render(<DailyRecapCard dismissible />);
+    render(<ActivityRecapCard dismissible />);
     await waitFor(() => expect(screen.getByTestId("daily-recap-card")).toBeInTheDocument());
 
     fireEvent.click(screen.getByRole("button", { name: /dismiss/i }));
@@ -150,7 +150,7 @@ describe("DailyRecapCard", () => {
   it("stays hidden when sessionStorage flag is pre-set", async () => {
     sessionStorageMock.getItem.mockReturnValue("1");
     mockFetch({ recap: RECAP_TEXT, generatedAt: GENERATED_AT });
-    const { container } = render(<DailyRecapCard dismissible />);
+    const { container } = render(<ActivityRecapCard dismissible />);
     // Give async effects time to settle
     await new Promise((r) => setTimeout(r, 20));
     expect(container.firstChild).toBeNull();
@@ -161,7 +161,7 @@ describe("DailyRecapCard", () => {
 
   it("renders \"My Activity\" link to /profile when showActivityLink is set", async () => {
     mockFetch({ recap: RECAP_TEXT, generatedAt: GENERATED_AT });
-    render(<DailyRecapCard showActivityLink />);
+    render(<ActivityRecapCard showActivityLink />);
     await waitFor(() => expect(screen.getByTestId("daily-recap-card")).toBeInTheDocument());
     const link = screen.getByRole("link", { name: /My Activity/i });
     expect(link).toBeInTheDocument();
@@ -170,7 +170,7 @@ describe("DailyRecapCard", () => {
 
   it("does not render \"My Activity\" link when showActivityLink is not set", async () => {
     mockFetch({ recap: RECAP_TEXT, generatedAt: GENERATED_AT });
-    render(<DailyRecapCard />);
+    render(<ActivityRecapCard />);
     await waitFor(() => expect(screen.getByTestId("daily-recap-card")).toBeInTheDocument());
     expect(screen.queryByRole("link", { name: /My Activity/i })).toBeNull();
   });
@@ -179,21 +179,21 @@ describe("DailyRecapCard", () => {
 
   it("renders null when fetch throws (network error)", async () => {
     fetchMock.mockRejectedValueOnce(new Error("network down"));
-    const { container } = render(<DailyRecapCard />);
+    const { container } = render(<ActivityRecapCard />);
     await new Promise((r) => setTimeout(r, 0));
     expect(container.firstChild).toBeNull();
   });
 
   it("renders null when fetch returns a non-ok response", async () => {
     fetchMock.mockResolvedValueOnce({ ok: false });
-    const { container } = render(<DailyRecapCard />);
+    const { container } = render(<ActivityRecapCard />);
     await new Promise((r) => setTimeout(r, 0));
     expect(container.firstChild).toBeNull();
   });
 
   it("calls the correct endpoint", async () => {
     mockFetch({ recap: null, generatedAt: null });
-    render(<DailyRecapCard />);
+    render(<ActivityRecapCard />);
     await waitFor(() => expect(fetchMock).toHaveBeenCalledOnce());
     expect(fetchMock).toHaveBeenCalledWith("/api/user/daily-recap");
   });

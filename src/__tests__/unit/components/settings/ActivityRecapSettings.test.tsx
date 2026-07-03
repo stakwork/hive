@@ -2,7 +2,7 @@ import React from "react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { DailyRecapSettings } from "@/components/settings/DailyRecapSettings";
+import { ActivityRecapSettings } from "@/components/settings/ActivityRecapSettings";
 import { toast } from "sonner";
 
 vi.mock("sonner");
@@ -23,7 +23,7 @@ vi.mock("@/components/ui/switch", () => ({
       aria-checked={checked}
       onClick={() => onCheckedChange(!checked)}
       disabled={disabled}
-      data-testid="daily-recap-switch"
+      data-testid="activity-recap-switch"
     />
   ),
 }));
@@ -34,69 +34,69 @@ vi.mock("@/components/ui/label", () => ({
   ),
 }));
 
-describe("DailyRecapSettings", () => {
+describe("ActivityRecapSettings", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     global.fetch = vi.fn();
   });
 
-  it("renders with toggle off when dailyRecapEnabled=false from the API", async () => {
+  it("renders with toggle off when activityRecapEnabled=false from the API", async () => {
     (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
       ok: true,
-      json: async () => ({ dailyRecapEnabled: false }),
+      json: async () => ({ activityRecapEnabled: false }),
     });
 
-    render(<DailyRecapSettings />);
+    render(<ActivityRecapSettings />);
 
     await waitFor(() => {
-      const toggle = screen.getByTestId("daily-recap-switch");
+      const toggle = screen.getByTestId("activity-recap-switch");
       expect(toggle).toHaveAttribute("aria-checked", "false");
     });
     expect(screen.getByText("Disabled")).toBeInTheDocument();
   });
 
-  it("renders with toggle on when dailyRecapEnabled=true from the API", async () => {
+  it("renders with toggle on when activityRecapEnabled=true from the API", async () => {
     (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
       ok: true,
-      json: async () => ({ dailyRecapEnabled: true }),
+      json: async () => ({ activityRecapEnabled: true }),
     });
 
-    render(<DailyRecapSettings />);
+    render(<ActivityRecapSettings />);
 
     await waitFor(() => {
-      const toggle = screen.getByTestId("daily-recap-switch");
+      const toggle = screen.getByTestId("activity-recap-switch");
       expect(toggle).toHaveAttribute("aria-checked", "true");
     });
     expect(screen.getByText("Enabled")).toBeInTheDocument();
   });
 
-  it("clicking toggle calls PATCH /api/user/preferences with { dailyRecapEnabled: true }", async () => {
+  it("clicking toggle calls PATCH /api/user/preferences with { activityRecapEnabled: true }", async () => {
     const user = userEvent.setup();
 
     (global.fetch as ReturnType<typeof vi.fn>)
       .mockResolvedValueOnce({
         ok: true,
-        json: async () => ({ dailyRecapEnabled: false }),
+        json: async () => ({ activityRecapEnabled: false }),
       })
       .mockResolvedValueOnce({
         ok: true,
-        json: async () => ({ dailyRecapEnabled: true }),
+        json: async () => ({ activityRecapEnabled: true }),
       });
 
-    render(<DailyRecapSettings />);
+    render(<ActivityRecapSettings />);
 
     await waitFor(() => {
-      expect(screen.getByTestId("daily-recap-switch")).not.toBeDisabled();
+      expect(screen.getByTestId("activity-recap-switch")).not.toBeDisabled();
     });
 
-    await user.click(screen.getByTestId("daily-recap-switch"));
+    await user.click(screen.getByTestId("activity-recap-switch"));
 
     await waitFor(() => {
       expect(global.fetch).toHaveBeenCalledWith(
         "/api/user/preferences",
         expect.objectContaining({
           method: "PATCH",
-          body: JSON.stringify({ dailyRecapEnabled: true }),
+          body: JSON.stringify({ activityRecapEnabled: true }),
         })
       );
     });
@@ -108,20 +108,20 @@ describe("DailyRecapSettings", () => {
     (global.fetch as ReturnType<typeof vi.fn>)
       .mockResolvedValueOnce({
         ok: true,
-        json: async () => ({ dailyRecapEnabled: false }),
+        json: async () => ({ activityRecapEnabled: false }),
       })
       .mockResolvedValueOnce({
         ok: true,
-        json: async () => ({ dailyRecapEnabled: true }),
+        json: async () => ({ activityRecapEnabled: true }),
       });
 
-    render(<DailyRecapSettings />);
+    render(<ActivityRecapSettings />);
 
     await waitFor(() => {
-      expect(screen.getByTestId("daily-recap-switch")).not.toBeDisabled();
+      expect(screen.getByTestId("activity-recap-switch")).not.toBeDisabled();
     });
 
-    await user.click(screen.getByTestId("daily-recap-switch"));
+    await user.click(screen.getByTestId("activity-recap-switch"));
 
     await waitFor(() => {
       expect(toast.success).toHaveBeenCalledWith("Preference saved");
@@ -134,24 +134,24 @@ describe("DailyRecapSettings", () => {
     (global.fetch as ReturnType<typeof vi.fn>)
       .mockResolvedValueOnce({
         ok: true,
-        json: async () => ({ dailyRecapEnabled: false }),
+        json: async () => ({ activityRecapEnabled: false }),
       })
       .mockResolvedValueOnce({
         ok: false,
         json: async () => ({}),
       });
 
-    render(<DailyRecapSettings />);
+    render(<ActivityRecapSettings />);
 
     await waitFor(() => {
-      expect(screen.getByTestId("daily-recap-switch")).not.toBeDisabled();
+      expect(screen.getByTestId("activity-recap-switch")).not.toBeDisabled();
     });
 
-    await user.click(screen.getByTestId("daily-recap-switch"));
+    await user.click(screen.getByTestId("activity-recap-switch"));
 
     await waitFor(() => {
       expect(toast.error).toHaveBeenCalledWith("Failed to save preference");
-      expect(screen.getByTestId("daily-recap-switch")).toHaveAttribute(
+      expect(screen.getByTestId("activity-recap-switch")).toHaveAttribute(
         "aria-checked",
         "false"
       );

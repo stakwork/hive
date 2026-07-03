@@ -1,4 +1,4 @@
-import { executeScheduledDailyRecapRuns } from "@/services/daily-recap-cron";
+import { executeScheduledActivityRecapRuns } from "@/services/daily-recap-cron";
 import { NextRequest, NextResponse } from "next/server";
 
 /**
@@ -15,16 +15,16 @@ export async function GET(request: NextRequest) {
     }
 
     if (!process.env.STAKWORK_DAILY_RECAP_WORKFLOW_ID) {
-      console.log("[DailyRecapCron] STAKWORK_DAILY_RECAP_WORKFLOW_ID not configured, skipping");
+      console.log("[ActivityRecapCron] STAKWORK_DAILY_RECAP_WORKFLOW_ID not configured, skipping");
       return NextResponse.json({ success: true, message: "Daily recap cron not configured" });
     }
 
-    console.log("[DailyRecapCron] Starting scheduled execution");
+    console.log("[ActivityRecapCron] Starting scheduled execution");
 
-    const result = await executeScheduledDailyRecapRuns();
+    const result = await executeScheduledActivityRecapRuns();
 
     console.log(
-      `[DailyRecapCron] Completed. Processed=${result.usersProcessed} ` +
+      `[ActivityRecapCron] Completed. Processed=${result.usersProcessed} ` +
         `Dispatched=${result.dispatched} Skipped=${result.skipped} Errors=${result.errors.length}`,
     );
 
@@ -39,7 +39,7 @@ export async function GET(request: NextRequest) {
     });
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
-    console.error("[DailyRecapCron] Unhandled error:", errorMessage);
+    console.error("[ActivityRecapCron] Unhandled error:", errorMessage);
 
     return NextResponse.json(
       {
