@@ -14,7 +14,8 @@ import { getStakworkTokenReference } from "@/lib/vercel/stakwork-token";
 import { pusherServer, getTaskChannelName, PUSHER_EVENTS } from "@/lib/pusher";
 import { fetchChatHistory } from "@/lib/helpers/chat-history";
 import { getWorkflowJsonFromNode } from "@/lib/workflow/get-workflow-json-from-node";
-import { resolveExtraSwarms } from "@/services/roadmap/feature-chat";
+import { resolveExtraSwarms, resolveSubAgents } from "@/services/roadmap/feature-chat";
+import { isDevelopmentMode } from "@/lib/runtime";
 
 /**
  * Fetch the latest workflow JSON from the graph API for a given workflow ID.
@@ -210,6 +211,7 @@ export async function triggerWorkflowEditorRun(params: {
         select: {
           slug: true,
           ownerId: true,
+          sourceControlOrgId: true,
           members: {
             where: { userId },
             select: { role: true },
@@ -304,11 +306,18 @@ export async function triggerWorkflowEditorRun(params: {
 
   vars.autoMergePr = task.autoMerge;
 
-  // Resolve @mentioned workspaces as sub-agents and attach to vars
-  const extraSwarms = await resolveExtraSwarms(message, userId);
-  if (extraSwarms.length) {
-    (vars as Record<string, unknown>).subAgents = extraSwarms;
-    console.log("[triggerWorkflowEditorRun] forwarding subAgents:", extraSwarms.map((a) => a.name));
+  // Resolve org member workspaces + @mentioned workspaces as sub-agents
+  const workspaceSlug = task.workspace.slug;
+  const sourceControlOrgId = task.workspace.sourceControlOrgId;
+  let subAgents: Awaited<ReturnType<typeof resolveExtraSwarms>>;
+  if ((workspaceSlug === "stakwork" || isDevelopmentMode()) && sourceControlOrgId) {
+    subAgents = await resolveSubAgents({ message, userId, sourceControlOrgId });
+  } else {
+    subAgents = await resolveExtraSwarms(message, userId);
+  }
+  if (subAgents.length) {
+    vars.subAgents = subAgents;
+    console.log("[triggerWorkflowEditorRun] forwarding subAgents:", subAgents.map((a) => a.name));
   }
 
   const stakworkPayload = {
