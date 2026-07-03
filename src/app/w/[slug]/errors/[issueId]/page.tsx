@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PageHeader } from "@/components/ui/page-header";
 import { ErrorIssueDetail } from "@/components/errors";
+import { RelatedIssues } from "@/components/errors/RelatedIssues";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { getPusherClient, getWorkspaceChannelName, PUSHER_EVENTS } from "@/lib/pusher";
 import { useFixInPlanMode } from "./useFixInPlanMode";
@@ -207,12 +208,15 @@ export default function ErrorIssueDetailPage() {
       )}
 
       {detail && !loading && (
-        <ErrorIssueDetail
-          detail={detail}
-          onStatusChange={handleStatusChange}
-          onLoadMoreEvents={handleLoadMoreEvents}
-          loadingMoreEvents={loadingMore}
-        />
+        <>
+          <ErrorIssueDetail
+            detail={detail}
+            onStatusChange={handleStatusChange}
+            onLoadMoreEvents={handleLoadMoreEvents}
+            loadingMoreEvents={loadingMore}
+          />
+          <RelatedIssues issueId={issueId} workspaceSlug={slug} />
+        </>
       )}
     </div>
   );
