@@ -72,11 +72,20 @@ const makeActivityItems = (n = 3) =>
     completed: false,
   }));
 
+/**
+ * Per-user findFirst call order (happy path — activity found):
+ *   0: cursor   — COMPLETED run for `since`
+ *   1: lastResultRun — COMPLETED run with result != null for previous_recap
+ *   2: inflightRun  — guard check
+ *
+ * When no activity found (skip path), only call 0 (cursor) fires.
+ */
 function setupDb(overrides: Partial<{
   users: unknown[];
   ownedWorkspace: unknown;
   membership: unknown;
   lastRun: unknown;
+  lastResultRun: unknown;
   inflightRun: unknown;
   stakworkRunCreate: unknown;
   stakworkRunUpdate: unknown;
@@ -87,6 +96,7 @@ function setupDb(overrides: Partial<{
     ownedWorkspace = { id: "ws-1" },
     membership = null,
     lastRun = null,
+    lastResultRun = null,
     inflightRun = null,
     stakworkRunCreate = makeRun("run-1"),
     stakworkRunUpdate = makeRun("run-1"),
@@ -105,9 +115,10 @@ function setupDb(overrides: Partial<{
     },
     stakworkRun: {
       findFirst: vi.fn()
-        .mockResolvedValueOnce(lastRun)       // cursor (COMPLETED run)
-        .mockResolvedValueOnce(inflightRun)   // guard check
-        .mockResolvedValue(null),             // subsequent users (cursor + guard → null)
+        .mockResolvedValueOnce(lastRun)       // [0] cursor (COMPLETED run for since)
+        .mockResolvedValueOnce(lastResultRun) // [1] previous_recap (COMPLETED with result != null)
+        .mockResolvedValueOnce(inflightRun)   // [2] guard check
+        .mockResolvedValue(null),             // subsequent users
       create: vi.fn().mockResolvedValue(stakworkRunCreate),
       update: vi.fn().mockResolvedValue(stakworkRunUpdate),
       updateMany: vi.fn().mockResolvedValue({ count: reaperCount }),
@@ -118,7 +129,7 @@ function setupDb(overrides: Partial<{
 // ── vercel.json ──────────────────────────────────────────────────────────────
 
 describe("Daily Recap Cron — vercel.json configuration", () => {
-  it("should have daily-recap cron job configured", () => {
+  it("should have daily-recap cron scheduled hourly (0 * * * *)", () => {
     const vercelPath = path.join(process.cwd(), "vercel.json");
     expect(fs.existsSync(vercelPath)).toBe(true);
 
@@ -129,10 +140,7 @@ describe("Daily Recap Cron — vercel.json configuration", () => {
       (c: { path: string }) => c.path === "/api/cron/daily-recap",
     );
     expect(dailyCron).toBeDefined();
-    expect(typeof dailyCron.schedule).toBe("string");
-
-    const parts = dailyCron.schedule.split(" ");
-    expect(parts).toHaveLength(5);
+    expect(dailyCron.schedule).toBe("0 * * * *");
   });
 });
 
@@ -154,7 +162,7 @@ describe("executeScheduledDailyRecapRuns", () => {
     expect(mockedDb.stakworkRun.create).not.toHaveBeenCalled();
   });
 
-  it("skips users with empty activity feed", async () => {
+  it("skips users with empty activity feed (strict activity gate)", async () => {
     setupDb();
     mockedGetUserActivityFeed.mockResolvedValue([]);
 
@@ -201,6 +209,55 @@ describe("executeScheduledDailyRecapRuns", () => {
 
     expect(result.dispatched).toBe(1);
     expect(result.errors).toHaveLength(0);
+  });
+
+  it("dispatched vars contain exactly previous_recap, since, activity, window_start, webhookUrl", async () => {
+    setupDb({ lastResultRun: { result: "Prior recap text" } });
+    mockedGetUserActivityFeed.mockResolvedValue(makeActivityItems(2));
+    mockCreateBatchProjects.mockResolvedValue({
+      data: {
+        ref_id: "ref-1",
+        projects: [{ name: "daily-recap-run-1", project_id: 1 }],
+      },
+    });
+
+    const before = Date.now();
+    await executeScheduledDailyRecapRuns();
+    const after = Date.now();
+
+    const batchCall = mockCreateBatchProjects.mock.calls[0][0];
+    const vars = batchCall[0].workflow_params.set_var.attributes.vars;
+
+    expect(Object.keys(vars).sort()).toEqual(
+      ["activity", "previous_recap", "since", "webhookUrl", "window_start"].sort(),
+    );
+    expect(vars.previous_recap).toBe("Prior recap text");
+    expect(typeof vars.since).toBe("string");
+    expect(typeof vars.activity).toBe("string");
+    expect(typeof vars.window_start).toBe("string");
+    expect(typeof vars.webhookUrl).toBe("string");
+
+    // window_start should be ~24h before dispatch time
+    const windowStart = new Date(vars.window_start as string).getTime();
+    expect(windowStart).toBeGreaterThanOrEqual(before - 24 * 60 * 60 * 1000 - 1000);
+    expect(windowStart).toBeLessThanOrEqual(after - 24 * 60 * 60 * 1000 + 1000);
+  });
+
+  it("uses empty string for previous_recap when no prior result run exists", async () => {
+    setupDb({ lastResultRun: null });
+    mockedGetUserActivityFeed.mockResolvedValue(makeActivityItems(1));
+    mockCreateBatchProjects.mockResolvedValue({
+      data: {
+        ref_id: "ref-1",
+        projects: [{ name: "daily-recap-run-1", project_id: 1 }],
+      },
+    });
+
+    await executeScheduledDailyRecapRuns();
+
+    const batchCall = mockCreateBatchProjects.mock.calls[0][0];
+    const vars = batchCall[0].workflow_params.set_var.attributes.vars;
+    expect(vars.previous_recap).toBe("");
   });
 
   it("splits >500 eligible users into exactly 2 batch calls", async () => {
@@ -319,7 +376,7 @@ describe("Staleness reaper", () => {
       type: StakworkRunType.DAILY_RECAP,
       status: { in: [WorkflowStatus.PENDING, WorkflowStatus.IN_PROGRESS] },
     });
-    expect(call.where.createdAt).toHaveProperty("lt");
+    expect(call.where?.createdAt).toHaveProperty("lt");
     expect(call.data).toEqual({ status: WorkflowStatus.FAILED });
   });
 
@@ -366,7 +423,7 @@ describe("COMPLETED-only cursor", () => {
     expect(cursorCall?.where).toMatchObject({ status: WorkflowStatus.COMPLETED });
   });
 
-  it("defaults since to 24h ago when no prior COMPLETED run exists", async () => {
+  it("defaults since to ~24h ago when no prior COMPLETED run exists", async () => {
     setupDb({ lastRun: null });
     mockedGetUserActivityFeed.mockResolvedValue(makeActivityItems(1));
     mockCreateBatchProjects.mockResolvedValue({
@@ -377,17 +434,17 @@ describe("COMPLETED-only cursor", () => {
     await executeScheduledDailyRecapRuns();
     const after = Date.now();
 
-    // The `since` value passed to getUserActivityFeed is derived from days (1–30)
-    // days = ceil((now - since) / 86400000); if since = 24h ago, days = 1
+    // since is passed directly now (not days)
     const activityCall = mockedGetUserActivityFeed.mock.calls[0][0];
-    expect(activityCall.days).toBe(1);
-    void before; void after; // suppress unused warning
+    expect(activityCall.since).toBeInstanceOf(Date);
+
+    const sinceMs = (activityCall.since as Date).getTime();
+    expect(sinceMs).toBeGreaterThanOrEqual(before - 24 * 60 * 60 * 1000 - 1000);
+    expect(sinceMs).toBeLessThanOrEqual(after - 24 * 60 * 60 * 1000 + 1000);
   });
 
   it("uses lastRun.createdAt as the since date when a COMPLETED run exists", async () => {
-    // Subtract slightly less than 2 full days so Math.ceil reliably gives 2
-    // (exact 2 days can tick over to 3 due to milliseconds elapsed during test)
-    const twoDaysAgo = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000 + 5 * 60_000);
+    const twoDaysAgo = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000);
     setupDb({ lastRun: { createdAt: twoDaysAgo } });
     mockedGetUserActivityFeed.mockResolvedValue(makeActivityItems(1));
     mockCreateBatchProjects.mockResolvedValue({
@@ -397,7 +454,34 @@ describe("COMPLETED-only cursor", () => {
     await executeScheduledDailyRecapRuns();
 
     const activityCall = mockedGetUserActivityFeed.mock.calls[0][0];
-    expect(activityCall.days).toBe(2);
+    expect(activityCall.since).toEqual(twoDaysAgo);
+  });
+
+  it("passes since directly to getUserActivityFeed (not days)", async () => {
+    const cursor = new Date(Date.now() - 90 * 60 * 1000); // 90 min ago
+    setupDb({ lastRun: { createdAt: cursor } });
+    mockedGetUserActivityFeed.mockResolvedValue(makeActivityItems(2));
+    mockCreateBatchProjects.mockResolvedValue({
+      data: { ref_id: "r", projects: [{ name: "daily-recap-run-1", project_id: 1 }] },
+    });
+
+    await executeScheduledDailyRecapRuns();
+
+    const activityCall = mockedGetUserActivityFeed.mock.calls[0][0];
+    expect(activityCall.since).toEqual(cursor);
+    expect(activityCall.days).toBeUndefined();
+  });
+
+  it("logs since and zero count when skipping due to empty activity", async () => {
+    const cursor = new Date(Date.now() - 30 * 60 * 1000);
+    setupDb({ lastRun: { createdAt: cursor } });
+    mockedGetUserActivityFeed.mockResolvedValue([]);
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+
+    await executeScheduledDailyRecapRuns();
+
+    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining("no activity since"));
+    logSpy.mockRestore();
   });
 });
 
@@ -469,12 +553,38 @@ describe("In-flight guard", () => {
 
     await executeScheduledDailyRecapRuns();
 
-    // Second findFirst call is the guard
-    const guardCall = vi.mocked(mockedDb.stakworkRun.findFirst).mock.calls[1][0];
+    // Guard is the 3rd findFirst call (index 2): cursor [0], lastResultRun [1], guard [2]
+    const guardCall = vi.mocked(mockedDb.stakworkRun.findFirst).mock.calls[2][0];
     expect(guardCall?.where).toMatchObject({
       type: StakworkRunType.DAILY_RECAP,
       status: { in: [WorkflowStatus.PENDING, WorkflowStatus.IN_PROGRESS] },
     });
     expect(guardCall?.where?.createdAt).toHaveProperty("gte");
+  });
+});
+
+// ── window_start rolling-24h horizon ─────────────────────────────────────────
+
+describe("window_start rolling-24h horizon", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("window_start is always ~24h before dispatch (not read from DB)", async () => {
+    setupDb();
+    mockedGetUserActivityFeed.mockResolvedValue(makeActivityItems(1));
+    mockCreateBatchProjects.mockResolvedValue({
+      data: { ref_id: "r", projects: [{ name: "daily-recap-run-1", project_id: 1 }] },
+    });
+
+    const before = Date.now();
+    await executeScheduledDailyRecapRuns();
+    const after = Date.now();
+
+    const batchCall = mockCreateBatchProjects.mock.calls[0][0];
+    const windowStart = new Date(batchCall[0].workflow_params.set_var.attributes.vars.window_start as string).getTime();
+
+    expect(windowStart).toBeGreaterThanOrEqual(before - 24 * 60 * 60 * 1000 - 1000);
+    expect(windowStart).toBeLessThanOrEqual(after - 24 * 60 * 60 * 1000 + 1000);
   });
 });

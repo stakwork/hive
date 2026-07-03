@@ -62,3 +62,26 @@ export function sanitizeFrames(raw: unknown): StructuredFrame[] {
 
   return result;
 }
+
+// ── Shared blob-parse helper ──────────────────────────────────────────────────
+// Used by BlobViewer (ErrorIssueDetail.tsx) and useFixInPlanMode — single source of truth.
+
+export interface ParsedBlob {
+  stackTrace: string;
+  frames: StructuredFrame[];
+}
+
+/**
+ * Parse a raw blob text (redacted JSON from the errors blob endpoint) into
+ * a `{ stackTrace, frames }` pair.  Falls back gracefully on malformed input.
+ */
+export function parseBlobContent(text: string): ParsedBlob {
+  try {
+    const parsed = JSON.parse(text);
+    const stackTrace = typeof parsed?.stackTrace === "string" ? parsed.stackTrace : text;
+    const frames = sanitizeFrames(parsed?.frames);
+    return { stackTrace, frames };
+  } catch {
+    return { stackTrace: text, frames: [] };
+  }
+}
