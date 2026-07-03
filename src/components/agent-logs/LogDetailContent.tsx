@@ -19,6 +19,7 @@ import type {
   AgentLogStats,
   AgentRunConfig,
 } from "@/lib/utils/agent-log-stats";
+import { TurnTokenUsage } from "@/components/agent-logs/TurnTokenUsage";
 
 export interface LogDetailContentProps {
   conversation: ParsedMessage[] | null;
@@ -384,6 +385,7 @@ export function MessageBubble({
               pairedResult={tc.id ? toolCallIndex?.get(tc.id) : undefined}
             />
           ))}
+          <TurnTokenUsage usage={message.usage} />
         </div>
         {onFlag && (
           <Button variant="ghost" size="icon" className="h-6 w-6 shrink-0 mt-0.5" onClick={onFlag}>
@@ -546,6 +548,7 @@ export function MessageBubble({
                   ))}
                 </div>
               )}
+              {isAssistant && <TurnTokenUsage usage={message.usage} />}
               {graphWalkTraceLink}
             </div>
           </TooltipTrigger>
@@ -604,6 +607,7 @@ export function MessageBubble({
               ))}
             </div>
           )}
+          {isAssistant && <TurnTokenUsage usage={message.usage} />}
           {graphWalkTraceLink}
         </div>
       )}

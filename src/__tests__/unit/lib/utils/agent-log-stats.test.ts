@@ -531,4 +531,73 @@ describe("parseAgentLogStats", () => {
       expect(stats.totalMessages).toBe(1);
     });
   });
+
+  describe("per-turn usage accumulation", () => {
+    it("accumulates inputTokens and outputTokens from assistant messages", () => {
+      const input = bare([
+        { role: "user", content: "hi" },
+        { role: "assistant", content: "hello", usage: { inputTokens: 100, outputTokens: 50 } },
+        { role: "user", content: "bye" },
+        { role: "assistant", content: "cya", usage: { inputTokens: 200, outputTokens: 75 } },
+      ]);
+      const { stats } = parseAgentLogStats(input);
+      expect(stats.actualInputTokens).toBe(300);
+      expect(stats.actualOutputTokens).toBe(125);
+      expect(stats.actualCacheReadTokens).toBeUndefined();
+      expect(stats.actualCacheWriteTokens).toBeUndefined();
+    });
+
+    it("accumulates all four token fields including cache", () => {
+      const input = bare([
+        {
+          role: "assistant",
+          content: "a",
+          usage: { inputTokens: 500, outputTokens: 100, cacheReadTokens: 200, cacheWriteTokens: 50 },
+        },
+        {
+          role: "assistant",
+          content: "b",
+          usage: { inputTokens: 300, outputTokens: 80, cacheReadTokens: 100, cacheWriteTokens: 25 },
+        },
+      ]);
+      const { stats } = parseAgentLogStats(input);
+      expect(stats.actualInputTokens).toBe(800);
+      expect(stats.actualOutputTokens).toBe(180);
+      expect(stats.actualCacheReadTokens).toBe(300);
+      expect(stats.actualCacheWriteTokens).toBe(75);
+    });
+
+    it("skips usage from non-assistant messages", () => {
+      const input = bare([
+        { role: "user", content: "hey", usage: { inputTokens: 9999, outputTokens: 9999 } },
+        { role: "assistant", content: "hi", usage: { inputTokens: 100, outputTokens: 50 } },
+      ]);
+      const { stats } = parseAgentLogStats(input);
+      expect(stats.actualInputTokens).toBe(100);
+      expect(stats.actualOutputTokens).toBe(50);
+    });
+
+    it("omits actualTokens fields entirely when no message has usage", () => {
+      const input = bare([
+        { role: "user", content: "hello" },
+        { role: "assistant", content: "world" },
+      ]);
+      const { stats } = parseAgentLogStats(input);
+      expect(stats.actualInputTokens).toBeUndefined();
+      expect(stats.actualOutputTokens).toBeUndefined();
+      expect(stats.actualCacheReadTokens).toBeUndefined();
+      expect(stats.actualCacheWriteTokens).toBeUndefined();
+    });
+
+    it("gracefully skips messages with undefined or partial usage", () => {
+      const input = bare([
+        { role: "assistant", content: "a", usage: { inputTokens: 100 } },
+        { role: "assistant", content: "b" }, // no usage
+        { role: "assistant", content: "c", usage: { outputTokens: 40 } },
+      ]);
+      const { stats } = parseAgentLogStats(input);
+      expect(stats.actualInputTokens).toBe(100);
+      expect(stats.actualOutputTokens).toBe(40);
+    });
+  });
 });

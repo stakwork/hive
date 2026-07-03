@@ -676,6 +676,10 @@ model ChatMessage {
   userId            String?      @map("user_id")
   featureId         String?      @map("feature_id")
   stakworkProjectId String?      @map("stakwork_project_id")
+  inputTokens       Int?         @map("input_tokens")
+  outputTokens      Int?         @map("output_tokens")
+  cacheReadTokens   Int?         @map("cache_read_tokens")
+  cacheWriteTokens  Int?         @map("cache_write_tokens")
   artifacts         Artifact[]
   attachments       Attachment[]
   feature           Feature?     @relation(fields: [featureId], references: [id], onDelete: Cascade)
