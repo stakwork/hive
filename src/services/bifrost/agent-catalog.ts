@@ -74,6 +74,10 @@ export const DEFAULT_AGENT_SPECS: Record<BifrostAgentName, DefaultAgentSpec> = {
     displayName: "Browser Agent",
     description: "Takes screenshots and validates UI changes in the browser.",
   },
+  "security-review-agent": {
+    displayName: "Security Review Agent",
+    description: "Reviews the code for security vulnerabilities.",
+  },
 };
 
 /**
