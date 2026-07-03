@@ -17,6 +17,7 @@ const DEFAULT_EVENTS_LIMIT = 20;
 export interface ListErrorIssuesParams {
   workspaceId: string;
   status?: ErrorIssueStatus;
+  includeAll?: boolean;
   repoKey?: string;
   skip?: number;
   limit?: number;
@@ -25,13 +26,20 @@ export interface ListErrorIssuesParams {
 export async function listErrorIssues({
   workspaceId,
   status,
+  includeAll,
   repoKey,
   skip = 0,
   limit = 20,
 }: ListErrorIssuesParams) {
+  const statusWhere = status
+    ? { status }
+    : includeAll
+      ? {}
+      : { status: { notIn: ["RESOLVED", "IGNORED"] as ErrorIssueStatus[] } };
+
   const where = {
     workspaceId,
-    ...(status ? { status } : {}),
+    ...statusWhere,
     ...(repoKey ? { repoKey } : {}),
   };
 

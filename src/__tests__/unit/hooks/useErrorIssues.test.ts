@@ -226,4 +226,26 @@ describe("useErrorIssues", () => {
     await waitFor(() => expect(result.current.issues).toHaveLength(2));
     expect(mockFetch).toHaveBeenCalledTimes(2);
   });
+
+  it("omits status param when no status is provided (relies on backend active-only default)", async () => {
+    mockFetch.mockResolvedValueOnce(makeListResponse([]));
+
+    renderHook(() => useErrorIssues(DEFAULT_PARAMS));
+
+    await waitFor(() => expect(mockFetch).toHaveBeenCalledOnce());
+
+    const url = mockFetch.mock.calls[0][0] as string;
+    expect(url).not.toContain("status=");
+  });
+
+  it("sends status=all when status is 'all'", async () => {
+    mockFetch.mockResolvedValueOnce(makeListResponse([]));
+
+    renderHook(() => useErrorIssues({ ...DEFAULT_PARAMS, status: "all" }));
+
+    await waitFor(() => expect(mockFetch).toHaveBeenCalledOnce());
+
+    const url = mockFetch.mock.calls[0][0] as string;
+    expect(url).toContain("status=all");
+  });
 });
