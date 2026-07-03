@@ -400,6 +400,11 @@ export interface CreateFeatureRequest {
    * by the caller.
    */
   milestoneId?: string | null;
+  /**
+   * Optional originating ErrorIssue id — set when the Feature is
+   * created via "Fix in Plan Mode" from the Errors dashboard.
+   */
+  errorIssueId?: string;
 }
 
 export interface UpdateFeatureRequest {
