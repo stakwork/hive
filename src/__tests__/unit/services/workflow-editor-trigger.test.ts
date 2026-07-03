@@ -40,6 +40,11 @@ vi.mock("@/lib/helpers/chat-history", () => ({
 
 vi.mock("@/services/roadmap/feature-chat", () => ({
   resolveExtraSwarms: vi.fn().mockResolvedValue([]),
+  resolveSubAgents: vi.fn().mockResolvedValue([]),
+}));
+
+vi.mock("@/lib/runtime", () => ({
+  isDevelopmentMode: vi.fn(() => false),
 }));
 
 vi.mock("@/config/env", async (importOriginal) => {
@@ -60,22 +65,31 @@ vi.mock("@/config/env", async (importOriginal) => {
 import { triggerWorkflowEditorRun } from "@/services/workflow-editor";
 import { db } from "@/lib/db";
 import { WorkflowStatus, TaskStatus } from "@prisma/client";
-import { resolveExtraSwarms } from "@/services/roadmap/feature-chat";
+import { resolveExtraSwarms, resolveSubAgents } from "@/services/roadmap/feature-chat";
+import { isDevelopmentMode } from "@/lib/runtime";
 
 const mockResolveExtraSwarms = vi.mocked(resolveExtraSwarms);
+const mockResolveSubAgents = vi.mocked(resolveSubAgents);
+const mockIsDevelopmentMode = vi.mocked(isDevelopmentMode);
 
 const mockedDb = vi.mocked(db);
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function makeTask() {
+function makeTask(overrides: Record<string, unknown> = {}) {
+  const { workspace: wsOverrides, ...rest } = overrides as {
+    workspace?: Record<string, unknown>;
+    [key: string]: unknown;
+  };
   return {
     id: "task-1",
     workspaceId: "ws-1",
     featureId: "feature-1",
+    autoMerge: false,
     workspace: {
       slug: "stakwork",
       ownerId: "user-1",
+      sourceControlOrgId: "org-1",
       members: [{ userId: "user-1" }],
       swarm: {
         swarmUrl: "http://swarm/api",
@@ -84,7 +98,9 @@ function makeTask() {
         name: "swarm-1",
         id: "swarm-id-1",
       },
+      ...(wsOverrides ?? {}),
     },
+    ...rest,
   };
 }
 
@@ -126,6 +142,7 @@ describe("triggerWorkflowEditorRun", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     originalFetch = global.fetch;
+    mockIsDevelopmentMode.mockReturnValue(false);
     mockedDb.task.findFirst = vi.fn().mockResolvedValue(makeTask()) as never;
     mockedDb.task.update = vi.fn().mockResolvedValue({}) as never;
     mockedDb.chatMessage.create = vi.fn().mockResolvedValue({ id: "msg-1" }) as never;
@@ -407,17 +424,25 @@ describe("triggerWorkflowEditorRun", () => {
     });
   });
 
-  describe("subAgents (resolveExtraSwarms) injection", () => {
-    const mockSwarm = {
+  describe("subAgents injection (org auto-attach + @mentions)", () => {
+    const mockOrgSwarm = {
+      name: "org-ws",
+      url: "https://org.sphinx.chat/api",
+      apiKey: "org-key",
+      repoUrls: "https://github.com/org/repo",
+      toolsConfig: { learn_concepts: true },
+    };
+    const mockMentionSwarm = {
       name: "other-ws",
       url: "https://other.sphinx.chat/api",
       apiKey: "other-key",
-      repoUrls: ["https://github.com/org/other"],
+      repoUrls: "https://github.com/org/other",
       toolsConfig: { learn_concepts: true },
     };
 
-    test("attaches subAgents to vars when message contains resolvable @mentions", async () => {
-      mockResolveExtraSwarms.mockResolvedValueOnce([mockSwarm]);
+    test("uses resolveSubAgents on stakwork workspace with sourceControlOrgId", async () => {
+      // stakwork slug + org id → resolveSubAgents path
+      mockResolveSubAgents.mockResolvedValueOnce([mockOrgSwarm, mockMentionSwarm]);
       mockFetchSuccess();
 
       await triggerWorkflowEditorRun({
@@ -427,21 +452,81 @@ describe("triggerWorkflowEditorRun", () => {
         workflowTask: { workflowId: 99, workflowName: "My Workflow", workflowRefId: "ref-abc" },
       });
 
+      expect(mockResolveSubAgents).toHaveBeenCalledWith({
+        message: "Edit workflow using @other-ws context",
+        userId: "user-1",
+        sourceControlOrgId: "org-1",
+      });
+      expect(mockResolveExtraSwarms).not.toHaveBeenCalled();
+
       const fetchCall = (global.fetch as ReturnType<typeof vi.fn>).mock.calls[0];
       const body = JSON.parse(fetchCall[1].body as string);
       const vars = body.workflow_params.set_var.attributes.vars;
-      expect(vars.subAgents).toHaveLength(1);
-      expect(vars.subAgents[0].name).toBe("other-ws");
+      expect(vars.subAgents).toHaveLength(2);
     });
 
-    test("subAgents absent from vars when no @mentions resolve", async () => {
+    test("uses resolveSubAgents in isDevelopmentMode with sourceControlOrgId", async () => {
+      mockIsDevelopmentMode.mockReturnValue(true);
+      const nonStakworkTask = makeTask({ workspace: { slug: "other-slug", sourceControlOrgId: "org-1" } });
+      mockedDb.task.findFirst = vi.fn().mockResolvedValue(nonStakworkTask) as never;
+      mockResolveSubAgents.mockResolvedValueOnce([mockOrgSwarm]);
+      mockFetchSuccess();
+
+      await triggerWorkflowEditorRun({
+        taskId: "task-1",
+        userId: "user-1",
+        message: "Edit the workflow",
+        workflowTask: { workflowId: 99, workflowName: "My Workflow", workflowRefId: "ref-abc" },
+      });
+
+      expect(mockResolveSubAgents).toHaveBeenCalled();
+      expect(mockResolveExtraSwarms).not.toHaveBeenCalled();
+    });
+
+    test("falls back to resolveExtraSwarms outside stakwork/dev when no orgId", async () => {
+      mockIsDevelopmentMode.mockReturnValue(false);
+      const nonStakworkTask = makeTask({ workspace: { slug: "other-slug", sourceControlOrgId: null } });
+      mockedDb.task.findFirst = vi.fn().mockResolvedValue(nonStakworkTask) as never;
       mockResolveExtraSwarms.mockResolvedValueOnce([]);
       mockFetchSuccess();
 
       await triggerWorkflowEditorRun({
         taskId: "task-1",
         userId: "user-1",
-        message: "Edit the workflow without mentions",
+        message: "plain message",
+        workflowTask: { workflowId: 99, workflowName: "My Workflow", workflowRefId: "ref-abc" },
+      });
+
+      expect(mockResolveSubAgents).not.toHaveBeenCalled();
+      expect(mockResolveExtraSwarms).toHaveBeenCalledWith("plain message", "user-1");
+    });
+
+    test("falls back to resolveExtraSwarms on non-stakwork slug without devMode", async () => {
+      mockIsDevelopmentMode.mockReturnValue(false);
+      const nonStakworkTask = makeTask({ workspace: { slug: "other-slug", sourceControlOrgId: "org-1" } });
+      mockedDb.task.findFirst = vi.fn().mockResolvedValue(nonStakworkTask) as never;
+      mockResolveExtraSwarms.mockResolvedValueOnce([]);
+      mockFetchSuccess();
+
+      await triggerWorkflowEditorRun({
+        taskId: "task-1",
+        userId: "user-1",
+        message: "plain message",
+        workflowTask: { workflowId: 99, workflowName: "My Workflow", workflowRefId: "ref-abc" },
+      });
+
+      expect(mockResolveSubAgents).not.toHaveBeenCalled();
+      expect(mockResolveExtraSwarms).toHaveBeenCalledWith("plain message", "user-1");
+    });
+
+    test("subAgents absent from vars when resolveSubAgents returns empty", async () => {
+      mockResolveSubAgents.mockResolvedValueOnce([]);
+      mockFetchSuccess();
+
+      await triggerWorkflowEditorRun({
+        taskId: "task-1",
+        userId: "user-1",
+        message: "no mentions",
         workflowTask: { workflowId: 99, workflowName: "My Workflow", workflowRefId: "ref-abc" },
       });
 
@@ -451,8 +536,9 @@ describe("triggerWorkflowEditorRun", () => {
       expect(Object.prototype.hasOwnProperty.call(vars, "subAgents")).toBe(false);
     });
 
-    test("resolveExtraSwarms is called with the message and userId", async () => {
-      mockResolveExtraSwarms.mockResolvedValueOnce([]);
+    test("includes both org-member and @-mentioned workspaces in subAgents", async () => {
+      // resolveSubAgents returns both (union behavior tested in resolve-sub-agents.test.ts)
+      mockResolveSubAgents.mockResolvedValueOnce([mockOrgSwarm, mockMentionSwarm]);
       mockFetchSuccess();
 
       await triggerWorkflowEditorRun({
@@ -462,7 +548,12 @@ describe("triggerWorkflowEditorRun", () => {
         workflowTask: { workflowId: 99, workflowName: "My Workflow", workflowRefId: "ref-abc" },
       });
 
-      expect(mockResolveExtraSwarms).toHaveBeenCalledWith("@other-ws do something", "user-1");
+      const fetchCall = (global.fetch as ReturnType<typeof vi.fn>).mock.calls[0];
+      const body = JSON.parse(fetchCall[1].body as string);
+      const vars = body.workflow_params.set_var.attributes.vars;
+      expect(vars.subAgents).toHaveLength(2);
+      expect(vars.subAgents.map((a: { name: string }) => a.name)).toContain("org-ws");
+      expect(vars.subAgents.map((a: { name: string }) => a.name)).toContain("other-ws");
     });
   });
 
