@@ -1938,9 +1938,10 @@ describe("Evals API — Integration Tests", () => {
         await createTestMembership({ workspaceId: workspace.id, userId: owner.id, role: "OWNER" });
         await createTestSwarm({ workspaceId: workspace.id, swarmApiKey: "test-key" });
 
-        vi.mocked(nodesService.addNode).mockResolvedValueOnce({ success: true, ref_id: "trigger-xyz" });
-        vi.mocked(nodesService.addEdge).mockResolvedValueOnce({ success: true });
-        vi.mocked(nodesService.addEdge).mockResolvedValueOnce({ success: true });
+        vi.mocked(nodesService.addNode)
+          .mockResolvedValueOnce({ success: true, ref_id: "trigger-xyz" })
+          .mockResolvedValueOnce({ success: true, ref_id: "hive-agent-ref" });
+        vi.mocked(nodesService.addEdge).mockResolvedValue({ success: true });
 
         const request = createAuthenticatedPostRequest(
           `http://localhost:3000/api/workspaces/${workspace.slug}/evals/set-1/requirements/req-1/triggers`,
@@ -1961,6 +1962,10 @@ describe("Evals API — Integration Tests", () => {
           expect.any(Object),
           expect.objectContaining({ node_type: "EvalTrigger" }),
         );
+        expect(nodesService.addNode).toHaveBeenCalledWith(
+          expect.any(Object),
+          expect.objectContaining({ node_type: "HiveAgent" }),
+        );
         expect(nodesService.addEdge).toHaveBeenCalledWith(
           expect.any(Object),
           expect.objectContaining({ edge: { edge_type: "HAS_TRIGGER" } }),
@@ -1968,6 +1973,10 @@ describe("Evals API — Integration Tests", () => {
         expect(nodesService.addEdge).toHaveBeenCalledWith(
           expect.any(Object),
           expect.objectContaining({ edge: { edge_type: "EVALUATED" } }),
+        );
+        expect(nodesService.addEdge).toHaveBeenCalledWith(
+          expect.any(Object),
+          expect.objectContaining({ edge: { edge_type: "ATTRIBUTED_TO" } }),
         );
       });
     });
