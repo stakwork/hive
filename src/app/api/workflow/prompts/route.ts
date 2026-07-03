@@ -4,6 +4,7 @@ import { authOptions } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
 import { isDevelopmentMode } from "@/lib/runtime";
 import { writePromptThrough } from "@/services/prompts/prompt-sync";
+import { BIFROST_AGENT_NAMES } from "@/services/bifrost/agent-names";
 
 export const runtime = "nodejs";
 export const fetchCache = "force-no-store";
@@ -52,7 +53,9 @@ async function requireWriteAccess(
 
 // ─── Shape helpers ────────────────────────────────────────────────────────────
 
-function normalizeAgentNames(names: unknown): string[] {
+const VALID_AGENT_NAMES = new Set<string>(BIFROST_AGENT_NAMES);
+
+function normalizeAgentNames(names: unknown): string[] | { error: string } {
   if (!Array.isArray(names)) return [];
   const seen = new Set<string>();
   const result: string[] = [];
@@ -60,9 +63,11 @@ function normalizeAgentNames(names: unknown): string[] {
     if (typeof n !== "string") continue;
     const trimmed = n.trim();
     if (!trimmed) continue;
-    const lower = trimmed.toLowerCase();
-    if (seen.has(lower)) continue;
-    seen.add(lower);
+    if (!VALID_AGENT_NAMES.has(trimmed)) {
+      return { error: `Invalid agent name: "${trimmed}"` };
+    }
+    if (seen.has(trimmed)) continue;
+    seen.add(trimmed);
     result.push(trimmed);
   }
   return result;
@@ -186,6 +191,9 @@ export async function POST(request: NextRequest) {
     }
 
     const normalizedAgentNames = normalizeAgentNames(agentNames);
+    if (!Array.isArray(normalizedAgentNames)) {
+      return NextResponse.json({ error: normalizedAgentNames.error }, { status: 400 });
+    }
     const { prompt } = await writePromptThrough({ name, value, description, agentNames: normalizedAgentNames, userId });
 
     return NextResponse.json({

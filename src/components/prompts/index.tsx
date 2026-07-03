@@ -33,6 +33,19 @@ const CURRENT_VERSION_SENTINEL = -1;
 
 // ─── AgentNamesEditor ────────────────────────────────────────────────────────
 
+const BIFROST_AGENT_NAMES = [
+  "repo-agent",
+  "chat-agent",
+  "canvas-agent",
+  "diagram-agent",
+  "logs-agent",
+  "plan-agent",
+  "coding-agent",
+  "test-agent",
+  "build-agent",
+  "browser-agent",
+] as const;
+
 function AgentNamesEditor({
   agentNames,
   onChange,
@@ -42,28 +55,11 @@ function AgentNamesEditor({
   onChange: (names: string[]) => void;
   disabled?: boolean;
 }) {
-  const [inputValue, setInputValue] = React.useState("");
-  const [inputError, setInputError] = React.useState<string | null>(null);
+  const available = BIFROST_AGENT_NAMES.filter((a) => !agentNames.includes(a));
 
-  const handleAdd = () => {
-    const trimmed = inputValue.trim();
-    if (!trimmed) {
-      setInputError("Agent name cannot be blank.");
-      return;
-    }
-    if (agentNames.some((n) => n.toLowerCase() === trimmed.toLowerCase())) {
-      setInputError("Agent name already added.");
-      return;
-    }
-    onChange([...agentNames, trimmed]);
-    setInputValue("");
-    setInputError(null);
-  };
-
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === "Enter") {
-      e.preventDefault();
-      handleAdd();
+  const handleAdd = (name: string) => {
+    if (!agentNames.includes(name)) {
+      onChange([...agentNames, name]);
     }
   };
 
@@ -73,30 +69,6 @@ function AgentNamesEditor({
 
   return (
     <div className="space-y-2">
-      <div className="flex gap-2">
-        <Input
-          className="mt-0 flex-1"
-          placeholder="Add agent name..."
-          value={inputValue}
-          onChange={(e) => {
-            setInputValue(e.target.value);
-            setInputError(null);
-          }}
-          onKeyDown={handleKeyDown}
-          disabled={disabled}
-        />
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          onClick={handleAdd}
-          disabled={disabled || !inputValue.trim()}
-        >
-          <Plus className="h-4 w-4" />
-          Add
-        </Button>
-      </div>
-      {inputError && <p className="text-xs text-destructive">{inputError}</p>}
       {agentNames.length === 0 ? (
         <p className="text-xs text-muted-foreground italic">No agents assigned.</p>
       ) : (
@@ -118,6 +90,21 @@ function AgentNamesEditor({
                 </button>
               )}
             </span>
+          ))}
+        </div>
+      )}
+      {!disabled && available.length > 0 && (
+        <div className="flex flex-wrap gap-1">
+          {available.map((name) => (
+            <button
+              key={name}
+              type="button"
+              onClick={() => handleAdd(name)}
+              className="inline-flex items-center gap-1 rounded-full border border-dashed border-muted-foreground/40 px-3 py-1 text-xs text-muted-foreground hover:border-primary hover:text-primary transition-colors"
+            >
+              <Plus className="h-3 w-3" />
+              {name}
+            </button>
           ))}
         </div>
       )}

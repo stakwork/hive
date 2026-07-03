@@ -745,18 +745,17 @@ describe("Hive-native Prompt CRUD + Write-through Sync", () => {
       const req = makeReq("http://localhost/api/workflow/prompts", "POST", {
         name: "AGENT_NAMES_CREATE",
         value: "v1",
-        agentNames: ["AgentA", "AgentB"],
+        agentNames: ["repo-agent", "chat-agent"],
       });
       const res = await POST(req);
       expect(res.status).toBe(200);
       const data = (await res.json()).data;
       createdPromptIds.push(data.id);
 
-      expect(data.agent_names).toEqual(["AgentA", "AgentB"]);
+      expect(data.agent_names).toEqual(["repo-agent", "chat-agent"]);
 
-      // DB check
       const prompt = await db.prompt.findUnique({ where: { id: data.id } });
-      expect(prompt!.agentNames).toEqual(["AgentA", "AgentB"]);
+      expect(prompt!.agentNames).toEqual(["repo-agent", "chat-agent"]);
     });
 
     test("existing prompts (no agentNames supplied) default to empty array", async () => {
@@ -779,50 +778,43 @@ describe("Hive-native Prompt CRUD + Write-through Sync", () => {
       authAs(testUser);
       stakworkOkCreate(202);
 
-      // Create with initial agent names
       const createRes = await POST(
         makeReq("http://localhost/api/workflow/prompts", "POST", {
           name: "AGENT_NAMES_UPDATE",
           value: "v1",
-          agentNames: ["InitialAgent"],
+          agentNames: ["canvas-agent"],
         }),
       );
       const created = (await createRes.json()).data;
       createdPromptIds.push(created.id);
 
-      // Update prompt value + change agent names
       authAs(testUser);
       stakworkOkUpdate();
       const updateRes = await PUT(
         makeReq(`http://localhost/api/workflow/prompts/${created.id}`, "PUT", {
           value: "v2",
-          agentNames: ["InitialAgent", "NewAgent"],
+          agentNames: ["canvas-agent", "coding-agent"],
         }),
         { params: Promise.resolve({ id: created.id }) },
       );
       expect(updateRes.status).toBe(200);
       const updatedData = (await updateRes.json()).data;
 
-      // A new draft version was created (version count = 2)
       const prompt = await db.prompt.findUnique({
         where: { id: created.id },
         include: { versions: { orderBy: { versionNumber: "asc" } } },
       });
       expect(prompt!.versions).toHaveLength(2);
+      expect(prompt!.agentNames).toEqual(["canvas-agent", "coding-agent"]);
 
-      // agentNames updated on Prompt row
-      expect(prompt!.agentNames).toEqual(["InitialAgent", "NewAgent"]);
-
-      // GET by id also returns updated agent_names
       authAs(testUser);
       const getRes = await GET_BY_ID(
         makeReq(`http://localhost/api/workflow/prompts/${created.id}`, "GET"),
         { params: Promise.resolve({ id: created.id }) },
       );
       const getData = (await getRes.json()).data;
-      expect(getData.agent_names).toEqual(["InitialAgent", "NewAgent"]);
+      expect(getData.agent_names).toEqual(["canvas-agent", "coding-agent"]);
 
-      // Stakwork payload must NOT include agentNames
       const updateFetchCall = mockFetch.mock.calls[1];
       const sentBody = JSON.parse(updateFetchCall[1].body as string);
       expect(sentBody.prompt.agentNames).toBeUndefined();
@@ -838,13 +830,12 @@ describe("Hive-native Prompt CRUD + Write-through Sync", () => {
         makeReq("http://localhost/api/workflow/prompts", "POST", {
           name: "AGENT_NAMES_PRESERVE",
           value: "v1",
-          agentNames: ["KeepMe"],
+          agentNames: ["plan-agent"],
         }),
       );
       const created = (await createRes.json()).data;
       createdPromptIds.push(created.id);
 
-      // Update without providing agentNames at all
       authAs(testUser);
       stakworkOkUpdate();
       await PUT(
@@ -854,9 +845,8 @@ describe("Hive-native Prompt CRUD + Write-through Sync", () => {
         { params: Promise.resolve({ id: created.id }) },
       );
 
-      // agentNames should remain ["KeepMe"]
       const prompt = await db.prompt.findUnique({ where: { id: created.id } });
-      expect(prompt!.agentNames).toEqual(["KeepMe"]);
+      expect(prompt!.agentNames).toEqual(["plan-agent"]);
     });
 
     test("server-side: blank entries are stripped from agentNames", async () => {
@@ -866,32 +856,45 @@ describe("Hive-native Prompt CRUD + Write-through Sync", () => {
       const req = makeReq("http://localhost/api/workflow/prompts", "POST", {
         name: "AGENT_NAMES_BLANK",
         value: "v1",
-        agentNames: ["AgentA", "  ", "", "AgentB"],
+        agentNames: ["repo-agent", "  ", "", "chat-agent"],
       });
       const res = await POST(req);
       expect(res.status).toBe(200);
       const data = (await res.json()).data;
       createdPromptIds.push(data.id);
 
-      expect(data.agent_names).toEqual(["AgentA", "AgentB"]);
+      expect(data.agent_names).toEqual(["repo-agent", "chat-agent"]);
     });
 
-    test("server-side: case-insensitive duplicates are de-duped in agentNames", async () => {
+    test("server-side: duplicate entries are de-duped in agentNames", async () => {
       authAs(testUser);
       stakworkOkCreate(205);
 
       const req = makeReq("http://localhost/api/workflow/prompts", "POST", {
         name: "AGENT_NAMES_DEDUPE",
         value: "v1",
-        agentNames: ["AgentA", "agenta", "AGENTA", "AgentB"],
+        agentNames: ["repo-agent", "repo-agent", "chat-agent"],
       });
       const res = await POST(req);
       expect(res.status).toBe(200);
       const data = (await res.json()).data;
       createdPromptIds.push(data.id);
 
-      // Only the first occurrence survives
-      expect(data.agent_names).toEqual(["AgentA", "AgentB"]);
+      expect(data.agent_names).toEqual(["repo-agent", "chat-agent"]);
+    });
+
+    test("server-side: unknown agent name is rejected with 400", async () => {
+      authAs(testUser);
+
+      const req = makeReq("http://localhost/api/workflow/prompts", "POST", {
+        name: "AGENT_NAMES_INVALID",
+        value: "v1",
+        agentNames: ["not-a-real-agent"],
+      });
+      const res = await POST(req);
+      expect(res.status).toBe(400);
+      const body = await res.json();
+      expect(body.error).toMatch(/Invalid agent name/);
     });
 
     test("Stakwork push payload does NOT include agentNames on create", async () => {
@@ -901,7 +904,7 @@ describe("Hive-native Prompt CRUD + Write-through Sync", () => {
       const req = makeReq("http://localhost/api/workflow/prompts", "POST", {
         name: "AGENT_NAMES_PAYLOAD_CHECK",
         value: "v1",
-        agentNames: ["SomeAgent"],
+        agentNames: ["build-agent"],
       });
       const res = await POST(req);
       expect(res.status).toBe(200);
@@ -910,10 +913,8 @@ describe("Hive-native Prompt CRUD + Write-through Sync", () => {
 
       const [, opts] = mockFetch.mock.calls[0];
       const sentBody = JSON.parse(opts.body as string);
-      // top-level: no agentNames / agent_names
       expect(sentBody.agentNames).toBeUndefined();
       expect(sentBody.agent_names).toBeUndefined();
-      // nested prompt object: no agentNames / agent_names
       expect(sentBody.prompt.agentNames).toBeUndefined();
       expect(sentBody.prompt.agent_names).toBeUndefined();
     });
