@@ -27,24 +27,12 @@ import { useDebounce } from "@/hooks/useDebounce";
 import { diffLines } from "diff";
 import { getPusherClient, getWorkspaceChannelName, PUSHER_EVENTS } from "@/lib/pusher";
 import { RunEvalsModal } from "@/components/prompts/RunEvalsModal";
+import { BIFROST_AGENT_NAMES } from "@/services/bifrost/agent-names";
 
 // Sentinel ID for representing the current live version
 const CURRENT_VERSION_SENTINEL = -1;
 
 // ─── AgentNamesEditor ────────────────────────────────────────────────────────
-
-const BIFROST_AGENT_NAMES = [
-  "repo-agent",
-  "chat-agent",
-  "canvas-agent",
-  "diagram-agent",
-  "logs-agent",
-  "plan-agent",
-  "coding-agent",
-  "test-agent",
-  "build-agent",
-  "browser-agent",
-] as const;
 
 function AgentNamesEditor({
   agentNames,
