@@ -4,8 +4,7 @@ import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 import { getJarvisUrl } from "@/lib/utils/swarm";
 import { getWorkspaceSwarmAccess } from "@/lib/helpers/swarm-access";
 import { addNode, addEdge } from "@/services/swarm/api/nodes";
-import { resolveHiveAgentName, isBifrostAgentName } from "@/lib/utils/hive-agent";
-import { DEFAULT_AGENT_SPECS } from "@/services/bifrost/agent-catalog";
+import { resolveHiveAgentName, isBifrostAgentName, isCaptureAgentName, getCaptureAgentSpec } from "@/lib/utils/hive-agent";
 
 type RouteParams = {
   params: Promise<{ slug: string; evalSetId: string; reqId: string }>;
@@ -119,12 +118,12 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     } = body ?? {};
 
     // Resolve canonical agent name:
-    // - prefer explicit `agentName` if it is a valid BifrostAgentName
+    // - prefer explicit `agentName` if it is a valid capture agent name (incl. wfe-agent)
     // - else try to resolve from free-text `agent` (legacy, kept for back-compat)
     // - else fall back to source-bucket default (no fine-grained signal here)
-    const agentOverride = isBifrostAgentName(agentNameRaw)
+    const agentOverride = isCaptureAgentName(agentNameRaw)
       ? agentNameRaw
-      : isBifrostAgentName(agent)
+      : isCaptureAgentName(agent)
       ? agent
       : undefined;
     const resolvedAgent = resolveHiveAgentName("repo_agent", agentOverride);
@@ -234,7 +233,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
 
     // Step 4: Upsert HiveAgent node + ATTRIBUTED_TO edge (non-fatal)
     try {
-      const agentSpec = DEFAULT_AGENT_SPECS[resolvedAgent];
+      const agentSpec = getCaptureAgentSpec(resolvedAgent);
       const hiveAgentResult = await addNode(config, {
         node_type: "HiveAgent",
         node_data: {

@@ -277,3 +277,148 @@ describe("BlobViewer — stack trace rendering", () => {
     expect(screen.getByText(/Internal Server Error/)).toBeInTheDocument();
   });
 });
+
+// ---------------------------------------------------------------------------
+// StackTraceViewer — structured frames rendering
+// ---------------------------------------------------------------------------
+
+describe("StackTraceViewer — structured frames", () => {
+  beforeEach(() => {
+    mockFetch.mockReset();
+  });
+
+  function makeBlobWithFrames(frames: unknown[]): string {
+    return JSON.stringify({
+      exceptionType: "RuntimeError",
+      message: "oops",
+      stackTrace: "RuntimeError: oops\n  raw fallback line",
+      frames,
+    });
+  }
+
+  test("inApp:true frames render as clickable GitHub links with correct href", async () => {
+    const event = makeEvent({
+      commitSha: "abc1234def5678901234567890abcdef12345678",
+      repositoryUrl: "https://github.com/stakwork/hive",
+    });
+    const frames = [
+      { filename: "app/controllers/posts_controller.rb", function: "show", lineno: 22, inApp: true },
+      { filename: "/usr/local/bundle/gems/rack-2.2.6/lib/rack.rb", function: "call", lineno: 50, inApp: false },
+    ];
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      text: async () => makeBlobWithFrames(frames),
+      json: async () => ({}),
+    });
+
+    render(<ErrorIssueDetail detail={makeDetail(event)} />);
+    await expandEvent("evt-1");
+
+    // inApp:true frame → link
+    const links = screen.getAllByRole("link");
+    const appLink = links.find((l) =>
+      (l as HTMLAnchorElement).href.includes("posts_controller.rb")
+    ) as HTMLAnchorElement | undefined;
+    expect(appLink).toBeDefined();
+    expect(appLink!.href).toBe(
+      "https://github.com/stakwork/hive/blob/abc1234def5678901234567890abcdef12345678/app/controllers/posts_controller.rb#L22"
+    );
+    expect(appLink!.target).toBe("_blank");
+    expect(appLink!.rel).toContain("noopener");
+  });
+
+  test("inApp:false frames render as dimmed non-link text", async () => {
+    const event = makeEvent({
+      commitSha: "abc1234def5678901234567890abcdef12345678",
+      repositoryUrl: "https://github.com/stakwork/hive",
+    });
+    const frames = [
+      { filename: "app/controllers/posts_controller.rb", function: "show", lineno: 22, inApp: true },
+      { filename: "/usr/local/bundle/gems/rack-2.2.6/lib/rack.rb", function: "call", lineno: 50, inApp: false },
+    ];
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      text: async () => makeBlobWithFrames(frames),
+      json: async () => ({}),
+    });
+
+    render(<ErrorIssueDetail detail={makeDetail(event)} />);
+    await expandEvent("evt-1");
+
+    // inApp:false frame → no link, but text present
+    const links = screen.queryAllByRole("link");
+    const gemLink = links.find((l) => (l as HTMLAnchorElement).href.includes("rack.rb"));
+    expect(gemLink).toBeUndefined();
+
+    // Text still appears (dimmed span)
+    expect(screen.getByText(/rack\.rb/, { exact: false })).toBeInTheDocument();
+  });
+
+  test("falls back to parseStackFrameLines when frames array is empty", async () => {
+    const event = makeEvent({
+      commitSha: "abc1234def5678901234567890abcdef12345678",
+      repositoryUrl: "https://github.com/stakwork/hive",
+    });
+    const blobWithEmptyFrames = JSON.stringify({
+      exceptionType: "TypeError",
+      message: "oops",
+      stackTrace: SAMPLE_STACK,
+      frames: [],
+    });
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      text: async () => blobWithEmptyFrames,
+      json: async () => ({}),
+    });
+
+    render(<ErrorIssueDetail detail={makeDetail(event)} />);
+    await expandEvent("evt-1");
+
+    // The raw stack trace fallback should produce a link for the resolvable frame
+    const links = screen.getAllByRole("link");
+    const productListLink = links.find((l) =>
+      (l as HTMLAnchorElement).href.includes("components/ProductList.tsx")
+    );
+    expect(productListLink).toBeDefined();
+  });
+
+  test("falls back to parseStackFrameLines when frames key absent from blob", async () => {
+    const event = makeEvent({
+      commitSha: "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2",
+      repositoryUrl: "https://github.com/stakwork/hive",
+    });
+    // Blob with no frames key at all
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      text: async () => makeBlobJson(SAMPLE_STACK),
+      json: async () => ({}),
+    });
+
+    render(<ErrorIssueDetail detail={makeDetail(event)} />);
+    await expandEvent("evt-1");
+
+    // Fallback path renders the app frame as a link
+    const links = screen.getAllByRole("link");
+    const appLink = links.find((l) =>
+      (l as HTMLAnchorElement).href.includes("components/ProductList.tsx")
+    );
+    expect(appLink).toBeDefined();
+  });
+
+  test("displays filename:lineno and function name for structured frames", async () => {
+    const event = makeEvent({ repositoryUrl: null }); // no links possible
+    const frames = [
+      { filename: "app/models/user.rb", function: "validate", lineno: 15, inApp: true },
+    ];
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      text: async () => makeBlobWithFrames(frames),
+      json: async () => ({}),
+    });
+
+    render(<ErrorIssueDetail detail={makeDetail(event)} />);
+    await expandEvent("evt-1");
+
+    expect(screen.getByText(/app\/models\/user\.rb:15 in validate/, { exact: false })).toBeInTheDocument();
+  });
+});

@@ -4,6 +4,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { FlagRunEvalModal } from "@/components/evals/FlagRunEvalModal";
+import { HIVE_AGENT_OPTIONS } from "@/lib/utils/hive-agent";
 
 // ── mocks ────────────────────────────────────────────────────────────────────
 
@@ -71,6 +72,55 @@ vi.mock("@/hooks/useEvalRequirements", () => ({
 
 vi.mock("@/components/ui/scroll-area", () => ({
   ScrollArea: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+}));
+
+vi.mock("@/components/ui/label", () => ({
+  Label: ({ children, htmlFor }: { children: React.ReactNode; htmlFor?: string }) => (
+    <label htmlFor={htmlFor}>{children}</label>
+  ),
+}));
+
+// Render Select as a native <select> so tests can interact with userEvent.selectOptions
+vi.mock("@/components/ui/select", () => ({
+  Select: ({
+    value,
+    onValueChange,
+    children,
+  }: {
+    value?: string;
+    onValueChange?: (v: string) => void;
+    children?: React.ReactNode;
+  }) => {
+    const items: { value: string; label: string }[] = [];
+    React.Children.forEach(children, (child: any) => {
+      if (child?.props?.children) {
+        React.Children.forEach(child.props.children, (item: any) => {
+          if (item?.props?.value !== undefined) {
+            items.push({ value: item.props.value, label: item.props.children });
+          }
+        });
+      }
+    });
+    return (
+      <select
+        data-testid="agent-select"
+        value={value ?? ""}
+        onChange={(e) => onValueChange?.(e.target.value)}
+      >
+        {items.map((item) => (
+          <option key={item.value} value={item.value}>
+            {item.label}
+          </option>
+        ))}
+      </select>
+    );
+  },
+  SelectContent: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+  SelectItem: ({ value, children }: { value: string; children: React.ReactNode }) => (
+    <option value={value}>{children}</option>
+  ),
+  SelectTrigger: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+  SelectValue: ({ placeholder }: { placeholder?: string }) => <span>{placeholder}</span>,
 }));
 
 // Minimal Dialog that renders children when open
@@ -615,6 +665,95 @@ describe("FlagRunEvalModal", () => {
     rerender(<FlagRunEvalModal {...defaultProps({ open: false, onOpenChange })} />);
 
     expect(screen.queryByTestId("dialog")).not.toBeInTheDocument();
+  });
+
+  // ── agent dropdown ────────────────────────────────────────────────────────
+
+  async function advanceToStep2() {
+    vi.mocked(fetch).mockImplementation(makeFetch());
+    render(<FlagRunEvalModal {...defaultProps()} />);
+    await waitFor(() => screen.getByText("Generate Title"));
+    fireEvent.click(screen.getByText("Generate Title"));
+    await waitFor(() => screen.getByRole("button", { name: /next/i }));
+    fireEvent.click(screen.getByRole("button", { name: /next/i }));
+    await waitFor(() => screen.getByTestId("capture-eval-form"));
+  }
+
+  it("shows agent dropdown on step 2 defaulting to first HIVE_AGENT_OPTIONS entry", async () => {
+    await advanceToStep2();
+    const select = screen.getByTestId("agent-select") as HTMLSelectElement;
+    expect(select).toBeTruthy();
+    expect(select.value).toBe(HIVE_AGENT_OPTIONS[0].name);
+  });
+
+  it("agent dropdown contains all HIVE_AGENT_OPTIONS entries including wfe-agent", async () => {
+    await advanceToStep2();
+    const select = screen.getByTestId("agent-select") as HTMLSelectElement;
+    const options = Array.from(select.options).map((o) => o.value);
+    for (const opt of HIVE_AGENT_OPTIONS) {
+      expect(options).toContain(opt.name);
+    }
+    expect(options).toContain("wfe-agent");
+  });
+
+  it("selecting a different agent changes the submitted agentName in POST body", async () => {
+    vi.mocked(fetch).mockImplementation(makeFetch());
+    render(<FlagRunEvalModal {...defaultProps()} />);
+    await waitFor(() => screen.getByText("Generate Title"));
+    fireEvent.click(screen.getByText("Generate Title"));
+    await waitFor(() => screen.getByRole("button", { name: /next/i }));
+    fireEvent.click(screen.getByRole("button", { name: /next/i }));
+    await waitFor(() => screen.getByTestId("capture-eval-form"));
+
+    // Change the agent
+    const select = screen.getByTestId("agent-select") as HTMLSelectElement;
+    await userEvent.selectOptions(select, "coding-agent");
+    expect(select.value).toBe("coding-agent");
+
+    // Fill requirement and submit
+    await userEvent.type(screen.getByRole("textbox", { name: /requirement/i }), "Some requirement");
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: /confirm/i })).not.toBeDisabled()
+    );
+    fireEvent.click(screen.getByRole("button", { name: /confirm/i }));
+
+    await waitFor(() => {
+      const captureCalls = vi.mocked(fetch).mock.calls.filter(([url]) =>
+        String(url).includes("/eval/capture")
+      );
+      expect(captureCalls.length).toBeGreaterThan(0);
+      const body = JSON.parse(captureCalls[0][1]?.body as string);
+      expect(body.agentName).toBe("coding-agent");
+    });
+  });
+
+  it("agent dropdown resets to default when modal closes and reopens", async () => {
+    vi.mocked(fetch).mockImplementation(makeFetch());
+    const onOpenChange = vi.fn();
+    const { rerender } = render(<FlagRunEvalModal {...defaultProps({ onOpenChange })} />);
+    await waitFor(() => screen.getByText("Generate Title"));
+    fireEvent.click(screen.getByText("Generate Title"));
+    await waitFor(() => screen.getByRole("button", { name: /next/i }));
+    fireEvent.click(screen.getByRole("button", { name: /next/i }));
+    await waitFor(() => screen.getByTestId("capture-eval-form"));
+
+    const select = screen.getByTestId("agent-select") as HTMLSelectElement;
+    await userEvent.selectOptions(select, "canvas-agent");
+    expect(select.value).toBe("canvas-agent");
+
+    // Close modal
+    rerender(<FlagRunEvalModal {...defaultProps({ open: false, onOpenChange })} />);
+
+    // Reopen
+    vi.mocked(fetch).mockImplementation(makeFetch());
+    rerender(<FlagRunEvalModal {...defaultProps({ open: true, onOpenChange })} />);
+    await waitFor(() => screen.getByText("Generate Title"));
+    fireEvent.click(screen.getByText("Generate Title"));
+    fireEvent.click(screen.getByRole("button", { name: /next/i }));
+    await waitFor(() => screen.getByTestId("capture-eval-form"));
+
+    const resetSelect = screen.getByTestId("agent-select") as HTMLSelectElement;
+    expect(resetSelect.value).toBe(HIVE_AGENT_OPTIONS[0].name);
   });
 
 });
