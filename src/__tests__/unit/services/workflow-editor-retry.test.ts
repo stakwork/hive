@@ -35,6 +35,11 @@ vi.mock("@/lib/helpers/chat-history", () => ({
 
 vi.mock("@/services/roadmap/feature-chat", () => ({
   resolveExtraSwarms: vi.fn().mockResolvedValue([]),
+  resolveSubAgents: vi.fn().mockResolvedValue([]),
+}));
+
+vi.mock("@/lib/runtime", () => ({
+  isDevelopmentMode: vi.fn(() => false),
 }));
 
 vi.mock("@/config/env", async (importOriginal) => {
@@ -56,6 +61,12 @@ import { retryWorkflowEditorTask, executeWorkflowEditorRetry } from "@/services/
 import { db } from "@/lib/db";
 import { ChatRole, WorkflowStatus } from "@prisma/client";
 import { pusherServer } from "@/lib/pusher";
+import { resolveExtraSwarms, resolveSubAgents } from "@/services/roadmap/feature-chat";
+import { isDevelopmentMode } from "@/lib/runtime";
+
+const mockResolveExtraSwarms = vi.mocked(resolveExtraSwarms);
+const mockResolveSubAgents = vi.mocked(resolveSubAgents);
+const mockIsDevelopmentMode = vi.mocked(isDevelopmentMode);
 
 const mockedDb = vi.mocked(db);
 const mockedPusher = vi.mocked(pusherServer);
@@ -70,8 +81,10 @@ function makeFullTask(overrides: Record<string, unknown> = {}) {
     workspaceId: "ws-1",
     featureId: "feature-1",
     workspace: {
-      slug: "test-workspace",
+      slug: "stakwork",
       ownerId: "user-1",
+      sourceControlOrgId: "org-1",
+      members: [{ role: "OWNER" }],
       swarm: {
         swarmUrl: "http://swarm/api",
         swarmSecretAlias: "secret",
@@ -141,6 +154,7 @@ describe("executeWorkflowEditorRetry", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     originalFetch = global.fetch;
+    mockIsDevelopmentMode.mockReturnValue(false);
     mockedDb.task.update = vi.fn().mockResolvedValue({}) as never;
     mockedDb.chatMessage.create = vi.fn().mockResolvedValue({ id: "msg-new" }) as never;
     mockedDb.chatMessage.findFirst = vi.fn().mockResolvedValue({ id: "msg-user-1" }) as never;
@@ -489,6 +503,85 @@ describe("executeWorkflowEditorRetry", () => {
       const body = JSON.parse(fetchCall[1].body as string);
       const vars = body.workflow_params.set_var.attributes.vars;
       expect(Object.prototype.hasOwnProperty.call(vars, "featureContext")).toBe(false);
+    });
+  });
+
+  describe("subAgents injection on retry (net-new)", () => {
+    const mockOrgSwarm = {
+      name: "org-ws",
+      url: "https://org.sphinx.chat/api",
+      apiKey: "org-key",
+      repoUrls: "https://github.com/org/repo",
+      toolsConfig: { learn_concepts: true },
+    };
+
+    test("sets vars.subAgents when resolveSubAgents returns org workspaces (stakwork slug)", async () => {
+      mockedDb.task.findFirst = vi.fn().mockResolvedValue(makeFullTask()) as never;
+      mockResolveSubAgents.mockResolvedValueOnce([mockOrgSwarm]);
+      mockFetchSuccess(888);
+
+      const result = await executeWorkflowEditorRetry("task-1", "user-1");
+
+      expect(result).toBe(true);
+      expect(mockResolveSubAgents).toHaveBeenCalledWith({
+        message: "Make the workflow faster",
+        userId: "user-1",
+        sourceControlOrgId: "org-1",
+      });
+      expect(mockResolveExtraSwarms).not.toHaveBeenCalled();
+
+      const fetchCall = (global.fetch as ReturnType<typeof vi.fn>).mock.calls[0];
+      const body = JSON.parse(fetchCall[1].body as string);
+      const vars = body.workflow_params.set_var.attributes.vars;
+      expect(vars.subAgents).toHaveLength(1);
+      expect(vars.subAgents[0].name).toBe("org-ws");
+    });
+
+    test("sets vars.subAgents in isDevelopmentMode (non-stakwork slug)", async () => {
+      mockIsDevelopmentMode.mockReturnValue(true);
+      const devTask = makeFullTask({
+        workspace: { ...makeFullTask().workspace, slug: "other-slug" },
+      });
+      mockedDb.task.findFirst = vi.fn().mockResolvedValue(devTask) as never;
+      mockResolveSubAgents.mockResolvedValueOnce([mockOrgSwarm]);
+      mockFetchSuccess();
+
+      const result = await executeWorkflowEditorRetry("task-1", "user-1");
+
+      expect(result).toBe(true);
+      expect(mockResolveSubAgents).toHaveBeenCalled();
+      expect(mockResolveExtraSwarms).not.toHaveBeenCalled();
+    });
+
+    test("falls back to resolveExtraSwarms outside stakwork/dev (no guard match)", async () => {
+      mockIsDevelopmentMode.mockReturnValue(false);
+      const nonStakworkTask = makeFullTask({
+        workspace: { ...makeFullTask().workspace, slug: "other-slug" },
+      });
+      mockedDb.task.findFirst = vi.fn().mockResolvedValue(nonStakworkTask) as never;
+      mockResolveExtraSwarms.mockResolvedValueOnce([]);
+      mockFetchSuccess();
+
+      await executeWorkflowEditorRetry("task-1", "user-1");
+
+      expect(mockResolveSubAgents).not.toHaveBeenCalled();
+      expect(mockResolveExtraSwarms).toHaveBeenCalledWith(
+        "Make the workflow faster",
+        "user-1",
+      );
+    });
+
+    test("subAgents absent from vars when resolveSubAgents returns empty on retry", async () => {
+      mockedDb.task.findFirst = vi.fn().mockResolvedValue(makeFullTask()) as never;
+      mockResolveSubAgents.mockResolvedValueOnce([]);
+      mockFetchSuccess();
+
+      await executeWorkflowEditorRetry("task-1", "user-1");
+
+      const fetchCall = (global.fetch as ReturnType<typeof vi.fn>).mock.calls[0];
+      const body = JSON.parse(fetchCall[1].body as string);
+      const vars = body.workflow_params.set_var.attributes.vars;
+      expect(Object.prototype.hasOwnProperty.call(vars, "subAgents")).toBe(false);
     });
   });
 });
