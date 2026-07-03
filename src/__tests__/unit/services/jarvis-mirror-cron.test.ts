@@ -94,6 +94,21 @@ describe("runJarvisMirror", () => {
     expect((mockedDb.workspace as any).update).not.toHaveBeenCalled();
   });
 
+  it("scopes the workspace query when opts.workspace is provided", async () => {
+    setupDb({ workspaces: [{ id: "w1", slug: "hive", jarvisSyncState: null }] });
+    await runJarvisMirror({ workspace: "hive" });
+    const where = (mockedDb.workspace as any).findMany.mock.calls[0][0].where;
+    expect(where.OR).toEqual([{ slug: "hive" }, { id: "hive" }]);
+    expect(where.deleted).toBe(false);
+  });
+
+  it("does not add a workspace scope when opts.workspace is omitted", async () => {
+    setupDb({ workspaces: [] });
+    await runJarvisMirror();
+    const where = (mockedDb.workspace as any).findMany.mock.calls[0][0].where;
+    expect(where.OR).toBeUndefined();
+  });
+
   it("reports capped=true and anyCapped when a batch fills maxPerType", async () => {
     const features = Array.from({ length: 2 }, (_, i) => ({
       id: `f${i}`,
