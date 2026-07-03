@@ -7,7 +7,7 @@
  *    coercion rules for function/lineno/inApp; no extra fields leaked.
  */
 import { describe, it, expect } from "vitest";
-import { sanitizeFrames } from "@/lib/utils/error-frames";
+import { sanitizeFrames, parseBlobContent } from "@/lib/utils/error-frames";
 
 describe("sanitizeFrames", () => {
   it("returns empty array for non-array input (null)", () => {
@@ -191,5 +191,49 @@ describe("sanitizeFrames", () => {
   it("handles nested arrays as entries (drops them)", () => {
     const result = sanitizeFrames([[{ filename: "nested.rb" }]]);
     expect(result).toEqual([]);
+  });
+});
+
+describe("parseBlobContent", () => {
+  it("parses valid JSON with stackTrace and frames", () => {
+    const input = JSON.stringify({
+      stackTrace: "Error at line 1",
+      frames: [{ filename: "app/models/user.rb", function: "save", lineno: 42, inApp: true }],
+    });
+    const result = parseBlobContent(input);
+    expect(result.stackTrace).toBe("Error at line 1");
+    expect(result.frames).toHaveLength(1);
+    expect(result.frames[0]).toEqual({ filename: "app/models/user.rb", function: "save", lineno: 42, inApp: true });
+  });
+
+  it("falls back to raw text as stackTrace when JSON is malformed", () => {
+    const result = parseBlobContent("not json {{");
+    expect(result.stackTrace).toBe("not json {{");
+    expect(result.frames).toEqual([]);
+  });
+
+  it("uses raw text as stackTrace when parsed JSON has no stackTrace field", () => {
+    const input = JSON.stringify({ frames: [] });
+    const result = parseBlobContent(input);
+    // No stackTrace field → falls back to raw text
+    expect(result.stackTrace).toBe(input);
+    expect(result.frames).toEqual([]);
+  });
+
+  it("sanitizes invalid frames entries (drops frames without filename)", () => {
+    const input = JSON.stringify({
+      stackTrace: "some trace",
+      frames: [{ function: "no_filename" }, { filename: "valid.rb" }],
+    });
+    const result = parseBlobContent(input);
+    expect(result.frames).toHaveLength(1);
+    expect(result.frames[0].filename).toBe("valid.rb");
+  });
+
+  it("returns empty frames array when frames field is absent", () => {
+    const input = JSON.stringify({ stackTrace: "some trace" });
+    const result = parseBlobContent(input);
+    expect(result.stackTrace).toBe("some trace");
+    expect(result.frames).toEqual([]);
   });
 });
