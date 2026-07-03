@@ -4,7 +4,7 @@ import {
   AGENT_CATALOG_SOURCE,
   DEFAULT_AGENT_MODEL,
 } from "./constants";
-import { BIFROST_AGENT_NAMES, type BifrostAgentName } from "./orchestrator";
+import { BIFROST_AGENT_NAMES, type BifrostAgentName } from "./agent-names";
 import type {
   AgentCatalogManifest,
   AgentCatalogManifestAgent,
