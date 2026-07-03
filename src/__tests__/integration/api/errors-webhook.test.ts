@@ -898,3 +898,158 @@ describe("POST /api/webhook/errors — KG projection (best-effort)", () => {
     expect(issue?.kgRefId).toBe("issue-ref-search-fail");
   });
 });
+
+// ── Frames ingest tests ───────────────────────────────────────────────────────
+
+describe("POST /api/webhook/errors — structured frames", () => {
+  let ctx: Awaited<ReturnType<typeof createTestSetup>>;
+
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    ctx = await createTestSetup();
+    mockGetJarvisConfig.mockResolvedValue(null);
+  });
+
+  afterEach(async () => {
+    await db.errorEvent.deleteMany({ where: { workspaceId: ctx.workspace.id } });
+    await db.errorIssue.deleteMany({ where: { workspaceId: ctx.workspace.id } });
+    await db.workspaceApiKey.deleteMany({ where: { id: ctx.apiKey.id } });
+    await db.repository.deleteMany({ where: { id: ctx.repo.id } });
+    await db.workspace.deleteMany({ where: { id: ctx.workspace.id } });
+    await db.user.deleteMany({ where: { id: ctx.owner.id } });
+    await db.repository.deleteMany({ where: { id: ctx.repo2.id } });
+    await db.workspace.deleteMany({ where: { id: ctx.workspace2.id } });
+    await db.user.deleteMany({ where: { id: ctx.owner2.id } });
+  });
+
+  test("201 — request with valid frames array is accepted", async () => {
+    const res = await POST(
+      buildRequest(
+        {
+          exceptionType: "ActiveRecord::NotFound",
+          message: "Record not found",
+          frames: [
+            { filename: "app/controllers/users_controller.rb", function: "show", lineno: 10, inApp: true },
+            { filename: "app/models/user.rb", function: "find", lineno: 5, inApp: true },
+          ],
+          repository: "https://github.com/stakwork/hive",
+        },
+        RAW_KEY,
+      ),
+    );
+    expect(res.status).toBe(201);
+    const body = await res.json();
+    expect(body.success).toBe(true);
+    expect(body.data.issueId).toBeTruthy();
+  });
+
+  test("frames are sanitized and written to blob body before put()", async () => {
+    const { put: mockPut } = await vi.importMock<typeof import("@vercel/blob")>("@vercel/blob");
+
+    await POST(
+      buildRequest(
+        {
+          exceptionType: "TypeError",
+          message: "bad stuff",
+          frames: [
+            { filename: "app/foo.rb", function: "bar", lineno: 42, inApp: true, extraField: "should-be-stripped" },
+            { function: "no-filename", lineno: 5 }, // malformed — dropped
+          ],
+          repository: "https://github.com/stakwork/hive",
+        },
+        RAW_KEY,
+      ),
+    );
+
+    expect(mockPut).toHaveBeenCalledOnce();
+    const blobBody = JSON.parse((mockPut as ReturnType<typeof vi.fn>).mock.calls[0][1] as string);
+    // Sanitized frames should be in blob
+    expect(blobBody.frames).toHaveLength(1);
+    expect(blobBody.frames[0]).toEqual({ filename: "app/foo.rb", function: "bar", lineno: 42, inApp: true });
+    // Extra field stripped
+    expect(blobBody.frames[0]).not.toHaveProperty("extraField");
+  });
+
+  test("malformed frames entries are stripped from blob", async () => {
+    const { put: mockPut } = await vi.importMock<typeof import("@vercel/blob")>("@vercel/blob");
+
+    await POST(
+      buildRequest(
+        {
+          exceptionType: "TypeError",
+          message: "test",
+          frames: [
+            null,
+            { filename: "" },
+            { function: "no-filename" },
+            { filename: "valid.rb", lineno: 1 },
+          ],
+          repository: "https://github.com/stakwork/hive",
+        },
+        RAW_KEY,
+      ),
+    );
+
+    const blobBody = JSON.parse((mockPut as ReturnType<typeof vi.fn>).mock.calls[0][1] as string);
+    expect(blobBody.frames).toHaveLength(1);
+    expect(blobBody.frames[0].filename).toBe("valid.rb");
+  });
+
+  test("201 — request with only legacy stackTrace (no frames) still works", async () => {
+    const res = await POST(
+      buildRequest(
+        {
+          exceptionType: "ReferenceError",
+          message: "x is not defined",
+          stackTrace: "  at eval (eval:1:1)\n  at main (app.js:5:1)",
+          repository: "https://github.com/stakwork/hive",
+        },
+        RAW_KEY,
+      ),
+    );
+    expect(res.status).toBe(201);
+    const body = await res.json();
+    expect(body.success).toBe(true);
+  });
+
+  test("same frames on two separate calls produce the same fingerprint (grouping)", async () => {
+    const payload = {
+      exceptionType: "ActiveRecord::NotFound",
+      message: "Record not found",
+      frames: [
+        { filename: "app/controllers/users_controller.rb", function: "show", lineno: 10, inApp: true },
+      ],
+      repository: "https://github.com/stakwork/hive",
+    };
+
+    const res1 = await POST(buildRequest(payload, RAW_KEY));
+    const res2 = await POST(buildRequest(payload, RAW_KEY));
+    const body1 = await res1.json();
+    const body2 = await res2.json();
+
+    expect(res1.status).toBe(201);
+    expect(res2.status).toBe(201);
+    // Same fingerprint → same issue, occurrenceCount incremented
+    expect(body1.data.issueId).toBe(body2.data.issueId);
+    expect(body2.data.occurrenceCount).toBe(2);
+  });
+
+  test("non-array frames value is treated as empty (no frames)", async () => {
+    const { put: mockPut } = await vi.importMock<typeof import("@vercel/blob")>("@vercel/blob");
+
+    const res = await POST(
+      buildRequest(
+        {
+          exceptionType: "TypeError",
+          message: "test",
+          frames: "not-an-array",
+          repository: "https://github.com/stakwork/hive",
+        },
+        RAW_KEY,
+      ),
+    );
+    expect(res.status).toBe(201);
+    const blobBody = JSON.parse((mockPut as ReturnType<typeof vi.fn>).mock.calls[0][1] as string);
+    expect(blobBody.frames).toEqual([]);
+  });
+});

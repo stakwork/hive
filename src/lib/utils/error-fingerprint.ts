@@ -1,6 +1,7 @@
 import * as crypto from "crypto";
 import { db } from "@/lib/db";
 import { parseGithubOwnerRepo } from "@/utils/repositoryParser";
+import type { StructuredFrame } from "@/lib/utils/error-frames";
 
 /**
  * Normalise a raw repository identifier (URL or name) so that trivial
@@ -60,8 +61,6 @@ export async function resolveRepoKey({
     return { repositoryId: null, repoKey: "unknown" };
   }
 
-  const normalized = normalizeRepo(repository);
-
   // Fetch all repos for this workspace and match client-side to avoid
   // complex DB normalisation; workspace repos are typically few.
   const repos = await db.repository.findMany({
@@ -69,11 +68,19 @@ export async function resolveRepoKey({
     select: { id: true, name: true, repositoryUrl: true },
   });
 
+  const canonicalIncoming = canonicalRepoKey(repository);
+
   for (const repo of repos) {
-    if (
-      normalizeRepo(repo.repositoryUrl) === normalized ||
-      normalizeRepo(repo.name) === normalized
-    ) {
+    const matchUrl = repo.repositoryUrl ? canonicalRepoKey(repo.repositoryUrl) : null;
+    const matchName = repo.name ? canonicalRepoKey(repo.name) : null;
+    const matched = matchUrl === canonicalIncoming || matchName === canonicalIncoming;
+    if (matched) {
+      const method = matchUrl === canonicalIncoming ? "url" : "name";
+      console.info("[resolveRepoKey] matched", {
+        method,
+        incoming: canonicalIncoming,
+        repoId: repo.id,
+      });
       return {
         repositoryId: repo.id,
         repoKey: canonicalRepoKey(repo.repositoryUrl || repo.name),
@@ -82,7 +89,7 @@ export async function resolveRepoKey({
   }
 
   // No match — fall back to canonical form of the raw identifier
-  return { repositoryId: null, repoKey: canonicalRepoKey(repository) };
+  return { repositoryId: null, repoKey: canonicalIncoming };
 }
 
 // ── Fingerprint ───────────────────────────────────────────────────────────────
@@ -117,23 +124,37 @@ function normalizeFrame(frame: string): string {
  * Compute a stable grouping fingerprint for an error occurrence.
  *
  * If the client supplies a non-empty `clientFingerprint`, it is used as-is
- * (allows intentional grouping override). Otherwise a SHA-256 hash of the
- * exception type + the top N normalised stack frames is produced.
+ * (allows intentional grouping override). Otherwise:
+ *   - When `frames` are provided (structured), hash the top N frames'
+ *     `filename|function|lineno` — stable across deploys and machines.
+ *   - Otherwise fall back to hashing the top N normalised raw stack-trace lines.
  */
 export function computeFingerprint({
   exceptionType,
   stackTrace,
   clientFingerprint,
+  frames,
 }: {
   exceptionType: string;
   stackTrace?: string | null;
   clientFingerprint?: string | null;
+  frames?: StructuredFrame[];
 }): string {
   if (clientFingerprint && clientFingerprint.trim()) {
     return clientFingerprint.trim();
   }
 
-  const frames = stackTrace
+  // Structured frames path — stable, no raw-string splitting
+  if (frames && frames.length > 0) {
+    const frameKeys = frames
+      .slice(0, TOP_FRAME_COUNT)
+      .map((f) => `${f.filename}|${f.function ?? ""}|${f.lineno ?? ""}`);
+    const input = [exceptionType, ...frameKeys].join("\n");
+    return crypto.createHash("sha256").update(input).digest("hex");
+  }
+
+  // Legacy raw-string path — unchanged behaviour
+  const rawLines = stackTrace
     ? stackTrace
         .split("\n")
         .map((l) => l.trim())
@@ -142,6 +163,6 @@ export function computeFingerprint({
         .map(normalizeFrame)
     : [];
 
-  const input = [exceptionType, ...frames].join("\n");
+  const input = [exceptionType, ...rawLines].join("\n");
   return crypto.createHash("sha256").update(input).digest("hex");
 }
