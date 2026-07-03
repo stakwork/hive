@@ -1591,4 +1591,81 @@ describe('ChatMessage', () => {
       expect(screen.queryByText(/questions answered/)).not.toBeInTheDocument();
     });
   });
+
+  describe('token usage footer', () => {
+    it('shows ↑/↓ token footer for assistant message with inputTokens and outputTokens', () => {
+      const message = createTestMessage({
+        role: ChatRole.ASSISTANT,
+        message: 'Hello',
+        inputTokens: 300,
+        outputTokens: 80,
+      } as any);
+
+      render(
+        <ChatMessage
+          message={message}
+          onArtifactAction={mockOnArtifactAction}
+        />
+      );
+
+      expect(screen.getByText(/↑300/)).toBeInTheDocument();
+      expect(screen.getByText(/↓80/)).toBeInTheDocument();
+    });
+
+    it('omits token footer when inputTokens and outputTokens are absent', () => {
+      const message = createTestMessage({
+        role: ChatRole.ASSISTANT,
+        message: 'Hello',
+      });
+
+      render(
+        <ChatMessage
+          message={message}
+          onArtifactAction={mockOnArtifactAction}
+        />
+      );
+
+      expect(screen.queryByText(/↑/)).not.toBeInTheDocument();
+      expect(screen.queryByText(/↓/)).not.toBeInTheDocument();
+    });
+
+    it('shows cache total when cacheReadTokens or cacheWriteTokens are present', () => {
+      const message = createTestMessage({
+        role: ChatRole.ASSISTANT,
+        message: 'Hello',
+        inputTokens: 100,
+        outputTokens: 50,
+        cacheReadTokens: 200,
+        cacheWriteTokens: 30,
+      } as any);
+
+      render(
+        <ChatMessage
+          message={message}
+          onArtifactAction={mockOnArtifactAction}
+        />
+      );
+
+      expect(screen.getByText(/cache: 230/)).toBeInTheDocument();
+    });
+
+    it('does not show token footer for USER messages', () => {
+      const message = createTestMessage({
+        role: ChatRole.USER,
+        message: 'Hello from user',
+        inputTokens: 999,
+        outputTokens: 999,
+      } as any);
+
+      render(
+        <ChatMessage
+          message={message}
+          onArtifactAction={mockOnArtifactAction}
+        />
+      );
+
+      expect(screen.queryByText(/↑/)).not.toBeInTheDocument();
+      expect(screen.queryByText(/↓/)).not.toBeInTheDocument();
+    });
+  });
 });

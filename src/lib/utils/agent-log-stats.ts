@@ -37,6 +37,13 @@ export interface ParsedMessage {
     title?: string;
     status?: string;
   };
+  /** Per-turn LLM usage from the model response (Anthropic / OpenAI). */
+  usage?: {
+    inputTokens?: number;
+    outputTokens?: number;
+    cacheReadTokens?: number;
+    cacheWriteTokens?: number;
+  };
 }
 
 export interface AgentLogStats {
@@ -46,6 +53,11 @@ export interface AgentLogStats {
   toolFrequency: Record<string, number>;
   bashFrequency: Record<string, number>;
   developerShellFrequency: Record<string, number>;
+  /** Actual session-level token totals accumulated from per-turn usage fields. */
+  actualInputTokens?: number;
+  actualOutputTokens?: number;
+  actualCacheReadTokens?: number;
+  actualCacheWriteTokens?: number;
 }
 
 export interface AgentRunConfig {
@@ -193,6 +205,21 @@ export function parseAgentLogStats(content: string): AgentLogStatsResult {
     }
   }
 
+  // Accumulate per-turn usage into session-level totals (only set fields that appear in at least one message)
+  let actualInputTokens: number | undefined;
+  let actualOutputTokens: number | undefined;
+  let actualCacheReadTokens: number | undefined;
+  let actualCacheWriteTokens: number | undefined;
+
+  for (const msg of conversation) {
+    if (msg.role !== "assistant" || !msg.usage) continue;
+    const u = msg.usage;
+    if (u.inputTokens) actualInputTokens = (actualInputTokens ?? 0) + u.inputTokens;
+    if (u.outputTokens) actualOutputTokens = (actualOutputTokens ?? 0) + u.outputTokens;
+    if (u.cacheReadTokens) actualCacheReadTokens = (actualCacheReadTokens ?? 0) + u.cacheReadTokens;
+    if (u.cacheWriteTokens) actualCacheWriteTokens = (actualCacheWriteTokens ?? 0) + u.cacheWriteTokens;
+  }
+
   return {
     conversation,
     stats: {
@@ -202,6 +229,10 @@ export function parseAgentLogStats(content: string): AgentLogStatsResult {
       toolFrequency,
       bashFrequency,
       developerShellFrequency,
+      actualInputTokens,
+      actualOutputTokens,
+      actualCacheReadTokens,
+      actualCacheWriteTokens,
     },
     config: runConfig,
   };

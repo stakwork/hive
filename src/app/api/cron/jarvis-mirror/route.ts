@@ -21,9 +21,15 @@ export async function GET(request: NextRequest) {
 
   const depth = Number(request.nextUrl.searchParams.get("d") ?? "0") || 0;
 
-  logger.info(`[JARVIS MIRROR] cron invoked (depth=${depth})`, "JARVIS_MIRROR");
+  // Optional `?workspace=<slug|id>` scopes the run to one workspace (debugging).
+  const workspace = request.nextUrl.searchParams.get("workspace") ?? undefined;
 
-  const result = await runJarvisMirror();
+  logger.info(
+    `[JARVIS MIRROR] cron invoked (depth=${depth}${workspace ? `, workspace=${workspace}` : ""})`,
+    "JARVIS_MIRROR",
+  );
+
+  const result = await runJarvisMirror({ workspace });
 
   // Self-chain to drain a backlog quickly: if a batch was capped, immediately
   // trigger another run that resumes from the advanced cursors.
