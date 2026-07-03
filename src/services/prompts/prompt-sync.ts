@@ -18,6 +18,7 @@ export interface WritePromptThroughParams {
   name: string;
   value: string;
   description?: string;
+  agentNames?: string[];
   userId: string;
 }
 
@@ -27,6 +28,7 @@ export interface WritePromptThroughResult {
     name: string;
     value: string;
     description: string | null;
+    agentNames: string[];
     publishedVersionId: string | null;
     stakworkId: number | null;
     syncStatus: string;
@@ -207,7 +209,7 @@ async function recordPromptOnGraph(
 export async function writePromptThrough(
   params: WritePromptThroughParams,
 ): Promise<WritePromptThroughResult> {
-  const { promptId, name, value, description, userId } = params;
+  const { promptId, name, value, description, agentNames, userId } = params;
 
   // ── 1. Hive write — one transaction ──────────────────────────────────────
   let prompt: WritePromptThroughResult["prompt"];
@@ -242,9 +244,13 @@ export async function writePromptThrough(
         });
 
         // Only bump updatedAt; do NOT touch value/description/publishedVersionId.
+        // agentNames is a Prompt-level field (stable across versions) — write it when provided.
         const updatedPrompt = await tx.prompt.update({
           where: { id: promptId },
-          data: { updatedAt: new Date() },
+          data: {
+            updatedAt: new Date(),
+            ...(agentNames !== undefined && { agentNames }),
+          },
         });
 
         return { prompt: updatedPrompt, version: newVersion };
@@ -287,6 +293,7 @@ export async function writePromptThrough(
             name,
             value, // will mirror publishedVersion once set
             description: description ?? null,
+            agentNames: agentNames ?? [],
           },
         });
 
