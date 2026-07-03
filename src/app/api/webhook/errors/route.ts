@@ -5,6 +5,7 @@ import { db } from "@/lib/db";
 import { validateApiKey } from "@/lib/api-keys";
 import { pusherServer, getWorkspaceChannelName, PUSHER_EVENTS } from "@/lib/pusher";
 import { resolveRepoKey, computeFingerprint } from "@/lib/utils/error-fingerprint";
+import { sanitizeFrames } from "@/lib/utils/error-frames";
 import { getJarvisConfigForWorkspace } from "@/lib/helpers/jarvis-config";
 import { addNode, addEdge, searchLatestByTypes } from "@/services/swarm/api/nodes";
 
@@ -78,6 +79,9 @@ export async function POST(request: NextRequest) {
     }
 
     const stackTrace = typeof body.stackTrace === "string" ? body.stackTrace : null;
+    const frames = sanitizeFrames(body.frames);
+    // Overwrite body.frames with sanitized array before blob persist — malformed entries never stored
+    body.frames = frames;
     const environment = typeof body.environment === "string" ? body.environment.trim() : null;
     const release = typeof body.release === "string" ? body.release.trim() : null;
     const commitShaRaw = typeof body.commitSha === "string" ? body.commitSha.trim() : null;
@@ -99,6 +103,7 @@ export async function POST(request: NextRequest) {
       hasRepo: !!repository,
       hasClientFingerprint: !!clientFingerprint,
       commitSha,
+      framesCount: frames.length,
     });
 
     // ── Repo resolution (IDOR-safe: scoped to authenticated workspace only) ──
@@ -116,7 +121,7 @@ export async function POST(request: NextRequest) {
     });
 
     // ── Fingerprint ──────────────────────────────────────────────────────────
-    const fingerprint = computeFingerprint({ exceptionType, stackTrace, clientFingerprint });
+    const fingerprint = computeFingerprint({ exceptionType, stackTrace, clientFingerprint, frames });
     console.info("[error-ingest] fingerprint", { fingerprint, clientOverride: !!clientFingerprint });
 
     // ── Blob upload (raw payload) ─────────────────────────────────────────────
