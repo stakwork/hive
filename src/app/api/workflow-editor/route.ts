@@ -13,7 +13,7 @@ import { pusherServer, getTaskChannelName, PUSHER_EVENTS } from "@/lib/pusher";
 import { getStakworkTokenReference } from "@/lib/vercel/stakwork-token";
 import { fetchChatHistory } from "@/lib/helpers/chat-history";
 import { fetchLatestWorkflowJson, buildWorkflowEditorFeatureContext } from "@/services/workflow-editor";
-import { resolveSubAgents } from "@/services/roadmap/feature-chat";
+import { resolveExtraSwarms, resolveSubAgents } from "@/services/roadmap/feature-chat";
 
 
 export const runtime = "nodejs";
@@ -214,12 +214,14 @@ export async function POST(request: NextRequest) {
       tokenReference: getStakworkTokenReference(),
     };
 
-    // Resolve org member workspaces + @mentioned workspaces as sub-agents
-    // Route is already stakwork/dev-gated above, so no extra guard needed.
+    // Resolve org member workspaces + @mentioned workspaces as sub-agents.
+    // Route is already stakwork/dev-gated above; when the workspace is linked
+    // to an org we auto-attach org member workspaces, otherwise fall back to
+    // manual @-mentions only (mirrors triggerWorkflowEditorRun / executeWorkflowEditorRetry).
     const sourceControlOrgId = task.workspace.sourceControlOrgId;
     const subAgents = sourceControlOrgId
       ? await resolveSubAgents({ message, userId, sourceControlOrgId })
-      : [];
+      : await resolveExtraSwarms(message, userId);
     if (subAgents.length) {
       (vars as Record<string, unknown>).subAgents = subAgents;
       console.log("[workflow-editor] forwarding subAgents:", subAgents.map((a) => a.name));
