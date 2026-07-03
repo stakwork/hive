@@ -2077,6 +2077,14 @@ model ErrorIssue {
   release        String?
   metadata       Json?
   kgRefId        String?          @map("kg_ref_id")
+  /// Regression-correlation fields — populated asynchronously by the correlation service
+  /// after an onset event (new issue, regression reopen, or burst spike).
+  correlatedPrNumber      Int?      @map("correlated_pr_number")
+  correlatedPrUrl         String?   @map("correlated_pr_url")
+  correlatedCommitSha     String?   @map("correlated_commit_sha")
+  correlationConfidence   String?   @map("correlation_confidence")
+  correlationComputedAt   DateTime? @map("correlation_computed_at")
+  correlationCandidates   Json?     @map("correlation_candidates")
   workspace      Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   repository     Repository?      @relation(fields: [repositoryId], references: [id], onDelete: SetNull)
   events         ErrorEvent[]
