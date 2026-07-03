@@ -47,7 +47,24 @@ export async function POST(request: NextRequest) {
       artifacts = [] as ArtifactRequest[],
       screenshots = [] as string[],
       recordings = [] as string[],
-    } = body;
+      usage,
+    } = body as {
+      taskId?: string;
+      featureId?: string;
+      message?: string;
+      workflowUrl?: string;
+      contextTags?: ContextTag[];
+      sourceWebsocketID?: string;
+      artifacts?: ArtifactRequest[];
+      screenshots?: string[];
+      recordings?: string[];
+      usage?: {
+        inputTokens?: number;
+        outputTokens?: number;
+        cacheReadTokens?: number;
+        cacheWriteTokens?: number;
+      };
+    };
 
     let taskMode: string | undefined;
     let task: { id: string; workspaceId: string; mode: string; assigneeId: string | null; createdById: string; title: string } | null = null;
@@ -76,10 +93,14 @@ export async function POST(request: NextRequest) {
         contextTags: JSON.stringify(contextTags),
         status: ChatStatus.SENT,
         sourceWebsocketID,
+        ...(usage?.inputTokens ? { inputTokens: usage.inputTokens } : {}),
+        ...(usage?.outputTokens ? { outputTokens: usage.outputTokens } : {}),
+        ...(usage?.cacheReadTokens ? { cacheReadTokens: usage.cacheReadTokens } : {}),
+        ...(usage?.cacheWriteTokens ? { cacheWriteTokens: usage.cacheWriteTokens } : {}),
         artifacts: {
           create: artifacts.map((artifact: ArtifactRequest) => ({
             type: artifact.type,
-            content: artifact.content,
+            content: artifact.content as Prisma.InputJsonValue | undefined,
             icon: artifact.icon,
           })),
         },
@@ -418,7 +439,7 @@ export async function POST(request: NextRequest) {
             (a.content as IDEContent | BrowserContent | undefined)?.agentPassword),
       );
       if (podArtifact) {
-        const content = podArtifact.content as IDEContent | BrowserContent;
+        const content = podArtifact.content as unknown as IDEContent | BrowserContent;
         const podId = content?.podId;
         const agentPassword = content?.agentPassword;
 
