@@ -84,8 +84,21 @@ vi.mock("@/components/ui/table", () => ({
   ),
 }));
 vi.mock("@/components/ui/page-header", () => ({
-  PageHeader: ({ title }: any) => <h1 data-testid="page-header">{title}</h1>,
+  PageHeader: ({ title, actions }: any) => (
+    <div data-testid="page-header">
+      <h1>{title}</h1>
+      {actions}
+    </div>
+  ),
 }));
+
+// ── useFixInPlanMode mock ─────────────────────────────────────────────────────
+vi.mock("@/app/w/[slug]/errors/[issueId]/useFixInPlanMode", () => ({
+  useFixInPlanMode: () => ({ launch: vi.fn(), isLaunching: false }),
+}));
+
+// ── sonner mock ───────────────────────────────────────────────────────────────
+vi.mock("sonner", () => ({ toast: { error: vi.fn() } }));
 
 // ── Fetch mock ────────────────────────────────────────────────────────────────
 const mockFetch = vi.fn();
