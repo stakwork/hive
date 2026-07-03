@@ -294,6 +294,12 @@ export async function createFeature(
      * false = never auto-respond for this feature
      */
     autoRespond?: boolean | null;
+    /**
+     * Optional originating ErrorIssue id — set when the Feature is
+     * created via "Fix in Plan Mode". IDOR-checked: must belong to the
+     * same workspace before being persisted.
+     */
+    errorIssueId?: string;
   }
 ) {
   const workspaceAccess = await validateWorkspaceAccessById(data.workspaceId, userId);
@@ -383,6 +389,22 @@ export async function createFeature(
     }
   }
 
+  // IDOR guard: verify errorIssueId belongs to the same workspace before linking.
+  let resolvedErrorIssueId: string | null = null;
+  if (data.errorIssueId) {
+    const errorIssue = await db.errorIssue.findFirst({
+      where: { id: data.errorIssueId, workspaceId: data.workspaceId },
+      select: { id: true },
+    });
+    if (errorIssue) {
+      resolvedErrorIssueId = errorIssue.id;
+    } else {
+      console.warn(
+        `[createFeature] errorIssueId "${data.errorIssueId}" not found in workspace "${data.workspaceId}" — ignoring`,
+      );
+    }
+  }
+
   const feature = await db.feature.create({
     data: {
       title: data.title.trim(),
@@ -400,6 +422,7 @@ export async function createFeature(
       milestoneId: resolvedMilestoneId,
       dependsOnFeatureIds: data.dependsOnFeatureIds ?? [],
       autoRespond: data.autoRespond ?? null,
+      errorIssueId: resolvedErrorIssueId,
       createdById: userId,
       updatedById: userId,
       phases: {
