@@ -2033,6 +2033,7 @@ model Prompt {
   name               String           @unique // shared/global scope; UPPERCASE_UNDERSCORE
   value              String // LIVE value — cache of the PUBLISHED version only; drafts do NOT update this field
   description        String?
+  agentNames         String[]         @default([]) @map("agent_names")
   publishedVersionId String?          @map("published_version_id")
   stakworkId         Int?             @map("stakwork_id") // Stakwork numeric prompt id, for sync
   syncStatus         PromptSyncStatus @default(OK) @map("sync_status")
