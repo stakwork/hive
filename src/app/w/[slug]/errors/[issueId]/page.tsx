@@ -2,13 +2,15 @@
 
 import React, { useCallback, useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { ArrowLeft, Bug } from "lucide-react";
+import { ArrowLeft, Bug, Wand2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PageHeader } from "@/components/ui/page-header";
 import { ErrorIssueDetail } from "@/components/errors";
+import { RelatedIssues } from "@/components/errors/RelatedIssues";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { getPusherClient, getWorkspaceChannelName, PUSHER_EVENTS } from "@/lib/pusher";
+import { useFixInPlanMode } from "./useFixInPlanMode";
 import type {
   ErrorIssueDetailResponse,
   ErrorIssueStatus,
@@ -26,6 +28,7 @@ export default function ErrorIssueDetailPage() {
 
   const [detail, setDetail] = useState<ErrorIssueDetailResponse | null>(null);
   const [loading, setLoading] = useState(true);
+  const { launch: launchFixInPlanMode, isLaunching } = useFixInPlanMode(detail, slug);
   const [error, setError] = useState<string | null>(null);
   const [eventsSkip, setEventsSkip] = useState(0);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -151,20 +154,37 @@ export default function ErrorIssueDetailPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center gap-4">
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => router.push(`/w/${slug}/errors`)}
-          className="gap-1"
-          data-testid="back-to-errors"
-        >
-          <ArrowLeft className="h-4 w-4" />
-          Back to Errors
-        </Button>
-      </div>
-
-      <PageHeader icon={Bug} title={detail?.issue.title ?? "Error Issue"} />
+      <PageHeader
+        icon={Bug}
+        title={detail?.issue.title ?? "Error Issue"}
+        actions={
+          <>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => router.push(`/w/${slug}/errors`)}
+              className="gap-1"
+              data-testid="back-to-errors"
+            >
+              <ArrowLeft className="h-4 w-4" />
+              Back to Errors
+            </Button>
+            {detail && (
+              <Button
+                variant="default"
+                size="sm"
+                onClick={launchFixInPlanMode}
+                disabled={isLaunching}
+                className="gap-1"
+                data-testid="fix-in-plan-mode"
+              >
+                <Wand2 className="h-4 w-4" />
+                {isLaunching ? "Creating plan…" : "Fix in Plan Mode"}
+              </Button>
+            )}
+          </>
+        }
+      />
 
       {loading && (
         <div className="space-y-4" data-testid="detail-loading">
@@ -188,12 +208,15 @@ export default function ErrorIssueDetailPage() {
       )}
 
       {detail && !loading && (
-        <ErrorIssueDetail
-          detail={detail}
-          onStatusChange={handleStatusChange}
-          onLoadMoreEvents={handleLoadMoreEvents}
-          loadingMoreEvents={loadingMore}
-        />
+        <>
+          <ErrorIssueDetail
+            detail={detail}
+            onStatusChange={handleStatusChange}
+            onLoadMoreEvents={handleLoadMoreEvents}
+            loadingMoreEvents={loadingMore}
+          />
+          <RelatedIssues issueId={issueId} workspaceSlug={slug} />
+        </>
       )}
     </div>
   );

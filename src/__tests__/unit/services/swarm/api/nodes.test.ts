@@ -424,7 +424,7 @@ describe("addEdgeBulk", () => {
       expect(result.errors).toHaveLength(0);
     });
 
-    test("returns success:true with Warning status when no error messages", async () => {
+    test("returns success:true with Warning status when no error messages (dups skipped)", async () => {
       mockFetch.mockResolvedValueOnce({
         ok: true,
         status: 200,
@@ -436,8 +436,11 @@ describe("addEdgeBulk", () => {
 
       const result = await addEdgeBulk(config, edgeList);
 
-      expect(result.success).toBe(false); // Warning is not "success"
-      expect(result.errors).toHaveLength(0); // no "error" prefixed messages
+      // Jarvis returns "Warning" for benign notices like skipped duplicate
+      // edges on re-runs. Success must key off the absence of real errors, not
+      // status === "success", or the mirror cursor freezes on the second pass.
+      expect(result.success).toBe(true);
+      expect(result.errors).toHaveLength(0);
     });
   });
 
@@ -458,7 +461,7 @@ describe("addEdgeBulk", () => {
 
       const result = await addEdgeBulk(config, edgeList);
 
-      expect(result.success).toBe(true);
+      expect(result.success).toBe(false); // real errors present → not success
       expect(result.errors).toEqual([
         "Error: invalid ref_id for item 2",
         "error: missing source node",

@@ -292,6 +292,10 @@ export function createChatMessage(data: {
     createdBy: data.createdBy,
     userId: data.createdBy?.id || null,
     stakworkProjectId: null,
+    inputTokens: null,
+    outputTokens: null,
+    cacheReadTokens: null,
+    cacheWriteTokens: null,
     createdAt: new Date(),
     updatedAt: new Date(),
   };

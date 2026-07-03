@@ -222,7 +222,7 @@ describe("executeScheduledActivityRecapRuns", () => {
     });
 
     const before = Date.now();
-    await executeScheduledDailyRecapRuns();
+    await executeScheduledActivityRecapRuns();
     const after = Date.now();
 
     const batchCall = mockCreateBatchProjects.mock.calls[0][0];
@@ -253,7 +253,7 @@ describe("executeScheduledActivityRecapRuns", () => {
       },
     });
 
-    await executeScheduledDailyRecapRuns();
+    await executeScheduledActivityRecapRuns();
 
     const batchCall = mockCreateBatchProjects.mock.calls[0][0];
     const vars = batchCall[0].workflow_params.set_var.attributes.vars;
@@ -465,7 +465,21 @@ describe("COMPLETED-only cursor", () => {
       data: { ref_id: "r", projects: [{ name: "daily-recap-run-1", project_id: 1 }] },
     });
 
-    await executeScheduledDailyRecapRuns();
+    await executeScheduledActivityRecapRuns();
+
+    const activityCall = mockedGetUserActivityFeed.mock.calls[0][0];
+    expect(activityCall.since).toEqual(twoDaysAgo);
+  });
+
+  it("passes since directly to getUserActivityFeed (not days)", async () => {
+    const cursor = new Date(Date.now() - 90 * 60 * 1000); // 90 min ago
+    setupDb({ lastRun: { createdAt: cursor } });
+    mockedGetUserActivityFeed.mockResolvedValue(makeActivityItems(2));
+    mockCreateBatchProjects.mockResolvedValue({
+      data: { ref_id: "r", projects: [{ name: "daily-recap-run-1", project_id: 1 }] },
+    });
+
+    await executeScheduledActivityRecapRuns();
 
     const activityCall = mockedGetUserActivityFeed.mock.calls[0][0];
     expect(activityCall.since).toEqual(cursor);
@@ -478,7 +492,7 @@ describe("COMPLETED-only cursor", () => {
     mockedGetUserActivityFeed.mockResolvedValue([]);
     const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
 
-    await executeScheduledDailyRecapRuns();
+    await executeScheduledActivityRecapRuns();
 
     expect(logSpy).toHaveBeenCalledWith(expect.stringContaining("no activity since"));
     logSpy.mockRestore();
@@ -578,7 +592,7 @@ describe("window_start rolling-24h horizon", () => {
     });
 
     const before = Date.now();
-    await executeScheduledDailyRecapRuns();
+    await executeScheduledActivityRecapRuns();
     const after = Date.now();
 
     const batchCall = mockCreateBatchProjects.mock.calls[0][0];

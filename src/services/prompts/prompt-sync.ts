@@ -18,6 +18,7 @@ export interface WritePromptThroughParams {
   name: string;
   value: string;
   description?: string;
+  agentNames?: string[];
   userId: string;
 }
 
@@ -27,6 +28,7 @@ export interface WritePromptThroughResult {
     name: string;
     value: string;
     description: string | null;
+    agentNames: string[];
     publishedVersionId: string | null;
     stakworkId: number | null;
     syncStatus: string;
@@ -114,10 +116,12 @@ async function pushPublishToStakwork(stakworkId: number, hiveVersionId: string):
 // ─── Graph recorder ───────────────────────────────────────────────────────────
 
 /**
- * Best-effort: fire Stakwork workflow to record the prompt version in the knowledge graph.
- * Never throws — a failure here must never affect the caller.
+ * Dispatch a Stakwork graph-recorder workflow for the given prompt version.
+ * Contains the single-source-of-truth payload shape.
+ * Throws on failure — callers decide how to handle errors.
+ * No-ops (with a warn log) when WORKFLOW_GRAPH_PROMPT_STORAGE_ID is unset.
  */
-async function recordPromptOnGraph(
+export async function sendPromptGraphRequest(
   params: {
     prompt: { id: string; name: string; description: string | null; createdAt: Date };
     versionId: string;
@@ -138,29 +142,48 @@ async function recordPromptOnGraph(
     return;
   }
 
-  try {
-    await stakworkService().stakworkRequest("/projects", {
-      name: `Prompt Graph Recorder ${prompt.id}`,
-      workflow_id: Number(config.WORKFLOW_GRAPH_PROMPT_STORAGE_ID),
-      workflow_params: {
-        set_var: {
-          attributes: {
-            vars: {
-              prompt: {
-                id: prompt.id,
-                prompt_id: prompt.id,
-                prompt_version_id: versionId,
-                name: prompt.name,
-                description: prompt.description ?? "",
-                value,
-                published_at: prompt.createdAt,
-                customer_id: null,
-              },
+  await stakworkService().stakworkRequest("/projects", {
+    name: `Prompt Graph Recorder ${prompt.id}`,
+    workflow_id: Number(config.WORKFLOW_GRAPH_PROMPT_STORAGE_ID),
+    workflow_params: {
+      set_var: {
+        attributes: {
+          vars: {
+            prompt: {
+              id: prompt.id,
+              prompt_id: prompt.id,
+              prompt_version_id: versionId,
+              name: prompt.name,
+              description: prompt.description ?? "",
+              value,
+              published_at: prompt.createdAt,
+              customer_id: null,
             },
           },
         },
       },
-    });
+    },
+  });
+}
+
+/**
+ * Best-effort: fire Stakwork workflow to record the prompt version in the knowledge graph.
+ * Never throws — a failure here must never affect the caller.
+ */
+async function recordPromptOnGraph(
+  params: {
+    prompt: { id: string; name: string; description: string | null; createdAt: Date };
+    versionId: string;
+    value: string;
+  },
+  trigger: "create" | "update" | "publish",
+): Promise<void> {
+  const { prompt, versionId } = params;
+  const promptId = prompt.id;
+  const promptName = prompt.name;
+
+  try {
+    await sendPromptGraphRequest(params, trigger);
     logger.info("[prompt-sync] Prompt graph recorder launched", "prompt-sync", {
       promptId,
       promptName,
@@ -186,7 +209,7 @@ async function recordPromptOnGraph(
 export async function writePromptThrough(
   params: WritePromptThroughParams,
 ): Promise<WritePromptThroughResult> {
-  const { promptId, name, value, description, userId } = params;
+  const { promptId, name, value, description, agentNames, userId } = params;
 
   // ── 1. Hive write — one transaction ──────────────────────────────────────
   let prompt: WritePromptThroughResult["prompt"];
@@ -221,9 +244,13 @@ export async function writePromptThrough(
         });
 
         // Only bump updatedAt; do NOT touch value/description/publishedVersionId.
+        // agentNames is a Prompt-level field (stable across versions) — write it when provided.
         const updatedPrompt = await tx.prompt.update({
           where: { id: promptId },
-          data: { updatedAt: new Date() },
+          data: {
+            updatedAt: new Date(),
+            ...(agentNames !== undefined && { agentNames }),
+          },
         });
 
         return { prompt: updatedPrompt, version: newVersion };
@@ -266,6 +293,7 @@ export async function writePromptThrough(
             name,
             value, // will mirror publishedVersion once set
             description: description ?? null,
+            agentNames: agentNames ?? [],
           },
         });
 
