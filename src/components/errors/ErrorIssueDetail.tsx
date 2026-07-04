@@ -7,11 +7,156 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ErrorStatusBadge } from "./ErrorStatusBadge";
 import { TriageActions } from "./TriageActions";
-import { ChevronDown, ChevronRight, AlertTriangle } from "lucide-react";
-import type { ErrorIssueDetailResponse, ErrorIssueStatus, ErrorEventRecord } from "@/types/error-issues";
+import { ChevronDown, ChevronRight, AlertTriangle, GitPullRequest } from "lucide-react";
+import type { ErrorIssueDetailResponse, ErrorIssueStatus, ErrorEventRecord, ErrorIssueRecord, CorrelationCandidate } from "@/types/error-issues";
 import { parseStackFrameLines, buildBlobUrl, resolveRef } from "@/lib/utils/github-links";
 import type { StructuredFrame, ParsedBlob } from "@/lib/utils/error-frames";
 import { parseBlobContent } from "@/lib/utils/error-frames";
+
+// ── LikelyCause card ──────────────────────────────────────────────────────────
+
+/** Builds a GitHub commit URL from a repo URL and commit SHA. */
+function buildCommitUrl(repositoryUrl: string | null, sha: string): string | null {
+  if (!repositoryUrl) return null;
+  try {
+    const { owner, repo } = (() => {
+      const u = repositoryUrl.trim().replace(/\.git$/i, "");
+      const ssh = u.match(/^git@[^:]+:([^/]+)\/([^/]+?)\/?$/);
+      if (ssh) return { owner: ssh[1], repo: ssh[2] };
+      const https = u.match(/^https?:\/\/[^/]+\/([^/]+)\/([^/]+?)\/?$/i);
+      if (https) return { owner: https[1], repo: https[2] };
+      throw new Error("unrecognised URL");
+    })();
+    return `https://github.com/${owner}/${repo}/commit/${sha}`;
+  } catch {
+    return null;
+  }
+}
+
+interface LikelyCauseProps {
+  issue: Pick<
+    ErrorIssueRecord,
+    | "correlatedPrNumber"
+    | "correlatedPrUrl"
+    | "correlatedCommitSha"
+    | "correlationConfidence"
+    | "correlationCandidates"
+  >;
+  /** Repository URL used to build commit links — sourced from the first event. */
+  repositoryUrl?: string | null;
+}
+
+function LikelyCause({ issue, repositoryUrl }: LikelyCauseProps) {
+  const {
+    correlationConfidence,
+    correlatedPrNumber,
+    correlatedPrUrl,
+    correlatedCommitSha,
+    correlationCandidates,
+  } = issue;
+
+  // No correlation at all — render nothing.
+  if (!correlationConfidence) return null;
+
+  const shortSha = (sha: string) => sha.slice(0, 7);
+
+  if (correlationConfidence === "high") {
+    const commitUrl = correlatedCommitSha
+      ? buildCommitUrl(repositoryUrl ?? null, correlatedCommitSha)
+      : null;
+
+    return (
+      <Card data-testid="likely-cause-card">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm flex items-center gap-2">
+            <GitPullRequest className="h-4 w-4 text-amber-500" aria-hidden />
+            Likely Cause
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="text-sm space-y-1">
+          {correlatedPrNumber != null && correlatedPrUrl ? (
+            <p>
+              This error started after{" "}
+              <a
+                href={correlatedPrUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="font-medium underline hover:text-primary transition-colors"
+                data-testid="correlation-pr-link"
+              >
+                PR #{correlatedPrNumber}
+              </a>
+            </p>
+          ) : null}
+          {correlatedCommitSha ? (
+            <p className="text-muted-foreground">
+              First seen at commit{" "}
+              {commitUrl ? (
+                <a
+                  href={commitUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="font-mono underline hover:text-primary transition-colors"
+                  title={correlatedCommitSha}
+                  data-testid="correlation-commit-link"
+                >
+                  {shortSha(correlatedCommitSha)}
+                </a>
+              ) : (
+                <span className="font-mono" title={correlatedCommitSha} data-testid="correlation-commit-link">
+                  {shortSha(correlatedCommitSha)}
+                </span>
+              )}
+            </p>
+          ) : null}
+        </CardContent>
+      </Card>
+    );
+  }
+
+  // "likely" confidence — list candidates without asserting a single cause.
+  const candidates: CorrelationCandidate[] = Array.isArray(correlationCandidates)
+    ? correlationCandidates
+    : [];
+
+  return (
+    <Card data-testid="likely-cause-card">
+      <CardHeader className="pb-2">
+        <CardTitle className="text-sm flex items-center gap-2">
+          <GitPullRequest className="h-4 w-4 text-amber-500" aria-hidden />
+          Likely Cause
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="text-sm space-y-2">
+        <p className="text-muted-foreground">Possibly caused by one of:</p>
+        <ul className="space-y-1 list-disc list-inside" data-testid="correlation-candidates-list">
+          {candidates.map((c) => (
+            <li key={c.refId}>
+              {c.prNumber != null && c.prUrl ? (
+                <a
+                  href={c.prUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="underline hover:text-primary transition-colors"
+                  data-testid={`correlation-candidate-${c.prNumber}`}
+                >
+                  PR #{c.prNumber}
+                </a>
+              ) : (
+                <span className="font-mono text-muted-foreground">{c.refId}</span>
+              )}
+              {c.mergeDate && (
+                <span className="text-muted-foreground ml-2 text-xs">
+                  merged {new Date(c.mergeDate).toLocaleDateString()}
+                </span>
+              )}
+            </li>
+          ))}
+        </ul>
+      </CardContent>
+    </Card>
+  );
+}
 
 const dateFormatter = new Intl.DateTimeFormat("en-US", {
   year: "numeric",
@@ -218,6 +363,9 @@ export function ErrorIssueDetail({
 }: ErrorIssueDetailProps) {
   const { issue, events, eventsHasMore } = detail;
 
+  // Surface a repository URL from the first event (for commit link building).
+  const firstEventRepoUrl = events[0]?.repositoryUrl ?? null;
+
   return (
     <div className="space-y-6">
       {/* Metadata card */}
@@ -275,6 +423,9 @@ export function ErrorIssueDetail({
           </dl>
         </CardContent>
       </Card>
+
+      {/* Regression correlation */}
+      <LikelyCause issue={issue} repositoryUrl={firstEventRepoUrl} />
 
       {/* Occurrences */}
       <Card>
