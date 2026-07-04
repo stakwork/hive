@@ -3,7 +3,7 @@ import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
 import { isDevelopmentMode } from "@/lib/runtime";
-import { fetchVersionRunCount } from "@/services/prompts/prompt-sync";
+
 
 export const runtime = "nodejs";
 export const fetchCache = "force-no-store";
@@ -53,22 +53,36 @@ export async function GET(
       orderBy: { versionNumber: "desc" },
     });
 
-    // Best-effort: enrich each version with run_count from Stakwork (degrade to null on failure).
-    const versionsWithRunCount = await Promise.all(
-      versions.map(async (v) => {
-        const runCount = await fetchVersionRunCount(prompt.name, v.id);
-        return {
-          id: v.id,
-          version_number: v.versionNumber,
-          value: v.value,
-          description: v.description ?? "",
-          whodunnit: v.whodunnit,
-          published: v.published,
-          created_at: v.createdAt.toISOString(),
-          run_count: runCount,
-        };
+    // Enrich versions with run_count from local mirror table — one grouped query, no N+1.
+    const [dailyRunGroups, totalRunCountResult] = await Promise.all([
+      db.promptDailyRun.groupBy({
+        by: ["versionId"],
+        _sum: { runCount: true },
+        where: { promptId: id },
       }),
-    );
+      db.promptDailyRun.aggregate({
+        _sum: { runCount: true },
+        where: { promptId: id },
+      }),
+    ]);
+
+    const runCountByVersionId = new Map<string, number>();
+    for (const group of dailyRunGroups) {
+      if (group.versionId) {
+        runCountByVersionId.set(group.versionId, group._sum.runCount ?? 0);
+      }
+    }
+
+    const versionsWithRunCount = versions.map((v) => ({
+      id: v.id,
+      version_number: v.versionNumber,
+      value: v.value,
+      description: v.description ?? "",
+      whodunnit: v.whodunnit,
+      published: v.published,
+      created_at: v.createdAt.toISOString(),
+      run_count: runCountByVersionId.get(v.id) ?? 0,
+    }));
 
     return NextResponse.json({
       success: true,
@@ -80,6 +94,7 @@ export async function GET(
         current_version_id: versions[0]?.id ?? prompt.publishedVersionId,
         published_version_id: prompt.publishedVersionId,
         version_count: versions.length,
+        total_run_count: totalRunCountResult._sum.runCount ?? 0,
       },
     });
   } catch (error) {
