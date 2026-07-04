@@ -1,229 +1,79 @@
 /**
- * Unit tests for fetchPromptUsagesByName and fetchVersionRunCount helpers.
+ * Unit tests for prompt usage/run-count groupBy aggregation logic.
+ *
+ * The live-Stakwork helpers (fetchPromptUsagesByName, fetchVersionRunCount)
+ * have been removed and replaced by local mirror table queries. This file
+ * verifies the in-memory grouping and deduplication logic that replaces them.
  */
-import { describe, test, expect, beforeEach, vi } from "vitest";
+import { describe, test, expect } from "vitest";
 
-vi.mock("@/config/env", () => ({
-  config: {
-    STAKWORK_BASE_URL: "https://api.stakwork.test/api/v1",
-    STAKWORK_API_KEY: "test-key-xyz",
-    WORKFLOW_GRAPH_PROMPT_STORAGE_ID: "",
-  },
-  optionalEnvVars: {
-    STAKWORK_BASE_URL: "https://api.stakwork.test/api/v1",
-  },
-}));
+// ─── In-memory grouping logic (mirrors route.ts implementation) ───────────────
 
-vi.mock("@/lib/logger", () => ({
-  logger: {
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-    debug: vi.fn(),
-  },
-}));
+type RawUsageRow = {
+  promptName: string;
+  workflowId: number;
+  workflowName: string | null;
+  stepId: string;
+};
 
-// Mock db so the module loads without a real DB connection
-vi.mock("@/lib/db", () => ({ db: {} }));
-vi.mock("@/lib/service-factory", () => ({
-  stakworkService: vi.fn(() => ({ stakworkRequest: vi.fn() })),
-}));
+function groupUsagesByName(rows: RawUsageRow[]) {
+  const map = new Map<string, Array<{ workflow_id: number; workflow_name: string; step_id: string }>>();
+  for (const u of rows) {
+    const key = `${u.workflowId}:${u.stepId}`;
+    const entry = { workflow_id: u.workflowId, workflow_name: u.workflowName ?? "", step_id: u.stepId };
+    if (!map.has(u.promptName)) map.set(u.promptName, []);
+    const list = map.get(u.promptName)!;
+    if (!list.some((x) => `${x.workflow_id}:${x.step_id}` === key)) {
+      list.push(entry);
+    }
+  }
+  return map;
+}
 
-import { fetchPromptUsagesByName, fetchVersionRunCount } from "@/services/prompts/prompt-sync";
-import { logger } from "@/lib/logger";
+describe("groupUsagesByName (in-memory dedup logic)", () => {
+  test("groups rows by promptName", () => {
+    const rows: RawUsageRow[] = [
+      { promptName: "PROMPT_A", workflowId: 1, workflowName: "Flow A", stepId: "s1" },
+      { promptName: "PROMPT_B", workflowId: 2, workflowName: "Flow B", stepId: "s2" },
+      { promptName: "PROMPT_A", workflowId: 3, workflowName: "Flow C", stepId: "s3" },
+    ];
+    const map = groupUsagesByName(rows);
+    expect(map.get("PROMPT_A")).toHaveLength(2);
+    expect(map.get("PROMPT_B")).toHaveLength(1);
+  });
 
-global.fetch = vi.fn();
-const mockFetch = global.fetch as ReturnType<typeof vi.fn>;
+  test("deduplicates rows with same (workflowId, stepId)", () => {
+    const rows: RawUsageRow[] = [
+      { promptName: "PROMPT_A", workflowId: 1, workflowName: "Flow A", stepId: "s1" },
+      { promptName: "PROMPT_A", workflowId: 1, workflowName: "Flow A", stepId: "s1" }, // duplicate
+      { promptName: "PROMPT_A", workflowId: 1, workflowName: "Flow A (updated)", stepId: "s1" }, // same key, different name
+    ];
+    const map = groupUsagesByName(rows);
+    expect(map.get("PROMPT_A")).toHaveLength(1);
+  });
 
-beforeEach(() => {
-  mockFetch.mockReset();
-  vi.mocked(logger.warn).mockClear();
-});
+  test("maps workflowName null to empty string", () => {
+    const rows: RawUsageRow[] = [
+      { promptName: "PROMPT_A", workflowId: 1, workflowName: null, stepId: "s1" },
+    ];
+    const map = groupUsagesByName(rows);
+    expect(map.get("PROMPT_A")![0].workflow_name).toBe("");
+  });
 
-// ─── fetchPromptUsagesByName ───────────────────────────────────────────────────
+  test("returns empty map for empty input", () => {
+    const map = groupUsagesByName([]);
+    expect(map.size).toBe(0);
+  });
 
-describe("fetchPromptUsagesByName", () => {
-  test("returns name→usages map on success", async () => {
-    mockFetch.mockResolvedValueOnce({
-      ok: true,
-      json: async () => ({
-        data: {
-          prompts: [
-            {
-              name: "MY_PROMPT",
-              usages: [
-                { workflow_id: 1, workflow_name: "Flow A", step_id: "step_1" },
-                { workflow_id: 2, workflow_name: "Flow B", step_id: "step_2" },
-              ],
-            },
-            {
-              name: "OTHER_PROMPT",
-              usages: [],
-            },
-          ],
-        },
-      }),
-    } as Response);
-
-    const map = await fetchPromptUsagesByName();
-
-    expect(map.size).toBe(2);
-    expect(map.get("MY_PROMPT")).toEqual([
-      { workflow_id: 1, workflow_name: "Flow A", step_id: "step_1" },
-      { workflow_id: 2, workflow_name: "Flow B", step_id: "step_2" },
-    ]);
-    expect(map.get("OTHER_PROMPT")).toEqual([]);
-
-    const [url, opts] = mockFetch.mock.calls[0];
-    expect(url).toContain("/prompts?include_usages=true");
-    expect((opts as RequestInit).headers).toMatchObject({
-      Authorization: "Token token=test-key-xyz",
+  test("maps field names correctly to API shape", () => {
+    const rows: RawUsageRow[] = [
+      { promptName: "MY_PROMPT", workflowId: 42, workflowName: "My Flow", stepId: "step_99" },
+    ];
+    const map = groupUsagesByName(rows);
+    expect(map.get("MY_PROMPT")![0]).toEqual({
+      workflow_id: 42,
+      workflow_name: "My Flow",
+      step_id: "step_99",
     });
-  });
-
-  test("handles top-level prompts array (non-data-wrapped response)", async () => {
-    mockFetch.mockResolvedValueOnce({
-      ok: true,
-      json: async () => ({
-        prompts: [
-          { name: "PROMPT_X", usages: [{ workflow_id: 5, workflow_name: "WF5", step_id: "s5" }] },
-        ],
-      }),
-    } as Response);
-
-    const map = await fetchPromptUsagesByName();
-    expect(map.get("PROMPT_X")).toEqual([{ workflow_id: 5, workflow_name: "WF5", step_id: "s5" }]);
-  });
-
-  test("returns empty Map and logs warn when Stakwork returns non-2xx", async () => {
-    mockFetch.mockResolvedValueOnce({ ok: false, status: 503 } as Response);
-
-    const map = await fetchPromptUsagesByName();
-
-    expect(map.size).toBe(0);
-    expect(logger.warn).toHaveBeenCalledWith(
-      expect.stringContaining("503"),
-      "prompt-sync",
-      expect.objectContaining({ status: 503 }),
-    );
-  });
-
-  test("returns empty Map and logs warn when Stakwork is unreachable (throws)", async () => {
-    mockFetch.mockRejectedValueOnce(new Error("ECONNREFUSED"));
-
-    const map = await fetchPromptUsagesByName();
-
-    expect(map.size).toBe(0);
-    expect(logger.warn).toHaveBeenCalledWith(
-      expect.stringContaining("non-fatal"),
-      "prompt-sync",
-      expect.objectContaining({ error: expect.stringContaining("ECONNREFUSED") }),
-    );
-  });
-
-  test("returns empty Map on malformed response (no prompts key)", async () => {
-    mockFetch.mockResolvedValueOnce({
-      ok: true,
-      json: async () => ({ unexpected: "shape" }),
-    } as Response);
-
-    const map = await fetchPromptUsagesByName();
-    expect(map.size).toBe(0);
-  });
-
-  test("skips entries missing name or usages without throwing", async () => {
-    mockFetch.mockResolvedValueOnce({
-      ok: true,
-      json: async () => ({
-        data: {
-          prompts: [
-            { name: "GOOD_PROMPT", usages: [{ workflow_id: 1, workflow_name: "W", step_id: "s" }] },
-            { name: "NO_USAGES_KEY" }, // missing usages
-            { usages: [] },            // missing name
-            null,                      // garbage
-          ],
-        },
-      }),
-    } as Response);
-
-    const map = await fetchPromptUsagesByName();
-    expect(map.size).toBe(1);
-    expect(map.has("GOOD_PROMPT")).toBe(true);
-  });
-});
-
-// ─── fetchVersionRunCount ─────────────────────────────────────────────────────
-
-describe("fetchVersionRunCount", () => {
-  test("returns run_count on successful response", async () => {
-    mockFetch.mockResolvedValueOnce({
-      ok: true,
-      status: 200,
-      json: async () => ({ notation: "MY_PROMPT@v3", run_count: 42 }),
-    } as Response);
-
-    const count = await fetchVersionRunCount("MY_PROMPT", "ver-abc123");
-
-    expect(count).toBe(42);
-
-    const [url] = mockFetch.mock.calls[0];
-    expect(url).toContain("/prompts/find_by_version");
-    expect(url).toContain("name=MY_PROMPT");
-    expect(url).toContain("hive_version_id=ver-abc123");
-  });
-
-  test("handles data-wrapped run_count", async () => {
-    mockFetch.mockResolvedValueOnce({
-      ok: true,
-      status: 200,
-      json: async () => ({ data: { run_count: 7 } }),
-    } as Response);
-
-    const count = await fetchVersionRunCount("PROMPT_Y", "ver-def456");
-    expect(count).toBe(7);
-  });
-
-  test("returns null on 404 (version not in Stakwork)", async () => {
-    mockFetch.mockResolvedValueOnce({ ok: false, status: 404 } as Response);
-
-    const count = await fetchVersionRunCount("MISSING", "ver-999");
-    expect(count).toBeNull();
-    // 404 is expected — should not warn
-    expect(logger.warn).not.toHaveBeenCalled();
-  });
-
-  test("returns null and logs warn on non-2xx non-404 status", async () => {
-    mockFetch.mockResolvedValueOnce({ ok: false, status: 502 } as Response);
-
-    const count = await fetchVersionRunCount("MY_PROMPT", "ver-abc");
-    expect(count).toBeNull();
-    expect(logger.warn).toHaveBeenCalledWith(
-      expect.stringContaining("502"),
-      "prompt-sync",
-      expect.objectContaining({ status: 502 }),
-    );
-  });
-
-  test("returns null and logs warn when fetch throws", async () => {
-    mockFetch.mockRejectedValueOnce(new Error("Network timeout"));
-
-    const count = await fetchVersionRunCount("MY_PROMPT", "ver-abc");
-    expect(count).toBeNull();
-    expect(logger.warn).toHaveBeenCalledWith(
-      expect.stringContaining("non-fatal"),
-      "prompt-sync",
-      expect.objectContaining({ error: expect.stringContaining("Network timeout") }),
-    );
-  });
-
-  test("returns null when run_count is absent in response", async () => {
-    mockFetch.mockResolvedValueOnce({
-      ok: true,
-      status: 200,
-      json: async () => ({ notation: "PROMPT@v1" }), // run_count missing
-    } as Response);
-
-    const count = await fetchVersionRunCount("PROMPT", "ver-xyz");
-    expect(count).toBeNull();
   });
 });
