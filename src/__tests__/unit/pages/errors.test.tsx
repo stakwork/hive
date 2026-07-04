@@ -121,6 +121,15 @@ function makeIssue(id: string, overrides?: object) {
     release: "1.0.0",
     metadata: null,
     kgRefId: null,
+    correlatedPrNumber: null,
+    correlatedPrUrl: null,
+    correlatedCommitSha: null,
+    correlationConfidence: null,
+    correlationComputedAt: null,
+    correlationCandidates: null,
+    impactScore: null,
+    impactScoredAt: null,
+    impactMeta: null,
     ...overrides,
   };
 }
@@ -263,6 +272,24 @@ describe("ErrorsPage", () => {
 
     // The Select component is rendered with the current status filter
     expect(screen.getByTestId("status-filter")).toBeInTheDocument();
+  });
+
+  test("sort select control is present and defaults to recent (no sort param in initial fetch)", async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ issues: [], total: 0, hasMore: false }),
+    });
+
+    render(<ErrorsPage />);
+    await waitFor(() => expect(mockFetch).toHaveBeenCalledOnce());
+
+    // Sort control is rendered
+    expect(screen.getByTestId("sort-select")).toBeInTheDocument();
+
+    // Default sort=recent: the hook omits the param when it equals the default,
+    // or includes sort=recent — either way "sort=impact" must NOT be present.
+    const url = mockFetch.mock.calls[0][0] as string;
+    expect(url).not.toContain("sort=impact");
   });
 });
 
