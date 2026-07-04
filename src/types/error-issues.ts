@@ -2,6 +2,14 @@ import type { ErrorIssueStatus } from "@prisma/client";
 
 export type { ErrorIssueStatus };
 
+/** A single candidate in a "likely" multi-match correlation result. */
+export interface CorrelationCandidate {
+  prNumber: number | null;
+  prUrl: string | null;
+  mergeDate: string | null;
+  refId: string;
+}
+
 export interface ErrorIssueRecord {
   id: string;
   workspaceId: string;
@@ -18,6 +26,13 @@ export interface ErrorIssueRecord {
   release: string | null;
   metadata: Record<string, unknown> | null;
   kgRefId: string | null;
+  /** Regression-correlation fields — null when correlation has not run or found nothing. */
+  correlatedPrNumber: number | null;
+  correlatedPrUrl: string | null;
+  correlatedCommitSha: string | null;
+  correlationConfidence: string | null;
+  correlationComputedAt: string | null;
+  correlationCandidates: CorrelationCandidate[] | null;
 }
 
 export interface ErrorEventRecord {
