@@ -7,9 +7,10 @@ import { pusherServer, getWorkspaceChannelName, PUSHER_EVENTS } from "@/lib/push
 import { resolveRepoKey, computeFingerprint } from "@/lib/utils/error-fingerprint";
 import { sanitizeFrames } from "@/lib/utils/error-frames";
 import { getJarvisConfigForWorkspace } from "@/lib/helpers/jarvis-config";
-import { addNode, addEdge, searchLatestByTypes } from "@/services/swarm/api/nodes";
+import { addNode, addEdge, searchLatestByTypes, getReferencedNodeCentrality } from "@/services/swarm/api/nodes";
 import { detectOnset } from "@/services/error-issues/spike-detection";
 import { correlateErrorIssue } from "@/services/error-issues/correlate";
+import { computeImpactScore } from "@/services/error-impact";
 
 export const fetchCache = "force-no-store";
 
@@ -385,6 +386,45 @@ export async function POST(request: NextRequest) {
                 repoNodesAvailable: repoNodes.length,
               });
             }
+          }
+        }
+
+        // ── Opportunistic impact scoring ────────────────────────────────────
+        // Best-effort: compute and persist impactScore right after edges are
+        // drawn so brand-new issues get a score immediately without waiting for
+        // the hourly cron. Logged under [error-impact] prefix, never throws.
+        if (issueNodeResult.ref_id) {
+          try {
+            const centralityResult = await getReferencedNodeCentrality(
+              jarvisConfig,
+              issueNodeResult.ref_id,
+              { timeoutMs: 5_000 },
+            );
+            if (centralityResult.ok) {
+              const scored = computeImpactScore(centralityResult.nodes);
+              await db.errorIssue.update({
+                where: { id: issue.id },
+                data: {
+                  impactScore: scored?.score ?? null,
+                  impactScoredAt: new Date(),
+                  impactMeta: scored?.meta
+                    ? (scored.meta as unknown as Prisma.InputJsonValue)
+                    : Prisma.JsonNull,
+                },
+              });
+              console.info("[error-impact] opportunistic score persisted", {
+                issueId: issue.id,
+                score: scored?.score ?? null,
+                nodeCount: centralityResult.nodes.length,
+              });
+            } else {
+              console.warn("[error-impact] centrality fetch failed (non-fatal)", {
+                issueId: issue.id,
+                error: centralityResult.error,
+              });
+            }
+          } catch (impactErr) {
+            console.warn("[error-impact] opportunistic scoring failed (non-fatal)", impactErr);
           }
         }
       }
