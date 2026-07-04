@@ -26,7 +26,7 @@ export const updateWorkspaceSchema = z.object({
   
   description: z
     .string()
-    .max(500, "Description must be 500 characters or less")
+    .max(5000, "Description must be 5000 characters or less")
     .transform((val) => val === "" ? undefined : val)
     .optional(),
 
