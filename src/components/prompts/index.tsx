@@ -29,8 +29,8 @@ import { getPusherClient, getWorkspaceChannelName, PUSHER_EVENTS } from "@/lib/p
 import { RunEvalsModal } from "@/components/prompts/RunEvalsModal";
 import { BIFROST_AGENT_NAMES } from "@/services/bifrost/agent-names";
 
-// Sentinel ID for representing the current live version
-const CURRENT_VERSION_SENTINEL = -1;
+// Sentinel ID for representing the current live version (string to avoid collisions with cuid IDs)
+const CURRENT_VERSION_SENTINEL = "__CURRENT__";
 
 // ─── AgentNamesEditor ────────────────────────────────────────────────────────
 
@@ -108,7 +108,7 @@ interface PromptUsage {
 
 // Prompt list item (from API list endpoint)
 interface Prompt {
-  id: number;
+  id: string;
   name: string;
   description: string;
   usage_notation: string;
@@ -118,26 +118,26 @@ interface Prompt {
 }
 
 interface PromptDetail {
-  id: number;
+  id: string;
   name: string;
   value: string;
   description: string;
   usage_notation: string;
   agent_names: string[];
-  current_version_id: number | null;
-  published_version_id: number | null;
+  current_version_id: string | null;
+  published_version_id: string | null;
   version_count: number;
 }
 
 interface PromptVersion {
-  id: number;
+  id: string;
   version_number: number;
   created_at: string;
   whodunnit: string | null;
 }
 
 interface PromptVersionDetail {
-  version_id: number;
+  version_id: string;
   version_number: number;
   value: string;
   created_at: string;
@@ -212,22 +212,22 @@ export function PromptsPanel({ workflowId, variant = "panel", onNavigateToWorkfl
   const [versions, setVersions] = useState<PromptVersion[]>([]);
   const [isLoadingVersions, setIsLoadingVersions] = useState(false);
   const [isPublishing, setIsPublishing] = useState(false);
-  const [publishingVersionId, setPublishingVersionId] = useState<number | null>(null);
-  const [selectedVersionAId, setSelectedVersionAId] = useState<number | null>(null);
-  const [selectedVersionBId, setSelectedVersionBId] = useState<number | null>(null);
+  const [publishingVersionId, setPublishingVersionId] = useState<string | null>(null);
+  const [selectedVersionAId, setSelectedVersionAId] = useState<string | null>(null);
+  const [selectedVersionBId, setSelectedVersionBId] = useState<string | null>(null);
   const [versionAContent, setVersionAContent] = useState<string | null>(null);
   const [versionBContent, setVersionBContent] = useState<string | null>(null);
   const [isLoadingDiff, setIsLoadingDiff] = useState(false);
   const [previewVersionDescription, setPreviewVersionDescription] = useState<string | null>(null);
 
   // Eval runs state
-  const [evalRuns, setEvalRuns] = useState<Record<number, EvalRunState | null>>({});
-  const [runEvalsTarget, setRunEvalsTarget] = useState<{ versionId: number; label: string } | null>(null);
+  const [evalRuns, setEvalRuns] = useState<Record<string, EvalRunState | null>>({});
+  const [runEvalsTarget, setRunEvalsTarget] = useState<{ versionId: string; label: string } | null>(null);
 
   // Eval run history (per-version list of all runs, populated when >1 run exists)
   type EvalHistoryEntry = EvalRunState & { evalSetId: string | null; createdAt: string };
-  const [evalRunHistory, setEvalRunHistory] = useState<Record<number, EvalHistoryEntry[]>>({});
-  const [expandedHistoryKey, setExpandedHistoryKey] = useState<number | null>(null);
+  const [evalRunHistory, setEvalRunHistory] = useState<Record<string, EvalHistoryEntry[]>>({});
+  const [expandedHistoryKey, setExpandedHistoryKey] = useState<string | null>(null);
 
   // Debounced search query
   const debouncedSearchQuery = useDebounce(searchQuery, 300);
@@ -261,18 +261,18 @@ export function PromptsPanel({ workflowId, variant = "panel", onNavigateToWorkfl
 
   // Update URL when selecting a prompt (only in fullpage mode)
   // Also clears the ?version param when navigating away from a prompt
-  const updateUrlWithPrompt = useCallback((promptId: number | null, versionId?: number | null) => {
+  const updateUrlWithPrompt = useCallback((promptId: string | null, versionId?: string | null) => {
     if (!isFullpage) return;
 
     const params = new URLSearchParams(searchParams.toString());
     if (promptId) {
-      params.set("prompt", promptId.toString());
+      params.set("prompt", promptId);
     } else {
       params.delete("prompt");
       params.delete("version");
     }
     if (versionId != null) {
-      params.set("version", versionId.toString());
+      params.set("version", versionId);
     } else {
       params.delete("version");
     }
@@ -327,7 +327,7 @@ export function PromptsPanel({ workflowId, variant = "panel", onNavigateToWorkfl
     }
   }, [workflowId]);
 
-  const fetchPromptDetail = useCallback(async (promptId: number) => {
+  const fetchPromptDetail = useCallback(async (promptId: string) => {
     setIsLoadingDetail(true);
     try {
       const response = await fetch(`/api/workflow/prompts/${promptId}`);
@@ -350,7 +350,7 @@ export function PromptsPanel({ workflowId, variant = "panel", onNavigateToWorkfl
     }
   }, []);
 
-  const fetchVersionList = useCallback(async (promptId: number) => {
+  const fetchVersionList = useCallback(async (promptId: string) => {
     setIsLoadingVersions(true);
     try {
       const response = await fetch(`/api/workflow/prompts/${promptId}/versions`);
@@ -371,7 +371,7 @@ export function PromptsPanel({ workflowId, variant = "panel", onNavigateToWorkfl
     }
   }, []);
 
-  const fetchVersionContent = useCallback(async (promptId: number, versionId: number): Promise<string | null> => {
+  const fetchVersionContent = useCallback(async (promptId: string, versionId: string): Promise<string | null> => {
     try {
       const response = await fetch(`/api/workflow/prompts/${promptId}/versions/${versionId}`);
       if (!response.ok) {
@@ -389,7 +389,7 @@ export function PromptsPanel({ workflowId, variant = "panel", onNavigateToWorkfl
     }
   }, []);
 
-  const fetchVersionDetail = useCallback(async (promptId: number, versionId: number): Promise<{ value: string; description: string } | null> => {
+  const fetchVersionDetail = useCallback(async (promptId: string, versionId: string): Promise<{ value: string; description: string } | null> => {
     try {
       const response = await fetch(`/api/workflow/prompts/${promptId}/versions/${versionId}`);
       if (!response.ok) throw new Error("Failed to fetch version detail");
@@ -406,7 +406,7 @@ export function PromptsPanel({ workflowId, variant = "panel", onNavigateToWorkfl
   useEffect(() => {
     if (viewMode !== 'history' || !selectedPrompt || !resolvedSlug) return;
 
-    const versionIds: number[] = versions.map((v) => v.id);
+    const versionIds: string[] = versions.map((v) => v.id);
     if (selectedPrompt.current_version_id) {
       versionIds.push(selectedPrompt.current_version_id);
     }
@@ -475,7 +475,7 @@ export function PromptsPanel({ workflowId, variant = "panel", onNavigateToWorkfl
       channel = pusher.subscribe(getWorkspaceChannelName(resolvedSlug));
       channel.bind(
         PUSHER_EVENTS.PROMPT_EVAL_RESULT,
-        (data: { runId: string; promptVersionId: number; result: EvalResult }) => {
+        (data: { runId: string; promptVersionId: string; result: EvalResult }) => {
           const key =
             selectedPrompt && data.promptVersionId === selectedPrompt.current_version_id
               ? CURRENT_VERSION_SENTINEL
@@ -511,35 +511,29 @@ export function PromptsPanel({ workflowId, variant = "panel", onNavigateToWorkfl
     const promptId = searchParams.get("prompt");
     const versionId = searchParams.get("version");
     if (promptId) {
-      const id = parseInt(promptId, 10);
-      if (!isNaN(id)) {
-        setViewMode("detail");
-        fetchPromptDetail(id).then(() => {
-          if (versionId) {
-            const vid = parseInt(versionId, 10);
-            if (!isNaN(vid)) {
-              fetchVersionList(id).then(() => {
-                setViewMode("history");
-                setSelectedVersionAId(vid);
-                fetchVersionContent(id, vid).then((content) => {
-                  if (content !== null) {
-                    setVersionAContent(content);
-                  }
-                });
-              });
-            }
-          }
-        });
-      }
+      setViewMode("detail");
+      fetchPromptDetail(promptId).then(() => {
+        if (versionId) {
+          fetchVersionList(promptId).then(() => {
+            setViewMode("history");
+            setSelectedVersionAId(versionId);
+            fetchVersionContent(promptId, versionId).then((content) => {
+              if (content !== null) {
+                setVersionAContent(content);
+              }
+            });
+          });
+        }
+      });
     }
   }, [isFullpage]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleSearchChange = (value: string) => {
     setSearchQuery(value);
-    goToPage(1);
+    // Page reset happens in the debounced effect below — no per-keystroke navigation
   };
 
-  // Update URL when debounced search changes
+  // Update URL when debounced search changes and reset page to 1
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const currentSearch = params.get("search") || "";
@@ -547,6 +541,8 @@ export function PromptsPanel({ workflowId, variant = "panel", onNavigateToWorkfl
 
     // Only update if the value actually changed
     if (currentSearch !== trimmedQuery) {
+      // Reset page state alongside the URL update so they land in the same batch
+      setPage(1);
       if (trimmedQuery) {
         params.set("search", trimmedQuery);
       } else {
@@ -769,7 +765,7 @@ export function PromptsPanel({ workflowId, variant = "panel", onNavigateToWorkfl
     }
   };
 
-  const handleSharePrompt = async (promptId: number) => {
+  const handleSharePrompt = async (promptId: string) => {
     // Extract workspace slug from pathname (format: /w/[slug]/...)
     const pathParts = pathname.split("/");
     const wIndex = pathParts.indexOf("w");
@@ -818,7 +814,7 @@ export function PromptsPanel({ workflowId, variant = "panel", onNavigateToWorkfl
     setIsEditing(true);
   };
 
-  const handlePublishVersion = async (versionId: number) => {
+  const handlePublishVersion = async (versionId: string) => {
     if (!selectedPrompt) return;
     setIsPublishing(true);
     setPublishingVersionId(versionId);
@@ -841,7 +837,7 @@ export function PromptsPanel({ workflowId, variant = "panel", onNavigateToWorkfl
     }
   };
 
-  const handleVersionClick = (versionId: number) => {
+  const handleVersionClick = (versionId: string) => {
     if (selectedVersionAId === null) {
       setSelectedVersionAId(versionId);
     } else if (selectedVersionBId === null) {
