@@ -8,27 +8,13 @@ vi.mock("@/lib/middleware/utils", () => ({
   requireAuth: vi.fn(() => ({ id: "user-1" })),
 }));
 
-vi.mock("@/lib/db", () => ({
-  db: {
-    agentLog: {
-      findUnique: vi.fn(),
-    },
-    workspace: {
-      findUnique: vi.fn(),
-    },
-  },
-}));
-
 vi.mock("@/lib/helpers/swarm-access", () => ({
   getWorkspaceSwarmAccess: vi.fn(),
 }));
 
-vi.mock("@/lib/utils/blob-fetch", () => ({
-  fetchBlobContent: vi.fn(),
-}));
-
-vi.mock("@/lib/utils/agent-log-stats", () => ({
-  parseAgentLogStats: vi.fn(),
+// The route now delegates IDOR + transcript resolution to resolveCaptureSource.
+vi.mock("@/lib/eval-capture/resolve-capture-source", () => ({
+  resolveCaptureSource: vi.fn(),
 }));
 
 vi.mock("@/lib/utils/swarm", () => ({
@@ -45,10 +31,8 @@ vi.mock("@/lib/logger", () => ({
 }));
 
 import { POST } from "@/app/api/workspaces/[slug]/agent-logs/[logId]/eval/capture/route";
-import { db } from "@/lib/db";
 import { getWorkspaceSwarmAccess } from "@/lib/helpers/swarm-access";
-import { fetchBlobContent } from "@/lib/utils/blob-fetch";
-import { parseAgentLogStats } from "@/lib/utils/agent-log-stats";
+import { resolveCaptureSource } from "@/lib/eval-capture/resolve-capture-source";
 import { addNode, addEdge } from "@/services/swarm/api/nodes";
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -84,23 +68,40 @@ const BASE_CONFIG = {
   mcpServers: [],
 };
 
-const BASE_AGENT_LOG = {
-  workspaceId: "ws-1",
-  blobUrl: "https://store.private.blob.vercel-storage.com/test-log.json",
-  agentName: "coding-agent",
-  source: "github",
-  metadata: null,
-  config: BASE_CONFIG, // DB column is the canonical source of truth
-};
-
-const BASE_WORKSPACE = { slug: "test-ws" };
-
 const SAMPLE_MESSAGES = [
   { role: "user", content: "Hello" },
   { role: "assistant", content: "Hi there" },
   { role: "user", content: "Do this task" },
   { role: "assistant", content: "Done" },
 ];
+
+/** Default resolveCaptureSource result for the AgentLog branch */
+function makeAgentLogCapture(overrides: Partial<Record<string, unknown>> = {}) {
+  return {
+    kind: "agent_log" as const,
+    workspaceId: "ws-1",
+    blobUrl: "https://store.private.blob.vercel-storage.com/test-log.json",
+    agent: overrides.agent ?? null,
+    source: overrides.source ?? "github",
+    metadata: overrides.metadata ?? null,
+    config: overrides.config ?? BASE_CONFIG,
+    conversation: (overrides.conversation as typeof SAMPLE_MESSAGES) ?? SAMPLE_MESSAGES,
+    effectiveConfig: (overrides.effectiveConfig as Record<string, unknown> | undefined) ?? BASE_CONFIG,
+    ...overrides,
+  };
+}
+
+/** Default resolveCaptureSource result for the Conversation branch */
+function makeConversationCapture(overrides: Partial<Record<string, unknown>> = {}) {
+  return {
+    kind: "conversation" as const,
+    workspaceId: "ws-1",
+    conversationId: "conv-abc",
+    source: (overrides.source as string | null) ?? "org-canvas",
+    conversation: (overrides.conversation as typeof SAMPLE_MESSAGES) ?? SAMPLE_MESSAGES,
+    ...overrides,
+  };
+}
 
 // ─── Tests ───────────────────────────────────────────────────────────────────
 
@@ -109,19 +110,12 @@ describe("POST /api/workspaces/[slug]/agent-logs/[logId]/eval/capture", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    // Disable mock delegation so the live path runs in tests
     origUseMocks = process.env.USE_MOCKS;
     process.env.USE_MOCKS = "false";
 
     (getWorkspaceSwarmAccess as Mock).mockResolvedValue(SWARM_SUCCESS);
-    (db.agentLog.findUnique as Mock).mockResolvedValue(BASE_AGENT_LOG);
-    (db.workspace.findUnique as Mock).mockResolvedValue(BASE_WORKSPACE);
-    (fetchBlobContent as Mock).mockResolvedValue("{}");
-    // blob-parsed config is undefined by default — DB column is the canonical source
-    (parseAgentLogStats as Mock).mockReturnValue({
-      conversation: SAMPLE_MESSAGES,
-      config: undefined,
-    });
+    // Default: AgentLog found and owned
+    (resolveCaptureSource as Mock).mockResolvedValue(makeAgentLogCapture());
     (addNode as Mock).mockImplementation((_cfg, node) => {
       const type = node.node_type;
       return Promise.resolve({ success: true, ref_id: `ref-${type}` });
@@ -162,30 +156,28 @@ describe("POST /api/workspaces/[slug]/agent-logs/[logId]/eval/capture", () => {
 
   // ── IDOR guard ──────────────────────────────────────────────────────────
 
-  test("returns 404 when agent log does not exist", async () => {
-    (db.agentLog.findUnique as Mock).mockResolvedValue(null);
+  test("returns 404 when resolveCaptureSource returns null (record not found)", async () => {
+    (resolveCaptureSource as Mock).mockResolvedValue(null);
     const res = await POST(
       makeRequest({ evalSetId: "eval-set-1", requirement: "Test" }),
       makeParams(),
     );
     expect(res.status).toBe(404);
-    // Blob fetch must NOT have been called
-    expect(fetchBlobContent).not.toHaveBeenCalled();
+    // Jarvis must NOT have been called
+    expect(addNode).not.toHaveBeenCalled();
   });
 
-  test("returns 403 when log belongs to a different workspace", async () => {
-    (db.workspace.findUnique as Mock).mockResolvedValue({ slug: "other-workspace" });
+  test("returns 403 when resolveCaptureSource returns { denied: true }", async () => {
+    (resolveCaptureSource as Mock).mockResolvedValue({ denied: true });
     const res = await POST(
       makeRequest({ evalSetId: "eval-set-1", requirement: "Test" }),
       makeParams("test-ws", "log-1"),
     );
     expect(res.status).toBe(403);
-    // Both blob fetch and Jarvis must NOT be called before IDOR check passes
-    expect(fetchBlobContent).not.toHaveBeenCalled();
     expect(addNode).not.toHaveBeenCalled();
   });
 
-  // ── prompt_snapshot builder ──────────────────────────────────────────────
+  // ── prompt_snapshot builder (AgentLog branch) ────────────────────────────
 
   test("builds prompt_snapshot with full conversation when turnIndex is undefined", async () => {
     await POST(
@@ -226,10 +218,11 @@ describe("POST /api/workspaces/[slug]/agent-logs/[logId]/eval/capture", () => {
   });
 
   test("uses config.resolvedRequestUrl when present", async () => {
-    (db.agentLog.findUnique as Mock).mockResolvedValue({
-      ...BASE_AGENT_LOG,
-      config: { ...BASE_CONFIG, resolvedRequestUrl: "https://api.anthropic.com/v1/messages" },
-    });
+    (resolveCaptureSource as Mock).mockResolvedValue(
+      makeAgentLogCapture({
+        effectiveConfig: { ...BASE_CONFIG, resolvedRequestUrl: "https://api.anthropic.com/v1/messages" },
+      }),
+    );
 
     await POST(
       makeRequest({ evalSetId: "eval-set-1", requirement: "URL test" }),
@@ -248,8 +241,6 @@ describe("POST /api/workspaces/[slug]/agent-logs/[logId]/eval/capture", () => {
   });
 
   test("falls back to empty string for url when resolvedRequestUrl is absent", async () => {
-    // BASE_AGENT_LOG.config = BASE_CONFIG which has no resolvedRequestUrl — default mock is sufficient
-
     await POST(
       makeRequest({ evalSetId: "eval-set-1", requirement: "No URL" }),
       makeParams(),
@@ -270,6 +261,10 @@ describe("POST /api/workspaces/[slug]/agent-logs/[logId]/eval/capture", () => {
 
   test("uses agentLog.source as change_type (DB column takes priority)", async () => {
     // agentLog.source = "github", config.source = "repo_agent"
+    (resolveCaptureSource as Mock).mockResolvedValue(
+      makeAgentLogCapture({ source: "github" }),
+    );
+
     await POST(
       makeRequest({ evalSetId: "eval-set-1", requirement: "change_type test" }),
       makeParams(),
@@ -285,10 +280,9 @@ describe("POST /api/workspaces/[slug]/agent-logs/[logId]/eval/capture", () => {
   // ── source discriminator ─────────────────────────────────────────────────
 
   test('sets source to "repo_agent" when agentLog.source is "repo_agent"', async () => {
-    (db.agentLog.findUnique as Mock).mockResolvedValue({
-      ...BASE_AGENT_LOG,
-      source: "repo_agent",
-    });
+    (resolveCaptureSource as Mock).mockResolvedValue(
+      makeAgentLogCapture({ source: "repo_agent" }),
+    );
 
     await POST(
       makeRequest({ evalSetId: "eval-set-1", requirement: "source repo_agent" }),
@@ -303,11 +297,12 @@ describe("POST /api/workspaces/[slug]/agent-logs/[logId]/eval/capture", () => {
   });
 
   test('sets source to "provider_direct" when agentLog.source is null and resolvedRequestUrl matches Anthropic', async () => {
-    (db.agentLog.findUnique as Mock).mockResolvedValue({
-      ...BASE_AGENT_LOG,
-      source: null,
-      config: { ...BASE_CONFIG, resolvedRequestUrl: "https://api.anthropic.com/v1/messages" },
-    });
+    (resolveCaptureSource as Mock).mockResolvedValue(
+      makeAgentLogCapture({
+        source: null,
+        effectiveConfig: { ...BASE_CONFIG, resolvedRequestUrl: "https://api.anthropic.com/v1/messages" },
+      }),
+    );
 
     await POST(
       makeRequest({ evalSetId: "eval-set-1", requirement: "source provider_direct" }),
@@ -322,10 +317,9 @@ describe("POST /api/workspaces/[slug]/agent-logs/[logId]/eval/capture", () => {
   });
 
   test('sets source to "jamie_agent" when agentLog.source is "canvas_chat"', async () => {
-    (db.agentLog.findUnique as Mock).mockResolvedValue({
-      ...BASE_AGENT_LOG,
-      source: "canvas_chat",
-    });
+    (resolveCaptureSource as Mock).mockResolvedValue(
+      makeAgentLogCapture({ source: "canvas_chat" }),
+    );
 
     await POST(
       makeRequest({ evalSetId: "eval-set-1", requirement: "source jamie_agent" }),
@@ -340,11 +334,9 @@ describe("POST /api/workspaces/[slug]/agent-logs/[logId]/eval/capture", () => {
   });
 
   test('falls back to "repo_agent" source when agentLog.source is unknown and no matching resolvedRequestUrl', async () => {
-    (db.agentLog.findUnique as Mock).mockResolvedValue({
-      ...BASE_AGENT_LOG,
-      source: "github",
-      // config: BASE_CONFIG (default) — no resolvedRequestUrl
-    });
+    (resolveCaptureSource as Mock).mockResolvedValue(
+      makeAgentLogCapture({ source: "github" }),
+    );
 
     await POST(
       makeRequest({ evalSetId: "eval-set-1", requirement: "source fallback" }),
@@ -359,10 +351,9 @@ describe("POST /api/workspaces/[slug]/agent-logs/[logId]/eval/capture", () => {
   });
 
   test("falls back to config.source when agentLog.source is null", async () => {
-    (db.agentLog.findUnique as Mock).mockResolvedValue({
-      ...BASE_AGENT_LOG,
-      source: null,
-    });
+    (resolveCaptureSource as Mock).mockResolvedValue(
+      makeAgentLogCapture({ source: null }),
+    );
 
     await POST(
       makeRequest({ evalSetId: "eval-set-1", requirement: "fallback test" }),
@@ -373,15 +364,17 @@ describe("POST /api/workspaces/[slug]/agent-logs/[logId]/eval/capture", () => {
       ([, node]) => node.node_type === "EvalTrigger",
     );
     expect(triggerCall).toBeDefined();
+    // effectiveConfig.source = "repo_agent"
     expect(triggerCall[1].node_data.change_type).toBe("repo_agent");
   });
 
   test("falls back to swarm_agent when both agentLog.source and config.source are null", async () => {
-    (db.agentLog.findUnique as Mock).mockResolvedValue({
-      ...BASE_AGENT_LOG,
-      source: null,
-      config: { model: "gpt-4", temperature: 0 }, // no source
-    });
+    (resolveCaptureSource as Mock).mockResolvedValue(
+      makeAgentLogCapture({
+        source: null,
+        effectiveConfig: { model: "gpt-4", temperature: 0 }, // no source
+      }),
+    );
 
     await POST(
       makeRequest({ evalSetId: "eval-set-1", requirement: "fallback all" }),
@@ -432,10 +425,9 @@ describe("POST /api/workspaces/[slug]/agent-logs/[logId]/eval/capture", () => {
       { name: "prompt-a", resolution: { value: "v1" } },
       { name: "prompt-b", resolution: { value: "v2" } },
     ];
-    (db.agentLog.findUnique as Mock).mockResolvedValue({
-      ...BASE_AGENT_LOG,
-      metadata: { prompts },
-    });
+    (resolveCaptureSource as Mock).mockResolvedValue(
+      makeAgentLogCapture({ metadata: { prompts } }),
+    );
 
     await POST(
       makeRequest({ evalSetId: "eval-set-1", requirement: "prompts test" }),
@@ -453,10 +445,9 @@ describe("POST /api/workspaces/[slug]/agent-logs/[logId]/eval/capture", () => {
   });
 
   test("omits prompts field when metadata.prompts is absent", async () => {
-    (db.agentLog.findUnique as Mock).mockResolvedValue({
-      ...BASE_AGENT_LOG,
-      metadata: null,
-    });
+    (resolveCaptureSource as Mock).mockResolvedValue(
+      makeAgentLogCapture({ metadata: null }),
+    );
 
     await POST(
       makeRequest({ evalSetId: "eval-set-1", requirement: "no prompts" }),
@@ -473,10 +464,9 @@ describe("POST /api/workspaces/[slug]/agent-logs/[logId]/eval/capture", () => {
   // ── agent auto-detection from AgentLog.agent ────────────────────────────
 
   test("parses canonical agent from agentLog.agent cuid-suffixed value", async () => {
-    (db.agentLog.findUnique as Mock).mockResolvedValue({
-      ...BASE_AGENT_LOG,
-      agent: "coding-agent-cmr3lw4o5abc",
-    });
+    (resolveCaptureSource as Mock).mockResolvedValue(
+      makeAgentLogCapture({ agent: "coding-agent-cmr3lw4o5abc" }),
+    );
 
     await POST(
       makeRequest({ evalSetId: "eval-set-1", requirement: "Agent parse test" }),
@@ -491,10 +481,9 @@ describe("POST /api/workspaces/[slug]/agent-logs/[logId]/eval/capture", () => {
   });
 
   test("parses wfe-agent from agentLog.agent", async () => {
-    (db.agentLog.findUnique as Mock).mockResolvedValue({
-      ...BASE_AGENT_LOG,
-      agent: "wfe-agent-cmr3abc123xyz",
-    });
+    (resolveCaptureSource as Mock).mockResolvedValue(
+      makeAgentLogCapture({ agent: "wfe-agent-cmr3abc123xyz" }),
+    );
 
     await POST(
       makeRequest({ evalSetId: "eval-set-1", requirement: "WFE agent test" }),
@@ -509,11 +498,12 @@ describe("POST /api/workspaces/[slug]/agent-logs/[logId]/eval/capture", () => {
   });
 
   test("falls back to resolveHiveAgentName when agentLog.agent is not parseable", async () => {
-    (db.agentLog.findUnique as Mock).mockResolvedValue({
-      ...BASE_AGENT_LOG,
-      agent: "unknown-bot-xyz",
-      source: "canvas_chat", // jamie_agent source → canvas-agent default
-    });
+    (resolveCaptureSource as Mock).mockResolvedValue(
+      makeAgentLogCapture({
+        agent: "unknown-bot-xyz",
+        source: "canvas_chat", // jamie_agent source → canvas-agent default
+      }),
+    );
 
     await POST(
       makeRequest({ evalSetId: "eval-set-1", requirement: "Fallback agent test" }),
@@ -528,11 +518,9 @@ describe("POST /api/workspaces/[slug]/agent-logs/[logId]/eval/capture", () => {
   });
 
   test("falls back to source-bucket default when agentLog.agent is null", async () => {
-    (db.agentLog.findUnique as Mock).mockResolvedValue({
-      ...BASE_AGENT_LOG,
-      agent: null,
-      source: "repo_agent",
-    });
+    (resolveCaptureSource as Mock).mockResolvedValue(
+      makeAgentLogCapture({ agent: null, source: "repo_agent" }),
+    );
 
     await POST(
       makeRequest({ evalSetId: "eval-set-1", requirement: "Null agent test" }),
@@ -546,13 +534,164 @@ describe("POST /api/workspaces/[slug]/agent-logs/[logId]/eval/capture", () => {
     expect(triggerCall[1].node_data.agent).toBe("repo-agent");
   });
 
+  // ── Optional agent override ───────────────────────────────────────────────
+
+  test("uses explicit agent override when it is a valid catalog name (AgentLog branch)", async () => {
+    (resolveCaptureSource as Mock).mockResolvedValue(
+      makeAgentLogCapture({ agent: "coding-agent-cmr3abc", source: "repo_agent" }),
+    );
+
+    await POST(
+      makeRequest({ evalSetId: "eval-set-1", requirement: "Agent override", agent: "plan-agent" }),
+      makeParams(),
+    );
+
+    const triggerCall = (addNode as Mock).mock.calls.find(
+      ([, node]) => node.node_type === "EvalTrigger",
+    );
+    expect(triggerCall).toBeDefined();
+    expect(triggerCall[1].node_data.agent).toBe("plan-agent");
+  });
+
+  test("ignores agent override when it is not in CAPTURE_AGENT_NAMES (uses auto-derived)", async () => {
+    (resolveCaptureSource as Mock).mockResolvedValue(
+      makeAgentLogCapture({ agent: "coding-agent-cmr3abc", source: "repo_agent" }),
+    );
+
+    await POST(
+      makeRequest({
+        evalSetId: "eval-set-1",
+        requirement: "Invalid override",
+        agent: "totally-unknown-bot",
+      }),
+      makeParams(),
+    );
+
+    const triggerCall = (addNode as Mock).mock.calls.find(
+      ([, node]) => node.node_type === "EvalTrigger",
+    );
+    expect(triggerCall).toBeDefined();
+    // Falls back to parsed agent from agentLog.agent
+    expect(triggerCall[1].node_data.agent).toBe("coding-agent");
+  });
+
+  // ── Conversation branch ────────────────────────────────────────────────────
+
+  test("succeeds for conversation branch with canvas_chat defaults to canvas-agent", async () => {
+    (resolveCaptureSource as Mock).mockResolvedValue(makeConversationCapture());
+
+    const res = await POST(
+      makeRequest({ evalSetId: "eval-set-1", requirement: "Canvas capture" }),
+      makeParams("test-ws", "conv-abc"),
+    );
+
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.success).toBe(true);
+
+    const triggerCall = (addNode as Mock).mock.calls.find(
+      ([, node]) => node.node_type === "EvalTrigger",
+    );
+    expect(triggerCall).toBeDefined();
+    expect(triggerCall[1].node_data.agent).toBe("canvas-agent");
+    expect(triggerCall[1].node_data.source).toBe("jamie_agent");
+  });
+
+  test("conversation branch: environment is set to conversationId", async () => {
+    (resolveCaptureSource as Mock).mockResolvedValue(
+      makeConversationCapture({ conversationId: "conv-xyz" }),
+    );
+
+    await POST(
+      makeRequest({ evalSetId: "eval-set-1", requirement: "Conversation env" }),
+      makeParams("test-ws", "conv-xyz"),
+    );
+
+    const triggerCall = (addNode as Mock).mock.calls.find(
+      ([, node]) => node.node_type === "EvalTrigger",
+    );
+    expect(triggerCall).toBeDefined();
+    expect(triggerCall[1].node_data.environment).toBe("conv-xyz");
+  });
+
+  test("conversation branch: prompt_snapshot contains messages from conversation", async () => {
+    const convMessages = [
+      { role: "user", content: "Canvas question" },
+      { role: "assistant", content: "Canvas answer" },
+    ];
+    (resolveCaptureSource as Mock).mockResolvedValue(
+      makeConversationCapture({ conversation: convMessages }),
+    );
+
+    await POST(
+      makeRequest({ evalSetId: "eval-set-1", requirement: "Conv snapshot" }),
+      makeParams("test-ws", "conv-abc"),
+    );
+
+    const triggerCall = (addNode as Mock).mock.calls.find(
+      ([, node]) => node.node_type === "EvalTrigger",
+    );
+    expect(triggerCall).toBeDefined();
+    const parsed = JSON.parse(triggerCall[1].node_data.body);
+    const snapshot = JSON.parse(parsed.prompt_snapshot);
+    expect(snapshot.request_params.messages).toEqual(convMessages);
+  });
+
+  test("conversation branch: slices to turnIndex + 1 when turnIndex provided", async () => {
+    (resolveCaptureSource as Mock).mockResolvedValue(makeConversationCapture());
+
+    await POST(
+      makeRequest({ evalSetId: "eval-set-1", requirement: "Conv turn", turnIndex: 1 }),
+      makeParams("test-ws", "conv-abc"),
+    );
+
+    const triggerCall = (addNode as Mock).mock.calls.find(
+      ([, node]) => node.node_type === "EvalTrigger",
+    );
+    expect(triggerCall).toBeDefined();
+    const parsed = JSON.parse(triggerCall[1].node_data.body);
+    const snapshot = JSON.parse(parsed.prompt_snapshot);
+    // SAMPLE_MESSAGES has 4 items; turnIndex=1 → slice(0, 2)
+    expect(snapshot.request_params.messages).toHaveLength(2);
+  });
+
+  test("conversation branch: explicit agent override is respected", async () => {
+    (resolveCaptureSource as Mock).mockResolvedValue(makeConversationCapture());
+
+    await POST(
+      makeRequest({
+        evalSetId: "eval-set-1",
+        requirement: "Conv agent override",
+        agent: "repo-agent",
+      }),
+      makeParams("test-ws", "conv-abc"),
+    );
+
+    const triggerCall = (addNode as Mock).mock.calls.find(
+      ([, node]) => node.node_type === "EvalTrigger",
+    );
+    expect(triggerCall).toBeDefined();
+    expect(triggerCall[1].node_data.agent).toBe("repo-agent");
+  });
+
+  test("conversation branch: IDOR denied returns 403 without Jarvis calls", async () => {
+    (resolveCaptureSource as Mock).mockResolvedValue({ denied: true });
+
+    const res = await POST(
+      makeRequest({ evalSetId: "eval-set-1", requirement: "IDOR conv" }),
+      makeParams("test-ws", "conv-other-ws"),
+    );
+
+    expect(res.status).toBe(403);
+    expect(addNode).not.toHaveBeenCalled();
+  });
+
   // ── HiveAgent upsert + ATTRIBUTED_TO edge (non-fatal) ────────────────────
 
   test("upserts HiveAgent node after EvalTrigger creation", async () => {
-    (db.agentLog.findUnique as Mock).mockResolvedValue({
-      ...BASE_AGENT_LOG,
-      agent: "coding-agent-cmr3lw4o5abc",
-    });
+    (resolveCaptureSource as Mock).mockResolvedValue(
+      makeAgentLogCapture({ agent: "coding-agent-cmr3lw4o5abc" }),
+    );
 
     await POST(
       makeRequest({ evalSetId: "eval-set-1", requirement: "HiveAgent upsert" }),
@@ -569,10 +708,9 @@ describe("POST /api/workspaces/[slug]/agent-logs/[logId]/eval/capture", () => {
   });
 
   test("upserts HiveAgent node with correct spec for wfe-agent", async () => {
-    (db.agentLog.findUnique as Mock).mockResolvedValue({
-      ...BASE_AGENT_LOG,
-      agent: "wfe-agent-cmr3abc",
-    });
+    (resolveCaptureSource as Mock).mockResolvedValue(
+      makeAgentLogCapture({ agent: "wfe-agent-cmr3abc" }),
+    );
 
     await POST(
       makeRequest({ evalSetId: "eval-set-1", requirement: "WFE HiveAgent test" }),
@@ -659,10 +797,9 @@ describe("POST /api/workspaces/[slug]/agent-logs/[logId]/eval/capture", () => {
   // ── agentName in response ────────────────────────────────────────────────
 
   test("response includes agentName in data", async () => {
-    (db.agentLog.findUnique as Mock).mockResolvedValue({
-      ...BASE_AGENT_LOG,
-      agent: "plan-agent-cmr3xyz",
-    });
+    (resolveCaptureSource as Mock).mockResolvedValue(
+      makeAgentLogCapture({ agent: "plan-agent-cmr3xyz" }),
+    );
 
     const res = await POST(
       makeRequest({ evalSetId: "eval-set-1", requirement: "Response agentName test" }),
@@ -706,10 +843,9 @@ describe("POST /api/workspaces/[slug]/agent-logs/[logId]/eval/capture", () => {
       providerConfig: { timeout: 30 },
       repos: ["repo-1"],
     };
-    (db.agentLog.findUnique as Mock).mockResolvedValue({
-      ...BASE_AGENT_LOG,
-      config: fullConfig,
-    });
+    (resolveCaptureSource as Mock).mockResolvedValue(
+      makeAgentLogCapture({ effectiveConfig: fullConfig }),
+    );
 
     await POST(
       makeRequest({ evalSetId: "eval-set-1", requirement: "Full harness fields" }),
@@ -745,10 +881,9 @@ describe("POST /api/workspaces/[slug]/agent-logs/[logId]/eval/capture", () => {
       { role: "assistant", content: "Hi there" },
       { role: "user", content: "Do this task" },
     ];
-    (parseAgentLogStats as Mock).mockReturnValue({
-      conversation: messagesWithSystem,
-      config: undefined,
-    });
+    (resolveCaptureSource as Mock).mockResolvedValue(
+      makeAgentLogCapture({ conversation: messagesWithSystem }),
+    );
 
     await POST(
       makeRequest({ evalSetId: "eval-set-1", requirement: "System preserved", turnIndex: 2 }),
@@ -769,14 +904,15 @@ describe("POST /api/workspaces/[slug]/agent-logs/[logId]/eval/capture", () => {
   });
 
   test("Test C: PromptResolution map in metadata.prompts is normalised to flat array", async () => {
-    (db.agentLog.findUnique as Mock).mockResolvedValue({
-      ...BASE_AGENT_LOG,
-      metadata: {
-        prompts: {
-          MY_PROMPT: { prompt_id: 1, prompt_version_id: 2, resolution: {} },
+    (resolveCaptureSource as Mock).mockResolvedValue(
+      makeAgentLogCapture({
+        metadata: {
+          prompts: {
+            MY_PROMPT: { prompt_id: 1, prompt_version_id: 2, resolution: {} },
+          },
         },
-      },
-    });
+      }),
+    );
 
     await POST(
       makeRequest({ evalSetId: "eval-set-1", requirement: "PromptResolution map" }),
@@ -793,14 +929,19 @@ describe("POST /api/workspaces/[slug]/agent-logs/[logId]/eval/capture", () => {
   });
 
   test("PromptResolution map with resolution.value is normalised to include resolution string", async () => {
-    (db.agentLog.findUnique as Mock).mockResolvedValue({
-      ...BASE_AGENT_LOG,
-      metadata: {
-        prompts: {
-          MY_PROMPT: { prompt_id: 1, prompt_version_id: 2, resolution: { value: "You are a coding agent." } },
+    (resolveCaptureSource as Mock).mockResolvedValue(
+      makeAgentLogCapture({
+        metadata: {
+          prompts: {
+            MY_PROMPT: {
+              prompt_id: 1,
+              prompt_version_id: 2,
+              resolution: { value: "You are a coding agent." },
+            },
+          },
         },
-      },
-    });
+      }),
+    );
 
     await POST(
       makeRequest({ evalSetId: "eval-set-1", requirement: "resolution passthrough" }),
@@ -823,14 +964,19 @@ describe("POST /api/workspaces/[slug]/agent-logs/[logId]/eval/capture", () => {
   });
 
   test("PromptResolution map with object resolution.value is flattened to string", async () => {
-    (db.agentLog.findUnique as Mock).mockResolvedValue({
-      ...BASE_AGENT_LOG,
-      metadata: {
-        prompts: {
-          JSON_PROMPT: { prompt_id: 3, prompt_version_id: 4, resolution: { value: { key: "val" } } },
+    (resolveCaptureSource as Mock).mockResolvedValue(
+      makeAgentLogCapture({
+        metadata: {
+          prompts: {
+            JSON_PROMPT: {
+              prompt_id: 3,
+              prompt_version_id: 4,
+              resolution: { value: { key: "val" } },
+            },
+          },
         },
-      },
-    });
+      }),
+    );
 
     await POST(
       makeRequest({ evalSetId: "eval-set-1", requirement: "json resolution" }),
@@ -848,11 +994,10 @@ describe("POST /api/workspaces/[slug]/agent-logs/[logId]/eval/capture", () => {
   // ── fallback: DB config null → blob-parsed config ───────────────────────
 
   test("falls back to blob-parsed config for request_params when DB config column is null", async () => {
-    (db.agentLog.findUnique as Mock).mockResolvedValue({ ...BASE_AGENT_LOG, config: null });
-    (parseAgentLogStats as Mock).mockReturnValue({
-      conversation: SAMPLE_MESSAGES,
-      config: BASE_CONFIG,
-    });
+    // effectiveConfig = undefined simulates DB config null + blob-parsed config result
+    (resolveCaptureSource as Mock).mockResolvedValue(
+      makeAgentLogCapture({ effectiveConfig: BASE_CONFIG }),
+    );
 
     await POST(makeRequest({ evalSetId: "eval-set-1", requirement: "fallback" }), makeParams());
 
@@ -872,7 +1017,11 @@ describe("POST /api/workspaces/[slug]/agent-logs/[logId]/eval/capture", () => {
     globalThis.fetch = vi.fn().mockResolvedValue({
       json: async () => ({
         success: true,
-        data: { evalSetRef: "eval-set-1", requirementRef: "mock-req-ref", triggerRef: "mock-trigger-ref" },
+        data: {
+          evalSetRef: "eval-set-1",
+          requirementRef: "mock-req-ref",
+          triggerRef: "mock-trigger-ref",
+        },
       }),
     } as Response);
 

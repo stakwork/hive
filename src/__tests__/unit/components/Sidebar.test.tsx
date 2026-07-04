@@ -7,6 +7,7 @@ import * as useWorkspaceModule from '@/hooks/useWorkspace';
 import * as usePoolStatusModule from '@/hooks/usePoolStatus';
 import * as useFeatureFlagModule from '@/hooks/useFeatureFlag';
 import * as useWorkspaceAccessModule from '@/hooks/useWorkspaceAccess';
+import * as useUnresolvedErrorCountModule from '@/hooks/useUnresolvedErrorCount';
 import * as runtimeModule from '@/lib/runtime';
 
 // Mock the hooks and components
@@ -14,6 +15,9 @@ vi.mock('@/hooks/useWorkspace');
 vi.mock('@/hooks/usePoolStatus');
 vi.mock('@/hooks/useFeatureFlag');
 vi.mock('@/hooks/useWorkspaceAccess');
+vi.mock('@/hooks/useUnresolvedErrorCount', () => ({
+  useUnresolvedErrorCount: vi.fn(() => ({ count: 0 })),
+}));
 vi.mock('@/lib/runtime');
 vi.mock('@/components/NavUser', () => ({
   NavUser: () => <div data-testid="nav-user">NavUser</div>,
@@ -79,6 +83,9 @@ describe('Sidebar - Navigation Links', () => {
       hasAccess: true,
       role: 'ADMIN',
     } as any);
+
+    // Mock useUnresolvedErrorCount - default to 0
+    vi.mocked(useUnresolvedErrorCountModule.useUnresolvedErrorCount).mockReturnValue({ count: 0 });
   });
 
   it('should render top-level navigation items as <a> elements with correct hrefs', () => {
@@ -1450,5 +1457,110 @@ describe('Sidebar - Evals link visibility under Protect', () => {
     await waitFor(() => {
       expect(screen.getAllByTestId('nav-evals').length).toBeGreaterThan(0);
     });
+  });
+});
+
+describe('Sidebar - Unresolved Error Count Badge', () => {
+  const mockUser = {
+    name: 'Test User',
+    email: 'test@example.com',
+    image: null,
+  };
+
+  const mockWorkspace = {
+    id: 'workspace-1',
+    name: 'Test Workspace',
+    slug: 'test-workspace',
+    poolState: 'COMPLETE',
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(useFeatureFlagModule.useFeatureFlag).mockReturnValue(true);
+    vi.mocked(usePoolStatusModule.usePoolStatus).mockReturnValue({
+      poolStatus: null,
+      loading: false,
+      error: null,
+      refetch: vi.fn(),
+    });
+    vi.mocked(runtimeModule.isDevelopmentMode).mockReturnValue(false);
+    vi.mocked(useWorkspaceAccessModule.useWorkspaceAccess).mockReturnValue({
+      canRead: true,
+      canWrite: true,
+      canAdmin: true,
+      isOwner: false,
+      hasAccess: true,
+      role: 'ADMIN',
+    } as any);
+    vi.mocked(useWorkspaceModule.useWorkspace).mockReturnValue({
+      workspace: mockWorkspace,
+      slug: 'test-workspace',
+      loading: false,
+      error: null,
+      waitingForInputCount: 0,
+      refreshTaskNotifications: vi.fn(),
+    } as any);
+  });
+
+  it('renders amber badge next to Errors when unresolvedErrorCount > 0', async () => {
+    const user = userEvent.setup();
+    vi.mocked(useUnresolvedErrorCountModule.useUnresolvedErrorCount).mockReturnValue({ count: 5 });
+
+    render(<Sidebar user={mockUser} />);
+
+    // Expand Context section to reveal Errors child
+    const contextButtons = screen.getAllByTestId('nav-context');
+    await user.click(contextButtons[0]);
+
+    await waitFor(() => {
+      const errorsLinks = screen.getAllByTestId('nav-errors');
+      expect(errorsLinks.length).toBeGreaterThan(0);
+    });
+
+    // Find badge showing 5 next to the Errors link
+    const badges = screen.getAllByTestId('badge');
+    const errorBadge = badges.find((b) => b.textContent === '5');
+    expect(errorBadge).toBeDefined();
+  });
+
+  it('does not render error badge when unresolvedErrorCount is 0', async () => {
+    const user = userEvent.setup();
+    vi.mocked(useUnresolvedErrorCountModule.useUnresolvedErrorCount).mockReturnValue({ count: 0 });
+
+    render(<Sidebar user={mockUser} />);
+
+    const contextButtons = screen.getAllByTestId('nav-context');
+    await user.click(contextButtons[0]);
+
+    await waitFor(() => {
+      const errorsLinks = screen.getAllByTestId('nav-errors');
+      expect(errorsLinks.length).toBeGreaterThan(0);
+    });
+
+    // No badge with 0 should appear
+    const badges = screen.queryAllByTestId('badge');
+    const zeroErrorBadge = badges.find((b) => b.textContent === '0');
+    expect(zeroErrorBadge).toBeUndefined();
+  });
+
+  it('badge has amber classes', async () => {
+    const user = userEvent.setup();
+    vi.mocked(useUnresolvedErrorCountModule.useUnresolvedErrorCount).mockReturnValue({ count: 3 });
+
+    render(<Sidebar user={mockUser} />);
+
+    const contextButtons = screen.getAllByTestId('nav-context');
+    await user.click(contextButtons[0]);
+
+    await waitFor(() => {
+      expect(screen.getAllByTestId('nav-errors').length).toBeGreaterThan(0);
+    });
+
+    const badges = screen.getAllByTestId('badge');
+    const errorBadge = badges.find((b) => b.textContent === '3');
+    expect(errorBadge).toBeDefined();
+    expect(errorBadge?.className).toContain('bg-amber-100');
+    expect(errorBadge?.className).toContain('text-amber-800');
+    expect(errorBadge?.className).toContain('border-amber-200');
   });
 });

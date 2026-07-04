@@ -5,6 +5,7 @@
  * - updateErrorIssueStatus allowlist rejection (InvalidStatusError)
  * - Pusher broadcast on status update
  * - getErrorIssueDetail returns commitSha, repositoryUrl, defaultBranch
+ * - getRelatedErrorIssues traversal, ranking, caps, and bail-out paths
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { ErrorIssueStatus } from "@prisma/client";
@@ -19,6 +20,8 @@ const {
   mockPusherTrigger,
   mockEventFindMany,
   mockEventCount,
+  mockGetJarvisConfig,
+  mockKgGetNeighbors,
 } = vi.hoisted(() => ({
   mockFindUnique: vi.fn(),
   mockUpdate: vi.fn(),
@@ -27,6 +30,8 @@ const {
   mockPusherTrigger: vi.fn(),
   mockEventFindMany: vi.fn(),
   mockEventCount: vi.fn(),
+  mockGetJarvisConfig: vi.fn(),
+  mockKgGetNeighbors: vi.fn(),
 }));
 
 vi.mock("@/lib/db", () => ({
@@ -50,7 +55,21 @@ vi.mock("@/lib/pusher", () => ({
   PUSHER_EVENTS: { ERROR_ISSUE_UPDATED: "error-issue-updated" },
 }));
 
-import { updateErrorIssueStatus, InvalidStatusError, getErrorIssueDetail, listErrorIssues } from "@/services/error-issues";
+vi.mock("@/lib/helpers/jarvis-config", () => ({
+  getJarvisConfigForWorkspace: mockGetJarvisConfig,
+}));
+
+vi.mock("@/lib/ai/kg-adapter", () => ({
+  kgGetNeighbors: mockKgGetNeighbors,
+}));
+
+import {
+  updateErrorIssueStatus,
+  InvalidStatusError,
+  getErrorIssueDetail,
+  listErrorIssues,
+  getRelatedErrorIssues,
+} from "@/services/error-issues";
 
 const MOCK_ISSUE = {
   id: "issue-1",
@@ -340,5 +359,211 @@ describe("listErrorIssues", () => {
     expect(selectArg).toHaveProperty("impactScore", true);
     expect(selectArg).toHaveProperty("impactScoredAt", true);
     expect(selectArg).toHaveProperty("impactMeta", true);
+  });
+});
+
+// ── getRelatedErrorIssues ─────────────────────────────────────────────────────
+
+describe("getRelatedErrorIssues", () => {
+  const SOURCE_ISSUE = {
+    id: "issue-src",
+    workspaceId: "ws-1",
+    repositoryId: "repo-1",
+    kgRefId: "kg-src",
+  };
+
+  const JARVIS_CONFIG = { jarvisUrl: "https://jarvis.example.com", apiKey: "test-key" };
+
+  const makeKgNeighbor = (ref_id: string, node_type = "File") => ({
+    ref_id,
+    node_type,
+    name: ref_id,
+    direction: "forward" as const,
+    title: ref_id,
+  });
+
+  const makeDbIssue = (id: string, status: ErrorIssueStatus, kgRefId: string, occurrenceCount = 1) => ({
+    id,
+    title: `Issue ${id}`,
+    exceptionType: "RuntimeError",
+    status,
+    occurrenceCount,
+    lastSeenAt: new Date("2025-06-01T00:00:00Z"),
+    kgRefId,
+  });
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockFindUnique.mockResolvedValue(SOURCE_ISSUE);
+    mockGetJarvisConfig.mockResolvedValue(JARVIS_CONFIG);
+    mockIssueFindMany.mockResolvedValue([]);
+    mockKgGetNeighbors.mockResolvedValue({ neighbors: [], reachable: true });
+  });
+
+  it("returns [] when issue has no kgRefId", async () => {
+    mockFindUnique.mockResolvedValue({ ...SOURCE_ISSUE, kgRefId: null });
+    const result = await getRelatedErrorIssues("issue-src");
+    expect(result).toEqual([]);
+    expect(mockKgGetNeighbors).not.toHaveBeenCalled();
+  });
+
+  it("returns [] when issue is not found", async () => {
+    mockFindUnique.mockResolvedValue(null);
+    const result = await getRelatedErrorIssues("not-found");
+    expect(result).toEqual([]);
+    expect(mockKgGetNeighbors).not.toHaveBeenCalled();
+  });
+
+  it("returns [] when jarvis config is null", async () => {
+    mockGetJarvisConfig.mockResolvedValue(null);
+    const result = await getRelatedErrorIssues("issue-src");
+    expect(result).toEqual([]);
+    expect(mockKgGetNeighbors).not.toHaveBeenCalled();
+  });
+
+  it("returns [] when hop-1 graph is unreachable", async () => {
+    mockKgGetNeighbors.mockResolvedValue({ neighbors: [], reachable: false });
+    const result = await getRelatedErrorIssues("issue-src");
+    expect(result).toEqual([]);
+  });
+
+  it("returns [] when hop-1 has no code nodes", async () => {
+    mockKgGetNeighbors.mockResolvedValue({ neighbors: [], reachable: true });
+    const result = await getRelatedErrorIssues("issue-src");
+    expect(result).toEqual([]);
+    // Only hop-1 was called
+    expect(mockKgGetNeighbors).toHaveBeenCalledTimes(1);
+  });
+
+  it("tallies shared-node counts correctly", async () => {
+    // Hop 1: two code nodes
+    const codeNode1 = makeKgNeighbor("file-1");
+    const codeNode2 = makeKgNeighbor("file-2");
+    mockKgGetNeighbors
+      .mockResolvedValueOnce({ neighbors: [codeNode1, codeNode2], reachable: true }) // hop-1
+      .mockResolvedValueOnce({ neighbors: [makeKgNeighbor("kg-sibling-1", "ErrorIssue")], reachable: true }) // hop-2 file-1
+      .mockResolvedValueOnce({
+        neighbors: [
+          makeKgNeighbor("kg-sibling-1", "ErrorIssue"),
+          makeKgNeighbor("kg-sibling-2", "ErrorIssue"),
+        ],
+        reachable: true,
+      }); // hop-2 file-2
+
+    mockIssueFindMany.mockResolvedValue([
+      makeDbIssue("issue-a", "UNRESOLVED", "kg-sibling-1", 5),
+      makeDbIssue("issue-b", "UNRESOLVED", "kg-sibling-2", 1),
+    ]);
+
+    const result = await getRelatedErrorIssues("issue-src");
+
+    // sibling-1 shares 2 code nodes, sibling-2 shares 1 — sibling-1 should rank first
+    expect(result[0].id).toBe("issue-a");
+    expect(result[0].sharedCodeNodeCount).toBe(2);
+    expect(result[1].id).toBe("issue-b");
+    expect(result[1].sharedCodeNodeCount).toBe(1);
+  });
+
+  it("excludes the source issue from siblings", async () => {
+    const codeNode = makeKgNeighbor("file-1");
+    mockKgGetNeighbors
+      .mockResolvedValueOnce({ neighbors: [codeNode], reachable: true }) // hop-1
+      .mockResolvedValueOnce({
+        neighbors: [
+          makeKgNeighbor("kg-src", "ErrorIssue"), // source — must be excluded
+          makeKgNeighbor("kg-sibling-1", "ErrorIssue"),
+        ],
+        reachable: true,
+      }); // hop-2
+
+    mockIssueFindMany.mockResolvedValue([
+      makeDbIssue("issue-a", "UNRESOLVED", "kg-sibling-1"),
+    ]);
+
+    const result = await getRelatedErrorIssues("issue-src");
+    expect(result).toHaveLength(1);
+    expect(result[0].kgRefId).toBe("kg-sibling-1");
+  });
+
+  it("ranks unresolved issues before resolved/ignored", async () => {
+    const codeNode = makeKgNeighbor("file-1");
+    mockKgGetNeighbors
+      .mockResolvedValueOnce({ neighbors: [codeNode], reachable: true })
+      .mockResolvedValueOnce({
+        neighbors: [
+          makeKgNeighbor("kg-resolved", "ErrorIssue"),
+          makeKgNeighbor("kg-unresolved", "ErrorIssue"),
+          makeKgNeighbor("kg-ignored", "ErrorIssue"),
+        ],
+        reachable: true,
+      });
+
+    mockIssueFindMany.mockResolvedValue([
+      makeDbIssue("issue-resolved", "RESOLVED", "kg-resolved"),
+      makeDbIssue("issue-unresolved", "UNRESOLVED", "kg-unresolved"),
+      makeDbIssue("issue-ignored", "IGNORED", "kg-ignored"),
+    ]);
+
+    const result = await getRelatedErrorIssues("issue-src");
+    expect(result[0].status).toBe("UNRESOLVED");
+    expect(result[1].status).not.toBe("UNRESOLVED");
+  });
+
+  it("caps results at 10", async () => {
+    const codeNode = makeKgNeighbor("file-1");
+    const siblingNeighbors = Array.from({ length: 15 }, (_, i) =>
+      makeKgNeighbor(`kg-sib-${i}`, "ErrorIssue"),
+    );
+    mockKgGetNeighbors
+      .mockResolvedValueOnce({ neighbors: [codeNode], reachable: true })
+      .mockResolvedValueOnce({ neighbors: siblingNeighbors, reachable: true });
+
+    const dbRows = Array.from({ length: 15 }, (_, i) =>
+      makeDbIssue(`issue-${i}`, "UNRESOLVED", `kg-sib-${i}`),
+    );
+    mockIssueFindMany.mockResolvedValue(dbRows);
+
+    const result = await getRelatedErrorIssues("issue-src");
+    expect(result.length).toBeLessThanOrEqual(10);
+  });
+
+  it("skips hop-2 nodes that fail without failing the whole traversal", async () => {
+    const codeNode1 = makeKgNeighbor("file-1");
+    const codeNode2 = makeKgNeighbor("file-2");
+    mockKgGetNeighbors
+      .mockResolvedValueOnce({ neighbors: [codeNode1, codeNode2], reachable: true }) // hop-1
+      .mockRejectedValueOnce(new Error("graph timeout")) // hop-2 file-1 fails
+      .mockResolvedValueOnce({ neighbors: [makeKgNeighbor("kg-sib-1", "ErrorIssue")], reachable: true }); // hop-2 file-2 succeeds
+
+    mockIssueFindMany.mockResolvedValue([makeDbIssue("issue-a", "UNRESOLVED", "kg-sib-1")]);
+
+    const result = await getRelatedErrorIssues("issue-src");
+    expect(result).toHaveLength(1);
+    expect(result[0].id).toBe("issue-a");
+  });
+
+  it("returns [] and does not throw on unexpected error", async () => {
+    mockFindUnique.mockRejectedValue(new Error("DB connection lost"));
+    await expect(getRelatedErrorIssues("issue-src")).resolves.toEqual([]);
+  });
+
+  it("calls findMany with workspace + repository scope", async () => {
+    const codeNode = makeKgNeighbor("file-1");
+    mockKgGetNeighbors
+      .mockResolvedValueOnce({ neighbors: [codeNode], reachable: true })
+      .mockResolvedValueOnce({ neighbors: [makeKgNeighbor("kg-sib-1", "ErrorIssue")], reachable: true });
+    mockIssueFindMany.mockResolvedValue([]);
+
+    await getRelatedErrorIssues("issue-src");
+
+    expect(mockIssueFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          workspaceId: SOURCE_ISSUE.workspaceId,
+          repositoryId: SOURCE_ISSUE.repositoryId,
+          kgRefId: { in: ["kg-sib-1"] },
+        }),
+      }),
+    );
   });
 });

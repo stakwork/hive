@@ -41,6 +41,7 @@ import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { useFeatureFlag } from "@/hooks/useFeatureFlag";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { useWorkspaceAccess } from "@/hooks/useWorkspaceAccess";
+import { useUnresolvedErrorCount } from "@/hooks/useUnresolvedErrorCount";
 import { usePoolStatus } from "@/hooks/usePoolStatus";
 import { FEATURE_FLAGS } from "@/lib/feature-flags";
 import { SIDEBAR_WIDTH } from "@/lib/constants";
@@ -48,6 +49,7 @@ import { isDevelopmentMode } from "@/lib/runtime";
 import { NavUser } from "./NavUser";
 import { WorkspaceSwitcher } from "./WorkspaceSwitcher";
 import { BugReportSlideout } from "./BugReportSlideout";
+import { STAK_TOOLKIT_SLUGS } from "@/lib/eval-capture-slugs";
 
 
 
@@ -107,6 +109,7 @@ interface SidebarContentProps {
   canAdmin: boolean;
   workspaceKind?: string | null;
   isPublicViewer: boolean;
+  unresolvedErrorCount: number;
 }
 
 const baseNavigationItems: NavigationItem[] = [
@@ -185,6 +188,7 @@ function SidebarContent({
   canAdmin,
   workspaceKind,
   isPublicViewer,
+  unresolvedErrorCount,
 }: SidebarContentProps) {
   const [expandedSections, setExpandedSections] = useState<Set<string>>(() => {
     // Auto-expand Protect if any child route is active
@@ -303,6 +307,7 @@ function SidebarContent({
                       const isChildActive = isActiveTab(pathname, child.href);
                       const isChildTasksItem = child.label === "Tasks";
                       const showChildBadge = isChildTasksItem && tasksWaitingForInputCount > 0;
+                      const showErrorsBadge = child.label === "Errors" && unresolvedErrorCount > 0;
                       const childHref = workspaceSlug ? `/w/${workspaceSlug}${child.href}` : '/workspaces';
                       
                       return (
@@ -325,6 +330,11 @@ function SidebarContent({
                             {showChildBadge && (
                               <Badge className="ml-2 px-1.5 py-0.5 text-xs bg-amber-100 text-amber-800 border-amber-200">
                                 {tasksWaitingForInputCount}
+                              </Badge>
+                            )}
+                            {showErrorsBadge && (
+                              <Badge className="ml-2 px-1.5 py-0.5 text-xs bg-amber-100 text-amber-800 border-amber-200">
+                                {unresolvedErrorCount}
                               </Badge>
                             )}
                           </Link>
@@ -426,8 +436,6 @@ function SidebarContent({
   );
 }
 
-const STAK_TOOLKIT_SLUGS = ["stakwork", "hive"];
-
 export function Sidebar({ user }: SidebarProps) {
   const { slug: workspaceSlug, workspace, waitingForInputCount, refreshTaskNotifications, isPublicViewer } = useWorkspace();
   const { canAdmin } = useWorkspaceAccess();
@@ -435,6 +443,12 @@ export function Sidebar({ user }: SidebarProps) {
 
   // Use global notification count from WorkspaceContext (not affected by pagination)
   const tasksWaitingForInputCount = waitingForInputCount;
+
+  // Live unresolved error count for the Errors nav badge
+  const { count: unresolvedErrorCount } = useUnresolvedErrorCount({
+    workspaceId: workspace?.id,
+    slug: workspaceSlug,
+  });
 
   // Fetch pool status for capacity count with real-time polling (every 10 seconds).
   // Skip polling entirely for public viewers — the pool status endpoint is auth-only.
@@ -552,6 +566,7 @@ export function Sidebar({ user }: SidebarProps) {
               canAdmin={canAdmin}
               workspaceKind={workspaceKind}
               isPublicViewer={isPublicViewer}
+              unresolvedErrorCount={unresolvedErrorCount}
             />
           </SheetContent>
         </Sheet>
@@ -575,6 +590,7 @@ export function Sidebar({ user }: SidebarProps) {
             canAdmin={canAdmin}
             workspaceKind={workspaceKind}
             isPublicViewer={isPublicViewer}
+            unresolvedErrorCount={unresolvedErrorCount}
           />
         </div>
       </div>

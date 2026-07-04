@@ -209,6 +209,9 @@ model SourceControlOrg {
   researches           Research[]
   automations          Automation[]
   urnEdges             UrnEdge[]
+  // Keyset cursors for canvas-mirror-cron (per-entity {at,id} + canvas watermarks).
+  // Mirrors Workspace.jarvisSyncState — staggered schedule so writes don't race.
+  jarvisSyncState      Json?                @map("jarvis_sync_state")
 
   @@index([githubLogin])
   @@index([githubInstallationId])
@@ -2029,6 +2032,7 @@ model Prompt {
   name               String           @unique // shared/global scope; UPPERCASE_UNDERSCORE
   value              String // LIVE value — cache of the PUBLISHED version only; drafts do NOT update this field
   description        String?
+  agentNames         String[]         @default([]) @map("agent_names")
   publishedVersionId String?          @map("published_version_id")
   stakworkId         Int?             @map("stakwork_id") // Stakwork numeric prompt id, for sync
   syncStatus         PromptSyncStatus @default(OK) @map("sync_status")
@@ -2091,6 +2095,14 @@ model ErrorIssue {
   impactScore    Float?           @map("impact_score")
   impactScoredAt DateTime?        @map("impact_scored_at")
   impactMeta     Json?            @map("impact_meta")
+  /// Regression-correlation fields — populated asynchronously by the correlation service
+  /// after an onset event (new issue, regression reopen, or burst spike).
+  correlatedPrNumber      Int?      @map("correlated_pr_number")
+  correlatedPrUrl         String?   @map("correlated_pr_url")
+  correlatedCommitSha     String?   @map("correlated_commit_sha")
+  correlationConfidence   String?   @map("correlation_confidence")
+  correlationComputedAt   DateTime? @map("correlation_computed_at")
+  correlationCandidates   Json?     @map("correlation_candidates")
   workspace      Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   repository     Repository?      @relation(fields: [repositoryId], references: [id], onDelete: SetNull)
   events         ErrorEvent[]
