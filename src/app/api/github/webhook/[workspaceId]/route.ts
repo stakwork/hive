@@ -275,7 +275,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
           );
 
           if (tasks.length === 0) {
-            console.warn(`[GithubWebhook] PR ${isMerged ? 'merged' : 'closed'} - no active tasks found`, {
+            console.warn(`[GithubWebhook] PR ${isMerged ? 'merged' : 'closed'} - no matching task artifact yet (may not be committed)`, {
               delivery,
               workspaceId: repository.workspaceId,
               repositoryUrl: repository.repositoryUrl,
