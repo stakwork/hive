@@ -1128,11 +1128,8 @@ describe("GET /api/workflow/prompts/[id]/versions Integration Tests", () => {
       expect(response.status).toBe(404);
     });
 
-    test("GET versions calls Stakwork for run_count but degrades gracefully on miss", async () => {
+    test("GET versions returns run_count: 0 when no PromptDailyRun rows exist", async () => {
       authAs(testUser);
-
-      // Stakwork returns 404 for each version's run_count — route must still succeed.
-      mockFetch.mockResolvedValue({ ok: false, status: 404 } as Response);
 
       const response = await GET_VERSIONS(
         makeReq(`http://localhost/api/workflow/prompts/${promptId}/versions`, "GET"),
@@ -1141,7 +1138,7 @@ describe("GET /api/workflow/prompts/[id]/versions Integration Tests", () => {
       const data = await expectSuccess(response, 200);
       expect(data.data.versions).toHaveLength(2);
       data.data.versions.forEach((v: { run_count: unknown }) => {
-        expect(v.run_count).toBeNull();
+        expect(v.run_count).toBe(0);
       });
     });
   });
@@ -1346,18 +1343,17 @@ describe("GET /api/workflow/prompts/[id]/versions/[versionId] Integration Tests"
       expect(response.status).toBe(404);
     });
 
-    test("GET version calls Stakwork for run_count but degrades gracefully on miss", async () => {
+    test("GET version returns run_count: 0 when no PromptDailyRun rows exist", async () => {
       authAs(testUser);
 
-      // Stakwork returns 404 — route must still succeed with run_count: null.
-      mockFetch.mockResolvedValueOnce({ ok: false, status: 404 } as Response);
+      // No PromptDailyRun rows exist — route must still succeed with run_count: 0.
 
       const response = await GET_VERSION_BY_ID(
         makeReq(`http://localhost/api/workflow/prompts/${promptId}/versions/${versionId}`, "GET"),
         { params: Promise.resolve({ id: promptId, versionId }) },
       );
       const data = await expectSuccess(response, 200);
-      expect(data.data.run_count).toBeNull();
+      expect(data.data.run_count).toBe(0);
     });
   });
 });
