@@ -22,6 +22,12 @@ const baseIssue: ErrorIssueRecord = {
   release: "v1.2.3",
   metadata: null,
   kgRefId: null,
+      correlatedPrNumber: null,
+      correlatedPrUrl: null,
+      correlatedCommitSha: null,
+      correlationConfidence: null,
+      correlationComputedAt: null,
+      correlationCandidates: null,
 };
 
 const baseEvent: ErrorEventRecord = {

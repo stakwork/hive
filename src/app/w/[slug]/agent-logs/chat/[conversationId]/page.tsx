@@ -4,7 +4,7 @@ import { redirect, notFound } from "next/navigation";
 import { headers } from "next/headers";
 import Link from "next/link";
 import { ChevronLeft } from "lucide-react";
-import { LogDetailContent } from "@/components/agent-logs/LogDetailContent";
+import { ChatDetailCaptureWrapper } from "./_components/ChatDetailCaptureWrapper";
 import { getBaseUrl } from "@/lib/utils";
 import {
   chatMessagesToParsedMessages,
@@ -177,14 +177,12 @@ export default async function ChatDetailPage({ params, searchParams }: ChatDetai
             No messages in this conversation.
           </div>
         ) : (
-          <LogDetailContent
+          <ChatDetailCaptureWrapper
+            slug={slug}
+            conversationId={conversationId}
             conversation={conversation}
             stats={stats}
             rawContent={rawContent}
-            loading={false}
-            error={null}
-            variant="page"
-            workspaceSlug={slug}
           />
         )}
       </div>
