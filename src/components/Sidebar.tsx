@@ -49,6 +49,7 @@ import { isDevelopmentMode } from "@/lib/runtime";
 import { NavUser } from "./NavUser";
 import { WorkspaceSwitcher } from "./WorkspaceSwitcher";
 import { BugReportSlideout } from "./BugReportSlideout";
+import { STAK_TOOLKIT_SLUGS } from "@/lib/eval-capture-slugs";
 
 
 
@@ -434,8 +435,6 @@ function SidebarContent({
     </div>
   );
 }
-
-const STAK_TOOLKIT_SLUGS = ["stakwork", "hive"];
 
 export function Sidebar({ user }: SidebarProps) {
   const { slug: workspaceSlug, workspace, waitingForInputCount, refreshTaskNotifications, isPublicViewer } = useWorkspace();
