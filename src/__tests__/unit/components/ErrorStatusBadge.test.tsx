@@ -247,19 +247,19 @@ describe("ErrorIssuesTable", () => {
     expect(indicator.title).toBe("Top node: src/core/auth.ts");
   });
 
-  it("skeleton loading has 9 columns matching table header", () => {
+  it("skeleton loading has 10 columns matching table header", () => {
     const { container } = render(
       <ErrorIssuesTable issues={[]} loading={true} error={null} onRowClick={vi.fn()} />,
     );
-    // Header row should have 9 <th> elements
+    // Header row should have 10 <th> elements (includes correlation indicator column)
     const headerCells = container.querySelectorAll("thead th");
-    expect(headerCells).toHaveLength(9);
+    expect(headerCells).toHaveLength(10);
 
-    // Each skeleton row should also have 9 <td> cells
+    // Each skeleton row should also have 10 <td> cells
     const firstSkeletonRow = container.querySelector("tbody tr");
     expect(firstSkeletonRow).not.toBeNull();
     const skeletonCells = firstSkeletonRow!.querySelectorAll("td");
-    expect(skeletonCells).toHaveLength(9);
+    expect(skeletonCells).toHaveLength(10);
   });
 
   // ── Correlation indicator ──────────────────────────────────────────────────

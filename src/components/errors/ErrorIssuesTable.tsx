@@ -86,7 +86,7 @@ export function ErrorIssuesTable({
           <TableBody>
             {[1, 2, 3, 4, 5].map((i) => (
               <TableRow key={i}>
-                {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((j) => (
+                {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((j) => (
                   <TableCell key={j}>
                     <Skeleton className="h-5 w-full" />
                   </TableCell>
