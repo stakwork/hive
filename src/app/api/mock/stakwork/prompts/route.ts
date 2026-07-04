@@ -14,13 +14,16 @@ export async function GET(request: NextRequest) {
   const start = (page - 1) * PAGE_SIZE;
   const pageItems = all.slice(start, start + PAGE_SIZE);
 
+  const includeUsages = searchParams.get("include_usages") === "true";
+
   // Slim list shape — no `value`
-  const slim = pageItems.map(({ id, name, description, usage_notation, run_count }) => ({
+  const slim = pageItems.map(({ id, name, description, usage_notation, run_count, usages }) => ({
     id,
     name,
     description,
     usage_notation,
     run_count,
+    ...(includeUsages && { usages: usages ?? [] }),
   }));
 
   return NextResponse.json({
