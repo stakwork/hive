@@ -5,6 +5,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Skeleton } from "@/components/ui/skeleton";
 import { ErrorStatusBadge } from "./ErrorStatusBadge";
 import { TriageActions } from "./TriageActions";
+import { GitPullRequest } from "lucide-react";
 import type { ErrorIssueRecord, ErrorIssueStatus } from "@/types/error-issues";
 
 const dateFormatter = new Intl.DateTimeFormat("en-US", {
@@ -39,16 +40,17 @@ export function ErrorIssuesTable({
               <TableHead>Culprit</TableHead>
               <TableHead>Environment</TableHead>
               <TableHead>Repo</TableHead>
-              <TableHead>Occurrences</TableHead>
+              <TableHead className="text-right">Occurrences</TableHead>
               <TableHead>Last Seen</TableHead>
               <TableHead>Status</TableHead>
+              <TableHead className="w-6" />
               <TableHead>Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {[1, 2, 3, 4, 5].map((i) => (
               <TableRow key={i}>
-                {[1, 2, 3, 4, 5, 6, 7, 8].map((j) => (
+                {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((j) => (
                   <TableCell key={j}>
                     <Skeleton className="h-5 w-full" />
                   </TableCell>
@@ -90,6 +92,7 @@ export function ErrorIssuesTable({
             <TableHead className="text-right">Occurrences</TableHead>
             <TableHead>Last Seen</TableHead>
             <TableHead>Status</TableHead>
+            <TableHead className="w-6" />
             <TableHead>Actions</TableHead>
           </TableRow>
         </TableHeader>
@@ -121,6 +124,15 @@ export function ErrorIssuesTable({
               </TableCell>
               <TableCell>
                 <ErrorStatusBadge status={issue.status} />
+              </TableCell>
+              <TableCell className="text-center px-1">
+                {issue.correlationConfidence ? (
+                  <GitPullRequest
+                    className="h-3.5 w-3.5 text-amber-500 inline-block"
+                    aria-label="Correlation available"
+                    data-testid={`correlation-indicator-${issue.id}`}
+                  />
+                ) : null}
               </TableCell>
               <TableCell
                 onClick={(e) => e.stopPropagation()}

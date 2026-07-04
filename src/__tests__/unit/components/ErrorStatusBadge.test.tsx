@@ -52,6 +52,12 @@ function makeIssue(id: string, overrides?: Partial<ErrorIssueRecord>): ErrorIssu
     release: "1.0.0",
     metadata: null,
     kgRefId: null,
+    correlatedPrNumber: null,
+    correlatedPrUrl: null,
+    correlatedCommitSha: null,
+    correlationConfidence: null,
+    correlationComputedAt: null,
+    correlationCandidates: null,
     ...overrides,
   };
 }
@@ -180,5 +186,63 @@ describe("ErrorIssuesTable", () => {
       />,
     );
     expect(screen.getByText("—")).toBeInTheDocument();
+  });
+
+  // ── Correlation indicator ──────────────────────────────────────────────────
+
+  it("shows correlation indicator icon when correlationConfidence is set", () => {
+    const issues = [makeIssue("a", { correlationConfidence: "high" })];
+    render(
+      <ErrorIssuesTable
+        issues={issues}
+        loading={false}
+        error={null}
+        onRowClick={vi.fn()}
+      />,
+    );
+    expect(screen.getByTestId("correlation-indicator-a")).toBeInTheDocument();
+  });
+
+  it("shows correlation indicator for 'likely' confidence as well", () => {
+    const issues = [makeIssue("b", { correlationConfidence: "likely" })];
+    render(
+      <ErrorIssuesTable
+        issues={issues}
+        loading={false}
+        error={null}
+        onRowClick={vi.fn()}
+      />,
+    );
+    expect(screen.getByTestId("correlation-indicator-b")).toBeInTheDocument();
+  });
+
+  it("does NOT show correlation indicator when correlationConfidence is null", () => {
+    const issues = [makeIssue("c", { correlationConfidence: null })];
+    render(
+      <ErrorIssuesTable
+        issues={issues}
+        loading={false}
+        error={null}
+        onRowClick={vi.fn()}
+      />,
+    );
+    expect(screen.queryByTestId("correlation-indicator-c")).not.toBeInTheDocument();
+  });
+
+  it("shows indicator only on correlated issues in a mixed list", () => {
+    const issues = [
+      makeIssue("corr", { correlationConfidence: "high" }),
+      makeIssue("none", { correlationConfidence: null }),
+    ];
+    render(
+      <ErrorIssuesTable
+        issues={issues}
+        loading={false}
+        error={null}
+        onRowClick={vi.fn()}
+      />,
+    );
+    expect(screen.getByTestId("correlation-indicator-corr")).toBeInTheDocument();
+    expect(screen.queryByTestId("correlation-indicator-none")).not.toBeInTheDocument();
   });
 });
