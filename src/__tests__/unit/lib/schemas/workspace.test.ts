@@ -161,7 +161,7 @@ describe("updateWorkspaceSchema", () => {
     test("should accept valid descriptions", () => {
       const validDescriptions = [
         "Short description",
-        "A".repeat(500), // max length
+        "A".repeat(5000), // max length
         "", // empty string should become undefined
       ];
 
@@ -182,15 +182,15 @@ describe("updateWorkspaceSchema", () => {
       });
     });
 
-    test("should reject description over 500 characters", () => {
+    test("should reject description over 5000 characters", () => {
       const result = updateWorkspaceSchema.safeParse({
         name: "Test",
         slug: "test-slug",
-        description: "A".repeat(501),
+        description: "A".repeat(5001),
       });
       expect(result.success).toBe(false);
       if (!result.success) {
-        expect(result.error.issues[0]?.message).toBe("Description must be 500 characters or less");
+        expect(result.error.issues[0]?.message).toBe("Description must be 5000 characters or less");
       }
     });
 
@@ -240,7 +240,7 @@ describe("updateWorkspaceSchema", () => {
       const result = updateWorkspaceSchema.safeParse({
         name: "", // invalid
         slug: "INVALID SLUG", // invalid
-        description: "A".repeat(501), // invalid
+        description: "A".repeat(5001), // invalid
       });
       expect(result.success).toBe(false);
       if (!result.success) {
