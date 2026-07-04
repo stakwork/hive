@@ -89,6 +89,7 @@ jobs:
         env:
           TEST_SUITE: integration
           DATABASE_URL: postgresql://hive_user:hive_password@localhost:5432/hive_db
+          DIRECT_URL: postgresql://hive_user:hive_password@localhost:5432/hive_db
           NEXTAUTH_URL: http://localhost:3000
           NEXTAUTH_SECRET: ${{ secrets.NEXTAUTH_SECRET }}
           JWT_SECRET: ${{ secrets.JWT_SECRET }}

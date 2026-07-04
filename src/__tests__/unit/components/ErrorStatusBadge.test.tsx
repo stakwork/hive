@@ -58,6 +58,9 @@ function makeIssue(id: string, overrides?: Partial<ErrorIssueRecord>): ErrorIssu
     correlationConfidence: null,
     correlationComputedAt: null,
     correlationCandidates: null,
+    impactScore: null,
+    impactScoredAt: null,
+    impactMeta: null,
     ...overrides,
   };
 }
@@ -185,7 +188,78 @@ describe("ErrorIssuesTable", () => {
         onRowClick={vi.fn()}
       />,
     );
-    expect(screen.getByText("—")).toBeInTheDocument();
+    // At least one — (environment dash); impactScore is also null so two are expected
+    const dashes = screen.getAllByText("—");
+    expect(dashes.length).toBeGreaterThan(0);
+  });
+
+  // ── Impact column tests ──────────────────────────────────────────────────
+
+  it("renders Impact column header in the table", () => {
+    const issues = [makeIssue("a")];
+    render(
+      <ErrorIssuesTable issues={issues} loading={false} error={null} onRowClick={vi.fn()} />,
+    );
+    expect(screen.getByText("Impact")).toBeInTheDocument();
+  });
+
+  it("renders impact indicator badge for a scored issue", () => {
+    const issues = [makeIssue("a", { impactScore: 0.85 })];
+    render(
+      <ErrorIssuesTable issues={issues} loading={false} error={null} onRowClick={vi.fn()} />,
+    );
+    const indicator = screen.getByTestId("impact-indicator");
+    expect(indicator).toBeInTheDocument();
+    expect(indicator.textContent).toBe("85");
+  });
+
+  it("renders low impact score correctly", () => {
+    const issues = [makeIssue("a", { impactScore: 0.2 })];
+    render(
+      <ErrorIssuesTable issues={issues} loading={false} error={null} onRowClick={vi.fn()} />,
+    );
+    const indicator = screen.getByTestId("impact-indicator");
+    expect(indicator.textContent).toBe("20");
+  });
+
+  it("renders — (muted) when impactScore is null", () => {
+    const issues = [makeIssue("a", { impactScore: null })];
+    render(
+      <ErrorIssuesTable issues={issues} loading={false} error={null} onRowClick={vi.fn()} />,
+    );
+    // null score shows muted dash (in addition to env dash if env is set)
+    const dashes = screen.getAllByText("—");
+    expect(dashes.length).toBeGreaterThan(0);
+    expect(screen.queryByTestId("impact-indicator")).toBeNull();
+  });
+
+  it("renders impact meta tooltip title when impactMeta has topNodeName", () => {
+    const issues = [
+      makeIssue("a", {
+        impactScore: 0.9,
+        impactMeta: { topNodeName: "src/core/auth.ts" },
+      }),
+    ];
+    render(
+      <ErrorIssuesTable issues={issues} loading={false} error={null} onRowClick={vi.fn()} />,
+    );
+    const indicator = screen.getByTestId("impact-indicator");
+    expect(indicator.title).toBe("Top node: src/core/auth.ts");
+  });
+
+  it("skeleton loading has 9 columns matching table header", () => {
+    const { container } = render(
+      <ErrorIssuesTable issues={[]} loading={true} error={null} onRowClick={vi.fn()} />,
+    );
+    // Header row should have 9 <th> elements
+    const headerCells = container.querySelectorAll("thead th");
+    expect(headerCells).toHaveLength(9);
+
+    // Each skeleton row should also have 9 <td> cells
+    const firstSkeletonRow = container.querySelector("tbody tr");
+    expect(firstSkeletonRow).not.toBeNull();
+    const skeletonCells = firstSkeletonRow!.querySelectorAll("td");
+    expect(skeletonCells).toHaveLength(9);
   });
 
   // ── Correlation indicator ──────────────────────────────────────────────────

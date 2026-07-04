@@ -3,7 +3,7 @@ import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
 import { isDevelopmentMode } from "@/lib/runtime";
-import { writePromptThrough } from "@/services/prompts/prompt-sync";
+import { writePromptThrough, fetchPromptUsagesByName, PromptUsage } from "@/services/prompts/prompt-sync";
 import { BIFROST_AGENT_NAMES } from "@/services/bifrost/agent-names";
 
 export const runtime = "nodejs";
@@ -126,6 +126,8 @@ export async function GET(request: NextRequest) {
         }
       : {};
 
+    const includeUsages = searchParams.get("include_usages") === "true";
+
     const [prompts, total] = await Promise.all([
       db.prompt.findMany({
         where,
@@ -142,10 +144,24 @@ export async function GET(request: NextRequest) {
       db.prompt.count({ where }),
     ]);
 
+    // Best-effort: fetch usages from Stakwork when requested; degrade to empty on outage.
+    let usagesByName: Map<string, PromptUsage[]> = new Map();
+    if (includeUsages) {
+      usagesByName = await fetchPromptUsagesByName();
+    }
+
+    const shapedPrompts = prompts.map((p) => {
+      const shaped = shapePrompt(p);
+      if (includeUsages) {
+        return { ...shaped, usages: usagesByName.get(p.name) ?? [] };
+      }
+      return shaped;
+    });
+
     return NextResponse.json({
       success: true,
       data: {
-        prompts: prompts.map(shapePrompt),
+        prompts: shapedPrompts,
         total,
         size: pageSize,
         page,

@@ -16,6 +16,8 @@ const DEFAULT_EVENTS_LIMIT = 20;
 
 // ── List ──────────────────────────────────────────────────────────────────────
 
+export type ErrorIssuesSortOrder = "recent" | "impact";
+
 export interface ListErrorIssuesParams {
   workspaceId: string;
   status?: ErrorIssueStatus;
@@ -23,6 +25,7 @@ export interface ListErrorIssuesParams {
   repoKey?: string;
   skip?: number;
   limit?: number;
+  sort?: ErrorIssuesSortOrder;
 }
 
 export async function listErrorIssues({
@@ -32,6 +35,7 @@ export async function listErrorIssues({
   repoKey,
   skip = 0,
   limit = 20,
+  sort = "recent",
 }: ListErrorIssuesParams) {
   const statusWhere = status
     ? { status }
@@ -45,10 +49,23 @@ export async function listErrorIssues({
     ...(repoKey ? { repoKey } : {}),
   };
 
+  // impact ordering: impactScore desc nulls-last, then occurrenceCount desc, then lastSeenAt desc.
+  // Prisma/PostgreSQL default for DESC is NULLS FIRST, so we must explicitly set nulls: "last"
+  // to push unscored issues below scored ones.
+  // recent ordering: lastSeenAt desc (default behaviour — unchanged for existing callers)
+  const orderBy =
+    sort === "impact"
+      ? [
+          { impactScore: { sort: "desc" as const, nulls: "last" as const } },
+          { occurrenceCount: "desc" as const },
+          { lastSeenAt: "desc" as const },
+        ]
+      : { lastSeenAt: "desc" as const };
+
   const [issues, total] = await Promise.all([
     db.errorIssue.findMany({
       where,
-      orderBy: { lastSeenAt: "desc" },
+      orderBy,
       skip,
       take: limit,
       select: {
@@ -73,6 +90,9 @@ export async function listErrorIssues({
         correlationConfidence: true,
         correlationComputedAt: true,
         correlationCandidates: true,
+        impactScore: true,
+        impactScoredAt: true,
+        impactMeta: true,
       },
     }),
     db.errorIssue.count({ where }),
@@ -217,6 +237,47 @@ export async function fetchRedactedBlobContent(blobUrl: string): Promise<string>
   } catch {
     return raw;
   }
+}
+
+// ── Auto-resolve ──────────────────────────────────────────────────────────────
+
+/**
+ * Resolves all ErrorIssues linked to the given Feature IDs that are not yet
+ * RESOLVED or IGNORED.
+ *
+ * - Idempotent: already-RESOLVED issues are silently skipped (notIn filter).
+ * - IGNORED protection: IGNORED issues are never touched (notIn filter).
+ * - Partial failure: one issue failing does not block others.
+ * - Returns the list of issue IDs that were actually resolved.
+ */
+export async function autoResolveErrorIssuesForFeatures(
+  featureIds: string[],
+): Promise<{ resolvedIssueIds: string[] }> {
+  if (featureIds.length === 0) return { resolvedIssueIds: [] };
+
+  const issues = await db.errorIssue.findMany({
+    where: {
+      features: { some: { id: { in: featureIds } } },
+      status: { notIn: ["RESOLVED", "IGNORED"] },
+    },
+    select: { id: true },
+  });
+
+  const resolvedIssueIds: string[] = [];
+
+  for (const { id } of issues) {
+    try {
+      await updateErrorIssueStatus(id, "RESOLVED");
+      resolvedIssueIds.push(id);
+    } catch (err) {
+      console.error("[error-auto-resolve] failed to resolve issue (non-blocking)", {
+        issueId: id,
+        error: err,
+      });
+    }
+  }
+
+  return { resolvedIssueIds };
 }
 
 // ── Related Issues ────────────────────────────────────────────────────────────

@@ -15,6 +15,41 @@ const dateFormatter = new Intl.DateTimeFormat("en-US", {
   minute: "2-digit",
 });
 
+/** Render a compact impact indicator. Score is [0,1]; null = unscored. */
+function ImpactIndicator({
+  score,
+  meta,
+}: {
+  score: number | null;
+  meta: Record<string, unknown> | null;
+}) {
+  if (score === null) {
+    return <span className="text-muted-foreground">—</span>;
+  }
+
+  // Map [0,1] to one of three tiers for colour
+  const pct = Math.round(score * 100);
+  const colorClass =
+    pct >= 66
+      ? "bg-destructive/80 text-destructive-foreground"
+      : pct >= 33
+        ? "bg-orange-500/80 text-white"
+        : "bg-muted text-muted-foreground";
+
+  const topNode =
+    meta && typeof meta.topNodeName === "string" ? meta.topNodeName : undefined;
+
+  return (
+    <span
+      className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold tabular-nums ${colorClass}`}
+      title={topNode ? `Top node: ${topNode}` : undefined}
+      data-testid="impact-indicator"
+    >
+      {pct}
+    </span>
+  );
+}
+
 interface ErrorIssuesTableProps {
   issues: ErrorIssueRecord[];
   loading: boolean;
@@ -42,6 +77,7 @@ export function ErrorIssuesTable({
               <TableHead>Repo</TableHead>
               <TableHead className="text-right">Occurrences</TableHead>
               <TableHead>Last Seen</TableHead>
+              <TableHead>Impact</TableHead>
               <TableHead>Status</TableHead>
               <TableHead className="w-6" />
               <TableHead>Actions</TableHead>
@@ -91,6 +127,7 @@ export function ErrorIssuesTable({
             <TableHead>Repo</TableHead>
             <TableHead className="text-right">Occurrences</TableHead>
             <TableHead>Last Seen</TableHead>
+            <TableHead>Impact</TableHead>
             <TableHead>Status</TableHead>
             <TableHead className="w-6" />
             <TableHead>Actions</TableHead>
@@ -121,6 +158,9 @@ export function ErrorIssuesTable({
               </TableCell>
               <TableCell className="text-sm text-muted-foreground whitespace-nowrap">
                 {dateFormatter.format(new Date(issue.lastSeenAt))}
+              </TableCell>
+              <TableCell>
+                <ImpactIndicator score={issue.impactScore ?? null} meta={issue.impactMeta ?? null} />
               </TableCell>
               <TableCell>
                 <ErrorStatusBadge status={issue.status} />
