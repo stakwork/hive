@@ -201,6 +201,85 @@ async function recordPromptOnGraph(
   }
 }
 
+// ─── Usage/run-count read helpers (best-effort, never throw) ─────────────────
+
+export interface PromptUsage {
+  workflow_id: number;
+  workflow_name: string;
+  step_id: string;
+}
+
+/**
+ * Fetch prompt usages from Stakwork and return a name→usages[] map.
+ * Best-effort: returns an empty Map on any error/outage.
+ */
+export async function fetchPromptUsagesByName(): Promise<Map<string, PromptUsage[]>> {
+  try {
+    const url = `${config.STAKWORK_BASE_URL}/prompts?include_usages=true`;
+    const response = await fetch(url, { method: "GET", headers: stakworkHeaders() });
+    if (!response.ok) {
+      logger.warn(
+        `[prompt-sync] fetchPromptUsagesByName: Stakwork returned ${response.status}`,
+        "prompt-sync",
+        { status: response.status },
+      );
+      return new Map();
+    }
+    const json = await response.json();
+    const prompts: Array<unknown> = json?.data?.prompts ?? json?.prompts ?? [];
+    const map = new Map<string, PromptUsage[]>();
+    for (const p of prompts) {
+      if (!p || typeof p !== "object") continue;
+      const entry = p as { name?: unknown; usages?: unknown };
+      if (typeof entry.name === "string" && Array.isArray(entry.usages)) {
+        map.set(entry.name, entry.usages as PromptUsage[]);
+      }
+    }
+    return map;
+  } catch (err) {
+    logger.warn(
+      "[prompt-sync] fetchPromptUsagesByName: Stakwork fetch failed (non-fatal)",
+      "prompt-sync",
+      { error: String(err) },
+    );
+    return new Map();
+  }
+}
+
+/**
+ * Fetch run count for a specific prompt version from Stakwork.
+ * Best-effort: returns null on any error/outage/miss.
+ */
+export async function fetchVersionRunCount(
+  name: string,
+  hiveVersionId: string,
+): Promise<number | null> {
+  try {
+    const params = new URLSearchParams({ name, hive_version_id: hiveVersionId });
+    const url = `${config.STAKWORK_BASE_URL}/prompts/find_by_version?${params}`;
+    const response = await fetch(url, { method: "GET", headers: stakworkHeaders() });
+    if (response.status === 404) return null;
+    if (!response.ok) {
+      logger.warn(
+        `[prompt-sync] fetchVersionRunCount: Stakwork returned ${response.status}`,
+        "prompt-sync",
+        { name, hiveVersionId, status: response.status },
+      );
+      return null;
+    }
+    const json = await response.json();
+    const runCount = json?.run_count ?? json?.data?.run_count;
+    return typeof runCount === "number" ? runCount : null;
+  } catch (err) {
+    logger.warn(
+      "[prompt-sync] fetchVersionRunCount: Stakwork fetch failed (non-fatal)",
+      "prompt-sync",
+      { name, hiveVersionId, error: String(err) },
+    );
+    return null;
+  }
+}
+
 // ─── Core operations ──────────────────────────────────────────────────────────
 
 /**
