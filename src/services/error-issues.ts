@@ -16,6 +16,8 @@ const DEFAULT_EVENTS_LIMIT = 20;
 
 // ── List ──────────────────────────────────────────────────────────────────────
 
+export type ErrorIssuesSortOrder = "recent" | "impact";
+
 export interface ListErrorIssuesParams {
   workspaceId: string;
   status?: ErrorIssueStatus;
@@ -23,6 +25,7 @@ export interface ListErrorIssuesParams {
   repoKey?: string;
   skip?: number;
   limit?: number;
+  sort?: ErrorIssuesSortOrder;
 }
 
 export async function listErrorIssues({
@@ -32,6 +35,7 @@ export async function listErrorIssues({
   repoKey,
   skip = 0,
   limit = 20,
+  sort = "recent",
 }: ListErrorIssuesParams) {
   const statusWhere = status
     ? { status }
@@ -45,10 +49,23 @@ export async function listErrorIssues({
     ...(repoKey ? { repoKey } : {}),
   };
 
+  // impact ordering: impactScore desc nulls-last, then occurrenceCount desc, then lastSeenAt desc.
+  // Prisma/PostgreSQL default for DESC is NULLS FIRST, so we must explicitly set nulls: "last"
+  // to push unscored issues below scored ones.
+  // recent ordering: lastSeenAt desc (default behaviour — unchanged for existing callers)
+  const orderBy =
+    sort === "impact"
+      ? [
+          { impactScore: { sort: "desc" as const, nulls: "last" as const } },
+          { occurrenceCount: "desc" as const },
+          { lastSeenAt: "desc" as const },
+        ]
+      : { lastSeenAt: "desc" as const };
+
   const [issues, total] = await Promise.all([
     db.errorIssue.findMany({
       where,
-      orderBy: { lastSeenAt: "desc" },
+      orderBy,
       skip,
       take: limit,
       select: {
@@ -73,6 +90,9 @@ export async function listErrorIssues({
         correlationConfidence: true,
         correlationComputedAt: true,
         correlationCandidates: true,
+        impactScore: true,
+        impactScoredAt: true,
+        impactMeta: true,
       },
     }),
     db.errorIssue.count({ where }),

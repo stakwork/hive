@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { ErrorIssueStatus } from "@prisma/client";
 import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 import { validateWorkspaceAccessById } from "@/services/workspace";
-import { listErrorIssues } from "@/services/error-issues";
+import { listErrorIssues, type ErrorIssuesSortOrder } from "@/services/error-issues";
 
 /**
  * GET /api/errors
@@ -56,6 +56,17 @@ export async function GET(request: NextRequest) {
     const status = !statusParam || isAll ? undefined : (statusParam as ErrorIssueStatus);
     const includeAll = isAll ? true : undefined;
 
+    // Sort order
+    const sortParam = searchParams.get("sort");
+    const validSorts: ErrorIssuesSortOrder[] = ["recent", "impact"];
+    if (sortParam !== null && !validSorts.includes(sortParam as ErrorIssuesSortOrder)) {
+      return NextResponse.json(
+        { error: `Invalid sort. Must be one of: ${validSorts.join(", ")}` },
+        { status: 400 },
+      );
+    }
+    const sort = (sortParam as ErrorIssuesSortOrder | null) ?? "recent";
+
     // Pagination
     const limitParam = searchParams.get("limit");
     const skipParam = searchParams.get("skip");
@@ -69,7 +80,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "skip must be a non-negative number" }, { status: 400 });
     }
 
-    const result = await listErrorIssues({ workspaceId, status, includeAll, repoKey, skip, limit });
+    const result = await listErrorIssues({ workspaceId, status, includeAll, repoKey, skip, limit, sort });
 
     return NextResponse.json(result, { status: 200 });
   } catch (error) {
