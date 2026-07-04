@@ -21,6 +21,17 @@ export const HIVE_FEATURE = "HiveFeature";
 export const HIVE_TASK = "HiveTask";
 export const HIVE_CHAT_MESSAGE = "HiveChatMessage";
 
+// Org-canvas entity node types (canvas-mirror-cron).
+export const HIVE_INITIATIVE = "HiveInitiative";
+export const HIVE_MILESTONE = "HiveMilestone";
+export const HIVE_RESEARCH = "HiveResearch";
+export const HIVE_NOTE = "HiveNote";
+export const HIVE_DECISION = "HiveDecision";
+
+// In-graph edge types for org-canvas entities.
+export const EDGE_HAS_MILESTONE = "HAS_MILESTONE"; // Initiative → Milestone
+export const EDGE_HAS_RESEARCH = "HAS_RESEARCH"; // Initiative|Milestone → Research
+
 // Jarvis stores node types verbatim (see the casing note above), so a `HiveTask`
 // node lives under the Neo4j label `HiveTask` and must be queried as such.
 // Used by the PR-link cron to read back HiveTask nodes' ref_ids.
@@ -279,4 +290,193 @@ export function chatMessageEdge(m: ChatMessageRow): JarvisEdgePayload | null {
     };
   }
   return null;
+}
+
+// ---------------------------------------------------------------------------
+// Org-canvas entity mappers (canvas-mirror-cron)
+// ---------------------------------------------------------------------------
+
+export interface InitiativeRow {
+  id: string;
+  name: string;
+  description?: string | null;
+  status?: string | null;
+  orgId?: string | null;
+  assigneeId?: string | null;
+  startDate?: Date | null;
+  targetDate?: Date | null;
+  completedAt?: Date | null;
+  createdAt?: Date | null;
+  updatedAt?: Date | null;
+}
+
+export interface MilestoneRow {
+  id: string;
+  name: string;
+  description?: string | null;
+  status?: string | null;
+  sequence?: number | null;
+  initiativeId?: string | null;
+  assigneeId?: string | null;
+  dueDate?: Date | null;
+  completedAt?: Date | null;
+  createdAt?: Date | null;
+  updatedAt?: Date | null;
+}
+
+export interface ResearchRow {
+  id: string;
+  slug: string;
+  topic: string;
+  title: string;
+  summary?: string | null;
+  content?: string | null;
+  orgId?: string | null;
+  initiativeId?: string | null;
+  createdAt?: Date | null;
+  updatedAt?: Date | null;
+}
+
+export interface CanvasNoteRow {
+  id: string;
+  text: string;
+  category: "note" | "decision";
+  x?: number | null;
+  y?: number | null;
+  // canvasRef is the Canvas.ref this node was extracted from (for node_data provenance)
+  canvasRef?: string | null;
+}
+
+export function initiativeToNode(i: InitiativeRow): JarvisNodePayload {
+  return {
+    node_type: HIVE_INITIATIVE,
+    node_data: clean({
+      initiative_id: i.id,
+      name: i.name,
+      description: i.description,
+      status: i.status,
+      org_id: i.orgId,
+      assignee_id: i.assigneeId,
+      start_date: iso(i.startDate),
+      target_date: iso(i.targetDate),
+      completed_at: iso(i.completedAt),
+      created_at: iso(i.createdAt),
+      updated_at: iso(i.updatedAt),
+    }),
+  };
+}
+
+export function milestoneToNode(m: MilestoneRow): JarvisNodePayload {
+  return {
+    node_type: HIVE_MILESTONE,
+    node_data: clean({
+      milestone_id: m.id,
+      name: m.name,
+      description: m.description,
+      status: m.status,
+      sequence: m.sequence,
+      initiative_id: m.initiativeId,
+      assignee_id: m.assigneeId,
+      due_date: iso(m.dueDate),
+      completed_at: iso(m.completedAt),
+      created_at: iso(m.createdAt),
+      updated_at: iso(m.updatedAt),
+    }),
+  };
+}
+
+export function researchToNode(r: ResearchRow): JarvisNodePayload {
+  return {
+    node_type: HIVE_RESEARCH,
+    node_data: clean({
+      research_id: r.id,
+      name: r.title,
+      slug: r.slug,
+      topic: r.topic,
+      summary: r.summary,
+      content: r.content,
+      org_id: r.orgId,
+      initiative_id: r.initiativeId,
+      created_at: iso(r.createdAt),
+      updated_at: iso(r.updatedAt),
+    }),
+  };
+}
+
+export function noteToNode(n: CanvasNoteRow): JarvisNodePayload {
+  return {
+    node_type: HIVE_NOTE,
+    node_data: clean({
+      note_id: n.id,
+      name: n.text.replace(/\s+/g, " ").trim().slice(0, 80) || "(note)",
+      text: n.text,
+      canvas_ref: n.canvasRef,
+      x: n.x,
+      y: n.y,
+    }),
+  };
+}
+
+export function decisionToNode(n: CanvasNoteRow): JarvisNodePayload {
+  return {
+    node_type: HIVE_DECISION,
+    node_data: clean({
+      decision_id: n.id,
+      name: n.text.replace(/\s+/g, " ").trim().slice(0, 80) || "(decision)",
+      text: n.text,
+      canvas_ref: n.canvasRef,
+      x: n.x,
+      y: n.y,
+    }),
+  };
+}
+
+// --- Org-canvas endpoint helpers (identity + required schema fields only) ---
+
+function initiativeEndpoint(id: string, name: string) {
+  return { node_type: HIVE_INITIATIVE, node_data: { initiative_id: id, name } };
+}
+
+function milestoneEndpoint(id: string, name: string) {
+  return { node_type: HIVE_MILESTONE, node_data: { milestone_id: id, name } };
+}
+
+function researchEndpoint(id: string, title: string, slug: string) {
+  return { node_type: HIVE_RESEARCH, node_data: { research_id: id, name: title, slug } };
+}
+
+/** HiveInitiative -HAS_MILESTONE-> HiveMilestone */
+export function initiativeMilestoneEdge(
+  initiative: { id: string; name: string },
+  milestone: { id: string; name: string },
+): JarvisEdgePayload {
+  return {
+    edge: { edge_type: EDGE_HAS_MILESTONE },
+    source: initiativeEndpoint(initiative.id, initiative.name),
+    target: milestoneEndpoint(milestone.id, milestone.name),
+  };
+}
+
+/** HiveInitiative -HAS_RESEARCH-> HiveResearch */
+export function initiativeResearchEdge(
+  initiative: { id: string; name: string },
+  research: { id: string; title: string; slug: string },
+): JarvisEdgePayload {
+  return {
+    edge: { edge_type: EDGE_HAS_RESEARCH },
+    source: initiativeEndpoint(initiative.id, initiative.name),
+    target: researchEndpoint(research.id, research.title, research.slug),
+  };
+}
+
+/** HiveMilestone -HAS_RESEARCH-> HiveResearch (when research has milestoneId) */
+export function milestoneResearchEdge(
+  milestone: { id: string; name: string },
+  research: { id: string; title: string; slug: string },
+): JarvisEdgePayload {
+  return {
+    edge: { edge_type: EDGE_HAS_RESEARCH },
+    source: milestoneEndpoint(milestone.id, milestone.name),
+    target: researchEndpoint(research.id, research.title, research.slug),
+  };
 }
