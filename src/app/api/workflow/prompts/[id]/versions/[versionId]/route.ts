@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
 import { isDevelopmentMode } from "@/lib/runtime";
+import { fetchVersionRunCount } from "@/services/prompts/prompt-sync";
 
 export const runtime = "nodejs";
 export const fetchCache = "force-no-store";
@@ -45,12 +46,16 @@ export async function GET(
       return NextResponse.json({ error: "Version ID is required" }, { status: 400 });
     }
 
-    const version = await db.promptVersion.findFirst({
-      where: { id: versionId, promptId: id },
-    });
+    const [version, prompt] = await Promise.all([
+      db.promptVersion.findFirst({ where: { id: versionId, promptId: id } }),
+      db.prompt.findUnique({ where: { id }, select: { name: true } }),
+    ]);
     if (!version) {
       return NextResponse.json({ error: "Version not found" }, { status: 404 });
     }
+
+    // Best-effort run_count enrichment — degrade to null on Stakwork failure.
+    const runCount = prompt ? await fetchVersionRunCount(prompt.name, version.id) : null;
 
     return NextResponse.json({
       success: true,
@@ -63,6 +68,7 @@ export async function GET(
         whodunnit: version.whodunnit,
         published: version.published,
         created_at: version.createdAt.toISOString(),
+        run_count: runCount,
       },
     });
   } catch (error) {

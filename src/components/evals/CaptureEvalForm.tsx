@@ -5,6 +5,14 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Loader2, Plus, CheckCircle2, Circle } from "lucide-react";
 import { cn } from "@/lib/utils";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { HIVE_AGENT_OPTIONS } from "@/lib/utils/hive-agent";
 import type { EvalRequirement } from "@/hooks/useEvalRequirements";
 
 const CREATE_NEW_VALUE = "__create_new__";
@@ -32,6 +40,9 @@ interface CaptureEvalFormProps {
   requirementsError?: string | null;
   selectedRequirementId?: string | null;
   onSelectRequirement?: (id: string | null) => void;
+  // Agent attribution (optional)
+  selectedAgent?: string;
+  onSelectAgent?: (agent: string) => void;
 }
 
 export function CaptureEvalForm({
@@ -52,6 +63,8 @@ export function CaptureEvalForm({
   requirementsError = null,
   selectedRequirementId,
   onSelectRequirement,
+  selectedAgent,
+  onSelectAgent,
 }: CaptureEvalFormProps) {
   const [reqSearch, setReqSearch] = useState("");
 
@@ -267,6 +280,29 @@ export function CaptureEvalForm({
             onChange={(e) => onRequirementChange(e.target.value)}
             disabled={submitting}
           />
+        </div>
+      )}
+
+      {/* Agent attribution (optional — only shown when callback provided) */}
+      {onSelectAgent !== undefined && (
+        <div className="space-y-1.5">
+          <Label htmlFor="eval-agent">Agent</Label>
+          <Select
+            value={selectedAgent ?? ""}
+            onValueChange={onSelectAgent}
+            disabled={submitting}
+          >
+            <SelectTrigger id="eval-agent" aria-label="Agent">
+              <SelectValue placeholder="Select agent…" />
+            </SelectTrigger>
+            <SelectContent>
+              {HIVE_AGENT_OPTIONS.map((opt) => (
+                <SelectItem key={opt.name} value={opt.name}>
+                  {opt.displayName}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
       )}
 
