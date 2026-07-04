@@ -12,6 +12,7 @@ import { PageHeader } from "@/components/ui/page-header";
 import { ErrorIssuesTable } from "@/components/errors";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { useErrorIssues } from "@/hooks/useErrorIssues";
+import type { ErrorIssuesSortParam } from "@/hooks/useErrorIssues";
 import { canonicalRepoKey } from "@/lib/utils/error-fingerprint";
 import type { ErrorIssueStatus } from "@/types/error-issues";
 
@@ -31,6 +32,7 @@ export default function ErrorsPage() {
 
   const [statusFilter, setStatusFilter] = useState<ErrorIssueStatus | "all">("UNRESOLVED");
   const [repoKeyFilter, setRepoKeyFilter] = useState<string | undefined>(undefined);
+  const [sortOrder, setSortOrder] = useState<ErrorIssuesSortParam>("recent");
   const [page, setPage] = useState(1);
 
   const skip = (page - 1) * ISSUES_PER_PAGE;
@@ -40,6 +42,7 @@ export default function ErrorsPage() {
     slug,
     status: statusFilter,
     repoKey: repoKeyFilter,
+    sort: sortOrder,
     skip,
     limit: ISSUES_PER_PAGE,
   });
@@ -60,6 +63,11 @@ export default function ErrorsPage() {
 
   const handleRepoKeyChange = (val: string) => {
     setRepoKeyFilter(val === ALL_VALUE ? undefined : val);
+    setPage(1);
+  };
+
+  const handleSortChange = (val: string) => {
+    setSortOrder(val as ErrorIssuesSortParam);
     setPage(1);
   };
 
@@ -92,6 +100,17 @@ export default function ErrorsPage() {
                   <SelectItem value="UNRESOLVED">Unresolved</SelectItem>
                   <SelectItem value="RESOLVED">Resolved</SelectItem>
                   <SelectItem value="IGNORED">Ignored</SelectItem>
+                </SelectContent>
+              </Select>
+
+              {/* Sort order */}
+              <Select value={sortOrder} onValueChange={handleSortChange}>
+                <SelectTrigger className="w-full sm:w-44" data-testid="sort-select">
+                  <SelectValue placeholder="Most Recent" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="recent">Most Recent</SelectItem>
+                  <SelectItem value="impact">Highest Impact</SelectItem>
                 </SelectContent>
               </Select>
 
