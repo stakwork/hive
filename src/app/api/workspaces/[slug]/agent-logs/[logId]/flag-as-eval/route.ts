@@ -5,8 +5,8 @@ import { getJarvisUrl } from "@/lib/utils/swarm";
 import { getWorkspaceSwarmAccess } from "@/lib/helpers/swarm-access";
 import { addNode, addEdge } from "@/services/swarm/api/nodes";
 import { lookupAgentSessionByLogUrl } from "@/lib/utils/agent-session-lookup";
-import { db } from "@/lib/db";
 import { isEvalTriggerSource, type EvalTriggerSource } from "@/lib/utils/eval-source";
+import { resolveCaptureSource } from "@/lib/eval-capture/resolve-capture-source";
 import { logger } from "@/lib/logger";
 
 type RouteParams = { params: Promise<{ slug: string; logId: string }> };
@@ -36,25 +36,6 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     if (!swarmAccessResult.success) {
       logger.warn("[FlagAsEval] Swarm access denied", swarmAccessResult.error.type);
       return handleSwarmAccessError(swarmAccessResult.error);
-    }
-
-    // IDOR guard — verify the log belongs to this workspace
-    const agentLog = await db.agentLog.findUnique({
-      where: { id: logId },
-      select: { workspaceId: true, blobUrl: true },
-    });
-
-    if (!agentLog) {
-      return NextResponse.json({ error: "Agent log not found" }, { status: 404 });
-    }
-
-    const logWorkspace = await db.workspace.findUnique({
-      where: { id: agentLog.workspaceId },
-      select: { slug: true },
-    });
-
-    if (!logWorkspace || logWorkspace.slug !== slug) {
-      return NextResponse.json({ error: "Access denied" }, { status: 403 });
     }
 
     // Parse and validate request body
@@ -95,7 +76,17 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       );
     }
 
-    // USE_MOCKS branch
+    // IDOR guard — verify the log (AgentLog OR SharedConversation) belongs to this workspace
+    const captured = await resolveCaptureSource(slug, logId);
+
+    if (captured === null) {
+      return NextResponse.json({ error: "Agent log not found" }, { status: 404 });
+    }
+    if ("denied" in captured) {
+      return NextResponse.json({ error: "Access denied" }, { status: 403 });
+    }
+
+    // USE_MOCKS branch (after IDOR check — mock routes are id-agnostic)
     if (process.env.USE_MOCKS === "true") {
       logger.info("[FlagAsEval] USE_MOCKS=true, routing to mock endpoint");
       const mockResponse = await fetch(
@@ -168,17 +159,21 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       target: { ref_id: triggerRefId },
     });
 
-    // 5. Optional: look up AgentSession by log URL and create EVALUATED edge
+    // 5. Optional: look up AgentSession by log URL (only available for AgentLog branch)
     let sessionRefId: string | undefined;
-    const foundSession = await lookupAgentSessionByLogUrl(config, agentLog.blobUrl);
-    if (foundSession) {
-      sessionRefId = foundSession;
-      await addEdge(config, {
-        edge: { edge_type: "EVALUATED" },
-        source: { ref_id: triggerRefId },
-        target: { ref_id: sessionRefId },
-      });
+    if (captured.kind === "agent_log") {
+      const foundSession = await lookupAgentSessionByLogUrl(config, captured.blobUrl);
+      if (foundSession) {
+        sessionRefId = foundSession;
+        await addEdge(config, {
+          edge: { edge_type: "EVALUATED" },
+          source: { ref_id: triggerRefId },
+          target: { ref_id: sessionRefId },
+        });
+      }
     }
+
+    logger.info(`[FlagAsEval] resolved source=${captured.kind} logId=${logId}`);
 
     return NextResponse.json({
       success: true,
