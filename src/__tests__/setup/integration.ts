@@ -1,6 +1,5 @@
 import "./global";
-import { beforeAll, afterAll, beforeEach, afterEach } from "vitest";
-import { db } from "@/lib/db";
+import { beforeEach, afterEach } from "vitest";
 import { resetDatabase } from "../support/utilities/database";
 import { ensureTestEnv } from "./env";
 
@@ -29,17 +28,10 @@ process.env.DATABASE_URL = TEST_DATABASE_URL;
 const initialFetch = globalThis.fetch;
 const fetchState: Array<typeof globalThis.fetch> = [];
 
-beforeAll(async () => {
-  // Re-assert DATABASE_URL in case something reset it between module load and
-  // beforeAll execution.
-  process.env.DATABASE_URL = TEST_DATABASE_URL;
-
-  // Establish the Prisma connection once before any tests run.
-  await db.$connect();
-  await db.$queryRaw`SELECT 1`;
-}, 30_000);
-
 // Reset database before each test to ensure clean state.
+// Prisma connects lazily on the first ORM call inside resetDatabase().
+// No explicit $connect()/$disconnect() is needed: with singleFork the process
+// exits after all files complete, cleaning up connections automatically.
 beforeEach(async () => {
   fetchState.push(globalThis.fetch);
   await resetDatabase();
@@ -50,6 +42,4 @@ afterEach(() => {
   globalThis.fetch = previousFetch ?? initialFetch;
 });
 
-afterAll(async () => {
-  await db.$disconnect();
-});
+
