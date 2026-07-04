@@ -10,6 +10,7 @@ import { parseOwnerRepo } from "@/lib/ai/utils";
 import { releaseTaskPod } from "@/lib/pods/utils";
 import { pusherServer, getWorkspaceChannelName, getTaskChannelName, PUSHER_EVENTS } from "@/lib/pusher";
 import { updateFeatureStatusFromTasks } from "@/services/roadmap/feature-status-sync";
+import { autoResolveErrorIssuesForFeatures } from "@/services/error-issues";
 import { notifyFeatureCanvasRefresh } from "@/lib/canvas";
 import { createAndSendNotification } from "@/services/notifications";
 import { triggerLearningRun } from "@/services/learning-run";
@@ -652,6 +653,25 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
             // feature toward COMPLETED. Both are progress signals the
             // milestone canvas needs to reflect.
             void notifyFeatureCanvasRefresh(featureId, "pr-merged", { delivery });
+          }
+
+          // Auto-resolve linked ErrorIssues for features whose PR just merged
+          if (featureIds.size > 0) {
+            try {
+              console.log("[GithubWebhook] error auto-resolve", { delivery, featureIds: [...featureIds] });
+              const { resolvedIssueIds } = await autoResolveErrorIssuesForFeatures([...featureIds]);
+              if (resolvedIssueIds.length > 0) {
+                console.log("[GithubWebhook] error auto-resolve - issues resolved", {
+                  delivery,
+                  resolvedIssueIds,
+                });
+              }
+            } catch (autoResolveError) {
+              console.error("[GithubWebhook] error auto-resolve failed (non-blocking)", {
+                delivery,
+                error: autoResolveError,
+              });
+            }
           }
 
           // Trigger learning analysis (fire-and-forget)
