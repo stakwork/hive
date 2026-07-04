@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
 import { isDevelopmentMode } from "@/lib/runtime";
+import { fetchVersionRunCount } from "@/services/prompts/prompt-sync";
 
 export const runtime = "nodejs";
 export const fetchCache = "force-no-store";
@@ -52,12 +53,11 @@ export async function GET(
       orderBy: { versionNumber: "desc" },
     });
 
-    return NextResponse.json({
-      success: true,
-      data: {
-        prompt_id: id,
-        prompt_name: prompt.name,
-        versions: versions.map((v) => ({
+    // Best-effort: enrich each version with run_count from Stakwork (degrade to null on failure).
+    const versionsWithRunCount = await Promise.all(
+      versions.map(async (v) => {
+        const runCount = await fetchVersionRunCount(prompt.name, v.id);
+        return {
           id: v.id,
           version_number: v.versionNumber,
           value: v.value,
@@ -65,7 +65,17 @@ export async function GET(
           whodunnit: v.whodunnit,
           published: v.published,
           created_at: v.createdAt.toISOString(),
-        })),
+          run_count: runCount,
+        };
+      }),
+    );
+
+    return NextResponse.json({
+      success: true,
+      data: {
+        prompt_id: id,
+        prompt_name: prompt.name,
+        versions: versionsWithRunCount,
         // current_version_id = latest version (highest versionNumber); may differ from published_version_id when a draft exists.
         current_version_id: versions[0]?.id ?? prompt.publishedVersionId,
         published_version_id: prompt.publishedVersionId,

@@ -38,7 +38,9 @@ export const optionalEnvVars = {
   GEMINI_API_BASE_URL: USE_MOCKS ? `${MOCK_BASE}/api/mock/gemini` : "https://generativelanguage.googleapis.com",
   // Discord API base URL (routes to mock endpoint when USE_MOCKS=true)
   DISCORD_API_BASE_URL: USE_MOCKS ? `${MOCK_BASE}/api/mock/discord` : "https://discord.com/api/v10",
-  STAKWORK_BASE_URL: process.env.STAKWORK_BASE_URL || "https://api.stakwork.com/api/v1",
+  STAKWORK_BASE_URL: USE_MOCKS
+    ? `${MOCK_BASE}/api/mock/stakwork`
+    : process.env.STAKWORK_BASE_URL || "https://api.stakwork.com/api/v1",
   STAKWORK_API_KEY: process.env.STAKWORK_API_KEY,
   STAKWORK_WORKFLOW_ID: process.env.STAKWORK_WORKFLOW_ID,
   STAKWORK_JANITOR_WORKFLOW_ID: process.env.STAKWORK_JANITOR_WORKFLOW_ID,
