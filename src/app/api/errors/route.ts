@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { ErrorIssueStatus } from "@prisma/client";
 import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 import { validateWorkspaceAccessById } from "@/services/workspace";
-import { listErrorIssues, type ErrorIssueSort } from "@/services/error-issues";
+import { listErrorIssues, type ErrorIssuesSortOrder } from "@/services/error-issues";
 
 /**
  * GET /api/errors
@@ -56,16 +56,16 @@ export async function GET(request: NextRequest) {
     const status = !statusParam || isAll ? undefined : (statusParam as ErrorIssueStatus);
     const includeAll = isAll ? true : undefined;
 
-    // Sort
+    // Sort order
     const sortParam = searchParams.get("sort");
-    const validSorts: ErrorIssueSort[] = ["recent", "impact"];
-    if (sortParam && !validSorts.includes(sortParam as ErrorIssueSort)) {
+    const validSorts: ErrorIssuesSortOrder[] = ["recent", "impact"];
+    if (sortParam !== null && !validSorts.includes(sortParam as ErrorIssuesSortOrder)) {
       return NextResponse.json(
         { error: `Invalid sort. Must be one of: ${validSorts.join(", ")}` },
         { status: 400 },
       );
     }
-    const sort = (sortParam as ErrorIssueSort | null) ?? "recent";
+    const sort = (sortParam as ErrorIssuesSortOrder | null) ?? "recent";
 
     // Pagination
     const limitParam = searchParams.get("limit");

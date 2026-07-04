@@ -1,27 +1,27 @@
-import { runErrorImpactCron } from "@/services/error-impact-cron";
 import { NextRequest, NextResponse } from "next/server";
+import { runErrorImpactCron } from "@/services/error-impact-cron";
 
 /**
  * GET /api/cron/error-impact
  *
- * Hourly Vercel cron that (re)computes blast-radius impact scores for
- * ErrorIssue rows whose referenced KG nodes have centrality data in Jarvis.
+ * Vercel cron endpoint (hourly) that scores each ErrorIssue's blast-radius
+ * impact using the centrality of its referenced File/Function KG nodes.
  *
  * Auth: CRON_SECRET bearer token (same pattern as /api/cron/janitors).
- * Gate: ERROR_IMPACT_CRON_ENABLED=true env var must be set.
+ * Gate: ERROR_IMPACT_CRON_ENABLED env var must equal "true".
  */
 export async function GET(request: NextRequest) {
   try {
-    // Verify Vercel cron secret
+    // ── Auth ────────────────────────────────────────────────────────────────
     const authHeader = request.headers.get("authorization");
     if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    // Check if cron is enabled
+    // ── Feature gate ─────────────────────────────────────────────────────────
     const cronEnabled = process.env.ERROR_IMPACT_CRON_ENABLED === "true";
     if (!cronEnabled) {
-      console.log("[error-impact] cron is disabled via ERROR_IMPACT_CRON_ENABLED");
+      console.log("[error-impact] cron disabled via ERROR_IMPACT_CRON_ENABLED");
       return NextResponse.json({
         success: true,
         message: "Error impact cron is disabled",
@@ -32,21 +32,18 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    console.log("[error-impact] starting scheduled cron execution");
+    console.log("[error-impact] starting scheduled impact scoring run");
 
     const result = await runErrorImpactCron();
 
     if (result.success) {
       console.log(
-        `[error-impact] completed successfully — workspaces: ${result.workspacesProcessed}, scored: ${result.issuesScored}, skipped: ${result.issuesSkipped}`,
+        `[error-impact] completed. workspaces=${result.workspacesProcessed} scored=${result.issuesScored} skipped=${result.issuesSkipped}`,
       );
     } else {
       console.error(
-        `[error-impact] completed with errors — workspaces: ${result.workspacesProcessed}, scored: ${result.issuesScored}, errors: ${result.errors.length}`,
+        `[error-impact] completed with errors. workspaces=${result.workspacesProcessed} scored=${result.issuesScored} errors=${result.errors.length}`,
       );
-      result.errors.forEach((e, i) => {
-        console.error(`[error-impact] error ${i + 1}: workspace=${e.workspaceId} issue=${e.issueId} — ${e.error}`);
-      });
     }
 
     return NextResponse.json({
@@ -61,7 +58,6 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
     console.error("[error-impact] unhandled error:", errorMessage);
-
     return NextResponse.json(
       {
         success: false,

@@ -790,3 +790,143 @@ describe("PATCH /api/errors/[issueId]", () => {
     );
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /api/errors — impact sort integration tests
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("GET /api/errors — sort param", () => {
+  let ctx: Awaited<ReturnType<typeof createTestSetup>>;
+
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    ctx = await createTestSetup();
+  });
+
+  afterEach(async () => {
+    await cleanupSetup(ctx);
+  });
+
+  test("returns 400 for an invalid sort value", async () => {
+    mockRequireAuth.mockReturnValueOnce({ id: ctx.ownerA.id, email: ctx.ownerA.email, name: ctx.ownerA.name });
+    const req = buildGetRequest(`/api/errors?workspace_id=${ctx.workspaceA.id}&sort=popularity`);
+    const res = await listErrors(req);
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error).toMatch(/invalid sort/i);
+  });
+
+  test("sort=recent returns issues in lastSeenAt desc order (default behaviour unchanged)", async () => {
+    mockRequireAuth.mockReturnValueOnce({ id: ctx.ownerA.id, email: ctx.ownerA.email, name: ctx.ownerA.name });
+    const req = buildGetRequest(
+      `/api/errors?workspace_id=${ctx.workspaceA.id}&status=all&sort=recent`,
+    );
+    const res = await listErrors(req);
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.issues.length).toBeGreaterThanOrEqual(1);
+    // Verify lastSeenAt is descending
+    const dates = body.issues.map((i: { lastSeenAt: string }) => new Date(i.lastSeenAt).getTime());
+    for (let i = 1; i < dates.length; i++) {
+      expect(dates[i]).toBeLessThanOrEqual(dates[i - 1]);
+    }
+  });
+
+  test("sort=impact orders by impactScore desc then occurrenceCount desc (nulls last)", async () => {
+    // Create 3 issues: high impact, low impact, unscored (null)
+    const now = new Date();
+    const highImpact = await db.errorIssue.create({
+      data: {
+        id: generateUniqueId("impact-high"),
+        workspaceId: ctx.workspaceA.id,
+        repoKey: ctx.repoA.id,
+        fingerprint: `fp-impact-high-${generateUniqueId()}`,
+        exceptionType: "TypeError",
+        title: "High impact error",
+        occurrenceCount: 5,
+        firstSeenAt: now,
+        lastSeenAt: now,
+        impactScore: 0.9,
+        impactScoredAt: now,
+      },
+    });
+    const lowImpact = await db.errorIssue.create({
+      data: {
+        id: generateUniqueId("impact-low"),
+        workspaceId: ctx.workspaceA.id,
+        repoKey: ctx.repoA.id,
+        fingerprint: `fp-impact-low-${generateUniqueId()}`,
+        exceptionType: "TypeError",
+        title: "Low impact error",
+        occurrenceCount: 50,
+        firstSeenAt: now,
+        lastSeenAt: now,
+        impactScore: 0.1,
+        impactScoredAt: now,
+      },
+    });
+    const unscored = await db.errorIssue.create({
+      data: {
+        id: generateUniqueId("impact-null"),
+        workspaceId: ctx.workspaceA.id,
+        repoKey: ctx.repoA.id,
+        fingerprint: `fp-impact-null-${generateUniqueId()}`,
+        exceptionType: "TypeError",
+        title: "Unscored error",
+        occurrenceCount: 100,
+        firstSeenAt: now,
+        lastSeenAt: now,
+        impactScore: null,
+      },
+    });
+
+    try {
+      mockRequireAuth.mockReturnValueOnce({ id: ctx.ownerA.id, email: ctx.ownerA.email, name: ctx.ownerA.name });
+      const req = buildGetRequest(
+        `/api/errors?workspace_id=${ctx.workspaceA.id}&status=all&sort=impact`,
+      );
+      const res = await listErrors(req);
+      expect(res.status).toBe(200);
+      const body = await res.json();
+
+      // impact fields should be present on each row
+      for (const issue of body.issues) {
+        expect("impactScore" in issue).toBe(true);
+        expect("impactScoredAt" in issue).toBe(true);
+        expect("impactMeta" in issue).toBe(true);
+      }
+
+      const ids = body.issues.map((i: { id: string }) => i.id);
+      // highImpact (0.9) should come before lowImpact (0.1)
+      const highIdx = ids.indexOf(highImpact.id);
+      const lowIdx = ids.indexOf(lowImpact.id);
+      expect(highIdx).toBeGreaterThanOrEqual(0);
+      expect(lowIdx).toBeGreaterThanOrEqual(0);
+      expect(highIdx).toBeLessThan(lowIdx);
+      // unscored (null) should be last or at least after the scored ones
+      const nullIdx = ids.indexOf(unscored.id);
+      if (nullIdx !== -1) {
+        expect(nullIdx).toBeGreaterThan(highIdx);
+      }
+    } finally {
+      await db.errorIssue.deleteMany({
+        where: { id: { in: [highImpact.id, lowImpact.id, unscored.id] } },
+      });
+    }
+  });
+
+  test("sort=impact response includes impactScore/impactScoredAt/impactMeta fields", async () => {
+    mockRequireAuth.mockReturnValueOnce({ id: ctx.ownerA.id, email: ctx.ownerA.email, name: ctx.ownerA.name });
+    const req = buildGetRequest(
+      `/api/errors?workspace_id=${ctx.workspaceA.id}&status=all&sort=impact`,
+    );
+    const res = await listErrors(req);
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    for (const issue of body.issues) {
+      expect("impactScore" in issue).toBe(true);
+      expect("impactScoredAt" in issue).toBe(true);
+      expect("impactMeta" in issue).toBe(true);
+    }
+  });
+});

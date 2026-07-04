@@ -7,8 +7,9 @@ import type {
   ErrorIssuesListResponse,
   ErrorIssueUpdatedPayload,
   ErrorIssueStatus,
-  ErrorIssueSort,
 } from "@/types/error-issues";
+
+export type ErrorIssuesSortParam = "recent" | "impact";
 
 interface UseErrorIssuesParams {
   workspaceId: string | null | undefined;
@@ -17,7 +18,7 @@ interface UseErrorIssuesParams {
   repoKey?: string;
   skip?: number;
   limit?: number;
-  sort?: ErrorIssueSort;
+  sort?: ErrorIssuesSortParam;
 }
 
 interface UseErrorIssuesReturn {

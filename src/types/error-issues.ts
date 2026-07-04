@@ -46,6 +46,11 @@ export interface ErrorIssueRecord {
   correlationConfidence: string | null;
   correlationComputedAt: string | null;
   correlationCandidates: CorrelationCandidate[] | null;
+  /** Blast-radius impact score [0,1] from KG node centrality. null = unscored. */
+  impactScore: number | null;
+  impactScoredAt: string | null;
+  /** Top contributing node breakdown: name, type, pagerank, in_degree, nodeCount. */
+  impactMeta: Record<string, unknown> | null;
 }
 
 export interface ErrorEventRecord {

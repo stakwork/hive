@@ -11,15 +11,23 @@ import { hashApiKey } from "@/lib/api-keys";
 
 // ── Mocks ─────────────────────────────────────────────────────────────────────
 
-const { mockPusherTrigger, mockAddNode, mockAddEdge, mockSearchLatestByTypes, mockGetJarvisConfig, mockGetReferencedNodeCentrality } =
-  vi.hoisted(() => ({
-    mockPusherTrigger: vi.fn(),
-    mockAddNode: vi.fn(),
-    mockAddEdge: vi.fn(),
-    mockSearchLatestByTypes: vi.fn(),
-    mockGetJarvisConfig: vi.fn(),
-    mockGetReferencedNodeCentrality: vi.fn(),
-  }));
+const {
+  mockPusherTrigger,
+  mockAddNode,
+  mockAddEdge,
+  mockSearchLatestByTypes,
+  mockGetJarvisConfig,
+  mockGetReferencedNodeCentrality,
+  mockComputeImpactScore,
+} = vi.hoisted(() => ({
+  mockPusherTrigger: vi.fn(),
+  mockAddNode: vi.fn(),
+  mockAddEdge: vi.fn(),
+  mockSearchLatestByTypes: vi.fn(),
+  mockGetJarvisConfig: vi.fn(),
+  mockGetReferencedNodeCentrality: vi.fn(),
+  mockComputeImpactScore: vi.fn(),
+}));
 
 vi.mock("@/lib/pusher", async () => {
   const actual = await vi.importActual("@/lib/pusher");
@@ -39,6 +47,10 @@ vi.mock("@/services/swarm/api/nodes", () => ({
   addEdge: mockAddEdge,
   searchLatestByTypes: mockSearchLatestByTypes,
   getReferencedNodeCentrality: mockGetReferencedNodeCentrality,
+}));
+
+vi.mock("@/services/error-impact", () => ({
+  computeImpactScore: mockComputeImpactScore,
 }));
 
 vi.mock("@/lib/helpers/jarvis-config", () => ({
@@ -586,6 +598,10 @@ describe("POST /api/webhook/errors — KG projection (best-effort)", () => {
     ctx = await createTestSetup();
     // Default: Pusher succeeds silently
     mockPusherTrigger.mockResolvedValue(undefined);
+    // Default: centrality returns no nodes (impact unscored) — tests that need
+    // specific behaviour override these defaults
+    mockGetReferencedNodeCentrality.mockResolvedValue({ ok: true, nodes: [] });
+    mockComputeImpactScore.mockReturnValue(null);
   });
 
   afterEach(async () => {
@@ -901,130 +917,6 @@ describe("POST /api/webhook/errors — KG projection (best-effort)", () => {
   });
 });
 
-// ── Opportunistic impact scoring tests ───────────────────────────────────────
-
-describe("POST /api/webhook/errors — opportunistic impact scoring", () => {
-  const MOCK_JARVIS = { jarvisUrl: "https://jarvis.example.com", apiKey: "test-key" };
-  let ctx: Awaited<ReturnType<typeof createTestSetup>>;
-
-  beforeEach(async () => {
-    vi.clearAllMocks();
-    mockPusherTrigger.mockResolvedValue(undefined);
-    ctx = await createTestSetup();
-  });
-
-  afterEach(async () => {
-    await db.errorEvent.deleteMany({ where: { workspaceId: ctx.workspace.id } });
-    await db.errorIssue.deleteMany({ where: { workspaceId: ctx.workspace.id } });
-    await db.workspaceApiKey.deleteMany({ where: { id: ctx.apiKey.id } });
-    await db.repository.deleteMany({ where: { id: ctx.repo.id } });
-    await db.workspace.deleteMany({ where: { id: ctx.workspace.id } });
-    await db.user.deleteMany({ where: { id: ctx.owner.id } });
-    await db.errorEvent.deleteMany({ where: { workspaceId: ctx.workspace2.id } });
-    await db.errorIssue.deleteMany({ where: { workspaceId: ctx.workspace2.id } });
-    await db.repository.deleteMany({ where: { id: ctx.repo2.id } });
-    await db.workspace.deleteMany({ where: { id: ctx.workspace2.id } });
-    await db.user.deleteMany({ where: { id: ctx.owner2.id } });
-  });
-
-  test("201 response is unaffected even when graph centrality read throws", async () => {
-    mockGetJarvisConfig.mockResolvedValue(MOCK_JARVIS);
-    mockAddNode.mockResolvedValue({ success: true, ref_id: "issue-ref-impact-fail" });
-    mockSearchLatestByTypes.mockResolvedValue({ ok: true, nodes: [] });
-    mockGetReferencedNodeCentrality.mockRejectedValue(new Error("Jarvis down"));
-
-    const res = await POST(
-      buildRequest(
-        {
-          exceptionType: "TypeError",
-          message: "impact scoring should not block ingest",
-          stackTrace: "  at foo (bar.ts:1:1)",
-          repository: "https://github.com/stakwork/hive",
-        },
-        RAW_KEY,
-      ),
-    );
-    expect(res.status).toBe(201);
-    const body = await res.json();
-    expect(body.success).toBe(true);
-  });
-
-  test("persists impactScore on issue when centrality read succeeds", async () => {
-    mockGetJarvisConfig.mockResolvedValue(MOCK_JARVIS);
-    mockAddNode.mockResolvedValue({ success: true, ref_id: "issue-ref-impact-ok" });
-    mockSearchLatestByTypes.mockResolvedValue({ ok: true, nodes: [] });
-    mockGetReferencedNodeCentrality.mockResolvedValue({
-      ok: true,
-      nodes: [{ ref_id: "node-1", node_type: "File", pagerank: 0.8, in_degree: 100, name: "api.ts" }],
-    });
-
-    const res = await POST(
-      buildRequest(
-        {
-          exceptionType: "TypeError",
-          message: "impact scoring should write score",
-          stackTrace: "  at foo (api.ts:10:1)",
-          repository: "https://github.com/stakwork/hive",
-        },
-        RAW_KEY,
-      ),
-    );
-    expect(res.status).toBe(201);
-    const body = await res.json();
-
-    const issue = await db.errorIssue.findUnique({ where: { id: body.data.issueId } });
-    expect(issue?.impactScore).not.toBeNull();
-    expect(issue?.impactScoredAt).not.toBeNull();
-    expect(issue?.impactMeta).not.toBeNull();
-  });
-
-  test("201 response is unaffected when centrality read returns ok:false", async () => {
-    mockGetJarvisConfig.mockResolvedValue(MOCK_JARVIS);
-    mockAddNode.mockResolvedValue({ success: true, ref_id: "issue-ref-impact-nok" });
-    mockSearchLatestByTypes.mockResolvedValue({ ok: true, nodes: [] });
-    mockGetReferencedNodeCentrality.mockResolvedValue({ ok: false, nodes: [], error: "timeout" });
-
-    const res = await POST(
-      buildRequest(
-        {
-          exceptionType: "TypeError",
-          message: "graph ok:false should not block",
-          repository: "https://github.com/stakwork/hive",
-        },
-        RAW_KEY,
-      ),
-    );
-    expect(res.status).toBe(201);
-    const body = await res.json();
-    expect(body.success).toBe(true);
-  });
-
-  test("impactScore is null and impactScoredAt is set when centrality returns empty nodes", async () => {
-    mockGetJarvisConfig.mockResolvedValue(MOCK_JARVIS);
-    mockAddNode.mockResolvedValue({ success: true, ref_id: "issue-ref-impact-empty" });
-    mockSearchLatestByTypes.mockResolvedValue({ ok: true, nodes: [] });
-    mockGetReferencedNodeCentrality.mockResolvedValue({ ok: true, nodes: [] });
-
-    const res = await POST(
-      buildRequest(
-        {
-          exceptionType: "TypeError",
-          message: "no nodes = null score",
-          repository: "https://github.com/stakwork/hive",
-        },
-        RAW_KEY,
-      ),
-    );
-    expect(res.status).toBe(201);
-    const body = await res.json();
-
-    const issue = await db.errorIssue.findUnique({ where: { id: body.data.issueId } });
-    // null score is expected — no resolvable code nodes
-    expect(issue?.impactScore).toBeNull();
-    expect(issue?.impactScoredAt).not.toBeNull();
-  });
-});
-
 // ── Frames ingest tests ───────────────────────────────────────────────────────
 
 describe("POST /api/webhook/errors — structured frames", () => {
@@ -1177,5 +1069,107 @@ describe("POST /api/webhook/errors — structured frames", () => {
     expect(res.status).toBe(201);
     const blobBody = JSON.parse((mockPut as ReturnType<typeof vi.fn>).mock.calls[0][1] as string);
     expect(blobBody.frames).toEqual([]);
+  });
+});
+
+// ── Impact scoring tests ──────────────────────────────────────────────────────
+
+describe("POST /api/webhook/errors — opportunistic impact scoring", () => {
+  const MOCK_JARVIS_CONFIG = { jarvisUrl: "https://jarvis.example.com", apiKey: "jarvis-key" };
+  let ctx: Awaited<ReturnType<typeof createTestSetup>>;
+
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    ctx = await createTestSetup();
+    mockPusherTrigger.mockResolvedValue(undefined);
+    // Default: centrality returns no nodes
+    mockGetReferencedNodeCentrality.mockResolvedValue({ ok: true, nodes: [] });
+    mockComputeImpactScore.mockReturnValue(null);
+  });
+
+  afterEach(async () => {
+    await db.errorEvent.deleteMany({ where: { workspaceId: ctx.workspace.id } });
+    await db.errorIssue.deleteMany({ where: { workspaceId: ctx.workspace.id } });
+    await db.workspaceApiKey.deleteMany({ where: { id: ctx.apiKey.id } });
+    await db.repository.deleteMany({ where: { id: ctx.repo.id } });
+    await db.workspace.deleteMany({ where: { id: ctx.workspace.id } });
+    await db.user.deleteMany({ where: { id: ctx.owner.id } });
+    await db.errorEvent.deleteMany({ where: { workspaceId: ctx.workspace2.id } });
+    await db.errorIssue.deleteMany({ where: { workspaceId: ctx.workspace2.id } });
+    await db.repository.deleteMany({ where: { id: ctx.repo2.id } });
+    await db.workspace.deleteMany({ where: { id: ctx.workspace2.id } });
+    await db.user.deleteMany({ where: { id: ctx.owner2.id } });
+  });
+
+  test("201 response is unaffected when centrality fetch returns empty nodes (unscored)", async () => {
+    mockGetJarvisConfig.mockResolvedValue(MOCK_JARVIS_CONFIG);
+    mockAddNode.mockResolvedValue({ success: true, ref_id: "ref-impact-test" });
+    mockSearchLatestByTypes.mockResolvedValue({ ok: true, nodes: [] });
+    mockGetReferencedNodeCentrality.mockResolvedValue({ ok: true, nodes: [] });
+    mockComputeImpactScore.mockReturnValue(null);
+
+    const res = await POST(
+      buildRequest(
+        { exceptionType: "TypeError", message: "boom", repository: "https://github.com/stakwork/hive" },
+        RAW_KEY,
+      ),
+    );
+    expect(res.status).toBe(201);
+    const body = await res.json();
+    expect(body.success).toBe(true);
+
+    // impactScore should be null (unscored)
+    const issue = await db.errorIssue.findUnique({ where: { id: body.data.issueId } });
+    expect(issue?.impactScore).toBeNull();
+  });
+
+  test("201 response is unaffected when centrality fetch fails (graph unavailable)", async () => {
+    mockGetJarvisConfig.mockResolvedValue(MOCK_JARVIS_CONFIG);
+    mockAddNode.mockResolvedValue({ success: true, ref_id: "ref-impact-fail" });
+    mockSearchLatestByTypes.mockResolvedValue({ ok: true, nodes: [] });
+    // Simulate a hard graph failure
+    mockGetReferencedNodeCentrality.mockRejectedValue(new Error("Graph timeout"));
+
+    const res = await POST(
+      buildRequest(
+        { exceptionType: "TypeError", message: "graph-fail", repository: "https://github.com/stakwork/hive" },
+        RAW_KEY,
+      ),
+    );
+    // Must still return 201 — graph failure is non-fatal
+    expect(res.status).toBe(201);
+    const body = await res.json();
+    expect(body.success).toBe(true);
+  });
+
+  test("impact score is persisted when centrality nodes are available", async () => {
+    mockGetJarvisConfig.mockResolvedValue(MOCK_JARVIS_CONFIG);
+    mockAddNode.mockResolvedValue({ success: true, ref_id: "ref-impact-ok" });
+    mockSearchLatestByTypes.mockResolvedValue({ ok: true, nodes: [] });
+    mockGetReferencedNodeCentrality.mockResolvedValue({
+      ok: true,
+      nodes: [{ ref_id: "file-ref", node_type: "File", name: "core.ts", pagerank: 0.8, in_degree: 40 }],
+    });
+    mockComputeImpactScore.mockReturnValue({
+      score: 0.64,
+      meta: { topNodeName: "core.ts", topNodeType: "File", topPagerank: 0.8, topInDegree: 40, nodeCount: 1 },
+    });
+
+    const res = await POST(
+      buildRequest(
+        { exceptionType: "TypeError", message: "central error", repository: "https://github.com/stakwork/hive" },
+        RAW_KEY,
+      ),
+    );
+    expect(res.status).toBe(201);
+    const body = await res.json();
+    expect(body.success).toBe(true);
+
+    // Allow a brief tick for the async DB update to complete
+    await new Promise((r) => setTimeout(r, 50));
+
+    const issue = await db.errorIssue.findUnique({ where: { id: body.data.issueId } });
+    expect(issue?.impactScore).toBe(0.64);
+    expect(issue?.impactScoredAt).not.toBeNull();
   });
 });

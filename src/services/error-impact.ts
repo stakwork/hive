@@ -1,26 +1,33 @@
 /**
  * Error impact scoring service.
  *
- * Computes a "blast-radius" impact score for an ErrorIssue from the centrality
- * (PageRank + fan-in / call-graph in-degree) of the File/Function nodes it
- * references via REFERENCES edges in the workspace knowledge graph.
+ * Computes a blast-radius impact score for an ErrorIssue from the centrality
+ * properties (PageRank, call-graph fan-in) of the File/Function KG nodes it
+ * references via REFERENCES edges.
  *
- * The score is pure code-centrality — occurrence count is NOT blended in here.
- * Occurrence count is only used as a tie-breaker at query time.
+ * Formula (kept simple so it's easy to tune):
+ *   score = maxPageRank * 0.6 + normalizedInDegree * 0.4
+ *
+ *   where:
+ *     maxPageRank       = max pagerank across referenced nodes, clamped to [0,1]
+ *     normalizedInDegree = max in_degree / IN_DEGREE_NORMALIZATION_FACTOR, clamped to [0,1]
+ *
+ * The final score is in [0, 1]. Issues with no resolvable code nodes return null
+ * (callers must NOT coerce null → 0, so the UI can distinguish "unscored" from
+ * a genuinely low-scoring issue).
+ *
+ * Occurrence count is NOT blended in here — it is a tie-breaker at query time only.
  */
 
-export interface CentralityInput {
-  pagerank?: number;
-  in_degree?: number;
-  name?: string;
-  node_type?: string;
-}
+// Normalizing in_degree: a node with this many or more in-bound references
+// is treated as maximally central for the fan-in component.
+const IN_DEGREE_NORMALIZATION_FACTOR = 100;
 
 export interface ImpactMeta {
-  topNodeName: string | null;
-  topNodeType: string | null;
-  topPagerank: number;
-  topInDegree: number;
+  topNodeName: string;
+  topNodeType: string;
+  topPagerank: number | null;
+  topInDegree: number | null;
   nodeCount: number;
 }
 
@@ -29,60 +36,61 @@ export interface ImpactScoreResult {
   meta: ImpactMeta;
 }
 
+export interface CentralityNodeInput {
+  pagerank?: number;
+  in_degree?: number;
+  name?: string;
+  node_type?: string;
+}
+
 /**
- * Compute an impact score from a list of centrality-annotated nodes.
+ * Compute a blast-radius impact score from referenced KG node centrality data.
  *
- * Formula (tunable — see comment):
- *   For each node: nodeScore = pagerank + (in_degree * IN_DEGREE_WEIGHT)
- *   Final score   = max(nodeScore) across all nodes, normalized to [0, 1]
- *                   using reasonable ceiling values for pagerank and in_degree.
- *
- * Rationale: we pick the *most central* node referenced by the issue
- * (the one that would cause the most blast radius) rather than averaging,
- * because even a single heavily-depended-upon file/function makes an error
- * high-impact. In-degree (call-graph fan-in) is weighted lower than PageRank
- * because PageRank already incorporates global graph topology.
- *
- * Returns null when nodes is empty — callers must treat null as "unscored"
- * and never coerce it to 0 in ways that would hide it from the UI.
+ * @param nodes — centrality node inputs (File/Function nodes referenced by the issue)
+ * @returns null when the input list is empty (no resolvable code nodes — "unscored")
+ *          or a scored result with a meta breakdown of the top contributor.
  */
-export function computeImpactScore(nodes: CentralityInput[]): ImpactScoreResult | null {
+export function computeImpactScore(
+  nodes: CentralityNodeInput[],
+): ImpactScoreResult | null {
   if (!nodes || nodes.length === 0) return null;
 
-  // Tuning constants — easy to adjust as we gather real data.
-  const IN_DEGREE_WEIGHT = 0.01; // scale in_degree (raw counts) down to pagerank range
-  const PAGERANK_CEIL = 1.0;     // practical upper bound for pagerank in a workspace graph
-  const IN_DEGREE_CEIL = 200;    // practical upper bound for in_degree fan-in
-
-  let bestScore = -Infinity;
-  let bestNode: CentralityInput | null = null;
+  // Find the node with the highest pagerank as the "top contributor"
+  let topNode = nodes[0];
+  let maxPagerank = topNode.pagerank ?? 0;
+  let maxInDegree = topNode.in_degree ?? 0;
 
   for (const node of nodes) {
-    const pr = typeof node.pagerank === "number" ? Math.max(0, node.pagerank) : 0;
-    const id = typeof node.in_degree === "number" ? Math.max(0, node.in_degree) : 0;
-    const nodeScore = pr + id * IN_DEGREE_WEIGHT;
-    if (nodeScore > bestScore) {
-      bestScore = nodeScore;
-      bestNode = node;
+    const pr = node.pagerank ?? 0;
+    const ind = node.in_degree ?? 0;
+    if (pr > maxPagerank || (pr === maxPagerank && ind > maxInDegree)) {
+      topNode = node;
+      maxPagerank = pr;
+      maxInDegree = ind;
     }
+    // Also track global max in_degree for the score formula
+    if (ind > maxInDegree) maxInDegree = ind;
   }
 
-  if (bestNode === null || bestScore < 0) return null;
+  // Clamp pagerank component to [0, 1]
+  const pagerankComponent = Math.min(1, Math.max(0, maxPagerank));
 
-  // Normalize to [0, 1]: combine ceiling for both components.
-  const maxRaw = PAGERANK_CEIL + IN_DEGREE_CEIL * IN_DEGREE_WEIGHT;
-  const score = Math.min(1, Math.max(0, bestScore / maxRaw));
+  // Normalize in_degree to [0, 1]
+  const inDegreeComponent = Math.min(
+    1,
+    Math.max(0, maxInDegree / IN_DEGREE_NORMALIZATION_FACTOR),
+  );
 
-  const topPr = typeof bestNode.pagerank === "number" ? bestNode.pagerank : 0;
-  const topId = typeof bestNode.in_degree === "number" ? bestNode.in_degree : 0;
+  // Blend: 60% pagerank + 40% fan-in centrality
+  const score = pagerankComponent * 0.6 + inDegreeComponent * 0.4;
 
   return {
-    score,
+    score: Math.round(score * 10000) / 10000, // 4 decimal places
     meta: {
-      topNodeName: bestNode.name ?? null,
-      topNodeType: bestNode.node_type ?? null,
-      topPagerank: topPr,
-      topInDegree: topId,
+      topNodeName: topNode.name ?? "",
+      topNodeType: topNode.node_type ?? "",
+      topPagerank: topNode.pagerank ?? null,
+      topInDegree: topNode.in_degree ?? null,
       nodeCount: nodes.length,
     },
   };

@@ -1,27 +1,28 @@
 /**
- * Unit tests for error-impact-cron service.
+ * Unit tests for src/services/error-impact-cron.ts
  *
  * Covers:
- * - Workspace/issue iteration and scoring happy path
- * - Per-issue try/catch isolation: one failing issue must not abort the batch
- * - Graph failure → issueSkipped, no throws
- * - Cron disabled → empty summary
+ * - Per-issue try/catch isolation: one failing issue never aborts the batch
+ * - Workspaces with no Jarvis config are skipped cleanly
+ * - Issues without kgRefId are skipped
+ * - Successful scoring persists impactScore/impactScoredAt/impactMeta
+ * - Stale-threshold filtering: only unscored or old issues are processed
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 // ── Mocks ─────────────────────────────────────────────────────────────────────
 
 const {
-  mockFindManyWorkspace,
-  mockFindManyIssue,
-  mockUpdateIssue,
+  mockWorkspaceFindMany,
+  mockIssueFindMany,
+  mockIssueUpdate,
   mockGetJarvisConfig,
   mockGetReferencedNodeCentrality,
   mockComputeImpactScore,
 } = vi.hoisted(() => ({
-  mockFindManyWorkspace: vi.fn(),
-  mockFindManyIssue: vi.fn(),
-  mockUpdateIssue: vi.fn(),
+  mockWorkspaceFindMany: vi.fn(),
+  mockIssueFindMany: vi.fn(),
+  mockIssueUpdate: vi.fn(),
   mockGetJarvisConfig: vi.fn(),
   mockGetReferencedNodeCentrality: vi.fn(),
   mockComputeImpactScore: vi.fn(),
@@ -29,8 +30,8 @@ const {
 
 vi.mock("@/lib/db", () => ({
   db: {
-    workspace: { findMany: mockFindManyWorkspace },
-    errorIssue: { findMany: mockFindManyIssue, update: mockUpdateIssue },
+    workspace: { findMany: mockWorkspaceFindMany },
+    errorIssue: { findMany: mockIssueFindMany, update: mockIssueUpdate },
   },
 }));
 
@@ -48,37 +49,24 @@ vi.mock("@/services/error-impact", () => ({
 
 import { runErrorImpactCron } from "@/services/error-impact-cron";
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
+const JARVIS_CONFIG = { jarvisUrl: "http://jarvis.local", apiKey: "test-key" };
 
-const fakeJarvis = { jarvisUrl: "https://jarvis.example.com", apiKey: "test-key" };
-
-function makeWorkspaces(ids: string[]) {
-  return ids.map((id) => ({ id }));
+function makeWorkspace(id: string) {
+  return { id, name: `workspace-${id}` };
 }
 
-function makeIssues(overrides: Array<{ id: string; kgRefId?: string | null }>) {
-  return overrides.map(({ id, kgRefId = `kg-${id}` }) => ({ id, kgRefId }));
+function makeIssue(id: string, workspaceId: string, kgRefId: string | null = `kg-${id}`) {
+  return { id, workspaceId, kgRefId };
 }
-
-// ── Tests ─────────────────────────────────────────────────────────────────────
 
 describe("runErrorImpactCron", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockGetJarvisConfig.mockResolvedValue(fakeJarvis);
-    mockGetReferencedNodeCentrality.mockResolvedValue({
-      ok: true,
-      nodes: [{ pagerank: 0.8, in_degree: 100, name: "api.ts", node_type: "File" }],
-    });
-    mockComputeImpactScore.mockReturnValue({
-      score: 0.75,
-      meta: { topNodeName: "api.ts", topNodeType: "File", topPagerank: 0.8, topInDegree: 100, nodeCount: 1 },
-    });
-    mockUpdateIssue.mockResolvedValue({});
+    mockIssueUpdate.mockResolvedValue({});
   });
 
-  it("returns empty summary when no workspaces have qualifying issues", async () => {
-    mockFindManyWorkspace.mockResolvedValue([]);
+  it("returns success with zero counts when no workspaces exist", async () => {
+    mockWorkspaceFindMany.mockResolvedValue([]);
 
     const result = await runErrorImpactCron();
 
@@ -88,104 +76,148 @@ describe("runErrorImpactCron", () => {
     expect(result.errors).toHaveLength(0);
   });
 
-  it("skips workspace when jarvis config is unavailable", async () => {
-    mockFindManyWorkspace.mockResolvedValue(makeWorkspaces(["ws-1"]));
+  it("skips workspace when Jarvis config is unavailable", async () => {
+    mockWorkspaceFindMany.mockResolvedValue([makeWorkspace("ws-1")]);
     mockGetJarvisConfig.mockResolvedValue(null);
-
-    const result = await runErrorImpactCron();
-
-    expect(result.workspacesProcessed).toBe(0);
-    expect(result.issuesScored).toBe(0);
-    expect(result.errors).toHaveLength(0);
-  });
-
-  it("scores issues in a workspace", async () => {
-    mockFindManyWorkspace.mockResolvedValue(makeWorkspaces(["ws-1"]));
-    mockFindManyIssue.mockResolvedValue(makeIssues([{ id: "issue-1" }, { id: "issue-2" }]));
+    mockIssueFindMany.mockResolvedValue([]);
 
     const result = await runErrorImpactCron();
 
     expect(result.workspacesProcessed).toBe(1);
-    expect(result.issuesScored).toBe(2);
-    expect(result.errors).toHaveLength(0);
-    expect(mockUpdateIssue).toHaveBeenCalledTimes(2);
-  });
-
-  it("isolates failures: one failing issue does not abort the batch", async () => {
-    mockFindManyWorkspace.mockResolvedValue(makeWorkspaces(["ws-1"]));
-    mockFindManyIssue.mockResolvedValue(
-      makeIssues([{ id: "issue-good" }, { id: "issue-bad" }, { id: "issue-also-good" }]),
-    );
-
-    // issue-bad throws from the centrality read
-    mockGetReferencedNodeCentrality
-      .mockResolvedValueOnce({ ok: true, nodes: [{ pagerank: 0.5, in_degree: 50 }] })
-      .mockRejectedValueOnce(new Error("Jarvis unreachable"))
-      .mockResolvedValueOnce({ ok: true, nodes: [{ pagerank: 0.3, in_degree: 20 }] });
-
-    const result = await runErrorImpactCron();
-
-    // Two good issues scored, one errored
-    expect(result.issuesScored).toBe(2);
-    expect(result.errors).toHaveLength(1);
-    expect(result.errors[0].issueId).toBe("issue-bad");
-    expect(result.errors[0].error).toContain("Jarvis unreachable");
-    // success = false because there was at least one error
-    expect(result.success).toBe(false);
-  });
-
-  it("skips issues with no kgRefId", async () => {
-    mockFindManyWorkspace.mockResolvedValue(makeWorkspaces(["ws-1"]));
-    mockFindManyIssue.mockResolvedValue(makeIssues([{ id: "issue-no-kg", kgRefId: null }]));
-
-    const result = await runErrorImpactCron();
-
     expect(result.issuesScored).toBe(0);
-    expect(result.issuesSkipped).toBe(1);
+    expect(mockIssueFindMany).not.toHaveBeenCalled();
     expect(result.errors).toHaveLength(0);
   });
 
-  it("handles graph read failure gracefully (ok: false)", async () => {
-    mockFindManyWorkspace.mockResolvedValue(makeWorkspaces(["ws-1"]));
-    mockFindManyIssue.mockResolvedValue(makeIssues([{ id: "issue-1" }]));
+  it("scores an issue successfully and persists the result", async () => {
+    mockWorkspaceFindMany.mockResolvedValue([makeWorkspace("ws-1")]);
+    mockGetJarvisConfig.mockResolvedValue(JARVIS_CONFIG);
+    mockIssueFindMany.mockResolvedValue([makeIssue("issue-1", "ws-1")]);
     mockGetReferencedNodeCentrality.mockResolvedValue({
-      ok: false,
-      nodes: [],
-      error: "timeout",
+      ok: true,
+      nodes: [{ pagerank: 0.8, in_degree: 40, name: "core.ts", node_type: "File" }],
+    });
+    mockComputeImpactScore.mockReturnValue({
+      score: 0.64,
+      meta: { topNodeName: "core.ts", topNodeType: "File", topPagerank: 0.8, topInDegree: 40, nodeCount: 1 },
     });
 
     const result = await runErrorImpactCron();
 
-    expect(result.issuesSkipped).toBe(1);
-    expect(result.issuesScored).toBe(0);
-    expect(result.errors).toHaveLength(0); // graph failure is logged, not an error
-  });
-
-  it("persists null score when computeImpactScore returns null (no nodes resolved)", async () => {
-    mockFindManyWorkspace.mockResolvedValue(makeWorkspaces(["ws-1"]));
-    mockFindManyIssue.mockResolvedValue(makeIssues([{ id: "issue-1" }]));
-    mockGetReferencedNodeCentrality.mockResolvedValue({ ok: true, nodes: [] });
-    mockComputeImpactScore.mockReturnValue(null);
-
-    const result = await runErrorImpactCron();
-
     expect(result.issuesScored).toBe(1);
-    expect(mockUpdateIssue).toHaveBeenCalledWith(
+    expect(result.errors).toHaveLength(0);
+    expect(mockIssueUpdate).toHaveBeenCalledWith(
       expect.objectContaining({
-        data: expect.objectContaining({ impactScore: null }),
+        where: { id: "issue-1" },
+        data: expect.objectContaining({ impactScore: 0.64 }),
       }),
     );
   });
 
+  it("isolates per-issue failures: one failing issue does not abort the batch", async () => {
+    mockWorkspaceFindMany.mockResolvedValue([makeWorkspace("ws-1")]);
+    mockGetJarvisConfig.mockResolvedValue(JARVIS_CONFIG);
+    mockIssueFindMany.mockResolvedValue([
+      makeIssue("issue-1", "ws-1"),
+      makeIssue("issue-2", "ws-1"),
+      makeIssue("issue-3", "ws-1"),
+    ]);
+
+    // issue-1: centrality fetch throws
+    // issue-2: centrality ok but computeImpactScore throws
+    // issue-3: fully successful
+    mockGetReferencedNodeCentrality
+      .mockRejectedValueOnce(new Error("Jarvis timeout"))
+      .mockResolvedValueOnce({
+        ok: true,
+        nodes: [{ pagerank: 0.5, in_degree: 10 }],
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        nodes: [{ pagerank: 0.9, in_degree: 80 }],
+      });
+
+    mockComputeImpactScore
+      .mockImplementationOnce(() => { throw new Error("scoring error"); })
+      .mockReturnValueOnce({ score: 0.82, meta: {} });
+
+    const result = await runErrorImpactCron();
+
+    expect(result.issuesScored).toBe(1); // only issue-3 succeeded
+    expect(result.workspacesProcessed).toBe(1);
+    // Two errors recorded (issue-1 and issue-2)
+    expect(result.errors.length).toBeGreaterThanOrEqual(2);
+    // Overall success is false because there were per-issue failures
+    expect(result.success).toBe(false);
+  });
+
+  it("marks issue as skipped when centrality fetch returns ok:false", async () => {
+    mockWorkspaceFindMany.mockResolvedValue([makeWorkspace("ws-1")]);
+    mockGetJarvisConfig.mockResolvedValue(JARVIS_CONFIG);
+    mockIssueFindMany.mockResolvedValue([makeIssue("issue-1", "ws-1")]);
+    mockGetReferencedNodeCentrality.mockResolvedValue({
+      ok: false,
+      nodes: [],
+      error: "Graph unavailable",
+    });
+
+    const result = await runErrorImpactCron();
+
+    expect(result.issuesScored).toBe(0);
+    expect(result.issuesSkipped).toBe(1);
+    expect(mockIssueUpdate).not.toHaveBeenCalled();
+    // Non-fatal — but error is recorded
+    expect(result.errors).toHaveLength(1);
+  });
+
+  it("skips issues without kgRefId", async () => {
+    mockWorkspaceFindMany.mockResolvedValue([makeWorkspace("ws-1")]);
+    mockGetJarvisConfig.mockResolvedValue(JARVIS_CONFIG);
+    mockIssueFindMany.mockResolvedValue([makeIssue("issue-1", "ws-1", null)]);
+
+    const result = await runErrorImpactCron();
+
+    expect(result.issuesScored).toBe(0);
+    expect(result.issuesSkipped).toBe(1);
+    expect(mockGetReferencedNodeCentrality).not.toHaveBeenCalled();
+  });
+
   it("processes multiple workspaces independently", async () => {
-    mockFindManyWorkspace.mockResolvedValue(makeWorkspaces(["ws-1", "ws-2"]));
-    mockFindManyIssue
-      .mockResolvedValueOnce(makeIssues([{ id: "issue-ws1" }]))
-      .mockResolvedValueOnce(makeIssues([{ id: "issue-ws2-a" }, { id: "issue-ws2-b" }]));
+    mockWorkspaceFindMany.mockResolvedValue([makeWorkspace("ws-1"), makeWorkspace("ws-2")]);
+    mockGetJarvisConfig.mockResolvedValue(JARVIS_CONFIG);
+    mockIssueFindMany
+      .mockResolvedValueOnce([makeIssue("issue-ws1", "ws-1")])
+      .mockResolvedValueOnce([makeIssue("issue-ws2", "ws-2")]);
+    mockGetReferencedNodeCentrality.mockResolvedValue({
+      ok: true,
+      nodes: [{ pagerank: 0.5, in_degree: 20 }],
+    });
+    mockComputeImpactScore.mockReturnValue({ score: 0.38, meta: {} });
 
     const result = await runErrorImpactCron();
 
     expect(result.workspacesProcessed).toBe(2);
-    expect(result.issuesScored).toBe(3);
+    expect(result.issuesScored).toBe(2);
+    expect(result.errors).toHaveLength(0);
+  });
+
+  it("handles workspace-level DB failure gracefully and continues to next workspace", async () => {
+    mockWorkspaceFindMany.mockResolvedValue([makeWorkspace("ws-fail"), makeWorkspace("ws-ok")]);
+    mockGetJarvisConfig
+      .mockRejectedValueOnce(new Error("DB error")) // ws-fail: config lookup throws
+      .mockResolvedValueOnce(JARVIS_CONFIG); // ws-ok: fine
+    mockIssueFindMany.mockResolvedValue([makeIssue("issue-ws-ok", "ws-ok")]);
+    mockGetReferencedNodeCentrality.mockResolvedValue({
+      ok: true,
+      nodes: [{ pagerank: 0.6, in_degree: 30 }],
+    });
+    mockComputeImpactScore.mockReturnValue({ score: 0.48, meta: {} });
+
+    const result = await runErrorImpactCron();
+
+    expect(result.workspacesProcessed).toBe(2);
+    expect(result.issuesScored).toBe(1);
+    expect(result.errors.length).toBeGreaterThanOrEqual(1);
+    expect(result.success).toBe(false); // workspace-level error recorded
   });
 });

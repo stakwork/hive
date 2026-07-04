@@ -571,3 +571,110 @@ export async function deleteEdge(
 
   return { success: true };
 }
+
+// ── Error-impact centrality helpers ──────────────────────────────────────────
+
+export interface CentralityNode {
+  ref_id: string;
+  node_type: string;
+  name: string;
+  pagerank?: number;
+  in_degree?: number;
+  hub_score?: number;
+  importance_tag?: string;
+}
+
+export interface ReferencedCentralityResult {
+  ok: boolean;
+  nodes: CentralityNode[];
+  error?: string;
+}
+
+/**
+ * Fetch the File/Function nodes referenced by an ErrorIssue KG node and
+ * return their centrality properties (pagerank, in_degree, hub_score,
+ * importance_tag). Uses the existing `/v2/nodes/{refId}?expand=edges` endpoint
+ * filtered to REFERENCES edges, which is the same endpoint `kgGetNeighbors`
+ * uses — so no new backend surface is required.
+ *
+ * Never throws — returns `{ ok: false }` on any failure.
+ */
+export async function getReferencedNodeCentrality(
+  config: JarvisConnectionConfig,
+  issueRefId: string,
+  opts?: { timeoutMs?: number },
+): Promise<ReferencedCentralityResult> {
+  try {
+    const params = new URLSearchParams({
+      expand: "edges",
+      edge_type: "['REFERENCES']",
+      node_type: "['File','Function']",
+      canonicalize: "false",
+      limit: "100",
+    });
+
+    const url = `${config.jarvisUrl.replace(/\/$/, "")}/v2/nodes/${encodeURIComponent(issueRefId)}?${params.toString()}`;
+
+    const signal = AbortSignal.timeout(opts?.timeoutMs ?? REQUEST_TIMEOUT_MS);
+    const response = await fetch(url, {
+      method: "GET",
+      headers: {
+        "x-api-token": config.apiKey,
+        "Content-Type": "application/json",
+      },
+      signal,
+    });
+
+    if (!response.ok) {
+      return {
+        ok: false,
+        nodes: [],
+        error: `Jarvis returned ${response.status}`,
+      };
+    }
+
+    const data = (await response.json()) as {
+      nodes?: Array<{
+        ref_id: string;
+        node_type: string;
+        name?: string;
+        properties?: Record<string, unknown>;
+      }>;
+      edges?: Array<{ source: string; target: string; edge_type: string }>;
+    };
+
+    // Only keep the neighbor nodes (exclude the queried ErrorIssue node itself)
+    const referencedNodes: CentralityNode[] = [];
+    const seenRefIds = new Set<string>();
+
+    for (const edge of data.edges ?? []) {
+      // REFERENCES edges are outbound from the ErrorIssue — target is the code node
+      if (edge.source !== issueRefId || edge.edge_type !== "REFERENCES") continue;
+      const neighborRefId = edge.target;
+      if (seenRefIds.has(neighborRefId)) continue;
+      seenRefIds.add(neighborRefId);
+
+      const node = (data.nodes ?? []).find((n) => n.ref_id === neighborRefId);
+      if (!node) continue;
+
+      const p = node.properties ?? {};
+      referencedNodes.push({
+        ref_id: node.ref_id,
+        node_type: node.node_type,
+        name: node.name ?? (p.name as string | undefined) ?? (p.file_path as string | undefined) ?? "",
+        pagerank: typeof p.pagerank === "number" ? p.pagerank : undefined,
+        in_degree: typeof p.in_degree === "number" ? p.in_degree : undefined,
+        hub_score: typeof p.hub_score === "number" ? p.hub_score : undefined,
+        importance_tag: typeof p.importance_tag === "string" ? p.importance_tag : undefined,
+      });
+    }
+
+    return { ok: true, nodes: referencedNodes };
+  } catch (error) {
+    return {
+      ok: false,
+      nodes: [],
+      error: error instanceof Error ? error.message : "Request failed",
+    };
+  }
+}

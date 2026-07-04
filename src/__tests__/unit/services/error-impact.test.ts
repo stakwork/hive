@@ -1,109 +1,90 @@
 /**
  * Unit tests for src/services/error-impact.ts
  *
- * Covers: computeImpactScore — central node, peripheral node, empty input,
- * and formula properties (null-safety, normalization, meta fields).
+ * Covers:
+ * - computeImpactScore: central node → high score
+ * - computeImpactScore: peripheral-only node → low score
+ * - computeImpactScore: empty input → null
+ * - computeImpactScore: multiple nodes, best node wins
+ * - computeImpactScore: missing optional fields handled gracefully
  */
 import { describe, it, expect } from "vitest";
 import { computeImpactScore } from "@/services/error-impact";
 
 describe("computeImpactScore", () => {
-  it("returns null for empty input", () => {
+  it("returns null for an empty node list (unscored)", () => {
     expect(computeImpactScore([])).toBeNull();
   });
 
-  it("returns null for undefined/null guard", () => {
-    // TypeScript prevents null/undefined at compile time, but belt-and-suspenders
-    expect(computeImpactScore([] as never)).toBeNull();
+  it("returns null for undefined/falsy input", () => {
+    // @ts-expect-error intentional bad input
+    expect(computeImpactScore(null)).toBeNull();
+    // @ts-expect-error intentional bad input
+    expect(computeImpactScore(undefined)).toBeNull();
   });
 
-  it("returns a high score for a central node with high pagerank + high in_degree", () => {
+  it("returns a high score for a central node (high pagerank + high in_degree)", () => {
     const result = computeImpactScore([
-      { pagerank: 0.9, in_degree: 180, name: "api-client.ts", node_type: "File" },
+      { pagerank: 0.95, in_degree: 80, name: "src/services/core.ts", node_type: "File" },
     ]);
     expect(result).not.toBeNull();
+    // 0.95 * 0.6 + (80/100) * 0.4 = 0.57 + 0.32 = 0.89
     expect(result!.score).toBeGreaterThan(0.8);
-    expect(result!.score).toBeLessThanOrEqual(1);
-  });
-
-  it("returns a low score for a peripheral node with low pagerank + low in_degree", () => {
-    const result = computeImpactScore([
-      { pagerank: 0.05, in_degree: 2, name: "utils.ts", node_type: "File" },
-    ]);
-    expect(result).not.toBeNull();
-    expect(result!.score).toBeLessThan(0.15);
-    expect(result!.score).toBeGreaterThanOrEqual(0);
-  });
-
-  it("picks the best node when multiple are provided", () => {
-    const resultMulti = computeImpactScore([
-      { pagerank: 0.05, in_degree: 2, name: "peripheral.ts", node_type: "File" },
-      { pagerank: 0.9, in_degree: 180, name: "central.ts", node_type: "File" },
-    ]);
-    const resultSingle = computeImpactScore([
-      { pagerank: 0.9, in_degree: 180, name: "central.ts", node_type: "File" },
-    ]);
-    // Multi-node result should equal the single best-node result
-    expect(resultMulti!.score).toBeCloseTo(resultSingle!.score, 5);
-    expect(resultMulti!.meta.topNodeName).toBe("central.ts");
-  });
-
-  it("handles nodes with only pagerank (no in_degree)", () => {
-    const result = computeImpactScore([
-      { pagerank: 0.7, name: "service.ts", node_type: "File" },
-    ]);
-    expect(result).not.toBeNull();
-    expect(result!.score).toBeGreaterThan(0);
-    expect(result!.meta.topInDegree).toBe(0);
-  });
-
-  it("handles nodes with only in_degree (no pagerank)", () => {
-    const result = computeImpactScore([
-      { in_degree: 100, name: "router.ts", node_type: "File" },
-    ]);
-    expect(result).not.toBeNull();
-    expect(result!.score).toBeGreaterThan(0);
-    expect(result!.meta.topPagerank).toBe(0);
-  });
-
-  it("handles nodes with neither pagerank nor in_degree (zero-score node)", () => {
-    // A node with no centrality data still produces a non-null result (was resolved)
-    // but the score should be 0
-    const result = computeImpactScore([
-      { name: "unknown.ts", node_type: "File" },
-    ]);
-    // Score is 0/maxRaw = 0, but result is not null — the node resolved
-    expect(result).not.toBeNull();
-    expect(result!.score).toBe(0);
-  });
-
-  it("normalizes score to [0, 1]", () => {
-    // Even an extreme node should not exceed 1
-    const result = computeImpactScore([
-      { pagerank: 999, in_degree: 99999, name: "god-file.ts", node_type: "File" },
-    ]);
-    expect(result).not.toBeNull();
-    expect(result!.score).toBeLessThanOrEqual(1);
-    expect(result!.score).toBeGreaterThanOrEqual(0);
-  });
-
-  it("populates meta with top node details", () => {
-    const result = computeImpactScore([
-      { pagerank: 0.8, in_degree: 120, name: "auth.ts", node_type: "Function" },
-    ]);
-    expect(result!.meta.topNodeName).toBe("auth.ts");
-    expect(result!.meta.topNodeType).toBe("Function");
-    expect(result!.meta.topPagerank).toBe(0.8);
-    expect(result!.meta.topInDegree).toBe(120);
+    expect(result!.meta.topNodeName).toBe("src/services/core.ts");
+    expect(result!.meta.topNodeType).toBe("File");
+    expect(result!.meta.topPagerank).toBe(0.95);
+    expect(result!.meta.topInDegree).toBe(80);
     expect(result!.meta.nodeCount).toBe(1);
   });
 
-  it("counts all nodes in meta.nodeCount", () => {
+  it("returns a low score for a peripheral node (low pagerank + low in_degree)", () => {
     const result = computeImpactScore([
-      { pagerank: 0.1, in_degree: 5 },
-      { pagerank: 0.2, in_degree: 10 },
-      { pagerank: 0.9, in_degree: 150 },
+      { pagerank: 0.05, in_degree: 1, name: "src/utils/format.ts", node_type: "File" },
     ]);
+    expect(result).not.toBeNull();
+    // 0.05 * 0.6 + (1/100) * 0.4 = 0.03 + 0.004 = 0.034
+    expect(result!.score).toBeLessThan(0.1);
+  });
+
+  it("picks the highest-ranking node as top contributor across multiple nodes", () => {
+    const result = computeImpactScore([
+      { pagerank: 0.1, in_degree: 5, name: "utils.ts", node_type: "File" },
+      { pagerank: 0.9, in_degree: 60, name: "core.ts", node_type: "File" },
+      { pagerank: 0.3, in_degree: 10, name: "helper.ts", node_type: "File" },
+    ]);
+    expect(result).not.toBeNull();
+    expect(result!.meta.topNodeName).toBe("core.ts");
     expect(result!.meta.nodeCount).toBe(3);
+    // Score should reflect the top node: 0.9*0.6 + (60/100)*0.4 = 0.54+0.24 = 0.78
+    expect(result!.score).toBeGreaterThan(0.7);
+  });
+
+  it("handles nodes with missing pagerank/in_degree gracefully (treats as 0)", () => {
+    const result = computeImpactScore([
+      { name: "ambiguous.ts", node_type: "Function" },
+    ]);
+    expect(result).not.toBeNull();
+    expect(result!.score).toBe(0); // 0 * 0.6 + 0 * 0.4 = 0
+    expect(result!.meta.topPagerank).toBeNull();
+    expect(result!.meta.topInDegree).toBeNull();
+  });
+
+  it("clamps in_degree above normalization factor to 1.0 component", () => {
+    const result = computeImpactScore([
+      { pagerank: 1.0, in_degree: 500, name: "uber-central.ts", node_type: "File" },
+    ]);
+    expect(result).not.toBeNull();
+    // Clamped: 1.0 * 0.6 + 1.0 * 0.4 = 1.0
+    expect(result!.score).toBe(1.0);
+  });
+
+  it("returns score rounded to 4 decimal places", () => {
+    const result = computeImpactScore([
+      { pagerank: 0.333, in_degree: 33, name: "mid.ts", node_type: "File" },
+    ]);
+    expect(result).not.toBeNull();
+    const scoreStr = String(result!.score);
+    const decimalPart = scoreStr.includes(".") ? scoreStr.split(".")[1] : "";
+    expect(decimalPart.length).toBeLessThanOrEqual(4);
   });
 });

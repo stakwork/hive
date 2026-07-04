@@ -2103,6 +2103,13 @@ model ErrorIssue {
   correlationConfidence   String?   @map("correlation_confidence")
   correlationComputedAt   DateTime? @map("correlation_computed_at")
   correlationCandidates   Json?     @map("correlation_candidates")
+  /// Blast-radius impact score — derived from the PageRank/fan-in centrality of
+  /// the File/Function KG nodes this issue references. Populated best-effort by
+  /// the error-impact cron and opportunistically at ingest. null = unscored.
+  impactScore     Float?    @map("impact_score")
+  impactScoredAt  DateTime? @map("impact_scored_at")
+  /// Small breakdown: top contributing node name/type, its pagerank, in_degree.
+  impactMeta      Json?     @map("impact_meta")
   workspace      Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   repository     Repository?      @relation(fields: [repositoryId], references: [id], onDelete: SetNull)
   events         ErrorEvent[]

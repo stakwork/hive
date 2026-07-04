@@ -69,6 +69,10 @@
     {
       "path": "/api/cron/canvas-mirror",
       "schedule": "15 * * * *"
+    },
+    {
+      "path": "/api/cron/error-impact",
+      "schedule": "0 * * * *"
     }
   ]
 }

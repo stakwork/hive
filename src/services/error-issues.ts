@@ -16,7 +16,7 @@ const DEFAULT_EVENTS_LIMIT = 20;
 
 // ── List ──────────────────────────────────────────────────────────────────────
 
-export type ErrorIssueSort = "recent" | "impact";
+export type ErrorIssuesSortOrder = "recent" | "impact";
 
 export interface ListErrorIssuesParams {
   workspaceId: string;
@@ -25,7 +25,7 @@ export interface ListErrorIssuesParams {
   repoKey?: string;
   skip?: number;
   limit?: number;
-  sort?: ErrorIssueSort;
+  sort?: ErrorIssuesSortOrder;
 }
 
 export async function listErrorIssues({
@@ -49,8 +49,10 @@ export async function listErrorIssues({
     ...(repoKey ? { repoKey } : {}),
   };
 
-  // Impact sort: impactScore desc (nulls last), then occurrenceCount desc, then lastSeenAt desc.
-  // Prisma represents nulls-last for desc by using { sort: "desc", nulls: "last" }.
+  // impact ordering: impactScore desc nulls-last, then occurrenceCount desc, then lastSeenAt desc.
+  // Prisma/PostgreSQL default for DESC is NULLS FIRST, so we must explicitly set nulls: "last"
+  // to push unscored issues below scored ones.
+  // recent ordering: lastSeenAt desc (default behaviour — unchanged for existing callers)
   const orderBy =
     sort === "impact"
       ? [
@@ -58,7 +60,7 @@ export async function listErrorIssues({
           { occurrenceCount: "desc" as const },
           { lastSeenAt: "desc" as const },
         ]
-      : [{ lastSeenAt: "desc" as const }];
+      : { lastSeenAt: "desc" as const };
 
   const [issues, total] = await Promise.all([
     db.errorIssue.findMany({
@@ -82,15 +84,15 @@ export async function listErrorIssues({
         release: true,
         metadata: true,
         kgRefId: true,
-        impactScore: true,
-        impactScoredAt: true,
-        impactMeta: true,
         correlatedPrNumber: true,
         correlatedPrUrl: true,
         correlatedCommitSha: true,
         correlationConfidence: true,
         correlationComputedAt: true,
         correlationCandidates: true,
+        impactScore: true,
+        impactScoredAt: true,
+        impactMeta: true,
       },
     }),
     db.errorIssue.count({ where }),
