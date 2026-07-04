@@ -669,7 +669,6 @@ export function PromptsPanel({ workflowId, variant = "panel", onNavigateToWorkfl
         body: JSON.stringify({
           value: formValue.trim(),
           description: formDescription.trim(),
-          agentNames: formAgentNames,
         }),
       });
 
@@ -692,6 +691,38 @@ export function PromptsPanel({ workflowId, variant = "panel", onNavigateToWorkfl
       setError(err instanceof Error ? err.message : "Failed to update prompt");
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  // Agent names are Prompt-level metadata (not versioned) and are saved
+  // independently of the draft/publish lifecycle. Autosave via PATCH.
+  const [isSavingAgentNames, setIsSavingAgentNames] = useState(false);
+
+  const handleSaveAgentNames = async (names: string[]) => {
+    if (!selectedPrompt) return;
+
+    const previous = selectedPrompt.agent_names ?? [];
+    // Optimistic update
+    setFormAgentNames(names);
+    setSelectedPrompt({ ...selectedPrompt, agent_names: names });
+    setIsSavingAgentNames(true);
+    try {
+      const response = await fetch(`/api/workflow/prompts/${selectedPrompt.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ agentNames: names }),
+      });
+      if (!response.ok) {
+        throw new Error("Failed to update agent names");
+      }
+    } catch (err) {
+      console.error("Error updating agent names:", err);
+      // Revert on failure
+      setFormAgentNames(previous);
+      setSelectedPrompt((prev) => (prev ? { ...prev, agent_names: previous } : prev));
+      setError(err instanceof Error ? err.message : "Failed to update agent names");
+    } finally {
+      setIsSavingAgentNames(false);
     }
   };
 
@@ -1191,32 +1222,15 @@ export function PromptsPanel({ workflowId, variant = "panel", onNavigateToWorkfl
                 <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
                   Agent Names
                 </label>
-                {isEditing ? (
-                  <div className="mt-1">
-                    <AgentNamesEditor
-                      agentNames={formAgentNames}
-                      onChange={setFormAgentNames}
-                      disabled={isSaving}
-                    />
-                  </div>
-                ) : (
-                  <div className="mt-1">
-                    {(selectedPrompt.agent_names ?? []).length === 0 ? (
-                      <p className="text-xs text-muted-foreground italic">No agents assigned.</p>
-                    ) : (
-                      <div className="flex flex-wrap gap-2">
-                        {(selectedPrompt.agent_names ?? []).map((name) => (
-                          <span
-                            key={name}
-                            className="inline-flex items-center rounded-full bg-muted px-3 py-1 text-xs font-medium"
-                          >
-                            {name}
-                          </span>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                )}
+                {/* Agent names are Prompt-level metadata — edited inline and saved
+                    immediately, independent of the draft/publish lifecycle. */}
+                <div className="mt-1">
+                  <AgentNamesEditor
+                    agentNames={selectedPrompt.agent_names ?? []}
+                    onChange={handleSaveAgentNames}
+                    disabled={isSavingAgentNames}
+                  />
+                </div>
               </div>
 
               <div>

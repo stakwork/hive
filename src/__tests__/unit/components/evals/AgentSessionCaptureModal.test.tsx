@@ -21,12 +21,16 @@ vi.mock("@/components/evals/CaptureEvalForm", () => ({
     onRequirementChange,
     onReasonChange,
     submitting,
+    selectedAgent,
+    onSelectAgent,
   }: {
     requirement: string;
     reason: string;
     onRequirementChange: (v: string) => void;
     onReasonChange: (v: string) => void;
     submitting?: boolean;
+    selectedAgent?: string;
+    onSelectAgent?: (v: string) => void;
   }) => (
     <div data-testid="capture-eval-form">
       <input
@@ -41,6 +45,17 @@ vi.mock("@/components/evals/CaptureEvalForm", () => ({
         onChange={(e) => onReasonChange(e.target.value)}
         disabled={submitting}
       />
+      {onSelectAgent !== undefined && (
+        <select
+          aria-label="agent"
+          value={selectedAgent ?? ""}
+          onChange={(e) => onSelectAgent(e.target.value)}
+        >
+          <option value="">-- select agent --</option>
+          <option value="canvas-agent">Canvas Agent</option>
+          <option value="coding-agent">Coding Agent</option>
+        </select>
+      )}
     </div>
   ),
 }));
@@ -219,6 +234,98 @@ describe("AgentSessionCaptureModal", () => {
       const cancelBtn = screen.getByRole("button", { name: /cancel/i });
       await user.click(cancelBtn);
       expect(onOpenChange).toHaveBeenCalledWith(false);
+    });
+  });
+
+  describe("defaultAgent prop and agent dropdown", () => {
+    it("passes selectedAgent defaulting to defaultAgent when provided", () => {
+      renderModal({ defaultAgent: "canvas-agent" });
+      // The mocked CaptureEvalForm renders a <select aria-label="agent">
+      // whose value should reflect the defaultAgent
+      const agentSelect = screen.getByRole("combobox", { name: /agent/i });
+      expect(agentSelect).toHaveValue("canvas-agent");
+    });
+
+    it("agent defaults to empty string when no defaultAgent is provided", () => {
+      renderModal({});
+      const agentSelect = screen.getByRole("combobox", { name: /agent/i });
+      expect(agentSelect).toHaveValue("");
+    });
+
+    it("includes selected agent in POST body when agent is chosen", async () => {
+      const user = userEvent.setup();
+      mockFetch
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ data: { nodes: [{ ref_id: "evalset-1", name: "My Set" }] } }),
+        })
+        .mockResolvedValueOnce({ ok: true, json: async () => ({}) });
+
+      renderModal({ defaultAgent: "canvas-agent" });
+
+      await waitFor(() =>
+        expect(mockFetch).toHaveBeenCalledWith(expect.stringContaining("/evals"))
+      );
+
+      // Fill requirement
+      const reqInput = screen.getByRole("textbox", { name: /requirement/i });
+      await user.type(reqInput, "Canvas agent must respond");
+
+      // Change agent via the mocked select
+      const agentSelect = screen.getByRole("combobox", { name: /agent/i });
+      await user.selectOptions(agentSelect, "coding-agent");
+
+      const confirmBtn = screen.getByRole("button", { name: /confirm/i });
+      await user.click(confirmBtn);
+
+      await waitFor(() =>
+        expect(mockFetch).toHaveBeenCalledWith(
+          expect.stringContaining("/eval/capture"),
+          expect.any(Object)
+        )
+      );
+
+      const captureCall = mockFetch.mock.calls.find((c) =>
+        (c[0] as string).includes("/eval/capture")
+      );
+      const body = JSON.parse(captureCall![1].body as string);
+      expect(body.agent).toBe("coding-agent");
+    });
+
+    it("omits agent from POST body when selectedAgent is empty", async () => {
+      const user = userEvent.setup();
+      mockFetch
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ data: { nodes: [{ ref_id: "evalset-1", name: "My Set" }] } }),
+        })
+        .mockResolvedValueOnce({ ok: true, json: async () => ({}) });
+
+      // No defaultAgent → agent stays empty
+      renderModal({});
+
+      await waitFor(() =>
+        expect(mockFetch).toHaveBeenCalledWith(expect.stringContaining("/evals"))
+      );
+
+      const reqInput = screen.getByRole("textbox", { name: /requirement/i });
+      await user.type(reqInput, "Agent must respond");
+
+      const confirmBtn = screen.getByRole("button", { name: /confirm/i });
+      await user.click(confirmBtn);
+
+      await waitFor(() =>
+        expect(mockFetch).toHaveBeenCalledWith(
+          expect.stringContaining("/eval/capture"),
+          expect.any(Object)
+        )
+      );
+
+      const captureCall = mockFetch.mock.calls.find((c) =>
+        (c[0] as string).includes("/eval/capture")
+      );
+      const body = JSON.parse(captureCall![1].body as string);
+      expect(body).not.toHaveProperty("agent");
     });
   });
 });

@@ -218,6 +218,72 @@ export async function PUT(
   }
 }
 
+// ─── PATCH /api/workflow/prompts/[id] ────────────────────────────────────────
+// Lightweight update for Prompt-level metadata that is NOT versioned (agent
+// names). Unlike PUT, this never creates a new draft version and never touches
+// the publish lifecycle — it writes directly to the Prompt row.
+
+export async function PATCH(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  try {
+    const devMode = isDevelopmentMode();
+    const authResult = await getAuthenticatedUserId(devMode);
+    if (authResult instanceof NextResponse) return authResult;
+    const { userId } = authResult;
+
+    const denied = await requireWriteAccess(userId, devMode);
+    if (denied) return denied;
+
+    const { id } = await params;
+    if (!id) {
+      return NextResponse.json({ error: "Prompt ID is required" }, { status: 400 });
+    }
+
+    const body = await request.json();
+    const { agentNames } = body as { agentNames?: unknown };
+
+    if (agentNames === undefined) {
+      return NextResponse.json({ error: "agentNames is required" }, { status: 400 });
+    }
+
+    const normalizedAgentNames = normalizeAgentNames(agentNames);
+    if (!Array.isArray(normalizedAgentNames)) {
+      return NextResponse.json({ error: normalizedAgentNames.error }, { status: 400 });
+    }
+
+    const existing = await db.prompt.findUnique({ where: { id } });
+    if (!existing) {
+      return NextResponse.json({ error: "Prompt not found" }, { status: 404 });
+    }
+
+    await db.prompt.update({
+      where: { id },
+      data: { agentNames: normalizedAgentNames },
+    });
+
+    // Refetch with versions (ordered desc) so the response shape matches GET/PUT.
+    const updated = await db.prompt.findUnique({
+      where: { id },
+      include: {
+        versions: {
+          select: { id: true, versionNumber: true, value: true },
+          orderBy: { versionNumber: "desc" },
+        },
+      },
+    });
+    if (!updated) {
+      return NextResponse.json({ error: "Prompt not found after update" }, { status: 404 });
+    }
+
+    return NextResponse.json({ success: true, data: shapePromptDetail(updated) });
+  } catch (err: unknown) {
+    console.error("Error updating prompt agent names:", err);
+    return NextResponse.json({ error: "Failed to update agent names" }, { status: 500 });
+  }
+}
+
 // ─── DELETE /api/workflow/prompts/[id] ───────────────────────────────────────
 
 export async function DELETE(

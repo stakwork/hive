@@ -63,8 +63,13 @@
       "schedule": "30 * * * *"
     },
     {
+<<<<<<< feature/CMR53EL9I-add-impact-score-computation-1783094717
       "path": "/api/cron/error-impact",
       "schedule": "0 * * * *"
+=======
+      "path": "/api/cron/canvas-mirror",
+      "schedule": "15 * * * *"
+>>>>>>> master
     }
   ]
 }
