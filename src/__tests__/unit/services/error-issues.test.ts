@@ -68,6 +68,7 @@ import {
   InvalidStatusError,
   getErrorIssueDetail,
   listErrorIssues,
+  autoResolveErrorIssuesForFeatures,
   getRelatedErrorIssues,
 } from "@/services/error-issues";
 
@@ -327,7 +328,112 @@ describe("listErrorIssues", () => {
   });
 });
 
-// ── getRelatedErrorIssues ─────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// autoResolveErrorIssuesForFeatures
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("autoResolveErrorIssuesForFeatures", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockFindUnique.mockResolvedValue({ id: "issue-1", workspaceId: "ws-1", status: "UNRESOLVED" });
+    mockUpdate.mockResolvedValue(MOCK_ISSUE);
+    mockPusherTrigger.mockResolvedValue(undefined);
+  });
+
+  it("returns empty array without hitting the DB when featureIds is empty", async () => {
+    const result = await autoResolveErrorIssuesForFeatures([]);
+    expect(result.resolvedIssueIds).toEqual([]);
+    expect(mockIssueFindMany).not.toHaveBeenCalled();
+  });
+
+  it("resolves an UNRESOLVED issue linked to the given featureId", async () => {
+    mockIssueFindMany.mockResolvedValueOnce([{ id: "issue-1" }]);
+    mockFindUnique.mockResolvedValueOnce({ id: "issue-1", workspaceId: "ws-1", status: "UNRESOLVED" });
+    mockUpdate.mockResolvedValueOnce({ ...MOCK_ISSUE, status: "RESOLVED" });
+
+    const result = await autoResolveErrorIssuesForFeatures(["feature-1"]);
+
+    expect(result.resolvedIssueIds).toEqual(["issue-1"]);
+    expect(mockUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({ data: { status: "RESOLVED" } }),
+    );
+  });
+
+  it("queries with notIn([RESOLVED, IGNORED]) filter for idempotency and IGNORED protection", async () => {
+    mockIssueFindMany.mockResolvedValueOnce([]);
+
+    await autoResolveErrorIssuesForFeatures(["feature-1"]);
+
+    expect(mockIssueFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          features: { some: { id: { in: ["feature-1"] } } },
+          status: { notIn: ["RESOLVED", "IGNORED"] },
+        }),
+      }),
+    );
+  });
+
+  it("skips IGNORED issues — no update or Pusher call", async () => {
+    mockIssueFindMany.mockResolvedValueOnce([]);
+
+    const result = await autoResolveErrorIssuesForFeatures(["feature-1"]);
+
+    expect(result.resolvedIssueIds).toEqual([]);
+    expect(mockUpdate).not.toHaveBeenCalled();
+    expect(mockPusherTrigger).not.toHaveBeenCalled();
+  });
+
+  it("is a no-op when the issue is already RESOLVED — no duplicate update or Pusher", async () => {
+    mockIssueFindMany.mockResolvedValueOnce([]);
+
+    const result = await autoResolveErrorIssuesForFeatures(["feature-1"]);
+
+    expect(result.resolvedIssueIds).toEqual([]);
+    expect(mockUpdate).not.toHaveBeenCalled();
+    expect(mockPusherTrigger).not.toHaveBeenCalled();
+  });
+
+  it("returns empty array and does not throw when featureId has no linked ErrorIssue", async () => {
+    mockIssueFindMany.mockResolvedValueOnce([]);
+
+    const result = await autoResolveErrorIssuesForFeatures(["feature-no-error"]);
+
+    expect(result.resolvedIssueIds).toEqual([]);
+  });
+
+  it("resolves remaining issues when one issue's update fails (partial failure tolerance)", async () => {
+    mockIssueFindMany.mockResolvedValueOnce([{ id: "issue-fail" }, { id: "issue-ok" }]);
+
+    mockFindUnique
+      .mockResolvedValueOnce({ id: "issue-fail", workspaceId: "ws-1", status: "UNRESOLVED" })
+      .mockResolvedValueOnce({ id: "issue-ok", workspaceId: "ws-1", status: "UNRESOLVED" });
+
+    mockUpdate
+      .mockRejectedValueOnce(new Error("DB error"))
+      .mockResolvedValueOnce({ ...MOCK_ISSUE, id: "issue-ok", status: "RESOLVED" });
+
+    const result = await autoResolveErrorIssuesForFeatures(["feature-1"]);
+
+    expect(result.resolvedIssueIds).toEqual(["issue-ok"]);
+  });
+
+  it("resolves multiple issues across multiple featureIds", async () => {
+    mockIssueFindMany.mockResolvedValueOnce([{ id: "issue-A" }, { id: "issue-B" }]);
+
+    mockFindUnique
+      .mockResolvedValueOnce({ id: "issue-A", workspaceId: "ws-1", status: "UNRESOLVED" })
+      .mockResolvedValueOnce({ id: "issue-B", workspaceId: "ws-1", status: "UNRESOLVED" });
+
+    mockUpdate
+      .mockResolvedValueOnce({ ...MOCK_ISSUE, id: "issue-A", status: "RESOLVED" })
+      .mockResolvedValueOnce({ ...MOCK_ISSUE, id: "issue-B", status: "RESOLVED" });
+
+    const result = await autoResolveErrorIssuesForFeatures(["feature-1", "feature-2"]);
+
+    expect(result.resolvedIssueIds).toEqual(["issue-A", "issue-B"]);
+  });
+});
 
 describe("getRelatedErrorIssues", () => {
   const SOURCE_ISSUE = {
@@ -521,6 +627,7 @@ describe("getRelatedErrorIssues", () => {
 
     await getRelatedErrorIssues("issue-src");
 
+
     expect(mockIssueFindMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
@@ -531,4 +638,5 @@ describe("getRelatedErrorIssues", () => {
       }),
     );
   });
+
 });
