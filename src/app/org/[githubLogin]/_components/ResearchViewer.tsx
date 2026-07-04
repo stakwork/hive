@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Loader2, Search } from "lucide-react";
-import ReactMarkdown from "react-markdown";
+import { MarkdownRenderer } from "@/components/MarkdownRenderer";
 import { getOrgChannelName, PUSHER_EVENTS } from "@/lib/pusher";
 import { usePusherChannel } from "@/hooks/usePusherChannel";
 
@@ -139,7 +139,7 @@ export function ResearchViewer({
           </div>
         ) : (
           <div className="prose prose-sm dark:prose-invert max-w-none">
-            <ReactMarkdown>{content}</ReactMarkdown>
+            <MarkdownRenderer size="compact">{content}</MarkdownRenderer>
           </div>
         )}
       </div>
