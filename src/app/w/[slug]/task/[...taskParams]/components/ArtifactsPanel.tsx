@@ -159,6 +159,15 @@ export function ArtifactsPanel({
   const ideArtifacts = allIdeArtifacts.length > 0 ? [allIdeArtifacts[allIdeArtifacts.length - 1]] : [];
   const graphArtifacts = artifacts.filter((a) => a.type === "GRAPH");
   const workflowArtifacts = artifacts.filter((a) => a.type === "WORKFLOW");
+  const publishPromptArtifacts = artifacts.filter((a) => a.type === "PUBLISH_PROMPT");
+  const publishScriptArtifacts = artifacts.filter((a) => a.type === "PUBLISH_SCRIPT");
+  // The WORKFLOW tab is shown when there are WORKFLOW artifacts OR PUBLISH_PROMPT/PUBLISH_SCRIPT
+  // artifacts (so reviewers can see the Changes diff for prompt/script-only tasks).
+  const workflowTabArtifacts = [
+    ...workflowArtifacts,
+    ...publishPromptArtifacts,
+    ...publishScriptArtifacts,
+  ];
   const diffArtifacts = artifacts.filter((a) => a.type === "DIFF");
 
   const hasFeature = !!feature && !!featureId && !!onFeatureUpdate;
@@ -322,13 +331,13 @@ export function ArtifactsPanel({
     if (hasFeature && showVerifyTab) tabs.push("VERIFY");
     if (agentLogs.length > 0 || !!streamingLog) tabs.push("LOGS");
     if (browserArtifacts.length > 0) tabs.push("BROWSER");
-    if (workflowArtifacts.length > 0) tabs.push("WORKFLOW");
+    if (workflowTabArtifacts.length > 0) tabs.push("WORKFLOW");
     if (graphArtifacts.length > 0) tabs.push("GRAPH");
     if (diffArtifacts.length > 0) tabs.push("DIFF");
     if (codeArtifacts.length > 0) tabs.push("CODE");
     if (ideArtifacts.length > 0) tabs.push("IDE");
     return tabs;
-  }, [planData, hasFeature, showTasksTab, showVerifyTab, agentLogs.length, streamingLog, codeArtifacts.length, browserArtifacts.length, ideArtifacts.length, graphArtifacts.length, workflowArtifacts.length, diffArtifacts.length]);
+  }, [planData, hasFeature, showTasksTab, showVerifyTab, agentLogs.length, streamingLog, codeArtifacts.length, browserArtifacts.length, ideArtifacts.length, graphArtifacts.length, workflowTabArtifacts.length, diffArtifacts.length]);
 
   // Auto-select first tab, or fall back when active tab is removed
   // Guard: don't reset during active generation to prevent TASKS tab from disappearing
@@ -490,10 +499,10 @@ export function ArtifactsPanel({
               <GraphArtifactPanel artifacts={graphArtifacts} />
             </div>
           )}
-          {workflowArtifacts.length > 0 && (
+          {workflowTabArtifacts.length > 0 && (
             <div className="h-full" hidden={activeTab !== "WORKFLOW"}>
               <WorkflowArtifactPanel
-                artifacts={workflowArtifacts}
+                artifacts={workflowTabArtifacts}
                 isActive={activeTab === "WORKFLOW"}
                 onStepSelect={onStepSelect}
                 onVersionChange={onVersionChange}

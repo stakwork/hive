@@ -12,11 +12,12 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Button } from "@/components/ui/button";
 import { ExternalLink } from "lucide-react";
 import { PromptsPanel } from "@/components/prompts";
-import { WorkflowChangesPanel } from "./WorkflowChangesPanel";
+import { ChangesList, type ChangedItem } from "./changes/ChangesList";
 import { ProjectInfoCard } from "@/components/ProjectInfoCard";
 import { StakworkRunDropdown } from "@/components/StakworkRunDropdown";
 import { computeWorkflowDiff } from "@/lib/utils/workflow-diff";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { PublishPromptContent, PublishScriptContent } from "@/lib/chat";
 
 interface WorkflowArtifactPanelProps {
   artifacts: Artifact[];
@@ -31,7 +32,15 @@ export function WorkflowArtifactPanel({ artifacts, isActive, onStepSelect, onVer
   const { slug } = useWorkspace();
   const [clickedStep, setClickedStep] = useState<WorkflowTransition | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [activeDisplayTab, setActiveDisplayTab] = useState<"editor" | "changes" | "prompts" | "stakwork" | "children">("editor");
+  // Default to "changes" for prompt/script-only tasks (no workflow), "editor" otherwise.
+  // We derive the initial value lazily from the artifacts prop.
+  // Note: type may be uppercase ("WORKFLOW") or lowercase ("workflow") depending on context.
+  const hasWorkflowArtifact = artifacts.some(
+    (a) => String(a.type).toUpperCase() === "WORKFLOW",
+  );
+  const [activeDisplayTab, setActiveDisplayTab] = useState<"editor" | "changes" | "prompts" | "stakwork" | "children">(
+    hasWorkflowArtifact ? "editor" : "changes",
+  );
   const handleStepClick = useCallback((step: WorkflowTransition) => {
     setClickedStep(step);
     setIsModalOpen(true);
@@ -84,7 +93,15 @@ export function WorkflowArtifactPanel({ artifacts, isActive, onStepSelect, onVer
     return workflowGroups.find(g => String(g.workflowId) === selectedWorkflowId)?.artifacts ?? artifacts;
   }, [workflowGroups, selectedWorkflowId, artifacts]);
 
-  if (artifacts.length === 0) {
+  // Check early if there are any relevant artifacts before proceeding.
+  // We consider WORKFLOW, PUBLISH_PROMPT, and PUBLISH_SCRIPT as relevant.
+  // Note: type may be uppercase or lowercase depending on context (normalize for comparison).
+  const hasAnyRelevantArtifacts = artifacts.some((a) => {
+    const t = String(a.type).toUpperCase();
+    return t === "WORKFLOW" || t === "PUBLISH_PROMPT" || t === "PUBLISH_SCRIPT";
+  });
+
+  if (!hasAnyRelevantArtifacts) {
     return (
       <div className="flex items-center justify-center h-full p-8">
         <div className="text-muted-foreground text-sm">No workflow available</div>
@@ -158,8 +175,79 @@ export function WorkflowArtifactPanel({ artifacts, isActive, onStepSelect, onVer
 
   // Check if we have changes to show (requires both a confirmed agent-response diff and an original)
   const hasChanges = !!(originalWorkflowJson && changesWorkflowJson);
-  // Always show Changes tab in editor mode (even without a prior version)
-  const showChangesTab = isEditorMode;
+
+  // Collect PUBLISH_PROMPT and PUBLISH_SCRIPT artifacts from ALL artifacts (not just activeArtifacts)
+  // so prompt/script-only tasks are covered even without a workflowId grouping.
+  // Normalize type to uppercase for comparison to handle both "PUBLISH_PROMPT" and "publish_prompt".
+  const publishPromptArtifacts = useMemo(
+    () => artifacts.filter((a) => String(a.type).toUpperCase() === "PUBLISH_PROMPT"),
+    [artifacts],
+  );
+  const publishScriptArtifacts = useMemo(
+    () => artifacts.filter((a) => String(a.type).toUpperCase() === "PUBLISH_SCRIPT"),
+    [artifacts],
+  );
+
+  const hasPublishArtifacts =
+    publishPromptArtifacts.length > 0 || publishScriptArtifacts.length > 0;
+
+  // Show Changes tab in editor mode OR whenever there are prompt/script publish artifacts
+  const showChangesTab = isEditorMode || hasPublishArtifacts;
+
+  // Build the unified list of changed items for ChangesList
+  const changesItems: ChangedItem[] = useMemo(() => {
+    const items: ChangedItem[] = [];
+
+    // Workflow diff item (only when we have workflow JSON)
+    if (isEditorMode) {
+      items.push({
+        type: "WORKFLOW",
+        name: mergedContent.workflowName || `Workflow ${mergedContent.workflowId ?? ""}`,
+        originalJson: originalWorkflowJson || null,
+        updatedJson:
+          changesWorkflowJson ||
+          (!originalWorkflowJson ? workflowJson : null) ||
+          null,
+      });
+    }
+
+    // Prompt items
+    for (const artifact of publishPromptArtifacts) {
+      const content = artifact.content as PublishPromptContent;
+      if (content?.promptId && content?.promptVersionId) {
+        items.push({
+          type: "PROMPT",
+          name: content.promptName || content.promptId,
+          promptId: content.promptId,
+          promptVersionId: content.promptVersionId,
+        });
+      }
+    }
+
+    // Script items
+    for (const artifact of publishScriptArtifacts) {
+      const content = artifact.content as PublishScriptContent;
+      if (content?.scriptId != null && content?.scriptVersionId != null) {
+        items.push({
+          type: "SCRIPT",
+          name: content.scriptName || String(content.scriptId),
+          scriptId: content.scriptId,
+          scriptVersionId: content.scriptVersionId,
+        });
+      }
+    }
+
+    return items;
+  }, [
+    isEditorMode,
+    mergedContent.workflowName,
+    mergedContent.workflowId,
+    originalWorkflowJson,
+    changesWorkflowJson,
+    workflowJson,
+    publishPromptArtifacts,
+    publishScriptArtifacts,
+  ]);
 
   // Compute changed step/connection IDs for orange graph highlights (editor tab only)
   const { changedStepIds, changedConnectionIds } = useMemo(() => {
@@ -236,23 +324,30 @@ export function WorkflowArtifactPanel({ artifacts, isActive, onStepSelect, onVer
     }
   }, [error]);
 
-  // Editor mode with tabs
-  if (isEditorMode) {
-    if (!parsedWorkflowData) {
-      return (
-        <div className="flex items-center justify-center h-full p-8">
-          <div className="text-destructive text-sm">Failed to parse workflow data</div>
-        </div>
-      );
-    }
+  // If workflowJson present but failed to parse — error state
+  if (isEditorMode && !parsedWorkflowData) {
+    return (
+      <div className="flex items-center justify-center h-full p-8">
+        <div className="text-destructive text-sm">Failed to parse workflow data</div>
+      </div>
+    );
+  }
 
+  // Tabbed UI: enter when in editor mode (workflowJson) OR when prompt/script publish artifacts exist
+  if (isEditorMode || hasPublishArtifacts) {
     // Static lookup so Tailwind sees all class names at build time
     const TAB_GRID_COLS: Record<string, string> = {
+      "1": "grid-cols-1",
+      "2": "grid-cols-2",
       "3": "grid-cols-3",
       "4": "grid-cols-4",
       "5": "grid-cols-5",
     };
-    const colCount = 3 + (showChangesTab ? 1 : 0) + (hasChildWorkflows ? 1 : 0);
+    // In editor mode: Editor + Changes (if showChangesTab) + Prompts + Stak Run + optional Children
+    // In prompt/script-only mode: only the Changes tab (1 column)
+    const colCount = isEditorMode
+      ? 3 + (showChangesTab ? 1 : 0) + (hasChildWorkflows ? 1 : 0)
+      : 1; // prompt/script-only: just the Changes tab
     const gridColsClass = TAB_GRID_COLS[String(colCount)] ?? "grid-cols-3";
 
     return (
@@ -315,51 +410,50 @@ export function WorkflowArtifactPanel({ artifacts, isActive, onStepSelect, onVer
           className="flex flex-col h-full"
         >
           <TabsList className={`grid w-full flex-shrink-0 ${gridColsClass}`}>
-            <TabsTrigger value="editor">Edit Steps</TabsTrigger>
+            {isEditorMode && <TabsTrigger value="editor">Edit Steps</TabsTrigger>}
             {showChangesTab && <TabsTrigger value="changes">Changes</TabsTrigger>}
-            <TabsTrigger value="prompts">Prompts</TabsTrigger>
-            <TabsTrigger value="stakwork">Stak Run</TabsTrigger>
-            {hasChildWorkflows && <TabsTrigger value="children">Child Workflows</TabsTrigger>}
+            {isEditorMode && <TabsTrigger value="prompts">Prompts</TabsTrigger>}
+            {isEditorMode && <TabsTrigger value="stakwork">Stak Run</TabsTrigger>}
+            {isEditorMode && hasChildWorkflows && <TabsTrigger value="children">Child Workflows</TabsTrigger>}
           </TabsList>
 
-          <TabsContent value="editor" className="flex-1 overflow-hidden mt-0 relative">
-            <WorkflowComponent
-              props={{
-                workflowData: parsedWorkflowData,
-                show_only: true,
-                mode: "workflow",
-                projectId: "",
-                isAdmin: false,
-                workflowId: workflowId?.toString() || "",
-                workflowVersion: workflowVersionId ? String(workflowVersionId) : "",
-                defaultZoomLevel: 0.65,
-                useAssistantDimensions: false,
-                rails_env: process.env.NEXT_PUBLIC_RAILS_ENV || "production",
-                onStepClick: onStepSelect ? handleStepClick : undefined,
-                onVersionChange,
-                changedStepIds,
-                changedConnectionIds,
-              }}
-            />
-            <StepDetailsModal
-              step={clickedStep}
-              isOpen={isModalOpen}
-              onClose={handleModalClose}
-              onSelect={handleStepSelectFromModal}
-              projectId={projectId}
-            />
-          </TabsContent>
-
-          {showChangesTab && (
-            <TabsContent value="changes" className="flex-1 overflow-hidden mt-0">
-              <WorkflowChangesPanel
-                originalJson={originalWorkflowJson || null}
-                updatedJson={changesWorkflowJson || (!originalWorkflowJson ? workflowJson : null) || null}
+          {isEditorMode && (
+            <TabsContent value="editor" className="flex-1 overflow-hidden mt-0 relative">
+              <WorkflowComponent
+                props={{
+                  workflowData: parsedWorkflowData!,
+                  show_only: true,
+                  mode: "workflow",
+                  projectId: "",
+                  isAdmin: false,
+                  workflowId: workflowId?.toString() || "",
+                  workflowVersion: workflowVersionId ? String(workflowVersionId) : "",
+                  defaultZoomLevel: 0.65,
+                  useAssistantDimensions: false,
+                  rails_env: process.env.NEXT_PUBLIC_RAILS_ENV || "production",
+                  onStepClick: onStepSelect ? handleStepClick : undefined,
+                  onVersionChange,
+                  changedStepIds,
+                  changedConnectionIds,
+                }}
+              />
+              <StepDetailsModal
+                step={clickedStep}
+                isOpen={isModalOpen}
+                onClose={handleModalClose}
+                onSelect={handleStepSelectFromModal}
+                projectId={projectId}
               />
             </TabsContent>
           )}
 
-          {hasChildWorkflows && (
+          {showChangesTab && (
+            <TabsContent value="changes" className="flex-1 overflow-hidden mt-0">
+              <ChangesList items={changesItems} />
+            </TabsContent>
+          )}
+
+          {isEditorMode && hasChildWorkflows && (
             <TabsContent value="children" className="flex-1 overflow-auto mt-0">
               <Table>
                 <TableHeader>
@@ -391,45 +485,49 @@ export function WorkflowArtifactPanel({ artifacts, isActive, onStepSelect, onVer
             </TabsContent>
           )}
 
-          <TabsContent value="prompts" className="flex-1 overflow-hidden mt-0">
-            <PromptsPanel workflowId={typeof workflowId === "number" ? workflowId : undefined} />
-          </TabsContent>
+          {isEditorMode && (
+            <TabsContent value="prompts" className="flex-1 overflow-hidden mt-0">
+              <PromptsPanel workflowId={typeof workflowId === "number" ? workflowId : undefined} />
+            </TabsContent>
+          )}
 
-          <TabsContent value="stakwork" className="flex-1 overflow-hidden mt-0">
-            {!projectId ? (
-              <div className="flex items-center justify-center h-full p-8">
-                <div className="text-muted-foreground text-sm">No workflow execution started yet</div>
-              </div>
-            ) : isLoading && !polledWorkflowData ? (
-              <div className="flex items-center justify-center h-full p-8">
-                <div className="text-muted-foreground text-sm">Loading workflow...</div>
-              </div>
-            ) : error && !polledWorkflowData ? (
-              <div className="flex items-center justify-center h-full p-8">
-                <div className="text-destructive text-sm">Error loading workflow: {error}</div>
-              </div>
-            ) : !polledWorkflowData?.workflowData ? (
-              <div className="flex items-center justify-center h-full p-8">
-                <div className="text-muted-foreground text-sm">Waiting for workflow data...</div>
-              </div>
-            ) : (
-              <WorkflowComponent
-                props={{
-                  workflowData: polledWorkflowData.workflowData,
-                  show_only: true,
-                  mode: "project",
-                  projectId: projectId,
-                  isAdmin: false,
-                  workflowId: "",
-                  workflowVersion: "",
-                  defaultZoomLevel: 0.65,
-                  useAssistantDimensions: false,
-                  rails_env: process.env.NEXT_PUBLIC_RAILS_ENV || "production",
-                  nodeStyle: "card",
-                }}
-              />
-            )}
-          </TabsContent>
+          {isEditorMode && (
+            <TabsContent value="stakwork" className="flex-1 overflow-hidden mt-0">
+              {!projectId ? (
+                <div className="flex items-center justify-center h-full p-8">
+                  <div className="text-muted-foreground text-sm">No workflow execution started yet</div>
+                </div>
+              ) : isLoading && !polledWorkflowData ? (
+                <div className="flex items-center justify-center h-full p-8">
+                  <div className="text-muted-foreground text-sm">Loading workflow...</div>
+                </div>
+              ) : error && !polledWorkflowData ? (
+                <div className="flex items-center justify-center h-full p-8">
+                  <div className="text-destructive text-sm">Error loading workflow: {error}</div>
+                </div>
+              ) : !polledWorkflowData?.workflowData ? (
+                <div className="flex items-center justify-center h-full p-8">
+                  <div className="text-muted-foreground text-sm">Waiting for workflow data...</div>
+                </div>
+              ) : (
+                <WorkflowComponent
+                  props={{
+                    workflowData: polledWorkflowData.workflowData,
+                    show_only: true,
+                    mode: "project",
+                    projectId: projectId,
+                    isAdmin: false,
+                    workflowId: "",
+                    workflowVersion: "",
+                    defaultZoomLevel: 0.65,
+                    useAssistantDimensions: false,
+                    rails_env: process.env.NEXT_PUBLIC_RAILS_ENV || "production",
+                    nodeStyle: "card",
+                  }}
+                />
+              )}
+            </TabsContent>
+          )}
 
         </Tabs>
       </div>
