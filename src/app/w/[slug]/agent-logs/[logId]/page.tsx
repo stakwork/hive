@@ -9,6 +9,7 @@ import { toast } from "sonner";
 import { LogDetailContent } from "@/components/agent-logs/LogDetailContent";
 import { FlagAsEvalModal } from "@/components/evals/FlagAsEvalModal";
 import { AgentSessionCaptureModal } from "@/components/evals/AgentSessionCaptureModal";
+import { isEvalCaptureEnabled } from "@/lib/eval-capture-slugs";
 import type { ParsedMessage, AgentLogStats, AgentRunConfig } from "@/lib/utils/agent-log-stats";
 
 interface LogMeta {
@@ -131,7 +132,7 @@ export default function AgentLogDetailPage() {
         rawContent={rawContent}
         loading={loading}
         error={error}
-        onFlagTurn={slug === "stakwork" ? (i) => { setCaptureTurnIndex(i); setCaptureOpen(true); } : undefined}
+        onFlagTurn={isEvalCaptureEnabled(slug) ? (i) => { setCaptureTurnIndex(i); setCaptureOpen(true); } : undefined}
       />
 
       <FlagAsEvalModal
