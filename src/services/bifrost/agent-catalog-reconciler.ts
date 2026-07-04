@@ -6,7 +6,9 @@ import { logger } from "@/lib/logger";
 import {
   agentCatalogManifestHash,
   buildAgentCatalogManifest,
+  loadAgentPromptNames,
 } from "./agent-catalog";
+import type { AgentCatalogManifest } from "./types";
 import { BifrostHttpError } from "./BifrostClient";
 import { BifrostPluginClient } from "./BifrostPluginClient";
 import {
@@ -29,7 +31,8 @@ import { deriveBifrostBaseUrl } from "./resolve";
  * Mirrors `ensureBifrostTrust`'s shape:
  *   - content-addressed cache on the `Swarm` row
  *     (`bifrostAgentsSeedHash`) — a manifest change flips the hash and
- *     re-seeds; otherwise the hot path is one DB read and no HTTP.
+ *     re-seeds; otherwise the hot path is a couple of DB reads (the
+ *     `Prompt.agentNames` links + the `Swarm` row) and no HTTP.
  *   - per-workspace Redis lock around the actual push.
  *   - lazy-only, triggered from `getBifrostForLLM` after the trust
  *     reconcile. Best-effort: failures are logged and surfaced via the
@@ -70,7 +73,8 @@ export async function ensureBifrostAgentCatalog(
   workspaceId: string,
   options: AgentCatalogReconcileOptions = {},
 ): Promise<AgentCatalogReconcileResult> {
-  const manifest = buildAgentCatalogManifest();
+  const promptsByAgent = await loadAgentPromptNames();
+  const manifest = buildAgentCatalogManifest(promptsByAgent);
   const hash = agentCatalogManifestHash(manifest);
 
   const swarm = await db.swarm.findUnique({
@@ -103,6 +107,7 @@ export async function ensureBifrostAgentCatalog(
           workspaceId,
           swarm.swarmUrl!,
           swarm.swarmApiKey!,
+          manifest,
           hash,
           options,
         ),
@@ -120,6 +125,7 @@ async function seedLocked(
   workspaceId: string,
   swarmUrl: string,
   encryptedToken: string,
+  manifest: AgentCatalogManifest,
   hash: string,
   options: AgentCatalogReconcileOptions,
 ): Promise<AgentCatalogReconcileResult> {
@@ -149,10 +155,8 @@ async function seedLocked(
     options.pluginClientFactory?.({ baseUrl, provisioningToken }) ??
     new BifrostPluginClient({ baseUrl, provisioningToken });
 
-  // Rebuild the manifest here (cheap, deterministic) so the bytes we
-  // push and the bytes we hashed are the same source.
-  const manifest = buildAgentCatalogManifest();
-
+  // `manifest` is the exact object that was hashed by the caller, so
+  // the bytes we push and the bytes we stamped the hash on are the same.
   let written: Awaited<ReturnType<BifrostPluginClient["seedAgentCatalog"]>>;
   try {
     written = await client.seedAgentCatalog(manifest);
