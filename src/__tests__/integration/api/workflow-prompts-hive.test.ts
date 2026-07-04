@@ -5,7 +5,7 @@
 import { describe, test, expect, beforeEach, afterEach, vi } from "vitest";
 import { NextRequest } from "next/server";
 import { GET, POST } from "@/app/api/workflow/prompts/route";
-import { GET as GET_BY_ID, PUT, DELETE } from "@/app/api/workflow/prompts/[id]/route";
+import { GET as GET_BY_ID, PUT, PATCH, DELETE } from "@/app/api/workflow/prompts/[id]/route";
 import { GET as GET_VERSIONS, } from "@/app/api/workflow/prompts/[id]/versions/route";
 import { GET as GET_VERSION_BY_ID } from "@/app/api/workflow/prompts/[id]/versions/[versionId]/route";
 import { POST as PUBLISH } from "@/app/api/workflow/prompts/[id]/versions/[versionId]/publish/route";
@@ -917,6 +917,96 @@ describe("Hive-native Prompt CRUD + Write-through Sync", () => {
       expect(sentBody.agent_names).toBeUndefined();
       expect(sentBody.prompt.agentNames).toBeUndefined();
       expect(sentBody.prompt.agent_names).toBeUndefined();
+    });
+  });
+
+  // ─── PATCH agentNames (decoupled from version/publish lifecycle) ──────────────
+
+  describe("PATCH agentNames (no new version, no publish)", () => {
+    test("PATCH updates agentNames without creating a new version", async () => {
+      authAs(testUser);
+      stakworkOkCreate(210);
+
+      const createRes = await POST(
+        makeReq("http://localhost/api/workflow/prompts", "POST", {
+          name: "AGENT_NAMES_PATCH",
+          value: "v1",
+          agentNames: ["repo-agent"],
+        }),
+      );
+      const created = (await createRes.json()).data;
+      createdPromptIds.push(created.id);
+
+      const fetchCallsBefore = mockFetch.mock.calls.length;
+
+      authAs(testUser);
+      const patchRes = await PATCH(
+        makeReq(`http://localhost/api/workflow/prompts/${created.id}`, "PATCH", {
+          agentNames: ["repo-agent", "chat-agent"],
+        }),
+        { params: Promise.resolve({ id: created.id }) },
+      );
+      expect(patchRes.status).toBe(200);
+      const patchData = (await patchRes.json()).data;
+      expect(patchData.agent_names).toEqual(["repo-agent", "chat-agent"]);
+
+      const prompt = await db.prompt.findUnique({
+        where: { id: created.id },
+        include: { versions: true },
+      });
+      // No new version created — still just the initial published version.
+      expect(prompt!.versions).toHaveLength(1);
+      expect(prompt!.agentNames).toEqual(["repo-agent", "chat-agent"]);
+      // Published pointer unchanged (still the original published version).
+      expect(prompt!.publishedVersionId).toBe(created.published_version_id);
+      // No Stakwork push for a metadata-only PATCH.
+      expect(mockFetch.mock.calls.length).toBe(fetchCallsBefore);
+    });
+
+    test("PATCH validates agent names and rejects unknown ones with 400", async () => {
+      authAs(testUser);
+      stakworkOkCreate(211);
+
+      const createRes = await POST(
+        makeReq("http://localhost/api/workflow/prompts", "POST", {
+          name: "AGENT_NAMES_PATCH_INVALID",
+          value: "v1",
+        }),
+      );
+      const created = (await createRes.json()).data;
+      createdPromptIds.push(created.id);
+
+      authAs(testUser);
+      const patchRes = await PATCH(
+        makeReq(`http://localhost/api/workflow/prompts/${created.id}`, "PATCH", {
+          agentNames: ["not-a-real-agent"],
+        }),
+        { params: Promise.resolve({ id: created.id }) },
+      );
+      expect(patchRes.status).toBe(400);
+      const body = await patchRes.json();
+      expect(body.error).toMatch(/Invalid agent name/);
+    });
+
+    test("PATCH returns 400 when agentNames is omitted", async () => {
+      authAs(testUser);
+      stakworkOkCreate(212);
+
+      const createRes = await POST(
+        makeReq("http://localhost/api/workflow/prompts", "POST", {
+          name: "AGENT_NAMES_PATCH_MISSING",
+          value: "v1",
+        }),
+      );
+      const created = (await createRes.json()).data;
+      createdPromptIds.push(created.id);
+
+      authAs(testUser);
+      const patchRes = await PATCH(
+        makeReq(`http://localhost/api/workflow/prompts/${created.id}`, "PATCH", {}),
+        { params: Promise.resolve({ id: created.id }) },
+      );
+      expect(patchRes.status).toBe(400);
     });
   });
 
