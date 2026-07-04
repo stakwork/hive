@@ -8,6 +8,8 @@ import { resolveRepoKey, computeFingerprint } from "@/lib/utils/error-fingerprin
 import { sanitizeFrames } from "@/lib/utils/error-frames";
 import { getJarvisConfigForWorkspace } from "@/lib/helpers/jarvis-config";
 import { addNode, addEdge, searchLatestByTypes } from "@/services/swarm/api/nodes";
+import { detectOnset } from "@/services/error-issues/spike-detection";
+import { correlateErrorIssue } from "@/services/error-issues/correlate";
 
 export const fetchCache = "force-no-store";
 
@@ -388,6 +390,49 @@ export async function POST(request: NextRequest) {
       }
     } catch (err) {
       console.error("[error-ingest] KG projection failed (non-fatal)", err);
+    }
+
+    // ── Best-effort regression correlation ────────────────────────────────────
+    // Runs AFTER the KG projection block (which may have updated kgRefId on the
+    // issue row). Wrapped in its own try/catch — must NEVER fail or delay the
+    // ingest response. Mirrors the non-blocking pattern used for KG projection.
+    try {
+      const onsetResult = await detectOnset(issue.id, isNew, isRegression);
+      if (onsetResult.isOnset) {
+        console.info("[error-correlate] onset detected via ingest, queuing correlation", {
+          issueId: issue.id,
+          reason: onsetResult.reason,
+        });
+
+        // Re-fetch the issue to pick up kgRefId set by the KG projection above
+        const freshIssue = await db.errorIssue.findUnique({
+          where: { id: issue.id },
+          select: { kgRefId: true, firstSeenAt: true },
+        });
+
+        const jarvisConfig = await getJarvisConfigForWorkspace(workspace.id);
+        if (jarvisConfig && freshIssue?.kgRefId) {
+          // Fire-and-forget — do not await; correlation must never delay the response
+          correlateErrorIssue(
+            issue.id,
+            freshIssue.kgRefId,
+            freshIssue.firstSeenAt,
+            commitSha,
+            jarvisConfig,
+            onsetResult.reason ?? "unknown",
+          ).catch((err) => {
+            console.error("[error-correlate] fire-and-forget failed (non-fatal)", err);
+          });
+        } else {
+          console.info("[error-correlate] skipped: no jarvis config or kgRefId", {
+            issueId: issue.id,
+            hasJarvis: !!jarvisConfig,
+            kgRefId: freshIssue?.kgRefId ?? null,
+          });
+        }
+      }
+    } catch (err) {
+      console.error("[error-correlate] onset detection failed (non-fatal)", err);
     }
 
     return NextResponse.json(
