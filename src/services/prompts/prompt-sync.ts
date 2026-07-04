@@ -47,7 +47,7 @@ export interface WritePromptThroughResult {
 
 // ─── Stakwork API helpers ─────────────────────────────────────────────────────
 
-function stakworkHeaders(): Record<string, string> {
+export function stakworkHeaders(): Record<string, string> {
   return {
     Authorization: `Token token=${config.STAKWORK_API_KEY}`,
     "Content-Type": "application/json",
