@@ -33,26 +33,12 @@ beforeAll(async () => {
   // Re-assert DATABASE_URL in case something reset it between module load and
   // beforeAll execution.
   process.env.DATABASE_URL = TEST_DATABASE_URL;
-
-  // Establish the Prisma connection once before any tests run.
-  // $connect() may resolve before the native engine binary is fully ready
-  // (known Prisma race on CI). Each failed probe disconnects and reconnects
-  // fully before the next attempt rather than retrying the query alone.
-  const maxAttempts = 5;
-  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-    try {
-      await db.$connect();
-      await db.$queryRaw`SELECT 1`;
-      break;
-    } catch (err) {
-      if (attempt === maxAttempts) throw err;
-      try { await db.$disconnect(); } catch { /* ignore */ }
-      await new Promise((resolve) => setTimeout(resolve, attempt * 1000));
-    }
-  }
 }, 30_000);
 
 // Reset database before each test to ensure clean state.
+// resetDatabase() uses Prisma's lazy auto-connect on its first ORM call and
+// gracefully handles "Engine not yet connected" in its aggressiveReset fallback,
+// so no explicit $connect() probe is needed here.
 beforeEach(async () => {
   fetchState.push(globalThis.fetch);
   await resetDatabase();
