@@ -76,6 +76,55 @@ const STATUSES: ErrorIssueStatus[] = [
   ErrorIssueStatus.IGNORED,
 ];
 
+// ── Seed impact score data ────────────────────────────────────────────────────
+// Provides three distinct states so the dashboard can render all scenarios
+// without a live Jarvis connection.
+//   i % 3 === 0  → high impact (central code path)
+//   i % 3 === 1  → low impact (peripheral code)
+//   i % 3 === 2  → null / unscored (no KG edges resolved)
+
+interface SeedImpactData {
+  impactScore?: number | undefined;
+  impactScoredAt?: Date | undefined;
+  impactMeta?: Prisma.InputJsonValue | undefined;
+}
+
+function buildSeedImpactData(issueIndex: number): SeedImpactData {
+  const scoredAt = new Date(Date.now() - issueIndex * 1800 * 1000);
+
+  switch (issueIndex % 3) {
+    case 0:
+      // High impact — touches a heavily-depended-upon file/function
+      return {
+        impactScore: 0.82,
+        impactScoredAt: scoredAt,
+        impactMeta: {
+          topNodeName: "src/services/user.ts",
+          topNodeType: "File",
+          topPagerank: 0.91,
+          topInDegree: 47,
+          nodeCount: 3,
+        },
+      };
+    case 1:
+      // Low impact — peripheral code with few dependents
+      return {
+        impactScore: 0.12,
+        impactScoredAt: scoredAt,
+        impactMeta: {
+          topNodeName: "src/utils/format.ts",
+          topNodeType: "File",
+          topPagerank: 0.08,
+          topInDegree: 2,
+          nodeCount: 1,
+        },
+      };
+    default:
+      // Unscored — no resolvable KG edges (omit fields so Prisma uses DB default of null)
+      return {};
+  }
+}
+
 // ── Seed correlation data ─────────────────────────────────────────────────────
 // Provides varied correlation states across seeded issues so the dashboard UI
 // can render all three scenarios without a live Jarvis connection.
@@ -255,6 +304,7 @@ export async function seedErrorEvents() {
       // Full KG-sourced correlation requires a live Jarvis connection and is
       // exercised via mocked kgGetNeighbors in unit/integration tests, not here.
       const correlationData = buildSeedCorrelationData(i, repo.repositoryUrl);
+      const impactData = buildSeedImpactData(i);
 
       // Create the ErrorIssue
       const issue = await prisma.errorIssue.create({
@@ -273,6 +323,7 @@ export async function seedErrorEvents() {
           release,
           metadata: { source: "seed" },
           ...correlationData,
+          ...impactData,
         },
       });
       issueCount++;
