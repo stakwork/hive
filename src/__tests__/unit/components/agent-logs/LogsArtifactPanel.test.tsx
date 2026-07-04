@@ -511,7 +511,28 @@ describe("LogsArtifactPanel — flag button gating", () => {
     });
   });
 
-  it("does NOT pass onFlag to any message when slug is NOT 'stakwork'", async () => {
+  it("passes onFlag to assistant messages when slug is 'hive'", async () => {
+    mockSlug = "hive";
+    vi.resetModules();
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        conversation: assistantConversation,
+        stats: { messageCount: 3, estimatedTokens: 30, toolFrequency: {}, bashFrequency: {}, developerShellFrequency: {} },
+      }),
+    });
+
+    const { LogsArtifactPanel } = await import("@/components/agent-logs/LogsArtifactPanel");
+    render(React.createElement(LogsArtifactPanel, { logs: [{ id: "log-hive-1", agent: "coding-agent" }] }));
+
+    await waitFor(() => {
+      const messages = screen.getAllByTestId("log-message");
+      const assistantMessages = messages.filter((m) => m.getAttribute("data-has-flag") === "true");
+      expect(assistantMessages.length).toBe(2);
+    });
+  });
+
+  it("does NOT pass onFlag to any message when slug is NOT in the allowlist", async () => {
     mockSlug = "other-workspace";
     mockFetch.mockResolvedValueOnce({
       ok: true,
