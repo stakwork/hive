@@ -2041,6 +2041,7 @@ model Prompt {
   updatedAt          DateTime         @updatedAt @map("updated_at")
   versions           PromptVersion[]
   publishedVersion   PromptVersion?   @relation("PublishedVersion", fields: [publishedVersionId], references: [id])
+  promptDailyRuns    PromptDailyRun[]
 
   @@index([syncStatus])
   @@map("prompts")
@@ -2057,11 +2058,34 @@ model PromptVersion {
   createdAt     DateTime @default(now()) @map("created_at")
   prompt        Prompt   @relation(fields: [promptId], references: [id], onDelete: Cascade)
   publishedForPrompts Prompt[] @relation("PublishedVersion")
+  promptDailyRuns     PromptDailyRun[]
 
   @@unique([promptId, versionNumber])
   @@index([promptId])
   @@index([promptId, published])
   @@map("prompt_versions")
+}
+
+model PromptDailyRun {
+  id                String        @id @default(cuid())
+  promptId          String        @map("prompt_id")
+  versionId         String?       @map("version_id")
+  stakworkPromptId  Int?          @map("stakwork_prompt_id")
+  stakworkVersionId Int?          @map("stakwork_version_id")
+  workflowId        Int           @map("workflow_id")
+  customerId        Int           @map("customer_id")
+  runDate           DateTime      @db.Date @map("run_date")
+  runCount          Int           @map("run_count")
+  hiveVersionId     String        @map("hive_version_id")
+  createdAt         DateTime      @default(now()) @map("created_at")
+  updatedAt         DateTime      @updatedAt @map("updated_at")
+  prompt            Prompt        @relation(fields: [promptId], references: [id], onDelete: Cascade)
+  version           PromptVersion? @relation(fields: [versionId], references: [id])
+
+  @@unique([promptId, versionId, runDate])
+  @@index([promptId, runDate])
+  @@index([hiveVersionId])
+  @@map("prompt_daily_runs")
 }
 
 // ── Error tracking ───────────────────────────────────────────────────────────

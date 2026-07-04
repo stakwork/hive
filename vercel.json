@@ -69,6 +69,10 @@
     {
       "path": "/api/cron/error-impact",
       "schedule": "0 * * * *"
+    },
+    {
+      "path": "/api/cron/prompt-daily-runs",
+      "schedule": "0 2 * * *"
     }
   ]
 }
