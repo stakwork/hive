@@ -11,6 +11,7 @@ import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { MessageBubble, StatsBar, unescapeLogString } from "./LogDetailContent";
 import { AgentSessionCaptureModal } from "@/components/evals/AgentSessionCaptureModal";
+import { isEvalCaptureEnabled } from "@/lib/eval-capture-slugs";
 import type { ParsedMessage, AgentLogStats } from "@/lib/utils/agent-log-stats";
 import type { ConversationMessage } from "@/hooks/useStreamedAgentLog";
 import type { AgentEventsStatus } from "@/hooks/useAgentEvents";
@@ -91,7 +92,7 @@ export function LogsArtifactPanel({
   const { timezone } = useUserTimezone();
   const params = useParams();
   const slug = params?.slug as string | undefined;
-  const isStakwork = slug === "stakwork";
+  const isEvalEnabled = isEvalCaptureEnabled(slug ?? "");
 
   const hasProvisional = !!streamingLog && streamingLog.status === "streaming";
 
@@ -100,7 +101,7 @@ export function LogsArtifactPanel({
   const [selectedId, setSelectedId] = useState<string | null>(() => defaultId);
   const [logStates, setLogStates] = useState<Record<string, LogState>>({});
 
-  // Capture modal state (stakwork-only)
+  // Capture modal state (eval-capture-enabled workspaces only)
   const [captureOpen, setCaptureOpen] = useState(false);
   const [captureTurnIndex, setCaptureTurnIndex] = useState<number | undefined>(undefined);
 
@@ -502,7 +503,7 @@ export function LogsArtifactPanel({
                     <MessageBubble
                       key={i}
                       message={msg}
-                      onFlag={isStakwork && msg.role === "assistant" ? () => { setCaptureTurnIndex(i - 1); setCaptureOpen(true); } : undefined}
+                      onFlag={isEvalEnabled && msg.role === "assistant" ? () => { setCaptureTurnIndex(i - 1); setCaptureOpen(true); } : undefined}
                     />
                   ))}
                 </div>
@@ -515,7 +516,7 @@ export function LogsArtifactPanel({
           )}
         </>
       )}
-      {isStakwork && selectedId && selectedId !== PROVISIONAL_ID && selectedId !== INSIGHTS_ID && (
+      {isEvalEnabled && selectedId && selectedId !== PROVISIONAL_ID && selectedId !== INSIGHTS_ID && (
         <AgentSessionCaptureModal
           open={captureOpen}
           onOpenChange={setCaptureOpen}

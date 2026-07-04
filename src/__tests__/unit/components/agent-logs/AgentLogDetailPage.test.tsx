@@ -89,7 +89,13 @@ describe("AgentLogDetailPage — onFlagTurn gating", () => {
     expect(typeof capturedOnFlagTurn).toBe("function");
   });
 
-  it("does NOT pass onFlagTurn to LogDetailContent when slug is not 'stakwork'", async () => {
+  it("passes onFlagTurn to LogDetailContent when slug is 'hive'", async () => {
+    mockSlug = "hive";
+    await renderPage();
+    expect(typeof capturedOnFlagTurn).toBe("function");
+  });
+
+  it("does NOT pass onFlagTurn to LogDetailContent when slug is not in the allowlist", async () => {
     mockSlug = "other-org";
     await renderPage();
     expect(capturedOnFlagTurn).toBeUndefined();
