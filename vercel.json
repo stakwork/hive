@@ -73,6 +73,10 @@
     {
       "path": "/api/cron/prompt-daily-runs",
       "schedule": "0 2 * * *"
+    },
+    {
+      "path": "/api/cron/prompt-usage-sync",
+      "schedule": "0 * * * *"
     }
   ]
 }

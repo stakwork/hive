@@ -313,6 +313,7 @@ model Workspace {
   sourceControlOrg        SourceControlOrg?        @relation(fields: [sourceControlOrgId], references: [id])
   defaultForOrg           SourceControlOrg?        @relation("OrgDefaultWorkspace")
   voiceCorrectionLearnings VoiceCorrectionLearning[]
+  promptUsages            PromptUsage[]
 
   @@index([ownerId])
   @@index([deleted])
@@ -2042,6 +2043,7 @@ model Prompt {
   versions           PromptVersion[]
   publishedVersion   PromptVersion?   @relation("PublishedVersion", fields: [publishedVersionId], references: [id])
   promptDailyRuns    PromptDailyRun[]
+  usages             PromptUsage[]
 
   @@index([syncStatus])
   @@map("prompts")
@@ -2086,6 +2088,29 @@ model PromptDailyRun {
   @@index([promptId, runDate])
   @@index([hiveVersionId])
   @@map("prompt_daily_runs")
+}
+
+model PromptUsage {
+  id           String   @id @default(cuid())
+  workspaceId  String   @map("workspace_id")
+  promptId     String?  @map("prompt_id")
+  promptName   String   @map("prompt_name")
+  workflowId   Int      @map("workflow_id")
+  workflowName String?  @map("workflow_name")
+  stepId       String   @map("step_id")
+  stepUniqueId String?  @map("step_unique_id")
+  fieldPath    String?  @map("field_path")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  prompt    Prompt?   @relation(fields: [promptId], references: [id], onDelete: SetNull)
+
+  @@unique([workspaceId, workflowId, stepId, promptName])
+  @@index([promptName])
+  @@index([promptId])
+  @@index([workspaceId])
+  @@map("prompt_usages")
 }
 
 // ── Error tracking ───────────────────────────────────────────────────────────
