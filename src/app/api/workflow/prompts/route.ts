@@ -3,7 +3,7 @@ import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
 import { isDevelopmentMode } from "@/lib/runtime";
-import { writePromptThrough, fetchPromptUsagesByName, PromptUsage } from "@/services/prompts/prompt-sync";
+import { writePromptThrough } from "@/services/prompts/prompt-sync";
 import { BIFROST_AGENT_NAMES } from "@/services/bifrost/agent-names";
 
 export const runtime = "nodejs";
@@ -144,16 +144,50 @@ export async function GET(request: NextRequest) {
       db.prompt.count({ where }),
     ]);
 
-    // Best-effort: fetch usages from Stakwork when requested; degrade to empty on outage.
-    let usagesByName: Map<string, PromptUsage[]> = new Map();
+    // Build usage and run-count enrichment from local mirror tables when requested.
+    let usagesByName = new Map<string, Array<{ workflow_id: number; workflow_name: string; step_id: string }>>();
+    let runCountByPromptId = new Map<string, number>();
+
     if (includeUsages) {
-      usagesByName = await fetchPromptUsagesByName();
+      const promptIds = prompts.map((p) => p.id);
+      const promptNames = prompts.map((p) => p.name);
+
+      const [rawUsages, dailyRunGroups] = await Promise.all([
+        db.promptUsage.findMany({ where: { promptName: { in: promptNames } } }),
+        db.promptDailyRun.groupBy({
+          by: ["promptId"],
+          _sum: { runCount: true },
+          where: { promptId: { in: promptIds } },
+        }),
+      ]);
+
+      // Group usages by promptName, deduped by (workflow_id, step_id).
+      for (const u of rawUsages) {
+        const key = `${u.workflowId}:${u.stepId}`;
+        const entry = { workflow_id: u.workflowId, workflow_name: u.workflowName ?? "", step_id: u.stepId };
+        if (!usagesByName.has(u.promptName)) {
+          usagesByName.set(u.promptName, []);
+        }
+        const list = usagesByName.get(u.promptName)!;
+        if (!list.some((x) => `${x.workflow_id}:${x.step_id}` === key)) {
+          list.push(entry);
+        }
+      }
+
+      // Build promptId → total run count map.
+      for (const group of dailyRunGroups) {
+        runCountByPromptId.set(group.promptId, group._sum.runCount ?? 0);
+      }
     }
 
     const shapedPrompts = prompts.map((p) => {
       const shaped = shapePrompt(p);
       if (includeUsages) {
-        return { ...shaped, usages: usagesByName.get(p.name) ?? [] };
+        return {
+          ...shaped,
+          usages: usagesByName.get(p.name) ?? [],
+          run_count: runCountByPromptId.get(p.id) ?? 0,
+        };
       }
       return shaped;
     });
