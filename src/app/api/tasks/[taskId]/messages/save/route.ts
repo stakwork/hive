@@ -7,6 +7,8 @@ import { ChatRole, ChatStatus, ArtifactType } from "@prisma/client";
 import { updateFeatureStatusFromTasks } from "@/services/roadmap/feature-status-sync";
 import { notifyFeatureCanvasRefresh } from "@/lib/canvas";
 import { linkFeatureToConcepts } from "@/lib/graph-walker";
+import { extractPrArtifact } from "@/lib/helpers/tasks";
+import { autoResolveErrorIssuesForFeatures } from "@/services/error-issues";
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ taskId: string }> }) {
   try {
@@ -134,6 +136,54 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
             err,
           })
         );
+
+        // Error auto-resolve: if the just-recorded PR is already merged,
+        // resolve any linked UNRESOLVED ErrorIssues for this feature.
+        // Fire-and-forget — never blocks the message-save request.
+        const featureIdForResolve = updatedTask.featureId;
+        void (async () => {
+          try {
+            // Re-fetch the task with its chat messages so extractPrArtifact can read the PR artifact.
+            const taskWithMessages = await db.task.findUnique({
+              where: { id: taskId },
+              select: {
+                id: true,
+                status: true,
+                podId: true,
+                workspaceId: true,
+                chatMessages: {
+                  select: {
+                    artifacts: {
+                      select: { id: true, type: true, content: true },
+                    },
+                  },
+                },
+              },
+            });
+
+            if (!taskWithMessages) return;
+
+            const prArtifact = await extractPrArtifact(taskWithMessages, userId);
+            if (prArtifact?.content?.status !== "DONE") return;
+
+            console.log("[error-auto-resolve] PR already merged at artifact write — triggering resolve", {
+              taskId,
+              featureId: featureIdForResolve,
+            });
+            const { resolvedIssueIds } = await autoResolveErrorIssuesForFeatures([featureIdForResolve]);
+            console.log("[error-auto-resolve] artifact-write resolve complete", {
+              taskId,
+              featureId: featureIdForResolve,
+              resolvedIssueIds,
+            });
+          } catch (err) {
+            console.error("[error-auto-resolve] artifact-write hook failed (non-blocking)", {
+              taskId,
+              featureId: featureIdForResolve,
+              error: err,
+            });
+          }
+        })();
       }
     }
 
