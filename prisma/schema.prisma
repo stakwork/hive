@@ -209,6 +209,9 @@ model SourceControlOrg {
   researches           Research[]
   automations          Automation[]
   urnEdges             UrnEdge[]
+  // Keyset cursors for canvas-mirror-cron (per-entity {at,id} + canvas watermarks).
+  // Mirrors Workspace.jarvisSyncState — staggered schedule so writes don't race.
+  jarvisSyncState      Json?                @map("jarvis_sync_state")
 
   @@index([githubLogin])
   @@index([githubInstallationId])
