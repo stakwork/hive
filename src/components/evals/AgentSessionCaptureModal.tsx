@@ -19,6 +19,7 @@ interface AgentSessionCaptureModalProps {
   slug: string;
   logId: string;
   turnIndex?: number; // undefined = entire session
+  defaultAgent?: string; // pre-select a canonical agent name in the dropdown
 }
 
 export function AgentSessionCaptureModal({
@@ -27,9 +28,11 @@ export function AgentSessionCaptureModal({
   slug,
   logId,
   turnIndex,
+  defaultAgent,
 }: AgentSessionCaptureModalProps) {
   const [requirement, setRequirement] = useState("");
   const [reason, setReason] = useState("");
+  const [selectedAgent, setSelectedAgent] = useState<string>("");
   const [submitting, setSubmitting] = useState(false);
 
   const [evalSets, setEvalSets] = useState<Array<{ ref_id: string; name: string }>>([]);
@@ -81,11 +84,19 @@ export function AgentSessionCaptureModal({
     };
   }, [open, slug]);
 
+  // Initialise / reset agent when modal opens or defaultAgent changes
+  useEffect(() => {
+    if (open) {
+      setSelectedAgent(defaultAgent ?? "");
+    }
+  }, [open, defaultAgent]);
+
   // Reset state when modal closes
   useEffect(() => {
     if (!open) {
       setRequirement("");
       setReason("");
+      setSelectedAgent("");
       setSubmitting(false);
       setEvalSets([]);
       setLoadingEvalSets(false);
@@ -134,6 +145,9 @@ export function AgentSessionCaptureModal({
       if (turnIndex !== undefined) {
         body.turnIndex = turnIndex;
       }
+      if (selectedAgent) {
+        body.agent = selectedAgent;
+      }
 
       const res = await fetch(
         `/api/workspaces/${slug}/agent-logs/${logId}/eval/capture`,
@@ -173,6 +187,8 @@ export function AgentSessionCaptureModal({
           onSelectEvalSet={setSelectedEvalSetId}
           newEvalSetName={newEvalSetName}
           onNewEvalSetNameChange={setNewEvalSetName}
+          selectedAgent={selectedAgent}
+          onSelectAgent={setSelectedAgent}
         />
 
         <DialogFooter className="gap-2">
