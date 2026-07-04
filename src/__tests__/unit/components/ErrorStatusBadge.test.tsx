@@ -247,18 +247,76 @@ describe("ErrorIssuesTable", () => {
     expect(indicator.title).toBe("Top node: src/core/auth.ts");
   });
 
-  it("skeleton loading has 9 columns matching table header", () => {
+  it("skeleton loading has 10 columns matching table header", () => {
     const { container } = render(
       <ErrorIssuesTable issues={[]} loading={true} error={null} onRowClick={vi.fn()} />,
     );
-    // Header row should have 9 <th> elements
+    // Header row should have 10 <th> elements (includes correlation indicator column)
     const headerCells = container.querySelectorAll("thead th");
-    expect(headerCells).toHaveLength(9);
+    expect(headerCells).toHaveLength(10);
 
-    // Each skeleton row should also have 9 <td> cells
+    // Each skeleton row should also have 10 <td> cells
     const firstSkeletonRow = container.querySelector("tbody tr");
     expect(firstSkeletonRow).not.toBeNull();
     const skeletonCells = firstSkeletonRow!.querySelectorAll("td");
-    expect(skeletonCells).toHaveLength(9);
+    expect(skeletonCells).toHaveLength(10);
+  });
+
+  // ── Correlation indicator ──────────────────────────────────────────────────
+
+  it("shows correlation indicator icon when correlationConfidence is set", () => {
+    const issues = [makeIssue("a", { correlationConfidence: "high" })];
+    render(
+      <ErrorIssuesTable
+        issues={issues}
+        loading={false}
+        error={null}
+        onRowClick={vi.fn()}
+      />,
+    );
+    expect(screen.getByTestId("correlation-indicator-a")).toBeInTheDocument();
+  });
+
+  it("shows correlation indicator for 'likely' confidence as well", () => {
+    const issues = [makeIssue("b", { correlationConfidence: "likely" })];
+    render(
+      <ErrorIssuesTable
+        issues={issues}
+        loading={false}
+        error={null}
+        onRowClick={vi.fn()}
+      />,
+    );
+    expect(screen.getByTestId("correlation-indicator-b")).toBeInTheDocument();
+  });
+
+  it("does NOT show correlation indicator when correlationConfidence is null", () => {
+    const issues = [makeIssue("c", { correlationConfidence: null })];
+    render(
+      <ErrorIssuesTable
+        issues={issues}
+        loading={false}
+        error={null}
+        onRowClick={vi.fn()}
+      />,
+    );
+    expect(screen.queryByTestId("correlation-indicator-c")).not.toBeInTheDocument();
+  });
+
+  it("shows indicator only on correlated issues in a mixed list", () => {
+    const issues = [
+      makeIssue("corr", { correlationConfidence: "high" }),
+      makeIssue("none", { correlationConfidence: null }),
+    ];
+    render(
+      <ErrorIssuesTable
+        issues={issues}
+        loading={false}
+        error={null}
+        onRowClick={vi.fn()}
+      />,
+    );
+    expect(screen.getByTestId("correlation-indicator-corr")).toBeInTheDocument();
+    expect(screen.queryByTestId("correlation-indicator-none")).not.toBeInTheDocument();
   });
 });
