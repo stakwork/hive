@@ -71,6 +71,10 @@
       "schedule": "0 * * * *"
     },
     {
+      "path": "/api/cron/error-issue-reconcile",
+      "schedule": "20 * * * *"
+    },
+    {
       "path": "/api/cron/prompt-daily-runs",
       "schedule": "0 2 * * *"
     },
