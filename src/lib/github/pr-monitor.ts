@@ -851,6 +851,34 @@ async function processOnePR(
         // Scorer hook must never disrupt PR monitor flow
       }
 
+      // Error auto-resolve: resolve any UNRESOLVED ErrorIssues linked to this feature (fire-and-forget)
+      try {
+        void db.task
+          .findUnique({
+            where: { id: pr.taskId },
+            select: { featureId: true },
+          })
+          ?.then(async (task) => {
+            if (!task?.featureId) return;
+            prLog.info("[error-auto-resolve] pr-monitor merge — triggering error issue resolve", {
+              taskId: pr.taskId,
+              featureId: task.featureId,
+            });
+            const { autoResolveErrorIssuesForFeatures } = await import("@/services/error-issues");
+            const { resolvedIssueIds } = await autoResolveErrorIssuesForFeatures([task.featureId]);
+            prLog.info("[error-auto-resolve] pr-monitor resolve complete", {
+              taskId: pr.taskId,
+              featureId: task.featureId,
+              resolvedIssueIds,
+            });
+          })
+          ?.catch((err: unknown) =>
+            prLog.error("[error-auto-resolve] pr-monitor resolve failed (non-blocking)", { error: String(err) })
+          );
+      } catch {
+        // Error resolve hook must never disrupt PR monitor flow
+      }
+
       if (pr.podId) {
         const releaseResult = await releaseTaskPod({
           taskId: pr.taskId,
