@@ -10,6 +10,11 @@ const mockDbLegalBenchmarkRunUpdate = vi.hoisted(() => vi.fn());
 const mockDbLegalBenchmarkRunDelete = vi.hoisted(() => vi.fn());
 const mockDbWorkspaceFindUnique = vi.hoisted(() => vi.fn());
 const mockPusherTrigger = vi.hoisted(() => vi.fn());
+const mockAddNode = vi.hoisted(() => vi.fn());
+const mockAddEdge = vi.hoisted(() => vi.fn());
+const mockGetJarvisConfig = vi.hoisted(() => vi.fn());
+const mockFetchHarveyTaskCriteria = vi.hoisted(() => vi.fn());
+const mockEnsureHarveyLabEvalNodes = vi.hoisted(() => vi.fn());
 
 // --- Module mocks ---
 
@@ -26,6 +31,20 @@ vi.mock("@/lib/db", () => ({
       findUnique: mockDbWorkspaceFindUnique,
     },
   },
+}));
+
+vi.mock("@/services/swarm/api/nodes", () => ({
+  addNode: mockAddNode,
+  addEdge: mockAddEdge,
+}));
+
+vi.mock("@/lib/helpers/jarvis-config", () => ({
+  getJarvisConfigForWorkspace: mockGetJarvisConfig,
+}));
+
+vi.mock("@/lib/harvey-lab/eval-nodes", () => ({
+  fetchHarveyTaskCriteria: mockFetchHarveyTaskCriteria,
+  ensureHarveyLabEvalNodes: mockEnsureHarveyLabEvalNodes,
 }));
 
 vi.mock("@/lib/pusher", () => ({
@@ -112,6 +131,7 @@ const MOCK_RUN = {
   runnerOutputText: null,
   scoreJson: null,
   errorMessage: null,
+  evalTriggerRef: null,
   createdAt: new Date(),
   updatedAt: new Date(),
 };
@@ -123,6 +143,13 @@ beforeEach(() => {
   process.env.STAKWORK_HARVEY_SCORER_WORKFLOW_ID = "1002";
   process.env.GRAPH_BASE_URL = "https://graph.example.com";
   process.env.GRAPH_SECRET = "supersecret";
+
+  // Default: Jarvis not configured (non-fatal path skipped by default)
+  mockGetJarvisConfig.mockResolvedValue(null);
+  mockFetchHarveyTaskCriteria.mockResolvedValue([]);
+  mockEnsureHarveyLabEvalNodes.mockResolvedValue(null);
+  mockAddNode.mockResolvedValue({ success: true, ref_id: "node-ref-1" });
+  mockAddEdge.mockResolvedValue({ success: true });
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -427,5 +454,201 @@ describe("POST /api/legal/benchmark/webhook", () => {
         expect.objectContaining({ status: "FAILED" }),
       );
     });
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// POST /run — Jarvis eval graph instrumentation (non-fatal)
+// ═══════════════════════════════════════════════════════════════════════════
+
+describe("POST /run — Jarvis eval graph non-fatal block", () => {
+  beforeEach(() => {
+    (getWorkspaceSwarmAccess as Mock).mockResolvedValue(MOCK_SWARM_ACCESS);
+    mockDbLegalBenchmarkRunFindFirst.mockResolvedValue(null);
+    mockDbLegalBenchmarkRunCreate.mockResolvedValue({ ...MOCK_RUN, id: "run-new", status: "PENDING" });
+    mockDbLegalBenchmarkRunUpdate.mockResolvedValue({ ...MOCK_RUN, id: "run-new", status: "RUNNING" });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ data: { project_id: 99 } }),
+      }),
+    );
+  });
+
+  test("still returns 201 + RUNNING when getJarvisConfigForWorkspace returns null", async () => {
+    mockGetJarvisConfig.mockResolvedValue(null);
+
+    const res = await postRun(makeRunRequest({ taskSlug: "task-a", taskTitle: "Task A" }), {
+      params: Promise.resolve({ slug: "openlaw" }),
+    });
+    expect(res.status).toBe(201);
+    // No Jarvis calls made
+    expect(mockAddNode).not.toHaveBeenCalled();
+  });
+
+  test("still returns 201 + RUNNING when ensureHarveyLabEvalNodes returns null", async () => {
+    mockGetJarvisConfig.mockResolvedValue({ jarvisUrl: "https://j.example.com", apiKey: "key" });
+    mockFetchHarveyTaskCriteria.mockResolvedValue(["criterion A"]);
+    mockEnsureHarveyLabEvalNodes.mockResolvedValue(null);
+
+    const res = await postRun(makeRunRequest({ taskSlug: "task-a", taskTitle: "Task A" }), {
+      params: Promise.resolve({ slug: "openlaw" }),
+    });
+    expect(res.status).toBe(201);
+    // EvalTrigger addNode should not be called if evalNodes is null
+    expect(mockAddNode).not.toHaveBeenCalled();
+  });
+
+  test("still returns 201 + RUNNING when Jarvis block throws", async () => {
+    mockGetJarvisConfig.mockRejectedValue(new Error("Jarvis down"));
+
+    const res = await postRun(makeRunRequest({ taskSlug: "task-a", taskTitle: "Task A" }), {
+      params: Promise.resolve({ slug: "openlaw" }),
+    });
+    expect(res.status).toBe(201);
+    const body = await res.json();
+    expect(body.run_id).toBe("run-new");
+  });
+
+  test("persists evalTriggerRef when Jarvis writes succeed", async () => {
+    const JARVIS_CONFIG = { jarvisUrl: "https://j.example.com", apiKey: "key" };
+    mockGetJarvisConfig.mockResolvedValue(JARVIS_CONFIG);
+    mockFetchHarveyTaskCriteria.mockResolvedValue(["criterion A"]);
+    mockEnsureHarveyLabEvalNodes.mockResolvedValue({
+      evalSetRef: "evalset-ref",
+      requirementRef: "req-ref",
+    });
+    // EvalTrigger addNode, HiveAgent addNode
+    mockAddNode
+      .mockResolvedValueOnce({ success: true, ref_id: "trigger-ref-1" })  // EvalTrigger
+      .mockResolvedValueOnce({ success: true, ref_id: "agent-ref-1" });   // HiveAgent
+    mockAddEdge.mockResolvedValue({ success: true });
+
+    const res = await postRun(makeRunRequest({ taskSlug: "task-a", taskTitle: "Task A" }), {
+      params: Promise.resolve({ slug: "openlaw" }),
+    });
+    expect(res.status).toBe(201);
+
+    // evalTriggerRef should be persisted
+    expect(mockDbLegalBenchmarkRunUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ evalTriggerRef: "trigger-ref-1" }),
+      }),
+    );
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Webhook stage=scorer — Jarvis EvalTriggerOutput (non-fatal)
+// ═══════════════════════════════════════════════════════════════════════════
+
+describe("POST /webhook stage=scorer — Jarvis EvalTriggerOutput non-fatal block", () => {
+  const SCORES = [
+    { criterion: "Accuracy", pass: true, notes: "Well done" },
+    { criterion: "Clarity", pass: false, notes: "Needs improvement" },
+  ];
+
+  beforeEach(() => {
+    mockDbWorkspaceFindUnique.mockResolvedValue({ slug: "openlaw" });
+    mockDbLegalBenchmarkRunUpdate.mockResolvedValue({ ...MOCK_RUN, status: "COMPLETE" });
+    mockPusherTrigger.mockResolvedValue(undefined);
+  });
+
+  test("returns 200 + COMPLETE when evalTriggerRef is null (no Jarvis calls)", async () => {
+    mockDbLegalBenchmarkRunFindUnique.mockResolvedValue({ ...MOCK_RUN, evalTriggerRef: null });
+
+    const res = await postWebhook(makeWebhookRequest({ scores: SCORES }, "run-1", "scorer"));
+    expect(res.status).toBe(200);
+    expect(mockGetJarvisConfig).not.toHaveBeenCalled();
+    expect(mockAddNode).not.toHaveBeenCalled();
+    expect(mockAddEdge).not.toHaveBeenCalled();
+  });
+
+  test("returns 200 + COMPLETE when evalTriggerRef is set and Jarvis succeeds", async () => {
+    mockDbLegalBenchmarkRunFindUnique.mockResolvedValue({
+      ...MOCK_RUN,
+      evalTriggerRef: "trigger-ref-1",
+    });
+    mockGetJarvisConfig.mockResolvedValue({ jarvisUrl: "https://j.example.com", apiKey: "key" });
+    mockAddNode.mockResolvedValue({ success: true, ref_id: "output-ref" });
+    mockAddEdge.mockResolvedValue({ success: true });
+
+    const res = await postWebhook(makeWebhookRequest({ scores: SCORES }, "run-1", "scorer"));
+    expect(res.status).toBe(200);
+
+    // One EvalTriggerOutput per score entry
+    expect(mockAddNode).toHaveBeenCalledTimes(SCORES.length);
+    expect(mockAddEdge).toHaveBeenCalledTimes(SCORES.length);
+
+    // Verify first output node shape
+    expect(mockAddNode).toHaveBeenNthCalledWith(
+      1,
+      expect.anything(),
+      expect.objectContaining({
+        node_type: "EvalTriggerOutput",
+        node_data: expect.objectContaining({
+          result: "pass",
+          score: 1.0,
+          attempt_number: 1,
+          judge_notes: "Accuracy: Well done",
+        }),
+      }),
+    );
+
+    // Verify HAS_OUTPUT edge wired to evalTriggerRef
+    expect(mockAddEdge).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        edge: { edge_type: "HAS_OUTPUT" },
+        source: { ref_id: "trigger-ref-1" },
+        target: { ref_id: "output-ref" },
+      }),
+    );
+
+    // Run should be COMPLETE
+    expect(mockDbLegalBenchmarkRunUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ status: "COMPLETE" }),
+      }),
+    );
+  });
+
+  test("returns 200 + COMPLETE even when Jarvis EvalTriggerOutput writes throw", async () => {
+    mockDbLegalBenchmarkRunFindUnique.mockResolvedValue({
+      ...MOCK_RUN,
+      evalTriggerRef: "trigger-ref-1",
+    });
+    mockGetJarvisConfig.mockResolvedValue({ jarvisUrl: "https://j.example.com", apiKey: "key" });
+    mockAddNode.mockRejectedValue(new Error("Jarvis unavailable"));
+
+    const res = await postWebhook(makeWebhookRequest({ scores: SCORES }, "run-1", "scorer"));
+    expect(res.status).toBe(200);
+
+    // Run status must still be COMPLETE
+    expect(mockDbLegalBenchmarkRunUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ status: "COMPLETE" }),
+      }),
+    );
+
+    // Pusher broadcast must still fire
+    expect(mockPusherTrigger).toHaveBeenCalledWith(
+      "workspace-openlaw",
+      "legal-benchmark-update",
+      expect.objectContaining({ status: "COMPLETE" }),
+    );
+  });
+
+  test("returns 200 + COMPLETE when getJarvisConfigForWorkspace returns null", async () => {
+    mockDbLegalBenchmarkRunFindUnique.mockResolvedValue({
+      ...MOCK_RUN,
+      evalTriggerRef: "trigger-ref-1",
+    });
+    mockGetJarvisConfig.mockResolvedValue(null);
+
+    const res = await postWebhook(makeWebhookRequest({ scores: SCORES }, "run-1", "scorer"));
+    expect(res.status).toBe(200);
+    expect(mockAddNode).not.toHaveBeenCalled();
   });
 });
