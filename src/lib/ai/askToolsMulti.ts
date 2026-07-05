@@ -19,13 +19,10 @@ import {
   type WorkspaceAuth,
 } from "@/lib/mcp/mcpTools";
 
+import { mcpText, capMcpResult } from "./mcpResult";
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AnyTool = Tool<any, any>;
-
-/** Extract text from an McpToolResult for use as a tool return value. */
-function mcpText(result: { content: { type: string; text: string }[] }): string {
-  return result.content.map((c) => c.text).join("\n");
-}
 
 export function askToolsMulti(
   workspaces: WorkspaceConfig[],
@@ -293,10 +290,11 @@ export function askToolsMulti(
           const tools = await mcpClient.tools();
           const searchLogsTool = tools["search_logs"];
           if (!searchLogsTool?.execute) return "search_logs tool not found";
-          return await searchLogsTool.execute(
+          const result = await searchLogsTool.execute(
             { query, max_hits },
             { toolCallId: "1", messages: [] }
           );
+          return capMcpResult(result);
         } catch (e) {
           console.error(`Error searching logs for ${ws.slug}:`, e);
           return `Could not search logs for ${ws.slug}`;
