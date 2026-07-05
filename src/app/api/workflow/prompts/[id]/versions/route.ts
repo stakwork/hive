@@ -4,6 +4,7 @@ import { authOptions } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
 import { isDevelopmentMode } from "@/lib/runtime";
 
+
 export const runtime = "nodejs";
 export const fetchCache = "force-no-store";
 
@@ -52,24 +53,48 @@ export async function GET(
       orderBy: { versionNumber: "desc" },
     });
 
+    // Enrich versions with run_count from local mirror table — one grouped query, no N+1.
+    const [dailyRunGroups, totalRunCountResult] = await Promise.all([
+      db.promptDailyRun.groupBy({
+        by: ["versionId"],
+        _sum: { runCount: true },
+        where: { promptId: id },
+      }),
+      db.promptDailyRun.aggregate({
+        _sum: { runCount: true },
+        where: { promptId: id },
+      }),
+    ]);
+
+    const runCountByVersionId = new Map<string, number>();
+    for (const group of dailyRunGroups) {
+      if (group.versionId) {
+        runCountByVersionId.set(group.versionId, group._sum.runCount ?? 0);
+      }
+    }
+
+    const versionsWithRunCount = versions.map((v) => ({
+      id: v.id,
+      version_number: v.versionNumber,
+      value: v.value,
+      description: v.description ?? "",
+      whodunnit: v.whodunnit,
+      published: v.published,
+      created_at: v.createdAt.toISOString(),
+      run_count: runCountByVersionId.get(v.id) ?? 0,
+    }));
+
     return NextResponse.json({
       success: true,
       data: {
         prompt_id: id,
         prompt_name: prompt.name,
-        versions: versions.map((v) => ({
-          id: v.id,
-          version_number: v.versionNumber,
-          value: v.value,
-          description: v.description ?? "",
-          whodunnit: v.whodunnit,
-          published: v.published,
-          created_at: v.createdAt.toISOString(),
-        })),
+        versions: versionsWithRunCount,
         // current_version_id = latest version (highest versionNumber); may differ from published_version_id when a draft exists.
         current_version_id: versions[0]?.id ?? prompt.publishedVersionId,
         published_version_id: prompt.publishedVersionId,
         version_count: versions.length,
+        total_run_count: totalRunCountResult._sum.runCount ?? 0,
       },
     });
   } catch (error) {

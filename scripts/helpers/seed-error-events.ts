@@ -76,6 +76,121 @@ const STATUSES: ErrorIssueStatus[] = [
   ErrorIssueStatus.IGNORED,
 ];
 
+// ── Seed impact score data ────────────────────────────────────────────────────
+// Provides three distinct states so the dashboard can render all scenarios
+// without a live Jarvis connection.
+//   i % 3 === 0  → high impact (central code path)
+//   i % 3 === 1  → low impact (peripheral code)
+//   i % 3 === 2  → null / unscored (no KG edges resolved)
+
+interface SeedImpactData {
+  impactScore?: number | undefined;
+  impactScoredAt?: Date | undefined;
+  impactMeta?: Prisma.InputJsonValue | undefined;
+}
+
+function buildSeedImpactData(issueIndex: number): SeedImpactData {
+  const scoredAt = new Date(Date.now() - issueIndex * 1800 * 1000);
+
+  switch (issueIndex % 3) {
+    case 0:
+      // High impact — touches a heavily-depended-upon file/function
+      return {
+        impactScore: 0.82,
+        impactScoredAt: scoredAt,
+        impactMeta: {
+          topNodeName: "src/services/user.ts",
+          topNodeType: "File",
+          topPagerank: 0.91,
+          nodeCount: 3,
+        },
+      };
+    case 1:
+      // Low impact — peripheral code with few dependents
+      return {
+        impactScore: 0.12,
+        impactScoredAt: scoredAt,
+        impactMeta: {
+          topNodeName: "src/utils/format.ts",
+          topNodeType: "File",
+          topPagerank: 0.08,
+          nodeCount: 1,
+        },
+      };
+    default:
+      // Unscored — no resolvable KG edges (omit fields so Prisma uses DB default of null)
+      return {};
+  }
+}
+
+// ── Seed correlation data ─────────────────────────────────────────────────────
+// Provides varied correlation states across seeded issues so the dashboard UI
+// can render all three scenarios without a live Jarvis connection.
+//
+// Full KG-sourced correlation requires a live Jarvis connection and is
+// exercised via mocked kgGetNeighbors in unit/integration tests (not this seed).
+
+import { Prisma } from "@prisma/client";
+
+interface SeedCorrelationData {
+  correlatedPrNumber?: number;
+  correlatedPrUrl?: string;
+  correlatedCommitSha?: string;
+  correlationConfidence?: string;
+  correlationComputedAt?: Date;
+  correlationCandidates?: Prisma.InputJsonValue;
+}
+
+/**
+ * Returns correlation fields for a seeded ErrorIssue based on its index.
+ *   i % 3 === 0  → high-confidence single PR match
+ *   i % 3 === 1  → "likely" multi-candidate (2 PRs)
+ *   i % 3 === 2  → no correlation (omitted)
+ */
+function buildSeedCorrelationData(issueIndex: number, repoUrl: string): SeedCorrelationData {
+  const baseUrl = repoUrl.replace(/\.git$/, "");
+  const computedAt = new Date(Date.now() - issueIndex * 3600 * 1000);
+
+  switch (issueIndex % 3) {
+    case 0:
+      // High-confidence single PR
+      return {
+        correlatedPrNumber: 100 + issueIndex,
+        correlatedPrUrl: `${baseUrl}/pull/${100 + issueIndex}`,
+        correlatedCommitSha: COMMIT_SHAS[issueIndex % COMMIT_SHAS.length] ?? undefined,
+        correlationConfidence: "high",
+        correlationComputedAt: computedAt,
+        correlationCandidates: undefined,
+      };
+    case 1:
+      // "Likely" multi-candidate
+      return {
+        correlatedPrNumber: 200 + issueIndex,
+        correlatedPrUrl: `${baseUrl}/pull/${200 + issueIndex}`,
+        correlatedCommitSha: undefined,
+        correlationConfidence: "likely",
+        correlationComputedAt: computedAt,
+        correlationCandidates: [
+          {
+            prNumber: 200 + issueIndex,
+            prUrl: `${baseUrl}/pull/${200 + issueIndex}`,
+            mergeDate: new Date(computedAt.getTime() - 3600 * 1000).toISOString(),
+            refId: `kg-pr-${200 + issueIndex}`,
+          },
+          {
+            prNumber: 201 + issueIndex,
+            prUrl: `${baseUrl}/pull/${201 + issueIndex}`,
+            mergeDate: new Date(computedAt.getTime() - 6 * 3600 * 1000).toISOString(),
+            refId: `kg-pr-${201 + issueIndex}`,
+          },
+        ],
+      };
+    default:
+      // No correlation
+      return {};
+  }
+}
+
 /**
  * Seeds realistic ErrorIssue + ErrorEvent data for local UI development.
  * Mirrors seed-agent-logs.ts conventions.
@@ -182,6 +297,13 @@ export async function seedErrorEvents() {
         addRandomSuffix: true,
       });
 
+      // Seed correlation fields for a subset of issues so the dashboard UI has
+      // data to render without requiring a live Jarvis KG connection.
+      // Full KG-sourced correlation requires a live Jarvis connection and is
+      // exercised via mocked kgGetNeighbors in unit/integration tests, not here.
+      const correlationData = buildSeedCorrelationData(i, repo.repositoryUrl);
+      const impactData = buildSeedImpactData(i);
+
       // Create the ErrorIssue
       const issue = await prisma.errorIssue.create({
         data: {
@@ -198,6 +320,8 @@ export async function seedErrorEvents() {
           environment,
           release,
           metadata: { source: "seed" },
+          ...correlationData,
+          ...impactData,
         },
       });
       issueCount++;

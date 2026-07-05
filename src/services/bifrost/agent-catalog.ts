@@ -1,10 +1,12 @@
 import { createHash } from "crypto";
 
+import { db } from "@/lib/db";
+
 import {
   AGENT_CATALOG_SOURCE,
   DEFAULT_AGENT_MODEL,
 } from "./constants";
-import { BIFROST_AGENT_NAMES, type BifrostAgentName } from "./orchestrator";
+import { BIFROST_AGENT_NAMES, type BifrostAgentName } from "./agent-names";
 import type {
   AgentCatalogManifest,
   AgentCatalogManifestAgent,
@@ -19,12 +21,16 @@ import type {
  * truth for what each agent *is*). The two join by `name` — the same
  * string the `x-bf-dim-agent-name` header carries.
  *
- * For now this only declares each agent's identity + default model;
- * prompts / tools / skills are left empty and authored later in the
- * gateway UI. Adding a new call site means adding it to
- * `BIFROST_AGENT_NAMES`; give it an entry here too so it shows up in
- * the catalog with a sensible display name (the `display` fallback
- * covers the case where someone forgets).
+ * Each agent declares its identity + default model, plus the names of
+ * the `:Prompt` nodes it uses. Those prompt names come from Hive's
+ * `Prompt.agentNames` column and link `HiveAgent-[:HAS_PROMPT]->Prompt`
+ * in the graph (the gateway skips any name with no matching node).
+ * Tools / skills are left empty and authored later in the gateway UI.
+ *
+ * Adding a new call site means adding it to `BIFROST_AGENT_NAMES`; give
+ * it an entry here too so it shows up in the catalog with a sensible
+ * display name (the `display` fallback covers the case where someone
+ * forgets).
  */
 export interface DefaultAgentSpec {
   displayName: string;
@@ -74,24 +80,67 @@ export const DEFAULT_AGENT_SPECS: Record<BifrostAgentName, DefaultAgentSpec> = {
     displayName: "Browser Agent",
     description: "Takes screenshots and validates UI changes in the browser.",
   },
+  "security-review-agent": {
+    displayName: "Security Review Agent",
+    description: "Reviews the code for security vulnerabilities.",
+  },
 };
 
 /**
- * Build the seed manifest for `POST /_plugin/agents`. Deterministic:
- * agents are emitted in `BIFROST_AGENT_NAMES` order so the manifest
- * hash is stable across calls (the content-addressed seed cache relies
- * on this).
+ * Prompt names linked to each agent, keyed by agent name. Sourced from
+ * the `Prompt.agentNames` column; a prompt may fan out to several
+ * agents. Only agents with at least one prompt appear as keys.
  */
-export function buildAgentCatalogManifest(): AgentCatalogManifest {
+export type AgentPromptNames = Record<string, string[]>;
+
+/**
+ * Load the prompt-name links for every agent from `Prompt.agentNames`.
+ * One indexed read; the result feeds `buildAgentCatalogManifest`. Names
+ * are sorted per agent so the manifest (and its content hash) is stable
+ * regardless of row order.
+ */
+export async function loadAgentPromptNames(): Promise<AgentPromptNames> {
+  const prompts = await db.prompt.findMany({
+    where: { agentNames: { isEmpty: false } },
+    select: { name: true, agentNames: true },
+  });
+  const byAgent: AgentPromptNames = {};
+  for (const prompt of prompts) {
+    for (const agent of prompt.agentNames) {
+      (byAgent[agent] ??= []).push(prompt.name);
+    }
+  }
+  for (const names of Object.values(byAgent)) names.sort();
+  return byAgent;
+}
+
+/**
+ * Build the seed manifest for `POST /_plugin/agents`. Deterministic:
+ * agents are emitted in `BIFROST_AGENT_NAMES` order (and each agent's
+ * prompt names are pre-sorted by `loadAgentPromptNames`) so the
+ * manifest hash is stable across calls — the content-addressed seed
+ * cache relies on this.
+ *
+ * `promptsByAgent` is passed in (rather than queried here) so this stays
+ * pure and the exact bytes hashed are the exact bytes pushed.
+ */
+export function buildAgentCatalogManifest(
+  promptsByAgent: AgentPromptNames = {},
+): AgentCatalogManifest {
   const agents: AgentCatalogManifestAgent[] = BIFROST_AGENT_NAMES.map(
     (name) => {
       const spec = DEFAULT_AGENT_SPECS[name];
-      return {
+      const promptNames = promptsByAgent[name] ?? [];
+      const agent: AgentCatalogManifestAgent = {
         name,
         display_name: spec.displayName,
         description: spec.description,
         default_model: spec.defaultModel ?? DEFAULT_AGENT_MODEL,
       };
+      if (promptNames.length > 0) {
+        agent.prompts = promptNames.map((promptName) => ({ name: promptName }));
+      }
+      return agent;
     },
   );
   return { source: AGENT_CATALOG_SOURCE, agents };

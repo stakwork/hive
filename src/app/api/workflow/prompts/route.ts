@@ -4,6 +4,7 @@ import { authOptions } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
 import { isDevelopmentMode } from "@/lib/runtime";
 import { writePromptThrough } from "@/services/prompts/prompt-sync";
+import { BIFROST_AGENT_NAMES } from "@/services/bifrost/agent-names";
 
 export const runtime = "nodejs";
 export const fetchCache = "force-no-store";
@@ -52,11 +53,32 @@ async function requireWriteAccess(
 
 // ─── Shape helpers ────────────────────────────────────────────────────────────
 
+const VALID_AGENT_NAMES = new Set<string>(BIFROST_AGENT_NAMES);
+
+function normalizeAgentNames(names: unknown): string[] | { error: string } {
+  if (!Array.isArray(names)) return [];
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const n of names) {
+    if (typeof n !== "string") continue;
+    const trimmed = n.trim();
+    if (!trimmed) continue;
+    if (!VALID_AGENT_NAMES.has(trimmed)) {
+      return { error: `Invalid agent name: "${trimmed}"` };
+    }
+    if (seen.has(trimmed)) continue;
+    seen.add(trimmed);
+    result.push(trimmed);
+  }
+  return result;
+}
+
 function shapePrompt(p: {
   id: string;
   name: string;
   value: string;
   description: string | null;
+  agentNames: string[];
   publishedVersionId: string | null;
   stakworkId: number | null;
   syncStatus: string;
@@ -71,6 +93,7 @@ function shapePrompt(p: {
     name: p.name,
     value: p.value,
     description: p.description ?? "",
+    agent_names: p.agentNames,
     published_version_id: p.publishedVersionId,
     current_version_id: latestVersionId,
     stakwork_id: p.stakworkId,
@@ -103,6 +126,8 @@ export async function GET(request: NextRequest) {
         }
       : {};
 
+    const includeUsages = searchParams.get("include_usages") === "true";
+
     const [prompts, total] = await Promise.all([
       db.prompt.findMany({
         where,
@@ -119,10 +144,58 @@ export async function GET(request: NextRequest) {
       db.prompt.count({ where }),
     ]);
 
+    // Build usage and run-count enrichment from local mirror tables when requested.
+    let usagesByName = new Map<string, Array<{ workflow_id: number; workflow_name: string; step_id: string }>>();
+    let runCountByPromptId = new Map<string, number>();
+
+    if (includeUsages) {
+      const promptIds = prompts.map((p) => p.id);
+      const promptNames = prompts.map((p) => p.name);
+
+      const [rawUsages, dailyRunGroups] = await Promise.all([
+        db.promptUsage.findMany({ where: { promptName: { in: promptNames } } }),
+        db.promptDailyRun.groupBy({
+          by: ["promptId"],
+          _sum: { runCount: true },
+          where: { promptId: { in: promptIds } },
+        }),
+      ]);
+
+      // Group usages by promptName, deduped by (workflow_id, step_id).
+      for (const u of rawUsages) {
+        const key = `${u.workflowId}:${u.stepId}`;
+        const entry = { workflow_id: u.workflowId, workflow_name: u.workflowName ?? "", step_id: u.stepId };
+        if (!usagesByName.has(u.promptName)) {
+          usagesByName.set(u.promptName, []);
+        }
+        const list = usagesByName.get(u.promptName)!;
+        if (!list.some((x) => `${x.workflow_id}:${x.step_id}` === key)) {
+          list.push(entry);
+        }
+      }
+
+      // Build promptId → total run count map.
+      for (const group of dailyRunGroups) {
+        runCountByPromptId.set(group.promptId, group._sum.runCount ?? 0);
+      }
+    }
+
+    const shapedPrompts = prompts.map((p) => {
+      const shaped = shapePrompt(p);
+      if (includeUsages) {
+        return {
+          ...shaped,
+          usages: usagesByName.get(p.name) ?? [],
+          run_count: runCountByPromptId.get(p.id) ?? 0,
+        };
+      }
+      return shaped;
+    });
+
     return NextResponse.json({
       success: true,
       data: {
-        prompts: prompts.map(shapePrompt),
+        prompts: shapedPrompts,
         total,
         size: pageSize,
         page,
@@ -149,10 +222,11 @@ export async function POST(request: NextRequest) {
     if (denied) return denied;
 
     const body = await request.json();
-    const { name, value, description } = body as {
+    const { name, value, description, agentNames } = body as {
       name?: string;
       value?: string;
       description?: string;
+      agentNames?: unknown;
     };
 
     if (!name || !value) {
@@ -166,7 +240,11 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { prompt } = await writePromptThrough({ name, value, description, userId });
+    const normalizedAgentNames = normalizeAgentNames(agentNames);
+    if (!Array.isArray(normalizedAgentNames)) {
+      return NextResponse.json({ error: normalizedAgentNames.error }, { status: 400 });
+    }
+    const { prompt } = await writePromptThrough({ name, value, description, agentNames: normalizedAgentNames, userId });
 
     return NextResponse.json({
       success: true,

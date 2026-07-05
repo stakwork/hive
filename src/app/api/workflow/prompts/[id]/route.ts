@@ -4,6 +4,7 @@ import { authOptions } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
 import { isDevelopmentMode } from "@/lib/runtime";
 import { writePromptThrough, deletePrompt } from "@/services/prompts/prompt-sync";
+import { BIFROST_AGENT_NAMES } from "@/services/bifrost/agent-names";
 
 export const runtime = "nodejs";
 export const fetchCache = "force-no-store";
@@ -46,11 +47,32 @@ async function requireWriteAccess(
 
 // ─── Shape helper ─────────────────────────────────────────────────────────────
 
+const VALID_AGENT_NAMES = new Set<string>(BIFROST_AGENT_NAMES);
+
+function normalizeAgentNames(names: unknown): string[] | { error: string } {
+  if (!Array.isArray(names)) return [];
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const n of names) {
+    if (typeof n !== "string") continue;
+    const trimmed = n.trim();
+    if (!trimmed) continue;
+    if (!VALID_AGENT_NAMES.has(trimmed)) {
+      return { error: `Invalid agent name: "${trimmed}"` };
+    }
+    if (seen.has(trimmed)) continue;
+    seen.add(trimmed);
+    result.push(trimmed);
+  }
+  return result;
+}
+
 function shapePromptDetail(p: {
   id: string;
   name: string;
   value: string;
   description: string | null;
+  agentNames: string[];
   publishedVersionId: string | null;
   stakworkId: number | null;
   syncStatus: string;
@@ -69,6 +91,7 @@ function shapePromptDetail(p: {
     name: p.name,
     value: currentValue,
     description: p.description ?? "",
+    agent_names: p.agentNames,
     published_version_id: p.publishedVersionId,
     current_version_id: currentVersionId,
     stakwork_id: p.stakworkId,
@@ -136,10 +159,11 @@ export async function PUT(
     }
 
     const body = await request.json();
-    const { name, value, description } = body as {
+    const { name, value, description, agentNames } = body as {
       name?: string;
       value?: string;
       description?: string;
+      agentNames?: unknown;
     };
 
     if (!value) {
@@ -152,11 +176,17 @@ export async function PUT(
       return NextResponse.json({ error: "Prompt not found" }, { status: 404 });
     }
 
+    const normalizedAgentNames = agentNames !== undefined ? normalizeAgentNames(agentNames) : undefined;
+    if (normalizedAgentNames !== undefined && !Array.isArray(normalizedAgentNames)) {
+      return NextResponse.json({ error: normalizedAgentNames.error }, { status: 400 });
+    }
+
     await writePromptThrough({
       promptId: id,
       name: name ?? existing.name,
       value,
       description,
+      agentNames: normalizedAgentNames,
       userId,
     });
 
@@ -185,6 +215,72 @@ export async function PUT(
     }
     console.error("Error updating prompt:", err);
     return NextResponse.json({ error: "Failed to update prompt" }, { status: 500 });
+  }
+}
+
+// ─── PATCH /api/workflow/prompts/[id] ────────────────────────────────────────
+// Lightweight update for Prompt-level metadata that is NOT versioned (agent
+// names). Unlike PUT, this never creates a new draft version and never touches
+// the publish lifecycle — it writes directly to the Prompt row.
+
+export async function PATCH(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  try {
+    const devMode = isDevelopmentMode();
+    const authResult = await getAuthenticatedUserId(devMode);
+    if (authResult instanceof NextResponse) return authResult;
+    const { userId } = authResult;
+
+    const denied = await requireWriteAccess(userId, devMode);
+    if (denied) return denied;
+
+    const { id } = await params;
+    if (!id) {
+      return NextResponse.json({ error: "Prompt ID is required" }, { status: 400 });
+    }
+
+    const body = await request.json();
+    const { agentNames } = body as { agentNames?: unknown };
+
+    if (agentNames === undefined) {
+      return NextResponse.json({ error: "agentNames is required" }, { status: 400 });
+    }
+
+    const normalizedAgentNames = normalizeAgentNames(agentNames);
+    if (!Array.isArray(normalizedAgentNames)) {
+      return NextResponse.json({ error: normalizedAgentNames.error }, { status: 400 });
+    }
+
+    const existing = await db.prompt.findUnique({ where: { id } });
+    if (!existing) {
+      return NextResponse.json({ error: "Prompt not found" }, { status: 404 });
+    }
+
+    await db.prompt.update({
+      where: { id },
+      data: { agentNames: normalizedAgentNames },
+    });
+
+    // Refetch with versions (ordered desc) so the response shape matches GET/PUT.
+    const updated = await db.prompt.findUnique({
+      where: { id },
+      include: {
+        versions: {
+          select: { id: true, versionNumber: true, value: true },
+          orderBy: { versionNumber: "desc" },
+        },
+      },
+    });
+    if (!updated) {
+      return NextResponse.json({ error: "Prompt not found after update" }, { status: 404 });
+    }
+
+    return NextResponse.json({ success: true, data: shapePromptDetail(updated) });
+  } catch (err: unknown) {
+    console.error("Error updating prompt agent names:", err);
+    return NextResponse.json({ error: "Failed to update agent names" }, { status: 500 });
   }
 }
 

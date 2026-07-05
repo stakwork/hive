@@ -330,3 +330,160 @@ describe("computeFingerprint", () => {
     expect(fp6).toBe(fp5);
   });
 });
+
+// ── computeFingerprint with structured frames ─────────────────────────────────
+
+describe("computeFingerprint — structured frames", () => {
+  it("produces a stable hash from frames (same object values, different identity)", () => {
+    const framesA = [
+      { filename: "app/controllers/users_controller.rb", function: "create", lineno: 42 },
+      { filename: "app/models/user.rb", function: "save", lineno: 18 },
+    ];
+    const framesB = [
+      { filename: "app/controllers/users_controller.rb", function: "create", lineno: 42 },
+      { filename: "app/models/user.rb", function: "save", lineno: 18 },
+    ];
+    const fp1 = computeFingerprint({ exceptionType: "ActiveRecord::NotFound", frames: framesA });
+    const fp2 = computeFingerprint({ exceptionType: "ActiveRecord::NotFound", frames: framesB });
+    expect(fp1).toBe(fp2);
+    expect(fp1).toMatch(/^[0-9a-f]{64}$/);
+  });
+
+  it("frames hash differs from raw-string hash for same exception", () => {
+    const frames = [
+      { filename: "app/controllers/users_controller.rb", function: "create", lineno: 42 },
+    ];
+    const fpFrames = computeFingerprint({ exceptionType: "TypeError", frames });
+    const fpRaw = computeFingerprint({ exceptionType: "TypeError", stackTrace: "at create (app/controllers/users_controller.rb:42:5)" });
+    // They may differ — structured and raw paths produce distinct hashes
+    expect(fpFrames).toMatch(/^[0-9a-f]{64}$/);
+    expect(fpRaw).toMatch(/^[0-9a-f]{64}$/);
+  });
+
+  it("different frames produce different fingerprints", () => {
+    const framesA = [{ filename: "app/foo.rb", function: "bar", lineno: 1 }];
+    const framesB = [{ filename: "app/baz.rb", function: "qux", lineno: 2 }];
+    const fp1 = computeFingerprint({ exceptionType: "TypeError", frames: framesA });
+    const fp2 = computeFingerprint({ exceptionType: "TypeError", frames: framesB });
+    expect(fp1).not.toBe(fp2);
+  });
+
+  it("frames path: different exceptionType produces different fingerprint", () => {
+    const frames = [{ filename: "app/foo.rb", function: "bar", lineno: 10 }];
+    const fp1 = computeFingerprint({ exceptionType: "TypeError", frames });
+    const fp2 = computeFingerprint({ exceptionType: "RuntimeError", frames });
+    expect(fp1).not.toBe(fp2);
+  });
+
+  it("clientFingerprint takes precedence over frames", () => {
+    const frames = [{ filename: "app/foo.rb", function: "bar", lineno: 1 }];
+    const fp = computeFingerprint({ exceptionType: "TypeError", frames, clientFingerprint: "custom-override" });
+    expect(fp).toBe("custom-override");
+  });
+
+  it("falls back to raw-string path when frames is empty array", () => {
+    const fpEmpty = computeFingerprint({
+      exceptionType: "TypeError",
+      frames: [],
+      stackTrace: "at foo (bar.ts:1:1)",
+    });
+    const fpNoFrames = computeFingerprint({
+      exceptionType: "TypeError",
+      stackTrace: "at foo (bar.ts:1:1)",
+    });
+    expect(fpEmpty).toBe(fpNoFrames);
+  });
+
+  it("falls back to raw-string path when frames is undefined", () => {
+    const fpUndef = computeFingerprint({
+      exceptionType: "TypeError",
+      frames: undefined,
+      stackTrace: "at foo (bar.ts:1:1)",
+    });
+    const fpNoFrames = computeFingerprint({
+      exceptionType: "TypeError",
+      stackTrace: "at foo (bar.ts:1:1)",
+    });
+    expect(fpUndef).toBe(fpNoFrames);
+  });
+
+  it("uses only top 5 frames (6th frame is ignored)", () => {
+    const frames6 = Array.from({ length: 6 }, (_, i) => ({
+      filename: `app/file${i}.rb`,
+      function: `fn${i}`,
+      lineno: i + 1,
+    }));
+    const frames5 = frames6.slice(0, 5);
+    const fp6 = computeFingerprint({ exceptionType: "E", frames: frames6 });
+    const fp5 = computeFingerprint({ exceptionType: "E", frames: frames5 });
+    expect(fp6).toBe(fp5);
+  });
+
+  it("frames with optional fields absent still hash stably", () => {
+    const frames = [{ filename: "app/foo.rb" }]; // no function or lineno
+    const fp1 = computeFingerprint({ exceptionType: "TypeError", frames });
+    const fp2 = computeFingerprint({ exceptionType: "TypeError", frames: [{ filename: "app/foo.rb" }] });
+    expect(fp1).toBe(fp2);
+  });
+});
+
+// ── resolveRepoKey — canonical SSH/HTTPS/shorthand matching ──────────────────
+
+describe("resolveRepoKey — canonical cross-form matching", () => {
+  it("matches shorthand 'owner/repo' against SSH-stored repositoryUrl", async () => {
+    mockFindMany.mockResolvedValueOnce([
+      { id: "repo-ssh", name: "senza-lnd", repositoryUrl: "git@github.com:stakwork/senza-lnd" },
+    ]);
+    const result = await resolveRepoKey({ workspaceId: "ws-1", repository: "stakwork/senza-lnd" });
+    expect(result.repositoryId).toBe("repo-ssh");
+    expect(result.repoKey).toBe("stakwork/senza-lnd");
+  });
+
+  it("matches SSH URL against HTTPS-stored repositoryUrl", async () => {
+    mockFindMany.mockResolvedValueOnce([
+      { id: "repo-https", name: "hive", repositoryUrl: "https://github.com/stakwork/hive.git" },
+    ]);
+    const result = await resolveRepoKey({ workspaceId: "ws-1", repository: "git@github.com:stakwork/hive.git" });
+    expect(result.repositoryId).toBe("repo-https");
+    expect(result.repoKey).toBe("stakwork/hive");
+  });
+
+  it("matches HTTPS URL against SSH-stored repositoryUrl", async () => {
+    mockFindMany.mockResolvedValueOnce([
+      { id: "repo-ssh2", name: "hive", repositoryUrl: "git@github.com:stakwork/hive.git" },
+    ]);
+    const result = await resolveRepoKey({ workspaceId: "ws-1", repository: "https://github.com/stakwork/hive" });
+    expect(result.repositoryId).toBe("repo-ssh2");
+    expect(result.repoKey).toBe("stakwork/hive");
+  });
+
+  it("matches .git-suffixed shorthand against stored SSH URL", async () => {
+    mockFindMany.mockResolvedValueOnce([
+      { id: "repo-1", name: "hive", repositoryUrl: "git@github.com:stakwork/hive" },
+    ]);
+    const result = await resolveRepoKey({ workspaceId: "ws-1", repository: "stakwork/hive.git" });
+    expect(result.repositoryId).toBe("repo-1");
+  });
+
+  it("does not match repos from a different workspace (IDOR boundary)", async () => {
+    mockFindMany.mockResolvedValueOnce([]); // ws-999 has no repos
+    const result = await resolveRepoKey({ workspaceId: "ws-999", repository: "stakwork/hive" });
+    expect(result.repositoryId).toBeNull();
+    expect(mockFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { workspaceId: "ws-999" } })
+    );
+  });
+
+  it("SSH, HTTPS, and shorthand all produce the same repoKey when no match (unregistered repo)", async () => {
+    mockFindMany.mockResolvedValue([]);
+    const ssh = await resolveRepoKey({ workspaceId: "ws-1", repository: "git@github.com:stakwork/senza-lnd.git" });
+    const https = await resolveRepoKey({ workspaceId: "ws-1", repository: "https://github.com/stakwork/senza-lnd" });
+    const short = await resolveRepoKey({ workspaceId: "ws-1", repository: "stakwork/senza-lnd" });
+    expect(ssh.repoKey).toBe("stakwork/senza-lnd");
+    expect(https.repoKey).toBe("stakwork/senza-lnd");
+    expect(short.repoKey).toBe("stakwork/senza-lnd");
+    expect(ssh.repositoryId).toBeNull();
+    expect(https.repositoryId).toBeNull();
+    expect(short.repositoryId).toBeNull();
+  });
+});

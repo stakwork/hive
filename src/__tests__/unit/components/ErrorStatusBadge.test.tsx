@@ -52,6 +52,15 @@ function makeIssue(id: string, overrides?: Partial<ErrorIssueRecord>): ErrorIssu
     release: "1.0.0",
     metadata: null,
     kgRefId: null,
+    correlatedPrNumber: null,
+    correlatedPrUrl: null,
+    correlatedCommitSha: null,
+    correlationConfidence: null,
+    correlationComputedAt: null,
+    correlationCandidates: null,
+    impactScore: null,
+    impactScoredAt: null,
+    impactMeta: null,
     ...overrides,
   };
 }
@@ -179,6 +188,135 @@ describe("ErrorIssuesTable", () => {
         onRowClick={vi.fn()}
       />,
     );
-    expect(screen.getByText("—")).toBeInTheDocument();
+    // At least one — (environment dash); impactScore is also null so two are expected
+    const dashes = screen.getAllByText("—");
+    expect(dashes.length).toBeGreaterThan(0);
+  });
+
+  // ── Impact column tests ──────────────────────────────────────────────────
+
+  it("renders Impact column header in the table", () => {
+    const issues = [makeIssue("a")];
+    render(
+      <ErrorIssuesTable issues={issues} loading={false} error={null} onRowClick={vi.fn()} />,
+    );
+    expect(screen.getByText("Impact")).toBeInTheDocument();
+  });
+
+  it("renders impact indicator badge for a scored issue", () => {
+    const issues = [makeIssue("a", { impactScore: 0.85 })];
+    render(
+      <ErrorIssuesTable issues={issues} loading={false} error={null} onRowClick={vi.fn()} />,
+    );
+    const indicator = screen.getByTestId("impact-indicator");
+    expect(indicator).toBeInTheDocument();
+    expect(indicator.textContent).toBe("85");
+  });
+
+  it("renders low impact score correctly", () => {
+    const issues = [makeIssue("a", { impactScore: 0.2 })];
+    render(
+      <ErrorIssuesTable issues={issues} loading={false} error={null} onRowClick={vi.fn()} />,
+    );
+    const indicator = screen.getByTestId("impact-indicator");
+    expect(indicator.textContent).toBe("20");
+  });
+
+  it("renders — (muted) when impactScore is null", () => {
+    const issues = [makeIssue("a", { impactScore: null })];
+    render(
+      <ErrorIssuesTable issues={issues} loading={false} error={null} onRowClick={vi.fn()} />,
+    );
+    // null score shows muted dash (in addition to env dash if env is set)
+    const dashes = screen.getAllByText("—");
+    expect(dashes.length).toBeGreaterThan(0);
+    expect(screen.queryByTestId("impact-indicator")).toBeNull();
+  });
+
+  it("renders impact meta tooltip title when impactMeta has topNodeName", () => {
+    const issues = [
+      makeIssue("a", {
+        impactScore: 0.9,
+        impactMeta: { topNodeName: "src/core/auth.ts" },
+      }),
+    ];
+    render(
+      <ErrorIssuesTable issues={issues} loading={false} error={null} onRowClick={vi.fn()} />,
+    );
+    const indicator = screen.getByTestId("impact-indicator");
+    expect(indicator.title).toBe("Top node: src/core/auth.ts");
+  });
+
+  it("skeleton loading has 10 columns matching table header", () => {
+    const { container } = render(
+      <ErrorIssuesTable issues={[]} loading={true} error={null} onRowClick={vi.fn()} />,
+    );
+    // Header row should have 10 <th> elements (includes correlation indicator column)
+    const headerCells = container.querySelectorAll("thead th");
+    expect(headerCells).toHaveLength(10);
+
+    // Each skeleton row should also have 10 <td> cells
+    const firstSkeletonRow = container.querySelector("tbody tr");
+    expect(firstSkeletonRow).not.toBeNull();
+    const skeletonCells = firstSkeletonRow!.querySelectorAll("td");
+    expect(skeletonCells).toHaveLength(10);
+  });
+
+  // ── Correlation indicator ──────────────────────────────────────────────────
+
+  it("shows correlation indicator icon when correlationConfidence is set", () => {
+    const issues = [makeIssue("a", { correlationConfidence: "high" })];
+    render(
+      <ErrorIssuesTable
+        issues={issues}
+        loading={false}
+        error={null}
+        onRowClick={vi.fn()}
+      />,
+    );
+    expect(screen.getByTestId("correlation-indicator-a")).toBeInTheDocument();
+  });
+
+  it("shows correlation indicator for 'likely' confidence as well", () => {
+    const issues = [makeIssue("b", { correlationConfidence: "likely" })];
+    render(
+      <ErrorIssuesTable
+        issues={issues}
+        loading={false}
+        error={null}
+        onRowClick={vi.fn()}
+      />,
+    );
+    expect(screen.getByTestId("correlation-indicator-b")).toBeInTheDocument();
+  });
+
+  it("does NOT show correlation indicator when correlationConfidence is null", () => {
+    const issues = [makeIssue("c", { correlationConfidence: null })];
+    render(
+      <ErrorIssuesTable
+        issues={issues}
+        loading={false}
+        error={null}
+        onRowClick={vi.fn()}
+      />,
+    );
+    expect(screen.queryByTestId("correlation-indicator-c")).not.toBeInTheDocument();
+  });
+
+  it("shows indicator only on correlated issues in a mixed list", () => {
+    const issues = [
+      makeIssue("corr", { correlationConfidence: "high" }),
+      makeIssue("none", { correlationConfidence: null }),
+    ];
+    render(
+      <ErrorIssuesTable
+        issues={issues}
+        loading={false}
+        error={null}
+        onRowClick={vi.fn()}
+      />,
+    );
+    expect(screen.getByTestId("correlation-indicator-corr")).toBeInTheDocument();
+    expect(screen.queryByTestId("correlation-indicator-none")).not.toBeInTheDocument();
   });
 });

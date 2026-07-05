@@ -9,13 +9,16 @@ import type {
   ErrorIssueStatus,
 } from "@/types/error-issues";
 
+export type ErrorIssuesSortParam = "recent" | "impact";
+
 interface UseErrorIssuesParams {
   workspaceId: string | null | undefined;
   slug: string | null | undefined;
-  status?: ErrorIssueStatus;
+  status?: ErrorIssueStatus | "all";
   repoKey?: string;
   skip?: number;
   limit?: number;
+  sort?: ErrorIssuesSortParam;
 }
 
 interface UseErrorIssuesReturn {
@@ -34,6 +37,7 @@ export function useErrorIssues({
   repoKey,
   skip = 0,
   limit = 20,
+  sort,
 }: UseErrorIssuesParams): UseErrorIssuesReturn {
   const [issues, setIssues] = useState<ErrorIssueRecord[]>([]);
   const [total, setTotal] = useState(0);
@@ -51,6 +55,7 @@ export function useErrorIssues({
       const params = new URLSearchParams({ workspace_id: workspaceId });
       if (status) params.set("status", status);
       if (repoKey) params.set("repoKey", repoKey);
+      if (sort) params.set("sort", sort);
       params.set("skip", skip.toString());
       params.set("limit", limit.toString());
 
@@ -66,7 +71,7 @@ export function useErrorIssues({
     } finally {
       setLoading(false);
     }
-  }, [workspaceId, status, repoKey, skip, limit]);
+  }, [workspaceId, status, repoKey, skip, limit, sort]);
 
   // Initial fetch and re-fetch when filters change
   useEffect(() => {

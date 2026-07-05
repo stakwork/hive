@@ -36,53 +36,8 @@ import {
 // `src/lib/ai/workspaceConfig.ts`.
 const PUBLIC_VIEWER_USER_ID = "__public_viewer__";
 
-/**
- * The exhaustive registry of `agentName` values any LLM call site in
- * Hive may emit. The `agent-name` dim on `logs.db` is only useful if
- * it's drawn from a finite, well-known set — so every new call site
- * MUST add itself here, and `opts.agentName` on
- * {@link getBifrostForLLM} is typed against this union to catch
- * unregistered values at compile time.
- *
- * Grouping:
- *   - chat surfaces (in-process, PR #4078):
- *     `repo-agent`, `chat-agent`, `canvas-agent`, `diagram-agent`,
- *     `logs-agent`
- *   - workflow / agent-session surfaces (PR #4079):
- *     `plan-agent`, `coding-agent`, `pr-monitor`, `task-generation`
- *
- * The `coding-agent` entry intentionally covers BOTH the Stakwork
- * task workflow (live/unit/integration/default) and the hive4 goose
- * direct agent session — they share the dim because the underlying
- * work is the same "code-writing agent" shape. The
- * `BIFROST_ENABLED_AGENTS` env var filters on these literal values,
- * so listing `coding-agent` opts BOTH surfaces in (or neither).
- *
- * `task-generation` is the structured-JSON ticket generator
- * dispatched by `createStakworkRun` for `StakworkRunType.TASK_GENERATION`
- * — a sibling to `plan-agent` on the AI-generation workflow. Per-agent
- * dim lets us see TASK_GENERATION cost separately from the other run
- * types that share `STAKWORK_AI_GENERATION_WORKFLOW_ID`. Note the bare
- * name (no `-agent` suffix) is intentional — it matches the
- * `StakworkRunType.TASK_GENERATION` enum value rather than the
- * Bifrost `{name}-agent` convention used elsewhere in this list.
- */
-export const BIFROST_AGENT_NAMES = [
-  // Chat surfaces (PR #4078)
-  "repo-agent",
-  "chat-agent",
-  "canvas-agent",
-  "diagram-agent",
-  "logs-agent",
-  // Workflow / agent-session surfaces (PR #4079)
-  "plan-agent",
-  "coding-agent",
-  "test-agent",
-  "build-agent",
-  "browser-agent",
-] as const;
-
-export type BifrostAgentName = (typeof BIFROST_AGENT_NAMES)[number];
+export { BIFROST_AGENT_NAMES, type BifrostAgentName } from "./agent-names";
+import { BIFROST_AGENT_NAMES, type BifrostAgentName } from "./agent-names";
 
 /**
  * Master Bifrost reconciler — the **only** function callers should
@@ -178,11 +133,12 @@ export async function getBifrostForLLM(
   // `ensureBifrostTrust` and we fall through to VK reconcile.
   await runTrustReconcile(workspaceAuth.workspaceId);
 
-  // 2b. Agent-catalog seed. Pushes the default agent set into the
-  // swarm's gateway neo4j catalog. Content-addressed-cached on the
-  // Swarm row, so this is a single DB read on the hot path. Non-fatal
-  // and independent of trust — a stale/absent catalog never blocks an
-  // LLM call. See `gateway/plans/agent-catalog.md`.
+  // 2b. Agent-catalog seed. Pushes the default agent set (names,
+  // default models, and each agent's prompt names) into the swarm's
+  // gateway neo4j catalog. Content-addressed-cached on the Swarm row,
+  // so the hot path is a couple of DB reads (prompt links + Swarm row).
+  // Non-fatal and independent of trust — a stale/absent catalog never
+  // blocks an LLM call. See `gateway/plans/agent-catalog.md`.
   await runAgentCatalogReconcile(workspaceAuth.workspaceId);
 
   // 3. VK reconcile (phase 1). Without this, the LLM call can't

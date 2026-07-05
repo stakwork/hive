@@ -12,6 +12,7 @@ import { PageHeader } from "@/components/ui/page-header";
 import { ErrorIssuesTable } from "@/components/errors";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { useErrorIssues } from "@/hooks/useErrorIssues";
+import type { ErrorIssuesSortParam } from "@/hooks/useErrorIssues";
 import { canonicalRepoKey } from "@/lib/utils/error-fingerprint";
 import type { ErrorIssueStatus } from "@/types/error-issues";
 
@@ -19,8 +20,8 @@ const ISSUES_PER_PAGE = 20;
 
 const ALL_VALUE = "__all__";
 
-function parseStatus(v: string): ErrorIssueStatus | undefined {
-  return v === ALL_VALUE ? undefined : (v as ErrorIssueStatus);
+function parseStatus(v: string): ErrorIssueStatus | "all" {
+  return v === ALL_VALUE ? "all" : (v as ErrorIssueStatus);
 }
 
 export default function ErrorsPage() {
@@ -29,8 +30,9 @@ export default function ErrorsPage() {
   const slug = params.slug as string;
   const { id: workspaceId, workspace } = useWorkspace();
 
-  const [statusFilter, setStatusFilter] = useState<ErrorIssueStatus | undefined>(undefined);
+  const [statusFilter, setStatusFilter] = useState<ErrorIssueStatus | "all">("UNRESOLVED");
   const [repoKeyFilter, setRepoKeyFilter] = useState<string | undefined>(undefined);
+  const [sortOrder, setSortOrder] = useState<ErrorIssuesSortParam>("recent");
   const [page, setPage] = useState(1);
 
   const skip = (page - 1) * ISSUES_PER_PAGE;
@@ -40,6 +42,7 @@ export default function ErrorsPage() {
     slug,
     status: statusFilter,
     repoKey: repoKeyFilter,
+    sort: sortOrder,
     skip,
     limit: ISSUES_PER_PAGE,
   });
@@ -63,13 +66,16 @@ export default function ErrorsPage() {
     setPage(1);
   };
 
+  const handleSortChange = (val: string) => {
+    setSortOrder(val as ErrorIssuesSortParam);
+    setPage(1);
+  };
+
   const handleStatusChangePatch = useCallback(
-    (issueId: string, newStatus: ErrorIssueStatus) => {
-      // Optimistic updates are handled inside TriageActions;
-      // if the filter is set to a specific status we refetch to remove the row.
-      if (statusFilter) refetch();
+    (_issueId: string, _newStatus: ErrorIssueStatus) => {
+      refetch();
     },
-    [statusFilter, refetch],
+    [refetch],
   );
 
   return (
@@ -83,7 +89,7 @@ export default function ErrorsPage() {
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
               {/* Status filter */}
               <Select
-                value={statusFilter ?? ALL_VALUE}
+                value={statusFilter === "all" ? ALL_VALUE : statusFilter}
                 onValueChange={handleStatusChange}
               >
                 <SelectTrigger className="w-full sm:w-40" data-testid="status-filter">
@@ -94,6 +100,17 @@ export default function ErrorsPage() {
                   <SelectItem value="UNRESOLVED">Unresolved</SelectItem>
                   <SelectItem value="RESOLVED">Resolved</SelectItem>
                   <SelectItem value="IGNORED">Ignored</SelectItem>
+                </SelectContent>
+              </Select>
+
+              {/* Sort order */}
+              <Select value={sortOrder} onValueChange={handleSortChange}>
+                <SelectTrigger className="w-full sm:w-44" data-testid="sort-select">
+                  <SelectValue placeholder="Most Recent" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="recent">Most Recent</SelectItem>
+                  <SelectItem value="impact">Highest Impact</SelectItem>
                 </SelectContent>
               </Select>
 

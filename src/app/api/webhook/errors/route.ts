@@ -5,8 +5,12 @@ import { db } from "@/lib/db";
 import { validateApiKey } from "@/lib/api-keys";
 import { pusherServer, getWorkspaceChannelName, PUSHER_EVENTS } from "@/lib/pusher";
 import { resolveRepoKey, computeFingerprint } from "@/lib/utils/error-fingerprint";
+import { sanitizeFrames } from "@/lib/utils/error-frames";
 import { getJarvisConfigForWorkspace } from "@/lib/helpers/jarvis-config";
-import { addNode, addEdge, searchLatestByTypes } from "@/services/swarm/api/nodes";
+import { addNode, addEdge, searchLatestByTypes, getReferencedNodeCentrality } from "@/services/swarm/api/nodes";
+import { detectOnset } from "@/services/error-issues/spike-detection";
+import { correlateErrorIssue } from "@/services/error-issues/correlate";
+import { computeImpactScore } from "@/services/error-impact";
 
 export const fetchCache = "force-no-store";
 
@@ -78,6 +82,9 @@ export async function POST(request: NextRequest) {
     }
 
     const stackTrace = typeof body.stackTrace === "string" ? body.stackTrace : null;
+    const frames = sanitizeFrames(body.frames);
+    // Overwrite body.frames with sanitized array before blob persist — malformed entries never stored
+    body.frames = frames;
     const environment = typeof body.environment === "string" ? body.environment.trim() : null;
     const release = typeof body.release === "string" ? body.release.trim() : null;
     const commitShaRaw = typeof body.commitSha === "string" ? body.commitSha.trim() : null;
@@ -99,6 +106,7 @@ export async function POST(request: NextRequest) {
       hasRepo: !!repository,
       hasClientFingerprint: !!clientFingerprint,
       commitSha,
+      framesCount: frames.length,
     });
 
     // ── Repo resolution (IDOR-safe: scoped to authenticated workspace only) ──
@@ -116,7 +124,7 @@ export async function POST(request: NextRequest) {
     });
 
     // ── Fingerprint ──────────────────────────────────────────────────────────
-    const fingerprint = computeFingerprint({ exceptionType, stackTrace, clientFingerprint });
+    const fingerprint = computeFingerprint({ exceptionType, stackTrace, clientFingerprint, frames });
     console.info("[error-ingest] fingerprint", { fingerprint, clientOverride: !!clientFingerprint });
 
     // ── Blob upload (raw payload) ─────────────────────────────────────────────
@@ -380,9 +388,91 @@ export async function POST(request: NextRequest) {
             }
           }
         }
+
+        // ── Opportunistic impact scoring ────────────────────────────────────
+        // Best-effort: compute and persist impactScore right after edges are
+        // drawn so brand-new issues get a score immediately without waiting for
+        // the hourly cron. Logged under [error-impact] prefix, never throws.
+        if (issueNodeResult.ref_id) {
+          try {
+            const centralityResult = await getReferencedNodeCentrality(
+              jarvisConfig,
+              issueNodeResult.ref_id,
+              { timeoutMs: 5_000 },
+            );
+            if (centralityResult.ok) {
+              const scored = computeImpactScore(centralityResult.nodes);
+              await db.errorIssue.update({
+                where: { id: issue.id },
+                data: {
+                  impactScore: scored?.score ?? null,
+                  impactScoredAt: new Date(),
+                  impactMeta: scored?.meta
+                    ? (scored.meta as unknown as Prisma.InputJsonValue)
+                    : Prisma.JsonNull,
+                },
+              });
+              console.info("[error-impact] opportunistic score persisted", {
+                issueId: issue.id,
+                score: scored?.score ?? null,
+                nodeCount: centralityResult.nodes.length,
+              });
+            } else {
+              console.warn("[error-impact] centrality fetch failed (non-fatal)", {
+                issueId: issue.id,
+                error: centralityResult.error,
+              });
+            }
+          } catch (impactErr) {
+            console.warn("[error-impact] opportunistic scoring failed (non-fatal)", impactErr);
+          }
+        }
       }
     } catch (err) {
       console.error("[error-ingest] KG projection failed (non-fatal)", err);
+    }
+
+    // ── Best-effort regression correlation ────────────────────────────────────
+    // Runs AFTER the KG projection block (which may have updated kgRefId on the
+    // issue row). Wrapped in its own try/catch — must NEVER fail or delay the
+    // ingest response. Mirrors the non-blocking pattern used for KG projection.
+    try {
+      const onsetResult = await detectOnset(issue.id, isNew, isRegression);
+      if (onsetResult.isOnset) {
+        console.info("[error-correlate] onset detected via ingest, queuing correlation", {
+          issueId: issue.id,
+          reason: onsetResult.reason,
+        });
+
+        // Re-fetch the issue to pick up kgRefId set by the KG projection above
+        const freshIssue = await db.errorIssue.findUnique({
+          where: { id: issue.id },
+          select: { kgRefId: true, firstSeenAt: true },
+        });
+
+        const jarvisConfig = await getJarvisConfigForWorkspace(workspace.id);
+        if (jarvisConfig && freshIssue?.kgRefId) {
+          // Fire-and-forget — do not await; correlation must never delay the response
+          correlateErrorIssue(
+            issue.id,
+            freshIssue.kgRefId,
+            freshIssue.firstSeenAt,
+            commitSha,
+            jarvisConfig,
+            onsetResult.reason ?? "unknown",
+          ).catch((err) => {
+            console.error("[error-correlate] fire-and-forget failed (non-fatal)", err);
+          });
+        } else {
+          console.info("[error-correlate] skipped: no jarvis config or kgRefId", {
+            issueId: issue.id,
+            hasJarvis: !!jarvisConfig,
+            kgRefId: freshIssue?.kgRefId ?? null,
+          });
+        }
+      }
+    } catch (err) {
+      console.error("[error-correlate] onset detection failed (non-fatal)", err);
     }
 
     return NextResponse.json(

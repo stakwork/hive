@@ -226,4 +226,79 @@ describe("useErrorIssues", () => {
     await waitFor(() => expect(result.current.issues).toHaveLength(2));
     expect(mockFetch).toHaveBeenCalledTimes(2);
   });
+
+  it("omits status param when no status is provided (relies on backend active-only default)", async () => {
+    mockFetch.mockResolvedValueOnce(makeListResponse([]));
+
+    renderHook(() => useErrorIssues(DEFAULT_PARAMS));
+
+    await waitFor(() => expect(mockFetch).toHaveBeenCalledOnce());
+
+    const url = mockFetch.mock.calls[0][0] as string;
+    expect(url).not.toContain("status=");
+  });
+
+  it("sends status=all when status is 'all'", async () => {
+    mockFetch.mockResolvedValueOnce(makeListResponse([]));
+
+    renderHook(() => useErrorIssues({ ...DEFAULT_PARAMS, status: "all" }));
+
+    await waitFor(() => expect(mockFetch).toHaveBeenCalledOnce());
+
+    const url = mockFetch.mock.calls[0][0] as string;
+    expect(url).toContain("status=all");
+  });
+
+  it("sends sort=impact when sort param is 'impact'", async () => {
+    mockFetch.mockResolvedValueOnce(makeListResponse([]));
+
+    renderHook(() => useErrorIssues({ ...DEFAULT_PARAMS, sort: "impact" }));
+
+    await waitFor(() => expect(mockFetch).toHaveBeenCalledOnce());
+
+    const url = mockFetch.mock.calls[0][0] as string;
+    expect(url).toContain("sort=impact");
+  });
+
+  it("Pusher merge does not clobber impactScore/impactMeta on existing issue", async () => {
+    mockFetch.mockResolvedValueOnce(
+      makeListResponse([
+        makeIssue("a", {
+          occurrenceCount: 1,
+          status: "UNRESOLVED",
+          // Simulate a scored issue
+          impactScore: 0.75,
+          impactScoredAt: "2026-06-01T00:00:00Z",
+          impactMeta: { topNodeName: "src/core/auth.ts" },
+        }),
+      ]),
+    );
+
+    const { result } = renderHook(() => useErrorIssues(DEFAULT_PARAMS));
+    await waitFor(() => expect(result.current.issues).toHaveLength(1));
+
+    const handler = getPusherHandler();
+    expect(handler).toBeDefined();
+
+    act(() => {
+      handler!({
+        id: "a",
+        repositoryId: "repo-1",
+        fingerprint: "fp-a",
+        isNew: false,
+        occurrenceCount: 10,
+        status: "RESOLVED",
+        lastSeenAt: "2026-07-01T00:00:00Z",
+      });
+    });
+
+    // Pusher-updated fields are merged
+    expect(result.current.issues[0].occurrenceCount).toBe(10);
+    expect(result.current.issues[0].status).toBe("RESOLVED");
+    expect(result.current.issues[0].lastSeenAt).toBe("2026-07-01T00:00:00Z");
+
+    // Impact fields must NOT be clobbered (payload doesn't carry them)
+    expect((result.current.issues[0] as any).impactScore).toBe(0.75);
+    expect((result.current.issues[0] as any).impactMeta).toEqual({ topNodeName: "src/core/auth.ts" });
+  });
 });

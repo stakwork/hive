@@ -11,14 +11,23 @@ import { hashApiKey } from "@/lib/api-keys";
 
 // ── Mocks ─────────────────────────────────────────────────────────────────────
 
-const { mockPusherTrigger, mockAddNode, mockAddEdge, mockSearchLatestByTypes, mockGetJarvisConfig } =
-  vi.hoisted(() => ({
-    mockPusherTrigger: vi.fn(),
-    mockAddNode: vi.fn(),
-    mockAddEdge: vi.fn(),
-    mockSearchLatestByTypes: vi.fn(),
-    mockGetJarvisConfig: vi.fn(),
-  }));
+const {
+  mockPusherTrigger,
+  mockAddNode,
+  mockAddEdge,
+  mockSearchLatestByTypes,
+  mockGetJarvisConfig,
+  mockGetReferencedNodeCentrality,
+  mockComputeImpactScore,
+} = vi.hoisted(() => ({
+  mockPusherTrigger: vi.fn(),
+  mockAddNode: vi.fn(),
+  mockAddEdge: vi.fn(),
+  mockSearchLatestByTypes: vi.fn(),
+  mockGetJarvisConfig: vi.fn(),
+  mockGetReferencedNodeCentrality: vi.fn(),
+  mockComputeImpactScore: vi.fn(),
+}));
 
 vi.mock("@/lib/pusher", async () => {
   const actual = await vi.importActual("@/lib/pusher");
@@ -37,6 +46,11 @@ vi.mock("@/services/swarm/api/nodes", () => ({
   addNode: mockAddNode,
   addEdge: mockAddEdge,
   searchLatestByTypes: mockSearchLatestByTypes,
+  getReferencedNodeCentrality: mockGetReferencedNodeCentrality,
+}));
+
+vi.mock("@/services/error-impact", () => ({
+  computeImpactScore: mockComputeImpactScore,
 }));
 
 vi.mock("@/lib/helpers/jarvis-config", () => ({
@@ -584,6 +598,10 @@ describe("POST /api/webhook/errors — KG projection (best-effort)", () => {
     ctx = await createTestSetup();
     // Default: Pusher succeeds silently
     mockPusherTrigger.mockResolvedValue(undefined);
+    // Default: centrality returns no nodes (impact unscored) — tests that need
+    // specific behaviour override these defaults
+    mockGetReferencedNodeCentrality.mockResolvedValue({ ok: true, nodes: [] });
+    mockComputeImpactScore.mockReturnValue(null);
   });
 
   afterEach(async () => {
@@ -896,5 +914,262 @@ describe("POST /api/webhook/errors — KG projection (best-effort)", () => {
     const body = await res.json();
     const issue = await db.errorIssue.findUnique({ where: { id: body.data.issueId } });
     expect(issue?.kgRefId).toBe("issue-ref-search-fail");
+  });
+});
+
+// ── Frames ingest tests ───────────────────────────────────────────────────────
+
+describe("POST /api/webhook/errors — structured frames", () => {
+  let ctx: Awaited<ReturnType<typeof createTestSetup>>;
+
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    ctx = await createTestSetup();
+    mockGetJarvisConfig.mockResolvedValue(null);
+  });
+
+  afterEach(async () => {
+    await db.errorEvent.deleteMany({ where: { workspaceId: ctx.workspace.id } });
+    await db.errorIssue.deleteMany({ where: { workspaceId: ctx.workspace.id } });
+    await db.workspaceApiKey.deleteMany({ where: { id: ctx.apiKey.id } });
+    await db.repository.deleteMany({ where: { id: ctx.repo.id } });
+    await db.workspace.deleteMany({ where: { id: ctx.workspace.id } });
+    await db.user.deleteMany({ where: { id: ctx.owner.id } });
+    await db.repository.deleteMany({ where: { id: ctx.repo2.id } });
+    await db.workspace.deleteMany({ where: { id: ctx.workspace2.id } });
+    await db.user.deleteMany({ where: { id: ctx.owner2.id } });
+  });
+
+  test("201 — request with valid frames array is accepted", async () => {
+    const res = await POST(
+      buildRequest(
+        {
+          exceptionType: "ActiveRecord::NotFound",
+          message: "Record not found",
+          frames: [
+            { filename: "app/controllers/users_controller.rb", function: "show", lineno: 10, inApp: true },
+            { filename: "app/models/user.rb", function: "find", lineno: 5, inApp: true },
+          ],
+          repository: "https://github.com/stakwork/hive",
+        },
+        RAW_KEY,
+      ),
+    );
+    expect(res.status).toBe(201);
+    const body = await res.json();
+    expect(body.success).toBe(true);
+    expect(body.data.issueId).toBeTruthy();
+  });
+
+  test("frames are sanitized and written to blob body before put()", async () => {
+    const { put: mockPut } = await vi.importMock<typeof import("@vercel/blob")>("@vercel/blob");
+
+    await POST(
+      buildRequest(
+        {
+          exceptionType: "TypeError",
+          message: "bad stuff",
+          frames: [
+            { filename: "app/foo.rb", function: "bar", lineno: 42, inApp: true, extraField: "should-be-stripped" },
+            { function: "no-filename", lineno: 5 }, // malformed — dropped
+          ],
+          repository: "https://github.com/stakwork/hive",
+        },
+        RAW_KEY,
+      ),
+    );
+
+    expect(mockPut).toHaveBeenCalledOnce();
+    const blobBody = JSON.parse((mockPut as ReturnType<typeof vi.fn>).mock.calls[0][1] as string);
+    // Sanitized frames should be in blob
+    expect(blobBody.frames).toHaveLength(1);
+    expect(blobBody.frames[0]).toEqual({ filename: "app/foo.rb", function: "bar", lineno: 42, inApp: true });
+    // Extra field stripped
+    expect(blobBody.frames[0]).not.toHaveProperty("extraField");
+  });
+
+  test("malformed frames entries are stripped from blob", async () => {
+    const { put: mockPut } = await vi.importMock<typeof import("@vercel/blob")>("@vercel/blob");
+
+    await POST(
+      buildRequest(
+        {
+          exceptionType: "TypeError",
+          message: "test",
+          frames: [
+            null,
+            { filename: "" },
+            { function: "no-filename" },
+            { filename: "valid.rb", lineno: 1 },
+          ],
+          repository: "https://github.com/stakwork/hive",
+        },
+        RAW_KEY,
+      ),
+    );
+
+    const blobBody = JSON.parse((mockPut as ReturnType<typeof vi.fn>).mock.calls[0][1] as string);
+    expect(blobBody.frames).toHaveLength(1);
+    expect(blobBody.frames[0].filename).toBe("valid.rb");
+  });
+
+  test("201 — request with only legacy stackTrace (no frames) still works", async () => {
+    const res = await POST(
+      buildRequest(
+        {
+          exceptionType: "ReferenceError",
+          message: "x is not defined",
+          stackTrace: "  at eval (eval:1:1)\n  at main (app.js:5:1)",
+          repository: "https://github.com/stakwork/hive",
+        },
+        RAW_KEY,
+      ),
+    );
+    expect(res.status).toBe(201);
+    const body = await res.json();
+    expect(body.success).toBe(true);
+  });
+
+  test("same frames on two separate calls produce the same fingerprint (grouping)", async () => {
+    const payload = {
+      exceptionType: "ActiveRecord::NotFound",
+      message: "Record not found",
+      frames: [
+        { filename: "app/controllers/users_controller.rb", function: "show", lineno: 10, inApp: true },
+      ],
+      repository: "https://github.com/stakwork/hive",
+    };
+
+    const res1 = await POST(buildRequest(payload, RAW_KEY));
+    const res2 = await POST(buildRequest(payload, RAW_KEY));
+    const body1 = await res1.json();
+    const body2 = await res2.json();
+
+    expect(res1.status).toBe(201);
+    expect(res2.status).toBe(201);
+    // Same fingerprint → same issue, occurrenceCount incremented
+    expect(body1.data.issueId).toBe(body2.data.issueId);
+    expect(body2.data.occurrenceCount).toBe(2);
+  });
+
+  test("non-array frames value is treated as empty (no frames)", async () => {
+    const { put: mockPut } = await vi.importMock<typeof import("@vercel/blob")>("@vercel/blob");
+
+    const res = await POST(
+      buildRequest(
+        {
+          exceptionType: "TypeError",
+          message: "test",
+          frames: "not-an-array",
+          repository: "https://github.com/stakwork/hive",
+        },
+        RAW_KEY,
+      ),
+    );
+    expect(res.status).toBe(201);
+    const blobBody = JSON.parse((mockPut as ReturnType<typeof vi.fn>).mock.calls[0][1] as string);
+    expect(blobBody.frames).toEqual([]);
+  });
+});
+
+// ── Impact scoring tests ──────────────────────────────────────────────────────
+
+describe("POST /api/webhook/errors — opportunistic impact scoring", () => {
+  const MOCK_JARVIS_CONFIG = { jarvisUrl: "https://jarvis.example.com", apiKey: "jarvis-key" };
+  let ctx: Awaited<ReturnType<typeof createTestSetup>>;
+
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    ctx = await createTestSetup();
+    mockPusherTrigger.mockResolvedValue(undefined);
+    // Default: centrality returns no nodes
+    mockGetReferencedNodeCentrality.mockResolvedValue({ ok: true, nodes: [] });
+    mockComputeImpactScore.mockReturnValue(null);
+  });
+
+  afterEach(async () => {
+    await db.errorEvent.deleteMany({ where: { workspaceId: ctx.workspace.id } });
+    await db.errorIssue.deleteMany({ where: { workspaceId: ctx.workspace.id } });
+    await db.workspaceApiKey.deleteMany({ where: { id: ctx.apiKey.id } });
+    await db.repository.deleteMany({ where: { id: ctx.repo.id } });
+    await db.workspace.deleteMany({ where: { id: ctx.workspace.id } });
+    await db.user.deleteMany({ where: { id: ctx.owner.id } });
+    await db.errorEvent.deleteMany({ where: { workspaceId: ctx.workspace2.id } });
+    await db.errorIssue.deleteMany({ where: { workspaceId: ctx.workspace2.id } });
+    await db.repository.deleteMany({ where: { id: ctx.repo2.id } });
+    await db.workspace.deleteMany({ where: { id: ctx.workspace2.id } });
+    await db.user.deleteMany({ where: { id: ctx.owner2.id } });
+  });
+
+  test("201 response is unaffected when centrality fetch returns empty nodes (unscored)", async () => {
+    mockGetJarvisConfig.mockResolvedValue(MOCK_JARVIS_CONFIG);
+    mockAddNode.mockResolvedValue({ success: true, ref_id: "ref-impact-test" });
+    mockSearchLatestByTypes.mockResolvedValue({ ok: true, nodes: [] });
+    mockGetReferencedNodeCentrality.mockResolvedValue({ ok: true, nodes: [] });
+    mockComputeImpactScore.mockReturnValue(null);
+
+    const res = await POST(
+      buildRequest(
+        { exceptionType: "TypeError", message: "boom", repository: "https://github.com/stakwork/hive" },
+        RAW_KEY,
+      ),
+    );
+    expect(res.status).toBe(201);
+    const body = await res.json();
+    expect(body.success).toBe(true);
+
+    // impactScore should be null (unscored)
+    const issue = await db.errorIssue.findUnique({ where: { id: body.data.issueId } });
+    expect(issue?.impactScore).toBeNull();
+  });
+
+  test("201 response is unaffected when centrality fetch fails (graph unavailable)", async () => {
+    mockGetJarvisConfig.mockResolvedValue(MOCK_JARVIS_CONFIG);
+    mockAddNode.mockResolvedValue({ success: true, ref_id: "ref-impact-fail" });
+    mockSearchLatestByTypes.mockResolvedValue({ ok: true, nodes: [] });
+    // Simulate a hard graph failure
+    mockGetReferencedNodeCentrality.mockRejectedValue(new Error("Graph timeout"));
+
+    const res = await POST(
+      buildRequest(
+        { exceptionType: "TypeError", message: "graph-fail", repository: "https://github.com/stakwork/hive" },
+        RAW_KEY,
+      ),
+    );
+    // Must still return 201 — graph failure is non-fatal
+    expect(res.status).toBe(201);
+    const body = await res.json();
+    expect(body.success).toBe(true);
+  });
+
+  test("impact score is persisted when centrality nodes are available", async () => {
+    mockGetJarvisConfig.mockResolvedValue(MOCK_JARVIS_CONFIG);
+    mockAddNode.mockResolvedValue({ success: true, ref_id: "ref-impact-ok" });
+    mockSearchLatestByTypes.mockResolvedValue({ ok: true, nodes: [] });
+    mockGetReferencedNodeCentrality.mockResolvedValue({
+      ok: true,
+      nodes: [{ ref_id: "file-ref", node_type: "File", name: "core.ts", pagerank: 0.8 }],
+    });
+    mockComputeImpactScore.mockReturnValue({
+      score: 0.8,
+      meta: { topNodeName: "core.ts", topNodeType: "File", topPagerank: 0.8, nodeCount: 1 },
+    });
+
+    const res = await POST(
+      buildRequest(
+        { exceptionType: "TypeError", message: "central error", repository: "https://github.com/stakwork/hive" },
+        RAW_KEY,
+      ),
+    );
+    expect(res.status).toBe(201);
+    const body = await res.json();
+    expect(body.success).toBe(true);
+
+    // Allow a brief tick for the async DB update to complete
+    await new Promise((r) => setTimeout(r, 50));
+
+    const issue = await db.errorIssue.findUnique({ where: { id: body.data.issueId } });
+    expect(issue?.impactScore).toBe(0.8);
+    expect(issue?.impactScoredAt).not.toBeNull();
   });
 });

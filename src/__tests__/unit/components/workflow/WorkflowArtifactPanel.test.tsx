@@ -62,15 +62,28 @@ vi.mock("@/components/StakworkRunDropdown", () => ({
     React.createElement("div", { "data-testid": "stakwork-run-dropdown", "data-project-id": projectId }),
 }));
 
-let lastChangesPanelProps: { originalJson: string | null; updatedJson: string | null } = {
-  originalJson: null,
-  updatedJson: null,
-};
-vi.mock("@/app/w/[slug]/task/[...taskParams]/artifacts/WorkflowChangesPanel", () => ({
-  WorkflowChangesPanel: (props: { originalJson: string | null; updatedJson: string | null }) => {
-    lastChangesPanelProps = props;
-    return null;
+// Mock ChangesList — capture items so tests can inspect them
+let lastChangesListItems: Array<{ type: string; name: string; [key: string]: unknown }> = [];
+vi.mock("@/app/w/[slug]/task/[...taskParams]/artifacts/changes/ChangesList", () => ({
+  ChangesList: (props: { items: Array<{ type: string; name: string; [key: string]: unknown }> }) => {
+    lastChangesListItems = props.items ?? [];
+    return React.createElement(
+      "div",
+      { "data-testid": "changes-list" },
+      props.items.map((item, i) =>
+        React.createElement("div", {
+          key: i,
+          "data-testid": `changes-section-${item.type.toLowerCase()}`,
+          "data-item-name": item.name,
+        }),
+      ),
+    );
   },
+}));
+
+// Also keep WorkflowChangesPanel mock to prevent import errors in case it's still imported
+vi.mock("@/app/w/[slug]/task/[...taskParams]/artifacts/WorkflowChangesPanel", () => ({
+  WorkflowChangesPanel: () => null,
 }));
 
 // ---------------------------------------------------------------------------
@@ -96,6 +109,40 @@ function makeArtifact(overrides: Partial<Artifact["content"]> = {}): Artifact {
       workflowJson: makeWorkflowJson({}),
       ...overrides,
     } as Artifact["content"],
+  } as unknown as Artifact;
+}
+
+function makePublishPromptArtifact(overrides: {
+  promptId?: string;
+  promptVersionId?: string;
+  promptName?: string;
+  id?: string;
+} = {}): Artifact {
+  return {
+    id: overrides.id ?? "art-prompt-1",
+    type: "PUBLISH_PROMPT",
+    content: {
+      promptId: overrides.promptId ?? "prompt-abc",
+      promptVersionId: overrides.promptVersionId ?? "ver-xyz",
+      promptName: overrides.promptName ?? "MY_PROMPT",
+    },
+  } as unknown as Artifact;
+}
+
+function makePublishScriptArtifact(overrides: {
+  scriptId?: number;
+  scriptVersionId?: number;
+  scriptName?: string;
+  id?: string;
+} = {}): Artifact {
+  return {
+    id: overrides.id ?? "art-script-1",
+    type: "PUBLISH_SCRIPT",
+    content: {
+      scriptId: overrides.scriptId ?? 42,
+      scriptVersionId: overrides.scriptVersionId ?? 7,
+      scriptName: overrides.scriptName ?? "my_script.py",
+    },
   } as unknown as Artifact;
 }
 
@@ -437,7 +484,7 @@ describe("WorkflowArtifactPanel — Changes tab diff isolation", () => {
   const freshWorkflow = JSON.stringify({ transitions: { stepX: loopTransition } });
 
   beforeEach(() => {
-    lastChangesPanelProps = { originalJson: null, updatedJson: null };
+    lastChangesListItems = [];
   });
 
   it("Test 1 — subsequent-run: keeps agent-response updatedJson after a second run-start artifact", async () => {
@@ -480,11 +527,12 @@ describe("WorkflowArtifactPanel — Changes tab diff isolation", () => {
       />,
     );
 
-    // Switch to Changes tab so WorkflowChangesPanel is rendered
+    // Switch to Changes tab so ChangesList is rendered
     await user.click(screen.getByRole("tab", { name: /changes/i }));
 
     // changesWorkflowJson must still be "updated", not "baseline"
-    expect(lastChangesPanelProps.updatedJson).toBe(updated);
+    const workflowItem = lastChangesListItems.find((i) => i.type === "WORKFLOW");
+    expect(workflowItem?.updatedJson).toBe(updated);
   });
 
   it("Test 2 — publish: keeps agent-response updatedJson after a publish artifact overwrites workflowJson", async () => {
@@ -517,11 +565,12 @@ describe("WorkflowArtifactPanel — Changes tab diff isolation", () => {
       />,
     );
 
-    // Switch to Changes tab so WorkflowChangesPanel is rendered
+    // Switch to Changes tab so ChangesList is rendered
     await user.click(screen.getByRole("tab", { name: /changes/i }));
 
     // changesWorkflowJson must remain "updated", not "freshWorkflow"
-    expect(lastChangesPanelProps.updatedJson).toBe(updated);
+    const workflowItem = lastChangesListItems.find((i) => i.type === "WORKFLOW");
+    expect(workflowItem?.updatedJson).toBe(updated);
   });
 
   it("Test 3 — first-run baseline fallback: shows workflowJson as all-green when no agent response yet", async () => {
@@ -541,10 +590,131 @@ describe("WorkflowArtifactPanel — Changes tab diff isolation", () => {
       <WorkflowArtifactPanel artifacts={[runStartA]} isActive={false} />,
     );
 
-    // Switch to Changes tab so WorkflowChangesPanel is rendered
+    // Switch to Changes tab so ChangesList is rendered
     await user.click(screen.getByRole("tab", { name: /changes/i }));
 
     // No agent response yet → changesWorkflowJson is undefined → fallback to workflowJson
-    expect(lastChangesPanelProps.updatedJson).toBe(baseline);
+    const workflowItem = lastChangesListItems.find((i) => i.type === "WORKFLOW");
+    expect(workflowItem?.updatedJson).toBe(baseline);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// New tests: ChangesList integration, prompt/script-only tasks
+// ---------------------------------------------------------------------------
+
+describe("WorkflowArtifactPanel — ChangesList items", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    lastChangesListItems = [];
+  });
+
+  it("(a) workflow + prompt + script all changed → three sections in ChangesList", async () => {
+    const user = userEvent.setup();
+    const workflowArt = makeArtifact({
+      workflowJson: makeWorkflowJson({ stepA: nonLoopTransition }),
+      workflowId: 1,
+      workflowName: "my-workflow",
+    });
+    const promptArt = makePublishPromptArtifact({ id: "art-p" });
+    const scriptArt = makePublishScriptArtifact({ id: "art-s" });
+
+    render(
+      <WorkflowArtifactPanel
+        artifacts={[workflowArt, promptArt, scriptArt]}
+        isActive={false}
+      />,
+    );
+
+    await user.click(screen.getByRole("tab", { name: /changes/i }));
+
+    expect(lastChangesListItems).toHaveLength(3);
+    expect(lastChangesListItems.some((i) => i.type === "WORKFLOW")).toBe(true);
+    expect(lastChangesListItems.some((i) => i.type === "PROMPT")).toBe(true);
+    expect(lastChangesListItems.some((i) => i.type === "SCRIPT")).toBe(true);
+  });
+
+  it("(b) prompt-only task (no workflowJson) → Changes tab appears with PROMPT section", () => {
+    const promptArt = makePublishPromptArtifact();
+
+    render(
+      <WorkflowArtifactPanel artifacts={[promptArt]} isActive={false} />,
+    );
+
+    // Changes tab should be visible even without workflowJson
+    expect(screen.getByRole("tab", { name: /changes/i })).toBeInTheDocument();
+
+    // ChangesList should be rendered with a PROMPT item
+    expect(screen.getByTestId("changes-list")).toBeInTheDocument();
+    expect(lastChangesListItems).toHaveLength(1);
+    expect(lastChangesListItems[0].type).toBe("PROMPT");
+    expect(lastChangesListItems[0].name).toBe("MY_PROMPT");
+  });
+
+  it("(c) script-only task → Changes tab appears with SCRIPT section", () => {
+    const scriptArt = makePublishScriptArtifact();
+
+    render(
+      <WorkflowArtifactPanel artifacts={[scriptArt]} isActive={false} />,
+    );
+
+    expect(screen.getByRole("tab", { name: /changes/i })).toBeInTheDocument();
+    expect(lastChangesListItems).toHaveLength(1);
+    expect(lastChangesListItems[0].type).toBe("SCRIPT");
+    expect(lastChangesListItems[0].name).toBe("my_script.py");
+  });
+
+  it("(d) prompt-only task → no Editor/Prompts/Stak Run tabs (editor tabs gated)", () => {
+    const promptArt = makePublishPromptArtifact();
+
+    render(
+      <WorkflowArtifactPanel artifacts={[promptArt]} isActive={false} />,
+    );
+
+    // Editor-specific tabs should NOT appear for prompt-only tasks
+    expect(screen.queryByRole("tab", { name: /edit steps/i })).toBeNull();
+    expect(screen.queryByRole("tab", { name: /prompts/i })).toBeNull();
+    expect(screen.queryByRole("tab", { name: /stak run/i })).toBeNull();
+  });
+
+  it("(e) prompt item carries correct promptId and promptVersionId to ChangesList", () => {
+    const promptArt = makePublishPromptArtifact({
+      promptId: "prompt-123",
+      promptVersionId: "ver-456",
+      promptName: "COOL_PROMPT",
+    });
+
+    render(
+      <WorkflowArtifactPanel artifacts={[promptArt]} isActive={false} />,
+    );
+
+    const promptItem = lastChangesListItems.find((i) => i.type === "PROMPT");
+    expect(promptItem?.promptId).toBe("prompt-123");
+    expect(promptItem?.promptVersionId).toBe("ver-456");
+    expect(promptItem?.name).toBe("COOL_PROMPT");
+  });
+
+  it("(f) script item carries correct scriptId and scriptVersionId to ChangesList", () => {
+    const scriptArt = makePublishScriptArtifact({
+      scriptId: 99,
+      scriptVersionId: 5,
+      scriptName: "runner.sh",
+    });
+
+    render(
+      <WorkflowArtifactPanel artifacts={[scriptArt]} isActive={false} />,
+    );
+
+    const scriptItem = lastChangesListItems.find((i) => i.type === "SCRIPT");
+    expect(scriptItem?.scriptId).toBe(99);
+    expect(scriptItem?.scriptVersionId).toBe(5);
+    expect(scriptItem?.name).toBe("runner.sh");
+  });
+
+  it("no workflow available when no relevant artifacts", () => {
+    render(
+      <WorkflowArtifactPanel artifacts={[]} isActive={false} />,
+    );
+    expect(screen.getByText(/no workflow available/i)).toBeInTheDocument();
   });
 });

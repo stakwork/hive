@@ -76,8 +76,52 @@ vi.mock("@/components/ui/label", () => ({
   Label: ({ children, htmlFor }: any) => <label htmlFor={htmlFor}>{children}</label>,
 }));
 
+// Render Select as a native <select> so tests can interact via getByTestId / fireEvent
+vi.mock("@/components/ui/select", () => ({
+  Select: ({
+    value,
+    onValueChange,
+    children,
+  }: {
+    value?: string;
+    onValueChange?: (v: string) => void;
+    children?: React.ReactNode;
+  }) => {
+    // Collect option values from SelectItem children
+    const items: { value: string; label: string }[] = [];
+    React.Children.forEach(children, (child: any) => {
+      // SelectContent wraps SelectItem children
+      if (child?.props?.children) {
+        React.Children.forEach(child.props.children, (item: any) => {
+          if (item?.props?.value !== undefined) {
+            items.push({ value: item.props.value, label: item.props.children });
+          }
+        });
+      }
+    });
+    return (
+      <select
+        data-testid="agent-select"
+        value={value ?? ""}
+        onChange={(e) => onValueChange?.(e.target.value)}
+      >
+        {items.map((i) => (
+          <option key={i.value} value={i.value}>
+            {i.label}
+          </option>
+        ))}
+      </select>
+    );
+  },
+  SelectTrigger: ({ children }: any) => <>{children}</>,
+  SelectValue: ({ placeholder }: any) => <span>{placeholder}</span>,
+  SelectContent: ({ children }: any) => <>{children}</>,
+  SelectItem: ({ value, children }: any) => <option value={value}>{children}</option>,
+}));
+
 import { CaptureEvalTriggerModal } from "@/components/evals/CaptureEvalTriggerModal";
 import { toast } from "sonner";
+import { HIVE_AGENT_OPTIONS } from "@/lib/utils/hive-agent";
 
 const DEFAULT_PROPS = {
   open: true,
@@ -100,6 +144,13 @@ const MOCK_SESSIONS = [
   },
 ];
 
+/** Fill in all required Step 1 text fields (agent Select already has a default). */
+async function fillStep1Fields() {
+  await userEvent.type(screen.getByLabelText(/Start Point/i), "PR opened");
+  await userEvent.type(screen.getByLabelText(/End Point/i), "Review submitted");
+  await userEvent.type(screen.getByLabelText(/Environment/i), "staging");
+}
+
 describe("CaptureEvalTriggerModal", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -109,13 +160,32 @@ describe("CaptureEvalTriggerModal", () => {
     global.fetch = vi.fn();
     render(<CaptureEvalTriggerModal {...DEFAULT_PROPS} />);
 
-    expect(screen.getByLabelText(/Agent/i)).toBeTruthy();
+    expect(screen.getByTestId("agent-select")).toBeTruthy();
     expect(screen.getByLabelText(/Start Point/i)).toBeTruthy();
     expect(screen.getByLabelText(/End Point/i)).toBeTruthy();
     expect(screen.getByLabelText(/Environment/i)).toBeTruthy();
     expect(screen.getByLabelText(/Run Count/i)).toBeTruthy();
     expect(screen.getByTestId("tag-input-desirable_cases")).toBeTruthy();
     expect(screen.getByTestId("tag-input-undesirable_cases")).toBeTruthy();
+  });
+
+  it("agent Select defaults to the first HIVE_AGENT_OPTIONS entry (repo-agent)", () => {
+    global.fetch = vi.fn();
+    render(<CaptureEvalTriggerModal {...DEFAULT_PROPS} />);
+
+    const select = screen.getByTestId("agent-select") as HTMLSelectElement;
+    expect(select.value).toBe(HIVE_AGENT_OPTIONS[0].name);
+  });
+
+  it("agent Select contains all HIVE_AGENT_OPTIONS entries", () => {
+    global.fetch = vi.fn();
+    render(<CaptureEvalTriggerModal {...DEFAULT_PROPS} />);
+
+    const select = screen.getByTestId("agent-select") as HTMLSelectElement;
+    const optionValues = Array.from(select.options).map((o) => o.value);
+    for (const opt of HIVE_AGENT_OPTIONS) {
+      expect(optionValues).toContain(opt.name);
+    }
   });
 
   it("does NOT render feedback_note field anywhere", () => {
@@ -127,10 +197,11 @@ describe("CaptureEvalTriggerModal", () => {
     expect(html.toLowerCase()).not.toContain("feedback note");
   });
 
-  it("Next button is disabled when required fields are empty", () => {
+  it("Next button is disabled when required text fields are empty (agent Select has a default)", () => {
     global.fetch = vi.fn();
     render(<CaptureEvalTriggerModal {...DEFAULT_PROPS} />);
 
+    // Agent has a default, but start_point / end_point / environment are empty
     const nextBtn = screen.getByTestId("next-step-btn");
     expect(nextBtn).toBeDisabled();
   });
@@ -139,10 +210,7 @@ describe("CaptureEvalTriggerModal", () => {
     global.fetch = vi.fn();
     render(<CaptureEvalTriggerModal {...DEFAULT_PROPS} />);
 
-    await userEvent.type(screen.getByLabelText(/Agent/i), "Code Reviewer");
-    await userEvent.type(screen.getByLabelText(/Start Point/i), "PR opened");
-    await userEvent.type(screen.getByLabelText(/End Point/i), "Review submitted");
-    await userEvent.type(screen.getByLabelText(/Environment/i), "staging");
+    await fillStep1Fields();
 
     expect(screen.getByTestId("next-step-btn")).not.toBeDisabled();
   });
@@ -153,11 +221,7 @@ describe("CaptureEvalTriggerModal", () => {
     });
     render(<CaptureEvalTriggerModal {...DEFAULT_PROPS} />);
 
-    await userEvent.type(screen.getByLabelText(/Agent/i), "Code Reviewer");
-    await userEvent.type(screen.getByLabelText(/Start Point/i), "PR opened");
-    await userEvent.type(screen.getByLabelText(/End Point/i), "Review submitted");
-    await userEvent.type(screen.getByLabelText(/Environment/i), "staging");
-
+    await fillStep1Fields();
     await userEvent.click(screen.getByTestId("next-step-btn"));
 
     expect(screen.getByText(/Select Session — Step 2 of 2/i)).toBeTruthy();
@@ -171,11 +235,7 @@ describe("CaptureEvalTriggerModal", () => {
     global.fetch = fetchMock as any;
     render(<CaptureEvalTriggerModal {...DEFAULT_PROPS} />);
 
-    // Go to step 2
-    await userEvent.type(screen.getByLabelText(/Agent/i), "Code Reviewer");
-    await userEvent.type(screen.getByLabelText(/Start Point/i), "PR opened");
-    await userEvent.type(screen.getByLabelText(/End Point/i), "Review submitted");
-    await userEvent.type(screen.getByLabelText(/Environment/i), "staging");
+    await fillStep1Fields();
     await userEvent.click(screen.getByTestId("next-step-btn"));
 
     await waitFor(() => {
@@ -183,7 +243,6 @@ describe("CaptureEvalTriggerModal", () => {
       expect(calls.some((u) => u.includes("/evals/agent-roles"))).toBe(true);
     });
 
-    // Type in filter
     await userEvent.type(screen.getByTestId("role-filter-input"), "task");
 
     await waitFor(() => {
@@ -195,18 +254,13 @@ describe("CaptureEvalTriggerModal", () => {
   it("fetches sessions when a role is selected", async () => {
     const fetchMock = vi
       .fn()
-      // roles fetch
       .mockResolvedValueOnce({ json: async () => ({ data: { nodes: MOCK_ROLES } }) })
-      // sessions fetch
       .mockResolvedValueOnce({ json: async () => ({ data: { nodes: MOCK_SESSIONS } }) });
     global.fetch = fetchMock as any;
 
     render(<CaptureEvalTriggerModal {...DEFAULT_PROPS} />);
 
-    await userEvent.type(screen.getByLabelText(/Agent/i), "Code Reviewer");
-    await userEvent.type(screen.getByLabelText(/Start Point/i), "PR opened");
-    await userEvent.type(screen.getByLabelText(/End Point/i), "Review submitted");
-    await userEvent.type(screen.getByLabelText(/Environment/i), "staging");
+    await fillStep1Fields();
     await userEvent.click(screen.getByTestId("next-step-btn"));
 
     await waitFor(() => expect(screen.getAllByTestId("role-option")).toHaveLength(2));
@@ -219,7 +273,7 @@ describe("CaptureEvalTriggerModal", () => {
     });
   });
 
-  it("calls POST with correct payload and no feedback_note on confirm", async () => {
+  it("sends agentName (canonical) and agent (same value) in POST payload", async () => {
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce({ json: async () => ({ data: { nodes: MOCK_ROLES } }) })
@@ -229,32 +283,26 @@ describe("CaptureEvalTriggerModal", () => {
 
     render(<CaptureEvalTriggerModal {...DEFAULT_PROPS} />);
 
-    // Fill Step 1
-    await userEvent.type(screen.getByLabelText(/Agent/i), "Code Reviewer");
-    await userEvent.type(screen.getByLabelText(/Start Point/i), "PR opened");
-    await userEvent.type(screen.getByLabelText(/End Point/i), "Review submitted");
-    await userEvent.type(screen.getByLabelText(/Environment/i), "staging");
+    await fillStep1Fields();
     await userEvent.click(screen.getByTestId("next-step-btn"));
 
-    // Step 2: select role
     await waitFor(() => expect(screen.getAllByTestId("role-option")).toHaveLength(2));
     await userEvent.click(screen.getAllByTestId("role-option")[0]);
 
-    // Select session
     await waitFor(() => expect(screen.getAllByTestId("session-option")).toHaveLength(1));
     const radio = screen.getByRole("radio");
     await userEvent.click(radio);
 
-    // Confirm
     await userEvent.click(screen.getByTestId("confirm-btn"));
 
     await waitFor(() => {
-      const postCall = fetchMock.mock.calls.find(
-        (c) => c[1]?.method === "POST",
-      );
+      const postCall = fetchMock.mock.calls.find((c) => c[1]?.method === "POST");
       expect(postCall).toBeTruthy();
       const body = JSON.parse(postCall![1].body);
-      expect(body.agent).toBe("Code Reviewer");
+      // agentName must be a canonical BifrostAgentName (from Select default)
+      expect(body.agentName).toBe(HIVE_AGENT_OPTIONS[0].name);
+      // agent is also sent for back-compat, same value
+      expect(body.agent).toBe(HIVE_AGENT_OPTIONS[0].name);
       expect(body.start_point).toBe("PR opened");
       expect(body.end_point).toBe("Review submitted");
       expect(body.environment).toBe("staging");
@@ -267,6 +315,41 @@ describe("CaptureEvalTriggerModal", () => {
     expect(DEFAULT_PROPS.onOpenChange).toHaveBeenCalledWith(false);
   });
 
+  it("selecting a different agent in the dropdown changes the submitted agentName", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({ json: async () => ({ data: { nodes: MOCK_ROLES } }) })
+      .mockResolvedValueOnce({ json: async () => ({ data: { nodes: MOCK_SESSIONS } }) })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ success: true }) });
+    global.fetch = fetchMock as any;
+
+    render(<CaptureEvalTriggerModal {...DEFAULT_PROPS} />);
+
+    // Change the agent to canvas-agent
+    const select = screen.getByTestId("agent-select") as HTMLSelectElement;
+    await userEvent.selectOptions(select, "canvas-agent");
+    expect(select.value).toBe("canvas-agent");
+
+    await fillStep1Fields();
+    await userEvent.click(screen.getByTestId("next-step-btn"));
+
+    await waitFor(() => expect(screen.getAllByTestId("role-option")).toHaveLength(2));
+    await userEvent.click(screen.getAllByTestId("role-option")[0]);
+
+    await waitFor(() => expect(screen.getAllByTestId("session-option")).toHaveLength(1));
+    await userEvent.click(screen.getByRole("radio"));
+
+    await userEvent.click(screen.getByTestId("confirm-btn"));
+
+    await waitFor(() => {
+      const postCall = fetchMock.mock.calls.find((c) => c[1]?.method === "POST");
+      expect(postCall).toBeTruthy();
+      const body = JSON.parse(postCall![1].body);
+      expect(body.agentName).toBe("canvas-agent");
+      expect(body.agent).toBe("canvas-agent");
+    });
+  });
+
   it("shows error toast when POST fails", async () => {
     const fetchMock = vi
       .fn()
@@ -277,10 +360,7 @@ describe("CaptureEvalTriggerModal", () => {
 
     render(<CaptureEvalTriggerModal {...DEFAULT_PROPS} />);
 
-    await userEvent.type(screen.getByLabelText(/Agent/i), "Code Reviewer");
-    await userEvent.type(screen.getByLabelText(/Start Point/i), "PR opened");
-    await userEvent.type(screen.getByLabelText(/End Point/i), "Review submitted");
-    await userEvent.type(screen.getByLabelText(/Environment/i), "staging");
+    await fillStep1Fields();
     await userEvent.click(screen.getByTestId("next-step-btn"));
 
     await waitFor(() => expect(screen.getAllByTestId("role-option")).toHaveLength(2));

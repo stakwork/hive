@@ -4,6 +4,7 @@ import { authOptions } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
 import { isDevelopmentMode } from "@/lib/runtime";
 
+
 export const runtime = "nodejs";
 export const fetchCache = "force-no-store";
 
@@ -45,12 +46,16 @@ export async function GET(
       return NextResponse.json({ error: "Version ID is required" }, { status: 400 });
     }
 
-    const version = await db.promptVersion.findFirst({
-      where: { id: versionId, promptId: id },
-    });
+    const version = await db.promptVersion.findFirst({ where: { id: versionId, promptId: id } });
     if (!version) {
       return NextResponse.json({ error: "Version not found" }, { status: 404 });
     }
+
+    // Enrich with run_count from local mirror table (single aggregate, no Stakwork call).
+    const runCountResult = await db.promptDailyRun.aggregate({
+      _sum: { runCount: true },
+      where: { promptId: id, versionId },
+    });
 
     return NextResponse.json({
       success: true,
@@ -63,6 +68,7 @@ export async function GET(
         whodunnit: version.whodunnit,
         published: version.published,
         created_at: version.createdAt.toISOString(),
+        run_count: runCountResult._sum.runCount ?? 0,
       },
     });
   } catch (error) {

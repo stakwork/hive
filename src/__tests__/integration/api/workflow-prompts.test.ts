@@ -972,8 +972,10 @@ describe("GET /api/workflow/prompts/[id]/versions Integration Tests", () => {
       makeReq(`http://localhost/api/workflow/prompts/${promptId}`, "PUT", { value: "v2" }),
       { params: Promise.resolve({ id: promptId }) },
     );
-    // Clear call history from setup so tests start with a clean slate
+    // Clear call history from setup so tests start with a clean slate.
+    // Default: Stakwork find_by_version returns 404 (graceful degradation).
     mockFetch.mockClear();
+    mockFetch.mockResolvedValue({ ok: false, status: 404 } as Response);
   });
 
   afterEach(async () => {
@@ -1126,14 +1128,18 @@ describe("GET /api/workflow/prompts/[id]/versions Integration Tests", () => {
       expect(response.status).toBe(404);
     });
 
-    test("GET versions does not call Stakwork (reads from Hive)", async () => {
+    test("GET versions returns run_count: 0 when no PromptDailyRun rows exist", async () => {
       authAs(testUser);
 
-      await GET_VERSIONS(
+      const response = await GET_VERSIONS(
         makeReq(`http://localhost/api/workflow/prompts/${promptId}/versions`, "GET"),
         { params: Promise.resolve({ id: promptId }) },
       );
-      expect(mockFetch).not.toHaveBeenCalled();
+      const data = await expectSuccess(response, 200);
+      expect(data.data.versions).toHaveLength(2);
+      data.data.versions.forEach((v: { run_count: unknown }) => {
+        expect(v.run_count).toBe(0);
+      });
     });
   });
 });
@@ -1178,8 +1184,10 @@ describe("GET /api/workflow/prompts/[id]/versions/[versionId] Integration Tests"
     promptId = created.id;
     versionId = created.published_version_id as string;
     createdPromptIds.push(promptId);
-    // Clear call history from setup so tests start with a clean slate
+    // Clear call history from setup so tests start with a clean slate.
+    // Default: Stakwork find_by_version returns 404 (graceful degradation).
     mockFetch.mockClear();
+    mockFetch.mockResolvedValue({ ok: false, status: 404 } as Response);
   });
 
   afterEach(async () => {
@@ -1335,14 +1343,17 @@ describe("GET /api/workflow/prompts/[id]/versions/[versionId] Integration Tests"
       expect(response.status).toBe(404);
     });
 
-    test("GET version does not call Stakwork (reads from Hive)", async () => {
+    test("GET version returns run_count: 0 when no PromptDailyRun rows exist", async () => {
       authAs(testUser);
 
-      await GET_VERSION_BY_ID(
+      // No PromptDailyRun rows exist — route must still succeed with run_count: 0.
+
+      const response = await GET_VERSION_BY_ID(
         makeReq(`http://localhost/api/workflow/prompts/${promptId}/versions/${versionId}`, "GET"),
         { params: Promise.resolve({ id: promptId, versionId }) },
       );
-      expect(mockFetch).not.toHaveBeenCalled();
+      const data = await expectSuccess(response, 200);
+      expect(data.data.run_count).toBe(0);
     });
   });
 });

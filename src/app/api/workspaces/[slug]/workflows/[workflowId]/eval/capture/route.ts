@@ -5,6 +5,7 @@ import { getJarvisUrl } from "@/lib/utils/swarm";
 import { getWorkspaceSwarmAccess } from "@/lib/helpers/swarm-access";
 import { addNode, addEdge } from "@/services/swarm/api/nodes";
 import { logger } from "@/lib/logger";
+import { resolveHiveAgentName, getCaptureAgentSpec } from "@/lib/utils/hive-agent";
 
 async function verifyRequirementOwnership(
   jarvisUrl: string,
@@ -63,7 +64,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
     }
 
-    const { step_id, requirement, requirementId, reason, inputs, outputs, evalSetId, prompts } = body as {
+    const { step_id, requirement, requirementId, reason, inputs, outputs, evalSetId, prompts, agentName: agentNameRaw } = body as {
       run_id?: string;
       step_id?: string | number;
       requirement?: string;
@@ -73,6 +74,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       outputs?: unknown;
       evalSetId?: string;
       prompts?: Array<{ name: string; prompt_id: number; prompt_version_id: number; resolution?: string }>;
+      agentName?: string;
     };
 
     if (!requirement?.trim() && !requirementId?.trim()) {
@@ -148,9 +150,11 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     }
 
     // ── 3. Build EvalTrigger from posted IO ──────────────────────────────────
-    // Always coerce step_id to a string — the downstream Python API expects a
-    // string for `agent` and will reject integers with "expected type string".
-    const stepName = String(step_id ?? "unknown_step");
+    // Resolve canonical agent — prefer caller-supplied agentName, fall back to
+    // source-bucket default for `provider_direct` (workflow capture path).
+    const resolvedAgent = resolveHiveAgentName("provider_direct", agentNameRaw);
+    logger.info(`[EvalCapture] Resolved agent: ${resolvedAgent} (override=${agentNameRaw ?? "none"})`);
+
     const promptSnapshot = JSON.stringify(inputs ?? null);
     const outputSnapshot = JSON.stringify(outputs ?? null);
 
@@ -158,7 +162,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       node_type: "EvalTrigger",
       node_data: {
         id: randomUUID(),
-        agent: stepName,
+        agent: resolvedAgent,
         environment: String(workflowId),
         start_point: `step:${step_id ?? ""}`,
         end_point: `step:${step_id ?? ""}`,
@@ -183,7 +187,39 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     const triggerRef = triggerResult.ref_id;
     logger.info(`[EvalCapture] EvalTrigger created, ref_id: ${triggerRef}`);
 
-    // ── 4. Wire edges ────────────────────────────────────────────────────────
+    // ── 4. Upsert HiveAgent node + ATTRIBUTED_TO edge (non-fatal) ────────────
+    try {
+      const agentSpec = getCaptureAgentSpec(resolvedAgent);
+      const hiveAgentResult = await addNode(nodeConfig, {
+        node_type: "HiveAgent",
+        node_data: {
+          name: resolvedAgent,
+          display_name: agentSpec.displayName,
+          description: agentSpec.description,
+        },
+      });
+      logger.info(
+        `[EvalCapture] HiveAgent upsert: success=${hiveAgentResult.success} alreadyExists=${hiveAgentResult.alreadyExists ?? false} ref_id=${hiveAgentResult.ref_id ?? "n/a"}`,
+      );
+
+      if (hiveAgentResult.success) {
+        const attrEdgeResult = await addEdge(nodeConfig, {
+          edge: { edge_type: "ATTRIBUTED_TO" },
+          source: { ref_id: triggerRef },
+          target: { node_type: "HiveAgent", node_data: { name: resolvedAgent } },
+        });
+        logger.info(`[EvalCapture] ATTRIBUTED_TO edge: success=${attrEdgeResult.success}`);
+        if (!attrEdgeResult.success) {
+          logger.warn(`[EvalCapture] ATTRIBUTED_TO edge failed (non-fatal): ${attrEdgeResult.error}`);
+        }
+      } else {
+        logger.warn(`[EvalCapture] HiveAgent upsert failed (non-fatal): ${hiveAgentResult.error}`);
+      }
+    } catch (err) {
+      logger.warn(`[EvalCapture] HiveAgent/ATTRIBUTED_TO step threw (non-fatal): ${String(err)}`);
+    }
+
+    // ── 5. Wire edges ────────────────────────────────────────────────────────
     if (!requirementId?.trim()) {
       // Only create EvalSet -> EvalRequirement edge when creating a new requirement
       await addEdge(nodeConfig, {
@@ -204,7 +240,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
 
     return NextResponse.json({
       success: true,
-      data: { evalSetRef, requirementRef, triggerRef },
+      data: { evalSetRef, requirementRef, triggerRef, agentName: resolvedAgent },
     });
   } catch (error) {
     console.error("[EvalCapture] Raw error body:", error);

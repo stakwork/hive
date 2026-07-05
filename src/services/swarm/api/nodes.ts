@@ -36,9 +36,8 @@ async function jarvisRequest({
   data?: unknown;
   timeoutMs?: number;
 }): Promise<JarvisApiResponse> {
+  const url = `${config.jarvisUrl.replace(/\/$/, "")}${endpoint.startsWith("/") ? "" : "/"}${endpoint}`;
   try {
-    const url = `${config.jarvisUrl.replace(/\/$/, "")}${endpoint.startsWith("/") ? "" : "/"}${endpoint}`;
-
     const headers: Record<string, string> = {
       "x-api-token": config.apiKey,
       "Content-Type": "application/json",
@@ -53,7 +52,9 @@ async function jarvisRequest({
 
     if (!response.ok) {
       const responseText = await response.text();
-      console.error("[Jarvis Nodes] Request failed:", response.status, responseText);
+      // Include method + URL: a bare status is undebuggable across 17
+      // workspaces × N endpoints (a quiet 404 hid a dead swarm for weeks).
+      console.error("[Jarvis Nodes] Request failed:", method, url, response.status, responseText);
       return {
         ok: false,
         status: response.status,
@@ -75,7 +76,7 @@ async function jarvisRequest({
       body,
     };
   } catch (error) {
-    console.error("[Jarvis Nodes] Request error:", error);
+    console.error("[Jarvis Nodes] Request error:", method, url, error);
     return {
       ok: false,
       status: 500,
@@ -209,15 +210,38 @@ async function executeBulkEdgeRequest(
   }
 
   const body = result.body as
-    | { status?: string; status_messages?: string[] }
+    | { status?: string; status_messages?: string[]; edges?: unknown[] }
     | undefined;
 
   const errors = (body?.status_messages ?? []).filter((m) =>
     m.toLowerCase().startsWith("error"),
   );
 
+  // Silent-no-op detector: jarvis's bulk endpoints report every written OR
+  // already-existing edge in `edges`, so a healthy response accounts for the
+  // full submission even on idempotent re-runs. A shortfall with no ERROR
+  // messages means endpoints silently failed to match (this exact mode — a
+  // label-pinned MATCH finding no node — once returned "Success" while
+  // writing nothing, and cost weeks). Warn loudly; don't fail the call, since
+  // older backends may not return `edges` at all.
+  if (errors.length === 0 && Array.isArray(body?.edges) && body!.edges!.length < edgeList.length) {
+    console.warn(
+      `[Jarvis Nodes] edges/bulk: submitted ${edgeList.length} edges but backend reported ` +
+        `${body!.edges!.length} — possible silent no-op (unmatched ref_ids?)`,
+    );
+  }
+
+  // Success means "no real errors" — NOT status === "success". Jarvis returns
+  // status "Warning" whenever status_messages is non-empty, which includes
+  // benign notices like duplicate edges being skipped on re-runs
+  // (skipped_dup). Treating "Warning" as failure caused the jarvis-mirror
+  // cursor (advanced only when nodes AND edges succeed) to freeze for any
+  // entity type that writes edges: on the second pass every edge is a dup →
+  // "Warning" → edgesOk=false → cursor never advances (tasks/chat stuck while
+  // edge-less features advanced fine). Mirror `addNodeBulk`, which already
+  // keys success off the error count.
   return {
-    success: body?.status?.toLowerCase() === "success",
+    success: errors.length === 0,
     errors,
   };
 }
@@ -494,4 +518,112 @@ export async function deleteEdge(
   }
 
   return { success: true };
+}
+
+// ── Error-impact centrality helpers ──────────────────────────────────────────
+
+export interface CentralityNode {
+  ref_id: string;
+  node_type: string;
+  name: string;
+  pagerank?: number;
+}
+
+export interface ReferencedCentralityResult {
+  ok: boolean;
+  nodes: CentralityNode[];
+  error?: string;
+}
+
+/**
+ * Fetch the File/Function nodes referenced by an ErrorIssue KG node and
+ * return their centrality properties (algo_page_rank, mapped to pagerank).
+ * Uses the existing `/v2/nodes/{refId}?expand=edges` endpoint
+ * filtered to REFERENCES edges, which is the same endpoint `kgGetNeighbors`
+ * uses — so no new backend surface is required.
+ *
+ * Never throws — returns `{ ok: false }` on any failure.
+ */
+export async function getReferencedNodeCentrality(
+  config: JarvisConnectionConfig,
+  issueRefId: string,
+  opts?: { timeoutMs?: number },
+): Promise<ReferencedCentralityResult> {
+  try {
+    const params = new URLSearchParams({
+      expand: "edges",
+      edge_type: "['REFERENCES']",
+      node_type: "['File','Function']",
+      canonicalize: "false",
+      limit: "100",
+    });
+
+    const url = `${config.jarvisUrl.replace(/\/$/, "")}/v2/nodes/${encodeURIComponent(issueRefId)}?${params.toString()}`;
+
+    const signal = AbortSignal.timeout(opts?.timeoutMs ?? REQUEST_TIMEOUT_MS);
+    const response = await fetch(url, {
+      method: "GET",
+      headers: {
+        "x-api-token": config.apiKey,
+        "Content-Type": "application/json",
+      },
+      signal,
+    });
+
+    if (!response.ok) {
+      return {
+        ok: false,
+        nodes: [],
+        error: `Jarvis returned ${response.status}`,
+      };
+    }
+
+    const data = (await response.json()) as {
+      nodes?: Array<{
+        ref_id: string;
+        node_type: string;
+        name?: string;
+        properties?: Record<string, unknown>;
+      }>;
+      edges?: Array<{ source: string; target: string; edge_type: string }>;
+    };
+
+    // Only keep the neighbor nodes (exclude the queried ErrorIssue node itself)
+    const referencedNodes: CentralityNode[] = [];
+    const seenRefIds = new Set<string>();
+
+    for (const edge of data.edges ?? []) {
+      // REFERENCES edges are outbound from the ErrorIssue — target is the code node
+      if (edge.source !== issueRefId || edge.edge_type !== "REFERENCES") continue;
+      const neighborRefId = edge.target;
+      if (seenRefIds.has(neighborRefId)) continue;
+      seenRefIds.add(neighborRefId);
+
+      const node = (data.nodes ?? []).find((n) => n.ref_id === neighborRefId);
+      if (!node) continue;
+
+      const p = node.properties ?? {};
+      const pagerank = typeof p.algo_page_rank === "number" ? p.algo_page_rank : undefined;
+      if (pagerank === undefined) {
+        console.debug(
+          "[Jarvis Nodes] node has no numeric algo_page_rank — impact score will be 0 for this node",
+          { ref_id: node.ref_id, node_type: node.node_type },
+        );
+      }
+      referencedNodes.push({
+        ref_id: node.ref_id,
+        node_type: node.node_type,
+        name: node.name ?? (p.name as string | undefined) ?? (p.file_path as string | undefined) ?? "",
+        pagerank,
+      });
+    }
+
+    return { ok: true, nodes: referencedNodes };
+  } catch (error) {
+    return {
+      ok: false,
+      nodes: [],
+      error: error instanceof Error ? error.message : "Request failed",
+    };
+  }
 }
