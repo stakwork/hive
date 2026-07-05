@@ -228,11 +228,15 @@ export interface TrustOrgRow {
 // set (names + default model); prompts/tools/skills are left empty for
 // now — the catalog is a registry, edited later in the gateway UI.
 
-/** A prompt the agent uses (system/role instruction). */
+/**
+ * A reference to an existing graph `:Prompt` node by name. The gateway
+ * links `HiveAgent-[:HAS_PROMPT]->Prompt` by matching this `name`; the
+ * prompt body lives on the shared `:Prompt` node (authored by the
+ * Stakwork prompt workflow), never sent here. A name with no matching
+ * node is skipped silently by the gateway.
+ */
 export interface AgentCatalogManifestPrompt {
   name: string;
-  role?: string;
-  body?: string;
   /** Optional per-item source override; defaults to the manifest source. */
   source?: string;
 }
