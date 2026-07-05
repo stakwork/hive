@@ -764,7 +764,7 @@ describe("POST /api/webhook/errors — KG projection (best-effort)", () => {
           ref_id: "file-in-correct-repo",
           node_type: "File",
           properties: {
-            file_path: "src/foo/bar.ts",
+            file: "stakwork/hive/src/foo/bar.ts",
             repository_id: ctx.repo.id,
           },
         },
@@ -772,7 +772,7 @@ describe("POST /api/webhook/errors — KG projection (best-effort)", () => {
           ref_id: "file-in-other-repo",
           node_type: "File",
           properties: {
-            file_path: "src/foo/bar.ts",
+            file: "stakwork/hive/src/foo/bar.ts",
             repository_id: "other-repo-id",
           },
         },
@@ -784,8 +784,8 @@ describe("POST /api/webhook/errors — KG projection (best-effort)", () => {
         {
           exceptionType: "TypeError",
           message: "boom",
-          // stack frame referencing "bar.ts" — matches by basename
-          stackTrace: "  at doThing (bar.ts:10:5)",
+          // stack frame referencing full relative path — matches by suffix
+          stackTrace: "  at doThing (src/foo/bar.ts:10:5)",
           repository: "https://github.com/stakwork/hive",
         },
         RAW_KEY
@@ -815,7 +815,7 @@ describe("POST /api/webhook/errors — KG projection (best-effort)", () => {
           ref_id: "unrelated-file",
           node_type: "File",
           properties: {
-            file_path: "src/completely/different.ts",
+            file: "stakwork/hive/src/completely/different.ts",
             repository_id: ctx.repo.id,
           },
         },
@@ -1171,5 +1171,172 @@ describe("POST /api/webhook/errors — opportunistic impact scoring", () => {
     const issue = await db.errorIssue.findUnique({ where: { id: body.data.issueId } });
     expect(issue?.impactScore).toBe(0.8);
     expect(issue?.impactScoredAt).not.toBeNull();
+  });
+});
+
+// ── Frame-based KG edge resolution integration tests ─────────────────────────
+
+describe("POST /api/webhook/errors — KG edges from structured frames (Ruby + JS fallback)", () => {
+  const MOCK_JARVIS_CONFIG = { jarvisUrl: "https://jarvis.example.com", apiKey: "jarvis-key" };
+  let ctx: Awaited<ReturnType<typeof createTestSetup>>;
+
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    ctx = await createTestSetup();
+    mockPusherTrigger.mockResolvedValue(undefined);
+    mockGetReferencedNodeCentrality.mockResolvedValue({ ok: true, nodes: [] });
+    mockComputeImpactScore.mockReturnValue(null);
+    mockGetJarvisConfig.mockResolvedValue(MOCK_JARVIS_CONFIG);
+    mockAddNode.mockResolvedValue({ success: true, ref_id: "issue-ref-ruby" });
+    mockAddEdge.mockResolvedValue({ success: true });
+  });
+
+  afterEach(async () => {
+    await db.errorEvent.deleteMany({ where: { workspaceId: ctx.workspace.id } });
+    await db.errorIssue.deleteMany({ where: { workspaceId: ctx.workspace.id } });
+    await db.workspaceApiKey.deleteMany({ where: { id: ctx.apiKey.id } });
+    await db.repository.deleteMany({ where: { id: ctx.repo.id } });
+    await db.workspace.deleteMany({ where: { id: ctx.workspace.id } });
+    await db.user.deleteMany({ where: { id: ctx.owner.id } });
+    await db.errorEvent.deleteMany({ where: { workspaceId: ctx.workspace2.id } });
+    await db.errorIssue.deleteMany({ where: { workspaceId: ctx.workspace2.id } });
+    await db.repository.deleteMany({ where: { id: ctx.repo2.id } });
+    await db.workspace.deleteMany({ where: { id: ctx.workspace2.id } });
+    await db.user.deleteMany({ where: { id: ctx.owner2.id } });
+  });
+
+  test("Ruby payload with structured frames draws edges to correct File/Function nodes", async () => {
+    // Two workers share a `perform` method — only the one matching the frame filename should be linked
+    mockSearchLatestByTypes.mockResolvedValue({
+      ok: true,
+      nodes: [
+        {
+          ref_id: "file-script-worker",
+          node_type: "File",
+          properties: {
+            file: "stakwork/hive/app/workers/script_graph_recorder_worker.rb",
+            repository_id: ctx.repo.id,
+          },
+        },
+        {
+          ref_id: "func-perform-correct",
+          node_type: "Function",
+          properties: {
+            name: "perform",
+            file: "stakwork/hive/app/workers/script_graph_recorder_worker.rb",
+            repository_id: ctx.repo.id,
+          },
+        },
+        {
+          ref_id: "func-perform-wrong",
+          node_type: "Function",
+          properties: {
+            name: "perform",
+            file: "stakwork/hive/app/workers/other_worker.rb",
+            repository_id: ctx.repo.id,
+          },
+        },
+      ],
+    });
+
+    const res = await POST(
+      buildRequest(
+        {
+          exceptionType: "Sidekiq::Error",
+          message: "Job failed",
+          frames: [
+            {
+              filename: "app/workers/script_graph_recorder_worker.rb",
+              function: "perform",
+              lineno: 9,
+              inApp: true,
+            },
+          ],
+          repository: "https://github.com/stakwork/hive",
+        },
+        RAW_KEY
+      )
+    );
+
+    expect(res.status).toBe(201);
+
+    // Two edges: one to File, one to Function (correct one only)
+    expect(mockAddEdge).toHaveBeenCalledTimes(2);
+    const targetRefIds = mockAddEdge.mock.calls.map((c: unknown[]) => (c[1] as { target: { ref_id: string } }).target.ref_id);
+    expect(targetRefIds).toContain("file-script-worker");
+    expect(targetRefIds).toContain("func-perform-correct");
+    // Must NOT link to wrong perform
+    expect(targetRefIds).not.toContain("func-perform-wrong");
+  });
+
+  test("JS stackTrace-only payload (no frames) resolves via parseStackFrames fallback", async () => {
+    mockSearchLatestByTypes.mockResolvedValue({
+      ok: true,
+      nodes: [
+        {
+          ref_id: "file-bar-ts",
+          node_type: "File",
+          properties: {
+            file: "stakwork/hive/src/foo/bar.ts",
+            repository_id: ctx.repo.id,
+          },
+        },
+      ],
+    });
+
+    const res = await POST(
+      buildRequest(
+        {
+          exceptionType: "TypeError",
+          message: "x is not defined",
+          stackTrace: "  at doThing (src/foo/bar.ts:10:5)",
+          repository: "https://github.com/stakwork/hive",
+          // No frames — should fall back to parseStackFrames
+        },
+        RAW_KEY
+      )
+    );
+
+    expect(res.status).toBe(201);
+    // Edge drawn via stackTrace fallback
+    expect(mockAddEdge).toHaveBeenCalledOnce();
+    const [, edgePayload] = mockAddEdge.mock.calls[0];
+    expect(edgePayload.target.ref_id).toBe("file-bar-ts");
+  });
+
+  test("nodes with only `file` property (not `file_path`) still draw edges", async () => {
+    mockSearchLatestByTypes.mockResolvedValue({
+      ok: true,
+      nodes: [
+        {
+          ref_id: "file-only-file-key",
+          node_type: "File",
+          properties: {
+            // Deliberately no file_path — only the real `file` key
+            file: "stakwork/hive/app/services/my_service.rb",
+            repository_id: ctx.repo.id,
+          },
+        },
+      ],
+    });
+
+    const res = await POST(
+      buildRequest(
+        {
+          exceptionType: "RuntimeError",
+          message: "something went wrong",
+          frames: [
+            { filename: "app/services/my_service.rb", function: "call", lineno: 20, inApp: true },
+          ],
+          repository: "https://github.com/stakwork/hive",
+        },
+        RAW_KEY
+      )
+    );
+
+    expect(res.status).toBe(201);
+    expect(mockAddEdge).toHaveBeenCalledOnce();
+    const [, edgePayload] = mockAddEdge.mock.calls[0];
+    expect(edgePayload.target.ref_id).toBe("file-only-file-key");
   });
 });
