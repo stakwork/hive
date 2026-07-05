@@ -1564,3 +1564,94 @@ describe('Sidebar - Unresolved Error Count Badge', () => {
     expect(errorBadge?.className).toContain('border-amber-200');
   });
 });
+
+// ─── Legal Section Tests ──────────────────────────────────────────────────────
+
+describe('Sidebar - Legal Section', () => {
+  const mockUser = {
+    name: 'Test User',
+    email: 'test@example.com',
+    image: null,
+  };
+
+  const makeWorkspaceMock = (slug: string) => ({
+    workspace: { id: 'workspace-1', name: slug, slug, poolState: 'COMPLETE' },
+    slug,
+    loading: false,
+    error: null,
+    waitingForInputCount: 0,
+    refreshTaskNotifications: vi.fn(),
+  });
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(useFeatureFlagModule.useFeatureFlag).mockReturnValue(false);
+    vi.mocked(usePoolStatusModule.usePoolStatus).mockReturnValue({
+      poolStatus: null,
+      loading: false,
+      error: null,
+      refetch: vi.fn(),
+    });
+    vi.mocked(useWorkspaceAccessModule.useWorkspaceAccess).mockReturnValue({
+      canRead: true,
+      canWrite: true,
+      canAdmin: false,
+      isOwner: false,
+      hasAccess: true,
+      role: 'DEVELOPER',
+    } as any);
+    vi.mocked(useUnresolvedErrorCountModule.useUnresolvedErrorCount).mockReturnValue({ count: 0 });
+  });
+
+  it('renders Legal nav item for openlaw workspace', () => {
+    vi.mocked(useWorkspaceModule.useWorkspace).mockReturnValue(makeWorkspaceMock('openlaw') as any);
+    vi.mocked(runtimeModule.isDevelopmentMode).mockReturnValue(false);
+
+    render(<Sidebar user={mockUser} />);
+
+    expect(screen.getAllByText('Legal').length).toBeGreaterThan(0);
+  });
+
+  it('does not render Legal nav item for non-openlaw workspace', () => {
+    vi.mocked(useWorkspaceModule.useWorkspace).mockReturnValue(makeWorkspaceMock('some-other-workspace') as any);
+    vi.mocked(runtimeModule.isDevelopmentMode).mockReturnValue(false);
+
+    render(<Sidebar user={mockUser} />);
+
+    expect(screen.queryByText('Legal')).not.toBeInTheDocument();
+  });
+
+  it('does not render Legal nav item for stakwork workspace', () => {
+    vi.mocked(useWorkspaceModule.useWorkspace).mockReturnValue(makeWorkspaceMock('stakwork') as any);
+    vi.mocked(runtimeModule.isDevelopmentMode).mockReturnValue(false);
+
+    render(<Sidebar user={mockUser} />);
+
+    expect(screen.queryByText('Legal')).not.toBeInTheDocument();
+  });
+
+  it('renders Legal nav item in dev mode regardless of workspace slug', () => {
+    vi.mocked(useWorkspaceModule.useWorkspace).mockReturnValue(makeWorkspaceMock('random-workspace') as any);
+    vi.mocked(runtimeModule.isDevelopmentMode).mockReturnValue(true);
+
+    render(<Sidebar user={mockUser} />);
+
+    expect(screen.getAllByText('Legal').length).toBeGreaterThan(0);
+  });
+
+  it('renders Legal Benchmarks child link when Legal section is expanded', async () => {
+    const user = userEvent.setup();
+    vi.mocked(useWorkspaceModule.useWorkspace).mockReturnValue(makeWorkspaceMock('openlaw') as any);
+    vi.mocked(runtimeModule.isDevelopmentMode).mockReturnValue(false);
+
+    render(<Sidebar user={mockUser} />);
+
+    // Use data-testid to target one of the Legal buttons (both desktop and mobile render)
+    const legalButtons = screen.getAllByTestId('nav-legal');
+    await user.click(legalButtons[0]);
+
+    await waitFor(() => {
+      expect(screen.getAllByText('Legal Benchmarks').length).toBeGreaterThan(0);
+    });
+  });
+});
