@@ -543,6 +543,9 @@ function buildWorkspaceTools(
           }
 
           const { error } = result;
+          if (error.type === "SCOPE_WRONG_WORKSPACE") {
+            return error.message;
+          }
           if (error.type === "TIMEOUT") {
             return "The Logs Agent timed out before returning a result. Please try again or narrow your query to a specific feature or task.";
           }
