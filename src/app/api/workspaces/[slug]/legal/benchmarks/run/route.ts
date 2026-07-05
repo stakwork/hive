@@ -1,8 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
+import { randomUUID } from "crypto";
 import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 import { getWorkspaceSwarmAccess } from "@/lib/helpers/swarm-access";
 import { db } from "@/lib/db";
 import { optionalEnvVars } from "@/config/env";
+import { getJarvisConfigForWorkspace } from "@/lib/helpers/jarvis-config";
+import { fetchHarveyTaskCriteria, ensureHarveyLabEvalNodes } from "@/lib/harvey-lab/eval-nodes";
+import { addNode, addEdge } from "@/services/swarm/api/nodes";
 
 type RouteParams = {
   params: Promise<{ slug: string }>;
@@ -156,6 +160,67 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
         status: "RUNNING",
       },
     });
+
+    // ── Non-fatal Jarvis eval graph instrumentation ───────────────────────────
+    try {
+      const jarvisConfig = await getJarvisConfigForWorkspace(workspaceId);
+      if (jarvisConfig) {
+        const rubricCriteria = await fetchHarveyTaskCriteria(taskSlug);
+        const evalNodes = await ensureHarveyLabEvalNodes(
+          jarvisConfig,
+          taskSlug,
+          taskTitle,
+          rubricCriteria,
+        );
+        if (evalNodes) {
+          const triggerId = randomUUID();
+          const triggerResult = await addNode(jarvisConfig, {
+            node_type: "EvalTrigger",
+            node_data: {
+              id: triggerId,
+              agent: "wfe-agent",
+              source: "provider_direct",
+              environment: process.env.STAKWORK_HARVEY_RUNNER_WORKFLOW_ID,
+              start_point: taskSlug,
+              end_point: taskSlug,
+              body: JSON.stringify({
+                prompt_snapshot: { task_slug: taskSlug, task_title: taskTitle, rubric_criteria: rubricCriteria },
+                output_snapshot: null,
+                tool_call_trace: null,
+              }),
+            },
+          });
+          if (triggerResult.success && triggerResult.ref_id) {
+            await addEdge(jarvisConfig, {
+              edge: { edge_type: "HAS_TRIGGER" },
+              source: { ref_id: evalNodes.requirementRef },
+              target: { ref_id: triggerResult.ref_id },
+            });
+            await db.legalBenchmarkRun.update({
+              where: { id: run.id },
+              data: { evalTriggerRef: triggerResult.ref_id },
+            });
+            // Non-fatal ATTRIBUTED_TO (gated on jarvis-backend prereq — skip until deployed)
+            try {
+              const agentResult = await addNode(jarvisConfig, {
+                node_type: "HiveAgent",
+                node_data: { name: "wfe-agent", display_name: "Stakwork Workflow Engine" },
+              });
+              if (agentResult.success) {
+                await addEdge(jarvisConfig, {
+                  edge: { edge_type: "ATTRIBUTED_TO" },
+                  source: { ref_id: triggerResult.ref_id },
+                  target: { node_type: "HiveAgent", node_data: { name: "wfe-agent" } },
+                });
+              }
+            } catch { /* ATTRIBUTED_TO not yet registered in jarvis-backend — silently skip */ }
+          }
+        }
+      }
+    } catch (err) {
+      console.error("[legal/benchmarks/run] Jarvis eval graph write failed (non-fatal):", err);
+    }
+    // ─────────────────────────────────────────────────────────────────────────
 
     return NextResponse.json({ run_id: run.id }, { status: 201 });
   } catch (error) {
