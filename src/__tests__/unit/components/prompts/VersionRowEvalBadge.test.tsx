@@ -42,19 +42,19 @@ const mockPrompt = {
   value: "some value",
   description: "desc",
   usage_notation: "{{PROMPT:TEST_PROMPT}}",
-  current_version_id: 3,
+  current_version_id: "ckcurrentversionid0001",
   published_version_id: null,
   version_count: 3,
   usages: [],
 };
 
 const mockVersions = [
-  { id: 1, version_number: 1, created_at: "2024-01-01T00:00:00Z", whodunnit: null },
-  { id: 2, version_number: 2, created_at: "2024-01-02T00:00:00Z", whodunnit: null },
+  { id: "ckversion0000000001", version_number: 1, created_at: "2024-01-01T00:00:00Z", whodunnit: null },
+  { id: "ckversion0000000002", version_number: 2, created_at: "2024-01-02T00:00:00Z", whodunnit: null },
 ];
 
 /** Helper: build a fetch mock that routes requests appropriately */
-function buildFetch(evalRunsByVersionId: Record<number, object | null> = {}) {
+function buildFetch(evalRunsByVersionId: Record<string, object | null> = {}) {
   return vi.fn((url: unknown) => {
     const u = String(url);
 
@@ -69,7 +69,7 @@ function buildFetch(evalRunsByVersionId: Record<number, object | null> = {}) {
       });
     }
     // Prompt detail
-    if (u.match(/\/api\/workflow\/prompts\/\d+$/) && !u.includes("/versions")) {
+    if (u.match(/\/api\/workflow\/prompts\/[^/]+$/) && !u.includes("/versions")) {
       return Promise.resolve({
         ok: true,
         json: async () => ({ success: true, data: mockPrompt }),
@@ -83,9 +83,9 @@ function buildFetch(evalRunsByVersionId: Record<number, object | null> = {}) {
       });
     }
     // Eval run GET — /versions/[id]/run-evals
-    const evalRunMatch = u.match(/\/versions\/(\d+)\/run-evals/);
+    const evalRunMatch = u.match(/\/versions\/([^/]+)\/run-evals/);
     if (evalRunMatch) {
-      const vId = parseInt(evalRunMatch[1], 10);
+      const vId = evalRunMatch[1];
       const run = evalRunsByVersionId[vId] ?? null;
       return Promise.resolve({
         ok: true,
@@ -93,7 +93,7 @@ function buildFetch(evalRunsByVersionId: Record<number, object | null> = {}) {
       });
     }
     // Version content
-    if (u.match(/\/versions\/\d+$/)) {
+    if (u.match(/\/versions\/[^/]+$/)) {
       return Promise.resolve({
         ok: true,
         json: async () => ({ success: true, data: { value: "version content", description: "" } }),
@@ -134,8 +134,8 @@ describe("Version row eval run UI", () => {
 
   it("shows Loader2 spinner when status is IN_PROGRESS", async () => {
     global.fetch = buildFetch({
-      // version id=1's eval run is IN_PROGRESS
-      1: { id: "run-abc", status: "IN_PROGRESS", result: null, evalSetId: "es-1" },
+      // version id ckversion0000000001's eval run is IN_PROGRESS
+      "ckversion0000000001": { id: "run-abc", status: "IN_PROGRESS", result: null, evalSetId: "es-1" },
     });
 
     render(<PromptsPanel workspaceSlug="test-workspace" />);
@@ -153,7 +153,7 @@ describe("Version row eval run UI", () => {
 
   it("shows green badge '8/10 pass' when all pass (fail === 0)", async () => {
     global.fetch = buildFetch({
-      1: { id: "run-1", status: "COMPLETED", result: '{"pass":8,"fail":0,"total":10}', evalSetId: "es-1" },
+      "ckversion0000000001": { id: "run-1", status: "COMPLETED", result: '{"pass":8,"fail":0,"total":10}', evalSetId: "es-1" },
     });
 
     render(<PromptsPanel workspaceSlug="test-workspace" />);
@@ -169,7 +169,7 @@ describe("Version row eval run UI", () => {
 
   it("shows red badge '7/10 pass' when some fail", async () => {
     global.fetch = buildFetch({
-      1: { id: "run-2", status: "COMPLETED", result: '{"pass":7,"fail":3,"total":10}', evalSetId: "es-1" },
+      "ckversion0000000001": { id: "run-2", status: "COMPLETED", result: '{"pass":7,"fail":3,"total":10}', evalSetId: "es-1" },
     });
 
     render(<PromptsPanel workspaceSlug="test-workspace" />);
@@ -193,11 +193,11 @@ describe("Version row eval run UI", () => {
     // Wait for version list to render so Pusher effect has fired
     await waitFor(() => expect(screen.getByText("v1")).toBeInTheDocument());
 
-    // Simulate Pusher event with the real DB id (3 = current_version_id)
+    // Simulate Pusher event with the real DB id (ckcurrentversionid0001 = current_version_id)
     expect(capturedPusherHandler).not.toBeNull();
     capturedPusherHandler!({
       runId: "r1",
-      promptVersionId: 3, // matches mockPrompt.current_version_id
+      promptVersionId: "ckcurrentversionid0001", // matches mockPrompt.current_version_id
       result: { pass: 4, fail: 0, total: 4 },
     });
 
@@ -230,7 +230,7 @@ describe("Version row eval run UI", () => {
           }),
         });
       }
-      if (u.match(/\/api\/workflow\/prompts\/\d+$/) && !u.includes("/versions")) {
+      if (u.match(/\/api\/workflow\/prompts\/[^/]+$/) && !u.includes("/versions")) {
         return Promise.resolve({
           ok: true,
           json: async () => ({ success: true, data: mockPrompt }),
@@ -242,11 +242,11 @@ describe("Version row eval run UI", () => {
           json: async () => ({ success: true, data: { versions: mockVersions } }),
         });
       }
-      // Eval run GET — returns both data and history for version 1
-      const evalRunMatch = u.match(/\/versions\/(\d+)\/run-evals/);
+      // Eval run GET — returns both data and history for version ckversion0000000001
+      const evalRunMatch = u.match(/\/versions\/([^/]+)\/run-evals/);
       if (evalRunMatch) {
-        const vId = parseInt(evalRunMatch[1], 10);
-        if (vId === 1) {
+        const vId = evalRunMatch[1];
+        if (vId === "ckversion0000000001") {
           return Promise.resolve({
             ok: true,
             json: async () => ({ success: true, data: run1, history: [run1, run2] }),
@@ -257,7 +257,7 @@ describe("Version row eval run UI", () => {
           json: async () => ({ success: true, data: null, history: [] }),
         });
       }
-      if (u.match(/\/versions\/\d+$/)) {
+      if (u.match(/\/versions\/[^/]+$/)) {
         return Promise.resolve({
           ok: true,
           json: async () => ({ success: true, data: { value: "version content", description: "" } }),
