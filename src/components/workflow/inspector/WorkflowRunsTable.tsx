@@ -72,6 +72,7 @@ export function WorkflowRunsTable({
   }
 
   return (
+    <>
     <div className="px-2 pb-3 @container/runs">
       {runs.map((run) => {
         const runIdStr = String(run.id);
@@ -237,26 +238,27 @@ export function WorkflowRunsTable({
                 </DropdownMenu>
               </div>
 
-              {flaggingRunId === runIdStr && (
-                <FlagRunEvalModal
-                  open={true}
-                  onOpenChange={(o) => {
-                    if (!o) setFlaggingRunId(null);
-                  }}
-                  slug={slug}
-                  workflowId={String(workflowId)}
-                  runId={runIdStr}
-                  onCaptured={() => {
-                    setFlaggedRunIds((prev) => new Set(prev).add(runIdStr));
-                    setFlaggingRunId(null);
-                    onEvalCaptured?.();
-                  }}
-                />
-              )}
             </div>
           </div>
         );
       })}
     </div>
+    {flaggingRunId && (
+      <FlagRunEvalModal
+        open={true}
+        onOpenChange={(o) => {
+          if (!o) setFlaggingRunId(null);
+        }}
+        slug={slug}
+        workflowId={String(workflowId)}
+        runId={flaggingRunId}
+        onCaptured={() => {
+          setFlaggedRunIds((prev) => new Set(prev).add(flaggingRunId));
+          setFlaggingRunId(null);
+          onEvalCaptured?.();
+        }}
+      />
+    )}
+    </>
   );
 }

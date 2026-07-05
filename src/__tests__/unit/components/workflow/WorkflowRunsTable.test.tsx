@@ -317,6 +317,23 @@ describe("WorkflowRunsTable", () => {
         expect(onEvalCaptured).toHaveBeenCalledOnce();
       });
 
+      it("FlagRunEvalModal is rendered outside the @container/runs div (fixed-position safety)", () => {
+        // The @container/runs div uses CSS containment which breaks position:fixed descendants.
+        // FlagRunEvalModal must be rendered as a sibling *after* that div, not inside it.
+        setupRuns([MOCK_RUNS[0]]);
+        const { container } = renderTable();
+
+        fireEvent.click(screen.getAllByRole("button", { name: /flag for eval/i })[0]);
+
+        const modal = screen.getByTestId(`flag-modal-${MOCK_RUNS[0].id}`);
+        const containerDiv = container.querySelector(".\\@container\\/runs,[class*='@container']") as HTMLElement | null;
+
+        // If a @container div exists, the modal must NOT be a descendant of it
+        if (containerDiv) {
+          expect(containerDiv.contains(modal)).toBe(false);
+        }
+      });
+
       it("modal closes without flagging when the close button is clicked", () => {
         setupRuns([MOCK_RUNS[0]]);
         const onEvalCaptured = vi.fn();

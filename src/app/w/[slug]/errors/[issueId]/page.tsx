@@ -211,6 +211,7 @@ export default function ErrorIssueDetailPage() {
         <>
           <ErrorIssueDetail
             detail={detail}
+            slug={slug}
             onStatusChange={handleStatusChange}
             onLoadMoreEvents={handleLoadMoreEvents}
             loadingMoreEvents={loadingMore}
