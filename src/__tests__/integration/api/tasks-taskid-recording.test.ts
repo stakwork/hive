@@ -510,6 +510,107 @@ describe("POST /api/tasks/[taskId]/recording - Integration Tests", () => {
       expect(timestampsContent.text).toContain("input");
     });
 
+    test("marks task COMPLETED and message 'passed' when timestamps status is passed", async () => {
+      const validPassword = "test-password";
+      const { task } = await createTestSetup({ agentPassword: validPassword });
+
+      const request = createMultipartRequest(task.id, {
+        apiKey: validPassword,
+        timestampsJson: {
+          testTitle: "sample journey",
+          status: "passed",
+          duration: 3000,
+          actions: [{ title: "click", sourceCode: "await page.click('.button')" }],
+        },
+      });
+
+      const response = await POST(request, { params: Promise.resolve({ taskId: task.id }) });
+      const data = await expectSuccess(response, 201);
+      expect(data.data.testStatus).toBe("passed");
+
+      const message = await db.chatMessage.findUnique({
+        where: { id: data.data.messageId },
+        include: { artifacts: true },
+      });
+      expect(message!.message).toBe("Playwright test passed");
+
+      const media = message!.artifacts.find((a) => a.type === "MEDIA");
+      expect((media!.content as Record<string, unknown>).testStatus).toBe("passed");
+
+      const updatedTask = await db.task.findUnique({
+        where: { id: task.id },
+        select: { workflowStatus: true },
+      });
+      expect(updatedTask!.workflowStatus).toBe("COMPLETED");
+    });
+
+    test("marks task FAILED and surfaces the failing step when timestamps status is failed", async () => {
+      const validPassword = "test-password";
+      const { task } = await createTestSetup({ agentPassword: validPassword });
+
+      const request = createMultipartRequest(task.id, {
+        apiKey: validPassword,
+        timestampsJson: {
+          testTitle: "sample journey",
+          status: "failed",
+          duration: 4200,
+          actions: [
+            { title: "goto", sourceCode: "await page.goto('/')" },
+            {
+              title: "expect",
+              sourceCode: "await expect(el).toBeVisible()",
+              location: { file: "e2e/journey.spec.ts", line: 12, column: 3 },
+              error: { message: "locator not found", stack: "Error: locator not found" },
+            },
+          ],
+        },
+      });
+
+      const response = await POST(request, { params: Promise.resolve({ taskId: task.id }) });
+      const data = await expectSuccess(response, 201);
+      expect(data.data.testStatus).toBe("failed");
+
+      const message = await db.chatMessage.findUnique({
+        where: { id: data.data.messageId },
+        include: { artifacts: true },
+      });
+      expect(message!.message).toBe("Playwright test failed");
+
+      const media = message!.artifacts.find((a) => a.type === "MEDIA");
+      const content = media!.content as Record<string, unknown>;
+      expect(content.testStatus).toBe("failed");
+      expect(content.failedStep).toMatchObject({
+        sourceCode: "await expect(el).toBeVisible()",
+        message: "locator not found",
+      });
+
+      const updatedTask = await db.task.findUnique({
+        where: { id: task.id },
+        select: { workflowStatus: true },
+      });
+      expect(updatedTask!.workflowStatus).toBe("FAILED");
+    });
+
+    test("treats a timedOut status as a failure", async () => {
+      const validPassword = "test-password";
+      const { task } = await createTestSetup({ agentPassword: validPassword });
+
+      const request = createMultipartRequest(task.id, {
+        apiKey: validPassword,
+        timestampsJson: { status: "timedOut", actions: [] },
+      });
+
+      const response = await POST(request, { params: Promise.resolve({ taskId: task.id }) });
+      const data = await expectSuccess(response, 201);
+      expect(data.data.testStatus).toBe("timedOut");
+
+      const updatedTask = await db.task.findUnique({
+        where: { id: task.id },
+        select: { workflowStatus: true },
+      });
+      expect(updatedTask!.workflowStatus).toBe("FAILED");
+    });
+
     test("invalidates agentPassword after successful upload", async () => {
       const validPassword = "test-password";
       const { task } = await createTestSetup({ agentPassword: validPassword });
