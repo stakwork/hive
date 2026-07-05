@@ -36,6 +36,7 @@ export type RunLogsAgentError =
   | { type: "SWARM_NOT_ACTIVE" }
   | { type: "SWARM_NOT_CONFIGURED" }
   | { type: "SWARM_NAME_MISSING" }
+  | { type: "SCOPE_WRONG_WORKSPACE"; message: string }
   | { type: "AGENT_REQUEST_FAILED"; statusCode: number; message: string }
   | { type: "NO_REQUEST_ID" }
   | { type: "AGENT_FAILED"; message: string }
@@ -188,6 +189,95 @@ export async function runLogsAgent(
       })
     : [];
 
+  // Scoped ids that exist but live in another workspace match nothing here
+  // (the runs query is workspace-fenced). Detect that and redirect the caller
+  // instead of dispatching an agent that can never reach the requested logs.
+  if (hasScope && rawRuns.length === 0) {
+    const [scopedTasks, scopedFeatures] = await Promise.all([
+      rawTaskIds.length > 0
+        ? db.task.findMany({
+            where: { id: { in: rawTaskIds } },
+            select: { id: true, workspace: { select: { slug: true } } },
+          })
+        : Promise.resolve([]),
+      rawFeatureIds.length > 0
+        ? db.feature.findMany({
+            where: { id: { in: rawFeatureIds } },
+            select: { id: true, workspace: { select: { slug: true } } },
+          })
+        : Promise.resolve([]),
+    ]);
+    const misrouted = [
+      ...scopedTasks
+        .filter((t) => t.workspace.slug !== slug)
+        .map((t) => ({ kind: "task", id: t.id, slug: t.workspace.slug })),
+      ...scopedFeatures
+        .filter((f) => f.workspace.slug !== slug)
+        .map((f) => ({ kind: "feature", id: f.id, slug: f.workspace.slug })),
+    ];
+    if (misrouted.length > 0) {
+      const details = misrouted
+        .map((m) => `${m.kind} ${m.id} belongs to workspace "${m.slug}"`)
+        .join("; ");
+      logger.info("[LogsAgent] scope redirected to other workspace", `workspace=${slug}`, {
+        misrouted,
+      });
+      return {
+        success: false,
+        error: {
+          type: "SCOPE_WRONG_WORKSPACE",
+          message: `Scope error: ${details}, not "${slug}". Its runs and agent transcripts are not reachable from this workspace — invoke that workspace's logs_agent tool with the same scope instead.`,
+        },
+      };
+    }
+  }
+
+  // Agent transcripts are not always linked to a StakworkRun — some pipelines
+  // report them attached directly to the task or feature (stakworkRunId null).
+  // Fetch those and merge them into the matched runs' agentLogs so the swarm's
+  // fetch_agent_log tool can reach them.
+  const mergeTaskIds = new Set(rawTaskIds);
+  const mergeFeatureIds = new Set(rawFeatureIds);
+  for (const r of rawRuns) {
+    if (r.taskId) mergeTaskIds.add(r.taskId);
+    if (r.featureId) mergeFeatureIds.add(r.featureId);
+  }
+  const orphanLogs =
+    workspaceRow && (mergeTaskIds.size > 0 || mergeFeatureIds.size > 0)
+      ? await db.agentLog.findMany({
+          where: {
+            workspaceId: workspaceRow.id,
+            stakworkRunId: null,
+            OR: [
+              ...(mergeTaskIds.size > 0
+                ? [{ taskId: { in: [...mergeTaskIds] } }]
+                : []),
+              ...(mergeFeatureIds.size > 0
+                ? [{ featureId: { in: [...mergeFeatureIds] } }]
+                : []),
+            ],
+          },
+          orderBy: { createdAt: "desc" },
+          take: 50,
+          select: { id: true, agent: true, taskId: true, featureId: true },
+        })
+      : [];
+
+  const mergedRuns = rawRuns.map((r) => ({ ...r, agentLogs: [...r.agentLogs] }));
+  for (const log of orphanLogs) {
+    // Runs are ordered createdAt desc, so this attaches to the most recent match
+    const run = mergedRuns.find(
+      (r) =>
+        (log.taskId !== null && r.taskId === log.taskId) ||
+        (log.featureId !== null && r.featureId === log.featureId),
+    );
+    if (!run) continue;
+    // fetch_agent_log matches by agent name case-insensitively — skip collisions
+    const agentLower = log.agent.toLowerCase();
+    if (run.agentLogs.some((l) => l.agent.toLowerCase() === agentLower)) continue;
+    run.agentLogs.push({ id: log.id, agent: log.agent });
+  }
+
   // Log scope resolution
   logger.info(
     "[LogsAgent] StakworkRun scope resolved",
@@ -199,7 +289,8 @@ export async function runLogsAgent(
       matchedRunCount: rawRuns.length,
       matchedProjectIds: rawRuns.map((r) => r.projectId),
       matchedAgentLogCount: rawRuns.reduce((n, r) => n + r.agentLogs.length, 0),
-      sample: rawRuns.slice(0, 5).map((r) => ({
+      mergedOrphanLogCount: orphanLogs.length,
+      sample: mergedRuns.slice(0, 5).map((r) => ({
         projectId: r.projectId,
         type: r.type,
         status: r.status,
@@ -219,7 +310,7 @@ export async function runLogsAgent(
 
   const SIGNED_URL_EXPIRY_SECONDS = 3600;
 
-  const stakworkRuns = rawRuns.map((run) => ({
+  const stakworkRuns = mergedRuns.map((run) => ({
     projectId: run.projectId as number,
     type: run.type,
     status: run.status,
