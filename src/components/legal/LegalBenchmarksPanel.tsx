@@ -11,16 +11,11 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { LegalBenchmarkResults } from "@/components/legal/LegalBenchmarkResults";
-import type { WorkType } from "@/lib/harvey-lab-tasks";
+import type { HarveyTask } from "@/lib/harvey-lab-tasks";
+import { WORK_TYPE_STYLES } from "@/lib/harvey-lab-tasks";
+import { TaskDetailsModal } from "@/components/legal/TaskDetailsModal";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
-
-interface HarveyTask {
-  slug: string;
-  title: string;
-  work_type: WorkType;
-  tags: string[];
-}
 
 interface PracticeArea {
   slug: string;
@@ -33,16 +28,6 @@ interface BenchmarksResponse {
   practice_areas: PracticeArea[];
   total: number;
 }
-
-// ─── Helpers ─────────────────────────────────────────────────────────────────
-
-const WORK_TYPE_STYLES: Record<WorkType, string> = {
-  draft: "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300",
-  review: "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300",
-  extract: "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300",
-  compare: "bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-300",
-  identify: "bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-300",
-};
 
 // ─── Skeleton ─────────────────────────────────────────────────────────────────
 
@@ -67,10 +52,11 @@ function TaskCardSkeleton() {
 interface TaskCardProps {
   task: HarveyTask;
   onSelect: (task: HarveyTask) => void;
+  onViewDetails: (task: HarveyTask) => void;
   isRunning: boolean;
 }
 
-function TaskCard({ task, onSelect, isRunning }: TaskCardProps) {
+function TaskCard({ task, onSelect, onViewDetails, isRunning }: TaskCardProps) {
   const visibleTags = task.tags.slice(0, 3);
   const overflowCount = task.tags.length - 3;
 
@@ -104,21 +90,26 @@ function TaskCard({ task, onSelect, isRunning }: TaskCardProps) {
           )}
         </div>
 
-        <Button
-          size="sm"
-          variant="outline"
-          onClick={() => onSelect(task)}
-          disabled={isRunning}
-        >
-          {isRunning ? (
-            <>
-              <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" />
-              Running…
-            </>
-          ) : (
-            "Select Task"
-          )}
-        </Button>
+        <div className="flex gap-2">
+          <Button size="sm" variant="ghost" onClick={() => onViewDetails(task)}>
+            Details
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => onSelect(task)}
+            disabled={isRunning}
+          >
+            {isRunning ? (
+              <>
+                <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" />
+                Running…
+              </>
+            ) : (
+              "Select Task"
+            )}
+          </Button>
+        </div>
       </CardContent>
     </Card>
   );
@@ -137,6 +128,7 @@ export function LegalBenchmarksPanel() {
 
   const [activeRunId, setActiveRunId] = useState<string | null>(null);
   const [runningTaskSlug, setRunningTaskSlug] = useState<string | null>(null);
+  const [detailsTask, setDetailsTask] = useState<HarveyTask | null>(null);
 
   useEffect(() => {
     if (!slug) return;
@@ -267,6 +259,7 @@ export function LegalBenchmarksPanel() {
                     key={task.slug}
                     task={task}
                     onSelect={handleSelectTask}
+                    onViewDetails={setDetailsTask}
                     isRunning={task.slug === runningTaskSlug}
                   />
                 ))}
@@ -280,6 +273,15 @@ export function LegalBenchmarksPanel() {
           </ScrollArea>
         </div>
       </div>
+
+      {/* Task details modal */}
+      <TaskDetailsModal
+        open={detailsTask !== null}
+        onOpenChange={(o) => { if (!o) setDetailsTask(null); }}
+        task={detailsTask!}
+        slug={slug!}
+        onRunTask={() => detailsTask && handleSelectTask(detailsTask)}
+      />
     </div>
   );
 }
