@@ -15,6 +15,7 @@ import {
   ChevronRight,
   ClipboardCheck,
   FileText,
+  FlaskConical,
   KeyRound,
   Languages,
   Map,
@@ -22,6 +23,7 @@ import {
   Mic,
   PenLine,
   Phone,
+  Scale,
   ScrollText,
   Server,
   Settings,
@@ -49,7 +51,7 @@ import { isDevelopmentMode } from "@/lib/runtime";
 import { NavUser } from "./NavUser";
 import { WorkspaceSwitcher } from "./WorkspaceSwitcher";
 import { BugReportSlideout } from "./BugReportSlideout";
-import { STAK_TOOLKIT_SLUGS } from "@/lib/eval-capture-slugs";
+import { STAK_TOOLKIT_SLUGS, LEGAL_SLUGS } from "@/lib/eval-capture-slugs";
 
 
 
@@ -486,6 +488,21 @@ export function Sidebar({ user }: SidebarProps) {
     },
   ] : [];
 
+  // Create Legal items if in openlaw workspace or dev mode
+  const showLegal = LEGAL_SLUGS.includes(workspaceSlug ?? "") || devMode;
+  const legalItems: NavigationItem[] = showLegal
+    ? [
+        {
+          icon: Scale,
+          label: "Legal",
+          href: "/legal",
+          children: [
+            { icon: FlaskConical, label: "Legal Benchmarks", href: "/legal/benchmarks" },
+          ],
+        },
+      ]
+    : [];
+
   const excludeLabels: string[] = [];
   if (!canAccessDefense) excludeLabels.push("Protect");
 
@@ -496,10 +513,11 @@ export function Sidebar({ user }: SidebarProps) {
     excludeLabels.push("Capacity", "Protect");
   }
 
-  // Insert Stak Toolkit items before Build section
+  // Insert Stak Toolkit and Legal items before Build section
   const allNavigationItems = [
     ...baseNavigationItems.slice(0, 2), // Graph and Capacity
     ...stakToolkitItems, // Stak Toolkit (conditionally)
+    ...legalItems, // Legal (conditionally)
     ...baseNavigationItems.slice(2), // Build, Protect, Context
   ];
 
