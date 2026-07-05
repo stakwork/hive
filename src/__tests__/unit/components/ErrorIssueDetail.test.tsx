@@ -75,12 +75,14 @@ function makeEvent(overrides: Partial<ErrorEventRecord> = {}): ErrorEventRecord 
 function makeDetail(
   issueOverrides: Partial<ErrorIssueRecord> = {},
   eventOverrides: Partial<ErrorEventRecord> = {},
+  features: ErrorIssueDetailResponse["features"] = [],
 ): ErrorIssueDetailResponse {
   return {
     issue: makeIssue(issueOverrides),
     events: [makeEvent(eventOverrides)],
     eventsTotal: 1,
     eventsHasMore: false,
+    features,
   };
 }
 
@@ -88,7 +90,7 @@ function makeDetail(
 
 describe("ErrorIssueDetail — LikelyCause card", () => {
   it("renders nothing when correlationConfidence is null", () => {
-    render(<ErrorIssueDetail detail={makeDetail()} />);
+    render(<ErrorIssueDetail detail={makeDetail()} slug="test-ws" />);
     expect(screen.queryByTestId("likely-cause-card")).not.toBeInTheDocument();
   });
 
@@ -102,17 +104,17 @@ describe("ErrorIssueDetail — LikelyCause card", () => {
     };
 
     it("renders the Likely Cause card", () => {
-      render(<ErrorIssueDetail detail={makeDetail(HIGH_ISSUE)} />);
+      render(<ErrorIssueDetail detail={makeDetail(HIGH_ISSUE)} slug="test-ws" />);
       expect(screen.getByTestId("likely-cause-card")).toBeInTheDocument();
     });
 
     it("renders 'Likely Cause' heading", () => {
-      render(<ErrorIssueDetail detail={makeDetail(HIGH_ISSUE)} />);
+      render(<ErrorIssueDetail detail={makeDetail(HIGH_ISSUE)} slug="test-ws" />);
       expect(screen.getByText("Likely Cause")).toBeInTheDocument();
     });
 
     it("renders PR link with correct href and text", () => {
-      render(<ErrorIssueDetail detail={makeDetail(HIGH_ISSUE)} />);
+      render(<ErrorIssueDetail detail={makeDetail(HIGH_ISSUE)} slug="test-ws" />);
       const prLink = screen.getByTestId("correlation-pr-link");
       expect(prLink).toHaveTextContent("PR #42");
       expect(prLink).toHaveAttribute("href", "https://github.com/stakwork/hive/pull/42");
@@ -120,7 +122,7 @@ describe("ErrorIssueDetail — LikelyCause card", () => {
     });
 
     it("renders commit link with short SHA (7 chars)", () => {
-      render(<ErrorIssueDetail detail={makeDetail(HIGH_ISSUE)} />);
+      render(<ErrorIssueDetail detail={makeDetail(HIGH_ISSUE)} slug="test-ws" />);
       const commitEl = screen.getByTestId("correlation-commit-link");
       // Should show only the first 7 chars
       expect(commitEl).toHaveTextContent("abc1234");
@@ -134,6 +136,7 @@ describe("ErrorIssueDetail — LikelyCause card", () => {
           detail={makeDetail(HIGH_ISSUE, {
             repositoryUrl: "https://github.com/stakwork/hive",
           })}
+          slug="test-ws"
         />,
       );
       const commitLink = screen.getByTestId("correlation-commit-link");
@@ -147,6 +150,7 @@ describe("ErrorIssueDetail — LikelyCause card", () => {
       render(
         <ErrorIssueDetail
           detail={makeDetail(HIGH_ISSUE, { repositoryUrl: null })}
+          slug="test-ws"
         />,
       );
       const commitEl = screen.getByTestId("correlation-commit-link");
@@ -158,6 +162,7 @@ describe("ErrorIssueDetail — LikelyCause card", () => {
       render(
         <ErrorIssueDetail
           detail={makeDetail({ ...HIGH_ISSUE, correlatedPrNumber: null, correlatedPrUrl: null })}
+          slug="test-ws"
         />,
       );
       expect(screen.queryByTestId("correlation-pr-link")).not.toBeInTheDocument();
@@ -169,6 +174,7 @@ describe("ErrorIssueDetail — LikelyCause card", () => {
       render(
         <ErrorIssueDetail
           detail={makeDetail({ ...HIGH_ISSUE, correlatedCommitSha: null })}
+          slug="test-ws"
         />,
       );
       expect(screen.queryByTestId("correlation-commit-link")).not.toBeInTheDocument();
@@ -192,17 +198,17 @@ describe("ErrorIssueDetail — LikelyCause card", () => {
     };
 
     it("renders the Likely Cause card", () => {
-      render(<ErrorIssueDetail detail={makeDetail(LIKELY_ISSUE)} />);
+      render(<ErrorIssueDetail detail={makeDetail(LIKELY_ISSUE)} slug="test-ws" />);
       expect(screen.getByTestId("likely-cause-card")).toBeInTheDocument();
     });
 
     it("shows 'Possibly caused by one of:' label", () => {
-      render(<ErrorIssueDetail detail={makeDetail(LIKELY_ISSUE)} />);
+      render(<ErrorIssueDetail detail={makeDetail(LIKELY_ISSUE)} slug="test-ws" />);
       expect(screen.getByText("Possibly caused by one of:")).toBeInTheDocument();
     });
 
     it("renders all candidate PR links", () => {
-      render(<ErrorIssueDetail detail={makeDetail(LIKELY_ISSUE)} />);
+      render(<ErrorIssueDetail detail={makeDetail(LIKELY_ISSUE)} slug="test-ws" />);
       const cand7 = screen.getByTestId("correlation-candidate-7");
       expect(cand7).toHaveTextContent("PR #7");
       expect(cand7).toHaveAttribute("href", "https://github.com/stakwork/hive/pull/7");
@@ -211,12 +217,12 @@ describe("ErrorIssueDetail — LikelyCause card", () => {
     });
 
     it("renders candidate list container", () => {
-      render(<ErrorIssueDetail detail={makeDetail(LIKELY_ISSUE)} />);
+      render(<ErrorIssueDetail detail={makeDetail(LIKELY_ISSUE)} slug="test-ws" />);
       expect(screen.getByTestId("correlation-candidates-list")).toBeInTheDocument();
     });
 
     it("does NOT render the assertive PR link (no single correlation-pr-link)", () => {
-      render(<ErrorIssueDetail detail={makeDetail(LIKELY_ISSUE)} />);
+      render(<ErrorIssueDetail detail={makeDetail(LIKELY_ISSUE)} slug="test-ws" />);
       expect(screen.queryByTestId("correlation-pr-link")).not.toBeInTheDocument();
     });
 
@@ -224,11 +230,54 @@ describe("ErrorIssueDetail — LikelyCause card", () => {
       render(
         <ErrorIssueDetail
           detail={makeDetail({ ...LIKELY_ISSUE, correlationCandidates: [] })}
+          slug="test-ws"
         />,
       );
       // Card still renders (confidence is set), candidates list is empty
       expect(screen.getByTestId("likely-cause-card")).toBeInTheDocument();
       expect(screen.getByTestId("correlation-candidates-list")).toBeInTheDocument();
     });
+  });
+});
+
+// ── Linked Fixes card ─────────────────────────────────────────────────────────
+
+describe("ErrorIssueDetail — Linked Fixes card", () => {
+  it("renders no 'View Plan' links when features is empty", () => {
+    render(<ErrorIssueDetail detail={makeDetail()} slug="test-ws" />);
+    expect(screen.queryByText("Linked Fixes")).not.toBeInTheDocument();
+    expect(screen.queryByText("View Plan")).not.toBeInTheDocument();
+  });
+
+  it("renders a 'View Plan' link for each linked feature, newest first", () => {
+    const features = [
+      { id: "feat-2", title: "Retry Fix", createdAt: "2025-06-01T00:00:00Z" },
+      { id: "feat-1", title: "First Fix", createdAt: "2025-01-01T00:00:00Z" },
+    ];
+    render(<ErrorIssueDetail detail={makeDetail({}, {}, features)} slug="my-workspace" />);
+
+    expect(screen.getByText("Linked Fixes")).toBeInTheDocument();
+
+    const links = screen.getAllByText("View Plan");
+    expect(links).toHaveLength(2);
+    expect(links[0]).toHaveAttribute("href", "/w/my-workspace/plan/feat-2");
+    expect(links[1]).toHaveAttribute("href", "/w/my-workspace/plan/feat-1");
+  });
+
+  it("shows feature title text for each linked fix", () => {
+    const features = [
+      { id: "feat-2", title: "Retry Fix", createdAt: "2025-06-01T00:00:00Z" },
+      { id: "feat-1", title: "First Fix", createdAt: "2025-01-01T00:00:00Z" },
+    ];
+    render(<ErrorIssueDetail detail={makeDetail({}, {}, features)} slug="my-workspace" />);
+    expect(screen.getByText("Retry Fix")).toBeInTheDocument();
+    expect(screen.getByText("First Fix")).toBeInTheDocument();
+  });
+
+  it("uses the slug prop to build the correct plan URL", () => {
+    const features = [{ id: "feat-99", title: "Some Fix", createdAt: "2025-03-01T00:00:00Z" }];
+    render(<ErrorIssueDetail detail={makeDetail({}, {}, features)} slug="acme-org" />);
+    const link = screen.getByText("View Plan");
+    expect(link).toHaveAttribute("href", "/w/acme-org/plan/feat-99");
   });
 });
