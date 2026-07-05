@@ -1929,7 +1929,7 @@ async function main() {
   await seedWorkspacesAndSwarms(users);
   await seedTasksWithLayerTypes(users);
   await seedFeaturesWithStakworkRuns(users);
-  await seedAutoMergeTestScenarios(users);
+  await seedAutoMergeTestScenarios(undefined, users);
   await seedDeploymentTracking();
   await seedAgentLogs();
   await seedErrorEvents();
