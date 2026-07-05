@@ -1148,11 +1148,11 @@ describe("POST /api/webhook/errors — opportunistic impact scoring", () => {
     mockSearchLatestByTypes.mockResolvedValue({ ok: true, nodes: [] });
     mockGetReferencedNodeCentrality.mockResolvedValue({
       ok: true,
-      nodes: [{ ref_id: "file-ref", node_type: "File", name: "core.ts", pagerank: 0.8, in_degree: 40 }],
+      nodes: [{ ref_id: "file-ref", node_type: "File", name: "core.ts", pagerank: 0.8 }],
     });
     mockComputeImpactScore.mockReturnValue({
-      score: 0.64,
-      meta: { topNodeName: "core.ts", topNodeType: "File", topPagerank: 0.8, topInDegree: 40, nodeCount: 1 },
+      score: 0.8,
+      meta: { topNodeName: "core.ts", topNodeType: "File", topPagerank: 0.8, nodeCount: 1 },
     });
 
     const res = await POST(
@@ -1169,7 +1169,7 @@ describe("POST /api/webhook/errors — opportunistic impact scoring", () => {
     await new Promise((r) => setTimeout(r, 50));
 
     const issue = await db.errorIssue.findUnique({ where: { id: body.data.issueId } });
-    expect(issue?.impactScore).toBe(0.64);
+    expect(issue?.impactScore).toBe(0.8);
     expect(issue?.impactScoredAt).not.toBeNull();
   });
 });
