@@ -137,7 +137,7 @@ export async function getErrorIssueDetail(
 
   if (!issue) return null;
 
-  const [rawEvents, eventsTotal] = await Promise.all([
+  const [rawEvents, eventsTotal, linkedFeatures] = await Promise.all([
     db.errorEvent.findMany({
       where: { issueId },
       orderBy: { createdAt: "desc" },
@@ -161,6 +161,11 @@ export async function getErrorIssueDetail(
       },
     }),
     db.errorEvent.count({ where: { issueId } }),
+    db.feature.findMany({
+      where: { errorIssueId: issueId, deleted: false },
+      orderBy: { createdAt: "desc" },
+      select: { id: true, title: true, createdAt: true },
+    }),
   ]);
 
   // Flatten repository fields so callers get a consistent, serializable shape
@@ -170,11 +175,18 @@ export async function getErrorIssueDetail(
     defaultBranch: repository?.branch ?? null,
   }));
 
+  const features = linkedFeatures.map((f) => ({
+    id: f.id,
+    title: f.title,
+    createdAt: f.createdAt.toISOString(),
+  }));
+
   return {
     issue,
     events,
     eventsTotal,
     eventsHasMore: eventsSkip + eventsLimit < eventsTotal,
+    features,
   };
 }
 
