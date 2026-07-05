@@ -9,7 +9,7 @@ beforeEach(() => {
   global.fetch = mockFetch;
 });
 
-const { addNode, addEdge, addEdgeBulk, addEdgeByRefBulk, addNodeBulk, updateNode, deleteNode, deleteEdge } = await import("@/services/swarm/api/nodes");
+const { addNode, addEdge, addEdgeBulk, addEdgeByRefBulk, addNodeBulk, updateNode, deleteNode, deleteEdge, getReferencedNodeCentrality } = await import("@/services/swarm/api/nodes");
 
 const config = {
   jarvisUrl: "https://test-swarm.sphinx.chat:8444",
@@ -1068,5 +1068,146 @@ describe("addNodeBulk", () => {
     const result = await addNodeBulk(config, []);
     expect(result).toEqual({ success: true, errors: [] });
     expect(mockFetch).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// getReferencedNodeCentrality
+// ---------------------------------------------------------------------------
+
+describe("getReferencedNodeCentrality", () => {
+  const issueRefId = "error-issue-ref-1";
+
+  function makeNodeResponse(nodes: Array<unknown>, edges: Array<unknown>) {
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({ nodes, edges }),
+    };
+  }
+
+  test("maps properties.pagerank into the returned CentralityNode.pagerank", async () => {
+    mockFetch.mockResolvedValueOnce(
+      makeNodeResponse(
+        [{ ref_id: "file-ref-1", node_type: "File", name: "core.ts", properties: { pagerank: 1.17 } }],
+        [{ source: issueRefId, target: "file-ref-1", edge_type: "REFERENCES" }],
+      ),
+    );
+
+    const result = await getReferencedNodeCentrality(config, issueRefId);
+
+    expect(result.ok).toBe(true);
+    expect(result.nodes).toHaveLength(1);
+    expect(result.nodes[0].pagerank).toBe(1.17);
+    expect(result.nodes[0].ref_id).toBe("file-ref-1");
+    expect(result.nodes[0].node_type).toBe("File");
+  });
+
+  test("returns pagerank=undefined when properties.pagerank is absent", async () => {
+    mockFetch.mockResolvedValueOnce(
+      makeNodeResponse(
+        [{ ref_id: "file-ref-2", node_type: "File", name: "leaf.ts", properties: {} }],
+        [{ source: issueRefId, target: "file-ref-2", edge_type: "REFERENCES" }],
+      ),
+    );
+
+    const result = await getReferencedNodeCentrality(config, issueRefId);
+
+    expect(result.ok).toBe(true);
+    expect(result.nodes).toHaveLength(1);
+    expect(result.nodes[0].pagerank).toBeUndefined();
+  });
+
+  test("returns pagerank=undefined when properties.pagerank is non-numeric", async () => {
+    mockFetch.mockResolvedValueOnce(
+      makeNodeResponse(
+        [{ ref_id: "file-ref-3", node_type: "Function", name: "doWork", properties: { pagerank: "high" } }],
+        [{ source: issueRefId, target: "file-ref-3", edge_type: "REFERENCES" }],
+      ),
+    );
+
+    const result = await getReferencedNodeCentrality(config, issueRefId);
+
+    expect(result.ok).toBe(true);
+    expect(result.nodes[0].pagerank).toBeUndefined();
+  });
+
+  test("returns pagerank=undefined when node has algo_page_rank but NO pagerank (old property never read)", async () => {
+    mockFetch.mockResolvedValueOnce(
+      makeNodeResponse(
+        [{ ref_id: "file-ref-4", node_type: "File", name: "old.ts", properties: { algo_page_rank: 0.99 } }],
+        [{ source: issueRefId, target: "file-ref-4", edge_type: "REFERENCES" }],
+      ),
+    );
+
+    const result = await getReferencedNodeCentrality(config, issueRefId);
+
+    expect(result.ok).toBe(true);
+    expect(result.nodes).toHaveLength(1);
+    // algo_page_rank must NOT be read — pagerank should be undefined
+    expect(result.nodes[0].pagerank).toBeUndefined();
+  });
+
+  test("returns ok:false when HTTP response is not ok", async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: false,
+      status: 503,
+      text: async () => "Service Unavailable",
+    });
+
+    const result = await getReferencedNodeCentrality(config, issueRefId);
+
+    expect(result.ok).toBe(false);
+    expect(result.nodes).toHaveLength(0);
+    expect(result.error).toContain("503");
+  });
+
+  test("returns ok:false and empty nodes when fetch throws (never throws)", async () => {
+    mockFetch.mockRejectedValueOnce(new Error("Network failure"));
+
+    const result = await getReferencedNodeCentrality(config, issueRefId);
+
+    expect(result.ok).toBe(false);
+    expect(result.nodes).toHaveLength(0);
+  });
+
+  test("deduplicates nodes when the same ref_id appears in multiple REFERENCES edges", async () => {
+    mockFetch.mockResolvedValueOnce(
+      makeNodeResponse(
+        [{ ref_id: "file-dup", node_type: "File", name: "dup.ts", properties: { pagerank: 0.5 } }],
+        [
+          { source: issueRefId, target: "file-dup", edge_type: "REFERENCES" },
+          { source: issueRefId, target: "file-dup", edge_type: "REFERENCES" },
+        ],
+      ),
+    );
+
+    const result = await getReferencedNodeCentrality(config, issueRefId);
+
+    expect(result.ok).toBe(true);
+    expect(result.nodes).toHaveLength(1);
+    expect(result.nodes[0].pagerank).toBe(0.5);
+  });
+
+  test("ignores edges that are not REFERENCES or not sourced from the issue node", async () => {
+    mockFetch.mockResolvedValueOnce(
+      makeNodeResponse(
+        [
+          { ref_id: "file-ok", node_type: "File", name: "good.ts", properties: { pagerank: 0.7 } },
+          { ref_id: "file-other", node_type: "File", name: "other.ts", properties: { pagerank: 0.3 } },
+        ],
+        [
+          { source: issueRefId, target: "file-ok", edge_type: "REFERENCES" },
+          { source: "other-node", target: "file-other", edge_type: "REFERENCES" }, // wrong source
+          { source: issueRefId, target: "file-other", edge_type: "RELATED_TO" }, // wrong edge_type
+        ],
+      ),
+    );
+
+    const result = await getReferencedNodeCentrality(config, issueRefId);
+
+    expect(result.ok).toBe(true);
+    expect(result.nodes).toHaveLength(1);
+    expect(result.nodes[0].ref_id).toBe("file-ok");
   });
 });
