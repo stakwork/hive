@@ -102,7 +102,6 @@ function buildSeedImpactData(issueIndex: number): SeedImpactData {
           topNodeName: "src/services/user.ts",
           topNodeType: "File",
           topPagerank: 0.91,
-          topInDegree: 47,
           nodeCount: 3,
         },
       };
@@ -115,7 +114,6 @@ function buildSeedImpactData(issueIndex: number): SeedImpactData {
           topNodeName: "src/utils/format.ts",
           topNodeType: "File",
           topPagerank: 0.08,
-          topInDegree: 2,
           nodeCount: 1,
         },
       };
