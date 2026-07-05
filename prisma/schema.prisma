@@ -2295,3 +2295,22 @@ model VoiceCorrectionLearning {
   @@index([createdAt])
   @@map("voice_correction_learnings")
 }
+
+model LegalBenchmarkRun {
+  id               String   @id @default(cuid())
+  workspaceId      String
+  taskSlug         String
+  taskTitle        String
+  status           String   @default("PENDING") // PENDING | RUNNING | SCORING | COMPLETE | FAILED
+  runnerProjectId  Int?
+  scorerProjectId  Int?
+  runnerOutputUrl  String?
+  runnerOutputText String?  @db.Text
+  scoreJson        String?  @db.Text
+  errorMessage     String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@index([workspaceId])
+  @@index([taskSlug])
+}
