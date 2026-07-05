@@ -15,6 +15,7 @@
 
 import { db } from "@/lib/db";
 import { notifyCanvasConversationUpdated } from "@/lib/pusher";
+import type { StoredMessage } from "@/services/canvas-turn-persistence";
 
 export interface ResearchFanOutPayload {
   researchId: string;
@@ -25,6 +26,30 @@ export interface ResearchFanOutPayload {
   /** "ready" when the markdown writeup landed; "failed" otherwise. */
   status: "ready" | "failed";
   initiativeId?: string;
+  /**
+   * Optional sub-agent messages from the research loop's steps.
+   * Filtered (code_execution / srvtoolu_ traces stripped) before write.
+   */
+  subAgentMessages?: StoredMessage[];
+}
+
+/**
+ * Strips assistant messages whose toolCalls contain Anthropic server-side
+ * execution traces: any call with toolName === 'code_execution', OR any
+ * call whose id is prefixed 'srvtoolu_' and whose toolName is not
+ * 'web_search'. These have no counterpart tool-results in the parent
+ * conversation and would cause sanitizer orphaned-tool-call warnings on
+ * every subsequent canvas turn.
+ */
+export function filterSubAgentMessages(msgs: StoredMessage[]): StoredMessage[] {
+  return msgs.filter((m) => {
+    if (m.role !== "assistant" || !m.toolCalls?.length) return true;
+    return !m.toolCalls.some(
+      (tc) =>
+        tc.toolName === "code_execution" ||
+        (tc.id.startsWith("srvtoolu_") && tc.toolName !== "web_search"),
+    );
+  });
 }
 
 /** Row shape written into SharedConversation.messages. */
@@ -59,6 +84,10 @@ export async function fanOutResearchToCanvas(
 
   try {
     let didAppend = false;
+
+    const filteredSubAgentMsgs = payload.subAgentMessages
+      ? filterSubAgentMessages(payload.subAgentMessages)
+      : [];
 
     await db.$transaction(async (tx) => {
       // Row-level lock against concurrent autosave PUTs — same pattern
@@ -108,7 +137,7 @@ export async function fanOutResearchToCanvas(
       await tx.sharedConversation.update({
         where: { id: conversationId },
         data: {
-          messages: [...existingMessages, newRow] as unknown as never,
+          messages: [...existingMessages, ...filteredSubAgentMsgs, newRow] as unknown as never,
           lastMessageAt: new Date(),
         },
       });
