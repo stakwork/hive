@@ -738,15 +738,24 @@ async function seedFeaturesWithStakworkRuns(
  * auto-merge settings and dependency chains.
  */
 export async function seedAutoMergeTestScenarios(
+  workspaceId?: string,
   users?: Array<{ id: string; email: string }>,
 ) {
-  const workspaces = await prisma.workspace.findMany();
-  if (workspaces.length === 0) {
-    console.log("No workspaces found, skipping auto-merge test seeding");
-    return;
+  let workspace;
+  if (workspaceId) {
+    workspace = await prisma.workspace.findUnique({ where: { id: workspaceId } });
+    if (!workspace) {
+      console.log("Workspace not found, skipping auto-merge test seeding");
+      return;
+    }
+  } else {
+    const workspaces = await prisma.workspace.findMany();
+    if (workspaces.length === 0) {
+      console.log("No workspaces found, skipping auto-merge test seeding");
+      return;
+    }
+    workspace = workspaces[0];
   }
-
-  const workspace = workspaces[0];
   
   // Get or use provided users
   const seedUsers = users || await prisma.user.findMany({ take: 1 });
@@ -1938,7 +1947,7 @@ async function main() {
   await seedWorkspacesAndSwarms(users);
   await seedTasksWithLayerTypes(users);
   await seedFeaturesWithStakworkRuns(users);
-  await seedAutoMergeTestScenarios(users);
+  await seedAutoMergeTestScenarios(undefined, users);
   await seedDeploymentTracking();
   await seedAgentLogs();
   await seedErrorEvents();
