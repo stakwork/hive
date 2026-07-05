@@ -95,11 +95,11 @@ describe("runErrorImpactCron", () => {
     mockIssueFindMany.mockResolvedValue([makeIssue("issue-1", "ws-1")]);
     mockGetReferencedNodeCentrality.mockResolvedValue({
       ok: true,
-      nodes: [{ pagerank: 0.8, in_degree: 40, name: "core.ts", node_type: "File" }],
+      nodes: [{ pagerank: 0.8, name: "core.ts", node_type: "File" }],
     });
     mockComputeImpactScore.mockReturnValue({
-      score: 0.64,
-      meta: { topNodeName: "core.ts", topNodeType: "File", topPagerank: 0.8, topInDegree: 40, nodeCount: 1 },
+      score: 0.8,
+      meta: { topNodeName: "core.ts", topNodeType: "File", topPagerank: 0.8, nodeCount: 1 },
     });
 
     const result = await runErrorImpactCron();
@@ -109,7 +109,7 @@ describe("runErrorImpactCron", () => {
     expect(mockIssueUpdate).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { id: "issue-1" },
-        data: expect.objectContaining({ impactScore: 0.64 }),
+        data: expect.objectContaining({ impactScore: 0.8 }),
       }),
     );
   });
@@ -130,11 +130,11 @@ describe("runErrorImpactCron", () => {
       .mockRejectedValueOnce(new Error("Jarvis timeout"))
       .mockResolvedValueOnce({
         ok: true,
-        nodes: [{ pagerank: 0.5, in_degree: 10 }],
+        nodes: [{ pagerank: 0.5 }],
       })
       .mockResolvedValueOnce({
         ok: true,
-        nodes: [{ pagerank: 0.9, in_degree: 80 }],
+        nodes: [{ pagerank: 0.9 }],
       });
 
     mockComputeImpactScore
@@ -190,9 +190,9 @@ describe("runErrorImpactCron", () => {
       .mockResolvedValueOnce([makeIssue("issue-ws2", "ws-2")]);
     mockGetReferencedNodeCentrality.mockResolvedValue({
       ok: true,
-      nodes: [{ pagerank: 0.5, in_degree: 20 }],
+      nodes: [{ pagerank: 0.5 }],
     });
-    mockComputeImpactScore.mockReturnValue({ score: 0.38, meta: {} });
+    mockComputeImpactScore.mockReturnValue({ score: 0.5, meta: {} });
 
     const result = await runErrorImpactCron();
 
@@ -209,9 +209,9 @@ describe("runErrorImpactCron", () => {
     mockIssueFindMany.mockResolvedValue([makeIssue("issue-ws-ok", "ws-ok")]);
     mockGetReferencedNodeCentrality.mockResolvedValue({
       ok: true,
-      nodes: [{ pagerank: 0.6, in_degree: 30 }],
+      nodes: [{ pagerank: 0.6 }],
     });
-    mockComputeImpactScore.mockReturnValue({ score: 0.48, meta: {} });
+    mockComputeImpactScore.mockReturnValue({ score: 0.6, meta: {} });
 
     const result = await runErrorImpactCron();
 

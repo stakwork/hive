@@ -36,7 +36,7 @@ export interface ErrorIssueRecord {
   /** Blast-radius impact score [0,1] from KG node centrality. null = unscored. */
   impactScore: number | null;
   impactScoredAt: string | null;
-  /** Top contributing node breakdown: name, type, pagerank, in_degree, nodeCount. */
+  /** Top contributing node breakdown: name, type, pagerank, nodeCount. */
   impactMeta: Record<string, unknown> | null;
 }
 
