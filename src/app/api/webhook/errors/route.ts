@@ -6,6 +6,7 @@ import { validateApiKey } from "@/lib/api-keys";
 import { pusherServer, getWorkspaceChannelName, PUSHER_EVENTS } from "@/lib/pusher";
 import { resolveRepoKey, computeFingerprint } from "@/lib/utils/error-fingerprint";
 import { sanitizeFrames } from "@/lib/utils/error-frames";
+import { selectFrameCandidates, matchFileNode, matchesFilePath } from "@/lib/utils/error-stack-frames";
 import { getJarvisConfigForWorkspace } from "@/lib/helpers/jarvis-config";
 import { addNode, addEdge, searchLatestByTypes, getReferencedNodeCentrality } from "@/services/swarm/api/nodes";
 import { detectOnset } from "@/services/error-issues/spike-detection";
@@ -306,11 +307,12 @@ export async function POST(request: NextRequest) {
             issueId: issue.id,
             repoKey: issue.repoKey,
           });
-        } else if (issueNodeResult.ref_id && stackTrace) {
-          // (4) Parse file paths and function names from the top stack frames.
-          const stackFrames = parseStackFrames(stackTrace);
+        } else if (issueNodeResult.ref_id) {
+          // (4) Resolve frame candidates from structured frames (primary) or
+          //     raw stackTrace (fallback for older JS clients).
+          const { candidates, source: candidateSource } = selectFrameCandidates(frames, stackTrace);
 
-          if (stackFrames.length > 0) {
+          if (candidates.length > 0) {
             // Fetch File and Function nodes scoped to this repo via the graph
             // search endpoint.  We request a generous limit per type — workspace
             // graph sets are typically small, but we want to avoid missing a
@@ -338,30 +340,33 @@ export async function POST(request: NextRequest) {
               });
 
               let edgesDrawn = 0;
-              for (const frame of stackFrames) {
-                // Try to match a File node by path/name, then a Function node
-                // by function name within the same file.
-                const fileNode = repoNodes.find(
-                  (n) =>
-                    n.node_type === "File" &&
-                    matchesFilePath(n.properties?.file_path as string | undefined, frame.filePath),
-                );
+              const seenRefIds = new Set<string>();
+
+              for (const frame of candidates) {
+                // Try to match a File node by path, then a Function node by
+                // name AND same-file path (same-file guard prevents shared
+                // method names like `perform` from linking the wrong worker).
+                const fileNode = frame.filePath
+                  ? matchFileNode(repoNodes, frame.filePath)
+                  : undefined;
                 const funcNode =
-                  frame.functionName
+                  frame.functionName && frame.filePath
                     ? repoNodes.find(
                         (n) =>
                           n.node_type === "Function" &&
                           (n.properties?.name as string | undefined) === frame.functionName &&
-                          (!frame.filePath ||
-                            matchesFilePath(
-                              n.properties?.file_path as string | undefined,
-                              frame.filePath,
-                            )),
+                          matchesFilePath(
+                            (n.properties?.file ?? n.properties?.file_path) as string | undefined,
+                            frame.filePath,
+                          ),
                       )
                     : undefined;
 
                 for (const targetNode of [fileNode, funcNode]) {
                   if (!targetNode?.ref_id) continue;
+                  if (seenRefIds.has(targetNode.ref_id)) continue;
+                  seenRefIds.add(targetNode.ref_id);
+
                   const edgeResult = await addEdge(jarvisConfig, {
                     edge: { edge_type: "REFERENCES" },
                     source: { ref_id: issueNodeResult.ref_id },
@@ -381,7 +386,8 @@ export async function POST(request: NextRequest) {
 
               console.info("[error-ingest] KG edges drawn", {
                 issueId: issue.id,
-                framesScanned: stackFrames.length,
+                source: candidateSource,
+                candidatesScanned: candidates.length,
                 edgesDrawn,
                 repoNodesAvailable: repoNodes.length,
               });
@@ -495,78 +501,3 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// ── Stack-frame parsing helpers ───────────────────────────────────────────────
-
-interface StackFrame {
-  filePath: string | null;
-  functionName: string | null;
-}
-
-const TOP_FRAME_COUNT = 5;
-
-/**
- * Extract the top N file paths and function names from a raw stack trace.
- * Handles the common V8/Node format: "  at FnName (path/to/file.ts:10:5)"
- * and the Firefox/Safari format:  "FnName@path/to/file.ts:10:5"
- */
-function parseStackFrames(stackTrace: string): StackFrame[] {
-  const lines = stackTrace
-    .split("\n")
-    .map((l) => l.trim())
-    .filter(Boolean)
-    .slice(0, TOP_FRAME_COUNT);
-
-  return lines
-    .map((line): StackFrame => {
-      // V8: "at FunctionName (file.ts:10:5)" or "at file.ts:10:5"
-      const v8Match = line.match(/^\s*at\s+(?:(.+?)\s+\()?(.+?)(?::\d+:\d+)?\)?\s*$/);
-      if (v8Match) {
-        const rawFn = v8Match[1] ?? null;
-        const rawPath = v8Match[2] ?? null;
-        return {
-          filePath: rawPath ? extractFileName(rawPath) : null,
-          functionName: rawFn && rawFn !== "<anonymous>" ? cleanFunctionName(rawFn) : null,
-        };
-      }
-
-      // Firefox/Safari: "FnName@http://...file.js:10:5" or "FnName@file.js:10:5"
-      const ffMatch = line.match(/^(.+?)@(.+?)(?::\d+:\d+)?$/);
-      if (ffMatch) {
-        return {
-          filePath: extractFileName(ffMatch[2]),
-          functionName: ffMatch[1] && ffMatch[1] !== "<anonymous>" ? ffMatch[1] : null,
-        };
-      }
-
-      return { filePath: null, functionName: null };
-    })
-    .filter((f) => f.filePath !== null || f.functionName !== null);
-}
-
-/** Keep only the basename to match graph node file_path properties. */
-function extractFileName(raw: string): string | null {
-  if (!raw) return null;
-  // Strip line:col if present
-  const stripped = raw.replace(/:\d+:\d+$/, "").replace(/\)$/, "");
-  // Return the last path segment
-  const parts = stripped.split(/[/\\]/);
-  const last = parts[parts.length - 1];
-  return last || null;
-}
-
-/** Trim common wrapper noise from function names (e.g. "Object.<anonymous>"). */
-function cleanFunctionName(raw: string): string {
-  return raw.replace(/^Object\.<anonymous>$/, "<anonymous>").trim();
-}
-
-/**
- * Return true when the node's file_path ends with or equals `framePath`.
- * This lets a graph node whose path is "src/foo/bar.ts" match a frame that
- * recorded only "bar.ts".
- */
-function matchesFilePath(nodePath: string | undefined, framePath: string | null): boolean {
-  if (!nodePath || !framePath) return false;
-  const norm = nodePath.replace(/\\/g, "/");
-  const frame = framePath.replace(/\\/g, "/");
-  return norm === frame || norm.endsWith("/" + frame) || norm.endsWith(frame);
-}
