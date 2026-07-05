@@ -36,9 +36,8 @@ async function jarvisRequest({
   data?: unknown;
   timeoutMs?: number;
 }): Promise<JarvisApiResponse> {
+  const url = `${config.jarvisUrl.replace(/\/$/, "")}${endpoint.startsWith("/") ? "" : "/"}${endpoint}`;
   try {
-    const url = `${config.jarvisUrl.replace(/\/$/, "")}${endpoint.startsWith("/") ? "" : "/"}${endpoint}`;
-
     const headers: Record<string, string> = {
       "x-api-token": config.apiKey,
       "Content-Type": "application/json",
@@ -53,7 +52,9 @@ async function jarvisRequest({
 
     if (!response.ok) {
       const responseText = await response.text();
-      console.error("[Jarvis Nodes] Request failed:", response.status, responseText);
+      // Include method + URL: a bare status is undebuggable across 17
+      // workspaces × N endpoints (a quiet 404 hid a dead swarm for weeks).
+      console.error("[Jarvis Nodes] Request failed:", method, url, response.status, responseText);
       return {
         ok: false,
         status: response.status,
@@ -75,7 +76,7 @@ async function jarvisRequest({
       body,
     };
   } catch (error) {
-    console.error("[Jarvis Nodes] Request error:", error);
+    console.error("[Jarvis Nodes] Request error:", method, url, error);
     return {
       ok: false,
       status: 500,
@@ -209,12 +210,26 @@ async function executeBulkEdgeRequest(
   }
 
   const body = result.body as
-    | { status?: string; status_messages?: string[] }
+    | { status?: string; status_messages?: string[]; edges?: unknown[] }
     | undefined;
 
   const errors = (body?.status_messages ?? []).filter((m) =>
     m.toLowerCase().startsWith("error"),
   );
+
+  // Silent-no-op detector: jarvis's bulk endpoints report every written OR
+  // already-existing edge in `edges`, so a healthy response accounts for the
+  // full submission even on idempotent re-runs. A shortfall with no ERROR
+  // messages means endpoints silently failed to match (this exact mode — a
+  // label-pinned MATCH finding no node — once returned "Success" while
+  // writing nothing, and cost weeks). Warn loudly; don't fail the call, since
+  // older backends may not return `edges` at all.
+  if (errors.length === 0 && Array.isArray(body?.edges) && body!.edges!.length < edgeList.length) {
+    console.warn(
+      `[Jarvis Nodes] edges/bulk: submitted ${edgeList.length} edges but backend reported ` +
+        `${body!.edges!.length} — possible silent no-op (unmatched ref_ids?)`,
+    );
+  }
 
   // Success means "no real errors" — NOT status === "success". Jarvis returns
   // status "Warning" whenever status_messages is non-empty, which includes
