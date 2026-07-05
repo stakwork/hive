@@ -334,8 +334,8 @@ Example queries:
             { query, max_hits },
             { toolCallId: '1', messages: [] }
           );
-          
-          return result;
+
+          return capMcpResult(result);
         } catch (e) {
           console.error("Error searching logs:", e);
           return "Could not search logs";
@@ -392,10 +392,7 @@ Example queries:
   };
 }
 
-/** Extract text from an McpToolResult for use as a tool return value. */
-function mcpText(result: { content: { type: string; text: string }[] }): string {
-  return result.content.map((c) => c.text).join("\n");
-}
+import { mcpText, capMcpResult } from "./mcpResult";
 
 /**
  * Build feature/task read-only tools + logs_agent when workspace auth is available.
