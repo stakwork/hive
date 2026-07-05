@@ -74,6 +74,20 @@ describe("computeImpactScore", () => {
     expect(result!.meta).not.toHaveProperty("topInDegree");
   });
 
+  it("clamps a realistic hub pagerank (1.17) to exactly 1.0", () => {
+    // Real graph node: hub controller action { pagerank: 1.17, in_degree: 8, hub_score: 8, importance_tag: "hub" }
+    const result = computeImpactScore([
+      { pagerank: 1.17, name: "src/controllers/action.ts", node_type: "Function" },
+    ]);
+    expect(result).not.toBeNull();
+    // clamp(1.17, 0, 1) = 1.0
+    expect(result!.score).toBe(1.0);
+    expect(result!.meta.topPagerank).toBe(1.17);
+    expect(result!.meta.topNodeName).toBe("src/controllers/action.ts");
+    // in_degree/hub_score/importance_tag must NOT appear in meta
+    expect(result!.meta).not.toHaveProperty("topInDegree");
+  });
+
   it("clamps pagerank above 1 to 1.0", () => {
     const result = computeImpactScore([
       { pagerank: 1.5, name: "uber-central.ts", node_type: "File" },

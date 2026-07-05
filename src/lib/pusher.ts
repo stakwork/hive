@@ -106,6 +106,8 @@ export const PUSHER_EVENTS = {
   AGENT_TRACE_READY: "agent-trace-ready",
   // Error issue created or updated (new occurrence ingested via /api/webhook/errors)
   ERROR_ISSUE_UPDATED: "error-issue-updated",
+  // Harvey LAB legal benchmark pipeline update (stage transitions: RUNNING → SCORING → COMPLETE | FAILED)
+  LEGAL_BENCHMARK_UPDATE: "legal-benchmark-update",
 } as const;
 
 /**

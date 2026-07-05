@@ -162,6 +162,7 @@ export const ROUTE_POLICIES: ReadonlyArray<RoutePolicy> = [
   { path: "/api/swarm/stakgraph/webhook", strategy: "prefix", access: "webhook" },
   { path: "/api/chat/response", strategy: "prefix", access: "webhook" },
   { path: "/api/bounty/webhook", strategy: "prefix", access: "webhook" },
+  { path: "/api/legal/benchmark/webhook", strategy: "prefix", access: "webhook" },
   { path: "/api/ec2/alerts", strategy: "prefix", access: "webhook" },
   { path: "/api/tasks/*/title", strategy: "pattern", access: "webhook" },
   { path: "/api/tasks/*/recording", strategy: "pattern", access: "webhook" },
