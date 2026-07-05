@@ -8,7 +8,7 @@
  * Formula:
  *   score = clamp(maxPageRank, 0, 1)
  *
- *   where maxPageRank = max algo_page_rank across referenced nodes
+ *   where maxPageRank = max pagerank across referenced nodes
  *
  * The final score is in [0, 1]. Issues with no resolvable code nodes return null
  * (callers must NOT coerce null → 0, so the UI can distinguish "unscored" from
