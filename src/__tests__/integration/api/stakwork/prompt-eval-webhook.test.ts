@@ -73,9 +73,9 @@ async function createWorkspace(ownerId: string) {
 
 async function createPromptEvalRun(
   workspaceId: string,
-  opts: { promptVersionId?: number; projectId?: number; autoAccept?: boolean } = {}
+  opts: { promptVersionId?: string; projectId?: number; autoAccept?: boolean } = {}
 ) {
-  const { promptVersionId = 55, projectId = Math.floor(Math.random() * 100000) + 1, autoAccept = false } = opts;
+  const { promptVersionId = "ckversionid55abc0000", projectId = Math.floor(Math.random() * 100000) + 1, autoAccept = false } = opts;
   return db.stakworkRun.create({
     data: {
       type: "PROMPT_EVAL",
@@ -113,7 +113,7 @@ describe("processStakworkRunWebhook — PROMPT_EVAL branch", () => {
   });
 
   it("stores the rich eval result verbatim in StakworkRun.result", async () => {
-    const run = await createPromptEvalRun(workspace.id, { promptVersionId: 55 });
+    const run = await createPromptEvalRun(workspace.id, { promptVersionId: "ckversionid55abc0000" });
 
     await processStakworkRunWebhook(
       { result: RICH_EVAL_RESULT, project_status: "complete", project_id: run.projectId! },
@@ -128,7 +128,7 @@ describe("processStakworkRunWebhook — PROMPT_EVAL branch", () => {
   });
 
   it("fires PROMPT_EVAL_RESULT Pusher event with runId, promptVersionId, and full result", async () => {
-    const run = await createPromptEvalRun(workspace.id, { promptVersionId: 55 });
+    const run = await createPromptEvalRun(workspace.id, { promptVersionId: "ckversionid55abc0000" });
 
     await processStakworkRunWebhook(
       { result: RICH_EVAL_RESULT, project_status: "complete", project_id: run.projectId! },
@@ -140,14 +140,14 @@ describe("processStakworkRunWebhook — PROMPT_EVAL branch", () => {
       "prompt-eval-result",
       {
         runId: run.id,
-        promptVersionId: 55,
+        promptVersionId: "ckversionid55abc0000",
         result: RICH_EVAL_RESULT,
       }
     );
   });
 
   it("skips auto-accept for PROMPT_EVAL runs even when autoAccept is true", async () => {
-    const run = await createPromptEvalRun(workspace.id, { promptVersionId: 55, autoAccept: true });
+    const run = await createPromptEvalRun(workspace.id, { promptVersionId: "ckversionid55abc0000", autoAccept: true });
 
     await processStakworkRunWebhook(
       { result: RICH_EVAL_RESULT, project_status: "complete", project_id: run.projectId! },
@@ -166,7 +166,7 @@ describe("processStakworkRunWebhook — PROMPT_EVAL branch", () => {
   });
 
   it("does not trigger a fast-track chain (no new StakworkRun rows)", async () => {
-    const run = await createPromptEvalRun(workspace.id, { promptVersionId: 55 });
+    const run = await createPromptEvalRun(workspace.id, { promptVersionId: "ckversionid55abc0000" });
     const runsBefore = await db.stakworkRun.count({ where: { workspaceId: workspace.id } });
 
     await processStakworkRunWebhook(
@@ -180,12 +180,12 @@ describe("processStakworkRunWebhook — PROMPT_EVAL branch", () => {
 
   it("does not return wrong run when project_id is absent and multiple runs exist", async () => {
     // Create two runs in the same workspace — no project_id supplied to webhook
-    const run1 = await createPromptEvalRun(workspace.id, { promptVersionId: 10 });
+    const run1 = await createPromptEvalRun(workspace.id, { promptVersionId: "ckversionid10abc0000" });
     const run2 = await db.stakworkRun.create({
       data: {
         type: "PROMPT_EVAL",
         workspaceId: workspace.id,
-        promptVersionId: 20,
+        promptVersionId: "ckversionid20abc0000",
         evalSetId: "eval-set-other",
         status: WorkflowStatus.PENDING,
         webhookUrl: `https://example.com/api/webhook/stakwork/response?type=PROMPT_EVAL&workspace_id=${workspace.id}`,
@@ -216,7 +216,7 @@ describe("processStakworkRunWebhook — PROMPT_EVAL branch", () => {
       data: {
         type: "PROMPT_EVAL",
         workspaceId: workspace.id,
-        promptVersionId: 66,
+        promptVersionId: "ckversionid66abc0000",
         evalSetId: "eval-set-completed",
         status: WorkflowStatus.COMPLETED,
         webhookUrl: `https://example.com/api/webhook/stakwork/response?type=PROMPT_EVAL&workspace_id=${workspace.id}`,
