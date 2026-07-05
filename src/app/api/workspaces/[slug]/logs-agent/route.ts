@@ -55,6 +55,13 @@ export async function POST(
       SWARM_NOT_ACTIVE: { msg: "Swarm not configured or not active", status: 400 },
       SWARM_NOT_CONFIGURED: { msg: "Swarm not configured or not active", status: 400 },
       SWARM_NAME_MISSING: { msg: "Swarm name not found", status: 400 },
+      SCOPE_WRONG_WORKSPACE: {
+        msg:
+          error.type === "SCOPE_WRONG_WORKSPACE"
+            ? error.message
+            : "Scoped task/feature belongs to another workspace",
+        status: 400,
+      },
       AGENT_REQUEST_FAILED: {
         msg: "Failed to send request to logs agent",
         status:
