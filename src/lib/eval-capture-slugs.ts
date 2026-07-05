@@ -8,6 +8,11 @@
 export const STAK_TOOLKIT_SLUGS: ReadonlyArray<string> = ["stakwork", "hive"];
 
 /**
+ * Workspaces where the Legal section (Harvey LAB benchmarks, etc.) is visible.
+ */
+export const LEGAL_SLUGS: ReadonlyArray<string> = ["openlaw"];
+
+/**
  * Returns true when eval-capture features should be shown for the given
  * workspace slug.
  */
