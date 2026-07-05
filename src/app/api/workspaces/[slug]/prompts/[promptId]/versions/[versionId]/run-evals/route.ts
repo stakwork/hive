@@ -55,6 +55,14 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json(await mockResponse.json(), { status: mockResponse.status });
     }
 
+    // Relational validation — verify versionId exists and belongs to promptId
+    const promptVersion = await db.promptVersion.findFirst({
+      where: { id: versionId, promptId },
+    });
+    if (!promptVersion) {
+      return NextResponse.json({ error: "Prompt version not found" }, { status: 404 });
+    }
+
     // Parse + validate body
     let body: { evalSetId?: string; promptName?: string };
     try {
@@ -80,20 +88,15 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       );
     }
 
-    const promptVersionIdInt = parseInt(versionId, 10);
-    if (isNaN(promptVersionIdInt)) {
-      return NextResponse.json({ error: "Invalid versionId" }, { status: 400 });
-    }
-
     const baseUrl =
       process.env.NEXTAUTH_URL || `${request.nextUrl.protocol}//${request.nextUrl.host}`;
 
-    // Create StakworkRun record
+    // Create StakworkRun record using the cuid string versionId directly
     const run = await db.stakworkRun.create({
       data: {
         type: "PROMPT_EVAL",
         workspaceId,
-        promptVersionId: promptVersionIdInt,
+        promptVersionId: versionId,
         evalSetId,
         status: "PENDING",
         webhookUrl: `${baseUrl}/api/stakwork/webhook?run_id=placeholder`,
@@ -119,7 +122,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
               evalSetId,
               swarmUrl,
               swarmSecretAlias: swarmSecretAlias ?? "",
-              prompt_overrides: [{ name: promptName, prompt_version_id: promptVersionIdInt }],
+              prompt_overrides: [{ name: promptName, prompt_version_id: versionId }],
               webhookUrl: `${baseUrl}/api/webhook/stakwork/response?type=PROMPT_EVAL&workspace_id=${workspaceId}`,
             },
           },
@@ -177,7 +180,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     const userOrResponse = requireAuth(context);
     if (userOrResponse instanceof NextResponse) return userOrResponse;
 
-    const { slug, promptId: _promptId, versionId } = await params;
+    const { slug, promptId, versionId } = await params;
 
     // IDOR guard — verify authenticated user has access to the workspace
     const swarmAccessResult = await getWorkspaceSwarmAccess(slug, userOrResponse.id);
@@ -189,21 +192,24 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 
     if (process.env.USE_MOCKS === "true") {
       const mockResponse = await fetch(
-        `${request.nextUrl.origin}/api/mock/prompts/${_promptId}/versions/${versionId}/run-evals`,
+        `${request.nextUrl.origin}/api/mock/prompts/${promptId}/versions/${versionId}/run-evals`,
         { headers: { "Content-Type": "application/json" } },
       );
       return NextResponse.json(await mockResponse.json(), { status: mockResponse.status });
     }
 
-    const promptVersionIdInt = parseInt(versionId, 10);
-    if (isNaN(promptVersionIdInt)) {
-      return NextResponse.json({ error: "Invalid versionId" }, { status: 400 });
+    // Relational validation — verify versionId exists and belongs to promptId
+    const promptVersion = await db.promptVersion.findFirst({
+      where: { id: versionId, promptId },
+    });
+    if (!promptVersion) {
+      return NextResponse.json({ error: "Prompt version not found" }, { status: 404 });
     }
 
     const runs = await db.stakworkRun.findMany({
       where: {
         type: "PROMPT_EVAL",
-        promptVersionId: promptVersionIdInt,
+        promptVersionId: versionId,
         workspaceId,
       },
       orderBy: { createdAt: "desc" },
