@@ -79,10 +79,22 @@ export async function resetDatabase() {
     await db.deployment.deleteMany();
     // notificationTrigger may not exist in older schema versions; swallow if missing
     try { await db.notificationTrigger.deleteMany(); } catch { /* table may not exist */ }
+    await db.workflowTask.deleteMany();
     await db.task.deleteMany();
     await db.janitorRecommendation.deleteMany();
     await db.janitorRun.deleteMany();
     await db.janitorConfig.deleteMany();
+    await db.userStory.deleteMany();
+    await db.userFeaturePresence.deleteMany();
+    try { await db.scorerDigest.deleteMany(); } catch { /* table may not exist */ }
+    try { await db.legalBenchmarkRun.deleteMany(); } catch { /* table may not exist */ }
+    // agentLog/stakworkRun have nullable feature FKs without onDelete:Cascade;
+    // delete them before features to avoid FK constraint violations.
+    try { await db.agentLog.deleteMany(); } catch { /* table may not exist */ }
+    try { await db.stakworkRun.deleteMany(); } catch { /* table may not exist */ }
+    try { await db.whiteboard.deleteMany(); } catch { /* table may not exist */ }
+    await db.phase.deleteMany();
+    await db.feature.deleteMany();
     await db.repository.deleteMany();
     await db.pod.deleteMany();
     await db.swarm.deleteMany();
@@ -119,11 +131,18 @@ async function aggressiveReset() {
       "chat_messages",
       "deployments",
       "notification_triggers",
+      "workflow_tasks",
       "tasks",
       "janitor_recommendations",
       "janitor_runs",
       "janitor_configs",
+      "agent_logs",
+      "stakwork_runs",
+      "whiteboards",
       "user_stories",
+      "user_feature_presence",
+      "scorer_digests",
+      "legal_benchmark_runs",
       "phases",
       "features",
       "repositories",
