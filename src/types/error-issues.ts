@@ -63,11 +63,18 @@ export interface ErrorIssuesListResponse {
   hasMore: boolean;
 }
 
+export interface LinkedFeatureSummary {
+  id: string;
+  title: string;
+  createdAt: string;
+}
+
 export interface ErrorIssueDetailResponse {
   issue: ErrorIssueRecord;
   events: ErrorEventRecord[];
   eventsTotal: number;
   eventsHasMore: boolean;
+  features: LinkedFeatureSummary[];
 }
 
 /** Minimal Pusher broadcast payload — no title/exceptionType included. */
