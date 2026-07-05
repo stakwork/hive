@@ -476,7 +476,8 @@ describe("askTools", () => {
       ];
 
       const mockClose = vi.fn();
-      const mockExecute = vi.fn().mockResolvedValue(mockLogs);
+      const mockMcpResult = { content: [{ type: "text", text: JSON.stringify(mockLogs) }] };
+      const mockExecute = vi.fn().mockResolvedValue(mockMcpResult);
       const mockTools = {
         search_logs: {
           execute: mockExecute,
@@ -491,7 +492,7 @@ describe("askTools", () => {
       const tools = askTools(mockSwarmUrl, mockSwarmApiKey, [mockRepoUrl], mockPat, mockApiKey);
       const result = await tools.search_logs.execute({ query: "*", max_hits: 10 });
 
-      expect(result).toEqual(mockLogs);
+      expect(result).toEqual(JSON.stringify(mockLogs));
       expect(mockCreateMCPClient).toHaveBeenCalledWith({
         transport: {
           type: 'http',
