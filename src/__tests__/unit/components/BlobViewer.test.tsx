@@ -77,6 +77,7 @@ function makeDetail(event: ErrorEventRecord): ErrorIssueDetailResponse {
     events: [event],
     eventsTotal: 1,
     eventsHasMore: false,
+    features: [],
   };
 }
 
@@ -120,7 +121,7 @@ describe("BlobViewer — stack trace rendering", () => {
       json: async () => ({}),
     });
 
-    render(<ErrorIssueDetail detail={makeDetail(event)} />);
+    render(<ErrorIssueDetail detail={makeDetail(event)} slug="test-ws" />);
     await expandEvent("evt-1");
 
     // The resolvable app frames should be links
@@ -145,7 +146,7 @@ describe("BlobViewer — stack trace rendering", () => {
       json: async () => ({}),
     });
 
-    render(<ErrorIssueDetail detail={makeDetail(event)} />);
+    render(<ErrorIssueDetail detail={makeDetail(event)} slug="test-ws" />);
     await expandEvent("evt-1");
 
     const links = screen.getAllByRole("link");
@@ -167,7 +168,7 @@ describe("BlobViewer — stack trace rendering", () => {
       json: async () => ({}),
     });
 
-    render(<ErrorIssueDetail detail={makeDetail(event)} />);
+    render(<ErrorIssueDetail detail={makeDetail(event)} slug="test-ws" />);
     await expandEvent("evt-1");
 
     const links = screen.getAllByRole("link");
@@ -187,7 +188,7 @@ describe("BlobViewer — stack trace rendering", () => {
       json: async () => ({}),
     });
 
-    render(<ErrorIssueDetail detail={makeDetail(event)} />);
+    render(<ErrorIssueDetail detail={makeDetail(event)} slug="test-ws" />);
     await expandEvent("evt-1");
 
     const links = screen.getAllByRole("link");
@@ -207,7 +208,7 @@ describe("BlobViewer — stack trace rendering", () => {
       json: async () => ({}),
     });
 
-    render(<ErrorIssueDetail detail={makeDetail(event)} />);
+    render(<ErrorIssueDetail detail={makeDetail(event)} slug="test-ws" />);
     await expandEvent("evt-1");
 
     const links = screen.getAllByRole("link");
@@ -227,7 +228,7 @@ describe("BlobViewer — stack trace rendering", () => {
       json: async () => ({}),
     });
 
-    render(<ErrorIssueDetail detail={makeDetail(event)} />);
+    render(<ErrorIssueDetail detail={makeDetail(event)} slug="test-ws" />);
     await expandEvent("evt-1");
 
     // No anchor links should be present (queryAllByRole won't throw when empty)
@@ -245,7 +246,7 @@ describe("BlobViewer — stack trace rendering", () => {
       json: async () => ({}),
     });
 
-    render(<ErrorIssueDetail detail={makeDetail(event)} />);
+    render(<ErrorIssueDetail detail={makeDetail(event)} slug="test-ws" />);
     await expandEvent("evt-1");
 
     // bar.ts is resolvable
@@ -261,7 +262,7 @@ describe("BlobViewer — stack trace rendering", () => {
     // Never resolves during this assertion window
     mockFetch.mockReturnValueOnce(new Promise(() => {}));
 
-    render(<ErrorIssueDetail detail={makeDetail(event)} />);
+    render(<ErrorIssueDetail detail={makeDetail(event)} slug="test-ws" />);
     fireEvent.click(screen.getByTestId("event-toggle-evt-1"));
 
     // Skeleton present (no blob content yet)
@@ -276,7 +277,7 @@ describe("BlobViewer — stack trace rendering", () => {
       json: async () => ({ error: "Internal Server Error" }),
     });
 
-    render(<ErrorIssueDetail detail={makeDetail(event)} />);
+    render(<ErrorIssueDetail detail={makeDetail(event)} slug="test-ws" />);
     await expandEvent("evt-1");
 
     expect(screen.getByTestId("blob-error")).toBeInTheDocument();
@@ -317,7 +318,7 @@ describe("StackTraceViewer — structured frames", () => {
       json: async () => ({}),
     });
 
-    render(<ErrorIssueDetail detail={makeDetail(event)} />);
+    render(<ErrorIssueDetail detail={makeDetail(event)} slug="test-ws" />);
     await expandEvent("evt-1");
 
     // inApp:true frame → link
@@ -348,7 +349,7 @@ describe("StackTraceViewer — structured frames", () => {
       json: async () => ({}),
     });
 
-    render(<ErrorIssueDetail detail={makeDetail(event)} />);
+    render(<ErrorIssueDetail detail={makeDetail(event)} slug="test-ws" />);
     await expandEvent("evt-1");
 
     // inApp:false frame → no link, but text present
@@ -377,7 +378,7 @@ describe("StackTraceViewer — structured frames", () => {
       json: async () => ({}),
     });
 
-    render(<ErrorIssueDetail detail={makeDetail(event)} />);
+    render(<ErrorIssueDetail detail={makeDetail(event)} slug="test-ws" />);
     await expandEvent("evt-1");
 
     // The raw stack trace fallback should produce a link for the resolvable frame
@@ -400,7 +401,7 @@ describe("StackTraceViewer — structured frames", () => {
       json: async () => ({}),
     });
 
-    render(<ErrorIssueDetail detail={makeDetail(event)} />);
+    render(<ErrorIssueDetail detail={makeDetail(event)} slug="test-ws" />);
     await expandEvent("evt-1");
 
     // Fallback path renders the app frame as a link
@@ -422,7 +423,7 @@ describe("StackTraceViewer — structured frames", () => {
       json: async () => ({}),
     });
 
-    render(<ErrorIssueDetail detail={makeDetail(event)} />);
+    render(<ErrorIssueDetail detail={makeDetail(event)} slug="test-ws" />);
     await expandEvent("evt-1");
 
     expect(screen.getByText(/app\/models\/user\.rb:15 in validate/, { exact: false })).toBeInTheDocument();

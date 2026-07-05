@@ -1,13 +1,14 @@
 "use client";
 
 import React, { useState, useCallback } from "react";
+import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ErrorStatusBadge } from "./ErrorStatusBadge";
 import { TriageActions } from "./TriageActions";
-import { ChevronDown, ChevronRight, AlertTriangle, GitPullRequest } from "lucide-react";
+import { ChevronDown, ChevronRight, AlertTriangle, GitPullRequest, ExternalLink } from "lucide-react";
 import type { ErrorIssueDetailResponse, ErrorIssueStatus, ErrorEventRecord, ErrorIssueRecord, CorrelationCandidate } from "@/types/error-issues";
 import { parseStackFrameLines, buildBlobUrl, resolveRef } from "@/lib/utils/github-links";
 import type { StructuredFrame, ParsedBlob } from "@/lib/utils/error-frames";
@@ -350,6 +351,7 @@ function BlobViewer({ issueId, event }: BlobViewerProps) {
 
 interface ErrorIssueDetailProps {
   detail: ErrorIssueDetailResponse;
+  slug: string;
   onStatusChange?: (newStatus: ErrorIssueStatus) => void;
   onLoadMoreEvents?: () => void;
   loadingMoreEvents?: boolean;
@@ -357,17 +359,46 @@ interface ErrorIssueDetailProps {
 
 export function ErrorIssueDetail({
   detail,
+  slug,
   onStatusChange,
   onLoadMoreEvents,
   loadingMoreEvents,
 }: ErrorIssueDetailProps) {
-  const { issue, events, eventsHasMore } = detail;
+  const { issue, events, eventsHasMore, features } = detail;
 
   // Surface a repository URL from the first event (for commit link building).
   const firstEventRepoUrl = events[0]?.repositoryUrl ?? null;
 
   return (
     <div className="space-y-6">
+      {/* Linked Fixes card — shown when one or more Features are linked to this issue */}
+      {features && features.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Linked Fixes</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <ul className="space-y-2">
+              {features.map((feature) => (
+                <li key={feature.id} className="flex items-center justify-between gap-4 text-sm">
+                  <span className="font-medium truncate">{feature.title}</span>
+                  <div className="flex items-center gap-3 shrink-0 text-muted-foreground">
+                    <span>{dateFormatter.format(new Date(feature.createdAt))}</span>
+                    <Link
+                      href={`/w/${slug}/plan/${feature.id}`}
+                      className="flex items-center gap-1 text-primary hover:underline"
+                    >
+                      View Plan
+                      <ExternalLink className="h-3 w-3" />
+                    </Link>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Metadata card */}
       <Card>
         <CardHeader className="flex flex-row items-start justify-between gap-4">
