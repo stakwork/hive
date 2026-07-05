@@ -38,6 +38,7 @@ import { EncryptionService } from "@/lib/encryption";
 import { ChatRole, ChatStatus, ArtifactType } from "@prisma/client";
 import { validateVideoSize, getMaxVideoSizeMB } from "@/lib/video-validation";
 import { timingSafeEqual } from "@/lib/encryption";
+import { deriveTestOutcome } from "@/lib/test-outcome";
 
 export const fetchCache = "force-no-store";
 
@@ -143,6 +144,15 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       return NextResponse.json({ error: "Invalid timestamps JSON" }, { status: 400 });
     }
 
+    // Step 4b: Derive pass/fail from the Playwright timestamps
+    const outcome = deriveTestOutcome(timestampsJson);
+    const recordingMessage =
+      outcome.outcome === "passed"
+        ? "Playwright test passed"
+        : outcome.outcome === "failed"
+          ? "Playwright test failed"
+          : "Playwright recording uploaded";
+
     // Step 5: Get Swarm for S3 Path
     const swarm = await db.swarm.findUnique({
       where: { workspaceId: task.workspaceId },
@@ -174,7 +184,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       chatMessage = await db.chatMessage.create({
         data: {
           taskId,
-          message: "Playwright recording uploaded",
+          message: recordingMessage,
           role: ChatRole.ASSISTANT,
           status: ChatStatus.SENT,
           artifacts: {
@@ -189,6 +199,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
                   contentType: "video/webm",
                   duration: null,
                   uploadedAt: new Date().toISOString(),
+                  testStatus: outcome.rawStatus,
+                  failedStep: outcome.failedStep,
                 },
                 icon: "video",
               },
@@ -212,11 +224,16 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       return NextResponse.json({ error: "Internal error" }, { status: 500 });
     }
 
-    // Step 8: Invalidate API Key (One-time Use)
+    // Step 8: Invalidate API Key (One-time Use) + record pass/fail on the task.
+    // When the timestamps carry a Playwright status, transition the task out of
+    // IN_PROGRESS so an authoritative pod replay surfaces a real result.
     try {
       await db.task.update({
         where: { id: taskId },
-        data: { agentPassword: null },
+        data: {
+          agentPassword: null,
+          ...(outcome.workflowStatus ? { workflowStatus: outcome.workflowStatus } : {}),
+        },
       });
     } catch (error) {
       console.error("Failed to invalidate API key:", error);
@@ -231,6 +248,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
           s3Key: s3Key,
           messageId: chatMessage.id,
           artifactIds: chatMessage.artifacts.map((a) => a.id),
+          testStatus: outcome.rawStatus,
         },
       },
       { status: 201 },
