@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { randomUUID } from "crypto";
 import { db } from "@/lib/db";
 import { optionalEnvVars } from "@/config/env";
 import {
@@ -6,6 +7,8 @@ import {
   getWorkspaceChannelName,
   PUSHER_EVENTS,
 } from "@/lib/pusher";
+import { getJarvisConfigForWorkspace } from "@/lib/helpers/jarvis-config";
+import { addNode, addEdge } from "@/services/swarm/api/nodes";
 
 export const fetchCache = "force-no-store";
 
@@ -175,6 +178,37 @@ export async function POST(request: NextRequest) {
           status: "COMPLETE",
         },
       });
+
+      // ── Non-fatal Jarvis EvalTriggerOutput instrumentation ─────────────────
+      if (run.evalTriggerRef) {
+        try {
+          const jarvisConfig = await getJarvisConfigForWorkspace(run.workspaceId);
+          if (jarvisConfig) {
+            for (const score of scores as Array<{ pass: boolean; criterion: string; notes: string }>) {
+              const outputResult = await addNode(jarvisConfig, {
+                node_type: "EvalTriggerOutput",
+                node_data: {
+                  id: randomUUID(),
+                  result: score.pass ? "pass" : "fail",
+                  score: score.pass ? 1.0 : 0.0,
+                  attempt_number: 1,
+                  judge_notes: `${score.criterion}: ${score.notes}`,
+                },
+              });
+              if (outputResult.success && outputResult.ref_id) {
+                await addEdge(jarvisConfig, {
+                  edge: { edge_type: "HAS_OUTPUT" },
+                  source: { ref_id: run.evalTriggerRef },
+                  target: { ref_id: outputResult.ref_id },
+                });
+              }
+            }
+          }
+        } catch (err) {
+          console.error("[legal/benchmark/webhook] EvalTriggerOutput graph write failed (non-fatal):", err);
+        }
+      }
+      // ───────────────────────────────────────────────────────────────────────
 
       await broadcastStatus("COMPLETE");
       return NextResponse.json({ success: true });
