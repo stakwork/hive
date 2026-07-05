@@ -5,19 +5,21 @@ import { createTestUser } from "../../support/factories/user.factory";
 import { createTestWorkspace } from "../../support/factories/workspace.factory";
 
 describe("Seed Database - Auto-Merge Integration", () => {
+  let workspace: { id: string };
+
   beforeEach(async () => {
     // Create prerequisite data (users and workspaces) before seeding auto-merge scenarios
     const user1 = await createTestUser({ name: "Test User 1" });
     const user2 = await createTestUser({ name: "Test User 2" });
-    await createTestWorkspace({ name: "Test Workspace", ownerId: user1.id });
-    
-    // Seed the auto-merge test scenarios
-    await seedAutoMergeTestScenarios();
+    workspace = await createTestWorkspace({ name: "Test Workspace", ownerId: user1.id });
+
+    // Seed the auto-merge test scenarios scoped to this workspace
+    await seedAutoMergeTestScenarios(workspace.id);
   });
 
   it("should have Payment Integration feature with 3 sequential autoMerge tasks", async () => {
     const feature = await db.feature.findFirst({
-      where: { title: "Payment Integration" },
+      where: { title: "Payment Integration", workspaceId: workspace.id },
       include: {
         phases: {
           include: {
@@ -52,7 +54,7 @@ describe("Seed Database - Auto-Merge Integration", () => {
 
   it("should have User Profile Enhancement feature with mixed autoMerge settings", async () => {
     const feature = await db.feature.findFirst({
-      where: { title: "User Profile Enhancement" },
+      where: { title: "User Profile Enhancement", workspaceId: workspace.id },
       include: {
         phases: {
           include: {
@@ -83,9 +85,8 @@ describe("Seed Database - Auto-Merge Integration", () => {
   it("should have edge case tasks with PR artifacts", async () => {
     const edgeCaseTasks = await db.task.findMany({
       where: {
-        title: {
-          contains: "open PR",
-        },
+        title: { contains: "open PR" },
+        workspaceId: workspace.id,
       },
       include: {
         chatMessages: {
@@ -114,9 +115,8 @@ describe("Seed Database - Auto-Merge Integration", () => {
   it("should have tasks with correct priorities and statuses", async () => {
     const paymentTasks = await db.task.findMany({
       where: {
-        feature: {
-          title: "Payment Integration",
-        },
+        feature: { title: "Payment Integration" },
+        workspaceId: workspace.id,
       },
       orderBy: { order: "asc" },
     });
@@ -137,6 +137,7 @@ describe("Seed Database - Auto-Merge Integration", () => {
   it("should have at least 10 auto-merge test tasks total", async () => {
     const autoMergeTasks = await db.task.findMany({
       where: {
+        workspaceId: workspace.id,
         OR: [
           {
             feature: {
