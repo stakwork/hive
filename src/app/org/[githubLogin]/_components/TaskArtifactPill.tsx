@@ -71,6 +71,8 @@ interface TaskArtifactPillProps {
    * `LONGFORM` (the artifact panel renders it as a footer link).
    */
   workflowUrl?: string | null;
+  /** Task ID — forwarded to PublishWorkflowArtifact for the org-page modal path. */
+  taskId?: string;
 }
 
 interface PillKind {
@@ -115,6 +117,7 @@ export function TaskArtifactPill({
   artifact,
   taskHref,
   workflowUrl,
+  taskId,
 }: TaskArtifactPillProps) {
   const [open, setOpen] = useState(false);
 
@@ -170,7 +173,7 @@ export function TaskArtifactPill({
               </DialogTitle>
             </DialogHeader>
             <div className="flex-1 overflow-y-auto p-5">
-              {renderModalBody(artifact, workflowUrl)}
+              {renderModalBody(artifact, workflowUrl, taskId)}
             </div>
           </DialogContent>
         </Dialog>
@@ -192,7 +195,7 @@ export function TaskArtifactPill({
  * dispatched here — those types are `mode: "external"` in
  * `KIND_META` and never reach this function.
  */
-function renderModalBody(artifact: Artifact, workflowUrl?: string | null) {
+function renderModalBody(artifact: Artifact, workflowUrl?: string | null, taskId?: string) {
   switch (artifact.type) {
     case "CODE":
       return <CodeArtifactPanel artifacts={[artifact]} />;
@@ -208,7 +211,7 @@ function renderModalBody(artifact: Artifact, workflowUrl?: string | null) {
     case "BOUNTY":
       return <BountyArtifact artifact={artifact} />;
     case "PUBLISH_WORKFLOW":
-      return <PublishWorkflowArtifact artifact={artifact} />;
+      return <PublishWorkflowArtifact artifact={artifact} taskId={taskId} />;
     case "PUBLISH_SCRIPT":
       return <PublishScriptArtifact artifact={artifact} />;
     case "PUBLISH_PROMPT":
