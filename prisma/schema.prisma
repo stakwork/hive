@@ -1039,7 +1039,7 @@ model StakworkRun {
   createdAt   DateTime             @default(now()) @map("created_at")
   updatedAt   DateTime             @updatedAt @map("updated_at")
   autoAccept      Boolean              @default(false) @map("auto_accept")
-  promptVersionId Int?                 @map("prompt_version_id")
+  promptVersionId String?              @map("prompt_version_id")
   evalSetId       String?              @map("eval_set_id")
   userId          String?              @map("user_id")
   agentLogs       AgentLog[]
@@ -2251,6 +2251,7 @@ model LegalBenchmarkRun {
   runnerOutputText String?  @db.Text
   scoreJson        String?  @db.Text
   errorMessage     String?
+  evalTriggerRef   String?   // Jarvis EvalTrigger ref_id; written at run start, read by scorer webhook
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 
