@@ -161,6 +161,65 @@ describe("runJarvisPrLink", () => {
     );
   });
 
+  it("writes edges for resolvable PRs on a mixed task but leaves it unmarked (partial linking)", async () => {
+    setupDb({
+      workspaces: [{ id: "w1", slug: "w1", jarvisSyncState: null }],
+      tasks: [
+        {
+          id: "t1",
+          title: "T1",
+          chatMessages: [
+            prArtifact("https://github.com/stakwork/hive/pull/4542"),
+            prArtifact("https://github.com/stakwork/hive/pull/9999"), // never ingested
+          ],
+        },
+      ],
+    });
+    mockSearch(found(prNode("stakwork/hive", 4542, "ref-4542", 1782430995)), [taskNode("t1", "tref-1")]);
+
+    const res = await runJarvisPrLink();
+
+    // The resolvable edge IS written…
+    const edgeArg = mockedAddEdge.mock.calls[0][1];
+    expect(edgeArg).toHaveLength(1);
+    expect(edgeArg[0]).toMatchObject({ source_ref_id: "tref-1", target_ref_id: "ref-4542" });
+    // …but the task is NOT marked, so the missing PR retries next run.
+    expect((mockedDb.task as any).updateMany).not.toHaveBeenCalled();
+    expect(res.results[0]).toMatchObject({ linked: 0, pending: 1 });
+  });
+
+  it("marks a multi-PR task linked when ALL its PRs resolve", async () => {
+    setupDb({
+      workspaces: [{ id: "w1", slug: "w1", jarvisSyncState: null }],
+      tasks: [
+        {
+          id: "t1",
+          title: "T1",
+          chatMessages: [
+            prArtifact("https://github.com/stakwork/hive/pull/4542"),
+            prArtifact("https://github.com/stakwork/hive/pull/4543"),
+          ],
+        },
+      ],
+    });
+    mockSearch(
+      found(
+        prNode("stakwork/hive", 4542, "ref-4542", 1782430995),
+        prNode("stakwork/hive", 4543, "ref-4543", 1782430996),
+      ),
+      [taskNode("t1", "tref-1")],
+    );
+
+    const res = await runJarvisPrLink();
+
+    expect(mockedAddEdge.mock.calls[0][1]).toHaveLength(2);
+    expect((mockedDb.task as any).updateMany).toHaveBeenCalledWith({
+      where: { id: { in: ["t1"] } },
+      data: { jarvisPrLinkedAt: expect.any(Date) },
+    });
+    expect(res.results[0]).toMatchObject({ linked: 1, pending: 0 });
+  });
+
   it("uses an incremental fetch when a high-water exists", async () => {
     setupDb({
       workspaces: [

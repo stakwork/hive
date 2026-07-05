@@ -133,11 +133,12 @@ export async function getBifrostForLLM(
   // `ensureBifrostTrust` and we fall through to VK reconcile.
   await runTrustReconcile(workspaceAuth.workspaceId);
 
-  // 2b. Agent-catalog seed. Pushes the default agent set into the
-  // swarm's gateway neo4j catalog. Content-addressed-cached on the
-  // Swarm row, so this is a single DB read on the hot path. Non-fatal
-  // and independent of trust — a stale/absent catalog never blocks an
-  // LLM call. See `gateway/plans/agent-catalog.md`.
+  // 2b. Agent-catalog seed. Pushes the default agent set (names,
+  // default models, and each agent's prompt names) into the swarm's
+  // gateway neo4j catalog. Content-addressed-cached on the Swarm row,
+  // so the hot path is a couple of DB reads (prompt links + Swarm row).
+  // Non-fatal and independent of trust — a stale/absent catalog never
+  // blocks an LLM call. See `gateway/plans/agent-catalog.md`.
   await runAgentCatalogReconcile(workspaceAuth.workspaceId);
 
   // 3. VK reconcile (phase 1). Without this, the LLM call can't
