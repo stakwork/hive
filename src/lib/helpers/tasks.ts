@@ -133,6 +133,10 @@ interface PublishArtifactContent {
   [key: string]: Prisma.JsonValue | undefined;
 }
 
+// Re-export shared client-safe helpers so server-side callers keep working
+export type { ChatMessagesSnapshot } from "./tasks-shared";
+export { allWorkflowArtifactsPublished } from "./tasks-shared";
+
 /**
  * Extract the last publish artifact (Workflow, Script, or Prompt) from task chat messages.
  * PUBLISH_SKILL is explicitly excluded as it follows the PR flow.

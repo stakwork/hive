@@ -25,8 +25,12 @@ vi.mock("@/lib/pusher", () => ({
 
 import { db } from "@/lib/db";
 import { notifyCanvasConversationUpdated } from "@/lib/pusher";
-import { fanOutResearchToCanvas } from "@/services/canvas-research-fanout";
+import {
+  fanOutResearchToCanvas,
+  filterSubAgentMessages,
+} from "@/services/canvas-research-fanout";
 import type { ResearchFanOutPayload } from "@/services/canvas-research-fanout";
+import type { StoredMessage } from "@/services/canvas-turn-persistence";
 
 const CONV_ID = "conv-1";
 const BASE_PAYLOAD: ResearchFanOutPayload = {
@@ -236,5 +240,205 @@ describe("fanOutResearchToCanvas", () => {
     );
     await fanOutResearchToCanvas(CONV_ID, BASE_PAYLOAD); // no initiativeId
     expect((capturedSource as { initiativeId?: unknown })?.initiativeId).toBeUndefined();
+  });
+
+  test("with subAgentMessages: filtered rows are prepended before the card row", async () => {
+    const textMsg: StoredMessage = {
+      id: "step-0",
+      role: "assistant",
+      content: "Searching for X...",
+      timestamp: new Date().toISOString(),
+    };
+    const codeExecMsg: StoredMessage = {
+      id: "step-1",
+      role: "assistant",
+      content: "",
+      timestamp: new Date().toISOString(),
+      toolCalls: [{ id: "srvtoolu_abc", toolName: "code_execution", input: {}, output: "" }],
+    };
+
+    let capturedMessages: unknown[] = [];
+    (db.$transaction as ReturnType<typeof vi.fn>).mockImplementation(
+      async (fn: (tx: unknown) => Promise<void>) => {
+        const tx = {
+          $queryRaw: vi.fn().mockResolvedValue([{ messages: [] }]),
+          sharedConversation: {
+            update: vi.fn(async ({ data }: { data: { messages: unknown[] } }) => {
+              capturedMessages = data.messages;
+            }),
+          },
+        };
+        await fn(tx);
+      },
+    );
+
+    await fanOutResearchToCanvas(CONV_ID, {
+      ...BASE_PAYLOAD,
+      subAgentMessages: [textMsg, codeExecMsg],
+    });
+
+    // code_execution message is stripped; text message is prepended before card row
+    expect(capturedMessages).toHaveLength(2);
+    expect((capturedMessages[0] as StoredMessage).id).toBe("step-0");
+    expect((capturedMessages[1] as { id: string }).id).toBe(`research-${BASE_PAYLOAD.researchId}`);
+  });
+
+  test("with subAgentMessages: code_execution message is stripped and not written", async () => {
+    const codeExecMsg: StoredMessage = {
+      id: "step-x",
+      role: "assistant",
+      content: "",
+      timestamp: new Date().toISOString(),
+      toolCalls: [{ id: "srvtoolu_xyz", toolName: "code_execution", input: {}, output: "" }],
+    };
+
+    let capturedMessages: unknown[] = [];
+    (db.$transaction as ReturnType<typeof vi.fn>).mockImplementation(
+      async (fn: (tx: unknown) => Promise<void>) => {
+        const tx = {
+          $queryRaw: vi.fn().mockResolvedValue([{ messages: [] }]),
+          sharedConversation: {
+            update: vi.fn(async ({ data }: { data: { messages: unknown[] } }) => {
+              capturedMessages = data.messages;
+            }),
+          },
+        };
+        await fn(tx);
+      },
+    );
+
+    await fanOutResearchToCanvas(CONV_ID, {
+      ...BASE_PAYLOAD,
+      subAgentMessages: [codeExecMsg],
+    });
+
+    // Only the card row — code_execution stripped
+    expect(capturedMessages).toHaveLength(1);
+    expect((capturedMessages[0] as { id: string }).id).toBe(`research-${BASE_PAYLOAD.researchId}`);
+  });
+
+  test("idempotency still holds when subAgentMessages is provided", async () => {
+    const existingRow = {
+      id: `research-${BASE_PAYLOAD.researchId}`,
+      role: "assistant",
+      content: "Research ready: ...",
+      timestamp: new Date().toISOString(),
+      source: {
+        kind: "research",
+        researchId: BASE_PAYLOAD.researchId,
+        slug: BASE_PAYLOAD.slug,
+        topic: BASE_PAYLOAD.topic,
+        title: BASE_PAYLOAD.title,
+        status: "ready",
+      },
+    };
+
+    let updateCallCount = 0;
+    (db.$transaction as ReturnType<typeof vi.fn>).mockImplementation(
+      async (fn: (tx: unknown) => Promise<void>) => {
+        const tx = {
+          $queryRaw: vi.fn().mockResolvedValue([{ messages: [existingRow] }]),
+          sharedConversation: {
+            update: vi.fn(async () => {
+              updateCallCount++;
+            }),
+          },
+        };
+        await fn(tx);
+      },
+    );
+
+    const subMsg: StoredMessage = {
+      id: "step-0",
+      role: "assistant",
+      content: "Some step text",
+      timestamp: new Date().toISOString(),
+    };
+
+    await fanOutResearchToCanvas(CONV_ID, { ...BASE_PAYLOAD, subAgentMessages: [subMsg] });
+
+    expect(updateCallCount).toBe(0);
+    expect(notifyCanvasConversationUpdated).not.toHaveBeenCalled();
+  });
+});
+
+describe("filterSubAgentMessages", () => {
+  test("removes a message whose only toolCall has toolName === 'code_execution'", () => {
+    const msgs: StoredMessage[] = [
+      {
+        id: "m1",
+        role: "assistant",
+        content: "",
+        timestamp: new Date().toISOString(),
+        toolCalls: [{ id: "srvtoolu_abc", toolName: "code_execution", input: {}, output: "" }],
+      },
+    ];
+    expect(filterSubAgentMessages(msgs)).toHaveLength(0);
+  });
+
+  test("removes a message with a srvtoolu_-prefixed non-web_search tool call", () => {
+    const msgs: StoredMessage[] = [
+      {
+        id: "m2",
+        role: "assistant",
+        content: "",
+        timestamp: new Date().toISOString(),
+        toolCalls: [{ id: "srvtoolu_def", toolName: "repo_agent", input: {}, output: "" }],
+      },
+    ];
+    expect(filterSubAgentMessages(msgs)).toHaveLength(0);
+  });
+
+  test("retains a message with a web_search call even if id starts with srvtoolu_", () => {
+    const msg: StoredMessage = {
+      id: "m3",
+      role: "assistant",
+      content: "",
+      timestamp: new Date().toISOString(),
+      toolCalls: [{ id: "srvtoolu_ws1", toolName: "web_search", input: {}, output: "" }],
+    };
+    expect(filterSubAgentMessages([msg])).toHaveLength(1);
+    expect(filterSubAgentMessages([msg])[0]).toBe(msg);
+  });
+
+  test("retains plain text messages with no toolCalls", () => {
+    const msg: StoredMessage = {
+      id: "m4",
+      role: "assistant",
+      content: "Just some text.",
+      timestamp: new Date().toISOString(),
+    };
+    expect(filterSubAgentMessages([msg])).toHaveLength(1);
+  });
+
+  test("retains messages with normal tool calls (list_concepts, web_search with non-srvtoolu_ id)", () => {
+    const msgs: StoredMessage[] = [
+      {
+        id: "m5",
+        role: "assistant",
+        content: "",
+        timestamp: new Date().toISOString(),
+        toolCalls: [{ id: "call_123", toolName: "list_concepts", input: {}, output: "" }],
+      },
+      {
+        id: "m6",
+        role: "assistant",
+        content: "",
+        timestamp: new Date().toISOString(),
+        toolCalls: [{ id: "call_456", toolName: "web_search", input: {}, output: "" }],
+      },
+    ];
+    expect(filterSubAgentMessages(msgs)).toHaveLength(2);
+  });
+
+  test("retains user-role messages unchanged", () => {
+    const msg: StoredMessage = {
+      id: "m7",
+      role: "user",
+      content: "Some user message",
+      timestamp: new Date().toISOString(),
+    };
+    expect(filterSubAgentMessages([msg])).toHaveLength(1);
+    expect(filterSubAgentMessages([msg])[0]).toBe(msg);
   });
 });
