@@ -12,6 +12,22 @@ type RouteParams = {
   params: Promise<{ slug: string }>;
 };
 
+interface TaskJson {
+  title: string;
+  instructions: string;
+  work_type?: string;
+  tags?: string[];
+  deliverables?: Record<string, string>;
+  criteria: Array<{ id: string; title: string; match_criteria: string; deliverables?: string[] }>;
+}
+
+const HARVEY_BASE = "https://raw.githubusercontent.com/stakwork/harvey-labs/main";
+const GITHUB_API = "https://api.github.com/repos/stakwork/harvey-labs/contents";
+const githubHeaders: HeadersInit = {
+  Accept: "application/vnd.github+json",
+  ...(process.env.GITHUB_TOKEN ? { Authorization: `Bearer ${process.env.GITHUB_TOKEN}` } : {}),
+};
+
 function handleSwarmAccessError(error: { type: string }) {
   const errorMap: Record<string, { message: string; status: number }> = {
     WORKSPACE_NOT_FOUND: { message: "Workspace not found", status: 404 },
@@ -105,6 +121,40 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       );
     }
 
+    // Pre-fetch task context for Stakwork workflow vars
+    let taskGoal = "";
+    let taskOutputDesc = "";
+    let documents: string[] = [];
+
+    const [taskJsonRes, docsRes] = await Promise.all([
+      fetch(`${HARVEY_BASE}/tasks/${taskSlug}/task.json`),
+      fetch(`${GITHUB_API}/tasks/${taskSlug}/documents`, { headers: githubHeaders }),
+    ]);
+
+    if (taskJsonRes.ok) {
+      try {
+        const taskJson = (await taskJsonRes.json()) as TaskJson;
+        taskGoal = taskJson.instructions ?? "";
+        if (taskJson.deliverables && Object.keys(taskJson.deliverables).length > 0) {
+          taskOutputDesc = Object.keys(taskJson.deliverables).join(", ");
+        } else {
+          const outputMatch = taskGoal.match(/###\s*Output[:\s]+([\s\S]+)$/i);
+          taskOutputDesc = outputMatch ? outputMatch[1].trim().replace(/`/g, "") : "";
+        }
+      } catch {
+        console.error(`[legal/benchmarks/run] Failed to parse task.json for ${taskSlug}`);
+      }
+    }
+
+    if (docsRes.ok) {
+      try {
+        const docsData = (await docsRes.json()) as Array<{ type: string; name: string }>;
+        documents = docsData.filter((f) => f.type === "file").map((f) => f.name);
+      } catch {
+        console.error(`[legal/benchmarks/run] Failed to fetch documents for ${taskSlug}`);
+      }
+    }
+
     // Create the run record in PENDING state
     const run = await db.legalBenchmarkRun.create({
       data: { workspaceId, taskSlug, taskTitle, status: "PENDING" },
@@ -122,6 +172,9 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
           attributes: {
             vars: {
               task_slug: taskSlug,
+              task_goal: taskGoal,
+              task_output_desc: taskOutputDesc,
+              documents: JSON.stringify(documents),
               webhook_url: webhookUrl,
               graph_base_url: graphBaseUrl,
               secret: graphSecret,
