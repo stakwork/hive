@@ -106,6 +106,8 @@ export const PUSHER_EVENTS = {
   AGENT_TRACE_READY: "agent-trace-ready",
   // Error issue created or updated (new occurrence ingested via /api/webhook/errors)
   ERROR_ISSUE_UPDATED: "error-issue-updated",
+  // Performance trace group created or updated (new sample ingested via /api/webhook/performance)
+  PERFORMANCE_GROUP_UPDATED: "performance-group-updated",
 } as const;
 
 /**

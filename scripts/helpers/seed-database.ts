@@ -17,6 +17,7 @@ import { config as dotenvConfig } from "dotenv";
 import { seedDeploymentTracking } from "./seed-deployment-tracking";
 import { seedAgentLogs } from "./seed-agent-logs";
 import { seedErrorEvents } from "./seed-error-events";
+import { seedPerformanceTraces } from "./seed-performance-traces";
 
 dotenvConfig({ path: ".env.local" });
 
@@ -1903,6 +1904,7 @@ async function main() {
   await seedDeploymentTracking();
   await seedAgentLogs();
   await seedErrorEvents();
+  await seedPerformanceTraces();
   await seedDashboardConversations(users);
   await seedPlatformConfig();
   await seedInitiativesAndMilestones(users);
