@@ -1882,32 +1882,53 @@ async function seedFeatureErrorIssueLink() {
     return;
   }
 
-  // Check if any Feature already has this errorIssueId (idempotency guard)
+  // Check how many Features are already linked (idempotency guard)
   const alreadyLinked = await prisma.feature.count({
     where: { errorIssueId: errorIssue.id },
   });
 
-  if (alreadyLinked > 0) {
-    console.log("✓ Feature→ErrorIssue link already seeded — skipping");
+  if (alreadyLinked >= 2) {
+    console.log("✓ Feature→ErrorIssue links already seeded (2+) — skipping");
     return;
   }
 
-  const feature = await prisma.feature.findFirst({
+  const features = await prisma.feature.findMany({
     where: { workspaceId: errorIssue.workspaceId, deleted: false },
-    select: { id: true },
+    orderBy: { createdAt: "asc" },
+    take: 2,
+    select: { id: true, title: true },
   });
 
-  if (!feature) {
-    console.log("✓ No Feature found in the same workspace as the UNRESOLVED ErrorIssue — skipping");
+  if (features.length === 0) {
+    console.log("✓ No Features found in the same workspace as the UNRESOLVED ErrorIssue — skipping");
     return;
   }
 
-  await prisma.feature.update({
-    where: { id: feature.id },
-    data: { errorIssueId: errorIssue.id },
-  });
+  // Link the first feature (original fix attempt)
+  if (alreadyLinked === 0) {
+    await prisma.feature.update({
+      where: { id: features[0].id },
+      data: { errorIssueId: errorIssue.id },
+    });
+    console.log(`✓ Linked Feature ${features[0].id} → ErrorIssue ${errorIssue.id}`);
+  }
 
-  console.log(`✓ Linked Feature ${feature.id} → ErrorIssue ${errorIssue.id} for end-to-end demo`);
+  // Link a second feature (retry attempt) if available and not yet linked
+  if (features.length >= 2) {
+    const secondFeature = features[1];
+    const secondAlreadyLinked = await prisma.feature.count({
+      where: { id: secondFeature.id, errorIssueId: errorIssue.id },
+    });
+    if (secondAlreadyLinked === 0) {
+      await prisma.feature.update({
+        where: { id: secondFeature.id },
+        data: { errorIssueId: errorIssue.id },
+      });
+      console.log(`✓ Linked Feature ${secondFeature.id} (retry) → ErrorIssue ${errorIssue.id} for multi-fix demo`);
+    }
+  } else {
+    console.log("✓ Only one Feature available in workspace — single link seeded");
+  }
 }
 
 async function main() {
