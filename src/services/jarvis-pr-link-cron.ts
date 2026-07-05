@@ -25,6 +25,10 @@
  *    chained run must keep pulling the full set.
  *  - Per-task marker (`Task.jarvisPrLinkedAt`) keeps the scan cheap and is the
  *    retry latch; best-effort per workspace (one failure never aborts others).
+ *  - Partial linking: a task referencing several PRs gets edges for the PRs
+ *    that ARE ingested immediately; it is marked linked only once all of them
+ *    resolved. Re-submitting already-written edges on retry is safe (the
+ *    backend merges on edge_key).
  */
 
 import { db } from "@/lib/db";
@@ -285,10 +289,17 @@ async function linkWorkspace(
   const taskRefMap = taskFetch.map;
 
   // Tasks with no resolvable PR URL are marked unconditionally (no edge to
-  // write). Tasks whose PRs all resolve are queued with their edges so they can
-  // be marked only once those edges actually land.
+  // write). Tasks with at least one resolvable PR get their resolvable edges
+  // written NOW (partial linking); a task is marked linked only once ALL its
+  // PRs resolved and their edges landed — partially-resolved tasks stay
+  // unmarked so the missing PRs retry (edge writes are idempotent on edge_key,
+  // so re-submitting the already-written edges is safe).
   const noEdgeTaskIds: string[] = [];
-  const resolved: { taskId: string; edges: ReturnType<typeof taskPrEdge>[] }[] = [];
+  const resolved: {
+    taskId: string;
+    edges: ReturnType<typeof taskPrEdge>[];
+    complete: boolean;
+  }[] = [];
   let pending = 0;
 
   for (const task of tasks) {
@@ -304,12 +315,23 @@ async function linkWorkspace(
       continue;
     }
     const refIds = refs.map((r) => prMap.get(prNodeKey(r.repo, r.number)));
-    if (refIds.some((id) => !id)) {
-      // At least one PR not ingested yet — retry next run, don't mark.
+    const resolvedIds = refIds.filter((id): id is string => !!id);
+    if (resolvedIds.length === 0) {
+      // No PR ingested yet — retry next run, don't mark.
       pending++;
       continue;
     }
-    resolved.push({ taskId: task.id, edges: refIds.map((id) => taskPrEdge(taskRefId, id!)) });
+    const complete = resolvedIds.length === refIds.length;
+    if (!complete) {
+      // Some PRs still unresolved — write what we have, but the task stays
+      // unmarked (and counts as pending) so the rest retries next run.
+      pending++;
+    }
+    resolved.push({
+      taskId: task.id,
+      edges: resolvedIds.map((id) => taskPrEdge(taskRefId, id)),
+      complete,
+    });
   }
 
   const linkedTaskIds: string[] = [...noEdgeTaskIds];
@@ -339,7 +361,7 @@ async function linkWorkspace(
     return true;
   };
 
-  for (const { taskId, edges: taskEdges } of resolved) {
+  for (const { taskId, edges: taskEdges, complete } of resolved) {
     if (Date.now() >= deadline) {
       budgetHit = true;
       break;
@@ -348,7 +370,9 @@ async function linkWorkspace(
       if (!(await flush())) break; // endpointMissing — stop writing
     }
     batchEdges.push(...taskEdges);
-    batchTaskIds.push(taskId);
+    // Only fully-resolved tasks are marked once their edges land; partial
+    // tasks contribute edges but stay unmarked so missing PRs retry.
+    if (complete) batchTaskIds.push(taskId);
   }
   if (!endpointMissing) await flush();
 
@@ -421,6 +445,11 @@ export async function runJarvisPrLink(
         logger.warn(`[JARVIS PR LINK] ${ws.slug}: ${result.errors.length} errors`, LOG, {
           errors: result.errors.slice(0, 5),
         });
+      }
+      // Quiet skips (missing endpoint, no config) were invisible in logs and
+      // masked a swarm that 404'd every run for weeks — always surface them.
+      if (result.skipped) {
+        logger.warn(`[JARVIS PR LINK] ${ws.slug}: skipped — ${result.skipped}`, LOG);
       }
       results.push(result);
     } catch (error) {
