@@ -410,6 +410,8 @@ export function ChatArea({
                   suggestions={dockChipsHere ? suggestions : undefined}
                   onSuggestionSelect={dockChipsHere ? onSuggestionSelect : undefined}
                   isSuperAdmin={isSuperAdmin}
+                  taskWorkflowStatus={workflowStatus}
+                  taskChatMessages={messages}
                 />
               </React.Fragment>
             );

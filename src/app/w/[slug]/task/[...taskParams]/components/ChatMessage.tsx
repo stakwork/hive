@@ -21,6 +21,7 @@ import type { ClarifyingQuestionsResponse } from "@/types/stakwork";
 import { ClarifyingQuestionsPreview } from "@/components/features/ClarifyingQuestionsPreview";
 import { AnsweredClarifyingQuestions } from "@/components/features/ClarifyingQuestionsPreview/AnsweredClarifyingQuestions";
 import { SuggestionChips } from "@/components/plan/SuggestionChips";
+import type { ChatMessagesSnapshot } from "@/lib/helpers/tasks-shared";
 
 /** Format a token count: ≤10k → localeString, >10k → "12.3k" */
 function formatTokens(n: number): string {
@@ -57,6 +58,10 @@ interface ChatMessageProps {
   suggestions?: string[];
   onSuggestionSelect?: (s: string) => void;
   isSuperAdmin?: boolean;
+  /** Workflow run status of the parent task — forwarded to PublishWorkflowArtifact for auto-complete gating */
+  taskWorkflowStatus?: string | null;
+  /** Pre-publish snapshot of the parent task's chatMessages — forwarded to PublishWorkflowArtifact */
+  taskChatMessages?: ChatMessagesSnapshot;
 }
 
 // Custom comparison function for React.memo
@@ -79,7 +84,12 @@ function arePropsEqual(prevProps: ChatMessageProps, nextProps: ChatMessageProps)
 
   const superAdminEqual = prevProps.isSuperAdmin === nextProps.isSuperAdmin;
 
-  return messageEqual && replyMessageEqual && suggestionsEqual && superAdminEqual;
+  const workflowStatusEqual = prevProps.taskWorkflowStatus === nextProps.taskWorkflowStatus;
+
+  // chatMessages reference equality is enough — callers pass the messages state array
+  const chatMessagesEqual = prevProps.taskChatMessages === nextProps.taskChatMessages;
+
+  return messageEqual && replyMessageEqual && suggestionsEqual && superAdminEqual && workflowStatusEqual && chatMessagesEqual;
 }
 
 export const ChatMessage = memo(function ChatMessage({
@@ -89,6 +99,8 @@ export const ChatMessage = memo(function ChatMessage({
   suggestions,
   onSuggestionSelect,
   isSuperAdmin = false,
+  taskWorkflowStatus,
+  taskChatMessages,
 }: ChatMessageProps) {
   const { timezone } = useUserTimezone();
   const [logsExpanded, setLogsExpanded] = useState(false);
@@ -397,7 +409,12 @@ export const ChatMessage = memo(function ChatMessage({
           <div key={artifact.id} className={`flex ${message.role === "USER" ? "justify-end" : "justify-start"}`}>
             <div className="max-w-md w-full">
               <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}>
-                <PublishWorkflowArtifact artifact={artifact} />
+                <PublishWorkflowArtifact
+                  artifact={artifact}
+                  taskId={message.taskId ?? undefined}
+                  taskWorkflowStatus={taskWorkflowStatus}
+                  taskChatMessages={taskChatMessages}
+                />
               </motion.div>
             </div>
           </div>
