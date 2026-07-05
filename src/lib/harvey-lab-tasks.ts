@@ -913,3 +913,15 @@ export const HARVEY_LAB_TASKS: HarveyPracticeArea[] = [
 ];
 
 export const HARVEY_LAB_TOTAL = 1749;
+
+/**
+ * Tailwind colour classes for each work type badge.
+ * Exported so TaskDetailsModal and LegalBenchmarksPanel share the same styles.
+ */
+export const WORK_TYPE_STYLES: Record<WorkType, string> = {
+  draft: "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300",
+  review: "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300",
+  extract: "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300",
+  compare: "bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-300",
+  identify: "bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-300",
+};

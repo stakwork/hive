@@ -79,6 +79,32 @@ vi.mock("@/components/ui/input", () => ({
     React.createElement("input", { placeholder, value, onChange, className }),
 }));
 
+// Mock TaskDetailsModal to control its rendering in isolation
+vi.mock("@/components/legal/TaskDetailsModal", () => ({
+  TaskDetailsModal: ({
+    open,
+    onOpenChange,
+    task,
+    slug,
+    onRunTask,
+  }: {
+    open: boolean;
+    onOpenChange: (o: boolean) => void;
+    task: { slug: string; title: string };
+    slug: string;
+    onRunTask: () => void;
+  }) =>
+    open
+      ? React.createElement(
+          "div",
+          { "data-testid": "task-details-modal", "data-task-slug": task?.slug, "data-slug": slug },
+          React.createElement("p", null, task?.title),
+          React.createElement("button", { onClick: () => { onOpenChange(false); onRunTask(); } }, "Run Task"),
+          React.createElement("button", { onClick: () => onOpenChange(false) }, "Close"),
+        )
+      : null,
+}));
+
 // Mock LegalBenchmarkResults to avoid deep rendering
 vi.mock("@/components/legal/LegalBenchmarkResults", () => ({
   LegalBenchmarkResults: ({
@@ -454,6 +480,120 @@ describe("LegalBenchmarksPanel", () => {
       const badges = screen.getAllByTestId("badge");
       const countBadges = badges.filter((b) => ["3", "2"].includes(b.textContent ?? ""));
       expect(countBadges.length).toBeGreaterThan(0);
+    });
+  });
+
+  // ─── Task Details Modal ───────────────────────────────────────────────────
+
+  it("each task card shows a Details button", async () => {
+    render(React.createElement(LegalBenchmarksPanel));
+
+    await waitFor(() => {
+      const detailsButtons = screen.getAllByText("Details");
+      expect(detailsButtons.length).toBeGreaterThan(0);
+    });
+  });
+
+  it("clicking Details opens the task details modal with correct task", async () => {
+    const user = userEvent.setup();
+    render(React.createElement(LegalBenchmarksPanel));
+
+    await waitFor(() => {
+      expect(screen.getAllByText("Details").length).toBeGreaterThan(0);
+    });
+
+    const detailsButtons = screen.getAllByText("Details");
+    await user.click(detailsButtons[0]);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("task-details-modal")).toBeInTheDocument();
+    });
+
+    // Modal shows first task's title — scope to modal to avoid matching the task card too
+    const { within } = await import("@testing-library/react");
+    const modal = screen.getByTestId("task-details-modal");
+    expect(within(modal).getByText("Analyze Antitrust HSR Strategy")).toBeInTheDocument();
+  });
+
+  it("closing the modal via Close button hides it", async () => {
+    const user = userEvent.setup();
+    render(React.createElement(LegalBenchmarksPanel));
+
+    await waitFor(() => {
+      expect(screen.getAllByText("Details").length).toBeGreaterThan(0);
+    });
+
+    await user.click(screen.getAllByText("Details")[0]);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("task-details-modal")).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByText("Close"));
+
+    await waitFor(() => {
+      expect(screen.queryByTestId("task-details-modal")).not.toBeInTheDocument();
+    });
+  });
+
+  it("Run Task inside modal closes modal and calls handleSelectTask", async () => {
+    const user = userEvent.setup();
+
+    const mockFetch = vi
+      .fn()
+      .mockResolvedValueOnce({ ok: true, json: async () => MOCK_RESPONSE }) // tasks fetch
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ run_id: "run-from-modal" }) }); // POST /run
+
+    vi.stubGlobal("fetch", mockFetch);
+
+    render(React.createElement(LegalBenchmarksPanel));
+
+    await waitFor(() => {
+      expect(screen.getAllByText("Details").length).toBeGreaterThan(0);
+    });
+
+    // Open modal for first task
+    await user.click(screen.getAllByText("Details")[0]);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("task-details-modal")).toBeInTheDocument();
+    });
+
+    // Click Run Task inside modal
+    await user.click(screen.getByText("Run Task"));
+
+    // Modal should close
+    await waitFor(() => {
+      expect(screen.queryByTestId("task-details-modal")).not.toBeInTheDocument();
+    });
+
+    // POST /run should have been called
+    await waitFor(() => {
+      expect(mockFetch).toHaveBeenCalledWith(
+        "/api/workspaces/openlaw/legal/benchmarks/run",
+        expect.objectContaining({ method: "POST" }),
+      );
+    });
+
+    // Results panel should appear
+    await waitFor(() => {
+      expect(screen.getByTestId("legal-benchmark-results")).toBeInTheDocument();
+    });
+  });
+
+  it("modal receives the correct workspace slug", async () => {
+    const user = userEvent.setup();
+    render(React.createElement(LegalBenchmarksPanel));
+
+    await waitFor(() => {
+      expect(screen.getAllByText("Details").length).toBeGreaterThan(0);
+    });
+
+    await user.click(screen.getAllByText("Details")[0]);
+
+    await waitFor(() => {
+      const modal = screen.getByTestId("task-details-modal");
+      expect(modal).toHaveAttribute("data-slug", "openlaw");
     });
   });
 });
