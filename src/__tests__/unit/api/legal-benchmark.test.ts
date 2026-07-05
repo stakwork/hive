@@ -247,6 +247,159 @@ describe("POST /api/workspaces/[slug]/legal/benchmarks/run", () => {
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════════════════
+// POST /run — task context pre-fetch (task_goal, task_output_desc, documents)
+// ═══════════════════════════════════════════════════════════════════════════
+
+describe("POST /run — task context pre-fetch for Stakwork vars", () => {
+  beforeEach(() => {
+    (getWorkspaceSwarmAccess as Mock).mockResolvedValue(MOCK_SWARM_ACCESS);
+    mockDbLegalBenchmarkRunFindFirst.mockResolvedValue(null);
+    mockDbLegalBenchmarkRunCreate.mockResolvedValue({ ...MOCK_RUN, id: "run-new", status: "PENDING" });
+    mockDbLegalBenchmarkRunUpdate.mockResolvedValue({ ...MOCK_RUN, id: "run-new", status: "RUNNING" });
+  });
+
+  test("task_output_desc uses joined deliverable keys when deliverables are present", async () => {
+    const capturedPayloads: unknown[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockImplementation((url: string, opts?: RequestInit) => {
+        if (String(url).includes("task.json")) {
+          return Promise.resolve({
+            ok: true,
+            json: async () => ({
+              title: "Task A",
+              instructions: "Do this thing.",
+              deliverables: { "Memo": "A memo", "Summary": "A summary" },
+              criteria: [],
+            }),
+          });
+        }
+        if (String(url).includes("contents")) {
+          return Promise.resolve({
+            ok: true,
+            json: async () => [
+              { type: "file", name: "doc1.txt" },
+              { type: "file", name: "doc2.txt" },
+            ],
+          });
+        }
+        // Stakwork dispatch
+        capturedPayloads.push(opts?.body ? JSON.parse(opts.body as string) : null);
+        return Promise.resolve({ ok: true, json: async () => ({ data: { project_id: 99 } }) });
+      }),
+    );
+
+    const res = await postRun(makeRunRequest({ taskSlug: "task-a", taskTitle: "Task A" }), {
+      params: Promise.resolve({ slug: "openlaw" }),
+    });
+    expect(res.status).toBe(201);
+
+    expect(capturedPayloads).toHaveLength(1);
+    const vars = (capturedPayloads[0] as { workflow_params: { set_var: { attributes: { vars: Record<string, string> } } } }).workflow_params.set_var.attributes.vars;
+    expect(vars.task_goal).toBe("Do this thing.");
+    expect(vars.task_output_desc).toBe("Memo, Summary");
+    expect(JSON.parse(vars.documents)).toEqual(["doc1.txt", "doc2.txt"]);
+  });
+
+  test("task_output_desc falls back to regex parse of ### Output block when no deliverables", async () => {
+    const capturedPayloads: unknown[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockImplementation((url: string, opts?: RequestInit) => {
+        if (String(url).includes("task.json")) {
+          return Promise.resolve({
+            ok: true,
+            json: async () => ({
+              title: "Task B",
+              instructions: "Analyze the contract.\n### Output:\nA written analysis",
+              criteria: [],
+            }),
+          });
+        }
+        if (String(url).includes("contents")) {
+          return Promise.resolve({ ok: true, json: async () => [] });
+        }
+        capturedPayloads.push(opts?.body ? JSON.parse(opts.body as string) : null);
+        return Promise.resolve({ ok: true, json: async () => ({ data: { project_id: 99 } }) });
+      }),
+    );
+
+    await postRun(makeRunRequest({ taskSlug: "task-b", taskTitle: "Task B" }), {
+      params: Promise.resolve({ slug: "openlaw" }),
+    });
+
+    const vars = (capturedPayloads[0] as { workflow_params: { set_var: { attributes: { vars: Record<string, string> } } } }).workflow_params.set_var.attributes.vars;
+    expect(vars.task_output_desc).toBe("A written analysis");
+  });
+
+  test("defaults to empty strings and empty documents array when both fetches fail (non-ok), run still dispatches and returns 201", async () => {
+    const capturedPayloads: unknown[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockImplementation((url: string, opts?: RequestInit) => {
+        if (String(url).includes("task.json")) {
+          return Promise.resolve({ ok: false, status: 404 });
+        }
+        if (String(url).includes("contents")) {
+          return Promise.resolve({ ok: false, status: 404 });
+        }
+        capturedPayloads.push(opts?.body ? JSON.parse(opts.body as string) : null);
+        return Promise.resolve({ ok: true, json: async () => ({ data: { project_id: 99 } }) });
+      }),
+    );
+
+    const res = await postRun(makeRunRequest({ taskSlug: "task-c", taskTitle: "Task C" }), {
+      params: Promise.resolve({ slug: "openlaw" }),
+    });
+    expect(res.status).toBe(201);
+
+    const vars = (capturedPayloads[0] as { workflow_params: { set_var: { attributes: { vars: Record<string, string> } } } }).workflow_params.set_var.attributes.vars;
+    expect(vars.task_goal).toBe("");
+    expect(vars.task_output_desc).toBe("");
+    expect(JSON.parse(vars.documents)).toEqual([]);
+  });
+
+  test("documents contains only type=file entries, excluding dirs", async () => {
+    const capturedPayloads: unknown[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockImplementation((url: string, opts?: RequestInit) => {
+        if (String(url).includes("task.json")) {
+          return Promise.resolve({
+            ok: true,
+            json: async () => ({
+              title: "Task D",
+              instructions: "Read docs.",
+              criteria: [],
+            }),
+          });
+        }
+        if (String(url).includes("contents")) {
+          return Promise.resolve({
+            ok: true,
+            json: async () => [
+              { type: "file", name: "contract.pdf" },
+              { type: "dir", name: "subdirectory" },
+              { type: "file", name: "exhibit.docx" },
+            ],
+          });
+        }
+        capturedPayloads.push(opts?.body ? JSON.parse(opts.body as string) : null);
+        return Promise.resolve({ ok: true, json: async () => ({ data: { project_id: 99 } }) });
+      }),
+    );
+
+    await postRun(makeRunRequest({ taskSlug: "task-d", taskTitle: "Task D" }), {
+      params: Promise.resolve({ slug: "openlaw" }),
+    });
+
+    const vars = (capturedPayloads[0] as { workflow_params: { set_var: { attributes: { vars: Record<string, string> } } } }).workflow_params.set_var.attributes.vars;
+    expect(JSON.parse(vars.documents)).toEqual(["contract.pdf", "exhibit.docx"]);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
 // GET /runs/[runId]
 // ═══════════════════════════════════════════════════════════════════════════
 
