@@ -36,7 +36,7 @@ function handleSwarmAccessError(error: { type: string }) {
 }
 
 /**
- * GET /api/workspaces/[slug]/legal/benchmarks/tasks/[...taskSlug]/details
+ * GET /api/workspaces/[slug]/legal/benchmarks/tasks/details/[...taskSlug]
  *
  * Fetches task instructions, criteria, and document listings from the
  * harvey-labs GitHub repo for the given task slug.
@@ -105,11 +105,9 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
               .map((e) => ({ name: e.name, url: e.html_url, download_url: e.download_url }))
           : [];
       } catch {
-        // Non-fatal: return empty documents list rather than failing
         documents = [];
       }
     }
-    // If docsRes is 404 (no documents folder), documents stays empty — not a failure
 
     return NextResponse.json({
       title: taskData.title ?? null,

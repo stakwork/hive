@@ -93,7 +93,7 @@ export function TaskDetailsModal({
       setError(null);
       try {
         const res = await fetch(
-          `/api/workspaces/${slug}/legal/benchmarks/tasks/${task.slug}/details`,
+          `/api/workspaces/${slug}/legal/benchmarks/tasks/details/${task.slug}`,
         );
         if (!res.ok) {
           const body = await res.json().catch(() => ({}));
@@ -160,7 +160,7 @@ export function TaskDetailsModal({
                     setError(null);
                     setLoading(true);
                     fetch(
-                      `/api/workspaces/${slug}/legal/benchmarks/tasks/${task.slug}/details`,
+                      `/api/workspaces/${slug}/legal/benchmarks/tasks/details/${task.slug}`,
                     )
                       .then(async (res) => {
                         if (!res.ok) {

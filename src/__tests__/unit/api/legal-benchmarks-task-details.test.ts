@@ -16,13 +16,13 @@ vi.mock("@/lib/helpers/swarm-access", () => ({
   getWorkspaceSwarmAccess: mockGetWorkspaceSwarmAccess,
 }));
 
-import { GET } from "@/app/api/workspaces/[slug]/legal/benchmarks/tasks/[...taskSlug]/details/route";
+import { GET } from "@/app/api/workspaces/[slug]/legal/benchmarks/tasks/details/[...taskSlug]/route";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function makeRequest(slug: string, taskSlugParts: string[]) {
   const taskPath = taskSlugParts.join("/");
-  const url = `http://localhost/api/workspaces/${slug}/legal/benchmarks/tasks/${taskPath}/details`;
+  const url = `http://localhost/api/workspaces/${slug}/legal/benchmarks/tasks/details/${taskPath}`;
   const req = new NextRequest(url, { method: "GET" });
   return {
     req,
@@ -46,7 +46,7 @@ const MOCK_DOCUMENTS_API = [
 
 // ─── Tests ────────────────────────────────────────────────────────────────────
 
-describe("GET /api/workspaces/[slug]/legal/benchmarks/tasks/[...taskSlug]/details", () => {
+describe("GET /api/workspaces/[slug]/legal/benchmarks/tasks/details/[...taskSlug]", () => {
   beforeEach(() => {
     vi.resetAllMocks();
     mockGetMiddlewareContext.mockReturnValue({ userId: "user-1" });
