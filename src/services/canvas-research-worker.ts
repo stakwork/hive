@@ -30,6 +30,7 @@ import {
 import { db } from "@/lib/db";
 import { runCanvasAgent } from "@/lib/ai/runCanvasAgent";
 import { fanOutResearchToCanvas } from "@/services/canvas-research-fanout";
+import { messagesFromSteps } from "@/services/canvas-turn-persistence";
 import { getCurrentDateSnippet } from "@/lib/constants/prompt";
 
 /**
@@ -271,7 +272,15 @@ export async function runResearchSubAgent(
 
     // Drive the stream to completion.
     await result.text;
-    await result.steps;
+    const steps = await result.steps;
+
+    // Convert steps to StoredMessage rows, stripping the finalize tool call
+    // (its content is already surfaced in the card row appended by fanout).
+    const subAgentMessages = messagesFromSteps(
+      steps as Parameters<typeof messagesFromSteps>[0],
+      `research-${researchId}-`,
+      new Set([FINALIZE_TOOL]),
+    );
 
     // Determine final status by re-reading the row — scoped to orgId.
     const updated = await db.research.findFirst({
@@ -299,6 +308,7 @@ export async function runResearchSubAgent(
       summary,
       status,
       initiativeId,
+      subAgentMessages,
     });
   } catch (e) {
     console.error("[canvas-research] failed (non-fatal)", {
