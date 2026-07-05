@@ -537,7 +537,7 @@ export interface ReferencedCentralityResult {
 
 /**
  * Fetch the File/Function nodes referenced by an ErrorIssue KG node and
- * return their centrality properties (algo_page_rank, mapped to pagerank).
+ * return their centrality properties (pagerank).
  * Uses the existing `/v2/nodes/{refId}?expand=edges` endpoint
  * filtered to REFERENCES edges, which is the same endpoint `kgGetNeighbors`
  * uses — so no new backend surface is required.
@@ -603,10 +603,10 @@ export async function getReferencedNodeCentrality(
       if (!node) continue;
 
       const p = node.properties ?? {};
-      const pagerank = typeof p.algo_page_rank === "number" ? p.algo_page_rank : undefined;
+      const pagerank = typeof p.pagerank === "number" ? p.pagerank : undefined;
       if (pagerank === undefined) {
         console.debug(
-          "[Jarvis Nodes] node has no numeric algo_page_rank — impact score will be 0 for this node",
+          "[Jarvis Nodes] node has no numeric pagerank — impact score will be 0 for this node",
           { ref_id: node.ref_id, node_type: node.node_type },
         );
       }
