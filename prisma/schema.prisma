@@ -2092,7 +2092,7 @@ model PromptDailyRun {
 
 model PromptUsage {
   id           String   @id @default(cuid())
-  workspaceId  String   @map("workspace_id")
+  workspaceId  String?  @map("workspace_id")
   promptId     String?  @map("prompt_id")
   promptName   String   @map("prompt_name")
   workflowId   Int      @map("workflow_id")
@@ -2103,9 +2103,10 @@ model PromptUsage {
   createdAt    DateTime @default(now()) @map("created_at")
   updatedAt    DateTime @updatedAt @map("updated_at")
 
-  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  prompt    Prompt?   @relation(fields: [promptId], references: [id], onDelete: SetNull)
+  workspace Workspace? @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  prompt    Prompt?    @relation(fields: [promptId], references: [id], onDelete: SetNull)
 
+  // Per-workspace unique constraint (NULL != NULL in Postgres so this only covers non-null workspace rows)
   @@unique([workspaceId, workflowId, stepId, promptName])
   @@index([promptName])
   @@index([promptId])
