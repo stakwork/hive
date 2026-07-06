@@ -6,6 +6,7 @@ import { pusherServer, getFeatureChannelName, getTaskChannelName, PUSHER_EVENTS 
 import { addNode, addEdge } from "@/services/swarm/api/nodes";
 import { extractAgentRoleName } from "@/lib/utils/agent-role";
 import { getJarvisConfigForWorkspace } from "@/lib/helpers/jarvis-config";
+import { parseAgentLogStats } from "@/lib/utils/agent-log-stats";
 
 export const fetchCache = "force-no-store";
 
@@ -168,6 +169,11 @@ export async function POST(request: NextRequest) {
     };
     const logContent = JSON.stringify(blobPayload);
 
+    // Derive lightweight stats from the transcript for the Jarvis graph write
+    // below — estimatedTokens is a text-length heuristic, NOT provider-reported
+    // usage, so it's kept under its own field name (never total_tokens/cost).
+    const { stats: logStats } = parseAgentLogStats(logContent);
+
     // Upload to Vercel Blob
     const blobPath = `agent-logs/${workspace_id}/${resolvedStakworkRunId || task_id || feature_id}/${agent}.json`;
 
@@ -277,9 +283,15 @@ export async function POST(request: NextRequest) {
             log_url: blob.url,
             ...(model ? { model } : {}),
             ...(provider ? { provider } : {}),
-            ...(source ? { source } : {}),
+            source: source ?? roleName,
             workspace_id,
-            created_at: new Date().toISOString(),
+            start_time: Date.now(),
+            estimated_tokens: logStats.estimatedTokens,
+            tool_call_count: logStats.totalToolCalls,
+            message_count: logStats.totalMessages,
+            // Marks this as a complete session record for stakgraph's dashboard
+            // (mirrors the sentinel its own upsert_agent_session sets on creation).
+            file: "session://generated",
           },
         });
         console.info("[agent-logs] AgentSession create", {
