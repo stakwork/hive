@@ -3,38 +3,42 @@ import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
 import { isDevelopmentMode } from "@/lib/runtime";
+import { validateApiToken } from "@/lib/auth/api-token";
 
 
 export const runtime = "nodejs";
 export const fetchCache = "force-no-store";
 
 export async function GET(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: Promise<{ id: string; versionId: string }> },
 ) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-    const userId = (session.user as { id?: string })?.id;
-    if (!userId) {
-      return NextResponse.json({ error: "Invalid user session" }, { status: 401 });
-    }
+    const isApiToken = validateApiToken(request);
+    if (!isApiToken) {
+      const session = await getServerSession(authOptions);
+      if (!session?.user) {
+        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      }
+      const userId = (session.user as { id?: string })?.id;
+      if (!userId) {
+        return NextResponse.json({ error: "Invalid user session" }, { status: 401 });
+      }
 
-    const devMode = isDevelopmentMode();
-    if (!devMode) {
-      const workspace = await db.workspace.findFirst({
-        where: {
-          slug: "stakwork",
-          OR: [{ ownerId: userId }, { members: { some: { userId } } }],
-        },
-      });
-      if (!workspace) {
-        return NextResponse.json(
-          { error: "Access denied - not a member of stakwork workspace" },
-          { status: 403 },
-        );
+      const devMode = isDevelopmentMode();
+      if (!devMode) {
+        const workspace = await db.workspace.findFirst({
+          where: {
+            slug: "stakwork",
+            OR: [{ ownerId: userId }, { members: { some: { userId } } }],
+          },
+        });
+        if (!workspace) {
+          return NextResponse.json(
+            { error: "Access denied - not a member of stakwork workspace" },
+            { status: 403 },
+          );
+        }
       }
     }
 
