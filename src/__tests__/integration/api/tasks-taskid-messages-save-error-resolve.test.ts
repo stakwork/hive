@@ -201,7 +201,7 @@ describe("POST /api/tasks/[taskId]/messages/save — ErrorIssue auto-resolve on 
     expect(response.status).toBe(201);
 
     // Give async fire-and-forget a chance to settle
-    await new Promise((resolve) => setTimeout(resolve, 100));
+    await new Promise((resolve) => setTimeout(resolve, 500));
 
     const updated = await db.errorIssue.findUnique({ where: { id: issue.id } });
     expect(updated?.status).toBe("RESOLVED");
@@ -242,7 +242,7 @@ describe("POST /api/tasks/[taskId]/messages/save — ErrorIssue auto-resolve on 
     });
 
     expect(response.status).toBe(201);
-    await new Promise((resolve) => setTimeout(resolve, 100));
+    await new Promise((resolve) => setTimeout(resolve, 500));
 
     const updated = await db.errorIssue.findUnique({ where: { id: issue.id } });
     expect(updated?.status).toBe("UNRESOLVED");
@@ -276,7 +276,7 @@ describe("POST /api/tasks/[taskId]/messages/save — ErrorIssue auto-resolve on 
     });
 
     expect(response.status).toBe(201);
-    await new Promise((resolve) => setTimeout(resolve, 100));
+    await new Promise((resolve) => setTimeout(resolve, 500));
 
     const updated = await db.errorIssue.findUnique({ where: { id: issue.id } });
     expect(updated?.status).toBe("IGNORED");
@@ -314,7 +314,7 @@ describe("POST /api/tasks/[taskId]/messages/save — ErrorIssue auto-resolve on 
     await POST(buildSaveRequest(task.id, prUrl), {
       params: Promise.resolve({ taskId: task.id }),
     });
-    await new Promise((resolve) => setTimeout(resolve, 100));
+    await new Promise((resolve) => setTimeout(resolve, 500));
 
     const { pusherServer } = await import("@/lib/pusher");
     const firstResolveCount = vi.mocked(pusherServer.trigger).mock.calls.filter(
@@ -328,7 +328,7 @@ describe("POST /api/tasks/[taskId]/messages/save — ErrorIssue auto-resolve on 
     await POST(buildSaveRequest(task.id, prUrl), {
       params: Promise.resolve({ taskId: task.id }),
     });
-    await new Promise((resolve) => setTimeout(resolve, 100));
+    await new Promise((resolve) => setTimeout(resolve, 500));
 
     const secondResolveCount = vi.mocked(pusherServer.trigger).mock.calls.filter(
       (c) => c[1] === "error-issue-updated",
@@ -367,7 +367,7 @@ describe("POST /api/tasks/[taskId]/messages/save — ErrorIssue auto-resolve on 
     expect(response.status).toBe(201);
 
     // ErrorIssue stays unresolved (couldn't check merge status)
-    await new Promise((resolve) => setTimeout(resolve, 100));
+    await new Promise((resolve) => setTimeout(resolve, 500));
     const updated = await db.errorIssue.findUnique({ where: { id: issue.id } });
     expect(updated?.status).toBe("UNRESOLVED");
   });
@@ -395,7 +395,7 @@ describe("POST /api/tasks/[taskId]/messages/save — ErrorIssue auto-resolve on 
     });
 
     expect(response.status).toBe(201);
-    await new Promise((resolve) => setTimeout(resolve, 100));
+    await new Promise((resolve) => setTimeout(resolve, 500));
 
     const { pusherServer } = await import("@/lib/pusher");
     const errorUpdatedCalls = vi.mocked(pusherServer.trigger).mock.calls.filter(
