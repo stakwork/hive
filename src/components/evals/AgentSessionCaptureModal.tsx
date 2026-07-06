@@ -12,6 +12,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Loader2 } from "lucide-react";
 import { CaptureEvalForm, CREATE_NEW_VALUE } from "@/components/evals/CaptureEvalForm";
+import { parseCanonicalAgent } from "@/lib/utils/hive-agent";
 
 interface AgentSessionCaptureModalProps {
   open: boolean;
@@ -32,7 +33,7 @@ export function AgentSessionCaptureModal({
 }: AgentSessionCaptureModalProps) {
   const [requirement, setRequirement] = useState("");
   const [reason, setReason] = useState("");
-  const [selectedAgent, setSelectedAgent] = useState<string>("");
+  const [selectedAgent, setSelectedAgent] = useState<string>(defaultAgent ?? "");
   const [submitting, setSubmitting] = useState(false);
 
   const [evalSets, setEvalSets] = useState<Array<{ ref_id: string; name: string }>>([]);
@@ -46,10 +47,12 @@ export function AgentSessionCaptureModal({
       ? "Capture Eval — Entire Session"
       : `Capture Eval — Up to Turn ${turnIndex + 1}`;
 
-  // Fetch eval sets when modal opens
+  // Fetch eval sets and pre-fill agent when modal opens
   useEffect(() => {
     if (!open) return;
     let cancelled = false;
+
+    // Fetch eval sets
     setLoadingEvalSets(true);
     setEvalSetsError(false);
     fetch(`/api/workspaces/${slug}/evals`)
@@ -79,12 +82,30 @@ export function AgentSessionCaptureModal({
       .finally(() => {
         if (!cancelled) setLoadingEvalSets(false);
       });
+
+    // Pre-fill agent from the agent log when no defaultAgent was supplied (best-effort)
+    if (!defaultAgent) {
+      fetch(`/api/agent-logs/${logId}`)
+        .then((r) => r.json())
+        .then((data) => {
+          if (cancelled) return;
+          const rawAgent: string | null | undefined = data?.data?.agent ?? data?.agent;
+          const parsed = rawAgent ? parseCanonicalAgent(rawAgent) : undefined;
+          if (parsed) {
+            setSelectedAgent(parsed);
+          }
+        })
+        .catch(() => {
+          // ignore — selectedAgent stays at its current value
+        });
+    }
+
     return () => {
       cancelled = true;
     };
-  }, [open, slug]);
+  }, [open, slug, logId, defaultAgent]);
 
-  // Initialise / reset agent when modal opens or defaultAgent changes
+  // Sync selectedAgent when defaultAgent prop changes while open
   useEffect(() => {
     if (open) {
       setSelectedAgent(defaultAgent ?? "");
@@ -146,7 +167,7 @@ export function AgentSessionCaptureModal({
         body.turnIndex = turnIndex;
       }
       if (selectedAgent) {
-        body.agent = selectedAgent;
+        body.agentName = selectedAgent;
       }
 
       const res = await fetch(
