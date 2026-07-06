@@ -18,6 +18,10 @@ export const BIFROST_AGENT_NAMES = [
   "logs-agent",
   // Workflow / agent-session surfaces (PR #4079)
   "plan-agent",
+  // Workflow-editor planning — split out from `plan-agent` so the
+  // workflow-editor planning surface gets its own catalog identity,
+  // prompts, and budget rather than sharing the code-planning agent's.
+  "wfe-plan-agent",
   "coding-agent",
   "test-agent",
   "build-agent",
