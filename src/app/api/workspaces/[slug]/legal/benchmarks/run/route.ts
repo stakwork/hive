@@ -116,8 +116,6 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
 
     // Validate required env vars before creating the record
     const runnerWorkflowId = process.env.STAKWORK_HARVEY_RUNNER_WORKFLOW_ID;
-    const graphBaseUrl = process.env.GRAPH_BASE_URL;
-    const graphSecret = process.env.GRAPH_SECRET;
 
     if (!runnerWorkflowId) {
       return NextResponse.json(
@@ -125,18 +123,13 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
         { status: 500 },
       );
     }
-    if (!graphBaseUrl) {
-      return NextResponse.json(
-        { error: "GRAPH_BASE_URL is not configured" },
-        { status: 500 },
-      );
+
+    const jarvisConfig = await getJarvisConfigForWorkspace(workspaceId);
+    if (!jarvisConfig) {
+      return NextResponse.json({ error: "Swarm not configured for workspace" }, { status: 500 });
     }
-    if (!graphSecret) {
-      return NextResponse.json(
-        { error: "GRAPH_SECRET is not configured" },
-        { status: 500 },
-      );
-    }
+    const graphBaseUrl = jarvisConfig.jarvisUrl;
+    const graphSecret = jarvisConfig.apiKey;
 
     // Pre-fetch task context for Stakwork workflow vars
     let taskGoal = "";
@@ -240,7 +233,6 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
 
     // ── Non-fatal Jarvis eval graph instrumentation ───────────────────────────
     try {
-      const jarvisConfig = await getJarvisConfigForWorkspace(workspaceId);
       if (jarvisConfig) {
         const rubricCriteria = await fetchHarveyTaskCriteria(taskSlug);
         const evalNodes = await ensureHarveyLabEvalNodes(
