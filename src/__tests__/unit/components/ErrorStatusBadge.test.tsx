@@ -4,10 +4,11 @@
 
 import React from "react";
 import { describe, it, expect, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, fireEvent } from "@testing-library/react";
 import { ErrorStatusBadge } from "@/components/errors/ErrorStatusBadge";
 import { ErrorIssuesTable } from "@/components/errors/ErrorIssuesTable";
 import type { ErrorIssueRecord } from "@/types/error-issues";
+import { IMPACT_EXPLANATION } from "@/lib/utils/impact-tier";
 
 // ── ErrorStatusBadge ──────────────────────────────────────────────────────────
 
@@ -203,37 +204,85 @@ describe("ErrorIssuesTable", () => {
     expect(screen.getByText("Impact")).toBeInTheDocument();
   });
 
-  it("renders impact indicator badge for a scored issue", () => {
+  it("renders High impact badge for a scored issue (0.85 → High · 85)", () => {
     const issues = [makeIssue("a", { impactScore: 0.85 })];
     render(
       <ErrorIssuesTable issues={issues} loading={false} error={null} onRowClick={vi.fn()} />,
     );
     const indicator = screen.getByTestId("impact-indicator");
     expect(indicator).toBeInTheDocument();
-    expect(indicator.textContent).toBe("85");
+    expect(indicator.textContent).toBe("High · 85");
   });
 
-  it("renders low impact score correctly", () => {
+  it("renders Medium impact badge for score 0.41 (Medium · 41)", () => {
+    const issues = [makeIssue("a", { impactScore: 0.41 })];
+    render(
+      <ErrorIssuesTable issues={issues} loading={false} error={null} onRowClick={vi.fn()} />,
+    );
+    const indicator = screen.getByTestId("impact-indicator");
+    expect(indicator.textContent).toBe("Medium · 41");
+  });
+
+  it("renders Low impact badge for a low score (0.2 → Low · 20)", () => {
     const issues = [makeIssue("a", { impactScore: 0.2 })];
     render(
       <ErrorIssuesTable issues={issues} loading={false} error={null} onRowClick={vi.fn()} />,
     );
     const indicator = screen.getByTestId("impact-indicator");
-    expect(indicator.textContent).toBe("20");
+    expect(indicator.textContent).toBe("Low · 20");
   });
 
-  it("renders — (muted) when impactScore is null", () => {
+  it("renders 'Not scored' state when impactScore is null", () => {
     const issues = [makeIssue("a", { impactScore: null })];
     render(
       <ErrorIssuesTable issues={issues} loading={false} error={null} onRowClick={vi.fn()} />,
     );
-    // null score shows muted dash (in addition to env dash if env is set)
-    const dashes = screen.getAllByText("—");
-    expect(dashes.length).toBeGreaterThan(0);
-    expect(screen.queryByTestId("impact-indicator")).toBeNull();
+    const indicator = screen.getByTestId("impact-indicator");
+    expect(indicator).toBeInTheDocument();
+    expect(indicator.textContent).toBe("Not scored");
   });
 
-  it("renders impact meta tooltip title when impactMeta has topNodeName", () => {
+  it("badge exposes aria-label for scored issues", () => {
+    const issues = [makeIssue("a", { impactScore: 0.85 })];
+    render(
+      <ErrorIssuesTable issues={issues} loading={false} error={null} onRowClick={vi.fn()} />,
+    );
+    const indicator = screen.getByTestId("impact-indicator");
+    expect(indicator.getAttribute("aria-label")).toBe("Impact: High, 85 out of 100");
+  });
+
+  it("badge exposes aria-label for null score", () => {
+    const issues = [makeIssue("a", { impactScore: null })];
+    render(
+      <ErrorIssuesTable issues={issues} loading={false} error={null} onRowClick={vi.fn()} />,
+    );
+    const indicator = screen.getByTestId("impact-indicator");
+    expect(indicator.getAttribute("aria-label")).toBe("Impact: Not scored");
+  });
+
+  it("renders enriched tooltip title when impactMeta has full data", () => {
+    const issues = [
+      makeIssue("a", {
+        impactScore: 0.9,
+        impactMeta: {
+          topNodeName: "src/core/auth.ts",
+          topNodeType: "Function",
+          topPagerank: 0.9,
+          nodeCount: 3,
+        },
+      }),
+    ];
+    render(
+      <ErrorIssuesTable issues={issues} loading={false} error={null} onRowClick={vi.fn()} />,
+    );
+    const indicator = screen.getByTestId("impact-indicator");
+    expect(indicator.title).toContain("Most-connected code touched:");
+    expect(indicator.title).toContain("src/core/auth.ts (Function)");
+    expect(indicator.title).toContain("centrality 0.90");
+    expect(indicator.title).toContain("3 code locations referenced");
+  });
+
+  it("renders tooltip without 'Top node:' prefix (legacy format removed)", () => {
     const issues = [
       makeIssue("a", {
         impactScore: 0.9,
@@ -244,7 +293,7 @@ describe("ErrorIssuesTable", () => {
       <ErrorIssuesTable issues={issues} loading={false} error={null} onRowClick={vi.fn()} />,
     );
     const indicator = screen.getByTestId("impact-indicator");
-    expect(indicator.title).toBe("Top node: src/core/auth.ts");
+    expect(indicator.title).not.toContain("Top node:");
   });
 
   it("skeleton loading has 10 columns matching table header", () => {
@@ -318,5 +367,26 @@ describe("ErrorIssuesTable", () => {
     );
     expect(screen.getByTestId("correlation-indicator-corr")).toBeInTheDocument();
     expect(screen.queryByTestId("correlation-indicator-none")).not.toBeInTheDocument();
+  });
+
+  // ── Impact column info popover ────────────────────────────────────────────
+
+  it("renders a '?' info button next to the Impact column header", () => {
+    const issues = [makeIssue("a")];
+    render(
+      <ErrorIssuesTable issues={issues} loading={false} error={null} onRowClick={vi.fn()} />,
+    );
+    const helpButton = screen.getByRole("button", { name: "What does Impact mean?" });
+    expect(helpButton).toBeInTheDocument();
+  });
+
+  it("shows IMPACT_EXPLANATION in popover after clicking the '?' button", () => {
+    const issues = [makeIssue("a")];
+    render(
+      <ErrorIssuesTable issues={issues} loading={false} error={null} onRowClick={vi.fn()} />,
+    );
+    const helpButton = screen.getByRole("button", { name: "What does Impact mean?" });
+    fireEvent.click(helpButton);
+    expect(screen.getByText(IMPACT_EXPLANATION)).toBeInTheDocument();
   });
 });
