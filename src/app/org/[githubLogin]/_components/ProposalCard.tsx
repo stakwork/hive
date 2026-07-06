@@ -467,12 +467,12 @@ function ProposalDetailsDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-2xl">
-        <DialogHeader>
+        <DialogHeader className="min-w-0">
           <div className={SECTION_LABEL_CLASS}>{kindLabel} Proposal</div>
-          <DialogTitle className="text-base">{title}</DialogTitle>
+          <DialogTitle className="text-base min-w-0 break-words [overflow-wrap:anywhere]">{title}</DialogTitle>
         </DialogHeader>
 
-        <ScrollArea className="max-h-[60vh]">
+        <ScrollArea className="max-h-[60vh] min-w-0">
           <div className="px-5 py-4 space-y-4 min-w-0">
             {/* Description — all kinds */}
             {proposal.payload.description && (
