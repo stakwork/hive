@@ -120,7 +120,7 @@ export function TaskDetailsModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[80vh] flex flex-col" style={{ backgroundColor: 'var(--background)' }}>
+      <DialogContent className="max-w-2xl max-h-[80vh] flex flex-col overflow-hidden" style={{ backgroundColor: 'var(--background)' }}>
         <DialogHeader>
           <DialogTitle>{task.title}</DialogTitle>
           <div className="flex flex-wrap gap-2 mt-1">
