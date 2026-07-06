@@ -19,6 +19,7 @@ import {
 import type {
   CanvasContextMenuConfig,
   CanvasContextMenuItem,
+  EdgeContextMenuConfig,
 } from "system-canvas";
 // `getNodeLabel` isn't re-exported from `system-canvas-react`; pull
 // it from the core package directly. Used to resolve human-readable
@@ -193,6 +194,78 @@ interface OrgCanvasBackgroundProps {
    * user explores.
    */
   onLinkedConnectionIdsChange?: (ids: Set<string>) => void;
+}
+
+/**
+ * Floating HTML input overlay for inline edge label editing.
+ * Positioned relative to the canvas container using the screen-space
+ * click coordinates reported by the edge context menu's `onSelect`.
+ */
+function EdgeLabelOverlay({
+  edge,
+  screenPosition,
+  containerRef,
+  onCommit,
+  onCancel,
+}: {
+  edge: CanvasEdge;
+  screenPosition: { x: number; y: number };
+  containerRef: React.RefObject<HTMLDivElement | null>;
+  onCommit: (label: string) => void;
+  onCancel: () => void;
+}) {
+  const [value, setValue] = useState(edge.label ?? "");
+  const committedRef = useRef(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  // Convert viewport-relative screen coords to container-relative coords.
+  const rect = containerRef.current?.getBoundingClientRect();
+  const left = screenPosition.x - (rect?.left ?? 0);
+  const top = screenPosition.y - (rect?.top ?? 0);
+
+  useEffect(() => {
+    inputRef.current?.focus();
+    inputRef.current?.select();
+  }, []);
+
+  const commit = () => {
+    if (committedRef.current) return;
+    committedRef.current = true;
+    onCommit(value.trim());
+  };
+
+  const cancel = () => {
+    if (committedRef.current) return;
+    committedRef.current = true;
+    onCancel();
+  };
+
+  return (
+    <div
+      className="absolute z-50"
+      style={{ left, top, transform: "translate(-50%, -50%)" }}
+    >
+      <input
+        ref={inputRef}
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            commit();
+          } else if (e.key === "Escape") {
+            e.preventDefault();
+            cancel();
+          }
+        }}
+        onPointerDown={(e) => e.stopPropagation()}
+        onClick={(e) => e.stopPropagation()}
+        placeholder="Label"
+        className="h-7 w-28 rounded border border-border bg-background px-2 text-center text-xs text-foreground outline-none ring-1 ring-ring focus:ring-2"
+      />
+    </div>
+  );
 }
 
 export function OrgCanvasBackground({
@@ -461,6 +534,14 @@ export function OrgCanvasBackground({
 
   // Selected node id for presence broadcasting.
   const [selectedNodeIdForPresence, setSelectedNodeIdForPresence] = useState<string | null>(null);
+
+  // Active edge label edit state — set when the user picks "Edit label"
+  // from the edge context menu; cleared on commit or cancel.
+  const [editingEdgeLabel, setEditingEdgeLabel] = useState<{
+    edge: CanvasEdge;
+    canvasRef: string | null;
+    screenPosition: { x: number; y: number };
+  } | null>(null);
 
   // -------------------------------------------------------------------
   // Single source of truth for canvas scope: the library's breadcrumb
@@ -1120,6 +1201,41 @@ export function OrgCanvasBackground({
   }, [currentRef]);
 
   /**
+   * Edge right-click context menu — Delete and Edit Label actions.
+   * Mirrors the nodeContextMenu/canvasContextMenu pattern above.
+   */
+  const edgeContextMenu = useMemo<EdgeContextMenuConfig>(
+    () => ({
+      items: [
+        {
+          id: "edit-label",
+          label: "Edit Label",
+        },
+        {
+          id: "delete",
+          label: "Delete",
+          destructive: true,
+        },
+      ],
+      onSelect: (itemId, edge, ctx) => {
+        if (itemId === "delete") {
+          handleEdgeDelete(edge.id, ctx.canvasRef ?? undefined);
+          return;
+        }
+        if (itemId === "edit-label") {
+          setEditingEdgeLabel({
+            edge,
+            canvasRef: ctx.canvasRef,
+            screenPosition: ctx.screenPosition,
+          });
+          return;
+        }
+      },
+    }),
+    [handleEdgeDelete],
+  );
+
+  /**
    * Replace the library's default FAB container so we can hoist the
    * button above the chat-input bar. The library would otherwise place it
    * at `bottom:16` of the canvas, which sits underneath the chat input's
@@ -1201,6 +1317,7 @@ export function OrgCanvasBackground({
           canDropNodeOn={canDropNodeOn}
           onNodeDrop={handleNodeDrop}
           nodeContextMenu={nodeContextMenu}
+          edgeContextMenu={edgeContextMenu}
           canvasContextMenu={canvasContextMenu}
           renderAddNodeButton={renderAddNodeButton}
           rootLabel={orgName || githubLogin}
@@ -1260,6 +1377,30 @@ export function OrgCanvasBackground({
           >
             <div className="h-8 w-8 animate-spin rounded-full border-2 border-muted-foreground border-t-transparent" />
           </div>
+        )}
+
+        {/*
+         * Edge label inline editor — a thin floating HTML input
+         * anchored to the screen-space right-click position reported
+         * by the edge context menu. Committed via Enter/blur, cancelled
+         * via Escape. Persisted through `handleEdgeUpdate` exactly
+         * like any other edge patch.
+         */}
+        {editingEdgeLabel && (
+          <EdgeLabelOverlay
+            edge={editingEdgeLabel.edge}
+            screenPosition={editingEdgeLabel.screenPosition}
+            containerRef={canvasContainerRef}
+            onCommit={(label) => {
+              handleEdgeUpdate(
+                editingEdgeLabel.edge.id,
+                { label },
+                editingEdgeLabel.canvasRef ?? undefined,
+              );
+              setEditingEdgeLabel(null);
+            }}
+            onCancel={() => setEditingEdgeLabel(null)}
+          />
         )}
       </div>
 
