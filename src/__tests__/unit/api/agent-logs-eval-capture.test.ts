@@ -542,7 +542,7 @@ describe("POST /api/workspaces/[slug]/agent-logs/[logId]/eval/capture", () => {
     );
 
     await POST(
-      makeRequest({ evalSetId: "eval-set-1", requirement: "Agent override", agent: "plan-agent" }),
+      makeRequest({ evalSetId: "eval-set-1", requirement: "Agent override", agentName: "plan-agent" }),
       makeParams(),
     );
 
@@ -562,7 +562,7 @@ describe("POST /api/workspaces/[slug]/agent-logs/[logId]/eval/capture", () => {
       makeRequest({
         evalSetId: "eval-set-1",
         requirement: "Invalid override",
-        agent: "totally-unknown-bot",
+        agentName: "totally-unknown-bot",
       }),
       makeParams(),
     );
@@ -662,7 +662,7 @@ describe("POST /api/workspaces/[slug]/agent-logs/[logId]/eval/capture", () => {
       makeRequest({
         evalSetId: "eval-set-1",
         requirement: "Conv agent override",
-        agent: "repo-agent",
+        agentName: "repo-agent",
       }),
       makeParams("test-ws", "conv-abc"),
     );
