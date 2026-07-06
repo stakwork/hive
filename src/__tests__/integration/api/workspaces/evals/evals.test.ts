@@ -1931,6 +1931,13 @@ describe("Evals API — Integration Tests", () => {
       run_count: 3,
     };
 
+    beforeEach(() => {
+      // resolveSessionPrompts fetches the AgentSession node from Jarvis.
+      // Return a non-OK response so prompt resolution short-circuits immediately
+      // for all POST triggers tests that don't need specific fetch behaviour.
+      global.fetch = vi.fn().mockResolvedValue({ ok: false, status: 404 } as Response);
+    });
+
     describe("Success", () => {
       test("creates trigger node and required edges", async () => {
         const owner = await createTestUser();
