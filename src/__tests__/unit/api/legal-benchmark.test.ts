@@ -427,7 +427,7 @@ describe("POST /run — task context pre-fetch for Stakwork vars", () => {
     const vars = (capturedPayloads[0] as { workflow_params: { set_var: { attributes: { vars: Record<string, string> } } } }).workflow_params.set_var.attributes.vars;
     expect(vars.task_goal).toBe("Do this thing.");
     expect(vars.task_output_desc).toBe("Memo, Summary");
-    expect(JSON.parse(vars.documents)).toEqual(["doc1.txt", "doc2.txt"]);
+    expect(JSON.parse(vars.documents_json)).toEqual(["doc1.txt", "doc2.txt"]);
   });
 
   test("task_output_desc falls back to regex parse of ### Output block when no deliverables", async () => {
@@ -485,7 +485,7 @@ describe("POST /run — task context pre-fetch for Stakwork vars", () => {
     const vars = (capturedPayloads[0] as { workflow_params: { set_var: { attributes: { vars: Record<string, string> } } } }).workflow_params.set_var.attributes.vars;
     expect(vars.task_goal).toBe("");
     expect(vars.task_output_desc).toBe("");
-    expect(JSON.parse(vars.documents)).toEqual([]);
+    expect(JSON.parse(vars.documents_json)).toEqual([]);
   });
 
   test("documents contains only type=file entries, excluding dirs", async () => {
@@ -523,7 +523,7 @@ describe("POST /run — task context pre-fetch for Stakwork vars", () => {
     });
 
     const vars = (capturedPayloads[0] as { workflow_params: { set_var: { attributes: { vars: Record<string, string> } } } }).workflow_params.set_var.attributes.vars;
-    expect(JSON.parse(vars.documents)).toEqual(["contract.pdf", "exhibit.docx"]);
+    expect(JSON.parse(vars.documents_json)).toEqual(["contract.pdf", "exhibit.docx"]);
   });
 });
 
