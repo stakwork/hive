@@ -536,20 +536,12 @@ describe("StepDetailsModal — Flag for eval capture", () => {
     expect(screen.queryByRole("button", { name: /flag for eval/i })).not.toBeInTheDocument();
   });
 
-  it("renders agentName Select dropdown when flag form is open", async () => {
+  it("does NOT render an agent Select dropdown when flag form is open", async () => {
     await openFlagForm();
-    expect(screen.getByTestId("step-agent-select")).toBeInTheDocument();
+    expect(screen.queryByTestId("step-agent-select")).not.toBeInTheDocument();
   });
 
-  it("agentName Select defaults to the first HIVE_AGENT_OPTIONS entry", async () => {
-    const { HIVE_AGENT_OPTIONS } = await import("@/lib/utils/hive-agent");
-    await openFlagForm();
-    const select = screen.getByTestId("step-agent-select") as HTMLSelectElement;
-    expect(select.value).toBe(HIVE_AGENT_OPTIONS[0].name);
-  });
-
-  it("sends agentName in the capture payload", async () => {
-    const { HIVE_AGENT_OPTIONS } = await import("@/lib/utils/hive-agent");
+  it("does NOT include agentName in the capture payload", async () => {
     const fetchMock = vi.fn().mockImplementation((url: string) => {
       if (String(url).includes("/io")) {
         return Promise.resolve({
@@ -579,7 +571,7 @@ describe("StepDetailsModal — Flag for eval capture", () => {
 
     await openFlagForm(fetchMock);
     await waitFor(() =>
-      expect(fetchMock.mock.calls.some(([url]: [string]) => String(url).endsWith("/evals"))).toBe(true),
+      expect(fetchMock.mock.calls.some((c: unknown[]) => String(c[0]).endsWith("/evals"))).toBe(true),
     );
 
     fireEvent.change(screen.getByRole("textbox", { name: /requirement/i }), {
@@ -588,65 +580,12 @@ describe("StepDetailsModal — Flag for eval capture", () => {
     fireEvent.click(screen.getByRole("button", { name: /capture/i }));
 
     await waitFor(() => {
-      const captureCall = fetchMock.mock.calls.find(([url]: [string]) =>
-        String(url).includes("/eval/capture"),
+      const captureCall = fetchMock.mock.calls.find((c: unknown[]) =>
+        String(c[0]).includes("/eval/capture"),
       );
       expect(captureCall).toBeDefined();
       const body = JSON.parse((captureCall![1] as RequestInit).body as string);
-      expect(body.agentName).toBe(HIVE_AGENT_OPTIONS[0].name);
-    });
-  });
-
-  it("changing agentName Select sends the overridden value in the capture payload", async () => {
-    const fetchMock = vi.fn().mockImplementation((url: string) => {
-      if (String(url).includes("/io")) {
-        return Promise.resolve({
-          ok: true,
-          json: async () => ({
-            data: { inputs: { model: "gpt-4o" }, outputs: "result" },
-          }),
-        });
-      }
-      if (String(url).endsWith("/evals")) {
-        return Promise.resolve({
-          ok: true,
-          json: async () => ({
-            success: true,
-            data: {
-              nodes: [{ ref_id: "set-1", properties: { name: "Eval Set Alpha" } }],
-              total: 1,
-            },
-          }),
-        });
-      }
-      if (String(url).includes("/eval/capture")) {
-        return Promise.resolve({ ok: true, json: async () => ({}) });
-      }
-      return Promise.resolve({ ok: true, json: async () => ({}) });
-    });
-
-    await openFlagForm(fetchMock);
-    await waitFor(() =>
-      expect(fetchMock.mock.calls.some(([url]: [string]) => String(url).endsWith("/evals"))).toBe(true),
-    );
-
-    // Change agent to canvas-agent
-    const select = screen.getByTestId("step-agent-select") as HTMLSelectElement;
-    fireEvent.change(select, { target: { value: "canvas-agent" } });
-    expect(select.value).toBe("canvas-agent");
-
-    fireEvent.change(screen.getByRole("textbox", { name: /requirement/i }), {
-      target: { value: "Must always respond" },
-    });
-    fireEvent.click(screen.getByRole("button", { name: /capture/i }));
-
-    await waitFor(() => {
-      const captureCall = fetchMock.mock.calls.find(([url]: [string]) =>
-        String(url).includes("/eval/capture"),
-      );
-      expect(captureCall).toBeDefined();
-      const body = JSON.parse((captureCall![1] as RequestInit).body as string);
-      expect(body.agentName).toBe("canvas-agent");
+      expect(body).not.toHaveProperty("agentName");
     });
   });
 
