@@ -82,6 +82,7 @@ function createDbMock() {
     whiteboard: model(),
     whiteboardMessage: model(),
     stakworkRun: model(),
+    workspaceApiKey: model(),
     $transaction,
     $queryRaw,
     $executeRaw,
