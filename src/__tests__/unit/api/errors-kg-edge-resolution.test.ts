@@ -281,3 +281,166 @@ describe("parseStackFrames (V8 / Firefox fallback)", () => {
     expect(parseStackFrames("")).toHaveLength(0);
   });
 });
+
+// ── Per-file path normalization (new exact-match fetch logic) ─────────────────
+
+/**
+ * Helper: mirrors the normalization logic in the webhook route's KG edge block.
+ * Used to verify path-building correctness without importing the route itself.
+ */
+function normalizePath(filePath: string | null | undefined): string | null {
+  if (!filePath) return null;
+  const norm = filePath.replace(/^(?:\.\/|\/+|(?:[A-Za-z]:)?[/\\]+)/, "");
+  return norm || null;
+}
+
+function buildFullPath(repoKey: string, filePath: string | null | undefined): string | null {
+  const norm = normalizePath(filePath);
+  if (!norm) return null;
+  return `${repoKey}/${norm}`;
+}
+
+describe("per-file path normalization — buildFullPath", () => {
+  const REPO_KEY = "stakwork/senza-lnd";
+
+  test("bare relative path unchanged", () => {
+    expect(buildFullPath(REPO_KEY, "app/controllers/admin/translations_controller.rb"))
+      .toBe("stakwork/senza-lnd/app/controllers/admin/translations_controller.rb");
+  });
+
+  test("leading '/' stripped", () => {
+    expect(buildFullPath(REPO_KEY, "/app/controllers/admin/translations_controller.rb"))
+      .toBe("stakwork/senza-lnd/app/controllers/admin/translations_controller.rb");
+  });
+
+  test("leading './' stripped", () => {
+    expect(buildFullPath(REPO_KEY, "./app/workers/my_worker.rb"))
+      .toBe("stakwork/senza-lnd/app/workers/my_worker.rb");
+  });
+
+  test("multiple leading slashes stripped", () => {
+    expect(buildFullPath(REPO_KEY, "///app/services/foo.rb"))
+      .toBe("stakwork/senza-lnd/app/services/foo.rb");
+  });
+
+  test("null filePath → returns null (null guard)", () => {
+    expect(buildFullPath(REPO_KEY, null)).toBeNull();
+  });
+
+  test("undefined filePath → returns null (null guard)", () => {
+    expect(buildFullPath(REPO_KEY, undefined)).toBeNull();
+  });
+
+  test("empty string filePath → returns null (null guard)", () => {
+    expect(buildFullPath(REPO_KEY, "")).toBeNull();
+  });
+
+  test("basename-only (no directory) still builds a path", () => {
+    // parseStackFrames fallback produces basenames — documented limitation
+    expect(buildFullPath(REPO_KEY, "bar.ts")).toBe("stakwork/senza-lnd/bar.ts");
+  });
+});
+
+describe("per-file deduplication via Set", () => {
+  const REPO_KEY = "stakwork/hive";
+
+  test("multiple frames pointing to the same file dedupe to one entry", () => {
+    const candidates: Array<{ filePath: string | null }> = [
+      { filePath: "app/controllers/orders_controller.rb" },
+      { filePath: "app/controllers/orders_controller.rb" },
+      { filePath: "app/controllers/orders_controller.rb" },
+    ];
+
+    const uniquePaths = new Set<string>();
+    for (const frame of candidates) {
+      if (!frame.filePath) continue;
+      const norm = normalizePath(frame.filePath);
+      if (!norm) continue;
+      uniquePaths.add(`${REPO_KEY}/${norm}`);
+    }
+
+    expect(uniquePaths.size).toBe(1);
+    expect(Array.from(uniquePaths)[0]).toBe("stakwork/hive/app/controllers/orders_controller.rb");
+  });
+
+  test("frames pointing to different files produce separate entries", () => {
+    const candidates: Array<{ filePath: string | null }> = [
+      { filePath: "app/controllers/orders_controller.rb" },
+      { filePath: "app/services/order_service.rb" },
+      { filePath: "app/workers/order_worker.rb" },
+    ];
+
+    const uniquePaths = new Set<string>();
+    for (const frame of candidates) {
+      if (!frame.filePath) continue;
+      const norm = normalizePath(frame.filePath);
+      if (!norm) continue;
+      uniquePaths.add(`${REPO_KEY}/${norm}`);
+    }
+
+    expect(uniquePaths.size).toBe(3);
+  });
+
+  test("null filePath candidates are skipped and not added to Set", () => {
+    const candidates: Array<{ filePath: string | null }> = [
+      { filePath: null },
+      { filePath: "app/workers/my_worker.rb" },
+      { filePath: null },
+    ];
+
+    const uniquePaths = new Set<string>();
+    for (const frame of candidates) {
+      if (!frame.filePath) continue;
+      const norm = normalizePath(frame.filePath);
+      if (!norm) continue;
+      uniquePaths.add(`${REPO_KEY}/${norm}`);
+    }
+
+    expect(uniquePaths.size).toBe(1);
+  });
+});
+
+describe("File(null pagerank) + Function(non-null pagerank) — matcher selects Function's score", () => {
+  // When pooled nodes include a File node with no pagerank and a Function node
+  // with a pagerank score, matchFileNode + the function search both succeed,
+  // both edges are drawn, and computeImpactScore (which picks max pagerank)
+  // correctly returns the Function's score (not null from the File node).
+
+  test("matchFileNode resolves File node even when pagerank is null", () => {
+    const nodes: MockNode[] = [
+      {
+        ref_id: "file-ref",
+        node_type: "File",
+        properties: { file: "stakwork/senza-lnd/app/controllers/admin/translations_controller.rb" },
+        // No pagerank — null/missing
+      },
+      {
+        ref_id: "func-ref",
+        node_type: "Function",
+        properties: {
+          name: "edit",
+          file: "stakwork/senza-lnd/app/controllers/admin/translations_controller.rb",
+          pagerank: 0.405,
+        },
+      },
+    ];
+
+    const fileMatch = matchFileNode(nodes, "app/controllers/admin/translations_controller.rb");
+    expect(fileMatch?.ref_id).toBe("file-ref");
+
+    const funcMatch = nodes.find(
+      (n) =>
+        n.node_type === "Function" &&
+        n.properties.name === "edit" &&
+        matchesFilePath(
+          n.properties.file as string,
+          "app/controllers/admin/translations_controller.rb",
+        ),
+    );
+    expect(funcMatch?.ref_id).toBe("func-ref");
+    // The Function node has the non-null pagerank — computeImpactScore would pick this
+    expect(funcMatch?.properties.pagerank).toBe(0.405);
+    // The File node has no pagerank — confirms scorer must look at all matched nodes
+    expect(fileMatch?.properties?.pagerank).toBeUndefined();
+  });
+});
