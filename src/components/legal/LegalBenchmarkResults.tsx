@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { Loader2, AlertCircle, Copy, Download, RefreshCw } from "lucide-react";
+import { Loader2, AlertCircle, Copy, Download, RefreshCw, ExternalLink } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useLegalBenchmarkRun } from "@/hooks/useLegalBenchmarkRun";
@@ -10,6 +10,7 @@ import type { RubricScore } from "@/types/legal";
 interface LegalBenchmarkResultsProps {
   runId: string;
   onReset: () => void;
+  isSuperAdmin?: boolean;
 }
 
 function SpinnerMessage({ message }: { message: string }) {
@@ -21,7 +22,21 @@ function SpinnerMessage({ message }: { message: string }) {
   );
 }
 
-export function LegalBenchmarkResults({ runId, onReset }: LegalBenchmarkResultsProps) {
+export function LegalBenchmarkResults({ runId, onReset, isSuperAdmin = false }: LegalBenchmarkResultsProps) {
+  function StakworkRunLink({ projectId }: { projectId: number | null | undefined }) {
+    if (!isSuperAdmin || projectId == null) return null;
+    return (
+      <a
+        href={`https://jobs.stakwork.com/admin/projects/${projectId}`}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground"
+      >
+        <ExternalLink className="h-3.5 w-3.5" />
+        View on Stakwork
+      </a>
+    );
+  }
   const { run, isLoading, isStale, refetch } = useLegalBenchmarkRun(runId);
 
   const handleCopy = () => {
@@ -70,6 +85,7 @@ export function LegalBenchmarkResults({ runId, onReset }: LegalBenchmarkResultsP
       <div className="mt-6 rounded-lg border bg-card p-4">
         {renderStaleWarning()}
         <SpinnerMessage message="Running task… (document ingestion & analysis)" />
+        <StakworkRunLink projectId={run.runnerProjectId} />
       </div>
     );
   }
@@ -79,6 +95,7 @@ export function LegalBenchmarkResults({ runId, onReset }: LegalBenchmarkResultsP
       <div className="mt-6 rounded-lg border bg-card p-4">
         {renderStaleWarning()}
         <SpinnerMessage message="Scoring output against rubric…" />
+        <StakworkRunLink projectId={run.scorerProjectId} />
       </div>
     );
   }
