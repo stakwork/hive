@@ -32,6 +32,8 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
 import { getS3Service } from "@/services/s3";
 import { EncryptionService } from "@/lib/encryption";
@@ -39,6 +41,7 @@ import { ChatRole, ChatStatus, ArtifactType } from "@prisma/client";
 import { validateVideoSize, getMaxVideoSizeMB } from "@/lib/video-validation";
 import { timingSafeEqual } from "@/lib/encryption";
 import { deriveTestOutcome } from "@/lib/test-outcome";
+import { validateWorkspaceAccessById } from "@/services/workspace";
 
 export const fetchCache = "force-no-store";
 
@@ -104,10 +107,13 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       formData = await request.formData();
     } catch (error) {
       console.error("Failed to parse multipart form data:", error);
-      return NextResponse.json({
-        error: "Invalid multipart data",
-        details: "Failed to parse multipart/form-data. Ensure Content-Type header includes boundary parameter.",
-      }, { status: 400 });
+      return NextResponse.json(
+        {
+          error: "Invalid multipart data",
+          details: "Failed to parse multipart/form-data. Ensure Content-Type header includes boundary parameter.",
+        },
+        { status: 400 },
+      );
     }
 
     const videoFile = formData.get("video") as File | null;
@@ -224,14 +230,13 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       return NextResponse.json({ error: "Internal error" }, { status: 500 });
     }
 
-    // Step 8: Invalidate API Key (One-time Use) + record pass/fail on the task.
-    // When the timestamps carry a Playwright status, transition the task out of
-    // IN_PROGRESS so an authoritative pod replay surfaces a real result.
     try {
       await db.task.update({
         where: { id: taskId },
         data: {
           agentPassword: null,
+          lastRecordingS3Key: s3Key,
+          lastRecordingAt: new Date(),
           ...(outcome.workflowStatus ? { workflowStatus: outcome.workflowStatus } : {}),
         },
       });
@@ -255,6 +260,57 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     );
   } catch (error) {
     console.error("Unexpected error in recording webhook:", error);
+    return NextResponse.json({ error: "Internal error" }, { status: 500 });
+  }
+}
+
+export async function GET(_request: NextRequest, { params }: { params: Promise<{ taskId: string }> }) {
+  try {
+    const { taskId } = await params;
+    if (!taskId) {
+      return NextResponse.json({ error: "Task ID required" }, { status: 400 });
+    }
+
+    const session = await getServerSession(authOptions);
+    if (!session?.user?.id) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const task = await db.task.findUnique({
+      where: { id: taskId, deleted: false },
+      select: {
+        workspaceId: true,
+        lastRecordingS3Key: true,
+        lastRecordingAt: true,
+        workflowStatus: true,
+      },
+    });
+
+    if (!task) {
+      return NextResponse.json({ error: "Task not found" }, { status: 404 });
+    }
+
+    const accessValidation = await validateWorkspaceAccessById(task.workspaceId, session.user.id);
+    if (!accessValidation.hasAccess) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
+    if (!task.lastRecordingS3Key) {
+      return NextResponse.json({ error: "No recording available for this task" }, { status: 404 });
+    }
+
+    const s3Service = getS3Service();
+    const expiresIn = 3600; // 1 hour
+    const url = await s3Service.generatePresignedDownloadUrl(task.lastRecordingS3Key, expiresIn);
+
+    return NextResponse.json({
+      url,
+      expiresIn,
+      recordedAt: task.lastRecordingAt,
+      workflowStatus: task.workflowStatus,
+    });
+  } catch (error) {
+    console.error("Error fetching recording URL:", error);
     return NextResponse.json({ error: "Internal error" }, { status: 500 });
   }
 }
