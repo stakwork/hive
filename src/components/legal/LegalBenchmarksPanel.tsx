@@ -118,7 +118,7 @@ function TaskCard({ task, onSelect, onViewDetails, isRunning }: TaskCardProps) {
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export function LegalBenchmarksPanel() {
-  const { slug } = useWorkspace();
+  const { slug, isSuperAdmin } = useWorkspace();
 
   const [practiceAreas, setPracticeAreas] = useState<PracticeArea[]>([]);
   const [selectedArea, setSelectedArea] = useState<string | null>(null);
@@ -268,7 +268,7 @@ export function LegalBenchmarksPanel() {
 
             {/* Inline results panel — rendered below the task grid */}
             {activeRunId && (
-              <LegalBenchmarkResults runId={activeRunId} onReset={handleReset} />
+              <LegalBenchmarkResults runId={activeRunId} onReset={handleReset} isSuperAdmin={isSuperAdmin} />
             )}
           </ScrollArea>
         </div>
