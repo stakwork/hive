@@ -512,3 +512,159 @@ describe("PUT /api/orgs/[githubLogin]/chat/conversations/[conversationId]", () =
     expect(res.status).toBe(400);
   });
 });
+
+// ── Fork-chat integration path ────────────────────────────────────────────────
+// These tests exercise the GET-then-POST pattern that `forkCanvasConversation`
+// performs at the API level — ensuring:
+// 1. A second org member can read a shared source conversation.
+// 2. That member can create a fork (POST) that becomes their own private row.
+// 3. The fork is independent: a subsequent PUT appends exactly one new turn
+//    without re-duplicating the copied history.
+
+describe("Fork-chat: cross-user path — isShared source readable and forkable", () => {
+  it("org member can GET a shared conversation owned by a different user", async () => {
+    const owner = await createTestUser();
+    createdUserIds.push(owner.id);
+    const forker = await createTestUser();
+    createdUserIds.push(forker.id);
+    const org = await createOrg(`test-org-fork-get-${generateUniqueId()}`);
+    createdOrgIds.push(org.id);
+    const ws = await createWorkspaceInOrg(owner.id, org.id);
+    createdWorkspaceIds.push(ws.id);
+    // forker is an org member
+    await db.workspaceMember.create({
+      data: { workspaceId: ws.id, userId: forker.id, role: "VIEWER" },
+    });
+
+    // Owner's shared conversation (isShared: true)
+    const source = await db.sharedConversation.create({
+      data: {
+        sourceControlOrgId: org.id,
+        userId: owner.id,
+        workspaceId: null,
+        messages: sampleMessages as any,
+        title: "Shared room",
+        source: "org-canvas",
+        followUpQuestions: [],
+        lastMessageAt: new Date(),
+        isShared: true,
+      },
+    });
+    createdConversationIds.push(source.id);
+
+    // forker GETs the shared conversation
+    const getReq = createAuthenticatedGetRequest(
+      `http://localhost/api/orgs/${org.githubLogin}/chat/conversations/${source.id}`,
+      { id: forker.id, email: forker.email ?? "", name: forker.name ?? "" },
+    );
+    const getRes = await getConversation(getReq, {
+      params: detailParams(org.githubLogin, source.id),
+    });
+    expect(getRes.status).toBe(200);
+
+    const body = await getRes.json();
+    expect(body.id).toBe(source.id);
+    expect(Array.isArray(body.messages)).toBe(true);
+    expect(body.messages).toHaveLength(2);
+  });
+
+  it("org member can POST a fork from a shared conversation; fork is owned by them and isShared: false", async () => {
+    const owner = await createTestUser();
+    createdUserIds.push(owner.id);
+    const forker = await createTestUser();
+    createdUserIds.push(forker.id);
+    const org = await createOrg(`test-org-fork-post-${generateUniqueId()}`);
+    createdOrgIds.push(org.id);
+    const ws = await createWorkspaceInOrg(owner.id, org.id);
+    createdWorkspaceIds.push(ws.id);
+    await db.workspaceMember.create({
+      data: { workspaceId: ws.id, userId: forker.id, role: "DEVELOPER" },
+    });
+
+    const source = await db.sharedConversation.create({
+      data: {
+        sourceControlOrgId: org.id,
+        userId: owner.id,
+        workspaceId: null,
+        messages: sampleMessages as any,
+        title: "Shared room",
+        source: "org-canvas",
+        followUpQuestions: [],
+        lastMessageAt: new Date(),
+        isShared: true,
+      },
+    });
+    createdConversationIds.push(source.id);
+
+    // forker POSTs a fork
+    const postReq = createAuthenticatedPostRequest(
+      `http://localhost/api/orgs/${org.githubLogin}/chat/conversations`,
+      { id: forker.id, email: forker.email ?? "", name: forker.name ?? "" },
+      { messages: sampleMessages, settings: {}, source: "org-canvas" },
+    );
+    const postRes = await postConversation(postReq, {
+      params: listParams(org.githubLogin),
+    });
+    expect(postRes.status).toBe(201);
+
+    const { id: forkId } = await postRes.json();
+    createdConversationIds.push(forkId);
+
+    // Verify the fork row in DB
+    const forkRow = await db.sharedConversation.findUnique({ where: { id: forkId } });
+    expect(forkRow).not.toBeNull();
+    expect(forkRow!.userId).toBe(forker.id);
+    expect(forkRow!.isShared).toBe(false);
+
+    // Original is untouched
+    const sourceRow = await db.sharedConversation.findUnique({ where: { id: source.id } });
+    expect(sourceRow!.userId).toBe(owner.id);
+  });
+
+  it("continuing a fork appends exactly one new turn — no duplication of copied history", async () => {
+    const forker = await createTestUser();
+    createdUserIds.push(forker.id);
+    const org = await createOrg(`test-org-fork-put-${generateUniqueId()}`);
+    createdOrgIds.push(org.id);
+    const ws = await createWorkspaceInOrg(forker.id, org.id);
+    createdWorkspaceIds.push(ws.id);
+
+    // Create the fork row pre-seeded with 2 messages (as forkCanvasConversation does)
+    const fork = await db.sharedConversation.create({
+      data: {
+        sourceControlOrgId: org.id,
+        userId: forker.id,
+        workspaceId: null,
+        messages: sampleMessages as any,
+        title: "My fork",
+        source: "org-canvas",
+        followUpQuestions: [],
+        lastMessageAt: new Date(),
+        isShared: false,
+      },
+    });
+    createdConversationIds.push(fork.id);
+
+    // PUT appends one new turn (the user's first message in the fork).
+    // The client sends only the delta — the new message — not the full
+    // history. This matches how persistCanvasUserMessage works and is the
+    // same pattern as the existing "appends messages and updates
+    // lastMessageAt" test above.
+    const newTurn = { role: "user", content: "continuing in fork" };
+    const putReq = createAuthenticatedPutRequest(
+      `http://localhost/api/orgs/${org.githubLogin}/chat/conversations/${fork.id}`,
+      { id: forker.id, email: forker.email ?? "", name: forker.name ?? "" },
+      { messages: [newTurn] },
+    );
+    const putRes = await putConversation(putReq, {
+      params: detailParams(org.githubLogin, fork.id),
+    });
+    expect(putRes.status).toBe(200);
+
+    // Exactly 3 messages in DB — the 2 copied + the 1 new
+    const updated = await db.sharedConversation.findUnique({ where: { id: fork.id } });
+    const storedMessages = updated!.messages as unknown[];
+    expect(storedMessages).toHaveLength(3);
+    expect((storedMessages[2] as { content: string }).content).toBe("continuing in fork");
+  });
+});
