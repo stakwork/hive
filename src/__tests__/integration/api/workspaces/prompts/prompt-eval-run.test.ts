@@ -1,5 +1,7 @@
 import { describe, test, expect, beforeEach, vi } from "vitest";
 import { GET as runEvalsGet, POST as runEvalsPost } from "@/app/api/workspaces/[slug]/prompts/[promptId]/versions/[versionId]/run-evals/route";
+import { getBaseUrl } from "@/lib/utils";
+import { getStakworkTokenReference } from "@/lib/vercel/stakwork-token";
 import {
   createTestUser,
   createTestWorkspace,
@@ -209,8 +211,21 @@ describe("Prompt Eval Run API — Integration Tests", () => {
       const fetchCallArgs = (global.fetch as ReturnType<typeof vi.fn>).mock.calls[0];
       const fetchBody = JSON.parse(fetchCallArgs[1].body as string);
       const vars = fetchBody.workflow_params.set_var.attributes.vars;
-      expect(vars.prompt_overrides[0].prompt_version_id).toBe(versionId); // cuid string
+
+      // prompt_overrides: must include prompt_id, prompt_version_id, name — no resolution field
+      const override = vars.prompt_overrides[0];
+      expect(override.prompt_version_id).toBe(versionId); // cuid string
+      expect(override.prompt_id).toBe(promptId); // cuid string from route param
+      expect(override.name).toBe("my-prompt");
+      expect(override.resolution).toBeUndefined();
+
+      // callback context vars
+      expect(vars.sourceHiveUrl).toBe(getBaseUrl());
+      expect(vars.tokenReference).toBe(getStakworkTokenReference());
+
+      // webhookUrl/webhook_url must still derive from NEXTAUTH_URL || request host (not getBaseUrl)
       expect(vars.webhookUrl).toContain(`/api/webhook/stakwork/response?type=PROMPT_EVAL&workspace_id=${workspace.id}`);
+      expect(fetchBody.webhook_url).toContain("/api/stakwork/webhook?run_id=");
       expect(vars.resultWebhookUrl).toBeUndefined();
     });
 
