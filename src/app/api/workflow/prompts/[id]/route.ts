@@ -5,6 +5,7 @@ import { db } from "@/lib/db";
 import { isDevelopmentMode } from "@/lib/runtime";
 import { writePromptThrough, deletePrompt } from "@/services/prompts/prompt-sync";
 import { BIFROST_AGENT_NAMES } from "@/services/bifrost/agent-names";
+import { validateApiToken } from "@/lib/auth/api-token";
 
 export const runtime = "nodejs";
 export const fetchCache = "force-no-store";
@@ -105,13 +106,16 @@ function shapePromptDetail(p: {
 // ─── GET /api/workflow/prompts/[id] ──────────────────────────────────────────
 
 export async function GET(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
-    const devMode = isDevelopmentMode();
-    const authResult = await getAuthenticatedUserId(devMode);
-    if (authResult instanceof NextResponse) return authResult;
+    const isApiToken = validateApiToken(request);
+    if (!isApiToken) {
+      const devMode = isDevelopmentMode();
+      const authResult = await getAuthenticatedUserId(devMode);
+      if (authResult instanceof NextResponse) return authResult;
+    }
 
     const { id } = await params;
     if (!id) {
