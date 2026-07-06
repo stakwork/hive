@@ -159,11 +159,8 @@ beforeEach(() => {
   process.env.NEXTAUTH_URL = "http://localhost:3000";
   process.env.STAKWORK_HARVEY_RUNNER_WORKFLOW_ID = "1001";
   process.env.STAKWORK_HARVEY_SCORER_WORKFLOW_ID = "1002";
-  process.env.GRAPH_BASE_URL = "https://graph.example.com";
-  process.env.GRAPH_SECRET = "supersecret";
-
-  // Default: Jarvis not configured (non-fatal path skipped by default)
-  mockGetJarvisConfig.mockResolvedValue(null);
+  // Default: Jarvis configured so happy-path tests get correct graph_base_url/secret in payload
+  mockGetJarvisConfig.mockResolvedValue({ jarvisUrl: "https://graph.example.com", apiKey: "supersecret" });
   mockFetchHarveyTaskCriteria.mockResolvedValue([]);
   mockEnsureHarveyLabEvalNodes.mockResolvedValue(null);
   mockAddNode.mockResolvedValue({ success: true, ref_id: "node-ref-1" });
@@ -652,15 +649,15 @@ describe("POST /run — Jarvis eval graph non-fatal block", () => {
     );
   });
 
-  test("still returns 201 + RUNNING when getJarvisConfigForWorkspace returns null", async () => {
+  test("returns 500 when getJarvisConfigForWorkspace returns null", async () => {
     mockGetJarvisConfig.mockResolvedValue(null);
 
     const res = await postRun(makeRunRequest({ taskSlug: "task-a", taskTitle: "Task A" }), {
       params: Promise.resolve({ slug: "openlaw" }),
     });
-    expect(res.status).toBe(201);
-    // No Jarvis calls made
-    expect(mockAddNode).not.toHaveBeenCalled();
+    expect(res.status).toBe(500);
+    const body = await res.json();
+    expect(body.error).toMatch(/swarm not configured/i);
   });
 
   test("still returns 201 + RUNNING when ensureHarveyLabEvalNodes returns null", async () => {
@@ -676,8 +673,10 @@ describe("POST /run — Jarvis eval graph non-fatal block", () => {
     expect(mockAddNode).not.toHaveBeenCalled();
   });
 
-  test("still returns 201 + RUNNING when Jarvis block throws", async () => {
-    mockGetJarvisConfig.mockRejectedValue(new Error("Jarvis down"));
+  test("still returns 201 + RUNNING when Jarvis eval block throws after dispatch", async () => {
+    // getJarvisConfigForWorkspace succeeds (needed for payload), but ensureHarveyLabEvalNodes throws
+    mockGetJarvisConfig.mockResolvedValue({ jarvisUrl: "https://j.example.com", apiKey: "key" });
+    mockFetchHarveyTaskCriteria.mockRejectedValue(new Error("Jarvis criteria fetch down"));
 
     const res = await postRun(makeRunRequest({ taskSlug: "task-a", taskTitle: "Task A" }), {
       params: Promise.resolve({ slug: "openlaw" }),
