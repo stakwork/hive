@@ -3,10 +3,12 @@
 import React from "react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { ErrorStatusBadge } from "./ErrorStatusBadge";
 import { TriageActions } from "./TriageActions";
-import { GitPullRequest } from "lucide-react";
+import { GitPullRequest, HelpCircle } from "lucide-react";
 import type { ErrorIssueRecord, ErrorIssueStatus } from "@/types/error-issues";
+import { impactTier, impactTooltip, IMPACT_EXPLANATION } from "@/lib/utils/impact-tier";
 
 const dateFormatter = new Intl.DateTimeFormat("en-US", {
   month: "short",
@@ -14,6 +16,26 @@ const dateFormatter = new Intl.DateTimeFormat("en-US", {
   hour: "2-digit",
   minute: "2-digit",
 });
+
+/** Small "?" info popover that surfaces the IMPACT_EXPLANATION text. */
+function ImpactInfoPopover() {
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          className="inline-flex items-center ml-1 text-muted-foreground hover:text-foreground focus:outline-none"
+          aria-label="What does Impact mean?"
+        >
+          <HelpCircle className="h-3.5 w-3.5" />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent className="w-72 text-sm" side="top">
+        {IMPACT_EXPLANATION}
+      </PopoverContent>
+    </Popover>
+  );
+}
 
 /** Render a compact impact indicator. Score is [0,1]; null = unscored. */
 function ImpactIndicator({
@@ -23,29 +45,31 @@ function ImpactIndicator({
   score: number | null;
   meta: Record<string, unknown> | null;
 }) {
+  const { label, colorClass } = impactTier(score);
+  const pct = score === null ? null : Math.round(score * 100);
+  const tooltip = impactTooltip(meta);
+  const ariaLabel = `Impact: ${label}${pct !== null ? `, ${pct} out of 100` : ""}`;
+
   if (score === null) {
-    return <span className="text-muted-foreground">—</span>;
+    return (
+      <span
+        className="text-muted-foreground text-xs"
+        aria-label={ariaLabel}
+        data-testid="impact-indicator"
+      >
+        Not scored
+      </span>
+    );
   }
-
-  // Map [0,1] to one of three tiers for colour
-  const pct = Math.round(score * 100);
-  const colorClass =
-    pct >= 66
-      ? "bg-destructive/80 text-destructive-foreground"
-      : pct >= 33
-        ? "bg-orange-500/80 text-white"
-        : "bg-muted text-muted-foreground";
-
-  const topNode =
-    meta && typeof meta.topNodeName === "string" ? meta.topNodeName : undefined;
 
   return (
     <span
       className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold tabular-nums ${colorClass}`}
-      title={topNode ? `Top node: ${topNode}` : undefined}
+      title={tooltip}
+      aria-label={ariaLabel}
       data-testid="impact-indicator"
     >
-      {pct}
+      {label} · {pct}
     </span>
   );
 }
@@ -127,7 +151,12 @@ export function ErrorIssuesTable({
             <TableHead>Repo</TableHead>
             <TableHead className="text-right">Occurrences</TableHead>
             <TableHead>Last Seen</TableHead>
-            <TableHead>Impact</TableHead>
+            <TableHead>
+              <span className="inline-flex items-center gap-0.5">
+                Impact
+                <ImpactInfoPopover />
+              </span>
+            </TableHead>
             <TableHead>Status</TableHead>
             <TableHead className="w-6" />
             <TableHead>Actions</TableHead>

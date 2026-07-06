@@ -1,6 +1,9 @@
 # Org-Context Retrieval: Seed → PPR → Package
 
 Status: design, ready to implement. Substrate verified against prod (swarm38) 2026-07-04.
+Now the **code domain profile** of the generalized engine in
+[graph-context-engine.md](./graph-context-engine.md); this doc keeps the
+code-specific detail (verified pathways, graph gaps, backfill state).
 
 ## Problem
 
