@@ -2,6 +2,8 @@ import { BIFROST_HTTP_TIMEOUT_MS } from "./constants";
 import { BifrostHttpError } from "./BifrostClient";
 import type {
   AgentCatalogManifest,
+  HiveCallbackPayload,
+  HiveCallbackResponse,
   SeedAgentsResponse,
   TrustOrgRow,
   TrustOrgUpsert,
@@ -126,6 +128,43 @@ export class BifrostPluginClient {
       "POST",
       "/_plugin/agents",
       manifest,
+    );
+  }
+
+  /**
+   * POST /_plugin/hive-callback — register Hive's externally-reachable
+   * origin and a workspace-scoped API key with the Bifrost gateway so
+   * the gateway can delegate eval mutations/runs back to Hive.
+   *
+   * Request body:
+   *   { hive_url: string, api_key: string }
+   *   - hive_url  : Externally-reachable Hive origin, e.g.
+   *                 "https://hive.example.com". Must NOT end with a
+   *                 path segment — the gateway appends
+   *                 `/api/gateway/evals/...` itself.
+   *   - api_key   : Raw (unhashed) Hive workspace API key minted
+   *                 specifically for this gateway callback. The gateway
+   *                 stores it and includes it as
+   *                 `Authorization: Bearer <key>` on every callback
+   *                 request to Hive.
+   *
+   * Expected gateway response (HiveCallbackResponse):
+   *   { ok: boolean }
+   *   ok == true  → gateway accepted and persisted the config.
+   *   ok == false → gateway received the request but declined it
+   *                 (e.g. validation error). The reconciler treats this
+   *                 as a failure and does NOT persist gatewayHiveKeyId.
+   *
+   * Authenticates with Bearer + the swarm's provisioning token
+   * (same auth model as `seedAgentCatalog` and `setRealmId`).
+   */
+  async pushHiveCallback(
+    payload: HiveCallbackPayload,
+  ): Promise<HiveCallbackResponse> {
+    return this.request<HiveCallbackResponse>(
+      "POST",
+      "/_plugin/hive-callback",
+      payload,
     );
   }
 
