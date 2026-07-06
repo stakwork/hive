@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import fs from "fs";
 import path from "path";
-import { executeScheduledDailyRecapRuns } from "@/services/daily-recap-cron";
+import { executeScheduledActivityRecapRuns } from "@/services/daily-recap-cron";
 import { db } from "@/lib/db";
 import { StakworkRunType, WorkflowStatus } from "@prisma/client";
 
@@ -144,9 +144,9 @@ describe("Daily Recap Cron — vercel.json configuration", () => {
   });
 });
 
-// ── executeScheduledDailyRecapRuns ───────────────────────────────────────────
+// ── executeScheduledActivityRecapRuns ───────────────────────────────────────────
 
-describe("executeScheduledDailyRecapRuns", () => {
+describe("executeScheduledActivityRecapRuns", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
@@ -155,7 +155,7 @@ describe("executeScheduledDailyRecapRuns", () => {
     setupDb({ ownedWorkspace: null, membership: null });
     mockedGetUserActivityFeed.mockResolvedValue([]);
 
-    const result = await executeScheduledDailyRecapRuns();
+    const result = await executeScheduledActivityRecapRuns();
 
     expect(result.skipped).toBe(1);
     expect(result.dispatched).toBe(0);
@@ -166,7 +166,7 @@ describe("executeScheduledDailyRecapRuns", () => {
     setupDb();
     mockedGetUserActivityFeed.mockResolvedValue([]);
 
-    const result = await executeScheduledDailyRecapRuns();
+    const result = await executeScheduledActivityRecapRuns();
 
     expect(result.skipped).toBe(1);
     expect(result.dispatched).toBe(0);
@@ -183,7 +183,7 @@ describe("executeScheduledDailyRecapRuns", () => {
       },
     });
 
-    const result = await executeScheduledDailyRecapRuns();
+    const result = await executeScheduledActivityRecapRuns();
 
     expect(mockedDb.stakworkRun.create).toHaveBeenCalledOnce();
     const createCall = vi.mocked(mockedDb.stakworkRun.create).mock.calls[0][0];
@@ -222,7 +222,7 @@ describe("executeScheduledDailyRecapRuns", () => {
     });
 
     const before = Date.now();
-    await executeScheduledDailyRecapRuns();
+    await executeScheduledActivityRecapRuns();
     const after = Date.now();
 
     const batchCall = mockCreateBatchProjects.mock.calls[0][0];
@@ -253,7 +253,7 @@ describe("executeScheduledDailyRecapRuns", () => {
       },
     });
 
-    await executeScheduledDailyRecapRuns();
+    await executeScheduledActivityRecapRuns();
 
     const batchCall = mockCreateBatchProjects.mock.calls[0][0];
     const vars = batchCall[0].workflow_params.set_var.attributes.vars;
@@ -279,7 +279,7 @@ describe("executeScheduledDailyRecapRuns", () => {
       },
     }));
 
-    const result = await executeScheduledDailyRecapRuns();
+    const result = await executeScheduledActivityRecapRuns();
 
     expect(mockCreateBatchProjects).toHaveBeenCalledTimes(2);
     expect(result.usersProcessed).toBe(501);
@@ -296,7 +296,7 @@ describe("executeScheduledDailyRecapRuns", () => {
       },
     });
 
-    await executeScheduledDailyRecapRuns();
+    await executeScheduledActivityRecapRuns();
 
     const updateCalls = vi.mocked(mockedDb.stakworkRun.update).mock.calls;
     const backFillCall = updateCalls.find((c) => c[0].data?.projectId === 777);
@@ -314,7 +314,7 @@ describe("executeScheduledDailyRecapRuns", () => {
       },
     });
 
-    const result = await executeScheduledDailyRecapRuns();
+    const result = await executeScheduledActivityRecapRuns();
 
     // Row set to FAILED
     const updateCalls = vi.mocked(mockedDb.stakworkRun.update).mock.calls;
@@ -343,7 +343,7 @@ describe("executeScheduledDailyRecapRuns", () => {
       details: { body: "param is missing or the value is empty: project" },
     });
 
-    const result = await executeScheduledDailyRecapRuns();
+    const result = await executeScheduledActivityRecapRuns();
 
     // Both users error-logged with the real message (not '[object Object]')
     expect(result.errors.length).toBe(2);
@@ -368,7 +368,7 @@ describe("Staleness reaper", () => {
     setupDb();
     mockedGetUserActivityFeed.mockResolvedValue([]);
 
-    await executeScheduledDailyRecapRuns();
+    await executeScheduledActivityRecapRuns();
 
     expect(mockedDb.stakworkRun.updateMany).toHaveBeenCalledOnce();
     const call = vi.mocked(mockedDb.stakworkRun.updateMany).mock.calls[0][0];
@@ -385,7 +385,7 @@ describe("Staleness reaper", () => {
     mockedGetUserActivityFeed.mockResolvedValue([]);
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
 
-    await executeScheduledDailyRecapRuns();
+    await executeScheduledActivityRecapRuns();
 
     expect(warnSpy).toHaveBeenCalledWith(
       expect.stringContaining("Reaped 3 stale DAILY_RECAP run(s)"),
@@ -398,7 +398,7 @@ describe("Staleness reaper", () => {
     mockedGetUserActivityFeed.mockResolvedValue([]);
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
 
-    await executeScheduledDailyRecapRuns();
+    await executeScheduledActivityRecapRuns();
 
     expect(warnSpy).not.toHaveBeenCalledWith(expect.stringContaining("Reaped"));
     warnSpy.mockRestore();
@@ -416,7 +416,7 @@ describe("COMPLETED-only cursor", () => {
     setupDb();
     mockedGetUserActivityFeed.mockResolvedValue([]);
 
-    await executeScheduledDailyRecapRuns();
+    await executeScheduledActivityRecapRuns();
 
     // First findFirst call is the cursor
     const cursorCall = vi.mocked(mockedDb.stakworkRun.findFirst).mock.calls[0][0];
@@ -431,7 +431,7 @@ describe("COMPLETED-only cursor", () => {
     });
 
     const before = Date.now();
-    await executeScheduledDailyRecapRuns();
+    await executeScheduledActivityRecapRuns();
     const after = Date.now();
 
     // since is passed directly now (not days)
@@ -451,7 +451,7 @@ describe("COMPLETED-only cursor", () => {
       data: { ref_id: "r", projects: [{ name: "daily-recap-run-1", project_id: 1 }] },
     });
 
-    await executeScheduledDailyRecapRuns();
+    await executeScheduledActivityRecapRuns();
 
     const activityCall = mockedGetUserActivityFeed.mock.calls[0][0];
     expect(activityCall.since).toEqual(twoDaysAgo);
@@ -465,7 +465,21 @@ describe("COMPLETED-only cursor", () => {
       data: { ref_id: "r", projects: [{ name: "daily-recap-run-1", project_id: 1 }] },
     });
 
-    await executeScheduledDailyRecapRuns();
+    await executeScheduledActivityRecapRuns();
+
+    const activityCall = mockedGetUserActivityFeed.mock.calls[0][0];
+    expect(activityCall.since).toEqual(twoDaysAgo);
+  });
+
+  it("passes since directly to getUserActivityFeed (not days)", async () => {
+    const cursor = new Date(Date.now() - 90 * 60 * 1000); // 90 min ago
+    setupDb({ lastRun: { createdAt: cursor } });
+    mockedGetUserActivityFeed.mockResolvedValue(makeActivityItems(2));
+    mockCreateBatchProjects.mockResolvedValue({
+      data: { ref_id: "r", projects: [{ name: "daily-recap-run-1", project_id: 1 }] },
+    });
+
+    await executeScheduledActivityRecapRuns();
 
     const activityCall = mockedGetUserActivityFeed.mock.calls[0][0];
     expect(activityCall.since).toEqual(cursor);
@@ -478,7 +492,7 @@ describe("COMPLETED-only cursor", () => {
     mockedGetUserActivityFeed.mockResolvedValue([]);
     const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
 
-    await executeScheduledDailyRecapRuns();
+    await executeScheduledActivityRecapRuns();
 
     expect(logSpy).toHaveBeenCalledWith(expect.stringContaining("no activity since"));
     logSpy.mockRestore();
@@ -497,7 +511,7 @@ describe("In-flight guard", () => {
     setupDb({ inflightRun: freshRun });
     mockedGetUserActivityFeed.mockResolvedValue(makeActivityItems(3));
 
-    const result = await executeScheduledDailyRecapRuns();
+    const result = await executeScheduledActivityRecapRuns();
 
     expect(result.skipped).toBe(1);
     expect(result.dispatched).toBe(0);
@@ -511,7 +525,7 @@ describe("In-flight guard", () => {
       data: { ref_id: "r", projects: [{ name: "daily-recap-run-1", project_id: 1 }] },
     });
 
-    const result = await executeScheduledDailyRecapRuns();
+    const result = await executeScheduledActivityRecapRuns();
 
     expect(result.skipped).toBe(0);
     expect(mockedDb.stakworkRun.create).toHaveBeenCalledOnce();
@@ -523,7 +537,7 @@ describe("In-flight guard", () => {
     mockedGetUserActivityFeed.mockResolvedValue(makeActivityItems(1));
     const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
 
-    await executeScheduledDailyRecapRuns();
+    await executeScheduledActivityRecapRuns();
 
     expect(logSpy).toHaveBeenCalledWith(
       expect.stringContaining("Skipping user user-1"),
@@ -539,7 +553,7 @@ describe("In-flight guard", () => {
     setupDb({ inflightRun: freshRun });
     mockedGetUserActivityFeed.mockResolvedValue(makeActivityItems(3));
 
-    await executeScheduledDailyRecapRuns();
+    await executeScheduledActivityRecapRuns();
 
     expect(mockedDb.stakworkRun.create).not.toHaveBeenCalled();
   });
@@ -551,7 +565,7 @@ describe("In-flight guard", () => {
       data: { ref_id: "r", projects: [{ name: "daily-recap-run-1", project_id: 1 }] },
     });
 
-    await executeScheduledDailyRecapRuns();
+    await executeScheduledActivityRecapRuns();
 
     // Guard is the 3rd findFirst call (index 2): cursor [0], lastResultRun [1], guard [2]
     const guardCall = vi.mocked(mockedDb.stakworkRun.findFirst).mock.calls[2][0];
@@ -578,7 +592,7 @@ describe("window_start rolling-24h horizon", () => {
     });
 
     const before = Date.now();
-    await executeScheduledDailyRecapRuns();
+    await executeScheduledActivityRecapRuns();
     const after = Date.now();
 
     const batchCall = mockCreateBatchProjects.mock.calls[0][0];

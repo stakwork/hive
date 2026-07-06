@@ -13,12 +13,12 @@ import { NextRequest } from "next/server";
 
 // ── Mocks ────────────────────────────────────────────────────────────────────
 
-const { mockExecuteScheduledDailyRecapRuns } = vi.hoisted(() => ({
-  mockExecuteScheduledDailyRecapRuns: vi.fn(),
+const { mockExecuteScheduledActivityRecapRuns } = vi.hoisted(() => ({
+  mockExecuteScheduledActivityRecapRuns: vi.fn(),
 }));
 
 vi.mock("@/services/daily-recap-cron", () => ({
-  executeScheduledDailyRecapRuns: mockExecuteScheduledDailyRecapRuns,
+  executeScheduledActivityRecapRuns: mockExecuteScheduledActivityRecapRuns,
 }));
 
 import { GET } from "@/app/api/cron/daily-recap/route";
@@ -82,14 +82,14 @@ describe("GET /api/cron/daily-recap", () => {
     const body = await res.json();
     expect(body.success).toBe(true);
     expect(body.message).toMatch(/not configured/i);
-    expect(mockExecuteScheduledDailyRecapRuns).not.toHaveBeenCalled();
+    expect(mockExecuteScheduledActivityRecapRuns).not.toHaveBeenCalled();
   });
 
   // ── Enabled ───────────────────────────────────────────────────────────────
 
-  it("calls executeScheduledDailyRecapRuns and returns summary JSON when workflow ID is set", async () => {
+  it("calls executeScheduledActivityRecapRuns and returns summary JSON when workflow ID is set", async () => {
     process.env.STAKWORK_DAILY_RECAP_WORKFLOW_ID = "12345";
-    mockExecuteScheduledDailyRecapRuns.mockResolvedValue({
+    mockExecuteScheduledActivityRecapRuns.mockResolvedValue({
       usersProcessed: 5,
       dispatched: 4,
       skipped: 1,
@@ -109,12 +109,12 @@ describe("GET /api/cron/daily-recap", () => {
       errors: [],
     });
     expect(typeof body.timestamp).toBe("string");
-    expect(mockExecuteScheduledDailyRecapRuns).toHaveBeenCalledOnce();
+    expect(mockExecuteScheduledActivityRecapRuns).toHaveBeenCalledOnce();
   });
 
   it("returns success=false when errors are present", async () => {
     process.env.STAKWORK_DAILY_RECAP_WORKFLOW_ID = "12345";
-    mockExecuteScheduledDailyRecapRuns.mockResolvedValue({
+    mockExecuteScheduledActivityRecapRuns.mockResolvedValue({
       usersProcessed: 3,
       dispatched: 2,
       skipped: 0,
@@ -130,9 +130,9 @@ describe("GET /api/cron/daily-recap", () => {
     expect(body.errors[0]).toMatchObject({ userId: "user-1", error: "network failure" });
   });
 
-  it("returns 500 when executeScheduledDailyRecapRuns throws", async () => {
+  it("returns 500 when executeScheduledActivityRecapRuns throws", async () => {
     process.env.STAKWORK_DAILY_RECAP_WORKFLOW_ID = "12345";
-    mockExecuteScheduledDailyRecapRuns.mockRejectedValue(new Error("unexpected crash"));
+    mockExecuteScheduledActivityRecapRuns.mockRejectedValue(new Error("unexpected crash"));
 
     const res = await GET(createAuthenticatedRequest());
     expect(res.status).toBe(500);

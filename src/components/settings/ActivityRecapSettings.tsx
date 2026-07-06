@@ -12,7 +12,7 @@ import {
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 
-export function DailyRecapSettings() {
+export function ActivityRecapSettings() {
   const [enabled, setEnabled] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -21,7 +21,7 @@ export function DailyRecapSettings() {
     fetch("/api/user/preferences")
       .then((r) => r.json())
       .then((d) => {
-        setEnabled(!!d.dailyRecapEnabled);
+        setEnabled(!!d.activityRecapEnabled);
       })
       .catch(() => {})
       .finally(() => setLoading(false));
@@ -36,7 +36,7 @@ export function DailyRecapSettings() {
       const res = await fetch("/api/user/preferences", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ dailyRecapEnabled: newValue }),
+        body: JSON.stringify({ activityRecapEnabled: newValue }),
       });
 
       if (!res.ok) throw new Error("Failed");
@@ -53,23 +53,22 @@ export function DailyRecapSettings() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Daily Recap</CardTitle>
+        <CardTitle>Activity Recap</CardTitle>
         <CardDescription>
-          When enabled, you will receive a daily AI-generated recap of your
-          activity across your workspaces. The recap is delivered each morning
-          and surfaced here on your profile. Applies across all your workspaces.
+          When enabled, you will receive an AI-generated recap of your activity
+          across your workspaces. Applies across all your workspaces.
         </CardDescription>
       </CardHeader>
       <CardContent>
         <div className="flex items-center gap-3">
           <Switch
-            id="daily-recap-toggle"
+            id="activity-recap-toggle"
             checked={enabled}
             onCheckedChange={handleToggle}
             disabled={loading || saving}
-            aria-label="Enable daily recap"
+            aria-label="Enable activity recap"
           />
-          <Label htmlFor="daily-recap-toggle" className="cursor-pointer">
+          <Label htmlFor="activity-recap-toggle" className="cursor-pointer">
             {saving ? "Saving…" : enabled ? "Enabled" : "Disabled"}
           </Label>
         </div>

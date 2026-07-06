@@ -24,7 +24,7 @@ export async function GET() {
 
   const user = await db.user.findUnique({
     where: { id: session.user.id },
-    select: { canvasAutonomousTurns: true, chatAgentModel: true, timezone: true, dailyRecapEnabled: true, voiceLearningEnabled: true },
+    select: { canvasAutonomousTurns: true, chatAgentModel: true, timezone: true, activityRecapEnabled: true, voiceLearningEnabled: true },
   });
   if (!user) {
     return NextResponse.json({ error: "User not found" }, { status: 404 });
@@ -34,7 +34,7 @@ export async function GET() {
     canvasAutonomousTurns: user.canvasAutonomousTurns,
     chatAgentModel: user.chatAgentModel,
     timezone: user.timezone ?? "UTC",
-    dailyRecapEnabled: user.dailyRecapEnabled,
+    activityRecapEnabled: user.activityRecapEnabled,
     voiceLearningEnabled: user.voiceLearningEnabled,
   });
 }
@@ -48,7 +48,7 @@ export async function PATCH(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { canvasAutonomousTurns, chatAgentModel, timezone, dailyRecapEnabled, voiceLearningEnabled } = body;
+    const { canvasAutonomousTurns, chatAgentModel, timezone, activityRecapEnabled, voiceLearningEnabled } = body;
 
     if (
       canvasAutonomousTurns !== undefined &&
@@ -80,9 +80,9 @@ export async function PATCH(request: NextRequest) {
       }
     }
 
-    if (dailyRecapEnabled !== undefined && typeof dailyRecapEnabled !== "boolean") {
+    if (activityRecapEnabled !== undefined && typeof activityRecapEnabled !== "boolean") {
       return NextResponse.json(
-        { error: "dailyRecapEnabled must be a boolean" },
+        { error: "activityRecapEnabled must be a boolean" },
         { status: 400 },
       );
     }
@@ -100,10 +100,10 @@ export async function PATCH(request: NextRequest) {
         ...(canvasAutonomousTurns !== undefined && { canvasAutonomousTurns }),
         ...(chatAgentModel !== undefined && { chatAgentModel }),
         ...(timezone !== undefined && { timezone }),
-        ...(dailyRecapEnabled !== undefined && { dailyRecapEnabled }),
+        ...(activityRecapEnabled !== undefined && { activityRecapEnabled }),
         ...(voiceLearningEnabled !== undefined && { voiceLearningEnabled }),
       },
-      select: { canvasAutonomousTurns: true, chatAgentModel: true, timezone: true, dailyRecapEnabled: true, voiceLearningEnabled: true },
+      select: { canvasAutonomousTurns: true, chatAgentModel: true, timezone: true, activityRecapEnabled: true, voiceLearningEnabled: true },
     });
 
     logger.info("User preferences updated", "USER_PREFERENCES_UPDATE", {
@@ -111,7 +111,7 @@ export async function PATCH(request: NextRequest) {
       canvasAutonomousTurns: updated.canvasAutonomousTurns,
       chatAgentModel: updated.chatAgentModel,
       timezone: updated.timezone,
-      dailyRecapEnabled: updated.dailyRecapEnabled,
+      activityRecapEnabled: updated.activityRecapEnabled,
       voiceLearningEnabled: updated.voiceLearningEnabled,
     });
 
@@ -119,7 +119,7 @@ export async function PATCH(request: NextRequest) {
       canvasAutonomousTurns: updated.canvasAutonomousTurns,
       chatAgentModel: updated.chatAgentModel,
       timezone: updated.timezone ?? "UTC",
-      dailyRecapEnabled: updated.dailyRecapEnabled,
+      activityRecapEnabled: updated.activityRecapEnabled,
       voiceLearningEnabled: updated.voiceLearningEnabled,
     });
   } catch (error) {

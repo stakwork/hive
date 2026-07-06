@@ -41,7 +41,7 @@ function chunkArray<T>(arr: T[], size: number): T[][] {
  *   5. Batch-dispatch via POST /api/v1/projects/batch (≤500 per chunk).
  *   6. Back-fill projectId / status on the rows.
  */
-export async function executeScheduledDailyRecapRuns(): Promise<DailyRecapCronResult> {
+export async function executeScheduledActivityRecapRuns(): Promise<DailyRecapCronResult> {
   const result: DailyRecapCronResult = {
     usersProcessed: 0,
     dispatched: 0,
@@ -51,13 +51,13 @@ export async function executeScheduledDailyRecapRuns(): Promise<DailyRecapCronRe
 
   const workflowId = config.STAKWORK_DAILY_RECAP_WORKFLOW_ID;
   if (!workflowId) {
-    console.error("[DailyRecapCron] STAKWORK_DAILY_RECAP_WORKFLOW_ID not configured — aborting");
+    console.error("[ActivityRecapCron] STAKWORK_DAILY_RECAP_WORKFLOW_ID not configured — aborting");
     result.errors.push({ userId: "SYSTEM", error: "STAKWORK_DAILY_RECAP_WORKFLOW_ID not configured" });
     return result;
   }
 
   const baseUrl = getBaseUrl();
-  console.log(`[DailyRecapCron] Starting at ${new Date().toISOString()}`);
+  console.log(`[ActivityRecapCron] Starting at ${new Date().toISOString()}`);
 
   // ── 0. Reap stale DAILY_RECAP runs ──────────────────────────────────────
   const reaperCutoff = new Date(Date.now() - RECAP_STALE_REAPER_MS);
@@ -70,16 +70,16 @@ export async function executeScheduledDailyRecapRuns(): Promise<DailyRecapCronRe
     data: { status: WorkflowStatus.FAILED },
   });
   if (reaped.count > 0) {
-    console.warn(`[DailyRecapCron] Reaped ${reaped.count} stale DAILY_RECAP run(s) → FAILED`);
+    console.warn(`[ActivityRecapCron] Reaped ${reaped.count} stale DAILY_RECAP run(s) → FAILED`);
   }
 
   // ── 1. Query eligible users ──────────────────────────────────────────────
   const users = await db.user.findMany({
-    where: { dailyRecapEnabled: true, deleted: false },
+    where: { activityRecapEnabled: true, deleted: false },
     select: { id: true },
   });
 
-  console.log(`[DailyRecapCron] Found ${users.length} eligible user(s)`);
+  console.log(`[ActivityRecapCron] Found ${users.length} eligible user(s)`);
   result.usersProcessed = users.length;
 
   // Pending runs to batch-dispatch
@@ -117,7 +117,7 @@ export async function executeScheduledDailyRecapRuns(): Promise<DailyRecapCronRe
       }
 
       if (!workspaceId) {
-        console.warn(`[DailyRecapCron] Skipping user ${userId}: no workspace found`);
+        console.warn(`[ActivityRecapCron] Skipping user ${userId}: no workspace found`);
         result.skipped++;
         continue;
       }
@@ -136,7 +136,7 @@ export async function executeScheduledDailyRecapRuns(): Promise<DailyRecapCronRe
 
       if (items.length === 0) {
         console.log(
-          `[DailyRecapCron] Skipping user ${userId}: no activity since ${since.toISOString()} (0 items)`,
+          `[ActivityRecapCron] Skipping user ${userId}: no activity since ${since.toISOString()} (0 items)`,
         );
         result.skipped++;
         continue;
@@ -179,7 +179,7 @@ export async function executeScheduledDailyRecapRuns(): Promise<DailyRecapCronRe
       if (inflightRun) {
         const ageMin = Math.round((Date.now() - inflightRun.createdAt.getTime()) / 60_000);
         console.log(
-          `[DailyRecapCron] Skipping user ${userId}: in-flight run ${inflightRun.id} is ${ageMin}min old`,
+          `[ActivityRecapCron] Skipping user ${userId}: in-flight run ${inflightRun.id} is ${ageMin}min old`,
         );
         result.skipped++;
         continue;
@@ -212,19 +212,19 @@ export async function executeScheduledDailyRecapRuns(): Promise<DailyRecapCronRe
       pendingRuns.push({ run, userId, workflowWebhookUrl, since, activity, previousRecap, windowStart, webhookUrl });
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error);
-      console.error(`[DailyRecapCron] Error preparing user ${userId}: ${msg}`);
+      console.error(`[ActivityRecapCron] Error preparing user ${userId}: ${msg}`);
       result.errors.push({ userId, error: msg });
     }
   }
 
   if (pendingRuns.length === 0) {
-    console.log("[DailyRecapCron] No runs to dispatch");
+    console.log("[ActivityRecapCron] No runs to dispatch");
     return result;
   }
 
   // ── 7. Batch dispatch ────────────────────────────────────────────────────
   const chunks = chunkArray(pendingRuns, 500);
-  console.log(`[DailyRecapCron] Dispatching ${pendingRuns.length} run(s) in ${chunks.length} batch(es)`);
+  console.log(`[ActivityRecapCron] Dispatching ${pendingRuns.length} run(s) in ${chunks.length} batch(es)`);
 
   for (let chunkIdx = 0; chunkIdx < chunks.length; chunkIdx++) {
     const chunk = chunks[chunkIdx];
@@ -253,7 +253,7 @@ export async function executeScheduledDailyRecapRuns(): Promise<DailyRecapCronRe
       const projects = response.data.projects;
 
       console.log(
-        `[DailyRecapCron] Chunk ${chunkIdx + 1}/${chunks.length}: ` +
+        `[ActivityRecapCron] Chunk ${chunkIdx + 1}/${chunks.length}: ` +
           `${projects.filter((p) => p.project_id).length} succeeded, ` +
           `${projects.filter((p) => !p.project_id).length} failed`,
       );
@@ -270,7 +270,7 @@ export async function executeScheduledDailyRecapRuns(): Promise<DailyRecapCronRe
           result.dispatched++;
         } else {
           const errMsg = item.error ?? "unknown batch error";
-          console.error(`[DailyRecapCron] Batch item ${item.name} failed: ${errMsg}`);
+          console.error(`[ActivityRecapCron] Batch item ${item.name} failed: ${errMsg}`);
           await db.stakworkRun.update({
             where: { id: runId },
             data: { status: WorkflowStatus.FAILED },
@@ -284,7 +284,7 @@ export async function executeScheduledDailyRecapRuns(): Promise<DailyRecapCronRe
       const apiError = error as ApiError;
       const msg = apiError?.message ?? String(error);
       console.error(
-        `[DailyRecapCron] Chunk ${chunkIdx + 1} dispatch failed` +
+        `[ActivityRecapCron] Chunk ${chunkIdx + 1} dispatch failed` +
         ` | status=${apiError?.status ?? 'unknown'}` +
         ` | message=${msg}` +
         ` | details=${JSON.stringify(apiError?.details ?? null)}`,
@@ -301,7 +301,7 @@ export async function executeScheduledDailyRecapRuns(): Promise<DailyRecapCronRe
   }
 
   console.log(
-    `[DailyRecapCron] Done. Processed=${result.usersProcessed} Dispatched=${result.dispatched} ` +
+    `[ActivityRecapCron] Done. Processed=${result.usersProcessed} Dispatched=${result.dispatched} ` +
       `Skipped=${result.skipped} Errors=${result.errors.length}`,
   );
 
