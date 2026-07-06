@@ -239,6 +239,13 @@ export interface AgentCatalogManifestPrompt {
   name: string;
   /** Optional per-item source override; defaults to the manifest source. */
   source?: string;
+  /**
+   * Which slot this prompt fills for the agent: the `SYSTEM` prompt vs
+   * the `USER` (main/task) prompt. Derived from the prompt name (the
+   * shared `:Prompt` node is authored elsewhere, so this rides on the
+   * `HAS_PROMPT` relationship the catalog owns). Omitted when unknown.
+   */
+  role?: "SYSTEM" | "USER";
 }
 
 /** A tool the agent can call. */
