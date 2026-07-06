@@ -4,9 +4,20 @@ type RouteParams = {
   params: Promise<{ promptId: string; versionId: string }>;
 };
 
+// Keyed by cuid-style version ids matching what mockSeedData.ts seeds for prompt versions.
+// These are intentionally generic patterns — in mock mode, any versionId not in this map
+// returns data: null (no run yet), which is the correct default.
 const SEEDED_RUNS: Record<string, { status: string; result: string | null; evalSetId: string }> = {
-  "1": { status: "COMPLETED", result: '{"pass":8,"fail":2,"total":10}', evalSetId: "eval-set-1" },
-  "2": { status: "IN_PROGRESS", result: null, evalSetId: "eval-set-2" },
+  "mock-version-id-1": {
+    status: "COMPLETED",
+    result: '{"pass":8,"fail":2,"total":10}',
+    evalSetId: "eval-set-1",
+  },
+  "mock-version-id-2": {
+    status: "IN_PROGRESS",
+    result: null,
+    evalSetId: "eval-set-2",
+  },
 };
 
 /**

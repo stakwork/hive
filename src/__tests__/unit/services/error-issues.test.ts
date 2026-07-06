@@ -20,6 +20,7 @@ const {
   mockPusherTrigger,
   mockEventFindMany,
   mockEventCount,
+  mockFeatureFindMany,
   mockGetJarvisConfig,
   mockKgGetNeighbors,
 } = vi.hoisted(() => ({
@@ -30,6 +31,7 @@ const {
   mockPusherTrigger: vi.fn(),
   mockEventFindMany: vi.fn(),
   mockEventCount: vi.fn(),
+  mockFeatureFindMany: vi.fn(),
   mockGetJarvisConfig: vi.fn(),
   mockKgGetNeighbors: vi.fn(),
 }));
@@ -45,6 +47,9 @@ vi.mock("@/lib/db", () => ({
     errorEvent: {
       findMany: mockEventFindMany,
       count: mockEventCount,
+    },
+    feature: {
+      findMany: mockFeatureFindMany,
     },
   },
 }));
@@ -195,6 +200,7 @@ describe("getErrorIssueDetail", () => {
     mockFindUnique.mockResolvedValue(MOCK_ISSUE_DETAIL);
     mockEventFindMany.mockResolvedValue([MOCK_RAW_EVENT]);
     mockEventCount.mockResolvedValue(1);
+    mockFeatureFindMany.mockResolvedValue([]);
   });
 
   it("returns null when issue does not exist", async () => {
@@ -248,6 +254,39 @@ describe("getErrorIssueDetail", () => {
     const result = await getErrorIssueDetail("issue-1", 20, 0);
     expect(result!.eventsTotal).toBe(25);
     expect(result!.eventsHasMore).toBe(true);
+  });
+
+  it("returns empty features array when no linked Features exist", async () => {
+    mockFeatureFindMany.mockResolvedValueOnce([]);
+    const result = await getErrorIssueDetail("issue-1");
+    expect(result!.features).toEqual([]);
+  });
+
+  it("returns linked Features ordered newest-first as ISO strings", async () => {
+    const older = new Date("2025-01-01T00:00:00Z");
+    const newer = new Date("2025-06-01T00:00:00Z");
+    mockFeatureFindMany.mockResolvedValueOnce([
+      { id: "feat-2", title: "Retry fix", createdAt: newer },
+      { id: "feat-1", title: "First fix", createdAt: older },
+    ]);
+    const result = await getErrorIssueDetail("issue-1");
+    expect(result!.features).toHaveLength(2);
+    expect(result!.features[0]).toEqual({ id: "feat-2", title: "Retry fix", createdAt: newer.toISOString() });
+    expect(result!.features[1]).toEqual({ id: "feat-1", title: "First fix", createdAt: older.toISOString() });
+  });
+
+  it("excludes deleted Features from the linked Features list", async () => {
+    // The db query passes deleted:false — confirm mock is called with that filter
+    mockFeatureFindMany.mockResolvedValueOnce([{ id: "feat-1", title: "Active fix", createdAt: new Date("2025-03-01T00:00:00Z") }]);
+    const result = await getErrorIssueDetail("issue-1");
+    expect(result!.features).toHaveLength(1);
+    // Verify the mock was called with deleted:false in the where clause
+    expect(mockFeatureFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { errorIssueId: "issue-1", deleted: false },
+        orderBy: { createdAt: "desc" },
+      }),
+    );
   });
 });
 

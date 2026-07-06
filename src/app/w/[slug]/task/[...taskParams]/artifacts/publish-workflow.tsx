@@ -1,13 +1,27 @@
 "use client";
 
-import { useState } from "react";
+import React, { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Artifact, PublishWorkflowContent } from "@/lib/chat";
 import { Upload, CheckCircle2, Loader2 } from "lucide-react";
 import { toast } from "sonner";
+import { allWorkflowArtifactsPublished } from "@/lib/helpers/tasks-shared";
+import type { ChatMessagesSnapshot } from "@/lib/helpers/tasks-shared";
 
-export function PublishWorkflowArtifact({ artifact }: { artifact: Artifact }) {
+interface PublishWorkflowArtifactProps {
+  artifact: Artifact;
+  taskId?: string;
+  taskWorkflowStatus?: string | null;
+  taskChatMessages?: ChatMessagesSnapshot;
+}
+
+export function PublishWorkflowArtifact({
+  artifact,
+  taskId,
+  taskWorkflowStatus,
+  taskChatMessages,
+}: PublishWorkflowArtifactProps) {
   const content = artifact.content as PublishWorkflowContent;
   const [isPublishing, setIsPublishing] = useState(false);
   const [isPublished, setIsPublished] = useState(content.published === true);
@@ -43,6 +57,22 @@ export function PublishWorkflowArtifact({ artifact }: { artifact: Artifact }) {
       if (result.success) {
         setIsPublished(true);
         toast.success("Workflow published successfully");
+
+        // Auto-complete the parent task when:
+        // 1. taskId is available
+        // 2. The Stakwork run is finished (workflowStatus === 'COMPLETED')
+        // 3. Every WORKFLOW / PUBLISH_WORKFLOW artifact on the task is now published
+        if (
+          taskId &&
+          taskWorkflowStatus === "COMPLETED" &&
+          allWorkflowArtifactsPublished(taskChatMessages, artifact.id)
+        ) {
+          await fetch(`/api/tasks/${taskId}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ status: "DONE" }),
+          });
+        }
       } else {
         throw new Error(result.error || "Failed to publish workflow");
       }

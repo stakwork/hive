@@ -1164,3 +1164,92 @@ describe("extractPublishArtifact", () => {
     expect(result?.id).toBe("a1");
   });
 });
+
+import { allWorkflowArtifactsPublished } from "@/lib/helpers/tasks";
+
+describe("allWorkflowArtifactsPublished", () => {
+  function makeMessages(
+    artifacts: Array<{ id: string; type: string; content?: Record<string, unknown> }>,
+  ) {
+    return [{ artifacts }];
+  }
+
+  test("returns true when chatMessages is undefined", () => {
+    expect(allWorkflowArtifactsPublished(undefined, "any-id")).toBe(true);
+  });
+
+  test("returns true when chatMessages is empty array", () => {
+    expect(allWorkflowArtifactsPublished([], "any-id")).toBe(true);
+  });
+
+  test("returns true when there are no WORKFLOW or PUBLISH_WORKFLOW artifacts", () => {
+    const messages = makeMessages([
+      { id: "a1", type: "CODE", content: { published: false } },
+      { id: "a2", type: "PULL_REQUEST", content: {} },
+    ]);
+    expect(allWorkflowArtifactsPublished(messages, "x")).toBe(true);
+  });
+
+  test("returns true when the only matching artifact is the just-published one", () => {
+    const messages = makeMessages([
+      { id: "artifact-1", type: "PUBLISH_WORKFLOW", content: { published: false } },
+    ]);
+    // artifact-1 was just published — treat it as done
+    expect(allWorkflowArtifactsPublished(messages, "artifact-1")).toBe(true);
+  });
+
+  test("returns true when all PUBLISH_WORKFLOW artifacts are published", () => {
+    const messages = makeMessages([
+      { id: "a1", type: "PUBLISH_WORKFLOW", content: { published: true } },
+      { id: "a2", type: "PUBLISH_WORKFLOW", content: { published: true } },
+    ]);
+    expect(allWorkflowArtifactsPublished(messages, "non-existent-id")).toBe(true);
+  });
+
+  test("returns true when all WORKFLOW artifacts are published", () => {
+    const messages = makeMessages([
+      { id: "a1", type: "WORKFLOW", content: { published: true } },
+    ]);
+    expect(allWorkflowArtifactsPublished(messages, "non-existent-id")).toBe(true);
+  });
+
+  test("returns false when one PUBLISH_WORKFLOW artifact is unpublished", () => {
+    const messages = makeMessages([
+      { id: "a1", type: "PUBLISH_WORKFLOW", content: { published: true } },
+      { id: "a2", type: "PUBLISH_WORKFLOW", content: { published: false } },
+    ]);
+    expect(allWorkflowArtifactsPublished(messages, "non-existent-id")).toBe(false);
+  });
+
+  test("returns false when one WORKFLOW artifact has no published field", () => {
+    const messages = makeMessages([
+      { id: "a1", type: "WORKFLOW", content: {} },
+    ]);
+    expect(allWorkflowArtifactsPublished(messages, "non-existent-id")).toBe(false);
+  });
+
+  test("returns true when last unpublished artifact is the just-published one", () => {
+    const messages = makeMessages([
+      { id: "a1", type: "PUBLISH_WORKFLOW", content: { published: true } },
+      { id: "a2", type: "PUBLISH_WORKFLOW", content: { published: false } }, // just published
+    ]);
+    expect(allWorkflowArtifactsPublished(messages, "a2")).toBe(true);
+  });
+
+  test("ignores non-matching artifact types when evaluating", () => {
+    const messages = makeMessages([
+      { id: "a1", type: "PUBLISH_SCRIPT", content: { published: false } },
+      { id: "a2", type: "PUBLISH_WORKFLOW", content: { published: true } },
+    ]);
+    expect(allWorkflowArtifactsPublished(messages, "non-existent-id")).toBe(true);
+  });
+
+  test("works across multiple messages", () => {
+    const messages = [
+      { artifacts: [{ id: "a1", type: "PUBLISH_WORKFLOW", content: { published: true } }] },
+      { artifacts: [{ id: "a2", type: "PUBLISH_WORKFLOW", content: { published: false } }] },
+    ];
+    expect(allWorkflowArtifactsPublished(messages, "non-existent-id")).toBe(false);
+    expect(allWorkflowArtifactsPublished(messages, "a2")).toBe(true);
+  });
+});
