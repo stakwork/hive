@@ -1216,6 +1216,10 @@ export function OrgCanvasBackground({
             });
           }}
           collaborators={collaborators}
+          showMinimap={true}
+          alignDistributeMenu={true}
+          snapGrid={true}
+          snapToLanes={true}
         />
         {/*
          * Restore pill — top-right of the canvas area. Shown on any
