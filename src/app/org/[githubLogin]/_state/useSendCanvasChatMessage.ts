@@ -211,6 +211,17 @@ export function useSendCanvasChatMessage() {
         });
 
         if (!response.ok) {
+          // 413 (Vercel `FUNCTION_PAYLOAD_TOO_LARGE`): the request body —
+          // the full transcript re-POSTed each turn — exceeded the 4.5MB
+          // serverless cap. Surface an actionable message instead of the
+          // generic "encountered an error", since retrying won't help.
+          if (response.status === 413) {
+            appendAssistantError(
+              conversationId,
+              "This conversation has grown too large to continue. Please start a new chat to keep going.",
+            );
+            return;
+          }
           throw new Error(`HTTP error! status: ${response.status}`);
         }
 
