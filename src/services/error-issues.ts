@@ -132,6 +132,9 @@ export async function getErrorIssueDetail(
       correlationConfidence: true,
       correlationComputedAt: true,
       correlationCandidates: true,
+      impactScore: true,
+      impactScoredAt: true,
+      impactMeta: true,
     },
   });
 
