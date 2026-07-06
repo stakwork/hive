@@ -275,13 +275,15 @@ export function LegalBenchmarksPanel() {
       </div>
 
       {/* Task details modal */}
-      <TaskDetailsModal
-        open={detailsTask !== null}
-        onOpenChange={(o) => { if (!o) setDetailsTask(null); }}
-        task={detailsTask!}
-        slug={slug!}
-        onRunTask={() => detailsTask && handleSelectTask(detailsTask)}
-      />
+      {detailsTask && (
+        <TaskDetailsModal
+          open={true}
+          onOpenChange={(o) => { if (!o) setDetailsTask(null); }}
+          task={detailsTask}
+          slug={slug!}
+          onRunTask={() => handleSelectTask(detailsTask)}
+        />
+      )}
     </div>
   );
 }
