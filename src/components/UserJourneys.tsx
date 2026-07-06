@@ -295,9 +295,19 @@ export default function UserJourneys({ onBrowserModeChange }: UserJourneysProps)
         const errorData = await response.json();
         console.error("Failed to claim pod:", errorData);
 
-        toast.error("Unable to Create User Journey", {
-          description: "No virtual machines are available right now. Please try again later.",
-        });
+        if (response.status === 401) {
+          toast.error("Session Expired", {
+            description: "Your session has expired. Please sign in again.",
+          });
+        } else if (response.status === 503 || errorData.error === "No available pods") {
+          toast.error("Unable to Create User Journey", {
+            description: "No virtual machines are available right now. Please try again later.",
+          });
+        } else {
+          toast.error("Unable to Create User Journey", {
+            description: "Something went wrong. Please try again later.",
+          });
+        }
         return;
       }
 

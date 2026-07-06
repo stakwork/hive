@@ -54,6 +54,17 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       return NextResponse.json({ success: false, error: "Workspace not found" }, { status: 404 });
     }
 
+    // Enforce ownership check only for session-based auth (API token callers are trusted system actors)
+    // Must run before any DB write, secret access, or third-party call.
+    if (!isApiTokenAuth) {
+      const isOwner = workspace.ownerId === userId;
+      const isMember = workspace.members.length > 0;
+
+      if (!isOwner && !isMember) {
+        return NextResponse.json({ success: false, error: "Access denied" }, { status: 403 });
+      }
+    }
+
     // If using custom local Goose URL, return mock URLs instead of claiming a real pod
     if (process.env.CUSTOM_GOOSE_URL) {
       const mockFrontend = process.env.MOCK_BROWSER_URL || "http://localhost:3000";
@@ -103,16 +114,6 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       "shouldUpdateToLatest:",
       shouldUpdateToLatest,
     );
-
-    // Enforce ownership check only for session-based auth (API token callers are trusted system actors)
-    if (!isApiTokenAuth) {
-      const isOwner = workspace.ownerId === userId;
-      const isMember = workspace.members.length > 0;
-
-      if (!isOwner && !isMember) {
-        return NextResponse.json({ success: false, error: "Access denied" }, { status: 403 });
-      }
-    }
 
     // Check if workspace has a swarm
     if (!workspace.swarm) {
