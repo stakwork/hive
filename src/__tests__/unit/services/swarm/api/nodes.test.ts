@@ -9,7 +9,7 @@ beforeEach(() => {
   global.fetch = mockFetch;
 });
 
-const { addNode, addEdge, addEdgeBulk, addEdgeByRefBulk, addNodeBulk, updateNode, deleteNode, deleteEdge, getReferencedNodeCentrality } = await import("@/services/swarm/api/nodes");
+const { addNode, addEdge, addEdgeBulk, addEdgeByRefBulk, addNodeBulk, updateNode, deleteNode, deleteEdge, getReferencedNodeCentrality, searchNodesByAttributes } = await import("@/services/swarm/api/nodes");
 
 const config = {
   jarvisUrl: "https://test-swarm.sphinx.chat:8444",
@@ -1209,5 +1209,162 @@ describe("getReferencedNodeCentrality", () => {
     expect(result.ok).toBe(true);
     expect(result.nodes).toHaveLength(1);
     expect(result.nodes[0].ref_id).toBe("file-ok");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// searchNodesByAttributes
+// ---------------------------------------------------------------------------
+
+describe("searchNodesByAttributes", () => {
+  const repoKey = "stakwork/senza-lnd";
+
+  test("POSTs to /graph/search/attributes with correct body shape", async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        nodes: [
+          { ref_id: "file-ref-1", node_type: "File", properties: { file: "stakwork/senza-lnd/app/controllers/admin/blacklists_controller.rb" } },
+        ],
+      }),
+    });
+
+    const result = await searchNodesByAttributes(config, {
+      nodeTypes: ["File", "Function"],
+      filters: [{ attribute: "file", value: `${repoKey}/`, comparator: "contains" }],
+      includeProperties: true,
+      limit: 1000,
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.nodes).toHaveLength(1);
+    expect(result.nodes[0].ref_id).toBe("file-ref-1");
+
+    expect(mockFetch).toHaveBeenCalledWith(
+      "https://test-swarm.sphinx.chat:8444/graph/search/attributes",
+      expect.objectContaining({
+        method: "POST",
+        headers: expect.objectContaining({
+          "x-api-token": "test-api-key",
+          "Content-Type": "application/json",
+        }),
+        body: JSON.stringify({
+          node_type: ["File", "Function"],
+          search_filters: [{ attribute: "file", value: "stakwork/senza-lnd/", comparator: "contains" }],
+          include_properties: true,
+          limit: 1000,
+        }),
+      }),
+    );
+  });
+
+  test("returns { ok: true, nodes: [] } when response has no nodes array", async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({}),
+    });
+
+    const result = await searchNodesByAttributes(config, {
+      nodeTypes: ["File"],
+      filters: [{ attribute: "file", value: "stakwork/empty-repo/", comparator: "contains" }],
+      includeProperties: true,
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.nodes).toEqual([]);
+  });
+
+  test("returns { ok: false, endpointMissing: true } on 404 (endpoint absent on this backend)", async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: false,
+      status: 404,
+      text: async () => "404 page not found",
+    });
+
+    const result = await searchNodesByAttributes(config, {
+      nodeTypes: ["File", "Function"],
+      filters: [{ attribute: "file", value: `${repoKey}/`, comparator: "contains" }],
+      includeProperties: true,
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.endpointMissing).toBe(true);
+    expect(result.nodes).toEqual([]);
+    expect(result.error).toBeDefined();
+  });
+
+  test("returns { ok: false } on 500 (not endpointMissing)", async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: false,
+      status: 500,
+      text: async () => "Internal server error",
+    });
+
+    const result = await searchNodesByAttributes(config, {
+      nodeTypes: ["File", "Function"],
+      filters: [{ attribute: "file", value: `${repoKey}/`, comparator: "contains" }],
+      includeProperties: true,
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.endpointMissing).toBeFalsy();
+    expect(result.error).toContain("500");
+  });
+
+  test("returns { ok: false } when fetch throws (never throws)", async () => {
+    mockFetch.mockRejectedValueOnce(new Error("Network timeout"));
+
+    const result = await searchNodesByAttributes(config, {
+      nodeTypes: ["File", "Function"],
+      filters: [{ attribute: "file", value: `${repoKey}/`, comparator: "contains" }],
+      includeProperties: true,
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.nodes).toEqual([]);
+    expect(result.error).toBe("Network timeout");
+  });
+
+  test("defaults include_properties to false and limit to 1000 when not specified", async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({ nodes: [] }),
+    });
+
+    await searchNodesByAttributes(config, {
+      nodeTypes: ["File"],
+      filters: [{ attribute: "file", value: `${repoKey}/`, comparator: "contains" }],
+    });
+
+    const sentBody = JSON.parse(mockFetch.mock.calls[0][1].body as string);
+    expect(sentBody.include_properties).toBe(false);
+    expect(sentBody.limit).toBe(1000);
+  });
+
+  test("returns all nodes in response — does not truncate to 1000", async () => {
+    const manyNodes = Array.from({ length: 50 }, (_, i) => ({
+      ref_id: `file-ref-${i}`,
+      node_type: "File",
+      properties: { file: `stakwork/senza-lnd/app/file${i}.rb` },
+    }));
+
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({ nodes: manyNodes }),
+    });
+
+    const result = await searchNodesByAttributes(config, {
+      nodeTypes: ["File", "Function"],
+      filters: [{ attribute: "file", value: `${repoKey}/`, comparator: "contains" }],
+      includeProperties: true,
+      limit: 1000,
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.nodes).toHaveLength(50);
   });
 });

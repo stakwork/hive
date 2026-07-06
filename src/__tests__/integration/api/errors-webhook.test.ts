@@ -15,7 +15,7 @@ const {
   mockPusherTrigger,
   mockAddNode,
   mockAddEdge,
-  mockSearchLatestByTypes,
+  mockSearchNodesByAttributes,
   mockGetJarvisConfig,
   mockGetReferencedNodeCentrality,
   mockComputeImpactScore,
@@ -23,7 +23,7 @@ const {
   mockPusherTrigger: vi.fn(),
   mockAddNode: vi.fn(),
   mockAddEdge: vi.fn(),
-  mockSearchLatestByTypes: vi.fn(),
+  mockSearchNodesByAttributes: vi.fn(),
   mockGetJarvisConfig: vi.fn(),
   mockGetReferencedNodeCentrality: vi.fn(),
   mockComputeImpactScore: vi.fn(),
@@ -45,7 +45,7 @@ vi.mock("@vercel/blob", () => ({
 vi.mock("@/services/swarm/api/nodes", () => ({
   addNode: mockAddNode,
   addEdge: mockAddEdge,
-  searchLatestByTypes: mockSearchLatestByTypes,
+  searchNodesByAttributes: mockSearchNodesByAttributes,
   getReferencedNodeCentrality: mockGetReferencedNodeCentrality,
 }));
 
@@ -642,7 +642,7 @@ describe("POST /api/webhook/errors — KG projection (best-effort)", () => {
   test("swarm configured + resolved repo → ErrorIssue node upserted, kgRefId persisted", async () => {
     mockGetJarvisConfig.mockResolvedValue(MOCK_JARVIS_CONFIG);
     mockAddNode.mockResolvedValue({ success: true, ref_id: "issue-ref-001" });
-    mockSearchLatestByTypes.mockResolvedValue({ ok: true, nodes: [] });
+    mockSearchNodesByAttributes.mockResolvedValue({ ok: true, nodes: [] });
 
     const res = await POST(
       buildRequest(
@@ -679,7 +679,7 @@ describe("POST /api/webhook/errors — KG projection (best-effort)", () => {
   test("repeat occurrence (isNew=false) → addNode called with reprocess:true, kgRefId stable", async () => {
     mockGetJarvisConfig.mockResolvedValue(MOCK_JARVIS_CONFIG);
     mockAddNode.mockResolvedValue({ success: true, ref_id: "issue-ref-stable" });
-    mockSearchLatestByTypes.mockResolvedValue({ ok: true, nodes: [] });
+    mockSearchNodesByAttributes.mockResolvedValue({ ok: true, nodes: [] });
 
     const payload = {
       exceptionType: "TypeError",
@@ -717,8 +717,8 @@ describe("POST /api/webhook/errors — KG projection (best-effort)", () => {
   test("unresolved repositoryId → KG node upserted, zero code edges drawn", async () => {
     mockGetJarvisConfig.mockResolvedValue(MOCK_JARVIS_CONFIG);
     mockAddNode.mockResolvedValue({ success: true, ref_id: "issue-ref-no-repo" });
-    // searchLatestByTypes should NOT be called when repo is unresolved
-    mockSearchLatestByTypes.mockResolvedValue({ ok: true, nodes: [] });
+    // searchNodesByAttributes should NOT be called when repo is unresolved
+    mockSearchNodesByAttributes.mockResolvedValue({ ok: true, nodes: [] });
 
     const res = await POST(
       buildRequest(
@@ -744,8 +744,8 @@ describe("POST /api/webhook/errors — KG projection (best-effort)", () => {
 
     // No edges should be drawn (no repo scope)
     expect(mockAddEdge).not.toHaveBeenCalled();
-    // searchLatestByTypes should not be called either
-    expect(mockSearchLatestByTypes).not.toHaveBeenCalled();
+    // searchNodesByAttributes should not be called either
+    expect(mockSearchNodesByAttributes).not.toHaveBeenCalled();
 
     const issue = await db.errorIssue.findUnique({ where: { id: body.data.issueId } });
     expect(issue?.kgRefId).toBe("issue-ref-no-repo");
@@ -757,7 +757,7 @@ describe("POST /api/webhook/errors — KG projection (best-effort)", () => {
     mockAddEdge.mockResolvedValue({ success: true });
 
     // Simulate: one File node in the correct repo, one in a different repo
-    mockSearchLatestByTypes.mockResolvedValue({
+    mockSearchNodesByAttributes.mockResolvedValue({
       ok: true,
       nodes: [
         {
@@ -794,6 +794,15 @@ describe("POST /api/webhook/errors — KG projection (best-effort)", () => {
 
     expect(res.status).toBe(201);
 
+    // Verify the new repo-scoped call was used (not the old global searchLatestByTypes)
+    expect(mockSearchNodesByAttributes).toHaveBeenCalledOnce();
+    const [, searchParams] = mockSearchNodesByAttributes.mock.calls[0];
+    expect(searchParams.nodeTypes).toEqual(["File", "Function"]);
+    expect(searchParams.filters).toEqual([
+      { attribute: "file", value: "stakwork/hive/", comparator: "contains" },
+    ]);
+    expect(searchParams.includeProperties).toBe(true);
+
     // Only one edge drawn — to the node in the correct repo
     expect(mockAddEdge).toHaveBeenCalledOnce();
     const [, edgePayload] = mockAddEdge.mock.calls[0];
@@ -804,11 +813,84 @@ describe("POST /api/webhook/errors — KG projection (best-effort)", () => {
     expect(edgePayload.target.ref_id).not.toBe("file-in-other-repo");
   });
 
+  test("regression guard: >1000 total workspace nodes — repo-scoped fetch returns issue's repo nodes regardless", async () => {
+    // Seed senza-lnd as a repo in the test workspace so repositoryId resolves
+    // (the route skips code-edge drawing entirely when repositoryId is null)
+    const senzaRepo = await db.repository.create({
+      data: {
+        id: generateUniqueId("repo-senza"),
+        name: "senza-lnd",
+        repositoryUrl: "https://github.com/stakwork/senza-lnd",
+        workspaceId: ctx.workspace.id,
+      },
+    });
+
+    try {
+      mockGetJarvisConfig.mockResolvedValue(MOCK_JARVIS_CONFIG);
+      mockAddNode.mockResolvedValue({ success: true, ref_id: "issue-ref-old-repo" });
+      mockAddEdge.mockResolvedValue({ success: true });
+
+      // The new searchNodesByAttributes is called with a repo filter, so it
+      // returns the issue repo's nodes even though there are >1000 total workspace
+      // File nodes. (The old searchLatestByTypes would have missed this repo.)
+      mockSearchNodesByAttributes.mockResolvedValue({
+        ok: true,
+        nodes: [
+          {
+            ref_id: "file-old-repo-controller",
+            node_type: "File",
+            properties: {
+              file: "stakwork/senza-lnd/app/controllers/admin/blacklists_controller.rb",
+              namespace: "default",
+            },
+          },
+        ],
+      });
+
+      const res = await POST(
+        buildRequest(
+          {
+            exceptionType: "ActiveRecord::NotFound",
+            message: "Couldn't find Blacklist",
+            frames: [
+              {
+                filename: "app/controllers/admin/blacklists_controller.rb",
+                function: "show",
+                lineno: 14,
+                inApp: true,
+              },
+            ],
+            repository: "https://github.com/stakwork/senza-lnd",
+          },
+          RAW_KEY
+        )
+      );
+
+      expect(res.status).toBe(201);
+
+      // searchNodesByAttributes was called with senza-lnd repo filter
+      expect(mockSearchNodesByAttributes).toHaveBeenCalledOnce();
+      const [, searchParams] = mockSearchNodesByAttributes.mock.calls[0];
+      expect(searchParams.filters).toEqual([
+        { attribute: "file", value: "stakwork/senza-lnd/", comparator: "contains" },
+      ]);
+
+      // Edge drawn to the correct node — old-repo bug would have drawn 0 edges
+      expect(mockAddEdge).toHaveBeenCalledOnce();
+      const [, edgePayload] = mockAddEdge.mock.calls[0];
+      expect(edgePayload.target.ref_id).toBe("file-old-repo-controller");
+    } finally {
+      await db.errorEvent.deleteMany({ where: { repositoryId: senzaRepo.id } });
+      await db.errorIssue.deleteMany({ where: { repositoryId: senzaRepo.id } });
+      await db.repository.delete({ where: { id: senzaRepo.id } });
+    }
+  });
+
   test("unresolvable stack frame path → edge skipped, no throw, 201 returned", async () => {
     mockGetJarvisConfig.mockResolvedValue(MOCK_JARVIS_CONFIG);
     mockAddNode.mockResolvedValue({ success: true, ref_id: "issue-ref-no-match" });
     // Return nodes but none matching the stack frame's file
-    mockSearchLatestByTypes.mockResolvedValue({
+    mockSearchNodesByAttributes.mockResolvedValue({
       ok: true,
       nodes: [
         {
@@ -890,11 +972,11 @@ describe("POST /api/webhook/errors — KG projection (best-effort)", () => {
     expect(mockAddNode).not.toHaveBeenCalled();
   });
 
-  test("searchLatestByTypes fails → edges skipped gracefully, 201 returned", async () => {
+  test("searchNodesByAttributes fails → edges skipped gracefully, 201 returned", async () => {
     mockGetJarvisConfig.mockResolvedValue(MOCK_JARVIS_CONFIG);
     mockAddNode.mockResolvedValue({ success: true, ref_id: "issue-ref-search-fail" });
     // Simulate a failed search (network error)
-    mockSearchLatestByTypes.mockResolvedValue({ ok: false, nodes: [], error: "timeout" });
+    mockSearchNodesByAttributes.mockResolvedValue({ ok: false, nodes: [], error: "timeout" });
 
     const res = await POST(
       buildRequest(
@@ -1104,7 +1186,7 @@ describe("POST /api/webhook/errors — opportunistic impact scoring", () => {
   test("201 response is unaffected when centrality fetch returns empty nodes (unscored)", async () => {
     mockGetJarvisConfig.mockResolvedValue(MOCK_JARVIS_CONFIG);
     mockAddNode.mockResolvedValue({ success: true, ref_id: "ref-impact-test" });
-    mockSearchLatestByTypes.mockResolvedValue({ ok: true, nodes: [] });
+    mockSearchNodesByAttributes.mockResolvedValue({ ok: true, nodes: [] });
     mockGetReferencedNodeCentrality.mockResolvedValue({ ok: true, nodes: [] });
     mockComputeImpactScore.mockReturnValue(null);
 
@@ -1126,7 +1208,7 @@ describe("POST /api/webhook/errors — opportunistic impact scoring", () => {
   test("201 response is unaffected when centrality fetch fails (graph unavailable)", async () => {
     mockGetJarvisConfig.mockResolvedValue(MOCK_JARVIS_CONFIG);
     mockAddNode.mockResolvedValue({ success: true, ref_id: "ref-impact-fail" });
-    mockSearchLatestByTypes.mockResolvedValue({ ok: true, nodes: [] });
+    mockSearchNodesByAttributes.mockResolvedValue({ ok: true, nodes: [] });
     // Simulate a hard graph failure
     mockGetReferencedNodeCentrality.mockRejectedValue(new Error("Graph timeout"));
 
@@ -1145,7 +1227,7 @@ describe("POST /api/webhook/errors — opportunistic impact scoring", () => {
   test("impact score is persisted when centrality nodes are available", async () => {
     mockGetJarvisConfig.mockResolvedValue(MOCK_JARVIS_CONFIG);
     mockAddNode.mockResolvedValue({ success: true, ref_id: "ref-impact-ok" });
-    mockSearchLatestByTypes.mockResolvedValue({ ok: true, nodes: [] });
+    mockSearchNodesByAttributes.mockResolvedValue({ ok: true, nodes: [] });
     mockGetReferencedNodeCentrality.mockResolvedValue({
       ok: true,
       nodes: [{ ref_id: "file-ref", node_type: "File", name: "core.ts", pagerank: 0.8 }],
@@ -1207,7 +1289,7 @@ describe("POST /api/webhook/errors — KG edges from structured frames (Ruby + J
 
   test("Ruby payload with structured frames draws edges to correct File/Function nodes", async () => {
     // Two workers share a `perform` method — only the one matching the frame filename should be linked
-    mockSearchLatestByTypes.mockResolvedValue({
+    mockSearchNodesByAttributes.mockResolvedValue({
       ok: true,
       nodes: [
         {
@@ -1270,7 +1352,7 @@ describe("POST /api/webhook/errors — KG edges from structured frames (Ruby + J
   });
 
   test("JS stackTrace-only payload (no frames) resolves via parseStackFrames fallback", async () => {
-    mockSearchLatestByTypes.mockResolvedValue({
+    mockSearchNodesByAttributes.mockResolvedValue({
       ok: true,
       nodes: [
         {
@@ -1305,7 +1387,7 @@ describe("POST /api/webhook/errors — KG edges from structured frames (Ruby + J
   });
 
   test("nodes with only `file` property (not `file_path`) still draw edges", async () => {
-    mockSearchLatestByTypes.mockResolvedValue({
+    mockSearchNodesByAttributes.mockResolvedValue({
       ok: true,
       nodes: [
         {
