@@ -296,7 +296,7 @@ describe("POST .../agent-logs/[logId]/eval/capture", () => {
 
       const req = makeCaptureRequest(workspace.slug, log.id, {
         ...VALID_CAPTURE_BODY,
-        agent: "canvas-agent",
+        agentName: "canvas-agent",
       }, user);
       await capturePost(req, {
         params: Promise.resolve({ slug: workspace.slug, logId: log.id }),
@@ -314,7 +314,7 @@ describe("POST .../agent-logs/[logId]/eval/capture", () => {
 
       const req = makeCaptureRequest(workspace.slug, log.id, {
         ...VALID_CAPTURE_BODY,
-        agent: "totally-unknown-bot",
+        agentName: "totally-unknown-bot",
       }, user);
       await capturePost(req, {
         params: Promise.resolve({ slug: workspace.slug, logId: log.id }),
@@ -419,7 +419,7 @@ describe("POST .../agent-logs/[logId]/eval/capture", () => {
 
       const req = makeCaptureRequest(workspace.slug, conv.id, {
         ...VALID_CAPTURE_BODY,
-        agent: "repo-agent",
+        agentName: "repo-agent",
       }, user);
       await capturePost(req, {
         params: Promise.resolve({ slug: workspace.slug, logId: conv.id }),
