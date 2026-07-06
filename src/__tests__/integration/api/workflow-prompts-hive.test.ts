@@ -515,13 +515,21 @@ describe("Hive-native Prompt CRUD + Write-through Sync", () => {
       expect(afterPublish!.versions[0].published).toBe(false); // v1
       expect(afterPublish!.versions[1].published).toBe(true);  // v2
 
-      // Stakwork publish push sends { prompt: { hive_version_id } } — no top-level key
+      // Stakwork publish push sends full version content (name, value, description, hive_version_id, published)
       // 3rd fetch call: create + update PUT + publish
       const publishFetchCall = mockFetch.mock.calls[2];
       expect(publishFetchCall).toBeDefined();
       const publishBody = JSON.parse(publishFetchCall[1].body as string);
       expect(publishBody.hive_version_id).toBeUndefined();
-      expect(publishBody).toEqual({ prompt: { hive_version_id: v2Id } });
+      expect(publishBody).toEqual({
+        prompt: {
+          name: "PUBLISH_DRAFT_VERSION",
+          value: "v2 value",
+          description: "",
+          hive_version_id: v2Id,
+          published: true,
+        },
+      });
     });
 
     test("publishing an older version rolls back live value correctly", async () => {
