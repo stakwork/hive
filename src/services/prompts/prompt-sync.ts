@@ -73,6 +73,52 @@ async function pushCreateToStakwork(
   return json?.data?.id ?? null;
 }
 
+/**
+ * Shared PUT helper for both draft-save and publish pushes.
+ * Returns `{ alreadyExists: true }` when Stakwork reports the hive_version_id was already
+ * synced (e.g. the draft was pushed earlier) — callers treat this as a benign no-op.
+ * Throws for all other non-ok responses.
+ */
+async function pushPromptToStakwork(
+  stakworkId: number,
+  name: string,
+  value: string,
+  description: string | undefined,
+  hiveVersionId: string,
+  published?: boolean,
+  operationLabel = "update",
+): Promise<{ alreadyExists: boolean }> {
+  const url = `${config.STAKWORK_BASE_URL}/prompts/${stakworkId}`;
+  const body = JSON.stringify({
+    prompt: {
+      name,
+      value,
+      description: description ?? "",
+      hive_version_id: hiveVersionId,
+      ...(published ? { published: true } : {}),
+    },
+  });
+  const response = await fetch(url, { method: "PUT", headers: stakworkHeaders(), body });
+  if (!response.ok) {
+    // Stakwork returns a failure when the hive_version_id was already registered (e.g.
+    // the draft was synced during writePromptThrough before this publish push fires).
+    // Detect that specific case so callers can treat it as a benign no-op success.
+    let responseText = "";
+    try {
+      responseText = await response.text();
+    } catch {
+      // ignore — best effort
+    }
+    if (responseText.toLowerCase().includes("hive_version_id already exists")) {
+      return { alreadyExists: true };
+    }
+    throw new Error(
+      `Stakwork PUT /prompts/${stakworkId} (${operationLabel}) failed: ${response.status}`,
+    );
+  }
+  return { alreadyExists: false };
+}
+
 async function pushUpdateToStakwork(
   stakworkId: number,
   name: string,
@@ -80,14 +126,7 @@ async function pushUpdateToStakwork(
   description: string | undefined,
   hiveVersionId: string,
 ): Promise<void> {
-  const url = `${config.STAKWORK_BASE_URL}/prompts/${stakworkId}`;
-  const body = JSON.stringify({
-    prompt: { name, value, description: description ?? "", hive_version_id: hiveVersionId },
-  });
-  const response = await fetch(url, { method: "PUT", headers: stakworkHeaders(), body });
-  if (!response.ok) {
-    throw new Error(`Stakwork PUT /prompts/${stakworkId} failed: ${response.status}`);
-  }
+  await pushPromptToStakwork(stakworkId, name, value, description, hiveVersionId, false, "update");
 }
 
 async function pushDeleteToStakwork(stakworkId: number): Promise<void> {
@@ -98,19 +137,17 @@ async function pushDeleteToStakwork(stakworkId: number): Promise<void> {
   }
 }
 
-async function pushPublishToStakwork(stakworkId: number, hiveVersionId: string): Promise<void> {
-  // Stakwork doesn't have a separate publish API per se, so we send an update
-  // carrying the hive_version_id so Stakwork can track which version is live.
-  // If the endpoint doesn't exist this is a no-op best-effort.
-  const url = `${config.STAKWORK_BASE_URL}/prompts/${stakworkId}`;
-  const response = await fetch(url, {
-    method: "PUT",
-    headers: stakworkHeaders(),
-    body: JSON.stringify({ prompt: { hive_version_id: hiveVersionId } }),
-  });
-  if (!response.ok) {
-    throw new Error(`Stakwork PUT /prompts/${stakworkId} (publish) failed: ${response.status}`);
-  }
+async function pushPublishToStakwork(
+  stakworkId: number,
+  name: string,
+  value: string,
+  description: string | undefined,
+  hiveVersionId: string,
+): Promise<{ alreadyExists: boolean }> {
+  // Send the full version content so Stakwork's PUT actually rewrites live content.
+  // `published: true` is included for forward-compat; the endpoint currently silently drops
+  // it but live promotion is achieved by the content payload itself (verified via @stakwork).
+  return pushPromptToStakwork(stakworkId, name, value, description, hiveVersionId, true, "publish");
 }
 
 // ─── Graph recorder ───────────────────────────────────────────────────────────
@@ -461,14 +498,37 @@ export async function publishVersion(
     "publish",
   );
 
-  // Best-effort Stakwork push
+  // Best-effort Stakwork push — full version content so the live prompt is updated.
   if (prompt.stakworkId) {
     try {
-      await pushPublishToStakwork(prompt.stakworkId, versionId);
-      logger.info("[prompt-sync] Stakwork publish push succeeded", "prompt-sync", {
-        promptName: prompt.name,
-        stakworkId: prompt.stakworkId,
-        hiveVersionId: versionId,
+      const { alreadyExists } = await pushPublishToStakwork(
+        prompt.stakworkId,
+        prompt.name,
+        targetVersion.value,
+        targetVersion.description ?? undefined,
+        versionId,
+      );
+
+      if (alreadyExists) {
+        // The draft-save (writePromptThrough) already synced this hive_version_id to Stakwork.
+        // Treat as a benign no-op: the content is already there; just clear any PENDING state.
+        logger.info("[prompt-sync] Stakwork publish push — version already synced (no-op success)", "prompt-sync", {
+          promptName: prompt.name,
+          stakworkId: prompt.stakworkId,
+          hiveVersionId: versionId,
+        });
+      } else {
+        logger.info("[prompt-sync] Stakwork publish push succeeded", "prompt-sync", {
+          promptName: prompt.name,
+          stakworkId: prompt.stakworkId,
+          hiveVersionId: versionId,
+        });
+      }
+
+      // On success (or benign already-exists), clear any previously PENDING state.
+      await db.prompt.update({
+        where: { id: promptId },
+        data: { syncStatus: "OK", lastSyncedAt: new Date() },
       });
     } catch (syncErr) {
       logger.warn("[prompt-sync] Stakwork publish push failed (non-fatal)", "prompt-sync", {
@@ -476,6 +536,11 @@ export async function publishVersion(
         stakworkId: prompt.stakworkId,
         hiveVersionId: versionId,
         error: String(syncErr),
+      });
+      // Persist PENDING so a future re-sync can retry — mirrors the create/update failure path.
+      await db.prompt.update({
+        where: { id: promptId },
+        data: { syncStatus: "PENDING" },
       });
     }
   }
