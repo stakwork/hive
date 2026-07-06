@@ -8,7 +8,7 @@ import { resolveRepoKey, computeFingerprint } from "@/lib/utils/error-fingerprin
 import { sanitizeFrames } from "@/lib/utils/error-frames";
 import { selectFrameCandidates, matchFileNode, matchesFilePath, scopeNodesToRepo } from "@/lib/utils/error-stack-frames";
 import { getJarvisConfigForWorkspace } from "@/lib/helpers/jarvis-config";
-import { addNode, addEdge, searchLatestByTypes, getReferencedNodeCentrality } from "@/services/swarm/api/nodes";
+import { addNode, addEdge, searchNodesByAttributes, getReferencedNodeCentrality } from "@/services/swarm/api/nodes";
 import { detectOnset } from "@/services/error-issues/spike-detection";
 import { correlateErrorIssue } from "@/services/error-issues/correlate";
 import { computeImpactScore } from "@/services/error-impact";
@@ -322,117 +322,134 @@ export async function POST(request: NextRequest) {
           });
 
           if (candidates.length > 0) {
-            // Fetch File and Function nodes scoped to this repo via the graph
-            // search endpoint.  We request a generous limit per type — workspace
-            // graph sets are typically small, but we want to avoid missing a
-            // frame because of a tight cap.
-            console.info("[error-ingest] KG debug", { issueId: issue.id, aboutToSearch: true });
-            const searchResult = await searchLatestByTypes(
-              jarvisConfig,
-              { File: 1000, Function: 1000 },
-              { withProperties: true },
-            );
+            // Fetch File and Function nodes scoped to this repo via the
+            // attributes search endpoint, filtering on the `file` property
+            // prefix (e.g. "stakwork/senza-lnd/"). This ensures nodes for
+            // older/smaller repos are returned regardless of global node count,
+            // and keeps the payload small enough to stay well under the
+            // serverless timeout.
+            console.info("[error-ingest] KG debug", { issueId: issue.id, aboutToSearch: true, repoKey: issue.repoKey });
 
-            console.info("[error-ingest] KG debug", {
-              issueId: issue.id,
-              searchOk: searchResult.ok,
-              totalNodesReturned: searchResult.ok ? searchResult.nodes.length : null,
-              error: searchResult.ok ? null : searchResult.error,
-            });
-
-            if (!searchResult.ok) {
-              console.warn("[error-ingest] KG code-node search failed (skipping edges)", {
-                error: searchResult.error,
-              });
+            // Guard: skip the search if repoKey is missing or too short to be
+            // a valid owner/repo — a malformed filter would over-match or error.
+            const ownerRepo = issue.repoKey ?? "";
+            if (!ownerRepo || ownerRepo.length < 3 || !ownerRepo.includes("/")) {
+              console.warn("[error-ingest] KG edges: invalid repoKey, skipping search", { repoKey: ownerRepo });
             } else {
-              // Filter nodes to only those belonging to this issue's own repo
-              // by checking the `file` path prefix (e.g. "stakwork/senza-lnd/").
-              // Real stakgraph nodes carry no `repository_id` — repo identity
-              // lives in the `file` prefix.  Never draw edges to nodes from a
-              // different repo in the same workspace.
-              const ownerRepo = issue.repoKey ?? "";
-              const repoNodes = scopeNodesToRepo(searchResult.nodes, ownerRepo);
+              const searchResult = await searchNodesByAttributes(
+                jarvisConfig,
+                {
+                  nodeTypes: ["File", "Function"],
+                  filters: [{ attribute: "file", value: `${ownerRepo}/`, comparator: "contains" }],
+                  includeProperties: true,
+                  limit: 1000,
+                },
+              );
 
               console.info("[error-ingest] KG debug", {
                 issueId: issue.id,
-                ownerRepo,
-                totalNodes: searchResult.nodes.length,
-                repoScopedCount: repoNodes.length,
-                sampleNodeFiles: searchResult.nodes.slice(0, 5).map((n) => n.properties?.file ?? n.properties?.file_path ?? null),
+                searchOk: searchResult.ok,
+                totalNodesReturned: searchResult.ok ? searchResult.nodes.length : null,
+                repoKey: ownerRepo,
+                error: searchResult.ok ? null : searchResult.error,
               });
 
-              if (repoNodes.length === 0) {
-                console.warn("[error-ingest] KG edges: 0 repo-scoped nodes", {
+              if (!searchResult.ok) {
+                console.warn("[error-ingest] KG code-node search failed (skipping edges)", {
+                  error: searchResult.error,
+                  repoKey: ownerRepo,
+                });
+              } else {
+                // Safety-filter nodes to only those belonging to this issue's
+                // own repo. The `contains` comparator is not a strict prefix
+                // match (it is a Lucene wildcard), so a repo whose name is a
+                // substring of another (e.g. senza-lnd vs senza-lnd-fork)
+                // could over-match. scopeNodesToRepo guards that edge case.
+                const repoNodes = scopeNodesToRepo(searchResult.nodes, ownerRepo);
+
+                console.info("[error-ingest] KG debug", {
+                  issueId: issue.id,
                   ownerRepo,
                   totalNodes: searchResult.nodes.length,
+                  repoScopedCount: repoNodes.length,
+                  sampleNodeFiles: searchResult.nodes.slice(0, 5).map((n) => n.properties?.file ?? n.properties?.file_path ?? null),
                 });
-              }
 
-              let edgesDrawn = 0;
-              const seenRefIds = new Set<string>();
-              let frameIndex = 0;
-
-              for (const frame of candidates) {
-                // Try to match a File node by path, then a Function node by
-                // name AND same-file path (same-file guard prevents shared
-                // method names like `perform` from linking the wrong worker).
-                const fileNode = frame.filePath
-                  ? matchFileNode(repoNodes, frame.filePath)
-                  : undefined;
-                const funcNode =
-                  frame.functionName && frame.filePath
-                    ? repoNodes.find(
-                        (n) =>
-                          n.node_type === "Function" &&
-                          (n.properties?.name as string | undefined) === frame.functionName &&
-                          matchesFilePath(
-                            (n.properties?.file ?? n.properties?.file_path) as string | undefined,
-                            frame.filePath,
-                          ),
-                      )
-                    : undefined;
-
-                if (frameIndex < 5) {
-                  console.info("[error-ingest] KG debug", {
-                    issueId: issue.id,
-                    framePath: frame.filePath,
-                    frameFunc: frame.functionName,
-                    matchedFile: fileNode?.ref_id ?? null,
-                    matchedFunc: funcNode?.ref_id ?? null,
+                if (repoNodes.length === 0) {
+                  console.warn("[error-ingest] KG edges: 0 repo-scoped nodes", {
+                    ownerRepo,
+                    totalNodes: searchResult.nodes.length,
                   });
                 }
-                frameIndex++;
 
-                for (const targetNode of [fileNode, funcNode]) {
-                  if (!targetNode?.ref_id) continue;
-                  if (seenRefIds.has(targetNode.ref_id)) continue;
-                  seenRefIds.add(targetNode.ref_id);
+                let edgesDrawn = 0;
+                const seenRefIds = new Set<string>();
+                let frameIndex = 0;
 
-                  const edgeResult = await addEdge(jarvisConfig, {
-                    edge: { edge_type: "REFERENCES" },
-                    source: { ref_id: issueNodeResult.ref_id },
-                    target: { ref_id: targetNode.ref_id },
-                  });
-                  if (edgeResult.success) {
-                    edgesDrawn++;
-                  } else {
-                    console.warn("[error-ingest] REFERENCES edge failed (skipped)", {
-                      targetRefId: targetNode.ref_id,
-                      nodeType: targetNode.node_type,
-                      error: edgeResult.error,
+                for (const frame of candidates) {
+                  // Try to match a File node by path, then a Function node by
+                  // name AND same-file path (same-file guard prevents shared
+                  // method names like `perform` from linking the wrong worker).
+                  const fileNode = frame.filePath
+                    ? matchFileNode(repoNodes, frame.filePath)
+                    : undefined;
+                  const funcNode =
+                    frame.functionName && frame.filePath
+                      ? repoNodes.find(
+                          (n) =>
+                            n.node_type === "Function" &&
+                            (n.properties?.name as string | undefined) === frame.functionName &&
+                            matchesFilePath(
+                              (n.properties?.file ?? n.properties?.file_path) as string | undefined,
+                              frame.filePath,
+                            ),
+                        )
+                      : undefined;
+
+                  if (frameIndex < 5) {
+                    console.info("[error-ingest] KG debug", {
+                      issueId: issue.id,
+                      framePath: frame.filePath,
+                      frameFunc: frame.functionName,
+                      matchedFile: fileNode?.ref_id ?? null,
+                      matchedFunc: funcNode?.ref_id ?? null,
                     });
                   }
-                }
-              }
+                  frameIndex++;
 
-              console.info("[error-ingest] KG edges drawn", {
-                issueId: issue.id,
-                source: candidateSource,
-                candidatesScanned: candidates.length,
-                edgesDrawn,
-                repoNodesAvailable: repoNodes.length,
-              });
-            }
+                  for (const targetNode of [fileNode, funcNode]) {
+                    if (!targetNode?.ref_id) continue;
+                    if (seenRefIds.has(targetNode.ref_id)) continue;
+                    seenRefIds.add(targetNode.ref_id);
+
+                    const edgeResult = await addEdge(jarvisConfig, {
+                      edge: { edge_type: "REFERENCES" },
+                      source: { ref_id: issueNodeResult.ref_id },
+                      target: { ref_id: targetNode.ref_id },
+                    });
+                    if (edgeResult.success) {
+                      edgesDrawn++;
+                    } else {
+                      console.warn("[error-ingest] REFERENCES edge failed (skipped)", {
+                        targetRefId: targetNode.ref_id,
+                        nodeType: targetNode.node_type,
+                        error: edgeResult.error,
+                      });
+                    }
+                  }
+                }
+
+                console.info("[error-ingest] KG edges drawn", {
+                  issueId: issue.id,
+                  source: candidateSource,
+                  candidatesScanned: candidates.length,
+                  edgesDrawn,
+                  repoKey: ownerRepo,
+                  nodesFetched: searchResult.nodes.length,
+                  repoNodesAvailable: repoNodes.length,
+                });
+              }
+            } // end ownerRepo guard
           }
         }
 
