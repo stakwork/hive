@@ -74,6 +74,12 @@ describe("OrgCanvasBackground – SystemCanvas props", () => {
     expect(systemCanvasBlock).toContain('panMode="trackpad"');
     expect(systemCanvasBlock).toContain('multiSelectKey="space"');
 
+    // New canvas feature props (task: bump system-canvas-react + enable off-by-default features)
+    expect(systemCanvasBlock).toContain("showMinimap={true}");
+    expect(systemCanvasBlock).toContain("alignDistributeMenu={true}");
+    expect(systemCanvasBlock).toContain("snapGrid={true}");
+    expect(systemCanvasBlock).toContain("snapToLanes={true}");
+
     void mockFn; // satisfy no-unused-vars
   });
 });
