@@ -751,12 +751,13 @@ describe("POST /api/webhook/errors — KG projection (best-effort)", () => {
     expect(issue?.kgRefId).toBe("issue-ref-no-repo");
   });
 
-  test("File/Function edges drawn only to nodes in issue's own repo", async () => {
+  test("File/Function edges drawn only to nodes matching the queried file path (exact =)", async () => {
     mockGetJarvisConfig.mockResolvedValue(MOCK_JARVIS_CONFIG);
     mockAddNode.mockResolvedValue({ success: true, ref_id: "issue-ref-with-edges" });
     mockAddEdge.mockResolvedValue({ success: true });
 
-    // Simulate: one File node in the correct repo, one in a different repo
+    // Per-file exact query: returns only the node for that file path.
+    // The other-repo node would never appear since we query by exact file path.
     mockSearchNodesByAttributes.mockResolvedValue({
       ok: true,
       nodes: [
@@ -765,14 +766,6 @@ describe("POST /api/webhook/errors — KG projection (best-effort)", () => {
           node_type: "File",
           properties: {
             file: "stakwork/hive/src/foo/bar.ts",
-            namespace: "default",
-          },
-        },
-        {
-          ref_id: "file-in-other-repo",
-          node_type: "File",
-          properties: {
-            file: "other-org/secret-repo/src/foo/bar.ts",
             namespace: "default",
           },
         },
@@ -794,13 +787,15 @@ describe("POST /api/webhook/errors — KG projection (best-effort)", () => {
 
     expect(res.status).toBe(201);
 
-    // Verify the new repo-scoped call was used (not the old global searchLatestByTypes)
+    // Verify per-file exact-match call with comparator "=" (not "contains")
     expect(mockSearchNodesByAttributes).toHaveBeenCalledOnce();
     const [, searchParams] = mockSearchNodesByAttributes.mock.calls[0];
     expect(searchParams.nodeTypes).toEqual(["File", "Function"]);
-    expect(searchParams.filters).toEqual([
-      { attribute: "file", value: "stakwork/hive/", comparator: "contains" },
-    ]);
+    // The filter must use exact "=" comparator on the full repo-qualified path
+    expect(searchParams.filters).toHaveLength(1);
+    expect(searchParams.filters[0].attribute).toBe("file");
+    expect(searchParams.filters[0].comparator).toBe("=");
+    expect(searchParams.filters[0].value).toBe("stakwork/hive/bar.ts"); // basename from stackTrace fallback
     expect(searchParams.includeProperties).toBe(true);
 
     // Only one edge drawn — to the node in the correct repo
@@ -809,8 +804,6 @@ describe("POST /api/webhook/errors — KG projection (best-effort)", () => {
     expect(edgePayload.edge.edge_type).toBe("REFERENCES");
     expect(edgePayload.source.ref_id).toBe("issue-ref-with-edges");
     expect(edgePayload.target.ref_id).toBe("file-in-correct-repo");
-    // Must NOT reference the node from the other repo
-    expect(edgePayload.target.ref_id).not.toBe("file-in-other-repo");
   });
 
   test("regression guard: >1000 total workspace nodes — repo-scoped fetch returns issue's repo nodes regardless", async () => {
@@ -868,12 +861,16 @@ describe("POST /api/webhook/errors — KG projection (best-effort)", () => {
 
       expect(res.status).toBe(201);
 
-      // searchNodesByAttributes was called with senza-lnd repo filter
+      // searchNodesByAttributes was called with per-file exact-match for the frame's path
       expect(mockSearchNodesByAttributes).toHaveBeenCalledOnce();
       const [, searchParams] = mockSearchNodesByAttributes.mock.calls[0];
-      expect(searchParams.filters).toEqual([
-        { attribute: "file", value: "stakwork/senza-lnd/", comparator: "contains" },
-      ]);
+      expect(searchParams.filters).toHaveLength(1);
+      expect(searchParams.filters[0].attribute).toBe("file");
+      expect(searchParams.filters[0].comparator).toBe("=");
+      // Exact path: repoKey + "/" + normalized frame path
+      expect(searchParams.filters[0].value).toBe(
+        "stakwork/senza-lnd/app/controllers/admin/blacklists_controller.rb",
+      );
 
       // Edge drawn to the correct node — old-repo bug would have drawn 0 edges
       expect(mockAddEdge).toHaveBeenCalledOnce();
@@ -1420,5 +1417,304 @@ describe("POST /api/webhook/errors — KG edges from structured frames (Ruby + J
     expect(mockAddEdge).toHaveBeenCalledOnce();
     const [, edgePayload] = mockAddEdge.mock.calls[0];
     expect(edgePayload.target.ref_id).toBe("file-only-file-key");
+  });
+});
+
+// ── Per-file exact-match KG fetch tests ──────────────────────────────────────
+
+describe("POST /api/webhook/errors — per-file exact-match KG fetch (comparator '=')", () => {
+  const MOCK_JARVIS_CONFIG = { jarvisUrl: "https://jarvis.example.com", apiKey: "jarvis-key" };
+  let ctx: Awaited<ReturnType<typeof createTestSetup>>;
+
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    ctx = await createTestSetup();
+    mockPusherTrigger.mockResolvedValue(undefined);
+    mockGetReferencedNodeCentrality.mockResolvedValue({ ok: true, nodes: [] });
+    mockComputeImpactScore.mockReturnValue(null);
+    mockGetJarvisConfig.mockResolvedValue(MOCK_JARVIS_CONFIG);
+    mockAddNode.mockResolvedValue({ success: true, ref_id: "issue-ref-exact" });
+    mockAddEdge.mockResolvedValue({ success: true });
+  });
+
+  afterEach(async () => {
+    await db.errorEvent.deleteMany({ where: { workspaceId: ctx.workspace.id } });
+    await db.errorIssue.deleteMany({ where: { workspaceId: ctx.workspace.id } });
+    await db.workspaceApiKey.deleteMany({ where: { id: ctx.apiKey.id } });
+    await db.repository.deleteMany({ where: { id: ctx.repo.id } });
+    await db.workspace.deleteMany({ where: { id: ctx.workspace.id } });
+    await db.user.deleteMany({ where: { id: ctx.owner.id } });
+    await db.errorEvent.deleteMany({ where: { workspaceId: ctx.workspace2.id } });
+    await db.errorIssue.deleteMany({ where: { workspaceId: ctx.workspace2.id } });
+    await db.repository.deleteMany({ where: { id: ctx.repo2.id } });
+    await db.workspace.deleteMany({ where: { id: ctx.workspace2.id } });
+    await db.user.deleteMany({ where: { id: ctx.owner2.id } });
+  });
+
+  test("jarvis request uses comparator '=' on attribute 'file', never 'contains'", async () => {
+    mockSearchNodesByAttributes.mockResolvedValue({
+      ok: true,
+      nodes: [
+        {
+          ref_id: "file-controller",
+          node_type: "File",
+          properties: { file: "stakwork/hive/app/controllers/admin/translations_controller.rb" },
+        },
+        {
+          ref_id: "func-edit",
+          node_type: "Function",
+          properties: {
+            name: "edit",
+            file: "stakwork/hive/app/controllers/admin/translations_controller.rb",
+          },
+        },
+      ],
+    });
+
+    const res = await POST(
+      buildRequest(
+        {
+          exceptionType: "ActiveRecord::NotFound",
+          message: "Couldn't find Translation",
+          frames: [
+            {
+              filename: "app/controllers/admin/translations_controller.rb",
+              function: "edit",
+              lineno: 14,
+              inApp: true,
+            },
+          ],
+          repository: "https://github.com/stakwork/hive",
+        },
+        RAW_KEY,
+      ),
+    );
+
+    expect(res.status).toBe(201);
+
+    // All calls must use "=" comparator — never "contains" or "~="
+    for (const call of mockSearchNodesByAttributes.mock.calls) {
+      const [, params] = call;
+      for (const filter of params.filters) {
+        expect(filter.comparator).toBe("=");
+        expect(filter.comparator).not.toBe("contains");
+        expect(filter.comparator).not.toBe("~=");
+      }
+    }
+
+    // Both File and Function edges drawn
+    expect(mockAddEdge).toHaveBeenCalledTimes(2);
+    const targetRefIds = mockAddEdge.mock.calls.map(
+      (c: unknown[]) => (c[1] as { target: { ref_id: string } }).target.ref_id,
+    );
+    expect(targetRefIds).toContain("file-controller");
+    expect(targetRefIds).toContain("func-edit");
+  });
+
+  test("exact file= match → REFERENCES edges drawn + non-null impact score persisted", async () => {
+    mockSearchNodesByAttributes.mockResolvedValue({
+      ok: true,
+      nodes: [
+        {
+          ref_id: "func-edit-central",
+          node_type: "Function",
+          properties: {
+            name: "edit",
+            file: "stakwork/hive/app/controllers/admin/translations_controller.rb",
+            pagerank: 0.405,
+          },
+        },
+      ],
+    });
+    mockGetReferencedNodeCentrality.mockResolvedValue({
+      ok: true,
+      nodes: [{ ref_id: "func-edit-central", node_type: "Function", name: "edit", pagerank: 0.405 }],
+    });
+    mockComputeImpactScore.mockReturnValue({
+      score: 0.405,
+      meta: { topNodeName: "edit", topNodeType: "Function", topPagerank: 0.405, nodeCount: 1 },
+    });
+
+    const res = await POST(
+      buildRequest(
+        {
+          exceptionType: "ActiveRecord::NotFound",
+          message: "Couldn't find Translation",
+          frames: [
+            {
+              filename: "app/controllers/admin/translations_controller.rb",
+              function: "edit",
+              lineno: 14,
+              inApp: true,
+            },
+          ],
+          repository: "https://github.com/stakwork/hive",
+        },
+        RAW_KEY,
+      ),
+    );
+
+    expect(res.status).toBe(201);
+
+    // Edge drawn
+    expect(mockAddEdge).toHaveBeenCalledOnce();
+    const [, edgePayload] = mockAddEdge.mock.calls[0];
+    expect(edgePayload.target.ref_id).toBe("func-edit-central");
+
+    // Allow async DB write to complete
+    await new Promise((r) => setTimeout(r, 50));
+
+    const body = await res.json();
+    const issue = await db.errorIssue.findUnique({ where: { id: body.data.issueId } });
+    expect(issue?.impactScore).toBe(0.405);
+    expect(issue?.impactScoredAt).not.toBeNull();
+  });
+
+  test("one failed per-file query does not block others — remaining edges drawn, 201 returned", async () => {
+    // First call fails, second succeeds
+    mockSearchNodesByAttributes
+      .mockResolvedValueOnce({ ok: false, error: "lookup timeout", nodes: [] })
+      .mockResolvedValueOnce({
+        ok: true,
+        nodes: [
+          {
+            ref_id: "file-service",
+            node_type: "File",
+            properties: { file: "stakwork/hive/app/services/my_service.rb" },
+          },
+        ],
+      });
+
+    const res = await POST(
+      buildRequest(
+        {
+          exceptionType: "RuntimeError",
+          message: "service crashed",
+          frames: [
+            // Two different files — first will fail, second will succeed
+            { filename: "app/controllers/admin/broken_controller.rb", function: "index", lineno: 5, inApp: true },
+            { filename: "app/services/my_service.rb", function: "call", lineno: 20, inApp: true },
+          ],
+          repository: "https://github.com/stakwork/hive",
+        },
+        RAW_KEY,
+      ),
+    );
+
+    // Must still return 201 — one failed file is non-fatal
+    expect(res.status).toBe(201);
+    const body = await res.json();
+    expect(body.success).toBe(true);
+
+    // Two per-file queries were made
+    expect(mockSearchNodesByAttributes).toHaveBeenCalledTimes(2);
+
+    // Edge drawn for the successful file only
+    expect(mockAddEdge).toHaveBeenCalledOnce();
+    const [, edgePayload] = mockAddEdge.mock.calls[0];
+    expect(edgePayload.target.ref_id).toBe("file-service");
+  });
+
+  test("rejected/thrown per-file query is skipped — others draw, 201 returned", async () => {
+    mockSearchNodesByAttributes
+      .mockRejectedValueOnce(new Error("network timeout for broken_controller"))
+      .mockResolvedValueOnce({
+        ok: true,
+        nodes: [
+          {
+            ref_id: "file-worker",
+            node_type: "File",
+            properties: { file: "stakwork/hive/app/workers/my_worker.rb" },
+          },
+        ],
+      });
+
+    const res = await POST(
+      buildRequest(
+        {
+          exceptionType: "Sidekiq::Error",
+          message: "job failed",
+          frames: [
+            { filename: "app/controllers/admin/broken_controller.rb", function: "index", lineno: 5, inApp: true },
+            { filename: "app/workers/my_worker.rb", function: "perform", lineno: 12, inApp: true },
+          ],
+          repository: "https://github.com/stakwork/hive",
+        },
+        RAW_KEY,
+      ),
+    );
+
+    expect(res.status).toBe(201);
+    expect(mockAddEdge).toHaveBeenCalledOnce();
+    const [, edgePayload] = mockAddEdge.mock.calls[0];
+    expect(edgePayload.target.ref_id).toBe("file-worker");
+  });
+
+  test("basename-only stackTrace fallback frame produces no edge (documented limitation)", async () => {
+    // parseStackFrames (stackTrace fallback) reduces paths to a bare basename
+    // (e.g. "bar.ts"), so the per-file exact query becomes
+    // "stakwork/hive/bar.ts" — jarvis returns no nodes for that path because
+    // the real node lives at "stakwork/hive/src/foo/bar.ts".
+    // We simulate this by returning empty nodes for the exact query on the basename.
+    mockSearchNodesByAttributes.mockResolvedValue({ ok: true, nodes: [] });
+
+    const res = await POST(
+      buildRequest(
+        {
+          exceptionType: "TypeError",
+          message: "x is not defined",
+          // No frames — triggers stackTrace fallback; parseStackFrames returns basename "bar.ts"
+          stackTrace: "  at doThing (src/foo/bar.ts:10:5)",
+          repository: "https://github.com/stakwork/hive",
+        },
+        RAW_KEY,
+      ),
+    );
+
+    expect(res.status).toBe(201);
+    // The query was made with the basename path (not the full path), and
+    // jarvis returned no nodes → no edge drawn. Non-fatal, no throw.
+    expect(mockSearchNodesByAttributes).toHaveBeenCalledOnce();
+    const [, params] = mockSearchNodesByAttributes.mock.calls[0];
+    // Query uses basename "bar.ts" (not the full "src/foo/bar.ts")
+    expect(params.filters[0].value).toBe("stakwork/hive/bar.ts");
+    expect(mockAddEdge).not.toHaveBeenCalled();
+  });
+
+  test("multiple frames pointing to same file → only one per-file query (deduped)", async () => {
+    mockSearchNodesByAttributes.mockResolvedValue({
+      ok: true,
+      nodes: [
+        {
+          ref_id: "file-controller",
+          node_type: "File",
+          properties: { file: "stakwork/hive/app/controllers/orders_controller.rb" },
+        },
+      ],
+    });
+
+    const res = await POST(
+      buildRequest(
+        {
+          exceptionType: "ActiveRecord::NotFound",
+          message: "Order not found",
+          frames: [
+            // Three frames from the same file — should dedupe to one query
+            { filename: "app/controllers/orders_controller.rb", function: "show", lineno: 10, inApp: true },
+            { filename: "app/controllers/orders_controller.rb", function: "authorize", lineno: 25, inApp: true },
+            { filename: "app/controllers/orders_controller.rb", function: "find_order", lineno: 40, inApp: true },
+          ],
+          repository: "https://github.com/stakwork/hive",
+        },
+        RAW_KEY,
+      ),
+    );
+
+    expect(res.status).toBe(201);
+
+    // Only ONE query issued despite 3 frames from the same file
+    expect(mockSearchNodesByAttributes).toHaveBeenCalledOnce();
+    const [, params] = mockSearchNodesByAttributes.mock.calls[0];
+    expect(params.filters[0].value).toBe("stakwork/hive/app/controllers/orders_controller.rb");
   });
 });
