@@ -2248,23 +2248,3 @@ model VoiceCorrectionLearning {
   @@map("voice_correction_learnings")
 }
 
-
-model LegalBenchmarkRun {
-  id               String   @id @default(cuid())
-  workspaceId      String
-  taskSlug         String
-  taskTitle        String
-  status           String   @default("PENDING") // PENDING | RUNNING | SCORING | COMPLETE | FAILED
-  runnerProjectId  Int?
-  scorerProjectId  Int?
-  runnerOutputUrl  String?
-  runnerOutputText String?  @db.Text
-  scoreJson        String?  @db.Text
-  errorMessage     String?
-  evalTriggerRef   String?   // Jarvis EvalTrigger ref_id; written at run start, read by scorer webhook
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
-
-  @@index([workspaceId])
-  @@index([taskSlug])
-}
