@@ -140,6 +140,29 @@ export function matchFileNode(
 }
 
 /**
+ * Scope a set of KG nodes to a single repository by checking that their
+ * `file` path starts with the canonical `owner/repo/` prefix.
+ *
+ * Real stakgraph File/Function nodes carry no `repository_id` — repo identity
+ * lives entirely in the `file` path prefix (e.g. `"stakwork/senza-lnd/..."`).
+ * Using `repositoryId` (a Hive cuid) to filter always yields an empty set.
+ *
+ * Guard: returns `[]` when `ownerRepo` is falsy, `"unknown"`, or shorter than
+ * 3 characters (guards against degenerate/unparsed keys).
+ */
+export function scopeNodesToRepo(
+  nodes: Array<{ ref_id?: string; node_type: string; properties?: Record<string, unknown> }>,
+  ownerRepo: string,
+): Array<{ ref_id?: string; node_type: string; properties?: Record<string, unknown> }> {
+  if (!ownerRepo || ownerRepo === "unknown" || ownerRepo.length < 3) return [];
+  const prefix = `${ownerRepo}/`;
+  return nodes.filter((n) => {
+    const path = (n.properties?.file ?? n.properties?.file_path) as string | undefined;
+    return typeof path === "string" && path.startsWith(prefix);
+  });
+}
+
+/**
  * Return true when the node's path ends with or equals `framePath`.
  * Reads `file` (real node property) falling back to `file_path`.
  */
