@@ -1542,6 +1542,8 @@ enum StakworkRunType {
   WORKFLOW_EDITOR
   PROMPT_EVAL
   DAILY_RECAP
+  LEGAL_BENCHMARK_RUNNER
+  LEGAL_BENCHMARK_SCORER
 }
 
 enum StakworkRunDecision {
@@ -2245,6 +2247,7 @@ model VoiceCorrectionLearning {
   @@index([createdAt])
   @@map("voice_correction_learnings")
 }
+
 
 model LegalBenchmarkRun {
   id               String   @id @default(cuid())
