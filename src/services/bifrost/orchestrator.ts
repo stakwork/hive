@@ -139,7 +139,10 @@ export async function getBifrostForLLM(
   // so the hot path is a couple of DB reads (prompt links + Swarm row).
   // Non-fatal and independent of trust — a stale/absent catalog never
   // blocks an LLM call. See `gateway/plans/agent-catalog.md`.
-  await runAgentCatalogReconcile(workspaceAuth.workspaceId);
+  // Pass userId so the reconciler can mint the gateway-callback key
+  // with a real creator identity (WorkspaceApiKey.createdById is a
+  // required FK — never use a "system" literal here).
+  await runAgentCatalogReconcile(workspaceAuth.workspaceId, workspaceAuth.userId);
 
   // 3. VK reconcile (phase 1). Without this, the LLM call can't
   // route through Bifrost at all — return undefined and let the
@@ -187,12 +190,12 @@ async function runTrustReconcile(workspaceId: string): Promise<void> {
   }
 }
 
-async function runAgentCatalogReconcile(workspaceId: string): Promise<void> {
+async function runAgentCatalogReconcile(workspaceId: string, userId?: string): Promise<void> {
   try {
     const { ensureBifrostAgentCatalog } = await import(
       "./agent-catalog-reconciler"
     );
-    await ensureBifrostAgentCatalog(workspaceId);
+    await ensureBifrostAgentCatalog(workspaceId, userId);
   } catch (err) {
     // Defensive — ensureBifrostAgentCatalog catches its own errors and
     // returns `failed`; this is for unexpected throws (lock-acquire

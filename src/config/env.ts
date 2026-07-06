@@ -133,6 +133,12 @@ export const optionalEnvVars = {
   // Callers MUST go through `isBifrostEnabledForAgent(agentName)` —
   // direct equality checks on this raw string are a bug.
   BIFROST_ENABLED_AGENTS: process.env.BIFROST_ENABLED_AGENTS || "",
+  // Externally-reachable Hive origin pushed to the Bifrost gateway as
+  // the callback base URL during agent-catalog reconciliation. Must be
+  // set to the public URL (e.g. "https://hive.example.com") — NOT a
+  // localhost address, as the gateway calls back from outside. When
+  // unset, the callback push is skipped (logged at warn level).
+  HIVE_PUBLIC_URL: process.env.HIVE_PUBLIC_URL || "",
 } as const;
 
 /**
