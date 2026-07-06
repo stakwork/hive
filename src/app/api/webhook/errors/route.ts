@@ -312,16 +312,33 @@ export async function POST(request: NextRequest) {
           //     raw stackTrace (fallback for older JS clients).
           const { candidates, source: candidateSource } = selectFrameCandidates(frames, stackTrace);
 
+          console.info("[error-ingest] KG debug", {
+            issueId: issue.id,
+            framesLength: frames.length,
+            stackTracePresent: !!stackTrace,
+            candidatesCount: candidates.length,
+            source: candidateSource,
+            firstCandidate: candidates[0] ?? null,
+          });
+
           if (candidates.length > 0) {
             // Fetch File and Function nodes scoped to this repo via the graph
             // search endpoint.  We request a generous limit per type — workspace
             // graph sets are typically small, but we want to avoid missing a
             // frame because of a tight cap.
+            console.info("[error-ingest] KG debug", { issueId: issue.id, aboutToSearch: true });
             const searchResult = await searchLatestByTypes(
               jarvisConfig,
               { File: 1000, Function: 1000 },
               { withProperties: true },
             );
+
+            console.info("[error-ingest] KG debug", {
+              issueId: issue.id,
+              searchOk: searchResult.ok,
+              totalNodesReturned: searchResult.ok ? searchResult.nodes.length : null,
+              error: searchResult.ok ? null : searchResult.error,
+            });
 
             if (!searchResult.ok) {
               console.warn("[error-ingest] KG code-node search failed (skipping edges)", {
@@ -336,6 +353,14 @@ export async function POST(request: NextRequest) {
               const ownerRepo = issue.repoKey ?? "";
               const repoNodes = scopeNodesToRepo(searchResult.nodes, ownerRepo);
 
+              console.info("[error-ingest] KG debug", {
+                issueId: issue.id,
+                ownerRepo,
+                totalNodes: searchResult.nodes.length,
+                repoScopedCount: repoNodes.length,
+                sampleNodeFiles: searchResult.nodes.slice(0, 5).map((n) => n.properties?.file ?? n.properties?.file_path ?? null),
+              });
+
               if (repoNodes.length === 0) {
                 console.warn("[error-ingest] KG edges: 0 repo-scoped nodes", {
                   ownerRepo,
@@ -345,6 +370,7 @@ export async function POST(request: NextRequest) {
 
               let edgesDrawn = 0;
               const seenRefIds = new Set<string>();
+              let frameIndex = 0;
 
               for (const frame of candidates) {
                 // Try to match a File node by path, then a Function node by
@@ -365,6 +391,17 @@ export async function POST(request: NextRequest) {
                           ),
                       )
                     : undefined;
+
+                if (frameIndex < 5) {
+                  console.info("[error-ingest] KG debug", {
+                    issueId: issue.id,
+                    framePath: frame.filePath,
+                    frameFunc: frame.functionName,
+                    matchedFile: fileNode?.ref_id ?? null,
+                    matchedFunc: funcNode?.ref_id ?? null,
+                  });
+                }
+                frameIndex++;
 
                 for (const targetNode of [fileNode, funcNode]) {
                   if (!targetNode?.ref_id) continue;
