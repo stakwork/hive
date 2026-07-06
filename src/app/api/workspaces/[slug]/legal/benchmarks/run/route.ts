@@ -67,7 +67,14 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       return handleSwarmAccessError(swarmResult.error);
     }
 
-    const { workspaceId } = swarmResult.data;
+    const { workspaceId, swarmSecretAlias } = swarmResult.data;
+
+    if (!swarmSecretAlias) {
+      return NextResponse.json(
+        { error: "Swarm secret alias not configured" },
+        { status: 500 },
+      );
+    }
 
     const BENCHMARK_MODEL = "claude-opus-4-5";
     let bifrost: Awaited<ReturnType<typeof getBifrostForLLM>> | undefined;
@@ -129,7 +136,6 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: "Swarm not configured for workspace" }, { status: 500 });
     }
     const graphBaseUrl = jarvisConfig.jarvisUrl;
-    const graphSecret = jarvisConfig.apiKey;
 
     // Pre-fetch task context for Stakwork workflow vars
     let taskGoal = "";
@@ -187,7 +193,8 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
               documents_json: JSON.stringify(documents),
               webhook_url: webhookUrl,
               graph_base_url: graphBaseUrl,
-              secret: graphSecret,
+              swarm_secret_alias: swarmSecretAlias,
+              secret: swarmSecretAlias,
               model: BENCHMARK_MODEL,
               apiKey: bifrost?.apiKey ?? getApiKeyForModel(BENCHMARK_MODEL) ?? "",
               baseUrl: bifrost?.baseUrl ?? "",
