@@ -48,6 +48,9 @@ function makeIssue(overrides: Partial<ErrorIssueRecord> = {}): ErrorIssueRecord 
     correlationConfidence: null,
     correlationComputedAt: null,
     correlationCandidates: null,
+    impactScore: null,
+    impactScoredAt: null,
+    impactMeta: null,
     ...overrides,
   };
 }
@@ -279,5 +282,87 @@ describe("ErrorIssueDetail — Linked Fixes card", () => {
     render(<ErrorIssueDetail detail={makeDetail({}, {}, features)} slug="acme-org" />);
     const link = screen.getByText("View Plan");
     expect(link).toHaveAttribute("href", "/w/acme-org/plan/feat-99");
+  });
+});
+
+// ── Impact & affected code card ───────────────────────────────────────────────
+
+describe("ErrorIssueDetail — Impact card", () => {
+  const SCORED_META = {
+    topNodeName: "edit",
+    topNodeType: "Function",
+    topPagerank: 0.405,
+    nodeCount: 4,
+  };
+
+  it("renders the impact card", () => {
+    render(
+      <ErrorIssueDetail
+        detail={makeDetail({ impactScore: 0.405, impactMeta: SCORED_META })}
+        slug="test-ws"
+      />,
+    );
+    expect(screen.getByTestId("impact-card")).toBeInTheDocument();
+  });
+
+  it("shows 'Medium · 41' badge for score 0.405", () => {
+    render(
+      <ErrorIssueDetail
+        detail={makeDetail({ impactScore: 0.405, impactMeta: SCORED_META })}
+        slug="test-ws"
+      />,
+    );
+    expect(screen.getByTestId("impact-badge")).toHaveTextContent("Medium · 41");
+  });
+
+  it("shows top affected code node name and type", () => {
+    render(
+      <ErrorIssueDetail
+        detail={makeDetail({ impactScore: 0.405, impactMeta: SCORED_META })}
+        slug="test-ws"
+      />,
+    );
+    expect(screen.getByTestId("impact-card")).toHaveTextContent("edit");
+    expect(screen.getByTestId("impact-card")).toHaveTextContent("Function");
+  });
+
+  it("shows centrality formatted to 2dp", () => {
+    render(
+      <ErrorIssueDetail
+        detail={makeDetail({ impactScore: 0.405, impactMeta: SCORED_META })}
+        slug="test-ws"
+      />,
+    );
+    expect(screen.getByTestId("impact-card")).toHaveTextContent("0.41");
+  });
+
+  it("shows node count references", () => {
+    render(
+      <ErrorIssueDetail
+        detail={makeDetail({ impactScore: 0.405, impactMeta: SCORED_META })}
+        slug="test-ws"
+      />,
+    );
+    expect(screen.getByTestId("impact-card")).toHaveTextContent("4");
+  });
+
+  it("shows 'Not yet scored' state when impactScore is null", () => {
+    render(
+      <ErrorIssueDetail
+        detail={makeDetail({ impactScore: null, impactMeta: null })}
+        slug="test-ws"
+      />,
+    );
+    expect(screen.getByTestId("impact-not-scored")).toBeInTheDocument();
+  });
+
+  it("does NOT show 'Not yet scored' when impactScore is set", () => {
+    render(
+      <ErrorIssueDetail
+        detail={makeDetail({ impactScore: 0.405, impactMeta: SCORED_META })}
+        slug="test-ws"
+      />,
+    );
+    expect(screen.queryByTestId("impact-not-scored")).not.toBeInTheDocument();
   });
 });
