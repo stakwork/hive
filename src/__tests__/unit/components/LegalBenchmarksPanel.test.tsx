@@ -11,7 +11,7 @@ globalThis.React = React;
 // ─── Mocks ───────────────────────────────────────────────────────────────────
 
 vi.mock("@/hooks/useWorkspace", () => ({
-  useWorkspace: () => ({ slug: "openlaw" }),
+  useWorkspace: () => ({ slug: "openlaw", isSuperAdmin: false }),
 }));
 
 vi.mock("sonner", () => ({
@@ -110,9 +110,11 @@ vi.mock("@/components/legal/LegalBenchmarkResults", () => ({
   LegalBenchmarkResults: ({
     runId,
     onReset,
+    isSuperAdmin: _isSuperAdmin,
   }: {
     runId: string;
     onReset: () => void;
+    isSuperAdmin?: boolean;
   }) =>
     React.createElement(
       "div",
