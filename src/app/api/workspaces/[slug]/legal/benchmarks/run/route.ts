@@ -7,6 +7,9 @@ import { optionalEnvVars } from "@/config/env";
 import { getJarvisConfigForWorkspace } from "@/lib/helpers/jarvis-config";
 import { fetchHarveyTaskCriteria, ensureHarveyLabEvalNodes } from "@/lib/harvey-lab/eval-nodes";
 import { addNode, addEdge } from "@/services/swarm/api/nodes";
+import { getBifrostForLLM } from "@/services/bifrost/orchestrator";
+import { getApiKeyForModel } from "@/lib/ai/models";
+import { getStakworkTokenReference } from "@/lib/vercel/stakwork-token";
 
 type RouteParams = {
   params: Promise<{ slug: string }>;
@@ -65,6 +68,20 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     }
 
     const { workspaceId } = swarmResult.data;
+
+    const BENCHMARK_MODEL = "claude-opus-4-5";
+    let bifrost: Awaited<ReturnType<typeof getBifrostForLLM>> | undefined;
+    try {
+      bifrost = await getBifrostForLLM(
+        { workspaceId, workspaceSlug: slug, userId: userOrResponse.id },
+        { agentName: "plan-agent", model: BENCHMARK_MODEL },
+      );
+    } catch (err) {
+      console.warn(
+        "[legal/benchmarks/run] Bifrost resolution failed, falling back to env key",
+        err,
+      );
+    }
 
     // Parse + validate body
     let body: { taskSlug?: string; taskTitle?: string };
@@ -178,6 +195,13 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
               webhook_url: webhookUrl,
               graph_base_url: graphBaseUrl,
               secret: graphSecret,
+              model: BENCHMARK_MODEL,
+              apiKey: bifrost?.apiKey ?? getApiKeyForModel(BENCHMARK_MODEL) ?? "",
+              baseUrl: bifrost?.baseUrl ?? "",
+              ...(bifrost && Object.keys(bifrost.headers).length > 0
+                ? { headers: bifrost.headers }
+                : {}),
+              tokenReference: getStakworkTokenReference(),
             },
           },
         },
