@@ -453,6 +453,11 @@ model Swarm {
   // re-seeds. See gateway/plans/agent-catalog.md.
   bifrostAgentsSeedHash   String?               @map("bifrost_agents_seed_hash")
   bifrostAgentsSeedAt     DateTime?             @map("bifrost_agents_seed_at")
+  // Gateway callback provisioning. Stores the WorkspaceApiKey.id of
+  // the dedicated "gateway-evals" key pushed to the Bifrost gateway so
+  // it can call back into Hive for eval mutations/runs. Null until the
+  // first successful push; set again on re-mint (missing/revoked key).
+  gatewayHiveKeyId        String?               @map("gateway_hive_key_id")
   environmentVariablesNew EnvironmentVariable[] @relation("SwarmEnvironmentVariables")
   pods                    Pod[]
   workspace               Workspace             @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
