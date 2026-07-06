@@ -152,6 +152,58 @@ describe("LegalBenchmarkResults", () => {
     ).toBeInTheDocument();
   });
 
+  it("shows Stakwork link for super admin when runnerProjectId is non-null in RUNNING state", () => {
+    mockUseLegalBenchmarkRun.mockReturnValue({
+      run: { ...mockRun, status: "RUNNING", runnerProjectId: 123 },
+      isLoading: false,
+      isStale: false,
+      refetch: vi.fn(),
+    });
+
+    render(React.createElement(LegalBenchmarkResults, { runId: "run-abc", onReset, isSuperAdmin: true }));
+    const link = screen.getByRole("link", { name: /view on stakwork/i });
+    expect(link).toBeInTheDocument();
+    expect(link).toHaveAttribute("href", "https://jobs.stakwork.com/admin/projects/123");
+  });
+
+  it("does not show Stakwork link for non-super admin in RUNNING state", () => {
+    mockUseLegalBenchmarkRun.mockReturnValue({
+      run: { ...mockRun, status: "RUNNING", runnerProjectId: 123 },
+      isLoading: false,
+      isStale: false,
+      refetch: vi.fn(),
+    });
+
+    render(React.createElement(LegalBenchmarkResults, { runId: "run-abc", onReset, isSuperAdmin: false }));
+    expect(screen.queryByRole("link", { name: /view on stakwork/i })).toBeNull();
+  });
+
+  it("shows scorer Stakwork link for super admin in SCORING state", () => {
+    mockUseLegalBenchmarkRun.mockReturnValue({
+      run: { ...mockRun, status: "SCORING", scorerProjectId: 456 },
+      isLoading: false,
+      isStale: false,
+      refetch: vi.fn(),
+    });
+
+    render(React.createElement(LegalBenchmarkResults, { runId: "run-abc", onReset, isSuperAdmin: true }));
+    const link = screen.getByRole("link", { name: /view on stakwork/i });
+    expect(link).toBeInTheDocument();
+    expect(link).toHaveAttribute("href", "https://jobs.stakwork.com/admin/projects/456");
+  });
+
+  it("does not show Stakwork link when scorerProjectId is null in SCORING state", () => {
+    mockUseLegalBenchmarkRun.mockReturnValue({
+      run: { ...mockRun, status: "SCORING", scorerProjectId: null },
+      isLoading: false,
+      isStale: false,
+      refetch: vi.fn(),
+    });
+
+    render(React.createElement(LegalBenchmarkResults, { runId: "run-abc", onReset, isSuperAdmin: true }));
+    expect(screen.queryByRole("link", { name: /view on stakwork/i })).toBeNull();
+  });
+
   it("shows FAILED error state with errorMessage", () => {
     mockUseLegalBenchmarkRun.mockReturnValue({
       run: { ...mockRun, status: "FAILED", errorMessage: "Stakwork timed out" },
