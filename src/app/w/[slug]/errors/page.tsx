@@ -2,12 +2,13 @@
 
 import React, { useState, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { Bug, ChevronLeft, ChevronRight } from "lucide-react";
+import { Bug, ChevronLeft, ChevronRight, HelpCircle } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { buttonVariants } from "@/components/ui/button";
 import { Pagination, PaginationContent, PaginationItem } from "@/components/ui/pagination";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { PageHeader } from "@/components/ui/page-header";
 import { ErrorIssuesTable } from "@/components/errors";
 import { useWorkspace } from "@/hooks/useWorkspace";
@@ -15,6 +16,7 @@ import { useErrorIssues } from "@/hooks/useErrorIssues";
 import type { ErrorIssuesSortParam } from "@/hooks/useErrorIssues";
 import { canonicalRepoKey } from "@/lib/utils/error-fingerprint";
 import type { ErrorIssueStatus } from "@/types/error-issues";
+import { IMPACT_EXPLANATION } from "@/lib/utils/impact-tier";
 
 const ISSUES_PER_PAGE = 20;
 
@@ -110,7 +112,26 @@ export default function ErrorsPage() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="recent">Most Recent</SelectItem>
-                  <SelectItem value="impact">Highest Impact</SelectItem>
+                  <SelectItem value="impact">
+                    <span className="inline-flex items-center gap-1">
+                      Highest Impact
+                      <Popover>
+                        <PopoverTrigger asChild>
+                          <button
+                            type="button"
+                            className="inline-flex items-center text-muted-foreground hover:text-foreground focus:outline-none"
+                            aria-label="What does Impact mean?"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <HelpCircle className="h-3.5 w-3.5" />
+                          </button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-72 text-sm" side="top">
+                          {IMPACT_EXPLANATION}
+                        </PopoverContent>
+                      </Popover>
+                    </span>
+                  </SelectItem>
                 </SelectContent>
               </Select>
 
