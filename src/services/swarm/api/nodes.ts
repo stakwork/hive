@@ -400,6 +400,58 @@ export async function searchLatestByTypes(
   return { ok: true, nodes: Array.isArray(body?.nodes) ? body!.nodes : [], status: result.status };
 }
 
+/**
+ * Search for nodes by attribute filters via `POST /graph/search/attributes`.
+ * Use this for repo-scoped searches — e.g. fetch all File/Function nodes whose
+ * `file` property contains a given repo prefix — so only that repo's nodes are
+ * returned rather than paging an unscoped "latest N" global result set.
+ *
+ * `comparator: "contains"` performs a Lucene wildcard match on the attribute's
+ * fulltext index. Keep `scopeNodesToRepo` as a post-fetch safety filter since
+ * `contains` is not a strict prefix — it can over-match substrings.
+ *
+ * Returns the same `SearchLatestResult` shape as `searchLatestByTypes` so it
+ * is a drop-in replacement at the call site.
+ *
+ * Never throws. Returns `{ ok: false }` on any transport/HTTP failure.
+ */
+export async function searchNodesByAttributes(
+  config: JarvisConnectionConfig,
+  params: {
+    nodeTypes: string[];
+    filters: Array<{ attribute: string; value: string; comparator: string }>;
+    includeProperties?: boolean;
+    limit?: number;
+    timeoutMs?: number;
+  },
+): Promise<SearchLatestResult> {
+  const result = await jarvisRequest({
+    config,
+    endpoint: "/graph/search/attributes",
+    method: "POST",
+    data: {
+      node_type: params.nodeTypes,
+      search_filters: params.filters,
+      include_properties: params.includeProperties ?? false,
+      limit: params.limit ?? 1000,
+    },
+    timeoutMs: params.timeoutMs,
+  });
+
+  if (!result.ok) {
+    return {
+      ok: false,
+      nodes: [],
+      status: result.status,
+      endpointMissing: result.notFound,
+      error: result.error,
+    };
+  }
+
+  const body = result.body as { nodes?: JarvisGraphNode[] } | undefined;
+  return { ok: true, nodes: Array.isArray(body?.nodes) ? body!.nodes : [], status: result.status };
+}
+
 export async function updateNode(
   config: JarvisConnectionConfig,
   request: UpdateNodeRequest,
