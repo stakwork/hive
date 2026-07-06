@@ -257,6 +257,14 @@ describe("resolveRouteAccess", () => {
       expect(resolveRouteAccess("/api/tasks/task-123/title")).toBe("webhook");
     });
 
+    it("classifies /api/gateway/evals/** as webhook (self-authenticated)", () => {
+      expect(resolveRouteAccess("/api/gateway/evals")).toBe("webhook");
+      expect(resolveRouteAccess("/api/gateway/evals/some-set-id")).toBe("webhook");
+      expect(resolveRouteAccess("/api/gateway/evals/some-set-id/requirements")).toBe("webhook");
+      expect(resolveRouteAccess("/api/gateway/evals/some-set-id/requirements/req-id")).toBe("webhook");
+      expect(resolveRouteAccess("/api/gateway/evals/some-set-id/requirements/req-id/run")).toBe("webhook");
+    });
+
     it("correctly classifies system cron jobs", () => {
       expect(resolveRouteAccess("/api/cron/janitors")).toBe("system");
       expect(resolveRouteAccess("/api/cron/task-coordinator")).toBe("system");
