@@ -45,6 +45,7 @@ import {
   useCanvasPersistence,
   fetchRoot,
   fetchSub,
+  saveCanvas,
 } from "./useCanvasPersistence";
 import { useCanvasHiddenLive } from "./useCanvasHiddenLive";
 import { useCanvasEdgeOps } from "./useCanvasEdgeOps";
@@ -888,6 +889,41 @@ export function OrgCanvasBackground({
    * the Assign-existing tab is one click away. Matches the
    * "layout-only, not destructive" framing of the feature.
    */
+  /**
+   * Called by `<SystemCanvas onImport>` when the user drops a valid
+   * `.canvas` JSON file onto the viewport.
+   *
+   * Auth guard: the canvas is rendered with `editable` only when the
+   * user has write access (OrgCanvasBackground always mounts in an
+   * authenticated org context), but we defensively re-check that
+   * there is an authenticated session before writing to the DB.
+   *
+   * The import replaces the current canvas scope: root or sub-canvas,
+   * whichever the user is currently viewing.
+   */
+  const handleImport = useCallback(
+    async (importedData: CanvasData) => {
+      if (!session?.user?.id) {
+        toast.error("You must be signed in to import a canvas.");
+        return;
+      }
+      const ref = currentRefRef.current || undefined;
+      try {
+        await saveCanvas(githubLogin, ref, importedData);
+        if (!ref) {
+          setRoot(importedData);
+        } else {
+          setSubCanvases((prev) => ({ ...prev, [ref]: importedData }));
+        }
+        toast.success("Canvas imported successfully.");
+      } catch (err) {
+        console.error("[OrgCanvasBackground] import save failed", err);
+        toast.error("Failed to import canvas. Please try again.");
+      }
+    },
+    [githubLogin, session?.user?.id, setRoot, setSubCanvases],
+  );
+
   const handleUnpinFeatureFromWorkspace = useCallback(
     async (featureLiveId: string, workspaceRef: string) => {
       const featureId = featureLiveId.startsWith("feature:")
@@ -1216,6 +1252,8 @@ export function OrgCanvasBackground({
             });
           }}
           collaborators={collaborators}
+          showExportButton
+          onImport={handleImport}
         />
         {/*
          * Restore pill — top-right of the canvas area. Shown on any
