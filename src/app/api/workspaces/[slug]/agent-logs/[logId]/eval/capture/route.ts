@@ -52,12 +52,12 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
     }
 
-    const { evalSetId, requirement, reason, turnIndex, agent: agentOverride } = body as {
+    const { evalSetId, requirement, reason, turnIndex, agentName: agentOverride } = body as {
       evalSetId?: string;
       requirement?: string;
       reason?: string;
       turnIndex?: number;
-      agent?: string;
+      agentName?: string;
     };
 
     if (!evalSetId?.trim()) {
@@ -203,7 +203,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     }
 
     logger.info(
-      `[AgentEvalCapture] Resolved agent: ${resolvedAgent} (source=${evalTriggerSource}, kind=${captured.kind})`,
+      `[AgentEvalCapture] Resolved agent: ${resolvedAgent} (source=${evalTriggerSource}, kind=${captured.kind}, override=${agentOverride ?? "none"})`,
     );
 
     const scopeKey = turnIndex != null ? `turn:${turnIndex}` : "session:full";

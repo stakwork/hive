@@ -109,16 +109,22 @@ const mockFetch = vi.fn();
 
 beforeEach(() => {
   vi.stubGlobal("fetch", mockFetch);
-  // Default: eval sets response
-  mockFetch.mockResolvedValue({
-    ok: true,
-    json: async () => ({
-      data: {
-        nodes: [{ ref_id: "evalset-1", name: "My Eval Set" }],
-      },
-    }),
+  mockFetch.mockImplementation((url: string) => {
+    if (String(url).includes("/agent-logs/")) {
+      return Promise.resolve({
+        ok: true,
+        json: async () => ({ data: { agent: null } }),
+      });
+    }
+    return Promise.resolve({
+      ok: true,
+      json: async () => ({
+        data: {
+          nodes: [{ ref_id: "evalset-1", name: "My Eval Set" }],
+        },
+      }),
+    });
   });
-  // localStorage stub
   vi.stubGlobal("localStorage", {
     getItem: vi.fn().mockReturnValue(null),
     setItem: vi.fn(),
@@ -168,80 +174,9 @@ describe("AgentSessionCaptureModal", () => {
     });
   });
 
-  describe("confirm handler — POST body", () => {
-    async function submitModal(extraProps: Partial<React.ComponentProps<typeof AgentSessionCaptureModal>> = {}) {
-      const user = userEvent.setup();
-      // Fetch sequence: 1) GET evals, 2) POST capture
-      mockFetch
-        .mockResolvedValueOnce({
-          ok: true,
-          json: async () => ({ data: { nodes: [{ ref_id: "evalset-1", name: "My Set" }] } }),
-        })
-        .mockResolvedValueOnce({ ok: true, json: async () => ({}) });
-
-      renderModal(extraProps);
-
-      // Wait for eval sets to load
-      await waitFor(() => expect(mockFetch).toHaveBeenCalledWith(
-        expect.stringContaining("/evals")
-      ));
-
-      // Fill requirement field
-      const reqInput = screen.getByRole("textbox", { name: /requirement/i });
-      await user.type(reqInput, "Agent must respond correctly");
-
-      // Click Confirm
-      const confirmBtn = screen.getByRole("button", { name: /confirm/i });
-      await user.click(confirmBtn);
-
-      await waitFor(() =>
-        expect(mockFetch).toHaveBeenCalledWith(
-          expect.stringContaining("/eval/capture"),
-          expect.any(Object)
-        )
-      );
-
-      const captureCall = mockFetch.mock.calls.find((c) =>
-        (c[0] as string).includes("/eval/capture")
-      );
-      const body = JSON.parse(captureCall![1].body as string);
-      return body;
-    }
-
-    it("includes turnIndex in POST body when set", async () => {
-      const body = await submitModal({ turnIndex: 4 });
-      expect(body.turnIndex).toBe(4);
-    });
-
-    it("omits turnIndex from POST body when undefined", async () => {
-      const body = await submitModal({ turnIndex: undefined });
-      expect(body).not.toHaveProperty("turnIndex");
-    });
-
-    it("includes evalSetId and requirement in POST body", async () => {
-      const body = await submitModal({ turnIndex: 1 });
-      expect(body.evalSetId).toBe("evalset-1");
-      expect(body.requirement).toBe("Agent must respond correctly");
-    });
-  });
-
-  describe("modal state reset", () => {
-    it("closes when Cancel is clicked", async () => {
-      const user = userEvent.setup();
-      const onOpenChange = vi.fn();
-      renderModal({ onOpenChange });
-
-      const cancelBtn = screen.getByRole("button", { name: /cancel/i });
-      await user.click(cancelBtn);
-      expect(onOpenChange).toHaveBeenCalledWith(false);
-    });
-  });
-
   describe("defaultAgent prop and agent dropdown", () => {
     it("passes selectedAgent defaulting to defaultAgent when provided", () => {
       renderModal({ defaultAgent: "canvas-agent" });
-      // The mocked CaptureEvalForm renders a <select aria-label="agent">
-      // whose value should reflect the defaultAgent
       const agentSelect = screen.getByRole("combobox", { name: /agent/i });
       expect(agentSelect).toHaveValue("canvas-agent");
     });
@@ -250,6 +185,54 @@ describe("AgentSessionCaptureModal", () => {
       renderModal({});
       const agentSelect = screen.getByRole("combobox", { name: /agent/i });
       expect(agentSelect).toHaveValue("");
+    });
+
+    it("pre-fills agent from detected agent log agent field when no defaultAgent", async () => {
+      mockFetch.mockImplementation((url: string) => {
+        if (String(url).includes("/agent-logs/")) {
+          return Promise.resolve({
+            ok: true,
+            json: async () => ({ data: { agent: "coding-agent-cmr3abc" } }),
+          });
+        }
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({ data: { nodes: [{ ref_id: "evalset-1", name: "My Set" }] } }),
+        });
+      });
+
+      renderModal();
+
+      await waitFor(() => {
+        const agentSelect = screen.getByRole("combobox", { name: /agent/i });
+        expect(agentSelect).toHaveValue("coding-agent");
+      });
+    });
+
+    it("does not overwrite defaultAgent with fetched agent log value", async () => {
+      mockFetch.mockImplementation((url: string) => {
+        if (String(url).includes("/agent-logs/")) {
+          return Promise.resolve({
+            ok: true,
+            json: async () => ({ data: { agent: "coding-agent-cmr3abc" } }),
+          });
+        }
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({ data: { nodes: [{ ref_id: "evalset-1", name: "My Set" }] } }),
+        });
+      });
+
+      renderModal({ defaultAgent: "canvas-agent" });
+
+      // Give the fetch time to resolve
+      await waitFor(() =>
+        expect(mockFetch).toHaveBeenCalledWith(expect.stringContaining("/evals"))
+      );
+
+      // The defaultAgent value should remain unchanged
+      const agentSelect = screen.getByRole("combobox", { name: /agent/i });
+      expect(agentSelect).toHaveValue("canvas-agent");
     });
 
     it("includes selected agent in POST body when agent is chosen", async () => {
@@ -267,11 +250,9 @@ describe("AgentSessionCaptureModal", () => {
         expect(mockFetch).toHaveBeenCalledWith(expect.stringContaining("/evals"))
       );
 
-      // Fill requirement
       const reqInput = screen.getByRole("textbox", { name: /requirement/i });
       await user.type(reqInput, "Canvas agent must respond");
 
-      // Change agent via the mocked select
       const agentSelect = screen.getByRole("combobox", { name: /agent/i });
       await user.selectOptions(agentSelect, "coding-agent");
 
@@ -289,10 +270,10 @@ describe("AgentSessionCaptureModal", () => {
         (c[0] as string).includes("/eval/capture")
       );
       const body = JSON.parse(captureCall![1].body as string);
-      expect(body.agent).toBe("coding-agent");
+      expect(body.agentName).toBe("coding-agent");
     });
 
-    it("omits agent from POST body when selectedAgent is empty", async () => {
+    it("omits agentName from POST body when selectedAgent is empty", async () => {
       const user = userEvent.setup();
       mockFetch
         .mockResolvedValueOnce({
@@ -301,7 +282,6 @@ describe("AgentSessionCaptureModal", () => {
         })
         .mockResolvedValueOnce({ ok: true, json: async () => ({}) });
 
-      // No defaultAgent → agent stays empty
       renderModal({});
 
       await waitFor(() =>
@@ -325,7 +305,94 @@ describe("AgentSessionCaptureModal", () => {
         (c[0] as string).includes("/eval/capture")
       );
       const body = JSON.parse(captureCall![1].body as string);
-      expect(body).not.toHaveProperty("agent");
+      expect(body).not.toHaveProperty("agentName");
+    });
+  });
+
+  describe("confirm handler — POST body", () => {
+    async function submitModal(
+      extraProps: Partial<React.ComponentProps<typeof AgentSessionCaptureModal>> = {},
+      agentOverride?: string,
+    ) {
+      const user = userEvent.setup();
+      mockFetch.mockImplementation((url: string) => {
+        if (String(url).includes("/agent-logs/")) {
+          return Promise.resolve({
+            ok: true,
+            json: async () => ({ data: { agent: null } }),
+          });
+        }
+        if (String(url).includes("/eval/capture")) {
+          return Promise.resolve({ ok: true, json: async () => ({}) });
+        }
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({ data: { nodes: [{ ref_id: "evalset-1", name: "My Set" }] } }),
+        });
+      });
+
+      renderModal(extraProps);
+
+      await waitFor(() =>
+        expect(mockFetch).toHaveBeenCalledWith(expect.stringContaining("/evals"))
+      );
+
+      if (agentOverride) {
+        const agentSelect = screen.getByRole("combobox", { name: /agent/i });
+        await user.selectOptions(agentSelect, agentOverride);
+      }
+
+      const reqInput = screen.getByRole("textbox", { name: /requirement/i });
+      await user.type(reqInput, "Agent must respond correctly");
+
+      const confirmBtn = screen.getByRole("button", { name: /confirm/i });
+      await user.click(confirmBtn);
+
+      await waitFor(() =>
+        expect(mockFetch).toHaveBeenCalledWith(
+          expect.stringContaining("/eval/capture"),
+          expect.any(Object)
+        )
+      );
+
+      const captureCall = mockFetch.mock.calls.find((c) =>
+        (c[0] as string).includes("/eval/capture")
+      );
+      const body = JSON.parse(captureCall![1].body as string);
+      return body;
+    }
+
+    it("sends overridden agentName when user changes the selector", async () => {
+      const body = await submitModal({ defaultAgent: "canvas-agent" }, "coding-agent");
+      expect(body.agentName).toBe("coding-agent");
+    });
+
+    it("includes turnIndex in POST body when set", async () => {
+      const body = await submitModal({ turnIndex: 4, defaultAgent: "coding-agent" });
+      expect(body.turnIndex).toBe(4);
+    });
+
+    it("omits turnIndex from POST body when undefined", async () => {
+      const body = await submitModal({ turnIndex: undefined, defaultAgent: "coding-agent" });
+      expect(body).not.toHaveProperty("turnIndex");
+    });
+
+    it("includes evalSetId and requirement in POST body", async () => {
+      const body = await submitModal({ turnIndex: 1, defaultAgent: "coding-agent" });
+      expect(body.evalSetId).toBe("evalset-1");
+      expect(body.requirement).toBe("Agent must respond correctly");
+    });
+  });
+
+  describe("modal state reset", () => {
+    it("closes when Cancel is clicked", async () => {
+      const user = userEvent.setup();
+      const onOpenChange = vi.fn();
+      renderModal({ onOpenChange });
+
+      const cancelBtn = screen.getByRole("button", { name: /cancel/i });
+      await user.click(cancelBtn);
+      expect(onOpenChange).toHaveBeenCalledWith(false);
     });
   });
 });
