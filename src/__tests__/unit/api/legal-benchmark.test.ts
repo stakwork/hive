@@ -3,6 +3,9 @@ import { NextRequest } from "next/server";
 
 // --- Stable mock references via vi.hoisted ---
 
+const mockGetBifrostForLLM = vi.hoisted(() => vi.fn());
+const mockGetApiKeyForModel = vi.hoisted(() => vi.fn());
+const mockGetStakworkTokenReference = vi.hoisted(() => vi.fn());
 const mockDbLegalBenchmarkRunCreate = vi.hoisted(() => vi.fn());
 const mockDbLegalBenchmarkRunFindFirst = vi.hoisted(() => vi.fn());
 const mockDbLegalBenchmarkRunFindUnique = vi.hoisted(() => vi.fn());
@@ -67,6 +70,21 @@ vi.mock("@/config/env", () => ({
     STAKWORK_BASE_URL: "https://api.stakwork.com/api/v1",
     STAKWORK_API_KEY: "test-stakwork-key",
   },
+  isBifrostEnabledForWorkspace: () => false,
+  isBifrostEnabledForAgent: () => true,
+}));
+
+vi.mock("@/services/bifrost/orchestrator", () => ({
+  getBifrostForLLM: mockGetBifrostForLLM,
+  BIFROST_AGENT_NAMES: ["plan-agent"],
+}));
+
+vi.mock("@/lib/ai/models", () => ({
+  getApiKeyForModel: mockGetApiKeyForModel,
+}));
+
+vi.mock("@/lib/vercel/stakwork-token", () => ({
+  getStakworkTokenReference: mockGetStakworkTokenReference,
 }));
 
 import { POST as postRun } from "@/app/api/workspaces/[slug]/legal/benchmarks/run/route";
@@ -150,6 +168,11 @@ beforeEach(() => {
   mockEnsureHarveyLabEvalNodes.mockResolvedValue(null);
   mockAddNode.mockResolvedValue({ success: true, ref_id: "node-ref-1" });
   mockAddEdge.mockResolvedValue({ success: true });
+
+  // Default: Bifrost disabled (returns undefined → fallback to env key)
+  mockGetBifrostForLLM.mockResolvedValue(undefined);
+  mockGetApiKeyForModel.mockReturnValue("env-anthropic-key");
+  mockGetStakworkTokenReference.mockReturnValue("{{HIVE_STAGING}}");
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -803,5 +826,119 @@ describe("POST /webhook stage=scorer — Jarvis EvalTriggerOutput non-fatal bloc
     const res = await postWebhook(makeWebhookRequest({ scores: SCORES }, "run-1", "scorer"));
     expect(res.status).toBe(200);
     expect(mockAddNode).not.toHaveBeenCalled();
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// POST /run — Bifrost LLM credential vars
+// ═══════════════════════════════════════════════════════════════════════════
+
+describe("POST /run — Bifrost LLM credential vars in Stakwork payload", () => {
+  function captureStakworkVars(): Promise<Record<string, unknown>> {
+    return new Promise((resolve) => {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn().mockImplementation((url: string, opts?: RequestInit) => {
+          if (String(url).includes("task.json")) {
+            return Promise.resolve({ ok: false, status: 404 });
+          }
+          if (String(url).includes("contents")) {
+            return Promise.resolve({ ok: false, status: 404 });
+          }
+          // Stakwork dispatch — capture payload
+          const payload = opts?.body ? JSON.parse(opts.body as string) : {};
+          resolve(payload.workflow_params.set_var.attributes.vars);
+          return Promise.resolve({ ok: true, json: async () => ({ data: { project_id: 99 } }) });
+        }),
+      );
+    });
+  }
+
+  beforeEach(() => {
+    (getWorkspaceSwarmAccess as Mock).mockResolvedValue(MOCK_SWARM_ACCESS);
+    mockDbLegalBenchmarkRunFindFirst.mockResolvedValue(null);
+    mockDbLegalBenchmarkRunCreate.mockResolvedValue({ ...MOCK_RUN, id: "run-new", status: "PENDING" });
+    mockDbLegalBenchmarkRunUpdate.mockResolvedValue({ ...MOCK_RUN, id: "run-new", status: "RUNNING" });
+  });
+
+  test("getBifrostForLLM throws → route still dispatches with env apiKey and tokenReference present", async () => {
+    mockGetBifrostForLLM.mockRejectedValue(new Error("Bifrost unavailable"));
+    mockGetApiKeyForModel.mockReturnValue("env-anthropic-key");
+    mockGetStakworkTokenReference.mockReturnValue("{{HIVE_STAGING}}");
+
+    const varsPromise = captureStakworkVars();
+    const res = await postRun(makeRunRequest({ taskSlug: "task-a", taskTitle: "Task A" }), {
+      params: Promise.resolve({ slug: "openlaw" }),
+    });
+    expect(res.status).toBe(201);
+
+    const vars = await varsPromise;
+    expect(vars.model).toBe("claude-opus-4-5");
+    expect(vars.apiKey).toBe("env-anthropic-key");
+    expect(vars.baseUrl).toBe("");
+    expect(vars.tokenReference).toBe("{{HIVE_STAGING}}");
+    expect(vars).not.toHaveProperty("headers");
+  });
+
+  test("getBifrostForLLM returns undefined → same fallback: env apiKey, empty baseUrl, tokenReference present", async () => {
+    mockGetBifrostForLLM.mockResolvedValue(undefined);
+    mockGetApiKeyForModel.mockReturnValue("env-anthropic-key");
+    mockGetStakworkTokenReference.mockReturnValue("{{HIVE_STAGING}}");
+
+    const varsPromise = captureStakworkVars();
+    const res = await postRun(makeRunRequest({ taskSlug: "task-a", taskTitle: "Task A" }), {
+      params: Promise.resolve({ slug: "openlaw" }),
+    });
+    expect(res.status).toBe(201);
+
+    const vars = await varsPromise;
+    expect(vars.model).toBe("claude-opus-4-5");
+    expect(vars.apiKey).toBe("env-anthropic-key");
+    expect(vars.baseUrl).toBe("");
+    expect(vars.tokenReference).toBe("{{HIVE_STAGING}}");
+    expect(vars).not.toHaveProperty("headers");
+  });
+
+  test("getBifrostForLLM returns full credentials with non-empty headers → headers appears in vars", async () => {
+    mockGetBifrostForLLM.mockResolvedValue({
+      apiKey: "vk-test-key",
+      baseUrl: "https://bifrost.example.com/anthropic/v1",
+      headers: { "x-macaroon": "test-macaroon" },
+    });
+    mockGetStakworkTokenReference.mockReturnValue("{{HIVE_STAGING}}");
+
+    const varsPromise = captureStakworkVars();
+    const res = await postRun(makeRunRequest({ taskSlug: "task-a", taskTitle: "Task A" }), {
+      params: Promise.resolve({ slug: "openlaw" }),
+    });
+    expect(res.status).toBe(201);
+
+    const vars = await varsPromise;
+    expect(vars.model).toBe("claude-opus-4-5");
+    expect(vars.apiKey).toBe("vk-test-key");
+    expect(vars.baseUrl).toBe("https://bifrost.example.com/anthropic/v1");
+    expect(vars.headers).toEqual({ "x-macaroon": "test-macaroon" });
+    expect(vars.tokenReference).toBe("{{HIVE_STAGING}}");
+  });
+
+  test("getBifrostForLLM returns credentials with empty headers → headers omitted from vars", async () => {
+    mockGetBifrostForLLM.mockResolvedValue({
+      apiKey: "vk-test-key",
+      baseUrl: "https://bifrost.example.com/anthropic/v1",
+      headers: {},
+    });
+    mockGetStakworkTokenReference.mockReturnValue("{{HIVE_STAGING}}");
+
+    const varsPromise = captureStakworkVars();
+    const res = await postRun(makeRunRequest({ taskSlug: "task-a", taskTitle: "Task A" }), {
+      params: Promise.resolve({ slug: "openlaw" }),
+    });
+    expect(res.status).toBe(201);
+
+    const vars = await varsPromise;
+    expect(vars.apiKey).toBe("vk-test-key");
+    expect(vars.baseUrl).toBe("https://bifrost.example.com/anthropic/v1");
+    expect(vars).not.toHaveProperty("headers");
+    expect(vars.tokenReference).toBe("{{HIVE_STAGING}}");
   });
 });
