@@ -268,3 +268,179 @@ describe("recordPromptOnGraph (swallows errors via publishVersion)", () => {
     );
   });
 });
+
+// ─── publishVersion Stakwork push ─────────────────────────────────────────────
+
+describe("publishVersion — Stakwork push", () => {
+  const mockPrompt = {
+    id: "prompt-1",
+    name: "MY_PROMPT",
+    value: "old val",
+    description: "A prompt",
+    publishedVersionId: "v1",
+    stakworkId: 77,
+    syncStatus: "OK",
+    createdAt: new Date("2025-01-01T00:00:00Z"),
+    updatedAt: new Date(),
+  };
+
+  const mockVersion = {
+    id: "v2",
+    promptId: "prompt-1",
+    versionNumber: 2,
+    value: "new published value",
+    description: "v2 description",
+    published: false,
+    createdAt: new Date(),
+  };
+
+  function setupPublishMocks(fetchResponse: Partial<Response> & { text?: () => Promise<string> }) {
+    vi.clearAllMocks();
+    mockStakworkRequest.mockResolvedValue({}); // graph recorder no-op
+    mockDbPromptVersionFindFirst.mockResolvedValueOnce(mockVersion);
+    mockDbPromptFindUnique.mockResolvedValueOnce(mockPrompt);
+    mockDbTransaction.mockResolvedValueOnce([undefined, undefined, undefined]);
+    mockDbPromptUpdate.mockResolvedValue(mockPrompt);
+    global.fetch = vi.fn().mockResolvedValueOnce({
+      ok: true,
+      text: async () => "",
+      ...fetchResponse,
+    } as Response);
+  }
+
+  it("sends full version payload including published:true on publish", async () => {
+    setupPublishMocks({ ok: true });
+
+    await publishVersion("prompt-1", "v2");
+
+    const fetchCalls = vi.mocked(global.fetch).mock.calls;
+    // Find the PUT call to the prompts endpoint
+    const putCall = fetchCalls.find(
+      ([url, opts]) =>
+        typeof url === "string" &&
+        url.includes("/prompts/77") &&
+        (opts as RequestInit)?.method === "PUT",
+    );
+    expect(putCall).toBeDefined();
+    const body = JSON.parse((putCall![1] as RequestInit).body as string);
+    expect(body).toEqual({
+      prompt: {
+        name: "MY_PROMPT",
+        value: "new published value",
+        description: "v2 description",
+        hive_version_id: "v2",
+        published: true,
+      },
+    });
+  });
+
+  it("sets syncStatus OK and lastSyncedAt on successful push", async () => {
+    setupPublishMocks({ ok: true });
+
+    await publishVersion("prompt-1", "v2");
+
+    expect(mockDbPromptUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "prompt-1" },
+        data: expect.objectContaining({ syncStatus: "OK", lastSyncedAt: expect.any(Date) }),
+      }),
+    );
+  });
+
+  it("does not throw and sets syncStatus PENDING on failed push", async () => {
+    vi.clearAllMocks();
+    mockStakworkRequest.mockResolvedValue({});
+    mockDbPromptVersionFindFirst.mockResolvedValueOnce(mockVersion);
+    mockDbPromptFindUnique.mockResolvedValueOnce(mockPrompt);
+    mockDbTransaction.mockResolvedValueOnce([undefined, undefined, undefined]);
+    mockDbPromptUpdate.mockResolvedValue(mockPrompt);
+    global.fetch = vi.fn().mockResolvedValueOnce({
+      ok: false,
+      status: 500,
+      text: async () => "Internal Server Error",
+    } as unknown as Response);
+
+    await expect(publishVersion("prompt-1", "v2")).resolves.not.toThrow();
+
+    expect(mockDbPromptUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "prompt-1" },
+        data: expect.objectContaining({ syncStatus: "PENDING" }),
+      }),
+    );
+  });
+
+  it("treats hive_version_id already exists as no-op success (syncStatus OK)", async () => {
+    vi.clearAllMocks();
+    mockStakworkRequest.mockResolvedValue({});
+    mockDbPromptVersionFindFirst.mockResolvedValueOnce(mockVersion);
+    mockDbPromptFindUnique.mockResolvedValueOnce(mockPrompt);
+    mockDbTransaction.mockResolvedValueOnce([undefined, undefined, undefined]);
+    mockDbPromptUpdate.mockResolvedValue(mockPrompt);
+    global.fetch = vi.fn().mockResolvedValueOnce({
+      ok: false,
+      status: 422,
+      text: async () => "hive_version_id already exists",
+    } as unknown as Response);
+
+    await expect(publishVersion("prompt-1", "v2")).resolves.not.toThrow();
+
+    expect(mockDbPromptUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "prompt-1" },
+        data: expect.objectContaining({ syncStatus: "OK", lastSyncedAt: expect.any(Date) }),
+      }),
+    );
+    // Should NOT have been called with PENDING
+    const pendingCall = vi.mocked(mockDbPromptUpdate).mock.calls.find(
+      ([args]) => args?.data?.syncStatus === "PENDING",
+    );
+    expect(pendingCall).toBeUndefined();
+  });
+
+  it("does not call fetch when stakworkId is null", async () => {
+    vi.clearAllMocks();
+    mockStakworkRequest.mockResolvedValue({});
+    const promptNoStakwork = { ...mockPrompt, stakworkId: null };
+    mockDbPromptVersionFindFirst.mockResolvedValueOnce(mockVersion);
+    mockDbPromptFindUnique.mockResolvedValueOnce(promptNoStakwork);
+    mockDbTransaction.mockResolvedValueOnce([undefined, undefined, undefined]);
+    global.fetch = vi.fn();
+
+    await publishVersion("prompt-1", "v2");
+
+    // fetch should not have been called with a PUT to prompts
+    const putCall = vi.mocked(global.fetch).mock.calls.find(
+      ([url, opts]) =>
+        typeof url === "string" &&
+        url.includes("/prompts/") &&
+        (opts as RequestInit)?.method === "PUT",
+    );
+    expect(putCall).toBeUndefined();
+  });
+
+  it("uses empty string for description when version description is null", async () => {
+    const versionNullDesc = { ...mockVersion, description: null };
+    vi.clearAllMocks();
+    mockStakworkRequest.mockResolvedValue({});
+    mockDbPromptVersionFindFirst.mockResolvedValueOnce(versionNullDesc);
+    mockDbPromptFindUnique.mockResolvedValueOnce(mockPrompt);
+    mockDbTransaction.mockResolvedValueOnce([undefined, undefined, undefined]);
+    mockDbPromptUpdate.mockResolvedValue(mockPrompt);
+    global.fetch = vi.fn().mockResolvedValueOnce({
+      ok: true,
+      text: async () => "",
+    } as unknown as Response);
+
+    await publishVersion("prompt-1", "v2");
+
+    const putCall = vi.mocked(global.fetch).mock.calls.find(
+      ([url, opts]) =>
+        typeof url === "string" &&
+        url.includes("/prompts/77") &&
+        (opts as RequestInit)?.method === "PUT",
+    );
+    const body = JSON.parse((putCall![1] as RequestInit).body as string);
+    expect(body.prompt.description).toBe("");
+  });
+});
