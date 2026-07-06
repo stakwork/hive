@@ -10,9 +10,11 @@ import { impactTier, impactTooltip } from "@/lib/utils/impact-tier";
 export function ImpactBadge({
   score,
   meta,
+  testId = "impact-badge",
 }: {
   score: number | null;
   meta: Record<string, unknown> | null;
+  testId?: string;
 }) {
   const { label, colorClass } = impactTier(score);
   const pct = score === null ? null : Math.round(score * 100);
@@ -24,7 +26,7 @@ export function ImpactBadge({
       <span
         className="text-muted-foreground text-xs"
         aria-label={ariaLabel}
-        data-testid="impact-badge"
+        data-testid={testId}
       >
         Not scored
       </span>
@@ -36,7 +38,7 @@ export function ImpactBadge({
       className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold tabular-nums ${colorClass}`}
       title={tooltip}
       aria-label={ariaLabel}
-      data-testid="impact-badge"
+      data-testid={testId}
     >
       {label} · {pct}
     </span>

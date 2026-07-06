@@ -46,11 +46,7 @@ function ImpactIndicator({
   score: number | null;
   meta: Record<string, unknown> | null;
 }) {
-  return (
-    <span data-testid="impact-indicator">
-      <ImpactBadge score={score} meta={meta} />
-    </span>
-  );
+  return <ImpactBadge score={score} meta={meta} testId="impact-indicator" />;
 }
 
 interface ErrorIssuesTableProps {
