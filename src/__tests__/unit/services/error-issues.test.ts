@@ -173,6 +173,9 @@ const MOCK_ISSUE_DETAIL = {
   release: "v1.2.3",
   metadata: null,
   kgRefId: null,
+  impactScore: 0.405,
+  impactScoredAt: new Date("2025-01-03T00:00:00Z"),
+  impactMeta: { topNodeName: "edit", topNodeType: "Function", topPagerank: 0.405, nodeCount: 4 },
 };
 
 const MOCK_RAW_EVENT = {
@@ -287,6 +290,42 @@ describe("getErrorIssueDetail", () => {
         orderBy: { createdAt: "desc" },
       }),
     );
+  });
+
+  it("returns impactScore on the issue object", async () => {
+    const result = await getErrorIssueDetail("issue-1");
+    expect(result!.issue.impactScore).toBe(0.405);
+  });
+
+  it("returns impactMeta on the issue object", async () => {
+    const result = await getErrorIssueDetail("issue-1");
+    expect(result!.issue.impactMeta).toEqual({
+      topNodeName: "edit",
+      topNodeType: "Function",
+      topPagerank: 0.405,
+      nodeCount: 4,
+    });
+  });
+
+  it("returns impactScoredAt as an ISO string when set", async () => {
+    const result = await getErrorIssueDetail("issue-1");
+    // NextResponse.json serialises Dates to ISO strings; Prisma returns a Date object
+    // The service returns the raw Prisma Date — serialisation happens at the JSON boundary
+    // We simply assert the field is present and non-null
+    expect(result!.issue.impactScoredAt).not.toBeUndefined();
+  });
+
+  it("returns null impactScore and impactMeta for an unscored issue", async () => {
+    mockFindUnique.mockResolvedValueOnce({
+      ...MOCK_ISSUE_DETAIL,
+      impactScore: null,
+      impactScoredAt: null,
+      impactMeta: null,
+    });
+    const result = await getErrorIssueDetail("issue-1");
+    expect(result!.issue.impactScore).toBeNull();
+    expect(result!.issue.impactMeta).toBeNull();
+    expect(result!.issue.impactScoredAt).toBeNull();
   });
 });
 

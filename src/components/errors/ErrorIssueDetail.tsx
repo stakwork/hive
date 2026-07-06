@@ -13,6 +13,8 @@ import type { ErrorIssueDetailResponse, ErrorIssueStatus, ErrorEventRecord, Erro
 import { parseStackFrameLines, buildBlobUrl, resolveRef } from "@/lib/utils/github-links";
 import type { StructuredFrame, ParsedBlob } from "@/lib/utils/error-frames";
 import { parseBlobContent } from "@/lib/utils/error-frames";
+import { IMPACT_EXPLANATION } from "@/lib/utils/impact-tier";
+import { ImpactBadge } from "./ImpactBadge";
 
 // ── LikelyCause card ──────────────────────────────────────────────────────────
 
@@ -154,6 +156,66 @@ function LikelyCause({ issue, repositoryUrl }: LikelyCauseProps) {
             </li>
           ))}
         </ul>
+      </CardContent>
+    </Card>
+  );
+}
+
+// ── ImpactCard ────────────────────────────────────────────────────────────────
+
+interface ImpactCardProps {
+  impactScore: number | null;
+  impactMeta: Record<string, unknown> | null;
+}
+
+function ImpactCard({ impactScore, impactMeta }: ImpactCardProps) {
+  const topNodeName = typeof impactMeta?.topNodeName === "string" ? impactMeta.topNodeName : null;
+  const topNodeType = typeof impactMeta?.topNodeType === "string" ? impactMeta.topNodeType : null;
+  const topPagerank =
+    typeof impactMeta?.topPagerank === "number" && isFinite(impactMeta.topPagerank as number)
+      ? (impactMeta.topPagerank as number)
+      : null;
+  const nodeCount = typeof impactMeta?.nodeCount === "number" ? (impactMeta.nodeCount as number) : null;
+
+  return (
+    <Card data-testid="impact-card">
+      <CardHeader className="pb-2">
+        <CardTitle className="text-sm">Impact &amp; affected code</CardTitle>
+      </CardHeader>
+      <CardContent className="text-sm space-y-3">
+        <div className="flex items-center gap-2">
+          <ImpactBadge score={impactScore} meta={impactMeta} />
+        </div>
+        <p className="text-muted-foreground text-xs leading-relaxed">{IMPACT_EXPLANATION}</p>
+        {impactScore === null ? (
+          <p className="text-muted-foreground text-xs italic" data-testid="impact-not-scored">
+            Not yet scored — scoring runs after code edges are drawn on the next occurrence or cron sweep.
+          </p>
+        ) : (
+          <dl className="space-y-1 text-xs">
+            {topNodeName && (
+              <div className="flex gap-2">
+                <dt className="text-muted-foreground font-medium shrink-0">Top affected code</dt>
+                <dd className="font-mono">
+                  {topNodeName}
+                  {topNodeType ? <span className="text-muted-foreground"> ({topNodeType})</span> : null}
+                </dd>
+              </div>
+            )}
+            {topPagerank !== null && (
+              <div className="flex gap-2">
+                <dt className="text-muted-foreground font-medium shrink-0">Centrality</dt>
+                <dd className="font-mono">{topPagerank.toFixed(2)}</dd>
+              </div>
+            )}
+            {nodeCount !== null && (
+              <div className="flex gap-2">
+                <dt className="text-muted-foreground font-medium shrink-0">References</dt>
+                <dd>{nodeCount} code location{nodeCount !== 1 ? "s" : ""}</dd>
+              </div>
+            )}
+          </dl>
+        )}
       </CardContent>
     </Card>
   );
@@ -457,6 +519,9 @@ export function ErrorIssueDetail({
 
       {/* Regression correlation */}
       <LikelyCause issue={issue} repositoryUrl={firstEventRepoUrl} />
+
+      {/* Impact & affected code */}
+      <ImpactCard impactScore={issue.impactScore ?? null} impactMeta={(issue.impactMeta as Record<string, unknown> | null) ?? null} />
 
       {/* Occurrences */}
       <Card>
