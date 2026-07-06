@@ -184,7 +184,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
               task_slug: taskSlug,
               task_goal: taskGoal,
               task_output_desc: taskOutputDesc,
-              documents: JSON.stringify(documents),
+              documents_json: JSON.stringify(documents),
               webhook_url: webhookUrl,
               graph_base_url: graphBaseUrl,
               secret: graphSecret,
