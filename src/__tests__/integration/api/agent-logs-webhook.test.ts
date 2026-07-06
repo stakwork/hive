@@ -363,7 +363,7 @@ describe("POST /api/webhook/agent-logs — Jarvis graph write (best-effort)", ()
     expect(mockAddEdge).not.toHaveBeenCalled();
   });
 
-  test("passes correct agent_name, log_url, workspace_id, created_at to AgentSession node_data", async () => {
+  test("passes correct agent_name, log_url, workspace_id, start_time to AgentSession node_data", async () => {
     const { workspace, feature } = testData;
 
     await POST(
@@ -379,9 +379,82 @@ describe("POST /api/webhook/agent-logs — Jarvis graph write (best-effort)", ()
     expect(sessionCall.node_data.agent_name).toBe("researcher-agent-001");
     expect(sessionCall.node_data.log_url).toBe("https://blob.example.com/agent-log.json");
     expect(sessionCall.node_data.workspace_id).toBe(workspace.id);
-    expect(typeof sessionCall.node_data.created_at).toBe("string");
-    // created_at should be a valid ISO date
-    expect(() => new Date(sessionCall.node_data.created_at as string)).not.toThrow();
+    expect(typeof sessionCall.node_data.start_time).toBe("number");
+    expect(sessionCall.node_data.start_time as number).toBeGreaterThan(0);
+  });
+
+  test("defaults source to the agent role name when config.source is absent", async () => {
+    const { workspace, feature } = testData;
+
+    await POST(
+      buildRequest({
+        agent: "researcher-agent-001",
+        workspace_id: workspace.id,
+        feature_id: feature.id,
+        logs: [],
+      })
+    );
+
+    const sessionCall = mockAddNode.mock.calls[1][1];
+    expect(sessionCall.node_data.source).toBe("researcher-agent");
+  });
+
+  test("prefers config.source over the derived role name when provided", async () => {
+    const { workspace, feature } = testData;
+
+    await POST(
+      buildRequest({
+        agent: "researcher-agent-001",
+        workspace_id: workspace.id,
+        feature_id: feature.id,
+        logs: [],
+        config: { source: "stakwork" },
+      })
+    );
+
+    const sessionCall = mockAddNode.mock.calls[1][1];
+    expect(sessionCall.node_data.source).toBe("stakwork");
+  });
+
+  test("attaches estimated_tokens, tool_call_count, message_count derived from the transcript", async () => {
+    const { workspace, feature } = testData;
+
+    await POST(
+      buildRequest({
+        agent: "coding-agent-001",
+        workspace_id: workspace.id,
+        feature_id: feature.id,
+        messages: [
+          { role: "user", content: "do the thing" },
+          {
+            role: "assistant",
+            content: [{ type: "tool-call", toolCallId: "1", toolName: "bash", input: { command: "ls" } }],
+          },
+        ],
+      })
+    );
+
+    const sessionCall = mockAddNode.mock.calls[1][1];
+    expect(sessionCall.node_data.message_count).toBe(2);
+    expect(sessionCall.node_data.tool_call_count).toBe(1);
+    expect(typeof sessionCall.node_data.estimated_tokens).toBe("number");
+    expect(sessionCall.node_data.estimated_tokens as number).toBeGreaterThan(0);
+  });
+
+  test("marks the AgentSession node as a complete session record via the file sentinel", async () => {
+    const { workspace, feature } = testData;
+
+    await POST(
+      buildRequest({
+        agent: "plan-agent-abc",
+        workspace_id: workspace.id,
+        feature_id: feature.id,
+        logs: [],
+      })
+    );
+
+    const sessionCall = mockAddNode.mock.calls[1][1];
+    expect(sessionCall.node_data.file).toBe("session://generated");
   });
 
   test("omits model from node_data when not in request body", async () => {
