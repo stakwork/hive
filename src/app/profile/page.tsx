@@ -4,8 +4,8 @@ import { redirect } from "next/navigation";
 import Image from "next/image";
 import { ActivityFeed } from "./_components/ActivityFeed";
 import { BackButton } from "./_components/BackButton";
+import Link from "next/link";
 import { DailyRecapCard } from "@/components/daily-recap/DailyRecapCard";
-import { DailyRecapSettings } from "@/components/settings/DailyRecapSettings";
 
 export default async function ProfilePage() {
   const session = await getServerSession(authOptions);
@@ -52,8 +52,13 @@ export default async function ProfilePage() {
         </div>
 
         <DailyRecapCard />
-        <div className="mt-6">
-          <DailyRecapSettings />
+        <div className="mt-2">
+          <Link
+            href="/settings"
+            className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+          >
+            Manage Activity Recap in Settings →
+          </Link>
         </div>
         <ActivityFeed userId={session.user.id as string} />
       </div>
