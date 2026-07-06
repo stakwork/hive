@@ -7,6 +7,7 @@ import { addNode, addEdge } from "@/services/swarm/api/nodes";
 import { lookupAgentSessionByLogUrl } from "@/lib/utils/agent-session-lookup";
 import { isEvalTriggerSource, type EvalTriggerSource } from "@/lib/utils/eval-source";
 import { resolveCaptureSource } from "@/lib/eval-capture/resolve-capture-source";
+import { extractMetadataPrompts } from "@/lib/eval-capture/extract-metadata-prompts";
 import { logger } from "@/lib/logger";
 
 type RouteParams = { params: Promise<{ slug: string; logId: string }> };
@@ -131,7 +132,14 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       target: { ref_id: reqRefId },
     });
 
-    // 3. Create EvalTrigger node
+    // 3. Resolve prompts from metadata (agent_log branch only)
+    let metadataPrompts: string[] = [];
+    if (captured.kind === "agent_log") {
+      metadataPrompts = extractMetadataPrompts(captured.metadata);
+      logger.info(`[FlagAsEval] resolved ${metadataPrompts.length} prompts from metadata`);
+    }
+
+    // 4. Create EvalTrigger node
     const triggerResult = await addNode(config, {
       node_type: "EvalTrigger",
       node_data: {
@@ -142,6 +150,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
         end_point: endPoint ?? null,
         run_count: runCount ?? 3,
         source: evalTriggerSource,
+        ...(metadataPrompts.length > 0 ? { prompts: metadataPrompts } : {}),
       },
     });
 
@@ -152,14 +161,14 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
 
     const triggerRefId = triggerResult.ref_id;
 
-    // 4. Create HAS_TRIGGER edge: EvalRequirement → EvalTrigger
+    // 5. Create HAS_TRIGGER edge: EvalRequirement → EvalTrigger
     await addEdge(config, {
       edge: { edge_type: "HAS_TRIGGER" },
       source: { ref_id: reqRefId },
       target: { ref_id: triggerRefId },
     });
 
-    // 5. Optional: look up AgentSession by log URL (only available for AgentLog branch)
+    // 6. Optional: look up AgentSession by log URL (only available for AgentLog branch)
     let sessionRefId: string | undefined;
     if (captured.kind === "agent_log") {
       const foundSession = await lookupAgentSessionByLogUrl(config, captured.blobUrl);

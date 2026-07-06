@@ -5,6 +5,9 @@ import { getJarvisUrl } from "@/lib/utils/swarm";
 import { getWorkspaceSwarmAccess } from "@/lib/helpers/swarm-access";
 import { addNode, addEdge } from "@/services/swarm/api/nodes";
 import { resolveHiveAgentName, isBifrostAgentName, isCaptureAgentName, getCaptureAgentSpec } from "@/lib/utils/hive-agent";
+import { extractMetadataPrompts } from "@/lib/eval-capture/extract-metadata-prompts";
+import { db } from "@/lib/db";
+import type { JarvisConnectionConfig } from "@/types/jarvis";
 
 type RouteParams = {
   params: Promise<{ slug: string; evalSetId: string; reqId: string }>;
@@ -21,6 +24,72 @@ function handleSwarmAccessError(error: { type: string }) {
   };
   const errorInfo = errorMap[error.type] || { message: "Unknown error", status: 500 };
   return NextResponse.json({ error: errorInfo.message }, { status: errorInfo.status });
+}
+
+/**
+ * Resolves prompt resolutions for an EvalTrigger from an AgentSession's linked AgentLog.
+ *
+ * Flow: session node (Jarvis) → properties.log_url → AgentLog.blobUrl → metadata.prompts
+ *
+ * IDOR guard: verifies the resolved AgentLog belongs to the same workspace as the request.
+ * Never throws — all failures are caught, logged as warnings, and return [].
+ */
+async function resolveSessionPrompts(
+  config: JarvisConnectionConfig,
+  sessionRefId: string,
+  workspaceId: string,
+): Promise<string[]> {
+  try {
+    // 1. Fetch AgentSession node from Jarvis
+    const sessionRes = await fetch(`${config.jarvisUrl}/v2/nodes/${sessionRefId}`, {
+      headers: { "x-api-token": config.apiKey },
+    });
+
+    if (!sessionRes.ok) {
+      console.warn(
+        `[Evals Triggers POST] session→log prompt resolution failed (non-fatal): Jarvis returned ${sessionRes.status} for session ${sessionRefId}`,
+      );
+      return [];
+    }
+
+    const sessionData = await sessionRes.json();
+
+    // Jarvis node shape: properties or node_data may carry log_url
+    const logUrl: string | undefined =
+      sessionData?.properties?.log_url ??
+      sessionData?.node_data?.log_url ??
+      undefined;
+
+    if (!logUrl) {
+      return [];
+    }
+
+    // 2. Look up AgentLog by blobUrl
+    const agentLog = await db.agentLog.findFirst({
+      where: { blobUrl: logUrl },
+      select: { workspaceId: true, metadata: true },
+    });
+
+    if (!agentLog) {
+      return [];
+    }
+
+    // 3. IDOR guard: ensure the log belongs to this workspace
+    if (agentLog.workspaceId !== workspaceId) {
+      console.warn(
+        `[Evals Triggers POST] session→log prompt resolution failed (non-fatal): IDOR — agentLog belongs to workspace ${agentLog.workspaceId}, not ${workspaceId}`,
+      );
+      return [];
+    }
+
+    // 4. Extract prompts from metadata
+    return extractMetadataPrompts(agentLog.metadata);
+  } catch (err) {
+    console.warn(
+      `[Evals Triggers POST] session→log prompt resolution failed (non-fatal): ${String(err)}`,
+    );
+    return [];
+  }
 }
 
 export async function GET(request: NextRequest, { params }: RouteParams) {
@@ -166,11 +235,15 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json(await mockResponse.json());
     }
 
-    const { swarmName, swarmApiKey } = swarmAccessResult.data;
+    const { swarmName, swarmApiKey, workspaceId } = swarmAccessResult.data;
     const jarvisUrl = getJarvisUrl(swarmName);
     const config = { jarvisUrl, apiKey: swarmApiKey };
 
     console.log(`[Evals Triggers POST] Resolved agent: ${resolvedAgent} (override=${agentNameRaw ?? agent ?? "none"})`);
+
+    // Resolve prompts from session → AgentLog metadata (non-fatal)
+    const sessionPrompts = await resolveSessionPrompts(config, session_ref_id.trim(), workspaceId);
+    console.log(`[Evals Triggers POST] resolved ${sessionPrompts.length} prompts from session→log`);
 
     // Step 1: Create EvalTrigger node
     const triggerId = randomUUID();
@@ -185,6 +258,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     if (change_type) nodeData.change_type = change_type;
     if (Array.isArray(desirable_cases)) nodeData.desirable_cases = desirable_cases;
     if (Array.isArray(undesirable_cases)) nodeData.undesirable_cases = undesirable_cases;
+    if (sessionPrompts.length > 0) nodeData.prompts = sessionPrompts;
 
     const nodeResult = await addNode(config, {
       node_type: "EvalTrigger",
