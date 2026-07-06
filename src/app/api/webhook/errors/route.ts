@@ -6,7 +6,7 @@ import { validateApiKey } from "@/lib/api-keys";
 import { pusherServer, getWorkspaceChannelName, PUSHER_EVENTS } from "@/lib/pusher";
 import { resolveRepoKey, computeFingerprint } from "@/lib/utils/error-fingerprint";
 import { sanitizeFrames } from "@/lib/utils/error-frames";
-import { selectFrameCandidates, matchFileNode, matchesFilePath } from "@/lib/utils/error-stack-frames";
+import { selectFrameCandidates, matchFileNode, matchesFilePath, scopeNodesToRepo } from "@/lib/utils/error-stack-frames";
 import { getJarvisConfigForWorkspace } from "@/lib/helpers/jarvis-config";
 import { addNode, addEdge, searchLatestByTypes, getReferencedNodeCentrality } from "@/services/swarm/api/nodes";
 import { detectOnset } from "@/services/error-issues/spike-detection";
@@ -329,15 +329,19 @@ export async function POST(request: NextRequest) {
               });
             } else {
               // Filter nodes to only those belonging to this issue's own repo
-              // by matching the repository_id property on the node.  Never draw
-              // edges to nodes from a different repo in the same workspace.
-              const repoNodes = searchResult.nodes.filter((n) => {
-                const props = n.properties ?? {};
-                return (
-                  props.repository_id === issue.repositoryId ||
-                  props.repo_id === issue.repositoryId
-                );
-              });
+              // by checking the `file` path prefix (e.g. "stakwork/senza-lnd/").
+              // Real stakgraph nodes carry no `repository_id` — repo identity
+              // lives in the `file` prefix.  Never draw edges to nodes from a
+              // different repo in the same workspace.
+              const ownerRepo = issue.repoKey ?? "";
+              const repoNodes = scopeNodesToRepo(searchResult.nodes, ownerRepo);
+
+              if (repoNodes.length === 0) {
+                console.warn("[error-ingest] KG edges: 0 repo-scoped nodes", {
+                  ownerRepo,
+                  totalNodes: searchResult.nodes.length,
+                });
+              }
 
               let edgesDrawn = 0;
               const seenRefIds = new Set<string>();
