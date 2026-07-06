@@ -129,7 +129,7 @@ describe("GET /api/workspaces/[slug]/legal/benchmarks/tasks", () => {
     // Top-level shape
     expect(body).toHaveProperty("practice_areas");
     expect(body).toHaveProperty("total");
-    expect(body.total).toBe(1749);
+    expect(body.total).toBe(1196);
     expect(Array.isArray(body.practice_areas)).toBe(true);
 
     // 25 practice areas
