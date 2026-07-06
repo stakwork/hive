@@ -429,6 +429,41 @@ export function OrgCanvasBackground({
     [onSelectionChange],
   );
 
+  /**
+   * Forwarded to `<SystemCanvas onNodeClick>`. Fires on a single click
+   * of a node — distinct from the selection-change path (`onSelectionChange`
+   * still fires for every selection mutation). Use cases: open detail
+   * panel, highlight related nodes, trigger focused view.
+   *
+   * Note: `zoomNavigation` handles sub-canvas drill-in internally; this
+   * callback fires in addition to (not instead of) that behaviour, so no
+   * conflict arises.
+   */
+  const handleNodeClick = useCallback(
+    (node: CanvasNode) => {
+      // Currently a no-op beyond what `handleSelectionChange` already does.
+      // Wired so consumers can extend without touching the lib boundary.
+      void node;
+    },
+    [],
+  );
+
+  /**
+   * Forwarded to `<SystemCanvas onNodeDoubleClick>`. Fires on a
+   * double-click of a node. `zoomNavigation` auto-navigates into
+   * ref-bearing nodes independently; this callback co-exists safely
+   * because the lib fires it before triggering the zoom transition.
+   */
+  const handleNodeDoubleClick = useCallback(
+    (node: CanvasNode) => {
+      // Currently a no-op — sub-canvas navigation is handled internally
+      // by `zoomNavigation`. Wired so consumers can attach behaviour
+      // (e.g. open inline edit mode) without touching the lib boundary.
+      void node;
+    },
+    [],
+  );
+
   const currentRefRef = useRef(currentRef);
   useEffect(() => {
     currentRefRef.current = currentRef;
@@ -1190,6 +1225,8 @@ export function OrgCanvasBackground({
           onResolveCanvas={onResolveCanvas}
           onBreadcrumbsChange={handleBreadcrumbsChange}
           onSelectionChange={handleSelectionChange}
+          onNodeClick={handleNodeClick}
+          onNodeDoubleClick={handleNodeDoubleClick}
           onNodeAdd={handleNodeAdd}
           onNodeUpdate={handleNodeUpdate}
           onNodesUpdate={handleNodesUpdate}
