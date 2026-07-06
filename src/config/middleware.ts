@@ -177,6 +177,7 @@ export const ROUTE_POLICIES: ReadonlyArray<RoutePolicy> = [
   { path: "/api/webhook/agent-logs", strategy: "prefix", access: "webhook" },
   { path: "/api/webhook/agent-trace", strategy: "prefix", access: "webhook" },
   { path: "/api/webhook/errors", strategy: "prefix", access: "webhook" }, // has its own key-based auth
+  { path: "/api/gateway/evals", strategy: "prefix", access: "webhook" }, // self-authenticated via workspace API key (covers base + all sub-paths)
   { path: "/api/webhook/prompt-eval", strategy: "prefix", access: "webhook" },
   { path: "/api/agent-logs/*/content", strategy: "pattern", access: "webhook" }, // has its own auth (signed URL or session)
   { path: "/api/agent-logs/*/stats", strategy: "pattern", access: "webhook" }, // has its own auth (signed URL or session)
