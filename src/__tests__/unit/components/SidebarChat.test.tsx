@@ -548,3 +548,303 @@ describe("SidebarChat — DailyRecapCard placement", () => {
     expect(cards).toHaveLength(1);
   });
 });
+
+// ── Fork chat — toolbar button disabled states & happy path ───────────────────
+
+describe("SidebarChat — Fork chat button", () => {
+  let startConversationMock: ReturnType<typeof vi.fn>;
+  let replaceStateSpy: ReturnType<typeof vi.spyOn>;
+  let fetchMock: ReturnType<typeof vi.fn>;
+
+  // A minimal conversation state with a persisted serverConversationId so
+  // the fork button is enabled by default in most tests.
+  const withServerConversation = (extras?: Partial<Record<string, unknown>>) =>
+    ({
+      activeConversationId: "conv-1",
+      conversations: {
+        "conv-1": {
+          messages: [
+            { id: "m1", role: "user", content: "hello", timestamp: new Date() },
+            { id: "m2", role: "assistant", content: "hi", timestamp: new Date() },
+          ],
+          isLoading: false,
+          isStreaming: false,
+          activeToolCalls: [],
+          serverConversationId: "srv-1",
+          context: { orgId: "o1", githubLogin: "test-org" },
+          ...extras,
+        },
+      },
+      artifacts: {},
+      dismissedArtifactIds: {},
+      pendingInputDraft: null,
+    }) as typeof mockStoreState;
+
+  beforeEach(async () => {
+    vi.resetModules();
+    mockIsActive = false;
+
+    startConversationMock = vi.fn().mockReturnValue("new-fork-conv-id");
+
+    // Patch getState so handleFork can read the active conversation context
+    const { useCanvasChatStore } = await import(
+      "@/app/org/[githubLogin]/_state/canvasChatStore"
+    );
+    (useCanvasChatStore as unknown as { getState: () => unknown }).getState = () => ({
+      activeConversationId: "conv-1",
+      conversations: {
+        "conv-1": {
+          context: { orgId: "o1", githubLogin: "test-org" },
+          serverConversationId: "srv-1",
+        },
+      },
+      startConversation: startConversationMock,
+    });
+
+    // Stub global fetch — GET returns source messages, POST returns fork id
+    fetchMock = vi.fn().mockImplementation((url: string, opts?: RequestInit) => {
+      if (!opts || opts.method !== "POST") {
+        // GET source conversation
+        return Promise.resolve({
+          ok: true,
+          json: () =>
+            Promise.resolve({
+              messages: [
+                { id: "m1", role: "user", content: "hello" },
+                { id: "m2", role: "assistant", content: "hi" },
+              ],
+              settings: {},
+            }),
+        });
+      }
+      // POST create fork
+      return Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve({ id: "fork-srv-1", title: "Fork", lastMessageAt: null }),
+      });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    replaceStateSpy = vi.spyOn(window.history, "replaceState");
+  });
+
+  afterEach(() => {
+    replaceStateSpy.mockRestore();
+    vi.unstubAllGlobals();
+    mockStoreState = {
+      activeConversationId: null,
+      conversations: {},
+      artifacts: {},
+      dismissedArtifactIds: {},
+      pendingInputDraft: null,
+    };
+  });
+
+  it("renders the Fork chat button in the toolbar", async () => {
+    mockStoreState = withServerConversation();
+    const { SidebarChat } = await import(
+      "@/app/org/[githubLogin]/_components/SidebarChat"
+    );
+    render(<SidebarChat githubLogin="test-org" />);
+    expect(screen.getByTitle("Fork chat")).toBeTruthy();
+  });
+
+  it("is disabled when there is no serverConversationId (empty conversation)", async () => {
+    mockStoreState = {
+      activeConversationId: "conv-1",
+      conversations: {
+        "conv-1": {
+          messages: [],
+          isLoading: false,
+          isStreaming: false,
+          activeToolCalls: [],
+          serverConversationId: null,
+          context: { orgId: "o1", githubLogin: "test-org" },
+        },
+      },
+      artifacts: {},
+      dismissedArtifactIds: {},
+      pendingInputDraft: null,
+    } as typeof mockStoreState;
+
+    const { SidebarChat } = await import(
+      "@/app/org/[githubLogin]/_components/SidebarChat"
+    );
+    render(<SidebarChat githubLogin="test-org" />);
+
+    const forkBtn = screen.getByTitle("Fork chat");
+    expect((forkBtn as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it("is disabled while the conversation is streaming", async () => {
+    mockStoreState = withServerConversation({ isStreaming: true });
+
+    const { SidebarChat } = await import(
+      "@/app/org/[githubLogin]/_components/SidebarChat"
+    );
+    render(<SidebarChat githubLogin="test-org" />);
+
+    const forkBtn = screen.getByTitle("Fork chat");
+    expect((forkBtn as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it("is enabled when serverConversationId exists and not streaming", async () => {
+    mockStoreState = withServerConversation();
+    const { SidebarChat } = await import(
+      "@/app/org/[githubLogin]/_components/SidebarChat"
+    );
+    render(<SidebarChat githubLogin="test-org" />);
+
+    const forkBtn = screen.getByTitle("Fork chat");
+    expect((forkBtn as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it("click: issues GET then POST, seeds store with forkedFromShareId + ephemeralSeedCount, replaceStates ?chat= to fork id", async () => {
+    mockStoreState = withServerConversation();
+    window.history.replaceState(null, "", "/?canvas=root");
+    replaceStateSpy.mockClear();
+
+    const { SidebarChat } = await import(
+      "@/app/org/[githubLogin]/_components/SidebarChat"
+    );
+    render(<SidebarChat githubLogin="test-org" />);
+
+    await act(async () => {
+      fireEvent.click(screen.getByTitle("Fork chat"));
+    });
+
+    // 1. GET was called first
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/orgs/test-org/chat/conversations/srv-1",
+    );
+
+    // 2. POST was called second (create fork)
+    const postCall = fetchMock.mock.calls.find(
+      (c) => c[1]?.method === "POST",
+    );
+    expect(postCall).toBeTruthy();
+    expect(postCall![0]).toBe("/api/orgs/test-org/chat/conversations");
+
+    // 3. store.startConversation was called with forkedFromShareId = "srv-1",
+    //    ephemeralSeedCount = 2 (two messages), serverConversationId = "fork-srv-1"
+    expect(startConversationMock).toHaveBeenCalledTimes(1);
+    const [, hydrated, forkedFromShareId, ephemeralSeedCount, serverConvId] =
+      startConversationMock.mock.calls[0];
+    expect(forkedFromShareId).toBe("srv-1");
+    expect(ephemeralSeedCount).toBe(2);
+    expect(serverConvId).toBe("fork-srv-1");
+    expect(Array.isArray(hydrated)).toBe(true);
+    expect(hydrated).toHaveLength(2);
+
+    // 4. replaceState was called with the fork id in ?chat=
+    expect(replaceStateSpy).toHaveBeenCalled();
+    const [, , url] =
+      replaceStateSpy.mock.calls[replaceStateSpy.mock.calls.length - 1] as [
+        unknown,
+        unknown,
+        string,
+      ];
+    expect(url).toMatch(/chat=fork-srv-1/);
+  });
+
+  it("preserves other query params (e.g. ?canvas=) while setting ?chat= to fork id", async () => {
+    mockStoreState = withServerConversation();
+    window.history.replaceState(null, "", "/?canvas=init-abc");
+    replaceStateSpy.mockClear();
+
+    const { SidebarChat } = await import(
+      "@/app/org/[githubLogin]/_components/SidebarChat"
+    );
+    render(<SidebarChat githubLogin="test-org" />);
+
+    await act(async () => {
+      fireEvent.click(screen.getByTitle("Fork chat"));
+    });
+
+    const [, , url] =
+      replaceStateSpy.mock.calls[replaceStateSpy.mock.calls.length - 1] as [
+        unknown,
+        unknown,
+        string,
+      ];
+    expect(url).toMatch(/canvas=init-abc/);
+    expect(url).toMatch(/chat=fork-srv-1/);
+  });
+
+  it("double-click issues exactly one fork (guarded by isForking)", async () => {
+    // Simulate a slow POST so the second click lands while the first is in-flight
+    let resolveFork!: (value: Response) => void;
+    const slowFetch = vi.fn().mockImplementation((url: string, opts?: RequestInit) => {
+      if (!opts || opts.method !== "POST") {
+        return Promise.resolve({
+          ok: true,
+          json: () =>
+            Promise.resolve({
+              messages: [{ id: "m1", role: "user", content: "hello" }],
+              settings: {},
+            }),
+        });
+      }
+      return new Promise<Response>((resolve) => {
+        resolveFork = () =>
+          resolve({
+            ok: true,
+            json: () =>
+              Promise.resolve({ id: "fork-srv-slow", title: "Fork", lastMessageAt: null }),
+          } as Response);
+      });
+    });
+    vi.stubGlobal("fetch", slowFetch);
+
+    mockStoreState = withServerConversation();
+    const { SidebarChat } = await import(
+      "@/app/org/[githubLogin]/_components/SidebarChat"
+    );
+    render(<SidebarChat githubLogin="test-org" />);
+
+    const forkBtn = screen.getByTitle("Fork chat");
+
+    // First click — fork in-flight
+    fireEvent.click(forkBtn);
+
+    // Flush microtasks so the GET resolves and the POST is initiated,
+    // which assigns resolveFork and causes React to re-render with
+    // isForking=true (disabling the button).
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 0));
+    });
+
+    // Second click while in-flight — button is disabled (isForking=true),
+    // and handleFork's own guard also returns early.
+    fireEvent.click(forkBtn);
+
+    // Resolve the slow POST
+    await act(async () => {
+      resolveFork();
+      await new Promise((r) => setTimeout(r, 0));
+    });
+
+    // startConversation called exactly once
+    expect(startConversationMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows an error toast when the GET fails", async () => {
+    const failFetch = vi.fn().mockResolvedValue({ ok: false, status: 404 });
+    vi.stubGlobal("fetch", failFetch);
+
+    mockStoreState = withServerConversation();
+    const { SidebarChat } = await import(
+      "@/app/org/[githubLogin]/_components/SidebarChat"
+    );
+    render(<SidebarChat githubLogin="test-org" />);
+
+    const { toast } = await import("sonner");
+
+    await act(async () => {
+      fireEvent.click(screen.getByTitle("Fork chat"));
+    });
+
+    expect(startConversationMock).not.toHaveBeenCalled();
+    expect(toast.error).toHaveBeenCalled();
+  });
+});
