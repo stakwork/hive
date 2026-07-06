@@ -154,7 +154,7 @@ describe("Workspace CRUD Operations", () => {
         where: { slug: "test-workspace", deleted: false },
         include: {
           owner: { select: { id: true, name: true, email: true } },
-          swarm: { select: { id: true, status: true, ingestRefId: true, poolState: true, podState: true, containerFilesSetUp: true, swarmUrl: true } },
+          swarm: { select: { id: true, status: true, ingestRefId: true, poolState: true, podState: true, containerFilesSetUp: true, staktrakInjected: true, swarmUrl: true } },
           repositories: { select: { id: true, name: true, repositoryUrl: true, branch: true, status: true, updatedAt: true, allowAutoMerge: true } },
         },
       });
@@ -163,6 +163,7 @@ describe("Workspace CRUD Operations", () => {
         name: "Test Workspace",
         description: "A test workspace",
         containerFilesSetUp: null,
+        staktrakInjected: null,
         repositoryDraft: null,
         swarmId: "swarm1",
         slug: "test-workspace",

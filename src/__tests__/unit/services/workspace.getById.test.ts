@@ -50,6 +50,7 @@ describe("getWorkspaceById - Unit Tests", () => {
     createdAt: new Date("2024-01-01T00:00:00.000Z"),
     updatedAt: new Date("2024-01-01T00:00:00.000Z"),
     containerFilesSetUp: null,
+    staktrakInjected: null,
     repositoryDraft: null,
     owner: {
       id: "owner-123",
@@ -93,7 +94,7 @@ describe("getWorkspaceById - Unit Tests", () => {
             select: { id: true, name: true, email: true },
           },
           swarm: {
-            select: { id: true, status: true, ingestRefId: true, poolState: true, podState: true, containerFilesSetUp: true, swarmUrl: true },
+            select: { id: true, status: true, ingestRefId: true, poolState: true, podState: true, containerFilesSetUp: true, staktrakInjected: true, swarmUrl: true },
           },
           repositories: {
             select: {
@@ -132,6 +133,7 @@ describe("getWorkspaceById - Unit Tests", () => {
         swarmUrl: null,
         swarmId: "swarm-123",
         containerFilesSetUp: null,
+        staktrakInjected: null,
         repositoryDraft: null,
         repositories: [
           {
@@ -269,6 +271,7 @@ describe("getWorkspaceById - Unit Tests", () => {
         swarmUrl: null,
         swarmId: "swarm-123",
         containerFilesSetUp: null,
+        staktrakInjected: null,
         repositoryDraft: null,
         ingestRefId: "ingest-123",
         poolState: "COMPLETE",

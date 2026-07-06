@@ -47,6 +47,7 @@ export interface WorkspaceWithAccess extends WorkspaceResponse {
   swarmStatus: "PENDING" | "ACTIVE" | "FAILED" | "DELETED" | null;
   swarmId: string | null;
   containerFilesSetUp: boolean | null;
+  staktrakInjected: boolean | null;
   repositoryDraft: string | null;
   swarmUrl: string | null;
   nodeTypeOrder?: Array<{ type: string; value: number }> | null;

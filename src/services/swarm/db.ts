@@ -80,6 +80,7 @@ export const select = {
   environmentVariables: true,
   containerFiles: true,
   containerFilesSetUp: true,
+  staktrakInjected: true,
   agentRequestId: true,
   agentStatus: true,
   ingestRequestInProgress: true,

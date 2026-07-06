@@ -422,6 +422,10 @@ model Swarm {
   poolState               PoolState             @default(NOT_STARTED) @map("pool_state")
   ec2Id                   String?               @map("ec2_id")
   containerFilesSetUp     Boolean               @default(false) @map("container_files_set_up")
+  // NOTE: staktrakInjected is coupled to containerFilesSetUp reset semantics —
+  // whenever containerFilesSetUp is reset to false (e.g. on container recreation),
+  // staktrakInjected must also be reset to false so injection is re-triggered for the new container.
+  staktrakInjected        Boolean               @default(false) @map("staktrak_injected")
   agentRequestId          String?               @map("agent_request_id")
   agentStatus             String?               @map("agent_status")
   ingestRequestInProgress Boolean               @default(false) @map("ingest_request_in_progress")

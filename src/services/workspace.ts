@@ -151,7 +151,7 @@ export async function getWorkspaceById(
         select: { id: true, name: true, email: true },
       },
       swarm: {
-        select: { id: true, status: true, ingestRefId: true, poolState: true, podState: true, containerFilesSetUp: true, swarmUrl: true },
+        select: { id: true, status: true, ingestRefId: true, poolState: true, podState: true, containerFilesSetUp: true, staktrakInjected: true, swarmUrl: true },
       },
       repositories: {
         select: {
@@ -185,6 +185,7 @@ export async function getWorkspaceById(
       userRole: "OWNER",
       owner: workspace.owner,
       containerFilesSetUp: workspace.swarm?.containerFilesSetUp || null,
+    staktrakInjected: workspace.swarm?.staktrakInjected ?? null,
       repositoryDraft: workspace.repositoryDraft || null,
       swarmId: workspace.swarm?.id || null,
       isCodeGraphSetup:
@@ -225,6 +226,7 @@ export async function getWorkspaceById(
     updatedAt: workspace.updatedAt.toISOString(),
     userRole: membership.role as WorkspaceRole,
     containerFilesSetUp: workspace.swarm?.containerFilesSetUp || null,
+    staktrakInjected: workspace.swarm?.staktrakInjected ?? null,
     repositoryDraft: workspace.repositoryDraft || null,
     swarmId: workspace.swarm?.id || null,
     owner: workspace.owner,
@@ -274,7 +276,7 @@ export async function getWorkspaceBySlug(
         select: { id: true, name: true, email: true },
       },
       swarm: {
-        select: { id: true, status: true, ingestRefId: true, poolState: true, podState: true, containerFilesSetUp: true, swarmUrl: true },
+        select: { id: true, status: true, ingestRefId: true, poolState: true, podState: true, containerFilesSetUp: true, staktrakInjected: true, swarmUrl: true },
       },
       repositories: {
         select: {
@@ -308,6 +310,7 @@ export async function getWorkspaceBySlug(
       userRole: "OWNER",
       owner: workspace.owner,
       containerFilesSetUp: workspace.swarm?.containerFilesSetUp || null,
+    staktrakInjected: workspace.swarm?.staktrakInjected ?? null,
       repositoryDraft: workspace.repositoryDraft || null,
       swarmId: workspace.swarm?.id || null,
       isCodeGraphSetup:
@@ -343,6 +346,7 @@ export async function getWorkspaceBySlug(
       userRole: "OWNER",
       owner: workspace.owner,
       containerFilesSetUp: workspace.swarm?.containerFilesSetUp || null,
+    staktrakInjected: workspace.swarm?.staktrakInjected ?? null,
       repositoryDraft: workspace.repositoryDraft || null,
       swarmId: workspace.swarm?.id || null,
       isCodeGraphSetup:
@@ -401,6 +405,7 @@ export async function getWorkspaceBySlug(
     owner: workspace.owner,
     hasKey: hasValidApiKey(workspace.stakworkApiKey),
     containerFilesSetUp: workspace.swarm?.containerFilesSetUp || null,
+    staktrakInjected: workspace.swarm?.staktrakInjected ?? null,
     repositoryDraft: workspace.repositoryDraft || null,
     swarmId: workspace.swarm?.id || null,
     isCodeGraphSetup:
@@ -453,6 +458,7 @@ export async function getPublicWorkspaceBySlug(
           poolState: true,
           podState: true,
           containerFilesSetUp: true,
+          staktrakInjected: true,
         },
       },
       repositories: {
@@ -485,6 +491,7 @@ export async function getPublicWorkspaceBySlug(
     owner: { ...workspace.owner, email: null },
     hasKey: false,
     containerFilesSetUp: workspace.swarm?.containerFilesSetUp || null,
+    staktrakInjected: workspace.swarm?.staktrakInjected ?? null,
     repositoryDraft: workspace.repositoryDraft || null,
     swarmId: workspace.swarm?.id || null,
     isCodeGraphSetup:

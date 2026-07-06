@@ -270,6 +270,8 @@ export async function GET(request: NextRequest) {
                 }
 
                 // Update agent status to completed and mark container files as set up
+                // NOTE: If this swarm's container is ever recreated and containerFilesSetUp is reset to false,
+                // staktrakInjected must also be reset to false so injection is re-triggered for the new container.
                 await db.swarm.update({
                   where: { id: swarm.id },
                   data: {
