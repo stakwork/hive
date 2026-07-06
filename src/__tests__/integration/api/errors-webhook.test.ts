@@ -765,15 +765,15 @@ describe("POST /api/webhook/errors — KG projection (best-effort)", () => {
           node_type: "File",
           properties: {
             file: "stakwork/hive/src/foo/bar.ts",
-            repository_id: ctx.repo.id,
+            namespace: "default",
           },
         },
         {
           ref_id: "file-in-other-repo",
           node_type: "File",
           properties: {
-            file: "stakwork/hive/src/foo/bar.ts",
-            repository_id: "other-repo-id",
+            file: "other-org/secret-repo/src/foo/bar.ts",
+            namespace: "default",
           },
         },
       ],
@@ -816,7 +816,7 @@ describe("POST /api/webhook/errors — KG projection (best-effort)", () => {
           node_type: "File",
           properties: {
             file: "stakwork/hive/src/completely/different.ts",
-            repository_id: ctx.repo.id,
+            namespace: "default",
           },
         },
       ],
@@ -1215,7 +1215,7 @@ describe("POST /api/webhook/errors — KG edges from structured frames (Ruby + J
           node_type: "File",
           properties: {
             file: "stakwork/hive/app/workers/script_graph_recorder_worker.rb",
-            repository_id: ctx.repo.id,
+            namespace: "default",
           },
         },
         {
@@ -1224,7 +1224,7 @@ describe("POST /api/webhook/errors — KG edges from structured frames (Ruby + J
           properties: {
             name: "perform",
             file: "stakwork/hive/app/workers/script_graph_recorder_worker.rb",
-            repository_id: ctx.repo.id,
+            namespace: "default",
           },
         },
         {
@@ -1233,7 +1233,7 @@ describe("POST /api/webhook/errors — KG edges from structured frames (Ruby + J
           properties: {
             name: "perform",
             file: "stakwork/hive/app/workers/other_worker.rb",
-            repository_id: ctx.repo.id,
+            namespace: "default",
           },
         },
       ],
@@ -1278,7 +1278,7 @@ describe("POST /api/webhook/errors — KG edges from structured frames (Ruby + J
           node_type: "File",
           properties: {
             file: "stakwork/hive/src/foo/bar.ts",
-            repository_id: ctx.repo.id,
+            namespace: "default",
           },
         },
       ],
@@ -1314,7 +1314,7 @@ describe("POST /api/webhook/errors — KG edges from structured frames (Ruby + J
           properties: {
             // Deliberately no file_path — only the real `file` key
             file: "stakwork/hive/app/services/my_service.rb",
-            repository_id: ctx.repo.id,
+            namespace: "default",
           },
         },
       ],
