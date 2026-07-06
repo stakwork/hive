@@ -5,6 +5,7 @@ import { db } from "@/lib/db";
 import { isDevelopmentMode } from "@/lib/runtime";
 import { writePromptThrough } from "@/services/prompts/prompt-sync";
 import { BIFROST_AGENT_NAMES } from "@/services/bifrost/agent-names";
+import { validateApiToken } from "@/lib/auth/api-token";
 
 export const runtime = "nodejs";
 export const fetchCache = "force-no-store";
@@ -108,9 +109,12 @@ function shapePrompt(p: {
 
 export async function GET(request: NextRequest) {
   try {
-    const devMode = isDevelopmentMode();
-    const authResult = await getAuthenticatedUserId(devMode);
-    if (authResult instanceof NextResponse) return authResult;
+    const isApiToken = validateApiToken(request);
+    if (!isApiToken) {
+      const devMode = isDevelopmentMode();
+      const authResult = await getAuthenticatedUserId(devMode);
+      if (authResult instanceof NextResponse) return authResult;
+    }
 
     const { searchParams } = new URL(request.url);
     const page = Math.max(1, parseInt(searchParams.get("page") || "1", 10));

@@ -11,15 +11,7 @@ import { isLlmStep } from "@/lib/stakwork/transitions";
 import { CaptureEvalForm, CREATE_NEW_VALUE, CREATE_NEW_REQ } from "@/components/evals/CaptureEvalForm";
 import { PromptResolution, mapPromptResolutions } from "@/types/evals";
 import { useEvalRequirements } from "@/hooks/useEvalRequirements";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { Label } from "@/components/ui/label";
-import { HIVE_AGENT_OPTIONS } from "@/lib/utils/hive-agent";
+
 
 interface StepDetailsModalProps {
   step: WorkflowTransition | null;
@@ -142,7 +134,6 @@ export function StepDetailsModal({ step, isOpen, onClose, onSelect, runTransitio
   const [selectedEvalSetId, setSelectedEvalSetId] = useState('');
   const [newEvalSetName, setNewEvalSetName] = useState('');
   const [selectedRequirementId, setSelectedRequirementId] = useState<string | null>(null);
-  const [selectedAgentName, setSelectedAgentName] = useState<string>(HIVE_AGENT_OPTIONS[0].name);
 
   const {
     requirements,
@@ -203,7 +194,6 @@ export function StepDetailsModal({ step, isOpen, onClose, onSelect, runTransitio
       setEvalSetsError(false);
       setSelectedEvalSetId('');
       setNewEvalSetName('');
-      setSelectedAgentName(HIVE_AGENT_OPTIONS[0].name);
     }
   }, [isOpen]);
 
@@ -299,7 +289,6 @@ export function StepDetailsModal({ step, isOpen, onClose, onSelect, runTransitio
         outputs: ioData.outputs,
         evalSetId: resolvedEvalSetId,
         prompts: mapPromptResolutions(ioData.prompt_resolutions),
-        agentName: selectedAgentName,
       };
 
       if (attachingExisting) {
@@ -551,21 +540,6 @@ export function StepDetailsModal({ step, isOpen, onClose, onSelect, runTransitio
         {flagOpen && (
           <div className="px-4 pb-2 pt-3 border-t space-y-3">
             <p className="text-sm font-medium">Flag for Eval</p>
-            <div className="space-y-1.5">
-              <Label htmlFor="step-agent-select" className="text-xs">Agent</Label>
-              <Select value={selectedAgentName} onValueChange={setSelectedAgentName}>
-                <SelectTrigger id="step-agent-select" data-testid="step-agent-select" className="h-8 text-xs">
-                  <SelectValue placeholder="Select agent…" />
-                </SelectTrigger>
-                <SelectContent>
-                  {HIVE_AGENT_OPTIONS.map((opt) => (
-                    <SelectItem key={opt.name} value={opt.name} className="text-xs">
-                      {opt.displayName}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
             <CaptureEvalForm
               requirement={requirement}
               reason={reason}
