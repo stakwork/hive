@@ -421,4 +421,14 @@ describe("resolveRouteAccess", () => {
       ).toBe("protected");
     });
   });
+
+  describe("Claim Pod Route Access", () => {
+    it("resolves claim-pod route as protected (not webhook)", () => {
+      expect(resolveRouteAccess("/api/pool-manager/claim-pod/ws-123", "POST")).toBe("protected");
+    });
+
+    it("resolves claim-pod route as protected for any workspace id", () => {
+      expect(resolveRouteAccess("/api/pool-manager/claim-pod/some-other-workspace", "POST")).toBe("protected");
+    });
+  });
 });
