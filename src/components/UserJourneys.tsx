@@ -329,43 +329,21 @@ export default function UserJourneys({ onBrowserModeChange }: UserJourneysProps)
     try {
       setIsReplayingTask(row.id);
 
-      // First, check if video artifact already exists
-      const messagesResponse = await fetch(`/api/tasks/${row.id}/messages`);
-      if (messagesResponse.ok) {
-        const result = await messagesResponse.json();
-        const messages = result.data?.messages || [];
-
-        // Look for MEDIA artifact with video
-        for (const message of messages) {
-          if (message.artifacts) {
-            const videoArtifact = message.artifacts.find(
-              (artifact: any) =>
-                artifact.type === "MEDIA" && artifact.content?.mediaType === "video" && artifact.content?.s3Key,
-            );
-
-            if (videoArtifact) {
-              // Video artifact exists, fetch fresh presigned URL
-              try {
-                const urlResponse = await fetch(`/api/tasks/${row.id}/artifacts/${videoArtifact.id}/url`);
-                if (urlResponse.ok) {
-                  const urlData = await urlResponse.json();
-                  setActiveVideoData({
-                    url: urlData.url,
-                    title: row.title,
-                    taskId: row.id,
-                  });
-                  setViewMode("video");
-                  setIsReplayingTask(null);
-                  return;
-                } else {
-                  console.error("Failed to fetch fresh video URL");
-                }
-              } catch (error) {
-                console.error("Error fetching fresh video URL:", error);
-              }
-            }
-          }
+      const recordingResponse = await fetch(`/api/tasks/${row.id}/recording`);
+      if (recordingResponse.ok) {
+        const recordingData = await recordingResponse.json();
+        if (recordingData.url) {
+          setActiveVideoData({
+            url: recordingData.url,
+            title: row.title,
+            taskId: row.id,
+          });
+          setViewMode("video");
+          setIsReplayingTask(null);
+          return;
         }
+      } else if (recordingResponse.status !== 404) {
+        console.error("Failed to fetch recording URL", recordingResponse.status);
       }
 
       // No video found, check if pool is ready before executing new test
