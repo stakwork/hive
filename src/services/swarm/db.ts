@@ -99,6 +99,7 @@ export const select = {
   bifrostTrustSyncedAt: true,
   bifrostAgentsSeedHash: true,
   bifrostAgentsSeedAt: true,
+  gatewayHiveKeyId: true,
 };
 
 export async function saveOrUpdateSwarm(params: SaveOrUpdateSwarmParams) {

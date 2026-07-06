@@ -133,6 +133,19 @@ const MOCK_SWARM_ACCESS = {
     swarmApiKey: "key",
     swarmStatus: "ACTIVE",
     poolName: "pool",
+    swarmSecretAlias: "test-swarm-alias",
+  },
+};
+
+const MOCK_SWARM_ACCESS_NO_ALIAS = {
+  success: true,
+  data: {
+    workspaceId: "ws-1",
+    swarmName: "test-swarm",
+    swarmUrl: "https://swarm.example.com",
+    swarmApiKey: "key",
+    swarmStatus: "ACTIVE",
+    poolName: "pool",
     swarmSecretAlias: null,
   },
 };
@@ -200,6 +213,45 @@ describe("POST /api/workspaces/[slug]/legal/benchmarks/run", () => {
       params: Promise.resolve({ slug: "openlaw" }),
     });
     expect(res.status).toBe(400);
+  });
+
+  test("returns 500 when swarmSecretAlias is null", async () => {
+    (getWorkspaceSwarmAccess as Mock).mockResolvedValue(MOCK_SWARM_ACCESS_NO_ALIAS);
+    const res = await postRun(makeRunRequest({ taskSlug: "task-a", taskTitle: "Task A" }), {
+      params: Promise.resolve({ slug: "openlaw" }),
+    });
+    expect(res.status).toBe(500);
+    const body = await res.json();
+    expect(body.error).toMatch(/swarm secret alias not configured/i);
+  });
+
+  test("returns 500 when swarmSecretAlias is empty string", async () => {
+    (getWorkspaceSwarmAccess as Mock).mockResolvedValue({
+      ...MOCK_SWARM_ACCESS,
+      data: { ...MOCK_SWARM_ACCESS.data, swarmSecretAlias: "" },
+    });
+    const res = await postRun(makeRunRequest({ taskSlug: "task-a", taskTitle: "Task A" }), {
+      params: Promise.resolve({ slug: "openlaw" }),
+    });
+    expect(res.status).toBe(500);
+    const body = await res.json();
+    expect(body.error).toMatch(/swarm secret alias not configured/i);
+  });
+
+  test("does NOT call Stakwork /projects when swarmSecretAlias is null", async () => {
+    (getWorkspaceSwarmAccess as Mock).mockResolvedValue(MOCK_SWARM_ACCESS_NO_ALIAS);
+    const mockFetch = vi.fn();
+    vi.stubGlobal("fetch", mockFetch);
+
+    await postRun(makeRunRequest({ taskSlug: "task-a", taskTitle: "Task A" }), {
+      params: Promise.resolve({ slug: "openlaw" }),
+    });
+
+    // fetch should never be called with the Stakwork projects endpoint
+    const stakworkCalls = mockFetch.mock.calls.filter(([url]: [string]) =>
+      String(url).includes("/projects"),
+    );
+    expect(stakworkCalls).toHaveLength(0);
   });
 
   test("returns 409 when active run already exists", async () => {
@@ -271,6 +323,62 @@ describe("POST /api/workspaces/[slug]/legal/benchmarks/run", () => {
 // POST /run — task context pre-fetch (task_goal, task_output_desc, documents)
 // ═══════════════════════════════════════════════════════════════════════════
 
+describe("POST /run — credential pattern: swarmSecretAlias in payload", () => {
+  beforeEach(() => {
+    (getWorkspaceSwarmAccess as Mock).mockResolvedValue(MOCK_SWARM_ACCESS);
+    mockDbLegalBenchmarkRunFindFirst.mockResolvedValue(null);
+    mockDbLegalBenchmarkRunCreate.mockResolvedValue({ ...MOCK_RUN, id: "run-new", status: "PENDING" });
+    mockDbLegalBenchmarkRunUpdate.mockResolvedValue({ ...MOCK_RUN, id: "run-new", status: "RUNNING" });
+  });
+
+  test("vars.secret equals swarmSecretAlias (not the decrypted apiKey)", async () => {
+    const capturedPayloads: unknown[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockImplementation((url: string, opts?: RequestInit) => {
+        if (String(url).includes("task.json") || String(url).includes("contents")) {
+          return Promise.resolve({ ok: false, status: 404 });
+        }
+        capturedPayloads.push(opts?.body ? JSON.parse(opts.body as string) : null);
+        return Promise.resolve({ ok: true, json: async () => ({ data: { project_id: 99 } }) });
+      }),
+    );
+
+    const res = await postRun(makeRunRequest({ taskSlug: "task-a", taskTitle: "Task A" }), {
+      params: Promise.resolve({ slug: "openlaw" }),
+    });
+    expect(res.status).toBe(201);
+
+    const vars = (capturedPayloads[0] as { workflow_params: { set_var: { attributes: { vars: Record<string, string> } } } }).workflow_params.set_var.attributes.vars;
+    expect(vars.secret).toBe("test-swarm-alias");
+    expect(vars.swarm_secret_alias).toBe("test-swarm-alias");
+    // Decrypted key ("supersecret") must NOT appear in the payload
+    expect(vars.secret).not.toBe("supersecret");
+    expect(JSON.stringify(capturedPayloads[0])).not.toContain("supersecret");
+  });
+
+  test("vars.graph_base_url is still present in the payload", async () => {
+    const capturedPayloads: unknown[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockImplementation((url: string, opts?: RequestInit) => {
+        if (String(url).includes("task.json") || String(url).includes("contents")) {
+          return Promise.resolve({ ok: false, status: 404 });
+        }
+        capturedPayloads.push(opts?.body ? JSON.parse(opts.body as string) : null);
+        return Promise.resolve({ ok: true, json: async () => ({ data: { project_id: 99 } }) });
+      }),
+    );
+
+    await postRun(makeRunRequest({ taskSlug: "task-a", taskTitle: "Task A" }), {
+      params: Promise.resolve({ slug: "openlaw" }),
+    });
+
+    const vars = (capturedPayloads[0] as { workflow_params: { set_var: { attributes: { vars: Record<string, string> } } } }).workflow_params.set_var.attributes.vars;
+    expect(vars.graph_base_url).toBe("https://graph.example.com");
+  });
+});
+
 describe("POST /run — task context pre-fetch for Stakwork vars", () => {
   beforeEach(() => {
     (getWorkspaceSwarmAccess as Mock).mockResolvedValue(MOCK_SWARM_ACCESS);
@@ -319,7 +427,7 @@ describe("POST /run — task context pre-fetch for Stakwork vars", () => {
     const vars = (capturedPayloads[0] as { workflow_params: { set_var: { attributes: { vars: Record<string, string> } } } }).workflow_params.set_var.attributes.vars;
     expect(vars.task_goal).toBe("Do this thing.");
     expect(vars.task_output_desc).toBe("Memo, Summary");
-    expect(JSON.parse(vars.documents)).toEqual(["doc1.txt", "doc2.txt"]);
+    expect(JSON.parse(vars.documents_json)).toEqual(["doc1.txt", "doc2.txt"]);
   });
 
   test("task_output_desc falls back to regex parse of ### Output block when no deliverables", async () => {
@@ -377,7 +485,7 @@ describe("POST /run — task context pre-fetch for Stakwork vars", () => {
     const vars = (capturedPayloads[0] as { workflow_params: { set_var: { attributes: { vars: Record<string, string> } } } }).workflow_params.set_var.attributes.vars;
     expect(vars.task_goal).toBe("");
     expect(vars.task_output_desc).toBe("");
-    expect(JSON.parse(vars.documents)).toEqual([]);
+    expect(JSON.parse(vars.documents_json)).toEqual([]);
   });
 
   test("documents contains only type=file entries, excluding dirs", async () => {
@@ -415,7 +523,7 @@ describe("POST /run — task context pre-fetch for Stakwork vars", () => {
     });
 
     const vars = (capturedPayloads[0] as { workflow_params: { set_var: { attributes: { vars: Record<string, string> } } } }).workflow_params.set_var.attributes.vars;
-    expect(JSON.parse(vars.documents)).toEqual(["contract.pdf", "exhibit.docx"]);
+    expect(JSON.parse(vars.documents_json)).toEqual(["contract.pdf", "exhibit.docx"]);
   });
 });
 
