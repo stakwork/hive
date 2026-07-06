@@ -2,7 +2,7 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "framer-motion";
-import { FileIcon, Loader2, Mic, MicOff, Paperclip, Plus, RefreshCw, Send, Share2, X } from "lucide-react";
+import { FileIcon, GitFork, Loader2, Mic, MicOff, Paperclip, Plus, RefreshCw, Send, Share2, X } from "lucide-react";
 import { useSpeechRecognition } from "@/hooks/useSpeechRecognition";
 import { useControlKeyHold } from "@/hooks/useControlKeyHold";
 import { useVoiceCorrectionCapture } from "@/hooks/useVoiceCorrectionCapture";
@@ -50,6 +50,7 @@ import {
 } from "../_state/canvasChatStore";
 import { useSendCanvasChatMessage } from "../_state/useSendCanvasChatMessage";
 import { useAutomationInbox } from "../_state/useAutomationInbox";
+import { forkCanvasConversation } from "../_state/forkCanvasConversation";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { useCanvasAgentActivity } from "@/hooks/useCanvasAgentActivity";
 import { uploadFileToS3 } from "@/lib/upload-image-to-s3";
@@ -103,15 +104,22 @@ export function SidebarChat({ githubLogin }: SidebarChatProps) {
   );
   // The persisted row id. Sharing flips this row to `isShared` and hands
   // out its id, so the sharer and every joiner live in the *same* room.
-  // Null until autosave has created the row — Share is gated on it.
+  // Null until autosave has created the row — Share/Fork is gated on it.
   const serverConversationId = useCanvasChatStore(
     (s) =>
       (activeId ? s.conversations[activeId]?.serverConversationId : null) ??
       null,
   );
+  // True for the full lifetime of a streaming response (source must be
+  // persisted before we fork it, so fork stays disabled until streaming ends).
+  const isStreaming = useCanvasChatStore(
+    (s) => (activeId ? s.conversations[activeId]?.isStreaming : false) ?? false,
+  );
 
   const { id: workspaceId } = useWorkspace();
   const { isActive } = useCanvasAgentActivity(activeId, workspaceId);
+
+  const [isForking, setIsForking] = useState(false);
 
   const sendMessage = useSendCanvasChatMessage();
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -212,6 +220,34 @@ export function SidebarChat({ githubLogin }: SidebarChatProps) {
       toast.error("Failed to copy share link", {
         description: error instanceof Error ? error.message : "Unknown error",
       });
+    }
+  };
+
+  const handleFork = async () => {
+    if (!serverConversationId || isStreaming || isForking) return;
+    setIsForking(true);
+    try {
+      const forkId = await forkCanvasConversation(githubLogin, serverConversationId);
+      // Swap the URL to the fork without a Next.js navigation / RSC refetch —
+      // same pattern as handleClear (strip ?chat=) and useSendCanvasChatMessage
+      // (set ?chat=).
+      if (typeof window !== "undefined") {
+        const params = new URLSearchParams(window.location.search);
+        params.set("chat", forkId);
+        window.history.replaceState(
+          null,
+          "",
+          `${window.location.pathname}?${params.toString()}`,
+        );
+      }
+      toast.success("Chat forked — you're now in your own copy.");
+    } catch (error) {
+      console.error("Error forking conversation:", error);
+      toast.error("Failed to fork chat", {
+        description: error instanceof Error ? error.message : "Unknown error",
+      });
+    } finally {
+      setIsForking(false);
     }
   };
 
@@ -326,6 +362,15 @@ export function SidebarChat({ githubLogin }: SidebarChatProps) {
             className="p-1.5 rounded hover:bg-muted disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
           >
             <Share2 className="w-4 h-4" />
+          </button>
+          <button
+            type="button"
+            onClick={handleFork}
+            disabled={!serverConversationId || isStreaming || isForking}
+            title="Fork chat"
+            className="p-1.5 rounded hover:bg-muted disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+          >
+            <GitFork className="w-4 h-4" />
           </button>
           <CanvasAgentSettingsPopover githubLogin={githubLogin} />
           <CanvasHistoryPopover githubLogin={githubLogin} />
