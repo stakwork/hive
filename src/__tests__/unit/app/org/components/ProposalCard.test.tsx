@@ -43,17 +43,17 @@ vi.mock("@/components/ui/dialog", () => ({
   DialogContent: ({ children }: { children: React.ReactNode }) => (
     <div data-testid="dialog-content">{children}</div>
   ),
-  DialogHeader: ({ children }: { children: React.ReactNode }) => (
-    <div data-testid="dialog-header">{children}</div>
+  DialogHeader: ({ children, className }: { children: React.ReactNode; className?: string }) => (
+    <div data-slot="dialog-header" data-testid="dialog-header" className={className ?? ""}>{children}</div>
   ),
-  DialogTitle: ({ children }: { children: React.ReactNode }) => (
-    <h2 data-testid="dialog-title">{children}</h2>
+  DialogTitle: ({ children, className }: { children: React.ReactNode; className?: string }) => (
+    <h2 data-slot="dialog-title" data-testid="dialog-title" className={className ?? ""}>{children}</h2>
   ),
 }));
 
 vi.mock("@/components/ui/scroll-area", () => ({
-  ScrollArea: ({ children }: { children: React.ReactNode }) => (
-    <div data-testid="scroll-area">{children}</div>
+  ScrollArea: ({ children, className }: { children: React.ReactNode; className?: string }) => (
+    <div data-slot="scroll-area" data-testid="scroll-area" className={className ?? ""}>{children}</div>
   ),
 }));
 
@@ -369,6 +369,39 @@ describe("ProposalDetailsDialog — feature", () => {
     expect(screen.getByText(/depends on/i)).toBeTruthy();
     expect(screen.getByText("feat-abc123")).toBeTruthy();
     expect(screen.getByText("feat-def456")).toBeTruthy();
+  });
+
+  it("DialogHeader carries min-w-0 to prevent grid overflow", () => {
+    const proposal = makeFeatureProposal({
+      payload: { title: "/api/gateway/evals/very/long/route/path/that/overflows", workspaceId: "ws", description: "overflow test" },
+    });
+    const container = renderAndOpenDialog(proposal);
+    const header = container.querySelector("[data-slot='dialog-header']");
+    expect(header).toBeTruthy();
+    expect(header!.className).toContain("min-w-0");
+  });
+
+  it("DialogTitle carries min-w-0 and break-words to prevent grid overflow", () => {
+    const longTitle = "Gateway→Hive→Eval→Callback→Routes→That→Never→Break";
+    const proposal = makeFeatureProposal({
+      payload: { title: longTitle, workspaceId: "ws", description: "overflow test" },
+    });
+    const container = renderAndOpenDialog(proposal);
+    const title = container.querySelector("[data-slot='dialog-title']");
+    expect(title).toBeTruthy();
+    expect(title!.className).toContain("min-w-0");
+    expect(title!.className).toContain("break-words");
+  });
+
+  it("ScrollArea carries min-w-0 to prevent grid overflow", () => {
+    const proposal = makeFeatureProposal({
+      payload: { title: "X", workspaceId: "ws", description: "/api/very/long/path/that/could/overflow/the/dialog/width" },
+    });
+    const container = renderAndOpenDialog(proposal);
+    // ScrollArea root renders with data-slot="scroll-area"
+    const scrollArea = container.querySelector("[data-slot='scroll-area']");
+    expect(scrollArea).toBeTruthy();
+    expect(scrollArea!.className).toContain("min-w-0");
   });
 });
 
