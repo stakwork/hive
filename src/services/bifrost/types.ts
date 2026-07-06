@@ -300,3 +300,25 @@ export interface SeedAgentsResponse {
     skills: number;
   };
 }
+
+/**
+ * POST /_plugin/hive-callback request body.
+ * Registers Hive's externally-reachable origin and a workspace-scoped
+ * API key with the Bifrost gateway so the gateway can delegate eval
+ * mutations/runs back to Hive.
+ */
+export interface HiveCallbackPayload {
+  /** Externally-reachable Hive origin, e.g. "https://hive.example.com". */
+  hive_url: string;
+  /** Raw (unhashed) Hive workspace API key for gateway callback auth. */
+  api_key: string;
+}
+
+/**
+ * POST /_plugin/hive-callback response body.
+ * ok == true  → gateway accepted and persisted the config.
+ * ok == false → gateway received the request but declined it.
+ */
+export interface HiveCallbackResponse {
+  ok: boolean;
+}
