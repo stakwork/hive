@@ -37,12 +37,51 @@ export interface DefaultAgentSpec {
   description: string;
   /** Override `DEFAULT_AGENT_MODEL` for this agent (none do yet). */
   defaultModel?: string;
+  /**
+   * Skill names this agent *can* load — the palette Hive seeds into the
+   * catalog. Names must exist in `SKILL_DESCRIPTIONS`.
+   */
+  skills?: string[];
+  /** Tool names this agent *can* call — seeded as a palette. */
+  tools?: string[];
 }
+
+/**
+ * The palette of skills / tools the repo-oriented agents seed into the
+ * catalog. Both are just names Hive pushes; which of them are actually
+ * active is a per-swarm boolean toggle in the gateway UI, and the
+ * gateway preserves that toggle across re-seeds (Hive never sends the
+ * enabled/disabled state, only the palette). Order is fixed so the
+ * manifest hash stays stable.
+ */
+export const SKILL_DESCRIPTIONS = {
+  "frontend-design": "Produces polished, production-grade frontend UI.",
+  "code-simplifier": "Refactors code for clarity while preserving behavior.",
+  "security-review": "Reviews code for security vulnerabilities (OWASP).",
+  mermaid: "Authors and edits Mermaid diagrams.",
+} as const satisfies Record<string, string>;
+
+export type SkillName = keyof typeof SKILL_DESCRIPTIONS;
+
+const REPO_AGENT_SKILLS: SkillName[] = Object.keys(
+  SKILL_DESCRIPTIONS,
+) as SkillName[];
+
+const REPO_AGENT_TOOLS = [
+  "repo_overview", "file_summary", "recent_commits", "recent_contributions",
+  "fulltext_search", "web_search", "bash", "final_answer",
+  "ask_clarifying_questions", "list_concepts", "learn_concept",
+  "learn_concepts", "list_workflows", "learn_workflow", "read_workflow_json",
+  "vector_search", "stakgraph_search", "stakgraph_map", "stakgraph_code",
+  "str_replace_based_edit_tool", "apply_patch",
+];
 
 export const DEFAULT_AGENT_SPECS: Record<BifrostAgentName, DefaultAgentSpec> = {
   "repo-agent": {
     displayName: "Repo Agent",
     description: "Answers questions about a repository's code.",
+    skills: REPO_AGENT_SKILLS,
+    tools: REPO_AGENT_TOOLS,
   },
   "chat-agent": {
     displayName: "Chat Agent",
@@ -55,6 +94,8 @@ export const DEFAULT_AGENT_SPECS: Record<BifrostAgentName, DefaultAgentSpec> = {
   "diagram-agent": {
     displayName: "Diagram Agent",
     description: "Generates and edits architecture diagrams.",
+    skills: REPO_AGENT_SKILLS,
+    tools: REPO_AGENT_TOOLS,
   },
   "logs-agent": {
     displayName: "Logs Agent",
@@ -63,6 +104,14 @@ export const DEFAULT_AGENT_SPECS: Record<BifrostAgentName, DefaultAgentSpec> = {
   "plan-agent": {
     displayName: "Plan Agent",
     description: "Breaks work into an actionable plan.",
+    skills: REPO_AGENT_SKILLS,
+    tools: REPO_AGENT_TOOLS,
+  },
+  "wfe-plan-agent": {
+    displayName: "Workflow Editor Plan Agent",
+    description: "Plans changes within the workflow editor.",
+    skills: REPO_AGENT_SKILLS,
+    tools: REPO_AGENT_TOOLS,
   },
   "coding-agent": {
     displayName: "Coder Agent",
@@ -92,6 +141,21 @@ export const DEFAULT_AGENT_SPECS: Record<BifrostAgentName, DefaultAgentSpec> = {
  * agents. Only agents with at least one prompt appear as keys.
  */
 export type AgentPromptNames = Record<string, string[]>;
+
+/** The two prompt slots the catalog distinguishes. */
+export type PromptRole = "SYSTEM" | "USER";
+
+/**
+ * Infer a prompt's role from its name. Prompt names are
+ * UPPERCASE_UNDERSCORE (see the `Prompt.name` schema comment), so a
+ * `SYSTEM` token delimited by underscores or string boundaries marks
+ * the system prompt (e.g. `REPO_AGENT_SYSTEM`, `SYSTEM_PROMPT`).
+ * Everything else is the main/user prompt. Word-boundary matching
+ * avoids false hits like `SUBSYSTEM`.
+ */
+export function inferPromptRole(name: string): PromptRole {
+  return /(^|_)SYSTEM(_|$)/i.test(name) ? "SYSTEM" : "USER";
+}
 
 /**
  * Load the prompt-name links for every agent from `Prompt.agentNames`.
@@ -138,7 +202,21 @@ export function buildAgentCatalogManifest(
         default_model: spec.defaultModel ?? DEFAULT_AGENT_MODEL,
       };
       if (promptNames.length > 0) {
-        agent.prompts = promptNames.map((promptName) => ({ name: promptName }));
+        agent.prompts = promptNames.map((promptName) => ({
+          name: promptName,
+          role: inferPromptRole(promptName),
+        }));
+      }
+      const skillNames = spec.skills ?? [];
+      if (skillNames.length > 0) {
+        agent.skills = skillNames.map((skillName) => ({
+          name: skillName,
+          description: SKILL_DESCRIPTIONS[skillName as SkillName],
+        }));
+      }
+      const toolNames = spec.tools ?? [];
+      if (toolNames.length > 0) {
+        agent.tools = toolNames.map((toolName) => ({ name: toolName }));
       }
       return agent;
     },
