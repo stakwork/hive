@@ -218,6 +218,7 @@ export function OrgCanvasBackground({
     dirtyRef,
     applyMutation,
     onResolveCanvas,
+    scheduleSave,
   } = useCanvasPersistence({ githubLogin });
   /**
    * Current canvas scope as the user has it open. `""` is root; any
@@ -1142,6 +1143,30 @@ export function OrgCanvasBackground({
    * library calls this render-prop on every render, so the menu
    * tracks scope changes automatically.
    */
+  /**
+   * Persist the canvas snapshot after an undo/redo step. The library has
+   * already applied the history state before this fires, so we simply read
+   * whatever is in memory for the affected ref and schedule a debounced save.
+   *
+   * The `scheduleSave` call goes through the same debounce path as every
+   * other mutation, so rapid Cmd+Z presses collapse into a single network
+   * request. No delta is applied — it is a pure snapshot save, which avoids
+   * the double-save risk of re-running any of the delta handlers.
+   */
+  const handleUndo = useCallback(
+    (canvasRef: string | undefined) => {
+      scheduleSave(canvasRef);
+    },
+    [scheduleSave],
+  );
+
+  const handleRedo = useCallback(
+    (canvasRef: string | undefined) => {
+      scheduleSave(canvasRef);
+    },
+    [scheduleSave],
+  );
+
   const renderAddNodeButton = (props: AddNodeButtonRenderProps) => {
     addNodeFnRef.current = props.addNode;
     menuOptionsRef.current = props.options;
@@ -1200,6 +1225,9 @@ export function OrgCanvasBackground({
           onEdgeDelete={handleEdgeDelete}
           canDropNodeOn={canDropNodeOn}
           onNodeDrop={handleNodeDrop}
+          onUndo={handleUndo}
+          onRedo={handleRedo}
+          historyDepth={100}
           nodeContextMenu={nodeContextMenu}
           canvasContextMenu={canvasContextMenu}
           renderAddNodeButton={renderAddNodeButton}

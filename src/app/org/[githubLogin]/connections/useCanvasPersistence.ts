@@ -63,6 +63,13 @@ interface UseCanvasPersistenceReturn {
     mutate: (data: CanvasData) => CanvasData,
   ) => void;
   onResolveCanvas: (ref: string) => Promise<CanvasData>;
+  /**
+   * Snapshot the current canvas state for the given ref and schedule a
+   * debounced save. Intended for undo/redo handlers where the library has
+   * already applied the history state and we just need to persist whatever
+   * is currently in memory.
+   */
+  scheduleSave: (canvasRef: string | undefined) => void;
 }
 
 export function useCanvasPersistence({
@@ -184,6 +191,18 @@ export function useCanvasPersistence({
     [githubLogin],
   );
 
+  const scheduleSave = useCallback(
+    (canvasRef: string | undefined) => {
+      const data =
+        canvasRef === undefined
+          ? rootRef.current
+          : subCanvasesRef.current[canvasRef];
+      if (!data) return;
+      markDirty(canvasRef, data);
+    },
+    [markDirty],
+  );
+
   return {
     root,
     setRoot,
@@ -196,5 +215,6 @@ export function useCanvasPersistence({
     dirtyRef,
     applyMutation,
     onResolveCanvas,
+    scheduleSave,
   };
 }
