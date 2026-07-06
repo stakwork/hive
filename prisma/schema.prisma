@@ -556,6 +556,8 @@ model Task {
   bountyCode             String?               @unique @map("bounty_code")
   testFilePath           String?               @map("test_file_path")
   testFileUrl            String?               @map("test_file_url")
+  lastRecordingS3Key     String?               @map("last_recording_s3_key")
+  lastRecordingAt        DateTime?             @map("last_recording_at")
   agentPassword          String?               @map("agent_password")
   agentUrl               String?               @map("agent_url")
   archived               Boolean               @default(false)
