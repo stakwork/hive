@@ -120,8 +120,8 @@ export function TaskDetailsModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[80vh] flex flex-col overflow-hidden" style={{ backgroundColor: 'var(--background)' }}>
-        <DialogHeader>
+      <DialogContent className="max-w-2xl h-[80vh] flex flex-col overflow-hidden p-0" style={{ backgroundColor: 'var(--background)' }}>
+        <DialogHeader className="px-6 pt-6 pb-0 pr-10 shrink-0">
           <DialogTitle>{task.title}</DialogTitle>
           <div className="flex flex-wrap gap-2 mt-1">
             <Badge
@@ -145,7 +145,7 @@ export function TaskDetailsModal({
           </div>
         </DialogHeader>
 
-        <ScrollArea className="flex-1 min-h-0 pr-1">
+        <ScrollArea className="flex-1 min-h-0 px-6 py-4">
           <div className="p-1">
             {loading ? (
               <DetailsSkeleton />
@@ -256,7 +256,7 @@ export function TaskDetailsModal({
           </div>
         </ScrollArea>
 
-        <DialogFooter className="border-t pt-4 gap-2">
+        <DialogFooter className="border-t px-6 py-4 gap-2 shrink-0">
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Close
           </Button>
