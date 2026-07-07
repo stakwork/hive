@@ -27,7 +27,7 @@ vi.mock("@/lib/pusher", () => ({
   getPusherClient: vi.fn(() => mockPusherClient),
   getWorkspaceChannelName: vi.fn((slug: string) => `workspace-${slug}`),
   PUSHER_EVENTS: {
-    LEGAL_BENCHMARK_UPDATE: "legal-benchmark-update",
+    STAKWORK_RUN_UPDATE: "stakwork-run-update",
   },
 }));
 
@@ -90,33 +90,53 @@ describe("useLegalBenchmarkRun", () => {
     });
   });
 
-  it("subscribes to Pusher channel on mount", async () => {
+  it("subscribes to Pusher channel on mount using STAKWORK_RUN_UPDATE event", async () => {
     renderHook(() => useLegalBenchmarkRun(runId));
 
     await waitFor(() => {
       expect(mockPusherClient.subscribe).toHaveBeenCalledWith("workspace-openlaw");
       expect(mockChannel.bind).toHaveBeenCalledWith(
-        "legal-benchmark-update",
+        "stakwork-run-update",
         expect.any(Function)
       );
     });
   });
 
-  it("refetches when Pusher event has matching run_id", async () => {
+  it("refetches when Pusher STAKWORK_RUN_UPDATE event has matching runId", async () => {
     renderHook(() => useLegalBenchmarkRun(runId));
 
     await waitFor(() => {
       expect(global.fetch).toHaveBeenCalledTimes(1);
     });
 
-    // Get the bound handler
+    // Get the bound handler for the new event name
     const handler = mockChannel.bind.mock.calls.find(
-      ([event]) => event === "legal-benchmark-update"
+      ([event]) => event === "stakwork-run-update"
     )?.[1];
 
     expect(handler).toBeDefined();
 
-    // Fire event with matching run_id
+    // Fire event with matching runId (new shape uses `runId` not `run_id`)
+    act(() => {
+      handler({ runId: runId, status: "SCORING" });
+    });
+
+    await waitFor(() => {
+      expect(global.fetch).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  it("also refetches when Pusher event uses legacy run_id field with matching value", async () => {
+    renderHook(() => useLegalBenchmarkRun(runId));
+
+    await waitFor(() => {
+      expect(global.fetch).toHaveBeenCalledTimes(1);
+    });
+
+    const handler = mockChannel.bind.mock.calls.find(
+      ([event]) => event === "stakwork-run-update"
+    )?.[1];
+
     act(() => {
       handler({ run_id: runId, status: "SCORING" });
     });
@@ -126,7 +146,7 @@ describe("useLegalBenchmarkRun", () => {
     });
   });
 
-  it("does NOT refetch when Pusher event has non-matching run_id", async () => {
+  it("does NOT refetch when Pusher event has non-matching runId", async () => {
     renderHook(() => useLegalBenchmarkRun(runId));
 
     await waitFor(() => {
@@ -134,12 +154,12 @@ describe("useLegalBenchmarkRun", () => {
     });
 
     const handler = mockChannel.bind.mock.calls.find(
-      ([event]) => event === "legal-benchmark-update"
+      ([event]) => event === "stakwork-run-update"
     )?.[1];
 
-    // Fire event with different run_id
+    // Fire event with different runId
     act(() => {
-      handler({ run_id: "different-run-id", status: "SCORING" });
+      handler({ runId: "different-run-id", status: "SCORING" });
     });
 
     // Should still only have been called once
@@ -216,18 +236,18 @@ describe("useLegalBenchmarkRun", () => {
 
     expect(result.current.isStale).toBe(true);
 
-    // Now simulate a COMPLETE status update via Pusher
+    // Now simulate a COMPLETE status update via Pusher (using new event name + shape)
     vi.mocked(global.fetch).mockResolvedValue({
       ok: true,
       json: async () => ({ run: { ...staleRun, status: "COMPLETE" } }),
     } as Response);
 
     const handler = mockChannel.bind.mock.calls.find(
-      ([event]) => event === "legal-benchmark-update"
+      ([event]) => event === "stakwork-run-update"
     )?.[1];
 
     await act(async () => {
-      handler({ run_id: runId, status: "COMPLETE" });
+      handler({ runId: runId, status: "COMPLETE" });
       await Promise.resolve();
     });
 

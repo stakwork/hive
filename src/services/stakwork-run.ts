@@ -5,6 +5,7 @@ import {
   StakworkRunDecision,
   Prisma,
 } from "@prisma/client";
+import { createHmac, timingSafeEqual, randomUUID } from "crypto";
 import {
   CreateStakworkRunInput,
   StakworkRunWebhookPayload,
@@ -37,6 +38,9 @@ import { sendToSphinx } from "@/lib/sphinx/daily-pr-summary";
 import { saveWorkflowArtifact } from "@/services/workflow-editor";
 import { canAccessServerFeature, FEATURE_FLAGS } from "@/lib/feature-flags";
 import { getBifrostForLLM } from "@/services/bifrost/orchestrator";
+import { optionalEnvVars } from "@/config/env";
+import { getJarvisConfigForWorkspace } from "@/lib/helpers/jarvis-config";
+import { addNode, addEdge } from "@/services/swarm/api/nodes";
 
 const encryptionService = EncryptionService.getInstance();
 
@@ -792,6 +796,7 @@ export async function processStakworkRunWebhook(
     whiteboard_id?: string;
     layout?: string;
     run_id?: string;
+    run_token?: string;
   }
 ) {
   const { result, project_status, project_id, recap_unchanged } = webhookData;
@@ -818,7 +823,9 @@ export async function processStakworkRunWebhook(
         ...(run_id ? [{ id: run_id, workspaceId: workspace_id }] : []),
         // Only include projectId arm when it is actually present; omitting it
         // avoids `{ projectId: undefined }` which Prisma treats as match-all.
-        ...(project_id ? [{ projectId: project_id }] : []),
+        // Always scope by workspaceId so a projectId value from a different
+        // workspace cannot resolve a run here (cross-workspace IDOR).
+        ...(project_id ? [{ projectId: project_id, workspaceId: workspace_id }] : []),
         // Workspace-scoped fallback — only when no exact run_id was supplied.
         // When run_id is present the exact-id arm above is the sole resolver,
         // preventing findFirst from silently picking a different user's run.
@@ -860,6 +867,23 @@ export async function processStakworkRunWebhook(
 
   logger.info("[webhook] Found run", "stakwork-run", { runId: run.id, run_id, runStatus: run.status, runType: run.type });
 
+  // ── Security: workspace scoping for projectId-resolved runs ────────────
+  // When the run was resolved via the projectId arm (no exact run_id supplied),
+  // assert that the resolved run still belongs to the requested workspace.
+  // This prevents a projectId collision from targeting a run in a different workspace.
+  if (
+    (run.type === StakworkRunType.LEGAL_BENCHMARK_RUNNER ||
+      run.type === StakworkRunType.LEGAL_BENCHMARK_SCORER) &&
+    run.workspaceId !== workspace_id
+  ) {
+    logger.error("[legal-benchmark] Workspace mismatch — rejecting webhook", "stakwork-run", {
+      runId: run.id,
+      runWorkspaceId: run.workspaceId,
+      requestedWorkspaceId: workspace_id,
+    });
+    throw new Error("Unauthorized: workspace mismatch");
+  }
+
   // Map Stakwork status to our internal status
   const status = project_status
     ? mapStakworkStatus(project_status)
@@ -886,6 +910,71 @@ export async function processStakworkRunWebhook(
       }
       serializedResult = JSON.stringify(obj);
     }
+  }
+
+  // ── Security: run_token verification for Legal Benchmark webhooks ──────
+  // Each LEGAL_BENCHMARK_RUNNER webhook_url embeds a HMAC-SHA256 token over
+  // the runner run id. Verify it before any DB write or Stakwork dispatch.
+  // This closes the unauthenticated-webhook gap on these endpoints.
+  if (
+    run.type === StakworkRunType.LEGAL_BENCHMARK_RUNNER ||
+    run.type === StakworkRunType.LEGAL_BENCHMARK_SCORER
+  ) {
+    const { run_token } = queryParams;
+    const webhookSecret = process.env.NEXTAUTH_SECRET ?? "";
+
+    // Determine the root runner run id — for scorer webhooks, resolve via siblingRunId
+    let rootRunId: string = run.id;
+    if (run.type === StakworkRunType.LEGAL_BENCHMARK_SCORER) {
+      try {
+        const scorerResult = run.result ? (JSON.parse(run.result) as Record<string, unknown>) : {};
+        rootRunId = (scorerResult.siblingRunId as string) ?? run.id;
+      } catch {
+        rootRunId = run.id;
+      }
+    }
+
+    const expected = createHmac("sha256", webhookSecret).update(rootRunId).digest("hex");
+    let tokenValid = false;
+    try {
+      if (run_token && run_token.length === expected.length) {
+        tokenValid = timingSafeEqual(Buffer.from(run_token, "hex"), Buffer.from(expected, "hex"));
+      }
+    } catch {
+      tokenValid = false;
+    }
+
+    if (!tokenValid) {
+      logger.error("[legal-benchmark] Invalid or missing run_token — rejecting", "stakwork-run", {
+        runId: run.id,
+        type: run.type,
+      });
+      throw new Error("Unauthorized: invalid run token");
+    }
+  }
+
+  // ── For Legal Benchmark types: merge result into existing JSON ──────────
+  // The runner/scorer rows were created with correlation data in `result`
+  // (taskSlug, taskTitle, siblingRunId, evalTriggerRef). We must merge the
+  // incoming Harvey output into the existing JSON rather than overwrite it,
+  // so those correlation fields are never lost.
+  if (
+    (run.type === StakworkRunType.LEGAL_BENCHMARK_RUNNER ||
+      run.type === StakworkRunType.LEGAL_BENCHMARK_SCORER) &&
+    serializedResult !== null
+  ) {
+    const incomingFields =
+      typeof result === "object" && result !== null
+        ? (result as Record<string, unknown>)
+        : {};
+    let existingResult: Record<string, unknown> = {};
+    try {
+      existingResult = run.result ? (JSON.parse(run.result) as Record<string, unknown>) : {};
+    } catch {
+      // Malformed existing JSON — start fresh (but we still lose the correlation
+      // data, which is better than crashing).
+    }
+    serializedResult = JSON.stringify({ ...existingResult, ...incomingFields });
   }
 
   // Step 1: Atomic update to prevent race conditions
@@ -939,6 +1028,44 @@ export async function processStakworkRunWebhook(
       logger.error("[prompt-eval] Pusher trigger failed (non-fatal)", "stakwork-run", { error: String(pusherError) });
     }
     // Auto-accept and fast-track do not apply to evals
+    return { runId: run.id, status, dataType };
+  }
+
+  // ── Step 2b: LEGAL_BENCHMARK_RUNNER — persist output, fire scorer ───────
+  if (run.type === StakworkRunType.LEGAL_BENCHMARK_RUNNER) {
+    await processLegalBenchmarkRunnerWebhook(run, serializedResult, queryParams.workspace_id);
+    // Broadcast via shared STAKWORK_RUN_UPDATE (same as every other run type)
+    try {
+      const channelName = getWorkspaceChannelName(run.workspace.slug);
+      await pusherServer.trigger(channelName, PUSHER_EVENTS.STAKWORK_RUN_UPDATE, {
+        runId: run.id,
+        type: run.type,
+        status,
+        featureId: run.featureId,
+        timestamp: new Date(),
+      });
+    } catch (pusherError) {
+      logger.error("[legal-benchmark] Pusher trigger failed (non-fatal)", "stakwork-run", { error: String(pusherError) });
+    }
+    return { runId: run.id, status, dataType };
+  }
+
+  // ── Step 2c: LEGAL_BENCHMARK_SCORER — persist scores, write EvalOutput ──
+  if (run.type === StakworkRunType.LEGAL_BENCHMARK_SCORER) {
+    await processLegalBenchmarkScorerWebhook(run, serializedResult);
+    // Broadcast via shared STAKWORK_RUN_UPDATE
+    try {
+      const channelName = getWorkspaceChannelName(run.workspace.slug);
+      await pusherServer.trigger(channelName, PUSHER_EVENTS.STAKWORK_RUN_UPDATE, {
+        runId: run.id,
+        type: run.type,
+        status,
+        featureId: run.featureId,
+        timestamp: new Date(),
+      });
+    } catch (pusherError) {
+      logger.error("[legal-benchmark] Pusher trigger failed (non-fatal)", "stakwork-run", { error: String(pusherError) });
+    }
     return { runId: run.id, status, dataType };
   }
 
@@ -1298,6 +1425,255 @@ export async function processStakworkRunWebhook(
     status,
     dataType,
   };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Legal Benchmark webhook helpers
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Allowlisted S3 host pattern for Harvey LAB output URLs.
+ * Must be https:// and must match the Stakwork uploads bucket domain.
+ * Reject anything else to prevent SSRF via `output_s3_url`.
+ */
+const ALLOWED_S3_HOST_PATTERN = /^https:\/\/[a-zA-Z0-9-]+\.s3\.[a-z0-9-]+\.amazonaws\.com(\/|$)/;
+
+function isAllowedS3Url(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === "https:" && ALLOWED_S3_HOST_PATTERN.test(url);
+  } catch {
+    return false;
+  }
+}
+
+type RunWithWorkspace = {
+  id: string;
+  workspaceId: string;
+  result: string | null;
+  workspace: { slug: string };
+};
+
+/**
+ * Handle the LEGAL_BENCHMARK_RUNNER webhook stage:
+ *  1. Merge runner output (final_output, output_s3_url) into the run's result JSON.
+ *  2. Validate output_s3_url against the S3 allowlist; mark FAILED + return if invalid.
+ *  3. Fire the scorer Stakwork project and mark the scorer run IN_PROGRESS.
+ */
+async function processLegalBenchmarkRunnerWebhook(
+  run: RunWithWorkspace,
+  serializedResult: string | null,
+  workspaceId: string,
+): Promise<void> {
+  // Extract final_output and output_s3_url from the (already merged) result
+  let resultJson: Record<string, unknown> = {};
+  try {
+    resultJson = serializedResult ? (JSON.parse(serializedResult) as Record<string, unknown>) : {};
+  } catch {
+    logger.error("[legal-benchmark/runner] Failed to parse serialized result", "stakwork-run", { runId: run.id });
+  }
+
+  const finalOutput = resultJson.final_output as string | undefined;
+  const outputS3Url = resultJson.output_s3_url as string | undefined;
+
+  // SSRF guard: validate output_s3_url against allowlist before firing scorer
+  if (outputS3Url && !isAllowedS3Url(outputS3Url)) {
+    logger.error("[legal-benchmark/runner] output_s3_url rejected (not on allowlist)", "stakwork-run", {
+      runId: run.id,
+      url: outputS3Url,
+    });
+    await db.stakworkRun.update({
+      where: { id: run.id },
+      data: { status: WorkflowStatus.FAILED },
+    });
+    return;
+  }
+
+  // Merge runner output fields into persisted result
+  const mergedResult: Record<string, unknown> = {
+    ...resultJson,
+    ...(finalOutput !== undefined ? { runnerOutputText: finalOutput } : {}),
+    ...(outputS3Url !== undefined ? { runnerOutputUrl: outputS3Url } : {}),
+  };
+
+  await db.stakworkRun.update({
+    where: { id: run.id },
+    data: { result: JSON.stringify(mergedResult) },
+  });
+
+  // Resolve sibling scorer run
+  const scorerRunId = mergedResult.siblingRunId as string | undefined;
+  if (!scorerRunId) {
+    logger.error("[legal-benchmark/runner] siblingRunId missing — cannot fire scorer", "stakwork-run", { runId: run.id });
+    return;
+  }
+
+  const scorerRow = await db.stakworkRun.findUnique({
+    where: { id: scorerRunId },
+    select: { id: true, result: true, workspaceId: true },
+  });
+  if (!scorerRow || scorerRow.workspaceId !== workspaceId) {
+    logger.error("[legal-benchmark/runner] Scorer run not found or workspace mismatch", "stakwork-run", {
+      runId: run.id,
+      scorerRunId,
+    });
+    return;
+  }
+
+  // Merge taskSlug into the scorer result so scorer webhook can use it
+  let scorerResult: Record<string, unknown> = {};
+  try {
+    scorerResult = scorerRow.result ? (JSON.parse(scorerRow.result) as Record<string, unknown>) : {};
+  } catch {
+    // ignore
+  }
+  const taskSlug = mergedResult.taskSlug as string | undefined;
+
+  const scorerWorkflowId = process.env.STAKWORK_HARVEY_SCORER_WORKFLOW_ID;
+  if (!scorerWorkflowId) {
+    logger.error("[legal-benchmark/runner] STAKWORK_HARVEY_SCORER_WORKFLOW_ID not configured", "stakwork-run", { runId: run.id });
+    return;
+  }
+
+  const baseUrl = process.env.NEXTAUTH_URL || "http://localhost:3000";
+  // The scorer webhook token is derived from the runner run id (same root)
+  const webhookSecret = process.env.NEXTAUTH_SECRET ?? "";
+  const runToken = createHmac("sha256", webhookSecret).update(run.id).digest("hex");
+  const scorerWebhookUrl = `${baseUrl}/api/webhook/stakwork/response?type=${StakworkRunType.LEGAL_BENCHMARK_SCORER}&run_id=${scorerRunId}&workspace_id=${workspaceId}&run_token=${runToken}`;
+
+  const scorerPayload = {
+    name: `harvey-scorer-${scorerRunId}`,
+    workflow_id: parseInt(scorerWorkflowId, 10),
+    webhook_url: scorerWebhookUrl,
+    workflow_params: {
+      set_var: {
+        attributes: {
+          vars: {
+            task_slug: taskSlug ?? "",
+            candidate_s3_url: outputS3Url ?? "",
+          },
+        },
+      },
+    },
+  };
+
+  logger.info("[legal-benchmark/runner] Firing scorer Stakwork project", "stakwork-run", {
+    runId: run.id,
+    scorerRunId,
+    taskSlug,
+  });
+
+  try {
+    const scorerResponse = await fetch(`${optionalEnvVars.STAKWORK_BASE_URL}/projects`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Token token="${optionalEnvVars.STAKWORK_API_KEY}"`,
+      },
+      body: JSON.stringify(scorerPayload),
+    });
+
+    if (scorerResponse.ok) {
+      const scorerData = await scorerResponse.json() as { data?: { project_id?: number }; project_id?: number };
+      const scorerProjectId: number | undefined = scorerData?.data?.project_id ?? scorerData?.project_id;
+
+      logger.info("[legal-benchmark/runner] Scorer project created", "stakwork-run", {
+        runId: run.id,
+        scorerRunId,
+        scorerProjectId,
+      });
+
+      // Mark scorer IN_PROGRESS and record its project id
+      await db.stakworkRun.update({
+        where: { id: scorerRunId },
+        data: {
+          status: WorkflowStatus.IN_PROGRESS,
+          projectId: scorerProjectId ?? null,
+          result: JSON.stringify({ ...scorerResult, scorerProjectId }),
+        },
+      });
+    } else {
+      logger.error("[legal-benchmark/runner] Scorer Stakwork call failed", "stakwork-run", {
+        runId: run.id,
+        scorerRunId,
+        httpStatus: scorerResponse.status,
+      });
+    }
+  } catch (err) {
+    logger.error("[legal-benchmark/runner] Scorer fire threw (non-fatal)", "stakwork-run", {
+      runId: run.id,
+      error: String(err),
+    });
+  }
+}
+
+/**
+ * Handle the LEGAL_BENCHMARK_SCORER webhook stage:
+ *  1. Merge scoreJson into the scorer run result JSON.
+ *  2. Write Jarvis EvalTriggerOutput nodes (non-fatal).
+ */
+async function processLegalBenchmarkScorerWebhook(
+  run: RunWithWorkspace,
+  serializedResult: string | null,
+): Promise<void> {
+  // Extract scores from the (already merged) result
+  let resultJson: Record<string, unknown> = {};
+  try {
+    resultJson = serializedResult ? (JSON.parse(serializedResult) as Record<string, unknown>) : {};
+  } catch {
+    logger.error("[legal-benchmark/scorer] Failed to parse serialized result", "stakwork-run", { runId: run.id });
+  }
+
+  const scores = resultJson.scores as Array<{ pass: boolean; criterion: string; notes: string }> | undefined;
+
+  // Persist scoreJson into result
+  const mergedResult: Record<string, unknown> = {
+    ...resultJson,
+    ...(scores !== undefined ? { scoreJson: JSON.stringify(scores) } : {}),
+  };
+
+  await db.stakworkRun.update({
+    where: { id: run.id },
+    data: { result: JSON.stringify(mergedResult) },
+  });
+
+  // Non-fatal Jarvis EvalTriggerOutput instrumentation
+  const evalTriggerRef = mergedResult.evalTriggerRef as string | undefined;
+  if (evalTriggerRef && scores) {
+    try {
+      const jarvisConfig = await getJarvisConfigForWorkspace(run.workspaceId);
+      if (jarvisConfig) {
+        for (const score of scores) {
+          const outputResult = await addNode(jarvisConfig, {
+            node_type: "EvalTriggerOutput",
+            node_data: {
+              id: randomUUID(),
+              result: score.pass ? "pass" : "fail",
+              score: score.pass ? 1.0 : 0.0,
+              attempt_number: 1,
+              judge_notes: `${score.criterion}: ${score.notes}`,
+            },
+          });
+          if (outputResult.success && outputResult.ref_id) {
+            await addEdge(jarvisConfig, {
+              edge: { edge_type: "HAS_OUTPUT" },
+              source: { ref_id: evalTriggerRef },
+              target: { ref_id: outputResult.ref_id },
+            });
+          }
+        }
+        logger.info("[legal-benchmark/scorer] EvalTriggerOutput nodes written", "stakwork-run", {
+          runId: run.id,
+          criteriaCount: scores.length,
+        });
+      }
+    } catch (err) {
+      logger.error("[legal-benchmark/scorer] EvalTriggerOutput graph write failed (non-fatal)", "stakwork-run", {
+        runId: run.id,
+        error: String(err),
+      });
+    }
+  }
 }
 
 /**
