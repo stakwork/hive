@@ -222,7 +222,7 @@ export function askToolsMulti(
 
     // repo_agent (deep code analysis)
     allTools[`${prefix}__repo_agent`] = tool({
-      description: `[${ws.slug}] Execute AI agent for deep code analysis in ${ws.slug}. Also has the GitHub \`gh\` CLI for read-only GitHub inspection: reading issues/PRs (bodies, comments, review threads), checking CI / workflow / check-suite status, and looking at other repos. Prefer the lighter ${prefix}__recent_commits / ${prefix}__recent_contributions tools for plain commit or PR-by-author lookups; use repo_agent when a GitHub question needs real investigation. Heavy/slow — use as LAST RESORT.`,
+      description: `[${ws.slug}] Execute AI agent for deep code analysis in ${ws.slug}. Also has the GitHub \`gh\` CLI for read-only GitHub inspection: reading issues/PRs (bodies, comments, review threads), checking CI / workflow / check-suite status, and looking at other repos. Prefer the lighter ${prefix}__recent_commits / ${prefix}__recent_contributions tools for plain commit or PR-by-author lookups; use repo_agent when a GitHub question needs real investigation. STRICTLY READ-ONLY: investigation only — NEVER instruct it to edit code, write/modify files, open a PR, or run/apply a database migration. Actual code changes, new features, and schema migrations must go through \`propose_feature\`, not this tool. Heavy/slow — use as LAST RESORT.`,
       inputSchema: z.object({
         prompt: z.string().describe("The question for the repo agent"),
       }),
