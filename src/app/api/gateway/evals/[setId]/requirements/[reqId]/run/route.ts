@@ -12,7 +12,7 @@
  */
 import { NextRequest, NextResponse } from "next/server";
 import { resolveGatewayAuth } from "@/lib/evals/gateway-auth";
-import { dispatchEvalTriggerRun, fetchTriggerSource } from "@/lib/evals/dispatch-eval-trigger-run";
+import { dispatchEvalTriggerRun, fetchTriggerMeta } from "@/lib/evals/dispatch-eval-trigger-run";
 import type { EvalTriggerSource } from "@/lib/utils/eval-source";
 
 type RouteParams = { params: Promise<{ setId: string; reqId: string }> };
@@ -20,8 +20,9 @@ type RouteParams = { params: Promise<{ setId: string; reqId: string }> };
 interface TriggerNode {
   ref_id: string;
   node_type?: string;
-  properties?: { source?: string };
+  properties?: { source?: string; agent?: string };
   source?: string;
+  agent?: string;
 }
 
 export async function POST(request: NextRequest, { params }: RouteParams) {
@@ -43,8 +44,19 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
 
     const { setId, reqId } = await params;
 
+    // Optional per-run agent override — the gateway UI sends
+    // `{ "agent": "" }` by default, so treat empty/absent as no override.
+    let agentOverride: string | undefined;
+    try {
+      const body = await request.json();
+      const raw = body?.agent;
+      if (typeof raw === "string" && raw.trim()) agentOverride = raw.trim();
+    } catch {
+      // No/invalid JSON body is fine — the override is optional.
+    }
+
     console.log(
-      `[Gateway Evals Run POST] workspaceId=${workspaceId}, keyId=${keyId}, setId=${setId}, reqId=${reqId}, userId=${userId}`,
+      `[Gateway Evals Run POST] workspaceId=${workspaceId}, keyId=${keyId}, setId=${setId}, reqId=${reqId}, userId=${userId}, agentOverride=${agentOverride ?? "none"}`,
     );
 
     // ── Fetch requirement's HAS_TRIGGER triggers ──────────────────────────
@@ -83,13 +95,17 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
 
     for (const trigger of triggers) {
       try {
-        // Resolve source from the trigger node itself if available, else fetch
+        // Resolve source + agent from the trigger node itself if available,
+        // else fetch. The per-run body override beats the stored agent.
         let triggerSource: EvalTriggerSource =
           (trigger.properties?.source ?? trigger.source ?? "") as EvalTriggerSource;
+        let triggerAgent: string | undefined =
+          trigger.properties?.agent ?? trigger.agent ?? undefined;
 
         if (!triggerSource || !["repo_agent", "provider_direct", "jamie_agent"].includes(triggerSource)) {
-          const fetched = await fetchTriggerSource(jarvisUrl, swarmApiKey, trigger.ref_id);
+          const fetched = await fetchTriggerMeta(jarvisUrl, swarmApiKey, trigger.ref_id);
           triggerSource = fetched.source;
+          triggerAgent = triggerAgent ?? fetched.agent;
         }
 
         const result = await dispatchEvalTriggerRun({
@@ -104,6 +120,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
           swarmUrl,
           swarmSecretAlias,
           triggerSource,
+          agentName: agentOverride ?? triggerAgent,
         });
 
         project_ids.push(result.project_id);
