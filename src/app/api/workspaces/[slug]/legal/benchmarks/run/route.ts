@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { randomUUID } from "crypto";
+import { randomUUID, createHmac } from "crypto";
 import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 import { getWorkspaceSwarmAccess } from "@/lib/helpers/swarm-access";
 import { db } from "@/lib/db";
@@ -265,7 +265,11 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     // ─────────────────────────────────────────────────────────────────────────
 
     // Build correct webhook URL now that we have the runner id, then update the row
-    const webhookUrl = `${baseUrl}/api/webhook/stakwork/response?type=${StakworkRunType.LEGAL_BENCHMARK_RUNNER}&run_id=${runnerRun.id}&workspace_id=${workspaceId}`;
+    // Embed a signed run token so the generic webhook can verify the caller
+    // is legitimately Stakwork for this specific run (HMAC-SHA256 over runId).
+    const webhookSecret = process.env.NEXTAUTH_SECRET ?? "";
+    const runToken = createHmac("sha256", webhookSecret).update(runnerRun.id).digest("hex");
+    const webhookUrl = `${baseUrl}/api/webhook/stakwork/response?type=${StakworkRunType.LEGAL_BENCHMARK_RUNNER}&run_id=${runnerRun.id}&workspace_id=${workspaceId}&run_token=${runToken}`;
     await db.stakworkRun.update({
       where: { id: runnerRun.id },
       data: { webhookUrl },
