@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 import { getWorkspaceSwarmAccess } from "@/lib/helpers/swarm-access";
-import { db } from "@/lib/db";
+import { db as _db } from "@/lib/db";
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const db = _db as any;
 
 type RouteParams = {
   params: Promise<{ slug: string; runId: string }>;

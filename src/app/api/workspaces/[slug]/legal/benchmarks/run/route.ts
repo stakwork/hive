@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { randomUUID } from "crypto";
+import { randomUUID, createHmac } from "crypto";
 import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 import { getWorkspaceSwarmAccess } from "@/lib/helpers/swarm-access";
-import { db } from "@/lib/db";
+import { db as _db } from "@/lib/db";
 import { optionalEnvVars } from "@/config/env";
 import { getJarvisConfigForWorkspace } from "@/lib/helpers/jarvis-config";
 import { fetchHarveyTaskCriteria, ensureHarveyLabEvalNodes } from "@/lib/harvey-lab/eval-nodes";
@@ -10,6 +10,10 @@ import { addNode, addEdge } from "@/services/swarm/api/nodes";
 import { getBifrostForLLM } from "@/services/bifrost/orchestrator";
 import { getApiKeyForModel } from "@/lib/ai/models";
 import { getStakworkTokenReference } from "@/lib/vercel/stakwork-token";
+
+// LegalBenchmarkRun model removed from schema (T1) — cast to any until T2 rewrites this route
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const db = _db as any;
 
 type RouteParams = {
   params: Promise<{ slug: string }>;
@@ -177,7 +181,9 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     });
 
     const baseUrl = process.env.NEXTAUTH_URL || "http://localhost:3000";
-    const webhookUrl = `${baseUrl}/api/legal/benchmark/webhook?run_id=${run.id}&stage=runner`;
+    const webhookSecret = process.env.NEXTAUTH_SECRET ?? "";
+    const runnerToken = createHmac("sha256", webhookSecret).update(`${run.id}:runner`).digest("hex");
+    const webhookUrl = `${baseUrl}/api/legal/benchmark/webhook?run_id=${run.id}&stage=runner&token=${runnerToken}`;
 
     const payload = {
       name: `harvey-runner-${run.id}`,
