@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { randomUUID, createHmac } from "crypto";
+import { randomUUID } from "crypto";
 import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 import { getWorkspaceSwarmAccess } from "@/lib/helpers/swarm-access";
-import { db as _db } from "@/lib/db";
+import { db } from "@/lib/db";
 import { optionalEnvVars } from "@/config/env";
 import { getJarvisConfigForWorkspace } from "@/lib/helpers/jarvis-config";
 import { fetchHarveyTaskCriteria, ensureHarveyLabEvalNodes } from "@/lib/harvey-lab/eval-nodes";
@@ -10,10 +10,7 @@ import { addNode, addEdge } from "@/services/swarm/api/nodes";
 import { getBifrostForLLM } from "@/services/bifrost/orchestrator";
 import { getApiKeyForModel } from "@/lib/ai/models";
 import { getStakworkTokenReference } from "@/lib/vercel/stakwork-token";
-
-// LegalBenchmarkRun model removed from schema (T1) — cast to any until T2 rewrites this route
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const db = _db as any;
+import { WorkflowStatus, StakworkRunType } from "@prisma/client";
 
 type RouteParams = {
   params: Promise<{ slug: string }>;
@@ -52,6 +49,8 @@ function handleSwarmAccessError(error: { type: string }) {
  * POST /api/workspaces/[slug]/legal/benchmarks/run
  *
  * Start a Harvey LAB Task Runner workflow for a selected benchmark task.
+ * Creates two linked StakworkRun rows (LEGAL_BENCHMARK_RUNNER + LEGAL_BENCHMARK_SCORER)
+ * atomically, then dispatches to the Harvey /projects endpoint.
  * Gated to the `openlaw` workspace only.
  */
 export async function POST(request: NextRequest, { params }: RouteParams) {
@@ -110,21 +109,6 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       );
     }
 
-    // Single-active-run guard: reject duplicates
-    const existingRun = await db.legalBenchmarkRun.findFirst({
-      where: {
-        workspaceId,
-        taskSlug,
-        status: { in: ["PENDING", "RUNNING", "SCORING"] },
-      },
-    });
-    if (existingRun) {
-      return NextResponse.json(
-        { error: "A run is already in progress for this task" },
-        { status: 409 },
-      );
-    }
-
     // Validate required env vars before creating the record
     const runnerWorkflowId = process.env.STAKWORK_HARVEY_RUNNER_WORKFLOW_ID;
 
@@ -175,18 +159,120 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       }
     }
 
-    // Create the run record in PENDING state
-    const run = await db.legalBenchmarkRun.create({
-      data: { workspaceId, taskSlug, taskTitle, status: "PENDING" },
+    // ── Atomic single-active-run guard + pair creation ────────────────────
+    // Uses db.$transaction so the findFirst + create pair is race-safe.
+    // The partial expression index on (workspace_id, type, result->'taskSlug')
+    // WHERE status IN ('PENDING','IN_PROGRESS') (added in T1 migration) makes
+    // this check fast even without a UNIQUE constraint.
+    const baseUrl = process.env.NEXTAUTH_URL || "http://localhost:3000";
+
+    let runnerRun: { id: string };
+    let scorerRun: { id: string };
+
+    try {
+      const pair = await db.$transaction<{ runner: { id: string }; scorer: { id: string } }>(async (tx) => {
+        // Re-check for an existing active LEGAL_BENCHMARK_RUNNER for this task
+        const existingRun = await tx.stakworkRun.findFirst({
+          where: {
+            workspaceId,
+            type: StakworkRunType.LEGAL_BENCHMARK_RUNNER,
+            status: { in: [WorkflowStatus.PENDING, WorkflowStatus.IN_PROGRESS] },
+          },
+          select: { id: true, result: true },
+        });
+
+        if (existingRun) {
+          // Check if this active run is for the same task
+          let existingTaskSlug: string | undefined;
+          try {
+            const resultJson = existingRun.result
+              ? (JSON.parse(existingRun.result) as Record<string, unknown>)
+              : {};
+            existingTaskSlug = resultJson.taskSlug as string | undefined;
+          } catch {
+            // Malformed result JSON — treat as a collision to be safe
+            existingTaskSlug = taskSlug;
+          }
+          if (existingTaskSlug === taskSlug) {
+            throw Object.assign(new Error("A run is already in progress for this task"), {
+              code: "ACTIVE_RUN_EXISTS",
+            });
+          }
+        }
+
+        // Build a placeholder webhook URL (will be overwritten after we have the ID below,
+        // but the DB requires a non-null value — use a temp value here)
+        const placeholder = `${baseUrl}/api/webhook/stakwork/response`;
+
+        // Create scorer first so we have its id to store in runner's result
+        const scorer = await tx.stakworkRun.create({
+          data: {
+            workspaceId,
+            type: StakworkRunType.LEGAL_BENCHMARK_SCORER,
+            status: WorkflowStatus.PENDING,
+            webhookUrl: placeholder,
+            // result will be updated once we have the runner id
+          },
+          select: { id: true },
+        });
+
+        const runnerResultJson: Record<string, unknown> = {
+          taskSlug,
+          taskTitle,
+          siblingRunId: scorer.id,
+          // evalTriggerRef will be added later (non-fatal Jarvis step)
+        };
+
+        const runner = await tx.stakworkRun.create({
+          data: {
+            workspaceId,
+            type: StakworkRunType.LEGAL_BENCHMARK_RUNNER,
+            status: WorkflowStatus.PENDING,
+            webhookUrl: placeholder,
+            result: JSON.stringify(runnerResultJson),
+          },
+          select: { id: true },
+        });
+
+        // Back-fill scorer's result with siblingRunId pointing to runner
+        const scorerResultJson: Record<string, unknown> = {
+          taskSlug,
+          taskTitle,
+          siblingRunId: runner.id,
+        };
+        await tx.stakworkRun.update({
+          where: { id: scorer.id },
+          data: { result: JSON.stringify(scorerResultJson) },
+        });
+
+        return { runner, scorer };
+      });
+
+      runnerRun = pair.runner;
+      scorerRun = pair.scorer;
+    } catch (err: unknown) {
+      if (
+        err instanceof Error &&
+        (err as Error & { code?: string }).code === "ACTIVE_RUN_EXISTS"
+      ) {
+        return NextResponse.json(
+          { error: "A run is already in progress for this task" },
+          { status: 409 },
+        );
+      }
+      throw err;
+    }
+    // ─────────────────────────────────────────────────────────────────────────
+
+    // Build correct webhook URL now that we have the runner id, then update the row
+    const webhookUrl = `${baseUrl}/api/webhook/stakwork/response?type=${StakworkRunType.LEGAL_BENCHMARK_RUNNER}&run_id=${runnerRun.id}&workspace_id=${workspaceId}`;
+    await db.stakworkRun.update({
+      where: { id: runnerRun.id },
+      data: { webhookUrl },
     });
 
-    const baseUrl = process.env.NEXTAUTH_URL || "http://localhost:3000";
-    const webhookSecret = process.env.NEXTAUTH_SECRET ?? "";
-    const runnerToken = createHmac("sha256", webhookSecret).update(`${run.id}:runner`).digest("hex");
-    const webhookUrl = `${baseUrl}/api/legal/benchmark/webhook?run_id=${run.id}&stage=runner&token=${runnerToken}`;
-
     const payload = {
-      name: `harvey-runner-${run.id}`,
+      name: `harvey-runner-${runnerRun.id}`,
       workflow_id: parseInt(runnerWorkflowId, 10),
       webhook_url: webhookUrl,
       workflow_params: {
@@ -224,8 +310,10 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     });
 
     if (!stakworkResponse.ok) {
-      // Clean up the PENDING record so re-tries are not blocked
-      await db.legalBenchmarkRun.delete({ where: { id: run.id } });
+      // Clean up both PENDING rows so retries are not blocked
+      await db.stakworkRun.deleteMany({
+        where: { id: { in: [runnerRun.id, scorerRun.id] } },
+      });
       return NextResponse.json(
         { error: "Failed to dispatch job to Stakwork" },
         { status: 502 },
@@ -236,11 +324,29 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     const projectId: number | undefined =
       stakworkData?.data?.project_id ?? stakworkData?.project_id;
 
-    await db.legalBenchmarkRun.update({
-      where: { id: run.id },
+    // Merge projectId into result; preserve existing result fields
+    const runnerRow = await db.stakworkRun.findUnique({
+      where: { id: runnerRun.id },
+      select: { result: true },
+    });
+    let updatedRunnerResult: Record<string, unknown> = {};
+    try {
+      updatedRunnerResult = runnerRow?.result
+        ? (JSON.parse(runnerRow.result) as Record<string, unknown>)
+        : {};
+    } catch {
+      // ignore parse errors
+    }
+    if (projectId !== undefined) {
+      updatedRunnerResult.runnerProjectId = projectId;
+    }
+
+    await db.stakworkRun.update({
+      where: { id: runnerRun.id },
       data: {
-        runnerProjectId: projectId ?? null,
-        status: "RUNNING",
+        projectId: projectId ?? null,
+        status: WorkflowStatus.IN_PROGRESS,
+        result: JSON.stringify(updatedRunnerResult),
       },
     });
 
@@ -278,10 +384,27 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
               source: { ref_id: evalNodes.requirementRef },
               target: { ref_id: triggerResult.ref_id },
             });
-            await db.legalBenchmarkRun.update({
-              where: { id: run.id },
-              data: { evalTriggerRef: triggerResult.ref_id },
-            });
+            // Store evalTriggerRef in both runner and scorer result JSON
+            const mergeEvalTriggerRef = async (runId: string) => {
+              const row = await db.stakworkRun.findUnique({
+                where: { id: runId },
+                select: { result: true },
+              });
+              let resultJson: Record<string, unknown> = {};
+              try {
+                resultJson = row?.result
+                  ? (JSON.parse(row.result) as Record<string, unknown>)
+                  : {};
+              } catch { /* ignore */ }
+              resultJson.evalTriggerRef = triggerResult.ref_id;
+              await db.stakworkRun.update({
+                where: { id: runId },
+                data: { result: JSON.stringify(resultJson) },
+              });
+            };
+            await mergeEvalTriggerRef(runnerRun.id);
+            await mergeEvalTriggerRef(scorerRun.id);
+
             // Non-fatal ATTRIBUTED_TO (gated on jarvis-backend prereq — skip until deployed)
             try {
               const agentResult = await addNode(jarvisConfig, {
@@ -304,7 +427,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     }
     // ─────────────────────────────────────────────────────────────────────────
 
-    return NextResponse.json({ run_id: run.id }, { status: 201 });
+    return NextResponse.json({ run_id: runnerRun.id }, { status: 201 });
   } catch (error) {
     console.error("[legal/benchmarks/run POST] Unexpected error:", error);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
