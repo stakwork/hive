@@ -307,7 +307,7 @@ describe("pusher.ts", () => {
         PROMPT_EVAL_RESULT: "prompt-eval-result",
         AGENT_TRACE_READY: "agent-trace-ready",
         ERROR_ISSUE_UPDATED: "error-issue-updated",
-        LEGAL_BENCHMARK_UPDATE: "legal-benchmark-update",
+
       });
     });
 
