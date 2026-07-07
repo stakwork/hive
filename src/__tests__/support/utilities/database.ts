@@ -87,7 +87,7 @@ export async function resetDatabase() {
     await db.userStory.deleteMany();
     await db.userFeaturePresence.deleteMany();
     try { await db.scorerDigest.deleteMany(); } catch { /* table may not exist */ }
-    try { await db.legalBenchmarkRun.deleteMany(); } catch { /* table may not exist */ }
+    // LegalBenchmarkRun table was dropped in migration 20260706201300 — runs now tracked as StakworkRun
     // agentLog/stakworkRun have nullable feature FKs without onDelete:Cascade;
     // delete them before features to avoid FK constraint violations.
     try { await db.agentLog.deleteMany(); } catch { /* table may not exist */ }
