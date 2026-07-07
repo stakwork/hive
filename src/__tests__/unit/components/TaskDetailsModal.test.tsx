@@ -116,7 +116,7 @@ describe("TaskDetailsModal", () => {
       />,
     );
 
-    expect(capturedDialogContentClassName).toContain("max-h-[80vh]");
+    expect(capturedDialogContentClassName).toContain("h-[80vh]");
     expect(capturedDialogContentClassName).toContain("flex");
     expect(capturedDialogContentClassName).toContain("flex-col");
     expect(capturedDialogContentClassName).toContain("overflow-hidden");
