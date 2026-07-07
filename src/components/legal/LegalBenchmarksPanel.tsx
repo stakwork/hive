@@ -14,6 +14,7 @@ import { LegalBenchmarkResults } from "@/components/legal/LegalBenchmarkResults"
 import type { HarveyTask } from "@/lib/harvey-lab-tasks";
 import { WORK_TYPE_STYLES } from "@/lib/harvey-lab-tasks";
 import { TaskDetailsModal } from "@/components/legal/TaskDetailsModal";
+import { cn } from "@/lib/utils";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -117,7 +118,7 @@ function TaskCard({ task, onSelect, onViewDetails, isRunning }: TaskCardProps) {
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 
-export function LegalBenchmarksPanel() {
+export function LegalBenchmarksPanel({ className }: { className?: string }) {
   const { slug, isSuperAdmin } = useWorkspace();
 
   const [practiceAreas, setPracticeAreas] = useState<PracticeArea[]>([]);
@@ -185,7 +186,7 @@ export function LegalBenchmarksPanel() {
     ) ?? [];
 
   return (
-    <div className="flex flex-col flex-1 overflow-hidden min-h-0">
+    <div className={cn("flex flex-col flex-1 overflow-hidden min-h-0", className)}>
       <div className="flex flex-1 overflow-hidden min-h-0">
         {/* Left column — practice area list */}
         <div className="w-60 shrink-0 border-r flex flex-col">
@@ -237,7 +238,7 @@ export function LegalBenchmarksPanel() {
             </div>
           </div>
 
-          <ScrollArea className="flex-1 p-4">
+          <ScrollArea className="flex-1 min-h-0 p-4">
             {error ? (
               <div className="flex items-center justify-center h-40 text-sm text-destructive">
                 {error}
