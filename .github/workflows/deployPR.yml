@@ -187,19 +187,25 @@ jobs:
                 -H "Content-Type: application/json" \
                 -d "{\"endpoint\":{\"branch_id\":\"$BRANCH_ID\"}}")
               ENDPOINT_ID=$(echo "$RESPONSE" | jq -r '.endpoint.id')
+              # Give Neon time to propagate the reassignment before polling
+              sleep 15
             fi
           fi
 
-          # Wait until endpoint is ready (GET endpoint does not return credentials)
-          for i in {1..30}; do
-            STATUS=$(neon_curl "https://console.neon.tech/api/v2/projects/$NEON_PROJECT_ID/endpoints/$ENDPOINT_ID" "endpoint")
-            STATE=$(echo "$STATUS" | jq -r '.endpoint.current_state')
-            DB_HOST=$(echo "$STATUS" | jq -r '.endpoint.host')
+          # Wait until endpoint is ready (GET endpoint does not return credentials).
+          # Use a plain curl here instead of neon_curl so that transient "not found"
+          # responses (common briefly after a branch reassignment) are treated as
+          # "not yet ready" rather than a fatal error that aborts the script.
+          for i in {1..40}; do
+            STATUS=$(curl -s -H "Authorization: Bearer $NEON_API_KEY" \
+              "https://console.neon.tech/api/v2/projects/$NEON_PROJECT_ID/endpoints/$ENDPOINT_ID")
+            STATE=$(echo "$STATUS" | jq -r '.endpoint.current_state // empty')
+            DB_HOST=$(echo "$STATUS" | jq -r '.endpoint.host // empty')
             if [ "$STATE" = "ready" ] && [ -n "$DB_HOST" ] && [ "$DB_HOST" != "null" ]; then
               break
             fi
             echo "Waiting for endpoint... ($i)"
-            sleep 3
+            sleep 5
           done
 
           if [ -z "$DB_HOST" ] || [ "$DB_HOST" = "null" ]; then
