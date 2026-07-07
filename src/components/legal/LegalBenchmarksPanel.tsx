@@ -224,7 +224,7 @@ export function LegalBenchmarksPanel() {
         </div>
 
         {/* Right panel — search + task grid */}
-        <div className="flex-1 flex flex-col overflow-hidden">
+        <div className="flex-1 flex flex-col overflow-hidden min-h-0">
           <div className="p-4 border-b">
             <div className="relative">
               <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
