@@ -33,51 +33,90 @@ vi.mock("@/lib/pusher", () => ({
 
 global.fetch = vi.fn();
 
-const MOCK_RUN = {
-  id: "run-abc",
+const MOCK_RUNNER_ROW = {
+  id: "runner-abc",
   workspaceId: "workspace-123",
-  taskSlug: "antitrust/task-1",
-  taskTitle: "Analyze Antitrust Strategy",
-  status: "RUNNING",
-  runnerProjectId: null,
-  scorerProjectId: null,
-  runnerOutputUrl: null,
-  runnerOutputText: null,
-  scoreJson: null,
-  errorMessage: null,
+  type: "LEGAL_BENCHMARK_RUNNER",
+  status: "IN_PROGRESS",
+  projectId: null,
+  result: JSON.stringify({
+    taskSlug: "antitrust/task-1",
+    taskTitle: "Analyze Antitrust Strategy",
+    siblingRunId: "scorer-abc",
+  }),
   createdAt: new Date().toISOString(),
   updatedAt: new Date().toISOString(),
 };
 
+const MOCK_SCORER_ROW = {
+  id: "scorer-abc",
+  workspaceId: "workspace-123",
+  type: "LEGAL_BENCHMARK_SCORER",
+  status: "PENDING",
+  projectId: null,
+  result: JSON.stringify({
+    taskSlug: "antitrust/task-1",
+    taskTitle: "Analyze Antitrust Strategy",
+    siblingRunId: "runner-abc",
+  }),
+  createdAt: new Date().toISOString(),
+  updatedAt: new Date().toISOString(),
+};
+
+/** Helper: set up fetch to return the standard runner+scorer pair. */
+function setupFetchWithPair(
+  runnerOverrides: Partial<typeof MOCK_RUNNER_ROW> = {},
+  scorerOverrides: Partial<typeof MOCK_SCORER_ROW> = {},
+) {
+  vi.mocked(global.fetch).mockImplementation((url: RequestInfo | URL) => {
+    const urlStr = String(url);
+    if (urlStr.includes("LEGAL_BENCHMARK_RUNNER")) {
+      return Promise.resolve({
+        ok: true,
+        json: async () => ({ runs: [{ ...MOCK_RUNNER_ROW, ...runnerOverrides }] }),
+      } as Response);
+    }
+    if (urlStr.includes("LEGAL_BENCHMARK_SCORER")) {
+      return Promise.resolve({
+        ok: true,
+        json: async () => ({ runs: [{ ...MOCK_SCORER_ROW, ...scorerOverrides }] }),
+      } as Response);
+    }
+    return Promise.resolve({
+      ok: true,
+      json: async () => ({ runs: [] }),
+    } as Response);
+  });
+}
+
 // ─── Tests ────────────────────────────────────────────────────────────────────
 
 describe("useLegalBenchmarkRun", () => {
-  const runId = "run-abc";
+  const runId = "runner-abc";
 
   afterEach(() => {
-    // Always restore real timers so timer leakage doesn't affect subsequent tests.
     vi.useRealTimers();
   });
 
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(global.fetch).mockResolvedValue({
-      ok: true,
-      json: async () => ({ run: MOCK_RUN }),
-    } as Response);
+    setupFetchWithPair();
   });
 
-  it("fires initial fetch on mount", async () => {
+  it("fires initial fetch against /api/stakwork/runs for both RUNNER and SCORER types", async () => {
     const { result } = renderHook(() => useLegalBenchmarkRun(runId));
 
     await waitFor(() => {
       expect(result.current.isLoading).toBe(false);
     });
 
-    expect(global.fetch).toHaveBeenCalledWith(
-      `/api/workspaces/openlaw/legal/benchmarks/runs/${runId}`
-    );
-    expect(result.current.run).toEqual(MOCK_RUN);
+    // Expect exactly two calls: one per type
+    expect(global.fetch).toHaveBeenCalledTimes(2);
+    const urls = vi.mocked(global.fetch).mock.calls.map(([u]) => String(u));
+    expect(urls.some((u) => u.includes("LEGAL_BENCHMARK_RUNNER"))).toBe(true);
+    expect(urls.some((u) => u.includes("LEGAL_BENCHMARK_SCORER"))).toBe(true);
+    // Both must include the workspaceId
+    urls.forEach((u) => expect(u).toContain("workspace-123"));
   });
 
   it("sets isLoading to true initially, false after fetch", async () => {
@@ -90,39 +129,145 @@ describe("useLegalBenchmarkRun", () => {
     });
   });
 
-  it("subscribes to Pusher channel on mount using STAKWORK_RUN_UPDATE event", async () => {
+  it("derives composite running status when runner is IN_PROGRESS", async () => {
+    const { result } = renderHook(() => useLegalBenchmarkRun(runId));
+
+    await waitFor(() => {
+      expect(result.current.run).not.toBeNull();
+    });
+
+    expect(result.current.run!.status).toBe("running");
+    expect(result.current.run!.id).toBe("runner-abc");
+    expect(result.current.run!.taskSlug).toBe("antitrust/task-1");
+  });
+
+  it("derives composite scoring status when runner is COMPLETED and scorer is IN_PROGRESS", async () => {
+    setupFetchWithPair(
+      { status: "COMPLETED" },
+      { status: "IN_PROGRESS" },
+    );
+
+    const { result } = renderHook(() => useLegalBenchmarkRun(runId));
+
+    await waitFor(() => {
+      expect(result.current.run).not.toBeNull();
+    });
+
+    expect(result.current.run!.status).toBe("scoring");
+  });
+
+  it("derives composite complete status when scorer is COMPLETED", async () => {
+    setupFetchWithPair(
+      { status: "COMPLETED" },
+      {
+        status: "COMPLETED",
+        result: JSON.stringify({
+          taskSlug: "antitrust/task-1",
+          taskTitle: "Analyze Antitrust Strategy",
+          siblingRunId: "runner-abc",
+          scoreJson: JSON.stringify([{ criterion: "Accuracy", pass: true, notes: "OK" }]),
+        }),
+      },
+    );
+
+    const { result } = renderHook(() => useLegalBenchmarkRun(runId));
+
+    await waitFor(() => {
+      expect(result.current.run).not.toBeNull();
+    });
+
+    expect(result.current.run!.status).toBe("complete");
+    expect(result.current.run!.scoreJson).toBeTruthy();
+  });
+
+  it("derives composite failed status when runner is FAILED", async () => {
+    setupFetchWithPair({ status: "FAILED" });
+
+    const { result } = renderHook(() => useLegalBenchmarkRun(runId));
+
+    await waitFor(() => {
+      expect(result.current.run).not.toBeNull();
+    });
+
+    expect(result.current.run!.status).toBe("failed");
+  });
+
+  it("derives composite failed status when scorer is FAILED", async () => {
+    setupFetchWithPair({ status: "COMPLETED" }, { status: "FAILED" });
+
+    const { result } = renderHook(() => useLegalBenchmarkRun(runId));
+
+    await waitFor(() => {
+      expect(result.current.run).not.toBeNull();
+    });
+
+    expect(result.current.run!.status).toBe("failed");
+  });
+
+  it("can resolve the pair from the scorer id (fallback path)", async () => {
+    // When runId is the scorer's id, hook should still find the runner via siblingRunId.
+    const { result } = renderHook(() => useLegalBenchmarkRun("scorer-abc"));
+
+    await waitFor(() => {
+      expect(result.current.run).not.toBeNull();
+    });
+
+    // Resolved runner id is the primary id of the returned run.
+    expect(result.current.run!.id).toBe("runner-abc");
+  });
+
+  it("subscribes to Pusher channel using STAKWORK_RUN_UPDATE event", async () => {
     renderHook(() => useLegalBenchmarkRun(runId));
 
     await waitFor(() => {
       expect(mockPusherClient.subscribe).toHaveBeenCalledWith("workspace-openlaw");
       expect(mockChannel.bind).toHaveBeenCalledWith(
         "stakwork-run-update",
-        expect.any(Function)
+        expect.any(Function),
       );
     });
   });
 
-  it("refetches when Pusher STAKWORK_RUN_UPDATE event has matching runId", async () => {
+  it("refetches when STAKWORK_RUN_UPDATE event has matching runner runId", async () => {
     renderHook(() => useLegalBenchmarkRun(runId));
 
     await waitFor(() => {
-      expect(global.fetch).toHaveBeenCalledTimes(1);
+      expect(global.fetch).toHaveBeenCalledTimes(2);
     });
 
-    // Get the bound handler for the new event name
     const handler = mockChannel.bind.mock.calls.find(
-      ([event]) => event === "stakwork-run-update"
+      ([event]) => event === "stakwork-run-update",
     )?.[1];
 
     expect(handler).toBeDefined();
 
-    // Fire event with matching runId (new shape uses `runId` not `run_id`)
     act(() => {
-      handler({ runId: runId, status: "SCORING" });
+      handler({ runId: "runner-abc", status: "SCORING" });
     });
 
     await waitFor(() => {
+      // Two more calls (one per type) for the refetch
+      expect(global.fetch).toHaveBeenCalledTimes(4);
+    });
+  });
+
+  it("refetches when STAKWORK_RUN_UPDATE event has matching sibling scorer id", async () => {
+    renderHook(() => useLegalBenchmarkRun(runId));
+
+    await waitFor(() => {
       expect(global.fetch).toHaveBeenCalledTimes(2);
+    });
+
+    const handler = mockChannel.bind.mock.calls.find(
+      ([event]) => event === "stakwork-run-update",
+    )?.[1];
+
+    act(() => {
+      handler({ runId: "scorer-abc", status: "COMPLETED" });
+    });
+
+    await waitFor(() => {
+      expect(global.fetch).toHaveBeenCalledTimes(4);
     });
   });
 
@@ -130,19 +275,19 @@ describe("useLegalBenchmarkRun", () => {
     renderHook(() => useLegalBenchmarkRun(runId));
 
     await waitFor(() => {
-      expect(global.fetch).toHaveBeenCalledTimes(1);
+      expect(global.fetch).toHaveBeenCalledTimes(2);
     });
 
     const handler = mockChannel.bind.mock.calls.find(
-      ([event]) => event === "stakwork-run-update"
+      ([event]) => event === "stakwork-run-update",
     )?.[1];
 
     act(() => {
-      handler({ run_id: runId, status: "SCORING" });
+      handler({ run_id: "runner-abc", status: "SCORING" });
     });
 
     await waitFor(() => {
-      expect(global.fetch).toHaveBeenCalledTimes(2);
+      expect(global.fetch).toHaveBeenCalledTimes(4);
     });
   });
 
@@ -150,36 +295,23 @@ describe("useLegalBenchmarkRun", () => {
     renderHook(() => useLegalBenchmarkRun(runId));
 
     await waitFor(() => {
-      expect(global.fetch).toHaveBeenCalledTimes(1);
+      expect(global.fetch).toHaveBeenCalledTimes(2);
     });
 
     const handler = mockChannel.bind.mock.calls.find(
-      ([event]) => event === "stakwork-run-update"
+      ([event]) => event === "stakwork-run-update",
     )?.[1];
 
-    // Fire event with different runId
     act(() => {
-      handler({ runId: "different-run-id", status: "SCORING" });
+      handler({ runId: "completely-different-run", status: "SCORING" });
     });
 
-    // Should still only have been called once
     await new Promise((r) => setTimeout(r, 50));
-    expect(global.fetch).toHaveBeenCalledTimes(1);
+    expect(global.fetch).toHaveBeenCalledTimes(2);
   });
 
-  it("sets isStale after 3-minute timeout when status is in-progress", async () => {
+  it("sets isStale after 3-minute timeout when composite status is in-progress", async () => {
     vi.useFakeTimers();
-
-    const staleRun = {
-      ...MOCK_RUN,
-      status: "RUNNING",
-      updatedAt: new Date().toISOString(),
-    };
-
-    vi.mocked(global.fetch).mockResolvedValue({
-      ok: true,
-      json: async () => ({ run: staleRun }),
-    } as Response);
 
     const { result } = renderHook(() => useLegalBenchmarkRun(runId));
 
@@ -189,42 +321,28 @@ describe("useLegalBenchmarkRun", () => {
 
     expect(result.current.isStale).toBe(false);
 
-    // Advance past 3 minutes — first poll fires
+    // Advance past 3 minutes — stale poll fires
     await act(async () => {
       vi.advanceTimersByTime(3 * 60 * 1000 + 100);
       await Promise.resolve();
     });
 
-    // Second pass sets isStale
     await act(async () => {
       vi.advanceTimersByTime(100);
       await Promise.resolve();
     });
 
     expect(result.current.isStale).toBe(true);
-
-    vi.useRealTimers();
   });
 
-  it("resets isStale when status advances to a terminal state", async () => {
+  it("resets isStale when composite status advances to a terminal state via Pusher", async () => {
     vi.useFakeTimers();
-
-    const staleRun = {
-      ...MOCK_RUN,
-      status: "RUNNING",
-      updatedAt: new Date().toISOString(),
-    };
-
-    vi.mocked(global.fetch).mockResolvedValue({
-      ok: true,
-      json: async () => ({ run: staleRun }),
-    } as Response);
 
     const { result } = renderHook(() => useLegalBenchmarkRun(runId));
 
     await act(async () => { await Promise.resolve(); });
 
-    // Trigger stale state via two poll cycles
+    // Trigger stale state
     await act(async () => {
       vi.advanceTimersByTime(3 * 60 * 1000 + 100);
       await Promise.resolve();
@@ -236,24 +354,20 @@ describe("useLegalBenchmarkRun", () => {
 
     expect(result.current.isStale).toBe(true);
 
-    // Now simulate a COMPLETE status update via Pusher (using new event name + shape)
-    vi.mocked(global.fetch).mockResolvedValue({
-      ok: true,
-      json: async () => ({ run: { ...staleRun, status: "COMPLETE" } }),
-    } as Response);
+    // Now simulate COMPLETED update via Pusher
+    setupFetchWithPair({ status: "COMPLETED" }, { status: "COMPLETED" });
 
     const handler = mockChannel.bind.mock.calls.find(
-      ([event]) => event === "stakwork-run-update"
+      ([event]) => event === "stakwork-run-update",
     )?.[1];
 
     await act(async () => {
-      handler({ runId: runId, status: "COMPLETE" });
+      // "complete" is a terminal composite status (not in IN_PROGRESS_STATUSES)
+      handler({ runId: "runner-abc", status: "complete" });
       await Promise.resolve();
     });
 
-    // isStale is cleared synchronously in the Pusher handler before the async
-    // fetch, so we can assert directly without waitFor (which uses real timers
-    // and hangs inside vi.useFakeTimers()).
+    // isStale cleared synchronously in the handler before async fetch
     expect(result.current.isStale).toBe(false);
   });
 
@@ -269,9 +383,24 @@ describe("useLegalBenchmarkRun", () => {
   });
 
   it("handles fetch error gracefully", async () => {
-    vi.mocked(global.fetch).mockRejectedValueOnce(new Error("Network error"));
+    vi.mocked(global.fetch).mockRejectedValue(new Error("Network error"));
 
     const { result } = renderHook(() => useLegalBenchmarkRun(runId));
+
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false);
+    });
+
+    expect(result.current.run).toBeNull();
+  });
+
+  it("returns null run when runner row is not found in the response", async () => {
+    vi.mocked(global.fetch).mockResolvedValue({
+      ok: true,
+      json: async () => ({ runs: [] }),
+    } as Response);
+
+    const { result } = renderHook(() => useLegalBenchmarkRun("nonexistent-id"));
 
     await waitFor(() => {
       expect(result.current.isLoading).toBe(false);
