@@ -12,7 +12,7 @@ export default function LegalBenchmarksPage() {
         title="Legal Benchmarks"
         description="Harvey LAB — 1,749 real legal tasks across 25 practice areas"
       />
-      <LegalBenchmarksPanel />
+      <LegalBenchmarksPanel className="flex-1 min-h-0" />
     </div>
   );
 }
