@@ -35,6 +35,8 @@ user utterance / new task
         │     exact/alias match on names (fulltext index)
         │     + embedding search (vector index), hybrid-ranked
         │     restricted to profile.seedTypes
+        │     + optional caller-supplied bias seeds at reduced
+        │       teleport mass (see "who is asking", below)
         │     → 2–5 seed nodes
         │
    [2] WALK — personalized PageRank from seeds
@@ -70,6 +72,51 @@ side-letter that modifies the clause nobody quoted, the prior authorization
 that explains the denial. It is local (computed outward from the seeds),
 weightable (outcome counters bias the walk), and type-blind — which is what
 makes this engine generalizable at all.
+
+### Seed mass: query seeds + bias seeds ("who is asking")
+
+Retrieval that ignores the requester recalls like an org-wide search
+engine; a human recalls from *their* corner of the corpus first. The engine
+stays domain-blind by modeling identity as nothing but teleport mass: the
+caller may pass extra `biasSeeds` (any node refs), and the engine splits
+PPR teleport mass between query seeds (default ~80%) and bias seeds
+(~20%). What a bias seed *means* is the profile's business — the code
+domain resolves the requester to their Contributor node or
+recently-touched features; legal, to the attorney's active matters;
+support, to the agent's product area. Because PPR blends multiple seeds
+natively, this costs nothing at walk time.
+
+Loop B logs the actor ref with every query, so the identity lift is
+measurable per domain on the harness: precision@10 on that actor's
+held-out tasks, with vs. without bias seeds. If it doesn't win, a profile
+turns it off — never an engine change.
+
+### The ambient tier: a corpus map, not a corpus dump
+
+Per-query retrieval alone leaves the agent amnesiac between queries — it
+never develops the standing "mental map of the org" a human carries. The
+full design is therefore two tiers, matching human memory:
+
+- **Ambient tier** (always in context, ~1–2k tokens, regenerated nightly,
+  cached): a *ranked, hierarchical* digest of the lexicon layer —
+  container → lexicon names, ranked by persisted global centrality
+  (e.g. the `algo_page_rank` node property a cron already writes) plus
+  recency, hard-capped at a token budget. This is an **index, not
+  knowledge**: it tells the model what exists *here* so its paraphrases
+  use the corpus's own vocabulary — which directly improves seeding.
+- **Retrieved tier** (per job-to-be-done): Seed → Walk → Package as
+  above. Assemble it **once at task creation and cache it on the task**
+  — consolidation, like a human reading in when picking up a job, not
+  before every sentence. This also removes walk latency from the
+  per-message hot path.
+
+The existing practice of dumping every lexicon name across all workspaces
+into the org-level agent is the right instinct (the mental map) with the
+wrong implementation (flat, unranked, unbudgeted — degrades as the corpus
+grows). The map generalizes cleanly: code = workspace → repo → top
+features/concepts; legal = practice area → matter → key parties/statutes;
+support = product → components. The profile supplies the hierarchy and the
+budget; the engine ranks and renders.
 
 ## The graph contract
 
@@ -164,6 +211,18 @@ interface DomainProfile {
 
   // Hub damping (see below). Default: inverse-degree normalization on.
   hubDamping?: { inverseDegree: boolean; dampingFactor?: number };
+
+  // Ambient corpus map (see above): the always-in-context ranked digest.
+  // hierarchy lists node types outermost-container → lexicon; the engine
+  // ranks entries by persisted global centrality + recency and cuts at
+  // the token budget. Optional — a domain without a stable lexicon layer
+  // simply has no ambient tier.
+  corpusMap?: { hierarchy: string[]; budgetTokens: number };
+
+  // Resolve the requesting actor to bias-seed nodes ("who is asking").
+  // The engine never learns what an actor is — it only receives seeds
+  // and a teleport-mass split.
+  actorSeeds?: (actor: ActorRef) => NodeRef[];
 }
 ```
 
@@ -187,6 +246,11 @@ The engine therefore applies, by default:
   an edge into a node touched by everything carries less per-walk mass).
 - Profile-tunable `dampingFactor` for domains with heavy-tailed degree
   distributions.
+
+Zero-code starting point: jarvis already exposes `article_rank`, the
+degree-dampened PageRank variant — run it as the damped baseline before
+building custom normalization, and let the harness say whether more is
+needed.
 
 The code domain barely needs this; the legal domain is unusable without it.
 That is exactly why it belongs in the engine with a profile knob, not in a
@@ -358,7 +422,8 @@ engine flag day.
 - **No LLM-judged labels.** Outcome events and retrieved-vs-used are the
   only supervision; they can't argue back.
 - **No always-in-context corpus dumps.** Retrieval-first; corpus size stops
-  mattering in any domain.
+  mattering in any domain. The ambient corpus map is not an exception: it
+  is ranked, budgeted, and an index of *names* — never content.
 - **No parametric model as the memory.** The graph is the memory; models
   only re-rank what the graph retrieves. Everything learned is rebuildable
   from graph + logs in minutes.
@@ -366,19 +431,57 @@ engine flag day.
   a domain that can't meet the entity-resolution or outcome-event bar gets
   the degraded tier, documented, not a silent quality cliff.
 
+## Engine substrate: verified jarvis gaps (2026-07-07)
+
+Read against jarvis-backend source. All of these are domain-blind engine
+work — GDS plumbing that any ontology needs — and all require jarvis PRs
+before the WALK step is real:
+
+1. **`sourceNodes` is not resolved — personalized PPR is non-functional
+   today.** The schema accepts ref_id strings
+   (`input_schema_helper.py:278-303`) but `call_PageRankStreamV2`
+   (`graph_algorithms_helper.py:157-248`) passes them raw to GDS, which
+   expects internal numeric node ids. Fix: resolve refs the way
+   pathfinding already does (`_resolve_ref_id_to_node_id`,
+   `graph_algorithms_helper_v2.py:161-170`).
+2. **`relationshipWeightProperty` is silently ignored.** The Cypher
+   projections return only `id(n), id(m)` — no relationship properties
+   enter the in-memory graph, so weighted PPR (loop A's consumer) is a
+   no-op. Fix: project a generic numeric `weight` relationship property
+   (absent → 1), and add `weight` as an optional attribute on all schema
+   edges (today only type-specific numerics like `MODIFIES.importance`
+   exist).
+3. **Latency.** Every algorithm call builds and drops a fresh GDS Cypher
+   projection (caching deliberately disabled). The < 1s budget needs a
+   scoped or cached projection — or the degraded walk below.
+
+Already-working substrate the engine gets for free: hybrid seeding
+(fulltext + vector with RRF fusion, `node_service_v2.py`) is done;
+`article_rank` provides default hub damping; a cron already persists
+global `algo_page_rank`, which ranks the ambient map **and** enables a
+degraded walk — 1-hop `expand=true` neighborhood ∩ global rank ∩ query
+embedding similarity — usable as baseline (b′) on the harness and as the
+fallback wherever per-query PPR misses the latency budget.
+
 ## Order of work
 
 1. Eval harness, domain-parametric, run first against the code profile's
-   existing labeled pairs (sets the bar).
-2. Engine + `profiles/code.ts` — port of the org-context plan, measured
-   against the harness. MCP tool exposure.
-3. Loop B usage logging (ship with 2).
-4. Loop A outcome weights + hub damping defaults (first measurable ranking
-   upgrade; verify damping doesn't regress code-domain metrics).
-5. Second profile (legal or support) against a real corpus — the proof the
+   existing labeled pairs (sets the bar). Baselines (a) and the degraded
+   walk need no jarvis changes — measure them immediately.
+2. Jarvis substrate PRs: `sourceNodes` resolution, weight projection +
+   generic `weight` edge attribute, projection latency. Each lands with a
+   harness measurement.
+3. Engine + `profiles/code.ts` — port of the org-context plan, measured
+   against the harness. MCP tool exposure. Ambient corpus map replaces
+   the flat all-names dump.
+4. Loop B usage logging, including actor refs (ship with 3).
+5. Loop A outcome weights + hub damping defaults (first measurable ranking
+   upgrade; verify damping doesn't regress code-domain metrics). Bias
+   seeds ("who is asking") A/B'd on the harness in the same phase.
+6. Second profile (legal or support) against a real corpus — the proof the
    engine is actually domain-blind. Expect this to flush hidden couplings;
    budget for it.
-6. Re-ranker, when loop B logs justify it.
+7. Re-ranker, when loop B logs justify it.
 
 ## Success metrics
 

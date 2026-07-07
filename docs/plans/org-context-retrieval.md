@@ -54,8 +54,12 @@ re-ranker is a later, optional upgrade that must beat this baseline to ship.
 Embedding search finds nodes that *sound like* the query. PPR finds nodes
 *structurally entangled* with the seeds — the config file two repos away, the
 test that always breaks, the migration nobody mentions in prose. It's local
-(computed from the seeds outward, indifferent to total graph size), weightable
-(outcome counters bias the walk), and already deployed in jarvis.
+(computed from the seeds outward, indifferent to total graph size) and
+weightable (outcome counters bias the walk). Caveat (verified against jarvis
+source 2026-07-07): jarvis's PageRank endpoint exists but personalized
+`sourceNodes` and `relationshipWeightProperty` are not functional yet — see
+"Engine substrate: verified jarvis gaps" in
+[graph-context-engine.md](./graph-context-engine.md) for the required PRs.
 
 ### The pathway it walks (verified in prod)
 
