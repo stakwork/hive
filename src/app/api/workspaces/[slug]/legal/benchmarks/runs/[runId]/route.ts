@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 import { getWorkspaceSwarmAccess } from "@/lib/helpers/swarm-access";
 import { db } from "@/lib/db";
+import { StakworkRunType } from "@prisma/client";
 
 type RouteParams = {
   params: Promise<{ slug: string; runId: string }>;
@@ -23,8 +24,13 @@ function handleSwarmAccessError(error: { type: string }) {
 /**
  * GET /api/workspaces/[slug]/legal/benchmarks/runs/[runId]
  *
- * Fetch a single LegalBenchmarkRun record. IDOR-guarded by workspace ownership.
- * Gated to the `openlaw` workspace only.
+ * Thin pass-through: fetch a single LEGAL_BENCHMARK_RUNNER StakworkRun and its
+ * sibling scorer row, returning them as a pair.
+ * IDOR-guarded by workspace ownership. Gated to the `openlaw` workspace only.
+ *
+ * NOTE: This route is kept for backward compatibility while the UI migrates to
+ * consuming /api/stakwork/runs directly (T4). Once the UI migration lands this
+ * route can be removed.
  */
 export async function GET(request: NextRequest, { params }: RouteParams) {
   try {
@@ -45,18 +51,42 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 
     const { workspaceId } = swarmResult.data;
 
-    const run = await db.legalBenchmarkRun.findUnique({ where: { id: runId } });
+    // Fetch the run scoped to the caller's workspace — workspaceId is in the WHERE
+    // clause so a cross-workspace runId simply returns null (no post-fetch check needed).
+    const run = await db.stakworkRun.findFirst({
+      where: {
+        id: runId,
+        workspaceId,
+        type: { in: [StakworkRunType.LEGAL_BENCHMARK_RUNNER, StakworkRunType.LEGAL_BENCHMARK_SCORER] },
+      },
+    });
 
     if (!run) {
       return NextResponse.json({ error: "Not found" }, { status: 404 });
     }
 
-    // IDOR guard — do not reveal records belonging to another workspace
-    if (run.workspaceId !== workspaceId) {
-      return NextResponse.json({ error: "Not found" }, { status: 404 });
+    // Resolve the sibling run scoped to the same workspace
+    let siblingRun = null;
+    try {
+      const resultJson = run.result
+        ? (JSON.parse(run.result) as Record<string, unknown>)
+        : {};
+      const siblingId = resultJson.siblingRunId as string | undefined;
+      if (siblingId) {
+        siblingRun = await db.stakworkRun.findFirst({
+          where: { id: siblingId, workspaceId },
+        });
+      }
+    } catch {
+      // Non-fatal — return the run without sibling
     }
 
-    return NextResponse.json({ run });
+    const runnerRun =
+      run.type === StakworkRunType.LEGAL_BENCHMARK_RUNNER ? run : siblingRun;
+    const scorerRun =
+      run.type === StakworkRunType.LEGAL_BENCHMARK_SCORER ? run : siblingRun;
+
+    return NextResponse.json({ run, runnerRun, scorerRun });
   } catch (error) {
     console.error("[legal/benchmarks/runs/[runId] GET] Unexpected error:", error);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
