@@ -21,9 +21,18 @@
 --   Enum values LEGAL_BENCHMARK_RUNNER/SCORER were committed in migration
 --   20260706201200 — required before referencing them here in a WHERE clause.
 
--- Step 1: Safety check — abort if LegalBenchmarkRun has any rows.
--- If this raises, run the data migration script to convert rows to StakworkRun
--- pairs before retrying this migration.
+-- Step 0: Lock the table and discard any existing rows.
+-- The openlaw workspace's legacy benchmark runs are intentionally NOT migrated —
+-- they are dropped. The ACCESS EXCLUSIVE lock is acquired first and held for the
+-- remainder of this (single) transaction, so no concurrent writer from the
+-- still-live previous app version can INSERT a row between this DELETE and the
+-- DROP TABLE below (which would otherwise re-trip the guard in Step 1).
+LOCK TABLE "LegalBenchmarkRun" IN ACCESS EXCLUSIVE MODE;
+DELETE FROM "LegalBenchmarkRun";
+
+-- Step 1: Safety check — abort if LegalBenchmarkRun somehow still has rows.
+-- After Step 0 (delete under an exclusive lock) this is a belt-and-suspenders
+-- guard and should always pass; it aborts the transaction if the invariant breaks.
 DO $$
 DECLARE
   row_count INTEGER;
