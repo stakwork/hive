@@ -80,27 +80,27 @@ export function LegalBenchmarkResults({ runId, onReset, isSuperAdmin = false }: 
     );
   };
 
-  if (run.status === "PENDING" || run.status === "RUNNING") {
+  if (run.status === "running") {
     return (
       <div className="mt-6 rounded-lg border bg-card p-4">
         {renderStaleWarning()}
         <SpinnerMessage message="Running task… (document ingestion & analysis)" />
-        <StakworkRunLink projectId={run.runnerProjectId} />
+        <StakworkRunLink projectId={run.runnerRun.projectId} />
       </div>
     );
   }
 
-  if (run.status === "SCORING") {
+  if (run.status === "scoring") {
     return (
       <div className="mt-6 rounded-lg border bg-card p-4">
         {renderStaleWarning()}
         <SpinnerMessage message="Scoring output against rubric…" />
-        <StakworkRunLink projectId={run.scorerProjectId} />
+        <StakworkRunLink projectId={run.scorerRun?.projectId} />
       </div>
     );
   }
 
-  if (run.status === "FAILED") {
+  if (run.status === "failed") {
     return (
       <div className="mt-6 rounded-lg border border-destructive/40 bg-destructive/5 p-6">
         <div className="flex items-start gap-3">
@@ -119,7 +119,7 @@ export function LegalBenchmarkResults({ runId, onReset, isSuperAdmin = false }: 
     );
   }
 
-  if (run.status === "COMPLETE") {
+  if (run.status === "complete") {
     let scores: RubricScore[] = [];
     try {
       scores = run.scoreJson ? JSON.parse(run.scoreJson) : [];
