@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 import { getWorkspaceSwarmAccess } from "@/lib/helpers/swarm-access";
 import { getJarvisUrl } from "@/lib/utils/swarm";
-import { dispatchEvalTriggerRun, fetchTriggerSource } from "@/lib/evals/dispatch-eval-trigger-run";
+import { dispatchEvalTriggerRun, fetchTriggerMeta } from "@/lib/evals/dispatch-eval-trigger-run";
 
 type RouteParams = {
   params: Promise<{ slug: string; evalSetId: string; reqId: string; triggerId: string }>;
@@ -66,18 +66,19 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
 
     const jarvisUrl = getJarvisUrl(swarmName);
 
-    // Fetch the EvalTrigger node to read the stored `source` discriminator.
-    const { source: triggerSource, ok: triggerFetchOk } = await fetchTriggerSource(
-      jarvisUrl,
-      swarmApiKey,
-      triggerId,
-    );
+    // Fetch the EvalTrigger node to read the stored `source` discriminator
+    // and `agent` identity.
+    const {
+      source: triggerSource,
+      agent: triggerAgent,
+      ok: triggerFetchOk,
+    } = await fetchTriggerMeta(jarvisUrl, swarmApiKey, triggerId);
     if (!triggerFetchOk) {
       console.error(`[Evals Trigger Run POST] Failed to fetch trigger node`);
       return NextResponse.json({ error: "Failed to fetch trigger node" }, { status: 502 });
     }
 
-    console.log(`[Evals Trigger Run POST] swarmUrl set=${!!swarmUrl}, swarmSecretAlias set=${!!swarmSecretAlias}, source=${triggerSource}`);
+    console.log(`[Evals Trigger Run POST] swarmUrl set=${!!swarmUrl}, swarmSecretAlias set=${!!swarmSecretAlias}, source=${triggerSource}, agent=${triggerAgent ?? "none"}`);
 
     const result = await dispatchEvalTriggerRun({
       triggerId,
@@ -91,6 +92,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       swarmUrl: swarmUrl ?? "",
       swarmSecretAlias: swarmSecretAlias ?? null,
       triggerSource,
+      agentName: triggerAgent,
     });
 
     return NextResponse.json({ success: true, project_id: result.project_id });
