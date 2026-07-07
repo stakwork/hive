@@ -260,6 +260,7 @@ export function askTools(swarmUrl: string, swarmApiKey: string, repoUrls: string
         "Execute an AI agent to analyze the repository and answer the user's question about the codebase. Use this for deep code analysis, ONLY IF THE ANSWER IS NOT AVAILABLE FROM THE learn_concept TOOL. " +
         "It also has the GitHub `gh` CLI, so it can do read-only GitHub inspection that goes beyond the source itself: read issues and PRs (titles, bodies, comments, review threads), check CI / workflow run / check-suite status, and look at other GitHub repos beyond this one. " +
         "Prefer the lighter `recent_commits` / `recent_contributions` tools for plain 'recent commits' or 'PRs by <author>' lookups; reach for `repo_agent` when the GitHub question needs investigation (why is CI failing, what's in this issue/PR thread, compare against another repo). " +
+        "STRICTLY READ-ONLY: this is for investigation only. NEVER instruct it to edit code, write/modify files, open a PR, or run/apply a database migration. If the user wants an actual code change, a new feature, or a schema migration, do NOT do it here — propose a feature with `propose_feature` and let the plan/coding pipeline execute it. " +
         "This tool is heavy/slow — treat it as a LAST RESORT.",
       inputSchema: z.object({
         prompt: z.string().describe("The question or prompt for the repo agent to analyze"),
