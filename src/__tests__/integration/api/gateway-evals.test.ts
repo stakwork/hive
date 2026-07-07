@@ -531,12 +531,14 @@ describe("DELETE /api/gateway/evals/:setId/requirements/:reqId", () => {
 // ── POST .../run ──────────────────────────────────────────────────────────────
 
 describe("POST /api/gateway/evals/:setId/requirements/:reqId/run", () => {
-  function mockTriggersResponse(triggers: Array<{ ref_id: string; source?: string }>) {
+  function mockTriggersResponse(
+    triggers: Array<{ ref_id: string; source?: string; agent?: string }>,
+  ) {
     const nodes = [
       ...triggers.map((t) => ({
         ref_id: t.ref_id,
         node_type: "EvalTrigger",
-        properties: { source: t.source ?? "repo_agent" },
+        properties: { source: t.source ?? "repo_agent", ...(t.agent ? { agent: t.agent } : {}) },
       })),
     ];
     mockFetch.mockResolvedValueOnce({
@@ -672,6 +674,156 @@ describe("POST /api/gateway/evals/:setId/requirements/:reqId/run", () => {
     // Bifrost vars must appear in the Stakwork payload
     const vars = await capturedStakworkVars();
     expect(vars?.bifrostApiKey).toBe("vk-key-abc");
+  });
+
+  test("resolves Bifrost identity from the trigger's stored agent", async () => {
+    const ctx = await createTestContext(RAW_KEY_1, SWARM_NAME_1 + "-run-trig-agent");
+
+    vi.mocked(getBifrostForLLM).mockResolvedValue({
+      apiKey: "vk-key-build",
+      baseUrl: "https://bifrost.example.com/anthropic/v1",
+      headers: { "x-macaroon": "test-mac" },
+      runId: "run-build",
+      agentName: "build-agent",
+    });
+
+    mockTriggersResponse([
+      { ref_id: TRIGGER_ID, source: "repo_agent", agent: "build-agent" },
+    ]);
+    mockStakworkSuccess("proj-build-1");
+
+    const req = makeRequest(
+      "POST",
+      `http://localhost/api/gateway/evals/${SET_ID}/requirements/${REQ_ID}/run`,
+      RAW_KEY_1,
+    );
+    const res = await runEvals(req as any, {
+      params: Promise.resolve({ setId: SET_ID, reqId: REQ_ID }),
+    });
+    expect(res.status).toBe(200);
+
+    // Identity must be the trigger's agent, not the source-mapped default.
+    expect(getBifrostForLLM).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ agentName: "build-agent" }),
+    );
+    void ctx;
+  });
+
+  test("falls back to the source-mapped agent when the trigger's agent yields no creds", async () => {
+    const ctx = await createTestContext(RAW_KEY_1, SWARM_NAME_1 + "-run-fallback");
+
+    // First call (build-agent) → undefined (e.g. partial
+    // BIFROST_ENABLED_AGENTS rollout); second call (repo-agent) → creds.
+    vi.mocked(getBifrostForLLM)
+      .mockResolvedValueOnce(undefined)
+      .mockResolvedValueOnce({
+        apiKey: "vk-key-repo",
+        baseUrl: "https://bifrost.example.com/anthropic/v1",
+        headers: { "x-macaroon": "test-mac" },
+        runId: "run-repo",
+        agentName: "repo-agent",
+      });
+
+    mockTriggersResponse([
+      { ref_id: TRIGGER_ID, source: "repo_agent", agent: "build-agent" },
+    ]);
+    mockStakworkSuccess("proj-fallback-1");
+
+    const req = makeRequest(
+      "POST",
+      `http://localhost/api/gateway/evals/${SET_ID}/requirements/${REQ_ID}/run`,
+      RAW_KEY_1,
+    );
+    const res = await runEvals(req as any, {
+      params: Promise.resolve({ setId: SET_ID, reqId: REQ_ID }),
+    });
+    expect(res.status).toBe(200);
+
+    expect(getBifrostForLLM).toHaveBeenNthCalledWith(
+      1,
+      expect.anything(),
+      expect.objectContaining({ agentName: "build-agent" }),
+    );
+    expect(getBifrostForLLM).toHaveBeenNthCalledWith(
+      2,
+      expect.anything(),
+      expect.objectContaining({ agentName: "repo-agent" }),
+    );
+
+    const vars = await capturedStakworkVars();
+    expect(vars?.bifrostApiKey).toBe("vk-key-repo");
+    void ctx;
+  });
+
+  test("body agent override beats the trigger's stored agent", async () => {
+    const ctx = await createTestContext(RAW_KEY_1, SWARM_NAME_1 + "-run-override");
+
+    vi.mocked(getBifrostForLLM).mockResolvedValue({
+      apiKey: "vk-key-test",
+      baseUrl: "https://bifrost.example.com/anthropic/v1",
+      headers: { "x-macaroon": "test-mac" },
+      runId: "run-test",
+      agentName: "test-agent",
+    });
+
+    mockTriggersResponse([
+      { ref_id: TRIGGER_ID, source: "repo_agent", agent: "build-agent" },
+    ]);
+    mockStakworkSuccess("proj-override-1");
+
+    const req = makeRequest(
+      "POST",
+      `http://localhost/api/gateway/evals/${SET_ID}/requirements/${REQ_ID}/run`,
+      RAW_KEY_1,
+      { agent: "test-agent" },
+    );
+    const res = await runEvals(req as any, {
+      params: Promise.resolve({ setId: SET_ID, reqId: REQ_ID }),
+    });
+    expect(res.status).toBe(200);
+
+    expect(getBifrostForLLM).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ agentName: "test-agent" }),
+    );
+    void ctx;
+  });
+
+  test("an invalid stored agent (e.g. wfe-agent) falls back to the source map", async () => {
+    const ctx = await createTestContext(RAW_KEY_1, SWARM_NAME_1 + "-run-wfe");
+
+    vi.mocked(getBifrostForLLM).mockResolvedValue({
+      apiKey: "vk-key-repo2",
+      baseUrl: "https://bifrost.example.com/anthropic/v1",
+      headers: { "x-macaroon": "test-mac" },
+      runId: "run-repo2",
+      agentName: "repo-agent",
+    });
+
+    mockTriggersResponse([
+      { ref_id: TRIGGER_ID, source: "repo_agent", agent: "wfe-agent" },
+    ]);
+    mockStakworkSuccess("proj-wfe-1");
+
+    const req = makeRequest(
+      "POST",
+      `http://localhost/api/gateway/evals/${SET_ID}/requirements/${REQ_ID}/run`,
+      RAW_KEY_1,
+    );
+    const res = await runEvals(req as any, {
+      params: Promise.resolve({ setId: SET_ID, reqId: REQ_ID }),
+    });
+    expect(res.status).toBe(200);
+
+    // wfe-agent is a capture name but not a BifrostAgentName — identity
+    // must resolve straight to the source-mapped default, one call only.
+    expect(getBifrostForLLM).toHaveBeenCalledTimes(1);
+    expect(getBifrostForLLM).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ agentName: "repo-agent" }),
+    );
+    void ctx;
   });
 
   test("returns 502 when Jarvis trigger fetch fails", async () => {
