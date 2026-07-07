@@ -24,10 +24,13 @@
  * Each capability is tagged `core: true | false`.
  *   - **Core** capabilities' prompt snippets are emitted up-front in
  *     the agent's system prompt every turn. These are the hot path:
- *     `roadmap` (propose a feature / organize the roadmap) and
- *     `planner` (drive it with `send_to_feature_planner`).
+ *     `roadmap` (propose a feature / organize the roadmap), `planner`
+ *     (drive it with `send_to_feature_planner`), and `graph_walker`
+ *     (walk the knowledge graph / dereference URNs — common enough that
+ *     its snippet rides up-front rather than behind `learn_capability`;
+ *     ephemeral prompt caching makes the marginal cost a cached read).
  *   - **Loadable** capabilities (`whiteboard`, `research`,
- *     `connections`) are NOT in the up-front prompt. Instead the core
+ *     `connections`, `infra`) are NOT in the up-front prompt. Instead the core
  *     suffix carries a one-line menu, and the agent calls the
  *     `learn_capability` tool to pull a loadable snippet on demand. The
  *     tools themselves are always registered (the AI SDK fixes the
@@ -298,17 +301,12 @@ export const CAPABILITY_REGISTRY: Record<OrgCapability, CapabilityDefinition> =
         ...buildGraphWalkDispatchTools(ctx),
       }),
       promptSnippet: getGraphWalkerCapabilitySnippet,
-      core: false,
-      menuBlurb:
-        "**graph_walker** — fetch KG node-type ontology (`graph_ontology`), " +
-        "dereference any URN (`graph_get`), expand 1-hop neighbors (`graph_neighbors`), " +
-        "search the swarm knowledge graph (`graph_search`, realm `kg`) — Hive " +
-        "Features/Tasks/ChatMessages now live there as HiveFeature/HiveTask/" +
-        "HiveChatMessage, alongside the code graph. Load when you need to walk the " +
-        "knowledge graph or dereference a URN from another tool. (The `pg` realm is disabled.) " +
-        "For multi-hop or slow graph queries, use `dispatch_graph_walk` to run them in the " +
-        "background and receive the answer as an assistant bubble; for quick single-node " +
-        "lookups or a single `graph_search`, use the inline tools directly.",
+      // CORE: graph traversal is a hot path (walking roadmap→code, URN
+      // dereference from other tools), so its snippet rides in the
+      // up-front prompt every turn rather than behind `learn_capability`.
+      // With ephemeral prompt caching the marginal cost is a cached read.
+      // No menuBlurb: core capabilities are inlined, not menu-listed.
+      core: true,
       // dispatch_graph_walk and finalize_graph_walk are stripped in readonly mode
       // to prevent sub-agents from re-dispatching themselves.
       writeToolNames: ["dispatch_graph_walk", "finalize_graph_walk"],
@@ -375,10 +373,8 @@ function buildLearnCapabilityTool(resolved: readonly OrgCapability[]): ToolSet {
         loadable.join(", ") +
         ". Call this FIRST whenever the user wants to: draw / diagram / " +
         "annotate / re-lay-out the canvas (`whiteboard`), create a saved " +
-        "research writeup (`research`), document a system integration " +
-        "(`connections`), or search / walk / traverse the knowledge graph or " +
-        "dereference a URN (`graph_walker` — this covers ANY use of " +
-        "`graph_search`, `graph_ontology`, `graph_get`, or `graph_neighbors`). " +
+        "research writeup (`research`), or document a system integration " +
+        "(`connections`). " +
         "You MUST load a capability before calling any of its tools; if you " +
         "find yourself about to call one of those tools without having loaded " +
         "its capability this turn, call `learn_capability` first. Returns the " +
@@ -459,7 +455,7 @@ These advanced capabilities are available but their detailed rules are NOT loade
 
 ${menu}
 
-Only load a capability when the user's request actually calls for it; for the common "propose a feature, then send it to its planner" flow you don't need any of these. But whenever the user asks you to search, walk, or traverse the graph / knowledge graph, or to look up an entity by URN, that REQUIRES the \`graph_walker\` capability — call \`learn_capability("graph_walker")\` before using \`graph_search\` / \`graph_ontology\` / \`graph_get\` / \`graph_neighbors\`.`
+Only load a capability when the user's request actually calls for it; for the common "propose a feature, then send it to its planner" flow you don't need any of these.`
   );
 }
 

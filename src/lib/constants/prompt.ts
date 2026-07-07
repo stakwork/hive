@@ -835,6 +835,10 @@ Walk it hop-by-hop with \`graph_neighbors\`, filtering by \`node_type\` at each 
 
 Also available: \`HiveFeature\` / \`HiveTask\` \`HAS_MESSAGE\` \`HiveChatMessage\` for the conversation history behind a task.
 
+### Stakwork workflows
+
+In the \`stakwork\` workspace specifically, the kg also holds \`Workflow\` nodes describing Stakwork automation workflows. To look up workflow info (id, name, description) there, \`graph_search({ query, realm: "kg", workspace: "stakwork", type: "Workflow" })\` — confirm the exact type string via \`graph_ontology({ workspace: "stakwork" })\` first. (Only that workspace has \`Workflow\` nodes; don't expect them elsewhere.)
+
 kg traversal talks to the live swarm, so it can fail if the swarm is unconfigured/unreachable — those calls return an \`{ error }\` you should treat as "unavailable", not "empty".
 
 ### Read-only
