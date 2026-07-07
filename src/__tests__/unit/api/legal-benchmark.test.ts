@@ -607,8 +607,8 @@ describe("POST /run — task context pre-fetch for Stakwork vars", () => {
           return Promise.resolve({
             ok: true,
             json: async () => [
-              { type: "file", name: "doc1.txt" },
-              { type: "file", name: "doc2.txt" },
+              { type: "file", name: "doc1.txt", download_url: "https://raw.githubusercontent.com/stakwork/harvey-labs/main/tasks/task-a/documents/doc1.txt" },
+              { type: "file", name: "doc2.txt", download_url: "https://raw.githubusercontent.com/stakwork/harvey-labs/main/tasks/task-a/documents/doc2.txt" },
             ],
           });
         }
@@ -626,7 +626,10 @@ describe("POST /run — task context pre-fetch for Stakwork vars", () => {
     const vars = (capturedPayloads[0] as { workflow_params: { set_var: { attributes: { vars: Record<string, string> } } } }).workflow_params.set_var.attributes.vars;
     expect(vars.task_goal).toBe("Do this thing.");
     expect(vars.task_output_desc).toBe("Memo, Summary");
-    expect(JSON.parse(vars.documents_json)).toEqual(["doc1.txt", "doc2.txt"]);
+    expect(JSON.parse(vars.documents_json)).toEqual([
+      "https://raw.githubusercontent.com/stakwork/harvey-labs/main/tasks/task-a/documents/doc1.txt",
+      "https://raw.githubusercontent.com/stakwork/harvey-labs/main/tasks/task-a/documents/doc2.txt",
+    ]);
   });
 
   test("task_output_desc falls back to regex parse of ### Output block when no deliverables", async () => {
@@ -706,9 +709,9 @@ describe("POST /run — task context pre-fetch for Stakwork vars", () => {
           return Promise.resolve({
             ok: true,
             json: async () => [
-              { type: "file", name: "contract.pdf" },
-              { type: "dir", name: "subdirectory" },
-              { type: "file", name: "exhibit.docx" },
+              { type: "file", name: "contract.pdf", download_url: "https://raw.githubusercontent.com/stakwork/harvey-labs/main/tasks/task-d/documents/contract.pdf" },
+              { type: "dir", name: "subdirectory", download_url: null },
+              { type: "file", name: "exhibit.docx", download_url: "https://raw.githubusercontent.com/stakwork/harvey-labs/main/tasks/task-d/documents/exhibit.docx" },
             ],
           });
         }
@@ -722,7 +725,113 @@ describe("POST /run — task context pre-fetch for Stakwork vars", () => {
     });
 
     const vars = (capturedPayloads[0] as { workflow_params: { set_var: { attributes: { vars: Record<string, string> } } } }).workflow_params.set_var.attributes.vars;
-    expect(JSON.parse(vars.documents_json)).toEqual(["contract.pdf", "exhibit.docx"]);
+    expect(JSON.parse(vars.documents_json)).toEqual([
+      "https://raw.githubusercontent.com/stakwork/harvey-labs/main/tasks/task-d/documents/contract.pdf",
+      "https://raw.githubusercontent.com/stakwork/harvey-labs/main/tasks/task-d/documents/exhibit.docx",
+    ]);
+  });
+
+  test("rubrics_json contains full criteria array when criteria is present in task.json", async () => {
+    const capturedPayloads: unknown[] = [];
+    const mockCriteria = [
+      { id: "c1", title: "Accuracy", match_criteria: "The output is accurate", deliverables: ["memo"] },
+      { id: "c2", title: "Completeness", match_criteria: "All sections present" },
+    ];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockImplementation((url: string, opts?: RequestInit) => {
+        if (String(url).includes("task.json")) {
+          return Promise.resolve({
+            ok: true,
+            json: async () => ({
+              title: "Task E",
+              instructions: "Review the contract.",
+              criteria: mockCriteria,
+            }),
+          });
+        }
+        if (String(url).includes("contents")) {
+          return Promise.resolve({ ok: true, json: async () => [] });
+        }
+        capturedPayloads.push(opts?.body ? JSON.parse(opts.body as string) : null);
+        return Promise.resolve({ ok: true, json: async () => ({ data: { project_id: 99 } }) });
+      }),
+    );
+
+    await postRun(makeRunRequest({ taskSlug: "task-e", taskTitle: "Task E" }), {
+      params: Promise.resolve({ slug: "openlaw" }),
+    });
+
+    const vars = (capturedPayloads[0] as { workflow_params: { set_var: { attributes: { vars: Record<string, string> } } } }).workflow_params.set_var.attributes.vars;
+    expect(vars.rubrics_json).toBe(JSON.stringify(mockCriteria));
+  });
+
+  test("rubrics_json is '[]' when task.json has no criteria field", async () => {
+    const capturedPayloads: unknown[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockImplementation((url: string, opts?: RequestInit) => {
+        if (String(url).includes("task.json")) {
+          return Promise.resolve({
+            ok: true,
+            json: async () => ({
+              title: "Task F",
+              instructions: "Draft a letter.",
+              // no criteria field
+            }),
+          });
+        }
+        if (String(url).includes("contents")) {
+          return Promise.resolve({ ok: true, json: async () => [] });
+        }
+        capturedPayloads.push(opts?.body ? JSON.parse(opts.body as string) : null);
+        return Promise.resolve({ ok: true, json: async () => ({ data: { project_id: 99 } }) });
+      }),
+    );
+
+    await postRun(makeRunRequest({ taskSlug: "task-f", taskTitle: "Task F" }), {
+      params: Promise.resolve({ slug: "openlaw" }),
+    });
+
+    const vars = (capturedPayloads[0] as { workflow_params: { set_var: { attributes: { vars: Record<string, string> } } } }).workflow_params.set_var.attributes.vars;
+    expect(vars.rubrics_json).toBe("[]");
+  });
+
+  test("documents_json excludes files with null download_url (Git LFS files)", async () => {
+    const capturedPayloads: unknown[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockImplementation((url: string, opts?: RequestInit) => {
+        if (String(url).includes("task.json")) {
+          return Promise.resolve({
+            ok: true,
+            json: async () => ({ title: "Task G", instructions: "Review.", criteria: [] }),
+          });
+        }
+        if (String(url).includes("contents")) {
+          return Promise.resolve({
+            ok: true,
+            json: async () => [
+              { type: "file", name: "normal.txt", download_url: "https://raw.githubusercontent.com/stakwork/harvey-labs/main/tasks/task-g/documents/normal.txt" },
+              { type: "file", name: "lfs-file.pdf", download_url: null },
+              { type: "file", name: "another.txt", download_url: "https://raw.githubusercontent.com/stakwork/harvey-labs/main/tasks/task-g/documents/another.txt" },
+            ],
+          });
+        }
+        capturedPayloads.push(opts?.body ? JSON.parse(opts.body as string) : null);
+        return Promise.resolve({ ok: true, json: async () => ({ data: { project_id: 99 } }) });
+      }),
+    );
+
+    await postRun(makeRunRequest({ taskSlug: "task-g", taskTitle: "Task G" }), {
+      params: Promise.resolve({ slug: "openlaw" }),
+    });
+
+    const vars = (capturedPayloads[0] as { workflow_params: { set_var: { attributes: { vars: Record<string, string> } } } }).workflow_params.set_var.attributes.vars;
+    expect(JSON.parse(vars.documents_json)).toEqual([
+      "https://raw.githubusercontent.com/stakwork/harvey-labs/main/tasks/task-g/documents/normal.txt",
+      "https://raw.githubusercontent.com/stakwork/harvey-labs/main/tasks/task-g/documents/another.txt",
+    ]);
   });
 });
 

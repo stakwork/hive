@@ -22,7 +22,7 @@ interface TaskJson {
   work_type?: string;
   tags?: string[];
   deliverables?: Record<string, string>;
-  criteria: Array<{ id: string; title: string; match_criteria: string; deliverables?: string[] }>;
+  criteria?: Array<{ id: string; title: string; match_criteria: string; deliverables?: string[] }>;
 }
 
 const HARVEY_BASE = "https://raw.githubusercontent.com/stakwork/harvey-labs/main";
@@ -129,6 +129,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     let taskGoal = "";
     let taskOutputDesc = "";
     let documents: string[] = [];
+    let rubrics: NonNullable<TaskJson["criteria"]> = [];
 
     const [taskJsonRes, docsRes] = await Promise.all([
       fetch(`${HARVEY_BASE}/tasks/${taskSlug}/task.json`),
@@ -145,6 +146,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
           const outputMatch = taskGoal.match(/###\s*Output[:\s]+([\s\S]+)$/i);
           taskOutputDesc = outputMatch ? outputMatch[1].trim().replace(/`/g, "") : "";
         }
+        rubrics = taskJson.criteria ?? [];
       } catch {
         console.error(`[legal/benchmarks/run] Failed to parse task.json for ${taskSlug}`);
       }
@@ -152,8 +154,10 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
 
     if (docsRes.ok) {
       try {
-        const docsData = (await docsRes.json()) as Array<{ type: string; name: string }>;
-        documents = docsData.filter((f) => f.type === "file").map((f) => f.name);
+        const docsData = (await docsRes.json()) as Array<{ type: string; name: string; download_url: string | null }>;
+        documents = docsData
+          .filter((f) => f.type === "file" && f.download_url !== null)
+          .map((f) => f.download_url as string);
       } catch {
         console.error(`[legal/benchmarks/run] Failed to fetch documents for ${taskSlug}`);
       }
@@ -287,6 +291,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
               task_goal: taskGoal,
               task_output_desc: taskOutputDesc,
               documents_json: JSON.stringify(documents),
+              rubrics_json: JSON.stringify(rubrics),
               webhook_url: webhookUrl,
               graph_base_url: graphBaseUrl,
               swarm_secret_alias: swarmSecretAlias,
