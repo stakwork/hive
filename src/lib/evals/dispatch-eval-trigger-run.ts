@@ -9,6 +9,7 @@ import { getJarvisUrl, transformSwarmUrlToRepo2Graph } from "@/lib/utils/swarm";
 import { getStakworkTokenReference } from "@/lib/vercel/stakwork-token";
 import { getBifrostForLLM } from "@/services/bifrost/orchestrator";
 import type { BifrostAgentName } from "@/services/bifrost/orchestrator";
+import { isBifrostAgentName } from "@/lib/utils/hive-agent";
 import type { EvalTriggerSource } from "@/lib/utils/eval-source";
 
 export interface DispatchEvalTriggerRunParams {
@@ -39,6 +40,15 @@ export interface DispatchEvalTriggerRunParams {
   swarmSecretAlias: string | null;
   /** EvalTrigger source discriminator (resolved by the caller) */
   triggerSource: EvalTriggerSource;
+  /**
+   * The agent identity this eval is about — the trigger's stored `agent`
+   * property, or an explicit per-run override. When it is a valid
+   * `BifrostAgentName`, Bifrost credentials are resolved under THAT
+   * identity (cost attribution, budget, per-agent gateway config)
+   * instead of the coarse source-derived default. Invalid / missing
+   * values (legacy triggers, `wfe-agent`) fall back to the source map.
+   */
+  agentName?: string | null;
 }
 
 export interface DispatchEvalTriggerRunResult {
@@ -85,6 +95,7 @@ export async function dispatchEvalTriggerRun(
     swarmUrl,
     swarmSecretAlias,
     triggerSource,
+    agentName,
   } = params;
 
   const evalWorkflowId = process.env.STAKWORK_EVAL_WORKFLOW_ID;
@@ -105,13 +116,30 @@ export async function dispatchEvalTriggerRun(
   const jarvisUrl = getJarvisUrl(swarmName);
 
   // Conditionally resolve Bifrost credentials for the triggering user.
-  const bifrostAgentName = EVAL_BIFROST_AGENT[triggerSource];
-  const bifrost = bifrostAgentName
-    ? await getBifrostForLLM(
+  //
+  // `source` decides only whether the replay transport is Bifrost-backed
+  // at all (`provider_direct` is not). The IDENTITY the creds are minted
+  // under prefers the trigger's own `agent` — that's who this eval is
+  // about, and it's what the gateway's per-agent cost/budget/observability
+  // keys on. The source-mapped default remains as fallback for legacy
+  // triggers without an agent, and for partial `BIFROST_ENABLED_AGENTS`
+  // rollouts where the trigger's agent isn't enabled yet but the coarse
+  // default is — losing correct attribution beats losing creds entirely.
+  const sourceAgent = EVAL_BIFROST_AGENT[triggerSource];
+  let bifrost: Awaited<ReturnType<typeof getBifrostForLLM>>;
+  if (sourceAgent) {
+    const preferredAgent = isBifrostAgentName(agentName) ? agentName : sourceAgent;
+    bifrost = await getBifrostForLLM(
+      { workspaceSlug, workspaceId, userId },
+      { agentName: preferredAgent },
+    );
+    if (!bifrost && preferredAgent !== sourceAgent) {
+      bifrost = await getBifrostForLLM(
         { workspaceSlug, workspaceId, userId },
-        { agentName: bifrostAgentName },
-      )
-    : undefined;
+        { agentName: sourceAgent },
+      );
+    }
+  }
 
   const vars = {
     triggerId,
@@ -171,24 +199,29 @@ export async function dispatchEvalTriggerRun(
 }
 
 /**
- * Fetch the EvalTrigger node from Jarvis and return its `source` discriminator.
- * Returns "repo_agent" as a safe default if the node can't be fetched or has no source.
+ * Fetch the EvalTrigger node from Jarvis and return its `source`
+ * discriminator plus its stored `agent` identity (undefined when the
+ * trigger predates the agent field).
+ * Returns "repo_agent" as a safe default source if the node can't be
+ * fetched or has no source.
  *
  * Exported so gateway routes can reuse the same fetch pattern.
  */
-export async function fetchTriggerSource(
+export async function fetchTriggerMeta(
   jarvisUrl: string,
   swarmApiKey: string,
   triggerId: string,
-): Promise<{ source: EvalTriggerSource; ok: boolean }> {
+): Promise<{ source: EvalTriggerSource; agent: string | undefined; ok: boolean }> {
   const triggerRes = await fetch(`${jarvisUrl}/node/${triggerId}`, {
     headers: { "x-api-token": swarmApiKey },
   });
   if (!triggerRes.ok) {
-    return { source: "repo_agent", ok: false };
+    return { source: "repo_agent", agent: undefined, ok: false };
   }
   const triggerNode = await triggerRes.json();
   const source: EvalTriggerSource =
     triggerNode?.properties?.source ?? triggerNode?.source ?? "repo_agent";
-  return { source, ok: true };
+  const agentRaw = triggerNode?.properties?.agent ?? triggerNode?.agent;
+  const agent = typeof agentRaw === "string" && agentRaw.trim() ? agentRaw : undefined;
+  return { source, agent, ok: true };
 }
