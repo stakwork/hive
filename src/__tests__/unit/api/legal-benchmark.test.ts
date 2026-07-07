@@ -1,5 +1,4 @@
 import { describe, test, expect, vi, beforeEach, Mock } from "vitest";
-import { createHmac } from "crypto";
 import { NextRequest } from "next/server";
 
 // --- Stable mock references via vi.hoisted ---
@@ -7,11 +6,15 @@ import { NextRequest } from "next/server";
 const mockGetBifrostForLLM = vi.hoisted(() => vi.fn());
 const mockGetApiKeyForModel = vi.hoisted(() => vi.fn());
 const mockGetStakworkTokenReference = vi.hoisted(() => vi.fn());
-const mockDbLegalBenchmarkRunCreate = vi.hoisted(() => vi.fn());
-const mockDbLegalBenchmarkRunFindFirst = vi.hoisted(() => vi.fn());
-const mockDbLegalBenchmarkRunFindUnique = vi.hoisted(() => vi.fn());
-const mockDbLegalBenchmarkRunUpdate = vi.hoisted(() => vi.fn());
-const mockDbLegalBenchmarkRunDelete = vi.hoisted(() => vi.fn());
+
+// StakworkRun DB mock helpers
+const mockDbStakworkRunFindFirst = vi.hoisted(() => vi.fn());
+const mockDbStakworkRunFindUnique = vi.hoisted(() => vi.fn());
+const mockDbStakworkRunCreate = vi.hoisted(() => vi.fn());
+const mockDbStakworkRunUpdate = vi.hoisted(() => vi.fn());
+const mockDbStakworkRunDeleteMany = vi.hoisted(() => vi.fn());
+const mockDbTransaction = vi.hoisted(() => vi.fn());
+
 const mockDbWorkspaceFindUnique = vi.hoisted(() => vi.fn());
 const mockPusherTrigger = vi.hoisted(() => vi.fn());
 const mockAddNode = vi.hoisted(() => vi.fn());
@@ -24,16 +27,17 @@ const mockEnsureHarveyLabEvalNodes = vi.hoisted(() => vi.fn());
 
 vi.mock("@/lib/db", () => ({
   db: {
-    legalBenchmarkRun: {
-      create: mockDbLegalBenchmarkRunCreate,
-      findFirst: mockDbLegalBenchmarkRunFindFirst,
-      findUnique: mockDbLegalBenchmarkRunFindUnique,
-      update: mockDbLegalBenchmarkRunUpdate,
-      delete: mockDbLegalBenchmarkRunDelete,
+    stakworkRun: {
+      findFirst: mockDbStakworkRunFindFirst,
+      findUnique: mockDbStakworkRunFindUnique,
+      create: mockDbStakworkRunCreate,
+      update: mockDbStakworkRunUpdate,
+      deleteMany: mockDbStakworkRunDeleteMany,
     },
     workspace: {
       findUnique: mockDbWorkspaceFindUnique,
     },
+    $transaction: mockDbTransaction,
   },
 }));
 
@@ -54,7 +58,7 @@ vi.mock("@/lib/harvey-lab/eval-nodes", () => ({
 vi.mock("@/lib/pusher", () => ({
   pusherServer: { trigger: mockPusherTrigger },
   getWorkspaceChannelName: (slug: string) => `workspace-${slug}`,
-  PUSHER_EVENTS: { LEGAL_BENCHMARK_UPDATE: "legal-benchmark-update" },
+  PUSHER_EVENTS: { STAKWORK_RUN_UPDATE: "stakwork-run-update" },
 }));
 
 vi.mock("@/lib/middleware/utils", () => ({
@@ -90,7 +94,6 @@ vi.mock("@/lib/vercel/stakwork-token", () => ({
 
 import { POST as postRun } from "@/app/api/workspaces/[slug]/legal/benchmarks/run/route";
 import { GET as getRun } from "@/app/api/workspaces/[slug]/legal/benchmarks/runs/[runId]/route";
-import { POST as postWebhook } from "@/app/api/legal/benchmark/webhook/route";
 import { getWorkspaceSwarmAccess } from "@/lib/helpers/swarm-access";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -107,24 +110,6 @@ function makeGetRunRequest(slug = "openlaw", runId = "run-1") {
   return new NextRequest(
     `http://localhost/api/workspaces/${slug}/legal/benchmarks/runs/${runId}`,
     { method: "GET" },
-  );
-}
-
-const WEBHOOK_SECRET = "test-nextauth-secret";
-
-function makeWebhookRequest(
-  body: Record<string, unknown>,
-  runId = "run-1",
-  stage = "runner",
-) {
-  const token = createHmac("sha256", WEBHOOK_SECRET).update(`${runId}:${stage}`).digest("hex");
-  return new NextRequest(
-    `http://localhost/api/legal/benchmark/webhook?run_id=${runId}&stage=${stage}&token=${token}`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    },
   );
 }
 
@@ -154,40 +139,108 @@ const MOCK_SWARM_ACCESS_NO_ALIAS = {
   },
 };
 
-const MOCK_RUN = {
-  id: "run-1",
+const MOCK_RUNNER_RUN = {
+  id: "runner-1",
   workspaceId: "ws-1",
-  taskSlug: "task-a",
-  taskTitle: "Task A",
-  status: "RUNNING",
-  runnerProjectId: 42,
-  scorerProjectId: null,
-  runnerOutputUrl: null,
-  runnerOutputText: null,
-  scoreJson: null,
-  errorMessage: null,
-  evalTriggerRef: null,
+  type: "LEGAL_BENCHMARK_RUNNER",
+  status: "IN_PROGRESS",
+  projectId: 42,
+  result: JSON.stringify({
+    taskSlug: "task-a",
+    taskTitle: "Task A",
+    siblingRunId: "scorer-1",
+  }),
   createdAt: new Date(),
   updatedAt: new Date(),
 };
 
+const MOCK_SCORER_RUN = {
+  id: "scorer-1",
+  workspaceId: "ws-1",
+  type: "LEGAL_BENCHMARK_SCORER",
+  status: "PENDING",
+  projectId: null,
+  result: JSON.stringify({
+    taskSlug: "task-a",
+    taskTitle: "Task A",
+    siblingRunId: "runner-1",
+  }),
+  createdAt: new Date(),
+  updatedAt: new Date(),
+};
+
+/**
+ * Set up the default $transaction mock to execute the callback with a
+ * minimal tx object (mirrors the actual transaction usage in run/route.ts).
+ * The factory receives a `txOverrides` object to customise per-test behaviour.
+ */
+function setupTransactionMock({
+  existingActiveRun = null,
+  runnerResult = { id: "runner-new" },
+  scorerResult = { id: "scorer-new" },
+  throwError = null as Error | null,
+} = {}) {
+  mockDbTransaction.mockImplementation(
+    async (fn: (tx: unknown) => Promise<unknown>) => {
+      if (throwError) throw throwError;
+      const tx = {
+        stakworkRun: {
+          findFirst: vi.fn().mockResolvedValue(existingActiveRun),
+          create: vi
+            .fn()
+            // First call → scorer, second call → runner
+            .mockResolvedValueOnce(scorerResult)
+            .mockResolvedValueOnce(runnerResult),
+          update: vi.fn().mockResolvedValue(scorerResult),
+        },
+      };
+      return fn(tx);
+    },
+  );
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
   process.env.NEXTAUTH_URL = "http://localhost:3000";
-  process.env.NEXTAUTH_SECRET = WEBHOOK_SECRET;
+  process.env.NEXTAUTH_SECRET = "test-nextauth-secret";
   process.env.STAKWORK_HARVEY_RUNNER_WORKFLOW_ID = "1001";
   process.env.STAKWORK_HARVEY_SCORER_WORKFLOW_ID = "1002";
-  // Default: Jarvis configured so happy-path tests get correct graph_base_url/secret in payload
+
+  // Default: Jarvis configured
   mockGetJarvisConfig.mockResolvedValue({ jarvisUrl: "https://graph.example.com", apiKey: "supersecret" });
   mockFetchHarveyTaskCriteria.mockResolvedValue([]);
   mockEnsureHarveyLabEvalNodes.mockResolvedValue(null);
   mockAddNode.mockResolvedValue({ success: true, ref_id: "node-ref-1" });
   mockAddEdge.mockResolvedValue({ success: true });
 
-  // Default: Bifrost disabled (returns undefined → fallback to env key)
+  // Default: Bifrost disabled → falls back to env key
   mockGetBifrostForLLM.mockResolvedValue(undefined);
   mockGetApiKeyForModel.mockReturnValue("env-anthropic-key");
   mockGetStakworkTokenReference.mockReturnValue("{{HIVE_STAGING}}");
+
+  // Default: findUnique returns runner row (used by post-dispatch update + runs/[runId])
+  mockDbStakworkRunFindUnique.mockResolvedValue(MOCK_RUNNER_RUN);
+  // Default: update succeeds
+  mockDbStakworkRunUpdate.mockResolvedValue(MOCK_RUNNER_RUN);
+  // Default: deleteMany succeeds
+  mockDbStakworkRunDeleteMany.mockResolvedValue({ count: 2 });
+
+  // Default fetch: return non-ok for GitHub pre-fetches, ok for Stakwork dispatch.
+  // Individual tests can override this with vi.stubGlobal("fetch", ...) as needed.
+  vi.stubGlobal(
+    "fetch",
+    vi.fn().mockImplementation((url: string, opts?: RequestInit) => {
+      if (String(url).includes("task.json") || String(url).includes("contents/tasks")) {
+        return Promise.resolve({ ok: false, status: 404 });
+      }
+      // Stakwork dispatch default
+      return Promise.resolve({
+        ok: true,
+        json: async () => ({ data: { project_id: 99 } }),
+      });
+      void opts; // suppress unused warning
+    }),
+  );
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -252,16 +305,20 @@ describe("POST /api/workspaces/[slug]/legal/benchmarks/run", () => {
       params: Promise.resolve({ slug: "openlaw" }),
     });
 
-    // fetch should never be called with the Stakwork projects endpoint
     const stakworkCalls = mockFetch.mock.calls.filter(([url]: [string]) =>
       String(url).includes("/projects"),
     );
     expect(stakworkCalls).toHaveLength(0);
   });
 
-  test("returns 409 when active run already exists", async () => {
+  test("returns 409 when active run already exists for the same taskSlug", async () => {
     (getWorkspaceSwarmAccess as Mock).mockResolvedValue(MOCK_SWARM_ACCESS);
-    mockDbLegalBenchmarkRunFindFirst.mockResolvedValue(MOCK_RUN);
+    setupTransactionMock({
+      existingActiveRun: {
+        id: "existing-runner",
+        result: JSON.stringify({ taskSlug: "task-a" }),
+      },
+    });
 
     const res = await postRun(makeRunRequest({ taskSlug: "task-a", taskTitle: "Task A" }), {
       params: Promise.resolve({ slug: "openlaw" }),
@@ -271,11 +328,35 @@ describe("POST /api/workspaces/[slug]/legal/benchmarks/run", () => {
     expect(body.error).toMatch(/already in progress/i);
   });
 
-  test("transitions PENDING → RUNNING on success", async () => {
+  test("does NOT return 409 when active run is for a different taskSlug", async () => {
     (getWorkspaceSwarmAccess as Mock).mockResolvedValue(MOCK_SWARM_ACCESS);
-    mockDbLegalBenchmarkRunFindFirst.mockResolvedValue(null);
-    mockDbLegalBenchmarkRunCreate.mockResolvedValue({ ...MOCK_RUN, id: "run-new", status: "PENDING" });
-    mockDbLegalBenchmarkRunUpdate.mockResolvedValue({ ...MOCK_RUN, id: "run-new", status: "RUNNING" });
+    // Active run for a DIFFERENT task — should not block
+    setupTransactionMock({
+      existingActiveRun: {
+        id: "other-runner",
+        result: JSON.stringify({ taskSlug: "other-task" }),
+      },
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ data: { project_id: 99 } }),
+      }),
+    );
+
+    const res = await postRun(makeRunRequest({ taskSlug: "task-a", taskTitle: "Task A" }), {
+      params: Promise.resolve({ slug: "openlaw" }),
+    });
+    expect(res.status).toBe(201);
+  });
+
+  test("creates runner (IN_PROGRESS) and scorer (PENDING) rows and returns run_id", async () => {
+    (getWorkspaceSwarmAccess as Mock).mockResolvedValue(MOCK_SWARM_ACCESS);
+    setupTransactionMock({
+      runnerResult: { id: "runner-new" },
+      scorerResult: { id: "scorer-new" },
+    });
 
     vi.stubGlobal(
       "fetch",
@@ -290,21 +371,54 @@ describe("POST /api/workspaces/[slug]/legal/benchmarks/run", () => {
     });
     expect(res.status).toBe(201);
     const body = await res.json();
-    expect(body.run_id).toBe("run-new");
+    expect(body.run_id).toBe("runner-new");
+  });
 
-    // Verify DB update was called with RUNNING + projectId
-    expect(mockDbLegalBenchmarkRunUpdate).toHaveBeenCalledWith(
+  test("runner row updated to IN_PROGRESS with projectId after successful dispatch", async () => {
+    (getWorkspaceSwarmAccess as Mock).mockResolvedValue(MOCK_SWARM_ACCESS);
+    setupTransactionMock({
+      runnerResult: { id: "runner-new" },
+      scorerResult: { id: "scorer-new" },
+    });
+
+    // findUnique returns existing result so merge works
+    mockDbStakworkRunFindUnique.mockResolvedValue({
+      ...MOCK_RUNNER_RUN,
+      id: "runner-new",
+      result: JSON.stringify({ taskSlug: "task-a", taskTitle: "Task A", siblingRunId: "scorer-new" }),
+    });
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ data: { project_id: 99 } }),
+      }),
+    );
+
+    const res = await postRun(makeRunRequest({ taskSlug: "task-a", taskTitle: "Task A" }), {
+      params: Promise.resolve({ slug: "openlaw" }),
+    });
+    expect(res.status).toBe(201);
+
+    // The update call should set status to IN_PROGRESS with projectId
+    expect(mockDbStakworkRunUpdate).toHaveBeenCalledWith(
       expect.objectContaining({
-        data: expect.objectContaining({ status: "RUNNING", runnerProjectId: 99 }),
+        where: { id: "runner-new" },
+        data: expect.objectContaining({
+          status: "IN_PROGRESS",
+          projectId: 99,
+        }),
       }),
     );
   });
 
-  test("deletes record and returns 502 on Stakwork failure", async () => {
+  test("deletes both rows and returns 502 on Stakwork dispatch failure", async () => {
     (getWorkspaceSwarmAccess as Mock).mockResolvedValue(MOCK_SWARM_ACCESS);
-    mockDbLegalBenchmarkRunFindFirst.mockResolvedValue(null);
-    mockDbLegalBenchmarkRunCreate.mockResolvedValue({ ...MOCK_RUN, id: "run-fail", status: "PENDING" });
-    mockDbLegalBenchmarkRunDelete.mockResolvedValue({});
+    setupTransactionMock({
+      runnerResult: { id: "runner-fail" },
+      scorerResult: { id: "scorer-fail" },
+    });
 
     vi.stubGlobal(
       "fetch",
@@ -316,24 +430,101 @@ describe("POST /api/workspaces/[slug]/legal/benchmarks/run", () => {
     });
     expect(res.status).toBe(502);
 
-    // Record should be cleaned up
-    expect(mockDbLegalBenchmarkRunDelete).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { id: "run-fail" } }),
+    // Both rows should be cleaned up
+    expect(mockDbStakworkRunDeleteMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: { in: ["runner-fail", "scorer-fail"] } },
+      }),
     );
+  });
+
+  test("webhook_url sent to Stakwork uses generic response webhook pattern", async () => {
+    (getWorkspaceSwarmAccess as Mock).mockResolvedValue(MOCK_SWARM_ACCESS);
+    setupTransactionMock({
+      runnerResult: { id: "runner-abc" },
+      scorerResult: { id: "scorer-abc" },
+    });
+
+    const capturedPayloads: unknown[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockImplementation((url: string, opts?: RequestInit) => {
+        if (String(url).includes("task.json") || String(url).includes("contents")) {
+          return Promise.resolve({ ok: false, status: 404 });
+        }
+        capturedPayloads.push(opts?.body ? JSON.parse(opts.body as string) : null);
+        return Promise.resolve({ ok: true, json: async () => ({ data: { project_id: 99 } }) });
+      }),
+    );
+
+    await postRun(makeRunRequest({ taskSlug: "task-a", taskTitle: "Task A" }), {
+      params: Promise.resolve({ slug: "openlaw" }),
+    });
+
+    expect(capturedPayloads).toHaveLength(1);
+    const dispatched = capturedPayloads[0] as { webhook_url: string };
+    expect(dispatched.webhook_url).toMatch(/\/api\/webhook\/stakwork\/response/);
+    expect(dispatched.webhook_url).toMatch(/type=LEGAL_BENCHMARK_RUNNER/);
+    expect(dispatched.webhook_url).toMatch(/run_id=runner-abc/);
+    expect(dispatched.webhook_url).toMatch(/workspace_id=ws-1/);
+  });
+
+  test("result JSON never contains graphSecret, apiKey as credential, or tokenReference", async () => {
+    (getWorkspaceSwarmAccess as Mock).mockResolvedValue(MOCK_SWARM_ACCESS);
+
+    // Capture what's stored in result via transaction mock
+    const createdRows: unknown[] = [];
+    mockDbTransaction.mockImplementation(
+      async (fn: (tx: unknown) => Promise<unknown>) => {
+        const tx = {
+          stakworkRun: {
+            findFirst: vi.fn().mockResolvedValue(null),
+            create: vi.fn().mockImplementation((args: { data: unknown }) => {
+              createdRows.push(args.data);
+              const id = createdRows.length === 1 ? "scorer-x" : "runner-x";
+              return Promise.resolve({ id });
+            }),
+            update: vi.fn().mockResolvedValue({}),
+          },
+        };
+        return fn(tx);
+      },
+    );
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ data: { project_id: 99 } }),
+      }),
+    );
+
+    await postRun(makeRunRequest({ taskSlug: "task-a", taskTitle: "Task A" }), {
+      params: Promise.resolve({ slug: "openlaw" }),
+    });
+
+    // Check none of the created rows contain secrets
+    for (const row of createdRows) {
+      const resultStr = JSON.stringify(row);
+      expect(resultStr).not.toContain("graphSecret");
+      expect(resultStr).not.toContain("tokenReference");
+      // swarmApiKey / supersecret (the raw API key) should not appear
+      expect(resultStr).not.toContain("supersecret");
+    }
   });
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
-// ═══════════════════════════════════════════════════════════════════════════
-// POST /run — task context pre-fetch (task_goal, task_output_desc, documents)
+// POST /run — credential pattern: swarmSecretAlias in payload
 // ═══════════════════════════════════════════════════════════════════════════
 
 describe("POST /run — credential pattern: swarmSecretAlias in payload", () => {
   beforeEach(() => {
     (getWorkspaceSwarmAccess as Mock).mockResolvedValue(MOCK_SWARM_ACCESS);
-    mockDbLegalBenchmarkRunFindFirst.mockResolvedValue(null);
-    mockDbLegalBenchmarkRunCreate.mockResolvedValue({ ...MOCK_RUN, id: "run-new", status: "PENDING" });
-    mockDbLegalBenchmarkRunUpdate.mockResolvedValue({ ...MOCK_RUN, id: "run-new", status: "RUNNING" });
+    setupTransactionMock({
+      runnerResult: { id: "runner-new" },
+      scorerResult: { id: "scorer-new" },
+    });
   });
 
   test("vars.secret equals swarmSecretAlias (not the decrypted apiKey)", async () => {
@@ -357,7 +548,6 @@ describe("POST /run — credential pattern: swarmSecretAlias in payload", () => 
     const vars = (capturedPayloads[0] as { workflow_params: { set_var: { attributes: { vars: Record<string, string> } } } }).workflow_params.set_var.attributes.vars;
     expect(vars.secret).toBe("test-swarm-alias");
     expect(vars.swarm_secret_alias).toBe("test-swarm-alias");
-    // Decrypted key ("supersecret") must NOT appear in the payload
     expect(vars.secret).not.toBe("supersecret");
     expect(JSON.stringify(capturedPayloads[0])).not.toContain("supersecret");
   });
@@ -384,12 +574,17 @@ describe("POST /run — credential pattern: swarmSecretAlias in payload", () => 
   });
 });
 
+// ═══════════════════════════════════════════════════════════════════════════
+// POST /run — task context pre-fetch (task_goal, task_output_desc, documents)
+// ═══════════════════════════════════════════════════════════════════════════
+
 describe("POST /run — task context pre-fetch for Stakwork vars", () => {
   beforeEach(() => {
     (getWorkspaceSwarmAccess as Mock).mockResolvedValue(MOCK_SWARM_ACCESS);
-    mockDbLegalBenchmarkRunFindFirst.mockResolvedValue(null);
-    mockDbLegalBenchmarkRunCreate.mockResolvedValue({ ...MOCK_RUN, id: "run-new", status: "PENDING" });
-    mockDbLegalBenchmarkRunUpdate.mockResolvedValue({ ...MOCK_RUN, id: "run-new", status: "RUNNING" });
+    setupTransactionMock({
+      runnerResult: { id: "runner-new" },
+      scorerResult: { id: "scorer-new" },
+    });
   });
 
   test("task_output_desc uses joined deliverable keys when deliverables are present", async () => {
@@ -417,7 +612,6 @@ describe("POST /run — task context pre-fetch for Stakwork vars", () => {
             ],
           });
         }
-        // Stakwork dispatch
         capturedPayloads.push(opts?.body ? JSON.parse(opts.body as string) : null);
         return Promise.resolve({ ok: true, json: async () => ({ data: { project_id: 99 } }) });
       }),
@@ -544,202 +738,65 @@ describe("GET /api/workspaces/[slug]/legal/benchmarks/runs/[runId]", () => {
     expect(res.status).toBe(404);
   });
 
-  test("returns 404 when run does not exist", async () => {
+  test("returns 404 when run does not exist (findFirst returns null)", async () => {
     (getWorkspaceSwarmAccess as Mock).mockResolvedValue(MOCK_SWARM_ACCESS);
-    mockDbLegalBenchmarkRunFindUnique.mockResolvedValue(null);
+    mockDbStakworkRunFindFirst.mockResolvedValue(null);
 
-    const res = await getRun(makeGetRunRequest(), {
+    const res = await getRun(makeGetRunRequest("openlaw", "nonexistent"), {
       params: Promise.resolve({ slug: "openlaw", runId: "nonexistent" }),
     });
     expect(res.status).toBe(404);
   });
 
-  test("returns 404 on workspaceId mismatch (IDOR guard)", async () => {
+  test("returns 404 on workspaceId mismatch — findFirst with workspaceId in WHERE returns null (IDOR guard)", async () => {
     (getWorkspaceSwarmAccess as Mock).mockResolvedValue(MOCK_SWARM_ACCESS);
-    mockDbLegalBenchmarkRunFindUnique.mockResolvedValue({
-      ...MOCK_RUN,
-      workspaceId: "ws-other", // different workspace
-    });
+    // The route now scopes workspaceId in the query itself; a foreign run returns null
+    mockDbStakworkRunFindFirst.mockResolvedValue(null);
 
-    const res = await getRun(makeGetRunRequest(), {
-      params: Promise.resolve({ slug: "openlaw", runId: "run-1" }),
+    const res = await getRun(makeGetRunRequest("openlaw", "run-other-ws"), {
+      params: Promise.resolve({ slug: "openlaw", runId: "run-other-ws" }),
     });
     expect(res.status).toBe(404);
+    // Confirm workspaceId was included in the findFirst call
+    expect(mockDbStakworkRunFindFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ workspaceId: "ws-1" }),
+      }),
+    );
   });
 
-  test("returns 200 with run when ownership matches", async () => {
+  test("returns 200 with run and sibling when ownership matches (runner id)", async () => {
     (getWorkspaceSwarmAccess as Mock).mockResolvedValue(MOCK_SWARM_ACCESS);
-    mockDbLegalBenchmarkRunFindUnique.mockResolvedValue(MOCK_RUN);
+    // First call: primary run lookup; second call: sibling lookup
+    mockDbStakworkRunFindFirst
+      .mockResolvedValueOnce(MOCK_RUNNER_RUN)
+      .mockResolvedValueOnce(MOCK_SCORER_RUN);
 
-    const res = await getRun(makeGetRunRequest(), {
-      params: Promise.resolve({ slug: "openlaw", runId: "run-1" }),
+    const res = await getRun(makeGetRunRequest("openlaw", "runner-1"), {
+      params: Promise.resolve({ slug: "openlaw", runId: "runner-1" }),
     });
     expect(res.status).toBe(200);
     const body = await res.json();
-    expect(body.run.id).toBe("run-1");
-  });
-});
-
-// ═══════════════════════════════════════════════════════════════════════════
-// POST /api/legal/benchmark/webhook
-// ═══════════════════════════════════════════════════════════════════════════
-
-describe("POST /api/legal/benchmark/webhook", () => {
-  test("returns 400 when run_id or stage are missing", async () => {
-    const req = new NextRequest("http://localhost/api/legal/benchmark/webhook", {
-      method: "POST",
-      body: JSON.stringify({}),
-    });
-    const res = await postWebhook(req);
-    expect(res.status).toBe(400);
+    expect(body.run.id).toBe("runner-1");
+    expect(body.runnerRun.id).toBe("runner-1");
+    expect(body.scorerRun.id).toBe("scorer-1");
   });
 
-  test("returns 404 when run_id does not match a record", async () => {
-    mockDbLegalBenchmarkRunFindUnique.mockResolvedValue(null);
-    const res = await postWebhook(makeWebhookRequest({}, "nonexistent", "runner"));
-    expect(res.status).toBe(404);
-  });
+  test("returns 200 with run when lookup by scorer id", async () => {
+    (getWorkspaceSwarmAccess as Mock).mockResolvedValue(MOCK_SWARM_ACCESS);
+    // First call: scorer row; second call: runner sibling
+    mockDbStakworkRunFindFirst
+      .mockResolvedValueOnce(MOCK_SCORER_RUN)
+      .mockResolvedValueOnce(MOCK_RUNNER_RUN);
 
-  describe("stage=runner", () => {
-    beforeEach(() => {
-      mockDbLegalBenchmarkRunFindUnique.mockResolvedValue(MOCK_RUN);
-      mockDbWorkspaceFindUnique.mockResolvedValue({ slug: "openlaw" });
-      mockDbLegalBenchmarkRunUpdate.mockResolvedValue({ ...MOCK_RUN, status: "SCORING" });
-      mockPusherTrigger.mockResolvedValue(undefined);
-      vi.stubGlobal(
-        "fetch",
-        vi.fn().mockResolvedValue({
-          ok: true,
-          json: async () => ({ data: { project_id: 200 } }),
-        }),
-      );
+    const res = await getRun(makeGetRunRequest("openlaw", "scorer-1"), {
+      params: Promise.resolve({ slug: "openlaw", runId: "scorer-1" }),
     });
-
-    test("updates status to SCORING and broadcasts Pusher event", async () => {
-      const res = await postWebhook(
-        makeWebhookRequest(
-          { final_output: "output text", output_s3_url: "s3://bucket/key" },
-          "run-1",
-          "runner",
-        ),
-      );
-      expect(res.status).toBe(200);
-
-      // DB updated to SCORING
-      expect(mockDbLegalBenchmarkRunUpdate).toHaveBeenCalledWith(
-        expect.objectContaining({
-          data: expect.objectContaining({
-            status: "SCORING",
-            runnerOutputText: "output text",
-            runnerOutputUrl: "s3://bucket/key",
-          }),
-        }),
-      );
-
-      // Pusher fired
-      expect(mockPusherTrigger).toHaveBeenCalledWith(
-        "workspace-openlaw",
-        "legal-benchmark-update",
-        expect.objectContaining({ run_id: "run-1", status: "SCORING" }),
-      );
-    });
-
-    test("returns 400 when final_output is missing", async () => {
-      const res = await postWebhook(
-        makeWebhookRequest({ output_s3_url: "s3://bucket/key" }, "run-1", "runner"),
-      );
-      expect(res.status).toBe(400);
-    });
-
-    test("returns 400 when output_s3_url is missing", async () => {
-      const res = await postWebhook(
-        makeWebhookRequest({ final_output: "text" }, "run-1", "runner"),
-      );
-      expect(res.status).toBe(400);
-    });
-  });
-
-  describe("stage=scorer", () => {
-    beforeEach(() => {
-      mockDbLegalBenchmarkRunFindUnique.mockResolvedValue(MOCK_RUN);
-      mockDbWorkspaceFindUnique.mockResolvedValue({ slug: "openlaw" });
-      mockDbLegalBenchmarkRunUpdate.mockResolvedValue({ ...MOCK_RUN, status: "COMPLETE" });
-      mockPusherTrigger.mockResolvedValue(undefined);
-    });
-
-    test("updates status to COMPLETE and stores scoreJson", async () => {
-      const scores = [
-        { criterion: "Accuracy", pass: true, notes: "Good" },
-        { criterion: "Clarity", pass: false, notes: "Needs work" },
-      ];
-      const res = await postWebhook(makeWebhookRequest({ scores }, "run-1", "scorer"));
-      expect(res.status).toBe(200);
-
-      expect(mockDbLegalBenchmarkRunUpdate).toHaveBeenCalledWith(
-        expect.objectContaining({
-          data: expect.objectContaining({
-            status: "COMPLETE",
-            scoreJson: JSON.stringify(scores),
-          }),
-        }),
-      );
-
-      expect(mockPusherTrigger).toHaveBeenCalledWith(
-        "workspace-openlaw",
-        "legal-benchmark-update",
-        expect.objectContaining({ run_id: "run-1", status: "COMPLETE" }),
-      );
-    });
-
-    test("returns 400 when scores is not an array", async () => {
-      const res = await postWebhook(
-        makeWebhookRequest({ scores: "not-an-array" }, "run-1", "scorer"),
-      );
-      expect(res.status).toBe(400);
-    });
-
-    test("returns 400 when scores is missing", async () => {
-      const res = await postWebhook(makeWebhookRequest({}, "run-1", "scorer"));
-      expect(res.status).toBe(400);
-    });
-  });
-
-  describe("error path", () => {
-    test("sets status FAILED and broadcasts when DB update throws", async () => {
-      mockDbLegalBenchmarkRunFindUnique.mockResolvedValue(MOCK_RUN);
-      mockDbWorkspaceFindUnique.mockResolvedValue({ slug: "openlaw" });
-      // First update throws to simulate an unhandled error mid-handler
-      mockDbLegalBenchmarkRunUpdate
-        .mockRejectedValueOnce(new Error("DB exploded"))
-        .mockResolvedValue({ ...MOCK_RUN, status: "FAILED" });
-      mockPusherTrigger.mockResolvedValue(undefined);
-
-      const res = await postWebhook(
-        makeWebhookRequest(
-          { final_output: "out", output_s3_url: "s3://b/k" },
-          "run-1",
-          "runner",
-        ),
-      );
-      expect(res.status).toBe(500);
-
-      // FAILED state persisted
-      expect(mockDbLegalBenchmarkRunUpdate).toHaveBeenLastCalledWith(
-        expect.objectContaining({
-          data: expect.objectContaining({
-            status: "FAILED",
-            errorMessage: "DB exploded",
-          }),
-        }),
-      );
-
-      // FAILED broadcast fired
-      expect(mockPusherTrigger).toHaveBeenCalledWith(
-        "workspace-openlaw",
-        "legal-benchmark-update",
-        expect.objectContaining({ status: "FAILED" }),
-      );
-    });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.run.id).toBe("scorer-1");
+    expect(body.scorerRun.id).toBe("scorer-1");
+    expect(body.runnerRun.id).toBe("runner-1");
   });
 });
 
@@ -750,9 +807,10 @@ describe("POST /api/legal/benchmark/webhook", () => {
 describe("POST /run — Jarvis eval graph non-fatal block", () => {
   beforeEach(() => {
     (getWorkspaceSwarmAccess as Mock).mockResolvedValue(MOCK_SWARM_ACCESS);
-    mockDbLegalBenchmarkRunFindFirst.mockResolvedValue(null);
-    mockDbLegalBenchmarkRunCreate.mockResolvedValue({ ...MOCK_RUN, id: "run-new", status: "PENDING" });
-    mockDbLegalBenchmarkRunUpdate.mockResolvedValue({ ...MOCK_RUN, id: "run-new", status: "RUNNING" });
+    setupTransactionMock({
+      runnerResult: { id: "runner-new" },
+      scorerResult: { id: "scorer-new" },
+    });
     vi.stubGlobal(
       "fetch",
       vi.fn().mockResolvedValue({
@@ -773,7 +831,7 @@ describe("POST /run — Jarvis eval graph non-fatal block", () => {
     expect(body.error).toMatch(/swarm not configured/i);
   });
 
-  test("still returns 201 + RUNNING when ensureHarveyLabEvalNodes returns null", async () => {
+  test("still returns 201 when ensureHarveyLabEvalNodes returns null", async () => {
     mockGetJarvisConfig.mockResolvedValue({ jarvisUrl: "https://j.example.com", apiKey: "key" });
     mockFetchHarveyTaskCriteria.mockResolvedValue(["criterion A"]);
     mockEnsureHarveyLabEvalNodes.mockResolvedValue(null);
@@ -786,8 +844,7 @@ describe("POST /run — Jarvis eval graph non-fatal block", () => {
     expect(mockAddNode).not.toHaveBeenCalled();
   });
 
-  test("still returns 201 + RUNNING when Jarvis eval block throws after dispatch", async () => {
-    // getJarvisConfigForWorkspace succeeds (needed for payload), but ensureHarveyLabEvalNodes throws
+  test("still returns 201 when Jarvis eval block throws after dispatch", async () => {
     mockGetJarvisConfig.mockResolvedValue({ jarvisUrl: "https://j.example.com", apiKey: "key" });
     mockFetchHarveyTaskCriteria.mockRejectedValue(new Error("Jarvis criteria fetch down"));
 
@@ -796,10 +853,10 @@ describe("POST /run — Jarvis eval graph non-fatal block", () => {
     });
     expect(res.status).toBe(201);
     const body = await res.json();
-    expect(body.run_id).toBe("run-new");
+    expect(body.run_id).toBe("runner-new");
   });
 
-  test("persists evalTriggerRef when Jarvis writes succeed", async () => {
+  test("persists evalTriggerRef into runner result when Jarvis writes succeed", async () => {
     const JARVIS_CONFIG = { jarvisUrl: "https://j.example.com", apiKey: "key" };
     mockGetJarvisConfig.mockResolvedValue(JARVIS_CONFIG);
     mockFetchHarveyTaskCriteria.mockResolvedValue(["criterion A"]);
@@ -813,131 +870,30 @@ describe("POST /run — Jarvis eval graph non-fatal block", () => {
       .mockResolvedValueOnce({ success: true, ref_id: "agent-ref-1" });   // HiveAgent
     mockAddEdge.mockResolvedValue({ success: true });
 
+    // findUnique returns existing result for merge
+    mockDbStakworkRunFindUnique.mockResolvedValue({
+      ...MOCK_RUNNER_RUN,
+      id: "runner-new",
+      result: JSON.stringify({ taskSlug: "task-a", taskTitle: "Task A", siblingRunId: "scorer-new" }),
+    });
+
     const res = await postRun(makeRunRequest({ taskSlug: "task-a", taskTitle: "Task A" }), {
       params: Promise.resolve({ slug: "openlaw" }),
     });
     expect(res.status).toBe(201);
 
-    // evalTriggerRef should be persisted
-    expect(mockDbLegalBenchmarkRunUpdate).toHaveBeenCalledWith(
-      expect.objectContaining({
-        data: expect.objectContaining({ evalTriggerRef: "trigger-ref-1" }),
-      }),
-    );
-  });
-});
-
-// ═══════════════════════════════════════════════════════════════════════════
-// Webhook stage=scorer — Jarvis EvalTriggerOutput (non-fatal)
-// ═══════════════════════════════════════════════════════════════════════════
-
-describe("POST /webhook stage=scorer — Jarvis EvalTriggerOutput non-fatal block", () => {
-  const SCORES = [
-    { criterion: "Accuracy", pass: true, notes: "Well done" },
-    { criterion: "Clarity", pass: false, notes: "Needs improvement" },
-  ];
-
-  beforeEach(() => {
-    mockDbWorkspaceFindUnique.mockResolvedValue({ slug: "openlaw" });
-    mockDbLegalBenchmarkRunUpdate.mockResolvedValue({ ...MOCK_RUN, status: "COMPLETE" });
-    mockPusherTrigger.mockResolvedValue(undefined);
-  });
-
-  test("returns 200 + COMPLETE when evalTriggerRef is null (no Jarvis calls)", async () => {
-    mockDbLegalBenchmarkRunFindUnique.mockResolvedValue({ ...MOCK_RUN, evalTriggerRef: null });
-
-    const res = await postWebhook(makeWebhookRequest({ scores: SCORES }, "run-1", "scorer"));
-    expect(res.status).toBe(200);
-    expect(mockGetJarvisConfig).not.toHaveBeenCalled();
-    expect(mockAddNode).not.toHaveBeenCalled();
-    expect(mockAddEdge).not.toHaveBeenCalled();
-  });
-
-  test("returns 200 + COMPLETE when evalTriggerRef is set and Jarvis succeeds", async () => {
-    mockDbLegalBenchmarkRunFindUnique.mockResolvedValue({
-      ...MOCK_RUN,
-      evalTriggerRef: "trigger-ref-1",
+    // evalTriggerRef should be written to both runner and scorer rows
+    const updateCalls = mockDbStakworkRunUpdate.mock.calls;
+    const evalTriggerUpdates = updateCalls.filter((call) => {
+      const result = call[0]?.data?.result;
+      if (!result) return false;
+      try {
+        return JSON.parse(result).evalTriggerRef === "trigger-ref-1";
+      } catch {
+        return false;
+      }
     });
-    mockGetJarvisConfig.mockResolvedValue({ jarvisUrl: "https://j.example.com", apiKey: "key" });
-    mockAddNode.mockResolvedValue({ success: true, ref_id: "output-ref" });
-    mockAddEdge.mockResolvedValue({ success: true });
-
-    const res = await postWebhook(makeWebhookRequest({ scores: SCORES }, "run-1", "scorer"));
-    expect(res.status).toBe(200);
-
-    // One EvalTriggerOutput per score entry
-    expect(mockAddNode).toHaveBeenCalledTimes(SCORES.length);
-    expect(mockAddEdge).toHaveBeenCalledTimes(SCORES.length);
-
-    // Verify first output node shape
-    expect(mockAddNode).toHaveBeenNthCalledWith(
-      1,
-      expect.anything(),
-      expect.objectContaining({
-        node_type: "EvalTriggerOutput",
-        node_data: expect.objectContaining({
-          result: "pass",
-          score: 1.0,
-          attempt_number: 1,
-          judge_notes: "Accuracy: Well done",
-        }),
-      }),
-    );
-
-    // Verify HAS_OUTPUT edge wired to evalTriggerRef
-    expect(mockAddEdge).toHaveBeenCalledWith(
-      expect.anything(),
-      expect.objectContaining({
-        edge: { edge_type: "HAS_OUTPUT" },
-        source: { ref_id: "trigger-ref-1" },
-        target: { ref_id: "output-ref" },
-      }),
-    );
-
-    // Run should be COMPLETE
-    expect(mockDbLegalBenchmarkRunUpdate).toHaveBeenCalledWith(
-      expect.objectContaining({
-        data: expect.objectContaining({ status: "COMPLETE" }),
-      }),
-    );
-  });
-
-  test("returns 200 + COMPLETE even when Jarvis EvalTriggerOutput writes throw", async () => {
-    mockDbLegalBenchmarkRunFindUnique.mockResolvedValue({
-      ...MOCK_RUN,
-      evalTriggerRef: "trigger-ref-1",
-    });
-    mockGetJarvisConfig.mockResolvedValue({ jarvisUrl: "https://j.example.com", apiKey: "key" });
-    mockAddNode.mockRejectedValue(new Error("Jarvis unavailable"));
-
-    const res = await postWebhook(makeWebhookRequest({ scores: SCORES }, "run-1", "scorer"));
-    expect(res.status).toBe(200);
-
-    // Run status must still be COMPLETE
-    expect(mockDbLegalBenchmarkRunUpdate).toHaveBeenCalledWith(
-      expect.objectContaining({
-        data: expect.objectContaining({ status: "COMPLETE" }),
-      }),
-    );
-
-    // Pusher broadcast must still fire
-    expect(mockPusherTrigger).toHaveBeenCalledWith(
-      "workspace-openlaw",
-      "legal-benchmark-update",
-      expect.objectContaining({ status: "COMPLETE" }),
-    );
-  });
-
-  test("returns 200 + COMPLETE when getJarvisConfigForWorkspace returns null", async () => {
-    mockDbLegalBenchmarkRunFindUnique.mockResolvedValue({
-      ...MOCK_RUN,
-      evalTriggerRef: "trigger-ref-1",
-    });
-    mockGetJarvisConfig.mockResolvedValue(null);
-
-    const res = await postWebhook(makeWebhookRequest({ scores: SCORES }, "run-1", "scorer"));
-    expect(res.status).toBe(200);
-    expect(mockAddNode).not.toHaveBeenCalled();
+    expect(evalTriggerUpdates.length).toBeGreaterThanOrEqual(1);
   });
 });
 
@@ -968,9 +924,10 @@ describe("POST /run — Bifrost LLM credential vars in Stakwork payload", () => 
 
   beforeEach(() => {
     (getWorkspaceSwarmAccess as Mock).mockResolvedValue(MOCK_SWARM_ACCESS);
-    mockDbLegalBenchmarkRunFindFirst.mockResolvedValue(null);
-    mockDbLegalBenchmarkRunCreate.mockResolvedValue({ ...MOCK_RUN, id: "run-new", status: "PENDING" });
-    mockDbLegalBenchmarkRunUpdate.mockResolvedValue({ ...MOCK_RUN, id: "run-new", status: "RUNNING" });
+    setupTransactionMock({
+      runnerResult: { id: "runner-new" },
+      scorerResult: { id: "scorer-new" },
+    });
   });
 
   test("getBifrostForLLM throws → route still dispatches with env apiKey and tokenReference present", async () => {
