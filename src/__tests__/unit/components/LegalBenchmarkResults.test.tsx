@@ -10,14 +10,36 @@ globalThis.React = React;
 
 // ─── Mocks ────────────────────────────────────────────────────────────────────
 
+const mockRunnerRow = {
+  id: "runner-row-id",
+  workspaceId: "workspace-123",
+  type: "LEGAL_BENCHMARK_RUNNER",
+  status: "IN_PROGRESS",
+  projectId: null as number | null,
+  result: null,
+  createdAt: new Date().toISOString(),
+  updatedAt: new Date().toISOString(),
+};
+
+const mockScorerRow = {
+  id: "scorer-row-id",
+  workspaceId: "workspace-123",
+  type: "LEGAL_BENCHMARK_SCORER",
+  status: "PENDING",
+  projectId: null as number | null,
+  result: null,
+  createdAt: new Date().toISOString(),
+  updatedAt: new Date().toISOString(),
+};
+
 const mockRun = {
   id: "run-abc",
   workspaceId: "workspace-123",
   taskSlug: "antitrust/task-1",
   taskTitle: "Analyze Antitrust Strategy",
-  status: "RUNNING" as const,
-  runnerProjectId: null,
-  scorerProjectId: null,
+  status: "running" as const,
+  runnerRun: mockRunnerRow,
+  scorerRun: mockScorerRow,
   runnerOutputUrl: null,
   runnerOutputText: null,
   scoreJson: null,
@@ -89,7 +111,7 @@ describe("LegalBenchmarkResults", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockUseLegalBenchmarkRun.mockReturnValue({
-      run: mockRun,
+      run: { ...mockRun },
       isLoading: false,
       isStale: false,
       refetch: vi.fn(),
@@ -112,7 +134,7 @@ describe("LegalBenchmarkResults", () => {
 
   it("shows PENDING/RUNNING spinner with correct message", () => {
     mockUseLegalBenchmarkRun.mockReturnValue({
-      run: { ...mockRun, status: "RUNNING" },
+      run: { ...mockRun, status: "running" },
       isLoading: false,
       isStale: false,
       refetch: vi.fn(),
@@ -126,7 +148,7 @@ describe("LegalBenchmarkResults", () => {
 
   it("shows PENDING spinner with correct message", () => {
     mockUseLegalBenchmarkRun.mockReturnValue({
-      run: { ...mockRun, status: "PENDING" },
+      run: { ...mockRun, status: "running" },
       isLoading: false,
       isStale: false,
       refetch: vi.fn(),
@@ -140,7 +162,7 @@ describe("LegalBenchmarkResults", () => {
 
   it("shows SCORING spinner with correct message", () => {
     mockUseLegalBenchmarkRun.mockReturnValue({
-      run: { ...mockRun, status: "SCORING" },
+      run: { ...mockRun, status: "scoring", scorerRun: { ...mockScorerRow, projectId: null } },
       isLoading: false,
       isStale: false,
       refetch: vi.fn(),
@@ -154,7 +176,7 @@ describe("LegalBenchmarkResults", () => {
 
   it("shows Stakwork link for super admin when runnerProjectId is non-null in RUNNING state", () => {
     mockUseLegalBenchmarkRun.mockReturnValue({
-      run: { ...mockRun, status: "RUNNING", runnerProjectId: 123 },
+      run: { ...mockRun, status: "running", runnerRun: { ...mockRunnerRow, projectId: 123 } },
       isLoading: false,
       isStale: false,
       refetch: vi.fn(),
@@ -168,7 +190,7 @@ describe("LegalBenchmarkResults", () => {
 
   it("does not show Stakwork link for non-super admin in RUNNING state", () => {
     mockUseLegalBenchmarkRun.mockReturnValue({
-      run: { ...mockRun, status: "RUNNING", runnerProjectId: 123 },
+      run: { ...mockRun, status: "running", runnerRun: { ...mockRunnerRow, projectId: 123 } },
       isLoading: false,
       isStale: false,
       refetch: vi.fn(),
@@ -180,7 +202,7 @@ describe("LegalBenchmarkResults", () => {
 
   it("shows scorer Stakwork link for super admin in SCORING state", () => {
     mockUseLegalBenchmarkRun.mockReturnValue({
-      run: { ...mockRun, status: "SCORING", scorerProjectId: 456 },
+      run: { ...mockRun, status: "scoring", scorerRun: { ...mockScorerRow, projectId: 456 } },
       isLoading: false,
       isStale: false,
       refetch: vi.fn(),
@@ -194,7 +216,7 @@ describe("LegalBenchmarkResults", () => {
 
   it("does not show Stakwork link when scorerProjectId is null in SCORING state", () => {
     mockUseLegalBenchmarkRun.mockReturnValue({
-      run: { ...mockRun, status: "SCORING", scorerProjectId: null },
+      run: { ...mockRun, status: "scoring", scorerRun: { ...mockScorerRow, projectId: null } },
       isLoading: false,
       isStale: false,
       refetch: vi.fn(),
@@ -206,7 +228,7 @@ describe("LegalBenchmarkResults", () => {
 
   it("shows FAILED error state with errorMessage", () => {
     mockUseLegalBenchmarkRun.mockReturnValue({
-      run: { ...mockRun, status: "FAILED", errorMessage: "Stakwork timed out" },
+      run: { ...mockRun, status: "failed", errorMessage: "Stakwork timed out" },
       isLoading: false,
       isStale: false,
       refetch: vi.fn(),
@@ -221,7 +243,7 @@ describe("LegalBenchmarkResults", () => {
   it("calls onReset when 'Try again' is clicked in FAILED state", async () => {
     const user = userEvent.setup();
     mockUseLegalBenchmarkRun.mockReturnValue({
-      run: { ...mockRun, status: "FAILED", errorMessage: "Error" },
+      run: { ...mockRun, status: "failed", errorMessage: "Error" },
       isLoading: false,
       isStale: false,
       refetch: vi.fn(),
@@ -241,7 +263,7 @@ describe("LegalBenchmarkResults", () => {
     mockUseLegalBenchmarkRun.mockReturnValue({
       run: {
         ...mockRun,
-        status: "COMPLETE",
+        status: "complete",
         runnerOutputText: "Draft output text here",
         scoreJson: JSON.stringify(scores),
       },
@@ -270,7 +292,7 @@ describe("LegalBenchmarkResults", () => {
     mockUseLegalBenchmarkRun.mockReturnValue({
       run: {
         ...mockRun,
-        status: "COMPLETE",
+        status: "complete",
         runnerOutputText: "Some output",
         scoreJson: JSON.stringify([]),
       },
@@ -288,7 +310,7 @@ describe("LegalBenchmarkResults", () => {
     mockUseLegalBenchmarkRun.mockReturnValue({
       run: {
         ...mockRun,
-        status: "COMPLETE",
+        status: "complete",
         runnerOutputText: "Output text",
         scoreJson: JSON.stringify([]),
       },
@@ -306,7 +328,7 @@ describe("LegalBenchmarkResults", () => {
     const mockRefetch = vi.fn();
     const user = userEvent.setup();
     mockUseLegalBenchmarkRun.mockReturnValue({
-      run: { ...mockRun, status: "RUNNING" },
+      run: { ...mockRun, status: "running" },
       isLoading: false,
       isStale: true,
       refetch: mockRefetch,
