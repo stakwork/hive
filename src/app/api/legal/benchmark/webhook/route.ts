@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { randomUUID } from "crypto";
-import { db } from "@/lib/db";
+import { randomUUID, createHmac, timingSafeEqual } from "crypto";
+import { db as _db } from "@/lib/db";
 import { optionalEnvVars } from "@/config/env";
 import {
   pusherServer,
@@ -9,6 +9,10 @@ import {
 } from "@/lib/pusher";
 import { getJarvisConfigForWorkspace } from "@/lib/helpers/jarvis-config";
 import { addNode, addEdge } from "@/services/swarm/api/nodes";
+
+// LegalBenchmarkRun model removed from schema (T1) — cast to any until T3 rewrites this route
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const db = _db as any;
 
 export const fetchCache = "force-no-store";
 
@@ -32,6 +36,21 @@ export async function POST(request: NextRequest) {
       { error: "run_id and stage query params are required" },
       { status: 400 },
     );
+  }
+
+  // Verify HMAC token before any DB access — prevents unauthenticated callers from
+  // advancing run state or triggering paid scorer dispatch by guessing/enumerating runIds.
+  const token = url.searchParams.get("token") ?? "";
+  const webhookSecret = process.env.NEXTAUTH_SECRET ?? "";
+  const expected = createHmac("sha256", webhookSecret).update(`${runId}:${stage}`).digest("hex");
+  let tokenValid = false;
+  try {
+    tokenValid = timingSafeEqual(Buffer.from(token, "hex"), Buffer.from(expected, "hex"));
+  } catch {
+    tokenValid = false;
+  }
+  if (!tokenValid) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   const run = await db.legalBenchmarkRun.findUnique({ where: { id: runId } });
@@ -101,7 +120,8 @@ export async function POST(request: NextRequest) {
 
       // Fire the Evaluator (fire-and-forget — scorer failures surface via their own webhook)
       const baseUrl = process.env.NEXTAUTH_URL || "http://localhost:3000";
-      const scorerWebhookUrl = `${baseUrl}/api/legal/benchmark/webhook?run_id=${runId}&stage=scorer`;
+      const scorerToken = createHmac("sha256", webhookSecret).update(`${runId}:scorer`).digest("hex");
+      const scorerWebhookUrl = `${baseUrl}/api/legal/benchmark/webhook?run_id=${runId}&stage=scorer&token=${scorerToken}`;
 
       const scorerPayload = {
         name: `harvey-scorer-${runId}`,

@@ -1,4 +1,5 @@
 import { describe, test, expect, vi, beforeEach, Mock } from "vitest";
+import { createHmac } from "crypto";
 import { NextRequest } from "next/server";
 
 // --- Stable mock references via vi.hoisted ---
@@ -109,13 +110,16 @@ function makeGetRunRequest(slug = "openlaw", runId = "run-1") {
   );
 }
 
+const WEBHOOK_SECRET = "test-nextauth-secret";
+
 function makeWebhookRequest(
   body: Record<string, unknown>,
   runId = "run-1",
   stage = "runner",
 ) {
+  const token = createHmac("sha256", WEBHOOK_SECRET).update(`${runId}:${stage}`).digest("hex");
   return new NextRequest(
-    `http://localhost/api/legal/benchmark/webhook?run_id=${runId}&stage=${stage}`,
+    `http://localhost/api/legal/benchmark/webhook?run_id=${runId}&stage=${stage}&token=${token}`,
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -170,6 +174,7 @@ const MOCK_RUN = {
 beforeEach(() => {
   vi.clearAllMocks();
   process.env.NEXTAUTH_URL = "http://localhost:3000";
+  process.env.NEXTAUTH_SECRET = WEBHOOK_SECRET;
   process.env.STAKWORK_HARVEY_RUNNER_WORKFLOW_ID = "1001";
   process.env.STAKWORK_HARVEY_SCORER_WORKFLOW_ID = "1002";
   // Default: Jarvis configured so happy-path tests get correct graph_base_url/secret in payload
