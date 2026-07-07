@@ -89,25 +89,32 @@ export function useLegalBenchmarkRun(runId: string): UseLegalBenchmarkRunResult 
       const channelName = getWorkspaceChannelName(workspace.slug);
       channel = pusher.subscribe(channelName);
 
-      const handleUpdate = (data: { run_id: string; status: string }) => {
-        if (data.run_id === runId) {
+      // The STAKWORK_RUN_UPDATE event fires for both the runner and scorer rows.
+      // Filter client-side: accept if either the runner id or the sibling scorer id matches.
+      const handleUpdate = (data: { runId?: string; run_id?: string; status?: string }) => {
+        const updatedId = data.runId ?? data.run_id;
+        const updatedStatus = data.status ?? "";
+        const currentResult = runRef.current?.runnerRun?.result as Record<string, unknown> | null | undefined;
+        const siblingRunId = currentResult?.siblingRunId as string | undefined;
+
+        if (updatedId === runId || updatedId === siblingRunId) {
           // If the incoming status is terminal, immediately clear the stale flag
           // so consumers see it reset synchronously before the fetch completes.
-          if (!IN_PROGRESS_STATUSES.has(data.status)) {
+          if (!IN_PROGRESS_STATUSES.has(updatedStatus)) {
             setIsStale(false);
           }
           fetchRunRef.current?.();
         }
       };
 
-      channel.bind(PUSHER_EVENTS.LEGAL_BENCHMARK_UPDATE, handleUpdate);
+      channel.bind(PUSHER_EVENTS.STAKWORK_RUN_UPDATE, handleUpdate);
     } catch {
       // Pusher not configured in this environment
       return;
     }
 
     return () => {
-      channel?.unbind(PUSHER_EVENTS.LEGAL_BENCHMARK_UPDATE);
+      channel?.unbind(PUSHER_EVENTS.STAKWORK_RUN_UPDATE);
     };
   }, [workspace?.slug, runId]);
 
