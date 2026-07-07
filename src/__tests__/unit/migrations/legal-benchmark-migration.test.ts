@@ -79,18 +79,19 @@ describe("No orphaned legalBenchmarkRun references in src/ (outside migrating fi
    * because they are owned by downstream tickets (T2, T3, T4) and will be
    * updated there. This list must shrink to zero once the full migration lands.
    */
+  /**
+   * T4 is now complete — frontend files no longer reference legacy identifiers.
+   * Only the API route files (run + runId), service, webhook, and their tests
+   * legitimately contain LEGAL_BENCHMARK_* references as part of the migrated impl.
+   */
   const ALLOWED_FILES = new Set([
     "src/__tests__/unit/api/legal-benchmark.test.ts",
-    "src/__tests__/unit/hooks/useLegalBenchmarkRun.test.ts",
-    "src/__tests__/unit/components/LegalBenchmarkResults.test.tsx",
+    "src/__tests__/unit/api/legal-benchmark-webhook.test.ts",
     "src/app/api/workspaces/[slug]/legal/benchmarks/run/route.ts",
     "src/app/api/workspaces/[slug]/legal/benchmarks/runs/[runId]/route.ts",
-    "src/app/api/legal/benchmark/webhook/route.ts",
-    "src/hooks/useLegalBenchmarkRun.ts",
-    "src/components/legal/LegalBenchmarkResults.tsx",
+    "src/app/api/webhook/stakwork/response/route.ts",
+    "src/services/stakwork-run.ts",
     "src/types/legal.ts",
-    "src/lib/pusher.ts",
-    "src/__tests__/unit/lib/pusher.test.ts",
   ]);
 
   it("only allowed files (pending downstream tickets) reference legalBenchmarkRun or LegalBenchmarkRun", () => {
