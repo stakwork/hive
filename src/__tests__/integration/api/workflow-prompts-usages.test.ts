@@ -27,7 +27,6 @@ vi.mock("@/config/env", () => ({
   config: {
     STAKWORK_BASE_URL: "https://api.stakwork.test",
     STAKWORK_API_KEY: "test-key-usages",
-    WORKFLOW_GRAPH_PROMPT_STORAGE_ID: "",
   },
   optionalEnvVars: {
     STAKWORK_BASE_URL: "https://api.stakwork.test",
@@ -43,9 +42,18 @@ vi.mock("@/lib/runtime", () => ({
 
 vi.mock("@/lib/auth/nextauth", () => ({ authOptions: {} }));
 
-const mockStakworkRequest = vi.fn().mockResolvedValue({ id: 1 });
-vi.mock("@/lib/service-factory", () => ({
-  stakworkService: vi.fn(() => ({ stakworkRequest: mockStakworkRequest })),
+const { mockAddNode, mockGetJarvisConfigForWorkspace } = vi.hoisted(() => ({
+  mockAddNode: vi.fn(),
+  mockGetJarvisConfigForWorkspace: vi.fn(),
+}));
+
+vi.mock("@/services/swarm/api/nodes", () => ({
+  addNode: mockAddNode,
+  addEdge: vi.fn(),
+}));
+
+vi.mock("@/lib/helpers/jarvis-config", () => ({
+  getJarvisConfigForWorkspace: mockGetJarvisConfigForWorkspace,
 }));
 
 import { isDevelopmentMode } from "@/lib/runtime";
@@ -101,8 +109,8 @@ describe("GET /api/workflow/prompts?include_usages=true", () => {
   beforeEach(async () => {
     vi.clearAllMocks();
     mockFetch.mockReset();
-    mockStakworkRequest.mockReset();
-    mockStakworkRequest.mockResolvedValue({ id: 1 });
+    mockGetJarvisConfigForWorkspace.mockResolvedValue({ jarvisUrl: "https://jarvis.test", apiKey: "jarvis-key" });
+    mockAddNode.mockResolvedValue({ success: true, ref_id: "ref-prompt-test" });
     mockIsDevelopmentMode.mockReturnValue(false);
     state = await setupSharedState();
   });
@@ -369,8 +377,8 @@ describe("GET /api/workflow/prompts/[id]/versions", () => {
   beforeEach(async () => {
     vi.clearAllMocks();
     mockFetch.mockReset();
-    mockStakworkRequest.mockReset();
-    mockStakworkRequest.mockResolvedValue({ id: 1 });
+    mockGetJarvisConfigForWorkspace.mockResolvedValue({ jarvisUrl: "https://jarvis.test", apiKey: "jarvis-key" });
+    mockAddNode.mockResolvedValue({ success: true, ref_id: "ref-prompt-test" });
     mockIsDevelopmentMode.mockReturnValue(false);
     state = await setupSharedState();
   });
@@ -504,8 +512,8 @@ describe("GET /api/workflow/prompts/[id]/versions/[versionId]", () => {
   beforeEach(async () => {
     vi.clearAllMocks();
     mockFetch.mockReset();
-    mockStakworkRequest.mockReset();
-    mockStakworkRequest.mockResolvedValue({ id: 1 });
+    mockGetJarvisConfigForWorkspace.mockResolvedValue({ jarvisUrl: "https://jarvis.test", apiKey: "jarvis-key" });
+    mockAddNode.mockResolvedValue({ success: true, ref_id: "ref-prompt-test" });
     mockIsDevelopmentMode.mockReturnValue(false);
     state = await setupSharedState();
   });

@@ -54,7 +54,7 @@ export async function POST(
     const { artifactId } = body;
 
     // Publish the version in Hive (+ best-effort Stakwork push inside service)
-    await publishVersion(id, versionId);
+    await publishVersion(id, versionId, workspaceId ?? undefined);
 
     // Optionally update artifact published state
     if (artifactId) {

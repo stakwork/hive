@@ -44,6 +44,11 @@ async function main() {
     process.exit(1);
   }
 
+  const workspace = await prisma.workspace.findFirst({ where: { name: "stakwork" } });
+  if (!workspace) {
+    console.warn("[backfill:prompt-graph] No stakwork workspace found; graph writes will be skipped for all prompts");
+  }
+
   const totals = { saved: 0, skipped: 0, failed: 0 };
   let batchNum = 0;
 
@@ -77,6 +82,7 @@ async function main() {
               },
               versionId: version.id,
               value: version.value,
+              workspaceId: workspace?.id,
             },
             trigger,
           );
@@ -146,7 +152,7 @@ async function main() {
         if (published) {
           try {
             await sendPromptGraphRequest(
-              { prompt: promptParams, versionId: published.id, value: published.value },
+              { prompt: promptParams, versionId: published.id, value: published.value, workspaceId: workspace?.id },
               "publish",
             );
             batchTotals.saved++;
@@ -162,7 +168,7 @@ async function main() {
         if (latestDraft) {
           try {
             await sendPromptGraphRequest(
-              { prompt: promptParams, versionId: latestDraft.id, value: latestDraft.value },
+              { prompt: promptParams, versionId: latestDraft.id, value: latestDraft.value, workspaceId: workspace?.id },
               "update",
             );
             batchTotals.saved++;
