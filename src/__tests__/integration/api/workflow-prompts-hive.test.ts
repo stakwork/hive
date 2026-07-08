@@ -23,6 +23,7 @@ vi.mock("@/config/env", () => ({
   config: {
     STAKWORK_BASE_URL: "https://api.stakwork.test",
     STAKWORK_API_KEY: "test-stakwork-key-123",
+    WORKFLOW_GRAPH_PROMPT_STORAGE_ID: "54286",
   },
   optionalEnvVars: {
     STAKWORK_BASE_URL: "https://api.stakwork.test",
@@ -40,22 +41,15 @@ vi.mock("@/lib/auth/nextauth", () => ({
   authOptions: {},
 }));
 
-const { mockAddNode, mockAddEdge, mockGetJarvisConfigForWorkspace } = vi.hoisted(() => ({
-  mockAddNode: vi.fn(),
-  mockAddEdge: vi.fn(),
-  mockGetJarvisConfigForWorkspace: vi.fn(),
-}));
-
-vi.mock("@/services/swarm/api/nodes", () => ({
-  addNode: mockAddNode,
-  addEdge: mockAddEdge,
-}));
-
-vi.mock("@/lib/helpers/jarvis-config", () => ({
-  getJarvisConfigForWorkspace: mockGetJarvisConfigForWorkspace,
+const mockStakworkRequest = vi.fn().mockResolvedValue({ id: 1 });
+vi.mock("@/lib/service-factory", () => ({
+  stakworkService: vi.fn(() => ({
+    stakworkRequest: mockStakworkRequest,
+  })),
 }));
 
 import { isDevelopmentMode } from "@/lib/runtime";
+import { config } from "@/config/env";
 
 const mockGetServerSession = getMockedSession();
 const mockIsDevelopmentMode = vi.mocked(isDevelopmentMode);
@@ -107,9 +101,8 @@ describe("Hive-native Prompt CRUD + Write-through Sync", () => {
   beforeEach(async () => {
     vi.clearAllMocks();
     mockFetch.mockReset();
-    mockGetJarvisConfigForWorkspace.mockResolvedValue({ jarvisUrl: "https://jarvis.test", apiKey: "jarvis-key" });
-    mockAddNode.mockResolvedValue({ success: true, ref_id: "ref-prompt-test" });
-    mockAddEdge.mockResolvedValue({ success: true });
+    mockStakworkRequest.mockReset();
+    mockStakworkRequest.mockResolvedValue({ id: 1 });
     mockIsDevelopmentMode.mockReturnValue(false);
 
     testUser = await createTestUser();
@@ -1028,7 +1021,7 @@ describe("Hive-native Prompt CRUD + Write-through Sync", () => {
   // ─── Prompt Graph Recorder ───────────────────────────────────────────────────
 
   describe("Prompt graph recorder (recordPromptOnGraph)", () => {
-    test("create: calls addNode with correct Prompt node shape", async () => {
+    test("create: launches graph-recorder workflow with correct payload shape", async () => {
       authAs(testUser);
       stakworkOkCreate(50);
 
@@ -1042,19 +1035,29 @@ describe("Hive-native Prompt CRUD + Write-through Sync", () => {
       const data = (await res.json()).data;
       createdPromptIds.push(data.id);
 
-      expect(mockAddNode).toHaveBeenCalledOnce();
-      const [, nodePayload, opts] = mockAddNode.mock.calls[0];
-      expect(nodePayload.node_type).toBe("Prompt");
-      expect(nodePayload.node_data.id).toBe(data.id);
-      expect(nodePayload.node_data.name).toBe("GRAPH_RECORDER_CREATE");
-      expect(nodePayload.node_data.description).toBe("graph recorder test");
-      expect(nodePayload.node_data.body).toBe("initial value");
-      expect(opts).toEqual({ reprocess: true });
-      // PromptVersion step is TODO — addEdge must not be called
-      expect(mockAddEdge).not.toHaveBeenCalled();
+      // Find the graph-recorder call (stakworkRequest for /projects)
+      const graphCall = mockStakworkRequest.mock.calls.find(
+        ([endpoint]: [string]) => endpoint === "/projects",
+      );
+      expect(graphCall).toBeDefined();
+      const [, payload] = graphCall as [string, Record<string, unknown>];
+
+      expect(payload.workflow_id).toBe(54286);
+      expect(payload.name).toBe(`Prompt Graph Recorder ${data.id}`);
+
+      const vars = (payload as { workflow_params: { set_var: { attributes: { vars: { prompt: Record<string, unknown> } } } } })
+        .workflow_params.set_var.attributes.vars.prompt;
+
+      expect(vars.id).toBe(data.id);
+      expect(vars.prompt_id).toBe(data.id);
+      expect(vars.prompt_version_id).toBe(data.published_version_id);
+      expect(vars.name).toBe("GRAPH_RECORDER_CREATE");
+      expect(vars.description).toBe("graph recorder test");
+      expect(vars.value).toBe("initial value");
+      expect(vars.customer_id).toBeNull();
     });
 
-    test("update (save): does NOT call addNode (draft must not be recorded as live)", async () => {
+    test("update (save): does NOT launch graph-recorder (draft must not be recorded as live)", async () => {
       authAs(testUser);
       stakworkOkCreate(51);
 
@@ -1067,7 +1070,7 @@ describe("Hive-native Prompt CRUD + Write-through Sync", () => {
       const created = (await createRes.json()).data;
       createdPromptIds.push(created.id);
       // Clear graph-recorder calls from the create step
-      mockAddNode.mockClear();
+      mockStakworkRequest.mockClear();
 
       authAs(testUser);
       stakworkOkUpdate();
@@ -1081,11 +1084,14 @@ describe("Hive-native Prompt CRUD + Write-through Sync", () => {
       );
       expect(putRes.status).toBe(200);
 
-      // Graph recorder must NOT have been called on a plain draft save
-      expect(mockAddNode).not.toHaveBeenCalled();
+      // Graph recorder must NOT have been called on a plain save
+      const graphCall = mockStakworkRequest.mock.calls.find(
+        ([endpoint]: [string]) => endpoint === "/projects",
+      );
+      expect(graphCall).toBeUndefined();
     });
 
-    test("publish: calls addNode with published version value", async () => {
+    test("publish: launches graph-recorder with published version id and value", async () => {
       authAs(testUser);
       stakworkOkCreate(52);
 
@@ -1103,14 +1109,14 @@ describe("Hive-native Prompt CRUD + Write-through Sync", () => {
       // Add v2
       authAs(testUser);
       stakworkOkUpdate();
-      mockAddNode.mockClear();
+      mockStakworkRequest.mockClear();
       await PUT(
         makeReq(`http://localhost/api/workflow/prompts/${created.id}`, "PUT", {
           value: "v2 value",
         }),
         { params: Promise.resolve({ id: created.id }) },
       );
-      mockAddNode.mockClear();
+      mockStakworkRequest.mockClear();
 
       // Publish v1 (roll back)
       authAs(testUser);
@@ -1120,21 +1126,32 @@ describe("Hive-native Prompt CRUD + Write-through Sync", () => {
       );
       expect(publishRes.status).toBe(200);
 
-      expect(mockAddNode).toHaveBeenCalledOnce();
-      const [, nodePayload] = mockAddNode.mock.calls[0];
-      expect(nodePayload.node_type).toBe("Prompt");
-      expect(nodePayload.node_data.id).toBe(created.id);
-      expect(nodePayload.node_data.body).toBe("v1 value");
+      const graphCall = mockStakworkRequest.mock.calls.find(
+        ([endpoint]: [string]) => endpoint === "/projects",
+      );
+      expect(graphCall).toBeDefined();
+      const [, payload] = graphCall as [string, Record<string, unknown>];
+
+      const vars = (payload as { workflow_params: { set_var: { attributes: { vars: { prompt: Record<string, unknown> } } } } })
+        .workflow_params.set_var.attributes.vars.prompt;
+
+      expect(vars.prompt_version_id).toBe(v1Id);
+      expect(vars.value).toBe("v1 value");
+      expect(vars.id).toBe(created.id);
+      expect(vars.customer_id).toBeNull();
     });
 
-    test("no Jarvis config: graph recorder is skipped, operation still succeeds", async () => {
-      mockGetJarvisConfigForWorkspace.mockResolvedValueOnce(null);
+    test("unset env var: graph recorder is skipped, operation still succeeds", async () => {
+      // Override config to remove the workflow id (cast to bypass as const)
+      const mutableConfig = config as Record<string, unknown>;
+      const original = mutableConfig.WORKFLOW_GRAPH_PROMPT_STORAGE_ID;
+      mutableConfig.WORKFLOW_GRAPH_PROMPT_STORAGE_ID = undefined;
 
       authAs(testUser);
       stakworkOkCreate(53);
 
       const req = makeReq("http://localhost/api/workflow/prompts", "POST", {
-        name: "GRAPH_RECORDER_NO_CONFIG",
+        name: "GRAPH_RECORDER_NO_ENV",
         value: "some value",
       });
       const res = await POST(req);
@@ -1142,20 +1159,29 @@ describe("Hive-native Prompt CRUD + Write-through Sync", () => {
       const data = (await res.json()).data;
       createdPromptIds.push(data.id);
 
-      expect(mockAddNode).not.toHaveBeenCalled();
+      // No /projects call should have been made
+      const graphCall = mockStakworkRequest.mock.calls.find(
+        ([endpoint]: [string]) => endpoint === "/projects",
+      );
+      expect(graphCall).toBeUndefined();
+
+      // Restore
+      mutableConfig.WORKFLOW_GRAPH_PROMPT_STORAGE_ID = original;
     });
 
-    test("addNode throws: error is swallowed, operation still succeeds", async () => {
-      mockAddNode.mockRejectedValueOnce(new Error("Jarvis network error"));
-
+    test("stakworkRequest throws: error is swallowed, operation still succeeds", async () => {
       authAs(testUser);
       stakworkOkCreate(54);
+
+      // Graph recorder request will throw
+      mockStakworkRequest.mockRejectedValueOnce(new Error("Graph recorder network error"));
 
       const req = makeReq("http://localhost/api/workflow/prompts", "POST", {
         name: "GRAPH_RECORDER_THROW",
         value: "value",
       });
       const res = await POST(req);
+      // Must still succeed despite graph recorder throwing
       expect(res.status).toBe(200);
       const data = (await res.json()).data;
       expect(data.name).toBe("GRAPH_RECORDER_THROW");
@@ -1163,10 +1189,13 @@ describe("Hive-native Prompt CRUD + Write-through Sync", () => {
       createdPromptIds.push(data.id);
     });
 
-    test("graph recorder fires even when Stakwork /prompts push fails", async () => {
+    test("graph recorder fires even when /prompts push fails", async () => {
       authAs(testUser);
       // Simulate /prompts push failure
       stakworkFail();
+
+      // Graph recorder will still succeed
+      mockStakworkRequest.mockResolvedValue({ id: 1 });
 
       const req = makeReq("http://localhost/api/workflow/prompts", "POST", {
         name: "GRAPH_RECORDER_INDEPENDENT",
@@ -1178,8 +1207,11 @@ describe("Hive-native Prompt CRUD + Write-through Sync", () => {
       const data = (await res.json()).data;
       createdPromptIds.push(data.id);
 
-      // addNode must still have been called despite the Stakwork push failing
-      expect(mockAddNode).toHaveBeenCalledOnce();
+      // Graph recorder call must still have fired
+      const graphCall = mockStakworkRequest.mock.calls.find(
+        ([endpoint]: [string]) => endpoint === "/projects",
+      );
+      expect(graphCall).toBeDefined();
     });
   });
 });
