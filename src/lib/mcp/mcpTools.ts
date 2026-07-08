@@ -1280,11 +1280,13 @@ export async function mcpCreatePrompt(
   description?: string,
 ): Promise<McpToolResult> {
   try {
+    const workspace = await db.workspace.findFirst({ where: { name: "stakwork" } });
     const { prompt, version } = await writePromptThrough({
       name,
       value,
       description,
       userId: auth.userId,
+      workspaceId: workspace?.id,
     });
 
     return mcpOk({
@@ -1324,12 +1326,14 @@ export async function mcpUpdatePrompt(
   description?: string,
 ): Promise<McpToolResult> {
   try {
+    const workspace = await db.workspace.findFirst({ where: { name: "stakwork" } });
     const { prompt, version } = await writePromptThrough({
       promptId,
       name: "", // resolved internally by writePromptThrough when promptId is set
       value,
       description,
       userId: auth.userId,
+      workspaceId: workspace?.id,
     });
 
     return mcpOk({
