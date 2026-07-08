@@ -3,7 +3,7 @@
  * Returns sets of changed step IDs and connection IDs for highlight purposes.
  */
 
-export function parseWorkflowJson(jsonString: string | null): Record<string, unknown> | null {
+export function parseWorkflowJson(jsonString: string | object | null): Record<string, unknown> | null {
   if (!jsonString) return null;
 
   try {
@@ -68,8 +68,8 @@ export function normaliseTransitions(raw: unknown): Record<string, unknown> {
 }
 
 export function computeWorkflowDiff(
-  originalJson: string | null,
-  updatedJson: string | null,
+  originalJson: string | object | null,
+  updatedJson: string | object | null,
 ): { changedStepIds: Set<string>; changedConnectionIds: Set<string> } {
   const empty = { changedStepIds: new Set<string>(), changedConnectionIds: new Set<string>() };
 
