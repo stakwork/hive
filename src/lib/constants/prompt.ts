@@ -264,7 +264,8 @@ export function getMultiWorkspaceSystemPrompt(
     .map((ws) => {
       const repos = ws.repoUrls.join(", ");
       const desc = ws.description ? ` — ${ws.description}` : "";
-      return `- **${ws.name}** (slug: \`${ws.slug}\`)${desc}: ${repos}`;
+      const swarmSegment = ws.swarmDomain ? `, swarm: \`${ws.swarmDomain}\`` : "";
+      return `- **${ws.name}** (slug: \`${ws.slug}\`${swarmSegment})${desc}: ${repos}`;
     })
     .join("\n");
 
@@ -301,7 +302,7 @@ ${memberRoster}
 
 **Honor the workspace the user mentions — for EVERY tool call.** Tools are not auto-scoped: each call picks its own \`{workspace}__\` prefix, so it is on you to choose the right one every time. When the user has named a workspace (explicitly in prose, OR implicitly via a URL), scope **all** your tool calls — \`search_logs\`, \`logs_agent\`, \`check_status\`, \`repo_agent\`, everything — to that workspace's slug. If the user asks about the knowledge graph, remember that EACH workspace actually has a knowledge graph backing it.
 
-The user might directly paste a hive URL too: The workspace slug is the path segment, NOT the host. In \`/w/<slug>/...\` and \`/api/workspaces/<slug>/...\` (e.g. \`https://hive.sphinx.chat/api/workspaces/stakwork/evals/...\`), the workspace is \`<slug>\` — \`stakwork\` in that example. The host (\`hive.sphinx.chat\`, or any \`*.sphinx.chat\` domain) is the **app's own domain**, NOT a workspace.
+The user might directly paste a hive URL too: The workspace slug is the path segment, NOT the host. In \`/w/<slug>/...\` and \`/api/workspaces/<slug>/...\` (e.g. \`https://hive.sphinx.chat/api/workspaces/stakwork/evals/...\`), the workspace is \`<slug>\` — \`stakwork\` in that example. The host (\`hive.sphinx.chat\`) is the **app's own domain**, NOT a workspace. A \`*.sphinx.chat\` host that **exactly matches one of the \`swarm:\` values listed in the Available Workspaces section above** IS that workspace's identifier — resolve it to that workspace and do not assume that workspace has no swarm. A \`*.sphinx.chat\` host that matches **no** listed \`swarm:\` value (including the app host \`hive.sphinx.chat\`) is NOT a workspace.
 
 ## Tool Naming Convention
 Tools are prefixed with workspace slugs. For each workspace you have:
