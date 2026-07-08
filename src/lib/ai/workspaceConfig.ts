@@ -4,6 +4,7 @@ import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
 import { validateWorkspaceAccess } from "@/services/workspace";
 import { listConcepts } from "@/lib/ai/askTools";
+import { getSwarmVanityAddress } from "@/lib/constants";
 import { WorkspaceConfig } from "./types";
 
 export type { WorkspaceConfig };
@@ -81,6 +82,7 @@ export async function buildWorkspaceConfigs(
       description: access.workspace.description ?? undefined,
       swarmUrl: baseSwarmUrl,
       swarmApiKey: encryptionService.decryptField("swarmApiKey", swarm.swarmApiKey || ""),
+      swarmDomain: swarm.name ? getSwarmVanityAddress(swarm.name) : undefined,
       repoUrls: repositories.map((r) => r.repositoryUrl),
       pat: githubProfile.token,
       currentUserGithubUsername: githubProfile.username ?? undefined,
@@ -186,6 +188,7 @@ export async function buildPublicWorkspaceConfig(
       "swarmApiKey",
       swarm.swarmApiKey || "",
     ),
+    swarmDomain: swarm.name ? getSwarmVanityAddress(swarm.name) : undefined,
     repoUrls: repositories.map((r) => r.repositoryUrl),
     pat,
     workspaceId: workspace.id,
