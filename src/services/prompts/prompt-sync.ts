@@ -6,8 +6,7 @@
 import { db } from "@/lib/db";
 import { config } from "@/config/env";
 import { logger } from "@/lib/logger";
-import { addNode } from "@/services/swarm/api/nodes";
-import { getJarvisConfigForWorkspace } from "@/lib/helpers/jarvis-config";
+import { stakworkService } from "@/lib/service-factory";
 import { Prisma } from "@prisma/client";
 
 const PROMPT_NAME_REGEX = /^[A-Z0-9_]+$/;
@@ -155,9 +154,10 @@ async function pushPublishToStakwork(
 // ─── Graph recorder ───────────────────────────────────────────────────────────
 
 /**
- * Upsert the Prompt node in the jarvis-backend knowledge graph.
+ * Dispatch a Stakwork graph-recorder workflow for the given prompt version.
+ * Contains the single-source-of-truth payload shape.
  * Throws on failure — callers decide how to handle errors.
- * No-ops (with a warn log) when workspaceId is absent or no Jarvis config is found.
+ * No-ops (with a warn log) when WORKFLOW_GRAPH_PROMPT_STORAGE_ID is unset or non-numeric.
  */
 export async function sendPromptGraphRequest(
   params: {
@@ -168,52 +168,46 @@ export async function sendPromptGraphRequest(
   },
   trigger: "create" | "update" | "publish",
 ): Promise<void> {
-  const { prompt, versionId, value, workspaceId } = params;
+  const { prompt, versionId, value } = params;
   const promptId = prompt.id;
   const promptName = prompt.name;
 
-  if (!workspaceId) {
+  const rawWorkflowId = config.WORKFLOW_GRAPH_PROMPT_STORAGE_ID;
+  if (!rawWorkflowId || !/^\d+$/.test(rawWorkflowId)) {
     logger.warn(
-      "[prompt-sync] Prompt graph recorder skipped — no workspaceId",
+      "[prompt-sync] Prompt graph recorder skipped — WORKFLOW_GRAPH_PROMPT_STORAGE_ID not set or non-numeric",
       "prompt-sync",
-      { promptId, promptName, versionId, trigger },
+      { promptId, promptName, versionId, trigger, rawWorkflowId },
     );
     return;
   }
 
-  const jarvisConfig = await getJarvisConfigForWorkspace(workspaceId);
-  if (!jarvisConfig) {
-    logger.warn(
-      "[prompt-sync] Prompt graph recorder skipped — no Jarvis config for workspace",
-      "prompt-sync",
-      { promptId, promptName, versionId, trigger, workspaceId },
-    );
-    return;
-  }
-
-  // Step 1: Upsert the Prompt node
-  const promptResult = await addNode(
-    jarvisConfig,
-    {
-      node_type: "Prompt",
-      node_data: {
-        id: prompt.id,
-        name: prompt.name,
-        description: prompt.description ?? "",
-        body: value, // "body" is the correct field name per the Prompt schema
+  await stakworkService().stakworkRequest("/projects", {
+    name: `Prompt Graph Recorder ${prompt.id}`,
+    workflow_id: Number(rawWorkflowId),
+    workflow_params: {
+      set_var: {
+        attributes: {
+          vars: {
+            prompt: {
+              id: prompt.id,
+              prompt_id: prompt.id,
+              prompt_version_id: versionId,
+              name: prompt.name,
+              description: prompt.description ?? "",
+              value,
+              published_at: prompt.createdAt,
+              customer_id: null,
+            },
+          },
+        },
       },
     },
-    { reprocess: true },
-  );
-  if (!promptResult.success || !promptResult.ref_id) {
-    throw new Error(`Failed to upsert Prompt node: ${promptResult.error}`);
-  }
-
-  // TODO: add PromptVersion node + HAS edge once PromptVersion schema is registered in jarvis-backend
+  });
 }
 
 /**
- * Best-effort: record the prompt node in the jarvis-backend knowledge graph.
+ * Best-effort: fire Stakwork workflow to record the prompt version in the knowledge graph.
  * Never throws — a failure here must never affect the caller.
  */
 async function recordPromptOnGraph(
