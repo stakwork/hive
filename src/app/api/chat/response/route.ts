@@ -134,7 +134,7 @@ export async function POST(request: NextRequest) {
             // This only applies to workflow_editor mode
             // Ignore incoming originalWorkflowJson if it's too short (likely invalid)
             let originalWorkflowJson = content.originalWorkflowJson;
-            if (originalWorkflowJson && originalWorkflowJson.length < 100) {
+            if (originalWorkflowJson && typeof originalWorkflowJson === 'string' && originalWorkflowJson.length < 100) {
               originalWorkflowJson = undefined;
             }
 
@@ -167,7 +167,7 @@ export async function POST(request: NextRequest) {
               // Find the first artifact with a VALID originalWorkflowJson (must be > 100 chars)
               for (const prevArtifact of sameWorkflowArtifacts) {
                 const prevContent = prevArtifact.content as WorkflowContent | null;
-                if (prevContent?.originalWorkflowJson && prevContent.originalWorkflowJson.length > 100) {
+                if (prevContent?.originalWorkflowJson && typeof prevContent.originalWorkflowJson === 'string' && prevContent.originalWorkflowJson.length > 100) {
                   originalWorkflowJson = prevContent.originalWorkflowJson;
                   break;
                 }
@@ -177,7 +177,7 @@ export async function POST(request: NextRequest) {
               if (!originalWorkflowJson) {
                 for (const prevArtifact of sameWorkflowArtifacts) {
                   const prevContent = prevArtifact.content as WorkflowContent | null;
-                  if (prevContent?.workflowJson && prevContent.workflowJson.length > 100) {
+                  if (prevContent?.workflowJson && typeof prevContent.workflowJson === 'string' && prevContent.workflowJson.length > 100) {
                     originalWorkflowJson = prevContent.workflowJson;
                     break;
                   }
