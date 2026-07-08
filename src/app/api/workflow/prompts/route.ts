@@ -5,7 +5,8 @@ import { db } from "@/lib/db";
 import { isDevelopmentMode } from "@/lib/runtime";
 import { writePromptThrough } from "@/services/prompts/prompt-sync";
 import { BIFROST_AGENT_NAMES } from "@/services/bifrost/agent-names";
-import { validateApiToken } from "@/lib/auth/api-token";
+import { validateApiToken, API_TOKEN_ACTOR } from "@/lib/auth/api-token";
+import { checkRateLimit, getClientIp } from "@/lib/rate-limit";
 
 export const runtime = "nodejs";
 export const fetchCache = "force-no-store";
@@ -217,14 +218,34 @@ const PROMPT_NAME_REGEX = /^[A-Z0-9_]+$/;
 
 export async function POST(request: NextRequest) {
   try {
-    const devMode = isDevelopmentMode();
-    const authResult = await getAuthenticatedUserId(devMode);
-    if (authResult instanceof NextResponse) return authResult;
-    const { userId } = authResult;
+    let actor: string;
+    let workspaceId: string | undefined;
 
-    const accessResult = await requireWriteAccess(userId, devMode);
-    if (accessResult instanceof NextResponse) return accessResult;
-    const workspaceId = accessResult?.workspaceId;
+    const isApiToken = validateApiToken(request);
+    if (isApiToken) {
+      // Token path: rate-limit, skip session/membership, resolve workspaceId by slug.
+      const ip = getClientIp(request);
+      const rl = await checkRateLimit(`prompts:api-token:${ip}`, 30, 60);
+      if (!rl.allowed) {
+        return new NextResponse(JSON.stringify({ error: "Too many requests" }), {
+          status: 429,
+          headers: { "Retry-After": String(rl.retryAfter ?? 60), "Content-Type": "application/json" },
+        });
+      }
+      const workspace = await db.workspace.findFirst({ where: { slug: "stakwork" } });
+      workspaceId = workspace?.id;
+      actor = API_TOKEN_ACTOR;
+    } else {
+      const devMode = isDevelopmentMode();
+      const authResult = await getAuthenticatedUserId(devMode);
+      if (authResult instanceof NextResponse) return authResult;
+      const { userId } = authResult;
+
+      const accessResult = await requireWriteAccess(userId, devMode);
+      if (accessResult instanceof NextResponse) return accessResult;
+      workspaceId = accessResult?.workspaceId;
+      actor = userId;
+    }
 
     const body = await request.json();
     const { name, value, description, agentNames } = body as {
@@ -249,7 +270,7 @@ export async function POST(request: NextRequest) {
     if (!Array.isArray(normalizedAgentNames)) {
       return NextResponse.json({ error: normalizedAgentNames.error }, { status: 400 });
     }
-    const { prompt } = await writePromptThrough({ name, value, description, agentNames: normalizedAgentNames, userId, workspaceId });
+    const { prompt } = await writePromptThrough({ name, value, description, agentNames: normalizedAgentNames, userId: actor, workspaceId });
 
     return NextResponse.json({
       success: true,
