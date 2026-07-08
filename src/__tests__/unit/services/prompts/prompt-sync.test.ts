@@ -2,7 +2,7 @@
  * Unit tests for src/services/prompts/prompt-sync.ts
  *
  * Covers:
- * 1. sendPromptGraphRequest — calls addNode with correct shape; guards on workspaceId / jarvis config
+ * 1. sendPromptGraphRequest — exact payload shape + throws on stakworkRequest failure; guards on WORKFLOW_GRAPH_PROMPT_STORAGE_ID
  * 2. recordPromptOnGraph (via writePromptThrough / publishVersion) — swallows errors, never throws
  */
 
@@ -11,9 +11,7 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 // ─── Hoisted mocks ────────────────────────────────────────────────────────────
 
 const {
-  mockAddNode,
-  mockAddEdge,
-  mockGetJarvisConfig,
+  mockStakworkRequest,
   mockDbPromptFindUnique,
   mockDbTransaction,
   mockDbPromptUpdate,
@@ -24,9 +22,7 @@ const {
   mockDbPromptVersionUpdate,
   mockDbPromptCreate,
 } = vi.hoisted(() => ({
-  mockAddNode: vi.fn(),
-  mockAddEdge: vi.fn(),
-  mockGetJarvisConfig: vi.fn(),
+  mockStakworkRequest: vi.fn(),
   mockDbPromptFindUnique: vi.fn(),
   mockDbTransaction: vi.fn(),
   mockDbPromptUpdate: vi.fn(),
@@ -38,13 +34,8 @@ const {
   mockDbPromptCreate: vi.fn(),
 }));
 
-vi.mock("@/services/swarm/api/nodes", () => ({
-  addNode: mockAddNode,
-  addEdge: mockAddEdge,
-}));
-
-vi.mock("@/lib/helpers/jarvis-config", () => ({
-  getJarvisConfigForWorkspace: mockGetJarvisConfig,
+vi.mock("@/lib/service-factory", () => ({
+  stakworkService: () => ({ stakworkRequest: mockStakworkRequest }),
 }));
 
 vi.mock("@/lib/db", () => ({
@@ -78,6 +69,7 @@ vi.mock("@/config/env", () => ({
   config: {
     STAKWORK_API_KEY: "test-key",
     STAKWORK_BASE_URL: "https://stakwork.test",
+    WORKFLOW_GRAPH_PROMPT_STORAGE_ID: "999",
   },
 }));
 
@@ -85,10 +77,9 @@ vi.mock("@/config/env", () => ({
 
 import { sendPromptGraphRequest, writePromptThrough, publishVersion } from "@/services/prompts/prompt-sync";
 import { logger } from "@/lib/logger";
+import { config } from "@/config/env";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
-
-const MOCK_JARVIS_CONFIG = { jarvisUrl: "https://jarvis.test", apiKey: "jarvis-key" };
 
 const BASE_PROMPT = {
   id: "prompt-1",
@@ -111,86 +102,120 @@ describe("sendPromptGraphRequest", () => {
     vi.clearAllMocks();
   });
 
-  it("calls addNode with correct Prompt node shape", async () => {
-    mockGetJarvisConfig.mockResolvedValueOnce(MOCK_JARVIS_CONFIG);
-    mockAddNode.mockResolvedValueOnce({ success: true, ref_id: "ref-prompt-1" });
+  it("calls stakworkRequest with the exact payload shape", async () => {
+    mockStakworkRequest.mockResolvedValueOnce({});
 
     await sendPromptGraphRequest(PARAMS, "publish");
 
-    expect(mockAddNode).toHaveBeenCalledOnce();
-    expect(mockAddNode).toHaveBeenCalledWith(
-      MOCK_JARVIS_CONFIG,
-      {
-        node_type: "Prompt",
-        node_data: {
-          id: BASE_PROMPT.id,
-          name: BASE_PROMPT.name,
-          description: BASE_PROMPT.description,
-          body: PARAMS.value,
+    expect(mockStakworkRequest).toHaveBeenCalledOnce();
+    expect(mockStakworkRequest).toHaveBeenCalledWith("/projects", {
+      name: `Prompt Graph Recorder ${BASE_PROMPT.id}`,
+      workflow_id: 999,
+      workflow_params: {
+        set_var: {
+          attributes: {
+            vars: {
+              prompt: {
+                id: BASE_PROMPT.id,
+                prompt_id: BASE_PROMPT.id,
+                prompt_version_id: PARAMS.versionId,
+                name: BASE_PROMPT.name,
+                description: BASE_PROMPT.description,
+                value: PARAMS.value,
+                published_at: BASE_PROMPT.createdAt,
+                customer_id: null,
+              },
+            },
+          },
         },
       },
-      { reprocess: true },
-    );
-    // PromptVersion step is TODO — addEdge must NOT be called
-    expect(mockAddEdge).not.toHaveBeenCalled();
+    });
   });
 
   it("uses empty string for description when null", async () => {
-    mockGetJarvisConfig.mockResolvedValueOnce(MOCK_JARVIS_CONFIG);
-    mockAddNode.mockResolvedValueOnce({ success: true, ref_id: "ref-prompt-1" });
+    mockStakworkRequest.mockResolvedValueOnce({});
 
     await sendPromptGraphRequest(
       { ...PARAMS, prompt: { ...BASE_PROMPT, description: null } },
       "create",
     );
 
-    const call = mockAddNode.mock.calls[0];
-    expect(call[1].node_data.description).toBe("");
+    const call = mockStakworkRequest.mock.calls[0][1];
+    expect(call.workflow_params.set_var.attributes.vars.prompt.description).toBe("");
   });
 
-  it("no-ops with warn when workspaceId is absent", async () => {
-    await sendPromptGraphRequest(
-      { ...PARAMS, workspaceId: undefined },
-      "create",
-    );
+  it("throws when stakworkRequest rejects", async () => {
+    mockStakworkRequest.mockRejectedValueOnce(new Error("Stakwork API down"));
 
-    expect(mockAddNode).not.toHaveBeenCalled();
-    expect(vi.mocked(logger.warn)).toHaveBeenCalledWith(
-      expect.stringContaining("no workspaceId"),
-      "prompt-sync",
-      expect.any(Object),
-    );
+    await expect(sendPromptGraphRequest(PARAMS, "update")).rejects.toThrow("Stakwork API down");
   });
 
-  it("no-ops with warn when Jarvis config is null", async () => {
-    mockGetJarvisConfig.mockResolvedValueOnce(null);
+  it("no-ops with warn when WORKFLOW_GRAPH_PROMPT_STORAGE_ID is unset", async () => {
+    const mutableConfig = config as Record<string, unknown>;
+    const original = mutableConfig.WORKFLOW_GRAPH_PROMPT_STORAGE_ID;
+    mutableConfig.WORKFLOW_GRAPH_PROMPT_STORAGE_ID = undefined;
 
     await sendPromptGraphRequest(PARAMS, "create");
 
-    expect(mockAddNode).not.toHaveBeenCalled();
+    expect(mockStakworkRequest).not.toHaveBeenCalled();
     expect(vi.mocked(logger.warn)).toHaveBeenCalledWith(
-      expect.stringContaining("no Jarvis config"),
+      expect.stringContaining("WORKFLOW_GRAPH_PROMPT_STORAGE_ID not set or non-numeric"),
       "prompt-sync",
       expect.any(Object),
     );
+
+    mutableConfig.WORKFLOW_GRAPH_PROMPT_STORAGE_ID = original;
   });
 
-  it("throws when addNode returns success: false", async () => {
-    mockGetJarvisConfig.mockResolvedValueOnce(MOCK_JARVIS_CONFIG);
-    mockAddNode.mockResolvedValueOnce({ success: false, error: "Schema validation failed" });
+  it("no-ops with warn when WORKFLOW_GRAPH_PROMPT_STORAGE_ID is empty string", async () => {
+    const mutableConfig = config as Record<string, unknown>;
+    const original = mutableConfig.WORKFLOW_GRAPH_PROMPT_STORAGE_ID;
+    mutableConfig.WORKFLOW_GRAPH_PROMPT_STORAGE_ID = "";
 
-    await expect(sendPromptGraphRequest(PARAMS, "update")).rejects.toThrow(
-      "Failed to upsert Prompt node",
+    await sendPromptGraphRequest(PARAMS, "create");
+
+    expect(mockStakworkRequest).not.toHaveBeenCalled();
+    expect(vi.mocked(logger.warn)).toHaveBeenCalledWith(
+      expect.stringContaining("WORKFLOW_GRAPH_PROMPT_STORAGE_ID not set or non-numeric"),
+      "prompt-sync",
+      expect.any(Object),
     );
+
+    mutableConfig.WORKFLOW_GRAPH_PROMPT_STORAGE_ID = original;
   });
 
-  it("throws when addNode returns success: true but no ref_id", async () => {
-    mockGetJarvisConfig.mockResolvedValueOnce(MOCK_JARVIS_CONFIG);
-    mockAddNode.mockResolvedValueOnce({ success: true, ref_id: undefined });
+  it("no-ops with warn when WORKFLOW_GRAPH_PROMPT_STORAGE_ID is non-numeric (e.g. 'abc')", async () => {
+    const mutableConfig = config as Record<string, unknown>;
+    const original = mutableConfig.WORKFLOW_GRAPH_PROMPT_STORAGE_ID;
+    mutableConfig.WORKFLOW_GRAPH_PROMPT_STORAGE_ID = "abc";
 
-    await expect(sendPromptGraphRequest(PARAMS, "update")).rejects.toThrow(
-      "Failed to upsert Prompt node",
+    await sendPromptGraphRequest(PARAMS, "create");
+
+    expect(mockStakworkRequest).not.toHaveBeenCalled();
+    expect(vi.mocked(logger.warn)).toHaveBeenCalledWith(
+      expect.stringContaining("WORKFLOW_GRAPH_PROMPT_STORAGE_ID not set or non-numeric"),
+      "prompt-sync",
+      expect.any(Object),
     );
+
+    mutableConfig.WORKFLOW_GRAPH_PROMPT_STORAGE_ID = original;
+  });
+
+  it("no-ops with warn when WORKFLOW_GRAPH_PROMPT_STORAGE_ID is 'NaN'", async () => {
+    const mutableConfig = config as Record<string, unknown>;
+    const original = mutableConfig.WORKFLOW_GRAPH_PROMPT_STORAGE_ID;
+    mutableConfig.WORKFLOW_GRAPH_PROMPT_STORAGE_ID = "NaN";
+
+    await sendPromptGraphRequest(PARAMS, "create");
+
+    expect(mockStakworkRequest).not.toHaveBeenCalled();
+    expect(vi.mocked(logger.warn)).toHaveBeenCalledWith(
+      expect.stringContaining("WORKFLOW_GRAPH_PROMPT_STORAGE_ID not set or non-numeric"),
+      "prompt-sync",
+      expect.any(Object),
+    );
+
+    mutableConfig.WORKFLOW_GRAPH_PROMPT_STORAGE_ID = original;
   });
 });
 
@@ -199,13 +224,12 @@ describe("sendPromptGraphRequest", () => {
 describe("recordPromptOnGraph (swallows errors via writePromptThrough create path)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockGetJarvisConfig.mockResolvedValue(MOCK_JARVIS_CONFIG);
-    mockAddNode.mockResolvedValue({ success: true, ref_id: "ref-1" });
+    mockStakworkRequest.mockResolvedValue({});
   });
 
   it("does not throw when sendPromptGraphRequest fails during prompt creation", async () => {
     // Make graph recorder fail
-    mockAddNode.mockRejectedValueOnce(new Error("Graph recorder is down"));
+    mockStakworkRequest.mockRejectedValueOnce(new Error("Graph recorder is down"));
 
     const mockPrompt = {
       id: "prompt-new",
@@ -285,9 +309,8 @@ describe("recordPromptOnGraph (swallows errors via publishVersion)", () => {
     mockDbPromptFindUnique.mockResolvedValueOnce(mockPrompt);
     mockDbTransaction.mockResolvedValueOnce([undefined, undefined, undefined]);
 
-    // Graph recorder addNode throws
-    mockGetJarvisConfig.mockResolvedValueOnce(MOCK_JARVIS_CONFIG);
-    mockAddNode.mockRejectedValueOnce(new Error("Graph recorder exploded"));
+    // Graph recorder stakworkRequest throws
+    mockStakworkRequest.mockRejectedValueOnce(new Error("Graph recorder exploded"));
 
     // Should NOT throw
     await expect(publishVersion("prompt-1", "v2", "workspace-1")).resolves.not.toThrow();
@@ -328,8 +351,7 @@ describe("publishVersion — Stakwork push", () => {
 
   function setupPublishMocks(fetchResponse: Partial<Response> & { text?: () => Promise<string> }) {
     vi.clearAllMocks();
-    mockGetJarvisConfig.mockResolvedValue(MOCK_JARVIS_CONFIG);
-    mockAddNode.mockResolvedValue({ success: true, ref_id: "ref-1" });
+    mockStakworkRequest.mockResolvedValue({}); // graph recorder no-op
     mockDbPromptVersionFindFirst.mockResolvedValueOnce(mockVersion);
     mockDbPromptFindUnique.mockResolvedValueOnce(mockPrompt);
     mockDbTransaction.mockResolvedValueOnce([undefined, undefined, undefined]);
@@ -347,6 +369,7 @@ describe("publishVersion — Stakwork push", () => {
     await publishVersion("prompt-1", "v2");
 
     const fetchCalls = vi.mocked(global.fetch).mock.calls;
+    // Find the PUT call to the prompts endpoint
     const putCall = fetchCalls.find(
       ([url, opts]) =>
         typeof url === "string" &&
@@ -381,8 +404,7 @@ describe("publishVersion — Stakwork push", () => {
 
   it("does not throw and sets syncStatus PENDING on failed push", async () => {
     vi.clearAllMocks();
-    mockGetJarvisConfig.mockResolvedValue(MOCK_JARVIS_CONFIG);
-    mockAddNode.mockResolvedValue({ success: true, ref_id: "ref-1" });
+    mockStakworkRequest.mockResolvedValue({});
     mockDbPromptVersionFindFirst.mockResolvedValueOnce(mockVersion);
     mockDbPromptFindUnique.mockResolvedValueOnce(mockPrompt);
     mockDbTransaction.mockResolvedValueOnce([undefined, undefined, undefined]);
@@ -405,8 +427,7 @@ describe("publishVersion — Stakwork push", () => {
 
   it("treats hive_version_id already exists as no-op success (syncStatus OK)", async () => {
     vi.clearAllMocks();
-    mockGetJarvisConfig.mockResolvedValue(MOCK_JARVIS_CONFIG);
-    mockAddNode.mockResolvedValue({ success: true, ref_id: "ref-1" });
+    mockStakworkRequest.mockResolvedValue({});
     mockDbPromptVersionFindFirst.mockResolvedValueOnce(mockVersion);
     mockDbPromptFindUnique.mockResolvedValueOnce(mockPrompt);
     mockDbTransaction.mockResolvedValueOnce([undefined, undefined, undefined]);
@@ -433,8 +454,7 @@ describe("publishVersion — Stakwork push", () => {
 
   it("does not call fetch when stakworkId is null", async () => {
     vi.clearAllMocks();
-    mockGetJarvisConfig.mockResolvedValue(MOCK_JARVIS_CONFIG);
-    mockAddNode.mockResolvedValue({ success: true, ref_id: "ref-1" });
+    mockStakworkRequest.mockResolvedValue({});
     const promptNoStakwork = { ...mockPrompt, stakworkId: null };
     mockDbPromptVersionFindFirst.mockResolvedValueOnce(mockVersion);
     mockDbPromptFindUnique.mockResolvedValueOnce(promptNoStakwork);
@@ -443,6 +463,7 @@ describe("publishVersion — Stakwork push", () => {
 
     await publishVersion("prompt-1", "v2");
 
+    // fetch should not have been called with a PUT to prompts
     const putCall = vi.mocked(global.fetch).mock.calls.find(
       ([url, opts]) =>
         typeof url === "string" &&
@@ -455,8 +476,7 @@ describe("publishVersion — Stakwork push", () => {
   it("uses empty string for description when version description is null", async () => {
     const versionNullDesc = { ...mockVersion, description: null };
     vi.clearAllMocks();
-    mockGetJarvisConfig.mockResolvedValue(MOCK_JARVIS_CONFIG);
-    mockAddNode.mockResolvedValue({ success: true, ref_id: "ref-1" });
+    mockStakworkRequest.mockResolvedValue({});
     mockDbPromptVersionFindFirst.mockResolvedValueOnce(versionNullDesc);
     mockDbPromptFindUnique.mockResolvedValueOnce(mockPrompt);
     mockDbTransaction.mockResolvedValueOnce([undefined, undefined, undefined]);
