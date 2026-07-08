@@ -18,8 +18,8 @@ interface FlatLine {
 }
 
 export interface DiffViewProps {
-  original: string | null;
-  updated: string | null;
+  original: string | object | null;
+  updated: string | object | null;
   /** Human-readable label used in empty-state messages (e.g. "workflow", "prompt", "script"). */
   label?: string;
 }
@@ -53,8 +53,13 @@ function omitNoiseFields(data: unknown): unknown {
  * Try to parse and pretty-print a JSON string with noise-field stripping.
  * Returns the original string unchanged when it doesn't look like JSON.
  */
-function parseAndFormat(raw: string | null): string {
+function parseAndFormat(raw: string | object | null): string {
   if (!raw) return "";
+
+  // Object fast-path: skip all string-method calls entirely.
+  if (typeof raw !== "string") {
+    return JSON.stringify(omitNoiseFields(raw), null, 2);
+  }
 
   // Fast path: plain text (doesn't start with { or [) — return as-is.
   const trimmed = raw.trim();
