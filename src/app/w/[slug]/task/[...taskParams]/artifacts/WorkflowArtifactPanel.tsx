@@ -117,9 +117,9 @@ export function WorkflowArtifactPanel({ artifacts, isActive, onStepSelect, onVer
   // - projectId: Latest execution project (for Stakwork tab)
   // - projectInfo: Project data for project debugger mode
   const mergedContent = useMemo(() => {
-    let workflowJson: string | undefined;          // Editor tab — always latest winner
-    let changesWorkflowJson: string | undefined;   // Changes tab — only from agent-response artifacts
-    let originalWorkflowJson: string | undefined;
+    let workflowJson: string | object | undefined;          // Editor tab — always latest winner
+    let changesWorkflowJson: string | object | undefined;   // Changes tab — only from agent-response artifacts
+    let originalWorkflowJson: string | object | undefined;
     let projectId: string | undefined;
     let workflowId: number | string | undefined;
     let workflowName: string | undefined;
@@ -134,10 +134,14 @@ export function WorkflowArtifactPanel({ artifacts, isActive, onStepSelect, onVer
       if (content?.workflowJson) workflowJson = content.workflowJson;
       // Only update changesWorkflowJson when the artifact has a real originalWorkflowJson
       // (length > 100 distinguishes agent-response artifacts from run-start "" and publish artifacts without originalWorkflowJson)
+      const origJsonForGuard =
+        typeof content.originalWorkflowJson === "object" && content.originalWorkflowJson !== null
+          ? JSON.stringify(content.originalWorkflowJson)
+          : (content.originalWorkflowJson ?? "");
       if (
         content?.workflowJson &&
         content?.originalWorkflowJson &&
-        content.originalWorkflowJson.length > 100
+        origJsonForGuard.length > 100
       ) {
         changesWorkflowJson = content.workflowJson;
       }
@@ -264,7 +268,7 @@ export function WorkflowArtifactPanel({ artifacts, isActive, onStepSelect, onVer
   // Parse workflowJson if present (direct mode from graph)
   const parsedWorkflowData = useMemo(() => {
     if (!workflowJson) return null;
-    if (typeof workflowJson === "object") return workflowJson;
+    if (typeof workflowJson === "object") return workflowJson as Record<string, unknown>;
 
     try {
       let data: string | Record<string, unknown> = workflowJson;
@@ -288,7 +292,8 @@ export function WorkflowArtifactPanel({ artifacts, isActive, onStepSelect, onVer
 
       return data;
     } catch (e) {
-      console.error("Failed to parse workflow JSON:", e, "Input:", workflowJson?.substring(0, 200));
+      const preview = typeof workflowJson === "string" ? workflowJson.substring(0, 200) : JSON.stringify(workflowJson)?.substring(0, 200);
+      console.error("Failed to parse workflow JSON:", e, "Input:", preview);
       return null;
     }
   }, [workflowJson]);
