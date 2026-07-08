@@ -35,7 +35,7 @@ async function getAuthenticatedUserId(
 async function requireWriteAccess(
   userId: string,
   devMode: boolean,
-): Promise<NextResponse | null> {
+): Promise<NextResponse | { workspaceId: string } | null> {
   if (devMode) return null;
   const workspace = await db.workspace.findFirst({
     where: {
@@ -49,7 +49,7 @@ async function requireWriteAccess(
       { status: 403 },
     );
   }
-  return null;
+  return { workspaceId: workspace.id };
 }
 
 // ─── Shape helpers ────────────────────────────────────────────────────────────
@@ -222,8 +222,9 @@ export async function POST(request: NextRequest) {
     if (authResult instanceof NextResponse) return authResult;
     const { userId } = authResult;
 
-    const denied = await requireWriteAccess(userId, devMode);
-    if (denied) return denied;
+    const accessResult = await requireWriteAccess(userId, devMode);
+    if (accessResult instanceof NextResponse) return accessResult;
+    const workspaceId = accessResult?.workspaceId;
 
     const body = await request.json();
     const { name, value, description, agentNames } = body as {
@@ -248,7 +249,7 @@ export async function POST(request: NextRequest) {
     if (!Array.isArray(normalizedAgentNames)) {
       return NextResponse.json({ error: normalizedAgentNames.error }, { status: 400 });
     }
-    const { prompt } = await writePromptThrough({ name, value, description, agentNames: normalizedAgentNames, userId });
+    const { prompt } = await writePromptThrough({ name, value, description, agentNames: normalizedAgentNames, userId, workspaceId });
 
     return NextResponse.json({
       success: true,

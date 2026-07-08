@@ -6,7 +6,8 @@
 import { db } from "@/lib/db";
 import { config } from "@/config/env";
 import { logger } from "@/lib/logger";
-import { stakworkService } from "@/lib/service-factory";
+import { addNode } from "@/services/swarm/api/nodes";
+import { getJarvisConfigForWorkspace } from "@/lib/helpers/jarvis-config";
 import { Prisma } from "@prisma/client";
 
 const PROMPT_NAME_REGEX = /^[A-Z0-9_]+$/;
@@ -20,6 +21,7 @@ export interface WritePromptThroughParams {
   description?: string;
   agentNames?: string[];
   userId: string;
+  workspaceId?: string;
 }
 
 export interface WritePromptThroughResult {
@@ -153,58 +155,65 @@ async function pushPublishToStakwork(
 // ─── Graph recorder ───────────────────────────────────────────────────────────
 
 /**
- * Dispatch a Stakwork graph-recorder workflow for the given prompt version.
- * Contains the single-source-of-truth payload shape.
+ * Upsert the Prompt node in the jarvis-backend knowledge graph.
  * Throws on failure — callers decide how to handle errors.
- * No-ops (with a warn log) when WORKFLOW_GRAPH_PROMPT_STORAGE_ID is unset.
+ * No-ops (with a warn log) when workspaceId is absent or no Jarvis config is found.
  */
 export async function sendPromptGraphRequest(
   params: {
     prompt: { id: string; name: string; description: string | null; createdAt: Date };
     versionId: string;
     value: string;
+    workspaceId?: string;
   },
   trigger: "create" | "update" | "publish",
 ): Promise<void> {
-  const { prompt, versionId, value } = params;
+  const { prompt, versionId, value, workspaceId } = params;
   const promptId = prompt.id;
   const promptName = prompt.name;
 
-  if (!config.WORKFLOW_GRAPH_PROMPT_STORAGE_ID) {
+  if (!workspaceId) {
     logger.warn(
-      "[prompt-sync] Prompt graph recorder skipped — WORKFLOW_GRAPH_PROMPT_STORAGE_ID not set",
+      "[prompt-sync] Prompt graph recorder skipped — no workspaceId",
       "prompt-sync",
       { promptId, promptName, versionId, trigger },
     );
     return;
   }
 
-  await stakworkService().stakworkRequest("/projects", {
-    name: `Prompt Graph Recorder ${prompt.id}`,
-    workflow_id: Number(config.WORKFLOW_GRAPH_PROMPT_STORAGE_ID),
-    workflow_params: {
-      set_var: {
-        attributes: {
-          vars: {
-            prompt: {
-              id: prompt.id,
-              prompt_id: prompt.id,
-              prompt_version_id: versionId,
-              name: prompt.name,
-              description: prompt.description ?? "",
-              value,
-              published_at: prompt.createdAt,
-              customer_id: null,
-            },
-          },
-        },
+  const jarvisConfig = await getJarvisConfigForWorkspace(workspaceId);
+  if (!jarvisConfig) {
+    logger.warn(
+      "[prompt-sync] Prompt graph recorder skipped — no Jarvis config for workspace",
+      "prompt-sync",
+      { promptId, promptName, versionId, trigger, workspaceId },
+    );
+    return;
+  }
+
+  // Step 1: Upsert the Prompt node
+  const promptResult = await addNode(
+    jarvisConfig,
+    {
+      node_type: "Prompt",
+      node_data: {
+        id: prompt.id,
+        name: prompt.name,
+        description: prompt.description ?? "",
+        body: value, // "body" is the correct field name per the Prompt schema
       },
     },
-  });
+    { reprocess: true },
+  );
+  if (!promptResult.success || !promptResult.ref_id) {
+    throw new Error(`Failed to upsert Prompt node: ${promptResult.error}`);
+  }
+
+  // TODO: add PromptVersion node + HAS edge once PromptVersion schema is registered in jarvis-backend
 }
 
 /**
- * Best-effort: fire Stakwork workflow to record the prompt version in the knowledge graph.
+ * Best-effort: record the prompt node in the jarvis-backend knowledge graph.
  * Never throws — a failure here must never affect the caller.
  */
 async function recordPromptOnGraph(
@@ -214,13 +223,14 @@ async function recordPromptOnGraph(
     value: string;
   },
   trigger: "create" | "update" | "publish",
+  workspaceId?: string,
 ): Promise<void> {
   const { prompt, versionId } = params;
   const promptId = prompt.id;
   const promptName = prompt.name;
 
   try {
-    await sendPromptGraphRequest(params, trigger);
+    await sendPromptGraphRequest({ ...params, workspaceId }, trigger);
     logger.info("[prompt-sync] Prompt graph recorder launched", "prompt-sync", {
       promptId,
       promptName,
@@ -246,7 +256,7 @@ async function recordPromptOnGraph(
 export async function writePromptThrough(
   params: WritePromptThroughParams,
 ): Promise<WritePromptThroughResult> {
-  const { promptId, name, value, description, agentNames, userId } = params;
+  const { promptId, name, value, description, agentNames, userId, workspaceId } = params;
 
   // ── 1. Hive write — one transaction ──────────────────────────────────────
   let prompt: WritePromptThroughResult["prompt"];
@@ -441,6 +451,7 @@ export async function writePromptThrough(
     await recordPromptOnGraph(
       { prompt, versionId: version.id, value },
       "create",
+      workspaceId,
     );
   }
 
@@ -454,6 +465,7 @@ export async function writePromptThrough(
 export async function publishVersion(
   promptId: string,
   versionId: string,
+  workspaceId?: string,
 ): Promise<void> {
   // Fetch version to ensure it exists and belongs to the prompt
   const targetVersion = await db.promptVersion.findFirst({
@@ -496,6 +508,7 @@ export async function publishVersion(
   await recordPromptOnGraph(
     { prompt, versionId, value: targetVersion.value },
     "publish",
+    workspaceId,
   );
 
   // Best-effort Stakwork push — full version content so the live prompt is updated.
