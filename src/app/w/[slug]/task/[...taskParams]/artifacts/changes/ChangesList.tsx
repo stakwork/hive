@@ -15,8 +15,8 @@ import { useItemBaseline } from "@/hooks/useItemBaseline";
 export type WorkflowChangedItem = {
   type: "WORKFLOW";
   name: string;
-  originalJson: string | null;
-  updatedJson: string | null;
+  originalJson: string | object | null;
+  updatedJson: string | object | null;
 };
 
 export type PromptChangedItem = {
@@ -37,16 +37,22 @@ export type ChangedItem = WorkflowChangedItem | PromptChangedItem | ScriptChange
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
+function toStr(v: string | object | null | undefined): string {
+  if (v == null) return "";
+  if (typeof v === "string") return v;
+  return JSON.stringify(v, null, 2);
+}
+
 /** Count add/del lines between two plain strings using the same approach as DiffView. */
-function countAddDel(
-  original: string | null,
-  updated: string | null,
+export function countAddDel(
+  original: string | object | null,
+  updated: string | object | null,
 ): { additions: number; deletions: number } {
   if (!updated) return { additions: 0, deletions: 0 };
 
   // Minimal line-level count — mirrors DiffView logic without importing the whole component
-  const origLines = (original ?? "").split("\n");
-  const updLines = updated.split("\n");
+  const origLines = toStr(original).split("\n");
+  const updLines = toStr(updated).split("\n");
 
   // Very rough LCS-based count — sufficient for badge display
   // Reuse diffLines from the "diff" package (same dep as DiffView)
