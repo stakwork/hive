@@ -29,7 +29,7 @@ async function getAuthenticatedUserId(
 async function requireWriteAccess(
   userId: string,
   devMode: boolean,
-): Promise<NextResponse | null> {
+): Promise<NextResponse | { workspaceId: string } | null> {
   if (devMode) return null;
   const workspace = await db.workspace.findFirst({
     where: {
@@ -43,7 +43,7 @@ async function requireWriteAccess(
       { status: 403 },
     );
   }
-  return null;
+  return { workspaceId: workspace.id };
 }
 
 // ─── Shape helper ─────────────────────────────────────────────────────────────
@@ -154,8 +154,9 @@ export async function PUT(
     if (authResult instanceof NextResponse) return authResult;
     const { userId } = authResult;
 
-    const denied = await requireWriteAccess(userId, devMode);
-    if (denied) return denied;
+    const accessResult = await requireWriteAccess(userId, devMode);
+    if (accessResult instanceof NextResponse) return accessResult;
+    const workspaceId = accessResult?.workspaceId;
 
     const { id } = await params;
     if (!id) {
@@ -192,6 +193,7 @@ export async function PUT(
       description,
       agentNames: normalizedAgentNames,
       userId,
+      workspaceId,
     });
 
     // Refetch with versions (ordered desc) so shapePromptDetail can expose current_version_id = latest draft.
@@ -237,8 +239,8 @@ export async function PATCH(
     if (authResult instanceof NextResponse) return authResult;
     const { userId } = authResult;
 
-    const denied = await requireWriteAccess(userId, devMode);
-    if (denied) return denied;
+    const accessResult = await requireWriteAccess(userId, devMode);
+    if (accessResult instanceof NextResponse) return accessResult;
 
     const { id } = await params;
     if (!id) {
@@ -300,8 +302,8 @@ export async function DELETE(
     if (authResult instanceof NextResponse) return authResult;
     const { userId } = authResult;
 
-    const denied = await requireWriteAccess(userId, devMode);
-    if (denied) return denied;
+    const accessResult = await requireWriteAccess(userId, devMode);
+    if (accessResult instanceof NextResponse) return accessResult;
 
     const { id } = await params;
     if (!id) {
