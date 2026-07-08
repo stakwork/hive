@@ -229,6 +229,57 @@ describe("DiffView", () => {
     });
   });
 
+  // ── Object-typed props (regression: object-typed workflowJson) ───────────────
+
+  describe("object-typed original/updated (regression: TypeError crash)", () => {
+    it("renders without throwing when both props are plain objects", () => {
+      const original = { nodes: [] };
+      const updated = { nodes: [{ id: "1" }] };
+      expect(() =>
+        render(<DiffView original={original} updated={updated} label="workflow" />),
+      ).not.toThrow();
+    });
+
+    it("produces visible diff content when both props are plain objects", () => {
+      const original = { nodes: [] };
+      const updated = { nodes: [{ id: "1" }] };
+      render(<DiffView original={original} updated={updated} label="workflow" />);
+      // Should render the diff table with at least one coloured row
+      const allRows = document.querySelector("table")?.querySelectorAll("tr") ?? [];
+      expect(allRows.length).toBeGreaterThan(0);
+    });
+
+    it("renders without throwing when original is null and updated is a plain object", () => {
+      expect(() =>
+        render(<DiffView original={null} updated={{ nodes: [{ id: "1" }] }} label="workflow" />),
+      ).not.toThrow();
+    });
+
+    it("existing string behaviour unaffected — still diffs JSON strings correctly", () => {
+      render(<DiffView original={originalJson} updated={updatedJson} label="workflow" />);
+      const allRows = document.querySelector("table")?.querySelectorAll("tr") ?? [];
+      const hasColored = Array.from(allRows).some(
+        (r) => r.className.includes("bg-green") || r.className.includes("bg-red"),
+      );
+      expect(hasColored).toBe(true);
+    });
+
+    it("existing null behaviour unaffected — null/null still shows no-data message", () => {
+      render(<DiffView original={null} updated={null} label="workflow" />);
+      expect(screen.getByText(/no workflow data available/i)).toBeInTheDocument();
+    });
+
+    it("existing plain-text behaviour unaffected — plain text still diffs without throwing", () => {
+      const orig = "You are a helpful assistant.\nBe concise.";
+      const upd = "You are a helpful assistant.\nBe concise and accurate.";
+      expect(() =>
+        render(<DiffView original={orig} updated={upd} label="prompt" />),
+      ).not.toThrow();
+      const greenRows = document.querySelectorAll("tr.bg-green-50");
+      expect(greenRows.length).toBeGreaterThan(0);
+    });
+  });
+
   // ── Noise field filtering (workflow JSON) ─────────────────────────────────────
 
   describe("noise field filtering", () => {
