@@ -67,6 +67,7 @@ import {
 import { buildGraphWalkerTools } from "@/lib/ai/graphWalkerTools";
 import { buildInfraTools } from "@/lib/ai/infraTools";
 import { buildInitiativeTools } from "@/lib/ai/initiativeTools";
+import { buildPromptTools } from "@/lib/ai/promptTools";
 import {
   buildResearchTools,
   type CapturedSearchResult,
@@ -76,12 +77,15 @@ import {
   PROPOSE_FEATURE_TOOL,
   PROPOSE_INITIATIVE_TOOL,
   PROPOSE_MILESTONE_TOOL,
+  PROPOSE_NEW_PROMPT_TOOL,
+  PROPOSE_PROMPT_UPDATE_TOOL,
 } from "@/lib/proposals/types";
 import {
   getConnectionsCapabilitySnippet,
   getGraphWalkerCapabilitySnippet,
   getInfraCapabilitySnippet,
   getPlannerCapabilitySnippet,
+  getPromptsCapabilitySnippet,
   getResearchCapabilitySnippet,
   getRoadmapCapabilitySnippet,
   getWhiteboardCapabilitySnippet,
@@ -94,7 +98,8 @@ export type OrgCapability =
   | "research"
   | "connections"
   | "graph_walker"
-  | "infra";
+  | "infra"
+  | "prompts";
 
 /**
  * Everything a capability's `buildTools` may need. Mirrors the
@@ -191,6 +196,7 @@ export const ALL_CAPABILITIES: readonly OrgCapability[] = [
   "connections",
   "graph_walker",
   "infra",
+  "prompts",
 ];
 
 export const CAPABILITY_REGISTRY: Record<OrgCapability, CapabilityDefinition> =
@@ -227,7 +233,7 @@ export const CAPABILITY_REGISTRY: Record<OrgCapability, CapabilityDefinition> =
       // Pull the loadable set in so their tools are registered and the
       // learn_capability menu lists them whenever roadmap is selected
       // (the org canvas surface always carried all of these).
-      includes: ["whiteboard", "research", "connections", "graph_walker", "infra"],
+      includes: ["whiteboard", "research", "connections", "graph_walker", "infra", "prompts"],
     },
     planner: {
       buildTools: (ctx) =>
@@ -321,6 +327,17 @@ export const CAPABILITY_REGISTRY: Record<OrgCapability, CapabilityDefinition> =
         "`read_pod_infra`; env values masked. Load when the user asks about a " +
         "workspace's pod/Docker/build setup.",
       writeToolNames: [],
+    },
+    prompts: {
+      buildTools: (ctx) => buildPromptTools(ctx.userId),
+      promptSnippet: getPromptsCapabilitySnippet,
+      core: false,
+      menuBlurb:
+        "**prompts** — read and propose changes to shared prompts in the Hive prompt library: " +
+        "`get_prompt` / `list_prompts` (read, no approval) and `propose_new_prompt` / " +
+        "`propose_prompt_update` (write via human approval). Load when the user asks about " +
+        "prompts, wants to view or update a prompt, or needs to create a new one.",
+      writeToolNames: [PROPOSE_NEW_PROMPT_TOOL, PROPOSE_PROMPT_UPDATE_TOOL],
     },
   };
 

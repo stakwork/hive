@@ -8,6 +8,8 @@ import {
   PROPOSE_FEATURE_TOOL,
   PROPOSE_INITIATIVE_TOOL,
   PROPOSE_MILESTONE_TOOL,
+  PROPOSE_NEW_PROMPT_TOOL,
+  PROPOSE_PROMPT_UPDATE_TOOL,
   getProposalStatus,
   type ApprovalIntent,
   type ProposalOutput,
@@ -100,7 +102,11 @@ export function ProposalCard({
       ? proposal.payload.name
       : proposal.kind === "milestone"
         ? proposal.payload.name
-        : proposal.payload.title;
+        : proposal.kind === "promptCreate"
+          ? proposal.payload.name
+          : proposal.kind === "promptUpdate"
+            ? proposal.payload.promptId
+            : proposal.payload.title;
   const [editedTitle, setEditedTitle] = useState(initialTitle);
   const [isEditing, setIsEditing] = useState(false);
 
@@ -167,6 +173,11 @@ export function ProposalCard({
         ...(editedTitle !== initialTitle && { title: editedTitle }),
         autoRespond,
       } as Partial<FeatureProposalPayload>;
+    } else if (proposal.kind === "promptCreate" || proposal.kind === "promptUpdate") {
+      // Prompt proposals have no inline-edit overrides in v1 — the agent
+      // should propose well; the user's only action is approve/reject.
+      // No viewport / editedTitle / checkedFeatureIds logic applies.
+      payload = undefined;
     } else {
       const titleChanged = editedTitle !== initialTitle;
       const featuresChanged =
@@ -255,6 +266,14 @@ export function ProposalCard({
       return { text, deepLink: null as string | null, newTab: false };
     }
 
+    // Prompt approvals have no canvas deep-link — just a confirmation.
+    if (r.kind === "promptCreate") {
+      return { text: "Prompt created ✓", deepLink: null as string | null, newTab: false };
+    }
+    if (r.kind === "promptUpdate") {
+      return { text: "New draft version saved ✓", deepLink: null as string | null, newTab: false };
+    }
+
     // Initiative / milestone: keep existing behavior unchanged.
     const onCurrent = r.landedOn === currentRef;
     if (onCurrent) {
@@ -284,7 +303,11 @@ export function ProposalCard({
         <div className="min-w-0 flex-1">
           <div className="flex items-baseline gap-1.5 text-[10px] uppercase tracking-wide text-muted-foreground">
             <span className="font-medium">
-              Proposed {proposal.kind}
+              {proposal.kind === "promptCreate"
+                ? "Proposed New Prompt"
+                : proposal.kind === "promptUpdate"
+                  ? "Proposed Prompt Update"
+                  : `Proposed ${proposal.kind}`}
             </span>
           </div>
           {/* Title — inline-editable on click while pending */}
@@ -330,6 +353,12 @@ export function ProposalCard({
               }
               isPending={isPending}
             />
+          )}
+          {proposal.kind === "promptCreate" && (
+            <PromptCreateMeta payload={proposal.payload} />
+          )}
+          {proposal.kind === "promptUpdate" && (
+            <PromptUpdateMeta meta={proposal.meta} />
           )}
           {proposal.rationale && (
             <div className="mt-1 text-xs text-muted-foreground italic">
@@ -455,14 +484,22 @@ function ProposalDetailsDialog({
       ? "Initiative"
       : proposal.kind === "milestone"
         ? "Milestone"
-        : "Feature";
+        : proposal.kind === "promptCreate"
+          ? "New Prompt"
+          : proposal.kind === "promptUpdate"
+            ? "Prompt Update"
+            : "Feature";
 
   const title =
     proposal.kind === "initiative"
       ? proposal.payload.name
       : proposal.kind === "milestone"
         ? proposal.payload.name
-        : proposal.payload.title;
+        : proposal.kind === "promptCreate"
+          ? proposal.payload.name
+          : proposal.kind === "promptUpdate"
+            ? proposal.payload.promptId
+            : proposal.payload.title;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -491,6 +528,30 @@ function ProposalDetailsDialog({
                 <div className="text-xs text-muted-foreground italic">
                   {proposal.rationale}
                 </div>
+              </div>
+            )}
+
+            {/* Prompt create specific */}
+            {proposal.kind === "promptCreate" && proposal.payload.value && (
+              <div className="space-y-1">
+                <div className={SECTION_LABEL_CLASS}>Value</div>
+                <pre className="text-xs font-mono bg-muted/30 rounded p-2 whitespace-pre-wrap break-words overflow-x-auto">
+                  {proposal.payload.value}
+                </pre>
+              </div>
+            )}
+
+            {/* Prompt update specific */}
+            {proposal.kind === "promptUpdate" && (
+              <div className="space-y-1">
+                <div className={SECTION_LABEL_CLASS}>Description change</div>
+                {proposal.payload.description ? (
+                  <div className="text-xs text-muted-foreground">
+                    {proposal.payload.description}
+                  </div>
+                ) : (
+                  <div className="text-xs text-muted-foreground italic">No description change</div>
+                )}
               </div>
             )}
 
@@ -682,6 +743,10 @@ export function proposalHasDetails(p: ProposalOutput): boolean {
       p.payload.startDate ||
       p.payload.targetDate
     );
+  if (p.kind === "promptCreate")
+    return !!(p.payload.description);
+  if (p.kind === "promptUpdate")
+    return !!(p.payload.description);
   // milestone
   return !!(p.payload.description || p.payload.status || p.payload.dueDate);
 }
@@ -824,6 +889,64 @@ function FeatureMeta({
   );
 }
 
+function PromptCreateMeta({
+  payload,
+}: {
+  payload: { name: string; value: string; description?: string };
+}) {
+  return (
+    <div className="mt-0.5">
+      {payload.description && (
+        <div className="text-[11px] text-muted-foreground truncate">
+          {payload.description}
+        </div>
+      )}
+      <div className="mt-1 text-[11px] text-muted-foreground">
+        {payload.value.length} chars
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Shows a stacked before/after diff for prompt update proposals.
+ * oldStr in red, newStr in green — monospace, no diff library.
+ * Visual pattern matches InsightImprove (see ScorerDashboard.tsx ~line 1288).
+ */
+function PromptUpdateMeta({
+  meta,
+}: {
+  meta: { oldStr: string; newStr: string };
+}) {
+  // Truncate long strings for the inline card view; full content in the details dialog.
+  const MAX_INLINE = 300;
+  const oldDisplay =
+    meta.oldStr.length > MAX_INLINE
+      ? meta.oldStr.slice(0, MAX_INLINE) + "…"
+      : meta.oldStr;
+  const newDisplay =
+    meta.newStr.length > MAX_INLINE
+      ? meta.newStr.slice(0, MAX_INLINE) + "…"
+      : meta.newStr;
+
+  return (
+    <div className="mt-1.5 space-y-1">
+      <div className="rounded bg-red-500/10 px-2 py-1.5">
+        <div className="text-[9px] uppercase tracking-wide text-red-400 mb-0.5">Before</div>
+        <pre className="text-[11px] font-mono text-red-400 whitespace-pre-wrap break-words">
+          {oldDisplay}
+        </pre>
+      </div>
+      <div className="rounded bg-green-500/10 px-2 py-1.5">
+        <div className="text-[9px] uppercase tracking-wide text-green-400 mb-0.5">After</div>
+        <pre className="text-[11px] font-mono text-green-400 whitespace-pre-wrap break-words">
+          {newDisplay}
+        </pre>
+      </div>
+    </div>
+  );
+}
+
 function shortId(id: string): string {
   return id.length > 8 ? id.slice(-6) : id;
 }
@@ -854,7 +977,9 @@ export function getProposalsFromMessage(
     if (
       tc.toolName !== PROPOSE_INITIATIVE_TOOL &&
       tc.toolName !== PROPOSE_FEATURE_TOOL &&
-      tc.toolName !== PROPOSE_MILESTONE_TOOL
+      tc.toolName !== PROPOSE_MILESTONE_TOOL &&
+      tc.toolName !== PROPOSE_NEW_PROMPT_TOOL &&
+      tc.toolName !== PROPOSE_PROMPT_UPDATE_TOOL
     )
       continue;
     const o = tc.output;

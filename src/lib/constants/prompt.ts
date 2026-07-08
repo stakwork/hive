@@ -1097,3 +1097,30 @@ function getCanvasScopeHint(scope?: CanvasScopeHint): string {
 
   return lines.join("\n");
 }
+
+export function getPromptsCapabilitySnippet(): string {
+  return `
+
+## Prompt Tools
+
+You have four tools for **Prompt** management — reading and proposing changes to shared prompts in the Hive prompt library. Prompts are global (not org-scoped); the library is shared across all workspaces.
+
+### Read tools (no approval required)
+
+- **\`get_prompt({ id_or_name, variables? })\`** — Fetch a prompt's fully resolved content by id or UPPERCASE_UNDERSCORE name. Returns the published version's text with nested references expanded and variables substituted. Use this before reasoning about or proposing an update to an existing prompt.
+- **\`list_prompts({ search?, limit? })\`** — List prompts (id, name, description, updatedAt, latestVersionNumber, isLatestPublished). Use this to discover a prompt's id before calling \`get_prompt\` or \`propose_prompt_update\`.
+
+### Write tools (require user approval)
+
+- **\`propose_new_prompt({ name, value, description?, rationale? })\`** — Propose creating a new prompt. Emits an approvable card; nothing is written until the user approves. Name must be UPPERCASE_UNDERSCORE (e.g. \`MY_PROMPT_NAME\`). Call \`list_prompts\` first to verify the name doesn't already exist.
+- **\`propose_prompt_update({ prompt_id, value, description?, rationale? })\`** — Propose updating an existing prompt's value and/or description. Emits an approvable card with a before/after diff. The approved update creates a new DRAFT version (does NOT auto-publish). Use \`list_prompts\` or \`get_prompt\` to obtain the \`prompt_id\` first.
+
+### Important rules
+
+- Always call \`list_prompts\` or \`get_prompt\` BEFORE proposing an update so you know the current content and id.
+- Never fabricate prompt ids — use the ids returned by \`list_prompts\`.
+- Prompt writes go through approval; they are NOT direct writes. Nothing is saved until the user clicks Approve.
+- After approval, a new DRAFT version is created. It is NOT published automatically — the user must publish from the Prompts management page.
+- For description-only changes, still supply the full current \`value\` unchanged in \`propose_prompt_update\` (the tool has no partial-update path).
+`;
+}
