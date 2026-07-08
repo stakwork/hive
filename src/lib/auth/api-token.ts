@@ -2,13 +2,27 @@ import { NextRequest, NextResponse } from "next/server";
 import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 import { db } from "@/lib/db";
 import type { MiddlewareUser } from "@/types/middleware";
+import { timingSafeEqual } from "crypto";
 
 /**
- * Validates the x-api-token header against the API_TOKEN environment variable.
+ * Shared actor label for writes performed via x-api-token (no user session).
+ * Used as `whodunnit` on PromptVersion rows created by token-authenticated callers.
+ */
+export const API_TOKEN_ACTOR = "api-token";
+
+/**
+ * Validates the x-api-token header against the API_TOKEN environment variable
+ * using a constant-time comparison to prevent timing side-channel attacks.
  */
 export function validateApiToken(request: NextRequest): boolean {
   const apiToken = request.headers.get("x-api-token");
-  return !!apiToken && apiToken === process.env.API_TOKEN;
+  const envToken = process.env.API_TOKEN;
+  if (!apiToken || !envToken) return false;
+  // timingSafeEqual requires equal-length buffers — short-circuit on mismatch.
+  const a = Buffer.from(apiToken);
+  const b = Buffer.from(envToken);
+  if (a.length !== b.length) return false;
+  return timingSafeEqual(a, b);
 }
 
 /**
