@@ -3,16 +3,10 @@ import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 import { db } from "@/lib/db";
 import { config } from "@/config/env";
 import { isDevelopmentMode } from "@/lib/runtime";
+import { isSafeId } from "@/lib/utils/ids";
 
 export const runtime = "nodejs";
 export const fetchCache = "force-no-store";
-
-// Accepts numeric IDs or UUIDs (v4-style)
-const SAFE_ID_RE = /^[0-9a-f-]+$/i;
-
-function isSafeId(value: string): boolean {
-  return SAFE_ID_RE.test(value) && !value.includes("..");
-}
 
 export async function POST(
   request: NextRequest,
