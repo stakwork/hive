@@ -56,6 +56,7 @@ vi.mock("@/lib/constants/prompt", () => ({
   getGraphWalkerCapabilitySnippet: vi.fn(() => ""),
   getInfraCapabilitySnippet: vi.fn(() => "infra-snippet"),
   getPromptsCapabilitySnippet: vi.fn(() => ""),
+  getConceptsCapabilitySnippet: vi.fn(() => ""),
 }));
 vi.mock("@/lib/proposals/types", () => ({
   PROPOSE_FEATURE_TOOL: "propose_feature",
@@ -63,6 +64,8 @@ vi.mock("@/lib/proposals/types", () => ({
   PROPOSE_MILESTONE_TOOL: "propose_milestone",
   PROPOSE_NEW_PROMPT_TOOL: "propose_new_prompt",
   PROPOSE_PROMPT_UPDATE_TOOL: "propose_prompt_update",
+  PROPOSE_NEW_CONCEPT_TOOL: "propose_new_concept",
+  PROPOSE_CONCEPT_UPDATE_TOOL: "propose_concept_update",
 }));
 
 // ─── Imports (after mocks) ───────────────────────────────────────────────────
