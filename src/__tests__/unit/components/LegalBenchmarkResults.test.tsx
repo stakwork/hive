@@ -160,18 +160,17 @@ describe("LegalBenchmarkResults", () => {
     ).toBeInTheDocument();
   });
 
-  it("shows SCORING spinner with correct message", () => {
+  it("renders null for an unknown/legacy status (scoring state removed in single-run pipeline)", () => {
     mockUseLegalBenchmarkRun.mockReturnValue({
-      run: { ...mockRun, status: "scoring", scorerRun: { ...mockScorerRow, projectId: null } },
+      // "scoring" is no longer a valid BenchmarkPipelineStatus — component renders null.
+      run: { ...mockRun, status: "scoring" as never, scorerRun: { ...mockScorerRow, projectId: null } },
       isLoading: false,
       isStale: false,
       refetch: vi.fn(),
     });
 
-    render(React.createElement(LegalBenchmarkResults, { runId: "run-abc", onReset }));
-    expect(
-      screen.getByText("Scoring output against rubric…")
-    ).toBeInTheDocument();
+    const { container } = render(React.createElement(LegalBenchmarkResults, { runId: "run-abc", onReset }));
+    expect(container.firstChild).toBeNull();
   });
 
   it("shows Stakwork link for super admin when runnerProjectId is non-null in RUNNING state", () => {
@@ -200,9 +199,9 @@ describe("LegalBenchmarkResults", () => {
     expect(screen.queryByRole("link", { name: /view on stakwork/i })).toBeNull();
   });
 
-  it("shows scorer Stakwork link for super admin in SCORING state", () => {
+  it("shows runner Stakwork link for super admin in RUNNING state when projectId is non-null", () => {
     mockUseLegalBenchmarkRun.mockReturnValue({
-      run: { ...mockRun, status: "scoring", scorerRun: { ...mockScorerRow, projectId: 456 } },
+      run: { ...mockRun, status: "running", runnerRun: { ...mockRunnerRow, projectId: 456 } },
       isLoading: false,
       isStale: false,
       refetch: vi.fn(),
@@ -214,9 +213,9 @@ describe("LegalBenchmarkResults", () => {
     expect(link).toHaveAttribute("href", "https://jobs.stakwork.com/admin/projects/456");
   });
 
-  it("does not show Stakwork link when scorerProjectId is null in SCORING state", () => {
+  it("does not show Stakwork link when runnerProjectId is null in RUNNING state", () => {
     mockUseLegalBenchmarkRun.mockReturnValue({
-      run: { ...mockRun, status: "scoring", scorerRun: { ...mockScorerRow, projectId: null } },
+      run: { ...mockRun, status: "running", runnerRun: { ...mockRunnerRow, projectId: null } },
       isLoading: false,
       isStale: false,
       refetch: vi.fn(),
