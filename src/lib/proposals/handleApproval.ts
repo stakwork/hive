@@ -57,6 +57,8 @@ import {
   PROPOSE_MILESTONE_TOOL,
   PROPOSE_NEW_PROMPT_TOOL,
   PROPOSE_PROMPT_UPDATE_TOOL,
+  PROPOSE_NEW_CONCEPT_TOOL,
+  PROPOSE_CONCEPT_UPDATE_TOOL,
   type ApprovalIntent,
   type ApprovalResult,
   type FeatureProposalPayload,
@@ -66,6 +68,7 @@ import {
   type RejectionIntent,
 } from "./types";
 import { mcpCreatePrompt, mcpUpdatePrompt } from "@/lib/mcp/mcpTools";
+import { getSwarmAccessByWorkspaceId } from "@/lib/helpers/swarm-access";
 import { logger } from "@/lib/logger";
 
 // ─── Conversation-shape primitives ────────────────────────────────────
@@ -115,7 +118,9 @@ function findProposal(
         tc.toolName !== PROPOSE_FEATURE_TOOL &&
         tc.toolName !== PROPOSE_MILESTONE_TOOL &&
         tc.toolName !== PROPOSE_NEW_PROMPT_TOOL &&
-        tc.toolName !== PROPOSE_PROMPT_UPDATE_TOOL
+        tc.toolName !== PROPOSE_PROMPT_UPDATE_TOOL &&
+        tc.toolName !== PROPOSE_NEW_CONCEPT_TOOL &&
+        tc.toolName !== PROPOSE_CONCEPT_UPDATE_TOOL
       )
         continue;
       const out = tc.output;
@@ -304,6 +309,12 @@ export async function handleApproval(
       proposal,
       intent,
     });
+  }
+  if (proposal.kind === "conceptCreate") {
+    return approveConceptCreate({ orgId, proposal });
+  }
+  if (proposal.kind === "conceptUpdate") {
+    return approveConceptUpdate({ orgId, proposal });
   }
   return approveFeature({
     orgId,
@@ -1415,6 +1426,178 @@ async function approvePromptUpdate(args: {
       kind: "promptUpdate",
       createdEntityId: promptId,
       landedOn: "",
+    },
+  };
+}
+
+// ── Concept approvals ────────────────────────────────────────────────
+//
+// Concepts live on a workspace's swarm (gitree HTTP), not in the Hive DB.
+// The proposal payload carries the workspace cuid (resolved under the org
+// at propose time); we re-verify it belongs to `orgId` (defense-in-depth,
+// matching the feature approval org guard) before reaching the swarm.
+// Both return `landedOn: ""` (no canvas node) + the workspace slug so the
+// card can deep-link to the concept in the learn UI.
+
+/** Re-resolve + org-guard the workspace, then return its swarm creds. */
+async function resolveConceptSwarm(
+  orgId: string,
+  workspaceId: string,
+): Promise<
+  | { ok: true; swarmUrl: string; swarmApiKey: string }
+  | { ok: false; error: string; status: number }
+> {
+  const workspace = await db.workspace.findFirst({
+    where: { id: workspaceId, sourceControlOrgId: orgId, deleted: false },
+    select: { id: true },
+  });
+  if (!workspace) {
+    return {
+      ok: false,
+      error: "Workspace not found in this organization.",
+      status: 403,
+    };
+  }
+  const swarm = await getSwarmAccessByWorkspaceId(workspaceId);
+  if (!swarm.success) {
+    return {
+      ok: false,
+      error: `The workspace swarm is not available (${swarm.error.type}).`,
+      status: 503,
+    };
+  }
+  return {
+    ok: true,
+    swarmUrl: swarm.data.swarmUrl,
+    swarmApiKey: swarm.data.swarmApiKey,
+  };
+}
+
+async function approveConceptCreate(args: {
+  orgId: string;
+  proposal: Extract<ProposalOutput, { kind: "conceptCreate" }>;
+}): Promise<HandleApprovalReturn> {
+  const { orgId, proposal } = args;
+  const { workspaceId, workspaceSlug, name, documentation, description, repo } =
+    proposal.payload;
+
+  if (!name || !name.trim()) {
+    return { ok: false, error: "Concept name is required.", status: 400 };
+  }
+  if (typeof documentation !== "string" || !documentation) {
+    return { ok: false, error: "Concept documentation is required.", status: 400 };
+  }
+
+  const resolved = await resolveConceptSwarm(orgId, workspaceId);
+  if (!resolved.ok) {
+    return { ok: false, error: resolved.error, status: resolved.status };
+  }
+
+  let createdId = "";
+  try {
+    const res = await fetch(`${resolved.swarmUrl}/gitree/create-concept-direct`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-token": resolved.swarmApiKey,
+      },
+      body: JSON.stringify({
+        name: name.trim(),
+        documentation,
+        ...(description && { description }),
+        ...(repo && { repo }),
+      }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      const msg =
+        (data && (data.error as string)) ||
+        `Failed to create concept (status ${res.status}).`;
+      return { ok: false, error: msg, status: res.status === 409 ? 409 : 400 };
+    }
+    createdId = data?.concept?.id ?? "";
+  } catch (e) {
+    logger.error(
+      "[handleApproval.approveConceptCreate] swarm write failed",
+      "handleApproval",
+      { proposalId: proposal.proposalId, workspaceSlug, error: String(e) },
+    );
+    return { ok: false, error: "Could not reach the workspace swarm.", status: 502 };
+  }
+
+  return {
+    ok: true,
+    alreadyApproved: false,
+    result: {
+      proposalId: proposal.proposalId,
+      kind: "conceptCreate",
+      createdEntityId: createdId,
+      landedOn: "",
+      workspaceSlug,
+    },
+  };
+}
+
+async function approveConceptUpdate(args: {
+  orgId: string;
+  proposal: Extract<ProposalOutput, { kind: "conceptUpdate" }>;
+}): Promise<HandleApprovalReturn> {
+  const { orgId, proposal } = args;
+  const { workspaceId, workspaceSlug, conceptId, documentation } =
+    proposal.payload;
+
+  if (!conceptId) {
+    return { ok: false, error: "conceptId is required.", status: 400 };
+  }
+  if (typeof documentation !== "string") {
+    return { ok: false, error: "Concept documentation is required.", status: 400 };
+  }
+
+  const resolved = await resolveConceptSwarm(orgId, workspaceId);
+  if (!resolved.ok) {
+    return { ok: false, error: resolved.error, status: resolved.status };
+  }
+
+  try {
+    const res = await fetch(
+      `${resolved.swarmUrl}/gitree/concepts/${encodeURIComponent(conceptId)}/documentation`,
+      {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          "x-api-token": resolved.swarmApiKey,
+        },
+        body: JSON.stringify({ documentation }),
+      },
+    );
+    if (res.status === 404) {
+      return { ok: false, error: `Concept '${conceptId}' not found.`, status: 404 };
+    }
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      const msg =
+        (data && (data.error as string)) ||
+        `Failed to update concept (status ${res.status}).`;
+      return { ok: false, error: msg, status: 400 };
+    }
+  } catch (e) {
+    logger.error(
+      "[handleApproval.approveConceptUpdate] swarm write failed",
+      "handleApproval",
+      { proposalId: proposal.proposalId, workspaceSlug, conceptId, error: String(e) },
+    );
+    return { ok: false, error: "Could not reach the workspace swarm.", status: 502 };
+  }
+
+  return {
+    ok: true,
+    alreadyApproved: false,
+    result: {
+      proposalId: proposal.proposalId,
+      kind: "conceptUpdate",
+      createdEntityId: conceptId,
+      landedOn: "",
+      workspaceSlug,
     },
   };
 }

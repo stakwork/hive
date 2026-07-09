@@ -300,6 +300,38 @@ export type ProposalOutput =
         promptName?: string;
         versionNumber?: number;
       };
+    }
+  | {
+      kind: "conceptUpdate";
+      proposalId: string;
+      payload: ConceptUpdateProposalPayload;
+      rationale?: string;
+      /** Render-only diff metadata: the concept's current documentation
+       *  (oldStr) and the proposed new documentation (newStr), resolved by
+       *  `propose_concept_update` from the workspace's swarm at propose time.
+       *  `conceptName` / `workspaceSlug` are the friendly labels for the card.
+       *  The approval handler does NOT trust this — it re-reads and re-writes
+       *  against the swarm. */
+      meta: {
+        oldStr: string;
+        newStr: string;
+        conceptName?: string;
+        workspaceSlug?: string;
+      };
+    }
+  | {
+      kind: "conceptCreate";
+      proposalId: string;
+      payload: ConceptCreateProposalPayload;
+      rationale?: string;
+      /** Render-only labels for the card (workspace + repo the concept
+       *  will be filed under). The approval handler re-resolves the swarm
+       *  from `payload.workspaceId` and does NOT trust this. */
+      meta?: {
+        workspaceName?: string;
+        workspaceSlug?: string;
+        repo?: string;
+      };
     };
 
 // ─── Prompt proposal payloads ──────────────────────────────────────────
@@ -323,6 +355,42 @@ export interface PromptUpdateProposalPayload {
   description?: string;
 }
 
+// ─── Concept proposal payloads ─────────────────────────────────────────
+//
+// Concepts live on a workspace's swarm (reached via gitree HTTP), not in
+// the Hive DB. Both payloads carry `workspaceId` (the cuid) so the
+// approval handler — which only has `orgId` + `userId` — can re-resolve
+// the workspace under the org and reach its swarm. `workspaceSlug` is
+// carried for display + swarm resolution logging.
+
+/**
+ * Payload for updating an existing concept's documentation.
+ * `documentation` is the full proposed markdown body (the only directly
+ * editable concept field via gitree's
+ * `PUT /gitree/concepts/:id/documentation`).
+ */
+export interface ConceptUpdateProposalPayload {
+  workspaceId: string;
+  workspaceSlug: string;
+  conceptId: string;
+  documentation: string;
+}
+
+/**
+ * Payload for creating a new concept directly (no agentic codebase
+ * analysis) via gitree's `POST /gitree/create-concept-direct`.
+ * `repo` ("owner/repo") is optional — when present the concept id is
+ * repo-prefixed; when absent the swarm defaults are used.
+ */
+export interface ConceptCreateProposalPayload {
+  workspaceId: string;
+  workspaceSlug: string;
+  name: string;
+  documentation: string;
+  description?: string;
+  repo?: string;
+}
+
 /**
  * Tool name constants — referenced by the chat UI to find proposal
  * tool calls inside `message.toolCalls[]`, by the route's scanner, and
@@ -333,13 +401,17 @@ export const PROPOSE_FEATURE_TOOL = "propose_feature" as const;
 export const PROPOSE_MILESTONE_TOOL = "propose_milestone" as const;
 export const PROPOSE_NEW_PROMPT_TOOL = "propose_new_prompt" as const;
 export const PROPOSE_PROMPT_UPDATE_TOOL = "propose_prompt_update" as const;
+export const PROPOSE_NEW_CONCEPT_TOOL = "propose_new_concept" as const;
+export const PROPOSE_CONCEPT_UPDATE_TOOL = "propose_concept_update" as const;
 
 export type ProposeToolName =
   | typeof PROPOSE_INITIATIVE_TOOL
   | typeof PROPOSE_FEATURE_TOOL
   | typeof PROPOSE_MILESTONE_TOOL
   | typeof PROPOSE_NEW_PROMPT_TOOL
-  | typeof PROPOSE_PROMPT_UPDATE_TOOL;
+  | typeof PROPOSE_PROMPT_UPDATE_TOOL
+  | typeof PROPOSE_NEW_CONCEPT_TOOL
+  | typeof PROPOSE_CONCEPT_UPDATE_TOOL;
 
 /**
  * Sub-agent delegation tool name. Not a proposal (no approve/reject
@@ -423,7 +495,14 @@ export interface RejectionIntent {
  */
 export interface ApprovalResult {
   proposalId: string;
-  kind: "initiative" | "feature" | "milestone" | "promptCreate" | "promptUpdate";
+  kind:
+    | "initiative"
+    | "feature"
+    | "milestone"
+    | "promptCreate"
+    | "promptUpdate"
+    | "conceptCreate"
+    | "conceptUpdate";
   createdEntityId: string;
   /** Canvas ref the new node landed on. Empty string = root. */
   landedOn: string;
