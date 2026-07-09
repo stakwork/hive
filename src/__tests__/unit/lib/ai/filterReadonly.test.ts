@@ -45,6 +45,7 @@ vi.mock("@/lib/constants/prompt", () => ({
   getGraphWalkerCapabilitySnippet: vi.fn(() => ""),
   getInfraCapabilitySnippet: vi.fn(() => ""),
   getPromptsCapabilitySnippet: vi.fn(() => ""),
+  getConceptsCapabilitySnippet: vi.fn(() => ""),
   getCanvasPromptSuffix: vi.fn(() => ""),
 }));
 

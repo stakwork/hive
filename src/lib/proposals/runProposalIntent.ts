@@ -123,7 +123,11 @@ export async function runProposalIntent(args: {
               ? "prompt"
               : r.kind === "promptUpdate"
                 ? "prompt update"
-                : "feature";
+                : r.kind === "conceptCreate"
+                  ? "concept"
+                  : r.kind === "conceptUpdate"
+                    ? "concept update"
+                    : "feature";
 
       summaryText = alreadyApproved
         ? `Already created — ${kindLabel} already exists.`
@@ -135,7 +139,11 @@ export async function runProposalIntent(args: {
               ? `Created the new prompt successfully.`
               : r.kind === "promptUpdate"
                 ? `Saved a new draft version of the prompt. It is not published yet — publish it from the Prompts management page when ready.`
-                : `Created the feature on ${where}.`;
+                : r.kind === "conceptCreate"
+                  ? `Created the new concept successfully.`
+                  : r.kind === "conceptUpdate"
+                    ? `Updated the concept's documentation.`
+                    : `Created the feature on ${where}.`;
     }
   } else if (rejectionIntent) {
     const outcome = handleRejection({
