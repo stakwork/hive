@@ -111,12 +111,14 @@ export async function swarmApiRequest({
   method = "GET",
   apiKey,
   data,
+  timeoutMs,
 }: {
   swarmUrl: string;
   endpoint: string;
   method?: "GET" | "POST" | "PUT" | "DELETE";
   apiKey: string;
   data?: unknown;
+  timeoutMs?: number;
 }): Promise<{
   ok: boolean;
   data?: unknown;
@@ -135,6 +137,7 @@ export async function swarmApiRequest({
       method,
       headers,
       ...(data ? { body: JSON.stringify(data) } : {}),
+      ...(timeoutMs ? { signal: AbortSignal.timeout(timeoutMs) } : {}),
     });
 
     let responseData: unknown = undefined;
