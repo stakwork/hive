@@ -19,6 +19,8 @@ import {
   PROPOSE_MILESTONE_TOOL,
   PROPOSE_NEW_PROMPT_TOOL,
   PROPOSE_PROMPT_UPDATE_TOOL,
+  PROPOSE_NEW_CONCEPT_TOOL,
+  PROPOSE_CONCEPT_UPDATE_TOOL,
   getProposalStatus,
   type ApprovalIntent,
   type ProposalOutput,
@@ -115,14 +117,21 @@ export function ProposalCard({
           ? proposal.payload.name
           : proposal.kind === "promptUpdate"
             ? (proposal.meta.promptName ?? proposal.payload.promptId)
-            : proposal.payload.title;
+            : proposal.kind === "conceptCreate"
+              ? proposal.payload.name
+              : proposal.kind === "conceptUpdate"
+                ? (proposal.meta.conceptName ?? proposal.payload.conceptId)
+                : proposal.payload.title;
   const [editedTitle, setEditedTitle] = useState(initialTitle);
   const [isEditing, setIsEditing] = useState(false);
-  // Prompt proposals forward no inline-edit override (handleApprove sets
-  // payload = undefined for them), so an editable title would be a lie —
+  // Prompt/concept proposals forward no inline-edit override (handleApprove
+  // sets payload = undefined for them), so an editable title would be a lie —
   // the name/id shown is fixed. Only roadmap kinds get the click-to-edit.
   const titleEditable =
-    proposal.kind !== "promptCreate" && proposal.kind !== "promptUpdate";
+    proposal.kind !== "promptCreate" &&
+    proposal.kind !== "promptUpdate" &&
+    proposal.kind !== "conceptCreate" &&
+    proposal.kind !== "conceptUpdate";
 
   // Feature-only: per-feature auto-respond toggle.
   // Initialized from the proposal payload (which is seeded from the
@@ -187,9 +196,14 @@ export function ProposalCard({
         ...(editedTitle !== initialTitle && { title: editedTitle }),
         autoRespond,
       } as Partial<FeatureProposalPayload>;
-    } else if (proposal.kind === "promptCreate" || proposal.kind === "promptUpdate") {
-      // Prompt proposals have no inline-edit overrides in v1 — the agent
-      // should propose well; the user's only action is approve/reject.
+    } else if (
+      proposal.kind === "promptCreate" ||
+      proposal.kind === "promptUpdate" ||
+      proposal.kind === "conceptCreate" ||
+      proposal.kind === "conceptUpdate"
+    ) {
+      // Prompt/concept proposals have no inline-edit overrides in v1 — the
+      // agent should propose well; the user's only action is approve/reject.
       // No viewport / editedTitle / checkedFeatureIds logic applies.
       payload = undefined;
     } else {
@@ -288,6 +302,20 @@ export function ProposalCard({
       return { text: "New draft version saved ✓", deepLink: null as string | null, newTab: false };
     }
 
+    // Concept approvals deep-link to the concept in the workspace learn UI
+    // (when we know the slug + concept id).
+    if (r.kind === "conceptCreate" || r.kind === "conceptUpdate") {
+      const text =
+        r.kind === "conceptCreate"
+          ? "Concept created ✓"
+          : "Documentation updated ✓";
+      const deepLink =
+        r.workspaceSlug && r.createdEntityId
+          ? `/w/${r.workspaceSlug}/learn?concept=${encodeURIComponent(r.createdEntityId)}`
+          : null;
+      return { text, deepLink: deepLink as string | null, newTab: true };
+    }
+
     // Initiative / milestone: keep existing behavior unchanged.
     const onCurrent = r.landedOn === currentRef;
     if (onCurrent) {
@@ -321,7 +349,11 @@ export function ProposalCard({
                 ? "Proposed New Prompt"
                 : proposal.kind === "promptUpdate"
                   ? "Proposed Prompt Update"
-                  : `Proposed ${proposal.kind}`}
+                  : proposal.kind === "conceptCreate"
+                    ? "Proposed New Concept"
+                    : proposal.kind === "conceptUpdate"
+                      ? "Proposed Concept Update"
+                      : `Proposed ${proposal.kind}`}
             </span>
           </div>
           {/* Title — inline-editable on click while pending (roadmap kinds only) */}
@@ -373,6 +405,12 @@ export function ProposalCard({
           )}
           {proposal.kind === "promptUpdate" && (
             <PromptUpdateMeta meta={proposal.meta} />
+          )}
+          {proposal.kind === "conceptCreate" && (
+            <ConceptCreateMeta payload={proposal.payload} meta={proposal.meta} />
+          )}
+          {proposal.kind === "conceptUpdate" && (
+            <ConceptUpdateMeta meta={proposal.meta} />
           )}
           {proposal.rationale && (
             <div className="mt-1 text-xs text-muted-foreground italic">
@@ -502,7 +540,11 @@ function ProposalDetailsDialog({
           ? "New Prompt"
           : proposal.kind === "promptUpdate"
             ? "Prompt Update"
-            : "Feature";
+            : proposal.kind === "conceptCreate"
+              ? "New Concept"
+              : proposal.kind === "conceptUpdate"
+                ? "Concept Update"
+                : "Feature";
 
   const title =
     proposal.kind === "initiative"
@@ -513,7 +555,11 @@ function ProposalDetailsDialog({
           ? proposal.payload.name
           : proposal.kind === "promptUpdate"
             ? (proposal.meta.promptName ?? proposal.payload.promptId)
-            : proposal.payload.title;
+            : proposal.kind === "conceptCreate"
+              ? proposal.payload.name
+              : proposal.kind === "conceptUpdate"
+                ? (proposal.meta.conceptName ?? proposal.payload.conceptId)
+                : proposal.payload.title;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -525,8 +571,8 @@ function ProposalDetailsDialog({
 
         <ScrollArea className="max-h-[60vh] min-w-0">
           <div className="px-5 py-4 space-y-4 min-w-0">
-            {/* Description — all kinds */}
-            {proposal.payload.description && (
+            {/* Description — kinds that carry one */}
+            {"description" in proposal.payload && proposal.payload.description && (
               <div className="space-y-1">
                 <div className={SECTION_LABEL_CLASS}>Description</div>
                 <div className="prose prose-sm dark:prose-invert max-w-none min-w-0 break-words [overflow-wrap:anywhere] prose-pre:whitespace-pre-wrap prose-pre:break-words">
@@ -566,6 +612,16 @@ function ProposalDetailsDialog({
                 ) : (
                   <div className="text-xs text-muted-foreground italic">No description change</div>
                 )}
+              </div>
+            )}
+
+            {/* Concept create specific — show the documentation body */}
+            {proposal.kind === "conceptCreate" && proposal.payload.documentation && (
+              <div className="space-y-1">
+                <div className={SECTION_LABEL_CLASS}>Documentation</div>
+                <div className="prose prose-sm dark:prose-invert max-w-none min-w-0 break-words [overflow-wrap:anywhere] prose-pre:whitespace-pre-wrap prose-pre:break-words">
+                  <ReactMarkdown>{proposal.payload.documentation}</ReactMarkdown>
+                </div>
               </div>
             )}
 
@@ -761,6 +817,11 @@ export function proposalHasDetails(p: ProposalOutput): boolean {
     return !!(p.payload.description);
   if (p.kind === "promptUpdate")
     return !!(p.payload.description);
+  if (p.kind === "conceptCreate")
+    return !!(p.payload.description || p.payload.documentation);
+  // conceptUpdate: the doc diff lives in its own "View changes" modal on
+  // the card, so there's nothing extra to show in the details dialog.
+  if (p.kind === "conceptUpdate") return false;
   // milestone
   return !!(p.payload.description || p.payload.status || p.payload.dueDate);
 }
@@ -1079,6 +1140,129 @@ function UnifiedDiffView({ diff }: { diff: UnifiedDiff }) {
   );
 }
 
+/** Compact body for a new-concept proposal: repo/workspace + doc size. */
+function ConceptCreateMeta({
+  payload,
+  meta,
+}: {
+  payload: { name: string; documentation: string; description?: string; repo?: string };
+  meta?: { workspaceName?: string; workspaceSlug?: string; repo?: string };
+}) {
+  const parts: string[] = [];
+  if (meta?.workspaceName ?? meta?.workspaceSlug) {
+    parts.push((meta.workspaceName ?? meta.workspaceSlug)!);
+  }
+  const repo = payload.repo ?? meta?.repo;
+  if (repo) parts.push(repo);
+  return (
+    <div className="mt-0.5">
+      {payload.description && (
+        <div className="text-[11px] text-muted-foreground truncate">
+          {payload.description}
+        </div>
+      )}
+      <div className="mt-1 flex flex-wrap items-center gap-x-2 text-[11px] text-muted-foreground">
+        {parts.length > 0 && <span>{parts.join(" · ")}</span>}
+        <span>{payload.documentation.length} chars</span>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Compact summary line for a concept-documentation update: a +adds/−dels
+ * stat plus a "View changes" button opening the diff modal. Mirrors
+ * `PromptUpdateMeta` — the inline card shows no diff body.
+ */
+function ConceptUpdateMeta({
+  meta,
+}: {
+  meta: {
+    oldStr: string;
+    newStr: string;
+    conceptName?: string;
+    workspaceSlug?: string;
+  };
+}) {
+  const [open, setOpen] = useState(false);
+  const diff = useMemo(
+    () => computeUnifiedDiff(meta.oldStr, meta.newStr),
+    [meta.oldStr, meta.newStr],
+  );
+
+  return (
+    <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-muted-foreground">
+      {meta.workspaceSlug && <span className="font-mono">{meta.workspaceSlug}</span>}
+      {diff.unchanged ? (
+        <span className="italic">No documentation change</span>
+      ) : (
+        <>
+          <span className="font-mono">
+            <span className="text-emerald-600 dark:text-emerald-400">
+              +{diff.added}
+            </span>{" "}
+            <span className="text-rose-600 dark:text-rose-400">
+              −{diff.removed}
+            </span>
+          </span>
+          <button
+            type="button"
+            onClick={() => setOpen(true)}
+            className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-foreground/80 transition-colors hover:bg-muted/60 hover:text-foreground"
+          >
+            <FileDiff className="h-3 w-3" />
+            View changes
+          </button>
+          <ConceptDiffDialog
+            open={open}
+            onOpenChange={setOpen}
+            conceptName={meta.conceptName}
+            diff={diff}
+          />
+        </>
+      )}
+    </div>
+  );
+}
+
+/** Diff modal for a concept documentation update (mirrors PromptDiffDialog). */
+function ConceptDiffDialog({
+  open,
+  onOpenChange,
+  conceptName,
+  diff,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  conceptName?: string;
+  diff: UnifiedDiff;
+}) {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-3xl">
+        <DialogHeader className="min-w-0">
+          <div className={SECTION_LABEL_CLASS}>Documentation changes</div>
+          <DialogTitle className="text-base min-w-0 break-words [overflow-wrap:anywhere]">
+            {conceptName ?? "Concept update"}
+          </DialogTitle>
+          <div className="mt-0.5 font-mono text-xs">
+            <span className="text-emerald-600 dark:text-emerald-400">
+              +{diff.added}
+            </span>{" "}
+            <span className="text-rose-600 dark:text-rose-400">
+              −{diff.removed}
+            </span>
+          </div>
+        </DialogHeader>
+
+        <ScrollArea className="max-h-[65vh] min-w-0">
+          <UnifiedDiffView diff={diff} />
+        </ScrollArea>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function shortId(id: string): string {
   return id.length > 8 ? id.slice(-6) : id;
 }
@@ -1111,7 +1295,9 @@ export function getProposalsFromMessage(
       tc.toolName !== PROPOSE_FEATURE_TOOL &&
       tc.toolName !== PROPOSE_MILESTONE_TOOL &&
       tc.toolName !== PROPOSE_NEW_PROMPT_TOOL &&
-      tc.toolName !== PROPOSE_PROMPT_UPDATE_TOOL
+      tc.toolName !== PROPOSE_PROMPT_UPDATE_TOOL &&
+      tc.toolName !== PROPOSE_NEW_CONCEPT_TOOL &&
+      tc.toolName !== PROPOSE_CONCEPT_UPDATE_TOOL
     )
       continue;
     const o = tc.output;
