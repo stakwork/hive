@@ -2,29 +2,46 @@ import { WorkflowStatus, StakworkRunType } from "@prisma/client";
 
 /**
  * Parsed contents of a benchmark run's `result` JSON column on StakworkRun.
- * Both runner and scorer rows store these fields (scorer omits runnerProjectId).
+ * The single runner row stores these fields after the collapsed single-run pipeline.
  */
 export interface BenchmarkRunResult {
   taskSlug: string;
   taskTitle: string;
-  /** ID of the paired runner/scorer StakworkRun row */
-  siblingRunId: string;
+  /** ID of the paired runner/scorer StakworkRun row — optional for legacy rows; new runs omit this */
+  siblingRunId?: string;
   /** Jarvis EvalTrigger node ref — set after non-fatal Jarvis instrumentation */
   evalTriggerRef?: string;
+  /** Whether the aggregate EvalTriggerOutput node has already been written (idempotency guard) */
+  evalOutputWritten?: boolean;
   /** Project ID returned by Stakwork on runner dispatch */
   runnerProjectId?: number;
   /** S3 URL of the runner's output document */
   runnerOutputUrl?: string;
   /** Plain-text runner output */
   runnerOutputText?: string;
-  /** Serialised RubricScore[] from the scorer */
-  scoreJson?: string;
   /** Error message if the run failed */
   errorMessage?: string;
+  // ── Flat score fields from the runner webhook (workflow 57179 inline eval) ──
+  /** Raw score (e.g. 72) */
+  score?: number;
+  /** Maximum possible score (e.g. 74) */
+  max_score?: number;
+  /** Number of criteria that passed */
+  n_passed?: number;
+  /** Total number of criteria */
+  n_total?: number;
+  /** Pass rate as a fraction (0–1) */
+  pass_rate?: number;
+  /** Overall pass/fail result */
+  all_pass?: boolean;
+  /** S3 URL to per-criterion score breakdown (out of scope for v1 display) */
+  scores_s3_url?: string;
+  /** Name of the judge model used for evaluation */
+  judge_model?: string;
 }
 
 /**
- * A single StakworkRun row representing one side of a benchmark pipeline pair.
+ * A single StakworkRun row representing a benchmark run.
  */
 export interface BenchmarkRunRow {
   id: string;
@@ -38,16 +55,15 @@ export interface BenchmarkRunRow {
 }
 
 /**
- * Operator-facing composite status derived from the runner+scorer pair.
- * running  — runner PENDING/IN_PROGRESS
- * scoring  — runner COMPLETED + scorer PENDING/IN_PROGRESS
- * complete — scorer COMPLETED
- * failed   — either row FAILED
+ * Operator-facing status derived from a single runner run.
+ * running  — PENDING/IN_PROGRESS
+ * complete — COMPLETED
+ * failed   — FAILED
  */
-export type BenchmarkPipelineStatus = "running" | "scoring" | "complete" | "failed";
+export type BenchmarkPipelineStatus = "running" | "complete" | "failed";
 
 /**
- * The paired view of a benchmark pipeline (runner + scorer rows).
+ * The view of a benchmark run (single runner row).
  * Provides convenience accessors for fields the UI expects.
  */
 export interface LegalBenchmarkRun {
@@ -56,14 +72,15 @@ export interface LegalBenchmarkRun {
   workspaceId: string;
   taskSlug: string;
   taskTitle: string;
-  /** Composite operator-facing status */
+  /** Operator-facing status */
   status: BenchmarkPipelineStatus;
   runnerRun: BenchmarkRunRow;
+  /** @deprecated — scorer is no longer created; always null for new runs */
   scorerRun: BenchmarkRunRow | null;
   /** Convenience access to runner output fields (read from runnerRun.result) */
   runnerOutputUrl: string | null;
   runnerOutputText: string | null;
-  /** Convenience access to scorer output (read from scorerRun.result) */
+  /** @deprecated — scoreJson is no longer populated; use flat score fields on runnerRun.result */
   scoreJson: string | null;
   errorMessage: string | null;
   createdAt: string | Date;
@@ -90,20 +107,17 @@ export function parseBenchmarkRunResult(result: string | null | undefined): Benc
 }
 
 /**
- * Derive the composite pipeline status from a runner+scorer pair.
+ * Derive the pipeline status from a single runner run status.
+ *
+ * @param runnerStatus - The runner run's WorkflowStatus.
+ * @param _scorerStatus - Deprecated; ignored. Kept as an optional no-op param for
+ *   backward compatibility while the hook is updated in T2. Remove once T2 lands.
  */
 export function deriveBenchmarkStatus(
   runnerStatus: WorkflowStatus,
-  scorerStatus: WorkflowStatus | undefined,
+  _scorerStatus?: WorkflowStatus,
 ): BenchmarkPipelineStatus {
   if (runnerStatus === WorkflowStatus.FAILED) return "failed";
-  if (scorerStatus === WorkflowStatus.FAILED) return "failed";
-  if (scorerStatus === WorkflowStatus.COMPLETED) return "complete";
-  if (
-    runnerStatus === WorkflowStatus.COMPLETED &&
-    (scorerStatus === WorkflowStatus.PENDING || scorerStatus === WorkflowStatus.IN_PROGRESS)
-  ) {
-    return "scoring";
-  }
+  if (runnerStatus === WorkflowStatus.COMPLETED) return "complete";
   return "running";
 }

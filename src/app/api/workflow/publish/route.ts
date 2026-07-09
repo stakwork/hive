@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth/next";
-import { authOptions } from "@/lib/auth/nextauth";
+import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 import { db } from "@/lib/db";
 import { config } from "@/config/env";
 import { isDevelopmentMode } from "@/lib/runtime";
+import { isSafeId } from "@/lib/utils/ids";
 import { pusherServer, getTaskChannelName, PUSHER_EVENTS } from "@/lib/pusher";
 import { ChatRole, ChatStatus, ArtifactType } from "@/lib/chat";
 
@@ -19,21 +19,19 @@ interface PublishWorkflowRequest {
 
 export async function POST(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    const userId = (session.user as { id?: string })?.id;
-    if (!userId) {
-      return NextResponse.json({ error: "Invalid user session" }, { status: 401 });
-    }
+    const userOrResponse = requireAuth(getMiddlewareContext(request));
+    if (userOrResponse instanceof NextResponse) return userOrResponse;
+    const userId = userOrResponse.id;
 
     const body = (await request.json()) as PublishWorkflowRequest;
     const { workflowId, workflowRefId, artifactId } = body;
 
     if (!workflowId) {
       return NextResponse.json({ error: "workflowId is required" }, { status: 400 });
+    }
+
+    if (!isSafeId(String(workflowId))) {
+      return NextResponse.json({ error: "Invalid workflowId format" }, { status: 400 });
     }
 
     // Verify user has access to stakwork workspace
@@ -51,7 +49,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Call Stakwork API to publish the workflow
-    const publishUrl = `${config.STAKWORK_BASE_URL}/workflows/${workflowId}/publish`;
+    const publishUrl = `${config.STAKWORK_BASE_URL}/workflows/${encodeURIComponent(String(workflowId))}/publish`;
 
     console.log("Publishing workflow to:", publishUrl);
 
@@ -162,7 +160,7 @@ export async function POST(request: NextRequest) {
           const projectId = task.stakworkProjectId;
 
           // Fetch the updated workflow definition from Stakwork
-          const workflowUrl = `${config.STAKWORK_BASE_URL}/workflows/${workflowId}/`;
+          const workflowUrl = `${config.STAKWORK_BASE_URL}/workflows/${encodeURIComponent(String(workflowId))}/`;
           console.log("Fetching updated workflow from:", workflowUrl);
 
           const workflowResponse = await fetch(workflowUrl, {

@@ -82,6 +82,7 @@ vi.mock("@/lib/constants/prompt", () => ({
   getConnectionsCapabilitySnippet: vi.fn(() => ""),
   getGraphWalkerCapabilitySnippet: vi.fn(() => ""),
   getInfraCapabilitySnippet: vi.fn(() => ""),
+  getPromptsCapabilitySnippet: vi.fn(() => ""),
 }));
 vi.mock("ai", () => ({
   tool: vi.fn((t: unknown) => t),
@@ -90,6 +91,8 @@ vi.mock("@/lib/proposals/types", () => ({
   PROPOSE_FEATURE_TOOL: "propose_feature",
   PROPOSE_INITIATIVE_TOOL: "propose_initiative",
   PROPOSE_MILESTONE_TOOL: "propose_milestone",
+  PROPOSE_NEW_PROMPT_TOOL: "propose_new_prompt",
+  PROPOSE_PROMPT_UPDATE_TOOL: "propose_prompt_update",
 }));
 
 // ---------------------------------------------------------------------------

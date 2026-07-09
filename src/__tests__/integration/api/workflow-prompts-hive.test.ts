@@ -72,6 +72,25 @@ function makeReq(
   });
 }
 
+function makeAuthReq(
+  url: string,
+  method: string,
+  user: { id: string; email: string | null },
+  body?: unknown,
+): NextRequest {
+  return new NextRequest(url, {
+    method,
+    headers: {
+      "Content-Type": "application/json",
+      "x-middleware-auth-status": "authenticated",
+      "x-middleware-user-id": user.id,
+      "x-middleware-user-email": user.email ?? "",
+      "x-middleware-user-name": "Test User",
+    },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+}
+
 function stakworkOkCreate(id = 42) {
   mockFetch.mockResolvedValueOnce({
     ok: true,
@@ -492,10 +511,9 @@ describe("Hive-native Prompt CRUD + Write-through Sync", () => {
       expect(afterUpdate!.publishedVersionId).toBe(v1Id);
 
       // Publish the draft (v2) as live
-      authAs(testUser);
       stakworkOkUpdate(); // best-effort publish push
       const publishRes = await PUBLISH(
-        makeReq(`http://localhost/publish`, "POST"),
+        makeAuthReq(`http://localhost/publish`, "POST", testUser),
         { params: Promise.resolve({ id: created.id, versionId: v2Id }) },
       );
       expect(publishRes.status).toBe(200);
@@ -566,20 +584,16 @@ describe("Hive-native Prompt CRUD + Write-through Sync", () => {
       const versionsBody = await versionsRes.json();
       const v2Id = versionsBody.data.current_version_id as string;
 
-      mockGetServerSession.mockResolvedValue(
-        createAuthenticatedSession({ id: testUser.id, email: testUser.email ?? "" }),
-      );
       stakworkOkUpdate();
       await PUBLISH(
-        makeReq(`http://localhost/publish`, "POST"),
+        makeAuthReq(`http://localhost/publish`, "POST", testUser),
         { params: Promise.resolve({ id: created.id, versionId: v2Id }) },
       );
 
       // Now publish v1 (roll back to older version)
-      authAs(testUser);
       stakworkOkUpdate();
       const publishRes = await PUBLISH(
-        makeReq(`http://localhost/publish`, "POST"),
+        makeAuthReq(`http://localhost/publish`, "POST", testUser),
         { params: Promise.resolve({ id: created.id, versionId: v1Id }) },
       );
       expect(publishRes.status).toBe(200);
@@ -595,9 +609,8 @@ describe("Hive-native Prompt CRUD + Write-through Sync", () => {
     });
 
     test("returns 404 if version does not belong to prompt", async () => {
-      authAs(testUser);
       const res = await PUBLISH(
-        makeReq("http://localhost/publish", "POST"),
+        makeAuthReq("http://localhost/publish", "POST", testUser),
         { params: Promise.resolve({ id: "bad-prompt-id", versionId: "bad-version-id" }) },
       );
       expect(res.status).toBe(404);
@@ -1119,9 +1132,8 @@ describe("Hive-native Prompt CRUD + Write-through Sync", () => {
       mockStakworkRequest.mockClear();
 
       // Publish v1 (roll back)
-      authAs(testUser);
       const publishRes = await PUBLISH(
-        makeReq(`http://localhost/api/workflow/prompts/${created.id}/versions/${v1Id}/publish`, "POST"),
+        makeAuthReq(`http://localhost/api/workflow/prompts/${created.id}/versions/${v1Id}/publish`, "POST", testUser),
         { params: Promise.resolve({ id: created.id, versionId: v1Id }) },
       );
       expect(publishRes.status).toBe(200);

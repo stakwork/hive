@@ -3,60 +3,68 @@
  */
 import React from "react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 globalThis.React = React;
 
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+type RunStatus = "running" | "complete" | "failed";
+
+function makeRunnerRow(overrides: Record<string, unknown> = {}) {
+  return {
+    id: "runner-row-id",
+    workspaceId: "workspace-123",
+    type: "LEGAL_BENCHMARK_RUNNER",
+    status: "IN_PROGRESS" as string,
+    projectId: null as number | null,
+    result: null as Record<string, unknown> | null,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    ...overrides,
+  };
+}
+
+function makeMockRun(overrides: Partial<{
+  status: RunStatus;
+  runnerRun: ReturnType<typeof makeRunnerRow>;
+  runnerOutputText: string | null;
+  runnerOutputUrl: string | null;
+  scoreJson: string | null;
+  errorMessage: string | null;
+}> = {}) {
+  return {
+    id: "run-abc",
+    workspaceId: "workspace-123",
+    taskSlug: "antitrust/task-1",
+    taskTitle: "Analyze Antitrust Strategy",
+    status: "running" as RunStatus,
+    runnerRun: makeRunnerRow(),
+    scorerRun: null as null,
+    runnerOutputUrl: null as string | null,
+    runnerOutputText: null as string | null,
+    scoreJson: null as string | null,
+    errorMessage: null as string | null,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    ...overrides,
+  };
+}
+
 // ─── Mocks ────────────────────────────────────────────────────────────────────
 
-const mockRunnerRow = {
-  id: "runner-row-id",
-  workspaceId: "workspace-123",
-  type: "LEGAL_BENCHMARK_RUNNER",
-  status: "IN_PROGRESS",
-  projectId: null as number | null,
-  result: null,
-  createdAt: new Date().toISOString(),
-  updatedAt: new Date().toISOString(),
-};
-
-const mockScorerRow = {
-  id: "scorer-row-id",
-  workspaceId: "workspace-123",
-  type: "LEGAL_BENCHMARK_SCORER",
-  status: "PENDING",
-  projectId: null as number | null,
-  result: null,
-  createdAt: new Date().toISOString(),
-  updatedAt: new Date().toISOString(),
-};
-
-const mockRun = {
-  id: "run-abc",
-  workspaceId: "workspace-123",
-  taskSlug: "antitrust/task-1",
-  taskTitle: "Analyze Antitrust Strategy",
-  status: "running" as const,
-  runnerRun: mockRunnerRow,
-  scorerRun: mockScorerRow,
-  runnerOutputUrl: null,
-  runnerOutputText: null,
-  scoreJson: null,
-  errorMessage: null,
-  createdAt: new Date().toISOString(),
-  updatedAt: new Date().toISOString(),
-};
-
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 const mockUseLegalBenchmarkRun = vi.fn(() => ({
-  run: mockRun,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  run: makeMockRun() as any,
   isLoading: false,
   isStale: false,
   refetch: vi.fn(),
 }));
 
 vi.mock("@/hooks/useLegalBenchmarkRun", () => ({
-  useLegalBenchmarkRun: (...args: unknown[]) => mockUseLegalBenchmarkRun(...args),
+  useLegalBenchmarkRun: (runId: string) => mockUseLegalBenchmarkRun(runId),
 }));
 
 vi.mock("@/components/ui/button", () => ({
@@ -111,7 +119,7 @@ describe("LegalBenchmarkResults", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockUseLegalBenchmarkRun.mockReturnValue({
-      run: { ...mockRun },
+      run: makeMockRun(),
       isLoading: false,
       isStale: false,
       refetch: vi.fn(),
@@ -127,14 +135,13 @@ describe("LegalBenchmarkResults", () => {
     });
 
     render(React.createElement(LegalBenchmarkResults, { runId: "run-abc", onReset }));
-    // Should render the loading spinner container
     const container = document.querySelector(".flex.items-center.justify-center");
     expect(container).toBeTruthy();
   });
 
-  it("shows PENDING/RUNNING spinner with correct message", () => {
+  it("shows RUNNING spinner with correct message", () => {
     mockUseLegalBenchmarkRun.mockReturnValue({
-      run: { ...mockRun, status: "running" },
+      run: makeMockRun({ status: "running" }),
       isLoading: false,
       isStale: false,
       refetch: vi.fn(),
@@ -146,37 +153,22 @@ describe("LegalBenchmarkResults", () => {
     ).toBeInTheDocument();
   });
 
-  it("shows PENDING spinner with correct message", () => {
+  it("renders null for an unknown/legacy status ('scoring' removed in single-run pipeline)", () => {
     mockUseLegalBenchmarkRun.mockReturnValue({
-      run: { ...mockRun, status: "running" },
+      // Cast to never to simulate a legacy/unknown status reaching the component
+      run: makeMockRun({ status: "scoring" as never }),
       isLoading: false,
       isStale: false,
       refetch: vi.fn(),
     });
 
-    render(React.createElement(LegalBenchmarkResults, { runId: "run-abc", onReset }));
-    expect(
-      screen.getByText("Running task… (document ingestion & analysis)")
-    ).toBeInTheDocument();
+    const { container } = render(React.createElement(LegalBenchmarkResults, { runId: "run-abc", onReset }));
+    expect(container.firstChild).toBeNull();
   });
 
-  it("shows SCORING spinner with correct message", () => {
+  it("shows Stakwork link for super admin when projectId is non-null in RUNNING state", () => {
     mockUseLegalBenchmarkRun.mockReturnValue({
-      run: { ...mockRun, status: "scoring", scorerRun: { ...mockScorerRow, projectId: null } },
-      isLoading: false,
-      isStale: false,
-      refetch: vi.fn(),
-    });
-
-    render(React.createElement(LegalBenchmarkResults, { runId: "run-abc", onReset }));
-    expect(
-      screen.getByText("Scoring output against rubric…")
-    ).toBeInTheDocument();
-  });
-
-  it("shows Stakwork link for super admin when runnerProjectId is non-null in RUNNING state", () => {
-    mockUseLegalBenchmarkRun.mockReturnValue({
-      run: { ...mockRun, status: "running", runnerRun: { ...mockRunnerRow, projectId: 123 } },
+      run: makeMockRun({ runnerRun: makeRunnerRow({ projectId: 123 }) }),
       isLoading: false,
       isStale: false,
       refetch: vi.fn(),
@@ -190,7 +182,7 @@ describe("LegalBenchmarkResults", () => {
 
   it("does not show Stakwork link for non-super admin in RUNNING state", () => {
     mockUseLegalBenchmarkRun.mockReturnValue({
-      run: { ...mockRun, status: "running", runnerRun: { ...mockRunnerRow, projectId: 123 } },
+      run: makeMockRun({ runnerRun: makeRunnerRow({ projectId: 123 }) }),
       isLoading: false,
       isStale: false,
       refetch: vi.fn(),
@@ -200,23 +192,9 @@ describe("LegalBenchmarkResults", () => {
     expect(screen.queryByRole("link", { name: /view on stakwork/i })).toBeNull();
   });
 
-  it("shows scorer Stakwork link for super admin in SCORING state", () => {
+  it("does not show Stakwork link when projectId is null in RUNNING state", () => {
     mockUseLegalBenchmarkRun.mockReturnValue({
-      run: { ...mockRun, status: "scoring", scorerRun: { ...mockScorerRow, projectId: 456 } },
-      isLoading: false,
-      isStale: false,
-      refetch: vi.fn(),
-    });
-
-    render(React.createElement(LegalBenchmarkResults, { runId: "run-abc", onReset, isSuperAdmin: true }));
-    const link = screen.getByRole("link", { name: /view on stakwork/i });
-    expect(link).toBeInTheDocument();
-    expect(link).toHaveAttribute("href", "https://jobs.stakwork.com/admin/projects/456");
-  });
-
-  it("does not show Stakwork link when scorerProjectId is null in SCORING state", () => {
-    mockUseLegalBenchmarkRun.mockReturnValue({
-      run: { ...mockRun, status: "scoring", scorerRun: { ...mockScorerRow, projectId: null } },
+      run: makeMockRun({ runnerRun: makeRunnerRow({ projectId: null }) }),
       isLoading: false,
       isStale: false,
       refetch: vi.fn(),
@@ -228,7 +206,7 @@ describe("LegalBenchmarkResults", () => {
 
   it("shows FAILED error state with errorMessage", () => {
     mockUseLegalBenchmarkRun.mockReturnValue({
-      run: { ...mockRun, status: "failed", errorMessage: "Stakwork timed out" },
+      run: makeMockRun({ status: "failed", errorMessage: "Stakwork timed out" }),
       isLoading: false,
       isStale: false,
       refetch: vi.fn(),
@@ -243,7 +221,7 @@ describe("LegalBenchmarkResults", () => {
   it("calls onReset when 'Try again' is clicked in FAILED state", async () => {
     const user = userEvent.setup();
     mockUseLegalBenchmarkRun.mockReturnValue({
-      run: { ...mockRun, status: "failed", errorMessage: "Error" },
+      run: makeMockRun({ status: "failed", errorMessage: "Error" }),
       isLoading: false,
       isStale: false,
       refetch: vi.fn(),
@@ -254,19 +232,18 @@ describe("LegalBenchmarkResults", () => {
     expect(onReset).toHaveBeenCalledTimes(1);
   });
 
-  it("renders COMPLETE view with output text and rubric table", () => {
-    const scores = [
-      { criterion: "Accuracy", pass: true, notes: "Meets standard" },
-      { criterion: "Completeness", pass: false, notes: "Missing section" },
-    ];
+  // ─── COMPLETE state: aggregate score summary ──────────────────────────────
 
+  it("renders COMPLETE view with Task Output section", () => {
     mockUseLegalBenchmarkRun.mockReturnValue({
-      run: {
-        ...mockRun,
+      run: makeMockRun({
         status: "complete",
         runnerOutputText: "Draft output text here",
-        scoreJson: JSON.stringify(scores),
-      },
+        runnerRun: makeRunnerRow({
+          status: "COMPLETED",
+          result: { taskSlug: "antitrust/task-1", taskTitle: "Test", n_passed: 72, n_total: 74, all_pass: true },
+        }),
+      }),
       isLoading: false,
       isStale: false,
       refetch: vi.fn(),
@@ -276,26 +253,109 @@ describe("LegalBenchmarkResults", () => {
 
     expect(screen.getByText("Task Output")).toBeInTheDocument();
     expect(screen.getByText("Draft output text here")).toBeInTheDocument();
-    expect(screen.getByText("Rubric Scores")).toBeInTheDocument();
-    expect(screen.getByText("Accuracy")).toBeInTheDocument();
-    expect(screen.getByText("Completeness")).toBeInTheDocument();
+  });
+
+  it("renders aggregate Score Summary with PASS badge when all_pass=true", () => {
+    mockUseLegalBenchmarkRun.mockReturnValue({
+      run: makeMockRun({
+        status: "complete",
+        runnerOutputText: "Output",
+        runnerRun: makeRunnerRow({
+          status: "COMPLETED",
+          result: { taskSlug: "antitrust/task-1", taskTitle: "Test", n_passed: 72, n_total: 74, all_pass: true },
+        }),
+      }),
+      isLoading: false,
+      isStale: false,
+      refetch: vi.fn(),
+    });
+
+    render(React.createElement(LegalBenchmarkResults, { runId: "run-abc", onReset }));
+
+    expect(screen.getByText("Score Summary")).toBeInTheDocument();
+    expect(screen.getByText(/72\/74 criteria passed/)).toBeInTheDocument();
     expect(screen.getByText("PASS")).toBeInTheDocument();
+  });
+
+  it("renders aggregate Score Summary with FAIL badge when all_pass=false", () => {
+    mockUseLegalBenchmarkRun.mockReturnValue({
+      run: makeMockRun({
+        status: "complete",
+        runnerOutputText: "Output",
+        runnerRun: makeRunnerRow({
+          status: "COMPLETED",
+          result: { taskSlug: "antitrust/task-1", taskTitle: "Test", n_passed: 10, n_total: 20, all_pass: false },
+        }),
+      }),
+      isLoading: false,
+      isStale: false,
+      refetch: vi.fn(),
+    });
+
+    render(React.createElement(LegalBenchmarkResults, { runId: "run-abc", onReset }));
+
+    expect(screen.getByText("Score Summary")).toBeInTheDocument();
+    expect(screen.getByText(/10\/20 criteria passed/)).toBeInTheDocument();
     expect(screen.getByText("FAIL")).toBeInTheDocument();
-    expect(screen.getByText("Meets standard")).toBeInTheDocument();
-    expect(screen.getByText("Missing section")).toBeInTheDocument();
-    expect(screen.getByText(/1 \/ 2/)).toBeInTheDocument();
-    expect(screen.getByText(/criteria passed/)).toBeInTheDocument();
+  });
+
+  it("renders 'No score available' placeholder when no score fields present on complete run", () => {
+    mockUseLegalBenchmarkRun.mockReturnValue({
+      run: makeMockRun({
+        status: "complete",
+        runnerOutputText: "Output",
+        runnerRun: makeRunnerRow({
+          status: "COMPLETED",
+          result: { taskSlug: "antitrust/task-1", taskTitle: "Test" },
+        }),
+      }),
+      isLoading: false,
+      isStale: false,
+      refetch: vi.fn(),
+    });
+
+    render(React.createElement(LegalBenchmarkResults, { runId: "run-abc", onReset }));
+
+    expect(screen.getByText("Score Summary")).toBeInTheDocument();
+    expect(screen.getByText("No score available.")).toBeInTheDocument();
+    // Must NOT render a false FAIL badge
+    expect(screen.queryByText("FAIL")).toBeNull();
+    expect(screen.queryByText("PASS")).toBeNull();
+  });
+
+  it("does NOT render the per-criterion rubric table (removed in single-run pipeline)", () => {
+    mockUseLegalBenchmarkRun.mockReturnValue({
+      run: makeMockRun({
+        status: "complete",
+        runnerOutputText: "Output",
+        runnerRun: makeRunnerRow({
+          status: "COMPLETED",
+          result: { taskSlug: "antitrust/task-1", taskTitle: "Test", n_passed: 5, n_total: 5, all_pass: true },
+        }),
+      }),
+      isLoading: false,
+      isStale: false,
+      refetch: vi.fn(),
+    });
+
+    render(React.createElement(LegalBenchmarkResults, { runId: "run-abc", onReset }));
+
+    // "Rubric Scores" table header should no longer exist
+    expect(screen.queryByText("Rubric Scores")).toBeNull();
+    expect(screen.queryByText("Criterion")).toBeNull();
   });
 
   it("calls onReset when 'Run again' is clicked in COMPLETE state", async () => {
     const user = userEvent.setup();
     mockUseLegalBenchmarkRun.mockReturnValue({
-      run: {
-        ...mockRun,
+      run: makeMockRun({
         status: "complete",
         runnerOutputText: "Some output",
-        scoreJson: JSON.stringify([]),
-      },
+        runnerRun: makeRunnerRow({
+          status: "COMPLETED",
+          result: { taskSlug: "antitrust/task-1", taskTitle: "Test" },
+        }),
+      }),
       isLoading: false,
       isStale: false,
       refetch: vi.fn(),
@@ -308,12 +368,14 @@ describe("LegalBenchmarkResults", () => {
 
   it("shows Copy and Download buttons in COMPLETE state", () => {
     mockUseLegalBenchmarkRun.mockReturnValue({
-      run: {
-        ...mockRun,
+      run: makeMockRun({
         status: "complete",
         runnerOutputText: "Output text",
-        scoreJson: JSON.stringify([]),
-      },
+        runnerRun: makeRunnerRow({
+          status: "COMPLETED",
+          result: { taskSlug: "antitrust/task-1", taskTitle: "Test" },
+        }),
+      }),
       isLoading: false,
       isStale: false,
       refetch: vi.fn(),
@@ -328,7 +390,7 @@ describe("LegalBenchmarkResults", () => {
     const mockRefetch = vi.fn();
     const user = userEvent.setup();
     mockUseLegalBenchmarkRun.mockReturnValue({
-      run: { ...mockRun, status: "running" },
+      run: makeMockRun({ status: "running" }),
       isLoading: false,
       isStale: true,
       refetch: mockRefetch,
