@@ -20,6 +20,9 @@ const makeRun = (overrides: Partial<{
   taskSlug: string;
   taskTitle: string;
   createdAt: string;
+  n_passed: number;
+  n_total: number;
+  all_pass: boolean;
 }> = {}) => ({
   id: "runner-1",
   workspaceId: WORKSPACE_ID,
@@ -28,6 +31,9 @@ const makeRun = (overrides: Partial<{
   taskSlug: "antitrust/task-1",
   taskTitle: "Analyze Antitrust Strategy",
   createdAt: new Date("2025-06-01T09:00:00Z").toISOString(),
+  n_passed: undefined as number | undefined,
+  n_total: undefined as number | undefined,
+  all_pass: undefined as boolean | undefined,
   ...overrides,
 });
 
@@ -46,7 +52,7 @@ const mockUseList = vi.fn(() => ({
 }));
 
 vi.mock("@/hooks/useLegalBenchmarkRunList", () => ({
-  useLegalBenchmarkRunList: (...args: unknown[]) => mockUseList(...args),
+  useLegalBenchmarkRunList: (workspaceId: string | undefined) => mockUseList(workspaceId),
 }));
 
 vi.mock("@/hooks/useWorkspace", () => ({
@@ -99,7 +105,7 @@ const { BenchmarkRunsHistory } = await import(
 // ─── Tests ────────────────────────────────────────────────────────────────────
 
 describe("BenchmarkRunsHistory", () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.clearAllMocks();
     mockUseList.mockReturnValue({
       runs: [makeRun()],
@@ -108,6 +114,12 @@ describe("BenchmarkRunsHistory", () => {
       error: null,
       refetch: mockRefetch,
       setExpandedId: mockSetExpandedId,
+    });
+    // Reset useWorkspace back to non-super-admin default so tests don't bleed into each other.
+    const { useWorkspace } = await import("@/hooks/useWorkspace");
+    (useWorkspace as ReturnType<typeof vi.fn>).mockReturnValue({
+      workspace: { id: WORKSPACE_ID, slug: WORKSPACE_SLUG },
+      isSuperAdmin: false,
     });
   });
 
@@ -132,11 +144,10 @@ describe("BenchmarkRunsHistory", () => {
     );
   });
 
-  it("renders Runner Status column header (not 'Status')", () => {
+  it("renders Runner Status column header and Score column header", () => {
     render(React.createElement(BenchmarkRunsHistory));
     expect(screen.getByText("Runner Status")).toBeInTheDocument();
-    // The column should be 'Runner Status', not just 'Status'
-    expect(screen.queryByRole("columnheader", { name: /^status$/i })).toBeNull();
+    expect(screen.getByText("Score")).toBeInTheDocument();
   });
 
   it("shows COMPLETED badge for a completed run", () => {
@@ -182,6 +193,112 @@ describe("BenchmarkRunsHistory", () => {
     render(React.createElement(BenchmarkRunsHistory));
     expect(screen.getByText("PENDING")).toBeInTheDocument();
   });
+
+  // ─── Score column tests ────────────────────────────────────────────────────
+
+  it("renders PASS badge and score when all_pass=true and n_passed/n_total present", () => {
+    mockUseList.mockReturnValue({
+      runs: [makeRun({ status: "COMPLETED", n_passed: 72, n_total: 74, all_pass: true })],
+      total: 1,
+      isLoading: false,
+      error: null,
+      refetch: mockRefetch,
+      setExpandedId: mockSetExpandedId,
+    });
+    render(React.createElement(BenchmarkRunsHistory));
+    expect(screen.getByText("72/74")).toBeInTheDocument();
+    expect(screen.getByText("PASS")).toBeInTheDocument();
+  });
+
+  it("renders FAIL badge and score when all_pass=false", () => {
+    mockUseList.mockReturnValue({
+      runs: [makeRun({ status: "COMPLETED", n_passed: 10, n_total: 20, all_pass: false })],
+      total: 1,
+      isLoading: false,
+      error: null,
+      refetch: mockRefetch,
+      setExpandedId: mockSetExpandedId,
+    });
+    render(React.createElement(BenchmarkRunsHistory));
+    expect(screen.getByText("10/20")).toBeInTheDocument();
+    expect(screen.getByText("FAIL")).toBeInTheDocument();
+  });
+
+  it("renders neutral placeholder '—' for in-progress run (no score yet)", () => {
+    mockUseList.mockReturnValue({
+      runs: [makeRun({ status: "IN_PROGRESS", n_passed: undefined, n_total: undefined, all_pass: undefined })],
+      total: 1,
+      isLoading: false,
+      error: null,
+      refetch: mockRefetch,
+      setExpandedId: mockSetExpandedId,
+    });
+    render(React.createElement(BenchmarkRunsHistory));
+    expect(screen.getByText("—")).toBeInTheDocument();
+    expect(screen.queryByText("PASS")).toBeNull();
+    expect(screen.queryByText("FAIL")).toBeNull();
+  });
+
+  it("renders neutral placeholder '—' for terminal run with no score (pre-collapse history)", () => {
+    mockUseList.mockReturnValue({
+      runs: [makeRun({ status: "COMPLETED", n_passed: undefined, n_total: undefined, all_pass: undefined })],
+      total: 1,
+      isLoading: false,
+      error: null,
+      refetch: mockRefetch,
+      setExpandedId: mockSetExpandedId,
+    });
+    render(React.createElement(BenchmarkRunsHistory));
+    expect(screen.getByText("—")).toBeInTheDocument();
+    // Must NOT render a false FAIL badge
+    expect(screen.queryByText("FAIL")).toBeNull();
+    expect(screen.queryByText("PASS")).toBeNull();
+  });
+
+  it("renders neutral placeholder '—' for PENDING run regardless of score fields", () => {
+    mockUseList.mockReturnValue({
+      runs: [makeRun({ status: "PENDING" })],
+      total: 1,
+      isLoading: false,
+      error: null,
+      refetch: mockRefetch,
+      setExpandedId: mockSetExpandedId,
+    });
+    render(React.createElement(BenchmarkRunsHistory));
+    expect(screen.getByText("—")).toBeInTheDocument();
+  });
+
+  // ─── colSpan tests ─────────────────────────────────────────────────────────
+
+  it("expanded row colSpan is 4 for non-super-admin (Task + Started + Runner Status + Score)", async () => {
+    const user = userEvent.setup();
+    render(React.createElement(BenchmarkRunsHistory));
+
+    const row = screen.getByText("Analyze Antitrust Strategy").closest("tr")!;
+    await user.click(row);
+
+    const expandedCell = screen.getByTestId("results-runner-1").closest("td")!;
+    expect(expandedCell.getAttribute("colspan")).toBe("4");
+  });
+
+  it("expanded row colSpan is 5 for super-admin (adds Stakwork column)", async () => {
+    const { useWorkspace } = await import("@/hooks/useWorkspace");
+    (useWorkspace as ReturnType<typeof vi.fn>).mockReturnValue({
+      workspace: { id: WORKSPACE_ID, slug: WORKSPACE_SLUG },
+      isSuperAdmin: true,
+    });
+
+    const user = userEvent.setup();
+    render(React.createElement(BenchmarkRunsHistory));
+
+    const row = screen.getByText("Analyze Antitrust Strategy").closest("tr")!;
+    await user.click(row);
+
+    const expandedCell = screen.getByTestId("results-runner-1").closest("td")!;
+    expect(expandedCell.getAttribute("colspan")).toBe("5");
+  });
+
+  // ─── Existing interaction tests ────────────────────────────────────────────
 
   it("does NOT show Stakwork column for non-super-admin", () => {
     render(React.createElement(BenchmarkRunsHistory));
