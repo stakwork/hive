@@ -9,6 +9,7 @@ import { useLegalBenchmarkRunList } from "@/hooks/useLegalBenchmarkRunList";
 import { LegalBenchmarkResults } from "@/components/legal/LegalBenchmarkResults";
 import { StakworkRunLink } from "@/components/legal/StakworkRunLink";
 import { WorkflowStatus } from "@prisma/client";
+import type { BenchmarkRunListRow } from "@/hooks/useLegalBenchmarkRunList";
 
 export function BenchmarkRunsHistory() {
   const { workspace, isSuperAdmin } = useWorkspace();
@@ -53,6 +54,9 @@ export function BenchmarkRunsHistory() {
     );
   }
 
+  // colSpan: Task + Started + Runner Status + Score + (Stakwork if super admin)
+  const colSpan = isSuperAdmin ? 5 : 4;
+
   return (
     <div className="space-y-3">
       {total > 100 && (
@@ -68,6 +72,7 @@ export function BenchmarkRunsHistory() {
               <th className="text-left px-4 py-3 font-medium text-muted-foreground">Task</th>
               <th className="text-left px-4 py-3 font-medium text-muted-foreground">Started</th>
               <th className="text-left px-4 py-3 font-medium text-muted-foreground">Runner Status</th>
+              <th className="text-left px-4 py-3 font-medium text-muted-foreground">Score</th>
               {isSuperAdmin && (
                 <th className="text-left px-4 py-3 font-medium text-muted-foreground">Stakwork</th>
               )}
@@ -100,6 +105,9 @@ export function BenchmarkRunsHistory() {
                   <td className="px-4 py-3">
                     <RunnerStatusBadge status={run.status} />
                   </td>
+                  <td className="px-4 py-3">
+                    <ScoreCell run={run} />
+                  </td>
                   {isSuperAdmin && (
                     <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
                       <StakworkRunLink projectId={run.projectId} isSuperAdmin={isSuperAdmin} />
@@ -108,7 +116,7 @@ export function BenchmarkRunsHistory() {
                 </tr>
                 {expandedRunId === run.id && (
                   <tr key={`${run.id}-expanded`} className="border-b last:border-0 bg-muted/10">
-                    <td colSpan={isSuperAdmin ? 4 : 3} className="px-4 pb-4">
+                    <td colSpan={colSpan} className="px-4 pb-4">
                       <LegalBenchmarkResults
                         runId={run.id}
                         isSuperAdmin={isSuperAdmin}
@@ -122,6 +130,36 @@ export function BenchmarkRunsHistory() {
           </tbody>
         </table>
       </div>
+    </div>
+  );
+}
+
+function ScoreCell({ run }: { run: BenchmarkRunListRow }) {
+  const isActive =
+    run.status === WorkflowStatus.PENDING || run.status === WorkflowStatus.IN_PROGRESS;
+
+  // Neutral placeholder for in-progress runs and terminal runs with no score data.
+  if (isActive || typeof run.all_pass !== "boolean") {
+    return <span className="text-muted-foreground">—</span>;
+  }
+
+  return (
+    <div className="flex items-center gap-2">
+      {run.n_passed !== undefined && run.n_total !== undefined && (
+        <span className="text-sm tabular-nums">
+          {run.n_passed}/{run.n_total}
+        </span>
+      )}
+      <Badge
+        variant="outline"
+        className={
+          run.all_pass
+            ? "border-0 bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300"
+            : "border-0 bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300"
+        }
+      >
+        {run.all_pass ? "PASS" : "FAIL"}
+      </Badge>
     </div>
   );
 }
