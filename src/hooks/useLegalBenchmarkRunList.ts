@@ -10,6 +10,10 @@ export interface BenchmarkRunListRow {
   taskSlug: string;
   taskTitle: string;
   createdAt: string;
+  // Flat score fields from the runner webhook (single-run pipeline)
+  n_passed?: number;
+  n_total?: number;
+  all_pass?: boolean;
 }
 
 interface UseLegalBenchmarkRunListResult {
@@ -63,6 +67,9 @@ export function useLegalBenchmarkRunList(
           taskSlug: parsed?.taskSlug ?? "",
           taskTitle: parsed?.taskTitle ?? "",
           createdAt: r.createdAt,
+          n_passed: parsed?.n_passed,
+          n_total: parsed?.n_total,
+          all_pass: parsed?.all_pass,
         };
       });
 
@@ -84,20 +91,22 @@ export function useLegalBenchmarkRunList(
     }
   }, []);
 
+  const hasActiveRuns = useCallback(() =>
+    runsRef.current.some(
+      (r) => r.status === WorkflowStatus.PENDING || r.status === WorkflowStatus.IN_PROGRESS,
+    ), []);
+
   const startPolling = useCallback(() => {
     stopPolling();
     intervalRef.current = setInterval(() => {
-      if (expandedIdRef.current !== null) return;
-      const hasActive = runsRef.current.some(
-        (r) => r.status === WorkflowStatus.PENDING || r.status === WorkflowStatus.IN_PROGRESS,
-      );
-      if (hasActive) {
+      // Keep polling while active runs exist, even if a row is expanded.
+      if (hasActiveRuns()) {
         fetchRuns();
       } else {
         stopPolling();
       }
     }, POLL_INTERVAL_MS);
-  }, [fetchRuns, stopPolling]);
+  }, [fetchRuns, stopPolling, hasActiveRuns]);
 
   // Initial fetch
   useEffect(() => {
@@ -107,10 +116,10 @@ export function useLegalBenchmarkRunList(
 
   // Start/stop polling whenever the runs list changes
   useEffect(() => {
-    const hasActive = runs.some(
+    const active = runs.some(
       (r) => r.status === WorkflowStatus.PENDING || r.status === WorkflowStatus.IN_PROGRESS,
     );
-    if (hasActive && expandedIdRef.current === null) {
+    if (active) {
       startPolling();
     } else {
       stopPolling();
@@ -121,20 +130,15 @@ export function useLegalBenchmarkRunList(
   const setExpandedId = useCallback(
     (id: string | null) => {
       expandedIdRef.current = id;
-      if (id !== null) {
-        // Pause polling while a row is expanded
-        stopPolling();
-      } else {
-        // Resumed: refetch and restart polling if there are active runs
+      if (id === null) {
+        // Collapsed: refetch and restart polling if there are active runs
         fetchRuns().then(() => {
-          const hasActive = runsRef.current.some(
-            (r) => r.status === WorkflowStatus.PENDING || r.status === WorkflowStatus.IN_PROGRESS,
-          );
-          if (hasActive) startPolling();
+          if (hasActiveRuns()) startPolling();
         });
       }
+      // When expanding a row, polling intentionally continues (active runs keep updating).
     },
-    [fetchRuns, startPolling, stopPolling],
+    [fetchRuns, startPolling, hasActiveRuns],
   );
 
   return { runs, total, isLoading, error, refetch: fetchRuns, setExpandedId };
