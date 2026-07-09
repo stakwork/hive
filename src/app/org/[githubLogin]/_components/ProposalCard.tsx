@@ -1,7 +1,16 @@
 "use client";
 
 import React, { useMemo, useState } from "react";
-import { Check, X, ExternalLink, Loader2, Lightbulb, Info } from "lucide-react";
+import {
+  Check,
+  X,
+  ExternalLink,
+  Loader2,
+  Lightbulb,
+  Info,
+  FileDiff,
+} from "lucide-react";
+import { computeUnifiedDiff, type UnifiedDiff } from "@/lib/diff/unifiedLineDiff";
 import { Switch } from "@/components/ui/switch";
 import ReactMarkdown from "react-markdown";
 import {
@@ -105,10 +114,15 @@ export function ProposalCard({
         : proposal.kind === "promptCreate"
           ? proposal.payload.name
           : proposal.kind === "promptUpdate"
-            ? proposal.payload.promptId
+            ? (proposal.meta.promptName ?? proposal.payload.promptId)
             : proposal.payload.title;
   const [editedTitle, setEditedTitle] = useState(initialTitle);
   const [isEditing, setIsEditing] = useState(false);
+  // Prompt proposals forward no inline-edit override (handleApprove sets
+  // payload = undefined for them), so an editable title would be a lie —
+  // the name/id shown is fixed. Only roadmap kinds get the click-to-edit.
+  const titleEditable =
+    proposal.kind !== "promptCreate" && proposal.kind !== "promptUpdate";
 
   // Feature-only: per-feature auto-respond toggle.
   // Initialized from the proposal payload (which is seeded from the
@@ -310,8 +324,8 @@ export function ProposalCard({
                   : `Proposed ${proposal.kind}`}
             </span>
           </div>
-          {/* Title — inline-editable on click while pending */}
-          {isPending && isEditing ? (
+          {/* Title — inline-editable on click while pending (roadmap kinds only) */}
+          {isPending && isEditing && titleEditable ? (
             <input
               type="text"
               value={editedTitle}
@@ -330,9 +344,9 @@ export function ProposalCard({
           ) : (
             <div
               className={`mt-0.5 break-words text-sm font-medium ${
-                isPending ? "cursor-text" : ""
+                isPending && titleEditable ? "cursor-text" : ""
               }`}
-              onClick={() => isPending && setIsEditing(true)}
+              onClick={() => isPending && titleEditable && setIsEditing(true)}
             >
               {editedTitle}
             </div>
@@ -498,7 +512,7 @@ function ProposalDetailsDialog({
         : proposal.kind === "promptCreate"
           ? proposal.payload.name
           : proposal.kind === "promptUpdate"
-            ? proposal.payload.promptId
+            ? (proposal.meta.promptName ?? proposal.payload.promptId)
             : proposal.payload.title;
 
   return (
@@ -909,40 +923,158 @@ function PromptCreateMeta({
 }
 
 /**
- * Shows a stacked before/after diff for prompt update proposals.
- * oldStr in red, newStr in green — monospace, no diff library.
- * Visual pattern matches InsightImprove (see ScorerDashboard.tsx ~line 1288).
+ * Compact summary line for a prompt-update proposal: version tag + a
+ * +adds/−dels stat, and a "View changes" button that opens the diff modal.
+ * The inline card intentionally shows NO diff body — a large prompt with a
+ * one-line edit should render as one line here, not two walls of text.
  */
 function PromptUpdateMeta({
   meta,
 }: {
-  meta: { oldStr: string; newStr: string };
+  meta: {
+    oldStr: string;
+    newStr: string;
+    promptName?: string;
+    versionNumber?: number;
+  };
 }) {
-  // Truncate long strings for the inline card view; full content in the details dialog.
-  const MAX_INLINE = 300;
-  const oldDisplay =
-    meta.oldStr.length > MAX_INLINE
-      ? meta.oldStr.slice(0, MAX_INLINE) + "…"
-      : meta.oldStr;
-  const newDisplay =
-    meta.newStr.length > MAX_INLINE
-      ? meta.newStr.slice(0, MAX_INLINE) + "…"
-      : meta.newStr;
+  const [open, setOpen] = useState(false);
+  const diff = useMemo(
+    () => computeUnifiedDiff(meta.oldStr, meta.newStr),
+    [meta.oldStr, meta.newStr],
+  );
+
+  // value unchanged → description-only update (mcpUpdatePrompt requires the
+  // full value even for a description tweak, so oldStr === newStr here).
+  const textUnchanged = diff.unchanged;
 
   return (
-    <div className="mt-1.5 space-y-1">
-      <div className="rounded bg-red-500/10 px-2 py-1.5">
-        <div className="text-[9px] uppercase tracking-wide text-red-400 mb-0.5">Before</div>
-        <pre className="text-[11px] font-mono text-red-400 whitespace-pre-wrap break-words">
-          {oldDisplay}
-        </pre>
+    <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-muted-foreground">
+      {meta.versionNumber != null && (
+        <span className="font-mono">v{meta.versionNumber}</span>
+      )}
+      {textUnchanged ? (
+        <span className="italic">No prompt-text change</span>
+      ) : (
+        <>
+          <span className="font-mono">
+            <span className="text-emerald-600 dark:text-emerald-400">
+              +{diff.added}
+            </span>{" "}
+            <span className="text-rose-600 dark:text-rose-400">
+              −{diff.removed}
+            </span>
+          </span>
+          <button
+            type="button"
+            onClick={() => setOpen(true)}
+            className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-foreground/80 transition-colors hover:bg-muted/60 hover:text-foreground"
+          >
+            <FileDiff className="h-3 w-3" />
+            View changes
+          </button>
+          <PromptDiffDialog
+            open={open}
+            onOpenChange={setOpen}
+            promptName={meta.promptName}
+            versionNumber={meta.versionNumber}
+            diff={diff}
+          />
+        </>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Modal showing ONLY the changed hunks of a prompt update (a few lines of
+ * context around each edit, long unchanged runs collapsed) — GitHub-style
+ * unified diff, monospace, no diff library.
+ */
+function PromptDiffDialog({
+  open,
+  onOpenChange,
+  promptName,
+  versionNumber,
+  diff,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  promptName?: string;
+  versionNumber?: number;
+  diff: UnifiedDiff;
+}) {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-3xl">
+        <DialogHeader className="min-w-0">
+          <div className={SECTION_LABEL_CLASS}>Prompt changes</div>
+          <DialogTitle className="text-base min-w-0 break-words [overflow-wrap:anywhere]">
+            {promptName ?? "Prompt update"}
+            {versionNumber != null && (
+              <span className="ml-2 font-mono text-xs font-normal text-muted-foreground">
+                v{versionNumber}
+              </span>
+            )}
+          </DialogTitle>
+          <div className="mt-0.5 font-mono text-xs">
+            <span className="text-emerald-600 dark:text-emerald-400">
+              +{diff.added}
+            </span>{" "}
+            <span className="text-rose-600 dark:text-rose-400">
+              −{diff.removed}
+            </span>
+          </div>
+        </DialogHeader>
+
+        <ScrollArea className="max-h-[65vh] min-w-0">
+          <UnifiedDiffView diff={diff} />
+        </ScrollArea>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/** Renders a {@link UnifiedDiff} as red/green rows with collapsed gaps. */
+function UnifiedDiffView({ diff }: { diff: UnifiedDiff }) {
+  if (diff.unchanged || diff.hunks.length === 0) {
+    return (
+      <div className="px-1 py-2 text-xs text-muted-foreground italic">
+        No prompt-text changes.
       </div>
-      <div className="rounded bg-green-500/10 px-2 py-1.5">
-        <div className="text-[9px] uppercase tracking-wide text-green-400 mb-0.5">After</div>
-        <pre className="text-[11px] font-mono text-green-400 whitespace-pre-wrap break-words">
-          {newDisplay}
-        </pre>
-      </div>
+    );
+  }
+  return (
+    <div className="overflow-hidden rounded border font-mono text-[11px] leading-relaxed">
+      {diff.hunks.map((hunk, hi) => (
+        <React.Fragment key={hi}>
+          {hunk.gapBefore > 0 && (
+            <div className="bg-muted/40 px-3 py-0.5 text-[10px] text-muted-foreground">
+              ⋯ {hunk.gapBefore} unchanged line{hunk.gapBefore === 1 ? "" : "s"}
+            </div>
+          )}
+          {hunk.rows.map((row, ri) => {
+            const sign =
+              row.type === "add" ? "+" : row.type === "del" ? "−" : " ";
+            const rowClass =
+              row.type === "add"
+                ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
+                : row.type === "del"
+                  ? "bg-rose-500/10 text-rose-700 dark:text-rose-300"
+                  : "text-muted-foreground";
+            return (
+              <div key={ri} className={`flex ${rowClass}`}>
+                <span className="w-4 flex-shrink-0 select-none px-1 text-center opacity-60">
+                  {sign}
+                </span>
+                <pre className="min-w-0 flex-1 whitespace-pre-wrap break-words py-0.5 pr-2">
+                  {row.text === "" ? " " : row.text}
+                </pre>
+              </div>
+            );
+          })}
+        </React.Fragment>
+      ))}
     </div>
   );
 }
