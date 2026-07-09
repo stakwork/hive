@@ -61,7 +61,7 @@ function makeRequest(body: object, secret = "test-secret"): NextRequest {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "x-webhook-secret": secret,
+      "x-api-token": secret,
     },
     body: JSON.stringify(body),
   });
@@ -69,17 +69,17 @@ function makeRequest(body: object, secret = "test-secret"): NextRequest {
 
 describe("POST /api/lingo/extraction/upsert — auth", () => {
   let POST: (req: NextRequest) => Promise<Response>;
-  const origSecret = process.env.JANITOR_WEBHOOK_SECRET;
+  const origSecret = process.env.API_TOKEN;
 
   beforeEach(async () => {
     vi.resetModules();
-    process.env.JANITOR_WEBHOOK_SECRET = "test-secret";
+    process.env.API_TOKEN = "test-secret";
     const mod = await import("@/app/api/lingo/extraction/upsert/route");
     POST = mod.POST;
   });
 
   afterEach(() => {
-    process.env.JANITOR_WEBHOOK_SECRET = origSecret;
+    process.env.API_TOKEN = origSecret;
   });
 
   it("returns 401 if secret is missing", async () => {
@@ -101,11 +101,11 @@ describe("POST /api/lingo/extraction/upsert — auth", () => {
 
 describe("POST /api/lingo/extraction/upsert — confidence filtering", () => {
   let POST: (req: NextRequest) => Promise<Response>;
-  const origSecret = process.env.JANITOR_WEBHOOK_SECRET;
+  const origSecret = process.env.API_TOKEN;
 
   beforeEach(async () => {
     vi.resetModules();
-    process.env.JANITOR_WEBHOOK_SECRET = "test-secret";
+    process.env.API_TOKEN = "test-secret";
     const mod = await import("@/app/api/lingo/extraction/upsert/route");
     POST = mod.POST;
 
@@ -117,7 +117,7 @@ describe("POST /api/lingo/extraction/upsert — confidence filtering", () => {
   });
 
   afterEach(() => {
-    process.env.JANITOR_WEBHOOK_SECRET = origSecret;
+    process.env.API_TOKEN = origSecret;
     vi.clearAllMocks();
   });
 
@@ -167,11 +167,11 @@ describe("POST /api/lingo/extraction/upsert — confidence filtering", () => {
 
 describe("POST /api/lingo/extraction/upsert — deduplication", () => {
   let POST: (req: NextRequest) => Promise<Response>;
-  const origSecret = process.env.JANITOR_WEBHOOK_SECRET;
+  const origSecret = process.env.API_TOKEN;
 
   beforeEach(async () => {
     vi.resetModules();
-    process.env.JANITOR_WEBHOOK_SECRET = "test-secret";
+    process.env.API_TOKEN = "test-secret";
     const mod = await import("@/app/api/lingo/extraction/upsert/route");
     POST = mod.POST;
 
@@ -181,7 +181,7 @@ describe("POST /api/lingo/extraction/upsert — deduplication", () => {
   });
 
   afterEach(() => {
-    process.env.JANITOR_WEBHOOK_SECRET = origSecret;
+    process.env.API_TOKEN = origSecret;
     vi.clearAllMocks();
   });
 
@@ -241,11 +241,11 @@ describe("POST /api/lingo/extraction/upsert — deduplication", () => {
 
 describe("POST /api/lingo/extraction/upsert — cursor persistence", () => {
   let POST: (req: NextRequest) => Promise<Response>;
-  const origSecret = process.env.JANITOR_WEBHOOK_SECRET;
+  const origSecret = process.env.API_TOKEN;
 
   beforeEach(async () => {
     vi.resetModules();
-    process.env.JANITOR_WEBHOOK_SECRET = "test-secret";
+    process.env.API_TOKEN = "test-secret";
     const mod = await import("@/app/api/lingo/extraction/upsert/route");
     POST = mod.POST;
 
@@ -256,7 +256,7 @@ describe("POST /api/lingo/extraction/upsert — cursor persistence", () => {
   });
 
   afterEach(() => {
-    process.env.JANITOR_WEBHOOK_SECRET = origSecret;
+    process.env.API_TOKEN = origSecret;
     vi.clearAllMocks();
   });
 
@@ -305,12 +305,12 @@ describe("POST /api/lingo/extraction/upsert — cursor persistence", () => {
 
 describe("POST /api/lingo/extraction/upsert — hub mirror", () => {
   let POST: (req: NextRequest) => Promise<Response>;
-  const origSecret = process.env.JANITOR_WEBHOOK_SECRET;
+  const origSecret = process.env.API_TOKEN;
   let fetchSpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(async () => {
     vi.resetModules();
-    process.env.JANITOR_WEBHOOK_SECRET = "test-secret";
+    process.env.API_TOKEN = "test-secret";
     const mod = await import("@/app/api/lingo/extraction/upsert/route");
     POST = mod.POST;
 
@@ -324,7 +324,7 @@ describe("POST /api/lingo/extraction/upsert — hub mirror", () => {
   });
 
   afterEach(() => {
-    process.env.JANITOR_WEBHOOK_SECRET = origSecret;
+    process.env.API_TOKEN = origSecret;
     vi.clearAllMocks();
     fetchSpy.mockRestore();
   });
