@@ -24,6 +24,7 @@ import { pusherServer, getWorkspaceChannelName, PUSHER_EVENTS } from "@/lib/push
 import { getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
 import { getStakworkTokenReference } from "@/lib/vercel/stakwork-token";
 import { getSwarmBaseUrl, getSecondBrainBaseUrl } from "@/lib/utils/swarm";
+import { getBaseUrl } from "@/lib/utils";
 
 /**
  * Get or create janitor configuration for a workspace
@@ -232,7 +233,10 @@ async function createLingoExtractionJanitorRun(
   const reachedFloor = lingoExtractionState?.reachedFloor as boolean | undefined;
   const backwardsCursor = lingoExtractionState?.backwardsCursor as string | undefined;
 
-  const baseUrl = envConfig.STAKWORK_BASE_URL.replace("/api/v1", "");
+  // Callback URLs must point at the Hive app (NEXTAUTH_URL), NOT at
+  // STAKWORK_BASE_URL — that env var is Stakwork's own API host and is only
+  // correct for the outbound /projects call.
+  const baseUrl = getBaseUrl();
   const tokenReference = getStakworkTokenReference();
 
   // Create the run record
@@ -250,9 +254,11 @@ async function createLingoExtractionJanitorRun(
   try {
     const vars = {
       workspaceId,
+      janitorRunId: janitorRun.id,
       swarmUrl: swarm.swarmUrl,
       swarmSecretAlias: swarm.swarmSecretAlias,
       webhookUrl: `${baseUrl}/api/lingo/extraction/collect`,
+      upsertWebhookUrl: `${baseUrl}/api/lingo/extraction/upsert`,
       tokenReference,
       lingoExtractionState,
       limit: Number(process.env.LINGO_EXTRACTION_BATCH_LIMIT ?? 200),
