@@ -235,6 +235,55 @@ export async function getResolvedPrompt(
 }
 
 /**
+ * Fetch the raw (unresolved) value of the version that `getResolvedPrompt` would return —
+ * i.e. the published version if set, else the highest-numbered version.
+ * Used by `propose_prompt_update` to build the diff "before" value from the same
+ * version anchor as `get_prompt` resolves, without variable substitution or reference inlining.
+ */
+export async function getRawPromptValue(
+  idOrName: string,
+): Promise<ResolveResult<{ id: string; name: string; versionId: string; versionNumber: number; value: string }>> {
+  try {
+    const prompt = await db.prompt.findFirst({
+      where: { OR: [{ id: idOrName }, { name: idOrName }] },
+      select: {
+        id: true,
+        name: true,
+        publishedVersionId: true,
+        versions: {
+          select: { id: true, versionNumber: true, value: true },
+          orderBy: { versionNumber: "desc" },
+        },
+      },
+    });
+
+    if (!prompt) {
+      return { notFound: true };
+    }
+
+    const version =
+      prompt.versions.find((v) => v.id === prompt.publishedVersionId) ??
+      prompt.versions[0];
+
+    if (!version) {
+      return { notFound: true };
+    }
+
+    return {
+      id: prompt.id,
+      name: prompt.name,
+      versionId: version.id,
+      versionNumber: version.versionNumber,
+      value: version.value,
+    };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "Unknown error";
+    logger.error("[prompt-read] getRawPromptValue error", "prompt-read", { idOrName, error: msg });
+    return { error: msg };
+  }
+}
+
+/**
  * List all versions of a prompt with published/current markers.
  * "current" = highest versionNumber. "published" = Prompt.publishedVersionId matches.
  */
