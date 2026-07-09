@@ -101,7 +101,7 @@ export async function runProposalIntent(args: {
       // `milestone:` branch is a defensive fallback for pre-cutover
       // proposal trails — milestones aren't drillable scopes today,
       // so new approvals never produce that ref.
-      const kindLabel =
+      const refLabel =
         r.landedOn === ""
           ? "the org root canvas"
           : r.landedOn.startsWith("ws:")
@@ -113,14 +113,29 @@ export async function runProposalIntent(args: {
                 : "the canvas";
       const where = r.landedOnName
         ? `**${r.landedOnName}**`
-        : kindLabel;
+        : refLabel;
+      const kindLabel =
+        r.kind === "initiative"
+          ? "initiative"
+          : r.kind === "milestone"
+            ? "milestone"
+            : r.kind === "promptCreate"
+              ? "prompt"
+              : r.kind === "promptUpdate"
+                ? "prompt update"
+                : "feature";
+
       summaryText = alreadyApproved
-        ? `Already created — opening the existing ${r.kind} on ${where}.`
+        ? `Already created — ${kindLabel} already exists.`
         : r.kind === "initiative"
           ? `Created the initiative on ${where}.`
           : r.kind === "milestone"
             ? `Created the milestone on ${where}.`
-            : `Created the feature on ${where}.`;
+            : r.kind === "promptCreate"
+              ? `Created the new prompt successfully.`
+              : r.kind === "promptUpdate"
+                ? `Saved a new draft version of the prompt. It is not published yet — publish it from the Prompts management page when ready.`
+                : `Created the feature on ${where}.`;
     }
   } else if (rejectionIntent) {
     const outcome = handleRejection({

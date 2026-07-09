@@ -55,6 +55,7 @@ export const optionalEnvVars = {
   STAKWORK_BOUNTY_WORKFLOW_ID: process.env.STAKWORK_BOUNTY_WORKFLOW_ID,
   STAKWORK_DIAGRAM_WORKFLOW_ID: process.env.STAKWORK_DIAGRAM_WORKFLOW_ID,
   STAKWORK_LEARNING_WORKFLOW_ID: process.env.STAKWORK_LEARNING_WORKFLOW_ID,
+  WORKFLOW_GRAPH_PROMPT_STORAGE_ID: process.env.WORKFLOW_GRAPH_PROMPT_STORAGE_ID,
   STAKWORK_PLAN_MODE_WORKFLOW_ID: process.env.STAKWORK_PLAN_MODE_WORKFLOW_ID,
   STAKWORK_EVAL_WORKFLOW_ID: process.env.STAKWORK_EVAL_WORKFLOW_ID,
   STAKWORK_WORKFLOW_ID_LLM_SYNC: process.env.STAKWORK_WORKFLOW_ID_LLM_SYNC,
@@ -138,6 +139,15 @@ export const optionalEnvVars = {
   // localhost address, as the gateway calls back from outside. When
   // unset, the callback push is skipped (logged at warn level).
   HIVE_PUBLIC_URL: process.env.HIVE_PUBLIC_URL || "",
+  // Which source-control orgs may use the canvas agent's `prompts`
+  // capability (read + propose against the shared, globally-scoped prompt
+  // library). CSV of `SourceControlOrg.githubLogin` values, case-
+  // insensitive. Defaults to "stakwork" (the org that owns the shared
+  // library) when unset — the library has no per-org scoping, so this is
+  // the boundary that keeps the capability off every other org's agent.
+  // Callers MUST go through `isPromptsCapabilityEnabledForOrgLogin(login)`.
+  PROMPTS_CAPABILITY_ORG_LOGINS:
+    process.env.PROMPTS_CAPABILITY_ORG_LOGINS || "stakwork",
 } as const;
 
 /**
@@ -272,6 +282,35 @@ export function isBifrostEnabledForAgent(
     .map((s) => s.trim())
     .filter(Boolean);
   return allowList.includes(name);
+}
+
+/**
+ * Decide whether the canvas agent's `prompts` capability is available to a
+ * source-control org, identified by its GitHub login.
+ *
+ * The shared prompt library is globally scoped (the `Prompt` model has no
+ * org FK), so this login allow-list — not any row-level filter — is what
+ * keeps the read/propose tools from being handed to every org's canvas
+ * agent. `PROMPTS_CAPABILITY_ORG_LOGINS` is a case-insensitive CSV of
+ * `SourceControlOrg.githubLogin` values; defaults to "stakwork" when unset.
+ *
+ * Fails closed: an empty/missing login never matches, so an unknown org
+ * can't slip through on empty input.
+ *
+ * @param githubLogin - The acting org's `SourceControlOrg.githubLogin`.
+ * @returns `true` iff the `prompts` capability should be composed for it.
+ */
+export function isPromptsCapabilityEnabledForOrgLogin(
+  githubLogin: string | null | undefined,
+): boolean {
+  const login = (githubLogin ?? "").trim().toLowerCase();
+  if (!login) return false;
+
+  const allowList = (process.env.PROMPTS_CAPABILITY_ORG_LOGINS || "stakwork")
+    .split(",")
+    .map((s) => s.trim().toLowerCase())
+    .filter(Boolean);
+  return allowList.includes(login);
 }
 
 // Combined environment configuration
