@@ -261,7 +261,12 @@ export function buildPromptTools(userId: string): ToolSet {
           kind: "promptUpdate" as const,
           proposalId,
           payload: { promptId: prompt_id, value, description },
-          meta: { oldStr: raw.value, newStr: value },
+          meta: {
+            oldStr: raw.value,
+            newStr: value,
+            promptName: raw.name,
+            versionNumber: raw.versionNumber,
+          },
           ...(rationale && { rationale }),
         };
       },
