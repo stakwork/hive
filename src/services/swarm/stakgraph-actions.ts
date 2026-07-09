@@ -4,6 +4,8 @@ import { retryWithExponentialBackoff } from "@/lib/utils/retry";
 
 type Creds = { username?: string; pat?: string };
 
+const TRIGGER_TIMEOUT_MS = 30_000;
+
 export interface SyncOptions {
   docs?: boolean | string;       // true = all repos, string = comma-separated repo names
   mocks?: boolean | string;      // true = all repos, string = comma-separated repo names
@@ -84,6 +86,7 @@ export async function triggerAsyncSync(
     method: "POST",
     apiKey,
     data,
+    timeoutMs: TRIGGER_TIMEOUT_MS,
   });
 
   return {
@@ -121,5 +124,6 @@ export async function triggerIngestAsync(
     method: "POST",
     apiKey,
     data,
+    timeoutMs: TRIGGER_TIMEOUT_MS,
   });
 }
