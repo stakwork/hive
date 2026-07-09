@@ -55,6 +55,8 @@ import {
   PROPOSE_FEATURE_TOOL,
   PROPOSE_INITIATIVE_TOOL,
   PROPOSE_MILESTONE_TOOL,
+  PROPOSE_NEW_PROMPT_TOOL,
+  PROPOSE_PROMPT_UPDATE_TOOL,
   type ApprovalIntent,
   type ApprovalResult,
   type FeatureProposalPayload,
@@ -63,6 +65,8 @@ import {
   type ProposalOutput,
   type RejectionIntent,
 } from "./types";
+import { mcpCreatePrompt, mcpUpdatePrompt } from "@/lib/mcp/mcpTools";
+import { logger } from "@/lib/logger";
 
 // ─── Conversation-shape primitives ────────────────────────────────────
 // We accept a permissive `MessageLike` to avoid a runtime dependency
@@ -109,7 +113,9 @@ function findProposal(
       if (
         tc.toolName !== PROPOSE_INITIATIVE_TOOL &&
         tc.toolName !== PROPOSE_FEATURE_TOOL &&
-        tc.toolName !== PROPOSE_MILESTONE_TOOL
+        tc.toolName !== PROPOSE_MILESTONE_TOOL &&
+        tc.toolName !== PROPOSE_NEW_PROMPT_TOOL &&
+        tc.toolName !== PROPOSE_PROMPT_UPDATE_TOOL
       )
         continue;
       const out = tc.output;
@@ -281,6 +287,20 @@ export async function handleApproval(
   if (proposal.kind === "milestone") {
     return approveMilestone({
       orgId,
+      proposal,
+      intent,
+    });
+  }
+  if (proposal.kind === "promptCreate") {
+    return approvePromptCreate({
+      userId,
+      proposal,
+      intent,
+    });
+  }
+  if (proposal.kind === "promptUpdate") {
+    return approvePromptUpdate({
+      userId,
       proposal,
       intent,
     });
@@ -1199,6 +1219,202 @@ async function approveMilestone(args: {
       createdEntityId: createdMilestoneId,
       landedOn,
       ...(landedOnName && { landedOnName }),
+    },
+  };
+}
+
+// ── Approve: promptCreate ────────────────────────────────────────────
+//
+// Creates a new prompt via mcpCreatePrompt (same logic as the MCP tool).
+// Cross-tenant guard: verifies the acting user is a member of the shared
+// "stakwork" workspace before writing, since prompts are global-scope and
+// not org-filtered. Returns landedOn: "" (no canvas node).
+
+async function approvePromptCreate(args: {
+  userId: string;
+  proposal: Extract<ProposalOutput, { kind: "promptCreate" }>;
+  intent: ApprovalIntent;
+}): Promise<HandleApprovalReturn> {
+  const { userId, proposal } = args;
+  const { name, value, description } = proposal.payload;
+
+  if (!name || !name.trim()) {
+    return { ok: false, error: "Prompt name is required.", status: 400 };
+  }
+  if (!value) {
+    return { ok: false, error: "Prompt value is required.", status: 400 };
+  }
+
+  // Cross-tenant guard: the shared prompt library is accessed via the
+  // "stakwork" workspace. Any org's canvas agent can propose, but only
+  // a member of that workspace may actually write.
+  const stakworkWorkspace = await db.workspace.findFirst({
+    where: { name: "stakwork", deleted: false },
+    select: { id: true, slug: true },
+  });
+
+  if (!stakworkWorkspace) {
+    logger.warn(
+      "[handleApproval.approvePromptCreate] stakwork workspace not found",
+      "handleApproval",
+      { proposalId: proposal.proposalId, name },
+    );
+    return {
+      ok: false,
+      error: "The shared prompt library workspace is not available.",
+      status: 503,
+    };
+  }
+
+  const membership = await db.workspaceMember.findFirst({
+    where: { workspaceId: stakworkWorkspace.id, userId, leftAt: null },
+    select: { id: true },
+  });
+
+  logger.info("[handleApproval.approvePromptCreate] membership check", "handleApproval", {
+    proposalId: proposal.proposalId,
+    name,
+    userId,
+    isMember: !!membership,
+  });
+
+  if (!membership) {
+    return {
+      ok: false,
+      error:
+        "You must be a member of the stakwork workspace to create prompts in the shared library.",
+      status: 403,
+    };
+  }
+
+  const auth = {
+    workspaceId: stakworkWorkspace.id,
+    workspaceSlug: stakworkWorkspace.slug,
+    userId,
+  };
+
+  const result = await mcpCreatePrompt(auth, name.trim(), value, description);
+
+  logger.info("[handleApproval.approvePromptCreate] write outcome", "handleApproval", {
+    proposalId: proposal.proposalId,
+    name,
+    isError: result.isError,
+  });
+
+  if (result.isError) {
+    const msg = result.content[0]?.text ?? "Failed to create prompt.";
+    return { ok: false, error: msg, status: 400 };
+  }
+
+  // Extract the created prompt id from the MCP result.
+  let createdId = "";
+  try {
+    const parsed = JSON.parse(result.content[0]?.text ?? "{}");
+    createdId = parsed.id ?? "";
+  } catch {
+    // Non-fatal — we still return success even if we can't parse the id.
+  }
+
+  return {
+    ok: true,
+    alreadyApproved: false,
+    result: {
+      proposalId: proposal.proposalId,
+      kind: "promptCreate",
+      createdEntityId: createdId,
+      landedOn: "",
+    },
+  };
+}
+
+// ── Approve: promptUpdate ────────────────────────────────────────────
+//
+// Creates a new draft version of an existing prompt via mcpUpdatePrompt.
+// Same cross-tenant guard as promptCreate — only stakwork workspace members
+// may write. Returns landedOn: "" (no canvas node).
+
+async function approvePromptUpdate(args: {
+  userId: string;
+  proposal: Extract<ProposalOutput, { kind: "promptUpdate" }>;
+  intent: ApprovalIntent;
+}): Promise<HandleApprovalReturn> {
+  const { userId, proposal } = args;
+  const { promptId, value, description } = proposal.payload;
+
+  if (!promptId) {
+    return { ok: false, error: "promptId is required.", status: 400 };
+  }
+  if (!value) {
+    return { ok: false, error: "Prompt value is required.", status: 400 };
+  }
+
+  // Cross-tenant guard.
+  const stakworkWorkspace = await db.workspace.findFirst({
+    where: { name: "stakwork", deleted: false },
+    select: { id: true, slug: true },
+  });
+
+  if (!stakworkWorkspace) {
+    logger.warn(
+      "[handleApproval.approvePromptUpdate] stakwork workspace not found",
+      "handleApproval",
+      { proposalId: proposal.proposalId, promptId },
+    );
+    return {
+      ok: false,
+      error: "The shared prompt library workspace is not available.",
+      status: 503,
+    };
+  }
+
+  const membership = await db.workspaceMember.findFirst({
+    where: { workspaceId: stakworkWorkspace.id, userId, leftAt: null },
+    select: { id: true },
+  });
+
+  logger.info("[handleApproval.approvePromptUpdate] membership check", "handleApproval", {
+    proposalId: proposal.proposalId,
+    promptId,
+    userId,
+    isMember: !!membership,
+  });
+
+  if (!membership) {
+    return {
+      ok: false,
+      error:
+        "You must be a member of the stakwork workspace to update prompts in the shared library.",
+      status: 403,
+    };
+  }
+
+  const auth = {
+    workspaceId: stakworkWorkspace.id,
+    workspaceSlug: stakworkWorkspace.slug,
+    userId,
+  };
+
+  const result = await mcpUpdatePrompt(auth, promptId, value, description);
+
+  logger.info("[handleApproval.approvePromptUpdate] write outcome", "handleApproval", {
+    proposalId: proposal.proposalId,
+    promptId,
+    isError: result.isError,
+  });
+
+  if (result.isError) {
+    const msg = result.content[0]?.text ?? "Failed to update prompt.";
+    return { ok: false, error: msg, status: 400 };
+  }
+
+  return {
+    ok: true,
+    alreadyApproved: false,
+    result: {
+      proposalId: proposal.proposalId,
+      kind: "promptUpdate",
+      createdEntityId: promptId,
+      landedOn: "",
     },
   };
 }
