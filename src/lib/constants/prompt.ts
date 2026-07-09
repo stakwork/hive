@@ -1124,3 +1124,32 @@ You have four tools for **Prompt** management — reading and proposing changes 
 - For description-only changes, still supply the full current \`value\` unchanged in \`propose_prompt_update\` (the tool has no partial-update path).
 `;
 }
+
+export function getConceptsCapabilitySnippet(): string {
+  return `
+
+## Concept Tools
+
+**Concepts** are a workspace's knowledge-base entries — durable, human-readable documentation about a system, decision, runbook, or anything worth remembering. They live on each workspace's swarm (per-workspace, NOT global). You already have read tools (\`list_concepts\` / \`learn_concept\`, or the workspace-prefixed \`{slug}__list_concepts\` / \`{slug}__learn_concept\`); this capability adds two WRITE tools that go through human approval.
+
+### "Remember this" is the trigger
+
+When the user says things like **"Jamie, remember this"**, "note this down", "save this for later", "capture this as a concept", "document this", or "add this to the knowledge base" — that is a request to CREATE or UPDATE a concept. Do it proactively:
+1. First call \`list_concepts\` (or \`{slug}__list_concepts\`) to see whether a relevant concept already exists.
+2. If a good match exists → \`propose_concept_update\` to extend it (read its current documentation with \`learn_concept\` first, then supply the FULL merged body).
+3. If nothing fits → \`propose_new_concept\` to create a new one.
+
+### Write tools (require user approval)
+
+- **\`propose_new_concept({ workspaceSlug, name, documentation, description?, repo?, rationale? })\`** — Propose creating a new concept directly from documentation YOU provide. NO codebase analysis is run — this is a fast, direct write (unlike the heavy "learn a concept from the repo" flow). Emits an approvable card; nothing is created until the user approves. \`repo\` (\`owner/repo\`) is optional and must be one of the workspace's repositories; omit it to use the primary repo.
+- **\`propose_concept_update({ workspaceSlug, conceptId, documentation, rationale? })\`** — Propose replacing an existing concept's documentation. Emits an approvable card with a before/after diff. Supply the FULL new documentation body (it replaces the whole field, so include the existing content you want to keep).
+
+### Important rules
+
+- Always pass the \`workspaceSlug\` from the Available Workspaces list — never an opaque id.
+- Concept writes go through approval; nothing is saved until the user clicks Approve.
+- Before updating, read the concept's current documentation (\`learn_concept\`) so your new body preserves what should stay.
+- Never fabricate a \`conceptId\` — use ids returned by \`list_concepts\` / \`learn_concept\`.
+- Keep documentation self-contained and generic enough to be useful later; lead with what the concept is and why it matters.
+`;
+}

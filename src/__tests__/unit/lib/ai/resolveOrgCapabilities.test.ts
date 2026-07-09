@@ -20,6 +20,7 @@ vi.mock("@/lib/ai/graphWalkDispatchTools", () => ({
   buildGraphWalkDispatchTools: vi.fn(() => ({})),
 }));
 vi.mock("@/lib/ai/promptTools", () => ({ buildPromptTools: vi.fn(() => ({})) }));
+vi.mock("@/lib/ai/conceptTools", () => ({ buildConceptTools: vi.fn(() => ({})) }));
 vi.mock("@/lib/constants/prompt", () => ({
   getRoadmapCapabilitySnippet: vi.fn(() => ""),
   getPlannerCapabilitySnippet: vi.fn(() => ""),
@@ -29,6 +30,7 @@ vi.mock("@/lib/constants/prompt", () => ({
   getGraphWalkerCapabilitySnippet: vi.fn(() => ""),
   getInfraCapabilitySnippet: vi.fn(() => ""),
   getPromptsCapabilitySnippet: vi.fn(() => ""),
+  getConceptsCapabilitySnippet: vi.fn(() => ""),
 }));
 vi.mock("ai", () => ({ tool: vi.fn((t: unknown) => t) }));
 vi.mock("@/lib/proposals/types", () => ({
@@ -37,6 +39,8 @@ vi.mock("@/lib/proposals/types", () => ({
   PROPOSE_MILESTONE_TOOL: "propose_milestone",
   PROPOSE_NEW_PROMPT_TOOL: "propose_new_prompt",
   PROPOSE_PROMPT_UPDATE_TOOL: "propose_prompt_update",
+  PROPOSE_NEW_CONCEPT_TOOL: "propose_new_concept",
+  PROPOSE_CONCEPT_UPDATE_TOOL: "propose_concept_update",
 }));
 
 // The gate itself is exercised elsewhere; here we control its verdict.
