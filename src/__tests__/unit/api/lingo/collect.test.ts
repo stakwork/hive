@@ -31,7 +31,7 @@ function makeRequest(body: object, secret = "test-secret"): NextRequest {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "x-webhook-secret": secret,
+      "x-api-token": secret,
     },
     body: JSON.stringify(body),
   });
@@ -41,17 +41,17 @@ const WORKSPACE_ID = "ws-test-123";
 
 describe("POST /api/lingo/extraction/collect — auth", () => {
   let POST: (req: NextRequest) => Promise<Response>;
-  const origSecret = process.env.JANITOR_WEBHOOK_SECRET;
+  const origSecret = process.env.API_TOKEN;
 
   beforeEach(async () => {
     vi.resetModules();
-    process.env.JANITOR_WEBHOOK_SECRET = "test-secret";
+    process.env.API_TOKEN = "test-secret";
     const mod = await import("@/app/api/lingo/extraction/collect/route");
     POST = mod.POST;
   });
 
   afterEach(() => {
-    process.env.JANITOR_WEBHOOK_SECRET = origSecret;
+    process.env.API_TOKEN = origSecret;
   });
 
   it("returns 401 if secret is missing", async () => {
@@ -73,11 +73,11 @@ describe("POST /api/lingo/extraction/collect — auth", () => {
 
 describe("POST /api/lingo/extraction/collect — backwards mode (no prior state)", () => {
   let POST: (req: NextRequest) => Promise<Response>;
-  const origSecret = process.env.JANITOR_WEBHOOK_SECRET;
+  const origSecret = process.env.API_TOKEN;
 
   beforeEach(async () => {
     vi.resetModules();
-    process.env.JANITOR_WEBHOOK_SECRET = "test-secret";
+    process.env.API_TOKEN = "test-secret";
     const mod = await import("@/app/api/lingo/extraction/collect/route");
     POST = mod.POST;
 
@@ -91,7 +91,7 @@ describe("POST /api/lingo/extraction/collect — backwards mode (no prior state)
   });
 
   afterEach(() => {
-    process.env.JANITOR_WEBHOOK_SECRET = origSecret;
+    process.env.API_TOKEN = origSecret;
     vi.clearAllMocks();
   });
 
@@ -179,11 +179,11 @@ describe("POST /api/lingo/extraction/collect — backwards mode (no prior state)
 
 describe("POST /api/lingo/extraction/collect — forward mode (reachedFloor: true)", () => {
   let POST: (req: NextRequest) => Promise<Response>;
-  const origSecret = process.env.JANITOR_WEBHOOK_SECRET;
+  const origSecret = process.env.API_TOKEN;
 
   beforeEach(async () => {
     vi.resetModules();
-    process.env.JANITOR_WEBHOOK_SECRET = "test-secret";
+    process.env.API_TOKEN = "test-secret";
     const mod = await import("@/app/api/lingo/extraction/collect/route");
     POST = mod.POST;
 
@@ -198,7 +198,7 @@ describe("POST /api/lingo/extraction/collect — forward mode (reachedFloor: tru
   });
 
   afterEach(() => {
-    process.env.JANITOR_WEBHOOK_SECRET = origSecret;
+    process.env.API_TOKEN = origSecret;
     vi.clearAllMocks();
   });
 
@@ -220,11 +220,11 @@ describe("POST /api/lingo/extraction/collect — forward mode (reachedFloor: tru
 
 describe("POST /api/lingo/extraction/collect — jargon score filter", () => {
   let POST: (req: NextRequest) => Promise<Response>;
-  const origSecret = process.env.JANITOR_WEBHOOK_SECRET;
+  const origSecret = process.env.API_TOKEN;
 
   beforeEach(async () => {
     vi.resetModules();
-    process.env.JANITOR_WEBHOOK_SECRET = "test-secret";
+    process.env.API_TOKEN = "test-secret";
     const mod = await import("@/app/api/lingo/extraction/collect/route");
     POST = mod.POST;
 
@@ -235,7 +235,7 @@ describe("POST /api/lingo/extraction/collect — jargon score filter", () => {
   });
 
   afterEach(() => {
-    process.env.JANITOR_WEBHOOK_SECRET = origSecret;
+    process.env.API_TOKEN = origSecret;
     vi.clearAllMocks();
   });
 
@@ -274,11 +274,11 @@ describe("POST /api/lingo/extraction/collect — jargon score filter", () => {
 
 describe("POST /api/lingo/extraction/collect — Jarvis sources", () => {
   let POST: (req: NextRequest) => Promise<Response>;
-  const origSecret = process.env.JANITOR_WEBHOOK_SECRET;
+  const origSecret = process.env.API_TOKEN;
 
   beforeEach(async () => {
     vi.resetModules();
-    process.env.JANITOR_WEBHOOK_SECRET = "test-secret";
+    process.env.API_TOKEN = "test-secret";
     const mod = await import("@/app/api/lingo/extraction/collect/route");
     POST = mod.POST;
 
@@ -292,7 +292,7 @@ describe("POST /api/lingo/extraction/collect — Jarvis sources", () => {
   });
 
   afterEach(() => {
-    process.env.JANITOR_WEBHOOK_SECRET = origSecret;
+    process.env.API_TOKEN = origSecret;
     vi.clearAllMocks();
   });
 
@@ -465,11 +465,11 @@ describe("POST /api/lingo/extraction/collect — Jarvis sources", () => {
 
 describe("POST /api/lingo/extraction/collect — configurable limit and hasMore", () => {
   let POST: (req: NextRequest) => Promise<Response>;
-  const origSecret = process.env.JANITOR_WEBHOOK_SECRET;
+  const origSecret = process.env.API_TOKEN;
 
   beforeEach(async () => {
     vi.resetModules();
-    process.env.JANITOR_WEBHOOK_SECRET = "test-secret";
+    process.env.API_TOKEN = "test-secret";
     const mod = await import("@/app/api/lingo/extraction/collect/route");
     POST = mod.POST;
 
@@ -480,7 +480,7 @@ describe("POST /api/lingo/extraction/collect — configurable limit and hasMore"
   });
 
   afterEach(() => {
-    process.env.JANITOR_WEBHOOK_SECRET = origSecret;
+    process.env.API_TOKEN = origSecret;
     vi.clearAllMocks();
   });
 
