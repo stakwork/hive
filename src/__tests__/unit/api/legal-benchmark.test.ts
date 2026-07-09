@@ -148,22 +148,6 @@ const MOCK_RUNNER_RUN = {
   result: JSON.stringify({
     taskSlug: "task-a",
     taskTitle: "Task A",
-    siblingRunId: "scorer-1",
-  }),
-  createdAt: new Date(),
-  updatedAt: new Date(),
-};
-
-const MOCK_SCORER_RUN = {
-  id: "scorer-1",
-  workspaceId: "ws-1",
-  type: "LEGAL_BENCHMARK_SCORER",
-  status: "PENDING",
-  projectId: null,
-  result: JSON.stringify({
-    taskSlug: "task-a",
-    taskTitle: "Task A",
-    siblingRunId: "runner-1",
   }),
   createdAt: new Date(),
   updatedAt: new Date(),
@@ -172,12 +156,11 @@ const MOCK_SCORER_RUN = {
 /**
  * Set up the default $transaction mock to execute the callback with a
  * minimal tx object (mirrors the actual transaction usage in run/route.ts).
- * The factory receives a `txOverrides` object to customise per-test behaviour.
+ * Single-run flow: transaction creates ONE runner row only.
  */
 function setupTransactionMock({
   existingActiveRun = null,
   runnerResult = { id: "runner-new" },
-  scorerResult = { id: "scorer-new" },
   throwError = null as Error | null,
 } = {}) {
   mockDbTransaction.mockImplementation(
@@ -186,12 +169,8 @@ function setupTransactionMock({
       const tx = {
         stakworkRun: {
           findFirst: vi.fn().mockResolvedValue(existingActiveRun),
-          create: vi
-            .fn()
-            // First call → scorer, second call → runner
-            .mockResolvedValueOnce(scorerResult)
-            .mockResolvedValueOnce(runnerResult),
-          update: vi.fn().mockResolvedValue(scorerResult),
+          create: vi.fn().mockResolvedValue(runnerResult),
+          update: vi.fn().mockResolvedValue(runnerResult),
         },
       };
       return fn(tx);
@@ -204,7 +183,6 @@ beforeEach(() => {
   process.env.NEXTAUTH_URL = "http://localhost:3000";
   process.env.NEXTAUTH_SECRET = "test-nextauth-secret";
   process.env.STAKWORK_HARVEY_RUNNER_WORKFLOW_ID = "1001";
-  process.env.STAKWORK_HARVEY_SCORER_WORKFLOW_ID = "1002";
 
   // Default: Jarvis configured
   mockGetJarvisConfig.mockResolvedValue({ jarvisUrl: "https://graph.example.com", apiKey: "supersecret" });
@@ -223,10 +201,9 @@ beforeEach(() => {
   // Default: update succeeds
   mockDbStakworkRunUpdate.mockResolvedValue(MOCK_RUNNER_RUN);
   // Default: deleteMany succeeds
-  mockDbStakworkRunDeleteMany.mockResolvedValue({ count: 2 });
+  mockDbStakworkRunDeleteMany.mockResolvedValue({ count: 1 });
 
   // Default fetch: return non-ok for GitHub pre-fetches, ok for Stakwork dispatch.
-  // Individual tests can override this with vi.stubGlobal("fetch", ...) as needed.
   vi.stubGlobal(
     "fetch",
     vi.fn().mockImplementation((url: string, opts?: RequestInit) => {
@@ -351,12 +328,9 @@ describe("POST /api/workspaces/[slug]/legal/benchmarks/run", () => {
     expect(res.status).toBe(201);
   });
 
-  test("creates runner (IN_PROGRESS) and scorer (PENDING) rows and returns run_id", async () => {
+  test("creates exactly one LEGAL_BENCHMARK_RUNNER row and returns run_id", async () => {
     (getWorkspaceSwarmAccess as Mock).mockResolvedValue(MOCK_SWARM_ACCESS);
-    setupTransactionMock({
-      runnerResult: { id: "runner-new" },
-      scorerResult: { id: "scorer-new" },
-    });
+    setupTransactionMock({ runnerResult: { id: "runner-new" } });
 
     vi.stubGlobal(
       "fetch",
@@ -376,16 +350,13 @@ describe("POST /api/workspaces/[slug]/legal/benchmarks/run", () => {
 
   test("runner row updated to IN_PROGRESS with projectId after successful dispatch", async () => {
     (getWorkspaceSwarmAccess as Mock).mockResolvedValue(MOCK_SWARM_ACCESS);
-    setupTransactionMock({
-      runnerResult: { id: "runner-new" },
-      scorerResult: { id: "scorer-new" },
-    });
+    setupTransactionMock({ runnerResult: { id: "runner-new" } });
 
     // findUnique returns existing result so merge works
     mockDbStakworkRunFindUnique.mockResolvedValue({
       ...MOCK_RUNNER_RUN,
       id: "runner-new",
-      result: JSON.stringify({ taskSlug: "task-a", taskTitle: "Task A", siblingRunId: "scorer-new" }),
+      result: JSON.stringify({ taskSlug: "task-a", taskTitle: "Task A" }),
     });
 
     vi.stubGlobal(
@@ -413,12 +384,9 @@ describe("POST /api/workspaces/[slug]/legal/benchmarks/run", () => {
     );
   });
 
-  test("deletes both rows and returns 502 on Stakwork dispatch failure", async () => {
+  test("deletes single runner row and returns 502 on Stakwork dispatch failure", async () => {
     (getWorkspaceSwarmAccess as Mock).mockResolvedValue(MOCK_SWARM_ACCESS);
-    setupTransactionMock({
-      runnerResult: { id: "runner-fail" },
-      scorerResult: { id: "scorer-fail" },
-    });
+    setupTransactionMock({ runnerResult: { id: "runner-fail" } });
 
     vi.stubGlobal(
       "fetch",
@@ -430,20 +398,17 @@ describe("POST /api/workspaces/[slug]/legal/benchmarks/run", () => {
     });
     expect(res.status).toBe(502);
 
-    // Both rows should be cleaned up
+    // Only the single runner row should be cleaned up
     expect(mockDbStakworkRunDeleteMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { id: { in: ["runner-fail", "scorer-fail"] } },
+        where: { id: "runner-fail" },
       }),
     );
   });
 
   test("webhook_url sent to Stakwork uses generic response webhook pattern", async () => {
     (getWorkspaceSwarmAccess as Mock).mockResolvedValue(MOCK_SWARM_ACCESS);
-    setupTransactionMock({
-      runnerResult: { id: "runner-abc" },
-      scorerResult: { id: "scorer-abc" },
-    });
+    setupTransactionMock({ runnerResult: { id: "runner-abc" } });
 
     const capturedPayloads: unknown[] = [];
     vi.stubGlobal(
@@ -469,6 +434,40 @@ describe("POST /api/workspaces/[slug]/legal/benchmarks/run", () => {
     expect(dispatched.webhook_url).toMatch(/workspace_id=ws-1/);
   });
 
+  test("no scorer row is created — transaction creates exactly one row", async () => {
+    (getWorkspaceSwarmAccess as Mock).mockResolvedValue(MOCK_SWARM_ACCESS);
+
+    let createCallCount = 0;
+    mockDbTransaction.mockImplementation(async (fn: (tx: unknown) => Promise<unknown>) => {
+      const tx = {
+        stakworkRun: {
+          findFirst: vi.fn().mockResolvedValue(null),
+          create: vi.fn().mockImplementation(() => {
+            createCallCount++;
+            return Promise.resolve({ id: "runner-only" });
+          }),
+          update: vi.fn().mockResolvedValue({}),
+        },
+      };
+      return fn(tx);
+    });
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ data: { project_id: 99 } }),
+      }),
+    );
+
+    const res = await postRun(makeRunRequest({ taskSlug: "task-a", taskTitle: "Task A" }), {
+      params: Promise.resolve({ slug: "openlaw" }),
+    });
+    expect(res.status).toBe(201);
+    // Must create exactly one row (only the runner)
+    expect(createCallCount).toBe(1);
+  });
+
   test("result JSON never contains graphSecret, apiKey as credential, or tokenReference", async () => {
     (getWorkspaceSwarmAccess as Mock).mockResolvedValue(MOCK_SWARM_ACCESS);
 
@@ -481,8 +480,7 @@ describe("POST /api/workspaces/[slug]/legal/benchmarks/run", () => {
             findFirst: vi.fn().mockResolvedValue(null),
             create: vi.fn().mockImplementation((args: { data: unknown }) => {
               createdRows.push(args.data);
-              const id = createdRows.length === 1 ? "scorer-x" : "runner-x";
-              return Promise.resolve({ id });
+              return Promise.resolve({ id: "runner-x" });
             }),
             update: vi.fn().mockResolvedValue({}),
           },
@@ -521,10 +519,7 @@ describe("POST /api/workspaces/[slug]/legal/benchmarks/run", () => {
 describe("POST /run — credential pattern: swarmSecretAlias in payload", () => {
   beforeEach(() => {
     (getWorkspaceSwarmAccess as Mock).mockResolvedValue(MOCK_SWARM_ACCESS);
-    setupTransactionMock({
-      runnerResult: { id: "runner-new" },
-      scorerResult: { id: "scorer-new" },
-    });
+    setupTransactionMock({ runnerResult: { id: "runner-new" } });
   });
 
   test("vars.secret equals swarmSecretAlias (not the decrypted apiKey)", async () => {
@@ -581,10 +576,7 @@ describe("POST /run — credential pattern: swarmSecretAlias in payload", () => 
 describe("POST /run — task context pre-fetch for Stakwork vars", () => {
   beforeEach(() => {
     (getWorkspaceSwarmAccess as Mock).mockResolvedValue(MOCK_SWARM_ACCESS);
-    setupTransactionMock({
-      runnerResult: { id: "runner-new" },
-      scorerResult: { id: "scorer-new" },
-    });
+    setupTransactionMock({ runnerResult: { id: "runner-new" } });
   });
 
   test("task_output_desc uses joined deliverable keys when deliverables are present", async () => {
@@ -859,7 +851,7 @@ describe("GET /api/workspaces/[slug]/legal/benchmarks/runs/[runId]", () => {
 
   test("returns 404 on workspaceId mismatch — findFirst with workspaceId in WHERE returns null (IDOR guard)", async () => {
     (getWorkspaceSwarmAccess as Mock).mockResolvedValue(MOCK_SWARM_ACCESS);
-    // The route now scopes workspaceId in the query itself; a foreign run returns null
+    // The route scopes workspaceId in the query itself; a foreign run returns null
     mockDbStakworkRunFindFirst.mockResolvedValue(null);
 
     const res = await getRun(makeGetRunRequest("openlaw", "run-other-ws"), {
@@ -874,12 +866,9 @@ describe("GET /api/workspaces/[slug]/legal/benchmarks/runs/[runId]", () => {
     );
   });
 
-  test("returns 200 with run and sibling when ownership matches (runner id)", async () => {
+  test("returns 200 with run and runnerRun alias; scorerRun is null (single-run flow)", async () => {
     (getWorkspaceSwarmAccess as Mock).mockResolvedValue(MOCK_SWARM_ACCESS);
-    // First call: primary run lookup; second call: sibling lookup
-    mockDbStakworkRunFindFirst
-      .mockResolvedValueOnce(MOCK_RUNNER_RUN)
-      .mockResolvedValueOnce(MOCK_SCORER_RUN);
+    mockDbStakworkRunFindFirst.mockResolvedValue(MOCK_RUNNER_RUN);
 
     const res = await getRun(makeGetRunRequest("openlaw", "runner-1"), {
       params: Promise.resolve({ slug: "openlaw", runId: "runner-1" }),
@@ -888,24 +877,8 @@ describe("GET /api/workspaces/[slug]/legal/benchmarks/runs/[runId]", () => {
     const body = await res.json();
     expect(body.run.id).toBe("runner-1");
     expect(body.runnerRun.id).toBe("runner-1");
-    expect(body.scorerRun.id).toBe("scorer-1");
-  });
-
-  test("returns 200 with run when lookup by scorer id", async () => {
-    (getWorkspaceSwarmAccess as Mock).mockResolvedValue(MOCK_SWARM_ACCESS);
-    // First call: scorer row; second call: runner sibling
-    mockDbStakworkRunFindFirst
-      .mockResolvedValueOnce(MOCK_SCORER_RUN)
-      .mockResolvedValueOnce(MOCK_RUNNER_RUN);
-
-    const res = await getRun(makeGetRunRequest("openlaw", "scorer-1"), {
-      params: Promise.resolve({ slug: "openlaw", runId: "scorer-1" }),
-    });
-    expect(res.status).toBe(200);
-    const body = await res.json();
-    expect(body.run.id).toBe("scorer-1");
-    expect(body.scorerRun.id).toBe("scorer-1");
-    expect(body.runnerRun.id).toBe("runner-1");
+    // scorerRun is null — no sibling in the single-run flow
+    expect(body.scorerRun).toBeNull();
   });
 });
 
@@ -916,10 +889,7 @@ describe("GET /api/workspaces/[slug]/legal/benchmarks/runs/[runId]", () => {
 describe("POST /run — Jarvis eval graph non-fatal block", () => {
   beforeEach(() => {
     (getWorkspaceSwarmAccess as Mock).mockResolvedValue(MOCK_SWARM_ACCESS);
-    setupTransactionMock({
-      runnerResult: { id: "runner-new" },
-      scorerResult: { id: "scorer-new" },
-    });
+    setupTransactionMock({ runnerResult: { id: "runner-new" } });
     vi.stubGlobal(
       "fetch",
       vi.fn().mockResolvedValue({
@@ -983,7 +953,7 @@ describe("POST /run — Jarvis eval graph non-fatal block", () => {
     mockDbStakworkRunFindUnique.mockResolvedValue({
       ...MOCK_RUNNER_RUN,
       id: "runner-new",
-      result: JSON.stringify({ taskSlug: "task-a", taskTitle: "Task A", siblingRunId: "scorer-new" }),
+      result: JSON.stringify({ taskSlug: "task-a", taskTitle: "Task A" }),
     });
 
     const res = await postRun(makeRunRequest({ taskSlug: "task-a", taskTitle: "Task A" }), {
@@ -991,7 +961,7 @@ describe("POST /run — Jarvis eval graph non-fatal block", () => {
     });
     expect(res.status).toBe(201);
 
-    // evalTriggerRef should be written to both runner and scorer rows
+    // evalTriggerRef should be written to runner row
     const updateCalls = mockDbStakworkRunUpdate.mock.calls;
     const evalTriggerUpdates = updateCalls.filter((call) => {
       const result = call[0]?.data?.result;
@@ -1033,10 +1003,7 @@ describe("POST /run — Bifrost LLM credential vars in Stakwork payload", () => 
 
   beforeEach(() => {
     (getWorkspaceSwarmAccess as Mock).mockResolvedValue(MOCK_SWARM_ACCESS);
-    setupTransactionMock({
-      runnerResult: { id: "runner-new" },
-      scorerResult: { id: "scorer-new" },
-    });
+    setupTransactionMock({ runnerResult: { id: "runner-new" } });
   });
 
   test("getBifrostForLLM throws → route still dispatches with env apiKey and tokenReference present", async () => {
