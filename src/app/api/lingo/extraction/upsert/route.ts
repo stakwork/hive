@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getJarvisConfigForWorkspace } from "@/lib/helpers/jarvis-config";
 import { searchLatestByTypes, addNodeBulk } from "@/services/swarm/api/nodes";
-import { config as envConfig } from "@/config/env";
+import { getBaseUrl } from "@/lib/utils";
 import type { LingoExtractionState } from "../collect/route";
 import type { JarvisNodePayload } from "@/services/jarvis-mirror/mappers";
 
@@ -10,6 +10,22 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const BULK_CHUNK = 100;
+
+async function finalizeRun(janitorRunId: string | undefined, ok: boolean, error?: string) {
+  if (!janitorRunId) return;
+  try {
+    await db.janitorRun.update({
+      where: { id: janitorRunId },
+      data: {
+        status: ok ? "COMPLETED" : "FAILED",
+        completedAt: new Date(),
+        ...(error ? { error } : {}),
+      },
+    });
+  } catch (err) {
+    console.error("[LingoExtraction] failed to finalize janitor run:", err);
+  }
+}
 
 interface ExtractedTerm {
   name: string;
@@ -20,20 +36,25 @@ interface ExtractedTerm {
 }
 
 export async function POST(request: NextRequest) {
-  // Auth
-  const secret = request.headers.get("x-webhook-secret");
-  if (!secret || secret !== process.env.JANITOR_WEBHOOK_SECRET) {
+  // Auth — matches the standard Stakwork callback convention (x-api-token / API_TOKEN)
+  const apiToken = request.headers.get("x-api-token");
+  if (!apiToken || apiToken !== process.env.API_TOKEN) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  let body: { workspaceId: string; terms: ExtractedTerm[]; cursor_state: LingoExtractionState };
+  let body: {
+    workspaceId: string;
+    janitorRunId?: string;
+    terms: ExtractedTerm[];
+    cursor_state: LingoExtractionState;
+  };
   try {
     body = await request.json();
   } catch {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
-  const { workspaceId, terms, cursor_state } = body;
+  const { workspaceId, janitorRunId, terms, cursor_state } = body;
   if (!workspaceId) {
     return NextResponse.json({ error: "workspaceId required" }, { status: 400 });
   }
@@ -60,6 +81,7 @@ export async function POST(request: NextRequest) {
   let upserted = 0;
 
   if (!jarvisConfig) {
+    await finalizeRun(janitorRunId, false, "No Jarvis config available");
     return NextResponse.json(
       { upserted: 0, skipped_dedup: 0, skipped_confidence, errors: ["No Jarvis config available"] },
       { status: 200 },
@@ -109,6 +131,7 @@ export async function POST(request: NextRequest) {
       `[LingoExtraction] upsert — upserted=0 skipped_dedup=${skipped_dedup} skipped_confidence=${skipped_confidence} cursor_advanced=true`,
     );
 
+    await finalizeRun(janitorRunId, true);
     return NextResponse.json({ upserted: 0, skipped_dedup, skipped_confidence, errors });
   }
 
@@ -158,7 +181,9 @@ export async function POST(request: NextRequest) {
 
   // 5. Best-effort hub-mirror trigger
   if (jarvisSuccess) {
-    const baseUrl = envConfig.STAKWORK_BASE_URL.replace("/api/v1", "");
+    // Self-call into the Hive app — must use NEXTAUTH_URL, not STAKWORK_BASE_URL
+    // (which is Stakwork's API host).
+    const baseUrl = getBaseUrl();
     try {
       await fetch(`${baseUrl}/api/cron/lingo-hub-mirror`, {
         method: "POST",
@@ -169,6 +194,12 @@ export async function POST(request: NextRequest) {
       console.error("[LingoExtraction] hub-mirror trigger failed:", err);
     }
   }
+
+  await finalizeRun(
+    janitorRunId,
+    jarvisSuccess,
+    jarvisSuccess ? undefined : errors.join("; ") || "Jarvis bulk upsert failed",
+  );
 
   return NextResponse.json({ upserted, skipped_dedup, skipped_confidence, errors });
 }
