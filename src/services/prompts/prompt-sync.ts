@@ -20,6 +20,7 @@ export interface WritePromptThroughParams {
   description?: string;
   agentNames?: string[];
   userId: string;
+  workspaceId?: string;
 }
 
 export interface WritePromptThroughResult {
@@ -156,13 +157,14 @@ async function pushPublishToStakwork(
  * Dispatch a Stakwork graph-recorder workflow for the given prompt version.
  * Contains the single-source-of-truth payload shape.
  * Throws on failure — callers decide how to handle errors.
- * No-ops (with a warn log) when WORKFLOW_GRAPH_PROMPT_STORAGE_ID is unset.
+ * No-ops (with a warn log) when WORKFLOW_GRAPH_PROMPT_STORAGE_ID is unset or non-numeric.
  */
 export async function sendPromptGraphRequest(
   params: {
     prompt: { id: string; name: string; description: string | null; createdAt: Date };
     versionId: string;
     value: string;
+    workspaceId?: string;
   },
   trigger: "create" | "update" | "publish",
 ): Promise<void> {
@@ -170,18 +172,19 @@ export async function sendPromptGraphRequest(
   const promptId = prompt.id;
   const promptName = prompt.name;
 
-  if (!config.WORKFLOW_GRAPH_PROMPT_STORAGE_ID) {
+  const rawWorkflowId = config.WORKFLOW_GRAPH_PROMPT_STORAGE_ID;
+  if (!rawWorkflowId || !/^\d+$/.test(rawWorkflowId)) {
     logger.warn(
-      "[prompt-sync] Prompt graph recorder skipped — WORKFLOW_GRAPH_PROMPT_STORAGE_ID not set",
+      "[prompt-sync] Prompt graph recorder skipped — WORKFLOW_GRAPH_PROMPT_STORAGE_ID not set or non-numeric",
       "prompt-sync",
-      { promptId, promptName, versionId, trigger },
+      { promptId, promptName, versionId, trigger, rawWorkflowId },
     );
     return;
   }
 
   await stakworkService().stakworkRequest("/projects", {
     name: `Prompt Graph Recorder ${prompt.id}`,
-    workflow_id: Number(config.WORKFLOW_GRAPH_PROMPT_STORAGE_ID),
+    workflow_id: Number(rawWorkflowId),
     workflow_params: {
       set_var: {
         attributes: {
@@ -214,13 +217,14 @@ async function recordPromptOnGraph(
     value: string;
   },
   trigger: "create" | "update" | "publish",
+  workspaceId?: string,
 ): Promise<void> {
   const { prompt, versionId } = params;
   const promptId = prompt.id;
   const promptName = prompt.name;
 
   try {
-    await sendPromptGraphRequest(params, trigger);
+    await sendPromptGraphRequest({ ...params, workspaceId }, trigger);
     logger.info("[prompt-sync] Prompt graph recorder launched", "prompt-sync", {
       promptId,
       promptName,
@@ -246,7 +250,7 @@ async function recordPromptOnGraph(
 export async function writePromptThrough(
   params: WritePromptThroughParams,
 ): Promise<WritePromptThroughResult> {
-  const { promptId, name, value, description, agentNames, userId } = params;
+  const { promptId, name, value, description, agentNames, userId, workspaceId } = params;
 
   // ── 1. Hive write — one transaction ──────────────────────────────────────
   let prompt: WritePromptThroughResult["prompt"];
@@ -441,6 +445,7 @@ export async function writePromptThrough(
     await recordPromptOnGraph(
       { prompt, versionId: version.id, value },
       "create",
+      workspaceId,
     );
   }
 
@@ -454,6 +459,7 @@ export async function writePromptThrough(
 export async function publishVersion(
   promptId: string,
   versionId: string,
+  workspaceId?: string,
 ): Promise<void> {
   // Fetch version to ensure it exists and belongs to the prompt
   const targetVersion = await db.promptVersion.findFirst({
@@ -496,6 +502,7 @@ export async function publishVersion(
   await recordPromptOnGraph(
     { prompt, versionId, value: targetVersion.value },
     "publish",
+    workspaceId,
   );
 
   // Best-effort Stakwork push — full version content so the live prompt is updated.

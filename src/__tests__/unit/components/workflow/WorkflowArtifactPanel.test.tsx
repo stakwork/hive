@@ -63,23 +63,28 @@ vi.mock("@/components/StakworkRunDropdown", () => ({
 }));
 
 // Mock ChangesList — capture items so tests can inspect them
+// Use importOriginal to preserve the exported countAddDel pure function.
 let lastChangesListItems: Array<{ type: string; name: string; [key: string]: unknown }> = [];
-vi.mock("@/app/w/[slug]/task/[...taskParams]/artifacts/changes/ChangesList", () => ({
-  ChangesList: (props: { items: Array<{ type: string; name: string; [key: string]: unknown }> }) => {
-    lastChangesListItems = props.items ?? [];
-    return React.createElement(
-      "div",
-      { "data-testid": "changes-list" },
-      props.items.map((item, i) =>
-        React.createElement("div", {
-          key: i,
-          "data-testid": `changes-section-${item.type.toLowerCase()}`,
-          "data-item-name": item.name,
-        }),
-      ),
-    );
-  },
-}));
+vi.mock("@/app/w/[slug]/task/[...taskParams]/artifacts/changes/ChangesList", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/app/w/[slug]/task/[...taskParams]/artifacts/changes/ChangesList")>();
+  return {
+    ...actual,
+    ChangesList: (props: { items: Array<{ type: string; name: string; [key: string]: unknown }> }) => {
+      lastChangesListItems = props.items ?? [];
+      return React.createElement(
+        "div",
+        { "data-testid": "changes-list" },
+        props.items.map((item, i) =>
+          React.createElement("div", {
+            key: i,
+            "data-testid": `changes-section-${item.type.toLowerCase()}`,
+            "data-item-name": item.name,
+          }),
+        ),
+      );
+    },
+  };
+});
 
 // Also keep WorkflowChangesPanel mock to prevent import errors in case it's still imported
 vi.mock("@/app/w/[slug]/task/[...taskParams]/artifacts/WorkflowChangesPanel", () => ({
@@ -716,5 +721,41 @@ describe("WorkflowArtifactPanel — ChangesList items", () => {
       <WorkflowArtifactPanel artifacts={[]} isActive={false} />,
     );
     expect(screen.getByText(/no workflow available/i)).toBeInTheDocument();
+  });
+});
+
+// ── countAddDel pure-function tests (object-typed workflowJson) ───────────────
+// These import countAddDel directly to bypass the file-level vi.mock for ChangesList.
+
+import { countAddDel } from "@/app/w/[slug]/task/[...taskParams]/artifacts/changes/ChangesList";
+
+describe("countAddDel — object inputs (regression: object-typed workflowJson)", () => {
+  const workflowObj = {
+    transitions: {
+      stepA: { name: "A", timeout: 10 },
+      stepB: { name: "B", input: "x" },
+    },
+    connections: [{ source: "stepA", target: "stepB" }],
+  };
+
+  it("returns non-negative integer counts for two plain workflow objects", () => {
+    const result = countAddDel(workflowObj, { ...workflowObj, transitions: { stepA: { name: "A", timeout: 20 } } });
+    expect(result.additions).toBeGreaterThanOrEqual(0);
+    expect(result.deletions).toBeGreaterThanOrEqual(0);
+    expect(Number.isInteger(result.additions)).toBe(true);
+    expect(Number.isInteger(result.deletions)).toBe(true);
+  });
+
+  it("returns non-negative integer counts when updated is an object and original is null", () => {
+    const result = countAddDel(null, workflowObj);
+    expect(result.additions).toBeGreaterThanOrEqual(0);
+    expect(result.deletions).toBeGreaterThanOrEqual(0);
+    expect(Number.isInteger(result.additions)).toBe(true);
+    expect(Number.isInteger(result.deletions)).toBe(true);
+  });
+
+  it("returns zero counts when updated is null (regardless of original type)", () => {
+    const result = countAddDel(workflowObj, null);
+    expect(result).toEqual({ additions: 0, deletions: 0 });
   });
 });

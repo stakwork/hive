@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth/next";
-import { authOptions } from "@/lib/auth/nextauth";
+import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 import { db } from "@/lib/db";
 import { config } from "@/config/env";
 import { isDevelopmentMode } from "@/lib/runtime";
+import { isSafeId } from "@/lib/utils/ids";
 
 export const runtime = "nodejs";
 export const fetchCache = "force-no-store";
@@ -13,15 +13,9 @@ export async function POST(
   { params }: { params: Promise<{ scriptId: string; versionId: string }> }
 ) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    const userId = (session.user as { id?: string })?.id;
-    if (!userId) {
-      return NextResponse.json({ error: "Invalid user session" }, { status: 401 });
-    }
+    const userOrResponse = requireAuth(getMiddlewareContext(request));
+    if (userOrResponse instanceof NextResponse) return userOrResponse;
+    const userId = userOrResponse.id;
 
     // Verify user has access to stakwork workspace
     const stakworkWorkspace = await db.workspace.findFirst({
@@ -50,6 +44,14 @@ export async function POST(
       return NextResponse.json({ error: "Version ID is required" }, { status: 400 });
     }
 
+    if (!isSafeId(scriptId)) {
+      return NextResponse.json({ error: "Invalid script ID format" }, { status: 400 });
+    }
+
+    if (!isSafeId(versionId)) {
+      return NextResponse.json({ error: "Invalid version ID format" }, { status: 400 });
+    }
+
     const body = await request.json().catch(() => ({})) as { artifactId?: string };
     const { artifactId } = body;
 
@@ -68,7 +70,7 @@ export async function POST(
     }
 
     // Publish the script version via Stakwork API
-    const publishUrl = `${config.STAKWORK_BASE_URL}/scripts/${scriptId}/versions/${versionId}/publish`;
+    const publishUrl = `${config.STAKWORK_BASE_URL}/scripts/${encodeURIComponent(scriptId)}/versions/${encodeURIComponent(versionId)}/publish`;
 
     const response = await fetch(publishUrl, {
       method: "POST",
@@ -85,7 +87,7 @@ export async function POST(
         errorText
       );
       return NextResponse.json(
-        { error: "Failed to publish script version", details: errorText },
+        { error: "Failed to publish script version" },
         { status: response.status }
       );
     }

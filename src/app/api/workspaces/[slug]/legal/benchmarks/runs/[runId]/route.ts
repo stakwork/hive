@@ -24,12 +24,11 @@ function handleSwarmAccessError(error: { type: string }) {
 /**
  * GET /api/workspaces/[slug]/legal/benchmarks/runs/[runId]
  *
- * Thin pass-through: fetch a single LEGAL_BENCHMARK_RUNNER StakworkRun and its
- * sibling scorer row, returning them as a pair.
+ * Fetch a single LEGAL_BENCHMARK_RUNNER StakworkRun directly.
  * IDOR-guarded by workspace ownership. Gated to the `openlaw` workspace only.
  *
  * NOTE: This route is kept for backward compatibility while the UI migrates to
- * consuming /api/stakwork/runs directly (T4). Once the UI migration lands this
+ * consuming /api/stakwork/runs directly. Once the UI migration lands this
  * route can be removed.
  */
 export async function GET(request: NextRequest, { params }: RouteParams) {
@@ -65,28 +64,8 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: "Not found" }, { status: 404 });
     }
 
-    // Resolve the sibling run scoped to the same workspace
-    let siblingRun = null;
-    try {
-      const resultJson = run.result
-        ? (JSON.parse(run.result) as Record<string, unknown>)
-        : {};
-      const siblingId = resultJson.siblingRunId as string | undefined;
-      if (siblingId) {
-        siblingRun = await db.stakworkRun.findFirst({
-          where: { id: siblingId, workspaceId },
-        });
-      }
-    } catch {
-      // Non-fatal — return the run without sibling
-    }
-
-    const runnerRun =
-      run.type === StakworkRunType.LEGAL_BENCHMARK_RUNNER ? run : siblingRun;
-    const scorerRun =
-      run.type === StakworkRunType.LEGAL_BENCHMARK_SCORER ? run : siblingRun;
-
-    return NextResponse.json({ run, runnerRun, scorerRun });
+    // Return the single run directly; runnerRun convenience alias for backward compat
+    return NextResponse.json({ run, runnerRun: run, scorerRun: null });
   } catch (error) {
     console.error("[legal/benchmarks/runs/[runId] GET] Unexpected error:", error);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });

@@ -11,8 +11,8 @@ import { StakworkRunType, WorkflowStatus } from "@prisma/client";
 
 const STALE_RUN_TIMEOUT_MS = 3 * 60 * 1000; // 3 minutes
 
-/** Operator-facing composite statuses that represent an in-progress pipeline. */
-const IN_PROGRESS_STATUSES = new Set<string>(["running", "scoring"]);
+/** Operator-facing statuses that represent an in-progress run. */
+const IN_PROGRESS_STATUSES = new Set<string>(["running"]);
 
 interface UseLegalBenchmarkRunResult {
   run: LegalBenchmarkRun | null;
@@ -49,43 +49,18 @@ export function useLegalBenchmarkRun(runId: string): UseLegalBenchmarkRunResult 
     try {
       setIsLoading(true);
 
-      // Fetch runner and scorer runs in parallel via the generic /api/stakwork/runs endpoint.
-      const [runnerRes, scorerRes] = await Promise.all([
-        fetch(
-          `/api/stakwork/runs?workspaceId=${workspace.id}&type=${StakworkRunType.LEGAL_BENCHMARK_RUNNER}`,
-        ),
-        fetch(
-          `/api/stakwork/runs?workspaceId=${workspace.id}&type=${StakworkRunType.LEGAL_BENCHMARK_SCORER}`,
-        ),
-      ]);
+      const res = await fetch(
+        `/api/stakwork/runs?workspaceId=${workspace.id}&type=${StakworkRunType.LEGAL_BENCHMARK_RUNNER}`,
+      );
 
-      if (!runnerRes.ok || !scorerRes.ok) {
+      if (!res.ok) {
         throw new Error("Failed to fetch benchmark runs");
       }
 
-      const [runnerData, scorerData] = await Promise.all([
-        runnerRes.json(),
-        scorerRes.json(),
-      ]);
+      const data = await res.json();
+      const rawRunnerRuns: RawRunRow[] = data.runs ?? [];
 
-      const rawRunnerRuns: RawRunRow[] = runnerData.runs ?? [];
-      const rawScorerRuns: RawRunRow[] = scorerData.runs ?? [];
-
-      // Resolve the pair: runId is normally the runner's id but can also be the scorer's.
-      let rawRunner = rawRunnerRuns.find((r) => r.id === runId);
-      let rawScorer: RawRunRow | undefined;
-
-      if (rawRunner) {
-        const runnerResult = parseBenchmarkRunResult(rawRunner.result);
-        rawScorer = rawScorerRuns.find((s) => s.id === runnerResult?.siblingRunId);
-      } else {
-        // Fallback: runId is a scorer id → find scorer, then locate paired runner.
-        rawScorer = rawScorerRuns.find((s) => s.id === runId);
-        if (rawScorer) {
-          const scorerResult = parseBenchmarkRunResult(rawScorer.result);
-          rawRunner = rawRunnerRuns.find((r) => r.id === scorerResult?.siblingRunId);
-        }
-      }
+      const rawRunner = rawRunnerRuns.find((r) => r.id === runId);
 
       if (!rawRunner) {
         runRef.current = null;
@@ -93,9 +68,7 @@ export function useLegalBenchmarkRun(runId: string): UseLegalBenchmarkRunResult 
         return;
       }
 
-      // Parse result JSON fields and build typed rows.
       const runnerResult = parseBenchmarkRunResult(rawRunner.result);
-      const scorerResult = rawScorer ? parseBenchmarkRunResult(rawScorer.result) : null;
 
       const runnerRow: BenchmarkRunRow = {
         id: rawRunner.id,
@@ -108,20 +81,7 @@ export function useLegalBenchmarkRun(runId: string): UseLegalBenchmarkRunResult 
         updatedAt: rawRunner.updatedAt,
       };
 
-      const scorerRow: BenchmarkRunRow | null = rawScorer
-        ? {
-            id: rawScorer.id,
-            workspaceId: rawScorer.workspaceId,
-            type: rawScorer.type as StakworkRunType,
-            status: rawScorer.status as WorkflowStatus,
-            projectId: rawScorer.projectId,
-            result: scorerResult,
-            createdAt: rawScorer.createdAt,
-            updatedAt: rawScorer.updatedAt,
-          }
-        : null;
-
-      const compositeStatus = deriveBenchmarkStatus(runnerRow.status, scorerRow?.status);
+      const compositeStatus = deriveBenchmarkStatus(runnerRow.status);
 
       const legalRun: LegalBenchmarkRun = {
         id: runnerRow.id,
@@ -130,14 +90,13 @@ export function useLegalBenchmarkRun(runId: string): UseLegalBenchmarkRunResult 
         taskTitle: runnerResult?.taskTitle ?? "",
         status: compositeStatus,
         runnerRun: runnerRow,
-        scorerRun: scorerRow,
+        scorerRun: null,
         runnerOutputUrl: runnerResult?.runnerOutputUrl ?? null,
         runnerOutputText: runnerResult?.runnerOutputText ?? null,
-        scoreJson: scorerResult?.scoreJson ?? null,
-        errorMessage:
-          runnerResult?.errorMessage ?? scorerResult?.errorMessage ?? null,
+        scoreJson: null,
+        errorMessage: runnerResult?.errorMessage ?? null,
         createdAt: runnerRow.createdAt,
-        updatedAt: scorerRow?.updatedAt ?? runnerRow.updatedAt,
+        updatedAt: runnerRow.updatedAt,
       };
 
       runRef.current = legalRun;
@@ -157,7 +116,7 @@ export function useLegalBenchmarkRun(runId: string): UseLegalBenchmarkRunResult 
     fetchRun();
   }, [workspace?.id, runId, fetchRun]);
 
-  // Stale timeout: after 3 minutes with an in-progress composite status, poll once.
+  // Stale timeout: after 3 minutes with an in-progress status, poll once.
   // If still in-progress after the poll, mark stale. Resets when status leaves in-progress.
   useEffect(() => {
     if (!run || !IN_PROGRESS_STATUSES.has(run.status)) {
@@ -178,7 +137,7 @@ export function useLegalBenchmarkRun(runId: string): UseLegalBenchmarkRunResult 
     return () => clearTimeout(timer);
   }, [run]);
 
-  // Pusher subscription — refetch when a STAKWORK_RUN_UPDATE matches our runner or scorer.
+  // Pusher subscription — refetch when a STAKWORK_RUN_UPDATE matches our run id.
   useEffect(() => {
     if (!workspace?.slug) return;
 
@@ -198,12 +157,8 @@ export function useLegalBenchmarkRun(runId: string): UseLegalBenchmarkRunResult 
         const updatedId = data.runId ?? data.run_id;
         const updatedStatus = data.status ?? "";
 
-        // The scorer's id is stored in the runner row's result.siblingRunId.
-        const siblingRunId = runRef.current?.runnerRun?.result?.siblingRunId;
-
-        if (updatedId === runId || updatedId === siblingRunId) {
-          // Optimistically clear stale if the status is not an in-progress composite value
-          // (covers both BenchmarkPipelineStatus and WorkflowStatus terminal values).
+        if (updatedId === runId) {
+          // Optimistically clear stale if the status is terminal.
           if (!IN_PROGRESS_STATUSES.has(updatedStatus)) {
             setIsStale(false);
           }

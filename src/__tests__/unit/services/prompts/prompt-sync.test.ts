@@ -2,7 +2,7 @@
  * Unit tests for src/services/prompts/prompt-sync.ts
  *
  * Covers:
- * 1. sendPromptGraphRequest — exact payload shape + throws on stakworkRequest failure
+ * 1. sendPromptGraphRequest — exact payload shape + throws on stakworkRequest failure; guards on WORKFLOW_GRAPH_PROMPT_STORAGE_ID
  * 2. recordPromptOnGraph (via writePromptThrough / publishVersion) — swallows errors, never throws
  */
 
@@ -10,19 +10,29 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 
 // ─── Hoisted mocks ────────────────────────────────────────────────────────────
 
-const { mockStakworkRequest, mockDbPromptFindUnique, mockDbTransaction, mockDbPromptUpdate, mockDbPromptVersionCreate, mockDbPromptVersionAggregate, mockDbPromptVersionFindFirst, mockDbPromptVersionUpdateMany, mockDbPromptVersionUpdate, mockDbPromptCreate } =
-  vi.hoisted(() => ({
-    mockStakworkRequest: vi.fn(),
-    mockDbPromptFindUnique: vi.fn(),
-    mockDbTransaction: vi.fn(),
-    mockDbPromptUpdate: vi.fn(),
-    mockDbPromptVersionCreate: vi.fn(),
-    mockDbPromptVersionAggregate: vi.fn(),
-    mockDbPromptVersionFindFirst: vi.fn(),
-    mockDbPromptVersionUpdateMany: vi.fn(),
-    mockDbPromptVersionUpdate: vi.fn(),
-    mockDbPromptCreate: vi.fn(),
-  }));
+const {
+  mockStakworkRequest,
+  mockDbPromptFindUnique,
+  mockDbTransaction,
+  mockDbPromptUpdate,
+  mockDbPromptVersionCreate,
+  mockDbPromptVersionAggregate,
+  mockDbPromptVersionFindFirst,
+  mockDbPromptVersionUpdateMany,
+  mockDbPromptVersionUpdate,
+  mockDbPromptCreate,
+} = vi.hoisted(() => ({
+  mockStakworkRequest: vi.fn(),
+  mockDbPromptFindUnique: vi.fn(),
+  mockDbTransaction: vi.fn(),
+  mockDbPromptUpdate: vi.fn(),
+  mockDbPromptVersionCreate: vi.fn(),
+  mockDbPromptVersionAggregate: vi.fn(),
+  mockDbPromptVersionFindFirst: vi.fn(),
+  mockDbPromptVersionUpdateMany: vi.fn(),
+  mockDbPromptVersionUpdate: vi.fn(),
+  mockDbPromptCreate: vi.fn(),
+}));
 
 vi.mock("@/lib/service-factory", () => ({
   stakworkService: () => ({ stakworkRequest: mockStakworkRequest }),
@@ -67,6 +77,7 @@ vi.mock("@/config/env", () => ({
 
 import { sendPromptGraphRequest, writePromptThrough, publishVersion } from "@/services/prompts/prompt-sync";
 import { logger } from "@/lib/logger";
+import { config } from "@/config/env";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -81,6 +92,7 @@ const PARAMS = {
   prompt: BASE_PROMPT,
   versionId: "version-abc",
   value: "Hello from prompt",
+  workspaceId: "workspace-1",
 };
 
 // ─── sendPromptGraphRequest ───────────────────────────────────────────────────
@@ -138,24 +150,72 @@ describe("sendPromptGraphRequest", () => {
     await expect(sendPromptGraphRequest(PARAMS, "update")).rejects.toThrow("Stakwork API down");
   });
 
-  it("no-ops (returns without calling stakworkRequest) when WORKFLOW_GRAPH_PROMPT_STORAGE_ID is unset", async () => {
-    // Re-mock config with the env var missing
-    vi.doMock("@/config/env", () => ({
-      config: {
-        STAKWORK_API_KEY: "test-key",
-        STAKWORK_BASE_URL: "https://stakwork.test",
-        WORKFLOW_GRAPH_PROMPT_STORAGE_ID: undefined,
-      },
-    }));
+  it("no-ops with warn when WORKFLOW_GRAPH_PROMPT_STORAGE_ID is unset", async () => {
+    const mutableConfig = config as Record<string, unknown>;
+    const original = mutableConfig.WORKFLOW_GRAPH_PROMPT_STORAGE_ID;
+    mutableConfig.WORKFLOW_GRAPH_PROMPT_STORAGE_ID = undefined;
 
-    // We test the guard logic by checking the warn log path in integration;
-    // here we verify the exported function surface via the existing mock
-    // (the guard check is inside sendPromptGraphRequest).
-    // Since vitest module cache is shared, we test the guard indirectly via logger.warn:
-    // This test asserts the function doesn't throw even when the guard would trigger.
-    expect(async () => await sendPromptGraphRequest(PARAMS, "create")).not.toThrow();
+    await sendPromptGraphRequest(PARAMS, "create");
 
-    vi.doUnmock("@/config/env");
+    expect(mockStakworkRequest).not.toHaveBeenCalled();
+    expect(vi.mocked(logger.warn)).toHaveBeenCalledWith(
+      expect.stringContaining("WORKFLOW_GRAPH_PROMPT_STORAGE_ID not set or non-numeric"),
+      "prompt-sync",
+      expect.any(Object),
+    );
+
+    mutableConfig.WORKFLOW_GRAPH_PROMPT_STORAGE_ID = original;
+  });
+
+  it("no-ops with warn when WORKFLOW_GRAPH_PROMPT_STORAGE_ID is empty string", async () => {
+    const mutableConfig = config as Record<string, unknown>;
+    const original = mutableConfig.WORKFLOW_GRAPH_PROMPT_STORAGE_ID;
+    mutableConfig.WORKFLOW_GRAPH_PROMPT_STORAGE_ID = "";
+
+    await sendPromptGraphRequest(PARAMS, "create");
+
+    expect(mockStakworkRequest).not.toHaveBeenCalled();
+    expect(vi.mocked(logger.warn)).toHaveBeenCalledWith(
+      expect.stringContaining("WORKFLOW_GRAPH_PROMPT_STORAGE_ID not set or non-numeric"),
+      "prompt-sync",
+      expect.any(Object),
+    );
+
+    mutableConfig.WORKFLOW_GRAPH_PROMPT_STORAGE_ID = original;
+  });
+
+  it("no-ops with warn when WORKFLOW_GRAPH_PROMPT_STORAGE_ID is non-numeric (e.g. 'abc')", async () => {
+    const mutableConfig = config as Record<string, unknown>;
+    const original = mutableConfig.WORKFLOW_GRAPH_PROMPT_STORAGE_ID;
+    mutableConfig.WORKFLOW_GRAPH_PROMPT_STORAGE_ID = "abc";
+
+    await sendPromptGraphRequest(PARAMS, "create");
+
+    expect(mockStakworkRequest).not.toHaveBeenCalled();
+    expect(vi.mocked(logger.warn)).toHaveBeenCalledWith(
+      expect.stringContaining("WORKFLOW_GRAPH_PROMPT_STORAGE_ID not set or non-numeric"),
+      "prompt-sync",
+      expect.any(Object),
+    );
+
+    mutableConfig.WORKFLOW_GRAPH_PROMPT_STORAGE_ID = original;
+  });
+
+  it("no-ops with warn when WORKFLOW_GRAPH_PROMPT_STORAGE_ID is 'NaN'", async () => {
+    const mutableConfig = config as Record<string, unknown>;
+    const original = mutableConfig.WORKFLOW_GRAPH_PROMPT_STORAGE_ID;
+    mutableConfig.WORKFLOW_GRAPH_PROMPT_STORAGE_ID = "NaN";
+
+    await sendPromptGraphRequest(PARAMS, "create");
+
+    expect(mockStakworkRequest).not.toHaveBeenCalled();
+    expect(vi.mocked(logger.warn)).toHaveBeenCalledWith(
+      expect.stringContaining("WORKFLOW_GRAPH_PROMPT_STORAGE_ID not set or non-numeric"),
+      "prompt-sync",
+      expect.any(Object),
+    );
+
+    mutableConfig.WORKFLOW_GRAPH_PROMPT_STORAGE_ID = original;
   });
 });
 
@@ -169,11 +229,7 @@ describe("recordPromptOnGraph (swallows errors via writePromptThrough create pat
 
   it("does not throw when sendPromptGraphRequest fails during prompt creation", async () => {
     // Make graph recorder fail
-    mockStakworkRequest
-      // First call: pushCreateToStakwork (Stakwork /prompts/ endpoint) — we need to simulate this succeeds
-      // Actually writePromptThrough uses fetch() for the Stakwork prompts push, not stakworkRequest.
-      // The graph recorder uses stakworkRequest. Make it fail.
-      .mockRejectedValueOnce(new Error("Graph recorder is down"));
+    mockStakworkRequest.mockRejectedValueOnce(new Error("Graph recorder is down"));
 
     const mockPrompt = {
       id: "prompt-new",
@@ -196,7 +252,6 @@ describe("recordPromptOnGraph (swallows errors via writePromptThrough create pat
     };
 
     mockDbTransaction.mockImplementationOnce(async (fn: (tx: unknown) => Promise<unknown>) => {
-      // Simulate transaction returning prompt + version
       const tx = {
         prompt: { create: vi.fn().mockResolvedValue(mockPrompt), update: vi.fn().mockResolvedValue(mockPrompt) },
         promptVersion: { create: vi.fn().mockResolvedValue(mockVersion) },
@@ -204,7 +259,6 @@ describe("recordPromptOnGraph (swallows errors via writePromptThrough create pat
       return fn(tx);
     });
 
-    // Mock the Stakwork /prompts/ push via fetch — use global fetch mock
     global.fetch = vi.fn().mockResolvedValueOnce({
       ok: true,
       json: async () => ({ data: { id: 42 } }),
@@ -218,6 +272,7 @@ describe("recordPromptOnGraph (swallows errors via writePromptThrough create pat
         name: "NEW_PROMPT",
         value: "val",
         userId: "user-1",
+        workspaceId: "workspace-1",
       }),
     ).resolves.not.toThrow();
   });
@@ -254,11 +309,11 @@ describe("recordPromptOnGraph (swallows errors via publishVersion)", () => {
     mockDbPromptFindUnique.mockResolvedValueOnce(mockPrompt);
     mockDbTransaction.mockResolvedValueOnce([undefined, undefined, undefined]);
 
-    // Graph recorder call (stakworkRequest) throws
+    // Graph recorder stakworkRequest throws
     mockStakworkRequest.mockRejectedValueOnce(new Error("Graph recorder exploded"));
 
     // Should NOT throw
-    await expect(publishVersion("prompt-1", "v2")).resolves.not.toThrow();
+    await expect(publishVersion("prompt-1", "v2", "workspace-1")).resolves.not.toThrow();
 
     // Verify the error was swallowed (logger.warn called)
     expect(vi.mocked(logger.warn)).toHaveBeenCalledWith(
@@ -391,7 +446,6 @@ describe("publishVersion — Stakwork push", () => {
         data: expect.objectContaining({ syncStatus: "OK", lastSyncedAt: expect.any(Date) }),
       }),
     );
-    // Should NOT have been called with PENDING
     const pendingCall = vi.mocked(mockDbPromptUpdate).mock.calls.find(
       ([args]) => args?.data?.syncStatus === "PENDING",
     );

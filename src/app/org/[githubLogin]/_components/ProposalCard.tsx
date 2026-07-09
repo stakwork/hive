@@ -1,13 +1,24 @@
 "use client";
 
 import React, { useMemo, useState } from "react";
-import { Check, X, ExternalLink, Loader2, Lightbulb, Info } from "lucide-react";
+import {
+  Check,
+  X,
+  ExternalLink,
+  Loader2,
+  Lightbulb,
+  Info,
+  FileDiff,
+} from "lucide-react";
+import { computeUnifiedDiff, type UnifiedDiff } from "@/lib/diff/unifiedLineDiff";
 import { Switch } from "@/components/ui/switch";
 import ReactMarkdown from "react-markdown";
 import {
   PROPOSE_FEATURE_TOOL,
   PROPOSE_INITIATIVE_TOOL,
   PROPOSE_MILESTONE_TOOL,
+  PROPOSE_NEW_PROMPT_TOOL,
+  PROPOSE_PROMPT_UPDATE_TOOL,
   getProposalStatus,
   type ApprovalIntent,
   type ProposalOutput,
@@ -100,9 +111,18 @@ export function ProposalCard({
       ? proposal.payload.name
       : proposal.kind === "milestone"
         ? proposal.payload.name
-        : proposal.payload.title;
+        : proposal.kind === "promptCreate"
+          ? proposal.payload.name
+          : proposal.kind === "promptUpdate"
+            ? (proposal.meta.promptName ?? proposal.payload.promptId)
+            : proposal.payload.title;
   const [editedTitle, setEditedTitle] = useState(initialTitle);
   const [isEditing, setIsEditing] = useState(false);
+  // Prompt proposals forward no inline-edit override (handleApprove sets
+  // payload = undefined for them), so an editable title would be a lie —
+  // the name/id shown is fixed. Only roadmap kinds get the click-to-edit.
+  const titleEditable =
+    proposal.kind !== "promptCreate" && proposal.kind !== "promptUpdate";
 
   // Feature-only: per-feature auto-respond toggle.
   // Initialized from the proposal payload (which is seeded from the
@@ -167,6 +187,11 @@ export function ProposalCard({
         ...(editedTitle !== initialTitle && { title: editedTitle }),
         autoRespond,
       } as Partial<FeatureProposalPayload>;
+    } else if (proposal.kind === "promptCreate" || proposal.kind === "promptUpdate") {
+      // Prompt proposals have no inline-edit overrides in v1 — the agent
+      // should propose well; the user's only action is approve/reject.
+      // No viewport / editedTitle / checkedFeatureIds logic applies.
+      payload = undefined;
     } else {
       const titleChanged = editedTitle !== initialTitle;
       const featuresChanged =
@@ -255,6 +280,14 @@ export function ProposalCard({
       return { text, deepLink: null as string | null, newTab: false };
     }
 
+    // Prompt approvals have no canvas deep-link — just a confirmation.
+    if (r.kind === "promptCreate") {
+      return { text: "Prompt created ✓", deepLink: null as string | null, newTab: false };
+    }
+    if (r.kind === "promptUpdate") {
+      return { text: "New draft version saved ✓", deepLink: null as string | null, newTab: false };
+    }
+
     // Initiative / milestone: keep existing behavior unchanged.
     const onCurrent = r.landedOn === currentRef;
     if (onCurrent) {
@@ -284,11 +317,15 @@ export function ProposalCard({
         <div className="min-w-0 flex-1">
           <div className="flex items-baseline gap-1.5 text-[10px] uppercase tracking-wide text-muted-foreground">
             <span className="font-medium">
-              Proposed {proposal.kind}
+              {proposal.kind === "promptCreate"
+                ? "Proposed New Prompt"
+                : proposal.kind === "promptUpdate"
+                  ? "Proposed Prompt Update"
+                  : `Proposed ${proposal.kind}`}
             </span>
           </div>
-          {/* Title — inline-editable on click while pending */}
-          {isPending && isEditing ? (
+          {/* Title — inline-editable on click while pending (roadmap kinds only) */}
+          {isPending && isEditing && titleEditable ? (
             <input
               type="text"
               value={editedTitle}
@@ -307,9 +344,9 @@ export function ProposalCard({
           ) : (
             <div
               className={`mt-0.5 break-words text-sm font-medium ${
-                isPending ? "cursor-text" : ""
+                isPending && titleEditable ? "cursor-text" : ""
               }`}
-              onClick={() => isPending && setIsEditing(true)}
+              onClick={() => isPending && titleEditable && setIsEditing(true)}
             >
               {editedTitle}
             </div>
@@ -330,6 +367,12 @@ export function ProposalCard({
               }
               isPending={isPending}
             />
+          )}
+          {proposal.kind === "promptCreate" && (
+            <PromptCreateMeta payload={proposal.payload} />
+          )}
+          {proposal.kind === "promptUpdate" && (
+            <PromptUpdateMeta meta={proposal.meta} />
           )}
           {proposal.rationale && (
             <div className="mt-1 text-xs text-muted-foreground italic">
@@ -455,14 +498,22 @@ function ProposalDetailsDialog({
       ? "Initiative"
       : proposal.kind === "milestone"
         ? "Milestone"
-        : "Feature";
+        : proposal.kind === "promptCreate"
+          ? "New Prompt"
+          : proposal.kind === "promptUpdate"
+            ? "Prompt Update"
+            : "Feature";
 
   const title =
     proposal.kind === "initiative"
       ? proposal.payload.name
       : proposal.kind === "milestone"
         ? proposal.payload.name
-        : proposal.payload.title;
+        : proposal.kind === "promptCreate"
+          ? proposal.payload.name
+          : proposal.kind === "promptUpdate"
+            ? (proposal.meta.promptName ?? proposal.payload.promptId)
+            : proposal.payload.title;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -491,6 +542,30 @@ function ProposalDetailsDialog({
                 <div className="text-xs text-muted-foreground italic">
                   {proposal.rationale}
                 </div>
+              </div>
+            )}
+
+            {/* Prompt create specific */}
+            {proposal.kind === "promptCreate" && proposal.payload.value && (
+              <div className="space-y-1">
+                <div className={SECTION_LABEL_CLASS}>Value</div>
+                <pre className="text-xs font-mono bg-muted/30 rounded p-2 whitespace-pre-wrap break-words overflow-x-auto">
+                  {proposal.payload.value}
+                </pre>
+              </div>
+            )}
+
+            {/* Prompt update specific */}
+            {proposal.kind === "promptUpdate" && (
+              <div className="space-y-1">
+                <div className={SECTION_LABEL_CLASS}>Description change</div>
+                {proposal.payload.description ? (
+                  <div className="text-xs text-muted-foreground">
+                    {proposal.payload.description}
+                  </div>
+                ) : (
+                  <div className="text-xs text-muted-foreground italic">No description change</div>
+                )}
               </div>
             )}
 
@@ -682,6 +757,10 @@ export function proposalHasDetails(p: ProposalOutput): boolean {
       p.payload.startDate ||
       p.payload.targetDate
     );
+  if (p.kind === "promptCreate")
+    return !!(p.payload.description);
+  if (p.kind === "promptUpdate")
+    return !!(p.payload.description);
   // milestone
   return !!(p.payload.description || p.payload.status || p.payload.dueDate);
 }
@@ -824,6 +903,182 @@ function FeatureMeta({
   );
 }
 
+function PromptCreateMeta({
+  payload,
+}: {
+  payload: { name: string; value: string; description?: string };
+}) {
+  return (
+    <div className="mt-0.5">
+      {payload.description && (
+        <div className="text-[11px] text-muted-foreground truncate">
+          {payload.description}
+        </div>
+      )}
+      <div className="mt-1 text-[11px] text-muted-foreground">
+        {payload.value.length} chars
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Compact summary line for a prompt-update proposal: version tag + a
+ * +adds/−dels stat, and a "View changes" button that opens the diff modal.
+ * The inline card intentionally shows NO diff body — a large prompt with a
+ * one-line edit should render as one line here, not two walls of text.
+ */
+function PromptUpdateMeta({
+  meta,
+}: {
+  meta: {
+    oldStr: string;
+    newStr: string;
+    promptName?: string;
+    versionNumber?: number;
+  };
+}) {
+  const [open, setOpen] = useState(false);
+  const diff = useMemo(
+    () => computeUnifiedDiff(meta.oldStr, meta.newStr),
+    [meta.oldStr, meta.newStr],
+  );
+
+  // value unchanged → description-only update (mcpUpdatePrompt requires the
+  // full value even for a description tweak, so oldStr === newStr here).
+  const textUnchanged = diff.unchanged;
+
+  return (
+    <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-muted-foreground">
+      {meta.versionNumber != null && (
+        <span className="font-mono">v{meta.versionNumber}</span>
+      )}
+      {textUnchanged ? (
+        <span className="italic">No prompt-text change</span>
+      ) : (
+        <>
+          <span className="font-mono">
+            <span className="text-emerald-600 dark:text-emerald-400">
+              +{diff.added}
+            </span>{" "}
+            <span className="text-rose-600 dark:text-rose-400">
+              −{diff.removed}
+            </span>
+          </span>
+          <button
+            type="button"
+            onClick={() => setOpen(true)}
+            className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-foreground/80 transition-colors hover:bg-muted/60 hover:text-foreground"
+          >
+            <FileDiff className="h-3 w-3" />
+            View changes
+          </button>
+          <PromptDiffDialog
+            open={open}
+            onOpenChange={setOpen}
+            promptName={meta.promptName}
+            versionNumber={meta.versionNumber}
+            diff={diff}
+          />
+        </>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Modal showing ONLY the changed hunks of a prompt update (a few lines of
+ * context around each edit, long unchanged runs collapsed) — GitHub-style
+ * unified diff, monospace, no diff library.
+ */
+function PromptDiffDialog({
+  open,
+  onOpenChange,
+  promptName,
+  versionNumber,
+  diff,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  promptName?: string;
+  versionNumber?: number;
+  diff: UnifiedDiff;
+}) {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-3xl">
+        <DialogHeader className="min-w-0">
+          <div className={SECTION_LABEL_CLASS}>Prompt changes</div>
+          <DialogTitle className="text-base min-w-0 break-words [overflow-wrap:anywhere]">
+            {promptName ?? "Prompt update"}
+            {versionNumber != null && (
+              <span className="ml-2 font-mono text-xs font-normal text-muted-foreground">
+                v{versionNumber}
+              </span>
+            )}
+          </DialogTitle>
+          <div className="mt-0.5 font-mono text-xs">
+            <span className="text-emerald-600 dark:text-emerald-400">
+              +{diff.added}
+            </span>{" "}
+            <span className="text-rose-600 dark:text-rose-400">
+              −{diff.removed}
+            </span>
+          </div>
+        </DialogHeader>
+
+        <ScrollArea className="max-h-[65vh] min-w-0">
+          <UnifiedDiffView diff={diff} />
+        </ScrollArea>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/** Renders a {@link UnifiedDiff} as red/green rows with collapsed gaps. */
+function UnifiedDiffView({ diff }: { diff: UnifiedDiff }) {
+  if (diff.unchanged || diff.hunks.length === 0) {
+    return (
+      <div className="px-1 py-2 text-xs text-muted-foreground italic">
+        No prompt-text changes.
+      </div>
+    );
+  }
+  return (
+    <div className="overflow-hidden rounded border font-mono text-[11px] leading-relaxed">
+      {diff.hunks.map((hunk, hi) => (
+        <React.Fragment key={hi}>
+          {hunk.gapBefore > 0 && (
+            <div className="bg-muted/40 px-3 py-0.5 text-[10px] text-muted-foreground">
+              ⋯ {hunk.gapBefore} unchanged line{hunk.gapBefore === 1 ? "" : "s"}
+            </div>
+          )}
+          {hunk.rows.map((row, ri) => {
+            const sign =
+              row.type === "add" ? "+" : row.type === "del" ? "−" : " ";
+            const rowClass =
+              row.type === "add"
+                ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
+                : row.type === "del"
+                  ? "bg-rose-500/10 text-rose-700 dark:text-rose-300"
+                  : "text-muted-foreground";
+            return (
+              <div key={ri} className={`flex ${rowClass}`}>
+                <span className="w-4 flex-shrink-0 select-none px-1 text-center opacity-60">
+                  {sign}
+                </span>
+                <pre className="min-w-0 flex-1 whitespace-pre-wrap break-words py-0.5 pr-2">
+                  {row.text === "" ? " " : row.text}
+                </pre>
+              </div>
+            );
+          })}
+        </React.Fragment>
+      ))}
+    </div>
+  );
+}
+
 function shortId(id: string): string {
   return id.length > 8 ? id.slice(-6) : id;
 }
@@ -854,7 +1109,9 @@ export function getProposalsFromMessage(
     if (
       tc.toolName !== PROPOSE_INITIATIVE_TOOL &&
       tc.toolName !== PROPOSE_FEATURE_TOOL &&
-      tc.toolName !== PROPOSE_MILESTONE_TOOL
+      tc.toolName !== PROPOSE_MILESTONE_TOOL &&
+      tc.toolName !== PROPOSE_NEW_PROMPT_TOOL &&
+      tc.toolName !== PROPOSE_PROMPT_UPDATE_TOOL
     )
       continue;
     const o = tc.output;

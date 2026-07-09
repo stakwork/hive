@@ -41,6 +41,18 @@
  * heavy canvas-drawing / connection / research-doc instructions only
  * cost tokens on the rarer turns that actually need them.
  *
+ * ## Org-gated capabilities
+ *
+ * A capability may carry an async `orgGate`. Gated capabilities are
+ * composed (tools + prompt snippet + menu) ONLY for orgs the gate
+ * approves; every other org's agent never sees the tools or even learns
+ * they exist. Today only `prompts` is gated — the shared prompt library is
+ * globally scoped (the `Prompt` model has no org FK), so its read/propose
+ * tools are restricted to the Stakwork source-control org (see
+ * `capabilityGates.ts`). The gate is applied by the async
+ * `resolveOrgCapabilities`; gated capabilities must never appear in an
+ * `includes` list (the sync resolver can't run the gate).
+ *
  * The five capabilities:
  *   - `roadmap` (CORE) — propose/organize roadmap structure
  *     (initiatives/milestones/features) + `read_canvas`. Folds in the
@@ -67,6 +79,8 @@ import {
 import { buildGraphWalkerTools } from "@/lib/ai/graphWalkerTools";
 import { buildInfraTools } from "@/lib/ai/infraTools";
 import { buildInitiativeTools } from "@/lib/ai/initiativeTools";
+import { buildPromptTools } from "@/lib/ai/promptTools";
+import { isPromptsCapabilityEnabledForOrg } from "@/lib/ai/capabilityGates";
 import {
   buildResearchTools,
   type CapturedSearchResult,
@@ -76,12 +90,15 @@ import {
   PROPOSE_FEATURE_TOOL,
   PROPOSE_INITIATIVE_TOOL,
   PROPOSE_MILESTONE_TOOL,
+  PROPOSE_NEW_PROMPT_TOOL,
+  PROPOSE_PROMPT_UPDATE_TOOL,
 } from "@/lib/proposals/types";
 import {
   getConnectionsCapabilitySnippet,
   getGraphWalkerCapabilitySnippet,
   getInfraCapabilitySnippet,
   getPlannerCapabilitySnippet,
+  getPromptsCapabilitySnippet,
   getResearchCapabilitySnippet,
   getRoadmapCapabilitySnippet,
   getWhiteboardCapabilitySnippet,
@@ -94,7 +111,8 @@ export type OrgCapability =
   | "research"
   | "connections"
   | "graph_walker"
-  | "infra";
+  | "infra"
+  | "prompts";
 
 /**
  * Everything a capability's `buildTools` may need. Mirrors the
@@ -148,8 +166,24 @@ interface CapabilityDefinition {
    * Capabilities this one implies. Expanded (transitively) by
    * `resolveCapabilities`, so selecting `roadmap` also pulls in
    * `whiteboard` + `research` + `connections` without listing them.
+   *
+   * NOTE: a capability carrying an `orgGate` MUST NOT appear in any
+   * `includes` list. `includes` is expanded by the sync `resolveCapabilities`
+   * (used inside the sync `compose*` helpers), which cannot run an async
+   * gate — so an implied gated capability would slip past the gate. Gated
+   * capabilities are only ever reached by explicit selection, then filtered
+   * by the async `resolveOrgCapabilities`.
    */
   includes?: readonly OrgCapability[];
+  /**
+   * Optional async org-level access gate. When present, the capability is
+   * composed (tools + prompt snippet + menu) ONLY for orgs where this
+   * resolves `true`; every other org never sees it. Absent → available to
+   * every org (the default). Applied by `resolveOrgCapabilities`; the sync
+   * `resolveCapabilities` ignores it (see the `includes` caveat above).
+   * Today only `prompts` is gated (to the Stakwork source-control org).
+   */
+  orgGate?: (orgId: string | undefined) => Promise<boolean>;
 }
 
 function pickTools(tools: ToolSet, names: readonly string[]): ToolSet {
@@ -191,6 +225,7 @@ export const ALL_CAPABILITIES: readonly OrgCapability[] = [
   "connections",
   "graph_walker",
   "infra",
+  "prompts",
 ];
 
 export const CAPABILITY_REGISTRY: Record<OrgCapability, CapabilityDefinition> =
@@ -226,7 +261,10 @@ export const CAPABILITY_REGISTRY: Record<OrgCapability, CapabilityDefinition> =
       ],
       // Pull the loadable set in so their tools are registered and the
       // learn_capability menu lists them whenever roadmap is selected
-      // (the org canvas surface always carried all of these).
+      // (the org canvas surface always carried all of these). `prompts` is
+      // deliberately NOT included: it's org-gated (see its `orgGate`), and
+      // `includes` is expanded by the sync resolver which can't run the
+      // gate — so it must stay explicitly-selected-only.
       includes: ["whiteboard", "research", "connections", "graph_walker", "infra"],
     },
     planner: {
@@ -322,6 +360,22 @@ export const CAPABILITY_REGISTRY: Record<OrgCapability, CapabilityDefinition> =
         "workspace's pod/Docker/build setup.",
       writeToolNames: [],
     },
+    prompts: {
+      buildTools: (ctx) => buildPromptTools(ctx.userId),
+      promptSnippet: getPromptsCapabilitySnippet,
+      core: false,
+      menuBlurb:
+        "**prompts** — read and propose changes to shared prompts in the Hive prompt library: " +
+        "`get_prompt` / `list_prompts` (read, no approval) and `propose_new_prompt` / " +
+        "`propose_prompt_update` (write via human approval). Load when the user asks about " +
+        "prompts, wants to view or update a prompt, or needs to create a new one.",
+      writeToolNames: [PROPOSE_NEW_PROMPT_TOOL, PROPOSE_PROMPT_UPDATE_TOOL],
+      // Org-gated: the shared prompt library is globally scoped (no org FK),
+      // so its read + propose tools are composed ONLY for allow-listed orgs
+      // (default: Stakwork). Every other org's agent never sees the tools,
+      // the menu entry, or the prompt content. See `capabilityGates.ts`.
+      orgGate: isPromptsCapabilityEnabledForOrg,
+    },
   };
 
 /**
@@ -341,6 +395,35 @@ export function resolveCapabilities(
   };
   selected.forEach(visit);
   return ALL_CAPABILITIES.filter((cap) => resolved.has(cap));
+}
+
+/**
+ * `resolveCapabilities` + per-capability `orgGate` filtering — the async,
+ * org-aware entry point `runCanvasAgent` uses to pick the final capability
+ * set for a turn.
+ *
+ * Expands `includes`, then drops any resolved capability whose `orgGate`
+ * denies this `orgId` (e.g. `prompts` outside the Stakwork org). Ungated
+ * capabilities always survive. The result feeds the sync `compose*`
+ * helpers; because gated capabilities never appear in any `includes`, the
+ * helpers' internal re-resolution can't re-introduce a filtered-out gated
+ * capability.
+ *
+ * Gates run in parallel; a gate that throws is treated as a denial by the
+ * gate implementation (see `capabilityGates.ts`), so this never rejects.
+ */
+export async function resolveOrgCapabilities(
+  selected: readonly OrgCapability[],
+  orgId: string | undefined,
+): Promise<OrgCapability[]> {
+  const resolved = resolveCapabilities(selected);
+  const allowed = await Promise.all(
+    resolved.map(async (cap) => {
+      const gate = CAPABILITY_REGISTRY[cap].orgGate;
+      return gate ? await gate(orgId) : true;
+    }),
+  );
+  return resolved.filter((_cap, i) => allowed[i]);
 }
 
 /** Loadable (non-core) capabilities within a resolved selection. */

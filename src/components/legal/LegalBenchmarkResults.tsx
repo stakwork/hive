@@ -1,11 +1,11 @@
 "use client";
 
 import React from "react";
-import { Loader2, AlertCircle, Copy, Download, RefreshCw, ExternalLink } from "lucide-react";
+import { Loader2, AlertCircle, Copy, Download, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useLegalBenchmarkRun } from "@/hooks/useLegalBenchmarkRun";
-import type { RubricScore } from "@/types/legal";
+import { StakworkRunLink } from "@/components/legal/StakworkRunLink";
 
 interface LegalBenchmarkResultsProps {
   runId: string;
@@ -23,20 +23,6 @@ function SpinnerMessage({ message }: { message: string }) {
 }
 
 export function LegalBenchmarkResults({ runId, onReset, isSuperAdmin = false }: LegalBenchmarkResultsProps) {
-  function StakworkRunLink({ projectId }: { projectId: number | null | undefined }) {
-    if (!isSuperAdmin || projectId == null) return null;
-    return (
-      <a
-        href={`https://jobs.stakwork.com/admin/projects/${projectId}`}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground"
-      >
-        <ExternalLink className="h-3.5 w-3.5" />
-        View on Stakwork
-      </a>
-    );
-  }
   const { run, isLoading, isStale, refetch } = useLegalBenchmarkRun(runId);
 
   const handleCopy = () => {
@@ -85,17 +71,7 @@ export function LegalBenchmarkResults({ runId, onReset, isSuperAdmin = false }: 
       <div className="mt-6 rounded-lg border bg-card p-4">
         {renderStaleWarning()}
         <SpinnerMessage message="Running task… (document ingestion & analysis)" />
-        <StakworkRunLink projectId={run.runnerRun.projectId} />
-      </div>
-    );
-  }
-
-  if (run.status === "scoring") {
-    return (
-      <div className="mt-6 rounded-lg border bg-card p-4">
-        {renderStaleWarning()}
-        <SpinnerMessage message="Scoring output against rubric…" />
-        <StakworkRunLink projectId={run.scorerRun?.projectId} />
+        <StakworkRunLink projectId={run.runnerRun.projectId} isSuperAdmin={isSuperAdmin} />
       </div>
     );
   }
@@ -120,13 +96,11 @@ export function LegalBenchmarkResults({ runId, onReset, isSuperAdmin = false }: 
   }
 
   if (run.status === "complete") {
-    let scores: RubricScore[] = [];
-    try {
-      scores = run.scoreJson ? JSON.parse(run.scoreJson) : [];
-    } catch {
-      scores = [];
-    }
-    const passCount = scores.filter((s) => s.pass).length;
+    const result = run.runnerRun.result;
+    const nPassed = result?.n_passed;
+    const nTotal = result?.n_total;
+    const allPass = result?.all_pass;
+    const hasScore = typeof allPass === "boolean";
 
     return (
       <div className="mt-6 space-y-6">
@@ -154,51 +128,32 @@ export function LegalBenchmarkResults({ runId, onReset, isSuperAdmin = false }: 
           </div>
         </div>
 
-        {/* Rubric scores section */}
+        {/* Aggregate score summary */}
         <div className="rounded-lg border bg-card">
           <div className="px-4 py-3 border-b">
-            <h3 className="font-semibold text-sm">Rubric Scores</h3>
+            <h3 className="font-semibold text-sm">Score Summary</h3>
           </div>
-          {scores.length > 0 ? (
-            <>
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b bg-muted/50">
-                      <th className="text-left px-4 py-2 font-medium text-muted-foreground">Criterion</th>
-                      <th className="text-left px-4 py-2 font-medium text-muted-foreground w-24">Result</th>
-                      <th className="text-left px-4 py-2 font-medium text-muted-foreground">Notes</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {scores.map((score, i) => (
-                      <tr key={i} className="border-b last:border-0">
-                        <td className="px-4 py-3">{score.criterion}</td>
-                        <td className="px-4 py-3">
-                          <Badge
-                            variant="outline"
-                            className={
-                              score.pass
-                                ? "border-0 bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300"
-                                : "border-0 bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300"
-                            }
-                          >
-                            {score.pass ? "PASS" : "FAIL"}
-                          </Badge>
-                        </td>
-                        <td className="px-4 py-3 text-muted-foreground">{score.notes}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-              <div className="px-4 py-3 border-t text-sm text-muted-foreground">
-                <span className="font-medium text-foreground">{passCount} / {scores.length}</span> criteria passed
-              </div>
-            </>
+          {hasScore ? (
+            <div className="px-4 py-4 flex items-center gap-4">
+              {nPassed !== undefined && nTotal !== undefined && (
+                <span className="text-sm font-medium">
+                  {nPassed}/{nTotal} criteria passed
+                </span>
+              )}
+              <Badge
+                variant="outline"
+                className={
+                  allPass
+                    ? "border-0 bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300"
+                    : "border-0 bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300"
+                }
+              >
+                {allPass ? "PASS" : "FAIL"}
+              </Badge>
+            </div>
           ) : (
             <div className="px-4 py-6 text-center text-sm text-muted-foreground">
-              No rubric scores available.
+              No score available.
             </div>
           )}
         </div>

@@ -5,7 +5,8 @@ import { db } from "@/lib/db";
 import { isDevelopmentMode } from "@/lib/runtime";
 import { writePromptThrough, deletePrompt } from "@/services/prompts/prompt-sync";
 import { BIFROST_AGENT_NAMES } from "@/services/bifrost/agent-names";
-import { validateApiToken } from "@/lib/auth/api-token";
+import { validateApiToken, API_TOKEN_ACTOR } from "@/lib/auth/api-token";
+import { checkRateLimit, getClientIp } from "@/lib/rate-limit";
 
 export const runtime = "nodejs";
 export const fetchCache = "force-no-store";
@@ -29,7 +30,7 @@ async function getAuthenticatedUserId(
 async function requireWriteAccess(
   userId: string,
   devMode: boolean,
-): Promise<NextResponse | null> {
+): Promise<NextResponse | { workspaceId: string } | null> {
   if (devMode) return null;
   const workspace = await db.workspace.findFirst({
     where: {
@@ -43,7 +44,7 @@ async function requireWriteAccess(
       { status: 403 },
     );
   }
-  return null;
+  return { workspaceId: workspace.id };
 }
 
 // ─── Shape helper ─────────────────────────────────────────────────────────────
@@ -149,13 +150,33 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
-    const devMode = isDevelopmentMode();
-    const authResult = await getAuthenticatedUserId(devMode);
-    if (authResult instanceof NextResponse) return authResult;
-    const { userId } = authResult;
+    let actor: string;
+    let workspaceId: string | undefined;
 
-    const denied = await requireWriteAccess(userId, devMode);
-    if (denied) return denied;
+    const isApiToken = validateApiToken(request);
+    if (isApiToken) {
+      const ip = getClientIp(request);
+      const rl = await checkRateLimit(`prompts:api-token:${ip}`, 30, 60);
+      if (!rl.allowed) {
+        return new NextResponse(JSON.stringify({ error: "Too many requests" }), {
+          status: 429,
+          headers: { "Retry-After": String(rl.retryAfter ?? 60), "Content-Type": "application/json" },
+        });
+      }
+      const workspace = await db.workspace.findFirst({ where: { slug: "stakwork" } });
+      workspaceId = workspace?.id;
+      actor = API_TOKEN_ACTOR;
+    } else {
+      const devMode = isDevelopmentMode();
+      const authResult = await getAuthenticatedUserId(devMode);
+      if (authResult instanceof NextResponse) return authResult;
+      const { userId } = authResult;
+
+      const accessResult = await requireWriteAccess(userId, devMode);
+      if (accessResult instanceof NextResponse) return accessResult;
+      workspaceId = accessResult?.workspaceId;
+      actor = userId;
+    }
 
     const { id } = await params;
     if (!id) {
@@ -191,7 +212,8 @@ export async function PUT(
       value,
       description,
       agentNames: normalizedAgentNames,
-      userId,
+      userId: actor,
+      workspaceId,
     });
 
     // Refetch with versions (ordered desc) so shapePromptDetail can expose current_version_id = latest draft.
@@ -226,19 +248,34 @@ export async function PUT(
 // Lightweight update for Prompt-level metadata that is NOT versioned (agent
 // names). Unlike PUT, this never creates a new draft version and never touches
 // the publish lifecycle — it writes directly to the Prompt row.
+// Note: token-authenticated PATCH is fully unattributed (no PromptVersion,
+// no whodunnit), which is accepted per the feature gap documented in the brief.
 
 export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
-    const devMode = isDevelopmentMode();
-    const authResult = await getAuthenticatedUserId(devMode);
-    if (authResult instanceof NextResponse) return authResult;
-    const { userId } = authResult;
+    const isApiToken = validateApiToken(request);
+    if (isApiToken) {
+      const ip = getClientIp(request);
+      const rl = await checkRateLimit(`prompts:api-token:${ip}`, 30, 60);
+      if (!rl.allowed) {
+        return new NextResponse(JSON.stringify({ error: "Too many requests" }), {
+          status: 429,
+          headers: { "Retry-After": String(rl.retryAfter ?? 60), "Content-Type": "application/json" },
+        });
+      }
+      // Token path: no session check needed — fall through to the body/DB logic below.
+    } else {
+      const devMode = isDevelopmentMode();
+      const authResult = await getAuthenticatedUserId(devMode);
+      if (authResult instanceof NextResponse) return authResult;
+      const { userId } = authResult;
 
-    const denied = await requireWriteAccess(userId, devMode);
-    if (denied) return denied;
+      const accessResult = await requireWriteAccess(userId, devMode);
+      if (accessResult instanceof NextResponse) return accessResult;
+    }
 
     const { id } = await params;
     if (!id) {
@@ -300,8 +337,8 @@ export async function DELETE(
     if (authResult instanceof NextResponse) return authResult;
     const { userId } = authResult;
 
-    const denied = await requireWriteAccess(userId, devMode);
-    if (denied) return denied;
+    const accessResult = await requireWriteAccess(userId, devMode);
+    if (accessResult instanceof NextResponse) return accessResult;
 
     const { id } = await params;
     if (!id) {
