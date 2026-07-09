@@ -10,6 +10,15 @@
  * The `Prompt` model is globally scoped (no org/workspace FK), so the builder
  * takes only `userId` — no `orgId` param. The MCP write fns resolve the shared
  * Stakwork workspace internally; the approval handler guards membership.
+ *
+ * Because the library is global, exposure is gated at TWO layers:
+ *   1. Composition (primary): the `prompts` capability carries an `orgGate`
+ *      (see `capabilities.ts` / `capabilityGates.ts`), so these tools — and
+ *      the prompt content they surface — are only ever built for the
+ *      allow-listed org(s) (default: Stakwork). Every other org's agent
+ *      never sees the read/propose tools at all.
+ *   2. Approval (defense-in-depth): the write path re-checks Stakwork
+ *      workspace membership before persisting (see `handleApproval.ts`).
  */
 
 import { tool, type ToolSet } from "ai";
