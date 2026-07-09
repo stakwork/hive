@@ -77,16 +77,6 @@ export function LegalBenchmarkResults({ runId, onReset, isSuperAdmin = false }: 
     );
   }
 
-  if (run.status === "scoring") {
-    return (
-      <div className="mt-6 rounded-lg border bg-card p-4">
-        {renderStaleWarning()}
-        <SpinnerMessage message="Scoring output against rubric…" />
-        <StakworkRunLink projectId={run.scorerRun?.projectId} isSuperAdmin={isSuperAdmin} />
-      </div>
-    );
-  }
-
   if (run.status === "failed") {
     return (
       <div className="mt-6 rounded-lg border border-destructive/40 bg-destructive/5 p-6">
