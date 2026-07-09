@@ -8,7 +8,8 @@
  *  - Security: missing/invalid token → 500
  *  - Security: workspace mismatch → 500
  *  - SSRF: disallowed output_s3_url → 500 (service throws)
- *  - Result merge does not clobber correlation fields
+ *  - Flat score fields are normalized into result
+ *  - Scorer drain: LEGAL_BENCHMARK_SCORER webhook terminates cleanly without dispatch
  *  - Non-legal-benchmark types are NOT normalized
  */
 
@@ -78,6 +79,29 @@ function makeScorerRequest(
   });
 }
 
+/** Runner webhook body with full inline score fields (workflow 57179 output shape) */
+function makeRunnerWithScoreRequest(
+  runId = "runner-1",
+  workspaceId = "ws-1",
+  runToken = "valid-token",
+) {
+  return makeWebhookRequest("LEGAL_BENCHMARK_RUNNER", runId, workspaceId, runToken, {
+    final_output: "runner output text",
+    output_s3_url:
+      "https://stakwork-uploads.s3.us-east-1.amazonaws.com/output/runner-result.txt",
+    score: 72,
+    max_score: 74,
+    n_passed: 72,
+    n_total: 74,
+    pass_rate: 0.973,
+    all_pass: true,
+    scores_s3_url: "https://stakwork-uploads.s3.us-east-1.amazonaws.com/scores/breakdown.json",
+    judge_model: "claude-3-5-sonnet",
+    project_status: "complete",
+    project_id: 9999,
+  });
+}
+
 // ─── Tests ────────────────────────────────────────────────────────────────────
 
 describe("POST /api/webhook/stakwork/response — LEGAL_BENCHMARK flat payload normalization", () => {
@@ -113,6 +137,36 @@ describe("POST /api/webhook/stakwork/response — LEGAL_BENCHMARK flat payload n
     // Harvey keys must NOT appear at the top level after normalization
     expect(webhookData).not.toHaveProperty("final_output");
     expect(webhookData).not.toHaveProperty("output_s3_url");
+  });
+
+  test("runner: flat score fields (n_passed, n_total, all_pass, etc.) are normalized into result", async () => {
+    const capturedCalls: Array<{ webhookData: unknown }> = [];
+    mockProcessStakworkRunWebhook.mockImplementation(async (webhookData: unknown) => {
+      capturedCalls.push({ webhookData });
+      return { runId: "runner-1", status: "COMPLETED", dataType: "string" };
+    });
+
+    await postWebhook(makeRunnerWithScoreRequest());
+
+    expect(capturedCalls).toHaveLength(1);
+    const { webhookData } = capturedCalls[0] as {
+      webhookData: { result: Record<string, unknown> };
+    };
+    // All score fields must be nested under result
+    expect(webhookData.result).toMatchObject({
+      score: 72,
+      max_score: 74,
+      n_passed: 72,
+      n_total: 74,
+      pass_rate: 0.973,
+      all_pass: true,
+      scores_s3_url: "https://stakwork-uploads.s3.us-east-1.amazonaws.com/scores/breakdown.json",
+      judge_model: "claude-3-5-sonnet",
+    });
+    // Score fields must NOT appear at the top level
+    expect(webhookData).not.toHaveProperty("n_passed");
+    expect(webhookData).not.toHaveProperty("all_pass");
+    expect(webhookData).not.toHaveProperty("judge_model");
   });
 
   test("scorer: flat Harvey payload is normalized — result contains scores", async () => {
@@ -219,6 +273,47 @@ describe("POST /api/webhook/stakwork/response — LEGAL_BENCHMARK flat payload n
     const body = await res.json();
     expect(body.success).toBe(true);
     expect(body.runId).toBe("runner-1");
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Scorer drain: LEGAL_BENCHMARK_SCORER webhook terminates cleanly
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("POST /api/webhook/stakwork/response — scorer drain (legacy rows)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  test("LEGAL_BENCHMARK_SCORER webhook is accepted and returns 200 (drain path)", async () => {
+    mockProcessStakworkRunWebhook.mockResolvedValue({
+      runId: "scorer-legacy",
+      status: "COMPLETED",
+      dataType: "string",
+    });
+
+    const res = await postWebhook(makeScorerRequest("scorer-legacy", "ws-1", "valid-token"));
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.success).toBe(true);
+    expect(body.runId).toBe("scorer-legacy");
+  });
+
+  test("scorer webhook: service receives normalized payload with scores in result", async () => {
+    const capturedCalls: Array<{ webhookData: unknown }> = [];
+    mockProcessStakworkRunWebhook.mockImplementation(async (webhookData: unknown) => {
+      capturedCalls.push({ webhookData });
+      return { runId: "scorer-1", status: "COMPLETED", dataType: "string" };
+    });
+
+    await postWebhook(makeScorerRequest());
+
+    const { webhookData } = capturedCalls[0] as {
+      webhookData: { result: Record<string, unknown> };
+    };
+    // Scores are in result, not at top level
+    expect(webhookData.result).toHaveProperty("scores");
+    expect(webhookData).not.toHaveProperty("scores");
   });
 });
 
@@ -369,5 +464,31 @@ describe("POST /api/webhook/stakwork/response — payload reaches service correc
     };
     expect(webhookData.result).toHaveProperty("scores");
     expect(webhookData).not.toHaveProperty("scores");
+  });
+
+  test("full runner+score payload: all fields correctly placed in result", async () => {
+    const capturedCalls: Array<{ webhookData: unknown }> = [];
+    mockProcessStakworkRunWebhook.mockImplementation(async (webhookData: unknown) => {
+      capturedCalls.push({ webhookData });
+      return { runId: "runner-1", status: "COMPLETED", dataType: "string" };
+    });
+
+    await postWebhook(makeRunnerWithScoreRequest());
+
+    const { webhookData } = capturedCalls[0] as {
+      webhookData: Record<string, unknown> & { result: Record<string, unknown> };
+    };
+    // project_status / project_id at top level
+    expect(webhookData.project_status).toBe("complete");
+    expect(webhookData.project_id).toBe(9999);
+    // All harvest fields nested under result
+    expect(webhookData.result.final_output).toBe("runner output text");
+    expect(webhookData.result.n_passed).toBe(72);
+    expect(webhookData.result.all_pass).toBe(true);
+    expect(webhookData.result.judge_model).toBe("claude-3-5-sonnet");
+    // Top level must not contain score fields
+    expect(webhookData).not.toHaveProperty("n_passed");
+    expect(webhookData).not.toHaveProperty("all_pass");
+    expect(webhookData).not.toHaveProperty("judge_model");
   });
 });

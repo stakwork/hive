@@ -20,7 +20,10 @@ const makeRow = (overrides: Partial<{
   result: JSON.stringify({
     taskSlug: "antitrust/task-1",
     taskTitle: "Analyze Antitrust Strategy",
-    siblingRunId: "scorer-abc",
+    n_passed: 72,
+    n_total: 74,
+    all_pass: true,
+    pass_rate: 0.97,
   }),
   createdAt: new Date("2025-01-01T10:00:00Z").toISOString(),
   updatedAt: new Date("2025-01-01T10:05:00Z").toISOString(),
@@ -90,6 +93,55 @@ describe("useLegalBenchmarkRunList", () => {
     expect(row.projectId).toBe(42);
   });
 
+  it("mapper carries flat score fields: n_passed, n_total, all_pass", async () => {
+    mockFetchOk([makeRow()]);
+
+    const { result } = renderHook(() => useLegalBenchmarkRunList("ws-cuid-123"));
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    const row = result.current.runs[0];
+    expect(row.n_passed).toBe(72);
+    expect(row.n_total).toBe(74);
+    expect(row.all_pass).toBe(true);
+  });
+
+  it("score fields are undefined for rows without score data (pre-collapse history)", async () => {
+    mockFetchOk([
+      makeRow({
+        result: JSON.stringify({ taskSlug: "antitrust/task-1", taskTitle: "Old Task" }),
+      }),
+    ]);
+
+    const { result } = renderHook(() => useLegalBenchmarkRunList("ws-cuid-123"));
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    const row = result.current.runs[0];
+    expect(row.n_passed).toBeUndefined();
+    expect(row.n_total).toBeUndefined();
+    expect(row.all_pass).toBeUndefined();
+  });
+
+  it("score field all_pass=false is preserved (not conflated with undefined)", async () => {
+    mockFetchOk([
+      makeRow({
+        result: JSON.stringify({
+          taskSlug: "antitrust/task-1",
+          taskTitle: "Failing Task",
+          n_passed: 10,
+          n_total: 20,
+          all_pass: false,
+        }),
+      }),
+    ]);
+
+    const { result } = renderHook(() => useLegalBenchmarkRunList("ws-cuid-123"));
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    const row = result.current.runs[0];
+    expect(row.all_pass).toBe(false);
+    expect(typeof row.all_pass).toBe("boolean");
+  });
+
   it("exposes total from API response", async () => {
     mockFetchOk([makeRow()], 150);
 
@@ -140,7 +192,7 @@ describe("useLegalBenchmarkRunList", () => {
     expect(vi.mocked(global.fetch).mock.calls.length).toBe(callsAfterInit);
   });
 
-  it("polls every 15 s while a run is IN_PROGRESS (dual equality guard, not always-truthy form)", async () => {
+  it("polls every 15 s while a run is IN_PROGRESS", async () => {
     vi.useFakeTimers();
     mockFetchOk([makeRow({ status: "IN_PROGRESS" })]);
 
@@ -160,7 +212,7 @@ describe("useLegalBenchmarkRunList", () => {
     expect(vi.mocked(global.fetch).mock.calls.length).toBeGreaterThan(callsAfterInit);
   });
 
-  it("polls every 15 s while a run is PENDING (dual equality guard)", async () => {
+  it("polls every 15 s while a run is PENDING", async () => {
     vi.useFakeTimers();
     mockFetchOk([makeRow({ status: "PENDING" })]);
 
@@ -180,7 +232,7 @@ describe("useLegalBenchmarkRunList", () => {
     expect(vi.mocked(global.fetch).mock.calls.length).toBeGreaterThan(callsAfterInit);
   });
 
-  it("pauses polling when setExpandedId is called with a non-null id", async () => {
+  it("continues polling while a row is expanded when active runs remain", async () => {
     vi.useFakeTimers();
     mockFetchOk([makeRow({ status: "IN_PROGRESS" })]);
 
@@ -189,18 +241,50 @@ describe("useLegalBenchmarkRunList", () => {
     await act(async () => { await Promise.resolve(); });
     await act(async () => { await Promise.resolve(); });
 
-    const callsAfterInit = vi.mocked(global.fetch).mock.calls.length;
+    expect(result.current.isLoading).toBe(false);
 
-    // Expand a row → polling must pause
+    // Expand a row — polling must continue since run is still active
     act(() => { result.current.setExpandedId("runner-abc"); });
 
+    const callsAfterExpand = vi.mocked(global.fetch).mock.calls.length;
+
     await act(async () => {
-      vi.advanceTimersByTime(30_000);
+      vi.advanceTimersByTime(15_000);
       await Promise.resolve();
     });
 
-    // No additional fetches while row is expanded
-    expect(vi.mocked(global.fetch).mock.calls.length).toBe(callsAfterInit);
+    // Additional fetches happened even while expanded
+    expect(vi.mocked(global.fetch).mock.calls.length).toBeGreaterThan(callsAfterExpand);
+  });
+
+  it("score updates in place when a run completes while its row is expanded", async () => {
+    vi.useFakeTimers();
+
+    // Initially IN_PROGRESS, no score
+    mockFetchOk([makeRow({ status: "IN_PROGRESS", result: JSON.stringify({ taskSlug: "antitrust/task-1", taskTitle: "Test" }) })]);
+
+    const { result } = renderHook(() => useLegalBenchmarkRunList("ws-cuid-123"));
+
+    await act(async () => { await Promise.resolve(); });
+    await act(async () => { await Promise.resolve(); });
+
+    expect(result.current.isLoading).toBe(false);
+    expect(result.current.runs[0].all_pass).toBeUndefined();
+
+    // Expand the row
+    act(() => { result.current.setExpandedId("runner-abc"); });
+
+    // Run completes with a score while row is expanded
+    mockFetchOk([makeRow({ status: "COMPLETED" })]);
+
+    await act(async () => {
+      vi.advanceTimersByTime(15_000);
+      await Promise.resolve();
+    });
+
+    // Score should now be present
+    expect(result.current.runs[0].n_passed).toBe(72);
+    expect(result.current.runs[0].all_pass).toBe(true);
   });
 
   it("resumes (refetches immediately) when setExpandedId returns to null", async () => {
