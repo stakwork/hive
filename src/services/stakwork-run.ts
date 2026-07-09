@@ -41,6 +41,7 @@ import { getBifrostForLLM } from "@/services/bifrost/orchestrator";
 import { optionalEnvVars } from "@/config/env";
 import { getJarvisConfigForWorkspace } from "@/lib/helpers/jarvis-config";
 import { addNode, addEdge } from "@/services/swarm/api/nodes";
+import { z } from "zod";
 
 const encryptionService = EncryptionService.getInstance();
 
@@ -954,8 +955,8 @@ export async function processStakworkRunWebhook(
   }
 
   // ── For Legal Benchmark types: merge result into existing JSON ──────────
-  // The runner/scorer rows were created with correlation data in `result`
-  // (taskSlug, taskTitle, siblingRunId, evalTriggerRef). We must merge the
+  // The runner row was created with correlation data in `result`
+  // (taskSlug, taskTitle, evalTriggerRef, etc.). We must merge the
   // incoming Harvey output into the existing JSON rather than overwrite it,
   // so those correlation fields are never lost.
   if (
@@ -1031,9 +1032,9 @@ export async function processStakworkRunWebhook(
     return { runId: run.id, status, dataType };
   }
 
-  // ── Step 2b: LEGAL_BENCHMARK_RUNNER — persist output, fire scorer ───────
+  // ── Step 2b: LEGAL_BENCHMARK_RUNNER — persist output + inline score ──────
   if (run.type === StakworkRunType.LEGAL_BENCHMARK_RUNNER) {
-    await processLegalBenchmarkRunnerWebhook(run, serializedResult, queryParams.workspace_id);
+    await processLegalBenchmarkRunnerWebhook(run, serializedResult, queryParams.workspace_id, status);
     // Broadcast via shared STAKWORK_RUN_UPDATE (same as every other run type)
     try {
       const channelName = getWorkspaceChannelName(run.workspace.slug);
@@ -1050,10 +1051,16 @@ export async function processStakworkRunWebhook(
     return { runId: run.id, status, dataType };
   }
 
-  // ── Step 2c: LEGAL_BENCHMARK_SCORER — persist scores, write EvalOutput ──
+  // ── Step 2c: LEGAL_BENCHMARK_SCORER — terminal drain (legacy in-flight rows) ──
+  // New runs no longer create a scorer row. Any scorer webhook that arrives
+  // (e.g., from a run created before the collapse deploy) is simply marked
+  // terminal without re-dispatching anything or writing EvalTriggerOutput.
   if (run.type === StakworkRunType.LEGAL_BENCHMARK_SCORER) {
-    await processLegalBenchmarkScorerWebhook(run, serializedResult);
-    // Broadcast via shared STAKWORK_RUN_UPDATE
+    logger.info("[legal-benchmark/scorer] Drain: marking legacy scorer row terminal", "stakwork-run", {
+      runId: run.id,
+      status,
+    });
+    // Broadcast so UI reflects the terminal state
     try {
       const channelName = getWorkspaceChannelName(run.workspace.slug);
       await pusherServer.trigger(channelName, PUSHER_EVENTS.STAKWORK_RUN_UPDATE, {
@@ -1064,7 +1071,7 @@ export async function processStakworkRunWebhook(
         timestamp: new Date(),
       });
     } catch (pusherError) {
-      logger.error("[legal-benchmark] Pusher trigger failed (non-fatal)", "stakwork-run", { error: String(pusherError) });
+      logger.error("[legal-benchmark/scorer] Pusher trigger failed (non-fatal)", "stakwork-run", { error: String(pusherError) });
     }
     return { runId: run.id, status, dataType };
   }
@@ -1454,18 +1461,35 @@ type RunWithWorkspace = {
   workspace: { slug: string };
 };
 
+/** Zod schema for the flat score fields returned inline by the runner workflow (57179). */
+const RunnerScoreSchema = z.object({
+  score: z.number().optional(),
+  max_score: z.number().optional(),
+  n_passed: z.number().optional(),
+  n_total: z.number().optional(),
+  pass_rate: z.number().optional(),
+  all_pass: z.boolean().optional(),
+  scores_s3_url: z.string().optional(),
+  judge_model: z.string().optional(),
+});
+
 /**
- * Handle the LEGAL_BENCHMARK_RUNNER webhook stage:
+ * Handle the LEGAL_BENCHMARK_RUNNER webhook stage (single-run pipeline):
  *  1. Merge runner output (final_output, output_s3_url) into the run's result JSON.
  *  2. Validate output_s3_url against the S3 allowlist; mark FAILED + return if invalid.
- *  3. Fire the scorer Stakwork project and mark the scorer run IN_PROGRESS.
+ *  3. Validate and persist flat score fields (n_passed, n_total, all_pass, etc.).
+ *  4. Write one aggregate EvalTriggerOutput node to Jarvis (non-fatal, idempotency-guarded).
+ *
+ * @param mappedStatus - The freshly-computed mapped status (passed from the caller
+ *   to avoid using the stale pre-webhook run.status for terminal vs. in-progress checks).
  */
 async function processLegalBenchmarkRunnerWebhook(
   run: RunWithWorkspace,
   serializedResult: string | null,
-  workspaceId: string,
+  _workspaceId: string,
+  mappedStatus: WorkflowStatus,
 ): Promise<void> {
-  // Extract final_output and output_s3_url from the (already merged) result
+  // Extract fields from the (already merged) result
   let resultJson: Record<string, unknown> = {};
   try {
     resultJson = serializedResult ? (JSON.parse(serializedResult) as Record<string, unknown>) : {};
@@ -1476,7 +1500,7 @@ async function processLegalBenchmarkRunnerWebhook(
   const finalOutput = resultJson.final_output as string | undefined;
   const outputS3Url = resultJson.output_s3_url as string | undefined;
 
-  // SSRF guard: validate output_s3_url against allowlist before firing scorer
+  // SSRF guard: validate output_s3_url against allowlist
   if (outputS3Url && !isAllowedS3Url(outputS3Url)) {
     logger.error("[legal-benchmark/runner] output_s3_url rejected (not on allowlist)", "stakwork-run", {
       runId: run.id,
@@ -1489,11 +1513,60 @@ async function processLegalBenchmarkRunnerWebhook(
     return;
   }
 
-  // Merge runner output fields into persisted result
+  // ── Zod validation for flat score fields ──────────────────────────────────
+  const scoreParseResult = RunnerScoreSchema.safeParse(resultJson);
+  const isTerminal =
+    mappedStatus === WorkflowStatus.COMPLETED || mappedStatus === WorkflowStatus.FAILED;
+
+  let scoreFields: z.infer<typeof RunnerScoreSchema> = {};
+  if (scoreParseResult.success) {
+    scoreFields = scoreParseResult.data;
+    const hasScore = scoreFields.n_passed !== undefined || scoreFields.all_pass !== undefined;
+    if (!hasScore) {
+      if (isTerminal) {
+        logger.error(
+          "[legal-benchmark/runner] Score fields absent on terminal run — possible field-name mismatch",
+          "stakwork-run",
+          { runId: run.id, mappedStatus },
+        );
+      } else {
+        logger.info(
+          "[legal-benchmark/runner] Score fields not yet present (run still in progress)",
+          "stakwork-run",
+          { runId: run.id, mappedStatus },
+        );
+      }
+    }
+  } else {
+    if (isTerminal) {
+      logger.error(
+        "[legal-benchmark/runner] Score field validation failed on terminal run",
+        "stakwork-run",
+        { runId: run.id, mappedStatus, issues: scoreParseResult.error.issues },
+      );
+    } else {
+      logger.info(
+        "[legal-benchmark/runner] Score field validation skipped (run still in progress)",
+        "stakwork-run",
+        { runId: run.id, mappedStatus },
+      );
+    }
+  }
+
+  // Merge output + flat score fields into persisted result
   const mergedResult: Record<string, unknown> = {
     ...resultJson,
     ...(finalOutput !== undefined ? { runnerOutputText: finalOutput } : {}),
     ...(outputS3Url !== undefined ? { runnerOutputUrl: outputS3Url } : {}),
+    // Persist validated score fields (only the ones that were present)
+    ...(scoreFields.score !== undefined ? { score: scoreFields.score } : {}),
+    ...(scoreFields.max_score !== undefined ? { max_score: scoreFields.max_score } : {}),
+    ...(scoreFields.n_passed !== undefined ? { n_passed: scoreFields.n_passed } : {}),
+    ...(scoreFields.n_total !== undefined ? { n_total: scoreFields.n_total } : {}),
+    ...(scoreFields.pass_rate !== undefined ? { pass_rate: scoreFields.pass_rate } : {}),
+    ...(scoreFields.all_pass !== undefined ? { all_pass: scoreFields.all_pass } : {}),
+    ...(scoreFields.scores_s3_url !== undefined ? { scores_s3_url: scoreFields.scores_s3_url } : {}),
+    ...(scoreFields.judge_model !== undefined ? { judge_model: scoreFields.judge_model } : {}),
   };
 
   await db.stakworkRun.update({
@@ -1501,177 +1574,58 @@ async function processLegalBenchmarkRunnerWebhook(
     data: { result: JSON.stringify(mergedResult) },
   });
 
-  // Resolve sibling scorer run
-  const scorerRunId = mergedResult.siblingRunId as string | undefined;
-  if (!scorerRunId) {
-    logger.error("[legal-benchmark/runner] siblingRunId missing — cannot fire scorer", "stakwork-run", { runId: run.id });
-    return;
-  }
-
-  const scorerRow = await db.stakworkRun.findUnique({
-    where: { id: scorerRunId },
-    select: { id: true, result: true, workspaceId: true },
-  });
-  if (!scorerRow || scorerRow.workspaceId !== workspaceId) {
-    logger.error("[legal-benchmark/runner] Scorer run not found or workspace mismatch", "stakwork-run", {
-      runId: run.id,
-      scorerRunId,
-    });
-    return;
-  }
-
-  // Merge taskSlug into the scorer result so scorer webhook can use it
-  let scorerResult: Record<string, unknown> = {};
-  try {
-    scorerResult = scorerRow.result ? (JSON.parse(scorerRow.result) as Record<string, unknown>) : {};
-  } catch {
-    // ignore
-  }
-  const taskSlug = mergedResult.taskSlug as string | undefined;
-
-  const scorerWorkflowId = process.env.STAKWORK_HARVEY_SCORER_WORKFLOW_ID;
-  if (!scorerWorkflowId) {
-    logger.error("[legal-benchmark/runner] STAKWORK_HARVEY_SCORER_WORKFLOW_ID not configured", "stakwork-run", { runId: run.id });
-    return;
-  }
-
-  const baseUrl = process.env.NEXTAUTH_URL || "http://localhost:3000";
-  // The scorer webhook token is derived from the runner run id (same root)
-  const webhookSecret = process.env.NEXTAUTH_SECRET ?? "";
-  const runToken = createHmac("sha256", webhookSecret).update(run.id).digest("hex");
-  const scorerWebhookUrl = `${baseUrl}/api/webhook/stakwork/response?type=${StakworkRunType.LEGAL_BENCHMARK_SCORER}&run_id=${scorerRunId}&workspace_id=${workspaceId}&run_token=${runToken}`;
-
-  const scorerPayload = {
-    name: `harvey-scorer-${scorerRunId}`,
-    workflow_id: parseInt(scorerWorkflowId, 10),
-    webhook_url: scorerWebhookUrl,
-    workflow_params: {
-      set_var: {
-        attributes: {
-          vars: {
-            task_slug: taskSlug ?? "",
-            candidate_s3_url: outputS3Url ?? "",
-          },
-        },
-      },
-    },
-  };
-
-  logger.info("[legal-benchmark/runner] Firing scorer Stakwork project", "stakwork-run", {
-    runId: run.id,
-    scorerRunId,
-    taskSlug,
-  });
-
-  try {
-    const scorerResponse = await fetch(`${optionalEnvVars.STAKWORK_BASE_URL}/projects`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Token token="${optionalEnvVars.STAKWORK_API_KEY}"`,
-      },
-      body: JSON.stringify(scorerPayload),
-    });
-
-    if (scorerResponse.ok) {
-      const scorerData = await scorerResponse.json() as { data?: { project_id?: number }; project_id?: number };
-      const scorerProjectId: number | undefined = scorerData?.data?.project_id ?? scorerData?.project_id;
-
-      logger.info("[legal-benchmark/runner] Scorer project created", "stakwork-run", {
-        runId: run.id,
-        scorerRunId,
-        scorerProjectId,
-      });
-
-      // Mark scorer IN_PROGRESS and record its project id
-      await db.stakworkRun.update({
-        where: { id: scorerRunId },
-        data: {
-          status: WorkflowStatus.IN_PROGRESS,
-          projectId: scorerProjectId ?? null,
-          result: JSON.stringify({ ...scorerResult, scorerProjectId }),
-        },
-      });
-    } else {
-      logger.error("[legal-benchmark/runner] Scorer Stakwork call failed", "stakwork-run", {
-        runId: run.id,
-        scorerRunId,
-        httpStatus: scorerResponse.status,
-      });
-    }
-  } catch (err) {
-    logger.error("[legal-benchmark/runner] Scorer fire threw (non-fatal)", "stakwork-run", {
-      runId: run.id,
-      error: String(err),
-    });
-  }
-}
-
-/**
- * Handle the LEGAL_BENCHMARK_SCORER webhook stage:
- *  1. Merge scoreJson into the scorer run result JSON.
- *  2. Write Jarvis EvalTriggerOutput nodes (non-fatal).
- */
-async function processLegalBenchmarkScorerWebhook(
-  run: RunWithWorkspace,
-  serializedResult: string | null,
-): Promise<void> {
-  // Extract scores from the (already merged) result
-  let resultJson: Record<string, unknown> = {};
-  try {
-    resultJson = serializedResult ? (JSON.parse(serializedResult) as Record<string, unknown>) : {};
-  } catch {
-    logger.error("[legal-benchmark/scorer] Failed to parse serialized result", "stakwork-run", { runId: run.id });
-  }
-
-  const scores = resultJson.scores as Array<{ pass: boolean; criterion: string; notes: string }> | undefined;
-
-  // Persist scoreJson into result
-  const mergedResult: Record<string, unknown> = {
-    ...resultJson,
-    ...(scores !== undefined ? { scoreJson: JSON.stringify(scores) } : {}),
-  };
-
-  await db.stakworkRun.update({
-    where: { id: run.id },
-    data: { result: JSON.stringify(mergedResult) },
-  });
-
-  // Non-fatal Jarvis EvalTriggerOutput instrumentation
+  // ── Jarvis EvalTriggerOutput — one aggregate node per run (idempotency-guarded) ──
   const evalTriggerRef = mergedResult.evalTriggerRef as string | undefined;
-  if (evalTriggerRef && scores) {
+  const evalOutputWritten = mergedResult.evalOutputWritten as boolean | undefined;
+  const hasValidScore = scoreFields.all_pass !== undefined && scoreFields.pass_rate !== undefined;
+
+  if (evalTriggerRef && hasValidScore) {
+    if (evalOutputWritten) {
+      logger.info(
+        "[legal-benchmark/runner] EvalTriggerOutput already written — skipping duplicate (retried completion)",
+        "stakwork-run",
+        { runId: run.id },
+      );
+      return;
+    }
+
     try {
       const jarvisConfig = await getJarvisConfigForWorkspace(run.workspaceId);
       if (jarvisConfig) {
-        for (const score of scores) {
-          const outputResult = await addNode(jarvisConfig, {
-            node_type: "EvalTriggerOutput",
-            node_data: {
-              id: randomUUID(),
-              result: score.pass ? "pass" : "fail",
-              score: score.pass ? 1.0 : 0.0,
-              attempt_number: 1,
-              judge_notes: `${score.criterion}: ${score.notes}`,
-            },
-          });
-          if (outputResult.success && outputResult.ref_id) {
-            await addEdge(jarvisConfig, {
-              edge: { edge_type: "HAS_OUTPUT" },
-              source: { ref_id: evalTriggerRef },
-              target: { ref_id: outputResult.ref_id },
-            });
-          }
-        }
-        logger.info("[legal-benchmark/scorer] EvalTriggerOutput nodes written", "stakwork-run", {
-          runId: run.id,
-          criteriaCount: scores.length,
+        const outputResult = await addNode(jarvisConfig, {
+          node_type: "EvalTriggerOutput",
+          node_data: {
+            id: randomUUID(),
+            result: scoreFields.all_pass ? "pass" : "fail",
+            score: scoreFields.pass_rate ?? 0,
+            attempt_number: 1,
+            judge_notes: `${scoreFields.n_passed ?? 0}/${scoreFields.n_total ?? 0} criteria passed. Judge: ${scoreFields.judge_model ?? "unknown"}`,
+          },
         });
+        if (outputResult.success && outputResult.ref_id) {
+          await addEdge(jarvisConfig, {
+            edge: { edge_type: "HAS_OUTPUT" },
+            source: { ref_id: evalTriggerRef },
+            target: { ref_id: outputResult.ref_id },
+          });
+          // Persist idempotency marker
+          await db.stakworkRun.update({
+            where: { id: run.id },
+            data: { result: JSON.stringify({ ...mergedResult, evalOutputWritten: true }) },
+          });
+          logger.info("[legal-benchmark/runner] EvalTriggerOutput node written", "stakwork-run", {
+            runId: run.id,
+            allPass: scoreFields.all_pass,
+            passRate: scoreFields.pass_rate,
+          });
+        }
       }
     } catch (err) {
-      logger.error("[legal-benchmark/scorer] EvalTriggerOutput graph write failed (non-fatal)", "stakwork-run", {
-        runId: run.id,
-        error: String(err),
-      });
+      logger.error(
+        "[legal-benchmark/runner] EvalTriggerOutput graph write failed (non-fatal)",
+        "stakwork-run",
+        { runId: run.id, error: String(err) },
+      );
     }
   }
 }

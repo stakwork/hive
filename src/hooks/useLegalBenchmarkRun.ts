@@ -12,6 +12,7 @@ import { StakworkRunType, WorkflowStatus } from "@prisma/client";
 const STALE_RUN_TIMEOUT_MS = 3 * 60 * 1000; // 3 minutes
 
 /** Operator-facing composite statuses that represent an in-progress pipeline. */
+/** "scoring" is retained for legacy rows — new single-run pipeline only uses "running". */
 const IN_PROGRESS_STATUSES = new Set<string>(["running", "scoring"]);
 
 interface UseLegalBenchmarkRunResult {
@@ -133,7 +134,7 @@ export function useLegalBenchmarkRun(runId: string): UseLegalBenchmarkRunResult 
         scorerRun: scorerRow,
         runnerOutputUrl: runnerResult?.runnerOutputUrl ?? null,
         runnerOutputText: runnerResult?.runnerOutputText ?? null,
-        scoreJson: scorerResult?.scoreJson ?? null,
+        scoreJson: null,
         errorMessage:
           runnerResult?.errorMessage ?? scorerResult?.errorMessage ?? null,
         createdAt: runnerRow.createdAt,
