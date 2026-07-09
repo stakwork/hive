@@ -615,7 +615,7 @@ describe('POST /api/github/webhook/[workspaceId] - PR Merged Pod Release', () =>
       expect(releaseTaskPod).toHaveBeenCalled();
     });
 
-    test('should update artifact status to CANCELLED when PR is closed without merge', async () => {
+    test('should update artifact status to CANCELLED, release pod, and update task status when PR is closed without merge', async () => {
       const testSetup = await createWebhookTestScenario({
         branch: 'main',
         status: RepositoryStatus.SYNCED,
@@ -640,7 +640,6 @@ describe('POST /api/github/webhook/[workspaceId] - PR Merged Pod Release', () =>
           taskId: task.id,
           role: 'ASSISTANT',
           message: 'PR created',
-          
           status: 'SENT',
         },
       });
@@ -656,6 +655,13 @@ describe('POST /api/github/webhook/[workspaceId] - PR Merged Pod Release', () =>
             status: 'open',
           },
         },
+      });
+
+      // Mock successful pod release
+      vi.mocked(releaseTaskPod).mockResolvedValue({
+        success: true,
+        podDropped: true,
+        taskCleared: true,
       });
 
       // Create PR closed WITHOUT merge payload
@@ -695,13 +701,14 @@ describe('POST /api/github/webhook/[workspaceId] - PR Merged Pod Release', () =>
       const body = await response.json();
       expect(body.success).toBe(true);
       expect(body.tasksProcessed).toBe(1);
+      expect(body.podsReleased).toBe(1);
 
-      // Verify task status was NOT changed
+      // Verify task status was updated to CANCELLED
       const updatedTask = await db.task.findUnique({
         where: { id: task.id },
         select: { status: true },
       });
-      expect(updatedTask?.status).toBe(TaskStatus.IN_PROGRESS);
+      expect(updatedTask?.status).toBe(TaskStatus.CANCELLED);
 
       // Verify PR artifact status was updated to "CANCELLED"
       const updatedArtifact = await db.artifact.findUnique({
@@ -714,7 +721,18 @@ describe('POST /api/github/webhook/[workspaceId] - PR Merged Pod Release', () =>
         status: 'CANCELLED',
       });
 
-      // Verify Pusher event was sent to task channel
+      // Verify WORKSPACE_TASK_TITLE_UPDATE Pusher event was sent with CANCELLED status
+      expect(pusherServer.trigger).toHaveBeenCalledWith(
+        `workspace-${testSetup.workspace.slug}`,
+        PUSHER_EVENTS.WORKSPACE_TASK_TITLE_UPDATE,
+        expect.objectContaining({
+          taskId: task.id,
+          status: TaskStatus.CANCELLED,
+          archived: false,
+        })
+      );
+
+      // Verify PR_STATUS_CHANGE Pusher event was sent to task channel
       expect(pusherServer.trigger).toHaveBeenCalledWith(
         `task-${task.id}`,
         PUSHER_EVENTS.PR_STATUS_CHANGE,
@@ -726,8 +744,327 @@ describe('POST /api/github/webhook/[workspaceId] - PR Merged Pod Release', () =>
         })
       );
 
-      // Verify releaseTaskPod was NOT called
+      // Verify releaseTaskPod WAS called with correct params
+      expect(releaseTaskPod).toHaveBeenCalledWith({
+        taskId: task.id,
+        podId: 'test-pod-000',
+        workspaceId: testSetup.workspace.id,
+        verifyOwnership: true,
+        clearTaskFields: true,
+        newWorkflowStatus: null,
+      });
+    });
+
+    test('should update task status to CANCELLED but not call releaseTaskPod when closed-unmerged PR task has no pod', async () => {
+      const testSetup = await createWebhookTestScenario({
+        branch: 'main',
+        status: RepositoryStatus.SYNCED,
+      });
+
+      // Create task WITHOUT pod assigned
+      const task = await db.task.create({
+        data: {
+          title: 'Test Task No Pod',
+          description: 'Task description',
+          workspaceId: testSetup.workspace.id,
+          status: TaskStatus.IN_PROGRESS,
+          workflowStatus: WorkflowStatus.IN_PROGRESS,
+          podId: null,
+          createdById: testSetup.user.id,
+          updatedById: testSetup.user.id,
+        },
+      });
+
+      const message = await db.chatMessage.create({
+        data: {
+          taskId: task.id,
+          role: 'ASSISTANT',
+          message: 'PR created',
+          status: 'SENT',
+        },
+      });
+
+      const prUrl = 'https://github.com/test-owner/test-repo/pull/nopod';
+      const artifact = await db.artifact.create({
+        data: {
+          messageId: message.id,
+          type: ArtifactType.PULL_REQUEST,
+          content: {
+            repo: 'test-owner/test-repo',
+            url: prUrl,
+            status: 'open',
+          },
+        },
+      });
+
+      const prPayload = createGitHubPullRequestPayload(
+        'closed',
+        false, // NOT merged
+        prUrl,
+        testSetup.repository.repositoryUrl
+      );
+
+      const signature = computeValidWebhookSignature(
+        testSetup.webhookSecret,
+        JSON.stringify(prPayload)
+      );
+
+      const request = new Request(
+        `http://localhost/api/github/webhook/${testSetup.workspace.id}`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-hub-signature-256': signature,
+            'x-github-event': 'pull_request',
+            'x-github-delivery': 'pr-delivery-nopod',
+            'x-github-hook-id': testSetup.repository.githubWebhookId!,
+          },
+          body: JSON.stringify(prPayload),
+        }
+      );
+
+      const response = await POST(request, {
+        params: Promise.resolve({ workspaceId: testSetup.workspace.id }),
+      });
+
+      expect(response.status).toBe(200);
+      const body = await response.json();
+      expect(body.success).toBe(true);
+      expect(body.tasksProcessed).toBe(1);
+      expect(body.podsReleased).toBe(0);
+
+      // Task status should still be updated to CANCELLED
+      const updatedTask = await db.task.findUnique({
+        where: { id: task.id },
+        select: { status: true },
+      });
+      expect(updatedTask?.status).toBe(TaskStatus.CANCELLED);
+
+      // Artifact should be CANCELLED
+      const updatedArtifact = await db.artifact.findUnique({
+        where: { id: artifact.id },
+        select: { content: true },
+      });
+      expect(updatedArtifact?.content).toMatchObject({ status: 'CANCELLED' });
+
+      // releaseTaskPod should NOT be called (no pod)
       expect(releaseTaskPod).not.toHaveBeenCalled();
+    });
+
+    test('should return 200 and not count failed pod release in podsReleased for closed-unmerged PR', async () => {
+      const testSetup = await createWebhookTestScenario({
+        branch: 'main',
+        status: RepositoryStatus.SYNCED,
+      });
+
+      const task = await db.task.create({
+        data: {
+          title: 'Test Task Pod Fail',
+          description: 'Task description',
+          workspaceId: testSetup.workspace.id,
+          status: TaskStatus.IN_PROGRESS,
+          workflowStatus: WorkflowStatus.IN_PROGRESS,
+          podId: 'test-pod-closefail',
+          createdById: testSetup.user.id,
+          updatedById: testSetup.user.id,
+        },
+      });
+
+      const message = await db.chatMessage.create({
+        data: {
+          taskId: task.id,
+          role: 'ASSISTANT',
+          message: 'PR created',
+          status: 'SENT',
+        },
+      });
+
+      const prUrl = 'https://github.com/test-owner/test-repo/pull/closefail';
+      await db.artifact.create({
+        data: {
+          messageId: message.id,
+          type: ArtifactType.PULL_REQUEST,
+          content: {
+            repo: 'test-owner/test-repo',
+            url: prUrl,
+            status: 'open',
+          },
+        },
+      });
+
+      // Mock releaseTaskPod to fail
+      vi.mocked(releaseTaskPod).mockResolvedValue({
+        success: false,
+        podDropped: false,
+        taskCleared: false,
+        error: 'Pod release failed',
+      });
+
+      const prPayload = createGitHubPullRequestPayload(
+        'closed',
+        false, // NOT merged
+        prUrl,
+        testSetup.repository.repositoryUrl
+      );
+
+      const signature = computeValidWebhookSignature(
+        testSetup.webhookSecret,
+        JSON.stringify(prPayload)
+      );
+
+      const request = new Request(
+        `http://localhost/api/github/webhook/${testSetup.workspace.id}`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-hub-signature-256': signature,
+            'x-github-event': 'pull_request',
+            'x-github-delivery': 'pr-delivery-closefail',
+            'x-github-hook-id': testSetup.repository.githubWebhookId!,
+          },
+          body: JSON.stringify(prPayload),
+        }
+      );
+
+      const response = await POST(request, {
+        params: Promise.resolve({ workspaceId: testSetup.workspace.id }),
+      });
+
+      // Should still return 200 despite pod release failure
+      expect(response.status).toBe(200);
+      const body = await response.json();
+      expect(body.success).toBe(true);
+      expect(body.tasksProcessed).toBe(1);
+      expect(body.podsReleased).toBe(0); // failed release not counted
+
+      // releaseTaskPod was called
+      expect(releaseTaskPod).toHaveBeenCalledWith({
+        taskId: task.id,
+        podId: 'test-pod-closefail',
+        workspaceId: testSetup.workspace.id,
+        verifyOwnership: true,
+        clearTaskFields: true,
+        newWorkflowStatus: null,
+      });
+    });
+
+    test('should process each task independently when multiple tasks reference the same closed-unmerged PR', async () => {
+      const testSetup = await createWebhookTestScenario({
+        branch: 'main',
+        status: RepositoryStatus.SYNCED,
+      });
+
+      const prUrl = 'https://github.com/test-owner/test-repo/pull/multi-close';
+
+      // Task 1: has pod, release succeeds
+      const task1 = await db.task.create({
+        data: {
+          title: 'Multi-close Task 1',
+          workspaceId: testSetup.workspace.id,
+          status: TaskStatus.IN_PROGRESS,
+          workflowStatus: WorkflowStatus.IN_PROGRESS,
+          podId: 'test-pod-mc1',
+          createdById: testSetup.user.id,
+          updatedById: testSetup.user.id,
+        },
+      });
+      const msg1 = await db.chatMessage.create({
+        data: { taskId: task1.id, role: 'ASSISTANT', message: 'PR', status: 'SENT' },
+      });
+      await db.artifact.create({
+        data: {
+          messageId: msg1.id,
+          type: ArtifactType.PULL_REQUEST,
+          content: { repo: 'test-owner/test-repo', url: prUrl, status: 'open' },
+        },
+      });
+
+      // Task 2: has pod, release fails — must not block task1
+      const task2 = await db.task.create({
+        data: {
+          title: 'Multi-close Task 2',
+          workspaceId: testSetup.workspace.id,
+          status: TaskStatus.IN_PROGRESS,
+          workflowStatus: WorkflowStatus.IN_PROGRESS,
+          podId: 'test-pod-mc2',
+          createdById: testSetup.user.id,
+          updatedById: testSetup.user.id,
+        },
+      });
+      const msg2 = await db.chatMessage.create({
+        data: { taskId: task2.id, role: 'ASSISTANT', message: 'PR', status: 'SENT' },
+      });
+      await db.artifact.create({
+        data: {
+          messageId: msg2.id,
+          type: ArtifactType.PULL_REQUEST,
+          content: { repo: 'test-owner/test-repo', url: prUrl, status: 'open' },
+        },
+      });
+
+      // task1 release succeeds, task2 release fails
+      vi.mocked(releaseTaskPod)
+        .mockResolvedValueOnce({ success: true, podDropped: true, taskCleared: true })
+        .mockResolvedValueOnce({ success: false, podDropped: false, taskCleared: false, error: 'fail' });
+
+      const prPayload = createGitHubPullRequestPayload(
+        'closed',
+        false,
+        prUrl,
+        testSetup.repository.repositoryUrl
+      );
+      const signature = computeValidWebhookSignature(testSetup.webhookSecret, JSON.stringify(prPayload));
+
+      const request = new Request(
+        `http://localhost/api/github/webhook/${testSetup.workspace.id}`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-hub-signature-256': signature,
+            'x-github-event': 'pull_request',
+            'x-github-delivery': 'pr-delivery-multi-close',
+            'x-github-hook-id': testSetup.repository.githubWebhookId!,
+          },
+          body: JSON.stringify(prPayload),
+        }
+      );
+
+      const response = await POST(request, {
+        params: Promise.resolve({ workspaceId: testSetup.workspace.id }),
+      });
+
+      expect(response.status).toBe(200);
+      const body = await response.json();
+      expect(body.success).toBe(true);
+      expect(body.tasksProcessed).toBe(2);
+      expect(body.podsReleased).toBe(1); // only task1's pod dropped
+
+      // Both tasks updated to CANCELLED
+      const updatedTask1 = await db.task.findUnique({ where: { id: task1.id }, select: { status: true } });
+      expect(updatedTask1?.status).toBe(TaskStatus.CANCELLED);
+
+      const updatedTask2 = await db.task.findUnique({ where: { id: task2.id }, select: { status: true } });
+      expect(updatedTask2?.status).toBe(TaskStatus.CANCELLED);
+
+      // releaseTaskPod called independently for each
+      expect(releaseTaskPod).toHaveBeenCalledTimes(2);
+      expect(releaseTaskPod).toHaveBeenCalledWith(expect.objectContaining({ taskId: task1.id, podId: 'test-pod-mc1' }));
+      expect(releaseTaskPod).toHaveBeenCalledWith(expect.objectContaining({ taskId: task2.id, podId: 'test-pod-mc2' }));
+
+      // WORKSPACE_TASK_TITLE_UPDATE broadcast for both tasks
+      expect(pusherServer.trigger).toHaveBeenCalledWith(
+        `workspace-${testSetup.workspace.slug}`,
+        PUSHER_EVENTS.WORKSPACE_TASK_TITLE_UPDATE,
+        expect.objectContaining({ taskId: task1.id, status: TaskStatus.CANCELLED })
+      );
+      expect(pusherServer.trigger).toHaveBeenCalledWith(
+        `workspace-${testSetup.workspace.slug}`,
+        PUSHER_EVENTS.WORKSPACE_TASK_TITLE_UPDATE,
+        expect.objectContaining({ taskId: task2.id, status: TaskStatus.CANCELLED })
+      );
     });
 
     test('should handle PR opened action gracefully', async () => {
