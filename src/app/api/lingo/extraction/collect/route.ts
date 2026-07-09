@@ -22,9 +22,9 @@ type SourceEntry = {
 };
 
 export async function POST(request: NextRequest) {
-  // Auth
-  const secret = request.headers.get("x-webhook-secret");
-  if (!secret || secret !== process.env.JANITOR_WEBHOOK_SECRET) {
+  // Auth — matches the standard Stakwork callback convention (x-api-token / API_TOKEN)
+  const apiToken = request.headers.get("x-api-token");
+  if (!apiToken || apiToken !== process.env.API_TOKEN) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
