@@ -63,7 +63,7 @@ import {
   composeCapabilityPromptSuffix,
   composeCapabilityTools,
   composeWriteToolNames,
-  resolveCapabilities,
+  resolveOrgCapabilities,
   type OrgCapability,
 } from "@/lib/ai/capabilities";
 import { getLinkedWorkspacesForInitiative } from "@/lib/canvas/linkedWorkspaces";
@@ -634,9 +634,10 @@ export async function runCanvasAgent(
 
   // Capability composition inputs, shared by both branches below.
   // `orgCapabilities` is the `includes`-expanded selection in canonical
-  // order; the prompt suffix is the matching snippet concatenation
-  // (equal to getCanvasPromptSuffix() for the full set).
-  const orgCapabilities = resolveCapabilities(capabilities);
+  // order, with org-gated capabilities (e.g. `prompts`, restricted to the
+  // Stakwork source-control org) filtered out for orgs that fail the gate.
+  // The prompt suffix is the matching snippet concatenation.
+  const orgCapabilities = await resolveOrgCapabilities(capabilities, orgId);
   const orgPromptSuffix = orgId
     ? composeCapabilityPromptSuffix(orgCapabilities)
     : undefined;
