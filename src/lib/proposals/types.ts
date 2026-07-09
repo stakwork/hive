@@ -291,8 +291,15 @@ export type ProposalOutput =
       rationale?: string;
       /** Render-only diff metadata: raw stored value before the update (oldStr)
        *  and the proposed new raw value (newStr). Anchored to the same version
-       *  that `get_prompt` resolves (published if set, else latest). */
-      meta: { oldStr: string; newStr: string };
+       *  that `get_prompt` resolves (published if set, else latest).
+       *  `promptName` / `versionNumber` are the friendly labels for the card
+       *  (optional for backward-compat with pre-meta proposals). */
+      meta: {
+        oldStr: string;
+        newStr: string;
+        promptName?: string;
+        versionNumber?: number;
+      };
     };
 
 // ─── Prompt proposal payloads ──────────────────────────────────────────
