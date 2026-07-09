@@ -277,7 +277,44 @@ export type ProposalOutput =
        *  Render-only; optional for backward compat with pre-meta
        *  proposals. */
       meta?: MilestoneProposalMeta;
+    }
+  | {
+      kind: "promptCreate";
+      proposalId: string;
+      payload: PromptCreateProposalPayload;
+      rationale?: string;
+    }
+  | {
+      kind: "promptUpdate";
+      proposalId: string;
+      payload: PromptUpdateProposalPayload;
+      rationale?: string;
+      /** Render-only diff metadata: raw stored value before the update (oldStr)
+       *  and the proposed new raw value (newStr). Anchored to the same version
+       *  that `get_prompt` resolves (published if set, else latest). */
+      meta: { oldStr: string; newStr: string };
     };
+
+// ─── Prompt proposal payloads ──────────────────────────────────────────
+
+/** Payload the agent fills in for a new prompt proposal. */
+export interface PromptCreateProposalPayload {
+  name: string;
+  value: string;
+  description?: string;
+}
+
+/**
+ * Payload the agent fills in for a prompt update proposal.
+ * `value` is required (mcpUpdatePrompt has no partial-update path).
+ * A description-only change must still send the current raw value as `value`
+ * so `oldStr === newStr` for value but description changes.
+ */
+export interface PromptUpdateProposalPayload {
+  promptId: string;
+  value: string;
+  description?: string;
+}
 
 /**
  * Tool name constants — referenced by the chat UI to find proposal
@@ -287,11 +324,15 @@ export type ProposalOutput =
 export const PROPOSE_INITIATIVE_TOOL = "propose_initiative" as const;
 export const PROPOSE_FEATURE_TOOL = "propose_feature" as const;
 export const PROPOSE_MILESTONE_TOOL = "propose_milestone" as const;
+export const PROPOSE_NEW_PROMPT_TOOL = "propose_new_prompt" as const;
+export const PROPOSE_PROMPT_UPDATE_TOOL = "propose_prompt_update" as const;
 
 export type ProposeToolName =
   | typeof PROPOSE_INITIATIVE_TOOL
   | typeof PROPOSE_FEATURE_TOOL
-  | typeof PROPOSE_MILESTONE_TOOL;
+  | typeof PROPOSE_MILESTONE_TOOL
+  | typeof PROPOSE_NEW_PROMPT_TOOL
+  | typeof PROPOSE_PROMPT_UPDATE_TOOL;
 
 /**
  * Sub-agent delegation tool name. Not a proposal (no approve/reject
@@ -375,7 +416,7 @@ export interface RejectionIntent {
  */
 export interface ApprovalResult {
   proposalId: string;
-  kind: "initiative" | "feature" | "milestone";
+  kind: "initiative" | "feature" | "milestone" | "promptCreate" | "promptUpdate";
   createdEntityId: string;
   /** Canvas ref the new node landed on. Empty string = root. */
   landedOn: string;
