@@ -141,7 +141,7 @@ describe("useLegalBenchmarkRun", () => {
     expect(result.current.run!.taskSlug).toBe("antitrust/task-1");
   });
 
-  it("derives composite scoring status when runner is COMPLETED and scorer is IN_PROGRESS", async () => {
+  it("derives complete status when runner is COMPLETED (scorer status is ignored in single-run pipeline)", async () => {
     setupFetchWithPair(
       { status: "COMPLETED" },
       { status: "IN_PROGRESS" },
@@ -153,10 +153,11 @@ describe("useLegalBenchmarkRun", () => {
       expect(result.current.run).not.toBeNull();
     });
 
-    expect(result.current.run!.status).toBe("scoring");
+    // Scorer status is ignored — runner COMPLETED → composite status is "complete".
+    expect(result.current.run!.status).toBe("complete");
   });
 
-  it("derives composite complete status when scorer is COMPLETED", async () => {
+  it("derives complete status when runner is COMPLETED", async () => {
     setupFetchWithPair(
       { status: "COMPLETED" },
       {
@@ -165,7 +166,6 @@ describe("useLegalBenchmarkRun", () => {
           taskSlug: "antitrust/task-1",
           taskTitle: "Analyze Antitrust Strategy",
           siblingRunId: "runner-abc",
-          scoreJson: JSON.stringify([{ criterion: "Accuracy", pass: true, notes: "OK" }]),
         }),
       },
     );
@@ -177,7 +177,8 @@ describe("useLegalBenchmarkRun", () => {
     });
 
     expect(result.current.run!.status).toBe("complete");
-    expect(result.current.run!.scoreJson).toBeTruthy();
+    // scoreJson is no longer populated from the scorer (single-run pipeline).
+    expect(result.current.run!.scoreJson).toBeNull();
   });
 
   it("derives composite failed status when runner is FAILED", async () => {
@@ -192,7 +193,7 @@ describe("useLegalBenchmarkRun", () => {
     expect(result.current.run!.status).toBe("failed");
   });
 
-  it("derives composite failed status when scorer is FAILED", async () => {
+  it("derives complete status when runner is COMPLETED even if scorer is FAILED (scorer status ignored in single-run pipeline)", async () => {
     setupFetchWithPair({ status: "COMPLETED" }, { status: "FAILED" });
 
     const { result } = renderHook(() => useLegalBenchmarkRun(runId));
@@ -201,7 +202,8 @@ describe("useLegalBenchmarkRun", () => {
       expect(result.current.run).not.toBeNull();
     });
 
-    expect(result.current.run!.status).toBe("failed");
+    // In the new single-run pipeline, only the runner's status matters.
+    expect(result.current.run!.status).toBe("complete");
   });
 
   it("can resolve the pair from the scorer id (fallback path)", async () => {
