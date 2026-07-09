@@ -80,6 +80,7 @@ import { buildGraphWalkerTools } from "@/lib/ai/graphWalkerTools";
 import { buildInfraTools } from "@/lib/ai/infraTools";
 import { buildInitiativeTools } from "@/lib/ai/initiativeTools";
 import { buildPromptTools } from "@/lib/ai/promptTools";
+import { buildConceptTools } from "@/lib/ai/conceptTools";
 import { isPromptsCapabilityEnabledForOrg } from "@/lib/ai/capabilityGates";
 import {
   buildResearchTools,
@@ -92,8 +93,11 @@ import {
   PROPOSE_MILESTONE_TOOL,
   PROPOSE_NEW_PROMPT_TOOL,
   PROPOSE_PROMPT_UPDATE_TOOL,
+  PROPOSE_NEW_CONCEPT_TOOL,
+  PROPOSE_CONCEPT_UPDATE_TOOL,
 } from "@/lib/proposals/types";
 import {
+  getConceptsCapabilitySnippet,
   getConnectionsCapabilitySnippet,
   getGraphWalkerCapabilitySnippet,
   getInfraCapabilitySnippet,
@@ -112,7 +116,8 @@ export type OrgCapability =
   | "connections"
   | "graph_walker"
   | "infra"
-  | "prompts";
+  | "prompts"
+  | "concepts";
 
 /**
  * Everything a capability's `buildTools` may need. Mirrors the
@@ -226,6 +231,7 @@ export const ALL_CAPABILITIES: readonly OrgCapability[] = [
   "graph_walker",
   "infra",
   "prompts",
+  "concepts",
 ];
 
 export const CAPABILITY_REGISTRY: Record<OrgCapability, CapabilityDefinition> =
@@ -265,7 +271,7 @@ export const CAPABILITY_REGISTRY: Record<OrgCapability, CapabilityDefinition> =
       // deliberately NOT included: it's org-gated (see its `orgGate`), and
       // `includes` is expanded by the sync resolver which can't run the
       // gate — so it must stay explicitly-selected-only.
-      includes: ["whiteboard", "research", "connections", "graph_walker", "infra"],
+      includes: ["whiteboard", "research", "connections", "graph_walker", "infra", "concepts"],
     },
     planner: {
       buildTools: (ctx) =>
@@ -376,6 +382,26 @@ export const CAPABILITY_REGISTRY: Record<OrgCapability, CapabilityDefinition> =
       // the menu entry, or the prompt content. See `capabilityGates.ts`.
       orgGate: isPromptsCapabilityEnabledForOrg,
     },
+    concepts: {
+      // Workspace-scoped propose tools (like `propose_feature`): the agent
+      // passes a `workspaceSlug`, the tool resolves it under `orgId` and
+      // reaches that workspace's swarm. Reading concepts is already covered
+      // by the per-workspace `list_concepts` / `learn_concept` tools that
+      // runCanvasAgent composes, so this capability only adds the writes.
+      buildTools: (ctx) => buildConceptTools(ctx.orgId, ctx.userId),
+      promptSnippet: getConceptsCapabilitySnippet,
+      core: false,
+      menuBlurb:
+        "**concepts** — capture and update workspace knowledge-base concepts " +
+        "via human approval: `propose_new_concept` (create from documentation " +
+        "you provide, no codebase analysis) and `propose_concept_update` " +
+        "(edit a concept's documentation, shown as a diff). Load when the user " +
+        'says things like "remember this", "note this down", or asks to ' +
+        "create/update a concept.",
+      // Not gated: unlike the global prompt library, concepts are per-workspace
+      // and every workspace already exposes concept read tools to the agent.
+      writeToolNames: [PROPOSE_NEW_CONCEPT_TOOL, PROPOSE_CONCEPT_UPDATE_TOOL],
+    },
   };
 
 /**
@@ -456,8 +482,9 @@ function buildLearnCapabilityTool(resolved: readonly OrgCapability[]): ToolSet {
         loadable.join(", ") +
         ". Call this FIRST whenever the user wants to: draw / diagram / " +
         "annotate / re-lay-out the canvas (`whiteboard`), create a saved " +
-        "research writeup (`research`), or document a system integration " +
-        "(`connections`). " +
+        "research writeup (`research`), document a system integration " +
+        "(`connections`), or remember / note / create / update a workspace " +
+        "knowledge-base concept (`concepts`). " +
         "You MUST load a capability before calling any of its tools; if you " +
         "find yourself about to call one of those tools without having loaded " +
         "its capability this turn, call `learn_capability` first. Returns the " +
