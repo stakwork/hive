@@ -265,6 +265,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
                 ? { headers: bifrost.headers }
                 : {}),
               tokenReference: getStakworkTokenReference(),
+              workspace_id: workspaceId,
             },
           },
         },
