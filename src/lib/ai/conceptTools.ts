@@ -17,9 +17,12 @@
  * approval handler (which only has `orgId` + `userId`) can re-resolve the
  * workspace and reach its swarm.
  *
- * Reading concepts (to discover ids/slugs before proposing) is already
- * covered by the existing `list_concepts` / `learn_concept` tools that
- * `runCanvasAgent` composes per workspace.
+ * Discovering concept ids/slugs is covered by the existing `list_concepts`
+ * tool. To read a single concept's CURRENT documentation before proposing
+ * an update, this capability also exposes `read_concept_documentation`,
+ * which returns the raw markdown body only (no PRs/commits/metadata
+ * wrapper) so the agent can reproduce it faithfully in the FULL new body
+ * that `propose_concept_update` requires.
  */
 
 import { tool, type ToolSet } from "ai";
@@ -32,6 +35,10 @@ import {
   PROPOSE_NEW_CONCEPT_TOOL,
   PROPOSE_CONCEPT_UPDATE_TOOL,
 } from "@/lib/proposals/types";
+
+/** Read-only tool: fetch a single concept's current documentation body. */
+export const READ_CONCEPT_DOCUMENTATION_TOOL =
+  "read_concept_documentation" as const;
 
 /** Resolve a workspace slug to its cuid + name, scoped to the org. */
 async function resolveWorkspace(orgId: string, slug: string) {
@@ -64,6 +71,92 @@ export function buildConceptTools(orgId: string, userId: string): ToolSet {
   void userId; // carried through the proposal payload for attribution at approval time
 
   return {
+    [READ_CONCEPT_DOCUMENTATION_TOOL]: tool({
+      description:
+        "Read the CURRENT documentation of a single concept and return it " +
+        "as raw markdown — nothing else (no PRs, commits, or metadata). Use " +
+        "this before `propose_concept_update` so you can reproduce the " +
+        "existing body faithfully and add only what's needed (the update " +
+        "replaces the whole documentation field). Obtain the concept id " +
+        "from `list_concepts` first.",
+      inputSchema: z.object({
+        workspaceSlug: z
+          .string()
+          .min(1)
+          .describe(
+            "Slug of the workspace the concept belongs to (from the " +
+              "Available Workspaces list). Required.",
+          ),
+        conceptId: z
+          .string()
+          .min(1)
+          .describe(
+            "The concept id to read (obtain via `list_concepts`). Never " +
+              "fabricate this.",
+          ),
+      }),
+      execute: async ({
+        workspaceSlug,
+        conceptId,
+      }: {
+        workspaceSlug: string;
+        conceptId: string;
+      }) => {
+        try {
+          const workspace = await resolveWorkspace(orgId, workspaceSlug);
+          if (!workspace) {
+            return {
+              error:
+                "Workspace slug not found in this organization. Pick a slug from the Available Workspaces list.",
+            };
+          }
+
+          const swarm = await getSwarmAccessByWorkspaceId(workspace.id);
+          if (!swarm.success) {
+            return {
+              error: `The ${workspace.slug} swarm is not available (${swarm.error.type}).`,
+            };
+          }
+
+          const res = await fetch(
+            `${swarm.data.swarmUrl}/gitree/concepts/${encodeURIComponent(conceptId)}`,
+            {
+              method: "GET",
+              headers: {
+                "Content-Type": "application/json",
+                "x-api-token": swarm.data.swarmApiKey,
+              },
+            },
+          );
+          if (res.status === 404) {
+            return {
+              error: `Concept '${conceptId}' not found in ${workspace.slug}. Use list_concepts to find the correct id.`,
+            };
+          }
+          if (!res.ok) {
+            return {
+              error: `Failed to read concept '${conceptId}' from ${workspace.slug} (status ${res.status}).`,
+            };
+          }
+          const data = await res.json();
+          const concept = data?.concept ?? data?.feature ?? {};
+          const documentation =
+            typeof concept.documentation === "string"
+              ? concept.documentation
+              : "";
+          return { documentation };
+        } catch (e) {
+          console.error(
+            "[conceptTools.read_concept_documentation] error:",
+            e,
+          );
+          const message =
+            e instanceof Error ? e.message : "Failed to read concept";
+          return { error: message };
+        }
+      },
+    }),
+
     [PROPOSE_NEW_CONCEPT_TOOL]: tool({
       description:
         "Propose creating a NEW concept (a workspace knowledge-base entry) " +

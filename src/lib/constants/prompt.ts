@@ -1130,14 +1130,18 @@ export function getConceptsCapabilitySnippet(): string {
 
 ## Concept Tools
 
-**Concepts** are a workspace's knowledge-base entries — durable, human-readable documentation about a system, decision, runbook, or anything worth remembering. They live on each workspace's swarm (per-workspace, NOT global). You already have read tools (\`list_concepts\` / \`learn_concept\`, or the workspace-prefixed \`{slug}__list_concepts\` / \`{slug}__learn_concept\`); this capability adds two WRITE tools that go through human approval.
+**Concepts** are a workspace's knowledge-base entries — durable, human-readable documentation about a system, decision, runbook, or anything worth remembering. They live on each workspace's swarm (per-workspace, NOT global). You already have read tools (\`list_concepts\` / \`learn_concept\`, or the workspace-prefixed \`{slug}__list_concepts\` / \`{slug}__learn_concept\`); this capability adds \`read_concept_documentation\` plus two WRITE tools that go through human approval.
 
 ### "Remember this" is the trigger
 
 When the user says things like **"Jamie, remember this"**, "note this down", "save this for later", "capture this as a concept", "document this", or "add this to the knowledge base" — that is a request to CREATE or UPDATE a concept. Do it proactively:
 1. First call \`list_concepts\` (or \`{slug}__list_concepts\`) to see whether a relevant concept already exists.
-2. If a good match exists → \`propose_concept_update\` to extend it (read its current documentation with \`learn_concept\` first, then supply the FULL merged body).
+2. If a good match exists → read its current documentation with \`read_concept_documentation\` first, then \`propose_concept_update\` with the FULL merged body.
 3. If nothing fits → \`propose_new_concept\` to create a new one.
+
+### Read tool (no approval)
+
+- **\`read_concept_documentation({ workspaceSlug, conceptId })\`** — Returns the concept's CURRENT documentation as raw markdown only (no PRs/commits/metadata). Use this right before \`propose_concept_update\` so you can reproduce the existing body faithfully and add only what's needed.
 
 ### Write tools (require user approval)
 
@@ -1148,8 +1152,8 @@ When the user says things like **"Jamie, remember this"**, "note this down", "sa
 
 - Always pass the \`workspaceSlug\` from the Available Workspaces list — never an opaque id.
 - Concept writes go through approval; nothing is saved until the user clicks Approve.
-- Before updating, read the concept's current documentation (\`learn_concept\`) so your new body preserves what should stay.
-- Never fabricate a \`conceptId\` — use ids returned by \`list_concepts\` / \`learn_concept\`.
+- Before updating, read the concept's current documentation (\`read_concept_documentation\`) so your new body preserves what should stay.
+- Never fabricate a \`conceptId\` — use ids returned by \`list_concepts\`.
 - Keep documentation self-contained and generic enough to be useful later; lead with what the concept is and why it matters.
 `;
 }

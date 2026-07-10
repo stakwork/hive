@@ -357,7 +357,7 @@ Example queries:
     const swarmHost = new URL(swarmUrl).hostname;
     const jarvisBase = `https://${swarmHost}:8444`;
     stakworkSearchWorkflowsTool = tool({
-      description: "Search Stakwork for workflows by keyword. Returns [{ id, name, description }].",
+      description: "Search Stakwork for workflows by keyword. Returns [{ id, workflow_id, name, description, published_version_id }].",
       inputSchema: z.object({
         query: z.string().describe("Workflow search term"),
       }),
@@ -369,11 +369,68 @@ Example queries:
           );
           if (!res.ok) return "Could not search workflows";
           const data = await res.json();
-          return (data.nodes ?? []).map(
-            (n: { id: string; properties?: { name?: string; description?: string } }) => ({
-              id: n.id,
-              name: n.properties?.name,
-              description: n.properties?.description,
+          const workflows = (data.nodes ?? []) as Array<{
+            id: string;
+            properties?: { name?: string; description?: string; workflow_id?: number };
+          }>;
+
+          return await Promise.all(
+            workflows.map(async (n) => {
+              const wfId = n.properties?.workflow_id;
+              // Guard: skip version fetch when workflow_id is absent — passing an
+              // undefined value through JSON.stringify would silently drop the filter
+              // key and cause the API to return all Workflow_version nodes instead of
+              // an empty set.
+              if (wfId == null) {
+                return {
+                  id: n.id,
+                  workflow_id: undefined,
+                  name: n.properties?.name,
+                  description: n.properties?.description,
+                  published_version_id: null,
+                };
+              }
+
+              let published_version_id: string | null = null;
+              try {
+                // NOTE: port-8444 Jarvis serves /graph/search/attributes (no /api prefix).
+                // Port-3355 (stakgraph) uses /api/graph/search/attributes — these are
+                // distinct services; mixing them causes silent 404s absorbed by the catch block.
+                const vRes = await fetch(`${jarvisBase}/graph/search/attributes`, {
+                  method: "POST",
+                  headers: { "x-api-token": swarmApiKey, "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    node_type: ["Workflow_version"],
+                    include_properties: true,
+                    limit: 1,
+                    skip: 0,
+                    skip_cache: true,
+                    search_filters: [
+                      { attribute: "workflow_id", value: wfId, comparator: "=" },
+                      { attribute: "published", value: true, comparator: "=" },
+                    ],
+                  }),
+                });
+                if (vRes.ok) {
+                  const vData = await vRes.json();
+                  const publishedNode = (vData.nodes ?? []).find(
+                    (v: { properties?: { published?: boolean; workflow_version_id?: string | number } }) =>
+                      v.properties?.published === true,
+                  );
+                  if (publishedNode?.properties?.workflow_version_id != null) {
+                    published_version_id = String(publishedNode.properties.workflow_version_id);
+                  }
+                }
+              } catch {
+                // version fetch failed — leave published_version_id as null
+              }
+              return {
+                id: n.id,
+                workflow_id: wfId,
+                name: n.properties?.name,
+                description: n.properties?.description,
+                published_version_id,
+              };
             }),
           );
         } catch (e) {
