@@ -789,33 +789,113 @@ describe("askTools", () => {
       expect(tools).not.toHaveProperty("stakwork__search_workflows");
     });
 
-    it("maps a successful response to [{ id, name, description }]", async () => {
-      mockFetch.mockResolvedValue({
-        ok: true,
-        json: async () => ({
-          nodes: [{ id: "123", properties: { name: "My Workflow", description: "Does things" } }],
-        }),
-      });
+    it("maps a successful response to [{ id, workflow_id, name, description, published_version_id }]", async () => {
+      // NOTE: exactly one workflow node — Promise.all launches version-fetch calls
+      // concurrently; with a shared vi.fn() mock queue, dequeue order is deterministic
+      // only when there is one entry.
+      mockFetch
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({
+            nodes: [{ id: "123", properties: { workflow_id: 42, name: "My Workflow", description: "Does things" } }],
+          }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({
+            nodes: [{ properties: { published: true, workflow_version_id: 7 } }],
+          }),
+        });
 
       const tools = askTools(stakworkSwarmUrl, mockSwarmApiKey, [mockRepoUrl], mockPat, mockApiKey, stakworkAuth);
       const result = await tools.stakwork__search_workflows.execute({ query: "my workflow" });
 
-      expect(result).toEqual([{ id: "123", name: "My Workflow", description: "Does things" }]);
+      expect(result).toEqual([{ id: "123", workflow_id: 42, name: "My Workflow", description: "Does things", published_version_id: "7" }]);
     });
 
     it("hits the correct Jarvis URL with the right headers", async () => {
-      mockFetch.mockResolvedValue({
-        ok: true,
-        json: async () => ({ nodes: [] }),
-      });
+      // NOTE: exactly one workflow node — see comment above about deterministic mock dequeue order.
+      mockFetch
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({
+            nodes: [{ id: "123", properties: { workflow_id: 42, name: "My Workflow", description: "Does things" } }],
+          }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ nodes: [] }),
+        });
 
       const tools = askTools(stakworkSwarmUrl, mockSwarmApiKey, [mockRepoUrl], mockPat, mockApiKey, stakworkAuth);
       await tools.stakwork__search_workflows.execute({ query: "test query" });
 
-      expect(mockFetch).toHaveBeenCalledWith(
+      expect(mockFetch).toHaveBeenNthCalledWith(
+        1,
         "https://stakwork.sphinx.chat:8444/v2/nodes?q=test%20query&type=Workflow&domains=workflow",
         { headers: { "x-api-token": mockSwarmApiKey, "Content-Type": "application/json" } },
       );
+
+      const secondCall = mockFetch.mock.calls[1];
+      expect(secondCall[0]).toBe("https://stakwork.sphinx.chat:8444/graph/search/attributes");
+      const body = JSON.parse(secondCall[1].body);
+      expect(body.skip_cache).toBe(true);
+      expect(body.limit).toBe(1);
+      expect(body.search_filters).toEqual(expect.arrayContaining([
+        { attribute: "workflow_id", value: 42, comparator: "=" },
+        { attribute: "published", value: true, comparator: "=" },
+      ]));
+    });
+
+    it("returns null published_version_id when workflow_id is absent", async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          nodes: [{ id: "456", properties: { name: "No ID Workflow", description: "Missing wf id" } }],
+        }),
+      });
+
+      const tools = askTools(stakworkSwarmUrl, mockSwarmApiKey, [mockRepoUrl], mockPat, mockApiKey, stakworkAuth);
+      const result = await tools.stakwork__search_workflows.execute({ query: "test" });
+
+      expect(result).toEqual([expect.objectContaining({ id: "456", published_version_id: null })]);
+      // Version fetch must be skipped — only one fetch call should have been made
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+    });
+
+    it("returns null published_version_id when version fetch fails", async () => {
+      mockFetch
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({
+            nodes: [{ id: "123", properties: { workflow_id: 42, name: "My Workflow", description: "Does things" } }],
+          }),
+        })
+        .mockRejectedValueOnce(new Error("network failure"));
+
+      const tools = askTools(stakworkSwarmUrl, mockSwarmApiKey, [mockRepoUrl], mockPat, mockApiKey, stakworkAuth);
+      const result = await tools.stakwork__search_workflows.execute({ query: "test" });
+
+      expect(result).toEqual([expect.objectContaining({ id: "123", published_version_id: null })]);
+    });
+
+    it("returns null published_version_id when no published version exists", async () => {
+      mockFetch
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({
+            nodes: [{ id: "123", properties: { workflow_id: 42, name: "My Workflow", description: "Does things" } }],
+          }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ nodes: [] }),
+        });
+
+      const tools = askTools(stakworkSwarmUrl, mockSwarmApiKey, [mockRepoUrl], mockPat, mockApiKey, stakworkAuth);
+      const result = await tools.stakwork__search_workflows.execute({ query: "test" });
+
+      expect(result).toEqual([expect.objectContaining({ id: "123", published_version_id: null })]);
     });
 
     it("returns error string on non-OK HTTP response", async () => {
