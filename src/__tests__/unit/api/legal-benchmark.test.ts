@@ -545,6 +545,7 @@ describe("POST /run — credential pattern: swarmSecretAlias in payload", () => 
     expect(vars.swarm_secret_alias).toBe("test-swarm-alias");
     expect(vars.secret).not.toBe("supersecret");
     expect(JSON.stringify(capturedPayloads[0])).not.toContain("supersecret");
+    expect(vars.workspace_id).toBe("ws-1");
   });
 
   test("vars.graph_base_url is still present in the payload", async () => {
@@ -566,6 +567,7 @@ describe("POST /run — credential pattern: swarmSecretAlias in payload", () => 
 
     const vars = (capturedPayloads[0] as { workflow_params: { set_var: { attributes: { vars: Record<string, string> } } } }).workflow_params.set_var.attributes.vars;
     expect(vars.graph_base_url).toBe("https://graph.example.com");
+    expect(vars.workspace_id).toBe("ws-1");
   });
 });
 
@@ -1023,6 +1025,7 @@ describe("POST /run — Bifrost LLM credential vars in Stakwork payload", () => 
     expect(vars.baseUrl).toBe("");
     expect(vars.tokenReference).toBe("{{HIVE_STAGING}}");
     expect(vars).not.toHaveProperty("headers");
+    expect(vars.workspace_id).toBe("ws-1");
   });
 
   test("getBifrostForLLM returns undefined → same fallback: env apiKey, empty baseUrl, tokenReference present", async () => {
@@ -1042,6 +1045,7 @@ describe("POST /run — Bifrost LLM credential vars in Stakwork payload", () => 
     expect(vars.baseUrl).toBe("");
     expect(vars.tokenReference).toBe("{{HIVE_STAGING}}");
     expect(vars).not.toHaveProperty("headers");
+    expect(vars.workspace_id).toBe("ws-1");
   });
 
   test("getBifrostForLLM returns full credentials with non-empty headers → headers appears in vars", async () => {
@@ -1064,6 +1068,7 @@ describe("POST /run — Bifrost LLM credential vars in Stakwork payload", () => 
     expect(vars.baseUrl).toBe("https://bifrost.example.com/anthropic/v1");
     expect(vars.headers).toEqual({ "x-macaroon": "test-macaroon" });
     expect(vars.tokenReference).toBe("{{HIVE_STAGING}}");
+    expect(vars.workspace_id).toBe("ws-1");
   });
 
   test("getBifrostForLLM returns credentials with empty headers → headers omitted from vars", async () => {
@@ -1085,5 +1090,6 @@ describe("POST /run — Bifrost LLM credential vars in Stakwork payload", () => 
     expect(vars.baseUrl).toBe("https://bifrost.example.com/anthropic/v1");
     expect(vars).not.toHaveProperty("headers");
     expect(vars.tokenReference).toBe("{{HIVE_STAGING}}");
+    expect(vars.workspace_id).toBe("ws-1");
   });
 });

@@ -11,14 +11,22 @@ import { writeFileSync } from "fs";
 import { join } from "path";
 
 const REPO = "stakwork/harvey-labs";
-const BASE_URL = `https://api.github.com/repos/${REPO}/contents/tasks`;
 const TOKEN = process.env.GITHUB_TOKEN;
 
-type GhEntry = { name: string; type: string };
 type TaskJson = {
   title?: string;
   work_type?: string;
   tags?: string[];
+};
+
+type TreeEntry = {
+  path: string;
+  type: string;
+};
+
+type TreeResponse = {
+  tree: TreeEntry[];
+  truncated: boolean;
 };
 
 function label(slug: string): string {
@@ -46,8 +54,8 @@ async function ghFetch(url: string): Promise<unknown> {
   return res.json();
 }
 
-async function fetchTaskJson(practiceArea: string, taskSlug: string): Promise<TaskJson | null> {
-  const rawUrl = `https://raw.githubusercontent.com/${REPO}/main/tasks/${practiceArea}/${taskSlug}/task.json`;
+async function fetchTaskJson(slug: string): Promise<TaskJson | null> {
+  const rawUrl = `https://raw.githubusercontent.com/${REPO}/main/tasks/${slug}/task.json`;
   const headers: Record<string, string> = {};
   if (TOKEN) headers["Authorization"] = `Bearer ${TOKEN}`;
   try {
@@ -63,6 +71,44 @@ function toWorkType(raw: string | undefined): string {
   const valid = ["draft", "review", "extract", "compare", "identify"];
   if (raw && valid.includes(raw.toLowerCase())) return raw.toLowerCase();
   return "review";
+}
+
+/**
+ * Derives a human-readable title from a slug when task.json has no `title`.
+ * For deep slugs (e.g. "contracts/foo/bar/scenario-01"), picks the last
+ * non-generic segment rather than blindly using the final segment, so
+ * segments like "scenario-01", "scenario-1", "part-01" don't become the title.
+ */
+const GENERIC_SEGMENT_RE = /^(scenario|part|section|step|task|version|v\d+)-?\d*$/i;
+
+export function titleFromSlug(slug: string): string {
+  const segments = slug.split("/");
+  // Walk backwards to find the last non-generic segment
+  let chosen = segments[segments.length - 1];
+  for (let i = segments.length - 1; i >= 0; i--) {
+    if (!GENERIC_SEGMENT_RE.test(segments[i])) {
+      chosen = segments[i];
+      break;
+    }
+  }
+  return chosen
+    .split("-")
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(" ");
+}
+
+/**
+ * Filters a tree entry path to task.json blobs.
+ * Must be under tasks/, not inside a documents/ subfolder.
+ */
+export const TASK_PATH_RE = /^tasks\/(?!.*\/documents\/).+\/task\.json$/;
+
+/**
+ * Derives the index slug from a tree path like "tasks/pa/foo/bar/task.json".
+ * Result: "pa/foo/bar" (strips leading "tasks/" and trailing "/task.json").
+ */
+export function slugFromPath(treePath: string): string {
+  return treePath.slice("tasks/".length, -"/task.json".length);
 }
 
 // Pretty-label overrides for practice areas whose slug doesn't map cleanly
@@ -95,10 +141,23 @@ const LABEL_OVERRIDES: Record<string, string> = {
 };
 
 async function main() {
-  console.log("Fetching practice areas...");
-  const practiceAreas = (await ghFetch(BASE_URL)) as GhEntry[];
-  const dirs = practiceAreas.filter((e) => e.type === "dir").map((e) => e.name);
-  console.log(`Found ${dirs.length} practice areas`);
+  console.log("Fetching recursive Git tree from stakwork/harvey-labs...");
+  const treeUrl = `https://api.github.com/repos/${REPO}/git/trees/main?recursive=1`;
+  const treeData = (await ghFetch(treeUrl)) as TreeResponse;
+
+  if (treeData.truncated) {
+    throw new Error(
+      "Git tree too large — results would be incomplete. " +
+        "The tree was truncated by GitHub; aborting to avoid writing a partial index."
+    );
+  }
+
+  // Filter to task.json blobs at any depth under tasks/
+  const taskPaths = treeData.tree
+    .filter((entry) => entry.type === "blob" && TASK_PATH_RE.test(entry.path))
+    .map((entry) => entry.path);
+
+  console.log(`Found ${taskPaths.length} task.json files`);
 
   type TaskEntry = {
     slug: string;
@@ -113,25 +172,33 @@ async function main() {
     tasks: TaskEntry[];
   };
 
+  // Group slugs by practice area (first segment)
+  const byArea = new Map<string, string[]>();
+  for (const path of taskPaths) {
+    const slug = slugFromPath(path);
+    const practiceArea = slug.split("/")[0];
+    if (!byArea.has(practiceArea)) byArea.set(practiceArea, []);
+    byArea.get(practiceArea)!.push(slug);
+  }
+
+  // Sort practice areas deterministically by key
+  const sortedAreas = [...byArea.keys()].sort();
+  console.log(`Found ${sortedAreas.length} practice areas`);
+
   const result: PracticeAreaEntry[] = [];
   let totalTasks = 0;
 
-  for (const pa of dirs) {
+  for (const pa of sortedAreas) {
     console.log(`  Processing ${pa}...`);
-    const taskDirs = (await ghFetch(`${BASE_URL}/${pa}`)) as GhEntry[];
-    const taskSlugs = taskDirs.filter((e) => e.type === "dir").map((e) => e.name);
-
+    // Sort tasks within the area deterministically by full slug
+    const slugs = byArea.get(pa)!.sort();
     const tasks: TaskEntry[] = [];
-    for (const ts of taskSlugs) {
-      const tj = await fetchTaskJson(pa, ts);
-      const titleFromSlug = ts
-        .split("-")
-        .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
-        .join(" ");
 
+    for (const slug of slugs) {
+      const tj = await fetchTaskJson(slug);
       tasks.push({
-        slug: `${pa}/${ts}`,
-        title: tj?.title ?? titleFromSlug,
+        slug,
+        title: tj?.title ?? titleFromSlug(slug),
         work_type: toWorkType(tj?.work_type),
         tags: tj?.tags ?? [],
       });
