@@ -11,26 +11,31 @@ const mockConcepts = [
     id: "stakwork/hive/auth",
     name: "Authentication",
     content: "Handles JWT and OAuth flows for user authentication.",
+    description: "JWT and OAuth authentication layer for all workspace users.",
   },
   {
     id: "stakwork/hive/tasks",
     name: "Task Management",
     content: "Core task CRUD with dual status system (user vs workflow).",
+    description: "Core task CRUD with dual user and workflow status tracking.",
   },
   {
     id: "stakwork/hive/janitors",
     name: "Janitor Workflows",
     content: "Automated code quality analysis and PR monitoring janitors.",
+    description: "Automated code quality analysis and PR monitoring janitors.",
   },
   {
     id: "stakwork/hive/workspace",
     name: "Workspace Access",
     content: "Multi-tenant workspace with role-based access control (RBAC).",
+    description: "Multi-tenant workspace with role-based access control.",
   },
   {
     id: "stakwork/hive/swarm",
     name: "Swarm Orchestration",
     content: "Pod and swarm lifecycle management for AI agent workloads.",
+    description: "Pod and swarm lifecycle management for AI agent workloads.",
   },
 ];
 

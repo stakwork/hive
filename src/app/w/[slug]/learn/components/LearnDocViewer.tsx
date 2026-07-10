@@ -13,6 +13,7 @@ interface ActiveItem {
   id?: string;
   name: string;
   content: string;
+  description?: string | null;
 }
 
 interface LearnDocViewerProps {
@@ -82,6 +83,9 @@ export function LearnDocViewer({
       <div className="flex items-center justify-between border-b p-4">
         <div>
           <h1 className="text-2xl font-semibold">{activeItem.name}</h1>
+          {activeItem.type === "concept" && activeItem.description && (
+            <p className="text-sm text-muted-foreground mt-1">{activeItem.description}</p>
+          )}
           <p className="text-sm text-muted-foreground">
             {activeItem.type === "doc" ? "Documentation" : "Concept"}
           </p>
