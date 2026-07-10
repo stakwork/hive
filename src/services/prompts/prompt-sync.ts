@@ -555,6 +555,15 @@ export async function publishVersion(
 
 /**
  * Delete a prompt from Hive (cascades to versions); best-effort DELETE to Stakwork.
+ *
+ * Prompt has a circular FK with PromptVersion:
+ *   prompts.published_version_id → prompt_versions.id (ON DELETE SET NULL)
+ *   prompt_versions.prompt_id    → prompts.id          (ON DELETE CASCADE)
+ *
+ * PostgreSQL resolves this by running SET NULL before CASCADE, but some
+ * engines/versions defer the SET NULL until after the CASCADE fires, leaving
+ * the version rows orphaned. Explicitly clear publishedVersionId first to
+ * break the cycle before deleting the prompt.
  */
 export async function deletePrompt(promptId: string): Promise<void> {
   const prompt = await db.prompt.findUnique({ where: { id: promptId } });
@@ -562,7 +571,12 @@ export async function deletePrompt(promptId: string): Promise<void> {
     throw Object.assign(new Error("Prompt not found"), { status: 404 });
   }
 
-  await db.prompt.delete({ where: { id: promptId } });
+  await db.$transaction(async (tx) => {
+    if (prompt.publishedVersionId) {
+      await tx.prompt.update({ where: { id: promptId }, data: { publishedVersionId: null } });
+    }
+    await tx.prompt.delete({ where: { id: promptId } });
+  });
 
   if (prompt.stakworkId) {
     try {
