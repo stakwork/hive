@@ -27,7 +27,6 @@ import {
   ScrollText,
   Server,
   Settings,
-  Share2,
   ShieldCheck,
   TestTube2,
   Workflow,
@@ -148,7 +147,7 @@ const baseNavigationItems: NavigationItem[] = [
       { icon: Phone, label: "Calls", href: "/calls" },
       { icon: FileText, label: "Agent Logs", href: "/agent-logs" },
       { icon: Bug, label: "Errors", href: "/errors" },
-      { icon: Share2, label: "Graph", href: "/context/graph" },
+
     ],
   },
 ];
@@ -524,13 +523,6 @@ export function Sidebar({ user }: SidebarProps) {
   const navigationItems = allNavigationItems
     .filter((item) => !excludeLabels.includes(item.label))
     .map((item) => {
-      // Filter Graph child from Context for non-admins
-      if (item.label === "Context" && item.children && !canAdmin) {
-        return {
-          ...item,
-          children: item.children.filter((child) => child.label !== "Graph"),
-        };
-      }
       // Public viewers can't see Agent Logs (raw agent output with PII/secrets)
       // or Calls (voice recordings — entirely auth-gated).
       if (item.label === "Context" && item.children && isPublicViewer) {
