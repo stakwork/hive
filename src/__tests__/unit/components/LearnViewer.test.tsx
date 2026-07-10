@@ -53,8 +53,17 @@ vi.mock("@/app/w/[slug]/learn/components/LearnSidebar", () => ({
 }));
 
 vi.mock("@/app/w/[slug]/learn/components/LearnDocViewer", () => ({
-  LearnDocViewer: ({ activeItem }: { activeItem: { name: string } | null }) => (
-    <div data-testid="doc-viewer">{activeItem?.name ?? "no-item"}</div>
+  LearnDocViewer: ({
+    activeItem,
+  }: {
+    activeItem: { name: string; description?: string | null; type?: string } | null;
+  }) => (
+    <div data-testid="doc-viewer">
+      <span data-testid="doc-viewer-name">{activeItem?.name ?? "no-item"}</span>
+      {activeItem?.description && (
+        <span data-testid="doc-viewer-description">{activeItem.description}</span>
+      )}
+    </div>
   ),
 }));
 
@@ -70,15 +79,47 @@ vi.mock("@/app/w/[slug]/learn/components/CreateDiagramModal", () => ({
 // fetch mock helpers
 // ---------------------------------------------------------------------------
 const DOCS_RESPONSE = [{ "org/repo": { documentation: "doc content here" } }];
-const CONCEPTS_RESPONSE = { features: [{ id: "concept-abc", name: "Auth Concept", content: "concept content" }] };
+const CONCEPTS_RESPONSE = {
+  features: [
+    {
+      id: "concept-abc",
+      name: "Auth Concept",
+      content: "concept content",
+      description: "JWT and OAuth authentication layer.",
+    },
+  ],
+};
+const CONCEPT_DETAIL_RESPONSE = {
+  concept: {
+    id: "concept-abc",
+    name: "Auth Concept",
+    description: "JWT and OAuth authentication layer.",
+    documentation: "Full auth documentation here.",
+  },
+  feature: {
+    id: "concept-abc",
+    name: "Auth Concept",
+    description: "JWT and OAuth authentication layer.",
+    documentation: "Full auth documentation here.",
+  },
+};
 const DIAGRAMS_RESPONSE = [{ id: "diag-123", name: "System Diagram", body: "graph TD; A-->B", description: "desc" }];
 
-function makeFetchMock(overrides?: { docs?: unknown; concepts?: unknown; diagrams?: unknown }) {
+function makeFetchMock(overrides?: {
+  docs?: unknown;
+  concepts?: unknown;
+  conceptDetail?: unknown;
+  diagrams?: unknown;
+}) {
   return vi.fn().mockImplementation((url: string) => {
     if (url.includes("/api/learnings/docs")) {
       return Promise.resolve({ ok: true, json: () => Promise.resolve(overrides?.docs ?? DOCS_RESPONSE) });
     }
-    if (url.includes("/api/learnings/concepts") && !url.includes("/documentation")) {
+    // Concept detail route: /api/learnings/concepts/<id>?workspace=...
+    if (url.match(/\/api\/learnings\/concepts\/[^/]+(\?|$)/)) {
+      return Promise.resolve({ ok: true, json: () => Promise.resolve(overrides?.conceptDetail ?? CONCEPT_DETAIL_RESPONSE) });
+    }
+    if (url.includes("/api/learnings/concepts")) {
       return Promise.resolve({ ok: true, json: () => Promise.resolve(overrides?.concepts ?? CONCEPTS_RESPONSE) });
     }
     if (url.includes("/api/learnings/diagrams")) {
@@ -186,5 +227,82 @@ describe("LearnViewer — URL param sync", () => {
     screen.getByTestId("doc-org/repo").click();
     expect(mockPush).not.toHaveBeenCalled();
     expect(mockReplace).toHaveBeenCalled();
+  });
+});
+
+describe("LearnViewer — concept description subtitle", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockSearchParamsGet.mockReturnValue(null);
+    global.fetch = makeFetchMock();
+  });
+
+  it("renders description as subtitle after fresh concept fetch", async () => {
+    render(<LearnViewer workspaceSlug="test-workspace" />);
+    await waitFor(() => screen.getByTestId("concept-concept-abc"));
+    screen.getByTestId("concept-concept-abc").click();
+    await waitFor(() => {
+      expect(screen.getByTestId("doc-viewer-description")).toHaveTextContent(
+        "JWT and OAuth authentication layer."
+      );
+    });
+  });
+
+  it("renders description from cache when concept already has content (no fetch)", async () => {
+    // Pre-populate concepts with content so the fetch branch is skipped
+    const conceptsWithContent = {
+      features: [
+        {
+          id: "concept-abc",
+          name: "Auth Concept",
+          content: "already loaded content",
+          description: "Cached description value.",
+        },
+      ],
+    };
+    global.fetch = makeFetchMock({ concepts: conceptsWithContent });
+    render(<LearnViewer workspaceSlug="test-workspace" />);
+    await waitFor(() => screen.getByTestId("concept-concept-abc"));
+    screen.getByTestId("concept-concept-abc").click();
+    // fetch branch is skipped because content is non-empty; description from cache
+    await waitFor(() => {
+      expect(screen.getByTestId("doc-viewer-description")).toHaveTextContent(
+        "Cached description value."
+      );
+    });
+  });
+
+  it("does NOT render description element when concept description is absent", async () => {
+    const conceptsNoDesc = {
+      features: [{ id: "concept-abc", name: "Auth Concept", content: "some content" }],
+    };
+    const detailNoDesc = {
+      concept: { id: "concept-abc", name: "Auth Concept", description: null, documentation: "doc" },
+      feature: { id: "concept-abc", name: "Auth Concept", description: null, documentation: "doc" },
+    };
+    global.fetch = makeFetchMock({ concepts: conceptsNoDesc, conceptDetail: detailNoDesc });
+    render(<LearnViewer workspaceSlug="test-workspace" />);
+    await waitFor(() => screen.getByTestId("concept-concept-abc"));
+    screen.getByTestId("concept-concept-abc").click();
+    await waitFor(() =>
+      expect(screen.getByTestId("doc-viewer-name")).toHaveTextContent("Auth Concept")
+    );
+    expect(screen.queryByTestId("doc-viewer-description")).toBeNull();
+  });
+
+  it("renders description on URL-param restore (?concept param)", async () => {
+    mockSearchParamsGet.mockImplementation((key: string) =>
+      key === "concept" ? "concept-abc" : null
+    );
+    render(<LearnViewer workspaceSlug="test-workspace" />);
+    await waitFor(() => {
+      expect(screen.getByTestId("doc-viewer-name")).toHaveTextContent("Auth Concept");
+    });
+    // Description should be present via the fetch triggered by URL restore (empty content path)
+    await waitFor(() => {
+      expect(screen.getByTestId("doc-viewer-description")).toHaveTextContent(
+        "JWT and OAuth authentication layer."
+      );
+    });
   });
 });
