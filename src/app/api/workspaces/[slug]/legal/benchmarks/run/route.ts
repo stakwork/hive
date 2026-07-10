@@ -79,22 +79,9 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       );
     }
 
-    const BENCHMARK_MODEL = "claude-opus-4-5";
-    let bifrost: Awaited<ReturnType<typeof getBifrostForLLM>> | undefined;
-    try {
-      bifrost = await getBifrostForLLM(
-        { workspaceId, workspaceSlug: slug, userId: userOrResponse.id },
-        { agentName: "plan-agent", model: BENCHMARK_MODEL },
-      );
-    } catch (err) {
-      console.warn(
-        "[legal/benchmarks/run] Bifrost resolution failed, falling back to env key",
-        err,
-      );
-    }
-
-    // Parse + validate body
-    let body: { taskSlug?: string; taskTitle?: string };
+    // Parse + validate body BEFORE Bifrost resolution so we can use the
+    // operator-supplied model for credential resolution.
+    let body: { taskSlug?: string; taskTitle?: string; model?: string; judgeModel?: string };
     try {
       body = await request.json();
     } catch {
@@ -106,6 +93,61 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json(
         { error: "taskSlug and taskTitle are required" },
         { status: 400 },
+      );
+    }
+
+    // Defaults (provider/name form expected from client; bare form for runner vars)
+    const DEFAULT_MODEL_PROVIDER = "anthropic/claude-opus-4-5";
+    const DEFAULT_JUDGE_MODEL_PROVIDER = "anthropic/claude-sonnet-4-6";
+
+    // Client sends provider/name form; strip prefix for runner vars
+    const stripProviderPrefix = (m: string) => m.includes("/") ? m.split("/").slice(1).join("/") : m;
+
+    const rawModel = body.model ?? DEFAULT_MODEL_PROVIDER;
+    const rawJudgeModel = body.judgeModel ?? DEFAULT_JUDGE_MODEL_PROVIDER;
+    const bareModel = stripProviderPrefix(rawModel);
+    const bareJudgeModel = stripProviderPrefix(rawJudgeModel);
+
+    // Validate both against known Anthropic public models in the DB
+    const allowedModels = await db.llmModel.findMany({
+      where: { provider: "ANTHROPIC", isPublic: true },
+      select: { name: true },
+    });
+    const allowedNames = new Set(allowedModels.map((m) => m.name));
+
+    if (!allowedNames.has(bareModel)) {
+      return NextResponse.json(
+        { error: `Unknown or non-Anthropic execution model: ${bareModel}` },
+        { status: 400 },
+      );
+    }
+    if (!allowedNames.has(bareJudgeModel)) {
+      return NextResponse.json(
+        { error: `Unknown or non-Anthropic judge model: ${bareJudgeModel}` },
+        { status: 400 },
+      );
+    }
+
+    // Resolve credentials using the validated execution model (provider/name form)
+    let bifrost: Awaited<ReturnType<typeof getBifrostForLLM>> | undefined;
+    try {
+      bifrost = await getBifrostForLLM(
+        { workspaceId, workspaceSlug: slug, userId: userOrResponse.id },
+        { agentName: "plan-agent", model: rawModel },
+      );
+    } catch (err) {
+      console.warn(
+        "[legal/benchmarks/run] Bifrost resolution failed, falling back to env key",
+        err,
+      );
+    }
+
+    // Fail clearly rather than dispatching with an empty apiKey
+    const resolvedApiKey = bifrost?.apiKey ?? getApiKeyForModel(rawModel);
+    if (!resolvedApiKey) {
+      return NextResponse.json(
+        { error: "No LLM API key available for the selected execution model" },
+        { status: 500 },
       );
     }
 
@@ -202,6 +244,9 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
         const runnerResultJson: Record<string, unknown> = {
           taskSlug,
           taskTitle,
+          model: bareModel,
+          judge_model: bareJudgeModel,
+          requestedJudgeModel: bareJudgeModel,
           // evalTriggerRef will be added later (non-fatal Jarvis step)
         };
 
@@ -258,8 +303,9 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
               graph_base_url: graphBaseUrl,
               swarm_secret_alias: swarmSecretAlias,
               secret: swarmSecretAlias,
-              model: BENCHMARK_MODEL,
-              apiKey: bifrost?.apiKey ?? getApiKeyForModel(BENCHMARK_MODEL) ?? "",
+              model: bareModel,
+              judge_model: bareJudgeModel,
+              apiKey: resolvedApiKey,
               baseUrl: bifrost?.baseUrl ?? "",
               ...(bifrost && Object.keys(bifrost.headers).length > 0
                 ? { headers: bifrost.headers }
@@ -271,6 +317,8 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
         },
       },
     };
+
+    console.log(`[legal/benchmarks/run] dispatching model=${bareModel} judge_model=${bareJudgeModel}`);
 
     const stakworkResponse = await fetch(`${optionalEnvVars.STAKWORK_BASE_URL}/projects`, {
       method: "POST",

@@ -1553,7 +1553,10 @@ async function processLegalBenchmarkRunnerWebhook(
     }
   }
 
-  // Merge output + flat score fields into persisted result
+  // Merge output + flat score fields into persisted result.
+  // NOTE: `requestedJudgeModel` and `model` were stored at creation time (operator-selected values)
+  // and must NOT be overwritten by webhook-echoed fields. The runner-echoed `judge_model` is
+  // persisted as-is for audit purposes, but the operator's selection is preserved in `requestedJudgeModel`.
   const mergedResult: Record<string, unknown> = {
     ...resultJson,
     ...(finalOutput !== undefined ? { runnerOutputText: finalOutput } : {}),
@@ -1566,7 +1569,13 @@ async function processLegalBenchmarkRunnerWebhook(
     ...(scoreFields.pass_rate !== undefined ? { pass_rate: scoreFields.pass_rate } : {}),
     ...(scoreFields.all_pass !== undefined ? { all_pass: scoreFields.all_pass } : {}),
     ...(scoreFields.scores_s3_url !== undefined ? { scores_s3_url: scoreFields.scores_s3_url } : {}),
+    // Persist runner-echoed judge_model for audit, but preserve the operator-requested value
+    // stored at creation time under `requestedJudgeModel` — never overwrite it here.
     ...(scoreFields.judge_model !== undefined ? { judge_model: scoreFields.judge_model } : {}),
+    // Restore operator-selected values in case the spread above clobbered them
+    // (they are already in resultJson from creation, but be explicit for safety)
+    ...(resultJson.requestedJudgeModel !== undefined ? { requestedJudgeModel: resultJson.requestedJudgeModel } : {}),
+    ...(resultJson.model !== undefined ? { model: resultJson.model } : {}),
   };
 
   await db.stakworkRun.update({

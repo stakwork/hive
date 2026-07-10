@@ -36,8 +36,12 @@ export interface BenchmarkRunResult {
   all_pass?: boolean;
   /** S3 URL to per-criterion score breakdown (out of scope for v1 display) */
   scores_s3_url?: string;
-  /** Name of the judge model used for evaluation */
+  /** Name of the judge model used for evaluation (echoed from runner webhook) */
   judge_model?: string;
+  /** Execution model selected by the operator at run submission time (bare name, e.g. "claude-opus-4-5") */
+  model?: string;
+  /** Judge model selected by the operator at run submission time; preserved and never clobbered by webhook echo */
+  requestedJudgeModel?: string;
 }
 
 /**

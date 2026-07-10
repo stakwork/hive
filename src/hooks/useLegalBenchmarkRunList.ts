@@ -14,6 +14,10 @@ export interface BenchmarkRunListRow {
   n_passed?: number;
   n_total?: number;
   all_pass?: boolean;
+  // Model fields stored at creation time
+  model?: string;
+  requestedJudgeModel?: string;
+  judge_model?: string;
 }
 
 interface UseLegalBenchmarkRunListResult {
@@ -70,6 +74,9 @@ export function useLegalBenchmarkRunList(
           n_passed: parsed?.n_passed,
           n_total: parsed?.n_total,
           all_pass: parsed?.all_pass,
+          model: parsed?.model,
+          requestedJudgeModel: parsed?.requestedJudgeModel,
+          judge_model: parsed?.judge_model,
         };
       });
 

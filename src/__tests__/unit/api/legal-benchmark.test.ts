@@ -14,6 +14,7 @@ const mockDbStakworkRunCreate = vi.hoisted(() => vi.fn());
 const mockDbStakworkRunUpdate = vi.hoisted(() => vi.fn());
 const mockDbStakworkRunDeleteMany = vi.hoisted(() => vi.fn());
 const mockDbTransaction = vi.hoisted(() => vi.fn());
+const mockDbLlmModelFindMany = vi.hoisted(() => vi.fn());
 
 const mockDbWorkspaceFindUnique = vi.hoisted(() => vi.fn());
 const mockPusherTrigger = vi.hoisted(() => vi.fn());
@@ -36,6 +37,9 @@ vi.mock("@/lib/db", () => ({
     },
     workspace: {
       findUnique: mockDbWorkspaceFindUnique,
+    },
+    llmModel: {
+      findMany: mockDbLlmModelFindMany,
     },
     $transaction: mockDbTransaction,
   },
@@ -190,6 +194,14 @@ beforeEach(() => {
   mockEnsureHarveyLabEvalNodes.mockResolvedValue(null);
   mockAddNode.mockResolvedValue({ success: true, ref_id: "node-ref-1" });
   mockAddEdge.mockResolvedValue({ success: true });
+
+  // Default: LLM model validation — seed known Anthropic models
+  mockDbLlmModelFindMany.mockResolvedValue([
+    { name: "claude-opus-4-5" },
+    { name: "claude-sonnet-4-6" },
+    { name: "claude-opus-4-6" },
+    { name: "claude-haiku-4-5" },
+  ]);
 
   // Default: Bifrost disabled → falls back to env key
   mockGetBifrostForLLM.mockResolvedValue(undefined);
@@ -1091,5 +1103,215 @@ describe("POST /run — Bifrost LLM credential vars in Stakwork payload", () => 
     expect(vars).not.toHaveProperty("headers");
     expect(vars.tokenReference).toBe("{{HIVE_STAGING}}");
     expect(vars.workspace_id).toBe("ws-1");
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// POST /run — model/judgeModel validation & defaults
+// ═══════════════════════════════════════════════════════════════════════════
+
+describe("POST /run — model/judgeModel validation & defaults", () => {
+  type VarsShape = Record<string, unknown>;
+
+  function captureVars(): Promise<VarsShape> {
+    return new Promise((resolve) => {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn().mockImplementation((url: string, opts?: RequestInit) => {
+          if (String(url).includes("task.json") || String(url).includes("contents")) {
+            return Promise.resolve({ ok: false, status: 404 });
+          }
+          const payload = opts?.body ? JSON.parse(opts.body as string) : {};
+          resolve(payload.workflow_params.set_var.attributes.vars as VarsShape);
+          return Promise.resolve({ ok: true, json: async () => ({ data: { project_id: 99 } }) });
+        }),
+      );
+    });
+  }
+
+  beforeEach(() => {
+    (getWorkspaceSwarmAccess as Mock).mockResolvedValue(MOCK_SWARM_ACCESS);
+    setupTransactionMock({ runnerResult: { id: "runner-new" } });
+  });
+
+  test("defaults to claude-opus-4-5 / claude-sonnet-4-6 when model/judgeModel omitted", async () => {
+    const varsPromise = captureVars();
+    const res = await postRun(makeRunRequest({ taskSlug: "task-a", taskTitle: "Task A" }), {
+      params: Promise.resolve({ slug: "openlaw" }),
+    });
+    expect(res.status).toBe(201);
+    const vars = await varsPromise;
+    expect(vars.model).toBe("claude-opus-4-5");
+    expect(vars.judge_model).toBe("claude-sonnet-4-6");
+  });
+
+  test("accepts valid provider/name form and sends bare name to runner", async () => {
+    const varsPromise = captureVars();
+    const res = await postRun(
+      makeRunRequest({
+        taskSlug: "task-a",
+        taskTitle: "Task A",
+        model: "anthropic/claude-opus-4-6",
+        judgeModel: "anthropic/claude-haiku-4-5",
+      }),
+      { params: Promise.resolve({ slug: "openlaw" }) },
+    );
+    expect(res.status).toBe(201);
+    const vars = await varsPromise;
+    expect(vars.model).toBe("claude-opus-4-6");
+    expect(vars.judge_model).toBe("claude-haiku-4-5");
+  });
+
+  test("returns 400 for unknown execution model", async () => {
+    const res = await postRun(
+      makeRunRequest({
+        taskSlug: "task-a",
+        taskTitle: "Task A",
+        model: "anthropic/gpt-4o",
+      }),
+      { params: Promise.resolve({ slug: "openlaw" }) },
+    );
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error).toMatch(/gpt-4o/i);
+  });
+
+  test("returns 400 for unknown judge model", async () => {
+    const res = await postRun(
+      makeRunRequest({
+        taskSlug: "task-a",
+        taskTitle: "Task A",
+        judgeModel: "anthropic/gemini-flash",
+      }),
+      { params: Promise.resolve({ slug: "openlaw" }) },
+    );
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error).toMatch(/gemini-flash/i);
+  });
+
+  test("persists bare model and requestedJudgeModel in runner result at creation", async () => {
+    const createdRows: Array<Record<string, unknown>> = [];
+    mockDbTransaction.mockImplementation(async (fn: (tx: unknown) => Promise<unknown>) => {
+      const tx = {
+        stakworkRun: {
+          findFirst: vi.fn().mockResolvedValue(null),
+          create: vi.fn().mockImplementation((args: { data: Record<string, unknown> }) => {
+            createdRows.push(args.data);
+            return Promise.resolve({ id: "runner-new" });
+          }),
+          update: vi.fn().mockResolvedValue({}),
+        },
+      };
+      return fn(tx);
+    });
+
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ data: { project_id: 99 } }),
+    }));
+
+    await postRun(
+      makeRunRequest({
+        taskSlug: "task-a",
+        taskTitle: "Task A",
+        model: "anthropic/claude-opus-4-6",
+        judgeModel: "anthropic/claude-haiku-4-5",
+      }),
+      { params: Promise.resolve({ slug: "openlaw" }) },
+    );
+
+    expect(createdRows).toHaveLength(1);
+    const resultJson = JSON.parse(createdRows[0].result as string) as Record<string, unknown>;
+    expect(resultJson.model).toBe("claude-opus-4-6");
+    expect(resultJson.judge_model).toBe("claude-haiku-4-5");
+    expect(resultJson.requestedJudgeModel).toBe("claude-haiku-4-5");
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// POST /run — credential reorder regression
+// ═══════════════════════════════════════════════════════════════════════════
+
+describe("POST /run — credential reorder regression", () => {
+  type VarsShape = Record<string, unknown>;
+
+  function captureVars(): Promise<VarsShape> {
+    return new Promise((resolve) => {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn().mockImplementation((url: string, opts?: RequestInit) => {
+          if (String(url).includes("task.json") || String(url).includes("contents")) {
+            return Promise.resolve({ ok: false, status: 404 });
+          }
+          const payload = opts?.body ? JSON.parse(opts.body as string) : {};
+          resolve(payload.workflow_params.set_var.attributes.vars as VarsShape);
+          return Promise.resolve({ ok: true, json: async () => ({ data: { project_id: 99 } }) });
+        }),
+      );
+    });
+  }
+
+  beforeEach(() => {
+    (getWorkspaceSwarmAccess as Mock).mockResolvedValue(MOCK_SWARM_ACCESS);
+    setupTransactionMock({ runnerResult: { id: "runner-new" } });
+  });
+
+  test("no model in body → Bifrost called with default provider/name, dispatches correctly", async () => {
+    mockGetBifrostForLLM.mockResolvedValue(undefined);
+    mockGetApiKeyForModel.mockReturnValue("env-anthropic-key");
+
+    const varsPromise = captureVars();
+    const res = await postRun(makeRunRequest({ taskSlug: "task-a", taskTitle: "Task A" }), {
+      params: Promise.resolve({ slug: "openlaw" }),
+    });
+    expect(res.status).toBe(201);
+
+    const vars = await varsPromise;
+    expect(vars.model).toBe("claude-opus-4-5");
+    expect(vars.apiKey).toBe("env-anthropic-key");
+    // Bifrost was called — with the default model in provider/name form
+    expect(mockGetBifrostForLLM).toHaveBeenCalledWith(
+      expect.objectContaining({ workspaceId: "ws-1" }),
+      expect.objectContaining({ model: "anthropic/claude-opus-4-5" }),
+    );
+  });
+
+  test("fails with 500 when both Bifrost and env key are unavailable (no silent empty dispatch)", async () => {
+    mockGetBifrostForLLM.mockResolvedValue(undefined);
+    mockGetApiKeyForModel.mockReturnValue(undefined);
+
+    // No fetch should happen (no Stakwork dispatch)
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ data: { project_id: 99 } }),
+    });
+    vi.stubGlobal("fetch", mockFetch);
+
+    const res = await postRun(makeRunRequest({ taskSlug: "task-a", taskTitle: "Task A" }), {
+      params: Promise.resolve({ slug: "openlaw" }),
+    });
+    expect(res.status).toBe(500);
+    const body = await res.json();
+    expect(body.error).toMatch(/no llm api key/i);
+
+    // Stakwork /projects must NOT have been called
+    const stakworkCalls = mockFetch.mock.calls.filter(([url]: [string]) =>
+      String(url).includes("/projects"),
+    );
+    expect(stakworkCalls).toHaveLength(0);
+  });
+
+  test("Bifrost throws + env key available → still dispatches (graceful fallback)", async () => {
+    mockGetBifrostForLLM.mockRejectedValue(new Error("Bifrost down"));
+    mockGetApiKeyForModel.mockReturnValue("env-anthropic-key");
+
+    const varsPromise = captureVars();
+    const res = await postRun(makeRunRequest({ taskSlug: "task-a", taskTitle: "Task A" }), {
+      params: Promise.resolve({ slug: "openlaw" }),
+    });
+    expect(res.status).toBe(201);
+    const vars = await varsPromise;
+    expect(vars.apiKey).toBe("env-anthropic-key");
   });
 });
