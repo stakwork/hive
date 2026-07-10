@@ -562,7 +562,14 @@ export async function deletePrompt(promptId: string): Promise<void> {
     throw Object.assign(new Error("Prompt not found"), { status: 404 });
   }
 
-  await db.prompt.delete({ where: { id: promptId } });
+  // Wrap in a transaction: clear the publishedVersionId FK first to break the circular
+  // reference (Prompt.publishedVersionId → PromptVersion), then delete (cascades versions).
+  await db.$transaction(async (tx) => {
+    if (prompt.publishedVersionId) {
+      await tx.prompt.update({ where: { id: promptId }, data: { publishedVersionId: null } });
+    }
+    await tx.prompt.delete({ where: { id: promptId } });
+  });
 
   if (prompt.stakworkId) {
     try {
