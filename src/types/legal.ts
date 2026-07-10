@@ -38,6 +38,14 @@ export interface BenchmarkRunResult {
   scores_s3_url?: string;
   /** Name of the judge model used for evaluation */
   judge_model?: string;
+  /** Per-criterion results returned inline by workflow 57179 */
+  criteria_results?: Array<{
+    id: string;
+    title: string;
+    /** Casing unverified from workflow 57179 — do not narrow to a union */
+    verdict: string;
+    reasoning: string;
+  }>;
 }
 
 /**
