@@ -1471,6 +1471,17 @@ const RunnerScoreSchema = z.object({
   all_pass: z.boolean().optional(),
   scores_s3_url: z.string().optional(),
   judge_model: z.string().optional(),
+  // NOT z.enum(["pass","fail"]) — casing from workflow 57179 is unverified
+  criteria_results: z
+    .array(
+      z.object({
+        id: z.string(),
+        title: z.string(),
+        verdict: z.string(),
+        reasoning: z.string(),
+      }),
+    )
+    .optional(),
 });
 
 /**

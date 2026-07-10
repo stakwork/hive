@@ -67,6 +67,33 @@ vi.mock("@/hooks/useLegalBenchmarkRun", () => ({
   useLegalBenchmarkRun: (runId: string) => mockUseLegalBenchmarkRun(runId),
 }));
 
+vi.mock("@/components/ui/collapsible", () => ({
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  Collapsible: ({ children, open, onOpenChange }: any) => (
+    <div data-testid="collapsible" data-open={String(open)} onClick={() => onOpenChange?.(!open)}>{children}</div>
+  ),
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  CollapsibleTrigger: ({ children, asChild }: any) => (
+    <div data-testid="collapsible-trigger" data-aschild={String(asChild)}>{children}</div>
+  ),
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  CollapsibleContent: ({ children }: any) => (
+    <div data-testid="collapsible-content">{children}</div>
+  ),
+}));
+
+vi.mock("@/components/ui/input", () => ({
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  Input: ({ value, onChange, placeholder, className }: any) =>
+    React.createElement("input", {
+      "data-testid": "filter-input",
+      value,
+      onChange,
+      placeholder,
+      className,
+    }),
+}));
+
 vi.mock("@/components/ui/button", () => ({
   Button: ({
     children,
@@ -420,5 +447,149 @@ describe("LegalBenchmarkResults", () => {
       React.createElement(LegalBenchmarkResults, { runId: "run-abc", onReset })
     );
     expect(container.firstChild).toBeNull();
+  });
+
+  // ─── Rubric Details accordion ─────────────────────────────────────────────
+
+  const makeCriteriaResults = () => [
+    { id: "crit-1", title: "Accuracy", verdict: "fail", reasoning: "Missing key point" },
+    { id: "crit-2", title: "Completeness", verdict: "pass", reasoning: "All sections covered" },
+    { id: "crit-3", title: "Clarity", verdict: "fail", reasoning: "Ambiguous wording" },
+  ];
+
+  function makeCompleteRunWithCriteria(criteriaResults: Array<{ id: string; title: string; verdict: string; reasoning: string }> | undefined, allPass = false) {
+    return makeMockRun({
+      status: "complete",
+      runnerOutputText: "Output",
+      runnerRun: makeRunnerRow({
+        status: "COMPLETED",
+        result: {
+          taskSlug: "antitrust/task-1",
+          taskTitle: "Test",
+          n_passed: criteriaResults?.filter((c) => c.verdict === "pass").length ?? 0,
+          n_total: criteriaResults?.length ?? 0,
+          all_pass: allPass,
+          criteria_results: criteriaResults,
+        },
+      }),
+    });
+  }
+
+  it("renders Rubric Details section when criteria_results is present", () => {
+    const criteriaResults = makeCriteriaResults();
+    mockUseLegalBenchmarkRun.mockReturnValue({
+      run: makeCompleteRunWithCriteria(criteriaResults, false),
+      isLoading: false,
+      isStale: false,
+      refetch: vi.fn(),
+    });
+
+    render(React.createElement(LegalBenchmarkResults, { runId: "run-abc", onReset }));
+
+    expect(screen.getByText(/Rubric Details/)).toBeInTheDocument();
+    // failedCount = 2, total = 3
+    expect(screen.getByText(/2 failed \/ 3 total/)).toBeInTheDocument();
+  });
+
+  it("renders failed criteria before passing criteria in list order", () => {
+    const criteriaResults = makeCriteriaResults(); // fail, pass, fail
+    mockUseLegalBenchmarkRun.mockReturnValue({
+      run: makeCompleteRunWithCriteria(criteriaResults, false),
+      isLoading: false,
+      isStale: false,
+      refetch: vi.fn(),
+    });
+
+    render(React.createElement(LegalBenchmarkResults, { runId: "run-abc", onReset }));
+
+    // All three titles should appear
+    const titleEls = [
+      screen.getByText("Accuracy"),
+      screen.getByText("Clarity"),
+      screen.getByText("Completeness"),
+    ];
+    // Failed ("Accuracy", "Clarity") should appear before passed ("Completeness")
+    const allText = document.body.textContent ?? "";
+    const accPos = allText.indexOf("Accuracy");
+    const clarPos = allText.indexOf("Clarity");
+    const compPos = allText.indexOf("Completeness");
+    expect(titleEls.length).toBe(3);
+    expect(accPos).toBeLessThan(compPos);
+    expect(clarPos).toBeLessThan(compPos);
+  });
+
+  it("is collapsed by default when all_pass is true", () => {
+    const criteriaResults = [
+      { id: "crit-1", title: "Accuracy", verdict: "pass", reasoning: "Great" },
+    ];
+    mockUseLegalBenchmarkRun.mockReturnValue({
+      run: makeCompleteRunWithCriteria(criteriaResults, true),
+      isLoading: false,
+      isStale: false,
+      refetch: vi.fn(),
+    });
+
+    render(React.createElement(LegalBenchmarkResults, { runId: "run-abc", onReset }));
+
+    // The outer Collapsible (first one) should have data-open="false"
+    const collapsibles = screen.getAllByTestId("collapsible");
+    // First collapsible is the outer Rubric Details section
+    expect(collapsibles[0]).toHaveAttribute("data-open", "false");
+  });
+
+  it("is expanded by default when all_pass is false", () => {
+    const criteriaResults = makeCriteriaResults();
+    mockUseLegalBenchmarkRun.mockReturnValue({
+      run: makeCompleteRunWithCriteria(criteriaResults, false),
+      isLoading: false,
+      isStale: false,
+      refetch: vi.fn(),
+    });
+
+    render(React.createElement(LegalBenchmarkResults, { runId: "run-abc", onReset }));
+
+    const collapsibles = screen.getAllByTestId("collapsible");
+    // First collapsible is the outer Rubric Details section
+    expect(collapsibles[0]).toHaveAttribute("data-open", "true");
+  });
+
+  it("filter input narrows the displayed criterion list", async () => {
+    const user = userEvent.setup();
+    const criteriaResults = makeCriteriaResults(); // Accuracy, Completeness, Clarity
+    mockUseLegalBenchmarkRun.mockReturnValue({
+      run: makeCompleteRunWithCriteria(criteriaResults, false),
+      isLoading: false,
+      isStale: false,
+      refetch: vi.fn(),
+    });
+
+    render(React.createElement(LegalBenchmarkResults, { runId: "run-abc", onReset }));
+
+    // All three visible initially
+    expect(screen.getByText("Accuracy")).toBeInTheDocument();
+    expect(screen.getByText("Completeness")).toBeInTheDocument();
+    expect(screen.getByText("Clarity")).toBeInTheDocument();
+
+    // Type in filter to show only "Accuracy"
+    const filterInput = screen.getByTestId("filter-input");
+    await user.type(filterInput, "Accuracy");
+
+    expect(screen.getByText("Accuracy")).toBeInTheDocument();
+    expect(screen.queryByText("Completeness")).toBeNull();
+    expect(screen.queryByText("Clarity")).toBeNull();
+  });
+
+  it("Rubric Details section is absent when criteria_results is undefined", () => {
+    mockUseLegalBenchmarkRun.mockReturnValue({
+      run: makeCompleteRunWithCriteria(undefined, true),
+      isLoading: false,
+      isStale: false,
+      refetch: vi.fn(),
+    });
+
+    render(React.createElement(LegalBenchmarkResults, { runId: "run-abc", onReset }));
+
+    expect(screen.queryByText(/Rubric Details/)).toBeNull();
+    expect(screen.queryByTestId("filter-input")).toBeNull();
   });
 });
