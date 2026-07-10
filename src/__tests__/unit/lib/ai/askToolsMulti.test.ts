@@ -1,6 +1,24 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import { askToolsMulti } from "@/lib/ai/askToolsMulti";
 import type { WorkspaceConfig } from "@/lib/ai/types";
+
+// Mock heavy dependencies used transitively by askToolsMulti
+vi.mock("gitsee/server", () => ({
+  RepoAnalyzer: vi.fn().mockImplementation(() => ({
+    getRecentCommitsWithFiles: vi.fn().mockResolvedValue([]),
+    getContributorPRs: vi.fn().mockResolvedValue([]),
+  })),
+}));
+vi.mock("@/lib/ai/provider", () => ({ getProviderTool: vi.fn().mockReturnValue(null) }));
+vi.mock("@ai-sdk/mcp", () => ({ createMCPClient: vi.fn() }));
+vi.mock("@/lib/mcp/mcpTools", () => ({
+  mcpListFeatures: vi.fn(),
+  mcpReadFeature: vi.fn(),
+  mcpListTasks: vi.fn(),
+  mcpReadTask: vi.fn(),
+  mcpCheckStatus: vi.fn(),
+  findWorkspaceUser: vi.fn(),
+}));
 
 /** Minimal `WorkspaceConfig` factory — just enough to exercise the tool. */
 function ws(slug: string, overrides: Partial<WorkspaceConfig> = {}): WorkspaceConfig {
@@ -19,6 +37,13 @@ function ws(slug: string, overrides: Partial<WorkspaceConfig> = {}): WorkspaceCo
 }
 
 describe("askToolsMulti", () => {
+  let mockFetch: ReturnType<typeof vi.fn>;
+
+  beforeEach(() => {
+    mockFetch = vi.fn();
+    global.fetch = mockFetch;
+  });
+
   describe("read_concepts_for_repo registration gating", () => {
     it("does NOT register when fewer than 3 workspaces (no trim mode)", () => {
       const tools = askToolsMulti([ws("a"), ws("b")], "api-key", {
@@ -173,6 +198,102 @@ describe("askToolsMulti", () => {
       const tool = getTool();
       const out = await tool.execute({ repo: "nobody/nothing" });
       expect(out).toEqual([]);
+    });
+
+    describe("query path (live search)", () => {
+      it("(a) query present: POSTs to search-concepts scoped to repo and maps to {id,name,description}", async () => {
+        const tool = getTool();
+        mockFetch.mockResolvedValue({
+          ok: true,
+          json: async () => ({
+            query: "auth",
+            repo: "stakwork/hive",
+            total: 1,
+            concepts: [
+              { id: "stakwork/hive/auth", name: "Auth", description: "Authentication system", score: 0.95 },
+            ],
+          }),
+        });
+
+        const out = await tool.execute({ repo: "stakwork/hive", query: "auth" });
+
+        expect(out).toEqual([
+          { id: "stakwork/hive/auth", name: "Auth", description: "Authentication system" },
+        ]);
+        // score must be dropped from output
+        expect(out[0]).not.toHaveProperty("score");
+
+        expect(mockFetch).toHaveBeenCalledWith(
+          expect.stringContaining("/gitree/search-concepts"),
+          expect.objectContaining({
+            method: "POST",
+            headers: expect.objectContaining({ "x-api-token": "key" }),
+            body: expect.stringContaining('"repo":"stakwork/hive"'),
+          }),
+        );
+      });
+
+      it("(a) maps `content` field defensively via description ?? content", async () => {
+        const tool = getTool();
+        mockFetch.mockResolvedValue({
+          ok: true,
+          json: async () => ({
+            query: "auth",
+            repo: "stakwork/hive",
+            total: 1,
+            concepts: [
+              // content field (mock convention) instead of description
+              { id: "stakwork/hive/auth", name: "Auth", content: "From mock content field", score: 0.9 },
+            ],
+          }),
+        });
+
+        const out = await tool.execute({ repo: "stakwork/hive", query: "auth" });
+
+        expect(out).toEqual([
+          { id: "stakwork/hive/auth", name: "Auth", description: "From mock content field" },
+        ]);
+      });
+
+      it("(b) no-query path: serves from cache, byte-for-byte identical shape", async () => {
+        const tool = getTool();
+        // fetch should NOT be called for the cache path
+        const out = await tool.execute({ repo: "stakwork/hive" });
+
+        expect(mockFetch).not.toHaveBeenCalled();
+        expect(out).toEqual([
+          { id: "stakwork/hive/auth", name: "Auth", description: "Authentication system" },
+          { id: "stakwork/hive/billing", name: "Billing", description: "Billing flows" },
+          { id: "stakwork/hive/legacy", name: "Legacy", description: "old shape" },
+        ]);
+      });
+
+      it("(c) search failure (non-ok): falls back to cache filter and returns tier-2 shape", async () => {
+        const tool = getTool();
+        mockFetch.mockResolvedValue({ ok: false, status: 500 });
+
+        const out = await tool.execute({ repo: "stakwork/hive", query: "auth" });
+
+        // Should fall back to cache — same 3 hive concepts
+        expect(out).toEqual([
+          { id: "stakwork/hive/auth", name: "Auth", description: "Authentication system" },
+          { id: "stakwork/hive/billing", name: "Billing", description: "Billing flows" },
+          { id: "stakwork/hive/legacy", name: "Legacy", description: "old shape" },
+        ]);
+      });
+
+      it("(c) search failure (throw): falls back to cache filter and returns tier-2 shape", async () => {
+        const tool = getTool();
+        mockFetch.mockRejectedValue(new Error("network failure"));
+
+        const out = await tool.execute({ repo: "stakwork/hive", query: "auth" });
+
+        expect(out).toEqual([
+          { id: "stakwork/hive/auth", name: "Auth", description: "Authentication system" },
+          { id: "stakwork/hive/billing", name: "Billing", description: "Billing flows" },
+          { id: "stakwork/hive/legacy", name: "Legacy", description: "old shape" },
+        ]);
+      });
     });
   });
 });

@@ -18,6 +18,7 @@ interface Concept {
   id: string;
   name: string;
   content?: string;
+  description?: string | null;
 }
 
 interface Diagram {
@@ -203,7 +204,8 @@ export function LearnViewer({ workspaceSlug }: LearnViewerProps) {
   };
 
   const handleConceptClick = async (id: string, name: string, content: string) => {
-    setActiveItem({ type: "concept", id, name, content });
+    const cachedDescription = concepts.find((c) => c.id === id)?.description ?? null;
+    setActiveItem({ type: "concept", id, name, content, description: cachedDescription });
     setUrlParam("concept", id);
 
     if (!content) {
@@ -214,9 +216,10 @@ export function LearnViewer({ workspaceSlug }: LearnViewerProps) {
         if (response.ok) {
           const data = await response.json();
           const documentation = data?.concept?.documentation || data?.feature?.documentation || "";
-          setActiveItem({ type: "concept", id, name, content: documentation });
+          const description = data?.concept?.description ?? data?.feature?.description ?? cachedDescription ?? null;
+          setActiveItem({ type: "concept", id, name, content: documentation, description });
           setConcepts((prev) =>
-            prev.map((c) => (c.id === id ? { ...c, content: documentation } : c))
+            prev.map((c) => (c.id === id ? { ...c, content: documentation, description } : c))
           );
         }
       } catch (error) {
