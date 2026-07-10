@@ -21,7 +21,7 @@ export default function LegalBenchmarksPage() {
             <TabsTrigger value="runs">Runs</TabsTrigger>
           </TabsList>
         </div>
-        <TabsContent value="benchmark" className="flex-1 min-h-0">
+        <TabsContent value="benchmark" className="flex-1 min-h-0 pt-2">
           <LegalBenchmarksPanel className="h-full" />
         </TabsContent>
         <TabsContent value="runs" className="flex-1 min-h-0 overflow-auto p-4">
