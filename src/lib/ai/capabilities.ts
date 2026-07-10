@@ -383,21 +383,23 @@ export const CAPABILITY_REGISTRY: Record<OrgCapability, CapabilityDefinition> =
       orgGate: isPromptsCapabilityEnabledForOrg,
     },
     concepts: {
-      // Workspace-scoped propose tools (like `propose_feature`): the agent
-      // passes a `workspaceSlug`, the tool resolves it under `orgId` and
-      // reaches that workspace's swarm. Reading concepts is already covered
-      // by the per-workspace `list_concepts` / `learn_concept` tools that
-      // runCanvasAgent composes, so this capability only adds the writes.
+      // Workspace-scoped tools (like `propose_feature`): the agent passes a
+      // `workspaceSlug`, the tool resolves it under `orgId` and reaches that
+      // workspace's swarm. Adds `read_concept_documentation` (raw markdown,
+      // no approval) plus the two propose/write tools; concept discovery is
+      // still covered by the per-workspace `list_concepts` tool that
+      // runCanvasAgent composes.
       buildTools: (ctx) => buildConceptTools(ctx.orgId, ctx.userId),
       promptSnippet: getConceptsCapabilitySnippet,
       core: false,
       menuBlurb:
-        "**concepts** — capture and update workspace knowledge-base concepts " +
-        "via human approval: `propose_new_concept` (create from documentation " +
-        "you provide, no codebase analysis) and `propose_concept_update` " +
-        "(edit a concept's documentation, shown as a diff). Load when the user " +
-        'says things like "remember this", "note this down", or asks to ' +
-        "create/update a concept.",
+        "**concepts** — read, capture, and update workspace knowledge-base " +
+        "concepts: `read_concept_documentation` (read raw markdown, no " +
+        "approval) plus `propose_new_concept` (create from documentation you " +
+        "provide, no codebase analysis) and `propose_concept_update` (edit a " +
+        "concept's documentation, shown as a diff) via human approval. Load " +
+        'when the user says things like "remember this", "note this down", or ' +
+        "asks to create/update a concept.",
       // Not gated: unlike the global prompt library, concepts are per-workspace
       // and every workspace already exposes concept read tools to the agent.
       writeToolNames: [PROPOSE_NEW_CONCEPT_TOOL, PROPOSE_CONCEPT_UPDATE_TOOL],
