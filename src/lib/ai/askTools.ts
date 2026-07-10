@@ -17,7 +17,28 @@ import {
 import { getBifrostForLLM } from "@/services/bifrost/orchestrator";
 import { swarmFetch } from "./concepts";
 
-export async function listConcepts(swarmUrl: string, swarmApiKey: string): Promise<Record<string, unknown>> {
+export async function listConcepts(
+  swarmUrl: string,
+  swarmApiKey: string,
+  query?: string,
+  opts?: { limit?: number; repo?: string },
+): Promise<Record<string, unknown>> {
+  if (query?.trim()) {
+    const body: Record<string, unknown> = { query };
+    if (opts?.limit !== undefined) body.limit = opts.limit;
+    if (opts?.repo !== undefined) body.repo = opts.repo;
+    const r = await swarmFetch(`${swarmUrl}/gitree/search-concepts`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-token": swarmApiKey,
+      },
+      body: JSON.stringify(body),
+    });
+    if (!r.ok) throw new Error(`search-concepts returned ${r.status}`);
+    const parsed = await r.json();
+    return { concepts: parsed.concepts ?? [] };
+  }
   const r = await swarmFetch(`${swarmUrl}/gitree/concepts`, {
     method: "GET",
     headers: {
@@ -174,10 +195,23 @@ export function askTools(swarmUrl: string, swarmApiKey: string, repoUrls: string
     list_concepts: tool({
       description:
         "Fetch a list of features/concepts from the codebase knowledge base. Returns features with metadata including name, description, PR/commit counts, last updated time, and whether documentation exists.",
-      inputSchema: z.object({}),
-      execute: async () => {
+      inputSchema: z.object({
+        query: z
+          .string()
+          .optional()
+          .describe(
+            "Optional search query. When provided, returns concepts ranked by semantic relevance via embedding search instead of the full list.",
+          ),
+        limit: z
+          .number()
+          .int()
+          .positive()
+          .optional()
+          .describe("Maximum number of concepts to return. Caps payload size to reduce token usage."),
+      }),
+      execute: async ({ query, limit }: { query?: string; limit?: number }) => {
         try {
-          return await listConcepts(swarmUrl, swarmApiKey);
+          return await listConcepts(swarmUrl, swarmApiKey, query, { limit });
         } catch (e) {
           console.error("Error retrieving features:", e);
           return "Could not retrieve features";

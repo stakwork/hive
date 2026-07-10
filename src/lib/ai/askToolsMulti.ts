@@ -43,6 +43,9 @@ export function askToolsMulti(
   // Only register the summary tool when the prompt is also trimming concepts
   // to IDs — otherwise the agent already has the full descriptions seeded
   // and a "read summaries" tool is just noise.
+  // When `query` is set, `read_concepts_for_repo` performs a live repo-scoped
+  // relevance search via POST /gitree/search-concepts; otherwise it serves
+  // directly from this in-memory cache — no extra swarm round-trip.
   const trimmed = shouldTrimConceptsToIds(workspaces) && !!conceptsByWorkspace;
 
   for (const ws of workspaces) {
@@ -56,10 +59,23 @@ export function askToolsMulti(
     // list_concepts
     allTools[`${prefix}__list_concepts`] = tool({
       description: `[${ws.slug}] Fetch features/concepts from the ${ws.slug} codebase knowledge base.`,
-      inputSchema: z.object({}),
-      execute: async () => {
+      inputSchema: z.object({
+        query: z
+          .string()
+          .optional()
+          .describe(
+            "Optional search query. When provided, returns concepts ranked by semantic relevance via embedding search instead of the full list.",
+          ),
+        limit: z
+          .number()
+          .int()
+          .positive()
+          .optional()
+          .describe("Maximum number of concepts to return. Caps payload size to reduce token usage."),
+      }),
+      execute: async ({ query, limit }: { query?: string; limit?: number }) => {
         try {
-          return await listConcepts(ws.swarmUrl, ws.swarmApiKey);
+          return await listConcepts(ws.swarmUrl, ws.swarmApiKey, query, { limit });
         } catch (e) {
           console.error(`Error retrieving features from ${ws.slug}:`, e);
           return `Could not retrieve features from ${ws.slug}`;
@@ -77,7 +93,10 @@ export function askToolsMulti(
       allTools[`${prefix}__read_concepts_for_repo`] = tool({
         description:
           `[${ws.slug}] Get {id, name, description} for concepts in this workspace ` +
-          `scoped to a single repo. Use this AFTER scanning the ID list from ` +
+          `scoped to a single repo. When a query is provided, performs a live ` +
+          `repo-scoped relevance search via the swarm's semantic search endpoint. ` +
+          `Without a query, serves directly from the in-memory cache — no extra swarm round-trip. ` +
+          `Use this AFTER scanning the ID list from ` +
           `${prefix}__list_concepts — the IDs are repo-prefixed (e.g. "owner/repo/slug"), ` +
           `so pick a repo and fetch human-readable summaries before deciding which ` +
           `concepts to learn in full via ${prefix}__learn_concept.`,
@@ -88,6 +107,13 @@ export function askToolsMulti(
               "Repository in 'owner/repo' format (e.g. 'stakwork/hive'). Matched " +
                 "against each concept's `repo` field; falls back to the first two " +
                 "segments of the concept `id` for legacy entries.",
+            ),
+          query: z
+            .string()
+            .optional()
+            .describe(
+              "Optional search query. When provided, performs a live repo-scoped " +
+                "relevance search instead of serving from the in-memory cache.",
             ),
           limit: z
             .number()
@@ -102,12 +128,32 @@ export function askToolsMulti(
         }),
         execute: async ({
           repo,
+          query,
           limit = 20,
         }: {
           repo: string;
+          query?: string;
           limit?: number;
         }) => {
           const target = repo.toLowerCase().replace(/^\/+|\/+$/g, "");
+
+          // Query present: live repo-scoped relevance search via swarm.
+          if (query?.trim()) {
+            try {
+              const result = await listConcepts(ws.swarmUrl, ws.swarmApiKey, query, { limit, repo });
+              const concepts = (result.concepts as Record<string, unknown>[] | undefined) ?? [];
+              return concepts.map((c) => ({
+                id: c.id,
+                name: c.name,
+                // Real GET / cache name the summary field `description`; mock uses `content`.
+                description: (c.description ?? c.content) as unknown,
+              }));
+            } catch {
+              // Fall back to cache filter on any failure so the tier-2 flow never hard-fails.
+            }
+          }
+
+          // No query (or query fallback): serve from cache.
           const matches = conceptsForWs.filter((c) => {
             const r = typeof c.repo === "string" ? c.repo.toLowerCase() : "";
             if (r === target) return true;
