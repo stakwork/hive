@@ -127,7 +127,7 @@ describe("askTools", () => {
   });
 
   describe("list_concepts tool", () => {
-    it("returns feature list on success", async () => {
+    it("returns feature list on success (no query — GET path unchanged)", async () => {
       const mockFeatures = [
         { id: "feature-1", name: "Feature 1", description: "Description 1" },
         { id: "feature-2", name: "Feature 2", description: "Description 2" },
@@ -154,7 +154,84 @@ describe("askTools", () => {
       );
     });
 
-    it("returns error message on failure", async () => {
+    it("POSTs to search-concepts with x-api-token and query in body when query supplied", async () => {
+      const mockConcepts = [
+        { id: "feature-1", name: "Feature 1", description: "Desc 1", score: 0.9 },
+      ];
+
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: async () => ({ query: "auth", repo: null, total: 1, concepts: mockConcepts }),
+      });
+
+      const tools = askTools(mockSwarmUrl, mockSwarmApiKey, [mockRepoUrl], mockPat, mockApiKey);
+      const result = await tools.list_concepts.execute({ query: "auth" });
+
+      expect(result).toEqual({ concepts: mockConcepts });
+      expect(mockFetch).toHaveBeenCalledWith(
+        `${mockSwarmUrl}/gitree/search-concepts`,
+        expect.objectContaining({
+          method: "POST",
+          headers: expect.objectContaining({
+            "x-api-token": mockSwarmApiKey,
+            "Content-Type": "application/json",
+          }),
+          body: expect.stringContaining('"query":"auth"'),
+        })
+      );
+      // limit should NOT be in the body when not supplied
+      const callBody = JSON.parse(mockFetch.mock.calls[0][1].body);
+      expect(callBody).not.toHaveProperty("limit");
+    });
+
+    it("includes limit in POST body only when supplied", async () => {
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: async () => ({ query: "auth", repo: null, total: 0, concepts: [] }),
+      });
+
+      const tools = askTools(mockSwarmUrl, mockSwarmApiKey, [mockRepoUrl], mockPat, mockApiKey);
+      await tools.list_concepts.execute({ query: "auth", limit: 5 });
+
+      const callBody = JSON.parse(mockFetch.mock.calls[0][1].body);
+      expect(callBody.limit).toBe(5);
+    });
+
+    it("normalizes query-branch response to { concepts: [...] }", async () => {
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          query: "test",
+          repo: "stakwork/hive",
+          total: 2,
+          concepts: [{ id: "a", name: "A", description: "desc-a", score: 0.8 }],
+        }),
+      });
+
+      const tools = askTools(mockSwarmUrl, mockSwarmApiKey, [mockRepoUrl], mockPat, mockApiKey);
+      const result = await tools.list_concepts.execute({ query: "test" });
+
+      expect(result).toEqual({
+        concepts: [{ id: "a", name: "A", description: "desc-a", score: 0.8 }],
+      });
+      // Extra wrapper keys (query, repo, total) must be dropped
+      expect(result).not.toHaveProperty("total");
+      expect(result).not.toHaveProperty("repo");
+    });
+
+    it("returns 'Could not retrieve features' when search-concepts returns non-ok", async () => {
+      mockFetch.mockResolvedValue({
+        ok: false,
+        status: 500,
+      });
+
+      const tools = askTools(mockSwarmUrl, mockSwarmApiKey, [mockRepoUrl], mockPat, mockApiKey);
+      const result = await tools.list_concepts.execute({ query: "something" });
+
+      expect(result).toBe("Could not retrieve features");
+    });
+
+    it("returns error message on network failure", async () => {
       mockFetch.mockRejectedValue(new Error("Network error"));
 
       const tools = askTools(mockSwarmUrl, mockSwarmApiKey, [mockRepoUrl], mockPat, mockApiKey);
