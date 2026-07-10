@@ -84,6 +84,7 @@ function makeRunnerWithScoreRequest(
   runId = "runner-1",
   workspaceId = "ws-1",
   runToken = "valid-token",
+  bodyOverrides: Record<string, unknown> = {},
 ) {
   return makeWebhookRequest("LEGAL_BENCHMARK_RUNNER", runId, workspaceId, runToken, {
     final_output: "runner output text",
@@ -99,6 +100,7 @@ function makeRunnerWithScoreRequest(
     judge_model: "claude-3-5-sonnet",
     project_status: "complete",
     project_id: 9999,
+    ...bodyOverrides,
   });
 }
 
@@ -490,5 +492,26 @@ describe("POST /api/webhook/stakwork/response — payload reaches service correc
     expect(webhookData).not.toHaveProperty("n_passed");
     expect(webhookData).not.toHaveProperty("all_pass");
     expect(webhookData).not.toHaveProperty("judge_model");
+  });
+
+  test("criteria_results array survives normalization intact in result", async () => {
+    const criteriaResults = [
+      { id: "crit-1", title: "Accuracy", verdict: "pass", reasoning: "Well done" },
+      { id: "crit-2", title: "Completeness", verdict: "fail", reasoning: "Missing section" },
+    ];
+    const capturedCalls: Array<{ webhookData: unknown }> = [];
+    mockProcessStakworkRunWebhook.mockImplementation(async (webhookData: unknown) => {
+      capturedCalls.push({ webhookData });
+      return { runId: "runner-1", status: "COMPLETED", dataType: "string" };
+    });
+
+    await postWebhook(makeRunnerWithScoreRequest("runner-1", "ws-1", "valid-token", { criteria_results: criteriaResults }));
+
+    const { webhookData } = capturedCalls[0] as {
+      webhookData: Record<string, unknown> & { result: Record<string, unknown> };
+    };
+    expect(webhookData.result.criteria_results).toEqual(criteriaResults);
+    // Must not be at top level
+    expect(webhookData).not.toHaveProperty("criteria_results");
   });
 });
