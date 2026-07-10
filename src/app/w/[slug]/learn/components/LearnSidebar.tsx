@@ -49,6 +49,7 @@ interface Concept {
   id: string;
   name: string;
   content?: string;
+  description?: string | null;
 }
 
 interface Diagram {
