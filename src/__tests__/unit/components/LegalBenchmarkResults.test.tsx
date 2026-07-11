@@ -101,16 +101,18 @@ vi.mock("@/components/ui/button", () => ({
     variant,
     size,
     className,
+    "aria-label": ariaLabel,
   }: {
     children?: React.ReactNode;
     onClick?: () => void;
     variant?: string;
     size?: string;
     className?: string;
+    "aria-label"?: string;
   }) =>
     React.createElement(
       "button",
-      { onClick, "data-variant": variant, "data-size": size, className },
+      { onClick, "data-variant": variant, "data-size": size, className, "aria-label": ariaLabel },
       children
     ),
 }));
@@ -591,5 +593,104 @@ describe("LegalBenchmarkResults", () => {
 
     expect(screen.queryByText(/Rubric Details/)).toBeNull();
     expect(screen.queryByTestId("filter-input")).toBeNull();
+  });
+
+  // ─── Rubric Details copy icon ─────────────────────────────────────────────
+
+  it("copies TSV text to clipboard when rubric copy icon is clicked", async () => {
+    // userEvent.setup() installs its own clipboard stub; spy on writeText AFTER setup()
+    const user = userEvent.setup();
+    const writeSpy = vi.spyOn(navigator.clipboard, "writeText").mockResolvedValue(undefined);
+
+    const criteriaResults = makeCriteriaResults();
+    mockUseLegalBenchmarkRun.mockReturnValue({
+      run: makeCompleteRunWithCriteria(criteriaResults, false),
+      isLoading: false,
+      isStale: false,
+      refetch: vi.fn(),
+    });
+
+    render(React.createElement(LegalBenchmarkResults, { runId: "run-abc", onReset }));
+
+    const copyBtn = screen.getByRole("button", { name: "Copy rubric results" });
+    await user.click(copyBtn);
+
+    expect(writeSpy).toHaveBeenCalledTimes(1);
+    const copied: string = writeSpy.mock.calls[0][0];
+    expect(copied).toContain("\t");
+    expect(copied).toContain("fail");
+    expect(copied).toContain("crit-1");
+    expect(copied).toContain("Missing key point");
+
+    vi.restoreAllMocks();
+  });
+
+  it("sanitizes embedded newlines and tabs in reasoning so TSV has one row per criterion plus header", async () => {
+    const user = userEvent.setup();
+    const writeSpy = vi.spyOn(navigator.clipboard, "writeText").mockResolvedValue(undefined);
+
+    const criteriaWithSpecialChars = [
+      { id: "crit-a", title: "Title\twith\ttabs", verdict: "pass", reasoning: "Line one\nLine two\tTabbed" },
+      { id: "crit-b", title: "Normal", verdict: "fail", reasoning: "Simple reasoning" },
+    ];
+    mockUseLegalBenchmarkRun.mockReturnValue({
+      run: makeCompleteRunWithCriteria(criteriaWithSpecialChars, false),
+      isLoading: false,
+      isStale: false,
+      refetch: vi.fn(),
+    });
+
+    render(React.createElement(LegalBenchmarkResults, { runId: "run-abc", onReset }));
+
+    const copyBtn = screen.getByRole("button", { name: "Copy rubric results" });
+    await user.click(copyBtn);
+
+    expect(writeSpy).toHaveBeenCalledTimes(1);
+    const copied: string = writeSpy.mock.calls[0][0];
+    const lines = copied.split("\n");
+    // header + 2 criteria = 3 lines total
+    expect(lines).toHaveLength(3);
+    expect(lines[0]).toBe("Verdict\tID\tTitle\tReasoning");
+    // no embedded newlines or tabs remain in data rows
+    expect(lines[1]).not.toContain("\n");
+    expect(lines[2]).not.toContain("\n");
+
+    vi.restoreAllMocks();
+  });
+
+  it("clicking the rubric copy icon does not toggle the Rubric Details collapsible", async () => {
+    const user = userEvent.setup();
+    const criteriaResults = makeCriteriaResults();
+    mockUseLegalBenchmarkRun.mockReturnValue({
+      run: makeCompleteRunWithCriteria(criteriaResults, false),
+      isLoading: false,
+      isStale: false,
+      refetch: vi.fn(),
+    });
+
+    render(React.createElement(LegalBenchmarkResults, { runId: "run-abc", onReset }));
+
+    // Outer collapsible (Rubric Details) starts open (all_pass=false)
+    const collapsibles = screen.getAllByTestId("collapsible");
+    expect(collapsibles[0]).toHaveAttribute("data-open", "true");
+
+    const copyBtn = screen.getByRole("button", { name: "Copy rubric results" });
+    await user.click(copyBtn);
+
+    // Still open after clicking copy — stopPropagation prevents collapsible toggle
+    expect(screen.getAllByTestId("collapsible")[0]).toHaveAttribute("data-open", "true");
+  });
+
+  it("rubric copy icon is absent when criteria_results is undefined", () => {
+    mockUseLegalBenchmarkRun.mockReturnValue({
+      run: makeCompleteRunWithCriteria(undefined, true),
+      isLoading: false,
+      isStale: false,
+      refetch: vi.fn(),
+    });
+
+    render(React.createElement(LegalBenchmarkResults, { runId: "run-abc", onReset }));
+
+    expect(screen.queryByRole("button", { name: "Copy rubric results" })).toBeNull();
   });
 });
