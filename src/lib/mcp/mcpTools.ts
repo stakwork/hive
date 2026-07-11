@@ -11,6 +11,7 @@ import {
   getResolvedPromptVersion,
 } from "@/services/prompts/prompt-read";
 import { isDevelopmentMode } from "@/lib/runtime";
+import { LEGAL_SLUGS } from "@/lib/eval-capture-slugs";
 import type { PullRequestContent } from "@/lib/chat";
 import {
   ArtifactType,
@@ -36,7 +37,7 @@ export interface McpToolResult {
   isError?: boolean;
 }
 
-function mcpError(text: string): McpToolResult {
+export function mcpError(text: string): McpToolResult {
   return { content: [{ type: "text", text }], isError: true };
 }
 
@@ -55,7 +56,16 @@ export function isWorkflowTasksEnabled(auth: WorkspaceAuth): boolean {
   return auth.workspaceSlug === "stakwork" || isDevelopmentMode();
 }
 
-function mcpOk(data: unknown): McpToolResult {
+/**
+ * Legal tools (CourtListener, Harvey LAB, etc.) are only available on
+ * OpenLaw-gated workspaces (slugs in LEGAL_SLUGS), or in development mode.
+ * Single source of truth for the `courtlistener_*` MCP tool gate.
+ */
+export function isLegalToolsEnabled(auth: WorkspaceAuth): boolean {
+  return LEGAL_SLUGS.includes(auth.workspaceSlug) || isDevelopmentMode();
+}
+
+export function mcpOk(data: unknown): McpToolResult {
   return {
     content: [{ type: "text", text: JSON.stringify(data, null, 2) }],
   };
