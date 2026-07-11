@@ -69,6 +69,21 @@ function isGroupLine(line: string): boolean {
 }
 
 /**
+ * Check if a line contains test framework output (Expected/Received blocks, assertion errors, etc.).
+ * All patterns must be unanchored — every GitHub Actions log line is prefixed with an ISO timestamp
+ * (e.g. "2024-01-15T10:30:00.0000000Z"), so ^\\s+-anchored patterns will never match real lines.
+ */
+function isTestFrameworkLine(line: string): boolean {
+  return (
+    /\bExpected\b/.test(line) ||
+    /\bReceived\b/.test(line) ||
+    /●\s+\S/.test(line) || // Jest/Vitest describe › test bullet
+    /\bAssertionError\b/.test(line) ||
+    /FAIL\s+\S+\.(test|spec)\.\S+/.test(line) // Jest FAIL <file>
+  );
+}
+
+/**
  * NEW IMPLEMENTATION: Extract logs for a failed step
  *
  * Strategy (in order of reliability):
@@ -195,20 +210,25 @@ function extractStepLogs(
   // ============================================================
 
   const MAX_LINES = 150;
+  const MAX_SECONDARY_LINES = 100;
+  const SECONDARY_CONTEXT = 15;
+
   let extractedLogs: string | null = null;
+  let extractedStart = -1;
+  let extractedEnd = -1;
 
   if (errorMarkers.length > 0) {
     // Take lines from (firstError - MAX_LINES) through (lastError + 5)
     const firstErrorLine = errorMarkers[0].lineNum;
     const lastErrorLine = errorMarkers[errorMarkers.length - 1].lineNum;
 
-    const extractStart = Math.max(stepStartLine >= 0 ? stepStartLine : 0, firstErrorLine - MAX_LINES);
-    const extractEnd = Math.min(lines.length, lastErrorLine + 5);
+    extractedStart = Math.max(stepStartLine >= 0 ? stepStartLine : 0, firstErrorLine - MAX_LINES);
+    extractedEnd = Math.min(lines.length, lastErrorLine + 5);
 
-    debug.push(`STEP 4: Extracting lines ${extractStart} to ${extractEnd} (${extractEnd - extractStart} lines)`);
+    debug.push(`STEP 4: Extracting lines ${extractedStart} to ${extractedEnd} (${extractedEnd - extractedStart} lines)`);
     debug.push(`  -> ${MAX_LINES} lines before first ##[error], through last ##[error] + 5`);
 
-    extractedLogs = lines.slice(extractStart, extractEnd).join("\n");
+    extractedLogs = lines.slice(extractedStart, extractedEnd).join("\n");
   } else if (stepStartLine >= 0) {
     // No ##[error] found - take last N lines of the step
     matchMethod += " + fallback to last N lines (no ##[error])";
@@ -225,6 +245,50 @@ function extractStepLogs(
     matchMethod = "D: Last resort - end of entire log";
     debug.push(`STEP 4 (Last resort): Taking last ${MAX_LINES} lines of entire log`);
     extractedLogs = "...(truncated)\n" + lines.slice(-MAX_LINES).join("\n");
+  }
+
+  // ============================================================
+  // STEP 5: Secondary pass — find test framework output
+  // ============================================================
+  // Captures assertion diffs (Expected/Received) that appear before ##[error] markers
+  // or in logs with no markers. Appended (not prepended) so it survives tail-truncation.
+
+  const scanStart = stepStartLine >= 0 ? stepStartLine : 0;
+  const scanEnd = stepStartLine >= 0 ? stepEndLine : lines.length;
+
+  let firstHit = -1;
+  let lastHit = -1;
+  for (let i = scanStart; i < scanEnd; i++) {
+    if (isTestFrameworkLine(lines[i])) {
+      if (firstHit === -1) firstHit = i;
+      lastHit = i;
+    }
+  }
+
+  if (firstHit !== -1) {
+    const secStart = Math.max(scanStart, firstHit - SECONDARY_CONTEXT);
+    const secEnd = Math.min(scanEnd, lastHit + SECONDARY_CONTEXT);
+
+    // Deduplicate: exclude lines already in the primary extraction window
+    let secLines: string[];
+    if (extractedStart !== -1 && secEnd > extractedStart && secStart < extractedEnd) {
+      const beforeOverlap = secStart < extractedStart ? lines.slice(secStart, extractedStart) : [];
+      const afterOverlap = secEnd > extractedEnd ? lines.slice(extractedEnd, secEnd) : [];
+      secLines = [...beforeOverlap, ...afterOverlap];
+    } else {
+      secLines = lines.slice(secStart, secEnd);
+    }
+
+    if (secLines.length > MAX_SECONDARY_LINES) {
+      secLines = secLines.slice(0, MAX_SECONDARY_LINES);
+    }
+
+    if (secLines.length > 0) {
+      debug.push(`STEP 5: Secondary pass found ${secLines.length} test framework lines`);
+      extractedLogs = (extractedLogs ?? "") + "\n### Test output\n" + secLines.join("\n");
+    }
+  } else {
+    debug.push(`STEP 5: Secondary pass found no test framework lines`);
   }
 
   return { logs: extractedLogs, method: matchMethod, debug };

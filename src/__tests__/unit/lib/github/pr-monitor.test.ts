@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { mergeBaseBranch, rebaseOntoBaseBranch, triggerAgentModeFix, triggerLiveModeFix, createPrLogger, monitorSinglePR } from "@/lib/github/pr-monitor";
+import { mergeBaseBranch, rebaseOntoBaseBranch, triggerAgentModeFix, triggerLiveModeFix, createPrLogger, monitorSinglePR, buildFixPrompt } from "@/lib/github/pr-monitor";
 import type { Octokit } from "@octokit/rest";
 import { ChatRole, ChatStatus } from "@prisma/client";
 
@@ -1933,5 +1933,52 @@ describe("monitorSinglePR", () => {
       agentTriggered: 0,
       notified: 0,
     });
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// buildFixPrompt
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("buildFixPrompt", () => {
+  const base = {
+    artifactId: "artifact-1",
+    taskId: "task-1",
+    prNumber: 42,
+    owner: "acme",
+    repo: "app",
+    headBranch: "feat/x",
+    baseBranch: "main",
+    state: "ci_failure" as const,
+    mergeable: true,
+    ciStatus: "failure" as const,
+    prState: "open" as const,
+    merged: false,
+    failedChecks: ["CI / test"],
+    problemDetails: "",
+    failedCheckLogs: {},
+  };
+
+  it("does NOT contain the playwright timeout hint in ci_failure output", () => {
+    const result = buildFixPrompt(base);
+    expect(result).not.toContain("playwright");
+    expect(result).not.toContain("increase playwright timeouts");
+    expect(result).not.toContain("github CI can be slow sometimes");
+  });
+
+  it("contains all three diagnostic checklist points in ci_failure output", () => {
+    const result = buildFixPrompt(base);
+    expect(result).toContain("Read the full failing test file");
+    expect(result).toContain("Determine whether the failure is a broken test assertion");
+    expect(result).toContain("Only modify the test if the assertion itself is genuinely incorrect");
+  });
+
+  it("diagnostic checklist appears BEFORE the Please: action directive", () => {
+    const result = buildFixPrompt(base);
+    const diagnosticIdx = result.indexOf("Before making any changes:");
+    const pleaseIdx = result.indexOf("Please:");
+    expect(diagnosticIdx).toBeGreaterThanOrEqual(0);
+    expect(pleaseIdx).toBeGreaterThanOrEqual(0);
+    expect(diagnosticIdx).toBeLessThan(pleaseIdx);
   });
 });
