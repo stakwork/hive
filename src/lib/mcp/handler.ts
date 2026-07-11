@@ -23,6 +23,7 @@ import {
   mcpGetPromptVersion,
   mcpCreateWorkflowTask,
   isWorkflowTasksEnabled,
+  isLegalToolsEnabled,
   mcpUpdateTask,
   mcpSendToTaskAgent,
   mcpSendMessage,
@@ -37,6 +38,16 @@ import {
   registerOrgTools,
   type OrgMcpAuthExtra,
 } from "@/lib/mcp/orgMcpTools";
+import {
+  mcpVerifyCitations,
+  mcpSearchCaseLaw,
+  mcpGetCases,
+} from "@/lib/mcp/courtlistenerMcpTools";
+import {
+  verifyCitationsInput,
+  searchCaseLawInput,
+  getCasesInput,
+} from "@/lib/ai/courtlistenerTools";
 import {
   isOrgPermission,
   type OrgPermission,
@@ -63,6 +74,9 @@ const AVAILABLE_TOOLS = [
   "send_to_task_agent",
   "check_status",
   "send_message",
+  "courtlistener_verify_citations",
+  "courtlistener_search_case_law",
+  "courtlistener_get_cases",
 ] as const;
 type ToolName = (typeof AVAILABLE_TOOLS)[number];
 
@@ -972,6 +986,67 @@ function createServer(
       const result = await getWorkspaceAuth(authExtra, "send_message", creator);
       if (result.error) return result.error;
       return mcpSendMessage(result.auth!, message, featureId, taskId);
+    },
+  );
+
+  // -------------------------------------------------------------------------
+  // CourtListener tools (OpenLaw-gated workspaces only)
+  // -------------------------------------------------------------------------
+
+  server.registerTool(
+    "courtlistener_verify_citations",
+    {
+      title: "Verify Legal Citations",
+      description:
+        "Verify legal citations against CourtListener. Accepts up to 250 citations, returns matched case links and results.",
+      inputSchema: verifyCitationsInput,
+    },
+    async (args, extra) => {
+      const authExtra = extra.authInfo?.extra as McpAuthExtra | undefined;
+      const result = await getWorkspaceAuth(authExtra, "courtlistener_verify_citations");
+      if (result.error) return result.error;
+      if (!isLegalToolsEnabled(result.auth!)) {
+        return { content: [{ type: "text" as const, text: "Error: tool not available" }], isError: true };
+      }
+      return mcpVerifyCitations(args as { citations: string[] });
+    },
+  );
+
+  server.registerTool(
+    "courtlistener_search_case_law",
+    {
+      title: "Search Case Law",
+      description:
+        "Search CourtListener for case law opinions. Returns case metadata including clusterId, name, citation, court, date filed, snippet, and URL.",
+      inputSchema: searchCaseLawInput,
+    },
+    async (args, extra) => {
+      const authExtra = extra.authInfo?.extra as McpAuthExtra | undefined;
+      const result = await getWorkspaceAuth(authExtra, "courtlistener_search_case_law");
+      if (result.error) return result.error;
+      if (!isLegalToolsEnabled(result.auth!)) {
+        return { content: [{ type: "text" as const, text: "Error: tool not available" }], isError: true };
+      }
+      return mcpSearchCaseLaw(args as { query: string; court?: string; filedAfter?: string; filedBefore?: string; limit: number });
+    },
+  );
+
+  server.registerTool(
+    "courtlistener_get_cases",
+    {
+      title: "Get Cases",
+      description:
+        "Fetch case metadata and opinion text from CourtListener by cluster ID. Fetches up to 10 clusters concurrently (first-page opinions only). Opinion text is truncated to maxChars across all clusters combined.",
+      inputSchema: getCasesInput,
+    },
+    async (args, extra) => {
+      const authExtra = extra.authInfo?.extra as McpAuthExtra | undefined;
+      const result = await getWorkspaceAuth(authExtra, "courtlistener_get_cases");
+      if (result.error) return result.error;
+      if (!isLegalToolsEnabled(result.auth!)) {
+        return { content: [{ type: "text" as const, text: "Error: tool not available" }], isError: true };
+      }
+      return mcpGetCases(args as { clusterIds: number[]; includeFullText: boolean; maxChars: number });
     },
   );
 
