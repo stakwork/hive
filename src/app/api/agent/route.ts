@@ -57,7 +57,7 @@
  * - `agentWebhookSecret`: Encrypted per-task secret for JWT signing
  */
 
-import { NextRequest, NextResponse } from "next/server";
+import { after, NextRequest, NextResponse } from "next/server";
 import { authOptions } from "@/lib/auth/nextauth";
 import { getServerSession } from "next-auth/next";
 import { db } from "@/lib/db";
@@ -71,6 +71,9 @@ import { claimPodAndGetFrontend, updatePodRepositories, POD_PORTS, releasePodByI
 import { getBifrostForLLM } from "@/services/bifrost/orchestrator";
 
 const encryptionService = EncryptionService.getInstance();
+
+export const runtime = "nodejs";
+export const maxDuration = 300;
 
 // ============================================================================
 // Types
@@ -107,6 +110,14 @@ interface ServiceInfo {
   name: string;
   port: number;
   scripts?: Record<string, string>;
+}
+
+interface AgentStreamRequest {
+  agentUrl: string;
+  taskId: string;
+  streamToken: string;
+  prompt: string;
+  resume: boolean;
 }
 
 // ============================================================================
@@ -426,6 +437,68 @@ async function saveUserMessage(taskId: string, message: string, artifacts: Artif
   }
 }
 
+/**
+ * Start and drain the remote agent stream server-side.
+ *
+ * The agent writes durable updates through /api/agent/webhook, so Hive only
+ * needs to keep the stream request alive. Running this from Next's after()
+ * decouples the agent run from the browser tab that started it.
+ */
+async function startAgentStreamInBackground({
+  agentUrl,
+  taskId,
+  streamToken,
+  prompt,
+  resume,
+}: AgentStreamRequest): Promise<void> {
+  const streamUrl = agentUrl.replace(/\/$/, "") + `/stream/${taskId}`;
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+  };
+
+  const streamBody: Record<string, unknown> = { prompt };
+  if (resume) {
+    streamBody.resume = true;
+  }
+
+  try {
+    console.log("[Agent] Starting background stream:", { taskId, resume });
+    const streamResponse = await fetch(`${streamUrl}?token=${encodeURIComponent(streamToken)}`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(streamBody),
+    });
+
+    if (!streamResponse.ok) {
+      const errorText = await streamResponse.text().catch(() => "");
+      console.error("[Agent] Background stream failed:", {
+        taskId,
+        status: streamResponse.status,
+        error: errorText || streamResponse.statusText,
+      });
+      return;
+    }
+
+    if (!streamResponse.body) {
+      console.log("[Agent] Background stream completed without response body:", { taskId });
+      return;
+    }
+
+    const reader = streamResponse.body.getReader();
+    try {
+      while (true) {
+        const { done } = await reader.read();
+        if (done) break;
+      }
+      console.log("[Agent] Background stream completed:", { taskId });
+    } finally {
+      reader.releaseLock();
+    }
+  } catch (error) {
+    console.error("[Agent] Error running background stream:", { taskId, error });
+  }
+}
+
 // ============================================================================
 // Main Handler
 // ============================================================================
@@ -633,17 +706,24 @@ export async function POST(request: NextRequest) {
   }
   await saveUserMessage(taskId, message, allArtifacts);
 
-  // 9. Return connection info
-  const streamUrl = agentCredentials.agentUrl.replace(/\/$/, "") + `/stream/${taskId}`;
   const isResume = messageCount > 0 && !chatHistoryForPrompt;
+  const promptWithContext = chatHistoryForPrompt ? `${chatHistoryForPrompt}\n\n${message}` : message;
+
+  after(async () => {
+    await startAgentStreamInBackground({
+      agentUrl: agentCredentials.agentUrl,
+      taskId,
+      streamToken,
+      prompt: promptWithContext,
+      resume: isResume,
+    });
+  });
 
   return NextResponse.json({
     success: true,
     sessionId: taskId,
-    streamToken,
-    streamUrl,
+    backgroundStream: true,
     resume: isResume,
-    ...(chatHistoryForPrompt && { historyContext: chatHistoryForPrompt }),
     ...(podUrls && { podUrls }),
   });
 }
