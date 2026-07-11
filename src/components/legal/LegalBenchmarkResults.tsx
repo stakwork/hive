@@ -59,6 +59,16 @@ export function LegalBenchmarkResults({ runId, onReset, isSuperAdmin = false }: 
     }
   };
 
+  const handleCopyRubric = () => {
+    if (!criteriaResults || criteriaResults.length === 0) return;
+    const sanitize = (s: string) => s.replace(/\t/g, " ").replace(/[\n\r]/g, " ");
+    const header = "Verdict\tID\tTitle\tReasoning";
+    const rows = criteriaResults.map(
+      (c) => `${sanitize(c.verdict)}\t${sanitize(c.id)}\t${sanitize(c.title)}\t${sanitize(c.reasoning)}`
+    );
+    navigator.clipboard.writeText([header, ...rows].join("\n"));
+  };
+
   const handleDownload = () => {
     if (!run?.runnerOutputText) return;
     const blob = new Blob([run.runnerOutputText], { type: "text/plain" });
@@ -191,18 +201,29 @@ export function LegalBenchmarkResults({ runId, onReset, isSuperAdmin = false }: 
         {hasCriteriaResults && (
           <div className="rounded-lg border bg-card">
             <Collapsible open={isOpen} onOpenChange={setIsOpen}>
-              <CollapsibleTrigger asChild>
-                <button className="flex items-center justify-between w-full px-4 py-3 border-b text-left hover:bg-muted/40 transition-colors">
-                  <span className="font-semibold text-sm">
-                    Rubric Details ({failedCount} failed / {criteriaResults!.length} total)
-                  </span>
-                  {isOpen ? (
-                    <ChevronUp className="h-4 w-4 text-muted-foreground shrink-0" />
-                  ) : (
-                    <ChevronDown className="h-4 w-4 text-muted-foreground shrink-0" />
-                  )}
-                </button>
-              </CollapsibleTrigger>
+              <div className="flex items-center border-b">
+                <CollapsibleTrigger asChild>
+                  <button className="flex items-center justify-between flex-1 px-4 py-3 text-left hover:bg-muted/40 transition-colors">
+                    <span className="font-semibold text-sm">
+                      Rubric Details ({failedCount} failed / {criteriaResults!.length} total)
+                    </span>
+                    {isOpen ? (
+                      <ChevronUp className="h-4 w-4 text-muted-foreground shrink-0" />
+                    ) : (
+                      <ChevronDown className="h-4 w-4 text-muted-foreground shrink-0" />
+                    )}
+                  </button>
+                </CollapsibleTrigger>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  aria-label="Copy rubric results"
+                  onClick={(e) => { e.stopPropagation(); handleCopyRubric(); }}
+                  className="mr-2 shrink-0"
+                >
+                  <Copy className="h-3.5 w-3.5" />
+                </Button>
+              </div>
               <CollapsibleContent>
                 <div className="px-4 pt-3 pb-2">
                   <Input
