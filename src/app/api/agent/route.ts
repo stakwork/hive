@@ -2,8 +2,10 @@
  * Agent V2 Session Broker
  *
  * This endpoint acts as a session broker between the frontend and a remote agent server.
- * Instead of proxying the stream through Hive, the frontend connects directly to the
- * remote server for streaming, while Hive handles authentication and message persistence.
+ * By default, the frontend connects directly to the remote server for streaming while Hive
+ * handles authentication and message persistence. When `startStreamInBackground` is true,
+ * Hive starts the remote stream in a Next.js `after()` callback so the stream can continue
+ * even if the browser leaves the task.
  *
  * ## Architecture
  *
@@ -16,6 +18,7 @@
  * │          │  3. POST /stream/:id   │          │                       │              │
  * │          │ ─────────────────────────────────────────────────────>    │              │
  * │          │ <═══════════════════════════════════════════════════════  │              │
+ * │          │  (or Hive starts this in after() when requested)          │              │
  * │          │      (SSE stream)      │          │                       │              │
  * │          │                        │          │  4. POST /webhook     │              │
  * │          │                        │          │ <──────────────────   │              │
@@ -31,6 +34,7 @@
  *    - Creates JWT-signed webhook URL (10-min expiry)
  *    - Calls remote server to create/refresh session
  *    - Returns `{ streamUrl, streamToken, resume, podUrls? }` to frontend
+ *    - Optionally schedules Hive-owned streaming in `after()`
  *
  * 2. **Hive → Agent Server** (`POST /session`):
  *    - Sends `{ sessionId, webhookUrl }` to create/refresh session
@@ -57,7 +61,7 @@
  * - `agentWebhookSecret`: Encrypted per-task secret for JWT signing
  */
 
-import { NextRequest, NextResponse } from "next/server";
+import { after, NextRequest, NextResponse } from "next/server";
 import { authOptions } from "@/lib/auth/nextauth";
 import { getServerSession } from "next-auth/next";
 import { db } from "@/lib/db";
@@ -71,6 +75,11 @@ import { claimPodAndGetFrontend, updatePodRepositories, POD_PORTS, releasePodByI
 import { getBifrostForLLM } from "@/services/bifrost/orchestrator";
 
 const encryptionService = EncryptionService.getInstance();
+
+// The agent stream runs in `after()` when the browser opts into
+// server-owned streaming, so give the route enough headroom after response.
+export const runtime = "nodejs";
+export const maxDuration = 800;
 
 // ============================================================================
 // Types
@@ -401,6 +410,60 @@ async function createAgentSession(
   return sessionData.token;
 }
 
+function getAgentBaseUrl(agentUrl: string): string {
+  return agentUrl.replace(/\/$/, "");
+}
+
+function buildAgentStreamUrl(agentUrl: string, taskId: string, streamToken: string): string {
+  return `${getAgentBaseUrl(agentUrl)}/stream/${taskId}?token=${encodeURIComponent(streamToken)}`;
+}
+
+async function drainAgentStream(response: Response): Promise<void> {
+  if (!response.body) return;
+
+  const reader = response.body.getReader();
+  try {
+    while (true) {
+      const { done } = await reader.read();
+      if (done) break;
+    }
+  } finally {
+    reader.releaseLock();
+  }
+}
+
+async function startAgentStreamInBackground({
+  agentUrl,
+  taskId,
+  streamToken,
+  prompt,
+  resume,
+}: {
+  agentUrl: string;
+  taskId: string;
+  streamToken: string;
+  prompt: string;
+  resume: boolean;
+}): Promise<void> {
+  const streamBody: Record<string, unknown> = { prompt };
+  if (resume) {
+    streamBody.resume = true;
+  }
+
+  const response = await fetch(buildAgentStreamUrl(agentUrl, taskId, streamToken), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(streamBody),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text().catch(() => "");
+    throw new Error(`Agent stream failed with ${response.status} ${response.statusText}: ${errorText}`);
+  }
+
+  await drainAgentStream(response);
+}
+
 /**
  * Save user message to database
  */
@@ -432,7 +495,8 @@ async function saveUserMessage(taskId: string, message: string, artifacts: Artif
 
 export async function POST(request: NextRequest) {
   const body = await request.json();
-  const { message, taskId, artifacts = [], model } = body;
+  const { message, taskId, artifacts = [], model, startStreamInBackground = false } = body;
+  const shouldStartStreamInBackground = startStreamInBackground === true;
 
   // Validate model parameter if provided
   const requestModel: string | undefined = isValidModel(model) ? model : undefined;
@@ -624,6 +688,10 @@ export async function POST(request: NextRequest) {
   }
 
   // 8. Save user message (include pod artifacts if pod was just claimed)
+  const agentBaseUrl = getAgentBaseUrl(agentCredentials.agentUrl);
+  const streamUrl = `${agentBaseUrl}/stream/${taskId}`;
+  const isResume = messageCount > 0 && !chatHistoryForPrompt;
+  const promptWithContext = chatHistoryForPrompt ? `${chatHistoryForPrompt}\n\n${message}` : message;
   const allArtifacts: ArtifactRequest[] = [...artifacts];
   if (podUrls) {
     allArtifacts.push(
@@ -631,18 +699,45 @@ export async function POST(request: NextRequest) {
       { type: ArtifactType.IDE, content: { url: podUrls.ide } },
     );
   }
+  if (shouldStartStreamInBackground) {
+    allArtifacts.push({
+      type: ArtifactType.STREAM,
+      content: {
+        requestId: taskId,
+        eventsToken: streamToken,
+        baseUrl: agentBaseUrl,
+        agent: "coder-agent",
+      },
+    });
+  }
   await saveUserMessage(taskId, message, allArtifacts);
 
-  // 9. Return connection info
-  const streamUrl = agentCredentials.agentUrl.replace(/\/$/, "") + `/stream/${taskId}`;
-  const isResume = messageCount > 0 && !chatHistoryForPrompt;
+  if (shouldStartStreamInBackground) {
+    after(async () => {
+      try {
+        await startAgentStreamInBackground({
+          agentUrl: agentCredentials.agentUrl,
+          taskId,
+          streamToken,
+          prompt: promptWithContext,
+          resume: isResume,
+        });
+      } catch (error) {
+        console.error("[Agent] Background stream failed:", error);
+      }
+    });
+  }
 
+  // 9. Return connection info
   return NextResponse.json({
     success: true,
     sessionId: taskId,
     streamToken,
     streamUrl,
     resume: isResume,
+    backgroundStream: shouldStartStreamInBackground,
+    eventsToken: streamToken,
+    eventsBaseUrl: agentBaseUrl,
     ...(chatHistoryForPrompt && { historyContext: chatHistoryForPrompt }),
     ...(podUrls && { podUrls }),
   });
