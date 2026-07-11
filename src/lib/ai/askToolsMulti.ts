@@ -3,6 +3,8 @@ import { z } from "zod";
 import { createMCPClient } from "@ai-sdk/mcp";
 import { WorkspaceConfig } from "./types";
 import { listConcepts, repoAgent } from "./askTools";
+import { buildCourtlistenerTools } from "@/lib/ai/courtlistenerTools";
+import { LEGAL_SLUGS } from "@/lib/eval-capture-slugs";
 // Deep import — see comment in services/task-workflow.ts.
 import { getBifrostForLLM } from "@/services/bifrost/orchestrator";
 import { shouldTrimConceptsToIds } from "./concepts";
@@ -621,6 +623,11 @@ export function askToolsMulti(
         }
       },
     });
+
+    // CourtListener tools — OpenLaw workspace only
+    if (LEGAL_SLUGS.includes(ws.slug)) {
+      Object.assign(allTools, buildCourtlistenerTools(ws.slug));
+    }
   }
 
   // Shared tools (not workspace-specific)
