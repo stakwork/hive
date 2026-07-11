@@ -17,7 +17,11 @@
 
 import { ModelMessage, generateObject } from "ai";
 import { z } from "zod";
-import { getModel, getApiKeyForProvider } from "@/lib/ai/provider";
+import {
+  getModel,
+  getApiKeyForProvider,
+  isGatewayReachable,
+} from "@/lib/ai/provider";
 import { getBifrostForLLM } from "@/services/bifrost/orchestrator";
 import { getWorkspaceChannelName, PUSHER_EVENTS, pusherServer } from "@/lib/pusher";
 import { swarmFetch } from "@/lib/ai/concepts";
@@ -127,15 +131,30 @@ export async function emitFollowUpQuestions(args: {
       },
       { agentName },
     );
+    // Pre-flight the swarm Bifrost gateway; if it's unreachable (expired
+    // cert / connection refused / timeout), drop the whole Bifrost bundle
+    // and fall back to the default gateway — same resilience as the main
+    // stream in `runCanvasAgent`. See `isGatewayReachable`.
+    let activeFollowUpBifrost = followUpBifrost;
+    if (
+      followUpBifrost?.baseUrl &&
+      !(await isGatewayReachable(followUpBifrost.baseUrl))
+    ) {
+      console.warn(
+        "[emitFollowUpQuestions] Bifrost gateway unreachable; falling back to default gateway",
+        { primarySlug, baseUrl: followUpBifrost.baseUrl, agentName },
+      );
+      activeFollowUpBifrost = undefined;
+    }
     const followUpModel = getModel(
       "anthropic",
-      followUpBifrost?.apiKey ?? followUpApiKey,
+      activeFollowUpBifrost?.apiKey ?? followUpApiKey,
       primarySlug,
       undefined,
-      followUpBifrost
+      activeFollowUpBifrost
         ? {
-            baseUrl: followUpBifrost.baseUrl,
-            headers: followUpBifrost.headers,
+            baseUrl: activeFollowUpBifrost.baseUrl,
+            headers: activeFollowUpBifrost.headers,
           }
         : undefined,
     );
