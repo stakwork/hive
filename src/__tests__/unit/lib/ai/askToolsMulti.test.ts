@@ -71,6 +71,28 @@ describe("askToolsMulti", () => {
     });
   });
 
+  describe("courtlistener tools registration", () => {
+    it("registers courtlistener tools for openlaw workspace", () => {
+      const tools = askToolsMulti([ws("openlaw")], "api-key");
+      expect(tools).toHaveProperty("openlaw__courtlistener_verify_citations");
+      expect(tools).toHaveProperty("openlaw__courtlistener_search_case_law");
+      expect(tools).toHaveProperty("openlaw__courtlistener_get_cases");
+    });
+
+    it("does not register courtlistener tools for non-openlaw workspaces", () => {
+      const tools = askToolsMulti([ws("alpha")], "api-key");
+      expect(tools).not.toHaveProperty("alpha__courtlistener_verify_citations");
+      expect(tools).not.toHaveProperty("alpha__courtlistener_search_case_law");
+      expect(tools).not.toHaveProperty("alpha__courtlistener_get_cases");
+    });
+
+    it("registers courtlistener tools for openlaw but not for other workspaces in a mixed set", () => {
+      const tools = askToolsMulti([ws("openlaw"), ws("alpha")], "api-key");
+      expect(tools).toHaveProperty("openlaw__courtlistener_verify_citations");
+      expect(tools).not.toHaveProperty("alpha__courtlistener_verify_citations");
+    });
+  });
+
   describe("stakwork__search_workflows tool", () => {
     it("is registered for a workspace with slug 'stakwork'", () => {
       const tools = askToolsMulti(
