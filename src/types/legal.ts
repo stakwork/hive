@@ -45,6 +45,13 @@ export interface BenchmarkRunResult {
     /** Casing unverified from workflow 57179 — do not narrow to a union */
     verdict: string;
     reasoning: string;
+    /** Root-cause fields annotated by LEGAL_BENCHMARK_EVAL webhook */
+    cause_type?: string;
+    cause_summary?: string;
+    cause_detail?: string;
+    suggested_fix?: string;
+    log_evidence?: string;
+    cause_ref_id?: string;
   }>;
 }
 
