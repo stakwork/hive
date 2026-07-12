@@ -1,0 +1,2 @@
+-- AlterEnum
+ALTER TYPE "StakworkRunType" ADD VALUE 'LEGAL_BENCHMARK_EVAL';
