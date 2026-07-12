@@ -67,6 +67,12 @@ vi.mock("@/hooks/useLegalBenchmarkRun", () => ({
   useLegalBenchmarkRun: (runId: string) => mockUseLegalBenchmarkRun(runId),
 }));
 
+vi.mock("@/hooks/useWorkspace", () => ({
+  useWorkspace: () => ({
+    workspace: { id: "workspace-123", slug: "openlaw" },
+  }),
+}));
+
 vi.mock("@/components/ui/collapsible", () => ({
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   Collapsible: ({ children, open, onOpenChange }: any) => (
@@ -101,6 +107,7 @@ vi.mock("@/components/ui/button", () => ({
     variant,
     size,
     className,
+    disabled,
     "aria-label": ariaLabel,
   }: {
     children?: React.ReactNode;
@@ -108,11 +115,12 @@ vi.mock("@/components/ui/button", () => ({
     variant?: string;
     size?: string;
     className?: string;
+    disabled?: boolean;
     "aria-label"?: string;
   }) =>
     React.createElement(
       "button",
-      { onClick, "data-variant": variant, "data-size": size, className, "aria-label": ariaLabel },
+      { onClick, "data-variant": variant, "data-size": size, className, disabled, "aria-label": ariaLabel },
       children
     ),
 }));
@@ -692,5 +700,256 @@ describe("LegalBenchmarkResults", () => {
     render(React.createElement(LegalBenchmarkResults, { runId: "run-abc", onReset }));
 
     expect(screen.queryByRole("button", { name: "Copy rubric results" })).toBeNull();
+  });
+
+  // ─── Run Eval button ──────────────────────────────────────────────────────
+
+  function makeCriteriaWithCauseType() {
+    return [
+      { id: "crit-1", title: "Accuracy", verdict: "fail", reasoning: "Missing key point", cause_type: "KNOWLEDGE_GAP" },
+      { id: "crit-2", title: "Completeness", verdict: "pass", reasoning: "All sections covered" },
+    ];
+  }
+
+  it("shows Run Eval button when run is complete with a failed criterion without cause_type", () => {
+    const criteriaResults = makeCriteriaResults(); // has failed criteria, no cause_type
+    mockUseLegalBenchmarkRun.mockReturnValue({
+      run: makeCompleteRunWithCriteria(criteriaResults, false),
+      isLoading: false,
+      isStale: false,
+      refetch: vi.fn(),
+    });
+
+    render(React.createElement(LegalBenchmarkResults, { runId: "run-abc", onReset }));
+
+    expect(screen.getByRole("button", { name: "Run Eval" })).toBeInTheDocument();
+  });
+
+  it("hides Run Eval button when all criteria pass", () => {
+    const criteriaResults = [
+      { id: "crit-1", title: "Accuracy", verdict: "pass", reasoning: "Great" },
+    ];
+    mockUseLegalBenchmarkRun.mockReturnValue({
+      run: makeCompleteRunWithCriteria(criteriaResults, true),
+      isLoading: false,
+      isStale: false,
+      refetch: vi.fn(),
+    });
+
+    render(React.createElement(LegalBenchmarkResults, { runId: "run-abc", onReset }));
+
+    expect(screen.queryByRole("button", { name: "Run Eval" })).toBeNull();
+  });
+
+  it("hides Run Eval button when all failed criteria already carry cause_type", () => {
+    const criteriaResults = makeCriteriaWithCauseType(); // failed criterion has cause_type
+    mockUseLegalBenchmarkRun.mockReturnValue({
+      run: makeCompleteRunWithCriteria(criteriaResults as Array<{ id: string; title: string; verdict: string; reasoning: string }>, false),
+      isLoading: false,
+      isStale: false,
+      refetch: vi.fn(),
+    });
+
+    render(React.createElement(LegalBenchmarkResults, { runId: "run-abc", onReset }));
+
+    expect(screen.queryByRole("button", { name: "Run Eval" })).toBeNull();
+  });
+
+  it("shows loading state while eval request is in flight", async () => {
+    const user = userEvent.setup();
+
+    let resolveEval!: (value: Response) => void;
+    const pendingFetch = new Promise<Response>((resolve) => { resolveEval = resolve; });
+    vi.stubGlobal("fetch", vi.fn(() => pendingFetch));
+
+    const criteriaResults = makeCriteriaResults();
+    mockUseLegalBenchmarkRun.mockReturnValue({
+      run: makeCompleteRunWithCriteria(criteriaResults, false),
+      isLoading: false,
+      isStale: false,
+      refetch: vi.fn(),
+    });
+
+    render(React.createElement(LegalBenchmarkResults, { runId: "run-abc", onReset }));
+
+    const button = screen.getByRole("button", { name: "Run Eval" });
+    await user.click(button);
+
+    // While pending, button should be disabled / show loading text
+    expect(screen.getByRole("button", { name: /Running…/ })).toBeDisabled();
+
+    // Resolve so the hook can clean up
+    resolveEval(new Response(JSON.stringify({ evalRunId: "eval-1" }), { status: 201 }));
+    vi.unstubAllGlobals();
+  });
+
+  it("shows 'Eval started' and disables button after 201 response", async () => {
+    const user = userEvent.setup();
+    vi.stubGlobal("fetch", vi.fn(() =>
+      Promise.resolve(new Response(JSON.stringify({ evalRunId: "eval-1" }), { status: 201 }))
+    ));
+
+    const criteriaResults = makeCriteriaResults();
+    mockUseLegalBenchmarkRun.mockReturnValue({
+      run: makeCompleteRunWithCriteria(criteriaResults, false),
+      isLoading: false,
+      isStale: false,
+      refetch: vi.fn(),
+    });
+
+    render(React.createElement(LegalBenchmarkResults, { runId: "run-abc", onReset }));
+
+    await user.click(screen.getByRole("button", { name: "Run Eval" }));
+
+    expect(screen.getByText("Eval started.")).toBeInTheDocument();
+    // Button should be gone (hidden by evalButtonDisabled + started state) or disabled
+    const runEvalBtn = screen.queryByRole("button", { name: "Run Eval" });
+    if (runEvalBtn) {
+      expect(runEvalBtn).toBeDisabled();
+    }
+
+    vi.unstubAllGlobals();
+  });
+
+  it("shows 'already evaluated' message and disables button after 200 skipped already_ran", async () => {
+    const user = userEvent.setup();
+    vi.stubGlobal("fetch", vi.fn(() =>
+      Promise.resolve(new Response(JSON.stringify({ skipped: true, reason: "already_ran" }), { status: 200 }))
+    ));
+
+    const criteriaResults = makeCriteriaResults();
+    mockUseLegalBenchmarkRun.mockReturnValue({
+      run: makeCompleteRunWithCriteria(criteriaResults, false),
+      isLoading: false,
+      isStale: false,
+      refetch: vi.fn(),
+    });
+
+    render(React.createElement(LegalBenchmarkResults, { runId: "run-abc", onReset }));
+
+    await user.click(screen.getByRole("button", { name: "Run Eval" }));
+
+    expect(screen.getByText("This run has already been evaluated.")).toBeInTheDocument();
+    const runEvalBtn = screen.queryByRole("button", { name: "Run Eval" });
+    if (runEvalBtn) {
+      expect(runEvalBtn).toBeDisabled();
+    }
+
+    vi.unstubAllGlobals();
+  });
+
+  it("shows 'no failing criteria' message after 200 skipped no_failures", async () => {
+    const user = userEvent.setup();
+    vi.stubGlobal("fetch", vi.fn(() =>
+      Promise.resolve(new Response(JSON.stringify({ skipped: true, reason: "no_failures" }), { status: 200 }))
+    ));
+
+    const criteriaResults = makeCriteriaResults();
+    mockUseLegalBenchmarkRun.mockReturnValue({
+      run: makeCompleteRunWithCriteria(criteriaResults, false),
+      isLoading: false,
+      isStale: false,
+      refetch: vi.fn(),
+    });
+
+    render(React.createElement(LegalBenchmarkResults, { runId: "run-abc", onReset }));
+
+    await user.click(screen.getByRole("button", { name: "Run Eval" }));
+
+    expect(screen.getByText("No failing criteria to evaluate.")).toBeInTheDocument();
+
+    vi.unstubAllGlobals();
+  });
+
+  it("shows 'already running' message after 409 response", async () => {
+    const user = userEvent.setup();
+    vi.stubGlobal("fetch", vi.fn(() =>
+      Promise.resolve(new Response(JSON.stringify({ error: "ACTIVE_EVAL_RUN_EXISTS" }), { status: 409 }))
+    ));
+
+    const criteriaResults = makeCriteriaResults();
+    mockUseLegalBenchmarkRun.mockReturnValue({
+      run: makeCompleteRunWithCriteria(criteriaResults, false),
+      isLoading: false,
+      isStale: false,
+      refetch: vi.fn(),
+    });
+
+    render(React.createElement(LegalBenchmarkResults, { runId: "run-abc", onReset }));
+
+    await user.click(screen.getByRole("button", { name: "Run Eval" }));
+
+    expect(screen.getByText("An eval is already running for this run.")).toBeInTheDocument();
+
+    vi.unstubAllGlobals();
+  });
+
+  it("shows 'not configured yet' message after 503 response", async () => {
+    const user = userEvent.setup();
+    vi.stubGlobal("fetch", vi.fn(() =>
+      Promise.resolve(new Response(JSON.stringify({ error: "EVAL_WORKFLOW_NOT_CONFIGURED" }), { status: 503 }))
+    ));
+
+    const criteriaResults = makeCriteriaResults();
+    mockUseLegalBenchmarkRun.mockReturnValue({
+      run: makeCompleteRunWithCriteria(criteriaResults, false),
+      isLoading: false,
+      isStale: false,
+      refetch: vi.fn(),
+    });
+
+    render(React.createElement(LegalBenchmarkResults, { runId: "run-abc", onReset }));
+
+    await user.click(screen.getByRole("button", { name: "Run Eval" }));
+
+    expect(screen.getByText("Eval workflow not configured yet.")).toBeInTheDocument();
+
+    vi.unstubAllGlobals();
+  });
+
+  it("shows generic friendly message after 404 response without crashing", async () => {
+    const user = userEvent.setup();
+    vi.stubGlobal("fetch", vi.fn(() =>
+      Promise.resolve(new Response(JSON.stringify({ error: "Not found" }), { status: 404 }))
+    ));
+
+    const criteriaResults = makeCriteriaResults();
+    mockUseLegalBenchmarkRun.mockReturnValue({
+      run: makeCompleteRunWithCriteria(criteriaResults, false),
+      isLoading: false,
+      isStale: false,
+      refetch: vi.fn(),
+    });
+
+    render(React.createElement(LegalBenchmarkResults, { runId: "run-abc", onReset }));
+
+    await user.click(screen.getByRole("button", { name: "Run Eval" }));
+
+    expect(screen.getByText("Failed to start eval. Please try again.")).toBeInTheDocument();
+
+    vi.unstubAllGlobals();
+  });
+
+  it("shows generic friendly message after 500 response without crashing", async () => {
+    const user = userEvent.setup();
+    vi.stubGlobal("fetch", vi.fn(() =>
+      Promise.resolve(new Response(JSON.stringify({ error: "Internal server error" }), { status: 500 }))
+    ));
+
+    const criteriaResults = makeCriteriaResults();
+    mockUseLegalBenchmarkRun.mockReturnValue({
+      run: makeCompleteRunWithCriteria(criteriaResults, false),
+      isLoading: false,
+      isStale: false,
+      refetch: vi.fn(),
+    });
+
+    render(React.createElement(LegalBenchmarkResults, { runId: "run-abc", onReset }));
+
+    await user.click(screen.getByRole("button", { name: "Run Eval" }));
+
+    expect(screen.getByText("Failed to start eval. Please try again.")).toBeInTheDocument();
+
+    vi.unstubAllGlobals();
   });
 });
