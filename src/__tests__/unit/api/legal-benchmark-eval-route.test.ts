@@ -28,6 +28,8 @@ const mockDbStakworkRunUpdateMany = vi.hoisted(() => vi.fn());
 const mockDbStakworkRunDeleteMany = vi.hoisted(() => vi.fn());
 const mockPusherTrigger = vi.hoisted(() => vi.fn());
 const mockGetJarvisConfig = vi.hoisted(() => vi.fn());
+const mockAddNode = vi.hoisted(() => vi.fn());
+const mockAddEdge = vi.hoisted(() => vi.fn());
 
 // ─── Module mocks ─────────────────────────────────────────────────────────────
 
@@ -63,6 +65,11 @@ vi.mock("@/lib/helpers/swarm-access", () => ({
 
 vi.mock("@/lib/helpers/jarvis-config", () => ({
   getJarvisConfigForWorkspace: mockGetJarvisConfig,
+}));
+
+vi.mock("@/services/swarm/api/nodes", () => ({
+  addNode: mockAddNode,
+  addEdge: mockAddEdge,
 }));
 
 vi.mock("@/config/env", () => ({
@@ -326,6 +333,8 @@ function makeEvalRunForWebhook(resultOverrides: Record<string, unknown> = {}) {
       sourceRunId: SOURCE_RUN_ID,
       taskSlug: "contracts/nda",
       failedCriteriaCount: 1,
+      evalTriggerRef: "eval-trigger-ref-1",
+      projectId: 99,
       ...resultOverrides,
     }),
     workspace: {
@@ -405,26 +414,35 @@ describe("processLegalBenchmarkEvalWebhook (via processStakworkRunWebhook)", () 
     expect(sourceUpdateCall).toBeDefined();
 
     const updatedResult = JSON.parse(sourceUpdateCall![0].data.result) as {
-      criteria_results: Array<{
-        id: string;
-        verdict: string;
-        cause_type?: string;
-        cause_summary?: string;
-        cause_detail?: string;
-      }>;
+      criteria_results: Array<Record<string, unknown>>;
     };
 
-    // c2 should be annotated
-    const c2 = updatedResult.criteria_results.find((c) => c.id === "c2");
+    // c2 should be annotated with cause fields
+    const c2 = updatedResult.criteria_results.find((c) => c.id === "c2") as Record<string, unknown> | undefined;
     expect(c2).toBeDefined();
     expect(c2!.cause_type).toBe("missing_logic");
     expect(c2!.cause_summary).toBe("NDA missing governing law clause");
     expect(c2!.cause_detail).toBe("Section 5 is absent");
+    expect(c2!.suggested_fix).toBe("Add governing law section");
 
-    // c1 should be unchanged — no cause fields added
-    const c1 = updatedResult.criteria_results.find((c) => c.id === "c1");
+    // c2 must also retain its pre-existing fields (no clobber)
+    expect(c2!.verdict).toBe("fail");
+    expect(c2!.title).toBe("Criterion 2");
+    expect(c2!.reasoning).toBe("Missing clause");
+
+    // c1 should be fully untouched — no cause fields added, existing fields preserved
+    const c1 = updatedResult.criteria_results.find((c) => c.id === "c1") as Record<string, unknown> | undefined;
     expect(c1).toBeDefined();
     expect(c1!.cause_type).toBeUndefined();
+    expect(c1!.cause_summary).toBeUndefined();
+    expect(c1!.cause_detail).toBeUndefined();
+    expect(c1!.suggested_fix).toBeUndefined();
+    // Pre-existing fields on c1 must be intact
+    expect(c1!.verdict).toBe("pass");
+    expect(c1!.title).toBe("Criterion 1");
+    expect(c1!.reasoning).toBe("Good");
+    // Exactly the fields from the source fixture — no new keys
+    expect(Object.keys(c1!)).toEqual(["id", "title", "verdict", "reasoning"]);
   });
 
   // Test 8: Pusher fires with runId === sourceRunId (not eval run id)
@@ -501,5 +519,122 @@ describe("processLegalBenchmarkEvalWebhook (via processStakworkRunWebhook)", () 
     ).find((call) => call[0].where?.id === SOURCE_RUN_ID);
 
     expect(sourceUpdateCall).toBeUndefined();
+  });
+
+  // Test 10: Full judge payload + correlation survival on eval run, and zero graph writes
+  test("10. full judge payload + correlation survival on eval run; zero graph writes", async () => {
+    mockDbStakworkRunFindFirst.mockResolvedValue(makeEvalRunForWebhook());
+    mockDbStakworkRunFindUnique.mockResolvedValue(makeSourceRunForWebhook());
+
+    const judgePayload = {
+      sourceRunId: SOURCE_RUN_ID,
+      taskSlug: "contracts/nda",
+      score: 1,
+      max_score: 2,
+      all_pass: false,
+      n_passed: 1,
+      n_total: 2,
+      pass_rate: 0.5,
+      judge_model: "gpt-4o",
+      criteria_results: [
+        { id: "c1", verdict: "pass", title: "C1", reasoning: "ok" },
+        { id: "c2", verdict: "fail", title: "C2", reasoning: "missing", cause_type: "missing_logic" },
+      ],
+      candidate_files: ["file-a.pdf"],
+      verify_pass_results: [{ check: "format", passed: true }],
+      causes: [],
+    };
+
+    await processStakworkRunWebhook(
+      { result: judgePayload, project_status: "complete" },
+      {
+        type: "LEGAL_BENCHMARK_EVAL",
+        workspace_id: WORKSPACE_ID,
+        run_id: EVAL_RUN_ID,
+        run_token: makeRunToken(EVAL_RUN_ID),
+      },
+    );
+
+    // The eval run is written twice: once via updateMany (generic merge) and once via
+    // the handler's update (adding processedAt). Find the LAST update call targeting EVAL_RUN_ID.
+    const evalUpdateCalls = (
+      mockDbStakworkRunUpdate.mock.calls as Array<[{ where: { id: string }; data: { result: string } }]>
+    ).filter((call) => call[0].where?.id === EVAL_RUN_ID);
+
+    // There should be at least one update call on the eval run (the handler's processedAt write)
+    expect(evalUpdateCalls.length).toBeGreaterThan(0);
+
+    // Assert against the last eval-run update (the handler's own write)
+    const lastEvalUpdate = evalUpdateCalls[evalUpdateCalls.length - 1];
+    const persistedResult = JSON.parse(lastEvalUpdate[0].data.result) as Record<string, unknown>;
+
+    // Judge/rubric fields must be present with correct values
+    expect(persistedResult.score).toBe(1);
+    expect(persistedResult.max_score).toBe(2);
+    expect(persistedResult.all_pass).toBe(false);
+    expect(persistedResult.n_passed).toBe(1);
+    expect(persistedResult.n_total).toBe(2);
+    expect(persistedResult.pass_rate).toBe(0.5);
+    expect(persistedResult.judge_model).toBe("gpt-4o");
+    expect(persistedResult.criteria_results).toEqual(judgePayload.criteria_results);
+    expect(persistedResult.candidate_files).toEqual(["file-a.pdf"]);
+    expect(persistedResult.verify_pass_results).toEqual([{ check: "format", passed: true }]);
+
+    // Pre-existing correlation fields must survive the merge intact
+    expect(persistedResult.sourceRunId).toBe(SOURCE_RUN_ID);
+    expect(persistedResult.taskSlug).toBe("contracts/nda");
+    expect(persistedResult.evalTriggerRef).toBe("eval-trigger-ref-1");
+    expect(persistedResult.projectId).toBe(99);
+
+    // Zero graph writes — the EVAL path must never call addNode or addEdge
+    expect(mockAddNode).not.toHaveBeenCalled();
+    expect(mockAddEdge).not.toHaveBeenCalled();
+  });
+
+  // Test 11: Non-fatal on malformed source-run criteria_results (non-array)
+  test("11. non-fatal when source run criteria_results is not an array — eval run still persisted", async () => {
+    mockDbStakworkRunFindFirst.mockResolvedValue(makeEvalRunForWebhook());
+
+    // Source run with malformed criteria_results (string instead of array)
+    mockDbStakworkRunFindUnique.mockResolvedValue({
+      id: SOURCE_RUN_ID,
+      workspaceId: WORKSPACE_ID,
+      result: JSON.stringify({
+        taskSlug: "contracts/nda",
+        criteria_results: "not-an-array",
+      }),
+    });
+
+    const causes = [
+      { criterion_id: "c2", cause_type: "missing_logic", cause_summary: "Missing clause" },
+    ];
+
+    // Must resolve without throwing
+    await expect(
+      processStakworkRunWebhook(
+        { result: { causes, sourceRunId: SOURCE_RUN_ID }, project_status: "complete" },
+        {
+          type: "LEGAL_BENCHMARK_EVAL",
+          workspace_id: WORKSPACE_ID,
+          run_id: EVAL_RUN_ID,
+          run_token: makeRunToken(EVAL_RUN_ID),
+        },
+      ),
+    ).resolves.not.toThrow();
+
+    // Eval run must still have been persisted (at minimum the handler's processedAt update)
+    const evalUpdateCalls = (
+      mockDbStakworkRunUpdate.mock.calls as Array<[{ where: { id: string } }]>
+    ).filter((call) => call[0].where?.id === EVAL_RUN_ID);
+
+    expect(evalUpdateCalls.length).toBeGreaterThan(0);
+
+    // Also accept a generic updateMany covering the eval run (generic merge path)
+    const evalUpdateManyCalls = (
+      mockDbStakworkRunUpdateMany.mock.calls as Array<[{ where: { id: string } }]>
+    ).filter((call) => call[0].where?.id === EVAL_RUN_ID);
+
+    // At least one of the two write paths must have fired for the eval run
+    expect(evalUpdateCalls.length + evalUpdateManyCalls.length).toBeGreaterThan(0);
   });
 });
