@@ -122,6 +122,11 @@ function makeRunnerRun(resultOverrides: Record<string, unknown> = {}) {
       taskSlug: "contracts/nda",
       taskTitle: "NDA Review",
       evalTriggerRef: "eval-trigger-ref-1",
+      score: 1,
+      max_score: 2,
+      n_passed: 1,
+      n_total: 2,
+      judge_model: "gpt-4o",
       criteria_results: [
         { id: "c1", title: "Criterion 1", verdict: "pass", reasoning: "Good" },
         { id: "c2", title: "Criterion 2", verdict: "fail", reasoning: "Missing clause" },
@@ -277,10 +282,38 @@ describe("POST /api/workspaces/[slug]/legal/benchmarks/runs/[runId]/eval", () =>
     expect(vars).toHaveProperty("swarm_secret_alias");
     expect(vars).toHaveProperty("workspace_id", WORKSPACE_ID);
 
-    // failed_criteria_json should contain only the failed criterion
+    // failed_criteria_json should contain only the failed criterion (backwards compat)
     const failedCriteria = JSON.parse(vars.failed_criteria_json as string) as Array<{ id: string }>;
     expect(failedCriteria).toHaveLength(1);
     expect(failedCriteria[0].id).toBe("c2");
+
+    // full_result_json must be present and contain ALL criteria (pass + fail)
+    expect(vars).toHaveProperty("full_result_json");
+    const fullResult = JSON.parse(vars.full_result_json as string) as {
+      criteria_results: Array<{ id: string }>;
+      score: number;
+      max_score: number;
+      n_passed: number;
+      n_total: number;
+      judge_model: string;
+    };
+    expect(fullResult.criteria_results).toHaveLength(2);
+    expect(fullResult.criteria_results.map((c) => c.id)).toEqual(
+      expect.arrayContaining(["c1", "c2"]),
+    );
+    // Aggregate score fields must be present and match fixture values
+    expect(fullResult.score).toBe(1);
+    expect(fullResult.max_score).toBe(2);
+    expect(fullResult.n_passed).toBe(1);
+    expect(fullResult.n_total).toBe(2);
+    expect(fullResult.judge_model).toBe("gpt-4o");
+
+    // No discrete score vars (single-blob contract)
+    expect(vars).not.toHaveProperty("score");
+    expect(vars).not.toHaveProperty("max_score");
+    expect(vars).not.toHaveProperty("n_total");
+    expect(vars).not.toHaveProperty("n_passed");
+    expect(vars).not.toHaveProperty("judge_model");
 
     expect(payload.workflow_id).toBe(2002);
   });
