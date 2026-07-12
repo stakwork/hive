@@ -9,6 +9,7 @@ export const fetchCache = "force-no-store";
 const LEGAL_BENCHMARK_TYPES = new Set<string>([
   StakworkRunType.LEGAL_BENCHMARK_RUNNER,
   StakworkRunType.LEGAL_BENCHMARK_SCORER,
+  StakworkRunType.LEGAL_BENCHMARK_EVAL,
 ]);
 
 /**
