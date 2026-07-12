@@ -195,6 +195,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
               source_run_id: runId,
               task_slug: taskSlug,
               failed_criteria_json: JSON.stringify(failedCriteria),
+              full_result_json: JSON.stringify(runResult),
               agent_logs_json: JSON.stringify(agentLogsJson),
               eval_trigger_ref: evalTriggerRef ?? "",
               graph_base_url: graphBaseUrl,
