@@ -874,7 +874,8 @@ export async function processStakworkRunWebhook(
   // This prevents a projectId collision from targeting a run in a different workspace.
   if (
     (run.type === StakworkRunType.LEGAL_BENCHMARK_RUNNER ||
-      run.type === StakworkRunType.LEGAL_BENCHMARK_SCORER) &&
+      run.type === StakworkRunType.LEGAL_BENCHMARK_SCORER ||
+      run.type === StakworkRunType.LEGAL_BENCHMARK_EVAL) &&
     run.workspaceId !== workspace_id
   ) {
     logger.error("[legal-benchmark] Workspace mismatch — rejecting webhook", "stakwork-run", {
@@ -919,7 +920,8 @@ export async function processStakworkRunWebhook(
   // This closes the unauthenticated-webhook gap on these endpoints.
   if (
     run.type === StakworkRunType.LEGAL_BENCHMARK_RUNNER ||
-    run.type === StakworkRunType.LEGAL_BENCHMARK_SCORER
+    run.type === StakworkRunType.LEGAL_BENCHMARK_SCORER ||
+    run.type === StakworkRunType.LEGAL_BENCHMARK_EVAL
   ) {
     const { run_token } = queryParams;
     const webhookSecret = process.env.NEXTAUTH_SECRET ?? "";
@@ -961,7 +963,8 @@ export async function processStakworkRunWebhook(
   // so those correlation fields are never lost.
   if (
     (run.type === StakworkRunType.LEGAL_BENCHMARK_RUNNER ||
-      run.type === StakworkRunType.LEGAL_BENCHMARK_SCORER) &&
+      run.type === StakworkRunType.LEGAL_BENCHMARK_SCORER ||
+      run.type === StakworkRunType.LEGAL_BENCHMARK_EVAL) &&
     serializedResult !== null
   ) {
     const incomingFields =
@@ -1072,6 +1075,23 @@ export async function processStakworkRunWebhook(
       });
     } catch (pusherError) {
       logger.error("[legal-benchmark/scorer] Pusher trigger failed (non-fatal)", "stakwork-run", { error: String(pusherError) });
+    }
+    return { runId: run.id, status, dataType };
+  }
+
+  // ── Step 2d: LEGAL_BENCHMARK_EVAL — annotate cause fields onto source run ──
+  if (run.type === StakworkRunType.LEGAL_BENCHMARK_EVAL) {
+    await processLegalBenchmarkEvalWebhook(run, serializedResult, workspace_id, status);
+    try {
+      await pusherServer.trigger(getWorkspaceChannelName(run.workspace.slug), PUSHER_EVENTS.STAKWORK_RUN_UPDATE, {
+        runId: run.id,
+        type: run.type,
+        status,
+        featureId: run.featureId,
+        timestamp: new Date(),
+      });
+    } catch (pusherError) {
+      logger.error("Pusher trigger failed (non-fatal)", "stakwork-run", { error: String(pusherError) });
     }
     return { runId: run.id, status, dataType };
   }
@@ -1458,6 +1478,8 @@ type RunWithWorkspace = {
   id: string;
   workspaceId: string;
   result: string | null;
+  featureId?: string | null;
+  type?: StakworkRunType;
   workspace: { slug: string };
 };
 
@@ -1636,6 +1658,123 @@ async function processLegalBenchmarkRunnerWebhook(
         "[legal-benchmark/runner] EvalTriggerOutput graph write failed (non-fatal)",
         "stakwork-run",
         { runId: run.id, error: String(err) },
+      );
+    }
+  }
+}
+
+/**
+ * Handle the LEGAL_BENCHMARK_EVAL webhook:
+ *  1. Update eval run's own result with processedAt timestamp.
+ *  2. Annotate cause fields from the eval payload onto the matching source run's criteria_results.
+ *  3. Broadcast a STAKWORK_RUN_UPDATE Pusher event on the source run's channel so the UI reflects
+ *     the new cause annotations without a full page refresh.
+ *
+ * All source-run mutation steps are wrapped in a try/catch — failures are non-fatal
+ * (the eval run itself has already been persisted and the caller handles the Pusher broadcast
+ * for the eval run's own channel).
+ */
+async function processLegalBenchmarkEvalWebhook(
+  run: RunWithWorkspace,
+  serializedResult: string | null,
+  _workspaceId: string,
+  _mappedStatus: WorkflowStatus,
+): Promise<void> {
+  // Step 1: Parse result JSON
+  let resultJson: Record<string, unknown> = {};
+  try {
+    resultJson = serializedResult ? (JSON.parse(serializedResult) as Record<string, unknown>) : {};
+  } catch {
+    logger.error("[legal-benchmark/eval] Failed to parse serialized result", "stakwork-run", { runId: run.id });
+  }
+
+  // Step 2: Extract causes array
+  const causes = (resultJson.causes ?? []) as Array<{
+    criterion_id: string;
+    cause_ref_id?: string;
+    cause_type: string;
+    cause_summary: string;
+    cause_detail?: string;
+    suggested_fix?: string;
+    log_evidence?: string;
+    is_new?: boolean;
+  }>;
+
+  // Step 3: Extract sourceRunId
+  const sourceRunId = resultJson.sourceRunId as string | undefined;
+
+  // Step 4: Update eval run's own result with processedAt
+  await db.stakworkRun.update({
+    where: { id: run.id },
+    data: {
+      result: JSON.stringify({ ...resultJson, processedAt: new Date().toISOString() }),
+    },
+  });
+
+  // Step 5: Annotate source run's criteria_results if we have data
+  if (sourceRunId && causes.length > 0) {
+    try {
+      const sourceRow = await db.stakworkRun.findUnique({
+        where: { id: sourceRunId, workspaceId: run.workspaceId },
+        select: { result: true },
+      });
+
+      if (sourceRow) {
+        let sourceResult: Record<string, unknown> = {};
+        try {
+          sourceResult = sourceRow.result
+            ? (JSON.parse(sourceRow.result) as Record<string, unknown>)
+            : {};
+        } catch {
+          // Malformed — start fresh
+        }
+
+        const existingCriteria = (sourceResult.criteria_results ?? []) as Array<
+          Record<string, unknown>
+        >;
+        const annotated = existingCriteria.map((criterion) => {
+          const match = causes.find(
+            (c) => c.criterion_id === (criterion.id as string),
+          );
+          if (match) {
+            return {
+              ...criterion,
+              cause_type: match.cause_type,
+              cause_summary: match.cause_summary,
+              ...(match.cause_detail !== undefined ? { cause_detail: match.cause_detail } : {}),
+              ...(match.suggested_fix !== undefined ? { suggested_fix: match.suggested_fix } : {}),
+              ...(match.log_evidence !== undefined ? { log_evidence: match.log_evidence } : {}),
+              ...(match.cause_ref_id !== undefined ? { cause_ref_id: match.cause_ref_id } : {}),
+            };
+          }
+          return criterion;
+        });
+
+        await db.stakworkRun.update({
+          where: { id: sourceRunId, workspaceId: run.workspaceId },
+          data: {
+            result: JSON.stringify({ ...sourceResult, criteria_results: annotated }),
+          },
+        });
+
+        // Pusher broadcast on source run's channel so UI sees the annotation
+        await pusherServer.trigger(
+          getWorkspaceChannelName(run.workspace.slug),
+          PUSHER_EVENTS.STAKWORK_RUN_UPDATE,
+          {
+            runId: sourceRunId,
+            type: StakworkRunType.LEGAL_BENCHMARK_RUNNER,
+            status: WorkflowStatus.COMPLETED,
+            featureId: run.featureId,
+            timestamp: new Date(),
+          },
+        );
+      }
+    } catch (err) {
+      logger.error(
+        "[legal-benchmark/eval] Failed to annotate source run criteria_results (non-fatal)",
+        "stakwork-run",
+        { runId: run.id, sourceRunId, error: String(err) },
       );
     }
   }
