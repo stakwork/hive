@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "@/components/ui/collapsible";
 import { useLegalBenchmarkRun } from "@/hooks/useLegalBenchmarkRun";
+import { useLegalBenchmarkEval, type EvalResult } from "@/hooks/useLegalBenchmarkEval";
 import { StakworkRunLink } from "@/components/legal/StakworkRunLink";
 
 interface LegalBenchmarkResultsProps {
@@ -26,6 +27,7 @@ function SpinnerMessage({ message }: { message: string }) {
 
 export function LegalBenchmarkResults({ runId, onReset, isSuperAdmin = false }: LegalBenchmarkResultsProps) {
   const { run, isLoading, isStale, refetch } = useLegalBenchmarkRun(runId);
+  const { runEval, isSubmitting } = useLegalBenchmarkEval();
 
   const allPass = run?.runnerRun?.result?.all_pass;
   const criteriaResults = run?.runnerRun?.result?.criteria_results;
@@ -33,6 +35,7 @@ export function LegalBenchmarkResults({ runId, onReset, isSuperAdmin = false }: 
   const [isOpen, setIsOpen] = useState<boolean>(!allPass);
   const [filterQuery, setFilterQuery] = useState<string>("");
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [evalResult, setEvalResult] = useState<EvalResult | null>(null);
 
   const sortedFiltered = useMemo(() => {
     if (!criteriaResults || criteriaResults.length === 0) return [];
@@ -140,6 +143,35 @@ export function LegalBenchmarkResults({ runId, onReset, isSuperAdmin = false }: 
     const hasScore = typeof allPass === "boolean";
     const hasCriteriaResults = Array.isArray(criteriaResults) && criteriaResults.length > 0;
     const failedCount = criteriaResults?.filter((c) => c.verdict.toLowerCase() !== "pass").length ?? 0;
+
+    // Criteria that failed AND have not yet been evaluated (no cause_type)
+    const unevaluatedFailedCount =
+      criteriaResults?.filter(
+        (c) => c.verdict.toLowerCase() !== "pass" && !c.cause_type,
+      ).length ?? 0;
+    const showRunEvalButton = unevaluatedFailedCount > 0;
+
+    // Keep button disabled after a started/active/already_ran result
+    const evalButtonDisabled =
+      isSubmitting ||
+      evalResult?.status === "started" ||
+      evalResult?.status === "active" ||
+      (evalResult?.status === "skipped" && evalResult.reason === "already_ran");
+
+    const handleRunEval = async () => {
+      const result = await runEval(run.id);
+      setEvalResult(result);
+    };
+
+    const renderEvalMessage = () => {
+      if (!evalResult) return null;
+      return (
+        <div className="flex items-center gap-3 px-4 py-2 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-md text-sm text-amber-800 dark:text-amber-200">
+          <AlertCircle className="h-4 w-4 shrink-0" />
+          <span>{evalResult.message}</span>
+        </div>
+      );
+    };
 
     return (
       <div className="mt-6 space-y-6">
@@ -271,10 +303,29 @@ export function LegalBenchmarkResults({ runId, onReset, isSuperAdmin = false }: 
           </div>
         )}
 
-        <div className="flex justify-end">
-          <Button variant="outline" onClick={onReset}>
-            Run again
-          </Button>
+        <div className="space-y-2">
+          {renderEvalMessage()}
+          <div className="flex justify-end gap-2">
+            {showRunEvalButton && (
+              <Button
+                variant="outline"
+                onClick={handleRunEval}
+                disabled={evalButtonDisabled}
+              >
+                {isSubmitting ? (
+                  <>
+                    <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" />
+                    Running…
+                  </>
+                ) : (
+                  "Run Eval"
+                )}
+              </Button>
+            )}
+            <Button variant="outline" onClick={onReset}>
+              Run again
+            </Button>
+          </div>
         </div>
       </div>
     );
