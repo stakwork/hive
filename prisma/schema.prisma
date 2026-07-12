@@ -1544,6 +1544,7 @@ enum StakworkRunType {
   DAILY_RECAP
   LEGAL_BENCHMARK_RUNNER
   LEGAL_BENCHMARK_SCORER
+  LEGAL_BENCHMARK_EVAL
 }
 
 enum StakworkRunDecision {
