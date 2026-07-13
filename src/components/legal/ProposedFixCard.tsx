@@ -19,10 +19,10 @@ function RerunBadge({
   beforeScore,
   afterScore,
 }: {
-  rerunStatus?: string;
-  scoreDelta?: string;
-  beforeScore?: string;
-  afterScore?: string;
+  rerunStatus?: string | null;
+  scoreDelta?: string | null;
+  beforeScore?: string | null;
+  afterScore?: string | null;
 }) {
   const status = rerunStatus ?? "";
 
