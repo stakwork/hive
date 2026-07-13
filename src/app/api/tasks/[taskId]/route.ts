@@ -9,6 +9,7 @@ import { sanitizeTask } from "@/lib/helpers/tasks";
 import { pusherServer, getWorkspaceChannelName, getTaskChannelName, PUSHER_EVENTS } from "@/lib/pusher";
 import { updateFeatureStatusFromTasks } from "@/services/roadmap/feature-status-sync";
 import { notifyFeatureCanvasRefresh } from "@/lib/canvas";
+import { releaseTaskPod } from "@/lib/pods/utils";
 
 export async function PATCH(
   request: NextRequest,
@@ -232,6 +233,25 @@ export async function PATCH(
           featureId: true,
         },
       });
+
+      // Release pod for non-agent HALTED tasks (fire-and-forget, failure-tolerant)
+      // Guard reads from `task` (pre-fetch), not `updatedTask` — `updatedTask`'s select
+      // does not include podId or mode.
+      if (workflowStatus === WorkflowStatus.HALTED && task.podId && task.mode !== "agent") {
+        void releaseTaskPod({
+          taskId: task.id,
+          podId: task.podId,
+          workspaceId: task.workspaceId,
+          verifyOwnership: true,
+          resetRepositories: false,
+          clearTaskFields: true,
+          // newWorkflowStatus: null is REQUIRED — omitting it causes releaseTaskPod
+          // to default to "COMPLETED", silently overwriting the HALTED status just written.
+          newWorkflowStatus: null,
+        }).catch((err) =>
+          console.error("[PATCH /api/tasks] Pod release failed for HALTED task:", task.id, err)
+        );
+      }
 
       // Sync feature status if task belongs to a feature
       if (updatedTask.featureId) {
