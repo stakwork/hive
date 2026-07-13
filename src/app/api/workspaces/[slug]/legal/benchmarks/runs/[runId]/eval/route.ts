@@ -64,6 +64,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
             sessionId: true,
             stats: true,
             phoenixTraceUrl: true,
+            metadata: true,
           },
         },
       },
@@ -181,6 +182,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
         sessionId: log.sessionId,
         preview: stats?.conversationPreview ?? null,
         traceUrl: log.phoenixTraceUrl ?? null,
+        metadata: log.metadata ?? null,
       };
     });
 
