@@ -324,6 +324,174 @@ describe("recordPromptOnGraph (swallows errors via publishVersion)", () => {
   });
 });
 
+// ─── pushCreateToStakwork id extraction (via writePromptThrough create path) ──
+
+describe("writePromptThrough create — pushCreateToStakwork id extraction", () => {
+  const basePrompt = {
+    id: "prompt-new",
+    name: "NEW_PROMPT",
+    value: "val",
+    description: null,
+    agentNames: [],
+    publishedVersionId: "v1",
+    stakworkId: null,
+    syncStatus: "OK",
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  };
+  const baseVersion = {
+    id: "v1",
+    versionNumber: 1,
+    value: "val",
+    description: null,
+    published: true,
+    createdAt: new Date(),
+  };
+
+  function setupCreateMocks(fetchJson: unknown) {
+    vi.clearAllMocks();
+    mockStakworkRequest.mockResolvedValue({});
+    mockDbTransaction.mockImplementationOnce(async (fn: (tx: unknown) => Promise<unknown>) => {
+      const tx = {
+        prompt: {
+          create: vi.fn().mockResolvedValue(basePrompt),
+          update: vi.fn().mockResolvedValue(basePrompt),
+        },
+        promptVersion: { create: vi.fn().mockResolvedValue(baseVersion) },
+      };
+      return fn(tx);
+    });
+    global.fetch = vi.fn().mockResolvedValueOnce({
+      ok: true,
+      json: async () => fetchJson,
+    } as Response);
+    mockDbPromptUpdate.mockResolvedValue({ ...basePrompt, stakworkId: 42, syncStatus: "OK" });
+  }
+
+  it("1. existing data.id path still passes — stakworkId: 42, syncStatus: OK", async () => {
+    setupCreateMocks({ data: { id: 42 } });
+
+    await writePromptThrough({ name: "NEW_PROMPT", value: "val", userId: "user-1" });
+
+    expect(mockDbPromptUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "prompt-new" },
+        data: expect.objectContaining({ stakworkId: 42, syncStatus: "OK" }),
+      }),
+    );
+  });
+
+  it("2. structured data.prompt.id path — stakworkId: 2114, syncStatus: OK", async () => {
+    setupCreateMocks({ data: { message: "X created with id 2114", prompt: { id: 2114 } } });
+
+    await writePromptThrough({ name: "NEW_PROMPT", value: "val", userId: "user-1" });
+
+    expect(mockDbPromptUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "prompt-new" },
+        data: expect.objectContaining({ stakworkId: 2114, syncStatus: "OK" }),
+      }),
+    );
+  });
+
+  it("3. message-string fallback — data is bare string with trailing id", async () => {
+    setupCreateMocks({ data: "X created with id 2114" });
+
+    await writePromptThrough({ name: "NEW_PROMPT", value: "val", userId: "user-1" });
+
+    expect(mockDbPromptUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "prompt-new" },
+        data: expect.objectContaining({ stakworkId: 2114, syncStatus: "OK" }),
+      }),
+    );
+  });
+
+  it("4. stringified numeric id coercion — data.prompt.id is string '2114'", async () => {
+    setupCreateMocks({ data: { prompt: { id: "2114" } } });
+
+    await writePromptThrough({ name: "NEW_PROMPT", value: "val", userId: "user-1" });
+
+    expect(mockDbPromptUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "prompt-new" },
+        data: expect.objectContaining({ stakworkId: 2114, syncStatus: "OK" }),
+      }),
+    );
+  });
+
+  it("5. anchored regex — hive_version_id token not captured, real trailing id is", async () => {
+    setupCreateMocks({ data: "hive_version_id 9, created with id 2114" });
+
+    await writePromptThrough({ name: "NEW_PROMPT", value: "val", userId: "user-1" });
+
+    expect(mockDbPromptUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "prompt-new" },
+        data: expect.objectContaining({ stakworkId: 2114, syncStatus: "OK" }),
+      }),
+    );
+    // Must NOT have used 9
+    const wrongCall = vi.mocked(mockDbPromptUpdate).mock.calls.find(
+      ([args]) => args?.data?.stakworkId === 9,
+    );
+    expect(wrongCall).toBeUndefined();
+  });
+
+  it("6. 2xx with no id → PENDING, no OK update, warn logged, success info NOT emitted", async () => {
+    setupCreateMocks({ data: "created, no number" });
+    // update returns PENDING-state prompt for in-memory update
+    mockDbPromptUpdate.mockResolvedValue({ ...basePrompt, syncStatus: "PENDING" });
+
+    await writePromptThrough({ name: "NEW_PROMPT", value: "val", userId: "user-1" });
+
+    // Must have updated to PENDING
+    expect(mockDbPromptUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "prompt-new" },
+        data: expect.objectContaining({ syncStatus: "PENDING" }),
+      }),
+    );
+    // Must NOT have updated to OK in any call for stakworkId
+    const okWithId = vi.mocked(mockDbPromptUpdate).mock.calls.find(
+      ([args]) => args?.data?.syncStatus === "OK" && "stakworkId" in (args?.data ?? {}),
+    );
+    expect(okWithId).toBeUndefined();
+    // Warn must have been emitted for the PENDING case
+    expect(vi.mocked(logger.warn)).toHaveBeenCalledWith(
+      expect.stringContaining("no id could be extracted"),
+      "prompt-sync",
+      expect.objectContaining({ promptName: "NEW_PROMPT" }),
+    );
+    // Success info log must NOT have fired
+    expect(vi.mocked(logger.info)).not.toHaveBeenCalledWith(
+      expect.stringContaining("Stakwork push succeeded"),
+      expect.anything(),
+      expect.anything(),
+    );
+  });
+
+  it("7. out-of-range id → null → PENDING, no Prisma write with oversized value", async () => {
+    setupCreateMocks({ data: `DEMO created with id 2147483648` }); // > INT32_MAX
+    mockDbPromptUpdate.mockResolvedValue({ ...basePrompt, syncStatus: "PENDING" });
+
+    await writePromptThrough({ name: "NEW_PROMPT", value: "val", userId: "user-1" });
+
+    // Must be PENDING, not OK
+    expect(mockDbPromptUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "prompt-new" },
+        data: expect.objectContaining({ syncStatus: "PENDING" }),
+      }),
+    );
+    // Must NOT have attempted to write the oversized id
+    const oversizedCall = vi.mocked(mockDbPromptUpdate).mock.calls.find(
+      ([args]) => args?.data?.stakworkId === 2147483648,
+    );
+    expect(oversizedCall).toBeUndefined();
+  });
+});
+
 // ─── publishVersion Stakwork push ─────────────────────────────────────────────
 
 describe("publishVersion — Stakwork push", () => {
