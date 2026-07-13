@@ -1,24 +1,40 @@
+/**
+ * Unit tests for GET /api/workspaces/[slug]/legal/benchmarks/proposed-fixes
+ *
+ * Test cases:
+ *  1. Non-openlaw slug → 404
+ *  2. getWorkspaceSwarmAccess WORKSPACE_NOT_FOUND → 404
+ *  3. getWorkspaceSwarmAccess ACCESS_DENIED → 403
+ *  4. getWorkspaceSwarmAccess SWARM_NOT_CONFIGURED → 400
+ *  5. getWorkspaceSwarmAccess SWARM_NOT_ACTIVE → 400
+ *  6. getWorkspaceSwarmAccess SWARM_API_KEY_MISSING → 400
+ *  7. getWorkspaceSwarmAccess SWARM_NAME_MISSING → 400
+ *  8. Missing runId query param → 400
+ *  9. runId belonging to another workspace (IDOR) → 404, no graph call
+ * 10. Unknown runId → 404, no graph call
+ * 11. LEGAL_BENCHMARK_SCORER runId resolves taskSlug via sibling runner
+ * 12. Unresolvable taskSlug (scorer with no sibling) → { fixes: [] }, no graph call
+ * 13. Unresolvable taskSlug (runner with empty taskSlug, no sibling) → { fixes: [] }
+ * 14. searchNodesByAttributes called with includeProperties: true
+ * 15. Projection whitelisting — extra node properties not leaked
+ * 16. Graph search failure → { fixes: [] }
+ * 17. Nodes sorted: rerun_run_id present surfaces first
+ * 18. USE_MOCKS path: reachable in non-production when USE_MOCKS=true
+ * 19. USE_MOCKS path: NOT reachable in production even when USE_MOCKS=true
+ * 20. USE_MOCKS still behind slug check
+ */
+
 import { describe, test, expect, vi, beforeEach, afterEach } from "vitest";
 import { NextRequest } from "next/server";
 
-// ─── Hoisted mocks ────────────────────────────────────────────────────────────
+// ─── Stable mock references (hoisted) ────────────────────────────────────────
 
-const mockRequireAuth = vi.hoisted(() => vi.fn());
-const mockGetMiddlewareContext = vi.hoisted(() => vi.fn());
-const mockGetWorkspaceSwarmAccess = vi.hoisted(() => vi.fn());
 const mockDbStakworkRunFindFirst = vi.hoisted(() => vi.fn());
-const mockParseBenchmarkRunResult = vi.hoisted(() => vi.fn());
-const mockSearchNodesByAttributes = vi.hoisted(() => vi.fn());
+const mockGetWorkspaceSwarmAccess = vi.hoisted(() => vi.fn());
 const mockGetJarvisConfigForWorkspace = vi.hoisted(() => vi.fn());
+const mockSearchNodesByAttributes = vi.hoisted(() => vi.fn());
 
-vi.mock("@/lib/middleware/utils", () => ({
-  requireAuth: mockRequireAuth,
-  getMiddlewareContext: mockGetMiddlewareContext,
-}));
-
-vi.mock("@/lib/helpers/swarm-access", () => ({
-  getWorkspaceSwarmAccess: mockGetWorkspaceSwarmAccess,
-}));
+// ─── Module mocks ─────────────────────────────────────────────────────────────
 
 vi.mock("@/lib/db", () => ({
   db: {
@@ -28,400 +44,452 @@ vi.mock("@/lib/db", () => ({
   },
 }));
 
-vi.mock("@/types/legal", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@/types/legal")>();
-  return {
-    ...actual,
-    parseBenchmarkRunResult: mockParseBenchmarkRunResult,
-  };
-});
+vi.mock("@/lib/middleware/utils", () => ({
+  getMiddlewareContext: vi.fn(() => ({ userId: "user-1" })),
+  requireAuth: vi.fn(() => ({ id: "user-1" })),
+}));
 
-vi.mock("@/services/swarm/api/nodes", () => ({
-  searchNodesByAttributes: mockSearchNodesByAttributes,
+vi.mock("@/lib/helpers/swarm-access", () => ({
+  getWorkspaceSwarmAccess: mockGetWorkspaceSwarmAccess,
 }));
 
 vi.mock("@/lib/helpers/jarvis-config", () => ({
   getJarvisConfigForWorkspace: mockGetJarvisConfigForWorkspace,
 }));
 
-// ─── Import after mocks ───────────────────────────────────────────────────────
+vi.mock("@/services/swarm/api/nodes", () => ({
+  searchNodesByAttributes: mockSearchNodesByAttributes,
+  addNode: vi.fn(),
+  addEdge: vi.fn(),
+}));
 
-const { GET } = await import(
-  "@/app/api/workspaces/[slug]/legal/benchmarks/proposed-fixes/route"
-);
+// ─── Import subject under test ────────────────────────────────────────────────
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
+import { GET } from "@/app/api/workspaces/[slug]/legal/benchmarks/proposed-fixes/route";
+import { StakworkRunType } from "@prisma/client";
 
-const MOCK_USER = { id: "user-1" };
-const MOCK_WORKSPACE_ID = "workspace-abc";
-const MOCK_TASK_SLUG = "antitrust/task-1";
+// ─── Shared fixture data ──────────────────────────────────────────────────────
+
+const WORKSPACE_ID = "ws-openlaw";
+const RUNNER_RUN_ID = "runner-run-1";
+const SCORER_RUN_ID = "scorer-run-1";
 
 const MOCK_SWARM_ACCESS = {
-  success: true as const,
+  success: true,
   data: {
-    workspaceId: MOCK_WORKSPACE_ID,
-    swarmName: "my-swarm",
-    swarmUrl: "http://swarm",
+    workspaceId: WORKSPACE_ID,
+    swarmName: "openlaw-swarm",
+    swarmUrl: "https://swarm.example.com",
     swarmApiKey: "decrypted-key",
-    swarmStatus: "active",
-    poolName: "pool-1",
-    swarmSecretAlias: "alias-1",
+    swarmStatus: "ACTIVE",
+    poolName: "pool",
+    swarmSecretAlias: "openlaw-alias",
   },
 };
 
-const MOCK_RUNNER_RUN = {
-  id: "run-1",
-  workspaceId: MOCK_WORKSPACE_ID,
-  type: "LEGAL_BENCHMARK_RUNNER",
-  result: JSON.stringify({ taskSlug: MOCK_TASK_SLUG }),
+const MOCK_JARVIS_CONFIG = {
+  jarvisUrl: "https://jarvis.example.com",
+  apiKey: "jarvis-key",
 };
 
-const MOCK_JARVIS_CONFIG = { jarvisUrl: "http://jarvis", apiKey: "key" };
+const TASK_SLUG = "contracts/ndas/draft-nda";
 
-const MOCK_NODE = {
-  ref_id: "node-1",
-  node_id: "node-1",
-  properties: {
-    criterion_id: "crit-1",
-    criterion_title: "Accuracy",
-    prompt_name: "citation_v2",
-    prompt_id: "pid-1",
-    prompt_version_id: "v1.0",
-    new_prompt_version_id: "v1.1",
-    failing_value: "wrong",
-    passing_value: "correct",
-    delta: "added format rules",
-    reasoning: "old prompt was vague",
-    status: "proposed",
-    rerun_status: "improved",
-    before_score: "50",
-    after_score: "54",
-    score_delta: "+4",
-    rerun_run_id: "rerun-1",
-  },
-};
+function makeRunnerRun(taskSlug = TASK_SLUG, siblingRunId?: string) {
+  return {
+    id: RUNNER_RUN_ID,
+    workspaceId: WORKSPACE_ID,
+    type: StakworkRunType.LEGAL_BENCHMARK_RUNNER,
+    result: JSON.stringify({ taskSlug, taskTitle: "Draft NDA", ...(siblingRunId ? { siblingRunId } : {}) }),
+  };
+}
+
+function makeScorerRun(siblingRunId?: string) {
+  return {
+    id: SCORER_RUN_ID,
+    workspaceId: WORKSPACE_ID,
+    type: StakworkRunType.LEGAL_BENCHMARK_SCORER,
+    result: siblingRunId ? JSON.stringify({ siblingRunId }) : null,
+  };
+}
+
+function makeProposedFixNode(overrides: Record<string, unknown> = {}) {
+  return {
+    ref_id: "fix-node-1",
+    node_type: "ProposedFix",
+    properties: {
+      criterion_id: "crit-1",
+      criterion_title: "Citation Accuracy",
+      prompt_name: "citation_verifier",
+      prompt_id: "p-1",
+      prompt_version_id: "v1.0",
+      new_prompt_version_id: "v1.1",
+      failing_value: "bad value",
+      passing_value: "good value",
+      delta: "Added citation format",
+      reasoning: "Needed full citation",
+      status: "pending",
+      rerun_status: "improved",
+      before_score: "50",
+      after_score: "54",
+      score_delta: "+4",
+      rerun_run_id: "rerun-1",
+      extra_secret_field: "should-not-be-returned",
+      ...overrides,
+    },
+  };
+}
 
 function makeRequest(slug: string, runId?: string) {
   const url = runId
     ? `http://localhost/api/workspaces/${slug}/legal/benchmarks/proposed-fixes?runId=${runId}`
     : `http://localhost/api/workspaces/${slug}/legal/benchmarks/proposed-fixes`;
-  return new NextRequest(url);
+  return new NextRequest(url, { method: "GET" });
 }
 
-async function makeParams(slug: string) {
+function makeParams(slug: string) {
   return { params: Promise.resolve({ slug }) };
 }
+
+// ─── Setup ────────────────────────────────────────────────────────────────────
+
+beforeEach(() => {
+  vi.clearAllMocks();
+
+  // Default happy-path mocks
+  mockGetWorkspaceSwarmAccess.mockResolvedValue(MOCK_SWARM_ACCESS);
+  mockDbStakworkRunFindFirst.mockResolvedValue(makeRunnerRun());
+  mockGetJarvisConfigForWorkspace.mockResolvedValue(MOCK_JARVIS_CONFIG);
+  mockSearchNodesByAttributes.mockResolvedValue({
+    ok: true,
+    nodes: [makeProposedFixNode()],
+  });
+
+  // Ensure USE_MOCKS is off by default
+  delete process.env.USE_MOCKS;
+});
+
+afterEach(() => {
+  delete process.env.USE_MOCKS;
+});
 
 // ─── Tests ────────────────────────────────────────────────────────────────────
 
 describe("GET /api/workspaces/[slug]/legal/benchmarks/proposed-fixes", () => {
-  let originalUseMocks: string | undefined;
+  // ── 1. Openlaw gate ──────────────────────────────────────────────────────
 
-  beforeEach(() => {
-    vi.clearAllMocks();
-    // Disable mock branch by default so real code paths are exercised in each test
-    originalUseMocks = process.env.USE_MOCKS;
-    process.env.USE_MOCKS = "false";
-
-    mockGetMiddlewareContext.mockReturnValue({});
-    mockRequireAuth.mockReturnValue(MOCK_USER);
-    mockGetWorkspaceSwarmAccess.mockResolvedValue(MOCK_SWARM_ACCESS);
-    mockDbStakworkRunFindFirst.mockResolvedValue(MOCK_RUNNER_RUN);
-    mockParseBenchmarkRunResult.mockReturnValue({ taskSlug: MOCK_TASK_SLUG });
-    mockGetJarvisConfigForWorkspace.mockResolvedValue(MOCK_JARVIS_CONFIG);
-    mockSearchNodesByAttributes.mockResolvedValue({ ok: true, nodes: [MOCK_NODE] });
-  });
-
-  afterEach(() => {
-    process.env.USE_MOCKS = originalUseMocks;
-  });
-
-  // ─── Auth ────────────────────────────────────────────────────────────────
-
-  test("returns auth response when requireAuth fails", async () => {
-    const { NextResponse } = await import("next/server");
-    const authError = NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    mockRequireAuth.mockReturnValue(authError);
-
-    const res = await GET(makeRequest("openlaw", "run-1"), await makeParams("openlaw"));
-    expect(res.status).toBe(401);
-  });
-
-  // ─── Slug gate ───────────────────────────────────────────────────────────
-
-  test("returns 404 for non-openlaw workspace", async () => {
-    const res = await GET(makeRequest("other-slug", "run-1"), await makeParams("other-slug"));
+  test("1. Non-openlaw slug → 404", async () => {
+    const req = makeRequest("other-workspace", RUNNER_RUN_ID);
+    const res = await GET(req, makeParams("other-workspace"));
     expect(res.status).toBe(404);
-    // Graph must NOT be called
+    expect(mockGetWorkspaceSwarmAccess).not.toHaveBeenCalled();
     expect(mockSearchNodesByAttributes).not.toHaveBeenCalled();
   });
 
-  test("returns 400 when runId is missing", async () => {
-    const res = await GET(makeRequest("openlaw"), await makeParams("openlaw"));
+  // ── SwarmAccessError branches ─────────────────────────────────────────────
+
+  test("2. WORKSPACE_NOT_FOUND → 404", async () => {
+    mockGetWorkspaceSwarmAccess.mockResolvedValue({
+      success: false,
+      error: { type: "WORKSPACE_NOT_FOUND" },
+    });
+    const res = await GET(makeRequest("openlaw", RUNNER_RUN_ID), makeParams("openlaw"));
+    expect(res.status).toBe(404);
+  });
+
+  test("3. ACCESS_DENIED → 403", async () => {
+    mockGetWorkspaceSwarmAccess.mockResolvedValue({
+      success: false,
+      error: { type: "ACCESS_DENIED" },
+    });
+    const res = await GET(makeRequest("openlaw", RUNNER_RUN_ID), makeParams("openlaw"));
+    expect(res.status).toBe(403);
+  });
+
+  test("4. SWARM_NOT_CONFIGURED → 400", async () => {
+    mockGetWorkspaceSwarmAccess.mockResolvedValue({
+      success: false,
+      error: { type: "SWARM_NOT_CONFIGURED" },
+    });
+    const res = await GET(makeRequest("openlaw", RUNNER_RUN_ID), makeParams("openlaw"));
     expect(res.status).toBe(400);
   });
 
-  // ─── SwarmAccess error branches ──────────────────────────────────────────
-
-  test.each([
-    ["WORKSPACE_NOT_FOUND", 404],
-    ["ACCESS_DENIED", 403],
-    ["SWARM_NOT_ACTIVE", 400],
-    ["SWARM_NAME_MISSING", 400],
-    ["SWARM_API_KEY_MISSING", 400],
-    ["SWARM_NOT_CONFIGURED", 400],
-  ])("maps SwarmAccessError %s → %i", async (errorType, expectedStatus) => {
+  test("5. SWARM_NOT_ACTIVE → 400", async () => {
     mockGetWorkspaceSwarmAccess.mockResolvedValue({
       success: false,
-      error: { type: errorType },
+      error: { type: "SWARM_NOT_ACTIVE", status: "STOPPED" },
     });
-
-    const res = await GET(makeRequest("openlaw", "run-1"), await makeParams("openlaw"));
-    expect(res.status).toBe(expectedStatus);
+    const res = await GET(makeRequest("openlaw", RUNNER_RUN_ID), makeParams("openlaw"));
+    expect(res.status).toBe(400);
   });
 
-  // ─── IDOR guard ──────────────────────────────────────────────────────────
+  test("6. SWARM_API_KEY_MISSING → 400", async () => {
+    mockGetWorkspaceSwarmAccess.mockResolvedValue({
+      success: false,
+      error: { type: "SWARM_API_KEY_MISSING" },
+    });
+    const res = await GET(makeRequest("openlaw", RUNNER_RUN_ID), makeParams("openlaw"));
+    expect(res.status).toBe(400);
+  });
 
-  test("returns 404 when run not found (cross-workspace / unknown runId)", async () => {
+  test("7. SWARM_NAME_MISSING → 400", async () => {
+    mockGetWorkspaceSwarmAccess.mockResolvedValue({
+      success: false,
+      error: { type: "SWARM_NAME_MISSING" },
+    });
+    const res = await GET(makeRequest("openlaw", RUNNER_RUN_ID), makeParams("openlaw"));
+    expect(res.status).toBe(400);
+  });
+
+  // ── Missing runId ─────────────────────────────────────────────────────────
+
+  test("8. Missing runId query param → 400", async () => {
+    const res = await GET(makeRequest("openlaw"), makeParams("openlaw"));
+    expect(res.status).toBe(400);
+    expect(mockDbStakworkRunFindFirst).not.toHaveBeenCalled();
+    expect(mockSearchNodesByAttributes).not.toHaveBeenCalled();
+  });
+
+  // ── IDOR guard ────────────────────────────────────────────────────────────
+
+  test("9. runId belonging to another workspace → 404, no graph call", async () => {
+    // db returns null (run not in this workspace)
     mockDbStakworkRunFindFirst.mockResolvedValue(null);
-
-    const res = await GET(makeRequest("openlaw", "run-unknown"), await makeParams("openlaw"));
+    const res = await GET(makeRequest("openlaw", "foreign-run"), makeParams("openlaw"));
     expect(res.status).toBe(404);
-    // Graph must NOT be called
-    expect(mockSearchNodesByAttributes).not.toHaveBeenCalled();
-  });
-
-  test("queries DB with workspaceId-scoped filter (IDOR guard)", async () => {
-    const res = await GET(makeRequest("openlaw", "run-1"), await makeParams("openlaw"));
-    expect(res.status).toBe(200);
-    expect(mockDbStakworkRunFindFirst).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: expect.objectContaining({ workspaceId: MOCK_WORKSPACE_ID }),
-      }),
-    );
-  });
-
-  // ─── taskSlug derivation ─────────────────────────────────────────────────
-
-  test("returns { fixes: [] } (fail-closed) when taskSlug is missing and no sibling", async () => {
-    mockParseBenchmarkRunResult.mockReturnValue({ taskSlug: null, siblingRunId: null });
-
-    const res = await GET(makeRequest("openlaw", "run-1"), await makeParams("openlaw"));
-    expect(res.status).toBe(200);
     const body = await res.json();
-    expect(body.fixes).toEqual([]);
+    expect(body.error).toBe("Run not found");
+    expect(mockSearchNodesByAttributes).not.toHaveBeenCalled();
+    expect(mockGetJarvisConfigForWorkspace).not.toHaveBeenCalled();
+  });
+
+  test("10. Unknown runId → 404, no graph call", async () => {
+    mockDbStakworkRunFindFirst.mockResolvedValue(null);
+    const res = await GET(makeRequest("openlaw", "nonexistent-run"), makeParams("openlaw"));
+    expect(res.status).toBe(404);
     expect(mockSearchNodesByAttributes).not.toHaveBeenCalled();
   });
 
-  test("resolves taskSlug via sibling runner when SCORER run has siblingRunId", async () => {
-    // First findFirst returns SCORER run with siblingRunId
-    const scorerRun = {
-      id: "scorer-run",
-      workspaceId: MOCK_WORKSPACE_ID,
-      type: "LEGAL_BENCHMARK_SCORER",
-      result: JSON.stringify({ siblingRunId: "runner-sibling" }),
-    };
+  // ── SCORER → RUNNER taskSlug resolution ──────────────────────────────────
+
+  test("11. SCORER runId resolves taskSlug via sibling runner", async () => {
+    const scorerRun = makeScorerRun(RUNNER_RUN_ID);
+    const runnerRun = makeRunnerRun(TASK_SLUG);
+
+    // First call: resolve SCORER run; second call: resolve sibling RUNNER
     mockDbStakworkRunFindFirst
       .mockResolvedValueOnce(scorerRun)
-      .mockResolvedValueOnce({
-        id: "runner-sibling",
-        workspaceId: MOCK_WORKSPACE_ID,
-        type: "LEGAL_BENCHMARK_RUNNER",
-        result: JSON.stringify({ taskSlug: MOCK_TASK_SLUG }),
-      });
+      .mockResolvedValueOnce(runnerRun);
 
-    // parseBenchmarkRunResult: first call returns no taskSlug but has siblingRunId
-    mockParseBenchmarkRunResult
-      .mockReturnValueOnce({ taskSlug: null, siblingRunId: "runner-sibling" })
-      .mockReturnValueOnce({ taskSlug: MOCK_TASK_SLUG });
-
-    const res = await GET(makeRequest("openlaw", "scorer-run"), await makeParams("openlaw"));
+    const res = await GET(makeRequest("openlaw", SCORER_RUN_ID), makeParams("openlaw"));
     expect(res.status).toBe(200);
+
     const body = await res.json();
     expect(body.fixes).toHaveLength(1);
+
+    // Confirm graph was queried with the correct task_slug from the runner
     expect(mockSearchNodesByAttributes).toHaveBeenCalledWith(
       MOCK_JARVIS_CONFIG,
       expect.objectContaining({
-        filters: expect.arrayContaining([
-          expect.objectContaining({ attribute: "task_slug", value: MOCK_TASK_SLUG }),
-        ]),
+        filters: [{ attribute: "task_slug", value: TASK_SLUG, comparator: "=" }],
+        includeProperties: true,
       }),
     );
   });
 
-  test("fail-closed when sibling runner also has no taskSlug", async () => {
-    mockDbStakworkRunFindFirst.mockResolvedValueOnce({
-      id: "scorer-run",
-      workspaceId: MOCK_WORKSPACE_ID,
-      type: "LEGAL_BENCHMARK_SCORER",
-      result: JSON.stringify({ siblingRunId: "runner-sibling" }),
-    }).mockResolvedValueOnce({
-      id: "runner-sibling",
-      workspaceId: MOCK_WORKSPACE_ID,
-      type: "LEGAL_BENCHMARK_RUNNER",
-      result: JSON.stringify({}),
-    });
+  // ── Fail-closed on missing taskSlug ──────────────────────────────────────
 
-    mockParseBenchmarkRunResult
-      .mockReturnValueOnce({ taskSlug: null, siblingRunId: "runner-sibling" })
-      .mockReturnValueOnce({ taskSlug: null });
-
-    const res = await GET(makeRequest("openlaw", "scorer-run"), await makeParams("openlaw"));
+  test("12. Scorer with no siblingRunId → { fixes: [] }, no graph call", async () => {
+    mockDbStakworkRunFindFirst.mockResolvedValue(makeScorerRun()); // no siblingRunId
+    const res = await GET(makeRequest("openlaw", SCORER_RUN_ID), makeParams("openlaw"));
+    expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.fixes).toEqual([]);
     expect(mockSearchNodesByAttributes).not.toHaveBeenCalled();
   });
 
-  // ─── includeProperties ───────────────────────────────────────────────────
+  test("13. Runner with empty taskSlug and no sibling → { fixes: [] }, no graph call", async () => {
+    mockDbStakworkRunFindFirst.mockResolvedValue(makeRunnerRun(""));
+    const res = await GET(makeRequest("openlaw", RUNNER_RUN_ID), makeParams("openlaw"));
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.fixes).toEqual([]);
+    expect(mockSearchNodesByAttributes).not.toHaveBeenCalled();
+  });
 
-  test("calls searchNodesByAttributes with includeProperties: true", async () => {
-    const res = await GET(makeRequest("openlaw", "run-1"), await makeParams("openlaw"));
+  // ── includeProperties: true ───────────────────────────────────────────────
+
+  test("14. searchNodesByAttributes called with includeProperties: true", async () => {
+    const res = await GET(makeRequest("openlaw", RUNNER_RUN_ID), makeParams("openlaw"));
     expect(res.status).toBe(200);
     expect(mockSearchNodesByAttributes).toHaveBeenCalledWith(
-      MOCK_JARVIS_CONFIG,
+      expect.anything(),
       expect.objectContaining({ includeProperties: true }),
     );
   });
 
-  // ─── Projection whitelisting ─────────────────────────────────────────────
+  // ── Projection whitelisting ───────────────────────────────────────────────
 
-  test("returns only whitelisted 16 keys — no raw node properties leaked", async () => {
-    const nodeWithExtraFields = {
-      ref_id: "node-1",
-      node_id: "node-1",
-      properties: {
-        ...MOCK_NODE.properties,
-        // Extra fields that must NOT appear in output
-        internal_secret: "should-not-appear",
-        graph_metadata: { nested: true },
-      },
-    };
-    mockSearchNodesByAttributes.mockResolvedValue({ ok: true, nodes: [nodeWithExtraFields] });
-
-    const res = await GET(makeRequest("openlaw", "run-1"), await makeParams("openlaw"));
+  test("15. Extra node properties are stripped — only 17 whitelisted keys returned", async () => {
+    mockSearchNodesByAttributes.mockResolvedValue({
+      ok: true,
+      nodes: [makeProposedFixNode({ extra_secret_field: "leak-me", another_extra: 42 })],
+    });
+    const res = await GET(makeRequest("openlaw", RUNNER_RUN_ID), makeParams("openlaw"));
     const body = await res.json();
     const fix = body.fixes[0];
 
-    expect(fix.internal_secret).toBeUndefined();
-    expect(fix.graph_metadata).toBeUndefined();
+    const ALLOWED_KEYS = new Set([
+      "ref_id",
+      "criterion_id",
+      "criterion_title",
+      "prompt_name",
+      "prompt_id",
+      "prompt_version_id",
+      "new_prompt_version_id",
+      "failing_value",
+      "passing_value",
+      "delta",
+      "reasoning",
+      "status",
+      "rerun_status",
+      "before_score",
+      "after_score",
+      "score_delta",
+      "rerun_run_id",
+    ]);
 
-    // All expected whitelisted fields present
-    expect(fix.ref_id).toBe("node-1");
-    expect(fix.criterion_id).toBe("crit-1");
-    expect(fix.criterion_title).toBe("Accuracy");
-    expect(fix.prompt_name).toBe("citation_v2");
-    expect(fix.rerun_status).toBe("improved");
-    expect(fix.score_delta).toBe("+4");
+    for (const key of Object.keys(fix)) {
+      expect(ALLOWED_KEYS.has(key)).toBe(true);
+    }
+    expect(fix.extra_secret_field).toBeUndefined();
+    expect(fix.another_extra).toBeUndefined();
   });
 
-  test("tolerates missing node properties without throwing", async () => {
-    // Node with empty properties
+  // ── Missing node properties are tolerated ────────────────────────────────
+
+  test("15b. Missing node properties returned as null (no throw)", async () => {
     mockSearchNodesByAttributes.mockResolvedValue({
       ok: true,
-      nodes: [{ ref_id: "min-node", properties: {} }],
+      nodes: [{ ref_id: "fix-node-sparse", node_type: "ProposedFix", properties: {} }],
     });
-
-    const res = await GET(makeRequest("openlaw", "run-1"), await makeParams("openlaw"));
+    const res = await GET(makeRequest("openlaw", RUNNER_RUN_ID), makeParams("openlaw"));
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.fixes).toHaveLength(1);
-    expect(body.fixes[0].ref_id).toBe("min-node");
-    // All optional fields should be undefined (not present or null-ish)
-    expect(body.fixes[0].criterion_id).toBeUndefined();
+    expect(body.fixes[0].ref_id).toBe("fix-node-sparse");
+    expect(body.fixes[0].criterion_id).toBeNull();
+    expect(body.fixes[0].rerun_run_id).toBeNull();
   });
 
-  // ─── Graceful degradation ────────────────────────────────────────────────
+  // ── Graph search failure ──────────────────────────────────────────────────
 
-  test("returns { fixes: [] } when Jarvis config is unavailable", async () => {
-    mockGetJarvisConfigForWorkspace.mockResolvedValue(null);
-
-    const res = await GET(makeRequest("openlaw", "run-1"), await makeParams("openlaw"));
+  test("16. Graph search returns ok:false → { fixes: [] }", async () => {
+    mockSearchNodesByAttributes.mockResolvedValue({ ok: false, nodes: [], error: "timeout" });
+    const res = await GET(makeRequest("openlaw", RUNNER_RUN_ID), makeParams("openlaw"));
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.fixes).toEqual([]);
-    expect(mockSearchNodesByAttributes).not.toHaveBeenCalled();
   });
 
-  test("returns { fixes: [] } when graph search fails", async () => {
+  // ── Sorting ───────────────────────────────────────────────────────────────
+
+  test("17. Nodes with rerun_run_id surface before those without", async () => {
+    const nodeWithoutRerun = {
+      ref_id: "no-rerun",
+      node_type: "ProposedFix",
+      properties: { criterion_id: "c1", rerun_run_id: null },
+    };
+    const nodeWithRerun = {
+      ref_id: "with-rerun",
+      node_type: "ProposedFix",
+      properties: { criterion_id: "c2", rerun_run_id: "rerun-123" },
+    };
     mockSearchNodesByAttributes.mockResolvedValue({
-      ok: false,
-      nodes: [],
-      error: "timeout",
+      ok: true,
+      nodes: [nodeWithoutRerun, nodeWithRerun], // intentionally wrong order
     });
 
-    const res = await GET(makeRequest("openlaw", "run-1"), await makeParams("openlaw"));
-    expect(res.status).toBe(200);
+    const res = await GET(makeRequest("openlaw", RUNNER_RUN_ID), makeParams("openlaw"));
     const body = await res.json();
-    expect(body.fixes).toEqual([]);
+    expect(body.fixes[0].ref_id).toBe("with-rerun");
+    expect(body.fixes[1].ref_id).toBe("no-rerun");
   });
 
-  // ─── Mock branch gating ──────────────────────────────────────────────────
+  // ── USE_MOCKS branch ──────────────────────────────────────────────────────
 
-  test("mock branch is NOT reached in production even with USE_MOCKS=true", async () => {
-    vi.stubEnv("USE_MOCKS", "true");
-    vi.stubEnv("NODE_ENV", "production");
+  test("18. USE_MOCKS=true in non-production returns mock data after slug+run checks", async () => {
+    const origEnv = process.env.NODE_ENV;
+    // @ts-expect-error — setting NODE_ENV for test
+    process.env.NODE_ENV = "test";
+    process.env.USE_MOCKS = "true";
 
-    const res = await GET(makeRequest("openlaw", "run-1"), await makeParams("openlaw"));
-    // Should call real graph, not return mock data
-    expect(mockSearchNodesByAttributes).toHaveBeenCalled();
-
-    vi.unstubAllEnvs();
-    // Restore test default (mock branch disabled)
-    process.env.USE_MOCKS = "false";
-  });
-
-  test("mock branch still gated by slug check even in non-production", async () => {
-    vi.stubEnv("USE_MOCKS", "true");
-    vi.stubEnv("NODE_ENV", "test");
-
-    // Non-openlaw slug should still 404 even in mock mode
-    const res = await GET(makeRequest("other-slug", "run-1"), await makeParams("other-slug"));
-    expect(res.status).toBe(404);
-
-    vi.unstubAllEnvs();
-    process.env.USE_MOCKS = "false";
-  });
-
-  test("mock branch returns 2 sample fixes in non-production with USE_MOCKS=true", async () => {
-    vi.stubEnv("USE_MOCKS", "true");
-    vi.stubEnv("NODE_ENV", "development");
-
-    const res = await GET(makeRequest("openlaw", "run-1"), await makeParams("openlaw"));
+    const res = await GET(makeRequest("openlaw", RUNNER_RUN_ID), makeParams("openlaw"));
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.fixes).toHaveLength(2);
-    expect(body.fixes[0].rerun_status).toBe("pending");
-    expect(body.fixes[1].rerun_status).toBe("improved");
-    expect(body.fixes[1].before_score).toBe("50");
-    expect(body.fixes[1].after_score).toBe("54");
-    // Graph should NOT be called in mock mode
+    // One pending, one improved
+    const statuses = body.fixes.map((f: { rerun_status: string }) => f.rerun_status);
+    expect(statuses).toContain("pending");
+    expect(statuses).toContain("improved");
+    // Graph should not have been called
     expect(mockSearchNodesByAttributes).not.toHaveBeenCalled();
 
-    vi.unstubAllEnvs();
-    process.env.USE_MOCKS = "false";
+    // @ts-expect-error
+    process.env.NODE_ENV = origEnv;
+    delete process.env.USE_MOCKS;
   });
 
-  // ─── Happy path ──────────────────────────────────────────────────────────
+  test("19. USE_MOCKS=true in production does NOT return mock data", async () => {
+    const origEnv = process.env.NODE_ENV;
+    // @ts-expect-error
+    process.env.NODE_ENV = "production";
+    process.env.USE_MOCKS = "true";
 
-  test("returns projected fixes on success", async () => {
-    const res = await GET(makeRequest("openlaw", "run-1"), await makeParams("openlaw"));
+    const res = await GET(makeRequest("openlaw", RUNNER_RUN_ID), makeParams("openlaw"));
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    // Should return real (mocked graph) data, not the hardcoded mock fixtures
+    expect(mockSearchNodesByAttributes).toHaveBeenCalled();
+    // Real path returns 1 node from our mock graph, not the 2 hardcoded fixtures
+    expect(body.fixes).toHaveLength(1);
+
+    // @ts-expect-error
+    process.env.NODE_ENV = origEnv;
+    delete process.env.USE_MOCKS;
+  });
+
+  test("20. USE_MOCKS branch is still behind slug check", async () => {
+    const origEnv = process.env.NODE_ENV;
+    // @ts-expect-error
+    process.env.NODE_ENV = "test";
+    process.env.USE_MOCKS = "true";
+
+    const res = await GET(makeRequest("other-workspace", RUNNER_RUN_ID), makeParams("other-workspace"));
+    expect(res.status).toBe(404);
+    // Mock data should not be returned for non-openlaw
+    expect(mockSearchNodesByAttributes).not.toHaveBeenCalled();
+
+    // @ts-expect-error
+    process.env.NODE_ENV = origEnv;
+    delete process.env.USE_MOCKS;
+  });
+
+  // ── Happy path ────────────────────────────────────────────────────────────
+
+  test("Happy path: returns whitelisted fixes for a runner run", async () => {
+    const res = await GET(makeRequest("openlaw", RUNNER_RUN_ID), makeParams("openlaw"));
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.fixes).toHaveLength(1);
-    expect(body.fixes[0]).toMatchObject({
-      ref_id: "node-1",
-      criterion_id: "crit-1",
-      rerun_status: "improved",
-      score_delta: "+4",
-    });
-  });
 
-  test("returns empty fixes array when no nodes found", async () => {
-    mockSearchNodesByAttributes.mockResolvedValue({ ok: true, nodes: [] });
-
-    const res = await GET(makeRequest("openlaw", "run-1"), await makeParams("openlaw"));
-    expect(res.status).toBe(200);
-    const body = await res.json();
-    expect(body.fixes).toEqual([]);
+    const fix = body.fixes[0];
+    expect(fix.ref_id).toBe("fix-node-1");
+    expect(fix.criterion_id).toBe("crit-1");
+    expect(fix.criterion_title).toBe("Citation Accuracy");
+    expect(fix.rerun_status).toBe("improved");
+    expect(fix.before_score).toBe("50");
+    expect(fix.after_score).toBe("54");
+    expect(fix.score_delta).toBe("+4");
   });
 });

@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 import { getWorkspaceSwarmAccess } from "@/lib/helpers/swarm-access";
+import { getJarvisConfigForWorkspace } from "@/lib/helpers/jarvis-config";
+import { searchNodesByAttributes } from "@/services/swarm/api/nodes";
 import { db } from "@/lib/db";
 import { StakworkRunType } from "@prisma/client";
-import { parseBenchmarkRunResult, type ProposedFix } from "@/types/legal";
-import { searchNodesByAttributes } from "@/services/swarm/api/nodes";
-import { getJarvisConfigForWorkspace } from "@/lib/helpers/jarvis-config";
+import { parseBenchmarkRunResult } from "@/types/legal";
+import type { ProposedFix } from "@/types/legal";
 
 type RouteParams = {
   params: Promise<{ slug: string }>;
@@ -20,49 +21,46 @@ function handleSwarmAccessError(error: { type: string }) {
     SWARM_API_KEY_MISSING: { message: "Swarm API key not configured", status: 400 },
     SWARM_NOT_CONFIGURED: { message: "Swarm not configured", status: 400 },
   };
-  const errorInfo = errorMap[error.type] || { message: "Unknown error", status: 500 };
+  const errorInfo = errorMap[error.type] ?? { message: "Unknown error", status: 500 };
   return NextResponse.json({ error: errorInfo.message }, { status: errorInfo.status });
 }
 
-/** Whitelist a raw graph node's properties into the 16-key ProposedFix projection. */
-function projectNode(node: {
-  ref_id?: string;
-  node_id?: string;
-  properties?: Record<string, unknown>;
-}): ProposedFix {
-  const p = node.properties ?? {};
-  const str = (v: unknown): string | undefined =>
-    v !== undefined && v !== null ? String(v) : undefined;
-
+/**
+ * Map a raw graph node's properties into the whitelisted ProposedFix projection.
+ * Tolerates any missing key (returns null for it) — never leaks unexpected node data.
+ */
+function projectFix(refId: string, props: Record<string, unknown> | undefined): ProposedFix {
+  const p = props ?? {};
+  const str = (key: string): string | null => {
+    const v = p[key];
+    return v != null ? String(v) : null;
+  };
   return {
-    ref_id: str(node.ref_id ?? node.node_id),
-    criterion_id: str(p.criterion_id),
-    criterion_title: str(p.criterion_title),
-    prompt_name: str(p.prompt_name),
-    prompt_id: str(p.prompt_id),
-    prompt_version_id: str(p.prompt_version_id),
-    new_prompt_version_id: str(p.new_prompt_version_id),
-    failing_value: str(p.failing_value),
-    passing_value: str(p.passing_value),
-    delta: str(p.delta),
-    reasoning: str(p.reasoning),
-    status: str(p.status),
-    rerun_status: str(p.rerun_status),
-    before_score: str(p.before_score),
-    after_score: str(p.after_score),
-    score_delta: str(p.score_delta),
-    rerun_run_id: str(p.rerun_run_id),
+    ref_id: refId,
+    criterion_id: str("criterion_id"),
+    criterion_title: str("criterion_title"),
+    prompt_name: str("prompt_name"),
+    prompt_id: str("prompt_id"),
+    prompt_version_id: str("prompt_version_id"),
+    new_prompt_version_id: str("new_prompt_version_id"),
+    failing_value: str("failing_value"),
+    passing_value: str("passing_value"),
+    delta: str("delta"),
+    reasoning: str("reasoning"),
+    status: str("status"),
+    rerun_status: str("rerun_status"),
+    before_score: str("before_score"),
+    after_score: str("after_score"),
+    score_delta: str("score_delta"),
+    rerun_run_id: str("rerun_run_id"),
   };
 }
 
 /**
  * GET /api/workspaces/[slug]/legal/benchmarks/proposed-fixes
  *
- * Returns a whitelisted projection of `ProposedFix` graph nodes for a legal
- * benchmark run, filtered by `task_slug`. Read-only; no graph mutations.
- *
- * Query params:
- *   - runId (required): the StakworkRun row id to scope the lookup.
+ * Returns ProposedFix graph nodes for a legal-benchmark run, scoped to the
+ * caller's workspace. Read-only — no graph mutations.
  *
  * Gated to the `openlaw` workspace only.
  */
@@ -71,139 +69,124 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     const context = getMiddlewareContext(request);
     const userOrResponse = requireAuth(context);
     if (userOrResponse instanceof NextResponse) return userOrResponse;
-    const userId = userOrResponse.id;
 
     const { slug } = await params;
 
-    // Gate to openlaw workspace only
+    // Step 1: Gate to openlaw workspace only
     if (slug !== "openlaw") {
       return NextResponse.json({ error: "Not found" }, { status: 404 });
     }
 
-    const runId = request.nextUrl.searchParams.get("runId");
-    if (!runId) {
-      return NextResponse.json({ error: "runId is required" }, { status: 400 });
-    }
-
-    // Resolve workspace + swarm access
-    const swarmResult = await getWorkspaceSwarmAccess(slug, userId);
+    // Step 2: Resolve workspace swarm access (provides workspaceId)
+    const swarmResult = await getWorkspaceSwarmAccess(slug, userOrResponse.id);
     if (!swarmResult.success) {
       return handleSwarmAccessError(swarmResult.error);
     }
 
     const { workspaceId } = swarmResult.data;
 
-    // IDOR guard — scope the run lookup to this workspace
+    // Step 3: Validate runId query param
+    const { searchParams } = new URL(request.url);
+    const runId = searchParams.get("runId");
+    if (!runId) {
+      return NextResponse.json({ error: "runId query param is required" }, { status: 400 });
+    }
+
+    // Step 4: IDOR guard — resolve run scoped to this workspace
     const run = await db.stakworkRun.findFirst({
       where: {
         id: runId,
         workspaceId,
         type: {
-          in: [
-            StakworkRunType.LEGAL_BENCHMARK_RUNNER,
-            StakworkRunType.LEGAL_BENCHMARK_SCORER,
-          ],
+          in: [StakworkRunType.LEGAL_BENCHMARK_RUNNER, StakworkRunType.LEGAL_BENCHMARK_SCORER],
         },
       },
     });
 
     if (!run) {
-      return NextResponse.json({ error: "Not found" }, { status: 404 });
+      return NextResponse.json({ error: "Run not found" }, { status: 404 });
     }
 
-    // --- Mock branch (development / demo only) ---
-    // Placed AFTER the slug gate and IDOR run-resolve so mock data is still
-    // subject to workspace scoping.
-    if (
-      process.env.USE_MOCKS === "true" &&
-      process.env.NODE_ENV !== "production"
-    ) {
+    // Step 5: USE_MOCKS branch — only in non-production, placed after slug + run checks
+    if (process.env.USE_MOCKS === "true" && process.env.NODE_ENV !== "production") {
       const mockFixes: ProposedFix[] = [
         {
           ref_id: "mock-fix-1",
-          criterion_id: "crit-1",
-          criterion_title: "Accuracy of legal citations",
-          prompt_name: "citation_checker_v2",
+          criterion_id: "criterion-1",
+          criterion_title: "Citation Accuracy",
+          prompt_name: "citation_verifier_v2",
           prompt_id: "prompt-abc",
-          prompt_version_id: "v1.0.0",
-          new_prompt_version_id: "v1.1.0",
-          failing_value: "The model cited Smith v. Jones (1998) incorrectly.",
-          passing_value:
-            "The model must cite Smith v. Jones, 142 F.3d 281 (5th Cir. 1998) with correct reporter.",
-          delta:
-            "Added explicit instruction to include reporter and circuit in citation format.",
+          prompt_version_id: "v2.1",
+          new_prompt_version_id: "v2.2",
+          failing_value: "The court held in Smith v. Jones (2018)...",
+          passing_value: "The court held in Smith v. Jones, 123 F.3d 456 (9th Cir. 2018)...",
+          delta: "Added full citation format with reporter and circuit information",
           reasoning:
-            "The prompt lacked specificity on citation format. The fix adds explicit instructions.",
-          status: "proposed",
+            "The original prompt did not instruct the model to include reporter citations, causing incomplete legal references.",
+          status: "pending",
           rerun_status: "pending",
-          before_score: undefined,
-          after_score: undefined,
-          score_delta: undefined,
-          rerun_run_id: undefined,
+          before_score: null,
+          after_score: null,
+          score_delta: null,
+          rerun_run_id: null,
         },
         {
           ref_id: "mock-fix-2",
-          criterion_id: "crit-2",
-          criterion_title: "Completeness of contract review",
-          prompt_name: "contract_review_v3",
+          criterion_id: "criterion-2",
+          criterion_title: "Argument Completeness",
+          prompt_name: "argument_builder_v3",
           prompt_id: "prompt-def",
-          prompt_version_id: "v2.0.0",
-          new_prompt_version_id: "v2.1.0",
-          failing_value: "Model missed indemnification clause.",
-          passing_value:
-            "Model identifies all standard clauses including indemnification, liability cap, and termination.",
-          delta:
-            "Explicitly enumerated required clauses in the system prompt checklist.",
+          prompt_version_id: "v3.0",
+          new_prompt_version_id: "v3.1",
+          failing_value: "50",
+          passing_value: "54",
+          delta: "Enhanced prompt to require explicit counter-argument analysis",
           reasoning:
-            "Without an explicit checklist the model omitted less-prominent clauses.",
-          status: "proposed",
+            "The model missed the counter-argument section. New version explicitly instructs inclusion.",
+          status: "pending",
           rerun_status: "improved",
           before_score: "50",
           after_score: "54",
           score_delta: "+4",
-          rerun_run_id: "rerun-run-789",
+          rerun_run_id: "rerun-run-mock-1",
         },
       ];
       return NextResponse.json({ fixes: mockFixes });
     }
 
-    // --- Derive task_slug ---
-    // parseBenchmarkRunResult only reliably populates taskSlug on RUNNER rows.
-    let taskSlug: string | null = null;
+    // Step 6: Derive task_slug safely
+    let taskSlug: string | null | undefined = null;
 
-    const parsed = parseBenchmarkRunResult(run.result as string | null);
-    if (parsed?.taskSlug) {
-      taskSlug = parsed.taskSlug;
-    } else if (parsed?.siblingRunId) {
-      // SCORER run — look up its sibling RUNNER to get taskSlug
+    const runResult = parseBenchmarkRunResult(run.result);
+    taskSlug = runResult?.taskSlug;
+
+    // If this is a SCORER run (or taskSlug is missing), try to resolve via sibling runner
+    if (!taskSlug && runResult?.siblingRunId) {
       const siblingRun = await db.stakworkRun.findFirst({
         where: {
-          id: parsed.siblingRunId,
+          id: runResult.siblingRunId,
           workspaceId,
           type: StakworkRunType.LEGAL_BENCHMARK_RUNNER,
         },
       });
       if (siblingRun) {
-        const siblingParsed = parseBenchmarkRunResult(
-          siblingRun.result as string | null,
-        );
-        taskSlug = siblingParsed?.taskSlug ?? null;
+        const siblingResult = parseBenchmarkRunResult(siblingRun.result);
+        taskSlug = siblingResult?.taskSlug;
       }
     }
 
-    // Fail closed — no unscoped or empty-value graph query
+    // Fail closed: if we still have no taskSlug, return empty rather than issuing an unscoped query
     if (!taskSlug) {
       return NextResponse.json({ fixes: [] });
     }
 
-    // --- Resolve Jarvis config ---
+    // Step 7: Resolve Jarvis connection config
     const jarvisConfig = await getJarvisConfigForWorkspace(workspaceId);
     if (!jarvisConfig) {
-      // Swarm not configured for this workspace — return empty rather than error
       return NextResponse.json({ fixes: [] });
     }
 
-    // --- Fetch ProposedFix nodes ---
+    // Step 8: Fetch ProposedFix nodes filtered by task_slug
     const searchResult = await searchNodesByAttributes(jarvisConfig, {
       nodeTypes: ["ProposedFix"],
       filters: [{ attribute: "task_slug", value: taskSlug, comparator: "=" }],
@@ -211,25 +194,22 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     });
 
     if (!searchResult.ok) {
-      // Graph query failed — degrade gracefully
       return NextResponse.json({ fixes: [] });
     }
 
-    // Project and sort — surface fixes with a rerun_run_id first (more recent reruns)
-    const fixes: ProposedFix[] = (searchResult.nodes ?? [])
-      .map((node: { ref_id?: string; node_id?: string; properties?: Record<string, unknown> }) =>
-        projectNode(node),
-      )
+    // Step 9: Project to whitelisted shape, sort with rerun_run_id-present entries first
+    const fixes: ProposedFix[] = searchResult.nodes
+      .map((node) => projectFix(node.ref_id, node.properties))
       .sort((a, b) => {
-        // Fixes with a rerun_run_id (i.e., a completed rerun) surface first
-        const aHas = a.rerun_run_id ? 1 : 0;
-        const bHas = b.rerun_run_id ? 1 : 0;
+        // Entries with a rerun_run_id (more recent reruns) surface first
+        const aHas = a.rerun_run_id != null ? 1 : 0;
+        const bHas = b.rerun_run_id != null ? 1 : 0;
         return bHas - aHas;
       });
 
     return NextResponse.json({ fixes });
   } catch (error) {
-    console.error("[legal/benchmarks/proposed-fixes GET] Unexpected error:", error);
+    console.error("[proposed-fixes] Unexpected error:", error);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }
