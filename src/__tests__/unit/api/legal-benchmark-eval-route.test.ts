@@ -1,18 +1,25 @@
 /**
  * Unit tests for:
- *  1. POST /api/workspaces/[slug]/legal/benchmarks/runs/[runId]/eval  (route tests 1–6)
+ *  1. POST /api/workspaces/[slug]/legal/benchmarks/runs/[runId]/eval  (route tests 1–6, 12–13, 14–16)
  *  2. processLegalBenchmarkEvalWebhook service logic (webhook tests 7–9)
  *
- * 9 test cases per spec:
+ * Test cases:
  *  1. All verdicts "pass" → { skipped: true, reason: "no_failures" } 200
  *  2. Criterion already has cause_type → { skipped: true, reason: "already_ran" } 200
  *  3. Active eval run for same sourceRunId → 409 ACTIVE_EVAL_RUN_EXISTS
- *  4. Dispatches to Stakwork with correct workflow_params shape
+ *  4. Dispatches to Stakwork with correct workflow_params shape (original 10 vars + new rerun vars)
  *  5. Stakwork non-ok → deleteMany called, route returns 502
  *  6. Success → 201 { evalRunId }
  *  7. causes[] annotated onto source run's criteria_results — matched by criterion_id, unmatched unchanged
  *  8. Pusher fires with runId === sourceRunId (not eval run id)
  *  9. sourceRunId missing from payload → no throw, no source run update
+ *  10. Full judge payload + correlation survival on eval run; zero graph writes
+ *  11. Non-fatal on malformed source-run criteria_results (non-array)
+ *  12. metadata forwarded verbatim when agentLog has metadata
+ *  13. metadata is null when agentLog has no metadata
+ *  14. Empty taskSlug guard — Harvey fetch skipped, dispatch succeeds with empty rerun inputs
+ *  15. Harvey/GitHub fetch rejection — route does not 500, dispatches with empty rerun vars
+ *  16. new rerun vars: rubrics_json/documents_json are strings, stakwork_base_url has no /api/v1 suffix
  */
 
 import { describe, test, expect, vi, beforeEach } from "vitest";
@@ -30,6 +37,9 @@ const mockPusherTrigger = vi.hoisted(() => vi.fn());
 const mockGetJarvisConfig = vi.hoisted(() => vi.fn());
 const mockAddNode = vi.hoisted(() => vi.fn());
 const mockAddEdge = vi.hoisted(() => vi.fn());
+const mockGetBifrostForLLM = vi.hoisted(() => vi.fn());
+const mockGetApiKeyForModel = vi.hoisted(() => vi.fn());
+const mockGetStakworkTokenReference = vi.hoisted(() => vi.fn());
 
 // ─── Module mocks ─────────────────────────────────────────────────────────────
 
@@ -84,6 +94,18 @@ vi.mock("@/config/env", () => ({
   },
 }));
 
+vi.mock("@/services/bifrost/orchestrator", () => ({
+  getBifrostForLLM: mockGetBifrostForLLM,
+}));
+
+vi.mock("@/lib/ai/models", () => ({
+  getApiKeyForModel: mockGetApiKeyForModel,
+}));
+
+vi.mock("@/lib/vercel/stakwork-token", () => ({
+  getStakworkTokenReference: mockGetStakworkTokenReference,
+}));
+
 // ─── Import subjects under test ───────────────────────────────────────────────
 
 import { POST as postEval } from "@/app/api/workspaces/[slug]/legal/benchmarks/runs/[runId]/eval/route";
@@ -108,6 +130,30 @@ const MOCK_SWARM_ACCESS = {
     poolName: "pool",
     swarmSecretAlias: "test-swarm-alias",
   },
+};
+
+// Harvey LAB task.json fixture
+const MOCK_TASK_JSON = {
+  title: "NDA Review",
+  instructions: "Review the NDA for missing clauses.",
+  deliverables: { summary: "A written summary" },
+  criteria: [
+    { id: "c1", title: "Governing Law", match_criteria: "Must include governing law clause" },
+    { id: "c2", title: "Jurisdiction", match_criteria: "Must specify jurisdiction" },
+  ],
+};
+
+// GitHub documents response fixture
+const MOCK_DOCS_RESPONSE = [
+  { type: "file", name: "contract.pdf", download_url: "https://raw.githubusercontent.com/stakwork/harvey-labs/main/tasks/contracts/nda/documents/contract.pdf" },
+  { type: "dir", name: "subdir", download_url: null },
+];
+
+// Bifrost credentials fixture
+const MOCK_BIFROST = {
+  apiKey: "bif-api-key",
+  baseUrl: "https://bifrost.example.com/anthropic/v1",
+  headers: { "x-macaroon": "macaroon-token" },
 };
 
 /** A runner run with one pass + one fail criterion */
@@ -160,6 +206,36 @@ function makeRunToken(runId: string): string {
   return createHmac("sha256", "test-secret").update(runId).digest("hex");
 }
 
+// ─── URL-aware fetch stub ─────────────────────────────────────────────────────
+
+/**
+ * Returns a URL-aware fetch mock:
+ * - task.json URL → MOCK_TASK_JSON
+ * - GitHub documents URL → MOCK_DOCS_RESPONSE
+ * - Stakwork /projects → { data: { project_id: 99 } }
+ */
+function makeUrlAwareFetch(overrides: Record<string, unknown> = {}) {
+  return vi.fn().mockImplementation(async (url: string) => {
+    if (url.includes("task.json")) {
+      return {
+        ok: true,
+        json: async () => ({ ...MOCK_TASK_JSON, ...(overrides.taskJson ?? {}) }),
+      };
+    }
+    if (url.includes("api.github.com") && url.includes("documents")) {
+      return {
+        ok: true,
+        json: async () => MOCK_DOCS_RESPONSE,
+      };
+    }
+    // Stakwork /projects dispatch
+    return {
+      ok: true,
+      json: async () => ({ data: { project_id: 99 } }),
+    };
+  });
+}
+
 // ─── Default happy-path setup helpers ────────────────────────────────────────
 
 function setupDefaultRouteMocks() {
@@ -177,18 +253,17 @@ function setupDefaultRouteMocks() {
   mockDbStakworkRunDeleteMany.mockResolvedValue({ count: 1 });
   mockPusherTrigger.mockResolvedValue(undefined);
 
-  // Default Stakwork fetch → success
-  vi.stubGlobal(
-    "fetch",
-    vi.fn().mockResolvedValue({
-      ok: true,
-      json: async () => ({ data: { project_id: 99 } }),
-    }),
-  );
+  // Bifrost / LLM helpers
+  mockGetBifrostForLLM.mockResolvedValue(MOCK_BIFROST);
+  mockGetApiKeyForModel.mockReturnValue("env-api-key");
+  mockGetStakworkTokenReference.mockReturnValue("stakwork-token-ref");
+
+  // Default URL-aware fetch
+  vi.stubGlobal("fetch", makeUrlAwareFetch());
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// Route tests (1–6)
+// Route tests (1–6, 12–16)
 // ═══════════════════════════════════════════════════════════════════════════
 
 describe("POST /api/workspaces/[slug]/legal/benchmarks/runs/[runId]/eval", () => {
@@ -261,35 +336,39 @@ describe("POST /api/workspaces/[slug]/legal/benchmarks/runs/[runId]/eval", () =>
     expect(body.error).toBe("ACTIVE_EVAL_RUN_EXISTS");
   });
 
-  // Test 4: Dispatches correct workflow_params to Stakwork
+  // Test 4: Dispatches correct workflow_params to Stakwork (original 10 + new rerun vars)
   test("4. dispatches correct workflow_params shape to Stakwork", async () => {
-    const mockFetch = vi.fn().mockResolvedValue({
-      ok: true,
-      json: async () => ({ data: { project_id: 99 } }),
-    });
+    const mockFetch = makeUrlAwareFetch();
     vi.stubGlobal("fetch", mockFetch);
 
     await postEval(makeEvalRequest(), {
       params: Promise.resolve({ slug: "openlaw", runId: SOURCE_RUN_ID }),
     });
 
-    expect(mockFetch).toHaveBeenCalledTimes(1);
-    const [url, options] = mockFetch.mock.calls[0] as [string, RequestInit];
-    expect(url).toContain("/projects");
+    // fetch called 3 times: task.json + documents + Stakwork /projects
+    expect(mockFetch).toHaveBeenCalledTimes(3);
+    const stakworkCall = mockFetch.mock.calls.find(([url]: [string]) =>
+      url.includes("/projects"),
+    ) as [string, RequestInit];
+    expect(stakworkCall).toBeDefined();
 
-    const payload = JSON.parse(options.body as string) as {
+    const payload = JSON.parse(stakworkCall[1].body as string) as {
       workflow_id: number;
       workflow_params: { set_var: { attributes: { vars: Record<string, unknown> } } };
     };
     const vars = payload.workflow_params.set_var.attributes.vars;
 
+    // ── Original 10 vars must be present and unchanged ─────────────────────
     expect(vars).toHaveProperty("source_run_id", SOURCE_RUN_ID);
     expect(vars).toHaveProperty("task_slug", "contracts/nda");
     expect(vars).toHaveProperty("failed_criteria_json");
+    expect(vars).toHaveProperty("full_result_json");
     expect(vars).toHaveProperty("agent_logs_json");
-    expect(vars).toHaveProperty("webhook_url");
+    expect(vars).toHaveProperty("eval_trigger_ref");
+    expect(vars).toHaveProperty("graph_base_url");
     expect(vars).toHaveProperty("swarm_secret_alias");
     expect(vars).toHaveProperty("workspace_id", WORKSPACE_ID);
+    expect(vars).toHaveProperty("webhook_url");
 
     // failed_criteria_json should contain only the failed criterion (backwards compat)
     const failedCriteria = JSON.parse(vars.failed_criteria_json as string) as Array<{ id: string }>;
@@ -297,7 +376,6 @@ describe("POST /api/workspaces/[slug]/legal/benchmarks/runs/[runId]/eval", () =>
     expect(failedCriteria[0].id).toBe("c2");
 
     // full_result_json must be present and contain ALL criteria (pass + fail)
-    expect(vars).toHaveProperty("full_result_json");
     const fullResult = JSON.parse(vars.full_result_json as string) as {
       criteria_results: Array<{ id: string }>;
       score: number;
@@ -310,7 +388,6 @@ describe("POST /api/workspaces/[slug]/legal/benchmarks/runs/[runId]/eval", () =>
     expect(fullResult.criteria_results.map((c) => c.id)).toEqual(
       expect.arrayContaining(["c1", "c2"]),
     );
-    // Aggregate score fields must be present and match fixture values
     expect(fullResult.score).toBe(1);
     expect(fullResult.max_score).toBe(2);
     expect(fullResult.n_passed).toBe(1);
@@ -325,13 +402,33 @@ describe("POST /api/workspaces/[slug]/legal/benchmarks/runs/[runId]/eval", () =>
     expect(vars).not.toHaveProperty("judge_model");
 
     expect(payload.workflow_id).toBe(2002);
+
+    // ── New rerun vars ──────────────────────────────────────────────────────
+    expect(vars).toHaveProperty("task_goal", MOCK_TASK_JSON.instructions);
+    expect(vars).toHaveProperty("task_output_desc", Object.keys(MOCK_TASK_JSON.deliverables).join(", "));
+    expect(vars).toHaveProperty("model", "claude-opus-4-5");
+    expect(vars).toHaveProperty("apiKey", MOCK_BIFROST.apiKey);
+    expect(vars).toHaveProperty("baseUrl", MOCK_BIFROST.baseUrl);
+    expect(vars).toHaveProperty("headers", MOCK_BIFROST.headers);
+    expect(vars).toHaveProperty("tokenReference", "stakwork-token-ref");
+    expect(vars).toHaveProperty("hive_base_url", "http://localhost:3000");
+
+    // No forbidden auth token vars
+    expect(vars).not.toHaveProperty("hive_api_token");
+    expect(vars).not.toHaveProperty("senza_api_token");
+    expect(vars).not.toHaveProperty("senza_base_url");
   });
 
   // Test 5: Stakwork non-ok → deleteMany + 502
   test("5. returns 502 and calls deleteMany when Stakwork dispatch fails", async () => {
     vi.stubGlobal(
       "fetch",
-      vi.fn().mockResolvedValue({ ok: false, status: 500 }),
+      vi.fn().mockImplementation(async (url: string) => {
+        if (url.includes("task.json") || url.includes("api.github.com")) {
+          return { ok: true, json: async () => ({}) };
+        }
+        return { ok: false, status: 500 };
+      }),
     );
 
     const res = await postEval(makeEvalRequest(), {
@@ -379,19 +476,17 @@ describe("POST /api/workspaces/[slug]/legal/benchmarks/runs/[runId]/eval", () =>
       ]),
     );
 
-    const mockFetch = vi.fn().mockResolvedValue({
-      ok: true,
-      json: async () => ({ data: { project_id: 99 } }),
-    });
+    const mockFetch = makeUrlAwareFetch();
     vi.stubGlobal("fetch", mockFetch);
 
     await postEval(makeEvalRequest(), {
       params: Promise.resolve({ slug: "openlaw", runId: SOURCE_RUN_ID }),
     });
 
-    expect(mockFetch).toHaveBeenCalledTimes(1);
-    const [, options] = mockFetch.mock.calls[0] as [string, RequestInit];
-    const payload = JSON.parse(options.body as string) as {
+    const stakworkCall = mockFetch.mock.calls.find(([url]: [string]) =>
+      url.includes("/projects"),
+    ) as [string, RequestInit];
+    const payload = JSON.parse(stakworkCall[1].body as string) as {
       workflow_params: { set_var: { attributes: { vars: Record<string, unknown> } } };
     };
     const vars = payload.workflow_params.set_var.attributes.vars;
@@ -431,18 +526,17 @@ describe("POST /api/workspaces/[slug]/legal/benchmarks/runs/[runId]/eval", () =>
       ]),
     );
 
-    const mockFetch = vi.fn().mockResolvedValue({
-      ok: true,
-      json: async () => ({ data: { project_id: 99 } }),
-    });
+    const mockFetch = makeUrlAwareFetch();
     vi.stubGlobal("fetch", mockFetch);
 
     await postEval(makeEvalRequest(), {
       params: Promise.resolve({ slug: "openlaw", runId: SOURCE_RUN_ID }),
     });
 
-    const [, options] = mockFetch.mock.calls[0] as [string, RequestInit];
-    const payload = JSON.parse(options.body as string) as {
+    const stakworkCall = mockFetch.mock.calls.find(([url]: [string]) =>
+      url.includes("/projects"),
+    ) as [string, RequestInit];
+    const payload = JSON.parse(stakworkCall[1].body as string) as {
       workflow_params: { set_var: { attributes: { vars: Record<string, unknown> } } };
     };
     const vars = payload.workflow_params.set_var.attributes.vars;
@@ -453,6 +547,140 @@ describe("POST /api/workspaces/[slug]/legal/benchmarks/runs/[runId]/eval", () =>
 
     expect(agentLogsJson).toHaveLength(1);
     expect(agentLogsJson[0].metadata).toBeNull();
+  });
+
+  // Test 14: Empty taskSlug guard — Harvey fetch skipped, dispatch succeeds with empty rerun inputs
+  test("14. empty taskSlug guard: Harvey fetch is skipped, dispatch still succeeds with empty rerun inputs + unchanged 10 vars", async () => {
+    // Override source run to have an empty taskSlug
+    mockDbStakworkRunFindUnique.mockResolvedValue(
+      makeRunnerRun({ taskSlug: "" }),
+    );
+
+    const mockFetch = makeUrlAwareFetch();
+    vi.stubGlobal("fetch", mockFetch);
+
+    const res = await postEval(makeEvalRequest(), {
+      params: Promise.resolve({ slug: "openlaw", runId: SOURCE_RUN_ID }),
+    });
+
+    expect(res.status).toBe(201);
+
+    // Harvey task.json and documents fetch must NOT have been called
+    const harveyCalls = mockFetch.mock.calls.filter(([url]: [string]) =>
+      url.includes("task.json") || (url.includes("api.github.com") && url.includes("documents")),
+    );
+    expect(harveyCalls).toHaveLength(0);
+
+    // Stakwork dispatch must still have been called
+    const stakworkCall = mockFetch.mock.calls.find(([url]: [string]) =>
+      url.includes("/projects"),
+    ) as [string, RequestInit];
+    expect(stakworkCall).toBeDefined();
+
+    const payload = JSON.parse(stakworkCall[1].body as string) as {
+      workflow_params: { set_var: { attributes: { vars: Record<string, unknown> } } };
+    };
+    const vars = payload.workflow_params.set_var.attributes.vars;
+
+    // The 10 original analysis vars must still be present
+    expect(vars).toHaveProperty("source_run_id", SOURCE_RUN_ID);
+    expect(vars).toHaveProperty("workspace_id", WORKSPACE_ID);
+    expect(vars).toHaveProperty("swarm_secret_alias");
+    expect(vars).toHaveProperty("webhook_url");
+
+    // Rerun vars must be empty/default
+    expect(vars.task_goal).toBe("");
+    expect(vars.task_output_desc).toBe("");
+    expect(vars.rubrics_json).toBe(JSON.stringify([]));
+    expect(vars.documents_json).toBe(JSON.stringify([]));
+    expect(vars.model).toBe("claude-opus-4-5");
+  });
+
+  // Test 15: Harvey/GitHub fetch rejection — route does not 500, dispatches with empty rerun vars
+  test("15. Harvey/GitHub fetch failure: route does not 500, dispatches with empty rerun vars and 10 analysis vars intact", async () => {
+    const mockFetch = vi.fn().mockImplementation(async (url: string) => {
+      if (url.includes("task.json") || url.includes("api.github.com")) {
+        throw new Error("Network failure");
+      }
+      // Stakwork dispatch succeeds
+      return {
+        ok: true,
+        json: async () => ({ data: { project_id: 99 } }),
+      };
+    });
+    vi.stubGlobal("fetch", mockFetch);
+
+    const res = await postEval(makeEvalRequest(), {
+      params: Promise.resolve({ slug: "openlaw", runId: SOURCE_RUN_ID }),
+    });
+
+    // Must NOT 500
+    expect(res.status).toBe(201);
+    const body = await res.json();
+    expect(body).toHaveProperty("evalRunId", EVAL_RUN_ID);
+
+    // Find what was dispatched to Stakwork
+    const calls = mockFetch.mock.calls as Array<[string, RequestInit]>;
+    const stakworkCall = calls.find(([url]) => url.includes("/projects"));
+    expect(stakworkCall).toBeDefined();
+
+    const payload = JSON.parse(stakworkCall![1].body as string) as {
+      workflow_params: { set_var: { attributes: { vars: Record<string, unknown> } } };
+    };
+    const vars = payload.workflow_params.set_var.attributes.vars;
+
+    // 10 analysis vars intact
+    expect(vars).toHaveProperty("source_run_id", SOURCE_RUN_ID);
+    expect(vars).toHaveProperty("workspace_id", WORKSPACE_ID);
+
+    // Rerun vars must be empty/default (graceful degradation)
+    expect(vars.task_goal).toBe("");
+    expect(vars.task_output_desc).toBe("");
+    expect(vars.rubrics_json).toBe(JSON.stringify([]));
+    expect(vars.documents_json).toBe(JSON.stringify([]));
+  });
+
+  // Test 16: rubrics_json/documents_json are strings; stakwork_base_url has no /api/v1 suffix
+  test("16. rubrics_json and documents_json are strings (not arrays); stakwork_base_url has no /api/v1 suffix", async () => {
+    const mockFetch = makeUrlAwareFetch();
+    vi.stubGlobal("fetch", mockFetch);
+
+    await postEval(makeEvalRequest(), {
+      params: Promise.resolve({ slug: "openlaw", runId: SOURCE_RUN_ID }),
+    });
+
+    const stakworkCall = mockFetch.mock.calls.find(([url]: [string]) =>
+      url.includes("/projects"),
+    ) as [string, RequestInit];
+    const payload = JSON.parse(stakworkCall[1].body as string) as {
+      workflow_params: { set_var: { attributes: { vars: Record<string, unknown> } } };
+    };
+    const vars = payload.workflow_params.set_var.attributes.vars;
+
+    // Must be JSON strings, not raw arrays/objects
+    expect(typeof vars.rubrics_json).toBe("string");
+    expect(typeof vars.documents_json).toBe("string");
+
+    // Verify they parse back to arrays
+    expect(Array.isArray(JSON.parse(vars.rubrics_json as string))).toBe(true);
+    expect(Array.isArray(JSON.parse(vars.documents_json as string))).toBe(true);
+
+    // documents_json must contain only file download_urls (not dirs)
+    const parsedDocs = JSON.parse(vars.documents_json as string) as string[];
+    expect(parsedDocs).toHaveLength(1);
+    expect(parsedDocs[0]).toBe(MOCK_DOCS_RESPONSE[0].download_url);
+
+    // rubrics_json must match MOCK_TASK_JSON.criteria
+    const parsedRubrics = JSON.parse(vars.rubrics_json as string) as Array<{ id: string }>;
+    expect(parsedRubrics).toHaveLength(2);
+    expect(parsedRubrics[0].id).toBe("c1");
+
+    // stakwork_base_url must NOT end with /api/v1
+    const stakworkBaseUrl = vars.stakwork_base_url as string;
+    expect(stakworkBaseUrl).toBeDefined();
+    expect(stakworkBaseUrl).not.toMatch(/\/api\/v1\/?$/);
+    // Specifically, it should be the origin without the path suffix
+    expect(stakworkBaseUrl).toBe("https://api.stakwork.com");
   });
 });
 
