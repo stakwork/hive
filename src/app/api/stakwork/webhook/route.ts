@@ -9,6 +9,7 @@ import { notifyFeatureCanvasRefresh } from "@/lib/canvas";
 import { syncPlannerWorkflowStatusToCanvas } from "@/services/canvas-planner-fanout";
 import { createAndSendNotification } from "@/services/notifications";
 import { retryWorkflowEditorTask } from "@/services/workflow-editor-retry";
+import { releaseTaskPod } from "@/lib/pods/utils";
 
 export const fetchCache = "force-no-store";
 
@@ -152,6 +153,7 @@ export async function POST(request: NextRequest) {
         title: true,
         featureId: true,
         mode: true,
+        podId: true,
         haltRetryAttempted: true,
         workspace: { select: { slug: true } },
       },
@@ -283,6 +285,23 @@ export async function POST(request: NextRequest) {
           console.error("[stakwork/webhook] Error firing WORKFLOW_HALTED (task) notification:", notifError);
         }
       })();
+    }
+
+    // Release pod for non-agent HALTED tasks (fire-and-forget, failure-tolerant)
+    if (workflowStatus === WorkflowStatus.HALTED && task.podId && task.mode !== "agent") {
+      void releaseTaskPod({
+        taskId: task.id,
+        podId: task.podId,
+        workspaceId: task.workspaceId,
+        verifyOwnership: true,
+        resetRepositories: false,
+        clearTaskFields: true,
+        // newWorkflowStatus: null is REQUIRED — omitting it causes releaseTaskPod
+        // to default to "COMPLETED", silently overwriting the HALTED status just written.
+        newWorkflowStatus: null,
+      }).catch((err) =>
+        console.error("[stakwork/webhook] Pod release failed for HALTED task:", task.id, err)
+      );
     }
 
     // Sync feature status if task belongs to a feature
