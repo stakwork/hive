@@ -67,6 +67,41 @@ vi.mock("@/hooks/useLegalBenchmarkRun", () => ({
   useLegalBenchmarkRun: (runId: string) => mockUseLegalBenchmarkRun(runId),
 }));
 
+// ─── useProposedFixes mock ─────────────────────────────────────────────────────
+
+const mockUseProposedFixes = vi.fn(() => ({
+  fixes: [] as import("@/types/legal").ProposedFix[],
+  isLoading: false,
+  error: null as string | null,
+  refetch: vi.fn(),
+}));
+
+vi.mock("@/hooks/useProposedFixes", () => ({
+  useProposedFixes: (runId: string) => mockUseProposedFixes(runId),
+}));
+
+// ─── ProposedFixCard mock ──────────────────────────────────────────────────────
+
+vi.mock("@/components/legal/ProposedFixCard", () => ({
+  ProposedFixCard: ({ fix }: { fix: import("@/types/legal").ProposedFix }) =>
+    React.createElement(
+      "div",
+      { "data-testid": "proposed-fix-card", "data-ref-id": fix.ref_id },
+      fix.prompt_name ?? "fix-card",
+    ),
+}));
+
+vi.mock("@/components/legal/StakworkRunLink", () => ({
+  StakworkRunLink: ({ projectId, isSuperAdmin }: { projectId: number | null; isSuperAdmin: boolean }) =>
+    isSuperAdmin && projectId
+      ? React.createElement(
+          "a",
+          { href: `https://jobs.stakwork.com/admin/projects/${projectId}` },
+          "View on Stakwork",
+        )
+      : null,
+}));
+
 vi.mock("@/hooks/useWorkspace", () => ({
   useWorkspace: () => ({
     workspace: { id: "workspace-123", slug: "openlaw" },
@@ -159,6 +194,12 @@ describe("LegalBenchmarkResults", () => {
       run: makeMockRun(),
       isLoading: false,
       isStale: false,
+      refetch: vi.fn(),
+    });
+    mockUseProposedFixes.mockReturnValue({
+      fixes: [],
+      isLoading: false,
+      error: null,
       refetch: vi.fn(),
     });
   });
@@ -951,5 +992,114 @@ describe("LegalBenchmarkResults", () => {
     expect(screen.getByText("Failed to start eval. Please try again.")).toBeInTheDocument();
 
     vi.unstubAllGlobals();
+  });
+
+  // ─── Proposed Fixes section ───────────────────────────────────────────────
+
+  function makeCompleteRun() {
+    return makeMockRun({
+      status: "complete",
+      runnerOutputText: "Output text",
+      runnerRun: makeRunnerRow({
+        status: "COMPLETED",
+        result: {
+          taskSlug: "antitrust/task-1",
+          taskTitle: "Test",
+          n_passed: 5,
+          n_total: 5,
+          all_pass: true,
+        },
+      }),
+    });
+  }
+
+  it("shows loading spinner in Proposed Fixes section while fixes are loading", () => {
+    mockUseLegalBenchmarkRun.mockReturnValue({
+      run: makeCompleteRun(),
+      isLoading: false,
+      isStale: false,
+      refetch: vi.fn(),
+    });
+    mockUseProposedFixes.mockReturnValue({
+      fixes: [],
+      isLoading: true,
+      error: null,
+      refetch: vi.fn(),
+    });
+
+    render(React.createElement(LegalBenchmarkResults, { runId: "run-abc", onReset }));
+
+    expect(screen.getByText("Loading fix proposals…")).toBeInTheDocument();
+  });
+
+  it("shows empty state when fixes array is empty and not loading", () => {
+    mockUseLegalBenchmarkRun.mockReturnValue({
+      run: makeCompleteRun(),
+      isLoading: false,
+      isStale: false,
+      refetch: vi.fn(),
+    });
+    mockUseProposedFixes.mockReturnValue({
+      fixes: [],
+      isLoading: false,
+      error: null,
+      refetch: vi.fn(),
+    });
+
+    render(React.createElement(LegalBenchmarkResults, { runId: "run-abc", onReset }));
+
+    expect(screen.getByText("No fix proposals for this run yet.")).toBeInTheDocument();
+  });
+
+  it("renders a ProposedFixCard for each fix returned", () => {
+    mockUseLegalBenchmarkRun.mockReturnValue({
+      run: makeCompleteRun(),
+      isLoading: false,
+      isStale: false,
+      refetch: vi.fn(),
+    });
+    mockUseProposedFixes.mockReturnValue({
+      fixes: [
+        { ref_id: "fix-1", prompt_name: "prompt_a", rerun_status: "improved" },
+        { ref_id: "fix-2", prompt_name: "prompt_b", rerun_status: "pending" },
+      ],
+      isLoading: false,
+      error: null,
+      refetch: vi.fn(),
+    });
+
+    render(React.createElement(LegalBenchmarkResults, { runId: "run-abc", onReset }));
+
+    const cards = screen.getAllByTestId("proposed-fix-card");
+    expect(cards).toHaveLength(2);
+    expect(cards[0]).toHaveAttribute("data-ref-id", "fix-1");
+    expect(cards[1]).toHaveAttribute("data-ref-id", "fix-2");
+  });
+
+  it("does not render Proposed Fixes section in RUNNING state", () => {
+    mockUseLegalBenchmarkRun.mockReturnValue({
+      run: makeMockRun({ status: "running" }),
+      isLoading: false,
+      isStale: false,
+      refetch: vi.fn(),
+    });
+
+    render(React.createElement(LegalBenchmarkResults, { runId: "run-abc", onReset }));
+
+    expect(screen.queryByText("Proposed Fixes")).toBeNull();
+    expect(screen.queryByText("No fix proposals for this run yet.")).toBeNull();
+  });
+
+  it("passes runId to useProposedFixes", () => {
+    mockUseLegalBenchmarkRun.mockReturnValue({
+      run: makeCompleteRun(),
+      isLoading: false,
+      isStale: false,
+      refetch: vi.fn(),
+    });
+
+    render(React.createElement(LegalBenchmarkResults, { runId: "run-xyz", onReset }));
+
+    expect(mockUseProposedFixes).toHaveBeenCalledWith("run-xyz");
   });
 });
