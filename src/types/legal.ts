@@ -109,6 +109,51 @@ export interface RubricScore {
 }
 
 /**
+ * A proposed fix for a failing criterion in a legal benchmark run.
+ * Read from `ProposedFix` graph nodes written by M3 after a run completes.
+ *
+ * `prompt_version_id` — the OLD/failing prompt version (display-only).
+ * `new_prompt_version_id` — the NEW, not-yet-published fix version
+ *   (reserved for future publish wiring — not used in this v1).
+ */
+export interface ProposedFix {
+  /** Graph node ref_id */
+  ref_id: string;
+  /** ID of the evaluation criterion this fix targets */
+  criterion_id: string | null;
+  /** Human-readable criterion title */
+  criterion_title: string | null;
+  /** Name of the prompt being fixed */
+  prompt_name: string | null;
+  /** ID of the prompt being fixed */
+  prompt_id: string | null;
+  /** Old/failing prompt version (display-only) */
+  prompt_version_id: string | null;
+  /** New, not-yet-published fix version (reserved for future publish wiring) */
+  new_prompt_version_id: string | null;
+  /** The value that caused failure */
+  failing_value: string | null;
+  /** The value that would have passed */
+  passing_value: string | null;
+  /** Description of the change between the old and new prompt version */
+  delta: string | null;
+  /** Model reasoning behind the proposed fix */
+  reasoning: string | null;
+  /** Proposal status (e.g. "pending", "accepted", "rejected") */
+  status: string | null;
+  /** Status of the automated rerun using the new prompt version */
+  rerun_status: string | null;
+  /** Score before the fix (stringified number) */
+  before_score: string | null;
+  /** Score after the fix (stringified number) */
+  after_score: string | null;
+  /** Score delta, e.g. "+4" or "-2" */
+  score_delta: string | null;
+  /** Run ID of the automated rerun that validated this fix */
+  rerun_run_id: string | null;
+}
+
+/**
  * Parse a StakworkRun.result JSON string into BenchmarkRunResult.
  * Returns null if the string is absent or unparseable.
  */
