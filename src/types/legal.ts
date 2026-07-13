@@ -117,40 +117,40 @@ export interface RubricScore {
  *   (reserved for future publish wiring — not used in this v1).
  */
 export interface ProposedFix {
-  /** Graph node ref_id */
-  ref_id: string;
+  /** Graph node ref_id — always present on a projected node */
+  ref_id?: string;
   /** ID of the evaluation criterion this fix targets */
-  criterion_id: string | null;
+  criterion_id?: string;
   /** Human-readable criterion title */
-  criterion_title: string | null;
+  criterion_title?: string;
   /** Name of the prompt being fixed */
-  prompt_name: string | null;
+  prompt_name?: string;
   /** ID of the prompt being fixed */
-  prompt_id: string | null;
+  prompt_id?: string;
   /** Old/failing prompt version (display-only) */
-  prompt_version_id: string | null;
+  prompt_version_id?: string;
   /** New, not-yet-published fix version (reserved for future publish wiring) */
-  new_prompt_version_id: string | null;
+  new_prompt_version_id?: string;
   /** The value that caused failure */
-  failing_value: string | null;
+  failing_value?: string;
   /** The value that would have passed */
-  passing_value: string | null;
+  passing_value?: string;
   /** Description of the change between the old and new prompt version */
-  delta: string | null;
+  delta?: string;
   /** Model reasoning behind the proposed fix */
-  reasoning: string | null;
+  reasoning?: string;
   /** Proposal status (e.g. "pending", "accepted", "rejected") */
-  status: string | null;
+  status?: string;
   /** Status of the automated rerun using the new prompt version */
-  rerun_status: string | null;
+  rerun_status?: string;
   /** Score before the fix (stringified number) */
-  before_score: string | null;
+  before_score?: string;
   /** Score after the fix (stringified number) */
-  after_score: string | null;
+  after_score?: string;
   /** Score delta, e.g. "+4" or "-2" */
-  score_delta: string | null;
+  score_delta?: string;
   /** Run ID of the automated rerun that validated this fix */
-  rerun_run_id: string | null;
+  rerun_run_id?: string;
 }
 
 /**
