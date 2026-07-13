@@ -111,7 +111,16 @@ const MOCK_SWARM_ACCESS = {
 };
 
 /** A runner run with one pass + one fail criterion */
-function makeRunnerRun(resultOverrides: Record<string, unknown> = {}) {
+function makeRunnerRun(
+  resultOverrides: Record<string, unknown> = {},
+  agentLogs: Array<{
+    blobUrl: string | null;
+    sessionId: string | null;
+    stats: Record<string, unknown> | null;
+    phoenixTraceUrl: string | null;
+    metadata?: Record<string, unknown> | null;
+  }> = [],
+) {
   return {
     id: SOURCE_RUN_ID,
     workspaceId: WORKSPACE_ID,
@@ -133,7 +142,7 @@ function makeRunnerRun(resultOverrides: Record<string, unknown> = {}) {
       ],
       ...resultOverrides,
     }),
-    agentLogs: [],
+    agentLogs,
   };
 }
 
@@ -344,6 +353,106 @@ describe("POST /api/workspaces/[slug]/legal/benchmarks/runs/[runId]/eval", () =>
     expect(res.status).toBe(201);
     const body = await res.json();
     expect(body).toHaveProperty("evalRunId", EVAL_RUN_ID);
+  });
+
+  // Test 12: metadata forwarded verbatim when agentLog has metadata
+  test("12. forwards metadata verbatim in agent_logs_json when agentLog has metadata", async () => {
+    const metadataFixture = {
+      prompts: {
+        someAgent: {
+          prompt_id: 101,
+          prompt_version_id: 202,
+          resolution: { value: { template: "You are a legal assistant." } },
+        },
+      },
+    };
+
+    mockDbStakworkRunFindUnique.mockResolvedValue(
+      makeRunnerRun({}, [
+        {
+          blobUrl: "https://blob.example.com/log-1",
+          sessionId: "session-abc",
+          stats: { conversationPreview: "preview text" },
+          phoenixTraceUrl: "https://trace.example.com/1",
+          metadata: metadataFixture,
+        },
+      ]),
+    );
+
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ data: { project_id: 99 } }),
+    });
+    vi.stubGlobal("fetch", mockFetch);
+
+    await postEval(makeEvalRequest(), {
+      params: Promise.resolve({ slug: "openlaw", runId: SOURCE_RUN_ID }),
+    });
+
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+    const [, options] = mockFetch.mock.calls[0] as [string, RequestInit];
+    const payload = JSON.parse(options.body as string) as {
+      workflow_params: { set_var: { attributes: { vars: Record<string, unknown> } } };
+    };
+    const vars = payload.workflow_params.set_var.attributes.vars;
+
+    const agentLogsJson = JSON.parse(vars.agent_logs_json as string) as Array<{
+      blobUrl: string | null;
+      sessionId: string | null;
+      preview: unknown;
+      traceUrl: string | null;
+      metadata: unknown;
+    }>;
+
+    expect(agentLogsJson).toHaveLength(1);
+    const entry = agentLogsJson[0];
+
+    // metadata must be forwarded verbatim — deep equal to fixture
+    expect(entry.metadata).toEqual(metadataFixture);
+    // preview must still be present
+    expect(entry.preview).toBe("preview text");
+    // other existing fields intact
+    expect(entry.blobUrl).toBe("https://blob.example.com/log-1");
+    expect(entry.sessionId).toBe("session-abc");
+    expect(entry.traceUrl).toBe("https://trace.example.com/1");
+  });
+
+  // Test 13: metadata is null when agentLog has no metadata
+  test("13. sets metadata: null in agent_logs_json when agentLog has no metadata", async () => {
+    mockDbStakworkRunFindUnique.mockResolvedValue(
+      makeRunnerRun({}, [
+        {
+          blobUrl: "https://blob.example.com/log-2",
+          sessionId: "session-xyz",
+          stats: null,
+          phoenixTraceUrl: null,
+          metadata: null,
+        },
+      ]),
+    );
+
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ data: { project_id: 99 } }),
+    });
+    vi.stubGlobal("fetch", mockFetch);
+
+    await postEval(makeEvalRequest(), {
+      params: Promise.resolve({ slug: "openlaw", runId: SOURCE_RUN_ID }),
+    });
+
+    const [, options] = mockFetch.mock.calls[0] as [string, RequestInit];
+    const payload = JSON.parse(options.body as string) as {
+      workflow_params: { set_var: { attributes: { vars: Record<string, unknown> } } };
+    };
+    const vars = payload.workflow_params.set_var.attributes.vars;
+
+    const agentLogsJson = JSON.parse(vars.agent_logs_json as string) as Array<{
+      metadata: unknown;
+    }>;
+
+    expect(agentLogsJson).toHaveLength(1);
+    expect(agentLogsJson[0].metadata).toBeNull();
   });
 });
 
