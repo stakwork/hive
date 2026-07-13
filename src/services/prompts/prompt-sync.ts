@@ -553,6 +553,164 @@ export async function publishVersion(
   }
 }
 
+// ─── Stakwork index lookup & reconciliation helpers ───────────────────────────
+
+const INDEX_PAGE_SIZE = 20;
+
+/**
+ * Fetch the full Stakwork prompt index and group entries by exact name.
+ * Returns a Map<name, entries[]> — a bucket with more than one entry means
+ * Stakwork holds multiple prompts sharing that name (ambiguous; never bind those).
+ *
+ * Paginates exactly like fetchListPage/seedPrompts in seed-stakwork-prompts.ts:
+ *   GET ${STAKWORK_BASE_URL}/prompts?page=N  (config.STAKWORK_BASE_URL already includes /api/v1)
+ * Stop when a page returns fewer than INDEX_PAGE_SIZE (20) entries.
+ *
+ * Auth: tries the quoted form first (proven by fetchListPage against the list endpoint);
+ * falls back to the unquoted stakworkHeaders() form on a 401.
+ * Honors 429 Retry-After with a short backoff rather than aborting the whole build.
+ */
+export async function buildStakworkPromptIndexByName(): Promise<
+  Map<string, Array<{ id: number; name: string }>>
+> {
+  const index = new Map<string, Array<{ id: number; name: string }>>();
+  const quotedAuth = `Token token="${config.STAKWORK_API_KEY}"`;
+  const unquotedAuth = stakworkHeaders().Authorization;
+
+  // Start with the quoted form (proven against the list endpoint by fetchListPage).
+  // Falls back to unquoted once on a 401 — and stays with whichever form works.
+  let authHeader = quotedAuth;
+  let page = 1;
+
+  while (true) {
+    const url = `${config.STAKWORK_BASE_URL}/prompts?page=${page}`;
+    let response = await fetch(url, {
+      headers: { Authorization: authHeader, "Content-Type": "application/json" },
+    });
+
+    // On 401 with quoted form, try unquoted once and re-fetch the same page
+    if (response.status === 401 && authHeader === quotedAuth) {
+      authHeader = unquotedAuth;
+      response = await fetch(url, {
+        headers: { Authorization: authHeader, "Content-Type": "application/json" },
+      });
+    }
+
+    // Honor rate-limiting: wait for Retry-After (or a 2-second default) then retry this page
+    if (response.status === 429) {
+      const retryAfter = response.headers.get("Retry-After");
+      const delay = retryAfter ? parseInt(retryAfter, 10) * 1000 : 2000;
+      await new Promise<void>((resolve) => setTimeout(resolve, delay));
+      continue; // retry the same page number
+    }
+
+    if (!response.ok) {
+      throw new Error(
+        `Stakwork GET /prompts?page=${page} failed: ${response.status}`,
+      );
+    }
+
+    const json = await response.json();
+    const prompts: Array<{ id: number; name: string }> = json?.data?.prompts ?? [];
+
+    for (const entry of prompts) {
+      const bucket = index.get(entry.name) ?? [];
+      bucket.push({ id: entry.id, name: entry.name });
+      index.set(entry.name, bucket);
+    }
+
+    // Pagy: a short page means we've reached the end of the index
+    if (prompts.length < INDEX_PAGE_SIZE) {
+      break;
+    }
+
+    page++;
+  }
+
+  return index;
+}
+
+/**
+ * Fetch a single Stakwork prompt's full detail record.
+ * Returns the raw JSON payload so callers can inspect undeclared fields (e.g. hive_version_id).
+ * Only logs response.status — never logs the request object or Authorization header.
+ */
+async function defaultFetchDetail(id: number): Promise<Record<string, unknown>> {
+  const url = `${config.STAKWORK_BASE_URL}/prompts/${id}`;
+  const response = await fetch(url, {
+    headers: {
+      // Use quoted form — consistent with the list endpoint auth
+      Authorization: `Token token="${config.STAKWORK_API_KEY}"`,
+      "Content-Type": "application/json",
+    },
+  });
+  if (!response.ok) {
+    throw new Error(`Stakwork GET /prompts/${id} failed: ${response.status}`);
+  }
+  const json = await response.json();
+  // Return the inner data object (or root) so callers access fields directly
+  return (json?.data ?? json) as Record<string, unknown>;
+}
+
+/**
+ * Given a Hive prompt and a pre-built Stakwork name index, decide whether (and how) the
+ * prompt can be safely relinked to its Stakwork counterpart.
+ *
+ * Resolution rules:
+ *   - No candidates for prompt.name                → { reason: "no-match" }
+ *   - More than one candidate (ambiguous names)    → { reason: "ambiguous" }
+ *   - Exactly one candidate:
+ *       • Fetch its full detail
+ *       • If detail contains hive_version_id matching a known Hive version id
+ *                                                  → { id, verified: true }
+ *       • If detail contains hive_version_id but it doesn't match any known version id
+ *                                                  → { reason: "ownership-mismatch" }
+ *       • If detail has no hive_version_id at all (field absent)
+ *                                                  → { id, verified: false }  (name-based fallback)
+ *
+ * The `opts.fetchDetail` injectable is used by unit tests to avoid live HTTP calls.
+ */
+export async function resolveStakworkPromptId(
+  prompt: { name: string; versions?: Array<{ id: string }> },
+  index: Map<string, Array<{ id: number; name: string }>>,
+  opts?: { fetchDetail?: (id: number) => Promise<Record<string, unknown>> },
+): Promise<
+  | { id: number; verified: boolean }
+  | { reason: "no-match" | "ambiguous" | "ownership-mismatch" }
+> {
+  const candidates = index.get(prompt.name);
+
+  if (!candidates || candidates.length === 0) {
+    return { reason: "no-match" };
+  }
+
+  if (candidates.length > 1) {
+    return { reason: "ambiguous" };
+  }
+
+  // Exactly one candidate — verify ownership via detail record
+  const candidate = candidates[0];
+  const fetchDetailFn = opts?.fetchDetail ?? defaultFetchDetail;
+
+  const detail = await fetchDetailFn(candidate.id);
+
+  // Defensively probe for hive_version_id — the TS StakworkPromptDetail interface
+  // doesn't declare it, but the live API may return it; check the raw JSON.
+  if ("hive_version_id" in detail && detail.hive_version_id != null) {
+    const versionIds = (prompt.versions ?? []).map((v) => v.id);
+    if (versionIds.includes(String(detail.hive_version_id))) {
+      return { id: candidate.id, verified: true };
+    }
+    // hive_version_id is present but belongs to a different Hive environment — do not bind
+    return { reason: "ownership-mismatch" };
+  }
+
+  // No hive_version_id in the detail — fall back to unique name match
+  return { id: candidate.id, verified: false };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 /**
  * Delete a prompt from Hive (cascades to versions); best-effort DELETE to Stakwork.
  */
