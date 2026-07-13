@@ -118,39 +118,39 @@ export interface RubricScore {
  */
 export interface ProposedFix {
   /** Graph node ref_id */
-  ref_id: string;
+  ref_id?: string;
   /** ID of the evaluation criterion this fix targets */
-  criterion_id: string | null;
+  criterion_id?: string | null;
   /** Human-readable criterion title */
-  criterion_title: string | null;
+  criterion_title?: string | null;
   /** Name of the prompt being fixed */
-  prompt_name: string | null;
+  prompt_name?: string | null;
   /** ID of the prompt being fixed */
-  prompt_id: string | null;
+  prompt_id?: string | null;
   /** Old/failing prompt version (display-only) */
-  prompt_version_id: string | null;
+  prompt_version_id?: string | null;
   /** New, not-yet-published fix version (reserved for future publish wiring) */
-  new_prompt_version_id: string | null;
+  new_prompt_version_id?: string | null;
   /** The value that caused failure */
-  failing_value: string | null;
+  failing_value?: string | null;
   /** The value that would have passed */
-  passing_value: string | null;
+  passing_value?: string | null;
   /** Description of the change between the old and new prompt version */
-  delta: string | null;
+  delta?: string | null;
   /** Model reasoning behind the proposed fix */
-  reasoning: string | null;
+  reasoning?: string | null;
   /** Proposal status (e.g. "pending", "accepted", "rejected") */
-  status: string | null;
+  status?: string | null;
   /** Status of the automated rerun using the new prompt version */
-  rerun_status: string | null;
+  rerun_status?: string | null;
   /** Score before the fix (stringified number) */
-  before_score: string | null;
+  before_score?: string | null;
   /** Score after the fix (stringified number) */
-  after_score: string | null;
+  after_score?: string | null;
   /** Score delta, e.g. "+4" or "-2" */
-  score_delta: string | null;
+  score_delta?: string | null;
   /** Run ID of the automated rerun that validated this fix */
-  rerun_run_id: string | null;
+  rerun_run_id?: string | null;
 }
 
 /**
