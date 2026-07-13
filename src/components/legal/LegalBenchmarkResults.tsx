@@ -8,7 +8,9 @@ import { Input } from "@/components/ui/input";
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "@/components/ui/collapsible";
 import { useLegalBenchmarkRun } from "@/hooks/useLegalBenchmarkRun";
 import { useLegalBenchmarkEval, type EvalResult } from "@/hooks/useLegalBenchmarkEval";
+import { useProposedFixes } from "@/hooks/useProposedFixes";
 import { StakworkRunLink } from "@/components/legal/StakworkRunLink";
+import { ProposedFixCard } from "@/components/legal/ProposedFixCard";
 
 interface LegalBenchmarkResultsProps {
   runId: string;
@@ -28,6 +30,7 @@ function SpinnerMessage({ message }: { message: string }) {
 export function LegalBenchmarkResults({ runId, onReset, isSuperAdmin = false }: LegalBenchmarkResultsProps) {
   const { run, isLoading, isStale, refetch } = useLegalBenchmarkRun(runId);
   const { runEval, isSubmitting } = useLegalBenchmarkEval();
+  const { fixes, isLoading: fixesLoading, refetch: refetchFixes } = useProposedFixes(runId);
 
   const allPass = run?.runnerRun?.result?.all_pass;
   const criteriaResults = run?.runnerRun?.result?.criteria_results;
@@ -302,6 +305,32 @@ export function LegalBenchmarkResults({ runId, onReset, isSuperAdmin = false }: 
             </Collapsible>
           </div>
         )}
+
+        {/* Proposed Fixes */}
+        <div className="rounded-lg border bg-card">
+          <div className="flex items-center justify-between px-4 py-3 border-b">
+            <h3 className="font-semibold text-sm">Proposed Fixes</h3>
+            <Button size="sm" variant="ghost" onClick={refetchFixes} aria-label="Refresh proposed fixes">
+              <RefreshCw className="h-3.5 w-3.5" />
+            </Button>
+          </div>
+          <div className="p-4">
+            {fixesLoading ? (
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Loader2 className="h-4 w-4 animate-spin shrink-0" />
+                <span>Loading fix proposals…</span>
+              </div>
+            ) : fixes.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No fix proposals for this run yet.</p>
+            ) : (
+              <div className="space-y-3">
+                {fixes.map((fix, i) => (
+                  <ProposedFixCard key={fix.ref_id ?? fix.criterion_id ?? i} fix={fix} />
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
 
         <div className="space-y-2">
           {renderEvalMessage()}
