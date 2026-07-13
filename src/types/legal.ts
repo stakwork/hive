@@ -102,6 +102,37 @@ export interface LegalBenchmarkRun {
   updatedAt: string | Date;
 }
 
+/**
+ * A `ProposedFix` graph node projected for client consumption.
+ * Fetched from the Jarvis graph via `/api/workspaces/[slug]/legal/benchmarks/proposed-fixes`.
+ *
+ * `prompt_version_id` — the OLD/failing prompt version (display only).
+ * `new_prompt_version_id` — the NEW unpublished fix version (reserved for future publish wiring).
+ */
+export interface ProposedFix {
+  /** Graph node ref_id */
+  ref_id?: string;
+  criterion_id?: string;
+  criterion_title?: string;
+  prompt_name?: string;
+  prompt_id?: string;
+  /** The failing (old) prompt version — display only */
+  prompt_version_id?: string;
+  /** The new unpublished fix prompt version — reserved for future publish wiring */
+  new_prompt_version_id?: string;
+  failing_value?: string;
+  passing_value?: string;
+  delta?: string;
+  reasoning?: string;
+  status?: string;
+  /** pending | running | improved | no_change | regressed | scored */
+  rerun_status?: string;
+  before_score?: string;
+  after_score?: string;
+  score_delta?: string;
+  rerun_run_id?: string;
+}
+
 export interface RubricScore {
   criterion: string;
   pass: boolean;
