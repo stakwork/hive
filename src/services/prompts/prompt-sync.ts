@@ -55,6 +55,17 @@ export function stakworkHeaders(): Record<string, string> {
   };
 }
 
+/**
+ * Coerce a candidate value to a positive integer within Postgres 32-bit signed Int range.
+ * Accepts a number or numeric string; rejects everything else (returns null).
+ */
+function coerceStakworkId(candidate: unknown): number | null {
+  if (candidate === null || candidate === undefined) return null;
+  const n = typeof candidate === "number" ? candidate : Number(candidate);
+  if (!Number.isInteger(n) || n <= 0 || n > 2_147_483_647) return null;
+  return n;
+}
+
 async function pushCreateToStakwork(
   name: string,
   value: string,
@@ -70,8 +81,34 @@ async function pushCreateToStakwork(
     throw new Error(`Stakwork POST /prompts/ failed: ${response.status}`);
   }
   const json = await response.json();
-  // Stakwork returns the created prompt with a numeric id
-  return json?.data?.id ?? null;
+  const data = json?.data;
+
+  // ── Structured extraction ───────────────────────────────────────────────
+  // Prefer data.prompt.id (Stakwork's forthcoming structured field), then data.id
+  // (existing shape — current tests mock { data: { id: 42 } }, must keep passing).
+  if (data !== null && typeof data === "object") {
+    const d = data as Record<string, unknown>;
+    const fromPrompt = coerceStakworkId((d.prompt as Record<string, unknown> | undefined)?.id);
+    if (fromPrompt !== null) return fromPrompt;
+    const fromData = coerceStakworkId(d.id);
+    if (fromData !== null) return fromData;
+  }
+
+  // ── Message-string fallback ─────────────────────────────────────────────
+  // Stakwork today returns data as a bare string, e.g. "GONZA_DEMO created with id 2114".
+  // Use an anchored trailing pattern so an earlier "hive_version_id N" token cannot match.
+  const msg =
+    typeof data === "string"
+      ? data
+      : typeof (data as Record<string, unknown> | null)?.message === "string"
+        ? (data as Record<string, unknown>).message as string
+        : null;
+  if (msg) {
+    const match = msg.match(/id (\d+)\s*$/);
+    if (match) return coerceStakworkId(match[1]);
+  }
+
+  return null;
 }
 
 /**
@@ -402,11 +439,17 @@ export async function writePromptThrough(
         });
         prompt = { ...prompt, stakworkId: returnedStakworkId, syncStatus: "OK" };
       } else {
+        // 2xx but no id captured — leave PENDING so the broken sync is visible/retryable.
+        logger.warn(
+          "[prompt-sync] Stakwork create returned 2xx but no id could be extracted — marking PENDING",
+          "prompt-sync",
+          { promptName: prompt.name, hiveVersionId: version.id },
+        );
         await db.prompt.update({
           where: { id: prompt.id },
-          data: { syncStatus: "OK", lastSyncedAt: new Date() },
+          data: { syncStatus: "PENDING" },
         });
-        prompt = { ...prompt, syncStatus: "OK" };
+        prompt = { ...prompt, syncStatus: "PENDING" };
       }
     }
 
@@ -418,11 +461,14 @@ export async function writePromptThrough(
       prompt = { ...prompt, syncStatus: "OK" };
     }
 
-    logger.info("[prompt-sync] Stakwork push succeeded", "prompt-sync", {
-      promptName: prompt.name,
-      stakworkId: prompt.stakworkId,
-      hiveVersionId: version.id,
-    });
+    // Do not log success when the create resolved to no id (PENDING).
+    if (prompt.syncStatus !== "PENDING") {
+      logger.info("[prompt-sync] Stakwork push succeeded", "prompt-sync", {
+        promptName: prompt.name,
+        stakworkId: prompt.stakworkId,
+        hiveVersionId: version.id,
+      });
+    }
   } catch (syncErr) {
     logger.warn("[prompt-sync] Stakwork push failed — local write succeeded, marking PENDING", "prompt-sync", {
       promptName: prompt.name,
