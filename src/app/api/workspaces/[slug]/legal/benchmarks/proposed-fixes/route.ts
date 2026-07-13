@@ -31,9 +31,9 @@ function handleSwarmAccessError(error: { type: string }) {
  */
 function projectFix(refId: string, props: Record<string, unknown> | undefined): ProposedFix {
   const p = props ?? {};
-  const str = (key: string): string | null => {
+  const str = (key: string): string | undefined => {
     const v = p[key];
-    return v != null ? String(v) : null;
+    return v != null ? String(v) : undefined;
   };
   return {
     ref_id: refId,
