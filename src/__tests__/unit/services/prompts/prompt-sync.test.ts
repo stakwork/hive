@@ -324,6 +324,174 @@ describe("recordPromptOnGraph (swallows errors via publishVersion)", () => {
   });
 });
 
+// ─── pushCreateToStakwork id extraction (via writePromptThrough create path) ──
+
+describe("writePromptThrough create — pushCreateToStakwork id extraction", () => {
+  const basePrompt = {
+    id: "prompt-new",
+    name: "NEW_PROMPT",
+    value: "val",
+    description: null,
+    agentNames: [],
+    publishedVersionId: "v1",
+    stakworkId: null,
+    syncStatus: "OK",
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  };
+  const baseVersion = {
+    id: "v1",
+    versionNumber: 1,
+    value: "val",
+    description: null,
+    published: true,
+    createdAt: new Date(),
+  };
+
+  function setupCreateMocks(fetchJson: unknown) {
+    vi.clearAllMocks();
+    mockStakworkRequest.mockResolvedValue({});
+    mockDbTransaction.mockImplementationOnce(async (fn: (tx: unknown) => Promise<unknown>) => {
+      const tx = {
+        prompt: {
+          create: vi.fn().mockResolvedValue(basePrompt),
+          update: vi.fn().mockResolvedValue(basePrompt),
+        },
+        promptVersion: { create: vi.fn().mockResolvedValue(baseVersion) },
+      };
+      return fn(tx);
+    });
+    global.fetch = vi.fn().mockResolvedValueOnce({
+      ok: true,
+      json: async () => fetchJson,
+    } as Response);
+    mockDbPromptUpdate.mockResolvedValue({ ...basePrompt, stakworkId: 42, syncStatus: "OK" });
+  }
+
+  it("1. existing data.id path still passes — stakworkId: 42, syncStatus: OK", async () => {
+    setupCreateMocks({ data: { id: 42 } });
+
+    await writePromptThrough({ name: "NEW_PROMPT", value: "val", userId: "user-1" });
+
+    expect(mockDbPromptUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "prompt-new" },
+        data: expect.objectContaining({ stakworkId: 42, syncStatus: "OK" }),
+      }),
+    );
+  });
+
+  it("2. structured data.prompt.id path — stakworkId: 2114, syncStatus: OK", async () => {
+    setupCreateMocks({ data: { message: "X created with id 2114", prompt: { id: 2114 } } });
+
+    await writePromptThrough({ name: "NEW_PROMPT", value: "val", userId: "user-1" });
+
+    expect(mockDbPromptUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "prompt-new" },
+        data: expect.objectContaining({ stakworkId: 2114, syncStatus: "OK" }),
+      }),
+    );
+  });
+
+  it("3. message-string fallback — data is bare string with trailing id", async () => {
+    setupCreateMocks({ data: "X created with id 2114" });
+
+    await writePromptThrough({ name: "NEW_PROMPT", value: "val", userId: "user-1" });
+
+    expect(mockDbPromptUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "prompt-new" },
+        data: expect.objectContaining({ stakworkId: 2114, syncStatus: "OK" }),
+      }),
+    );
+  });
+
+  it("4. stringified numeric id coercion — data.prompt.id is string '2114'", async () => {
+    setupCreateMocks({ data: { prompt: { id: "2114" } } });
+
+    await writePromptThrough({ name: "NEW_PROMPT", value: "val", userId: "user-1" });
+
+    expect(mockDbPromptUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "prompt-new" },
+        data: expect.objectContaining({ stakworkId: 2114, syncStatus: "OK" }),
+      }),
+    );
+  });
+
+  it("5. anchored regex — hive_version_id token not captured, real trailing id is", async () => {
+    setupCreateMocks({ data: "hive_version_id 9, created with id 2114" });
+
+    await writePromptThrough({ name: "NEW_PROMPT", value: "val", userId: "user-1" });
+
+    expect(mockDbPromptUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "prompt-new" },
+        data: expect.objectContaining({ stakworkId: 2114, syncStatus: "OK" }),
+      }),
+    );
+    // Must NOT have used 9
+    const wrongCall = vi.mocked(mockDbPromptUpdate).mock.calls.find(
+      ([args]) => args?.data?.stakworkId === 9,
+    );
+    expect(wrongCall).toBeUndefined();
+  });
+
+  it("6. 2xx with no id → PENDING, no OK update, warn logged, success info NOT emitted", async () => {
+    setupCreateMocks({ data: "created, no number" });
+    // update returns PENDING-state prompt for in-memory update
+    mockDbPromptUpdate.mockResolvedValue({ ...basePrompt, syncStatus: "PENDING" });
+
+    await writePromptThrough({ name: "NEW_PROMPT", value: "val", userId: "user-1" });
+
+    // Must have updated to PENDING
+    expect(mockDbPromptUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "prompt-new" },
+        data: expect.objectContaining({ syncStatus: "PENDING" }),
+      }),
+    );
+    // Must NOT have updated to OK in any call for stakworkId
+    const okWithId = vi.mocked(mockDbPromptUpdate).mock.calls.find(
+      ([args]) => args?.data?.syncStatus === "OK" && "stakworkId" in (args?.data ?? {}),
+    );
+    expect(okWithId).toBeUndefined();
+    // Warn must have been emitted for the PENDING case
+    expect(vi.mocked(logger.warn)).toHaveBeenCalledWith(
+      expect.stringContaining("no id could be extracted"),
+      "prompt-sync",
+      expect.objectContaining({ promptName: "NEW_PROMPT" }),
+    );
+    // Success info log must NOT have fired
+    expect(vi.mocked(logger.info)).not.toHaveBeenCalledWith(
+      expect.stringContaining("Stakwork push succeeded"),
+      expect.anything(),
+      expect.anything(),
+    );
+  });
+
+  it("7. out-of-range id → null → PENDING, no Prisma write with oversized value", async () => {
+    setupCreateMocks({ data: `DEMO created with id 2147483648` }); // > INT32_MAX
+    mockDbPromptUpdate.mockResolvedValue({ ...basePrompt, syncStatus: "PENDING" });
+
+    await writePromptThrough({ name: "NEW_PROMPT", value: "val", userId: "user-1" });
+
+    // Must be PENDING, not OK
+    expect(mockDbPromptUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "prompt-new" },
+        data: expect.objectContaining({ syncStatus: "PENDING" }),
+      }),
+    );
+    // Must NOT have attempted to write the oversized id
+    const oversizedCall = vi.mocked(mockDbPromptUpdate).mock.calls.find(
+      ([args]) => args?.data?.stakworkId === 2147483648,
+    );
+    expect(oversizedCall).toBeUndefined();
+  });
+});
+
 // ─── publishVersion Stakwork push ─────────────────────────────────────────────
 
 describe("publishVersion — Stakwork push", () => {
@@ -496,5 +664,240 @@ describe("publishVersion — Stakwork push", () => {
     );
     const body = JSON.parse((putCall![1] as RequestInit).body as string);
     expect(body.prompt.description).toBe("");
+  });
+});
+
+// ─── buildStakworkPromptIndexByName ──────────────────────────────────────────
+
+import { buildStakworkPromptIndexByName, resolveStakworkPromptId } from "@/services/prompts/prompt-sync";
+
+describe("buildStakworkPromptIndexByName", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  function makeListPage(prompts: Array<{ id: number; name: string }>) {
+    return {
+      ok: true,
+      status: 200,
+      headers: { get: () => null },
+      json: async () => ({ data: { prompts } }),
+    } as unknown as Response;
+  }
+
+  it("paginates until a short page and stops", async () => {
+    // page 1: full page of 20, page 2: 3 entries (short → stop)
+    const page1 = Array.from({ length: 20 }, (_, i) => ({ id: i + 1, name: `PROMPT_${i + 1}` }));
+    const page2 = [{ id: 21, name: "PROMPT_21" }, { id: 22, name: "PROMPT_22" }, { id: 23, name: "PROMPT_23" }];
+
+    global.fetch = vi.fn()
+      .mockResolvedValueOnce(makeListPage(page1))
+      .mockResolvedValueOnce(makeListPage(page2));
+
+    const index = await buildStakworkPromptIndexByName();
+
+    expect(global.fetch).toHaveBeenCalledTimes(2);
+    expect(index.size).toBe(23); // 20 + 3 unique names
+    expect(index.get("PROMPT_1")).toEqual([{ id: 1, name: "PROMPT_1" }]);
+    expect(index.get("PROMPT_21")).toEqual([{ id: 21, name: "PROMPT_21" }]);
+  });
+
+  it("stops after a single full page when next page is empty", async () => {
+    const page1 = Array.from({ length: 20 }, (_, i) => ({ id: i + 1, name: `P_${i + 1}` }));
+
+    global.fetch = vi.fn()
+      .mockResolvedValueOnce(makeListPage(page1))
+      .mockResolvedValueOnce(makeListPage([]));
+
+    const index = await buildStakworkPromptIndexByName();
+    // empty page is < 20, so it stops. But also: page1 has 20 entries so we fetch page2
+    expect(global.fetch).toHaveBeenCalledTimes(2);
+    expect(index.size).toBe(20);
+  });
+
+  it("groups duplicate-named entries into a multi-entry bucket", async () => {
+    const prompts = [
+      { id: 1, name: "DUP_NAME" },
+      { id: 2, name: "DUP_NAME" },
+      { id: 3, name: "UNIQUE" },
+    ];
+
+    global.fetch = vi.fn().mockResolvedValueOnce(makeListPage(prompts));
+
+    const index = await buildStakworkPromptIndexByName();
+
+    const dupBucket = index.get("DUP_NAME");
+    expect(dupBucket).toHaveLength(2);
+    expect(dupBucket).toEqual([
+      { id: 1, name: "DUP_NAME" },
+      { id: 2, name: "DUP_NAME" },
+    ]);
+    expect(index.get("UNIQUE")).toHaveLength(1);
+  });
+
+  it("retries on 429 with Retry-After and succeeds", async () => {
+    const page1 = [{ id: 1, name: "MY_PROMPT" }];
+
+    global.fetch = vi.fn()
+      // First attempt: 429
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 429,
+        headers: { get: (h: string) => (h === "Retry-After" ? "0" : null) },
+        json: async () => ({}),
+      } as unknown as Response)
+      // Retry (same page): success with short page → stops
+      .mockResolvedValueOnce(makeListPage(page1));
+
+    const index = await buildStakworkPromptIndexByName();
+
+    expect(global.fetch).toHaveBeenCalledTimes(2);
+    expect(index.get("MY_PROMPT")).toEqual([{ id: 1, name: "MY_PROMPT" }]);
+  });
+
+  it("throws on a non-ok, non-429 page response", async () => {
+    global.fetch = vi.fn().mockResolvedValueOnce({
+      ok: false,
+      status: 500,
+      headers: { get: () => null },
+      json: async () => ({}),
+    } as unknown as Response);
+
+    await expect(buildStakworkPromptIndexByName()).rejects.toThrow(
+      /Stakwork GET \/prompts\?page=1 failed: 500/,
+    );
+  });
+
+  it("does not log Authorization header or fetch request object", async () => {
+    const consoleSpy = vi.spyOn(console, "info").mockImplementation(() => {});
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    global.fetch = vi.fn().mockResolvedValueOnce(makeListPage([{ id: 1, name: "X" }]));
+
+    await buildStakworkPromptIndexByName();
+
+    for (const call of [...consoleSpy.mock.calls, ...warnSpy.mock.calls]) {
+      const str = JSON.stringify(call);
+      expect(str).not.toContain("Authorization");
+      expect(str).not.toContain("test-key");
+    }
+
+    consoleSpy.mockRestore();
+    warnSpy.mockRestore();
+  });
+});
+
+// ─── resolveStakworkPromptId ──────────────────────────────────────────────────
+
+describe("resolveStakworkPromptId", () => {
+  const makeIndex = (entries: Array<{ id: number; name: string }>) => {
+    const m = new Map<string, Array<{ id: number; name: string }>>();
+    for (const e of entries) {
+      const bucket = m.get(e.name) ?? [];
+      bucket.push(e);
+      m.set(e.name, bucket);
+    }
+    return m;
+  };
+
+  it("returns no-match when name is not in the index", async () => {
+    const index = makeIndex([{ id: 1, name: "OTHER" }]);
+    const result = await resolveStakworkPromptId({ name: "MISSING" }, index);
+    expect(result).toEqual({ reason: "no-match" });
+  });
+
+  it("returns ambiguous when multiple entries share the same name", async () => {
+    const index = makeIndex([
+      { id: 1, name: "DUP" },
+      { id: 2, name: "DUP" },
+    ]);
+    const result = await resolveStakworkPromptId({ name: "DUP" }, index);
+    expect(result).toEqual({ reason: "ambiguous" });
+  });
+
+  it("returns { id, verified: true } when detail hive_version_id matches a known version id", async () => {
+    const index = makeIndex([{ id: 42, name: "MY_PROMPT" }]);
+    const fetchDetail = vi.fn().mockResolvedValue({ id: 42, name: "MY_PROMPT", hive_version_id: "ver-abc" });
+
+    const result = await resolveStakworkPromptId(
+      { name: "MY_PROMPT", versions: [{ id: "ver-abc" }, { id: "ver-def" }] },
+      index,
+      { fetchDetail },
+    );
+
+    expect(result).toEqual({ id: 42, verified: true });
+    expect(fetchDetail).toHaveBeenCalledWith(42);
+  });
+
+  it("returns ownership-mismatch when hive_version_id is present but doesn't match any version id", async () => {
+    const index = makeIndex([{ id: 99, name: "MY_PROMPT" }]);
+    const fetchDetail = vi.fn().mockResolvedValue({
+      id: 99,
+      name: "MY_PROMPT",
+      hive_version_id: "foreign-version-id",
+    });
+
+    const result = await resolveStakworkPromptId(
+      { name: "MY_PROMPT", versions: [{ id: "ver-abc" }] },
+      index,
+      { fetchDetail },
+    );
+
+    expect(result).toEqual({ reason: "ownership-mismatch" });
+  });
+
+  it("returns { id, verified: false } when detail has no hive_version_id field", async () => {
+    const index = makeIndex([{ id: 7, name: "NO_HIVE_ID" }]);
+    const fetchDetail = vi.fn().mockResolvedValue({ id: 7, name: "NO_HIVE_ID", value: "some text" });
+
+    const result = await resolveStakworkPromptId(
+      { name: "NO_HIVE_ID", versions: [{ id: "ver-1" }] },
+      index,
+      { fetchDetail },
+    );
+
+    expect(result).toEqual({ id: 7, verified: false });
+  });
+
+  it("returns { id, verified: false } when hive_version_id is null in detail", async () => {
+    const index = makeIndex([{ id: 8, name: "NULL_VER" }]);
+    const fetchDetail = vi.fn().mockResolvedValue({ id: 8, hive_version_id: null });
+
+    const result = await resolveStakworkPromptId(
+      { name: "NULL_VER", versions: [] },
+      index,
+      { fetchDetail },
+    );
+
+    // null is treated same as absent → fallback binding
+    expect(result).toEqual({ id: 8, verified: false });
+  });
+
+  it("returns { id, verified: false } when prompt has no versions array and detail lacks hive_version_id", async () => {
+    const index = makeIndex([{ id: 5, name: "NO_VERSIONS" }]);
+    const fetchDetail = vi.fn().mockResolvedValue({ id: 5, name: "NO_VERSIONS" });
+
+    const result = await resolveStakworkPromptId({ name: "NO_VERSIONS" }, index, { fetchDetail });
+
+    expect(result).toEqual({ id: 5, verified: false });
+  });
+
+  it("does not log Authorization or secrets during resolution", async () => {
+    const consoleSpy = vi.spyOn(console, "info").mockImplementation(() => {});
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    const index = makeIndex([{ id: 1, name: "SAFE" }]);
+    const fetchDetail = vi.fn().mockResolvedValue({ id: 1 });
+
+    await resolveStakworkPromptId({ name: "SAFE" }, index, { fetchDetail });
+
+    for (const call of [...consoleSpy.mock.calls, ...warnSpy.mock.calls]) {
+      const str = JSON.stringify(call);
+      expect(str).not.toContain("Authorization");
+      expect(str).not.toContain("test-key");
+    }
+
+    consoleSpy.mockRestore();
+    warnSpy.mockRestore();
   });
 });
