@@ -7,9 +7,29 @@ import { optionalEnvVars } from "@/config/env";
 import { getJarvisConfigForWorkspace } from "@/lib/helpers/jarvis-config";
 import { WorkflowStatus, StakworkRunType } from "@prisma/client";
 import { parseBenchmarkRunResult } from "@/types/legal";
+import { getBifrostForLLM } from "@/services/bifrost/orchestrator";
+import { getApiKeyForModel } from "@/lib/ai/models";
+import { getStakworkTokenReference } from "@/lib/vercel/stakwork-token";
 
 type RouteParams = {
   params: Promise<{ slug: string; runId: string }>;
+};
+
+// Copied verbatim from /run/route.ts — update if that file changes
+interface TaskJson {
+  title: string;
+  instructions: string;
+  work_type?: string;
+  tags?: string[];
+  deliverables?: Record<string, string>;
+  criteria?: Array<{ id: string; title: string; match_criteria: string; deliverables?: string[] }>;
+}
+
+const HARVEY_BASE = "https://raw.githubusercontent.com/stakwork/harvey-labs/main";
+const GITHUB_API = "https://api.github.com/repos/stakwork/harvey-labs/contents";
+const githubHeaders: HeadersInit = {
+  Accept: "application/vnd.github+json",
+  ...(process.env.GITHUB_TOKEN ? { Authorization: `Bearer ${process.env.GITHUB_TOKEN}` } : {}),
 };
 
 function handleSwarmAccessError(error: { type: string }) {
@@ -30,8 +50,9 @@ function handleSwarmAccessError(error: { type: string }) {
  *
  * Dispatch a root-cause eval run for a completed legal benchmark run.
  * Gated to the `openlaw` workspace only.
- * Simpler than the runner route — no Harvey task.json fetch, no Bifrost/LLM creds,
- * no Jarvis EvalTrigger write.
+ * Fetches Harvey LAB task inputs (task.json + documents) and resolves Bifrost LLM creds
+ * to build a rerun-capable payload alongside the failure-analysis vars, so the downstream
+ * fix-proposal workflow can rerun the source task with a prompt override.
  */
 export async function POST(request: NextRequest, { params }: RouteParams) {
   try {
@@ -143,8 +164,92 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     const taskSlug = runResult?.taskSlug ?? "";
     const evalTriggerRef = runResult?.evalTriggerRef;
 
-    // Step 10: Create the eval run row
+    // Base URL reused for both hive_base_url var and the webhook URL below
     const baseUrl = process.env.NEXTAUTH_URL || "http://localhost:3000";
+
+    // ── BENCHMARK_MODEL must match /run/route.ts ───────────────────────────────
+    const BENCHMARK_MODEL = "claude-opus-4-5"; // must match /run/route.ts
+
+    // ── Rerun inputs: Bifrost LLM creds + Harvey task inputs ──────────────────
+    // These let the downstream fix-proposal workflow rerun the source task with a
+    // prompt override, keyed by the task_slug already stored on the source run.
+    let taskGoal = "";
+    let taskOutputDesc = "";
+    let documents: string[] = [];
+    let rubrics: NonNullable<TaskJson["criteria"]> = [];
+    let bifrost: Awaited<ReturnType<typeof getBifrostForLLM>> | undefined;
+
+    if (!taskSlug) {
+      console.error(
+        "[legal/benchmarks/runs/[runId]/eval] taskSlug is empty; skipping Harvey fetch and dispatching with empty rerun inputs",
+      );
+    } else {
+      // Resolve bifrost with the same try/catch fallback as /run
+      try {
+        bifrost = await getBifrostForLLM(
+          { workspaceId, workspaceSlug: slug, userId: userOrResponse.id },
+          { agentName: "plan-agent", model: BENCHMARK_MODEL },
+        );
+      } catch (err) {
+        console.warn(
+          "[legal/benchmarks/runs/[runId]/eval] Bifrost resolution failed, falling back to env key",
+          err,
+        );
+      }
+
+      // Fetch Harvey task inputs — wrapped in try/catch so a Harvey/GitHub network
+      // failure cannot 500 the eval route; failure-analysis is this route's primary
+      // job and must not become coupled to external availability it previously didn't
+      // depend on. Degrade to empty rerun vars and let analysis proceed.
+      try {
+        const [taskJsonRes, docsRes] = await Promise.all([
+          fetch(`${HARVEY_BASE}/tasks/${taskSlug}/task.json`),
+          fetch(`${GITHUB_API}/tasks/${taskSlug}/documents`, { headers: githubHeaders }),
+        ]);
+
+        if (taskJsonRes.ok) {
+          try {
+            const taskJson = (await taskJsonRes.json()) as TaskJson;
+            taskGoal = taskJson.instructions ?? "";
+            if (taskJson.deliverables && Object.keys(taskJson.deliverables).length > 0) {
+              taskOutputDesc = Object.keys(taskJson.deliverables).join(", ");
+            } else {
+              const outputMatch = taskGoal.match(/###\s*Output[:\s]+([\s\S]+)$/i);
+              taskOutputDesc = outputMatch ? outputMatch[1].trim().replace(/`/g, "") : "";
+            }
+            rubrics = taskJson.criteria ?? [];
+          } catch {
+            console.error(
+              `[legal/benchmarks/runs/[runId]/eval] Failed to parse task.json for ${taskSlug}`,
+            );
+          }
+        }
+
+        if (docsRes.ok) {
+          try {
+            const docsData = (await docsRes.json()) as Array<{
+              type: string;
+              name: string;
+              download_url: string | null;
+            }>;
+            documents = docsData
+              .filter((f) => f.type === "file" && f.download_url !== null)
+              .map((f) => f.download_url as string);
+          } catch {
+            console.error(
+              `[legal/benchmarks/runs/[runId]/eval] Failed to fetch documents for ${taskSlug}`,
+            );
+          }
+        }
+      } catch (err) {
+        console.error(
+          "[legal/benchmarks/runs/[runId]/eval] Harvey task-input fetch failed; dispatching rerun vars empty",
+          err,
+        );
+      }
+    }
+
+    // Step 10: Create the eval run row
     const placeholder = `${baseUrl}/api/webhook/stakwork/response`;
 
     const evalRun = await db.stakworkRun.create({
@@ -194,6 +299,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
         set_var: {
           attributes: {
             vars: {
+              // ── Existing 10 analysis vars (unchanged) ─────────────────────
               source_run_id: runId,
               task_slug: taskSlug,
               failed_criteria_json: JSON.stringify(failedCriteria),
@@ -204,6 +310,23 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
               swarm_secret_alias: swarmSecretAlias ?? "",
               workspace_id: workspaceId,
               webhook_url: webhookUrl,
+              // ── New rerun vars ─────────────────────────────────────────────
+              task_goal: taskGoal,
+              task_output_desc: taskOutputDesc,
+              rubrics_json: JSON.stringify(rubrics),
+              documents_json: JSON.stringify(documents),
+              model: BENCHMARK_MODEL,
+              apiKey: bifrost?.apiKey ?? getApiKeyForModel(BENCHMARK_MODEL) ?? "",
+              baseUrl: bifrost?.baseUrl ?? "",
+              ...(bifrost && Object.keys(bifrost.headers).length > 0
+                ? { headers: bifrost.headers }
+                : {}),
+              tokenReference: getStakworkTokenReference(),
+              hive_base_url: baseUrl,
+              // Normalize: STAKWORK_BASE_URL ends in /api/v1 in production; the child
+              // appends /api/v1/projects so we strip the trailing segment to avoid
+              // a doubled /api/v1/api/v1/projects path.
+              stakwork_base_url: optionalEnvVars.STAKWORK_BASE_URL.replace(/\/api\/v1\/?$/, ""),
             },
           },
         },
