@@ -737,10 +737,10 @@ export function OrgCanvasBackground({
     refreshRootHiddenLive,
   });
 
-  // Real-time canvas presence — cursors, selection halos, conflict flash —
-  // plus live node-position sync (moves broadcast over the same socket).
-  const { collaborators, positionOverrides, publishNodePositions } =
-    useCanvasCollaborationViaRelay({
+  // Real-time canvas presence (cursors/selection) + conflict-free document
+  // sync (nodes+edges) over the same relay socket. One Y.Doc per sub-canvas
+  // ref is the live source, seeded from the Postgres projection.
+  const { collaborators, crdt } = useCanvasCollaborationViaRelay({
     githubLogin,
     canvasRef: currentRef,
     userId: session?.user?.id ?? "",
@@ -752,54 +752,26 @@ export function OrgCanvasBackground({
     selectedNodeId: selectedNodeIdForPresence,
     enabled: !!(session?.user?.id),
   });
+  const {
+    reconstruct: crdtReconstruct,
+    seed: crdtSeed,
+    version: crdtVersion,
+    addNode: crdtAddNode,
+    updateNode: crdtUpdateNode,
+    removeNode: crdtRemoveNode,
+    addEdge: crdtAddEdge,
+    updateEdge: crdtUpdateEdge,
+    removeEdge: crdtRemoveEdge,
+  } = crdt;
 
-  // Broadcast node moves to collaborators (positions overlay), then run the
-  // normal handler (local state + Postgres autosave). `canvasRef` undefined
-  // means the root canvas ("" key).
-  const handleNodeUpdateSync = useCallback(
-    (id: string, patch: NodeUpdate, canvasRef: string | undefined) => {
-      if (typeof patch.x === "number" || typeof patch.y === "number") {
-        publishNodePositions([
-          { ref: canvasRef ?? "", id, x: patch.x, y: patch.y },
-        ]);
-      }
-      handleNodeUpdate(id, patch, canvasRef);
-    },
-    [handleNodeUpdate, publishNodePositions],
-  );
-
-  const handleNodesUpdateSync = useCallback(
-    (
-      updates: { id: string; patch: NodeUpdate }[],
-      canvasRef: string | undefined,
-    ) => {
-      const moves = updates
-        .filter(
-          (u) => typeof u.patch.x === "number" || typeof u.patch.y === "number",
-        )
-        .map((u) => ({ ref: canvasRef ?? "", id: u.id, x: u.patch.x, y: u.patch.y }));
-      if (moves.length > 0) publishNodePositions(moves);
-      handleNodesUpdate(updates, canvasRef);
-    },
-    [handleNodesUpdate, publishNodePositions],
-  );
-
-  // Merge collaborators' live positions onto a canvas at render. Unmoved
-  // nodes keep their projection position; overrides win per-coordinate.
-  const applyPositionOverrides = useCallback(
-    (data: CanvasData, ref: string): CanvasData => {
-      if (positionOverrides.size === 0) return data;
-      let changed = false;
-      const nodes = (data.nodes ?? []).map((n) => {
-        const o = positionOverrides.get(`${ref}:${n.id}`);
-        if (!o) return n;
-        changed = true;
-        return { ...n, x: o.x ?? n.x, y: o.y ?? n.y };
-      });
-      return changed ? { ...data, nodes } : data;
-    },
-    [positionOverrides],
-  );
+  // Seed each ref's doc from the projection as it loads. Idempotent, and a
+  // no-op unless we're the first client in the room (others sync from peers).
+  useEffect(() => {
+    if (root) crdtSeed("", root);
+  }, [root, crdtSeed]);
+  useEffect(() => {
+    for (const [ref, data] of Object.entries(subCanvases)) crdtSeed(ref, data);
+  }, [subCanvases, crdtSeed]);
 
 
   const {
@@ -815,6 +787,69 @@ export function OrgCanvasBackground({
     canvasHandleRef,
     subCanvasesRef,
   });
+
+  // Route every structural edit through the CRDT doc (live sync to peers) AND
+  // the existing handler (Postgres persist + domain bridges). `canvasRef`
+  // undefined = the root canvas ("" key).
+  const handleNodeAddSync = useCallback(
+    (node: CanvasNode, canvasRef: string | undefined) => {
+      crdtAddNode(canvasRef ?? "", node);
+      handleNodeAdd(node, canvasRef);
+    },
+    [crdtAddNode, handleNodeAdd],
+  );
+  const handleNodeUpdateSync = useCallback(
+    (id: string, patch: NodeUpdate, canvasRef: string | undefined) => {
+      crdtUpdateNode(canvasRef ?? "", id, patch);
+      handleNodeUpdate(id, patch, canvasRef);
+    },
+    [crdtUpdateNode, handleNodeUpdate],
+  );
+  const handleNodesUpdateSync = useCallback(
+    (
+      updates: { id: string; patch: NodeUpdate }[],
+      canvasRef: string | undefined,
+    ) => {
+      for (const u of updates) crdtUpdateNode(canvasRef ?? "", u.id, u.patch);
+      handleNodesUpdate(updates, canvasRef);
+    },
+    [crdtUpdateNode, handleNodesUpdate],
+  );
+  const handleNodeDeleteSync = useCallback(
+    (id: string, canvasRef: string | undefined) => {
+      crdtRemoveNode(canvasRef ?? "", id);
+      handleNodeDelete(id, canvasRef);
+    },
+    [crdtRemoveNode, handleNodeDelete],
+  );
+  const handleNodesDeleteSync = useCallback(
+    (ids: string[], canvasRef: string | undefined) => {
+      for (const id of ids) crdtRemoveNode(canvasRef ?? "", id);
+      handleNodesDelete(ids, canvasRef);
+    },
+    [crdtRemoveNode, handleNodesDelete],
+  );
+  const handleEdgeAddSync = useCallback(
+    (edge: CanvasEdge, canvasRef: string | undefined) => {
+      crdtAddEdge(canvasRef ?? "", edge);
+      handleEdgeAdd(edge, canvasRef);
+    },
+    [crdtAddEdge, handleEdgeAdd],
+  );
+  const handleEdgeUpdateSync = useCallback(
+    (id: string, patch: EdgeUpdate, canvasRef: string | undefined) => {
+      crdtUpdateEdge(canvasRef ?? "", id, patch);
+      handleEdgeUpdate(id, patch, canvasRef);
+    },
+    [crdtUpdateEdge, handleEdgeUpdate],
+  );
+  const handleEdgeDeleteSync = useCallback(
+    (id: string, canvasRef: string | undefined) => {
+      crdtRemoveEdge(canvasRef ?? "", id);
+      handleEdgeDelete(id, canvasRef);
+    },
+    [crdtRemoveEdge, handleEdgeDelete],
+  );
   /**
    * Visually highlight edges that have a linked Connection doc. The
    * lib renders edges using `theme.edge.stroke` by default; setting
@@ -853,13 +888,16 @@ export function OrgCanvasBackground({
     [],
   );
 
+  // The live CRDT doc is the render source once seeded/synced; until then we
+  // fall back to the raw projection. `crdtVersion` bumps on any doc change so
+  // remote edits re-render without a refetch.
   const canvasForRender = useMemo<CanvasData>(
     () =>
-      applyPositionOverrides(
-        decorateEdgesWithLinkVisual(root ?? { nodes: [], edges: [] }),
-        "",
+      decorateEdgesWithLinkVisual(
+        crdtReconstruct("") ?? root ?? { nodes: [], edges: [] },
       ),
-    [root, decorateEdgesWithLinkVisual, applyPositionOverrides],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [crdtVersion, root, decorateEdgesWithLinkVisual, crdtReconstruct],
   );
 
   // Sub-canvases also need decoration so links are highlighted on
@@ -868,10 +906,11 @@ export function OrgCanvasBackground({
   const subCanvasesForRender = useMemo<Record<string, CanvasData>>(() => {
     const out: Record<string, CanvasData> = {};
     for (const [ref, data] of Object.entries(subCanvases)) {
-      out[ref] = applyPositionOverrides(decorateEdgesWithLinkVisual(data), ref);
+      out[ref] = decorateEdgesWithLinkVisual(crdtReconstruct(ref) ?? data);
     }
     return out;
-  }, [subCanvases, decorateEdgesWithLinkVisual, applyPositionOverrides]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [crdtVersion, subCanvases, decorateEdgesWithLinkVisual, crdtReconstruct]);
 
   // Set of connection ids referenced by at least one edge across all
   // canvases we've loaded this session. Walked off the same `root` +
@@ -1245,14 +1284,14 @@ export function OrgCanvasBackground({
           onResolveCanvas={onResolveCanvas}
           onBreadcrumbsChange={handleBreadcrumbsChange}
           onSelectionChange={handleSelectionChange}
-          onNodeAdd={handleNodeAdd}
+          onNodeAdd={handleNodeAddSync}
           onNodeUpdate={handleNodeUpdateSync}
           onNodesUpdate={handleNodesUpdateSync}
-          onNodeDelete={handleNodeDelete}
-          onNodesDelete={handleNodesDelete}
-          onEdgeAdd={handleEdgeAdd}
-          onEdgeUpdate={handleEdgeUpdate}
-          onEdgeDelete={handleEdgeDelete}
+          onNodeDelete={handleNodeDeleteSync}
+          onNodesDelete={handleNodesDeleteSync}
+          onEdgeAdd={handleEdgeAddSync}
+          onEdgeUpdate={handleEdgeUpdateSync}
+          onEdgeDelete={handleEdgeDeleteSync}
           canDropNodeOn={canDropNodeOn}
           onNodeDrop={handleNodeDrop}
           nodeContextMenu={nodeContextMenu}
