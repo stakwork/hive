@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createHmac } from "crypto";
 import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 import { getWorkspaceSwarmAccess } from "@/lib/helpers/swarm-access";
+import { transformSwarmUrlToRepo2Graph } from "@/lib/utils/swarm";
 import { db } from "@/lib/db";
 import { optionalEnvVars } from "@/config/env";
 import { getJarvisConfigForWorkspace } from "@/lib/helpers/jarvis-config";
@@ -73,7 +74,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       return handleSwarmAccessError(swarmResult.error);
     }
 
-    const { workspaceId, swarmSecretAlias } = swarmResult.data;
+    const { workspaceId, swarmSecretAlias, swarmUrl } = swarmResult.data;
 
     // Step 3: Fetch the source runner run (IDOR-guarded by workspaceId)
     const sourceRun = await db.stakworkRun.findUnique({
@@ -147,6 +148,17 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
           { status: 409 },
         );
       }
+    }
+
+    // Step 9a: Derive the :3355 repo/agent host — v1-required; hard-guard if empty
+    // transformSwarmUrlToRepo2Graph appends :3355 (or replaces /api with :3355) to
+    // the swarmUrl, matching the repo2graph_url convention on the proven task-dispatch path.
+    const agentHost = transformSwarmUrlToRepo2Graph(swarmUrl);
+    if (!agentHost) {
+      console.error(
+        "[legal/benchmarks/runs/[runId]/eval] swarmUrl resolved to an empty agent host; cannot dispatch eval without a repo/agent endpoint",
+      );
+      return NextResponse.json({ error: "SWARM_URL_MISSING" }, { status: 400 });
     }
 
     // Step 9: Guard — eval workflow must be configured
@@ -323,6 +335,19 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
                 : {}),
               tokenReference: getStakworkTokenReference(),
               hive_base_url: baseUrl,
+              // ── New swarm host + source project id vars ─────────────────────
+              // Key name `swarm_url` is the evidence-based default (snake_case, matching
+              // this route's existing `swarm_secret_alias` convention). The actual key
+              // consumed by workflows 57419/56580 lives in Stakwork — confirm before merge.
+              swarm_url: agentHost,
+              // Included on the assumption it is consumed by workflows 57419/56580;
+              // remove in a follow-up if confirmed otherwise. Both keys intentionally
+              // carry the same :3355 value — both point the chain at the same repo/agent endpoint.
+              repo2graph_url: agentHost,
+              // Inert in v1 — repo/agent reads the already-embedded `agent_logs_json`.
+              // Seeds the future v2 `/logs/agent` stakworkRuns hop only; no live path
+              // should read this field in v1.
+              source_project_id: sourceRun.projectId ?? null,
               // Normalize: STAKWORK_BASE_URL ends in /api/v1 in production; the child
               // appends /api/v1/projects so we strip the trailing segment to avoid
               // a doubled /api/v1/api/v1/projects path.

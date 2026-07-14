@@ -682,6 +682,122 @@ describe("POST /api/workspaces/[slug]/legal/benchmarks/runs/[runId]/eval", () =>
     // Specifically, it should be the origin without the path suffix
     expect(stakworkBaseUrl).toBe("https://api.stakwork.com");
   });
+  // Test 17: vars.swarm_url and vars.repo2graph_url equal transformSwarmUrlToRepo2Graph output
+  test("17. dispatches swarm_url and repo2graph_url equal to transformSwarmUrlToRepo2Graph output (:3355 appended)", async () => {
+    const mockFetch = makeUrlAwareFetch();
+    vi.stubGlobal("fetch", mockFetch);
+
+    await postEval(makeEvalRequest(), {
+      params: Promise.resolve({ slug: "openlaw", runId: SOURCE_RUN_ID }),
+    });
+
+    const stakworkCall = mockFetch.mock.calls.find(([url]: [string]) =>
+      url.includes("/projects"),
+    ) as [string, RequestInit];
+    expect(stakworkCall).toBeDefined();
+
+    const payload = JSON.parse(stakworkCall[1].body as string) as {
+      workflow_params: { set_var: { attributes: { vars: Record<string, unknown> } } };
+    };
+    const vars = payload.workflow_params.set_var.attributes.vars;
+
+    // transformSwarmUrlToRepo2Graph("https://swarm.example.com") → "https://swarm.example.com:3355"
+    // (appends :3355 since the fixture URL has no /api to replace)
+    const expectedAgentHost = "https://swarm.example.com:3355";
+    expect(vars.swarm_url).toBe(expectedAgentHost);
+    expect(vars.repo2graph_url).toBe(expectedAgentHost);
+
+    // Both keys must carry the same :3355 value (deliberate — same repo/agent endpoint)
+    expect(vars.swarm_url).toBe(vars.repo2graph_url);
+
+    // Existing swarm_secret_alias must remain unchanged
+    expect(vars.swarm_secret_alias).toBe("test-swarm-alias");
+  });
+
+  // Test 18: source_project_id equals sourceRun.projectId when populated
+  test("18. dispatches source_project_id equal to sourceRun.projectId when populated", async () => {
+    // makeRunnerRun() sets projectId: 42
+    const mockFetch = makeUrlAwareFetch();
+    vi.stubGlobal("fetch", mockFetch);
+
+    await postEval(makeEvalRequest(), {
+      params: Promise.resolve({ slug: "openlaw", runId: SOURCE_RUN_ID }),
+    });
+
+    const stakworkCall = mockFetch.mock.calls.find(([url]: [string]) =>
+      url.includes("/projects"),
+    ) as [string, RequestInit];
+    const payload = JSON.parse(stakworkCall[1].body as string) as {
+      workflow_params: { set_var: { attributes: { vars: Record<string, unknown> } } };
+    };
+    const vars = payload.workflow_params.set_var.attributes.vars;
+
+    expect(vars.source_project_id).toBe(42);
+  });
+
+  // Test 19: source_project_id is null (not undefined/missing) when sourceRun.projectId is null
+  test("19. dispatches source_project_id as null when sourceRun.projectId is null", async () => {
+    mockDbStakworkRunFindUnique.mockResolvedValue({
+      ...makeRunnerRun(),
+      projectId: null,
+    });
+
+    const mockFetch = makeUrlAwareFetch();
+    vi.stubGlobal("fetch", mockFetch);
+
+    await postEval(makeEvalRequest(), {
+      params: Promise.resolve({ slug: "openlaw", runId: SOURCE_RUN_ID }),
+    });
+
+    const stakworkCall = mockFetch.mock.calls.find(([url]: [string]) =>
+      url.includes("/projects"),
+    ) as [string, RequestInit];
+    const payload = JSON.parse(stakworkCall[1].body as string) as {
+      workflow_params: { set_var: { attributes: { vars: Record<string, unknown> } } };
+    };
+    const vars = payload.workflow_params.set_var.attributes.vars;
+
+    // Must be null, not undefined or absent
+    expect(vars).toHaveProperty("source_project_id");
+    expect(vars.source_project_id).toBeNull();
+  });
+
+  // Test 20: empty agentHost (swarmUrl missing) → 400 SWARM_URL_MISSING, no Stakwork dispatch
+  test("20. returns 400 SWARM_URL_MISSING and does NOT dispatch to Stakwork when swarmUrl resolves empty", async () => {
+    (getWorkspaceSwarmAccess as ReturnType<typeof vi.fn>).mockResolvedValue({
+      success: true,
+      data: {
+        workspaceId: WORKSPACE_ID,
+        swarmName: "test-swarm",
+        swarmUrl: "", // empty → transformSwarmUrlToRepo2Graph returns ""
+        swarmApiKey: "key",
+        swarmStatus: "ACTIVE",
+        poolName: "pool",
+        swarmSecretAlias: "test-swarm-alias",
+      },
+    });
+
+    const mockFetch = makeUrlAwareFetch();
+    vi.stubGlobal("fetch", mockFetch);
+
+    const res = await postEval(makeEvalRequest(), {
+      params: Promise.resolve({ slug: "openlaw", runId: SOURCE_RUN_ID }),
+    });
+
+    // Must return 400, not 201
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error).toBe("SWARM_URL_MISSING");
+
+    // Stakwork dispatch must NOT have been called
+    const stakworkCall = mockFetch.mock.calls.find(([url]: [string]) =>
+      url.includes("/projects"),
+    );
+    expect(stakworkCall).toBeUndefined();
+
+    // No eval run row should have been created
+    expect(mockDbStakworkRunCreate).not.toHaveBeenCalled();
+  });
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
