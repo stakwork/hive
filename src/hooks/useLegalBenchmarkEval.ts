@@ -7,6 +7,7 @@ export interface EvalResult {
   status: EvalResultStatus;
   message: string;
   reason?: "already_ran" | "no_failures";
+  projectId?: number;
 }
 
 interface UseLegalBenchmarkEvalReturn {
@@ -33,7 +34,8 @@ export function useLegalBenchmarkEval(): UseLegalBenchmarkEvalReturn {
         );
 
         if (res.status === 201) {
-          return { status: "started", message: "Eval started." };
+          const body = await res.json() as { evalRunId?: string; projectId?: number | null };
+          return { status: "started", message: "Eval started.", projectId: body.projectId ?? undefined };
         }
 
         if (res.status === 200) {
