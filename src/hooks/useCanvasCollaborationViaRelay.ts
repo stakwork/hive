@@ -1,11 +1,29 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { io, type Socket } from "socket.io-client";
+import * as Y from "yjs";
 import type {
   CanvasCollaboratorInfo,
   UseCanvasCollaborationOptions,
 } from "./useCanvasCollaboration";
+
+/** A live position override for a node, keyed `${canvasRef}:${nodeId}`. */
+export interface NodePositionOverride {
+  x?: number;
+  y?: number;
+}
+
+/** A node move to publish: `ref` is the sub-canvas ("" = root). */
+export interface NodePositionUpdate {
+  ref: string;
+  id: string;
+  x?: number;
+  y?: number;
+}
+
+const LOCAL_ORIGIN = "local";
+const REMOTE_ORIGIN = "remote";
 
 /**
  * Relay (Socket.IO) drop-in replacement for `useCanvasCollaboration`.
@@ -19,6 +37,14 @@ import type {
 
 interface UseCanvasCollaborationResult {
   collaborators: CanvasCollaboratorInfo[];
+  /**
+   * Live node-position overrides from collaborators, keyed
+   * `${canvasRef}:${nodeId}` ("" ref = root). Merge these onto the
+   * projection at render so remote moves show without a refetch.
+   */
+  positionOverrides: Map<string, NodePositionOverride>;
+  /** Broadcast local node moves to collaborators (conflict-free, LWW per node). */
+  publishNodePositions: (updates: NodePositionUpdate[]) => void;
 }
 
 const CLIENT_TTL_MS = 60_000;
@@ -82,6 +108,22 @@ export function useCanvasCollaborationViaRelay({
   const selectedNodeIdRef = useRef<string | null | undefined>(selectedNodeId);
   selectedNodeIdRef.current = selectedNodeId;
   const lastCursorRef = useRef<{ x: number; y: number } | null>(null);
+
+  // ---- Document sync (node positions) over the SAME socket -------------
+  // A single Y.Doc per org canvas holds a positions map keyed by
+  // `${canvasRef}:${nodeId}`. Positions are LWW per node, so peers that
+  // seed independently from the same Postgres projection converge. The
+  // map starts empty — unmoved nodes fall back to the projection.
+  const docRef = useRef<Y.Doc | null>(null);
+  if (!docRef.current) docRef.current = new Y.Doc();
+  const doc = docRef.current;
+  const positions = useMemo(
+    () => doc.getMap<NodePositionOverride>("positions"),
+    [doc],
+  );
+  const [positionOverrides, setPositionOverrides] = useState<
+    Map<string, NodePositionOverride>
+  >(new Map());
 
   const upsertPeer = useCallback(
     (senderId: string, patch: Partial<PeerState>) => {
@@ -186,6 +228,19 @@ export function useCanvasCollaborationViaRelay({
           });
         },
       );
+
+      // Binary Yjs position deltas from collaborators.
+      socket.on("yupdate", (data: { update: ArrayBuffer | Uint8Array }) => {
+        try {
+          const u =
+            data.update instanceof Uint8Array
+              ? data.update
+              : new Uint8Array(data.update);
+          Y.applyUpdate(doc, u, REMOTE_ORIGIN);
+        } catch (err) {
+          console.warn("[canvas-relay] bad yupdate:", err);
+        }
+      });
     })();
 
     return () => {
@@ -268,6 +323,49 @@ export function useCanvasCollaborationViaRelay({
     return () => clearInterval(interval);
   }, [enabled]);
 
+  // Broadcast local position deltas + mirror the Y.Map into React state.
+  // Yjs `update` fires once per transaction with that transaction's binary
+  // delta — exactly what we send. Local deltas go out; remote ones don't
+  // echo (guarded by origin).
+  useEffect(() => {
+    if (!enabled) return;
+    const onUpdate = (update: Uint8Array, origin: unknown) => {
+      if (origin === LOCAL_ORIGIN) {
+        socketRef.current?.emit("yupdate", { update });
+      }
+      const next = new Map<string, NodePositionOverride>();
+      positions.forEach((v, k) => next.set(k, v));
+      setPositionOverrides(next);
+    };
+    doc.on("update", onUpdate);
+    return () => {
+      doc.off("update", onUpdate);
+    };
+  }, [doc, positions, enabled]);
+
+  // Destroy the doc on unmount (frees observers + memory).
+  useEffect(() => {
+    const d = docRef.current;
+    return () => {
+      d?.destroy();
+      docRef.current = null;
+    };
+  }, []);
+
+  const publishNodePositions = useCallback(
+    (updates: NodePositionUpdate[]) => {
+      if (updates.length === 0) return;
+      doc.transact(() => {
+        for (const u of updates) {
+          const key = `${u.ref}:${u.id}`;
+          const cur = positions.get(key) ?? {};
+          positions.set(key, { x: u.x ?? cur.x, y: u.y ?? cur.y });
+        }
+      }, LOCAL_ORIGIN);
+    },
+    [doc, positions],
+  );
+
   // Derive collaborators (self-filtered; cursor/selection only for THIS ref).
   const collaborators: CanvasCollaboratorInfo[] = Array.from(peers.values())
     .filter((p) => p.userId !== userId)
@@ -281,5 +379,5 @@ export function useCanvasCollaborationViaRelay({
         p.cursorRef === canvasRef ? p.selectedNodeId ?? undefined : undefined,
     }));
 
-  return { collaborators };
+  return { collaborators, positionOverrides, publishNodePositions };
 }

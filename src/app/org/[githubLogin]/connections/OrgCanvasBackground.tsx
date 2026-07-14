@@ -14,6 +14,7 @@ import {
   type EdgeUpdate,
   type NodeContextMenuConfig,
   type NodeMenuOption,
+  type NodeUpdate,
   type SystemCanvasHandle,
 } from "system-canvas-react";
 import type {
@@ -736,8 +737,10 @@ export function OrgCanvasBackground({
     refreshRootHiddenLive,
   });
 
-  // Real-time canvas presence — cursors, selection halos, conflict flash
-  const { collaborators } = useCanvasCollaborationViaRelay({
+  // Real-time canvas presence — cursors, selection halos, conflict flash —
+  // plus live node-position sync (moves broadcast over the same socket).
+  const { collaborators, positionOverrides, publishNodePositions } =
+    useCanvasCollaborationViaRelay({
     githubLogin,
     canvasRef: currentRef,
     userId: session?.user?.id ?? "",
@@ -749,6 +752,54 @@ export function OrgCanvasBackground({
     selectedNodeId: selectedNodeIdForPresence,
     enabled: !!(session?.user?.id),
   });
+
+  // Broadcast node moves to collaborators (positions overlay), then run the
+  // normal handler (local state + Postgres autosave). `canvasRef` undefined
+  // means the root canvas ("" key).
+  const handleNodeUpdateSync = useCallback(
+    (id: string, patch: NodeUpdate, canvasRef: string | undefined) => {
+      if (typeof patch.x === "number" || typeof patch.y === "number") {
+        publishNodePositions([
+          { ref: canvasRef ?? "", id, x: patch.x, y: patch.y },
+        ]);
+      }
+      handleNodeUpdate(id, patch, canvasRef);
+    },
+    [handleNodeUpdate, publishNodePositions],
+  );
+
+  const handleNodesUpdateSync = useCallback(
+    (
+      updates: { id: string; patch: NodeUpdate }[],
+      canvasRef: string | undefined,
+    ) => {
+      const moves = updates
+        .filter(
+          (u) => typeof u.patch.x === "number" || typeof u.patch.y === "number",
+        )
+        .map((u) => ({ ref: canvasRef ?? "", id: u.id, x: u.patch.x, y: u.patch.y }));
+      if (moves.length > 0) publishNodePositions(moves);
+      handleNodesUpdate(updates, canvasRef);
+    },
+    [handleNodesUpdate, publishNodePositions],
+  );
+
+  // Merge collaborators' live positions onto a canvas at render. Unmoved
+  // nodes keep their projection position; overrides win per-coordinate.
+  const applyPositionOverrides = useCallback(
+    (data: CanvasData, ref: string): CanvasData => {
+      if (positionOverrides.size === 0) return data;
+      let changed = false;
+      const nodes = (data.nodes ?? []).map((n) => {
+        const o = positionOverrides.get(`${ref}:${n.id}`);
+        if (!o) return n;
+        changed = true;
+        return { ...n, x: o.x ?? n.x, y: o.y ?? n.y };
+      });
+      return changed ? { ...data, nodes } : data;
+    },
+    [positionOverrides],
+  );
 
 
   const {
@@ -803,8 +854,12 @@ export function OrgCanvasBackground({
   );
 
   const canvasForRender = useMemo<CanvasData>(
-    () => decorateEdgesWithLinkVisual(root ?? { nodes: [], edges: [] }),
-    [root, decorateEdgesWithLinkVisual],
+    () =>
+      applyPositionOverrides(
+        decorateEdgesWithLinkVisual(root ?? { nodes: [], edges: [] }),
+        "",
+      ),
+    [root, decorateEdgesWithLinkVisual, applyPositionOverrides],
   );
 
   // Sub-canvases also need decoration so links are highlighted on
@@ -813,10 +868,10 @@ export function OrgCanvasBackground({
   const subCanvasesForRender = useMemo<Record<string, CanvasData>>(() => {
     const out: Record<string, CanvasData> = {};
     for (const [ref, data] of Object.entries(subCanvases)) {
-      out[ref] = decorateEdgesWithLinkVisual(data);
+      out[ref] = applyPositionOverrides(decorateEdgesWithLinkVisual(data), ref);
     }
     return out;
-  }, [subCanvases, decorateEdgesWithLinkVisual]);
+  }, [subCanvases, decorateEdgesWithLinkVisual, applyPositionOverrides]);
 
   // Set of connection ids referenced by at least one edge across all
   // canvases we've loaded this session. Walked off the same `root` +
@@ -1191,8 +1246,8 @@ export function OrgCanvasBackground({
           onBreadcrumbsChange={handleBreadcrumbsChange}
           onSelectionChange={handleSelectionChange}
           onNodeAdd={handleNodeAdd}
-          onNodeUpdate={handleNodeUpdate}
-          onNodesUpdate={handleNodesUpdate}
+          onNodeUpdate={handleNodeUpdateSync}
+          onNodesUpdate={handleNodesUpdateSync}
           onNodeDelete={handleNodeDelete}
           onNodesDelete={handleNodesDelete}
           onEdgeAdd={handleEdgeAdd}
