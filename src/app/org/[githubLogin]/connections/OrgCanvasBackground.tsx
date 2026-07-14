@@ -35,7 +35,7 @@ import { CreateServiceCanvasDialog } from "../_components/CreateServiceCanvasDia
 import { categoryAllowedOnScope, CATEGORY_REGISTRY } from "./canvas-categories";
 import { useCanvasChatStore } from "../_state/canvasChatStore";
 import { useSession } from "next-auth/react";
-import { useCanvasCollaboration } from "@/hooks/useCanvasCollaboration";
+import { useCanvasCollaborationViaRelay } from "@/hooks/useCanvasCollaborationViaRelay";
 import { toast } from "sonner";
 import { Spinner } from "@/components/ui/spinner";
 import { Button } from "@/components/ui/button";
@@ -737,7 +737,7 @@ export function OrgCanvasBackground({
   });
 
   // Real-time canvas presence — cursors, selection halos, conflict flash
-  const { collaborators } = useCanvasCollaboration({
+  const { collaborators } = useCanvasCollaborationViaRelay({
     githubLogin,
     canvasRef: currentRef,
     userId: session?.user?.id ?? "",

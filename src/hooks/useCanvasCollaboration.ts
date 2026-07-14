@@ -19,7 +19,7 @@ interface CollaboratorState extends Omit<CanvasCollaboratorInfo, "selectedNodeId
   lastSeenAt: number;
 }
 
-interface UseCanvasCollaborationOptions {
+export interface UseCanvasCollaborationOptions {
   githubLogin: string;
   /** Current canvas ref — empty string for root. */
   canvasRef: string;

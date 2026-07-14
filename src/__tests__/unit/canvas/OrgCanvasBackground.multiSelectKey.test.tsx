@@ -33,11 +33,9 @@ vi.mock("@/hooks/useWorkspace", () => ({
   }),
 }));
 
-vi.mock("@/hooks/useCanvasCollaboration", () => ({
-  useCanvasCollaboration: () => ({
+vi.mock("@/hooks/useCanvasCollaborationViaRelay", () => ({
+  useCanvasCollaborationViaRelay: () => ({
     collaborators: [],
-    broadcastCursor: vi.fn(),
-    broadcastSelection: vi.fn(),
   }),
 }));
 
