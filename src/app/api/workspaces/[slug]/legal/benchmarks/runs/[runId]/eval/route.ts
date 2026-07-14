@@ -408,7 +408,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     });
 
     // Step 17: Return 201 with evalRunId
-    return NextResponse.json({ evalRunId: evalRun.id }, { status: 201 });
+    return NextResponse.json({ evalRunId: evalRun.id, projectId: projectId ?? null }, { status: 201 });
   } catch (error) {
     console.error("[legal/benchmarks/runs/[runId]/eval POST] Unexpected error:", error);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
