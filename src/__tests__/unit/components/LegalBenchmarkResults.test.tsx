@@ -177,6 +177,62 @@ vi.mock("@/components/ui/badge", () => ({
     ),
 }));
 
+// ─── useEvalRunHistory mock ────────────────────────────────────────────────────
+
+const mockUseEvalRunHistory = vi.fn(() => ({
+  history: [] as import("@/types/legal").EvalRunHistoryEntry[],
+  isLoading: false,
+  error: null as string | null,
+  refetch: vi.fn(),
+}));
+
+vi.mock("@/hooks/useEvalRunHistory", () => ({
+  useEvalRunHistory: (taskSlug: string) => mockUseEvalRunHistory(taskSlug),
+}));
+
+// ─── useLegalBenchmarkEval mock ────────────────────────────────────────────────
+
+const mockRunEval = vi.fn(async () => ({
+  status: "started" as import("@/hooks/useLegalBenchmarkEval").EvalResultStatus,
+  message: "Eval started.",
+}));
+const mockIsSubmitting = { value: false };
+
+vi.mock("@/hooks/useLegalBenchmarkEval", () => ({
+  useLegalBenchmarkEval: () => ({
+    runEval: mockRunEval,
+    get isSubmitting() { return mockIsSubmitting.value; },
+  }),
+}));
+
+// ─── eval-normalizers pass-through mock ──────────────────────────────────────
+
+vi.mock("@/lib/harvey-lab/eval-normalizers", () => ({
+  normalizeOutput: (n: { ref_id: string; properties?: Record<string, unknown> }) => ({
+    ref_id: n.ref_id,
+    attempt_number: 0,
+    result: String(n.properties?.result ?? ""),
+    score: Number(n.properties?.score ?? 0),
+    judge_notes: n.properties?.judge_notes ? String(n.properties.judge_notes) : undefined,
+  }),
+  triggerHasIdentity: () => true,
+}));
+
+// ─── date-fns mock ────────────────────────────────────────────────────────────
+
+vi.mock("date-fns", () => ({
+  formatDistanceToNow: () => "2 hours ago",
+}));
+
+// ─── Skeleton mock ────────────────────────────────────────────────────────────
+
+vi.mock("@/components/ui/skeleton", () => ({
+  Skeleton: ({ className }: { className?: string }) =>
+    React.createElement("div", { "data-testid": "skeleton", className }),
+}));
+
+// ─── EvalRunsBox import (re-exported through LegalBenchmarkResults) ───────────
+
 // ─── Import after mocks ───────────────────────────────────────────────────────
 
 const { LegalBenchmarkResults } = await import(
@@ -190,6 +246,8 @@ describe("LegalBenchmarkResults", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    mockRunEval.mockResolvedValue({ status: "started", message: "Eval started." });
+    mockIsSubmitting.value = false;
     mockUseLegalBenchmarkRun.mockReturnValue({
       run: makeMockRun(),
       isLoading: false,
@@ -198,6 +256,12 @@ describe("LegalBenchmarkResults", () => {
     });
     mockUseProposedFixes.mockReturnValue({
       fixes: [],
+      isLoading: false,
+      error: null,
+      refetch: vi.fn(),
+    });
+    mockUseEvalRunHistory.mockReturnValue({
+      history: [],
       isLoading: false,
       error: null,
       refetch: vi.fn(),
@@ -796,202 +860,128 @@ describe("LegalBenchmarkResults", () => {
     expect(screen.queryByRole("button", { name: "Run Eval" })).toBeNull();
   });
 
-  it("shows loading state while eval request is in flight", async () => {
-    const user = userEvent.setup();
+  // NOTE: The following "Run Eval" interaction tests now exercise EvalRunsBox
+  // (where the button lives). useLegalBenchmarkEval is module-mocked; we drive
+  // behaviour via mockRunEval and use findByText for async state updates.
 
-    let resolveEval!: (value: Response) => void;
-    const pendingFetch = new Promise<Response>((resolve) => { resolveEval = resolve; });
-    vi.stubGlobal("fetch", vi.fn(() => pendingFetch));
-
-    const criteriaResults = makeCriteriaResults();
+  function setupRunEvalTest(
+    criteriaResults: Array<{ id: string; title: string; verdict: string; reasoning: string }>,
+  ) {
     mockUseLegalBenchmarkRun.mockReturnValue({
       run: makeCompleteRunWithCriteria(criteriaResults, false),
       isLoading: false,
       isStale: false,
       refetch: vi.fn(),
     });
+    mockUseEvalRunHistory.mockReturnValue({
+      history: [],
+      isLoading: false,
+      error: null,
+      refetch: vi.fn(),
+    });
+  }
 
+  it("shows loading state while eval request is in flight", async () => {
+    // isSubmitting=true is reflected before render; EvalRunsBox shows "Running…"
+    mockIsSubmitting.value = true;
+
+    setupRunEvalTest(makeCriteriaResults());
     render(React.createElement(LegalBenchmarkResults, { runId: "run-abc", onReset }));
 
-    const button = screen.getByRole("button", { name: "Run Eval" });
-    await user.click(button);
-
-    // While pending, button should be disabled / show loading text
-    expect(screen.getByRole("button", { name: /Running…/ })).toBeDisabled();
-
-    // Resolve so the hook can clean up
-    resolveEval(new Response(JSON.stringify({ evalRunId: "eval-1" }), { status: 201 }));
-    vi.unstubAllGlobals();
+    // With isSubmitting=true, the button text is "Running…" and it is disabled
+    const btn = screen.getByRole("button", { name: /Running…/ });
+    expect(btn).toBeDisabled();
+    mockIsSubmitting.value = false;
   });
 
   it("shows 'Eval started' and disables button after 201 response", async () => {
     const user = userEvent.setup();
-    vi.stubGlobal("fetch", vi.fn(() =>
-      Promise.resolve(new Response(JSON.stringify({ evalRunId: "eval-1" }), { status: 201 }))
-    ));
-
-    const criteriaResults = makeCriteriaResults();
-    mockUseLegalBenchmarkRun.mockReturnValue({
-      run: makeCompleteRunWithCriteria(criteriaResults, false),
-      isLoading: false,
-      isStale: false,
-      refetch: vi.fn(),
-    });
-
+    mockRunEval.mockResolvedValueOnce({ status: "started", message: "Eval started." });
+    setupRunEvalTest(makeCriteriaResults());
     render(React.createElement(LegalBenchmarkResults, { runId: "run-abc", onReset }));
 
     await user.click(screen.getByRole("button", { name: "Run Eval" }));
-
-    expect(screen.getByText("Eval started.")).toBeInTheDocument();
-    // Button should be gone (hidden by evalButtonDisabled + started state) or disabled
-    const runEvalBtn = screen.queryByRole("button", { name: "Run Eval" });
-    if (runEvalBtn) {
-      expect(runEvalBtn).toBeDisabled();
-    }
-
-    vi.unstubAllGlobals();
+    expect(await screen.findByText("Eval started.")).toBeInTheDocument();
   });
 
   it("shows 'already evaluated' message and disables button after 200 skipped already_ran", async () => {
     const user = userEvent.setup();
-    vi.stubGlobal("fetch", vi.fn(() =>
-      Promise.resolve(new Response(JSON.stringify({ skipped: true, reason: "already_ran" }), { status: 200 }))
-    ));
-
-    const criteriaResults = makeCriteriaResults();
-    mockUseLegalBenchmarkRun.mockReturnValue({
-      run: makeCompleteRunWithCriteria(criteriaResults, false),
-      isLoading: false,
-      isStale: false,
-      refetch: vi.fn(),
+    mockRunEval.mockResolvedValueOnce({
+      status: "skipped",
+      message: "This run has already been evaluated.",
+      reason: "already_ran",
     });
-
+    setupRunEvalTest(makeCriteriaResults());
     render(React.createElement(LegalBenchmarkResults, { runId: "run-abc", onReset }));
 
     await user.click(screen.getByRole("button", { name: "Run Eval" }));
-
-    expect(screen.getByText("This run has already been evaluated.")).toBeInTheDocument();
-    const runEvalBtn = screen.queryByRole("button", { name: "Run Eval" });
-    if (runEvalBtn) {
-      expect(runEvalBtn).toBeDisabled();
-    }
-
-    vi.unstubAllGlobals();
+    expect(await screen.findByText("This run has already been evaluated.")).toBeInTheDocument();
   });
 
   it("shows 'no failing criteria' message after 200 skipped no_failures", async () => {
     const user = userEvent.setup();
-    vi.stubGlobal("fetch", vi.fn(() =>
-      Promise.resolve(new Response(JSON.stringify({ skipped: true, reason: "no_failures" }), { status: 200 }))
-    ));
-
-    const criteriaResults = makeCriteriaResults();
-    mockUseLegalBenchmarkRun.mockReturnValue({
-      run: makeCompleteRunWithCriteria(criteriaResults, false),
-      isLoading: false,
-      isStale: false,
-      refetch: vi.fn(),
+    mockRunEval.mockResolvedValueOnce({
+      status: "skipped",
+      message: "No failing criteria to evaluate.",
+      reason: "no_failures",
     });
-
+    setupRunEvalTest(makeCriteriaResults());
     render(React.createElement(LegalBenchmarkResults, { runId: "run-abc", onReset }));
 
     await user.click(screen.getByRole("button", { name: "Run Eval" }));
-
-    expect(screen.getByText("No failing criteria to evaluate.")).toBeInTheDocument();
-
-    vi.unstubAllGlobals();
+    expect(await screen.findByText("No failing criteria to evaluate.")).toBeInTheDocument();
   });
 
   it("shows 'already running' message after 409 response", async () => {
     const user = userEvent.setup();
-    vi.stubGlobal("fetch", vi.fn(() =>
-      Promise.resolve(new Response(JSON.stringify({ error: "ACTIVE_EVAL_RUN_EXISTS" }), { status: 409 }))
-    ));
-
-    const criteriaResults = makeCriteriaResults();
-    mockUseLegalBenchmarkRun.mockReturnValue({
-      run: makeCompleteRunWithCriteria(criteriaResults, false),
-      isLoading: false,
-      isStale: false,
-      refetch: vi.fn(),
+    mockRunEval.mockResolvedValueOnce({
+      status: "active",
+      message: "An eval is already running for this run.",
     });
-
+    setupRunEvalTest(makeCriteriaResults());
     render(React.createElement(LegalBenchmarkResults, { runId: "run-abc", onReset }));
 
     await user.click(screen.getByRole("button", { name: "Run Eval" }));
-
-    expect(screen.getByText("An eval is already running for this run.")).toBeInTheDocument();
-
-    vi.unstubAllGlobals();
+    expect(await screen.findByText("An eval is already running for this run.")).toBeInTheDocument();
   });
 
   it("shows 'not configured yet' message after 503 response", async () => {
     const user = userEvent.setup();
-    vi.stubGlobal("fetch", vi.fn(() =>
-      Promise.resolve(new Response(JSON.stringify({ error: "EVAL_WORKFLOW_NOT_CONFIGURED" }), { status: 503 }))
-    ));
-
-    const criteriaResults = makeCriteriaResults();
-    mockUseLegalBenchmarkRun.mockReturnValue({
-      run: makeCompleteRunWithCriteria(criteriaResults, false),
-      isLoading: false,
-      isStale: false,
-      refetch: vi.fn(),
+    mockRunEval.mockResolvedValueOnce({
+      status: "notConfigured",
+      message: "Eval workflow not configured yet.",
     });
-
+    setupRunEvalTest(makeCriteriaResults());
     render(React.createElement(LegalBenchmarkResults, { runId: "run-abc", onReset }));
 
     await user.click(screen.getByRole("button", { name: "Run Eval" }));
-
-    expect(screen.getByText("Eval workflow not configured yet.")).toBeInTheDocument();
-
-    vi.unstubAllGlobals();
+    expect(await screen.findByText("Eval workflow not configured yet.")).toBeInTheDocument();
   });
 
   it("shows generic friendly message after 404 response without crashing", async () => {
     const user = userEvent.setup();
-    vi.stubGlobal("fetch", vi.fn(() =>
-      Promise.resolve(new Response(JSON.stringify({ error: "Not found" }), { status: 404 }))
-    ));
-
-    const criteriaResults = makeCriteriaResults();
-    mockUseLegalBenchmarkRun.mockReturnValue({
-      run: makeCompleteRunWithCriteria(criteriaResults, false),
-      isLoading: false,
-      isStale: false,
-      refetch: vi.fn(),
+    mockRunEval.mockResolvedValueOnce({
+      status: "error",
+      message: "Failed to start eval. Please try again.",
     });
-
+    setupRunEvalTest(makeCriteriaResults());
     render(React.createElement(LegalBenchmarkResults, { runId: "run-abc", onReset }));
 
     await user.click(screen.getByRole("button", { name: "Run Eval" }));
-
-    expect(screen.getByText("Failed to start eval. Please try again.")).toBeInTheDocument();
-
-    vi.unstubAllGlobals();
+    expect(await screen.findByText("Failed to start eval. Please try again.")).toBeInTheDocument();
   });
 
   it("shows generic friendly message after 500 response without crashing", async () => {
     const user = userEvent.setup();
-    vi.stubGlobal("fetch", vi.fn(() =>
-      Promise.resolve(new Response(JSON.stringify({ error: "Internal server error" }), { status: 500 }))
-    ));
-
-    const criteriaResults = makeCriteriaResults();
-    mockUseLegalBenchmarkRun.mockReturnValue({
-      run: makeCompleteRunWithCriteria(criteriaResults, false),
-      isLoading: false,
-      isStale: false,
-      refetch: vi.fn(),
+    mockRunEval.mockResolvedValueOnce({
+      status: "error",
+      message: "Failed to start eval. Please try again.",
     });
-
+    setupRunEvalTest(makeCriteriaResults());
     render(React.createElement(LegalBenchmarkResults, { runId: "run-abc", onReset }));
 
     await user.click(screen.getByRole("button", { name: "Run Eval" }));
-
-    expect(screen.getByText("Failed to start eval. Please try again.")).toBeInTheDocument();
-
-    vi.unstubAllGlobals();
+    expect(await screen.findByText("Failed to start eval. Please try again.")).toBeInTheDocument();
   });
 
   // ─── Proposed Fixes section ───────────────────────────────────────────────
@@ -1101,5 +1091,306 @@ describe("LegalBenchmarkResults", () => {
     render(React.createElement(LegalBenchmarkResults, { runId: "run-xyz", onReset }));
 
     expect(mockUseProposedFixes).toHaveBeenCalledWith("run-xyz");
+  });
+});
+
+// ─── EvalRunsBox tests ────────────────────────────────────────────────────────
+
+function makeEvalRunHistoryEntry(
+  overrides: Partial<import("@/types/legal").EvalRunHistoryEntry> = {},
+): import("@/types/legal").EvalRunHistoryEntry {
+  return {
+    triggerId: "trigger-1",
+    output: null,
+    createdAt: "2024-01-15T10:00:00.000Z",
+    projectId: null,
+    ...overrides,
+  };
+}
+
+function makeCompleteRunForEvalBox() {
+  return makeMockRun({
+    status: "complete",
+    runnerOutputText: "Output text",
+    runnerRun: makeRunnerRow({
+      status: "COMPLETED",
+      result: {
+        taskSlug: "antitrust/task-1",
+        taskTitle: "Test",
+        n_passed: 5,
+        n_total: 5,
+        all_pass: true,
+      },
+    }),
+  });
+}
+
+describe("EvalRunsBox", () => {
+  const onReset = vi.fn();
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockRunEval.mockResolvedValue({ status: "started", message: "Eval started." });
+    mockIsSubmitting.value = false;
+    mockUseLegalBenchmarkRun.mockReturnValue({
+      run: makeCompleteRunForEvalBox(),
+      isLoading: false,
+      isStale: false,
+      refetch: vi.fn(),
+    });
+    mockUseProposedFixes.mockReturnValue({
+      fixes: [],
+      isLoading: false,
+      error: null,
+      refetch: vi.fn(),
+    });
+    mockUseEvalRunHistory.mockReturnValue({
+      history: [],
+      isLoading: false,
+      error: null,
+      refetch: vi.fn(),
+    });
+  });
+
+  it('renders "Eval Runs" heading below Proposed Fixes card in complete state', () => {
+    render(React.createElement(LegalBenchmarkResults, { runId: "run-abc", onReset }));
+
+    const headings = screen.getAllByText(/Eval Runs/);
+    expect(headings.length).toBeGreaterThan(0);
+
+    // Proposed Fixes should also be present (appears above)
+    expect(screen.getByText("Proposed Fixes")).toBeInTheDocument();
+
+    // Verify DOM order: "Proposed Fixes" before "Eval Runs"
+    const allText = document.body.textContent ?? "";
+    expect(allText.indexOf("Proposed Fixes")).toBeLessThan(allText.indexOf("Eval Runs"));
+  });
+
+  it('"Run Eval" button appears in EvalRunsBox header when showRunEvalButton=true', () => {
+    // Give a failed criterion without cause_type so showRunEvalButton=true
+    mockUseLegalBenchmarkRun.mockReturnValue({
+      run: makeMockRun({
+        status: "complete",
+        runnerOutputText: "Output",
+        runnerRun: makeRunnerRow({
+          status: "COMPLETED",
+          result: {
+            taskSlug: "antitrust/task-1",
+            taskTitle: "Test",
+            n_passed: 0,
+            n_total: 1,
+            all_pass: false,
+            criteria_results: [
+              { id: "crit-1", title: "Accuracy", verdict: "fail", reasoning: "Missing" },
+            ],
+          },
+        }),
+      }),
+      isLoading: false,
+      isStale: false,
+      refetch: vi.fn(),
+    });
+
+    render(React.createElement(LegalBenchmarkResults, { runId: "run-abc", onReset }));
+    expect(screen.getByRole("button", { name: "Run Eval" })).toBeInTheDocument();
+  });
+
+  it('"Run Eval" button is absent from footer in all tested states', () => {
+    // Complete state with all pass (showRunEvalButton=false)
+    render(React.createElement(LegalBenchmarkResults, { runId: "run-abc", onReset }));
+
+    // Footer should only have "Run again"
+    expect(screen.getByRole("button", { name: "Run again" })).toBeInTheDocument();
+    // Confirm Run Eval not in footer (it's not rendered at all since showRunEvalButton=false)
+    expect(screen.queryByRole("button", { name: "Run Eval" })).toBeNull();
+  });
+
+  it("rows are sorted newest-first by createdAt", () => {
+    // The hook returns data pre-sorted (newest first); we pass them in that order
+    // and verify DOM order matches.
+    const newer = makeEvalRunHistoryEntry({
+      triggerId: "trigger-new",
+      createdAt: "2024-01-20T10:00:00.000Z",
+      output: { result: "fail", score: 0.5 },
+    });
+    const older = makeEvalRunHistoryEntry({
+      triggerId: "trigger-old",
+      createdAt: "2024-01-10T10:00:00.000Z",
+      output: { result: "pass", score: 0.9 },
+    });
+    mockUseEvalRunHistory.mockReturnValue({
+      history: [newer, older], // newer first (pre-sorted by hook)
+      isLoading: false,
+      error: null,
+      refetch: vi.fn(),
+    });
+
+    render(React.createElement(LegalBenchmarkResults, { runId: "run-abc", onReset }));
+
+    const failText = screen.getByText("Failed");   // newer entry summary
+    const passText = screen.getByText("—");        // older entry summary (pass, no judge_notes)
+    // "Failed" (newer) must appear before "—" (older) in the DOM
+    const allText = document.body.textContent ?? "";
+    expect(allText.indexOf("Failed")).toBeLessThan(allText.indexOf("—"));
+    expect(failText).toBeInTheDocument();
+    expect(passText).toBeInTheDocument();
+  });
+
+  it("renders judge_notes as Summary for a passing run", () => {
+    mockUseEvalRunHistory.mockReturnValue({
+      history: [
+        makeEvalRunHistoryEntry({
+          output: { result: "pass", score: 0.9, judge_notes: "Well structured response" },
+          createdAt: "2024-01-15T10:00:00.000Z",
+        }),
+      ],
+      isLoading: false,
+      error: null,
+      refetch: vi.fn(),
+    });
+
+    render(React.createElement(LegalBenchmarkResults, { runId: "run-abc", onReset }));
+    expect(screen.getByText("Well structured response")).toBeInTheDocument();
+  });
+
+  it('renders "Failed" as Summary for a result==="fail" row with no judge_notes', () => {
+    mockUseEvalRunHistory.mockReturnValue({
+      history: [
+        makeEvalRunHistoryEntry({
+          output: { result: "fail", score: 0.3 },
+          createdAt: "2024-01-15T10:00:00.000Z",
+        }),
+      ],
+      isLoading: false,
+      error: null,
+      refetch: vi.fn(),
+    });
+
+    render(React.createElement(LegalBenchmarkResults, { runId: "run-abc", onReset }));
+    expect(screen.getByText("Failed")).toBeInTheDocument();
+  });
+
+  it('renders "Evaluating…" when output is null and projectId is non-null', () => {
+    mockUseEvalRunHistory.mockReturnValue({
+      history: [
+        makeEvalRunHistoryEntry({
+          output: null,
+          projectId: 42,
+          createdAt: "2024-01-15T10:00:00.000Z",
+        }),
+      ],
+      isLoading: false,
+      error: null,
+      refetch: vi.fn(),
+    });
+
+    render(React.createElement(LegalBenchmarkResults, { runId: "run-abc", onReset }));
+    expect(screen.getByText("Evaluating…")).toBeInTheDocument();
+  });
+
+  it('renders "—" Summary when output is null and projectId is null', () => {
+    mockUseEvalRunHistory.mockReturnValue({
+      history: [
+        makeEvalRunHistoryEntry({
+          output: null,
+          projectId: null,
+          createdAt: "2024-01-15T10:00:00.000Z",
+        }),
+      ],
+      isLoading: false,
+      error: null,
+      refetch: vi.fn(),
+    });
+
+    render(React.createElement(LegalBenchmarkResults, { runId: "run-abc", onReset }));
+    // "—" should appear as the Summary cell (may also appear in Date column when createdAt is present)
+    const dashes = screen.getAllByText("—");
+    expect(dashes.length).toBeGreaterThan(0);
+  });
+
+  it('renders "No runs yet." in empty state', () => {
+    mockUseEvalRunHistory.mockReturnValue({
+      history: [],
+      isLoading: false,
+      error: null,
+      refetch: vi.fn(),
+    });
+
+    render(React.createElement(LegalBenchmarkResults, { runId: "run-abc", onReset }));
+    expect(screen.getByText("No runs yet.")).toBeInTheDocument();
+  });
+
+  it("renders StakworkRunLink per row when isSuperAdmin=true", () => {
+    mockUseEvalRunHistory.mockReturnValue({
+      history: [
+        makeEvalRunHistoryEntry({
+          triggerId: "trigger-1",
+          projectId: 12345,
+          output: { result: "pass", score: 1.0 },
+          createdAt: "2024-01-15T10:00:00.000Z",
+        }),
+      ],
+      isLoading: false,
+      error: null,
+      refetch: vi.fn(),
+    });
+
+    render(
+      React.createElement(LegalBenchmarkResults, { runId: "run-abc", onReset, isSuperAdmin: true }),
+    );
+    const link = screen.getByRole("link", { name: /view on stakwork/i });
+    expect(link).toBeInTheDocument();
+    expect(link).toHaveAttribute("href", "https://jobs.stakwork.com/admin/projects/12345");
+  });
+
+  it("StakworkRunLink absent when isSuperAdmin=false", () => {
+    mockUseEvalRunHistory.mockReturnValue({
+      history: [
+        makeEvalRunHistoryEntry({
+          triggerId: "trigger-1",
+          projectId: 12345,
+          output: { result: "pass", score: 1.0 },
+          createdAt: "2024-01-15T10:00:00.000Z",
+        }),
+      ],
+      isLoading: false,
+      error: null,
+      refetch: vi.fn(),
+    });
+
+    render(
+      React.createElement(LegalBenchmarkResults, { runId: "run-abc", onReset, isSuperAdmin: false }),
+    );
+    expect(screen.queryByRole("link", { name: /view on stakwork/i })).toBeNull();
+  });
+
+  it("renders relative timestamp via formatDistanceToNow", () => {
+    mockUseEvalRunHistory.mockReturnValue({
+      history: [
+        makeEvalRunHistoryEntry({
+          createdAt: "2024-01-15T10:00:00.000Z",
+          output: { result: "pass", score: 1.0 },
+        }),
+      ],
+      isLoading: false,
+      error: null,
+      refetch: vi.fn(),
+    });
+
+    render(React.createElement(LegalBenchmarkResults, { runId: "run-abc", onReset }));
+    expect(screen.getByText("2 hours ago")).toBeInTheDocument();
+  });
+
+  it("renders 3 Skeleton rows while isLoading=true", () => {
+    mockUseEvalRunHistory.mockReturnValue({
+      history: [],
+      isLoading: true,
+      error: null,
+      refetch: vi.fn(),
+    });
+
+    render(React.createElement(LegalBenchmarkResults, { runId: "run-abc", onReset }));
+    const skeletons = screen.getAllByTestId("skeleton");
+    expect(skeletons).toHaveLength(3);
   });
 });

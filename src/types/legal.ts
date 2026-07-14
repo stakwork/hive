@@ -154,6 +154,25 @@ export interface ProposedFix {
 }
 
 /**
+ * A single entry in the Eval Runs history table, joining an EvalTrigger node
+ * with its matched StakworkRun (if instrumentation succeeded).
+ */
+export interface EvalRunHistoryEntry {
+  /** EvalTrigger.ref_id — used as the join key and stable row key */
+  triggerId: string;
+  /** Parsed output from the matched EvalTriggerOutput node; null when run is still in progress or unmatched */
+  output: {
+    result: string;        // "pass" | "fail"
+    score: number;         // pass_rate 0–1, via Number(n.properties?.score ?? 0)
+    judge_notes?: string;  // undefined when absent
+  } | null;
+  /** ISO timestamp from the matched StakworkRun.createdAt; null when no run matched */
+  createdAt: string | null;
+  /** Stakwork project ID from the matched StakworkRun; null when no run matched */
+  projectId: number | null;
+}
+
+/**
  * Parse a StakworkRun.result JSON string into BenchmarkRunResult.
  * Returns null if the string is absent or unparseable.
  */
