@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { randomUUID, createHmac } from "crypto";
 import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 import { getWorkspaceSwarmAccess } from "@/lib/helpers/swarm-access";
+import { transformSwarmUrlToRepo2Graph } from "@/lib/utils/swarm";
 import { db } from "@/lib/db";
 import { optionalEnvVars } from "@/config/env";
 import { getJarvisConfigForWorkspace } from "@/lib/helpers/jarvis-config";
@@ -70,12 +71,20 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       return handleSwarmAccessError(swarmResult.error);
     }
 
-    const { workspaceId, swarmSecretAlias } = swarmResult.data;
+    const { workspaceId, swarmSecretAlias, swarmUrl } = swarmResult.data;
 
     if (!swarmSecretAlias) {
       return NextResponse.json(
         { error: "Swarm secret alias not configured" },
         { status: 500 },
+      );
+    }
+
+    const agentHost = transformSwarmUrlToRepo2Graph(swarmUrl);
+    if (!agentHost) {
+      return NextResponse.json(
+        { error: "SWARM_URL_MISSING" },
+        { status: 400 },
       );
     }
 
@@ -256,6 +265,8 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
               rubrics_json: JSON.stringify(rubrics),
               webhook_url: webhookUrl,
               graph_base_url: graphBaseUrl,
+              swarm_url: agentHost,
+              repo2graph_url: agentHost,
               swarm_secret_alias: swarmSecretAlias,
               secret: swarmSecretAlias,
               model: BENCHMARK_MODEL,

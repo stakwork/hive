@@ -1,5 +1,6 @@
 import { describe, test, expect, vi, beforeEach, Mock } from "vitest";
 import { NextRequest } from "next/server";
+import { transformSwarmUrlToRepo2Graph } from "@/lib/utils/swarm";
 
 // --- Stable mock references via vi.hoisted ---
 
@@ -432,6 +433,36 @@ describe("POST /api/workspaces/[slug]/legal/benchmarks/run", () => {
     expect(dispatched.webhook_url).toMatch(/type=LEGAL_BENCHMARK_RUNNER/);
     expect(dispatched.webhook_url).toMatch(/run_id=runner-abc/);
     expect(dispatched.webhook_url).toMatch(/workspace_id=ws-1/);
+  });
+
+  test("swarm_url and repo2graph_url are forwarded in the dispatched Stakwork payload", async () => {
+    (getWorkspaceSwarmAccess as Mock).mockResolvedValue(MOCK_SWARM_ACCESS);
+    setupTransactionMock({ runnerResult: { id: "runner-abc" } });
+
+    const capturedPayloads: unknown[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockImplementation((url: string, opts?: RequestInit) => {
+        if (String(url).includes("task.json") || String(url).includes("contents")) {
+          return Promise.resolve({ ok: false, status: 404 });
+        }
+        capturedPayloads.push(opts?.body ? JSON.parse(opts.body as string) : null);
+        return Promise.resolve({ ok: true, json: async () => ({ data: { project_id: 99 } }) });
+      }),
+    );
+
+    await postRun(makeRunRequest({ taskSlug: "task-a", taskTitle: "Task A" }), {
+      params: Promise.resolve({ slug: "openlaw" }),
+    });
+
+    expect(capturedPayloads).toHaveLength(1);
+    const dispatched = capturedPayloads[0] as {
+      workflow_params: { set_var: { attributes: { vars: Record<string, string> } } };
+    };
+    const vars = dispatched.workflow_params.set_var.attributes.vars;
+    const expectedAgentHost = transformSwarmUrlToRepo2Graph("https://swarm.example.com");
+    expect(vars.swarm_url).toBe(expectedAgentHost);
+    expect(vars.repo2graph_url).toBe(expectedAgentHost);
   });
 
   test("no scorer row is created — transaction creates exactly one row", async () => {
