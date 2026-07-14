@@ -269,7 +269,6 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
               repo2graph_url: agentHost,
               swarm_secret_alias: swarmSecretAlias,
               secret: swarmSecretAlias,
-              repo2graph_url: transformSwarmUrlToRepo2Graph(swarmUrl),
               model: BENCHMARK_MODEL,
               apiKey: bifrost?.apiKey ?? getApiKeyForModel(BENCHMARK_MODEL) ?? "",
               baseUrl: bifrost?.baseUrl ?? "",
