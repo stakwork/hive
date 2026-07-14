@@ -70,7 +70,8 @@ export function useEvalRunHistory(taskSlug: string): UseEvalRunHistoryReturn {
     }
     resolveReqId();
     return () => { cancelled = true; };
-  }, [taskSlug, slug, fetchCount]);
+  // Phase 1 depends only on identity — reqId is stable; fetchCount belongs to Phase 2 only
+  }, [taskSlug, slug]);
 
   // Phase 2+3: parallel fetch triggers + runs, then join
   useEffect(() => {

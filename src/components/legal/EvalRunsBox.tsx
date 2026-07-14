@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { Loader2, AlertCircle } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { Button } from "@/components/ui/button";
@@ -50,12 +50,58 @@ export function EvalRunsBox({ taskSlug, runId, isSuperAdmin, showRunEvalButton }
   const { history, isLoading, refetch } = useEvalRunHistory(taskSlug);
   const { runEval, isSubmitting } = useLegalBenchmarkEval();
   const [evalResult, setEvalResult] = useState<EvalResult | null>(null);
+  const [optimisticEntry, setOptimisticEntry] = useState<EvalRunHistoryEntry | null>(null);
+
+  // Refs for polling
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const historyLengthBeforeRef = useRef<number>(0);
+  const initialLoadComplete = useRef<boolean>(false);
+
+  // Track when first load settles
+  useEffect(() => {
+    if (!isLoading) initialLoadComplete.current = true;
+  }, [isLoading]);
+
+  const stopPolling = () => {
+    if (intervalRef.current) clearInterval(intervalRef.current);
+    if (timeoutRef.current) clearTimeout(timeoutRef.current);
+    intervalRef.current = null;
+    timeoutRef.current = null;
+  };
+
+  const startPolling = () => {
+    intervalRef.current = setInterval(() => refetch(), 10_000);
+    timeoutRef.current = setTimeout(() => {
+      stopPolling();
+      setOptimisticEntry(null); // workflow failed or timed out — clear stale spinner
+    }, 3 * 60 * 1000);
+  };
+
+  // Real-data detection: dismiss optimistic entry when history grows past pre-run snapshot
+  useEffect(() => {
+    if (!optimisticEntry || !initialLoadComplete.current) return;
+    if (history.length > historyLengthBeforeRef.current) {
+      setOptimisticEntry(null);
+      stopPolling();
+    }
+  }, [history, optimisticEntry]);
+
+  // Unmount cleanup
+  useEffect(() => () => stopPolling(), []);
 
   const handleRunEval = async () => {
     const result = await runEval(runId);
     setEvalResult(result);
-    if (result.status === "started") {
-      refetch();
+    if (result.status === "started" && result.projectId && initialLoadComplete.current) {
+      historyLengthBeforeRef.current = history.length;
+      setOptimisticEntry({
+        triggerId: `optimistic-${result.projectId}`,
+        output: null,
+        projectId: result.projectId,
+        createdAt: new Date().toISOString(),
+      });
+      startPolling();
     }
   };
 
@@ -64,6 +110,9 @@ export function EvalRunsBox({ taskSlug, runId, isSuperAdmin, showRunEvalButton }
     evalResult?.status === "started" ||
     evalResult?.status === "active" ||
     (evalResult?.status === "skipped" && evalResult.reason === "already_ran");
+
+  // Merge optimistic entry at the top for display
+  const displayHistory = optimisticEntry ? [optimisticEntry, ...history] : history;
 
   return (
     <div className="rounded-lg border bg-card">
@@ -111,7 +160,7 @@ export function EvalRunsBox({ taskSlug, runId, isSuperAdmin, showRunEvalButton }
             </tr>
           </thead>
           <tbody className="divide-y">
-            {isLoading ? (
+            {isLoading && history.length === 0 && !optimisticEntry ? (
               <>
                 {[0, 1, 2].map((i) => (
                   <tr key={i}>
@@ -121,14 +170,14 @@ export function EvalRunsBox({ taskSlug, runId, isSuperAdmin, showRunEvalButton }
                   </tr>
                 ))}
               </>
-            ) : history.length === 0 ? (
+            ) : displayHistory.length === 0 ? (
               <tr>
                 <td colSpan={4} className="px-4 py-6 text-center text-sm text-muted-foreground">
                   No runs yet.
                 </td>
               </tr>
             ) : (
-              history.map((entry) => (
+              displayHistory.map((entry) => (
                 <tr key={entry.triggerId} className="hover:bg-muted/30 transition-colors">
                   <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">
                     {entry.createdAt
