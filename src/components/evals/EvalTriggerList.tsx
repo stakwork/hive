@@ -5,6 +5,13 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { ArrowRight, Check, ChevronRight, Loader2, Play, X } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import {
+  normalizeOutput,
+  triggerHasIdentity,
+  type EvalTrigger,
+  type EvalTriggerOutput,
+  type RawJarvisNode,
+} from "@/lib/harvey-lab/eval-normalizers";
 
 export interface EvalTriggerListProps {
   evalSetId: string;
@@ -12,51 +19,7 @@ export interface EvalTriggerListProps {
   slug: string;
 }
 
-interface EvalTriggerOutput {
-  ref_id: string;
-  attempt_number: number;
-  result: string;
-  score: number;
-  judge_notes?: string;
-}
-
-interface EvalTrigger {
-  ref_id: string;
-  properties: {
-    agent?: string;
-    start_point?: string;
-    end_point?: string;
-    environment?: string;
-    run_count?: number;
-    change_type?: string;
-    desirable_cases?: string[];
-    undesirable_cases?: string[];
-    [key: string]: unknown;
-  };
-  outputs?: EvalTriggerOutput[];
-}
-
-type RawOutputNode = { ref_id: string; properties?: Record<string, unknown> };
-type RawTriggerNode = { ref_id: string; properties: EvalTrigger["properties"]; outputs?: RawOutputNode[] };
-
-function normalizeOutput(n: RawOutputNode): EvalTriggerOutput {
-  return {
-    ref_id: n.ref_id,
-    attempt_number: Number(n.properties?.attempt_number ?? 0),
-    result: String(n.properties?.result ?? ""),
-    score: Number(n.properties?.score ?? 0),
-    judge_notes: n.properties?.judge_notes ? String(n.properties.judge_notes) : undefined,
-  };
-}
-
-// Skip triggers with no identifiable source (legacy/empty data) — they have no
-// agent, start point, or end point and only add noise to the list.
-function triggerHasIdentity(t: EvalTrigger): boolean {
-  const agent = String(t.properties?.agent ?? "").trim();
-  const start = String(t.properties?.start_point ?? "").trim();
-  const end = String(t.properties?.end_point ?? "").trim();
-  return Boolean(agent || start || end);
-}
+type RawTriggerNode = { ref_id: string; properties: EvalTrigger["properties"]; outputs?: RawJarvisNode[] };
 
 export function EvalTriggerList({ evalSetId, reqId, slug }: EvalTriggerListProps) {
   const [expanded, setExpanded] = useState(false);
@@ -74,7 +37,7 @@ export function EvalTriggerList({ evalSetId, reqId, slug }: EvalTriggerListProps
       const data = await res.json();
       const nodes: EvalTrigger[] = (data?.data?.nodes ?? []).map((t: RawTriggerNode) => ({
         ...t,
-        outputs: (t.outputs ?? []).map(normalizeOutput),
+        outputs: (t.outputs ?? []).map(normalizeOutput).filter((o): o is EvalTriggerOutput => o !== null),
       }));
       setTriggers(nodes);
       setLoaded(true);
@@ -108,7 +71,7 @@ export function EvalTriggerList({ evalSetId, reqId, slug }: EvalTriggerListProps
         `/api/workspaces/${slug}/evals/${evalSetId}/requirements/${reqId}/triggers/${triggerId}/outputs`,
       );
       const outData = await outRes.json();
-      const outputs: EvalTriggerOutput[] = (outData?.data?.nodes ?? []).map(normalizeOutput);
+      const outputs: EvalTriggerOutput[] = (outData?.data?.nodes as RawJarvisNode[] ?? []).map(normalizeOutput).filter((o): o is EvalTriggerOutput => o !== null);
 
       setTriggers((prev) =>
         prev.map((t) => (t.ref_id === triggerId ? { ...t, outputs } : t)),
