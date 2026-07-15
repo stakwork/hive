@@ -9,6 +9,7 @@ import {
   getResolvedPrompt,
   listPromptVersions,
   getResolvedPromptVersion,
+  getRawPromptValue,
 } from "@/services/prompts/prompt-read";
 import { isDevelopmentMode } from "@/lib/runtime";
 import { LEGAL_SLUGS } from "@/lib/eval-capture-slugs";
@@ -1376,7 +1377,28 @@ export async function mcpGetPrompt(
   _auth: WorkspaceAuth,
   idOrName: string,
   variables: Record<string, string>,
+  raw?: boolean,
 ): Promise<McpToolResult> {
+  if (raw) {
+    const result = await getRawPromptValue(idOrName);
+
+    if ("notFound" in result) {
+      return mcpError(`Error: prompt '${idOrName}' not found`);
+    }
+    if ("error" in result) {
+      return mcpError(`Error: ${result.error}`);
+    }
+
+    return mcpOk({
+      id: result.id,
+      name: result.name,
+      versionId: result.versionId,
+      versionNumber: result.versionNumber,
+      raw: true,
+      value: result.value,
+    });
+  }
+
   const result = await getResolvedPrompt(idOrName, variables);
 
   if ("notFound" in result) {
@@ -1425,7 +1447,28 @@ export async function mcpGetPromptVersion(
   idOrName: string,
   versionId: string,
   variables: Record<string, string>,
+  raw?: boolean,
 ): Promise<McpToolResult> {
+  if (raw) {
+    const result = await getRawPromptValue(idOrName, versionId);
+
+    if ("notFound" in result) {
+      return mcpError(`Error: version '${versionId}' not found for prompt '${idOrName}'`);
+    }
+    if ("error" in result) {
+      return mcpError(`Error: ${result.error}`);
+    }
+
+    return mcpOk({
+      id: result.id,
+      name: result.name,
+      versionId: result.versionId,
+      versionNumber: result.versionNumber,
+      raw: true,
+      value: result.value,
+    });
+  }
+
   const result = await getResolvedPromptVersion(idOrName, versionId, variables);
 
   if ("notFound" in result) {

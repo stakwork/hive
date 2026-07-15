@@ -296,3 +296,160 @@ describe("auth enforcement", () => {
     expect(typeof mcpGetPromptVersion).toBe("function");
   });
 });
+
+// ─── raw flag — mcpGetPrompt ──────────────────────────────────────────────────
+
+describe("mcpGetPrompt — raw flag", () => {
+  test("raw: true returns verbatim value with {{VAR}} tokens intact", async () => {
+    // BASE prompt v1 = "Greet {{user_name}} with {{MCP_TEST_CHILD}}"
+    // Passing user_name variable — it must be ignored in raw mode.
+    const result = await mcpGetPrompt(auth, BASE_PROMPT_NAME, { user_name: "Alice" }, true);
+
+    const data = parseOk<{
+      id: string;
+      name: string;
+      versionId: string;
+      versionNumber: number;
+      raw: boolean;
+      value: string;
+    }>(result);
+
+    expect(data.raw).toBe(true);
+    expect(data.name).toBe(BASE_PROMPT_NAME);
+    // Both placeholders must remain completely unresolved.
+    expect(data.value).toBe("Greet {{user_name}} with {{MCP_TEST_CHILD}}");
+    expect(data.value).not.toContain("Alice");
+    expect(data.value).not.toContain("child resolved content");
+    // Must NOT have resolvedText key.
+    expect((data as Record<string, unknown>).resolvedText).toBeUndefined();
+    // Must NOT have missingVariables key.
+    expect((data as Record<string, unknown>).missingVariables).toBeUndefined();
+  });
+
+  test("raw: true returns published version (same anchor as resolved path)", async () => {
+    // BASE has publishedVersionId pointing to v1; v2 is unpublished draft.
+    const result = await mcpGetPrompt(auth, BASE_PROMPT_NAME, {}, true);
+
+    const data = parseOk<{ versionId: string; versionNumber: number }>(result);
+    expect(data.versionId).toBe(baseVersionId);
+    expect(data.versionNumber).toBe(1);
+  });
+
+  test("raw: true with unknown prompt → error result", async () => {
+    const result = await mcpGetPrompt(auth, "MCP_TEST_DOES_NOT_EXIST", {}, true);
+
+    const text = parseError(result);
+    expect(text).toMatch(/not found/i);
+    expect(text).toContain("MCP_TEST_DOES_NOT_EXIST");
+  });
+
+  test("raw omitted → existing resolved shape unchanged (backward compat)", async () => {
+    const result = await mcpGetPrompt(auth, BASE_PROMPT_NAME, { user_name: "Dave" });
+
+    const data = parseOk<{
+      resolvedText: string;
+      missingVariables: string[];
+    }>(result);
+
+    // Resolution still works as before.
+    expect(data.resolvedText).toBe("Greet Dave with child resolved content");
+    expect(data.missingVariables).toEqual([]);
+    // raw and value keys must not exist on resolved response.
+    expect((data as Record<string, unknown>).raw).toBeUndefined();
+    expect((data as Record<string, unknown>).value).toBeUndefined();
+  });
+
+  test("empty variables ≠ raw — empty vars still expands nested prompt", async () => {
+    // Resolved with empty variables: {{MCP_TEST_CHILD}} is expanded (it's a real prompt),
+    // {{user_name}} stays intact.
+    const resolvedResult = await mcpGetPrompt(auth, BASE_PROMPT_NAME, {});
+    const resolved = parseOk<{ resolvedText: string }>(resolvedResult);
+    expect(resolved.resolvedText).toContain("child resolved content");
+
+    // Raw with empty variables: nothing is expanded.
+    const rawResult = await mcpGetPrompt(auth, BASE_PROMPT_NAME, {}, true);
+    const raw = parseOk<{ value: string }>(rawResult);
+    expect(raw.value).toContain("{{MCP_TEST_CHILD}}");
+    expect(raw.value).not.toContain("child resolved content");
+
+    // The two paths must diverge for the same input.
+    expect(resolved.resolvedText).not.toBe(raw.value);
+  });
+});
+
+// ─── raw flag — mcpGetPromptVersion ──────────────────────────────────────────
+
+describe("mcpGetPromptVersion — raw flag", () => {
+  test("raw: true returns specific version's value verbatim", async () => {
+    // v1 = "Greet {{user_name}} with {{MCP_TEST_CHILD}}"
+    // Passing user_name — it must be ignored in raw mode.
+    const result = await mcpGetPromptVersion(
+      auth,
+      BASE_PROMPT_NAME,
+      baseVersionId,
+      { user_name: "Eve" },
+      true,
+    );
+
+    const data = parseOk<{
+      versionId: string;
+      versionNumber: number;
+      raw: boolean;
+      value: string;
+    }>(result);
+
+    expect(data.raw).toBe(true);
+    expect(data.versionId).toBe(baseVersionId);
+    expect(data.versionNumber).toBe(1);
+    expect(data.value).toBe("Greet {{user_name}} with {{MCP_TEST_CHILD}}");
+    expect(data.value).not.toContain("Eve");
+    expect(data.value).not.toContain("child resolved content");
+    expect((data as Record<string, unknown>).resolvedText).toBeUndefined();
+    expect((data as Record<string, unknown>).missingVariables).toBeUndefined();
+  });
+
+  test("raw: true returns unpublished version v2 verbatim", async () => {
+    // v2 = "Updated base text"
+    const result = await mcpGetPromptVersion(
+      auth,
+      BASE_PROMPT_NAME,
+      baseVersion2Id,
+      {},
+      true,
+    );
+
+    const data = parseOk<{ versionId: string; value: string }>(result);
+    expect(data.versionId).toBe(baseVersion2Id);
+    expect(data.value).toBe("Updated base text");
+  });
+
+  test("raw: true IDOR guard — versionId from different prompt → error", async () => {
+    // childVersionId belongs to CHILD prompt, not BASE.
+    const result = await mcpGetPromptVersion(
+      auth,
+      BASE_PROMPT_NAME,
+      childVersionId,
+      {},
+      true,
+    );
+
+    const text = parseError(result);
+    expect(text).toMatch(/not found/i);
+    expect(text).toContain(BASE_PROMPT_NAME);
+  });
+
+  test("raw omitted → existing resolved shape unchanged (backward compat)", async () => {
+    const result = await mcpGetPromptVersion(
+      auth,
+      BASE_PROMPT_NAME,
+      baseVersionId,
+      { user_name: "Frank" },
+    );
+
+    const data = parseOk<{ resolvedText: string; missingVariables: string[] }>(result);
+    expect(data.resolvedText).toBe("Greet Frank with child resolved content");
+    expect(data.missingVariables).toEqual([]);
+    expect((data as Record<string, unknown>).raw).toBeUndefined();
+    expect((data as Record<string, unknown>).value).toBeUndefined();
+  });
+});
