@@ -73,6 +73,11 @@ export async function updateJanitorConfig(
     });
   }
 
+  // Tenant guard: legalBenchmarkRecursionEnabled may only be written for the openlaw workspace
+  if ('legalBenchmarkRecursionEnabled' in data && workspaceSlug !== 'openlaw') {
+    delete (data as Partial<typeof data>).legalBenchmarkRecursionEnabled;
+  }
+
   return await db.janitorConfig.update({
     where: { id: config.id },
     data,

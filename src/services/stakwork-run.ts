@@ -875,7 +875,8 @@ export async function processStakworkRunWebhook(
   if (
     (run.type === StakworkRunType.LEGAL_BENCHMARK_RUNNER ||
       run.type === StakworkRunType.LEGAL_BENCHMARK_SCORER ||
-      run.type === StakworkRunType.LEGAL_BENCHMARK_EVAL) &&
+      run.type === StakworkRunType.LEGAL_BENCHMARK_EVAL ||
+      run.type === StakworkRunType.LEGAL_BENCHMARK_RECURSION) &&
     run.workspaceId !== workspace_id
   ) {
     logger.error("[legal-benchmark] Workspace mismatch — rejecting webhook", "stakwork-run", {
@@ -921,7 +922,8 @@ export async function processStakworkRunWebhook(
   if (
     run.type === StakworkRunType.LEGAL_BENCHMARK_RUNNER ||
     run.type === StakworkRunType.LEGAL_BENCHMARK_SCORER ||
-    run.type === StakworkRunType.LEGAL_BENCHMARK_EVAL
+    run.type === StakworkRunType.LEGAL_BENCHMARK_EVAL ||
+    run.type === StakworkRunType.LEGAL_BENCHMARK_RECURSION
   ) {
     const { run_token } = queryParams;
     const webhookSecret = process.env.NEXTAUTH_SECRET ?? "";
@@ -964,7 +966,8 @@ export async function processStakworkRunWebhook(
   if (
     (run.type === StakworkRunType.LEGAL_BENCHMARK_RUNNER ||
       run.type === StakworkRunType.LEGAL_BENCHMARK_SCORER ||
-      run.type === StakworkRunType.LEGAL_BENCHMARK_EVAL) &&
+      run.type === StakworkRunType.LEGAL_BENCHMARK_EVAL ||
+      run.type === StakworkRunType.LEGAL_BENCHMARK_RECURSION) &&
     serializedResult !== null
   ) {
     const incomingFields =
@@ -1082,6 +1085,23 @@ export async function processStakworkRunWebhook(
   // ── Step 2d: LEGAL_BENCHMARK_EVAL — annotate cause fields onto source run ──
   if (run.type === StakworkRunType.LEGAL_BENCHMARK_EVAL) {
     await processLegalBenchmarkEvalWebhook(run, serializedResult, workspace_id, status);
+    try {
+      await pusherServer.trigger(getWorkspaceChannelName(run.workspace.slug), PUSHER_EVENTS.STAKWORK_RUN_UPDATE, {
+        runId: run.id,
+        type: run.type,
+        status,
+        featureId: run.featureId,
+        timestamp: new Date(),
+      });
+    } catch (pusherError) {
+      logger.error("Pusher trigger failed (non-fatal)", "stakwork-run", { error: String(pusherError) });
+    }
+    return { runId: run.id, status, dataType };
+  }
+
+  // ── Step 2e: LEGAL_BENCHMARK_RECURSION — mark completed, broadcast ─────────
+  if (run.type === StakworkRunType.LEGAL_BENCHMARK_RECURSION) {
+    await processLegalBenchmarkRecursionWebhook(run, status);
     try {
       await pusherServer.trigger(getWorkspaceChannelName(run.workspace.slug), PUSHER_EVENTS.STAKWORK_RUN_UPDATE, {
         runId: run.id,
@@ -1777,6 +1797,30 @@ async function processLegalBenchmarkEvalWebhook(
         { runId: run.id, sourceRunId, error: String(err) },
       );
     }
+  }
+}
+
+/**
+ * Handle the LEGAL_BENCHMARK_RECURSION webhook (workflow 57456):
+ * Mark the StakworkRun row as COMPLETED.
+ * Workflow 57456 updates LegalBenchmarkRecursion.lastRunId autonomously via
+ * the injected hive_api_token/hive_base_url, so no DB join is needed here.
+ */
+async function processLegalBenchmarkRecursionWebhook(
+  run: RunWithWorkspace,
+  mappedStatus: WorkflowStatus,
+): Promise<void> {
+  try {
+    await db.stakworkRun.update({
+      where: { id: run.id },
+      data: { status: mappedStatus },
+    });
+  } catch (err) {
+    logger.error(
+      "[legal-benchmark/recursion] Failed to mark recursion run completed (non-fatal)",
+      "stakwork-run",
+      { runId: run.id, error: String(err) },
+    );
   }
 }
 
