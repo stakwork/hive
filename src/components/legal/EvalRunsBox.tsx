@@ -19,6 +19,8 @@ interface EvalRunsBoxProps {
   isSuperAdmin: boolean;
   /** Parent decides based on role/feature flags — hides the Run Eval button when false */
   showRunEvalButton: boolean;
+  /** When true, shows the Recursion enroll button alongside Run Eval */
+  showRecursionButton?: boolean;
 }
 
 function SummaryCell({ entry }: { entry: EvalRunHistoryEntry }) {
@@ -46,11 +48,18 @@ function SummaryCell({ entry }: { entry: EvalRunHistoryEntry }) {
   return <span>{output.judge_notes ?? "—"}</span>;
 }
 
-export function EvalRunsBox({ taskSlug, runId, isSuperAdmin, showRunEvalButton }: EvalRunsBoxProps) {
+export function EvalRunsBox({
+  taskSlug,
+  runId,
+  isSuperAdmin,
+  showRunEvalButton,
+  showRecursionButton = false,
+}: EvalRunsBoxProps) {
   const { history, isLoading, refetch } = useEvalRunHistory(taskSlug);
   const { runEval, isSubmitting } = useLegalBenchmarkEval();
   const [evalResult, setEvalResult] = useState<EvalResult | null>(null);
   const [optimisticEntry, setOptimisticEntry] = useState<EvalRunHistoryEntry | null>(null);
+  const [recursionPending, setRecursionPending] = useState(false);
 
   // Refs for polling
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -111,6 +120,33 @@ export function EvalRunsBox({ taskSlug, runId, isSuperAdmin, showRunEvalButton }
     evalResult?.status === "active" ||
     (evalResult?.status === "skipped" && evalResult.reason === "already_ran");
 
+  const handleEnrollRecursion = async () => {
+    setRecursionPending(true);
+    try {
+      const res = await fetch("/api/workspaces/openlaw/legal/benchmarks/recursion", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ taskSlug, runId }),
+      });
+      if (res.status === 409) {
+        // Dynamically import toast to avoid SSR issues
+        const { toast } = await import("sonner");
+        toast.warning("Already enrolled");
+      } else if (res.ok) {
+        const { toast } = await import("sonner");
+        toast.success("Enrolled in recursion loop");
+      } else {
+        const { toast } = await import("sonner");
+        toast.error("Failed to enroll");
+      }
+    } catch {
+      const { toast } = await import("sonner");
+      toast.error("Failed to enroll");
+    } finally {
+      setRecursionPending(false);
+    }
+  };
+
   // Merge optimistic entry at the top for display
   const displayHistory = optimisticEntry ? [optimisticEntry, ...history] : history;
 
@@ -128,24 +164,43 @@ export function EvalRunsBox({ taskSlug, runId, isSuperAdmin, showRunEvalButton }
           </div>
         )}
 
-        {showRunEvalButton && (
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleRunEval}
-            disabled={evalButtonDisabled}
-            className="shrink-0 ml-auto"
-          >
-            {isSubmitting ? (
-              <>
-                <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" />
-                Running…
-              </>
-            ) : (
-              "Run Eval"
-            )}
-          </Button>
-        )}
+        <div className="flex items-center gap-2 shrink-0 ml-auto">
+          {showRunEvalButton && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleRunEval}
+              disabled={evalButtonDisabled}
+            >
+              {isSubmitting ? (
+                <>
+                  <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" />
+                  Running…
+                </>
+              ) : (
+                "Run Eval"
+              )}
+            </Button>
+          )}
+
+          {showRecursionButton && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleEnrollRecursion}
+              disabled={recursionPending}
+            >
+              {recursionPending ? (
+                <>
+                  <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" />
+                  Enrolling…
+                </>
+              ) : (
+                "Recursion"
+              )}
+            </Button>
+          )}
+        </div>
       </div>
 
       {/* Table */}
