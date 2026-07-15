@@ -43,6 +43,7 @@ export async function executeScheduledLegalBenchmarkRecursion(): Promise<Recursi
     select: {
       id: true,
       ownerId: true,
+      janitorConfig: { select: { legalBenchmarkRecursionEnabled: true } },
       swarm: {
         select: {
           swarmUrl: true,
@@ -55,6 +56,11 @@ export async function executeScheduledLegalBenchmarkRecursion(): Promise<Recursi
   if (!openlawWorkspace) {
     console.error("[LegalRecursionCron] openlaw workspace not found — aborting");
     return { ...result, success: false, errors: ["openlaw workspace not found"] };
+  }
+
+  if (!openlawWorkspace.janitorConfig?.legalBenchmarkRecursionEnabled) {
+    console.log("[LegalRecursionCron] Disabled via DB flag — skipping");
+    return { ...result, success: true, errors: [] };
   }
 
   if (!openlawWorkspace.swarm) {

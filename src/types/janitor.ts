@@ -12,6 +12,7 @@ export interface JanitorConfigUpdate {
   ticketSweepEnabled?: boolean;
   deduplicationEnabled?: boolean;
   lingoExtractionEnabled?: boolean;
+  legalBenchmarkRecursionEnabled?: boolean;
   // Stale PR Task Janitor settings
   stalePrTasksEnabled?: boolean;
   stalePrTaskThresholdDays?: number;

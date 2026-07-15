@@ -30,6 +30,7 @@ export interface JanitorConfigFields {
   generalRefactoringEnabled: boolean;
   deduplicationEnabled: boolean;
   lingoExtractionEnabled: boolean;
+  legalBenchmarkRecursionEnabled?: boolean;
 }
 
 /**
@@ -119,7 +120,7 @@ export function isJanitorEnabled(
   janitorType: JanitorType
 ): boolean {
   const fieldName = getEnabledFieldName(janitorType);
-  return janitorConfig[fieldName];
+  return janitorConfig[fieldName] ?? false;
 }
 
 /**
