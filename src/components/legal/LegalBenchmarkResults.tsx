@@ -29,7 +29,14 @@ function SpinnerMessage({ message }: { message: string }) {
 
 export function LegalBenchmarkResults({ runId, onReset, isSuperAdmin = false }: LegalBenchmarkResultsProps) {
   const { run, isLoading, isStale, refetch } = useLegalBenchmarkRun(runId);
-  const { fixes, isLoading: fixesLoading, refetch: refetchFixes } = useProposedFixes(runId);
+  const {
+    fixes,
+    isLoading: fixesLoading,
+    refetch: refetchFixes,
+    accept: acceptFix,
+    reject: rejectFix,
+    pendingRefIds,
+  } = useProposedFixes(runId);
 
   const allPass = run?.runnerRun?.result?.all_pass;
   const criteriaResults = run?.runnerRun?.result?.criteria_results;
@@ -301,7 +308,13 @@ export function LegalBenchmarkResults({ runId, onReset, isSuperAdmin = false }: 
             ) : (
               <div className="space-y-3">
                 {fixes.map((fix, i) => (
-                  <ProposedFixCard key={fix.ref_id ?? fix.criterion_id ?? i} fix={fix} />
+                  <ProposedFixCard
+                    key={fix.ref_id ?? fix.criterion_id ?? i}
+                    fix={fix}
+                    onAccept={acceptFix}
+                    onReject={rejectFix}
+                    isPending={fix.ref_id ? pendingRefIds.has(fix.ref_id) : false}
+                  />
                 ))}
               </div>
             )}
