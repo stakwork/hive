@@ -4,7 +4,7 @@ import path from "path";
 
 // ── Stable hoisted mock references ──────────────────────────────────────────
 
-const mockDispatchLegalBenchmarkEvalRun = vi.hoisted(() => vi.fn());
+const mockDispatchLegalBenchmarkRecursionRun = vi.hoisted(() => vi.fn());
 
 const mockDbWorkspaceFindUnique = vi.hoisted(() => vi.fn());
 const mockDbLegalBenchmarkRecursionFindMany = vi.hoisted(() => vi.fn());
@@ -15,7 +15,7 @@ const mockDbStakworkRunFindUnique = vi.hoisted(() => vi.fn());
 // ── Module mocks ─────────────────────────────────────────────────────────────
 
 vi.mock("@/services/legal-benchmark-eval", () => ({
-  dispatchLegalBenchmarkEvalRun: mockDispatchLegalBenchmarkEvalRun,
+  dispatchLegalBenchmarkRecursionRun: mockDispatchLegalBenchmarkRecursionRun,
 }));
 
 vi.mock("@/lib/db", () => ({
@@ -42,12 +42,7 @@ import { executeScheduledLegalBenchmarkRecursion } from "@/services/legal-recurs
 
 const OPENLAW_WORKSPACE = {
   id: "ws-openlaw-1",
-  ownerId: "owner-user-1",
   janitorConfig: { legalBenchmarkRecursionEnabled: true },
-  swarm: {
-    swarmUrl: "https://jarvis.example.com",
-    swarmSecretAlias: "test-secret-alias",
-  },
 };
 
 const makeEntry = (overrides: Partial<{
@@ -142,7 +137,7 @@ describe("executeScheduledLegalBenchmarkRecursion", () => {
     // Default happy-path workspace setup
     mockDbWorkspaceFindUnique.mockResolvedValue(OPENLAW_WORKSPACE);
 
-    // No in-flight evals by default
+    // No in-flight recursion runs by default
     mockDbStakworkRunFindMany.mockResolvedValue([]);
 
     // No active entries by default
@@ -150,7 +145,7 @@ describe("executeScheduledLegalBenchmarkRecursion", () => {
 
     mockDbLegalBenchmarkRecursionUpdate.mockResolvedValue({});
     mockDbStakworkRunFindUnique.mockResolvedValue(null);
-    mockDispatchLegalBenchmarkEvalRun.mockResolvedValue({ evalRunId: "eval-run-new", projectId: 42 });
+    mockDispatchLegalBenchmarkRecursionRun.mockResolvedValue({ recursionRunId: "recursion-run-new" });
   });
 
   // ── Workspace guard tests ───────────────────────────────────────────────────
@@ -162,20 +157,7 @@ describe("executeScheduledLegalBenchmarkRecursion", () => {
 
     expect(result.success).toBe(false);
     expect(result.errors[0]).toContain("openlaw workspace not found");
-    expect(mockDispatchLegalBenchmarkEvalRun).not.toHaveBeenCalled();
-  });
-
-  it("returns failure if swarm is not configured", async () => {
-    mockDbWorkspaceFindUnique.mockResolvedValue({
-      ...OPENLAW_WORKSPACE,
-      swarm: null,
-    });
-
-    const result = await executeScheduledLegalBenchmarkRecursion();
-
-    expect(result.success).toBe(false);
-    expect(result.errors[0]).toContain("swarm not configured");
-    expect(mockDispatchLegalBenchmarkEvalRun).not.toHaveBeenCalled();
+    expect(mockDispatchLegalBenchmarkRecursionRun).not.toHaveBeenCalled();
   });
 
   it("returns empty result when no active entries", async () => {
@@ -199,7 +181,7 @@ describe("executeScheduledLegalBenchmarkRecursion", () => {
     const result = await executeScheduledLegalBenchmarkRecursion();
 
     expect(result.success).toBe(true);
-    expect(mockDispatchLegalBenchmarkEvalRun).not.toHaveBeenCalled();
+    expect(mockDispatchLegalBenchmarkRecursionRun).not.toHaveBeenCalled();
     expect(mockDbLegalBenchmarkRecursionFindMany).not.toHaveBeenCalled();
   });
 
@@ -226,20 +208,20 @@ describe("executeScheduledLegalBenchmarkRecursion", () => {
     const result = await executeScheduledLegalBenchmarkRecursion();
 
     expect(result.success).toBe(true);
-    expect(mockDispatchLegalBenchmarkEvalRun).not.toHaveBeenCalled();
+    expect(mockDispatchLegalBenchmarkRecursionRun).not.toHaveBeenCalled();
     expect(mockDbLegalBenchmarkRecursionFindMany).not.toHaveBeenCalled();
   });
 
   // ── (a) In-flight guard ─────────────────────────────────────────────────────
 
-  it("(a) skips dispatch when eval is in-flight for same sourceRunId", async () => {
-    const entry = makeEntry({ runId: "source-run-id-1" });
+  it("(a) skips dispatch when a LEGAL_BENCHMARK_RECURSION run is in-flight for the same entry", async () => {
+    const entry = makeEntry({ id: "recursion-entry-1", runId: "source-run-id-1" });
     mockDbLegalBenchmarkRecursionFindMany.mockResolvedValue([entry]);
 
-    // Simulate an in-flight eval whose result.sourceRunId matches entry.runId
+    // In-flight recursion run whose result.recursionId matches entry.id
     mockDbStakworkRunFindMany.mockResolvedValue([
       {
-        result: JSON.stringify({ sourceRunId: "source-run-id-1" }),
+        result: JSON.stringify({ recursionId: "recursion-entry-1" }),
       },
     ]);
 
@@ -247,38 +229,18 @@ describe("executeScheduledLegalBenchmarkRecursion", () => {
 
     expect(result.skipped).toBe(1);
     expect(result.dispatched).toBe(0);
-    expect(mockDispatchLegalBenchmarkEvalRun).not.toHaveBeenCalled();
+    expect(mockDispatchLegalBenchmarkRecursionRun).not.toHaveBeenCalled();
     expect(mockDbLegalBenchmarkRecursionUpdate).not.toHaveBeenCalled();
   });
 
-  it("(a) skips when lastRunId (not runId) matches in-flight sourceRunId", async () => {
-    const entry = makeEntry({
-      runId: "source-run-id-1",
-      lastRunId: "last-eval-run-id",
-    });
+  it("(a) does NOT skip when in-flight recursion run is for a different entry", async () => {
+    const entry = makeEntry({ id: "recursion-entry-1", runId: "source-run-id-1" });
     mockDbLegalBenchmarkRecursionFindMany.mockResolvedValue([entry]);
 
-    // In-flight eval matches entry.lastRunId
+    // In-flight run is for a DIFFERENT entry
     mockDbStakworkRunFindMany.mockResolvedValue([
       {
-        result: JSON.stringify({ sourceRunId: "last-eval-run-id" }),
-      },
-    ]);
-
-    const result = await executeScheduledLegalBenchmarkRecursion();
-
-    expect(result.skipped).toBe(1);
-    expect(mockDispatchLegalBenchmarkEvalRun).not.toHaveBeenCalled();
-  });
-
-  it("(a) does NOT skip when in-flight eval is for a different sourceRunId", async () => {
-    const entry = makeEntry({ runId: "source-run-id-1" });
-    mockDbLegalBenchmarkRecursionFindMany.mockResolvedValue([entry]);
-
-    // In-flight eval is for a DIFFERENT run
-    mockDbStakworkRunFindMany.mockResolvedValue([
-      {
-        result: JSON.stringify({ sourceRunId: "completely-different-run-id" }),
+        result: JSON.stringify({ recursionId: "completely-different-entry-id" }),
       },
     ]);
 
@@ -291,7 +253,27 @@ describe("executeScheduledLegalBenchmarkRecursion", () => {
     const result = await executeScheduledLegalBenchmarkRecursion();
 
     expect(result.skipped).toBe(0);
-    expect(mockDispatchLegalBenchmarkEvalRun).toHaveBeenCalledOnce();
+    expect(mockDispatchLegalBenchmarkRecursionRun).toHaveBeenCalledOnce();
+  });
+
+  it("(a) does NOT skip when in-flight run has malformed result JSON", async () => {
+    const entry = makeEntry({ id: "recursion-entry-1", runId: "source-run-id-1" });
+    mockDbLegalBenchmarkRecursionFindMany.mockResolvedValue([entry]);
+
+    // Malformed result — cannot parse recursionId, should not skip
+    mockDbStakworkRunFindMany.mockResolvedValue([
+      { result: "not-valid-json" },
+    ]);
+
+    const runResult = makeRunResult();
+    mockDbStakworkRunFindUnique.mockResolvedValue({
+      result: JSON.stringify(runResult),
+    });
+
+    const result = await executeScheduledLegalBenchmarkRecursion();
+
+    expect(result.skipped).toBe(0);
+    expect(mockDispatchLegalBenchmarkRecursionRun).toHaveBeenCalledOnce();
   });
 
   // ── (b) All-pass → INACTIVE ────────────────────────────────────────────────
@@ -317,7 +299,7 @@ describe("executeScheduledLegalBenchmarkRecursion", () => {
 
     expect(result.deactivated).toBe(1);
     expect(result.dispatched).toBe(0);
-    expect(mockDispatchLegalBenchmarkEvalRun).not.toHaveBeenCalled();
+    expect(mockDispatchLegalBenchmarkRecursionRun).not.toHaveBeenCalled();
     expect(mockDbLegalBenchmarkRecursionUpdate).toHaveBeenCalledWith({
       where: { id: entry.id },
       data: {
@@ -348,7 +330,7 @@ describe("executeScheduledLegalBenchmarkRecursion", () => {
     const result = await executeScheduledLegalBenchmarkRecursion();
 
     expect(result.deactivated).toBe(1);
-    expect(mockDispatchLegalBenchmarkEvalRun).not.toHaveBeenCalled();
+    expect(mockDispatchLegalBenchmarkRecursionRun).not.toHaveBeenCalled();
   });
 
   it("(b) derives lastScore from result BEFORE dispatch — lastScore reflects pre-dispatch state", async () => {
@@ -371,8 +353,8 @@ describe("executeScheduledLegalBenchmarkRecursion", () => {
 
   // ── (c) Failing → dispatch ─────────────────────────────────────────────────
 
-  it("(c) dispatches eval and updates entry when criteria are failing", async () => {
-    const entry = makeEntry({ runId: "source-run-id-1" });
+  it("(c) dispatches recursion run and updates entry when criteria are failing", async () => {
+    const entry = makeEntry({ id: "recursion-entry-1", runId: "source-run-id-1" });
     mockDbLegalBenchmarkRecursionFindMany.mockResolvedValue([entry]);
 
     const runResult = makeRunResult({
@@ -388,9 +370,8 @@ describe("executeScheduledLegalBenchmarkRecursion", () => {
     mockDbStakworkRunFindUnique.mockResolvedValue({
       result: JSON.stringify(runResult),
     });
-    mockDispatchLegalBenchmarkEvalRun.mockResolvedValue({
-      evalRunId: "new-eval-run-id",
-      projectId: 99,
+    mockDispatchLegalBenchmarkRecursionRun.mockResolvedValue({
+      recursionRunId: "recursion-run-new",
     });
 
     const result = await executeScheduledLegalBenchmarkRecursion();
@@ -398,19 +379,17 @@ describe("executeScheduledLegalBenchmarkRecursion", () => {
     expect(result.dispatched).toBe(1);
     expect(result.deactivated).toBe(0);
 
-    expect(mockDispatchLegalBenchmarkEvalRun).toHaveBeenCalledWith({
+    expect(mockDispatchLegalBenchmarkRecursionRun).toHaveBeenCalledWith({
       runId: "source-run-id-1",
+      taskSlug: entry.taskSlug,
       workspaceId: OPENLAW_WORKSPACE.id,
-      swarmUrl: OPENLAW_WORKSPACE.swarm.swarmUrl,
-      swarmSecretAlias: OPENLAW_WORKSPACE.swarm.swarmSecretAlias,
-      slug: "openlaw",
-      userId: OPENLAW_WORKSPACE.ownerId,
+      recursionId: entry.id,
     });
 
     expect(mockDbLegalBenchmarkRecursionUpdate).toHaveBeenCalledWith({
       where: { id: entry.id },
       data: {
-        lastRunId: "new-eval-run-id",
+        lastRunId: "recursion-run-new",
         lastRunAt: expect.any(Date),
         lastScore: "1/3",
       },
@@ -420,7 +399,7 @@ describe("executeScheduledLegalBenchmarkRecursion", () => {
   it("(c) uses lastRunId (not runId) as the target run when lastRunId is set", async () => {
     const entry = makeEntry({
       runId: "original-run-id",
-      lastRunId: "last-eval-run-id",
+      lastRunId: "last-recursion-run-id",
     });
     mockDbLegalBenchmarkRecursionFindMany.mockResolvedValue([entry]);
 
@@ -431,12 +410,11 @@ describe("executeScheduledLegalBenchmarkRecursion", () => {
 
     await executeScheduledLegalBenchmarkRecursion();
 
-    expect(mockDispatchLegalBenchmarkEvalRun).toHaveBeenCalledWith(
-      expect.objectContaining({ runId: "last-eval-run-id" }),
+    expect(mockDispatchLegalBenchmarkRecursionRun).toHaveBeenCalledWith(
+      expect.objectContaining({ runId: "last-recursion-run-id" }),
     );
-    // IDOR: stakworkRun.findUnique must have been called with workspaceId constraint
     expect(mockDbStakworkRunFindUnique).toHaveBeenCalledWith({
-      where: { id: "last-eval-run-id", workspaceId: OPENLAW_WORKSPACE.id },
+      where: { id: "last-recursion-run-id", workspaceId: OPENLAW_WORKSPACE.id },
     });
   });
 
@@ -449,20 +427,31 @@ describe("executeScheduledLegalBenchmarkRecursion", () => {
       result: JSON.stringify(runResult),
     });
 
-    // The dispatch result carries no result/score — it's a fresh PENDING run
-    mockDispatchLegalBenchmarkEvalRun.mockResolvedValue({
-      evalRunId: "brand-new-eval-run",
-      projectId: null,
+    mockDispatchLegalBenchmarkRecursionRun.mockResolvedValue({
+      recursionRunId: "brand-new-recursion-run",
     });
 
     await executeScheduledLegalBenchmarkRecursion();
 
-    // lastScore must reflect the pre-dispatch run state (3/5), not the new run's state
     expect(mockDbLegalBenchmarkRecursionUpdate).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({ lastScore: "3/5" }),
       }),
     );
+  });
+
+  it("(c) calls dispatchLegalBenchmarkRecursionRun — NEVER dispatchLegalBenchmarkEvalRun", async () => {
+    const entry = makeEntry({ runId: "source-run-id-1" });
+    mockDbLegalBenchmarkRecursionFindMany.mockResolvedValue([entry]);
+
+    const runResult = makeRunResult();
+    mockDbStakworkRunFindUnique.mockResolvedValue({
+      result: JSON.stringify(runResult),
+    });
+
+    await executeScheduledLegalBenchmarkRecursion();
+
+    expect(mockDispatchLegalBenchmarkRecursionRun).toHaveBeenCalledOnce();
   });
 
   // ── (d) Per-entry error isolation ──────────────────────────────────────────
@@ -477,10 +466,9 @@ describe("executeScheduledLegalBenchmarkRecursion", () => {
       result: JSON.stringify(runResult),
     });
 
-    // First entry throws; second should still dispatch
-    mockDispatchLegalBenchmarkEvalRun
+    mockDispatchLegalBenchmarkRecursionRun
       .mockRejectedValueOnce(new Error("Network failure for entry 1"))
-      .mockResolvedValueOnce({ evalRunId: "eval-run-for-entry-2", projectId: null });
+      .mockResolvedValueOnce({ recursionRunId: "recursion-run-for-entry-2" });
 
     const result = await executeScheduledLegalBenchmarkRecursion();
 
@@ -489,11 +477,9 @@ describe("executeScheduledLegalBenchmarkRecursion", () => {
     expect(result.errors).toHaveLength(1);
     expect(result.errors[0]).toContain("contracts/review-nda");
     expect(result.errors[0]).toContain("Network failure for entry 1");
-    // success is false when any entry errors
     expect(result.success).toBe(false);
 
-    // Second entry was still dispatched
-    expect(mockDispatchLegalBenchmarkEvalRun).toHaveBeenCalledTimes(2);
+    expect(mockDispatchLegalBenchmarkRecursionRun).toHaveBeenCalledTimes(2);
     expect(mockDbLegalBenchmarkRecursionUpdate).toHaveBeenCalledOnce();
     expect(mockDbLegalBenchmarkRecursionUpdate).toHaveBeenCalledWith(
       expect.objectContaining({ where: { id: "entry-2" } }),
@@ -509,22 +495,19 @@ describe("executeScheduledLegalBenchmarkRecursion", () => {
       result: JSON.stringify(runResult),
     });
 
-    // Error with sensitive fields attached (must not appear in logs)
     const sensitiveError = Object.assign(
       new Error("dispatch failed"),
       {
-        apiKey: "SECRET_API_KEY_12345",
-        swarm_secret_alias: "my-secret-alias",
-        bifrostHeader: "Authorization: Bearer secret-bifrost-token",
+        hive_api_token: "SECRET_API_TOKEN_12345",
+        apiKey: "SECRET_STAKWORK_KEY",
       },
     );
-    mockDispatchLegalBenchmarkEvalRun.mockRejectedValue(sensitiveError);
+    mockDispatchLegalBenchmarkRecursionRun.mockRejectedValue(sensitiveError);
 
     const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
     await executeScheduledLegalBenchmarkRecursion();
 
-    // Verify console.error was called for the entry
     const errorCalls = consoleSpy.mock.calls;
     const entryErrorCall = errorCalls.find(
       (args) => typeof args[0] === "string" && args[0].includes("contracts/review-nda"),
@@ -533,17 +516,11 @@ describe("executeScheduledLegalBenchmarkRecursion", () => {
 
     const loggedMessage = entryErrorCall![0] as string;
 
-    // Should contain only the message
     expect(loggedMessage).toContain("dispatch failed");
-
-    // Must NOT contain sensitive fields
-    expect(loggedMessage).not.toContain("SECRET_API_KEY_12345");
-    expect(loggedMessage).not.toContain("my-secret-alias");
-    expect(loggedMessage).not.toContain("secret-bifrost-token");
-
-    // Must NOT be a JSON.stringify of the error
+    expect(loggedMessage).not.toContain("SECRET_API_TOKEN_12345");
+    expect(loggedMessage).not.toContain("SECRET_STAKWORK_KEY");
+    expect(loggedMessage).not.toContain('"hive_api_token"');
     expect(loggedMessage).not.toContain('"apiKey"');
-    expect(loggedMessage).not.toContain('"swarm_secret_alias"');
 
     consoleSpy.mockRestore();
   });
@@ -557,8 +534,7 @@ describe("executeScheduledLegalBenchmarkRecursion", () => {
       result: JSON.stringify(runResult),
     });
 
-    // Throw a string (not an Error)
-    mockDispatchLegalBenchmarkEvalRun.mockRejectedValue("plain string error");
+    mockDispatchLegalBenchmarkRecursionRun.mockRejectedValue("plain string error");
 
     const result = await executeScheduledLegalBenchmarkRecursion();
 
