@@ -31,6 +31,7 @@ import {
   getResolvedPrompt,
   listPromptVersions,
   getResolvedPromptVersion,
+  getRawPromptValue,
 } from "@/services/prompts/prompt-read";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -329,5 +330,142 @@ describe("getResolvedPromptVersion", () => {
     expect("error" in result).toBe(true);
     const err = result as { error: string };
     expect(err.error).toMatch(/circular/i);
+  });
+});
+
+// ─── getRawPromptValue ────────────────────────────────────────────────────────
+
+describe("getRawPromptValue", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("returns verbatim value — {{VAR}} tokens left intact (no interpolation)", async () => {
+    mockFindFirst.mockResolvedValue(
+      makePrompt({
+        versions: [{ id: "v1", versionNumber: 1, value: "Hello {{user_name}}!" }],
+      }) as any,
+    );
+
+    const result = await getRawPromptValue("MY_PROMPT");
+
+    expect("notFound" in result).toBe(false);
+    expect("error" in result).toBe(false);
+    const ok = result as { value: string; versionId: string; versionNumber: number; name: string; id: string };
+    expect(ok.value).toBe("Hello {{user_name}}!");
+    expect(ok.versionId).toBe("v1");
+    expect(ok.name).toBe("MY_PROMPT");
+  });
+
+  it("returns verbatim value with nested prompt-name token intact (no expansion)", async () => {
+    // Prompt A references {{PROMPT_B_NAME}} — if resolution ran, it would expand to
+    // PROMPT_B's content. In raw mode it must be left completely intact.
+    const promptA = makePrompt({
+      id: "prompt-a",
+      name: "PROMPT_A",
+      versions: [
+        {
+          id: "va1",
+          versionNumber: 1,
+          value: "Intro: {{SOME_VAR}} and {{PROMPT_B}}",
+        },
+      ],
+    });
+    // Prompt B exists in DB (findUnique would return it during resolution).
+    const promptB = {
+      id: "prompt-b",
+      name: "PROMPT_B",
+      publishedVersionId: "vb1",
+      versions: [{ id: "vb1", versionNumber: 1, value: "expanded B content" }],
+    };
+
+    mockFindFirst.mockResolvedValue(promptA as any);
+    // findUnique should never be called in raw mode — but if it were, returning
+    // promptB would cause the test to fail (the placeholder would be expanded).
+    mockFindUnique.mockResolvedValue(promptB as any);
+
+    const result = await getRawPromptValue("PROMPT_A");
+
+    const ok = result as { value: string };
+    // Both {{SOME_VAR}} and {{PROMPT_B}} must remain as-is.
+    expect(ok.value).toBe("Intro: {{SOME_VAR}} and {{PROMPT_B}}");
+    // Crucially: the nested prompt reference was NOT expanded (even though PROMPT_B exists).
+    expect(ok.value).not.toContain("expanded B content");
+    // findUnique must NOT have been called — resolution is fully bypassed.
+    expect(mockFindUnique).not.toHaveBeenCalled();
+  });
+
+  it("selects the published version when no versionId is supplied", async () => {
+    const prompt = makePrompt({
+      publishedVersionId: "v2",
+      versions: [
+        { id: "v2", versionNumber: 2, value: "published raw text" },
+        { id: "v3", versionNumber: 3, value: "latest raw text" },
+        { id: "v1", versionNumber: 1, value: "old raw text" },
+      ],
+    });
+    mockFindFirst.mockResolvedValue(prompt as any);
+
+    const result = await getRawPromptValue("MY_PROMPT");
+
+    const ok = result as { versionId: string; value: string };
+    expect(ok.versionId).toBe("v2");
+    expect(ok.value).toBe("published raw text");
+  });
+
+  it("falls back to highest version when no publishedVersionId", async () => {
+    const prompt = makePrompt({
+      publishedVersionId: null,
+      versions: [
+        { id: "v3", versionNumber: 3, value: "newest raw" },
+        { id: "v2", versionNumber: 2, value: "middle raw" },
+        { id: "v1", versionNumber: 1, value: "old raw" },
+      ],
+    });
+    mockFindFirst.mockResolvedValue(prompt as any);
+
+    const result = await getRawPromptValue("MY_PROMPT");
+
+    const ok = result as { versionId: string; value: string };
+    expect(ok.versionId).toBe("v3");
+    expect(ok.value).toBe("newest raw");
+  });
+
+  it("returns specific version verbatim when versionId is supplied", async () => {
+    const prompt = makePrompt({
+      publishedVersionId: "v2",
+      versions: [
+        { id: "v1", versionNumber: 1, value: "version 1 raw {{TOKEN}}" },
+        { id: "v2", versionNumber: 2, value: "version 2 raw" },
+      ],
+    });
+    mockFindFirst.mockResolvedValue(prompt as any);
+
+    const result = await getRawPromptValue("MY_PROMPT", "v1");
+
+    const ok = result as { versionId: string; versionNumber: number; value: string };
+    expect(ok.versionId).toBe("v1");
+    expect(ok.versionNumber).toBe(1);
+    expect(ok.value).toBe("version 1 raw {{TOKEN}}");
+  });
+
+  it("IDOR guard — versionId belonging to a different prompt returns { notFound: true }", async () => {
+    const prompt = makePrompt({
+      versions: [{ id: "v1", versionNumber: 1, value: "text" }],
+    });
+    mockFindFirst.mockResolvedValue(prompt as any);
+
+    // "other-version-id" is not in this prompt's versions list.
+    const result = await getRawPromptValue("MY_PROMPT", "other-version-id");
+
+    expect("notFound" in result).toBe(true);
+    expect((result as { notFound: boolean }).notFound).toBe(true);
+  });
+
+  it("returns { notFound: true } when prompt not found", async () => {
+    mockFindFirst.mockResolvedValue(null);
+
+    const result = await getRawPromptValue("UNKNOWN");
+
+    expect("notFound" in result).toBe(true);
+    expect((result as { notFound: boolean }).notFound).toBe(true);
   });
 });
