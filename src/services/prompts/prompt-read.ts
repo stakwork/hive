@@ -235,13 +235,19 @@ export async function getResolvedPrompt(
 }
 
 /**
- * Fetch the raw (unresolved) value of the version that `getResolvedPrompt` would return —
- * i.e. the published version if set, else the highest-numbered version.
- * Used by `propose_prompt_update` to build the diff "before" value from the same
- * version anchor as `get_prompt` resolves, without variable substitution or reference inlining.
+ * Fetch the raw (unresolved) value of a prompt version — no variable substitution,
+ * no nested prompt expansion. `{{VAR}}` tokens and prompt-name references are left intact.
+ *
+ * When `versionId` is omitted: returns the published version if set, else the
+ * highest-numbered version (same anchor as `getResolvedPrompt`).
+ *
+ * When `versionId` is supplied: returns that specific version after verifying it
+ * belongs to the resolved prompt (IDOR guard). Returns `{ notFound: true }` if the
+ * version is not found or belongs to a different prompt.
  */
 export async function getRawPromptValue(
   idOrName: string,
+  versionId?: string,
 ): Promise<ResolveResult<{ id: string; name: string; versionId: string; versionNumber: number; value: string }>> {
   try {
     const prompt = await db.prompt.findFirst({
@@ -261,9 +267,19 @@ export async function getRawPromptValue(
       return { notFound: true };
     }
 
-    const version =
-      prompt.versions.find((v) => v.id === prompt.publishedVersionId) ??
-      prompt.versions[0];
+    let version: { id: string; versionNumber: number; value: string } | undefined;
+
+    if (versionId) {
+      // IDOR guard: the requested versionId must belong to this prompt.
+      version = prompt.versions.find((v) => v.id === versionId);
+      if (!version) {
+        return { notFound: true };
+      }
+    } else {
+      version =
+        prompt.versions.find((v) => v.id === prompt.publishedVersionId) ??
+        prompt.versions[0];
+    }
 
     if (!version) {
       return { notFound: true };
