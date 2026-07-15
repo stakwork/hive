@@ -53,6 +53,8 @@ function projectFix(refId: string, props: Record<string, unknown> | undefined): 
     after_score: str("after_score"),
     score_delta: str("score_delta"),
     rerun_run_id: str("rerun_run_id"),
+    resolved_by: str("resolved_by"),
+    resolved_at: str("resolved_at"),
   };
 }
 
@@ -197,9 +199,11 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ fixes: [] });
     }
 
-    // Step 9: Project to whitelisted shape, sort with rerun_run_id-present entries first
+    // Step 9: Project to whitelisted shape, filter rejected fixes, sort with rerun_run_id-present entries first
     const fixes: ProposedFix[] = searchResult.nodes
       .map((node) => projectFix(node.ref_id, node.properties))
+      // Exclude only explicitly-rejected fixes; pending/accepted/untagged remain visible
+      .filter((f) => f.status !== "rejected")
       .sort((a, b) => {
         // Entries with a rerun_run_id (more recent reruns) surface first
         const aHas = a.rerun_run_id != null ? 1 : 0;
