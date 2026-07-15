@@ -330,7 +330,7 @@ describe("GET /api/workspaces/[slug]/legal/benchmarks/proposed-fixes", () => {
 
   // ── Projection whitelisting ───────────────────────────────────────────────
 
-  test("15. Extra node properties are stripped — only 17 whitelisted keys returned", async () => {
+  test("15. Extra node properties are stripped — only whitelisted keys returned", async () => {
     mockSearchNodesByAttributes.mockResolvedValue({
       ok: true,
       nodes: [makeProposedFixNode({ extra_secret_field: "leak-me", another_extra: 42 })],
@@ -357,6 +357,8 @@ describe("GET /api/workspaces/[slug]/legal/benchmarks/proposed-fixes", () => {
       "after_score",
       "score_delta",
       "rerun_run_id",
+      "resolved_by",
+      "resolved_at",
     ]);
 
     for (const key of Object.keys(fix)) {
