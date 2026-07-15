@@ -2,30 +2,30 @@
  * @vitest-environment jsdom
  */
 import React from "react";
-import { describe, it, expect } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { describe, it, expect, vi } from "vitest";
+import { render, screen, fireEvent } from "@testing-library/react";
 
 globalThis.React = React;
 
 // ─── Mocks ────────────────────────────────────────────────────────────────────
 
-import { vi } from "vitest";
-
 vi.mock("@/components/ui/button", () => ({
   Button: ({
     children,
     disabled,
+    onClick,
     size,
     variant,
   }: {
     children?: React.ReactNode;
     disabled?: boolean;
+    onClick?: () => void;
     size?: string;
     variant?: string;
   }) =>
     React.createElement(
       "button",
-      { disabled, "data-size": size, "data-variant": variant },
+      { disabled, onClick, "data-size": size, "data-variant": variant },
       children,
     ),
 }));
@@ -118,15 +118,136 @@ describe("ProposedFixCard", () => {
     expect(screen.getByText(/Failed under version/i)).toBeInTheDocument();
   });
 
-  it("renders Accept and Reject buttons that are visibly disabled", () => {
-    render(React.createElement(ProposedFixCard, { fix: makeFix() }));
+  // ─── Interactive (pending/untagged) state ─────────────────────────────────
+
+  it("renders enabled Accept and Reject buttons for pending/untagged status", () => {
+    render(
+      React.createElement(ProposedFixCard, {
+        fix: makeFix({ status: "proposed" }),
+        onAccept: vi.fn(),
+        onReject: vi.fn(),
+        isPending: false,
+      }),
+    );
     const buttons = screen.getAllByRole("button");
     const labels = buttons.map((b) => b.textContent?.trim());
     expect(labels).toContain("Accept");
     expect(labels).toContain("Reject");
     buttons.forEach((btn) => {
+      expect(btn).not.toBeDisabled();
+    });
+  });
+
+  it("calls onAccept with the fix ref_id when Accept is clicked", () => {
+    const onAccept = vi.fn();
+    render(
+      React.createElement(ProposedFixCard, {
+        fix: makeFix({ status: "proposed" }),
+        onAccept,
+        onReject: vi.fn(),
+        isPending: false,
+      }),
+    );
+    const acceptBtn = screen.getByRole("button", { name: /accept/i });
+    fireEvent.click(acceptBtn);
+    expect(onAccept).toHaveBeenCalledOnce();
+    expect(onAccept).toHaveBeenCalledWith("fix-1");
+  });
+
+  it("calls onReject with the fix ref_id when Reject is clicked", () => {
+    const onReject = vi.fn();
+    render(
+      React.createElement(ProposedFixCard, {
+        fix: makeFix({ status: "proposed" }),
+        onAccept: vi.fn(),
+        onReject,
+        isPending: false,
+      }),
+    );
+    const rejectBtn = screen.getByRole("button", { name: /reject/i });
+    fireEvent.click(rejectBtn);
+    expect(onReject).toHaveBeenCalledOnce();
+    expect(onReject).toHaveBeenCalledWith("fix-1");
+  });
+
+  it("disables both buttons while isPending is true", () => {
+    render(
+      React.createElement(ProposedFixCard, {
+        fix: makeFix({ status: "proposed" }),
+        onAccept: vi.fn(),
+        onReject: vi.fn(),
+        isPending: true,
+      }),
+    );
+    const buttons = screen.getAllByRole("button");
+    buttons.forEach((btn) => {
       expect(btn).toBeDisabled();
     });
+  });
+
+  it("does not fire onAccept when clicked while pending", () => {
+    const onAccept = vi.fn();
+    render(
+      React.createElement(ProposedFixCard, {
+        fix: makeFix({ status: "proposed" }),
+        onAccept,
+        onReject: vi.fn(),
+        isPending: true,
+      }),
+    );
+    const acceptBtn = screen.getByRole("button", { name: /accept/i });
+    fireEvent.click(acceptBtn);
+    // Button is disabled so onClick won't fire
+    expect(onAccept).not.toHaveBeenCalled();
+  });
+
+  // ─── Accepted state ───────────────────────────────────────────────────────
+
+  it("renders a non-actionable published state for status=accepted", () => {
+    render(
+      React.createElement(ProposedFixCard, {
+        fix: makeFix({
+          status: "accepted",
+          resolved_by: "alice",
+          resolved_at: "2024-01-15T10:00:00.000Z",
+        }),
+        onAccept: vi.fn(),
+        onReject: vi.fn(),
+      }),
+    );
+    // No actionable buttons
+    expect(screen.queryByRole("button", { name: /accept/i })).toBeNull();
+    expect(screen.queryByRole("button", { name: /reject/i })).toBeNull();
+    // Shows published state
+    expect(screen.getByText(/published/i)).toBeInTheDocument();
+    expect(screen.getByText(/alice/i)).toBeInTheDocument();
+  });
+
+  it("shows published state without resolved_by/resolved_at when absent", () => {
+    render(
+      React.createElement(ProposedFixCard, {
+        fix: makeFix({ status: "accepted" }),
+        onAccept: vi.fn(),
+        onReject: vi.fn(),
+      }),
+    );
+    expect(screen.getByText(/published/i)).toBeInTheDocument();
+    expect(screen.queryByRole("button")).toBeNull();
+  });
+
+  // ─── Rejected state ───────────────────────────────────────────────────────
+
+  it("renders a non-actionable rejected state for status=rejected (stale client copy)", () => {
+    render(
+      React.createElement(ProposedFixCard, {
+        fix: makeFix({ status: "rejected" }),
+        onAccept: vi.fn(),
+        onReject: vi.fn(),
+      }),
+    );
+    expect(screen.queryByRole("button", { name: /accept/i })).toBeNull();
+    expect(screen.queryByRole("button", { name: /reject/i })).toBeNull();
+    expect(screen.getByText(/rejected/i)).toBeInTheDocument();
   });
 
   // ─── Badge variant tests ───────────────────────────────────────────────────
@@ -138,7 +259,6 @@ describe("ProposedFixCard", () => {
       }),
     );
     expect(screen.getByText("Running…")).toBeInTheDocument();
-    // No badge element (spinner inline text instead)
     expect(screen.queryByTestId("badge")).toBeNull();
   });
 
@@ -232,8 +352,8 @@ describe("ProposedFixCard", () => {
         fix: { ref_id: "fix-min" },
       }),
     );
-    // Both buttons should still be present and disabled
-    const buttons = screen.getAllByRole("button");
-    buttons.forEach((btn) => expect(btn).toBeDisabled());
+    // With no status, falls through to pending/untagged branch — buttons present but not crashed
+    // No callbacks passed, so buttons don't call anything (no-op click)
+    expect(screen.queryByText(/published/i)).toBeNull();
   });
 });

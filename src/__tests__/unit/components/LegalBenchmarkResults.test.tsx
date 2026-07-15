@@ -74,6 +74,9 @@ const mockUseProposedFixes = vi.fn(() => ({
   isLoading: false,
   error: null as string | null,
   refetch: vi.fn(),
+  accept: vi.fn(),
+  reject: vi.fn(),
+  pendingRefIds: new Set<string>(),
 }));
 
 vi.mock("@/hooks/useProposedFixes", () => ({
@@ -259,6 +262,9 @@ describe("LegalBenchmarkResults", () => {
       isLoading: false,
       error: null,
       refetch: vi.fn(),
+      accept: vi.fn(),
+      reject: vi.fn(),
+      pendingRefIds: new Set<string>(),
     });
     mockUseEvalRunHistory.mockReturnValue({
       history: [],
@@ -1015,6 +1021,9 @@ describe("LegalBenchmarkResults", () => {
       isLoading: true,
       error: null,
       refetch: vi.fn(),
+      accept: vi.fn(),
+      reject: vi.fn(),
+      pendingRefIds: new Set<string>(),
     });
 
     render(React.createElement(LegalBenchmarkResults, { runId: "run-abc", onReset }));
@@ -1034,6 +1043,9 @@ describe("LegalBenchmarkResults", () => {
       isLoading: false,
       error: null,
       refetch: vi.fn(),
+      accept: vi.fn(),
+      reject: vi.fn(),
+      pendingRefIds: new Set<string>(),
     });
 
     render(React.createElement(LegalBenchmarkResults, { runId: "run-abc", onReset }));
@@ -1056,6 +1068,9 @@ describe("LegalBenchmarkResults", () => {
       isLoading: false,
       error: null,
       refetch: vi.fn(),
+      accept: vi.fn(),
+      reject: vi.fn(),
+      pendingRefIds: new Set<string>(),
     });
 
     render(React.createElement(LegalBenchmarkResults, { runId: "run-abc", onReset }));
@@ -1143,6 +1158,9 @@ describe("EvalRunsBox", () => {
       isLoading: false,
       error: null,
       refetch: vi.fn(),
+      accept: vi.fn(),
+      reject: vi.fn(),
+      pendingRefIds: new Set<string>(),
     });
     mockUseEvalRunHistory.mockReturnValue({
       history: [],
