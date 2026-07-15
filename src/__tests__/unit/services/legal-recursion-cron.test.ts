@@ -170,7 +170,7 @@ describe("executeScheduledLegalBenchmarkRecursion", () => {
     expect(result.deactivated).toBe(0);
   });
 
-  // ── DB feature-flag guard tests ─────────────────────────────────────────────
+  // ── DB flag guard tests ─────────────────────────────────────────────────────
 
   it("toggle-off: returns early when legalBenchmarkRecursionEnabled is false", async () => {
     mockDbWorkspaceFindUnique.mockResolvedValue({
@@ -190,6 +190,7 @@ describe("executeScheduledLegalBenchmarkRecursion", () => {
       ...OPENLAW_WORKSPACE,
       janitorConfig: { legalBenchmarkRecursionEnabled: true },
     });
+    // No active entries — just confirm we reach the entries lookup step
     mockDbLegalBenchmarkRecursionFindMany.mockResolvedValue([]);
 
     const result = await executeScheduledLegalBenchmarkRecursion();
@@ -313,12 +314,12 @@ describe("executeScheduledLegalBenchmarkRecursion", () => {
     mockDbLegalBenchmarkRecursionFindMany.mockResolvedValue([entry]);
 
     const runResult = makeRunResult({
-      all_pass: false,
+      all_pass: false, // explicitly false, but all criteria pass
       n_passed: 3,
       n_total: 3,
       criteria_results: [
         { criterion_id: "c1", verdict: "pass" },
-        { criterion_id: "c2", verdict: "PASS" },
+        { criterion_id: "c2", verdict: "PASS" }, // case-insensitive
         { criterion_id: "c3", verdict: "Pass" },
       ],
     });
