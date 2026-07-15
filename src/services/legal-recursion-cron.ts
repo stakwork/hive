@@ -3,7 +3,7 @@
  *
  * Cron service for the OpenLaw Recursion Janitor.
  * Processes all ACTIVE LegalBenchmarkRecursion entries, re-dispatching
- * failing evals until all rubrics pass. Runs every 6 hours.
+ * the recursion workflow (57456) until all rubrics pass. Runs every 6 hours.
  *
  * Log prefix: [LegalRecursionCron]
  */
@@ -11,7 +11,7 @@
 import { db } from "@/lib/db";
 import { RecursionStatus, StakworkRunType, WorkflowStatus } from "@prisma/client";
 import { parseBenchmarkRunResult } from "@/types/legal";
-import { dispatchLegalBenchmarkEvalRun } from "@/services/legal-benchmark-eval";
+import { dispatchLegalBenchmarkRecursionRun } from "@/services/legal-benchmark-eval";
 
 export interface RecursionCronResult {
   success: boolean;
@@ -35,20 +35,11 @@ export async function executeScheduledLegalBenchmarkRecursion(): Promise<Recursi
   };
 
   // ── Step 1: Resolve openlaw workspace ───────────────────────────────────
-  // CRITICAL: swarmUrl and swarmSecretAlias live on the related Swarm model.
-  // Omitting include: { swarm: true } returns undefined for both fields and
-  // silently breaks every dispatch.
   const openlawWorkspace = await db.workspace.findUnique({
     where: { slug: "openlaw" },
     select: {
       id: true,
-      ownerId: true,
-      swarm: {
-        select: {
-          swarmUrl: true,
-          swarmSecretAlias: true,
-        },
-      },
+      janitorConfig: { select: { legalBenchmarkRecursionEnabled: true } },
     },
   });
 
@@ -57,20 +48,12 @@ export async function executeScheduledLegalBenchmarkRecursion(): Promise<Recursi
     return { ...result, success: false, errors: ["openlaw workspace not found"] };
   }
 
-  if (!openlawWorkspace.swarm) {
-    console.error("[LegalRecursionCron] openlaw workspace has no swarm configured — aborting");
-    return { ...result, success: false, errors: ["openlaw workspace swarm not configured"] };
+  if (!openlawWorkspace.janitorConfig?.legalBenchmarkRecursionEnabled) {
+    console.log("[LegalRecursionCron] Disabled via DB flag — skipping");
+    return { ...result, success: true, errors: [] };
   }
 
   const openlawId = openlawWorkspace.id;
-  const ownerId = openlawWorkspace.ownerId;
-  const swarmUrl = openlawWorkspace.swarm.swarmUrl ?? "";
-  const swarmSecretAlias = openlawWorkspace.swarm.swarmSecretAlias ?? null;
-
-  if (!swarmUrl) {
-    console.error("[LegalRecursionCron] openlaw swarm URL is empty — aborting");
-    return { ...result, success: false, errors: ["openlaw swarm URL is empty"] };
-  }
 
   // ── Step 2: Fetch all ACTIVE recursion entries ───────────────────────────
   const activeEntries = await db.legalBenchmarkRecursion.findMany({
@@ -79,30 +62,29 @@ export async function executeScheduledLegalBenchmarkRecursion(): Promise<Recursi
 
   console.log(`[LegalRecursionCron] Processing ${activeEntries.length} ACTIVE entries`);
 
-  // ── Step 3: Fetch all in-flight eval runs once (for in-flight guard) ─────
-  // StakworkRun has no indexed taskSlug column — task identity is stored in
-  // the JSON result field as result.sourceRunId.
-  const inFlightEvalRuns = await db.stakworkRun.findMany({
+  // ── Step 3: Fetch all in-flight recursion runs (for in-flight guard) ─────
+  // Query LEGAL_BENCHMARK_RECURSION rows in PENDING/IN_PROGRESS state and
+  // extract their originating recursionId from the result JSON.
+  const inFlightRecursionRuns = await db.stakworkRun.findMany({
     where: {
       workspaceId: openlawId,
-      type: StakworkRunType.LEGAL_BENCHMARK_EVAL,
+      type: StakworkRunType.LEGAL_BENCHMARK_RECURSION,
       status: { in: [WorkflowStatus.PENDING, WorkflowStatus.IN_PROGRESS] },
     },
     select: { result: true },
   });
 
-  // Parse sourceRunId from each in-flight eval
-  const inFlightSourceRunIds = new Set<string>();
-  for (const run of inFlightEvalRuns) {
+  const inFlightRecursionIds = new Set<string>();
+  for (const run of inFlightRecursionRuns) {
     try {
       if (run.result) {
         const parsed = JSON.parse(run.result) as Record<string, unknown>;
-        if (typeof parsed.sourceRunId === "string") {
-          inFlightSourceRunIds.add(parsed.sourceRunId);
+        if (typeof parsed.recursionId === "string") {
+          inFlightRecursionIds.add(parsed.recursionId);
         }
       }
     } catch {
-      // Ignore parse errors — can't determine sourceRunId, won't skip
+      // Ignore parse errors — can't determine recursionId, won't skip
     }
   }
 
@@ -114,9 +96,9 @@ export async function executeScheduledLegalBenchmarkRecursion(): Promise<Recursi
       const targetRunId = entry.lastRunId ?? entry.runId;
 
       // ── a. In-flight guard ─────────────────────────────────────────────
-      if (inFlightSourceRunIds.has(targetRunId)) {
+      if (inFlightRecursionIds.has(entry.id)) {
         console.log(
-          `[LegalRecursionCron] SKIP taskSlug=${entry.taskSlug} (eval in-flight)`,
+          `[LegalRecursionCron] SKIP taskSlug=${entry.taskSlug} (recursion in-flight)`,
         );
         result.skipped++;
         continue;
@@ -153,34 +135,30 @@ export async function executeScheduledLegalBenchmarkRecursion(): Promise<Recursi
       }
 
       // ── c. Dispatch ────────────────────────────────────────────────────
-      // Derive lastScore from the CURRENT run result BEFORE dispatching —
-      // the freshly created eval run is PENDING and carries no result.
-      const { evalRunId } = await dispatchLegalBenchmarkEvalRun({
+      const { recursionRunId } = await dispatchLegalBenchmarkRecursionRun({
         runId: targetRunId,
+        taskSlug: entry.taskSlug,
         workspaceId: openlawId,
-        swarmUrl,
-        swarmSecretAlias,
-        slug: "openlaw",
-        userId: ownerId,
+        recursionId: entry.id,
       });
 
       await db.legalBenchmarkRecursion.update({
         where: { id: entry.id },
         data: {
-          lastRunId: evalRunId,
+          lastRunId: recursionRunId,
           lastRunAt: new Date(),
           lastScore,
         },
       });
 
       console.log(
-        `[LegalRecursionCron] DISPATCH taskSlug=${entry.taskSlug} evalRunId=${evalRunId}`,
+        `[LegalRecursionCron] DISPATCH taskSlug=${entry.taskSlug} recursionRunId=${recursionRunId}`,
       );
       result.dispatched++;
     } catch (err) {
       // Error isolation: per-entry errors must not halt remaining entries.
       // NEVER log JSON.stringify(err) or the full error object —
-      // dispatch payloads contain apiKey, swarm_secret_alias, and Bifrost headers.
+      // dispatch payloads contain hive_api_token.
       const msg = err instanceof Error ? err.message : String(err);
       console.error(
         `[LegalRecursionCron] ERROR taskSlug=${entry.taskSlug}: ${msg}`,

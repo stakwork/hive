@@ -280,6 +280,57 @@ describe("Janitor Service", () => {
         updateJanitorConfig("non-existent", "user-1", { unitTestsEnabled: true })
       ).rejects.toThrow(JANITOR_ERRORS.INSUFFICIENT_PERMISSIONS);
     });
+
+    test("should strip legalBenchmarkRecursionEnabled for non-openlaw workspace", async () => {
+      const mockConfig = janitorMocks.createMockConfig();
+      const mockValidation = {
+        hasAccess: true,
+        canRead: true,
+        canWrite: true,
+        canAdmin: true,
+        workspace: { id: "ws-1", name: "Test", slug: "not-openlaw", ownerId: "owner-1", description: null, createdAt: TEST_DATE_ISO, updatedAt: TEST_DATE_ISO },
+      };
+
+      mockedValidateWorkspaceAccess.mockResolvedValue(mockValidation);
+      janitorMockSetup.mockConfigExists(mockedDb, mockConfig);
+      janitorMockSetup.mockConfigUpdate(mockedDb, mockConfig);
+
+      await updateJanitorConfig("not-openlaw", "user-1", {
+        unitTestsEnabled: true,
+        legalBenchmarkRecursionEnabled: true,
+      });
+
+      // legalBenchmarkRecursionEnabled must be stripped before the DB update
+      expect(db.janitorConfig.update).toHaveBeenCalledWith({
+        where: { id: mockConfig.id },
+        data: { unitTestsEnabled: true },
+      });
+    });
+
+    test("should pass legalBenchmarkRecursionEnabled through for openlaw workspace", async () => {
+      const mockConfig = janitorMocks.createMockConfig();
+      const mockValidation = {
+        hasAccess: true,
+        canRead: true,
+        canWrite: true,
+        canAdmin: true,
+        workspace: { id: "ws-openlaw", name: "OpenLaw", slug: "openlaw", ownerId: "owner-1", description: null, createdAt: TEST_DATE_ISO, updatedAt: TEST_DATE_ISO },
+      };
+
+      mockedValidateWorkspaceAccess.mockResolvedValue(mockValidation);
+      janitorMockSetup.mockConfigExists(mockedDb, mockConfig);
+      janitorMockSetup.mockConfigUpdate(mockedDb, mockConfig);
+
+      await updateJanitorConfig("openlaw", "user-1", {
+        legalBenchmarkRecursionEnabled: true,
+      });
+
+      // legalBenchmarkRecursionEnabled must be present in the DB update call
+      expect(db.janitorConfig.update).toHaveBeenCalledWith({
+        where: { id: mockConfig.id },
+        data: { legalBenchmarkRecursionEnabled: true },
+      });
+    });
   });
 
   describe("createJanitorRun", () => {

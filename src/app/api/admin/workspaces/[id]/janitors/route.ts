@@ -22,6 +22,7 @@ const updateJanitorConfigSchema = z.object({
   // Stale PR Task Janitor settings
   stalePrTasksEnabled: z.boolean().optional(),
   stalePrTaskThresholdDays: z.number().int().min(1).max(365).optional(),
+  legalBenchmarkRecursionEnabled: z.boolean().optional(),
 });
 
 export async function GET(
@@ -72,6 +73,14 @@ export async function PUT(
   try {
     const body = await request.json();
     const validatedData = updateJanitorConfigSchema.parse(body);
+
+    // Defense-in-depth: legalBenchmarkRecursionEnabled may only be written for the openlaw workspace
+    if ('legalBenchmarkRecursionEnabled' in validatedData) {
+      const ws = await db.workspace.findUnique({ where: { id: workspaceId }, select: { slug: true } });
+      if (ws?.slug !== 'openlaw') {
+        delete validatedData.legalBenchmarkRecursionEnabled;
+      }
+    }
 
     const config = await db.janitorConfig.update({
       where: { workspaceId },
