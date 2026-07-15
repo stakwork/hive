@@ -7,7 +7,9 @@ import { NextRequest, NextResponse } from "next/server";
  *
  * Requires:
  *   - Authorization: Bearer <CRON_SECRET>
- *   - LEGAL_RECURSION_CRON_ENABLED=true env var
+ *
+ * Enable/disable via the legalBenchmarkRecursionEnabled toggle in JanitorConfig
+ * (OpenLaw workspace Janitors page or superadmin panel).
  */
 export async function GET(request: NextRequest) {
   try {
@@ -15,25 +17,6 @@ export async function GET(request: NextRequest) {
     const authHeader = request.headers.get("authorization");
     if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    // Check if cron is enabled
-    const cronEnabled = process.env.LEGAL_RECURSION_CRON_ENABLED === "true";
-    if (!cronEnabled) {
-      console.log(
-        "[LegalRecursionCronAPI] Cron is disabled via LEGAL_RECURSION_CRON_ENABLED",
-      );
-      return NextResponse.json({
-        success: true,
-        message: "Legal recursion cron is disabled",
-        entriesProcessed: 0,
-        dispatched: 0,
-        skipped: 0,
-        deactivated: 0,
-        errorCount: 0,
-        errors: [],
-        timestamp: new Date().toISOString(),
-      });
     }
 
     console.log("[LegalRecursionCronAPI] Starting scheduled legal benchmark recursion");
