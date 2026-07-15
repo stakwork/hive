@@ -151,6 +151,10 @@ export interface ProposedFix {
   score_delta?: string | null;
   /** Run ID of the automated rerun that validated this fix */
   rerun_run_id?: string | null;
+  /** User ID who resolved (accepted/rejected) this fix */
+  resolved_by?: string | null;
+  /** ISO timestamp when this fix was resolved */
+  resolved_at?: string | null;
 }
 
 /**
