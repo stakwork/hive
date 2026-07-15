@@ -392,3 +392,159 @@ export async function dispatchLegalBenchmarkEvalRun(
 
   return { evalRunId: evalRun.id, projectId: projectId ?? null };
 }
+
+// ── dispatchLegalBenchmarkRecursionRun ────────────────────────────────────────
+
+export interface DispatchRecursionParams {
+  /** The source runner run ID to recurse on */
+  runId: string;
+  /** The task slug from LegalBenchmarkRecursion (user-controlled — must validate) */
+  taskSlug: string;
+  /** The workspace ID */
+  workspaceId: string;
+  /** The LegalBenchmarkRecursion entry ID */
+  recursionId: string;
+}
+
+export interface DispatchRecursionResult {
+  recursionRunId: string;
+}
+
+/**
+ * Dispatches a LEGAL_BENCHMARK_RECURSION Stakwork workflow (workflow 57456)
+ * for a recursion entry. Creates a StakworkRun row, builds the webhook URL,
+ * and fires to Stakwork with the 6 required vars.
+ *
+ * Hard-fails (throws) on missing env vars or invalid taskSlug.
+ * Rolls back the StakworkRun row on Stakwork dispatch failure.
+ * Never logs the hive_api_token value — only err.message on error.
+ */
+export async function dispatchLegalBenchmarkRecursionRun(
+  params: DispatchRecursionParams,
+): Promise<DispatchRecursionResult> {
+  const { runId, taskSlug, workspaceId, recursionId } = params;
+
+  // ── Guard: recursion workflow configured ─────────────────────────────────
+  if (!optionalEnvVars.STAKWORK_HARVEY_RECURSION_WORKFLOW_ID) {
+    throw Object.assign(new Error("RECURSION_WORKFLOW_NOT_CONFIGURED"), {
+      code: "RECURSION_WORKFLOW_NOT_CONFIGURED",
+    });
+  }
+
+  // ── Guard: Hive API token present (never log the value) ──────────────────
+  if (!process.env.API_TOKEN) {
+    throw Object.assign(new Error("HIVE_API_TOKEN_NOT_CONFIGURED"), {
+      code: "HIVE_API_TOKEN_NOT_CONFIGURED",
+    });
+  }
+
+  // ── Guard: taskSlug validation (path-injection guard) ────────────────────
+  if (!TASK_SLUG_RE.test(taskSlug)) {
+    throw Object.assign(new Error("INVALID_TASK_SLUG"), {
+      code: "INVALID_TASK_SLUG",
+    });
+  }
+
+  const baseUrl = process.env.NEXTAUTH_URL || "http://localhost:3000";
+  const webhookSecret = process.env.NEXTAUTH_SECRET ?? "";
+
+  // ── Create the StakworkRun row ───────────────────────────────────────────
+  const placeholder = `${baseUrl}/api/webhook/stakwork/response`;
+
+  const recursionRun = await db.stakworkRun.create({
+    data: {
+      workspaceId,
+      type: StakworkRunType.LEGAL_BENCHMARK_RECURSION,
+      status: WorkflowStatus.PENDING,
+      webhookUrl: placeholder,
+      result: JSON.stringify({ recursionId, sourceRunId: runId, taskSlug }),
+    },
+    select: { id: true },
+  });
+
+  // ── Build HMAC run_token ─────────────────────────────────────────────────
+  const runToken = createHmac("sha256", webhookSecret).update(recursionRun.id).digest("hex");
+
+  // ── Update with real webhook URL ─────────────────────────────────────────
+  const webhookUrl = `${baseUrl}/api/webhook/stakwork/response?type=${StakworkRunType.LEGAL_BENCHMARK_RECURSION}&run_id=${recursionRun.id}&workspace_id=${workspaceId}&run_token=${runToken}`;
+  await db.stakworkRun.update({
+    where: { id: recursionRun.id },
+    data: { webhookUrl },
+  });
+
+  // ── Build Stakwork payload ────────────────────────────────────────────────
+  const payload = {
+    name: `harvey-recursion-${recursionRun.id}`,
+    workflow_id: parseInt(optionalEnvVars.STAKWORK_HARVEY_RECURSION_WORKFLOW_ID, 10),
+    webhook_url: webhookUrl,
+    workflow_params: {
+      set_var: {
+        attributes: {
+          vars: {
+            source_run_id: runId,
+            task_slug: taskSlug,
+            workspace_id: workspaceId,
+            recursion_id: recursionId,
+            hive_base_url: baseUrl,
+            hive_api_token: process.env.API_TOKEN,
+          },
+        },
+      },
+    },
+  };
+
+  // ── Dispatch to Stakwork ──────────────────────────────────────────────────
+  let stakworkResponse: Response;
+  try {
+    stakworkResponse = await fetch(`${optionalEnvVars.STAKWORK_BASE_URL}/projects`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Token token="${optionalEnvVars.STAKWORK_API_KEY}"`,
+      },
+      body: JSON.stringify(payload),
+    });
+  } catch (fetchErr) {
+    await db.stakworkRun.deleteMany({ where: { id: recursionRun.id } });
+    throw new Error(
+      `Stakwork dispatch network error: ${fetchErr instanceof Error ? fetchErr.message : String(fetchErr)}`,
+    );
+  }
+
+  if (!stakworkResponse.ok) {
+    await db.stakworkRun.deleteMany({ where: { id: recursionRun.id } });
+    throw new Error("Failed to dispatch recursion job to Stakwork");
+  }
+
+  const stakworkData = await stakworkResponse.json();
+  const projectId: number | undefined =
+    stakworkData?.data?.project_id ?? stakworkData?.project_id;
+
+  // ── Update to IN_PROGRESS ─────────────────────────────────────────────────
+  const currentResult = await db.stakworkRun.findUnique({
+    where: { id: recursionRun.id },
+    select: { result: true },
+  });
+  let updatedResult: Record<string, unknown> = {};
+  try {
+    updatedResult = currentResult?.result
+      ? (JSON.parse(currentResult.result) as Record<string, unknown>)
+      : {};
+  } catch {
+    // ignore
+  }
+  if (projectId !== undefined) {
+    updatedResult.projectId = projectId;
+  }
+
+  await db.stakworkRun.update({
+    where: { id: recursionRun.id },
+    data: {
+      projectId: projectId ?? null,
+      status: WorkflowStatus.IN_PROGRESS,
+      result: JSON.stringify(updatedResult),
+    },
+  });
+
+  return { recursionRunId: recursionRun.id };
+}
