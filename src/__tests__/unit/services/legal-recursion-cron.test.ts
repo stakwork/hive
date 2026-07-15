@@ -43,6 +43,7 @@ import { executeScheduledLegalBenchmarkRecursion } from "@/services/legal-recurs
 const OPENLAW_WORKSPACE = {
   id: "ws-openlaw-1",
   ownerId: "owner-user-1",
+  janitorConfig: { legalBenchmarkRecursionEnabled: true },
   swarm: {
     swarmUrl: "https://jarvis.example.com",
     swarmSecretAlias: "test-secret-alias",
@@ -185,6 +186,48 @@ describe("executeScheduledLegalBenchmarkRecursion", () => {
     expect(result.dispatched).toBe(0);
     expect(result.skipped).toBe(0);
     expect(result.deactivated).toBe(0);
+  });
+
+  // ── DB flag guard tests ─────────────────────────────────────────────────────
+
+  it("toggle-off: returns early when legalBenchmarkRecursionEnabled is false", async () => {
+    mockDbWorkspaceFindUnique.mockResolvedValue({
+      ...OPENLAW_WORKSPACE,
+      janitorConfig: { legalBenchmarkRecursionEnabled: false },
+    });
+
+    const result = await executeScheduledLegalBenchmarkRecursion();
+
+    expect(result.success).toBe(true);
+    expect(mockDispatchLegalBenchmarkEvalRun).not.toHaveBeenCalled();
+    expect(mockDbLegalBenchmarkRecursionFindMany).not.toHaveBeenCalled();
+  });
+
+  it("toggle-on: proceeds normally when legalBenchmarkRecursionEnabled is true", async () => {
+    mockDbWorkspaceFindUnique.mockResolvedValue({
+      ...OPENLAW_WORKSPACE,
+      janitorConfig: { legalBenchmarkRecursionEnabled: true },
+    });
+    // No active entries — just confirm we reach the entries lookup step
+    mockDbLegalBenchmarkRecursionFindMany.mockResolvedValue([]);
+
+    const result = await executeScheduledLegalBenchmarkRecursion();
+
+    expect(result.success).toBe(true);
+    expect(mockDbLegalBenchmarkRecursionFindMany).toHaveBeenCalled();
+  });
+
+  it("no config row: treated as disabled, returns early", async () => {
+    mockDbWorkspaceFindUnique.mockResolvedValue({
+      ...OPENLAW_WORKSPACE,
+      janitorConfig: null,
+    });
+
+    const result = await executeScheduledLegalBenchmarkRecursion();
+
+    expect(result.success).toBe(true);
+    expect(mockDispatchLegalBenchmarkEvalRun).not.toHaveBeenCalled();
+    expect(mockDbLegalBenchmarkRecursionFindMany).not.toHaveBeenCalled();
   });
 
   // ── (a) In-flight guard ─────────────────────────────────────────────────────
