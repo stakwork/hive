@@ -1,13 +1,16 @@
 "use client";
 
 import React from "react";
-import { Loader2 } from "lucide-react";
+import { CheckCircle2, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import type { ProposedFix } from "@/types/legal";
 
-interface ProposedFixCardProps {
+export interface ProposedFixCardProps {
   fix: ProposedFix;
+  onAccept?: (refId: string) => void;
+  onReject?: (refId: string) => void;
+  isPending?: boolean;
 }
 
 /**
@@ -94,9 +97,13 @@ function RerunBadge({
 
 /**
  * Renders a single `ProposedFix` node as a review card.
- * Accept / Reject buttons are visibly disabled in this v1 — wiring is deferred.
+ * Supports Accept / Reject actions with pending and status-driven states.
  */
-export function ProposedFixCard({ fix }: ProposedFixCardProps) {
+export function ProposedFixCard({ fix, onAccept, onReject, isPending = false }: ProposedFixCardProps) {
+  const isAccepted = fix.status === "accepted";
+  const isRejected = fix.status === "rejected";
+  const isResolved = isAccepted || isRejected;
+
   return (
     <div className="rounded-lg border bg-card p-4 space-y-3">
       {/* Header */}
@@ -150,15 +157,43 @@ export function ProposedFixCard({ fix }: ProposedFixCardProps) {
         )}
       </div>
 
-      {/* Actions — visibly disabled (v1 demo; wiring deferred) */}
-      <div className="flex items-center gap-2 pt-1">
-        <Button size="sm" variant="outline" disabled>
-          Accept
-        </Button>
-        <Button size="sm" variant="outline" disabled>
-          Reject
-        </Button>
-      </div>
+      {/* Actions */}
+      {isAccepted ? (
+        <div className="flex items-center gap-2 pt-1 text-sm text-green-700 dark:text-green-400">
+          <CheckCircle2 className="h-4 w-4 shrink-0" />
+          <span>
+            Published
+            {fix.resolved_by ? ` by ${fix.resolved_by}` : ""}
+            {fix.resolved_at
+              ? ` on ${new Date(fix.resolved_at).toLocaleDateString()}`
+              : ""}
+          </span>
+        </div>
+      ) : isRejected ? (
+        <div className="flex items-center gap-2 pt-1 text-sm text-muted-foreground">
+          <span>Rejected</span>
+        </div>
+      ) : (
+        <div className="flex items-center gap-2 pt-1">
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={isPending}
+            onClick={() => fix.ref_id && onAccept?.(fix.ref_id)}
+          >
+            {isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" /> : null}
+            Accept
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={isPending}
+            onClick={() => fix.ref_id && onReject?.(fix.ref_id)}
+          >
+            Reject
+          </Button>
+        </div>
+      )}
     </div>
   );
 }
