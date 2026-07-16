@@ -1,18 +1,11 @@
 /**
- * Unit tests for `GET /api/cron/legal-recursion`.
- *
- * Coverage:
- *   - Missing / wrong Authorization header → 401
- *   - Valid auth → calls executeScheduledLegalBenchmarkRecursion and surfaces its return value
+ * Unit tests for `GET /api/cron/legal-recursion` (deprecated).
+ * The route returns 410 Gone for all requests.
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect } from "vitest";
 import { NextRequest } from "next/server";
-
-// Mock the service before any route import.
-vi.mock("@/services/legal-recursion-cron", () => ({
-  executeScheduledLegalBenchmarkRecursion: vi.fn(),
-}));
+import { GET } from "@/app/api/cron/legal-recursion/route";
 
 function makeRequest(authHeader?: string): NextRequest {
   return new NextRequest("http://localhost/api/cron/legal-recursion", {
@@ -20,115 +13,23 @@ function makeRequest(authHeader?: string): NextRequest {
   });
 }
 
-describe("GET /api/cron/legal-recursion — auth guard", () => {
-  let GET: (req: NextRequest) => Promise<Response>;
-  const originalSecret = process.env.CRON_SECRET;
-
-  beforeEach(async () => {
-    vi.resetModules();
-    process.env.CRON_SECRET = "test-secret";
-    const mod = await import("@/app/api/cron/legal-recursion/route");
-    GET = mod.GET;
-
-    const { executeScheduledLegalBenchmarkRecursion } = await import(
-      "@/services/legal-recursion-cron"
-    );
-    vi.mocked(executeScheduledLegalBenchmarkRecursion).mockResolvedValue({
-      success: true,
-      entriesProcessed: 0,
-      dispatched: 0,
-      skipped: 0,
-      deactivated: 0,
-      errors: [],
-      timestamp: new Date(),
-    });
-  });
-
-  afterEach(() => {
-    process.env.CRON_SECRET = originalSecret;
-  });
-
-  it("returns 401 when Authorization header is missing", async () => {
+describe("GET /api/cron/legal-recursion (deprecated)", () => {
+  it("returns 410 with no auth header", async () => {
     const res = await GET(makeRequest());
-    expect(res.status).toBe(401);
+    expect(res.status).toBe(410);
     const body = await res.json();
-    expect(body.error).toBe("Unauthorized");
+    expect(body.message).toBe("Deprecated");
   });
 
-  it("returns 401 when Authorization header has wrong secret", async () => {
-    const res = await GET(makeRequest("Bearer wrong-secret"));
-    expect(res.status).toBe(401);
-    const body = await res.json();
-    expect(body.error).toBe("Unauthorized");
-  });
-
-  it("returns 401 for a malformed Authorization header (no Bearer prefix)", async () => {
-    const res = await GET(makeRequest("test-secret"));
-    expect(res.status).toBe(401);
-  });
-});
-
-describe("GET /api/cron/legal-recursion — successful dispatch", () => {
-  let GET: (req: NextRequest) => Promise<Response>;
-  const originalSecret = process.env.CRON_SECRET;
-
-  beforeEach(async () => {
-    vi.resetModules();
-    vi.clearAllMocks();
-    process.env.CRON_SECRET = "test-secret";
-    const mod = await import("@/app/api/cron/legal-recursion/route");
-    GET = mod.GET;
-  });
-
-  afterEach(() => {
-    process.env.CRON_SECRET = originalSecret;
-  });
-
-  it("calls executeScheduledLegalBenchmarkRecursion and surfaces its return value", async () => {
-    const { executeScheduledLegalBenchmarkRecursion } = await import(
-      "@/services/legal-recursion-cron"
-    );
-    vi.mocked(executeScheduledLegalBenchmarkRecursion).mockResolvedValue({
-      success: true,
-      entriesProcessed: 3,
-      dispatched: 2,
-      skipped: 1,
-      deactivated: 0,
-      errors: [],
-      timestamp: new Date("2026-01-01T00:00:00.000Z"),
-    });
-
+  it("returns 410 with valid auth header", async () => {
     const res = await GET(makeRequest("Bearer test-secret"));
-    expect(res.status).toBe(200);
-
+    expect(res.status).toBe(410);
     const body = await res.json();
-    expect(executeScheduledLegalBenchmarkRecursion).toHaveBeenCalledOnce();
-    expect(body.success).toBe(true);
-    expect(body.entriesProcessed).toBe(3);
-    expect(body.dispatched).toBe(2);
-    expect(body.skipped).toBe(1);
-    expect(body.errorCount).toBe(0);
+    expect(body.message).toBe("Deprecated");
   });
 
-  it("does NOT check LEGAL_RECURSION_CRON_ENABLED env var (removed)", async () => {
-    // Ensure the env var is absent — the route should still proceed
-    delete process.env.LEGAL_RECURSION_CRON_ENABLED;
-
-    const { executeScheduledLegalBenchmarkRecursion } = await import(
-      "@/services/legal-recursion-cron"
-    );
-    vi.mocked(executeScheduledLegalBenchmarkRecursion).mockResolvedValue({
-      success: true,
-      entriesProcessed: 0,
-      dispatched: 0,
-      skipped: 0,
-      deactivated: 0,
-      errors: [],
-      timestamp: new Date(),
-    });
-
-    const res = await GET(makeRequest("Bearer test-secret"));
-    expect(res.status).toBe(200);
-    expect(executeScheduledLegalBenchmarkRecursion).toHaveBeenCalledOnce();
+  it("returns 410 with wrong auth header", async () => {
+    const res = await GET(makeRequest("Bearer wrong"));
+    expect(res.status).toBe(410);
   });
 });
