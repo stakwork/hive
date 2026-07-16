@@ -194,7 +194,7 @@ describe("EvalRunsBox — Recursion button", () => {
     expect(screen.queryByRole("button", { name: "Recursion" })).toBeNull();
   });
 
-  it("clicking Recursion button POSTs to the enroll endpoint with taskSlug and runId", async () => {
+  it("clicking Recursion button POSTs to the enable endpoint with only taskSlug", async () => {
     const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200 });
     global.fetch = fetchMock;
 
@@ -215,11 +215,11 @@ describe("EvalRunsBox — Recursion button", () => {
     });
 
     expect(fetchMock).toHaveBeenCalledWith(
-      "/api/workspaces/openlaw/legal/benchmarks/recursion",
+      "/api/workspaces/openlaw/legal/benchmarks/recursion/enable",
       expect.objectContaining({
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ taskSlug: "antitrust/task-1", runId: "run-abc" }),
+        body: JSON.stringify({ taskSlug: "antitrust/task-1" }),
       }),
     );
   });
@@ -248,8 +248,9 @@ describe("EvalRunsBox — Recursion button", () => {
     expect(mockToastError).not.toHaveBeenCalled();
   });
 
-  it("shows warning toast on 409 Already Enrolled response", async () => {
-    global.fetch = vi.fn().mockResolvedValue({ ok: false, status: 409 });
+  it("shows success toast when toggling an already-enrolled task (idempotent)", async () => {
+    // The new endpoint treats enabling an already-true flag as success (idempotent)
+    global.fetch = vi.fn().mockResolvedValue({ ok: true, status: 200 });
 
     render(
       React.createElement(EvalRunsBox, {
@@ -267,8 +268,8 @@ describe("EvalRunsBox — Recursion button", () => {
       await Promise.resolve();
     });
 
-    expect(mockToastWarning).toHaveBeenCalledWith("Already enrolled");
-    expect(mockToastSuccess).not.toHaveBeenCalled();
+    expect(mockToastSuccess).toHaveBeenCalledWith("Enrolled in recursion loop");
+    expect(mockToastWarning).not.toHaveBeenCalled();
     expect(mockToastError).not.toHaveBeenCalled();
   });
 

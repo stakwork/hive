@@ -23,6 +23,7 @@ vi.mock("@/lib/logger", () => ({
 import {
   listRecursionEvalSets,
   setEvalSetRecursion,
+  enableRecursionForTaskSlug,
 } from "@/services/legal-benchmark-recursion";
 import { logger } from "@/lib/logger";
 
@@ -207,5 +208,99 @@ describe("setEvalSetRecursion", () => {
     // Service result shape: { ok, nodes?, error? } — no raw "success" key
     expect(result).toHaveProperty("ok", true);
     expect(result).not.toHaveProperty("success");
+  });
+});
+
+// ── enableRecursionForTaskSlug ────────────────────────────────────────────────
+
+describe("enableRecursionForTaskSlug", () => {
+  const TASK_SLUG = "practice-area/task-slug";
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  test("resolves EvalSet ref_id from task-slug and calls setEvalSetRecursion with true", async () => {
+    mockSearchNodesByAttributes.mockResolvedValue({ ok: true, nodes: [EVAL_SET_NODE] });
+    mockUpdateNode.mockResolvedValue({ success: true });
+
+    const result = await enableRecursionForTaskSlug(CONFIG, TASK_SLUG);
+
+    // Search was called with id filter matching the task-slug
+    expect(mockSearchNodesByAttributes).toHaveBeenCalledOnce();
+    const [, searchParams] = mockSearchNodesByAttributes.mock.calls[0] as [unknown, {
+      nodeTypes: string[];
+      filters: Array<{ attribute: string; value: unknown; comparator: string }>;
+      includeProperties: boolean;
+    }];
+    expect(searchParams.nodeTypes).toEqual(["EvalSet"]);
+    expect(searchParams.filters).toEqual([{ attribute: "id", value: TASK_SLUG, comparator: "=" }]);
+    expect(searchParams.includeProperties).toBe(true);
+
+    // updateNode was called with the resolved ref_id and recursion=true
+    expect(mockUpdateNode).toHaveBeenCalledOnce();
+    const [, updateReq] = mockUpdateNode.mock.calls[0] as [unknown, {
+      ref_id: string;
+      node_type: string;
+      node_data: Record<string, unknown>;
+    }];
+    expect(updateReq.ref_id).toBe("ref-abc-123");
+    expect(updateReq.node_type).toBe("EvalSet");
+    expect(updateReq.node_data).toEqual({ recursion: true });
+
+    expect(result.ok).toBe(true);
+    expect(result).not.toHaveProperty("notFound");
+  });
+
+  test("returns not-found result without calling updateNode when no EvalSet matches", async () => {
+    mockSearchNodesByAttributes.mockResolvedValue({ ok: true, nodes: [] });
+
+    const result = await enableRecursionForTaskSlug(CONFIG, "nonexistent/task");
+
+    expect(mockSearchNodesByAttributes).toHaveBeenCalledOnce();
+    expect(mockUpdateNode).not.toHaveBeenCalled();
+
+    expect(result.ok).toBe(false);
+    expect(result).toHaveProperty("notFound", true);
+    expect(result.error).toBeDefined();
+  });
+
+  test("returns error without calling updateNode when graph search fails", async () => {
+    mockSearchNodesByAttributes.mockResolvedValue({
+      ok: false,
+      nodes: [],
+      error: "Upstream timeout",
+    });
+
+    const result = await enableRecursionForTaskSlug(CONFIG, TASK_SLUG);
+
+    expect(mockUpdateNode).not.toHaveBeenCalled();
+    expect(result.ok).toBe(false);
+    expect(result.error).toBe("Upstream timeout");
+    expect(result).not.toHaveProperty("notFound");
+  });
+
+  test("returns error when graph write fails after resolving ref_id", async () => {
+    mockSearchNodesByAttributes.mockResolvedValue({ ok: true, nodes: [EVAL_SET_NODE] });
+    mockUpdateNode.mockResolvedValue({ success: false, error: "Write conflict" });
+
+    const result = await enableRecursionForTaskSlug(CONFIG, TASK_SLUG);
+
+    expect(mockUpdateNode).toHaveBeenCalledOnce();
+    expect(result.ok).toBe(false);
+    expect(result.error).toBe("Write conflict");
+    expect(result).not.toHaveProperty("notFound");
+  });
+
+  test("is idempotent — enabling an already-true flag succeeds", async () => {
+    // EvalSet already has recursion=true; enabling again should still succeed
+    mockSearchNodesByAttributes.mockResolvedValue({ ok: true, nodes: [EVAL_SET_NODE] });
+    mockUpdateNode.mockResolvedValue({ success: true });
+
+    const result = await enableRecursionForTaskSlug(CONFIG, TASK_SLUG);
+
+    expect(result.ok).toBe(true);
+    // updateNode is still called (setEvalSetRecursion always writes, which is idempotent on the graph)
+    expect(mockUpdateNode).toHaveBeenCalledOnce();
   });
 });
