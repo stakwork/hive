@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "@/components/ui/collapsible";
 import { useLegalBenchmarkRun } from "@/hooks/useLegalBenchmarkRun";
 import { useProposedFixes } from "@/hooks/useProposedFixes";
+import { useWorkspace } from "@/hooks/useWorkspace";
 import { StakworkRunLink } from "@/components/legal/StakworkRunLink";
 import { ProposedFixCard } from "@/components/legal/ProposedFixCard";
 import { EvalRunsBox } from "@/components/legal/EvalRunsBox";
@@ -28,6 +29,8 @@ function SpinnerMessage({ message }: { message: string }) {
 }
 
 export function LegalBenchmarkResults({ runId, onReset, isSuperAdmin = false }: LegalBenchmarkResultsProps) {
+  const { workspace } = useWorkspace();
+  const slug = workspace?.slug ?? "";
   const { run, isLoading, isStale, refetch } = useLegalBenchmarkRun(runId);
   const {
     fixes,
@@ -327,6 +330,7 @@ export function LegalBenchmarkResults({ runId, onReset, isSuperAdmin = false }: 
           runId={run.id}
           isSuperAdmin={isSuperAdmin}
           showRunEvalButton={showRunEvalButton}
+          showRecursionButton={slug === "openlaw" && unevaluatedFailedCount > 0}
         />
 
         <div className="flex justify-end gap-2">
