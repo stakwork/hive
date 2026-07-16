@@ -3102,7 +3102,7 @@ describe("Stakwork Run Service", () => {
         orderBy: { createdAt: "desc" },
         skip: 0,
         take: 10,
-        select: expect.any(Object),
+        include: expect.any(Object),
       });
     });
 
