@@ -12,6 +12,7 @@ const uploadRequestSchema = z.object({
   taskId: z.string().optional(),
   workspaceId: z.string().optional(),
   orgId: z.string().optional(),
+  context: z.enum(['canvas', 'lingo']).optional(),
 }).refine(d => !!(d.taskId || d.workspaceId || d.orgId), {
   message: 'One of taskId, workspaceId, or orgId is required',
 })
@@ -139,15 +140,30 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ presignedUrl, s3Path })
     }
 
-    // workspaceId-only branch (canvas uploads)
+    // workspaceId-only branch (canvas and lingo uploads)
     if (validatedData.workspaceId && !taskId) {
-      const { workspaceId } = validatedData
+      const { workspaceId, context } = validatedData
       // IDOR: verify caller has write access to the workspace BEFORE any S3 call
       const access = await validateWorkspaceAccessById(workspaceId, userId)
       if (!access?.canWrite) {
         return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
       }
-      const s3Path = getS3Service().generateCanvasUploadPath(workspaceId, filename)
+      // Validate file type and size for lingo icon uploads (and any workspace upload)
+      if (!getS3Service().validateFileType(contentType)) {
+        return NextResponse.json(
+          { error: 'Invalid file type. Only images (JPEG, PNG, GIF, WebP) are allowed.' },
+          { status: 400 }
+        )
+      }
+      if (!getS3Service().validateFileSize(size)) {
+        return NextResponse.json(
+          { error: 'File size exceeds maximum limit of 10MB.' },
+          { status: 400 }
+        )
+      }
+      const s3Path = context === 'lingo'
+        ? getS3Service().generateLingoIconPath(workspaceId, filename)
+        : getS3Service().generateCanvasUploadPath(workspaceId, filename)
       const presignedUrl = await getS3Service().generatePresignedUploadUrl(s3Path, contentType, 300)
       return NextResponse.json({ presignedUrl, s3Path })
     }

@@ -77,7 +77,7 @@ export async function GET(
     const data = await response.json();
     const rawNodes = Array.isArray(data) ? data : (data?.nodes ?? []);
     const nodes = rawNodes
-      .filter((n: { ref_id?: string; node_type?: string; date_added_to_graph?: number; properties?: { name?: string; definition?: string } }) => {
+      .filter((n: { ref_id?: string; node_type?: string; date_added_to_graph?: number; properties?: { name?: string; definition?: string; lingo_type?: string; icon_url?: string | null } }) => {
         if (!n?.ref_id) {
           console.warn("[Lingo nodes] Dropping item missing ref_id", n);
           return false;
@@ -88,12 +88,14 @@ export async function GET(
         ref_id: string;
         node_type: string;
         date_added_to_graph: number;
-        properties?: { name?: string; definition?: string };
+        properties?: { name?: string; definition?: string; lingo_type?: string; icon_url?: string | null };
       }) => ({
         ref_id: n.ref_id,
         node_type: n.node_type,
         name: n.properties?.name,
         definition: n.properties?.definition ?? null,
+        lingo_type: n.properties?.lingo_type,
+        icon_url: n.properties?.icon_url ?? null,
         date_added_to_graph: n.date_added_to_graph,
       }));
 
@@ -121,21 +123,14 @@ export async function POST(
   const user = requireAuth(ctx);
   if (user instanceof NextResponse) return user;
 
-  const body = await request.json().catch(() => ({})) as { name?: string; definition?: string; lingo_type?: string };
+  const body = await request.json().catch(() => ({})) as { name?: string; definition?: string; lingo_type?: string; icon_url?: string | null };
   const name = body.name?.trim() ?? "";
   const definition = body.definition?.trim() || undefined;
   const lingo_type = body.lingo_type?.trim() || undefined;
+  const icon_url = body.icon_url ?? null;
 
   if (!name) {
     return NextResponse.json({ success: false, error: "name is required" }, { status: 400 });
-  }
-
-  // Mock fallback — dev/test only
-  if (process.env.USE_MOCKS === "true" && process.env.NODE_ENV !== "production") {
-    return NextResponse.json({
-      success: true,
-      data: { ref_id: "mock-lingo-ref", name, definition, ...(lingo_type ? { lingo_type } : {}) },
-    });
   }
 
   const swarmResult = await getWorkspaceSwarmAccess(slug, user.id);
@@ -150,12 +145,43 @@ export async function POST(
     return NextResponse.json({ success: false, error: "Swarm unavailable" }, { status: 503 });
   }
 
-  const { swarmName, swarmApiKey } = swarmResult.data;
+  const { swarmName, swarmApiKey, workspaceId } = swarmResult.data;
+
+  // Validate icon_url is scoped to this workspace's lingo-icons prefix
+  if (icon_url !== null) {
+    const expectedPrefix = `uploads/${workspaceId}/lingo-icons/`;
+    if (!icon_url.startsWith(expectedPrefix)) {
+      return NextResponse.json({ success: false, error: "Invalid icon_url: cross-workspace key not allowed" }, { status: 400 });
+    }
+  }
+
+  // Mock fallback — dev/test only (after auth so workspace ownership is verified)
+  if (process.env.USE_MOCKS === "true" && process.env.NODE_ENV !== "production") {
+    return NextResponse.json({
+      success: true,
+      data: {
+        ref_id: "mock-lingo-ref",
+        name,
+        definition,
+        ...(lingo_type ? { lingo_type } : {}),
+        icon_url,
+      },
+    });
+  }
+
   const jarvisUrl = getJarvisUrl(swarmName);
 
   const result = await addNode(
     { jarvisUrl, apiKey: swarmApiKey },
-    { node_type: "Lingo", node_data: { name, definition, ...(lingo_type ? { lingo_type } : {}) } },
+    {
+      node_type: "Lingo",
+      node_data: {
+        name,
+        definition,
+        ...(lingo_type ? { lingo_type } : {}),
+        ...(icon_url !== null ? { icon_url } : {}),
+      },
+    },
   );
 
   if (!result.success) {
@@ -167,9 +193,18 @@ export async function POST(
 
   const responseBody: {
     success: boolean;
-    data: { ref_id?: string; name: string; definition?: string; lingo_type?: string };
+    data: { ref_id?: string; name: string; definition?: string; lingo_type?: string; icon_url: string | null };
     alreadyExists?: boolean;
-  } = { success: true, data: { ref_id: result.ref_id, name, definition, ...(lingo_type ? { lingo_type } : {}) } };
+  } = {
+    success: true,
+    data: {
+      ref_id: result.ref_id,
+      name,
+      definition,
+      ...(lingo_type ? { lingo_type } : {}),
+      icon_url,
+    },
+  };
 
   if (result.alreadyExists) {
     responseBody.alreadyExists = true;
