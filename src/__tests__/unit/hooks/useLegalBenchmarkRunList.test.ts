@@ -76,6 +76,7 @@ describe("useLegalBenchmarkRunList", () => {
     const url = String(vi.mocked(global.fetch).mock.calls[0][0]);
     expect(url).toContain("type=LEGAL_BENCHMARK_RUNNER");
     expect(url).toContain("limit=100");
+    expect(url).toContain("includeResult=true");
   });
 
   it("maps run rows to BenchmarkRunListRow with parsed taskTitle and taskSlug", async () => {
