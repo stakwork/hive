@@ -15,9 +15,21 @@ export function LingoCard({ node, onClick }: LingoCardProps) {
       className="w-full text-left rounded-xl border bg-card p-4 shadow-sm hover:border-primary/50 hover:shadow-md transition-all cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       data-testid={`lingo-card-${node.ref_id}`}
     >
-      <h3 className="font-semibold text-base text-foreground mb-1 truncate">
-        {node.name}
-      </h3>
+      <div className="flex items-center gap-2 mb-1">
+        {node.icon_url ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={`/api/upload/presigned-url?s3Key=${encodeURIComponent(node.icon_url)}`}
+            alt=""
+            loading="lazy"
+            width={20}
+            height={20}
+            className="rounded object-cover shrink-0"
+            data-testid="lingo-icon-thumbnail"
+          />
+        ) : null}
+        <h3 className="font-semibold text-base text-foreground truncate">{node.name}</h3>
+      </div>
       {node.lingo_type && (
         <span
           className="mt-1 inline-block rounded px-1.5 py-0.5 text-xs bg-muted text-muted-foreground font-mono"
