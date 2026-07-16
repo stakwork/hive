@@ -419,7 +419,7 @@ export async function searchNodesByAttributes(
   config: JarvisConnectionConfig,
   params: {
     nodeTypes: string[];
-    filters: Array<{ attribute: string; value: string; comparator: string }>;
+    filters: Array<{ attribute: string; value: string | boolean; comparator: string }>;
     includeProperties?: boolean;
     limit?: number;
     timeoutMs?: number;
