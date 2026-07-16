@@ -123,16 +123,12 @@ export function EvalRunsBox({
   const handleEnrollRecursion = async () => {
     setRecursionPending(true);
     try {
-      const res = await fetch("/api/workspaces/openlaw/legal/benchmarks/recursion", {
+      const res = await fetch("/api/workspaces/openlaw/legal/benchmarks/recursion/enable", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ taskSlug, runId }),
+        body: JSON.stringify({ taskSlug }),
       });
-      if (res.status === 409) {
-        // Dynamically import toast to avoid SSR issues
-        const { toast } = await import("sonner");
-        toast.warning("Already enrolled");
-      } else if (res.ok) {
+      if (res.ok) {
         const { toast } = await import("sonner");
         toast.success("Enrolled in recursion loop");
       } else {
