@@ -1073,6 +1073,13 @@ describe("POST /api/workspaces/[slug]/lingo/nodes", () => {
     process.env.USE_MOCKS = "true";
     process.env.NODE_ENV = "test";
 
+    // Auth check (getWorkspaceSwarmAccess) now runs before the mock fallback
+    // so workspace ownership is verified even in mock mode.
+    mockGetWorkspaceSwarmAccess.mockResolvedValueOnce({
+      success: true,
+      data: SWARM_DATA,
+    });
+
     const req = makeAuthenticatedRequest(
       `http://localhost/api/workspaces/${SLUG}/lingo/nodes`,
       { method: "POST", body: { name: "Mock Term", definition: "Mock def" } },

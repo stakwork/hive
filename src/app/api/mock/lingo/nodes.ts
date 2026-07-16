@@ -7,6 +7,7 @@ export interface LingoNode {
   definition?: string | null;  // promoted from properties.definition
   date_added_to_graph: number; // epoch float — replaces created_at
   lingo_type?: LingoType;
+  icon_url?: string | null;
 }
 
 export interface LingoDefinition {

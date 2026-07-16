@@ -255,6 +255,13 @@ export class S3Service {
     return `uploads/${workspaceId}/canvas/${timestamp}_${randomId}_${sanitized}`
   }
 
+  generateLingoIconPath(workspaceId: string, filename: string): string {
+    const timestamp = Date.now()
+    const randomId = Math.random().toString(36).substring(2, 15)
+    const sanitized = filename.replace(/[^a-zA-Z0-9.-]/g, '_')
+    return `uploads/${workspaceId}/lingo-icons/${timestamp}_${randomId}_${sanitized}`
+  }
+
   generateOrgUploadPath(orgId: string, filename: string): string {
     const timestamp = Date.now()
     const randomId = Math.random().toString(36).substring(2, 15)
