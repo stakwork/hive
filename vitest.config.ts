@@ -35,7 +35,11 @@ export default defineConfig({
       forks: {
         singleFork: true,
       },
-    } : undefined,
+    } : {
+      threads: {
+        singleThread: true,
+      },
+    },
     include:
       testSuite === "integration"
         ? ["src/__tests__/integration/**/*.test.{ts,tsx}"]
