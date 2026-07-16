@@ -456,9 +456,13 @@ export async function updateNode(
   config: JarvisConnectionConfig,
   request: UpdateNodeRequest,
 ): Promise<{ success: boolean; error?: string }> {
+  if (!request.ref_id) {
+    return { success: false, error: "ref_id is required to update a node" };
+  }
+
   const result = await jarvisRequest({
     config,
-    endpoint: "/node",
+    endpoint: `/node?ref_id=${encodeURIComponent(request.ref_id)}`,
     method: "PUT",
     data: {
       ref_id: request.ref_id,
