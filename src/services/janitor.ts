@@ -27,6 +27,35 @@ import { getSwarmBaseUrl, getSecondBrainBaseUrl } from "@/lib/utils/swarm";
 import { getBaseUrl } from "@/lib/utils";
 
 /**
+ * Cron-safe helper: checks whether the legal benchmark recursion janitor is
+ * enabled for the openlaw workspace without requiring a per-user access check.
+ *
+ * Returns false (safe no-op) if the openlaw workspace does not exist, has no
+ * JanitorConfig row, or if the row does not have the toggle enabled.
+ *
+ * IMPORTANT: This is for internal cron use only — do not expose through any
+ * request/route handler, as it bypasses per-user authorization.
+ */
+export async function isLegalBenchmarkRecursionEnabledForCron(): Promise<boolean> {
+  try {
+    const workspace = await db.workspace.findFirst({
+      where: { slug: "openlaw", deleted: false },
+      select: { id: true },
+    });
+    if (!workspace) return false;
+
+    const config = await db.janitorConfig.findUnique({
+      where: { workspaceId: workspace.id },
+      select: { legalBenchmarkRecursionEnabled: true },
+    });
+
+    return config?.legalBenchmarkRecursionEnabled === true;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Get or create janitor configuration for a workspace
  */
 export async function getOrCreateJanitorConfig(workspaceSlug: string, userId: string) {

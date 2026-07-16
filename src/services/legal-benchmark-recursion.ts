@@ -32,6 +32,12 @@ export interface RecursionEvalSetEntry {
   /** Task-slug / node_key — pulled from node.properties.id (distinct from ref_id). */
   id: string;
   name: string;
+  /**
+   * Stakwork project_id from the last dispatched eval run, written back by the cron.
+   * Null when the attribute is absent (older node or schema mismatch — attribute may
+   * not yet be live on every swarm; see zero-node / possibly-missing-attribute pattern).
+   */
+  projectId?: number | string | null;
 }
 
 // ── listRecursionEvalSets ──────────────────────────────────────────────────
@@ -81,9 +87,56 @@ export async function listRecursionEvalSets(
     // if the property is absent (older node or schema mismatch).
     id: node.properties?.id != null ? String(node.properties.id) : node.ref_id,
     name: node.properties?.name != null ? String(node.properties.name) : "",
+    // project_id attribute may be absent on older nodes or before the schema ships.
+    projectId: node.properties?.project_id != null
+      ? (node.properties.project_id as number | string)
+      : null,
   }));
 
   return { ok: true, nodes };
+}
+
+// ── writeBackEvalProjectId ─────────────────────────────────────────────────
+
+/**
+ * Writes back the Stakwork eval project_id onto an EvalSet node after a
+ * successful dispatch. Called by the recursion cron so the next pass can
+ * detect an already-running eval via live status instead of re-dispatching.
+ *
+ * Mirrors `setEvalSetRecursion`'s logging/error-handling shape.
+ *
+ * NOTE: Until the `project_id` attribute ships to the target swarm's schema,
+ * `updateNode` may appear to succeed while no-op'ing — same caveat as
+ * `setEvalSetRecursion`. The caller should log a CRITICAL if this keeps
+ * failing after retries.
+ */
+export async function writeBackEvalProjectId(
+  config: JarvisConnectionConfig,
+  refId: string,
+  projectId: number | string,
+): Promise<RecursionServiceResult> {
+  logger.info(
+    `[legal/benchmarks/recursion] writeBackEvalProjectId refId=${refId} projectId=${projectId}`,
+    "legal",
+    { refId, projectId },
+  );
+
+  const result = await updateNode(config, {
+    ref_id: refId,
+    node_type: "EvalSet",
+    node_data: { project_id: projectId },
+  });
+
+  if (!result.success) {
+    logger.warn(
+      `[legal/benchmarks/recursion] writeBackEvalProjectId failed refId=${refId}`,
+      "legal",
+      { refId, projectId, error: result.error },
+    );
+    return { ok: false, error: result.error ?? "Graph update failed" };
+  }
+
+  return { ok: true };
 }
 
 // ── setEvalSetRecursion ────────────────────────────────────────────────────
