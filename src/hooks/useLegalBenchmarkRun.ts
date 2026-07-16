@@ -50,7 +50,7 @@ export function useLegalBenchmarkRun(runId: string): UseLegalBenchmarkRunResult 
       setIsLoading(true);
 
       const res = await fetch(
-        `/api/stakwork/runs?workspaceId=${workspace.id}&type=${StakworkRunType.LEGAL_BENCHMARK_RUNNER}`,
+        `/api/stakwork/runs?workspaceId=${workspace.id}&type=${StakworkRunType.LEGAL_BENCHMARK_RUNNER}&includeResult=true`,
       );
 
       if (!res.ok) {
