@@ -8,6 +8,8 @@ import React from "react";
 vi.mock("lucide-react", () => ({
   Trash2: () => <svg data-testid="trash-icon" />,
   Plus: () => <svg data-testid="plus-icon" />,
+  ImageIcon: () => <svg data-testid="image-icon" />,
+  Paperclip: () => <svg data-testid="paperclip-icon" />,
 }));
 
 vi.mock("@/components/ui/button", () => ({
