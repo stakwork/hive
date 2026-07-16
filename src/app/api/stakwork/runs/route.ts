@@ -25,6 +25,7 @@ export async function GET(request: NextRequest) {
     const status = url.searchParams.get("status");
     const limit = url.searchParams.get("limit");
     const offset = url.searchParams.get("offset");
+    const includeResult = url.searchParams.get("includeResult") === "true";
 
     if (!workspaceId) {
       return NextResponse.json(
@@ -36,6 +37,7 @@ export async function GET(request: NextRequest) {
     // Build query object
     const queryData: Record<string, unknown> = {
       workspaceId,
+      includeResult,
     };
 
     if (type) {
@@ -112,13 +114,13 @@ export async function GET(request: NextRequest) {
           workspaceId: run.workspaceId,
           featureId: run.featureId,
           projectId: run.projectId,
-          result: run.result,
           dataType: run.dataType,
           decision: run.decision,
           feedback: run.feedback,
           createdAt: run.createdAt,
           updatedAt: run.updatedAt,
           feature: run.feature,
+          ...(query.includeResult ? { result: (run as { result?: string | null }).result } : {}),
         })),
         total: result.total,
         limit: result.limit,
