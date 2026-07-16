@@ -314,8 +314,6 @@ model Workspace {
   defaultForOrg           SourceControlOrg?        @relation("OrgDefaultWorkspace")
   voiceCorrectionLearnings VoiceCorrectionLearning[]
   promptUsages            PromptUsage[]
-  legalBenchmarkRecursions LegalBenchmarkRecursion[]
-
   @@index([ownerId])
   @@index([deleted])
   @@index([sourceControlOrgId])
@@ -2260,21 +2258,4 @@ enum RecursionStatus {
   INACTIVE
 }
 
-model LegalBenchmarkRecursion {
-  id          String          @id @default(cuid())
-  workspaceId String          @map("workspace_id")
-  taskSlug    String          @map("task_slug")
-  status      RecursionStatus @default(ACTIVE)
-  runId       String          @map("run_id")
-  lastRunId   String?         @map("last_run_id")
-  lastRunAt   DateTime?       @map("last_run_at")
-  lastScore   String?         @map("last_score")
-  createdAt   DateTime        @default(now()) @map("created_at")
-  updatedAt   DateTime        @updatedAt @map("updated_at")
-  workspace   Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
-  @@unique([workspaceId, taskSlug])
-  @@index([workspaceId])
-  @@index([status])
-  @@map("legal_benchmark_recursions")
-}
