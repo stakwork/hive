@@ -139,6 +139,59 @@ export async function writeBackEvalProjectId(
   return { ok: true };
 }
 
+// ── enableRecursionForTaskSlug ─────────────────────────────────────────────
+
+/**
+ * Resolves the EvalSet `ref_id` for the given task-slug, then enables recursion on it.
+ *
+ * The resolve+toggle is done server-side in a single call so the client never
+ * supplies a `ref_id` directly — the server derives it from the graph, scoped
+ * to the authenticated workspace's swarm access.
+ *
+ * Returns:
+ *  - `{ ok: true }` on success (idempotent — enabling an already-true flag is fine)
+ *  - `{ ok: false, notFound: true }` when no EvalSet matches the task-slug
+ *  - `{ ok: false, error: string }` on graph search or write failure
+ */
+export async function enableRecursionForTaskSlug(
+  config: JarvisConnectionConfig,
+  taskSlug: string,
+): Promise<RecursionServiceResult & { notFound?: boolean }> {
+  logger.info(
+    `[legal/benchmarks/recursion] enableRecursionForTaskSlug taskSlug=${taskSlug}`,
+    "legal",
+    { taskSlug },
+  );
+
+  // Resolve EvalSet ref_id from the task-slug (stored as the node's `id` property)
+  const searchResult = await searchNodesByAttributes(config, {
+    nodeTypes: ["EvalSet"],
+    filters: [{ attribute: "id", value: taskSlug, comparator: "=" }],
+    includeProperties: true,
+  });
+
+  if (!searchResult.ok) {
+    logger.warn(
+      `[legal/benchmarks/recursion] enableRecursionForTaskSlug graph search failed taskSlug=${taskSlug}`,
+      "legal",
+      { taskSlug, error: searchResult.error },
+    );
+    return { ok: false, error: searchResult.error ?? "Graph search failed" };
+  }
+
+  if (searchResult.nodes.length === 0) {
+    logger.info(
+      `[legal/benchmarks/recursion] enableRecursionForTaskSlug no EvalSet found taskSlug=${taskSlug}`,
+      "legal",
+      { taskSlug },
+    );
+    return { ok: false, notFound: true, error: "EvalSet not found for task slug" };
+  }
+
+  const refId = searchResult.nodes[0].ref_id;
+  return setEvalSetRecursion(config, refId, true);
+}
+
 // ── setEvalSetRecursion ────────────────────────────────────────────────────
 
 /**
