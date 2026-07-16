@@ -82,6 +82,7 @@ describe("useLegalBenchmarkRun", () => {
     expect(url).toContain("LEGAL_BENCHMARK_RUNNER");
     expect(url).not.toContain("LEGAL_BENCHMARK_SCORER");
     expect(url).toContain("workspace-123");
+    expect(url).toContain("includeResult=true");
   });
 
   it("sets isLoading to true initially, false after fetch", async () => {
