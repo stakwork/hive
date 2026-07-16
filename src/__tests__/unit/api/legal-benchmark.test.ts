@@ -94,7 +94,6 @@ vi.mock("@/lib/vercel/stakwork-token", () => ({
 }));
 
 import { POST as postRun } from "@/app/api/workspaces/[slug]/legal/benchmarks/run/route";
-import { GET as getRun } from "@/app/api/workspaces/[slug]/legal/benchmarks/runs/[runId]/route";
 import { getWorkspaceSwarmAccess } from "@/lib/helpers/swarm-access";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -107,12 +106,6 @@ function makeRunRequest(body: Record<string, unknown>, slug = "openlaw") {
   });
 }
 
-function makeGetRunRequest(slug = "openlaw", runId = "run-1") {
-  return new NextRequest(
-    `http://localhost/api/workspaces/${slug}/legal/benchmarks/runs/${runId}`,
-    { method: "GET" },
-  );
-}
 
 const MOCK_SWARM_ACCESS = {
   success: true,
@@ -882,60 +875,9 @@ describe("POST /run — task context pre-fetch for Stakwork vars", () => {
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
-// GET /runs/[runId]
-// ═══════════════════════════════════════════════════════════════════════════
-
-describe("GET /api/workspaces/[slug]/legal/benchmarks/runs/[runId]", () => {
-  test("returns 404 for non-openlaw slugs", async () => {
-    const res = await getRun(makeGetRunRequest("other", "run-1"), {
-      params: Promise.resolve({ slug: "other", runId: "run-1" }),
-    });
-    expect(res.status).toBe(404);
-  });
-
-  test("returns 404 when run does not exist (findFirst returns null)", async () => {
-    (getWorkspaceSwarmAccess as Mock).mockResolvedValue(MOCK_SWARM_ACCESS);
-    mockDbStakworkRunFindFirst.mockResolvedValue(null);
-
-    const res = await getRun(makeGetRunRequest("openlaw", "nonexistent"), {
-      params: Promise.resolve({ slug: "openlaw", runId: "nonexistent" }),
-    });
-    expect(res.status).toBe(404);
-  });
-
-  test("returns 404 on workspaceId mismatch — findFirst with workspaceId in WHERE returns null (IDOR guard)", async () => {
-    (getWorkspaceSwarmAccess as Mock).mockResolvedValue(MOCK_SWARM_ACCESS);
-    // The route scopes workspaceId in the query itself; a foreign run returns null
-    mockDbStakworkRunFindFirst.mockResolvedValue(null);
-
-    const res = await getRun(makeGetRunRequest("openlaw", "run-other-ws"), {
-      params: Promise.resolve({ slug: "openlaw", runId: "run-other-ws" }),
-    });
-    expect(res.status).toBe(404);
-    // Confirm workspaceId was included in the findFirst call
-    expect(mockDbStakworkRunFindFirst).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: expect.objectContaining({ workspaceId: "ws-1" }),
-      }),
-    );
-  });
-
-  test("returns 200 with run and runnerRun alias; scorerRun is null (single-run flow)", async () => {
-    (getWorkspaceSwarmAccess as Mock).mockResolvedValue(MOCK_SWARM_ACCESS);
-    mockDbStakworkRunFindFirst.mockResolvedValue(MOCK_RUNNER_RUN);
-
-    const res = await getRun(makeGetRunRequest("openlaw", "runner-1"), {
-      params: Promise.resolve({ slug: "openlaw", runId: "runner-1" }),
-    });
-    expect(res.status).toBe(200);
-    const body = await res.json();
-    expect(body.run.id).toBe("runner-1");
-    expect(body.runnerRun.id).toBe("runner-1");
-    // scorerRun is null — no sibling in the single-run flow
-    expect(body.scorerRun).toBeNull();
-  });
-});
-
+// NOTE: The GET /api/workspaces/[slug]/legal/benchmarks/runs/[runId] handler
+// has been removed. Tests for the replacement generic route live in:
+// src/__tests__/unit/api/stakwork-runs-by-id.test.ts
 // ═══════════════════════════════════════════════════════════════════════════
 // POST /run — Jarvis eval graph instrumentation (non-fatal)
 // ═══════════════════════════════════════════════════════════════════════════
