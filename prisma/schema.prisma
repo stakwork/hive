@@ -1067,6 +1067,7 @@ model StakworkRun {
   @@index([promptVersionId])
   @@index([evalSetId])
   @@index([userId, type, createdAt])
+  @@index([workspaceId, type, createdAt])
   @@map("stakwork_runs")
 }
 
