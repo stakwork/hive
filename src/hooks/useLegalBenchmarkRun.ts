@@ -44,23 +44,25 @@ export function useLegalBenchmarkRun(runId: string): UseLegalBenchmarkRunResult 
   const fetchRunRef = useRef<(() => Promise<void>) | undefined>(undefined);
 
   const fetchRun = useCallback(async () => {
-    if (!workspace?.id || !runId) return;
+    if (!runId) return;
 
     try {
       setIsLoading(true);
 
-      const res = await fetch(
-        `/api/stakwork/runs?workspaceId=${workspace.id}&type=${StakworkRunType.LEGAL_BENCHMARK_RUNNER}`,
-      );
+      const res = await fetch(`/api/stakwork/runs/${runId}`);
+
+      if (res.status === 404) {
+        runRef.current = null;
+        setRun(null);
+        return;
+      }
 
       if (!res.ok) {
-        throw new Error("Failed to fetch benchmark runs");
+        throw new Error("Failed to fetch benchmark run");
       }
 
       const data = await res.json();
-      const rawRunnerRuns: RawRunRow[] = data.runs ?? [];
-
-      const rawRunner = rawRunnerRuns.find((r) => r.id === runId);
+      const rawRunner: RawRunRow | null = data.run ?? null;
 
       if (!rawRunner) {
         runRef.current = null;
@@ -106,15 +108,15 @@ export function useLegalBenchmarkRun(runId: string): UseLegalBenchmarkRunResult 
     } finally {
       setIsLoading(false);
     }
-  }, [workspace?.id, runId]);
+  }, [runId]);
 
   fetchRunRef.current = fetchRun;
 
   // Initial fetch on mount.
   useEffect(() => {
-    if (!workspace?.id || !runId) return;
+    if (!runId) return;
     fetchRun();
-  }, [workspace?.id, runId, fetchRun]);
+  }, [runId, fetchRun]);
 
   // Stale timeout: after 3 minutes with an in-progress status, poll once.
   // If still in-progress after the poll, mark stale. Resets when status leaves in-progress.

@@ -85,7 +85,7 @@ export function useEvalRunHistory(taskSlug: string): UseEvalRunHistoryReturn {
       try {
         const [triggersRes, runsRes] = await Promise.all([
           fetch(`/api/workspaces/${slug}/evals/harvey-lab/requirements/${reqId}/triggers`),
-          fetch(`/api/stakwork/runs?type=LEGAL_BENCHMARK_RUNNER&workspaceId=${workspaceId}`),
+          fetch(`/api/stakwork/runs?type=LEGAL_BENCHMARK_RUNNER&workspaceId=${workspaceId}&includeResult=true`),
         ]);
 
         if (cancelled) return;
@@ -105,10 +105,8 @@ export function useEvalRunHistory(taskSlug: string): UseEvalRunHistoryReturn {
         const triggers = rawTriggers.filter(triggerHasIdentity);
 
         // Parse runs
-        const runsData = (await runsRes.json()) as { data?: StakworkRunRow[] } | StakworkRunRow[];
-        const runRows: StakworkRunRow[] = Array.isArray(runsData)
-          ? runsData
-          : (runsData?.data ?? []);
+        const runsData = (await runsRes.json()) as { runs?: StakworkRunRow[] };
+        const runRows: StakworkRunRow[] = Array.isArray(runsData.runs) ? runsData.runs : [];
 
         if (cancelled) return;
 

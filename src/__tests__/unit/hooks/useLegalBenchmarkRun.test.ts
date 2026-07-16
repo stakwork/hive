@@ -47,11 +47,12 @@ const MOCK_RUNNER_ROW = {
   updatedAt: new Date().toISOString(),
 };
 
-/** Helper: set up fetch to return the runner row (single-run pipeline). */
+/** Helper: set up fetch to return the runner row via the by-id `{ success, run }` shape. */
 function setupFetch(runnerOverrides: Partial<typeof MOCK_RUNNER_ROW> = {}) {
   vi.mocked(global.fetch).mockResolvedValue({
     ok: true,
-    json: async () => ({ runs: [{ ...MOCK_RUNNER_ROW, ...runnerOverrides }] }),
+    status: 200,
+    json: async () => ({ success: true, run: { ...MOCK_RUNNER_ROW, ...runnerOverrides } }),
   } as Response);
 }
 
@@ -69,19 +70,31 @@ describe("useLegalBenchmarkRun", () => {
     setupFetch();
   });
 
-  it("fires a single fetch against /api/stakwork/runs for LEGAL_BENCHMARK_RUNNER only", async () => {
+  it("fetches the run by id via /api/stakwork/runs/[runId] (not the list endpoint)", async () => {
     const { result } = renderHook(() => useLegalBenchmarkRun(runId));
 
     await waitFor(() => {
       expect(result.current.isLoading).toBe(false);
     });
 
-    // Exactly one call — no scorer fetch
+    // Exactly one call to the by-id route
     expect(global.fetch).toHaveBeenCalledTimes(1);
     const url = String(vi.mocked(global.fetch).mock.calls[0][0]);
-    expect(url).toContain("LEGAL_BENCHMARK_RUNNER");
-    expect(url).not.toContain("LEGAL_BENCHMARK_SCORER");
-    expect(url).toContain("workspace-123");
+    expect(url).toBe(`/api/stakwork/runs/${runId}`);
+    // Must NOT use the list endpoint
+    expect(url).not.toContain("LEGAL_BENCHMARK_RUNNER");
+    expect(url).not.toContain("workspaceId=");
+  });
+
+  it("reads run from data.run (by-id response shape)", async () => {
+    const { result } = renderHook(() => useLegalBenchmarkRun(runId));
+
+    await waitFor(() => {
+      expect(result.current.run).not.toBeNull();
+    });
+
+    expect(result.current.run!.id).toBe("runner-abc");
+    expect(result.current.run!.taskSlug).toBe("antitrust/task-1");
   });
 
   it("sets isLoading to true initially, false after fetch", async () => {
@@ -177,6 +190,38 @@ describe("useLegalBenchmarkRun", () => {
     expect(result.current.run!.scoreJson).toBeNull();
   });
 
+  it("handles 404 response gracefully — sets run to null without throwing", async () => {
+    vi.mocked(global.fetch).mockResolvedValue({
+      ok: false,
+      status: 404,
+      json: async () => ({ success: false }),
+    } as Response);
+
+    const { result } = renderHook(() => useLegalBenchmarkRun(runId));
+
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false);
+    });
+
+    expect(result.current.run).toBeNull();
+  });
+
+  it("handles missing run in response body gracefully — sets run to null", async () => {
+    vi.mocked(global.fetch).mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ success: true, run: null }),
+    } as Response);
+
+    const { result } = renderHook(() => useLegalBenchmarkRun("nonexistent-id"));
+
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false);
+    });
+
+    expect(result.current.run).toBeNull();
+  });
+
   it("subscribes to Pusher channel using STAKWORK_RUN_UPDATE event", async () => {
     renderHook(() => useLegalBenchmarkRun(runId));
 
@@ -209,6 +254,10 @@ describe("useLegalBenchmarkRun", () => {
     await waitFor(() => {
       expect(global.fetch).toHaveBeenCalledTimes(2);
     });
+
+    // Second call must also use the by-id route
+    const url2 = String(vi.mocked(global.fetch).mock.calls[1][0]);
+    expect(url2).toBe(`/api/stakwork/runs/${runId}`);
   });
 
   it("also refetches when Pusher event uses legacy run_id field with matching value", async () => {
@@ -345,21 +394,6 @@ describe("useLegalBenchmarkRun", () => {
     vi.mocked(global.fetch).mockRejectedValue(new Error("Network error"));
 
     const { result } = renderHook(() => useLegalBenchmarkRun(runId));
-
-    await waitFor(() => {
-      expect(result.current.isLoading).toBe(false);
-    });
-
-    expect(result.current.run).toBeNull();
-  });
-
-  it("returns null run when runner row is not found in the response", async () => {
-    vi.mocked(global.fetch).mockResolvedValue({
-      ok: true,
-      json: async () => ({ runs: [] }),
-    } as Response);
-
-    const { result } = renderHook(() => useLegalBenchmarkRun("nonexistent-id"));
 
     await waitFor(() => {
       expect(result.current.isLoading).toBe(false);
