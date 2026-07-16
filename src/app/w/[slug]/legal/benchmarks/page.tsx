@@ -1,6 +1,5 @@
 "use client";
 
-import { useState, useCallback } from "react";
 import { Scale } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
 import { LegalBenchmarksPanel } from "@/components/legal/LegalBenchmarksPanel";
@@ -11,27 +10,13 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 
 function RecursionTab() {
   const { entries, isLoading, error, refetch } = useLegalBenchmarkRecursionList();
-  const [localEntries, setLocalEntries] = useState(entries);
-
-  // Sync local entries with fetched entries
-  const syncedEntries = localEntries.length === 0 && entries.length > 0 ? entries : localEntries;
-  // Keep local entries in sync when refetch returns new data
-  // We use a merged view: show fetched entries but allow optimistic removals
-  const displayEntries = entries.map((e) => e); // use fresh data always
-
-  const handleRemove = useCallback((id: string) => {
-    // Optimistically remove from the displayed list; refetch will confirm
-    void refetch();
-    setLocalEntries((prev) => prev.filter((e) => e.id !== id));
-  }, [refetch]);
 
   return (
     <RecursionList
-      entries={displayEntries}
+      entries={entries}
       isLoading={isLoading}
       error={error}
       refetch={refetch}
-      onRemove={handleRemove}
     />
   );
 }
