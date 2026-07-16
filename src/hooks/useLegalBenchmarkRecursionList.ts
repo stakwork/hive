@@ -1,17 +1,9 @@
 import { useEffect, useState, useCallback, useRef } from "react";
-import type { RecursionStatus } from "@prisma/client";
 
 export interface RecursionEntry {
-  id: string;
-  workspaceId: string;
-  taskSlug: string;
-  status: RecursionStatus;
-  runId: string;
-  lastRunId: string | null;
-  lastRunAt: string | null;
-  lastScore: string | null;
-  createdAt: string;
-  updatedAt: string;
+  refId: string;
+  id: string;   // task-slug
+  name: string;
 }
 
 interface UseLegalBenchmarkRecursionListResult {
@@ -34,9 +26,17 @@ export function useLegalBenchmarkRecursionList(): UseLegalBenchmarkRecursionList
   const fetchEntries = useCallback(async () => {
     try {
       const res = await fetch(RECURSION_API_URL);
-      if (!res.ok) throw new Error("Failed to fetch recursion entries");
-      const data = (await res.json()) as RecursionEntry[];
-      setEntries(data);
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error((body as { error?: string }).error ?? "Failed to fetch recursion entries");
+      }
+      const body = (await res.json()) as { success: boolean; data: Array<{ ref_id: string; id: string; name: string }> };
+      const mapped: RecursionEntry[] = (body.data ?? []).map((item) => ({
+        refId: item.ref_id,
+        id: item.id,
+        name: item.name,
+      }));
+      setEntries(mapped);
       setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unknown error");
@@ -50,7 +50,7 @@ export function useLegalBenchmarkRecursionList(): UseLegalBenchmarkRecursionList
     fetchEntries();
   }, [fetchEntries]);
 
-  // Always-on polling — entries are long-lived ACTIVE/RUNNING states
+  // Always-on polling
   useEffect(() => {
     intervalRef.current = setInterval(fetchEntries, POLL_INTERVAL_MS);
     return () => {
