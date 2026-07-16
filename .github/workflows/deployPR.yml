@@ -349,6 +349,21 @@ jobs:
           echo "DATABASE_URL is set (masked)"
           npx prisma generate
 
+          # Resolve 20260401103000_lightning_preauth.
+          # This migration alters lightning_payments: drops NOT NULL on workspace_id,
+          # adds workspace_name and workspace_slug. The SQL is now idempotent (IF NOT EXISTS /
+          # DO $$ guard). If it is stuck in a failed state, roll it back so Prisma reruns it.
+          # If workspace_name already exists the idempotent SQL will succeed cleanly.
+          echo "Resolving 20260401103000_lightning_preauth..."
+          LN_NAME_COL=$(psql "$DATABASE_URL" -tAc "SELECT COUNT(*) FROM information_schema.columns WHERE table_name='lightning_payments' AND column_name='workspace_name';" 2>/dev/null | tr -d '[:space:]' || echo "0")
+          if [ "$LN_NAME_COL" = "1" ]; then
+            echo "  workspace_name column exists — marking as applied"
+            npx prisma migrate resolve --applied "20260401103000_lightning_preauth" 2>&1 || true
+          else
+            echo "  workspace_name column absent — rolling back failed state so Prisma reruns"
+            npx prisma migrate resolve --rolled-back "20260401103000_lightning_preauth" 2>&1 || true
+          fi
+
           # Always mark 20260401174012 as applied before every deploy attempt.
           # This migration references swarm_payments which no longer exists (renamed to
           # fiat_payments). It is safe to skip because its DDL was already applied on the
@@ -466,6 +481,12 @@ jobs:
             fi
             echo "⚠️  Migration attempt $attempt failed, waiting 15s before retry..."
             # Re-resolve before each retry in case the previous attempt re-failed it
+            LN_NAME_COL=$(psql "$DATABASE_URL" -tAc "SELECT COUNT(*) FROM information_schema.columns WHERE table_name='lightning_payments' AND column_name='workspace_name';" 2>/dev/null | tr -d '[:space:]' || echo "0")
+            if [ "$LN_NAME_COL" = "1" ]; then
+              npx prisma migrate resolve --applied "20260401103000_lightning_preauth" 2>&1 || true
+            else
+              npx prisma migrate resolve --rolled-back "20260401103000_lightning_preauth" 2>&1 || true
+            fi
             npx prisma migrate resolve --applied "20260401174012" 2>&1 || true
             # Resolve plan_updated_at migration: column already exists on this DB
             PLAN_COL=$(psql "$DATABASE_URL" -tAc "SELECT COUNT(*) FROM information_schema.columns WHERE table_name='features' AND column_name='plan_updated_at';" 2>/dev/null | tr -d '[:space:]' || echo "0")
