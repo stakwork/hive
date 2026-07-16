@@ -1929,32 +1929,19 @@ export async function getStakworkRuns(
   // Get total count
   const total = await db.stakworkRun.count({ where });
 
-  // Get paginated runs — select only the fields the response map returns.
-  // `result` is heavy (can be large JSON blobs) so it is opt-in.
+  // Get paginated runs
   const runs = await db.stakworkRun.findMany({
     where,
     orderBy: { createdAt: "desc" },
     skip: query.offset,
     take: query.limit,
-    select: {
-      id: true,
-      type: true,
-      status: true,
-      workspaceId: true,
-      featureId: true,
-      projectId: true,
-      dataType: true,
-      decision: true,
-      feedback: true,
-      createdAt: true,
-      updatedAt: true,
+    include: {
       feature: {
         select: {
           id: true,
           title: true,
         },
       },
-      ...(query.includeResult ? { result: true } : {}),
     },
   });
 
@@ -1964,25 +1951,6 @@ export async function getStakworkRuns(
     limit: query.limit,
     offset: query.offset,
   };
-}
-
-/**
- * Fetch a single Stakwork run by ID, scoped to an authorized workspace.
- * IDOR guard enforced by construction: the WHERE clause requires both the
- * run ID and an authorized workspace relation in a single query, so a
- * cross-workspace runId structurally returns null rather than data.
- * Returns null for not-found AND unauthorized — callers must map both to 404.
- */
-export async function getStakworkRunById(runId: string, userId: string) {
-  return db.stakworkRun.findFirst({
-    where: {
-      id: runId,
-      workspace: {
-        deleted: false,
-        OR: [{ ownerId: userId }, { members: { some: { userId } } }],
-      },
-    },
-  });
 }
 
 /**
