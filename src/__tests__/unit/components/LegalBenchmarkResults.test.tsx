@@ -105,9 +105,11 @@ vi.mock("@/components/legal/StakworkRunLink", () => ({
       : null,
 }));
 
+const mockWorkspaceSlug = { value: "openlaw" };
+
 vi.mock("@/hooks/useWorkspace", () => ({
   useWorkspace: () => ({
-    workspace: { id: "workspace-123", slug: "openlaw" },
+    workspace: { id: "workspace-123", slug: mockWorkspaceSlug.value },
   }),
 }));
 
@@ -249,6 +251,7 @@ describe("LegalBenchmarkResults", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    mockWorkspaceSlug.value = "openlaw";
     mockRunEval.mockResolvedValue({ status: "started", message: "Eval started." });
     mockIsSubmitting.value = false;
     mockUseLegalBenchmarkRun.mockReturnValue({
@@ -1107,6 +1110,122 @@ describe("LegalBenchmarkResults", () => {
 
     expect(mockUseProposedFixes).toHaveBeenCalledWith("run-xyz");
   });
+
+  // ─── Recursion button gating ───────────────────────────────────────────────
+
+  it("Recursion button renders for completed run with unevaluated failing criterion in openlaw workspace", () => {
+    mockWorkspaceSlug.value = "openlaw";
+    mockUseLegalBenchmarkRun.mockReturnValue({
+      run: makeMockRun({
+        status: "complete",
+        runnerOutputText: "Output",
+        runnerRun: makeRunnerRow({
+          status: "COMPLETED",
+          result: {
+            n_passed: 0,
+            n_total: 1,
+            all_pass: false,
+            criteria_results: [
+              { id: "crit-1", title: "Accuracy", verdict: "fail", reasoning: "Missing key points" },
+            ],
+          },
+        }),
+      }),
+      isLoading: false,
+      isStale: false,
+      refetch: vi.fn(),
+    });
+
+    render(React.createElement(LegalBenchmarkResults, { runId: "run-abc", onReset }));
+    expect(screen.getByRole("button", { name: "Recursion" })).toBeInTheDocument();
+  });
+
+  it("Recursion button is hidden when completed run has all criteria passing", () => {
+    mockWorkspaceSlug.value = "openlaw";
+    mockUseLegalBenchmarkRun.mockReturnValue({
+      run: makeMockRun({
+        status: "complete",
+        runnerOutputText: "Output",
+        runnerRun: makeRunnerRow({
+          status: "COMPLETED",
+          result: {
+            n_passed: 1,
+            n_total: 1,
+            all_pass: true,
+            criteria_results: [
+              { id: "crit-1", title: "Accuracy", verdict: "pass", reasoning: "All good" },
+            ],
+          },
+        }),
+      }),
+      isLoading: false,
+      isStale: false,
+      refetch: vi.fn(),
+    });
+
+    render(React.createElement(LegalBenchmarkResults, { runId: "run-abc", onReset }));
+    expect(screen.queryByRole("button", { name: "Recursion" })).toBeNull();
+  });
+
+  it("Recursion button is hidden when all failing criteria already carry cause_type (unevaluatedFailedCount === 0)", () => {
+    mockWorkspaceSlug.value = "openlaw";
+    mockUseLegalBenchmarkRun.mockReturnValue({
+      run: makeMockRun({
+        status: "complete",
+        runnerOutputText: "Output",
+        runnerRun: makeRunnerRow({
+          status: "COMPLETED",
+          result: {
+            n_passed: 0,
+            n_total: 1,
+            all_pass: false,
+            criteria_results: [
+              {
+                id: "crit-1",
+                title: "Accuracy",
+                verdict: "fail",
+                reasoning: "Missing key points",
+                cause_type: "missing_context",
+              },
+            ],
+          },
+        }),
+      }),
+      isLoading: false,
+      isStale: false,
+      refetch: vi.fn(),
+    });
+
+    render(React.createElement(LegalBenchmarkResults, { runId: "run-abc", onReset }));
+    expect(screen.queryByRole("button", { name: "Recursion" })).toBeNull();
+  });
+
+  it("Recursion button is hidden for non-openlaw workspace even with unevaluated failures", () => {
+    mockWorkspaceSlug.value = "other-workspace";
+    mockUseLegalBenchmarkRun.mockReturnValue({
+      run: makeMockRun({
+        status: "complete",
+        runnerOutputText: "Output",
+        runnerRun: makeRunnerRow({
+          status: "COMPLETED",
+          result: {
+            n_passed: 0,
+            n_total: 1,
+            all_pass: false,
+            criteria_results: [
+              { id: "crit-1", title: "Accuracy", verdict: "fail", reasoning: "Missing key points" },
+            ],
+          },
+        }),
+      }),
+      isLoading: false,
+      isStale: false,
+      refetch: vi.fn(),
+    });
+
+    render(React.createElement(LegalBenchmarkResults, { runId: "run-abc", onReset }));
+    expect(screen.queryByRole("button", { name: "Recursion" })).toBeNull();
+  });
 });
 
 // ─── EvalRunsBox tests ────────────────────────────────────────────────────────
@@ -1145,6 +1264,7 @@ describe("EvalRunsBox", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    mockWorkspaceSlug.value = "openlaw";
     mockRunEval.mockResolvedValue({ status: "started", message: "Eval started." });
     mockIsSubmitting.value = false;
     mockUseLegalBenchmarkRun.mockReturnValue({
