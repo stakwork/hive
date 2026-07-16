@@ -43,7 +43,7 @@ export function useLegalBenchmarkRunList(
     if (!workspaceId) return;
     try {
       const res = await fetch(
-        `/api/stakwork/runs?type=${StakworkRunType.LEGAL_BENCHMARK_RUNNER}&workspaceId=${workspaceId}&limit=100`,
+        `/api/stakwork/runs?type=${StakworkRunType.LEGAL_BENCHMARK_RUNNER}&workspaceId=${workspaceId}&limit=100&includeResult=true`,
       );
       if (!res.ok) throw new Error("Failed to fetch runs");
       const data = await res.json();
