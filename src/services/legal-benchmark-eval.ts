@@ -61,6 +61,14 @@ export interface DispatchEvalParams {
    * the Bifrost orchestrator falls back to the shared swarm env key.
    */
   userId?: string;
+  /**
+   * When true, skips the ALREADY_RAN and ACTIVE_EVAL_RUN_EXISTS guards.
+   * Used by the recursion cron whose in-progress guard is the live Stakwork
+   * status check rather than local StakworkRun bookkeeping.
+   * Does NOT bypass NO_FAILURES — callers must handle that code.
+   * When absent/false all existing guards apply (manual /eval route unchanged).
+   */
+  bypassRerunGuards?: boolean;
 }
 
 export interface DispatchEvalResult {
@@ -80,7 +88,7 @@ export interface DispatchEvalResult {
 export async function dispatchLegalBenchmarkEvalRun(
   params: DispatchEvalParams,
 ): Promise<DispatchEvalResult> {
-  const { runId, workspaceId, swarmUrl, swarmSecretAlias, slug, userId } = params;
+  const { runId, workspaceId, swarmUrl, swarmSecretAlias, slug, userId, bypassRerunGuards } = params;
 
   // ── Step 1: Fetch source run ─────────────────────────────────────────────
   const sourceRun = await db.stakworkRun.findUnique({
@@ -118,32 +126,37 @@ export async function dispatchLegalBenchmarkEvalRun(
     throw Object.assign(new Error("no_failures"), { code: "NO_FAILURES" });
   }
 
-  if (failedCriteria.some((c) => c.cause_type)) {
+  // ALREADY_RAN guard: skip when bypassRerunGuards is true (recursion cron path).
+  if (!bypassRerunGuards && failedCriteria.some((c) => c.cause_type)) {
     throw Object.assign(new Error("already_ran"), { code: "ALREADY_RAN" });
   }
 
   // ── Step 4: Check for duplicate active eval ──────────────────────────────
-  const activeEvalRun = await db.stakworkRun.findFirst({
-    where: {
-      workspaceId,
-      type: StakworkRunType.LEGAL_BENCHMARK_EVAL,
-      status: { in: [WorkflowStatus.PENDING, WorkflowStatus.IN_PROGRESS] },
-    },
-    select: { id: true, result: true },
-  });
+  // Skipped when bypassRerunGuards is true — the recursion cron uses the live
+  // Stakwork project status as its in-progress guard instead of local bookkeeping.
+  if (!bypassRerunGuards) {
+    const activeEvalRun = await db.stakworkRun.findFirst({
+      where: {
+        workspaceId,
+        type: StakworkRunType.LEGAL_BENCHMARK_EVAL,
+        status: { in: [WorkflowStatus.PENDING, WorkflowStatus.IN_PROGRESS] },
+      },
+      select: { id: true, result: true },
+    });
 
-  if (activeEvalRun) {
-    let activeSourceRunId: string | undefined;
-    try {
-      const activeResult = activeEvalRun.result
-        ? (JSON.parse(activeEvalRun.result) as Record<string, unknown>)
-        : {};
-      activeSourceRunId = activeResult.sourceRunId as string | undefined;
-    } catch {
-      activeSourceRunId = runId;
-    }
-    if (activeSourceRunId === runId) {
-      throw Object.assign(new Error("ACTIVE_EVAL_RUN_EXISTS"), { code: "ACTIVE_EVAL_RUN_EXISTS" });
+    if (activeEvalRun) {
+      let activeSourceRunId: string | undefined;
+      try {
+        const activeResult = activeEvalRun.result
+          ? (JSON.parse(activeEvalRun.result) as Record<string, unknown>)
+          : {};
+        activeSourceRunId = activeResult.sourceRunId as string | undefined;
+      } catch {
+        activeSourceRunId = runId;
+      }
+      if (activeSourceRunId === runId) {
+        throw Object.assign(new Error("ACTIVE_EVAL_RUN_EXISTS"), { code: "ACTIVE_EVAL_RUN_EXISTS" });
+      }
     }
   }
 
