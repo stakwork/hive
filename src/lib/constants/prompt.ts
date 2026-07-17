@@ -740,6 +740,35 @@ export function getGraphWalkDispatchSnippet(): string {
   - The traversal is shallow (1–2 hops)`;
 }
 
+export function getWorkflowsCapabilitySnippet(): string {
+  return `
+
+## Workflow Explorer
+
+You have one **read-only** sub-agent tool for researching the Stakwork workflow library — the canonical catalog of existing Workflows (complete automation recipes), Skills (reusable steps), and Scripts (code snippets).
+
+### Tool
+
+- **\`workflow_explorer_agent({ prompt })\`** — Dispatch a research agent over the workflow library's knowledge graph. It searches components semantically by their input/output schemas, reads full workflow recipes (the ordered steps and the skill each step invokes), weighs usage statistics, and reports back concrete reusable building blocks plus gaps where no existing component covers a needed capability.
+
+### When to use
+
+- The user is designing, scoping, or discussing a NEW Stakwork workflow and you need to know what proven components already exist.
+- Questions like: "is there already a workflow that processes video?", "which skills take a video url as input?", "how do the existing transcription workflows compose their steps?"
+
+### Prompting tips
+
+- The prompt must be self-contained — the explorer cannot see this conversation.
+- State the goal of the workflow being designed, and the input/output shapes if known (e.g. "takes a video url, produces a transcript with word-level timestamps").
+- Ask for reusable building blocks (with usage stats) AND gaps, not just a yes/no.
+
+### Caveats
+
+- **Heavy/slow** (an agentic loop on the swarm; can take minutes). Call it ONCE with a complete prompt rather than iterating.
+- **Strictly read-only research** — it cannot create, modify, or run workflows. Actual workflow creation happens elsewhere.
+`;
+}
+
 export function getInfraCapabilitySnippet(): string {
   return `
 
