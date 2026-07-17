@@ -346,7 +346,8 @@ describe("PATCH /api/workspaces/[slug]/legal/benchmarks/recursion/[refId]", () =
     expect(body.enabled).toBe(false);
   });
 
-  test("calls setEvalSetRecursion with correct refId and enabled=true", async () => {
+  test("calls setEvalSetRecursion with correct refId, enabled=true, and derived namespace", async () => {
+    // MOCK_EVAL_SET_NODE.properties.id = "practice-area/draft-contract"
     await PATCH(
       makePatchRequest("ref-evalset-1", { enabled: true }),
       makePatchParams(),
@@ -355,10 +356,11 @@ describe("PATCH /api/workspaces/[slug]/legal/benchmarks/recursion/[refId]", () =
       MOCK_JARVIS_CONFIG,
       "ref-evalset-1",
       true,
+      "practice-area/draft-contract",
     );
   });
 
-  test("calls setEvalSetRecursion with correct refId and enabled=false", async () => {
+  test("calls setEvalSetRecursion with correct refId, enabled=false, and derived namespace", async () => {
     await PATCH(
       makePatchRequest("ref-evalset-1", { enabled: false }),
       makePatchParams(),
@@ -367,6 +369,7 @@ describe("PATCH /api/workspaces/[slug]/legal/benchmarks/recursion/[refId]", () =
       MOCK_JARVIS_CONFIG,
       "ref-evalset-1",
       false,
+      "practice-area/draft-contract",
     );
   });
 
@@ -417,5 +420,75 @@ describe("PATCH /api/workspaces/[slug]/legal/benchmarks/recursion/[refId]", () =
 
     // workspaceId must come from swarmResult.data, not a raw request param
     expect(mockGetJarvisConfigForWorkspace).toHaveBeenCalledWith("ws-openlaw");
+  });
+
+  test("derives namespace from properties.id and forwards it to setEvalSetRecursion", async () => {
+    // MOCK_EVAL_SET_NODE has properties.id = "practice-area/draft-contract"
+    await PATCH(
+      makePatchRequest("ref-evalset-1", { enabled: true }),
+      makePatchParams(),
+    );
+
+    expect(mockSetEvalSetRecursion).toHaveBeenCalledWith(
+      MOCK_JARVIS_CONFIG,
+      "ref-evalset-1",
+      true,
+      "practice-area/draft-contract",
+    );
+  });
+
+  test("returns 502 when node's properties.id is absent (cannot derive namespace)", async () => {
+    // Node without properties.id
+    mockKgGetNode.mockResolvedValue({
+      ref_id: "ref-evalset-no-id",
+      node_type: "EvalSet",
+      name: "No ID EvalSet",
+      properties: { name: "No ID EvalSet" }, // no `id` property
+    });
+
+    const res = await PATCH(
+      makePatchRequest("ref-evalset-no-id", { enabled: true }),
+      makePatchParams("openlaw", "ref-evalset-no-id"),
+    );
+
+    expect(res.status).toBe(502);
+    const body = await res.json();
+    expect(body.error).toMatch(/namespace/i);
+    // Must not call setEvalSetRecursion without a namespace
+    expect(mockSetEvalSetRecursion).not.toHaveBeenCalled();
+  });
+
+  test("returns 502 when node has no properties at all (cannot derive namespace)", async () => {
+    mockKgGetNode.mockResolvedValue({
+      ref_id: "ref-evalset-no-props",
+      node_type: "EvalSet",
+      name: "No Props EvalSet",
+      // no properties field
+    });
+
+    const res = await PATCH(
+      makePatchRequest("ref-evalset-no-props", { enabled: true }),
+      makePatchParams("openlaw", "ref-evalset-no-props"),
+    );
+
+    expect(res.status).toBe(502);
+    expect(mockSetEvalSetRecursion).not.toHaveBeenCalled();
+  });
+
+  test("IDOR guard still runs before namespace derivation (wrong node type rejected first)", async () => {
+    mockKgGetNode.mockResolvedValue({
+      ref_id: "ref-other",
+      node_type: "ProposedFix",
+      properties: { id: "some/slug" },
+    });
+
+    const res = await PATCH(
+      makePatchRequest("ref-other", { enabled: true }),
+      makePatchParams("openlaw", "ref-other"),
+    );
+
+    // IDOR guard fires before namespace check — 404, not 502
+    expect(res.status).toBe(404);
+    expect(mockSetEvalSetRecursion).not.toHaveBeenCalled();
   });
 });

@@ -140,10 +140,11 @@ async function writeBackWithRetry(
   config: Parameters<typeof writeBackEvalProjectId>[0],
   refId: string,
   projectId: number | string,
+  namespace?: string,
   maxRetries = 3,
 ): Promise<void> {
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
-    const result = await writeBackEvalProjectId(config, refId, projectId);
+    const result = await writeBackEvalProjectId(config, refId, projectId, namespace);
     if (result.ok) {
       logger.info(
         `${LOG_PREFIX} write-back succeeded refId=${refId} projectId=${projectId} attempt=${attempt}`,
@@ -359,9 +360,22 @@ export async function executeScheduledLegalBenchmarkRecursion(): Promise<Recursi
       result.dispatched++;
       available--; // Decrement in-pass to hold cap under status lag
 
-      // Write back the returned projectId so the next pass sees the running project
+      // Write back the returned projectId so the next pass sees the running project.
+      // The namespace for the write must be the task slug (= evalSet.id), NOT ref_id.
+      // listRecursionEvalSets falls back to ref_id when properties.id is missing on
+      // older/mismatched nodes — in that case we cannot safely derive a namespace and
+      // must skip rather than issue a doomed write the retry loop would silently swallow.
       if (dispatchResult.projectId != null) {
-        await writeBackWithRetry(jarvisConfig, evalSet.ref_id, dispatchResult.projectId);
+        if (evalSet.id === evalSet.ref_id) {
+          // No real slug available — id is just a ref_id fallback.
+          logger.error(
+            `${LOG_PREFIX} CRITICAL: cannot derive namespace for EvalSet refId=${evalSet.ref_id} — properties.id is absent (id===ref_id fallback). Write-back skipped to avoid doomed namespaced PUT. Manually verify EvalSet node schema on the swarm.`,
+            "legal",
+            { refId: evalSet.ref_id, projectId: dispatchResult.projectId },
+          );
+        } else {
+          await writeBackWithRetry(jarvisConfig, evalSet.ref_id, dispatchResult.projectId, evalSet.id);
+        }
       } else {
         logger.warn(
           `${LOG_PREFIX} dispatch returned no projectId for EvalSet ${evalSet.ref_id} — write-back skipped`,

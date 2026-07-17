@@ -85,14 +85,27 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: "EvalSet not found" }, { status: 404 });
     }
 
-    // Step 7: Resolve Jarvis config for updateNode (workspaceId from authorized swarm access)
+    // Step 7: Derive namespace from the fetched node's `properties.id` (the task slug).
+    // EvalSets are created under namespace = task_slug by Stakwork workflow 57389.
+    // Jarvis strips `namespace` from node-get responses, so we rely on `properties.id`
+    // being the slug. If absent, we cannot safely derive the namespace and must error
+    // rather than fall back to `refId` (which would silently fail with INVALID_NAMESPACE).
+    const namespace = (node as { properties?: Record<string, unknown> }).properties?.id;
+    if (!namespace || typeof namespace !== "string") {
+      return NextResponse.json(
+        { error: "Cannot resolve namespace for EvalSet" },
+        { status: 502 },
+      );
+    }
+
+    // Step 8: Resolve Jarvis config for updateNode (workspaceId from authorized swarm access)
     const jarvisConfig = await getJarvisConfigForWorkspace(workspaceId);
     if (!jarvisConfig) {
       return NextResponse.json({ error: "Swarm not configured" }, { status: 400 });
     }
 
-    // Step 8: Toggle the recursion attribute
-    const result = await setEvalSetRecursion(jarvisConfig, refId, enabled);
+    // Step 9: Toggle the recursion attribute, targeting the node's actual namespace
+    const result = await setEvalSetRecursion(jarvisConfig, refId, enabled, namespace);
 
     if (!result.ok) {
       return NextResponse.json(

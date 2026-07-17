@@ -9,7 +9,7 @@ beforeEach(() => {
   global.fetch = mockFetch;
 });
 
-const { addNode, addEdge, addEdgeBulk, addEdgeByRefBulk, addNodeBulk, updateNode, deleteNode, deleteEdge, getReferencedNodeCentrality, searchNodesByAttributes } = await import("@/services/swarm/api/nodes");
+const { addNode, addEdge, addEdgeBulk, addEdgeByRefBulk, addNodeBulk, updateNode, deleteNode, deleteEdge, getReferencedNodeCentrality, searchNodesByAttributes, checkNodeByKey } = await import("@/services/swarm/api/nodes");
 
 const config = {
   jarvisUrl: "https://test-swarm.sphinx.chat:8444",
@@ -823,6 +823,183 @@ describe("updateNode", () => {
       expect(result.success).toBe(false);
       expect(result.error).toBe("Network error");
     });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// updateNode — namespace parameter
+// ---------------------------------------------------------------------------
+
+describe("updateNode — namespace parameter", () => {
+  test("appends &namespace= to the PUT URL when namespace is supplied", async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({ status: "success" }),
+    });
+
+    await updateNode(
+      config,
+      { ref_id: "eval-set-1", node_type: "EvalSet", node_data: { recursion: true } },
+      { namespace: "practice-area/task-slug" },
+    );
+
+    const calledUrl = mockFetch.mock.calls[0][0] as string;
+    expect(calledUrl).toContain("?ref_id=eval-set-1");
+    expect(calledUrl).toContain("&namespace=practice-area%2Ftask-slug");
+  });
+
+  test("does NOT append namespace param when namespace is omitted (backward compat)", async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({ status: "success" }),
+    });
+
+    await updateNode(config, {
+      ref_id: "eval-set-2",
+      node_type: "EvalSet",
+      node_data: { recursion: false },
+    });
+
+    const calledUrl = mockFetch.mock.calls[0][0] as string;
+    expect(calledUrl).toBe("https://test-swarm.sphinx.chat:8444/node?ref_id=eval-set-2");
+    expect(calledUrl).not.toContain("namespace");
+  });
+
+  test("does NOT append namespace param when opts is empty object", async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({ status: "success" }),
+    });
+
+    await updateNode(
+      config,
+      { ref_id: "eval-set-3", node_type: "EvalSet", node_data: { recursion: true } },
+      {},
+    );
+
+    const calledUrl = mockFetch.mock.calls[0][0] as string;
+    expect(calledUrl).not.toContain("namespace");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// checkNodeByKey
+// ---------------------------------------------------------------------------
+
+describe("checkNodeByKey", () => {
+  const CHECK_PARAMS = {
+    nodeType: "EvalSet",
+    key: "practice-area/task-slug",
+    namespace: "practice-area/task-slug",
+  };
+
+  test("builds correct /v2/nodes/check URL with node_type, key, and namespace query params", async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({ exists: true, ref_id: "ref-abc-123" }),
+    });
+
+    await checkNodeByKey(config, CHECK_PARAMS);
+
+    const calledUrl = mockFetch.mock.calls[0][0] as string;
+    expect(calledUrl).toContain("/v2/nodes/check");
+    expect(calledUrl).toContain("node_type=EvalSet");
+    expect(calledUrl).toContain("key=practice-area%2Ftask-slug");
+    expect(calledUrl).toContain("namespace=practice-area%2Ftask-slug");
+    // Must use /v2/nodes/check — the bare /nodes/check path 404s on deployed jarvis
+    expect(calledUrl).toContain("/v2/nodes/check");
+  });
+
+  test("returns ok:true, exists:true, refId when node found", async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({ exists: true, ref_id: "ref-abc-123" }),
+    });
+
+    const result = await checkNodeByKey(config, CHECK_PARAMS);
+
+    expect(result.ok).toBe(true);
+    expect(result.exists).toBe(true);
+    expect(result.refId).toBe("ref-abc-123");
+    expect(result.endpointMissing).toBeUndefined();
+    expect(result.error).toBeUndefined();
+  });
+
+  test("returns ok:true, exists:false (genuine miss) when endpoint reports no match", async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({ exists: false }),
+    });
+
+    const result = await checkNodeByKey(config, CHECK_PARAMS);
+
+    expect(result.ok).toBe(true);
+    expect(result.exists).toBe(false);
+    expect(result.refId).toBeUndefined();
+    expect(result.endpointMissing).toBeUndefined();
+    expect(result.error).toBeUndefined();
+  });
+
+  test("returns ok:false, endpointMissing:true on 404 (endpoint absent on this jarvis version)", async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: false,
+      status: 404,
+      text: async () => "Not Found",
+    });
+
+    const result = await checkNodeByKey(config, CHECK_PARAMS);
+
+    expect(result.ok).toBe(false);
+    expect(result.endpointMissing).toBe(true);
+    expect(result.exists).toBe(false);
+    // Must NOT be treated as a genuine node miss
+    expect(result.error).toBeUndefined();
+  });
+
+  test("returns ok:false, error on 400 (not endpointMissing, not a genuine miss)", async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: false,
+      status: 400,
+      text: async () => "INVALID_NAMESPACE",
+    });
+
+    const result = await checkNodeByKey(config, CHECK_PARAMS);
+
+    expect(result.ok).toBe(false);
+    expect(result.exists).toBe(false);
+    expect(result.endpointMissing).toBeUndefined();
+    expect(result.error).toBeDefined();
+    expect(result.error).not.toContain("not found");
+  });
+
+  test("returns ok:false, error on transport failure (not a genuine miss)", async () => {
+    mockFetch.mockRejectedValueOnce(new Error("Network timeout"));
+
+    const result = await checkNodeByKey(config, CHECK_PARAMS);
+
+    expect(result.ok).toBe(false);
+    expect(result.exists).toBe(false);
+    expect(result.endpointMissing).toBeUndefined();
+    expect(result.error).toBe("Network timeout");
+  });
+
+  test("uses GET method", async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({ exists: false }),
+    });
+
+    await checkNodeByKey(config, CHECK_PARAMS);
+
+    const [, opts] = mockFetch.mock.calls[0] as [string, RequestInit];
+    expect(opts.method).toBe("GET");
   });
 });
 

@@ -364,10 +364,10 @@ describe("executeScheduledLegalBenchmarkRecursion", () => {
 
   // ── Successful dispatch with write-back ─────────────────────────────────────
 
-  it("calls writeBackEvalProjectId with returned projectId after successful dispatch", async () => {
+  it("calls writeBackEvalProjectId with returned projectId and namespace (slug) after successful dispatch", async () => {
     mockListRecursionEvalSets.mockResolvedValue({
       ok: true,
-      nodes: [MOCK_EVAL_SET],
+      nodes: [MOCK_EVAL_SET], // id="task/some-task", ref_id="evalset-ref-1" — different
     });
     mockDbStakworkRunFindMany.mockResolvedValue([MOCK_RUNNER_RUN]);
     mockDispatchLegalBenchmarkEvalRun.mockResolvedValue({
@@ -378,10 +378,49 @@ describe("executeScheduledLegalBenchmarkRecursion", () => {
     await executeScheduledLegalBenchmarkRecursion();
 
     expect(mockWriteBackEvalProjectId).toHaveBeenCalledOnce();
+    // Namespace must be the slug (id), not ref_id
     expect(mockWriteBackEvalProjectId).toHaveBeenCalledWith(
       MOCK_JARVIS_CONFIG,
       MOCK_EVAL_SET.ref_id,
       54321,
+      MOCK_EVAL_SET.id, // "task/some-task" — the slug namespace
+    );
+  });
+
+  it("skips write-back with CRITICAL log when id === ref_id (no real slug available)", async () => {
+    const { logger } = await import("@/lib/logger");
+    // Simulate a node where properties.id was absent — listRecursionEvalSets
+    // falls back to ref_id for the id field (id === ref_id)
+    const evalSetNoSlug = {
+      ref_id: "evalset-ref-no-slug",
+      id: "evalset-ref-no-slug", // fallback: id === ref_id → no real slug
+      name: "Some Task",
+      projectId: null,
+    };
+
+    mockListRecursionEvalSets.mockResolvedValue({
+      ok: true,
+      nodes: [evalSetNoSlug],
+    });
+    // Provide a matching runner run (taskSlug must match evalSetNoSlug.id)
+    mockDbStakworkRunFindMany.mockResolvedValue([
+      { id: "run-no-slug", result: JSON.stringify({ taskSlug: "evalset-ref-no-slug" }) },
+    ]);
+    mockDbStakworkRunFindFirst.mockResolvedValue(null); // no recent duplicate
+    mockDispatchLegalBenchmarkEvalRun.mockResolvedValue({
+      evalRunId: "eval-run-skip",
+      projectId: 99999,
+    });
+
+    await executeScheduledLegalBenchmarkRecursion();
+
+    // Dispatch succeeded but write-back must be skipped (id === ref_id → no real namespace)
+    expect(mockWriteBackEvalProjectId).not.toHaveBeenCalled();
+    // A CRITICAL log (logger.error) must be emitted
+    expect(logger.error).toHaveBeenCalledWith(
+      expect.stringContaining("CRITICAL"),
+      "legal",
+      expect.objectContaining({ refId: "evalset-ref-no-slug" }),
     );
   });
 

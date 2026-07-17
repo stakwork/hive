@@ -452,17 +452,95 @@ export async function searchNodesByAttributes(
   return { ok: true, nodes: Array.isArray(body?.nodes) ? body!.nodes : [], status: result.status };
 }
 
+/** Return shape for `checkNodeByKey` — mirrors `SearchLatestResult` for consistency. */
+export interface CheckNodeByKeyResult {
+  ok: boolean;
+  /** True only when the check succeeded and no matching node was found (a genuine miss). */
+  exists: boolean;
+  refId?: string;
+  status?: number;
+  /** True when the `/v2/nodes/check` endpoint is absent on this jarvis version. */
+  endpointMissing?: boolean;
+  error?: string;
+}
+
+/**
+ * Resolve a node's `ref_id` via jarvis's natural-key endpoint:
+ *   `GET /v2/nodes/check?node_type=<nodeType>&key=<key>&namespace=<namespace>`
+ *
+ * Pass the **raw** slug as `key` — jarvis re-sanitizes it with the same
+ * `node_key` template used at creation, so double-sanitizing would miss.
+ *
+ * Return contract (critical — callers must never conflate transport errors with genuine misses):
+ *  - `ok: true,  exists: true`  → node found; `refId` is set.
+ *  - `ok: true,  exists: false` → genuine miss (node does not exist in this namespace).
+ *  - `ok: false, endpointMissing: true` → endpoint not present on this jarvis version (404).
+ *  - `ok: false, error: string` → any other transport/HTTP failure.
+ *
+ * Never throws.
+ */
+export async function checkNodeByKey(
+  config: JarvisConnectionConfig,
+  params: { nodeType: string; key: string; namespace: string },
+): Promise<CheckNodeByKeyResult> {
+  const qs = new URLSearchParams({
+    node_type: params.nodeType,
+    key: params.key,
+    namespace: params.namespace,
+  });
+
+  const result = await jarvisRequest({
+    config,
+    endpoint: `/v2/nodes/check?${qs.toString()}`,
+    method: "GET",
+  });
+
+  if (!result.ok) {
+    // 404 → the endpoint itself is absent on this jarvis version
+    if (result.status === 404) {
+      return { ok: false, exists: false, status: result.status, endpointMissing: true };
+    }
+    // Any other non-2xx / transport failure — surface as error, never as "not found"
+    return {
+      ok: false,
+      exists: false,
+      status: result.status,
+      error: result.error || `checkNodeByKey failed with status ${result.status}`,
+    };
+  }
+
+  const body = result.body as { exists?: boolean; ref_id?: string } | undefined;
+
+  if (!body?.exists) {
+    // Genuine miss: endpoint responded successfully but node not found
+    return { ok: true, exists: false, status: result.status };
+  }
+
+  return {
+    ok: true,
+    exists: true,
+    refId: body.ref_id,
+    status: result.status,
+  };
+}
+
 export async function updateNode(
   config: JarvisConnectionConfig,
   request: UpdateNodeRequest,
+  opts?: { namespace?: string },
 ): Promise<{ success: boolean; error?: string }> {
   if (!request.ref_id) {
     return { success: false, error: "ref_id is required to update a node" };
   }
 
+  let endpoint = `/node?ref_id=${encodeURIComponent(request.ref_id)}`;
+  if (opts?.namespace) {
+    endpoint += `&namespace=${encodeURIComponent(opts.namespace)}`;
+  }
+
   const result = await jarvisRequest({
     config,
-    endpoint: `/node?ref_id=${encodeURIComponent(request.ref_id)}`,
+    endpoint,
     method: "PUT",
     data: {
       ref_id: request.ref_id,

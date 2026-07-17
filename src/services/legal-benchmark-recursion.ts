@@ -13,6 +13,7 @@ import type { JarvisConnectionConfig } from "@/types/jarvis";
 import {
   searchNodesByAttributes,
   updateNode,
+  checkNodeByKey,
 } from "@/services/swarm/api/nodes";
 import { logger } from "@/lib/logger";
 
@@ -114,24 +115,29 @@ export async function writeBackEvalProjectId(
   config: JarvisConnectionConfig,
   refId: string,
   projectId: number | string,
+  namespace?: string,
 ): Promise<RecursionServiceResult> {
   logger.info(
-    `[legal/benchmarks/recursion] writeBackEvalProjectId refId=${refId} projectId=${projectId}`,
+    `[legal/benchmarks/recursion] writeBackEvalProjectId refId=${refId} projectId=${projectId} namespace=${namespace ?? "default"}`,
     "legal",
-    { refId, projectId },
+    { refId, projectId, namespace },
   );
 
-  const result = await updateNode(config, {
-    ref_id: refId,
-    node_type: "EvalSet",
-    node_data: { project_id: projectId },
-  });
+  const result = await updateNode(
+    config,
+    {
+      ref_id: refId,
+      node_type: "EvalSet",
+      node_data: { project_id: projectId },
+    },
+    namespace ? { namespace } : undefined,
+  );
 
   if (!result.success) {
     logger.warn(
       `[legal/benchmarks/recursion] writeBackEvalProjectId failed refId=${refId}`,
       "legal",
-      { refId, projectId, error: result.error },
+      { refId, projectId, namespace, error: result.error },
     );
     return { ok: false, error: result.error ?? "Graph update failed" };
   }
@@ -163,23 +169,39 @@ export async function enableRecursionForTaskSlug(
     { taskSlug },
   );
 
-  // Resolve EvalSet ref_id from the task-slug (stored as the node's `id` property)
-  const searchResult = await searchNodesByAttributes(config, {
-    nodeTypes: ["EvalSet"],
-    filters: [{ attribute: "id", value: taskSlug, comparator: "=" }],
-    includeProperties: true,
+  // Resolve EvalSet ref_id via jarvis's natural-key endpoint.
+  // The slug is used as both the `key` and `namespace` (matching how
+  // Stakwork workflow 57389 creates these nodes: namespace = task_slug).
+  // Pass the raw slug — jarvis re-sanitizes it with the same node_key
+  // template used at creation, so pre-sanitizing here would double-apply.
+  const checkResult = await checkNodeByKey(config, {
+    nodeType: "EvalSet",
+    key: taskSlug,
+    namespace: taskSlug,
   });
 
-  if (!searchResult.ok) {
+  if (!checkResult.ok) {
+    // Transport failure, 400, or endpoint absent on this jarvis version —
+    // surface as an error, never as a "not found". Collapsing these would
+    // mask a broken lookup as a genuine miss (requirement #1).
     logger.warn(
-      `[legal/benchmarks/recursion] enableRecursionForTaskSlug graph search failed taskSlug=${taskSlug}`,
+      `[legal/benchmarks/recursion] enableRecursionForTaskSlug checkNodeByKey failed taskSlug=${taskSlug}`,
       "legal",
-      { taskSlug, error: searchResult.error },
+      {
+        taskSlug,
+        error: checkResult.error,
+        status: checkResult.status,
+        endpointMissing: checkResult.endpointMissing,
+      },
     );
-    return { ok: false, error: searchResult.error ?? "Graph search failed" };
+    return {
+      ok: false,
+      error: checkResult.error ?? `checkNodeByKey failed (status: ${checkResult.status ?? "unknown"})`,
+    };
   }
 
-  if (searchResult.nodes.length === 0) {
+  if (!checkResult.exists) {
+    // Genuine miss: endpoint responded but no node matched this key+namespace.
     logger.info(
       `[legal/benchmarks/recursion] enableRecursionForTaskSlug no EvalSet found taskSlug=${taskSlug}`,
       "legal",
@@ -188,8 +210,14 @@ export async function enableRecursionForTaskSlug(
     return { ok: false, notFound: true, error: "EvalSet not found for task slug" };
   }
 
-  const refId = searchResult.nodes[0].ref_id;
-  return setEvalSetRecursion(config, refId, true);
+  const refId = checkResult.refId!;
+  logger.info(
+    `[legal/benchmarks/recursion] enableRecursionForTaskSlug resolved refId=${refId} namespace=${taskSlug}`,
+    "legal",
+    { taskSlug, refId, namespace: taskSlug },
+  );
+
+  return setEvalSetRecursion(config, refId, true, taskSlug);
 }
 
 // ── setEvalSetRecursion ────────────────────────────────────────────────────
@@ -205,24 +233,29 @@ export async function setEvalSetRecursion(
   config: JarvisConnectionConfig,
   refId: string,
   enabled: boolean,
+  namespace?: string,
 ): Promise<RecursionServiceResult> {
   logger.info(
-    `[legal/benchmarks/recursion] setEvalSetRecursion refId=${refId} enabled=${enabled}`,
+    `[legal/benchmarks/recursion] setEvalSetRecursion refId=${refId} enabled=${enabled} namespace=${namespace ?? "default"}`,
     "legal",
-    { refId, enabled },
+    { refId, enabled, namespace },
   );
 
-  const result = await updateNode(config, {
-    ref_id: refId,
-    node_type: "EvalSet",
-    node_data: { recursion: enabled },
-  });
+  const result = await updateNode(
+    config,
+    {
+      ref_id: refId,
+      node_type: "EvalSet",
+      node_data: { recursion: enabled },
+    },
+    namespace ? { namespace } : undefined,
+  );
 
   if (!result.success) {
     logger.warn(
       `[legal/benchmarks/recursion] setEvalSetRecursion failed refId=${refId}`,
       "legal",
-      { refId, enabled, error: result.error },
+      { refId, enabled, namespace, error: result.error },
     );
     return { ok: false, error: result.error ?? "Graph update failed" };
   }
