@@ -594,6 +594,15 @@ export async function updateTicket(
     updateData.dependsOnTaskIds = data.dependsOnTaskIds;
   }
 
+  // Fetch pod info ahead of update so we can release it after (mirrors deleteTicket)
+  const podInfo =
+    data.status === TaskStatus.DONE
+      ? await db.task.findUnique({
+          where: { id: taskId },
+          select: { podId: true, workspaceId: true },
+        })
+      : null;
+
   // Handle workflow target switch: upsert WorkflowTask or delete it
   if (data.workflowId !== undefined) {
     if (data.workflowId && data.repositoryId) {
@@ -686,6 +695,26 @@ export async function updateTicket(
       },
     },
   });
+
+  // Release any active pod when status is set to DONE.
+  // Uses await (not fire-and-forget) because updateTicket is a service function, not a
+  // route handler — awaiting keeps errors observable at the call site and avoids
+  // unhandled-rejection warnings. Failure-tolerant: pod release must not fail the status update.
+  if (podInfo?.podId) {
+    try {
+      await releaseTaskPod({
+        taskId,
+        podId: podInfo.podId,
+        workspaceId: podInfo.workspaceId,
+        verifyOwnership: true,
+        clearTaskFields: true,
+        newWorkflowStatus: null, // workflowStatus already set to COMPLETED above
+      });
+    } catch (err) {
+      console.error("[updateTicket] Pod release failed for DONE task:", taskId, err);
+      // Don't re-throw — pod release failure must not fail the status update
+    }
+  }
 
   // Sync feature status if task belongs to a feature and status/workflowStatus was changed
   if (updatedTask.featureId && (data.status !== undefined || data.workflowStatus !== undefined)) {

@@ -253,6 +253,27 @@ export async function PATCH(
         );
       }
 
+      // Release pod when task is manually marked Done (fire-and-forget, failure-tolerant).
+      // Mirrors the HALTED block above — mode !== "agent" guard intentionally preserved.
+      if (
+        status === TaskStatus.DONE &&
+        task.podId &&
+        task.mode !== "agent"
+      ) {
+        void releaseTaskPod({
+          taskId: task.id,
+          podId: task.podId,
+          workspaceId: task.workspaceId,
+          verifyOwnership: true,
+          resetRepositories: false,
+          clearTaskFields: true,
+          // newWorkflowStatus: null — status already written above; don't overwrite
+          newWorkflowStatus: null,
+        }).catch((err) =>
+          console.error("[PATCH /api/tasks] Pod release failed for DONE task:", task.id, err)
+        );
+      }
+
       // Sync feature status if task belongs to a feature
       if (updatedTask.featureId) {
         try {
