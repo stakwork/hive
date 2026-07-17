@@ -73,6 +73,8 @@ describe("listRecursionEvalSets", () => {
     expect(filter.attribute).toBe("recursion");
     expect(filter.value).toBe(true);           // boolean, not string
     expect(filter.comparator).toBe("=");        // exact match, not "eq"
+    // Must bypass jarvis response cache — admin toggle list must always be fresh
+    expect((params as { skipCache?: boolean }).skipCache).toBe(true);
   });
 
   test("returns normalized result with ok: true and whitelisted nodes", async () => {
@@ -244,6 +246,8 @@ describe("enableRecursionForTaskSlug", () => {
     expect(searchParams.nodeTypes).toEqual(EVALSET_NODE_LABELS);
     expect(searchParams.filters).toEqual([{ attribute: "id", value: TASK_SLUG, comparator: "=" }]);
     expect(searchParams.includeProperties).toBe(true);
+    // Must bypass jarvis response cache — resolve step reads current state before write
+    expect((searchParams as { skipCache?: boolean }).skipCache).toBe(true);
 
     // updateNode was called with the resolved ref_id and recursion=true
     expect(mockUpdateNode).toHaveBeenCalledOnce();
@@ -408,10 +412,12 @@ describe("enableRecursionForTaskSlug", () => {
 
     const listResult = await listRecursionEvalSets(CONFIG);
 
-    // Both calls use the both-casing nodeTypes list
-    for (const [, params] of mockSearchNodesByAttributes.mock.calls as [unknown, { nodeTypes: string[] }][]) {
+    // Both calls use the both-casing nodeTypes list and must send skipCache: true
+    for (const [, params] of mockSearchNodesByAttributes.mock.calls as [unknown, { nodeTypes: string[]; skipCache?: boolean }][]) {
       expect(params.nodeTypes).toContain("EvalSet");
       expect(params.nodeTypes).toContain("Evalset");
+      // Both the enable-resolve readback and the list read must bypass the jarvis cache
+      expect(params.skipCache).toBe(true);
     }
 
     expect(listResult.ok).toBe(true);
