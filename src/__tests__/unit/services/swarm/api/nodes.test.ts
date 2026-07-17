@@ -1330,6 +1330,7 @@ describe("searchNodesByAttributes", () => {
           search_filters: [{ attribute: "file", value: "stakwork/senza-lnd/", comparator: "contains" }],
           include_properties: true,
           limit: 1000,
+          skip_cache: false,
         }),
       }),
     );
@@ -1418,6 +1419,56 @@ describe("searchNodesByAttributes", () => {
     const sentBody = JSON.parse(mockFetch.mock.calls[0][1].body as string);
     expect(sentBody.include_properties).toBe(false);
     expect(sentBody.limit).toBe(1000);
+  });
+
+  test("sends skip_cache: true in POST body when skipCache: true is passed", async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({ nodes: [] }),
+    });
+
+    await searchNodesByAttributes(config, {
+      nodeTypes: ["File"],
+      filters: [{ attribute: "file", value: `${repoKey}/`, comparator: "contains" }],
+      skipCache: true,
+    });
+
+    const sentBody = JSON.parse(mockFetch.mock.calls[0][1].body as string);
+    expect(sentBody.skip_cache).toBe(true);
+  });
+
+  test("sends skip_cache: false in POST body when skipCache is omitted", async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({ nodes: [] }),
+    });
+
+    await searchNodesByAttributes(config, {
+      nodeTypes: ["File"],
+      filters: [{ attribute: "file", value: `${repoKey}/`, comparator: "contains" }],
+    });
+
+    const sentBody = JSON.parse(mockFetch.mock.calls[0][1].body as string);
+    expect(sentBody.skip_cache).toBe(false);
+  });
+
+  test("sends skip_cache: false in POST body when skipCache is explicitly false", async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({ nodes: [] }),
+    });
+
+    await searchNodesByAttributes(config, {
+      nodeTypes: ["File"],
+      filters: [{ attribute: "file", value: `${repoKey}/`, comparator: "contains" }],
+      skipCache: false,
+    });
+
+    const sentBody = JSON.parse(mockFetch.mock.calls[0][1].body as string);
+    expect(sentBody.skip_cache).toBe(false);
   });
 
   test("returns all nodes in response — does not truncate to 1000", async () => {

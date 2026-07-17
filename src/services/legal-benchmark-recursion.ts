@@ -93,6 +93,7 @@ export async function listRecursionEvalSets(
     nodeTypes: EVALSET_NODE_LABELS,
     filters: [{ attribute: "recursion", value: true, comparator: "=" }],
     includeProperties: true,
+    skipCache: true,
   });
 
   if (!result.ok) {
@@ -205,6 +206,7 @@ export async function enableRecursionForTaskSlug(
     nodeTypes: EVALSET_NODE_LABELS,
     filters: [{ attribute: "id", value: taskSlug, comparator: "=" }],
     includeProperties: true,
+    skipCache: true,
   });
 
   if (!searchResult.ok) {
