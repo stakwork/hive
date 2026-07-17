@@ -501,52 +501,84 @@ export async function writePromptThrough(
 /**
  * Publish a specific version as the live version for a prompt.
  * In ONE transaction: unpublish all, mark target published, update Prompt.value.
+ *
+ * Both args are treated as id-or-name / id-or-number respectively:
+ *  - promptId: resolved by cuid first (findUnique), then by name (findFirst).
+ *  - versionId: resolved by cuid first, then by versionNumber when the arg is purely numeric.
+ * Existing cuid callers are unaffected — they always hit the id branch.
  */
 export async function publishVersion(
   promptId: string,
   versionId: string,
   workspaceId?: string,
 ): Promise<void> {
-  // Fetch version to ensure it exists and belongs to the prompt
-  const targetVersion = await db.promptVersion.findFirst({
-    where: { id: versionId, promptId },
-  });
-  if (!targetVersion) {
-    throw Object.assign(new Error("Version not found"), { status: 404 });
+  // ── Resolve prompt: id first, then name fallback ──────────────────────────
+  let prompt = await db.prompt.findUnique({ where: { id: promptId } });
+  if (!prompt) {
+    prompt = await db.prompt.findFirst({ where: { name: promptId } });
+    if (prompt) {
+      logger.info("[prompt-sync] Prompt resolved by name (id fallback missed)", "prompt-sync", {
+        promptArg: promptId,
+        resolvedId: prompt.id,
+        resolvedName: prompt.name,
+      });
+    }
   }
-
-  const prompt = await db.prompt.findUnique({ where: { id: promptId } });
   if (!prompt) {
     throw Object.assign(new Error("Prompt not found"), { status: 404 });
   }
 
+  const resolvedPromptId = prompt.id;
+
+  // ── Resolve version: id first, then versionNumber fallback ───────────────
+  let targetVersion = await db.promptVersion.findFirst({
+    where: { id: versionId, promptId: resolvedPromptId },
+  });
+  if (!targetVersion && /^\d+$/.test(versionId)) {
+    targetVersion = await db.promptVersion.findFirst({
+      where: { promptId: resolvedPromptId, versionNumber: Number(versionId) },
+    });
+    if (targetVersion) {
+      logger.info("[prompt-sync] Version resolved by versionNumber (id fallback missed)", "prompt-sync", {
+        versionArg: versionId,
+        resolvedId: targetVersion.id,
+        versionNumber: targetVersion.versionNumber,
+      });
+    }
+  }
+  if (!targetVersion) {
+    throw Object.assign(new Error("Version not found"), { status: 404 });
+  }
+
+  const resolvedVersionId = targetVersion.id;
+
   await db.$transaction([
     db.promptVersion.updateMany({
-      where: { promptId },
+      where: { promptId: resolvedPromptId },
       data: { published: false },
     }),
     db.promptVersion.update({
-      where: { id: versionId },
+      where: { id: resolvedVersionId },
       data: { published: true },
     }),
     db.prompt.update({
-      where: { id: promptId },
+      where: { id: resolvedPromptId },
       data: {
         value: targetVersion.value,
-        publishedVersionId: versionId,
+        publishedVersionId: resolvedVersionId,
       },
     }),
   ]);
 
   logger.info("[prompt-sync] Version published", "prompt-sync", {
-    promptId,
-    versionId,
+    promptId: resolvedPromptId,
+    versionId: resolvedVersionId,
     versionNumber: targetVersion.versionNumber,
   });
 
   // Best-effort graph recorder (independent of Stakwork /prompts push)
   await recordPromptOnGraph(
-    { prompt, versionId, value: targetVersion.value },
+    { prompt, versionId: resolvedVersionId, value: targetVersion.value },
     "publish",
     workspaceId,
   );
@@ -559,7 +591,7 @@ export async function publishVersion(
         prompt.name,
         targetVersion.value,
         targetVersion.description ?? undefined,
-        versionId,
+        resolvedVersionId,
       );
 
       if (alreadyExists) {
@@ -568,31 +600,31 @@ export async function publishVersion(
         logger.info("[prompt-sync] Stakwork publish push — version already synced (no-op success)", "prompt-sync", {
           promptName: prompt.name,
           stakworkId: prompt.stakworkId,
-          hiveVersionId: versionId,
+          hiveVersionId: resolvedVersionId,
         });
       } else {
         logger.info("[prompt-sync] Stakwork publish push succeeded", "prompt-sync", {
           promptName: prompt.name,
           stakworkId: prompt.stakworkId,
-          hiveVersionId: versionId,
+          hiveVersionId: resolvedVersionId,
         });
       }
 
       // On success (or benign already-exists), clear any previously PENDING state.
       await db.prompt.update({
-        where: { id: promptId },
+        where: { id: resolvedPromptId },
         data: { syncStatus: "OK", lastSyncedAt: new Date() },
       });
     } catch (syncErr) {
       logger.warn("[prompt-sync] Stakwork publish push failed (non-fatal)", "prompt-sync", {
         promptName: prompt.name,
         stakworkId: prompt.stakworkId,
-        hiveVersionId: versionId,
+        hiveVersionId: resolvedVersionId,
         error: String(syncErr),
       });
       // Persist PENDING so a future re-sync can retry — mirrors the create/update failure path.
       await db.prompt.update({
-        where: { id: promptId },
+        where: { id: resolvedPromptId },
         data: { syncStatus: "PENDING" },
       });
     }
