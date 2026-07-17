@@ -64,7 +64,11 @@ export async function repoAgent(
   swarmUrl: string,
   swarmApiKey: string,
   params: {
-    repo_url: string;
+    /**
+     * Optional for graph/workflow-mode calls: when omitted, the swarm-side
+     * agent falls back to the repos already ingested in its graph.
+     */
+    repo_url?: string;
     prompt: string;
     username?: string;
     pat?: string;
@@ -75,6 +79,12 @@ export async function repoAgent(
     model?: string;
     skills?: Record<string, boolean>;
     subAgents?: SubAgent[];
+    /**
+     * Swarm-side system-prompt persona. "graph" = generalized knowledge-graph
+     * walker; "workflow" = Workflow/Skill/Script research agent over the
+     * Jarvis workflow library. Omitted = the code-focused default.
+     */
+    mode?: "graph" | "workflow";
   },
   /**
    * Optional Bifrost routing. When provided, the swarm-side `repo/agent`
