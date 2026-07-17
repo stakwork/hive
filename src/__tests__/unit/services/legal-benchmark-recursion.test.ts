@@ -24,6 +24,8 @@ import {
   listRecursionEvalSets,
   setEvalSetRecursion,
   enableRecursionForTaskSlug,
+  EVALSET_NODE_LABELS,
+  isEvalSetLabel,
 } from "@/services/legal-benchmark-recursion";
 import { logger } from "@/lib/logger";
 
@@ -61,7 +63,10 @@ describe("listRecursionEvalSets", () => {
       includeProperties: boolean;
     }];
 
-    expect(params.nodeTypes).toEqual(["EvalSet"]);
+    // Both casings must be present — regression guard against reverting to a single casing
+    expect(params.nodeTypes).toContain("EvalSet");
+    expect(params.nodeTypes).toContain("Evalset");
+    expect(params.nodeTypes).toEqual(EVALSET_NODE_LABELS);
     expect(params.includeProperties).toBe(true);
     expect(params.filters).toHaveLength(1);
     const filter = params.filters[0];
@@ -233,7 +238,10 @@ describe("enableRecursionForTaskSlug", () => {
       filters: Array<{ attribute: string; value: unknown; comparator: string }>;
       includeProperties: boolean;
     }];
-    expect(searchParams.nodeTypes).toEqual(["EvalSet"]);
+    // Both casings must be present — regression guard against reverting to single casing
+    expect(searchParams.nodeTypes).toContain("EvalSet");
+    expect(searchParams.nodeTypes).toContain("Evalset");
+    expect(searchParams.nodeTypes).toEqual(EVALSET_NODE_LABELS);
     expect(searchParams.filters).toEqual([{ attribute: "id", value: TASK_SLUG, comparator: "=" }]);
     expect(searchParams.includeProperties).toBe(true);
 
@@ -302,5 +310,149 @@ describe("enableRecursionForTaskSlug", () => {
     expect(result.ok).toBe(true);
     // updateNode is still called (setEvalSetRecursion always writes, which is idempotent on the graph)
     expect(mockUpdateNode).toHaveBeenCalledOnce();
+  });
+
+  test("notFound: true only when search returns empty nodes — never on transport failure", async () => {
+    // Transport failure: ok=false → must return error, NOT notFound
+    mockSearchNodesByAttributes.mockResolvedValue({
+      ok: false,
+      nodes: [],
+      error: "Connection refused",
+    });
+    const transportResult = await enableRecursionForTaskSlug(CONFIG, TASK_SLUG);
+    expect(transportResult.ok).toBe(false);
+    expect(transportResult).not.toHaveProperty("notFound");
+    expect(transportResult.error).toBe("Connection refused");
+
+    vi.clearAllMocks();
+
+    // Genuine empty result: ok=true, nodes=[] → must return notFound
+    mockSearchNodesByAttributes.mockResolvedValue({ ok: true, nodes: [] });
+    const emptyResult = await enableRecursionForTaskSlug(CONFIG, "nonexistent/slug");
+    expect(emptyResult.ok).toBe(false);
+    expect(emptyResult.notFound).toBe(true);
+    expect(emptyResult.error).toBeDefined();
+    expect(mockUpdateNode).not.toHaveBeenCalled();
+  });
+
+  test("deterministic tie-break: selects canonical 'EvalSet'-labelled node and logs warning when multiple nodes match", async () => {
+    const evalsetNode = { ...EVAL_SET_NODE, node_type: "Evalset", ref_id: "ref-old-evalset" };
+    const canonicalNode = { ...EVAL_SET_NODE, node_type: "EvalSet", ref_id: "ref-canonical-evalset" };
+
+    mockSearchNodesByAttributes.mockResolvedValue({
+      ok: true,
+      nodes: [evalsetNode, canonicalNode],
+    });
+    mockUpdateNode.mockResolvedValue({ success: true });
+
+    const result = await enableRecursionForTaskSlug(CONFIG, TASK_SLUG);
+
+    // Warning must be logged
+    expect(logger.warn).toHaveBeenCalledWith(
+      expect.stringContaining("multiple EvalSet nodes matched"),
+      "legal",
+      expect.objectContaining({ taskSlug: TASK_SLUG, count: 2 }),
+    );
+
+    // Must pick the canonical "EvalSet" node, not the first (Evalset) one
+    expect(mockUpdateNode).toHaveBeenCalledOnce();
+    const [, updateReq] = mockUpdateNode.mock.calls[0] as [unknown, { ref_id: string }];
+    expect(updateReq.ref_id).toBe("ref-canonical-evalset");
+
+    expect(result.ok).toBe(true);
+  });
+
+  test("deterministic tie-break falls back to stable ref_id sort when no canonical node present", async () => {
+    const nodeA = { ...EVAL_SET_NODE, node_type: "Evalset", ref_id: "ref-zzz" };
+    const nodeB = { ...EVAL_SET_NODE, node_type: "Evalset", ref_id: "ref-aaa" };
+
+    mockSearchNodesByAttributes.mockResolvedValue({
+      ok: true,
+      nodes: [nodeA, nodeB], // nodeA first, but nodeB has lower ref_id
+    });
+    mockUpdateNode.mockResolvedValue({ success: true });
+
+    await enableRecursionForTaskSlug(CONFIG, TASK_SLUG);
+
+    // Falls back to lowest ref_id sort
+    const [, updateReq] = mockUpdateNode.mock.calls[0] as [unknown, { ref_id: string }];
+    expect(updateReq.ref_id).toBe("ref-aaa");
+  });
+
+  test("logs resolved ref_id on successful enable", async () => {
+    mockSearchNodesByAttributes.mockResolvedValue({ ok: true, nodes: [EVAL_SET_NODE] });
+    mockUpdateNode.mockResolvedValue({ success: true });
+
+    await enableRecursionForTaskSlug(CONFIG, TASK_SLUG);
+
+    expect(logger.info).toHaveBeenCalledWith(
+      expect.stringContaining("resolved ref_id=ref-abc-123"),
+      "legal",
+      expect.objectContaining({ refId: "ref-abc-123", taskSlug: TASK_SLUG }),
+    );
+  });
+
+  test("enable → list round-trip: list returns the newly-enabled node (mocked jarvis)", async () => {
+    // Enable: search finds the node, write succeeds
+    mockSearchNodesByAttributes.mockResolvedValueOnce({ ok: true, nodes: [EVAL_SET_NODE] });
+    mockUpdateNode.mockResolvedValue({ success: true });
+
+    const enableResult = await enableRecursionForTaskSlug(CONFIG, TASK_SLUG);
+    expect(enableResult.ok).toBe(true);
+
+    // List: returns the same node (now with recursion=true)
+    mockSearchNodesByAttributes.mockResolvedValueOnce({
+      ok: true,
+      nodes: [EVAL_SET_NODE],
+    });
+
+    const listResult = await listRecursionEvalSets(CONFIG);
+
+    // Both calls use the both-casing nodeTypes list
+    for (const [, params] of mockSearchNodesByAttributes.mock.calls as [unknown, { nodeTypes: string[] }][]) {
+      expect(params.nodeTypes).toContain("EvalSet");
+      expect(params.nodeTypes).toContain("Evalset");
+    }
+
+    expect(listResult.ok).toBe(true);
+    expect(listResult.nodes).toHaveLength(1);
+    expect(listResult.nodes![0].ref_id).toBe("ref-abc-123");
+  });
+});
+
+// ── EVALSET_NODE_LABELS / isEvalSetLabel helpers ─────────────────────────────
+
+describe("EVALSET_NODE_LABELS and isEvalSetLabel", () => {
+  test("EVALSET_NODE_LABELS contains both 'EvalSet' and 'Evalset'", () => {
+    expect(EVALSET_NODE_LABELS).toContain("EvalSet");
+    expect(EVALSET_NODE_LABELS).toContain("Evalset");
+    // Must have at least two entries (regression: not collapsed to a single casing)
+    expect(EVALSET_NODE_LABELS.length).toBeGreaterThanOrEqual(2);
+  });
+
+  test("isEvalSetLabel returns true for 'EvalSet'", () => {
+    expect(isEvalSetLabel("EvalSet")).toBe(true);
+  });
+
+  test("isEvalSetLabel returns true for 'Evalset' (stored jarvis label)", () => {
+    expect(isEvalSetLabel("Evalset")).toBe(true);
+  });
+
+  test("isEvalSetLabel returns true for any casing variant", () => {
+    expect(isEvalSetLabel("evalset")).toBe(true);
+    expect(isEvalSetLabel("EVALSET")).toBe(true);
+    expect(isEvalSetLabel("eVaLsEt")).toBe(true);
+  });
+
+  test("isEvalSetLabel returns false for genuinely different node types", () => {
+    expect(isEvalSetLabel("Task")).toBe(false);
+    expect(isEvalSetLabel("ProposedFix")).toBe(false);
+    expect(isEvalSetLabel("EvalTrigger")).toBe(false);
+    expect(isEvalSetLabel("")).toBe(false);
+  });
+
+  test("isEvalSetLabel returns false for null and undefined", () => {
+    expect(isEvalSetLabel(null)).toBe(false);
+    expect(isEvalSetLabel(undefined)).toBe(false);
   });
 });
