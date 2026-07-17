@@ -4,7 +4,7 @@ import { getWorkspaceSwarmAccess } from "@/lib/helpers/swarm-access";
 import { getJarvisConfigForWorkspace } from "@/lib/helpers/jarvis-config";
 import { getJarvisUrl } from "@/lib/utils/swarm";
 import { kgGetNode } from "@/lib/ai/kg-adapter";
-import { setEvalSetRecursion } from "@/services/legal-benchmark-recursion";
+import { setEvalSetRecursion, isEvalSetLabel } from "@/services/legal-benchmark-recursion";
 import { checkRateLimit, getClientIp } from "@/lib/rate-limit";
 
 export const runtime = "nodejs";
@@ -79,9 +79,12 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     const { workspaceId, swarmName, swarmApiKey } = swarmResult.data;
     const jarvisUrl = getJarvisUrl(swarmName);
 
-    // Step 6: IDOR guard — resolve node before writing
+    // Step 6: IDOR guard — resolve node before writing.
+    // Uses isEvalSetLabel (case-insensitive) to match both "EvalSet" and "Evalset"
+    // — a bridge for the jarvis label-casing defect (see EVALSET_NODE_LABELS comment
+    // in legal-benchmark-recursion.ts). Guard remains fail-closed and runs before any write.
     const node = await kgGetNode(jarvisUrl, swarmApiKey, refId);
-    if (!node || node.node_type !== "EvalSet") {
+    if (!node || !isEvalSetLabel(node.node_type)) {
       return NextResponse.json({ error: "EvalSet not found" }, { status: 404 });
     }
 
