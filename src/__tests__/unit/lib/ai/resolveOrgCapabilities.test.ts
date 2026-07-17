@@ -21,6 +21,9 @@ vi.mock("@/lib/ai/graphWalkDispatchTools", () => ({
 }));
 vi.mock("@/lib/ai/promptTools", () => ({ buildPromptTools: vi.fn(() => ({})) }));
 vi.mock("@/lib/ai/conceptTools", () => ({ buildConceptTools: vi.fn(() => ({})) }));
+vi.mock("@/lib/ai/workflowExplorerTools", () => ({
+  buildWorkflowExplorerTools: vi.fn(() => ({})),
+}));
 vi.mock("@/lib/constants/prompt", () => ({
   getRoadmapCapabilitySnippet: vi.fn(() => ""),
   getPlannerCapabilitySnippet: vi.fn(() => ""),
@@ -29,6 +32,7 @@ vi.mock("@/lib/constants/prompt", () => ({
   getConnectionsCapabilitySnippet: vi.fn(() => ""),
   getGraphWalkerCapabilitySnippet: vi.fn(() => ""),
   getInfraCapabilitySnippet: vi.fn(() => ""),
+  getWorkflowsCapabilitySnippet: vi.fn(() => ""),
   getPromptsCapabilitySnippet: vi.fn(() => ""),
   getConceptsCapabilitySnippet: vi.fn(() => ""),
 }));
@@ -53,6 +57,7 @@ vi.mock("@/lib/ai/capabilityGates", () => ({
 }));
 
 import {
+  ALL_CAPABILITIES,
   resolveCapabilities,
   resolveOrgCapabilities,
 } from "@/lib/ai/capabilities";
@@ -101,5 +106,49 @@ describe("prompts capability org-gating", () => {
     const resolved = await resolveOrgCapabilities(["planner"], "org-x");
     expect(resolved).toEqual(["planner"]);
     expect(isPromptsCapabilityEnabledForOrg).not.toHaveBeenCalled();
+  });
+});
+
+describe("workflows capability org-gating", () => {
+  // `workflows` (the workflow_explorer_agent over the stakwork workspace's
+  // workflow library) reuses the same Stakwork-org allow-list gate as
+  // `prompts` — these tests lock the same contract for it.
+  beforeEach(() => {
+    isPromptsCapabilityEnabledForOrg.mockReset();
+  });
+
+  it("is in ALL_CAPABILITIES (default selection, subject to the gate)", () => {
+    expect(ALL_CAPABILITIES).toContain("workflows");
+  });
+
+  it("roadmap's sync includes expansion does NOT pull in workflows", () => {
+    const resolved = resolveCapabilities(["roadmap"]);
+    expect(resolved).not.toContain("workflows");
+  });
+
+  it("keeps workflows for an allow-listed (stakwork) org", async () => {
+    isPromptsCapabilityEnabledForOrg.mockResolvedValue(true);
+    const resolved = await resolveOrgCapabilities(
+      ["roadmap", "workflows"],
+      "org-stakwork",
+    );
+    expect(resolved).toContain("workflows");
+    expect(isPromptsCapabilityEnabledForOrg).toHaveBeenCalledWith("org-stakwork");
+  });
+
+  it("drops workflows for a non-allow-listed org even when explicitly selected", async () => {
+    isPromptsCapabilityEnabledForOrg.mockResolvedValue(false);
+    const resolved = await resolveOrgCapabilities(
+      ["roadmap", "workflows"],
+      "org-other",
+    );
+    expect(resolved).not.toContain("workflows");
+    expect(resolved).toContain("roadmap");
+  });
+
+  it("drops workflows when orgId is undefined (fails closed)", async () => {
+    isPromptsCapabilityEnabledForOrg.mockResolvedValue(false);
+    const resolved = await resolveOrgCapabilities(["workflows"], undefined);
+    expect(resolved).not.toContain("workflows");
   });
 });
