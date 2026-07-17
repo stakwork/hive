@@ -1,6 +1,8 @@
 import { authOptions } from "@/lib/auth/nextauth";
+import { getSwarmVanityAddress } from "@/lib/constants";
 import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
+import { getStakgraphUrl } from "@/lib/utils/stakgraph-url";
 import { validateWorkspaceAccess } from "@/services/workspace";
 import { getServerSession } from "next-auth/next";
 import { NextRequest, NextResponse } from "next/server";
@@ -122,31 +124,22 @@ export async function POST(
 
     const encryptionService = EncryptionService.getInstance();
 
-    // Extract hostname and construct graph URL (port 3355)
-    const swarmUrlObj = new URL(swarm.swarmUrl);
-    const protocol = swarmUrlObj.hostname.includes("localhost")
-      ? "http"
-      : "https";
-
-    let graphUrl = `${protocol}://${swarmUrlObj.hostname}:3355`;
     let apiKey = encryptionService.decryptField("swarmApiKey", swarm.swarmApiKey);
 
-    if (process.env.CUSTOM_SWARM_URL) {
-      graphUrl = `${process.env.CUSTOM_SWARM_URL}:3355`;
-    }
     if (process.env.CUSTOM_SWARM_API_KEY) {
       apiKey = process.env.CUSTOM_SWARM_API_KEY;
     }
 
-    // Forward to ArcadeDB
-    const apiResult = await fetch(`${graphUrl}/api/hive/query`, {
+    const stakgraphUrl = getStakgraphUrl(getSwarmVanityAddress(swarm.name));
+
+    // Forward to stakgraph Cypher endpoint
+    const apiResult = await fetch(`${stakgraphUrl}/api/stakgraph/query`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         "x-api-token": apiKey,
       },
       body: JSON.stringify({
-        language: "cypher",
         query,
         limit: limit ?? 100,
       }),
