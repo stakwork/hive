@@ -491,6 +491,82 @@ describe("PATCH /api/workspaces/[slug]/legal/benchmarks/proposed-fixes/[refId]",
     expect(mockKgGetNode).not.toHaveBeenCalled();
     expect(mockPublishVersion).not.toHaveBeenCalled();
   });
+
+  // ── prompt_name / prompt_id identifier resolution ─────────────────────────
+
+  test("20. Accept: prompt_name preferred when both prompt_name and prompt_id present → publishVersion called with prompt_name", async () => {
+    mockKgGetNode.mockResolvedValue({
+      ...MOCK_PROPOSED_FIX_NODE,
+      properties: {
+        ...MOCK_PROPOSED_FIX_NODE.properties,
+        prompt_name: "MY_PROMPT",
+        prompt_id: PROMPT_ID,
+      },
+    });
+
+    const res = await PATCH(
+      makePatchRequest("openlaw", REF_ID, { action: "accept" }),
+      makePatchParams("openlaw", REF_ID),
+    );
+    expect(res.status).toBe(200);
+    // publishVersion called with prompt_name, not prompt_id
+    expect(mockPublishVersion).toHaveBeenCalledWith("MY_PROMPT", NEW_VERSION_ID, undefined);
+    expect(mockPublishVersion).toHaveBeenCalledTimes(1);
+  });
+
+  test("21. Accept: prompt_id-only success (no prompt_name on node)", async () => {
+    // MOCK_PROPOSED_FIX_NODE already has prompt_id; ensure no prompt_name
+    const { prompt_name: _omit, ...propsWithout } = {
+      ...MOCK_PROPOSED_FIX_NODE.properties,
+      prompt_name: undefined,
+    };
+    mockKgGetNode.mockResolvedValue({
+      ...MOCK_PROPOSED_FIX_NODE,
+      properties: propsWithout,
+    });
+
+    const res = await PATCH(
+      makePatchRequest("openlaw", REF_ID, { action: "accept" }),
+      makePatchParams("openlaw", REF_ID),
+    );
+    expect(res.status).toBe(200);
+    expect(mockPublishVersion).toHaveBeenCalledWith(PROMPT_ID, NEW_VERSION_ID, undefined);
+    expect(mockPublishVersion).toHaveBeenCalledTimes(1);
+  });
+
+  test("22. Accept: missing both prompt_id and prompt_name → 400, no publishVersion call", async () => {
+    const { prompt_id: _omitId, ...propsWithout } = MOCK_PROPOSED_FIX_NODE.properties;
+    mockKgGetNode.mockResolvedValue({
+      ...MOCK_PROPOSED_FIX_NODE,
+      properties: { ...propsWithout, prompt_id: null },
+    });
+
+    const res = await PATCH(
+      makePatchRequest("openlaw", REF_ID, { action: "accept" }),
+      makePatchParams("openlaw", REF_ID),
+    );
+    expect(res.status).toBe(400);
+    expect(mockPublishVersion).not.toHaveBeenCalled();
+    expect(mockUpdateNode).not.toHaveBeenCalled();
+  });
+
+  test("23. Accept: publishVersion invoked exactly once per accept call (no double side effects)", async () => {
+    mockKgGetNode.mockResolvedValue({
+      ...MOCK_PROPOSED_FIX_NODE,
+      properties: {
+        ...MOCK_PROPOSED_FIX_NODE.properties,
+        prompt_name: "MY_PROMPT",
+      },
+    });
+
+    await PATCH(
+      makePatchRequest("openlaw", REF_ID, { action: "accept" }),
+      makePatchParams("openlaw", REF_ID),
+    );
+
+    // Exactly once — no retry, no double call
+    expect(mockPublishVersion).toHaveBeenCalledTimes(1);
+  });
 });
 
 // ─── GET route status filter regression tests ─────────────────────────────────
