@@ -133,13 +133,14 @@ export async function POST(
     const stakgraphUrl = getStakgraphUrl(getSwarmVanityAddress(swarm.name));
 
     // Forward to stakgraph Cypher endpoint
-    const apiResult = await fetch(`${stakgraphUrl}/api/stakgraph/query`, {
+    const apiResult = await fetch(`${stakgraphUrl}/api/hive/query`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         "x-api-token": apiKey,
       },
       body: JSON.stringify({
+        language: "cypher",
         query,
         limit: limit ?? 100,
       }),
