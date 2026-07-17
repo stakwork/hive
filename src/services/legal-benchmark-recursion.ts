@@ -16,6 +16,41 @@ import {
 } from "@/services/swarm/api/nodes";
 import { logger } from "@/lib/logger";
 
+// ── EvalSet label casing helpers ───────────────────────────────────────────
+//
+// Bridge for a known jarvis label-casing defect: eval-ontology nodes carry the
+// Neo4j label "Evalset" (capital E, lowercase s) — a leftover from a since-removed
+// historical `str.capitalize()` normalization. jarvis's WRITE path canonicalizes
+// `node_type` case-insensitively (resolves against `db.labels()`), so writes land
+// on the existing "Evalset" label. Its SEARCH path passes `node_type` verbatim
+// (case-sensitive Cypher IN), so sending only "EvalSet" misses every stored node.
+//
+// Fix: send BOTH casings server-side; compare case-insensitively client-side.
+// This works before AND after a planned jarvis heal migration that relabels
+// "Evalset" → "EvalSet" and adds symmetric search canonicalization
+// (tracked in the separate jarvis/graphmindset ticket).
+//
+// CLEANUP TRIGGER: once the jarvis heal migration has run and search
+// canonicalization has shipped, collapse EVALSET_NODE_LABELS to ["EvalSet"]
+// and revert isEvalSetLabel to a direct === comparison.
+//
+// Mirrors the pattern in src/app/api/workspaces/[slug]/evals/[evalSetId]/requirements/route.ts
+// which already compares String(n.node_type ?? "").toLowerCase() === "evalrequirement"
+// with an ("Evalset" / "Evalrequirement") comment for the same reason.
+
+/**
+ * Both casings sent to searchNodesByAttributes so the node is found regardless
+ * of whether the stored Neo4j label is "Evalset" (current) or "EvalSet" (post-heal).
+ */
+export const EVALSET_NODE_LABELS: string[] = ["EvalSet", "Evalset"];
+
+/**
+ * Case-insensitive check for an EvalSet node_type label.
+ * Accepts "EvalSet", "Evalset", and any other casing variant.
+ */
+export const isEvalSetLabel = (label: string | null | undefined): boolean =>
+  (label ?? "").toLowerCase() === "evalset";
+
 // ── Normalized result shape ────────────────────────────────────────────────
 // Both underlying helpers return different shapes; we map everything onto this
 // single contract so callers never branch on two incompatible results.
@@ -55,7 +90,7 @@ export async function listRecursionEvalSets(
   config: JarvisConnectionConfig,
 ): Promise<RecursionServiceResult> {
   const result = await searchNodesByAttributes(config, {
-    nodeTypes: ["EvalSet"],
+    nodeTypes: EVALSET_NODE_LABELS,
     filters: [{ attribute: "recursion", value: true, comparator: "=" }],
     includeProperties: true,
   });
@@ -163,9 +198,11 @@ export async function enableRecursionForTaskSlug(
     { taskSlug },
   );
 
-  // Resolve EvalSet ref_id from the task-slug (stored as the node's `id` property)
+  // Resolve EvalSet ref_id from the task-slug (stored as the node's `id` property).
+  // Both casings sent so the node is found whether the stored label is "Evalset" (current)
+  // or "EvalSet" (post-heal). See EVALSET_NODE_LABELS comment above.
   const searchResult = await searchNodesByAttributes(config, {
-    nodeTypes: ["EvalSet"],
+    nodeTypes: EVALSET_NODE_LABELS,
     filters: [{ attribute: "id", value: taskSlug, comparator: "=" }],
     includeProperties: true,
   });
@@ -188,7 +225,29 @@ export async function enableRecursionForTaskSlug(
     return { ok: false, notFound: true, error: "EvalSet not found for task slug" };
   }
 
-  const refId = searchResult.nodes[0].ref_id;
+  // Deterministic tie-break: during the jarvis heal-migration window, both a legacy
+  // "Evalset"-labelled node and a healed "EvalSet"-labelled node could transiently
+  // share the same `id`. Prefer the canonical "EvalSet" label; fall back to stable
+  // order (sort by ref_id) rather than an arbitrary first result.
+  let selectedNode = searchResult.nodes[0];
+  if (searchResult.nodes.length > 1) {
+    const labels = searchResult.nodes.map((n) => n.node_type).join(", ");
+    logger.warn(
+      `[legal/benchmarks/recursion] enableRecursionForTaskSlug multiple EvalSet nodes matched taskSlug=${taskSlug} count=${searchResult.nodes.length} labels=[${labels}] — selecting deterministically`,
+      "legal",
+      { taskSlug, count: searchResult.nodes.length, labels },
+    );
+    // Prefer canonical "EvalSet" label; otherwise take the lowest ref_id for stability
+    const canonical = searchResult.nodes.find((n) => n.node_type === "EvalSet");
+    selectedNode = canonical ?? [...searchResult.nodes].sort((a, b) => a.ref_id.localeCompare(b.ref_id))[0];
+  }
+
+  const refId = selectedNode.ref_id;
+  logger.info(
+    `[legal/benchmarks/recursion] enableRecursionForTaskSlug resolved ref_id=${refId} taskSlug=${taskSlug}`,
+    "legal",
+    { taskSlug, refId },
+  );
   return setEvalSetRecursion(config, refId, true);
 }
 

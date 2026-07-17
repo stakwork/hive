@@ -41,6 +41,10 @@ vi.mock("@/lib/ai/kg-adapter", () => ({
 vi.mock("@/services/legal-benchmark-recursion", () => ({
   listRecursionEvalSets: mockListRecursionEvalSets,
   setEvalSetRecursion: mockSetEvalSetRecursion,
+  // Real helper — not mocked; tests exercise the actual case-insensitive logic
+  EVALSET_NODE_LABELS: ["EvalSet", "Evalset"],
+  isEvalSetLabel: (label: string | null | undefined) =>
+    (label ?? "").toLowerCase() === "evalset",
 }));
 
 vi.mock("@/lib/rate-limit", () => ({
@@ -308,7 +312,7 @@ describe("PATCH /api/workspaces/[slug]/legal/benchmarks/recursion/[refId]", () =
     expect(body.error).toMatch(/not found/i);
   });
 
-  test("returns 404 when node exists but is not an EvalSet (IDOR guard)", async () => {
+  test("returns 404 when node exists but is not an EvalSet (IDOR guard) — ProposedFix rejected", async () => {
     mockKgGetNode.mockResolvedValue({
       ref_id: "ref-other",
       node_type: "ProposedFix",
@@ -322,6 +326,48 @@ describe("PATCH /api/workspaces/[slug]/legal/benchmarks/recursion/[refId]", () =
     expect(res.status).toBe(404);
     const body = await res.json();
     expect(body.error).toMatch(/not found/i);
+    // Write must not have been called
+    expect(mockSetEvalSetRecursion).not.toHaveBeenCalled();
+  });
+
+  test("returns 404 when node has node_type 'Task' (IDOR guard rejects non-EvalSet)", async () => {
+    mockKgGetNode.mockResolvedValue({
+      ref_id: "ref-task",
+      node_type: "Task",
+      name: "some task",
+    });
+
+    const res = await PATCH(
+      makePatchRequest("ref-task", { enabled: true }),
+      makePatchParams("openlaw", "ref-task"),
+    );
+    expect(res.status).toBe(404);
+    expect(mockSetEvalSetRecursion).not.toHaveBeenCalled();
+  });
+
+  test("IDOR guard accepts node with stored jarvis label 'Evalset' (case-insensitive fix)", async () => {
+    // Simulates the real jarvis label casing: "Evalset" not "EvalSet"
+    mockKgGetNode.mockResolvedValue({
+      ref_id: "ref-evalset-jarvis",
+      node_type: "Evalset",  // ← the actual stored casing in jarvis
+      name: "Draft a contract",
+      properties: {},
+    });
+
+    const res = await PATCH(
+      makePatchRequest("ref-evalset-jarvis", { enabled: false }),
+      makePatchParams("openlaw", "ref-evalset-jarvis"),
+    );
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.success).toBe(true);
+    expect(body.enabled).toBe(false);
+    // Write was called — guard passed
+    expect(mockSetEvalSetRecursion).toHaveBeenCalledWith(
+      MOCK_JARVIS_CONFIG,
+      "ref-evalset-jarvis",
+      false,
+    );
   });
 
   test("returns 200 with success: true on enable", async () => {
