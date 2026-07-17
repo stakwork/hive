@@ -81,6 +81,7 @@ import { buildInfraTools } from "@/lib/ai/infraTools";
 import { buildInitiativeTools } from "@/lib/ai/initiativeTools";
 import { buildPromptTools } from "@/lib/ai/promptTools";
 import { buildConceptTools } from "@/lib/ai/conceptTools";
+import { buildWorkflowExplorerTools } from "@/lib/ai/workflowExplorerTools";
 import { isPromptsCapabilityEnabledForOrg } from "@/lib/ai/capabilityGates";
 import {
   buildResearchTools,
@@ -106,6 +107,7 @@ import {
   getResearchCapabilitySnippet,
   getRoadmapCapabilitySnippet,
   getWhiteboardCapabilitySnippet,
+  getWorkflowsCapabilitySnippet,
 } from "@/lib/constants/prompt";
 
 export type OrgCapability =
@@ -117,7 +119,8 @@ export type OrgCapability =
   | "graph_walker"
   | "infra"
   | "prompts"
-  | "concepts";
+  | "concepts"
+  | "workflows";
 
 /**
  * Everything a capability's `buildTools` may need. Mirrors the
@@ -232,6 +235,7 @@ export const ALL_CAPABILITIES: readonly OrgCapability[] = [
   "infra",
   "prompts",
   "concepts",
+  "workflows",
 ];
 
 export const CAPABILITY_REGISTRY: Record<OrgCapability, CapabilityDefinition> =
@@ -403,6 +407,27 @@ export const CAPABILITY_REGISTRY: Record<OrgCapability, CapabilityDefinition> =
       // Not gated: unlike the global prompt library, concepts are per-workspace
       // and every workspace already exposes concept read tools to the agent.
       writeToolNames: [PROPOSE_NEW_CONCEPT_TOOL, PROPOSE_CONCEPT_UPDATE_TOOL],
+    },
+    workflows: {
+      // Not per-workspace: the tool always targets the hardcoded `stakwork`
+      // workspace's swarm, whose Jarvis graph holds the canonical Stakwork
+      // Workflow/Skill/Script library (see workflowExplorerTools.ts).
+      buildTools: () => buildWorkflowExplorerTools(),
+      promptSnippet: getWorkflowsCapabilitySnippet,
+      core: false,
+      menuBlurb:
+        "**workflows** — research the Stakwork workflow library via " +
+        "`workflow_explorer_agent`: find existing Workflows/Skills/Scripts " +
+        "by what they take as input and produce as output, read proven step " +
+        "orderings, and spot gaps. Load when designing or discussing a new " +
+        "Stakwork workflow.",
+      // Read-only research tool — nothing to strip in readonly mode.
+      writeToolNames: [],
+      // Org-gated to the Stakwork source-control org: the tool exposes the
+      // stakwork workspace's workflow graph, so it reuses the same allow-list
+      // gate as the global prompt library. Like `prompts`, it must never
+      // appear in an `includes` list (the sync resolver can't run the gate).
+      orgGate: isPromptsCapabilityEnabledForOrg,
     },
   };
 
