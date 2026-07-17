@@ -13,6 +13,7 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 const {
   mockStakworkRequest,
   mockDbPromptFindUnique,
+  mockDbPromptFindFirst,
   mockDbTransaction,
   mockDbPromptUpdate,
   mockDbPromptVersionCreate,
@@ -24,6 +25,7 @@ const {
 } = vi.hoisted(() => ({
   mockStakworkRequest: vi.fn(),
   mockDbPromptFindUnique: vi.fn(),
+  mockDbPromptFindFirst: vi.fn(),
   mockDbTransaction: vi.fn(),
   mockDbPromptUpdate: vi.fn(),
   mockDbPromptVersionCreate: vi.fn(),
@@ -42,6 +44,7 @@ vi.mock("@/lib/db", () => ({
   db: {
     prompt: {
       findUnique: mockDbPromptFindUnique,
+      findFirst: mockDbPromptFindFirst,
       update: mockDbPromptUpdate,
       create: mockDbPromptCreate,
       delete: vi.fn(),
@@ -664,6 +667,140 @@ describe("publishVersion — Stakwork push", () => {
     );
     const body = JSON.parse((putCall![1] as RequestInit).body as string);
     expect(body.prompt.description).toBe("");
+  });
+});
+
+// ─── publishVersion — id-or-name / id-or-number resolution ───────────────────
+
+describe("publishVersion — id-or-name / id-or-number resolution", () => {
+  const mockPrompt = {
+    id: "prompt-1",
+    name: "MY_PROMPT",
+    value: "old val",
+    description: "A prompt",
+    publishedVersionId: "v1",
+    stakworkId: null,
+    syncStatus: "OK",
+    createdAt: new Date("2025-01-01T00:00:00Z"),
+    updatedAt: new Date(),
+  };
+
+  const mockVersion = {
+    id: "v2",
+    promptId: "prompt-1",
+    versionNumber: 2,
+    value: "new published value",
+    description: null,
+    published: false,
+    createdAt: new Date(),
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockStakworkRequest.mockResolvedValue({});
+    mockDbTransaction.mockResolvedValue([undefined, undefined, undefined]);
+    mockDbPromptUpdate.mockResolvedValue(mockPrompt);
+  });
+
+  it("resolves prompt by id (cuid callers unchanged — id branch)", async () => {
+    mockDbPromptFindUnique.mockResolvedValueOnce(mockPrompt);
+    mockDbPromptVersionFindFirst.mockResolvedValueOnce(mockVersion);
+
+    await expect(publishVersion("prompt-1", "v2")).resolves.not.toThrow();
+
+    // findUnique used (id branch); findFirst for prompt NOT called
+    expect(mockDbPromptFindUnique).toHaveBeenCalledWith({ where: { id: "prompt-1" } });
+    expect(mockDbPromptFindFirst).not.toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ name: expect.anything() }),
+    }));
+  });
+
+  it("resolves prompt by name when id lookup misses", async () => {
+    mockDbPromptFindUnique.mockResolvedValueOnce(null); // id miss
+    mockDbPromptFindFirst.mockResolvedValueOnce(mockPrompt); // name hit
+    mockDbPromptVersionFindFirst.mockResolvedValueOnce(mockVersion);
+
+    await expect(publishVersion("MY_PROMPT", "v2")).resolves.not.toThrow();
+
+    expect(mockDbPromptFindUnique).toHaveBeenCalledWith({ where: { id: "MY_PROMPT" } });
+    expect(mockDbPromptFindFirst).toHaveBeenCalledWith({ where: { name: "MY_PROMPT" } });
+    // Info log for name-based resolution
+    expect(vi.mocked(logger.info)).toHaveBeenCalledWith(
+      expect.stringContaining("resolved by name"),
+      "prompt-sync",
+      expect.objectContaining({ resolvedName: "MY_PROMPT" }),
+    );
+  });
+
+  it("resolves version by versionNumber when id lookup misses and arg is purely numeric", async () => {
+    mockDbPromptFindUnique.mockResolvedValueOnce(mockPrompt);
+    // id miss, then number hit
+    mockDbPromptVersionFindFirst
+      .mockResolvedValueOnce(null)         // id lookup miss
+      .mockResolvedValueOnce(mockVersion); // versionNumber hit
+
+    await expect(publishVersion("prompt-1", "2")).resolves.not.toThrow();
+
+    // Second call uses versionNumber
+    expect(mockDbPromptVersionFindFirst).toHaveBeenNthCalledWith(2, {
+      where: { promptId: "prompt-1", versionNumber: 2 },
+    });
+    // Info log for number-based resolution
+    expect(vi.mocked(logger.info)).toHaveBeenCalledWith(
+      expect.stringContaining("resolved by versionNumber"),
+      "prompt-sync",
+      expect.objectContaining({ versionNumber: 2 }),
+    );
+  });
+
+  it("numeric-guard: cuid that looks numeric does not spuriously hit the versionNumber branch", async () => {
+    // "123" is a purely numeric string — but if id lookup succeeds first, number branch is skipped
+    const versionWithNumericLikeId = { ...mockVersion, id: "123" };
+    mockDbPromptFindUnique.mockResolvedValueOnce(mockPrompt);
+    mockDbPromptVersionFindFirst.mockResolvedValueOnce(versionWithNumericLikeId); // id hit first
+
+    await expect(publishVersion("prompt-1", "123")).resolves.not.toThrow();
+
+    // findFirst called only once (id branch succeeded)
+    expect(mockDbPromptVersionFindFirst).toHaveBeenCalledTimes(1);
+    expect(mockDbPromptVersionFindFirst).toHaveBeenCalledWith({
+      where: { id: "123", promptId: "prompt-1" },
+    });
+  });
+
+  it("both-invalid: neither prompt id/name match → throws 'Prompt not found' 404", async () => {
+    mockDbPromptFindUnique.mockResolvedValueOnce(null);
+    mockDbPromptFindFirst.mockResolvedValueOnce(null);
+
+    await expect(publishVersion("nonexistent", "v2")).rejects.toMatchObject({
+      message: "Prompt not found",
+      status: 404,
+    });
+    // Version lookup never reached
+    expect(mockDbPromptVersionFindFirst).not.toHaveBeenCalled();
+  });
+
+  it("valid prompt + bad version → throws 'Version not found' 404", async () => {
+    mockDbPromptFindUnique.mockResolvedValueOnce(mockPrompt);
+    mockDbPromptVersionFindFirst.mockResolvedValueOnce(null); // id miss
+    // "vbad" is not purely numeric → no number fallback
+
+    await expect(publishVersion("prompt-1", "vbad")).rejects.toMatchObject({
+      message: "Version not found",
+      status: 404,
+    });
+  });
+
+  it("valid prompt + bad numeric version → throws 'Version not found' 404", async () => {
+    mockDbPromptFindUnique.mockResolvedValueOnce(mockPrompt);
+    mockDbPromptVersionFindFirst
+      .mockResolvedValueOnce(null) // id miss
+      .mockResolvedValueOnce(null); // number miss
+
+    await expect(publishVersion("prompt-1", "999")).rejects.toMatchObject({
+      message: "Version not found",
+      status: 404,
+    });
   });
 });
 
