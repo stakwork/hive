@@ -21,6 +21,7 @@ import {
   Map,
   Menu,
   Mic,
+  Network,
   PenLine,
   Phone,
   Scale,
@@ -147,7 +148,7 @@ const baseNavigationItems: NavigationItem[] = [
       { icon: Phone, label: "Calls", href: "/calls" },
       { icon: FileText, label: "Agent Logs", href: "/agent-logs" },
       { icon: Bug, label: "Errors", href: "/errors" },
-
+      { icon: Network, label: "Graph Explorer", href: "/context/graph" },
     ],
   },
 ];
@@ -530,6 +531,13 @@ export function Sidebar({ user }: SidebarProps) {
         return {
           ...item,
           children: item.children.filter((child) => !hidden.has(child.label)),
+        };
+      }
+      // Non-admins cannot access Graph Explorer (UX guard; page-level gate is the real enforcement)
+      if (!canAdmin && item.label === "Context" && item.children) {
+        return {
+          ...item,
+          children: item.children.filter((child) => child.label !== "Graph Explorer"),
         };
       }
       // Filter Evals child from Protect for non-stakwork workspaces

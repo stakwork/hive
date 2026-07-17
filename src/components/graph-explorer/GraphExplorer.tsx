@@ -32,34 +32,9 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 // Types
 // ---------------------------------------------------------------------------
 
-interface ArcadeRecord {
-  [key: string]: ArcadeValue;
-}
-
-type ArcadeValue =
-  | string
-  | number
-  | boolean
-  | null
-  | ArcadeNode
-  | ArcadeEdge;
-
-interface ArcadeNode {
-  "@type"?: string;
-  "@rid"?: string;
-  "@class"?: string;
-  [key: string]: ArcadeValue | undefined;
-}
-
-interface ArcadeEdge {
-  "@type"?: string;
-  "@rid"?: string;
-  "@class"?: string;
-  [key: string]: ArcadeValue | undefined;
-}
-
-interface QueryResult {
-  result: ArcadeRecord[];
+interface StakgraphResult {
+  columns: string[];
+  rows: unknown[][];
 }
 
 interface GraphNode extends d3.SimulationNodeDatum {
@@ -80,70 +55,72 @@ interface GraphLink extends d3.SimulationLinkDatum<GraphNode> {
 // Helpers
 // ---------------------------------------------------------------------------
 
-function isArcadeObject(val: unknown): val is ArcadeNode {
-  return typeof val === "object" && val !== null && "@rid" in val;
+function isGraphNode(val: unknown): val is Record<string, unknown> {
+  return typeof val === "object" && val !== null && "id" in (val as object);
 }
 
-/** Extract graph-renderable nodes and links from ArcadeDB result records */
-function extractGraph(records: ArcadeRecord[]): {
+/** Extract graph-renderable nodes and links from stakgraph result rows */
+function extractGraph(columns: string[], rows: unknown[][]): {
   nodes: GraphNode[];
   links: GraphLink[];
 } {
   const nodeMap = new Map<string, GraphNode>();
   const links: GraphLink[] = [];
 
-  const registerNode = (obj: ArcadeNode): string => {
-    const id = obj["@rid"] as string;
+  const registerNode = (obj: Record<string, unknown>): string => {
+    const id = String((obj as any).id);
     if (!nodeMap.has(id)) {
       const props: Record<string, unknown> = {};
       for (const [k, v] of Object.entries(obj)) {
-        if (!k.startsWith("@")) props[k] = v;
+        if (k !== "id" && k !== "type" && k !== "name") props[k] = v;
       }
       nodeMap.set(id, {
         id,
-        label: (obj.name as string) || (obj["@class"] as string) || id,
-        type: (obj["@class"] as string) || "Node",
+        label: (obj as any).name ?? (obj as any).type ?? id,
+        type: String((obj as any).type ?? "Node"),
         properties: props,
       });
     }
     return id;
   };
 
-  records.forEach((record, idx) => {
-    const values = Object.values(record);
-    const nodeObjects = values.filter(isArcadeObject);
+  // Suppress unused columns warning — columns param is part of the public API
+  void columns;
 
-    // Heuristic: first and last object are nodes, middle objects are edges
-    if (nodeObjects.length >= 2) {
-      const src = nodeObjects[0];
-      const tgt = nodeObjects[nodeObjects.length - 1];
+  for (const row of rows) {
+    const objects = (row as unknown[]).filter(isGraphNode);
+
+    if (objects.length >= 2) {
+      const src = objects[0] as Record<string, unknown>;
+      const tgt = objects[objects.length - 1] as Record<string, unknown>;
       const srcId = registerNode(src);
       const tgtId = registerNode(tgt);
 
-      // Process intermediate objects as edges
-      const edgeObjects = nodeObjects.slice(1, -1);
-      edgeObjects.forEach((edge, ei) => {
+      const edges = objects.slice(1, -1);
+      edges.forEach((edge, ei) => {
+        const e = edge as Record<string, unknown>;
         links.push({
-          id: (edge["@rid"] as string) || `link-${idx}-${ei}`,
-          type: (edge["@class"] as string) || "REL",
+          id: String((e as any).id ?? `link-${srcId}-${tgtId}-${ei}`),
+          type: String((e as any).type ?? "RELATED"),
           source: srcId,
           target: tgtId,
         });
       });
 
       // If only 2 node-like objects with no middle, create a generic link
-      if (edgeObjects.length === 0 && nodeObjects.length === 2) {
+      if (edges.length === 0) {
         links.push({
-          id: `link-${idx}`,
+          id: `link-${srcId}-${tgtId}`,
           type: "RELATED",
           source: srcId,
           target: tgtId,
         });
       }
-    } else if (nodeObjects.length === 1) {
-      registerNode(nodeObjects[0]);
+    } else if (objects.length === 1) {
+      registerNode(objects[0] as Record<string, unknown>);
     }
-  });
+    // objects.length === 0: skip
+  }
 
   return { nodes: Array.from(nodeMap.values()), links };
 }
@@ -337,17 +314,16 @@ function ForceGraph({ nodes, links, onNodeClick }: ForceGraphProps) {
 // Result table
 // ---------------------------------------------------------------------------
 
-function ResultTable({ records }: { records: ArcadeRecord[] }) {
-  if (records.length === 0) return null;
+function ResultTable({ columns, rows }: { columns: string[]; rows: unknown[][] }) {
+  if (rows.length === 0) return null;
 
-  const columns = Object.keys(records[0]);
-
-  const cellValue = (val: ArcadeValue): string => {
+  const cellValue = (val: unknown): string => {
     if (val === null || val === undefined) return "—";
     if (typeof val === "object") {
-      const obj = val as ArcadeNode;
-      const name = obj.name ?? obj["@class"] ?? obj["@rid"] ?? "";
-      return name ? String(name) : JSON.stringify(val);
+      const obj = val as Record<string, unknown>;
+      if (obj.name !== undefined) return String(obj.name);
+      if (obj.id !== undefined) return `${obj.id}${obj.type ? ` (${obj.type})` : ""}`;
+      return JSON.stringify(val);
     }
     return String(val);
   };
@@ -365,15 +341,15 @@ function ResultTable({ records }: { records: ArcadeRecord[] }) {
           </TableRow>
         </TableHeader>
         <TableBody>
-          {records.map((row, i) => (
+          {rows.map((row, i) => (
             <TableRow key={i}>
-              {columns.map((col) => (
+              {columns.map((col, j) => (
                 <TableCell
                   key={col}
                   className="font-mono text-xs max-w-[240px] truncate"
-                  title={cellValue(row[col])}
+                  title={cellValue((row as unknown[])[j])}
                 >
-                  {cellValue(row[col])}
+                  {cellValue((row as unknown[])[j])}
                 </TableCell>
               ))}
             </TableRow>
@@ -399,7 +375,7 @@ export function GraphExplorer({ workspaceSlug }: GraphExplorerProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notConfigured, setNotConfigured] = useState(false);
-  const [records, setRecords] = useState<ArcadeRecord[] | null>(null);
+  const [queryResult, setQueryResult] = useState<StakgraphResult | null>(null);
   const [graphData, setGraphData] = useState<{
     nodes: GraphNode[];
     links: GraphLink[];
@@ -412,7 +388,7 @@ export function GraphExplorer({ workspaceSlug }: GraphExplorerProps) {
     setLoading(true);
     setError(null);
     setNotConfigured(false);
-    setRecords(null);
+    setQueryResult(null);
     setGraphData(null);
 
     try {
@@ -433,10 +409,9 @@ export function GraphExplorer({ workspaceSlug }: GraphExplorerProps) {
         return;
       }
 
-      const data: QueryResult = await res.json();
-      const result = data.result ?? [];
-      setRecords(result);
-      setGraphData(extractGraph(result));
+      const data: StakgraphResult = await res.json();
+      setQueryResult(data);
+      setGraphData(extractGraph(data.columns, data.rows));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unknown error");
     } finally {
@@ -520,9 +495,9 @@ export function GraphExplorer({ workspaceSlug }: GraphExplorerProps) {
         </div>
       )}
 
-      {!loading && records !== null && !error && !notConfigured && (
+      {!loading && queryResult !== null && !error && !notConfigured && (
         <>
-          {records.length === 0 ? (
+          {queryResult.rows.length === 0 ? (
             <div
               data-testid="empty-state"
               className="flex flex-col items-center justify-center py-16 gap-2 text-muted-foreground"
@@ -542,12 +517,12 @@ export function GraphExplorer({ workspaceSlug }: GraphExplorerProps) {
                   </TabsTrigger>
                 </TabsList>
                 <span className="text-xs text-muted-foreground">
-                  {records.length} record{records.length !== 1 ? "s" : ""}
+                  {queryResult.rows.length} record{queryResult.rows.length !== 1 ? "s" : ""}
                 </span>
               </div>
 
               <TabsContent value="table" className="flex-1 min-h-0 mt-2 overflow-auto">
-                <ResultTable records={records} />
+                <ResultTable columns={queryResult.columns} rows={queryResult.rows} />
               </TabsContent>
 
               <TabsContent
