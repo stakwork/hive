@@ -38,10 +38,13 @@ export async function updateStakgraphStatus(
 
   console.log(`[updateStakgraphStatus] Updating status for ${repositoriesToUpdate.length} repository/repositories to ${repositoryStatus}`);
 
+  const isTerminalStatus = ["synced", "failed"].includes(payload.status);
+
   await Promise.all([
     saveOrUpdateSwarm({
       workspaceId: swarm.workspaceId,
       ingestRefId: payload.request_id,
+      ...(isTerminalStatus && { ingestRequestInProgress: false }),
     }),
 
     ...repositoriesToUpdate.map(repo =>

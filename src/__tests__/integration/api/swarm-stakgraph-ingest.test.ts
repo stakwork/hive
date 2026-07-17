@@ -10,6 +10,17 @@ import {
   getMockedSession,
 } from "@/__tests__/support/helpers";
 
+vi.mock("@/lib/auth/nextauth", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/auth/nextauth")>();
+  return {
+    ...actual,
+    getGithubUsernameAndPAT: vi.fn().mockResolvedValue({
+      username: "testuser",
+      token: "github_pat_integration",
+    }),
+  };
+});
+
 // Mock external API calls
 vi.mock("@/services/swarm/stakgraph-actions", () => ({
   triggerIngestAsync: vi.fn(),
@@ -54,6 +65,7 @@ vi.mock("@/lib/url", () => ({
 import { triggerIngestAsync } from "@/services/swarm/stakgraph-actions";
 import { swarmApiRequest } from "@/services/swarm/api/swarm";
 import type { AsyncSyncResult } from "@/services/swarm/stakgraph-actions";
+import { getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
 
 const mockTriggerIngestAsync = triggerIngestAsync as vi.Mock;
 const mockSwarmApiRequest = swarmApiRequest as vi.Mock;
@@ -513,6 +525,117 @@ describe("POST /api/swarm/stakgraph/ingest - Integration Tests", () => {
       });
 
       expect(swarm?.ingestRequestInProgress).toBe(false);
+    });
+
+    it("should reset flag and roll back repo rows when external service is busy", async () => {
+      // Seed repo with a known pre-ingest status
+      await db.repository.updateMany({
+        where: { workspaceId },
+        data: { status: RepositoryStatus.SYNCED },
+      });
+
+      mockTriggerIngestAsync.mockResolvedValue({
+        ok: false,
+        status: 409,
+        data: { error: "System is busy processing another request" },
+      } as AsyncSyncResult);
+
+      const request = createPostRequest({ workspaceId });
+      const response = await POST(request);
+
+      expect(response.status).toBe(409);
+      const body = await response.json();
+      expect(body.success).toBe(false);
+
+      // Flag must be cleared
+      const swarm = await db.swarm.findUnique({ where: { workspaceId } });
+      expect(swarm?.ingestRequestInProgress).toBe(false);
+
+      // Repo rows must be rolled back to pre-PENDING status
+      const repos = await db.repository.findMany({ where: { workspaceId } });
+      for (const repo of repos) {
+        expect(repo.status).toBe(RepositoryStatus.SYNCED);
+      }
+    });
+
+    it("should reset flag and roll back repo rows when workspace is not found", async () => {
+      // Seed repo with a known pre-ingest status
+      await db.repository.updateMany({
+        where: { workspaceId },
+        data: { status: RepositoryStatus.SYNCED },
+      });
+
+      // The route calls db.workspace.findUnique for the slug lookup after acquiring the lock.
+      // We need to intercept only that specific call and return null.
+      // Prisma client models are Proxy objects — vi.spyOn and delete both leave the own
+      // property undefined, permanently shadowing the Proxy's get trap. Instead, save the
+      // original reference and restore via reassignment (not delete) so the Proxy works again.
+      const originalFindUnique = db.workspace.findUnique;
+      let slugCallCount = 0;
+      (db.workspace as any).findUnique = async (args: any) => {
+        if (args?.where?.id === workspaceId && args?.select?.slug) {
+          slugCallCount++;
+          if (slugCallCount === 1) return null; // simulate workspace not found for slug lookup
+        }
+        return originalFindUnique.call(db.workspace, args);
+      };
+
+      mockTriggerIngestAsync.mockResolvedValue({
+        ok: true,
+        status: 200,
+        data: { request_id: "ingest-req-789" },
+      } as AsyncSyncResult);
+
+      const request = createPostRequest({ workspaceId });
+      const response = await POST(request);
+
+      // Restore via reassignment — delete leaves the own property as undefined,
+      // permanently shadowing the Proxy's get trap for all subsequent tests.
+      (db.workspace as any).findUnique = originalFindUnique;
+
+      expect(response.status).toBe(404);
+
+      // Flag must be cleared
+      const swarm = await db.swarm.findUnique({ where: { workspaceId } });
+      expect(swarm?.ingestRequestInProgress).toBe(false);
+
+      // Repo rows must be rolled back
+      const repos = await db.repository.findMany({ where: { workspaceId } });
+      for (const repo of repos) {
+        expect(repo.status).toBe(RepositoryStatus.SYNCED);
+      }
+    });
+
+    it("should reset flag and roll back repo rows when no GitHub credentials found", async () => {
+      // Seed repo with a known pre-ingest status
+      await db.repository.updateMany({
+        where: { workspaceId },
+        data: { status: RepositoryStatus.SYNCED },
+      });
+
+      // Force credentials lookup to return null
+      vi.mocked(getGithubUsernameAndPAT).mockResolvedValueOnce(null as any);
+
+      mockTriggerIngestAsync.mockResolvedValue({
+        ok: true,
+        status: 200,
+        data: { request_id: "ingest-req-999" },
+      } as AsyncSyncResult);
+
+      const request = createPostRequest({ workspaceId });
+      const response = await POST(request);
+
+      expect(response.status).toBe(400);
+
+      // Flag must be cleared
+      const swarm = await db.swarm.findUnique({ where: { workspaceId } });
+      expect(swarm?.ingestRequestInProgress).toBe(false);
+
+      // Repo rows must be rolled back
+      const repos = await db.repository.findMany({ where: { workspaceId } });
+      for (const repo of repos) {
+        expect(repo.status).toBe(RepositoryStatus.SYNCED);
+      }
     });
   });
 });

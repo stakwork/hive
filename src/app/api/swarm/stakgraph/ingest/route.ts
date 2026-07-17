@@ -96,6 +96,7 @@ export async function POST(request: NextRequest) {
       id: string;
       repositoryUrl: string;
       name: string;
+      status: RepositoryStatus;
       codeIngestionEnabled: boolean;
       docsEnabled: boolean;
       mocksEnabled: boolean;
@@ -113,6 +114,7 @@ export async function POST(request: NextRequest) {
           repositoryUrl: true,
           workspaceId: true,
           name: true,
+          status: true,
           codeIngestionEnabled: true,
           docsEnabled: true,
           mocksEnabled: true,
@@ -240,6 +242,12 @@ export async function POST(request: NextRequest) {
 
     if (!workspace) {
       console.log(`[STAKGRAPH_INGEST] Workspace not found with ID: ${repoWorkspaceId}`);
+      await Promise.all([
+        saveOrUpdateSwarm({ workspaceId: repoWorkspaceId, ingestRequestInProgress: false }),
+        ...repositoriesToIngest.map(r =>
+          db.repository.update({ where: { id: r.id }, data: { status: r.status } })
+        ),
+      ]);
       return NextResponse.json({ success: false, message: "Workspace not found" }, { status: 404 });
     }
 
@@ -250,6 +258,12 @@ export async function POST(request: NextRequest) {
     const githubProfile = await getGithubUsernameAndPAT(session.user.id, workspace.slug);
     if (!githubProfile?.username || !githubProfile?.token) {
       console.log(`[STAKGRAPH_INGEST] No GitHub credentials found - username: ${!!githubProfile?.username}, token: ${!!githubProfile?.token}`);
+      await Promise.all([
+        saveOrUpdateSwarm({ workspaceId: repoWorkspaceId, ingestRequestInProgress: false }),
+        ...repositoriesToIngest.map(r =>
+          db.repository.update({ where: { id: r.id }, data: { status: r.status } })
+        ),
+      ]);
       return NextResponse.json({ success: false, message: "No GitHub credentials found for this workspace" }, { status: 400 });
     }
 
@@ -284,9 +298,13 @@ export async function POST(request: NextRequest) {
     if (apiResult?.data && typeof apiResult.data === "object" && "error" in apiResult.data) {
       const errorMsg = apiResult.data.error as string;
       if (errorMsg.includes("System is busy processing another request")) {
-        console.log(`[STAKGRAPH_INGEST] External service busy, keeping flag set and returning 409`);
-        // NOTE: We keep ingestRequestInProgress: true to prevent more requests
-        // The flag will be reset when the external processing completes via webhook
+        console.log(`[STAKGRAPH_INGEST] External service busy, resetting flag and rolling back repo rows`);
+        await Promise.all([
+          saveOrUpdateSwarm({ workspaceId: repoWorkspaceId, ingestRequestInProgress: false }),
+          ...repositoriesToIngest.map(r =>
+            db.repository.update({ where: { id: r.id }, data: { status: r.status } })
+          ),
+        ]);
         return NextResponse.json({
           success: false,
           message: "Ingest request already in progress for this swarm"
