@@ -19,6 +19,7 @@ import {
 } from "@/lib/chat";
 import { useStreamContext } from "@/hooks/useStreamContext";
 import { useStreamedAgentLog } from "@/hooks/useStreamedAgentLog";
+import { useStakworkGeneration } from "@/hooks/useStakworkGeneration";
 import { getPusherClient } from "@/lib/pusher";
 import type { FeatureDetail } from "@/types/roadmap";
 import { diffWords } from "diff";
@@ -165,6 +166,24 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
 
   // Update favicon based on feature workflow status
   usePlanFavicon({ workflowStatus });
+
+  // Stakwork generation control for plan chat stop functionality
+  const { stopRun, isStopping, querying: isQueryingRun } = useStakworkGeneration({
+    featureId,
+    type: "PLAN_CHAT",
+    enabled: true,
+    successToast: "Plan agent stopped",
+  });
+
+  const handleStop = async () => {
+    try {
+      await stopRun();
+      setWorkflowStatus(WorkflowStatus.HALTED);
+    } catch {
+      // stopRun already surfaces a toast.error; input intentionally stays
+      // IN_PROGRESS because the run is still active
+    }
+  };
 
   const fetchFeature = useCallback(async (id: string) => {
     const response = await fetch(`/api/features/${id}`);
@@ -625,6 +644,8 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
       sendTyping(true);
     },
     onTypingStop: () => sendTyping(false),
+    onStop: handleStop,
+    isStopping: isStopping || isQueryingRun,
   };
 
   const artifactsPanelProps = {
