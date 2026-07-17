@@ -127,15 +127,16 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     const now = new Date().toISOString();
 
     if (action === "accept") {
-      // Validate we have a version id to publish
+      // Validate we have a version id and at least one prompt identifier to publish
       const promptId = properties["prompt_id"] ? String(properties["prompt_id"]) : null;
+      const promptName = properties["prompt_name"] ? String(properties["prompt_name"]) : null;
       const newVersionId = properties["new_prompt_version_id"]
         ? String(properties["new_prompt_version_id"])
         : null;
 
-      if (!newVersionId || !promptId) {
+      if (!newVersionId || (!promptId && !promptName)) {
         logger.warn(
-          "[proposed-fixes/patch] Accept failed: missing prompt_id or new_prompt_version_id",
+          "[proposed-fixes/patch] Accept failed: missing prompt identifier (prompt_id or prompt_name) or new_prompt_version_id",
           "proposed-fixes",
           { refId, userId },
         );
@@ -145,11 +146,21 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
         );
       }
 
+      // Prefer prompt_name (stable/durable on the ProposedFix node); fall back to prompt_id.
+      // Exactly one publishVersion call — never retry or double-call.
+      const promptIdentifier = promptName ?? promptId!;
+      logger.info("[proposed-fixes/patch] Resolving prompt by identifier", "proposed-fixes", {
+        refId,
+        userId,
+        identifierType: promptName ? "prompt_name" : "prompt_id",
+        identifier: promptIdentifier,
+      });
+
       // Publish first — only mark accepted if publish succeeds
       try {
         // Pass undefined for workspaceId: prompts are global (no owning workspace),
         // so we avoid mis-attributing the publish graph recorder to the openlaw graph.
-        await publishVersion(promptId, newVersionId, undefined);
+        await publishVersion(promptIdentifier, newVersionId, undefined);
       } catch (err: unknown) {
         const e = err as { status?: number; message?: string };
         logger.error("[proposed-fixes/patch] publishVersion failed", "proposed-fixes", {
