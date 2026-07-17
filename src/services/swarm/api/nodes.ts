@@ -423,6 +423,7 @@ export async function searchNodesByAttributes(
     includeProperties?: boolean;
     limit?: number;
     timeoutMs?: number;
+    skipCache?: boolean;
   },
 ): Promise<SearchLatestResult> {
   const result = await jarvisRequest({
@@ -434,6 +435,7 @@ export async function searchNodesByAttributes(
       search_filters: params.filters,
       include_properties: params.includeProperties ?? false,
       limit: params.limit ?? 1000,
+      skip_cache: params.skipCache ?? false,
     },
     timeoutMs: params.timeoutMs,
   });
