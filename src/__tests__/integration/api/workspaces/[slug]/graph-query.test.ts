@@ -195,10 +195,54 @@ describe("POST /api/workspaces/[slug]/graph/query", () => {
 
       expect(response.status).toBe(200);
       const data = await response.json();
-      expect(Array.isArray(data.result)).toBe(true);
-      expect(data.result.length).toBeGreaterThan(0);
+      expect(Array.isArray(data.columns)).toBe(true);
+      expect(data.rows.length).toBeGreaterThan(0);
     } finally {
       process.env.USE_MOCKS = originalUseMocks;
+      await db.workspace.delete({ where: { id: workspace.id } });
+      await db.user.delete({ where: { id: owner.id } });
+    }
+  });
+
+  // ── Swarm configured happy-path ────────────────────────────────────────────
+
+  test("returns 200 with columns and rows when swarm is configured", async () => {
+    const owner = await createTestUser();
+    const workspace = await createTestWorkspace({ ownerId: owner.id });
+    await createTestSwarmWithEncryptedApiKey(workspace.id);
+
+    getMockedSession().mockResolvedValue(createAuthenticatedSession(owner));
+
+    const mockResult = {
+      columns: ["n", "r", "m"],
+      rows: [
+        [
+          { id: "1", name: "AuthService.ts", type: "File" },
+          { id: "10", type: "IMPORTS" },
+          { id: "2", name: "db.ts", type: "File" },
+        ],
+      ],
+    };
+
+    const originalFetch = global.fetch;
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: () => Promise.resolve(mockResult),
+    });
+
+    try {
+      const response = await callRoute(workspace.slug, {
+        query: "MATCH (n)-[r]->(m) RETURN n, r, m LIMIT 10",
+      });
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(Array.isArray(data.columns)).toBe(true);
+      expect(Array.isArray(data.rows)).toBe(true);
+      expect(data.rows.length).toBeGreaterThan(0);
+    } finally {
+      global.fetch = originalFetch;
       await db.workspace.delete({ where: { id: workspace.id } });
       await db.user.delete({ where: { id: owner.id } });
     }
