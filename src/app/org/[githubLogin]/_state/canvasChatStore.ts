@@ -67,6 +67,7 @@ import type {
   StreamToolCall,
   ToolCallStatus,
 } from "@/types/streaming";
+import type { TokenUsage } from "@/types/usage";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
@@ -206,6 +207,12 @@ export interface CanvasChatMessage {
   rejection?: RejectionIntent;
   /** Files attached by the user before send. Persisted in SharedConversation JSON. */
   attachments?: CanvasAttachment[];
+  /**
+   * Per-turn aggregated token usage, stamped by `useSendCanvasChatMessage`
+   * onto the last tool-call batch message when the stream `finish` event
+   * carries usage data. Live-stream only — not persisted to `SharedConversation`.
+   */
+  usage?: TokenUsage;
   /**
    * Synthetic assistant message describing an approval outcome. Set by
    * `/api/ask/quick` after `handleApproval` creates the DB row; carries
