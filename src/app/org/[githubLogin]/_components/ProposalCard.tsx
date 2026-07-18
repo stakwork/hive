@@ -404,7 +404,7 @@ export function ProposalCard({
             <PromptCreateMeta payload={proposal.payload} />
           )}
           {proposal.kind === "promptUpdate" && (
-            <PromptUpdateMeta meta={proposal.meta} />
+            <PromptUpdateMeta meta={proposal.meta} promptId={proposal.payload.promptId} />
           )}
           {proposal.kind === "conceptCreate" && (
             <ConceptCreateMeta payload={proposal.payload} meta={proposal.meta} />
@@ -991,6 +991,7 @@ function PromptCreateMeta({
  */
 function PromptUpdateMeta({
   meta,
+  promptId,
 }: {
   meta: {
     oldStr: string;
@@ -998,6 +999,7 @@ function PromptUpdateMeta({
     promptName?: string;
     versionNumber?: number;
   };
+  promptId?: string;
 }) {
   const [open, setOpen] = useState(false);
   const diff = useMemo(
@@ -1015,7 +1017,19 @@ function PromptUpdateMeta({
         <span className="font-mono">v{meta.versionNumber}</span>
       )}
       {textUnchanged ? (
-        <span className="italic">No prompt-text change</span>
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="italic">No prompt-text change</span>
+          {promptId && (
+            <a
+              href={`/w/hive/prompts?prompt=${promptId}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-xs text-muted-foreground hover:text-foreground underline"
+            >
+              View in Hive →
+            </a>
+          )}
+        </div>
       ) : (
         <>
           <span className="font-mono">
@@ -1040,6 +1054,7 @@ function PromptUpdateMeta({
             promptName={meta.promptName}
             versionNumber={meta.versionNumber}
             diff={diff}
+            promptId={promptId}
           />
         </>
       )}
@@ -1058,12 +1073,14 @@ function PromptDiffDialog({
   promptName,
   versionNumber,
   diff,
+  promptId,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   promptName?: string;
   versionNumber?: number;
   diff: UnifiedDiff;
+  promptId?: string;
 }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -1091,6 +1108,18 @@ function PromptDiffDialog({
         <ScrollArea className="max-h-[65vh] min-w-0">
           <UnifiedDiffView diff={diff} />
         </ScrollArea>
+        {promptId && (
+          <div className="flex justify-start pt-1">
+            <a
+              href={`/w/hive/prompts?prompt=${promptId}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-xs text-muted-foreground hover:text-foreground underline"
+            >
+              View in Hive →
+            </a>
+          </div>
+        )}
       </DialogContent>
     </Dialog>
   );
