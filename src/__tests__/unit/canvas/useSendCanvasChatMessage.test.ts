@@ -20,13 +20,19 @@ function resetStreamPromise() {
 // Mutable timeline that tests can override before each send.
 let mockTimeline: unknown[] = [];
 
+// Optional usage data to emit on the final (isStreaming=false) onUpdate call.
+let mockFinalUsage: Record<string, number> | undefined = undefined;
+
 vi.mock("@/lib/streaming", () => ({
   useStreamProcessor: () => ({
     processStream: vi.fn(
       (_response: unknown, _messageId: unknown, onUpdate: (msg: unknown) => void) => {
-        // Immediately call onUpdate once to simulate a first chunk
-        onUpdate({ timeline: mockTimeline });
-        return streamPromise;
+        // Immediately call onUpdate once to simulate a first (streaming) chunk
+        onUpdate({ timeline: mockTimeline, isStreaming: true });
+        // Resolve with a final non-streaming call after stream promise settles
+        return streamPromise.then(() => {
+          onUpdate({ timeline: mockTimeline, isStreaming: false, usage: mockFinalUsage });
+        });
       },
     ),
   }),
@@ -157,6 +163,7 @@ describe("useSendCanvasChatMessage — attachments forwarding", () => {
   beforeEach(() => {
     mockState = makeTrackedState();
     mockTimeline = [];
+    mockFinalUsage = undefined;
     resetStreamPromise();
     vi.clearAllMocks();
   });
@@ -240,6 +247,7 @@ describe("useSendCanvasChatMessage — timeline ordering: interleaved text and t
   beforeEach(() => {
     mockState = makeTrackedState();
     mockTimeline = [];
+    mockFinalUsage = undefined;
     resetStreamPromise();
     vi.clearAllMocks();
   });
@@ -326,6 +334,7 @@ describe("useSendCanvasChatMessage — isStreaming lifecycle", () => {
   beforeEach(() => {
     mockState = makeTrackedState();
     mockTimeline = [];
+    mockFinalUsage = undefined;
     resetStreamPromise();
     vi.clearAllMocks();
   });
@@ -434,5 +443,148 @@ describe("useSendCanvasChatMessage — isStreaming lifecycle", () => {
     const isStreamingCalls = (mockState.setIsStreaming as ReturnType<typeof vi.fn>).mock.calls;
     expect(isStreamingCalls).toContainEqual(["conv-1", true]);
     expect(isStreamingCalls).toContainEqual(["conv-1", false]);
+  });
+});
+
+describe("useSendCanvasChatMessage — usage stamping", () => {
+  beforeEach(() => {
+    mockState = makeTrackedState();
+    mockTimeline = [];
+    mockFinalUsage = undefined;
+    resetStreamPromise();
+    vi.clearAllMocks();
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("stamps usage onto the last tool-call batch message when stream ends with usage", async () => {
+    // Timeline: text A, then tool call (the last tool-call row should get usage)
+    mockTimeline = [
+      { type: "text", data: { content: "A" } },
+      {
+        type: "toolCall",
+        data: { id: "tc-1", toolName: "web_search", input: {}, output: { result: "ok" }, status: "output-available" },
+      },
+    ];
+    mockFinalUsage = { inputTokens: 100, outputTokens: 40 };
+
+    global.fetch = buildOkFetch();
+    resolveStream();
+
+    const { result } = renderHook(() => useSendCanvasChatMessage());
+
+    await act(async () => {
+      await result.current({ conversationId: "conv-1", content: "search for something" });
+    });
+
+    const calls = (mockState.replaceAssistantStream as ReturnType<typeof vi.fn>).mock.calls;
+    const lastCall = calls[calls.length - 1];
+    const timelineMessages = lastCall[2] as Array<{
+      content: string;
+      toolCalls?: unknown[];
+      timeline?: unknown[];
+      usage?: { inputTokens?: number; outputTokens?: number };
+    }>;
+
+    // Find the last message that has a timeline (tool-call batch row)
+    const lastToolCallMsg = [...timelineMessages].reverse().find((m) => !!m.timeline?.length);
+    expect(lastToolCallMsg).toBeDefined();
+    expect(lastToolCallMsg!.usage).toEqual({ inputTokens: 100, outputTokens: 40 });
+  });
+
+  it("does NOT stamp usage when there is no tool-call batch message (text-only turn)", async () => {
+    mockTimeline = [{ type: "text", data: { content: "just a text answer" } }];
+    mockFinalUsage = { inputTokens: 50, outputTokens: 20 };
+
+    global.fetch = buildOkFetch();
+    resolveStream();
+
+    const { result } = renderHook(() => useSendCanvasChatMessage());
+
+    await act(async () => {
+      await result.current({ conversationId: "conv-1", content: "hello" });
+    });
+
+    const calls = (mockState.replaceAssistantStream as ReturnType<typeof vi.fn>).mock.calls;
+    const lastCall = calls[calls.length - 1];
+    const timelineMessages = lastCall[2] as Array<{ content: string; usage?: unknown }>;
+
+    // No message should have usage
+    for (const m of timelineMessages) {
+      expect(m.usage).toBeUndefined();
+    }
+  });
+
+  it("does NOT stamp usage when finish event carries no usage (undefined)", async () => {
+    mockTimeline = [
+      {
+        type: "toolCall",
+        data: { id: "tc-1", toolName: "analyze", input: {}, output: {}, status: "output-available" },
+      },
+    ];
+    mockFinalUsage = undefined;
+
+    global.fetch = buildOkFetch();
+    resolveStream();
+
+    const { result } = renderHook(() => useSendCanvasChatMessage());
+
+    await act(async () => {
+      await result.current({ conversationId: "conv-1", content: "analyze this" });
+    });
+
+    const calls = (mockState.replaceAssistantStream as ReturnType<typeof vi.fn>).mock.calls;
+    const lastCall = calls[calls.length - 1];
+    const timelineMessages = lastCall[2] as Array<{ usage?: unknown }>;
+
+    for (const m of timelineMessages) {
+      expect(m.usage).toBeUndefined();
+    }
+  });
+
+  it("stamps usage on the LAST tool-call batch row when there are multiple", async () => {
+    mockTimeline = [
+      {
+        type: "toolCall",
+        data: { id: "tc-1", toolName: "tool_one", input: {}, output: {}, status: "output-available" },
+      },
+      { type: "text", data: { content: "intermediate" } },
+      {
+        type: "toolCall",
+        data: { id: "tc-2", toolName: "tool_two", input: {}, output: {}, status: "output-available" },
+      },
+    ];
+    mockFinalUsage = { inputTokens: 200, outputTokens: 80 };
+
+    global.fetch = buildOkFetch();
+    resolveStream();
+
+    const { result } = renderHook(() => useSendCanvasChatMessage());
+
+    await act(async () => {
+      await result.current({ conversationId: "conv-1", content: "multi tool turn" });
+    });
+
+    const calls = (mockState.replaceAssistantStream as ReturnType<typeof vi.fn>).mock.calls;
+    const lastCall = calls[calls.length - 1];
+    const timelineMessages = lastCall[2] as Array<{
+      content: string;
+      timeline?: unknown[];
+      usage?: { inputTokens?: number };
+    }>;
+
+    // Only the LAST tool-call batch message should have usage
+    const toolCallMessages = timelineMessages.filter((m) => !!m.timeline?.length);
+    expect(toolCallMessages.length).toBeGreaterThanOrEqual(2);
+
+    const lastToolMsg = toolCallMessages[toolCallMessages.length - 1];
+    expect(lastToolMsg.usage?.inputTokens).toBe(200);
+
+    // Earlier tool-call messages must NOT have usage
+    for (let i = 0; i < toolCallMessages.length - 1; i++) {
+      expect(toolCallMessages[i].usage).toBeUndefined();
+    }
   });
 });

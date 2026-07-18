@@ -1,3 +1,5 @@
+import type { TokenUsage } from "@/types/usage";
+
 export interface ToolCallContent {
   type: "tool-call";
   toolCallId?: string;
@@ -38,12 +40,7 @@ export interface ParsedMessage {
     status?: string;
   };
   /** Per-turn LLM usage from the model response (Anthropic / OpenAI). */
-  usage?: {
-    inputTokens?: number;
-    outputTokens?: number;
-    cacheReadTokens?: number;
-    cacheWriteTokens?: number;
-  };
+  usage?: TokenUsage;
 }
 
 export interface AgentLogStats {
