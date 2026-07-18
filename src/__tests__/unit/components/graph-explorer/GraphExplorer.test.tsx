@@ -116,14 +116,14 @@ import { GraphExplorer } from "@/components/graph-explorer/GraphExplorer";
 const MOCK_COLUMNS = ["n", "r", "m"];
 const MOCK_ROWS: unknown[][] = [
   [
-    { id: "1", name: "processData", type: "Function", file: "src/lib/data.ts" },
-    { id: "20", type: "CALLS" },
-    { id: "2", name: "validateInput", type: "Function", file: "src/lib/validation.ts" },
+    { ref_id: "ref-1", name: "processData", node_type: "Function", file: "src/lib/data.ts" },
+    { type: "CALLS" },
+    { ref_id: "ref-2", name: "validateInput", node_type: "Function", file: "src/lib/validation.ts" },
   ],
   [
-    { id: "1", name: "processData", type: "Function", file: "src/lib/data.ts" },
-    { id: "21", type: "CALLS" },
-    { id: "3", name: "logResult", type: "Function", file: "src/lib/logger.ts" },
+    { ref_id: "ref-1", name: "processData", node_type: "Function", file: "src/lib/data.ts" },
+    { type: "CALLS" },
+    { ref_id: "ref-3", name: "logResult", node_type: "Function", file: "src/lib/logger.ts" },
   ],
 ];
 
@@ -478,9 +478,9 @@ describe("ResultTable rendering", () => {
           columns: ["n", "r", "m"],
           rows: [
             [
-              { id: "1", name: "processData", type: "Function" },
-              { id: "20", type: "CALLS" },
-              { id: "2", name: "validateInput", type: "Function" },
+              { ref_id: "ref_process_data", name: "processData", node_type: "Function" },
+              { type: "CALLS" },
+              { ref_id: "ref_validate_input", name: "validateInput", node_type: "Function" },
             ],
           ],
         }),
