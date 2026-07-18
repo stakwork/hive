@@ -1,5 +1,6 @@
 import { useCallback } from "react";
 import type { BaseStreamingMessage, StreamProcessorConfig, StreamEvent, ToolCallStatus } from "@/types/streaming";
+import type { TokenUsage } from "@/types/usage";
 import { DEFAULT_DEBOUNCE_MS } from "./constants";
 import { parseSSELine } from "./helpers";
 
@@ -70,6 +71,7 @@ export function useStreamProcessor<T extends BaseStreamingMessage = BaseStreamin
       const hiddenToolCallIds = new Map<string, string>(); // callId -> toolName
       const timeline: Array<{ type: "text" | "reasoning" | "toolCall"; id: string }> = []; // Unified timeline
       let error: string | undefined;
+      let capturedUsage: TokenUsage | undefined;
 
       // Track text part sequence to generate unique IDs when stream reuses IDs
       let textPartSequence = 0;
@@ -127,6 +129,7 @@ export function useStreamProcessor<T extends BaseStreamingMessage = BaseStreamin
           toolCalls: allToolCalls,
           timeline: timelineItems,
           error,
+          usage: capturedUsage,
           ...additionalFields,
         } as T;
       };
@@ -387,6 +390,30 @@ export function useStreamProcessor<T extends BaseStreamingMessage = BaseStreamin
                   status: "output-error",
                   errorText: typeof data.error === "string" ? data.error : "Tool error",
                 });
+              }
+            } else if (data.type === "finish") {
+              // Capture aggregated per-turn token usage from the AI SDK finish event.
+              // AI SDK field names differ from our canonical TokenUsage names:
+              //   inputTokens / outputTokens — same in both
+              //   cacheReadInputTokens       → cacheReadTokens
+              //   cacheCreationInputTokens   → cacheWriteTokens
+              // Cache fields may appear directly in data.usage OR in
+              // data.providerMetadata?.anthropic (confirmed shape varies by SDK version).
+              const u = data.usage;
+              if (u) {
+                const anthropicMeta = data.providerMetadata?.anthropic;
+                capturedUsage = {
+                  inputTokens: u.inputTokens,
+                  outputTokens: u.outputTokens,
+                  cacheReadTokens:
+                    u.cacheReadInputTokens ??
+                    u.cacheReadTokens ??
+                    anthropicMeta?.cacheReadInputTokens,
+                  cacheWriteTokens:
+                    u.cacheCreationInputTokens ??
+                    u.cacheWriteTokens ??
+                    anthropicMeta?.cacheCreationInputTokens,
+                };
               }
             } else if (data.type === "error") {
               error = data.errorText;

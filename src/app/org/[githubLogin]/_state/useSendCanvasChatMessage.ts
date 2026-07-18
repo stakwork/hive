@@ -480,6 +480,21 @@ export function useSendCanvasChatMessage() {
             });
           }
 
+          // When streaming is done and the finish event carried usage data,
+          // stamp it onto the last tool-call batch row so StreamingMessage
+          // can render TurnTokenUsage + Complete pill. No text-only fallback:
+          // text-only turns render via SidebarChatMessage which has no
+          // TurnTokenUsage render path.
+          if (!updatedMessage.isStreaming && updatedMessage.usage) {
+            for (let i = timelineMessages.length - 1; i >= 0; i--) {
+              const m = timelineMessages[i];
+              if (m.role === "assistant" && !!m.timeline?.length) {
+                timelineMessages[i] = { ...m, usage: updatedMessage.usage };
+                break;
+              }
+            }
+          }
+
           const lastMsg = timelineMessages[timelineMessages.length - 1];
           if (lastMsg?.toolCalls && lastMsg.toolCalls.length > 0) {
             setActiveToolCalls(conversationId, lastMsg.toolCalls);
