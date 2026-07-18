@@ -1,8 +1,15 @@
 import type { RawEdge, RawNode } from "@/graph-viz-kit";
 
-/** Returns true if `val` is a Neo4j/stakgraph node-like object (has an `id` field). */
+/**
+ * Returns true if `val` is a stakgraph node-like object.
+ * Real stakgraph Cypher results use `ref_id`; legacy/mock data may use `id`.
+ */
 function isNodeLike(val: unknown): val is Record<string, unknown> {
-  return typeof val === "object" && val !== null && "id" in (val as object);
+  return (
+    typeof val === "object" &&
+    val !== null &&
+    ("ref_id" in (val as object) || "id" in (val as object))
+  );
 }
 
 /**
@@ -11,9 +18,9 @@ function isNodeLike(val: unknown): val is Record<string, unknown> {
  *
  * Row interpretation:
  *  - 1 node-like object  → register node only (no edge)
- *  - 2+ node-like objects → first = source, last = target; middle objects are
- *    treated as relationship objects and produce one edge each; if no middle
- *    objects, a single generic edge is created between source and target.
+ *  - 2+ node-like objects → emit one edge per consecutive node pair; relationship
+ *    objects (non-node-like objects between each pair in the raw row) supply the
+ *    edge label via their `type` field.
  */
 export function stakgraphToRawGraph(
   _columns: string[],
@@ -23,11 +30,12 @@ export function stakgraphToRawGraph(
   const edges: RawEdge[] = [];
 
   const registerNode = (obj: Record<string, unknown>): string => {
-    const id = String(obj.id);
+    const id = String(obj.ref_id ?? obj.id ?? "");
+    if (!id) return "";
     if (!nodeMap.has(id)) {
       nodeMap.set(id, {
         id,
-        label: String(obj.name ?? obj.type ?? id),
+        label: String(obj.name ?? obj.node_type ?? obj.type ?? id),
         ...(obj.link != null && { link: String(obj.link) }),
         ...(obj.icon != null && { icon: String(obj.icon) }),
       });
@@ -36,33 +44,39 @@ export function stakgraphToRawGraph(
   };
 
   for (const row of rows) {
-    const nodeLikes = (row as unknown[]).filter(isNodeLike);
+    // Collect node-like entries with their raw-row positions
+    const nodeEntries: Array<{ obj: Record<string, unknown>; rawIdx: number }> = [];
+    row.forEach((val, rawIdx) => {
+      if (isNodeLike(val)) nodeEntries.push({ obj: val as Record<string, unknown>, rawIdx });
+    });
 
-    if (nodeLikes.length === 0) continue;
+    if (nodeEntries.length === 0) continue;
 
-    if (nodeLikes.length === 1) {
-      registerNode(nodeLikes[0] as Record<string, unknown>);
+    if (nodeEntries.length === 1) {
+      registerNode(nodeEntries[0].obj);
       continue;
     }
 
-    const src = nodeLikes[0] as Record<string, unknown>;
-    const tgt = nodeLikes[nodeLikes.length - 1] as Record<string, unknown>;
-    const srcId = registerNode(src);
-    const tgtId = registerNode(tgt);
+    // Create one edge per consecutive node pair
+    for (let i = 0; i < nodeEntries.length - 1; i++) {
+      const srcId = registerNode(nodeEntries[i].obj);
+      const tgtId = registerNode(nodeEntries[i + 1].obj);
+      if (!srcId || !tgtId) continue; // guard: skip dangling edges when id is absent
 
-    const relationshipObjs = nodeLikes.slice(1, -1) as Record<string, unknown>[];
+      const startIdx = nodeEntries[i].rawIdx;
+      const endIdx = nodeEntries[i + 1].rawIdx;
+      // Relationship objects are non-node-like elements between this node pair in the raw row
+      const relObjs = (row.slice(startIdx + 1, endIdx) as unknown[]).filter(
+        (v): v is Record<string, unknown> =>
+          !isNodeLike(v) && typeof v === "object" && v !== null
+      );
+      const relObj = relObjs[0];
 
-    if (relationshipObjs.length > 0) {
-      for (const rel of relationshipObjs) {
-        edges.push({
-          source: srcId,
-          target: tgtId,
-          label: rel.type != null ? String(rel.type) : undefined,
-        });
-      }
-    } else {
-      // Two node-like objects with no relationship in between
-      edges.push({ source: srcId, target: tgtId });
+      edges.push({
+        source: srcId,
+        target: tgtId,
+        ...(relObj?.type != null ? { label: String(relObj.type) } : {}),
+      });
     }
   }
 
