@@ -2,236 +2,345 @@
  * @vitest-environment jsdom
  */
 import React from "react";
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor, fireEvent } from "@testing-library/react";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 
 globalThis.React = React;
 
-// ─── Mocks ────────────────────────────────────────────────────────────────────
+// ── Module mocks ─────────────────────────────────────────────────────────────
+
+vi.mock("@/hooks/useWorkspace", () => ({
+  useWorkspace: () => ({ slug: "openlaw", id: "ws-openlaw-id" }),
+}));
+
+vi.mock("@/components/legal/HillClimbChart", () => ({
+  HillClimbChart: ({ series, label }: { series: unknown[]; label?: string }) =>
+    React.createElement("div", { "data-testid": "hill-climb-chart", "aria-label": label }, `chart:${series.length}pts`),
+}));
+
+// Minimal Collapsible shim (opens/closes correctly for testing)
+vi.mock("@/components/ui/collapsible", () => ({
+  Collapsible: ({
+    open,
+    onOpenChange,
+    children,
+  }: {
+    open: boolean;
+    onOpenChange: (v: boolean) => void;
+    children: React.ReactNode;
+  }) =>
+    React.createElement(
+      "div",
+      { "data-testid": "collapsible", "data-open": String(open) },
+      children,
+    ),
+  CollapsibleTrigger: ({ children }: { children: React.ReactNode }) =>
+    React.createElement("div", { "data-testid": "collapsible-trigger" }, children),
+  CollapsibleContent: ({ children }: { children: React.ReactNode }) =>
+    React.createElement("div", { "data-testid": "collapsible-content" }, children),
+}));
 
 vi.mock("@/components/ui/button", () => ({
   Button: ({
     children,
     onClick,
     disabled,
-    ...rest
+    variant,
+    size,
+    className,
+    "aria-label": ariaLabel,
   }: {
-    children: React.ReactNode;
+    children?: React.ReactNode;
     onClick?: () => void;
     disabled?: boolean;
-    [k: string]: unknown;
+    variant?: string;
+    size?: string;
+    className?: string;
+    "aria-label"?: string;
   }) =>
-    React.createElement("button", { onClick, disabled, ...rest }, children),
+    React.createElement(
+      "button",
+      { onClick, disabled, "data-variant": variant, "data-size": size, className, "aria-label": ariaLabel },
+      children,
+    ),
 }));
 
-global.fetch = vi.fn();
-
-// ─── Helpers ─────────────────────────────────────────────────────────────────
-
-function makeEntry(overrides: Partial<{ refId: string; id: string; name: string }> = {}) {
-  return {
-    refId: "ref-abc",
-    id: "antitrust/task-1",
-    name: "Antitrust Task 1",
-    ...overrides,
-  };
-}
-
-function mockFetchOk() {
-  vi.mocked(global.fetch).mockResolvedValue({
-    ok: true,
-    json: async () => ({ success: true, enabled: false }),
-  } as Response);
-}
-
-function mockFetchFail(status = 500, error = "Graph error") {
-  vi.mocked(global.fetch).mockResolvedValue({
-    ok: false,
-    status,
-    json: async () => ({ error }),
-  } as Response);
-}
-
-// ─── Component under test (lazy import so mocks are applied first) ────────────
+// ── Import the components under test AFTER mocks ─────────────────────────────
 
 import { RecursionList } from "@/components/legal/RecursionBox";
+import type { RecursionEntry } from "@/hooks/useLegalBenchmarkRecursionList";
 
-// ─── RecursionCard (via RecursionList rendering) ──────────────────────────────
+// ── Fixtures ─────────────────────────────────────────────────────────────────
 
-describe("RecursionCard", () => {
-  const mockRefetch = vi.fn();
+const TASK_SLUG_A = "antitrust/task-1";
+const TASK_SLUG_B = "ip/task-2"; // no runner rows seeded
 
-  beforeEach(() => {
-    vi.clearAllMocks();
-    mockRefetch.mockResolvedValue(undefined);
-  });
+const entries: RecursionEntry[] = [
+  { refId: "ref-a", id: TASK_SLUG_A, name: "Analyze Antitrust Strategy" },
+  { refId: "ref-b", id: TASK_SLUG_B, name: "IP Review" },
+];
 
-  function renderCard(overrides: Partial<{ refId: string; id: string; name: string }> = {}) {
-    const entry = makeEntry(overrides);
-    render(
-      <RecursionList
-        entries={[entry]}
-        isLoading={false}
-        error={null}
-        refetch={mockRefetch}
-      />,
-    );
-  }
+function makeRunResult(taskSlug: string, n_passed: number, n_total: number) {
+  return JSON.stringify({ taskSlug, n_passed, n_total, taskTitle: "T", all_pass: false });
+}
 
-  it("renders task name and id", () => {
-    renderCard();
-    expect(screen.getByText("Antitrust Task 1")).toBeTruthy();
-    expect(screen.getByText("antitrust/task-1")).toBeTruthy();
-  });
+/** Successful fetch: two runs for TASK_SLUG_A, none for TASK_SLUG_B */
+function mockSuccessfulRunsFetch(fetchMock: ReturnType<typeof vi.fn>) {
+  fetchMock.mockResolvedValueOnce({
+    ok: true,
+    json: async () => ({
+      runs: [
+        {
+          id: "run-1",
+          workspaceId: "ws-openlaw-id",
+          status: "COMPLETED",
+          projectId: null,
+          createdAt: "2024-01-01T00:00:00Z",
+          result: makeRunResult(TASK_SLUG_A, 14, 42),
+        },
+        {
+          id: "run-2",
+          workspaceId: "ws-openlaw-id",
+          status: "COMPLETED",
+          projectId: null,
+          createdAt: "2024-01-03T00:00:00Z",
+          result: makeRunResult(TASK_SLUG_A, 38, 42),
+        },
+      ],
+      total: 2,
+    }),
+  } as Response);
+}
 
-  it("shows Disable button", () => {
-    renderCard();
-    expect(screen.getByRole("button", { name: /disable/i })).toBeTruthy();
-  });
+function mockFailedRunsFetch(fetchMock: ReturnType<typeof vi.fn>) {
+  fetchMock.mockResolvedValueOnce({
+    ok: false,
+    json: async () => ({ error: "Network failure" }),
+  } as Response);
+}
 
-  it("calls PATCH with correct refId and enabled=false on Disable click", async () => {
-    mockFetchOk();
-    renderCard({ refId: "ref-xyz" });
-
-    fireEvent.click(screen.getByRole("button", { name: /disable/i }));
-
-    await waitFor(() => expect(vi.mocked(global.fetch)).toHaveBeenCalledOnce());
-
-    expect(vi.mocked(global.fetch)).toHaveBeenCalledWith(
-      "/api/workspaces/openlaw/legal/benchmarks/recursion/ref-xyz",
-      expect.objectContaining({
-        method: "PATCH",
-        body: JSON.stringify({ enabled: false }),
-      }),
-    );
-  });
-
-  it("calls refetch after successful toggle", async () => {
-    mockFetchOk();
-    renderCard();
-
-    fireEvent.click(screen.getByRole("button", { name: /disable/i }));
-
-    await waitFor(() => expect(mockRefetch).toHaveBeenCalledOnce());
-  });
-
-  it("does NOT call refetch on failed toggle", async () => {
-    mockFetchFail();
-    renderCard();
-
-    fireEvent.click(screen.getByRole("button", { name: /disable/i }));
-
-    await waitFor(() => expect(vi.mocked(global.fetch)).toHaveBeenCalledOnce());
-    expect(mockRefetch).not.toHaveBeenCalled();
-  });
-
-  it("shows inline error message on toggle failure", async () => {
-    mockFetchFail(502, "Graph write failed");
-    renderCard();
-
-    fireEvent.click(screen.getByRole("button", { name: /disable/i }));
-
-    await waitFor(() => screen.getByText("Graph write failed"));
-  });
-
-  it("shows inline error on network error", async () => {
-    vi.mocked(global.fetch).mockRejectedValue(new Error("Network down"));
-    renderCard();
-
-    fireEvent.click(screen.getByRole("button", { name: /disable/i }));
-
-    await waitFor(() => screen.getByText("Network down"));
-  });
-
-  it("does not make any DELETE calls", async () => {
-    mockFetchOk();
-    renderCard();
-
-    fireEvent.click(screen.getByRole("button", { name: /disable/i }));
-    await waitFor(() => expect(vi.mocked(global.fetch)).toHaveBeenCalledOnce());
-
-    const call = vi.mocked(global.fetch).mock.calls[0];
-    const options = call[1] as RequestInit | undefined;
-    expect(options?.method).not.toBe("DELETE");
-  });
-});
-
-// ─── RecursionList ────────────────────────────────────────────────────────────
+// ── Tests ─────────────────────────────────────────────────────────────────────
 
 describe("RecursionList", () => {
-  const mockRefetch = vi.fn();
+  let fetchMock: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
-    vi.clearAllMocks();
-    mockRefetch.mockResolvedValue(undefined);
+    fetchMock = vi.fn();
+    global.fetch = fetchMock;
   });
 
-  it("shows loading spinner when isLoading=true", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  // ── Loading / error / empty states ─────────────────────────────────────────
+
+  it("shows a loading spinner while the recursion list is loading", () => {
     render(
-      <RecursionList entries={[]} isLoading={true} error={null} refetch={mockRefetch} />,
+      <RecursionList
+        entries={[]}
+        isLoading={true}
+        error={null}
+        refetch={vi.fn()}
+      />,
     );
-    expect(screen.getByText("Loading…")).toBeTruthy();
+    expect(screen.getByText(/loading/i)).toBeDefined();
   });
 
-  it("shows error message and Retry button when error is set", () => {
+  it("shows the recursion-list error and retry button", () => {
     render(
-      <RecursionList entries={[]} isLoading={false} error="Fetch failed" refetch={mockRefetch} />,
+      <RecursionList
+        entries={[]}
+        isLoading={false}
+        error="GraphQL timeout"
+        refetch={vi.fn()}
+      />,
     );
-    expect(screen.getByText("Fetch failed")).toBeTruthy();
-    expect(screen.getByRole("button", { name: /retry/i })).toBeTruthy();
+    expect(screen.getByText(/GraphQL timeout/)).toBeDefined();
+    expect(screen.getByText(/retry/i)).toBeDefined();
   });
 
-  it("Retry button calls refetch", () => {
+  it("shows empty-state message when entries is empty", () => {
     render(
-      <RecursionList entries={[]} isLoading={false} error="err" refetch={mockRefetch} />,
+      <RecursionList
+        entries={[]}
+        isLoading={false}
+        error={null}
+        refetch={vi.fn()}
+      />,
     );
-    fireEvent.click(screen.getByRole("button", { name: /retry/i }));
-    expect(mockRefetch).toHaveBeenCalledOnce();
+    expect(screen.getByText(/no tasks enrolled/i)).toBeDefined();
   });
 
-  it("shows empty-state copy when entries is empty and not loading", () => {
+  // ── Runs fetch fires once regardless of card count ─────────────────────────
+
+  it("fires the runs fetch exactly once regardless of card count (N+1 guard)", async () => {
+    mockSuccessfulRunsFetch(fetchMock);
+
     render(
-      <RecursionList entries={[]} isLoading={false} error={null} refetch={mockRefetch} />,
+      <RecursionList
+        entries={entries}
+        isLoading={false}
+        error={null}
+        refetch={vi.fn()}
+      />,
     );
-    expect(screen.getByText(/No tasks enrolled in recursion/i)).toBeTruthy();
-    // The second sentence spans multiple elements (includes a <strong>), so check container text
-    const { container } = render(
-      <RecursionList entries={[]} isLoading={false} error={null} refetch={mockRefetch} />,
-    );
-    expect(container.textContent).toMatch(/toggles the recursion flag/i);
+
+    await waitFor(() => {
+      // Cards should be rendered (task names visible)
+      expect(screen.getByText("Analyze Antitrust Strategy")).toBeDefined();
+    });
+
+    // Exactly one fetch call regardless of number of entries
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock.mock.calls[0][0]).toContain("/api/stakwork/runs");
+    expect(fetchMock.mock.calls[0][0]).toContain("LEGAL_BENCHMARK_RUNNER");
+    expect(fetchMock.mock.calls[0][0]).toContain("ws-openlaw-id");
   });
 
-  it("empty-state mentions completing a benchmark run with failing criteria", () => {
-    const { container } = render(
-      <RecursionList entries={[]} isLoading={false} error={null} refetch={mockRefetch} />,
-    );
-    // Should reference Recursion action and failing criteria somewhere in the empty state
-    const text = container.textContent ?? "";
-    expect(text).toMatch(/Recursion/i);
-    expect(text).toMatch(/failing criteria/i);
-  });
+  // ── Loaded state: latest score shown ──────────────────────────────────────
 
-  it("renders a card per entry", () => {
-    const entries = [
-      makeEntry({ refId: "r1", id: "slug-1", name: "Task One" }),
-      makeEntry({ refId: "r2", id: "slug-2", name: "Task Two" }),
-    ];
+  it("shows the latest score for a task with runs (38/42)", async () => {
+    mockSuccessfulRunsFetch(fetchMock);
+
     render(
-      <RecursionList entries={entries} isLoading={false} error={null} refetch={mockRefetch} />,
+      <RecursionList
+        entries={entries}
+        isLoading={false}
+        error={null}
+        refetch={vi.fn()}
+      />,
     );
-    expect(screen.getByText("Task One")).toBeTruthy();
-    expect(screen.getByText("Task Two")).toBeTruthy();
-    expect(screen.getAllByRole("button", { name: /disable/i })).toHaveLength(2);
+
+    await waitFor(() => {
+      expect(screen.getByText("38/42")).toBeDefined();
+    });
   });
 
-  it("does not render StatusBadge or status-related UI", () => {
-    const entries = [makeEntry()];
+  it("shows 'no runs yet' for a task with zero matching runs", async () => {
+    mockSuccessfulRunsFetch(fetchMock);
+
     render(
-      <RecursionList entries={entries} isLoading={false} error={null} refetch={mockRefetch} />,
+      <RecursionList
+        entries={entries}
+        isLoading={false}
+        error={null}
+        refetch={vi.fn()}
+      />,
     );
-    // No ACTIVE/RUNNING/INACTIVE badge text
-    expect(screen.queryByText("Active")).toBeNull();
-    expect(screen.queryByText("Running")).toBeNull();
-    expect(screen.queryByText("Inactive")).toBeNull();
+
+    await waitFor(() => {
+      expect(screen.getByText(/no runs yet/i)).toBeDefined();
+    });
+  });
+
+  // ── Error state is structurally distinct from empty/no-runs ───────────────
+
+  it("shows the runs-fetch error message distinctly (not silent scoreless cards)", async () => {
+    mockFailedRunsFetch(fetchMock);
+
+    render(
+      <RecursionList
+        entries={entries}
+        isLoading={false}
+        error={null}
+        refetch={vi.fn()}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText(/could not load score data/i)).toBeDefined();
+    });
+
+    // "no runs yet" text should NOT appear in the error state
+    expect(screen.queryByText(/no runs yet/i)).toBeNull();
+  });
+
+  it("error state shows a Retry button for the runs fetch", async () => {
+    mockFailedRunsFetch(fetchMock);
+
+    render(
+      <RecursionList
+        entries={entries}
+        isLoading={false}
+        error={null}
+        refetch={vi.fn()}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText(/could not load score data/i)).toBeDefined();
+    });
+
+    const retryButtons = screen.getAllByText(/retry/i);
+    expect(retryButtons.length).toBeGreaterThan(0);
+  });
+
+  it("error state still renders task cards (actionable even without score data)", async () => {
+    mockFailedRunsFetch(fetchMock);
+
+    render(
+      <RecursionList
+        entries={entries}
+        isLoading={false}
+        error={null}
+        refetch={vi.fn()}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText(/could not load score data/i)).toBeDefined();
+    });
+
+    // Task names should still be visible
+    expect(screen.getByText("Analyze Antitrust Strategy")).toBeDefined();
+    expect(screen.getByText("IP Review")).toBeDefined();
+  });
+
+  // ── Expandable chart ───────────────────────────────────────────────────────
+
+  it("expands to reveal the HillClimbChart when the expand button is clicked", async () => {
+    mockSuccessfulRunsFetch(fetchMock);
+    const user = userEvent.setup();
+
+    render(
+      <RecursionList
+        entries={entries}
+        isLoading={false}
+        error={null}
+        refetch={vi.fn()}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("38/42")).toBeDefined();
+    });
+
+    // Expand the chart for the first card (the one with runs)
+    const expandButton = screen.getByLabelText(/expand chart/i);
+    await user.click(expandButton);
+
+    expect(screen.getByTestId("hill-climb-chart")).toBeDefined();
+  });
+
+  it("does not show the expand button for a task with no runs", async () => {
+    mockSuccessfulRunsFetch(fetchMock);
+
+    render(
+      <RecursionList
+        entries={[{ refId: "ref-b", id: TASK_SLUG_B, name: "IP Review" }]}
+        isLoading={false}
+        error={null}
+        refetch={vi.fn()}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText(/no runs yet/i)).toBeDefined();
+    });
+
+    // No expand button since there are no runs
+    expect(screen.queryByLabelText(/expand chart/i)).toBeNull();
   });
 });

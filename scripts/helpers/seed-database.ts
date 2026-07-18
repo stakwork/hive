@@ -1922,6 +1922,109 @@ async function seedFeatureErrorIssueLink() {
   }
 }
 
+/**
+ * Seed LEGAL_BENCHMARK_RUNNER StakworkRun rows for local dev / hill-climb chart QA.
+ *
+ * Seeds two scenarios:
+ *   1. "antitrust/task-1" — baseline + 2 reruns with ascending n_passed (shows the climb).
+ *   2. "ip/task-1"        — no runner rows (exercises "no runs yet" card state).
+ *
+ * Uses the first available workspace. taskSlug values are intentionally simple;
+ * they may not match live Jarvis EvalSet ids — this seed exists for local manual QA
+ * and unit-test fixture data, not for production enrollment matching.
+ */
+async function seedLegalBenchmarkRunnerRuns() {
+  const workspace = await prisma.workspace.findFirst();
+  if (!workspace) {
+    console.log("Skipping LEGAL_BENCHMARK_RUNNER seed: no workspace found");
+    return;
+  }
+
+  const TASK_SLUG = "antitrust/task-1";
+  const existing = await prisma.stakworkRun.findFirst({
+    where: { workspaceId: workspace.id, type: StakworkRunType.LEGAL_BENCHMARK_RUNNER },
+  });
+
+  if (existing) {
+    console.log("✓ LEGAL_BENCHMARK_RUNNER seed runs already exist — skipping");
+    return;
+  }
+
+  const now = new Date();
+  const threeDaysAgo = new Date(now.getTime() - 3 * 24 * 60 * 60 * 1000);
+  const twoDaysAgo = new Date(now.getTime() - 2 * 24 * 60 * 60 * 1000);
+  const oneDayAgo = new Date(now.getTime() - 1 * 24 * 60 * 60 * 1000);
+
+  // Baseline run
+  await prisma.stakworkRun.create({
+    data: {
+      type: StakworkRunType.LEGAL_BENCHMARK_RUNNER,
+      workspaceId: workspace.id,
+      status: WorkflowStatus.COMPLETED,
+      webhookUrl: "https://example.com/webhook/legal-benchmark/seed-baseline",
+      dataType: "json",
+      autoAccept: false,
+      createdAt: threeDaysAgo,
+      result: JSON.stringify({
+        taskSlug: TASK_SLUG,
+        taskTitle: "Analyze Antitrust Strategy (Seed)",
+        n_passed: 14,
+        n_total: 42,
+        all_pass: false,
+        score: 33,
+        pass_rate: 0.333,
+      }),
+    },
+  });
+
+  // Rerun 1
+  await prisma.stakworkRun.create({
+    data: {
+      type: StakworkRunType.LEGAL_BENCHMARK_RUNNER,
+      workspaceId: workspace.id,
+      status: WorkflowStatus.COMPLETED,
+      webhookUrl: "https://example.com/webhook/legal-benchmark/seed-rerun-1",
+      dataType: "json",
+      autoAccept: false,
+      createdAt: twoDaysAgo,
+      result: JSON.stringify({
+        taskSlug: TASK_SLUG,
+        taskTitle: "Analyze Antitrust Strategy (Seed)",
+        n_passed: 28,
+        n_total: 42,
+        all_pass: false,
+        score: 67,
+        pass_rate: 0.667,
+      }),
+    },
+  });
+
+  // Rerun 2
+  await prisma.stakworkRun.create({
+    data: {
+      type: StakworkRunType.LEGAL_BENCHMARK_RUNNER,
+      workspaceId: workspace.id,
+      status: WorkflowStatus.COMPLETED,
+      webhookUrl: "https://example.com/webhook/legal-benchmark/seed-rerun-2",
+      dataType: "json",
+      autoAccept: false,
+      createdAt: oneDayAgo,
+      result: JSON.stringify({
+        taskSlug: TASK_SLUG,
+        taskTitle: "Analyze Antitrust Strategy (Seed)",
+        n_passed: 38,
+        n_total: 42,
+        all_pass: false,
+        score: 90,
+        pass_rate: 0.905,
+      }),
+    },
+  });
+
+  console.log(`✓ Seeded 3 LEGAL_BENCHMARK_RUNNER runs for taskSlug="${TASK_SLUG}" (baseline + 2 reruns)`);
+  console.log("  Note: 'ip/task-1' has zero seeded runs — exercises the \"no runs yet\" card state.");
+}
+
 async function main() {
   await prisma.$connect();
 
@@ -1943,6 +2046,7 @@ async function main() {
   await seedDailyRecapRun(users);
   await seedVoiceCorrections(users);
   await seedFeatureErrorIssueLink();
+  await seedLegalBenchmarkRunnerRuns();
 
   console.log("Seed completed.");
 }
