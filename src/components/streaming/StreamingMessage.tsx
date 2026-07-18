@@ -1,5 +1,6 @@
 "use client";
 
+import { CheckIcon } from "lucide-react";
 import type {
   BaseStreamingMessage,
   StreamTextPart as StreamTextPartType,
@@ -9,6 +10,7 @@ import type {
 import { StreamTextPart } from "./StreamTextPart";
 import { StreamToolCall } from "./StreamToolCall";
 import { StreamReasoningPart } from "./StreamReasoningPart";
+import { TurnTokenUsage } from "@/components/agent-logs/TurnTokenUsage";
 
 interface StreamingMessageProps {
   message: BaseStreamingMessage;
@@ -92,6 +94,16 @@ export function StreamingMessage({
 
       {/* Render timeline items in order */}
       {regularTimeline?.map((item) => renderTimelineItem(item))}
+
+      {!message.isStreaming && (
+        <>
+          {message.usage && <TurnTokenUsage usage={message.usage} />}
+          <div className="text-xs text-muted-foreground flex items-center gap-1 mt-1">
+            <CheckIcon className="h-3 w-3" />
+            <span>Complete</span>
+          </div>
+        </>
+      )}
 
       {shouldShowThinking() && (
         <div className="flex items-center space-x-1 text-muted-foreground">
