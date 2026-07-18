@@ -1,4 +1,5 @@
 // Core streaming types for AI SDK integration
+import type { TokenUsage } from "./usage";
 
 export type StreamEventType =
   | "text-start"
@@ -128,6 +129,19 @@ export interface StartEvent extends BaseStreamEvent {
 export interface FinishEvent extends BaseStreamEvent {
   type: "finish";
   finishReason: string;
+  /** Aggregated token usage across all LLM steps for this turn. */
+  usage?: TokenUsage & {
+    // AI SDK may surface cache fields under different names — handled in useStreamProcessor
+    cacheReadInputTokens?: number;
+    cacheCreationInputTokens?: number;
+  };
+  /** Anthropic cache usage may appear here instead of directly in `usage`. */
+  providerMetadata?: {
+    anthropic?: {
+      cacheReadInputTokens?: number;
+      cacheCreationInputTokens?: number;
+    };
+  };
 }
 
 export type StreamEvent =
@@ -188,6 +202,8 @@ export interface BaseStreamingMessage {
   toolCalls?: StreamToolCall[];
   timeline?: StreamTimelineItem[]; // Interleaved timeline of all events
   error?: string;
+  /** Per-turn aggregated token usage, populated from the `finish` SSE event. */
+  usage?: TokenUsage;
 }
 
 // Tool processor function type
