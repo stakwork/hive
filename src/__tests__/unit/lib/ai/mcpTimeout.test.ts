@@ -44,26 +44,26 @@ describe('withMcpTimeout', () => {
     const fn = vi.fn().mockImplementation(() => new Promise(() => {})); // never resolves
     const p = withMcpTimeout(fn, 5000);
 
-    await vi.advanceTimersByTimeAsync(5000);
-
-    await expect(p).rejects.toMatchObject({
+    // Attach rejection handler BEFORE advancing timers to prevent unhandledRejection detection
+    const assertion = expect(p).rejects.toMatchObject({
       name: 'McpTimeoutError',
       message: 'MCP client timed out after 5000ms',
     });
+
+    await vi.advanceTimersByTimeAsync(5000);
+    await assertion;
   });
 
   it('isMcpTimeout returns true for McpTimeoutError', async () => {
     const fn = vi.fn().mockImplementation(() => new Promise(() => {}));
     const p = withMcpTimeout(fn, 5000);
 
-    await vi.advanceTimersByTimeAsync(5000);
-
+    // Attach rejection handler BEFORE advancing timers to prevent unhandledRejection detection
     let caught: unknown;
-    try {
-      await p;
-    } catch (e) {
-      caught = e;
-    }
+    const catcher = p.catch(e => { caught = e; });
+
+    await vi.advanceTimersByTimeAsync(5000);
+    await catcher;
 
     expect(isMcpTimeout(caught)).toBe(true);
   });

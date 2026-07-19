@@ -32,6 +32,11 @@ export async function withMcpTimeout<T>(
       timeoutMs,
     );
   });
+  // Suppress unhandled-rejection on timeoutPromise itself — Vitest's fake timer fires
+  // the rejection inside an Immediate callback before the microtask queue processes
+  // Promise.race's internal handler, causing a spurious unhandled rejection report.
+  // Promise.race still propagates the error correctly to callers.
+  timeoutPromise.catch(() => {});
   try {
     return await Promise.race([operation, timeoutPromise]);
   } finally {
