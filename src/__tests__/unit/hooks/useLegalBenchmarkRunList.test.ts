@@ -2,6 +2,24 @@ import { renderHook, waitFor, act } from "@testing-library/react";
 import { vi, describe, it, expect, beforeEach, afterEach } from "vitest";
 import { useLegalBenchmarkRunList } from "@/hooks/useLegalBenchmarkRunList";
 
+// ─── Module mocks ──────────────────────────────────────────────────────────────
+
+vi.mock("@/hooks/useWorkspace", () => ({
+  useWorkspace: () => ({ workspace: { slug: "test-workspace" } }),
+}));
+
+const mockChannelBind = vi.fn();
+const mockChannelUnbind = vi.fn();
+const mockChannel = { bind: mockChannelBind, unbind: mockChannelUnbind };
+let usePusherChannelArg: string | null = null;
+
+vi.mock("@/hooks/usePusherChannel", () => ({
+  usePusherChannel: (name: string | null) => {
+    usePusherChannelArg = name;
+    return mockChannel;
+  },
+}));
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 global.fetch = vi.fn();
@@ -24,6 +42,7 @@ const makeRow = (overrides: Partial<{
     n_total: 74,
     all_pass: true,
     pass_rate: 0.97,
+    judge_model: "gpt-4",
   }),
   createdAt: new Date("2025-01-01T10:00:00Z").toISOString(),
   updatedAt: new Date("2025-01-01T10:05:00Z").toISOString(),
@@ -46,6 +65,7 @@ function mockFetchFail() {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  usePusherChannelArg = null;
 });
 
 afterEach(() => {
@@ -323,5 +343,118 @@ describe("useLegalBenchmarkRunList", () => {
     const { result } = renderHook(() => useLegalBenchmarkRunList(undefined));
     expect(result.current.runs).toHaveLength(0);
     expect(fetch).not.toHaveBeenCalled();
+  });
+
+  // ─── judgeNotes tests ─────────────────────────────────────────────────────
+
+  it("judgeNotes is populated with judge_model for COMPLETED rows", async () => {
+    mockFetchOk([makeRow()]);
+
+    const { result } = renderHook(() => useLegalBenchmarkRunList("ws-cuid-123"));
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    const row = result.current.runs[0];
+    expect(row.judgeNotes).toBe("72/74 criteria passed. Judge: gpt-4");
+  });
+
+  it("judgeNotes omits Judge suffix when judge_model is absent", async () => {
+    mockFetchOk([
+      makeRow({
+        result: JSON.stringify({
+          taskSlug: "antitrust/task-1",
+          taskTitle: "Analyze Antitrust Strategy",
+          n_passed: 72,
+          n_total: 74,
+          all_pass: true,
+        }),
+      }),
+    ]);
+
+    const { result } = renderHook(() => useLegalBenchmarkRunList("ws-cuid-123"));
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    const row = result.current.runs[0];
+    expect(row.judgeNotes).toBe("72/74 criteria passed");
+  });
+
+  it("judgeNotes is undefined for in-progress rows with no score fields", async () => {
+    mockFetchOk([
+      makeRow({
+        status: "IN_PROGRESS",
+        result: JSON.stringify({ taskSlug: "antitrust/task-1", taskTitle: "Test" }),
+      }),
+    ]);
+
+    const { result } = renderHook(() => useLegalBenchmarkRunList("ws-cuid-123"));
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    const row = result.current.runs[0];
+    expect(row.judgeNotes).toBeUndefined();
+  });
+
+  // ─── Pusher subscription tests ────────────────────────────────────────────
+
+  it("calls usePusherChannel with workspace-test-workspace when slug is available", async () => {
+    mockFetchOk([makeRow()]);
+
+    renderHook(() => useLegalBenchmarkRunList("ws-cuid-123"));
+    await waitFor(() => expect(usePusherChannelArg).toBe("workspace-test-workspace"));
+  });
+
+  it("binds STAKWORK_RUN_UPDATE event on mount", async () => {
+    mockFetchOk([makeRow()]);
+
+    renderHook(() => useLegalBenchmarkRunList("ws-cuid-123"));
+    await waitFor(() => expect(mockChannelBind).toHaveBeenCalledWith(
+      "stakwork-run-update",
+      expect.any(Function),
+    ));
+  });
+
+  it("calls fetchRuns when STAKWORK_RUN_UPDATE fires with a matching runId", async () => {
+    mockFetchOk([makeRow()]);
+
+    renderHook(() => useLegalBenchmarkRunList("ws-cuid-123"));
+    await waitFor(() => expect(mockChannelBind).toHaveBeenCalled());
+
+    const handler = mockChannelBind.mock.calls[0][1] as (data: { runId?: string }) => void;
+    const fetchCallsBefore = vi.mocked(global.fetch).mock.calls.length;
+
+    mockFetchOk([makeRow()]);
+    await act(async () => {
+      handler({ runId: "runner-abc" });
+      await Promise.resolve();
+    });
+
+    expect(vi.mocked(global.fetch).mock.calls.length).toBeGreaterThan(fetchCallsBefore);
+  });
+
+  it("does NOT call fetchRuns when STAKWORK_RUN_UPDATE fires with a non-matching runId", async () => {
+    mockFetchOk([makeRow()]);
+
+    renderHook(() => useLegalBenchmarkRunList("ws-cuid-123"));
+    await waitFor(() => expect(mockChannelBind).toHaveBeenCalled());
+
+    const handler = mockChannelBind.mock.calls[0][1] as (data: { runId?: string }) => void;
+    const fetchCallsBefore = vi.mocked(global.fetch).mock.calls.length;
+
+    await act(async () => {
+      handler({ runId: "runner-unknown" });
+      await Promise.resolve();
+    });
+
+    expect(vi.mocked(global.fetch).mock.calls.length).toBe(fetchCallsBefore);
+  });
+
+  it("unbinds STAKWORK_RUN_UPDATE event handler on unmount", async () => {
+    mockFetchOk([makeRow()]);
+
+    const { unmount } = renderHook(() => useLegalBenchmarkRunList("ws-cuid-123"));
+    await waitFor(() => expect(mockChannelBind).toHaveBeenCalled());
+
+    const handler = mockChannelBind.mock.calls[0][1];
+    unmount();
+
+    expect(mockChannelUnbind).toHaveBeenCalledWith("stakwork-run-update", handler);
   });
 });
