@@ -395,3 +395,126 @@ describe("useStakworkGeneration", () => {
     });
   });
 });
+
+describe("successToast option", () => {
+  function makeRun(status: string): object {
+    return {
+      id: "run-42",
+      type: "PLAN_CHAT",
+      status,
+      result: null,
+      dataType: "json",
+      decision: null,
+      feedback: null,
+      featureId: "feature-123",
+      projectId: 99,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+  }
+
+  it("uses default 'Deep Research stopped' toast when successToast is omitted", async () => {
+    const { toast } = await import("sonner");
+
+    vi.mocked(global.fetch)
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ runs: [makeRun("IN_PROGRESS")] }),
+      } as Response)
+      .mockResolvedValue({
+        ok: true,
+        json: async () => ({ runs: [] }),
+      } as Response);
+
+    const stopFetch = vi.fn().mockResolvedValue({ ok: true, json: async () => ({}) });
+    vi.mocked(global.fetch)
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ runs: [makeRun("IN_PROGRESS")] }),
+      } as Response)
+      .mockImplementation((url: string | URL | Request) => {
+        if (typeof url === "string" && url.includes("/stop")) {
+          return stopFetch();
+        }
+        return Promise.resolve({ ok: true, json: async () => ({ runs: [] }) } as Response);
+      });
+
+    const { result } = renderHook(() =>
+      useStakworkGeneration({ featureId: "feature-123", type: "PLAN_CHAT", enabled: true })
+    );
+
+    await waitFor(() => expect(result.current.querying).toBe(false));
+    await waitFor(() => expect(result.current.latestRun).not.toBeNull());
+
+    await act(async () => {
+      await result.current.stopRun();
+    });
+
+    expect(toast.success).toHaveBeenCalledWith("Deep Research stopped");
+  });
+
+  it("uses custom successToast when provided", async () => {
+    const { toast } = await import("sonner");
+
+    vi.mocked(global.fetch)
+      .mockImplementation((url: string | URL | Request) => {
+        if (typeof url === "string" && url.includes("/stop")) {
+          return Promise.resolve({ ok: true, json: async () => ({}) } as Response);
+        }
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({ runs: [makeRun("IN_PROGRESS")] }),
+        } as Response);
+      });
+
+    const { result } = renderHook(() =>
+      useStakworkGeneration({
+        featureId: "feature-123",
+        type: "PLAN_CHAT",
+        enabled: true,
+        successToast: "Plan agent stopped",
+      })
+    );
+
+    await waitFor(() => expect(result.current.querying).toBe(false));
+    await waitFor(() => expect(result.current.latestRun).not.toBeNull());
+
+    await act(async () => {
+      await result.current.stopRun();
+    });
+
+    expect(toast.success).toHaveBeenLastCalledWith("Plan agent stopped");
+  });
+
+  it("exposes querying in the return value", async () => {
+    const { result } = renderHook(() =>
+      useStakworkGeneration({ featureId: "feature-123", type: "PLAN_CHAT", enabled: true })
+    );
+
+    // querying is a boolean in the return value
+    expect(typeof result.current.querying).toBe("boolean");
+  });
+
+  it("querying starts true and becomes false after initial fetch", async () => {
+    // Slow fetch to observe querying=true during fetch
+    let resolveInitial!: (v: Response) => void;
+    const initialFetchPromise = new Promise<Response>((res) => { resolveInitial = res; });
+
+    vi.mocked(global.fetch).mockReturnValueOnce(initialFetchPromise);
+
+    const { result } = renderHook(() =>
+      useStakworkGeneration({ featureId: "feature-123", type: "PLAN_CHAT", enabled: true })
+    );
+
+    // Should be querying while fetch is in flight
+    expect(result.current.querying).toBe(true);
+
+    // Resolve the fetch
+    await act(async () => {
+      resolveInitial({ ok: true, json: async () => ({ runs: [] }) } as Response);
+      await Promise.resolve();
+    });
+
+    await waitFor(() => expect(result.current.querying).toBe(false));
+  });
+});
