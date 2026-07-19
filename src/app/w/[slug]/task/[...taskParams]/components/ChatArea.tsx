@@ -72,6 +72,8 @@ interface ChatAreaProps {
   onTypingStop?: () => void;
   suggestions?: string[];
   onSuggestionSelect?: (s: string) => void;
+  onStop?: () => Promise<void>;
+  isStopping?: boolean;
 }
 
 export function ChatArea({
@@ -121,6 +123,8 @@ export function ChatArea({
   onTypingStop,
   suggestions,
   onSuggestionSelect,
+  onStop,
+  isStopping = false,
 }: ChatAreaProps) {
   const { timezone } = useUserTimezone();
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -453,6 +457,8 @@ export function ChatArea({
         hasMessages={hasMessages}
         onTypingStart={onTypingStart}
         onTypingStop={onTypingStop}
+        onStop={onStop}
+        isStopping={isStopping}
       />
 
       {onReleasePod && (
