@@ -6,7 +6,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Command, CommandItem, CommandList } from "@/components/ui/command";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { Mic, MicOff, ArrowUp, Image as ImageIcon, X, Loader2, RefreshCw, Sparkles } from "lucide-react";
+import { Mic, MicOff, ArrowUp, Image as ImageIcon, X, Loader2, RefreshCw, Sparkles, CircleStop } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select";
 import { getModelValue, type ModelName } from "@/lib/ai/models";
 import { useIsMobile } from "@/hooks/useIsMobile";
@@ -66,6 +66,8 @@ interface ChatInputProps {
   onModelChange?: (m: string) => void;
   llmModels?: { id: string; name: string; provider: string; providerLabel: string | null; isPlanDefault: boolean; isTaskDefault: boolean }[];
   hasMessages?: boolean;
+  onStop?: () => Promise<void>;
+  isStopping?: boolean;
 }
 
 export function ChatInput({
@@ -96,6 +98,8 @@ export function ChatInput({
   onModelChange,
   llmModels = [],
   hasMessages,
+  onStop,
+  isStopping = false,
 }: ChatInputProps) {
   const [input, setInput] = useState("");
   const [pendingImages, setPendingImages] = useState<PendingImage[]>([]);
@@ -549,6 +553,21 @@ export function ChatInput({
               ) : (
                 <div className="flex items-center gap-2">
                   <WorkflowStatusBadge status={workflowStatus} stakworkProjectId={stakworkProjectId} lastLogLine={lastLogLine} streamContext={streamContext} isSuperAdmin={isSuperAdmin} />
+                  {isPlanChat && onStop && workflowStatus === WorkflowStatus.IN_PROGRESS && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={onStop}
+                      disabled={isStopping}
+                      className="h-6 px-2 text-xs border-red-200 text-red-600 hover:bg-red-50"
+                    >
+                      {isStopping ? (
+                        <><Loader2 className="h-3 w-3 animate-spin mr-1" />Stopping…</>
+                      ) : (
+                        <><CircleStop className="h-3 w-3 mr-1" />Stop</>
+                      )}
+                    </Button>
+                  )}
                 </div>
               )}
             </div>
