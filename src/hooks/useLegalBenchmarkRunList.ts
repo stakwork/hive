@@ -1,6 +1,9 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import { StakworkRunType, WorkflowStatus } from "@prisma/client";
 import { parseBenchmarkRunResult } from "@/types/legal";
+import { usePusherChannel } from "@/hooks/usePusherChannel";
+import { useWorkspace } from "@/hooks/useWorkspace";
+import { getWorkspaceChannelName, PUSHER_EVENTS } from "@/lib/pusher";
 
 export interface BenchmarkRunListRow {
   id: string;
@@ -14,6 +17,7 @@ export interface BenchmarkRunListRow {
   n_passed?: number;
   n_total?: number;
   all_pass?: boolean;
+  judgeNotes?: string; // "${n_passed}/${n_total} criteria passed. Judge: ${judge_model}"
 }
 
 interface UseLegalBenchmarkRunListResult {
@@ -35,9 +39,13 @@ export function useLegalBenchmarkRunList(
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  const { workspace } = useWorkspace();
+  const workspaceSlug = workspace?.slug;
+
   const runsRef = useRef<BenchmarkRunListRow[]>([]);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const expandedIdRef = useRef<string | null>(null);
+  const isFetchingRef = useRef(false);
 
   const fetchRuns = useCallback(async () => {
     if (!workspaceId) return;
@@ -70,6 +78,11 @@ export function useLegalBenchmarkRunList(
           n_passed: parsed?.n_passed,
           n_total: parsed?.n_total,
           all_pass: parsed?.all_pass,
+          // Format mirrors stakwork-run.ts:1655 — if the server-side format string changes, update this line to match.
+          judgeNotes:
+            parsed?.n_passed != null && parsed?.n_total != null
+              ? `${parsed.n_passed}/${parsed.n_total} criteria passed${parsed.judge_model ? `. Judge: ${parsed.judge_model}` : ""}`
+              : undefined,
         };
       });
 
@@ -83,6 +96,13 @@ export function useLegalBenchmarkRunList(
       setIsLoading(false);
     }
   }, [workspaceId]);
+
+  const fetchRunRef = useRef(fetchRuns);
+  useEffect(() => { fetchRunRef.current = fetchRuns; }, [fetchRuns]);
+
+  const channel = usePusherChannel(
+    workspaceSlug ? getWorkspaceChannelName(workspaceSlug) : null,
+  );
 
   const stopPolling = useCallback(() => {
     if (intervalRef.current) {
@@ -126,6 +146,25 @@ export function useLegalBenchmarkRunList(
     }
     return stopPolling;
   }, [runs, startPolling, stopPolling]);
+
+  // Pusher real-time completion detection
+  useEffect(() => {
+    if (!channel) return;
+    const handleUpdate = (data: { runId?: string; run_id?: string }) => {
+      const updatedId = data.runId ?? data.run_id;
+      if (isFetchingRef.current) return; // drop burst duplicates
+      if (runsRef.current.some((r) => r.id === updatedId)) {
+        isFetchingRef.current = true;
+        void Promise.resolve(fetchRunRef.current?.()).finally(() => {
+          isFetchingRef.current = false;
+        });
+      }
+    };
+    channel.bind(PUSHER_EVENTS.STAKWORK_RUN_UPDATE, handleUpdate);
+    return () => {
+      channel.unbind(PUSHER_EVENTS.STAKWORK_RUN_UPDATE, handleUpdate);
+    };
+  }, [channel]);
 
   const setExpandedId = useCallback(
     (id: string | null) => {
