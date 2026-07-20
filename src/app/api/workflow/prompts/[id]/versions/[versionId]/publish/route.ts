@@ -3,6 +3,8 @@ import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 import { db } from "@/lib/db";
 import { isDevelopmentMode } from "@/lib/runtime";
 import { publishVersion } from "@/services/prompts/prompt-sync";
+import { validateApiToken, API_TOKEN_ACTOR } from "@/lib/auth/api-token";
+import { checkRateLimit, getClientIp } from "@/lib/rate-limit";
 
 export const runtime = "nodejs";
 export const fetchCache = "force-no-store";
@@ -12,28 +14,47 @@ export async function POST(
   { params }: { params: Promise<{ id: string; versionId: string }> },
 ) {
   try {
-    const userOrResponse = requireAuth(getMiddlewareContext(request));
-    if (userOrResponse instanceof NextResponse) return userOrResponse;
-    const userId = userOrResponse.id;
+    let actor: string;
+    let workspaceId: string | undefined;
 
-    const devMode = isDevelopmentMode();
-
-    // Auth: require stakwork workspace membership for writes
-    let workspaceId: string | null = null;
-    if (!devMode) {
-      const workspace = await db.workspace.findFirst({
-        where: {
-          slug: "stakwork",
-          OR: [{ ownerId: userId }, { members: { some: { userId } } }],
-        },
-      });
-      if (!workspace) {
-        return NextResponse.json(
-          { error: "Access denied - not a member of stakwork workspace" },
-          { status: 403 },
-        );
+    if (validateApiToken(request)) {
+      // ── Token branch ──────────────────────────────────────────────────────
+      const ip = getClientIp(request);
+      const rl = await checkRateLimit(`prompts:publish:api-token:${ip}`, 30, 60);
+      if (!rl.allowed) {
+        return new NextResponse(JSON.stringify({ error: "Too many requests" }), {
+          status: 429,
+          headers: { "Retry-After": String(rl.retryAfter ?? 60), "Content-Type": "application/json" },
+        });
       }
-      workspaceId = workspace.id;
+      const workspace = await db.workspace.findFirst({ where: { slug: "stakwork" } });
+      workspaceId = workspace?.id;
+      actor = API_TOKEN_ACTOR;
+    } else {
+      // ── Session branch (verbatim existing behavior) ───────────────────────
+      const userOrResponse = requireAuth(getMiddlewareContext(request));
+      if (userOrResponse instanceof NextResponse) return userOrResponse;
+      const userId = userOrResponse.id;
+
+      const devMode = isDevelopmentMode();
+
+      if (!devMode) {
+        const workspace = await db.workspace.findFirst({
+          where: {
+            slug: "stakwork",
+            OR: [{ ownerId: userId }, { members: { some: { userId } } }],
+          },
+        });
+        if (!workspace) {
+          return NextResponse.json(
+            { error: "Access denied - not a member of stakwork workspace" },
+            { status: 403 },
+          );
+        }
+        workspaceId = workspace.id;
+      }
+
+      actor = userId;
     }
 
     const { id, versionId } = await params;
@@ -48,11 +69,12 @@ export async function POST(
     const { artifactId } = body;
 
     // Publish the version in Hive (+ best-effort Stakwork push inside service)
-    await publishVersion(id, versionId, workspaceId ?? undefined);
+    await publishVersion(id, versionId, workspaceId ?? undefined, actor);
 
     // Optionally update artifact published state
+    const devMode = isDevelopmentMode();
     if (artifactId) {
-      await updateArtifactPublished(artifactId, workspaceId, devMode);
+      await updateArtifactPublished(artifactId, workspaceId ?? null, devMode);
     }
 
     return NextResponse.json({ success: true });
