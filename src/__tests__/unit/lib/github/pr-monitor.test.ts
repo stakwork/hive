@@ -1559,6 +1559,7 @@ describe("createPrLogger", () => {
         taskId,
         featureId,
         workspaceId,
+        repos: [],
       },
     });
     expect(db.agentLog.update).not.toHaveBeenCalled();
