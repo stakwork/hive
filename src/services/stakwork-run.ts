@@ -1935,13 +1935,26 @@ export async function getStakworkRuns(
     orderBy: { createdAt: "desc" },
     skip: query.offset,
     take: query.limit,
-    include: {
-      feature: {
-        select: {
-          id: true,
-          title: true,
-        },
-      },
+    select: {
+      id: true,
+      type: true,
+      status: true,
+      workspaceId: true,
+      featureId: true,
+      projectId: true,
+      dataType: true,
+      decision: true,
+      feedback: true,
+      createdAt: true,
+      updatedAt: true,
+      webhookUrl: true,
+      taskId: true,
+      autoAccept: true,
+      promptVersionId: true,
+      evalSetId: true,
+      userId: true,
+      ...(query.includeResult ? { result: true } : {}),
+      feature: { select: { id: true, title: true } },
     },
   });
 
