@@ -9,6 +9,7 @@ import { useLegalBenchmarkEval, type EvalResult } from "@/hooks/useLegalBenchmar
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { getPusherClient, getWorkspaceChannelName, PUSHER_EVENTS } from "@/lib/pusher";
 import type { ProposedFix } from "@/types/legal";
+import { StakworkRunLink } from "@/components/legal/StakworkRunLink";
 
 interface EvalRunsBoxProps {
   /** The task slug identifying which task's eval runs to show */
@@ -25,6 +26,8 @@ interface EvalRunsBoxProps {
   isLoading?: boolean;
   /** Refetch callback from the parent's useProposedFixes call */
   refetch?: () => void;
+  /** Whether the current user is a super admin — gates the entire Stakwork column */
+  isSuperAdmin?: boolean;
 }
 
 function StatusBadge({ status }: { status?: string | null }) {
@@ -79,6 +82,7 @@ export function EvalRunsBox({
   fixes = [],
   isLoading = false,
   refetch = () => {},
+  isSuperAdmin = false,
 }: EvalRunsBoxProps) {
   const { workspace } = useWorkspace();
   const { runEval, isSubmitting } = useLegalBenchmarkEval();
@@ -248,6 +252,9 @@ export function EvalRunsBox({
               <th className="px-4 py-2 text-left font-medium">Change</th>
               <th className="px-4 py-2 text-left font-medium">Score</th>
               <th className="px-4 py-2 text-left font-medium">Status</th>
+              {isSuperAdmin && (
+                <th className="px-4 py-2 text-left font-medium">Stakwork</th>
+              )}
               <th className="px-4 py-2 w-8" />
             </tr>
           </thead>
@@ -256,7 +263,7 @@ export function EvalRunsBox({
               <>
                 {[0, 1, 2].map((i) => (
                   <tr key={i}>
-                    <td className="px-4 py-3" colSpan={6}>
+                    <td className="px-4 py-3" colSpan={isSuperAdmin ? 7 : 6}>
                       <Skeleton className="h-4 w-full" />
                     </td>
                   </tr>
@@ -264,7 +271,7 @@ export function EvalRunsBox({
               </>
             ) : sorted.length === 0 && !optimisticEntry ? (
               <tr>
-                <td colSpan={6} className="px-4 py-6 text-center text-sm text-muted-foreground">
+                <td colSpan={isSuperAdmin ? 7 : 6} className="px-4 py-6 text-center text-sm text-muted-foreground">
                   No eval results yet.
                 </td>
               </tr>
@@ -282,6 +289,14 @@ export function EvalRunsBox({
                     <td className="px-4 py-3 text-muted-foreground">—</td>
                     <td className="px-4 py-3 text-muted-foreground">—</td>
                     <td className="px-4 py-3 text-muted-foreground">—</td>
+                    {isSuperAdmin && (
+                      <td className="px-4 py-3">
+                        <StakworkRunLink
+                          projectId={activeProjectIdRef.current}
+                          isSuperAdmin={isSuperAdmin}
+                        />
+                      </td>
+                    )}
                     <td className="px-4 py-3" />
                   </tr>
                 )}
@@ -306,6 +321,7 @@ export function EvalRunsBox({
                         <td className="px-4 py-3">
                           <StatusBadge status={fix.status} />
                         </td>
+                        {isSuperAdmin && <td className="px-4 py-3" />}
                         <td className="px-4 py-3">
                           <button
                             onClick={() => setExpandedKey(isExpanded ? null : key)}
@@ -322,7 +338,7 @@ export function EvalRunsBox({
                       </tr>
                       {isExpanded && (
                         <tr className="bg-muted/20">
-                          <td colSpan={6} className="px-4 py-3 text-sm space-y-2">
+                          <td colSpan={isSuperAdmin ? 7 : 6} className="px-4 py-3 text-sm space-y-2">
                             {fix.passing_value != null && (
                               <div>
                                 <p className="font-medium text-xs text-muted-foreground mb-1">
