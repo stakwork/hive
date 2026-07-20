@@ -1038,3 +1038,118 @@ describe("resolveStakworkPromptId", () => {
     warnSpy.mockRestore();
   });
 });
+
+// ─── publishVersion — actor / attribution ─────────────────────────────────────
+
+describe("publishVersion — actor attribution", () => {
+  const mockPrompt = {
+    id: "prompt-1",
+    name: "MY_PROMPT",
+    value: "old val",
+    description: "A prompt",
+    publishedVersionId: "v1",
+    stakworkId: null,
+    syncStatus: "OK",
+    createdAt: new Date("2025-01-01T00:00:00Z"),
+    updatedAt: new Date(),
+  };
+
+  const mockVersion = {
+    id: "v2",
+    promptId: "prompt-1",
+    versionNumber: 2,
+    value: "new val",
+    description: null,
+    published: false,
+    createdAt: new Date(),
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockStakworkRequest.mockResolvedValue({});
+    mockDbPromptFindUnique.mockResolvedValueOnce(mockPrompt);
+    mockDbPromptVersionFindFirst.mockResolvedValueOnce(mockVersion);
+    mockDbTransaction.mockResolvedValue([undefined, undefined, undefined]);
+    mockDbPromptUpdate.mockResolvedValue(mockPrompt);
+  });
+
+  it("persists actor to publishedBy and sets publishedAt in the transaction", async () => {
+    await publishVersion("prompt-1", "v2", undefined, "user-abc");
+
+    expect(mockDbTransaction).toHaveBeenCalledWith(
+      expect.arrayContaining([
+        expect.objectContaining({
+          // This is the db.promptVersion.update call — Prisma batches ops as an array
+        }),
+      ])
+    );
+    // The update to the target version must include publishedBy and publishedAt
+    expect(mockDbPromptVersionUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "v2" },
+        data: expect.objectContaining({
+          published: true,
+          publishedBy: "user-abc",
+          publishedAt: expect.any(Date),
+        }),
+      })
+    );
+  });
+
+  it("persists API_TOKEN_ACTOR as publishedBy for token-authenticated publish", async () => {
+    await publishVersion("prompt-1", "v2", undefined, "api-token");
+
+    expect(mockDbPromptVersionUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "v2" },
+        data: expect.objectContaining({ publishedBy: "api-token" }),
+      })
+    );
+  });
+
+  it("leaves publishedBy null when actor is omitted (backward compatibility)", async () => {
+    await publishVersion("prompt-1", "v2");
+
+    expect(mockDbPromptVersionUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "v2" },
+        data: expect.objectContaining({ publishedBy: null }),
+      })
+    );
+  });
+
+  it("unpublish step (updateMany) does NOT include publishedBy — sibling attribution is preserved", async () => {
+    await publishVersion("prompt-1", "v2", undefined, "user-abc");
+
+    expect(mockDbPromptVersionUpdateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { promptId: "prompt-1" },
+        data: expect.objectContaining({ published: false }),
+      })
+    );
+    // The updateMany data must NOT contain publishedBy — it would overwrite sibling attribution
+    const updateManyCall = mockDbPromptVersionUpdateMany.mock.calls[0][0];
+    expect(updateManyCall.data).not.toHaveProperty("publishedBy");
+    expect(updateManyCall.data).not.toHaveProperty("publishedAt");
+  });
+
+  it("includes actor in the log line", async () => {
+    await publishVersion("prompt-1", "v2", undefined, "user-abc");
+
+    expect(vi.mocked(logger.info)).toHaveBeenCalledWith(
+      "[prompt-sync] Version published",
+      "prompt-sync",
+      expect.objectContaining({ actor: "user-abc" }),
+    );
+  });
+
+  it("logs actor as null when omitted", async () => {
+    await publishVersion("prompt-1", "v2");
+
+    expect(vi.mocked(logger.info)).toHaveBeenCalledWith(
+      "[prompt-sync] Version published",
+      "prompt-sync",
+      expect.objectContaining({ actor: null }),
+    );
+  });
+});
