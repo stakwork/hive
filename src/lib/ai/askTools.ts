@@ -4,6 +4,7 @@ import { RepoAnalyzer } from "gitsee/server";
 import { parseOwnerRepo } from "./utils";
 import { getProviderTool } from "@/lib/ai/provider";
 import { createMCPClient } from "@ai-sdk/mcp";
+import { withMcpTimeout, isMcpTimeout } from './mcpTimeout';
 import {
   mcpListFeatures,
   mcpReadFeature,
@@ -356,8 +357,8 @@ Example queries:
         max_hits: z.number().optional().default(10).describe("Maximum number of log entries to return"),
       }),
       execute: async ({ query, max_hits = 10 }: { query: string; max_hits?: number }) => {
-        let mcpClient;
-        try {
+        let mcpClient: Awaited<ReturnType<typeof createMCPClient>> | undefined;
+        const mcpSetup = async () => {
           mcpClient = await createMCPClient({
             transport: {
               type: 'http',
@@ -367,27 +368,24 @@ Example queries:
               },
             },
           });
-
           const tools = await mcpClient.tools();
           const searchLogsTool = tools['search_logs'];
-          
-          if (!searchLogsTool || !searchLogsTool.execute) {
-            return "search_logs tool not found on MCP server";
-          }
-
-          const result = await searchLogsTool.execute(
-            { query, max_hits },
-            { toolCallId: '1', messages: [] }
+          if (!searchLogsTool?.execute) return 'search_logs tool not found on MCP server';
+          return capMcpResult(
+            await searchLogsTool.execute({ query, max_hits }, { toolCallId: '1', messages: [] }),
           );
-
-          return capMcpResult(result);
+        };
+        try {
+          return await withMcpTimeout(mcpSetup);
         } catch (e) {
-          console.error("Error searching logs:", e);
-          return "Could not search logs";
-        } finally {
-          if (mcpClient) {
-            await mcpClient.close();
+          if (isMcpTimeout(e)) {
+            console.warn('search_logs: MCP client timed out', e);
+            return 'MCP tools unavailable — the log search timed out. Proceeding without them.';
           }
+          console.error('Error searching logs:', e);
+          return 'Could not search logs';
+        } finally {
+          if (mcpClient) await mcpClient.close().catch(() => {});
         }
       },
     }),
