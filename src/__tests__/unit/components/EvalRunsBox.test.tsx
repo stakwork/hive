@@ -102,6 +102,18 @@ vi.mock("@/components/ui/badge", () => ({
     ),
 }));
 
+// ─── StakworkRunLink mock ─────────────────────────────────────────────────────
+vi.mock("@/components/legal/StakworkRunLink", () => ({
+  StakworkRunLink: ({ projectId, isSuperAdmin }: { projectId: number | null; isSuperAdmin: boolean }) =>
+    isSuperAdmin && projectId
+      ? React.createElement(
+          "a",
+          { href: `https://jobs.stakwork.com/admin/projects/${projectId}` },
+          "View on Stakwork",
+        )
+      : null,
+}));
+
 // ─── useLegalBenchmarkEval ────────────────────────────────────────────────────
 const mockRunEval = vi.fn(async () => ({
   status: "started" as import("@/hooks/useLegalBenchmarkEval").EvalResultStatus,
@@ -657,5 +669,105 @@ describe("EvalRunsBox — Recursion button", () => {
     });
 
     expect(mockToastError).toHaveBeenCalledWith("Failed to enroll");
+  });
+});
+
+describe("EvalRunsBox — isSuperAdmin / StakworkRunLink", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.clearAllMocks();
+    mockRunEval.mockResolvedValue({
+      status: "started",
+      message: "Eval started.",
+      projectId: 99,
+    });
+  });
+
+  afterEach(() => {
+    vi.clearAllTimers();
+    vi.useRealTimers();
+  });
+
+  it("does not render Stakwork column header when isSuperAdmin=false", () => {
+    renderBox({ isSuperAdmin: false });
+    expect(screen.queryByText("Stakwork")).toBeNull();
+  });
+
+  it("renders Stakwork column header when isSuperAdmin=true", () => {
+    renderBox({ isSuperAdmin: true });
+    expect(screen.getByText("Stakwork")).toBeInTheDocument();
+  });
+
+  it("does not render StakworkRunLink in optimistic row when isSuperAdmin=false", async () => {
+    renderBox({ fixes: [], isSuperAdmin: false });
+    await clickRunEval();
+
+    expect(screen.getByText("Evaluating…")).toBeInTheDocument();
+    expect(screen.queryByText("View on Stakwork")).toBeNull();
+  });
+
+  it("renders StakworkRunLink in optimistic row when isSuperAdmin=true after clicking Run Eval", async () => {
+    renderBox({ fixes: [], isSuperAdmin: true });
+    await clickRunEval();
+
+    expect(screen.getByText("Evaluating…")).toBeInTheDocument();
+    expect(screen.getByText("View on Stakwork")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "View on Stakwork" })).toHaveAttribute(
+      "href",
+      "https://jobs.stakwork.com/admin/projects/99",
+    );
+  });
+
+  it("colSpan is 6 for skeleton rows when isSuperAdmin=false", () => {
+    renderBox({ isLoading: true, fixes: [], isSuperAdmin: false });
+    const skeletonCell = document.querySelector("td[colspan]");
+    expect(skeletonCell?.getAttribute("colspan")).toBe("6");
+  });
+
+  it("colSpan is 7 for skeleton rows when isSuperAdmin=true", () => {
+    renderBox({ isLoading: true, fixes: [], isSuperAdmin: true });
+    const skeletonCells = document.querySelectorAll("td[colspan]");
+    expect(skeletonCells[0]?.getAttribute("colspan")).toBe("7");
+  });
+
+  it("colSpan is 6 for empty-state row when isSuperAdmin=false", () => {
+    renderBox({ fixes: [], isLoading: false, isSuperAdmin: false });
+    const emptyCell = document.querySelector("td[colspan]");
+    expect(emptyCell?.getAttribute("colspan")).toBe("6");
+  });
+
+  it("colSpan is 7 for empty-state row when isSuperAdmin=true", () => {
+    renderBox({ fixes: [], isLoading: false, isSuperAdmin: true });
+    const emptyCell = document.querySelector("td[colspan]");
+    expect(emptyCell?.getAttribute("colspan")).toBe("7");
+  });
+
+  it("colSpan is 7 for expanded-detail row when isSuperAdmin=true", async () => {
+    renderBox({ fixes: [makeFix()], isSuperAdmin: true });
+
+    const chevron = screen.getByRole("button", { name: "Expand" });
+    await act(async () => { fireEvent.click(chevron); });
+
+    // Expanded row detail td should have colSpan=7
+    const expandedCells = document.querySelectorAll("td[colspan]");
+    const expandedCell = Array.from(expandedCells).find(
+      (el) => el.getAttribute("colspan") === "7",
+    );
+    expect(expandedCell).toBeTruthy();
+  });
+
+  it("colSpan is 6 for expanded-detail row when isSuperAdmin=false", async () => {
+    renderBox({ fixes: [makeFix()], isSuperAdmin: false });
+
+    const chevron = screen.getByRole("button", { name: "Expand" });
+    await act(async () => { fireEvent.click(chevron); });
+
+    const expandedCells = document.querySelectorAll("td[colspan]");
+    // All colspan values should be 6 (no 7 present)
+    const hasSevenColspan = Array.from(expandedCells).some(
+      (el) => el.getAttribute("colspan") === "7",
+    );
+    expect(hasSevenColspan).toBe(false);
+    expect(expandedCells[0]?.getAttribute("colspan")).toBe("6");
   });
 });
