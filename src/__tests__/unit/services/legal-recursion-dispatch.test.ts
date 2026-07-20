@@ -122,6 +122,7 @@ describe("dispatchLegalBenchmarkRecursionRun", () => {
     );
 
     const callBody = JSON.parse(mockFetch.mock.calls[0][1].body as string) as {
+      webhook_url: string;
       workflow_id: number;
       workflow_params: {
         set_var: {
@@ -134,13 +135,45 @@ describe("dispatchLegalBenchmarkRecursionRun", () => {
 
     expect(callBody.workflow_id).toBe(57456);
 
+    // ── Top-level webhook_url must be the status-sync endpoint ─────────────
+    expect(callBody.webhook_url).toMatch(/\/api\/stakwork\/webhook\?run_id=/);
+    expect(callBody.webhook_url).toContain(RECURSION_RUN_ID);
+    expect(callBody.webhook_url).not.toMatch(/\/api\/webhook\/stakwork\/response/);
+
     const vars = callBody.workflow_params.set_var.attributes.vars;
+
+    // ── vars must NOT contain a webhook_url (response URL) ─────────────────
+    expect(vars).not.toHaveProperty("webhook_url");
+
     expect(vars.source_run_id).toBe("source-run-id-1");
     expect(vars.task_slug).toBe("contracts/review-nda");
     expect(vars.workspace_id).toBe("ws-openlaw-1");
     expect(vars.recursion_id).toBe("entry-abc");
     expect(vars.hive_base_url).toBe("https://hive.example.com");
     expect(vars.hive_api_token).toBe("test-hive-api-token");
+  });
+
+  it("persists StakworkRun.webhookUrl as the response URL (not the status-sync URL)", async () => {
+    vi.stubGlobal("fetch", makeSuccessfulFetch());
+
+    await dispatchLegalBenchmarkRecursionRun({
+      runId: "source-run-id-1",
+      taskSlug: "contracts/review-nda",
+      workspaceId: "ws-openlaw-1",
+      recursionId: "entry-abc",
+    });
+
+    // The update call that writes the real webhookUrl
+    const updateCall = mockDbStakworkRunUpdate.mock.calls.find(
+      (call: [{ where: { id: string }; data: { webhookUrl?: string } }]) =>
+        call[0].where?.id === RECURSION_RUN_ID && call[0].data?.webhookUrl !== undefined,
+    ) as [{ where: { id: string }; data: { webhookUrl: string } }] | undefined;
+
+    expect(updateCall).toBeDefined();
+    expect(updateCall![0].data.webhookUrl).toMatch(/\/api\/webhook\/stakwork\/response/);
+    expect(updateCall![0].data.webhookUrl).toMatch(/type=LEGAL_BENCHMARK_RECURSION/);
+    expect(updateCall![0].data.webhookUrl).toMatch(/run_id=/);
+    expect(updateCall![0].data.webhookUrl).not.toMatch(/\/api\/stakwork\/webhook/);
   });
 
   it("returns { recursionRunId } matching the created StakworkRun row", async () => {
