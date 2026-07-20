@@ -296,7 +296,7 @@ export async function dispatchLegalBenchmarkEvalRun(
     data: { webhookUrl },
   });
 
-  // ── Step 12: Build Stakwork payload ──────────────────────────────────────
+  // ── Step 12: Build agent logs JSON ───────────────────────────────────────
   const agentLogsJson = sourceRun.agentLogs.map((log) => {
     const stats = log.stats as Record<string, unknown> | null;
     return {
@@ -308,10 +308,14 @@ export async function dispatchLegalBenchmarkEvalRun(
     };
   });
 
+  // ── Step 12a: Status-sync webhook URL (top-level) ───────────────────────
+  const statusWebhookUrl = `${baseUrl}/api/stakwork/webhook?run_id=${evalRun.id}`;
+
+  // ── Step 12b: Build Stakwork payload ─────────────────────────────────────
   const payload = {
     name: `harvey-eval-${evalRun.id}`,
     workflow_id: parseInt(optionalEnvVars.STAKWORK_HARVEY_EVAL_WORKFLOW_ID, 10),
-    webhook_url: webhookUrl,
+    webhook_url: statusWebhookUrl,
     workflow_params: {
       set_var: {
         attributes: {
@@ -485,11 +489,14 @@ export async function dispatchLegalBenchmarkRecursionRun(
     data: { webhookUrl },
   });
 
+  // ── Status-sync webhook URL (top-level) ──────────────────────────────────
+  const statusWebhookUrl = `${baseUrl}/api/stakwork/webhook?run_id=${recursionRun.id}`;
+
   // ── Build Stakwork payload ────────────────────────────────────────────────
   const payload = {
     name: `harvey-recursion-${recursionRun.id}`,
     workflow_id: parseInt(optionalEnvVars.STAKWORK_HARVEY_RECURSION_WORKFLOW_ID, 10),
-    webhook_url: webhookUrl,
+    webhook_url: statusWebhookUrl,
     workflow_params: {
       set_var: {
         attributes: {
