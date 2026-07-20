@@ -47,7 +47,6 @@ function makePoint(overrides: Partial<AttemptPoint> = {}): AttemptPoint {
   return {
     n_passed: 10,
     n_total: 42,
-    createdAt: "2024-01-01T00:00:00Z",
     isBaseline: true,
     attemptIndex: 0,
     ...overrides,
@@ -55,9 +54,9 @@ function makePoint(overrides: Partial<AttemptPoint> = {}): AttemptPoint {
 }
 
 const multiSeries: AttemptPoint[] = [
-  makePoint({ n_passed: 14, isBaseline: true, attemptIndex: 0, createdAt: "2024-01-01T00:00:00Z" }),
-  makePoint({ n_passed: 28, isBaseline: false, attemptIndex: 1, createdAt: "2024-01-02T00:00:00Z" }),
-  makePoint({ n_passed: 38, isBaseline: false, attemptIndex: 2, createdAt: "2024-01-03T00:00:00Z" }),
+  makePoint({ n_passed: 14, isBaseline: true, attemptIndex: 0 }),
+  makePoint({ n_passed: 28, isBaseline: false, attemptIndex: 1 }),
+  makePoint({ n_passed: 38, isBaseline: false, attemptIndex: 2 }),
 ];
 
 const singleSeries: AttemptPoint[] = [

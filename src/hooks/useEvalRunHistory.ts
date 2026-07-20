@@ -4,8 +4,9 @@ import { parseBenchmarkRunResult } from "@/types/legal";
 import type { EvalRunHistoryEntry } from "@/types/legal";
 import {
   normalizeOutput,
-  triggerHasIdentity,
+  sortAttemptsChronologically,
   type EvalTrigger,
+  type EvalTriggerOutput,
   type RawJarvisNode,
 } from "@/lib/harvey-lab/eval-normalizers";
 
@@ -29,6 +30,12 @@ interface StakworkRunRow {
 
 interface UseEvalRunHistoryReturn {
   history: EvalRunHistoryEntry[];
+  /**
+   * All EvalTriggerOutput nodes for this task, flattened across all triggers
+   * and sorted chronologically (baseline first, then reruns ascending).
+   * Each output carries n_passed / n_total from node properties.
+   */
+  attempts: EvalTriggerOutput[];
   isLoading: boolean;
   error: string | null;
   refetch: () => void;
@@ -40,6 +47,7 @@ export function useEvalRunHistory(taskSlug: string): UseEvalRunHistoryReturn {
   const workspaceId = workspace?.id ?? "";
 
   const [history, setHistory] = useState<EvalRunHistoryEntry[]>([]);
+  const [attempts, setAttempts] = useState<EvalTriggerOutput[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [reqId, setReqId] = useState<string | null>(null);
@@ -69,8 +77,10 @@ export function useEvalRunHistory(taskSlug: string): UseEvalRunHistoryReturn {
       }
     }
     resolveReqId();
-    return () => { cancelled = true; };
-  // Phase 1 depends only on identity — reqId is stable; fetchCount belongs to Phase 2 only
+    return () => {
+      cancelled = true;
+    };
+    // Phase 1 depends only on identity — reqId is stable; fetchCount belongs to Phase 2 only
   }, [taskSlug, slug]);
 
   // Phase 2+3: parallel fetch triggers + runs, then join
@@ -85,12 +95,15 @@ export function useEvalRunHistory(taskSlug: string): UseEvalRunHistoryReturn {
       try {
         const [triggersRes, runsRes] = await Promise.all([
           fetch(`/api/workspaces/${slug}/evals/harvey-lab/requirements/${reqId}/triggers`),
-          fetch(`/api/stakwork/runs?type=LEGAL_BENCHMARK_RUNNER&workspaceId=${workspaceId}`),
+          fetch(`/api/stakwork/runs?type=LEGAL_BENCHMARK_EVAL&workspaceId=${workspaceId}`),
         ]);
 
         if (cancelled) return;
 
-        // Parse triggers
+        // Parse triggers — keep ALL triggers, not just those with identity,
+        // because rerun EvalTrigger nodes may not carry agent/start/end fields.
+        // We do NOT apply triggerHasIdentity here so that rerun outputs are
+        // collected for the attempts series.
         const triggersData = (await triggersRes.json()) as {
           data?: { nodes?: RawTriggerNode[] };
         };
@@ -98,13 +111,24 @@ export function useEvalRunHistory(taskSlug: string): UseEvalRunHistoryReturn {
           (t: RawTriggerNode) => ({
             ...t,
             outputs: (t.outputs ?? [])
-              .map(normalizeOutput)
-              .filter((o): o is NonNullable<typeof o> => o !== null),
+              .map((o) => {
+                // RawJarvisNode may carry top-level date_added_to_graph
+                const raw = o as RawJarvisNode & { date_added_to_graph?: string };
+                return normalizeOutput(raw);
+              })
+              .filter((o): o is EvalTriggerOutput => o !== null),
           }),
         );
-        const triggers = rawTriggers.filter(triggerHasIdentity);
 
-        // Parse runs
+        // For the EvalRunsBox history table, still filter by identity to avoid phantom rows
+        const triggersWithIdentity = rawTriggers.filter((t) => {
+          const agent = String(t.properties?.agent ?? "").trim();
+          const start = String(t.properties?.start_point ?? "").trim();
+          const end = String(t.properties?.end_point ?? "").trim();
+          return Boolean(agent || start || end);
+        });
+
+        // Parse eval runs (for the history table join)
         const runsData = (await runsRes.json()) as { data?: StakworkRunRow[] } | StakworkRunRow[];
         const runRows: StakworkRunRow[] = Array.isArray(runsData)
           ? runsData
@@ -112,8 +136,8 @@ export function useEvalRunHistory(taskSlug: string): UseEvalRunHistoryReturn {
 
         if (cancelled) return;
 
-        // Join: trigger.ref_id === parseBenchmarkRunResult(run.result)?.evalTriggerRef
-        const entries: EvalRunHistoryEntry[] = triggers.map((trigger) => {
+        // ── EvalRunsBox history: join identity-filtered triggers with eval runs ──
+        const entries: EvalRunHistoryEntry[] = triggersWithIdentity.map((trigger) => {
           const matchedRun = runRows.find((run) => {
             const parsed = parseBenchmarkRunResult(run.result);
             return parsed?.evalTriggerRef === trigger.ref_id;
@@ -145,7 +169,19 @@ export function useEvalRunHistory(taskSlug: string): UseEvalRunHistoryReturn {
           return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
         });
 
+        // ── Attempts series: flatten ALL outputs from ALL triggers, sorted chrono ──
+        // We include outputs from ALL triggers (not just identity-filtered ones)
+        // so that rerun EvalTrigger outputs are captured for the hill-climb chart.
+        const allOutputs: EvalTriggerOutput[] = rawTriggers.flatMap(
+          (t) =>
+            (t.outputs ?? []).filter(
+              (o) => o.result.trim() !== "" && o.n_passed !== undefined && o.n_total !== undefined,
+            ),
+        );
+        const sortedAttempts = sortAttemptsChronologically(allOutputs);
+
         setHistory(entries);
+        setAttempts(sortedAttempts);
       } catch (err) {
         if (!cancelled) {
           setError(err instanceof Error ? err.message : "Failed to load eval run history.");
@@ -156,8 +192,10 @@ export function useEvalRunHistory(taskSlug: string): UseEvalRunHistoryReturn {
     }
 
     loadHistory();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [taskSlug, slug, workspaceId, reqId, fetchCount]);
 
-  return { history, isLoading, error, refetch };
+  return { history, attempts, isLoading, error, refetch };
 }

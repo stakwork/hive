@@ -78,6 +78,7 @@ vi.mock("@/components/legal/StakworkRunLink", () => ({
 const mockRefetch = vi.fn();
 const mockUseEvalRunHistory = vi.fn(() => ({
   history: [] as import("@/types/legal").EvalRunHistoryEntry[],
+  attempts: [] as import("@/lib/harvey-lab/eval-normalizers").EvalTriggerOutput[],
   isLoading: false,
   error: null,
   refetch: mockRefetch,
@@ -150,6 +151,7 @@ describe("EvalRunsBox — Recursion button", () => {
     vi.clearAllMocks();
     mockUseEvalRunHistory.mockReturnValue({
       history: [],
+      attempts: [],
       isLoading: false,
       error: null,
       refetch: mockRefetch,
@@ -331,6 +333,7 @@ describe("EvalRunsBox — optimistic row", () => {
     // Default: empty history, loaded (isLoading=false so initialLoadComplete fires)
     mockUseEvalRunHistory.mockReturnValue({
       history: [],
+      attempts: [],
       isLoading: false,
       error: null,
       refetch: mockRefetch,
@@ -368,6 +371,7 @@ describe("EvalRunsBox — optimistic row", () => {
     // First render: loaded
     mockUseEvalRunHistory.mockReturnValue({
       history: [],
+      attempts: [],
       isLoading: false,
       error: null,
       refetch: mockRefetch,
@@ -386,7 +390,8 @@ describe("EvalRunsBox — optimistic row", () => {
     act(() => {
       mockUseEvalRunHistory.mockReturnValue({
         history: [],
-        isLoading: true,
+        attempts: [],
+      isLoading: true,
         error: null,
         refetch: mockRefetch,
       });
@@ -418,6 +423,7 @@ describe("EvalRunsBox — optimistic row", () => {
     // Simulate real data arriving: history grows
     await act(async () => {
       mockUseEvalRunHistory.mockReturnValue({
+      attempts: [],
         history: [
           makeEntry({
             triggerId: "trigger-real",
@@ -502,6 +508,7 @@ describe("EvalRunsBox — optimistic row", () => {
     // isLoading=true means initialLoadComplete.current never gets set to true
     mockUseEvalRunHistory.mockReturnValue({
       history: [],
+      attempts: [],
       isLoading: true,
       error: null,
       refetch: mockRefetch,

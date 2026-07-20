@@ -186,6 +186,7 @@ vi.mock("@/components/ui/badge", () => ({
 
 const mockUseEvalRunHistory = vi.fn(() => ({
   history: [] as import("@/types/legal").EvalRunHistoryEntry[],
+  attempts: [] as import("@/lib/harvey-lab/eval-normalizers").EvalTriggerOutput[],
   isLoading: false,
   error: null as string | null,
   refetch: vi.fn(),
@@ -271,6 +272,7 @@ describe("LegalBenchmarkResults", () => {
     });
     mockUseEvalRunHistory.mockReturnValue({
       history: [],
+      attempts: [],
       isLoading: false,
       error: null,
       refetch: vi.fn(),
@@ -884,6 +886,7 @@ describe("LegalBenchmarkResults", () => {
     });
     mockUseEvalRunHistory.mockReturnValue({
       history: [],
+      attempts: [],
       isLoading: false,
       error: null,
       refetch: vi.fn(),
@@ -1284,6 +1287,7 @@ describe("EvalRunsBox", () => {
     });
     mockUseEvalRunHistory.mockReturnValue({
       history: [],
+      attempts: [],
       isLoading: false,
       error: null,
       refetch: vi.fn(),
@@ -1358,6 +1362,7 @@ describe("EvalRunsBox", () => {
     });
     mockUseEvalRunHistory.mockReturnValue({
       history: [newer, older], // newer first (pre-sorted by hook)
+      attempts: [],
       isLoading: false,
       error: null,
       refetch: vi.fn(),
@@ -1376,6 +1381,7 @@ describe("EvalRunsBox", () => {
 
   it("renders judge_notes as Summary for a passing run", () => {
     mockUseEvalRunHistory.mockReturnValue({
+      attempts: [],
       history: [
         makeEvalRunHistoryEntry({
           output: { result: "pass", score: 0.9, judge_notes: "Well structured response" },
@@ -1393,6 +1399,7 @@ describe("EvalRunsBox", () => {
 
   it('renders "Failed" as Summary for a result==="fail" row with no judge_notes', () => {
     mockUseEvalRunHistory.mockReturnValue({
+      attempts: [],
       history: [
         makeEvalRunHistoryEntry({
           output: { result: "fail", score: 0.3 },
@@ -1410,6 +1417,7 @@ describe("EvalRunsBox", () => {
 
   it('renders "Evaluating…" when output is null and projectId is non-null', () => {
     mockUseEvalRunHistory.mockReturnValue({
+      attempts: [],
       history: [
         makeEvalRunHistoryEntry({
           output: null,
@@ -1428,6 +1436,7 @@ describe("EvalRunsBox", () => {
 
   it('renders "—" Summary when output is null and projectId is null', () => {
     mockUseEvalRunHistory.mockReturnValue({
+      attempts: [],
       history: [
         makeEvalRunHistoryEntry({
           output: null,
@@ -1449,6 +1458,7 @@ describe("EvalRunsBox", () => {
   it('renders "No runs yet." in empty state', () => {
     mockUseEvalRunHistory.mockReturnValue({
       history: [],
+      attempts: [],
       isLoading: false,
       error: null,
       refetch: vi.fn(),
@@ -1460,6 +1470,7 @@ describe("EvalRunsBox", () => {
 
   it("renders StakworkRunLink per row when isSuperAdmin=true", () => {
     mockUseEvalRunHistory.mockReturnValue({
+      attempts: [],
       history: [
         makeEvalRunHistoryEntry({
           triggerId: "trigger-1",
@@ -1483,6 +1494,7 @@ describe("EvalRunsBox", () => {
 
   it("StakworkRunLink absent when isSuperAdmin=false", () => {
     mockUseEvalRunHistory.mockReturnValue({
+      attempts: [],
       history: [
         makeEvalRunHistoryEntry({
           triggerId: "trigger-1",
@@ -1504,6 +1516,7 @@ describe("EvalRunsBox", () => {
 
   it("renders relative timestamp via formatDistanceToNow", () => {
     mockUseEvalRunHistory.mockReturnValue({
+      attempts: [],
       history: [
         makeEvalRunHistoryEntry({
           createdAt: "2024-01-15T10:00:00.000Z",
@@ -1522,6 +1535,7 @@ describe("EvalRunsBox", () => {
   it("renders 3 Skeleton rows while isLoading=true", () => {
     mockUseEvalRunHistory.mockReturnValue({
       history: [],
+      attempts: [],
       isLoading: true,
       error: null,
       refetch: vi.fn(),

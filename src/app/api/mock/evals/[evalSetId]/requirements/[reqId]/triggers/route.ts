@@ -4,6 +4,54 @@ export const runtime = "nodejs";
 
 type RouteParams = { params: Promise<{ evalSetId: string; reqId: string }> };
 
+// Baseline and rerun EvalTriggerOutput nodes for req-1-1.
+// id shape: `task_slug-source_run_id` (baseline) / `task_slug-source_run_id--<rerun_project_id>` (rerun)
+// date_added_to_graph: Unix-epoch string, top-level (outside properties)
+const OUTPUTS_REQ_1_1 = [
+  {
+    ref_id: "output-mock-1-baseline",
+    node_type: "EvalTriggerOutput",
+    date_added_to_graph: "1720000000",
+    properties: {
+      id: "antitrust/task-1-src-run-abc123",
+      result: "fail",
+      score: 0.33,
+      attempt_number: 1,
+      n_passed: 14,
+      n_total: 42,
+      judge_notes: "Baseline run — many criteria unmet.",
+    },
+  },
+  {
+    ref_id: "output-mock-1-rerun-1",
+    node_type: "EvalTriggerOutput",
+    date_added_to_graph: "1720086400",
+    properties: {
+      id: "antitrust/task-1-src-run-abc123--100001",
+      result: "fail",
+      score: 0.67,
+      attempt_number: 2,
+      n_passed: 28,
+      n_total: 42,
+      judge_notes: "Improved significantly after first rerun.",
+    },
+  },
+  {
+    ref_id: "output-mock-1-rerun-2",
+    node_type: "EvalTriggerOutput",
+    date_added_to_graph: "1720172800",
+    properties: {
+      id: "antitrust/task-1-src-run-abc123--100002",
+      result: "pass",
+      score: 0.90,
+      attempt_number: 3,
+      n_passed: 38,
+      n_total: 42,
+      judge_notes: "Near-complete pass after second rerun.",
+    },
+  },
+];
+
 const MOCK_TRIGGERS: Record<string, object[]> = {
   "req-1-1": [
     {
@@ -19,20 +67,10 @@ const MOCK_TRIGGERS: Record<string, object[]> = {
         undesirable_cases: ["Review is empty", "Misses critical bugs"],
         run_count: 3,
       },
-      outputs: [
-        {
-          ref_id: "output-mock-1",
-          node_type: "EvalTriggerOutput",
-          properties: {
-            result: "pass",
-            score: 0.87,
-            attempt_number: 1,
-            judge_notes: "Response was accurate and complete.",
-          },
-        },
-      ],
+      outputs: OUTPUTS_REQ_1_1,
     },
     {
+      // Trigger with zero outputs — exercises "no runs yet" state for a second trigger
       ref_id: "trigger-1-2",
       node_type: "EvalTrigger",
       properties: {
@@ -43,8 +81,9 @@ const MOCK_TRIGGERS: Record<string, object[]> = {
         change_type: "bugfix",
         desirable_cases: ["All tests pass", "Coverage above 80%"],
         undesirable_cases: ["Tests fail", "Coverage drops"],
-        run_count: 5,
+        run_count: 0,
       },
+      outputs: [],
     },
   ],
   "req-1-2": [
