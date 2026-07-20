@@ -1,40 +1,71 @@
 /**
  * @vitest-environment jsdom
  *
- * Tests for EvalRunsBox optimistic-row injection, polling loop, and real-data detection.
+ * Tests for EvalRunsBox rewritten to consume ProposedFix[] from props.
  */
 import React from "react";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, act, waitFor, fireEvent } from "@testing-library/react";
+import { render, screen, act, fireEvent } from "@testing-library/react";
 
 globalThis.React = React;
 
-// ─── Mocks ───────────────────────────────────────────────────────────────────
+// ─── Pusher mock (follows useCanvasChatAutoSave.test.ts pattern) ─────────────
+const { fakePusher } = vi.hoisted(() => {
+  const handlers: Record<string, ((...a: unknown[]) => void)[]> = {};
+  const channel = {
+    bind: (ev: string, h: (...a: unknown[]) => void) => {
+      (handlers[ev] ??= []).push(h);
+    },
+    unbind: (ev: string) => {
+      handlers[ev] = [];
+    },
+    unbind_all: () => {
+      Object.keys(handlers).forEach((k) => { handlers[k] = []; });
+    },
+  };
+  const client = {
+    subscribe: () => channel,
+    unsubscribe: () => {},
+  };
+  return {
+    fakePusher: {
+      client,
+      /**
+       * Simulate a Pusher event on the subscribed channel.
+       * All registered handlers for the event are called.
+       */
+      fire: (ev: string, data: unknown) => {
+        (handlers[ev] ?? []).forEach((h) => h(data));
+      },
+    },
+  };
+});
 
-// useWorkspace
+vi.mock("@/lib/pusher", () => ({
+  getPusherClient: () => fakePusher.client,
+  getWorkspaceChannelName: (slug: string) => `workspace-${slug}`,
+  PUSHER_EVENTS: {
+    STAKWORK_RUN_UPDATE: "stakwork-run-update",
+  },
+}));
+
+// ─── useWorkspace ─────────────────────────────────────────────────────────────
 vi.mock("@/hooks/useWorkspace", () => ({
   useWorkspace: () => ({ workspace: { slug: "openlaw", id: "ws-1" } }),
 }));
 
-// sonner — mock before any dynamic import resolves
+// ─── sonner ──────────────────────────────────────────────────────────────────
 const mockToastSuccess = vi.fn();
-const mockToastWarning = vi.fn();
 const mockToastError = vi.fn();
 
 vi.mock("sonner", () => ({
   toast: {
     success: (...args: unknown[]) => mockToastSuccess(...args),
-    warning: (...args: unknown[]) => mockToastWarning(...args),
     error: (...args: unknown[]) => mockToastError(...args),
   },
 }));
 
-// date-fns
-vi.mock("date-fns", () => ({
-  formatDistanceToNow: () => "just now",
-}));
-
-// UI primitives
+// ─── UI primitives ────────────────────────────────────────────────────────────
 vi.mock("@/components/ui/skeleton", () => ({
   Skeleton: ({ className }: { className?: string }) =>
     React.createElement("div", { "data-testid": "skeleton", className }),
@@ -51,45 +82,27 @@ vi.mock("@/components/ui/button", () => ({
     onClick?: () => void;
     disabled?: boolean;
     [k: string]: unknown;
-  }) =>
-    React.createElement("button", { onClick, disabled, ...rest }, children),
+  }) => React.createElement("button", { onClick, disabled, ...rest }, children),
 }));
 
-// StakworkRunLink — render a simple link so we can assert the href
-vi.mock("@/components/legal/StakworkRunLink", () => ({
-  StakworkRunLink: ({
-    projectId,
-    isSuperAdmin,
+vi.mock("@/components/ui/badge", () => ({
+  Badge: ({
+    children,
+    className,
+    variant,
   }: {
-    projectId: number | null;
-    isSuperAdmin: boolean;
-  }) => {
-    if (!isSuperAdmin || projectId == null) return null;
-    return React.createElement(
-      "a",
-      { href: `https://jobs.stakwork.com/admin/projects/${projectId}` },
-      "View on Stakwork",
-    );
-  },
+    children: React.ReactNode;
+    className?: string;
+    variant?: string;
+  }) =>
+    React.createElement(
+      "span",
+      { "data-testid": "badge", className, "data-variant": variant },
+      children,
+    ),
 }));
 
-// ─── useEvalRunHistory mock ───────────────────────────────────────────────────
-
-const mockRefetch = vi.fn();
-const mockUseEvalRunHistory = vi.fn(() => ({
-  history: [] as import("@/types/legal").EvalRunHistoryEntry[],
-  attempts: [] as import("@/lib/harvey-lab/eval-normalizers").EvalTriggerOutput[],
-  isLoading: false,
-  error: null,
-  refetch: mockRefetch,
-}));
-
-vi.mock("@/hooks/useEvalRunHistory", () => ({
-  useEvalRunHistory: (taskSlug: string) => mockUseEvalRunHistory(taskSlug),
-}));
-
-// ─── useLegalBenchmarkEval mock ───────────────────────────────────────────────
-
+// ─── useLegalBenchmarkEval ────────────────────────────────────────────────────
 const mockRunEval = vi.fn(async () => ({
   status: "started" as import("@/hooks/useLegalBenchmarkEval").EvalResultStatus,
   message: "Eval started.",
@@ -104,19 +117,29 @@ vi.mock("@/hooks/useLegalBenchmarkEval", () => ({
 }));
 
 // ─── Component under test ─────────────────────────────────────────────────────
-
 const { EvalRunsBox } = await import("@/components/legal/EvalRunsBox");
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
+const mockRefetch = vi.fn();
 
-function makeEntry(
-  overrides: Partial<import("@/types/legal").EvalRunHistoryEntry> = {},
-): import("@/types/legal").EvalRunHistoryEntry {
+function makeFix(
+  overrides: Partial<import("@/types/legal").ProposedFix> = {},
+): import("@/types/legal").ProposedFix {
   return {
-    triggerId: "trigger-1",
-    output: null,
-    createdAt: "2024-01-15T10:00:00.000Z",
-    projectId: null,
+    ref_id: "fix-1",
+    criterion_id: "crit-1",
+    criterion_title: "Accuracy",
+    prompt_name: "my-prompt",
+    delta: "Added more context",
+    before_score: "6",
+    after_score: "8",
+    score_delta: "+2",
+    status: "pending",
+    passing_value: "Improved prompt text",
+    failing_value: "Original prompt text",
+    reasoning: "The new version is clearer.",
+    resolved_by: null,
+    resolved_at: null,
     ...overrides,
   };
 }
@@ -126,14 +149,15 @@ function renderBox(props: Partial<React.ComponentProps<typeof EvalRunsBox>> = {}
     React.createElement(EvalRunsBox, {
       taskSlug: "antitrust/task-1",
       runId: "run-abc",
-      isSuperAdmin: true,
       showRunEvalButton: true,
+      fixes: [],
+      isLoading: false,
+      refetch: mockRefetch,
       ...props,
     }),
   );
 }
 
-/** Click the "Run Eval" button and flush microtasks so handleRunEval resolves. */
 async function clickRunEval() {
   fireEvent.click(screen.getByRole("button", { name: "Run Eval" }));
   await act(async () => {
@@ -144,28 +168,358 @@ async function clickRunEval() {
 
 // ─── Tests ────────────────────────────────────────────────────────────────────
 
-// ─── Recursion enroll tests ───────────────────────────────────────────────────
+describe("EvalRunsBox — empty & loading states", () => {
+  beforeEach(() => vi.clearAllMocks());
 
-describe("EvalRunsBox — Recursion button", () => {
+  it('renders "No eval results yet." when fixes=[] and isLoading=false', () => {
+    renderBox({ fixes: [], isLoading: false });
+    expect(screen.getByText("No eval results yet.")).toBeInTheDocument();
+  });
+
+  it("renders skeleton rows when isLoading=true and fixes=[]", () => {
+    renderBox({ fixes: [], isLoading: true });
+    const skeletons = screen.getAllByTestId("skeleton");
+    expect(skeletons.length).toBeGreaterThanOrEqual(3);
+  });
+});
+
+describe("EvalRunsBox — collapsed row rendering", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("renders Accepted badge (green) for status='accepted'", () => {
+    renderBox({ fixes: [makeFix({ status: "accepted" })] });
+    const badge = screen.getByTestId("badge");
+    expect(badge).toHaveTextContent("Accepted");
+    expect(badge.className).toContain("green");
+  });
+
+  it("renders Rejected badge (red) for status='rejected'", () => {
+    renderBox({ fixes: [makeFix({ status: "rejected" })] });
+    const badge = screen.getByTestId("badge");
+    expect(badge).toHaveTextContent("Rejected");
+    expect(badge.className).toContain("red");
+  });
+
+  it("renders Pending badge (muted) for status='pending'", () => {
+    renderBox({ fixes: [makeFix({ status: "pending" })] });
+    const badge = screen.getByTestId("badge");
+    expect(badge).toHaveTextContent("Pending");
+  });
+
+  it("renders Criterion column from criterion_title", () => {
+    renderBox({ fixes: [makeFix({ criterion_title: "My Criterion" })] });
+    expect(screen.getByText("My Criterion")).toBeInTheDocument();
+  });
+
+  it("renders Prompt column from prompt_name", () => {
+    renderBox({ fixes: [makeFix({ prompt_name: "cool-prompt" })] });
+    expect(screen.getByText("cool-prompt")).toBeInTheDocument();
+  });
+
+  it("renders Score as 'before → after' when both present", () => {
+    renderBox({ fixes: [makeFix({ before_score: "6", after_score: "8", score_delta: "+2" })] });
+    expect(screen.getByText("6 → 8")).toBeInTheDocument();
+  });
+
+  it("renders Score as score_delta when before/after are null", () => {
+    renderBox({
+      fixes: [makeFix({ before_score: null, after_score: null, score_delta: "+2" })],
+    });
+    expect(screen.getByText("+2")).toBeInTheDocument();
+  });
+
+  it("truncates Change column to 80 chars + ellipsis", () => {
+    const longDelta = "x".repeat(90);
+    renderBox({ fixes: [makeFix({ delta: longDelta })] });
+    expect(screen.getByText("x".repeat(80) + "…")).toBeInTheDocument();
+  });
+});
+
+describe("EvalRunsBox — expand/collapse", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("clicking chevron shows expanded content", async () => {
+    renderBox({ fixes: [makeFix()] });
+
+    // Expanded content is not visible initially
+    expect(screen.queryByText("Proposed Prompt")).toBeNull();
+
+    // Click the expand button
+    const chevron = screen.getByRole("button", { name: "Expand" });
+    await act(async () => { fireEvent.click(chevron); });
+
+    expect(screen.getByText("Proposed Prompt")).toBeInTheDocument();
+    expect(screen.getByText("Previous Prompt")).toBeInTheDocument();
+    expect(screen.getByText("Reasoning")).toBeInTheDocument();
+    expect(screen.getByText("Improved prompt text")).toBeInTheDocument();
+  });
+
+  it("clicking chevron again collapses the row", async () => {
+    renderBox({ fixes: [makeFix()] });
+
+    const chevron = screen.getByRole("button", { name: "Expand" });
+    await act(async () => { fireEvent.click(chevron); });
+    expect(screen.getByText("Proposed Prompt")).toBeInTheDocument();
+
+    const collapse = screen.getByRole("button", { name: "Collapse" });
+    await act(async () => { fireEvent.click(collapse); });
+    expect(screen.queryByText("Proposed Prompt")).toBeNull();
+  });
+
+  it("shows resolved info when resolved_at is set", async () => {
+    renderBox({
+      fixes: [
+        makeFix({
+          resolved_by: "uuid-abc",
+          resolved_at: "2024-06-01T12:00:00.000Z",
+          status: "accepted",
+        }),
+      ],
+    });
+    const chevron = screen.getByRole("button", { name: "Expand" });
+    await act(async () => { fireEvent.click(chevron); });
+    expect(screen.getByText(/Resolved by uuid-abc/)).toBeInTheDocument();
+  });
+});
+
+describe("EvalRunsBox — sorting", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("unresolved entries (null resolved_at) sort above resolved ones", () => {
+    const resolved = makeFix({
+      ref_id: "fix-resolved",
+      criterion_title: "Old Resolved",
+      resolved_at: "2024-01-01T00:00:00.000Z",
+    });
+    const unresolved = makeFix({
+      ref_id: "fix-unresolved",
+      criterion_title: "Pending One",
+      resolved_at: null,
+    });
+    renderBox({ fixes: [resolved, unresolved] });
+
+    const allText = document.body.textContent ?? "";
+    expect(allText.indexOf("Pending One")).toBeLessThan(allText.indexOf("Old Resolved"));
+  });
+});
+
+describe("EvalRunsBox — optimistic spinner row", () => {
   beforeEach(() => {
+    vi.useFakeTimers();
     vi.clearAllMocks();
-    mockUseEvalRunHistory.mockReturnValue({
-      attempts: [],
-      history: [],
-      isLoading: false,
-      error: null,
-      refetch: mockRefetch,
+    mockRunEval.mockResolvedValue({
+      status: "started",
+      message: "Eval started.",
+      projectId: 99,
     });
   });
+
+  afterEach(() => {
+    vi.clearAllTimers();
+    vi.useRealTimers();
+  });
+
+  it("shows optimistic spinner row immediately after clicking Run Eval", async () => {
+    renderBox({ fixes: [] });
+    await clickRunEval();
+
+    expect(screen.getByText("Evaluating…")).toBeInTheDocument();
+    // All other columns show "—"
+    const dashes = screen.getAllByText("—");
+    expect(dashes.length).toBeGreaterThanOrEqual(4);
+    // No expand chevron in optimistic row
+    expect(screen.queryByRole("button", { name: "Expand" })).toBeNull();
+  });
+
+  it("3-minute timeout clears the optimistic row", async () => {
+    renderBox({ fixes: [] });
+    await clickRunEval();
+
+    expect(screen.getByText("Evaluating…")).toBeInTheDocument();
+
+    await act(async () => {
+      vi.advanceTimersByTime(3 * 60 * 1000);
+      await Promise.resolve();
+    });
+
+    expect(screen.queryByText("Evaluating…")).toBeNull();
+    expect(screen.getByText("No eval results yet.")).toBeInTheDocument();
+  });
+
+  it("polling fires refetch every 10 seconds", async () => {
+    renderBox({ fixes: [] });
+    await clickRunEval();
+
+    mockRefetch.mockClear();
+    act(() => { vi.advanceTimersByTime(10_000); });
+    expect(mockRefetch).toHaveBeenCalledTimes(1);
+
+    act(() => { vi.advanceTimersByTime(10_000); });
+    expect(mockRefetch).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("EvalRunsBox — Pusher completion detection", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.clearAllMocks();
+    mockRunEval.mockResolvedValue({
+      status: "started",
+      message: "Eval started.",
+      projectId: 99,
+    });
+  });
+
+  afterEach(() => {
+    vi.clearAllTimers();
+    vi.useRealTimers();
+  });
+
+  async function setupOptimisticRow(runId = "run-abc") {
+    renderBox({ fixes: [], runId });
+    await clickRunEval();
+    expect(screen.getByText("Evaluating…")).toBeInTheDocument();
+  }
+
+  it("COMPLETED status clears optimistic row and calls refetch", async () => {
+    await setupOptimisticRow();
+    mockRefetch.mockClear();
+
+    await act(async () => {
+      fakePusher.fire("stakwork-run-update", {
+        type: "LEGAL_BENCHMARK_EVAL",
+        runId: "run-abc",
+        status: "COMPLETED",
+      });
+      await Promise.resolve();
+    });
+
+    expect(screen.queryByText("Evaluating…")).toBeNull();
+    expect(mockRefetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("ERROR status clears optimistic row", async () => {
+    await setupOptimisticRow();
+    mockRefetch.mockClear();
+
+    await act(async () => {
+      fakePusher.fire("stakwork-run-update", {
+        type: "LEGAL_BENCHMARK_EVAL",
+        runId: "run-abc",
+        status: "ERROR",
+      });
+      await Promise.resolve();
+    });
+
+    expect(screen.queryByText("Evaluating…")).toBeNull();
+    expect(mockRefetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("HALTED status clears optimistic row", async () => {
+    await setupOptimisticRow();
+    mockRefetch.mockClear();
+
+    await act(async () => {
+      fakePusher.fire("stakwork-run-update", {
+        type: "LEGAL_BENCHMARK_EVAL",
+        runId: "run-abc",
+        status: "HALTED",
+      });
+      await Promise.resolve();
+    });
+
+    expect(screen.queryByText("Evaluating…")).toBeNull();
+    expect(mockRefetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("wrong runId guard — optimistic row persists, refetch NOT called", async () => {
+    await setupOptimisticRow("run-abc");
+    mockRefetch.mockClear();
+
+    await act(async () => {
+      fakePusher.fire("stakwork-run-update", {
+        type: "LEGAL_BENCHMARK_EVAL",
+        runId: "other-run",
+        status: "COMPLETED",
+      });
+      await Promise.resolve();
+    });
+
+    expect(screen.getByText("Evaluating…")).toBeInTheDocument();
+    expect(mockRefetch).not.toHaveBeenCalled();
+  });
+
+  it("wrong type guard — optimistic row persists", async () => {
+    await setupOptimisticRow();
+    mockRefetch.mockClear();
+
+    await act(async () => {
+      fakePusher.fire("stakwork-run-update", {
+        type: "LEGAL_BENCHMARK_RUNNER",
+        runId: "run-abc",
+        status: "COMPLETED",
+      });
+      await Promise.resolve();
+    });
+
+    expect(screen.getByText("Evaluating…")).toBeInTheDocument();
+    expect(mockRefetch).not.toHaveBeenCalled();
+  });
+});
+
+describe("EvalRunsBox — polling fallback via fixes growth", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.clearAllMocks();
+    mockRunEval.mockResolvedValue({
+      status: "started",
+      message: "Eval started.",
+      projectId: 99,
+    });
+  });
+
+  afterEach(() => {
+    vi.clearAllTimers();
+    vi.useRealTimers();
+  });
+
+  it("clears optimistic row when fixes.length grows past pre-launch snapshot", async () => {
+    const { rerender } = renderBox({ fixes: [] });
+    await clickRunEval();
+    expect(screen.getByText("Evaluating…")).toBeInTheDocument();
+
+    // Simulate fixes arriving
+    await act(async () => {
+      rerender(
+        React.createElement(EvalRunsBox, {
+          taskSlug: "antitrust/task-1",
+          runId: "run-abc",
+          showRunEvalButton: true,
+          fixes: [makeFix({ ref_id: "new-fix", criterion_title: "Accuracy" })],
+          isLoading: false,
+          refetch: mockRefetch,
+        }),
+      );
+      await Promise.resolve();
+    });
+
+    expect(screen.queryByText("Evaluating…")).toBeNull();
+  });
+});
+
+describe("EvalRunsBox — Recursion button", () => {
+  beforeEach(() => vi.clearAllMocks());
 
   it("renders Recursion button when showRecursionButton=true", () => {
     render(
       React.createElement(EvalRunsBox, {
         taskSlug: "antitrust/task-1",
         runId: "run-abc",
-        isSuperAdmin: false,
         showRunEvalButton: false,
         showRecursionButton: true,
+        fixes: [],
+        isLoading: false,
+        refetch: mockRefetch,
       }),
     );
     expect(screen.getByRole("button", { name: "Recursion" })).toBeInTheDocument();
@@ -176,8 +530,10 @@ describe("EvalRunsBox — Recursion button", () => {
       React.createElement(EvalRunsBox, {
         taskSlug: "antitrust/task-1",
         runId: "run-abc",
-        isSuperAdmin: false,
         showRunEvalButton: false,
+        fixes: [],
+        isLoading: false,
+        refetch: mockRefetch,
       }),
     );
     expect(screen.queryByRole("button", { name: "Recursion" })).toBeNull();
@@ -188,15 +544,17 @@ describe("EvalRunsBox — Recursion button", () => {
       React.createElement(EvalRunsBox, {
         taskSlug: "antitrust/task-1",
         runId: "run-abc",
-        isSuperAdmin: false,
         showRunEvalButton: false,
         showRecursionButton: false,
+        fixes: [],
+        isLoading: false,
+        refetch: mockRefetch,
       }),
     );
     expect(screen.queryByRole("button", { name: "Recursion" })).toBeNull();
   });
 
-  it("clicking Recursion button POSTs to the enable endpoint with only taskSlug", async () => {
+  it("clicking Recursion button POSTs to the workspace-scoped enable endpoint", async () => {
     const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200 });
     global.fetch = fetchMock;
 
@@ -204,9 +562,11 @@ describe("EvalRunsBox — Recursion button", () => {
       React.createElement(EvalRunsBox, {
         taskSlug: "antitrust/task-1",
         runId: "run-abc",
-        isSuperAdmin: false,
         showRunEvalButton: false,
         showRecursionButton: true,
+        fixes: [],
+        isLoading: false,
+        refetch: mockRefetch,
       }),
     );
 
@@ -226,16 +586,18 @@ describe("EvalRunsBox — Recursion button", () => {
     );
   });
 
-  it("shows success toast on 200 OK enroll response", async () => {
+  it("shows success toast on 200 OK response", async () => {
     global.fetch = vi.fn().mockResolvedValue({ ok: true, status: 200 });
 
     render(
       React.createElement(EvalRunsBox, {
         taskSlug: "antitrust/task-1",
         runId: "run-abc",
-        isSuperAdmin: false,
         showRunEvalButton: false,
         showRecursionButton: true,
+        fixes: [],
+        isLoading: false,
+        refetch: mockRefetch,
       }),
     );
 
@@ -246,45 +608,21 @@ describe("EvalRunsBox — Recursion button", () => {
     });
 
     expect(mockToastSuccess).toHaveBeenCalledWith("Enrolled in recursion loop");
-    expect(mockToastWarning).not.toHaveBeenCalled();
     expect(mockToastError).not.toHaveBeenCalled();
   });
 
-  it("shows success toast when toggling an already-enrolled task (idempotent)", async () => {
-    // The new endpoint treats enabling an already-true flag as success (idempotent)
-    global.fetch = vi.fn().mockResolvedValue({ ok: true, status: 200 });
-
-    render(
-      React.createElement(EvalRunsBox, {
-        taskSlug: "antitrust/task-1",
-        runId: "run-abc",
-        isSuperAdmin: false,
-        showRunEvalButton: false,
-        showRecursionButton: true,
-      }),
-    );
-
-    await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "Recursion" }));
-      await Promise.resolve();
-      await Promise.resolve();
-    });
-
-    expect(mockToastSuccess).toHaveBeenCalledWith("Enrolled in recursion loop");
-    expect(mockToastWarning).not.toHaveBeenCalled();
-    expect(mockToastError).not.toHaveBeenCalled();
-  });
-
-  it("shows error toast on non-ok, non-409 response", async () => {
+  it("shows error toast on non-ok response", async () => {
     global.fetch = vi.fn().mockResolvedValue({ ok: false, status: 500 });
 
     render(
       React.createElement(EvalRunsBox, {
         taskSlug: "antitrust/task-1",
         runId: "run-abc",
-        isSuperAdmin: false,
         showRunEvalButton: false,
         showRecursionButton: true,
+        fixes: [],
+        isLoading: false,
+        refetch: mockRefetch,
       }),
     );
 
@@ -295,8 +633,6 @@ describe("EvalRunsBox — Recursion button", () => {
     });
 
     expect(mockToastError).toHaveBeenCalledWith("Failed to enroll");
-    expect(mockToastSuccess).not.toHaveBeenCalled();
-    expect(mockToastWarning).not.toHaveBeenCalled();
   });
 
   it("shows error toast when fetch throws", async () => {
@@ -306,9 +642,11 @@ describe("EvalRunsBox — Recursion button", () => {
       React.createElement(EvalRunsBox, {
         taskSlug: "antitrust/task-1",
         runId: "run-abc",
-        isSuperAdmin: false,
         showRunEvalButton: false,
         showRecursionButton: true,
+        fixes: [],
+        isLoading: false,
+        refetch: mockRefetch,
       }),
     );
 
@@ -319,211 +657,5 @@ describe("EvalRunsBox — Recursion button", () => {
     });
 
     expect(mockToastError).toHaveBeenCalledWith("Failed to enroll");
-    expect(mockToastSuccess).not.toHaveBeenCalled();
-    expect(mockToastWarning).not.toHaveBeenCalled();
-  });
-});
-
-// ─── Optimistic row tests ─────────────────────────────────────────────────────
-
-describe("EvalRunsBox — optimistic row", () => {
-  beforeEach(() => {
-    vi.useFakeTimers();
-    vi.clearAllMocks();
-    // Default: empty history, loaded (isLoading=false so initialLoadComplete fires)
-    mockUseEvalRunHistory.mockReturnValue({
-      attempts: [],
-      history: [],
-      isLoading: false,
-      error: null,
-      refetch: mockRefetch,
-    });
-    mockRunEval.mockResolvedValue({
-      status: "started",
-      message: "Eval started.",
-      projectId: 99,
-    });
-  });
-
-  afterEach(() => {
-    vi.clearAllTimers();
-    vi.useRealTimers();
-  });
-
-  it("shows optimistic row immediately after clicking Run Eval", async () => {
-    renderBox();
-
-    // Initial load settles (isLoading=false triggers initialLoadComplete.current = true)
-    await act(async () => {
-      await Promise.resolve();
-    });
-
-    await clickRunEval();
-
-    // Optimistic row: "Evaluating…" spinner and Stakwork link for project 99
-    expect(screen.getByText("Evaluating…")).toBeInTheDocument();
-    expect(
-      screen.getByRole("link", { name: /view on stakwork/i }),
-    ).toHaveAttribute("href", "https://jobs.stakwork.com/admin/projects/99");
-  });
-
-  it("does NOT show skeleton rows while optimistic row is visible (even if isLoading=true)", async () => {
-    // First render: loaded
-    mockUseEvalRunHistory.mockReturnValue({
-      attempts: [],
-      history: [],
-      isLoading: false,
-      error: null,
-      refetch: mockRefetch,
-    });
-
-    const { rerender } = renderBox();
-    await act(async () => {
-      await Promise.resolve();
-    });
-
-    // Click Run Eval
-    await clickRunEval();
-    expect(screen.getByText("Evaluating…")).toBeInTheDocument();
-
-    // Simulate a poll tick: isLoading becomes true but history is still empty
-    act(() => {
-      mockUseEvalRunHistory.mockReturnValue({
-        attempts: [],
-      history: [],
-        isLoading: true,
-        error: null,
-        refetch: mockRefetch,
-      });
-      rerender(
-        React.createElement(EvalRunsBox, {
-          taskSlug: "antitrust/task-1",
-          runId: "run-abc",
-          isSuperAdmin: true,
-          showRunEvalButton: true,
-        }),
-      );
-    });
-
-    // Skeleton rows must NOT appear — optimistic entry is still visible
-    expect(screen.queryByTestId("skeleton")).toBeNull();
-    expect(screen.getByText("Evaluating…")).toBeInTheDocument();
-  });
-
-  it("removes optimistic row and stops polling when history grows", async () => {
-    const { rerender } = renderBox();
-
-    await act(async () => {
-      await Promise.resolve();
-    });
-
-    await clickRunEval();
-    expect(screen.getByText("Evaluating…")).toBeInTheDocument();
-
-    // Simulate real data arriving: history grows
-    await act(async () => {
-      mockUseEvalRunHistory.mockReturnValue({
-        history: [
-          makeEntry({
-            triggerId: "trigger-real",
-            output: { result: "pass", score: 0.9 },
-            projectId: 999,
-            createdAt: "2024-01-15T10:00:00.000Z",
-          }),
-        ],
-        isLoading: false,
-        error: null,
-        refetch: mockRefetch,
-      });
-      rerender(
-        React.createElement(EvalRunsBox, {
-          taskSlug: "antitrust/task-1",
-          runId: "run-abc",
-          isSuperAdmin: true,
-          showRunEvalButton: true,
-        }),
-      );
-      await Promise.resolve();
-      await Promise.resolve();
-    });
-
-    // Optimistic row should be gone; real entry visible
-    expect(screen.queryByText("Evaluating…")).toBeNull();
-
-    // clearInterval should have been called (polling stopped)
-    // We verify indirectly: refetch should NOT continue firing after 10s
-    mockRefetch.mockClear();
-    act(() => {
-      vi.advanceTimersByTime(10_000);
-    });
-    expect(mockRefetch).not.toHaveBeenCalled();
-  });
-
-  it("clears optimistic row after 3-minute timeout (silent workflow failure)", async () => {
-    renderBox();
-
-    await act(async () => {
-      await Promise.resolve();
-    });
-
-    await clickRunEval();
-    expect(screen.getByText("Evaluating…")).toBeInTheDocument();
-
-    // Advance 3 minutes — timeout should fire and state should update
-    await act(async () => {
-      vi.advanceTimersByTime(3 * 60 * 1000);
-      await Promise.resolve();
-      await Promise.resolve();
-    });
-
-    // Optimistic row cleared; no-runs message should be back
-    expect(screen.queryByText("Evaluating…")).toBeNull();
-    expect(screen.getByText("No runs yet.")).toBeInTheDocument();
-  });
-
-  it("polling fires refetch every 10 seconds while optimistic row is active", async () => {
-    renderBox();
-
-    await act(async () => {
-      await Promise.resolve();
-    });
-
-    await clickRunEval();
-    expect(screen.getByText("Evaluating…")).toBeInTheDocument();
-
-    mockRefetch.mockClear();
-    act(() => {
-      vi.advanceTimersByTime(10_000);
-    });
-    expect(mockRefetch).toHaveBeenCalledTimes(1);
-
-    act(() => {
-      vi.advanceTimersByTime(10_000);
-    });
-    expect(mockRefetch).toHaveBeenCalledTimes(2);
-  });
-
-  it("does NOT set optimistic entry when initial load is still in-flight (initialLoadComplete=false)", async () => {
-    // isLoading=true means initialLoadComplete.current never gets set to true
-    mockUseEvalRunHistory.mockReturnValue({
-      attempts: [],
-      history: [],
-      isLoading: true,
-      error: null,
-      refetch: mockRefetch,
-    });
-
-    renderBox();
-    // Do NOT settle the load — isLoading stays true
-
-    await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "Run Eval" }));
-      await Promise.resolve();
-      await Promise.resolve();
-    });
-
-    // Skeleton rows should be present (initial load still in-flight, no optimistic entry)
-    expect(screen.getAllByTestId("skeleton")).toHaveLength(3);
-    expect(screen.queryByText("Evaluating…")).toBeNull();
   });
 });

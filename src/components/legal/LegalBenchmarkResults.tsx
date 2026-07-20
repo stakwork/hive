@@ -10,7 +10,6 @@ import { useLegalBenchmarkRun } from "@/hooks/useLegalBenchmarkRun";
 import { useProposedFixes } from "@/hooks/useProposedFixes";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { StakworkRunLink } from "@/components/legal/StakworkRunLink";
-import { ProposedFixCard } from "@/components/legal/ProposedFixCard";
 import { EvalRunsBox } from "@/components/legal/EvalRunsBox";
 
 interface LegalBenchmarkResultsProps {
@@ -36,9 +35,6 @@ export function LegalBenchmarkResults({ runId, onReset, isSuperAdmin = false }: 
     fixes,
     isLoading: fixesLoading,
     refetch: refetchFixes,
-    accept: acceptFix,
-    reject: rejectFix,
-    pendingRefIds,
   } = useProposedFixes(runId);
 
   const allPass = run?.runnerRun?.result?.all_pass;
@@ -292,45 +288,15 @@ export function LegalBenchmarkResults({ runId, onReset, isSuperAdmin = false }: 
           </div>
         )}
 
-        {/* Proposed Fixes */}
-        <div className="rounded-lg border bg-card">
-          <div className="flex items-center justify-between px-4 py-3 border-b">
-            <h3 className="font-semibold text-sm">Proposed Fixes</h3>
-            <Button size="sm" variant="ghost" onClick={refetchFixes} aria-label="Refresh proposed fixes">
-              <RefreshCw className="h-3.5 w-3.5" />
-            </Button>
-          </div>
-          <div className="p-4">
-            {fixesLoading ? (
-              <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <Loader2 className="h-4 w-4 animate-spin shrink-0" />
-                <span>Loading fix proposals…</span>
-              </div>
-            ) : fixes.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No fix proposals for this run yet.</p>
-            ) : (
-              <div className="space-y-3">
-                {fixes.map((fix, i) => (
-                  <ProposedFixCard
-                    key={fix.ref_id ?? fix.criterion_id ?? i}
-                    fix={fix}
-                    onAccept={acceptFix}
-                    onReject={rejectFix}
-                    isPending={fix.ref_id ? pendingRefIds.has(fix.ref_id) : false}
-                  />
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
-
         {/* Eval Runs history table — Run Eval button lives here */}
         <EvalRunsBox
           taskSlug={run.taskSlug}
           runId={run.id}
-          isSuperAdmin={isSuperAdmin}
           showRunEvalButton={showRunEvalButton}
           showRecursionButton={slug === "openlaw" && unevaluatedFailedCount > 0}
+          fixes={fixes}
+          isLoading={fixesLoading}
+          refetch={refetchFixes}
         />
 
         <div className="flex justify-end gap-2">
