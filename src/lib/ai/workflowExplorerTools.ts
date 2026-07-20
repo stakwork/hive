@@ -20,7 +20,7 @@ import { tool, type ToolSet } from "ai";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
-import { repoAgent } from "./askTools";
+import { repoAgent, REPO_AGENT_CANCELLED } from "./askTools";
 
 /** The workspace whose swarm hosts the Jarvis workflow-library graph. */
 const WORKFLOW_LIBRARY_WORKSPACE_SLUG = "stakwork";
@@ -96,6 +96,7 @@ export function buildWorkflowExplorerTools(): ToolSet {
             prompt,
             mode: "workflow",
           });
+          if (rr === REPO_AGENT_CANCELLED) return "Agent run was cancelled";
           return rr.content;
         } catch (e) {
           console.error("Error executing workflow explorer agent:", e);

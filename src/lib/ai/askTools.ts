@@ -61,6 +61,20 @@ export interface SubAgent {
   timeoutSeconds?: number;
 }
 
+/**
+ * Sentinel value returned (never thrown) when the user cancels a run via the
+ * Stop control.  Callers should surface this as a normal, non-error completion.
+ */
+export const REPO_AGENT_CANCELLED = "REPO_AGENT_CANCELLED" as const;
+export type RepoAgentCancelledMarker = typeof REPO_AGENT_CANCELLED;
+
+/**
+ * Number of poll cycles to wait after `isAbortRequested` returns `true`
+ * before giving up and returning the cancelled marker locally (grace window).
+ * At the default 5-second poll interval this is ~10-15 seconds.
+ */
+const ABORT_GRACE_POLL_CYCLES = 3;
+
 export async function repoAgent(
   swarmUrl: string,
   swarmApiKey: string,
@@ -117,7 +131,20 @@ export async function repoAgent(
     baseUrl: string;
     headers?: Record<string, string>;
   },
-): Promise<Record<string, string>> {
+  hooks?: {
+    /**
+     * Fired immediately after the initiate POST returns `request_id`.
+     * DB-free: the caller supplies this; `repoAgent` itself has no Prisma dep.
+     */
+    onRequestId?: (id: string) => Promise<void>;
+    /**
+     * Called each poll cycle.  When it returns `true`, the run is treated as
+     * aborted by the user (see grace-window logic below).
+     * DB-free: supplied by the caller.
+     */
+    isAbortRequested?: () => Promise<boolean>;
+  },
+): Promise<Record<string, string> | RepoAgentCancelledMarker> {
   const body: Record<string, unknown> = { ...params };
   if (bifrost) {
     body.apiKey = bifrost.apiKey;
@@ -139,7 +166,7 @@ export async function repoAgent(
 
   if (!initiateResponse.ok) {
     const errorText = await initiateResponse.text();
-    console.error(`Repo agent initiation error: ${initiateResponse.status} - ${errorText}`);
+    console.error(`[repoAgent] Repo agent initiation error: ${initiateResponse.status} - ${errorText}`);
     throw new Error("Failed to initiate repo agent");
   }
 
@@ -150,11 +177,26 @@ export async function repoAgent(
     throw new Error("No request_id returned from repo agent");
   }
 
+  // Notify caller so it can persist the run entry and check for pending-abort intent.
+  if (hooks?.onRequestId) {
+    await hooks.onRequestId(requestId);
+  }
+
   const maxAttempts = 120;
   const pollInterval = 5000;
 
+  let abortDetectedCycles = 0; // how many cycles since we first saw abortRequested
+
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     await new Promise((resolve) => setTimeout(resolve, pollInterval));
+
+    // ── Check abort flag ──────────────────────────────────────────
+    const abortRequested =
+      hooks?.isAbortRequested ? await hooks.isAbortRequested() : false;
+
+    if (abortRequested) {
+      abortDetectedCycles++;
+    }
 
     const progressUrl = `${swarmUrl}/progress?request_id=${encodeURIComponent(requestId)}`;
     const progressResponse = await fetch(progressUrl, {
@@ -166,16 +208,49 @@ export async function repoAgent(
     });
 
     if (!progressResponse.ok) {
-      console.error(`Progress check failed: ${progressResponse.status}`);
+      console.error(`[repoAgent] Progress check failed: ${progressResponse.status}`);
+      // Still check grace-window even on poll failure.
+      if (abortRequested && abortDetectedCycles >= ABORT_GRACE_POLL_CYCLES) {
+        console.warn(`[repoAgent] Grace window elapsed after abort (requestId=${requestId}); returning cancelled marker`);
+        return REPO_AGENT_CANCELLED;
+      }
       continue;
     }
 
     const progressData = await progressResponse.json();
 
+    // ── Completed ─────────────────────────────────────────────────
     if (progressData.status === "completed") {
-      return progressData.result || {};
-    } else if (progressData.status === "failed") {
+      // Requirement 5: a run that truly completes — even microseconds after
+      // Stop — returns its real result, not the cancelled marker.
+      const result = progressData.result;
+      if (result && Object.keys(result).length > 0) {
+        return result;
+      }
+      // completed but no usable result — if aborting, treat as cancelled.
+      if (abortRequested) {
+        console.warn(`[repoAgent] Run completed without result after abort (requestId=${requestId}); returning cancelled marker`);
+        return REPO_AGENT_CANCELLED;
+      }
+      return result || {};
+    }
+
+    // ── Failed / aborted ─────────────────────────────────────────
+    if (progressData.status === "failed" || progressData.status === "aborted") {
+      if (abortRequested) {
+        // cancelled ≠ error: non-throwing marker.
+        console.warn(`[repoAgent] Run ${progressData.status} after abort request (requestId=${requestId}); returning cancelled marker`);
+        return REPO_AGENT_CANCELLED;
+      }
       throw new Error(progressData.error || "Repo agent execution failed");
+    }
+
+    // ── Grace-window exit ─────────────────────────────────────────
+    // Swarm is neither completing nor acknowledging the abort — exit locally
+    // rather than waiting up to 120×5s.
+    if (abortRequested && abortDetectedCycles >= ABORT_GRACE_POLL_CYCLES) {
+      console.warn(`[repoAgent] Grace window elapsed after abort (requestId=${requestId}); returning cancelled marker`);
+      return REPO_AGENT_CANCELLED;
     }
   }
 
@@ -336,6 +411,7 @@ export function askTools(swarmUrl: string, swarmApiKey: string, repoUrls: string
             },
             bifrost,
           );
+          if (rr === REPO_AGENT_CANCELLED) return "Agent run was cancelled";
           return rr.content;
         } catch (e) {
           console.error("Error executing repo agent:", e);

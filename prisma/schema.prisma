@@ -653,6 +653,10 @@ model SharedConversation {
   ownerSeenAt        DateTime?         @map("owner_seen_at")
   source             String?
   settings           Json?             @default("{}")
+  // Map of requestId → { requestId, workspaceId, startedAt, abortRequested? } for in-flight
+  // repo_agent runs. Nullable so rows without active runs carry no overhead.
+  // abortIntents: { [turnId]: { turnId, requestedAt, expiresAt } } for start-race cancellation.
+  activeRuns         Json?             @map("active_runs")
   user               User?             @relation(fields: [userId], references: [id], onDelete: Cascade)
   workspace          Workspace?        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   sourceControlOrg   SourceControlOrg? @relation(fields: [sourceControlOrgId], references: [id], onDelete: Cascade)

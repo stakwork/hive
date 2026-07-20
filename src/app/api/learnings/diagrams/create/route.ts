@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getSwarmConfig } from "../../utils";
 import { getAllRepositories, joinRepoUrls } from "@/lib/helpers/repository";
-import { repoAgent } from "@/lib/ai/askTools";
+import { repoAgent, REPO_AGENT_CANCELLED } from "@/lib/ai/askTools";
 import { getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
 import { resolveWorkspaceAccess, requireMemberAccess } from "@/lib/auth/workspace-access";
 import { extractMermaidBody } from "@/lib/diagrams/mermaid-parser";
@@ -85,6 +85,10 @@ export async function POST(request: NextRequest) {
       },
       bifrost,
     );
+
+    if (agentResult === REPO_AGENT_CANCELLED) {
+      return NextResponse.json({ error: "Agent run was cancelled" }, { status: 499 });
+    }
 
     const responseContent = agentResult?.content ?? JSON.stringify(agentResult);
     const extractedBody = extractMermaidBody(responseContent);
