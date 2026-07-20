@@ -5,7 +5,9 @@ import type { EvalRunHistoryEntry } from "@/types/legal";
 import {
   normalizeOutput,
   triggerHasIdentity,
+  sortAttemptsChronologically,
   type EvalTrigger,
+  type EvalTriggerOutput,
   type RawJarvisNode,
 } from "@/lib/harvey-lab/eval-normalizers";
 
@@ -29,6 +31,8 @@ interface StakworkRunRow {
 
 interface UseEvalRunHistoryReturn {
   history: EvalRunHistoryEntry[];
+  /** All completed EvalTriggerOutput nodes, sorted chronologically (baseline first). */
+  attempts: EvalTriggerOutput[];
   isLoading: boolean;
   error: string | null;
   refetch: () => void;
@@ -40,6 +44,7 @@ export function useEvalRunHistory(taskSlug: string): UseEvalRunHistoryReturn {
   const workspaceId = workspace?.id ?? "";
 
   const [history, setHistory] = useState<EvalRunHistoryEntry[]>([]);
+  const [attempts, setAttempts] = useState<EvalTriggerOutput[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [reqId, setReqId] = useState<string | null>(null);
@@ -90,11 +95,12 @@ export function useEvalRunHistory(taskSlug: string): UseEvalRunHistoryReturn {
 
         if (cancelled) return;
 
-        // Parse triggers
+        // Parse triggers — include ALL triggers, not just those passing triggerHasIdentity,
+        // so rerun output nodes are not silently dropped.
         const triggersData = (await triggersRes.json()) as {
           data?: { nodes?: RawTriggerNode[] };
         };
-        const rawTriggers: EvalTrigger[] = (triggersData?.data?.nodes ?? []).map(
+        const allRawTriggers: EvalTrigger[] = (triggersData?.data?.nodes ?? []).map(
           (t: RawTriggerNode) => ({
             ...t,
             outputs: (t.outputs ?? [])
@@ -102,7 +108,16 @@ export function useEvalRunHistory(taskSlug: string): UseEvalRunHistoryReturn {
               .filter((o): o is NonNullable<typeof o> => o !== null),
           }),
         );
-        const triggers = rawTriggers.filter(triggerHasIdentity);
+
+        // For the history table (EvalRunsBox): only identity triggers
+        const triggers = allRawTriggers.filter(triggerHasIdentity);
+
+        // For the hill-climb chart: all completed outputs across ALL triggers,
+        // flattened and sorted chronologically (baseline → reruns).
+        const allCompletedOutputs: EvalTriggerOutput[] = allRawTriggers.flatMap(
+          (t) => (t.outputs ?? []).filter((o) => o.n_passed != null && o.n_total != null),
+        );
+        const sortedAttempts = sortAttemptsChronologically(allCompletedOutputs);
 
         // Parse runs
         const runsData = (await runsRes.json()) as { data?: StakworkRunRow[] } | StakworkRunRow[];
@@ -146,6 +161,7 @@ export function useEvalRunHistory(taskSlug: string): UseEvalRunHistoryReturn {
         });
 
         setHistory(entries);
+        setAttempts(sortedAttempts);
       } catch (err) {
         if (!cancelled) {
           setError(err instanceof Error ? err.message : "Failed to load eval run history.");
@@ -159,5 +175,5 @@ export function useEvalRunHistory(taskSlug: string): UseEvalRunHistoryReturn {
     return () => { cancelled = true; };
   }, [taskSlug, slug, workspaceId, reqId, fetchCount]);
 
-  return { history, isLoading, error, refetch };
+  return { history, attempts, isLoading, error, refetch };
 }
