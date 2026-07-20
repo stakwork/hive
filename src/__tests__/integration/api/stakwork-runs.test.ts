@@ -314,6 +314,61 @@ describe("Stakwork Runs API Integration Tests", () => {
 
       expect(response.status).toBe(400);
     });
+
+    test("should include result field when includeResult=true", async () => {
+      const { user, workspace } = await createTestWorkspaceWithFeature();
+
+      await db.stakworkRun.create({
+        data: {
+          type: StakworkRunType.ARCHITECTURE,
+          workspaceId: workspace.id,
+          status: "COMPLETED",
+          result: '{"some":"data"}',
+          webhookUrl: "http://example.com/webhook",
+          dataType: "json",
+        },
+      });
+
+      const request = createAuthenticatedGetRequest(
+        `http://localhost/api/test?workspaceId=${workspace.id}&includeResult=true`,
+        user
+      );
+
+      const response = await GetRuns(request);
+      const responseData = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(responseData.runs).toHaveLength(1);
+      expect(responseData.runs[0]).toHaveProperty("result");
+      expect(responseData.runs[0].result).toBe('{"some":"data"}');
+    });
+
+    test("should omit result field when includeResult is absent", async () => {
+      const { user, workspace } = await createTestWorkspaceWithFeature();
+
+      await db.stakworkRun.create({
+        data: {
+          type: StakworkRunType.ARCHITECTURE,
+          workspaceId: workspace.id,
+          status: "COMPLETED",
+          result: '{"some":"data"}',
+          webhookUrl: "http://example.com/webhook",
+          dataType: "json",
+        },
+      });
+
+      const request = createAuthenticatedGetRequest(
+        `http://localhost/api/test?workspaceId=${workspace.id}`,
+        user
+      );
+
+      const response = await GetRuns(request);
+      const responseData = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(responseData.runs).toHaveLength(1);
+      expect(responseData.runs[0]).not.toHaveProperty("result");
+    });
   });
 
   describe("POST /api/stakwork/ai/generate - REQUIREMENTS", () => {

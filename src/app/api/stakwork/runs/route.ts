@@ -84,6 +84,9 @@ export async function GET(request: NextRequest) {
       queryData.offset = offsetNum;
     }
 
+    // Parse includeResult param (must be after other params, before Zod validation)
+    queryData.includeResult = url.searchParams.get("includeResult") === "true";
+
     // Validate with Zod schema
     const validationResult = StakworkRunQuerySchema.safeParse(queryData);
 
@@ -112,7 +115,7 @@ export async function GET(request: NextRequest) {
           workspaceId: run.workspaceId,
           featureId: run.featureId,
           projectId: run.projectId,
-          result: run.result,
+          ...(query.includeResult ? { result: (run as { result?: string | null }).result } : {}),
           dataType: run.dataType,
           decision: run.decision,
           feedback: run.feedback,
