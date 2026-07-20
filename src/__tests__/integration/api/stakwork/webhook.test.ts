@@ -871,4 +871,79 @@ describe("Stakwork Webhook API - POST /api/stakwork/webhook", () => {
       expect(updatedTask?.haltRetryAttempted).toBe(true);
     });
   });
+
+  // ── StakworkRun status-sync tests (LEGAL_BENCHMARK_EVAL / LEGAL_BENCHMARK_RECURSION) ──
+
+  describe("StakworkRun status-sync via run_id query param", () => {
+    async function createStakworkRun(type: string, initialStatus: WorkflowStatus = WorkflowStatus.IN_PROGRESS) {
+      const user = await db.user.create({
+        data: {
+          id: generateUniqueId("user"),
+          email: `user-${generateUniqueId()}@example.com`,
+          name: "Run User",
+        },
+      });
+      const workspace = await db.workspace.create({
+        data: {
+          name: `Run Workspace ${generateUniqueId()}`,
+          slug: generateUniqueSlug("run-ws"),
+          ownerId: user.id,
+        },
+      });
+      const run = await db.stakworkRun.create({
+        data: {
+          workspaceId: workspace.id,
+          type: type as "LEGAL_BENCHMARK_EVAL",
+          status: initialStatus,
+          webhookUrl: `http://localhost:3000/api/webhook/stakwork/response?type=${type}&run_id=test`,
+        },
+      });
+      return { user, workspace, run };
+    }
+
+    test("LEGAL_BENCHMARK_EVAL with project_status=completed: status → COMPLETED and Pusher broadcast fires with eval run id", async () => {
+      const { run, workspace } = await createStakworkRun("LEGAL_BENCHMARK_EVAL");
+
+      const request = createPostRequest(
+        `${webhookUrl}?run_id=${run.id}`,
+        { project_status: "completed" },
+      );
+
+      const response = await POST(request);
+      expect(response.status).toBe(200);
+
+      const updatedRun = await db.stakworkRun.findUnique({ where: { id: run.id } });
+      expect(updatedRun?.status).toBe(WorkflowStatus.COMPLETED);
+
+      // Pusher broadcast must fire keyed on the eval run id (no skipBroadcast guard)
+      const pusherCalls = mockedPusherServer.trigger.mock.calls;
+      const evalBroadcast = pusherCalls.find(
+        (c) => c[1] === "stakwork-run-update" && (c[2] as Record<string, unknown>).runId === run.id,
+      );
+      expect(evalBroadcast).toBeDefined();
+      expect(evalBroadcast![0]).toContain(workspace.slug);
+    });
+
+    test("LEGAL_BENCHMARK_RECURSION with project_status=completed: status → COMPLETED and Pusher broadcast fires", async () => {
+      const { run, workspace } = await createStakworkRun("LEGAL_BENCHMARK_RECURSION");
+
+      const request = createPostRequest(
+        `${webhookUrl}?run_id=${run.id}`,
+        { project_status: "completed" },
+      );
+
+      const response = await POST(request);
+      expect(response.status).toBe(200);
+
+      const updatedRun = await db.stakworkRun.findUnique({ where: { id: run.id } });
+      expect(updatedRun?.status).toBe(WorkflowStatus.COMPLETED);
+
+      const pusherCalls = mockedPusherServer.trigger.mock.calls;
+      const recursionBroadcast = pusherCalls.find(
+        (c) => c[1] === "stakwork-run-update" && (c[2] as Record<string, unknown>).runId === run.id,
+      );
+      expect(recursionBroadcast).toBeDefined();
+      expect(recursionBroadcast![0]).toContain(workspace.slug);
+    });
+  });
 });
