@@ -60,6 +60,7 @@ vi.mock("@/config/env", async () => {
       // Note the value is now a raw string (was previously boolean);
       // callers should use `isBifrostEnabledForWorkspace(slug)` rather
       // than reading the field directly.
+      MCP_CLIENT_TIMEOUT_MS: 30000,
       BIFROST_ENABLED: "",
       // Default-open per-agent gate. Empty == "don't filter by
       // agent" so the workspace gate alone decides — preserves the
