@@ -511,6 +511,7 @@ export async function publishVersion(
   promptId: string,
   versionId: string,
   workspaceId?: string,
+  actor?: string,
 ): Promise<void> {
   // ── Resolve prompt: id first, then name fallback ──────────────────────────
   let prompt = await db.prompt.findUnique({ where: { id: promptId } });
@@ -559,7 +560,7 @@ export async function publishVersion(
     }),
     db.promptVersion.update({
       where: { id: resolvedVersionId },
-      data: { published: true },
+      data: { published: true, publishedBy: actor ?? null, publishedAt: new Date() },
     }),
     db.prompt.update({
       where: { id: resolvedPromptId },
@@ -574,6 +575,7 @@ export async function publishVersion(
     promptId: resolvedPromptId,
     versionId: resolvedVersionId,
     versionNumber: targetVersion.versionNumber,
+    actor: actor ?? null,
   });
 
   // Best-effort graph recorder (independent of Stakwork /prompts push)
