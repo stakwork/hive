@@ -37,6 +37,14 @@ const LOG_PREFIX = "[LegalRecursionCron]";
 /** Per-status-call Stakwork timeout — keep tight to avoid stalled swarms eating the budget. */
 const STATUS_TIMEOUT_MS = 8_000;
 
+/**
+ * Re-fire guard window — wider than the narrow 5-minute same-pass safety-net.
+ * Chosen to bridge a full cron cadence (~6h) plus buffer so a single
+ * write-back-retry failure cannot cause a budget-wasting re-dispatch on the
+ * next scheduled pass.
+ */
+const REFIRE_GUARD_WINDOW_MS = 7 * 60 * 60 * 1000; // 7 hours
+
 /** Default concurrency cap when PlatformConfig row is absent. */
 const DEFAULT_RECURSION_CAP = 3;
 
@@ -128,6 +136,51 @@ async function hasRecentEvalRun(workspaceId: string, runId: string): Promise<boo
     return parsed.sourceRunId === runId;
   } catch {
     return false;
+  }
+}
+
+/**
+ * Hardened re-fire guard: checks whether a LEGAL_BENCHMARK_EVAL run for the
+ * given runner run is either currently active (PENDING/IN_PROGRESS) OR was
+ * created within the wider REFIRE_GUARD_WINDOW_MS cadence window.
+ *
+ * This prevents a failed `project_id` write-back (which leaves EvalSet.projectId
+ * as null) from causing the next pass to re-dispatch against the same task and
+ * waste eval budget.
+ *
+ * Fail-closed: returns true (treat as non-fresh) on any unexpected error.
+ */
+async function hasActiveOrRecentEvalRun(workspaceId: string, runId: string): Promise<boolean> {
+  try {
+    const windowStart = new Date(Date.now() - REFIRE_GUARD_WINDOW_MS);
+
+    const run = await db.stakworkRun.findFirst({
+      where: {
+        workspaceId,
+        type: StakworkRunType.LEGAL_BENCHMARK_EVAL,
+        OR: [
+          { status: { in: [WorkflowStatus.PENDING, WorkflowStatus.IN_PROGRESS] } },
+          { createdAt: { gte: windowStart } },
+        ],
+      },
+      orderBy: { createdAt: "desc" },
+      select: { id: true, result: true, status: true },
+    });
+
+    if (!run) return false;
+
+    try {
+      const parsed = run.result
+        ? (JSON.parse(run.result) as Record<string, unknown>)
+        : {};
+      return parsed.sourceRunId === runId;
+    } catch {
+      // Unparseable result — fail-closed: don't re-dispatch
+      return true;
+    }
+  } catch {
+    // DB error — fail-closed: don't re-dispatch
+    return true;
   }
 }
 
@@ -290,9 +343,31 @@ export async function executeScheduledLegalBenchmarkRecursion(): Promise<Recursi
       // Terminal status (COMPLETED, FAILED, HALTED) — eligible
       eligible.push(evalSet);
     } else {
-      // No projectId = first run = eligible
+      // No projectId — could be a first run OR a failed write-back from a prior pass.
+      // Resolve the runner run first so we can check against existing eval runs.
+      // We defer the resolver call here to avoid redundant DB calls for the
+      // common no-projectId first-run case — the eval check is only needed when
+      // this might be a write-back-failure scenario.
+      //
+      // Strategy: eagerly check the wider re-fire guard.  If an active or
+      // recent eval run exists for this task's runner run, skip it.
+      // This prevents the write-back-failure budget-waste described in the
+      // CRITICAL log in writeBackWithRetry.
+      const earlyRunId = await resolveRunnerRunId(openlawWorkspace.id, evalSet.id);
+      if (earlyRunId) {
+        const isNonFresh = await hasActiveOrRecentEvalRun(openlawWorkspace.id, earlyRunId);
+        if (isNonFresh) {
+          logger.info(
+            `${LOG_PREFIX} EvalSet ${evalSet.ref_id} has no projectId but a recent/active eval run already exists for runId=${earlyRunId} — skipping (re-fire guard)`,
+            "legal",
+          );
+          result.skipped++;
+          continue;
+        }
+      }
+
       logger.info(
-        `${LOG_PREFIX} EvalSet ${evalSet.ref_id} has no projectId — eligible (first run)`,
+        `${LOG_PREFIX} EvalSet ${evalSet.ref_id} has no projectId — eligible (first run or post-write-back-failure)`,
         "legal",
       );
       eligible.push(evalSet);
