@@ -87,7 +87,7 @@ describe("useLegalBenchmarkRunList", () => {
     expect(url).not.toContain("workspaceId=openlaw");
   });
 
-  it("includes type=LEGAL_BENCHMARK_RUNNER and limit=100 in query params", async () => {
+  it("includes type=LEGAL_BENCHMARK_RUNNER and limit=20 in query params", async () => {
     mockFetchOk([makeRow()]);
 
     const { result } = renderHook(() => useLegalBenchmarkRunList("ws-cuid-123"));
@@ -95,7 +95,7 @@ describe("useLegalBenchmarkRunList", () => {
 
     const url = String(vi.mocked(global.fetch).mock.calls[0][0]);
     expect(url).toContain("type=LEGAL_BENCHMARK_RUNNER");
-    expect(url).toContain("limit=100");
+    expect(url).toContain("limit=20");
     expect(url).toContain("includeResult=true");
   });
 

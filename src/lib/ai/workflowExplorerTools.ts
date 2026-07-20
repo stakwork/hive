@@ -35,10 +35,11 @@ const WORKFLOW_LIBRARY_WORKSPACE_SLUG = "stakwork";
 async function resolveWorkflowLibrarySwarm(): Promise<{
   swarmUrl: string;
   swarmApiKey: string;
+  stakworkApiKey?: string;
 }> {
   const workspace = await db.workspace.findFirst({
     where: { slug: WORKFLOW_LIBRARY_WORKSPACE_SLUG, deleted: false },
-    select: { id: true },
+    select: { id: true, stakworkApiKey: true },
   });
   if (!workspace) {
     throw new Error(
@@ -61,12 +62,32 @@ async function resolveWorkflowLibrarySwarm(): Promise<{
     baseSwarmUrl = "http://localhost:3355";
   }
 
+  // The stakwork workspace's Stakwork API token: forwarded to the swarm
+  // agent so it can research real run data (skill usage stats, recent runs,
+  // per-step params/outputs) via the Stakwork API. Optional — without it the
+  // explorer still works, minus the run-research tools.
+  let stakworkApiKey: string | undefined;
+  if (workspace.stakworkApiKey) {
+    try {
+      stakworkApiKey = EncryptionService.getInstance().decryptField(
+        "stakworkApiKey",
+        workspace.stakworkApiKey,
+      );
+    } catch (e) {
+      console.error(
+        "Failed to decrypt stakworkApiKey for workflow library workspace:",
+        e,
+      );
+    }
+  }
+
   return {
     swarmUrl: baseSwarmUrl,
     swarmApiKey: EncryptionService.getInstance().decryptField(
       "swarmApiKey",
       swarm.swarmApiKey || "",
     ),
+    stakworkApiKey,
   };
 }
 
@@ -76,7 +97,8 @@ export function buildWorkflowExplorerTools(): ToolSet {
       description:
         "Dispatch a research agent over the Stakwork workflow library (the stakwork workspace's knowledge graph) to find existing Workflows, Skills, and Scripts relevant to a workflow being designed. " +
         "It searches components semantically by what they take as input and produce as output, reads full workflow recipes (step orderings + the skills each step uses), and reports proven, reusable building blocks with usage statistics — plus gaps where nothing exists yet. " +
-        "Use it when designing or discussing a NEW Stakwork workflow: e.g. 'what existing skills take a video url as input?', 'is there already a transcription workflow, and how does it compose its steps?'. " +
+        "It can also pull ground-truth run data from the Stakwork API: which workflows invoke a skill (with real use counts), recent runs and their success/error states, and the actual params and outputs each step sent — useful for citing working configurations (exact URL formats, variable interpolations) or diagnosing why a similar workflow failed. " +
+        "Use it when designing or discussing a NEW Stakwork workflow: e.g. 'what existing skills take a video url as input?', 'is there already a transcription workflow, and how does it compose its steps?', 'show me real params from a successful run that uses AzureOCR'. " +
         "STRICTLY READ-ONLY research — it cannot create or modify workflows. Heavy/slow (minutes): call it ONCE with a complete, self-contained prompt rather than several times.",
       inputSchema: z.object({
         prompt: z
@@ -87,7 +109,8 @@ export function buildWorkflowExplorerTools(): ToolSet {
       }),
       execute: async ({ prompt }: { prompt: string }) => {
         try {
-          const { swarmUrl, swarmApiKey } = await resolveWorkflowLibrarySwarm();
+          const { swarmUrl, swarmApiKey, stakworkApiKey } =
+            await resolveWorkflowLibrarySwarm();
           // No repo_url: workflow mode works entirely off the swarm's graph.
           // No Bifrost routing either — the acting user generally isn't a
           // member of the stakwork workspace, so we fall back to the swarm's
@@ -95,6 +118,7 @@ export function buildWorkflowExplorerTools(): ToolSet {
           const rr = await repoAgent(swarmUrl, swarmApiKey, {
             prompt,
             mode: "workflow",
+            stakworkApiKey,
           });
           return rr.content;
         } catch (e) {
