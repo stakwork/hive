@@ -2,6 +2,7 @@ import { BaseServiceClass } from "@/lib/base-service";
 import { ServiceConfig } from "@/types";
 import { config } from "@/config/env";
 import { EncryptionService } from "@/lib/encryption";
+import { logger } from "@/lib/logger";
 
 const encryptionService: EncryptionService = EncryptionService.getInstance();
 
@@ -236,9 +237,13 @@ export class StakworkService extends BaseServiceClass {
    * @returns void (optimistic - does not throw on API errors)
    */
   async stopProject(projectId: number): Promise<void> {
+    const endpoint = `/projects/${projectId}/stop`;
+    logger.info(`[stopProject] Calling senza stop`, "stakwork/stopProject", {
+      projectId,
+      endpoint,
+    });
     try {
-      const endpoint = `/projects/${projectId}/stop`;
-
+      const client = this.getClient();
       const headers = {
         "Content-Type": "application/json",
         Authorization: `Token token=${encryptionService.decryptField(
@@ -246,16 +251,20 @@ export class StakworkService extends BaseServiceClass {
           this.config.apiKey,
         )}`,
       };
-
-      const client = this.getClient();
-      const requestFn = () => {
-        return client.post<unknown>(endpoint, {}, headers, this.serviceName);
-      };
-
-      await this.handleRequest(requestFn, `stakworkRequest ${endpoint}`);
+      const requestFn = () =>
+        client.post<unknown>(endpoint, {}, headers, this.serviceName);
+      const response = await this.handleRequest(requestFn, `stakworkRequest ${endpoint}`);
+      logger.info(`[stopProject] Senza stop succeeded`, "stakwork/stopProject", {
+        projectId,
+        response,
+      });
     } catch (error) {
-      // Optimistic approach - log error but don't throw
-      console.error(`Failed to stop Stakwork project ${projectId}:`, error);
+      logger.error(`[stopProject] Senza stop failed`, "stakwork/stopProject", {
+        projectId,
+        status: (error as any)?.status,
+        message: (error as any)?.message,
+        details: (error as any)?.details,
+      });
     }
   }
 }
