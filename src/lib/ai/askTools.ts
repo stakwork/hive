@@ -100,6 +100,13 @@ export async function repoAgent(
      * Jarvis workflow library. Omitted = the code-focused default.
      */
     mode?: "graph" | "workflow";
+    /**
+     * Stakwork API token forwarded server-to-server on the request body
+     * (never an LLM-visible parameter). When present, the swarm-side agent
+     * registers read-only run-research tools (skill usage stats, recent
+     * workflow runs, per-step params/outputs) against the Stakwork API.
+     */
+    stakworkApiKey?: string;
   },
   /**
    * Optional Bifrost routing. When provided, the swarm-side `repo/agent`
