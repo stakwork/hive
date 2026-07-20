@@ -19,6 +19,9 @@ import { GET, POST } from "@/app/api/workflow/prompts/route";
 import { GET as GET_BY_ID, PUT, PATCH } from "@/app/api/workflow/prompts/[id]/route";
 import { GET as GET_VERSIONS } from "@/app/api/workflow/prompts/[id]/versions/route";
 import { GET as GET_VERSION_BY_ID } from "@/app/api/workflow/prompts/[id]/versions/[versionId]/route";
+import { POST as POST_PUBLISH } from "@/app/api/workflow/prompts/[id]/versions/[versionId]/publish/route";
+import { API_TOKEN_ACTOR } from "@/lib/auth/api-token";
+import { MIDDLEWARE_HEADERS } from "@/config/middleware";
 import {
   getMockedSession,
   createAuthenticatedSession,
@@ -893,6 +896,167 @@ describe("x-api-token auth on prompt write endpoints", () => {
       );
       const data = await expectSuccess(res);
       expect(data.success).toBe(true);
+    });
+  });
+
+  // ─── POST /api/workflow/prompts/[id]/versions/[versionId]/publish ─────────────
+
+  describe("POST /api/workflow/prompts/[id]/versions/[versionId]/publish", () => {
+    let draftVersionId: string;
+
+    beforeEach(async () => {
+      // Create a draft version via token PUT so we have an unpublished version to publish
+      const res = await PUT(
+        withToken(`http://localhost/api/workflow/prompts/${promptId}`, "PUT", { value: "draft for publish test" }),
+        { params: Promise.resolve({ id: promptId }) },
+      );
+      const data = (await res.json()).data;
+      draftVersionId = data.current_version_id as string;
+    });
+
+    test("valid x-api-token → 200, published flag flips true in DB", async () => {
+      const res = await POST_PUBLISH(
+        withToken(
+          `http://localhost/api/workflow/prompts/${promptId}/versions/${draftVersionId}`,
+          "POST",
+        ),
+        { params: Promise.resolve({ id: promptId, versionId: draftVersionId }) },
+      );
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.success).toBe(true);
+
+      const version = await db.promptVersion.findUnique({ where: { id: draftVersionId } });
+      expect(version).toBeDefined();
+      expect(version!.published).toBe(true);
+    });
+
+    test("valid x-api-token → publishedBy persisted as API_TOKEN_ACTOR in DB", async () => {
+      await POST_PUBLISH(
+        withToken(
+          `http://localhost/api/workflow/prompts/${promptId}/versions/${draftVersionId}`,
+          "POST",
+        ),
+        { params: Promise.resolve({ id: promptId, versionId: draftVersionId }) },
+      );
+
+      const version = await db.promptVersion.findUnique({ where: { id: draftVersionId } });
+      expect(version!.publishedBy).toBe(API_TOKEN_ACTOR);
+      expect(version!.publishedAt).not.toBeNull();
+    });
+
+    test("session user who is NOT a stakwork member → 403 (session branch unchanged)", async () => {
+      // publish route uses requireAuth(getMiddlewareContext(request)) — must set middleware headers
+      const req = new NextRequest(
+        `http://localhost/api/workflow/prompts/${promptId}/versions/${draftVersionId}`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            [MIDDLEWARE_HEADERS.AUTH_STATUS]: "authenticated",
+            [MIDDLEWARE_HEADERS.USER_ID]: nonMemberUser.id,
+            [MIDDLEWARE_HEADERS.USER_EMAIL]: nonMemberUser.email ?? "",
+            [MIDDLEWARE_HEADERS.USER_NAME]: "Non Member",
+            [MIDDLEWARE_HEADERS.REQUEST_ID]: "test-req-nonmember",
+          },
+        },
+      );
+      const res = await POST_PUBLISH(
+        req,
+        { params: Promise.resolve({ id: promptId, versionId: draftVersionId }) },
+      );
+      expect(res.status).toBe(403);
+    });
+
+    test("missing token AND no session → 401", async () => {
+      // No middleware headers and no x-api-token → 401
+      const res = await POST_PUBLISH(
+        withSession(
+          `http://localhost/api/workflow/prompts/${promptId}/versions/${draftVersionId}`,
+          "POST",
+        ),
+        { params: Promise.resolve({ id: promptId, versionId: draftVersionId }) },
+      );
+      await expectUnauthorized(res);
+    });
+
+    test("publish rate-limit bucket is independent from PUT/PATCH edit bucket", async () => {
+      // Exhaust the publish bucket
+      mockCheckRateLimit.mockImplementation(async (key: string) => {
+        if (key.startsWith("prompts:publish:api-token:")) {
+          return { allowed: false, retryAfter: 60 };
+        }
+        return { allowed: true };
+      });
+
+      // Publish should be 429
+      const publishRes = await POST_PUBLISH(
+        withToken(
+          `http://localhost/api/workflow/prompts/${promptId}/versions/${draftVersionId}`,
+          "POST",
+        ),
+        { params: Promise.resolve({ id: promptId, versionId: draftVersionId }) },
+      );
+      expect(publishRes.status).toBe(429);
+
+      // But PUT (edit bucket) should still be allowed
+      const putRes = await PUT(
+        withToken(`http://localhost/api/workflow/prompts/${promptId}`, "PUT", { value: "still fine" }),
+        { params: Promise.resolve({ id: promptId }) },
+      );
+      expect(putRes.status).toBe(200);
+    });
+
+    test("rate limit exceeded on publish → 429 with Retry-After, published flag unchanged", async () => {
+      mockCheckRateLimit.mockResolvedValueOnce({ allowed: false, retryAfter: 30 });
+
+      const versionBefore = await db.promptVersion.findUnique({
+        where: { id: draftVersionId },
+        select: { published: true },
+      });
+
+      const res = await POST_PUBLISH(
+        withToken(
+          `http://localhost/api/workflow/prompts/${promptId}/versions/${draftVersionId}`,
+          "POST",
+        ),
+        { params: Promise.resolve({ id: promptId, versionId: draftVersionId }) },
+      );
+      expect(res.status).toBe(429);
+      expect(res.headers.get("Retry-After")).toBe("30");
+
+      const versionAfter = await db.promptVersion.findUnique({
+        where: { id: draftVersionId },
+        select: { published: true },
+      });
+      expect(versionAfter!.published).toBe(versionBefore!.published);
+    });
+
+    test("session auth with stakwork membership → 200, publishedBy set to userId", async () => {
+      // publish route uses requireAuth(getMiddlewareContext(request)) — must set middleware headers
+      const req = new NextRequest(
+        `http://localhost/api/workflow/prompts/${promptId}/versions/${draftVersionId}`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            [MIDDLEWARE_HEADERS.AUTH_STATUS]: "authenticated",
+            [MIDDLEWARE_HEADERS.USER_ID]: testUser.id,
+            [MIDDLEWARE_HEADERS.USER_EMAIL]: testUser.email ?? "",
+            [MIDDLEWARE_HEADERS.USER_NAME]: "Test User",
+            [MIDDLEWARE_HEADERS.REQUEST_ID]: "test-req-session",
+          },
+        },
+      );
+      const res = await POST_PUBLISH(
+        req,
+        { params: Promise.resolve({ id: promptId, versionId: draftVersionId }) },
+      );
+      expect(res.status).toBe(200);
+
+      const version = await db.promptVersion.findUnique({ where: { id: draftVersionId } });
+      expect(version!.published).toBe(true);
+      expect(version!.publishedBy).toBe(testUser.id);
     });
   });
 });
