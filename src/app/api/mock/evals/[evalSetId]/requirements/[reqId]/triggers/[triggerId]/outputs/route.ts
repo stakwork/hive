@@ -61,6 +61,18 @@ const MOCK_OUTPUTS = [
       judge_notes: "38/42 criteria passed. Strong improvement.",
     },
   },
+  {
+    // A failed attempt (older hive-written node, no n_passed/n_total on properties)
+    ref_id: "output-fail-legacy",
+    node_type: "EvalTriggerOutput",
+    date_added_to_graph: "1719913600",
+    properties: {
+      result: "fail",
+      score: 0.40,
+      attempt_number: 1,
+      judge_notes: "17/42 criteria passed. Below threshold.",
+    },
+  },
 ];
 
 export async function GET() {
