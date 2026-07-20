@@ -39,6 +39,7 @@ jobs:
           NEXTAUTH_SECRET: test-secret
           JWT_SECRET: test-jwt-secret
           DATABASE_URL: postgresql://localhost:5432/hive_test_unit
+          DIRECT_URL: postgresql://localhost:5432/hive_test_unit
         run: npm run test:unit
 
   integration-tests:
