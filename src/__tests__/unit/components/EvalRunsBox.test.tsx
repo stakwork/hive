@@ -78,6 +78,7 @@ vi.mock("@/components/legal/StakworkRunLink", () => ({
 const mockRefetch = vi.fn();
 const mockUseEvalRunHistory = vi.fn(() => ({
   history: [] as import("@/types/legal").EvalRunHistoryEntry[],
+  attempts: [] as import("@/lib/harvey-lab/eval-normalizers").EvalTriggerOutput[],
   isLoading: false,
   error: null,
   refetch: mockRefetch,
@@ -149,6 +150,7 @@ describe("EvalRunsBox — Recursion button", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockUseEvalRunHistory.mockReturnValue({
+      attempts: [],
       history: [],
       isLoading: false,
       error: null,
@@ -330,6 +332,7 @@ describe("EvalRunsBox — optimistic row", () => {
     vi.clearAllMocks();
     // Default: empty history, loaded (isLoading=false so initialLoadComplete fires)
     mockUseEvalRunHistory.mockReturnValue({
+      attempts: [],
       history: [],
       isLoading: false,
       error: null,
@@ -367,6 +370,7 @@ describe("EvalRunsBox — optimistic row", () => {
   it("does NOT show skeleton rows while optimistic row is visible (even if isLoading=true)", async () => {
     // First render: loaded
     mockUseEvalRunHistory.mockReturnValue({
+      attempts: [],
       history: [],
       isLoading: false,
       error: null,
@@ -385,7 +389,8 @@ describe("EvalRunsBox — optimistic row", () => {
     // Simulate a poll tick: isLoading becomes true but history is still empty
     act(() => {
       mockUseEvalRunHistory.mockReturnValue({
-        history: [],
+        attempts: [],
+      history: [],
         isLoading: true,
         error: null,
         refetch: mockRefetch,
@@ -501,6 +506,7 @@ describe("EvalRunsBox — optimistic row", () => {
   it("does NOT set optimistic entry when initial load is still in-flight (initialLoadComplete=false)", async () => {
     // isLoading=true means initialLoadComplete.current never gets set to true
     mockUseEvalRunHistory.mockReturnValue({
+      attempts: [],
       history: [],
       isLoading: true,
       error: null,
