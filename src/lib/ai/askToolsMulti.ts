@@ -1,6 +1,7 @@
 import { tool, ToolSet, Tool } from "ai";
 import { z } from "zod";
 import { createMCPClient } from "@ai-sdk/mcp";
+import { withMcpTimeout, isMcpTimeout } from './mcpTimeout';
 import { WorkspaceConfig } from "./types";
 import { listConcepts, repoAgent } from "./askTools";
 import { buildCourtlistenerTools } from "@/lib/ai/courtlistenerTools";
@@ -326,8 +327,8 @@ export function askToolsMulti(
         query: string;
         max_hits?: number;
       }) => {
-        let mcpClient;
-        try {
+        let mcpClient: Awaited<ReturnType<typeof createMCPClient>> | undefined;
+        const mcpSetup = async () => {
           mcpClient = await createMCPClient({
             transport: {
               type: "http",
@@ -338,16 +339,21 @@ export function askToolsMulti(
           const tools = await mcpClient.tools();
           const searchLogsTool = tools["search_logs"];
           if (!searchLogsTool?.execute) return "search_logs tool not found";
-          const result = await searchLogsTool.execute(
-            { query, max_hits },
-            { toolCallId: "1", messages: [] }
+          return capMcpResult(
+            await searchLogsTool.execute({ query, max_hits }, { toolCallId: "1", messages: [] }),
           );
-          return capMcpResult(result);
+        };
+        try {
+          return await withMcpTimeout(mcpSetup);
         } catch (e) {
+          if (isMcpTimeout(e)) {
+            console.warn(`search_logs: MCP client timed out for ${ws.slug}`, e);
+            return `MCP tools unavailable for ${ws.slug} — the log search timed out. Proceeding without them.`;
+          }
           console.error(`Error searching logs for ${ws.slug}:`, e);
           return `Could not search logs for ${ws.slug}`;
         } finally {
-          if (mcpClient) await mcpClient.close();
+          if (mcpClient) await mcpClient.close().catch(() => {});
         }
       },
     });

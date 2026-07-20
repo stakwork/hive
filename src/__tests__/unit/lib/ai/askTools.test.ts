@@ -552,7 +552,7 @@ describe("askTools", () => {
         { timestamp: "2024-01-01T00:00:01Z", level: "ERROR", message: "Log entry 2" },
       ];
 
-      const mockClose = vi.fn();
+      const mockClose = vi.fn().mockResolvedValue(undefined);
       const mockMcpResult = { content: [{ type: "text", text: JSON.stringify(mockLogs) }] };
       const mockExecute = vi.fn().mockResolvedValue(mockMcpResult);
       const mockTools = {
@@ -596,7 +596,7 @@ describe("askTools", () => {
     });
 
     it("closes MCP client after execution", async () => {
-      const mockClose = vi.fn();
+      const mockClose = vi.fn().mockResolvedValue(undefined);
       const mockExecute = vi.fn().mockResolvedValue([]);
       const mockTools = {
         search_logs: {
@@ -616,7 +616,7 @@ describe("askTools", () => {
     });
 
     it("closes MCP client even on error", async () => {
-      const mockClose = vi.fn();
+      const mockClose = vi.fn().mockResolvedValue(undefined);
       const mockExecute = vi.fn().mockRejectedValue(new Error("Execution failed"));
       const mockTools = {
         search_logs: {
@@ -637,7 +637,7 @@ describe("askTools", () => {
     });
 
     it("uses default max_hits value when not provided", async () => {
-      const mockClose = vi.fn();
+      const mockClose = vi.fn().mockResolvedValue(undefined);
       const mockExecute = vi.fn().mockResolvedValue([]);
       const mockTools = {
         search_logs: {
@@ -660,7 +660,7 @@ describe("askTools", () => {
     });
 
     it("handles missing search_logs tool on MCP server", async () => {
-      const mockClose = vi.fn();
+      const mockClose = vi.fn().mockResolvedValue(undefined);
       const mockTools = {}; // No search_logs tool
 
       mockCreateMCPClient.mockResolvedValue({
@@ -673,6 +673,25 @@ describe("askTools", () => {
 
       expect(result).toBe("search_logs tool not found on MCP server");
       expect(mockClose).toHaveBeenCalled();
+    });
+
+    it("returns fallback string when MCP client times out", async () => {
+      mockCreateMCPClient.mockImplementation(() => new Promise(() => {})); // never resolves
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+      const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+      vi.useFakeTimers();
+
+      const tools = askTools(mockSwarmUrl, mockSwarmApiKey, [mockRepoUrl], mockPat, mockApiKey);
+      const executePromise = tools.search_logs.execute({ query: "test", max_hits: 5 });
+      await vi.advanceTimersByTimeAsync(30000); // advance past MCP_CLIENT_TIMEOUT_MS (30000 from mock)
+      const result = await executePromise;
+
+      expect(result).toContain("MCP tools unavailable");
+      expect(warnSpy).toHaveBeenCalled();
+      expect(errorSpy).not.toHaveBeenCalled();
+      warnSpy.mockRestore();
+      errorSpy.mockRestore();
+      vi.useRealTimers();
     });
   });
 
