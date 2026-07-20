@@ -99,6 +99,7 @@ export const StakworkRunQuerySchema = z.object({
   status: z.nativeEnum(WorkflowStatus).optional(),
   limit: z.number().int().positive().max(100).optional().default(20),
   offset: z.number().int().nonnegative().optional().default(0),
+  includeResult: z.boolean().optional().default(false),
 });
 
 // Type inference from Zod schemas
@@ -118,7 +119,7 @@ export interface StakworkRunResponse {
   featureId: string | null;
   workspaceId: string;
   status: WorkflowStatus;
-  result: string | null;
+  result?: string | null;
   dataType: string;
   feedback: string | null;
   decision: StakworkRunDecision | null;
