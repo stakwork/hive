@@ -84,6 +84,7 @@ export const optionalEnvVars = {
     ? `${MOCK_BASE}/api/mock/hub/notify`
     : process.env.HUB_NOTIFY_URL || "https://hub.sphinx.chat/api/v1/nodes/notify",
   API_TIMEOUT: parseInt(process.env.API_TIMEOUT || "20000"),
+  MCP_CLIENT_TIMEOUT_MS: parseInt(process.env.MCP_CLIENT_TIMEOUT_MS || '30000', 10),
   GITHUB_APP_SLUG: process.env.GITHUB_APP_SLUG,
   GITHUB_APP_CLIENT_ID: process.env.GITHUB_APP_CLIENT_ID,
   GITHUB_APP_CLIENT_SECRET: process.env.GITHUB_APP_CLIENT_SECRET,
