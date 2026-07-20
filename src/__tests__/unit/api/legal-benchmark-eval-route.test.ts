@@ -353,10 +353,31 @@ describe("POST /api/workspaces/[slug]/legal/benchmarks/runs/[runId]/eval", () =>
     expect(stakworkCall).toBeDefined();
 
     const payload = JSON.parse(stakworkCall[1].body as string) as {
+      webhook_url: string;
       workflow_id: number;
       workflow_params: { set_var: { attributes: { vars: Record<string, unknown> } } };
     };
     const vars = payload.workflow_params.set_var.attributes.vars;
+
+    // ── Top-level webhook_url must be the status-sync endpoint ────────────
+    expect(payload.webhook_url).toMatch(/\/api\/stakwork\/webhook\?run_id=/);
+    expect(payload.webhook_url).toContain(EVAL_RUN_ID);
+    expect(payload.webhook_url).not.toMatch(/\/api\/webhook\/stakwork\/response/);
+
+    // ── vars.webhook_url must still be the typed response endpoint ─────────
+    expect(vars.webhook_url).toMatch(/\/api\/webhook\/stakwork\/response/);
+    expect(vars.webhook_url).toMatch(/type=LEGAL_BENCHMARK_EVAL/);
+    expect(vars.webhook_url).toMatch(/run_id=eval-run-1/);
+    expect(vars.webhook_url).toMatch(/workspace_id=ws-1/);
+
+    // ── StakworkRun.webhookUrl DB field must still be the response URL ─────
+    const updateCall = mockDbStakworkRunUpdate.mock.calls.find(
+      (call: [{ where: { id: string }; data: { webhookUrl?: string } }]) =>
+        call[0].where?.id === EVAL_RUN_ID && call[0].data?.webhookUrl !== undefined,
+    ) as [{ where: { id: string }; data: { webhookUrl: string } }] | undefined;
+    expect(updateCall).toBeDefined();
+    expect(updateCall![0].data.webhookUrl).toMatch(/\/api\/webhook\/stakwork\/response/);
+    expect(updateCall![0].data.webhookUrl).toMatch(/type=LEGAL_BENCHMARK_EVAL/);
 
     // ── Original 10 vars must be present and unchanged ─────────────────────
     expect(vars).toHaveProperty("source_run_id", SOURCE_RUN_ID);
@@ -967,6 +988,54 @@ describe("processLegalBenchmarkEvalWebhook (via processStakworkRunWebhook)", () 
     const evalRunCall = pusherCalls.find((c) => c[2]?.runId === EVAL_RUN_ID);
     expect(evalRunCall).toBeDefined();
     expect(evalRunCall![2].runId).toBe(EVAL_RUN_ID);
+  });
+
+  // Test 8a: persist-then-broadcast ordering guarantee
+  test("8a. source run criteria_results persisted BEFORE STAKWORK_RUN_UPDATE broadcast keyed on sourceRunId", async () => {
+    mockDbStakworkRunFindFirst.mockResolvedValue(makeEvalRunForWebhook());
+    mockDbStakworkRunFindUnique.mockResolvedValue(makeSourceRunForWebhook());
+
+    const callOrder: string[] = [];
+
+    // Intercept DB update to record when it fires
+    mockDbStakworkRunUpdate.mockImplementation(
+      async (args: { where: { id: string }; data: { result?: string } }) => {
+        if (args.where?.id === SOURCE_RUN_ID && args.data?.result) {
+          callOrder.push("db:source-run-update");
+        }
+        return {};
+      },
+    );
+
+    // Intercept Pusher to record when it fires (per runId)
+    mockPusherTrigger.mockImplementation(
+      async (_channel: string, _event: string, data: { runId?: string }) => {
+        if (data?.runId === SOURCE_RUN_ID) {
+          callOrder.push("pusher:source-run-broadcast");
+        }
+      },
+    );
+
+    const causes = [{ criterion_id: "c2", cause_type: "missing_logic", cause_summary: "Missing" }];
+
+    await processStakworkRunWebhook(
+      { result: { causes, sourceRunId: SOURCE_RUN_ID }, project_status: "complete" },
+      {
+        type: "LEGAL_BENCHMARK_EVAL",
+        workspace_id: WORKSPACE_ID,
+        run_id: EVAL_RUN_ID,
+        run_token: makeRunToken(EVAL_RUN_ID),
+      },
+    );
+
+    // Both must have fired
+    expect(callOrder).toContain("db:source-run-update");
+    expect(callOrder).toContain("pusher:source-run-broadcast");
+
+    // DB persist must precede the broadcast
+    const persistIdx = callOrder.indexOf("db:source-run-update");
+    const broadcastIdx = callOrder.indexOf("pusher:source-run-broadcast");
+    expect(persistIdx).toBeLessThan(broadcastIdx);
   });
 
   // Test 9: sourceRunId missing → no throw, no source run update
