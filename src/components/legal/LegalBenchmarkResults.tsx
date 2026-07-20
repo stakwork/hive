@@ -297,6 +297,7 @@ export function LegalBenchmarkResults({ runId, onReset, isSuperAdmin = false }: 
           fixes={fixes}
           isLoading={fixesLoading}
           refetch={refetchFixes}
+          isSuperAdmin={isSuperAdmin}
         />
 
         <div className="flex justify-end gap-2">
