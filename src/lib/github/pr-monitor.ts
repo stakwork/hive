@@ -102,7 +102,7 @@ interface PrLogEntry {
   ts: string;
 }
 
-export function createPrLogger(taskId: string) {
+export function createPrLogger(taskId: string, repoUrl?: string) {
   const lines: PrLogEntry[] = [];
 
   const record = (level: "info" | "warn" | "error", msg: string, data?: Record<string, unknown>) => {
@@ -129,7 +129,14 @@ export function createPrLogger(taskId: string) {
       const agentLog = existing
         ? await db.agentLog.update({ where: { id: existing.id }, data: { blobUrl: blob.url } })
         : await db.agentLog.create({
-            data: { blobUrl: blob.url, agent: "pr-monitor", taskId, featureId, workspaceId },
+            data: {
+              blobUrl: blob.url,
+              agent: "pr-monitor",
+              taskId,
+              featureId,
+              workspaceId,
+              repos: repoUrl ? [repoUrl] : [],
+            },
           });
 
       await pusherServer.trigger(
@@ -1159,7 +1166,9 @@ export async function monitorOpenPRs(maxPRs: number = 20): Promise<MonitorStats>
   });
 
   for (const pr of openPRs) {
-    const prLog = createPrLogger(pr.taskId);
+    const parsedPrUrl = parsePRUrl(pr.prUrl);
+    const prRepoUrl = parsedPrUrl ? `https://github.com/${parsedPrUrl.owner}/${parsedPrUrl.repo}` : undefined;
+    const prLog = createPrLogger(pr.taskId, prRepoUrl);
     const taskMeta = await db.task.findUnique({
       where: { id: pr.taskId },
       select: { featureId: true },
@@ -1279,7 +1288,9 @@ export async function monitorSinglePR(prUrl: string): Promise<MonitorStats> {
 
   log.info("[PRMonitor] monitorSinglePR: artifact found, checking PR", { prUrl, taskId: record.taskId });
 
-  const prLog = createPrLogger(record.taskId);
+  const parsedRecordUrl = parsePRUrl(record.prUrl);
+  const recordRepoUrl = parsedRecordUrl ? `https://github.com/${parsedRecordUrl.owner}/${parsedRecordUrl.repo}` : undefined;
+  const prLog = createPrLogger(record.taskId, recordRepoUrl);
   const taskMeta = await db.task.findUnique({
     where: { id: record.taskId },
     select: { featureId: true },
