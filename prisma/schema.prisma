@@ -2068,6 +2068,8 @@ model PromptVersion {
   description   String?
   whodunnit     String? // userId or system label (e.g. "stakwork-seed")
   published     Boolean  @default(false)
+  publishedBy   String?  @map("published_by") // userId or actor label set when version is published
+  publishedAt   DateTime? @map("published_at") // timestamp when version was published
   createdAt     DateTime @default(now()) @map("created_at")
   prompt        Prompt   @relation(fields: [promptId], references: [id], onDelete: Cascade)
   publishedForPrompts Prompt[] @relation("PublishedVersion")
