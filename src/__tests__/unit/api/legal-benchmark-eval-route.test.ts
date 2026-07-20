@@ -819,6 +819,42 @@ describe("POST /api/workspaces/[slug]/legal/benchmarks/runs/[runId]/eval", () =>
     // No eval run row should have been created
     expect(mockDbStakworkRunCreate).not.toHaveBeenCalled();
   });
+
+  // ── Standing regression guard ────────────────────────────────────────────
+  // Test 21: dispatch payload contains NO accepted-tip / prompt-version-map /
+  // acceptedPromptTip var.  This test exists to fail loudly if future changes
+  // re-introduce hive-side lineage/prompt-map logic that is now owned
+  // exclusively by the stakwork eval workflow.
+  test("21. (standing regression guard) dispatch payload vars contain NO accepted-tip / prompt-version-map / acceptedPromptTip var", async () => {
+    const mockFetch = makeUrlAwareFetch();
+    vi.stubGlobal("fetch", mockFetch);
+
+    await postEval(makeEvalRequest(), {
+      params: Promise.resolve({ slug: "openlaw", runId: SOURCE_RUN_ID }),
+    });
+
+    const stakworkCall = mockFetch.mock.calls.find(([url]: [string]) =>
+      url.includes("/projects"),
+    ) as [string, RequestInit] | undefined;
+    expect(stakworkCall).toBeDefined();
+
+    const payload = JSON.parse(stakworkCall![1].body as string) as {
+      workflow_params: { set_var: { attributes: { vars: Record<string, unknown> } } };
+    };
+    const vars = payload.workflow_params.set_var.attributes.vars;
+
+    // ── None of these keys may ever appear in the eval dispatch payload ────
+    // They would indicate hive is doing lineage / prompt-map assembly that is
+    // now owned by the stakwork eval workflow.
+    expect(vars).not.toHaveProperty("acceptedPromptTip");
+    expect(vars).not.toHaveProperty("accepted_prompt_tip");
+    expect(vars).not.toHaveProperty("prompt_version_map");
+    expect(vars).not.toHaveProperty("promptVersionMap");
+    expect(vars).not.toHaveProperty("accepted_tip");
+    expect(vars).not.toHaveProperty("lineage_walk");
+    expect(vars).not.toHaveProperty("derived_from");
+    expect(vars).not.toHaveProperty("eval_status");
+  });
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
