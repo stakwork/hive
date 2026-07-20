@@ -3,7 +3,7 @@ import { z } from "zod";
 import { createMCPClient } from "@ai-sdk/mcp";
 import { withMcpTimeout, isMcpTimeout } from './mcpTimeout';
 import { WorkspaceConfig } from "./types";
-import { listConcepts, repoAgent } from "./askTools";
+import { listConcepts, repoAgent, REPO_AGENT_CANCELLED } from "./askTools";
 import { buildCourtlistenerTools } from "@/lib/ai/courtlistenerTools";
 import { LEGAL_SLUGS } from "@/lib/eval-capture-slugs";
 // Deep import — see comment in services/task-workflow.ts.
@@ -301,6 +301,7 @@ export function askToolsMulti(
             },
             bifrost,
           );
+          if (rr === REPO_AGENT_CANCELLED) return "Agent run was cancelled";
           return rr.content;
         } catch (e) {
           console.error(`Error executing repo agent for ${ws.slug}:`, e);
