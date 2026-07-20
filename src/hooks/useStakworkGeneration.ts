@@ -52,6 +52,7 @@ export function useStakworkGeneration({
         featureId,
         type,
         limit: "1",
+        includeResult: "true",
       });
 
       const response = await fetch(`/api/stakwork/runs?${params}`);
