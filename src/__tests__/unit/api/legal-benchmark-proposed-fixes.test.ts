@@ -351,6 +351,7 @@ describe("GET /api/workspaces/[slug]/legal/benchmarks/proposed-fixes", () => {
       "passing_value",
       "delta",
       "reasoning",
+      "eval_status",
       "status",
       "rerun_status",
       "before_score",
