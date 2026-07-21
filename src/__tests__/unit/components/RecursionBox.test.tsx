@@ -254,15 +254,50 @@ describe("RecursionCard", () => {
     expect(screen.getByTestId("score-no-runs").textContent).toMatch(/no runs yet/i);
   });
 
-  it("shows latest n_passed/n_total when attempts present", () => {
+  it("shows latest n_passed/n_total when attempts present (all accepted)", () => {
     mockHistoryLoaded([
       makeOutput(28, 42, 0),
       makeOutput(34, 42, 1),
-      makeOutput(38, 42, 2), // latest
+      makeOutput(38, 42, 2), // highest = best
     ]);
     renderCard();
     const score = screen.getByTestId("score-display");
     expect(score.textContent).toBe("38/42");
+  });
+
+  it("shows best score (not last element) when trailing attempt is rejected/lower", () => {
+    // Series: baseline=24, accepted=32 (best), rejected=20 (last element but lower)
+    // bestPassed drives the badge; the trailing rejected element should not show 20
+    mockHistoryLoaded([
+      {
+        ...makeOutput(24, 33, 0),
+        isBaseline: true,
+        accepted: true,
+        actualPassed: 24,
+        bestPassed: 24,
+        label: "base",
+      },
+      {
+        ...makeOutput(32, 33, 1),
+        isBaseline: false,
+        accepted: true,
+        actualPassed: 32,
+        bestPassed: 32,
+        label: "r1",
+      },
+      {
+        ...makeOutput(20, 33, 2),
+        isBaseline: false,
+        accepted: false,
+        actualPassed: 20,
+        bestPassed: 32, // best stays flat after rejection
+        label: "r2",
+      },
+    ]);
+    renderCard();
+    const score = screen.getByTestId("score-display");
+    // Should show 32 (best) not 20 (last element's n_passed)
+    expect(score.textContent).toBe("32/33");
   });
 
   it("shows loading indicator while history is loading", () => {
