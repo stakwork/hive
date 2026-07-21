@@ -477,6 +477,67 @@ export async function checkPR(
 }
 
 /**
+ * Atomically claim an artifact's fix slot by performing a compare-and-set (CAS)
+ * UPDATE on its `content.progress.resolution` JSON.
+ *
+ * Returns true if this invocation won the claim (affected === 1), false if
+ * another concurrent invocation already holds it (or it is permanently gave_up).
+ *
+ * ISOLATION NOTE: Correctness depends on Postgres READ COMMITTED row-lock
+ * re-evaluation (EPQ). When the winner commits, the loser's UPDATE re-checks
+ * the WHERE clause against the freshly committed row and gets 0 rows instead of
+ * a serialisation error.  This helper MUST be called as its own autocommit
+ * statement — do NOT wrap it in a REPEATABLE READ or SERIALIZABLE interactive
+ * transaction, which would raise a serialisation error instead of silently losing.
+ *
+ * The WHERE clause mirrors `findSinglePRArtifact`/`findOpenPRArtifacts` exactly
+ * so the claim is self-sufficient and never relies on upstream filtering to
+ * prevent re-claiming a `gave_up` artifact.
+ *
+ * The attempt counter is incremented inside the SQL off the row's own current
+ * value — not the pre-claim in-memory snapshot — so concurrent winners cannot
+ * under-count and break the `PR_FIX_MAX_ATTEMPTS` gate.
+ *
+ * The outer `jsonb_set(…,'{progress}',COALESCE(…))` wrapper ensures a row with
+ * a missing/malformed `progress` object still claims cleanly.
+ */
+export async function claimPRFixInProgress(
+  artifactId: string,
+  staleTimeoutMs: number,
+): Promise<boolean> {
+  const nowIso = new Date().toISOString();
+  // Pass staleTimeoutMs as a string parameter and construct the Postgres interval
+  // via `((n::text) || ' milliseconds')::interval` — a raw ms integer cannot be
+  // subtracted from NOW() directly.
+  const affected = await db.$executeRaw`
+    UPDATE artifacts
+    SET content = jsonb_set(
+      jsonb_set(
+        content,
+        '{progress}',
+        COALESCE(content->'progress', '{}'::jsonb)
+      ),
+      '{progress,resolution}',
+      jsonb_build_object(
+        'status',       'in_progress',
+        'attempts',     COALESCE((content->'progress'->'resolution'->>'attempts')::int, 0) + 1,
+        'lastAttemptAt', ${nowIso}
+      )
+    )
+    WHERE id = ${artifactId}
+      AND type = 'PULL_REQUEST'
+      AND COALESCE(content->'progress'->'resolution'->>'status', '') != 'gave_up'
+      AND (
+        COALESCE(content->'progress'->'resolution'->>'status', '') != 'in_progress'
+        OR (content->'progress'->'resolution'->>'lastAttemptAt') IS NULL
+        OR (content->'progress'->'resolution'->>'lastAttemptAt')::timestamptz
+             < NOW() - ((${staleTimeoutMs}::text) || ' milliseconds')::interval
+      )
+  `;
+  return affected === 1;
+}
+
+/**
  * Update a PR artifact with new progress state
  */
 export async function updatePRArtifactProgress(
@@ -686,7 +747,7 @@ export async function findOpenPRArtifacts(limit: number = 50): Promise<
         AND (
           COALESCE(a.content->'progress'->'resolution'->>'status', '') != 'in_progress'
           OR a.content->'progress'->'resolution'->>'lastAttemptAt' IS NULL
-          OR (a.content->'progress'->'resolution'->>'lastAttemptAt')::timestamptz < NOW() - INTERVAL '30 minutes'
+          OR (a.content->'progress'->'resolution'->>'lastAttemptAt')::timestamptz < NOW() - ((${PR_FIX_STALE_TIMEOUT_MS}::text) || ' milliseconds')::interval
         )
         -- Cooldown logic: only "healthy" PRs (CI passed, no issues) have 1-hour cooldown
         -- All other states (checking, conflict, ci_failure) are re-checked every cron run
@@ -1049,17 +1110,6 @@ async function processOnePR(
       });
     }
 
-    // Notify via Pusher and create chat message
-    prLog.info("Notifying PR status change", {
-      taskId: pr.taskId,
-      prNumber: result.prNumber,
-      state: result.state,
-      problemDetails: result.problemDetails,
-      hasPod: !!pr.podId,
-    });
-    await notifyPRStatusChange(pr.taskId, result.prNumber, result.state, result.problemDetails);
-    stats.notified++;
-
     // Check if the specific fix type is enabled for this workspace
     const isFixEnabledForState =
       (result.state === "conflict" && pr.prMonitorConfig.prConflictFixEnabled) ||
@@ -1076,6 +1126,57 @@ async function processOnePR(
       progress.resolution?.status !== "gave_up";
 
     if (shouldTriggerFix) {
+      // ── Atomic CAS claim ────────────────────────────────────────────────────
+      // Perform a compare-and-set UPDATE to atomically claim the fix slot.
+      // Only the first concurrent invocation that wins the Postgres row-lock
+      // re-evaluation (EPQ) proceeds; losers see 0 affected rows and no-op.
+      // This MUST run as its own autocommit statement — see claimPRFixInProgress.
+      const claimWon = await claimPRFixInProgress(pr.artifactId, PR_FIX_STALE_TIMEOUT_MS);
+
+      if (!claimWon) {
+        // Another concurrent invocation already holds the claim. Stand down
+        // completely — no notify, no stats increment, no trailing DB write.
+        // This is intentional: the winner will write the authoritative snapshot.
+        prLog.info("CAS claim lost — duplicate delivery, standing down", {
+          taskId: pr.taskId,
+          prNumber: result.prNumber,
+          state: result.state,
+        });
+        return;
+      }
+
+      // Claim won. Reflect the claimed resolution in-memory so the trailing
+      // updatePRArtifactProgress does not clobber it (see below).
+      // Use a sentinel attempt count; the SQL incremented the real counter.
+      // We'll read it back from the claimed row if needed, but for the in-memory
+      // progress object we use currentAttempts + 1 as an accurate local estimate.
+      const claimedLastAttemptAt = new Date().toISOString();
+      progress.resolution = {
+        status: "in_progress",
+        attempts: currentAttempts + 1,
+        lastAttemptAt: claimedLastAttemptAt,
+      };
+
+      prLog.info("CAS claim won — proceeding to dispatch", {
+        taskId: pr.taskId,
+        prNumber: result.prNumber,
+        state: result.state,
+        attempt: currentAttempts + 1,
+        isStaleReclaim: isStaleInProgress,
+      });
+
+      // ── Notify (winner-only) ─────────────────────────────────────────────────
+      prLog.info("Notifying PR status change", {
+        taskId: pr.taskId,
+        prNumber: result.prNumber,
+        state: result.state,
+        problemDetails: result.problemDetails,
+        hasPod: !!pr.podId,
+      });
+      await notifyPRStatusChange(pr.taskId, result.prNumber, result.state, result.problemDetails);
+      stats.notified++;
+
+      // ── Dispatch fix (winner-only) ───────────────────────────────────────────
       const fixPrompt = buildFixPrompt(result);
       prLog.info("Triggering PR fix", {
         taskId: pr.taskId,
@@ -1090,21 +1191,19 @@ async function processOnePR(
       const triggerResult = await triggerFix(pr.taskId, fixPrompt);
       if (triggerResult.success) {
         stats.agentTriggered++;
-        // Only mark resolution as in_progress if the fix was actually dispatched
-        progress.resolution = {
-          status: "in_progress",
-          attempts: currentAttempts + 1,
-          lastAttemptAt: new Date().toISOString(),
-        };
+        // resolution is already in-memory `in_progress` from the claim above.
       } else {
-        prLog.info("Fix trigger did not dispatch, will retry next run", {
+        prLog.info("Fix trigger did not dispatch, releasing claim for retry next run", {
           taskId: pr.taskId,
           prNumber: result.prNumber,
           error: triggerResult.error,
         });
-        // Don't set resolution — leave it unset so next cron run retries
+        // Release the claim by clearing in-memory resolution so the trailing
+        // updatePRArtifactProgress writes it as undefined — the "leave unset so
+        // next cron run retries" convention from before the CAS.
+        progress.resolution = undefined;
       }
-    } else if (pr.podId && canAttemptFix && !isFixEnabledForState) {
+    } else if (canAttemptFix && !isFixEnabledForState) {
       prLog.info("Skipping PR fix - fix type disabled for workspace", {
         taskId: pr.taskId,
         prNumber: result.prNumber,
@@ -1112,7 +1211,7 @@ async function processOnePR(
         conflictFixEnabled: pr.prMonitorConfig.prConflictFixEnabled,
         ciFailureFixEnabled: pr.prMonitorConfig.prCiFailureFixEnabled,
       });
-    } else if (pr.podId && canAttemptFix && !cooldownElapsed) {
+    } else if (canAttemptFix && !cooldownElapsed) {
       prLog.info("Skipping PR fix due to cooldown", {
         taskId: pr.taskId,
         prNumber: result.prNumber,
@@ -1121,7 +1220,39 @@ async function processOnePR(
       });
     }
 
-    // Update artifact
+    if (!shouldTriggerFix) {
+      // Non-fix path: notify unconditionally for conflict/ci_failure state changes.
+      prLog.info("Notifying PR status change", {
+        taskId: pr.taskId,
+        prNumber: result.prNumber,
+        state: result.state,
+        problemDetails: result.problemDetails,
+        hasPod: !!pr.podId,
+      });
+      await notifyPRStatusChange(pr.taskId, result.prNumber, result.state, result.problemDetails);
+      stats.notified++;
+    }
+
+    // Update artifact — but preserve the just-claimed `resolution` if the
+    // dispatch succeeded so a fast agent-completion webhook that already flipped
+    // `resolution` to a terminal state isn't clobbered back to `in_progress`.
+    // We do this by re-fetching the current artifact's resolution before writing,
+    // and only overwriting if our in-memory resolution is still `in_progress`.
+    if (shouldTriggerFix && progress.resolution?.status === "in_progress") {
+      // Winner path: resolution was claimed atomically. Fetch the live artifact
+      // to check whether an agent-completion webhook already flipped it to a
+      // terminal state, and if so preserve that terminal state.
+      const live = await db.artifact.findUnique({
+        where: { id: pr.artifactId },
+        select: { content: true },
+      });
+      const liveContent = live?.content as PullRequestContent | undefined;
+      const liveResolution = liveContent?.progress?.resolution;
+      if (liveResolution && liveResolution.status !== "in_progress") {
+        // A terminal state was written after our CAS claim committed — preserve it.
+        progress.resolution = liveResolution;
+      }
+    }
     await updatePRArtifactProgress(pr.artifactId, progress);
   } else {
     // Track checking (CI pending) vs truly healthy
@@ -1246,7 +1377,7 @@ async function findSinglePRArtifact(prUrl: string): Promise<PRRecord | null> {
       AND (
         COALESCE(a.content->'progress'->'resolution'->>'status', '') != 'in_progress'
         OR a.content->'progress'->'resolution'->>'lastAttemptAt' IS NULL
-        OR (a.content->'progress'->'resolution'->>'lastAttemptAt')::timestamptz < NOW() - INTERVAL '30 minutes'
+        OR (a.content->'progress'->'resolution'->>'lastAttemptAt')::timestamptz < NOW() - ((${PR_FIX_STALE_TIMEOUT_MS}::text) || ' milliseconds')::interval
       )
       AND a.content->>'url' = ${prUrl}
     ORDER BY a.content->>'url', a.created_at DESC

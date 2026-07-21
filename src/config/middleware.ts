@@ -131,6 +131,8 @@ export const ROUTE_POLICIES: ReadonlyArray<RoutePolicy> = [
   // `src/lib/ai/publicChatBudget.ts`) caps Anthropic spend per
   // anonymous visitor and per workspace.
   { path: "/api/ask/quick", strategy: "exact", access: "public", methods: ["POST"] },
+  // Abort endpoint — the route handler enforces auth via requireAuth (401 before any work).
+  { path: "/api/ask/abort", strategy: "exact", access: "public", methods: ["POST"] },
 
   // Public dashboard-chat autosave. Anonymous public viewers create
   // a `SharedConversation` row on first send (POST) and append on
