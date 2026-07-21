@@ -19,6 +19,12 @@ export interface KgNode {
   node_type: string;
   name: string;
   properties?: unknown;
+  /**
+   * {EDGE_TYPE: count} map of the node's relationships — how connected it is
+   * and which edge types can be traversed next. Present only when the call
+   * opted in via `includeEdgeCounts`.
+   */
+  edges?: Record<string, number>;
 }
 
 interface JarvisEdge {
@@ -46,6 +52,12 @@ export interface KgNeighborResult extends NeighborResult {
   ref_id: string;
   /** Best-effort human-readable label for the neighbor (see deriveNodeName). */
   name: string;
+  /**
+   * {EDGE_TYPE: count} map of this neighbor's OWN relationships — shows how
+   * connected it is and which edge types can be hopped along next. Present
+   * only when the call opted in via `includeEdgeCounts`.
+   */
+  edges?: Record<string, number>;
 }
 
 export interface KgNeighborsResponse {
@@ -192,6 +204,55 @@ function deriveNodeName(
 // ---------------------------------------------------------------------------
 
 /**
+ * Collapse Jarvis `/connection-counts` rows ([{edge_type, target_type, count}])
+ * into a compact `{EDGE_TYPE: totalCount}` map, summing across target types.
+ * This mirrors the inline `edges` map returned by kgSearch so both present
+ * connectivity the same way.
+ */
+export function collapseConnectionCounts(
+  counts: Array<{ edge_type: string; target_type?: string; count: number }>,
+): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const c of counts ?? []) {
+    if (!c?.edge_type) continue;
+    out[c.edge_type] = (out[c.edge_type] ?? 0) + Number(c.count ?? 0);
+  }
+  return out;
+}
+
+/**
+ * Fetch edge-type connectivity for a node from the dedicated aggregation
+ * endpoint (cheap: counts only, no neighbor materialization). Best-effort —
+ * returns `{}` on any error, never throws.
+ */
+async function fetchConnectionCounts(
+  jarvisUrl: string,
+  swarmApiKey: string,
+  refId: string,
+): Promise<Record<string, number>> {
+  try {
+    const url = `${jarvisUrl.replace(/\/$/, "")}/v2/nodes/${encodeURIComponent(refId)}/connection-counts`;
+    const res = await kgFetch(url, swarmApiKey);
+    if (!res.ok) return {};
+    const data = (await res.json()) as {
+      counts?: Array<{ edge_type: string; target_type?: string; count: number }>;
+    };
+    return collapseConnectionCounts(data?.counts ?? []);
+  } catch {
+    return {};
+  }
+}
+
+export interface KgGetNodeOpts {
+  /**
+   * When true, also fetch `/connection-counts` and attach an `edges`
+   * ({EDGE_TYPE: count}) map to the returned node. One extra (cheap,
+   * aggregation-only) request; failures leave `edges` as `{}`.
+   */
+  includeEdgeCounts?: boolean;
+}
+
+/**
  * Fetch a single node by refId.
  * Returns `{ name, node_type, ref_id, properties }` or `null` on any error.
  *
@@ -203,6 +264,7 @@ export async function kgGetNode(
   jarvisUrl: string,
   swarmApiKey: string,
   refId: string,
+  opts?: KgGetNodeOpts,
 ): Promise<KgNode | null> {
   try {
     // limit=1 keeps Jarvis from materializing the node's whole neighborhood
@@ -222,12 +284,16 @@ export async function kgGetNode(
 
     if (!raw || !raw.ref_id) return null;
     const properties = (raw.properties ?? {}) as Record<string, unknown>;
-    return {
+    const node: KgNode = {
       ref_id: raw.ref_id,
       node_type: raw.node_type,
       name: deriveNodeName(raw, properties),
       properties: raw.properties,
     };
+    if (opts?.includeEdgeCounts) {
+      node.edges = await fetchConnectionCounts(jarvisUrl, swarmApiKey, refId);
+    }
+    return node;
   } catch {
     return null;
   }
@@ -295,6 +361,12 @@ export async function kgGetNodesByRefs(
 export interface KgGetNeighborsOpts {
   edgeTypes?: string[];
   nodeTypes?: string[];
+  /**
+   * When true, ask Jarvis to attach each neighbor's own {EDGE_TYPE: count}
+   * map (`include_edge_counts=true`) so the agent can see where it can hop
+   * next without a per-neighbor round trip.
+   */
+  includeEdgeCounts?: boolean;
 }
 
 /**
@@ -341,6 +413,9 @@ export async function kgGetNeighbors(
     if (opts?.nodeTypes && opts.nodeTypes.length > 0) {
       params.set("node_type", toPythonListLiteral(opts.nodeTypes));
     }
+    if (opts?.includeEdgeCounts) {
+      params.set("include_edge_counts", "true");
+    }
     const url = `${jarvisUrl}/v2/nodes/${encodeURIComponent(refId)}?${params.toString()}`;
     const res = await kgFetch(url, swarmApiKey);
     if (!res.ok) return { neighbors: [], reachable: false };
@@ -350,12 +425,18 @@ export async function kgGetNeighbors(
     // Build a lookup map for node details keyed by ref_id, excluding the queried
     // node itself. Derive a human-readable label here while we still have the
     // node's properties — otherwise the caller only sees a bare ref_id.
-    const nodeMap = new Map<string, { node_type: string; name: string }>();
+    const nodeMap = new Map<
+      string,
+      { node_type: string; name: string; edges?: Record<string, number> }
+    >();
     for (const node of data.nodes ?? []) {
       if (node.ref_id !== refId) {
         nodeMap.set(node.ref_id, {
           node_type: node.node_type,
           name: deriveNodeName(node, (node.properties ?? {}) as Record<string, unknown>),
+          ...(opts?.includeEdgeCounts
+            ? { edges: (node as { edges?: Record<string, number> }).edges ?? {} }
+            : {}),
         });
       }
     }
@@ -389,6 +470,7 @@ export async function kgGetNeighbors(
         ref_id: neighborRefId,
         name: nodeDetail?.name ?? "",
         ...(importance !== undefined ? { importance } : {}),
+        ...(nodeDetail?.edges !== undefined ? { edges: nodeDetail.edges } : {}),
       });
 
       // Cap to keep tool output within the agent's context/token budget.
@@ -407,43 +489,132 @@ export async function kgGetNeighbors(
 
 export interface KgSchemaType {
   type: string;
+  /** Domain grouping (lowercased), or null when the type has no domain. */
+  domain: string | null;
   description: string;
+}
+
+export interface KgOntology {
+  /** Distinct, non-null, lowercased, sorted domain list. */
+  domains: string[];
+  node_types: KgSchemaType[];
 }
 
 interface JarvisGraphLabelsResponse {
   labels?: Array<{ type?: string; description?: string }>;
 }
 
+interface JarvisSchemaResponse {
+  schemas?: Array<{
+    type?: string;
+    domain?: string;
+    description?: string;
+    is_deleted?: boolean;
+  }>;
+}
+
 /**
- * Fetch the workspace's KG node-type ontology from `GET /graph/labels`.
+ * Fetch the workspace's KG node-type ontology, merging TWO sources:
  *
- * Unlike `/schema/all` (which reports capitalize-normalized schema types —
- * e.g. `Pullrequest`), `/graph/labels` returns the REAL Neo4j labels via
- * `db.labels()` (e.g. `PullRequest`), merged with schema descriptions where
- * available and including newly-ingested types that have no schema yet. This is
- * the correct discovery source for the graph-walker type filters, which now
- * match against real labels. See docs/plans/graph-walker-label-canonicalization.md.
+ * - `GET /graph/labels` — the REAL Neo4j labels via `db.labels()` (e.g.
+ *   `PullRequest`, not the capitalize-normalized `Pullrequest`), including
+ *   newly-ingested types that have no schema yet. These are the exact strings
+ *   the graph-walker type filters match against. See
+ *   docs/plans/graph-walker-label-canonicalization.md.
+ * - `GET /v2/schema` — the schema registry, which carries each type's
+ *   `domain` grouping and richer descriptions, plus registered types that have
+ *   no live nodes yet.
  *
- * Returns a `{ type, description }[]` list parsed from `data.labels`.
- * Returns `[]` on non-ok response, thrown fetch, or malformed/missing labels.
+ * The union prefers the real label casing when a type exists in both; domain
+ * and description are enriched from the schema (matched case-insensitively).
+ * Each source is best-effort: if one fetch fails the other still populates the
+ * result. Returns `{ domains: [], node_types: [] }` when both fail.
  * Never throws — matches the behavior of `kgGetNode` / `kgSearch`.
  */
 export async function kgGetOntology(
   jarvisUrl: string,
   swarmApiKey: string,
-): Promise<KgSchemaType[]> {
-  try {
-    const url = `${jarvisUrl.replace(/\/$/, "")}/graph/labels`;
-    const res = await kgFetch(url, swarmApiKey);
-    if (!res.ok) return [];
-    const data = (await res.json()) as JarvisGraphLabelsResponse;
-    if (!Array.isArray(data?.labels)) return [];
-    return data.labels
-      .filter((s) => typeof s?.type === "string" && s.type.length > 0)
-      .map((s) => ({ type: s.type as string, description: s.description ?? "" }));
-  } catch {
-    return [];
+): Promise<KgOntology> {
+  const base = jarvisUrl.replace(/\/$/, "");
+
+  const [labels, schemas] = await Promise.all([
+    (async () => {
+      try {
+        const res = await kgFetch(`${base}/graph/labels`, swarmApiKey);
+        if (!res.ok) return [];
+        const data = (await res.json()) as JarvisGraphLabelsResponse;
+        if (!Array.isArray(data?.labels)) return [];
+        return data.labels.filter(
+          (s): s is { type: string; description?: string } =>
+            typeof s?.type === "string" && s.type.length > 0,
+        );
+      } catch {
+        return [];
+      }
+    })(),
+    (async () => {
+      try {
+        const res = await kgFetch(`${base}/v2/schema`, swarmApiKey);
+        if (!res.ok) return [];
+        const data = (await res.json()) as JarvisSchemaResponse;
+        if (!Array.isArray(data?.schemas)) return [];
+        return data.schemas.filter(
+          (s): s is { type: string; domain?: string; description?: string } =>
+            typeof s?.type === "string" &&
+            s.type.length > 0 &&
+            s.type !== "*" &&
+            !s.is_deleted,
+        );
+      } catch {
+        return [];
+      }
+    })(),
+  ]);
+
+  // lower(type) → schema entry, for case-insensitive enrichment of labels.
+  const schemaByLower = new Map<
+    string,
+    { type: string; domain: string | null; description: string }
+  >();
+  for (const s of schemas) {
+    schemaByLower.set(s.type.toLowerCase(), {
+      type: s.type,
+      domain: s.domain ? s.domain.toLowerCase() : null,
+      description: s.description ?? "",
+    });
   }
+
+  const node_types: KgSchemaType[] = [];
+  const seenLower = new Set<string>();
+
+  // Real labels first — their casing wins, enriched from the schema.
+  for (const l of labels) {
+    const lower = l.type.toLowerCase();
+    if (seenLower.has(lower)) continue;
+    seenLower.add(lower);
+    const schema = schemaByLower.get(lower);
+    node_types.push({
+      type: l.type,
+      domain: schema?.domain ?? null,
+      description: l.description || schema?.description || "",
+    });
+  }
+
+  // Schema-only types (registered but no live nodes yet).
+  for (const s of schemaByLower.values()) {
+    const lower = s.type.toLowerCase();
+    if (seenLower.has(lower)) continue;
+    seenLower.add(lower);
+    node_types.push({ type: s.type, domain: s.domain, description: s.description });
+  }
+
+  const domains = [
+    ...new Set(
+      node_types.flatMap((nt) => (nt.domain !== null ? [nt.domain] : [])),
+    ),
+  ].sort();
+
+  return { domains, node_types };
 }
 
 // ---------------------------------------------------------------------------
@@ -493,53 +664,97 @@ export async function kgGetNodesByType(
 export interface KgSearchOpts {
   type?: string;
   limit?: number;
+  /**
+   * Semantic search scoped to node INPUT schemas — find nodes by what they
+   * take as input (e.g. "a video file url"). Fused with `query` via RRF.
+   * Applies to node types with input embeddings (Workflow, Skill).
+   */
+  inputQ?: string;
+  /**
+   * Semantic search scoped to node OUTPUT schemas — find nodes by what they
+   * produce (e.g. "transcript with word-level timestamps").
+   */
+  outputQ?: string;
+  /** Comma-separated domain filter (e.g. "entity" or "content,entity"). */
+  domains?: string;
 }
 
-interface JarvisSearchLiteResponse {
-  nodes?: Array<{ node_type: string; ref_id: string; title?: string }>;
+/** A search hit: node summary plus description and connectivity map. */
+export interface KgSearchHit extends KgNode {
+  description: string;
+  /** {EDGE_TYPE: count} map of the node's relationships. */
+  edges: Record<string, number>;
 }
 
 /**
- * Keyword search over Jarvis v2 nodes via the lightweight `/v2/nodes/search`
- * endpoint, which returns matches-only `{ nodes: [{ node_type, ref_id, title }] }`
- * (no neighbor expansion, no paid properties to strip). The `type` filter is
- * comma-separated; `limit` is capped at 50 server-side.
- * Returns an array of matching node summaries, or `[]` on any error.
+ * Max length of a search hit's description — long descriptive blobs (content
+ * bodies, summaries) must not flood the agent's context in a ranked list.
+ */
+const DESCRIPTION_MAX = 300;
+
+/** Lowercased set for client-side filtering of internal/low-signal types. */
+const EXCLUDED_NODE_TYPES_LOWER = new Set(
+  EXCLUDED_NODE_TYPES.map((t) => t.toLowerCase()),
+);
+
+/**
+ * Hybrid (keyword + semantic) search over Jarvis v2 nodes via the ranked
+ * `/v2/nodes` pipeline (the same endpoint the stakgraph mode=graph agent uses).
+ * `query`, `inputQ`, and `outputQ` each act as their own retriever, fused into
+ * one ranked result set. `include_edge_counts=true` attaches a per-node
+ * {EDGE_TYPE: count} map so the agent can gauge connectivity and see which
+ * relationship types it can traverse next — without a per-node round trip.
+ *
+ * The `type` filter is comma-separated; Jarvis resolves it case-insensitively
+ * against real Neo4j labels first (so `PullRequest` matches — see
+ * docs/plans/graph-walker-label-canonicalization.md). Internal/low-signal
+ * types (Hint/Memory/Clip/Turn) are filtered client-side since this endpoint
+ * has no node-type denylist param.
+ * Returns an array of matching hits, or `[]` on any error.
  */
 export async function kgSearch(
   jarvisUrl: string,
   swarmApiKey: string,
   query: string,
   opts?: KgSearchOpts,
-): Promise<KgNode[]> {
+): Promise<KgSearchHit[]> {
+  if (!query && !opts?.inputQ && !opts?.outputQ) return [];
   try {
     const params = new URLSearchParams({
-      q: query,
       limit: String(opts?.limit ?? 20),
-      // Match against the REAL Neo4j label so multi-hump types (e.g.
-      // `PullRequest`) resolve. Unresolved types simply match nothing (no 400).
-      // See docs/plans/graph-walker-label-canonicalization.md.
-      canonicalize: "false",
-      // Denylist internal/low-signal types (Hint/Memory/Clip/Turn). Jarvis
-      // drops them in the Cypher before LIMIT so they don't fill result slots.
-      // Comma-separated, matching this endpoint's node_type convention.
-      exclude_type: EXCLUDED_NODE_TYPES.join(","),
+      // Attach each hit's {EDGE_TYPE: count} connectivity map inline.
+      include_edge_counts: "true",
     });
-    if (opts?.type) {
-      params.set("node_type", opts.type);
-    }
-    const url = `${jarvisUrl}/v2/nodes/search?${params.toString()}`;
+    if (query) params.set("q", query);
+    if (opts?.inputQ) params.set("input_q", opts.inputQ);
+    if (opts?.outputQ) params.set("output_q", opts.outputQ);
+    if (opts?.type) params.set("type", opts.type);
+    if (opts?.domains) params.set("domains", opts.domains);
+    const url = `${jarvisUrl.replace(/\/$/, "")}/v2/nodes?${params.toString()}`;
     const res = await kgFetch(url, swarmApiKey);
     if (!res.ok) return [];
-    const data = (await res.json()) as JarvisSearchLiteResponse;
-    const nodes = Array.isArray(data?.nodes) ? data.nodes : [];
+    const data = (await res.json()) as JarvisNode[] | { nodes?: JarvisNode[] };
+    const nodes = Array.isArray(data) ? data : (data?.nodes ?? []);
     return nodes
-      .filter((n) => n.ref_id)
-      .map((n) => ({
-        ref_id: n.ref_id,
-        node_type: n.node_type,
-        name: n.title ?? "",
-      }));
+      .filter(
+        (n) =>
+          n.ref_id &&
+          !EXCLUDED_NODE_TYPES_LOWER.has((n.node_type ?? "").toLowerCase()),
+      )
+      .map((n) => {
+        const properties = (n.properties ?? {}) as Record<string, unknown>;
+        const rawDesc =
+          properties.description ?? properties.summary ?? properties.text ?? "";
+        const desc = typeof rawDesc === "string" ? rawDesc.trim() : "";
+        return {
+          ref_id: n.ref_id,
+          node_type: n.node_type,
+          name: deriveNodeName(n, properties),
+          description:
+            desc.length > DESCRIPTION_MAX ? desc.slice(0, DESCRIPTION_MAX) : desc,
+          edges: (n as { edges?: Record<string, number> }).edges ?? {},
+        };
+      });
   } catch {
     return [];
   }
