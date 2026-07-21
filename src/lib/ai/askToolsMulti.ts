@@ -329,9 +329,23 @@ export function askToolsMulti(
             hooks,
           );
           if (rr === REPO_AGENT_CANCELLED_MARKER) {
-            return `The repo agent investigation for ${ws.slug} was cancelled by the user.`;
+            // Flag the whole turn so runCanvasAgent's stopWhen ends the
+            // agent loop — the model must not treat this as a transient
+            // failure and start another run.
+            if (context?.cancellation) context.cancellation.requested = true;
+            return `The user cancelled the ${ws.slug} investigation. Stop working on it now — do not retry and do not start another repo agent run.`;
           }
-          return (rr as Record<string, string>).content;
+          const out = rr as Record<string, unknown>;
+          if (typeof out.content === "string" && out.content.trim()) {
+            return out.content;
+          }
+          // Unexpected result shape (no `content` key) — surface whatever
+          // came back rather than returning `undefined` (which the model
+          // reads as "no output" and treats as a failure to retry).
+          const fallback = JSON.stringify(out);
+          return fallback && fallback !== "{}"
+            ? fallback
+            : `The repo agent for ${ws.slug} finished without returning any content.`;
         } catch (e) {
           console.error(`Error executing repo agent for ${ws.slug}:`, e);
           return `Could not execute repo agent for ${ws.slug}`;

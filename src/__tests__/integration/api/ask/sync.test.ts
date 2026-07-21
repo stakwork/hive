@@ -581,7 +581,8 @@ describe('POST /api/ask/sync', () => {
         mockFinishedStream([{ text: 'one step', toolCalls: [], toolResults: [] }]) as any,
       );
 
-      // Without maxTurns: only the default end-marker stop condition.
+      // Without maxTurns: the default conditions only (end-marker +
+      // user-cancellation).
       await POST(
         createAuthenticatedPostRequest(
           '/api/ask/sync',
@@ -590,9 +591,9 @@ describe('POST /api/ask/sync', () => {
         ),
       );
       const noCap = vi.mocked(streamText).mock.calls.at(-1)![0];
-      expect(noCap.stopWhen).toHaveLength(1);
+      expect(noCap.stopWhen).toHaveLength(2);
 
-      // With maxTurns: the cap is appended (end-marker + step cap).
+      // With maxTurns: the step cap is appended on top of the defaults.
       await POST(
         createAuthenticatedPostRequest(
           '/api/ask/sync',
@@ -601,7 +602,7 @@ describe('POST /api/ask/sync', () => {
         ),
       );
       const capped = vi.mocked(streamText).mock.calls.at(-1)![0];
-      expect(capped.stopWhen).toHaveLength(2);
+      expect(capped.stopWhen).toHaveLength(3);
     });
 
     it('counts generated steps, not input messages (100 in, 1 step out)', async () => {

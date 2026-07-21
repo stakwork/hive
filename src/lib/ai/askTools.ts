@@ -236,7 +236,16 @@ export async function repoAgent(
       // Requirement 5: if the run truly completed with a real result even
       // after abort was requested, return the REAL result (not cancelled).
       const result = progressData.result;
-      if (result && (typeof result === "object" || typeof result === "string")) {
+      // A bare string result is normalized to `{ content }` so callers'
+      // `.content` unwrap never silently drops a real answer.
+      if (typeof result === "string" && result.trim()) {
+        return { content: result };
+      }
+      // An empty object (what an aborted-mid-run swarm reports as
+      // "completed") is NOT a usable result — without this check it
+      // unwrapped to `.content === undefined` and the model saw a tool
+      // call with no output at all.
+      if (result && typeof result === "object" && Object.keys(result).length > 0) {
         return result as Record<string, string>;
       }
       // Completed but no usable result (e.g. empty body after abort).
@@ -244,7 +253,7 @@ export async function repoAgent(
         console.log(`[repoAgent] Completed without usable result after abort. Returning cancelled marker. requestId: ${requestId}`);
         return REPO_AGENT_CANCELLED_MARKER;
       }
-      return progressData.result || {};
+      return {};
     } else if (progressData.status === "failed" || progressData.status === "aborted") {
       if (abortRequested) {
         // Cancelled ≠ error: return structured marker, never throw.
@@ -283,6 +292,14 @@ export interface AskToolsContext {
   conversationId?: string;
   /** Client-generated turn id for this user turn. */
   turnId?: string;
+  /**
+   * Shared mutable cancellation flag for the whole turn. A repo_agent
+   * execute sets `requested: true` when the user cancels its run;
+   * `runCanvasAgent` reads it in a `stopWhen` condition to end the agent
+   * loop after the current step — so a Stop stops the TURN, instead of
+   * the model treating the cancellation as a tool failure and retrying.
+   */
+  cancellation?: { requested: boolean };
 }
 
 export function askTools(swarmUrl: string, swarmApiKey: string, repoUrls: string[], pat: string, apiKey: string, workspaceAuth?: WorkspaceAuth, context?: AskToolsContext) {
@@ -456,9 +473,23 @@ export function askTools(swarmUrl: string, swarmApiKey: string, repoUrls: string
             hooks,
           );
           if (rr === REPO_AGENT_CANCELLED_MARKER) {
-            return "The repo agent investigation was cancelled by the user.";
+            // Flag the whole turn so runCanvasAgent's stopWhen ends the
+            // agent loop — the model must not treat this as a transient
+            // failure and start another run.
+            if (context?.cancellation) context.cancellation.requested = true;
+            return "The user cancelled this investigation. Stop working on it now — do not retry and do not start another repo agent run.";
           }
-          return (rr as Record<string, string>).content;
+          const out = rr as Record<string, unknown>;
+          if (typeof out.content === "string" && out.content.trim()) {
+            return out.content;
+          }
+          // Unexpected result shape (no `content` key) — surface whatever
+          // came back rather than returning `undefined` (which the model
+          // reads as "no output" and treats as a failure to retry).
+          const fallback = JSON.stringify(out);
+          return fallback && fallback !== "{}"
+            ? fallback
+            : "The repo agent finished without returning any content.";
         } catch (e) {
           console.error("Error executing repo agent:", e);
           return "Could not execute repo agent";
