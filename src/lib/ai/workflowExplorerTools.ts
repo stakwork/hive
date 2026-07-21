@@ -20,6 +20,7 @@ import { tool, type ToolSet } from "ai";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
+import { config } from "@/config/env";
 import { repoAgent } from "./askTools";
 
 /** The workspace whose swarm hosts the Jarvis workflow-library graph. */
@@ -35,11 +36,10 @@ const WORKFLOW_LIBRARY_WORKSPACE_SLUG = "stakwork";
 async function resolveWorkflowLibrarySwarm(): Promise<{
   swarmUrl: string;
   swarmApiKey: string;
-  stakworkApiKey?: string;
 }> {
   const workspace = await db.workspace.findFirst({
     where: { slug: WORKFLOW_LIBRARY_WORKSPACE_SLUG, deleted: false },
-    select: { id: true, stakworkApiKey: true },
+    select: { id: true },
   });
   if (!workspace) {
     throw new Error(
@@ -62,32 +62,12 @@ async function resolveWorkflowLibrarySwarm(): Promise<{
     baseSwarmUrl = "http://localhost:3355";
   }
 
-  // The stakwork workspace's Stakwork API token: forwarded to the swarm
-  // agent so it can research real run data (skill usage stats, recent runs,
-  // per-step params/outputs) via the Stakwork API. Optional — without it the
-  // explorer still works, minus the run-research tools.
-  let stakworkApiKey: string | undefined;
-  if (workspace.stakworkApiKey) {
-    try {
-      stakworkApiKey = EncryptionService.getInstance().decryptField(
-        "stakworkApiKey",
-        workspace.stakworkApiKey,
-      );
-    } catch (e) {
-      console.error(
-        "Failed to decrypt stakworkApiKey for workflow library workspace:",
-        e,
-      );
-    }
-  }
-
   return {
     swarmUrl: baseSwarmUrl,
     swarmApiKey: EncryptionService.getInstance().decryptField(
       "swarmApiKey",
       swarm.swarmApiKey || "",
     ),
-    stakworkApiKey,
   };
 }
 
@@ -109,16 +89,23 @@ export function buildWorkflowExplorerTools(): ToolSet {
       }),
       execute: async ({ prompt }: { prompt: string }) => {
         try {
-          const { swarmUrl, swarmApiKey, stakworkApiKey } =
-            await resolveWorkflowLibrarySwarm();
+          const { swarmUrl, swarmApiKey } = await resolveWorkflowLibrarySwarm();
           // No repo_url: workflow mode works entirely off the swarm's graph.
           // No Bifrost routing either — the acting user generally isn't a
           // member of the stakwork workspace, so we fall back to the swarm's
           // default LLM key rather than minting a cross-workspace VK.
+          //
+          // STAKWORK_API_KEY is the Stakwork supercustomer token (same one the
+          // rest of Hive uses for Stakwork API calls): forwarded server-to-
+          // server so the swarm agent can research real run data (skill usage
+          // stats, recent runs, per-step params/outputs) across ALL customers'
+          // library workflows — per-customer keys 404 on workflows they don't
+          // own. Optional: without it the explorer still works, minus the
+          // run-research tools.
           const rr = await repoAgent(swarmUrl, swarmApiKey, {
             prompt,
             mode: "workflow",
-            stakworkApiKey,
+            stakworkApiKey: config.STAKWORK_API_KEY || undefined,
           });
           return rr.content;
         } catch (e) {
