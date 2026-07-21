@@ -178,11 +178,11 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
         );
       }
 
-      // Publish succeeded — now mark as accepted
+      // Publish succeeded — now mark as accepted (dual-write eval_status + legacy status)
       const updateResult = await updateNode(jarvisConfig, {
         ref_id: refId,
         node_type: "ProposedFix",
-        node_data: { status: "accepted", resolved_by: userId, resolved_at: now },
+        node_data: { eval_status: "accepted", status: "accepted", resolved_by: userId, resolved_at: now },
       });
 
       if (!updateResult.success) {
@@ -204,11 +204,11 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ success: true, status: "accepted" });
     }
 
-    // action === "reject"
+    // action === "reject" (dual-write eval_status + legacy status)
     const updateResult = await updateNode(jarvisConfig, {
       ref_id: refId,
       node_type: "ProposedFix",
-      node_data: { status: "rejected", resolved_by: userId, resolved_at: now },
+      node_data: { eval_status: "rejected", status: "rejected", resolved_by: userId, resolved_at: now },
     });
 
     if (!updateResult.success) {

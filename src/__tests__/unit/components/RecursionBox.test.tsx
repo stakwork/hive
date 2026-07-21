@@ -63,7 +63,7 @@ vi.mock("@/components/legal/HillClimbChart", () => ({
 const mockUseEvalRunHistory = vi.fn();
 
 vi.mock("@/hooks/useEvalRunHistory", () => ({
-  useEvalRunHistory: (taskSlug: string) => mockUseEvalRunHistory(taskSlug),
+  useEvalRunHistory: (input: { refId?: string | null; slug: string }) => mockUseEvalRunHistory(input),
 }));
 
 // useWorkspace mock (needed by useEvalRunHistory through the component chain)
@@ -417,10 +417,10 @@ describe("RecursionList", () => {
     );
     // Called once per card
     expect(mockUseEvalRunHistory).toHaveBeenCalledTimes(3);
-    // Each with its own slug
-    expect(mockUseEvalRunHistory).toHaveBeenCalledWith("slug-1");
-    expect(mockUseEvalRunHistory).toHaveBeenCalledWith("slug-2");
-    expect(mockUseEvalRunHistory).toHaveBeenCalledWith("slug-3");
+    // Each with { refId, slug } shape
+    expect(mockUseEvalRunHistory).toHaveBeenCalledWith({ refId: "r1", slug: "slug-1" });
+    expect(mockUseEvalRunHistory).toHaveBeenCalledWith({ refId: "r2", slug: "slug-2" });
+    expect(mockUseEvalRunHistory).toHaveBeenCalledWith({ refId: "r3", slug: "slug-3" });
   });
 
   it("does not render StatusBadge or status-related UI", () => {
