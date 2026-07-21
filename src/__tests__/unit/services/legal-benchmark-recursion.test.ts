@@ -24,6 +24,7 @@ import {
   listRecursionEvalSets,
   setEvalSetRecursion,
   enableRecursionForTaskSlug,
+  resolveEvalSetRefIdBySlug,
   EVALSET_NODE_LABELS,
   isEvalSetLabel,
 } from "@/services/legal-benchmark-recursion";
@@ -460,5 +461,90 @@ describe("EVALSET_NODE_LABELS and isEvalSetLabel", () => {
   test("isEvalSetLabel returns false for null and undefined", () => {
     expect(isEvalSetLabel(null)).toBe(false);
     expect(isEvalSetLabel(undefined)).toBe(false);
+  });
+});
+
+// ── resolveEvalSetRefIdBySlug ─────────────────────────────────────────────────
+
+describe("resolveEvalSetRefIdBySlug", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  test("returns ref_id when a single EvalSet matches the task slug", async () => {
+    mockSearchNodesByAttributes.mockResolvedValue({
+      ok: true,
+      nodes: [{ ref_id: "ref-abc-123", node_type: "EvalSet", properties: { id: "antitrust/task-1" } }],
+    });
+
+    const result = await resolveEvalSetRefIdBySlug(CONFIG, "antitrust/task-1");
+    expect(result).toBe("ref-abc-123");
+  });
+
+  test("sends both EvalSet casings in search", async () => {
+    mockSearchNodesByAttributes.mockResolvedValue({ ok: true, nodes: [] });
+
+    await resolveEvalSetRefIdBySlug(CONFIG, "antitrust/task-1");
+
+    const [, params] = mockSearchNodesByAttributes.mock.calls[0] as [unknown, { nodeTypes: string[] }];
+    expect(params.nodeTypes).toContain("EvalSet");
+    expect(params.nodeTypes).toContain("Evalset");
+  });
+
+  test("returns null when no matching EvalSet node found", async () => {
+    mockSearchNodesByAttributes.mockResolvedValue({ ok: true, nodes: [] });
+
+    const result = await resolveEvalSetRefIdBySlug(CONFIG, "nonexistent/task");
+    expect(result).toBeNull();
+  });
+
+  test("returns null when graph search fails", async () => {
+    mockSearchNodesByAttributes.mockResolvedValue({ ok: false, error: "Graph error", nodes: [] });
+
+    const result = await resolveEvalSetRefIdBySlug(CONFIG, "antitrust/task-1");
+    expect(result).toBeNull();
+  });
+
+  test("deterministic tie-break: canonical EvalSet label preferred over Evalset", async () => {
+    mockSearchNodesByAttributes.mockResolvedValue({
+      ok: true,
+      nodes: [
+        { ref_id: "ref-old", node_type: "Evalset", properties: { id: "antitrust/task-1" } },
+        { ref_id: "ref-new", node_type: "EvalSet", properties: { id: "antitrust/task-1" } },
+      ],
+    });
+
+    const result = await resolveEvalSetRefIdBySlug(CONFIG, "antitrust/task-1");
+    // Canonical "EvalSet" node wins
+    expect(result).toBe("ref-new");
+  });
+
+  test("deterministic tie-break: lowest ref_id used when no canonical label", async () => {
+    mockSearchNodesByAttributes.mockResolvedValue({
+      ok: true,
+      nodes: [
+        { ref_id: "ref-zzz", node_type: "Evalset", properties: { id: "antitrust/task-1" } },
+        { ref_id: "ref-aaa", node_type: "Evalset", properties: { id: "antitrust/task-1" } },
+      ],
+    });
+
+    const result = await resolveEvalSetRefIdBySlug(CONFIG, "antitrust/task-1");
+    // Lowest ref_id for stability
+    expect(result).toBe("ref-aaa");
+  });
+
+  test("sends id filter with exact match comparator", async () => {
+    mockSearchNodesByAttributes.mockResolvedValue({ ok: true, nodes: [] });
+
+    await resolveEvalSetRefIdBySlug(CONFIG, "practice-area/task-slug");
+
+    const [, params] = mockSearchNodesByAttributes.mock.calls[0] as [unknown, {
+      filters: Array<{ attribute: string; value: unknown; comparator: string }>;
+    }];
+    expect(params.filters).toHaveLength(1);
+    const filter = params.filters[0];
+    expect(filter.attribute).toBe("id");
+    expect(filter.value).toBe("practice-area/task-slug");
+    expect(filter.comparator).toBe("=");
   });
 });
