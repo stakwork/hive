@@ -175,6 +175,76 @@ export async function writeBackEvalProjectId(
   return { ok: true };
 }
 
+// ── selectEvalSetByTieBreak (shared private helper) ───────────────────────
+
+/**
+ * Pure tie-break selector: given a list of candidate EvalSet nodes, picks the
+ * best one deterministically (no logging — callers log their own context):
+ *   1. Canonical "EvalSet" label wins over "Evalset"
+ *   2. Otherwise lowest ref_id (stable sort)
+ */
+function selectEvalSetByTieBreak(
+  nodes: Array<{ ref_id: string; node_type?: string }>,
+): string {
+  if (nodes.length === 1) return nodes[0].ref_id;
+  const canonical = nodes.find((n) => n.node_type === "EvalSet");
+  return (canonical ?? [...nodes].sort((a, b) => a.ref_id.localeCompare(b.ref_id))[0]).ref_id;
+}
+
+// ── resolveEvalSetRefIdBySlug ──────────────────────────────────────────────
+
+/**
+ * Resolves the EvalSet `ref_id` for a given task-slug (stored as the node's
+ * `id` attribute) with the same deterministic tie-break used by enrollment.
+ *
+ * - Both casings sent server-side so the node is found regardless of label.
+ * - When multiple matches exist (e.g. during a jarvis heal-migration window),
+ *   the canonical "EvalSet" label wins; otherwise the lowest ref_id is chosen.
+ *
+ * Returns the ref_id string on success, or null when not found / on error.
+ *
+ * **Security:** callers must apply `requireAuth` + workspace-gate +
+ * `getWorkspaceSwarmAccess` before calling this function — it does NOT
+ * perform its own authorization.
+ */
+export async function resolveEvalSetRefIdBySlug(
+  config: JarvisConnectionConfig,
+  taskSlug: string,
+): Promise<string | null> {
+  const searchResult = await searchNodesByAttributes(config, {
+    nodeTypes: EVALSET_NODE_LABELS,
+    filters: [{ attribute: "id", value: taskSlug, comparator: "=" }],
+    includeProperties: true,
+    skipCache: true,
+  });
+
+  if (!searchResult.ok || searchResult.nodes.length === 0) {
+    logger.info(
+      `[legal/benchmarks/recursion] resolveEvalSetRefIdBySlug no EvalSet found taskSlug=${taskSlug}`,
+      "legal",
+      { taskSlug, ok: searchResult.ok, error: searchResult.error },
+    );
+    return null;
+  }
+
+  if (searchResult.nodes.length > 1) {
+    const labels = searchResult.nodes.map((n) => n.node_type).join(", ");
+    logger.warn(
+      `[legal/benchmarks/recursion] resolveEvalSetRefIdBySlug multiple EvalSet nodes matched taskSlug=${taskSlug} count=${searchResult.nodes.length} labels=[${labels}] — selecting deterministically`,
+      "legal",
+      { taskSlug, count: searchResult.nodes.length, labels },
+    );
+  }
+  const refId = selectEvalSetByTieBreak(searchResult.nodes);
+
+  logger.info(
+    `[legal/benchmarks/recursion] resolveEvalSetRefIdBySlug resolved ref_id=${refId} taskSlug=${taskSlug}`,
+    "legal",
+    { taskSlug, refId },
+  );
+  return refId;
+}
+
 // ── enableRecursionForTaskSlug ─────────────────────────────────────────────
 
 /**
@@ -199,9 +269,9 @@ export async function enableRecursionForTaskSlug(
     { taskSlug },
   );
 
-  // Resolve EvalSet ref_id from the task-slug (stored as the node's `id` property).
-  // Both casings sent so the node is found whether the stored label is "Evalset" (current)
-  // or "EvalSet" (post-heal). See EVALSET_NODE_LABELS comment above.
+  // Search for the EvalSet node — keep full error semantics (transport vs. not-found).
+  // Unlike resolveEvalSetRefIdBySlug, we must distinguish a transport failure from an
+  // empty result so the caller can return the right status code / error message.
   const searchResult = await searchNodesByAttributes(config, {
     nodeTypes: EVALSET_NODE_LABELS,
     filters: [{ attribute: "id", value: taskSlug, comparator: "=" }],
@@ -227,11 +297,7 @@ export async function enableRecursionForTaskSlug(
     return { ok: false, notFound: true, error: "EvalSet not found for task slug" };
   }
 
-  // Deterministic tie-break: during the jarvis heal-migration window, both a legacy
-  // "Evalset"-labelled node and a healed "EvalSet"-labelled node could transiently
-  // share the same `id`. Prefer the canonical "EvalSet" label; fall back to stable
-  // order (sort by ref_id) rather than an arbitrary first result.
-  let selectedNode = searchResult.nodes[0];
+  // Apply the shared deterministic tie-break
   if (searchResult.nodes.length > 1) {
     const labels = searchResult.nodes.map((n) => n.node_type).join(", ");
     logger.warn(
@@ -239,12 +305,9 @@ export async function enableRecursionForTaskSlug(
       "legal",
       { taskSlug, count: searchResult.nodes.length, labels },
     );
-    // Prefer canonical "EvalSet" label; otherwise take the lowest ref_id for stability
-    const canonical = searchResult.nodes.find((n) => n.node_type === "EvalSet");
-    selectedNode = canonical ?? [...searchResult.nodes].sort((a, b) => a.ref_id.localeCompare(b.ref_id))[0];
   }
+  const refId = selectEvalSetByTieBreak(searchResult.nodes);
 
-  const refId = selectedNode.ref_id;
   logger.info(
     `[legal/benchmarks/recursion] enableRecursionForTaskSlug resolved ref_id=${refId} taskSlug=${taskSlug}`,
     "legal",
