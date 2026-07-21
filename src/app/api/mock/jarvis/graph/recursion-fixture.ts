@@ -1,5 +1,6 @@
 /**
- * Recursion subgraph mock fixture — exercises the full eval_status contract.
+ * Recursion subgraph mock fixture — exercises the full eval_status contract,
+ * multi-edge PRODUCED_BY resolution, rejected-attempt dots, and unresolvable slots.
  *
  * Ontology modelled:
  *   EvalSet
@@ -9,13 +10,21 @@
  *         --PRODUCED_BY--> EvalTriggerOutput (rerun-1, higher n_passed)
  *         --DERIVED_FROM-- ProposedFix (derived, accepted via status fallback)
  *                           --PRODUCED_BY--> EvalTriggerOutput (rerun-2)
+ *         --DERIVED_FROM-- ProposedFix (multi-edge, accepted)
+ *                           --PRODUCED_BY--> EvalTriggerOutput (empty — no n_passed/n_total)
+ *                           --PRODUCED_BY--> EvalTriggerOutput (valid — n_passed=32, n_total=33) ← must be picked
+ *         --DERIVED_FROM-- ProposedFix (rejected, resolvable via before/after score)
+ *         --DERIVED_FROM-- ProposedFix (rejected, no resolvable score — x-slot only)
  *     --HAS_TRIGGER--> EvalTrigger (rerun trigger, casing variant "evaltrigger")
  *       --HAS_PROPOSED_FIX--> ProposedFix (rejected — must NOT appear in accepted series)
  *
  * eval_status coverage:
  *   - fix-root:    eval_status:"accepted"  status:"rejected"  → eval_status wins
  *   - fix-derived: NO eval_status           status:"accepted"  → status fallback
- *   - fix-rejected: eval_status:"rejected"                    → excluded from series
+ *   - fix-multi-edge: eval_status:"accepted"                  → picks valid PRODUCED_BY edge
+ *   - fix-rejected-scored: eval_status:"rejected"             → x-slot with derived actualPassed
+ *   - fix-rejected-unscored: eval_status:"rejected"           → x-slot only, no dot
+ *   - fix-rejected (rerun trigger): eval_status:"rejected"    → excluded from accepted series
  */
 
 import type { JarvisNode } from "@/types/jarvis";
@@ -33,6 +42,18 @@ const FIX_ROOT_RERUN_OUTPUT_ID = "mock-evaltriggeroutput-rerun-001";
 
 const FIX_DERIVED_ID = "mock-proposedfix-derived-001";
 const FIX_DERIVED_RERUN_OUTPUT_ID = "mock-evaltriggeroutput-rerun-002";
+
+// ── NEW: Multi-edge PRODUCED_BY fix (accepted) ──────────────────────────────
+// Two PRODUCED_BY edges: one empty output, one valid (n_passed=32, n_total=33)
+export const FIX_MULTI_EDGE_ID = "mock-proposedfix-multiedge-001";
+const FIX_MULTI_EDGE_EMPTY_OUTPUT_ID = "mock-evaltriggeroutput-multiedge-empty-001";
+export const FIX_MULTI_EDGE_VALID_OUTPUT_ID = "mock-evaltriggeroutput-multiedge-valid-001";
+
+// ── NEW: Rejected fix with resolvable score (before/after) ──────────────────
+export const FIX_REJECTED_SCORED_ID = "mock-proposedfix-rejected-scored-001";
+
+// ── NEW: Rejected fix with NO resolvable score (x-slot only) ────────────────
+export const FIX_REJECTED_UNSCORED_ID = "mock-proposedfix-rejected-unscored-001";
 
 const FIX_REJECTED_ID = "mock-proposedfix-rejected-001";
 
@@ -189,7 +210,90 @@ export function buildRecursionNodes(): JarvisNode[] {
       },
     },
 
-    // ── Rejected ProposedFix (must NOT appear in accepted series) ─────────────
+    // ── NEW: Multi-edge accepted ProposedFix ──────────────────────────────────
+    // Has TWO PRODUCED_BY edges: one empty EvalTriggerOutput (no n_passed/n_total),
+    // one valid (n_passed=32, n_total=33). The builder must pick the valid one.
+    {
+      ref_id: FIX_MULTI_EDGE_ID,
+      node_type: "ProposedFix",
+      date_added_to_graph: ts,
+      properties: {
+        criterion_id: "criterion-multi",
+        criterion_title: "Mock criterion multi-edge",
+        eval_status: "accepted",
+        before_score: "58",
+        after_score: "32",
+        rerun_run_id: null,
+      },
+    },
+
+    // ── Empty EvalTriggerOutput (no n_passed/n_total) — must NOT be picked ────
+    {
+      ref_id: FIX_MULTI_EDGE_EMPTY_OUTPUT_ID,
+      node_type: "EvalTriggerOutput",
+      date_added_to_graph: ts,
+      properties: {
+        attempt_number: 4,
+        result: "",
+        score: 0,
+        // Intentionally no n_passed / n_total — exercises the "skip empty" path
+      },
+    },
+
+    // ── Valid EvalTriggerOutput (n_passed=32, n_total=33) — must be picked ────
+    {
+      ref_id: FIX_MULTI_EDGE_VALID_OUTPUT_ID,
+      node_type: "EvalTriggerOutput",
+      date_added_to_graph: ts,
+      properties: {
+        attempt_number: 5,
+        result: "partial",
+        score: 32 / 33,
+        n_passed: 32,
+        n_total: 33,
+        judge_notes: "32/33 criteria passed (multi-edge valid output)",
+      },
+    },
+
+    // ── NEW: Rejected ProposedFix with resolvable score ───────────────────────
+    // Score derivable via before_score/after_score → actualPassed approximation
+    // Current FIX_REJECTED_ID has no PRODUCED_BY edge and rerun_run_id: null.
+    // This new node builds on that pattern but has a valid after_score to derive from.
+    {
+      ref_id: FIX_REJECTED_SCORED_ID,
+      node_type: "ProposedFix",
+      date_added_to_graph: ts,
+      properties: {
+        criterion_id: "criterion-rejected-scored",
+        criterion_title: "Mock criterion rejected-scored",
+        eval_status: "rejected",
+        status: "rejected",
+        before_score: "58",
+        after_score: "55",
+        score_delta: "-3",
+        rerun_run_id: null,
+        rerun_status: null,
+      },
+    },
+
+    // ── NEW: Rejected ProposedFix with NO resolvable score ────────────────────
+    // No PRODUCED_BY edge, no rerun_run_id, no after_score → x-slot only, dot skipped
+    {
+      ref_id: FIX_REJECTED_UNSCORED_ID,
+      node_type: "ProposedFix",
+      date_added_to_graph: ts,
+      properties: {
+        criterion_id: "criterion-rejected-unscored",
+        criterion_title: "Mock criterion rejected-unscored",
+        eval_status: "rejected",
+        status: "rejected",
+        rerun_run_id: null,
+        rerun_status: null,
+        // No before_score / after_score → unresolvable
+      },
+    },
+
+    // ── Rejected ProposedFix (original — must NOT appear in accepted series) ──
     {
       ref_id: FIX_REJECTED_ID,
       node_type: "ProposedFix",
@@ -232,7 +336,22 @@ export function buildRecursionEdges() {
     // Derived fix → its rerun output
     { source: FIX_DERIVED_ID, target: FIX_DERIVED_RERUN_OUTPUT_ID, edge_type: "PRODUCED_BY" },
 
-    // Rerun trigger → rejected fix
+    // Multi-edge fix derived from derived fix
+    { source: FIX_MULTI_EDGE_ID, target: FIX_DERIVED_ID, edge_type: "DERIVED_FROM" },
+    // Multi-edge fix → empty output (no n_passed/n_total — must be skipped)
+    { source: FIX_MULTI_EDGE_ID, target: FIX_MULTI_EDGE_EMPTY_OUTPUT_ID, edge_type: "PRODUCED_BY" },
+    // Multi-edge fix → valid output (n_passed=32, n_total=33 — must be picked)
+    { source: FIX_MULTI_EDGE_ID, target: FIX_MULTI_EDGE_VALID_OUTPUT_ID, edge_type: "PRODUCED_BY" },
+
+    // Rejected fix with resolvable score (derived from multi-edge fix)
+    { source: FIX_REJECTED_SCORED_ID, target: FIX_MULTI_EDGE_ID, edge_type: "DERIVED_FROM" },
+    // (No PRODUCED_BY edge — score resolved via before/after derivation)
+
+    // Rejected fix with no resolvable score (derived from rejected-scored)
+    { source: FIX_REJECTED_UNSCORED_ID, target: FIX_REJECTED_SCORED_ID, edge_type: "DERIVED_FROM" },
+    // (No PRODUCED_BY edge, no after_score — x-slot only)
+
+    // Rerun trigger → rejected fix (original — attached to rerun trigger, not baseline)
     { source: RERUN_TRIGGER_ID, target: FIX_REJECTED_ID, edge_type: "HAS_PROPOSED_FIX" },
   ];
 }
@@ -246,5 +365,10 @@ export const RECURSION_NODE_IDS = {
   FIX_ROOT_RERUN_OUTPUT_ID,
   FIX_DERIVED_ID,
   FIX_DERIVED_RERUN_OUTPUT_ID,
+  FIX_MULTI_EDGE_ID,
+  FIX_MULTI_EDGE_EMPTY_OUTPUT_ID,
+  FIX_MULTI_EDGE_VALID_OUTPUT_ID,
+  FIX_REJECTED_SCORED_ID,
+  FIX_REJECTED_UNSCORED_ID,
   FIX_REJECTED_ID,
 } as const;
