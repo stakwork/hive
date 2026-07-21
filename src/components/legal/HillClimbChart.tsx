@@ -5,10 +5,14 @@ import * as d3 from "d3";
 import type { EvalTriggerOutput } from "@/lib/harvey-lab/eval-normalizers";
 
 export interface AttemptPoint {
-  n_passed: number;
+  /** Actual n_passed for dot rendering; null = no dot, x-slot is preserved */
+  actualPassed: number | null;
+  /** Running best n_passed for the connected line (monotonic non-decreasing) */
+  bestPassed: number;
   n_total: number;
   isBaseline: boolean;
-  /** Display label: "Baseline" or "Rerun 1", "Rerun 2", … */
+  accepted: boolean;
+  /** Display label sourced from series data: "base", "r1", "r2", … */
   label: string;
 }
 
@@ -20,23 +24,51 @@ interface TooltipState {
 
 interface HillClimbChartProps {
   attempts: EvalTriggerOutput[];
-  /** Visual width of the SVG (px) — defaults to 100% via viewBox */
+  /** Visual height of the SVG (px) — defaults to 140 */
   height?: number;
 }
 
 /**
- * Map a list of EvalTriggerOutput nodes (sorted baseline-first) into AttemptPoints.
- * Nodes without n_passed/n_total are excluded upstream, so every node here is valid.
+ * Map a list of EvalTriggerOutput nodes (sorted baseline-first, with optional
+ * hill-climb series fields from buildHillClimbSeries) into AttemptPoints.
+ *
+ * When the series fields (`bestPassed`, `actualPassed`, `label`, `accepted`,
+ * `isBaseline`) are present (T1 model), they are used directly.
+ * When absent (legacy path), sensible defaults are derived from `n_passed`.
  */
 export function toAttemptPoints(attempts: EvalTriggerOutput[]): AttemptPoint[] {
-  let rerunIndex = 0;
+  // Compute running best for legacy path (series fields absent)
+  let legacyBest = 0;
+
   return attempts.map((o, i) => {
-    const isBaseline = i === 0;
-    const label = isBaseline ? "Baseline" : `Rerun ${++rerunIndex}`;
+    const isBaseline = o.isBaseline ?? i === 0;
+    const accepted = o.accepted ?? true; // legacy: treat all as accepted
+
+    // Prefer series-provided actualPassed; fall back to n_passed (possibly null for slot-only)
+    const actualPassed: number | null =
+      o.actualPassed !== undefined ? o.actualPassed : (o.n_passed ?? null);
+
+    // Prefer series-provided bestPassed; compute for legacy path
+    let bestPassed: number;
+    if (o.bestPassed !== undefined) {
+      bestPassed = o.bestPassed;
+    } else {
+      // Legacy: monotonic best derived from n_passed
+      if (actualPassed != null) {
+        legacyBest = Math.max(legacyBest, actualPassed);
+      }
+      bestPassed = legacyBest;
+    }
+
+    // Prefer series-provided label; fall back to "base"/"r{i}" from index
+    const label = o.label ?? (isBaseline ? "base" : `r${i}`);
+
     return {
-      n_passed: o.n_passed!,
-      n_total: o.n_total!,
+      actualPassed,
+      bestPassed,
+      n_total: o.n_total ?? 0,
       isBaseline,
+      accepted,
       label,
     };
   });
@@ -64,16 +96,16 @@ export function HillClimbChart({ attempts, height = 140 }: HillClimbChartProps) 
     .domain([0, Math.max(points.length - 1, 1)])
     .range([0, innerW]);
 
-  // y: n_passed, padded a little below 0 and above n_total
+  // y: 0..n_total
   const yScale = d3.scaleLinear()
     .domain([0, n_total])
     .range([innerH, 0])
     .nice();
 
-  // Polyline path
+  // Connected line driven by bestPassed (monotonic non-decreasing)
   const lineGen = d3.line<AttemptPoint>()
     .x((_, i) => xScale(i))
-    .y((d) => yScale(d.n_passed))
+    .y((d) => yScale(d.bestPassed))
     .curve(d3.curveMonotoneX);
 
   const linePath = points.length >= 2 ? lineGen(points) ?? "" : "";
@@ -81,7 +113,7 @@ export function HillClimbChart({ attempts, height = 140 }: HillClimbChartProps) 
   // Target y position
   const targetY = yScale(n_total);
 
-  // Tick labels for y axis (just 0 and n_total for cleanliness)
+  // Tick labels for y axis
   const yTicks = [0, Math.round(n_total / 2), n_total].filter(
     (v, i, a) => a.indexOf(v) === i,
   );
@@ -92,13 +124,14 @@ export function HillClimbChart({ attempts, height = 140 }: HillClimbChartProps) 
     const rect = svgEl.getBoundingClientRect();
     const svgW = rect.width;
     const svgH = rect.height;
-    // Map logical coords → rendered coords
     const scaleX = svgW / W;
     const scaleY = svgH / H;
-    const cx = (MARGIN.left + xScale(idx)) * scaleX;
-    const cy = (MARGIN.top + yScale(point.n_passed)) * scaleY;
 
-    // Prefer showing tooltip above the point; flip if near top
+    // Position tooltip relative to the dot (bestPassed drives the line; dot is at actualPassed)
+    const dotY = point.actualPassed != null ? yScale(point.actualPassed) : yScale(point.bestPassed);
+    const cx = (MARGIN.left + xScale(idx)) * scaleX;
+    const cy = (MARGIN.top + dotY) * scaleY;
+
     const tipY = cy < 50 ? cy + 16 : cy - 52;
     const tipX = Math.min(Math.max(cx - 52, 4), svgW - 112);
 
@@ -173,12 +206,12 @@ export function HillClimbChart({ attempts, height = 140 }: HillClimbChartProps) 
             {n_total}
           </text>
 
-          {/* Climbing polyline */}
+          {/* Climbing polyline — driven by bestPassed for monotonic best-so-far line */}
           {linePath && (
             <path
               d={linePath}
               fill="none"
-              stroke="hsl(var(--primary))"
+              stroke="currentColor"
               strokeWidth={2}
               strokeLinecap="round"
               strokeLinejoin="round"
@@ -187,26 +220,33 @@ export function HillClimbChart({ attempts, height = 140 }: HillClimbChartProps) 
             />
           )}
 
-          {/* Data points */}
-          {points.map((pt, i) => (
-            <circle
-              key={i}
-              cx={xScale(i)}
-              cy={yScale(pt.n_passed)}
-              r={4}
-              fill={pt.isBaseline ? "hsl(var(--muted-foreground))" : "hsl(var(--primary))"}
-              stroke="hsl(var(--background))"
-              strokeWidth={1.5}
-              className="cursor-pointer transition-all hover:r-6"
-              onMouseEnter={(e) => handleMouseEnter(pt, i, e)}
-              onFocus={(e) => handleMouseEnter(pt, i, e as unknown as React.MouseEvent<SVGCircleElement>)}
-              tabIndex={0}
-              aria-label={`${pt.label}: ${pt.n_passed}/${pt.n_total}`}
-              data-testid={`dot-${i}`}
-            />
-          ))}
+          {/* Data points — skip circle when actualPassed is null, keep x-slot */}
+          {points.map((pt, i) =>
+            pt.actualPassed != null ? (
+              <circle
+                key={i}
+                cx={xScale(i)}
+                cy={yScale(pt.actualPassed)}
+                r={4}
+                fill={pt.accepted ? "currentColor" : "none"}
+                stroke="currentColor"
+                strokeWidth={1.5}
+                strokeOpacity={pt.accepted ? 1 : 0.4}
+                fillOpacity={pt.isBaseline ? 0.55 : pt.accepted ? 1 : 0}
+                className="cursor-pointer"
+                onMouseEnter={(e) => handleMouseEnter(pt, i, e)}
+                onFocus={(e) => handleMouseEnter(pt, i, e as unknown as React.MouseEvent<SVGCircleElement>)}
+                tabIndex={0}
+                aria-label={`${pt.label}: ${pt.actualPassed}/${pt.n_total}${pt.accepted ? "" : " (rejected)"}`}
+                data-testid={`dot-${i}`}
+              />
+            ) : (
+              // No dot — keep x-slot so labels never shift; render nothing visible
+              <g key={i} data-testid={`slot-${i}`} />
+            ),
+          )}
 
-          {/* X-axis attempt labels */}
+          {/* X-axis attempt labels — sourced from series label, never recomputed from index */}
           {points.map((pt, i) => (
             <text
               key={i}
@@ -218,7 +258,7 @@ export function HillClimbChart({ attempts, height = 140 }: HillClimbChartProps) 
               fillOpacity={0.4}
               fontFamily="ui-monospace, monospace"
             >
-              {pt.isBaseline ? "base" : `r${i}`}
+              {pt.label}
             </text>
           ))}
         </g>
@@ -233,8 +273,13 @@ export function HillClimbChart({ attempts, height = 140 }: HillClimbChartProps) 
         >
           <div className="font-medium text-popover-foreground">{tooltip.point.label}</div>
           <div className="tabular-nums text-muted-foreground">
-            {tooltip.point.n_passed}/{tooltip.point.n_total} passed
+            {tooltip.point.actualPassed != null
+              ? `${tooltip.point.actualPassed}/${tooltip.point.n_total} passed`
+              : "no score"}
           </div>
+          {!tooltip.point.accepted && (
+            <div className="text-muted-foreground/60 italic">rejected</div>
+          )}
         </div>
       )}
     </div>
