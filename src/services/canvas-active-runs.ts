@@ -25,8 +25,15 @@ import type { Prisma } from "@prisma/client";
 // Constants
 // ---------------------------------------------------------------------------
 
-/** Max age of an activeRun entry before we treat it as a crashed/dead run. */
-export const ACTIVE_RUN_TTL_MS = 10 * 60 * 1000; // 10 minutes
+/**
+ * Max age of an activeRun entry before we treat it as a crashed/dead run.
+ * Must comfortably exceed the longest legitimate run: repoAgent polls up
+ * to 10 min (120 × 5 s) and `/api/ask/quick` allows 800 s total — at the
+ * old 10-min TTL a still-running long poll went "stale", which made
+ * `isAbortRequestedForRun` return false and `requestAbortForAllRuns`
+ * prune it, so Stop silently no-oped on exactly the longest runs.
+ */
+export const ACTIVE_RUN_TTL_MS = 15 * 60 * 1000; // 15 minutes
 
 /** Max age of a pending-abort intent before it expires (avoids cancelling future turns). */
 export const PENDING_ABORT_TTL_MS = 60 * 1000; // 1 minute
@@ -39,6 +46,8 @@ export interface ActiveRunEntry {
   requestId: string;
   workspaceId: string;
   startedAt: string; // ISO timestamp
+  /** Client turn id this run belongs to — matched against pending-abort intents. */
+  turnId?: string;
   abortRequested?: boolean;
 }
 
@@ -103,12 +112,16 @@ export async function setActiveRun(
     const runs = liveEntries(doc.runs ?? {});
     runs[entry.requestId] = entry;
 
-    // Check for (and atomically consume) a pending-abort intent for this turnId.
+    // Check for (and atomically consume) a pending-abort intent for this
+    // turnId. Match on the entry's own `turnId` (set by the hooks wrapper);
+    // the `requestId.split(":")` form is a legacy fallback for entries
+    // whose key encodes the turn as a `<turnId>:<requestId>` prefix.
     let consumedIntent: PendingAbortIntent | undefined;
     if (doc.pendingAbortIntent) {
       const intent = doc.pendingAbortIntent;
       const expired = new Date(intent.expiresAt) < new Date();
-      if (!expired && intent.turnId === entry.requestId.split(":")[0]) {
+      const entryTurnId = entry.turnId ?? entry.requestId.split(":")[0];
+      if (!expired && intent.turnId === entryTurnId) {
         // The intent matches this run's turn — consume it.
         consumedIntent = intent;
         // Clear it so later runs in the same turn don't re-consume.
