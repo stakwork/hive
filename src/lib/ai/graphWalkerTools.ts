@@ -89,6 +89,13 @@ interface SearchResult {
   type: string;
   title: string;
   realm: "pg" | "canvas" | "kg";
+  /** kg realm only: short description of the node, when one exists. */
+  description?: string;
+  /**
+   * kg realm only: {EDGE_TYPE: count} map of the node's relationships —
+   * shows how connected it is and which edge types graph_neighbors can follow.
+   */
+  edges?: Record<string, number>;
 }
 
 // ---------------------------------------------------------------------------
@@ -723,7 +730,7 @@ async function searchConversations(
 // ---------------------------------------------------------------------------
 
 /**
- * Keyword search over Jarvis v2 knowledge-graph nodes.
+ * Hybrid (keyword + semantic) search over Jarvis v2 knowledge-graph nodes.
  *
  * - With `workspace`: resolves a single synthetic kg URN → IDOR guard → search.
  * - Without `workspace`: fans out to all org workspaces the user is a member of,
@@ -738,6 +745,9 @@ async function searchKg(
     workspace,
     type,
     limit,
+    inputQ,
+    outputQ,
+    domains,
   }: {
     orgId: string;
     urnOrg: string;
@@ -745,9 +755,12 @@ async function searchKg(
     workspace?: string;
     type?: string;
     limit: number;
+    inputQ?: string;
+    outputQ?: string;
+    domains?: string;
   },
 ): Promise<SearchResult[]> {
-  const opts = { type, limit };
+  const opts = { type, limit, inputQ, outputQ, domains };
 
   if (workspace) {
     // Single-workspace path — synthetic URN for IDOR guard
@@ -772,6 +785,8 @@ async function searchKg(
       type: hit.node_type,
       title: hit.name,
       realm: "kg" as const,
+      ...(hit.description ? { description: hit.description } : {}),
+      edges: hit.edges,
     }));
   }
 
@@ -808,6 +823,8 @@ async function searchKg(
         type: hit.node_type,
         title: hit.name,
         realm: "kg" as const,
+        ...(hit.description ? { description: hit.description } : {}),
+        edges: hit.edges,
       }));
     }),
   );
@@ -835,7 +852,9 @@ export function buildGraphWalkerTools(
       description:
         "Resolve a single URN to its full node content. " +
         "Routes by realm: `canvas` URNs are resolved locally; " +
-        "`kg` URNs are resolved live from the swarm knowledge graph (Jarvis). " +
+        "`kg` URNs are resolved live from the swarm knowledge graph (Jarvis), " +
+        "including an `edges` map ({EDGE_TYPE: count}) showing how connected the " +
+        "node is and which relationship types graph_neighbors can traverse next. " +
         "The `pg` realm is DISABLED (its entities now live in the kg). " +
         "Use this when you have a specific URN and need the entity's data.",
       inputSchema: z.object({
@@ -866,7 +885,9 @@ export function buildGraphWalkerTools(
           case "kg": {
             const seam = await resolveKgSeam(urn, { userId });
             if (!seam) return { error: "swarm not configured or access denied" };
-            const node = await kgGetNode(seam.jarvisUrl, seam.swarmApiKey, parsed.id);
+            const node = await kgGetNode(seam.jarvisUrl, seam.swarmApiKey, parsed.id, {
+              includeEdgeCounts: true,
+            });
             if (!node) return { error: "node not found" };
             return node;
           }
@@ -879,7 +900,9 @@ export function buildGraphWalkerTools(
         "Return all adjacent URNs reachable in one hop from the given node, " +
         "with edgeType and direction. " +
         "For `canvas` URNs, unions structural canvas edges with UrnEdge cross-realm edges. " +
-        "For `kg` URNs, calls Jarvis v2 with optional edge_type / node_type filters (kg-specific, ignored by other realms). " +
+        "For `kg` URNs, calls Jarvis v2 with optional edge_type / node_type filters (kg-specific, ignored by other realms); " +
+        "each kg neighbor also carries an `edges` map ({EDGE_TYPE: count}) of its OWN relationships, " +
+        "showing how connected it is and which edge types you can hop along next. " +
         "The `pg` realm is DISABLED (its entities now live in the kg).",
       inputSchema: z.object({
         urn: z.string().describe("Canonical URN of the node to expand."),
@@ -952,7 +975,7 @@ export function buildGraphWalkerTools(
               seam.jarvisUrl,
               seam.swarmApiKey,
               parsed.id,
-              { edgeTypes: edge_type, nodeTypes: node_type },
+              { edgeTypes: edge_type, nodeTypes: node_type, includeEdgeCounts: true },
             );
             if (!reachable) return { error: "swarm unreachable" };
             // Surface the derived node label as `title` (consistent with the pg
@@ -977,9 +1000,11 @@ export function buildGraphWalkerTools(
 
     graph_ontology: tool({
       description:
-        "Fetch the list of valid KG node types (with descriptions) for a workspace's knowledge graph. " +
+        "Fetch the list of valid KG node types (with domain grouping and descriptions) " +
+        "and the canonical list of valid `domains` for a workspace's knowledge graph. " +
         "Read-only. Call this FIRST before using `graph_search` with `realm: \"kg\"` — " +
-        "the returned `type` values are the exact strings to pass as the `type` filter in `graph_search`. " +
+        "the returned `type` values are the exact strings to pass as the `type` filter, " +
+        "and the `domains` values are the exact strings for the `domains` filter. " +
         "This avoids guessing node type names blind.",
       inputSchema: z.object({
         workspace: z.string().describe("Workspace slug whose KG ontology to fetch."),
@@ -1002,24 +1027,33 @@ export function buildGraphWalkerTools(
         const seam = await resolveKgSeam(syntheticUrn, { userId });
         if (!seam) return { error: "swarm not configured or access denied" };
 
-        const node_types = await kgGetOntology(seam.jarvisUrl, seam.swarmApiKey);
-        return { node_types };
+        const { domains, node_types } = await kgGetOntology(
+          seam.jarvisUrl,
+          seam.swarmApiKey,
+        );
+        return { domains, node_types };
       },
     }),
 
     graph_search: tool({
       description:
-        "Search for nodes by keyword across the canvas and kg realms, " +
+        "Search for nodes across the canvas and kg realms, " +
         "returning ranked results with URN, type, title, and realm. " +
-        "The kg realm searches Jarvis knowledge-graph nodes — including Hive " +
-        "Features, Tasks, and ChatMessages, which are mirrored into the kg as " +
-        "HiveFeature / HiveTask / HiveChatMessage nodes; the canvas realm covers " +
-        "canvas nodes. " +
+        "The kg realm runs hybrid (keyword + semantic) search over Jarvis " +
+        "knowledge-graph nodes — including Hive Features, Tasks, and " +
+        "ChatMessages, which are mirrored into the kg as HiveFeature / " +
+        "HiveTask / HiveChatMessage nodes; each kg result also carries a " +
+        "`description` and an `edges` map ({EDGE_TYPE: count}) showing how " +
+        "connected the node is and which relationship types graph_neighbors " +
+        "can traverse next. The canvas realm covers canvas nodes. " +
         "The `pg` realm is DISABLED (roadmap/chat data now lives in the kg). " +
-        "Scope with `realm`, `type`, or `workspace` to narrow results. " +
+        "Scope with `realm`, `type`, `domains`, or `workspace` to narrow results. " +
         "Default (no realm) searches canvas + kg (kg fanned out across all " +
         "member workspaces). " +
-        "For kg: provide `workspace` to search one workspace, or omit to fan-out across all member workspaces.",
+        "For kg: provide `workspace` to search one workspace, or omit to fan-out across all member workspaces. " +
+        "`input_q` / `output_q` add semantic retrievers scoped to node input/output " +
+        "schemas (e.g. find Workflows by what they consume or produce), fused with " +
+        "`query` into one ranked result set.",
       inputSchema: z.object({
         query: z.string().min(1).describe("Keyword(s) to search for."),
         realm: z
@@ -1041,6 +1075,28 @@ export function buildGraphWalkerTools(
               "(e.g. 'hivefeature', 'hivetask', 'hivechatmessage', 'File', 'Function'); " +
               "for canvas use 'node' / 'text'.",
           ),
+        input_q: z
+          .string()
+          .optional()
+          .describe(
+            "kg realm only: semantic search scoped to node INPUT schemas — find " +
+              "nodes by what they take as input, e.g. 'a video file url'. " +
+              "Applies to node types with input embeddings (Workflow, Skill).",
+          ),
+        output_q: z
+          .string()
+          .optional()
+          .describe(
+            "kg realm only: semantic search scoped to node OUTPUT schemas — find " +
+              "nodes by what they produce, e.g. 'transcript with word-level timestamps'.",
+          ),
+        domains: z
+          .string()
+          .optional()
+          .describe(
+            "kg realm only: comma-separated domain filter, e.g. 'entity' or " +
+              "'content,entity'. Call graph_ontology to see valid domains.",
+          ),
         limit: z
           .number()
           .int()
@@ -1054,12 +1110,18 @@ export function buildGraphWalkerTools(
         realm,
         workspace,
         type,
+        input_q,
+        output_q,
+        domains,
         limit = 20,
       }: {
         query: string;
         realm?: "pg" | "canvas" | "kg";
         workspace?: string;
         type?: string;
+        input_q?: string;
+        output_q?: string;
+        domains?: string;
         limit?: number;
       }) => {
         const arms: Promise<SearchResult[]>[] = [];
@@ -1090,7 +1152,17 @@ export function buildGraphWalkerTools(
         // user's member workspaces when no `workspace` is given).
         if (realm === "kg" || !realm) {
           arms.push(
-            searchKg(query, { orgId, urnOrg, userId, workspace, type, limit }),
+            searchKg(query, {
+              orgId,
+              urnOrg,
+              userId,
+              workspace,
+              type,
+              limit,
+              inputQ: input_q,
+              outputQ: output_q,
+              domains,
+            }),
           );
         }
 
