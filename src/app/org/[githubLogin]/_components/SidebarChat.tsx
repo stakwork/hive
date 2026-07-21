@@ -434,7 +434,10 @@ export function SidebarChat({ githubLogin }: SidebarChatProps) {
         <div className="space-y-2">
           {messages.map((message, index) => {
             const isLastMessage = index === messages.length - 1;
-            const isMessageStreaming = isLastMessage && isLoading;
+            // `isStreaming` (true until the stream settles), NOT `isLoading`
+            // (cleared on the first chunk) — with isLoading every row
+            // rendered as "done" the moment anything streamed in.
+            const isMessageStreaming = isLastMessage && isStreaming;
 
             // User messages that ride structured Approve / Reject
             // intents are not chat content for the user — the proposal
