@@ -122,7 +122,7 @@ function walkDerivedFromChain(
 /**
  * Attempt to resolve an EvalTriggerOutput for a given fix node.
  * Order:
- *  1. PRODUCED_BY edge → EvalTriggerOutput node (primary)
+ *  1. ALL PRODUCED_BY edges → pick first EvalTriggerOutput with valid n_passed/n_total
  *  2. fix.rerun_run_id matched to an in-subgraph EvalTriggerOutput.id (fallback, no second fetch)
  *  3. Parse fix.before_score / after_score as numbers, derive n_passed against baseline n_total
  *  4. Drop (return null) — never emit NaN/undefined
@@ -134,11 +134,11 @@ function resolveFixOutput(
   outputsByInternalId: Map<string, EvalTriggerOutput>,
   baselineNTotal: number | undefined,
 ): EvalTriggerOutput | null {
-  // 1. PRODUCED_BY edge
-  const producedByEdge = edges.find(
+  // 1. Iterate ALL PRODUCED_BY edges — pick first with valid n_passed/n_total
+  const producedByEdges = edges.filter(
     (e) => e.source === fixNode.ref_id && e.edge_type === "PRODUCED_BY",
   );
-  if (producedByEdge) {
+  for (const producedByEdge of producedByEdges) {
     const targetNode = nodeMap.get(producedByEdge.target);
     if (targetNode && isNodeType(targetNode, "EvalTriggerOutput")) {
       const normalized = normalizeOutput(targetNode as RawJarvisNode);
@@ -291,9 +291,17 @@ export function buildHillClimbSeries(subgraph: Subgraph): EvalTriggerOutput[] {
     (e) => e.source === baselineTriggerNode.ref_id && e.edge_type === "HAS_PROPOSED_FIX",
   );
 
-  const series: EvalTriggerOutput[] = [baselineOutput];
+  // Baseline carries its n_passed as actualPassed; it is always "accepted" (it's the ground truth)
+  const baselineWithMeta: EvalTriggerOutput = {
+    ...baselineOutput,
+    isBaseline: true,
+    accepted: true,
+    actualPassed: baselineOutput.n_passed ?? null,
+    label: "base",
+  };
+
+  const series: EvalTriggerOutput[] = [baselineWithMeta];
   let derivedFixCount = 0;
-  let acceptedFixCount = 0;
 
   if (rootFixEdge) {
     const fixChain = walkDerivedFromChain(rootFixEdge.target, nodeMap, edges);
@@ -303,8 +311,7 @@ export function buildHillClimbSeries(subgraph: Subgraph): EvalTriggerOutput[] {
       if (!isNodeType(fixNode, "ProposedFix")) continue;
 
       // Accept/reject — eval_status is canonical, status is fallback
-      if (!isAccepted(fixNode.properties)) continue;
-      acceptedFixCount++;
+      const accepted = isAccepted(fixNode.properties);
 
       const output = resolveFixOutput(
         fixNode,
@@ -313,14 +320,46 @@ export function buildHillClimbSeries(subgraph: Subgraph): EvalTriggerOutput[] {
         outputsByInternalId,
         baselineNTotal,
       );
+
       if (output !== null) {
-        series.push(output);
+        series.push({
+          ...output,
+          accepted,
+          isBaseline: false,
+          actualPassed: output.n_passed ?? null,
+          // label and bestPassed computed after sort below
+        });
       } else {
-        logger.warn(
-          "[legal/benchmarks/hill-climb] Accepted fix has no usable score — dropping point",
-          "legal",
-          { fixId: fixNode.ref_id },
-        );
+        // Keep an x-slot even when no score is resolvable — dot will be skipped
+        if (!accepted) {
+          logger.warn(
+            "[legal/benchmarks/hill-climb] Rejected fix has no resolvable score — x-slot kept, dot skipped, best-line stays flat",
+            "legal",
+            { fixId: fixNode.ref_id },
+          );
+        } else {
+          logger.warn(
+            "[legal/benchmarks/hill-climb] Accepted fix has no usable score — dropping point",
+            "legal",
+            { fixId: fixNode.ref_id },
+          );
+          // For accepted fixes with no score, we still drop the point (legacy behaviour)
+          continue;
+        }
+        // Emit a slot-only point for rejected with no score
+        const slotPoint: EvalTriggerOutput = {
+          ref_id: `slot-${fixNode.ref_id}`,
+          attempt_number: 0,
+          result: "",
+          score: 0,
+          accepted: false,
+          isBaseline: false,
+          actualPassed: null,
+          date_added_to_graph: fixNode.date_added_to_graph
+            ? String(fixNode.date_added_to_graph)
+            : undefined,
+        };
+        series.push(slotPoint);
       }
     }
   } else {
@@ -331,6 +370,34 @@ export function buildHillClimbSeries(subgraph: Subgraph): EvalTriggerOutput[] {
     );
   }
 
+  // ── 6. Sort chronologically (baseline first) using the shared utility ──────
+  const sorted = sortAttemptsChronologically(series);
+
+  // ── 7. Forward pass: assign labels + bestPassed after sort ────────────────
+  let runningBest = baselineOutput.n_passed ?? 0;
+  let rerunCounter = 0;
+  for (const pt of sorted) {
+    if (pt.isBaseline) {
+      pt.label = "base";
+      pt.bestPassed = pt.actualPassed ?? runningBest;
+      runningBest = pt.bestPassed;
+    } else {
+      rerunCounter++;
+      pt.label = `r${rerunCounter}`;
+      if (pt.accepted) {
+        // Accepted: best advances if this attempt scored higher
+        const candidate = pt.actualPassed ?? runningBest;
+        runningBest = Math.max(runningBest, candidate);
+      }
+      // Rejected (or accepted with null actualPassed): best-line stays flat
+      pt.bestPassed = runningBest;
+    }
+  }
+
+  // ── 8. Compute final counts for logging ───────────────────────────────────
+  const acceptedFixCount = sorted.filter((pt) => !pt.isBaseline && pt.accepted === true).length;
+  const rejectedCount = sorted.filter((pt) => pt.accepted === false).length;
+
   logger.info(
     "[legal/benchmarks/hill-climb] Series built",
     "legal",
@@ -340,10 +407,10 @@ export function buildHillClimbSeries(subgraph: Subgraph): EvalTriggerOutput[] {
       edgeCount: edges.length,
       derivedFixCount,
       acceptedFixCount,
-      seriesLength: series.length,
+      rejectedCount,
+      seriesLength: sorted.length,
     },
   );
 
-  // ── 6. Sort chronologically (baseline first) using the shared utility ──────
-  return sortAttemptsChronologically(series);
+  return sorted;
 }
