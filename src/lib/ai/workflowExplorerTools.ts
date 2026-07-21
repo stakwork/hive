@@ -107,7 +107,8 @@ export function buildWorkflowExplorerTools(): ToolSet {
             mode: "workflow",
             stakworkApiKey: config.STAKWORK_API_KEY || undefined,
           });
-          return rr.content;
+          if (typeof rr === "string") return "Workflow explorer agent was cancelled";
+          return (rr as Record<string, string>).content;
         } catch (e) {
           console.error("Error executing workflow explorer agent:", e);
           return "Could not execute workflow explorer agent";

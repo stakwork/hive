@@ -61,6 +61,25 @@ export interface SubAgent {
   timeoutSeconds?: number;
 }
 
+/**
+ * Structured marker returned when the user cancelled a repo_agent run.
+ * Distinct from a real error: callers can check `isCancelledMarker(r)` and
+ * render a "cancelled" state instead of an error state. Never thrown.
+ */
+export const REPO_AGENT_CANCELLED_MARKER = "__repo_agent_user_cancelled__" as const;
+export type RepoCancelledMarker = typeof REPO_AGENT_CANCELLED_MARKER;
+
+export function isCancelledMarker(v: unknown): v is RepoCancelledMarker {
+  return v === REPO_AGENT_CANCELLED_MARKER;
+}
+
+/**
+ * Number of consecutive poll cycles to wait (after abort is requested but
+ * before the swarm returns a terminal status) before exiting locally.
+ * Each cycle is ~5 s → ~10–15 s grace window (2–3 cycles).
+ */
+const ABORT_GRACE_CYCLES = 3;
+
 export async function repoAgent(
   swarmUrl: string,
   swarmApiKey: string,
@@ -124,7 +143,19 @@ export async function repoAgent(
     baseUrl: string;
     headers?: Record<string, string>;
   },
-): Promise<Record<string, string>> {
+  hooks?: {
+    /**
+     * Fired immediately after the initiate POST returns a `request_id`.
+     * DB-free by contract: callers supply this; `askTools.ts` never imports db.
+     */
+    onRequestId?: (id: string) => Promise<void>;
+    /**
+     * Called each poll cycle to check if the user has requested a cancellation.
+     * DB-free: callers supply this via a closure.
+     */
+    isAbortRequested?: () => Promise<boolean>;
+  },
+): Promise<Record<string, string> | RepoCancelledMarker> {
   const body: Record<string, unknown> = { ...params };
   if (bifrost) {
     body.apiKey = bifrost.apiKey;
@@ -146,7 +177,7 @@ export async function repoAgent(
 
   if (!initiateResponse.ok) {
     const errorText = await initiateResponse.text();
-    console.error(`Repo agent initiation error: ${initiateResponse.status} - ${errorText}`);
+    console.error(`[repoAgent] Repo agent initiation error: ${initiateResponse.status} - ${errorText}`);
     throw new Error("Failed to initiate repo agent");
   }
 
@@ -157,11 +188,26 @@ export async function repoAgent(
     throw new Error("No request_id returned from repo agent");
   }
 
+  // Fire the onRequestId hook so the caller can register the run atomically.
+  if (hooks?.onRequestId) {
+    await hooks.onRequestId(requestId);
+  }
+
   const maxAttempts = 120;
   const pollInterval = 5000;
+  let abortGraceCyclesRemaining = -1; // -1 = not yet in grace window
 
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     await new Promise((resolve) => setTimeout(resolve, pollInterval));
+
+    // Check for user-requested cancellation (lock-free read supplied by caller).
+    const abortRequested = hooks?.isAbortRequested ? await hooks.isAbortRequested() : false;
+
+    if (abortRequested && abortGraceCyclesRemaining < 0) {
+      // First cycle after abort was requested — start the grace window countdown.
+      console.log(`[repoAgent] Abort requested for requestId: ${requestId}. Starting grace window.`);
+      abortGraceCyclesRemaining = ABORT_GRACE_CYCLES;
+    }
 
     const progressUrl = `${swarmUrl}/progress?request_id=${encodeURIComponent(requestId)}`;
     const progressResponse = await fetch(progressUrl, {
@@ -173,16 +219,48 @@ export async function repoAgent(
     });
 
     if (!progressResponse.ok) {
-      console.error(`Progress check failed: ${progressResponse.status}`);
+      console.error(`[repoAgent] Progress check failed: ${progressResponse.status}`);
+      if (abortGraceCyclesRemaining > 0) {
+        abortGraceCyclesRemaining--;
+        if (abortGraceCyclesRemaining === 0) {
+          console.log(`[repoAgent] Grace window exhausted (no terminal status). Returning cancelled marker. requestId: ${requestId}`);
+          return REPO_AGENT_CANCELLED_MARKER;
+        }
+      }
       continue;
     }
 
     const progressData = await progressResponse.json();
 
     if (progressData.status === "completed") {
+      // Requirement 5: if the run truly completed with a real result even
+      // after abort was requested, return the REAL result (not cancelled).
+      const result = progressData.result;
+      if (result && (typeof result === "object" || typeof result === "string")) {
+        return result as Record<string, string>;
+      }
+      // Completed but no usable result (e.g. empty body after abort).
+      if (abortRequested) {
+        console.log(`[repoAgent] Completed without usable result after abort. Returning cancelled marker. requestId: ${requestId}`);
+        return REPO_AGENT_CANCELLED_MARKER;
+      }
       return progressData.result || {};
-    } else if (progressData.status === "failed") {
+    } else if (progressData.status === "failed" || progressData.status === "aborted") {
+      if (abortRequested) {
+        // Cancelled ≠ error: return structured marker, never throw.
+        console.log(`[repoAgent] Terminal status '${progressData.status}' after abort. Returning cancelled marker. requestId: ${requestId}`);
+        return REPO_AGENT_CANCELLED_MARKER;
+      }
       throw new Error(progressData.error || "Repo agent execution failed");
+    }
+
+    // Not yet terminal — decrement grace window if active.
+    if (abortGraceCyclesRemaining > 0) {
+      abortGraceCyclesRemaining--;
+      if (abortGraceCyclesRemaining === 0) {
+        console.log(`[repoAgent] Grace window exhausted (swarm still running). Returning cancelled marker. requestId: ${requestId}`);
+        return REPO_AGENT_CANCELLED_MARKER;
+      }
     }
   }
 
@@ -200,7 +278,14 @@ function resolveRepo(
   return { owner: repoMap[0].owner, repo: repoMap[0].repo };
 }
 
-export function askTools(swarmUrl: string, swarmApiKey: string, repoUrls: string[], pat: string, apiKey: string, workspaceAuth?: WorkspaceAuth) {
+export interface AskToolsContext {
+  /** Validated SharedConversation.id for the active canvas conversation. */
+  conversationId?: string;
+  /** Client-generated turn id for this user turn. */
+  turnId?: string;
+}
+
+export function askTools(swarmUrl: string, swarmApiKey: string, repoUrls: string[], pat: string, apiKey: string, workspaceAuth?: WorkspaceAuth, context?: AskToolsContext) {
   // Build a map of repo URLs to their parsed owner/repo for multi-repo support
   const repoMap = repoUrls.map((url) => ({
     url,
@@ -319,6 +404,9 @@ export function askTools(swarmUrl: string, swarmApiKey: string, repoUrls: string
       }),
       execute: async ({ prompt }: { prompt: string }) => {
         const prompt2 = `${prompt}.\n\nPLEASE BE AS FAST AS POSSIBLE! DO NOT DO A THOROUGH SEARCH OF THE REPO. TRY TO FINISH THE EXPLORATION VERY QUICKLY!`;
+        const convId = context?.conversationId;
+        const turnId = context?.turnId;
+        let activeRequestId: string | undefined;
         try {
           // Master Bifrost reconciler — see `services/bifrost/orchestrator.ts`.
           // Routes LLM calls through this workspace's Bifrost when we
@@ -332,6 +420,29 @@ export function askTools(swarmUrl: string, swarmApiKey: string, repoUrls: string
           const bifrost = await getBifrostForLLM(workspaceAuth, {
             agentName: "repo-agent",
           });
+
+          // Build abort hooks when we have a canvas conversation to track against.
+          const hooks = convId && turnId && workspaceAuth?.workspaceId
+            ? await (async () => {
+                // Lazy import keeps Prisma out of test workers that don't need it.
+                const { setActiveRun, clearActiveRun: _clear, isAbortRequestedForRun, notifyRunActive } = await import("@/services/canvas-active-runs-hooks");
+                return {
+                  onRequestId: async (requestId: string) => {
+                    activeRequestId = requestId;
+                    console.log(`[repoAgent] Run registered: ${requestId} conversationId: ${convId}`);
+                    await setActiveRun(convId, {
+                      requestId,
+                      workspaceId: workspaceAuth.workspaceId,
+                      startedAt: new Date().toISOString(),
+                    }, turnId);
+                    await notifyRunActive(convId, true);
+                  },
+                  isAbortRequested: async () =>
+                    isAbortRequestedForRun(convId, activeRequestId ?? ""),
+                };
+              })()
+            : undefined;
+
           // Pass comma-separated repo URLs for multi-repo support
           const rr = await repoAgent(
             swarmUrl,
@@ -342,11 +453,21 @@ export function askTools(swarmUrl: string, swarmApiKey: string, repoUrls: string
               pat,
             },
             bifrost,
+            hooks,
           );
-          return rr.content;
+          if (rr === REPO_AGENT_CANCELLED_MARKER) {
+            return "The repo agent investigation was cancelled by the user.";
+          }
+          return (rr as Record<string, string>).content;
         } catch (e) {
           console.error("Error executing repo agent:", e);
           return "Could not execute repo agent";
+        } finally {
+          if (convId && activeRequestId) {
+            const { clearActiveRun, notifyRunActive } = await import("@/services/canvas-active-runs-hooks");
+            const { wasLast } = await clearActiveRun(convId, activeRequestId).catch(() => ({ wasLast: true }));
+            if (wasLast) await notifyRunActive(convId, false).catch(() => {});
+          }
         }
       },
     }),

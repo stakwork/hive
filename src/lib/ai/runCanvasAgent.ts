@@ -243,6 +243,12 @@ export interface RunCanvasAgentOptions {
    */
   currentCanvasConversationId?: string;
   /**
+   * Client-generated turn id for this user turn. Forwarded to askTools/
+   * askToolsMulti so repo_agent executes can register their runs against
+   * the conversation for the Stop control. Absent → no run tracking.
+   */
+  turnId?: string;
+  /**
    * When `true`, strip all write tools before invoking `streamText`.
    * Use this for read-only callers (e.g. plan-mode org context scout)
    * to guarantee the agent can't mutate canvas/research/connection/
@@ -553,6 +559,7 @@ export async function runCanvasAgent(
     silentPusher = false,
     hooks,
     currentCanvasConversationId,
+    turnId,
     additionalTools,
     dispatchedResearch,
     dispatchedGraphWalks,
@@ -661,7 +668,10 @@ export async function runCanvasAgent(
       cachedConcepts?.conceptsByWorkspace ??
       (await fetchConceptsForWorkspaces(workspaceConfigs));
 
-    tools = askToolsMulti(workspaceConfigs, apiKey, conceptsByWorkspace);
+    tools = askToolsMulti(workspaceConfigs, apiKey, conceptsByWorkspace, {
+      conversationId: currentCanvasConversationId,
+      turnId,
+    });
 
     if (orgId) {
       // Merge the selected capabilities' org tool families. The caller
@@ -751,6 +761,9 @@ export async function runCanvasAgent(
       workspaceId: ws.workspaceId,
       workspaceSlug: ws.slug,
       userId: ws.userId,
+    }, {
+      conversationId: currentCanvasConversationId,
+      turnId: opts.turnId,
     });
 
     // Best-effort: a swarm timeout/outage here must NOT kill the whole
