@@ -90,13 +90,33 @@ async function callMockEndpoint(request: NextRequest, workspaceId: string) {
       { status: 404 }
     );
   }
-  
+
+  // Forward subgraph-selection params so the mock route can branch on fixture type
+  const incoming = request.nextUrl.searchParams;
+  const forwardedParams: Record<string, string | string[]> = {
+    workspaceSlug: workspace.slug,
+  };
+  for (const key of ["endpoint", "start_node", "depth"]) {
+    const val = incoming.get(key);
+    if (val) forwardedParams[key] = val;
+  }
+  // node_type may appear multiple times (multi-label requests)
+  const nodeTypes = incoming.getAll("node_type");
+  if (nodeTypes.length > 0) forwardedParams["node_type"] = nodeTypes;
+
   try {
     // In test environment, import and call the mock route handler directly
     // In production, use fetch to call the mock endpoint
     if (process.env.NODE_ENV === 'test') {
       const { GET: MockGET } = await import("@/app/api/mock/jarvis/graph/route");
-      const mockUrl = new URL(`/api/mock/jarvis/graph?workspaceSlug=${workspace.slug}`, request.nextUrl.origin);
+      const mockUrl = new URL(`/api/mock/jarvis/graph`, request.nextUrl.origin);
+      for (const [key, value] of Object.entries(forwardedParams)) {
+        if (Array.isArray(value)) {
+          value.forEach((v) => mockUrl.searchParams.append(key, v));
+        } else {
+          mockUrl.searchParams.set(key, value);
+        }
+      }
       const mockRequest = new NextRequest(mockUrl, {
         headers: request.headers,
       });
@@ -104,7 +124,13 @@ async function callMockEndpoint(request: NextRequest, workspaceId: string) {
     } else {
       // Call the mock endpoint via HTTP (always use localhost for internal API calls to avoid SSL issues)
       const mockUrl = new URL(`/api/mock/jarvis/graph`, 'http://localhost:3000');
-      mockUrl.searchParams.set("workspaceSlug", workspace.slug);
+      for (const [key, value] of Object.entries(forwardedParams)) {
+        if (Array.isArray(value)) {
+          value.forEach((v) => mockUrl.searchParams.append(key, v));
+        } else {
+          mockUrl.searchParams.set(key, value);
+        }
+      }
       
       const mockResponse = await fetch(mockUrl.toString(), {
         headers: {
