@@ -30,26 +30,17 @@ export async function setActiveRun(
   entry: ActiveRunEntry,
   turnId: string,
 ): Promise<{ abortSelf: boolean }> {
-  // Import here to access the pending-abort intent helper.
-  const { setPendingAbortIntent: _s, ...rest } = await import("./canvas-active-runs");
-  void rest;
-
-  // Use the core setActiveRun — it encodes turnId inside the key via a
-  // convention: the entry's requestId is the actual swarm request_id; the
-  // turnId is threaded via the `onRequestId` hook's closure, not stored in
-  // the entry key.  We pass turnId as a prefix so `setActiveRun` can match
-  // the pending-abort intent.
+  // Stamp the turnId onto the entry — the core `setActiveRun` matches it
+  // against a pending-abort intent (Stop pressed before this run had a
+  // request_id to abort) and returns the consumed intent on a match.
   const result = await setActiveRunCore(conversationId, {
     ...entry,
-    // Encode turnId in the run's key for pending-abort matching.
-    // Convention: requestId key in activeRuns map is the real swarm requestId.
-    // The turnId is passed separately.
-    requestId: entry.requestId,
+    turnId,
   });
 
-  // If the pending-abort intent was consumed (turnId match), auto-flag abortRequested.
+  // Intent consumed (turnId match) → flag this run abortRequested so the
+  // poll loop cancels it on its next cycle.
   if (result.pendingAbortIntent && result.pendingAbortIntent.turnId === turnId) {
-    // Mark this run as abortRequested atomically.
     const { requestAbortForAllRuns } = await import("./canvas-active-runs");
     await requestAbortForAllRuns(conversationId);
     return { abortSelf: true };
