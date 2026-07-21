@@ -111,6 +111,7 @@ export function useSendCanvasChatMessage() {
         setActiveToolCalls,
         setIsLoading,
         setIsStreaming,
+        setRunActive,
         appendAssistantError,
         markTurnAuthored,
         setServerConversationId,
@@ -376,6 +377,20 @@ export function useSendCanvasChatMessage() {
                 }
               }
 
+              // Local repo_agent run-active detection for instant Stop feedback.
+              // toolName may be bare ("repo_agent") or namespaced ("ws__repo_agent").
+              const isRepoAgent =
+                toolCall.toolName === "repo_agent" ||
+                toolCall.toolName.endsWith("__repo_agent");
+              if (isRepoAgent) {
+                if (toolCall.status === "call") {
+                  setRunActive(conversationId, true);
+                } else if (toolCall.output !== undefined || toolCall.status === "output-error") {
+                  // Run finished — will also be cleared via Pusher from server.
+                  setRunActive(conversationId, false);
+                }
+              }
+
               currentToolCalls.push({
                 id: toolCall.id,
                 toolName: toolCall.toolName,
@@ -506,6 +521,8 @@ export function useSendCanvasChatMessage() {
         });
 
         setActiveToolCalls(conversationId, []);
+        // Stream finished cleanly — ensure runActive is cleared locally.
+        setRunActive(conversationId, false);
       } catch (error) {
         console.error("Error calling ask API:", error);
         appendAssistantError(
@@ -515,6 +532,8 @@ export function useSendCanvasChatMessage() {
       } finally {
         setIsLoading(conversationId, false);
         setIsStreaming(conversationId, false);
+        // Always clear runActive on stream end/error (belt + suspenders with Pusher).
+        setRunActive(conversationId, false);
       }
     },
     [processStream],
