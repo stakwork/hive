@@ -78,8 +78,12 @@ function RecursionCard({ entry, refetch }: RecursionCardProps) {
   const [toggleError, setToggleError] = useState<string | null>(null);
   const [expanded, setExpanded] = useState(false);
 
-  // Use entry.id (task slug) to fetch eval run history for this task
-  const { attempts, isLoading: historyLoading, error: historyError } = useEvalRunHistory(entry.id);
+  // Use entry.refId (EvalSet ref_id) + entry.id (task slug) for eval run history.
+  // refId is preferred; slug is the fallback when refId is absent.
+  const { attempts, isLoading: historyLoading, error: historyError } = useEvalRunHistory({
+    refId: entry.refId,
+    slug: entry.id,
+  });
 
   const latest = attempts.length > 0 ? attempts[attempts.length - 1] : null;
 
