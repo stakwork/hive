@@ -139,7 +139,18 @@ export interface ProposedFix {
   delta?: string | null;
   /** Model reasoning behind the proposed fix */
   reasoning?: string | null;
-  /** Proposal status (e.g. "pending", "accepted", "rejected") */
+  /**
+   * Canonical accept/reject lifecycle field (`pending → accepted | rejected`).
+   * Preferred over the legacy `status` field for all accept/reject branching.
+   * May be absent on older nodes written before this field was introduced.
+   */
+  eval_status?: string | null;
+  /**
+   * Legacy proposal status field. Still written by the UI accept/reject path.
+   * Do NOT use for accept/reject branching — read `eval_status` first and fall
+   * back to this only when `eval_status` is absent.
+   * @deprecated Use `eval_status` instead.
+   */
   status?: string | null;
   /** Status of the automated rerun using the new prompt version */
   rerun_status?: string | null;
