@@ -17,6 +17,17 @@ export interface EvalTriggerOutput {
   date_added_to_graph?: string;
   /** Node id (e.g. "task_slug-source_run_id" or "task_slug-source_run_id--<rerun_id>") */
   id?: string;
+  // ── Hill-climb series fields (set by buildHillClimbSeries) ───────────────
+  /** Whether this attempt was accepted; false for rejected/pending */
+  accepted?: boolean;
+  /** True only for the baseline point */
+  isBaseline?: boolean;
+  /** Actual n_passed for dot rendering; null = no dot, x-slot is preserved */
+  actualPassed?: number | null;
+  /** Running best n_passed for the connected line (monotonic non-decreasing) */
+  bestPassed?: number;
+  /** Display label: "base" for baseline, "r1"/"r2"/… for subsequent attempts */
+  label?: string;
 }
 
 export interface EvalTrigger {
