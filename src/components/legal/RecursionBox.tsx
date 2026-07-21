@@ -85,7 +85,16 @@ function RecursionCard({ entry, refetch }: RecursionCardProps) {
     slug: entry.id,
   });
 
-  const latest = attempts.length > 0 ? attempts[attempts.length - 1] : null;
+  // Use the best score so far (highest bestPassed) so a trailing rejected
+  // attempt doesn't make the badge show a lower/stale score.
+  const bestAttempt = attempts.length > 0
+    ? attempts.reduce((best, pt) => {
+        const ptBest = pt.bestPassed ?? pt.n_passed ?? 0;
+        const curBest = best.bestPassed ?? best.n_passed ?? 0;
+        return ptBest >= curBest ? pt : best;
+      })
+    : null;
+  const latest = bestAttempt;
 
   const handleToggle = async (enabled: boolean) => {
     setToggling(true);
@@ -130,7 +139,7 @@ function RecursionCard({ entry, refetch }: RecursionCardProps) {
             <ScoreBadge
               isLoading={historyLoading}
               error={historyError}
-              n_passed={latest?.n_passed}
+              n_passed={latest?.bestPassed ?? latest?.n_passed}
               n_total={latest?.n_total}
             />
           </div>

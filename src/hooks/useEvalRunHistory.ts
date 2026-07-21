@@ -231,8 +231,24 @@ export function useEvalRunHistory(input: UseEvalRunHistoryInput): UseEvalRunHist
         );
         const sortedAttempts = sortAttemptsChronologically(allCompletedOutputs);
 
+        // Enrich legacy sortedAttempts with sensible defaults for new fields so
+        // consumers (HillClimbChart, RecursionBox) work on both paths.
+        let legacyBest = 0;
+        const enrichedSortedAttempts = sortedAttempts.map((o, i) => {
+          const actualPassed = o.n_passed ?? null;
+          if (actualPassed != null) legacyBest = Math.max(legacyBest, actualPassed);
+          return {
+            ...o,
+            accepted: true,
+            isBaseline: i === 0,
+            actualPassed,
+            bestPassed: legacyBest,
+            label: i === 0 ? "base" : `r${i}`,
+          };
+        });
+
         // Use hill-climb series if non-empty, else fall back to legacy flat list
-        const finalAttempts = hillClimbAttempts.length > 0 ? hillClimbAttempts : sortedAttempts;
+        const finalAttempts = hillClimbAttempts.length > 0 ? hillClimbAttempts : enrichedSortedAttempts;
 
         // ── Step 5: Join triggers with StakworkRun rows ───────────────────
         const runsData = (await runsRes.json()) as
@@ -273,7 +289,7 @@ export function useEvalRunHistory(input: UseEvalRunHistoryInput): UseEvalRunHist
           return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
         });
 
-        const acceptedFixCount = hillClimbAttempts.length > 1 ? hillClimbAttempts.length - 1 : 0;
+        const acceptedFixCount = hillClimbAttempts.filter((pt) => !pt.isBaseline && pt.accepted === true).length;
         logger.info(
           `[legal/benchmarks/useEvalRunHistory] Loaded history=${entries.length} hillClimbPts=${hillClimbAttempts.length} acceptedFixes=${acceptedFixCount}`,
           "legal",
