@@ -276,9 +276,9 @@ describe("buildHillClimbSeries", () => {
     expect(series[1].n_passed).toBe(55);
   });
 
-  // ── Rejected / pending exclusion ─────────────────────────────────────────
+  // ── Rejected / pending now emit x-slots (accepted=false) ─────────────────
 
-  it("eval_status=rejected → excluded from series", () => {
+  it("eval_status=rejected → emits a point with accepted=false (x-slot, not excluded)", () => {
     const evalSetId = "evalset-1";
     const triggerId = uid("trig");
     const baseOutputId = uid("out");
@@ -302,12 +302,14 @@ describe("buildHillClimbSeries", () => {
     };
 
     const series = buildHillClimbSeries(sg);
-    // Only baseline — rejected fix excluded
-    expect(series).toHaveLength(1);
+    // Rejected fix now emits an x-slot (accepted=false) instead of being silently dropped
+    expect(series).toHaveLength(2);
     expect(series[0].n_passed).toBe(50);
+    expect(series[1].accepted).toBe(false);
+    expect(series[1].label).toBe("r1");
   });
 
-  it("eval_status=pending → excluded from series", () => {
+  it("eval_status=pending → emits a point with accepted=false (x-slot, not excluded)", () => {
     const evalSetId = "evalset-1";
     const triggerId = uid("trig");
     const baseOutputId = uid("out");
@@ -331,7 +333,9 @@ describe("buildHillClimbSeries", () => {
     };
 
     const series = buildHillClimbSeries(sg);
-    expect(series).toHaveLength(1);
+    // Pending fix now emits an x-slot too (accepted=false)
+    expect(series).toHaveLength(2);
+    expect(series[1].accepted).toBe(false);
   });
 
   // ── PRODUCED_BY edge — primary score hop ─────────────────────────────────
@@ -621,10 +625,312 @@ describe("buildHillClimbSeries", () => {
 
     const series = buildHillClimbSeries(sg);
     for (const pt of series) {
-      expect(pt.n_passed).toBeDefined();
-      expect(pt.n_total).toBeDefined();
       if (pt.n_passed != null) expect(isNaN(pt.n_passed)).toBe(false);
       if (pt.n_total != null) expect(isNaN(pt.n_total)).toBe(false);
     }
+  });
+
+  // ── NEW: Multi-PRODUCED_BY edge resolution ────────────────────────────────
+
+  it("two PRODUCED_BY edges: accepted fix picks the valid output (n_passed=32/n_total=33)", () => {
+    const evalSetId = "evalset-1";
+    const triggerId = uid("trig");
+    const baseOutputId = uid("out");
+    const fixId = uid("fix");
+    const emptyOutputId = uid("out"); // no n_passed/n_total — must be skipped
+    const validOutputId = uid("out"); // n_passed=32, n_total=33 — must be picked
+
+    const sg: Subgraph = {
+      nodes: [
+        evalSetNode(evalSetId),
+        triggerNode(triggerId, "1720001000"),
+        outputNode(baseOutputId, 24, 33, "1720001500"),
+        fixNode(fixId, { eval_status: "accepted", ts: "1720002000" }),
+        // Empty output — no n_passed/n_total
+        {
+          ref_id: emptyOutputId,
+          node_type: "EvalTriggerOutput",
+          date_added_to_graph: "1720002200",
+          properties: { attempt_number: 2, result: "", score: 0 },
+        },
+        // Valid output
+        outputNode(validOutputId, 32, 33, "1720002500"),
+      ],
+      edges: [
+        edge(evalSetId, triggerId, "HAS_BASELINE_TRIGGER"),
+        edge(triggerId, baseOutputId, "HAS_OUTPUT"),
+        edge(triggerId, fixId, "HAS_PROPOSED_FIX"),
+        // Two PRODUCED_BY edges — empty listed first so find() would pick it (old bug)
+        edge(fixId, emptyOutputId, "PRODUCED_BY"),
+        edge(fixId, validOutputId, "PRODUCED_BY"),
+      ],
+    };
+
+    const series = buildHillClimbSeries(sg);
+    expect(series).toHaveLength(2);
+    expect(series[1].n_passed).toBe(32);
+    expect(series[1].n_total).toBe(33);
+  });
+
+  // ── NEW: Rejected attempt — point emitted with accepted=false ────────────
+
+  it("rejected fix emits a point with accepted=false and bestPassed unchanged (flat line)", () => {
+    const evalSetId = "evalset-1";
+    const triggerId = uid("trig");
+    const baseOutputId = uid("out");
+    const fixId = uid("fix");
+
+    const sg: Subgraph = {
+      nodes: [
+        evalSetNode(evalSetId),
+        triggerNode(triggerId, "1720001000"),
+        outputNode(baseOutputId, 24, 33, "1720001500"),
+        // Rejected with derivable score via before/after
+        fixNode(fixId, {
+          eval_status: "rejected",
+          before_score: "24",
+          after_score: "20",
+          ts: "1720002000",
+        }),
+      ],
+      edges: [
+        edge(evalSetId, triggerId, "HAS_BASELINE_TRIGGER"),
+        edge(triggerId, baseOutputId, "HAS_OUTPUT"),
+        edge(triggerId, fixId, "HAS_PROPOSED_FIX"),
+        // No PRODUCED_BY — score resolved via before/after
+      ],
+    };
+
+    const series = buildHillClimbSeries(sg);
+    // Should have baseline + rejected attempt point
+    expect(series).toHaveLength(2);
+    const rejectedPt = series.find((pt) => pt.accepted === false);
+    expect(rejectedPt).toBeDefined();
+    expect(rejectedPt!.accepted).toBe(false);
+    // actualPassed is the derived value from after_score=20
+    expect(rejectedPt!.actualPassed).toBe(20);
+    // bestPassed is flat — remains the baseline's best (24), not the rejected dip
+    expect(rejectedPt!.bestPassed).toBe(24);
+  });
+
+  // ── NEW: bestPassed is monotonic non-decreasing after chronological sort ──
+
+  it("bestPassed is monotonic non-decreasing in final sorted order", () => {
+    const evalSetId = "evalset-1";
+    const triggerId = uid("trig");
+    const baseOutputId = uid("out");
+    const fix1Id = uid("fix");
+    const fix1OutId = uid("out");
+    const fix2Id = uid("fix"); // rejected — flat
+    const fix3Id = uid("fix");
+    const fix3OutId = uid("out");
+
+    const sg: Subgraph = {
+      nodes: [
+        evalSetNode(evalSetId),
+        triggerNode(triggerId, "1720001000"),
+        outputNode(baseOutputId, 24, 33, "1720001500"),
+        // fix1: accepted 30/33
+        fixNode(fix1Id, { eval_status: "accepted", ts: "1720002000" }),
+        outputNode(fix1OutId, 30, 33, "1720002500"),
+        // fix2: rejected with lower score
+        fixNode(fix2Id, {
+          eval_status: "rejected",
+          before_score: "30",
+          after_score: "25",
+          ts: "1720003000",
+        }),
+        // fix3: accepted 32/33
+        fixNode(fix3Id, { eval_status: "accepted", ts: "1720004000" }),
+        outputNode(fix3OutId, 32, 33, "1720004500"),
+      ],
+      edges: [
+        edge(evalSetId, triggerId, "HAS_BASELINE_TRIGGER"),
+        edge(triggerId, baseOutputId, "HAS_OUTPUT"),
+        edge(triggerId, fix1Id, "HAS_PROPOSED_FIX"),
+        edge(fix1Id, fix1OutId, "PRODUCED_BY"),
+        edge(fix2Id, fix1Id, "DERIVED_FROM"),
+        edge(fix3Id, fix2Id, "DERIVED_FROM"),
+        edge(fix3Id, fix3OutId, "PRODUCED_BY"),
+      ],
+    };
+
+    const series = buildHillClimbSeries(sg);
+    // Should have: baseline(24), fix1(30), fix2(rejected,25), fix3(32)
+    expect(series.length).toBe(4);
+
+    // bestPassed must be monotonically non-decreasing
+    for (let i = 1; i < series.length; i++) {
+      expect(series[i].bestPassed!).toBeGreaterThanOrEqual(series[i - 1].bestPassed!);
+    }
+
+    // Verify the rejected point (fix2) does NOT advance bestPassed
+    const rejectedPt = series.find((pt) => pt.accepted === false);
+    expect(rejectedPt).toBeDefined();
+    expect(rejectedPt!.bestPassed).toBe(30); // flat at prior accepted best, not 25
+  });
+
+  // ── NEW: Unresolvable rejected attempt — x-slot kept, no dot ─────────────
+
+  it("rejected fix with no resolvable score: actualPassed=null, x-slot and label still present", () => {
+    const evalSetId = "evalset-1";
+    const triggerId = uid("trig");
+    const baseOutputId = uid("out");
+    const fix1Id = uid("fix");
+    const fix1OutId = uid("out");
+    const fix2Id = uid("fix"); // rejected, no score
+    const fix3Id = uid("fix");
+    const fix3OutId = uid("out");
+
+    const sg: Subgraph = {
+      nodes: [
+        evalSetNode(evalSetId),
+        triggerNode(triggerId, "1720001000"),
+        outputNode(baseOutputId, 24, 33, "1720001500"),
+        fixNode(fix1Id, { eval_status: "accepted", ts: "1720002000" }),
+        outputNode(fix1OutId, 30, 33, "1720002500"),
+        // fix2: rejected, no PRODUCED_BY, no rerun_run_id, no after_score → null
+        fixNode(fix2Id, { eval_status: "rejected", ts: "1720003000" }),
+        // fix3: accepted after the rejected slot
+        fixNode(fix3Id, { eval_status: "accepted", ts: "1720004000" }),
+        outputNode(fix3OutId, 32, 33, "1720004500"),
+      ],
+      edges: [
+        edge(evalSetId, triggerId, "HAS_BASELINE_TRIGGER"),
+        edge(triggerId, baseOutputId, "HAS_OUTPUT"),
+        edge(triggerId, fix1Id, "HAS_PROPOSED_FIX"),
+        edge(fix1Id, fix1OutId, "PRODUCED_BY"),
+        edge(fix2Id, fix1Id, "DERIVED_FROM"),
+        edge(fix3Id, fix2Id, "DERIVED_FROM"),
+        edge(fix3Id, fix3OutId, "PRODUCED_BY"),
+      ],
+    };
+
+    const series = buildHillClimbSeries(sg);
+    // 4 points: baseline, fix1, fix2 (slot-only), fix3
+    expect(series).toHaveLength(4);
+
+    // Verify labels are stable and in order
+    const labels = series.map((pt) => pt.label);
+    expect(labels).toEqual(["base", "r1", "r2", "r3"]);
+
+    // The unresolvable rejected point has actualPassed=null
+    const unresolvable = series.find((pt) => pt.accepted === false && pt.actualPassed === null);
+    expect(unresolvable).toBeDefined();
+    expect(unresolvable!.label).toBe("r2");
+
+    // Subsequent point (fix3) still has correct label r3
+    const fix3Pt = series.find((pt) => pt.label === "r3");
+    expect(fix3Pt).toBeDefined();
+    expect(fix3Pt!.n_passed).toBe(32);
+  });
+
+  // ── NEW: Behavioral check — baseline 24/33 + accepted 32/33 ──────────────
+
+  it("baseline 24/33 + accepted fix 32/33 → two-point series with correct bestPassed", () => {
+    const evalSetId = "evalset-1";
+    const triggerId = uid("trig");
+    const baseOutputId = uid("out");
+    const fixId = uid("fix");
+    const fixOutId = uid("out");
+
+    const sg: Subgraph = {
+      nodes: [
+        evalSetNode(evalSetId),
+        triggerNode(triggerId, "1720001000"),
+        outputNode(baseOutputId, 24, 33, "1720001500"),
+        fixNode(fixId, { eval_status: "accepted", ts: "1720002000" }),
+        outputNode(fixOutId, 32, 33, "1720002500"),
+      ],
+      edges: [
+        edge(evalSetId, triggerId, "HAS_BASELINE_TRIGGER"),
+        edge(triggerId, baseOutputId, "HAS_OUTPUT"),
+        edge(triggerId, fixId, "HAS_PROPOSED_FIX"),
+        edge(fixId, fixOutId, "PRODUCED_BY"),
+      ],
+    };
+
+    const series = buildHillClimbSeries(sg);
+
+    expect(series).toHaveLength(2);
+
+    // Baseline
+    expect(series[0].isBaseline).toBe(true);
+    expect(series[0].accepted).toBe(true);
+    expect(series[0].actualPassed).toBe(24);
+    expect(series[0].bestPassed).toBe(24);
+    expect(series[0].label).toBe("base");
+
+    // Accepted fix
+    expect(series[1].isBaseline).toBe(false);
+    expect(series[1].accepted).toBe(true);
+    expect(series[1].actualPassed).toBe(32);
+    expect(series[1].bestPassed).toBe(32);
+    expect(series[1].label).toBe("r1");
+  });
+
+  // ── NEW: Regression — eval_status=rejected now yields a point (not excluded) ─
+
+  it("rejected fix is now included in series (not excluded like before)", () => {
+    const evalSetId = "evalset-1";
+    const triggerId = uid("trig");
+    const baseOutputId = uid("out");
+    const fixId = uid("fix");
+
+    const sg: Subgraph = {
+      nodes: [
+        evalSetNode(evalSetId),
+        triggerNode(triggerId, "1720001000"),
+        outputNode(baseOutputId, 50, 74, "1720001500"),
+        // Rejected with resolvable score
+        fixNode(fixId, {
+          eval_status: "rejected",
+          before_score: "50",
+          after_score: "48",
+          ts: "1720002000",
+        }),
+      ],
+      edges: [
+        edge(evalSetId, triggerId, "HAS_BASELINE_TRIGGER"),
+        edge(triggerId, baseOutputId, "HAS_OUTPUT"),
+        edge(triggerId, fixId, "HAS_PROPOSED_FIX"),
+      ],
+    };
+
+    const series = buildHillClimbSeries(sg);
+    // New behaviour: rejected attempts get an x-slot
+    expect(series).toHaveLength(2);
+    expect(series[1].accepted).toBe(false);
+    expect(series[1].label).toBe("r1");
+  });
+
+  // ── NEW: isBaseline flag ──────────────────────────────────────────────────
+
+  it("baseline point has isBaseline=true; fix points have isBaseline=false", () => {
+    const evalSetId = "evalset-1";
+    const triggerId = uid("trig");
+    const baseOutputId = uid("out");
+    const fixId = uid("fix");
+    const fixOutId = uid("out");
+
+    const sg: Subgraph = {
+      nodes: [
+        evalSetNode(evalSetId),
+        triggerNode(triggerId, "1720001000"),
+        outputNode(baseOutputId, 50, 74, "1720001500"),
+        fixNode(fixId, { eval_status: "accepted", ts: "1720002000" }),
+        outputNode(fixOutId, 58, 74, "1720002500"),
+      ],
+      edges: [
+        edge(evalSetId, triggerId, "HAS_BASELINE_TRIGGER"),
+        edge(triggerId, baseOutputId, "HAS_OUTPUT"),
+        edge(triggerId, fixId, "HAS_PROPOSED_FIX"),
+        edge(fixId, fixOutId, "PRODUCED_BY"),
+      ],
+    };
+
+    const series = buildHillClimbSeries(sg);
+    expect(series[0].isBaseline).toBe(true);
+    expect(series[1].isBaseline).toBe(false);
   });
 });
