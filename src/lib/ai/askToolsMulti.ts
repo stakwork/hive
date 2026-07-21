@@ -3,7 +3,7 @@ import { z } from "zod";
 import { createMCPClient } from "@ai-sdk/mcp";
 import { withMcpTimeout, isMcpTimeout } from './mcpTimeout';
 import { WorkspaceConfig } from "./types";
-import { listConcepts, repoAgent } from "./askTools";
+import { listConcepts, repoAgent, REPO_AGENT_CANCELLED_MARKER, type AskToolsContext } from "./askTools";
 import { buildCourtlistenerTools } from "@/lib/ai/courtlistenerTools";
 import { LEGAL_SLUGS } from "@/lib/eval-capture-slugs";
 // Deep import — see comment in services/task-workflow.ts.
@@ -39,6 +39,7 @@ export function askToolsMulti(
    * that fetch here is free.
    */
   conceptsByWorkspace?: Record<string, Record<string, unknown>[]>,
+  context?: AskToolsContext,
 ): ToolSet {
   // Build all tools and merge at the end
   const allTools: Record<string, AnyTool> = {};
@@ -277,6 +278,9 @@ export function askToolsMulti(
       }),
       execute: async ({ prompt }: { prompt: string }) => {
         const prompt2 = `${prompt}.\n\nPLEASE BE AS FAST AS POSSIBLE!`;
+        const convId = context?.conversationId;
+        const turnId = context?.turnId;
+        let activeRequestId: string | undefined;
         try {
           // Per-workspace Bifrost VK so each workspace's spend gets
           // attributed to its own Customer/VK on its own Bifrost.
@@ -291,6 +295,28 @@ export function askToolsMulti(
             },
             { agentName: "repo-agent" },
           );
+
+          // Build abort hooks when we have a canvas conversation to track.
+          const hooks = convId && turnId
+            ? await (async () => {
+                const { setActiveRun, isAbortRequestedForRun, notifyRunActive } = await import("@/services/canvas-active-runs-hooks");
+                return {
+                  onRequestId: async (requestId: string) => {
+                    activeRequestId = requestId;
+                    console.log(`[repoAgent] Run registered: ${requestId} ws: ${ws.slug} conversationId: ${convId}`);
+                    await setActiveRun(convId, {
+                      requestId,
+                      workspaceId: ws.workspaceId,
+                      startedAt: new Date().toISOString(),
+                    }, turnId);
+                    await notifyRunActive(convId, true);
+                  },
+                  isAbortRequested: async () =>
+                    isAbortRequestedForRun(convId, activeRequestId ?? ""),
+                };
+              })()
+            : undefined;
+
           const rr = await repoAgent(
             ws.swarmUrl,
             ws.swarmApiKey,
@@ -300,11 +326,21 @@ export function askToolsMulti(
               pat: ws.pat,
             },
             bifrost,
+            hooks,
           );
-          return rr.content;
+          if (rr === REPO_AGENT_CANCELLED_MARKER) {
+            return `The repo agent investigation for ${ws.slug} was cancelled by the user.`;
+          }
+          return (rr as Record<string, string>).content;
         } catch (e) {
           console.error(`Error executing repo agent for ${ws.slug}:`, e);
           return `Could not execute repo agent for ${ws.slug}`;
+        } finally {
+          if (convId && activeRequestId) {
+            const { clearActiveRun, notifyRunActive } = await import("@/services/canvas-active-runs-hooks");
+            const { wasLast } = await clearActiveRun(convId, activeRequestId).catch(() => ({ wasLast: true }));
+            if (wasLast) await notifyRunActive(convId, false).catch(() => {});
+          }
         }
       },
     });
