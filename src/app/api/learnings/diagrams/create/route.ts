@@ -86,7 +86,10 @@ export async function POST(request: NextRequest) {
       bifrost,
     );
 
-    const responseContent = agentResult?.content ?? JSON.stringify(agentResult);
+    if (typeof agentResult === "string") {
+      return NextResponse.json({ error: "Diagram generation was cancelled" }, { status: 422 });
+    }
+    const responseContent = (agentResult as Record<string, string>)?.content ?? JSON.stringify(agentResult);
     const extractedBody = extractMermaidBody(responseContent);
 
     if (!extractedBody) {
