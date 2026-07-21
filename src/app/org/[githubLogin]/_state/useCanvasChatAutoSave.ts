@@ -275,6 +275,15 @@ export function useCanvasChatAutoSave({ githubLogin }: AutoSaveArgs) {
         channel.bind(PUSHER_EVENTS.CANVAS_CONVERSATION_UPDATED, () => {
           syncByServerId(activeServerId);
         });
+        // Broadcast from server when a repo_agent run starts or ends.
+        // Updates runActive for all participants (incl. non-initiators).
+        channel.bind(PUSHER_EVENTS.CANVAS_RUN_ACTIVE, (data: { active: boolean }) => {
+          const s = useCanvasChatStore.getState();
+          const cid = Object.keys(s.conversations).find(
+            (k) => s.conversations[k].serverConversationId === activeServerId,
+          );
+          if (cid) s.setRunActive(cid, data.active);
+        });
         subRef.current = { serverId: activeServerId, channel };
         // Catch up immediately on (re)subscribe: Pusher has no replay, so
         // anything appended while we weren't subscribed to this channel

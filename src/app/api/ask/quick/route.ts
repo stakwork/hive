@@ -525,6 +525,9 @@ export async function POST(request: NextRequest) {
                   canvasConversationRowId ?? tokenAttributionRowId ?? undefined,
               }
             : {}),
+          // Thread the client-supplied turnId so repo_agent executes can
+          // register their runs for the Stop control.
+          ...(turnIdStr ? { turnId: turnIdStr } : {}),
           // The HTTP chat is a live UI surface; emit HIGHLIGHT_NODES so
           // open clients animate the researched node.
           silentPusher: false,

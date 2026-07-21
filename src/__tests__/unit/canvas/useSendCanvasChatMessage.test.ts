@@ -66,6 +66,7 @@ interface MockStoreState {
   setActiveToolCalls: ReturnType<typeof vi.fn>;
   setIsLoading: ReturnType<typeof vi.fn>;
   setIsStreaming: ReturnType<typeof vi.fn>;
+  setRunActive: ReturnType<typeof vi.fn>;
   appendAssistantError: ReturnType<typeof vi.fn>;
   markTurnAuthored: ReturnType<typeof vi.fn>;
   setServerConversationId: ReturnType<typeof vi.fn>;
@@ -114,6 +115,7 @@ function makeTrackedState(): MockStoreState {
         state.conversations[id] = { ...state.conversations[id], isStreaming: val };
       }
     }),
+    setRunActive: vi.fn(),
     appendAssistantError: vi.fn(),
     markTurnAuthored: vi.fn(),
     setServerConversationId: vi.fn(),
