@@ -653,6 +653,10 @@ model SharedConversation {
   ownerSeenAt        DateTime?         @map("owner_seen_at")
   source             String?
   settings           Json?             @default("{}")
+  // Map of in-flight repo_agent runs keyed by request_id.
+  // Each entry: { requestId, workspaceId, startedAt, abortRequested? }
+  // Used to support the Stop control in canvas chat. No secrets stored here.
+  activeRuns         Json?             @map("active_runs")
   user               User?             @relation(fields: [userId], references: [id], onDelete: Cascade)
   workspace          Workspace?        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   sourceControlOrg   SourceControlOrg? @relation(fields: [sourceControlOrgId], references: [id], onDelete: Cascade)
