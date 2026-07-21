@@ -195,7 +195,7 @@ const mockUseEvalRunHistory = vi.fn(() => ({
 }));
 
 vi.mock("@/hooks/useEvalRunHistory", () => ({
-  useEvalRunHistory: (taskSlug: string) => mockUseEvalRunHistory(taskSlug),
+  useEvalRunHistory: (input: { refId?: string | null; slug: string }) => mockUseEvalRunHistory(input),
 }));
 
 // ─── useLegalBenchmarkEval mock ────────────────────────────────────────────────

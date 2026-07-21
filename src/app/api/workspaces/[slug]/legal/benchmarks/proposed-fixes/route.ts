@@ -47,6 +47,7 @@ function projectFix(refId: string, props: Record<string, unknown> | undefined): 
     passing_value: str("passing_value"),
     delta: str("delta"),
     reasoning: str("reasoning"),
+    eval_status: str("eval_status"),
     status: str("status"),
     rerun_status: str("rerun_status"),
     before_score: str("before_score"),
