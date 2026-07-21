@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import type { JarvisNode, JarvisResponse } from "@/types/jarvis";
+import { isRecursionSubgraphRequest } from "./fixture-constants";
+import { buildRecursionNodes, buildRecursionEdges } from "./recursion-fixture";
 
 export const runtime = "nodejs";
 
@@ -131,7 +133,12 @@ function generateMockEdges() {
 
 /**
  * Mock endpoint for Jarvis graph data
- * Returns mock nodes and edges for development/testing
+ * Returns mock nodes and edges for development/testing.
+ *
+ * When recursion-subgraph params are forwarded (node_type includes
+ * EvalTrigger/EvalTriggerOutput/ProposedFix, or start_node matches the mock
+ * EvalSet ref_id), returns the dedicated recursion fixture instead of the
+ * generic Function/Variable graph.
  */
 export async function GET(request: NextRequest) {
   try {
@@ -154,6 +161,23 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Workspace not found" }, { status: 404 });
     }
 
+    // Extract forwarded subgraph params (passed through from callMockEndpoint)
+    const nodeType = searchParams.get("node_type");
+    const startNode = searchParams.get("start_node");
+    // endpoint and depth are forwarded for completeness but not used for branching yet
+    // const endpoint = searchParams.get("endpoint");
+    // const depth = searchParams.get("depth");
+
+    // Branch: return recursion fixture when the request targets the eval subgraph
+    if (isRecursionSubgraphRequest({ nodeType, startNode })) {
+      const response: JarvisResponse = {
+        nodes: buildRecursionNodes(),
+        edges: buildRecursionEdges(),
+      };
+      return NextResponse.json({ success: true, status: 200, data: response });
+    }
+
+    // Default: return the generic Function/Variable/Person/Episode graph
     const response: JarvisResponse = {
       nodes: generateMockNodes(),
       edges: generateMockEdges(),
