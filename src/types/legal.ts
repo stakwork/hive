@@ -21,6 +21,17 @@ export interface BenchmarkRunResult {
   runnerOutputText?: string;
   /** Error message if the run failed */
   errorMessage?: string;
+  /**
+   * Operator-chosen execution model (bare name, e.g. "claude-sonnet-5").
+   * Stored at run creation under a clobber-proof key — the runner never emits
+   * this field so the webhook merge cannot overwrite it.
+   */
+  requestedModel?: string;
+  /**
+   * Operator-chosen judge model (bare name, e.g. "claude-sonnet-4-6").
+   * Same clobber-proof guarantee as requestedModel.
+   */
+  requestedJudgeModel?: string;
   // ── Flat score fields from the runner webhook (workflow 57179 inline eval) ──
   /** Raw score (e.g. 72) */
   score?: number;
@@ -36,7 +47,12 @@ export interface BenchmarkRunResult {
   all_pass?: boolean;
   /** S3 URL to per-criterion score breakdown (out of scope for v1 display) */
   scores_s3_url?: string;
-  /** Name of the judge model used for evaluation */
+  /**
+   * Runner-echoed execution model name (echoed back by the Stakwork runner webhook).
+   * For display, prefer `requestedModel ?? model ?? "—"`.
+   */
+  model?: string;
+  /** Name of the judge model used for evaluation (runner-echoed). */
   judge_model?: string;
   /** Per-criterion results returned inline by workflow 57179 */
   criteria_results?: Array<{
