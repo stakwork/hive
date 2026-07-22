@@ -457,4 +457,109 @@ describe("useLegalBenchmarkRunList", () => {
 
     expect(mockChannelUnbind).toHaveBeenCalledWith("stakwork-run-update", handler);
   });
+
+  // ─── requestedModel / requestedJudgeModel ─────────────────────────────────
+
+  it("requestedModel and requestedJudgeModel are mapped from parsed result", async () => {
+    mockFetchOk([
+      makeRow({
+        result: JSON.stringify({
+          taskSlug: "antitrust/task-1",
+          taskTitle: "Analyze Antitrust Strategy",
+          n_passed: 5,
+          n_total: 5,
+          all_pass: true,
+          judge_model: "claude-sonnet-4-6-echoed",
+          requestedModel: "claude-sonnet-5",
+          requestedJudgeModel: "claude-sonnet-4-6",
+        }),
+      }),
+    ]);
+
+    const { result } = renderHook(() => useLegalBenchmarkRunList("ws-cuid-123"));
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    const row = result.current.runs[0];
+    expect(row.requestedModel).toBe("claude-sonnet-5");
+    expect(row.requestedJudgeModel).toBe("claude-sonnet-4-6");
+  });
+
+  it("requestedModel and requestedJudgeModel are undefined when absent (legacy runs)", async () => {
+    mockFetchOk([
+      makeRow({
+        result: JSON.stringify({
+          taskSlug: "antitrust/task-1",
+          taskTitle: "Analyze Antitrust Strategy",
+          n_passed: 72,
+          n_total: 74,
+          judge_model: "gpt-4",
+        }),
+      }),
+    ]);
+
+    const { result } = renderHook(() => useLegalBenchmarkRunList("ws-cuid-123"));
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    const row = result.current.runs[0];
+    expect(row.requestedModel).toBeUndefined();
+    expect(row.requestedJudgeModel).toBeUndefined();
+  });
+
+  it("judgeNotes uses requestedJudgeModel when present (takes precedence over judge_model)", async () => {
+    mockFetchOk([
+      makeRow({
+        result: JSON.stringify({
+          taskSlug: "antitrust/task-1",
+          taskTitle: "Analyze Antitrust Strategy",
+          n_passed: 5,
+          n_total: 5,
+          all_pass: true,
+          judge_model: "claude-echoed-different",
+          requestedJudgeModel: "claude-sonnet-4-6",
+        }),
+      }),
+    ]);
+
+    const { result } = renderHook(() => useLegalBenchmarkRunList("ws-cuid-123"));
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    const row = result.current.runs[0];
+    // Must show requestedJudgeModel, not the runner-echoed judge_model
+    expect(row.judgeNotes).toBe("5/5 criteria passed. Judge: claude-sonnet-4-6");
+    expect(row.judgeNotes).not.toContain("claude-echoed-different");
+  });
+
+  it("judgeNotes falls back to judge_model when requestedJudgeModel is absent (legacy runs)", async () => {
+    // makeRow() default already has judge_model: "gpt-4" and no requestedJudgeModel
+    mockFetchOk([makeRow()]);
+
+    const { result } = renderHook(() => useLegalBenchmarkRunList("ws-cuid-123"));
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    const row = result.current.runs[0];
+    expect(row.judgeNotes).toBe("72/74 criteria passed. Judge: gpt-4");
+  });
+
+  it("judgeNotes shows no Judge suffix when both requestedJudgeModel and judge_model are absent", async () => {
+    mockFetchOk([
+      makeRow({
+        result: JSON.stringify({
+          taskSlug: "antitrust/task-1",
+          taskTitle: "Analyze Antitrust Strategy",
+          n_passed: 5,
+          n_total: 5,
+          all_pass: true,
+          requestedModel: "claude-sonnet-5",
+          // no requestedJudgeModel, no judge_model
+        }),
+      }),
+    ]);
+
+    const { result } = renderHook(() => useLegalBenchmarkRunList("ws-cuid-123"));
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    const row = result.current.runs[0];
+    expect(row.judgeNotes).toBe("5/5 criteria passed");
+    expect(row.judgeNotes).not.toContain("Judge:");
+  });
 });
