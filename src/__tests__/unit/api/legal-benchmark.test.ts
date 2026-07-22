@@ -7,6 +7,7 @@ import { transformSwarmUrlToRepo2Graph } from "@/lib/utils/swarm";
 const mockGetBifrostForLLM = vi.hoisted(() => vi.fn());
 const mockGetApiKeyForModel = vi.hoisted(() => vi.fn());
 const mockGetStakworkTokenReference = vi.hoisted(() => vi.fn());
+const mockIsValidModel = vi.hoisted(() => vi.fn());
 
 // StakworkRun DB mock helpers
 const mockDbStakworkRunFindFirst = vi.hoisted(() => vi.fn());
@@ -15,6 +16,7 @@ const mockDbStakworkRunCreate = vi.hoisted(() => vi.fn());
 const mockDbStakworkRunUpdate = vi.hoisted(() => vi.fn());
 const mockDbStakworkRunDeleteMany = vi.hoisted(() => vi.fn());
 const mockDbTransaction = vi.hoisted(() => vi.fn());
+const mockDbLlmModelFindMany = vi.hoisted(() => vi.fn());
 
 const mockDbWorkspaceFindUnique = vi.hoisted(() => vi.fn());
 const mockPusherTrigger = vi.hoisted(() => vi.fn());
@@ -37,6 +39,9 @@ vi.mock("@/lib/db", () => ({
     },
     workspace: {
       findUnique: mockDbWorkspaceFindUnique,
+    },
+    llmModel: {
+      findMany: mockDbLlmModelFindMany,
     },
     $transaction: mockDbTransaction,
   },
@@ -87,6 +92,9 @@ vi.mock("@/services/bifrost/orchestrator", () => ({
 
 vi.mock("@/lib/ai/models", () => ({
   getApiKeyForModel: mockGetApiKeyForModel,
+  isValidModel: mockIsValidModel,
+  DEFAULT_BENCHMARK_MODEL: "anthropic/claude-sonnet-5",
+  DEFAULT_JUDGE_MODEL: "anthropic/claude-sonnet-4-6",
 }));
 
 vi.mock("@/lib/vercel/stakwork-token", () => ({
@@ -191,6 +199,17 @@ beforeEach(() => {
   mockEnsureHarveyLabEvalNodes.mockResolvedValue(null);
   mockAddNode.mockResolvedValue({ success: true, ref_id: "node-ref-1" });
   mockAddEdge.mockResolvedValue({ success: true });
+
+  // Default: isValidModel always returns true (validated by DB catalog check separately)
+  mockIsValidModel.mockReturnValue(true);
+
+  // Default: DB catalog returns known Anthropic models (includes defaults)
+  mockDbLlmModelFindMany.mockResolvedValue([
+    { name: "claude-sonnet-5" },
+    { name: "claude-sonnet-4-6" },
+    { name: "claude-opus-4-6" },
+    { name: "claude-haiku-4-5" },
+  ]);
 
   // Default: Bifrost disabled → falls back to env key
   mockGetBifrostForLLM.mockResolvedValue(undefined);
@@ -1072,7 +1091,7 @@ describe("POST /run — Bifrost LLM credential vars in Stakwork payload", () => 
     expect(res.status).toBe(201);
 
     const vars = await varsPromise;
-    expect(vars.model).toBe("claude-opus-4-5");
+    expect(vars.model).toBe("claude-sonnet-5"); // new default (was claude-opus-4-5)
     expect(vars.apiKey).toBe("env-anthropic-key");
     expect(vars.baseUrl).toBe("");
     expect(vars.tokenReference).toBe("{{HIVE_STAGING}}");
@@ -1092,7 +1111,7 @@ describe("POST /run — Bifrost LLM credential vars in Stakwork payload", () => 
     expect(res.status).toBe(201);
 
     const vars = await varsPromise;
-    expect(vars.model).toBe("claude-opus-4-5");
+    expect(vars.model).toBe("claude-sonnet-5"); // new default (was claude-opus-4-5)
     expect(vars.apiKey).toBe("env-anthropic-key");
     expect(vars.baseUrl).toBe("");
     expect(vars.tokenReference).toBe("{{HIVE_STAGING}}");
@@ -1115,7 +1134,7 @@ describe("POST /run — Bifrost LLM credential vars in Stakwork payload", () => 
     expect(res.status).toBe(201);
 
     const vars = await varsPromise;
-    expect(vars.model).toBe("claude-opus-4-5");
+    expect(vars.model).toBe("claude-sonnet-5"); // new default (was claude-opus-4-5)
     expect(vars.apiKey).toBe("vk-test-key");
     expect(vars.baseUrl).toBe("https://bifrost.example.com/anthropic/v1");
     expect(vars.headers).toEqual({ "x-macaroon": "test-macaroon" });
@@ -1143,5 +1162,312 @@ describe("POST /run — Bifrost LLM credential vars in Stakwork payload", () => 
     expect(vars).not.toHaveProperty("headers");
     expect(vars.tokenReference).toBe("{{HIVE_STAGING}}");
     expect(vars.workspace_id).toBe("ws-1");
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// POST /run — model & judge model selection (T1)
+// ═══════════════════════════════════════════════════════════════════════════
+
+describe("POST /run — model & judge model selection", () => {
+  function captureStakworkVarsFromRun() {
+    return new Promise<Record<string, string>>((resolve) => {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn().mockImplementation((url: string, opts?: RequestInit) => {
+          if (String(url).includes("task.json") || String(url).includes("contents")) {
+            return Promise.resolve({ ok: false, status: 404 });
+          }
+          const payload = opts?.body ? JSON.parse(opts.body as string) : {};
+          resolve(payload.workflow_params.set_var.attributes.vars);
+          return Promise.resolve({ ok: true, json: async () => ({ data: { project_id: 99 } }) });
+        }),
+      );
+    });
+  }
+
+  beforeEach(() => {
+    (getWorkspaceSwarmAccess as Mock).mockResolvedValue(MOCK_SWARM_ACCESS);
+    setupTransactionMock({ runnerResult: { id: "runner-new" } });
+    mockDbLlmModelFindMany.mockResolvedValue([
+      { name: "claude-sonnet-5" },
+      { name: "claude-sonnet-4-6" },
+      { name: "claude-opus-4-6" },
+      { name: "claude-haiku-4-5" },
+    ]);
+  });
+
+  test("omitted model defaults to claude-sonnet-5 (bare) in vars", async () => {
+    const varsPromise = captureStakworkVarsFromRun();
+    const res = await postRun(makeRunRequest({ taskSlug: "task-a", taskTitle: "Task A" }), {
+      params: Promise.resolve({ slug: "openlaw" }),
+    });
+    expect(res.status).toBe(201);
+    const vars = await varsPromise;
+    expect(vars.model).toBe("claude-sonnet-5");
+  });
+
+  test("omitted judgeModel defaults to claude-sonnet-4-6 (bare) in vars", async () => {
+    const varsPromise = captureStakworkVarsFromRun();
+    const res = await postRun(makeRunRequest({ taskSlug: "task-a", taskTitle: "Task A" }), {
+      params: Promise.resolve({ slug: "openlaw" }),
+    });
+    expect(res.status).toBe(201);
+    const vars = await varsPromise;
+    expect(vars.judge_model).toBe("claude-sonnet-4-6");
+  });
+
+  test("explicit model is stripped to bare name in vars", async () => {
+    const varsPromise = captureStakworkVarsFromRun();
+    const res = await postRun(
+      makeRunRequest({ taskSlug: "task-a", taskTitle: "Task A", model: "anthropic/claude-opus-4-6" }),
+      { params: Promise.resolve({ slug: "openlaw" }) },
+    );
+    expect(res.status).toBe(201);
+    const vars = await varsPromise;
+    expect(vars.model).toBe("claude-opus-4-6");
+  });
+
+  test("explicit judgeModel is stripped to bare name in vars", async () => {
+    const varsPromise = captureStakworkVarsFromRun();
+    const res = await postRun(
+      makeRunRequest({ taskSlug: "task-a", taskTitle: "Task A", judgeModel: "anthropic/claude-haiku-4-5" }),
+      { params: Promise.resolve({ slug: "openlaw" }) },
+    );
+    expect(res.status).toBe(201);
+    const vars = await varsPromise;
+    expect(vars.judge_model).toBe("claude-haiku-4-5");
+  });
+
+  test("requestedModel and requestedJudgeModel are persisted in the run result at creation", async () => {
+    const createdRows: Array<{ data: { result: string } }> = [];
+    mockDbTransaction.mockImplementation(async (fn: (tx: unknown) => Promise<unknown>) => {
+      const tx = {
+        stakworkRun: {
+          findFirst: vi.fn().mockResolvedValue(null),
+          create: vi.fn().mockImplementation((args: { data: { result: string } }) => {
+            createdRows.push(args);
+            return Promise.resolve({ id: "runner-new" });
+          }),
+          update: vi.fn().mockResolvedValue({}),
+        },
+      };
+      return fn(tx);
+    });
+
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ data: { project_id: 99 } }),
+    }));
+
+    const res = await postRun(
+      makeRunRequest({
+        taskSlug: "task-a",
+        taskTitle: "Task A",
+        model: "anthropic/claude-opus-4-6",
+        judgeModel: "anthropic/claude-haiku-4-5",
+      }),
+      { params: Promise.resolve({ slug: "openlaw" }) },
+    );
+    expect(res.status).toBe(201);
+
+    expect(createdRows).toHaveLength(1);
+    const created = JSON.parse(createdRows[0].data.result) as Record<string, unknown>;
+    expect(created.requestedModel).toBe("claude-opus-4-6");
+    expect(created.requestedJudgeModel).toBe("claude-haiku-4-5");
+  });
+
+  test("requestedModel and requestedJudgeModel are bare names (no anthropic/ prefix) when persisted", async () => {
+    const createdRows: Array<{ data: { result: string } }> = [];
+    mockDbTransaction.mockImplementation(async (fn: (tx: unknown) => Promise<unknown>) => {
+      const tx = {
+        stakworkRun: {
+          findFirst: vi.fn().mockResolvedValue(null),
+          create: vi.fn().mockImplementation((args: { data: { result: string } }) => {
+            createdRows.push(args);
+            return Promise.resolve({ id: "runner-new" });
+          }),
+          update: vi.fn().mockResolvedValue({}),
+        },
+      };
+      return fn(tx);
+    });
+
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ data: { project_id: 99 } }),
+    }));
+
+    await postRun(makeRunRequest({ taskSlug: "task-a", taskTitle: "Task A" }), {
+      params: Promise.resolve({ slug: "openlaw" }),
+    });
+
+    const created = JSON.parse(createdRows[0].data.result) as Record<string, unknown>;
+    // Bare names — no provider prefix
+    expect(String(created.requestedModel)).not.toContain("anthropic/");
+    expect(String(created.requestedJudgeModel)).not.toContain("anthropic/");
+    expect(created.requestedModel).toBe("claude-sonnet-5");
+    expect(created.requestedJudgeModel).toBe("claude-sonnet-4-6");
+  });
+
+  test("returns 400 when model is not Anthropic-prefixed", async () => {
+    const res = await postRun(
+      makeRunRequest({ taskSlug: "task-a", taskTitle: "Task A", model: "openai/gpt-4o" }),
+      { params: Promise.resolve({ slug: "openlaw" }) },
+    );
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error).toMatch(/anthropic/i);
+  });
+
+  test("returns 400 when model fails isValidModel check", async () => {
+    mockIsValidModel.mockReturnValue(false);
+    const res = await postRun(
+      makeRunRequest({ taskSlug: "task-a", taskTitle: "Task A", model: "invalid-model" }),
+      { params: Promise.resolve({ slug: "openlaw" }) },
+    );
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error).toMatch(/invalid model/i);
+  });
+
+  test("returns 400 when model is not found in the DB catalog", async () => {
+    // isValidModel passes (has anthropic/ prefix) but DB catalog doesn't have it
+    mockDbLlmModelFindMany.mockResolvedValue([{ name: "claude-sonnet-4-6" }]); // no claude-sonnet-5
+    const res = await postRun(
+      makeRunRequest({ taskSlug: "task-a", taskTitle: "Task A", model: "anthropic/claude-sonnet-5" }),
+      { params: Promise.resolve({ slug: "openlaw" }) },
+    );
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error).toMatch(/model catalog/i);
+  });
+
+  test("returns 400 for anthropic/typo-model not in DB catalog", async () => {
+    const res = await postRun(
+      makeRunRequest({ taskSlug: "task-a", taskTitle: "Task A", model: "anthropic/claude-typo-9999" }),
+      { params: Promise.resolve({ slug: "openlaw" }) },
+    );
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error).toMatch(/model catalog/i);
+  });
+
+  test("empty apiKey still dispatches — does NOT 500 (fallback preserved)", async () => {
+    mockGetBifrostForLLM.mockResolvedValue(undefined);
+    mockGetApiKeyForModel.mockReturnValue(undefined); // no env key either
+
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ data: { project_id: 99 } }),
+    }));
+
+    const res = await postRun(makeRunRequest({ taskSlug: "task-a", taskTitle: "Task A" }), {
+      params: Promise.resolve({ slug: "openlaw" }),
+    });
+    // Must NOT fail with 500 — preserves today's behavior (runner may have its own creds)
+    expect(res.status).toBe(201);
+  });
+
+  test("Bifrost resolved against the chosen model (not hardcoded default)", async () => {
+    mockGetBifrostForLLM.mockResolvedValue({
+      apiKey: "bifrost-key-for-chosen-model",
+      baseUrl: "https://bifrost.example.com/anthropic/v1",
+      headers: {},
+    });
+
+    const varsPromise = captureStakworkVarsFromRun();
+    const res = await postRun(
+      makeRunRequest({ taskSlug: "task-a", taskTitle: "Task A", model: "anthropic/claude-opus-4-6" }),
+      { params: Promise.resolve({ slug: "openlaw" }) },
+    );
+    expect(res.status).toBe(201);
+
+    // Confirm Bifrost was called with the chosen model
+    expect(mockGetBifrostForLLM).toHaveBeenCalledWith(
+      expect.any(Object),
+      expect.objectContaining({ model: "anthropic/claude-opus-4-6" }),
+    );
+
+    // Confirm apiKey from Bifrost used
+    const vars = await varsPromise;
+    expect(vars.apiKey).toBe("bifrost-key-for-chosen-model");
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// POST /run — webhook clobber protection (requestedModel/requestedJudgeModel)
+// ═══════════════════════════════════════════════════════════════════════════
+
+describe("POST /run — requestedModel and requestedJudgeModel survive webhook merge", () => {
+  /**
+   * Verifies the clobber-protection design: the runner webhook emits `judge_model`
+   * (and potentially `model`) via RunnerScoreSchema, but since the operator's choices
+   * are stored under `requestedModel`/`requestedJudgeModel` — keys the runner NEVER
+   * emits — they survive the webhook's `{ ...existing, ...incoming }` spread untouched.
+   *
+   * This test exercises the route creation step to confirm both keys are stored,
+   * and verifies the runner-echoed `judge_model` key is distinct from `requestedJudgeModel`.
+   */
+  test("requestedModel and requestedJudgeModel keys differ from runner-echoed model/judge_model keys", async () => {
+    (getWorkspaceSwarmAccess as Mock).mockResolvedValue(MOCK_SWARM_ACCESS);
+    const createdRows: Array<{ data: { result: string } }> = [];
+    mockDbTransaction.mockImplementation(async (fn: (tx: unknown) => Promise<unknown>) => {
+      const tx = {
+        stakworkRun: {
+          findFirst: vi.fn().mockResolvedValue(null),
+          create: vi.fn().mockImplementation((args: { data: { result: string } }) => {
+            createdRows.push(args);
+            return Promise.resolve({ id: "runner-new" });
+          }),
+          update: vi.fn().mockResolvedValue({}),
+        },
+      };
+      return fn(tx);
+    });
+    mockDbLlmModelFindMany.mockResolvedValue([
+      { name: "claude-sonnet-5" },
+      { name: "claude-sonnet-4-6" },
+    ]);
+
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ data: { project_id: 99 } }),
+    }));
+
+    const res = await postRun(
+      makeRunRequest({
+        taskSlug: "task-a",
+        taskTitle: "Task A",
+        model: "anthropic/claude-sonnet-5",
+        judgeModel: "anthropic/claude-sonnet-4-6",
+      }),
+      { params: Promise.resolve({ slug: "openlaw" }) },
+    );
+    expect(res.status).toBe(201);
+
+    const created = JSON.parse(createdRows[0].data.result) as Record<string, string>;
+    // Operator keys stored — distinct from runner-echoed keys
+    expect(created.requestedModel).toBe("claude-sonnet-5");
+    expect(created.requestedJudgeModel).toBe("claude-sonnet-4-6");
+
+    // Simulate a webhook merge spreading runner-echoed score fields on top.
+    // The runner echoes judge_model (via RunnerScoreSchema) and may echo model —
+    // these must NOT clobber requestedModel/requestedJudgeModel.
+    const runnerEcho = {
+      judge_model: "claude-sonnet-different-echo",
+      model: "claude-sonnet-different-echo",
+      score: 90,
+      n_passed: 9,
+      n_total: 10,
+    };
+    const mergedResult: Record<string, unknown> = { ...created, ...runnerEcho };
+
+    // requestedModel and requestedJudgeModel are untouched since runner never emits them
+    expect(mergedResult.requestedModel).toBe("claude-sonnet-5");
+    expect(mergedResult.requestedJudgeModel).toBe("claude-sonnet-4-6");
+    // But the runner-echoed values are present under their own separate keys
+    expect(mergedResult.judge_model).toBe("claude-sonnet-different-echo");
+    expect(mergedResult.model).toBe("claude-sonnet-different-echo");
   });
 });
