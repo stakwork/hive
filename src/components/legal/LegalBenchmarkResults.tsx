@@ -6,11 +6,23 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "@/components/ui/collapsible";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { useLegalBenchmarkRun } from "@/hooks/useLegalBenchmarkRun";
 import { useProposedFixes } from "@/hooks/useProposedFixes";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { StakworkRunLink } from "@/components/legal/StakworkRunLink";
 import { EvalRunsBox } from "@/components/legal/EvalRunsBox";
+
+/** Strip provider prefix for display, e.g. "anthropic/claude-sonnet-5" → "claude-sonnet-5" */
+function displayModelName(value: string | undefined): string {
+  if (!value) return "—";
+  const slash = value.indexOf("/");
+  return slash >= 0 ? value.slice(slash + 1) : value;
+}
 
 interface LegalBenchmarkResultsProps {
   runId: string;
@@ -151,6 +163,12 @@ export function LegalBenchmarkResults({ runId, onReset, isSuperAdmin = false }: 
     const hasCriteriaResults = Array.isArray(criteriaResults) && criteriaResults.length > 0;
     const failedCount = criteriaResults?.filter((c) => c.verdict.toLowerCase() !== "pass").length ?? 0;
 
+    // Unified model display precedence
+    const execModel = displayModelName(result?.requestedModel ?? result?.model);
+    const judgeModel = displayModelName(result?.requestedJudgeModel ?? result?.judge_model);
+    const isLegacyExec = !result?.requestedModel && !result?.model;
+    const isLegacyJudge = !result?.requestedJudgeModel && !result?.judge_model;
+
     // Criteria that failed AND have not yet been evaluated (no cause_type)
     const unevaluatedFailedCount =
       criteriaResults?.filter(
@@ -186,8 +204,45 @@ export function LegalBenchmarkResults({ runId, onReset, isSuperAdmin = false }: 
 
         {/* Aggregate score summary */}
         <div className="rounded-lg border bg-card">
-          <div className="px-4 py-3 border-b">
+          <div className="px-4 py-3 border-b flex items-center justify-between gap-4">
             <h3 className="font-semibold text-sm">Score Summary</h3>
+            {/* Model info — shown in header area */}
+            <div className="flex items-center gap-4 text-xs text-muted-foreground">
+              <span>
+                <span className="font-medium">Model:</span>{" "}
+                {isLegacyExec ? (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <span className="cursor-help border-b border-dashed border-muted-foreground/50">
+                        —
+                      </span>
+                    </TooltipTrigger>
+                    <TooltipContent side="bottom" className="max-w-xs text-xs">
+                      This run predates model selection and used the prior hardcoded default.
+                    </TooltipContent>
+                  </Tooltip>
+                ) : (
+                  execModel
+                )}
+              </span>
+              <span>
+                <span className="font-medium">Judge:</span>{" "}
+                {isLegacyJudge ? (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <span className="cursor-help border-b border-dashed border-muted-foreground/50">
+                        —
+                      </span>
+                    </TooltipTrigger>
+                    <TooltipContent side="bottom" className="max-w-xs text-xs">
+                      This run predates model selection and used the prior hardcoded default.
+                    </TooltipContent>
+                  </Tooltip>
+                ) : (
+                  judgeModel
+                )}
+              </span>
+            </div>
           </div>
           {hasScore ? (
             <div className="px-4 py-4 flex items-center gap-4">
