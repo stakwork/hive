@@ -249,7 +249,7 @@ export default async function AdminWorkspaceDetailPage({
             <CardTitle>Janitor Configuration</CardTitle>
           </CardHeader>
           <CardContent>
-            <AdminJanitorToggles workspaceId={workspaceId} />
+            <AdminJanitorToggles workspaceId={workspaceId} workspaceSlug={slug} />
           </CardContent>
         </Card>
 

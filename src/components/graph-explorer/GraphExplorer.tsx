@@ -1,14 +1,17 @@
 "use client";
 
-import React, {
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-} from "react";
-import * as d3 from "d3";
-import { Play, Loader2, AlertCircle, DatabaseZap, Search } from "lucide-react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import dynamic from "next/dynamic";
+import {
+  Play,
+  Loader2,
+  AlertCircle,
+  DatabaseZap,
+  Search,
+  ChevronRight,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
@@ -28,127 +31,41 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 
+import { stakgraphToRawGraph } from "./stakgraphToRawGraph";
+import { useKGGraph } from "./useKGGraph";
+import type { RawNode, RawEdge } from "@/graph-viz-kit";
+
+// Dynamically import the 3D canvas — Three.js is browser-only
+const KGCanvas = dynamic(() => import("./KGCanvas"), { ssr: false });
+
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
-interface ArcadeRecord {
-  [key: string]: ArcadeValue;
+interface StakgraphResult {
+  columns: string[];
+  rows: unknown[][];
 }
 
-type ArcadeValue =
-  | string
-  | number
-  | boolean
-  | null
-  | ArcadeNode
-  | ArcadeEdge;
-
-interface ArcadeNode {
-  "@type"?: string;
-  "@rid"?: string;
-  "@class"?: string;
-  [key: string]: ArcadeValue | undefined;
+interface SearchResultItem {
+  name: string;
+  file: string;
+  ref_id: string;
 }
 
-interface ArcadeEdge {
-  "@type"?: string;
-  "@rid"?: string;
-  "@class"?: string;
-  [key: string]: ArcadeValue | undefined;
-}
-
-interface QueryResult {
-  result: ArcadeRecord[];
-}
-
-interface GraphNode extends d3.SimulationNodeDatum {
-  id: string;
+/** D3-style node used for the selected-node sheet (keeps existing properties) */
+interface SelectedNodeInfo {
+  id: number;       // index into graph.nodes
   label: string;
   type: string;
+  ref_id?: string;
   properties: Record<string, unknown>;
 }
 
-interface GraphLink extends d3.SimulationLinkDatum<GraphNode> {
-  id: string;
-  type: string;
-  source: string | GraphNode;
-  target: string | GraphNode;
-}
-
 // ---------------------------------------------------------------------------
-// Helpers
+// Helpers — extract node type / colour (kept for sheet badge)
 // ---------------------------------------------------------------------------
 
-function isArcadeObject(val: unknown): val is ArcadeNode {
-  return typeof val === "object" && val !== null && "@rid" in val;
-}
-
-/** Extract graph-renderable nodes and links from ArcadeDB result records */
-function extractGraph(records: ArcadeRecord[]): {
-  nodes: GraphNode[];
-  links: GraphLink[];
-} {
-  const nodeMap = new Map<string, GraphNode>();
-  const links: GraphLink[] = [];
-
-  const registerNode = (obj: ArcadeNode): string => {
-    const id = obj["@rid"] as string;
-    if (!nodeMap.has(id)) {
-      const props: Record<string, unknown> = {};
-      for (const [k, v] of Object.entries(obj)) {
-        if (!k.startsWith("@")) props[k] = v;
-      }
-      nodeMap.set(id, {
-        id,
-        label: (obj.name as string) || (obj["@class"] as string) || id,
-        type: (obj["@class"] as string) || "Node",
-        properties: props,
-      });
-    }
-    return id;
-  };
-
-  records.forEach((record, idx) => {
-    const values = Object.values(record);
-    const nodeObjects = values.filter(isArcadeObject);
-
-    // Heuristic: first and last object are nodes, middle objects are edges
-    if (nodeObjects.length >= 2) {
-      const src = nodeObjects[0];
-      const tgt = nodeObjects[nodeObjects.length - 1];
-      const srcId = registerNode(src);
-      const tgtId = registerNode(tgt);
-
-      // Process intermediate objects as edges
-      const edgeObjects = nodeObjects.slice(1, -1);
-      edgeObjects.forEach((edge, ei) => {
-        links.push({
-          id: (edge["@rid"] as string) || `link-${idx}-${ei}`,
-          type: (edge["@class"] as string) || "REL",
-          source: srcId,
-          target: tgtId,
-        });
-      });
-
-      // If only 2 node-like objects with no middle, create a generic link
-      if (edgeObjects.length === 0 && nodeObjects.length === 2) {
-        links.push({
-          id: `link-${idx}`,
-          type: "RELATED",
-          source: srcId,
-          target: tgtId,
-        });
-      }
-    } else if (nodeObjects.length === 1) {
-      registerNode(nodeObjects[0]);
-    }
-  });
-
-  return { nodes: Array.from(nodeMap.values()), links };
-}
-
-/** Node-type → colour mapping */
 const TYPE_COLORS: Record<string, string> = {
   Function: "#3b82f6",
   Class: "#8b5cf6",
@@ -163,191 +80,34 @@ function nodeColor(type: string): string {
   return TYPE_COLORS[type] ?? TYPE_COLORS.Default;
 }
 
-// ---------------------------------------------------------------------------
-// Force-directed graph component
-// ---------------------------------------------------------------------------
-
-interface ForceGraphProps {
-  nodes: GraphNode[];
-  links: GraphLink[];
-  onNodeClick: (node: GraphNode) => void;
-}
-
-function ForceGraph({ nodes, links, onNodeClick }: ForceGraphProps) {
-  const svgRef = useRef<SVGSVGElement>(null);
-  const containerRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!svgRef.current || !containerRef.current) return;
-
-    const svg = d3.select(svgRef.current);
-    svg.selectAll("*").remove();
-
-    const { width, height } = containerRef.current.getBoundingClientRect();
-    const W = width || 800;
-    const H = height || 500;
-
-    svg.attr("viewBox", `0 0 ${W} ${H}`);
-
-    // Defs: arrowhead marker
-    const defs = svg.append("defs");
-    defs
-      .append("marker")
-      .attr("id", "arrowhead")
-      .attr("viewBox", "0 -4 8 8")
-      .attr("refX", 20)
-      .attr("refY", 0)
-      .attr("markerWidth", 6)
-      .attr("markerHeight", 6)
-      .attr("orient", "auto")
-      .append("path")
-      .attr("d", "M0,-4L8,0L0,4")
-      .attr("fill", "#94a3b8");
-
-    const g = svg.append("g");
-
-    // Zoom + pan
-    const zoom = d3.zoom<SVGSVGElement, unknown>().scaleExtent([0.2, 4]).on("zoom", (event) => {
-      g.attr("transform", event.transform);
-    });
-    svg.call(zoom);
-
-    // Clone data so D3 can mutate positions
-    const simNodes: GraphNode[] = nodes.map((n) => ({ ...n }));
-    const nodeById = new Map(simNodes.map((n) => [n.id, n]));
-
-    const simLinks: GraphLink[] = links.map((l) => ({
-      ...l,
-      source: nodeById.get(l.source as string) ?? (l.source as GraphNode),
-      target: nodeById.get(l.target as string) ?? (l.target as GraphNode),
-    }));
-
-    const simulation = d3
-      .forceSimulation<GraphNode>(simNodes)
-      .force(
-        "link",
-        d3
-          .forceLink<GraphNode, GraphLink>(simLinks)
-          .id((d) => d.id)
-          .distance(120)
-      )
-      .force("charge", d3.forceManyBody().strength(-300))
-      .force("center", d3.forceCenter(W / 2, H / 2))
-      .force("collision", d3.forceCollide(30));
-
-    // Links
-    const link = g
-      .append("g")
-      .selectAll("line")
-      .data(simLinks)
-      .join("line")
-      .attr("stroke", "#94a3b8")
-      .attr("stroke-width", 1.5)
-      .attr("marker-end", "url(#arrowhead)");
-
-    // Link labels
-    const linkLabel = g
-      .append("g")
-      .selectAll("text")
-      .data(simLinks)
-      .join("text")
-      .attr("font-size", "9px")
-      .attr("fill", "#94a3b8")
-      .attr("text-anchor", "middle")
-      .text((d) => d.type);
-
-    // Node groups
-    const node = g
-      .append("g")
-      .selectAll<SVGGElement, GraphNode>("g")
-      .data(simNodes)
-      .join("g")
-      .attr("cursor", "pointer")
-      .call(
-        d3
-          .drag<SVGGElement, GraphNode>()
-          .on("start", (event, d) => {
-            if (!event.active) simulation.alphaTarget(0.3).restart();
-            d.fx = d.x;
-            d.fy = d.y;
-          })
-          .on("drag", (event, d) => {
-            d.fx = event.x;
-            d.fy = event.y;
-          })
-          .on("end", (event, d) => {
-            if (!event.active) simulation.alphaTarget(0);
-            d.fx = null;
-            d.fy = null;
-          })
-      )
-      .on("click", (_event, d) => onNodeClick(d));
-
-    node
-      .append("circle")
-      .attr("r", 14)
-      .attr("fill", (d) => nodeColor(d.type))
-      .attr("stroke", "#fff")
-      .attr("stroke-width", 2);
-
-    node
-      .append("text")
-      .attr("dy", 28)
-      .attr("text-anchor", "middle")
-      .attr("font-size", "10px")
-      .attr("fill", "currentColor")
-      .attr("class", "select-none")
-      .text((d) => (d.label.length > 18 ? d.label.slice(0, 16) + "…" : d.label));
-
-    simulation.on("tick", () => {
-      link
-        .attr("x1", (d) => (d.source as GraphNode).x ?? 0)
-        .attr("y1", (d) => (d.source as GraphNode).y ?? 0)
-        .attr("x2", (d) => (d.target as GraphNode).x ?? 0)
-        .attr("y2", (d) => (d.target as GraphNode).y ?? 0);
-
-      linkLabel
-        .attr(
-          "x",
-          (d) =>
-            (((d.source as GraphNode).x ?? 0) + ((d.target as GraphNode).x ?? 0)) / 2
-        )
-        .attr(
-          "y",
-          (d) =>
-            (((d.source as GraphNode).y ?? 0) + ((d.target as GraphNode).y ?? 0)) / 2
-        );
-
-      node.attr("transform", (d) => `translate(${d.x ?? 0},${d.y ?? 0})`);
-    });
-
-    return () => {
-      simulation.stop();
-    };
-  }, [nodes, links, onNodeClick]);
-
-  return (
-    <div ref={containerRef} className="w-full h-full" data-testid="force-graph-container">
-      <svg ref={svgRef} className="w-full h-full" data-testid="force-graph-svg" />
-    </div>
-  );
+/** Parse the plain-text ASCII tree response for node labels */
+function parseLabelsFromTree(text: string): string[] {
+  const labels: string[] = [];
+  for (const line of text.split("\n")) {
+    // Lines look like:  ├── FunctionName (file.ts) or just  └── SomeName
+    const match = line.match(/[├└─\s]+(.+?)(?:\s*\(|$)/);
+    if (match) {
+      const candidate = match[1].trim();
+      if (candidate.length > 0) labels.push(candidate);
+    }
+  }
+  return labels;
 }
 
 // ---------------------------------------------------------------------------
 // Result table
 // ---------------------------------------------------------------------------
 
-function ResultTable({ records }: { records: ArcadeRecord[] }) {
-  if (records.length === 0) return null;
+function ResultTable({ columns, rows }: { columns: string[]; rows: unknown[][] }) {
+  if (rows.length === 0) return null;
 
-  const columns = Object.keys(records[0]);
-
-  const cellValue = (val: ArcadeValue): string => {
+  const cellValue = (val: unknown): string => {
     if (val === null || val === undefined) return "—";
     if (typeof val === "object") {
-      const obj = val as ArcadeNode;
-      const name = obj.name ?? obj["@class"] ?? obj["@rid"] ?? "";
-      return name ? String(name) : JSON.stringify(val);
+      const obj = val as Record<string, unknown>;
+      if (obj.name !== undefined) return String(obj.name);
+      if (obj.id !== undefined) return `${obj.id}${obj.type ? ` (${obj.type})` : ""}`;
+      return JSON.stringify(val);
     }
     return String(val);
   };
@@ -365,15 +125,15 @@ function ResultTable({ records }: { records: ArcadeRecord[] }) {
           </TableRow>
         </TableHeader>
         <TableBody>
-          {records.map((row, i) => (
+          {rows.map((row, i) => (
             <TableRow key={i}>
-              {columns.map((col) => (
+              {columns.map((col, j) => (
                 <TableCell
                   key={col}
                   className="font-mono text-xs max-w-[240px] truncate"
-                  title={cellValue(row[col])}
+                  title={cellValue((row as unknown[])[j])}
                 >
-                  {cellValue(row[col])}
+                  {cellValue((row as unknown[])[j])}
                 </TableCell>
               ))}
             </TableRow>
@@ -395,54 +155,85 @@ interface GraphExplorerProps {
 }
 
 export function GraphExplorer({ workspaceSlug }: GraphExplorerProps) {
+  // ── Cypher query state ────────────────────────────────────────────────────
   const [query, setQuery] = useState(DEFAULT_QUERY);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notConfigured, setNotConfigured] = useState(false);
-  const [records, setRecords] = useState<ArcadeRecord[] | null>(null);
-  const [graphData, setGraphData] = useState<{
-    nodes: GraphNode[];
-    links: GraphLink[];
-  } | null>(null);
-  const [selectedNode, setSelectedNode] = useState<GraphNode | null>(null);
+  const [queryResult, setQueryResult] = useState<StakgraphResult | null>(null);
   const [tab, setTab] = useState("table");
 
-  const runQuery = useCallback(async () => {
-    if (!query.trim()) return;
-    setLoading(true);
-    setError(null);
-    setNotConfigured(false);
-    setRecords(null);
-    setGraphData(null);
+  // ── Raw graph data fed to 3D canvas ──────────────────────────────────────
+  const [rawNodes, setRawNodes] = useState<RawNode[]>([]);
+  const [rawEdges, setRawEdges] = useState<RawEdge[]>([]);
 
-    try {
-      const res = await fetch(`/api/workspaces/${workspaceSlug}/graph/query`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ query, limit: 100 }),
-      });
+  // ── 3D graph hook ─────────────────────────────────────────────────────────
+  const { graph, viewState, selectNode, goOverview, searchMatches, setSearchMatches } =
+    useKGGraph(rawNodes, rawEdges);
 
-      if (res.status === 400) {
-        setNotConfigured(true);
-        return;
-      }
+  // ── Selected node for the side sheet ─────────────────────────────────────
+  const [selectedNode, setSelectedNode] = useState<SelectedNodeInfo | null>(null);
+  const [traceText, setTraceText] = useState<string | null>(null);
+  const [traceLoading, setTraceLoading] = useState(false);
 
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        setError(data.message || `Request failed (${res.status})`);
-        return;
-      }
+  // ── Keyword search state ──────────────────────────────────────────────────
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<SearchResultItem[]>([]);
+  const [searchLoading, setSearchLoading] = useState(false);
+  const [searchError, setSearchError] = useState<string | null>(null);
 
-      const data: QueryResult = await res.json();
-      const result = data.result ?? [];
-      setRecords(result);
-      setGraphData(extractGraph(result));
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Unknown error");
-    } finally {
-      setLoading(false);
+  // ── Update raw graph whenever query result changes ────────────────────────
+  useEffect(() => {
+    if (queryResult) {
+      const { nodes, edges } = stakgraphToRawGraph(queryResult.columns, queryResult.rows);
+      setRawNodes(nodes);
+      setRawEdges(edges);
+    } else {
+      setRawNodes([]);
+      setRawEdges([]);
     }
-  }, [query, workspaceSlug]);
+  }, [queryResult]);
+
+  // ── Cypher query execution ────────────────────────────────────────────────
+  const runQuery = useCallback(
+    async (overrideQuery?: string) => {
+      const q = overrideQuery ?? query;
+      if (!q.trim()) return;
+      setLoading(true);
+      setError(null);
+      setNotConfigured(false);
+      setQueryResult(null);
+      setSelectedNode(null);
+      setTraceText(null);
+
+      try {
+        const res = await fetch(`/api/workspaces/${workspaceSlug}/graph/query`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ query: q, limit: 100 }),
+        });
+
+        if (res.status === 400) {
+          setNotConfigured(true);
+          return;
+        }
+
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          setError((data as { message?: string }).message || `Request failed (${res.status})`);
+          return;
+        }
+
+        const data: StakgraphResult = await res.json();
+        setQueryResult(data);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Unknown error");
+      } finally {
+        setLoading(false);
+      }
+    },
+    [query, workspaceSlug]
+  );
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
@@ -451,13 +242,179 @@ export function GraphExplorer({ workspaceSlug }: GraphExplorerProps) {
     }
   };
 
-  const handleNodeClick = useCallback((node: GraphNode) => {
-    setSelectedNode(node);
-  }, []);
+  // ── 3D canvas node click → open sheet ────────────────────────────────────
+  const handleCanvasNodeClick = useCallback(
+    (id: number) => {
+      const node = graph.nodes[id];
+      if (!node) return;
+      // Find original raw node to get ref_id if available
+      const raw = rawNodes.find((n) => n.label === node.label);
+      setSelectedNode({
+        id,
+        label: node.label,
+        type: "Node",
+        ref_id: raw?.id,           // stakgraph uses original id as ref_id proxy
+        properties: {},
+      });
+      setTraceText(null);
+      selectNode(id);
+    },
+    [graph.nodes, rawNodes, selectNode]
+  );
 
+  // ── Keyword search ────────────────────────────────────────────────────────
+  const runSearch = useCallback(async () => {
+    if (!searchQuery.trim()) return;
+    setSearchLoading(true);
+    setSearchError(null);
+    setSearchResults([]);
+
+    try {
+      const params = new URLSearchParams({
+        query: searchQuery.trim(),
+        method: "hybrid",
+        limit: "25",
+        output: "json",
+        concise: "true",
+      });
+      const res = await fetch(
+        `/api/workspaces/${workspaceSlug}/graph/search?${params.toString()}`
+      );
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setSearchError((data as { message?: string }).message || `Search failed (${res.status})`);
+        return;
+      }
+      const data = await res.json();
+      setSearchResults(Array.isArray(data) ? data : []);
+    } catch (err) {
+      setSearchError(err instanceof Error ? err.message : "Search failed");
+    } finally {
+      setSearchLoading(false);
+    }
+  }, [searchQuery, workspaceSlug]);
+
+  const handleSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      runSearch();
+    }
+  };
+
+  /** Click a search result: select if in graph, otherwise load via Cypher */
+  const handleSearchResultClick = useCallback(
+    async (item: SearchResultItem) => {
+      // Check if any node in current graph matches by label or ref_id
+      const matchIdx = graph.nodes.findIndex(
+        (n) => n.label === item.name || rawNodes[n.id]?.id === item.ref_id
+      );
+      if (matchIdx !== -1) {
+        selectNode(matchIdx);
+        setTab("graph");
+        return;
+      }
+      // Load via Cypher
+      const cypherQuery = `MATCH (n) WHERE n.ref_id = '${item.ref_id}' OPTIONAL MATCH (n)-[r]-(m) RETURN n, r, m LIMIT 50`;
+      setQuery(cypherQuery);
+      setTab("graph");
+      await runQuery(cypherQuery);
+      // After load, select the node (graph will rebuild, then select by label)
+    },
+    [graph.nodes, rawNodes, selectNode, runQuery]
+  );
+
+  // ── Path tracing ──────────────────────────────────────────────────────────
+  const runTrace = useCallback(
+    async (direction: "up" | "down" | "both") => {
+      if (!selectedNode?.ref_id) return;
+      setTraceLoading(true);
+      setTraceText(null);
+      setSearchMatches(null);
+
+      try {
+        const params = new URLSearchParams({
+          ref_id: selectedNode.ref_id,
+          direction,
+          depth: "3",
+        });
+        const res = await fetch(
+          `/api/workspaces/${workspaceSlug}/graph/map?${params.toString()}`
+        );
+        const text = await res.text();
+        setTraceText(text);
+
+        // Parse labels from the ASCII tree and highlight matched nodes
+        const labels = parseLabelsFromTree(text);
+        const labelSet = new Set(labels);
+        const matchedIds = new Set<number>();
+        for (const node of graph.nodes) {
+          if (labelSet.has(node.label)) matchedIds.add(node.id);
+        }
+        setSearchMatches(matchedIds.size > 0 ? matchedIds : null);
+      } catch (err) {
+        setTraceText(err instanceof Error ? err.message : "Trace failed");
+      } finally {
+        setTraceLoading(false);
+      }
+    },
+    [selectedNode, workspaceSlug, graph.nodes, setSearchMatches]
+  );
+
+  // ── Render ────────────────────────────────────────────────────────────────
   return (
     <div className="flex flex-col gap-4 flex-1 min-h-0">
-      {/* Query bar */}
+      {/* ── Search panel ── */}
+      <div className="flex gap-2 items-center" data-testid="search-panel">
+        <Input
+          data-testid="search-input"
+          placeholder="Keyword / semantic search…"
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          onKeyDown={handleSearchKeyDown}
+          className="flex-1"
+        />
+        <Button
+          data-testid="search-button"
+          variant="secondary"
+          onClick={runSearch}
+          disabled={searchLoading || !searchQuery.trim()}
+        >
+          {searchLoading ? (
+            <Loader2 className="h-4 w-4 animate-spin mr-2" />
+          ) : (
+            <Search className="h-4 w-4 mr-2" />
+          )}
+          Search
+        </Button>
+      </div>
+
+      {/* Search results */}
+      {searchError && (
+        <p className="text-xs text-destructive" data-testid="search-error">
+          {searchError}
+        </p>
+      )}
+      {searchResults.length > 0 && (
+        <div
+          className="flex flex-wrap gap-2 p-2 border rounded-md bg-muted/40"
+          data-testid="search-results"
+        >
+          {searchResults.map((item) => (
+            <button
+              key={item.ref_id}
+              data-testid={`search-result-${item.ref_id}`}
+              onClick={() => handleSearchResultClick(item)}
+              className="flex items-center gap-1 px-2 py-1 rounded border bg-background hover:bg-accent text-xs transition-colors"
+            >
+              <span className="font-medium">{item.name}</span>
+              <ChevronRight className="h-3 w-3 text-muted-foreground" />
+              <span className="text-muted-foreground truncate max-w-[140px]">{item.file}</span>
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* ── Cypher query bar ── */}
       <div className="flex gap-2 items-start" data-testid="query-bar">
         <Textarea
           data-testid="cypher-input"
@@ -471,7 +428,7 @@ export function GraphExplorer({ workspaceSlug }: GraphExplorerProps) {
         />
         <Button
           data-testid="run-query-button"
-          onClick={runQuery}
+          onClick={() => runQuery()}
           disabled={loading || !query.trim()}
           className="shrink-0"
         >
@@ -484,12 +441,12 @@ export function GraphExplorer({ workspaceSlug }: GraphExplorerProps) {
         </Button>
       </div>
 
-      {/* Shortcut hint */}
       <p className="text-xs text-muted-foreground -mt-2">
-        Press <kbd className="px-1 py-0.5 rounded border text-xs font-mono">Ctrl+Enter</kbd> to run
+        Press{" "}
+        <kbd className="px-1 py-0.5 rounded border text-xs font-mono">Ctrl+Enter</kbd> to run
       </p>
 
-      {/* States */}
+      {/* ── Status states ── */}
       {notConfigured && (
         <div
           data-testid="not-configured-state"
@@ -520,9 +477,10 @@ export function GraphExplorer({ workspaceSlug }: GraphExplorerProps) {
         </div>
       )}
 
-      {!loading && records !== null && !error && !notConfigured && (
+      {/* ── Results ── */}
+      {!loading && queryResult !== null && !error && !notConfigured && (
         <>
-          {records.length === 0 ? (
+          {queryResult.rows.length === 0 ? (
             <div
               data-testid="empty-state"
               className="flex flex-col items-center justify-center py-16 gap-2 text-muted-foreground"
@@ -542,12 +500,23 @@ export function GraphExplorer({ workspaceSlug }: GraphExplorerProps) {
                   </TabsTrigger>
                 </TabsList>
                 <span className="text-xs text-muted-foreground">
-                  {records.length} record{records.length !== 1 ? "s" : ""}
+                  {queryResult.rows.length} record{queryResult.rows.length !== 1 ? "s" : ""}
                 </span>
+                {viewState.mode === "subgraph" && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={goOverview}
+                    data-testid="go-overview-button"
+                    className="text-xs"
+                  >
+                    ← Overview
+                  </Button>
+                )}
               </div>
 
               <TabsContent value="table" className="flex-1 min-h-0 mt-2 overflow-auto">
-                <ResultTable records={records} />
+                <ResultTable columns={queryResult.columns} rows={queryResult.rows} />
               </TabsContent>
 
               <TabsContent
@@ -555,11 +524,12 @@ export function GraphExplorer({ workspaceSlug }: GraphExplorerProps) {
                 className="flex-1 min-h-0 mt-2 border rounded-md overflow-hidden"
                 style={{ minHeight: 400 }}
               >
-                {graphData && graphData.nodes.length > 0 ? (
-                  <ForceGraph
-                    nodes={graphData.nodes}
-                    links={graphData.links}
-                    onNodeClick={handleNodeClick}
+                {graph.nodes.length > 0 ? (
+                  <KGCanvas
+                    graph={graph}
+                    viewState={viewState}
+                    onNodeClick={handleCanvasNodeClick}
+                    searchMatches={searchMatches}
                   />
                 ) : (
                   <div className="flex items-center justify-center h-full text-muted-foreground text-sm">
@@ -572,7 +542,7 @@ export function GraphExplorer({ workspaceSlug }: GraphExplorerProps) {
         </>
       )}
 
-      {/* Node properties sheet */}
+      {/* ── Node properties / path-tracing sheet ── */}
       <Sheet open={!!selectedNode} onOpenChange={(open) => !open && setSelectedNode(null)}>
         <SheetContent data-testid="node-properties-sheet">
           <SheetHeader>
@@ -584,26 +554,81 @@ export function GraphExplorer({ workspaceSlug }: GraphExplorerProps) {
               {selectedNode?.label}
             </SheetTitle>
           </SheetHeader>
+
           {selectedNode && (
-            <div className="mt-4 space-y-3">
+            <div className="mt-4 space-y-4">
               <div className="flex items-center gap-2">
                 <Badge variant="secondary">{selectedNode.type}</Badge>
-                <span className="text-xs text-muted-foreground font-mono">
-                  {selectedNode.id}
-                </span>
+                {selectedNode.ref_id && (
+                  <span className="text-xs text-muted-foreground font-mono">
+                    {selectedNode.ref_id}
+                  </span>
+                )}
               </div>
-              <div className="space-y-2">
-                {Object.entries(selectedNode.properties).map(([k, v]) => (
-                  <div key={k} className="flex flex-col gap-0.5">
-                    <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                      {k}
-                    </span>
-                    <span className="text-sm break-all">
-                      {v === null || v === undefined ? "—" : String(v)}
-                    </span>
+
+              {/* Path-tracing actions */}
+              {selectedNode.ref_id && (
+                <div className="space-y-2">
+                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                    Path Tracing
+                  </p>
+                  <div className="flex gap-2 flex-wrap">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      data-testid="trace-up-button"
+                      onClick={() => runTrace("up")}
+                      disabled={traceLoading}
+                    >
+                      {traceLoading ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : null}
+                      Trace Upstream
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      data-testid="trace-down-button"
+                      onClick={() => runTrace("down")}
+                      disabled={traceLoading}
+                    >
+                      Trace Downstream
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      data-testid="trace-both-button"
+                      onClick={() => runTrace("both")}
+                      disabled={traceLoading}
+                    >
+                      Trace Both
+                    </Button>
                   </div>
-                ))}
-              </div>
+
+                  {traceText && (
+                    <pre
+                      data-testid="trace-result"
+                      className="text-xs bg-muted p-3 rounded-md overflow-auto max-h-64 whitespace-pre-wrap"
+                    >
+                      {traceText}
+                    </pre>
+                  )}
+                </div>
+              )}
+
+              {/* Node properties */}
+              {Object.keys(selectedNode.properties).length > 0 && (
+                <div className="space-y-2">
+                  {Object.entries(selectedNode.properties).map(([k, v]) => (
+                    <div key={k} className="flex flex-col gap-0.5">
+                      <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                        {k}
+                      </span>
+                      <span className="text-sm break-all">
+                        {v === null || v === undefined ? "—" : String(v)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
         </SheetContent>

@@ -419,10 +419,11 @@ export async function searchNodesByAttributes(
   config: JarvisConnectionConfig,
   params: {
     nodeTypes: string[];
-    filters: Array<{ attribute: string; value: string; comparator: string }>;
+    filters: Array<{ attribute: string; value: string | boolean; comparator: string }>;
     includeProperties?: boolean;
     limit?: number;
     timeoutMs?: number;
+    skipCache?: boolean;
   },
 ): Promise<SearchLatestResult> {
   const result = await jarvisRequest({
@@ -434,6 +435,7 @@ export async function searchNodesByAttributes(
       search_filters: params.filters,
       include_properties: params.includeProperties ?? false,
       limit: params.limit ?? 1000,
+      skip_cache: params.skipCache ?? false,
     },
     timeoutMs: params.timeoutMs,
   });
@@ -456,9 +458,13 @@ export async function updateNode(
   config: JarvisConnectionConfig,
   request: UpdateNodeRequest,
 ): Promise<{ success: boolean; error?: string }> {
+  if (!request.ref_id) {
+    return { success: false, error: "ref_id is required to update a node" };
+  }
+
   const result = await jarvisRequest({
     config,
-    endpoint: "/node",
+    endpoint: `/node?ref_id=${encodeURIComponent(request.ref_id)}`,
     method: "PUT",
     data: {
       ref_id: request.ref_id,

@@ -4,6 +4,7 @@ import { RepoAnalyzer } from "gitsee/server";
 import { parseOwnerRepo } from "./utils";
 import { getProviderTool } from "@/lib/ai/provider";
 import { createMCPClient } from "@ai-sdk/mcp";
+import { withMcpTimeout, isMcpTimeout } from './mcpTimeout';
 import {
   mcpListFeatures,
   mcpReadFeature,
@@ -60,11 +61,34 @@ export interface SubAgent {
   timeoutSeconds?: number;
 }
 
+/**
+ * Structured marker returned when the user cancelled a repo_agent run.
+ * Distinct from a real error: callers can check `isCancelledMarker(r)` and
+ * render a "cancelled" state instead of an error state. Never thrown.
+ */
+export const REPO_AGENT_CANCELLED_MARKER = "__repo_agent_user_cancelled__" as const;
+export type RepoCancelledMarker = typeof REPO_AGENT_CANCELLED_MARKER;
+
+export function isCancelledMarker(v: unknown): v is RepoCancelledMarker {
+  return v === REPO_AGENT_CANCELLED_MARKER;
+}
+
+/**
+ * Number of consecutive poll cycles to wait (after abort is requested but
+ * before the swarm returns a terminal status) before exiting locally.
+ * Each cycle is ~5 s → ~10–15 s grace window (2–3 cycles).
+ */
+const ABORT_GRACE_CYCLES = 3;
+
 export async function repoAgent(
   swarmUrl: string,
   swarmApiKey: string,
   params: {
-    repo_url: string;
+    /**
+     * Optional for graph/workflow-mode calls: when omitted, the swarm-side
+     * agent falls back to the repos already ingested in its graph.
+     */
+    repo_url?: string;
     prompt: string;
     username?: string;
     pat?: string;
@@ -75,6 +99,19 @@ export async function repoAgent(
     model?: string;
     skills?: Record<string, boolean>;
     subAgents?: SubAgent[];
+    /**
+     * Swarm-side system-prompt persona. "graph" = generalized knowledge-graph
+     * walker; "workflow" = Workflow/Skill/Script research agent over the
+     * Jarvis workflow library. Omitted = the code-focused default.
+     */
+    mode?: "graph" | "workflow";
+    /**
+     * Stakwork API token forwarded server-to-server on the request body
+     * (never an LLM-visible parameter). When present, the swarm-side agent
+     * registers read-only run-research tools (skill usage stats, recent
+     * workflow runs, per-step params/outputs) against the Stakwork API.
+     */
+    stakworkApiKey?: string;
   },
   /**
    * Optional Bifrost routing. When provided, the swarm-side `repo/agent`
@@ -106,7 +143,19 @@ export async function repoAgent(
     baseUrl: string;
     headers?: Record<string, string>;
   },
-): Promise<Record<string, string>> {
+  hooks?: {
+    /**
+     * Fired immediately after the initiate POST returns a `request_id`.
+     * DB-free by contract: callers supply this; `askTools.ts` never imports db.
+     */
+    onRequestId?: (id: string) => Promise<void>;
+    /**
+     * Called each poll cycle to check if the user has requested a cancellation.
+     * DB-free: callers supply this via a closure.
+     */
+    isAbortRequested?: () => Promise<boolean>;
+  },
+): Promise<Record<string, string> | RepoCancelledMarker> {
   const body: Record<string, unknown> = { ...params };
   if (bifrost) {
     body.apiKey = bifrost.apiKey;
@@ -128,7 +177,7 @@ export async function repoAgent(
 
   if (!initiateResponse.ok) {
     const errorText = await initiateResponse.text();
-    console.error(`Repo agent initiation error: ${initiateResponse.status} - ${errorText}`);
+    console.error(`[repoAgent] Repo agent initiation error: ${initiateResponse.status} - ${errorText}`);
     throw new Error("Failed to initiate repo agent");
   }
 
@@ -139,11 +188,26 @@ export async function repoAgent(
     throw new Error("No request_id returned from repo agent");
   }
 
+  // Fire the onRequestId hook so the caller can register the run atomically.
+  if (hooks?.onRequestId) {
+    await hooks.onRequestId(requestId);
+  }
+
   const maxAttempts = 120;
   const pollInterval = 5000;
+  let abortGraceCyclesRemaining = -1; // -1 = not yet in grace window
 
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     await new Promise((resolve) => setTimeout(resolve, pollInterval));
+
+    // Check for user-requested cancellation (lock-free read supplied by caller).
+    const abortRequested = hooks?.isAbortRequested ? await hooks.isAbortRequested() : false;
+
+    if (abortRequested && abortGraceCyclesRemaining < 0) {
+      // First cycle after abort was requested — start the grace window countdown.
+      console.log(`[repoAgent] Abort requested for requestId: ${requestId}. Starting grace window.`);
+      abortGraceCyclesRemaining = ABORT_GRACE_CYCLES;
+    }
 
     const progressUrl = `${swarmUrl}/progress?request_id=${encodeURIComponent(requestId)}`;
     const progressResponse = await fetch(progressUrl, {
@@ -155,16 +219,57 @@ export async function repoAgent(
     });
 
     if (!progressResponse.ok) {
-      console.error(`Progress check failed: ${progressResponse.status}`);
+      console.error(`[repoAgent] Progress check failed: ${progressResponse.status}`);
+      if (abortGraceCyclesRemaining > 0) {
+        abortGraceCyclesRemaining--;
+        if (abortGraceCyclesRemaining === 0) {
+          console.log(`[repoAgent] Grace window exhausted (no terminal status). Returning cancelled marker. requestId: ${requestId}`);
+          return REPO_AGENT_CANCELLED_MARKER;
+        }
+      }
       continue;
     }
 
     const progressData = await progressResponse.json();
 
     if (progressData.status === "completed") {
-      return progressData.result || {};
-    } else if (progressData.status === "failed") {
+      // Requirement 5: if the run truly completed with a real result even
+      // after abort was requested, return the REAL result (not cancelled).
+      const result = progressData.result;
+      // A bare string result is normalized to `{ content }` so callers'
+      // `.content` unwrap never silently drops a real answer.
+      if (typeof result === "string" && result.trim()) {
+        return { content: result };
+      }
+      // An empty object (what an aborted-mid-run swarm reports as
+      // "completed") is NOT a usable result — without this check it
+      // unwrapped to `.content === undefined` and the model saw a tool
+      // call with no output at all.
+      if (result && typeof result === "object" && Object.keys(result).length > 0) {
+        return result as Record<string, string>;
+      }
+      // Completed but no usable result (e.g. empty body after abort).
+      if (abortRequested) {
+        console.log(`[repoAgent] Completed without usable result after abort. Returning cancelled marker. requestId: ${requestId}`);
+        return REPO_AGENT_CANCELLED_MARKER;
+      }
+      return {};
+    } else if (progressData.status === "failed" || progressData.status === "aborted") {
+      if (abortRequested) {
+        // Cancelled ≠ error: return structured marker, never throw.
+        console.log(`[repoAgent] Terminal status '${progressData.status}' after abort. Returning cancelled marker. requestId: ${requestId}`);
+        return REPO_AGENT_CANCELLED_MARKER;
+      }
       throw new Error(progressData.error || "Repo agent execution failed");
+    }
+
+    // Not yet terminal — decrement grace window if active.
+    if (abortGraceCyclesRemaining > 0) {
+      abortGraceCyclesRemaining--;
+      if (abortGraceCyclesRemaining === 0) {
+        console.log(`[repoAgent] Grace window exhausted (swarm still running). Returning cancelled marker. requestId: ${requestId}`);
+        return REPO_AGENT_CANCELLED_MARKER;
+      }
     }
   }
 
@@ -182,7 +287,22 @@ function resolveRepo(
   return { owner: repoMap[0].owner, repo: repoMap[0].repo };
 }
 
-export function askTools(swarmUrl: string, swarmApiKey: string, repoUrls: string[], pat: string, apiKey: string, workspaceAuth?: WorkspaceAuth) {
+export interface AskToolsContext {
+  /** Validated SharedConversation.id for the active canvas conversation. */
+  conversationId?: string;
+  /** Client-generated turn id for this user turn. */
+  turnId?: string;
+  /**
+   * Shared mutable cancellation flag for the whole turn. A repo_agent
+   * execute sets `requested: true` when the user cancels its run;
+   * `runCanvasAgent` reads it in a `stopWhen` condition to end the agent
+   * loop after the current step — so a Stop stops the TURN, instead of
+   * the model treating the cancellation as a tool failure and retrying.
+   */
+  cancellation?: { requested: boolean };
+}
+
+export function askTools(swarmUrl: string, swarmApiKey: string, repoUrls: string[], pat: string, apiKey: string, workspaceAuth?: WorkspaceAuth, context?: AskToolsContext) {
   // Build a map of repo URLs to their parsed owner/repo for multi-repo support
   const repoMap = repoUrls.map((url) => ({
     url,
@@ -301,6 +421,9 @@ export function askTools(swarmUrl: string, swarmApiKey: string, repoUrls: string
       }),
       execute: async ({ prompt }: { prompt: string }) => {
         const prompt2 = `${prompt}.\n\nPLEASE BE AS FAST AS POSSIBLE! DO NOT DO A THOROUGH SEARCH OF THE REPO. TRY TO FINISH THE EXPLORATION VERY QUICKLY!`;
+        const convId = context?.conversationId;
+        const turnId = context?.turnId;
+        let activeRequestId: string | undefined;
         try {
           // Master Bifrost reconciler — see `services/bifrost/orchestrator.ts`.
           // Routes LLM calls through this workspace's Bifrost when we
@@ -314,6 +437,29 @@ export function askTools(swarmUrl: string, swarmApiKey: string, repoUrls: string
           const bifrost = await getBifrostForLLM(workspaceAuth, {
             agentName: "repo-agent",
           });
+
+          // Build abort hooks when we have a canvas conversation to track against.
+          const hooks = convId && turnId && workspaceAuth?.workspaceId
+            ? await (async () => {
+                // Lazy import keeps Prisma out of test workers that don't need it.
+                const { setActiveRun, clearActiveRun: _clear, isAbortRequestedForRun, notifyRunActive } = await import("@/services/canvas-active-runs-hooks");
+                return {
+                  onRequestId: async (requestId: string) => {
+                    activeRequestId = requestId;
+                    console.log(`[repoAgent] Run registered: ${requestId} conversationId: ${convId}`);
+                    await setActiveRun(convId, {
+                      requestId,
+                      workspaceId: workspaceAuth.workspaceId,
+                      startedAt: new Date().toISOString(),
+                    }, turnId);
+                    await notifyRunActive(convId, true);
+                  },
+                  isAbortRequested: async () =>
+                    isAbortRequestedForRun(convId, activeRequestId ?? ""),
+                };
+              })()
+            : undefined;
+
           // Pass comma-separated repo URLs for multi-repo support
           const rr = await repoAgent(
             swarmUrl,
@@ -324,11 +470,35 @@ export function askTools(swarmUrl: string, swarmApiKey: string, repoUrls: string
               pat,
             },
             bifrost,
+            hooks,
           );
-          return rr.content;
+          if (rr === REPO_AGENT_CANCELLED_MARKER) {
+            // Flag the whole turn so runCanvasAgent's stopWhen ends the
+            // agent loop — the model must not treat this as a transient
+            // failure and start another run.
+            if (context?.cancellation) context.cancellation.requested = true;
+            return "The user cancelled this investigation. Stop working on it now — do not retry and do not start another repo agent run.";
+          }
+          const out = rr as Record<string, unknown>;
+          if (typeof out.content === "string" && out.content.trim()) {
+            return out.content;
+          }
+          // Unexpected result shape (no `content` key) — surface whatever
+          // came back rather than returning `undefined` (which the model
+          // reads as "no output" and treats as a failure to retry).
+          const fallback = JSON.stringify(out);
+          return fallback && fallback !== "{}"
+            ? fallback
+            : "The repo agent finished without returning any content.";
         } catch (e) {
           console.error("Error executing repo agent:", e);
           return "Could not execute repo agent";
+        } finally {
+          if (convId && activeRequestId) {
+            const { clearActiveRun, notifyRunActive } = await import("@/services/canvas-active-runs-hooks");
+            const { wasLast } = await clearActiveRun(convId, activeRequestId).catch(() => ({ wasLast: true }));
+            if (wasLast) await notifyRunActive(convId, false).catch(() => {});
+          }
         }
       },
     }),
@@ -346,8 +516,8 @@ Example queries:
         max_hits: z.number().optional().default(10).describe("Maximum number of log entries to return"),
       }),
       execute: async ({ query, max_hits = 10 }: { query: string; max_hits?: number }) => {
-        let mcpClient;
-        try {
+        let mcpClient: Awaited<ReturnType<typeof createMCPClient>> | undefined;
+        const mcpSetup = async () => {
           mcpClient = await createMCPClient({
             transport: {
               type: 'http',
@@ -357,27 +527,24 @@ Example queries:
               },
             },
           });
-
           const tools = await mcpClient.tools();
           const searchLogsTool = tools['search_logs'];
-          
-          if (!searchLogsTool || !searchLogsTool.execute) {
-            return "search_logs tool not found on MCP server";
-          }
-
-          const result = await searchLogsTool.execute(
-            { query, max_hits },
-            { toolCallId: '1', messages: [] }
+          if (!searchLogsTool?.execute) return 'search_logs tool not found on MCP server';
+          return capMcpResult(
+            await searchLogsTool.execute({ query, max_hits }, { toolCallId: '1', messages: [] }),
           );
-
-          return capMcpResult(result);
+        };
+        try {
+          return await withMcpTimeout(mcpSetup);
         } catch (e) {
-          console.error("Error searching logs:", e);
-          return "Could not search logs";
-        } finally {
-          if (mcpClient) {
-            await mcpClient.close();
+          if (isMcpTimeout(e)) {
+            console.warn('search_logs: MCP client timed out', e);
+            return 'MCP tools unavailable — the log search timed out. Proceeding without them.';
           }
+          console.error('Error searching logs:', e);
+          return 'Could not search logs';
+        } finally {
+          if (mcpClient) await mcpClient.close().catch(() => {});
         }
       },
     }),

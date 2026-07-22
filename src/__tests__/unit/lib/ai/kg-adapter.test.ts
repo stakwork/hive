@@ -91,6 +91,61 @@ describe("kgGetNode", () => {
     expect(result?.name).toBe("Auth");
   });
 
+  it("includeEdgeCounts: fetches /connection-counts and attaches a collapsed edges map", async () => {
+    const node = { ref_id: "node-abc", node_type: "Function", name: "myFn", properties: {} };
+    const counts = {
+      counts: [
+        { edge_type: "MODIFIES", target_type: "File", count: 3 },
+        { edge_type: "MODIFIES", target_type: "Function", count: 2 },
+        { edge_type: "CITES", target_type: "Paper", count: 1 },
+      ],
+    };
+    globalThis.fetch = vi.fn().mockImplementation((url: string) =>
+      Promise.resolve({
+        ok: true,
+        status: 200,
+        json: () =>
+          Promise.resolve(url.includes("/connection-counts") ? counts : node),
+      }),
+    );
+
+    const result = await kgGetNode(JARVIS_URL, API_KEY, "node-abc", {
+      includeEdgeCounts: true,
+    });
+
+    // Counts collapse across target types: MODIFIES 3+2, CITES 1.
+    expect(result?.edges).toEqual({ MODIFIES: 5, CITES: 1 });
+    const urls = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls.map(
+      (c) => c[0] as string,
+    );
+    expect(urls.some((u) => u.includes("/v2/nodes/node-abc/connection-counts"))).toBe(true);
+  });
+
+  it("includeEdgeCounts: a failed counts lookup leaves edges as {} without failing the call", async () => {
+    const node = { ref_id: "node-abc", node_type: "Function", name: "myFn", properties: {} };
+    globalThis.fetch = vi.fn().mockImplementation((url: string) =>
+      url.includes("/connection-counts")
+        ? Promise.reject(new Error("boom"))
+        : Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(node) }),
+    );
+
+    const result = await kgGetNode(JARVIS_URL, API_KEY, "node-abc", {
+      includeEdgeCounts: true,
+    });
+
+    expect(result?.ref_id).toBe("node-abc");
+    expect(result?.edges).toEqual({});
+  });
+
+  it("does not fetch connection-counts by default", async () => {
+    globalThis.fetch = mockFetch({ ref_id: "n", node_type: "File", properties: {} });
+
+    const result = await kgGetNode(JARVIS_URL, API_KEY, "n");
+
+    expect(result?.edges).toBeUndefined();
+    expect(globalThis.fetch).toHaveBeenCalledTimes(1);
+  });
+
   it("returns null on HTTP error (non-2xx)", async () => {
     globalThis.fetch = mockFetch(null, false, 404);
     const result = await kgGetNode(JARVIS_URL, API_KEY, "missing-node");
@@ -380,6 +435,53 @@ describe("kgGetNeighbors", () => {
     expect(calledUrl).toContain('node_type=%5B%22File%22%5D');
   });
 
+  it("includeEdgeCounts: sends include_edge_counts=true and attaches each neighbor's edges map", async () => {
+    const raw = {
+      nodes: [
+        { ref_id: QUERIED_REF, node_type: "Concept" },
+        {
+          ref_id: "ref-file",
+          node_type: "File",
+          name: "a.ts",
+          edges: { MODIFIES: 4, TOUCHES: 2 },
+        },
+      ],
+      edges: [
+        { source: QUERIED_REF, target: "ref-file", edge_type: "MODIFIES", properties: {} },
+      ],
+    };
+    globalThis.fetch = mockFetch(raw);
+
+    const { neighbors } = await kgGetNeighbors(JARVIS_URL, API_KEY, QUERIED_REF, {
+      includeEdgeCounts: true,
+    });
+
+    const calledUrl = (globalThis.fetch as ReturnType<typeof vi.fn>).mock
+      .calls[0][0] as string;
+    expect(calledUrl).toContain("include_edge_counts=true");
+    expect(neighbors[0].edges).toEqual({ MODIFIES: 4, TOUCHES: 2 });
+  });
+
+  it("does not send include_edge_counts (and omits edges) by default", async () => {
+    const raw = {
+      nodes: [
+        { ref_id: QUERIED_REF, node_type: "Concept" },
+        { ref_id: "ref-file", node_type: "File", name: "a.ts", edges: { MODIFIES: 4 } },
+      ],
+      edges: [
+        { source: QUERIED_REF, target: "ref-file", edge_type: "MODIFIES", properties: {} },
+      ],
+    };
+    globalThis.fetch = mockFetch(raw);
+
+    const { neighbors } = await kgGetNeighbors(JARVIS_URL, API_KEY, QUERIED_REF);
+
+    const calledUrl = (globalThis.fetch as ReturnType<typeof vi.fn>).mock
+      .calls[0][0] as string;
+    expect(calledUrl).not.toContain("include_edge_counts");
+    expect(neighbors[0].edges).toBeUndefined();
+  });
+
   it("sends canonicalize=false so multi-hump node_type filters match real labels", async () => {
     globalThis.fetch = mockFetch({ nodes: [], edges: [] });
 
@@ -479,11 +581,16 @@ describe("kgGetNodesByRefs", () => {
 // ---------------------------------------------------------------------------
 
 describe("kgSearch", () => {
-  it("hits the lite /v2/nodes/search endpoint and maps { nodes:[{title}] }", async () => {
+  it("hits the ranked /v2/nodes pipeline and maps hits with name/description/edges", async () => {
     const raw = {
       nodes: [
-        { ref_id: "n1", node_type: "Function", title: "doThing" },
-        { ref_id: "n2", node_type: "File", title: "utils.ts" },
+        {
+          ref_id: "n1",
+          node_type: "Function",
+          properties: { name: "doThing", description: "Does the thing." },
+          edges: { MODIFIES: 3, CALLS: 1 },
+        },
+        { ref_id: "n2", node_type: "File", properties: { file_name: "utils.ts" } },
       ],
     };
     globalThis.fetch = mockFetch(raw);
@@ -491,22 +598,36 @@ describe("kgSearch", () => {
     const results = await kgSearch(JARVIS_URL, API_KEY, "doThing");
 
     expect(results).toHaveLength(2);
-    expect(results[0]).toMatchObject({
+    expect(results[0]).toEqual({
       ref_id: "n1",
       node_type: "Function",
       name: "doThing",
+      description: "Does the thing.",
+      edges: { MODIFIES: 3, CALLS: 1 },
     });
-    expect(results[1]).toMatchObject({ ref_id: "n2", node_type: "File", name: "utils.ts" });
+    expect(results[1]).toMatchObject({
+      ref_id: "n2",
+      node_type: "File",
+      name: "utils.ts",
+      description: "",
+      edges: {},
+    });
 
     const calledUrl = (globalThis.fetch as ReturnType<typeof vi.fn>).mock
       .calls[0][0] as string;
-    expect(calledUrl).toContain("/v2/nodes/search");
+    expect(calledUrl).toContain("/v2/nodes?");
+    expect(calledUrl).not.toContain("/v2/nodes/search");
+    expect(calledUrl).toContain("q=doThing");
+    expect(calledUrl).toContain("include_edge_counts=true");
   });
 
-  it("returns [] when response is not the { nodes } object shape", async () => {
-    globalThis.fetch = mockFetch([{ ref_id: "x" }]); // bare array → ignored
-    const results = await kgSearch(JARVIS_URL, API_KEY, "anything");
-    expect(results).toEqual([]);
+  it("handles a bare-array response shape", async () => {
+    globalThis.fetch = mockFetch([
+      { ref_id: "x", node_type: "Topic", properties: { name: "Auth" } },
+    ]);
+    const results = await kgSearch(JARVIS_URL, API_KEY, "auth");
+    expect(results).toHaveLength(1);
+    expect(results[0]).toMatchObject({ ref_id: "x", name: "Auth" });
   });
 
   it("returns empty array on fetch error", async () => {
@@ -521,14 +642,21 @@ describe("kgSearch", () => {
     expect(results).toEqual([]);
   });
 
-  it("node_type filter forwarded comma-separated (not a Python list literal)", async () => {
+  it("returns [] without fetching when no query and no input_q/output_q", async () => {
+    globalThis.fetch = mockFetch({ nodes: [] });
+    const results = await kgSearch(JARVIS_URL, API_KEY, "");
+    expect(results).toEqual([]);
+    expect(globalThis.fetch).not.toHaveBeenCalled();
+  });
+
+  it("type filter forwarded comma-separated (not a Python list literal)", async () => {
     globalThis.fetch = mockFetch({ nodes: [] });
 
-    await kgSearch(JARVIS_URL, API_KEY, "func", { type: "Function" });
+    await kgSearch(JARVIS_URL, API_KEY, "func", { type: "Function,File" });
 
     const calledUrl = (globalThis.fetch as ReturnType<typeof vi.fn>).mock
       .calls[0][0] as string;
-    expect(calledUrl).toContain("node_type=Function");
+    expect(calledUrl).toContain("type=Function%2CFile");
     expect(calledUrl).not.toContain("%5B"); // no "["
   });
 
@@ -542,14 +670,62 @@ describe("kgSearch", () => {
     expect(calledUrl).toContain("limit=42");
   });
 
-  it("sends canonicalize=false so multi-hump labels match real Neo4j labels", async () => {
+  it("forwards input_q / output_q / domains as field-scoped retriever params", async () => {
     globalThis.fetch = mockFetch({ nodes: [] });
 
-    await kgSearch(JARVIS_URL, API_KEY, "pr", { type: "PullRequest" });
+    await kgSearch(JARVIS_URL, API_KEY, "transcribe", {
+      inputQ: "a video file url",
+      outputQ: "transcript",
+      domains: "content,entity",
+    });
 
     const calledUrl = (globalThis.fetch as ReturnType<typeof vi.fn>).mock
       .calls[0][0] as string;
-    expect(calledUrl).toContain("canonicalize=false");
+    expect(calledUrl).toContain("input_q=a+video+file+url");
+    expect(calledUrl).toContain("output_q=transcript");
+    expect(calledUrl).toContain("domains=content%2Centity");
+  });
+
+  it("searches with only input_q (no keyword query)", async () => {
+    globalThis.fetch = mockFetch({ nodes: [] });
+
+    await kgSearch(JARVIS_URL, API_KEY, "", { inputQ: "pdf document" });
+
+    const calledUrl = (globalThis.fetch as ReturnType<typeof vi.fn>).mock
+      .calls[0][0] as string;
+    expect(calledUrl).toContain("input_q=pdf+document");
+    expect(new URL(calledUrl).searchParams.get("q")).toBeNull();
+  });
+
+  it("filters excluded internal types (Hint/Memory/Clip/Turn) client-side", async () => {
+    const raw = {
+      nodes: [
+        { ref_id: "good", node_type: "Topic", properties: { name: "Auth" } },
+        { ref_id: "bad-1", node_type: "Hint", properties: { name: "hint" } },
+        { ref_id: "bad-2", node_type: "clip", properties: { name: "clip" } },
+      ],
+    };
+    globalThis.fetch = mockFetch(raw);
+
+    const results = await kgSearch(JARVIS_URL, API_KEY, "auth");
+
+    expect(results.map((r) => r.ref_id)).toEqual(["good"]);
+  });
+
+  it("truncates long descriptions to 300 chars", async () => {
+    const raw = {
+      nodes: [
+        {
+          ref_id: "n1",
+          node_type: "Topic",
+          properties: { name: "Auth", description: "x".repeat(500) },
+        },
+      ],
+    };
+    globalThis.fetch = mockFetch(raw);
+
+    const results = await kgSearch(JARVIS_URL, API_KEY, "auth");
+    expect(results[0].description).toHaveLength(300);
   });
 });
 
@@ -558,96 +734,160 @@ describe("kgSearch", () => {
 // ---------------------------------------------------------------------------
 
 describe("kgGetOntology", () => {
-  it("parses data.labels (real Neo4j labels) into { type, description }[]", async () => {
-    const raw = {
-      labels: [
-        { type: "PullRequest", description: "A GitHub pull request." },
-        { type: "File", description: "A source file." },
-      ],
-    };
-    globalThis.fetch = mockFetch(raw);
+  /** Route fetch to per-endpoint responses for the two ontology sources. */
+  function mockOntologyFetch(
+    labelsResponse: unknown,
+    schemaResponse: unknown,
+    { labelsOk = true, schemaOk = true } = {},
+  ) {
+    return vi.fn().mockImplementation((url: string) => {
+      const isLabels = url.includes("/graph/labels");
+      return Promise.resolve({
+        ok: isLabels ? labelsOk : schemaOk,
+        status: 200,
+        json: () => Promise.resolve(isLabels ? labelsResponse : schemaResponse),
+      });
+    });
+  }
+
+  it("merges /graph/labels (real casing) with /v2/schema (domains + descriptions)", async () => {
+    globalThis.fetch = mockOntologyFetch(
+      {
+        labels: [
+          { type: "PullRequest", description: "A GitHub pull request." },
+          { type: "File" },
+        ],
+      },
+      {
+        schemas: [
+          { type: "Pullrequest", domain: "Code", description: "schema PR desc" },
+          { type: "File", domain: "code", description: "A source file." },
+        ],
+      },
+    );
 
     const result = await kgGetOntology(JARVIS_URL, API_KEY);
 
-    expect(result).toEqual([
-      { type: "PullRequest", description: "A GitHub pull request." },
-      { type: "File", description: "A source file." },
+    expect(result).toEqual({
+      domains: ["code"],
+      node_types: [
+        // Real label casing wins; label description preferred over schema's.
+        { type: "PullRequest", domain: "code", description: "A GitHub pull request." },
+        // Missing label description falls back to schema description.
+        { type: "File", domain: "code", description: "A source file." },
+      ],
+    });
+  });
+
+  it("requests both /graph/labels and /v2/schema with x-api-token", async () => {
+    globalThis.fetch = mockOntologyFetch({ labels: [] }, { schemas: [] });
+
+    await kgGetOntology(JARVIS_URL, API_KEY);
+
+    const calls = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls;
+    const urls = calls.map((c) => c[0] as string).sort();
+    expect(urls).toEqual([`${JARVIS_URL}/graph/labels`, `${JARVIS_URL}/v2/schema`]);
+    for (const call of calls) {
+      expect(call[1]).toMatchObject({ headers: { "x-api-token": API_KEY } });
+    }
+  });
+
+  it("includes schema-only types (registered but no live nodes yet)", async () => {
+    globalThis.fetch = mockOntologyFetch(
+      { labels: [{ type: "File" }] },
+      {
+        schemas: [
+          { type: "Statute", domain: "legal", description: "A legal statute." },
+        ],
+      },
+    );
+
+    const result = await kgGetOntology(JARVIS_URL, API_KEY);
+
+    expect(result.node_types).toEqual([
+      { type: "File", domain: null, description: "" },
+      { type: "Statute", domain: "legal", description: "A legal statute." },
+    ]);
+    expect(result.domains).toEqual(["legal"]);
+  });
+
+  it("filters wildcard and deleted schema entries", async () => {
+    globalThis.fetch = mockOntologyFetch(
+      { labels: [] },
+      {
+        schemas: [
+          { type: "*", domain: "meta" },
+          { type: "Ghost", domain: "old", is_deleted: true },
+          { type: "Keep", domain: "entity" },
+        ],
+      },
+    );
+
+    const result = await kgGetOntology(JARVIS_URL, API_KEY);
+
+    expect(result.node_types).toEqual([
+      { type: "Keep", domain: "entity", description: "" },
+    ]);
+    expect(result.domains).toEqual(["entity"]);
+  });
+
+  it("still returns labels when /v2/schema fails (best-effort merge)", async () => {
+    globalThis.fetch = mockOntologyFetch(
+      { labels: [{ type: "PullRequest", description: "PR" }] },
+      null,
+      { schemaOk: false },
+    );
+
+    const result = await kgGetOntology(JARVIS_URL, API_KEY);
+
+    expect(result).toEqual({
+      domains: [],
+      node_types: [{ type: "PullRequest", domain: null, description: "PR" }],
+    });
+  });
+
+  it("still returns schema types when /graph/labels fails", async () => {
+    globalThis.fetch = mockOntologyFetch(
+      null,
+      { schemas: [{ type: "File", domain: "code", description: "A file." }] },
+      { labelsOk: false },
+    );
+
+    const result = await kgGetOntology(JARVIS_URL, API_KEY);
+
+    expect(result.node_types).toEqual([
+      { type: "File", domain: "code", description: "A file." },
     ]);
   });
 
-  it("requests GET /graph/labels (not /schema/all)", async () => {
-    globalThis.fetch = mockFetch({ labels: [] });
-
-    await kgGetOntology(JARVIS_URL, API_KEY);
-
-    const calledUrl = (globalThis.fetch as ReturnType<typeof vi.fn>).mock
-      .calls[0][0] as string;
-    expect(calledUrl).toBe(`${JARVIS_URL}/graph/labels`);
-    expect(calledUrl).not.toContain("/schema/all");
-  });
-
-  it("sends x-api-token header", async () => {
-    globalThis.fetch = mockFetch({ labels: [] });
-
-    await kgGetOntology(JARVIS_URL, API_KEY);
-
-    expect(globalThis.fetch).toHaveBeenCalledWith(
-      expect.any(String),
-      expect.objectContaining({ headers: { "x-api-token": API_KEY } }),
+  it("filters out label entries missing a type", async () => {
+    globalThis.fetch = mockOntologyFetch(
+      { labels: [{ description: "no type here" }, { type: "File" }] },
+      { schemas: [] },
     );
-  });
-
-  it("fills missing description with empty string (newly-ingested type, no schema)", async () => {
-    globalThis.fetch = mockFetch({ labels: [{ type: "PullRequest" }] });
 
     const result = await kgGetOntology(JARVIS_URL, API_KEY);
 
-    expect(result).toEqual([{ type: "PullRequest", description: "" }]);
+    expect(result.node_types).toEqual([{ type: "File", domain: null, description: "" }]);
   });
 
-  it("filters out entries missing a type", async () => {
-    globalThis.fetch = mockFetch({
-      labels: [
-        { description: "no type here" },
-        { type: "File", description: "valid" },
-      ],
-    });
-
-    const result = await kgGetOntology(JARVIS_URL, API_KEY);
-
-    expect(result).toEqual([{ type: "File", description: "valid" }]);
-  });
-
-  it("returns [] on non-ok response", async () => {
-    globalThis.fetch = mockFetch(null, false, 503);
-
-    const result = await kgGetOntology(JARVIS_URL, API_KEY);
-
-    expect(result).toEqual([]);
-  });
-
-  it("returns [] on thrown fetch", async () => {
+  it("returns empty payload when both fetches throw", async () => {
     globalThis.fetch = mockFetchThrow();
 
     const result = await kgGetOntology(JARVIS_URL, API_KEY);
 
-    expect(result).toEqual([]);
+    expect(result).toEqual({ domains: [], node_types: [] });
   });
 
-  it("returns [] when labels is missing from response", async () => {
-    globalThis.fetch = mockFetch({ edges: [{ type: "RELATED_TO" }] });
+  it("returns empty payload on malformed responses", async () => {
+    globalThis.fetch = mockOntologyFetch(
+      { labels: "not-an-array" },
+      { schemas: "nope" },
+    );
 
     const result = await kgGetOntology(JARVIS_URL, API_KEY);
 
-    expect(result).toEqual([]);
-  });
-
-  it("returns [] when labels is not an array", async () => {
-    globalThis.fetch = mockFetch({ labels: "not-an-array" });
-
-    const result = await kgGetOntology(JARVIS_URL, API_KEY);
-
-    expect(result).toEqual([]);
+    expect(result).toEqual({ domains: [], node_types: [] });
   });
 });
 

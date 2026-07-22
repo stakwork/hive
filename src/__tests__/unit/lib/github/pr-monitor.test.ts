@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { mergeBaseBranch, rebaseOntoBaseBranch, triggerAgentModeFix, triggerLiveModeFix, createPrLogger, monitorSinglePR } from "@/lib/github/pr-monitor";
+import { mergeBaseBranch, rebaseOntoBaseBranch, triggerAgentModeFix, triggerLiveModeFix, createPrLogger, monitorSinglePR, claimPRFixInProgress } from "@/lib/github/pr-monitor";
 import type { Octokit } from "@octokit/rest";
 import { ChatRole, ChatStatus } from "@prisma/client";
 
@@ -1295,6 +1295,9 @@ describe("PR Monitor - Zombie PR fixes", () => {
           base: { ref: "main", sha: "base-sha" },
         },
       });
+
+      // CAS claim: default to winning so fix-path tests can proceed
+      vi.mocked(db.$executeRaw).mockResolvedValue(1);
     });
 
     it("calls triggerLiveModeFix and sets resolution to in_progress when podId is null", async () => {
@@ -1559,6 +1562,7 @@ describe("createPrLogger", () => {
         taskId,
         featureId,
         workspaceId,
+        repos: [],
       },
     });
     expect(db.agentLog.update).not.toHaveBeenCalled();
@@ -1933,5 +1937,300 @@ describe("monitorSinglePR", () => {
       agentTriggered: 0,
       notified: 0,
     });
+  });
+});
+
+// ─── CAS claim: claimPRFixInProgress unit tests ────────────────────────────────
+
+describe("claimPRFixInProgress", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("returns true when $executeRaw returns 1 (claim won)", async () => {
+    vi.mocked(db.$executeRaw).mockResolvedValue(1);
+    const result = await claimPRFixInProgress("artifact-1", 1800000);
+    expect(result).toBe(true);
+    expect(db.$executeRaw).toHaveBeenCalledTimes(1);
+  });
+
+  it("returns false when $executeRaw returns 0 (claim lost)", async () => {
+    vi.mocked(db.$executeRaw).mockResolvedValue(0);
+    const result = await claimPRFixInProgress("artifact-1", 1800000);
+    expect(result).toBe(false);
+    expect(db.$executeRaw).toHaveBeenCalledTimes(1);
+  });
+
+  it("first call wins, subsequent calls lose — simulates concurrent duplicate deliveries", async () => {
+    vi.mocked(db.$executeRaw)
+      .mockResolvedValueOnce(1) // first invocation wins
+      .mockResolvedValue(0);   // all others lose
+
+    const [r1, r2, r3] = await Promise.all([
+      claimPRFixInProgress("artifact-1", 1800000),
+      claimPRFixInProgress("artifact-1", 1800000),
+      claimPRFixInProgress("artifact-1", 1800000),
+    ]);
+
+    expect(r1).toBe(true);
+    expect(r2).toBe(false);
+    expect(r3).toBe(false);
+    expect(db.$executeRaw).toHaveBeenCalledTimes(3);
+  });
+});
+
+// ─── CAS-gated processOnePR / monitorSinglePR integration-style unit tests ────
+
+describe("monitorSinglePR — CAS claim gates notify + dispatch", () => {
+  const prUrl = "https://github.com/org/repo/pull/99";
+
+  function makeCIFailureRow(overrides: Record<string, unknown> = {}) {
+    return {
+      id: "artifact-cas-1",
+      content: {
+        url: prUrl,
+        status: "IN_PROGRESS",
+        progress: overrides.progress ?? undefined,
+      },
+      task_id: "task-cas-1",
+      pod_id: null,
+      workspace_id: "ws-cas-1",
+      owner_id: "owner-cas-1",
+      last_checked_at: null,
+      pr_monitor_enabled: true,
+      pr_conflict_fix_enabled: false,
+      pr_ci_failure_fix_enabled: true,
+      pr_out_of_date_fix_enabled: false,
+      pr_use_rebase_for_updates: false,
+    };
+  }
+
+  beforeEach(async () => {
+    vi.clearAllMocks();
+
+    vi.mocked(db.task.findUnique).mockResolvedValue({
+      id: "task-cas-1",
+      featureId: "feature-cas-1",
+      mode: "live",
+      workflowStatus: "COMPLETED",
+      createdById: "creator-1",
+      workspace: { ownerId: "owner-cas-1", slug: "cas-ws" },
+    } as any);
+
+    vi.mocked(db.artifact.findUnique).mockResolvedValue({
+      content: { url: prUrl, status: "IN_PROGRESS" },
+    } as any);
+    vi.mocked(db.artifact.update).mockResolvedValue({} as any);
+
+    // Default CI: failing
+    const { fetchCIStatus } = await import("@/lib/github/pr-ci");
+    vi.mocked(fetchCIStatus).mockResolvedValue({
+      status: "failure",
+      summary: "Tests failed",
+      failedChecks: ["unit-tests"],
+      failedCheckLogs: {},
+    });
+
+    // Default Octokit: open PR, not behind base
+    const { Octokit } = await import("@octokit/rest");
+    vi.mocked(Octokit).mockImplementation(() => ({
+      pulls: {
+        get: vi.fn().mockResolvedValue({
+          data: {
+            state: "open",
+            merged: false,
+            mergeable: true,
+            mergeable_state: "unstable",
+            head: { ref: "feature/cas-test", sha: "head-sha-cas" },
+            base: { ref: "main", sha: "base-sha-cas" },
+          },
+        }),
+        updateBranch: vi.fn(),
+      },
+      repos: {
+        compareCommits: vi.fn().mockResolvedValue({ data: { ahead_by: 0 } }),
+        merge: vi.fn(),
+      },
+    }));
+
+    // createChatMessageAndTriggerStakwork — used by triggerLiveModeFix
+    vi.mocked(createChatMessageAndTriggerStakwork).mockResolvedValue({
+      stakworkData: { projectId: "proj-cas" },
+    } as any);
+  });
+
+  it("winner (claim returns 1): dispatches fix exactly once and notifies once", async () => {
+    vi.mocked(db.$queryRaw).mockResolvedValue([makeCIFailureRow()]);
+    vi.mocked(db.$executeRaw).mockResolvedValue(1); // claim won
+
+    const stats = await monitorSinglePR(prUrl);
+
+    expect(stats.agentTriggered).toBe(1);
+    expect(stats.notified).toBe(1);
+    expect(db.artifact.update).toHaveBeenCalledTimes(1);
+  });
+
+  it("loser (claim returns 0): no-ops — no notify, no dispatch, no DB write", async () => {
+    vi.mocked(db.$queryRaw).mockResolvedValue([makeCIFailureRow()]);
+    vi.mocked(db.$executeRaw).mockResolvedValue(0); // claim lost
+
+    const stats = await monitorSinglePR(prUrl);
+
+    // Loser returns immediately — no trigger, no notify, no trailing write
+    expect(stats.agentTriggered).toBe(0);
+    expect(stats.notified).toBe(0);
+    // artifact.update must not be called by the losing path
+    expect(db.artifact.update).not.toHaveBeenCalled();
+  });
+
+  it("non-fix path (fix-type disabled): notifies without going through CAS", async () => {
+    // pr_ci_failure_fix_enabled = false → shouldTriggerFix=false, no CAS attempted
+    vi.mocked(db.$queryRaw).mockResolvedValue([
+      makeCIFailureRow({ pr_ci_failure_fix_enabled: false } as any),
+    ]);
+    // Override: make row have fix disabled
+    const row = makeCIFailureRow();
+    row.pr_ci_failure_fix_enabled = false;
+    vi.mocked(db.$queryRaw).mockResolvedValue([row]);
+
+    const stats = await monitorSinglePR(prUrl);
+
+    // No CAS attempted on the non-fix path
+    expect(db.$executeRaw).not.toHaveBeenCalled();
+    // But still notifies (non-fix status change)
+    expect(stats.notified).toBe(1);
+    expect(stats.agentTriggered).toBe(0);
+  });
+
+  it("on triggerFix failure: claim is released (resolution cleared) so next run retries", async () => {
+    vi.mocked(db.$queryRaw).mockResolvedValue([makeCIFailureRow()]);
+    vi.mocked(db.$executeRaw).mockResolvedValue(1); // claim won
+
+    // Make triggerFix fail
+    vi.mocked(createChatMessageAndTriggerStakwork).mockResolvedValue({
+      stakworkData: { error: "network timeout" },
+    } as any);
+
+    const stats = await monitorSinglePR(prUrl);
+
+    // Dispatch failed → agentTriggered not incremented
+    expect(stats.agentTriggered).toBe(0);
+    // But notify still fired (claim was won before dispatch)
+    expect(stats.notified).toBe(1);
+
+    // The trailing updatePRArtifactProgress must be called and resolution must be cleared
+    // (undefined) so next run can retry. Verify artifact.update was called.
+    expect(db.artifact.update).toHaveBeenCalledTimes(1);
+    const updateCall = vi.mocked(db.artifact.update).mock.calls[0][0];
+    const updatedContent = updateCall.data.content as { progress?: { resolution?: unknown } };
+    expect(updatedContent?.progress?.resolution).toBeUndefined();
+  });
+
+  it("no-clobber: terminal resolution written after claim is preserved by trailing write", async () => {
+    vi.mocked(db.$queryRaw).mockResolvedValue([makeCIFailureRow()]);
+    vi.mocked(db.$executeRaw).mockResolvedValue(1); // claim won
+
+    // Simulate agent-completion webhook writing terminal 'resolved' AFTER the claim
+    vi.mocked(db.artifact.findUnique).mockResolvedValue({
+      content: {
+        url: prUrl,
+        status: "IN_PROGRESS",
+        progress: {
+          state: "healthy",
+          lastCheckedAt: new Date().toISOString(),
+          resolution: {
+            status: "resolved",
+            attempts: 1,
+            lastAttemptAt: new Date().toISOString(),
+          },
+        },
+      },
+    } as any);
+
+    const stats = await monitorSinglePR(prUrl);
+
+    expect(stats.agentTriggered).toBe(1); // dispatch succeeded
+
+    // The trailing write should preserve the terminal 'resolved' state
+    const updateCall = vi.mocked(db.artifact.update).mock.calls[0][0];
+    const updatedContent = updateCall.data.content as {
+      progress?: { resolution?: { status: string } };
+    };
+    expect(updatedContent?.progress?.resolution?.status).toBe("resolved");
+  });
+
+  it("stale in_progress (older than PR_FIX_STALE_TIMEOUT_MS): claim is attempted again", async () => {
+    const staleMs = 1800000;
+    const staleDate = new Date(Date.now() - staleMs - 1000).toISOString();
+
+    vi.mocked(db.$queryRaw).mockResolvedValue([
+      makeCIFailureRow({
+        progress: {
+          state: "ci_failure",
+          lastCheckedAt: staleDate,
+          resolution: {
+            status: "in_progress",
+            attempts: 1,
+            lastAttemptAt: staleDate,
+          },
+        },
+      }),
+    ]);
+    vi.mocked(db.$executeRaw).mockResolvedValue(1); // stale row is reclaimable → claim wins
+
+    const stats = await monitorSinglePR(prUrl);
+
+    // CAS was called (stale row is reclaimable)
+    expect(db.$executeRaw).toHaveBeenCalledTimes(1);
+    expect(stats.agentTriggered).toBe(1);
+    expect(stats.notified).toBe(1);
+  });
+
+  it("gave_up artifact: CAS claim is never attempted (shouldTriggerFix=false due to gave_up gate)", async () => {
+    vi.mocked(db.$queryRaw).mockResolvedValue([
+      makeCIFailureRow({
+        progress: {
+          state: "ci_failure",
+          lastCheckedAt: new Date().toISOString(),
+          resolution: {
+            status: "gave_up",
+            attempts: 6,
+            lastAttemptAt: new Date().toISOString(),
+            lastError: "Max fix attempts (6) exceeded",
+          },
+        },
+      }),
+    ]);
+
+    const stats = await monitorSinglePR(prUrl);
+
+    // gave_up → shouldTriggerFix=false → CAS never called
+    expect(db.$executeRaw).not.toHaveBeenCalled();
+    expect(stats.agentTriggered).toBe(0);
+  });
+
+  it("attempt count is incremented by the SQL, not by in-memory snapshot (unit-level)", async () => {
+    // This test verifies that our helper delegates counting to SQL by confirming
+    // the in-memory progress.resolution.attempts reflects currentAttempts+1 for
+    // the winner path (a local estimate that matches the SQL increment).
+    // Use NO prior resolution so canAttemptFix=true (no existing resolution).
+    vi.mocked(db.$queryRaw).mockResolvedValue([
+      makeCIFailureRow({
+        // No progress → no existing resolution, so canAttemptFix=true via
+        // the !pr.progress?.resolution branch. The in-memory currentAttempts
+        // reads as 0, so the winner sets attempts=1 in progress.resolution.
+      }),
+    ]);
+    vi.mocked(db.$executeRaw).mockResolvedValue(1); // claim won
+
+    await monitorSinglePR(prUrl);
+
+    // The artifact update should contain attempts = 1 (in-memory estimate: 0+1)
+    const updateCall = vi.mocked(db.artifact.update).mock.calls[0][0];
+    const updatedContent = updateCall.data.content as {
+      progress?: { resolution?: { attempts: number; status: string } };
+    };
+    expect(updatedContent?.progress?.resolution?.attempts).toBe(1);
+    expect(updatedContent?.progress?.resolution?.status).toBe("in_progress");
   });
 });

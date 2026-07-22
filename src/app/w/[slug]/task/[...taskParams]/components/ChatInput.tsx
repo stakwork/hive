@@ -6,7 +6,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Command, CommandItem, CommandList } from "@/components/ui/command";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { Mic, MicOff, ArrowUp, Image as ImageIcon, X, Loader2, RefreshCw, Sparkles } from "lucide-react";
+import { Mic, MicOff, ArrowUp, Image as ImageIcon, X, Loader2, RefreshCw, Sparkles, Square } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select";
 import { getModelValue, type ModelName } from "@/lib/ai/models";
 import { useIsMobile } from "@/hooks/useIsMobile";
@@ -66,6 +66,8 @@ interface ChatInputProps {
   onModelChange?: (m: string) => void;
   llmModels?: { id: string; name: string; provider: string; providerLabel: string | null; isPlanDefault: boolean; isTaskDefault: boolean }[];
   hasMessages?: boolean;
+  onStop?: () => Promise<void>;
+  isStopping?: boolean;
 }
 
 export function ChatInput({
@@ -96,6 +98,8 @@ export function ChatInput({
   onModelChange,
   llmModels = [],
   hasMessages,
+  onStop,
+  isStopping = false,
 }: ChatInputProps) {
   const [input, setInput] = useState("");
   const [pendingImages, setPendingImages] = useState<PendingImage[]>([]);
@@ -815,24 +819,42 @@ export function ChatInput({
               </Tooltip>
             </TooltipProvider>
           )}
-          <Button
-            type="submit"
-            size={isMobile ? "icon" : "default"}
-            disabled={
-              (!input.trim() && pendingImages.length === 0 && !pendingDebugAttachment && !pendingStepAttachment) || 
-              isLoading || 
-              disabled ||
-              pendingImages.some(img => img.uploading || img.error)
-            }
-            className={isMobile ? "h-9 w-9 rounded-full shrink-0" : "h-9 shrink-0"}
-            data-testid="chat-message-submit"
-          >
-            {isMobile ? (
-              <ArrowUp className="w-5 h-5" />
-            ) : (
-              isLoading ? "Sending..." : "Send"
-            )}
-          </Button>
+          {isPlanChat && onStop && workflowStatus === WorkflowStatus.IN_PROGRESS ? (
+            <Button
+              type="button"
+              size="icon"
+              onClick={onStop}
+              disabled={isStopping}
+              className="h-9 w-9 rounded-full shrink-0 bg-foreground hover:bg-foreground/80"
+              data-testid="chat-stop-button"
+              aria-label="Stop generating"
+            >
+              {isStopping ? (
+                <Loader2 className="w-4 h-4 animate-spin text-background" />
+              ) : (
+                <Square className="w-4 h-4 fill-background text-background" />
+              )}
+            </Button>
+          ) : (
+            <Button
+              type="submit"
+              size={isMobile ? "icon" : "default"}
+              disabled={
+                (!input.trim() && pendingImages.length === 0 && !pendingDebugAttachment && !pendingStepAttachment) ||
+                isLoading ||
+                disabled ||
+                pendingImages.some(img => img.uploading || img.error)
+              }
+              className={isMobile ? "h-9 w-9 rounded-full shrink-0" : "h-9 shrink-0"}
+              data-testid="chat-message-submit"
+            >
+              {isMobile ? (
+                <ArrowUp className="w-5 h-5" />
+              ) : (
+                isLoading ? "Sending..." : "Send"
+              )}
+            </Button>
+          )}
         </div>
       </form>
 

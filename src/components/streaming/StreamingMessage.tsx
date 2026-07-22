@@ -9,6 +9,7 @@ import type {
 import { StreamTextPart } from "./StreamTextPart";
 import { StreamToolCall } from "./StreamToolCall";
 import { StreamReasoningPart } from "./StreamReasoningPart";
+import { TurnTokenUsage } from "@/components/agent-logs/TurnTokenUsage";
 
 interface StreamingMessageProps {
   message: BaseStreamingMessage;
@@ -92,6 +93,10 @@ export function StreamingMessage({
 
       {/* Render timeline items in order */}
       {regularTimeline?.map((item) => renderTimelineItem(item))}
+
+      {!message.isStreaming && message.usage && (
+        <TurnTokenUsage usage={message.usage} />
+      )}
 
       {shouldShowThinking() && (
         <div className="flex items-center space-x-1 text-muted-foreground">

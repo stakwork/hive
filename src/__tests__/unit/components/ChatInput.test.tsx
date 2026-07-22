@@ -1506,3 +1506,84 @@ describe("ChatInput - @mention autocomplete (workflow_editor mode)", () => {
     expect(screen.queryByTestId("mention-popup")).not.toBeInTheDocument();
   });
 });
+
+describe("Stop button (plan chat)", () => {
+  const onSend = vi.fn().mockResolvedValue(undefined);
+  const onStop = vi.fn().mockResolvedValue(undefined);
+
+  const basePlanProps = {
+    onSend,
+    isPlanChat: true,
+    workflowStatus: WorkflowStatus.IN_PROGRESS,
+    onStop,
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  test("renders Stop button in input row when isPlanChat=true, onStop provided, and workflowStatus=IN_PROGRESS", () => {
+    render(<ChatInput {...basePlanProps} />);
+    expect(screen.getByTestId("chat-stop-button")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /stop generating/i })).toBeInTheDocument();
+  });
+
+  test("renders Send button (not Stop) when isPlanChat=false", () => {
+    render(<ChatInput {...basePlanProps} isPlanChat={false} />);
+    expect(screen.queryByTestId("chat-stop-button")).not.toBeInTheDocument();
+    expect(screen.getByTestId("chat-message-submit")).toBeInTheDocument();
+  });
+
+  test("renders Send button (not Stop) when onStop is not provided", () => {
+    const { onStop: _omit, ...propsWithoutStop } = basePlanProps;
+    render(<ChatInput {...propsWithoutStop} />);
+    expect(screen.queryByTestId("chat-stop-button")).not.toBeInTheDocument();
+    expect(screen.getByTestId("chat-message-submit")).toBeInTheDocument();
+  });
+
+  test("renders Send button (not Stop) when workflowStatus is not IN_PROGRESS", () => {
+    render(<ChatInput {...basePlanProps} workflowStatus={WorkflowStatus.HALTED} />);
+    expect(screen.queryByTestId("chat-stop-button")).not.toBeInTheDocument();
+    expect(screen.getByTestId("chat-message-submit")).toBeInTheDocument();
+  });
+
+  test("renders Send button (not Stop) when workflowStatus is COMPLETED", () => {
+    render(<ChatInput {...basePlanProps} workflowStatus={"COMPLETED" as WorkflowStatus} />);
+    expect(screen.queryByTestId("chat-stop-button")).not.toBeInTheDocument();
+    expect(screen.getByTestId("chat-message-submit")).toBeInTheDocument();
+  });
+
+  test("calls onStop when Stop button is clicked", async () => {
+    render(<ChatInput {...basePlanProps} />);
+    fireEvent.click(screen.getByTestId("chat-stop-button"));
+    expect(onStop).toHaveBeenCalledTimes(1);
+  });
+
+  test("disables stop button and shows spinner when isStopping=true", () => {
+    render(<ChatInput {...basePlanProps} isStopping={true} />);
+    const btn = screen.getByTestId("chat-stop-button");
+    expect(btn).toBeDisabled();
+  });
+
+  test("does NOT render Stop button in task chat (isPlanChat=false, onStop provided)", () => {
+    render(
+      <ChatInput
+        onSend={onSend}
+        isPlanChat={false}
+        workflowStatus={WorkflowStatus.IN_PROGRESS}
+        onStop={onStop}
+      />
+    );
+    expect(screen.queryByTestId("chat-stop-button")).not.toBeInTheDocument();
+    expect(screen.getByTestId("chat-message-submit")).toBeInTheDocument();
+  });
+
+  test("old status-bar stop button markup is no longer rendered for plan chat in-progress", () => {
+    render(<ChatInput {...basePlanProps} />);
+    // The stop button should only be in the input row (data-testid), not as old outline text button
+    const stopButtons = screen.getAllByTestId("chat-stop-button");
+    expect(stopButtons).toHaveLength(1);
+    // No duplicate stop controls — only one stop button total
+    expect(screen.queryByText("Stop")).not.toBeInTheDocument();
+  });
+});

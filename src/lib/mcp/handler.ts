@@ -23,6 +23,7 @@ import {
   mcpGetPromptVersion,
   mcpCreateWorkflowTask,
   isWorkflowTasksEnabled,
+  isLegalToolsEnabled,
   mcpUpdateTask,
   mcpSendToTaskAgent,
   mcpSendMessage,
@@ -37,6 +38,16 @@ import {
   registerOrgTools,
   type OrgMcpAuthExtra,
 } from "@/lib/mcp/orgMcpTools";
+import {
+  mcpVerifyCitations,
+  mcpSearchCaseLaw,
+  mcpGetCases,
+} from "@/lib/mcp/courtlistenerMcpTools";
+import {
+  verifyCitationsInput,
+  searchCaseLawInput,
+  getCasesInput,
+} from "@/lib/ai/courtlistenerTools";
 import {
   isOrgPermission,
   type OrgPermission,
@@ -63,6 +74,9 @@ const AVAILABLE_TOOLS = [
   "send_to_task_agent",
   "check_status",
   "send_message",
+  "courtlistener_verify_citations",
+  "courtlistener_search_case_law",
+  "courtlistener_get_cases",
 ] as const;
 type ToolName = (typeof AVAILABLE_TOOLS)[number];
 
@@ -797,7 +811,7 @@ function createServer(
     {
       title: "Get Prompt",
       description:
-        "Fetch a prompt by id or name. Returns the fully resolved text (nested prompt references expanded, variables interpolated) of the published/live version. Pass variables as a record to fill {{VARIABLE_NAME}} placeholders; any unfilled placeholder is left intact and listed in missingVariables.",
+        "Fetch a prompt by id or name. By default returns the fully resolved text (nested prompt references expanded, variables interpolated) of the published/live version — result shape: { resolvedText, missingVariables }. Pass raw: true to skip all resolution and return the verbatim stored value with {{VAR}} tokens and nested prompt-name references intact — result shape: { raw: true, value }. Variables are ignored in raw mode.",
       inputSchema: {
         idOrName: z
           .string()
@@ -808,15 +822,21 @@ function createServer(
           .record(z.string(), z.string())
           .optional()
           .describe(
-            "Variable values to interpolate into the prompt. Keys match {{VARIABLE_NAME}} placeholders.",
+            "Variable values to interpolate into the prompt. Keys match {{VARIABLE_NAME}} placeholders. Ignored when raw is true.",
+          ),
+        raw: z
+          .boolean()
+          .optional()
+          .describe(
+            "If true, return the raw, unresolved stored value (skips variable substitution and nested-prompt expansion). Variables are ignored in raw mode. The raw text is returned in the 'value' field instead of 'resolvedText'.",
           ),
       },
     },
-    async ({ idOrName, variables }, extra) => {
+    async ({ idOrName, variables, raw }, extra) => {
       const authExtra = extra.authInfo?.extra as McpAuthExtra | undefined;
       const result = await getWorkspaceAuth(authExtra, "get_prompt");
       if (result.error) return result.error;
-      return mcpGetPrompt(result.auth!, idOrName, variables ?? {});
+      return mcpGetPrompt(result.auth!, idOrName, variables ?? {}, raw);
     },
   );
 
@@ -843,7 +863,7 @@ function createServer(
     {
       title: "Get Prompt Version",
       description:
-        "Fetch and resolve a specific version of a prompt by version id. Use for deterministic eval replay — the version's text is snapshotted at creation so it never changes. Variables are interpolated (soft mode: unfilled placeholders stay intact).",
+        "Fetch a specific version of a prompt by version id. By default resolves the version's text (variables interpolated, nested references expanded) — result shape: { resolvedText, missingVariables }. Pass raw: true to skip all resolution and return the verbatim stored value with {{VAR}} tokens intact — result shape: { raw: true, value }. IDOR-guarded: versionId must belong to the prompt identified by idOrName.",
       inputSchema: {
         idOrName: z.string().describe("Prompt cuid id OR name."),
         versionId: z
@@ -855,15 +875,21 @@ function createServer(
           .record(z.string(), z.string())
           .optional()
           .describe(
-            "Variable values to interpolate. Missing vars are returned in missingVariables; their placeholders remain intact.",
+            "Variable values to interpolate. Missing vars are returned in missingVariables; their placeholders remain intact. Ignored when raw is true.",
+          ),
+        raw: z
+          .boolean()
+          .optional()
+          .describe(
+            "If true, return the raw, unresolved stored value (skips variable substitution and nested-prompt expansion). Variables are ignored in raw mode. The raw text is returned in the 'value' field instead of 'resolvedText'.",
           ),
       },
     },
-    async ({ idOrName, versionId, variables }, extra) => {
+    async ({ idOrName, versionId, variables, raw }, extra) => {
       const authExtra = extra.authInfo?.extra as McpAuthExtra | undefined;
       const result = await getWorkspaceAuth(authExtra, "get_prompt_version");
       if (result.error) return result.error;
-      return mcpGetPromptVersion(result.auth!, idOrName, versionId, variables ?? {});
+      return mcpGetPromptVersion(result.auth!, idOrName, versionId, variables ?? {}, raw);
     },
   );
 
@@ -972,6 +998,67 @@ function createServer(
       const result = await getWorkspaceAuth(authExtra, "send_message", creator);
       if (result.error) return result.error;
       return mcpSendMessage(result.auth!, message, featureId, taskId);
+    },
+  );
+
+  // -------------------------------------------------------------------------
+  // CourtListener tools (OpenLaw-gated workspaces only)
+  // -------------------------------------------------------------------------
+
+  server.registerTool(
+    "courtlistener_verify_citations",
+    {
+      title: "Verify Legal Citations",
+      description:
+        "Verify legal citations against CourtListener. Accepts up to 250 citations, returns matched case links and results.",
+      inputSchema: verifyCitationsInput,
+    },
+    async (args, extra) => {
+      const authExtra = extra.authInfo?.extra as McpAuthExtra | undefined;
+      const result = await getWorkspaceAuth(authExtra, "courtlistener_verify_citations");
+      if (result.error) return result.error;
+      if (!isLegalToolsEnabled(result.auth!)) {
+        return { content: [{ type: "text" as const, text: "Error: tool not available" }], isError: true };
+      }
+      return mcpVerifyCitations(args as { citations: string[] });
+    },
+  );
+
+  server.registerTool(
+    "courtlistener_search_case_law",
+    {
+      title: "Search Case Law",
+      description:
+        "Search CourtListener for case law opinions. Returns case metadata including clusterId, name, citation, court, date filed, snippet, and URL.",
+      inputSchema: searchCaseLawInput,
+    },
+    async (args, extra) => {
+      const authExtra = extra.authInfo?.extra as McpAuthExtra | undefined;
+      const result = await getWorkspaceAuth(authExtra, "courtlistener_search_case_law");
+      if (result.error) return result.error;
+      if (!isLegalToolsEnabled(result.auth!)) {
+        return { content: [{ type: "text" as const, text: "Error: tool not available" }], isError: true };
+      }
+      return mcpSearchCaseLaw(args as { query: string; court?: string; filedAfter?: string; filedBefore?: string; limit: number });
+    },
+  );
+
+  server.registerTool(
+    "courtlistener_get_cases",
+    {
+      title: "Get Cases",
+      description:
+        "Fetch case metadata and opinion text from CourtListener by cluster ID. Fetches up to 10 clusters concurrently (first-page opinions only). Opinion text is truncated to maxChars across all clusters combined.",
+      inputSchema: getCasesInput,
+    },
+    async (args, extra) => {
+      const authExtra = extra.authInfo?.extra as McpAuthExtra | undefined;
+      const result = await getWorkspaceAuth(authExtra, "courtlistener_get_cases");
+      if (result.error) return result.error;
+      if (!isLegalToolsEnabled(result.auth!)) {
+        return { content: [{ type: "text" as const, text: "Error: tool not available" }], isError: true };
+      }
+      return mcpGetCases(args as { clusterIds: number[]; includeFullText: boolean; maxChars: number });
     },
   );
 

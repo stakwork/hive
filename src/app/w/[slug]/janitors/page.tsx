@@ -16,6 +16,7 @@ import {
   ListTodo,
   Package,
   RefreshCw,
+  Scale,
   Shield,
   TestTube,
   Type,
@@ -202,6 +203,21 @@ export default function DefenseJanitorsPage() {
           icon={<Shield className="h-5 w-5 text-red-500" />}
           janitors={securityJanitors}
         />
+
+        {workspace?.slug === "openlaw" && (
+          <JanitorSection
+            title="Legal Benchmarks"
+            description="Automated recursive eval loop for OpenLaw benchmark tasks."
+            icon={<Scale className="h-5 w-5 text-indigo-500" />}
+            janitors={[{
+              id: "legal-benchmark-recursion",
+              name: "Recursion Janitor",
+              icon: Scale,
+              description: "Re-runs failing benchmark evals every 6 hours until all rubrics pass.",
+              configKey: "legalBenchmarkRecursionEnabled",
+            }]}
+          />
+        )}
       </div>
     </div>
   );

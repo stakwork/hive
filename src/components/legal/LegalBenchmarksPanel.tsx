@@ -195,7 +195,7 @@ export function LegalBenchmarksPanel({ className }: { className?: string }) {
               Practice Areas
             </p>
           </div>
-          <ScrollArea className="flex-1">
+          <ScrollArea className="flex-1 min-h-0">
             <div className="p-2 space-y-0.5">
               {isLoading
                 ? Array.from({ length: 8 }).map((_, i) => (

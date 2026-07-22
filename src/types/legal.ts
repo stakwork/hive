@@ -42,6 +42,21 @@ export interface BenchmarkRunResult {
   model?: string;
   /** Judge model selected by the operator at run submission time; preserved and never clobbered by webhook echo */
   requestedJudgeModel?: string;
+  /** Per-criterion results returned inline by workflow 57179 */
+  criteria_results?: Array<{
+    id: string;
+    title: string;
+    /** Casing unverified from workflow 57179 — do not narrow to a union */
+    verdict: string;
+    reasoning: string;
+    /** Root-cause fields annotated by LEGAL_BENCHMARK_EVAL webhook */
+    cause_type?: string;
+    cause_summary?: string;
+    cause_detail?: string;
+    suggested_fix?: string;
+    log_evidence?: string;
+    cause_ref_id?: string;
+  }>;
 }
 
 /**
@@ -95,6 +110,85 @@ export interface RubricScore {
   criterion: string;
   pass: boolean;
   notes: string;
+}
+
+/**
+ * A proposed fix for a failing criterion in a legal benchmark run.
+ * Read from `ProposedFix` graph nodes written by M3 after a run completes.
+ *
+ * `prompt_version_id` — the OLD/failing prompt version (display-only).
+ * `new_prompt_version_id` — the NEW, not-yet-published fix version
+ *   (reserved for future publish wiring — not used in this v1).
+ */
+export interface ProposedFix {
+  /** Graph node ref_id */
+  ref_id?: string;
+  /** ID of the evaluation criterion this fix targets */
+  criterion_id?: string | null;
+  /** Human-readable criterion title */
+  criterion_title?: string | null;
+  /** Name of the prompt being fixed */
+  prompt_name?: string | null;
+  /** ID of the prompt being fixed */
+  prompt_id?: string | null;
+  /** Old/failing prompt version (display-only) */
+  prompt_version_id?: string | null;
+  /** New, not-yet-published fix version (reserved for future publish wiring) */
+  new_prompt_version_id?: string | null;
+  /** The value that caused failure */
+  failing_value?: string | null;
+  /** The value that would have passed */
+  passing_value?: string | null;
+  /** Description of the change between the old and new prompt version */
+  delta?: string | null;
+  /** Model reasoning behind the proposed fix */
+  reasoning?: string | null;
+  /**
+   * Canonical accept/reject lifecycle field (`pending → accepted | rejected`).
+   * Preferred over the legacy `status` field for all accept/reject branching.
+   * May be absent on older nodes written before this field was introduced.
+   */
+  eval_status?: string | null;
+  /**
+   * Legacy proposal status field. Still written by the UI accept/reject path.
+   * Do NOT use for accept/reject branching — read `eval_status` first and fall
+   * back to this only when `eval_status` is absent.
+   * @deprecated Use `eval_status` instead.
+   */
+  status?: string | null;
+  /** Status of the automated rerun using the new prompt version */
+  rerun_status?: string | null;
+  /** Score before the fix (stringified number) */
+  before_score?: string | null;
+  /** Score after the fix (stringified number) */
+  after_score?: string | null;
+  /** Score delta, e.g. "+4" or "-2" */
+  score_delta?: string | null;
+  /** Run ID of the automated rerun that validated this fix */
+  rerun_run_id?: string | null;
+  /** User ID who resolved (accepted/rejected) this fix */
+  resolved_by?: string | null;
+  /** ISO timestamp when this fix was resolved */
+  resolved_at?: string | null;
+}
+
+/**
+ * A single entry in the Eval Runs history table, joining an EvalTrigger node
+ * with its matched StakworkRun (if instrumentation succeeded).
+ */
+export interface EvalRunHistoryEntry {
+  /** EvalTrigger.ref_id — used as the join key and stable row key */
+  triggerId: string;
+  /** Parsed output from the matched EvalTriggerOutput node; null when run is still in progress or unmatched */
+  output: {
+    result: string;        // "pass" | "fail"
+    score: number;         // pass_rate 0–1, via Number(n.properties?.score ?? 0)
+    judge_notes?: string;  // undefined when absent
+  } | null;
+  /** ISO timestamp from the matched StakworkRun.createdAt; null when no run matched */
+  createdAt: string | null;
+  /** Stakwork project ID from the matched StakworkRun; null when no run matched */
+  projectId: number | null;
 }
 
 /**

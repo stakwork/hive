@@ -13,6 +13,7 @@ import { StalePRTask } from "@/lib/github/stale-pr-janitor";
 
 interface AdminJanitorTogglesProps {
   workspaceId: string;
+  workspaceSlug: string;
 }
 
 interface JanitorConfig {
@@ -33,6 +34,7 @@ interface JanitorConfig {
   prUseRebaseForUpdates: boolean;
   stalePrTasksEnabled: boolean;
   stalePrTaskThresholdDays: number;
+  legalBenchmarkRecursionEnabled?: boolean;
 }
 
 const ADDITIONAL_TOGGLE_LABELS: Record<string, string> = {
@@ -50,6 +52,7 @@ const ADDITIONAL_TOGGLE_LABELS: Record<string, string> = {
 
 export default function AdminJanitorToggles({
   workspaceId,
+  workspaceSlug,
 }: AdminJanitorTogglesProps) {
   const [config, setConfig] = useState<JanitorConfig | null>(null);
   const [loading, setLoading] = useState(true);
@@ -219,6 +222,22 @@ export default function AdminJanitorToggles({
           />
         </div>
       ))}
+
+      {/* Legal Benchmarks — OpenLaw workspace only */}
+      {workspaceSlug === "openlaw" && (
+        <div className="border rounded-lg p-3 space-y-3">
+          <div className="flex items-center justify-between">
+            <label className="text-sm font-medium">Legal Benchmark Recursion Janitor</label>
+            <Switch
+              checked={config.legalBenchmarkRecursionEnabled ?? false}
+              onCheckedChange={(checked) => handleToggle("legalBenchmarkRecursionEnabled", checked)}
+            />
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Re-runs failing benchmark evals every 6 hours until all rubrics pass.
+          </p>
+        </div>
+      )}
 
       {/* Stale CI Task Janitor — separate section with threshold + run controls */}
       <div className="border rounded-lg p-3 space-y-3">

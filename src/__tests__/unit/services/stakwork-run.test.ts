@@ -3102,7 +3102,7 @@ describe("Stakwork Run Service", () => {
         orderBy: { createdAt: "desc" },
         skip: 0,
         take: 10,
-        include: expect.any(Object),
+        select: expect.any(Object),
       });
     });
 
@@ -3126,6 +3126,47 @@ describe("Stakwork Run Service", () => {
       await expect(
         getStakworkRuns({ workspaceId: "ws-1", limit: 10, offset: 0 }, "user-1")
       ).rejects.toThrow("Access denied");
+    });
+
+    test("should include result: true in select when includeResult is true", async () => {
+      const mockWorkspace = {
+        id: "ws-1",
+        members: [{ userId: "user-1" }],
+      };
+
+      mockedDb.workspace.findUnique = vi.fn().mockResolvedValue(mockWorkspace);
+      mockedDb.stakworkRun.count = vi.fn().mockResolvedValue(0);
+      mockedDb.stakworkRun.findMany = vi.fn().mockResolvedValue([]);
+
+      await getStakworkRuns(
+        { workspaceId: "ws-1", limit: 10, offset: 0, includeResult: true },
+        "user-1"
+      );
+
+      expect(db.stakworkRun.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          select: expect.objectContaining({ result: true }),
+        })
+      );
+    });
+
+    test("should omit result from select when includeResult is false", async () => {
+      const mockWorkspace = {
+        id: "ws-1",
+        members: [{ userId: "user-1" }],
+      };
+
+      mockedDb.workspace.findUnique = vi.fn().mockResolvedValue(mockWorkspace);
+      mockedDb.stakworkRun.count = vi.fn().mockResolvedValue(0);
+      mockedDb.stakworkRun.findMany = vi.fn().mockResolvedValue([]);
+
+      await getStakworkRuns(
+        { workspaceId: "ws-1", limit: 10, offset: 0, includeResult: false },
+        "user-1"
+      );
+
+      const call = vi.mocked(db.stakworkRun.findMany).mock.calls[0][0] as { select?: Record<string, unknown> };
+      expect(call.select).not.toHaveProperty("result");
     });
   });
 

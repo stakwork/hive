@@ -67,6 +67,7 @@ import type {
   StreamToolCall,
   ToolCallStatus,
 } from "@/types/streaming";
+import type { TokenUsage } from "@/types/usage";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
@@ -207,6 +208,12 @@ export interface CanvasChatMessage {
   /** Files attached by the user before send. Persisted in SharedConversation JSON. */
   attachments?: CanvasAttachment[];
   /**
+   * Per-turn aggregated token usage, stamped by `useSendCanvasChatMessage`
+   * onto the last tool-call batch message when the stream `finish` event
+   * carries usage data. Live-stream only — not persisted to `SharedConversation`.
+   */
+  usage?: TokenUsage;
+  /**
    * Synthetic assistant message describing an approval outcome. Set by
    * `/api/ask/quick` after `handleApproval` creates the DB row; carries
    * the new entity id and the canvas ref it landed on.
@@ -293,6 +300,13 @@ export interface CanvasConversation {
    */
   isStreaming: boolean;
   activeToolCalls: ToolCall[];
+  /**
+   * True while a repo_agent run is active in this conversation.
+   * Driven by (a) local tool-call detection (instant feedback for the
+   * initiator) and (b) the Pusher CANVAS_RUN_ACTIVE event (for all
+   * participants in a shared room).
+   */
+  runActive: boolean;
   /** Hint context used when building `/api/ask/quick` requests. */
   context: ConversationContext;
 }
@@ -510,6 +524,21 @@ interface CanvasChatState {
   setIsLoading: (conversationId: string, isLoading: boolean) => void;
   /** Mirror of `setIsLoading` but for the streaming gate. See `CanvasConversation.isStreaming`. */
   setIsStreaming: (conversationId: string, streaming: boolean) => void;
+  /**
+   * Set the runActive flag for a conversation — driven by local tool-call
+   * detection and by the Pusher CANVAS_RUN_ACTIVE event (for non-initiating
+   * participants).
+   */
+  setRunActive: (conversationId: string, active: boolean) => void;
+  /**
+   * Stop all in-flight repo_agent runs for the active conversation.
+   * POSTs to /api/ask/abort. Does NOT expose request_id to the client.
+   */
+  stopRun: (opts: {
+    serverConversationId: string;
+    orgId: string;
+    turnId?: string;
+  }) => Promise<void>;
   /** Append a synthetic assistant error message to a conversation. */
   appendAssistantError: (
     conversationId: string,
@@ -600,6 +629,7 @@ export const useCanvasChatStore = create<CanvasChatState>()(
           messages: seedMessages ?? [],
           isLoading: false,
           isStreaming: false,
+          runActive: false,
           activeToolCalls: [],
           context,
         };
@@ -817,6 +847,34 @@ export const useCanvasChatStore = create<CanvasChatState>()(
           false,
           "setIsStreaming",
         ),
+
+      setRunActive: (conversationId, active) =>
+        set(
+          (s) => {
+            const conv = s.conversations[conversationId];
+            if (!conv) return s;
+            return {
+              conversations: {
+                ...s.conversations,
+                [conversationId]: { ...conv, runActive: active },
+              },
+            };
+          },
+          false,
+          "setRunActive",
+        ),
+
+      stopRun: async ({ serverConversationId, orgId, turnId }) => {
+        try {
+          await fetch("/api/ask/abort", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ conversationId: serverConversationId, orgId, turnId }),
+          });
+        } catch (e) {
+          console.error("[canvasChatStore] stopRun failed:", e);
+        }
+      },
 
       appendAssistantError: (conversationId, content) =>
         set(

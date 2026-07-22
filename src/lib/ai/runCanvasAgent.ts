@@ -243,6 +243,12 @@ export interface RunCanvasAgentOptions {
    */
   currentCanvasConversationId?: string;
   /**
+   * Client-generated turn id for this user turn. Forwarded to askTools/
+   * askToolsMulti so repo_agent executes can register their runs against
+   * the conversation for the Stop control. Absent → no run tracking.
+   */
+  turnId?: string;
+  /**
    * When `true`, strip all write tools before invoking `streamText`.
    * Use this for read-only callers (e.g. plan-mode org context scout)
    * to guarantee the agent can't mutate canvas/research/connection/
@@ -553,6 +559,7 @@ export async function runCanvasAgent(
     silentPusher = false,
     hooks,
     currentCanvasConversationId,
+    turnId,
     additionalTools,
     dispatchedResearch,
     dispatchedGraphWalks,
@@ -632,6 +639,13 @@ export async function runCanvasAgent(
   // (and unused) when no org-tool branch is built.
   const capturedWebSearchResults: CapturedSearchResult[] = [];
 
+  // Turn-level cancellation flag, shared with the repo_agent tool
+  // executes (via AskToolsContext). When the user stops a run, the
+  // execute sets `requested: true` and the `stopWhen` condition below
+  // ends the agent loop after the current step — otherwise the model
+  // treats the cancellation as a tool failure and starts another run.
+  const cancellation = { requested: false };
+
   // Capability composition inputs, shared by both branches below.
   // `orgCapabilities` is the `includes`-expanded selection in canonical
   // order, with org-gated capabilities (e.g. `prompts`, restricted to the
@@ -661,7 +675,11 @@ export async function runCanvasAgent(
       cachedConcepts?.conceptsByWorkspace ??
       (await fetchConceptsForWorkspaces(workspaceConfigs));
 
-    tools = askToolsMulti(workspaceConfigs, apiKey, conceptsByWorkspace);
+    tools = askToolsMulti(workspaceConfigs, apiKey, conceptsByWorkspace, {
+      conversationId: currentCanvasConversationId,
+      turnId,
+      cancellation,
+    });
 
     if (orgId) {
       // Merge the selected capabilities' org tool families. The caller
@@ -751,6 +769,10 @@ export async function runCanvasAgent(
       workspaceId: ws.workspaceId,
       workspaceSlug: ws.slug,
       userId: ws.userId,
+    }, {
+      conversationId: currentCanvasConversationId,
+      turnId: opts.turnId,
+      cancellation,
     });
 
     // Best-effort: a swarm timeout/outage here must NOT kill the whole
@@ -955,6 +977,9 @@ export async function runCanvasAgent(
     providerOptions,
     stopWhen: [
       createHasEndMarkerCondition(),
+      // User pressed Stop on a repo_agent run — end the whole turn after
+      // the current step instead of letting the model retry the tool.
+      () => cancellation.requested,
       ...(extraStopConditions
         ? Array.isArray(extraStopConditions)
           ? extraStopConditions

@@ -675,7 +675,7 @@ describe("updateNode", () => {
       expect(result).toEqual({ success: true });
 
       expect(mockFetch).toHaveBeenCalledWith(
-        "https://test-swarm.sphinx.chat:8444/node",
+        "https://test-swarm.sphinx.chat:8444/node?ref_id=eval-set-1",
         expect.objectContaining({
           method: "PUT",
           headers: expect.objectContaining({
@@ -693,6 +693,60 @@ describe("updateNode", () => {
       // Verify that legacy 'properties' key is NOT sent
       const sentBody = JSON.parse(mockFetch.mock.calls[0][1].body as string);
       expect(sentBody).not.toHaveProperty("properties");
+      // Verify ref_id is in the URL (never "undefined")
+      const calledUrl = mockFetch.mock.calls[0][0] as string;
+      expect(calledUrl).toContain("?ref_id=eval-set-1");
+      expect(calledUrl).not.toContain("undefined");
+    });
+
+    test("accept status: ref_id appears in query string and body (never 'undefined')", async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({ status: "success" }),
+      });
+
+      const now = new Date().toISOString();
+      const result = await updateNode(config, {
+        ref_id: "fix-ref-abc123",
+        node_type: "ProposedFix",
+        node_data: { status: "accepted", resolved_by: "user-1", resolved_at: now },
+      });
+
+      expect(result).toEqual({ success: true });
+
+      const calledUrl = mockFetch.mock.calls[0][0] as string;
+      expect(calledUrl).toBe("https://test-swarm.sphinx.chat:8444/node?ref_id=fix-ref-abc123");
+      expect(calledUrl).not.toContain("undefined");
+
+      const sentBody = JSON.parse(mockFetch.mock.calls[0][1].body as string);
+      expect(sentBody.ref_id).toBe("fix-ref-abc123");
+      expect(sentBody.node_data.status).toBe("accepted");
+    });
+
+    test("reject status: ref_id appears in query string and body (never 'undefined')", async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({ status: "success" }),
+      });
+
+      const now = new Date().toISOString();
+      const result = await updateNode(config, {
+        ref_id: "fix-ref-xyz789",
+        node_type: "ProposedFix",
+        node_data: { status: "rejected", resolved_by: "user-2", resolved_at: now },
+      });
+
+      expect(result).toEqual({ success: true });
+
+      const calledUrl = mockFetch.mock.calls[0][0] as string;
+      expect(calledUrl).toBe("https://test-swarm.sphinx.chat:8444/node?ref_id=fix-ref-xyz789");
+      expect(calledUrl).not.toContain("undefined");
+
+      const sentBody = JSON.parse(mockFetch.mock.calls[0][1].body as string);
+      expect(sentBody.ref_id).toBe("fix-ref-xyz789");
+      expect(sentBody.node_data.status).toBe("rejected");
     });
 
     test("returns success for EvalRequirement update", async () => {
@@ -718,6 +772,28 @@ describe("updateNode", () => {
   });
 
   describe("Failure cases", () => {
+    test("returns failure without calling fetch when ref_id is missing", async () => {
+      const result = await updateNode(config, {
+        ref_id: "",
+        node_type: "ProposedFix",
+        node_data: { status: "accepted" },
+      });
+
+      expect(result).toEqual({ success: false, error: "ref_id is required to update a node" });
+      expect(mockFetch).not.toHaveBeenCalled();
+    });
+
+    test("returns failure without calling fetch when ref_id is undefined", async () => {
+      const result = await updateNode(config, {
+        ref_id: undefined as unknown as string,
+        node_type: "ProposedFix",
+        node_data: { status: "rejected" },
+      });
+
+      expect(result).toEqual({ success: false, error: "ref_id is required to update a node" });
+      expect(mockFetch).not.toHaveBeenCalled();
+    });
+
     test("returns failure when HTTP response is not ok", async () => {
       mockFetch.mockResolvedValueOnce({
         ok: false,
@@ -1254,6 +1330,7 @@ describe("searchNodesByAttributes", () => {
           search_filters: [{ attribute: "file", value: "stakwork/senza-lnd/", comparator: "contains" }],
           include_properties: true,
           limit: 1000,
+          skip_cache: false,
         }),
       }),
     );
@@ -1342,6 +1419,56 @@ describe("searchNodesByAttributes", () => {
     const sentBody = JSON.parse(mockFetch.mock.calls[0][1].body as string);
     expect(sentBody.include_properties).toBe(false);
     expect(sentBody.limit).toBe(1000);
+  });
+
+  test("sends skip_cache: true in POST body when skipCache: true is passed", async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({ nodes: [] }),
+    });
+
+    await searchNodesByAttributes(config, {
+      nodeTypes: ["File"],
+      filters: [{ attribute: "file", value: `${repoKey}/`, comparator: "contains" }],
+      skipCache: true,
+    });
+
+    const sentBody = JSON.parse(mockFetch.mock.calls[0][1].body as string);
+    expect(sentBody.skip_cache).toBe(true);
+  });
+
+  test("sends skip_cache: false in POST body when skipCache is omitted", async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({ nodes: [] }),
+    });
+
+    await searchNodesByAttributes(config, {
+      nodeTypes: ["File"],
+      filters: [{ attribute: "file", value: `${repoKey}/`, comparator: "contains" }],
+    });
+
+    const sentBody = JSON.parse(mockFetch.mock.calls[0][1].body as string);
+    expect(sentBody.skip_cache).toBe(false);
+  });
+
+  test("sends skip_cache: false in POST body when skipCache is explicitly false", async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({ nodes: [] }),
+    });
+
+    await searchNodesByAttributes(config, {
+      nodeTypes: ["File"],
+      filters: [{ attribute: "file", value: `${repoKey}/`, comparator: "contains" }],
+      skipCache: false,
+    });
+
+    const sentBody = JSON.parse(mockFetch.mock.calls[0][1].body as string);
+    expect(sentBody.skip_cache).toBe(false);
   });
 
   test("returns all nodes in response — does not truncate to 1000", async () => {

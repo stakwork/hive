@@ -22,6 +22,7 @@ interface UseStakworkGenerationOptions {
   featureId: string;
   type: StakworkRunType;
   enabled?: boolean;
+  successToast?: string;
 }
 
 const STALE_RUN_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes
@@ -30,6 +31,7 @@ export function useStakworkGeneration({
   featureId,
   type,
   enabled = true,
+  successToast,
 }: UseStakworkGenerationOptions) {
   const [latestRun, setLatestRun] = useState<StakworkRun | null>(null);
   const [querying, setQuerying] = useState(false);
@@ -50,6 +52,7 @@ export function useStakworkGeneration({
         featureId,
         type,
         limit: "1",
+        includeResult: "true",
       });
 
       const response = await fetch(`/api/stakwork/runs?${params}`);
@@ -170,14 +173,14 @@ export function useStakworkGeneration({
         throw new Error(error.error || "Failed to stop run");
       }
 
-      toast.success("Deep Research stopped");
+      toast.success(successToast ?? "Deep Research stopped");
       await queryLatestRun();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Failed to stop run");
     } finally {
       setIsStopping(false);
     }
-  }, [latestRun?.id, isStopping, queryLatestRun]);
+  }, [latestRun?.id, isStopping, queryLatestRun, successToast]);
 
   return {
     latestRun,

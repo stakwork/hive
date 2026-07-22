@@ -90,13 +90,28 @@ async function callMockEndpoint(request: NextRequest, workspaceId: string) {
       { status: 404 }
     );
   }
+
+  // Forward subgraph discriminator params so the mock route can branch on them.
+  // When these params are absent the forwarded URL is byte-for-byte identical to
+  // the previous behaviour, so unrelated consumers are unaffected.
+  const incomingParams = request.nextUrl.searchParams;
+  const forwardedParams: Record<string, string> = {
+    workspaceSlug: workspace.slug,
+  };
+  for (const key of ["endpoint", "node_type", "start_node", "depth"] as const) {
+    const val = incomingParams.get(key);
+    if (val !== null) forwardedParams[key] = val;
+  }
   
   try {
     // In test environment, import and call the mock route handler directly
     // In production, use fetch to call the mock endpoint
     if (process.env.NODE_ENV === 'test') {
       const { GET: MockGET } = await import("@/app/api/mock/jarvis/graph/route");
-      const mockUrl = new URL(`/api/mock/jarvis/graph?workspaceSlug=${workspace.slug}`, request.nextUrl.origin);
+      const mockUrl = new URL(`/api/mock/jarvis/graph`, request.nextUrl.origin);
+      for (const [k, v] of Object.entries(forwardedParams)) {
+        mockUrl.searchParams.set(k, v);
+      }
       const mockRequest = new NextRequest(mockUrl, {
         headers: request.headers,
       });
@@ -104,7 +119,9 @@ async function callMockEndpoint(request: NextRequest, workspaceId: string) {
     } else {
       // Call the mock endpoint via HTTP (always use localhost for internal API calls to avoid SSL issues)
       const mockUrl = new URL(`/api/mock/jarvis/graph`, 'http://localhost:3000');
-      mockUrl.searchParams.set("workspaceSlug", workspace.slug);
+      for (const [k, v] of Object.entries(forwardedParams)) {
+        mockUrl.searchParams.set(k, v);
+      }
       
       const mockResponse = await fetch(mockUrl.toString(), {
         headers: {

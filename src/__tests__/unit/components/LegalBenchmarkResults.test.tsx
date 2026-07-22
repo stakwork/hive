@@ -67,6 +67,82 @@ vi.mock("@/hooks/useLegalBenchmarkRun", () => ({
   useLegalBenchmarkRun: (runId: string) => mockUseLegalBenchmarkRun(runId),
 }));
 
+// ─── useProposedFixes mock ─────────────────────────────────────────────────────
+
+const mockUseProposedFixes = vi.fn(() => ({
+  fixes: [] as import("@/types/legal").ProposedFix[],
+  isLoading: false,
+  error: null as string | null,
+  refetch: vi.fn(),
+}));
+
+vi.mock("@/hooks/useProposedFixes", () => ({
+  useProposedFixes: (runId: string) => mockUseProposedFixes(runId),
+}));
+
+// ─── Pusher mock ─────────────────────────────────────────────────────────────
+vi.mock("@/lib/pusher", () => ({
+  getPusherClient: () => ({
+    subscribe: () => ({
+      bind: () => {},
+      unbind: () => {},
+    }),
+    unsubscribe: () => {},
+  }),
+  getWorkspaceChannelName: (slug: string) => `workspace-${slug}`,
+  PUSHER_EVENTS: {
+    STAKWORK_RUN_UPDATE: "stakwork-run-update",
+  },
+}));
+
+// ─── ProposedFixCard mock ──────────────────────────────────────────────────────
+
+vi.mock("@/components/legal/StakworkRunLink", () => ({
+  StakworkRunLink: ({ projectId, isSuperAdmin }: { projectId: number | null; isSuperAdmin: boolean }) =>
+    isSuperAdmin && projectId
+      ? React.createElement(
+          "a",
+          { href: `https://jobs.stakwork.com/admin/projects/${projectId}` },
+          "View on Stakwork",
+        )
+      : null,
+}));
+
+const mockWorkspaceSlug = { value: "openlaw" };
+
+vi.mock("@/hooks/useWorkspace", () => ({
+  useWorkspace: () => ({
+    workspace: { id: "workspace-123", slug: mockWorkspaceSlug.value },
+  }),
+}));
+
+vi.mock("@/components/ui/collapsible", () => ({
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  Collapsible: ({ children, open, onOpenChange }: any) => (
+    <div data-testid="collapsible" data-open={String(open)} onClick={() => onOpenChange?.(!open)}>{children}</div>
+  ),
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  CollapsibleTrigger: ({ children, asChild }: any) => (
+    <div data-testid="collapsible-trigger" data-aschild={String(asChild)}>{children}</div>
+  ),
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  CollapsibleContent: ({ children }: any) => (
+    <div data-testid="collapsible-content">{children}</div>
+  ),
+}));
+
+vi.mock("@/components/ui/input", () => ({
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  Input: ({ value, onChange, placeholder, className }: any) =>
+    React.createElement("input", {
+      "data-testid": "filter-input",
+      value,
+      onChange,
+      placeholder,
+      className,
+    }),
+}));
+
 vi.mock("@/components/ui/button", () => ({
   Button: ({
     children,
@@ -74,16 +150,20 @@ vi.mock("@/components/ui/button", () => ({
     variant,
     size,
     className,
+    disabled,
+    "aria-label": ariaLabel,
   }: {
     children?: React.ReactNode;
     onClick?: () => void;
     variant?: string;
     size?: string;
     className?: string;
+    disabled?: boolean;
+    "aria-label"?: string;
   }) =>
     React.createElement(
       "button",
-      { onClick, "data-variant": variant, "data-size": size, className },
+      { onClick, "data-variant": variant, "data-size": size, className, disabled, "aria-label": ariaLabel },
       children
     ),
 }));
@@ -105,6 +185,62 @@ vi.mock("@/components/ui/badge", () => ({
     ),
 }));
 
+// ─── useEvalRunHistory mock ────────────────────────────────────────────────────
+
+const mockUseEvalRunHistory = vi.fn(() => ({
+  history: [] as import("@/types/legal").EvalRunHistoryEntry[],
+  isLoading: false,
+  error: null as string | null,
+  refetch: vi.fn(),
+}));
+
+vi.mock("@/hooks/useEvalRunHistory", () => ({
+  useEvalRunHistory: (input: { refId?: string | null; slug: string }) => mockUseEvalRunHistory(input),
+}));
+
+// ─── useLegalBenchmarkEval mock ────────────────────────────────────────────────
+
+const mockRunEval = vi.fn(async () => ({
+  status: "started" as import("@/hooks/useLegalBenchmarkEval").EvalResultStatus,
+  message: "Eval started.",
+}));
+const mockIsSubmitting = { value: false };
+
+vi.mock("@/hooks/useLegalBenchmarkEval", () => ({
+  useLegalBenchmarkEval: () => ({
+    runEval: mockRunEval,
+    get isSubmitting() { return mockIsSubmitting.value; },
+  }),
+}));
+
+// ─── eval-normalizers pass-through mock ──────────────────────────────────────
+
+vi.mock("@/lib/harvey-lab/eval-normalizers", () => ({
+  normalizeOutput: (n: { ref_id: string; properties?: Record<string, unknown> }) => ({
+    ref_id: n.ref_id,
+    attempt_number: 0,
+    result: String(n.properties?.result ?? ""),
+    score: Number(n.properties?.score ?? 0),
+    judge_notes: n.properties?.judge_notes ? String(n.properties.judge_notes) : undefined,
+  }),
+  triggerHasIdentity: () => true,
+}));
+
+// ─── date-fns mock ────────────────────────────────────────────────────────────
+
+vi.mock("date-fns", () => ({
+  formatDistanceToNow: () => "2 hours ago",
+}));
+
+// ─── Skeleton mock ────────────────────────────────────────────────────────────
+
+vi.mock("@/components/ui/skeleton", () => ({
+  Skeleton: ({ className }: { className?: string }) =>
+    React.createElement("div", { "data-testid": "skeleton", className }),
+}));
+
+// ─── EvalRunsBox import (re-exported through LegalBenchmarkResults) ───────────
+
 // ─── Import after mocks ───────────────────────────────────────────────────────
 
 const { LegalBenchmarkResults } = await import(
@@ -118,10 +254,19 @@ describe("LegalBenchmarkResults", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    mockWorkspaceSlug.value = "openlaw";
+    mockRunEval.mockResolvedValue({ status: "started", message: "Eval started." });
+    mockIsSubmitting.value = false;
     mockUseLegalBenchmarkRun.mockReturnValue({
       run: makeMockRun(),
       isLoading: false,
       isStale: false,
+      refetch: vi.fn(),
+    });
+    mockUseProposedFixes.mockReturnValue({
+      fixes: [],
+      isLoading: false,
+      error: null,
       refetch: vi.fn(),
     });
   });
@@ -342,7 +487,6 @@ describe("LegalBenchmarkResults", () => {
 
     // "Rubric Scores" table header should no longer exist
     expect(screen.queryByText("Rubric Scores")).toBeNull();
-    expect(screen.queryByText("Criterion")).toBeNull();
   });
 
   it("calls onReset when 'Run again' is clicked in COMPLETE state", async () => {
@@ -421,4 +565,557 @@ describe("LegalBenchmarkResults", () => {
     );
     expect(container.firstChild).toBeNull();
   });
+
+  // ─── Rubric Details accordion ─────────────────────────────────────────────
+
+  const makeCriteriaResults = () => [
+    { id: "crit-1", title: "Accuracy", verdict: "fail", reasoning: "Missing key point" },
+    { id: "crit-2", title: "Completeness", verdict: "pass", reasoning: "All sections covered" },
+    { id: "crit-3", title: "Clarity", verdict: "fail", reasoning: "Ambiguous wording" },
+  ];
+
+  function makeCompleteRunWithCriteria(criteriaResults: Array<{ id: string; title: string; verdict: string; reasoning: string }> | undefined, allPass = false) {
+    return makeMockRun({
+      status: "complete",
+      runnerOutputText: "Output",
+      runnerRun: makeRunnerRow({
+        status: "COMPLETED",
+        result: {
+          taskSlug: "antitrust/task-1",
+          taskTitle: "Test",
+          n_passed: criteriaResults?.filter((c) => c.verdict === "pass").length ?? 0,
+          n_total: criteriaResults?.length ?? 0,
+          all_pass: allPass,
+          criteria_results: criteriaResults,
+        },
+      }),
+    });
+  }
+
+  it("renders Rubric Details section when criteria_results is present", () => {
+    const criteriaResults = makeCriteriaResults();
+    mockUseLegalBenchmarkRun.mockReturnValue({
+      run: makeCompleteRunWithCriteria(criteriaResults, false),
+      isLoading: false,
+      isStale: false,
+      refetch: vi.fn(),
+    });
+
+    render(React.createElement(LegalBenchmarkResults, { runId: "run-abc", onReset }));
+
+    expect(screen.getByText(/Rubric Details/)).toBeInTheDocument();
+    // failedCount = 2, total = 3
+    expect(screen.getByText(/2 failed \/ 3 total/)).toBeInTheDocument();
+  });
+
+  it("renders failed criteria before passing criteria in list order", () => {
+    const criteriaResults = makeCriteriaResults(); // fail, pass, fail
+    mockUseLegalBenchmarkRun.mockReturnValue({
+      run: makeCompleteRunWithCriteria(criteriaResults, false),
+      isLoading: false,
+      isStale: false,
+      refetch: vi.fn(),
+    });
+
+    render(React.createElement(LegalBenchmarkResults, { runId: "run-abc", onReset }));
+
+    // All three titles should appear
+    const titleEls = [
+      screen.getByText("Accuracy"),
+      screen.getByText("Clarity"),
+      screen.getByText("Completeness"),
+    ];
+    // Failed ("Accuracy", "Clarity") should appear before passed ("Completeness")
+    const allText = document.body.textContent ?? "";
+    const accPos = allText.indexOf("Accuracy");
+    const clarPos = allText.indexOf("Clarity");
+    const compPos = allText.indexOf("Completeness");
+    expect(titleEls.length).toBe(3);
+    expect(accPos).toBeLessThan(compPos);
+    expect(clarPos).toBeLessThan(compPos);
+  });
+
+  it("is collapsed by default when all_pass is true", () => {
+    const criteriaResults = [
+      { id: "crit-1", title: "Accuracy", verdict: "pass", reasoning: "Great" },
+    ];
+    mockUseLegalBenchmarkRun.mockReturnValue({
+      run: makeCompleteRunWithCriteria(criteriaResults, true),
+      isLoading: false,
+      isStale: false,
+      refetch: vi.fn(),
+    });
+
+    render(React.createElement(LegalBenchmarkResults, { runId: "run-abc", onReset }));
+
+    // The outer Collapsible (first one) should have data-open="false"
+    const collapsibles = screen.getAllByTestId("collapsible");
+    // First collapsible is the outer Rubric Details section
+    expect(collapsibles[0]).toHaveAttribute("data-open", "false");
+  });
+
+  it("is expanded by default when all_pass is false", () => {
+    const criteriaResults = makeCriteriaResults();
+    mockUseLegalBenchmarkRun.mockReturnValue({
+      run: makeCompleteRunWithCriteria(criteriaResults, false),
+      isLoading: false,
+      isStale: false,
+      refetch: vi.fn(),
+    });
+
+    render(React.createElement(LegalBenchmarkResults, { runId: "run-abc", onReset }));
+
+    const collapsibles = screen.getAllByTestId("collapsible");
+    // First collapsible is the outer Rubric Details section
+    expect(collapsibles[0]).toHaveAttribute("data-open", "true");
+  });
+
+  it("filter input narrows the displayed criterion list", async () => {
+    const user = userEvent.setup();
+    const criteriaResults = makeCriteriaResults(); // Accuracy, Completeness, Clarity
+    mockUseLegalBenchmarkRun.mockReturnValue({
+      run: makeCompleteRunWithCriteria(criteriaResults, false),
+      isLoading: false,
+      isStale: false,
+      refetch: vi.fn(),
+    });
+
+    render(React.createElement(LegalBenchmarkResults, { runId: "run-abc", onReset }));
+
+    // All three visible initially
+    expect(screen.getByText("Accuracy")).toBeInTheDocument();
+    expect(screen.getByText("Completeness")).toBeInTheDocument();
+    expect(screen.getByText("Clarity")).toBeInTheDocument();
+
+    // Type in filter to show only "Accuracy"
+    const filterInput = screen.getByTestId("filter-input");
+    await user.type(filterInput, "Accuracy");
+
+    expect(screen.getByText("Accuracy")).toBeInTheDocument();
+    expect(screen.queryByText("Completeness")).toBeNull();
+    expect(screen.queryByText("Clarity")).toBeNull();
+  });
+
+  it("Rubric Details section is absent when criteria_results is undefined", () => {
+    mockUseLegalBenchmarkRun.mockReturnValue({
+      run: makeCompleteRunWithCriteria(undefined, true),
+      isLoading: false,
+      isStale: false,
+      refetch: vi.fn(),
+    });
+
+    render(React.createElement(LegalBenchmarkResults, { runId: "run-abc", onReset }));
+
+    expect(screen.queryByText(/Rubric Details/)).toBeNull();
+    expect(screen.queryByTestId("filter-input")).toBeNull();
+  });
+
+  // ─── Rubric Details copy icon ─────────────────────────────────────────────
+
+  it("copies TSV text to clipboard when rubric copy icon is clicked", async () => {
+    // userEvent.setup() installs its own clipboard stub; spy on writeText AFTER setup()
+    const user = userEvent.setup();
+    const writeSpy = vi.spyOn(navigator.clipboard, "writeText").mockResolvedValue(undefined);
+
+    const criteriaResults = makeCriteriaResults();
+    mockUseLegalBenchmarkRun.mockReturnValue({
+      run: makeCompleteRunWithCriteria(criteriaResults, false),
+      isLoading: false,
+      isStale: false,
+      refetch: vi.fn(),
+    });
+
+    render(React.createElement(LegalBenchmarkResults, { runId: "run-abc", onReset }));
+
+    const copyBtn = screen.getByRole("button", { name: "Copy rubric results" });
+    await user.click(copyBtn);
+
+    expect(writeSpy).toHaveBeenCalledTimes(1);
+    const copied: string = writeSpy.mock.calls[0][0];
+    expect(copied).toContain("\t");
+    expect(copied).toContain("fail");
+    expect(copied).toContain("crit-1");
+    expect(copied).toContain("Missing key point");
+
+    vi.restoreAllMocks();
+  });
+
+  it("sanitizes embedded newlines and tabs in reasoning so TSV has one row per criterion plus header", async () => {
+    const user = userEvent.setup();
+    const writeSpy = vi.spyOn(navigator.clipboard, "writeText").mockResolvedValue(undefined);
+
+    const criteriaWithSpecialChars = [
+      { id: "crit-a", title: "Title\twith\ttabs", verdict: "pass", reasoning: "Line one\nLine two\tTabbed" },
+      { id: "crit-b", title: "Normal", verdict: "fail", reasoning: "Simple reasoning" },
+    ];
+    mockUseLegalBenchmarkRun.mockReturnValue({
+      run: makeCompleteRunWithCriteria(criteriaWithSpecialChars, false),
+      isLoading: false,
+      isStale: false,
+      refetch: vi.fn(),
+    });
+
+    render(React.createElement(LegalBenchmarkResults, { runId: "run-abc", onReset }));
+
+    const copyBtn = screen.getByRole("button", { name: "Copy rubric results" });
+    await user.click(copyBtn);
+
+    expect(writeSpy).toHaveBeenCalledTimes(1);
+    const copied: string = writeSpy.mock.calls[0][0];
+    const lines = copied.split("\n");
+    // header + 2 criteria = 3 lines total
+    expect(lines).toHaveLength(3);
+    expect(lines[0]).toBe("Verdict\tID\tTitle\tReasoning");
+    // no embedded newlines or tabs remain in data rows
+    expect(lines[1]).not.toContain("\n");
+    expect(lines[2]).not.toContain("\n");
+
+    vi.restoreAllMocks();
+  });
+
+  it("clicking the rubric copy icon does not toggle the Rubric Details collapsible", async () => {
+    const user = userEvent.setup();
+    const criteriaResults = makeCriteriaResults();
+    mockUseLegalBenchmarkRun.mockReturnValue({
+      run: makeCompleteRunWithCriteria(criteriaResults, false),
+      isLoading: false,
+      isStale: false,
+      refetch: vi.fn(),
+    });
+
+    render(React.createElement(LegalBenchmarkResults, { runId: "run-abc", onReset }));
+
+    // Outer collapsible (Rubric Details) starts open (all_pass=false)
+    const collapsibles = screen.getAllByTestId("collapsible");
+    expect(collapsibles[0]).toHaveAttribute("data-open", "true");
+
+    const copyBtn = screen.getByRole("button", { name: "Copy rubric results" });
+    await user.click(copyBtn);
+
+    // Still open after clicking copy — stopPropagation prevents collapsible toggle
+    expect(screen.getAllByTestId("collapsible")[0]).toHaveAttribute("data-open", "true");
+  });
+
+  it("rubric copy icon is absent when criteria_results is undefined", () => {
+    mockUseLegalBenchmarkRun.mockReturnValue({
+      run: makeCompleteRunWithCriteria(undefined, true),
+      isLoading: false,
+      isStale: false,
+      refetch: vi.fn(),
+    });
+
+    render(React.createElement(LegalBenchmarkResults, { runId: "run-abc", onReset }));
+
+    expect(screen.queryByRole("button", { name: "Copy rubric results" })).toBeNull();
+  });
+
+  // ─── Run Eval button ──────────────────────────────────────────────────────
+
+  function makeCriteriaWithCauseType() {
+    return [
+      { id: "crit-1", title: "Accuracy", verdict: "fail", reasoning: "Missing key point", cause_type: "KNOWLEDGE_GAP" },
+      { id: "crit-2", title: "Completeness", verdict: "pass", reasoning: "All sections covered" },
+    ];
+  }
+
+  it("shows Run Eval button when run is complete with a failed criterion without cause_type", () => {
+    const criteriaResults = makeCriteriaResults(); // has failed criteria, no cause_type
+    mockUseLegalBenchmarkRun.mockReturnValue({
+      run: makeCompleteRunWithCriteria(criteriaResults, false),
+      isLoading: false,
+      isStale: false,
+      refetch: vi.fn(),
+    });
+
+    render(React.createElement(LegalBenchmarkResults, { runId: "run-abc", onReset }));
+
+    expect(screen.getByRole("button", { name: "Run Eval" })).toBeInTheDocument();
+  });
+
+  it("hides Run Eval button when all criteria pass", () => {
+    const criteriaResults = [
+      { id: "crit-1", title: "Accuracy", verdict: "pass", reasoning: "Great" },
+    ];
+    mockUseLegalBenchmarkRun.mockReturnValue({
+      run: makeCompleteRunWithCriteria(criteriaResults, true),
+      isLoading: false,
+      isStale: false,
+      refetch: vi.fn(),
+    });
+
+    render(React.createElement(LegalBenchmarkResults, { runId: "run-abc", onReset }));
+
+    expect(screen.queryByRole("button", { name: "Run Eval" })).toBeNull();
+  });
+
+  it("hides Run Eval button when all failed criteria already carry cause_type", () => {
+    const criteriaResults = makeCriteriaWithCauseType(); // failed criterion has cause_type
+    mockUseLegalBenchmarkRun.mockReturnValue({
+      run: makeCompleteRunWithCriteria(criteriaResults as Array<{ id: string; title: string; verdict: string; reasoning: string }>, false),
+      isLoading: false,
+      isStale: false,
+      refetch: vi.fn(),
+    });
+
+    render(React.createElement(LegalBenchmarkResults, { runId: "run-abc", onReset }));
+
+    expect(screen.queryByRole("button", { name: "Run Eval" })).toBeNull();
+  });
+
+  // NOTE: The following "Run Eval" interaction tests now exercise EvalRunsBox
+  // (where the button lives). useLegalBenchmarkEval is module-mocked; we drive
+  // behaviour via mockRunEval and use findByText for async state updates.
+
+  function setupRunEvalTest(
+    criteriaResults: Array<{ id: string; title: string; verdict: string; reasoning: string }>,
+  ) {
+    mockUseLegalBenchmarkRun.mockReturnValue({
+      run: makeCompleteRunWithCriteria(criteriaResults, false),
+      isLoading: false,
+      isStale: false,
+      refetch: vi.fn(),
+    });
+  }
+
+  it("shows loading state while eval request is in flight", async () => {
+    // isSubmitting=true is reflected before render; EvalRunsBox shows "Running…"
+    mockIsSubmitting.value = true;
+
+    setupRunEvalTest(makeCriteriaResults());
+    render(React.createElement(LegalBenchmarkResults, { runId: "run-abc", onReset }));
+
+    // With isSubmitting=true, the button text is "Running…" and it is disabled
+    const btn = screen.getByRole("button", { name: /Running…/ });
+    expect(btn).toBeDisabled();
+    mockIsSubmitting.value = false;
+  });
+
+  it("shows 'Eval started' and disables button after 201 response", async () => {
+    const user = userEvent.setup();
+    mockRunEval.mockResolvedValueOnce({ status: "started", message: "Eval started." });
+    setupRunEvalTest(makeCriteriaResults());
+    render(React.createElement(LegalBenchmarkResults, { runId: "run-abc", onReset }));
+
+    await user.click(screen.getByRole("button", { name: "Run Eval" }));
+    expect(await screen.findByText("Eval started.")).toBeInTheDocument();
+  });
+
+  it("shows 'already evaluated' message and disables button after 200 skipped already_ran", async () => {
+    const user = userEvent.setup();
+    mockRunEval.mockResolvedValueOnce({
+      status: "skipped",
+      message: "This run has already been evaluated.",
+      reason: "already_ran",
+    });
+    setupRunEvalTest(makeCriteriaResults());
+    render(React.createElement(LegalBenchmarkResults, { runId: "run-abc", onReset }));
+
+    await user.click(screen.getByRole("button", { name: "Run Eval" }));
+    expect(await screen.findByText("This run has already been evaluated.")).toBeInTheDocument();
+  });
+
+  it("shows 'no failing criteria' message after 200 skipped no_failures", async () => {
+    const user = userEvent.setup();
+    mockRunEval.mockResolvedValueOnce({
+      status: "skipped",
+      message: "No failing criteria to evaluate.",
+      reason: "no_failures",
+    });
+    setupRunEvalTest(makeCriteriaResults());
+    render(React.createElement(LegalBenchmarkResults, { runId: "run-abc", onReset }));
+
+    await user.click(screen.getByRole("button", { name: "Run Eval" }));
+    expect(await screen.findByText("No failing criteria to evaluate.")).toBeInTheDocument();
+  });
+
+  it("shows 'already running' message after 409 response", async () => {
+    const user = userEvent.setup();
+    mockRunEval.mockResolvedValueOnce({
+      status: "active",
+      message: "An eval is already running for this run.",
+    });
+    setupRunEvalTest(makeCriteriaResults());
+    render(React.createElement(LegalBenchmarkResults, { runId: "run-abc", onReset }));
+
+    await user.click(screen.getByRole("button", { name: "Run Eval" }));
+    expect(await screen.findByText("An eval is already running for this run.")).toBeInTheDocument();
+  });
+
+  it("shows 'not configured yet' message after 503 response", async () => {
+    const user = userEvent.setup();
+    mockRunEval.mockResolvedValueOnce({
+      status: "notConfigured",
+      message: "Eval workflow not configured yet.",
+    });
+    setupRunEvalTest(makeCriteriaResults());
+    render(React.createElement(LegalBenchmarkResults, { runId: "run-abc", onReset }));
+
+    await user.click(screen.getByRole("button", { name: "Run Eval" }));
+    expect(await screen.findByText("Eval workflow not configured yet.")).toBeInTheDocument();
+  });
+
+  it("shows generic friendly message after 404 response without crashing", async () => {
+    const user = userEvent.setup();
+    mockRunEval.mockResolvedValueOnce({
+      status: "error",
+      message: "Failed to start eval. Please try again.",
+    });
+    setupRunEvalTest(makeCriteriaResults());
+    render(React.createElement(LegalBenchmarkResults, { runId: "run-abc", onReset }));
+
+    await user.click(screen.getByRole("button", { name: "Run Eval" }));
+    expect(await screen.findByText("Failed to start eval. Please try again.")).toBeInTheDocument();
+  });
+
+  it("shows generic friendly message after 500 response without crashing", async () => {
+    const user = userEvent.setup();
+    mockRunEval.mockResolvedValueOnce({
+      status: "error",
+      message: "Failed to start eval. Please try again.",
+    });
+    setupRunEvalTest(makeCriteriaResults());
+    render(React.createElement(LegalBenchmarkResults, { runId: "run-abc", onReset }));
+
+    await user.click(screen.getByRole("button", { name: "Run Eval" }));
+    expect(await screen.findByText("Failed to start eval. Please try again.")).toBeInTheDocument();
+  });
+
+  it("passes runId to useProposedFixes", () => {
+    const completeRun = makeMockRun({
+      status: "complete",
+      runnerOutputText: "Output text",
+      runnerRun: makeRunnerRow({
+        status: "COMPLETED",
+        result: { taskSlug: "antitrust/task-1", taskTitle: "Test", n_passed: 5, n_total: 5, all_pass: true },
+      }),
+    });
+    mockUseLegalBenchmarkRun.mockReturnValue({
+      run: completeRun,
+      isLoading: false,
+      isStale: false,
+      refetch: vi.fn(),
+    });
+
+    render(React.createElement(LegalBenchmarkResults, { runId: "run-xyz", onReset }));
+
+    expect(mockUseProposedFixes).toHaveBeenCalledWith("run-xyz");
+  });
+
+  // ─── Recursion button gating ───────────────────────────────────────────────
+
+  it("Recursion button renders for completed run with unevaluated failing criterion in openlaw workspace", () => {
+    mockWorkspaceSlug.value = "openlaw";
+    mockUseLegalBenchmarkRun.mockReturnValue({
+      run: makeMockRun({
+        status: "complete",
+        runnerOutputText: "Output",
+        runnerRun: makeRunnerRow({
+          status: "COMPLETED",
+          result: {
+            n_passed: 0,
+            n_total: 1,
+            all_pass: false,
+            criteria_results: [
+              { id: "crit-1", title: "Accuracy", verdict: "fail", reasoning: "Missing key points" },
+            ],
+          },
+        }),
+      }),
+      isLoading: false,
+      isStale: false,
+      refetch: vi.fn(),
+    });
+
+    render(React.createElement(LegalBenchmarkResults, { runId: "run-abc", onReset }));
+    expect(screen.getByRole("button", { name: "Recursion" })).toBeInTheDocument();
+  });
+
+  it("Recursion button is hidden when completed run has all criteria passing", () => {
+    mockWorkspaceSlug.value = "openlaw";
+    mockUseLegalBenchmarkRun.mockReturnValue({
+      run: makeMockRun({
+        status: "complete",
+        runnerOutputText: "Output",
+        runnerRun: makeRunnerRow({
+          status: "COMPLETED",
+          result: {
+            n_passed: 1,
+            n_total: 1,
+            all_pass: true,
+            criteria_results: [
+              { id: "crit-1", title: "Accuracy", verdict: "pass", reasoning: "All good" },
+            ],
+          },
+        }),
+      }),
+      isLoading: false,
+      isStale: false,
+      refetch: vi.fn(),
+    });
+
+    render(React.createElement(LegalBenchmarkResults, { runId: "run-abc", onReset }));
+    expect(screen.queryByRole("button", { name: "Recursion" })).toBeNull();
+  });
+
+  it("Recursion button is hidden when all failing criteria already carry cause_type (unevaluatedFailedCount === 0)", () => {
+    mockWorkspaceSlug.value = "openlaw";
+    mockUseLegalBenchmarkRun.mockReturnValue({
+      run: makeMockRun({
+        status: "complete",
+        runnerOutputText: "Output",
+        runnerRun: makeRunnerRow({
+          status: "COMPLETED",
+          result: {
+            n_passed: 0,
+            n_total: 1,
+            all_pass: false,
+            criteria_results: [
+              {
+                id: "crit-1",
+                title: "Accuracy",
+                verdict: "fail",
+                reasoning: "Missing key points",
+                cause_type: "missing_context",
+              },
+            ],
+          },
+        }),
+      }),
+      isLoading: false,
+      isStale: false,
+      refetch: vi.fn(),
+    });
+
+    render(React.createElement(LegalBenchmarkResults, { runId: "run-abc", onReset }));
+    expect(screen.queryByRole("button", { name: "Recursion" })).toBeNull();
+  });
+
+  it("Recursion button is hidden for non-openlaw workspace even with unevaluated failures", () => {
+    mockWorkspaceSlug.value = "other-workspace";
+    mockUseLegalBenchmarkRun.mockReturnValue({
+      run: makeMockRun({
+        status: "complete",
+        runnerOutputText: "Output",
+        runnerRun: makeRunnerRow({
+          status: "COMPLETED",
+          result: {
+            n_passed: 0,
+            n_total: 1,
+            all_pass: false,
+            criteria_results: [
+              { id: "crit-1", title: "Accuracy", verdict: "fail", reasoning: "Missing key points" },
+            ],
+          },
+        }),
+      }),
+      isLoading: false,
+      isStale: false,
+      refetch: vi.fn(),
+    });
+
+    render(React.createElement(LegalBenchmarkResults, { runId: "run-abc", onReset }));
+    expect(screen.queryByRole("button", { name: "Recursion" })).toBeNull();
+  });
 });
+
+// (EvalRunsBox tests have moved to EvalRunsBox.test.tsx)

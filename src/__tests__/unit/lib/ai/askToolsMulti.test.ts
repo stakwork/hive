@@ -2,6 +2,11 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { askToolsMulti } from "@/lib/ai/askToolsMulti";
 import type { WorkspaceConfig } from "@/lib/ai/types";
 
+// Hoist mock references so they can be used in vi.mock factories
+const { mockCreateMCPClient } = vi.hoisted(() => ({
+  mockCreateMCPClient: vi.fn(),
+}));
+
 // Mock heavy dependencies used transitively by askToolsMulti
 vi.mock("gitsee/server", () => ({
   RepoAnalyzer: vi.fn().mockImplementation(() => ({
@@ -10,7 +15,7 @@ vi.mock("gitsee/server", () => ({
   })),
 }));
 vi.mock("@/lib/ai/provider", () => ({ getProviderTool: vi.fn().mockReturnValue(null) }));
-vi.mock("@ai-sdk/mcp", () => ({ createMCPClient: vi.fn() }));
+vi.mock("@ai-sdk/mcp", () => ({ createMCPClient: mockCreateMCPClient }));
 vi.mock("@/lib/mcp/mcpTools", () => ({
   mcpListFeatures: vi.fn(),
   mcpReadFeature: vi.fn(),
@@ -71,6 +76,28 @@ describe("askToolsMulti", () => {
     });
   });
 
+  describe("courtlistener tools registration", () => {
+    it("registers courtlistener tools for openlaw workspace", () => {
+      const tools = askToolsMulti([ws("openlaw")], "api-key");
+      expect(tools).toHaveProperty("openlaw__courtlistener_verify_citations");
+      expect(tools).toHaveProperty("openlaw__courtlistener_search_case_law");
+      expect(tools).toHaveProperty("openlaw__courtlistener_get_cases");
+    });
+
+    it("does not register courtlistener tools for non-openlaw workspaces", () => {
+      const tools = askToolsMulti([ws("alpha")], "api-key");
+      expect(tools).not.toHaveProperty("alpha__courtlistener_verify_citations");
+      expect(tools).not.toHaveProperty("alpha__courtlistener_search_case_law");
+      expect(tools).not.toHaveProperty("alpha__courtlistener_get_cases");
+    });
+
+    it("registers courtlistener tools for openlaw but not for other workspaces in a mixed set", () => {
+      const tools = askToolsMulti([ws("openlaw"), ws("alpha")], "api-key");
+      expect(tools).toHaveProperty("openlaw__courtlistener_verify_citations");
+      expect(tools).not.toHaveProperty("alpha__courtlistener_verify_citations");
+    });
+  });
+
   describe("stakwork__search_workflows tool", () => {
     it("is registered for a workspace with slug 'stakwork'", () => {
       const tools = askToolsMulti(
@@ -109,6 +136,29 @@ describe("askToolsMulti", () => {
       expect(tools).toHaveProperty("alpha__logs_agent");
       expect(tools).toHaveProperty("alpha__search_logs");
       expect(tools.alpha__logs_agent).not.toBe(tools.alpha__search_logs);
+    });
+  });
+
+  describe("search_logs timeout", () => {
+    it("returns workspace-specific fallback string when MCP client times out", async () => {
+      mockCreateMCPClient.mockImplementation(() => new Promise(() => {})); // never resolves
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+      const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+      vi.useFakeTimers();
+
+      const tools = askToolsMulti([ws("alpha")], "api-key");
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const executePromise = (tools["alpha__search_logs"] as any).execute({ query: "test", max_hits: 5 });
+      await vi.advanceTimersByTimeAsync(30000);
+      const result = await executePromise;
+
+      expect(result).toContain("MCP tools unavailable for alpha");
+      expect(warnSpy).toHaveBeenCalled();
+      expect(errorSpy).not.toHaveBeenCalled();
+
+      warnSpy.mockRestore();
+      errorSpy.mockRestore();
+      vi.useRealTimers();
     });
   });
 

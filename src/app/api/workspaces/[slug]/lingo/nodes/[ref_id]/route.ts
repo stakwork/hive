@@ -3,7 +3,7 @@ import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 import { getWorkspaceSwarmAccess } from "@/lib/helpers/swarm-access";
 import { getJarvisUrl } from "@/lib/utils/swarm";
 import { getNeighborData } from "@/app/api/mock/lingo/neighbors";
-import { deleteNode } from "@/services/swarm/api/nodes";
+import { deleteNode, updateNode } from "@/services/swarm/api/nodes";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -95,6 +95,7 @@ export async function GET(
       name: (props.name ?? rawNode?.name) as string,
       definition: (props.definition ?? rawNode?.definition) as string | null | undefined,
       lingo_type: (props.lingo_type ?? rawNode?.lingo_type) as string | undefined,
+      icon_url: (props.icon_url ?? rawNode?.icon_url) as string | null | undefined,
       date_added_to_graph: (rawNode?.date_added_to_graph as number) ?? 0,
     };
 
@@ -103,6 +104,68 @@ export async function GET(
     console.error("[Lingo nodes/[ref_id]] Jarvis fetch failed", err);
     return NextResponse.json({ success: false, error: "Node not found" }, { status: 404 });
   }
+}
+
+export async function PATCH(
+  request: NextRequest,
+  { params }: { params: Promise<{ slug: string; ref_id: string }> },
+) {
+  const { slug, ref_id } = await params;
+  const ctx = getMiddlewareContext(request);
+  const user = requireAuth(ctx);
+  if (user instanceof NextResponse) return user;
+
+  const swarmResult = await getWorkspaceSwarmAccess(slug, user.id);
+  if (!swarmResult.success) {
+    const { type } = swarmResult.error;
+    if (type === "WORKSPACE_NOT_FOUND") {
+      return NextResponse.json({ success: false, error: "Workspace not found" }, { status: 404 });
+    }
+    if (type === "ACCESS_DENIED") {
+      return NextResponse.json({ success: false, error: "Access denied" }, { status: 403 });
+    }
+    if (type === "SWARM_NOT_CONFIGURED" || type === "SWARM_NAME_MISSING" || type === "SWARM_API_KEY_MISSING") {
+      return NextResponse.json({ success: false, error: "Swarm not configured" }, { status: 503 });
+    }
+    return NextResponse.json({ success: false, error: "Swarm unavailable" }, { status: 503 });
+  }
+
+  const { swarmName, swarmApiKey, workspaceId } = swarmResult.data;
+
+  const body = await request.json().catch(() => ({})) as { icon_url?: string | null };
+  const icon_url = body.icon_url ?? null;
+
+  // Validate icon_url is scoped to this workspace's lingo-icons prefix
+  if (icon_url !== null) {
+    const expectedPrefix = `uploads/${workspaceId}/lingo-icons/`;
+    if (!icon_url.startsWith(expectedPrefix)) {
+      return NextResponse.json(
+        { success: false, error: "Invalid icon_url: cross-workspace key not allowed" },
+        { status: 400 },
+      );
+    }
+  }
+
+  // Mock fallback — after auth check so workspace ownership is verified
+  if (process.env.USE_MOCKS === "true" && process.env.NODE_ENV !== "production") {
+    return NextResponse.json({ success: true });
+  }
+
+  const jarvisUrl = getJarvisUrl(swarmName);
+
+  const result = await updateNode(
+    { jarvisUrl, apiKey: swarmApiKey },
+    { ref_id, node_type: "Lingo", node_data: { icon_url } },
+  );
+
+  if (!result.success) {
+    return NextResponse.json(
+      { success: false, error: result.error ?? "Failed to update node" },
+      { status: 500 },
+    );
+  }
+
+  return NextResponse.json({ success: true });
 }
 
 export async function DELETE(

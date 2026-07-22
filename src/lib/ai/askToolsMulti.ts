@@ -1,8 +1,11 @@
 import { tool, ToolSet, Tool } from "ai";
 import { z } from "zod";
 import { createMCPClient } from "@ai-sdk/mcp";
+import { withMcpTimeout, isMcpTimeout } from './mcpTimeout';
 import { WorkspaceConfig } from "./types";
-import { listConcepts, repoAgent } from "./askTools";
+import { listConcepts, repoAgent, REPO_AGENT_CANCELLED_MARKER, type AskToolsContext } from "./askTools";
+import { buildCourtlistenerTools } from "@/lib/ai/courtlistenerTools";
+import { LEGAL_SLUGS } from "@/lib/eval-capture-slugs";
 // Deep import — see comment in services/task-workflow.ts.
 import { getBifrostForLLM } from "@/services/bifrost/orchestrator";
 import { shouldTrimConceptsToIds } from "./concepts";
@@ -36,6 +39,7 @@ export function askToolsMulti(
    * that fetch here is free.
    */
   conceptsByWorkspace?: Record<string, Record<string, unknown>[]>,
+  context?: AskToolsContext,
 ): ToolSet {
   // Build all tools and merge at the end
   const allTools: Record<string, AnyTool> = {};
@@ -274,6 +278,9 @@ export function askToolsMulti(
       }),
       execute: async ({ prompt }: { prompt: string }) => {
         const prompt2 = `${prompt}.\n\nPLEASE BE AS FAST AS POSSIBLE!`;
+        const convId = context?.conversationId;
+        const turnId = context?.turnId;
+        let activeRequestId: string | undefined;
         try {
           // Per-workspace Bifrost VK so each workspace's spend gets
           // attributed to its own Customer/VK on its own Bifrost.
@@ -288,6 +295,28 @@ export function askToolsMulti(
             },
             { agentName: "repo-agent" },
           );
+
+          // Build abort hooks when we have a canvas conversation to track.
+          const hooks = convId && turnId
+            ? await (async () => {
+                const { setActiveRun, isAbortRequestedForRun, notifyRunActive } = await import("@/services/canvas-active-runs-hooks");
+                return {
+                  onRequestId: async (requestId: string) => {
+                    activeRequestId = requestId;
+                    console.log(`[repoAgent] Run registered: ${requestId} ws: ${ws.slug} conversationId: ${convId}`);
+                    await setActiveRun(convId, {
+                      requestId,
+                      workspaceId: ws.workspaceId,
+                      startedAt: new Date().toISOString(),
+                    }, turnId);
+                    await notifyRunActive(convId, true);
+                  },
+                  isAbortRequested: async () =>
+                    isAbortRequestedForRun(convId, activeRequestId ?? ""),
+                };
+              })()
+            : undefined;
+
           const rr = await repoAgent(
             ws.swarmUrl,
             ws.swarmApiKey,
@@ -297,11 +326,35 @@ export function askToolsMulti(
               pat: ws.pat,
             },
             bifrost,
+            hooks,
           );
-          return rr.content;
+          if (rr === REPO_AGENT_CANCELLED_MARKER) {
+            // Flag the whole turn so runCanvasAgent's stopWhen ends the
+            // agent loop — the model must not treat this as a transient
+            // failure and start another run.
+            if (context?.cancellation) context.cancellation.requested = true;
+            return `The user cancelled the ${ws.slug} investigation. Stop working on it now — do not retry and do not start another repo agent run.`;
+          }
+          const out = rr as Record<string, unknown>;
+          if (typeof out.content === "string" && out.content.trim()) {
+            return out.content;
+          }
+          // Unexpected result shape (no `content` key) — surface whatever
+          // came back rather than returning `undefined` (which the model
+          // reads as "no output" and treats as a failure to retry).
+          const fallback = JSON.stringify(out);
+          return fallback && fallback !== "{}"
+            ? fallback
+            : `The repo agent for ${ws.slug} finished without returning any content.`;
         } catch (e) {
           console.error(`Error executing repo agent for ${ws.slug}:`, e);
           return `Could not execute repo agent for ${ws.slug}`;
+        } finally {
+          if (convId && activeRequestId) {
+            const { clearActiveRun, notifyRunActive } = await import("@/services/canvas-active-runs-hooks");
+            const { wasLast } = await clearActiveRun(convId, activeRequestId).catch(() => ({ wasLast: true }));
+            if (wasLast) await notifyRunActive(convId, false).catch(() => {});
+          }
         }
       },
     });
@@ -324,8 +377,8 @@ export function askToolsMulti(
         query: string;
         max_hits?: number;
       }) => {
-        let mcpClient;
-        try {
+        let mcpClient: Awaited<ReturnType<typeof createMCPClient>> | undefined;
+        const mcpSetup = async () => {
           mcpClient = await createMCPClient({
             transport: {
               type: "http",
@@ -336,16 +389,21 @@ export function askToolsMulti(
           const tools = await mcpClient.tools();
           const searchLogsTool = tools["search_logs"];
           if (!searchLogsTool?.execute) return "search_logs tool not found";
-          const result = await searchLogsTool.execute(
-            { query, max_hits },
-            { toolCallId: "1", messages: [] }
+          return capMcpResult(
+            await searchLogsTool.execute({ query, max_hits }, { toolCallId: "1", messages: [] }),
           );
-          return capMcpResult(result);
+        };
+        try {
+          return await withMcpTimeout(mcpSetup);
         } catch (e) {
+          if (isMcpTimeout(e)) {
+            console.warn(`search_logs: MCP client timed out for ${ws.slug}`, e);
+            return `MCP tools unavailable for ${ws.slug} — the log search timed out. Proceeding without them.`;
+          }
           console.error(`Error searching logs for ${ws.slug}:`, e);
           return `Could not search logs for ${ws.slug}`;
         } finally {
-          if (mcpClient) await mcpClient.close();
+          if (mcpClient) await mcpClient.close().catch(() => {});
         }
       },
     });
@@ -621,6 +679,11 @@ export function askToolsMulti(
         }
       },
     });
+
+    // CourtListener tools — OpenLaw workspace only
+    if (LEGAL_SLUGS.includes(ws.slug)) {
+      Object.assign(allTools, buildCourtlistenerTools(ws.slug));
+    }
   }
 
   // Shared tools (not workspace-specific)

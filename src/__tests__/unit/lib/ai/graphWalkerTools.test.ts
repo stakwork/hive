@@ -82,6 +82,7 @@ vi.mock("@/lib/constants/prompt", () => ({
   getConnectionsCapabilitySnippet: vi.fn(() => ""),
   getGraphWalkerCapabilitySnippet: vi.fn(() => ""),
   getInfraCapabilitySnippet: vi.fn(() => ""),
+  getWorkflowsCapabilitySnippet: vi.fn(() => ""),
   getPromptsCapabilitySnippet: vi.fn(() => ""),
   getConceptsCapabilitySnippet: vi.fn(() => ""),
 }));
@@ -714,7 +715,11 @@ describe("buildGraphWalkerTools", () => {
         "https://jarvis.example.com",
         "key-123",
         "c1",
-        { edgeTypes: ["MODIFIES", "CITES"], nodeTypes: ["File"] },
+        {
+          edgeTypes: ["MODIFIES", "CITES"],
+          nodeTypes: ["File"],
+          includeEdgeCounts: true,
+        },
       );
     });
   });
@@ -865,6 +870,60 @@ describe("buildGraphWalkerTools", () => {
       expect(results[0].urn).toContain("n1");
     });
 
+    it("kg arm: forwards input_q/output_q/domains and passes through description + edges", async () => {
+      mockResolveKgSeam.mockResolvedValue({
+        workspace: "my-ws",
+        swarmUrl: "https://jarvis.example.com",
+        jarvisUrl: "https://jarvis.example.com",
+        swarmApiKey: "key-kg",
+      });
+      mockKgSearch.mockResolvedValue([
+        {
+          ref_id: "wf1",
+          node_type: "Workflow",
+          name: "Transcribe",
+          description: "Transcribes a video.",
+          edges: { HAS_STEP: 4 },
+        },
+      ]);
+      mockFormatUrn.mockImplementation(
+        (p: { realm: string; org: string; workspace?: string; type: string; id: string }) =>
+          `urn:${p.org}:${p.realm}:${p.workspace ? p.workspace + ":" : ""}${p.type}:${p.id}`,
+      );
+
+      const tools = getTools();
+      const result = await tools.graph_search.execute(
+        {
+          query: "transcribe",
+          realm: "kg",
+          workspace: "my-ws",
+          input_q: "a video file url",
+          output_q: "a transcript",
+          domains: "content",
+        },
+        {} as never,
+      );
+
+      expect(mockKgSearch).toHaveBeenCalledWith(
+        "https://jarvis.example.com",
+        "key-kg",
+        "transcribe",
+        expect.objectContaining({
+          inputQ: "a video file url",
+          outputQ: "a transcript",
+          domains: "content",
+        }),
+      );
+
+      const results = (
+        result as {
+          results: Array<{ description?: string; edges?: Record<string, number> }>;
+        }
+      ).results;
+      expect(results[0].description).toBe("Transcribes a video.");
+      expect(results[0].edges).toEqual({ HAS_STEP: 4 });
+    });
+
     it("kg arm without workspace: fans out to all member workspaces, skips unreachable", async () => {
       dbWorkspace.findMany.mockResolvedValue([
         { id: "ws-1", slug: "workspace-one" },
@@ -960,13 +1019,16 @@ describe("graph_ontology", () => {
     dbSourceControlOrg.findUnique.mockResolvedValue({ githubLogin: "my-org" });
     mockFormatUrn.mockReturnValue("urn:my-org:kg:test-ws:node:x");
     mockResolveKgSeam.mockResolvedValue(SEAM);
-    mockKgGetOntology.mockResolvedValue([
-      { type: "File", description: "A source file." },
-      { type: "Function", description: "A code function." },
-    ]);
+    mockKgGetOntology.mockResolvedValue({
+      domains: ["code"],
+      node_types: [
+        { type: "File", domain: "code", description: "A source file." },
+        { type: "Function", domain: "code", description: "A code function." },
+      ],
+    });
   });
 
-  it("returns node_types on a resolvable, authorized seam", async () => {
+  it("returns domains + node_types on a resolvable, authorized seam", async () => {
     const tools = getTools();
     const result = await tools.graph_ontology.execute(
       { workspace: "test-ws" },
@@ -974,9 +1036,10 @@ describe("graph_ontology", () => {
     );
 
     expect(result).toEqual({
+      domains: ["code"],
       node_types: [
-        { type: "File", description: "A source file." },
-        { type: "Function", description: "A code function." },
+        { type: "File", domain: "code", description: "A source file." },
+        { type: "Function", domain: "code", description: "A code function." },
       ],
     });
     expect(mockKgGetOntology).toHaveBeenCalledWith(SEAM.jarvisUrl, SEAM.swarmApiKey);
@@ -1028,8 +1091,8 @@ describe("graph_ontology", () => {
     expect(mockKgGetOntology).not.toHaveBeenCalled();
   });
 
-  it("forwards empty node_types array when kgGetOntology returns []", async () => {
-    mockKgGetOntology.mockResolvedValue([]);
+  it("forwards an empty ontology when kgGetOntology returns no types", async () => {
+    mockKgGetOntology.mockResolvedValue({ domains: [], node_types: [] });
     const tools = getTools();
 
     const result = await tools.graph_ontology.execute(
@@ -1037,7 +1100,7 @@ describe("graph_ontology", () => {
       {} as never,
     );
 
-    expect(result).toEqual({ node_types: [] });
+    expect(result).toEqual({ domains: [], node_types: [] });
   });
 });
 

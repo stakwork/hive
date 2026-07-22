@@ -144,7 +144,11 @@ function ScoreCell({ run }: { run: BenchmarkRunListRow }) {
   }
 
   return (
-    <div className="flex items-center gap-2">
+    <div
+      className={run.judgeNotes ? "flex items-center gap-2 cursor-help" : "flex items-center gap-2"}
+      title={run.judgeNotes}
+      aria-label={run.judgeNotes}
+    >
       {run.n_passed !== undefined && run.n_total !== undefined && (
         <span className="text-sm tabular-nums">
           {run.n_passed}/{run.n_total}

@@ -23,6 +23,7 @@ const makeRun = (overrides: Partial<{
   n_passed: number;
   n_total: number;
   all_pass: boolean;
+  judgeNotes: string;
 }> = {}) => ({
   id: "runner-1",
   workspaceId: WORKSPACE_ID,
@@ -34,6 +35,7 @@ const makeRun = (overrides: Partial<{
   n_passed: undefined as number | undefined,
   n_total: undefined as number | undefined,
   all_pass: undefined as boolean | undefined,
+  judgeNotes: undefined as string | undefined,
   ...overrides,
 });
 
@@ -266,6 +268,72 @@ describe("BenchmarkRunsHistory", () => {
     });
     render(React.createElement(BenchmarkRunsHistory));
     expect(screen.getByText("—")).toBeInTheDocument();
+  });
+
+  // ─── judgeNotes / ScoreCell tooltip tests ─────────────────────────────────
+
+  it("ScoreCell has title, aria-label, and cursor-help class when COMPLETED with judgeNotes", () => {
+    const judgeNotes = "72/74 criteria passed. Judge: gpt-4";
+    mockUseList.mockReturnValue({
+      runs: [makeRun({ status: "COMPLETED", n_passed: 72, n_total: 74, all_pass: true, judgeNotes })],
+      total: 1,
+      isLoading: false,
+      error: null,
+      refetch: mockRefetch,
+      setExpandedId: mockSetExpandedId,
+    });
+    render(React.createElement(BenchmarkRunsHistory));
+    const scoreDiv = screen.getByText("72/74").closest("div")!;
+    expect(scoreDiv.getAttribute("title")).toBe(judgeNotes);
+    expect(scoreDiv.getAttribute("aria-label")).toBe(judgeNotes);
+    expect(scoreDiv.classList.contains("cursor-help")).toBe(true);
+  });
+
+  it("ScoreCell has no title or aria-label when judgeNotes is undefined for COMPLETED row", () => {
+    mockUseList.mockReturnValue({
+      runs: [makeRun({ status: "COMPLETED", n_passed: 72, n_total: 74, all_pass: true, judgeNotes: undefined })],
+      total: 1,
+      isLoading: false,
+      error: null,
+      refetch: mockRefetch,
+      setExpandedId: mockSetExpandedId,
+    });
+    render(React.createElement(BenchmarkRunsHistory));
+    const scoreDiv = screen.getByText("72/74").closest("div")!;
+    expect(scoreDiv.getAttribute("title")).toBeNull();
+    expect(scoreDiv.getAttribute("aria-label")).toBeNull();
+    expect(scoreDiv.classList.contains("cursor-help")).toBe(false);
+  });
+
+  it("ScoreCell renders no title or aria-label for PENDING run", () => {
+    mockUseList.mockReturnValue({
+      runs: [makeRun({ status: "PENDING", judgeNotes: undefined })],
+      total: 1,
+      isLoading: false,
+      error: null,
+      refetch: mockRefetch,
+      setExpandedId: mockSetExpandedId,
+    });
+    render(React.createElement(BenchmarkRunsHistory));
+    // PENDING renders '—', no score div to check — just assert no title present on '—' cell
+    const dash = screen.getByText("—");
+    expect(dash.getAttribute("title")).toBeNull();
+    expect(dash.getAttribute("aria-label")).toBeNull();
+  });
+
+  it("ScoreCell renders no title or aria-label for IN_PROGRESS run", () => {
+    mockUseList.mockReturnValue({
+      runs: [makeRun({ status: "IN_PROGRESS", judgeNotes: undefined })],
+      total: 1,
+      isLoading: false,
+      error: null,
+      refetch: mockRefetch,
+      setExpandedId: mockSetExpandedId,
+    });
+    render(React.createElement(BenchmarkRunsHistory));
+    const dash = screen.getByText("—");
+    expect(dash.getAttribute("title")).toBeNull();
+    expect(dash.getAttribute("aria-label")).toBeNull();
   });
 
   // ─── colSpan tests ─────────────────────────────────────────────────────────

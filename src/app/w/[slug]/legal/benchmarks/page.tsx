@@ -4,7 +4,22 @@ import { Scale } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
 import { LegalBenchmarksPanel } from "@/components/legal/LegalBenchmarksPanel";
 import { BenchmarkRunsHistory } from "@/components/legal/BenchmarkRunsHistory";
+import { RecursionList } from "@/components/legal/RecursionBox";
+import { useLegalBenchmarkRecursionList } from "@/hooks/useLegalBenchmarkRecursionList";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+
+function RecursionTab() {
+  const { entries, isLoading, error, refetch } = useLegalBenchmarkRecursionList();
+
+  return (
+    <RecursionList
+      entries={entries}
+      isLoading={isLoading}
+      error={error}
+      refetch={refetch}
+    />
+  );
+}
 
 export default function LegalBenchmarksPage() {
   return (
@@ -19,6 +34,7 @@ export default function LegalBenchmarksPage() {
           <TabsList>
             <TabsTrigger value="benchmark">Benchmark</TabsTrigger>
             <TabsTrigger value="runs">Runs</TabsTrigger>
+            <TabsTrigger value="recursion">Recursion</TabsTrigger>
           </TabsList>
         </div>
         <TabsContent value="benchmark" className="flex-1 min-h-0 pt-2">
@@ -26,6 +42,9 @@ export default function LegalBenchmarksPage() {
         </TabsContent>
         <TabsContent value="runs" className="flex-1 min-h-0 overflow-auto p-4">
           <BenchmarkRunsHistory />
+        </TabsContent>
+        <TabsContent value="recursion" className="flex-1 min-h-0 overflow-auto p-4">
+          <RecursionTab />
         </TabsContent>
       </Tabs>
     </div>

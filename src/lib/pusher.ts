@@ -106,6 +106,9 @@ export const PUSHER_EVENTS = {
   AGENT_TRACE_READY: "agent-trace-ready",
   // Error issue created or updated (new occurrence ingested via /api/webhook/errors)
   ERROR_ISSUE_UPDATED: "error-issue-updated",
+  // Canvas chat: a repo_agent run started or ended in this conversation.
+  // Payload is ONLY `{ active: boolean }` — no request_id or workspace identifiers.
+  CANVAS_RUN_ACTIVE: "canvas-run-active",
 } as const;
 
 /**

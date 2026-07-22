@@ -263,6 +263,38 @@ export function LingoExplorer({ workspaceSlug }: LingoExplorerProps) {
     });
   };
 
+  const restoreDeletedNode = async (snapshot: LingoNode) => {
+    try {
+      const res = await fetch(`/api/workspaces/${workspaceSlug}/lingo/nodes`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: snapshot.name,
+          ...(snapshot.definition ? { definition: snapshot.definition } : {}),
+          ...(snapshot.lingo_type ? { lingo_type: snapshot.lingo_type } : {}),
+          ...(snapshot.icon_url ? { icon_url: snapshot.icon_url } : {}),
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok || !json.success) throw new Error("Restore failed");
+
+      const restoredNode: LingoNode = {
+        ref_id: json.data.ref_id,
+        name: json.data.name,
+        node_type: "Lingo",
+        definition: json.data.definition ?? null,
+        lingo_type: json.data.lingo_type,
+        icon_url: json.data.icon_url ?? null,
+        date_added_to_graph: Date.now() / 1000,
+      };
+
+      setNodes((prev) => [restoredNode, ...prev]);
+      openDetail(restoredNode, true);
+    } catch {
+      toast.error("Failed to restore node");
+    }
+  };
+
   const confirmDeleteNode = async (refId: string) => {
     try {
       const res = await fetch(
@@ -420,6 +452,8 @@ export function LingoExplorer({ workspaceSlug }: LingoExplorerProps) {
                 onDeleteNode={handleDeleteNode}
                 onNavigate={handleNavigateNeighbor}
                 onAddEdge={() => setIsAddEdgePanelOpen(true)}
+                workspaceSlug={workspaceSlug}
+                workspaceId={workspace?.id ?? ""}
               />
             )}
           </>
@@ -444,6 +478,7 @@ export function LingoExplorer({ workspaceSlug }: LingoExplorerProps) {
       {/* Create Lingo Node Dialog */}
       <CreateLingoNodeDialog
         workspaceSlug={workspaceSlug}
+        workspaceId={workspace?.id ?? ""}
         isOpen={isCreateDialogOpen}
         onClose={() => setIsCreateDialogOpen(false)}
         onCreated={handleNodeCreated}

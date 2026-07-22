@@ -2,7 +2,7 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "framer-motion";
-import { FileIcon, GitFork, Loader2, Mic, MicOff, Paperclip, Plus, RefreshCw, Send, Share2, X } from "lucide-react";
+import { FileIcon, GitFork, Loader2, Mic, MicOff, OctagonX, Paperclip, Plus, RefreshCw, Send, Share2, X } from "lucide-react";
 import { useSpeechRecognition } from "@/hooks/useSpeechRecognition";
 import { useControlKeyHold } from "@/hooks/useControlKeyHold";
 import { useVoiceCorrectionCapture } from "@/hooks/useVoiceCorrectionCapture";
@@ -114,6 +114,21 @@ export function SidebarChat({ githubLogin }: SidebarChatProps) {
   // persisted before we fork it, so fork stays disabled until streaming ends).
   const isStreaming = useCanvasChatStore(
     (s) => (activeId ? s.conversations[activeId]?.isStreaming : false) ?? false,
+  );
+
+  // runActive: driven by local tool-call detection (via setRunActive called from
+  // useSendCanvasChatMessage) AND by the Pusher CANVAS_RUN_ACTIVE event (for
+  // all participants including non-initiators, bound in useCanvasChatAutoSave).
+  const runActive = useCanvasChatStore(
+    (s) => (activeId ? s.conversations[activeId]?.runActive : false) ?? false,
+  );
+  // stopRun action — posts to /api/ask/abort without exposing request_id.
+  const stopRun = useCanvasChatStore((s) => s.stopRun);
+  const setRunActive = useCanvasChatStore((s) => s.setRunActive);
+
+  // Org context for Stop — needed by the abort endpoint.
+  const orgContext = useCanvasChatStore(
+    (s) => (activeId ? s.conversations[activeId]?.context : null) ?? null,
   );
 
   const { id: workspaceId } = useWorkspace();
@@ -354,6 +369,28 @@ export function SidebarChat({ githubLogin }: SidebarChatProps) {
           )}
         </div>
         <div className="flex items-center gap-1">
+          {runActive && (
+            <button
+              type="button"
+              onClick={() => {
+                if (serverConversationId && orgContext) {
+                  void stopRun({
+                    serverConversationId,
+                    orgId: orgContext.orgId,
+                    // We optimistically clear local runActive immediately
+                    // so the button disappears; the server will confirm.
+                  });
+                  // Optimistic local clear — the Pusher event will confirm.
+                  if (activeId) setRunActive(activeId, false);
+                }
+              }}
+              title="Stop investigation"
+              className="flex items-center gap-1 px-2 py-1 rounded bg-destructive/10 hover:bg-destructive/20 text-destructive text-xs font-medium transition-colors"
+            >
+              <OctagonX className="w-3.5 h-3.5" />
+              Stop
+            </button>
+          )}
           <button
             type="button"
             onClick={handleShare}
@@ -397,7 +434,10 @@ export function SidebarChat({ githubLogin }: SidebarChatProps) {
         <div className="space-y-2">
           {messages.map((message, index) => {
             const isLastMessage = index === messages.length - 1;
-            const isMessageStreaming = isLastMessage && isLoading;
+            // `isStreaming` (true until the stream settles), NOT `isLoading`
+            // (cleared on the first chunk) — with isLoading every row
+            // rendered as "done" the moment anything streamed in.
+            const isMessageStreaming = isLastMessage && isStreaming;
 
             // User messages that ride structured Approve / Reject
             // intents are not chat content for the user — the proposal
@@ -509,6 +549,7 @@ export function SidebarChat({ githubLogin }: SidebarChatProps) {
                         content: message.content,
                         timeline: filteredTimeline,
                         isStreaming: isMessageStreaming,
+                        usage: message.usage,
                       }}
                     />
                   </div>

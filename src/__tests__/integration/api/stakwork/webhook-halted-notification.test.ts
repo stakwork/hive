@@ -1,8 +1,10 @@
 /**
- * Integration test: WORKFLOW_HALTED notification trigger
+ * Integration test: WORKFLOW_HALTED notification trigger + pod release
  *
- * POSTs a halted status to /api/stakwork/webhook and verifies a
- * notification_triggers row is created with type WORKFLOW_HALTED.
+ * POSTs a halted status to /api/stakwork/webhook and verifies:
+ * 1. A notification_triggers row is created with type WORKFLOW_HALTED.
+ * 2. Non-agent tasks with a pod have releaseTaskPod called.
+ * 3. Agent tasks with a pod do NOT have releaseTaskPod called.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { db } from "@/lib/db";
@@ -35,6 +37,20 @@ vi.mock("@/services/roadmap/feature-status-sync", () => ({
   updateFeatureStatusFromTasks: vi.fn().mockResolvedValue(undefined),
 }));
 
+// Mock canvas helpers
+vi.mock("@/lib/canvas", () => ({
+  notifyFeatureCanvasRefresh: vi.fn().mockResolvedValue(undefined),
+}));
+
+// Mock releaseTaskPod — preserve other exports so the real implementation
+// is used when not explicitly mocked (we override per-test when needed).
+vi.mock("@/lib/pods/utils", async () => {
+  const actual = await vi.importActual("@/lib/pods/utils");
+  return { ...actual, releaseTaskPod: vi.fn().mockResolvedValue({ success: true, podDropped: true, taskCleared: true }) };
+});
+
+import { releaseTaskPod } from "@/lib/pods/utils";
+
 /** Poll DB until a matching record appears (avoids flaky fixed-delay waits). */
 async function waitForNotification(
   where: Record<string, unknown>,
@@ -65,6 +81,7 @@ describe("POST /api/stakwork/webhook — WORKFLOW_HALTED notification", () => {
 
   beforeEach(async () => {
     await resetDatabase();
+    vi.clearAllMocks();
 
     user = await db.user.create({
       data: { email: "owner@test.com", name: "Owner", lightningPubkey: "test-pubkey-owner" },
@@ -143,5 +160,88 @@ describe("POST /api/stakwork/webhook — WORKFLOW_HALTED notification", () => {
     expect(record!.message).toBeTruthy();
     // Message separator is `: ` so buildPushMessage can strip the URL cleanly
     expect(record!.message).toMatch(/needs your attention: https?:\/\//);
+  });
+
+  it("does NOT call releaseTaskPod when task has no pod (existing behavior unchanged)", async () => {
+    const task = await db.task.create({
+      data: {
+        title: "No-Pod Halted Task",
+        workspaceId: workspace.id,
+        createdById: user.id,
+        updatedById: user.id,
+        status: TaskStatus.IN_PROGRESS,
+        // podId intentionally omitted
+      },
+    });
+
+    const req = makeRequest({ task_id: task.id, project_status: "HALTED" });
+    const res = await POST(req);
+    expect(res.status).toBe(200);
+
+    expect(releaseTaskPod).not.toHaveBeenCalled();
+  });
+
+  it("calls releaseTaskPod with correct args for non-agent task with pod on HALTED", async () => {
+    // Create a swarm so we can attach a pod to it
+    const { createTestSwarm } = await import("@/__tests__/support/factories/swarm.factory");
+    const { createTestPod } = await import("@/__tests__/support/factories/pod.factory");
+    const swarm = await createTestSwarm({ workspaceId: workspace.id });
+    const pod = await createTestPod({ swarmId: swarm.id, usageStatus: "USED" });
+
+    const task = await db.task.create({
+      data: {
+        title: "Live Task With Pod",
+        workspaceId: workspace.id,
+        createdById: user.id,
+        updatedById: user.id,
+        status: TaskStatus.IN_PROGRESS,
+        mode: "live",
+        podId: pod.podId,
+      },
+    });
+
+    const req = makeRequest({ task_id: task.id, project_status: "HALTED" });
+    const res = await POST(req);
+    expect(res.status).toBe(200);
+
+    // Give the fire-and-forget a tick to execute
+    await new Promise((r) => setTimeout(r, 50));
+
+    expect(releaseTaskPod).toHaveBeenCalledOnce();
+    expect(releaseTaskPod).toHaveBeenCalledWith(
+      expect.objectContaining({
+        taskId: task.id,
+        podId: pod.podId,
+        workspaceId: task.workspaceId,
+        newWorkflowStatus: null,
+      }),
+    );
+  });
+
+  it("does NOT call releaseTaskPod for agent-mode task with pod on HALTED", async () => {
+    const { createTestSwarm } = await import("@/__tests__/support/factories/swarm.factory");
+    const { createTestPod } = await import("@/__tests__/support/factories/pod.factory");
+    const swarm = await createTestSwarm({ workspaceId: workspace.id });
+    const pod = await createTestPod({ swarmId: swarm.id, usageStatus: "USED" });
+
+    const task = await db.task.create({
+      data: {
+        title: "Agent Task With Pod",
+        workspaceId: workspace.id,
+        createdById: user.id,
+        updatedById: user.id,
+        status: TaskStatus.IN_PROGRESS,
+        mode: "agent",
+        podId: pod.podId,
+      },
+    });
+
+    const req = makeRequest({ task_id: task.id, project_status: "HALTED" });
+    const res = await POST(req);
+    expect(res.status).toBe(200);
+
+    await new Promise((r) => setTimeout(r, 50));
+
+    expect(releaseTaskPod).not.toHaveBeenCalled();
   });
 });

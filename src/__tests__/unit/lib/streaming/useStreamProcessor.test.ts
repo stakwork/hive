@@ -1155,4 +1155,143 @@ describe("useStreamProcessor", () => {
       expect(finalMessage.content).toBe("");
     });
   });
+
+  describe("Token Usage (finish event)", () => {
+    const createFinishEventWithUsage = (usage: Record<string, unknown>) =>
+      `data: ${JSON.stringify({ type: "finish", finishReason: "stop", usage })}\n\n`;
+
+    const createFinishEventWithProviderMeta = (anthropic: Record<string, unknown>) =>
+      `data: ${JSON.stringify({ type: "finish", finishReason: "stop", providerMetadata: { anthropic } })}\n\n`;
+
+    test("captures inputTokens and outputTokens from finish event", async () => {
+      const { result } = renderHook(() => useStreamProcessor());
+      const onUpdate = TestUtils.createOnUpdateSpy();
+
+      const response = TestDataFactories.createMockResponse([
+        TestDataFactories.createTextStartEvent("t1"),
+        TestDataFactories.createTextDeltaEvent("t1", "hello"),
+        createFinishEventWithUsage({ inputTokens: 100, outputTokens: 50 }),
+      ]);
+
+      await result.current.processStream(response, "msg-1", onUpdate);
+
+      const finalMessage = onUpdate.mock.calls[onUpdate.mock.calls.length - 1][0];
+      expect(finalMessage.isStreaming).toBe(false);
+      expect(finalMessage.usage).toEqual({
+        inputTokens: 100,
+        outputTokens: 50,
+        cacheReadTokens: undefined,
+        cacheWriteTokens: undefined,
+      });
+    });
+
+    test("maps cacheReadInputTokens → cacheReadTokens and cacheCreationInputTokens → cacheWriteTokens", async () => {
+      const { result } = renderHook(() => useStreamProcessor());
+      const onUpdate = TestUtils.createOnUpdateSpy();
+
+      const response = TestDataFactories.createMockResponse([
+        TestDataFactories.createTextStartEvent("t1"),
+        TestDataFactories.createTextDeltaEvent("t1", "hello"),
+        createFinishEventWithUsage({
+          inputTokens: 200,
+          outputTokens: 80,
+          cacheReadInputTokens: 1024,
+          cacheCreationInputTokens: 512,
+        }),
+      ]);
+
+      await result.current.processStream(response, "msg-1", onUpdate);
+
+      const finalMessage = onUpdate.mock.calls[onUpdate.mock.calls.length - 1][0];
+      expect(finalMessage.usage).toEqual({
+        inputTokens: 200,
+        outputTokens: 80,
+        cacheReadTokens: 1024,
+        cacheWriteTokens: 512,
+      });
+    });
+
+    test("reads cache fields from providerMetadata.anthropic when absent in usage", async () => {
+      const { result } = renderHook(() => useStreamProcessor());
+      const onUpdate = TestUtils.createOnUpdateSpy();
+
+      const response = TestDataFactories.createMockResponse([
+        TestDataFactories.createTextStartEvent("t1"),
+        TestDataFactories.createTextDeltaEvent("t1", "hello"),
+        `data: ${JSON.stringify({
+          type: "finish",
+          finishReason: "stop",
+          usage: { inputTokens: 300, outputTokens: 60 },
+          providerMetadata: { anthropic: { cacheReadInputTokens: 2048, cacheCreationInputTokens: 256 } },
+        })}\n\n`,
+      ]);
+
+      await result.current.processStream(response, "msg-1", onUpdate);
+
+      const finalMessage = onUpdate.mock.calls[onUpdate.mock.calls.length - 1][0];
+      expect(finalMessage.usage).toEqual({
+        inputTokens: 300,
+        outputTokens: 60,
+        cacheReadTokens: 2048,
+        cacheWriteTokens: 256,
+      });
+    });
+
+    test("capturedUsage is undefined when finish event carries no usage", async () => {
+      const { result } = renderHook(() => useStreamProcessor());
+      const onUpdate = TestUtils.createOnUpdateSpy();
+
+      const response = TestDataFactories.createMockResponse([
+        TestDataFactories.createTextStartEvent("t1"),
+        TestDataFactories.createTextDeltaEvent("t1", "hello"),
+        `data: ${JSON.stringify({ type: "finish", finishReason: "stop" })}\n\n`,
+      ]);
+
+      await result.current.processStream(response, "msg-1", onUpdate);
+
+      const finalMessage = onUpdate.mock.calls[onUpdate.mock.calls.length - 1][0];
+      expect(finalMessage.usage).toBeUndefined();
+    });
+
+    test("usage is included in buildMessage(false) call — the final onUpdate", async () => {
+      const { result } = renderHook(() => useStreamProcessor());
+      const onUpdate = TestUtils.createOnUpdateSpy();
+
+      const response = TestDataFactories.createMockResponse([
+        TestDataFactories.createTextStartEvent("t1"),
+        TestDataFactories.createTextDeltaEvent("t1", "hello"),
+        createFinishEventWithUsage({ inputTokens: 42, outputTokens: 7 }),
+      ]);
+
+      await result.current.processStream(response, "msg-1", onUpdate);
+
+      // Final call must be isStreaming=false and carry usage
+      const finalCall = onUpdate.mock.calls[onUpdate.mock.calls.length - 1][0];
+      expect(finalCall.isStreaming).toBe(false);
+      expect(finalCall.usage?.inputTokens).toBe(42);
+      expect(finalCall.usage?.outputTokens).toBe(7);
+    });
+
+    test("direct cacheReadTokens/cacheWriteTokens fields are preserved when present", async () => {
+      const { result } = renderHook(() => useStreamProcessor());
+      const onUpdate = TestUtils.createOnUpdateSpy();
+
+      const response = TestDataFactories.createMockResponse([
+        TestDataFactories.createTextStartEvent("t1"),
+        TestDataFactories.createTextDeltaEvent("t1", "hi"),
+        createFinishEventWithUsage({
+          inputTokens: 10,
+          outputTokens: 5,
+          cacheReadTokens: 100,
+          cacheWriteTokens: 50,
+        }),
+      ]);
+
+      await result.current.processStream(response, "msg-1", onUpdate);
+
+      const finalMessage = onUpdate.mock.calls[onUpdate.mock.calls.length - 1][0];
+      expect(finalMessage.usage?.cacheReadTokens).toBe(100);
+      expect(finalMessage.usage?.cacheWriteTokens).toBe(50);
+    });
+  });
 });

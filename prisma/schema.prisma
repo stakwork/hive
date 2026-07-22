@@ -314,7 +314,6 @@ model Workspace {
   defaultForOrg           SourceControlOrg?        @relation("OrgDefaultWorkspace")
   voiceCorrectionLearnings VoiceCorrectionLearning[]
   promptUsages            PromptUsage[]
-
   @@index([ownerId])
   @@index([deleted])
   @@index([sourceControlOrgId])
@@ -654,6 +653,10 @@ model SharedConversation {
   ownerSeenAt        DateTime?         @map("owner_seen_at")
   source             String?
   settings           Json?             @default("{}")
+  // Map of in-flight repo_agent runs keyed by request_id.
+  // Each entry: { requestId, workspaceId, startedAt, abortRequested? }
+  // Used to support the Stop control in canvas chat. No secrets stored here.
+  activeRuns         Json?             @map("active_runs")
   user               User?             @relation(fields: [userId], references: [id], onDelete: Cascade)
   workspace          Workspace?        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   sourceControlOrg   SourceControlOrg? @relation(fields: [sourceControlOrgId], references: [id], onDelete: Cascade)
@@ -777,7 +780,8 @@ model JanitorConfig {
   prUseRebaseForUpdates      Boolean      @default(false) @map("pr_use_rebase_for_updates")
   prUseMergeForUpdates       Boolean      @default(true) @map("pr_use_merge_for_updates")
   deduplicationEnabled       Boolean      @default(false) @map("deduplication_enabled")
-  lingoExtractionEnabled     Boolean      @default(false) @map("lingo_extraction_enabled")
+  lingoExtractionEnabled              Boolean      @default(false) @map("lingo_extraction_enabled")
+  legalBenchmarkRecursionEnabled      Boolean      @default(false) @map("legal_benchmark_recursion_enabled")
   stalePrTasksEnabled        Boolean      @default(false) @map("stale_pr_tasks_enabled")
   stalePrTaskThresholdDays   Int          @default(7)     @map("stale_pr_task_threshold_days")
   workspace                  Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
@@ -1196,7 +1200,7 @@ model AgentLog {
   sessionId     String?      @map("session_id")
   provider      String?      @map("provider")
   source        String?      @map("source")
-  repos         String[]     @map("repos")
+  repos         String[]     @default([]) @map("repos")
   config        Json? // full config blob: { model, provider, source, repos, tools, toolsConfig, temperature, schema, providerConfig } — provider/source/repos also promoted to columns
   stats         Json? // cached parsed blob stats: { totalMessages, estimatedTokens, durationSeconds, totalToolCalls, toolFrequency, bashFrequency, developerShellFrequency, conversationPreview }
   metadata      Json? // free-form metadata passed in webhook body as `_metadata`; stored as-is, not interpreted
@@ -1544,6 +1548,8 @@ enum StakworkRunType {
   DAILY_RECAP
   LEGAL_BENCHMARK_RUNNER
   LEGAL_BENCHMARK_SCORER
+  LEGAL_BENCHMARK_EVAL
+  LEGAL_BENCHMARK_RECURSION
 }
 
 enum StakworkRunDecision {
@@ -2066,6 +2072,8 @@ model PromptVersion {
   description   String?
   whodunnit     String? // userId or system label (e.g. "stakwork-seed")
   published     Boolean  @default(false)
+  publishedBy   String?  @map("published_by") // userId or actor label set when version is published
+  publishedAt   DateTime? @map("published_at") // timestamp when version was published
   createdAt     DateTime @default(now()) @map("created_at")
   prompt        Prompt   @relation(fields: [promptId], references: [id], onDelete: Cascade)
   publishedForPrompts Prompt[] @relation("PublishedVersion")
@@ -2247,4 +2255,12 @@ model VoiceCorrectionLearning {
   @@index([createdAt])
   @@map("voice_correction_learnings")
 }
+
+
+enum RecursionStatus {
+  ACTIVE
+  RUNNING
+  INACTIVE
+}
+
 
