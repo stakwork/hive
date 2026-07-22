@@ -4,6 +4,18 @@
  * Defines valid model names and their associated API key environment variables.
  */
 
+/**
+ * Default execution model for Legal Benchmark runs.
+ * ⚠️ claude-sonnet-5 is a placeholder id pending product confirmation — update here
+ * once the live Anthropic id is confirmed (one-line change).
+ */
+export const DEFAULT_BENCHMARK_MODEL = "anthropic/claude-sonnet-5";
+
+/**
+ * Default judge model for Legal Benchmark runs.
+ */
+export const DEFAULT_JUDGE_MODEL = "anthropic/claude-sonnet-4-6";
+
 // Valid model names that can be passed from frontend
 export type ModelName = "sonnet" | "opus" | "haiku" | "kimi" | "gemini" | "gpt";
 
