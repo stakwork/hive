@@ -24,6 +24,8 @@ const makeRun = (overrides: Partial<{
   n_total: number;
   all_pass: boolean;
   judgeNotes: string;
+  requestedModel: string;
+  requestedJudgeModel: string;
 }> = {}) => ({
   id: "runner-1",
   workspaceId: WORKSPACE_ID,
@@ -36,6 +38,8 @@ const makeRun = (overrides: Partial<{
   n_total: undefined as number | undefined,
   all_pass: undefined as boolean | undefined,
   judgeNotes: undefined as string | undefined,
+  requestedModel: undefined as string | undefined,
+  requestedJudgeModel: undefined as string | undefined,
   ...overrides,
 });
 
@@ -485,5 +489,95 @@ describe("BenchmarkRunsHistory", () => {
 
     // LegalBenchmarkResults mock is rendered — presence confirms it was mounted
     expect(screen.getByTestId("results-runner-1")).toBeInTheDocument();
+  });
+
+  // ─── Model sub-line tests ──────────────────────────────────────────────────
+
+  it("renders model sub-line when requestedModel and requestedJudgeModel are present", () => {
+    mockUseList.mockReturnValue({
+      runs: [makeRun({
+        requestedModel: "anthropic/claude-sonnet-5",
+        requestedJudgeModel: "anthropic/claude-sonnet-4-6",
+      })],
+      total: 1,
+      isLoading: false,
+      error: null,
+      refetch: mockRefetch,
+      setExpandedId: mockSetExpandedId,
+    });
+    render(React.createElement(BenchmarkRunsHistory));
+
+    // Sub-line should show bare names (prefix stripped)
+    const subLine = screen.getByTestId("model-sub-line");
+    expect(subLine).toBeInTheDocument();
+    expect(subLine.textContent).toContain("claude-sonnet-5");
+    expect(subLine.textContent).toContain("claude-sonnet-4-6");
+    // Should NOT show the anthropic/ prefix
+    expect(subLine.textContent).not.toContain("anthropic/");
+  });
+
+  it("does NOT render model sub-line for legacy runs (no requestedModel/requestedJudgeModel)", () => {
+    mockUseList.mockReturnValue({
+      runs: [makeRun()], // no requestedModel or requestedJudgeModel
+      total: 1,
+      isLoading: false,
+      error: null,
+      refetch: mockRefetch,
+      setExpandedId: mockSetExpandedId,
+    });
+    render(React.createElement(BenchmarkRunsHistory));
+    expect(screen.queryByTestId("model-sub-line")).toBeNull();
+  });
+
+  it("model sub-line does not affect colSpan (non-super-admin still 4)", async () => {
+    mockUseList.mockReturnValue({
+      runs: [makeRun({
+        requestedModel: "anthropic/claude-sonnet-5",
+        requestedJudgeModel: "anthropic/claude-sonnet-4-6",
+      })],
+      total: 1,
+      isLoading: false,
+      error: null,
+      refetch: mockRefetch,
+      setExpandedId: mockSetExpandedId,
+    });
+
+    const user = userEvent.setup();
+    render(React.createElement(BenchmarkRunsHistory));
+
+    const row = screen.getByText("Analyze Antitrust Strategy").closest("tr")!;
+    await user.click(row);
+
+    const expandedCell = screen.getByTestId("results-runner-1").closest("td")!;
+    expect(expandedCell.getAttribute("colspan")).toBe("4");
+  });
+
+  it("judgeNotes tooltip still reflects judge model (no divergence from sub-line)", () => {
+    const judgeModel = "claude-sonnet-4-6";
+    const judgeNotes = `5/5 criteria passed. Judge: ${judgeModel}`;
+    mockUseList.mockReturnValue({
+      runs: [makeRun({
+        status: "COMPLETED",
+        n_passed: 5,
+        n_total: 5,
+        all_pass: true,
+        judgeNotes,
+        requestedModel: "anthropic/claude-sonnet-5",
+        requestedJudgeModel: `anthropic/${judgeModel}`,
+      })],
+      total: 1,
+      isLoading: false,
+      error: null,
+      refetch: mockRefetch,
+      setExpandedId: mockSetExpandedId,
+    });
+    render(React.createElement(BenchmarkRunsHistory));
+
+    // The sub-line judge value matches what the tooltip shows
+    const subLine = screen.getByTestId("model-sub-line");
+    expect(subLine.textContent).toContain(judgeModel);
+
+    const scoreDiv = screen.getByText("5/5").closest("div")!;
+    expect(scoreDiv.getAttribute("title")).toBe(judgeNotes);
   });
 });
