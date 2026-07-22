@@ -18,6 +18,10 @@ export interface BenchmarkRunListRow {
   n_total?: number;
   all_pass?: boolean;
   judgeNotes?: string; // "${n_passed}/${n_total} criteria passed. Judge: ${judge_model}"
+  /** Operator-chosen execution model (bare name). Absent on legacy runs. */
+  requestedModel?: string;
+  /** Operator-chosen judge model (bare name). Absent on legacy runs. */
+  requestedJudgeModel?: string;
 }
 
 interface UseLegalBenchmarkRunListResult {
@@ -78,10 +82,17 @@ export function useLegalBenchmarkRunList(
           n_passed: parsed?.n_passed,
           n_total: parsed?.n_total,
           all_pass: parsed?.all_pass,
-          // Format mirrors stakwork-run.ts:1655 — if the server-side format string changes, update this line to match.
+          requestedModel: parsed?.requestedModel,
+          requestedJudgeModel: parsed?.requestedJudgeModel,
+          // Unified judge precedence: operator choice takes priority over runner-echoed value.
+          // Format mirrors stakwork-run.ts — if the server-side format string changes, update this line to match.
           judgeNotes:
             parsed?.n_passed != null && parsed?.n_total != null
-              ? `${parsed.n_passed}/${parsed.n_total} criteria passed${parsed.judge_model ? `. Judge: ${parsed.judge_model}` : ""}`
+              ? `${parsed.n_passed}/${parsed.n_total} criteria passed${
+                  (parsed.requestedJudgeModel ?? parsed.judge_model)
+                    ? `. Judge: ${parsed.requestedJudgeModel ?? parsed.judge_model}`
+                    : ""
+                }`
               : undefined,
         };
       });

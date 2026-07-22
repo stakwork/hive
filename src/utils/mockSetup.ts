@@ -1012,6 +1012,15 @@ export async function ensureMockLlmModels(): Promise<void> {
       inputPricePer1M: 1,
       outputPricePer1M: 5,
     },
+    {
+      // Placeholder for the new Legal Benchmark execution default.
+      // ⚠️ claude-sonnet-5 is not yet a confirmed live Anthropic id — confirm
+      // with product before shipping as the live default.
+      name: "claude-sonnet-5",
+      provider: LlmProvider.ANTHROPIC,
+      inputPricePer1M: 3,
+      outputPricePer1M: 15,
+    },
   ];
 
   for (const m of models) {
