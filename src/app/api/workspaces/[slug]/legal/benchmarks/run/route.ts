@@ -9,9 +9,9 @@ import { getJarvisConfigForWorkspace } from "@/lib/helpers/jarvis-config";
 import { fetchHarveyTaskCriteria, ensureHarveyLabEvalNodes } from "@/lib/harvey-lab/eval-nodes";
 import { addNode, addEdge } from "@/services/swarm/api/nodes";
 import { getBifrostForLLM } from "@/services/bifrost/orchestrator";
-import { getApiKeyForModel } from "@/lib/ai/models";
+import { getApiKeyForModel, isValidModel, DEFAULT_BENCHMARK_MODEL, DEFAULT_JUDGE_MODEL } from "@/lib/ai/models";
 import { getStakworkTokenReference } from "@/lib/vercel/stakwork-token";
-import { WorkflowStatus, StakworkRunType } from "@prisma/client";
+import { WorkflowStatus, StakworkRunType, LlmProvider } from "@prisma/client";
 
 type RouteParams = {
   params: Promise<{ slug: string }>;
@@ -44,6 +44,11 @@ function handleSwarmAccessError(error: { type: string }) {
   };
   const errorInfo = errorMap[error.type] || { message: "Unknown error", status: 500 };
   return NextResponse.json({ error: errorInfo.message }, { status: errorInfo.status });
+}
+
+/** Strip the "provider/" prefix to get the bare model name for the Stakwork runner. */
+function bareModelName(model: string): string {
+  return model.includes("/") ? model.split("/").slice(1).join("/") : model;
 }
 
 /**
@@ -88,22 +93,8 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       );
     }
 
-    const BENCHMARK_MODEL = "claude-opus-4-5";
-    let bifrost: Awaited<ReturnType<typeof getBifrostForLLM>> | undefined;
-    try {
-      bifrost = await getBifrostForLLM(
-        { workspaceId, workspaceSlug: slug, userId: userOrResponse.id },
-        { agentName: "plan-agent", model: BENCHMARK_MODEL },
-      );
-    } catch (err) {
-      console.warn(
-        "[legal/benchmarks/run] Bifrost resolution failed, falling back to env key",
-        err,
-      );
-    }
-
-    // Parse + validate body
-    let body: { taskSlug?: string; taskTitle?: string };
+    // ── Parse + validate body (BEFORE Bifrost resolution) ─────────────────────
+    let body: { taskSlug?: string; taskTitle?: string; model?: string; judgeModel?: string };
     try {
       body = await request.json();
     } catch {
@@ -117,6 +108,71 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
         { status: 400 },
       );
     }
+
+    // Apply defaults for model selection
+    const model = body.model ?? DEFAULT_BENCHMARK_MODEL;
+    const judgeModel = body.judgeModel ?? DEFAULT_JUDGE_MODEL;
+
+    // Validate: isValidModel + Anthropic-only gate + DB catalog membership
+    const validateModel = async (m: string, label: string): Promise<NextResponse | null> => {
+      if (!isValidModel(m)) {
+        return NextResponse.json(
+          { error: `Invalid ${label}: "${m}"` },
+          { status: 400 },
+        );
+      }
+      if (!m.startsWith("anthropic/")) {
+        return NextResponse.json(
+          { error: `${label} must be an Anthropic model (got "${m}")` },
+          { status: 400 },
+        );
+      }
+      const namePart = bareModelName(m);
+      const dbModels = await db.llmModel.findMany({
+        where: {
+          isPublic: true,
+          provider: LlmProvider.ANTHROPIC,
+          OR: [{ dateEnd: null }, { dateEnd: { gt: new Date() } }],
+        },
+        select: { name: true },
+      });
+      const knownNames = dbModels.map((r) => r.name);
+      if (!knownNames.includes(namePart)) {
+        return NextResponse.json(
+          { error: `${label} "${m}" is not in the available model catalog` },
+          { status: 400 },
+        );
+      }
+      return null;
+    };
+
+    const modelErr = await validateModel(model, "model");
+    if (modelErr) return modelErr;
+    const judgeModelErr = await validateModel(judgeModel, "judgeModel");
+    if (judgeModelErr) return judgeModelErr;
+    // ─────────────────────────────────────────────────────────────────────────
+
+    // ── Bifrost credential resolution (after body parsing + validation) ───────
+    let bifrost: Awaited<ReturnType<typeof getBifrostForLLM>> | undefined;
+    try {
+      bifrost = await getBifrostForLLM(
+        { workspaceId, workspaceSlug: slug, userId: userOrResponse.id },
+        { agentName: "plan-agent", model },
+      );
+    } catch (err) {
+      console.warn(
+        "[legal/benchmarks/run] Bifrost resolution failed, falling back to env key",
+        err,
+      );
+    }
+
+    const resolvedApiKey = bifrost?.apiKey ?? getApiKeyForModel(model) ?? "";
+    if (!resolvedApiKey) {
+      console.warn(
+        `[legal/benchmarks/run] No API key resolved for model "${model}" — dispatching with empty key (runner may use its own credentials)`,
+      );
+    }
+    // ─────────────────────────────────────────────────────────────────────────
 
     // Validate required env vars before creating the record
     const runnerWorkflowId = process.env.STAKWORK_HARVEY_RUNNER_WORKFLOW_ID;
@@ -176,6 +232,10 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     const baseUrl = process.env.NEXTAUTH_URL || "http://localhost:3000";
     const placeholder = `${baseUrl}/api/webhook/stakwork/response`;
 
+    // Bare model names for storage (no provider prefix)
+    const bareModel = bareModelName(model);
+    const bareJudgeModel = bareModelName(judgeModel);
+
     let runnerRun: { id: string };
 
     try {
@@ -211,6 +271,11 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
         const runnerResultJson: Record<string, unknown> = {
           taskSlug,
           taskTitle,
+          // Persist the operator's model choices under clobber-proof keys
+          // (the runner never emits requestedModel/requestedJudgeModel, so
+          //  the webhook merge cannot overwrite them).
+          requestedModel: bareModel,
+          requestedJudgeModel: bareJudgeModel,
           // evalTriggerRef will be added later (non-fatal Jarvis step)
         };
 
@@ -269,8 +334,9 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
               repo2graph_url: agentHost,
               swarm_secret_alias: swarmSecretAlias,
               secret: swarmSecretAlias,
-              model: BENCHMARK_MODEL,
-              apiKey: bifrost?.apiKey ?? getApiKeyForModel(BENCHMARK_MODEL) ?? "",
+              model: bareModel,
+              judge_model: bareJudgeModel,
+              apiKey: resolvedApiKey,
               baseUrl: bifrost?.baseUrl ?? "",
               ...(bifrost && Object.keys(bifrost.headers).length > 0
                 ? { headers: bifrost.headers }
@@ -282,6 +348,16 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
         },
       },
     };
+
+    // Dispatch-boundary log — helps diagnose bad/unconfirmed model ids without fail-close
+    if (!resolvedApiKey || !payload.workflow_params.set_var.attributes.vars.model) {
+      console.error(
+        `[legal/benchmarks/run] dispatch warning: resolved apiKey is empty or model is blank — model="${bareModel}" judge_model="${bareJudgeModel}"`,
+      );
+    }
+    console.log(
+      `[legal/benchmarks/run] dispatching model=${bareModel} judge_model=${bareJudgeModel}`,
+    );
 
     const stakworkResponse = await fetch(`${optionalEnvVars.STAKWORK_BASE_URL}/projects`, {
       method: "POST",

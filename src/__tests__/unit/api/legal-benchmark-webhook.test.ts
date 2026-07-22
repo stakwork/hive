@@ -515,3 +515,68 @@ describe("POST /api/webhook/stakwork/response — payload reaches service correc
     expect(webhookData).not.toHaveProperty("criteria_results");
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Clobber protection: requestedModel/requestedJudgeModel not overwritten by
+// runner webhook echo of judge_model (via RunnerScoreSchema)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("POST /api/webhook/stakwork/response — requestedModel/requestedJudgeModel clobber protection", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  /**
+   * The runner webhook echoes `judge_model` (and potentially `model`) via RunnerScoreSchema.
+   * processLegalBenchmarkRunnerWebhook merges incoming score fields on top of the existing
+   * stored result. Since the operator's choices are stored under `requestedModel` /
+   * `requestedJudgeModel` — keys the runner NEVER emits — they survive the spread untouched.
+   *
+   * We verify this by capturing the exact `webhookData.result` that reaches the service
+   * and asserting the separation of key namespaces.
+   */
+  test("runner webhook with judge_model echo does NOT contain requestedModel or requestedJudgeModel keys (those are operator-only)", async () => {
+    const capturedCalls: Array<{ webhookData: unknown }> = [];
+    mockProcessStakworkRunWebhook.mockImplementation(async (webhookData: unknown) => {
+      capturedCalls.push({ webhookData });
+      return { runId: "runner-1", status: "COMPLETED", dataType: "string" };
+    });
+
+    // Runner webhook with full inline score fields (including judge_model echo)
+    await postWebhook(makeRunnerWithScoreRequest("runner-1", "ws-1", "valid-token", {
+      judge_model: "claude-sonnet-different-echo",
+    }));
+
+    const { webhookData } = capturedCalls[0] as {
+      webhookData: Record<string, unknown> & { result: Record<string, unknown> };
+    };
+
+    // The runner result payload must contain the echoed judge_model under result
+    expect(webhookData.result.judge_model).toBe("claude-sonnet-different-echo");
+
+    // But requestedModel and requestedJudgeModel must NOT be in the webhook payload —
+    // they are stored by the route at creation time, not emitted by the runner webhook.
+    // This ensures the two namespaces never collide in the merge.
+    expect(webhookData.result).not.toHaveProperty("requestedModel");
+    expect(webhookData.result).not.toHaveProperty("requestedJudgeModel");
+    expect(webhookData).not.toHaveProperty("requestedModel");
+    expect(webhookData).not.toHaveProperty("requestedJudgeModel");
+  });
+
+  test("runner webhook result keys do not include requestedModel even when model var is echoed", async () => {
+    const capturedCalls: Array<{ webhookData: unknown }> = [];
+    mockProcessStakworkRunWebhook.mockImplementation(async (webhookData: unknown) => {
+      capturedCalls.push({ webhookData });
+      return { runId: "runner-1", status: "COMPLETED", dataType: "string" };
+    });
+
+    await postWebhook(makeRunnerWithScoreRequest("runner-1", "ws-1", "valid-token"));
+
+    const { webhookData } = capturedCalls[0] as {
+      webhookData: Record<string, unknown> & { result: Record<string, unknown> };
+    };
+    // Confirm the runner result does not have the requestedModel namespace
+    expect(webhookData.result).not.toHaveProperty("requestedModel");
+    expect(webhookData.result).not.toHaveProperty("requestedJudgeModel");
+  });
+});
