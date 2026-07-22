@@ -11,6 +11,22 @@ import { StakworkRunLink } from "@/components/legal/StakworkRunLink";
 import { WorkflowStatus } from "@prisma/client";
 import type { BenchmarkRunListRow } from "@/hooks/useLegalBenchmarkRunList";
 
+/** Strip provider prefix for display, e.g. "anthropic/claude-sonnet-5" → "claude-sonnet-5" */
+function displayModelName(value: string | undefined): string {
+  if (!value) return "—";
+  const slash = value.indexOf("/");
+  return slash >= 0 ? value.slice(slash + 1) : value;
+}
+
+/** Unified model precedence for display */
+function resolveModelDisplay(run: BenchmarkRunListRow) {
+  const exec = displayModelName(run.requestedModel);
+  const judge = displayModelName(run.requestedJudgeModel);
+  // If both are "—" (legacy run), we show nothing to avoid cluttering the row
+  const hasAny = run.requestedModel || run.requestedJudgeModel;
+  return { exec, judge, hasAny };
+}
+
 export function BenchmarkRunsHistory() {
   const { workspace, isSuperAdmin } = useWorkspace();
   const workspaceId = workspace?.id;
@@ -93,6 +109,15 @@ export function BenchmarkRunsHistory() {
                     {run.taskSlug && (
                       <div className="text-xs text-muted-foreground mt-0.5">{run.taskSlug}</div>
                     )}
+                    {(() => {
+                      const { exec, judge, hasAny } = resolveModelDisplay(run);
+                      if (!hasAny) return null;
+                      return (
+                        <div className="text-xs text-muted-foreground mt-0.5" data-testid="model-sub-line">
+                          {exec} · Judge: {judge}
+                        </div>
+                      );
+                    })()}
                   </td>
                   <td className="px-4 py-3 whitespace-nowrap">
                     <span
