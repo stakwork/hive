@@ -116,6 +116,15 @@ vi.mock("@/hooks/useWorkspace", () => ({
   }),
 }));
 
+vi.mock("@/components/ui/tooltip", () => ({
+  Tooltip: ({ children }: { children?: React.ReactNode }) =>
+    React.createElement("div", { "data-testid": "tooltip" }, children),
+  TooltipTrigger: ({ children, asChild }: { children?: React.ReactNode; asChild?: boolean }) =>
+    React.createElement("div", { "data-testid": "tooltip-trigger" }, children),
+  TooltipContent: ({ children, side, className }: { children?: React.ReactNode; side?: string; className?: string }) =>
+    React.createElement("div", { "data-testid": "tooltip-content", "data-side": side, className }, children),
+}));
+
 vi.mock("@/components/ui/collapsible", () => ({
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   Collapsible: ({ children, open, onOpenChange }: any) => (
@@ -1115,6 +1124,132 @@ describe("LegalBenchmarkResults", () => {
 
     render(React.createElement(LegalBenchmarkResults, { runId: "run-abc", onReset }));
     expect(screen.queryByRole("button", { name: "Recursion" })).toBeNull();
+  });
+});
+
+// ─── Model display tests ──────────────────────────────────────────────────────
+
+describe("LegalBenchmarkResults — model display", () => {
+  const onReset = vi.fn();
+
+  function makeCompleteRun(resultOverrides: Record<string, unknown> = {}) {
+    return makeMockRun({
+      status: "complete",
+      runnerOutputText: "Output",
+      runnerRun: makeRunnerRow({
+        status: "COMPLETED",
+        result: {
+          taskSlug: "antitrust/task-1",
+          taskTitle: "Test",
+          n_passed: 5,
+          n_total: 5,
+          all_pass: true,
+          ...resultOverrides,
+        },
+      }),
+    });
+  }
+
+  it("renders requestedModel (stripped prefix) when present", () => {
+    mockUseLegalBenchmarkRun.mockReturnValue({
+      run: makeCompleteRun({ requestedModel: "anthropic/claude-sonnet-5" }),
+      isLoading: false,
+      isStale: false,
+      refetch: vi.fn(),
+    });
+    render(React.createElement(LegalBenchmarkResults, { runId: "run-abc", onReset }));
+    expect(screen.getByText("claude-sonnet-5")).toBeInTheDocument();
+  });
+
+  it("falls back to runner-echoed model when requestedModel is absent", () => {
+    mockUseLegalBenchmarkRun.mockReturnValue({
+      run: makeCompleteRun({ model: "claude-opus-4-5" }),
+      isLoading: false,
+      isStale: false,
+      refetch: vi.fn(),
+    });
+    render(React.createElement(LegalBenchmarkResults, { runId: "run-abc", onReset }));
+    expect(screen.getByText("claude-opus-4-5")).toBeInTheDocument();
+  });
+
+  it("renders requestedJudgeModel (stripped prefix) when present", () => {
+    mockUseLegalBenchmarkRun.mockReturnValue({
+      run: makeCompleteRun({
+        requestedModel: "anthropic/claude-sonnet-5",
+        requestedJudgeModel: "anthropic/claude-sonnet-4-6",
+      }),
+      isLoading: false,
+      isStale: false,
+      refetch: vi.fn(),
+    });
+    render(React.createElement(LegalBenchmarkResults, { runId: "run-abc", onReset }));
+    expect(screen.getByText("claude-sonnet-4-6")).toBeInTheDocument();
+  });
+
+  it("falls back to runner-echoed judge_model when requestedJudgeModel is absent", () => {
+    mockUseLegalBenchmarkRun.mockReturnValue({
+      run: makeCompleteRun({ judge_model: "claude-haiku-4-5" }),
+      isLoading: false,
+      isStale: false,
+      refetch: vi.fn(),
+    });
+    render(React.createElement(LegalBenchmarkResults, { runId: "run-abc", onReset }));
+    expect(screen.getByText("claude-haiku-4-5")).toBeInTheDocument();
+  });
+
+  it("shows '—' for both models on a legacy run (no model fields)", () => {
+    mockUseLegalBenchmarkRun.mockReturnValue({
+      run: makeCompleteRun(), // no requestedModel, model, requestedJudgeModel, judge_model
+      isLoading: false,
+      isStale: false,
+      refetch: vi.fn(),
+    });
+    render(React.createElement(LegalBenchmarkResults, { runId: "run-abc", onReset }));
+    // Should have two "—" placeholders (one for exec, one for judge)
+    const dashes = screen.getAllByText("—");
+    expect(dashes.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("shows legacy tooltip when model is '—'", () => {
+    mockUseLegalBenchmarkRun.mockReturnValue({
+      run: makeCompleteRun(),
+      isLoading: false,
+      isStale: false,
+      refetch: vi.fn(),
+    });
+    render(React.createElement(LegalBenchmarkResults, { runId: "run-abc", onReset }));
+    const tooltips = screen.getAllByTestId("tooltip-content");
+    const legacyTooltip = tooltips.find((el) =>
+      el.textContent?.includes("predates model selection")
+    );
+    expect(legacyTooltip).toBeDefined();
+  });
+
+  it("strips 'anthropic/' prefix — does NOT render with prefix", () => {
+    mockUseLegalBenchmarkRun.mockReturnValue({
+      run: makeCompleteRun({ requestedModel: "anthropic/claude-sonnet-5" }),
+      isLoading: false,
+      isStale: false,
+      refetch: vi.fn(),
+    });
+    render(React.createElement(LegalBenchmarkResults, { runId: "run-abc", onReset }));
+    expect(screen.queryByText("anthropic/claude-sonnet-5")).toBeNull();
+    expect(screen.getByText("claude-sonnet-5")).toBeInTheDocument();
+  });
+
+  it("requestedModel takes precedence over runner-echoed model", () => {
+    mockUseLegalBenchmarkRun.mockReturnValue({
+      run: makeCompleteRun({
+        requestedModel: "anthropic/claude-sonnet-5",
+        model: "claude-opus-4-5", // runner-echoed (should be ignored)
+      }),
+      isLoading: false,
+      isStale: false,
+      refetch: vi.fn(),
+    });
+    render(React.createElement(LegalBenchmarkResults, { runId: "run-abc", onReset }));
+    expect(screen.getByText("claude-sonnet-5")).toBeInTheDocument();
+    expect(screen.queryByText("claude-opus-4-5")).toBeNull();
   });
 });
 
