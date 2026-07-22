@@ -5070,3 +5070,150 @@ describe("extractDiagramData — payload format variants", () => {
     expect(relayoutDiagram).not.toHaveBeenCalled();
   });
 });
+
+// ═══════════════════════════════════════════════════════════════════════════
+// processLegalBenchmarkRunnerWebhook — requestedJudgeModel preservation
+// ═══════════════════════════════════════════════════════════════════════════
+
+describe("processStakworkRunWebhook — LEGAL_BENCHMARK_RUNNER requestedJudgeModel preservation", () => {
+  const WORKSPACE_ID = "ws-legal";
+  const RUN_ID = "legal-run-1";
+  const WEBHOOK_SECRET = "test-secret";
+
+  // Compute the HMAC the same way the service does
+  function makeRunToken(runId: string) {
+    const { createHmac } = require("crypto") as typeof import("crypto");
+    return createHmac("sha256", WEBHOOK_SECRET).update(runId).digest("hex");
+  }
+
+  const baseLegalRun = {
+    id: RUN_ID,
+    type: StakworkRunType.LEGAL_BENCHMARK_RUNNER,
+    featureId: null,
+    promptVersionId: null,
+    workspaceId: WORKSPACE_ID,
+    workspace: { slug: "openlaw", id: WORKSPACE_ID },
+    status: WorkflowStatus.IN_PROGRESS,
+  };
+
+  function makeQueryContext() {
+    return {
+      type: "LEGAL_BENCHMARK_RUNNER" as const,
+      workspace_id: WORKSPACE_ID,
+      run_id: RUN_ID,
+      run_token: makeRunToken(RUN_ID),
+    };
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    process.env.NEXTAUTH_SECRET = WEBHOOK_SECRET;
+    mockedDb.stakworkRun.findFirst = vi.fn().mockResolvedValue(baseLegalRun);
+    mockedDb.stakworkRun.updateMany = vi.fn().mockResolvedValue({ count: 1 });
+    mockedDb.stakworkRun.update = vi.fn().mockResolvedValue({});
+    mockedDb.stakworkRun.findUnique = vi.fn().mockResolvedValue(null);
+    vi.mocked(pusherServer.trigger).mockResolvedValue(undefined as never);
+  });
+
+  test("runner-echoed judge_model does NOT overwrite requestedJudgeModel stored at creation", async () => {
+    // DB row has creation-time JSON with operator-chosen requestedJudgeModel = "claude-haiku-4-5"
+    const runWithCreationResult = {
+      ...baseLegalRun,
+      result: JSON.stringify({
+        taskSlug: "contracts/task-1",
+        taskTitle: "Task 1",
+        model: "claude-opus-4-5",
+        judge_model: "claude-haiku-4-5",
+        requestedJudgeModel: "claude-haiku-4-5",
+      }),
+    };
+    mockedDb.stakworkRun.findFirst = vi.fn().mockResolvedValue(runWithCreationResult);
+
+    // Simulate the normalized payload shape (as the webhook route sends to processStakworkRunWebhook
+    // after normalizeLegalBenchmarkPayload): Harvey fields nested under `result`,
+    // with project_status/project_id at top level.
+    const webhookPayload = {
+      result: {
+        final_output: "runner output",
+        output_s3_url: "https://stakwork-uploads.s3.us-east-1.amazonaws.com/output/result.txt",
+        score: 80,
+        n_passed: 4,
+        n_total: 5,
+        all_pass: false,
+        judge_model: "claude-sonnet-4-6",  // different from operator-requested!
+      },
+      project_status: "complete",
+      project_id: 1234,
+    };
+
+    const capturedUpdates: Array<Record<string, unknown>> = [];
+    mockedDb.stakworkRun.update = vi.fn().mockImplementation((args: { data: Record<string, unknown> }) => {
+      capturedUpdates.push(args.data);
+      return Promise.resolve({});
+    });
+
+    await processStakworkRunWebhook(webhookPayload, makeQueryContext());
+
+    // At least one update must have been made to the result
+    expect(capturedUpdates.length).toBeGreaterThan(0);
+
+    // Find the update that sets the merged result JSON
+    const resultUpdate = capturedUpdates.find((u) => typeof u.result === "string");
+    expect(resultUpdate).toBeDefined();
+
+    const parsedResult = JSON.parse(resultUpdate!.result as string) as Record<string, unknown>;
+
+    // requestedJudgeModel must still be the operator-selected value (not the runner echo)
+    expect(parsedResult.requestedJudgeModel).toBe("claude-haiku-4-5");
+    // model must also be preserved
+    expect(parsedResult.model).toBe("claude-opus-4-5");
+    // runner-echoed judge_model is kept for audit
+    expect(parsedResult.judge_model).toBe("claude-sonnet-4-6");
+  });
+
+  test("requestedJudgeModel absent on legacy run → no field injected (graceful)", async () => {
+    // Legacy DB row without requestedJudgeModel
+    const legacyRun = {
+      ...baseLegalRun,
+      result: JSON.stringify({
+        taskSlug: "contracts/task-legacy",
+        taskTitle: "Legacy Task",
+      }),
+    };
+    mockedDb.stakworkRun.findFirst = vi.fn().mockResolvedValue(legacyRun);
+
+    const webhookPayload = {
+      result: {
+        final_output: "output",
+        output_s3_url: "https://stakwork-uploads.s3.us-east-1.amazonaws.com/output/r.txt",
+        score: 60,
+        n_passed: 3,
+        n_total: 5,
+        all_pass: false,
+        judge_model: "claude-sonnet-4-6",
+      },
+      project_status: "complete",
+      project_id: 5678,
+    };
+
+    const capturedUpdates: Array<Record<string, unknown>> = [];
+    mockedDb.stakworkRun.update = vi.fn().mockImplementation((args: { data: Record<string, unknown> }) => {
+      capturedUpdates.push(args.data);
+      return Promise.resolve({});
+    });
+
+    await processStakworkRunWebhook(webhookPayload, makeQueryContext());
+
+    const resultUpdate = capturedUpdates.find((u) => typeof u.result === "string");
+    expect(resultUpdate).toBeDefined();
+
+    const parsedResult = JSON.parse(resultUpdate!.result as string) as Record<string, unknown>;
+
+    // Legacy run: requestedJudgeModel not present (graceful)
+    expect(parsedResult.requestedJudgeModel).toBeUndefined();
+    // model similarly absent
+    expect(parsedResult.model).toBeUndefined();
+    // judge_model from runner still present
+    expect(parsedResult.judge_model).toBe("claude-sonnet-4-6");
+  });
+});

@@ -1012,6 +1012,12 @@ export async function ensureMockLlmModels(): Promise<void> {
       inputPricePer1M: 1,
       outputPricePer1M: 5,
     },
+    {
+      name: "claude-opus-4-5",
+      provider: LlmProvider.ANTHROPIC,
+      inputPricePer1M: 15,
+      outputPricePer1M: 75,
+    },
   ];
 
   for (const m of models) {
