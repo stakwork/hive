@@ -2,19 +2,37 @@
 
 import React, { useState, useEffect } from "react";
 import { toast } from "sonner";
-import { Search, Loader2 } from "lucide-react";
+import { Search, Loader2, Info } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { LegalBenchmarkResults } from "@/components/legal/LegalBenchmarkResults";
 import type { HarveyTask } from "@/lib/harvey-lab-tasks";
 import { WORK_TYPE_STYLES } from "@/lib/harvey-lab-tasks";
 import { TaskDetailsModal } from "@/components/legal/TaskDetailsModal";
 import { cn } from "@/lib/utils";
+import {
+  getModelValue,
+  DEFAULT_BENCHMARK_MODEL,
+  DEFAULT_JUDGE_MODEL,
+  type LlmModelOption,
+} from "@/lib/ai/models";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -116,6 +134,14 @@ function TaskCard({ task, onSelect, onViewDetails, isRunning }: TaskCardProps) {
   );
 }
 
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
+/** Strip provider prefix for display, e.g. "anthropic/claude-sonnet-5" → "claude-sonnet-5" */
+function displayModelName(value: string): string {
+  const slash = value.indexOf("/");
+  return slash >= 0 ? value.slice(slash + 1) : value;
+}
+
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export function LegalBenchmarksPanel({ className }: { className?: string }) {
@@ -131,19 +157,39 @@ export function LegalBenchmarksPanel({ className }: { className?: string }) {
   const [runningTaskSlug, setRunningTaskSlug] = useState<string | null>(null);
   const [detailsTask, setDetailsTask] = useState<HarveyTask | null>(null);
 
+  // ─── Model selection ───────────────────────────────────────────────────────
+  const [llmModels, setLlmModels] = useState<LlmModelOption[]>([]);
+  const [selectedModel, setSelectedModel] = useState<string>(DEFAULT_BENCHMARK_MODEL);
+  const [selectedJudgeModel, setSelectedJudgeModel] = useState<string>(DEFAULT_JUDGE_MODEL);
+
+  // Fetch LLM models and tasks on mount
   useEffect(() => {
     if (!slug) return;
 
-    const fetchTasks = async () => {
+    const fetchData = async () => {
       try {
         setIsLoading(true);
         setError(null);
-        const res = await fetch(`/api/workspaces/${slug}/legal/benchmarks/tasks`);
-        if (!res.ok) throw new Error(`Failed to fetch tasks: ${res.status}`);
-        const data: BenchmarksResponse = await res.json();
-        setPracticeAreas(data.practice_areas);
-        if (data.practice_areas.length > 0) {
-          setSelectedArea(data.practice_areas[0].slug);
+
+        const [tasksRes, modelsRes] = await Promise.all([
+          fetch(`/api/workspaces/${slug}/legal/benchmarks/tasks`),
+          fetch("/api/llm-models"),
+        ]);
+
+        if (!tasksRes.ok) throw new Error(`Failed to fetch tasks: ${tasksRes.status}`);
+        const tasksData: BenchmarksResponse = await tasksRes.json();
+        setPracticeAreas(tasksData.practice_areas);
+        if (tasksData.practice_areas.length > 0) {
+          setSelectedArea(tasksData.practice_areas[0].slug);
+        }
+
+        if (modelsRes.ok) {
+          const modelsData: LlmModelOption[] = await modelsRes.json();
+          // Filter to Anthropic-only (Harvey runner is Anthropic-only)
+          const anthropicModels = modelsData.filter(
+            (m) => m.provider === "ANTHROPIC"
+          );
+          setLlmModels(anthropicModels);
         }
       } catch (err) {
         setError(err instanceof Error ? err.message : "Failed to load benchmarks");
@@ -152,14 +198,19 @@ export function LegalBenchmarksPanel({ className }: { className?: string }) {
       }
     };
 
-    fetchTasks();
+    fetchData();
   }, [slug]);
 
   const handleSelectTask = async (task: HarveyTask) => {
     const res = await fetch(`/api/workspaces/${slug}/legal/benchmarks/run`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ taskSlug: task.slug, taskTitle: task.title }),
+      body: JSON.stringify({
+        taskSlug: task.slug,
+        taskTitle: task.title,
+        model: selectedModel,
+        judgeModel: selectedJudgeModel,
+      }),
     });
 
     if (!res.ok) {
@@ -184,6 +235,29 @@ export function LegalBenchmarksPanel({ className }: { className?: string }) {
     currentArea?.tasks.filter((task) =>
       task.title.toLowerCase().includes(search.toLowerCase())
     ) ?? [];
+
+  // Build picker options — fall back to hardcoded defaults if catalog is empty
+  const pickerOptions: LlmModelOption[] =
+    llmModels.length > 0
+      ? llmModels
+      : [
+          {
+            id: DEFAULT_BENCHMARK_MODEL,
+            name: displayModelName(DEFAULT_BENCHMARK_MODEL),
+            provider: "ANTHROPIC",
+            providerLabel: null,
+            isPlanDefault: false,
+            isTaskDefault: false,
+          },
+          {
+            id: DEFAULT_JUDGE_MODEL,
+            name: displayModelName(DEFAULT_JUDGE_MODEL),
+            provider: "ANTHROPIC",
+            providerLabel: null,
+            isPlanDefault: false,
+            isTaskDefault: false,
+          },
+        ];
 
   return (
     <div className={cn("flex flex-col flex-1 overflow-hidden min-h-0", className)}>
@@ -224,8 +298,72 @@ export function LegalBenchmarksPanel({ className }: { className?: string }) {
           </ScrollArea>
         </div>
 
-        {/* Right panel — search + task grid */}
+        {/* Right panel — model selectors + search + task grid */}
         <div className="flex-1 flex flex-col overflow-hidden min-h-0">
+          {/* Model selectors row */}
+          <div className="px-4 py-2.5 border-b flex flex-wrap items-center gap-3">
+            {/* Execution Model */}
+            <div className="flex items-center gap-2 min-w-0">
+              <span className="text-xs text-muted-foreground whitespace-nowrap shrink-0">
+                Execution Model
+              </span>
+              <Select value={selectedModel} onValueChange={setSelectedModel}>
+                <SelectTrigger
+                  className="h-7 text-xs px-2 w-auto min-w-[160px] max-w-[220px]"
+                  data-testid="execution-model-select"
+                >
+                  <SelectValue placeholder="Select model" />
+                </SelectTrigger>
+                <SelectContent>
+                  {pickerOptions.map((m) => {
+                    const val = getModelValue(m);
+                    return (
+                      <SelectItem key={m.id} value={val} className="text-xs">
+                        {m.name}
+                      </SelectItem>
+                    );
+                  })}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Judge Model */}
+            <div className="flex items-center gap-2 min-w-0">
+              <span className="text-xs text-muted-foreground whitespace-nowrap shrink-0">
+                Judge Model
+              </span>
+              <Select value={selectedJudgeModel} onValueChange={setSelectedJudgeModel}>
+                <SelectTrigger
+                  className="h-7 text-xs px-2 w-auto min-w-[160px] max-w-[220px]"
+                  data-testid="judge-model-select"
+                >
+                  <SelectValue placeholder="Select judge" />
+                </SelectTrigger>
+                <SelectContent>
+                  {pickerOptions.map((m) => {
+                    const val = getModelValue(m);
+                    return (
+                      <SelectItem key={m.id} value={val} className="text-xs">
+                        {m.name}
+                      </SelectItem>
+                    );
+                  })}
+                </SelectContent>
+              </Select>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help shrink-0" />
+                </TooltipTrigger>
+                <TooltipContent side="bottom" className="max-w-xs text-xs">
+                  Judge model is captured and stored but does not yet influence
+                  scoring until Stakwork workflow 57179 is wired to read{" "}
+                  <code>{"{{vars.judge_model}}"}</code> in its scoring step.
+                </TooltipContent>
+              </Tooltip>
+            </div>
+          </div>
+
+          {/* Search */}
           <div className="p-4 border-b">
             <div className="relative">
               <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
