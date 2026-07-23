@@ -58,9 +58,9 @@ function truncate(s: string | null | undefined, max: number): string {
 }
 
 function scoreDisplay(fix: ProposedFix): string {
-  if (fix.before_score != null && fix.after_score != null) {
-    return `${fix.before_score} → ${fix.after_score}`;
-  }
+  const hasBefore = fix.before_score != null && fix.before_score !== "";
+  const hasAfter  = fix.after_score  != null && fix.after_score  !== "";
+  if (hasBefore && hasAfter) return `${fix.before_score} → ${fix.after_score}`;
   return fix.score_delta ?? "—";
 }
 
@@ -319,9 +319,13 @@ export function EvalRunsBox({
                           {scoreDisplay(fix)}
                         </td>
                         <td className="px-4 py-3">
-                          <StatusBadge status={fix.status} />
+                          <StatusBadge status={fix.eval_status ?? fix.status} />
                         </td>
-                        {isSuperAdmin && <td className="px-4 py-3" />}
+                        {isSuperAdmin && (
+                          <td className="px-4 py-3">
+                            <StakworkRunLink projectId={fix.project_id ?? null} isSuperAdmin={isSuperAdmin} />
+                          </td>
+                        )}
                         <td className="px-4 py-3">
                           <button
                             onClick={() => setExpandedKey(isExpanded ? null : key)}
