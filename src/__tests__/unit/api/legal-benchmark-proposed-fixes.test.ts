@@ -360,6 +360,7 @@ describe("GET /api/workspaces/[slug]/legal/benchmarks/proposed-fixes", () => {
       "rerun_run_id",
       "resolved_by",
       "resolved_at",
+      "project_id",
     ]);
 
     for (const key of Object.keys(fix)) {
@@ -383,6 +384,41 @@ describe("GET /api/workspaces/[slug]/legal/benchmarks/proposed-fixes", () => {
     expect(body.fixes[0].ref_id).toBe("fix-node-sparse");
     expect(body.fixes[0].criterion_id).toBeNull();
     expect(body.fixes[0].rerun_run_id).toBeNull();
+  });
+
+  // ── project_id projection ─────────────────────────────────────────────────
+
+  test("15c. project_id projected as number when node property is a numeric string", async () => {
+    mockSearchNodesByAttributes.mockResolvedValue({
+      ok: true,
+      nodes: [makeProposedFixNode({ project_id: "57419" })],
+    });
+    const res = await GET(makeRequest("openlaw", RUNNER_RUN_ID), makeParams("openlaw"));
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.fixes[0].project_id).toBe(57419);
+  });
+
+  test("15d. project_id is null when absent from node properties", async () => {
+    mockSearchNodesByAttributes.mockResolvedValue({
+      ok: true,
+      nodes: [makeProposedFixNode()], // base fixture has no project_id key
+    });
+    const res = await GET(makeRequest("openlaw", RUNNER_RUN_ID), makeParams("openlaw"));
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.fixes[0].project_id).toBeNull();
+  });
+
+  test("15e. project_id is null when node property is an empty string", async () => {
+    mockSearchNodesByAttributes.mockResolvedValue({
+      ok: true,
+      nodes: [makeProposedFixNode({ project_id: "" })],
+    });
+    const res = await GET(makeRequest("openlaw", RUNNER_RUN_ID), makeParams("openlaw"));
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.fixes[0].project_id).toBeNull();
   });
 
   // ── Graph search failure ──────────────────────────────────────────────────
