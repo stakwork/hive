@@ -7,7 +7,7 @@
 // @vitest-environment node
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { kgGetNode, kgGetNeighbors, kgGetNodesByRefs, kgSearch, kgGetOntology, kgGetNodesByType } from "@/lib/ai/kg-adapter";
+import { kgGetNode, kgGetNeighbors, kgGetNodesByRefs, kgSearch, kgGetOntology, kgGetNodesByType, kgGetSubgraph } from "@/lib/ai/kg-adapter";
 
 const JARVIS_URL = "https://jarvis.example.com";
 const API_KEY = "test-api-key";
@@ -1000,5 +1000,168 @@ describe("kgGetNodesByType", () => {
     const calledUrl = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
     expect(calledUrl).not.toContain("//v2");
     expect(calledUrl).toContain("/v2/nodes");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// kgGetSubgraph
+// ---------------------------------------------------------------------------
+
+describe("kgGetSubgraph", () => {
+  const START_REF_ID = "eval-set-001";
+
+  it("successful fetch: returns { ok: true, subgraph } with nodes and edges", async () => {
+    const mockSubgraph = {
+      nodes: [
+        { ref_id: "node-1", node_type: "EvalTrigger", properties: { agent: "test" } },
+        { ref_id: "node-2", node_type: "ProposedFix", properties: {} },
+      ],
+      edges: [
+        { source: "node-1", target: "node-2", edge_type: "HAS_PROPOSED_FIX" },
+      ],
+    };
+    globalThis.fetch = mockFetch(mockSubgraph);
+
+    const result = await kgGetSubgraph(JARVIS_URL, API_KEY, START_REF_ID);
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.subgraph.nodes).toHaveLength(2);
+      expect(result.subgraph.edges).toHaveLength(1);
+      expect(result.subgraph.nodes[0].ref_id).toBe("node-1");
+    }
+  });
+
+  it("successful fetch: sends correct params (start_node, node_type, depth, include_properties)", async () => {
+    globalThis.fetch = mockFetch({ nodes: [], edges: [] });
+
+    await kgGetSubgraph(JARVIS_URL, API_KEY, START_REF_ID);
+
+    const calledUrl = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
+    expect(calledUrl).toContain("/graph/subgraph");
+    expect(calledUrl).toContain(`start_node=${encodeURIComponent(START_REF_ID)}`);
+    expect(calledUrl).toContain("node_type=");
+    expect(calledUrl).toContain("depth=");
+    expect(calledUrl).toContain("include_properties=true");
+  });
+
+  it("uses correct auth header (x-api-token)", async () => {
+    globalThis.fetch = mockFetch({ nodes: [], edges: [] });
+
+    await kgGetSubgraph(JARVIS_URL, API_KEY, START_REF_ID);
+
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({ headers: { "x-api-token": API_KEY } }),
+    );
+  });
+
+  it("failed HTTP response: returns { ok: false, error }", async () => {
+    globalThis.fetch = mockFetch(null, false, 500);
+
+    const result = await kgGetSubgraph(JARVIS_URL, API_KEY, START_REF_ID);
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error).toContain("500");
+    }
+  });
+
+  it("network error (fetch throws): returns { ok: false, error }", async () => {
+    globalThis.fetch = mockFetchThrow(new Error("Connection refused"));
+
+    const result = await kgGetSubgraph(JARVIS_URL, API_KEY, START_REF_ID);
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error).toBe("Connection refused");
+    }
+  });
+
+  it("abort timeout (AbortError): returns { ok: false, error }", async () => {
+    const abortError = new DOMException("The operation was aborted", "AbortError");
+    globalThis.fetch = mockFetchThrow(abortError);
+
+    const result = await kgGetSubgraph(JARVIS_URL, API_KEY, START_REF_ID);
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error).toContain("aborted");
+    }
+  });
+
+  it("oversized subgraph: truncated to size cap, returns { ok: true } with warning", async () => {
+    // Build a subgraph with 400 nodes + 400 edges = 800 total (>= KG_SUBGRAPH_CAP=500)
+    const manyNodes = Array.from({ length: 400 }, (_, i) => ({
+      ref_id: `node-${i}`,
+      node_type: "ProposedFix",
+      properties: {},
+    }));
+    const manyEdges = Array.from({ length: 400 }, (_, i) => ({
+      source: `node-${i}`,
+      target: `node-${i + 1}`,
+      edge_type: "DERIVED_FROM",
+    }));
+    globalThis.fetch = mockFetch({ nodes: manyNodes, edges: manyEdges });
+
+    const result = await kgGetSubgraph(JARVIS_URL, API_KEY, START_REF_ID);
+
+    // Should still return ok:true but with truncated data
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      // Total should be <= cap (500)
+      const total = result.subgraph.nodes.length + result.subgraph.edges.length;
+      expect(total).toBeLessThanOrEqual(500);
+    }
+  });
+
+  it("default depth is 999 (full history)", async () => {
+    globalThis.fetch = mockFetch({ nodes: [], edges: [] });
+
+    await kgGetSubgraph(JARVIS_URL, API_KEY, START_REF_ID);
+
+    const calledUrl = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
+    expect(calledUrl).toContain("depth=999");
+  });
+
+  it("custom depth is passed through", async () => {
+    globalThis.fetch = mockFetch({ nodes: [], edges: [] });
+
+    await kgGetSubgraph(JARVIS_URL, API_KEY, START_REF_ID, { depth: 3 });
+
+    const calledUrl = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
+    expect(calledUrl).toContain("depth=3");
+  });
+
+  it("custom nodeTypes override the default SUBGRAPH_NODE_TYPES", async () => {
+    globalThis.fetch = mockFetch({ nodes: [], edges: [] });
+
+    await kgGetSubgraph(JARVIS_URL, API_KEY, START_REF_ID, { nodeTypes: ["CustomType"] });
+
+    const calledUrl = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
+    expect(calledUrl).toContain("node_type=");
+    expect(calledUrl).toContain("CustomType");
+  });
+
+  it("strips trailing slash from jarvisUrl", async () => {
+    globalThis.fetch = mockFetch({ nodes: [], edges: [] });
+
+    await kgGetSubgraph(`${JARVIS_URL}/`, API_KEY, START_REF_ID);
+
+    const calledUrl = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
+    expect(calledUrl).not.toContain("//graph");
+    expect(calledUrl).toContain("/graph/subgraph");
+  });
+
+  it("empty subgraph response: returns { ok: true, subgraph: { nodes: [], edges: [] } }", async () => {
+    globalThis.fetch = mockFetch({ nodes: [], edges: [] });
+
+    const result = await kgGetSubgraph(JARVIS_URL, API_KEY, START_REF_ID);
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.subgraph.nodes).toHaveLength(0);
+      expect(result.subgraph.edges).toHaveLength(0);
+    }
   });
 });
