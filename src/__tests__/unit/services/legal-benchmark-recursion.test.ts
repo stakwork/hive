@@ -22,7 +22,6 @@ vi.mock("@/lib/logger", () => ({
 
 import {
   listRecursionEvalSets,
-  listAllEvalSets,
   setEvalSetRecursion,
   enableRecursionForTaskSlug,
   resolveEvalSetRefIdBySlug,
@@ -156,209 +155,6 @@ describe("listRecursionEvalSets", () => {
   });
 });
 
-// ── listAllEvalSets ───────────────────────────────────────────────────────────
-
-describe("listAllEvalSets", () => {
-  const EVAL_SET_NODE_A = {
-    ref_id: "ref-aaa",
-    node_type: "EvalSet",
-    properties: {
-      id: "practice-area/task-a",
-      name: "Zebra Task",
-      recursion: true,
-    },
-  };
-
-  const EVAL_SET_NODE_B = {
-    ref_id: "ref-bbb",
-    node_type: "Evalset",
-    properties: {
-      id: "practice-area/task-b",
-      name: "Alpha Task",
-      recursion: false,
-    },
-  };
-
-  beforeEach(() => {
-    vi.clearAllMocks();
-  });
-
-  test("calls searchNodesByAttributes with no recursion filter (unfiltered)", async () => {
-    mockSearchNodesByAttributes.mockResolvedValue({ ok: true, nodes: [EVAL_SET_NODE_A] });
-
-    await listAllEvalSets(CONFIG);
-
-    expect(mockSearchNodesByAttributes).toHaveBeenCalledOnce();
-    const [, params] = mockSearchNodesByAttributes.mock.calls[0] as [unknown, {
-      nodeTypes: string[];
-      filters: Array<unknown>;
-      includeProperties: boolean;
-      skipCache?: boolean;
-      limit?: number;
-    }];
-
-    // Both casings must be sent (regression guard)
-    expect(params.nodeTypes).toContain("EvalSet");
-    expect(params.nodeTypes).toContain("Evalset");
-    // No recursion filter — this is the key difference from listRecursionEvalSets
-    expect(params.filters).toHaveLength(0);
-    expect(params.includeProperties).toBe(true);
-    expect(params.skipCache).toBe(true);
-    // Explicit limit must be passed so the cap is visible/testable
-    expect(params.limit).toBe(1000);
-  });
-
-  test("returns entries regardless of recursion value (unfiltered)", async () => {
-    mockSearchNodesByAttributes.mockResolvedValue({
-      ok: true,
-      nodes: [EVAL_SET_NODE_A, EVAL_SET_NODE_B],
-    });
-
-    const result = await listAllEvalSets(CONFIG);
-
-    expect(result.ok).toBe(true);
-    expect(result.nodes).toHaveLength(2);
-    const refIds = result.nodes!.map((n) => n.ref_id);
-    expect(refIds).toContain("ref-aaa");
-    expect(refIds).toContain("ref-bbb");
-  });
-
-  test("maps recursion: true correctly", async () => {
-    mockSearchNodesByAttributes.mockResolvedValue({
-      ok: true,
-      nodes: [EVAL_SET_NODE_A],
-    });
-
-    const result = await listAllEvalSets(CONFIG);
-
-    expect(result.nodes![0].recursion).toBe(true);
-  });
-
-  test("maps recursion: false correctly", async () => {
-    mockSearchNodesByAttributes.mockResolvedValue({
-      ok: true,
-      nodes: [EVAL_SET_NODE_B],
-    });
-
-    const result = await listAllEvalSets(CONFIG);
-
-    expect(result.nodes![0].recursion).toBe(false);
-  });
-
-  test("maps string \"true\" as recursion: true (Jarvis loose typing)", async () => {
-    const nodeWithStringTrue = {
-      ...EVAL_SET_NODE_A,
-      properties: { ...EVAL_SET_NODE_A.properties, recursion: "true" },
-    };
-    mockSearchNodesByAttributes.mockResolvedValue({ ok: true, nodes: [nodeWithStringTrue] });
-
-    const result = await listAllEvalSets(CONFIG);
-
-    expect(result.nodes![0].recursion).toBe(true);
-  });
-
-  test("maps anything other than boolean true / string 'true' as recursion: false", async () => {
-    const cases = [null, undefined, 0, "", "false", "1"];
-    for (const val of cases) {
-      const node = {
-        ...EVAL_SET_NODE_A,
-        properties: { ...EVAL_SET_NODE_A.properties, recursion: val },
-      };
-      mockSearchNodesByAttributes.mockResolvedValue({ ok: true, nodes: [node] });
-      const result = await listAllEvalSets(CONFIG);
-      expect(result.nodes![0].recursion, `expected false for recursion=${JSON.stringify(val)}`).toBe(false);
-    }
-  });
-
-  test("sorts results deterministically by name ascending", async () => {
-    mockSearchNodesByAttributes.mockResolvedValue({
-      ok: true,
-      // Return in reverse order: Zebra before Alpha
-      nodes: [EVAL_SET_NODE_A, EVAL_SET_NODE_B],
-    });
-
-    const result = await listAllEvalSets(CONFIG);
-
-    expect(result.nodes![0].name).toBe("Alpha Task");   // B comes first after sort
-    expect(result.nodes![1].name).toBe("Zebra Task");   // A comes second
-  });
-
-  test("logs warning when node count equals the limit (possible truncation)", async () => {
-    // Mock returning exactly 1000 nodes (the limit)
-    const nodes = Array.from({ length: 1000 }, (_, i) => ({
-      ref_id: `ref-${i}`,
-      node_type: "EvalSet",
-      properties: { id: `task-${i}`, name: `Task ${i}`, recursion: false },
-    }));
-    mockSearchNodesByAttributes.mockResolvedValue({ ok: true, nodes });
-
-    await listAllEvalSets(CONFIG);
-
-    expect(logger.warn).toHaveBeenCalledWith(
-      expect.stringContaining("truncated"),
-      "legal",
-      expect.objectContaining({ count: 1000, possibleTruncation: true }),
-    );
-  });
-
-  test("does NOT log truncation warning when node count is below the limit", async () => {
-    mockSearchNodesByAttributes.mockResolvedValue({
-      ok: true,
-      nodes: [EVAL_SET_NODE_A, EVAL_SET_NODE_B],
-    });
-
-    await listAllEvalSets(CONFIG);
-
-    // No truncation warning — only 2 nodes returned
-    const warnCalls = vi.mocked(logger.warn).mock.calls;
-    const truncationWarning = warnCalls.find(
-      ([msg]) => typeof msg === "string" && msg.includes("truncated"),
-    );
-    expect(truncationWarning).toBeUndefined();
-  });
-
-  test("logs 'no EvalSets exist in workspace' diagnostic on zero results", async () => {
-    mockSearchNodesByAttributes.mockResolvedValue({ ok: true, nodes: [] });
-
-    await listAllEvalSets(CONFIG);
-
-    expect(logger.info).toHaveBeenCalledWith(
-      expect.stringContaining("no EvalSets exist in workspace"),
-      "legal",
-      expect.objectContaining({ workspaceHasNoEvalSets: true }),
-    );
-  });
-
-  test("returns ok: false and error on graph failure", async () => {
-    mockSearchNodesByAttributes.mockResolvedValue({
-      ok: false,
-      nodes: [],
-      status: 502,
-      error: "Upstream timeout",
-    });
-
-    const result = await listAllEvalSets(CONFIG);
-
-    expect(result.ok).toBe(false);
-    expect(result.error).toBe("Upstream timeout");
-  });
-
-  test("regression: listRecursionEvalSets (cron path) is unchanged — still applies recursion=true filter", async () => {
-    mockSearchNodesByAttributes.mockResolvedValue({ ok: true, nodes: [EVAL_SET_NODE] });
-
-    await listRecursionEvalSets(CONFIG);
-
-    const [, params] = mockSearchNodesByAttributes.mock.calls[0] as [unknown, {
-      filters: Array<{ attribute: string; value: unknown; comparator: string }>;
-    }];
-    // Must still have the recursion=true filter
-    expect(params.filters).toHaveLength(1);
-    expect(params.filters[0].attribute).toBe("recursion");
-    expect(params.filters[0].value).toBe(true);
-    expect(params.filters[0].comparator).toBe("=");
-  });
-});
-
 // ── setEvalSetRecursion ───────────────────────────────────────────────────────
 
 describe("setEvalSetRecursion", () => {
@@ -379,7 +175,9 @@ describe("setEvalSetRecursion", () => {
     }];
     expect(req.ref_id).toBe("ref-abc-123");
     expect(req.node_type).toBe("EvalSet");
-    expect(req.node_data).toEqual({ recursion: true });
+    expect(req.node_data).toMatchObject({ recursion: true });
+    expect(typeof (req.node_data as Record<string, unknown>).recursionEnabledAt).toBe("number");
+    expect((req.node_data as Record<string, unknown>).recursionEnabledAt as number).toBeGreaterThan(0);
   });
 
   test("calls updateNode with correct payload to disable recursion", async () => {
@@ -391,6 +189,8 @@ describe("setEvalSetRecursion", () => {
       node_data: Record<string, unknown>;
     }];
     expect(req.node_data).toEqual({ recursion: false });
+    // Disabling must NOT stamp recursionEnabledAt
+    expect(req.node_data).not.toHaveProperty("recursionEnabledAt");
   });
 
   test("returns ok: true on success", async () => {
@@ -420,6 +220,34 @@ describe("setEvalSetRecursion", () => {
     // Service result shape: { ok, nodes?, error? } — no raw "success" key
     expect(result).toHaveProperty("ok", true);
     expect(result).not.toHaveProperty("success");
+  });
+
+  test("stamps recursionEnabledAt (unix epoch seconds) on enable", async () => {
+    mockUpdateNode.mockResolvedValue({ success: true });
+    const before = Math.floor(Date.now() / 1000);
+
+    await setEvalSetRecursion(CONFIG, "ref-abc-123", true);
+
+    const after = Math.floor(Date.now() / 1000);
+    const [, req] = mockUpdateNode.mock.calls[0] as [unknown, {
+      node_data: Record<string, unknown>;
+    }];
+    const ts = req.node_data.recursionEnabledAt as number;
+    expect(typeof ts).toBe("number");
+    expect(ts).toBeGreaterThanOrEqual(before);
+    expect(ts).toBeLessThanOrEqual(after);
+  });
+
+  test("does NOT stamp recursionEnabledAt when disabling", async () => {
+    mockUpdateNode.mockResolvedValue({ success: true });
+
+    await setEvalSetRecursion(CONFIG, "ref-abc-123", false);
+
+    const [, req] = mockUpdateNode.mock.calls[0] as [unknown, {
+      node_data: Record<string, unknown>;
+    }];
+    expect(req.node_data).not.toHaveProperty("recursionEnabledAt");
+    expect(req.node_data.recursion).toBe(false);
   });
 });
 
@@ -463,7 +291,10 @@ describe("enableRecursionForTaskSlug", () => {
     }];
     expect(updateReq.ref_id).toBe("ref-abc-123");
     expect(updateReq.node_type).toBe("EvalSet");
-    expect(updateReq.node_data).toEqual({ recursion: true });
+    // recursionEnabledAt is now stamped when enabling — use toMatchObject so the test
+    // doesn't break when the timestamp field is added.
+    expect(updateReq.node_data).toMatchObject({ recursion: true });
+    expect(typeof (updateReq.node_data as Record<string, unknown>).recursionEnabledAt).toBe("number");
 
     expect(result.ok).toBe(true);
     expect(result).not.toHaveProperty("notFound");
