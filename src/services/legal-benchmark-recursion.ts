@@ -114,7 +114,14 @@ function mapNodeToEntry(node: {
 // ── listRecursionEvalSets ──────────────────────────────────────────────────
 
 /**
- * Returns all EvalSet nodes where `recursion = true`.
+ * Returns all EvalSet nodes where `recursion = true`, after deduplication.
+ *
+ * **Ordering**: fetches the FULL unfiltered `EVALSET_NODE_LABELS` candidate
+ * set first, deduplicates by `props.id`, and THEN derives the enabled subset
+ * locally. This ordering is critical — filtering for `recursion=true` at the
+ * Jarvis query layer before dedup would allow a phantom `Evalset` duplicate
+ * (which defaults `recursion:true`) to win by default whenever the real,
+ * disabled `EvalSet` node is excluded by that filter.
  *
  * NOTE: `searchNodesByAttributes` returns `{ ok: true, nodes: [] }` (not an
  * error) when an attribute is unknown. An empty result therefore cannot be
@@ -125,9 +132,10 @@ function mapNodeToEntry(node: {
 export async function listRecursionEvalSets(
   config: JarvisConnectionConfig,
 ): Promise<RecursionServiceResult> {
+  // Fetch the full unfiltered candidate set — dedup must run before recursion filter
   const result = await searchNodesByAttributes(config, {
     nodeTypes: EVALSET_NODE_LABELS,
-    filters: [{ attribute: "recursion", value: true, comparator: "=" }],
+    filters: [],
     includeProperties: true,
     skipCache: true,
   });
@@ -141,7 +149,16 @@ export async function listRecursionEvalSets(
     return { ok: false, error: result.error ?? "Graph query failed" };
   }
 
-  if (result.nodes.length === 0) {
+  // Dedupe before applying the recursion filter so the real node's state wins
+  const deduped = dedupeEvalSetNodes(result.nodes);
+
+  // Derive the enabled subset locally (filter after dedup)
+  const enabledNodes = deduped.filter((node) => {
+    const recursionRaw = node.properties?.recursion;
+    return recursionRaw === true || recursionRaw === "true";
+  });
+
+  if (enabledNodes.length === 0) {
     // Distinct signal: zero nodes may indicate the attribute hasn't shipped yet
     // rather than a genuinely empty result — preserves a breadcrumb for the
     // known attribute-availability gap.
@@ -153,7 +170,7 @@ export async function listRecursionEvalSets(
     );
   }
 
-  const nodes: RecursionEvalSetEntry[] = result.nodes.map(mapNodeToEntry);
+  const nodes: RecursionEvalSetEntry[] = enabledNodes.map(mapNodeToEntry);
 
   return { ok: true, nodes };
 }
@@ -207,7 +224,10 @@ export async function listAllEvalSets(
     );
   }
 
-  if (result.nodes.length === LIST_ALL_LIMIT) {
+  // Dedupe BEFORE checking the truncation limit so the warning reflects post-dedup count
+  const deduped = dedupeEvalSetNodes(result.nodes);
+
+  if (deduped.length === LIST_ALL_LIMIT) {
     logger.warn(
       `[legal/benchmarks/recursion] listAllEvalSets returned ${LIST_ALL_LIMIT} nodes — ` +
         "result may have been truncated by the graph search cap; " +
@@ -217,7 +237,7 @@ export async function listAllEvalSets(
     );
   }
 
-  const nodes: RecursionEvalSetEntry[] = result.nodes
+  const nodes: RecursionEvalSetEntry[] = deduped
     .map(mapNodeToEntry)
     .sort((a, b) => a.name.localeCompare(b.name));
 
@@ -273,14 +293,90 @@ export async function writeBackEvalProjectId(
  * Pure tie-break selector: given a list of candidate EvalSet nodes, picks the
  * best one deterministically (no logging — callers log their own context):
  *   1. Canonical "EvalSet" label wins over "Evalset"
- *   2. Otherwise lowest ref_id (stable sort)
+ *   2. Among same-label nodes, lowest ref_id wins (stable secondary sort)
+ *
+ * Logs a warning when multiple nodes share the *same* canonical "EvalSet" label
+ * (a case outside the normal casing-dedup scenario — the secondary sort is a
+ * safety net, not expected steady state).
  */
 function selectEvalSetByTieBreak(
   nodes: Array<{ ref_id: string; node_type?: string }>,
 ): string {
   if (nodes.length === 1) return nodes[0].ref_id;
-  const canonical = nodes.find((n) => n.node_type === "EvalSet");
-  return (canonical ?? [...nodes].sort((a, b) => a.ref_id.localeCompare(b.ref_id))[0]).ref_id;
+
+  const canonicalNodes = nodes.filter((n) => n.node_type === "EvalSet");
+
+  if (canonicalNodes.length > 1) {
+    // Multiple nodes with the exact canonical label — unexpected; log and use lowest ref_id
+    const refIds = canonicalNodes.map((n) => n.ref_id).join(", ");
+    logger.warn(
+      `[legal/benchmarks/recursion] selectEvalSetByTieBreak: multiple canonical 'EvalSet' nodes share the same id (count=${canonicalNodes.length} ref_ids=[${refIds}]) — using lowest ref_id as secondary sort`,
+      "legal",
+      { count: canonicalNodes.length, refIds },
+    );
+    return [...canonicalNodes].sort((a, b) => a.ref_id.localeCompare(b.ref_id))[0].ref_id;
+  }
+
+  if (canonicalNodes.length === 1) {
+    return canonicalNodes[0].ref_id;
+  }
+
+  // No canonical label — fall back to lowest ref_id across all nodes
+  return [...nodes].sort((a, b) => a.ref_id.localeCompare(b.ref_id))[0].ref_id;
+}
+
+// ── dedupeEvalSetNodes (shared helper) ────────────────────────────────────
+
+/**
+ * Deduplicates raw graph nodes by their `props.id` field, applying the same
+ * deterministic tie-break used by `resolveEvalSetRefIdBySlug` and
+ * `enableRecursionForTaskSlug`.
+ *
+ * Groups nodes by `properties.id` (falling back to `ref_id` when absent),
+ * then selects one canonical node per group via `selectEvalSetByTieBreak`.
+ *
+ * Logs a warning for every group that is collapsed (i.e. had duplicates),
+ * matching the warn-level pattern in `resolveEvalSetRefIdBySlug`.
+ *
+ * **Ordering**: call this BEFORE any recursion-state filter is applied so
+ * a disabled real `EvalSet` node is never shadowed by an enabled-defaulting
+ * phantom `Evalset` duplicate that the filter would otherwise select.
+ */
+function dedupeEvalSetNodes<T extends { ref_id: string; node_type?: string; properties?: Record<string, unknown> | null }>(
+  nodes: T[],
+): T[] {
+  // Group nodes by their stable task-level id (properties.id)
+  const groups = new Map<string, T[]>();
+  for (const node of nodes) {
+    const groupKey = node.properties?.id != null ? String(node.properties.id) : node.ref_id;
+    const existing = groups.get(groupKey);
+    if (existing) {
+      existing.push(node);
+    } else {
+      groups.set(groupKey, [node]);
+    }
+  }
+
+  const result: T[] = [];
+  for (const [groupKey, group] of groups) {
+    if (group.length === 1) {
+      result.push(group[0]);
+      continue;
+    }
+
+    // Multiple nodes share the same task id — collapse via tie-break
+    const chosenRefId = selectEvalSetByTieBreak(group);
+    const chosen = group.find((n) => n.ref_id === chosenRefId)!;
+    const labels = group.map((n) => n.node_type ?? "unknown").join(", ");
+    logger.warn(
+      `[legal/benchmarks/recursion] dedupeEvalSetNodes: collapsed ${group.length} duplicate EvalSet nodes for id="${groupKey}" labels=[${labels}] → chosen ref_id=${chosenRefId}`,
+      "legal",
+      { count: group.length, groupKey, chosenRefId, labels },
+    );
+    result.push(chosen);
+  }
+
+  return result;
 }
 
 // ── resolveEvalSetRefIdBySlug ──────────────────────────────────────────────

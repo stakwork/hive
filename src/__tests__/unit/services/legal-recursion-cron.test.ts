@@ -687,3 +687,83 @@ describe("executeScheduledLegalBenchmarkRecursion — re-fire guard (write-back 
     expect(result.entriesProcessed).toBe(1);
   });
 });
+
+// ── Dedup regression: cron dispatch loop selects correct node when duplicate present ──
+
+describe("executeScheduledLegalBenchmarkRecursion — dedup regression", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockIsEnabled.mockResolvedValue(true);
+    mockDbWorkspace.mockResolvedValue(MOCK_WORKSPACE);
+    mockGetSwarmAccessByWorkspaceId.mockResolvedValue(MOCK_SWARM_SUCCESS);
+    mockGetJarvisConfigForWorkspace.mockResolvedValue(MOCK_JARVIS_CONFIG);
+    mockDbPlatformConfig.mockResolvedValue(null);
+    mockDbStakworkRunFindMany.mockResolvedValue([]);
+    mockDbStakworkRunFindFirst.mockResolvedValue(null);
+    mockWriteBackEvalProjectId.mockResolvedValue({ ok: true });
+  });
+
+  test("dispatch loop uses dedup-corrected node (real ref_id) — not phantom's ref_id", async () => {
+    // SCENARIO: listRecursionEvalSets now fetches unfiltered and deduplicates before
+    // filtering for recursion=true. The phantom Evalset duplicate (recursion:true default)
+    // must NOT win when the real EvalSet (recursion:false) is also present.
+    //
+    // Here we simulate: the phantom has recursion:true, the real has recursion:false.
+    // After dedup, the real node wins → listRecursionEvalSets returns 0 enabled entries
+    // → executeScheduledLegalBenchmarkRecursion dispatches 0 runs.
+    //
+    // This confirms the cron does NOT dispatch against stale phantom nodes.
+    mockListRecursionEvalSets.mockResolvedValue({
+      ok: true,
+      nodes: [], // dedup-corrected: real node (recursion:false) won → none enabled
+    });
+
+    const result = await executeScheduledLegalBenchmarkRecursion();
+
+    // No dispatches against phantom-enabled duplicates
+    expect(mockDispatchLegalBenchmarkEvalRun).not.toHaveBeenCalled();
+    expect(result.dispatched).toBe(0);
+    expect(result.success).toBe(true);
+  });
+
+  test("dispatch loop dispatches to the correct dedup-corrected node when it is genuinely enabled", async () => {
+    const REAL_ENABLED_EVALSET = {
+      ref_id: "ref-real-canonical-001",
+      id: "antitrust/test-task-enabled",
+      name: "Antitrust Test Task (Enabled)",
+      recursion: true,
+      projectId: null,
+    };
+
+    mockListRecursionEvalSets.mockResolvedValue({
+      ok: true,
+      // Dedup already done upstream — only the real enabled node is returned
+      nodes: [REAL_ENABLED_EVALSET],
+    });
+
+    // Simulate a matching completed runner run for this task
+    mockDbStakworkRunFindMany.mockResolvedValue([
+      {
+        id: "runner-run-001",
+        result: JSON.stringify({ taskSlug: "antitrust/test-task-enabled" }),
+      },
+    ]);
+
+    mockDispatchLegalBenchmarkEvalRun.mockResolvedValue({
+      evalRunId: "eval-run-001",
+      projectId: 999,
+    });
+
+    const result = await executeScheduledLegalBenchmarkRecursion();
+
+    // Dispatch was called for the real enabled node
+    expect(mockDispatchLegalBenchmarkEvalRun).toHaveBeenCalledOnce();
+    // Write-back was called with the real node's ref_id
+    expect(mockWriteBackEvalProjectId).toHaveBeenCalledWith(
+      MOCK_JARVIS_CONFIG,
+      "ref-real-canonical-001",
+      999,
+    );
+    expect(result.dispatched).toBe(1);
+  });
+});
