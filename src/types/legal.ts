@@ -182,7 +182,14 @@ export interface ProposedFix {
   resolved_by?: string | null;
   /** ISO timestamp when this fix was resolved */
   resolved_at?: string | null;
-  /** Stakwork project ID of the eval-ingest run that created this fix */
+  /**
+   * Stakwork project ID for the super-admin "View on Stakwork" link.
+   * Sourced primarily from the node's `unique_source_id` property (written by
+   * jarvis-backend via `NodeHelper.update_node_unique_source_id` on Stakwork
+   * dispatch), with the legacy `project_id` node property as a fallback for
+   * older ProposedFix nodes. The field name is kept as `project_id` for
+   * backward compatibility with downstream consumers (EvalRunsBox, StakworkRunLink).
+   */
   project_id?: number | null;
 }
 
