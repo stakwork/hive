@@ -35,6 +35,8 @@ const MOCK_RESULT = {
   dispatched: 1,
   skipped: 2,
   deactivated: 0,
+  attemptCapped: 0,
+  plateauCapped: 0,
   errors: [],
   timestamp: new Date("2024-01-01T00:00:00Z"),
 };
@@ -81,6 +83,8 @@ describe("GET /api/cron/legal-recursion", () => {
     expect(body.dispatched).toBe(1);
     expect(body.skipped).toBe(2);
     expect(body.deactivated).toBe(0);
+    expect(body.attemptCapped).toBe(0);
+    expect(body.plateauCapped).toBe(0);
     expect(body.errorCount).toBe(0);
     expect(body.errors).toEqual([]);
     expect(body.timestamp).toBe("2024-01-01T00:00:00.000Z");
@@ -108,5 +112,19 @@ describe("GET /api/cron/legal-recursion", () => {
     expect(body.success).toBe(false);
     expect(body.errorCount).toBe(1);
     expect(body.errors).toEqual(["EvalSet abc: dispatch failed"]);
+  });
+
+  it("includes attemptCapped and plateauCapped in JSON response", async () => {
+    mockExecute.mockResolvedValue({
+      ...MOCK_RESULT,
+      attemptCapped: 2,
+      plateauCapped: 1,
+    });
+
+    const res = await GET(makeRequest("Bearer test-cron-secret"));
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.attemptCapped).toBe(2);
+    expect(body.plateauCapped).toBe(1);
   });
 });
