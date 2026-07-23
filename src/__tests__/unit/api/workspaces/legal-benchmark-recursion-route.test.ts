@@ -17,7 +17,6 @@ const mockGetWorkspaceSwarmAccess = vi.hoisted(() => vi.fn());
 const mockGetJarvisConfigForWorkspace = vi.hoisted(() => vi.fn());
 const mockKgGetNode = vi.hoisted(() => vi.fn());
 const mockListRecursionEvalSets = vi.hoisted(() => vi.fn());
-const mockListAllEvalSets = vi.hoisted(() => vi.fn());
 const mockSetEvalSetRecursion = vi.hoisted(() => vi.fn());
 const mockCheckRateLimit = vi.hoisted(() => vi.fn());
 const mockGetClientIp = vi.hoisted(() => vi.fn(() => "127.0.0.1"));
@@ -41,7 +40,6 @@ vi.mock("@/lib/ai/kg-adapter", () => ({
 
 vi.mock("@/services/legal-benchmark-recursion", () => ({
   listRecursionEvalSets: mockListRecursionEvalSets,
-  listAllEvalSets: mockListAllEvalSets,
   setEvalSetRecursion: mockSetEvalSetRecursion,
   // Real helper — not mocked; tests exercise the actual case-insensitive logic
   EVALSET_NODE_LABELS: ["EvalSet", "Evalset"],
@@ -138,18 +136,11 @@ function makePatchParams(slug = "openlaw", refId = "ref-evalset-1") {
 // GET /api/workspaces/[slug]/legal/benchmarks/recursion
 // ─────────────────────────────────────────────────────────────────────────────
 
-// Mixed-recursion list: some true, some false — exercises the "list all" contract
-const MOCK_RECURSION_LIST_MIXED = [
-  { ref_id: "ref-evalset-1", id: "practice-area/draft-contract", name: "Draft a contract", recursion: true },
-  { ref_id: "ref-evalset-2", id: "practice-area/review-contract", name: "Review a contract", recursion: false },
-];
-
 describe("GET /api/workspaces/[slug]/legal/benchmarks/recursion", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockGetWorkspaceSwarmAccess.mockResolvedValue(MOCK_SWARM_ACCESS);
-    // Route now calls listAllEvalSets, not listRecursionEvalSets
-    mockListAllEvalSets.mockResolvedValue({ ok: true, nodes: MOCK_RECURSION_LIST_MIXED });
+    mockListRecursionEvalSets.mockResolvedValue({ ok: true, nodes: MOCK_RECURSION_LIST });
     mockCheckRateLimit.mockResolvedValue({ allowed: true });
   });
 
@@ -174,36 +165,16 @@ describe("GET /api/workspaces/[slug]/legal/benchmarks/recursion", () => {
     expect(res.status).toBe(404);
   });
 
-  test("returns 200 with all EvalSets (mixed recursion state) on success", async () => {
+  test("returns 200 with list of EvalSets on success", async () => {
     const res = await GET(makeGetRequest(), makeParams());
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.success).toBe(true);
-    // Both recursion=true and recursion=false entries are returned unfiltered
-    expect(body.data).toEqual(MOCK_RECURSION_LIST_MIXED);
-    expect(body.data).toHaveLength(2);
+    expect(body.data).toEqual(MOCK_RECURSION_LIST);
   });
 
-  test("includes recursion field on every returned entry", async () => {
-    const res = await GET(makeGetRequest(), makeParams());
-    const body = await res.json();
-    for (const entry of body.data as Array<{ recursion: unknown }>) {
-      expect(typeof entry.recursion).toBe("boolean");
-    }
-  });
-
-  test("returns entries regardless of recursion value (not filtered to recursion=true only)", async () => {
-    const res = await GET(makeGetRequest(), makeParams());
-    const body = await res.json();
-    const enabledCount = (body.data as Array<{ recursion: boolean }>).filter(e => e.recursion).length;
-    const disabledCount = (body.data as Array<{ recursion: boolean }>).filter(e => !e.recursion).length;
-    // Both should be present
-    expect(enabledCount).toBeGreaterThan(0);
-    expect(disabledCount).toBeGreaterThan(0);
-  });
-
-  test("returns 200 with empty array when no EvalSets exist in workspace", async () => {
-    mockListAllEvalSets.mockResolvedValue({ ok: true, nodes: [] });
+  test("returns 200 with empty array when no EvalSets have recursion=true", async () => {
+    mockListRecursionEvalSets.mockResolvedValue({ ok: true, nodes: [] });
 
     const res = await GET(makeGetRequest(), makeParams());
     expect(res.status).toBe(200);
@@ -212,18 +183,12 @@ describe("GET /api/workspaces/[slug]/legal/benchmarks/recursion", () => {
   });
 
   test("returns 502 when graph query fails", async () => {
-    mockListAllEvalSets.mockResolvedValue({ ok: false, error: "Jarvis unreachable" });
+    mockListRecursionEvalSets.mockResolvedValue({ ok: false, error: "Jarvis unreachable" });
 
     const res = await GET(makeGetRequest(), makeParams());
     expect(res.status).toBe(502);
     const body = await res.json();
     expect(body.error).toMatch(/recursion eval sets/i);
-  });
-
-  test("calls listAllEvalSets (not listRecursionEvalSets) — regression guard", async () => {
-    await GET(makeGetRequest(), makeParams());
-    expect(mockListAllEvalSets).toHaveBeenCalledOnce();
-    expect(mockListRecursionEvalSets).not.toHaveBeenCalled();
   });
 
   test("returns swarm access error when swarm not configured", async () => {
