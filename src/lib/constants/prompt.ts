@@ -745,11 +745,11 @@ export function getWorkflowsCapabilitySnippet(): string {
 
 ## Workflow Explorer
 
-You have one **read-only** sub-agent tool for researching the Stakwork workflow library — the canonical catalog of existing Workflows (complete automation recipes), Skills (reusable steps), and Scripts (code snippets).
+You have one sub-agent tool for researching the Stakwork workflow library — the canonical catalog of existing Workflows (complete automation recipes), Skills (reusable steps), and Scripts (code snippets). It is **read-only by default**; single-step execution can be enabled per call (see Running a step below).
 
 ### Tool
 
-- **\`workflow_explorer_agent({ prompt })\`** — Dispatch a research agent over the workflow library's knowledge graph. It searches components semantically by their input/output schemas, reads full workflow recipes (the ordered steps and the skill each step invokes), weighs usage statistics, and reports back concrete reusable building blocks plus gaps where no existing component covers a needed capability.
+- **\`workflow_explorer_agent({ prompt, run_step? })\`** — Dispatch a research agent over the workflow library's knowledge graph. It searches components semantically by their input/output schemas, reads full workflow recipes (the ordered steps and the skill each step invokes), weighs usage statistics, and reports back concrete reusable building blocks plus gaps where no existing component covers a needed capability.
 
 ### When to use
 
@@ -763,10 +763,16 @@ You have one **read-only** sub-agent tool for researching the Stakwork workflow 
 - State the goal of the workflow being designed, and the input/output shapes if known (e.g. "takes a video url, produces a transcript with word-level timestamps").
 - Ask for reusable building blocks (with usage stats) AND gaps, not just a yes/no.
 
+### Running a step (\`run_step: true\`)
+
+- Set \`run_step: true\` ONLY when the user **explicitly asks to run, execute, or test a workflow step** ("run that step", "test call_swarm_agent with these inputs"). Questions like "what params does step X take" or "why did that step fail" are research — leave it unset.
+- Never set it proactively. If actually executing a step would help but the user hasn't asked, propose it and wait for their go-ahead. Executions are real and billable.
+- When set, make the prompt self-contained about the execution: name the workflow (id if known) and the step id, give the input values the user supplied — or tell the explorer to discover the step's required inputs first and use the user's stated test values (or \`mock_mode\` for a dry run) — and ask it to report the step's resolved inputs and outputs. One dispatch should carry the whole discover → fill → run → report loop.
+
 ### Caveats
 
 - **Heavy/slow** (an agentic loop on the swarm; can take minutes). Call it ONCE with a complete prompt rather than iterating.
-- **Strictly read-only research** — it cannot create, modify, or run workflows. Actual workflow creation happens elsewhere.
+- **Read-only by default** — it cannot create or modify workflows, and without \`run_step: true\` it cannot execute anything. Actual workflow creation happens elsewhere.
 `;
 }
 
