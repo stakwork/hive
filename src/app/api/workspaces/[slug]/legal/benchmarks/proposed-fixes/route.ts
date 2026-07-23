@@ -28,6 +28,11 @@ function handleSwarmAccessError(error: { type: string }) {
 /**
  * Map a raw graph node's properties into the whitelisted ProposedFix projection.
  * Tolerates any missing key (returns null for it) — never leaks unexpected node data.
+ *
+ * `project_id` is sourced primarily from the node's `unique_source_id` property,
+ * which jarvis-backend writes via `NodeHelper.update_node_unique_source_id` when
+ * a node is dispatched to Stakwork. The legacy `project_id` node property is used
+ * only as a fallback for older nodes written before `unique_source_id` existed.
  */
 function projectFix(refId: string, props: Record<string, unknown> | undefined): ProposedFix {
   const p = props ?? {};
@@ -35,6 +40,19 @@ function projectFix(refId: string, props: Record<string, unknown> | undefined): 
     const v = p[key];
     return v != null ? String(v) : null;
   };
+
+  /**
+   * Resolve the Stakwork project id with explicit precedence:
+   *   1. `unique_source_id` — written by jarvis-backend on Stakwork dispatch (preferred).
+   *   2. `project_id`       — legacy fallback for older ProposedFix nodes.
+   * WARNING: do not silently reorder this precedence; `unique_source_id` must win
+   * whenever it is present and numeric, to ensure the super-admin link resolves.
+   */
+  const toProjectId = (v: unknown): number | null =>
+    v != null && v !== "" && !isNaN(Number(v)) ? Number(v) : null;
+  const project_id =
+    toProjectId(p["unique_source_id"]) ?? toProjectId(p["project_id"]);
+
   return {
     ref_id: refId,
     criterion_id: str("criterion_id"),
@@ -56,7 +74,7 @@ function projectFix(refId: string, props: Record<string, unknown> | undefined): 
     rerun_run_id: str("rerun_run_id"),
     resolved_by: str("resolved_by"),
     resolved_at: str("resolved_at"),
-    project_id: p["project_id"] != null && p["project_id"] !== "" ? Number(p["project_id"]) : null,
+    project_id,
   };
 }
 
