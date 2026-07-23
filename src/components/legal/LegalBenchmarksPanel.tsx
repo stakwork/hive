@@ -184,7 +184,8 @@ export function LegalBenchmarksPanel({ className }: { className?: string }) {
         }
 
         if (modelsRes.ok) {
-          const modelsData: LlmModelOption[] = await modelsRes.json();
+          const data = await modelsRes.json();
+          const modelsData: LlmModelOption[] = data.models ?? [];
           // Filter to Anthropic-only (Harvey runner is Anthropic-only)
           const anthropicModels = modelsData.filter(
             (m) => m.provider === "ANTHROPIC"
