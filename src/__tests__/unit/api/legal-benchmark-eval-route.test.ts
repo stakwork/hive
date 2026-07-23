@@ -100,6 +100,10 @@ vi.mock("@/services/bifrost/orchestrator", () => ({
 
 vi.mock("@/lib/ai/models", () => ({
   getApiKeyForModel: mockGetApiKeyForModel,
+  DEFAULT_BENCHMARK_MODEL: "anthropic/claude-sonnet-5",
+  DEFAULT_JUDGE_MODEL: "anthropic/claude-sonnet-4-6",
+  ensureProviderPrefix: (modelId: string) =>
+    modelId.includes("/") ? modelId : `anthropic/${modelId}`,
 }));
 
 vi.mock("@/lib/vercel/stakwork-token", () => ({
@@ -420,14 +424,16 @@ describe("POST /api/workspaces/[slug]/legal/benchmarks/runs/[runId]/eval", () =>
     expect(vars).not.toHaveProperty("max_score");
     expect(vars).not.toHaveProperty("n_total");
     expect(vars).not.toHaveProperty("n_passed");
-    expect(vars).not.toHaveProperty("judge_model");
 
     expect(payload.workflow_id).toBe(2002);
 
     // ── New rerun vars ──────────────────────────────────────────────────────
     expect(vars).toHaveProperty("task_goal", MOCK_TASK_JSON.instructions);
     expect(vars).toHaveProperty("task_output_desc", Object.keys(MOCK_TASK_JSON.deliverables).join(", "));
-    expect(vars).toHaveProperty("model", "claude-opus-4-5");
+    // makeRunnerRun has judge_model: "gpt-4o" and no model/requestedModel set,
+    // so model resolves to DEFAULT_BENCHMARK_MODEL and judge_model resolves from source run.
+    expect(vars).toHaveProperty("model", "anthropic/claude-sonnet-5");
+    expect(vars).toHaveProperty("judge_model", "gpt-4o");
     expect(vars).toHaveProperty("apiKey", MOCK_BIFROST.apiKey);
     expect(vars).toHaveProperty("baseUrl", MOCK_BIFROST.baseUrl);
     expect(vars).toHaveProperty("headers", MOCK_BIFROST.headers);
@@ -614,7 +620,10 @@ describe("POST /api/workspaces/[slug]/legal/benchmarks/runs/[runId]/eval", () =>
     expect(vars.task_output_desc).toBe("");
     expect(vars.rubrics_json).toBe(JSON.stringify([]));
     expect(vars.documents_json).toBe(JSON.stringify([]));
-    expect(vars.model).toBe("claude-opus-4-5");
+    // makeRunnerRun has judge_model: "gpt-4o" and no model/requestedModel →
+    // model resolves to DEFAULT_BENCHMARK_MODEL; judge_model resolves from source run.
+    expect(vars.model).toBe("anthropic/claude-sonnet-5");
+    expect(vars.judge_model).toBe("gpt-4o");
   });
 
   // Test 15: Harvey/GitHub fetch rejection — route does not 500, dispatches with empty rerun vars
