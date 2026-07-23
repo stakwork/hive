@@ -419,9 +419,13 @@ export const CAPABILITY_REGISTRY: Record<OrgCapability, CapabilityDefinition> =
         "**workflows** — research the Stakwork workflow library via " +
         "`workflow_explorer_agent`: find existing Workflows/Skills/Scripts " +
         "by what they take as input and produce as output, read proven step " +
-        "orderings, and spot gaps. Load when designing or discussing a new " +
-        "Stakwork workflow.",
-      // Read-only research tool — nothing to strip in readonly mode.
+        "orderings, and spot gaps; on explicit user request it can also " +
+        "test-run a single workflow step. Load when designing or discussing " +
+        "a new Stakwork workflow.",
+      // Research tool, read-only by default. Its `run_step` param can launch
+      // a single (billable) step execution, but only on explicit user
+      // request per the prompt policy — not listed in writeToolNames because
+      // stripping it in readonly mode would also remove all research.
       writeToolNames: [],
       // Org-gated to the Stakwork source-control org: the tool exposes the
       // stakwork workspace's workflow graph, so it reuses the same allow-list
