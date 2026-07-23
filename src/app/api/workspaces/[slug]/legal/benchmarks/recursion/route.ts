@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 import { getWorkspaceSwarmAccess } from "@/lib/helpers/swarm-access";
 import { getJarvisUrl } from "@/lib/utils/swarm";
-import { listRecursionEvalSets } from "@/services/legal-benchmark-recursion";
+import { listAllEvalSets } from "@/services/legal-benchmark-recursion";
 
 export const runtime = "nodejs";
 export const fetchCache = "force-no-store";
@@ -25,7 +25,7 @@ function handleSwarmAccessError(error: { type: string }) {
 /**
  * GET /api/workspaces/[slug]/legal/benchmarks/recursion
  *
- * Returns all EvalSet nodes where `recursion = true`.
+ * Returns all EvalSet nodes with their actual `recursion` state (unfiltered).
  * Gated to the `openlaw` workspace only.
  */
 export async function GET(request: NextRequest, { params }: RouteParams) {
@@ -49,7 +49,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     const { swarmName, swarmApiKey } = swarmResult.data;
     const jarvisUrl = getJarvisUrl(swarmName);
 
-    const result = await listRecursionEvalSets({ jarvisUrl, apiKey: swarmApiKey });
+    const result = await listAllEvalSets({ jarvisUrl, apiKey: swarmApiKey });
 
     if (!result.ok) {
       return NextResponse.json({ error: "Failed to fetch recursion eval sets" }, { status: 502 });
