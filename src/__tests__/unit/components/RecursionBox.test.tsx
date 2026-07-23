@@ -75,12 +75,11 @@ global.fetch = vi.fn();
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-function makeEntry(overrides: Partial<{ refId: string; id: string; name: string; recursion: boolean }> = {}) {
+function makeEntry(overrides: Partial<{ refId: string; id: string; name: string }> = {}) {
   return {
     refId: "ref-abc",
     id: "antitrust/task-1",
     name: "Antitrust Task 1",
-    recursion: true, // default true so existing "Disable" tests keep passing unchanged
     ...overrides,
   };
 }
@@ -157,7 +156,7 @@ describe("RecursionCard", () => {
     mockHistoryLoaded(); // default: loaded, no attempts
   });
 
-  function renderCard(overrides: Partial<{ refId: string; id: string; name: string; recursion: boolean }> = {}) {
+  function renderCard(overrides: Partial<{ refId: string; id: string; name: string }> = {}) {
     const entry = makeEntry(overrides);
     render(
       <RecursionList
@@ -175,17 +174,14 @@ describe("RecursionCard", () => {
     expect(screen.getByText("antitrust/task-1")).toBeTruthy();
   });
 
-  // ─── Toggle button — recursion: true (Disable path) ─────────────────────
-
-  it("shows Disable button when recursion is true", () => {
-    renderCard({ recursion: true });
+  it("shows Disable button", () => {
+    renderCard();
     expect(screen.getByRole("button", { name: /disable/i })).toBeTruthy();
-    expect(screen.queryByRole("button", { name: /enable/i })).toBeNull();
   });
 
   it("calls PATCH with correct refId and enabled=false on Disable click", async () => {
     mockFetchOk();
-    renderCard({ refId: "ref-xyz", recursion: true });
+    renderCard({ refId: "ref-xyz" });
 
     fireEvent.click(screen.getByRole("button", { name: /disable/i }));
 
@@ -200,45 +196,9 @@ describe("RecursionCard", () => {
     );
   });
 
-  // ─── Toggle button — recursion: false (Enable path) ─────────────────────
-
-  it("shows Enable button when recursion is false", () => {
-    renderCard({ recursion: false });
-    expect(screen.getByRole("button", { name: /enable/i })).toBeTruthy();
-    expect(screen.queryByRole("button", { name: /disable/i })).toBeNull();
-  });
-
-  it("calls PATCH with enabled=true on Enable click (recursion: false)", async () => {
+  it("calls refetch after successful toggle", async () => {
     mockFetchOk();
-    renderCard({ refId: "ref-xyz", recursion: false });
-
-    fireEvent.click(screen.getByRole("button", { name: /enable/i }));
-
-    await waitFor(() => expect(vi.mocked(global.fetch)).toHaveBeenCalledOnce());
-
-    expect(vi.mocked(global.fetch)).toHaveBeenCalledWith(
-      "/api/workspaces/openlaw/legal/benchmarks/recursion/ref-xyz",
-      expect.objectContaining({
-        method: "PATCH",
-        body: JSON.stringify({ enabled: true }),
-      }),
-    );
-  });
-
-  it("calls refetch after successful Enable toggle", async () => {
-    mockFetchOk();
-    renderCard({ recursion: false });
-
-    fireEvent.click(screen.getByRole("button", { name: /enable/i }));
-
-    await waitFor(() => expect(mockRefetch).toHaveBeenCalledOnce());
-  });
-
-  // ─── Shared toggle behaviour ─────────────────────────────────────────────
-
-  it("calls refetch after successful Disable toggle", async () => {
-    mockFetchOk();
-    renderCard({ recursion: true });
+    renderCard();
 
     fireEvent.click(screen.getByRole("button", { name: /disable/i }));
 
@@ -247,7 +207,7 @@ describe("RecursionCard", () => {
 
   it("does NOT call refetch on failed toggle", async () => {
     mockFetchFail();
-    renderCard({ recursion: true });
+    renderCard();
 
     fireEvent.click(screen.getByRole("button", { name: /disable/i }));
 
@@ -257,7 +217,7 @@ describe("RecursionCard", () => {
 
   it("shows inline error message on toggle failure", async () => {
     mockFetchFail(502, "Graph write failed");
-    renderCard({ recursion: true });
+    renderCard();
 
     fireEvent.click(screen.getByRole("button", { name: /disable/i }));
 
@@ -266,7 +226,7 @@ describe("RecursionCard", () => {
 
   it("shows inline error on network error", async () => {
     vi.mocked(global.fetch).mockRejectedValue(new Error("Network down"));
-    renderCard({ recursion: true });
+    renderCard();
 
     fireEvent.click(screen.getByRole("button", { name: /disable/i }));
 
@@ -275,7 +235,7 @@ describe("RecursionCard", () => {
 
   it("does not make any DELETE calls", async () => {
     mockFetchOk();
-    renderCard({ recursion: true });
+    renderCard();
 
     fireEvent.click(screen.getByRole("button", { name: /disable/i }));
     await waitFor(() => expect(vi.mocked(global.fetch)).toHaveBeenCalledOnce());
@@ -455,32 +415,30 @@ describe("RecursionList", () => {
     const { container } = render(
       <RecursionList entries={[]} isLoading={false} error={null} refetch={mockRefetch} />,
     );
-    expect(container.textContent).toMatch(/No EvalSets found in this workspace/i);
-    expect(container.textContent).toMatch(/benchmark/i);
+    expect(container.textContent).toMatch(/No tasks enrolled in recursion/i);
+    expect(container.textContent).toMatch(/toggles the recursion flag/i);
   });
 
-  it("empty-state does not mention 'enrolled in recursion' (old filtered-list wording)", () => {
+  it("empty-state mentions completing a benchmark run with failing criteria", () => {
     const { container } = render(
       <RecursionList entries={[]} isLoading={false} error={null} refetch={mockRefetch} />,
     );
     const text = container.textContent ?? "";
-    expect(text).not.toMatch(/enrolled in recursion/i);
-    expect(text).not.toMatch(/failing criteria/i);
+    expect(text).toMatch(/Recursion/i);
+    expect(text).toMatch(/failing criteria/i);
   });
 
-  it("renders a card per entry, with correct toggle labels", () => {
+  it("renders a card per entry", () => {
     const entries = [
-      makeEntry({ refId: "r1", id: "slug-1", name: "Task One", recursion: true }),
-      makeEntry({ refId: "r2", id: "slug-2", name: "Task Two", recursion: false }),
+      makeEntry({ refId: "r1", id: "slug-1", name: "Task One" }),
+      makeEntry({ refId: "r2", id: "slug-2", name: "Task Two" }),
     ];
     render(
       <RecursionList entries={entries} isLoading={false} error={null} refetch={mockRefetch} />,
     );
     expect(screen.getByText("Task One")).toBeTruthy();
     expect(screen.getByText("Task Two")).toBeTruthy();
-    // r1 has recursion=true → Disable; r2 has recursion=false → Enable
-    expect(screen.getAllByRole("button", { name: /disable/i })).toHaveLength(1);
-    expect(screen.getAllByRole("button", { name: /enable/i })).toHaveLength(1);
+    expect(screen.getAllByRole("button", { name: /disable/i })).toHaveLength(2);
   });
 
   it("calls useEvalRunHistory once per card (no N+1)", () => {
