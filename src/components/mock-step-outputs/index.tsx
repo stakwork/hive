@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { useSearchParams, useRouter, usePathname } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -47,6 +47,8 @@ type ViewMode = "list" | "detail" | "create";
 interface MockStepOutputsPanelProps {
   variant?: "panel" | "fullpage";
   workspaceSlug?: string;
+  workflowId?: string | number;
+  workflowVersionId?: string | null;
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -71,6 +73,8 @@ function outputToString(output: unknown): string {
 
 export function MockStepOutputsPanel({
   variant = "panel",
+  workflowId,
+  workflowVersionId,
 }: MockStepOutputsPanelProps) {
   const router = useRouter();
   const pathname = usePathname();
@@ -109,6 +113,21 @@ export function MockStepOutputsPanel({
   const [formVersionId, setFormVersionId] = useState("");
   const [formOutput, setFormOutput] = useState("");
   const [outputError, setOutputError] = useState<string | null>(null);
+
+  // ─── Derived: visibleItems (panel only — client-side version merge) ──────────
+
+  const visibleItems = useMemo(() => {
+    if (isFullpage) return items;
+    if (!workflowVersionId) return items;
+    return items.filter(
+      (item) =>
+        // version-specific match (string comparison to handle numeric/string id mismatch)
+        String(item.workflow_version_id) === String(workflowVersionId) ||
+        // global entry (no version)
+        item.workflow_version_id == null ||
+        item.workflow_version_id === ""
+    );
+  }, [items, isFullpage, workflowVersionId]);
 
   // ─── URL sync ───────────────────────────────────────────────────────────────
 
@@ -192,7 +211,46 @@ export function MockStepOutputsPanel({
     }
   }, []);
 
-  // ─── Initialise from URL on mount ───────────────────────────────────────────
+  // ─── Panel auto-fetch (keyed on workflowId only) ────────────────────────────
+
+  useEffect(() => {
+    if (isFullpage) return;
+    if (!workflowId || isNaN(Number(workflowId))) return;
+
+    let cancelled = false;
+
+    setFilterWorkflowId(String(workflowId));
+    setIsLoading(true);
+    setListError(null);
+
+    fetch(
+      `/api/workflow/mock-step-outputs?workflow_id=${encodeURIComponent(String(workflowId))}`
+    )
+      .then((res) => {
+        if (!res.ok) throw new Error("Failed to fetch mock step outputs");
+        return res.json() as Promise<MockStepOutputsResponse>;
+      })
+      .then((data) => {
+        if (cancelled) return;
+        if (!data.success) throw new Error("Failed to fetch mock step outputs");
+        setItems(data.data);
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        setListError(err instanceof Error ? err.message : "An error occurred");
+      })
+      .finally(() => {
+        if (!cancelled) setIsLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+    // Keyed on workflowId ONLY — version switching is a pure client-side re-derivation
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isFullpage, workflowId]);
+
+  // ─── Initialise from URL on mount (fullpage only) ───────────────────────────
 
   useEffect(() => {
     if (!isFullpage) return;
@@ -251,9 +309,9 @@ export function MockStepOutputsPanel({
   };
 
   const handleCreateClick = () => {
-    setFormWorkflowId(filterWorkflowId);
+    setFormWorkflowId(isFullpage ? filterWorkflowId : String(workflowId ?? ""));
     setFormStepId("");
-    setFormVersionId(filterVersionId);
+    setFormVersionId(isFullpage ? filterVersionId : (workflowVersionId ?? ""));
     setFormOutput("");
     setOutputError(null);
     setSaveError(null);
@@ -280,6 +338,17 @@ export function MockStepOutputsPanel({
     setOutputError(null);
     return true;
   };
+
+  /** Refetch helper — routes through version-less workflow-scoped call in panel
+   *  variant so globals are never dropped, and through the filter-driven call
+   *  in fullpage variant to preserve existing URL-sync behaviour. */
+  const refetchAfterMutation = useCallback(() => {
+    if (!isFullpage && workflowId && !isNaN(Number(workflowId))) {
+      fetchList(String(workflowId));
+    } else if (isFullpage && filterWorkflowId) {
+      fetchList(filterWorkflowId, filterVersionId || undefined);
+    }
+  }, [isFullpage, workflowId, filterWorkflowId, filterVersionId, fetchList]);
 
   const handleSaveEdit = async () => {
     if (!selectedItem) return;
@@ -313,10 +382,7 @@ export function MockStepOutputsPanel({
       setFormVersionId(data.data.workflow_version_id ?? "");
       setFormOutput(outputToString(data.data.output));
 
-      // Refresh list if the workflow_id context matches
-      if (filterWorkflowId) {
-        fetchList(filterWorkflowId, filterVersionId || undefined);
-      }
+      refetchAfterMutation();
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : "Failed to save");
     } finally {
@@ -355,29 +421,40 @@ export function MockStepOutputsPanel({
 
       const created = data.data;
 
-      // Re-fetch the workflow-scoped list (create is an upsert — existing row may have been updated)
-      const newWorkflowId = formWorkflowId;
-      const newVersionId = formVersionId;
-      const refreshed = await fetchList(newWorkflowId, newVersionId || undefined);
+      if (!isFullpage && workflowId && !isNaN(Number(workflowId))) {
+        // Panel: refetch via version-less workflow-scoped call, then open detail
+        const refreshed = await fetchList(String(workflowId));
+        const matched =
+          refreshed.find(
+            (e) =>
+              e.workflow_id === created.workflow_id &&
+              e.step_id === created.step_id &&
+              (e.workflow_version_id ?? null) === (created.workflow_version_id ?? null)
+          ) ?? created;
+        openDetail(matched);
+      } else {
+        // Fullpage: existing behaviour — re-fetch with filter context and open detail
+        const newWorkflowId = formWorkflowId;
+        const newVersionId = formVersionId;
+        const refreshed = await fetchList(newWorkflowId, newVersionId || undefined);
 
-      // Update filter to match the created entry's workflow context
-      setFilterWorkflowId(newWorkflowId);
-      setFilterVersionId(newVersionId);
-      updateUrl({
-        workflow_id: newWorkflowId,
-        workflow_version_id: newVersionId,
-      });
+        setFilterWorkflowId(newWorkflowId);
+        setFilterVersionId(newVersionId);
+        updateUrl({
+          workflow_id: newWorkflowId,
+          workflow_version_id: newVersionId,
+        });
 
-      // Find the upserted entry by key
-      const matched =
-        refreshed.find(
-          (e) =>
-            e.workflow_id === created.workflow_id &&
-            e.step_id === created.step_id &&
-            (e.workflow_version_id ?? null) === (created.workflow_version_id ?? null)
-        ) ?? created;
+        const matched =
+          refreshed.find(
+            (e) =>
+              e.workflow_id === created.workflow_id &&
+              e.step_id === created.step_id &&
+              (e.workflow_version_id ?? null) === (created.workflow_version_id ?? null)
+          ) ?? created;
 
-      openDetail(matched);
+        openDetail(matched);
+      }
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : "Failed to create");
     } finally {
@@ -400,9 +477,7 @@ export function MockStepOutputsPanel({
       }
 
       handleBackToList();
-      if (filterWorkflowId) {
-        fetchList(filterWorkflowId, filterVersionId || undefined);
-      }
+      refetchAfterMutation();
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : "Failed to delete");
     } finally {
@@ -571,55 +646,74 @@ export function MockStepOutputsPanel({
 
   const listContent = (
     <div className={cn("flex flex-col", isFullpage ? "h-full" : "h-full overflow-hidden")}>
-      {/* Filter bar */}
-      <form onSubmit={handleSearch} className="flex items-end gap-2 p-3 border-b flex-shrink-0 flex-wrap">
-        <div className="flex-1 min-w-[160px]">
-          <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide block mb-1">
-            Workflow ID <span className="text-destructive">*</span>
-          </label>
-          <Input
-            placeholder="Enter workflow ID"
-            value={filterWorkflowId}
-            onChange={(e) => setFilterWorkflowId(e.target.value)}
-            className="h-8 text-sm"
-            data-testid="filter-workflow-id"
-          />
+      {/* Filter bar — fullpage only */}
+      {isFullpage ? (
+        <form onSubmit={handleSearch} className="flex items-end gap-2 p-3 border-b flex-shrink-0 flex-wrap">
+          <div className="flex-1 min-w-[160px]">
+            <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide block mb-1">
+              Workflow ID <span className="text-destructive">*</span>
+            </label>
+            <Input
+              placeholder="Enter workflow ID"
+              value={filterWorkflowId}
+              onChange={(e) => setFilterWorkflowId(e.target.value)}
+              className="h-8 text-sm"
+              data-testid="filter-workflow-id"
+            />
+          </div>
+          <div className="flex-1 min-w-[140px]">
+            <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide block mb-1">
+              Version ID (optional)
+            </label>
+            <Input
+              placeholder="Enter version ID"
+              value={filterVersionId}
+              onChange={(e) => setFilterVersionId(e.target.value)}
+              className="h-8 text-sm"
+              data-testid="filter-version-id"
+            />
+          </div>
+          <Button type="submit" size="sm" disabled={!filterWorkflowId.trim() || isLoading}>
+            {isLoading ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Search className="h-4 w-4" />
+            )}
+            <span className="ml-1">Search</span>
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            onClick={handleCreateClick}
+            data-testid="create-button"
+          >
+            <Plus className="h-4 w-4 mr-1" />
+            New
+          </Button>
+        </form>
+      ) : (
+        /* Panel header — lightweight, just "New" button */
+        <div className="flex items-center justify-between px-3 py-2 border-b flex-shrink-0">
+          <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+            Mock Step Outputs
+          </span>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            onClick={handleCreateClick}
+            data-testid="create-button"
+          >
+            <Plus className="h-4 w-4 mr-1" />
+            New
+          </Button>
         </div>
-        <div className="flex-1 min-w-[140px]">
-          <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide block mb-1">
-            Version ID (optional)
-          </label>
-          <Input
-            placeholder="Enter version ID"
-            value={filterVersionId}
-            onChange={(e) => setFilterVersionId(e.target.value)}
-            className="h-8 text-sm"
-            data-testid="filter-version-id"
-          />
-        </div>
-        <Button type="submit" size="sm" disabled={!filterWorkflowId.trim() || isLoading}>
-          {isLoading ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
-          ) : (
-            <Search className="h-4 w-4" />
-          )}
-          <span className="ml-1">Search</span>
-        </Button>
-        <Button
-          type="button"
-          size="sm"
-          variant="outline"
-          onClick={handleCreateClick}
-          data-testid="create-button"
-        >
-          <Plus className="h-4 w-4 mr-1" />
-          New
-        </Button>
-      </form>
+      )}
 
       {/* List body */}
       <div className="flex-1 overflow-auto min-h-0">
-        {!filterWorkflowId.trim() ? (
+        {isFullpage && !filterWorkflowId.trim() ? (
           <div className="flex flex-col items-center justify-center h-full text-muted-foreground text-sm gap-2 p-8">
             <Search className="h-8 w-8 opacity-30" />
             <p>Enter a Workflow ID above to load mock step outputs.</p>
@@ -633,7 +727,7 @@ export function MockStepOutputsPanel({
           <div className="flex items-center justify-center p-8 h-full">
             <p className="text-destructive text-sm">{listError}</p>
           </div>
-        ) : items.length === 0 ? (
+        ) : visibleItems.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-muted-foreground text-sm gap-2 p-8">
             <p>No mock step outputs found for this workflow.</p>
             <Button variant="outline" size="sm" onClick={handleCreateClick}>
@@ -643,7 +737,7 @@ export function MockStepOutputsPanel({
           </div>
         ) : (
           <ul className="divide-y" data-testid="mock-step-output-list">
-            {items.map((item) => (
+            {visibleItems.map((item) => (
               <li key={item.id}>
                 <button
                   className="w-full text-left px-4 py-3 hover:bg-muted/50 transition-colors flex items-center justify-between gap-2"
