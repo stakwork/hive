@@ -14,6 +14,7 @@ import {
   type EdgeUpdate,
   type NodeContextMenuConfig,
   type NodeMenuOption,
+  type NodeUpdate,
   type SystemCanvasHandle,
 } from "system-canvas-react";
 import type {
@@ -35,7 +36,7 @@ import { CreateServiceCanvasDialog } from "../_components/CreateServiceCanvasDia
 import { categoryAllowedOnScope, CATEGORY_REGISTRY } from "./canvas-categories";
 import { useCanvasChatStore } from "../_state/canvasChatStore";
 import { useSession } from "next-auth/react";
-import { useCanvasCollaboration } from "@/hooks/useCanvasCollaboration";
+import { useCanvasCollaborationViaRelay } from "@/hooks/useCanvasCollaborationViaRelay";
 import { toast } from "sonner";
 import { Spinner } from "@/components/ui/spinner";
 import { Button } from "@/components/ui/button";
@@ -736,8 +737,10 @@ export function OrgCanvasBackground({
     refreshRootHiddenLive,
   });
 
-  // Real-time canvas presence — cursors, selection halos, conflict flash
-  const { collaborators } = useCanvasCollaboration({
+  // Real-time canvas presence (cursors/selection) + conflict-free document
+  // sync (nodes+edges) over the same relay socket. One Y.Doc per sub-canvas
+  // ref is the live source, seeded from the Postgres projection.
+  const { collaborators, crdt } = useCanvasCollaborationViaRelay({
     githubLogin,
     canvasRef: currentRef,
     userId: session?.user?.id ?? "",
@@ -749,6 +752,26 @@ export function OrgCanvasBackground({
     selectedNodeId: selectedNodeIdForPresence,
     enabled: !!(session?.user?.id),
   });
+  const {
+    reconstruct: crdtReconstruct,
+    seed: crdtSeed,
+    version: crdtVersion,
+    addNode: crdtAddNode,
+    updateNode: crdtUpdateNode,
+    removeNode: crdtRemoveNode,
+    addEdge: crdtAddEdge,
+    updateEdge: crdtUpdateEdge,
+    removeEdge: crdtRemoveEdge,
+  } = crdt;
+
+  // Seed each ref's doc from the projection as it loads. Idempotent, and a
+  // no-op unless we're the first client in the room (others sync from peers).
+  useEffect(() => {
+    if (root) crdtSeed("", root);
+  }, [root, crdtSeed]);
+  useEffect(() => {
+    for (const [ref, data] of Object.entries(subCanvases)) crdtSeed(ref, data);
+  }, [subCanvases, crdtSeed]);
 
 
   const {
@@ -764,6 +787,69 @@ export function OrgCanvasBackground({
     canvasHandleRef,
     subCanvasesRef,
   });
+
+  // Route every structural edit through the CRDT doc (live sync to peers) AND
+  // the existing handler (Postgres persist + domain bridges). `canvasRef`
+  // undefined = the root canvas ("" key).
+  const handleNodeAddSync = useCallback(
+    (node: CanvasNode, canvasRef: string | undefined) => {
+      crdtAddNode(canvasRef ?? "", node);
+      handleNodeAdd(node, canvasRef);
+    },
+    [crdtAddNode, handleNodeAdd],
+  );
+  const handleNodeUpdateSync = useCallback(
+    (id: string, patch: NodeUpdate, canvasRef: string | undefined) => {
+      crdtUpdateNode(canvasRef ?? "", id, patch);
+      handleNodeUpdate(id, patch, canvasRef);
+    },
+    [crdtUpdateNode, handleNodeUpdate],
+  );
+  const handleNodesUpdateSync = useCallback(
+    (
+      updates: { id: string; patch: NodeUpdate }[],
+      canvasRef: string | undefined,
+    ) => {
+      for (const u of updates) crdtUpdateNode(canvasRef ?? "", u.id, u.patch);
+      handleNodesUpdate(updates, canvasRef);
+    },
+    [crdtUpdateNode, handleNodesUpdate],
+  );
+  const handleNodeDeleteSync = useCallback(
+    (id: string, canvasRef: string | undefined) => {
+      crdtRemoveNode(canvasRef ?? "", id);
+      handleNodeDelete(id, canvasRef);
+    },
+    [crdtRemoveNode, handleNodeDelete],
+  );
+  const handleNodesDeleteSync = useCallback(
+    (ids: string[], canvasRef: string | undefined) => {
+      for (const id of ids) crdtRemoveNode(canvasRef ?? "", id);
+      handleNodesDelete(ids, canvasRef);
+    },
+    [crdtRemoveNode, handleNodesDelete],
+  );
+  const handleEdgeAddSync = useCallback(
+    (edge: CanvasEdge, canvasRef: string | undefined) => {
+      crdtAddEdge(canvasRef ?? "", edge);
+      handleEdgeAdd(edge, canvasRef);
+    },
+    [crdtAddEdge, handleEdgeAdd],
+  );
+  const handleEdgeUpdateSync = useCallback(
+    (id: string, patch: EdgeUpdate, canvasRef: string | undefined) => {
+      crdtUpdateEdge(canvasRef ?? "", id, patch);
+      handleEdgeUpdate(id, patch, canvasRef);
+    },
+    [crdtUpdateEdge, handleEdgeUpdate],
+  );
+  const handleEdgeDeleteSync = useCallback(
+    (id: string, canvasRef: string | undefined) => {
+      crdtRemoveEdge(canvasRef ?? "", id);
+      handleEdgeDelete(id, canvasRef);
+    },
+    [crdtRemoveEdge, handleEdgeDelete],
+  );
   /**
    * Visually highlight edges that have a linked Connection doc. The
    * lib renders edges using `theme.edge.stroke` by default; setting
@@ -802,9 +888,16 @@ export function OrgCanvasBackground({
     [],
   );
 
+  // The live CRDT doc is the render source once seeded/synced; until then we
+  // fall back to the raw projection. `crdtVersion` bumps on any doc change so
+  // remote edits re-render without a refetch.
   const canvasForRender = useMemo<CanvasData>(
-    () => decorateEdgesWithLinkVisual(root ?? { nodes: [], edges: [] }),
-    [root, decorateEdgesWithLinkVisual],
+    () =>
+      decorateEdgesWithLinkVisual(
+        crdtReconstruct("") ?? root ?? { nodes: [], edges: [] },
+      ),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [crdtVersion, root, decorateEdgesWithLinkVisual, crdtReconstruct],
   );
 
   // Sub-canvases also need decoration so links are highlighted on
@@ -813,10 +906,11 @@ export function OrgCanvasBackground({
   const subCanvasesForRender = useMemo<Record<string, CanvasData>>(() => {
     const out: Record<string, CanvasData> = {};
     for (const [ref, data] of Object.entries(subCanvases)) {
-      out[ref] = decorateEdgesWithLinkVisual(data);
+      out[ref] = decorateEdgesWithLinkVisual(crdtReconstruct(ref) ?? data);
     }
     return out;
-  }, [subCanvases, decorateEdgesWithLinkVisual]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [crdtVersion, subCanvases, decorateEdgesWithLinkVisual, crdtReconstruct]);
 
   // Set of connection ids referenced by at least one edge across all
   // canvases we've loaded this session. Walked off the same `root` +
@@ -1190,14 +1284,14 @@ export function OrgCanvasBackground({
           onResolveCanvas={onResolveCanvas}
           onBreadcrumbsChange={handleBreadcrumbsChange}
           onSelectionChange={handleSelectionChange}
-          onNodeAdd={handleNodeAdd}
-          onNodeUpdate={handleNodeUpdate}
-          onNodesUpdate={handleNodesUpdate}
-          onNodeDelete={handleNodeDelete}
-          onNodesDelete={handleNodesDelete}
-          onEdgeAdd={handleEdgeAdd}
-          onEdgeUpdate={handleEdgeUpdate}
-          onEdgeDelete={handleEdgeDelete}
+          onNodeAdd={handleNodeAddSync}
+          onNodeUpdate={handleNodeUpdateSync}
+          onNodesUpdate={handleNodesUpdateSync}
+          onNodeDelete={handleNodeDeleteSync}
+          onNodesDelete={handleNodesDeleteSync}
+          onEdgeAdd={handleEdgeAddSync}
+          onEdgeUpdate={handleEdgeUpdateSync}
+          onEdgeDelete={handleEdgeDeleteSync}
           canDropNodeOn={canDropNodeOn}
           onNodeDrop={handleNodeDrop}
           nodeContextMenu={nodeContextMenu}
