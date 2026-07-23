@@ -4,6 +4,7 @@ export interface RecursionEntry {
   refId: string;
   id: string;   // task-slug
   name: string;
+  recursion: boolean;
 }
 
 interface UseLegalBenchmarkRecursionListResult {
@@ -30,11 +31,12 @@ export function useLegalBenchmarkRecursionList(): UseLegalBenchmarkRecursionList
         const body = await res.json().catch(() => ({}));
         throw new Error((body as { error?: string }).error ?? "Failed to fetch recursion entries");
       }
-      const body = (await res.json()) as { success: boolean; data: Array<{ ref_id: string; id: string; name: string }> };
+      const body = (await res.json()) as { success: boolean; data: Array<{ ref_id: string; id: string; name: string; recursion: boolean }> };
       const mapped: RecursionEntry[] = (body.data ?? []).map((item) => ({
         refId: item.ref_id,
         id: item.id,
         name: item.name,
+        recursion: item.recursion,
       }));
       setEntries(mapped);
       setError(null);

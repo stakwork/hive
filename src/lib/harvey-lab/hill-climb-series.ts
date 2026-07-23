@@ -12,6 +12,24 @@
  *
  * Accept/reject is keyed on `eval_status` (canonical); falls back to `status`
  * when `eval_status` is absent (reflects today's UI write path).
+ *
+ * ## Exported primitives
+ * Low-level primitives are exported so `legal-recursion-attempt-stats.ts` can
+ * build its own "sum across ALL HAS_TRIGGER branches" policy on top of the
+ * same graph-walking logic, without duplicating code.
+ *
+ * - `locateBaselineTriggerRoot` — resolves EvalSet → baseline EvalTrigger →
+ *   root ProposedFix ref_id (returns null when the chain is absent)
+ * - `walkDerivedFromChain` — BFS from a root ProposedFix following
+ *   DERIVED_FROM edges, returning fix nodes in derivation order
+ * - `computeRunningBest` — given a sorted list of scored attempts, returns
+ *   the monotonically-non-decreasing running-best n_passed series
+ *
+ * `buildHillClimbSeries` keeps its existing chart-specific filtering
+ * behaviour unchanged: the second trigger's fix chain (reached via HAS_TRIGGER
+ * rather than HAS_BASELINE_TRIGGER) is intentionally excluded from the accepted
+ * series. The stats module layers its own "sum across all branches" policy on
+ * these same primitives.
  */
 
 import {
@@ -49,10 +67,6 @@ function isNodeType(node: SubgraphNode, ...types: string[]): boolean {
   return types.some((expected) => expected.toLowerCase() === t);
 }
 
-function edgeType(edge: SubgraphEdge): string {
-  return edge.edge_type ?? "";
-}
-
 // ── Accept/reject resolution ──────────────────────────────────────────────────
 
 /**
@@ -82,14 +96,26 @@ function isAccepted(props: Record<string, unknown> | undefined): boolean {
  *
  * DERIVED_FROM is directed: child --DERIVED_FROM--> parent.
  * So to find children of a node we look for edges whose TARGET is that node.
+ *
+ * @param rootId    - ref_id of the root ProposedFix to start from
+ * @param nodeMap   - Map of ref_id → SubgraphNode for O(1) lookup
+ * @param edges     - All edges in the subgraph
+ * @param visited   - Optional shared visited set; when provided, any node
+ *                    already in the set is skipped (cross-branch dedup).
+ *                    When omitted, a fresh set is used (per-call scoping,
+ *                    the original behaviour — used by buildHillClimbSeries).
+ *
+ * Exported so the stats module can call this for each HAS_TRIGGER branch
+ * while sharing a single visited set across all branches.
  */
-function walkDerivedFromChain(
+export function walkDerivedFromChain(
   rootId: string,
   nodeMap: Map<string, SubgraphNode>,
   edges: SubgraphEdge[],
+  visited?: Set<string>,
 ): SubgraphNode[] {
   const result: SubgraphNode[] = [];
-  const visited = new Set<string>();
+  const localVisited = visited ?? new Set<string>();
 
   // Build: parent → children map (edges where target === parent, source is child)
   const children = new Map<string, string[]>();
@@ -106,8 +132,8 @@ function walkDerivedFromChain(
   const queue = [rootId];
   while (queue.length > 0) {
     const id = queue.shift()!;
-    if (visited.has(id)) continue;
-    visited.add(id);
+    if (localVisited.has(id)) continue;
+    localVisited.add(id);
     const node = nodeMap.get(id);
     if (node) result.push(node);
     const kids = children.get(id) ?? [];
@@ -115,6 +141,104 @@ function walkDerivedFromChain(
   }
 
   return result;
+}
+
+// ── Root locator ──────────────────────────────────────────────────────────────
+
+export interface BaselineTriggerRoot {
+  /** The resolved baseline EvalTrigger node */
+  baselineTriggerNode: SubgraphNode;
+  /** The root ProposedFix ref_id (target of HAS_PROPOSED_FIX), or null */
+  rootFixId: string | null;
+  /** The baseline EvalTriggerOutput (for n_total / baseline score) */
+  baselineOutput: EvalTriggerOutput | null;
+}
+
+/**
+ * Locate the baseline EvalTrigger and root ProposedFix for a given EvalSet.
+ *
+ * Traversal:
+ *   EvalSet --HAS_BASELINE_TRIGGER--> EvalTrigger
+ *   EvalTrigger --HAS_OUTPUT--> EvalTriggerOutput  (baseline)
+ *   EvalTrigger --HAS_PROPOSED_FIX--> ProposedFix  (root fix)
+ *
+ * Returns null when the EvalSet or baseline trigger cannot be located.
+ * Exported so the stats module reuses this anchoring logic without duplicating it.
+ */
+export function locateBaselineTriggerRoot(
+  evalSetRefId: string,
+  nodeMap: Map<string, SubgraphNode>,
+  edges: SubgraphEdge[],
+): BaselineTriggerRoot | null {
+  const evalSetNode = nodeMap.get(evalSetRefId);
+  if (!evalSetNode || !isNodeType(evalSetNode, "EvalSet")) {
+    // Fall back: locate EvalSet by node_type scan (handles the case where the
+    // caller injects a stub node keyed by ref_id that may differ from the
+    // node's stored ref_id — e.g. the hook injects { ref_id: evalSetRefId, node_type: "EvalSet" })
+    const found = [...nodeMap.values()].find((n) => isNodeType(n, "EvalSet"));
+    if (!found) return null;
+    return locateBaselineTriggerRoot(found.ref_id, nodeMap, edges);
+  }
+
+  const baselineTriggerEdge = edges.find(
+    (e) => e.source === evalSetNode.ref_id && e.edge_type === "HAS_BASELINE_TRIGGER",
+  );
+  if (!baselineTriggerEdge) return null;
+
+  const baselineTriggerNode = nodeMap.get(baselineTriggerEdge.target);
+  if (!baselineTriggerNode || !isNodeType(baselineTriggerNode, "EvalTrigger")) return null;
+
+  const baselineOutputEdge = edges.find(
+    (e) => e.source === baselineTriggerNode.ref_id && e.edge_type === "HAS_OUTPUT",
+  );
+  const baselineOutputNode = baselineOutputEdge ? nodeMap.get(baselineOutputEdge.target) : undefined;
+  const baselineOutput = baselineOutputNode
+    ? normalizeOutput(baselineOutputNode as RawJarvisNode)
+    : null;
+
+  const rootFixEdge = edges.find(
+    (e) => e.source === baselineTriggerNode.ref_id && e.edge_type === "HAS_PROPOSED_FIX",
+  );
+
+  return {
+    baselineTriggerNode,
+    rootFixId: rootFixEdge?.target ?? null,
+    baselineOutput,
+  };
+}
+
+// ── Running-best utility ──────────────────────────────────────────────────────
+
+/**
+ * Given a sorted list of EvalTriggerOutput points (baseline first), compute
+ * the monotonically-non-decreasing running-best n_passed value at each position.
+ *
+ * Rules:
+ *  - Baseline always seeds the running best.
+ *  - Accepted fixes advance the best when `actualPassed > runningBest`.
+ *  - Rejected / unscored fixes leave the best flat.
+ *
+ * Returned array is the same length as `points`, each entry containing
+ * `{ ...point, bestPassed: number }`.
+ *
+ * Exported so the chart and the stats module share one definition.
+ */
+export function computeRunningBest(
+  points: Array<EvalTriggerOutput & { accepted?: boolean; actualPassed?: number | null }>,
+  initialBest: number,
+): Array<EvalTriggerOutput & { accepted?: boolean; actualPassed?: number | null; bestPassed: number }> {
+  let runningBest = initialBest;
+  return points.map((pt) => {
+    if (pt.isBaseline) {
+      const candidate = pt.actualPassed ?? runningBest;
+      runningBest = Math.max(runningBest, candidate);
+      return { ...pt, bestPassed: runningBest };
+    }
+    if (pt.accepted && pt.actualPassed != null) {
+      runningBest = Math.max(runningBest, pt.actualPassed);
+    }
+    return { ...pt, bestPassed: runningBest };
+  });
 }
 
 // ── Score resolution for a ProposedFix ───────────────────────────────────────
@@ -208,6 +332,11 @@ function resolveFixOutput(
  *
  * Returns `EvalTriggerOutput[]` sorted chronologically (baseline first),
  * ready to pass directly to `HillClimbChart`'s `attempts` prop.
+ *
+ * Chart-specific filtering: only the baseline trigger's fix chain
+ * (HAS_BASELINE_TRIGGER → HAS_PROPOSED_FIX → DERIVED_FROM…) is included.
+ * The second trigger's chain (reached via HAS_TRIGGER) is intentionally
+ * excluded — this is deliberate chart UX, not a bug.
  */
 export function buildHillClimbSeries(subgraph: Subgraph): EvalTriggerOutput[] {
   const { nodes, edges } = subgraph;
@@ -304,6 +433,8 @@ export function buildHillClimbSeries(subgraph: Subgraph): EvalTriggerOutput[] {
   let derivedFixCount = 0;
 
   if (rootFixEdge) {
+    // walkDerivedFromChain called without a shared visited set → per-call scoping
+    // (chart only follows the baseline trigger's chain)
     const fixChain = walkDerivedFromChain(rootFixEdge.target, nodeMap, edges);
     derivedFixCount = fixChain.length;
 
