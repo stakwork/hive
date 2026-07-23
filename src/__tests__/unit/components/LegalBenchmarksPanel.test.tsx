@@ -239,7 +239,7 @@ function makeDefaultFetch(opts: {
 } = {}) {
   return vi.fn().mockImplementation((url: string, init?: RequestInit) => {
     if (url === "/api/llm-models") {
-      return Promise.resolve({ ok: true, json: async () => MOCK_LLM_MODELS });
+      return Promise.resolve({ ok: true, json: async () => ({ models: MOCK_LLM_MODELS }) });
     }
     if (typeof url === "string" && url.includes("/legal/benchmarks/tasks")) {
       if (opts.tasksError) {
@@ -520,6 +520,29 @@ describe("LegalBenchmarksPanel", () => {
 
   it("shows error state on fetch failure", async () => {
     vi.stubGlobal("fetch", makeDefaultFetch({ tasksError: true }));
+
+    render(React.createElement(LegalBenchmarksPanel));
+
+    await waitFor(() => {
+      expect(screen.getByText(/Failed to fetch tasks/i)).toBeInTheDocument();
+    });
+  });
+
+  it("shows error when tasksRes fails even if modelsRes succeeds", async () => {
+    // modelsRes returns ok:true with valid envelope; tasksRes returns ok:false
+    // Ensures a tasks failure is surfaced and doesn't get masked by the models path
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockImplementation((url: string) => {
+        if (url === "/api/llm-models") {
+          return Promise.resolve({ ok: true, json: async () => ({ models: MOCK_LLM_MODELS }) });
+        }
+        if (typeof url === "string" && url.includes("/legal/benchmarks/tasks")) {
+          return Promise.resolve({ ok: false, status: 500, json: async () => ({ error: "Server error" }) });
+        }
+        return Promise.resolve({ ok: true, json: async () => ({}) });
+      })
+    );
 
     render(React.createElement(LegalBenchmarksPanel));
 
