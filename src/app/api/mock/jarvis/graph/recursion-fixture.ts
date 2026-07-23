@@ -31,6 +31,8 @@ import type { JarvisNode } from "@/types/jarvis";
 
 // ── Node ref_ids (stable, referenced by edges and tests) ─────────────────────
 export const EVAL_SET_ID = "mock-evalset-001"; // same as MOCK_EVAL_SET_REF_ID
+// Second EvalSet node — recursion: false — exercises the "list all" and "Enable" button paths
+export const EVAL_SET_NO_RECURSION_ID = "mock-evalset-002";
 
 const BASELINE_TRIGGER_ID = "mock-evaltrigger-baseline-001";
 const BASELINE_OUTPUT_ID = "mock-evaltriggeroutput-baseline-001";
@@ -73,6 +75,20 @@ export function buildRecursionNodes(): JarvisNode[] {
         name: "Mock Legal Benchmark EvalSet",
         description: "Fixture EvalSet for recursion hill-climb chart tests",
         task_slug: "mock-task-001",
+        recursion: true,
+      },
+    },
+
+    // ── Second EvalSet — recursion: false (exercises "list all" + "Enable" button) ─
+    {
+      ref_id: EVAL_SET_NO_RECURSION_ID,
+      node_type: "EvalSet",
+      date_added_to_graph: ts,
+      properties: {
+        name: "Mock Legal Benchmark EvalSet (no recursion)",
+        description: "Fixture EvalSet with recursion disabled, for toggle tests",
+        task_slug: "mock-task-002",
+        recursion: false,
       },
     },
 
@@ -358,6 +374,7 @@ export function buildRecursionEdges() {
 
 export const RECURSION_NODE_IDS = {
   EVAL_SET_ID,
+  EVAL_SET_NO_RECURSION_ID,
   BASELINE_TRIGGER_ID,
   BASELINE_OUTPUT_ID,
   RERUN_TRIGGER_ID,
