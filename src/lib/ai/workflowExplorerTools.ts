@@ -79,15 +79,25 @@ export function buildWorkflowExplorerTools(): ToolSet {
         "It searches components semantically by what they take as input and produce as output, reads full workflow recipes (step orderings + the skills each step uses), and reports proven, reusable building blocks with usage statistics — plus gaps where nothing exists yet. " +
         "It can also pull ground-truth run data from the Stakwork API: which workflows invoke a skill (with real use counts), recent runs and their success/error states, and the actual params and outputs each step sent — useful for citing working configurations (exact URL formats, variable interpolations) or diagnosing why a similar workflow failed. " +
         "Use it when designing or discussing a NEW Stakwork workflow: e.g. 'what existing skills take a video url as input?', 'is there already a transcription workflow, and how does it compose its steps?', 'show me real params from a successful run that uses AzureOCR'. " +
-        "STRICTLY READ-ONLY research — it cannot create or modify workflows. Heavy/slow (minutes): call it ONCE with a complete, self-contained prompt rather than several times.",
+        "READ-ONLY by default — it cannot create or modify workflows. Pass run_step: true (ONLY when the user explicitly asks to run/execute/test a specific step) to additionally let it execute one workflow step with supplied inputs and report the output. " +
+        "Heavy/slow (minutes): call it ONCE with a complete, self-contained prompt rather than several times.",
       inputSchema: z.object({
         prompt: z
           .string()
           .describe(
-            "Self-contained research task for the workflow explorer. State the goal of the workflow being designed, the input/output shapes if known (e.g. 'takes a video url, produces a transcript with timestamps'), and ask for reusable building blocks and gaps.",
+            "Self-contained research task for the workflow explorer. State the goal of the workflow being designed, the input/output shapes if known (e.g. 'takes a video url, produces a transcript with timestamps'), and ask for reusable building blocks and gaps. " +
+              "When run_step is true, also name the workflow (id if known) and step id, give the input values the user supplied (or tell it to discover required inputs and use stated test values / mock_mode), and ask for the step's resolved inputs and outputs.",
+          ),
+        run_step: z
+          .boolean()
+          .optional()
+          .describe(
+            "Enable single-step EXECUTION (stakwork_run_step) on the explorer for this call. " +
+              "Set true ONLY when the user has explicitly asked to run/execute/test a workflow step — never for ordinary research. " +
+              "Executions are real and billable.",
           ),
       }),
-      execute: async ({ prompt }: { prompt: string }) => {
+      execute: async ({ prompt, run_step }: { prompt: string; run_step?: boolean }) => {
         try {
           const { swarmUrl, swarmApiKey } = await resolveWorkflowLibrarySwarm();
           // No repo_url: workflow mode works entirely off the swarm's graph.
@@ -102,10 +112,19 @@ export function buildWorkflowExplorerTools(): ToolSet {
           // library workflows — per-customer keys 404 on workflows they don't
           // own. Optional: without it the explorer still works, minus the
           // run-research tools.
+          // run_step is a per-call opt-in: it flips the swarm-side
+          // toolsConfig.stakwork_run_step gate that registers the (billable)
+          // single-step execution tool. Omitted entirely otherwise — absence
+          // is the swarm's off state, so ordinary research calls stay
+          // strictly read-only.
+          if (run_step) {
+            console.log("[workflow_explorer_agent] step execution enabled for this call");
+          }
           const rr = await repoAgent(swarmUrl, swarmApiKey, {
             prompt,
             mode: "workflow",
             stakworkApiKey: config.STAKWORK_API_KEY || undefined,
+            ...(run_step ? { toolsConfig: { stakwork_run_step: true } } : {}),
           });
           if (typeof rr === "string") return "Workflow explorer agent was cancelled";
           return (rr as Record<string, string>).content;
