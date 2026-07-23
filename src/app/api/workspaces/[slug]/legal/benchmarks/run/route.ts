@@ -315,10 +315,15 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       data: { webhookUrl },
     });
 
+    // Status hook receives top-level Stakwork lifecycle callbacks (PENDING → IN_PROGRESS, etc.)
+    // while the full scored result still arrives via vars.webhook_url (the run-token'd response URL).
+    // This mirrors the pattern used by dispatchLegalBenchmarkEvalRun / dispatchLegalBenchmarkRecursionRun.
+    const statusWebhookUrl = `${baseUrl}/api/stakwork/webhook?run_id=${runnerRun.id}`;
+
     const payload = {
       name: `harvey-runner-${runnerRun.id}`,
       workflow_id: parseInt(runnerWorkflowId, 10),
-      webhook_url: webhookUrl,
+      webhook_url: statusWebhookUrl,
       workflow_params: {
         set_var: {
           attributes: {

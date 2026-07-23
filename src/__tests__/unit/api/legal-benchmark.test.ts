@@ -426,7 +426,7 @@ describe("POST /api/workspaces/[slug]/legal/benchmarks/run", () => {
     );
   });
 
-  test("webhook_url sent to Stakwork uses generic response webhook pattern", async () => {
+  test("top-level webhook_url sent to Stakwork uses the status hook; vars.webhook_url and persisted webhookUrl retain the response URL", async () => {
     (getWorkspaceSwarmAccess as Mock).mockResolvedValue(MOCK_SWARM_ACCESS);
     setupTransactionMock({ runnerResult: { id: "runner-abc" } });
 
@@ -447,11 +447,36 @@ describe("POST /api/workspaces/[slug]/legal/benchmarks/run", () => {
     });
 
     expect(capturedPayloads).toHaveLength(1);
-    const dispatched = capturedPayloads[0] as { webhook_url: string };
-    expect(dispatched.webhook_url).toMatch(/\/api\/webhook\/stakwork\/response/);
-    expect(dispatched.webhook_url).toMatch(/type=LEGAL_BENCHMARK_RUNNER/);
+    const dispatched = capturedPayloads[0] as {
+      webhook_url: string;
+      workflow_params: { set_var: { attributes: { vars: Record<string, string> } } };
+    };
+
+    // Top-level webhook_url must point at the lightweight status hook
+    expect(dispatched.webhook_url).toMatch(/\/api\/stakwork\/webhook/);
     expect(dispatched.webhook_url).toMatch(/run_id=runner-abc/);
-    expect(dispatched.webhook_url).toMatch(/workspace_id=ws-1/);
+    expect(dispatched.webhook_url).not.toMatch(/\/api\/webhook\/stakwork\/response/);
+
+    // vars.webhook_url must still be the run-token'd response URL
+    const varsWebhookUrl = dispatched.workflow_params.set_var.attributes.vars.webhook_url;
+    expect(varsWebhookUrl).toMatch(/\/api\/webhook\/stakwork\/response/);
+    expect(varsWebhookUrl).toMatch(/type=LEGAL_BENCHMARK_RUNNER/);
+    expect(varsWebhookUrl).toMatch(/run_id=runner-abc/);
+    expect(varsWebhookUrl).toMatch(/workspace_id=ws-1/);
+    expect(varsWebhookUrl).toMatch(/run_token=/);
+
+    // The persisted StakworkRun.webhookUrl must be the response URL, not the status hook
+    const persistCall = mockDbStakworkRunUpdate.mock.calls.find(
+      ([args]: [{ where: { id: string }; data: { webhookUrl?: string } }]) =>
+        args.where?.id === "runner-abc" && args.data?.webhookUrl !== undefined,
+    );
+    expect(persistCall).toBeDefined();
+    const persistedUrl: string = persistCall![0].data.webhookUrl;
+    expect(persistedUrl).toMatch(/\/api\/webhook\/stakwork\/response/);
+    expect(persistedUrl).toMatch(/type=LEGAL_BENCHMARK_RUNNER/);
+    expect(persistedUrl).toMatch(/run_id=runner-abc/);
+    expect(persistedUrl).toMatch(/run_token=/);
+    expect(persistedUrl).not.toMatch(/\/api\/stakwork\/webhook/);
   });
 
   test("swarm_url and repo2graph_url are forwarded in the dispatched Stakwork payload", async () => {
@@ -1471,3 +1496,4 @@ describe("POST /run — requestedModel and requestedJudgeModel survive webhook m
     expect(mergedResult.model).toBe("claude-sonnet-different-echo");
   });
 });
+
