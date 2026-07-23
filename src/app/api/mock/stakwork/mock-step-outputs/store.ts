@@ -38,6 +38,27 @@ export const mockStore: MockStepOutput[] = [
     created_at: "2024-03-01T10:00:00Z",
     updated_at: "2024-03-01T10:00:00Z",
   },
+  // Numeric-workflow-id entries for the inspector tab (dev UX):
+  // workflow_id "12345" maps to a real inspectable workflow; the inspector
+  // passes the parsed numeric id as a string so these keys match.
+  {
+    id: "mock-mso-4",
+    workflow_id: "12345",
+    step_id: "step-fetch-users",
+    workflow_version_id: null, // global — visible regardless of selected version
+    output: { users: [{ id: 1, name: "Alice" }, { id: 2, name: "Bob" }], total: 2 },
+    created_at: "2024-04-01T08:00:00Z",
+    updated_at: "2024-04-10T09:00:00Z",
+  },
+  {
+    id: "mock-mso-5",
+    workflow_id: "12345",
+    step_id: "step-process-data",
+    workflow_version_id: "67890", // version-specific — visible only when version 67890 is selected
+    output: { processed: true, records: 42, status: "ok" },
+    created_at: "2024-04-02T10:00:00Z",
+    updated_at: "2024-04-12T11:30:00Z",
+  },
 ];
 
 export function makeUpsertKey(
