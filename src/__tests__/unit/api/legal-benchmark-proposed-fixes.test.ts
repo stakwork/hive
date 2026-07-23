@@ -388,7 +388,18 @@ describe("GET /api/workspaces/[slug]/legal/benchmarks/proposed-fixes", () => {
 
   // ── project_id projection ─────────────────────────────────────────────────
 
-  test("15c. project_id projected as number when node property is a numeric string", async () => {
+  test("15c. unique_source_id present & numeric → used as project_id (preferred path)", async () => {
+    mockSearchNodesByAttributes.mockResolvedValue({
+      ok: true,
+      nodes: [makeProposedFixNode({ unique_source_id: "57419" })],
+    });
+    const res = await GET(makeRequest("openlaw", RUNNER_RUN_ID), makeParams("openlaw"));
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.fixes[0].project_id).toBe(57419);
+  });
+
+  test("15c-legacy. project_id present & numeric on node → falls back correctly when unique_source_id absent", async () => {
     mockSearchNodesByAttributes.mockResolvedValue({
       ok: true,
       nodes: [makeProposedFixNode({ project_id: "57419" })],
@@ -399,10 +410,10 @@ describe("GET /api/workspaces/[slug]/legal/benchmarks/proposed-fixes", () => {
     expect(body.fixes[0].project_id).toBe(57419);
   });
 
-  test("15d. project_id is null when absent from node properties", async () => {
+  test("15d. project_id is null when neither unique_source_id nor project_id present in node properties", async () => {
     mockSearchNodesByAttributes.mockResolvedValue({
       ok: true,
-      nodes: [makeProposedFixNode()], // base fixture has no project_id key
+      nodes: [makeProposedFixNode()], // base fixture has neither unique_source_id nor project_id
     });
     const res = await GET(makeRequest("openlaw", RUNNER_RUN_ID), makeParams("openlaw"));
     expect(res.status).toBe(200);
@@ -410,15 +421,38 @@ describe("GET /api/workspaces/[slug]/legal/benchmarks/proposed-fixes", () => {
     expect(body.fixes[0].project_id).toBeNull();
   });
 
-  test("15e. project_id is null when node property is an empty string", async () => {
+  test("15e. project_id is null when unique_source_id is non-numeric and project_id is empty string", async () => {
     mockSearchNodesByAttributes.mockResolvedValue({
       ok: true,
-      nodes: [makeProposedFixNode({ project_id: "" })],
+      nodes: [makeProposedFixNode({ unique_source_id: "not-a-number", project_id: "" })],
     });
     const res = await GET(makeRequest("openlaw", RUNNER_RUN_ID), makeParams("openlaw"));
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.fixes[0].project_id).toBeNull();
+  });
+
+  test("15f. unique_source_id wins over project_id when both present and numeric", async () => {
+    mockSearchNodesByAttributes.mockResolvedValue({
+      ok: true,
+      nodes: [makeProposedFixNode({ unique_source_id: "11111", project_id: "99999" })],
+    });
+    const res = await GET(makeRequest("openlaw", RUNNER_RUN_ID), makeParams("openlaw"));
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    // unique_source_id must take precedence
+    expect(body.fixes[0].project_id).toBe(11111);
+  });
+
+  test("15g. unique_source_id non-numeric falls back to numeric project_id", async () => {
+    mockSearchNodesByAttributes.mockResolvedValue({
+      ok: true,
+      nodes: [makeProposedFixNode({ unique_source_id: "not-a-number", project_id: "57419" })],
+    });
+    const res = await GET(makeRequest("openlaw", RUNNER_RUN_ID), makeParams("openlaw"));
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.fixes[0].project_id).toBe(57419);
   });
 
   // ── Graph search failure ──────────────────────────────────────────────────
