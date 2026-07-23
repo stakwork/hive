@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 import { getWorkspaceSwarmAccess } from "@/lib/helpers/swarm-access";
 import { getJarvisUrl } from "@/lib/utils/swarm";
-import { listAllEvalSets, listRecursionEvalSets } from "@/services/legal-benchmark-recursion";
+import { listRecursionEvalSets } from "@/services/legal-benchmark-recursion";
 
 export const runtime = "nodejs";
 export const fetchCache = "force-no-store";
@@ -25,19 +25,11 @@ function handleSwarmAccessError(error: { type: string }) {
 /**
  * GET /api/workspaces/[slug]/legal/benchmarks/recursion
  *
- * Returns all EvalSet nodes with their actual `recursion` state (unfiltered),
- * or only the enabled subset when `?enabledOnly=true` is passed.
- *
+ * Returns all EvalSet nodes where `recursion = true`.
  * Gated to the `openlaw` workspace only.
- *
- * Query parameters:
- *   - `enabledOnly=true` — calls `listRecursionEvalSets` (deduped + recursion=true only)
- *     instead of `listAllEvalSets` (full deduped list). Reuses the same auth/swarm
- *     gates — no new unauthenticated surface is exposed.
  */
 export async function GET(request: NextRequest, { params }: RouteParams) {
   try {
-    // Auth and workspace gates run unconditionally before any Jarvis call
     const context = getMiddlewareContext(request);
     const userOrResponse = requireAuth(context);
     if (userOrResponse instanceof NextResponse) return userOrResponse;
@@ -56,12 +48,8 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 
     const { swarmName, swarmApiKey } = swarmResult.data;
     const jarvisUrl = getJarvisUrl(swarmName);
-    const jarvisConfig = { jarvisUrl, apiKey: swarmApiKey };
 
-    const enabledOnly = request.nextUrl.searchParams.get("enabledOnly") === "true";
-    const result = enabledOnly
-      ? await listRecursionEvalSets(jarvisConfig)
-      : await listAllEvalSets(jarvisConfig);
+    const result = await listRecursionEvalSets({ jarvisUrl, apiKey: swarmApiKey });
 
     if (!result.ok) {
       return NextResponse.json({ error: "Failed to fetch recursion eval sets" }, { status: 502 });
