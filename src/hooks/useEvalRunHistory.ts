@@ -25,6 +25,7 @@ import {
   type RawJarvisNode,
 } from "@/lib/harvey-lab/eval-normalizers";
 import { buildHillClimbSeries, type SubgraphNode, type SubgraphEdge } from "@/lib/harvey-lab/hill-climb-series";
+import { SUBGRAPH_NODE_TYPES } from "@/lib/harvey-lab/subgraph-node-types";
 import { logger } from "@/lib/logger";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -54,10 +55,6 @@ interface UseEvalRunHistoryReturn {
 
 // ── Node-type casing helpers ──────────────────────────────────────────────────
 
-const TRIGGER_LABELS = ["EvalTrigger", "evaltrigger", "Evaltrigger"];
-const OUTPUT_LABELS = ["EvalTriggerOutput", "evaltriggeroutput", "Evaltriggeroutput"];
-const FIX_LABELS = ["ProposedFix", "proposedfix", "Proposedfix"];
-
 function isEvalTrigger(n: SubgraphNode): boolean {
   return (n.node_type ?? "").toLowerCase() === "evaltrigger";
 }
@@ -66,14 +63,6 @@ function isEvalTriggerOutput(n: SubgraphNode): boolean {
 }
 
 // ── Subgraph fetch ────────────────────────────────────────────────────────────
-
-// All node types to request — send multiple casings so server-side filtering
-// doesn't miss nodes due to label-casing inconsistency in Neo4j.
-const SUBGRAPH_NODE_TYPES = [
-  ...TRIGGER_LABELS,
-  ...OUTPUT_LABELS,
-  ...FIX_LABELS,
-];
 
 const SUBGRAPH_DEPTH = 999;
 
