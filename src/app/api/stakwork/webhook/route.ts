@@ -99,11 +99,12 @@ export async function POST(request: NextRequest) {
       });
 
       // Broadcast via Pusher
-      // Skip broadcasting COMPLETED for DIAGRAM_GENERATION — the result webhook
-      // (/api/webhook/stakwork/response) broadcasts after the whiteboard is saved,
-      // so broadcasting here would cause the frontend to fetch stale data.
+      // Skip broadcasting COMPLETED for DIAGRAM_GENERATION and LEGAL_BENCHMARK_RUNNER —
+      // in both cases the result webhook (/api/webhook/stakwork/response) broadcasts
+      // after merging scores/data, so broadcasting here would cause the frontend to
+      // transiently show a scoreless "completed" run before the result arrives.
       const skipBroadcast =
-        updatedRun.type === "DIAGRAM_GENERATION" &&
+        (updatedRun.type === "DIAGRAM_GENERATION" || updatedRun.type === "LEGAL_BENCHMARK_RUNNER") &&
         workflowStatus === WorkflowStatus.COMPLETED;
 
       if (!skipBroadcast) {
