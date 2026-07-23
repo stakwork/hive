@@ -658,6 +658,143 @@ export async function kgGetNodesByType(
 }
 
 // ---------------------------------------------------------------------------
+// kgGetSubgraph
+// ---------------------------------------------------------------------------
+
+import { SUBGRAPH_NODE_TYPES } from "@/lib/harvey-lab/subgraph-node-types";
+import { logger } from "@/lib/logger";
+
+export interface KgSubgraphNode {
+  ref_id: string;
+  node_type: string;
+  date_added_to_graph?: string | number;
+  properties?: Record<string, unknown>;
+  [key: string]: unknown;
+}
+
+export interface KgSubgraphEdge {
+  source: string;
+  target: string;
+  edge_type: string;
+  properties?: Record<string, unknown>;
+}
+
+export interface KgSubgraph {
+  nodes: KgSubgraphNode[];
+  edges: KgSubgraphEdge[];
+}
+
+export type KgSubgraphResult =
+  | { ok: true; subgraph: KgSubgraph }
+  | { ok: false; error: string };
+
+/**
+ * Hard cap on total nodes + edges returned by kgGetSubgraph.
+ * A pathologically large or cyclic trigger/fix history with depth=999 could
+ * return an unbounded payload — this prevents an OOM event analogous to the
+ * hub-node guard in kgGetNeighbors.
+ */
+const KG_SUBGRAPH_CAP = 500;
+
+export interface KgGetSubgraphOpts {
+  /**
+   * Traversal depth. Defaults to 999 (full history). Use a lower value
+   * only when you need a bounded hop count.
+   */
+  depth?: number;
+  /**
+   * Node types to include. Defaults to SUBGRAPH_NODE_TYPES (the shared
+   * EvalTrigger/EvalTriggerOutput/ProposedFix casing-variant list).
+   */
+  nodeTypes?: string[];
+}
+
+/**
+ * Fetch a subgraph rooted at `startRefId` from Jarvis's `/graph/subgraph`
+ * endpoint (server-side).
+ *
+ * Uses the same param contract proven by the client-side `fetchSubgraph` in
+ * `useEvalRunHistory.ts`:
+ *   - `start_node` — the ref_id to root the traversal at
+ *   - `node_type`  — JSON-stringified array of node-type strings to include
+ *   - `depth`      — traversal depth (999 = full history)
+ *   - `include_properties=true` — attach node properties to every result node
+ *
+ * Do NOT confuse with `kgGetNeighbors` (which uses `expand`/`sort_by`/
+ * `canonicalize` — a completely different endpoint contract).
+ *
+ * Returns a discriminated result so callers can distinguish "fetch failed"
+ * (transient error → fail-open) from "no history yet" (empty nodes/edges).
+ * Never throws.
+ */
+export async function kgGetSubgraph(
+  jarvisUrl: string,
+  swarmApiKey: string,
+  startRefId: string,
+  opts?: KgGetSubgraphOpts,
+): Promise<KgSubgraphResult> {
+  try {
+    const depth = opts?.depth ?? 999;
+    const nodeTypes = opts?.nodeTypes ?? SUBGRAPH_NODE_TYPES;
+    const nodeTypeParam = JSON.stringify(nodeTypes);
+
+    const params = new URLSearchParams({
+      start_node: startRefId,
+      node_type: nodeTypeParam,
+      depth: String(depth),
+      include_properties: "true",
+    });
+
+    const base = jarvisUrl.replace(/\/$/, "");
+    const url = `${base}/graph/subgraph?${params.toString()}`;
+
+    const res = await kgFetch(url, swarmApiKey);
+    if (!res.ok) {
+      return {
+        ok: false,
+        error: `Jarvis /graph/subgraph returned HTTP ${res.status}`,
+      };
+    }
+
+    const data = (await res.json()) as {
+      nodes?: KgSubgraphNode[];
+      edges?: KgSubgraphEdge[];
+    } | KgSubgraphNode[];
+
+    const raw = Array.isArray(data)
+      ? { nodes: data as KgSubgraphNode[], edges: [] }
+      : {
+          nodes: (data as { nodes?: KgSubgraphNode[] }).nodes ?? [],
+          edges: (data as { edges?: KgSubgraphEdge[] }).edges ?? [],
+        };
+
+    // ── Size cap: truncate and warn so a pathological history can't OOM ──
+    const totalItems = raw.nodes.length + raw.edges.length;
+    if (totalItems > KG_SUBGRAPH_CAP) {
+      logger.warn(
+        "[kg-adapter/kgGetSubgraph] Subgraph exceeds size cap — truncating",
+        "legal",
+        {
+          startRefId,
+          nodeCount: raw.nodes.length,
+          edgeCount: raw.edges.length,
+          cap: KG_SUBGRAPH_CAP,
+        },
+      );
+      // Keep the first KG_SUBGRAPH_CAP/2 nodes and KG_SUBGRAPH_CAP/2 edges
+      const nodeSlice = Math.floor(KG_SUBGRAPH_CAP / 2);
+      raw.nodes = raw.nodes.slice(0, nodeSlice);
+      raw.edges = raw.edges.slice(0, KG_SUBGRAPH_CAP - nodeSlice);
+    }
+
+    return { ok: true, subgraph: raw as KgSubgraph };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return { ok: false, error: msg };
+  }
+}
+
+// ---------------------------------------------------------------------------
 // kgSearch
 // ---------------------------------------------------------------------------
 

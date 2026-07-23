@@ -34,6 +34,75 @@ export const EVAL_SET_ID = "mock-evalset-001"; // same as MOCK_EVAL_SET_REF_ID
 // Second EvalSet node — recursion: false — exercises the "list all" and "Enable" button paths
 export const EVAL_SET_NO_RECURSION_ID = "mock-evalset-002";
 
+// ── Scenario A: Attempt-cap EvalSet ──────────────────────────────────────────
+// An EvalSet whose fix history has ≥ RECURSION_MAX_ATTEMPTS (10) total attempts.
+// The chain has 10 ProposedFix nodes:
+//   - Fixes 1-9: improving (accepted) from baseline trigger
+//   - Fix 10: from a SECOND HAS_TRIGGER branch (exercises multi-branch counting)
+// Used by computeAttemptStats unit tests to verify attempt-cap detection.
+export const ATTEMPT_CAP_EVALSET_ID = "mock-evalset-attempt-cap-001";
+const ATTEMPT_CAP_BASELINE_TRIGGER_ID = "mock-evaltrigger-attemptcap-baseline-001";
+const ATTEMPT_CAP_BASELINE_OUTPUT_ID = "mock-evaltriggeroutput-attemptcap-baseline-001";
+const ATTEMPT_CAP_RERUN_TRIGGER_ID = "mock-evaltrigger-attemptcap-rerun-001";
+
+// 9 fixes in the baseline chain (fixes 1-9)
+const ATTEMPT_CAP_FIX_IDS = Array.from({ length: 9 }, (_, i) => `mock-proposedfix-attemptcap-fix-${i + 1}`);
+const ATTEMPT_CAP_FIX_OUTPUT_IDS = Array.from({ length: 9 }, (_, i) => `mock-evaltriggeroutput-attemptcap-fix-${i + 1}`);
+
+// Fix 10 from the second trigger branch (exercises multi-branch counting)
+export const ATTEMPT_CAP_FIX_BRANCH2_ID = "mock-proposedfix-attemptcap-branch2-001";
+// Fix 11 from the second trigger branch that re-enters fix-1 from the first branch
+// (exercises cross-branch dedup in walkDerivedFromChain with shared visited set)
+export const ATTEMPT_CAP_FIX_BRANCH2_SHARED_ID = ATTEMPT_CAP_FIX_IDS[0]; // same ref_id as fix-1
+
+export const ATTEMPT_CAP_NODE_IDS = {
+  ATTEMPT_CAP_EVALSET_ID,
+  ATTEMPT_CAP_BASELINE_TRIGGER_ID,
+  ATTEMPT_CAP_BASELINE_OUTPUT_ID,
+  ATTEMPT_CAP_RERUN_TRIGGER_ID,
+  ATTEMPT_CAP_FIX_IDS,
+  ATTEMPT_CAP_FIX_OUTPUT_IDS,
+  ATTEMPT_CAP_FIX_BRANCH2_ID,
+} as const;
+
+// ── Scenario B: Plateau-cap EvalSet ──────────────────────────────────────────
+// An EvalSet whose last 3+ attempts haven't beaten the running best.
+// Structure:
+//   Baseline trigger (n_passed=50, n_total=74)
+//     → Fix 1 (accepted, n_passed=60) ← improves best to 60
+//     → Fix 2 (accepted, n_passed=55) ← doesn't beat 60 → plateau starts
+//   Rerun trigger (second HAS_TRIGGER branch)
+//     → Fix 3 (accepted, n_passed=58) ← doesn't beat 60 → plateau continues
+//       → Fix 4 (DERIVED_FROM Fix 3, same ref_id as fix-1 from baseline chain — cross-branch dedup)
+// Net: 4 fixes total (fix-4 deduped), plateau streak = 3 (fixes 2, 3 still non-improving)
+// but fix-3 is from a different branch, exercises multi-branch plateau accounting.
+export const PLATEAU_CAP_EVALSET_ID = "mock-evalset-plateau-cap-001";
+const PLATEAU_CAP_BASELINE_TRIGGER_ID = "mock-evaltrigger-plateaucap-baseline-001";
+const PLATEAU_CAP_BASELINE_OUTPUT_ID = "mock-evaltriggeroutput-plateaucap-baseline-001";
+const PLATEAU_CAP_RERUN_TRIGGER_ID = "mock-evaltrigger-plateaucap-rerun-001";
+
+export const PLATEAU_CAP_FIX1_ID = "mock-proposedfix-plateaucap-fix1";
+export const PLATEAU_CAP_FIX1_OUTPUT_ID = "mock-evaltriggeroutput-plateaucap-fix1";
+export const PLATEAU_CAP_FIX2_ID = "mock-proposedfix-plateaucap-fix2";
+export const PLATEAU_CAP_FIX2_OUTPUT_ID = "mock-evaltriggeroutput-plateaucap-fix2";
+export const PLATEAU_CAP_FIX3_ID = "mock-proposedfix-plateaucap-fix3";
+export const PLATEAU_CAP_FIX3_OUTPUT_ID = "mock-evaltriggeroutput-plateaucap-fix3";
+// Fix 4 re-uses fix1's ref_id — simulates the cross-branch node already visited
+export const PLATEAU_CAP_FIX4_ID = PLATEAU_CAP_FIX1_ID; // same ref_id → deduped by shared visited
+
+export const PLATEAU_CAP_NODE_IDS = {
+  PLATEAU_CAP_EVALSET_ID,
+  PLATEAU_CAP_BASELINE_TRIGGER_ID,
+  PLATEAU_CAP_BASELINE_OUTPUT_ID,
+  PLATEAU_CAP_RERUN_TRIGGER_ID,
+  PLATEAU_CAP_FIX1_ID,
+  PLATEAU_CAP_FIX1_OUTPUT_ID,
+  PLATEAU_CAP_FIX2_ID,
+  PLATEAU_CAP_FIX2_OUTPUT_ID,
+  PLATEAU_CAP_FIX3_ID,
+  PLATEAU_CAP_FIX3_OUTPUT_ID,
+} as const;
+
 const BASELINE_TRIGGER_ID = "mock-evaltrigger-baseline-001";
 const BASELINE_OUTPUT_ID = "mock-evaltriggeroutput-baseline-001";
 
@@ -369,6 +438,234 @@ export function buildRecursionEdges() {
 
     // Rerun trigger → rejected fix (original — attached to rerun trigger, not baseline)
     { source: RERUN_TRIGGER_ID, target: FIX_REJECTED_ID, edge_type: "HAS_PROPOSED_FIX" },
+  ];
+}
+
+// ── Scenario A: Attempt-cap builder ──────────────────────────────────────────
+
+/**
+ * Build nodes for the attempt-cap scenario (10 total ProposedFix nodes,
+ * spanning 2 trigger branches, with a cross-branch shared node).
+ *
+ * Branch 1 (HAS_BASELINE_TRIGGER): fixes 1-9 (improving chain)
+ * Branch 2 (HAS_TRIGGER): fix-branch2 + one DERIVED_FROM re-entry into fix-1
+ * → walkDerivedFromChain with shared visited set must count fix-1 once
+ * → total unique fixes = 10 (9 + 1 branch2-only fix; re-entry is deduped)
+ */
+export function buildAttemptCapNodes(): JarvisNode[] {
+  const ts = String(Math.floor(Date.now() / 1000));
+  const nodes: JarvisNode[] = [
+    // EvalSet root
+    {
+      ref_id: ATTEMPT_CAP_EVALSET_ID,
+      node_type: "EvalSet",
+      date_added_to_graph: ts,
+      properties: { name: "Attempt Cap Test EvalSet" },
+    },
+    // Baseline trigger
+    {
+      ref_id: ATTEMPT_CAP_BASELINE_TRIGGER_ID,
+      node_type: "EvalTrigger",
+      date_added_to_graph: ts,
+      properties: { agent: "test-agent", start_point: "s", end_point: "e" },
+    },
+    // Baseline output (n_passed=50, n_total=100)
+    {
+      ref_id: ATTEMPT_CAP_BASELINE_OUTPUT_ID,
+      node_type: "EvalTriggerOutput",
+      date_added_to_graph: ts,
+      properties: { attempt_number: 1, result: "pass", score: 50, n_passed: 50, n_total: 100 },
+    },
+    // Rerun trigger (second branch, exercises HAS_TRIGGER counting)
+    {
+      ref_id: ATTEMPT_CAP_RERUN_TRIGGER_ID,
+      node_type: "EvalTrigger",
+      date_added_to_graph: ts,
+      properties: { agent: "test-agent", start_point: "s", end_point: "e" },
+    },
+    // Fix from branch 2 (unique: not in branch 1's chain)
+    {
+      ref_id: ATTEMPT_CAP_FIX_BRANCH2_ID,
+      node_type: "ProposedFix",
+      date_added_to_graph: ts,
+      properties: { eval_status: "accepted", after_score: "65" },
+    },
+  ];
+
+  // Fixes 1-9 in the baseline chain (each with an improving score)
+  const ATTEMPT_CAP_FIX_IDS_LOCAL = Array.from({ length: 9 }, (_, i) => `mock-proposedfix-attemptcap-fix-${i + 1}`);
+  const ATTEMPT_CAP_FIX_OUTPUT_IDS_LOCAL = Array.from({ length: 9 }, (_, i) => `mock-evaltriggeroutput-attemptcap-fix-${i + 1}`);
+
+  for (let i = 0; i < 9; i++) {
+    const nPassed = 50 + (i + 1) * 3; // 53, 56, ..., 74
+    nodes.push({
+      ref_id: ATTEMPT_CAP_FIX_IDS_LOCAL[i],
+      node_type: "ProposedFix",
+      date_added_to_graph: String(Number(ts) + i + 1),
+      properties: {
+        eval_status: "accepted",
+        after_score: String(nPassed),
+      },
+    });
+    nodes.push({
+      ref_id: ATTEMPT_CAP_FIX_OUTPUT_IDS_LOCAL[i],
+      node_type: "EvalTriggerOutput",
+      date_added_to_graph: String(Number(ts) + i + 1),
+      properties: {
+        attempt_number: i + 2,
+        result: "pass",
+        score: nPassed / 100,
+        n_passed: nPassed,
+        n_total: 100,
+      },
+    });
+  }
+
+  return nodes;
+}
+
+export function buildAttemptCapEdges() {
+  const ATTEMPT_CAP_FIX_IDS_LOCAL = Array.from({ length: 9 }, (_, i) => `mock-proposedfix-attemptcap-fix-${i + 1}`);
+  const ATTEMPT_CAP_FIX_OUTPUT_IDS_LOCAL = Array.from({ length: 9 }, (_, i) => `mock-evaltriggeroutput-attemptcap-fix-${i + 1}`);
+
+  const edges: { source: string; target: string; edge_type: string }[] = [
+    { source: ATTEMPT_CAP_EVALSET_ID, target: ATTEMPT_CAP_BASELINE_TRIGGER_ID, edge_type: "HAS_BASELINE_TRIGGER" },
+    { source: ATTEMPT_CAP_EVALSET_ID, target: ATTEMPT_CAP_RERUN_TRIGGER_ID, edge_type: "HAS_TRIGGER" },
+    { source: ATTEMPT_CAP_BASELINE_TRIGGER_ID, target: ATTEMPT_CAP_BASELINE_OUTPUT_ID, edge_type: "HAS_OUTPUT" },
+    { source: ATTEMPT_CAP_BASELINE_TRIGGER_ID, target: ATTEMPT_CAP_FIX_IDS_LOCAL[0], edge_type: "HAS_PROPOSED_FIX" },
+    // Rerun trigger → branch2 fix (10th fix across both branches)
+    { source: ATTEMPT_CAP_RERUN_TRIGGER_ID, target: ATTEMPT_CAP_FIX_BRANCH2_ID, edge_type: "HAS_PROPOSED_FIX" },
+    // Branch2 fix DERIVED_FROM fix-1 (cross-branch dedup: fix-1 already visited)
+    { source: ATTEMPT_CAP_FIX_BRANCH2_ID, target: ATTEMPT_CAP_FIX_IDS_LOCAL[0], edge_type: "DERIVED_FROM" },
+  ];
+
+  // Chain: fix-1 → fix-2 → ... → fix-9 (DERIVED_FROM edges)
+  for (let i = 1; i < 9; i++) {
+    edges.push({
+      source: ATTEMPT_CAP_FIX_IDS_LOCAL[i],
+      target: ATTEMPT_CAP_FIX_IDS_LOCAL[i - 1],
+      edge_type: "DERIVED_FROM",
+    });
+  }
+  // Each fix PRODUCED_BY its output
+  for (let i = 0; i < 9; i++) {
+    edges.push({
+      source: ATTEMPT_CAP_FIX_IDS_LOCAL[i],
+      target: ATTEMPT_CAP_FIX_OUTPUT_IDS_LOCAL[i],
+      edge_type: "PRODUCED_BY",
+    });
+  }
+
+  return edges;
+}
+
+// ── Scenario B: Plateau-cap builder ──────────────────────────────────────────
+
+/**
+ * Build nodes for the plateau-cap scenario.
+ *
+ * Baseline (n_passed=50):
+ *   Fix 1 (accepted, 60) → improves best to 60
+ *   Fix 2 (accepted, 55) → below 60, plateau starts
+ * Second trigger branch:
+ *   Fix 3 (accepted, 58) → below 60, plateau continues
+ *   Fix 4 DERIVED_FROM Fix 3, ALSO DERIVED_FROM fix-1 (already visited via cross-branch dedup)
+ *     → fix-4 reuses PLATEAU_CAP_FIX1_ID, so it is deduplicated (counted once)
+ *
+ * Net: 3 unique scored attempts post-baseline (fix-1, fix-2, fix-3)
+ * Plateau streak: 2 consecutive trailing non-improving (fix-2=55, fix-3=58 < 60)
+ */
+export function buildPlateauCapNodes(): JarvisNode[] {
+  const ts = String(Math.floor(Date.now() / 1000));
+  return [
+    {
+      ref_id: PLATEAU_CAP_EVALSET_ID,
+      node_type: "EvalSet",
+      date_added_to_graph: ts,
+      properties: { name: "Plateau Cap Test EvalSet" },
+    },
+    {
+      ref_id: PLATEAU_CAP_BASELINE_TRIGGER_ID,
+      node_type: "EvalTrigger",
+      date_added_to_graph: ts,
+      properties: { agent: "test-agent", start_point: "s", end_point: "e" },
+    },
+    {
+      ref_id: PLATEAU_CAP_BASELINE_OUTPUT_ID,
+      node_type: "EvalTriggerOutput",
+      date_added_to_graph: ts,
+      properties: { attempt_number: 1, result: "pass", score: 50, n_passed: 50, n_total: 100 },
+    },
+    {
+      ref_id: PLATEAU_CAP_RERUN_TRIGGER_ID,
+      node_type: "EvalTrigger",
+      date_added_to_graph: ts,
+      properties: { agent: "test-agent", start_point: "s", end_point: "e" },
+    },
+    // Fix 1: improving (60 > 50 → best becomes 60)
+    {
+      ref_id: PLATEAU_CAP_FIX1_ID,
+      node_type: "ProposedFix",
+      date_added_to_graph: String(Number(ts) + 1),
+      properties: { eval_status: "accepted" },
+    },
+    {
+      ref_id: PLATEAU_CAP_FIX1_OUTPUT_ID,
+      node_type: "EvalTriggerOutput",
+      date_added_to_graph: String(Number(ts) + 1),
+      properties: { attempt_number: 2, result: "pass", score: 0.6, n_passed: 60, n_total: 100 },
+    },
+    // Fix 2: non-improving (55 < 60 → plateau streak = 1)
+    {
+      ref_id: PLATEAU_CAP_FIX2_ID,
+      node_type: "ProposedFix",
+      date_added_to_graph: String(Number(ts) + 2),
+      properties: { eval_status: "accepted" },
+    },
+    {
+      ref_id: PLATEAU_CAP_FIX2_OUTPUT_ID,
+      node_type: "EvalTriggerOutput",
+      date_added_to_graph: String(Number(ts) + 2),
+      properties: { attempt_number: 3, result: "pass", score: 0.55, n_passed: 55, n_total: 100 },
+    },
+    // Fix 3: non-improving from second trigger branch (58 < 60 → plateau streak = 2)
+    {
+      ref_id: PLATEAU_CAP_FIX3_ID,
+      node_type: "ProposedFix",
+      date_added_to_graph: String(Number(ts) + 3),
+      properties: { eval_status: "accepted" },
+    },
+    {
+      ref_id: PLATEAU_CAP_FIX3_OUTPUT_ID,
+      node_type: "EvalTriggerOutput",
+      date_added_to_graph: String(Number(ts) + 3),
+      properties: { attempt_number: 4, result: "pass", score: 0.58, n_passed: 58, n_total: 100 },
+    },
+    // Fix 4: DERIVED_FROM fix-3 AND conceptually referencing fix-1 via DERIVED_FROM
+    // but fix-1 (PLATEAU_CAP_FIX4_ID === PLATEAU_CAP_FIX1_ID) is already visited
+    // via the baseline branch walk → deduplicated, not double-counted
+    // (No separate node needed — PLATEAU_CAP_FIX4_ID === PLATEAU_CAP_FIX1_ID)
+  ];
+}
+
+export function buildPlateauCapEdges() {
+  return [
+    { source: PLATEAU_CAP_EVALSET_ID, target: PLATEAU_CAP_BASELINE_TRIGGER_ID, edge_type: "HAS_BASELINE_TRIGGER" },
+    { source: PLATEAU_CAP_EVALSET_ID, target: PLATEAU_CAP_RERUN_TRIGGER_ID, edge_type: "HAS_TRIGGER" },
+    { source: PLATEAU_CAP_BASELINE_TRIGGER_ID, target: PLATEAU_CAP_BASELINE_OUTPUT_ID, edge_type: "HAS_OUTPUT" },
+    { source: PLATEAU_CAP_BASELINE_TRIGGER_ID, target: PLATEAU_CAP_FIX1_ID, edge_type: "HAS_PROPOSED_FIX" },
+    { source: PLATEAU_CAP_FIX1_ID, target: PLATEAU_CAP_FIX1_OUTPUT_ID, edge_type: "PRODUCED_BY" },
+    // Fix 2 derived from fix 1
+    { source: PLATEAU_CAP_FIX2_ID, target: PLATEAU_CAP_FIX1_ID, edge_type: "DERIVED_FROM" },
+    { source: PLATEAU_CAP_FIX2_ID, target: PLATEAU_CAP_FIX2_OUTPUT_ID, edge_type: "PRODUCED_BY" },
+    // Second trigger branch → fix 3
+    { source: PLATEAU_CAP_RERUN_TRIGGER_ID, target: PLATEAU_CAP_FIX3_ID, edge_type: "HAS_PROPOSED_FIX" },
+    { source: PLATEAU_CAP_FIX3_ID, target: PLATEAU_CAP_FIX3_OUTPUT_ID, edge_type: "PRODUCED_BY" },
+    // Fix 3 DERIVED_FROM fix 2 (links the chains)
+    { source: PLATEAU_CAP_FIX3_ID, target: PLATEAU_CAP_FIX2_ID, edge_type: "DERIVED_FROM" },
+    // Cross-branch dedup: branch2 also has a DERIVED_FROM pointing at fix-1
+    // which is already visited under branch1 walk → counted once
+    { source: PLATEAU_CAP_FIX3_ID, target: PLATEAU_CAP_FIX1_ID, edge_type: "DERIVED_FROM" },
   ];
 }
 
