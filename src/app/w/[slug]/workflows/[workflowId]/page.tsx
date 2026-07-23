@@ -22,9 +22,12 @@ import { SummariseChangesButton } from "@/components/workflow/inspector/Summaris
 import { StepDetailsModal } from "@/components/StepDetailsModal";
 import { createWorkflowEditorTask } from "@/lib/workflow/create-workflow-editor-task";
 import { PromptsPanel } from "@/components/prompts";
+import { MockStepOutputsPanel } from "@/components/mock-step-outputs";
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from "@/components/ui/resizable";
 import type { WorkflowTransition } from "@/types/stakwork/workflow";
 import { mergeWorkflowRunStatus } from "@/lib/utils/merge-workflow-run-status";
+import { STAK_TOOLKIT_SLUGS } from "@/lib/eval-capture-slugs";
+import { isDevelopmentMode } from "@/lib/runtime";
 
 function parseWorkflowJson(workflowJson: string | null | undefined): Record<string, unknown> | null {
   if (!workflowJson) return null;
@@ -124,6 +127,7 @@ export default function WorkflowInspectorPage() {
       }));
   }, [parsedWorkflowData]);
   const hasChildWorkflows = childWorkflows.length > 0;
+  const showMocksTab = STAK_TOOLKIT_SLUGS.includes(slug ?? "") || isDevelopmentMode();
 
   const historyVersion = useMemo(
     () => versions.find((v) => v.workflow_version_id === historyVersionId) ?? null,
@@ -330,6 +334,7 @@ export default function WorkflowInspectorPage() {
                 <TabsTrigger value="params" className="shrink-0">Params</TabsTrigger>
                 <TabsTrigger value="history" className="shrink-0">History</TabsTrigger>
                 <TabsTrigger value="prompts" className="shrink-0">Prompts</TabsTrigger>
+                {showMocksTab && <TabsTrigger value="mocks" className="shrink-0">Mocks</TabsTrigger>}
                 {hasChildWorkflows && <TabsTrigger value="children" className="shrink-0">Child Workflows</TabsTrigger>}
               </TabsList>
             </div>
@@ -402,6 +407,16 @@ export default function WorkflowInspectorPage() {
               <TabsContent value="prompts" className="mt-0 flex-1 overflow-hidden">
                 <PromptsPanel workflowId={workflowIdNum} workspaceSlug={slug ?? undefined} />
               </TabsContent>
+
+              {showMocksTab && (
+                <TabsContent value="mocks" className="mt-0 flex-1 overflow-hidden">
+                  <MockStepOutputsPanel
+                    variant="panel"
+                    workflowId={workflowIdNum}
+                    workflowVersionId={selectedVersionId}
+                  />
+                </TabsContent>
+              )}
 
               {hasChildWorkflows && (
                 <TabsContent value="children" className="mt-0 flex-1 overflow-auto">
