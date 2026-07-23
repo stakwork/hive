@@ -12,6 +12,7 @@ const {
   mockDbUser,
   mockDbWorkflowTask,
   mockCheckRepoAllowsAutoMerge,
+  mockResolveAutoMergeDefault,
 } = vi.hoisted(() => ({
   mockDbTask: {
     findUnique: vi.fn(),
@@ -37,6 +38,7 @@ const {
     create: vi.fn(),
   },
   mockCheckRepoAllowsAutoMerge: vi.fn(),
+  mockResolveAutoMergeDefault: vi.fn().mockResolvedValue(false),
 }));
 
 vi.mock("@/lib/db", () => ({
@@ -80,6 +82,7 @@ vi.mock("@/lib/github", () => ({
   },
   getOctokitForWorkspace: vi.fn().mockResolvedValue({ rest: {} }),
   checkRepoAllowsAutoMerge: (...args: unknown[]) => mockCheckRepoAllowsAutoMerge(...args),
+  resolveAutoMergeDefault: (...args: unknown[]) => mockResolveAutoMergeDefault(...args),
 }));
 
 vi.mock("@/lib/system-assignees", () => ({
@@ -431,6 +434,149 @@ describe("createTicket — autoMerge default", () => {
       workflowTaskType: "WORKFLOW" as never,
     });
 
+    expect(mockDbTask.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ autoMerge: false }),
+      })
+    );
+  });
+});
+
+// ── createTicket — resolveAutoMergeDefault integration ────────────────────
+
+describe("createTicket — resolveAutoMergeDefault (canvasAutonomousTurns path)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(validateFeatureAccess).mockResolvedValue(makeFeature() as never);
+    mockDbPhase.findFirst.mockResolvedValue(null);
+    mockDbUser.findUnique.mockResolvedValue({ id: USER_ID, name: "Test User" });
+    mockDbTask.create.mockResolvedValue(makeCreatedTask());
+  });
+
+  it("calls resolveAutoMergeDefault with correct args when no autoMerge provided and repo is linked", async () => {
+    mockResolveAutoMergeDefault.mockResolvedValue(false);
+    mockDbRepository.findFirst.mockResolvedValue({
+      id: "repo-1",
+      name: "myrepo",
+      repositoryUrl: "https://github.com/owner/myrepo",
+    });
+
+    await createTicket(FEATURE_ID, USER_ID, {
+      title: "Task with repo",
+      status: "TODO" as never,
+      priority: "MEDIUM" as never,
+      repositoryId: "repo-1",
+    });
+
+    expect(mockResolveAutoMergeDefault).toHaveBeenCalledWith(USER_ID, "repo-1");
+  });
+
+  it("sets autoMerge: true when resolveAutoMergeDefault returns true", async () => {
+    mockResolveAutoMergeDefault.mockResolvedValue(true);
+    mockDbRepository.findFirst.mockResolvedValue({
+      id: "repo-1",
+      name: "myrepo",
+      repositoryUrl: "https://github.com/owner/myrepo",
+    });
+    mockDbTask.create.mockResolvedValue(makeCreatedTask({ autoMerge: true }));
+
+    await createTicket(FEATURE_ID, USER_ID, {
+      title: "Task with autonomous turns",
+      status: "TODO" as never,
+      priority: "MEDIUM" as never,
+      repositoryId: "repo-1",
+    });
+
+    expect(mockDbTask.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ autoMerge: true }),
+      })
+    );
+  });
+
+  it("sets autoMerge: false when resolveAutoMergeDefault returns false", async () => {
+    mockResolveAutoMergeDefault.mockResolvedValue(false);
+    mockDbRepository.findFirst.mockResolvedValue({
+      id: "repo-1",
+      name: "myrepo",
+      repositoryUrl: "https://github.com/owner/myrepo",
+    });
+
+    await createTicket(FEATURE_ID, USER_ID, {
+      title: "Task with auto-turns off",
+      status: "TODO" as never,
+      priority: "MEDIUM" as never,
+      repositoryId: "repo-1",
+    });
+
+    expect(mockDbTask.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ autoMerge: false }),
+      })
+    );
+  });
+
+  it("does NOT call resolveAutoMergeDefault when autoMerge is explicitly true", async () => {
+    mockDbTask.create.mockResolvedValue(makeCreatedTask({ autoMerge: true }));
+    mockDbRepository.findFirst.mockResolvedValue({
+      id: "repo-1",
+      name: "myrepo",
+      repositoryUrl: "https://github.com/owner/myrepo",
+    });
+
+    await createTicket(FEATURE_ID, USER_ID, {
+      title: "Task explicit true",
+      status: "TODO" as never,
+      priority: "MEDIUM" as never,
+      repositoryId: "repo-1",
+      autoMerge: true,
+    });
+
+    expect(mockResolveAutoMergeDefault).not.toHaveBeenCalled();
+    expect(mockDbTask.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ autoMerge: true }),
+      })
+    );
+  });
+
+  it("does NOT call resolveAutoMergeDefault when autoMerge is explicitly false", async () => {
+    mockDbRepository.findFirst.mockResolvedValue({
+      id: "repo-1",
+      name: "myrepo",
+      repositoryUrl: "https://github.com/owner/myrepo",
+    });
+
+    await createTicket(FEATURE_ID, USER_ID, {
+      title: "Task explicit false",
+      status: "TODO" as never,
+      priority: "MEDIUM" as never,
+      repositoryId: "repo-1",
+      autoMerge: false,
+    });
+
+    expect(mockResolveAutoMergeDefault).not.toHaveBeenCalled();
+    expect(mockDbTask.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ autoMerge: false }),
+      })
+    );
+  });
+
+  it("passes null repositoryId for workflow tasks (no GitHub check)", async () => {
+    mockResolveAutoMergeDefault.mockResolvedValue(false);
+    mockDbWorkflowTask.create.mockResolvedValue({});
+
+    await createTicket(FEATURE_ID, USER_ID, {
+      title: "Workflow task",
+      status: "TODO" as never,
+      priority: "MEDIUM" as never,
+      workflowId: 10,
+      workflowTaskType: "WORKFLOW" as never,
+    });
+
+    // resolveAutoMergeDefault should not be called for workflow tasks
+    // (they hit the SKILL branch or the isWorkflowTask && SKILL check first)
     expect(mockDbTask.create).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({ autoMerge: false }),
