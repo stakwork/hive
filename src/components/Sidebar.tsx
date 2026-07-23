@@ -484,6 +484,7 @@ export function Sidebar({ user }: SidebarProps) {
         { icon: ScrollText, label: "Scripts", href: "/scripts" },
         { icon: Workflow, label: "Workflows", href: "/workflows" },
         { icon: KeyRound, label: "Secrets", href: "/secrets" },
+        { icon: ScrollText, label: "Mock Step Outputs", href: "/mock-step-outputs" },
       ],
     },
   ] : [];
