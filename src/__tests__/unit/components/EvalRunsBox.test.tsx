@@ -240,6 +240,50 @@ describe("EvalRunsBox — collapsed row rendering", () => {
     expect(screen.getByText("+2")).toBeInTheDocument();
   });
 
+  it("renders Score as score_delta (not '→') when before_score and after_score are empty strings", () => {
+    renderBox({
+      fixes: [makeFix({ before_score: "", after_score: "", score_delta: "+2" })],
+    });
+    expect(screen.getByText("+2")).toBeInTheDocument();
+    expect(screen.queryByText(/→/)).toBeNull();
+  });
+
+  it("renders eval_status badge when eval_status='accepted' and status='pending' (eval_status wins)", () => {
+    renderBox({
+      fixes: [makeFix({ eval_status: "accepted", status: "pending" })],
+    });
+    const badge = screen.getByTestId("badge");
+    expect(badge.textContent).toBe("Accepted");
+    expect(badge.className).toMatch(/green/);
+  });
+
+  it("falls back to status badge when eval_status is null", () => {
+    renderBox({
+      fixes: [makeFix({ eval_status: null, status: "accepted" })],
+    });
+    const badge = screen.getByTestId("badge");
+    expect(badge.textContent).toBe("Accepted");
+    expect(badge.className).toMatch(/green/);
+  });
+
+  it("renders StakworkRunLink for real row when isSuperAdmin=true and project_id is set", () => {
+    renderBox({
+      fixes: [makeFix({ project_id: 99 })],
+      isSuperAdmin: true,
+    });
+    const link = screen.getByRole("link", { name: "View on Stakwork" });
+    expect(link).toBeInTheDocument();
+    expect(link).toHaveAttribute("href", "https://jobs.stakwork.com/admin/projects/99");
+  });
+
+  it("renders no StakworkRunLink for real row when isSuperAdmin=true and project_id is null", () => {
+    renderBox({
+      fixes: [makeFix({ project_id: null })],
+      isSuperAdmin: true,
+    });
+    expect(screen.queryByRole("link", { name: "View on Stakwork" })).toBeNull();
+  });
+
   it("truncates Change column to 80 chars + ellipsis", () => {
     const longDelta = "x".repeat(90);
     renderBox({ fixes: [makeFix({ delta: longDelta })] });
