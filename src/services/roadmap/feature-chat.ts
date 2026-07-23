@@ -212,8 +212,10 @@ export function workspaceToSubAgent(
   );
   const repoUrls = workspace.repositories.map((r) => r.repositoryUrl).join(",");
   return {
-    name: workspace.slug,
-    description: workspace.description ?? undefined,
+    name: `${workspace.slug}_repo_agent`,
+    description: workspace.description
+      ? `This is a repo agent in a different workspace. Workspace description: ${workspace.description}`
+      : "This is a repo agent in a different workspace.",
     url,
     apiKey,
     repoUrls,
@@ -568,7 +570,7 @@ export async function sendFeatureChatMessage({
         sourceControlOrgId,
       });
       console.log(
-        `[feature-chat] subAgents: ${extraSwarms.filter((a) => allMessages.some((m) => m?.includes(`@${a.name}`))).length} from @-mentions, ${extraSwarms.length} total (org auto-attach)`,
+        `[feature-chat] subAgents: ${extraSwarms.filter((a) => allMessages.some((m) => m?.includes(`@${a.name.replace(/_repo_agent$/, "")}`))).length} from @-mentions, ${extraSwarms.length} total (org auto-attach)`,
       );
     } else {
       extraSwarms = await resolveExtraSwarms(allMessages, userId);
