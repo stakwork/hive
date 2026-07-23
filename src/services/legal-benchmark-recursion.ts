@@ -428,10 +428,18 @@ export async function setEvalSetRecursion(
     { refId, enabled },
   );
 
+  // When enabling recursion, stamp a recursionEnabledAt timestamp so the cron
+  // can use it as a cutoff for plateau-streak computation.  This means a manual
+  // re-enable correctly resets the plateau window without needing a migration.
+  const nodeData: Record<string, unknown> = { recursion: enabled };
+  if (enabled) {
+    nodeData.recursionEnabledAt = Math.floor(Date.now() / 1000); // Unix epoch (seconds)
+  }
+
   const result = await updateNode(config, {
     ref_id: refId,
     node_type: "EvalSet",
-    node_data: { recursion: enabled },
+    node_data: nodeData,
   });
 
   if (!result.success) {
