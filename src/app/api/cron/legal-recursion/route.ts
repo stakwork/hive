@@ -25,6 +25,8 @@ export async function GET(request: NextRequest) {
       dispatched: result.dispatched,
       skipped: result.skipped,
       deactivated: result.deactivated,
+      attemptCapped: result.attemptCapped,
+      plateauCapped: result.plateauCapped,
       errorCount: result.errors.length,
       errors: result.errors,
       timestamp: result.timestamp.toISOString(),
