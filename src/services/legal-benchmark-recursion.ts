@@ -68,47 +68,11 @@ export interface RecursionEvalSetEntry {
   id: string;
   name: string;
   /**
-   * Whether recursion is enabled on this EvalSet node.
-   * Derived defensively — both raw boolean `true` and the string `"true"` are treated
-   * as enabled, since Jarvis's loose typing makes a string-typed boolean return plausible.
-   */
-  recursion: boolean;
-  /**
    * Stakwork project_id from the last dispatched eval run, written back by the cron.
    * Null when the attribute is absent (older node or schema mismatch — attribute may
    * not yet be live on every swarm; see zero-node / possibly-missing-attribute pattern).
    */
   projectId?: number | string | null;
-}
-
-// ── Shared mapping helper ──────────────────────────────────────────────────
-
-/**
- * Maps a raw Jarvis node onto `RecursionEvalSetEntry`.
- *
- * Used by both `listRecursionEvalSets` and `listAllEvalSets` so `recursion`
- * is derived identically in both places.
- *
- * `recursion` is derived defensively: both raw boolean `true` and the string
- * `"true"` are treated as enabled (Jarvis's loose typing makes a string-typed
- * boolean return plausible — mirrors the `projectId: number | string` pattern
- * on the same interface). Anything else maps to `false`.
- */
-function mapNodeToEntry(node: {
-  ref_id: string;
-  properties?: Record<string, unknown> | null;
-}): RecursionEvalSetEntry {
-  const props = node.properties ?? {};
-  const recursionRaw = props.recursion;
-  return {
-    ref_id: node.ref_id,
-    id: props.id != null ? String(props.id) : node.ref_id,
-    name: props.name != null ? String(props.name) : "",
-    recursion: recursionRaw === true || recursionRaw === "true",
-    projectId: props.project_id != null
-      ? (props.project_id as number | string)
-      : null,
-  };
 }
 
 // ── listRecursionEvalSets ──────────────────────────────────────────────────
@@ -153,73 +117,17 @@ export async function listRecursionEvalSets(
     );
   }
 
-  const nodes: RecursionEvalSetEntry[] = result.nodes.map(mapNodeToEntry);
-
-  return { ok: true, nodes };
-}
-
-// ── listAllEvalSets ────────────────────────────────────────────────────────
-
-const LIST_ALL_LIMIT = 1000;
-
-/**
- * Returns ALL EvalSet nodes in the workspace, regardless of their `recursion`
- * attribute value. Intended for the UI's Recursion tab so users can discover
- * and enable/disable recursion on any EvalSet.
- *
- * **Do NOT use as a replacement for `listRecursionEvalSets` in cron paths.**
- * The recursion cron (`executeScheduledLegalBenchmarkRecursion`) depends on
- * `listRecursionEvalSets`'s filtered (recursion=true) contract and would
- * silently re-dispatch evals against every EvalSet if switched to this function.
- *
- * Results are sorted deterministically by name (ascending) to prevent
- * poll-driven UI reordering when the list grows large.
- *
- * Logs a warning when the returned node count equals `LIST_ALL_LIMIT` — that
- * indicates possible silent truncation by the underlying search cap.
- */
-export async function listAllEvalSets(
-  config: JarvisConnectionConfig,
-): Promise<RecursionServiceResult> {
-  const result = await searchNodesByAttributes(config, {
-    nodeTypes: EVALSET_NODE_LABELS,
-    filters: [],
-    includeProperties: true,
-    skipCache: true,
-    limit: LIST_ALL_LIMIT,
-  });
-
-  if (!result.ok) {
-    logger.warn("[legal/benchmarks/recursion] listAllEvalSets graph query failed", "legal", {
-      status: result.status,
-      error: result.error,
-      endpointMissing: result.endpointMissing,
-    });
-    return { ok: false, error: result.error ?? "Graph query failed" };
-  }
-
-  if (result.nodes.length === 0) {
-    logger.info(
-      "[legal/benchmarks/recursion] listAllEvalSets returned zero nodes — " +
-        "no EvalSets exist in workspace",
-      "legal",
-      { workspaceHasNoEvalSets: true },
-    );
-  }
-
-  if (result.nodes.length === LIST_ALL_LIMIT) {
-    logger.warn(
-      `[legal/benchmarks/recursion] listAllEvalSets returned ${LIST_ALL_LIMIT} nodes — ` +
-        "result may have been truncated by the graph search cap; " +
-        "some EvalSets may not be visible in the UI",
-      "legal",
-      { count: LIST_ALL_LIMIT, possibleTruncation: true },
-    );
-  }
-
-  const nodes: RecursionEvalSetEntry[] = result.nodes
-    .map(mapNodeToEntry)
-    .sort((a, b) => a.name.localeCompare(b.name));
+  const nodes: RecursionEvalSetEntry[] = result.nodes.map((node) => ({
+    ref_id: node.ref_id,
+    // node.properties.id holds the task-slug / node_key; fall back to ref_id
+    // if the property is absent (older node or schema mismatch).
+    id: node.properties?.id != null ? String(node.properties.id) : node.ref_id,
+    name: node.properties?.name != null ? String(node.properties.name) : "",
+    // project_id attribute may be absent on older nodes or before the schema ships.
+    projectId: node.properties?.project_id != null
+      ? (node.properties.project_id as number | string)
+      : null,
+  }));
 
   return { ok: true, nodes };
 }
