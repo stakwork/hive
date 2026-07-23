@@ -182,6 +182,8 @@ export interface ProposedFix {
   resolved_by?: string | null;
   /** ISO timestamp when this fix was resolved */
   resolved_at?: string | null;
+  /** Stakwork project ID of the eval-ingest run that created this fix */
+  project_id?: number | null;
 }
 
 /**

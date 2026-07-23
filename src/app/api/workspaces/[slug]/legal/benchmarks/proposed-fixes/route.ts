@@ -56,6 +56,7 @@ function projectFix(refId: string, props: Record<string, unknown> | undefined): 
     rerun_run_id: str("rerun_run_id"),
     resolved_by: str("resolved_by"),
     resolved_at: str("resolved_at"),
+    project_id: p["project_id"] != null && p["project_id"] !== "" ? Number(p["project_id"]) : null,
   };
 }
 
@@ -132,6 +133,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
           after_score: undefined,
           score_delta: undefined,
           rerun_run_id: undefined,
+          project_id: null,
         },
         {
           ref_id: "mock-fix-2",
@@ -152,6 +154,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
           after_score: "54",
           score_delta: "+4",
           rerun_run_id: "rerun-run-mock-1",
+          project_id: 57419,
         },
       ];
       return NextResponse.json({ fixes: mockFixes });
