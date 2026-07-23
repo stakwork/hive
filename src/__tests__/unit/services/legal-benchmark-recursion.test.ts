@@ -379,7 +379,9 @@ describe("setEvalSetRecursion", () => {
     }];
     expect(req.ref_id).toBe("ref-abc-123");
     expect(req.node_type).toBe("EvalSet");
-    expect(req.node_data).toEqual({ recursion: true });
+    expect(req.node_data).toMatchObject({ recursion: true });
+    expect(typeof (req.node_data as Record<string, unknown>).recursionEnabledAt).toBe("number");
+    expect((req.node_data as Record<string, unknown>).recursionEnabledAt as number).toBeGreaterThan(0);
   });
 
   test("calls updateNode with correct payload to disable recursion", async () => {
@@ -391,6 +393,8 @@ describe("setEvalSetRecursion", () => {
       node_data: Record<string, unknown>;
     }];
     expect(req.node_data).toEqual({ recursion: false });
+    // Disabling must NOT stamp recursionEnabledAt
+    expect(req.node_data).not.toHaveProperty("recursionEnabledAt");
   });
 
   test("returns ok: true on success", async () => {
@@ -420,6 +424,34 @@ describe("setEvalSetRecursion", () => {
     // Service result shape: { ok, nodes?, error? } — no raw "success" key
     expect(result).toHaveProperty("ok", true);
     expect(result).not.toHaveProperty("success");
+  });
+
+  test("stamps recursionEnabledAt (unix epoch seconds) on enable", async () => {
+    mockUpdateNode.mockResolvedValue({ success: true });
+    const before = Math.floor(Date.now() / 1000);
+
+    await setEvalSetRecursion(CONFIG, "ref-abc-123", true);
+
+    const after = Math.floor(Date.now() / 1000);
+    const [, req] = mockUpdateNode.mock.calls[0] as [unknown, {
+      node_data: Record<string, unknown>;
+    }];
+    const ts = req.node_data.recursionEnabledAt as number;
+    expect(typeof ts).toBe("number");
+    expect(ts).toBeGreaterThanOrEqual(before);
+    expect(ts).toBeLessThanOrEqual(after);
+  });
+
+  test("does NOT stamp recursionEnabledAt when disabling", async () => {
+    mockUpdateNode.mockResolvedValue({ success: true });
+
+    await setEvalSetRecursion(CONFIG, "ref-abc-123", false);
+
+    const [, req] = mockUpdateNode.mock.calls[0] as [unknown, {
+      node_data: Record<string, unknown>;
+    }];
+    expect(req.node_data).not.toHaveProperty("recursionEnabledAt");
+    expect(req.node_data.recursion).toBe(false);
   });
 });
 
@@ -463,7 +495,10 @@ describe("enableRecursionForTaskSlug", () => {
     }];
     expect(updateReq.ref_id).toBe("ref-abc-123");
     expect(updateReq.node_type).toBe("EvalSet");
-    expect(updateReq.node_data).toEqual({ recursion: true });
+    // recursionEnabledAt is now stamped when enabling — use toMatchObject so the test
+    // doesn't break when the timestamp field is added.
+    expect(updateReq.node_data).toMatchObject({ recursion: true });
+    expect(typeof (updateReq.node_data as Record<string, unknown>).recursionEnabledAt).toBe("number");
 
     expect(result.ok).toBe(true);
     expect(result).not.toHaveProperty("notFound");

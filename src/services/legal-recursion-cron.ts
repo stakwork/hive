@@ -23,11 +23,14 @@ import { isLegalBenchmarkRecursionEnabledForCron } from "@/services/janitor";
 import {
   listRecursionEvalSets,
   writeBackEvalProjectId,
+  setEvalSetRecursion,
   type RecursionEvalSetEntry,
 } from "@/services/legal-benchmark-recursion";
 import { dispatchLegalBenchmarkEvalRun } from "@/services/legal-benchmark-eval";
 import { getSwarmAccessByWorkspaceId } from "@/lib/helpers/swarm-access";
 import { getJarvisConfigForWorkspace } from "@/lib/helpers/jarvis-config";
+import { kgGetSubgraph } from "@/lib/ai/kg-adapter";
+import { computeAttemptStats } from "@/services/legal-recursion-attempt-stats";
 import { stakworkService } from "@/lib/service-factory";
 import { mapStakworkStatus } from "@/utils/conversions";
 import { parseBenchmarkRunResult } from "@/types/legal";
@@ -48,8 +51,20 @@ const REFIRE_GUARD_WINDOW_MS = 7 * 60 * 60 * 1000; // 7 hours
 /** Default concurrency cap when PlatformConfig row is absent. */
 const DEFAULT_RECURSION_CAP = 3;
 
+/** Default max total attempts per EvalSet before recursion is auto-disabled. */
+const DEFAULT_RECURSION_MAX_ATTEMPTS = 10;
+
+/** Default plateau streak limit before recursion is auto-disabled. */
+const DEFAULT_RECURSION_PLATEAU_LIMIT = 3;
+
 /** Shared constant so the admin route reads/writes the same DB key. */
 export const RECURSION_MAX_CONCURRENT_KEY = "recursionMaxConcurrent";
+
+/** Shared constant for the per-EvalSet max-attempts cap. */
+export const RECURSION_MAX_ATTEMPTS_KEY = "recursionMaxAttempts";
+
+/** Shared constant for the plateau-streak limit cap. */
+export const RECURSION_PLATEAU_LIMIT_KEY = "recursionPlateauLimit";
 
 export interface RecursionCronResult {
   success: boolean;
@@ -58,6 +73,10 @@ export interface RecursionCronResult {
   skipped: number;
   /** Kept at 0 for backward compatibility — nothing to deactivate in this design. */
   deactivated: number;
+  /** EvalSets skipped and disabled because they hit the total-attempts cap. */
+  attemptCapped: number;
+  /** EvalSets skipped and disabled because they hit the plateau-streak cap. */
+  plateauCapped: number;
   errors: string[];
   timestamp: Date;
 }
@@ -233,6 +252,8 @@ export async function executeScheduledLegalBenchmarkRecursion(): Promise<Recursi
     dispatched: 0,
     skipped: 0,
     deactivated: 0,
+    attemptCapped: 0,
+    plateauCapped: 0,
     errors: [],
     timestamp,
   };
@@ -301,13 +322,27 @@ export async function executeScheduledLegalBenchmarkRecursion(): Promise<Recursi
     return result;
   }
 
-  // ── Read concurrency cap ──────────────────────────────────────────────────
+  // ── Read config caps ──────────────────────────────────────────────────────
   const capRow = await db.platformConfig.findUnique({
     where: { key: RECURSION_MAX_CONCURRENT_KEY },
     select: { value: true },
   });
   const cap = capRow?.value ? parseInt(capRow.value, 10) : DEFAULT_RECURSION_CAP;
   const effectiveCap = isNaN(cap) || cap < 1 ? DEFAULT_RECURSION_CAP : cap;
+
+  const maxAttemptsRow = await db.platformConfig.findUnique({
+    where: { key: RECURSION_MAX_ATTEMPTS_KEY },
+    select: { value: true },
+  });
+  const maxAttemptsParsed = maxAttemptsRow?.value ? parseInt(maxAttemptsRow.value, 10) : DEFAULT_RECURSION_MAX_ATTEMPTS;
+  const effectiveMaxAttempts = isNaN(maxAttemptsParsed) || maxAttemptsParsed < 1 ? DEFAULT_RECURSION_MAX_ATTEMPTS : maxAttemptsParsed;
+
+  const plateauLimitRow = await db.platformConfig.findUnique({
+    where: { key: RECURSION_PLATEAU_LIMIT_KEY },
+    select: { value: true },
+  });
+  const plateauLimitParsed = plateauLimitRow?.value ? parseInt(plateauLimitRow.value, 10) : DEFAULT_RECURSION_PLATEAU_LIMIT;
+  const effectivePlateauLimit = isNaN(plateauLimitParsed) || plateauLimitParsed < 1 ? DEFAULT_RECURSION_PLATEAU_LIMIT : plateauLimitParsed;
 
   // ── Live-status gate — check each EvalSet with a projectId ────────────────
   const running: RecursionEvalSetEntry[] = [];
@@ -414,6 +449,83 @@ export async function executeScheduledLegalBenchmarkRecursion(): Promise<Recursi
       continue;
     }
 
+    // ── Attempt/plateau cap gate (runs last, after cheap checks) ─────────────
+    // Fetch subgraph rooted at this EvalSet and compute attempt/plateau stats.
+    // Fail-open on subgraph fetch error — a transient graph hiccup must not
+    // permanently block dispatch.  The only downside of skipping this gate is
+    // one fewer stopping condition, not a duplicate-dispatch risk.
+    const subgraphResult = await kgGetSubgraph(
+      jarvisConfig.jarvisUrl,
+      jarvisConfig.apiKey,
+      evalSet.ref_id,
+    );
+
+    if (!subgraphResult.ok) {
+      logger.warn(
+        `${LOG_PREFIX} kgGetSubgraph failed for EvalSet ${evalSet.ref_id} — proceeding to dispatch (fail-open): ${subgraphResult.error}`,
+        "legal",
+        { refId: evalSet.ref_id, error: subgraphResult.error },
+      );
+    } else {
+      // Resolve cutoff from the EvalSet's recursionEnabledAt property (if present)
+      const recursionEnabledAtRaw = (evalSet as RecursionEvalSetEntry & { recursionEnabledAt?: number | string | null }).recursionEnabledAt;
+      let cutoff: Date | undefined;
+      if (recursionEnabledAtRaw != null) {
+        const ts = typeof recursionEnabledAtRaw === "number"
+          ? recursionEnabledAtRaw
+          : parseFloat(String(recursionEnabledAtRaw));
+        if (!isNaN(ts)) {
+          cutoff = new Date(ts * 1000); // convert Unix seconds to ms
+        }
+      }
+
+      const stats = computeAttemptStats(subgraphResult.subgraph, evalSet.ref_id, { cutoff });
+
+      logger.info(
+        `${LOG_PREFIX} EvalSet ${evalSet.ref_id} attemptCount=${stats.attemptCount} plateauStreak=${stats.plateauStreak} maxAttempts=${effectiveMaxAttempts} plateauLimit=${effectivePlateauLimit}`,
+        "legal",
+        { refId: evalSet.ref_id, attemptCount: stats.attemptCount, plateauStreak: stats.plateauStreak },
+      );
+
+      if (stats.attemptCount >= effectiveMaxAttempts) {
+        logger.info(
+          `${LOG_PREFIX} EvalSet ${evalSet.ref_id} hit attempt cap (${stats.attemptCount} >= ${effectiveMaxAttempts}) — disabling recursion`,
+          "legal",
+          { refId: evalSet.ref_id, attemptCount: stats.attemptCount, cap: effectiveMaxAttempts },
+        );
+        try {
+          await setEvalSetRecursion(jarvisConfig, evalSet.ref_id, false);
+        } catch (disableErr) {
+          logger.error(
+            `${LOG_PREFIX} setEvalSetRecursion(false) failed for EvalSet ${evalSet.ref_id} after attempt cap — will retry next pass: ${disableErr instanceof Error ? disableErr.message : String(disableErr)}`,
+            "legal",
+            { refId: evalSet.ref_id },
+          );
+        }
+        result.attemptCapped++;
+        continue;
+      }
+
+      if (stats.plateauStreak >= effectivePlateauLimit) {
+        logger.info(
+          `${LOG_PREFIX} EvalSet ${evalSet.ref_id} hit plateau cap (${stats.plateauStreak} >= ${effectivePlateauLimit}) — disabling recursion`,
+          "legal",
+          { refId: evalSet.ref_id, plateauStreak: stats.plateauStreak, cap: effectivePlateauLimit },
+        );
+        try {
+          await setEvalSetRecursion(jarvisConfig, evalSet.ref_id, false);
+        } catch (disableErr) {
+          logger.error(
+            `${LOG_PREFIX} setEvalSetRecursion(false) failed for EvalSet ${evalSet.ref_id} after plateau cap — will retry next pass: ${disableErr instanceof Error ? disableErr.message : String(disableErr)}`,
+            "legal",
+            { refId: evalSet.ref_id },
+          );
+        }
+        result.plateauCapped++;
+        continue;
+      }
+    }
+
     // Dispatch with bypass of rerun guards
     try {
       const dispatchResult = await dispatchLegalBenchmarkEvalRun({
@@ -465,7 +577,7 @@ export async function executeScheduledLegalBenchmarkRecursion(): Promise<Recursi
   }
 
   logger.info(
-    `${LOG_PREFIX} pass complete — entriesProcessed=${result.entriesProcessed} dispatched=${result.dispatched} skipped=${result.skipped} errors=${result.errors.length}`,
+    `${LOG_PREFIX} pass complete — entriesProcessed=${result.entriesProcessed} dispatched=${result.dispatched} skipped=${result.skipped} attemptCapped=${result.attemptCapped} plateauCapped=${result.plateauCapped} errors=${result.errors.length}`,
     "legal",
   );
 
