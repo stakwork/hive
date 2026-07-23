@@ -30,6 +30,7 @@
     "validate:e2e-migration": "tsx scripts/validate-e2e-migration.ts",
     "rotate-keys": "tsx scripts/rotate-encryption-key.ts",
     "seed:db": "tsx scripts/helpers/seed-database.ts",
+    "seed:local-swarm": "dotenv -e .env.local -- tsx scripts/seed-local-swarm.ts",
     "seed:auto-seed": "tsx scripts/seed-from-github-account.ts",
     "seed:prompts": "tsx scripts/seed-stakwork-prompts.ts",
     "seed:action-nodes": "tsx scripts/helpers/seed-graph-action-nodes.ts",
