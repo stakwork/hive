@@ -169,7 +169,7 @@ function RecursionCard({ entry, refetch }: RecursionCardProps) {
           <Button
             variant="outline"
             size="sm"
-            onClick={() => handleToggle(false)}
+            onClick={() => handleToggle(!entry.recursion)}
             disabled={toggling}
             className="shrink-0"
           >
@@ -179,7 +179,7 @@ function RecursionCard({ entry, refetch }: RecursionCardProps) {
                 Updating…
               </>
             ) : (
-              "Disable"
+              entry.recursion ? "Disable" : "Enable"
             )}
           </Button>
         </div>
@@ -241,11 +241,10 @@ export function RecursionList({
   if (entries.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-16 text-muted-foreground gap-2">
-        <p className="text-sm">No tasks enrolled in recursion.</p>
+        <p className="text-sm">No EvalSets found in this workspace.</p>
         <p className="text-xs">
-          Open a completed benchmark run with failing criteria and click{" "}
-          <strong>Recursion</strong> to enroll a task — this toggles the recursion
-          flag on the task&apos;s EvalSet rather than creating a row.
+          EvalSets are created automatically when a benchmark run completes.
+          Run a benchmark task first to see it listed here.
         </p>
       </div>
     );
