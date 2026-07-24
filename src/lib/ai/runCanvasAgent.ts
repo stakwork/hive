@@ -334,6 +334,14 @@ export interface RunCanvasAgentOptions {
    * responses. Defaults to "UTC" when absent.
    */
   userTimezone?: string;
+  /**
+   * Swarm-reachable public base URL for this Hive deployment. Captured
+   * from the request `host` header at the API route level and threaded
+   * into `CapabilityContext` so `buildWorkflowExplorerTools` can build
+   * the webhook fan-back `webhookUrl` without relying on `getBaseUrl()`
+   * (which falls back to `localhost:3000` with no request context).
+   */
+  publicBaseUrl?: string;
 }
 
 export interface RunCanvasAgentResult {
@@ -569,6 +577,7 @@ export async function runCanvasAgent(
     extraStopConditions,
     modelName,
     userTimezone,
+    publicBaseUrl,
   } = opts;
 
   // When cached concepts are supplied we skip the slow per-workspace
@@ -697,6 +706,7 @@ export async function runCanvasAgent(
           dispatchedResearch,
           dispatchedGraphWalks,
           graphWalkAnswerSink,
+          publicBaseUrl,
         }),
       };
     }
@@ -823,6 +833,7 @@ export async function runCanvasAgent(
           dispatchedResearch,
           dispatchedGraphWalks,
           graphWalkAnswerSink,
+          publicBaseUrl,
         }),
       };
     }

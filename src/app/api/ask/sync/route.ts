@@ -13,6 +13,7 @@ import {
   validateWorkspaceAccess,
 } from "@/services/workspace";
 import { getMiddlewareContext } from "@/lib/middleware/utils";
+import { getBaseUrl } from "@/lib/utils";
 import { validateApiToken } from "@/lib/auth/api-token";
 import { db } from "@/lib/db";
 import { resolveMessageImageUrls } from "@/lib/ai/resolveMessageImages";
@@ -411,6 +412,8 @@ export async function POST(request: NextRequest) {
           // `schedule_check` keys off. Undefined in dryRun (no row).
           ...(rowId ? { currentCanvasConversationId: rowId } : {}),
           dispatchedResearch,
+          // Thread public base URL so workflow explorer tools can build webhook URLs.
+          publicBaseUrl: getBaseUrl(request.headers.get("host")),
           // schedule_check creates a DeferredAction row — a write. Inject it
           // only on a live turn with a resolved conversation row.
           ...(!dryRun && rowId
