@@ -120,9 +120,28 @@ export function BrowserArtifactPanel({
     stopPlaywrightReplay,
     replayScreenshots,
     replayActions,
+    replayErrors,
   } = usePlaywrightReplay(iframeRef, workspaceId, taskId, featureId, (message) => {
     showActionToast("Screenshot Error", message);
   });
+
+  // Surface replay failures: when a step errors the library halts the replay
+  // (issue #756), so let the user know which step broke instead of failing
+  // silently in the console.
+  const lastNotifiedErrorRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (replayErrors.length === 0) {
+      lastNotifiedErrorRef.current = null;
+      return;
+    }
+    const latest = replayErrors[replayErrors.length - 1];
+    if (lastNotifiedErrorRef.current === latest.timestamp) return;
+    lastNotifiedErrorRef.current = latest.timestamp;
+    showActionToast(
+      `Replay stopped at action ${latest.actionIndex + 1}`,
+      latest.message,
+    );
+  }, [replayErrors, showActionToast]);
 
   // Auto-show actions list when replay starts
   useEffect(() => {
@@ -452,6 +471,11 @@ export function BrowserArtifactPanel({
                     currentActionIndex={playwrightProgress.current - 1}
                     totalActions={playwrightProgress.total}
                     screenshots={replayScreenshots}
+                    failedActionIndex={
+                      replayErrors.length > 0
+                        ? replayErrors[replayErrors.length - 1].actionIndex
+                        : -1
+                    }
                     onReplayToggle={
                       capturedActions.length > 0 || isPlaywrightReplaying ? handleReplayToggle : undefined
                     }

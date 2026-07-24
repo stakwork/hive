@@ -166,8 +166,23 @@ export function usePlaywrightReplay(
             },
           ]);
 
-          // Don't stop replay on error, just log it
           console.warn("Playwright replay error:", errorMsg);
+
+          // A fatal error means the library halted the replay at this step
+          // (issue #756). Tear down the replaying state — mirroring the
+          // `replay-stopped` cleanup — so the UI reflects that it stopped, and
+          // surface the failure to the caller.
+          if (data.fatal) {
+            setIsPlaywrightReplaying(false);
+            setIsPlaywrightPaused(false);
+            setPlaywrightStatus("error");
+            setCurrentAction(null);
+
+            const errContainer = document.querySelector(".iframe-container");
+            if (errContainer) {
+              errContainer.classList.remove("playwright-replaying");
+            }
+          }
           break;
 
         case "staktrak-playwright-replay-paused":
