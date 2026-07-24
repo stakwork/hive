@@ -1298,6 +1298,7 @@ export async function mcpCreatePrompt(
       description,
       userId: auth.userId,
       workspaceId: workspace?.id,
+      source: "MCP",
     });
 
     return mcpOk({
@@ -1345,6 +1346,7 @@ export async function mcpUpdatePrompt(
       description,
       userId: auth.userId,
       workspaceId: workspace?.id,
+      source: "MCP",
     });
 
     return mcpOk({
