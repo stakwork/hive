@@ -1,17 +1,18 @@
 /**
  * Unit tests for the reworked useEvalRunHistory hook.
  *
- * The hook now accepts `{ refId, slug }` and fetches via the subgraph proxy
- * (GET /api/swarm/jarvis/nodes?id=...&endpoint=...) rather than the old
- * /evals/harvey-lab/requirements path.
+ * The hook now accepts `{ refId, slug }` and fetches via the dedicated
+ * GET /api/workspaces/[slug]/legal/benchmarks/fix-chain?evalSetRefId=...
+ * route (backed by walkFixChain) rather than the old /graph/subgraph proxy.
  *
  * Verifies:
  * - New { refId, slug } signature is accepted
- * - Subgraph proxy is called with the evalSet ref_id
+ * - fix-chain route is called with the evalSet ref_id (NOT /graph/subgraph)
  * - buildHillClimbSeries is used to produce the chart attempts series
  * - Falls back to slug-resolve when refId is absent
  * - Empty result when EvalSet ref_id cannot be resolved
  * - history table is still populated from identity triggers
+ * - partial:true is logged but does not block results
  */
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { renderHook, waitFor } from "@testing-library/react";
@@ -28,6 +29,17 @@ vi.mock("@/hooks/useWorkspace", () => ({
 const mockBuildHillClimbSeries = vi.fn();
 vi.mock("@/lib/harvey-lab/hill-climb-series", () => ({
   buildHillClimbSeries: (sg: unknown) => mockBuildHillClimbSeries(sg),
+}));
+
+const mockLoggerWarn = vi.fn();
+const mockLoggerInfo = vi.fn();
+vi.mock("@/lib/logger", () => ({
+  logger: {
+    info: (...args: unknown[]) => mockLoggerInfo(...args),
+    warn: (...args: unknown[]) => mockLoggerWarn(...args),
+    error: vi.fn(),
+    debug: vi.fn(),
+  },
 }));
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -52,10 +64,11 @@ function makeTriggerNode(ref_id: string, withIdentity = true) {
   };
 }
 
-function makeSubgraphResponse(nodes: object[], edges: object[] = []) {
+/** Shape returned by the new fix-chain route */
+function makeFixChainResponse(nodes: object[], edges: object[] = [], partial = false) {
   return {
     success: true,
-    data: { nodes, edges },
+    data: { nodes, edges, partial },
   };
 }
 
@@ -78,19 +91,21 @@ function mockFetch(routes: Record<string, unknown>) {
 
 import { useEvalRunHistory } from "@/hooks/useEvalRunHistory";
 
-describe("useEvalRunHistory — new { refId, slug } signature + subgraph fetch", () => {
+describe("useEvalRunHistory — new { refId, slug } signature + fix-chain route", () => {
   afterEach(() => {
     vi.restoreAllMocks();
     mockBuildHillClimbSeries.mockReset();
+    mockLoggerWarn.mockReset();
+    mockLoggerInfo.mockReset();
   });
 
-  it("calls the subgraph proxy with the provided refId", async () => {
+  it("calls the fix-chain route with the provided refId (not /graph/subgraph)", async () => {
     mockBuildHillClimbSeries.mockReturnValue([]);
     const triggerNode = makeTriggerNode("trig-1");
     const outputNode = makeOutputNode("out-1", 28, 42);
 
     mockFetch({
-      "jarvis/nodes": makeSubgraphResponse([triggerNode, outputNode], [
+      "fix-chain": makeFixChainResponse([triggerNode, outputNode], [
         { source: "trig-1", target: "out-1", edge_type: "HAS_OUTPUT" },
       ]),
       "type=LEGAL_BENCHMARK_RUNNER": { data: [] },
@@ -102,23 +117,28 @@ describe("useEvalRunHistory — new { refId, slug } signature + subgraph fetch",
 
     await waitFor(() => expect(result.current.isLoading).toBe(false), { timeout: 5000 });
 
-    // Should call buildHillClimbSeries with the subgraph data
+    // Should call buildHillClimbSeries with the fix-chain data
     expect(mockBuildHillClimbSeries).toHaveBeenCalled();
     const callArg = mockBuildHillClimbSeries.mock.calls[0][0] as { nodes: object[]; edges: object[] };
-    // The subgraph proxy endpoint should include the evalSet ref_id
+    // The fix-chain route URL should include the evalSet ref_id
     expect(vi.mocked(global.fetch)).toHaveBeenCalledWith(
       expect.stringContaining("eval-set-ref-001"),
     );
-    // nodes array should include the EvalSet stub
+    // nodes array should include the EvalSet stub injected by the hook
     expect(callArg.nodes.some((n: object) => (n as { ref_id: string }).ref_id === "eval-set-ref-001")).toBe(true);
+    // Verify the fix-chain route was called, NOT the old subgraph proxy
+    const fetchCalls = vi.mocked(global.fetch).mock.calls.map((c) => c[0] as string);
+    expect(fetchCalls.some((u) => u.includes("fix-chain"))).toBe(true);
+    expect(fetchCalls.some((u) => u.includes("graph/subgraph"))).toBe(false);
+    expect(fetchCalls.some((u) => u.includes("swarm/jarvis/nodes"))).toBe(false);
   });
 
-  it("returns empty attempts when subgraph fetch fails", async () => {
+  it("returns empty attempts when fix-chain fetch fails", async () => {
     mockBuildHillClimbSeries.mockReturnValue([]);
     vi.stubGlobal(
       "fetch",
       vi.fn((url: string) => {
-        if (url.includes("jarvis/nodes")) {
+        if (url.includes("fix-chain")) {
           return Promise.resolve({ ok: false, status: 502, json: async () => ({}) });
         }
         return Promise.resolve({ ok: true, json: async () => ({ data: [] }) });
@@ -140,7 +160,7 @@ describe("useEvalRunHistory — new { refId, slug } signature + subgraph fetch",
 
     mockFetch({
       "recursion/resolve": { refId: "resolved-ref-id" },
-      "jarvis/nodes": makeSubgraphResponse([triggerNode], []),
+      "fix-chain": makeFixChainResponse([triggerNode], []),
       "type=LEGAL_BENCHMARK_RUNNER": { data: [] },
     });
 
@@ -159,6 +179,10 @@ describe("useEvalRunHistory — new { refId, slug } signature + subgraph fetch",
     expect(vi.mocked(global.fetch)).toHaveBeenCalledWith(
       expect.stringContaining("recursion/resolve"),
     );
+    // After resolving, should also call fix-chain with the resolved ref_id
+    const fetchCalls = vi.mocked(global.fetch).mock.calls.map((c) => c[0] as string);
+    expect(fetchCalls.some((u) => u.includes("fix-chain"))).toBe(true);
+    expect(fetchCalls.some((u) => u.includes("resolved-ref-id"))).toBe(true);
   });
 
   it("returns empty when refId is absent and slug-resolve returns null", async () => {
@@ -175,9 +199,10 @@ describe("useEvalRunHistory — new { refId, slug } signature + subgraph fetch",
     await waitFor(() => expect(result.current.isLoading).toBe(false), { timeout: 5000 });
     expect(result.current.attempts).toHaveLength(0);
     expect(result.current.history).toHaveLength(0);
-    // Should NOT call the subgraph proxy when resolve returns null
+    // Should NOT call fix-chain when resolve returns null
     const fetchCalls = vi.mocked(global.fetch).mock.calls.map((c) => c[0] as string);
-    expect(fetchCalls.some((u) => u.includes("jarvis/nodes"))).toBe(false);
+    expect(fetchCalls.some((u) => u.includes("fix-chain"))).toBe(false);
+    expect(fetchCalls.some((u) => u.includes("graph/subgraph"))).toBe(false);
   });
 
   it("uses buildHillClimbSeries result as attempts when non-empty", async () => {
@@ -204,7 +229,7 @@ describe("useEvalRunHistory — new { refId, slug } signature + subgraph fetch",
     mockBuildHillClimbSeries.mockReturnValue(fakeAttempts);
 
     mockFetch({
-      "jarvis/nodes": makeSubgraphResponse([makeTriggerNode("trig-1")], []),
+      "fix-chain": makeFixChainResponse([makeTriggerNode("trig-1")], []),
       "type=LEGAL_BENCHMARK_RUNNER": { data: [] },
     });
 
@@ -224,7 +249,7 @@ describe("useEvalRunHistory — new { refId, slug } signature + subgraph fetch",
     const outputNode = makeOutputNode("out-1", 28, 42, "1720000000");
 
     mockFetch({
-      "jarvis/nodes": makeSubgraphResponse([triggerNode, outputNode], [
+      "fix-chain": makeFixChainResponse([triggerNode, outputNode], [
         { source: "trig-1", target: "out-1", edge_type: "HAS_OUTPUT" },
       ]),
       "type=LEGAL_BENCHMARK_RUNNER": { data: [] },
@@ -235,19 +260,19 @@ describe("useEvalRunHistory — new { refId, slug } signature + subgraph fetch",
     );
 
     await waitFor(() => expect(result.current.isLoading).toBe(false), { timeout: 5000 });
-    // Falls back to the flat list from subgraph trigger outputs
+    // Falls back to the flat list from trigger outputs
     expect(result.current.attempts).toHaveLength(1);
     expect(result.current.attempts[0].n_passed).toBe(28);
   });
 
-  it("history table is populated from identity triggers in the subgraph", async () => {
+  it("history table is populated from identity triggers in the fix-chain", async () => {
     mockBuildHillClimbSeries.mockReturnValue([]);
     const identityTrigger = makeTriggerNode("trig-identity", true);
     const nonIdentityTrigger = makeTriggerNode("trig-anon", false);
     const outputNode = makeOutputNode("out-1", 28, 42);
 
     mockFetch({
-      "jarvis/nodes": makeSubgraphResponse(
+      "fix-chain": makeFixChainResponse(
         [identityTrigger, nonIdentityTrigger, outputNode],
         [
           { source: "trig-identity", target: "out-1", edge_type: "HAS_OUTPUT" },
@@ -268,10 +293,10 @@ describe("useEvalRunHistory — new { refId, slug } signature + subgraph fetch",
     expect(result.current.history.find((h) => h.triggerId === "trig-anon")).toBeUndefined();
   });
 
-  it("does not hit old harvey-lab/requirements path", async () => {
+  it("does not hit old subgraph proxy or harvey-lab/requirements path", async () => {
     mockBuildHillClimbSeries.mockReturnValue([]);
     mockFetch({
-      "jarvis/nodes": makeSubgraphResponse([], []),
+      "fix-chain": makeFixChainResponse([], []),
       "type=LEGAL_BENCHMARK_RUNNER": { data: [] },
     });
 
@@ -281,11 +306,38 @@ describe("useEvalRunHistory — new { refId, slug } signature + subgraph fetch",
 
     await waitFor(() => {
       const calls = vi.mocked(global.fetch).mock.calls.map((c) => c[0] as string);
-      return calls.some((u) => u.includes("jarvis/nodes"));
+      return calls.some((u) => u.includes("fix-chain"));
     }, { timeout: 5000 });
 
     const fetchCalls = vi.mocked(global.fetch).mock.calls.map((c) => c[0] as string);
     expect(fetchCalls.some((u) => u.includes("harvey-lab"))).toBe(false);
     expect(fetchCalls.some((u) => u.includes("requirements"))).toBe(false);
+    expect(fetchCalls.some((u) => u.includes("graph/subgraph"))).toBe(false);
+    expect(fetchCalls.some((u) => u.includes("swarm/jarvis/nodes"))).toBe(false);
+  });
+
+  it("logs a warning when partial:true is returned from the fix-chain route", async () => {
+    mockBuildHillClimbSeries.mockReturnValue([]);
+    const triggerNode = makeTriggerNode("trig-1");
+
+    mockFetch({
+      "fix-chain": makeFixChainResponse([triggerNode], [], true /* partial */),
+      "type=LEGAL_BENCHMARK_RUNNER": { data: [] },
+    });
+
+    const { result } = renderHook(() =>
+      useEvalRunHistory({ refId: "ref-partial", slug: "antitrust/task-1" }),
+    );
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false), { timeout: 5000 });
+
+    // Should still produce results (partial doesn't block rendering)
+    expect(result.current.error).toBeNull();
+    // Should have logged a warning about partial data
+    expect(mockLoggerWarn).toHaveBeenCalledWith(
+      expect.stringContaining("partial"),
+      "legal",
+      expect.objectContaining({ evalSetRefId: "ref-partial" }),
+    );
   });
 });
