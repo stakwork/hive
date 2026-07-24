@@ -15,23 +15,29 @@
  * Stakwork source-control org (see `capabilities.ts`) — other orgs' agents
  * never see this tool.
  *
- * ## Webhook fan-back safety net
+ * ## Webhook delivery (canvas conversations)
  *
- * When a canvas conversation is active (`ctx.currentCanvasConversationId`),
- * the tool creates a `PENDING` `AgentRun` arbitration row and passes a
- * `webhookUrl` to the swarm so long runs (that outlive the Vercel lambda)
- * are delivered exactly once into the conversation via the callback path.
+ * When a canvas conversation is active (`ctx.currentCanvasConversationId` +
+ * `ctx.publicBaseUrl`), the tool is DISPATCH-ONLY: it creates a `PENDING`
+ * `AgentRun` row, initiates the run with a `webhookUrl`, and returns
+ * immediately. The swarm's terminal webhook is the sole delivery path — the
+ * result is fanned into the conversation by `/api/agent-runs/webhook` when
+ * the run finishes. No poll loop, no inline-vs-webhook race, and the lambda
+ * is never pinned for the life of a long run.
  *
  * Delivery state machine:
- *   - **Inline success**: claim PENDING → DELIVERED_INLINE, return content to the model.
- *   - **Inline race** (webhook claimed first): return a short "already posted" note.
- *   - **Initiation failure** (repoAgent throws before a request_id): claim PENDING → FAILED
+ *   - **Dispatch success**: row stays PENDING; the webhook later claims it to
+ *     DELIVERED_WEBHOOK (result posted) or FAILED (failure note posted).
+ *   - **Initiation failure** (dispatch throws — no request_id): claim PENDING → FAILED
  *     immediately (no callback can ever arrive — avoids orphaned PENDING rows).
- *   - **User cancellation / abort** (REPO_AGENT_CANCELLED_MARKER): claim PENDING → FAILED
- *     so a late "completed despite abort" webhook no-ops the claim.
- *   - **Poll timeout after genuine start** (has request_id): leave PENDING; tell the model
- *     the run is still running and its result will post to the conversation when done.
- *   - **No ctx / no conversation**: behave exactly as before — no row, no webhookUrl.
+ *   - **No ctx / no conversation / no publicBaseUrl**: no delivery target exists, so
+ *     the tool falls back to the classic inline poll path — no row, no webhookUrl,
+ *     result returned to the model in-turn.
+ *
+ * RESIDUAL GAP: if the swarm process dies mid-run (webhook never fires and
+ * retries exhaust), the row stays PENDING forever. A stale-row sweep that
+ * re-polls /progress with the saved requestId is deferred to a follow-up
+ * (add @@index([status, createdAt]) alongside it).
  *
  * NEVER log the raw token or full webhookUrl. Log only runId and status.
  */
@@ -42,7 +48,7 @@ import crypto from "crypto";
 import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
 import { config } from "@/config/env";
-import { repoAgent } from "./askTools";
+import { repoAgent, dispatchRepoAgent } from "./askTools";
 import type { CapabilityContext } from "./capabilities";
 import { resolveOrgConversationRowId } from "@/services/org-canvas-conversation";
 
@@ -100,21 +106,14 @@ function hashToken(token: string): string {
 }
 
 /**
- * Attempt to atomically claim a `PENDING` AgentRun row to `newStatus`.
- * Returns `true` when this caller won the claim, `false` when the row was
- * already claimed (exactly-once: the other path already won).
+ * Atomically claim a `PENDING` AgentRun row to FAILED (initiation failure —
+ * no webhook can ever arrive for it). Returns `true` when this caller won
+ * the claim, `false` when the row was already claimed.
  */
-async function claimAgentRun(
-  runId: string,
-  newStatus: "DELIVERED_INLINE" | "FAILED",
-  error?: string,
-): Promise<boolean> {
+async function markAgentRunFailed(runId: string, error: string): Promise<boolean> {
   const { count } = await db.agentRun.updateMany({
     where: { id: runId, status: "PENDING" },
-    data: {
-      status: newStatus,
-      ...(error ? { error } : {}),
-    },
+    data: { status: "FAILED", error },
   });
   return count > 0;
 }
@@ -188,7 +187,8 @@ export function buildWorkflowExplorerTools(ctx?: CapabilityContext): ToolSet {
         "It can also pull ground-truth run data from the Stakwork API: which workflows invoke a skill (with real use counts), recent runs and their success/error states, and the actual params and outputs each step sent — useful for citing working configurations (exact URL formats, variable interpolations) or diagnosing why a similar workflow failed. " +
         "Use it when designing or discussing a NEW Stakwork workflow: e.g. 'what existing skills take a video url as input?', 'is there already a transcription workflow, and how does it compose its steps?', 'show me real params from a successful run that uses AzureOCR'. " +
         "READ-ONLY by default — it cannot create or modify workflows. Pass run_step: true (ONLY when the user explicitly asks to run/execute/test a specific step) to additionally let it execute one workflow step with supplied inputs and report the output. " +
-        "Heavy/slow (minutes): call it ONCE with a complete, self-contained prompt rather than several times.",
+        "Heavy/slow (minutes): call it ONCE with a complete, self-contained prompt rather than several times. " +
+        "In a canvas conversation this tool runs in the BACKGROUND: it returns immediately with a dispatch confirmation (no findings), and the explorer's full report is posted directly into the conversation when it finishes. Tell the user it's underway — do NOT re-call the tool to fetch results and do NOT invent findings.",
       inputSchema: z.object({
         prompt: z
           .string()
@@ -208,21 +208,17 @@ export function buildWorkflowExplorerTools(ctx?: CapabilityContext): ToolSet {
       execute: async ({ prompt, run_step }: { prompt: string; run_step?: boolean }) => {
         // ── Webhook fan-back setup ────────────────────────────────────────
         // Only activated when a canvas conversation is present and we have a
-        // public base URL. When absent, the tool behaves exactly as before.
+        // public base URL. When absent, the tool falls back to the classic
+        // inline poll path (there is no delivery target for a webhook).
         const title = prompt.slice(0, 120) + (prompt.length > 120 ? "…" : "");
         const fanBack = ctx ? await setupFanBack(ctx, title).catch((e) => {
-          // Non-fatal: if row creation fails, degrade gracefully (no safety net
-          // for this run, but the inline path still works).
+          // Non-fatal: if row creation fails, degrade gracefully to the
+          // inline poll path for this run.
           console.error("[workflow_explorer_agent] fan-back setup failed (non-fatal)", {
             error: e instanceof Error ? e.message : String(e),
           });
           return null;
         }) : null;
-
-        // Tracks whether the swarm returned a request_id (= run started).
-        // Affects the poll-timeout handling: a timeout *before* a request_id
-        // means initiation failed; *after* means the run is still in progress.
-        let hasRequestId = false;
 
         try {
           const { swarmUrl, swarmApiKey } = await resolveWorkflowLibrarySwarm();
@@ -231,127 +227,65 @@ export function buildWorkflowExplorerTools(ctx?: CapabilityContext): ToolSet {
             console.log("[workflow_explorer_agent] step execution enabled for this call");
           }
 
-          const rr = await repoAgent(
-            swarmUrl,
-            swarmApiKey,
-            {
-              prompt,
-              mode: "workflow",
-              stakworkApiKey: config.STAKWORK_API_KEY || undefined,
-              ...(run_step ? { toolsConfig: { stakwork_run_step: true } } : {}),
-              // Fan-back field — only sent when the safety net is active.
-              // stakgraph reads `webhookUrl` off the body and POSTs the
-              // terminal payload to it verbatim (id + bearer token both in
-              // the query string; the swarm attaches no custom headers).
-              ...(fanBack ? { webhookUrl: fanBack.webhookUrl } : {}),
-            },
-            /* bifrost */ undefined,
-            /* hooks */ fanBack
-              ? {
-                  onRequestId: async (requestId: string) => {
-                    hasRequestId = true;
-                    console.log("[workflow_explorer_agent] run started", {
-                      runId: fanBack.runId,
-                      requestId,
-                    });
-                    // Save requestId for observability / log-correlation.
-                    // NOT part of the arbitration key — a secondary best-effort write.
-                    await db.agentRun.update({
-                      where: { id: fanBack.runId },
-                      data: { requestId },
-                    }).catch((e) =>
-                      console.warn("[workflow_explorer_agent] requestId save failed (non-fatal)", {
-                        runId: fanBack.runId,
-                        error: e instanceof Error ? e.message : String(e),
-                      }),
-                    );
-                  },
-                }
-              : undefined,
-          );
-
-          // ── User cancellation ──────────────────────────────────────────
-          // `repoAgent` returns the REPO_AGENT_CANCELLED_MARKER string when the
-          // user hit Stop. Claim PENDING → FAILED so a late "completed despite
-          // abort" webhook finds zero PENDING rows and no-ops — satisfying the
-          // "aborts read as failures" requirement.
-          if (typeof rr === "string") {
-            if (fanBack) {
-              const claimed = await claimAgentRun(fanBack.runId, "FAILED", "user_cancelled");
-              console.log("[workflow_explorer_agent] cancelled — row FAILED", {
-                runId: fanBack.runId,
-                claimed,
-              });
-            }
-            return "Workflow explorer agent was cancelled";
-          }
-
-          // ── Inline success ─────────────────────────────────────────────
-          const content = (rr as Record<string, string>).content;
+          const baseParams = {
+            prompt,
+            mode: "workflow" as const,
+            stakworkApiKey: config.STAKWORK_API_KEY || undefined,
+            ...(run_step ? { toolsConfig: { stakwork_run_step: true } } : {}),
+          };
 
           if (fanBack) {
-            // Claim PENDING → DELIVERED_INLINE.
-            //
-            // ORDERING: we claim BEFORE returning the content to the model.
-            // If the lambda crashes between this claim and the model seeing the
-            // content, the webhook will no-op (row no longer PENDING) and that
-            // single result is lost. This is the same failure mode as any inline
-            // tool result today (short-run behavior is unchanged — req #1). The
-            // alternative (claim after) risks double-delivery if the webhook
-            // beats us to the fan-out. Accept the crash-loss; eliminate it only
-            // with a distributed transaction (out of scope).
-            const claimed = await claimAgentRun(fanBack.runId, "DELIVERED_INLINE");
-            console.log("[workflow_explorer_agent] inline result", {
-              runId: fanBack.runId,
-              claimed,
+            // ── Dispatch-only: the webhook is the sole delivery path ─────
+            // Initiate the run and return immediately — no poll loop. The
+            // swarm POSTs the terminal payload to webhookUrl (id + bearer
+            // token in its query string) and /api/agent-runs/webhook fans
+            // the result into the conversation.
+            const requestId = await dispatchRepoAgent(swarmUrl, swarmApiKey, {
+              ...baseParams,
+              webhookUrl: fanBack.webhookUrl,
             });
-            if (!claimed) {
-              // The webhook already claimed and fanned out — exactly-once: no-op.
-              return "The workflow explorer result has already been posted to this conversation.";
-            }
+            console.log("[workflow_explorer_agent] dispatched", {
+              runId: fanBack.runId,
+              requestId,
+            });
+            // Save requestId for observability and the future stale-row
+            // sweep. NOT part of the arbitration key — best-effort write.
+            await db.agentRun.update({
+              where: { id: fanBack.runId },
+              data: { requestId },
+            }).catch((e) =>
+              console.warn("[workflow_explorer_agent] requestId save failed (non-fatal)", {
+                runId: fanBack.runId,
+                error: e instanceof Error ? e.message : String(e),
+              }),
+            );
+            return (
+              "The workflow explorer is researching in the background — its findings will be " +
+              "posted directly to this conversation when ready (typically within a few minutes). " +
+              "Let the user know it's underway; do not call this tool again for the same request."
+            );
           }
 
-          return content;
+          // ── Inline poll path (no canvas delivery target) ───────────────
+          const rr = await repoAgent(swarmUrl, swarmApiKey, baseParams);
+          if (typeof rr === "string") return "Workflow explorer agent was cancelled";
+          return (rr as Record<string, string>).content;
         } catch (e) {
           console.error("Error executing workflow explorer agent:", e);
 
           if (fanBack) {
-            if (!hasRequestId) {
-              // ── Initiation failure ────────────────────────────────────
-              // repoAgent threw before the swarm returned a request_id, so no
-              // callback can ever arrive. Claim PENDING → FAILED immediately to
-              // avoid an orphaned-forever PENDING row (closing the window the raw
-              // draft left open).
-              const claimed = await claimAgentRun(
-                fanBack.runId,
-                "FAILED",
-                e instanceof Error ? e.message : "initiation_failed",
-              );
-              console.log("[workflow_explorer_agent] initiation failure — row FAILED", {
-                runId: fanBack.runId,
-                claimed,
-              });
-              return "Could not execute workflow explorer agent";
-            } else {
-              // ── Poll timeout after genuine start ──────────────────────
-              // The swarm accepted the run (request_id was received) but it
-              // outlived the inline poll budget. The row stays PENDING — the
-              // swarm will call back via the webhook when done. Tell the model
-              // the run is still in progress so the user knows to wait and a
-              // later successful webhook doesn't contradict what they were told.
-              // NEVER say "could not execute" here — the run IS running.
-              //
-              // RESIDUAL GAP: if the swarm process dies mid-run, this row stays
-              // PENDING forever. A stale-row sweep is deferred to a follow-up
-              // (at which point @@index([status, createdAt]) should be added).
-              console.log("[workflow_explorer_agent] poll timeout — run in progress (PENDING)", {
-                runId: fanBack.runId,
-              });
-              return (
-                "The workflow explorer is still running — it will post its result to this " +
-                "conversation when it finishes. No further action is needed from you."
-              );
-            }
+            // ── Initiation failure ────────────────────────────────────────
+            // Dispatch threw, so the swarm never accepted the run and no
+            // callback can ever arrive. Claim PENDING → FAILED immediately
+            // to avoid an orphaned-forever PENDING row.
+            const claimed = await markAgentRunFailed(
+              fanBack.runId,
+              e instanceof Error ? e.message : "initiation_failed",
+            );
+            console.log("[workflow_explorer_agent] initiation failure — row FAILED", {
+              runId: fanBack.runId,
+              claimed,
+            });
           }
 
           return "Could not execute workflow explorer agent";
