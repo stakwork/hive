@@ -2263,4 +2263,38 @@ enum RecursionStatus {
   INACTIVE
 }
 
+/// Delivery-arbitration row for a canvas-linked workflow-explorer run.
+/// Exactly one of DELIVERED_INLINE or DELIVERED_WEBHOOK wins; the other
+/// path is a no-op. FAILED covers initiation errors, user cancellation,
+/// and explicit swarm failure/abort callbacks.
+model AgentRun {
+  id             String        @id @default(cuid())
+  /// SHA-256 hash of the high-entropy callback bearer token. Never stored plaintext.
+  tokenHash      String        @map("token_hash")
+  conversationId String        @map("conversation_id")
+  orgId          String        @map("org_id")
+  userId         String        @map("user_id")
+  title          String
+  /// Swarm request_id — observability / log-correlation only. NOT part of the arbitration key.
+  requestId      String?       @map("request_id")
+  status         AgentRunStatus @default(PENDING)
+  error          String?       @db.Text
+  createdAt      DateTime      @default(now()) @map("created_at")
+  updatedAt      DateTime      @updatedAt @map("updated_at")
+
+  @@index([conversationId])
+  @@map("agent_runs")
+}
+
+/// Status of a canvas-linked agent-run delivery arbitration row.
+/// PENDING-forever is the known residual gap when the swarm process dies
+/// mid-run; a stale-row sweep is deferred to a follow-up (at which point
+/// @@index([status, createdAt]) should be added alongside the sweep query).
+enum AgentRunStatus {
+  PENDING
+  DELIVERED_INLINE
+  DELIVERED_WEBHOOK
+  FAILED
+}
+
 
