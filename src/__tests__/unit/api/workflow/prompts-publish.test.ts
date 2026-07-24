@@ -140,7 +140,7 @@ describe("POST /api/workflow/prompts/[id]/versions/[versionId]/publish", () => {
 
     expect(response.status).toBe(200);
     expect(data).toEqual({ success: true });
-    expect(publishVersion).toHaveBeenCalledWith("prompt-123", "version-456", "ws-1", mockUser.id);
+    expect(publishVersion).toHaveBeenCalledWith("prompt-123", "version-456", "ws-1", mockUser.id, "UI");
     // Workspace membership check used the userId from middleware
     expect(vi.mocked(db.workspace.findFirst)).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -164,7 +164,7 @@ describe("POST /api/workflow/prompts/[id]/versions/[versionId]/publish", () => {
 
     // Verify publishVersion received userId as the actor
     expect(publishVersion).toHaveBeenCalledWith(
-      "prompt-123", "version-456", "ws-1", mockUser.id
+      "prompt-123", "version-456", "ws-1", mockUser.id, "UI"
     );
   });
 
@@ -196,7 +196,7 @@ describe("POST /api/workflow/prompts/[id]/versions/[versionId]/publish", () => {
     await POST(request, mockParams("prompt-123", "version-456"));
 
     expect(publishVersion).toHaveBeenCalledWith(
-      "prompt-123", "version-456", "ws-1", API_TOKEN_ACTOR
+      "prompt-123", "version-456", "ws-1", API_TOKEN_ACTOR, "API"
     );
   });
 
@@ -321,6 +321,6 @@ describe("POST /api/workflow/prompts/[id]/versions/[versionId]/publish", () => {
     // Workspace membership check must NOT run in dev mode (only session path)
     expect(db.workspace.findFirst).not.toHaveBeenCalled();
     // publishVersion called with undefined workspaceId, userId as actor
-    expect(publishVersion).toHaveBeenCalledWith("prompt-123", "version-456", undefined, mockUser.id);
+    expect(publishVersion).toHaveBeenCalledWith("prompt-123", "version-456", undefined, mockUser.id, "UI");
   });
 });

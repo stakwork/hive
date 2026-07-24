@@ -21,6 +21,7 @@ export interface WritePromptThroughParams {
   agentNames?: string[];
   userId: string;
   workspaceId?: string;
+  source?: string; // UI | API | MCP | WORKFLOW — stored on the created PromptVersion row
 }
 
 export interface WritePromptThroughResult {
@@ -287,7 +288,7 @@ async function recordPromptOnGraph(
 export async function writePromptThrough(
   params: WritePromptThroughParams,
 ): Promise<WritePromptThroughResult> {
-  const { promptId, name, value, description, agentNames, userId, workspaceId } = params;
+  const { promptId, name, value, description, agentNames, userId, workspaceId, source } = params;
 
   // ── 1. Hive write — one transaction ──────────────────────────────────────
   let prompt: WritePromptThroughResult["prompt"];
@@ -318,6 +319,7 @@ export async function writePromptThrough(
             description: description ?? null,
             whodunnit: userId,
             published: false,
+            source: source ?? null,
           },
         });
 
@@ -384,6 +386,7 @@ export async function writePromptThrough(
             description: description ?? null,
             whodunnit: userId,
             published: true,
+            source: source ?? null,
           },
         });
 
@@ -512,6 +515,7 @@ export async function publishVersion(
   versionId: string,
   workspaceId?: string,
   actor?: string,
+  source?: string,
 ): Promise<void> {
   // ── Resolve prompt: id first, then name fallback ──────────────────────────
   let prompt = await db.prompt.findUnique({ where: { id: promptId } });
@@ -560,7 +564,7 @@ export async function publishVersion(
     }),
     db.promptVersion.update({
       where: { id: resolvedVersionId },
-      data: { published: true, publishedBy: actor ?? null, publishedAt: new Date() },
+      data: { published: true, publishedBy: actor ?? null, publishedAt: new Date(), source: source ?? null },
     }),
     db.prompt.update({
       where: { id: resolvedPromptId },

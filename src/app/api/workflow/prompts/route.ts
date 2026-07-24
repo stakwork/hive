@@ -5,7 +5,7 @@ import { db } from "@/lib/db";
 import { isDevelopmentMode } from "@/lib/runtime";
 import { writePromptThrough } from "@/services/prompts/prompt-sync";
 import { BIFROST_AGENT_NAMES } from "@/services/bifrost/agent-names";
-import { validateApiToken, API_TOKEN_ACTOR } from "@/lib/auth/api-token";
+import { validateApiToken, API_TOKEN_ACTOR, resolveSource } from "@/lib/auth/api-token";
 import { checkRateLimit, getClientIp } from "@/lib/rate-limit";
 
 export const runtime = "nodejs";
@@ -270,7 +270,8 @@ export async function POST(request: NextRequest) {
     if (!Array.isArray(normalizedAgentNames)) {
       return NextResponse.json({ error: normalizedAgentNames.error }, { status: 400 });
     }
-    const { prompt } = await writePromptThrough({ name, value, description, agentNames: normalizedAgentNames, userId: actor, workspaceId });
+    const source = resolveSource(request, isApiToken);
+    const { prompt } = await writePromptThrough({ name, value, description, agentNames: normalizedAgentNames, userId: actor, workspaceId, source });
 
     return NextResponse.json({
       success: true,
