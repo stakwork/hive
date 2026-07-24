@@ -35,6 +35,7 @@ describe("getPrimaryRepository", () => {
           docsEnabled: true,
           mocksEnabled: true,
           embeddingsEnabled: true,
+            status: true,
         },
       ],
     };
@@ -61,6 +62,7 @@ describe("getPrimaryRepository", () => {
             docsEnabled: true,
             mocksEnabled: true,
             embeddingsEnabled: true,
+            status: true,
           },
           orderBy: { createdAt: "asc" },
         },
@@ -80,6 +82,7 @@ describe("getPrimaryRepository", () => {
       docsEnabled: true,
       mocksEnabled: true,
       embeddingsEnabled: true,
+            status: true,
     });
   });
 
@@ -111,6 +114,7 @@ describe("getPrimaryRepository", () => {
             docsEnabled: true,
             mocksEnabled: true,
             embeddingsEnabled: true,
+            status: true,
           },
           orderBy: { createdAt: "asc" },
         },
@@ -142,6 +146,7 @@ describe("getPrimaryRepository", () => {
             docsEnabled: true,
             mocksEnabled: true,
             embeddingsEnabled: true,
+            status: true,
           },
           orderBy: { createdAt: "asc" },
         },
@@ -168,6 +173,7 @@ describe("getPrimaryRepository", () => {
           docsEnabled: true,
           mocksEnabled: true,
           embeddingsEnabled: true,
+            status: true,
         },
         {
           id: "repo-2",
@@ -183,6 +189,7 @@ describe("getPrimaryRepository", () => {
           docsEnabled: true,
           mocksEnabled: true,
           embeddingsEnabled: true,
+            status: true,
         },
       ],
     };
@@ -209,6 +216,7 @@ describe("getPrimaryRepository", () => {
             docsEnabled: true,
             mocksEnabled: true,
             embeddingsEnabled: true,
+            status: true,
           },
           orderBy: { createdAt: "asc" },
         },
@@ -244,6 +252,7 @@ describe("getPrimaryRepository", () => {
             docsEnabled: true,
             mocksEnabled: true,
             embeddingsEnabled: true,
+            status: true,
           },
           orderBy: { createdAt: "asc" },
         },
@@ -276,6 +285,7 @@ describe("getPrimaryRepository", () => {
             docsEnabled: true,
             mocksEnabled: true,
             embeddingsEnabled: true,
+            status: true,
           },
           orderBy: { createdAt: "asc" },
         },
@@ -301,6 +311,7 @@ describe("getPrimaryRepository", () => {
           docsEnabled: true,
           mocksEnabled: true,
           embeddingsEnabled: true,
+            status: true,
         },
       ],
     };
@@ -338,6 +349,7 @@ describe("getPrimaryRepository", () => {
           docsEnabled: true,
           mocksEnabled: true,
           embeddingsEnabled: true,
+            status: true,
         },
       ],
     };
@@ -360,6 +372,7 @@ describe("getPrimaryRepository", () => {
       docsEnabled: true,
       mocksEnabled: true,
       embeddingsEnabled: true,
+            status: true,
     });
     expect(result).toHaveProperty("id");
     expect(result).toHaveProperty("name");
@@ -403,6 +416,7 @@ describe("getPrimaryRepository", () => {
           docsEnabled: true,
           mocksEnabled: true,
           embeddingsEnabled: true,
+            status: true,
         },
       ],
     };
@@ -429,6 +443,7 @@ describe("getPrimaryRepository", () => {
               docsEnabled: true,
               mocksEnabled: true,
               embeddingsEnabled: true,
+            status: true,
             },
           }),
         }),

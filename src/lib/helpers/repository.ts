@@ -1,4 +1,5 @@
 import { db } from "@/lib/db";
+import { RepositoryStatus } from "@prisma/client";
 
 export type RepositoryInfo = {
   id: string;
@@ -10,6 +11,7 @@ export type RepositoryInfo = {
   name: string;
   description: string | null;
   branch: string;
+  status: RepositoryStatus;
   // Sync configuration
   codeIngestionEnabled: boolean;
   docsEnabled: boolean;
@@ -36,6 +38,7 @@ export async function getPrimaryRepository(workspaceId: string): Promise<Reposit
           docsEnabled: true,
           mocksEnabled: true,
           embeddingsEnabled: true,
+          status: true,
         },
         orderBy: { createdAt: "asc" },
       },
@@ -58,6 +61,7 @@ export async function getPrimaryRepository(workspaceId: string): Promise<Reposit
     name: primaryRepo.name,
     description: primaryRepo.description,
     branch: primaryRepo.branch,
+    status: primaryRepo.status,
     codeIngestionEnabled: primaryRepo.codeIngestionEnabled,
     docsEnabled: primaryRepo.docsEnabled,
     mocksEnabled: primaryRepo.mocksEnabled,
@@ -82,6 +86,7 @@ export async function getRepositoryById(repositoryId: string, workspaceId: strin
       docsEnabled: true,
       mocksEnabled: true,
       embeddingsEnabled: true,
+      status: true,
       workspaceId: true,
     },
   });
@@ -100,6 +105,7 @@ export async function getRepositoryById(repositoryId: string, workspaceId: strin
     name: repo.name,
     description: repo.description,
     branch: repo.branch,
+    status: repo.status,
     codeIngestionEnabled: repo.codeIngestionEnabled,
     docsEnabled: repo.docsEnabled,
     mocksEnabled: repo.mocksEnabled,
@@ -126,6 +132,7 @@ export async function getAllRepositories(workspaceId: string): Promise<Repositor
           docsEnabled: true,
           mocksEnabled: true,
           embeddingsEnabled: true,
+          status: true,
         },
         orderBy: { createdAt: "asc" },
       },
@@ -146,6 +153,7 @@ export async function getAllRepositories(workspaceId: string): Promise<Repositor
     name: repo.name,
     description: repo.description,
     branch: repo.branch,
+    status: repo.status,
     codeIngestionEnabled: repo.codeIngestionEnabled,
     docsEnabled: repo.docsEnabled,
     mocksEnabled: repo.mocksEnabled,

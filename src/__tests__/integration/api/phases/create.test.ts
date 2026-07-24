@@ -325,13 +325,18 @@ describe("POST /api/features/[featureId]/phases", () => {
       expect(phasesBefore).toHaveLength(2);
 
       // Delete feature (cascade delete should remove phases)
-      await db.feature.delete({ where: { id: feature.id } });
+      const featureIdToDelete = feature.id;
+      await db.feature.delete({ where: { id: featureIdToDelete } });
 
-      // Verify phases are deleted
-      const phasesAfter = await db.phase.findMany({
-        where: { featureId: feature.id },
-      });
-      expect(phasesAfter).toHaveLength(0);
+      // Verify the feature is gone
+      const featureAfter = await db.feature.findUnique({ where: { id: featureIdToDelete } });
+      expect(featureAfter).toBeNull();
+
+      // Verify phases are cascade-deleted (check by specific IDs, not featureId)
+      const phase1After = await db.phase.findUnique({ where: { id: phase1.data.id } });
+      const phase2After = await db.phase.findUnique({ where: { id: phase2.data.id } });
+      expect(phase1After).toBeNull();
+      expect(phase2After).toBeNull();
 
       // Prevent cleanup from failing
       feature = null;
