@@ -23,7 +23,7 @@ const mockDbStakworkRunFindMany = vi.hoisted(() => vi.fn());
 const mockDbStakworkRunFindFirst = vi.hoisted(() => vi.fn());
 const mockDbPlatformConfig = vi.hoisted(() => vi.fn());
 const mockSetEvalSetRecursion = vi.hoisted(() => vi.fn());
-const mockKgGetSubgraph = vi.hoisted(() => vi.fn());
+const mockWalkFixChain = vi.hoisted(() => vi.fn());
 const mockComputeAttemptStats = vi.hoisted(() => vi.fn());
 
 vi.mock("@/services/janitor", () => ({
@@ -52,8 +52,8 @@ vi.mock("@/lib/service-factory", () => ({
   stakworkService: mockStakworkService,
 }));
 
-vi.mock("@/lib/ai/kg-adapter", () => ({
-  kgGetSubgraph: mockKgGetSubgraph,
+vi.mock("@/lib/harvey-lab/fix-chain-walker", () => ({
+  walkFixChain: mockWalkFixChain,
 }));
 
 vi.mock("@/services/legal-recursion-attempt-stats", () => ({
@@ -151,9 +151,10 @@ function setupDefaults() {
     return Promise.resolve(null);
   });
   mockSetEvalSetRecursion.mockResolvedValue({ ok: true });
-  mockKgGetSubgraph.mockResolvedValue({
-    ok: true,
-    subgraph: { nodes: [], edges: [] },
+  mockWalkFixChain.mockResolvedValue({
+    nodes: [],
+    edges: [],
+    partial: false,
   });
   mockComputeAttemptStats.mockReturnValue({ attemptCount: 0, plateauStreak: 0 });
   mockDbStakworkRunFindMany.mockResolvedValue([]);
@@ -733,10 +734,7 @@ describe("executeScheduledLegalBenchmarkRecursion — attempt/plateau cap gate",
       nodes: [MOCK_EVAL_SET],
     });
     mockDbStakworkRunFindMany.mockResolvedValue([MOCK_RUNNER_RUN]);
-    mockKgGetSubgraph.mockResolvedValue({
-      ok: true,
-      subgraph: { nodes: [], edges: [] },
-    });
+    mockWalkFixChain.mockResolvedValue({ nodes: [], edges: [], partial: false });
     // attemptCount = 10 >= effectiveMaxAttempts default (10)
     mockComputeAttemptStats.mockReturnValue({ attemptCount: 10, plateauStreak: 0 });
 
@@ -763,10 +761,7 @@ describe("executeScheduledLegalBenchmarkRecursion — attempt/plateau cap gate",
       nodes: [MOCK_EVAL_SET],
     });
     mockDbStakworkRunFindMany.mockResolvedValue([MOCK_RUNNER_RUN]);
-    mockKgGetSubgraph.mockResolvedValue({
-      ok: true,
-      subgraph: { nodes: [], edges: [] },
-    });
+    mockWalkFixChain.mockResolvedValue({ nodes: [], edges: [], partial: false });
     // plateauStreak = 3 >= effectivePlateauLimit default (3); attemptCount below cap
     mockComputeAttemptStats.mockReturnValue({ attemptCount: 2, plateauStreak: 3 });
 
@@ -789,10 +784,7 @@ describe("executeScheduledLegalBenchmarkRecursion — attempt/plateau cap gate",
       nodes: [MOCK_EVAL_SET],
     });
     mockDbStakworkRunFindMany.mockResolvedValue([MOCK_RUNNER_RUN]);
-    mockKgGetSubgraph.mockResolvedValue({
-      ok: true,
-      subgraph: { nodes: [], edges: [] },
-    });
+    mockWalkFixChain.mockResolvedValue({ nodes: [], edges: [], partial: false });
     // Below both caps
     mockComputeAttemptStats.mockReturnValue({ attemptCount: 3, plateauStreak: 1 });
 
@@ -813,10 +805,7 @@ describe("executeScheduledLegalBenchmarkRecursion — attempt/plateau cap gate",
       nodes: [MOCK_EVAL_SET],
     });
     mockDbStakworkRunFindMany.mockResolvedValue([MOCK_RUNNER_RUN]);
-    mockKgGetSubgraph.mockResolvedValue({
-      ok: true,
-      subgraph: { nodes: [], edges: [] },
-    });
+    mockWalkFixChain.mockResolvedValue({ nodes: [], edges: [], partial: false });
     mockComputeAttemptStats.mockReturnValue({ attemptCount: 10, plateauStreak: 0 });
     // Disable write fails
     mockSetEvalSetRecursion.mockRejectedValue(new Error("Graph write timeout"));
@@ -832,19 +821,16 @@ describe("executeScheduledLegalBenchmarkRecursion — attempt/plateau cap gate",
     expect(result.success).toBe(true);
   });
 
-  // ── kgGetSubgraph failure = fail-open ────────────────────────────────────────
+  // ── walkFixChain failure = fail-open ─────────────────────────────────────────
 
-  it("proceeds to dispatch when kgGetSubgraph fails (fail-open)", async () => {
+  it("proceeds to dispatch when walkFixChain throws (fail-open)", async () => {
     mockListRecursionEvalSets.mockResolvedValue({
       ok: true,
       nodes: [MOCK_EVAL_SET],
     });
     mockDbStakworkRunFindMany.mockResolvedValue([MOCK_RUNNER_RUN]);
-    // Simulate subgraph fetch failure
-    mockKgGetSubgraph.mockResolvedValue({
-      ok: false,
-      error: "Jarvis /graph/subgraph returned HTTP 503",
-    });
+    // Simulate a thrown error (network failure, timeout, etc.)
+    mockWalkFixChain.mockRejectedValue(new Error("Jarvis connection refused"));
 
     const result = await executeScheduledLegalBenchmarkRecursion();
 
@@ -856,17 +842,104 @@ describe("executeScheduledLegalBenchmarkRecursion — attempt/plateau cap gate",
     expect(result.plateauCapped).toBe(0);
   });
 
-  it("does NOT call computeAttemptStats when kgGetSubgraph fails", async () => {
+  it("does NOT call computeAttemptStats when walkFixChain throws", async () => {
     mockListRecursionEvalSets.mockResolvedValue({
       ok: true,
       nodes: [MOCK_EVAL_SET],
     });
     mockDbStakworkRunFindMany.mockResolvedValue([MOCK_RUNNER_RUN]);
-    mockKgGetSubgraph.mockResolvedValue({ ok: false, error: "network error" });
+    mockWalkFixChain.mockRejectedValue(new Error("network error"));
 
     await executeScheduledLegalBenchmarkRecursion();
 
     expect(mockComputeAttemptStats).not.toHaveBeenCalled();
+  });
+
+  // ── partial: true = skip cap enforcement, proceed to dispatch ────────────────
+
+  it("skips cap enforcement and proceeds to dispatch when walkFixChain returns partial:true", async () => {
+    mockListRecursionEvalSets.mockResolvedValue({
+      ok: true,
+      nodes: [MOCK_EVAL_SET],
+    });
+    mockDbStakworkRunFindMany.mockResolvedValue([MOCK_RUNNER_RUN]);
+    // Partial result with incomplete data
+    mockWalkFixChain.mockResolvedValue({
+      nodes: [],
+      edges: [],
+      partial: true,
+      failedBranches: ["evalset-ref-1"],
+    });
+
+    const result = await executeScheduledLegalBenchmarkRecursion();
+
+    // Should NOT enforce caps based on incomplete data
+    expect(mockComputeAttemptStats).not.toHaveBeenCalled();
+    expect(mockSetEvalSetRecursion).not.toHaveBeenCalled();
+    // But should still dispatch (partial is distinct from full failure — pass-through)
+    expect(mockDispatchLegalBenchmarkEvalRun).toHaveBeenCalledOnce();
+    expect(result.dispatched).toBe(1);
+    expect(result.attemptCapped).toBe(0);
+    expect(result.plateauCapped).toBe(0);
+  });
+
+  it("partial:true does not crash the cron pass — other EvalSets still processed", async () => {
+    const nodes = [
+      { ref_id: "r1", id: "task/t1", name: "T1", projectId: null },
+      { ref_id: "r2", id: "task/t2", name: "T2", projectId: null },
+    ];
+    mockListRecursionEvalSets.mockResolvedValue({ ok: true, nodes });
+    mockDbStakworkRunFindMany.mockResolvedValue([
+      { id: "run-1", result: JSON.stringify({ taskSlug: "task/t1" }) },
+      { id: "run-2", result: JSON.stringify({ taskSlug: "task/t2" }) },
+    ]);
+    // First walk partial, second walk clean
+    mockWalkFixChain
+      .mockResolvedValueOnce({ nodes: [], edges: [], partial: true, failedBranches: ["r1"] })
+      .mockResolvedValueOnce({ nodes: [], edges: [], partial: false });
+    mockComputeAttemptStats.mockReturnValue({ attemptCount: 0, plateauStreak: 0 });
+
+    const result = await executeScheduledLegalBenchmarkRecursion();
+
+    // Both should dispatch: first (partial) falls through, second passes cap check
+    expect(mockDispatchLegalBenchmarkEvalRun).toHaveBeenCalledTimes(2);
+    expect(result.dispatched).toBe(2);
+    expect(result.success).toBe(true);
+  });
+
+  // ── cron uses the correct (wider) triggerEdgeTypes scope ─────────────────────
+
+  it("calls walkFixChain with the dual-branch scope [HAS_BASELINE_TRIGGER, HAS_TRIGGER]", async () => {
+    mockListRecursionEvalSets.mockResolvedValue({
+      ok: true,
+      nodes: [MOCK_EVAL_SET],
+    });
+    mockDbStakworkRunFindMany.mockResolvedValue([MOCK_RUNNER_RUN]);
+
+    await executeScheduledLegalBenchmarkRecursion();
+
+    expect(mockWalkFixChain).toHaveBeenCalledWith(
+      MOCK_JARVIS_CONFIG.jarvisUrl,
+      MOCK_JARVIS_CONFIG.apiKey,
+      MOCK_EVAL_SET.ref_id,
+      { triggerEdgeTypes: ["HAS_BASELINE_TRIGGER", "HAS_TRIGGER"] },
+    );
+  });
+
+  it("does NOT call walkFixChain with baseline-only scope (chart scope must not be used here)", async () => {
+    mockListRecursionEvalSets.mockResolvedValue({
+      ok: true,
+      nodes: [MOCK_EVAL_SET],
+    });
+    mockDbStakworkRunFindMany.mockResolvedValue([MOCK_RUNNER_RUN]);
+
+    await executeScheduledLegalBenchmarkRecursion();
+
+    // The call must include HAS_TRIGGER — not just HAS_BASELINE_TRIGGER alone
+    const call = mockWalkFixChain.mock.calls[0];
+    const opts = call[3] as { triggerEdgeTypes: string[] };
+    expect(opts.triggerEdgeTypes).toContain("HAS_TRIGGER");
+    expect(opts.triggerEdgeTypes).toContain("HAS_BASELINE_TRIGGER");
   });
 
   // ── Config key constants ──────────────────────────────────────────────────────
@@ -931,7 +1004,7 @@ describe("executeScheduledLegalBenchmarkRecursion — attempt/plateau cap gate",
       nodes: [MOCK_EVAL_SET],
     });
     mockDbStakworkRunFindMany.mockResolvedValue([MOCK_RUNNER_RUN]);
-    mockKgGetSubgraph.mockResolvedValue({ ok: true, subgraph: { nodes: [], edges: [] } });
+    mockWalkFixChain.mockResolvedValue({ nodes: [], edges: [], partial: false });
     // 5 attempts >= cap of 5 → should be capped
     mockComputeAttemptStats.mockReturnValue({ attemptCount: 5, plateauStreak: 0 });
 
