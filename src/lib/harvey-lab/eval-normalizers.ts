@@ -132,7 +132,9 @@ function parseIdSuffix(id: string | undefined): number {
  * Sort EvalTriggerOutput nodes chronologically — baseline first, reruns after.
  *
  * Option A (preferred): sort ascending by `date_added_to_graph` when all nodes have it.
- * Option B (fallback): sort by the `--<rerun_project_id>` id suffix (baseline = no suffix → first).
+ * Option B (fallback): sort by the `--<rerun_project_id>` id suffix (baseline = no suffix → first),
+ *   with the original array index as a stable secondary tie-break so that two sibling branches
+ *   with unrelated/colliding id suffixes always produce the same deterministic order across calls.
  *
  * NOTE: `attempt_number` is intentionally NOT used — hive's inline write path hardcodes it to 1,
  * making it unreliable as an ordering key.
@@ -155,12 +157,23 @@ export function sortAttemptsChronologically(
     });
   }
 
-  // Option B: sort by id suffix (baseline = -1, reruns by numeric suffix)
+  // Option B: sort by id suffix (baseline = -1, reruns by numeric suffix).
+  // Secondary tie-break: preserve original array index so that siblings with identical
+  // or unresolvable id suffixes always sort in a stable, reproducible order even when
+  // timestamps are absent (e.g. two sibling branches tried from the same parent).
   console.warn(
     "[sortAttemptsChronologically] Not all outputs have date_added_to_graph; " +
       "falling back to id-suffix ordering.",
   );
-  return [...outputs].sort((a, b) => parseIdSuffix(a.id) - parseIdSuffix(b.id));
+  return outputs
+    .map((o, originalIndex) => ({ o, originalIndex }))
+    .sort((a, b) => {
+      const suffixDiff = parseIdSuffix(a.o.id) - parseIdSuffix(b.o.id);
+      if (suffixDiff !== 0) return suffixDiff;
+      // Stable secondary tie-break: original insertion order
+      return a.originalIndex - b.originalIndex;
+    })
+    .map(({ o }) => o);
 }
 
 /**

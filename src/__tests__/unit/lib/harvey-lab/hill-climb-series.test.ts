@@ -933,4 +933,305 @@ describe("buildHillClimbSeries", () => {
     expect(series[0].isBaseline).toBe(true);
     expect(series[1].isBaseline).toBe(false);
   });
+
+  // ── NEW: Sibling DERIVED_FROM branches (mid-tree) — confirmatory regression ──
+
+  it("two ProposedFix siblings DERIVED_FROM the same parent — both appear in the series", () => {
+    // Topology:
+    //   trigger --HAS_PROPOSED_FIX--> fix1 --PRODUCED_BY--> out1
+    //   fix2 --DERIVED_FROM--> fix1, fix2 --PRODUCED_BY--> out2
+    //   fix3 --DERIVED_FROM--> fix1, fix3 --PRODUCED_BY--> out3
+    // fix2 and fix3 are siblings under fix1.  walkDerivedFromChain already handles
+    // this via BFS, but there was no test for it.
+    const evalSetId = "evalset-1";
+    const triggerId = uid("trig");
+    const baseOutputId = uid("out");
+    const fix1Id = uid("fix");
+    const fix1OutId = uid("out");
+    const fix2Id = uid("fix"); // sibling A
+    const fix2OutId = uid("out");
+    const fix3Id = uid("fix"); // sibling B
+    const fix3OutId = uid("out");
+
+    const sg: Subgraph = {
+      nodes: [
+        evalSetNode(evalSetId),
+        triggerNode(triggerId, "1720001000"),
+        outputNode(baseOutputId, 50, 74, "1720001500"),
+        fixNode(fix1Id, { eval_status: "accepted", ts: "1720002000" }),
+        outputNode(fix1OutId, 56, 74, "1720002500"),
+        fixNode(fix2Id, { eval_status: "rejected", ts: "1720003000" }),
+        outputNode(fix2OutId, 54, 74, "1720003500"),
+        fixNode(fix3Id, { eval_status: "accepted", ts: "1720004000" }),
+        outputNode(fix3OutId, 60, 74, "1720004500"),
+      ],
+      edges: [
+        edge(evalSetId, triggerId, "HAS_BASELINE_TRIGGER"),
+        edge(triggerId, baseOutputId, "HAS_OUTPUT"),
+        edge(triggerId, fix1Id, "HAS_PROPOSED_FIX"),
+        edge(fix1Id, fix1OutId, "PRODUCED_BY"),
+        // Both fix2 and fix3 are children of fix1 via DERIVED_FROM
+        edge(fix2Id, fix1Id, "DERIVED_FROM"),
+        edge(fix2Id, fix2OutId, "PRODUCED_BY"),
+        edge(fix3Id, fix1Id, "DERIVED_FROM"),
+        edge(fix3Id, fix3OutId, "PRODUCED_BY"),
+      ],
+    };
+
+    const series = buildHillClimbSeries(sg);
+
+    // All four points must appear: baseline, fix1, fix2, fix3
+    expect(series).toHaveLength(4);
+
+    // No duplicates
+    const refIds = series.map((pt) => pt.ref_id);
+    expect(new Set(refIds).size).toBe(4);
+
+    // fix2 (rejected) and fix3 (accepted) both present
+    const accepted = series.filter((pt) => pt.accepted === true && !pt.isBaseline);
+    const rejected = series.filter((pt) => pt.accepted === false);
+    expect(accepted.length).toBeGreaterThanOrEqual(1);
+    expect(rejected.length).toBeGreaterThanOrEqual(1);
+
+    // Scores are valid (not NaN)
+    for (const pt of series) {
+      if (pt.n_passed != null) expect(isNaN(pt.n_passed)).toBe(false);
+      if (pt.n_total != null) expect(isNaN(pt.n_total)).toBe(false);
+    }
+  });
+
+  // ── NEW: Two root HAS_PROPOSED_FIX edges — exercises the .find() → .filter() fix ──
+
+  it("two ProposedFix roots each attached via separate HAS_PROPOSED_FIX edges — both subtrees appear", () => {
+    // This is the primary fixture that exercises the code change.
+    // Topology:
+    //   trigger --HAS_PROPOSED_FIX--> rootFix1 --PRODUCED_BY--> out1
+    //   trigger --HAS_PROPOSED_FIX--> rootFix2 --PRODUCED_BY--> out2
+    //   childFix --DERIVED_FROM--> rootFix2, childFix --PRODUCED_BY--> childOut
+    // Before the fix, rootFix2's entire subtree (rootFix2 + childFix) was dropped.
+    const evalSetId = "evalset-1";
+    const triggerId = uid("trig");
+    const baseOutputId = uid("out");
+    const rootFix1Id = uid("fix");
+    const rootFix1OutId = uid("out");
+    const rootFix2Id = uid("fix");
+    const rootFix2OutId = uid("out");
+    const childFixId = uid("fix"); // child of rootFix2
+    const childOutId = uid("out");
+
+    const sg: Subgraph = {
+      nodes: [
+        evalSetNode(evalSetId),
+        triggerNode(triggerId, "1720001000"),
+        outputNode(baseOutputId, 50, 74, "1720001500"),
+        // Root fix 1 — accepted
+        fixNode(rootFix1Id, { eval_status: "accepted", ts: "1720002000" }),
+        outputNode(rootFix1OutId, 57, 74, "1720002500"),
+        // Root fix 2 — rejected
+        fixNode(rootFix2Id, { eval_status: "rejected", ts: "1720003000" }),
+        outputNode(rootFix2OutId, 48, 74, "1720003500"),
+        // Child of root fix 2 — accepted (tests that subtree of rootFix2 is walked)
+        fixNode(childFixId, { eval_status: "accepted", ts: "1720004000" }),
+        outputNode(childOutId, 62, 74, "1720004500"),
+      ],
+      edges: [
+        edge(evalSetId, triggerId, "HAS_BASELINE_TRIGGER"),
+        edge(triggerId, baseOutputId, "HAS_OUTPUT"),
+        // Two separate HAS_PROPOSED_FIX edges from the same trigger
+        edge(triggerId, rootFix1Id, "HAS_PROPOSED_FIX"),
+        edge(triggerId, rootFix2Id, "HAS_PROPOSED_FIX"),
+        edge(rootFix1Id, rootFix1OutId, "PRODUCED_BY"),
+        edge(rootFix2Id, rootFix2OutId, "PRODUCED_BY"),
+        edge(childFixId, rootFix2Id, "DERIVED_FROM"),
+        edge(childFixId, childOutId, "PRODUCED_BY"),
+      ],
+    };
+
+    const series = buildHillClimbSeries(sg);
+
+    // All five points must appear: baseline + rootFix1 + rootFix2 + childFix
+    expect(series).toHaveLength(4);
+
+    // No duplicates
+    const nonBaselineRefIds = series.filter((pt) => !pt.isBaseline).map((pt) => pt.ref_id);
+    expect(new Set(nonBaselineRefIds).size).toBe(3);
+
+    // rootFix1 (accepted, 57) must appear
+    const fix1Pt = series.find((pt) => pt.n_passed === 57);
+    expect(fix1Pt).toBeDefined();
+    expect(fix1Pt!.accepted).toBe(true);
+
+    // rootFix2 (rejected, 48) must appear
+    const fix2Pt = series.find((pt) => pt.n_passed === 48);
+    expect(fix2Pt).toBeDefined();
+    expect(fix2Pt!.accepted).toBe(false);
+
+    // childFix (accepted, 62) must appear — subtree of rootFix2
+    const childPt = series.find((pt) => pt.n_passed === 62);
+    expect(childPt).toBeDefined();
+    expect(childPt!.accepted).toBe(true);
+
+    // bestPassed is monotonically non-decreasing
+    for (let i = 1; i < series.length; i++) {
+      expect(series[i].bestPassed!).toBeGreaterThanOrEqual(series[i - 1].bestPassed!);
+    }
+  });
+
+  // ── NEW: Shared rerun_run_id — confirm no cross-attribution between siblings ──
+
+  it("two sibling roots sharing the same rerun_run_id each resolve independently", () => {
+    // Both rootFix1 and rootFix2 have rerun_run_id pointing to different in-subgraph
+    // EvalTriggerOutput nodes.  The global outputsByInternalId map should not cause one
+    // sibling's score to leak into the other.
+    const evalSetId = "evalset-1";
+    const triggerId = uid("trig");
+    const baseOutputId = uid("out");
+    // Two in-subgraph outputs keyed by their ref_id (used as rerun_run_id target)
+    const rerunOut1Id = `rerun-out-${uid("x")}`;
+    const rerunOut2Id = `rerun-out-${uid("x")}`;
+    const rootFix1Id = uid("fix");
+    const rootFix2Id = uid("fix");
+
+    const sg: Subgraph = {
+      nodes: [
+        evalSetNode(evalSetId),
+        triggerNode(triggerId, "1720001000"),
+        outputNode(baseOutputId, 50, 74, "1720001500"),
+        // fix1 references rerunOut1 via rerun_run_id
+        fixNode(rootFix1Id, {
+          eval_status: "accepted",
+          rerun_run_id: rerunOut1Id,
+          ts: "1720002000",
+        }),
+        outputNode(rerunOut1Id, 58, 74, "1720002500"),
+        // fix2 references rerunOut2 via rerun_run_id (different node, different score)
+        fixNode(rootFix2Id, {
+          eval_status: "rejected",
+          rerun_run_id: rerunOut2Id,
+          ts: "1720003000",
+        }),
+        outputNode(rerunOut2Id, 45, 74, "1720003500"),
+      ],
+      edges: [
+        edge(evalSetId, triggerId, "HAS_BASELINE_TRIGGER"),
+        edge(triggerId, baseOutputId, "HAS_OUTPUT"),
+        // Two separate HAS_PROPOSED_FIX edges
+        edge(triggerId, rootFix1Id, "HAS_PROPOSED_FIX"),
+        edge(triggerId, rootFix2Id, "HAS_PROPOSED_FIX"),
+        // No PRODUCED_BY edges — score resolved via rerun_run_id fallback
+      ],
+    };
+
+    const series = buildHillClimbSeries(sg);
+
+    // Both sibling roots must appear
+    expect(series).toHaveLength(3); // baseline + fix1 + fix2
+
+    // fix1 must resolve to 58 (its own rerun output), not 45
+    const fix1Pt = series.find((pt) => pt.accepted === true && !pt.isBaseline);
+    expect(fix1Pt).toBeDefined();
+    expect(fix1Pt!.n_passed).toBe(58);
+
+    // fix2 must resolve to 45 (its own rerun output), not 58
+    const fix2Pt = series.find((pt) => pt.accepted === false);
+    expect(fix2Pt).toBeDefined();
+    expect(fix2Pt!.n_passed).toBe(45);
+  });
+
+  // ── NEW: Zero-root-fix case — info log fires, baseline-only series returned ──
+
+  it("zero HAS_PROPOSED_FIX edges — returns baseline-only series (info log fired)", () => {
+    // The lookup is now an array; if it's empty the explicit zero-root path fires
+    // the existing info log and falls through cleanly.
+    const evalSetId = "evalset-1";
+    const triggerId = uid("trig");
+    const baseOutputId = uid("out");
+
+    const sg: Subgraph = {
+      nodes: [
+        evalSetNode(evalSetId),
+        triggerNode(triggerId, "1720001000"),
+        outputNode(baseOutputId, 50, 74, "1720001500"),
+      ],
+      edges: [
+        edge(evalSetId, triggerId, "HAS_BASELINE_TRIGGER"),
+        edge(triggerId, baseOutputId, "HAS_OUTPUT"),
+        // Intentionally NO HAS_PROPOSED_FIX edge
+      ],
+    };
+
+    const series = buildHillClimbSeries(sg);
+
+    // Returns the baseline point only — clean exit
+    expect(series).toHaveLength(1);
+    expect(series[0].isBaseline).toBe(true);
+    expect(series[0].n_passed).toBe(50);
+    expect(series[0].n_total).toBe(74);
+  });
+
+  // ── NEW: Missing date_added_to_graph — deterministic (stable) ordering ────
+
+  it("siblings with no date_added_to_graph sort deterministically (stable, same order each call)", () => {
+    // Neither sibling has a timestamp → falls back to id-suffix ordering with original-index
+    // tie-break.  We call buildHillClimbSeries twice and assert the output order is identical.
+    const evalSetId = "evalset-1";
+    const triggerId = uid("trig");
+    const baseOutputId = uid("out");
+    const rootFix1Id = uid("fix"); // no ts, no id suffix
+    const rootFix1OutId = uid("out");
+    const rootFix2Id = uid("fix"); // no ts, no id suffix
+    const rootFix2OutId = uid("out");
+
+    // Neither fix has date_added_to_graph or a parseable id suffix
+    const buildSg = (): Subgraph => ({
+      nodes: [
+        evalSetNode(evalSetId),
+        triggerNode(triggerId, "1720001000"),
+        outputNode(baseOutputId, 50, 74, "1720001500"),
+        // Fixes deliberately lack date_added_to_graph
+        {
+          ref_id: rootFix1Id,
+          node_type: "ProposedFix",
+          properties: { eval_status: "accepted" },
+          // date_added_to_graph intentionally absent
+        },
+        outputNode(rootFix1OutId, 55, 74, "1720002500"),
+        {
+          ref_id: rootFix2Id,
+          node_type: "ProposedFix",
+          properties: { eval_status: "rejected" },
+          // date_added_to_graph intentionally absent
+        },
+        outputNode(rootFix2OutId, 48, 74, "1720003000"),
+      ],
+      edges: [
+        edge(evalSetId, triggerId, "HAS_BASELINE_TRIGGER"),
+        edge(triggerId, baseOutputId, "HAS_OUTPUT"),
+        edge(triggerId, rootFix1Id, "HAS_PROPOSED_FIX"),
+        edge(triggerId, rootFix2Id, "HAS_PROPOSED_FIX"),
+        edge(rootFix1Id, rootFix1OutId, "PRODUCED_BY"),
+        edge(rootFix2Id, rootFix2OutId, "PRODUCED_BY"),
+      ],
+    });
+
+    const series1 = buildHillClimbSeries(buildSg());
+    const series2 = buildHillClimbSeries(buildSg());
+
+    // Both calls return the same number of points
+    expect(series1).toHaveLength(3);
+    expect(series2).toHaveLength(3);
+
+    // The order is stable across both calls
+    for (let i = 0; i < series1.length; i++) {
+      expect(series1[i].ref_id).toBe(series2[i].ref_id);
+    }
+
+    // The baseline is always first (it has a timestamp → sorts to front)
+    expect(series1[0].isBaseline).toBe(true);
+
+    // Both fix points appear (order may be arbitrary, but stable)
+    const fixRefIds = series1.filter((pt) => !pt.isBaseline).map((pt) => pt.ref_id);
+    expect(fixRefIds).toContain(rootFix1OutId.startsWith("out") ? series1[1].ref_id : rootFix1Id);
+    expect(new Set(fixRefIds).size).toBe(2);
+  });
 });

@@ -415,8 +415,12 @@ export function buildHillClimbSeries(subgraph: Subgraph): EvalTriggerOutput[] {
     }
   }
 
-  // ── 5. Walk DERIVED_FROM chain from root fix ──────────────────────────────
-  const rootFixEdge = edges.find(
+  // ── 5. Walk DERIVED_FROM chain from all root fixes ────────────────────────
+  // Use .filter() instead of .find() so every HAS_PROPOSED_FIX edge from the
+  // baseline trigger is collected — not just the first one.  A single shared
+  // visited Set is passed to each walkDerivedFromChain call so nodes reachable
+  // via multiple roots are enumerated exactly once.
+  const rootFixEdges = edges.filter(
     (e) => e.source === baselineTriggerNode.ref_id && e.edge_type === "HAS_PROPOSED_FIX",
   );
 
@@ -430,12 +434,17 @@ export function buildHillClimbSeries(subgraph: Subgraph): EvalTriggerOutput[] {
   };
 
   const series: EvalTriggerOutput[] = [baselineWithMeta];
+  const rootFixCount = rootFixEdges.length;
   let derivedFixCount = 0;
 
-  if (rootFixEdge) {
-    // walkDerivedFromChain called without a shared visited set → per-call scoping
-    // (chart only follows the baseline trigger's chain)
-    const fixChain = walkDerivedFromChain(rootFixEdge.target, nodeMap, edges);
+  if (rootFixEdges.length > 0) {
+    // Walk each root with a shared visited set to avoid duplicates across branches
+    const sharedVisited = new Set<string>();
+    const fixChain: SubgraphNode[] = [];
+    for (const rootFixEdge of rootFixEdges) {
+      const branch = walkDerivedFromChain(rootFixEdge.target, nodeMap, edges, sharedVisited);
+      fixChain.push(...branch);
+    }
     derivedFixCount = fixChain.length;
 
     for (const fixNode of fixChain) {
@@ -494,6 +503,8 @@ export function buildHillClimbSeries(subgraph: Subgraph): EvalTriggerOutput[] {
       }
     }
   } else {
+    // Explicit zero-root check — fires the same log as before so callers/tests
+    // can assert on this path rather than silently getting an empty concatenation.
     logger.info(
       "[legal/benchmarks/hill-climb] No HAS_PROPOSED_FIX edge from baseline trigger — baseline-only series",
       "legal",
@@ -536,7 +547,8 @@ export function buildHillClimbSeries(subgraph: Subgraph): EvalTriggerOutput[] {
       evalSetId: evalSetNode.ref_id,
       nodeCount: nodes.length,
       edgeCount: edges.length,
-      derivedFixCount,
+      rootFixCount,       // number of HAS_PROPOSED_FIX edges from baseline trigger
+      derivedFixCount,    // total ProposedFix nodes visited across all roots (deduplicated)
       acceptedFixCount,
       rejectedCount,
       seriesLength: sorted.length,

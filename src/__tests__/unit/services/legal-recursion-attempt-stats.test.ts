@@ -482,6 +482,102 @@ describe("computeAttemptStats", () => {
     expect(stats.plateauStreak).toBe(0);
   });
 
+  // ── NEW: Multi-root-fix per trigger — exercises the .find() → .filter() fix ──
+
+  it("two HAS_PROPOSED_FIX edges from the same trigger — both root subtrees counted", () => {
+    // Before the fix, collectAllAttempts used .find() so only rootFix1 and its
+    // subtree (childFix) were counted. rootFix2 was silently dropped.
+    // After the fix, all three ProposedFix nodes are counted.
+    const evalSetId = "es-multi-root";
+    const triggerId = "trig-1";
+    const baselineOutputId = "out-base";
+    const rootFix1Id = "fix-root1";
+    const rootFix2Id = "fix-root2";
+    const childFixId = "fix-child"; // derived from rootFix1
+    const rootFix1OutId = "out-root1";
+    const rootFix2OutId = "out-root2";
+    const childOutId = "out-child";
+
+    const sg: Subgraph = {
+      nodes: [
+        evalSetNode(evalSetId, "1700000000"),
+        triggerNode(triggerId, "1700001000"),
+        outputNode(baselineOutputId, 50, 100, "1700001500"),
+        // rootFix1: accepted, score 55
+        fixNode(rootFix1Id, "1700002000", { eval_status: "accepted", after_score: "55" }),
+        outputNode(rootFix1OutId, 55, 100, "1700002500"),
+        // childFix: derived from rootFix1, accepted, score 60
+        fixNode(childFixId, "1700003000", { eval_status: "accepted", after_score: "60" }),
+        outputNode(childOutId, 60, 100, "1700003500"),
+        // rootFix2: separate root, rejected, score 45
+        fixNode(rootFix2Id, "1700004000", { eval_status: "rejected", after_score: "45" }),
+        outputNode(rootFix2OutId, 45, 100, "1700004500"),
+      ],
+      edges: [
+        edge(evalSetId, triggerId, "HAS_BASELINE_TRIGGER"),
+        edge(triggerId, baselineOutputId, "HAS_OUTPUT"),
+        // Two separate HAS_PROPOSED_FIX edges from the same trigger
+        edge(triggerId, rootFix1Id, "HAS_PROPOSED_FIX"),
+        edge(triggerId, rootFix2Id, "HAS_PROPOSED_FIX"),
+        edge(rootFix1Id, rootFix1OutId, "PRODUCED_BY"),
+        edge(childFixId, rootFix1Id, "DERIVED_FROM"),
+        edge(childFixId, childOutId, "PRODUCED_BY"),
+        edge(rootFix2Id, rootFix2OutId, "PRODUCED_BY"),
+      ],
+    };
+
+    const stats = computeAttemptStats(sg, evalSetId);
+
+    // All three ProposedFix nodes must be counted: rootFix1 + childFix + rootFix2
+    expect(stats.attemptCount).toBe(3);
+
+    // rootFix1=55 (improving over 50), childFix=60 (improving over 55), rootFix2=45 (not improving)
+    // Chronologically sorted: rootFix1, childFix, rootFix2
+    // Running best: 50(baseline) → 55(rootFix1) → 60(childFix) → plateau at 60 (rootFix2=45 < 60)
+    // plateauStreak = 1 (only rootFix2 is trailing non-improving)
+    expect(stats.plateauStreak).toBe(1);
+  });
+
+  it("multi-root per trigger: no node counted twice when rootFix1 also reachable via rootFix2's chain", () => {
+    // rootFix1 is attached as a root AND is also the DERIVED_FROM parent of rootFix2.
+    // After the fix, the shared visited set should deduplicate rootFix1.
+    const evalSetId = "es-multi-root-dedup";
+    const triggerId = "trig-1";
+    const baselineOutputId = "out-base";
+    const rootFix1Id = "fix-root1";
+    const rootFix2Id = "fix-root2"; // DERIVED_FROM rootFix1, also a separate root
+    const outRoot1Id = "out-root1";
+    const outRoot2Id = "out-root2";
+
+    const sg: Subgraph = {
+      nodes: [
+        evalSetNode(evalSetId, "1700000000"),
+        triggerNode(triggerId, "1700001000"),
+        outputNode(baselineOutputId, 50, 100, "1700001500"),
+        fixNode(rootFix1Id, "1700002000", { eval_status: "accepted", after_score: "55" }),
+        outputNode(outRoot1Id, 55, 100, "1700002500"),
+        fixNode(rootFix2Id, "1700003000", { eval_status: "accepted", after_score: "60" }),
+        outputNode(outRoot2Id, 60, 100, "1700003500"),
+      ],
+      edges: [
+        edge(evalSetId, triggerId, "HAS_BASELINE_TRIGGER"),
+        edge(triggerId, baselineOutputId, "HAS_OUTPUT"),
+        // rootFix1 is a root
+        edge(triggerId, rootFix1Id, "HAS_PROPOSED_FIX"),
+        // rootFix2 is also a separate root AND derives from rootFix1
+        edge(triggerId, rootFix2Id, "HAS_PROPOSED_FIX"),
+        edge(rootFix2Id, rootFix1Id, "DERIVED_FROM"),
+        edge(rootFix1Id, outRoot1Id, "PRODUCED_BY"),
+        edge(rootFix2Id, outRoot2Id, "PRODUCED_BY"),
+      ],
+    };
+
+    const stats = computeAttemptStats(sg, evalSetId);
+
+    // Exactly 2 unique ProposedFix nodes — rootFix1 deduplicated, not counted twice
+    expect(stats.attemptCount).toBe(2);
+  });
+
   // ── Edge cases ─────────────────────────────────────────────────────────────
 
   it("empty subgraph (no EvalSet): returns 0/0", () => {
