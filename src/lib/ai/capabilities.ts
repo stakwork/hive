@@ -133,6 +133,15 @@ export interface CapabilityContext {
   userId: string;
   currentCanvasConversationId?: string;
   /**
+   * Swarm-reachable public base URL for this Hive deployment (e.g.
+   * `https://hive.example.com`). Captured from the request `host` header at
+   * the API route level — NEVER derived inside a tool closure via
+   * `getBaseUrl()`, which returns `localhost:3000` when there is no host
+   * header. Forwarded to `buildWorkflowExplorerTools` so it can build
+   * `webhookUrl` for the fan-back safety net without relying on env vars.
+   */
+  publicBaseUrl?: string;
+  /**
    * The user's `chatAgentModel` preference (e.g. `"anthropic/claude-opus-4-6"`).
    * Forwarded to `buildInitiativeTools` so `send_to_feature_planner` can pass
    * it as the `model` arg to `sendFeatureChatMessage`, covering features whose
@@ -412,7 +421,9 @@ export const CAPABILITY_REGISTRY: Record<OrgCapability, CapabilityDefinition> =
       // Not per-workspace: the tool always targets the hardcoded `stakwork`
       // workspace's swarm, whose Jarvis graph holds the canonical Stakwork
       // Workflow/Skill/Script library (see workflowExplorerTools.ts).
-      buildTools: () => buildWorkflowExplorerTools(),
+      // Pass the full context so workflowExplorerTools can wire up the
+      // webhook fan-back safety net when a canvas conversation is active.
+      buildTools: (ctx) => buildWorkflowExplorerTools(ctx),
       promptSnippet: getWorkflowsCapabilitySnippet,
       core: false,
       menuBlurb:
