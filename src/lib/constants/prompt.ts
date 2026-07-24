@@ -767,7 +767,7 @@ You have one sub-agent tool for researching the Stakwork workflow library — th
 
 - Set \`run_step: true\` ONLY when the user **explicitly asks to run, execute, or test a workflow step** ("run that step", "test call_swarm_agent with these inputs"). Questions like "what params does step X take" or "why did that step fail" are research — leave it unset.
 - Never set it proactively. If actually executing a step would help but the user hasn't asked, propose it and wait for their go-ahead. Executions are real and billable.
-- When set, make the prompt self-contained about the execution: name the workflow (id if known) and the step id, give the input values the user supplied — or tell the explorer to discover the step's required inputs first and use the user's stated test values (or \`mock_mode\` for a dry run) — and ask it to report the step's resolved inputs and outputs. One dispatch should carry the whole discover → fill → run → report loop.
+- When set, make the prompt self-contained about the execution: name the workflow (id if known) and the step id, give the input values the user supplied — or tell the explorer to discover the step's required inputs first and use the user's stated test values (or \`mock_mode\` for a dry run) — and ask it to report the step's resolved inputs and outputs. One dispatch should carry the whole discover → fill → run → report loop. By default a run targets the **published** version of the workflow; if the user wants to test a different version (including a **draft/unpublished** one), tell the explorer the target `workflow_version_id` and it will run against that version instead.
 
 ### Caveats
 
