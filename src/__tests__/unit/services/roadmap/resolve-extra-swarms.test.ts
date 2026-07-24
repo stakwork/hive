@@ -64,8 +64,8 @@ describe("resolveExtraSwarms", () => {
 
     expect(result).toHaveLength(1);
     expect(result[0]).toEqual({
-      name: "my-workspace",
-      description: "My workspace description",
+      name: "my-workspace_repo_agent",
+      description: "This is a repo agent in a different workspace. Workspace description: My workspace description",
       url: "https://swarm.example.com:3355",
       apiKey: "decrypted:encrypted-key",
       repoUrls: "https://github.com/org/repo1,https://github.com/org/repo2",
@@ -75,13 +75,13 @@ describe("resolveExtraSwarms", () => {
     });
   });
 
-  it("omits description when the workspace has none", async () => {
+  it("falls back when the workspace has no description", async () => {
     mockFindFirst.mockResolvedValueOnce(makeWorkspace({ description: null }));
 
     const result = await resolveExtraSwarms("hello @my-workspace", "user-1");
 
     expect(result).toHaveLength(1);
-    expect(result[0].description).toBeUndefined();
+    expect(result[0].description).toBe("This is a repo agent in a different workspace.");
   });
 
   it("skips a slug the user is not a member of (workspace not found)", async () => {
@@ -159,7 +159,7 @@ describe("resolveExtraSwarms", () => {
     );
 
     expect(result).toHaveLength(2);
-    expect(result.map((r) => r.name)).toEqual(["ws-a", "ws-b"]);
+    expect(result.map((r) => r.name)).toEqual(["ws-a_repo_agent", "ws-b_repo_agent"]);
   });
 
   it("deduplicates a slug repeated across multiple messages", async () => {
