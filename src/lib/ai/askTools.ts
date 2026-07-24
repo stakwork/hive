@@ -80,6 +80,55 @@ export function isCancelledMarker(v: unknown): v is RepoCancelledMarker {
  */
 const ABORT_GRACE_CYCLES = 3;
 
+/** Shared initiate POST to the swarm's /repo/agent. Returns the request_id. */
+async function initiateRun(
+  swarmUrl: string,
+  swarmApiKey: string,
+  body: Record<string, unknown>,
+): Promise<string> {
+  const initiateResponse = await fetch(`${swarmUrl}/repo/agent`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-api-token": swarmApiKey,
+    },
+    body: JSON.stringify(body),
+  });
+
+  if (!initiateResponse.ok) {
+    const errorText = await initiateResponse.text();
+    console.error(`[repoAgent] Repo agent initiation error: ${initiateResponse.status} - ${errorText}`);
+    throw new Error("Failed to initiate repo agent");
+  }
+
+  const initiateData = await initiateResponse.json();
+  const requestId = initiateData.request_id;
+
+  if (!requestId) {
+    throw new Error("No request_id returned from repo agent");
+  }
+
+  return requestId;
+}
+
+/**
+ * Dispatch-only variant of `repoAgent`: initiate the run on the swarm and
+ * return its request_id WITHOUT polling for the result.
+ *
+ * For callers that register a `webhookUrl` in `params` — the swarm's
+ * terminal webhook is then the sole delivery path, so holding a poll loop
+ * open for the life of the run would be redundant (and an inline-vs-webhook
+ * delivery race the receiver would have to arbitrate). See
+ * `workflowExplorerTools.ts` for the canonical caller.
+ */
+export async function dispatchRepoAgent(
+  swarmUrl: string,
+  swarmApiKey: string,
+  params: { prompt: string; [key: string]: unknown },
+): Promise<string> {
+  return initiateRun(swarmUrl, swarmApiKey, { ...params });
+}
+
 export async function repoAgent(
   swarmUrl: string,
   swarmApiKey: string,
@@ -112,6 +161,18 @@ export async function repoAgent(
      * workflow runs, per-step params/outputs) against the Stakwork API.
      */
     stakworkApiKey?: string;
+    /**
+     * Webhook fan-back URL. When present, the swarm POSTs a terminal-status
+     * callback here in addition to serving the inline poll path
+     * (stakgraph `postTerminalWebhook`, payload `{ request_id, status:
+     * "completed"|"failed", result|error }`). Only set for canvas-linked
+     * workflow-explorer runs (see `workflowExplorerTools.ts`). Spreads into
+     * the request body verbatim; no other `repoAgent` caller is affected.
+     * SECURITY: stakgraph POSTs this URL verbatim with no custom headers,
+     * so the URL carries the single-use bearer token in its query string —
+     * NEVER log this value.
+     */
+    webhookUrl?: string;
   },
   /**
    * Optional Bifrost routing. When provided, the swarm-side `repo/agent`
@@ -166,27 +227,7 @@ export async function repoAgent(
     body.headers = bifrost.headers ?? {};
   }
 
-  const initiateResponse = await fetch(`${swarmUrl}/repo/agent`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-api-token": swarmApiKey,
-    },
-    body: JSON.stringify(body),
-  });
-
-  if (!initiateResponse.ok) {
-    const errorText = await initiateResponse.text();
-    console.error(`[repoAgent] Repo agent initiation error: ${initiateResponse.status} - ${errorText}`);
-    throw new Error("Failed to initiate repo agent");
-  }
-
-  const initiateData = await initiateResponse.json();
-  const requestId = initiateData.request_id;
-
-  if (!requestId) {
-    throw new Error("No request_id returned from repo agent");
-  }
+  const requestId = await initiateRun(swarmUrl, swarmApiKey, body);
 
   // Fire the onRequestId hook so the caller can register the run atomically.
   if (hooks?.onRequestId) {
