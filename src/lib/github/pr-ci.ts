@@ -85,6 +85,21 @@ function isGroupLine(line: string): boolean {
 }
 
 /**
+ * Check if a line contains test framework output (Expected/Received blocks, assertion errors, etc.).
+ * All patterns must be unanchored — every GitHub Actions log line is prefixed with an ISO timestamp
+ * (e.g. "2024-01-15T10:30:00.0000000Z"), so ^\\s+-anchored patterns will never match real lines.
+ */
+function isTestFrameworkLine(line: string): boolean {
+  return (
+    /\bExpected\b/.test(line) ||
+    /\bReceived\b/.test(line) ||
+    /●\s+\S/.test(line) || // Jest/Vitest describe › test bullet
+    /\bAssertionError\b/.test(line) ||
+    /FAIL\s+\S+\.(test|spec)\.\S+/.test(line) // Jest FAIL <file>
+  );
+}
+
+/**
  * Extract logs for a specific step from the full job logs.
  *
  * GitHub Actions log format:
@@ -98,9 +113,11 @@ function isGroupLine(line: string): boolean {
  * 2. Find error markers within section (GitHub adds these for any failure)
  * 3. Extract N lines before error marker (error details appear before the marker)
  */
-function extractStepLogs(fullLogs: string, stepNumber: number, stepName: string): string | null {
+export function extractStepLogs(fullLogs: string, stepNumber: number, stepName: string): string | null {
   const lines = fullLogs.split("\n");
   const MAX_LINES = 150;
+  const MAX_SECONDARY_LINES = 100;
+  const SECONDARY_CONTEXT = 15;
 
   // Step 1: Find all group markers (##[group] or ::group::)
   const groupMarkers: { lineNum: number; content: string }[] = [];
@@ -164,30 +181,80 @@ function extractStepLogs(fullLogs: string, stepNumber: number, stepName: string)
     }
   }
 
-  // Step 4: Extract logs
+  // Track extraction window for deduplication in the secondary pass
+  let extractedStart = -1;
+  let extractedEnd = -1;
+
+  // Step 4: Extract primary logs — collect into variable instead of returning early
+  // so the secondary pass can always run after.
+  let primaryResult: string;
+
   if (errorMarkers.length > 0) {
     // Take MAX_LINES before first error marker, through last error marker + 5
     const firstErrorLine = errorMarkers[0].lineNum;
     const lastErrorLine = errorMarkers[errorMarkers.length - 1].lineNum;
 
-    const extractStart = Math.max(stepStartLine >= 0 ? stepStartLine : 0, firstErrorLine - MAX_LINES);
-    const extractEnd = Math.min(lines.length, lastErrorLine + 5);
+    extractedStart = Math.max(stepStartLine >= 0 ? stepStartLine : 0, firstErrorLine - MAX_LINES);
+    extractedEnd = Math.min(lines.length, lastErrorLine + 5);
 
-    return lines.slice(extractStart, extractEnd).join("\n");
-  }
-
-  // No error markers found - take last MAX_LINES of step (or entire log as last resort)
-  if (stepStartLine >= 0) {
+    primaryResult = lines.slice(extractedStart, extractedEnd).join("\n");
+  } else if (stepStartLine >= 0) {
+    // No error markers found - take last MAX_LINES of step
     const stepLines = lines.slice(stepStartLine, stepEndLine);
     if (stepLines.length > MAX_LINES) {
-      return "...(truncated)\n" + stepLines.slice(-MAX_LINES).join("\n");
+      primaryResult = "...(truncated)\n" + stepLines.slice(-MAX_LINES).join("\n");
+    } else {
+      primaryResult = stepLines.join("\n");
     }
-    return stepLines.join("\n");
+  } else {
+    // Last resort: end of entire log — return immediately, no bounded section to scan
+    log.warn("Could not find step section, using end of log", { stepName, stepNumber });
+    return "...(truncated)\n" + lines.slice(-MAX_LINES).join("\n");
   }
 
-  // Last resort: end of entire log
-  log.warn("Could not find step section, using end of log", { stepName, stepNumber });
-  return "...(truncated)\n" + lines.slice(-MAX_LINES).join("\n");
+  // Step 5: Secondary pass — find test framework output (Expected/Received, assertion errors, etc.)
+  // This captures assertion diffs that appear before ##[error] markers or in logs with no markers.
+  // Runs universally across all primary branches so nothing is missed.
+  const scanStart = stepStartLine >= 0 ? stepStartLine : 0;
+  const scanEnd = stepStartLine >= 0 ? stepEndLine : lines.length;
+
+  let firstHit = -1;
+  let lastHit = -1;
+  for (let i = scanStart; i < scanEnd; i++) {
+    if (isTestFrameworkLine(lines[i])) {
+      if (firstHit === -1) firstHit = i;
+      lastHit = i;
+    }
+  }
+
+  if (firstHit !== -1) {
+    const secStart = Math.max(scanStart, firstHit - SECONDARY_CONTEXT);
+    const secEnd = Math.min(scanEnd, lastHit + SECONDARY_CONTEXT);
+
+    // Deduplicate: exclude lines already in the primary extraction window
+    let secLines: string[];
+    if (extractedStart !== -1 && secEnd > extractedStart && secStart < extractedEnd) {
+      // Ranges overlap — take non-overlapping portions
+      const beforeOverlap = secStart < extractedStart ? lines.slice(secStart, extractedStart) : [];
+      const afterOverlap = secEnd > extractedEnd ? lines.slice(extractedEnd, secEnd) : [];
+      secLines = [...beforeOverlap, ...afterOverlap];
+    } else {
+      secLines = lines.slice(secStart, secEnd);
+    }
+
+    // Cap at MAX_SECONDARY_LINES
+    if (secLines.length > MAX_SECONDARY_LINES) {
+      secLines = secLines.slice(0, MAX_SECONDARY_LINES);
+    }
+
+    if (secLines.length > 0) {
+      // Append (not prepend) — fetchFailedStepLogs truncates via slice(-maxLogSize),
+      // keeping the tail; content at the front is the first material silently discarded.
+      primaryResult += "\n### Test output\n" + secLines.join("\n");
+    }
+  }
+
+  return primaryResult;
 }
 
 /**

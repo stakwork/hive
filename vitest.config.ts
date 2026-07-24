@@ -30,6 +30,7 @@ export default defineConfig({
     // --max-old-space-size in execArgv, causing ERR_WORKER_INVALID_EXEC_ARGV.
     // A single fork also ensures Prisma's native library engine is initialised
     // once, avoiding the "Engine is not yet connected" race seen with multiple forks.
+    hookTimeout: testSuite === "integration" ? 60000 : 10000,
     pool: testSuite === "integration" ? "forks" : "threads",
     poolOptions: testSuite === "integration" ? {
       forks: {
