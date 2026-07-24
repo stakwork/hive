@@ -182,19 +182,25 @@ function collectAllAttempts(
     const triggerNode = nodeMap.get(triggerEdge.target);
     if (!triggerNode || !isNodeType(triggerNode, "EvalTrigger")) continue;
 
-    // Each trigger may have a HAS_PROPOSED_FIX edge to a root fix
-    const rootFixEdge = edges.find(
+    // Each trigger may have MULTIPLE HAS_PROPOSED_FIX edges (sibling root branches).
+    // Use .filter() instead of .find() so every root fix is walked, not just the first.
+    const rootFixEdges = edges.filter(
       (e) => e.source === triggerNode.ref_id && e.edge_type === "HAS_PROPOSED_FIX",
     );
-    if (!rootFixEdge) continue;
+    if (rootFixEdges.length === 0) continue;
 
-    // Walk the DERIVED_FROM chain, sharing the visited set across branches
-    const fixChain = walkDerivedFromChain(
-      rootFixEdge.target,
-      nodeMap,
-      edges,
-      sharedVisited,
-    );
+    // Walk each root's DERIVED_FROM chain, sharing the visited set across all roots
+    // and across all triggers so a node reachable via multiple paths is counted once.
+    const fixChain: import("@/lib/harvey-lab/hill-climb-series").SubgraphNode[] = [];
+    for (const rootFixEdge of rootFixEdges) {
+      const branch = walkDerivedFromChain(
+        rootFixEdge.target,
+        nodeMap,
+        edges,
+        sharedVisited,
+      );
+      fixChain.push(...branch);
+    }
 
     for (const fixNode of fixChain) {
       if (!isNodeType(fixNode, "ProposedFix")) continue;
