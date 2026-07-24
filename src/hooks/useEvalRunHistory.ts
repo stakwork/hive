@@ -3,13 +3,12 @@
  *
  * Fetches the eval run history for a given EvalSet by walking the real
  * EvalSet → EvalTrigger → EvalTriggerOutput / ProposedFix ontology via the
- * /api/swarm/jarvis/nodes subgraph proxy.
+ * dedicated /api/workspaces/[slug]/legal/benchmarks/fix-chain route, which
+ * internally uses walkFixChain — no label-whitelist pruning possible.
  *
- * BREAKING CHANGE: the hook now accepts `{ refId, slug }` instead of a plain
- * `taskSlug` string. `refId` (the EvalSet ref_id) is preferred; `slug` is the
- * task-slug used as a fallback when `refId` is absent.
- *
- * The old `/evals/harvey-lab/requirements` path has been removed entirely.
+ * BREAKING CHANGE (preserved): the hook accepts `{ refId, slug }` instead of
+ * a plain `taskSlug` string. `refId` (the EvalSet ref_id) is preferred;
+ * `slug` is the task-slug used as a fallback when `refId` is absent.
  */
 
 import { useState, useEffect, useCallback } from "react";
@@ -25,7 +24,6 @@ import {
   type RawJarvisNode,
 } from "@/lib/harvey-lab/eval-normalizers";
 import { buildHillClimbSeries, type SubgraphNode, type SubgraphEdge } from "@/lib/harvey-lab/hill-climb-series";
-import { SUBGRAPH_NODE_TYPES } from "@/lib/harvey-lab/subgraph-node-types";
 import { logger } from "@/lib/logger";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -62,24 +60,19 @@ function isEvalTriggerOutput(n: SubgraphNode): boolean {
   return (n.node_type ?? "").toLowerCase() === "evaltriggeroutput";
 }
 
-// ── Subgraph fetch ────────────────────────────────────────────────────────────
+// ── Fix-chain route fetch ─────────────────────────────────────────────────────
 
-const SUBGRAPH_DEPTH = 999;
-
-async function fetchSubgraph(
-  workspaceId: string,
+async function fetchFixChain(
+  workspaceSlug: string,
   evalSetRefId: string,
-): Promise<{ nodes: SubgraphNode[]; edges: SubgraphEdge[] } | null> {
-  const nodeTypeParam = JSON.stringify(SUBGRAPH_NODE_TYPES);
-  const endpoint = `/graph/subgraph?start_node=${evalSetRefId}&node_type=${encodeURIComponent(nodeTypeParam)}&depth=${SUBGRAPH_DEPTH}&include_properties=true`;
-  const url = `/api/swarm/jarvis/nodes?id=${workspaceId}&endpoint=${encodeURIComponent(endpoint)}`;
-
+): Promise<{ nodes: SubgraphNode[]; edges: SubgraphEdge[]; partial?: boolean } | null> {
+  const url = `/api/workspaces/${encodeURIComponent(workspaceSlug)}/legal/benchmarks/fix-chain?evalSetRefId=${encodeURIComponent(evalSetRefId)}`;
   const res = await fetch(url);
   if (!res.ok) return null;
 
   const data = (await res.json()) as {
     success?: boolean;
-    data?: { nodes?: SubgraphNode[]; edges?: SubgraphEdge[] };
+    data?: { nodes?: SubgraphNode[]; edges?: SubgraphEdge[]; partial?: boolean };
   };
 
   if (!data?.success || !data?.data?.nodes) return null;
@@ -87,6 +80,7 @@ async function fetchSubgraph(
   return {
     nodes: data.data.nodes ?? [],
     edges: data.data.edges ?? [],
+    partial: data.data.partial ?? false,
   };
 }
 
@@ -149,9 +143,9 @@ export function useEvalRunHistory(input: UseEvalRunHistoryInput): UseEvalRunHist
           return;
         }
 
-        // ── Step 2: Fetch subgraph + runs in parallel ─────────────────────
-        const [subgraph, runsRes] = await Promise.all([
-          fetchSubgraph(workspaceId, evalSetRefId),
+        // ── Step 2: Fetch fix-chain + runs in parallel ────────────────────
+        const [fixChain, runsRes] = await Promise.all([
+          fetchFixChain(workspaceSlug, evalSetRefId),
           fetch(
             `/api/stakwork/runs?type=LEGAL_BENCHMARK_RUNNER&workspaceId=${workspaceId}&includeResult=true`,
           ),
@@ -159,9 +153,9 @@ export function useEvalRunHistory(input: UseEvalRunHistoryInput): UseEvalRunHist
 
         if (cancelled) return;
 
-        if (!subgraph) {
+        if (!fixChain) {
           logger.warn(
-            "[legal/benchmarks/useEvalRunHistory] Subgraph fetch returned null",
+            "[legal/benchmarks/useEvalRunHistory] Fix-chain fetch returned null",
             "legal",
             { evalSetRefId, taskSlug },
           );
@@ -173,10 +167,24 @@ export function useEvalRunHistory(input: UseEvalRunHistoryInput): UseEvalRunHist
           return;
         }
 
+        // Surface partial data state — no UI change yet, but logged clearly
+        if (fixChain.partial) {
+          logger.warn(
+            "[legal/benchmarks/useEvalRunHistory] Fix-chain returned partial result — hill-climb data may be incomplete",
+            "legal",
+            { evalSetRefId, taskSlug },
+          );
+        }
+
         logger.info(
-          `[legal/benchmarks/useEvalRunHistory] Subgraph fetched nodes=${subgraph.nodes.length} edges=${subgraph.edges.length}`,
+          `[legal/benchmarks/useEvalRunHistory] Fix-chain fetched nodes=${fixChain.nodes.length} edges=${fixChain.edges.length} partial=${fixChain.partial ?? false}`,
           "legal",
-          { evalSetRefId, nodeCount: subgraph.nodes.length, edgeCount: subgraph.edges.length },
+          {
+            evalSetRefId,
+            nodeCount: fixChain.nodes.length,
+            edgeCount: fixChain.edges.length,
+            partial: fixChain.partial,
+          },
         );
 
         // ── Step 3: Build hill-climb series for the chart ─────────────────
@@ -184,23 +192,23 @@ export function useEvalRunHistory(input: UseEvalRunHistoryInput): UseEvalRunHist
           nodes: [
             // Inject EvalSet stub so buildHillClimbSeries can locate the root
             { ref_id: evalSetRefId, node_type: "EvalSet" },
-            ...subgraph.nodes,
+            ...fixChain.nodes,
           ],
-          edges: subgraph.edges,
+          edges: fixChain.edges,
         });
 
         // ── Step 4: Build history table (EvalRunsBox) ─────────────────────
         // For the history table we reconstruct EvalTrigger objects from the
-        // subgraph and join against StakworkRun rows.
-        const allTriggerNodes = subgraph.nodes.filter(isEvalTrigger);
+        // fix-chain and join against StakworkRun rows.
+        const allTriggerNodes = fixChain.nodes.filter(isEvalTrigger);
 
         const allRawTriggers: EvalTrigger[] = allTriggerNodes.map((n) => {
           const outputRefIds = new Set(
-            subgraph.edges
+            fixChain.edges
               .filter((e) => e.source === n.ref_id && e.edge_type === "HAS_OUTPUT")
               .map((e) => e.target),
           );
-          const outputNodes = subgraph.nodes.filter((on) => outputRefIds.has(on.ref_id));
+          const outputNodes = fixChain.nodes.filter((on) => outputRefIds.has(on.ref_id));
           return {
             ref_id: n.ref_id,
             properties: (n.properties ?? {}) as EvalTrigger["properties"],
