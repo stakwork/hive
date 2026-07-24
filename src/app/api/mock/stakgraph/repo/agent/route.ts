@@ -28,10 +28,12 @@ export const dynamic = "force-dynamic";
  * to simulate a swarm failure. Set `webhookMode` in the body:
  *   - `"success"` (default) — fires a completed callback after 500 ms
  *   - `"fail"` — fires a failed/aborted callback after 500 ms
- *   - `"inline"` — fires NO callback (the inline poll path should catch it)
+ *   - `"inline"` — fires NO callback. For canvas dispatch-only runs this
+ *     simulates a lost webhook (row stays PENDING); for non-canvas callers
+ *     the inline poll path picks the result up from the progress route.
  *
- * The inline short-run path continues to be exercised by the existing mock
- * progress route (`/api/mock/stakgraph/progress/route.ts`).
+ * The poll path continues to be exercised by the existing mock progress
+ * route (`/api/mock/stakgraph/progress/route.ts`).
  */
 export async function POST(request: NextRequest) {
   try {
