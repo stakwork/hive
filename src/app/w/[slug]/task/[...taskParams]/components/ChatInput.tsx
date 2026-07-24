@@ -822,17 +822,23 @@ export function ChatInput({
           {isPlanChat && onStop && workflowStatus === WorkflowStatus.IN_PROGRESS ? (
             <Button
               type="button"
-              size="icon"
+              size={isMobile ? "icon" : "default"}
               onClick={onStop}
               disabled={isStopping}
-              className="h-9 w-9 rounded-full shrink-0 bg-foreground hover:bg-foreground/80"
+              className={cn(
+                isMobile ? "h-9 w-9 rounded-full shrink-0" : "h-9 shrink-0",
+                "bg-foreground hover:bg-foreground/80"
+              )}
               data-testid="chat-stop-button"
               aria-label="Stop generating"
             >
               {isStopping ? (
                 <Loader2 className="w-4 h-4 animate-spin text-background" />
               ) : (
-                <Square className="w-4 h-4 fill-background text-background" />
+                <>
+                  <Square className="w-3.5 h-3.5 fill-background text-background" />
+                  {!isMobile && <span className="text-background text-sm">Stop</span>}
+                </>
               )}
             </Button>
           ) : (
