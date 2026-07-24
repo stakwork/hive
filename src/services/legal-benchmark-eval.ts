@@ -20,7 +20,7 @@ import { getJarvisConfigForWorkspace } from "@/lib/helpers/jarvis-config";
 import { WorkflowStatus, StakworkRunType } from "@prisma/client";
 import { parseBenchmarkRunResult } from "@/types/legal";
 import { getBifrostForLLM } from "@/services/bifrost/orchestrator";
-import { getApiKeyForModel } from "@/lib/ai/models";
+import { getApiKeyForModel, DEFAULT_BENCHMARK_MODEL, DEFAULT_JUDGE_MODEL, ensureProviderPrefix } from "@/lib/ai/models";
 import { getStakworkTokenReference } from "@/lib/vercel/stakwork-token";
 
 const HARVEY_BASE = "https://raw.githubusercontent.com/stakwork/harvey-labs/main";
@@ -31,7 +31,29 @@ const githubHeaders: HeadersInit = {
 };
 
 const TASK_SLUG_RE = /^[a-z0-9_\-\/]+$/i;
-const BENCHMARK_MODEL = "claude-opus-4-5";
+
+import type { BenchmarkRunResult } from "@/types/legal";
+
+/**
+ * Resolves the execution model and judge model for an eval run from the source
+ * run's stored result, falling back to shared defaults when absent.
+ *
+ * `model` is always returned with a provider prefix (via `ensureProviderPrefix`).
+ * `judgeModel` is returned verbatim — no prefix manipulation — because judge
+ * models can be cross-provider (e.g. "gpt-4o").
+ */
+export function resolveBenchmarkModels(
+  runResult: BenchmarkRunResult | null | undefined,
+): { model: string; judgeModel: string; usedDefaultModel: boolean; usedDefaultJudgeModel: boolean } {
+  const rawModel = runResult?.requestedModel ?? runResult?.model;
+  const rawJudgeModel = runResult?.requestedJudgeModel ?? runResult?.judge_model;
+  return {
+    model: ensureProviderPrefix(rawModel ?? DEFAULT_BENCHMARK_MODEL),
+    judgeModel: rawJudgeModel ?? DEFAULT_JUDGE_MODEL,
+    usedDefaultModel: !rawModel,
+    usedDefaultJudgeModel: !rawJudgeModel,
+  };
+}
 
 interface TaskJson {
   title: string;
@@ -117,6 +139,12 @@ export async function dispatchLegalBenchmarkEvalRun(
 
   // ── Step 3: Parse result and get failed criteria ─────────────────────────
   const runResult = parseBenchmarkRunResult(sourceRun.result);
+
+  const { model: resolvedModel, judgeModel: resolvedJudgeModel, usedDefaultModel, usedDefaultJudgeModel } = resolveBenchmarkModels(runResult);
+  console.log(
+    `[legal-benchmark-eval] dispatching resolvedModel=${resolvedModel} resolvedJudgeModel=${resolvedJudgeModel} usedDefaultModel=${usedDefaultModel} usedDefaultJudgeModel=${usedDefaultJudgeModel}`,
+  );
+
   const criteriaResults = runResult?.criteria_results ?? [];
   const failedCriteria = criteriaResults.filter(
     (c) => c.verdict?.toLowerCase() !== "pass",
@@ -208,7 +236,7 @@ export async function dispatchLegalBenchmarkEvalRun(
       try {
         bifrost = await getBifrostForLLM(
           userId ? { workspaceId, workspaceSlug: slug, userId } : undefined,
-          { agentName: "plan-agent", model: BENCHMARK_MODEL },
+          { agentName: "plan-agent", model: resolvedModel },
         );
       } catch (err) {
         console.warn(
@@ -334,8 +362,9 @@ export async function dispatchLegalBenchmarkEvalRun(
             task_output_desc: taskOutputDesc,
             rubrics_json: JSON.stringify(rubrics),
             documents_json: JSON.stringify(documents),
-            model: BENCHMARK_MODEL,
-            apiKey: bifrost?.apiKey ?? getApiKeyForModel(BENCHMARK_MODEL) ?? "",
+            model: resolvedModel,
+            judge_model: resolvedJudgeModel,
+            apiKey: bifrost?.apiKey ?? getApiKeyForModel(resolvedModel) ?? "",
             baseUrl: bifrost?.baseUrl ?? "",
             ...(bifrost && Object.keys(bifrost.headers).length > 0
               ? { headers: bifrost.headers }

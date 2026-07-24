@@ -138,6 +138,16 @@ export function setPlanRepoPreference(workspaceSlug: string, ids: string[]): voi
   }
 }
 
+/**
+ * Ensures a model identifier has a provider prefix (e.g. "anthropic/").
+ * If the model string already contains "/", it is returned unchanged.
+ * Otherwise, "anthropic/" is prepended.
+ * Do NOT apply this to judge models — they can be cross-provider.
+ */
+export function ensureProviderPrefix(modelId: string): string {
+  return modelId.includes("/") ? modelId : `anthropic/${modelId}`;
+}
+
 export function getApiKeyForModel(model: ModelName | string): string | undefined {
   if (model.includes("/")) {
     const provider = model.split("/")[0].toUpperCase();
