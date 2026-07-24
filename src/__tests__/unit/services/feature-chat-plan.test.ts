@@ -252,7 +252,7 @@ describe("sendFeatureChatMessage — plan_mode subAgents auto-attach", () => {
 
     expect(mockedCallStakwork).toHaveBeenCalledWith(
       expect.objectContaining({
-        subAgents: expect.arrayContaining([expect.objectContaining({ name: "org-ws-1" })]),
+        subAgents: expect.arrayContaining([expect.objectContaining({ name: "org-ws-1_repo_agent" })]),
       }),
     );
   });
@@ -271,7 +271,7 @@ describe("sendFeatureChatMessage — plan_mode subAgents auto-attach", () => {
 
     expect(mockedCallStakwork).toHaveBeenCalledWith(
       expect.objectContaining({
-        subAgents: expect.arrayContaining([expect.objectContaining({ name: "org-ws-dev" })]),
+        subAgents: expect.arrayContaining([expect.objectContaining({ name: "org-ws-dev_repo_agent" })]),
       }),
     );
   });
@@ -319,9 +319,9 @@ describe("sendFeatureChatMessage — plan_mode subAgents auto-attach", () => {
     const callArgs = mockedCallStakwork.mock.calls[0][0] as { subAgents: { name: string }[] };
     const names = callArgs.subAgents.map((a) => a.name);
     // Both present, no duplicates
-    expect(names).toContain("shared-ws");
-    expect(names).toContain("auto-ws");
-    expect(names.filter((n) => n === "shared-ws")).toHaveLength(1);
+    expect(names).toContain("shared-ws_repo_agent");
+    expect(names).toContain("auto-ws_repo_agent");
+    expect(names.filter((n) => n === "shared-ws_repo_agent")).toHaveLength(1);
   });
 
   test("passes empty subAgents when org has no accessible workspaces and no mentions (single-ws org)", async () => {
