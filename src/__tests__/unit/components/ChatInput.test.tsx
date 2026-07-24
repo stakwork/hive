@@ -44,7 +44,7 @@ vi.mock("@/hooks/useControlKeyHold", () => ({
 }));
 
 vi.mock("@/hooks/useIsMobile", () => ({
-  useIsMobile: () => false, // Mock as desktop for tests
+  useIsMobile: vi.fn(() => false), // Mock as desktop for tests; can be overridden per-test
 }));
 
 vi.mock("@/lib/utils", () => ({
@@ -1583,7 +1583,30 @@ describe("Stop button (plan chat)", () => {
     // The stop button should only be in the input row (data-testid), not as old outline text button
     const stopButtons = screen.getAllByTestId("chat-stop-button");
     expect(stopButtons).toHaveLength(1);
-    // No duplicate stop controls — only one stop button total
+  });
+
+  test("renders Stop button as pill with 'Stop' text on desktop (isMobile=false)", () => {
+    // useIsMobile is already mocked as false (desktop) at the top of this file
+    render(<ChatInput {...basePlanProps} />);
+    const btn = screen.getByTestId("chat-stop-button");
+    expect(btn).toBeInTheDocument();
+    expect(screen.getByText("Stop")).toBeInTheDocument();
+  });
+
+  test("renders Stop button as icon-only circle on mobile (isMobile=true)", async () => {
+    const { useIsMobile } = await import("@/hooks/useIsMobile");
+    vi.mocked(useIsMobile).mockImplementation(() => true);
+    render(<ChatInput {...basePlanProps} />);
+    const btn = screen.getByTestId("chat-stop-button");
+    expect(btn).toBeInTheDocument();
+    expect(screen.queryByText("Stop")).not.toBeInTheDocument();
+    vi.mocked(useIsMobile).mockImplementation(() => false);
+  });
+
+  test("isStopping=true shows spinner and disables button on desktop", () => {
+    render(<ChatInput {...basePlanProps} isStopping={true} />);
+    const btn = screen.getByTestId("chat-stop-button");
+    expect(btn).toBeDisabled();
     expect(screen.queryByText("Stop")).not.toBeInTheDocument();
   });
 });
