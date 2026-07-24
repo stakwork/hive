@@ -3,6 +3,7 @@ import { validationError, serverError, forbiddenError, isApiError } from "@/type
 import { validateUserBelongsToOrg, validateWorkspaceAccess } from "@/services/workspace";
 import { ModelMessage } from "ai";
 import { getMiddlewareContext } from "@/lib/middleware/utils";
+import { getBaseUrl } from "@/lib/utils";
 import { resolveWorkspaceAccess } from "@/lib/auth/workspace-access";
 import {
   checkPublicChatBudget,
@@ -532,6 +533,11 @@ export async function POST(request: NextRequest) {
           // open clients animate the researched node.
           silentPusher: false,
           userTimezone,
+          // Thread the validated public base URL so workflowExplorerTools
+          // can build the webhook fan-back `webhookUrl` from a swarm-
+          // reachable host rather than relying on getBaseUrl() (which
+          // falls back to localhost:3000 without a request context).
+          publicBaseUrl: getBaseUrl(request.headers.get("host")),
           dispatchedResearch,
           dispatchedGraphWalks,
           // Inject the schedule_check tool when we have a fully-resolved

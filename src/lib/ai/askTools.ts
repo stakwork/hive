@@ -112,6 +112,18 @@ export async function repoAgent(
      * workflow runs, per-step params/outputs) against the Stakwork API.
      */
     stakworkApiKey?: string;
+    /**
+     * Webhook fan-back URL. When present, the swarm POSTs a terminal-status
+     * callback here in addition to serving the inline poll path
+     * (stakgraph `postTerminalWebhook`, payload `{ request_id, status:
+     * "completed"|"failed", result|error }`). Only set for canvas-linked
+     * workflow-explorer runs (see `workflowExplorerTools.ts`). Spreads into
+     * the request body verbatim; no other `repoAgent` caller is affected.
+     * SECURITY: stakgraph POSTs this URL verbatim with no custom headers,
+     * so the URL carries the single-use bearer token in its query string —
+     * NEVER log this value.
+     */
+    webhookUrl?: string;
   },
   /**
    * Optional Bifrost routing. When provided, the swarm-side `repo/agent`
