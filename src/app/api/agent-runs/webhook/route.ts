@@ -222,6 +222,16 @@ export async function POST(request: NextRequest) {
     });
 
     // ── Fan out to canvas conversation ────────────────────────────────────
+    // AgentRun is generalized: conversationId is null for non-canvas run
+    // types, which have their own webhook endpoints. A null here means the
+    // row was misrouted to this canvas-specific endpoint — the claim above
+    // still recorded the terminal state; there is just nowhere to deliver.
+    if (!row.conversationId) {
+      console.warn("[canvas-agent-run-fanout] webhook: row has no conversationId — claimed without fan-out", {
+        runId,
+      });
+      return NextResponse.json({ ok: true, note: "no delivery target" });
+    }
     await fanOutAgentRunToCanvas(
       { conversationId: row.conversationId, orgId: row.orgId, userId: row.userId },
       {

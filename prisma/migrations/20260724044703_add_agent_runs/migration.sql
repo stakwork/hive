@@ -5,7 +5,7 @@ CREATE TYPE "AgentRunStatus" AS ENUM ('PENDING', 'DELIVERED_INLINE', 'DELIVERED_
 CREATE TABLE "agent_runs" (
     "id" TEXT NOT NULL,
     "token_hash" TEXT NOT NULL,
-    "conversation_id" TEXT NOT NULL,
+    "conversation_id" TEXT,
     "org_id" TEXT NOT NULL,
     "user_id" TEXT NOT NULL,
     "title" TEXT NOT NULL,

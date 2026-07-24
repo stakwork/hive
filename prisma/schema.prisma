@@ -2264,7 +2264,10 @@ enum RecursionStatus {
   INACTIVE
 }
 
-/// Delivery-arbitration row for a canvas-linked workflow-explorer run.
+/// Delivery-arbitration row for a swarm agent run whose result may arrive
+/// inline (poll) or via a webhook callback. Today's only producer is the
+/// canvas-linked workflow-explorer run; other run types can reuse the table
+/// with their own webhook endpoint and delivery target (conversationId null).
 /// Exactly one of DELIVERED_INLINE or DELIVERED_WEBHOOK wins; the other
 /// path is a no-op. FAILED covers initiation errors, user cancellation,
 /// and explicit swarm failure/abort callbacks.
@@ -2272,7 +2275,9 @@ model AgentRun {
   id             String        @id @default(cuid())
   /// SHA-256 hash of the high-entropy callback bearer token. Never stored plaintext.
   tokenHash      String        @map("token_hash")
-  conversationId String        @map("conversation_id")
+  /// Delivery target for canvas-linked runs (SharedConversation id). Null for
+  /// future non-canvas run types, whose webhook endpoints deliver elsewhere.
+  conversationId String?       @map("conversation_id")
   orgId          String        @map("org_id")
   userId         String        @map("user_id")
   title          String
@@ -2287,7 +2292,7 @@ model AgentRun {
   @@map("agent_runs")
 }
 
-/// Status of a canvas-linked agent-run delivery arbitration row.
+/// Status of an agent-run delivery arbitration row.
 /// PENDING-forever is the known residual gap when the swarm process dies
 /// mid-run; a stale-row sweep is deferred to a follow-up (at which point
 /// @@index([status, createdAt]) should be added alongside the sweep query).

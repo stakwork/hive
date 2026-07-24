@@ -441,6 +441,32 @@ describe("POST /api/agent-runs/webhook", () => {
     expect(messages).toHaveLength(0);
   });
 
+  // ── Generalized rows (null conversationId) ────────────────────────────────
+
+  it("claims a row with no conversationId but skips fan-out (no delivery target)", async () => {
+    // AgentRun is generalized: non-canvas run types have conversationId null
+    // and their own webhook endpoints. If such a row reaches this canvas
+    // endpoint, the terminal state is still recorded but nothing is delivered.
+    const agentRun = await db.agentRun.create({
+      data: {
+        tokenHash: hashToken(rawToken),
+        conversationId: null,
+        orgId: org.id,
+        userId: user.id,
+        title: "Non-canvas run",
+      },
+    });
+    const req = makeWebhookRequest({ runId: agentRun.id, token: rawToken });
+    const res = await POST(req);
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.note).toBe("no delivery target");
+
+    const row = await db.agentRun.findUnique({ where: { id: agentRun.id } });
+    expect(row?.status).toBe("DELIVERED_WEBHOOK");
+    expect(notifyCanvasConversationUpdated).not.toHaveBeenCalled();
+  });
+
   // ── tokenHash gating of the claim ─────────────────────────────────────────
 
   it("wrong token cannot claim the row even if id is correct", async () => {
