@@ -1,5 +1,5 @@
 import { Button } from "@/components/ui/button";
-import { X, CheckCircle2, Loader2, Camera, Play, Square } from "lucide-react";
+import { X, CheckCircle2, Loader2, Camera, Play, Square, XCircle } from "lucide-react";
 import { useRef, useEffect, useState } from "react";
 import { Screenshot } from "@/types/common";
 import { ScreenshotModal } from "@/components/ScreenshotModal";
@@ -31,6 +31,8 @@ interface ActionsListProps {
   screenshots?: Screenshot[];
   title?: string;
   onReplayToggle?: () => void;
+  // Index of the action the replay failed on (issue #756). -1 / undefined = none.
+  failedActionIndex?: number;
 }
 
 // Helper function to extract the most descriptive element identifier
@@ -181,6 +183,7 @@ export function ActionsList({
   screenshots = [],
   title,
   onReplayToggle,
+  failedActionIndex = -1,
 }: ActionsListProps) {
   const actionRefs = useRef<(HTMLDivElement | null)[]>([]);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -203,7 +206,12 @@ export function ActionsList({
   }, [isReplaying, currentActionIndex]);
 
   // Get action status based on replay progress
-  const getActionStatus = (index: number): "pending" | "active" | "completed" => {
+  const getActionStatus = (
+    index: number,
+  ): "pending" | "active" | "completed" | "error" => {
+    // The failed step is marked even after replay stops, so this check comes
+    // first and is independent of isReplaying (issue #756).
+    if (failedActionIndex >= 0 && index === failedActionIndex) return "error";
     if (!isReplaying) return "pending";
     if (index < currentActionIndex) return "completed";
     if (index === currentActionIndex) return "active";
@@ -211,12 +219,16 @@ export function ActionsList({
   };
 
   // Get status icon for action
-  const getStatusIcon = (status: "pending" | "active" | "completed") => {
+  const getStatusIcon = (
+    status: "pending" | "active" | "completed" | "error",
+  ) => {
     switch (status) {
       case "completed":
         return <CheckCircle2 className="h-3 w-3 text-green-500 flex-shrink-0" />;
       case "active":
         return <Loader2 className="h-3 w-3 text-blue-500 animate-spin flex-shrink-0" />;
+      case "error":
+        return <XCircle className="h-3 w-3 text-red-500 flex-shrink-0" />;
       default:
         return null;
     }
@@ -281,6 +293,7 @@ export function ActionsList({
               const status = getActionStatus(index);
               const isActive = status === "active";
               const isCompleted = status === "completed";
+              const isError = status === "error";
               const screenshot = getScreenshotForAction(index);
               const actionType = action.type;
               // Only waitForURL actions get screenshots (goto is skipped)
@@ -296,16 +309,18 @@ export function ActionsList({
                   className={`flex items-center gap-2 rounded border-l-4 ${getActionBorderColor(
                     actionType,
                   )} p-1.5 transition-all duration-200 ${
-                    isActive
-                      ? "bg-blue-100 dark:bg-blue-900/30 shadow-md ring-2 ring-blue-400 dark:ring-blue-600"
-                      : isCompleted
-                        ? "bg-green-50 dark:bg-green-900/20 opacity-70"
-                        : "bg-muted/50 hover:bg-muted"
+                    isError
+                      ? "bg-red-100 dark:bg-red-900/30 shadow-md ring-2 ring-red-400 dark:ring-red-600"
+                      : isActive
+                        ? "bg-blue-100 dark:bg-blue-900/30 shadow-md ring-2 ring-blue-400 dark:ring-blue-600"
+                        : isCompleted
+                          ? "bg-green-50 dark:bg-green-900/20 opacity-70"
+                          : "bg-muted/50 hover:bg-muted"
                   }`}
                   title={`${actionType}: ${action.url || action.locator?.text || action.locator?.primary || action.value || ""}`}
                   data-testid={`action-item-${index}`}
                 >
-                  {isReplaying && getStatusIcon(status)}
+                  {(isReplaying || isError) && getStatusIcon(status)}
                   {hasScreenshot && (
                     <button
                       onClick={() => setSelectedScreenshot(screenshot)}
