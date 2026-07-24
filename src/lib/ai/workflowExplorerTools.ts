@@ -194,7 +194,7 @@ export function buildWorkflowExplorerTools(ctx?: CapabilityContext): ToolSet {
           .string()
           .describe(
             "Self-contained research task for the workflow explorer. State the goal of the workflow being designed, the input/output shapes if known (e.g. 'takes a video url, produces a transcript with timestamps'), and ask for reusable building blocks and gaps. " +
-              "When run_step is true, also name the workflow (id if known) and step id, give the input values the user supplied (or tell it to discover required inputs and use stated test values / mock_mode), and ask for the step's resolved inputs and outputs.",
+              "When run_step is true, also name the workflow (id if known) and step id, give the input values the user supplied (or tell it to discover required inputs and use stated test values / mock_mode), and ask for the step's resolved inputs and outputs. By default the run targets the published version; if the user wants a different version (e.g. a draft/unpublished one), name the target workflow_version_id.",
           ),
         run_step: z
           .boolean()
