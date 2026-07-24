@@ -22,9 +22,6 @@ const mockDbWorkspace = vi.hoisted(() => vi.fn());
 const mockDbStakworkRunFindMany = vi.hoisted(() => vi.fn());
 const mockDbStakworkRunFindFirst = vi.hoisted(() => vi.fn());
 const mockDbPlatformConfig = vi.hoisted(() => vi.fn());
-const mockSetEvalSetRecursion = vi.hoisted(() => vi.fn());
-const mockKgGetSubgraph = vi.hoisted(() => vi.fn());
-const mockComputeAttemptStats = vi.hoisted(() => vi.fn());
 
 vi.mock("@/services/janitor", () => ({
   isLegalBenchmarkRecursionEnabledForCron: mockIsEnabled,
@@ -33,7 +30,6 @@ vi.mock("@/services/janitor", () => ({
 vi.mock("@/services/legal-benchmark-recursion", () => ({
   listRecursionEvalSets: mockListRecursionEvalSets,
   writeBackEvalProjectId: mockWriteBackEvalProjectId,
-  setEvalSetRecursion: mockSetEvalSetRecursion,
 }));
 
 vi.mock("@/services/legal-benchmark-eval", () => ({
@@ -50,14 +46,6 @@ vi.mock("@/lib/helpers/jarvis-config", () => ({
 
 vi.mock("@/lib/service-factory", () => ({
   stakworkService: mockStakworkService,
-}));
-
-vi.mock("@/lib/ai/kg-adapter", () => ({
-  kgGetSubgraph: mockKgGetSubgraph,
-}));
-
-vi.mock("@/services/legal-recursion-attempt-stats", () => ({
-  computeAttemptStats: mockComputeAttemptStats,
 }));
 
 vi.mock("@/lib/db", () => ({
@@ -89,12 +77,7 @@ vi.mock("@/utils/conversions", () => ({
 
 // ── Import after mocks ────────────────────────────────────────────────────────
 
-import {
-  executeScheduledLegalBenchmarkRecursion,
-  RECURSION_MAX_CONCURRENT_KEY,
-  RECURSION_MAX_ATTEMPTS_KEY,
-  RECURSION_PLATEAU_LIMIT_KEY,
-} from "@/services/legal-recursion-cron";
+import { executeScheduledLegalBenchmarkRecursion, RECURSION_MAX_CONCURRENT_KEY } from "@/services/legal-recursion-cron";
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
 
@@ -143,19 +126,7 @@ function setupDefaults() {
   mockGetSwarmAccessByWorkspaceId.mockResolvedValue(MOCK_SWARM_SUCCESS);
   mockGetJarvisConfigForWorkspace.mockResolvedValue(MOCK_JARVIS_CONFIG);
   mockListRecursionEvalSets.mockResolvedValue({ ok: true, nodes: [] });
-  mockDbPlatformConfig.mockImplementation(({ where }: { where: { key: string } }) => {
-    // Branch on the queried key so tests for different keys don't interfere
-    if (where.key === RECURSION_MAX_CONCURRENT_KEY) return Promise.resolve(null); // → default 3
-    if (where.key === RECURSION_MAX_ATTEMPTS_KEY) return Promise.resolve(null);    // → default 10
-    if (where.key === RECURSION_PLATEAU_LIMIT_KEY) return Promise.resolve(null);   // → default 3
-    return Promise.resolve(null);
-  });
-  mockSetEvalSetRecursion.mockResolvedValue({ ok: true });
-  mockKgGetSubgraph.mockResolvedValue({
-    ok: true,
-    subgraph: { nodes: [], edges: [] },
-  });
-  mockComputeAttemptStats.mockReturnValue({ attemptCount: 0, plateauStreak: 0 });
+  mockDbPlatformConfig.mockResolvedValue(null); // absent → default 3
   mockDbStakworkRunFindMany.mockResolvedValue([]);
   mockDbStakworkRunFindFirst.mockResolvedValue(null); // no recent eval (safety-net)
   mockWriteBackEvalProjectId.mockResolvedValue({ ok: true });
@@ -717,227 +688,82 @@ describe("executeScheduledLegalBenchmarkRecursion — re-fire guard (write-back 
   });
 });
 
-// ── Attempt/plateau cap gate tests ────────────────────────────────────────────
+// ── Dedup regression: cron dispatch loop selects correct node when duplicate present ──
 
-describe("executeScheduledLegalBenchmarkRecursion — attempt/plateau cap gate", () => {
+describe("executeScheduledLegalBenchmarkRecursion — dedup regression", () => {
   beforeEach(() => {
-    vi.resetAllMocks();
-    setupDefaults();
+    vi.clearAllMocks();
+    mockIsEnabled.mockResolvedValue(true);
+    mockDbWorkspace.mockResolvedValue(MOCK_WORKSPACE);
+    mockGetSwarmAccessByWorkspaceId.mockResolvedValue(MOCK_SWARM_SUCCESS);
+    mockGetJarvisConfigForWorkspace.mockResolvedValue(MOCK_JARVIS_CONFIG);
+    mockDbPlatformConfig.mockResolvedValue(null);
+    mockDbStakworkRunFindMany.mockResolvedValue([]);
+    mockDbStakworkRunFindFirst.mockResolvedValue(null);
+    mockWriteBackEvalProjectId.mockResolvedValue({ ok: true });
   });
 
-  // ── Attempt cap ──────────────────────────────────────────────────────────────
-
-  it("skips and disables recursion when attemptCount >= maxAttempts cap", async () => {
+  test("dispatch loop uses dedup-corrected node (real ref_id) — not phantom's ref_id", async () => {
+    // SCENARIO: listRecursionEvalSets now fetches unfiltered and deduplicates before
+    // filtering for recursion=true. The phantom Evalset duplicate (recursion:true default)
+    // must NOT win when the real EvalSet (recursion:false) is also present.
+    //
+    // Here we simulate: the phantom has recursion:true, the real has recursion:false.
+    // After dedup, the real node wins → listRecursionEvalSets returns 0 enabled entries
+    // → executeScheduledLegalBenchmarkRecursion dispatches 0 runs.
+    //
+    // This confirms the cron does NOT dispatch against stale phantom nodes.
     mockListRecursionEvalSets.mockResolvedValue({
       ok: true,
-      nodes: [MOCK_EVAL_SET],
+      nodes: [], // dedup-corrected: real node (recursion:false) won → none enabled
     });
-    mockDbStakworkRunFindMany.mockResolvedValue([MOCK_RUNNER_RUN]);
-    mockKgGetSubgraph.mockResolvedValue({
-      ok: true,
-      subgraph: { nodes: [], edges: [] },
-    });
-    // attemptCount = 10 >= effectiveMaxAttempts default (10)
-    mockComputeAttemptStats.mockReturnValue({ attemptCount: 10, plateauStreak: 0 });
 
     const result = await executeScheduledLegalBenchmarkRecursion();
 
-    // Dispatch must NOT happen
+    // No dispatches against phantom-enabled duplicates
     expect(mockDispatchLegalBenchmarkEvalRun).not.toHaveBeenCalled();
-    // setEvalSetRecursion must be called with false to disable
-    expect(mockSetEvalSetRecursion).toHaveBeenCalledWith(
-      MOCK_JARVIS_CONFIG,
-      MOCK_EVAL_SET.ref_id,
-      false,
-    );
-    // Counter must be incremented
-    expect(result.attemptCapped).toBe(1);
-    expect(result.plateauCapped).toBe(0);
-    // Generic skipped must NOT be incremented for capped EvalSets
-    expect(result.skipped).toBe(0);
-  });
-
-  it("skips and disables recursion when plateauStreak >= plateauLimit cap", async () => {
-    mockListRecursionEvalSets.mockResolvedValue({
-      ok: true,
-      nodes: [MOCK_EVAL_SET],
-    });
-    mockDbStakworkRunFindMany.mockResolvedValue([MOCK_RUNNER_RUN]);
-    mockKgGetSubgraph.mockResolvedValue({
-      ok: true,
-      subgraph: { nodes: [], edges: [] },
-    });
-    // plateauStreak = 3 >= effectivePlateauLimit default (3); attemptCount below cap
-    mockComputeAttemptStats.mockReturnValue({ attemptCount: 2, plateauStreak: 3 });
-
-    const result = await executeScheduledLegalBenchmarkRecursion();
-
-    expect(mockDispatchLegalBenchmarkEvalRun).not.toHaveBeenCalled();
-    expect(mockSetEvalSetRecursion).toHaveBeenCalledWith(
-      MOCK_JARVIS_CONFIG,
-      MOCK_EVAL_SET.ref_id,
-      false,
-    );
-    expect(result.plateauCapped).toBe(1);
-    expect(result.attemptCapped).toBe(0);
-    expect(result.skipped).toBe(0);
-  });
-
-  it("proceeds to dispatch when neither cap is hit", async () => {
-    mockListRecursionEvalSets.mockResolvedValue({
-      ok: true,
-      nodes: [MOCK_EVAL_SET],
-    });
-    mockDbStakworkRunFindMany.mockResolvedValue([MOCK_RUNNER_RUN]);
-    mockKgGetSubgraph.mockResolvedValue({
-      ok: true,
-      subgraph: { nodes: [], edges: [] },
-    });
-    // Below both caps
-    mockComputeAttemptStats.mockReturnValue({ attemptCount: 3, plateauStreak: 1 });
-
-    const result = await executeScheduledLegalBenchmarkRecursion();
-
-    expect(mockDispatchLegalBenchmarkEvalRun).toHaveBeenCalledOnce();
-    expect(mockSetEvalSetRecursion).not.toHaveBeenCalled();
-    expect(result.dispatched).toBe(1);
-    expect(result.attemptCapped).toBe(0);
-    expect(result.plateauCapped).toBe(0);
-  });
-
-  // ── setEvalSetRecursion write failure after cap ──────────────────────────────
-
-  it("skips dispatch even if setEvalSetRecursion(false) fails after attempt cap", async () => {
-    mockListRecursionEvalSets.mockResolvedValue({
-      ok: true,
-      nodes: [MOCK_EVAL_SET],
-    });
-    mockDbStakworkRunFindMany.mockResolvedValue([MOCK_RUNNER_RUN]);
-    mockKgGetSubgraph.mockResolvedValue({
-      ok: true,
-      subgraph: { nodes: [], edges: [] },
-    });
-    mockComputeAttemptStats.mockReturnValue({ attemptCount: 10, plateauStreak: 0 });
-    // Disable write fails
-    mockSetEvalSetRecursion.mockRejectedValue(new Error("Graph write timeout"));
-
-    const result = await executeScheduledLegalBenchmarkRecursion();
-
-    // Dispatch still must not happen
-    expect(mockDispatchLegalBenchmarkEvalRun).not.toHaveBeenCalled();
-    // Cap counter still incremented
-    expect(result.attemptCapped).toBe(1);
-    // Errors array should NOT contain this (it's a distinct logger.error, not pushed to errors[])
-    // The pass completes without crashing
+    expect(result.dispatched).toBe(0);
     expect(result.success).toBe(true);
   });
 
-  // ── kgGetSubgraph failure = fail-open ────────────────────────────────────────
+  test("dispatch loop dispatches to the correct dedup-corrected node when it is genuinely enabled", async () => {
+    const REAL_ENABLED_EVALSET = {
+      ref_id: "ref-real-canonical-001",
+      id: "antitrust/test-task-enabled",
+      name: "Antitrust Test Task (Enabled)",
+      recursion: true,
+      projectId: null,
+    };
 
-  it("proceeds to dispatch when kgGetSubgraph fails (fail-open)", async () => {
     mockListRecursionEvalSets.mockResolvedValue({
       ok: true,
-      nodes: [MOCK_EVAL_SET],
+      // Dedup already done upstream — only the real enabled node is returned
+      nodes: [REAL_ENABLED_EVALSET],
     });
-    mockDbStakworkRunFindMany.mockResolvedValue([MOCK_RUNNER_RUN]);
-    // Simulate subgraph fetch failure
-    mockKgGetSubgraph.mockResolvedValue({
-      ok: false,
-      error: "Jarvis /graph/subgraph returned HTTP 503",
+
+    // Simulate a matching completed runner run for this task
+    mockDbStakworkRunFindMany.mockResolvedValue([
+      {
+        id: "runner-run-001",
+        result: JSON.stringify({ taskSlug: "antitrust/test-task-enabled" }),
+      },
+    ]);
+
+    mockDispatchLegalBenchmarkEvalRun.mockResolvedValue({
+      evalRunId: "eval-run-001",
+      projectId: 999,
     });
 
     const result = await executeScheduledLegalBenchmarkRecursion();
 
-    // Must still dispatch — fail-open means the gate is skipped, not blocking
+    // Dispatch was called for the real enabled node
     expect(mockDispatchLegalBenchmarkEvalRun).toHaveBeenCalledOnce();
-    expect(mockSetEvalSetRecursion).not.toHaveBeenCalled();
+    // Write-back was called with the real node's ref_id
+    expect(mockWriteBackEvalProjectId).toHaveBeenCalledWith(
+      MOCK_JARVIS_CONFIG,
+      "ref-real-canonical-001",
+      999,
+    );
     expect(result.dispatched).toBe(1);
-    expect(result.attemptCapped).toBe(0);
-    expect(result.plateauCapped).toBe(0);
-  });
-
-  it("does NOT call computeAttemptStats when kgGetSubgraph fails", async () => {
-    mockListRecursionEvalSets.mockResolvedValue({
-      ok: true,
-      nodes: [MOCK_EVAL_SET],
-    });
-    mockDbStakworkRunFindMany.mockResolvedValue([MOCK_RUNNER_RUN]);
-    mockKgGetSubgraph.mockResolvedValue({ ok: false, error: "network error" });
-
-    await executeScheduledLegalBenchmarkRecursion();
-
-    expect(mockComputeAttemptStats).not.toHaveBeenCalled();
-  });
-
-  // ── Config key constants ──────────────────────────────────────────────────────
-
-  it("RECURSION_MAX_ATTEMPTS_KEY is exported and equals the expected string", () => {
-    expect(RECURSION_MAX_ATTEMPTS_KEY).toBe("recursionMaxAttempts");
-  });
-
-  it("RECURSION_PLATEAU_LIMIT_KEY is exported and equals the expected string", () => {
-    expect(RECURSION_PLATEAU_LIMIT_KEY).toBe("recursionPlateauLimit");
-  });
-
-  it("reads RECURSION_MAX_ATTEMPTS_KEY from PlatformConfig", async () => {
-    mockListRecursionEvalSets.mockResolvedValue({
-      ok: true,
-      nodes: [MOCK_EVAL_SET],
-    });
-    mockDbStakworkRunFindMany.mockResolvedValue([MOCK_RUNNER_RUN]);
-    // Use a custom cap
-    mockDbPlatformConfig.mockImplementation(({ where }: { where: { key: string } }) => {
-      if (where.key === RECURSION_MAX_ATTEMPTS_KEY) return Promise.resolve({ value: "5" });
-      return Promise.resolve(null);
-    });
-    // Return attemptCount below the custom cap to ensure dispatch
-    mockComputeAttemptStats.mockReturnValue({ attemptCount: 4, plateauStreak: 0 });
-
-    await executeScheduledLegalBenchmarkRecursion();
-
-    expect(mockDbPlatformConfig).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { key: RECURSION_MAX_ATTEMPTS_KEY } }),
-    );
-  });
-
-  it("reads RECURSION_PLATEAU_LIMIT_KEY from PlatformConfig", async () => {
-    mockListRecursionEvalSets.mockResolvedValue({
-      ok: true,
-      nodes: [MOCK_EVAL_SET],
-    });
-    mockDbStakworkRunFindMany.mockResolvedValue([MOCK_RUNNER_RUN]);
-    mockDbPlatformConfig.mockImplementation(({ where }: { where: { key: string } }) => {
-      if (where.key === RECURSION_PLATEAU_LIMIT_KEY) return Promise.resolve({ value: "5" });
-      return Promise.resolve(null);
-    });
-    mockComputeAttemptStats.mockReturnValue({ attemptCount: 0, plateauStreak: 4 });
-
-    await executeScheduledLegalBenchmarkRecursion();
-
-    expect(mockDbPlatformConfig).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { key: RECURSION_PLATEAU_LIMIT_KEY } }),
-    );
-  });
-
-  // ── Attempt cap uses custom PlatformConfig value ─────────────────────────────
-
-  it("respects custom maxAttempts from PlatformConfig (cap at 5)", async () => {
-    mockDbPlatformConfig.mockImplementation(({ where }: { where: { key: string } }) => {
-      if (where.key === RECURSION_MAX_ATTEMPTS_KEY) return Promise.resolve({ value: "5" });
-      return Promise.resolve(null);
-    });
-    mockListRecursionEvalSets.mockResolvedValue({
-      ok: true,
-      nodes: [MOCK_EVAL_SET],
-    });
-    mockDbStakworkRunFindMany.mockResolvedValue([MOCK_RUNNER_RUN]);
-    mockKgGetSubgraph.mockResolvedValue({ ok: true, subgraph: { nodes: [], edges: [] } });
-    // 5 attempts >= cap of 5 → should be capped
-    mockComputeAttemptStats.mockReturnValue({ attemptCount: 5, plateauStreak: 0 });
-
-    const result = await executeScheduledLegalBenchmarkRecursion();
-
-    expect(mockDispatchLegalBenchmarkEvalRun).not.toHaveBeenCalled();
-    expect(result.attemptCapped).toBe(1);
   });
 });

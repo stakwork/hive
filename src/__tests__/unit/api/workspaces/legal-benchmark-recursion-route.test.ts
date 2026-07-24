@@ -465,3 +465,97 @@ describe("PATCH /api/workspaces/[slug]/legal/benchmarks/recursion/[refId]", () =
     expect(mockGetJarvisConfigForWorkspace).toHaveBeenCalledWith("ws-openlaw");
   });
 });
+
+// ── GET with ?enabledOnly=true query parameter ────────────────────────────────
+
+describe("GET /api/workspaces/[slug]/legal/benchmarks/recursion?enabledOnly=true", () => {
+  const MOCK_ENABLED_LIST = [
+    { ref_id: "ref-evalset-1", id: "practice-area/draft-contract", name: "Draft a contract", recursion: true },
+  ];
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockGetWorkspaceSwarmAccess.mockResolvedValue(MOCK_SWARM_ACCESS);
+    mockListRecursionEvalSets.mockResolvedValue({ ok: true, nodes: MOCK_ENABLED_LIST });
+    mockCheckRateLimit.mockResolvedValue({ allowed: true });
+  });
+
+  function makeGetRequestWithEnabledOnly(slug = "openlaw") {
+    return new NextRequest(
+      `http://localhost/api/workspaces/${slug}/legal/benchmarks/recursion?enabledOnly=true`,
+      { method: "GET" },
+    );
+  }
+
+  test("calls listRecursionEvalSets (not listAllEvalSets) when enabledOnly=true", async () => {
+    const res = await GET(makeGetRequestWithEnabledOnly(), makeParams());
+    expect(res.status).toBe(200);
+    expect(mockListRecursionEvalSets).toHaveBeenCalledOnce();
+    expect(mockListAllEvalSets).not.toHaveBeenCalled();
+  });
+
+  test("returns only recursion-enabled entries when enabledOnly=true", async () => {
+    const res = await GET(makeGetRequestWithEnabledOnly(), makeParams());
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.success).toBe(true);
+    expect(body.data).toEqual(MOCK_ENABLED_LIST);
+    expect(body.data).toHaveLength(1);
+  });
+
+  test("returns 404 for non-openlaw slug even with enabledOnly=true", async () => {
+    const res = await GET(
+      new NextRequest("http://localhost/api/workspaces/other/legal/benchmarks/recursion?enabledOnly=true", { method: "GET" }),
+      makeParams("other"),
+    );
+    expect(res.status).toBe(404);
+    expect(mockListRecursionEvalSets).not.toHaveBeenCalled();
+    expect(mockListAllEvalSets).not.toHaveBeenCalled();
+  });
+
+  test("returns 401 for unauthenticated request with enabledOnly=true", async () => {
+    mockRequireAuth.mockReturnValueOnce(
+      NextResponse.json({ error: "Unauthorized" }, { status: 401 }),
+    );
+
+    const res = await GET(makeGetRequestWithEnabledOnly(), makeParams());
+    expect(res.status).toBe(401);
+    // No service calls should be made
+    expect(mockListRecursionEvalSets).not.toHaveBeenCalled();
+    expect(mockListAllEvalSets).not.toHaveBeenCalled();
+  });
+
+  test("returns 502 when listRecursionEvalSets fails with enabledOnly=true", async () => {
+    mockListRecursionEvalSets.mockResolvedValue({ ok: false, error: "Jarvis unreachable" });
+
+    const res = await GET(makeGetRequestWithEnabledOnly(), makeParams());
+    expect(res.status).toBe(502);
+  });
+
+  test("returns 200 with empty array when no enabled EvalSets with enabledOnly=true", async () => {
+    mockListRecursionEvalSets.mockResolvedValue({ ok: true, nodes: [] });
+
+    const res = await GET(makeGetRequestWithEnabledOnly(), makeParams());
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.data).toEqual([]);
+  });
+
+  test("auth and swarm access gates run unconditionally before Jarvis call with enabledOnly=true", async () => {
+    // Both auth and swarm access are checked before calling either list function
+    const res = await GET(makeGetRequestWithEnabledOnly(), makeParams());
+    expect(res.status).toBe(200);
+    expect(mockGetWorkspaceSwarmAccess).toHaveBeenCalledOnce();
+    expect(mockRequireAuth).toHaveBeenCalledOnce();
+    expect(mockListRecursionEvalSets).toHaveBeenCalledOnce();
+  });
+
+  test("without enabledOnly, calls listAllEvalSets (regression guard)", async () => {
+    mockListAllEvalSets.mockResolvedValue({ ok: true, nodes: MOCK_RECURSION_LIST_MIXED });
+
+    const res = await GET(makeGetRequest(), makeParams());
+    expect(res.status).toBe(200);
+    expect(mockListAllEvalSets).toHaveBeenCalledOnce();
+    expect(mockListRecursionEvalSets).not.toHaveBeenCalled();
+  });
+});
