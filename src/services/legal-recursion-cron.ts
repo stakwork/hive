@@ -29,7 +29,7 @@ import {
 import { dispatchLegalBenchmarkEvalRun } from "@/services/legal-benchmark-eval";
 import { getSwarmAccessByWorkspaceId } from "@/lib/helpers/swarm-access";
 import { getJarvisConfigForWorkspace } from "@/lib/helpers/jarvis-config";
-import { kgGetSubgraph } from "@/lib/ai/kg-adapter";
+import { walkFixChain } from "@/lib/harvey-lab/fix-chain-walker";
 import { computeAttemptStats } from "@/services/legal-recursion-attempt-stats";
 import { stakworkService } from "@/lib/service-factory";
 import { mapStakworkStatus } from "@/utils/conversions";
@@ -450,81 +450,109 @@ export async function executeScheduledLegalBenchmarkRecursion(): Promise<Recursi
     }
 
     // ── Attempt/plateau cap gate (runs last, after cheap checks) ─────────────
-    // Fetch subgraph rooted at this EvalSet and compute attempt/plateau stats.
-    // Fail-open on subgraph fetch error — a transient graph hiccup must not
-    // permanently block dispatch.  The only downside of skipping this gate is
-    // one fewer stopping condition, not a duplicate-dispatch risk.
-    const subgraphResult = await kgGetSubgraph(
-      jarvisConfig.jarvisUrl,
-      jarvisConfig.apiKey,
-      evalSet.ref_id,
-    );
-
-    if (!subgraphResult.ok) {
+    // Walk the fix chain for this EvalSet and compute attempt/plateau stats.
+    // Uses the wider dual-branch scope (HAS_BASELINE_TRIGGER + HAS_TRIGGER) to
+    // match collectAllAttempts, which counts across ALL trigger branches.
+    //
+    // Fail-open on walk error — a transient Jarvis hiccup must not permanently
+    // block dispatch.  The only downside of skipping this gate is one fewer
+    // stopping condition, not a duplicate-dispatch risk.
+    //
+    // partial: true is treated distinctly from a full failure:
+    //   - Full failure (throws / returns nothing): fail-open, proceed to dispatch.
+    //   - partial: true: log it and SKIP cap enforcement for this EvalSet on
+    //     this pass — don't disable recursion based on incomplete data.
+    let walkResult: Awaited<ReturnType<typeof walkFixChain>> | null = null;
+    let walkFailed = false;
+    try {
+      walkResult = await walkFixChain(
+        jarvisConfig.jarvisUrl,
+        jarvisConfig.apiKey,
+        evalSet.ref_id,
+        { triggerEdgeTypes: ["HAS_BASELINE_TRIGGER", "HAS_TRIGGER"] },
+      );
+    } catch (walkErr) {
+      walkFailed = true;
       logger.warn(
-        `${LOG_PREFIX} kgGetSubgraph failed for EvalSet ${evalSet.ref_id} — proceeding to dispatch (fail-open): ${subgraphResult.error}`,
+        `${LOG_PREFIX} walkFixChain threw for EvalSet ${evalSet.ref_id} — proceeding to dispatch (fail-open): ${walkErr instanceof Error ? walkErr.message : String(walkErr)}`,
         "legal",
-        { refId: evalSet.ref_id, error: subgraphResult.error },
+        { refId: evalSet.ref_id, error: walkErr instanceof Error ? walkErr.message : String(walkErr) },
       );
-    } else {
-      // Resolve cutoff from the EvalSet's recursionEnabledAt property (if present)
-      const recursionEnabledAtRaw = (evalSet as RecursionEvalSetEntry & { recursionEnabledAt?: number | string | null }).recursionEnabledAt;
-      let cutoff: Date | undefined;
-      if (recursionEnabledAtRaw != null) {
-        const ts = typeof recursionEnabledAtRaw === "number"
-          ? recursionEnabledAtRaw
-          : parseFloat(String(recursionEnabledAtRaw));
-        if (!isNaN(ts)) {
-          cutoff = new Date(ts * 1000); // convert Unix seconds to ms
-        }
-      }
+    }
 
-      const stats = computeAttemptStats(subgraphResult.subgraph, evalSet.ref_id, { cutoff });
-
-      logger.info(
-        `${LOG_PREFIX} EvalSet ${evalSet.ref_id} attemptCount=${stats.attemptCount} plateauStreak=${stats.plateauStreak} maxAttempts=${effectiveMaxAttempts} plateauLimit=${effectivePlateauLimit}`,
-        "legal",
-        { refId: evalSet.ref_id, attemptCount: stats.attemptCount, plateauStreak: stats.plateauStreak },
-      );
-
-      if (stats.attemptCount >= effectiveMaxAttempts) {
-        logger.info(
-          `${LOG_PREFIX} EvalSet ${evalSet.ref_id} hit attempt cap (${stats.attemptCount} >= ${effectiveMaxAttempts}) — disabling recursion`,
+    if (!walkFailed && walkResult !== null) {
+      if (walkResult.partial) {
+        // Incomplete data — do NOT enforce caps (would reintroduce a quieter
+        // version of the original bug: silently truncated attempt counts).
+        logger.warn(
+          `${LOG_PREFIX} walkFixChain returned partial result for EvalSet ${evalSet.ref_id} — skipping cap enforcement for this pass`,
           "legal",
-          { refId: evalSet.ref_id, attemptCount: stats.attemptCount, cap: effectiveMaxAttempts },
+          { refId: evalSet.ref_id, failedBranches: walkResult.failedBranches },
         );
-        try {
-          await setEvalSetRecursion(jarvisConfig, evalSet.ref_id, false);
-        } catch (disableErr) {
-          logger.error(
-            `${LOG_PREFIX} setEvalSetRecursion(false) failed for EvalSet ${evalSet.ref_id} after attempt cap — will retry next pass: ${disableErr instanceof Error ? disableErr.message : String(disableErr)}`,
-            "legal",
-            { refId: evalSet.ref_id },
-          );
-        }
-        result.attemptCapped++;
-        continue;
-      }
+        // fall through to dispatch below
+      } else {
+        // Full, complete walk — apply attempt/plateau cap gate.
 
-      if (stats.plateauStreak >= effectivePlateauLimit) {
-        logger.info(
-          `${LOG_PREFIX} EvalSet ${evalSet.ref_id} hit plateau cap (${stats.plateauStreak} >= ${effectivePlateauLimit}) — disabling recursion`,
-          "legal",
-          { refId: evalSet.ref_id, plateauStreak: stats.plateauStreak, cap: effectivePlateauLimit },
-        );
-        try {
-          await setEvalSetRecursion(jarvisConfig, evalSet.ref_id, false);
-        } catch (disableErr) {
-          logger.error(
-            `${LOG_PREFIX} setEvalSetRecursion(false) failed for EvalSet ${evalSet.ref_id} after plateau cap — will retry next pass: ${disableErr instanceof Error ? disableErr.message : String(disableErr)}`,
-            "legal",
-            { refId: evalSet.ref_id },
-          );
+        // Resolve cutoff from the EvalSet's recursionEnabledAt property (if present)
+        const recursionEnabledAtRaw = (evalSet as RecursionEvalSetEntry & { recursionEnabledAt?: number | string | null }).recursionEnabledAt;
+        let cutoff: Date | undefined;
+        if (recursionEnabledAtRaw != null) {
+          const ts = typeof recursionEnabledAtRaw === "number"
+            ? recursionEnabledAtRaw
+            : parseFloat(String(recursionEnabledAtRaw));
+          if (!isNaN(ts)) {
+            cutoff = new Date(ts * 1000); // convert Unix seconds to ms
+          }
         }
-        result.plateauCapped++;
-        continue;
+
+        const stats = computeAttemptStats(walkResult, evalSet.ref_id, { cutoff });
+
+        logger.info(
+          `${LOG_PREFIX} EvalSet ${evalSet.ref_id} attemptCount=${stats.attemptCount} plateauStreak=${stats.plateauStreak} maxAttempts=${effectiveMaxAttempts} plateauLimit=${effectivePlateauLimit}`,
+          "legal",
+          { refId: evalSet.ref_id, attemptCount: stats.attemptCount, plateauStreak: stats.plateauStreak },
+        );
+
+        if (stats.attemptCount >= effectiveMaxAttempts) {
+          logger.info(
+            `${LOG_PREFIX} EvalSet ${evalSet.ref_id} hit attempt cap (${stats.attemptCount} >= ${effectiveMaxAttempts}) — disabling recursion`,
+            "legal",
+            { refId: evalSet.ref_id, attemptCount: stats.attemptCount, cap: effectiveMaxAttempts },
+          );
+          try {
+            await setEvalSetRecursion(jarvisConfig, evalSet.ref_id, false);
+          } catch (disableErr) {
+            logger.error(
+              `${LOG_PREFIX} setEvalSetRecursion(false) failed for EvalSet ${evalSet.ref_id} after attempt cap — will retry next pass: ${disableErr instanceof Error ? disableErr.message : String(disableErr)}`,
+              "legal",
+              { refId: evalSet.ref_id },
+            );
+          }
+          result.attemptCapped++;
+          continue;
+        }
+
+        if (stats.plateauStreak >= effectivePlateauLimit) {
+          logger.info(
+            `${LOG_PREFIX} EvalSet ${evalSet.ref_id} hit plateau cap (${stats.plateauStreak} >= ${effectivePlateauLimit}) — disabling recursion`,
+            "legal",
+            { refId: evalSet.ref_id, plateauStreak: stats.plateauStreak, cap: effectivePlateauLimit },
+          );
+          try {
+            await setEvalSetRecursion(jarvisConfig, evalSet.ref_id, false);
+          } catch (disableErr) {
+            logger.error(
+              `${LOG_PREFIX} setEvalSetRecursion(false) failed for EvalSet ${evalSet.ref_id} after plateau cap — will retry next pass: ${disableErr instanceof Error ? disableErr.message : String(disableErr)}`,
+              "legal",
+              { refId: evalSet.ref_id },
+            );
+          }
+          result.plateauCapped++;
+          continue;
+        }
       }
     }
+    // walkFailed === true: fail-open — proceed to dispatch exactly as before
 
     // Dispatch with bypass of rerun guards
     try {
