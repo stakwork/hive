@@ -145,7 +145,11 @@ export type CanvasConversationUpdateReason =
   | "automation"
   // A graph-walk sub-agent completed and fanned its synthesized answer
   // back into the conversation as an assistant bubble.
-  | "graph_walk";
+  | "graph_walk"
+  // A canvas-linked agent run (e.g. workflow-explorer) delivered its
+  // result into the conversation — either inline (short run) or via
+  // the webhook fan-back safety net (long run).
+  | "agent_run";
 
 /**
  * Fire-and-forget broadcast that a canvas conversation's `messages` JSON
