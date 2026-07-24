@@ -1,5 +1,6 @@
 import { describe, test, expect, beforeEach, afterEach, vi } from "vitest";
 import { POST } from "@/app/api/github/app/webhook/route";
+import * as encryptionModule from "@/lib/encryption";
 import { db } from "@/lib/db";
 import { NextRequest } from "next/server";
 import {
@@ -137,6 +138,8 @@ describe("GitHub App Webhook - POST /api/github/app/webhook", () => {
       const body = JSON.stringify(payload);
       const validSignature = computeValidWebhookSignature(mockWebhookSecret, body);
 
+      const timingSafeSpy = vi.spyOn(encryptionModule, "timingSafeEqual");
+
       const request = createGitHubAppWebhookRequest(
         webhookUrl,
         payload,
@@ -146,6 +149,13 @@ describe("GitHub App Webhook - POST /api/github/app/webhook", () => {
       const response = await POST(request as NextRequest);
 
       expect(response.status).toBe(200);
+      expect(timingSafeSpy).toHaveBeenCalledOnce();
+      // First arg is computed digest, second is the incoming signature header
+      const [calledDigest, calledSignature] = timingSafeSpy.mock.calls[0];
+      expect(calledDigest).toMatch(/^sha256=[0-9a-f]{64}$/);
+      expect(calledSignature).toBe(validSignature);
+
+      timingSafeSpy.mockRestore();
     });
   });
 
@@ -520,7 +530,7 @@ describe("GitHub App Webhook - POST /api/github/app/webhook", () => {
       db.user.findUnique = originalFindUnique;
     });
 
-    test.skip("should handle missing GITHUB_WEBHOOK_SECRET environment variable", async () => {
+    test("should handle missing GITHUB_WEBHOOK_SECRET environment variable", async () => {
       // Remove env var
       delete process.env.GITHUB_WEBHOOK_SECRET;
 
@@ -536,7 +546,7 @@ describe("GitHub App Webhook - POST /api/github/app/webhook", () => {
 
       const response = await POST(request as NextRequest);
 
-      // Should fail without secret
+      // Should return controlled 500, not throw an unhandled exception
       expect(response.status).toBe(500);
 
       // Restore env var
