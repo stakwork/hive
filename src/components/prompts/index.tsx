@@ -134,6 +134,11 @@ interface PromptVersion {
   version_number: number;
   created_at: string;
   whodunnit: string | null;
+  whodunnit_display: string | null;
+  published_by: string | null;
+  published_by_display: string | null;
+  published_at: string | null;
+  source: string | null;
 }
 
 interface PromptVersionDetail {
@@ -1510,6 +1515,34 @@ export function PromptsPanel({ workflowId, variant = "panel", onNavigateToWorkfl
                                 {formatTimestamp(version.created_at)}
                               </span>
                             </div>
+                            {/* Attribution row */}
+                            <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+                              {(version.whodunnit_display || version.whodunnit) && (
+                                <span className="text-xs text-muted-foreground">
+                                  by {version.whodunnit_display ?? version.whodunnit}
+                                </span>
+                              )}
+                              {version.source && (
+                                <span className={cn(
+                                  "inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-medium leading-none",
+                                  version.source === "UI" && "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300",
+                                  version.source === "API" && "bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300",
+                                  version.source === "MCP" && "bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300",
+                                  version.source === "WORKFLOW" && "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300",
+                                )}>
+                                  {version.source}
+                                </span>
+                              )}
+                            </div>
+                            {/* Publish attribution */}
+                            {version.published_by && (
+                              <div className="mt-0.5 text-xs text-muted-foreground">
+                                Published by {version.published_by_display ?? version.published_by}
+                                {version.published_at && (
+                                  <span className="ml-1">· {formatTimestamp(version.published_at)}</span>
+                                )}
+                              </div>
+                            )}
                           </button>
 
                           {/* Eval run button / spinner / badge */}
