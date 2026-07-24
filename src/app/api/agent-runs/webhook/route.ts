@@ -1,5 +1,5 @@
 /**
- * POST /api/agent-runs/webhook?id=<runId>
+ * POST /api/agent-runs/webhook?id=<runId>&token=<rawToken>
  *
  * Session-less callback for canvas-linked workflow-explorer runs that outlive
  * the Vercel lambda that kicked them off (the "webhook fan-back safety net").
@@ -7,15 +7,26 @@
  * `AgentRun` arbitration row exactly once and fans the result into the owning
  * canvas conversation.
  *
+ * The payload is what stakgraph's `postTerminalWebhook` actually sends
+ * (stakgraph `mcp/src/repo/index.ts`) — the swarm POSTs the registered
+ * `webhookUrl` verbatim with `Content-Type: application/json` and NO custom
+ * headers, so the bearer token must ride in the URL itself:
+ *   - `{ request_id, status: "completed", result: { success, final_answer,
+ *     content, tool_use, usage, logs, sessionId } }` on success
+ *   - `{ request_id, status: "failed", error }` on failure/abort (also sent
+ *     by stakgraph's startup sweep for runs orphaned by a process restart)
+ *
  * Security design (defense in depth):
  *   1. Middleware allowlist — `/api/agent-runs/webhook` is tagged `access:
  *      "webhook"` in `ROUTE_POLICIES` so the unauthenticated swarm call
  *      reaches this handler (not the auth redirect).
  *   2. Rate limiting — keyed by run id + source IP; 429 returned before any
  *      DB lookup/claim to blunt brute-force and flooding.
- *   3. Token in header (`x-agent-run-token`), NOT the query string — the
- *      query carries only the run `id`, so the bearer value is never captured
- *      in proxy/access logs.
+ *   3. Token in the query string (`token=`) because the swarm relays no
+ *      custom headers. The exposure of a URL-borne bearer in proxy/access
+ *      logs is blunted by the token being single-use (the atomic claim
+ *      consumes it), high-entropy (256 bits), stored only as a SHA-256
+ *      hash, and useless after the run reaches a terminal state.
  *   4. Constant-time token compare — the incoming token is hashed (SHA-256)
  *      and compared against `tokenHash` via `timingSafeEqual`, never `===`.
  *   5. Atomic, token-gated claim — `updateMany({ where: { id, tokenHash,
@@ -41,17 +52,25 @@ import {
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-/** POST body shape the swarm is expected to send. */
+/**
+ * POST body shape stakgraph's `postTerminalWebhook` sends (see the contract
+ * in the file header). `result` is present on "completed", `error` on "failed".
+ */
 interface WebhookPayload {
-  /** Primary content field. */
-  content?: unknown;
-  /** Fallback content field (some swarm responses use this key). */
-  final_answer?: unknown;
+  /** Swarm request_id — observability only; the run is keyed by `?id=`. */
+  request_id?: string;
   /**
    * Terminal run status from the swarm.
-   * "success" → DELIVERED_WEBHOOK; anything else (failed/aborted) → FAILED.
+   * "completed" → DELIVERED_WEBHOOK; anything else (failed) → FAILED.
    */
   status?: string;
+  /** Terminal result on success: `{ content, final_answer, ... }`. */
+  result?: {
+    content?: unknown;
+    final_answer?: unknown;
+  } | null;
+  /** Error detail on failure (e.g. "aborted", or an exception message). */
+  error?: unknown;
 }
 
 /** Hash a raw token with SHA-256 (hex digest). */
@@ -83,7 +102,9 @@ export async function POST(request: NextRequest) {
   }
 
   // ── Token extraction ─────────────────────────────────────────────────────
-  const rawToken = request.headers.get("x-agent-run-token");
+  // stakgraph's webhook sender attaches no custom headers, so the token
+  // rides in the query string of the registered webhookUrl.
+  const rawToken = request.nextUrl.searchParams.get("token");
   if (!rawToken) {
     return NextResponse.json({ error: "Missing auth token" }, { status: 401 });
   }
@@ -133,14 +154,17 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
 
-  const rawContent = payload.content ?? payload.final_answer;
+  // stakgraph nests the terminal result: `result.content` is the (possibly
+  // schema-structured) answer, `result.final_answer` the raw text. Prefer
+  // `content` only when it's a usable string so a structured object never
+  // stringifies to "[object Object]" in the conversation.
+  const rawContent =
+    typeof payload.result?.content === "string" && payload.result.content.trim()
+      ? payload.result.content
+      : (payload.result?.final_answer ?? payload.result?.content);
   const isSuccess =
     typeof payload.status === "string" &&
-    payload.status.toLowerCase() === "success";
-
-  const targetStatus: AgentRunStatus = isSuccess
-    ? AgentRunStatus.DELIVERED_WEBHOOK
-    : AgentRunStatus.FAILED;
+    payload.status.toLowerCase() === "completed";
 
   // Harden external content before touching the DB.
   const content = hardenContent(rawContent);
@@ -151,13 +175,20 @@ export async function POST(request: NextRequest) {
 
   const effectiveStatus: AgentRunStatus =
     isSuccess && content !== null ? AgentRunStatus.DELIVERED_WEBHOOK : AgentRunStatus.FAILED;
+  // Preserve the swarm's error detail (e.g. "aborted", an exception message)
+  // on the row; hardenContent caps/coerces it like any external string.
+  const errorDetail = hardenContent(payload.error) ?? payload.status ?? "failed";
   const errorField =
     effectiveStatus === AgentRunStatus.FAILED
-      ? (isSuccess ? "Oversized or malformed result payload" : (payload.status ?? "failed"))
+      ? (isSuccess ? "Oversized or malformed result payload" : errorDetail)
       : undefined;
 
-  const failureNote = `The workflow explorer run "${row.title}" did not complete successfully.`;
-  const fanOutContent = effectiveStatus === AgentRunStatus.DELIVERED_WEBHOOK ? content! : failureNote;
+  // On failure, hand the fan-out the error detail — it composes its own
+  // `did not complete: <detail>` note for the conversation bubble.
+  const fanOutContent =
+    effectiveStatus === AgentRunStatus.DELIVERED_WEBHOOK
+      ? content!
+      : (isSuccess ? "oversized or malformed result payload" : errorDetail);
 
   // ── Atomic, token-gated claim ─────────────────────────────────────────────
   // `tokenHash` in the where-clause makes the claim itself credential-gated —

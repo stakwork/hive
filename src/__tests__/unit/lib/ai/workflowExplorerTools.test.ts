@@ -138,10 +138,9 @@ describe("buildWorkflowExplorerTools", () => {
     await execute({ prompt: "find transcription skills" });
 
     expect(mockAgentRunCreate).not.toHaveBeenCalled();
-    // repoAgent called without webhookUrl or webhookToken
+    // repoAgent called without webhookUrl
     const call = mockRepoAgent.mock.calls[0];
     expect(call[2]).not.toHaveProperty("webhookUrl");
-    expect(call[2]).not.toHaveProperty("webhookToken");
   });
 
   test("ctx without currentCanvasConversationId: does NOT create row", async () => {
@@ -184,10 +183,11 @@ describe("buildWorkflowExplorerTools", () => {
     expect(typeof createArgs.tokenHash).toBe("string");
     expect(createArgs.tokenHash).toHaveLength(64); // SHA-256 hex
 
-    // webhookUrl passed to repoAgent (only url part, not the token)
+    // webhookUrl passed to repoAgent — id and bearer token both ride in the
+    // query string (stakgraph POSTs the URL verbatim with no custom headers)
     const repoAgentParams = mockRepoAgent.mock.calls[0][2];
     expect(repoAgentParams.webhookUrl).toContain("/api/agent-runs/webhook?id=");
-    expect(repoAgentParams.webhookToken).toBeTruthy(); // raw token included separately
+    expect(repoAgentParams.webhookUrl).toMatch(/&token=[0-9a-f]{64}$/i);
 
     // Claimed DELIVERED_INLINE
     expect(mockAgentRunUpdateMany).toHaveBeenCalledWith(
@@ -312,29 +312,19 @@ describe("buildWorkflowExplorerTools", () => {
 
   // ── Token security ────────────────────────────────────────────────────────────
 
-  test("webhookUrl contains only the run id, not the raw token", async () => {
-    const execute = getExecute(
-      makeCtx({ currentCanvasConversationId: "conv-1", publicBaseUrl: "https://hive.example.com" }),
-    );
-    await execute({ prompt: "find transcription skills" });
-
-    const repoAgentParams = mockRepoAgent.mock.calls[0][2];
-    const url: string = repoAgentParams.webhookUrl;
-    // URL should not contain the raw token (64-char hex string from randomBytes)
-    expect(url).not.toMatch(/[0-9a-f]{64}/i);
-    expect(url).toContain("?id=");
-  });
-
-  test("stored tokenHash is SHA-256 of the raw token, not the raw token itself", async () => {
+  test("stored tokenHash is SHA-256 of the URL-borne raw token, not the raw token itself", async () => {
     const execute = getExecute(
       makeCtx({ currentCanvasConversationId: "conv-1", publicBaseUrl: "https://hive.example.com" }),
     );
     await execute({ prompt: "find transcription skills" });
 
     const createArgs = mockAgentRunCreate.mock.calls[0][0].data;
-    const rawToken = mockRepoAgent.mock.calls[0][2].webhookToken as string;
+    // The raw token rides in the webhookUrl query string (stakgraph relays
+    // no headers) — extract it and verify only its hash was persisted.
+    const url: string = mockRepoAgent.mock.calls[0][2].webhookUrl;
+    const rawToken = new URL(url).searchParams.get("token") as string;
+    expect(rawToken).toMatch(/^[0-9a-f]{64}$/i);
 
-    // tokenHash must be the SHA-256 of rawToken, not the rawToken itself
     const expectedHash = require("crypto")
       .createHash("sha256")
       .update(rawToken)

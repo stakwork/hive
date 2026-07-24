@@ -15,16 +15,18 @@ export const dynamic = "force-dynamic";
  *
  * When the request body contains a `webhookUrl` (set by the workflow-explorer
  * safety net), the mock schedules a simulated terminal callback POST to that
- * URL — following the callback style of `src/app/api/mock/stakwork/run/route.ts`
- * and the agreed swarm payload contract:
- *   - Query string: `?id=<runId>` (the run id is parsed from `webhookUrl`)
- *   - Header:       `x-agent-run-token: <webhookToken>` (token from request body)
- *   - Body:         `{ status: "success"|"failed", content: "…" }`
+ * URL, mirroring stakgraph's real `postTerminalWebhook` (stakgraph
+ * `mcp/src/repo/index.ts`) exactly:
+ *   - The registered `webhookUrl` is POSTed verbatim (id + bearer token both
+ *     ride in its query string; stakgraph attaches NO custom headers)
+ *   - Body on success: `{ request_id, status: "completed", result: {
+ *     success, final_answer, content, ... } }`
+ *   - Body on failure: `{ request_id, status: "failed", error }`
  *
  * The callback fires after a short delay (500 ms) so the inline poll path
  * times out first (to simulate a long run), or immediately with `mode: "fail"`
  * to simulate a swarm failure. Set `webhookMode` in the body:
- *   - `"success"` (default) — fires a success callback after 500 ms
+ *   - `"success"` (default) — fires a completed callback after 500 ms
  *   - `"fail"` — fires a failed/aborted callback after 500 ms
  *   - `"inline"` — fires NO callback (the inline poll path should catch it)
  *
@@ -46,7 +48,6 @@ export async function POST(request: NextRequest) {
     }
 
     const webhookUrl = body.webhookUrl as string | undefined;
-    const webhookToken = body.webhookToken as string | undefined;
     const webhookMode = (body.webhookMode as string | undefined) ?? "success";
 
     console.log("[StakgraphMock] POST /repo/agent - returning mock request_id", {
@@ -61,24 +62,31 @@ export async function POST(request: NextRequest) {
 
       // Fire after a short delay to allow the response to return first.
       setTimeout(() => {
-        const callbackStatus = isSuccess ? "success" : "failed";
-        const callbackContent = isSuccess
-          ? "Mock workflow explorer result: found 3 matching workflows with video-to-transcript skills."
-          : undefined;
+        // Mirror stakgraph's TerminalWebhookPayload shape exactly.
+        const callbackStatus = isSuccess ? "completed" : "failed";
+        const callbackBody: Record<string, unknown> = isSuccess
+          ? {
+              request_id: "mock-diagram-req-001",
+              status: "completed",
+              result: {
+                success: true,
+                final_answer:
+                  "Mock workflow explorer result: found 3 matching workflows with video-to-transcript skills.",
+                content:
+                  "Mock workflow explorer result: found 3 matching workflows with video-to-transcript skills.",
+              },
+            }
+          : {
+              request_id: "mock-diagram-req-001",
+              status: "failed",
+              error: "aborted",
+            };
 
-        const callbackBody: Record<string, unknown> = { status: callbackStatus };
-        if (callbackContent) callbackBody.content = callbackContent;
-
-        const headers: Record<string, string> = {
-          "Content-Type": "application/json",
-        };
-        if (webhookToken) {
-          headers["x-agent-run-token"] = webhookToken;
-        }
-
+        // stakgraph sends no custom headers — the bearer token is already
+        // inside webhookUrl's query string.
         fetch(webhookUrl, {
           method: "POST",
-          headers,
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify(callbackBody),
         })
           .then((res) => {

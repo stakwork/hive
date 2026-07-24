@@ -1,8 +1,13 @@
 /**
  * Integration tests for POST /api/agent-runs/webhook
  *
+ * The request shape mirrors stakgraph's real `postTerminalWebhook`
+ * (stakgraph `mcp/src/repo/index.ts`): the registered webhookUrl is POSTed
+ * verbatim (id + bearer token in the query string, no custom headers) with
+ * body `{ request_id, status: "completed"|"failed", result|error }`.
+ *
  * Tests cover:
- * - Webhook auth (token in header, constant-time compare, tokenHash in where-clause)
+ * - Webhook auth (token in query string, constant-time compare, tokenHash in where-clause)
  * - Rate limiting (429 before lookup/claim)
  * - Both delivery paths and the race (inline-then-webhook, webhook-then-inline)
  * - Payload hardening (oversized/malformed/non-string bodies)
@@ -110,14 +115,19 @@ function makeWebhookRequest({
   body?: unknown;
   url?: string;
 }) {
-  const baseUrl = url ?? `http://localhost:3000/api/agent-runs/webhook${runId ? `?id=${runId}` : ""}`;
+  // stakgraph POSTs the registered webhookUrl verbatim: id + token both ride
+  // in the query string, and no custom headers are attached.
+  const params = new URLSearchParams();
+  if (runId) params.set("id", runId);
+  if (token) params.set("token", token);
+  const qs = params.toString();
+  const baseUrl = url ?? `http://localhost:3000/api/agent-runs/webhook${qs ? `?${qs}` : ""}`;
   return new NextRequest(baseUrl, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      ...(token ? { "x-agent-run-token": token } : {}),
-    },
-    body: JSON.stringify(body ?? { status: "success", content: "Result text" }),
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(
+      body ?? { request_id: "req-1", status: "completed", result: { content: "Result text" } },
+    ),
   });
 }
 
@@ -145,7 +155,7 @@ describe("POST /api/agent-runs/webhook", () => {
     expect(res.status).toBe(400);
   });
 
-  it("returns 401 when x-agent-run-token header is missing", async () => {
+  it("returns 401 when the token query param is missing", async () => {
     const agentRun = await createAgentRun({ conversationId: conversation.id, orgId: org.id, userId: user.id, rawToken });
     const req = makeWebhookRequest({ runId: agentRun.id });
     const res = await POST(req);
@@ -199,7 +209,11 @@ describe("POST /api/agent-runs/webhook", () => {
     const req = makeWebhookRequest({
       runId: agentRun.id,
       token: rawToken,
-      body: { status: "success", content: "Great research result here." },
+      body: {
+        request_id: "req-1",
+        status: "completed",
+        result: { success: true, content: "Great research result here." },
+      },
     });
     const res = await POST(req);
     expect(res.status).toBe(200);
@@ -222,12 +236,12 @@ describe("POST /api/agent-runs/webhook", () => {
     expect(notifyCanvasConversationUpdated).toHaveBeenCalledWith(conversation.id, "agent_run");
   });
 
-  it("uses final_answer as fallback when content is missing", async () => {
+  it("uses result.final_answer as fallback when result.content is missing", async () => {
     const agentRun = await createAgentRun({ conversationId: conversation.id, orgId: org.id, userId: user.id, rawToken });
     const req = makeWebhookRequest({
       runId: agentRun.id,
       token: rawToken,
-      body: { status: "success", final_answer: "Fallback result." },
+      body: { request_id: "req-1", status: "completed", result: { final_answer: "Fallback result." } },
     });
     const res = await POST(req);
     expect(res.status).toBe(200);
@@ -240,33 +254,51 @@ describe("POST /api/agent-runs/webhook", () => {
 
   // ── Failure delivery path ──────────────────────────────────────────────────
 
-  it("claims PENDING → FAILED and posts failure note on non-success status", async () => {
+  it("claims PENDING → FAILED and posts failure note on failed status", async () => {
     const agentRun = await createAgentRun({ conversationId: conversation.id, orgId: org.id, userId: user.id, rawToken });
     const req = makeWebhookRequest({
       runId: agentRun.id,
       token: rawToken,
-      body: { status: "failed" },
+      body: { request_id: "req-1", status: "failed", error: "boom: swarm exploded" },
     });
     const res = await POST(req);
     expect(res.status).toBe(200);
 
     const row = await db.agentRun.findUnique({ where: { id: agentRun.id } });
     expect(row?.status).toBe("FAILED");
+    // The swarm's error detail is preserved on the row
+    expect(row?.error).toBe("boom: swarm exploded");
 
     const conv = await db.sharedConversation.findUnique({ where: { id: conversation.id } });
     const messages = conv?.messages as unknown[];
     expect(messages).toHaveLength(1);
     const msg = messages[0] as Record<string, unknown>;
     expect(msg.content).toContain("did not complete");
+    expect(msg.content).toContain("boom: swarm exploded");
     expect((msg.source as Record<string, unknown>).status).toBe("failed");
   });
 
-  it("treats aborted status as FAILED", async () => {
+  it("treats an aborted run (stakgraph sends status failed, error aborted) as FAILED", async () => {
     const agentRun = await createAgentRun({ conversationId: conversation.id, orgId: org.id, userId: user.id, rawToken });
     const req = makeWebhookRequest({
       runId: agentRun.id,
       token: rawToken,
-      body: { status: "aborted" },
+      body: { request_id: "req-1", status: "failed", error: "aborted" },
+    });
+    const res = await POST(req);
+    expect(res.status).toBe(200);
+
+    const row = await db.agentRun.findUnique({ where: { id: agentRun.id } });
+    expect(row?.status).toBe("FAILED");
+    expect(row?.error).toBe("aborted");
+  });
+
+  it("treats an unrecognized status as FAILED", async () => {
+    const agentRun = await createAgentRun({ conversationId: conversation.id, orgId: org.id, userId: user.id, rawToken });
+    const req = makeWebhookRequest({
+      runId: agentRun.id,
+      token: rawToken,
+      body: { status: "something-unexpected" },
     });
     const res = await POST(req);
     expect(res.status).toBe(200);
@@ -322,12 +354,12 @@ describe("POST /api/agent-runs/webhook", () => {
     const req1 = makeWebhookRequest({
       runId: agentRun.id,
       token: rawToken,
-      body: { status: "success", content: "Result A" },
+      body: { request_id: "req-1", status: "completed", result: { content: "Result A" } },
     });
     const req2 = makeWebhookRequest({
       runId: agentRun.id,
       token: rawToken,
-      body: { status: "success", content: "Result B" },
+      body: { request_id: "req-1", status: "completed", result: { content: "Result B" } },
     });
 
     const res1 = await POST(req1);
@@ -352,7 +384,7 @@ describe("POST /api/agent-runs/webhook", () => {
     const req = makeWebhookRequest({
       runId: agentRun.id,
       token: rawToken,
-      body: { status: "success", content: oversized },
+      body: { request_id: "req-1", status: "completed", result: { content: oversized } },
     });
     const res = await POST(req);
     expect(res.status).toBe(200);
@@ -364,14 +396,14 @@ describe("POST /api/agent-runs/webhook", () => {
 
   it("returns 400 on invalid JSON body", async () => {
     const agentRun = await createAgentRun({ conversationId: conversation.id, orgId: org.id, userId: user.id, rawToken });
-    const req = new NextRequest(`http://localhost:3000/api/agent-runs/webhook?id=${agentRun.id}`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-agent-run-token": rawToken,
+    const req = new NextRequest(
+      `http://localhost:3000/api/agent-runs/webhook?id=${agentRun.id}&token=${rawToken}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: "not-json{{{",
       },
-      body: "not-json{{{",
-    });
+    );
     const res = await POST(req);
     expect(res.status).toBe(400);
   });
@@ -397,7 +429,7 @@ describe("POST /api/agent-runs/webhook", () => {
     const req = makeWebhookRequest({
       runId: agentRun.id,
       token: rawToken,
-      body: { status: "success", content: "Should not appear" },
+      body: { request_id: "req-1", status: "completed", result: { content: "Should not appear" } },
     });
     const res = await POST(req);
     // Webhook still returns 200 (the claim succeeded atomically)

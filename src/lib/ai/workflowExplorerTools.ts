@@ -122,17 +122,21 @@ async function claimAgentRun(
 /**
  * Set up the webhook fan-back arbitration row.
  *
- * Returns the row id, the raw token (to pass to the swarm), and the
- * webhookUrl (with only the run id in the query string — the token is a
- * separate body field). Returns `null` when the safety net should not be
- * activated (no conversation / no public base URL).
+ * Returns the row id and the webhookUrl to register with the swarm. The
+ * bearer token rides in the URL's query string (`token=`) because
+ * stakgraph's `postTerminalWebhook` POSTs the registered URL verbatim with
+ * no custom headers — there is no other channel for it. The exposure is
+ * blunted by the token being single-use (the atomic claim consumes it),
+ * 256-bit random, and stored only as a SHA-256 hash. Returns `null` when
+ * the safety net should not be activated (no conversation / no public
+ * base URL).
  *
- * NEVER log rawToken or the full webhookUrl.
+ * NEVER log the full webhookUrl — it contains the bearer token.
  */
 async function setupFanBack(
   ctx: CapabilityContext,
   title: string,
-): Promise<{ runId: string; rawToken: string; webhookUrl: string } | null> {
+): Promise<{ runId: string; webhookUrl: string } | null> {
   if (!ctx.currentCanvasConversationId || !ctx.userId || !ctx.orgId || !ctx.publicBaseUrl) {
     return null;
   }
@@ -150,8 +154,8 @@ async function setupFanBack(
     return null;
   }
 
-  // High-entropy token — stored hashed, sent raw in the swarm callback header.
-  // NEVER log rawToken or the full webhookUrl.
+  // High-entropy token — stored hashed, carried raw in the webhookUrl the
+  // swarm POSTs back to. NEVER log rawToken or the full webhookUrl.
   const rawToken = crypto.randomBytes(32).toString("hex");
   const tokenHash = hashToken(rawToken);
 
@@ -166,14 +170,13 @@ async function setupFanBack(
     select: { id: true },
   });
 
-  // The webhookUrl carries only the run id in the query string.
-  // The raw token travels as a separate body field so the swarm can relay
-  // it in the x-agent-run-token header on the callback POST — it never
-  // appears in the URL and is never captured in proxy/access logs.
-  const webhookUrl = `${ctx.publicBaseUrl}/api/agent-runs/webhook?id=${agentRun.id}`;
+  // The webhookUrl carries both the run id and the raw bearer token —
+  // stakgraph POSTs this URL verbatim with no custom headers, so the query
+  // string is the only channel the token can travel in.
+  const webhookUrl = `${ctx.publicBaseUrl}/api/agent-runs/webhook?id=${agentRun.id}&token=${rawToken}`;
   console.log("[workflow_explorer_agent] fan-back row created", { runId: agentRun.id });
 
-  return { runId: agentRun.id, rawToken, webhookUrl };
+  return { runId: agentRun.id, webhookUrl };
 }
 
 export function buildWorkflowExplorerTools(ctx?: CapabilityContext): ToolSet {
@@ -236,18 +239,11 @@ export function buildWorkflowExplorerTools(ctx?: CapabilityContext): ToolSet {
               mode: "workflow",
               stakworkApiKey: config.STAKWORK_API_KEY || undefined,
               ...(run_step ? { toolsConfig: { stakwork_run_step: true } } : {}),
-              // Fan-back fields — only sent when the safety net is active.
-              // webhookUrl: run id in query, token separate so it never appears in logs.
-              // webhookToken: relayed by the swarm in x-agent-run-token on the callback POST.
-              ...(fanBack
-                ? {
-                    webhookUrl: fanBack.webhookUrl,
-                    // The swarm must relay this value in `x-agent-run-token` on the callback.
-                    // Naming it `webhookToken` matches the agreed swarm contract; it never
-                    // appears in the URL and is only transmitted server-to-server.
-                    webhookToken: fanBack.rawToken,
-                  }
-                : {}),
+              // Fan-back field — only sent when the safety net is active.
+              // stakgraph reads `webhookUrl` off the body and POSTs the
+              // terminal payload to it verbatim (id + bearer token both in
+              // the query string; the swarm attaches no custom headers).
+              ...(fanBack ? { webhookUrl: fanBack.webhookUrl } : {}),
             },
             /* bifrost */ undefined,
             /* hooks */ fanBack
