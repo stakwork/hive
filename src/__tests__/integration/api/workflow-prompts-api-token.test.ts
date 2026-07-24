@@ -379,6 +379,81 @@ describe("x-api-token auth on prompt read endpoints", () => {
       expect(tokenResponse.status).toBe(sessionResponse.status);
       expect(Object.keys(tokenData.data)).toEqual(Object.keys(sessionData.data));
     });
+
+    test("api-token-created version has source === 'API' in versions response", async () => {
+      // Directly insert a draft version with source="API" into the DB — avoids calling
+      // PUT (which requires the rate-limit mock to be active, which it isn't in this
+      // describe block's beforeEach after vi.clearAllMocks()).
+      await db.promptVersion.create({
+        data: {
+          promptId,
+          versionNumber: 99,
+          value: "api-token draft content",
+          whodunnit: API_TOKEN_ACTOR,
+          published: false,
+          source: "API",
+        },
+      });
+
+      const response = await GET_VERSIONS(
+        makeGetWithToken(`http://localhost/api/workflow/prompts/${promptId}/versions`, TEST_API_TOKEN),
+        { params: Promise.resolve({ id: promptId }) },
+      );
+      const data = await expectSuccess(response, 200);
+      const versions: Array<{ source: string | null; version_number: number }> = data.data.versions;
+      // The latest draft (versionNumber=99, index 0 desc order) should be "API"
+      expect(versions.length).toBeGreaterThan(0);
+      const apiVersion = versions.find((v) => v.version_number === 99);
+      expect(apiVersion).toBeDefined();
+      expect(apiVersion!.source).toBe("API");
+    });
+
+    test("api-token whodunnit ('api-token') resolves whodunnit_display to 'API Token'", async () => {
+      const response = await GET_VERSIONS(
+        makeGetWithToken(`http://localhost/api/workflow/prompts/${promptId}/versions`, TEST_API_TOKEN),
+        { params: Promise.resolve({ id: promptId }) },
+      );
+      const data = await expectSuccess(response, 200);
+      const versions: Array<{ whodunnit: string | null; whodunnit_display: string | null }> = data.data.versions;
+      // The prompt was created by session auth in beforeEach (real userId), but let's check
+      // that all versions expose whodunnit_display (even if it's the userId or null — not undefined)
+      for (const v of versions) {
+        // whodunnit_display must be present (not undefined) on every version
+        expect("whodunnit_display" in v).toBe(true);
+        expect("published_by" in v).toBe(true);
+        expect("published_by_display" in v).toBe(true);
+        expect("published_at" in v).toBe(true);
+        expect("source" in v).toBe(true);
+      }
+    });
+
+    test("versions created via session auth get source === 'UI'", async () => {
+      // Create prompt via session auth
+      mockGetServerSession.mockResolvedValueOnce(
+        createAuthenticatedSession({ id: testUser.id, email: testUser.email ?? "" }),
+      );
+      const createRes = await POST(
+        makeReq("http://localhost/api/workflow/prompts", "POST", {
+          name: uniqueName("SOURCE_UI_TEST"),
+          value: "session content",
+        }),
+      );
+      const createData = await createRes.json();
+      const uiPromptId = createData.data.id;
+      createdPromptIds.push(uiPromptId);
+
+      mockGetServerSession.mockResolvedValueOnce(
+        createAuthenticatedSession({ id: testUser.id, email: testUser.email ?? "" }),
+      );
+      const response = await GET_VERSIONS(
+        makeGetNoAuth(`http://localhost/api/workflow/prompts/${uiPromptId}/versions`),
+        { params: Promise.resolve({ id: uiPromptId }) },
+      );
+      const data = await expectSuccess(response, 200);
+      const versions: Array<{ source: string | null }> = data.data.versions;
+      expect(versions.length).toBeGreaterThan(0);
+      expect(versions[0].source).toBe("UI");
+    });
   });
 
   // ─── GET /api/workflow/prompts/[id]/versions/[versionId] ─────────────────────

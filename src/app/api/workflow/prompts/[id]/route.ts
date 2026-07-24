@@ -5,7 +5,7 @@ import { db } from "@/lib/db";
 import { isDevelopmentMode } from "@/lib/runtime";
 import { writePromptThrough, deletePrompt } from "@/services/prompts/prompt-sync";
 import { BIFROST_AGENT_NAMES } from "@/services/bifrost/agent-names";
-import { validateApiToken, API_TOKEN_ACTOR } from "@/lib/auth/api-token";
+import { validateApiToken, API_TOKEN_ACTOR, resolveSource } from "@/lib/auth/api-token";
 import { checkRateLimit, getClientIp } from "@/lib/rate-limit";
 
 export const runtime = "nodejs";
@@ -206,6 +206,7 @@ export async function PUT(
       return NextResponse.json({ error: normalizedAgentNames.error }, { status: 400 });
     }
 
+    const source = resolveSource(request, isApiToken);
     await writePromptThrough({
       promptId: id,
       name: name ?? existing.name,
@@ -214,6 +215,7 @@ export async function PUT(
       agentNames: normalizedAgentNames,
       userId: actor,
       workspaceId,
+      source,
     });
 
     // Refetch with versions (ordered desc) so shapePromptDetail can expose current_version_id = latest draft.

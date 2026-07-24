@@ -3,7 +3,7 @@ import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 import { db } from "@/lib/db";
 import { isDevelopmentMode } from "@/lib/runtime";
 import { publishVersion } from "@/services/prompts/prompt-sync";
-import { validateApiToken, API_TOKEN_ACTOR } from "@/lib/auth/api-token";
+import { validateApiToken, API_TOKEN_ACTOR, resolveSource } from "@/lib/auth/api-token";
 import { checkRateLimit, getClientIp } from "@/lib/rate-limit";
 
 export const runtime = "nodejs";
@@ -17,7 +17,8 @@ export async function POST(
     let actor: string;
     let workspaceId: string | undefined;
 
-    if (validateApiToken(request)) {
+    const isApiToken = validateApiToken(request);
+    if (isApiToken) {
       // ── Token branch ──────────────────────────────────────────────────────
       const ip = getClientIp(request);
       const rl = await checkRateLimit(`prompts:publish:api-token:${ip}`, 30, 60);
@@ -68,8 +69,10 @@ export async function POST(
     const body = await request.json().catch(() => ({})) as { artifactId?: string };
     const { artifactId } = body;
 
+    const source = resolveSource(request, isApiToken);
+
     // Publish the version in Hive (+ best-effort Stakwork push inside service)
-    await publishVersion(id, versionId, workspaceId ?? undefined, actor);
+    await publishVersion(id, versionId, workspaceId ?? undefined, actor, source);
 
     // Optionally update artifact published state
     const devMode = isDevelopmentMode();

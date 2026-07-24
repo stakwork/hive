@@ -4,6 +4,21 @@ import { db } from "@/lib/db";
 import type { MiddlewareUser } from "@/types/middleware";
 import { timingSafeEqual } from "crypto";
 
+export type PromptVersionSource = "UI" | "API" | "WORKFLOW" | "MCP";
+
+/**
+ * Resolves the attribution source for a PromptVersion write.
+ *
+ * - Session-authenticated requests → "UI"
+ * - API-token requests with `x-actor-source: workflow` header → "WORKFLOW"
+ * - API-token requests (default) → "API"
+ */
+export function resolveSource(request: NextRequest, isApiToken: boolean): PromptVersionSource {
+  if (!isApiToken) return "UI";
+  if (request.headers.get("x-actor-source") === "workflow") return "WORKFLOW";
+  return "API";
+}
+
 /**
  * Shared actor label for writes performed via x-api-token (no user session).
  * Used as `whodunnit` on PromptVersion rows created by token-authenticated callers.
