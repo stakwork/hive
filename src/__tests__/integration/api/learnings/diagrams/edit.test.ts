@@ -344,7 +344,7 @@ describe("POST /api/learnings/diagrams/edit", () => {
     const callArg = vi.mocked(repoAgent).mock.calls[0][2];
     expect(callArg.subAgents).toBeDefined();
     expect(callArg.subAgents).toHaveLength(1);
-    expect(callArg.subAgents![0].name).toBe(workspace2.slug);
+    expect(callArg.subAgents![0].name).toBe(`${workspace2.slug}_repo_agent`);
     expect(callArg.subAgents![0].url).toContain("second-ws-edit.sphinx.chat");
     expect(callArg.subAgents![0].repoUrl).toBe("https://github.com/test-owner/second-ws-edit-repo");
   });

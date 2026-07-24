@@ -75,8 +75,8 @@ describe("workspaceToSubAgent", () => {
     const ws = makeWorkspace();
     const agent = workspaceToSubAgent(ws);
     expect(agent).toEqual({
-      name: "my-workspace",
-      description: "My workspace",
+      name: "my-workspace_repo_agent",
+      description: "This is a repo agent in a different workspace. Workspace description: My workspace",
       url: "https://swarm.example.com:3355",
       apiKey: "decrypted:encrypted-key",
       repoUrls: "https://github.com/org/repo1,https://github.com/org/repo2",
@@ -99,11 +99,18 @@ describe("workspaceToSubAgent", () => {
     expect(workspaceToSubAgent(ws)).toBeNull();
   });
 
-  it("omits description when workspace.description is null", () => {
+  it("falls back when description is null", () => {
     const ws = makeWorkspace({ description: null });
     const agent = workspaceToSubAgent(ws);
     expect(agent).not.toBeNull();
-    expect(agent!.description).toBeUndefined();
+    expect(agent!.description).toBe("This is a repo agent in a different workspace.");
+  });
+
+  it("falls back when description is empty string", () => {
+    const ws = makeWorkspace({ description: "" });
+    const agent = workspaceToSubAgent(ws);
+    expect(agent).not.toBeNull();
+    expect(agent!.description).toBe("This is a repo agent in a different workspace.");
   });
 });
 
@@ -153,8 +160,8 @@ describe("resolveOrgMemberSwarms", () => {
     const result = await resolveOrgMemberSwarms("user-1", "org-1");
 
     expect(result).toHaveLength(2);
-    expect(result[0].name).toBe("ws-a");
-    expect(result[1].name).toBe("ws-b");
+    expect(result[0].name).toBe("ws-a_repo_agent");
+    expect(result[1].name).toBe("ws-b_repo_agent");
   });
 
   it("silently skips workspaces with no swarm", async () => {
@@ -166,7 +173,7 @@ describe("resolveOrgMemberSwarms", () => {
     const result = await resolveOrgMemberSwarms("user-1", "org-1");
 
     expect(result).toHaveLength(1);
-    expect(result[0].name).toBe("ok-ws");
+    expect(result[0].name).toBe("ok-ws_repo_agent");
   });
 
   it("silently skips workspaces with no repositories", async () => {
@@ -178,7 +185,7 @@ describe("resolveOrgMemberSwarms", () => {
     const result = await resolveOrgMemberSwarms("user-1", "org-1");
 
     expect(result).toHaveLength(1);
-    expect(result[0].name).toBe("ok-ws");
+    expect(result[0].name).toBe("ok-ws_repo_agent");
   });
 
   it("returns empty array for an org with no accessible workspaces", async () => {
@@ -214,9 +221,9 @@ describe("resolveSubAgents", () => {
     });
 
     expect(result).toHaveLength(3);
-    expect(result.map((a) => a.name)).toContain("mentioned-ws");
-    expect(result.map((a) => a.name)).toContain("org-ws-1");
-    expect(result.map((a) => a.name)).toContain("org-ws-2");
+    expect(result.map((a) => a.name)).toContain("mentioned-ws_repo_agent");
+    expect(result.map((a) => a.name)).toContain("org-ws-1_repo_agent");
+    expect(result.map((a) => a.name)).toContain("org-ws-2_repo_agent");
   });
 
   it("deduplicates by slug — manual @mention wins over org auto-attach", async () => {
@@ -235,7 +242,8 @@ describe("resolveSubAgents", () => {
 
     expect(result).toHaveLength(1);
     // Manual mention entry is preserved (comes first, org duplicate dropped)
-    expect(result[0].description).toBe("from-mention");
+    expect(result[0].name).toBe("shared-ws_repo_agent");
+    expect(result[0].description).toBe("This is a repo agent in a different workspace. Workspace description: from-mention");
   });
 
   it("returns only mention agents when org returns nothing new", async () => {
@@ -249,7 +257,7 @@ describe("resolveSubAgents", () => {
     });
 
     expect(result).toHaveLength(1);
-    expect(result[0].name).toBe("mention-ws");
+    expect(result[0].name).toBe("mention-ws_repo_agent");
   });
 
   it("returns only org agents when no @mentions in message", async () => {
@@ -262,7 +270,7 @@ describe("resolveSubAgents", () => {
     });
 
     expect(result).toHaveLength(1);
-    expect(result[0].name).toBe("org-ws");
+    expect(result[0].name).toBe("org-ws_repo_agent");
   });
 
   it("returns empty array when both resolvers find nothing", async () => {
@@ -290,7 +298,7 @@ describe("resolveSubAgents", () => {
     });
 
     expect(result).toHaveLength(2);
-    expect(result.map((a) => a.name)).toContain("ws-a");
-    expect(result.map((a) => a.name)).toContain("ws-b");
+    expect(result.map((a) => a.name)).toContain("ws-a_repo_agent");
+    expect(result.map((a) => a.name)).toContain("ws-b_repo_agent");
   });
 });
