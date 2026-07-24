@@ -3,7 +3,7 @@ import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
 import { isDevelopmentMode } from "@/lib/runtime";
-import { validateApiToken } from "@/lib/auth/api-token";
+import { validateApiToken, API_TOKEN_ACTOR } from "@/lib/auth/api-token";
 
 
 export const runtime = "nodejs";
@@ -77,13 +77,48 @@ export async function GET(
       }
     }
 
+    // ── Display name resolution ───────────────────────────────────────────────
+    // Collect unique user ids from whodunnit + publishedBy, excluding the api-token sentinel
+    // and nulls.  Batch-fetch User+GitHubAuth in one query, then build a displayName map.
+    const userIds = [
+      ...new Set(
+        versions.flatMap((v) => [v.whodunnit, v.publishedBy]).filter(
+          (id): id is string => !!id && id !== API_TOKEN_ACTOR,
+        ),
+      ),
+    ];
+
+    const users =
+      userIds.length > 0
+        ? await db.user.findMany({
+            where: { id: { in: userIds } },
+            select: { id: true, email: true, githubAuth: { select: { githubUsername: true } } },
+          })
+        : [];
+
+    const displayNameById = new Map<string, string>();
+    // Hardcode the api-token sentinel display name
+    displayNameById.set(API_TOKEN_ACTOR, "API Token");
+    for (const u of users) {
+      // Prefer GitHub username, fall back to email, then raw id
+      const display = u.githubAuth?.githubUsername ?? u.email ?? u.id;
+      displayNameById.set(u.id, display);
+    }
+
     const versionsWithRunCount = versions.map((v) => ({
       id: v.id,
       version_number: v.versionNumber,
       value: v.value,
       description: v.description ?? "",
       whodunnit: v.whodunnit,
+      whodunnit_display:
+        displayNameById.get(v.whodunnit ?? "") ?? v.whodunnit ?? null,
       published: v.published,
+      published_by: v.publishedBy,
+      published_by_display:
+        displayNameById.get(v.publishedBy ?? "") ?? v.publishedBy ?? null,
+      published_at: v.publishedAt?.toISOString() ?? null,
+      source: v.source,
       created_at: v.createdAt.toISOString(),
       run_count: runCountByVersionId.get(v.id) ?? 0,
     }));
