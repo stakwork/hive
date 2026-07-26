@@ -14,3 +14,7 @@ export function formatPercentage(value: number | null | undefined, decimals: num
   
   return `${value.toFixed(decimals)}%`;
 }
+
+export function formatMB(bytes: number): string {
+  return (bytes / 1_048_576).toFixed(1) + " MB";
+}
