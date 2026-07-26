@@ -54,6 +54,7 @@ import {
 export const maxDuration = 800;
 
 export async function POST(request: NextRequest) {
+  const t0 = Date.now();
   try {
     const context = getMiddlewareContext(request);
     const isAuthenticated =
@@ -169,15 +170,18 @@ export async function POST(request: NextRequest) {
       if (access.kind === "public-viewer") {
         publicViewerWorkspaceId = access.workspaceId;
         publicAnonymousId = deriveAnonymousId(request);
+        const tBudget = Date.now();
         const budget = await checkPublicChatBudget({
           workspaceId: access.workspaceId,
           anonymousId: publicAnonymousId,
         });
+        console.log("[quick-ask] timing", { stage: "checkPublicChatBudget", ms: Date.now() - tBudget, workspaces: slugs, orgId: orgId ?? null });
         if (!budget.allowed) {
           const message =
             budget.reason === "workspace"
               ? "This public workspace has reached its daily chat usage limit. Please try again tomorrow or sign in."
               : "Daily chat usage limit reached for anonymous visitors. Sign in to continue.";
+          console.log("[quick-ask] timing", { stage: "early-exit:429-budget-denied", ms: Date.now() - t0, workspaces: slugs, orgId: orgId ?? null });
           return NextResponse.json(
             { error: message, kind: "rate_limit_exceeded", reason: budget.reason },
             {
@@ -196,6 +200,7 @@ export async function POST(request: NextRequest) {
       // (orgId, multi-workspace, approval/rejection) that requires a
       // session. Reject uniformly — distinguishing the two here would
       // leak workspace existence to anonymous probers.
+      console.log("[quick-ask] timing", { stage: "early-exit:401-unauthenticated", ms: Date.now() - t0, workspaces: slugs, orgId: orgId ?? null });
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
@@ -259,6 +264,7 @@ export async function POST(request: NextRequest) {
             select: { chatAgentModel: true },
           })
         )?.chatAgentModel ?? undefined;
+      console.log("[quick-ask] timing", { stage: "early-exit:approval-rejection", ms: Date.now() - t0, workspaces: slugs, orgId: orgId ?? null });
       return await runProposalIntent({
         orgId,
         userId,
@@ -375,10 +381,18 @@ export async function POST(request: NextRequest) {
     // `resolveTokenAttributionRowId` above never matches them — we resolve
     // + load via the org-aware path here. Only the canvas chat (orgId set)
     // participates; the dashboard chat keeps rebuilding fresh.
+    const tPromptCache = Date.now();
     const promptCache =
       orgId && userId
         ? await loadOrgCanvasPromptCache({ conversationId, userId, orgId })
         : null;
+    console.log("[quick-ask] timing", {
+      stage: "loadOrgCanvasPromptCache",
+      ms: orgId && userId ? Date.now() - tPromptCache : 0,
+      skipped: !(orgId && userId),
+      workspaces: slugs,
+      orgId: orgId ?? null,
+    });
 
     // Per-user canvas-chat model preference (set from the Agent settings
     // gear). Threaded into `runCanvasAgent`, which only honors Anthropic
@@ -438,6 +452,7 @@ export async function POST(request: NextRequest) {
     let canvasConversationRowId: string | null = null;
     // Persist when there's text OR an attachment — an image-only turn has
     // no text but still must be saved.
+    const tPersist = Date.now();
     if (
       orgId &&
       userId &&
@@ -457,6 +472,7 @@ export async function POST(request: NextRequest) {
         workspaceSlugs: slugs,
       });
     }
+    console.log("[quick-ask] timing", { stage: "persistCanvasUserMessage", ms: Date.now() - tPersist, workspaces: slugs, orgId: orgId ?? null });
 
     try {
       // Tracks concept ids learned in this turn so the `after()` block
@@ -472,6 +488,7 @@ export async function POST(request: NextRequest) {
       // to schedule one graph-walk sub-agent worker per dispatched intent.
       const dispatchedGraphWalks: DispatchedGraphWalkIntent[] = [];
 
+      const tAgent = Date.now();
       const {
         result,
         primarySwarmUrl,
@@ -577,6 +594,8 @@ export async function POST(request: NextRequest) {
             },
           },
         });
+
+      console.log("[quick-ask] timing", { stage: "runCanvasAgent", ms: Date.now() - tAgent, workspaces: slugs, orgId: orgId ?? null });
 
       // Snapshot the rendered prefix for the Agent Logs detail view, and
       // (when present) cache the freshly-fetched concepts so the next turn
@@ -749,6 +768,7 @@ export async function POST(request: NextRequest) {
         }
       });
 
+      console.log("[quick-ask] timing", { stage: "setup-to-stream", ms: Date.now() - t0, workspaces: slugs, orgId: orgId ?? null });
       return result.toUIMessageStreamResponse({
         // Hand the server-created/validated org-canvas row id back to the
         // client (same pattern as `X-Approval-Result`) so it can stamp

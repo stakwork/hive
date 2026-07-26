@@ -1337,4 +1337,228 @@ describe('POST /api/ask/quick - Quick Ask Integration Tests', () => {
       });
     });
   });
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Stage-timing logs — early-exit paths and setup-to-stream label
+  // ─────────────────────────────────────────────────────────────────────────
+  describe('Stage-timing logs', () => {
+    let consoleSpy: ReturnType<typeof vi.spyOn>;
+
+    beforeEach(() => {
+      vi.clearAllMocks();
+      vi.mocked(getModel).mockResolvedValue({
+        modelId: 'test-model',
+        provider: 'anthropic',
+      } as any);
+      consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    });
+
+    afterEach(() => {
+      consoleSpy.mockRestore();
+    });
+
+    /** All `[quick-ask] timing` log payloads from the captured calls. */
+    function routeTimingLogs() {
+      return consoleSpy.mock.calls
+        .filter((args) => args[0] === '[quick-ask] timing')
+        .map((args) => args[1] as Record<string, unknown>);
+    }
+
+    // -----------------------------------------------------------------------
+    // 429 budget-denied early-exit emits a total line
+    // -----------------------------------------------------------------------
+    it('emits early-exit:429-budget-denied timing line with non-negative ms', async () => {
+      const { ANON_DAILY_TOKEN_CAP, OUTPUT_TOKEN_WEIGHT, deriveAnonymousId } =
+        await import('@/lib/ai/publicChatBudget');
+
+      const owner = await createTestUser({
+        email: generateUniqueId('owner') + '@example.com',
+        withGitHubAuth: true,
+      });
+      const workspace = await createTestWorkspace({
+        slug: generateUniqueId('public-ws'),
+        ownerId: owner.id,
+      });
+      await db.workspace.update({
+        where: { id: workspace.id },
+        data: { isPublicViewable: true },
+      });
+      await createTestSwarm({
+        workspaceId: workspace.id,
+        swarmUrl: 'https://test-swarm.sphinx.chat',
+        swarmApiKey: 'test-key',
+      });
+      await createTestRepository({
+        workspaceId: workspace.id,
+        repositoryUrl: 'https://github.com/test-org/test-repo',
+      });
+
+      const probe = createPostRequest('/api/ask/quick', {
+        messages: [{ role: 'user', content: 'over limit' }],
+        workspaceSlug: workspace.slug,
+      });
+      const anonymousId = deriveAnonymousId(probe);
+
+      const outputTokensToExhaust =
+        Math.ceil(ANON_DAILY_TOKEN_CAP / OUTPUT_TOKEN_WEIGHT) + 1;
+      await db.sharedConversation.create({
+        data: {
+          workspaceId: workspace.id,
+          userId: null,
+          anonymousId,
+          messages: [],
+          followUpQuestions: [],
+          inputTokens: 0,
+          outputTokens: outputTokensToExhaust,
+          source: 'dashboard',
+        },
+      });
+
+      const response = await POST(probe);
+      expect(response.status).toBe(429);
+
+      const logs = routeTimingLogs();
+      const earlyExit = logs.find((l) => l.stage === 'early-exit:429-budget-denied');
+      expect(earlyExit).toBeDefined();
+      expect(typeof earlyExit!.ms).toBe('number');
+      expect(earlyExit!.ms as number).toBeGreaterThanOrEqual(0);
+      // Must carry turn context.
+      expect(Array.isArray(earlyExit!.workspaces)).toBe(true);
+      expect(earlyExit).toHaveProperty('orgId');
+    });
+
+    // -----------------------------------------------------------------------
+    // 401 unauthenticated early-exit emits a total line
+    // -----------------------------------------------------------------------
+    it('emits early-exit:401-unauthenticated timing line with non-negative ms', async () => {
+      const owner = await createTestUser({
+        email: generateUniqueId('owner') + '@example.com',
+      });
+      const workspace = await createTestWorkspace({
+        slug: generateUniqueId('workspace'),
+        ownerId: owner.id,
+      });
+      // Private workspace — unauthenticated request hits the 401 path.
+
+      const request = createPostRequest('/api/ask/quick', {
+        messages: [{ role: 'user', content: 'hello' }],
+        workspaceSlug: workspace.slug,
+      });
+
+      const response = await POST(request);
+      expect(response.status).toBe(401);
+
+      const logs = routeTimingLogs();
+      const earlyExit = logs.find((l) => l.stage === 'early-exit:401-unauthenticated');
+      expect(earlyExit).toBeDefined();
+      expect(typeof earlyExit!.ms).toBe('number');
+      expect(earlyExit!.ms as number).toBeGreaterThanOrEqual(0);
+      expect(Array.isArray(earlyExit!.workspaces)).toBe(true);
+      expect(earlyExit).toHaveProperty('orgId');
+    });
+
+    // -----------------------------------------------------------------------
+    // setup-to-stream is labeled distinctly (NOT streaming-duration-total)
+    // -----------------------------------------------------------------------
+    it('emits setup-to-stream timing line with non-negative ms on a normal run', async () => {
+      const user = await createTestUser({
+        email: generateUniqueId('user') + '@example.com',
+        withGitHubAuth: true,
+      });
+      const workspace = await createTestWorkspace({
+        slug: generateUniqueId('workspace'),
+        ownerId: user.id,
+      });
+      await createTestSwarm({
+        workspaceId: workspace.id,
+        swarmUrl: 'https://test-swarm.sphinx.chat',
+        swarmApiKey: 'test-key',
+      });
+      await createTestRepository({
+        workspaceId: workspace.id,
+        repositoryUrl: 'https://github.com/test-org/test-repo',
+      });
+
+      const mockStream = {
+        toUIMessageStreamResponse: vi.fn(
+          () => new Response('ok', { headers: { 'Content-Type': 'text/plain' } }),
+        ),
+      };
+      vi.mocked(streamText).mockReturnValue(mockStream as any);
+
+      const request = createAuthenticatedPostRequest(
+        '/api/ask/quick',
+        { messages: [{ role: 'user', content: 'hello' }], workspaceSlug: workspace.slug },
+        user,
+      );
+
+      const response = await POST(request);
+      expect(response.status).toBe(200);
+
+      const logs = routeTimingLogs();
+
+      // setup-to-stream MUST be present.
+      const setupLog = logs.find((l) => l.stage === 'setup-to-stream');
+      expect(setupLog).toBeDefined();
+      expect(typeof setupLog!.ms).toBe('number');
+      expect(setupLog!.ms as number).toBeGreaterThanOrEqual(0);
+      expect(Array.isArray(setupLog!.workspaces)).toBe(true);
+      expect(setupLog).toHaveProperty('orgId');
+
+      // The route must NOT emit a "streaming-duration-total" line —
+      // that label belongs to runCanvasAgent's onFinish handler.
+      const streamingDurationLog = logs.find((l) => l.stage === 'streaming-duration-total');
+      expect(streamingDurationLog).toBeUndefined();
+    });
+
+    // -----------------------------------------------------------------------
+    // Every timing line has non-negative ms and turn context
+    // -----------------------------------------------------------------------
+    it('all route timing lines carry workspaces array and orgId on a normal run', async () => {
+      const user = await createTestUser({
+        email: generateUniqueId('user') + '@example.com',
+        withGitHubAuth: true,
+      });
+      const workspace = await createTestWorkspace({
+        slug: generateUniqueId('workspace'),
+        ownerId: user.id,
+      });
+      await createTestSwarm({
+        workspaceId: workspace.id,
+        swarmUrl: 'https://test-swarm.sphinx.chat',
+        swarmApiKey: 'test-key',
+      });
+      await createTestRepository({
+        workspaceId: workspace.id,
+        repositoryUrl: 'https://github.com/test-org/test-repo',
+      });
+
+      const mockStream = {
+        toUIMessageStreamResponse: vi.fn(
+          () => new Response('ok', { headers: { 'Content-Type': 'text/plain' } }),
+        ),
+      };
+      vi.mocked(streamText).mockReturnValue(mockStream as any);
+
+      const request = createAuthenticatedPostRequest(
+        '/api/ask/quick',
+        { messages: [{ role: 'user', content: 'hello' }], workspaceSlug: workspace.slug },
+        user,
+      );
+
+      await POST(request);
+
+      const logs = routeTimingLogs();
+      expect(logs.length).toBeGreaterThan(0);
+
+      for (const log of logs) {
+        if ('ms' in log) {
+          expect(typeof log.ms).toBe('number');
+          expect(log.ms as number).toBeGreaterThanOrEqual(0);
+        }
+        expect(Array.isArray(log.workspaces)).toBe(true);
+        expect(log).toHaveProperty('orgId');
+      }
+    });
+  });
 });
