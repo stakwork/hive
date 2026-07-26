@@ -554,6 +554,7 @@ function maybeHighlightLearnedConcept(
 export async function runCanvasAgent(
   opts: RunCanvasAgentOptions,
 ): Promise<RunCanvasAgentResult> {
+  const start = Date.now();
   const {
     userId,
     orgId,
@@ -665,6 +666,11 @@ export async function runCanvasAgent(
     ? composeCapabilityPromptSuffix(orgCapabilities)
     : undefined;
 
+  // Per-invocation timing state — allocated here (inside the function body)
+  // so concurrent calls never share flags or maps.
+  let firstTokenLogged = false;
+  const toolCallStartTimes = new Map<string, number>();
+
   if (isMultiWorkspace) {
     // Multi-workspace mode is auth-only — public-viewer requests are
     // rejected by the caller before reaching here. The non-null
@@ -674,15 +680,23 @@ export async function runCanvasAgent(
         "runCanvasAgent: multi-workspace mode requires a userId",
       );
     }
+    const tBuildConfigs = Date.now();
     const workspaceConfigs = await buildWorkspaceConfigs(workspaceSlugs, userId);
+    console.log("[runCanvasAgent] timing", { stage: "buildWorkspaceConfigs (multi)", ms: Date.now() - tBuildConfigs, workspaces: workspaceSlugs, orgId: orgId ?? null });
     // Cache hit → reuse cached concepts and skip the swarm fetch. The
     // cached concepts still flow into `askToolsMulti` (so the 3+ workspace
     // `read_concepts_for_repo` tool keeps working) AND into the prefix
     // builder below.
     const multiCacheHit = !!cachedConcepts?.conceptsByWorkspace;
-    const conceptsByWorkspace =
-      cachedConcepts?.conceptsByWorkspace ??
-      (await fetchConceptsForWorkspaces(workspaceConfigs));
+    let conceptsByWorkspace: Record<string, Record<string, unknown>[]>;
+    if (multiCacheHit) {
+      conceptsByWorkspace = cachedConcepts!.conceptsByWorkspace!;
+      console.log("[runCanvasAgent] timing", { stage: "fetchConceptsForWorkspaces (multi)", ms: 0, skipped: "cache hit", workspaces: workspaceSlugs, orgId: orgId ?? null });
+    } else {
+      const tConcepts = Date.now();
+      conceptsByWorkspace = await fetchConceptsForWorkspaces(workspaceConfigs);
+      console.log("[runCanvasAgent] timing", { stage: "fetchConceptsForWorkspaces (multi)", ms: Date.now() - tConcepts, workspaces: workspaceSlugs, orgId: orgId ?? null });
+    }
 
     tools = askToolsMulti(workspaceConfigs, apiKey, conceptsByWorkspace, {
       conversationId: currentCanvasConversationId,
@@ -738,6 +752,7 @@ export async function runCanvasAgent(
     // Persona/reply-style preamble, pulled from the Stakwork Prompt
     // Manager (published CANVAS_AGENT_SYSTEM_PROMPT). Bounded by a 10s
     // deadline and always falls back to the in-repo default.
+    const tSystemPrompt = Date.now();
     const canvasSystemPrompt = await getCanvasSystemPrompt();
     // Record the Prompt-Manager version only when it actually came from
     // the manager (default-fallback has a null promptId — nothing to
@@ -751,6 +766,7 @@ export async function runCanvasAgent(
 
     // Always rebuilt fresh (cheap string work) so the scope hint reflects
     // the user's CURRENT canvas/selection, even on a concept-cache hit.
+    const tPrefixMessages = Date.now();
     prefixMessages = getMultiWorkspacePrefixMessages(
       workspaceConfigs,
       conceptsByWorkspace,
@@ -761,6 +777,8 @@ export async function runCanvasAgent(
       canvasSystemPrompt.value,
       userTimezone,
     );
+    console.log("[runCanvasAgent] timing", { stage: "getCanvasSystemPrompt (multi)", ms: tPrefixMessages - tSystemPrompt, workspaces: workspaceSlugs, orgId: orgId ?? null });
+    console.log("[runCanvasAgent] timing", { stage: "getMultiWorkspacePrefixMessages (multi)", ms: Date.now() - tPrefixMessages, workspaces: workspaceSlugs, orgId: orgId ?? null });
     cacheHit = multiCacheHit;
     cacheableConcepts = { conceptsByWorkspace };
     primarySwarmUrl = workspaceConfigs[0].swarmUrl;
@@ -771,9 +789,11 @@ export async function runCanvasAgent(
     // Single-workspace mode. Public-viewer requests use the workspace
     // owner's PAT via `buildPublicWorkspaceConfig`; members get the
     // normal per-user path.
+    const tBuildConfigsSingle = Date.now();
     const ws = isPublicViewer
       ? await buildPublicWorkspaceConfig(primarySlug)
       : (await buildWorkspaceConfigs(workspaceSlugs, userId!))[0];
+    console.log("[runCanvasAgent] timing", { stage: "buildWorkspaceConfigs (single)", ms: Date.now() - tBuildConfigsSingle, workspaces: workspaceSlugs, orgId: orgId ?? null });
 
     tools = askTools(ws.swarmUrl, ws.swarmApiKey, ws.repoUrls, ws.pat, apiKey, {
       workspaceId: ws.workspaceId,
@@ -795,8 +815,10 @@ export async function runCanvasAgent(
     const singleCacheHit = !!cachedConcepts?.concepts;
     if (singleCacheHit) {
       features = cachedConcepts!.concepts!;
+      console.log("[runCanvasAgent] timing", { stage: "listConcepts (single)", ms: 0, skipped: "cache hit", workspaces: workspaceSlugs, orgId: orgId ?? null });
     } else {
       let concepts: Record<string, unknown> = {};
+      const tListConcepts = Date.now();
       try {
         concepts = await listConcepts(ws.swarmUrl, ws.swarmApiKey);
       } catch (e) {
@@ -805,6 +827,7 @@ export async function runCanvasAgent(
           e,
         );
       }
+      console.log("[runCanvasAgent] timing", { stage: "listConcepts (single)", ms: Date.now() - tListConcepts, workspaces: workspaceSlugs, orgId: orgId ?? null });
       features = (concepts.concepts as Record<string, unknown>[]) || [];
     }
     cacheHit = singleCacheHit;
@@ -839,6 +862,7 @@ export async function runCanvasAgent(
     }
 
     // Always rebuilt fresh so the scope hint stays current on cache hits.
+    const tPrefixMessagesSingle = Date.now();
     prefixMessages = getQuickAskPrefixMessages(
       features,
       ws.repoUrls,
@@ -855,6 +879,7 @@ export async function runCanvasAgent(
       ws.currentUserGithubUsername,
       userTimezone,
     );
+    console.log("[runCanvasAgent] timing", { stage: "getQuickAskPrefixMessages (single)", ms: Date.now() - tPrefixMessagesSingle, workspaces: workspaceSlugs, orgId: orgId ?? null });
     primarySwarmUrl = ws.swarmUrl;
     primarySwarmApiKey = ws.swarmApiKey;
     primaryWorkspaceId = ws.workspaceId;
@@ -886,11 +911,13 @@ export async function runCanvasAgent(
   // Assemble final message list + sanitize
   // ------------------------------------------------------------------
   const rawMessages: ModelMessage[] = [...prefixMessages, ...messages];
+  const tSanitize = Date.now();
   const modelMessages = await sanitizeAndCompleteToolCalls(
     rawMessages,
     primarySwarmUrl,
     primarySwarmApiKey,
   );
+  console.log("[runCanvasAgent] timing", { stage: "sanitizeAndCompleteToolCalls", ms: Date.now() - tSanitize, workspaces: workspaceSlugs, orgId: orgId ?? null });
 
   // ------------------------------------------------------------------
   // Bifrost routing for the in-process LLM call.
@@ -915,6 +942,7 @@ export async function runCanvasAgent(
   // mirrors the `repo-agent` vs `diagram-agent` convention of naming
   // by user-facing purpose, not by underlying function.
   const agentName = orgId ? "canvas-agent" : "chat-agent";
+  const tBifrost = Date.now();
   const bifrost =
     primaryWorkspaceId && primaryUserId
       ? await getBifrostForLLM(
@@ -926,6 +954,12 @@ export async function runCanvasAgent(
           { agentName },
         )
       : undefined;
+  const tBifrostMs = Date.now() - tBifrost;
+  if (primaryWorkspaceId && primaryUserId) {
+    console.log("[runCanvasAgent] timing", { stage: "getBifrostForLLM", ms: tBifrostMs, workspaces: workspaceSlugs, orgId: orgId ?? null });
+  } else {
+    console.log("[runCanvasAgent] timing", { stage: "getBifrostForLLM", ms: 0, skipped: "no primaryWorkspaceId/userId", workspaces: workspaceSlugs, orgId: orgId ?? null });
+  }
 
   // Honor the caller's model preference only when it targets the
   // Anthropic provider (the canvas agent's only supported provider
@@ -945,6 +979,8 @@ export async function runCanvasAgent(
       ? { baseUrl: bifrost.baseUrl, headers: bifrost.headers }
       : undefined,
   );
+  const resolvedModelId = (model as { modelId?: string })?.modelId ?? "unknown";
+  console.log("[runCanvasAgent] timing", { stage: "getModel", model: resolvedModelId, workspaces: workspaceSlugs, orgId: orgId ?? null });
 
   // ------------------------------------------------------------------
   // Provider options — enables Anthropic auto prompt caching
@@ -981,6 +1017,7 @@ export async function runCanvasAgent(
   // ------------------------------------------------------------------
   // Kick off the agentic loop
   // ------------------------------------------------------------------
+  const streamStart = Date.now();
   const result = streamText({
     model,
     tools,
@@ -1019,7 +1056,27 @@ export async function runCanvasAgent(
         await hooks.onStepFinish(sf);
       }
     },
+    onChunk: ({ chunk }) => {
+      // Per-tool round-trip: record call start, diff on result.
+      // Using onChunk (not onStepFinish) so call and result arrive in
+      // separate async ticks — measuring real execution time, not ~0ms.
+      if (chunk.type === "tool-call") {
+        toolCallStartTimes.set(chunk.toolCallId, Date.now());
+      } else if (chunk.type === "tool-result") {
+        const callTs = toolCallStartTimes.get(chunk.toolCallId);
+        if (callTs !== undefined) {
+          toolCallStartTimes.delete(chunk.toolCallId);
+          console.log("[runCanvasAgent] timing", { stage: "tool-round-trip", tool: chunk.toolName, ms: Date.now() - callTs, workspaces: workspaceSlugs, orgId: orgId ?? null });
+        }
+      }
+      // TTFT: fire once on first text-delta only (not tool-call/reasoning chunks).
+      if (!firstTokenLogged && chunk.type === "text-delta") {
+        firstTokenLogged = true;
+        console.log("[runCanvasAgent] timing", { stage: "time-to-first-token", ms: Date.now() - streamStart, model: resolvedModelId, workspaces: workspaceSlugs, orgId: orgId ?? null });
+      }
+    },
     onFinish: async ({ usage }) => {
+      console.log("[runCanvasAgent] timing", { stage: "streaming-duration-total", ms: Date.now() - streamStart, model: resolvedModelId, workspaces: workspaceSlugs, orgId: orgId ?? null });
       if (hooks?.onFinish) {
         await hooks.onFinish({ usage });
       }
