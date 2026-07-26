@@ -62,6 +62,12 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     // Rejoin catch-all segments to reconstruct the full slug (e.g. "contracts/review-contract")
     const taskSlug = taskSlugParts.join("/");
 
+    // Allowlist guard — prevent path injection before any network call
+    const TASK_SLUG_REGEX = /^[a-z0-9][a-z0-9-]*(\/[a-z0-9][a-z0-9-]*)*$/;
+    if (!TASK_SLUG_REGEX.test(taskSlug)) {
+      return NextResponse.json({ error: "Invalid task slug" }, { status: 400 });
+    }
+
     const githubToken = process.env.GITHUB_TOKEN;
 
     const taskJsonUrl = `https://raw.githubusercontent.com/stakwork/harvey-labs/main/tasks/${taskSlug}/task.json`;
