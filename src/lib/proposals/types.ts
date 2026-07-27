@@ -345,9 +345,12 @@ export interface PromptCreateProposalPayload {
 
 /**
  * Payload the agent fills in for a prompt update proposal.
- * `value` is required (mcpUpdatePrompt has no partial-update path).
- * A description-only change must still send the current raw value as `value`
- * so `oldStr === newStr` for value but description changes.
+ * `value` is required and always a complete snapshot: the agent may express the
+ * change as find/replace edits, but `propose_prompt_update` resolves those to a
+ * full value at tool-call time (an edit list replayed at approval time would
+ * apply to a prompt that has since moved). A description-only change must still
+ * send the current raw value as `value` so `oldStr === newStr` for value but
+ * description changes.
  */
 export interface PromptUpdateProposalPayload {
   promptId: string;
