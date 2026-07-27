@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { FileIcon } from "lucide-react";
+import { FileIcon, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/dialog";
 import type { HarveyTask } from "@/lib/harvey-lab-tasks";
 import { WORK_TYPE_STYLES } from "@/lib/harvey-lab-tasks";
+import { formatMB } from "@/lib/utils/format";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -24,6 +25,11 @@ interface TaskDetails {
   instructions: string | null;
   criteria: Array<{ id: string; title: string; match_criteria: string }> | null;
   documents: Array<{ name: string; url: string; download_url: string }>;
+}
+
+interface FileSizeData {
+  total_source_size_bytes: number;
+  files: { name: string; size: number }[];
 }
 
 export interface TaskDetailsModalProps {
@@ -78,11 +84,15 @@ export function TaskDetailsModal({
   const [details, setDetails] = useState<TaskDetails | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [sizeData, setSizeData] = useState<FileSizeData | null>(null);
+  const [sizeLoading, setSizeLoading] = useState(true);
 
   useEffect(() => {
     if (!open || !task?.slug) {
       setDetails(null);
       setError(null);
+      setSizeData(null);
+      setSizeLoading(false);
       return;
     }
 
@@ -110,6 +120,30 @@ export function TaskDetailsModal({
     };
 
     fetchDetails();
+    return () => {
+      cancelled = true;
+    };
+  }, [open, task?.slug, slug]);
+
+  useEffect(() => {
+    if (!open || !task?.slug || !slug) return;
+    let cancelled = false;
+    setSizeLoading(true);
+    setSizeData(null);
+    (async () => {
+      try {
+        const res = await fetch(
+          `/api/workspaces/${slug}/legal/benchmarks/tasks/size/${task.slug}`,
+        );
+        if (!res.ok) return;
+        const data: FileSizeData = await res.json();
+        if (!cancelled && data.files.length > 0) setSizeData(data);
+      } catch {
+        // silent fail — no toast, no message
+      } finally {
+        if (!cancelled) setSizeLoading(false);
+      }
+    })();
     return () => {
       cancelled = true;
     };
@@ -210,21 +244,39 @@ export function TaskDetailsModal({
                   {details.documents.length === 0 ? (
                     <p className="text-sm text-muted-foreground italic">No documents attached.</p>
                   ) : (
-                    <ul className="space-y-1">
-                      {details.documents.map((doc) => (
-                        <li key={doc.name} className="flex items-center gap-2 text-sm">
-                          <FileIcon className="h-4 w-4 text-muted-foreground shrink-0" />
-                          <a
-                            href={doc.url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-primary hover:underline truncate"
-                          >
-                            {doc.name}
-                          </a>
-                        </li>
-                      ))}
-                    </ul>
+                    <>
+                      <ul className="space-y-1">
+                        {details.documents.map((doc) => {
+                          const matchedFile = sizeData?.files.find((f) => f.name === doc.name);
+                          return (
+                            <li key={doc.name} className="flex items-center gap-2 text-sm">
+                              <FileIcon className="h-4 w-4 text-muted-foreground shrink-0" />
+                              <a
+                                href={doc.url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-primary hover:underline truncate min-w-0"
+                              >
+                                {doc.name}
+                              </a>
+                              {matchedFile && (
+                                <span className="text-xs text-muted-foreground ml-auto flex-shrink-0">
+                                  {formatMB(matchedFile.size)}
+                                </span>
+                              )}
+                            </li>
+                          );
+                        })}
+                      </ul>
+                      {sizeLoading && !sizeData && (
+                        <Loader2 className="h-3 w-3 animate-spin text-muted-foreground mt-2" />
+                      )}
+                      {sizeData && (
+                        <p className="text-xs text-muted-foreground mt-2">
+                          Total: {formatMB(sizeData.total_source_size_bytes)}
+                        </p>
+                      )}
+                    </>
                   )}
                 </section>
 
