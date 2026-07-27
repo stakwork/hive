@@ -50,6 +50,9 @@ vi.mock('@/lib/ai/askTools', () => ({
 vi.mock('@/lib/constants/prompt', () => ({
   getQuickAskPrefixMessages: vi.fn(() => []),
   getMultiWorkspacePrefixMessages: vi.fn(() => []),
+  // Trailing `<canvas-scope>` message builder. `null` = no scope block,
+  // which keeps the assembled message array equal to the history.
+  buildCanvasScopeMessage: vi.fn(() => null),
   // Per-capability snippets consumed by the capability registry
   // (@/lib/ai/capabilities), reached transitively via runCanvasAgent.
   getRoadmapCapabilitySnippet: vi.fn(() => ''),

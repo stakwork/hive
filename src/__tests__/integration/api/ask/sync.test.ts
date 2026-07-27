@@ -45,6 +45,9 @@ vi.mock('@/lib/ai/askTools', () => ({
 vi.mock('@/lib/constants/prompt', () => ({
   getQuickAskPrefixMessages: vi.fn(() => []),
   getMultiWorkspacePrefixMessages: vi.fn(() => []),
+  // Trailing `<canvas-scope>` message builder. `null` = no scope block,
+  // which keeps the assembled message array equal to the history.
+  buildCanvasScopeMessage: vi.fn(() => null),
   getRoadmapCapabilitySnippet: vi.fn(() => ''),
   getWhiteboardCapabilitySnippet: vi.fn(() => ''),
   getPlannerCapabilitySnippet: vi.fn(() => ''),

@@ -44,6 +44,7 @@ import type {
   PrepareStepFunction,
 } from "ai";
 import {
+  buildCanvasScopeMessage,
   getMultiWorkspacePrefixMessages,
   getQuickAskPrefixMessages,
 } from "@/lib/constants/prompt";
@@ -378,10 +379,14 @@ export interface RunCanvasAgentResult {
    */
   readonly: boolean;
   /**
-   * The prefix messages actually used this turn (system prompt + seeded
-   * concepts), rebuilt fresh every turn with the current scope. Surfaced
-   * so the caller can persist a snapshot for the Agent Logs detail view
-   * ("what the model saw").
+   * The non-history context used this turn: the prefix messages (system
+   * prompt + seeded concepts) plus the trailing `<canvas-scope>` block
+   * when one was injected. Surfaced so the caller can persist a snapshot
+   * for the Agent Logs detail view ("what the model saw").
+   *
+   * Note the ordering here is the *log* ordering, not the request
+   * ordering — the scope block is actually sent after the conversation
+   * history (see the append site in the body for why).
    */
   assembledPrefix: ModelMessage[];
   /**
@@ -615,6 +620,10 @@ export async function runCanvasAgent(
   let tools: ToolSet;
   let prefixMessages: ModelMessage[];
   let features: Record<string, unknown>[];
+  // The user's current canvas scope, resolved per branch below. Rendered
+  // into a TRAILING message (not the system prompt) — see the append
+  // site further down for why.
+  let canvasScope: CanvasScopeHint | undefined;
   // Concept-cache bookkeeping, assigned per branch below.
   let cacheHit = false;
   let cacheableConcepts: CachedConcepts = {};
@@ -764,15 +773,19 @@ export async function runCanvasAgent(
       };
     }
 
-    // Always rebuilt fresh (cheap string work) so the scope hint reflects
-    // the user's CURRENT canvas/selection, even on a concept-cache hit.
+    // Canvas tools only exist on org-scope calls, so the scope block is
+    // only meaningful there.
+    canvasScope = orgId ? buildScopeHint(scope, linkedWorkspaces) : undefined;
+
+    // Rebuilt fresh each turn (cheap string work), but deliberately
+    // scope-FREE: every input here is stable turn-to-turn for a given
+    // conversation, which is what keeps the system block cacheable.
     const tPrefixMessages = Date.now();
     prefixMessages = getMultiWorkspacePrefixMessages(
       workspaceConfigs,
       conceptsByWorkspace,
       [],
       orgId,
-      buildScopeHint(scope, linkedWorkspaces),
       orgPromptSuffix,
       canvasSystemPrompt.value,
       userTimezone,
@@ -861,7 +874,9 @@ export async function runCanvasAgent(
       };
     }
 
-    // Always rebuilt fresh so the scope hint stays current on cache hits.
+    canvasScope = orgId ? buildScopeHint(scope, []) : undefined;
+
+    // Scope-free by design — see the multi-workspace branch above.
     const tPrefixMessagesSingle = Date.now();
     prefixMessages = getQuickAskPrefixMessages(
       features,
@@ -872,7 +887,6 @@ export async function runCanvasAgent(
       orgId
         ? {
             orgId,
-            scope: buildScopeHint(scope, []),
             promptSuffix: orgPromptSuffix,
           }
         : undefined,
@@ -910,7 +924,26 @@ export async function runCanvasAgent(
   // ------------------------------------------------------------------
   // Assemble final message list + sanitize
   // ------------------------------------------------------------------
-  const rawMessages: ModelMessage[] = [...prefixMessages, ...messages];
+  // The canvas scope block goes LAST — after the full history, not in
+  // the system prompt.
+  //
+  // Anthropic prompt caching is longest-common-prefix. The scope
+  // (current canvas ref, breadcrumb, selected node ids) changes every
+  // time the user clicks a node or opens a sub-canvas, so while it lived
+  // in the system message — one content block — a single click rewrote
+  // that block and invalidated the cache for the persona preamble and
+  // every capability snippet above it. Parked at the tail, the volatile
+  // bytes are the last thing in the request and everything before them
+  // (tools → system → seeded concepts → history) stays cacheable.
+  //
+  // Keep this the final append. Anything inserted after it re-creates
+  // the exact problem this fixes.
+  const canvasScopeMessage = buildCanvasScopeMessage(canvasScope);
+  const rawMessages: ModelMessage[] = [
+    ...prefixMessages,
+    ...messages,
+    ...(canvasScopeMessage ? [canvasScopeMessage] : []),
+  ];
   const tSanitize = Date.now();
   const modelMessages = await sanitizeAndCompleteToolCalls(
     rawMessages,
@@ -1113,7 +1146,12 @@ export async function runCanvasAgent(
     primaryWorkspaceId: primaryWorkspaceId!,
     primaryUserId: primaryUserId!,
     readonly,
-    assembledPrefix: prefixMessages,
+    // The scope block is appended for the log snapshot even though the
+    // model sees it at the tail — it's non-history context the Agent
+    // Logs view should still show under "what the model saw".
+    assembledPrefix: canvasScopeMessage
+      ? [...prefixMessages, canvasScopeMessage]
+      : prefixMessages,
     cacheableConcepts,
     cacheHit,
     promptResolutions,
