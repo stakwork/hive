@@ -79,6 +79,7 @@ vi.mock("@/lib/ai/capabilityGates", () => ({
 vi.mock("@/lib/constants/prompt", () => ({
   getMultiWorkspacePrefixMessages: vi.fn(() => []),
   getQuickAskPrefixMessages: vi.fn(() => []),
+  buildCanvasScopeMessage: vi.fn(() => null),
   getRoadmapCapabilitySnippet: vi.fn(() => ""),
   getWhiteboardCapabilitySnippet: vi.fn(() => ""),
   getPlannerCapabilitySnippet: vi.fn(() => ""),
