@@ -83,27 +83,10 @@ describe("mcpUpdatePromptEdits — resolves edits to a full value", () => {
     );
   });
 
-  it("reads the raw base value, so edits are not built against resolved text", async () => {
+  it("reads the raw current value, so edits are not built against resolved text", async () => {
     await mcpUpdatePromptEdits(AUTH, "prompt-1", [{ oldStr: "Rules:", newStr: "Guidelines:" }]);
 
-    expect(mockGetRawPromptValue).toHaveBeenCalledWith("prompt-1", undefined);
-  });
-
-  it("uses baseVersionId as the base when supplied", async () => {
-    mockGetRawPromptValue.mockResolvedValue({ ...rawValue("old text"), versionId: "version-1" });
-
-    await mcpUpdatePromptEdits(
-      AUTH,
-      "prompt-1",
-      [{ oldStr: "old", newStr: "new" }],
-      undefined,
-      "version-1",
-    );
-
-    expect(mockGetRawPromptValue).toHaveBeenCalledWith("prompt-1", "version-1");
-    expect(mockWritePromptThrough).toHaveBeenCalledWith(
-      expect.objectContaining({ value: "new text" }),
-    );
+    expect(mockGetRawPromptValue).toHaveBeenCalledWith("prompt-1");
   });
 
   it("forwards description when provided", async () => {
@@ -193,21 +176,6 @@ describe("mcpUpdatePromptEdits — base lookup failures", () => {
     expect(result.isError).toBe(true);
     expect(text(result)).toMatch(/prompt not found/i);
     expect(mockWritePromptThrough).not.toHaveBeenCalled();
-  });
-
-  it("names the version when an explicit baseVersionId does not resolve", async () => {
-    mockGetRawPromptValue.mockResolvedValue({ notFound: true });
-
-    const result = await mcpUpdatePromptEdits(
-      AUTH,
-      "prompt-1",
-      [{ oldStr: "a", newStr: "b" }],
-      undefined,
-      "version-99",
-    );
-
-    expect(result.isError).toBe(true);
-    expect(text(result)).toContain("version-99");
   });
 
   it("surfaces a read error without writing", async () => {

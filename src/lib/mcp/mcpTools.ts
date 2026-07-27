@@ -1335,26 +1335,21 @@ export async function mcpCreatePrompt(
  * to `mcpUpdatePrompt` — so the stored version, the proposal payload and the
  * approval path all keep working on whole values. See `prompt-edits.ts`.
  *
- * The base is the version the caller read: `baseVersionId` when supplied,
- * otherwise the same anchor `get_prompt` uses (published if set, else latest).
- * Passing `baseVersionId` explicitly turns a stale read into a failed match
- * rather than a silent rebase onto whatever is current.
+ * The base is always the current version — the same anchor `get_prompt` uses
+ * (published if set, else latest). If the prompt changed since the caller read
+ * it, the edit either still applies cleanly or fails the exact match; there is
+ * no way to pin an older base and silently revert a concurrent change.
  */
 export async function mcpUpdatePromptEdits(
   auth: WorkspaceAuth,
   promptId: string,
   edits: PromptEdit[],
   description?: string,
-  baseVersionId?: string,
 ): Promise<McpToolResult> {
-  const base = await getRawPromptValue(promptId, baseVersionId);
+  const base = await getRawPromptValue(promptId);
 
   if ("notFound" in base) {
-    return mcpError(
-      baseVersionId
-        ? `Error: prompt '${promptId}' has no version '${baseVersionId}'`
-        : "Error: prompt not found",
-    );
+    return mcpError("Error: prompt not found");
   }
   if ("error" in base) {
     return mcpError(`Error: ${base.error}`);

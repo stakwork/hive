@@ -826,13 +826,7 @@ function createServer(
           .max(MAX_PROMPT_EDITS)
           .optional()
           .describe(
-            "Targeted find/replace edits applied to the base version. Omit when using `value`.",
-          ),
-        baseVersionId: z
-          .string()
-          .optional()
-          .describe(
-            "Version the `edits` apply to. Omit to use the same version `get_prompt` returns (published if set, else latest). Supply the versionId you actually read to make a concurrent change fail loudly instead of rebasing silently. Ignored when using `value`.",
+            "Targeted find/replace edits applied to the current version (published if set, else latest — the same version `get_prompt` returns). Omit when using `value`.",
           ),
         description: z
           .string()
@@ -845,13 +839,11 @@ function createServer(
         promptId,
         value,
         edits,
-        baseVersionId,
         description,
       }: {
         promptId: string;
         value?: string;
         edits?: PromptEdit[];
-        baseVersionId?: string;
         description?: string;
       },
       extra,
@@ -872,7 +864,7 @@ function createServer(
       if (result.error) return result.error;
 
       return edits
-        ? mcpUpdatePromptEdits(result.auth!, promptId, edits, description, baseVersionId)
+        ? mcpUpdatePromptEdits(result.auth!, promptId, edits, description)
         : mcpUpdatePrompt(result.auth!, promptId, value!, description);
     },
   );
