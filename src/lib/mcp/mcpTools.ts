@@ -5,6 +5,7 @@ import { sendFeatureChatMessage } from "@/services/roadmap/feature-chat";
 import { createTicket } from "@/services/roadmap/tickets";
 import { sendMessageToStakwork } from "@/services/task-workflow";
 import { writePromptThrough } from "@/services/prompts/prompt-sync";
+import { applyPromptEdits, type PromptEdit } from "@/services/prompts/prompt-edits";
 import {
   getResolvedPrompt,
   listPromptVersions,
@@ -1324,6 +1325,49 @@ export async function mcpCreatePrompt(
       error instanceof Error ? error.message : "Could not create prompt";
     return mcpError(`Error: ${msg}`);
   }
+}
+
+/**
+ * Push a new version of an existing prompt from a list of exact-match edits
+ * instead of a full value.
+ *
+ * The edits are resolved to a complete value here, at tool-call time, and handed
+ * to `mcpUpdatePrompt` — so the stored version, the proposal payload and the
+ * approval path all keep working on whole values. See `prompt-edits.ts`.
+ *
+ * The base is the version the caller read: `baseVersionId` when supplied,
+ * otherwise the same anchor `get_prompt` uses (published if set, else latest).
+ * Passing `baseVersionId` explicitly turns a stale read into a failed match
+ * rather than a silent rebase onto whatever is current.
+ */
+export async function mcpUpdatePromptEdits(
+  auth: WorkspaceAuth,
+  promptId: string,
+  edits: PromptEdit[],
+  description?: string,
+  baseVersionId?: string,
+): Promise<McpToolResult> {
+  const base = await getRawPromptValue(promptId, baseVersionId);
+
+  if ("notFound" in base) {
+    return mcpError(
+      baseVersionId
+        ? `Error: prompt '${promptId}' has no version '${baseVersionId}'`
+        : "Error: prompt not found",
+    );
+  }
+  if ("error" in base) {
+    return mcpError(`Error: ${base.error}`);
+  }
+
+  const applied = applyPromptEdits(base.value, edits);
+  if (!applied.ok) {
+    return mcpError(
+      `Error: ${applied.error} (base: ${base.name} v${base.versionNumber})`,
+    );
+  }
+
+  return mcpUpdatePrompt(auth, promptId, applied.value, description);
 }
 
 /**

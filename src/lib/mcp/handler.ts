@@ -18,6 +18,8 @@ import {
   mcpCreateFeatureTask,
   mcpCreatePrompt,
   mcpUpdatePrompt,
+  mcpUpdatePromptEdits,
+  mcpError,
   mcpGetPrompt,
   mcpGetPromptVersions,
   mcpGetPromptVersion,
@@ -38,6 +40,10 @@ import {
   registerOrgTools,
   type OrgMcpAuthExtra,
 } from "@/lib/mcp/orgMcpTools";
+import {
+  MAX_PROMPT_EDITS,
+  type PromptEdit,
+} from "@/services/prompts/prompt-edits";
 import {
   mcpVerifyCitations,
   mcpSearchCaseLaw,
@@ -780,15 +786,54 @@ function createServer(
     {
       title: "Update Prompt",
       description: [
-        "Push a new version of an existing prompt. The prior versions are preserved — this does NOT overwrite history.",
+        "Push a new version of an existing prompt. The prior versions are preserved — this does NOT overwrite history, and the new version is an unpublished DRAFT.",
         "",
-        "Pass the prompt `id` (not name) and the new `value`. Optionally update `description`. The prompt name cannot be changed via this tool.",
+        "Pass the prompt `id` (not name) and EITHER `value` (the complete new content) OR `edits` (targeted find/replace) — exactly one, never both. Optionally update `description`. The prompt name cannot be changed via this tool.",
+        "",
+        "**Prefer `edits` for anything short of a rewrite.** Each edit's `oldStr` must match the stored value exactly — whitespace and line breaks included — and must be unique unless you pass `replaceAll: true`. Read the base first with `get_prompt` and `raw: true`: the raw value is what edits apply to, whereas the resolved text has variables substituted and nested prompts inlined, so edits built from it will not match.",
+        "",
+        "Edits apply in order, each to the result of the previous one. If an `oldStr` does not match, the whole call fails and nothing is written — that usually means the prompt changed since you read it, so re-read and rebuild the edit.",
       ].join("\n"),
       inputSchema: {
         promptId: z.string().describe("ID of the prompt to update."),
         value: z
           .string()
-          .describe("New prompt content — creates a new PromptVersion."),
+          .optional()
+          .describe(
+            "Complete new prompt content — replaces the whole value. Omit when using `edits`.",
+          ),
+        edits: z
+          .array(
+            z.object({
+              oldStr: z
+                .string()
+                .min(1)
+                .describe(
+                  "Exact text to find in the current value — must match verbatim, including whitespace.",
+                ),
+              newStr: z
+                .string()
+                .describe("Replacement text. Pass an empty string to delete the matched text."),
+              replaceAll: z
+                .boolean()
+                .optional()
+                .describe(
+                  "Replace every occurrence. Omit to require oldStr to appear exactly once.",
+                ),
+            }),
+          )
+          .min(1)
+          .max(MAX_PROMPT_EDITS)
+          .optional()
+          .describe(
+            "Targeted find/replace edits applied to the base version. Omit when using `value`.",
+          ),
+        baseVersionId: z
+          .string()
+          .optional()
+          .describe(
+            "Version the `edits` apply to. Omit to use the same version `get_prompt` returns (published if set, else latest). Supply the versionId you actually read to make a concurrent change fail loudly instead of rebasing silently. Ignored when using `value`.",
+          ),
         description: z
           .string()
           .optional()
@@ -796,13 +841,39 @@ function createServer(
       },
     },
     async (
-      { promptId, value, description }: { promptId: string; value: string; description?: string },
+      {
+        promptId,
+        value,
+        edits,
+        baseVersionId,
+        description,
+      }: {
+        promptId: string;
+        value?: string;
+        edits?: PromptEdit[];
+        baseVersionId?: string;
+        description?: string;
+      },
       extra,
     ) => {
+      if (value !== undefined && edits !== undefined) {
+        return mcpError(
+          "Error: pass either `value` or `edits`, not both. Use `edits` for targeted changes and `value` only for a full rewrite.",
+        );
+      }
+      if (value === undefined && (edits === undefined || edits.length === 0)) {
+        return mcpError(
+          "Error: one of `value` (complete new content) or `edits` (targeted find/replace) is required.",
+        );
+      }
+
       const authExtra = extra.authInfo?.extra as McpAuthExtra | undefined;
       const result = await getWorkspaceAuth(authExtra, "update_prompt");
       if (result.error) return result.error;
-      return mcpUpdatePrompt(result.auth!, promptId, value, description);
+
+      return edits
+        ? mcpUpdatePromptEdits(result.auth!, promptId, edits, description, baseVersionId)
+        : mcpUpdatePrompt(result.auth!, promptId, value!, description);
     },
   );
 
