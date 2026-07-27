@@ -55,9 +55,14 @@ export async function buildWorkspaceConfigs(
       throw notFoundError(`GitHub PAT not found for workspace: ${slug}`);
     }
 
-    // Fetch workspace members (name, github username, role, description)
+    // Fetch workspace members (name, github username, role, description).
+    // `orderBy` is load-bearing: this roster is rendered near the top of
+    // the cached system prompt, and `lastAccessedAt` writes churn these
+    // rows — without a stable sort the heap order shifts and busts the
+    // Anthropic prompt cache for the whole request.
     const memberships = await db.workspaceMember.findMany({
       where: { workspaceId: access.workspace.id, leftAt: null },
+      orderBy: [{ joinedAt: "asc" }, { id: "asc" }],
       select: {
         role: true,
         description: true,
@@ -159,8 +164,13 @@ export async function buildPublicWorkspaceConfig(
   // Members list is used in the prompt so the agent can refer to
   // contributors by name. Public viewers see it too — names are
   // public knowledge for an isPublicViewable workspace.
+  //
+  // Stable `orderBy` for the same reason as `buildWorkspaceConfigs`:
+  // an unordered roster reshuffles under row churn and busts the
+  // cached system prompt.
   const memberships = await db.workspaceMember.findMany({
     where: { workspaceId: workspace.id, leftAt: null },
+    orderBy: [{ joinedAt: "asc" }, { id: "asc" }],
     select: {
       role: true,
       description: true,

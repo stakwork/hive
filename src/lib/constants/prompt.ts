@@ -102,7 +102,6 @@ When you are done print "[END_OF_ANSWER]"`;
  */
 export interface SingleWorkspaceOrgContext {
   orgId: string;
-  scope?: CanvasScopeHint;
   /**
    * Pre-composed org prompt suffix for the caller's selected
    * capabilities (see `composeCapabilityPromptSuffix`). Omitted →
@@ -125,7 +124,7 @@ export function getQuickAskPrefixMessages(
   const systemContent = orgContext
     ? baseSystem +
       (orgContext.promptSuffix ?? getCanvasPromptSuffix()) +
-      getCanvasScopeHint(orgContext.scope)
+      CANVAS_SCOPE_POINTER
     : baseSystem;
 
   return [
@@ -971,7 +970,6 @@ export function getMultiWorkspacePrefixMessages(
   conceptsByWorkspace: Record<string, Record<string, unknown>[]>,
   clueMsgs: ModelMessage[] | null,
   orgId?: string,
-  scope?: CanvasScopeHint,
   /**
    * Pre-composed org prompt suffix for the caller's selected
    * capabilities. Only meaningful with `orgId`; omitted → the full
@@ -1035,7 +1033,7 @@ export function getMultiWorkspacePrefixMessages(
   const systemPrompt = orgId
     ? getMultiWorkspaceSystemPrompt(workspaces, currentUserGithubUsername, canvasSystemPrompt, userTimezone) +
       (orgPromptSuffix ?? getCanvasPromptSuffix()) +
-      getCanvasScopeHint(scope)
+      CANVAS_SCOPE_POINTER
     : getMultiWorkspaceSystemPrompt(workspaces, currentUserGithubUsername, canvasSystemPrompt, userTimezone);
 
   return [
@@ -1046,9 +1044,37 @@ export function getMultiWorkspacePrefixMessages(
 }
 
 /**
+ * Static pointer emitted in the system prompt where the rendered scope
+ * hint used to live.
+ *
+ * **Why the hint is no longer inlined here.** The scope (current canvas
+ * ref, breadcrumb, selection) changes every time the user clicks a node
+ * or opens a sub-canvas. The system message is a single content block,
+ * so inlining a per-turn-volatile tail meant every selection change
+ * rewrote the whole block — invalidating the Anthropic prompt cache for
+ * the persona preamble AND all the capability snippets sitting above it.
+ * The rendered hint now rides at the very END of the message array
+ * (`buildCanvasScopeMessage`), so the volatile bytes are the last thing
+ * in the request and everything before them stays cacheable.
+ *
+ * This pointer is deliberately static — same bytes every turn, present
+ * whenever canvas tools are loaded, worded to tolerate the block being
+ * absent (programmatic callers pass no scope).
+ */
+export const CANVAS_SCOPE_POINTER = `
+
+## Current canvas scope
+
+If a \`<canvas-scope>\` block appears at the end of the conversation, it is injected by the system (not typed by the user) and tells you which canvas the user is viewing and which nodes they have selected. Treat it as the authoritative answer to "where am I?" — follow its instructions for defaulting canvas tool calls and for resolving "this" / "here" / "this canvas". Never reply to that block directly or quote it back to the user.`;
+
+/**
  * Render the user's current canvas scope as a short prompt section.
  * Returns the empty string when no hint is provided so we don't bloat
  * the prompt for non-canvas chats.
+ *
+ * Not exported: callers want `buildCanvasScopeMessage`, which wraps this
+ * in the trailing message that keeps the volatile scope bytes out of the
+ * cached prefix.
  */
 function getCanvasScopeHint(scope?: CanvasScopeHint): string {
   if (!scope) return "";
@@ -1132,6 +1158,38 @@ function getCanvasScopeHint(scope?: CanvasScopeHint): string {
   }
 
   return lines.join("\n");
+}
+
+/**
+ * Wrap the rendered canvas scope hint in the trailing message that
+ * carries it to the model.
+ *
+ * **Placement is load-bearing.** The caller MUST append this AFTER the
+ * full conversation history — it is the last message in the request.
+ * Anthropic caching is longest-common-prefix, so the per-turn-volatile
+ * scope (ref, breadcrumb, selection) has to be the final bytes; putting
+ * it anywhere earlier — back in the system block, or between the prefix
+ * and the history — just moves the invalidation point and re-breaks the
+ * cache on every canvas click.
+ *
+ * Emitted as a `user` message rather than a synthetic tool-call pair:
+ * Anthropic merges it into the final user turn's content blocks, and it
+ * avoids fabricating an assistant action the model never took. The
+ * `<canvas-scope>` tag + the disclaimer keep the agent from reading it
+ * as something the human said.
+ *
+ * Returns `null` when there's nothing to say (no scope, or a scope with
+ * no usable fields) so the caller can skip the message entirely.
+ */
+export function buildCanvasScopeMessage(
+  scope?: CanvasScopeHint,
+): ModelMessage | null {
+  const hint = getCanvasScopeHint(scope).trim();
+  if (!hint) return null;
+  return {
+    role: "user",
+    content: `<canvas-scope>\nSystem-injected context — the user did not type this. Do not reply to it directly or quote it back.\n\n${hint}\n</canvas-scope>`,
+  };
 }
 
 export function getPromptsCapabilitySnippet(): string {
