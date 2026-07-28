@@ -22,6 +22,12 @@ export interface BenchmarkRunListRow {
   requestedModel?: string;
   /** Operator-chosen judge model (bare name). Absent on legacy runs. */
   requestedJudgeModel?: string;
+  /** Operator checked "Generate Report" at run creation */
+  generateReport?: boolean;
+  /** Report lifecycle: "generating" | "completed" | "failed" */
+  reportStatus?: string;
+  /** Relative link to the report chat, e.g. "/org/<login>?chat=<id>" */
+  reportChatPath?: string;
 }
 
 interface UseLegalBenchmarkRunListResult {
@@ -84,6 +90,9 @@ export function useLegalBenchmarkRunList(
           all_pass: parsed?.all_pass,
           requestedModel: parsed?.requestedModel,
           requestedJudgeModel: parsed?.requestedJudgeModel,
+          generateReport: parsed?.generateReport,
+          reportStatus: parsed?.reportStatus,
+          reportChatPath: parsed?.reportChatPath,
           // Unified judge precedence: operator choice takes priority over runner-echoed value.
           // Format mirrors stakwork-run.ts — if the server-side format string changes, update this line to match.
           judgeNotes:

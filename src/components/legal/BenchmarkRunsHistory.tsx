@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { formatDistanceToNow } from "date-fns";
-import { Loader2 } from "lucide-react";
+import { ExternalLink, Loader2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { useLegalBenchmarkRunList } from "@/hooks/useLegalBenchmarkRunList";
@@ -70,8 +70,8 @@ export function BenchmarkRunsHistory() {
     );
   }
 
-  // colSpan: Task + Started + Runner Status + Score + (Stakwork if super admin)
-  const colSpan = isSuperAdmin ? 5 : 4;
+  // colSpan: Task + Started + Runner Status + Score + Report + (Stakwork if super admin)
+  const colSpan = isSuperAdmin ? 6 : 5;
 
   return (
     <div className="space-y-3">
@@ -89,6 +89,7 @@ export function BenchmarkRunsHistory() {
               <th className="text-left px-4 py-3 font-medium text-muted-foreground">Started</th>
               <th className="text-left px-4 py-3 font-medium text-muted-foreground">Runner Status</th>
               <th className="text-left px-4 py-3 font-medium text-muted-foreground">Score</th>
+              <th className="text-left px-4 py-3 font-medium text-muted-foreground">Report</th>
               {isSuperAdmin && (
                 <th className="text-left px-4 py-3 font-medium text-muted-foreground">Stakwork</th>
               )}
@@ -133,6 +134,9 @@ export function BenchmarkRunsHistory() {
                   <td className="px-4 py-3">
                     <ScoreCell run={run} />
                   </td>
+                  <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
+                    <ReportCell run={run} />
+                  </td>
                   {isSuperAdmin && (
                     <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
                       <StakworkRunLink projectId={run.projectId} isSuperAdmin={isSuperAdmin} />
@@ -157,6 +161,41 @@ export function BenchmarkRunsHistory() {
       </div>
     </div>
   );
+}
+
+function ReportCell({ run }: { run: BenchmarkRunListRow }) {
+  if (run.reportChatPath) {
+    return (
+      <a
+        href={run.reportChatPath}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="inline-flex items-center gap-1 text-primary hover:underline whitespace-nowrap"
+        data-testid="report-chat-link"
+      >
+        View Report
+        <ExternalLink className="h-3 w-3" />
+      </a>
+    );
+  }
+
+  if (run.reportStatus === "failed") {
+    return <span className="text-xs text-destructive">Failed</span>;
+  }
+
+  // Requested but not yet started/written (run still executing, or the
+  // completion webhook is generating the report right now). A FAILED run
+  // never triggers a report, so fall through to the dash instead.
+  if (run.generateReport && run.status !== WorkflowStatus.FAILED) {
+    return (
+      <span className="inline-flex items-center gap-1 text-xs text-muted-foreground whitespace-nowrap">
+        <Loader2 className="h-3 w-3 animate-spin" />
+        Pending
+      </span>
+    );
+  }
+
+  return <span className="text-muted-foreground">—</span>;
 }
 
 function ScoreCell({ run }: { run: BenchmarkRunListRow }) {
