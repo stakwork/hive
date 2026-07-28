@@ -1,11 +1,25 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import { NextRequest } from "next/server";
 import {
   ANON_DAILY_TOKEN_CAP,
   OUTPUT_TOKEN_WEIGHT,
+  CACHE_READ_TOKEN_WEIGHT,
+  CACHE_WRITE_TOKEN_WEIGHT,
   WORKSPACE_PUBLIC_DAILY_TOKEN_CAP,
   deriveAnonymousId,
+  recordTurnTokens,
 } from "@/lib/ai/publicChatBudget";
+
+vi.mock("@/lib/db", () => ({
+  db: {
+    sharedConversation: {
+      update: vi.fn().mockResolvedValue({}),
+      aggregate: vi.fn().mockResolvedValue({ _sum: {} }),
+    },
+  },
+}));
+
+import { db } from "@/lib/db";
 
 function makeReq(headers: Record<string, string>): NextRequest {
   return new NextRequest("http://localhost/api/ask/quick", {
@@ -64,10 +78,78 @@ describe("token budget constants", () => {
     expect(OUTPUT_TOKEN_WEIGHT).toBe(5);
   });
 
+  it("cache reads are cheaper than fresh input (CACHE_READ_TOKEN_WEIGHT < 1)", () => {
+    // Anthropic prices cache reads at ~10% of fresh input cost.
+    expect(CACHE_READ_TOKEN_WEIGHT).toBeGreaterThan(0);
+    expect(CACHE_READ_TOKEN_WEIGHT).toBeLessThan(1);
+  });
+
+  it("cache writes cost more than fresh input (CACHE_WRITE_TOKEN_WEIGHT > 1)", () => {
+    // Anthropic prices cache writes at ~125% of fresh input cost.
+    expect(CACHE_WRITE_TOKEN_WEIGHT).toBeGreaterThan(1);
+  });
+
   it("per-workspace cap dwarfs per-anon cap", () => {
     // Sanity: a single visitor cannot exhaust the workspace bucket.
     expect(WORKSPACE_PUBLIC_DAILY_TOKEN_CAP).toBeGreaterThan(
       ANON_DAILY_TOKEN_CAP,
     );
+  });
+});
+
+describe("recordTurnTokens", () => {
+  const update = db.sharedConversation.update as ReturnType<typeof vi.fn>;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("persists all four token fields including cache read/write", async () => {
+    await recordTurnTokens({
+      conversationId: "conv-1",
+      inputTokens: 100,
+      outputTokens: 50,
+      cacheReadInputTokens: 200,
+      cacheWriteInputTokens: 30,
+    });
+
+    expect(update).toHaveBeenCalledWith({
+      where: { id: "conv-1" },
+      data: {
+        inputTokens: { increment: 100 },
+        outputTokens: { increment: 50 },
+        cacheReadInputTokens: { increment: 200 },
+        cacheWriteInputTokens: { increment: 30 },
+      },
+    });
+  });
+
+  it("defaults cache fields to 0 when omitted", async () => {
+    await recordTurnTokens({
+      conversationId: "conv-2",
+      inputTokens: 10,
+      outputTokens: 5,
+    });
+
+    expect(update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          cacheReadInputTokens: { increment: 0 },
+          cacheWriteInputTokens: { increment: 0 },
+        }),
+      }),
+    );
+  });
+
+  it("skips the DB call when all token counts are zero", async () => {
+    await recordTurnTokens({
+      conversationId: "conv-3",
+      inputTokens: 0,
+      outputTokens: 0,
+      cacheReadInputTokens: 0,
+      cacheWriteInputTokens: 0,
+    });
+
+    expect(update).not.toHaveBeenCalled();
   });
 });

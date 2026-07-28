@@ -146,9 +146,12 @@ export function messagesFromSteps(
   const rows: StoredMessage[] = [];
   let idx = 0;
   const nextId = () => `${idPrefix}${idx++}`;
-  const now = new Date().toISOString();
 
   for (const step of steps) {
+    // Capture a fresh timestamp per step so rows from different steps
+    // get distinct wall-clock times rather than sharing a single value
+    // captured once before the loop.
+    const now = new Date().toISOString();
     // Extract any schedule_check result from this step so it can be
     // attached to the text row as `deferredCheck` metadata.
     const deferredCheck = extractDeferredCheckFromStep(step);

@@ -150,9 +150,19 @@ export interface CanvasAgentHooks {
   onStepFinish?: (sf: { content: unknown }) => void | Promise<void>;
   /**
    * Called once when the stream finishes successfully. Receives the
-   * final `usage` so the caller can record token spend.
+   * final `usage` so the caller can record token spend, plus timing
+   * stats collected during the stream (TTFT, per-tool round-trips,
+   * total duration).
    */
-  onFinish?: (args: { usage: unknown }) => void | Promise<void>;
+  onFinish?: (args: {
+    usage: unknown;
+    timingStats: {
+      ttfMs: number | null;
+      totalToolCalls: number;
+      toolRoundTrips: Array<{ tool: string; ms: number }>;
+      durationMs: number;
+    };
+  }) => void | Promise<void>;
 }
 
 /**
@@ -679,6 +689,13 @@ export async function runCanvasAgent(
   // so concurrent calls never share flags or maps.
   let firstTokenLogged = false;
   const toolCallStartTimes = new Map<string, number>();
+  // Structured timing stats accumulated during the stream and forwarded
+  // to hooks.onFinish so callers can write them to AgentLog.stats.
+  const timingStats = {
+    ttfMs: null as number | null,
+    toolRoundTrips: [] as Array<{ tool: string; ms: number }>,
+    totalToolCalls: 0,
+  };
 
   if (isMultiWorkspace) {
     // Multi-workspace mode is auth-only — public-viewer requests are
@@ -1099,19 +1116,30 @@ export async function runCanvasAgent(
         const callTs = toolCallStartTimes.get(chunk.toolCallId);
         if (callTs !== undefined) {
           toolCallStartTimes.delete(chunk.toolCallId);
-          console.log("[runCanvasAgent] timing", { stage: "tool-round-trip", tool: chunk.toolName, ms: Date.now() - callTs, workspaces: workspaceSlugs, orgId: orgId ?? null });
+          const ms = Date.now() - callTs;
+          console.log("[runCanvasAgent] timing", { stage: "tool-round-trip", tool: chunk.toolName, ms, workspaces: workspaceSlugs, orgId: orgId ?? null });
+          // Accumulate into structured stats for hooks.onFinish.
+          timingStats.toolRoundTrips.push({ tool: chunk.toolName, ms });
+          timingStats.totalToolCalls++;
         }
       }
       // TTFT: fire once on first text-delta only (not tool-call/reasoning chunks).
       if (!firstTokenLogged && chunk.type === "text-delta") {
         firstTokenLogged = true;
-        console.log("[runCanvasAgent] timing", { stage: "time-to-first-token", ms: Date.now() - streamStart, model: resolvedModelId, workspaces: workspaceSlugs, orgId: orgId ?? null });
+        const ttfMs = Date.now() - streamStart;
+        console.log("[runCanvasAgent] timing", { stage: "time-to-first-token", ms: ttfMs, model: resolvedModelId, workspaces: workspaceSlugs, orgId: orgId ?? null });
+        // Capture TTFT in structured stats.
+        timingStats.ttfMs = ttfMs;
       }
     },
     onFinish: async ({ usage }) => {
-      console.log("[runCanvasAgent] timing", { stage: "streaming-duration-total", ms: Date.now() - streamStart, model: resolvedModelId, workspaces: workspaceSlugs, orgId: orgId ?? null });
+      const durationMs = Date.now() - streamStart;
+      console.log("[runCanvasAgent] timing", { stage: "streaming-duration-total", ms: durationMs, model: resolvedModelId, workspaces: workspaceSlugs, orgId: orgId ?? null });
       if (hooks?.onFinish) {
-        await hooks.onFinish({ usage });
+        await hooks.onFinish({
+          usage,
+          timingStats: { ...timingStats, durationMs },
+        });
       }
     },
     // Surface errors that occur DURING streaming (after the 200 response

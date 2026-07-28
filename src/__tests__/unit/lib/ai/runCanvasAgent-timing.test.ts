@@ -414,6 +414,78 @@ describe("runCanvasAgent — stage-timing logs", () => {
   });
 
   // -------------------------------------------------------------------------
+  // 9. timingStats is passed to hooks.onFinish with the correct shape
+  // -------------------------------------------------------------------------
+  it("passes timingStats to hooks.onFinish with ttfMs, toolRoundTrips, durationMs", async () => {
+    const chunks = [
+      { type: "tool-call", toolCallId: "tc1", toolName: "web_search" },
+      { type: "tool-result", toolCallId: "tc1", toolName: "web_search" },
+      { type: "text-delta", text: "answer" },
+    ];
+
+    mockStreamText.mockImplementation(makeStreamResult(chunks));
+
+    const onFinishSpy = vi.fn();
+    await runCanvasAgent(
+      baseOpts({ hooks: { onFinish: onFinishSpy } }),
+    );
+
+    expect(onFinishSpy).toHaveBeenCalledTimes(1);
+    const callArg = onFinishSpy.mock.calls[0][0] as {
+      usage: unknown;
+      timingStats: {
+        ttfMs: number | null;
+        totalToolCalls: number;
+        toolRoundTrips: Array<{ tool: string; ms: number }>;
+        durationMs: number;
+      };
+    };
+
+    // usage is forwarded
+    expect(callArg).toHaveProperty("usage");
+
+    // timingStats is present and well-formed
+    expect(callArg).toHaveProperty("timingStats");
+    const ts = callArg.timingStats;
+
+    // ttfMs: a text-delta was emitted so it should be set (non-null, ≥ 0)
+    expect(ts.ttfMs).not.toBeNull();
+    expect(ts.ttfMs).toBeGreaterThanOrEqual(0);
+
+    // toolRoundTrips: one tool call/result pair was emitted
+    expect(ts.toolRoundTrips).toHaveLength(1);
+    expect(ts.toolRoundTrips[0]).toMatchObject({ tool: "web_search" });
+    expect(ts.toolRoundTrips[0]!.ms).toBeGreaterThanOrEqual(0);
+
+    // totalToolCalls matches toolRoundTrips count
+    expect(ts.totalToolCalls).toBe(1);
+
+    // durationMs is non-negative
+    expect(ts.durationMs).toBeGreaterThanOrEqual(0);
+  });
+
+  it("passes timingStats.ttfMs as null when no text-delta chunks were emitted", async () => {
+    // Tool-only run — no text-delta → ttfMs stays null
+    const chunks = [
+      { type: "tool-call", toolCallId: "tc1", toolName: "list_concepts" },
+      { type: "tool-result", toolCallId: "tc1", toolName: "list_concepts" },
+    ];
+
+    mockStreamText.mockImplementation(makeStreamResult(chunks));
+
+    const onFinishSpy = vi.fn();
+    await runCanvasAgent(
+      baseOpts({ hooks: { onFinish: onFinishSpy } }),
+    );
+
+    const callArg = onFinishSpy.mock.calls[0][0] as {
+      timingStats: { ttfMs: number | null; totalToolCalls: number };
+    };
+    expect(callArg.timingStats.ttfMs).toBeNull();
+    expect(callArg.timingStats.totalToolCalls).toBe(1);
+  });
+
+  // -------------------------------------------------------------------------
   // 8. Cache-hit path logs `skipped: "cache hit"` instead of a fetch time
   // -------------------------------------------------------------------------
   it("logs skipped=cache-hit for listConcepts when concepts cache is supplied", async () => {

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse, after } from "next/server";
+import { put } from "@vercel/blob";
 import { validationError, serverError, forbiddenError, isApiError } from "@/types/errors";
 import { validateUserBelongsToOrg, validateWorkspaceAccess } from "@/services/workspace";
 import { ModelMessage } from "ai";
@@ -11,6 +12,7 @@ import {
   recordTurnTokens,
 } from "@/lib/ai/publicChatBudget";
 import { db } from "@/lib/db";
+import { Prisma } from "@prisma/client";
 import { resolveMessageImageUrls } from "@/lib/ai/resolveMessageImages";
 import type { MessageLike } from "@/lib/proposals/handleApproval";
 import { runProposalIntent } from "@/lib/proposals/runProposalIntent";
@@ -43,6 +45,12 @@ import {
   emitFollowUpQuestions,
   emitProvenance,
 } from "@/services/canvas-turn-enrichments";
+import {
+  pusherServer,
+  getFeatureChannelName,
+  getTaskChannelName,
+  PUSHER_EVENTS,
+} from "@/lib/pusher";
 
 // Tier-1 backend-driven canvas turns (docs/plans/backend-driven-canvas-turns.md):
 // the org-canvas turn is persisted server-side in `after()` so it survives the
@@ -575,22 +583,86 @@ export async function POST(request: NextRequest) {
               const conceptIds = extractConceptIdsFromStep(sf.content);
               conceptIds.forEach((id) => learnedConceptIds.add(id));
             },
-            onFinish: async ({ usage }) => {
+            onFinish: async ({ usage, timingStats }) => {
               // Persist the turn's token usage to the conversation row so
               // the public-chat rate-limit gate can sum recent spend on
               // the next request. Best-effort; failures are logged but
               // do not surface to the user — the stream already finished.
-              if (!tokenAttributionRowId) return;
-              const u = usage as
-                | { inputTokens?: number; outputTokens?: number }
-                | undefined;
-              const inputTokens = Number(u?.inputTokens ?? 0);
-              const outputTokens = Number(u?.outputTokens ?? 0);
-              await recordTurnTokens({
-                conversationId: tokenAttributionRowId,
-                inputTokens,
-                outputTokens,
-              });
+              if (tokenAttributionRowId) {
+                const u = usage as
+                  | {
+                      inputTokens?: number;
+                      outputTokens?: number;
+                      cacheReadInputTokens?: number;
+                      cacheWriteInputTokens?: number;
+                    }
+                  | undefined;
+                await recordTurnTokens({
+                  conversationId: tokenAttributionRowId,
+                  inputTokens: Number(u?.inputTokens ?? 0),
+                  outputTokens: Number(u?.outputTokens ?? 0),
+                  cacheReadInputTokens: Number(u?.cacheReadInputTokens ?? 0),
+                  cacheWriteInputTokens: Number(u?.cacheWriteInputTokens ?? 0),
+                });
+              }
+
+              // Gap 4: Write an AgentLog row for this canvas turn so it
+              // appears in the Agent Logs UI (Canvas tab, source="canvas_chat").
+              // Best-effort — never throws or breaks the stream.
+              // Uses only server-validated context: primaryWorkspaceId comes
+              // from runCanvasAgent's return (validated internally); the
+              // conversation id comes from canvasConversationRowId or
+              // tokenAttributionRowId — both are IDOR-guarded earlier in
+              // this route.
+              const agentLogWorkspaceId = primaryWorkspaceId;
+              const agentLogConversationId =
+                canvasConversationRowId ?? tokenAttributionRowId;
+              if (agentLogWorkspaceId && agentLogConversationId) {
+                try {
+                  const turnId = turnIdStr ?? agentLogConversationId;
+                  const blobPath = `agent-logs/${agentLogWorkspaceId}/${agentLogConversationId}/canvas-agent-${turnId}.json`;
+                  const blobPayload = JSON.stringify({
+                    sessionId: agentLogConversationId,
+                    messages: [],
+                  });
+                  const agentBlob = await put(blobPath, blobPayload, {
+                    access: "private",
+                    contentType: "application/json",
+                    addRandomSuffix: false,
+                    allowOverwrite: true,
+                  });
+
+                  const agentLog = await db.agentLog.create({
+                    data: {
+                      workspaceId: agentLogWorkspaceId,
+                      source: "canvas_chat",
+                      agent: "canvas-agent",
+                      blobUrl: agentBlob.url,
+                      sessionId: agentLogConversationId,
+                      provider: "anthropic",
+                      config: {
+                        model: chatAgentModel ?? "default",
+                      } as Prisma.InputJsonValue,
+                      stats: {
+                        ttfMs: timingStats.ttfMs,
+                        totalToolCalls: timingStats.totalToolCalls,
+                        toolRoundTrips: timingStats.toolRoundTrips,
+                        durationMs: timingStats.durationMs,
+                      } as Prisma.InputJsonValue,
+                    },
+                  });
+
+                  console.info("[quick-ask] AgentLog created", {
+                    id: agentLog.id,
+                    workspaceId: agentLogWorkspaceId,
+                    conversationId: agentLogConversationId,
+                  });
+                } catch (agentLogErr) {
+                  console.error("[quick-ask] AgentLog write failed (non-fatal)", {
+                    error: agentLogErr instanceof Error ? agentLogErr.message : String(agentLogErr),
+                  });
+                }
+              }
             },
           },
         });

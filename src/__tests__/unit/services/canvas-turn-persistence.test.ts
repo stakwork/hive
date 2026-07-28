@@ -121,6 +121,56 @@ describe("messagesFromSteps", () => {
       errorText: "Tool call failed",
     });
   });
+
+  test("rows from different steps get distinct timestamps", () => {
+    // Each step in messagesFromSteps() calls `new Date().toISOString()` inside
+    // the for-loop body. The fix moved that call into the loop so different
+    // steps produce different timestamps. This test verifies the fix.
+    //
+    // Strategy: mock the global Date constructor so each instantiation advances
+    // a counter, producing a different ISO string. We don't mock
+    // Date.prototype.toISOString (would cause infinite recursion) — instead we
+    // replace the Date constructor entirely to return controlled dates.
+    const base = new Date("2024-01-01T00:00:00.000Z").getTime();
+    let callCount = 0;
+
+    const OrigDate = Date;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const MockDate = function (this: any, ...args: unknown[]) {
+      if (args.length === 0) {
+        // `new Date()` path — the one messagesFromSteps uses.
+        return new OrigDate(base + callCount++ * 60_000);
+      }
+      // Delegate all other usages (e.g. new Date("2024-…")) to the real ctor.
+      return new (OrigDate as unknown as new (...a: unknown[]) => Date)(...args);
+    } as unknown as typeof Date;
+    Object.setPrototypeOf(MockDate, OrigDate);
+    MockDate.prototype = OrigDate.prototype;
+    MockDate.now = OrigDate.now;
+    MockDate.parse = OrigDate.parse;
+    MockDate.UTC = OrigDate.UTC;
+
+    const spy = vi.spyOn(globalThis, "Date").mockImplementation(MockDate);
+
+    try {
+      const steps = [
+        { text: "Step one." },
+        { text: "Step two." },
+        { text: "Step three." },
+      ];
+      const rows = messagesFromSteps(steps, "t-");
+      expect(rows).toHaveLength(3);
+
+      rows.forEach((r) => expect(r.timestamp).toBeDefined());
+
+      // Each step gets a different minute offset → different ISO strings.
+      const timestamps = rows.map((r) => r.timestamp!);
+      const unique = new Set(timestamps);
+      expect(unique.size).toBeGreaterThan(1);
+    } finally {
+      spy.mockRestore();
+    }
+  });
 });
 
 describe("appendTurnMessages", () => {

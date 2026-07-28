@@ -20,12 +20,23 @@ import { getClientIp } from "@/lib/rate-limit";
  *
  * Output tokens are weighted 5x because Anthropic Sonnet output costs
  * ~5x input. The cap is therefore a real cost-cap rather than a
- * volume-cap.
+ * volume-cap. Cache reads and writes are priced relative to fresh input:
+ * Anthropic charges cache reads at ~10% of fresh input cost and cache
+ * writes at ~125% of fresh input cost. We use rounded weights to keep
+ * the arithmetic simple while staying close to the real dollar impact.
  */
 
 // Anthropic Sonnet pricing as of writing: ~$3 / Mtok input, ~$15 / Mtok
 // output. 5:1 weighting keeps the cap close to actual dollar cost.
 export const OUTPUT_TOKEN_WEIGHT = 5;
+
+// Cache reads cost ~10% of a fresh input token (Anthropic prompt-caching
+// pricing: $0.30/Mtok reads vs $3/Mtok fresh input on Sonnet).
+export const CACHE_READ_TOKEN_WEIGHT = 0.1;
+
+// Cache writes cost ~125% of a fresh input token (Anthropic:
+// $3.75/Mtok writes vs $3/Mtok fresh input on Sonnet).
+export const CACHE_WRITE_TOKEN_WEIGHT = 1.25;
 
 // Per-visitor daily cap (~$3-5 of Anthropic spend at Sonnet rates).
 export const ANON_DAILY_TOKEN_CAP = 100_000;
@@ -49,8 +60,18 @@ export function deriveAnonymousId(req: NextRequest): string {
   return createHash("sha256").update(`${ip}|${ua}`).digest("hex").slice(0, 16);
 }
 
-function weightedCost(input: number, output: number): number {
-  return input + output * OUTPUT_TOKEN_WEIGHT;
+function weightedCost(
+  input: number,
+  output: number,
+  cacheRead = 0,
+  cacheWrite = 0,
+): number {
+  return (
+    input +
+    output * OUTPUT_TOKEN_WEIGHT +
+    cacheRead * CACHE_READ_TOKEN_WEIGHT +
+    cacheWrite * CACHE_WRITE_TOKEN_WEIGHT
+  );
 }
 
 interface BudgetResult {
@@ -79,7 +100,12 @@ export async function checkPublicChatBudget(args: {
         anonymousId: args.anonymousId,
         createdAt: { gte: since },
       },
-      _sum: { inputTokens: true, outputTokens: true },
+      _sum: {
+        inputTokens: true,
+        outputTokens: true,
+        cacheReadInputTokens: true,
+        cacheWriteInputTokens: true,
+      },
     }),
     db.sharedConversation.aggregate({
       where: {
@@ -87,13 +113,20 @@ export async function checkPublicChatBudget(args: {
         userId: null,
         createdAt: { gte: since },
       },
-      _sum: { inputTokens: true, outputTokens: true },
+      _sum: {
+        inputTokens: true,
+        outputTokens: true,
+        cacheReadInputTokens: true,
+        cacheWriteInputTokens: true,
+      },
     }),
   ]);
 
   const anonCost = weightedCost(
     anonAgg._sum.inputTokens ?? 0,
     anonAgg._sum.outputTokens ?? 0,
+    anonAgg._sum.cacheReadInputTokens ?? 0,
+    anonAgg._sum.cacheWriteInputTokens ?? 0,
   );
   if (anonCost >= ANON_DAILY_TOKEN_CAP) {
     return { allowed: false, reason: "anon", retryAfterSecs: 24 * 60 * 60 };
@@ -102,6 +135,8 @@ export async function checkPublicChatBudget(args: {
   const wsCost = weightedCost(
     wsAgg._sum.inputTokens ?? 0,
     wsAgg._sum.outputTokens ?? 0,
+    wsAgg._sum.cacheReadInputTokens ?? 0,
+    wsAgg._sum.cacheWriteInputTokens ?? 0,
   );
   if (wsCost >= WORKSPACE_PUBLIC_DAILY_TOKEN_CAP) {
     return { allowed: false, reason: "workspace", retryAfterSecs: 24 * 60 * 60 };
@@ -120,14 +155,24 @@ export async function recordTurnTokens(args: {
   conversationId: string;
   inputTokens: number;
   outputTokens: number;
+  cacheReadInputTokens?: number;
+  cacheWriteInputTokens?: number;
 }): Promise<void> {
-  if (!args.inputTokens && !args.outputTokens) return;
+  const {
+    inputTokens,
+    outputTokens,
+    cacheReadInputTokens = 0,
+    cacheWriteInputTokens = 0,
+  } = args;
+  if (!inputTokens && !outputTokens && !cacheReadInputTokens && !cacheWriteInputTokens) return;
   try {
     await db.sharedConversation.update({
       where: { id: args.conversationId },
       data: {
-        inputTokens: { increment: Math.max(0, args.inputTokens) },
-        outputTokens: { increment: Math.max(0, args.outputTokens) },
+        inputTokens: { increment: Math.max(0, inputTokens) },
+        outputTokens: { increment: Math.max(0, outputTokens) },
+        cacheReadInputTokens: { increment: Math.max(0, cacheReadInputTokens) },
+        cacheWriteInputTokens: { increment: Math.max(0, cacheWriteInputTokens) },
       },
     });
   } catch (error) {
