@@ -14,7 +14,7 @@ import { getStakworkTokenReference } from "@/lib/vercel/stakwork-token";
 import { pusherServer, getTaskChannelName, PUSHER_EVENTS } from "@/lib/pusher";
 import { fetchChatHistory } from "@/lib/helpers/chat-history";
 import { getWorkflowJsonFromNode } from "@/lib/workflow/get-workflow-json-from-node";
-import { resolveExtraSwarms, resolveSubAgents } from "@/services/roadmap/feature-chat";
+import { excludeOwnSubAgent, resolveExtraSwarms, resolveSubAgents } from "@/services/roadmap/feature-chat";
 import { isDevelopmentMode } from "@/lib/runtime";
 
 /**
@@ -315,9 +315,10 @@ export async function triggerWorkflowEditorRun(params: {
   } else {
     subAgents = await resolveExtraSwarms(message, userId);
   }
-  if (subAgents.length) {
-    vars.subAgents = subAgents;
-    console.log("[triggerWorkflowEditorRun] forwarding subAgents:", subAgents.map((a) => a.name));
+  const filteredSubAgents = excludeOwnSubAgent(subAgents, workspaceSlug);
+  if (filteredSubAgents.length) {
+    vars.subAgents = filteredSubAgents;
+    console.log("[triggerWorkflowEditorRun] forwarding subAgents:", filteredSubAgents.map((a) => a.name));
   }
 
   const stakworkPayload = {
