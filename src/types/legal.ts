@@ -32,6 +32,18 @@ export interface BenchmarkRunResult {
    * Same clobber-proof guarantee as requestedModel.
    */
   requestedJudgeModel?: string;
+  /**
+   * Operator checked "Generate Report" in the task details modal.
+   * Stored at run creation under a clobber-proof key (the runner never
+   * emits it); read by the completion webhook to trigger the report.
+   */
+  generateReport?: boolean;
+  /** Report lifecycle marker — also the idempotency guard against duplicate webhooks */
+  reportStatus?: "generating" | "completed" | "failed";
+  /** SharedConversation id of the generated report chat */
+  reportConversationId?: string;
+  /** Relative link to the report chat, e.g. "/org/<githubLogin>?chat=<conversationId>" */
+  reportChatPath?: string;
   // ── Flat score fields from the runner webhook (workflow 57179 inline eval) ──
   /** Raw score (e.g. 72) */
   score?: number;
