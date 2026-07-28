@@ -640,6 +640,9 @@ model SharedConversation {
   // weights it accordingly when summing recent spend.
   inputTokens        Int               @default(0) @map("input_tokens")
   outputTokens       Int               @default(0) @map("output_tokens")
+  // Cache portions of `inputTokens`, which is the inclusive total.
+  cacheReadTokens    Int               @default(0) @map("cache_read_tokens")
+  cacheWriteTokens   Int               @default(0) @map("cache_write_tokens")
   createdAt          DateTime          @default(now()) @map("created_at")
   updatedAt          DateTime          @updatedAt @map("updated_at")
   isShared           Boolean           @default(false) @map("is_shared")

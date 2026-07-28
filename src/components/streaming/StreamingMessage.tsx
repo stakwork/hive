@@ -94,8 +94,8 @@ export function StreamingMessage({
       {/* Render timeline items in order */}
       {regularTimeline?.map((item) => renderTimelineItem(item))}
 
-      {!message.isStreaming && message.usage && (
-        <TurnTokenUsage usage={message.usage} />
+      {message.usage && (
+        <TurnTokenUsage usage={message.usage} elapsedMs={message.elapsedMs} />
       )}
 
       {shouldShowThinking() && (

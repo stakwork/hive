@@ -27,6 +27,10 @@ import { getClientIp } from "@/lib/rate-limit";
 // output. 5:1 weighting keeps the cap close to actual dollar cost.
 export const OUTPUT_TOKEN_WEIGHT = 5;
 
+// Relative to fresh input: cache reads ~$0.30/Mtok, writes ~$3.75/Mtok.
+export const CACHE_READ_TOKEN_WEIGHT = 0.1;
+export const CACHE_WRITE_TOKEN_WEIGHT = 1.25;
+
 // Per-visitor daily cap (~$3-5 of Anthropic spend at Sonnet rates).
 export const ANON_DAILY_TOKEN_CAP = 100_000;
 
@@ -49,8 +53,21 @@ export function deriveAnonymousId(req: NextRequest): string {
   return createHash("sha256").update(`${ip}|${ua}`).digest("hex").slice(0, 16);
 }
 
-function weightedCost(input: number, output: number): number {
-  return input + output * OUTPUT_TOKEN_WEIGHT;
+// `input` already includes the cached reads and writes, so they are
+// subtracted out and repriced rather than added on top.
+function weightedCost(
+  input: number,
+  output: number,
+  cacheRead = 0,
+  cacheWrite = 0,
+): number {
+  const fresh = Math.max(0, input - cacheRead - cacheWrite);
+  return (
+    fresh +
+    cacheRead * CACHE_READ_TOKEN_WEIGHT +
+    cacheWrite * CACHE_WRITE_TOKEN_WEIGHT +
+    output * OUTPUT_TOKEN_WEIGHT
+  );
 }
 
 interface BudgetResult {
@@ -79,7 +96,12 @@ export async function checkPublicChatBudget(args: {
         anonymousId: args.anonymousId,
         createdAt: { gte: since },
       },
-      _sum: { inputTokens: true, outputTokens: true },
+      _sum: {
+        inputTokens: true,
+        outputTokens: true,
+        cacheReadTokens: true,
+        cacheWriteTokens: true,
+      },
     }),
     db.sharedConversation.aggregate({
       where: {
@@ -87,13 +109,20 @@ export async function checkPublicChatBudget(args: {
         userId: null,
         createdAt: { gte: since },
       },
-      _sum: { inputTokens: true, outputTokens: true },
+      _sum: {
+        inputTokens: true,
+        outputTokens: true,
+        cacheReadTokens: true,
+        cacheWriteTokens: true,
+      },
     }),
   ]);
 
   const anonCost = weightedCost(
     anonAgg._sum.inputTokens ?? 0,
     anonAgg._sum.outputTokens ?? 0,
+    anonAgg._sum.cacheReadTokens ?? 0,
+    anonAgg._sum.cacheWriteTokens ?? 0,
   );
   if (anonCost >= ANON_DAILY_TOKEN_CAP) {
     return { allowed: false, reason: "anon", retryAfterSecs: 24 * 60 * 60 };
@@ -102,6 +131,8 @@ export async function checkPublicChatBudget(args: {
   const wsCost = weightedCost(
     wsAgg._sum.inputTokens ?? 0,
     wsAgg._sum.outputTokens ?? 0,
+    wsAgg._sum.cacheReadTokens ?? 0,
+    wsAgg._sum.cacheWriteTokens ?? 0,
   );
   if (wsCost >= WORKSPACE_PUBLIC_DAILY_TOKEN_CAP) {
     return { allowed: false, reason: "workspace", retryAfterSecs: 24 * 60 * 60 };
@@ -120,14 +151,27 @@ export async function recordTurnTokens(args: {
   conversationId: string;
   inputTokens: number;
   outputTokens: number;
+  cacheReadTokens?: number;
+  cacheWriteTokens?: number;
 }): Promise<void> {
-  if (!args.inputTokens && !args.outputTokens) return;
+  const cacheReadTokens = args.cacheReadTokens ?? 0;
+  const cacheWriteTokens = args.cacheWriteTokens ?? 0;
+  if (
+    !args.inputTokens &&
+    !args.outputTokens &&
+    !cacheReadTokens &&
+    !cacheWriteTokens
+  ) {
+    return;
+  }
   try {
     await db.sharedConversation.update({
       where: { id: args.conversationId },
       data: {
         inputTokens: { increment: Math.max(0, args.inputTokens) },
         outputTokens: { increment: Math.max(0, args.outputTokens) },
+        cacheReadTokens: { increment: Math.max(0, cacheReadTokens) },
+        cacheWriteTokens: { increment: Math.max(0, cacheWriteTokens) },
       },
     });
   } catch (error) {

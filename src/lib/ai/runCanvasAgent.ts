@@ -147,7 +147,11 @@ export interface CanvasAgentHooks {
    * uses this for token-attribution prep work; programmatic callers
    * typically don't need it.
    */
-  onStepFinish?: (sf: { content: unknown }) => void | Promise<void>;
+  onStepFinish?: (sf: {
+    content: unknown;
+    usage?: unknown;
+    response?: { timestamp?: Date };
+  }) => void | Promise<void>;
   /**
    * Called once when the stream finishes successfully. Receives the
    * final `usage` so the caller can record token spend.

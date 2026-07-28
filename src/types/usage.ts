@@ -11,3 +11,25 @@ export interface TokenUsage {
   cacheReadTokens?: number;
   cacheWriteTokens?: number;
 }
+
+const USAGE_KEYS = [
+  "inputTokens",
+  "outputTokens",
+  "cacheReadTokens",
+  "cacheWriteTokens",
+] as const;
+
+/** Field-wise sum. Here, not in a service, so the client can import it. */
+export function addUsage(
+  a: TokenUsage | undefined,
+  b: TokenUsage | undefined,
+): TokenUsage | undefined {
+  if (!a) return b;
+  if (!b) return a;
+  const out: TokenUsage = { ...a };
+  for (const key of USAGE_KEYS) {
+    const add = b[key];
+    if (typeof add === "number") out[key] = (out[key] ?? 0) + add;
+  }
+  return out;
+}

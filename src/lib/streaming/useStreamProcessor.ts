@@ -1,6 +1,6 @@
 import { useCallback } from "react";
 import type { BaseStreamingMessage, StreamProcessorConfig, StreamEvent, ToolCallStatus } from "@/types/streaming";
-import type { TokenUsage } from "@/types/usage";
+import { addUsage, type TokenUsage } from "@/types/usage";
 import { DEFAULT_DEBOUNCE_MS } from "./constants";
 import { parseSSELine } from "./helpers";
 
@@ -72,6 +72,7 @@ export function useStreamProcessor<T extends BaseStreamingMessage = BaseStreamin
       const timeline: Array<{ type: "text" | "reasoning" | "toolCall"; id: string }> = []; // Unified timeline
       let error: string | undefined;
       let capturedUsage: TokenUsage | undefined;
+      let capturedElapsedMs: number | undefined;
 
       // Track text part sequence to generate unique IDs when stream reuses IDs
       let textPartSequence = 0;
@@ -130,6 +131,7 @@ export function useStreamProcessor<T extends BaseStreamingMessage = BaseStreamin
           timeline: timelineItems,
           error,
           usage: capturedUsage,
+          elapsedMs: capturedElapsedMs,
           ...additionalFields,
         } as T;
       };
@@ -391,6 +393,17 @@ export function useStreamProcessor<T extends BaseStreamingMessage = BaseStreamin
                   errorText: typeof data.error === "string" ? data.error : "Tool error",
                 });
               }
+            } else if (data.type === "data-usage") {
+              // The UI-protocol `finish` chunk carries no usage, so these
+              // per-step parts are the only live source.
+              const stepUsage = data.data?.usage;
+              if (stepUsage) {
+                capturedUsage = addUsage(capturedUsage, stepUsage);
+              }
+              if (typeof data.data?.elapsedMs === "number") {
+                capturedElapsedMs = data.data.elapsedMs;
+              }
+              debouncedUpdate();
             } else if (data.type === "finish") {
               // Capture aggregated per-turn token usage from the AI SDK finish event.
               // AI SDK field names differ from our canonical TokenUsage names:

@@ -24,6 +24,7 @@
  */
 
 import { db } from "@/lib/db";
+import { addUsage, type TokenUsage } from "@/types/usage";
 import {
   notifyCanvasConversationUpdated,
   type CanvasConversationUpdateReason,
@@ -94,6 +95,7 @@ export interface StoredMessage {
   role: "user" | "assistant";
   content: string;
   timestamp?: string;
+  usage?: TokenUsage;
   toolCalls?: StoredToolCall[];
   attachments?: StoredAttachment[];
   source?: { kind: string; featureId?: string; plannerMessageId?: string };
@@ -115,13 +117,49 @@ export interface StoredMessage {
   };
 }
 
+type ModelUsageLike =
+  | {
+      inputTokens?: number;
+      outputTokens?: number;
+      inputTokenDetails?: {
+        cacheReadTokens?: number;
+        cacheWriteTokens?: number;
+      };
+    }
+  | undefined;
+
 type StepLike = {
   text?: string;
   toolCalls?: Array<{ toolCallId: string; toolName: string; input?: unknown }>;
   toolResults?: Array<{ toolCallId: string; output?: unknown; result?: unknown }>;
+  usage?: ModelUsageLike;
+  response?: { timestamp?: Date };
 };
 
 const NO_STRIP: ReadonlySet<string> = new Set();
+
+// Steps synthesised by hand (sub-agent paths) carry no response metadata.
+function stepTimestamp(step: StepLike): string {
+  const t = step.response?.timestamp;
+  if (t instanceof Date && !Number.isNaN(t.getTime())) return t.toISOString();
+  return new Date().toISOString();
+}
+
+export function tokenUsageFrom(usage: ModelUsageLike): TokenUsage | undefined {
+  if (!usage) return undefined;
+  const out: TokenUsage = {};
+  if (typeof usage.inputTokens === "number") out.inputTokens = usage.inputTokens;
+  if (typeof usage.outputTokens === "number") {
+    out.outputTokens = usage.outputTokens;
+  }
+  if (typeof usage.inputTokenDetails?.cacheReadTokens === "number") {
+    out.cacheReadTokens = usage.inputTokenDetails.cacheReadTokens;
+  }
+  if (typeof usage.inputTokenDetails?.cacheWriteTokens === "number") {
+    out.cacheWriteTokens = usage.inputTokenDetails.cacheWriteTokens;
+  }
+  return Object.keys(out).length > 0 ? out : undefined;
+}
 
 /**
  * Reconstruct the agent's output as `CanvasChatMessage`-shaped rows from
@@ -146,12 +184,17 @@ export function messagesFromSteps(
   const rows: StoredMessage[] = [];
   let idx = 0;
   const nextId = () => `${idPrefix}${idx++}`;
-  const now = new Date().toISOString();
+  // Usage from steps that emitted no rows (a stripped control tool is the
+  // whole step), held over so those tokens land on the next row instead of
+  // being dropped.
+  let carriedUsage: TokenUsage | undefined;
 
   for (const step of steps) {
     // Extract any schedule_check result from this step so it can be
     // attached to the text row as `deferredCheck` metadata.
     const deferredCheck = extractDeferredCheckFromStep(step);
+    const now = stepTimestamp(step);
+    const firstRowOfStep = rows.length;
 
     if (step.text && step.text.trim()) {
       const textRow: StoredMessage = {
@@ -167,51 +210,65 @@ export function messagesFromSteps(
     }
 
     const calls = step.toolCalls ?? [];
-    if (calls.length === 0) continue;
+    if (calls.length > 0) {
+      const resultByCallId = new Map(
+        (step.toolResults ?? []).map((r) => [r.toolCallId, r] as const),
+      );
 
-    const resultByCallId = new Map(
-      (step.toolResults ?? []).map((r) => [r.toolCallId, r] as const),
-    );
+      const toolCalls: StoredToolCall[] = calls
+        .filter((tc) => !stripToolNames.has(tc.toolName))
+        .map((tc) => {
+          const r = resultByCallId.get(tc.toolCallId);
+          const output = r ? (r.output ?? r.result) : undefined;
+          const isError =
+            !!output &&
+            typeof output === "object" &&
+            "error" in (output as Record<string, unknown>);
+          return {
+            id: tc.toolCallId,
+            toolName: tc.toolName,
+            input: tc.input,
+            output,
+            status:
+              output === undefined
+                ? "input-available"
+                : isError
+                  ? "output-error"
+                  : "output-available",
+            ...(isError ? { errorText: "Tool call failed" } : {}),
+          };
+        });
 
-    const toolCalls: StoredToolCall[] = calls
-      .filter((tc) => !stripToolNames.has(tc.toolName))
-      .map((tc) => {
-        const r = resultByCallId.get(tc.toolCallId);
-        const output = r ? (r.output ?? r.result) : undefined;
-        const isError =
-          !!output &&
-          typeof output === "object" &&
-          "error" in (output as Record<string, unknown>);
-        return {
-          id: tc.toolCallId,
-          toolName: tc.toolName,
-          input: tc.input,
-          output,
-          status:
-            output === undefined
-              ? "input-available"
-              : isError
-                ? "output-error"
-                : "output-available",
-          ...(isError ? { errorText: "Tool call failed" } : {}),
+      if (toolCalls.length > 0) {
+        const toolRow: StoredMessage = {
+          id: nextId(),
+          role: "assistant",
+          content: "",
+          timestamp: now,
+          toolCalls,
         };
-      });
-
-    if (toolCalls.length > 0) {
-      const toolRow: StoredMessage = {
-        id: nextId(),
-        role: "assistant",
-        content: "",
-        timestamp: now,
-        toolCalls,
-      };
-      // If there was no text in this step, attach deferredCheck to the
-      // tool-call row instead so the card is always anchored somewhere.
-      if (deferredCheck && rows[rows.length - 1]?.deferredCheck == null) {
-        toolRow.deferredCheck = deferredCheck;
+        // If there was no text in this step, attach deferredCheck to the
+        // tool-call row instead so the card is always anchored somewhere.
+        if (deferredCheck && rows[rows.length - 1]?.deferredCheck == null) {
+          toolRow.deferredCheck = deferredCheck;
+        }
+        rows.push(toolRow);
       }
-      rows.push(toolRow);
     }
+
+    // One model call per step: attach its usage once, not per row.
+    const usage = addUsage(carriedUsage, tokenUsageFrom(step.usage));
+    if (usage && rows.length > firstRowOfStep) {
+      rows[firstRowOfStep].usage = usage;
+      carriedUsage = undefined;
+    } else {
+      carriedUsage = usage;
+    }
+  }
+
+  if (carriedUsage && rows.length > 0) {
+    const last = rows[rows.length - 1];
+    last.usage = addUsage(last.usage, carriedUsage);
   }
 
   return rows;

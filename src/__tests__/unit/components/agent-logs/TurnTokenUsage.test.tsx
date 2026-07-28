@@ -98,4 +98,36 @@ describe("TurnTokenUsage", () => {
     expect(screen.queryByText(/read:/)).toBeNull();
     expect(screen.queryByText(/write:/)).toBeNull();
   });
+  it("renders elapsed time alongside the token counts", () => {
+    render(
+      React.createElement(TurnTokenUsage, {
+        usage: { inputTokens: 3411, outputTokens: 102 },
+        elapsedMs: 4912,
+      }),
+    );
+    expect(screen.getByText("4.9s")).toBeTruthy();
+  });
+
+  it("formats sub-second, second and minute durations", () => {
+    const cases: Array<[number, string]> = [
+      [820, "820ms"],
+      [4912, "4.9s"],
+      [72_400, "1m 12s"],
+    ];
+    for (const [ms, label] of cases) {
+      const { unmount } = render(
+        React.createElement(TurnTokenUsage, {
+          usage: { inputTokens: 10 },
+          elapsedMs: ms,
+        }),
+      );
+      expect(screen.getByText(label)).toBeTruthy();
+      unmount();
+    }
+  });
+
+  it("omits the duration when elapsedMs is not provided", () => {
+    render(React.createElement(TurnTokenUsage, { usage: { inputTokens: 10 } }));
+    expect(screen.queryByText(/ms$|s$/)).toBeNull();
+  });
 });

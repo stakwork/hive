@@ -20,13 +20,23 @@ function hasAnyToken(usage: UsageData): usage is NonNullable<UsageData> {
 
 interface TurnTokenUsageProps {
   usage: UsageData;
+  /** Turn duration so far, rendered alongside the token counts. */
+  elapsedMs?: number;
+}
+
+/** "820ms" under a second, else "4.9s", else "1m 12s". */
+function formatElapsed(ms: number): string {
+  if (ms < 1000) return `${Math.round(ms)}ms`;
+  const secs = ms / 1000;
+  if (secs < 60) return `${secs.toFixed(1)}s`;
+  return `${Math.floor(secs / 60)}m ${Math.round(secs % 60)}s`;
 }
 
 /**
  * Compact per-turn token usage footer for assistant messages in agent logs.
  * Collapsed by default (single line); click expands to show cache read/write split.
  */
-export function TurnTokenUsage({ usage }: TurnTokenUsageProps) {
+export function TurnTokenUsage({ usage, elapsedMs }: TurnTokenUsageProps) {
   const [expanded, setExpanded] = useState(false);
 
   if (!hasAnyToken(usage)) return null;
@@ -51,6 +61,9 @@ export function TurnTokenUsage({ usage }: TurnTokenUsageProps) {
           )}
           {cacheTotal > 0 && (
             <span> · cache: <span className="font-medium">{formatTokens(cacheTotal)}</span></span>
+          )}
+          {elapsedMs != null && (
+            <span> · <span className="font-medium">{formatElapsed(elapsedMs)}</span></span>
           )}
         </span>
         {hasCacheSplit && (

@@ -550,6 +550,7 @@ export function SidebarChat({ githubLogin }: SidebarChatProps) {
                         timeline: filteredTimeline,
                         isStreaming: isMessageStreaming,
                         usage: message.usage,
+                        elapsedMs: message.elapsedMs,
                       }}
                     />
                   </div>

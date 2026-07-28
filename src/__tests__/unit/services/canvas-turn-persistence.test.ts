@@ -35,6 +35,7 @@ import {
   appendTurnMessages,
   fetchStoredConversationMessages,
   normalizeStoredAttachments,
+  tokenUsageFrom,
 } from "@/services/canvas-turn-persistence";
 
 const queryRaw = db.$queryRaw as ReturnType<typeof vi.fn>;
@@ -120,6 +121,182 @@ describe("messagesFromSteps", () => {
       status: "output-error",
       errorText: "Tool call failed",
     });
+  });
+
+  test("stamps each row with its own step's response time, not persist time", () => {
+    // A turn whose two model calls were 5s apart. `messagesFromSteps`
+    // runs in after(), long after both — the stamps must still be the
+    // step times, not one shared persist-time value.
+    const steps = [
+      {
+        text: "Looking it up.",
+        toolCalls: [{ toolCallId: "tc1", toolName: "search", input: {} }],
+        toolResults: [{ toolCallId: "tc1", output: { ok: true } }],
+        response: { timestamp: new Date("2026-07-28T10:00:00.000Z") },
+      },
+      {
+        text: "Here's the answer.",
+        response: { timestamp: new Date("2026-07-28T10:00:05.000Z") },
+      },
+    ];
+
+    const rows = messagesFromSteps(steps, "turn-1-a");
+
+    // Step 0 produced a text row and a tool row. Same model call, so
+    // they legitimately share a timestamp; step 1 must not.
+    expect(rows[0].timestamp).toBe("2026-07-28T10:00:00.000Z");
+    expect(rows[1].timestamp).toBe("2026-07-28T10:00:00.000Z");
+    expect(rows[2].timestamp).toBe("2026-07-28T10:00:05.000Z");
+
+    const spread =
+      new Date(rows[2].timestamp!).getTime() -
+      new Date(rows[0].timestamp!).getTime();
+    expect(spread).toBe(5000);
+  });
+
+  test("falls back to now when a step carries no response metadata", () => {
+    const before = Date.now();
+    const rows = messagesFromSteps([{ text: "No metadata here." }], "turn-1-a");
+    const stamped = new Date(rows[0].timestamp!).getTime();
+
+    expect(stamped).toBeGreaterThanOrEqual(before);
+    expect(stamped).toBeLessThanOrEqual(Date.now());
+  });
+
+  test("attaches each step's usage to that step's first row only", () => {
+    const steps = [
+      {
+        text: "Working.",
+        toolCalls: [{ toolCallId: "tc1", toolName: "search", input: {} }],
+        toolResults: [{ toolCallId: "tc1", output: { ok: true } }],
+        usage: {
+          inputTokens: 3411,
+          outputTokens: 102,
+          inputTokenDetails: { cacheReadTokens: 0, cacheWriteTokens: 3408 },
+        },
+      },
+      {
+        text: "Done.",
+        usage: {
+          inputTokens: 3594,
+          outputTokens: 59,
+          inputTokenDetails: { cacheReadTokens: 3408, cacheWriteTokens: 179 },
+        },
+      },
+    ];
+
+    const rows = messagesFromSteps(steps, "turn-1-a");
+
+    expect(rows[0].usage).toEqual({
+      inputTokens: 3411,
+      outputTokens: 102,
+      cacheReadTokens: 0,
+      cacheWriteTokens: 3408,
+    });
+    // Same model call as rows[0] — must not be counted twice.
+    expect(rows[1].usage).toBeUndefined();
+    expect(rows[2].usage).toEqual({
+      inputTokens: 3594,
+      outputTokens: 59,
+      cacheReadTokens: 3408,
+      cacheWriteTokens: 179,
+    });
+
+    // Summing the rows must reproduce the turn total exactly.
+    const sum = (k: "inputTokens" | "cacheReadTokens" | "cacheWriteTokens") =>
+      rows.reduce((a, r) => a + (r.usage?.[k] ?? 0), 0);
+    expect(sum("inputTokens")).toBe(7005);
+    expect(sum("cacheReadTokens")).toBe(3408);
+    expect(sum("cacheWriteTokens")).toBe(3587);
+  });
+
+  test("omits usage entirely for steps that report none", () => {
+    const rows = messagesFromSteps([{ text: "No usage." }], "turn-1-a");
+    expect(rows[0].usage).toBeUndefined();
+  });
+
+  test("carries usage forward when a step is stripped down to nothing", () => {
+    // The auto-turn's control tool is `stay_silent`, so a step whose only
+    // output is stripped still cost real tokens. Those must not vanish.
+    const steps = [
+      {
+        toolCalls: [{ toolCallId: "s1", toolName: "stay_silent", input: {} }],
+        usage: {
+          inputTokens: 5000,
+          outputTokens: 20,
+          inputTokenDetails: { cacheReadTokens: 4900, cacheWriteTokens: 0 },
+        },
+      },
+      {
+        text: "Actually, here's something.",
+        usage: { inputTokens: 100, outputTokens: 10, inputTokenDetails: {} },
+      },
+    ];
+
+    const rows = messagesFromSteps(steps, "turn-1-a", new Set(["stay_silent"]));
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0].usage).toEqual({
+      inputTokens: 5100,
+      outputTokens: 30,
+      cacheReadTokens: 4900,
+      cacheWriteTokens: 0,
+    });
+  });
+
+  test("carries usage onto the last row when the final step emits nothing", () => {
+    const steps = [
+      {
+        text: "Done.",
+        usage: { inputTokens: 100, outputTokens: 10, inputTokenDetails: {} },
+      },
+      {
+        toolCalls: [{ toolCallId: "s1", toolName: "stay_silent", input: {} }],
+        usage: { inputTokens: 200, outputTokens: 5, inputTokenDetails: {} },
+      },
+    ];
+
+    const rows = messagesFromSteps(steps, "turn-1-a", new Set(["stay_silent"]));
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0].usage).toMatchObject({ inputTokens: 300, outputTokens: 15 });
+  });
+});
+
+describe("tokenUsageFrom", () => {
+  test("reads the AI SDK v6 usage shape", () => {
+    // Verbatim shape produced by @ai-sdk/anthropic through streamText.
+    // The cache counts live under `inputTokenDetails`; reading
+    // `cacheReadInputTokens` / `cacheWriteInputTokens` off the top level
+    // silently yields undefined, which is what this guards against.
+    const usage = {
+      inputTokens: 6873,
+      inputTokenDetails: {
+        noCacheTokens: 2,
+        cacheReadTokens: 6059,
+        cacheWriteTokens: 812,
+      },
+      outputTokens: 47,
+      outputTokenDetails: {},
+      totalTokens: 6920,
+      cachedInputTokens: 6059,
+    };
+
+    expect(tokenUsageFrom(usage)).toEqual({
+      inputTokens: 6873,
+      outputTokens: 47,
+      cacheReadTokens: 6059,
+      cacheWriteTokens: 812,
+    });
+  });
+
+  test("returns undefined when there is nothing to record", () => {
+    expect(tokenUsageFrom(undefined)).toBeUndefined();
+    expect(tokenUsageFrom({})).toBeUndefined();
+  });
+
+  test("keeps whichever fields are present", () => {
+    expect(tokenUsageFrom({ outputTokens: 12 })).toEqual({ outputTokens: 12 });
   });
 });
 

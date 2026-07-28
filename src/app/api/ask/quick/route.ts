@@ -1,7 +1,12 @@
 import { NextRequest, NextResponse, after } from "next/server";
 import { validationError, serverError, forbiddenError, isApiError } from "@/types/errors";
 import { validateUserBelongsToOrg, validateWorkspaceAccess } from "@/services/workspace";
-import { ModelMessage } from "ai";
+import {
+  ModelMessage,
+  createUIMessageStream,
+  createUIMessageStreamResponse,
+  type UIMessageStreamWriter,
+} from "ai";
 import { getMiddlewareContext } from "@/lib/middleware/utils";
 import { getBaseUrl } from "@/lib/utils";
 import { resolveWorkspaceAccess } from "@/lib/auth/workspace-access";
@@ -26,9 +31,11 @@ import {
   appendTurnMessages,
   fetchStoredConversationMessages,
   normalizeStoredAttachments,
+  tokenUsageFrom,
   type StoredMessage,
   type StoredAttachment,
 } from "@/services/canvas-turn-persistence";
+import { writeCanvasAgentLog } from "@/services/canvas-agent-log";
 import { buildDeferredCheckTools } from "@/lib/ai/deferredCheckTools";
 import {
   resolveOrgConversationRowId,
@@ -487,6 +494,10 @@ export async function POST(request: NextRequest) {
       // internally-wired dispatch_graph_walk tool; consumed in after()
       // to schedule one graph-walk sub-agent worker per dispatched intent.
       const dispatchedGraphWalks: DispatchedGraphWalkIntent[] = [];
+      const turnStartedAt = new Date();
+      // Set in `createUIMessageStream`'s execute, before any step finishes.
+      let usageWriter: UIMessageStreamWriter | undefined;
+      let stepNumber = 0;
 
       const tAgent = Date.now();
       const {
@@ -574,6 +585,26 @@ export async function POST(request: NextRequest) {
             onStepFinish: (sf) => {
               const conceptIds = extractConceptIdsFromStep(sf.content);
               conceptIds.forEach((id) => learnedConceptIds.add(id));
+
+              // Live ticker only; the durable copy is written per row by
+              // `messagesFromSteps` at the end of the turn.
+              const usage = tokenUsageFrom(
+                sf.usage as Parameters<typeof tokenUsageFrom>[0],
+              );
+              if (usage && usageWriter) {
+                usageWriter.write({
+                  type: "data-usage",
+                  transient: true,
+                  data: {
+                    stepNumber: stepNumber++,
+                    timestamp: (
+                      sf.response?.timestamp ?? new Date()
+                    ).toISOString(),
+                    elapsedMs: Date.now() - turnStartedAt.getTime(),
+                    usage,
+                  },
+                });
+              }
             },
             onFinish: async ({ usage }) => {
               // Persist the turn's token usage to the conversation row so
@@ -581,15 +612,15 @@ export async function POST(request: NextRequest) {
               // the next request. Best-effort; failures are logged but
               // do not surface to the user — the stream already finished.
               if (!tokenAttributionRowId) return;
-              const u = usage as
-                | { inputTokens?: number; outputTokens?: number }
-                | undefined;
-              const inputTokens = Number(u?.inputTokens ?? 0);
-              const outputTokens = Number(u?.outputTokens ?? 0);
+              const u = tokenUsageFrom(
+                usage as Parameters<typeof tokenUsageFrom>[0],
+              );
               await recordTurnTokens({
                 conversationId: tokenAttributionRowId,
-                inputTokens,
-                outputTokens,
+                inputTokens: u?.inputTokens ?? 0,
+                outputTokens: u?.outputTokens ?? 0,
+                cacheReadTokens: u?.cacheReadTokens ?? 0,
+                cacheWriteTokens: u?.cacheWriteTokens ?? 0,
               });
             },
           },
@@ -675,6 +706,15 @@ export async function POST(request: NextRequest) {
               idPrefix: assistantPrefix,
               reason: "user-turn",
             });
+            if (primaryWorkspaceId) {
+              await writeCanvasAgentLog({
+                workspaceId: primaryWorkspaceId,
+                conversationId: rowId,
+                model: chatAgentModel,
+                startedAt: turnStartedAt,
+                completedAt: new Date(),
+              });
+            }
           } catch (err) {
             console.error("❌ [quick-ask] Turn persist failed:", err);
             // Persist a trailing error row so a reopened tab sees the
@@ -769,7 +809,35 @@ export async function POST(request: NextRequest) {
       });
 
       console.log("[quick-ask] timing", { stage: "setup-to-stream", ms: Date.now() - t0, workspaces: slugs, orgId: orgId ?? null });
-      return result.toUIMessageStreamResponse({
+
+      // By default the AI SDK masks mid-stream errors as the literal
+      // string "An error occurred." — useless for diagnosis and
+      // indistinguishable from a clean finish on the client. Forward
+      // the real message instead. `runCanvasAgent`'s `onError` logs the
+      // full error + stack server-side; this surfaces a readable
+      // message to the chat so the user sees *why* it failed rather
+      // than a generic fallback.
+      const onStreamError = (error: unknown) => {
+        const message = error instanceof Error ? error.message : String(error);
+        console.error("❌ [quick-ask] Mid-stream error:", {
+          workspaces: slugs,
+          message,
+        });
+        return message;
+      };
+
+      const stream = createUIMessageStream({
+        execute: ({ writer }) => {
+          usageWriter = writer;
+          writer.merge(
+            result.toUIMessageStream({ onError: onStreamError }),
+          );
+        },
+        onError: onStreamError,
+      });
+
+      return createUIMessageStreamResponse({
+        stream,
         // Hand the server-created/validated org-canvas row id back to the
         // client (same pattern as `X-Approval-Result`) so it can stamp
         // `serverConversationId` on the first turn without a separate POST.
@@ -781,22 +849,6 @@ export async function POST(request: NextRequest) {
               },
             }
           : {}),
-        // By default the AI SDK masks mid-stream errors as the literal
-        // string "An error occurred." — useless for diagnosis and
-        // indistinguishable from a clean finish on the client. Forward
-        // the real message instead. `runCanvasAgent`'s `onError` logs the
-        // full error + stack server-side; this surfaces a readable
-        // message to the chat so the user sees *why* it failed rather
-        // than a generic fallback.
-        onError: (error) => {
-          const message =
-            error instanceof Error ? error.message : String(error);
-          console.error("❌ [quick-ask] Mid-stream error:", {
-            workspaces: slugs,
-            message,
-          });
-          return message;
-        },
       });
     } catch (streamError) {
       // Preserve typed ApiError statuses (forbidden, notFound,

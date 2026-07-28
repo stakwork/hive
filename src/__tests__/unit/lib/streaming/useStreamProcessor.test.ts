@@ -1294,4 +1294,110 @@ describe("useStreamProcessor", () => {
       expect(finalMessage.usage?.cacheWriteTokens).toBe(50);
     });
   });
+  describe("Per-step usage (data-usage parts)", () => {
+    const usagePart = (stepNumber: number, usage: Record<string, number>) =>
+      TestDataFactories.createSSEEvent("data-usage", {
+        data: { stepNumber, timestamp: "2026-07-28T10:00:00.000Z", usage },
+      });
+
+    test("accumulates a running total across steps", async () => {
+      const { result } = renderHook(() => useStreamProcessor());
+      const onUpdate = TestUtils.createOnUpdateSpy();
+
+      const response = TestDataFactories.createMockResponse([
+        TestDataFactories.createTextStartEvent("t1"),
+        TestDataFactories.createTextDeltaEvent("t1", "hi"),
+        usagePart(0, {
+          inputTokens: 3411,
+          outputTokens: 102,
+          cacheReadTokens: 0,
+          cacheWriteTokens: 3408,
+        }),
+        usagePart(1, {
+          inputTokens: 3594,
+          outputTokens: 59,
+          cacheReadTokens: 3408,
+          cacheWriteTokens: 179,
+        }),
+        TestDataFactories.createFinishEvent("stop"),
+      ]);
+
+      await result.current.processStream(response, "msg-1", onUpdate);
+
+      const finalMessage = onUpdate.mock.calls[onUpdate.mock.calls.length - 1][0];
+      expect(finalMessage.usage).toEqual({
+        inputTokens: 7005,
+        outputTokens: 161,
+        cacheReadTokens: 3408,
+        cacheWriteTokens: 3587,
+      });
+    });
+
+    test("surfaces usage without any finish event", async () => {
+      // The UI-protocol `finish` chunk carries no usage, so the running
+      // total must not depend on one arriving.
+      const { result } = renderHook(() => useStreamProcessor());
+      const onUpdate = TestUtils.createOnUpdateSpy();
+
+      const response = TestDataFactories.createMockResponse([
+        TestDataFactories.createTextStartEvent("t1"),
+        TestDataFactories.createTextDeltaEvent("t1", "hi"),
+        usagePart(0, { inputTokens: 500, outputTokens: 20 }),
+      ]);
+
+      await result.current.processStream(response, "msg-1", onUpdate);
+
+      const finalMessage = onUpdate.mock.calls[onUpdate.mock.calls.length - 1][0];
+      expect(finalMessage.usage).toEqual({ inputTokens: 500, outputTokens: 20 });
+    });
+
+    test("exposes elapsedMs from the most recent part", async () => {
+      const { result } = renderHook(() => useStreamProcessor());
+      const onUpdate = TestUtils.createOnUpdateSpy();
+
+      const response = TestDataFactories.createMockResponse([
+        TestDataFactories.createTextStartEvent("t1"),
+        TestDataFactories.createTextDeltaEvent("t1", "hi"),
+        TestDataFactories.createSSEEvent("data-usage", {
+          data: {
+            stepNumber: 0,
+            timestamp: "2026-07-28T10:00:00.000Z",
+            elapsedMs: 2700,
+            usage: { inputTokens: 100 },
+          },
+        }),
+        TestDataFactories.createSSEEvent("data-usage", {
+          data: {
+            stepNumber: 1,
+            timestamp: "2026-07-28T10:00:05.000Z",
+            elapsedMs: 7200,
+            usage: { inputTokens: 50 },
+          },
+        }),
+      ]);
+
+      await result.current.processStream(response, "msg-1", onUpdate);
+
+      const finalMessage = onUpdate.mock.calls[onUpdate.mock.calls.length - 1][0];
+      // Latest wins — it is a turn duration, not a per-step delta to sum.
+      expect(finalMessage.elapsedMs).toBe(7200);
+      expect(finalMessage.usage).toEqual({ inputTokens: 150 });
+    });
+
+    test("ignores a malformed part with no usage payload", async () => {
+      const { result } = renderHook(() => useStreamProcessor());
+      const onUpdate = TestUtils.createOnUpdateSpy();
+
+      const response = TestDataFactories.createMockResponse([
+        TestDataFactories.createTextStartEvent("t1"),
+        TestDataFactories.createTextDeltaEvent("t1", "hi"),
+        TestDataFactories.createSSEEvent("data-usage", { data: {} }),
+      ]);
+
+      await result.current.processStream(response, "msg-1", onUpdate);
+
+      const finalMessage = onUpdate.mock.calls[onUpdate.mock.calls.length - 1][0];
+      expect(finalMessage.usage).toBeUndefined();
+    });
+  });
 });

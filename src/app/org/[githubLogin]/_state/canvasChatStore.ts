@@ -208,11 +208,12 @@ export interface CanvasChatMessage {
   /** Files attached by the user before send. Persisted in SharedConversation JSON. */
   attachments?: CanvasAttachment[];
   /**
-   * Per-turn aggregated token usage, stamped by `useSendCanvasChatMessage`
-   * onto the last tool-call batch message when the stream `finish` event
-   * carries usage data. Live-stream only — not persisted to `SharedConversation`.
+   * Running token usage, stamped by `useSendCanvasChatMessage` onto the last
+   * tool-call batch message as `data-usage` parts arrive. Live-stream only —
+   * the durable per-step copy lives on `SharedConversation.messages`.
    */
   usage?: TokenUsage;
+  elapsedMs?: number;
   /**
    * Synthetic assistant message describing an approval outcome. Set by
    * `/api/ask/quick` after `handleApproval` creates the DB row; carries

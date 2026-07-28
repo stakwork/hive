@@ -17,7 +17,8 @@ export type StreamEventType =
   | "tool-error"
   | "start"
   | "finish"
-  | "error";
+  | "error"
+  | "data-usage";
 
 export type ToolCallStatus =
   | "input-start"
@@ -144,7 +145,21 @@ export interface FinishEvent extends BaseStreamEvent {
   };
 }
 
+/** Per-step token usage, emitted as each model call in the turn completes. */
+export interface StepUsageEvent extends BaseStreamEvent {
+  type: "data-usage";
+  data: {
+    stepNumber: number;
+    /** When this model call started, per the provider. */
+    timestamp: string;
+    /** Wall-clock since the turn began, so the UI needn't mix clocks. */
+    elapsedMs: number;
+    usage: TokenUsage;
+  };
+}
+
 export type StreamEvent =
+  | StepUsageEvent
   | TextStartEvent
   | TextDeltaEvent
   | ReasoningStartEvent
@@ -204,6 +219,7 @@ export interface BaseStreamingMessage {
   error?: string;
   /** Per-turn aggregated token usage, populated from the `finish` SSE event. */
   usage?: TokenUsage;
+  elapsedMs?: number;
 }
 
 // Tool processor function type
