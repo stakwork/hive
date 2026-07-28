@@ -1,4 +1,5 @@
 import { db } from "@/lib/db";
+import { after } from "next/server";
 import {
   WorkflowStatus,
   StakworkRunType,
@@ -1053,6 +1054,32 @@ export async function processStakworkRunWebhook(
       });
     } catch (pusherError) {
       logger.error("[legal-benchmark] Pusher trigger failed (non-fatal)", "stakwork-run", { error: String(pusherError) });
+    }
+
+    // Operator-requested post-run report — fires after the scores were merged
+    // above, so the report agent sees the final result. Scheduled via after()
+    // so the webhook acks immediately (same shape as /api/chat/response).
+    if (status === WorkflowStatus.COMPLETED) {
+      let wantsReport = false;
+      try {
+        const resultJson = serializedResult ?? run.result;
+        wantsReport = resultJson
+          ? (JSON.parse(resultJson) as Record<string, unknown>).generateReport === true
+          : false;
+      } catch { /* ignore malformed result */ }
+      if (wantsReport) {
+        after(async () => {
+          try {
+            const { generateBenchmarkRunReport } = await import("@/services/legal-benchmark-report");
+            await generateBenchmarkRunReport(run.id);
+          } catch (err) {
+            logger.error("[legal-benchmark] Report generation failed (non-fatal)", "stakwork-run", {
+              runId: run.id,
+              error: String(err),
+            });
+          }
+        });
+      }
     }
     return { runId: run.id, status, dataType };
   }
