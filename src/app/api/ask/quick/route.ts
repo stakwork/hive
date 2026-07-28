@@ -589,20 +589,34 @@ export async function POST(request: NextRequest) {
               // the next request. Best-effort; failures are logged but
               // do not surface to the user — the stream already finished.
               if (tokenAttributionRowId) {
+                // Bug fix: @ai-sdk/anthropic uses `cacheCreationInputTokens`
+                // (not `cacheWriteInputTokens`) on the usage object. Cache
+                // fields may also appear under providerMetadata?.anthropic
+                // depending on SDK version — mirror the fallback chain in
+                // src/lib/streaming/useStreamProcessor.ts.
                 const u = usage as
                   | {
                       inputTokens?: number;
                       outputTokens?: number;
                       cacheReadInputTokens?: number;
-                      cacheWriteInputTokens?: number;
+                      cacheCreationInputTokens?: number;
                     }
                   | undefined;
+                const providerMeta = (usage as Record<string, unknown> | undefined)
+                  ?.providerMetadata as
+                  | { anthropic?: { cacheReadInputTokens?: number; cacheCreationInputTokens?: number } }
+                  | undefined;
+                const anthropicMeta = providerMeta?.anthropic;
                 await recordTurnTokens({
                   conversationId: tokenAttributionRowId,
                   inputTokens: Number(u?.inputTokens ?? 0),
                   outputTokens: Number(u?.outputTokens ?? 0),
-                  cacheReadInputTokens: Number(u?.cacheReadInputTokens ?? 0),
-                  cacheWriteInputTokens: Number(u?.cacheWriteInputTokens ?? 0),
+                  cacheReadInputTokens: Number(
+                    u?.cacheReadInputTokens ?? anthropicMeta?.cacheReadInputTokens ?? 0,
+                  ),
+                  cacheWriteInputTokens: Number(
+                    u?.cacheCreationInputTokens ?? anthropicMeta?.cacheCreationInputTokens ?? 0,
+                  ),
                 });
               }
 
@@ -621,9 +635,47 @@ export async function POST(request: NextRequest) {
                 try {
                   const turnId = turnIdStr ?? agentLogConversationId;
                   const blobPath = `agent-logs/${agentLogWorkspaceId}/${agentLogConversationId}/canvas-agent-${turnId}.json`;
+
+                  // Convert StoredMessage[] → ParsedMessage[] so parseAgentLogStats
+                  // can count tool calls, compute token estimates, etc.
+                  // Tool-call rows use content[] with type:"tool-call" entries;
+                  // text rows use a plain string content.
+                  const agentLogSteps = await result.steps;
+                  const agentLogStoredRows = messagesFromSteps(
+                    agentLogSteps as Parameters<typeof messagesFromSteps>[0],
+                    `${turnId}-a`,
+                  );
+                  const agentLogMessages = agentLogStoredRows.map((row) => {
+                    if (row.toolCalls && row.toolCalls.length > 0) {
+                      return {
+                        role: row.role,
+                        timestamp: row.timestamp ?? null,
+                        content: row.toolCalls.flatMap((tc) => [
+                          {
+                            type: "tool-call" as const,
+                            toolCallId: tc.id,
+                            toolName: tc.toolName,
+                            input: tc.input,
+                          },
+                          {
+                            type: "tool-result" as const,
+                            toolCallId: tc.id,
+                            toolName: tc.toolName,
+                            output: tc.output,
+                          },
+                        ]),
+                      };
+                    }
+                    return {
+                      role: row.role,
+                      content: row.content,
+                      timestamp: row.timestamp ?? null,
+                    };
+                  });
+
                   const blobPayload = JSON.stringify({
                     sessionId: agentLogConversationId,
-                    messages: [],
+                    messages: agentLogMessages,
                   });
                   const agentBlob = await put(blobPath, blobPayload, {
                     access: "private",

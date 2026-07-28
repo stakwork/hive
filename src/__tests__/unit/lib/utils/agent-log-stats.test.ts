@@ -600,4 +600,85 @@ describe("parseAgentLogStats", () => {
       expect(stats.actualOutputTokens).toBe(40);
     });
   });
+
+  describe("canvas AgentLog blob round-trip", () => {
+    // Tests the serialization shape written by the canvas AgentLog writer
+    // in src/app/api/ask/quick/route.ts → hooks.onFinish (Bug 2 fix).
+    // StoredMessage rows with toolCalls are serialized as AI SDK-format
+    // content[] arrays so parseAgentLogStats can count tool calls, etc.
+    it("round-trips StoredMessage[] with tool-call rows through parseAgentLogStats", () => {
+      // Simulate what the canvas AgentLog writer produces:
+      // one text row + one tool-call row (each StoredMessage with toolCalls
+      // is serialized as content[] with type:"tool-call" + type:"tool-result").
+      const messages = [
+        // Text message
+        {
+          role: "assistant",
+          content: "Looking into it.",
+          timestamp: "2024-01-01T00:00:00.000Z",
+        },
+        // Tool-call message (the flat-map format from the canvas writer)
+        {
+          role: "assistant",
+          timestamp: "2024-01-01T00:00:01.000Z",
+          content: [
+            {
+              type: "tool-call",
+              toolCallId: "tc1",
+              toolName: "web_search",
+              input: { query: "example" },
+            },
+            {
+              type: "tool-result",
+              toolCallId: "tc1",
+              toolName: "web_search",
+              output: { results: [] },
+            },
+          ],
+        },
+        // Second tool in a different row
+        {
+          role: "assistant",
+          timestamp: "2024-01-01T00:00:02.000Z",
+          content: [
+            {
+              type: "tool-call",
+              toolCallId: "tc2",
+              toolName: "list_concepts",
+              input: {},
+            },
+            {
+              type: "tool-result",
+              toolCallId: "tc2",
+              toolName: "list_concepts",
+              output: { concepts: [] },
+            },
+          ],
+        },
+      ];
+
+      // Serialize in the { sessionId, messages } blob shape the canvas writer uses.
+      const blobJson = JSON.stringify({ sessionId: "sess-canvas-1", messages });
+
+      const { stats, conversation } = parseAgentLogStats(blobJson);
+
+      // Two distinct tool calls should be counted.
+      expect(stats.totalToolCalls).toBe(2);
+      expect(stats.toolFrequency).toEqual({ web_search: 1, list_concepts: 1 });
+
+      // The conversation should include all three rows (text + two tool rows).
+      expect(conversation.length).toBe(3);
+
+      // Token estimate is non-zero (text + JSON tool content).
+      expect(stats.estimatedTokens).toBeGreaterThan(0);
+    });
+
+    it("returns zero toolCalls for an empty messages array (the old broken behaviour)", () => {
+      // Empty blob — was produced before the Bug 2 fix.
+      const blobJson = JSON.stringify({ sessionId: "sess-empty", messages: [] });
+      const { stats } = parseAgentLogStats(blobJson);
+      expect(stats.totalToolCalls).toBe(0);
+      expect(stats.totalMessages).toBe(0);
+    });
+  });
 });
