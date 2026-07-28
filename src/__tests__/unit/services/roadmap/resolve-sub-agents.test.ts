@@ -35,6 +35,7 @@ vi.mock("@/lib/runtime", () => ({
 
 import { db } from "@/lib/db";
 import {
+  excludeOwnSubAgent,
   workspaceToSubAgent,
   resolveOrgMemberSwarms,
   resolveSubAgents,
@@ -300,5 +301,66 @@ describe("resolveSubAgents", () => {
     expect(result).toHaveLength(2);
     expect(result.map((a) => a.name)).toContain("ws-a_repo_agent");
     expect(result.map((a) => a.name)).toContain("ws-b_repo_agent");
+  });
+});
+
+// ── excludeOwnSubAgent ────────────────────────────────────────────────────────
+
+function makeSubAgent(name: string) {
+  return {
+    name,
+    description: `Agent ${name}`,
+    url: "https://swarm.example.com:3355",
+    apiKey: "key",
+    repoUrls: "https://github.com/org/repo",
+    toolsConfig: { learn_concepts: true },
+  };
+}
+
+describe("excludeOwnSubAgent", () => {
+  it("removes the own-workspace sub-agent from the list", () => {
+    const agents = [
+      makeSubAgent("stakwork_repo_agent"),
+      makeSubAgent("other-ws_repo_agent"),
+    ];
+    const result = excludeOwnSubAgent(agents, "stakwork");
+    expect(result).toHaveLength(1);
+    expect(result[0].name).toBe("other-ws_repo_agent");
+  });
+
+  it("passes other-workspace sub-agents through unchanged", () => {
+    const agents = [
+      makeSubAgent("org-ws-1_repo_agent"),
+      makeSubAgent("mentioned-ws_repo_agent"),
+    ];
+    const result = excludeOwnSubAgent(agents, "stakwork");
+    expect(result).toHaveLength(2);
+    expect(result.map((a) => a.name)).toContain("org-ws-1_repo_agent");
+    expect(result.map((a) => a.name)).toContain("mentioned-ws_repo_agent");
+  });
+
+  it("returns an empty array unchanged when input is empty", () => {
+    const result = excludeOwnSubAgent([], "stakwork");
+    expect(result).toHaveLength(0);
+  });
+
+  it("returns the list unchanged when own-workspace agent is not present", () => {
+    const agents = [
+      makeSubAgent("org-ws-1_repo_agent"),
+      makeSubAgent("org-ws-2_repo_agent"),
+    ];
+    const result = excludeOwnSubAgent(agents, "stakwork");
+    expect(result).toHaveLength(2);
+  });
+
+  it("does not mutate the original array", () => {
+    const agents = [
+      makeSubAgent("stakwork_repo_agent"),
+      makeSubAgent("other-ws_repo_agent"),
+    ];
+    const original = [...agents];
+    excludeOwnSubAgent(agents, "stakwork");
+    expect(agents).toHaveLength(original.length);
+    expect(agents[0].name).toBe(original[0].name);
   });
 });

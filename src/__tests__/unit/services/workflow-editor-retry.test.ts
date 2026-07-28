@@ -36,6 +36,7 @@ vi.mock("@/lib/helpers/chat-history", () => ({
 vi.mock("@/services/roadmap/feature-chat", () => ({
   resolveExtraSwarms: vi.fn().mockResolvedValue([]),
   resolveSubAgents: vi.fn().mockResolvedValue([]),
+  excludeOwnSubAgent: vi.fn((agents: unknown[]) => agents),
 }));
 
 vi.mock("@/lib/runtime", () => ({

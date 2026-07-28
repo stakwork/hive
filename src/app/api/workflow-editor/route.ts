@@ -13,7 +13,7 @@ import { pusherServer, getTaskChannelName, PUSHER_EVENTS } from "@/lib/pusher";
 import { getStakworkTokenReference } from "@/lib/vercel/stakwork-token";
 import { fetchChatHistory } from "@/lib/helpers/chat-history";
 import { fetchLatestWorkflowJson, buildWorkflowEditorFeatureContext } from "@/services/workflow-editor";
-import { resolveExtraSwarms, resolveSubAgents } from "@/services/roadmap/feature-chat";
+import { excludeOwnSubAgent, resolveExtraSwarms, resolveSubAgents } from "@/services/roadmap/feature-chat";
 
 
 export const runtime = "nodejs";
@@ -219,12 +219,14 @@ export async function POST(request: NextRequest) {
     // to an org we auto-attach org member workspaces, otherwise fall back to
     // manual @-mentions only (mirrors triggerWorkflowEditorRun / executeWorkflowEditorRetry).
     const sourceControlOrgId = task.workspace.sourceControlOrgId;
-    const subAgents = sourceControlOrgId
+    const workspaceSlug = task.workspace.slug;
+    const resolvedSubAgents = sourceControlOrgId
       ? await resolveSubAgents({ message, userId, sourceControlOrgId })
       : await resolveExtraSwarms(message, userId);
-    if (subAgents.length) {
-      (vars as Record<string, unknown>).subAgents = subAgents;
-      console.log("[workflow-editor] forwarding subAgents:", subAgents.map((a) => a.name));
+    const filteredSubAgents = excludeOwnSubAgent(resolvedSubAgents, workspaceSlug);
+    if (filteredSubAgents.length) {
+      (vars as Record<string, unknown>).subAgents = filteredSubAgents;
+      console.log("[workflow-editor] forwarding subAgents:", filteredSubAgents.map((a) => a.name));
     }
 
     // Enrich payload with feature context when this task is linked to a feature
