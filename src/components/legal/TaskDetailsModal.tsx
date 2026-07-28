@@ -4,6 +4,7 @@ import React, { useState, useEffect } from "react";
 import { FileIcon, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
@@ -37,7 +38,7 @@ export interface TaskDetailsModalProps {
   onOpenChange: (open: boolean) => void;
   task: HarveyTask;
   slug: string;
-  onRunTask: () => void;
+  onRunTask: (options: { generateReport: boolean }) => void;
 }
 
 // ─── Loading skeleton ─────────────────────────────────────────────────────────
@@ -86,6 +87,7 @@ export function TaskDetailsModal({
   const [error, setError] = useState<string | null>(null);
   const [sizeData, setSizeData] = useState<FileSizeData | null>(null);
   const [sizeLoading, setSizeLoading] = useState(true);
+  const [generateReport, setGenerateReport] = useState(false);
 
   useEffect(() => {
     if (!open || !task?.slug) {
@@ -232,6 +234,20 @@ export function TaskDetailsModal({
                   ) : (
                     <p className="text-sm text-muted-foreground italic">No instructions available.</p>
                   )}
+                  <div className="flex items-center gap-2 mt-3">
+                    <Checkbox
+                      id="generate-report"
+                      checked={generateReport}
+                      onCheckedChange={(checked) => setGenerateReport(checked === true)}
+                      data-testid="generate-report-checkbox"
+                    />
+                    <label
+                      htmlFor="generate-report"
+                      className="text-sm font-medium cursor-pointer select-none"
+                    >
+                      Generate Report
+                    </label>
+                  </div>
                 </section>
 
                 <Separator className="my-4" />
@@ -315,7 +331,7 @@ export function TaskDetailsModal({
           <Button
             onClick={() => {
               onOpenChange(false);
-              onRunTask();
+              onRunTask({ generateReport });
             }}
           >
             Run Task

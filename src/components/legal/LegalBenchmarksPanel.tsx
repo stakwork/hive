@@ -202,7 +202,10 @@ export function LegalBenchmarksPanel({ className }: { className?: string }) {
     fetchData();
   }, [slug]);
 
-  const handleSelectTask = async (task: HarveyTask) => {
+  const handleSelectTask = async (
+    task: HarveyTask,
+    options?: { generateReport?: boolean },
+  ) => {
     const res = await fetch(`/api/workspaces/${slug}/legal/benchmarks/run`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -211,6 +214,7 @@ export function LegalBenchmarksPanel({ className }: { className?: string }) {
         taskTitle: task.title,
         model: selectedModel,
         judgeModel: selectedJudgeModel,
+        generateReport: options?.generateReport === true,
       }),
     });
 
@@ -421,7 +425,7 @@ export function LegalBenchmarksPanel({ className }: { className?: string }) {
           onOpenChange={(o) => { if (!o) setDetailsTask(null); }}
           task={detailsTask}
           slug={slug!}
-          onRunTask={() => handleSelectTask(detailsTask)}
+          onRunTask={(options) => handleSelectTask(detailsTask, options)}
         />
       )}
     </div>
