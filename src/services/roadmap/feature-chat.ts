@@ -330,6 +330,19 @@ export async function resolveSubAgents({
 }
 
 /**
+ * Filters out the current workspace's own sub-agent from a resolved list.
+ * The WFE task already runs against its own repo, so the self-referential
+ * `{workspaceSlug}_repo_agent` entry is redundant and hurts tool-routing.
+ */
+export function excludeOwnSubAgent(
+  subAgents: SubAgent[],
+  workspaceSlug: string,
+): SubAgent[] {
+  const ownName = `${workspaceSlug}_repo_agent`;
+  return subAgents.filter((a) => a.name !== ownName);
+}
+
+/**
  * Send a message in a feature-level conversation and trigger the Stakwork
  * planning workflow. Shared by both the API route and MCP tool.
  */
