@@ -26,6 +26,9 @@ const makeRun = (overrides: Partial<{
   judgeNotes: string;
   requestedModel: string;
   requestedJudgeModel: string;
+  generateReport: boolean;
+  reportStatus: string;
+  reportChatPath: string;
 }> = {}) => ({
   id: "runner-1",
   workspaceId: WORKSPACE_ID,
@@ -40,6 +43,9 @@ const makeRun = (overrides: Partial<{
   judgeNotes: undefined as string | undefined,
   requestedModel: undefined as string | undefined,
   requestedJudgeModel: undefined as string | undefined,
+  generateReport: undefined as boolean | undefined,
+  reportStatus: undefined as string | undefined,
+  reportChatPath: undefined as string | undefined,
   ...overrides,
 });
 
@@ -240,7 +246,8 @@ describe("BenchmarkRunsHistory", () => {
       setExpandedId: mockSetExpandedId,
     });
     render(React.createElement(BenchmarkRunsHistory));
-    expect(screen.getByText("—")).toBeInTheDocument();
+    // Both the Score and Report cells render '—'
+    expect(screen.getAllByText("—").length).toBeGreaterThan(0);
     expect(screen.queryByText("PASS")).toBeNull();
     expect(screen.queryByText("FAIL")).toBeNull();
   });
@@ -255,7 +262,7 @@ describe("BenchmarkRunsHistory", () => {
       setExpandedId: mockSetExpandedId,
     });
     render(React.createElement(BenchmarkRunsHistory));
-    expect(screen.getByText("—")).toBeInTheDocument();
+    expect(screen.getAllByText("—").length).toBeGreaterThan(0);
     // Must NOT render a false FAIL badge
     expect(screen.queryByText("FAIL")).toBeNull();
     expect(screen.queryByText("PASS")).toBeNull();
@@ -271,7 +278,7 @@ describe("BenchmarkRunsHistory", () => {
       setExpandedId: mockSetExpandedId,
     });
     render(React.createElement(BenchmarkRunsHistory));
-    expect(screen.getByText("—")).toBeInTheDocument();
+    expect(screen.getAllByText("—").length).toBeGreaterThan(0);
   });
 
   // ─── judgeNotes / ScoreCell tooltip tests ─────────────────────────────────
@@ -319,10 +326,11 @@ describe("BenchmarkRunsHistory", () => {
       setExpandedId: mockSetExpandedId,
     });
     render(React.createElement(BenchmarkRunsHistory));
-    // PENDING renders '—', no score div to check — just assert no title present on '—' cell
-    const dash = screen.getByText("—");
-    expect(dash.getAttribute("title")).toBeNull();
-    expect(dash.getAttribute("aria-label")).toBeNull();
+    // PENDING renders '—', no score div to check — just assert no title present on any '—' cell
+    for (const dash of screen.getAllByText("—")) {
+      expect(dash.getAttribute("title")).toBeNull();
+      expect(dash.getAttribute("aria-label")).toBeNull();
+    }
   });
 
   it("ScoreCell renders no title or aria-label for IN_PROGRESS run", () => {
@@ -335,14 +343,15 @@ describe("BenchmarkRunsHistory", () => {
       setExpandedId: mockSetExpandedId,
     });
     render(React.createElement(BenchmarkRunsHistory));
-    const dash = screen.getByText("—");
-    expect(dash.getAttribute("title")).toBeNull();
-    expect(dash.getAttribute("aria-label")).toBeNull();
+    for (const dash of screen.getAllByText("—")) {
+      expect(dash.getAttribute("title")).toBeNull();
+      expect(dash.getAttribute("aria-label")).toBeNull();
+    }
   });
 
   // ─── colSpan tests ─────────────────────────────────────────────────────────
 
-  it("expanded row colSpan is 4 for non-super-admin (Task + Started + Runner Status + Score)", async () => {
+  it("expanded row colSpan is 5 for non-super-admin (Task + Started + Runner Status + Score + Report)", async () => {
     const user = userEvent.setup();
     render(React.createElement(BenchmarkRunsHistory));
 
@@ -350,10 +359,10 @@ describe("BenchmarkRunsHistory", () => {
     await user.click(row);
 
     const expandedCell = screen.getByTestId("results-runner-1").closest("td")!;
-    expect(expandedCell.getAttribute("colspan")).toBe("4");
+    expect(expandedCell.getAttribute("colspan")).toBe("5");
   });
 
-  it("expanded row colSpan is 5 for super-admin (adds Stakwork column)", async () => {
+  it("expanded row colSpan is 6 for super-admin (adds Stakwork column)", async () => {
     const { useWorkspace } = await import("@/hooks/useWorkspace");
     (useWorkspace as ReturnType<typeof vi.fn>).mockReturnValue({
       workspace: { id: WORKSPACE_ID, slug: WORKSPACE_SLUG },
@@ -367,7 +376,7 @@ describe("BenchmarkRunsHistory", () => {
     await user.click(row);
 
     const expandedCell = screen.getByTestId("results-runner-1").closest("td")!;
-    expect(expandedCell.getAttribute("colspan")).toBe("5");
+    expect(expandedCell.getAttribute("colspan")).toBe("6");
   });
 
   // ─── Existing interaction tests ────────────────────────────────────────────
@@ -529,7 +538,7 @@ describe("BenchmarkRunsHistory", () => {
     expect(screen.queryByTestId("model-sub-line")).toBeNull();
   });
 
-  it("model sub-line does not affect colSpan (non-super-admin still 4)", async () => {
+  it("model sub-line does not affect colSpan (non-super-admin still 5)", async () => {
     mockUseList.mockReturnValue({
       runs: [makeRun({
         requestedModel: "anthropic/claude-sonnet-5",
@@ -549,7 +558,90 @@ describe("BenchmarkRunsHistory", () => {
     await user.click(row);
 
     const expandedCell = screen.getByTestId("results-runner-1").closest("td")!;
-    expect(expandedCell.getAttribute("colspan")).toBe("4");
+    expect(expandedCell.getAttribute("colspan")).toBe("5");
+  });
+
+  // ─── Report column tests ───────────────────────────────────────────────────
+
+  it("renders Report column header", () => {
+    render(React.createElement(BenchmarkRunsHistory));
+    expect(screen.getByText("Report")).toBeInTheDocument();
+  });
+
+  it("renders 'View Report' link when reportChatPath is present", () => {
+    mockUseList.mockReturnValue({
+      runs: [makeRun({
+        generateReport: true,
+        reportStatus: "completed",
+        reportChatPath: "/org/stakwork?chat=conv-123",
+      })],
+      total: 1,
+      isLoading: false,
+      error: null,
+      refetch: mockRefetch,
+      setExpandedId: mockSetExpandedId,
+    });
+    render(React.createElement(BenchmarkRunsHistory));
+    const link = screen.getByTestId("report-chat-link");
+    expect(link).toBeInTheDocument();
+    expect(link.getAttribute("href")).toBe("/org/stakwork?chat=conv-123");
+    expect(link.getAttribute("target")).toBe("_blank");
+  });
+
+  it("shows Pending spinner when report requested but not yet written", () => {
+    mockUseList.mockReturnValue({
+      runs: [makeRun({ status: "IN_PROGRESS", generateReport: true })],
+      total: 1,
+      isLoading: false,
+      error: null,
+      refetch: mockRefetch,
+      setExpandedId: mockSetExpandedId,
+    });
+    render(React.createElement(BenchmarkRunsHistory));
+    expect(screen.getByText("Pending")).toBeInTheDocument();
+    expect(screen.queryByTestId("report-chat-link")).toBeNull();
+  });
+
+  it("shows 'Failed' when reportStatus is failed", () => {
+    mockUseList.mockReturnValue({
+      runs: [makeRun({ generateReport: true, reportStatus: "failed" })],
+      total: 1,
+      isLoading: false,
+      error: null,
+      refetch: mockRefetch,
+      setExpandedId: mockSetExpandedId,
+    });
+    render(React.createElement(BenchmarkRunsHistory));
+    expect(screen.getByText("Failed")).toBeInTheDocument();
+  });
+
+  it("shows dash (not Pending) for a FAILED run with generateReport (report will never fire)", () => {
+    mockUseList.mockReturnValue({
+      runs: [makeRun({ status: "FAILED", generateReport: true })],
+      total: 1,
+      isLoading: false,
+      error: null,
+      refetch: mockRefetch,
+      setExpandedId: mockSetExpandedId,
+    });
+    render(React.createElement(BenchmarkRunsHistory));
+    expect(screen.queryByText("Pending")).toBeNull();
+    expect(screen.getAllByText("—").length).toBeGreaterThan(0);
+  });
+
+  it("shows dash when report was not requested", () => {
+    mockUseList.mockReturnValue({
+      runs: [makeRun({ status: "COMPLETED", n_passed: 5, n_total: 5, all_pass: true })],
+      total: 1,
+      isLoading: false,
+      error: null,
+      refetch: mockRefetch,
+      setExpandedId: mockSetExpandedId,
+    });
+    render(React.createElement(BenchmarkRunsHistory));
+    expect(screen.queryByTestId("report-chat-link")).toBeNull();
+    expect(screen.queryByText("Pending")).toBeNull();
+    expect(screen.getAllByText("—").length).toBeGreaterThan(0);
   });
 
   it("judgeNotes tooltip still reflects judge model (no divergence from sub-line)", () => {

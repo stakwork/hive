@@ -94,7 +94,13 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     }
 
     // ── Parse + validate body (BEFORE Bifrost resolution) ─────────────────────
-    let body: { taskSlug?: string; taskTitle?: string; model?: string; judgeModel?: string };
+    let body: {
+      taskSlug?: string;
+      taskTitle?: string;
+      model?: string;
+      judgeModel?: string;
+      generateReport?: boolean;
+    };
     try {
       body = await request.json();
     } catch {
@@ -112,6 +118,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     // Apply defaults for model selection
     const model = body.model ?? DEFAULT_BENCHMARK_MODEL;
     const judgeModel = body.judgeModel ?? DEFAULT_JUDGE_MODEL;
+    const generateReport = body.generateReport === true;
 
     // Validate: isValidModel + Anthropic-only gate + DB catalog membership
     const validateModel = async (m: string, label: string): Promise<NextResponse | null> => {
@@ -276,6 +283,9 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
           //  the webhook merge cannot overwrite them).
           requestedModel: bareModel,
           requestedJudgeModel: bareJudgeModel,
+          // Same clobber-proof guarantee: the runner never emits generateReport,
+          // so the completion webhook can read it back and trigger the report.
+          ...(generateReport ? { generateReport: true } : {}),
           // evalTriggerRef will be added later (non-fatal Jarvis step)
         };
 
@@ -285,6 +295,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
             type: StakworkRunType.LEGAL_BENCHMARK_RUNNER,
             status: WorkflowStatus.PENDING,
             webhookUrl: placeholder,
+            userId: userOrResponse.id,
             result: JSON.stringify(runnerResultJson),
           },
           select: { id: true },
