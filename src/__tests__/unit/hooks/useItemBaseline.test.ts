@@ -245,6 +245,193 @@ describe("useItemBaseline", () => {
     });
   });
 
+  // ── PROMPT snapshot path ────────────────────────────────────────────────────
+
+  describe("PROMPT snapshot path", () => {
+    it("uses baselineSnapshot and versionSnapshot without any fetch", async () => {
+      const { result } = renderHook(() =>
+        useItemBaseline({
+          type: "PROMPT",
+          promptId: "prompt-abc",
+          promptVersionId: "v3",
+          baselineSnapshot: { value: "published text v2", versionId: "v2", versionNumber: 2 },
+          versionSnapshot: { value: "updated text v3", versionNumber: 3 },
+        }),
+      );
+
+      // Should resolve synchronously (no loading state needed, but wait for state update)
+      await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+      // No network call made
+      expect(mockFetch).not.toHaveBeenCalled();
+
+      expect(result.current.baseline).toBe("published text v2");
+      expect(result.current.updated).toBe("updated text v3");
+      expect(result.current.error).toBeNull();
+    });
+
+    it("derives baselineLabel from numeric versionNumber", async () => {
+      const { result } = renderHook(() =>
+        useItemBaseline({
+          type: "PROMPT",
+          promptId: "prompt-abc",
+          promptVersionId: "v7",
+          baselineSnapshot: { value: "published text", versionId: "v7", versionNumber: 7 },
+          versionSnapshot: { value: "updated text", versionNumber: 8 },
+        }),
+      );
+
+      await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+      expect(result.current.baselineLabel).toBe("vs published v7");
+    });
+
+    it("sets baselineLabel: null when baselineSnapshot is null (new prompt)", async () => {
+      const { result } = renderHook(() =>
+        useItemBaseline({
+          type: "PROMPT",
+          promptId: "prompt-new",
+          promptVersionId: "v1",
+          baselineSnapshot: null, // explicit null = new-prompt (no published version)
+          versionSnapshot: { value: "brand new content", versionNumber: 1 },
+        }),
+      );
+
+      await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+      expect(mockFetch).not.toHaveBeenCalled();
+      expect(result.current.baseline).toBeNull();
+      expect(result.current.updated).toBe("brand new content");
+      expect(result.current.baselineLabel).toBeNull();
+      expect(result.current.error).toBeNull();
+    });
+
+    it("falls back to legacy live lookup when baselineSnapshot is absent (undefined)", async () => {
+      // baselineSnapshot is not provided at all — legacy artifact path
+      mockFetch.mockReturnValueOnce(ok(PROMPT_VERSIONS_RESPONSE));
+
+      const { result } = renderHook(() =>
+        useItemBaseline({
+          type: "PROMPT",
+          promptId: "prompt-abc",
+          promptVersionId: "v3",
+          // No baselineSnapshot / versionSnapshot fields
+        }),
+      );
+
+      await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+      // Must have made the live fetch
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+      expect(result.current.baseline).toBe("published prompt text");
+      expect(result.current.updated).toBe("updated prompt text");
+      // Legacy path: no baselineLabel
+      expect(result.current.baselineLabel).toBeNull();
+    });
+
+    it("sets error when versionSnapshot is absent (no updated content available)", async () => {
+      const { result } = renderHook(() =>
+        useItemBaseline({
+          type: "PROMPT",
+          promptId: "prompt-abc",
+          promptVersionId: "v3",
+          baselineSnapshot: { value: "published text", versionId: "v2", versionNumber: 2 },
+          // versionSnapshot absent — updated will be null
+        }),
+      );
+
+      await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+      expect(mockFetch).not.toHaveBeenCalled();
+      expect(result.current.updated).toBeNull();
+      expect(result.current.error).toBeTruthy();
+    });
+
+    it("memo key invalidates when snapshot appears (baselineSnapshot changes from absent to present)", async () => {
+      // Start with no snapshot (legacy path) → then remount with snapshot
+      mockFetch.mockReturnValue(ok(PROMPT_VERSIONS_RESPONSE));
+
+      const { result, rerender } = renderHook(
+        ({
+          baselineSnapshot,
+          versionSnapshot,
+        }: {
+          baselineSnapshot?: { value: string; versionId: string; versionNumber: number } | null;
+          versionSnapshot?: { value: string; versionNumber: number };
+        }) =>
+          useItemBaseline({
+            type: "PROMPT",
+            promptId: "prompt-abc",
+            promptVersionId: "v3",
+            baselineSnapshot,
+            versionSnapshot,
+          }),
+        {
+          initialProps: {
+            baselineSnapshot: undefined as
+              | { value: string; versionId: string; versionNumber: number }
+              | null
+              | undefined,
+            versionSnapshot: undefined as
+              | { value: string; versionNumber: number }
+              | undefined,
+          },
+        },
+      );
+
+      await waitFor(() => expect(result.current.isLoading).toBe(false));
+      // Legacy path: fetch called once
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+
+      // Now snapshots appear (e.g. after enrichment propagates to the component)
+      rerender({
+        baselineSnapshot: { value: "captured baseline", versionId: "v2", versionNumber: 2 },
+        versionSnapshot: { value: "captured updated", versionNumber: 3 },
+      });
+
+      await waitFor(() => expect(result.current.baseline).toBe("captured baseline"));
+      // Snapshot path should not make additional fetch calls
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+      expect(result.current.updated).toBe("captured updated");
+      expect(result.current.baselineLabel).toBe("vs published v2");
+    });
+
+    it("memo key invalidates when versionId on snapshot changes", async () => {
+      const { result, rerender } = renderHook(
+        ({ versionId }: { versionId: string }) =>
+          useItemBaseline({
+            type: "PROMPT",
+            promptId: "prompt-abc",
+            promptVersionId: "v3",
+            baselineSnapshot: { value: "baseline", versionId, versionNumber: 2 },
+            versionSnapshot: { value: "updated", versionNumber: 3 },
+          }),
+        { initialProps: { versionId: "v2" } },
+      );
+
+      await waitFor(() => expect(result.current.isLoading).toBe(false));
+      expect(result.current.baselineLabel).toBe("vs published v2");
+
+      rerender({ versionId: "v5" });
+      await waitFor(() => expect(result.current.isLoading).toBe(false));
+      // Should have re-run with new snapshot data
+      expect(result.current.baselineLabel).toBe("vs published v2");
+      expect(mockFetch).not.toHaveBeenCalled();
+    });
+
+    it("baselineLabel is null for legacy path (no snapshot)", async () => {
+      mockFetch.mockReturnValueOnce(ok(PROMPT_VERSIONS_RESPONSE));
+
+      const { result } = renderHook(() =>
+        useItemBaseline({ type: "PROMPT", promptId: "prompt-abc", promptVersionId: "v3" }),
+      );
+
+      await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+      expect(result.current.baselineLabel).toBeNull();
+    });
+  });
+
   // ── SCRIPT path ─────────────────────────────────────────────────────────────
 
   describe("SCRIPT path", () => {
@@ -384,6 +571,19 @@ describe("useItemBaseline", () => {
 
       expect(mockFetch.mock.calls.length).toBeGreaterThan(firstCallCount);
     });
+
+    it("baselineLabel is always null for SCRIPT path", async () => {
+      mockFetch.mockReturnValueOnce(ok(SCRIPT_VERSIONS_LIST_RESPONSE));
+      mockFetch.mockReturnValueOnce(ok(SCRIPT_VERSION_20_RESPONSE));
+      mockFetch.mockReturnValueOnce(ok(SCRIPT_VERSION_30_RESPONSE));
+
+      const { result } = renderHook(() =>
+        useItemBaseline({ type: "SCRIPT", scriptId: 1, scriptVersionId: 30 }),
+      );
+
+      await waitFor(() => expect(result.current.isLoading).toBe(false));
+      expect(result.current.baselineLabel).toBeNull();
+    });
   });
 
   // ── isLoading state ──────────────────────────────────────────────────────────
@@ -400,6 +600,22 @@ describe("useItemBaseline", () => {
       expect(result.current.isLoading).toBe(true);
       expect(result.current.baseline).toBeNull();
       expect(result.current.updated).toBeNull();
+    });
+
+    it("snapshot path resolves without staying in loading state", async () => {
+      const { result } = renderHook(() =>
+        useItemBaseline({
+          type: "PROMPT",
+          promptId: "p1",
+          promptVersionId: "v1",
+          baselineSnapshot: { value: "b", versionId: "vid", versionNumber: 1 },
+          versionSnapshot: { value: "u", versionNumber: 2 },
+        }),
+      );
+
+      await waitFor(() => expect(result.current.isLoading).toBe(false));
+      expect(result.current.baseline).toBe("b");
+      expect(result.current.updated).toBe("u");
     });
   });
 });
