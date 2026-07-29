@@ -20,6 +20,10 @@ vi.mock("@/hooks/useWorkspace", () => ({
   useWorkspace: () => ({ workspace: { id: "ws-1" } }),
 }));
 
+vi.mock("@/hooks/useWorkspaceAccess", () => ({
+  useWorkspaceAccess: () => ({ canWrite: true }),
+}));
+
 vi.mock("sonner", () => ({
   toast: Object.assign(vi.fn(), {
     error: vi.fn(),
