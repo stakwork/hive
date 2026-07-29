@@ -1,10 +1,16 @@
 "use client";
 
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { formatInUserTz } from "@/lib/date-utils";
 import { useUserTimezone } from "@/hooks/useUserTimezone";
 import { SendHorizontal } from "lucide-react";
 import { useVoiceStore, type AgentMessage } from "@/stores/useVoiceStore";
+import { parseMessageSegments } from "@/lib/prompts/detect-prompt-names";
+import { usePromptResolution } from "@/hooks/usePromptResolution";
+import {
+  PromptNameLink,
+  VersionRefLink,
+} from "@/components/prompts/PromptNameLink";
 import {
   Sheet,
   SheetContent,
@@ -29,6 +35,14 @@ function MessageBubble({ msg }: { msg: AgentMessage }) {
     minute: "2-digit",
     timeZoneName: "short",
   });
+
+  // Parse segments and resolve prompt names only for Jamie (non-user) messages.
+  const segments = useMemo(
+    () => (isUser ? [] : parseMessageSegments(msg.message)),
+    [isUser, msg.message],
+  );
+  const resolved = usePromptResolution(segments);
+
   return (
     <div className={`flex flex-col gap-1 ${isUser ? "items-end" : "items-start"}`}>
       <div className={`flex items-center gap-2 ${isUser ? "flex-row-reverse" : ""}`}>
@@ -40,7 +54,36 @@ function MessageBubble({ msg }: { msg: AgentMessage }) {
           isUser ? "bg-primary text-primary-foreground ml-auto" : "bg-muted"
         }`}
       >
-        {msg.message}
+        {isUser ? (
+          msg.message
+        ) : (
+          <span>
+            {segments.map((seg, i) => {
+              if (seg.type === "prompt") {
+                const entry = resolved.get(seg.name);
+                return entry ? (
+                  <PromptNameLink key={i} name={seg.name} promptId={entry.id} />
+                ) : (
+                  <span key={i}>{seg.name}</span>
+                );
+              }
+              if (seg.type === "version") {
+                const entry = resolved.get(seg.promptName);
+                return entry ? (
+                  <VersionRefLink
+                    key={i}
+                    label={seg.label}
+                    versionNumber={seg.number}
+                    promptId={entry.id}
+                  />
+                ) : (
+                  <span key={i}>{seg.label}</span>
+                );
+              }
+              return <span key={i}>{seg.value}</span>;
+            })}
+          </span>
+        )}
       </div>
     </div>
   );
