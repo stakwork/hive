@@ -1,10 +1,14 @@
 /**
- * Graph walker tools — read-only cross-realm graph traversal.
+ * Graph walker tools — read-only cross-realm graph traversal plus
+ * approval-gated edge proposals.
  *
- * Exposes three agent tools:
+ * Exposes five tools:
  *   - `graph_get`       — resolve a single URN to its full node content
  *   - `graph_neighbors` — return all adjacent URNs reachable in one hop
  *   - `graph_search`    — keyword search across canvas and kg realms
+ *   - `graph_ontology`  — fetch valid KG node types for a workspace
+ *   - `propose_edge`    — propose a new edge between two KG nodes
+ *                         (approval-gated, no write until user approves)
  *
  * The primary realm is `kg` (the swarm knowledge graph, served by Jarvis v2 over
  * HTTP); `canvas` (canvas nodes) is also live.
@@ -19,7 +23,13 @@
  * the kg realm. Flip `PG_REALM_ENABLED` back to `true` to re-enable the
  * Postgres-backed roadmap traversal.
  *
- * All tools are read-only — no node creation, edge writes, or swarm mutations.
+ * ## propose_edge — approval-gated write
+ *
+ * `propose_edge` validates both endpoint URNs against the live workspace swarm,
+ * then emits a `ProposalOutput` with `kind: "edge"` — no graph write happens
+ * at this point. The write to Jarvis (`/v2/edges/bulk`) happens only when
+ * the user explicitly approves via the proposal card (handled in
+ * `src/lib/proposals/handleApproval.ts`). Readonly sessions strip this tool.
  */
 
 import { tool, type ToolSet } from "ai";
@@ -42,6 +52,9 @@ import { resolveKgSeam } from "@/lib/urn/resolvers/kg";
 import { kgGetNode, kgGetNeighbors, kgGetNodesByRefs, kgSearch, kgGetOntology } from "./kg-adapter";
 import { getSwarmAccessByWorkspaceId } from "@/lib/helpers/swarm-access";
 import { getJarvisUrl } from "@/lib/utils/swarm";
+import { PROPOSE_EDGE_TOOL, type ProposalOutput, type EdgeProposalPayload } from "@/lib/proposals/types";
+import { isValidEdgeType, ALLOWED_EDGE_TYPES } from "@/lib/constants/edge-types";
+import { nanoid } from "nanoid";
 
 /**
  * Verify that the URN's embedded org (a githubLogin) maps to the same
@@ -1168,6 +1181,152 @@ export function buildGraphWalkerTools(
 
         const results = (await Promise.all(arms)).flat();
         return { results };
+      },
+    }),
+
+    // ─── propose_edge ──────────────────────────────────────────────────────
+    // Approval-gated: validates both KG endpoints at propose time, then emits
+    // a ProposalOutput with kind "edge" — NO write to Jarvis at this point.
+    // The write happens only after the user clicks Approve in the UI card,
+    // which calls the approveEdge handler in handleApproval.ts.
+    [PROPOSE_EDGE_TOOL]: tool({
+      description:
+        "Propose a new relationship between two existing knowledge-graph nodes. " +
+        "NEVER writes to the graph — emits an approval card that the user must " +
+        "explicitly Accept before any edge is created. " +
+        "Both endpoints must resolve in the workspace's KG (kg realm URNs). " +
+        "Validate `edge_type` against the known allow-list: " +
+        Array.from(ALLOWED_EDGE_TYPES).join(", ") + ". " +
+        "Use this when the user asks to link, connect, or create a relationship " +
+        "between two nodes in the knowledge graph.",
+      inputSchema: z.object({
+        source_urn: z
+          .string()
+          .describe("kg realm URN of the source node (urn:{org}:kg:{workspace}:{type}:{ref_id})."),
+        target_urn: z
+          .string()
+          .describe("kg realm URN of the target node."),
+        edge_type: z
+          .string()
+          .describe(
+            "Relationship type label (SCREAMING_SNAKE_CASE). Must be one of: " +
+              Array.from(ALLOWED_EDGE_TYPES).join(", ") +
+              ". Unknown types are rejected.",
+          ),
+        edge_data: z
+          .record(z.unknown())
+          .optional()
+          .describe("Optional key/value properties to store on the edge."),
+        rationale: z
+          .string()
+          .optional()
+          .describe("One-sentence reason for proposing this relationship."),
+      }),
+      execute: async ({
+        source_urn,
+        target_urn,
+        edge_type,
+        edge_data,
+        rationale,
+      }: {
+        source_urn: string;
+        target_urn: string;
+        edge_type: string;
+        edge_data?: Record<string, unknown>;
+        rationale?: string;
+      }): Promise<ProposalOutput | { error: string }> => {
+        // ── 1. Parse both URNs ──────────────────────────────────────────
+        const srcParsed = parseUrn(source_urn);
+        const tgtParsed = parseUrn(target_urn);
+
+        if (!srcParsed) return { error: "source_urn is invalid or malformed." };
+        if (!tgtParsed) return { error: "target_urn is invalid or malformed." };
+        if (srcParsed.realm !== "kg") return { error: "source_urn must be a kg-realm URN." };
+        if (tgtParsed.realm !== "kg") return { error: "target_urn must be a kg-realm URN." };
+
+        // ── 2. Org match ────────────────────────────────────────────────
+        if (!(await urnOrgMatchesContext(srcParsed.org, orgId))) {
+          return { error: "source_urn does not belong to this organization." };
+        }
+        if (!(await urnOrgMatchesContext(tgtParsed.org, orgId))) {
+          return { error: "target_urn does not belong to this organization." };
+        }
+
+        // Both endpoints must be in the same workspace (same swarm).
+        if (srcParsed.workspace !== tgtParsed.workspace) {
+          return {
+            error:
+              "source_urn and target_urn must be in the same workspace — cross-workspace edges are not supported.",
+          };
+        }
+
+        // ── 3. Edge-type validation ─────────────────────────────────────
+        if (!isValidEdgeType(edge_type)) {
+          return {
+            error:
+              `Unknown or malformed edge_type: "${edge_type}". ` +
+              "Allowed types: " +
+              Array.from(ALLOWED_EDGE_TYPES).join(", ") +
+              ". Edge-type labels must match ^[A-Z][A-Z0-9_]*$.",
+          };
+        }
+
+        // ── 4. Resolve both endpoints from the KG ──────────────────────
+        const srcSeam = await resolveKgSeam(source_urn, { userId });
+        if (!srcSeam) {
+          return { error: "source_urn: swarm not configured or access denied for this workspace." };
+        }
+
+        const [srcNode, tgtNode] = await Promise.all([
+          kgGetNode(srcSeam.jarvisUrl, srcSeam.swarmApiKey, srcParsed.id),
+          kgGetNode(srcSeam.jarvisUrl, srcSeam.swarmApiKey, tgtParsed.id),
+        ]);
+
+        if (!srcNode) {
+          return { error: `source_urn: node with ref_id "${srcParsed.id}" not found in the graph.` };
+        }
+        if (!tgtNode) {
+          return { error: `target_urn: node with ref_id "${tgtParsed.id}" not found in the graph.` };
+        }
+
+        // ── 5. Resolve workspace cuid for the payload ──────────────────
+        const workspaceRow = await db.workspace.findFirst({
+          where: {
+            slug: srcParsed.workspace,
+            sourceControlOrg: { id: orgId },
+            deleted: false,
+          },
+          select: { id: true, slug: true },
+        });
+        if (!workspaceRow) {
+          return { error: "Workspace not found in this organization." };
+        }
+
+        // ── 6. Emit proposal — NO write ────────────────────────────────
+        const proposalId = nanoid();
+        const payload: EdgeProposalPayload = {
+          workspaceId: workspaceRow.id,
+          workspaceSlug: workspaceRow.slug,
+          sourceRefId: srcParsed.id,
+          targetRefId: tgtParsed.id,
+          sourceType: srcNode.node_type,
+          targetType: tgtNode.node_type,
+          edgeType: edge_type,
+          ...(edge_data && { edgeData: edge_data }),
+        };
+
+        const proposal: ProposalOutput = {
+          kind: "edge",
+          proposalId,
+          payload,
+          ...(rationale && { rationale }),
+          meta: {
+            sourceTitle: srcNode.name ?? srcNode.node_type,
+            targetTitle: tgtNode.name ?? tgtNode.node_type,
+          },
+        };
+
+        return proposal;
       },
     }),
   };

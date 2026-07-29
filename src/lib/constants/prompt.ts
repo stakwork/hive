@@ -877,9 +877,28 @@ In the \`stakwork\` workspace specifically, the kg also holds \`Workflow\` nodes
 
 kg traversal talks to the live swarm, so it can fail if the swarm is unconfigured/unreachable — those calls return an \`{ error }\` you should treat as "unavailable", not "empty".
 
-### Read-only
+### propose_edge (approval-gated write)
 
-These tools are purely read-only. They never create, modify, or delete nodes or edges in any realm.
+To propose a new relationship between two existing KG nodes, use **`propose_edge`**:
+
+\`\`\`
+propose_edge({
+  source_urn: "urn:{org}:kg:{workspace}:{type}:{ref_id}",
+  target_urn:  "urn:{org}:kg:{workspace}:{type}:{ref_id}",
+  edge_type:   "RELATED_TO",   // must be a known allow-listed type
+  rationale:   "reason for the relationship",
+})
+\`\`\`
+
+This **never writes to the graph** — it emits an approval card. The edge is created only when the user explicitly clicks Accept. Unknown or malformed edge_type values are rejected immediately.
+
+Known allowed edge types: \`RELATED_TO\`, \`PART_OF\`, \`DEPENDS_ON\`, \`SYNONYM_OF\`, \`EXTENDS\`, \`HAS_DEFINITION\`, \`SUPERSEDES\`, \`HAS_TASK\`, \`HAS_MESSAGE\`, \`RESULTED_IN\`, \`IMPLEMENTS\`, \`REFERENCES\`, \`BLOCKS\`, \`CONTAINS\`, \`MODIFIES\`, \`CITES\`.
+
+Both URNs must be in the same workspace and the kg realm. Use \`graph_get\` / \`graph_search\` to locate the nodes and obtain their URNs first. **Do not call \`propose_edge\` in read-only sessions** — the tool will be absent.
+
+### Read-only traversal tools
+
+The four traversal tools (\`graph_get\`, \`graph_neighbors\`, \`graph_search\`, \`graph_ontology\`) are purely read-only — they never create, modify, or delete nodes or edges. \`propose_edge\` is the only graph-walker tool that can affect the graph, and only after explicit user approval.
 ` + getGraphWalkDispatchSnippet() + `
 `;
 }

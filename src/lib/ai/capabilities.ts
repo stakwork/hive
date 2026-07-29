@@ -96,6 +96,7 @@ import {
   PROPOSE_PROMPT_UPDATE_TOOL,
   PROPOSE_NEW_CONCEPT_TOOL,
   PROPOSE_CONCEPT_UPDATE_TOOL,
+  PROPOSE_EDGE_TOOL,
 } from "@/lib/proposals/types";
 import {
   getConceptsCapabilitySnippet,
@@ -364,9 +365,10 @@ export const CAPABILITY_REGISTRY: Record<OrgCapability, CapabilityDefinition> =
       // With ephemeral prompt caching the marginal cost is a cached read.
       // No menuBlurb: core capabilities are inlined, not menu-listed.
       core: true,
-      // dispatch_graph_walk and finalize_graph_walk are stripped in readonly mode
-      // to prevent sub-agents from re-dispatching themselves.
-      writeToolNames: ["dispatch_graph_walk", "finalize_graph_walk"],
+      // propose_edge emits a proposal card (no direct write); dispatch_graph_walk
+      // and finalize_graph_walk are stripped to prevent sub-agent re-dispatch.
+      // All three are write tools and must be absent in readonly sessions.
+      writeToolNames: ["dispatch_graph_walk", "finalize_graph_walk", PROPOSE_EDGE_TOOL],
     },
     infra: {
       buildTools: (ctx) => buildInfraTools(ctx.orgId, ctx.userId),

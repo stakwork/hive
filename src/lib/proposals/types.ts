@@ -332,6 +332,16 @@ export type ProposalOutput =
         workspaceSlug?: string;
         repo?: string;
       };
+    }
+  | {
+      kind: "edge";
+      proposalId: string;
+      payload: EdgeProposalPayload;
+      rationale?: string;
+      /** Render-only source/target node titles for the card.
+       *  Resolved at propose time from the KG; the approval handler
+       *  does NOT trust these — it re-validates both endpoints. */
+      meta?: EdgeProposalMeta;
     };
 
 // ─── Prompt proposal payloads ──────────────────────────────────────────
@@ -394,6 +404,53 @@ export interface ConceptCreateProposalPayload {
   repo?: string;
 }
 
+// ─── Edge proposal payload ─────────────────────────────────────────────
+//
+// Edges live in the workspace swarm's knowledge graph (Jarvis v2 `/v2/edges/bulk`),
+// not in the Hive DB. The payload carries the source/target ref_ids (opaque
+// Jarvis identifiers) plus the relationship type. The approval handler re-resolves
+// both endpoints and re-validates the edge type server-side before writing.
+//
+// `workspaceId` is carried so the approval handler can org-guard via
+// `resolveConceptSwarm(orgId, workspaceId)` — the same IDOR pattern as concept
+// approvals. `workspaceSlug` is for logging and render-only display.
+
+/**
+ * Payload the agent fills in for a KG edge proposal.
+ * All identifiers come from graph traversal URNs/ref_ids (never hallucinated).
+ * The approval handler re-validates every field server-side before the write.
+ */
+export interface EdgeProposalPayload {
+  workspaceId: string;
+  workspaceSlug: string;
+  /** Jarvis `ref_id` of the source node (opaque Jarvis identifier). */
+  sourceRefId: string;
+  /** Jarvis `ref_id` of the target node. */
+  targetRefId: string;
+  /** KG node type of the source (render-only; the handler re-resolves). */
+  sourceType: string;
+  /** KG node type of the target (render-only; the handler re-resolves). */
+  targetType: string;
+  /**
+   * Relationship type label — validated against the `ALLOWED_EDGE_TYPES`
+   * allow-list at both propose time and approval time. Must match
+   * `^[A-Z][A-Z0-9_]*$` (injection guard; Neo4j labels can't be parameterized).
+   */
+  edgeType: string;
+  /** Optional key/value properties stored on the edge (forwarded verbatim). */
+  edgeData?: Record<string, unknown>;
+}
+
+/**
+ * Render-only metadata for an edge proposal card.
+ * Resolved server-side at propose time from the KG; the approval handler
+ * does NOT trust these — it re-fetches both endpoints before writing.
+ */
+export interface EdgeProposalMeta {
+  sourceTitle: string;
+  targetTitle: string;
+}
+
 /**
  * Tool name constants — referenced by the chat UI to find proposal
  * tool calls inside `message.toolCalls[]`, by the route's scanner, and
@@ -406,6 +463,7 @@ export const PROPOSE_NEW_PROMPT_TOOL = "propose_new_prompt" as const;
 export const PROPOSE_PROMPT_UPDATE_TOOL = "propose_prompt_update" as const;
 export const PROPOSE_NEW_CONCEPT_TOOL = "propose_new_concept" as const;
 export const PROPOSE_CONCEPT_UPDATE_TOOL = "propose_concept_update" as const;
+export const PROPOSE_EDGE_TOOL = "propose_edge" as const;
 
 export type ProposeToolName =
   | typeof PROPOSE_INITIATIVE_TOOL
@@ -414,7 +472,8 @@ export type ProposeToolName =
   | typeof PROPOSE_NEW_PROMPT_TOOL
   | typeof PROPOSE_PROMPT_UPDATE_TOOL
   | typeof PROPOSE_NEW_CONCEPT_TOOL
-  | typeof PROPOSE_CONCEPT_UPDATE_TOOL;
+  | typeof PROPOSE_CONCEPT_UPDATE_TOOL
+  | typeof PROPOSE_EDGE_TOOL;
 
 /**
  * Sub-agent delegation tool name. Not a proposal (no approve/reject
@@ -505,7 +564,8 @@ export interface ApprovalResult {
     | "promptCreate"
     | "promptUpdate"
     | "conceptCreate"
-    | "conceptUpdate";
+    | "conceptUpdate"
+    | "edge";
   createdEntityId: string;
   /** Canvas ref the new node landed on. Empty string = root. */
   landedOn: string;

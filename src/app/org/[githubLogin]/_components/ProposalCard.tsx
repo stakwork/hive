@@ -21,6 +21,7 @@ import {
   PROPOSE_PROMPT_UPDATE_TOOL,
   PROPOSE_NEW_CONCEPT_TOOL,
   PROPOSE_CONCEPT_UPDATE_TOOL,
+  PROPOSE_EDGE_TOOL,
   getProposalStatus,
   type ApprovalIntent,
   type ProposalOutput,
@@ -121,7 +122,9 @@ export function ProposalCard({
               ? proposal.payload.name
               : proposal.kind === "conceptUpdate"
                 ? (proposal.meta.conceptName ?? proposal.payload.conceptId)
-                : proposal.payload.title;
+                : proposal.kind === "edge"
+                  ? `${proposal.meta?.sourceTitle ?? proposal.payload.sourceRefId} → [${proposal.payload.edgeType}] → ${proposal.meta?.targetTitle ?? proposal.payload.targetRefId}`
+                  : proposal.payload.title;
   const [editedTitle, setEditedTitle] = useState(initialTitle);
   const [isEditing, setIsEditing] = useState(false);
   // Prompt/concept proposals forward no inline-edit override (handleApprove
@@ -131,7 +134,8 @@ export function ProposalCard({
     proposal.kind !== "promptCreate" &&
     proposal.kind !== "promptUpdate" &&
     proposal.kind !== "conceptCreate" &&
-    proposal.kind !== "conceptUpdate";
+    proposal.kind !== "conceptUpdate" &&
+    proposal.kind !== "edge";
 
   // Feature-only: per-feature auto-respond toggle.
   // Initialized from the proposal payload (which is seeded from the
@@ -200,9 +204,10 @@ export function ProposalCard({
       proposal.kind === "promptCreate" ||
       proposal.kind === "promptUpdate" ||
       proposal.kind === "conceptCreate" ||
-      proposal.kind === "conceptUpdate"
+      proposal.kind === "conceptUpdate" ||
+      proposal.kind === "edge"
     ) {
-      // Prompt/concept proposals have no inline-edit overrides in v1 — the
+      // Prompt/concept/edge proposals have no inline-edit overrides — the
       // agent should propose well; the user's only action is approve/reject.
       // No viewport / editedTitle / checkedFeatureIds logic applies.
       payload = undefined;
@@ -316,6 +321,11 @@ export function ProposalCard({
       return { text, deepLink: deepLink as string | null, newTab: true };
     }
 
+    // Edge approvals have no canvas node — just a confirmation.
+    if (r.kind === "edge") {
+      return { text: "Edge created ✓", deepLink: null as string | null, newTab: false };
+    }
+
     // Initiative / milestone: keep existing behavior unchanged.
     const onCurrent = r.landedOn === currentRef;
     if (onCurrent) {
@@ -353,7 +363,9 @@ export function ProposalCard({
                     ? "Proposed New Concept"
                     : proposal.kind === "conceptUpdate"
                       ? "Proposed Concept Update"
-                      : `Proposed ${proposal.kind}`}
+                      : proposal.kind === "edge"
+                        ? "Proposed Graph Edge"
+                        : `Proposed ${proposal.kind}`}
             </span>
           </div>
           {/* Title — inline-editable on click while pending (roadmap kinds only) */}
@@ -411,6 +423,9 @@ export function ProposalCard({
           )}
           {proposal.kind === "conceptUpdate" && (
             <ConceptUpdateMeta meta={proposal.meta} />
+          )}
+          {proposal.kind === "edge" && (
+            <EdgeMeta payload={proposal.payload} meta={proposal.meta} />
           )}
           {proposal.rationale && (
             <div className="mt-1 text-xs text-muted-foreground italic">
@@ -544,7 +559,9 @@ function ProposalDetailsDialog({
               ? "New Concept"
               : proposal.kind === "conceptUpdate"
                 ? "Concept Update"
-                : "Feature";
+                : proposal.kind === "edge"
+                  ? "Graph Edge"
+                  : "Feature";
 
   const title =
     proposal.kind === "initiative"
@@ -559,7 +576,9 @@ function ProposalDetailsDialog({
               ? proposal.payload.name
               : proposal.kind === "conceptUpdate"
                 ? (proposal.meta.conceptName ?? proposal.payload.conceptId)
-                : proposal.payload.title;
+                : proposal.kind === "edge"
+                  ? `${proposal.meta?.sourceTitle ?? proposal.payload.sourceRefId} → [${proposal.payload.edgeType}] → ${proposal.meta?.targetTitle ?? proposal.payload.targetRefId}`
+                  : proposal.payload.title;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -822,6 +841,8 @@ export function proposalHasDetails(p: ProposalOutput): boolean {
   // conceptUpdate: the doc diff lives in its own "View changes" modal on
   // the card, so there's nothing extra to show in the details dialog.
   if (p.kind === "conceptUpdate") return false;
+  // edge: the relationship is fully described in the card title; no extra details.
+  if (p.kind === "edge") return false;
   // milestone
   return !!(p.payload.description || p.payload.status || p.payload.dueDate);
 }
@@ -1169,6 +1190,40 @@ function UnifiedDiffView({ diff }: { diff: UnifiedDiff }) {
   );
 }
 
+/** Compact body for a graph-edge proposal: source → [TYPE] → target. */
+function EdgeMeta({
+  payload,
+  meta,
+}: {
+  payload: {
+    sourceRefId: string;
+    targetRefId: string;
+    sourceType: string;
+    targetType: string;
+    edgeType: string;
+  };
+  meta?: { sourceTitle?: string; targetTitle?: string };
+}) {
+  const srcLabel = meta?.sourceTitle ?? payload.sourceType;
+  const tgtLabel = meta?.targetTitle ?? payload.targetType;
+  return (
+    <div className="mt-0.5 text-[11px] text-muted-foreground space-y-0.5">
+      <div className="font-mono truncate">
+        <span className="font-medium text-foreground/80">{srcLabel}</span>
+        <span className="mx-1 text-muted-foreground/60">→</span>
+        <span className="rounded bg-primary/10 px-1 py-0.5 font-mono text-[10px] text-primary/80">
+          {payload.edgeType}
+        </span>
+        <span className="mx-1 text-muted-foreground/60">→</span>
+        <span className="font-medium text-foreground/80">{tgtLabel}</span>
+      </div>
+      <div className="font-mono text-[10px] text-muted-foreground/60 truncate">
+        {payload.sourceRefId} → {payload.targetRefId}
+      </div>
+    </div>
+  );
+}
+
 /** Compact body for a new-concept proposal: repo/workspace + doc size. */
 function ConceptCreateMeta({
   payload,
@@ -1326,7 +1381,8 @@ export function getProposalsFromMessage(
       tc.toolName !== PROPOSE_NEW_PROMPT_TOOL &&
       tc.toolName !== PROPOSE_PROMPT_UPDATE_TOOL &&
       tc.toolName !== PROPOSE_NEW_CONCEPT_TOOL &&
-      tc.toolName !== PROPOSE_CONCEPT_UPDATE_TOOL
+      tc.toolName !== PROPOSE_CONCEPT_UPDATE_TOOL &&
+      tc.toolName !== PROPOSE_EDGE_TOOL
     )
       continue;
     const o = tc.output;

@@ -59,6 +59,7 @@ import {
   PROPOSE_PROMPT_UPDATE_TOOL,
   PROPOSE_NEW_CONCEPT_TOOL,
   PROPOSE_CONCEPT_UPDATE_TOOL,
+  PROPOSE_EDGE_TOOL,
   type ApprovalIntent,
   type ApprovalResult,
   type FeatureProposalPayload,
@@ -69,6 +70,9 @@ import {
 } from "./types";
 import { mcpCreatePrompt, mcpUpdatePrompt } from "@/lib/mcp/mcpTools";
 import { getSwarmAccessByWorkspaceId } from "@/lib/helpers/swarm-access";
+import { addEdgeByRefBulk } from "@/services/swarm/api/nodes";
+import { kgGetNode } from "@/lib/ai/kg-adapter";
+import { isValidEdgeType } from "@/lib/constants/edge-types";
 import { logger } from "@/lib/logger";
 
 // ─── Conversation-shape primitives ────────────────────────────────────
@@ -120,7 +124,8 @@ function findProposal(
         tc.toolName !== PROPOSE_NEW_PROMPT_TOOL &&
         tc.toolName !== PROPOSE_PROMPT_UPDATE_TOOL &&
         tc.toolName !== PROPOSE_NEW_CONCEPT_TOOL &&
-        tc.toolName !== PROPOSE_CONCEPT_UPDATE_TOOL
+        tc.toolName !== PROPOSE_CONCEPT_UPDATE_TOOL &&
+        tc.toolName !== PROPOSE_EDGE_TOOL
       )
         continue;
       const out = tc.output;
@@ -315,6 +320,9 @@ export async function handleApproval(
   }
   if (proposal.kind === "conceptUpdate") {
     return approveConceptUpdate({ orgId, proposal });
+  }
+  if (proposal.kind === "edge") {
+    return approveEdge({ orgId, userId, proposal });
   }
   return approveFeature({
     orgId,
@@ -1596,6 +1604,186 @@ async function approveConceptUpdate(args: {
       proposalId: proposal.proposalId,
       kind: "conceptUpdate",
       createdEntityId: conceptId,
+      landedOn: "",
+      workspaceSlug,
+    },
+  };
+}
+
+// ── Approve: edge ────────────────────────────────────────────────────
+//
+// Writes a single edge to Jarvis via `addEdgeByRefBulk` (`/v2/edges/bulk`).
+// Authorization order:
+//   1. IDOR guard via resolveConceptSwarm (org membership + workspace org-guard).
+//   2. Workspace-member check (same bar as resolveKgSeam at propose time).
+//   3. Write-time endpoint re-validation (both ref_ids against Jarvis; closes
+//      the silent-no-op false-confirm window).
+//   4. edge_type re-validation against the allow-list + charset (never trust
+//      the client-supplied transcript payload).
+//   5. Single-element addEdgeByRefBulk call (idempotent via edge_key; dup = success).
+
+async function approveEdge(args: {
+  orgId: string;
+  userId: string;
+  proposal: Extract<ProposalOutput, { kind: "edge" }>;
+}): Promise<HandleApprovalReturn> {
+  const { orgId, userId, proposal } = args;
+  const { workspaceId, workspaceSlug, sourceRefId, targetRefId, edgeType, edgeData } =
+    proposal.payload;
+
+  // ── 1. IDOR: org-guard credential resolution ───────────────────────
+  const resolved = await resolveConceptSwarm(orgId, workspaceId);
+  if (!resolved.ok) {
+    logger.warn(
+      "[handleApproval.approveEdge] IDOR check failed",
+      "handleApproval",
+      { proposalId: proposal.proposalId, workspaceId, orgId },
+    );
+    return { ok: false, error: resolved.error, status: resolved.status };
+  }
+
+  // ── 2. Workspace-member check ──────────────────────────────────────
+  // Same bar that resolveKgSeam applies at propose time: an org member
+  // who is not a workspace member must not be able to commit an edge.
+  const membership = await db.workspaceMember.findFirst({
+    where: { workspaceId, userId, leftAt: null },
+    select: { id: true },
+  });
+  if (!membership) {
+    return {
+      ok: false,
+      error: "You must be a member of this workspace to create edges in its knowledge graph.",
+      status: 403,
+    };
+  }
+
+  // ── 3. edge_type re-validation (server-side; never trust the transcript) ──
+  if (!isValidEdgeType(edgeType)) {
+    logger.warn(
+      "[handleApproval.approveEdge] invalid edge_type at approval time",
+      "handleApproval",
+      { proposalId: proposal.proposalId, edgeType },
+    );
+    return {
+      ok: false,
+      error: `Invalid edge_type: "${edgeType}". Must be an allow-listed SCREAMING_SNAKE_CASE relationship type.`,
+      status: 400,
+    };
+  }
+
+  // ── 4. Write-time endpoint re-validation ──────────────────────────
+  // sourceRefId / targetRefId come from the client-supplied transcript and
+  // are attacker-controllable at approval time. Re-resolve both against the
+  // workspace's live Jarvis graph so an unmatched/deleted ref surfaces as
+  // a rejection rather than a false success (addEdgeByRefBulk's silent-
+  // no-op shortfall detector is a warn, not a rejection, so we must guard
+  // here explicitly).
+  const { swarmUrl, swarmApiKey } = resolved;
+
+  logger.info(
+    "[handleApproval.approveEdge] validating endpoints before write",
+    "handleApproval",
+    {
+      proposalId: proposal.proposalId,
+      workspaceSlug,
+      edgeType,
+      sourceRef: sourceRefId,
+      targetRef: targetRefId,
+    },
+  );
+
+  const [srcNode, tgtNode] = await Promise.all([
+    kgGetNode(swarmUrl, swarmApiKey, sourceRefId),
+    kgGetNode(swarmUrl, swarmApiKey, targetRefId),
+  ]);
+
+  if (!srcNode) {
+    logger.warn(
+      "[handleApproval.approveEdge] source ref not found",
+      "handleApproval",
+      { proposalId: proposal.proposalId, sourceRefId },
+    );
+    return {
+      ok: false,
+      error: `Source node (ref_id: "${sourceRefId}") was not found in the knowledge graph. It may have been deleted.`,
+      status: 404,
+    };
+  }
+  if (!tgtNode) {
+    logger.warn(
+      "[handleApproval.approveEdge] target ref not found",
+      "handleApproval",
+      { proposalId: proposal.proposalId, targetRefId },
+    );
+    return {
+      ok: false,
+      error: `Target node (ref_id: "${targetRefId}") was not found in the knowledge graph. It may have been deleted.`,
+      status: 404,
+    };
+  }
+
+  // ── 5. Commit — single-element addEdgeByRefBulk ────────────────────
+  const config = { jarvisUrl: swarmUrl, apiKey: swarmApiKey };
+
+  let writeResult: { success: boolean; errors: string[]; endpointMissing?: boolean };
+  try {
+    writeResult = await addEdgeByRefBulk(config, [
+      {
+        edge: {
+          edge_type: edgeType,
+          ...(edgeData && { edge_data: edgeData }),
+        },
+        source_ref_id: sourceRefId,
+        target_ref_id: targetRefId,
+      },
+    ]);
+  } catch (e) {
+    logger.error(
+      "[handleApproval.approveEdge] addEdgeByRefBulk threw",
+      "handleApproval",
+      { proposalId: proposal.proposalId, workspaceSlug, edgeType, error: String(e) },
+    );
+    return { ok: false, error: "Could not reach the workspace swarm.", status: 502 };
+  }
+
+  if (writeResult.endpointMissing) {
+    return {
+      ok: false,
+      error: "The swarm's edge-write endpoint is unavailable (version mismatch).",
+      status: 502,
+    };
+  }
+
+  if (!writeResult.success) {
+    const errMsg = writeResult.errors.join("; ") || "Edge write failed.";
+    logger.warn(
+      "[handleApproval.approveEdge] write returned errors",
+      "handleApproval",
+      { proposalId: proposal.proposalId, workspaceSlug, edgeType, errors: writeResult.errors },
+    );
+    return { ok: false, error: errMsg, status: 400 };
+  }
+
+  logger.info(
+    "[handleApproval.approveEdge] edge written successfully",
+    "handleApproval",
+    {
+      proposalId: proposal.proposalId,
+      workspaceSlug,
+      edgeType,
+      sourceRef: sourceRefId,
+      targetRef: targetRefId,
+    },
+  );
+
+  return {
+    ok: true,
+    alreadyApproved: false,
+    result: {
+      proposalId: proposal.proposalId,
+      kind: "edge",
+      // Edge has no Hive DB row; use the sourceRefId as a stable identifier.
+      createdEntityId: sourceRefId,
       landedOn: "",
       workspaceSlug,
     },
