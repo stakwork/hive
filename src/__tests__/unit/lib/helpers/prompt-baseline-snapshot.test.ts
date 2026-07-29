@@ -138,29 +138,90 @@ describe("enrichPublishPromptArtifacts", () => {
     );
   });
 
-  it("drift guard: if artifact's version is already published, resolves baseline to prior version", async () => {
-    // The artifact's version ID matches the published version — drift guard applies
-    const driftArtifactVersion = { id: DRIFT_VERSION_ID, value: "already-published text", versionNumber: 3, promptId: PROMPT_ID };
-    const priorVersion = { id: "pv-prior", value: "prior version text", versionNumber: 2, promptId: PROMPT_ID };
+  it("drift guard: resolves baseline to the previously-published version via publishedAt", async () => {
+    // The artifact's version ID matches the published version — drift guard applies.
+    // The previously-published version is the one with the greatest non-null publishedAt
+    // (other than the current one). This test verifies the query uses publishedAt.
+    const driftArtifactVersion = { id: DRIFT_VERSION_ID, value: "newly published text", versionNumber: 3, promptId: PROMPT_ID };
+    const previouslyPublished = { id: "pv-prev-pub", value: "previously published text", versionNumber: 1 };
 
     mockedDb.promptVersion.findUnique = vi.fn().mockResolvedValue(driftArtifactVersion) as never;
     mockedDb.prompt.findUnique = vi.fn().mockResolvedValue({
       id: PROMPT_ID,
       publishedVersionId: DRIFT_VERSION_ID,
-      publishedVersion: { id: DRIFT_VERSION_ID, value: "already-published text", versionNumber: 3 },
+      publishedVersion: { id: DRIFT_VERSION_ID, value: "newly published text", versionNumber: 3 },
     }) as never;
-    mockedDb.promptVersion.findFirst = vi.fn().mockResolvedValue(priorVersion) as never;
+    // First findFirst call: publishedAt-based query returns the previously-published version
+    mockedDb.promptVersion.findFirst = vi.fn().mockResolvedValue(previouslyPublished) as never;
 
     const msg = makeMessage({ promptVersionId: DRIFT_VERSION_ID });
     await enrichPublishPromptArtifacts(msg, makeTask());
+
+    // Verify the query uses publishedAt (not just versionNumber)
+    expect(mockedDb.promptVersion.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          promptId: PROMPT_ID,
+          id: { not: DRIFT_VERSION_ID },
+          publishedAt: { not: null },
+        }),
+        orderBy: { publishedAt: "desc" },
+      }),
+    );
 
     expect(mockedDb.artifact.update).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
           content: expect.objectContaining({
             baselineSnapshot: {
-              value: priorVersion.value,
-              versionId: priorVersion.id,
+              value: previouslyPublished.value,
+              versionId: previouslyPublished.id,
+              versionNumber: 1,
+            },
+          }),
+        }),
+      }),
+    );
+  });
+
+  it("drift guard: ignores higher-versionNumber unpublished draft, resolves to previously-published version", async () => {
+    // Regression test for the original bug: an unpublished draft at v4 must NOT be
+    // selected as the baseline; only the previously-published version (v2) should be.
+    //
+    // Scenario: v1 published, v2 published (now previously-published), v3 unpublished draft,
+    // v4 published (this artifact's version, triggering drift guard).
+    const driftArtifactVersion = { id: DRIFT_VERSION_ID, value: "v4 text", versionNumber: 4, promptId: PROMPT_ID };
+    // publishedAt-based query should return v2 (previously published), NOT v3 (unpublished draft).
+    const previouslyPublishedV2 = { id: "pv-v2", value: "v2 text", versionNumber: 2 };
+
+    mockedDb.promptVersion.findUnique = vi.fn().mockResolvedValue(driftArtifactVersion) as never;
+    mockedDb.prompt.findUnique = vi.fn().mockResolvedValue({
+      id: PROMPT_ID,
+      publishedVersionId: DRIFT_VERSION_ID,
+      publishedVersion: { id: DRIFT_VERSION_ID, value: "v4 text", versionNumber: 4 },
+    }) as never;
+    // The publishedAt query correctly skips the unpublished v3 draft and returns v2
+    mockedDb.promptVersion.findFirst = vi.fn().mockResolvedValue(previouslyPublishedV2) as never;
+
+    const msg = makeMessage({ promptVersionId: DRIFT_VERSION_ID });
+    await enrichPublishPromptArtifacts(msg, makeTask());
+
+    // Must have queried by publishedAt (not by versionNumber) to skip the unpublished draft
+    expect(mockedDb.promptVersion.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          publishedAt: { not: null },
+        }),
+      }),
+    );
+
+    expect(mockedDb.artifact.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          content: expect.objectContaining({
+            baselineSnapshot: {
+              value: "v2 text",
+              versionId: "pv-v2",
               versionNumber: 2,
             },
           }),
@@ -169,7 +230,58 @@ describe("enrichPublishPromptArtifacts", () => {
     );
   });
 
-  it("drift guard: if no prior version exists, sets baselineSnapshot to null", async () => {
+  it("drift guard: falls back to numeric-highest-prior when no publishedAt history exists", async () => {
+    // When no version (other than the current one) has a non-null publishedAt,
+    // fall back to the highest versionNumber strictly below this one.
+    const driftArtifactVersion = { id: DRIFT_VERSION_ID, value: "first publish text", versionNumber: 3, promptId: PROMPT_ID };
+    const priorByNumber = { id: "pv-v2", value: "draft text v2", versionNumber: 2 };
+
+    mockedDb.promptVersion.findUnique = vi.fn().mockResolvedValue(driftArtifactVersion) as never;
+    mockedDb.prompt.findUnique = vi.fn().mockResolvedValue({
+      id: PROMPT_ID,
+      publishedVersionId: DRIFT_VERSION_ID,
+      publishedVersion: { id: DRIFT_VERSION_ID, value: "first publish text", versionNumber: 3 },
+    }) as never;
+    // First call (publishedAt query) returns null → no publish history
+    // Second call (numeric fallback) returns priorByNumber
+    mockedDb.promptVersion.findFirst = vi.fn()
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(priorByNumber) as never;
+
+    const msg = makeMessage({ promptVersionId: DRIFT_VERSION_ID });
+    await enrichPublishPromptArtifacts(msg, makeTask());
+
+    // Both queries should have been called
+    expect(mockedDb.promptVersion.findFirst).toHaveBeenCalledTimes(2);
+    // Second call: numeric fallback
+    expect(mockedDb.promptVersion.findFirst).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        where: expect.objectContaining({
+          promptId: PROMPT_ID,
+          versionNumber: { lt: 3 },
+        }),
+        orderBy: { versionNumber: "desc" },
+      }),
+    );
+
+    expect(mockedDb.artifact.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          content: expect.objectContaining({
+            baselineSnapshot: {
+              value: priorByNumber.value,
+              versionId: priorByNumber.id,
+              versionNumber: 2,
+            },
+          }),
+        }),
+      }),
+    );
+  });
+
+  it("drift guard: first-ever publish (no prior version at all) sets baselineSnapshot to null", async () => {
+    // Both queries return null → genuine first-ever publish → baselineSnapshot: null.
     const driftArtifactVersion = { id: DRIFT_VERSION_ID, value: "first and only version", versionNumber: 1, promptId: PROMPT_ID };
 
     mockedDb.promptVersion.findUnique = vi.fn().mockResolvedValue(driftArtifactVersion) as never;
@@ -187,6 +299,40 @@ describe("enrichPublishPromptArtifacts", () => {
       expect.objectContaining({
         data: expect.objectContaining({
           content: expect.objectContaining({ baselineSnapshot: null }),
+        }),
+      }),
+    );
+  });
+
+  it("normal branch: published version differs from artifact version — NOT redirected to drift guard", async () => {
+    // Guard against the '>=' regression: when published v5 and artifact is v3,
+    // the normal branch must fire (capturing publishedVersion directly), NOT the drift guard.
+    const artifactVersion = { id: ARTIFACT_VERSION_ID, value: "artifact v3 text", versionNumber: 3, promptId: PROMPT_ID };
+    const publishedVersion = { id: "pv-v5", value: "published v5 text", versionNumber: 5, promptId: PROMPT_ID };
+
+    mockedDb.promptVersion.findUnique = vi.fn().mockResolvedValue(artifactVersion) as never;
+    mockedDb.prompt.findUnique = vi.fn().mockResolvedValue({
+      id: PROMPT_ID,
+      publishedVersionId: "pv-v5",
+      publishedVersion: publishedVersion,
+    }) as never;
+
+    await enrichPublishPromptArtifacts(makeMessage(), makeTask());
+
+    // findFirst must NOT have been called (drift guard must not have triggered)
+    expect(mockedDb.promptVersion.findFirst).not.toHaveBeenCalled();
+
+    // baseline must be the currently-published v5, not some prior version
+    expect(mockedDb.artifact.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          content: expect.objectContaining({
+            baselineSnapshot: {
+              value: "published v5 text",
+              versionId: "pv-v5",
+              versionNumber: 5,
+            },
+          }),
         }),
       }),
     );
