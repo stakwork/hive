@@ -203,6 +203,16 @@ export function buildConceptTools(orgId: string, userId: string): ToolSet {
               "under. Must be one of the workspace's repositories. Omit to " +
               "use the workspace's primary repository.",
           ),
+        parent: z
+          .string()
+          .optional()
+          .describe(
+            "Optional id of an existing Concept to file this one under. " +
+              "Prefer the fully-qualified, repo-prefixed id exactly as " +
+              "returned by list_concepts (e.g. 'owner/repo/slug') — a bare " +
+              "'slug' only resolves if it lives under the same repo as the " +
+              "new concept. Omit for a top-level concept.",
+          ),
         rationale: z
           .string()
           .optional()
@@ -214,6 +224,7 @@ export function buildConceptTools(orgId: string, userId: string): ToolSet {
         documentation,
         description,
         repo,
+        parent,
         rationale,
       }: {
         workspaceSlug: string;
@@ -221,6 +232,7 @@ export function buildConceptTools(orgId: string, userId: string): ToolSet {
         documentation: string;
         description?: string;
         repo?: string;
+        parent?: string;
         rationale?: string;
       }) => {
         try {
@@ -266,6 +278,7 @@ export function buildConceptTools(orgId: string, userId: string): ToolSet {
               documentation,
               ...(description && { description }),
               ...(resolvedRepo && { repo: resolvedRepo }),
+              ...(parent?.trim() && { parent: parent.trim() }),
             },
             meta: {
               workspaceName: workspace.name,
