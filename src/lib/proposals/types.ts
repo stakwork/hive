@@ -392,6 +392,7 @@ export interface ConceptCreateProposalPayload {
   documentation: string;
   description?: string;
   repo?: string;
+  parent?: string;
 }
 
 /**

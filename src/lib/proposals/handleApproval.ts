@@ -1478,7 +1478,7 @@ async function approveConceptCreate(args: {
   proposal: Extract<ProposalOutput, { kind: "conceptCreate" }>;
 }): Promise<HandleApprovalReturn> {
   const { orgId, proposal } = args;
-  const { workspaceId, workspaceSlug, name, documentation, description, repo } =
+  const { workspaceId, workspaceSlug, name, documentation, description, repo, parent } =
     proposal.payload;
 
   if (!name || !name.trim()) {
@@ -1506,12 +1506,14 @@ async function approveConceptCreate(args: {
         documentation,
         ...(description && { description }),
         ...(repo && { repo }),
+        ...(parent && { parent }),
       }),
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
       const msg =
-        (data && (data.error as string)) ||
+        (typeof data?.error === "string" && data.error) ||
+        (typeof data?.message === "string" && data.message) ||
         `Failed to create concept (status ${res.status}).`;
       return { ok: false, error: msg, status: res.status === 409 ? 409 : 400 };
     }
