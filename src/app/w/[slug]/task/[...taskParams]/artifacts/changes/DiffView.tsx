@@ -22,6 +22,8 @@ export interface DiffViewProps {
   updated: string | object | null;
   /** Human-readable label used in empty-state messages (e.g. "workflow", "prompt", "script"). */
   label?: string;
+  /** Optional label for the "before" side, e.g. "vs published v7". Rendered as plain text. */
+  baselineLabel?: string;
 }
 
 // ── Workflow JSON normalisation (noise-field stripping) ───────────────────────
@@ -111,7 +113,7 @@ const hideScrollbarStyle: React.CSSProperties = {
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
-export function DiffView({ original, updated, label = "content" }: DiffViewProps) {
+export function DiffView({ original, updated, label = "content", baselineLabel }: DiffViewProps) {
   const { resolvedTheme } = useTheme();
   const isDark = resolvedTheme === "dark";
   const [viewMode, setViewMode] = useState<"diff" | "full">("diff");
@@ -220,6 +222,11 @@ export function DiffView({ original, updated, label = "content" }: DiffViewProps
         <div className="flex items-center gap-3">
           <FileCode className="w-5 h-5" />
           <span className="text-sm font-medium capitalize">{label} Changes</span>
+          {baselineLabel && (
+            <span className="text-xs text-muted-foreground font-normal">
+              ({baselineLabel})
+            </span>
+          )}
         </div>
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-1 text-xs">
