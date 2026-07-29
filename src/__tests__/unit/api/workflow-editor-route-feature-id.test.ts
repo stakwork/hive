@@ -11,7 +11,6 @@ import { describe, test, expect, beforeEach, vi } from "vitest";
 vi.mock("@/lib/db");
 vi.mock("@/services/roadmap/feature-chat", () => ({
   resolveExtraSwarms: vi.fn().mockResolvedValue([]),
-  excludeOwnSubAgent: vi.fn((agents: unknown[]) => agents),
 }));
 vi.mock("@/config/env", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/config/env")>();
