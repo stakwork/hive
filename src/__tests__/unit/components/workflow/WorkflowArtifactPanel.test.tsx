@@ -482,8 +482,11 @@ describe("WorkflowArtifactPanel — workflowVersion prop", () => {
   });
 });
 
-describe("WorkflowArtifactPanel — Changes tab diff isolation", () => {
-  // A realistic baseline string longer than 100 chars
+describe("WorkflowArtifactPanel — Changes tab diff isolation (panel component merge logic)", () => {
+  // These tests exercise the panel component's own mergedContent merge logic (using
+  // originalWorkflowJson + the length > 100 guard). The chat/response run-start baseline
+  // capture heuristic has been removed; the panel component's baseline rewiring to
+  // publishedWorkflowJson is scoped to T2. Until T2 lands, these tests remain valid as-is.
   const baseline = JSON.stringify({ transitions: { stepA: nonLoopTransition, stepB: nonLoopTransition } });
   const updated = JSON.stringify({ transitions: { stepA: nonLoopTransition, stepC: loopTransition } });
   const freshWorkflow = JSON.stringify({ transitions: { stepX: loopTransition } });

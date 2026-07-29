@@ -131,61 +131,6 @@ export async function POST(request: NextRequest) {
         // If we have workflowVersionId and workflowId, fetch the updated workflow spec
         if (content?.workflowVersionId && content?.workflowId) {
           try {
-            // First, check if we need to preserve originalWorkflowJson from a previous artifact
-            // This only applies to workflow_editor mode
-            // Ignore incoming originalWorkflowJson if it's too short (likely invalid)
-            let originalWorkflowJson = content.originalWorkflowJson;
-            if (originalWorkflowJson && typeof originalWorkflowJson === 'string' && originalWorkflowJson.length < 100) {
-              originalWorkflowJson = undefined;
-            }
-
-            if (!originalWorkflowJson && taskId && taskMode === "workflow_editor") {
-              // Look for WORKFLOW artifacts in this task's history
-              const previousWorkflowArtifacts = await db.artifact.findMany({
-                where: {
-                  type: ArtifactType.WORKFLOW,
-                  message: {
-                    taskId: taskId,
-                  },
-                  id: {
-                    not: dbArtifact.id,
-                  },
-                },
-                orderBy: {
-                  createdAt: "asc",
-                },
-                select: {
-                  content: true,
-                },
-              });
-
-              // Filter to only artifacts for the SAME workflow
-              const sameWorkflowArtifacts = previousWorkflowArtifacts.filter((art) => {
-                const c = art.content as WorkflowContent | null;
-                return c?.workflowId === content.workflowId;
-              });
-
-              // Find the first artifact with a VALID originalWorkflowJson (must be > 100 chars)
-              for (const prevArtifact of sameWorkflowArtifacts) {
-                const prevContent = prevArtifact.content as WorkflowContent | null;
-                if (prevContent?.originalWorkflowJson && typeof prevContent.originalWorkflowJson === 'string' && prevContent.originalWorkflowJson.length > 100) {
-                  originalWorkflowJson = prevContent.originalWorkflowJson;
-                  break;
-                }
-              }
-
-              // If still no originalWorkflowJson, use the workflowJson from the first artifact
-              if (!originalWorkflowJson) {
-                for (const prevArtifact of sameWorkflowArtifacts) {
-                  const prevContent = prevArtifact.content as WorkflowContent | null;
-                  if (prevContent?.workflowJson && typeof prevContent.workflowJson === 'string' && prevContent.workflowJson.length > 100) {
-                    originalWorkflowJson = prevContent.workflowJson;
-                    break;
-                  }
-                }
-              }
-            }
-
             // Fetch the workflow version from the graph API using workflowVersionId
             const graphApiUrl = process.env.STAKWORK_JARVIS_URL;
             const graphApiKey = process.env.STAKWORK_GRAPH_API_KEY;
@@ -239,11 +184,12 @@ export async function POST(request: NextRequest) {
               if (updatedWorkflowJson) {
                 const formattedUpdatedJson = updatedWorkflowJson;
 
-                // Update the artifact: set workflowJson to updated, preserve originalWorkflowJson if in workflow_editor mode
+                // Update the artifact: refresh workflowJson for the live Editor tab view.
+                // Note: originalWorkflowJson is no longer promoted here — the durable diff
+                // baseline is now stored as publishedWorkflowJson on publish artifacts.
                 const updatedContent: WorkflowContent = {
                   ...content,
                   workflowJson: formattedUpdatedJson,
-                  ...(taskMode === "workflow_editor" && originalWorkflowJson ? { originalWorkflowJson } : {}),
                 };
 
                 await db.artifact.update({
