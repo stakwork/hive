@@ -19,6 +19,7 @@ import { parsePlanXml } from "@/lib/utils/plan-xml";
 import { createAndSendNotification } from "@/services/notifications";
 import { fanOutPlannerMessageToCanvas } from "@/services/canvas-planner-fanout";
 import { getWorkflowJsonFromNode } from "@/lib/workflow/get-workflow-json-from-node";
+import { enrichPublishPromptArtifacts } from "@/lib/helpers/prompt-baseline-snapshot";
 
 export const fetchCache = "force-no-store";
 
@@ -301,6 +302,16 @@ export async function POST(request: NextRequest) {
             }
           }
         }
+      }
+    }
+
+    // Enrich PUBLISH_PROMPT artifacts with stable baseline/version snapshots.
+    // Runs unconditionally (not gated on taskMode) so prompt-only tasks also get snapshots.
+    if (task && chatMessage.artifacts.some((a) => a.type === ArtifactType.PUBLISH_PROMPT)) {
+      try {
+        await enrichPublishPromptArtifacts(chatMessage, task);
+      } catch (enrichError) {
+        console.error("[chat/response] Failed to enrich PUBLISH_PROMPT artifacts:", enrichError);
       }
     }
 

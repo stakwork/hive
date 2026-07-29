@@ -116,6 +116,10 @@ export interface PublishPromptContent {
   promptVersionId: string; // Prompt version ID to publish (Hive cuid)
   promptName?: string; // Prompt name for display
   published?: boolean; // Whether the prompt has been published
+  /** Published baseline captured at ingestion time. null = brand-new prompt (no published version yet). Absent = legacy artifact (use live lookup fallback). */
+  baselineSnapshot?: { value: string; versionId: string; versionNumber: number } | null;
+  /** This artifact's own version value + number captured at ingestion, needed for consecutive step diffs. */
+  versionSnapshot?: { value: string; versionNumber: number };
 }
 
 export interface PublishSkillContent {

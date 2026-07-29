@@ -1,11 +1,36 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { type ChatMessage, type ContextTag, type Artifact } from "@/lib/chat";
+import { type ChatMessage, type ContextTag, type Artifact, ArtifactType } from "@/lib/chat";
 import { resolveWorkspaceAccess, requireReadAccess, isPublicViewer } from "@/lib/auth/workspace-access";
 import { toPublicUser, redactArtifactContentForPublic } from "@/lib/auth/public-redact";
+import { isDevelopmentMode } from "@/lib/runtime";
 
 // Disable caching for real-time messaging
 export const fetchCache = "force-no-store";
+
+/**
+ * Defense-in-depth: strip `baselineSnapshot`/`versionSnapshot` from
+ * PUBLISH_PROMPT artifact content for any requester who is not a member of
+ * the "stakwork" workspace.
+ *
+ * The enrichment helper writes prompt body text into these fields, which is
+ * currently gated behind stakwork-workspace membership on the live /versions
+ * endpoint. Baking that text into artifact content must carry the same gate
+ * on the read side.
+ */
+function stripPromptSnapshotsIfNotStakwork(
+  type: string | null | undefined,
+  content: unknown,
+  isStakworkMember: boolean,
+): unknown {
+  if (type !== ArtifactType.PUBLISH_PROMPT) return content;
+  if (isStakworkMember) return content;
+  if (!content || typeof content !== "object") return content;
+
+  const { baselineSnapshot: _b, versionSnapshot: _v, ...rest } = content as Record<string, unknown>;
+  void _b; void _v;
+  return rest;
+}
 
 export async function GET(
   request: NextRequest,
@@ -58,6 +83,27 @@ export async function GET(
     const ok = requireReadAccess(access);
     if (ok instanceof NextResponse) return ok;
     const redactForPublic = isPublicViewer(ok);
+
+    // Determine whether the caller is a member of the "stakwork" workspace.
+    // Prompt snapshot fields (baselineSnapshot/versionSnapshot) contain prompt
+    // body text, which is gated behind stakwork membership on the live
+    // /versions endpoint. We apply the same gate here on the read side.
+    const devMode = isDevelopmentMode();
+    let isStakworkMember = devMode; // dev mode: skip the DB check
+
+    if (!devMode) {
+      const userId = request.headers.get("x-middleware-user-id");
+      if (userId) {
+        const stakworkWs = await db.workspace.findFirst({
+          where: {
+            slug: "stakwork",
+            OR: [{ ownerId: userId }, { members: { some: { userId } } }],
+          },
+          select: { id: true },
+        });
+        isStakworkMember = !!stakworkWs;
+      }
+    }
 
     const task = taskMeta;
 
@@ -118,11 +164,13 @@ export async function GET(
         // For public viewers, scrub credential-bearing fields out of
         // artifact content (pod URL + agentPassword on IDE/BROWSER, etc).
         // Members keep the full payload so the IDE/Browser artifact UI works.
+        // For non-stakwork members, additionally strip prompt snapshot fields
+        // from PUBLISH_PROMPT artifacts to avoid leaking prompt body text.
         artifacts: msg.artifacts.map((artifact) => ({
           ...artifact,
           content: redactForPublic
             ? redactArtifactContentForPublic(artifact.type, artifact.content)
-            : (artifact.content as unknown),
+            : stripPromptSnapshotsIfNotStakwork(artifact.type, artifact.content, isStakworkMember),
         })) as Artifact[],
         attachments: msg.attachments || [],
       } as ChatMessage;
