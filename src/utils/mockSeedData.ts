@@ -1062,6 +1062,82 @@ async function seedPromptSnapshotArtifacts(
     }
   }
 
+  // ── Drift artifact with precomputed baselineSnapshot (for manual UI QA) ─────
+  // Simulates the corrected enrichment output: an artifact whose version was
+  // published (drift scenario), but with a precomputed baselineSnapshot pointing
+  // at the actually-previously-published version.  Includes an intervening
+  // unpublished draft at a higher versionNumber to exercise the fast path.
+  const DRIFT_PROMPT_NAME = "MOCK_DRIFT_CORRECTED_SNAPSHOT";
+  const existingDrift = await db.prompt.findFirst({ where: { name: DRIFT_PROMPT_NAME } });
+  if (!existingDrift) {
+    const prevPublishedValue = "v1: first published version of the drift prompt.";
+    const draftValue = "v2: unpublished draft (should NOT be selected as baseline).";
+    const newlyPublishedValue = "v3: newly published version (drift: same as current published).";
+
+    const driftPrompt = await db.prompt.create({
+      data: {
+        name: DRIFT_PROMPT_NAME,
+        value: newlyPublishedValue,
+        description: "Drift prompt: precomputed baselineSnapshot pointing at previously-published v1 (v2 is an intervening unpublished draft)",
+        versions: {
+          create: [
+            { versionNumber: 1, value: prevPublishedValue },
+            { versionNumber: 2, value: draftValue },
+            { versionNumber: 3, value: newlyPublishedValue },
+          ],
+        },
+      },
+      include: { versions: { orderBy: { versionNumber: "asc" } } },
+    });
+
+    const [driftV1, , driftV3] = driftPrompt.versions;
+
+    // Publish v3 as current (collapse: publishedVersionId === artifact's own version)
+    if (driftV3) {
+      await db.prompt.update({ where: { id: driftPrompt.id }, data: { publishedVersionId: driftV3.id } });
+    }
+
+    await db.promptUsage.create({
+      data: {
+        workspaceId,
+        promptId: driftPrompt.id,
+        promptName: DRIFT_PROMPT_NAME,
+        workflowId: 99991,
+        workflowName: "mock-drift-workflow",
+        stepId: "step-mock-drift-1",
+      },
+    }).catch(() => { /* ignore duplicate */ });
+
+    // Artifact with a precomputed baselineSnapshot pointing at v1 (the
+    // previously-published version), simulating correct enrichment output so
+    // the fast path renders a real before→after diff in the UI.
+    if (driftV1 && driftV3) {
+      const msgDrift = await db.chatMessage.create({
+        data: { taskId: task.id, message: "Drift-corrected prompt published (v3, baseline=v1):", role: "ASSISTANT" },
+      });
+      await db.artifact.create({
+        data: {
+          messageId: msgDrift.id,
+          type: ArtifactType.PUBLISH_PROMPT,
+          content: {
+            promptId: driftPrompt.id,
+            promptVersionId: driftV3.id,
+            promptName: DRIFT_PROMPT_NAME,
+            published: true,
+            // Precomputed baselineSnapshot: points at v1 (previously-published),
+            // NOT v2 (the intervening unpublished draft with higher versionNumber).
+            baselineSnapshot: {
+              value: prevPublishedValue,
+              versionId: driftV1.id,
+              versionNumber: 1,
+            },
+            versionSnapshot: { value: newlyPublishedValue, versionNumber: 3 },
+          },
+        },
+      });
+    }
+  }
+
   // ── Legacy artifact (no snapshot fields at all) ────────────────────────────
   const LEGACY_PROMPT_NAME = "MOCK_LEGACY_PROMPT_SNAPSHOT";
   const existingLegacy = await db.prompt.findFirst({ where: { name: LEGACY_PROMPT_NAME } });
