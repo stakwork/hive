@@ -199,8 +199,11 @@ export async function POST(request: NextRequest) {
                 workflowRefId?: string;
               };
 
-              // Create a new message with the updated WORKFLOW artifact
-              // Include both workflowJson (for Editor tab) and projectId (for Stakwork tab)
+              // Create a new message with the updated WORKFLOW artifact.
+              // publishedWorkflowJson is a durable snapshot of the just-published workflow JSON,
+              // used as the diff baseline for the Changes tab.
+              // workflowVersionId is added so the diff can key off it when selecting
+              // current-vs-prior publish snapshots.
               const newMessage = await db.chatMessage.create({
                 data: {
                   taskId,
@@ -214,6 +217,8 @@ export async function POST(request: NextRequest) {
                         type: ArtifactType.WORKFLOW,
                         content: {
                           workflowJson: updatedWorkflowJson as string,
+                          publishedWorkflowJson: updatedWorkflowJson as string,
+                          workflowVersionId: workflowVersionId,
                           workflowId: workflowId,
                           workflowName: publishContent.workflowName || `Workflow ${workflowId}`,
                           workflowRefId: workflowRefId || publishContent.workflowRefId || "",
@@ -228,6 +233,15 @@ export async function POST(request: NextRequest) {
                   artifacts: true,
                 },
               });
+
+              // Boundary log: snapshot stored (observability only, no size cap enforced)
+              const snapshotSize =
+                typeof updatedWorkflowJson === "string"
+                  ? updatedWorkflowJson.length
+                  : JSON.stringify(updatedWorkflowJson).length;
+              console.log(
+                `[publish] Stored workflow snapshot: workflowId=${workflowId}, workflowVersionId=${workflowVersionId}, snapshotPresent=true, snapshotSize=${snapshotSize}`,
+              );
 
               // Trigger Pusher to notify the frontend
               const channelName = getTaskChannelName(taskId);
