@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
-import { FileCode, AlignLeft, Code2, ChevronDown, ChevronRight, Plus, Minus } from "lucide-react";
+import { FileCode, AlignLeft, Code2, ChevronDown, ChevronRight, Plus, Minus, Layers } from "lucide-react";
 import {
   Collapsible,
   CollapsibleTrigger,
@@ -19,11 +19,26 @@ export type WorkflowChangedItem = {
   updatedJson: string | object | null;
 };
 
+/** One captured iteration of a prompt change within a task. */
+export type PromptIteration = {
+  promptVersionId: string;
+  artifactId?: string;
+  /** Captured value for this version (from versionSnapshot). May be absent for legacy artifacts. */
+  value?: string;
+  /** Authoritative version number (from versionSnapshot). May be absent for legacy artifacts. */
+  versionNumber?: number;
+};
+
 export type PromptChangedItem = {
   type: "PROMPT";
   name: string;
   promptId: string;
+  /** Latest (or sole) version id — kept for legacy single-iteration / fallback path. */
   promptVersionId: string;
+  /** Ordered list of all iterations (by versionNumber), oldest first. Absent = legacy single item. */
+  iterations?: PromptIteration[];
+  /** Baseline snapshot from the earliest iteration (published version when first change was created). */
+  baselineSnapshot?: { value: string; versionId: string; versionNumber: number } | null;
 };
 
 export type ScriptChangedItem = {
@@ -102,14 +117,135 @@ function AddDelBadge({
   );
 }
 
-// ── Prompt section body (calls useItemBaseline) ───────────────────────────────
+// ── PromptSectionBody ─────────────────────────────────────────────────────────
+// Handles both the new stacked multi-iteration case and the legacy single-item fallback.
+// useItemBaseline is called unconditionally (once) and used only for the legacy path;
+// this satisfies React rules-of-hooks regardless of iteration count.
 
 function PromptSectionBody({ item }: { item: PromptChangedItem }) {
-  const { baseline, updated, isLoading, error } = useItemBaseline({
+  const [stepsOpen, setStepsOpen] = useState(false);
+
+  // Always call useItemBaseline — used only when snapshots are absent (legacy path).
+  // For the snapshot path this result is ignored.
+  const legacyBaseline = useItemBaseline({
     type: "PROMPT",
     promptId: item.promptId,
     promptVersionId: item.promptVersionId,
+    // Pass snapshots through when present so the hook skips the network call even here
+    baselineSnapshot: item.baselineSnapshot,
+    versionSnapshot: item.iterations?.[item.iterations.length - 1]?.value !== undefined
+      ? {
+          value: item.iterations![item.iterations!.length - 1].value!,
+          versionNumber: item.iterations![item.iterations!.length - 1].versionNumber ?? 0,
+        }
+      : undefined,
   });
+
+  const iterations = item.iterations;
+  const hasIterations = iterations && iterations.length > 0;
+
+  // ── Snapshot path ────────────────────────────────────────────────────────────
+  // We have at least the versionSnapshot on the (latest) iteration.
+  if (hasIterations && iterations[iterations.length - 1].value !== undefined) {
+    const latestIteration = iterations[iterations.length - 1];
+    const latestValue = latestIteration.value!;
+    const latestVersionNumber = latestIteration.versionNumber;
+
+    // baselineSnapshot: undefined = absent field (legacy); null = no published version (new prompt)
+    const baselinePresent = item.baselineSnapshot !== undefined;
+    const baselineValue = item.baselineSnapshot?.value ?? null;
+    const baselineLabel =
+      item.baselineSnapshot != null && item.baselineSnapshot !== undefined
+        ? `vs published v${item.baselineSnapshot.versionNumber}`
+        : undefined;
+
+    const isMultiIteration = iterations.length > 1;
+
+    return (
+      <div className="flex flex-col">
+        {/* Overall diff: baseline → latest */}
+        <div className="h-80">
+          <DiffView
+            original={baselinePresent ? baselineValue : legacyBaseline.baseline}
+            updated={latestValue}
+            label="prompt"
+            baselineLabel={baselineLabel}
+          />
+        </div>
+
+        {/* Consecutive step diffs (expandable) — only when multi-iteration */}
+        {isMultiIteration && (
+          <div className="border-t border-border">
+            <button
+              type="button"
+              className="w-full flex items-center gap-2 px-4 py-2 text-xs text-muted-foreground hover:bg-muted/40 transition-colors text-left"
+              onClick={() => setStepsOpen((o) => !o)}
+              data-testid="prompt-steps-toggle"
+            >
+              {stepsOpen ? (
+                <ChevronDown className="w-3 h-3 flex-shrink-0" />
+              ) : (
+                <ChevronRight className="w-3 h-3 flex-shrink-0" />
+              )}
+              <Layers className="w-3 h-3 flex-shrink-0" />
+              <span>
+                {iterations.length} iteration{iterations.length !== 1 ? "s" : ""}
+                {latestVersionNumber !== undefined
+                  ? ` (up to v${latestVersionNumber})`
+                  : ""}
+              </span>
+            </button>
+
+            {stepsOpen && (
+              <div className="divide-y divide-border/60">
+                {iterations.map((iter, idx) => {
+                  const prevValue =
+                    idx === 0
+                      ? (item.baselineSnapshot?.value ?? null)
+                      : (iterations[idx - 1].value ?? null);
+                  const currValue = iter.value ?? null;
+                  const prevNum =
+                    idx === 0
+                      ? item.baselineSnapshot?.versionNumber
+                      : iterations[idx - 1].versionNumber;
+                  const currNum = iter.versionNumber;
+
+                  const stepLabel =
+                    prevNum !== undefined && currNum !== undefined
+                      ? `v${prevNum} → v${currNum}`
+                      : currNum !== undefined
+                        ? `→ v${currNum}`
+                        : `Step ${idx + 1}`;
+
+                  return (
+                    <div
+                      key={iter.promptVersionId}
+                      className="px-4 py-3"
+                      data-testid={`prompt-step-${idx}`}
+                    >
+                      <div className="text-xs font-mono text-muted-foreground mb-2">
+                        {stepLabel}
+                      </div>
+                      <div className="h-60">
+                        <DiffView
+                          original={prevValue}
+                          updated={currValue}
+                          label="prompt"
+                        />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // ── Legacy path: no versionSnapshot — fall back to live lookup ───────────────
+  const { baseline, updated, isLoading, error, baselineLabel } = legacyBaseline;
 
   if (isLoading) {
     return (
@@ -129,7 +265,12 @@ function PromptSectionBody({ item }: { item: PromptChangedItem }) {
 
   return (
     <div className="h-80">
-      <DiffView original={baseline} updated={updated} label="prompt" />
+      <DiffView
+        original={baseline}
+        updated={updated}
+        label="prompt"
+        baselineLabel={baselineLabel ?? undefined}
+      />
     </div>
   );
 }
@@ -185,6 +326,12 @@ function CollapsibleChangeSection({ item, defaultOpen }: CollapsibleChangeSectio
 
   const showBadge = item.type === "WORKFLOW";
 
+  // Show multi-iteration badge for grouped prompt items
+  const isMultiIterationPrompt =
+    item.type === "PROMPT" &&
+    item.iterations !== undefined &&
+    item.iterations.length > 1;
+
   return (
     <Collapsible open={open} onOpenChange={setOpen} className="border-b border-border last:border-0">
       <CollapsibleTrigger asChild>
@@ -203,6 +350,15 @@ function CollapsibleChangeSection({ item, defaultOpen }: CollapsibleChangeSectio
             {itemLabel(item.type)}{" "}
             <span className="text-muted-foreground font-normal">— {item.name}</span>
           </span>
+          {isMultiIterationPrompt && (
+            <span
+              className="flex items-center gap-1 text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded"
+              data-testid="multi-iteration-badge"
+            >
+              <Layers className="w-3 h-3" />
+              {item.iterations!.length}
+            </span>
+          )}
           {showBadge && (
             <AddDelBadge additions={stats.additions} deletions={stats.deletions} />
           )}
@@ -249,7 +405,7 @@ export function ChangesList({ items }: ChangesListProps) {
           item.type === "WORKFLOW"
             ? `workflow-${item.name}-${index}`
             : item.type === "PROMPT"
-              ? `prompt-${item.promptId}-${item.promptVersionId}`
+              ? `prompt-${item.promptId}`
               : `script-${item.scriptId}-${item.scriptVersionId}`;
 
         return (
