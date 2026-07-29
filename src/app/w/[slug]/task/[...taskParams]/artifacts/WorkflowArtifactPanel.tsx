@@ -112,14 +112,10 @@ export function WorkflowArtifactPanel({ artifacts, isActive, onStepSelect, onVer
   // Merge data from all workflow artifacts, always using the LATEST values
   // This supports multiple executions and publishes - always shows the most recent:
   // - workflowJson: Latest published workflow (for Editor tab) — always last-wins
-  // - changesWorkflowJson: Only from agent-response artifacts (for Changes tab diff right-side)
-  // - originalWorkflowJson: Original workflow before changes (for Changes tab diff left-side)
   // - projectId: Latest execution project (for Stakwork tab)
   // - projectInfo: Project data for project debugger mode
   const mergedContent = useMemo(() => {
     let workflowJson: string | object | undefined;          // Editor tab — always latest winner
-    let changesWorkflowJson: string | object | undefined;   // Changes tab — only from agent-response artifacts
-    let originalWorkflowJson: string | object | undefined;
     let projectId: string | undefined;
     let workflowId: number | string | undefined;
     let workflowName: string | undefined;
@@ -132,20 +128,6 @@ export function WorkflowArtifactPanel({ artifacts, isActive, onStepSelect, onVer
     for (const artifact of activeArtifacts) {
       const content = artifact.content as WorkflowContent;
       if (content?.workflowJson) workflowJson = content.workflowJson;
-      // Only update changesWorkflowJson when the artifact has a real originalWorkflowJson
-      // (length > 100 distinguishes agent-response artifacts from run-start "" and publish artifacts without originalWorkflowJson)
-      const origJsonForGuard =
-        typeof content.originalWorkflowJson === "object" && content.originalWorkflowJson !== null
-          ? JSON.stringify(content.originalWorkflowJson)
-          : (content.originalWorkflowJson ?? "");
-      if (
-        content?.workflowJson &&
-        content?.originalWorkflowJson &&
-        origJsonForGuard.length > 100
-      ) {
-        changesWorkflowJson = content.workflowJson;
-      }
-      if (content?.originalWorkflowJson) originalWorkflowJson = content.originalWorkflowJson;
       if (content?.projectId) projectId = content.projectId;
       if (content?.workflowId) workflowId = content.workflowId;
       if (content?.workflowName) workflowName = content.workflowName;
@@ -157,8 +139,6 @@ export function WorkflowArtifactPanel({ artifacts, isActive, onStepSelect, onVer
 
     return {
       workflowJson,
-      changesWorkflowJson,
-      originalWorkflowJson,
       projectId,
       workflowId,
       workflowName,
@@ -169,7 +149,45 @@ export function WorkflowArtifactPanel({ artifacts, isActive, onStepSelect, onVer
     };
   }, [activeArtifacts]);
 
-  const { workflowJson, changesWorkflowJson, originalWorkflowJson, projectId, workflowId, projectInfo, debuggerProjectId, workflowVersionId } = mergedContent;
+  // Gather durable publish snapshots for the Changes tab diff.
+  // Only artifacts that carry publishedWorkflowJson are considered — this naturally
+  // excludes legacy WORKFLOW artifacts (originalWorkflowJson: "", no publishedWorkflowJson)
+  // from workflow-editor.ts / workflow-editor-retry.ts / workflow-editor/route.ts.
+  // Sorted oldest→newest by artifact createdAt so the selection is deterministic regardless
+  // of the order the artifacts array arrives in.
+  const publishSnapshots = useMemo(() => {
+    return activeArtifacts
+      .filter((a) => {
+        const content = a.content as WorkflowContent;
+        return content?.publishedWorkflowJson != null;
+      })
+      .sort((a, b) => {
+        const ta = a.createdAt instanceof Date ? a.createdAt.getTime() : new Date(a.createdAt).getTime();
+        const tb = b.createdAt instanceof Date ? b.createdAt.getTime() : new Date(b.createdAt).getTime();
+        return ta - tb;
+      });
+  }, [activeArtifacts]);
+
+  // Derive diff sides from the two most-recent publish snapshots.
+  // latest  → changesWorkflowJson (right side / updated)
+  // prior   → originalWorkflowJson (left side / baseline)
+  // When only one snapshot exists, originalWorkflowJson is null so the existing
+  // PR #4157 all-green path kicks in (updatedJson: !originalWorkflowJson ? workflowJson : null).
+  const { changesWorkflowJson, originalWorkflowJson } = useMemo(() => {
+    if (publishSnapshots.length === 0) {
+      return { changesWorkflowJson: undefined, originalWorkflowJson: undefined };
+    }
+    const latestContent = publishSnapshots[publishSnapshots.length - 1].content as WorkflowContent;
+    const priorContent = publishSnapshots.length >= 2
+      ? publishSnapshots[publishSnapshots.length - 2].content as WorkflowContent
+      : null;
+    return {
+      changesWorkflowJson: latestContent.publishedWorkflowJson ?? undefined,
+      originalWorkflowJson: priorContent?.publishedWorkflowJson ?? null,
+    };
+  }, [publishSnapshots]);
+
+  const { workflowJson, projectId, workflowId, projectInfo, debuggerProjectId, workflowVersionId } = mergedContent;
 
   // Detect if we're in project debugger context
   const isProjectDebuggerMode = !!(projectInfo && debuggerProjectId);
@@ -177,7 +195,7 @@ export function WorkflowArtifactPanel({ artifacts, isActive, onStepSelect, onVer
   // Determine if we're in editor mode (workflowJson present)
   const isEditorMode = !!workflowJson;
 
-  // Check if we have changes to show (requires both a confirmed agent-response diff and an original)
+  // Check if we have changes to show (requires both diff sides from publish snapshots)
   const hasChanges = !!(originalWorkflowJson && changesWorkflowJson);
 
   // Collect PUBLISH_PROMPT and PUBLISH_SCRIPT artifacts from ALL artifacts (not just activeArtifacts)

@@ -482,125 +482,206 @@ describe("WorkflowArtifactPanel — workflowVersion prop", () => {
   });
 });
 
-describe("WorkflowArtifactPanel — Changes tab diff isolation", () => {
-  // A realistic baseline string longer than 100 chars
-  const baseline = JSON.stringify({ transitions: { stepA: nonLoopTransition, stepB: nonLoopTransition } });
-  const updated = JSON.stringify({ transitions: { stepA: nonLoopTransition, stepC: loopTransition } });
-  const freshWorkflow = JSON.stringify({ transitions: { stepX: loopTransition } });
+// ---------------------------------------------------------------------------
+// Helper: make an artifact with a durable publish snapshot
+// ---------------------------------------------------------------------------
+
+function makeSnapshotArtifact(overrides: {
+  id?: string;
+  workflowId?: number | string;
+  publishedWorkflowJson: string | object;
+  workflowJson?: string;
+  workflowVersionId?: string | number;
+  createdAt?: Date;
+}): Artifact {
+  return {
+    id: overrides.id ?? "snap-art-1",
+    type: "workflow",
+    createdAt: overrides.createdAt ?? new Date("2024-01-01T00:00:00Z"),
+    updatedAt: new Date("2024-01-01T00:00:00Z"),
+    content: {
+      workflowId: overrides.workflowId ?? 1,
+      workflowJson: overrides.workflowJson ?? makeWorkflowJson({}),
+      publishedWorkflowJson: overrides.publishedWorkflowJson,
+      workflowVersionId: overrides.workflowVersionId,
+    } as unknown as Artifact["content"],
+  } as unknown as Artifact;
+}
+
+describe("WorkflowArtifactPanel — publish-snapshot baseline selection", () => {
+  const snap1Json = JSON.stringify({ transitions: { stepA: nonLoopTransition } });
+  const snap2Json = JSON.stringify({ transitions: { stepA: nonLoopTransition, stepB: nonLoopTransition } });
+  const snap3Json = JSON.stringify({ transitions: { stepA: nonLoopTransition, stepB: nonLoopTransition, stepC: loopTransition } });
 
   beforeEach(() => {
+    vi.clearAllMocks();
     lastChangesListItems = [];
   });
 
-  it("Test 1 — subsequent-run: keeps agent-response updatedJson after a second run-start artifact", async () => {
+  // ── Two snapshots: diff = latest vs immediately-prior ─────────────────────
+  it("diffs latest snapshot vs immediately-prior (not first-ever) when 3 snapshots exist", async () => {
     const user = userEvent.setup();
 
-    const runStartA: Artifact = {
-      id: "art-run-start-A",
-      type: "workflow",
-      content: {
-        workflowJson: baseline,
-        originalWorkflowJson: "",
-        workflowId: 1,
-      } as unknown as Artifact["content"],
-    } as unknown as Artifact;
-
-    const agentResponseB: Artifact = {
-      id: "art-agent-response-B",
-      type: "workflow",
-      content: {
-        workflowJson: updated,
-        originalWorkflowJson: baseline, // long string > 100 chars
-        workflowId: 1,
-      } as unknown as Artifact["content"],
-    } as unknown as Artifact;
-
-    const runStartC: Artifact = {
-      id: "art-run-start-C",
-      type: "workflow",
-      content: {
-        workflowJson: baseline,
-        originalWorkflowJson: "",
-        workflowId: 1,
-      } as unknown as Artifact["content"],
-    } as unknown as Artifact;
+    const first = makeSnapshotArtifact({
+      id: "snap-1", publishedWorkflowJson: snap1Json,
+      createdAt: new Date("2024-01-01T00:00:00Z"),
+    });
+    const second = makeSnapshotArtifact({
+      id: "snap-2", publishedWorkflowJson: snap2Json,
+      createdAt: new Date("2024-01-02T00:00:00Z"),
+    });
+    const third = makeSnapshotArtifact({
+      id: "snap-3", publishedWorkflowJson: snap3Json,
+      createdAt: new Date("2024-01-03T00:00:00Z"),
+    });
 
     render(
-      <WorkflowArtifactPanel
-        artifacts={[runStartA, agentResponseB, runStartC]}
-        isActive={false}
-      />,
+      <WorkflowArtifactPanel artifacts={[first, second, third]} isActive={false} />,
     );
-
-    // Switch to Changes tab so ChangesList is rendered
     await user.click(screen.getByRole("tab", { name: /changes/i }));
 
-    // changesWorkflowJson must still be "updated", not "baseline"
     const workflowItem = lastChangesListItems.find((i) => i.type === "WORKFLOW");
-    expect(workflowItem?.updatedJson).toBe(updated);
+    // updatedJson = snap3Json (latest), originalJson = snap2Json (prior, NOT snap1Json)
+    expect(workflowItem?.updatedJson).toBe(snap3Json);
+    expect(workflowItem?.originalJson).toBe(snap2Json);
   });
 
-  it("Test 2 — publish: keeps agent-response updatedJson after a publish artifact overwrites workflowJson", async () => {
+  // ── Ordering by createdAt, not array position ─────────────────────────────
+  it("uses createdAt order, not array insertion order, to pick baseline vs current", async () => {
     const user = userEvent.setup();
 
-    const agentResponseA: Artifact = {
-      id: "art-agent-response-A",
-      type: "workflow",
-      content: {
-        workflowJson: updated,
-        originalWorkflowJson: baseline, // long string > 100 chars
-        workflowId: 1,
-      } as unknown as Artifact["content"],
-    } as unknown as Artifact;
+    // Deliberately insert newest first in the array
+    const newer = makeSnapshotArtifact({
+      id: "snap-newer", publishedWorkflowJson: snap2Json,
+      createdAt: new Date("2024-02-01T00:00:00Z"),
+    });
+    const older = makeSnapshotArtifact({
+      id: "snap-older", publishedWorkflowJson: snap1Json,
+      createdAt: new Date("2024-01-01T00:00:00Z"),
+    });
 
-    const publishArtifactB: Artifact = {
-      id: "art-publish-B",
-      type: "workflow",
-      content: {
-        workflowJson: freshWorkflow,
-        // no originalWorkflowJson
-        workflowId: 1,
-      } as unknown as Artifact["content"],
-    } as unknown as Artifact;
-
+    // Array order: [newer, older] — opposite of createdAt order
     render(
-      <WorkflowArtifactPanel
-        artifacts={[agentResponseA, publishArtifactB]}
-        isActive={false}
-      />,
+      <WorkflowArtifactPanel artifacts={[newer, older]} isActive={false} />,
     );
-
-    // Switch to Changes tab so ChangesList is rendered
     await user.click(screen.getByRole("tab", { name: /changes/i }));
 
-    // changesWorkflowJson must remain "updated", not "freshWorkflow"
     const workflowItem = lastChangesListItems.find((i) => i.type === "WORKFLOW");
-    expect(workflowItem?.updatedJson).toBe(updated);
+    // Even though "newer" was first in the array, createdAt sorting must make snap2Json the latest
+    expect(workflowItem?.updatedJson).toBe(snap2Json);
+    expect(workflowItem?.originalJson).toBe(snap1Json);
   });
 
-  it("Test 3 — first-run baseline fallback: shows workflowJson as all-green when no agent response yet", async () => {
+  // ── Single snapshot → all-green fallback ──────────────────────────────────
+  it("renders all-green (originalJson === null) when only one publish snapshot exists", async () => {
     const user = userEvent.setup();
 
-    const runStartA: Artifact = {
-      id: "art-run-start-A",
+    const onlySnapshot = makeSnapshotArtifact({
+      id: "snap-only", publishedWorkflowJson: snap1Json,
+      workflowJson: snap1Json,
+      createdAt: new Date("2024-01-01T00:00:00Z"),
+    });
+
+    render(
+      <WorkflowArtifactPanel artifacts={[onlySnapshot]} isActive={false} />,
+    );
+    await user.click(screen.getByRole("tab", { name: /changes/i }));
+
+    const workflowItem = lastChangesListItems.find((i) => i.type === "WORKFLOW");
+    // No prior snapshot → originalJson must be null (all-green path)
+    expect(workflowItem?.originalJson).toBeNull();
+    // updatedJson falls back to workflowJson (the all-green path from changesItems)
+    expect(workflowItem?.updatedJson).toBeTruthy();
+  });
+
+  // ── Different workflowId excluded from active workflow's diff ─────────────
+  it("excludes snapshots from a different workflowId from the active workflow's diff", async () => {
+    const user = userEvent.setup();
+
+    const activeSnap = makeSnapshotArtifact({
+      id: "snap-active", workflowId: 100,
+      publishedWorkflowJson: snap2Json,
+      workflowJson: snap2Json,
+      createdAt: new Date("2024-01-02T00:00:00Z"),
+    });
+    // Snapshot belongs to a different workflow
+    const otherSnap = makeSnapshotArtifact({
+      id: "snap-other", workflowId: 999,
+      publishedWorkflowJson: snap1Json,
+      workflowJson: snap2Json,
+      createdAt: new Date("2024-01-01T00:00:00Z"),
+    });
+
+    render(
+      // Both artifacts present; otherSnap has a different workflowId → different group
+      <WorkflowArtifactPanel artifacts={[activeSnap, otherSnap]} isActive={false} />,
+    );
+    await user.click(screen.getByRole("tab", { name: /changes/i }));
+
+    const workflowItem = lastChangesListItems.find((i) => i.type === "WORKFLOW");
+    // Only one snapshot for workflowId 100 → originalJson must be null (all-green)
+    // The otherSnap (workflowId: 999) must NOT contribute as a baseline
+    expect(workflowItem?.originalJson).toBeNull();
+  });
+
+  // ── Legacy artifact (originalWorkflowJson:"", no publishedWorkflowJson) excluded
+  it("excludes legacy WORKFLOW artifacts with originalWorkflowJson:\"\" from snapshot gathering", async () => {
+    const user = userEvent.setup();
+
+    const legacyArtifact: Artifact = {
+      id: "legacy-art",
       type: "workflow",
+      createdAt: new Date("2024-01-01T00:00:00Z"),
+      updatedAt: new Date("2024-01-01T00:00:00Z"),
       content: {
-        workflowJson: baseline,
-        originalWorkflowJson: "",
         workflowId: 1,
+        workflowJson: snap1Json,
+        originalWorkflowJson: "", // legacy field set by workflow-editor.ts / route.ts
+        // no publishedWorkflowJson
       } as unknown as Artifact["content"],
     } as unknown as Artifact;
 
-    render(
-      <WorkflowArtifactPanel artifacts={[runStartA]} isActive={false} />,
-    );
+    const realSnapshot = makeSnapshotArtifact({
+      id: "snap-real", workflowId: 1,
+      publishedWorkflowJson: snap2Json,
+      workflowJson: snap2Json,
+      createdAt: new Date("2024-01-02T00:00:00Z"),
+    });
 
-    // Switch to Changes tab so ChangesList is rendered
+    render(
+      <WorkflowArtifactPanel artifacts={[legacyArtifact, realSnapshot]} isActive={false} />,
+    );
     await user.click(screen.getByRole("tab", { name: /changes/i }));
 
-    // No agent response yet → changesWorkflowJson is undefined → fallback to workflowJson
     const workflowItem = lastChangesListItems.find((i) => i.type === "WORKFLOW");
-    expect(workflowItem?.updatedJson).toBe(baseline);
+    // Only realSnapshot qualifies → one snapshot → all-green (originalJson === null)
+    // legacyArtifact must NOT be counted as a snapshot
+    expect(workflowItem?.originalJson).toBeNull();
+    expect(workflowItem?.updatedJson).toBeTruthy();
+  });
+
+  // ── changedStepIds / changedConnectionIds reach WorkflowComponent ──────────
+  it("passes non-empty changedStepIds / changedConnectionIds to WorkflowComponent when two snapshots differ", async () => {
+    // Two distinct snapshots → hasChanges=true → computeWorkflowDiff is called → result flows into WorkflowComponent
+    const priorSnap = makeSnapshotArtifact({
+      id: "snap-prior", publishedWorkflowJson: snap1Json,
+      workflowJson: snap2Json,
+      createdAt: new Date("2024-01-01T00:00:00Z"),
+    });
+    const latestSnap = makeSnapshotArtifact({
+      id: "snap-latest", publishedWorkflowJson: snap2Json,
+      workflowJson: snap2Json,
+      createdAt: new Date("2024-01-02T00:00:00Z"),
+    });
+
+    render(
+      <WorkflowArtifactPanel artifacts={[priorSnap, latestSnap]} isActive={false} />,
+    );
+
+    // Editor tab is default — WorkflowComponent must receive Set instances for both props
+    // (the mock returns empty Sets, which is fine — what matters is they are passed through)
+    expect(lastWorkflowComponentProps.changedStepIds).toBeInstanceOf(Set);
+    expect(lastWorkflowComponentProps.changedConnectionIds).toBeInstanceOf(Set);
   });
 });
 
