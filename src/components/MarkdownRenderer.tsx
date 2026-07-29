@@ -4,11 +4,6 @@ import { MermaidDiagram } from "@/components/features/ClarifyingQuestionsPreview
 import remarkGfm from "remark-gfm";
 import remarkBreaks from "remark-breaks";
 import remarkFrontmatter from "remark-frontmatter";
-import remarkDirective from "remark-directive";
-import remarkMath from "remark-math";
-import rehypeFormat from "rehype-format";
-import rehypeRaw from "rehype-raw";
-import rehypeSanitize from "rehype-sanitize";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { tomorrow } from "react-syntax-highlighter/dist/esm/styles/prism";
 import { cn } from "@/lib/utils";
@@ -337,9 +332,6 @@ const createComponents = (
       />
     );
   },
-  hr: ({ ...props }) => (
-    <hr className={cn(styleConfig.hr, styles.border)} {...props} />
-  ),
   code: ({ className, children }) => {
     const match = /language-(\w+)/.exec(className || "");
 
@@ -347,24 +339,34 @@ const createComponents = (
       return <MermaidDiagram code={String(children).replace(/\n$/, "")} />;
     }
 
-    if (!match) {
+    // Inline/block guard: react-markdown v10 no longer passes an `inline`
+    // prop. Distinguish a genuine fenced block from inline code by checking
+    // whether the content spans multiple lines. An inline code node — even
+    // one that carries a `language-*` class (e.g. from a future plugin) —
+    // must never route into the block <SyntaxHighlighter PreTag="pre">,
+    // because a <pre> nested inside <p>/<blockquote> is invalid HTML and
+    // causes the browser to split the block early.
+    const isBlock = String(children).includes("\n");
+
+    if (match && isBlock) {
       return (
-        <code className={cn(styleConfig.codeInline, codeInlineClass, className)}>
-          {children}
-        </code>
+        <SyntaxHighlighter
+          PreTag="pre"
+          wrapLines={true}
+          wrapLongLines={true}
+          language={match[1]}
+          style={tomorrow}
+        >
+          {String(children).replace(/\n$/, "")}
+        </SyntaxHighlighter>
       );
     }
 
+    // Inline code (no language match, or language match but single-line content)
     return (
-      <SyntaxHighlighter
-        PreTag="pre"
-        wrapLines={true}
-        wrapLongLines={true}
-        language={match[1]}
-        style={tomorrow}
-      >
-        {String(children).replace(/\n$/, "")}
-      </SyntaxHighlighter>
+      <code className={cn(styleConfig.codeInline, codeInlineClass, className)}>
+        {children}
+      </code>
     );
   },
 });
@@ -394,31 +396,38 @@ export function MarkdownRenderer({
           .replace(/\\'/g, "'")
       : children;
 
-  // For the user variant we use a reduced plugin set:
+  // Unified plugin set for all variants (user and assistant alike).
   //
-  // remark plugins — exclude remarkDirective and remarkMath:
-  //   - remarkDirective parses `:word` syntax as a "text directive", which
-  //     causes `:8800` (port numbers) in URLs to be consumed and silently
-  //     dropped from the output.
-  //   - remarkMath can similarly misinterpret user content.
+  // remark plugins — remarkGfm, remarkFrontmatter, remarkBreaks only:
+  //   - remarkDirective is excluded: it parses `:word` syntax as a "text
+  //     directive", causing `:8800` (port numbers) and similar sequences to
+  //     be consumed and silently dropped from output.
+  //   - remarkMath is excluded: it greedily pairs adjacent bare `$…$`
+  //     currency figures on consecutive lines into one inline-math span,
+  //     emitting a `language-math` code node that the `code` component then
+  //     routes into a block <SyntaxHighlighter PreTag="pre">. A <pre> nested
+  //     inside <p>/<blockquote> is invalid HTML and causes the browser to
+  //     split the block early. No rehype-katex is wired up anyway, so
+  //     remarkMath was adding pure risk with zero benefit.
   //
-  // rehype plugins — exclude rehypeRaw, rehypeSanitize, and rehypeFormat:
-  //   - rehypeRaw re-parses raw HTML nodes emitted by remarkGfm (e.g. `<slug>`
-  //     literal in text becomes an HTML node), then rehypeSanitize strips
-  //     unknown tags, losing everything after the tag (e.g. `:8800`).
-  //   - rehypeFormat injects whitespace <div> nodes inside <p> elements,
-  //     causing React hydration warnings and truncated textContent.
-  //
-  // With this reduced set, angle brackets and ampersands in user text are
-  // left as-is and rendered faithfully by React without HTML injection risk
-  // (no rehypeRaw means the raw-HTML nodes from remarkGfm are not re-parsed).
-  const remarkPluginList = isUser
-    ? [remarkGfm, remarkFrontmatter, remarkBreaks]
-    : [remarkGfm, remarkFrontmatter, remarkDirective, remarkMath, remarkBreaks];
-
-  const rehypePluginList = isUser
-    ? []
-    : [rehypeRaw, rehypeSanitize, rehypeFormat];
+  // rehype plugins — none:
+  //   - rehypeRaw is excluded: it re-parses raw HTML nodes emitted by
+  //     remarkGfm (e.g. a literal `<slug>` in text becomes an HTML node),
+  //     which then strips unknown tags via rehypeSanitize, losing the text
+  //     that followed the tag (e.g. `:8800`). Without rehypeRaw the
+  //     raw-HTML nodes are never re-parsed and React escapes angle brackets
+  //     faithfully as text.
+  //   - rehypeSanitize is excluded alongside rehypeRaw (not wired separately):
+  //     because rehypeRaw is gone there is no HTML injection path, so
+  //     dropping rehypeSanitize is net-neutral-to-positive for XSS.
+  //     WARNING: if rehypeRaw is ever re-introduced it MUST be re-paired
+  //     with rehypeSanitize — SidebarChatMessage injects extraComponents
+  //     into this renderer and relies on safe output.
+  //   - rehypeFormat is excluded: it injects whitespace <div> nodes inside
+  //     <p> elements, causing React hydration warnings and truncated
+  //     textContent.
+  const remarkPluginList = [remarkGfm, remarkFrontmatter, remarkBreaks];
+  const rehypePluginList: [] = [];
 
   return (
     <div className={cn("prose dark:prose-invert max-w-full break-words overflow-x-hidden prose-pre:overflow-x-auto", className)}>
