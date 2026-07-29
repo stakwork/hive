@@ -35,6 +35,12 @@ vi.mock("@/lib/runtime", () => ({
   isSwarmFakeModeEnabled: vi.fn(() => false),
 }));
 
+vi.mock("@/lib/pusher", () => ({
+  pusherServer: { trigger: vi.fn().mockResolvedValue(undefined) },
+  getTaskChannelName: (id: string) => `task-${id}`,
+  PUSHER_EVENTS: { NEW_MESSAGE: "new-message" },
+}));
+
 import { isDevelopmentMode } from "@/lib/runtime";
 
 const mockIsDevelopmentMode = vi.mocked(isDevelopmentMode);
@@ -760,6 +766,180 @@ describe("POST /api/workflow/publish", () => {
       // Only the original victimMessage exists — no new assistant message was injected
       expect(messages).toHaveLength(1);
       expect(messages[0].id).toBe(victimMessage.id);
+    });
+  });
+
+  describe("Publish Snapshot (publishedWorkflowJson + workflowVersionId)", () => {
+    const workflowJson = JSON.stringify({ steps: [{ id: "step-1", name: "Start" }], transitions: {} });
+
+    function makePublishFetch(workflowVersionId = "v-snap-123") {
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({ success: true, data: { workflow_version_id: workflowVersionId } }),
+      } as Response;
+    }
+
+    function makeWorkflowFetch(responseShape: Record<string, unknown>) {
+      return {
+        ok: true,
+        status: 200,
+        json: async () => responseShape,
+      } as Response;
+    }
+
+    it("stores publishedWorkflowJson + workflowVersionId on new WORKFLOW artifact (data.workflow.workflow_json branch)", async () => {
+      mockFetch
+        .mockResolvedValueOnce(makePublishFetch("v-snap-1") as Response)
+        .mockResolvedValueOnce(makeWorkflowFetch({ data: { workflow: { workflow_json: workflowJson } } }) as Response);
+
+      const request = createAuthenticatedPostRequest(
+        BASE_URL,
+        { workflowId: testTask.stakworkProjectId ?? 123, artifactId: artifact.id },
+        testUser,
+      );
+
+      const response = await POST(request);
+      await expectSuccess(response, 200);
+
+      // Find the newly created WORKFLOW artifact in the task's messages
+      const newMessages = await db.chatMessage.findMany({
+        where: { taskId: testTask.id },
+        include: { artifacts: true },
+        orderBy: { createdAt: "desc" },
+      });
+
+      const newWorkflowArtifact = newMessages
+        .flatMap((m) => m.artifacts)
+        .find((a) => {
+          const c = a.content as Record<string, unknown>;
+          return c?.publishedWorkflowJson;
+        });
+
+      expect(newWorkflowArtifact).toBeDefined();
+      const content = newWorkflowArtifact!.content as Record<string, unknown>;
+      expect(content.publishedWorkflowJson).toBe(workflowJson);
+      expect(content.workflowVersionId).toBe("v-snap-1");
+      expect(content.workflowJson).toBe(workflowJson);
+    });
+
+    it("stores publishedWorkflowJson via data.spec fallback branch", async () => {
+      const specJson = JSON.stringify({ steps: [], transitions: {} });
+      mockFetch
+        .mockResolvedValueOnce(makePublishFetch("v-spec-1") as Response)
+        .mockResolvedValueOnce(makeWorkflowFetch({ data: { spec: specJson } }) as Response);
+
+      const request = createAuthenticatedPostRequest(
+        BASE_URL,
+        { workflowId: 999, artifactId: artifact.id },
+        testUser,
+      );
+
+      await POST(request);
+
+      const newMessages = await db.chatMessage.findMany({
+        where: { taskId: testTask.id },
+        include: { artifacts: true },
+        orderBy: { createdAt: "desc" },
+      });
+
+      const newWorkflowArtifact = newMessages
+        .flatMap((m) => m.artifacts)
+        .find((a) => {
+          const c = a.content as Record<string, unknown>;
+          return c?.publishedWorkflowJson;
+        });
+
+      expect(newWorkflowArtifact).toBeDefined();
+      const content = newWorkflowArtifact!.content as Record<string, unknown>;
+      expect(content.publishedWorkflowJson).toBe(specJson);
+      expect(content.workflowVersionId).toBe("v-spec-1");
+    });
+
+    it("stores publishedWorkflowJson via data.workflow_json fallback branch", async () => {
+      const wfJson = JSON.stringify({ steps: [{ id: "a" }], transitions: {} });
+      mockFetch
+        .mockResolvedValueOnce(makePublishFetch("v-wfjson-1") as Response)
+        .mockResolvedValueOnce(makeWorkflowFetch({ data: { workflow_json: wfJson } }) as Response);
+
+      const request = createAuthenticatedPostRequest(
+        BASE_URL,
+        { workflowId: 888, artifactId: artifact.id },
+        testUser,
+      );
+
+      await POST(request);
+
+      const newMessages = await db.chatMessage.findMany({
+        where: { taskId: testTask.id },
+        include: { artifacts: true },
+        orderBy: { createdAt: "desc" },
+      });
+
+      const newWorkflowArtifact = newMessages
+        .flatMap((m) => m.artifacts)
+        .find((a) => {
+          const c = a.content as Record<string, unknown>;
+          return c?.publishedWorkflowJson;
+        });
+
+      expect(newWorkflowArtifact).toBeDefined();
+      const content = newWorkflowArtifact!.content as Record<string, unknown>;
+      expect(content.publishedWorkflowJson).toBe(wfJson);
+      expect(content.workflowVersionId).toBe("v-wfjson-1");
+    });
+
+    it("stores publishedWorkflowJson via top-level workflow_json fallback branch", async () => {
+      const topLevelJson = JSON.stringify({ steps: [{ id: "top" }], transitions: {} });
+      mockFetch
+        .mockResolvedValueOnce(makePublishFetch("v-toplevel-1") as Response)
+        .mockResolvedValueOnce(makeWorkflowFetch({ workflow_json: topLevelJson }) as Response);
+
+      const request = createAuthenticatedPostRequest(
+        BASE_URL,
+        { workflowId: 777, artifactId: artifact.id },
+        testUser,
+      );
+
+      await POST(request);
+
+      const newMessages = await db.chatMessage.findMany({
+        where: { taskId: testTask.id },
+        include: { artifacts: true },
+        orderBy: { createdAt: "desc" },
+      });
+
+      const newWorkflowArtifact = newMessages
+        .flatMap((m) => m.artifacts)
+        .find((a) => {
+          const c = a.content as Record<string, unknown>;
+          return c?.publishedWorkflowJson;
+        });
+
+      expect(newWorkflowArtifact).toBeDefined();
+      const content = newWorkflowArtifact!.content as Record<string, unknown>;
+      expect(content.publishedWorkflowJson).toBe(topLevelJson);
+      expect(content.workflowVersionId).toBe("v-toplevel-1");
+    });
+
+    it("does not create new WORKFLOW artifact when GET workflow fetch fails", async () => {
+      mockFetch
+        .mockResolvedValueOnce(makePublishFetch("v-fail") as Response)
+        .mockResolvedValueOnce({ ok: false, status: 500, text: async () => "error" } as Response);
+
+      const countBefore = await db.chatMessage.count({ where: { taskId: testTask.id } });
+
+      const request = createAuthenticatedPostRequest(
+        BASE_URL,
+        { workflowId: 666, artifactId: artifact.id },
+        testUser,
+      );
+
+      const response = await POST(request);
+      await expectSuccess(response, 200); // publish itself succeeds
+
+      const countAfter = await db.chatMessage.count({ where: { taskId: testTask.id } });
+      expect(countAfter).toBe(countBefore); // no new message created
     });
   });
 
