@@ -122,23 +122,30 @@ export async function GET(request: NextRequest) {
     const pageSize = 20;
     const search = searchParams.get("search");
 
+    const exact = searchParams.get("exact") === "true";
+
     const where = search
-      ? {
-          OR: [
-            { name: { contains: search, mode: "insensitive" as const } },
-            { description: { contains: search, mode: "insensitive" as const } },
-          ],
-        }
+      ? exact
+        ? { name: { equals: search, mode: "insensitive" as const } }
+        : {
+            OR: [
+              { name: { contains: search, mode: "insensitive" as const } },
+              { description: { contains: search, mode: "insensitive" as const } },
+            ],
+          }
       : {};
 
     const includeUsages = searchParams.get("include_usages") === "true";
+
+    const pagination: { take: number; skip?: number } = exact
+      ? { take: 1 }
+      : { skip: (page - 1) * pageSize, take: pageSize };
 
     const [prompts, total] = await Promise.all([
       db.prompt.findMany({
         where,
         orderBy: { createdAt: "asc" },
-        skip: (page - 1) * pageSize,
-        take: pageSize,
+        ...pagination,
         include: {
           versions: {
             select: { id: true, versionNumber: true },
