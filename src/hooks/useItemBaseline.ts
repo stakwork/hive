@@ -69,13 +69,19 @@ async function fetchPromptBaseline(
     throw new Error("Prompt versions response unsuccessful");
   }
 
-  const { versions, published_version_id } = json.data;
+  const { versions, published_version_id, current_version_id } = json.data;
 
   const publishedVersion = published_version_id
     ? versions.find((v) => v.id === published_version_id)
     : null;
 
-  const updatedVersion = versions.find((v) => v.id === promptVersionId);
+  let updatedVersion = versions.find((v) => v.id === promptVersionId);
+
+  // New-prompt fallback: only when there is no published baseline.
+  // Prevents masking stale/invalid ids on already-published prompts.
+  if (!updatedVersion && !published_version_id && current_version_id) {
+    updatedVersion = versions.find((v) => v.id === current_version_id);
+  }
 
   return {
     baseline: publishedVersion?.value ?? null,

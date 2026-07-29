@@ -114,18 +114,79 @@ describe("useItemBaseline", () => {
       expect(result.current.error).toBeNull();
     });
 
-    it("resolves updated: null and sets error when promptVersionId not found", async () => {
-      const noMatch = {
+    it("resolves updated: null and sets error when promptVersionId not found (genuine failure)", async () => {
+      // Explicit genuine-failure fixture: no published version, no current_version_id,
+      // and the requested version id is absent — so the fallback cannot fire either.
+      const genuineFailure = {
         ...PROMPT_VERSIONS_RESPONSE,
         data: {
           ...PROMPT_VERSIONS_RESPONSE.data,
           versions: PROMPT_VERSIONS_RESPONSE.data.versions.filter((v) => v.id !== "v3"),
+          published_version_id: null,
+          current_version_id: null,
         },
       };
-      mockFetch.mockReturnValueOnce(ok(noMatch));
+      mockFetch.mockReturnValueOnce(ok(genuineFailure));
 
       const { result } = renderHook(() =>
         useItemBaseline({ type: "PROMPT", promptId: "prompt-abc", promptVersionId: "v3" }),
+      );
+
+      await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+      expect(result.current.updated).toBeNull();
+      expect(result.current.error).toBeTruthy();
+    });
+
+    it("falls back to current_version_id for a new prompt (no published version)", async () => {
+      // New prompt: no published_version_id, promptVersionId not in versions,
+      // but current_version_id resolves to the latest draft.
+      const newPrompt = {
+        success: true,
+        data: {
+          prompt_id: "prompt-new",
+          prompt_name: "NEW_PROMPT",
+          versions: [
+            { id: "v1", value: "brand new prompt content", published: false, version_number: 1 },
+          ],
+          published_version_id: null,
+          current_version_id: "v1",
+        },
+      };
+      mockFetch.mockReturnValueOnce(ok(newPrompt));
+
+      const { result } = renderHook(() =>
+        useItemBaseline({
+          type: "PROMPT",
+          promptId: "prompt-new",
+          promptVersionId: "stale-or-missing-id",
+        }),
+      );
+
+      await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+      expect(result.current.baseline).toBeNull();
+      expect(result.current.updated).toBe("brand new prompt content");
+      expect(result.current.error).toBeNull();
+    });
+
+    it("does NOT fall back when published_version_id is present (gate preserves error)", async () => {
+      // Published prompt with a stale/unmatched promptVersionId — fallback must NOT fire.
+      const publishedWithStaleId = {
+        ...PROMPT_VERSIONS_RESPONSE,
+        data: {
+          ...PROMPT_VERSIONS_RESPONSE.data,
+          // published_version_id is present (non-null) but promptVersionId "stale-id" is absent
+        },
+      };
+      mockFetch.mockReturnValueOnce(ok(publishedWithStaleId));
+
+      const { result } = renderHook(() =>
+        useItemBaseline({
+          type: "PROMPT",
+          promptId: "prompt-abc",
+          promptVersionId: "stale-id",
+        }),
       );
 
       await waitFor(() => expect(result.current.isLoading).toBe(false));
