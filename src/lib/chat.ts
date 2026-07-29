@@ -87,6 +87,7 @@ export interface WorkflowContent {
   projectId?: string; // For polling mode (Stakwork project)
   workflowJson?: string | object | null; // For direct rendering from graph (current/updated version)
   originalWorkflowJson?: string | object | null; // Original workflow JSON before changes
+  publishedWorkflowJson?: string | object | null; // Durable snapshot of the just-published workflow JSON (set on publish artifacts)
   workflowId?: number | string; // Workflow ID from graph, or "new" for new workflows
   workflowName?: string; // Optional workflow name
   workflowRefId?: string; // Graph node ref_id
@@ -116,6 +117,10 @@ export interface PublishPromptContent {
   promptVersionId: string; // Prompt version ID to publish (Hive cuid)
   promptName?: string; // Prompt name for display
   published?: boolean; // Whether the prompt has been published
+  /** Published baseline captured at ingestion time. null = brand-new prompt (no published version yet). Absent = legacy artifact (use live lookup fallback). */
+  baselineSnapshot?: { value: string; versionId: string; versionNumber: number } | null;
+  /** This artifact's own version value + number captured at ingestion, needed for consecutive step diffs. */
+  versionSnapshot?: { value: string; versionNumber: number };
 }
 
 export interface PublishSkillContent {
