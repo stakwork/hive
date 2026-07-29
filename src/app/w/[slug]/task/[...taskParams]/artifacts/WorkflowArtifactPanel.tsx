@@ -168,22 +168,33 @@ export function WorkflowArtifactPanel({ artifacts, isActive, onStepSelect, onVer
       });
   }, [activeArtifacts]);
 
-  // Derive diff sides from the two most-recent publish snapshots.
-  // latest  → changesWorkflowJson (right side / updated)
-  // prior   → originalWorkflowJson (left side / baseline)
-  // When only one snapshot exists, originalWorkflowJson is null so the existing
-  // PR #4157 all-green path kicks in (updatedJson: !originalWorkflowJson ? workflowJson : null).
+  // Derive diff sides from the LATEST publish-snapshot artifact's own fields.
+  // This is the single source of truth for the baseline:
+  //   originalWorkflowJson (per-artifact) → left side / baseline
+  //   publishedWorkflowJson (per-artifact) → right side / updated
+  //
+  // Outcomes:
+  //   no publish snapshot          → both undefined (panel shows "No changes")
+  //   originalWorkflowJson === null → brand-new first publish (all-green)
+  //   originalWorkflowJson is string → real republish diff
+  //
+  // Note: the cross-artifact two-snapshot derivation (publishSnapshots[len-2]) is
+  // intentionally retired here. A single artifact now carries both sides so there
+  // is one unambiguous source of truth and no risk of the two paths disagreeing.
   const { changesWorkflowJson, originalWorkflowJson } = useMemo(() => {
     if (publishSnapshots.length === 0) {
       return { changesWorkflowJson: undefined, originalWorkflowJson: undefined };
     }
     const latestContent = publishSnapshots[publishSnapshots.length - 1].content as WorkflowContent;
-    const priorContent = publishSnapshots.length >= 2
-      ? publishSnapshots[publishSnapshots.length - 2].content as WorkflowContent
-      : null;
     return {
       changesWorkflowJson: latestContent.publishedWorkflowJson ?? undefined,
-      originalWorkflowJson: priorContent?.publishedWorkflowJson ?? null,
+      // originalWorkflowJson is explicitly stored on the artifact:
+      //   null   → brand-new (no prior published version)
+      //   string → pre-publish baseline
+      //   key absent (undefined) → fetch error path; treat as "no baseline"
+      originalWorkflowJson: Object.prototype.hasOwnProperty.call(latestContent, "originalWorkflowJson")
+        ? (latestContent as WorkflowContent & { originalWorkflowJson?: string | null }).originalWorkflowJson ?? null
+        : undefined,
     };
   }, [publishSnapshots]);
 
@@ -195,8 +206,10 @@ export function WorkflowArtifactPanel({ artifacts, isActive, onStepSelect, onVer
   // Determine if we're in editor mode (workflowJson present)
   const isEditorMode = !!workflowJson;
 
-  // Check if we have changes to show (requires both diff sides from publish snapshots)
-  const hasChanges = !!(originalWorkflowJson && changesWorkflowJson);
+  // Check if we have changes to show (requires a real string baseline + current side).
+  // originalWorkflowJson === null means brand-new (all-green) — no diff to compute.
+  // originalWorkflowJson === undefined means fetch error — also no diff.
+  const hasChanges = !!(typeof originalWorkflowJson === "string" && changesWorkflowJson);
 
   // Collect PUBLISH_PROMPT and PUBLISH_SCRIPT artifacts from ALL artifacts (not just activeArtifacts)
   // so prompt/script-only tasks are covered even without a workflowId grouping.
@@ -220,16 +233,31 @@ export function WorkflowArtifactPanel({ artifacts, isActive, onStepSelect, onVer
   const changesItems: ChangedItem[] = useMemo(() => {
     const items: ChangedItem[] = [];
 
-    // Workflow diff item (only when we have workflow JSON)
-    if (isEditorMode) {
+    // Workflow diff item — gated on publish-snapshot presence, not on isEditorMode alone.
+    //
+    // Cases:
+    //  • No publish snapshot (publishSnapshots.length === 0):
+    //    → omit the WORKFLOW item entirely → ChangesList shows "No changes to display."
+    //    This covers fresh/un-edited task loads where only a bare workflowJson exists.
+    //
+    //  • Latest snapshot has originalWorkflowJson === null:
+    //    → genuine brand-new first publish (no prior published version existed).
+    //    Push all-green item (originalJson: null, updatedJson: publishedWorkflowJson).
+    //
+    //  • Latest snapshot has originalWorkflowJson as a string:
+    //    → real republish; push a proper diff item.
+    //
+    //  • originalWorkflowJson is undefined (baseline fetch error):
+    //    → omit the WORKFLOW item (same as "no snapshot") to avoid phantom all-green.
+    //
+    // The old `(!originalWorkflowJson ? workflowJson : null)` fallback is intentionally
+    // removed — workflowJson alone must never drive an all-green item.
+    if (publishSnapshots.length > 0 && changesWorkflowJson != null && originalWorkflowJson !== undefined) {
       items.push({
         type: "WORKFLOW",
         name: mergedContent.workflowName || `Workflow ${mergedContent.workflowId ?? ""}`,
-        originalJson: originalWorkflowJson || null,
-        updatedJson:
-          changesWorkflowJson ||
-          (!originalWorkflowJson ? workflowJson : null) ||
-          null,
+        originalJson: originalWorkflowJson,   // null = brand-new (all-green), string = real diff
+        updatedJson: changesWorkflowJson,
       });
     }
 
@@ -317,12 +345,11 @@ export function WorkflowArtifactPanel({ artifacts, isActive, onStepSelect, onVer
 
     return items;
   }, [
-    isEditorMode,
+    publishSnapshots,
     mergedContent.workflowName,
     mergedContent.workflowId,
     originalWorkflowJson,
     changesWorkflowJson,
-    workflowJson,
     publishPromptArtifacts,
     publishScriptArtifacts,
   ]);
