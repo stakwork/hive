@@ -39,10 +39,7 @@ import {
   fetchOrgCanvasConversationMessages,
   persistOrgCanvasPromptResolutions,
 } from "@/services/org-canvas-conversation";
-import {
-  emitFollowUpQuestions,
-  emitProvenance,
-} from "@/services/canvas-turn-enrichments";
+import { runTurnEnrichments } from "@/services/canvas-turn-enrichments";
 
 // Tier-1 backend-driven canvas turns (docs/plans/backend-driven-canvas-turns.md):
 // the org-canvas turn is persisted server-side in `after()` so it survives the
@@ -791,23 +788,21 @@ export async function POST(request: NextRequest) {
       }
 
       after(async () => {
-        // Surfaces that don't render follow-ups or provenance opt out
-        // of computing them. Saves a `generateObject` round-trip and
-        // a `${swarmUrl}/gitree/provenance` POST per turn.
-        if (skipEnrichments) return;
-        await emitFollowUpQuestions({
+        await runTurnEnrichments({
+          skipEnrichments,
+          conversationId: canvasConversationRowId,
+          // Null `promptCache.rowId` at load means `persistCanvasUserMessage`
+          // created the row in this request — i.e. this is the first turn.
+          isNewConversation: !promptCache?.rowId,
           messages,
+          conceptIds: Array.from(learnedConceptIds),
           primarySlug,
           primaryWorkspaceId,
           primaryUserId,
-          agentName:
-            orgId && isMultiWorkspace ? "canvas-agent" : "chat-agent",
-        });
-        await emitProvenance({
-          conceptIds: Array.from(learnedConceptIds),
-          primarySlug,
           primarySwarmUrl,
           primarySwarmApiKey,
+          agentName:
+            orgId && isMultiWorkspace ? "canvas-agent" : "chat-agent",
         });
       });
 
