@@ -2386,8 +2386,19 @@ export async function stopStakworkRun(
   }
 
   // Attempt to stop the Stakwork project (optimistic - don't fail if API errors)
+  // stopProject never throws; false means Stakwork refused or the call failed.
+  // We still halt locally so the UI reflects the user's intent — but log it
+  // loudly, because "run shows HALTED while the workflow keeps going" is
+  // otherwise invisible and is the usual cause of a stop that didn't take.
   try {
-    await stakworkService().stopProject(run.projectId);
+    const stopped = await stakworkService().stopProject(run.projectId);
+    if (!stopped) {
+      logger.error(
+        `[stopStakworkRun] Marking run HALTED but Stakwork did not confirm the stop — the workflow may still be running`,
+        "stakwork-run/stopStakworkRun",
+        { runId, projectId: run.projectId, workspaceSlug: run.workspace.slug },
+      );
+    }
   } catch (error) {
     console.error(`Failed to stop Stakwork project ${run.projectId}:`, error);
     // Continue with optimistic update even if Stakwork API fails

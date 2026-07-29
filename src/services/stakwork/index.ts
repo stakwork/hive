@@ -233,10 +233,19 @@ export class StakworkService extends BaseServiceClass {
 
   /**
    * Stop a running project
+   *
+   * Stakwork replies HTTP 200 with `{ success: false, errors: "..." }` when it
+   * refuses a stop — its `render_error` sets no status code. So a 2xx is NOT
+   * evidence the run stopped, and the body has to be inspected. The common
+   * refusal is "The project is not running.", raised when the project fails
+   * `can_be_stopped?` — only `in_progress` / `new` / `enqueued` are stoppable,
+   * so a `stuck`, `paused` or `stopping` project is refused outright.
+   *
    * @param projectId - The Stakwork project ID to stop
-   * @returns void (optimistic - does not throw on API errors)
+   * @returns true only when Stakwork accepts; false on refusal or error.
+   *          Never throws — callers halt locally regardless of the outcome.
    */
-  async stopProject(projectId: number): Promise<void> {
+  async stopProject(projectId: number): Promise<boolean> {
     const endpoint = `/projects/${projectId}/stop`;
     logger.info(`[stopProject] Calling senza stop`, "stakwork/stopProject", {
       projectId,
@@ -254,10 +263,22 @@ export class StakworkService extends BaseServiceClass {
       const requestFn = () =>
         client.post<unknown>(endpoint, {}, headers, this.serviceName);
       const response = await this.handleRequest(requestFn, `stakworkRequest ${endpoint}`);
-      logger.info(`[stopProject] Senza stop succeeded`, "stakwork/stopProject", {
+
+      const body = response as { success?: boolean; errors?: unknown } | null;
+      if (body?.success === false) {
+        logger.error(
+          `[stopProject] Senza REFUSED the stop — the workflow is still running`,
+          "stakwork/stopProject",
+          { projectId, errors: body.errors, response },
+        );
+        return false;
+      }
+
+      logger.info(`[stopProject] Senza accepted the stop`, "stakwork/stopProject", {
         projectId,
         response,
       });
+      return true;
     } catch (error) {
       logger.error(`[stopProject] Senza stop failed`, "stakwork/stopProject", {
         projectId,
@@ -265,6 +286,7 @@ export class StakworkService extends BaseServiceClass {
         message: (error as any)?.message,
         details: (error as any)?.details,
       });
+      return false;
     }
   }
 }
