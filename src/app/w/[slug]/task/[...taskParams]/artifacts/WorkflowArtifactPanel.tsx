@@ -233,17 +233,73 @@ export function WorkflowArtifactPanel({ artifacts, isActive, onStepSelect, onVer
       });
     }
 
-    // Prompt items
+    // Prompt items — grouped by promptId, ordered by versionNumber (authoritative monotonic key).
+    // Artifacts created in the same batch can share a createdAt timestamp, so we use
+    // versionSnapshot.versionNumber rather than createdAt for ordering.
+    // For legacy artifacts without versionSnapshot we fall back to artifact array order.
+    const promptGroupMap = new Map<
+      string,
+      {
+        name: string;
+        iterations: import("./changes/ChangesList").PromptIteration[];
+        baselineSnapshot:
+          | { value: string; versionId: string; versionNumber: number }
+          | null
+          | undefined;
+      }
+    >();
+
     for (const artifact of publishPromptArtifacts) {
       const content = artifact.content as PublishPromptContent;
-      if (content?.promptId && content?.promptVersionId) {
-        items.push({
-          type: "PROMPT",
-          name: content.promptName || content.promptId,
-          promptId: content.promptId,
-          promptVersionId: content.promptVersionId,
+      if (!content?.promptId || !content?.promptVersionId) continue;
+
+      const { promptId, promptVersionId, promptName, versionSnapshot, baselineSnapshot } = content;
+
+      if (!promptGroupMap.has(promptId)) {
+        promptGroupMap.set(promptId, {
+          name: promptName || promptId,
+          iterations: [],
+          // Will be set to the earliest iteration's baselineSnapshot
+          baselineSnapshot: undefined,
         });
       }
+
+      const group = promptGroupMap.get(promptId)!;
+
+      group.iterations.push({
+        promptVersionId,
+        artifactId: artifact.id,
+        value: versionSnapshot?.value,
+        versionNumber: versionSnapshot?.versionNumber,
+      });
+
+      // Track earliest baselineSnapshot: first artifact in array order with a defined snapshot
+      // (artifacts come in oldest-first order from the DB)
+      if (group.baselineSnapshot === undefined && baselineSnapshot !== undefined) {
+        group.baselineSnapshot = baselineSnapshot;
+      }
+    }
+
+    for (const [promptId, group] of promptGroupMap) {
+      // Sort iterations by versionNumber ascending (oldest first).
+      // Iterations without a versionNumber keep their original order (legacy fallback).
+      const hasVersionNumbers = group.iterations.some((it) => it.versionNumber !== undefined);
+      if (hasVersionNumbers) {
+        group.iterations.sort(
+          (a, b) => (a.versionNumber ?? Infinity) - (b.versionNumber ?? Infinity),
+        );
+      }
+
+      const latestIteration = group.iterations[group.iterations.length - 1];
+
+      items.push({
+        type: "PROMPT",
+        name: group.name,
+        promptId,
+        promptVersionId: latestIteration.promptVersionId,
+        iterations: group.iterations,
+        baselineSnapshot: group.baselineSnapshot,
+      });
     }
 
     // Script items
