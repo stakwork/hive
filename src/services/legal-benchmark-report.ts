@@ -146,7 +146,9 @@ export async function generateBenchmarkRunReport(runId: string): Promise<void> {
 
 What were the main reasons this workflow was not as effective as it could have been? Please return a report on the root causes and possible improvements. You can include proposals for Prompt updates, Concept updates, or Features (either code or workflows).
 
-Context: this was a legal benchmark run of the Harvey LAB task "${parsed.taskTitle ?? "unknown"}" (${parsed.taskSlug ?? "unknown"}).${scoreLine}`;
+Context: this was a legal benchmark run of the Harvey LAB task "${parsed.taskTitle ?? "unknown"}" (${parsed.taskSlug ?? "unknown"}).${scoreLine}
+
+At the end of the report, please use the graph walker to find the "Law" Concept node. Then find its neighbors, and propose an update to a sub Concept that includes some learnings from this run, so that next time, the agents will have better information and instructions.`;
 
     const now = new Date();
     const idPrefix = `benchmark-report-${runId}-${now.getTime().toString(36)}-`;
