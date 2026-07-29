@@ -87,6 +87,7 @@ export interface WorkflowContent {
   projectId?: string; // For polling mode (Stakwork project)
   workflowJson?: string | object | null; // For direct rendering from graph (current/updated version)
   originalWorkflowJson?: string | object | null; // Original workflow JSON before changes
+  publishedWorkflowJson?: string | object | null; // Durable snapshot of the just-published workflow JSON (set on publish artifacts)
   workflowId?: number | string; // Workflow ID from graph, or "new" for new workflows
   workflowName?: string; // Optional workflow name
   workflowRefId?: string; // Graph node ref_id
