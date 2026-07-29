@@ -204,35 +204,62 @@ async function enrichSingleArtifact(
     baselineSnapshot = null;
   } else if (prompt.publishedVersion.id === promptVersionId) {
     // Drift guard: the artifact's own version is already the published one.
-    // Resolve baseline to the highest-numbered version strictly below this one.
-    const priorVersion = await db.promptVersion.findFirst({
+    // publishVersion sets other versions' `published: false` but preserves their
+    // `publishedAt`, so the previously-published version is the one (other than
+    // this one) with the greatest non-null `publishedAt`.
+    const previouslyPublished = await db.promptVersion.findFirst({
       where: {
         promptId,
-        versionNumber: { lt: thisVersion.versionNumber },
+        id: { not: promptVersionId },
+        publishedAt: { not: null },
       },
-      orderBy: { versionNumber: "desc" },
+      orderBy: { publishedAt: "desc" },
       select: { id: true, value: true, versionNumber: true },
     });
 
-    if (priorVersion) {
+    if (previouslyPublished) {
       baselineSnapshot = {
-        value: priorVersion.value,
-        versionId: priorVersion.id,
-        versionNumber: priorVersion.versionNumber,
+        value: previouslyPublished.value,
+        versionId: previouslyPublished.id,
+        versionNumber: previouslyPublished.versionNumber,
       };
       logger.info(
-        "[prompt-baseline-snapshot] Drift guard applied — baseline resolved to prior version",
+        "[prompt-baseline-snapshot] Drift guard applied — baseline resolved to previously published version",
         "prompt-baseline-snapshot",
-        { promptId, baselineVersionNumber: priorVersion.versionNumber },
+        { promptId, baselineVersionNumber: previouslyPublished.versionNumber },
       );
     } else {
-      // No prior version exists — treat as new prompt.
-      baselineSnapshot = null;
-      logger.info(
-        "[prompt-baseline-snapshot] Drift guard applied — no prior version found, baseline=null",
-        "prompt-baseline-snapshot",
-        { promptId },
-      );
+      // No previously-published version — fall back to the numerically-highest
+      // version strictly below this one (covers prompts with no publish history).
+      const priorByNumber = await db.promptVersion.findFirst({
+        where: {
+          promptId,
+          versionNumber: { lt: thisVersion.versionNumber },
+        },
+        orderBy: { versionNumber: "desc" },
+        select: { id: true, value: true, versionNumber: true },
+      });
+
+      if (priorByNumber) {
+        baselineSnapshot = {
+          value: priorByNumber.value,
+          versionId: priorByNumber.id,
+          versionNumber: priorByNumber.versionNumber,
+        };
+        logger.info(
+          "[prompt-baseline-snapshot] Drift guard applied — no publishedAt history, baseline resolved to prior version by number",
+          "prompt-baseline-snapshot",
+          { promptId, baselineVersionNumber: priorByNumber.versionNumber },
+        );
+      } else {
+        // No prior version exists at all — treat as first-ever publish.
+        baselineSnapshot = null;
+        logger.info(
+          "[prompt-baseline-snapshot] Drift guard applied — no prior published version, baseline=null",
+          "prompt-baseline-snapshot",
+          { promptId },
+        );
+      }
     }
   } else {
     // Normal case: published version is different from this artifact's version.
