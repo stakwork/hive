@@ -9,7 +9,7 @@ import { getBaseUrl } from "@/lib/utils";
 import { WorkflowContent } from "@/lib/chat";
 import { fetchChatHistory } from "@/lib/helpers/chat-history";
 import { buildWorkflowEditorFeatureContext } from "@/services/workflow-editor";
-import { excludeOwnSubAgent, resolveExtraSwarms, resolveSubAgents } from "@/services/roadmap/feature-chat";
+import { resolveExtraSwarms, resolveSubAgents } from "@/services/roadmap/feature-chat";
 import { isDevelopmentMode } from "@/lib/runtime";
 
 interface WorkflowContext {
@@ -175,10 +175,9 @@ export async function executeWorkflowEditorRetry(
     } else {
       subAgents = await resolveExtraSwarms(lastUserMessage.message, task.createdById);
     }
-    const filteredSubAgents = excludeOwnSubAgent(subAgents, workspaceSlug);
-    if (filteredSubAgents.length) {
-      (vars as Record<string, unknown>).subAgents = filteredSubAgents;
-      console.log("[workflow-editor-retry] forwarding subAgents:", filteredSubAgents.map((a) => a.name));
+    if (subAgents.length) {
+      (vars as Record<string, unknown>).subAgents = subAgents;
+      console.log("[workflow-editor-retry] forwarding subAgents:", subAgents.map((a) => a.name));
     }
 
     const stakworkPayload = {
