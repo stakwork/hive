@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { toast } from "sonner";
-import { Search, Plus } from "lucide-react";
+import { Search, Plus, Loader2, Play } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { LingoCard, LingoCardSkeleton } from "./LingoCard";
@@ -13,6 +13,7 @@ import { CreateLingoNodeDialog } from "./CreateLingoNodeDialog";
 import type { LingoNode } from "@/app/api/mock/lingo/nodes";
 import type { NeighborEdge, NeighborNode } from "@/app/api/mock/lingo/neighbors";
 import { useWorkspace } from "@/hooks/useWorkspace";
+import { useWorkspaceAccess } from "@/hooks/useWorkspaceAccess";
 
 interface LingoExplorerProps {
   workspaceSlug: string;
@@ -20,6 +21,7 @@ interface LingoExplorerProps {
 
 export function LingoExplorer({ workspaceSlug }: LingoExplorerProps) {
   const { workspace } = useWorkspace();
+  const { canWrite } = useWorkspaceAccess();
 
   // List state
   const [view, setView] = useState<"list" | "detail">("list");
@@ -39,6 +41,7 @@ export function LingoExplorer({ workspaceSlug }: LingoExplorerProps) {
   const [isAddEdgePanelOpen, setIsAddEdgePanelOpen] = useState(false);
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [isLoadingDetail, setIsLoadingDetail] = useState(false);
+  const [isExtracting, setIsExtracting] = useState(false);
 
   const isFetchingRef = useRef(false);
   const hasMoreRef = useRef(hasMore);
@@ -304,6 +307,27 @@ export function LingoExplorer({ workspaceSlug }: LingoExplorerProps) {
     }
   };
 
+  // ── Lingo extraction ─────────────────────────────────────────────────────
+
+  const handleRunExtraction = async () => {
+    setIsExtracting(true);
+    try {
+      const res = await fetch(
+        `/api/workspaces/${workspaceSlug}/lingo/extract`,
+        { method: "POST" },
+      );
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error ?? "Extraction could not be started");
+      toast("Extraction started", { description: "Lingo nodes will update shortly." });
+    } catch (err) {
+      toast.error("Extraction failed", {
+        description: err instanceof Error ? err.message : "Please try again.",
+      });
+    } finally {
+      setIsExtracting(false);
+    }
+  };
+
   // ── Node creation ─────────────────────────────────────────────────────────
 
   const handleNodeCreated = useCallback(
@@ -331,6 +355,30 @@ export function LingoExplorer({ workspaceSlug }: LingoExplorerProps) {
           <h1 className="text-xl font-bold">Lingo</h1>
           <p className="text-sm text-muted-foreground">Workspace jargon graph</p>
         </div>
+        {/* TODO: expose workspace.janitorConfig?.lingoExtractionEnabled in workspace
+            context payload to gate this button client-side; for now the server returns
+            a user-friendly 400 when the janitor is disabled. */}
+        {canWrite && (
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={handleRunExtraction}
+            disabled={isExtracting}
+            data-testid="run-extraction-button"
+          >
+            {isExtracting ? (
+              <>
+                <Loader2 className="w-4 h-4 mr-1.5 animate-spin" />
+                Running…
+              </>
+            ) : (
+              <>
+                <Play className="w-4 h-4 mr-1.5" />
+                Run Extraction
+              </>
+            )}
+          </Button>
+        )}
         {view === "list" && (
           <Button
             size="sm"
