@@ -355,21 +355,20 @@ export function WorkflowArtifactPanel({ artifacts, isActive, onStepSelect, onVer
       });
     }
 
-    // Prompt items — grouped by promptId, ordered by versionNumber (authoritative monotonic key).
-    // Artifacts created in the same batch can share a createdAt timestamp, so we use
-    // versionSnapshot.versionNumber rather than createdAt for ordering.
-    // For legacy artifacts without versionSnapshot we fall back to artifact array order.
-    const promptGroupMap = new Map<
-      string,
-      {
-        name: string;
-        iterations: import("./changes/ChangesList").PromptIteration[];
-        baselineSnapshot:
-          | { value: string; versionId: string; versionNumber: number }
-          | null
-          | undefined;
-      }
-    >();
+    // Prompt items — grouped by promptId, ordered by versionNumber (authoritative
+    // monotonic key). Artifacts created in the same batch share a createdAt, so
+    // versionNumber — not createdAt — decides the order. Legacy artifacts without
+    // a versionSnapshot keep their array order.
+    //
+    // Ordered oldest→newest the group forms the same chain the WORKFLOW item uses:
+    // baseline → v1 → v2 → … → latest, where the baseline belongs to the EARLIEST
+    // iteration (the task's first change), not to whichever artifact arrived first.
+    type PromptEntry = {
+      iteration: import("./changes/ChangesList").PromptIteration;
+      baselineSnapshot: PublishPromptContent["baselineSnapshot"] | undefined;
+    };
+
+    const promptGroupMap = new Map<string, { name: string; entries: PromptEntry[] }>();
 
     for (const artifact of publishPromptArtifacts) {
       const content = artifact.content as PublishPromptContent;
@@ -378,49 +377,58 @@ export function WorkflowArtifactPanel({ artifacts, isActive, onStepSelect, onVer
       const { promptId, promptVersionId, promptName, versionSnapshot, baselineSnapshot } = content;
 
       if (!promptGroupMap.has(promptId)) {
-        promptGroupMap.set(promptId, {
-          name: promptName || promptId,
-          iterations: [],
-          // Will be set to the earliest iteration's baselineSnapshot
-          baselineSnapshot: undefined,
-        });
+        promptGroupMap.set(promptId, { name: promptName || promptId, entries: [] });
       }
 
-      const group = promptGroupMap.get(promptId)!;
-
-      group.iterations.push({
-        promptVersionId,
-        artifactId: artifact.id,
-        value: versionSnapshot?.value,
-        versionNumber: versionSnapshot?.versionNumber,
+      promptGroupMap.get(promptId)!.entries.push({
+        iteration: {
+          promptVersionId,
+          artifactId: artifact.id,
+          value: versionSnapshot?.value,
+          versionNumber: versionSnapshot?.versionNumber,
+        },
+        baselineSnapshot,
       });
-
-      // Track earliest baselineSnapshot: first artifact in array order with a defined snapshot
-      // (artifacts come in oldest-first order from the DB)
-      if (group.baselineSnapshot === undefined && baselineSnapshot !== undefined) {
-        group.baselineSnapshot = baselineSnapshot;
-      }
     }
 
     for (const [promptId, group] of promptGroupMap) {
-      // Sort iterations by versionNumber ascending (oldest first).
-      // Iterations without a versionNumber keep their original order (legacy fallback).
-      const hasVersionNumbers = group.iterations.some((it) => it.versionNumber !== undefined);
-      if (hasVersionNumbers) {
-        group.iterations.sort(
-          (a, b) => (a.versionNumber ?? Infinity) - (b.versionNumber ?? Infinity),
+      const entries = [...group.entries];
+
+      // Sort by versionNumber ascending (oldest first); entries without one keep
+      // their relative position.
+      if (entries.some((e) => e.iteration.versionNumber !== undefined)) {
+        entries.sort(
+          (a, b) =>
+            (a.iteration.versionNumber ?? Infinity) - (b.iteration.versionNumber ?? Infinity),
         );
       }
 
-      const latestIteration = group.iterations[group.iterations.length - 1];
+      // Collapse duplicates — the same version can land more than once (e.g. a
+      // change artifact followed by the publish artifact for that same version).
+      const seen = new Set<string>();
+      const deduped = entries.filter((e) => {
+        const key =
+          e.iteration.versionNumber !== undefined
+            ? `n:${e.iteration.versionNumber}`
+            : `id:${e.iteration.promptVersionId}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+
+      if (deduped.length === 0) continue;
+
+      const latestIteration = deduped[deduped.length - 1].iteration;
 
       items.push({
         type: "PROMPT",
         name: group.name,
         promptId,
         promptVersionId: latestIteration.promptVersionId,
-        iterations: group.iterations,
-        baselineSnapshot: group.baselineSnapshot,
+        iterations: deduped.map((e) => e.iteration),
+        // undefined = never captured (legacy → live lookup); null = nothing to
+        // compare against (brand-new prompt, all-green).
+        baselineSnapshot: deduped[0].baselineSnapshot,
       });
     }
 

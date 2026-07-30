@@ -4,6 +4,8 @@
  *
  * Tests cover:
  * - Happy path baseline capture
+ * - Chain baseline: the previous PUBLISH_PROMPT artifact in the task wins over
+ *   the published version, and the first artifact still uses the published one
  * - Drift guard (artifact's own version already published → resolve to prior version)
  * - Missing/unsynced prompt row → leave fields unset + log skip
  * - IDOR skip when promptId not linked to task workspace via PromptUsage
@@ -99,7 +101,31 @@ beforeEach(() => {
 
   // Default: artifact.update succeeds
   mockedDb.artifact.update = vi.fn().mockResolvedValue({}) as never;
+
+  // Default: no earlier PUBLISH_PROMPT artifacts in the task → no chain baseline
+  mockedDb.artifact.findMany = vi.fn().mockResolvedValue([]) as never;
+
+  // Default: batch ordering lookup returns nothing (single-artifact messages skip it)
+  mockedDb.promptVersion.findMany = vi.fn().mockResolvedValue([]) as never;
 });
+
+/** A prior enriched PUBLISH_PROMPT artifact row, as resolveChainBaseline reads it. */
+function makePriorArtifact(overrides: {
+  id?: string;
+  promptId?: string;
+  promptVersionId: string;
+  value: string;
+  versionNumber: number;
+}) {
+  return {
+    id: overrides.id ?? `prior-${overrides.promptVersionId}`,
+    content: {
+      promptId: overrides.promptId ?? PROMPT_ID,
+      promptVersionId: overrides.promptVersionId,
+      versionSnapshot: { value: overrides.value, versionNumber: overrides.versionNumber },
+    } as Prisma.JsonValue,
+  };
+}
 
 // ── Tests ──────────────────────────────────────────────────────────────────────
 
@@ -127,6 +153,7 @@ describe("enrichPublishPromptArtifacts", () => {
               value: publishedVersion.value,
               versionId: PUBLISHED_VERSION_ID,
               versionNumber: 1,
+              source: "published",
             },
             versionSnapshot: {
               value: artifactVersion.value,
@@ -136,6 +163,203 @@ describe("enrichPublishPromptArtifacts", () => {
         }),
       }),
     );
+  });
+
+  it("chain: a later artifact is measured against the previous artifact, not the published version", async () => {
+    // The task already produced v2 (captured). This artifact is v3, so its baseline
+    // is v2 — the change immediately before it — even though v1 is still published.
+    const artifactVersion = { id: "pv-v3", value: "v3 text", versionNumber: 3, promptId: PROMPT_ID };
+
+    mockedDb.promptVersion.findUnique = vi.fn().mockResolvedValue(artifactVersion) as never;
+    mockedDb.prompt.findUnique = vi.fn().mockResolvedValue({
+      id: PROMPT_ID,
+      publishedVersionId: PUBLISHED_VERSION_ID,
+      publishedVersion: makePublishedVersion(),
+    }) as never;
+    mockedDb.artifact.findMany = vi.fn().mockResolvedValue([
+      makePriorArtifact({ promptVersionId: "pv-v2", value: "v2 text", versionNumber: 2 }),
+    ]) as never;
+
+    await enrichPublishPromptArtifacts(makeMessage({ promptVersionId: "pv-v3" }), makeTask());
+
+    expect(mockedDb.artifact.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          content: expect.objectContaining({
+            baselineSnapshot: {
+              value: "v2 text",
+              versionId: "pv-v2",
+              versionNumber: 2,
+              source: "chain",
+            },
+          }),
+        }),
+      }),
+    );
+  });
+
+  it("chain: picks the nearest earlier version and ignores later ones", async () => {
+    // Prior artifacts at v2, v4 and v9; this artifact is v5. Only v4 may be the
+    // baseline — v2 is not the nearest and v9 is not earlier at all.
+    const artifactVersion = { id: "pv-v5", value: "v5 text", versionNumber: 5, promptId: PROMPT_ID };
+
+    mockedDb.promptVersion.findUnique = vi.fn().mockResolvedValue(artifactVersion) as never;
+    mockedDb.prompt.findUnique = vi.fn().mockResolvedValue({
+      id: PROMPT_ID,
+      publishedVersionId: PUBLISHED_VERSION_ID,
+      publishedVersion: makePublishedVersion(),
+    }) as never;
+    mockedDb.artifact.findMany = vi.fn().mockResolvedValue([
+      makePriorArtifact({ promptVersionId: "pv-v9", value: "v9 text", versionNumber: 9 }),
+      makePriorArtifact({ promptVersionId: "pv-v2", value: "v2 text", versionNumber: 2 }),
+      makePriorArtifact({ promptVersionId: "pv-v4", value: "v4 text", versionNumber: 4 }),
+    ]) as never;
+
+    await enrichPublishPromptArtifacts(makeMessage({ promptVersionId: "pv-v5" }), makeTask());
+
+    expect(mockedDb.artifact.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          content: expect.objectContaining({
+            baselineSnapshot: expect.objectContaining({ versionId: "pv-v4", source: "chain" }),
+          }),
+        }),
+      }),
+    );
+  });
+
+  it("chain: ignores earlier artifacts belonging to a different prompt", async () => {
+    // Another prompt changed earlier in the same task — it must never become the
+    // baseline for this one, which is still its first change (published wins).
+    const publishedVersion = makePublishedVersion();
+    const artifactVersion = makeArtifactVersion();
+
+    mockedDb.promptVersion.findUnique = vi.fn().mockResolvedValue(artifactVersion) as never;
+    mockedDb.prompt.findUnique = vi.fn().mockResolvedValue({
+      id: PROMPT_ID,
+      publishedVersionId: PUBLISHED_VERSION_ID,
+      publishedVersion,
+    }) as never;
+    mockedDb.artifact.findMany = vi.fn().mockResolvedValue([
+      makePriorArtifact({
+        promptId: "some-other-prompt",
+        promptVersionId: "other-v1",
+        value: "other prompt text",
+        versionNumber: 1,
+      }),
+    ]) as never;
+
+    await enrichPublishPromptArtifacts(makeMessage(), makeTask());
+
+    expect(mockedDb.artifact.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          content: expect.objectContaining({
+            baselineSnapshot: {
+              value: publishedVersion.value,
+              versionId: PUBLISHED_VERSION_ID,
+              versionNumber: 1,
+              source: "published",
+            },
+          }),
+        }),
+      }),
+    );
+  });
+
+  it("chain: ignores earlier artifacts that were never enriched", async () => {
+    // An artifact with no versionSnapshot has no captured text, so it cannot be a
+    // baseline — the published version is used instead.
+    const publishedVersion = makePublishedVersion();
+
+    mockedDb.promptVersion.findUnique = vi.fn().mockResolvedValue(makeArtifactVersion()) as never;
+    mockedDb.prompt.findUnique = vi.fn().mockResolvedValue({
+      id: PROMPT_ID,
+      publishedVersionId: PUBLISHED_VERSION_ID,
+      publishedVersion,
+    }) as never;
+    mockedDb.artifact.findMany = vi.fn().mockResolvedValue([
+      {
+        id: "prior-unenriched",
+        content: { promptId: PROMPT_ID, promptVersionId: "pv-v1" } as Prisma.JsonValue,
+      },
+    ]) as never;
+
+    await enrichPublishPromptArtifacts(makeMessage(), makeTask());
+
+    expect(mockedDb.artifact.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          content: expect.objectContaining({
+            baselineSnapshot: expect.objectContaining({
+              versionId: PUBLISHED_VERSION_ID,
+              source: "published",
+            }),
+          }),
+        }),
+      }),
+    );
+  });
+
+  it("chain: a batch of artifacts is enriched oldest version first", async () => {
+    // Two artifacts arrive in one payload, newest first. They must be walked in
+    // version order so the older one is captured before the newer one looks for it.
+    const message = {
+      id: MSG_ID,
+      taskId: TASK_ID,
+      artifacts: [
+        {
+          id: "artifact-v3",
+          type: ArtifactType.PUBLISH_PROMPT as string,
+          content: { promptId: PROMPT_ID, promptVersionId: "pv-v3" } as Prisma.JsonValue,
+        },
+        {
+          id: "artifact-v2",
+          type: ArtifactType.PUBLISH_PROMPT as string,
+          content: { promptId: PROMPT_ID, promptVersionId: "pv-v2" } as Prisma.JsonValue,
+        },
+      ],
+    };
+
+    mockedDb.promptVersion.findMany = vi.fn().mockResolvedValue([
+      { id: "pv-v3", versionNumber: 3 },
+      { id: "pv-v2", versionNumber: 2 },
+    ]) as never;
+    mockedDb.promptVersion.findUnique = vi.fn().mockImplementation(async ({ where }) =>
+      where.id === "pv-v2"
+        ? { id: "pv-v2", value: "v2 text", versionNumber: 2, promptId: PROMPT_ID }
+        : { id: "pv-v3", value: "v3 text", versionNumber: 3, promptId: PROMPT_ID },
+    ) as never;
+    mockedDb.prompt.findUnique = vi.fn().mockResolvedValue({
+      id: PROMPT_ID,
+      publishedVersionId: PUBLISHED_VERSION_ID,
+      publishedVersion: makePublishedVersion(),
+    }) as never;
+
+    // The v2 artifact is persisted first, so by the time v3 is enriched the chain
+    // lookup can see it.
+    const persisted: Array<{ id: string; content: Prisma.JsonValue }> = [];
+    mockedDb.artifact.findMany = vi.fn().mockImplementation(async () => persisted) as never;
+    mockedDb.artifact.update = vi.fn().mockImplementation(async ({ where, data }) => {
+      persisted.push({ id: where.id, content: data.content });
+      return {};
+    }) as never;
+
+    await enrichPublishPromptArtifacts(message, makeTask());
+
+    expect(persisted.map((p) => p.id)).toEqual(["artifact-v2", "artifact-v3"]);
+
+    const v2Content = persisted[0].content as Record<string, unknown>;
+    const v3Content = persisted[1].content as Record<string, unknown>;
+
+    // First change → published baseline; second change → the first change.
+    expect(v2Content.baselineSnapshot).toMatchObject({ source: "published", versionNumber: 1 });
+    expect(v3Content.baselineSnapshot).toMatchObject({
+      value: "v2 text",
+      versionId: "pv-v2",
+      versionNumber: 2,
+      source: "chain",
+    });
   });
 
   it("drift guard: resolves baseline to the previously-published version via publishedAt", async () => {
@@ -177,6 +401,7 @@ describe("enrichPublishPromptArtifacts", () => {
               value: previouslyPublished.value,
               versionId: previouslyPublished.id,
               versionNumber: 1,
+              source: "published",
             },
           }),
         }),
@@ -223,6 +448,7 @@ describe("enrichPublishPromptArtifacts", () => {
               value: "v2 text",
               versionId: "pv-v2",
               versionNumber: 2,
+              source: "published",
             },
           }),
         }),
@@ -273,6 +499,7 @@ describe("enrichPublishPromptArtifacts", () => {
               value: priorByNumber.value,
               versionId: priorByNumber.id,
               versionNumber: 2,
+              source: "published",
             },
           }),
         }),
@@ -331,6 +558,7 @@ describe("enrichPublishPromptArtifacts", () => {
               value: "published v5 text",
               versionId: "pv-v5",
               versionNumber: 5,
+              source: "published",
             },
           }),
         }),
