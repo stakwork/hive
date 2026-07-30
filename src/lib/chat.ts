@@ -83,6 +83,19 @@ export interface BugReportContent {
   };
 }
 
+/**
+ * A workflow spec captured from Stakwork's version API
+ * (`GET /workflows/:id?workflow_version_id=:vid`) at artifact-ingestion time.
+ *
+ * `value` is always the canonicalised spec string (stable key order) so two
+ * snapshots can be diffed directly. Never mix these with graph-sourced
+ * `workflowJson` — the graph returns a structurally different shape.
+ */
+export interface WorkflowVersionSnapshot {
+  workflowVersionId: string;
+  value: string;
+}
+
 export interface WorkflowContent {
   projectId?: string; // For polling mode (Stakwork project)
   workflowJson?: string | object | null; // For direct rendering from graph (current/updated version)
@@ -94,6 +107,10 @@ export interface WorkflowContent {
   workflowVersionId?: string | number; // Workflow version ID (UUID or numeric) from graph
   projectInfo?: any; // Project data for project debugger mode
   debuggerProjectId?: string; // Project ID for debugger context
+  /** This artifact's own workflow version spec, pulled at ingestion. Absent = legacy/unenriched artifact. */
+  versionSnapshot?: WorkflowVersionSnapshot;
+  /** The version this artifact's change is measured against: the previous WORKFLOW artifact's version, or the task's starting version. null = no prior version (brand-new). */
+  baselineSnapshot?: WorkflowVersionSnapshot | null;
 }
 
 export interface PublishWorkflowContent {
