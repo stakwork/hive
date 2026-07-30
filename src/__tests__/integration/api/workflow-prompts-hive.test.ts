@@ -707,7 +707,11 @@ describe("Hive-native Prompt CRUD + Write-through Sync", () => {
   describe("Delete prompt (DELETE /api/workflow/prompts/[id])", () => {
     test("deletes prompt and cascades to versions", async () => {
       authAs(testUser);
+      // Stakwork fires first on create, then 2 Jarvis graph-recorder calls follow.
       stakworkOkCreate(40);
+      mockFetch
+        .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ status: "success", data: { ref_id: "r1" } }) } as Response)
+        .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ status: "success", data: { ref_id: "r2" } }) } as Response);
       const createRes = await POST(
         makeReq("http://localhost/api/workflow/prompts", "POST", {
           name: "DELETE_PROMPT",
@@ -748,7 +752,11 @@ describe("Hive-native Prompt CRUD + Write-through Sync", () => {
 
     test("Stakwork delete failure is non-fatal", async () => {
       authAs(testUser);
+      // On create: Stakwork push fires first, then graph recorder fires 2 Jarvis /v2/nodes calls.
       stakworkOkCreate(41);
+      mockFetch
+        .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ status: "success", data: { ref_id: "r1" } }) } as Response)
+        .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ status: "success", data: { ref_id: "r2" } }) } as Response);
       const createRes = await POST(
         makeReq("http://localhost/api/workflow/prompts", "POST", {
           name: "DELETE_STAKWORK_FAIL",
@@ -1111,11 +1119,11 @@ describe("Hive-native Prompt CRUD + Write-through Sync", () => {
       expect(body.node_type).toBe("Prompt");
       expect(body.reprocess).toBe(true);
       expect(body.node_data.id).toBe(data.id);
-      expect(body.node_data.prompt_version_id).toBe(data.published_version_id);
       expect(body.node_data.name).toBe("GRAPH_RECORDER_CREATE");
       expect(body.node_data.description).toBe("graph recorder test");
-      expect(body.node_data.value).toBe("initial value");
-      expect(body.node_data.customer_id).toBeNull();
+      expect(body.node_data.body).toBe("initial value");
+      expect(body.node_data.prompt_version_id).toBeUndefined();
+      expect(body.node_data.customer_id).toBeUndefined();
 
       // No old /projects call
       const projectsCall = mockStakworkRequest.mock.calls.find(
@@ -1198,10 +1206,10 @@ describe("Hive-native Prompt CRUD + Write-through Sync", () => {
       expect(jarvisCalls).toHaveLength(2);
 
       const body = JSON.parse((jarvisCalls[0][1] as RequestInit).body as string);
-      expect(body.node_data.prompt_version_id).toBe(v1Id);
-      expect(body.node_data.value).toBe("v1 value");
       expect(body.node_data.id).toBe(created.id);
-      expect(body.node_data.customer_id).toBeNull();
+      expect(body.node_data.body).toBe("v1 value");
+      expect(body.node_data.prompt_version_id).toBeUndefined();
+      expect(body.node_data.customer_id).toBeUndefined();
     });
 
     test("graph recorder failure is swallowed — operation still succeeds", async () => {

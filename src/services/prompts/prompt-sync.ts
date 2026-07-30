@@ -197,19 +197,14 @@ async function pushPublishToStakwork(
  * Single source of truth for field mapping — easy to correct if the schema changes.
  */
 function buildPromptNodeData(
-  prompt: { id: string; name: string; description: string | null; createdAt: Date },
-  versionId: string,
+  prompt: { id: string; name: string; description: string | null },
   value: string,
 ): Record<string, unknown> {
   return {
     id: prompt.id,
-    prompt_id: prompt.id,
-    prompt_version_id: versionId,
     name: prompt.name,
     description: prompt.description ?? "",
-    value,
-    published_at: prompt.createdAt,
-    customer_id: null,
+    body: value,
   };
 }
 
@@ -238,7 +233,7 @@ export async function sendPromptGraphRequest(
   const promptName = prompt.name;
 
   const targets = getPromptGraphTargets();
-  const nodeData = buildPromptNodeData(prompt, versionId, value);
+  const nodeData = buildPromptNodeData(prompt, value);
 
   const results = await Promise.allSettled(
     targets.map(async (target) => {

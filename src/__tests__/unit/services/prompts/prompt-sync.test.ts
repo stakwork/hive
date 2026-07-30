@@ -141,12 +141,12 @@ describe("sendPromptGraphRequest", () => {
       expect(body.node_type).toBe("Prompt");
       expect(body.reprocess).toBe(true);
       expect(body.node_data.id).toBe(BASE_PROMPT.id);
-      expect(body.node_data.prompt_id).toBe(BASE_PROMPT.id);
-      expect(body.node_data.prompt_version_id).toBe(PARAMS.versionId);
       expect(body.node_data.name).toBe(BASE_PROMPT.name);
       expect(body.node_data.description).toBe(BASE_PROMPT.description);
-      expect(body.node_data.value).toBe(PARAMS.value);
-      expect(body.node_data.customer_id).toBeNull();
+      expect(body.node_data.body).toBe(PARAMS.value);
+      expect(body.node_data.prompt_id).toBeUndefined();
+      expect(body.node_data.prompt_version_id).toBeUndefined();
+      expect(body.node_data.customer_id).toBeUndefined();
     }
 
     // Both target URLs must have been called (distinct)
