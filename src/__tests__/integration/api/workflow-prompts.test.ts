@@ -52,6 +52,13 @@ vi.mock("@/lib/service-factory", () => ({
   })),
 }));
 
+vi.mock("@/lib/helpers/prompt-graph-targets", () => ({
+  getPromptGraphTargets: vi.fn(() => [
+    { label: "test-target-1", config: { jarvisUrl: "https://jarvis1.test", apiKey: "key1" } },
+    { label: "test-target-2", config: { jarvisUrl: "https://jarvis2.test", apiKey: "key2" } },
+  ]),
+}));
+
 import { isDevelopmentMode } from "@/lib/runtime";
 
 const mockGetServerSession = getMockedSession();
@@ -383,8 +390,12 @@ describe("POST /api/workflow/prompts Integration Tests", () => {
         createdPromptIds.push(data.data.id);
       });
 
-      expect(mockFetch).toHaveBeenCalledTimes(1);
-      const [url, opts] = mockFetch.mock.calls[0];
+      // Jarvis /v2/nodes calls also go through mockFetch — filter by Stakwork URL.
+      const stakworkCall = mockFetch.mock.calls.find(
+        ([url]: [string]) => typeof url === "string" && url.includes("api.stakwork.test"),
+      );
+      expect(stakworkCall).toBeDefined();
+      const [url, opts] = stakworkCall!;
       expect(url).toContain("https://api.stakwork.test");
       expect(opts.headers).toMatchObject({
         Authorization: "Token token=test-stakwork-key-123",
@@ -899,8 +910,12 @@ describe("PUT /api/workflow/prompts/[id] Integration Tests", () => {
         { params: Promise.resolve({ id: existingPromptId }) },
       );
 
-      expect(mockFetch).toHaveBeenCalledTimes(1);
-      const [, opts] = mockFetch.mock.calls[0];
+      // Jarvis /v2/nodes calls also go through mockFetch — filter by Stakwork URL.
+      const stakworkCall = mockFetch.mock.calls.find(
+        ([url]: [string]) => typeof url === "string" && url.includes("api.stakwork.test"),
+      );
+      expect(stakworkCall).toBeDefined();
+      const [, opts] = stakworkCall!;
       const body = JSON.parse(opts.body as string);
       expect(body.prompt.hive_version_id).toBeTruthy();
       expect(body.prompt.value).toBe("Updated");

@@ -55,7 +55,10 @@ export const optionalEnvVars = {
   STAKWORK_BOUNTY_WORKFLOW_ID: process.env.STAKWORK_BOUNTY_WORKFLOW_ID,
   STAKWORK_DIAGRAM_WORKFLOW_ID: process.env.STAKWORK_DIAGRAM_WORKFLOW_ID,
   STAKWORK_LEARNING_WORKFLOW_ID: process.env.STAKWORK_LEARNING_WORKFLOW_ID,
-  WORKFLOW_GRAPH_PROMPT_STORAGE_ID: process.env.WORKFLOW_GRAPH_PROMPT_STORAGE_ID,
+  // PROMPT_GRAPH_TARGET_* vars are consumed directly by getPromptGraphTargets()
+  // (src/lib/helpers/prompt-graph-targets.ts) and intentionally omitted here —
+  // they contain API tokens and are read via process.env at call-time to avoid
+  // ever serialising them into the config object that is imported widely.
   STAKWORK_PLAN_MODE_WORKFLOW_ID: process.env.STAKWORK_PLAN_MODE_WORKFLOW_ID,
   STAKWORK_EVAL_WORKFLOW_ID: process.env.STAKWORK_EVAL_WORKFLOW_ID,
   STAKWORK_WORKFLOW_ID_LLM_SYNC: process.env.STAKWORK_WORKFLOW_ID_LLM_SYNC,
