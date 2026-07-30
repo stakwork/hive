@@ -27,7 +27,6 @@ vi.mock("@/config/env", () => ({
   config: {
     STAKWORK_BASE_URL: "https://api.stakwork.test",
     STAKWORK_API_KEY: "test-key-usages",
-    WORKFLOW_GRAPH_PROMPT_STORAGE_ID: "",
   },
   optionalEnvVars: {
     STAKWORK_BASE_URL: "https://api.stakwork.test",
