@@ -129,15 +129,38 @@ export interface PublishScriptContent {
   published?: boolean; // Whether the script has been published
 }
 
+/** A prompt version's text captured at artifact-ingestion time, so a diff never drifts when newer versions land later. */
+export interface PromptVersionSnapshot {
+  value: string;
+  versionNumber: number;
+}
+
+/**
+ * The version a PUBLISH_PROMPT artifact's change is measured against.
+ *
+ * `source` says where it came from:
+ *  • "published" — the prompt's published version at ingestion. This is the
+ *    task's *first* change to the prompt, so the published text is the baseline.
+ *  • "chain" — the previous PUBLISH_PROMPT artifact for the same prompt in this
+ *    task. Every change after the first is measured against the one before it.
+ * Absent on artifacts captured before `source` existed (treated as "published").
+ */
+export interface PromptBaselineSnapshot {
+  value: string;
+  versionId: string;
+  versionNumber: number;
+  source?: "published" | "chain";
+}
+
 export interface PublishPromptContent {
   promptId: string; // Prompt ID to publish (Hive cuid)
   promptVersionId: string; // Prompt version ID to publish (Hive cuid)
   promptName?: string; // Prompt name for display
   published?: boolean; // Whether the prompt has been published
-  /** Published baseline captured at ingestion time. null = brand-new prompt (no published version yet). Absent = legacy artifact (use live lookup fallback). */
-  baselineSnapshot?: { value: string; versionId: string; versionNumber: number } | null;
+  /** Baseline captured at ingestion time. null = nothing to compare against (brand-new prompt). Absent = legacy artifact (use live lookup fallback). */
+  baselineSnapshot?: PromptBaselineSnapshot | null;
   /** This artifact's own version value + number captured at ingestion, needed for consecutive step diffs. */
-  versionSnapshot?: { value: string; versionNumber: number };
+  versionSnapshot?: PromptVersionSnapshot;
 }
 
 export interface PublishSkillContent {
