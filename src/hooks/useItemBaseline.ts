@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
+import type { PromptBaselineSnapshot, PromptVersionSnapshot } from "@/lib/chat";
 
 // ── Input types ───────────────────────────────────────────────────────────────
 
@@ -9,10 +10,10 @@ export type ItemBaselineInput =
       type: "PROMPT";
       promptId: string;
       promptVersionId: string;
-      /** Captured published baseline at artifact-ingestion time. null = brand-new prompt. Absent = legacy artifact (live lookup). */
-      baselineSnapshot?: { value: string; versionId: string; versionNumber: number } | null;
+      /** Captured baseline at artifact-ingestion time. null = nothing to compare against. Absent = legacy artifact (live lookup). */
+      baselineSnapshot?: PromptBaselineSnapshot | null;
       /** Captured version value + number for this artifact's own version. Absent = legacy artifact (live lookup). */
-      versionSnapshot?: { value: string; versionNumber: number };
+      versionSnapshot?: PromptVersionSnapshot;
     }
   | { type: "SCRIPT"; scriptId: number; scriptVersionId: number };
 
@@ -201,9 +202,13 @@ export function useItemBaseline(input: ItemBaselineInput): ItemBaselineResult {
     if (input.type === "PROMPT" && input.baselineSnapshot !== undefined) {
       // baselineSnapshot is defined (either a snapshot object or explicit null for new-prompt)
       const baselineValue = input.baselineSnapshot?.value ?? null;
+      // A "chain" baseline is an earlier change within the same task, not what is
+      // live — only a published baseline may be labelled as published.
       const baselineLabel =
         input.baselineSnapshot != null
-          ? `vs published v${input.baselineSnapshot.versionNumber}`
+          ? input.baselineSnapshot.source === "chain"
+            ? `vs v${input.baselineSnapshot.versionNumber}`
+            : `vs published v${input.baselineSnapshot.versionNumber}`
           : null;
       const updatedValue = input.versionSnapshot?.value ?? null;
 
