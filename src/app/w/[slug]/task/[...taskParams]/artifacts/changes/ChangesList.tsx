@@ -1,14 +1,16 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import { FileCode, AlignLeft, Code2, ChevronDown, ChevronRight, Plus, Minus, Layers } from "lucide-react";
 import {
   Collapsible,
   CollapsibleTrigger,
   CollapsibleContent,
 } from "@/components/ui/collapsible";
-import { DiffView } from "./DiffView";
+import { DiffView, computeDiffStats } from "./DiffView";
 import { useItemBaseline } from "@/hooks/useItemBaseline";
+import { usePromptVersionChain } from "@/hooks/usePromptVersionChain";
+import type { PromptBaselineSnapshot } from "@/lib/chat";
 
 // ── Item types ────────────────────────────────────────────────────────────────
 
@@ -50,8 +52,8 @@ export type PromptChangedItem = {
   promptVersionId: string;
   /** Ordered list of all iterations (by versionNumber), oldest first. Absent = legacy single item. */
   iterations?: PromptIteration[];
-  /** Baseline snapshot from the earliest iteration (published version when first change was created). */
-  baselineSnapshot?: { value: string; versionId: string; versionNumber: number } | null;
+  /** What the earliest iteration is measured against — the prompt's published version when the task's first change was made. null = brand-new prompt. */
+  baselineSnapshot?: PromptBaselineSnapshot | null;
 };
 
 export type ScriptChangedItem = {
@@ -65,32 +67,18 @@ export type ChangedItem = WorkflowChangedItem | PromptChangedItem | ScriptChange
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function toStr(v: string | object | null | undefined): string {
-  if (v == null) return "";
-  if (typeof v === "string") return v;
-  return JSON.stringify(v, null, 2);
-}
-
-/** Count add/del lines between two plain strings using the same approach as DiffView. */
+/**
+ * Add/del line counts for the collapsed section header.
+ *
+ * Delegates to DiffView's own counter so the badge always matches the numbers
+ * shown once the section is expanded.
+ */
 export function countAddDel(
   original: string | object | null,
   updated: string | object | null,
 ): { additions: number; deletions: number } {
   if (!updated) return { additions: 0, deletions: 0 };
-
-  // Minimal line-level count — mirrors DiffView logic without importing the whole component
-  const origLines = toStr(original).split("\n");
-  const updLines = toStr(updated).split("\n");
-
-  // Very rough LCS-based count — sufficient for badge display
-  // Reuse diffLines from the "diff" package (same dep as DiffView)
-  // We avoid importing diffLines here; instead we compute a simple heuristic:
-  // additions ≈ lines in updated not in original, deletions ≈ the reverse.
-  // For accuracy we just report: additions = max(0, updLines - origLines), etc.
-  // This is intentionally approximate for the header badge.
-  const additions = Math.max(0, updLines.length - origLines.length);
-  const deletions = Math.max(0, origLines.length - updLines.length);
-  return { additions, deletions };
+  return computeDiffStats(original, updated);
 }
 
 // ── Section icon + label ──────────────────────────────────────────────────────
@@ -130,34 +118,35 @@ function AddDelBadge({
   );
 }
 
-// ── WorkflowStepDiff ──────────────────────────────────────────────────────────
-// One "previous version → this version" diff, collapsible on its own so a long
-// edit history reads as an index you can drill into.
+// ── StepDiff ──────────────────────────────────────────────────────────────────
+// One "previous → this" diff, collapsible on its own so a long edit history
+// reads as an index you can drill into. Shared by workflow versions and prompt
+// iterations — same interaction, different domain labels.
 
-function WorkflowStepDiff({
+function StepDiff({
+  kind,
   index,
-  previous,
-  iteration,
+  label,
+  original,
+  updated,
 }: {
+  kind: "workflow" | "prompt";
   index: number;
-  previous: { workflowVersionId: string; value: string } | null;
-  iteration: WorkflowIteration;
+  label: string;
+  original: string | object | null;
+  updated: string | object | null;
 }) {
-  // Closed by default — the version list reads as an index of what changed when,
-  // and you expand the step you care about.
+  // Closed by default — the list reads as an index of what changed when, and you
+  // expand the step you care about.
   const [open, setOpen] = useState(false);
 
-  const stepLabel = previous
-    ? `v${previous.workflowVersionId} → v${iteration.workflowVersionId}`
-    : `→ v${iteration.workflowVersionId}`;
-
   return (
-    <div data-testid={`workflow-step-${index}`}>
+    <div data-testid={`${kind}-step-${index}`}>
       <button
         type="button"
         className="w-full flex items-center gap-2 px-4 py-2 hover:bg-muted/40 transition-colors text-left"
         onClick={() => setOpen((o) => !o)}
-        data-testid={`workflow-step-toggle-${index}`}
+        data-testid={`${kind}-step-toggle-${index}`}
         aria-expanded={open}
       >
         {open ? (
@@ -165,17 +154,13 @@ function WorkflowStepDiff({
         ) : (
           <ChevronRight className="w-3 h-3 text-muted-foreground flex-shrink-0" />
         )}
-        <span className="text-xs font-mono text-muted-foreground">{stepLabel}</span>
+        <span className="text-xs font-mono text-muted-foreground">{label}</span>
       </button>
 
       {open && (
         <div className="px-4 pb-3">
           <div className="h-60">
-            <DiffView
-              original={previous?.value ?? null}
-              updated={iteration.value}
-              label="workflow"
-            />
+            <DiffView original={original} updated={updated} label={kind} />
           </div>
         </div>
       )}
@@ -245,14 +230,128 @@ function WorkflowSectionBody({ item }: { item: WorkflowChangedItem }) {
 
         {stepsOpen && (
           <div className="divide-y divide-border/60">
-            {iterations.map((iter, idx) => (
-              <WorkflowStepDiff
-                key={iter.workflowVersionId}
-                index={idx}
-                previous={idx === 0 ? item.baselineSnapshot ?? null : iterations[idx - 1]}
-                iteration={iter}
-              />
-            ))}
+            {iterations.map((iter, idx) => {
+              const prev = idx === 0 ? item.baselineSnapshot ?? null : iterations[idx - 1];
+              return (
+                <StepDiff
+                  key={iter.workflowVersionId}
+                  kind="workflow"
+                  index={idx}
+                  label={
+                    prev
+                      ? `v${prev.workflowVersionId} → v${iter.workflowVersionId}`
+                      : `→ v${iter.workflowVersionId}`
+                  }
+                  original={prev?.value ?? null}
+                  updated={iter.value}
+                />
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Names the "before" side of a prompt diff. A baseline captured from the task's
+ * own chain is another change in this task, not what is live — so only a
+ * published baseline is labelled as published.
+ */
+function baselineLabelFor(
+  snapshot: PromptBaselineSnapshot | null | undefined,
+): string | undefined {
+  if (!snapshot) return undefined;
+  return snapshot.source === "chain"
+    ? `vs v${snapshot.versionNumber}`
+    : `vs published v${snapshot.versionNumber}`;
+}
+
+// ── PromptStackedDiff ─────────────────────────────────────────────────────────
+// The prompt equivalent of WorkflowSectionBody's two views over one chain:
+//   • overall — the version the task started from → the latest version
+//   • steps   — previous version → this version, per landed version
+// Both the captured-snapshot path and the live-reconstruction path below feed
+// this same component, so a prompt always reads the same way.
+
+type PromptStep = { key: string; versionNumber?: number; value: string | null };
+
+function PromptStackedDiff({
+  baselineValue,
+  baselineVersionNumber,
+  baselineLabel,
+  steps,
+}: {
+  baselineValue: string | null;
+  baselineVersionNumber?: number;
+  baselineLabel?: string;
+  steps: PromptStep[];
+}) {
+  const [stepsOpen, setStepsOpen] = useState(false);
+
+  const latest = steps[steps.length - 1];
+
+  return (
+    <div className="flex flex-col">
+      {/* Overall diff: baseline → latest ("all changes done") */}
+      <div className="h-80">
+        <DiffView
+          original={baselineValue}
+          updated={latest.value}
+          label="prompt"
+          baselineLabel={baselineLabel}
+        />
+      </div>
+
+      {/* Per-version steps ("each change along the way"), each collapsible.
+          Shown whenever versions landed, so a single change can still be
+          inspected on its own terms. */}
+      <div className="border-t border-border">
+        <button
+          type="button"
+          className="w-full flex items-center gap-2 px-4 py-2 text-xs text-muted-foreground hover:bg-muted/40 transition-colors text-left"
+          onClick={() => setStepsOpen((o) => !o)}
+          data-testid="prompt-steps-toggle"
+        >
+          {stepsOpen ? (
+            <ChevronDown className="w-3 h-3 flex-shrink-0" />
+          ) : (
+            <ChevronRight className="w-3 h-3 flex-shrink-0" />
+          )}
+          <Layers className="w-3 h-3 flex-shrink-0" />
+          <span>
+            {steps.length} iteration{steps.length !== 1 ? "s" : ""}
+            {latest.versionNumber !== undefined ? ` (up to v${latest.versionNumber})` : ""}
+          </span>
+        </button>
+
+        {stepsOpen && (
+          <div className="divide-y divide-border/60">
+            {steps.map((step, idx) => {
+              const prev =
+                idx === 0
+                  ? { value: baselineValue, versionNumber: baselineVersionNumber }
+                  : steps[idx - 1];
+
+              const stepLabel =
+                prev.versionNumber !== undefined && step.versionNumber !== undefined
+                  ? `v${prev.versionNumber} → v${step.versionNumber}`
+                  : step.versionNumber !== undefined
+                    ? `→ v${step.versionNumber}`
+                    : `Step ${idx + 1}`;
+
+              return (
+                <StepDiff
+                  key={step.key}
+                  kind="prompt"
+                  index={idx}
+                  label={stepLabel}
+                  original={prev.value}
+                  updated={step.value}
+                />
+              );
+            })}
           </div>
         )}
       </div>
@@ -261,133 +360,93 @@ function WorkflowSectionBody({ item }: { item: WorkflowChangedItem }) {
 }
 
 // ── PromptSectionBody ─────────────────────────────────────────────────────────
-// Handles both the new stacked multi-iteration case and the legacy single-item fallback.
-// useItemBaseline is called unconditionally (once) and used only for the legacy path;
-// this satisfies React rules-of-hooks regardless of iteration count.
+// Three paths, in order of fidelity:
+//   1. captured snapshots — frozen at ingestion, never drifts
+//   2. live reconstruction — the same stacked view rebuilt from the versions
+//      list, for artifacts that were never enriched
+//   3. legacy single diff — last resort when neither can resolve a chain
+// All hooks are called unconditionally so the path can change between renders.
+
+const NO_ITERATIONS: PromptIteration[] = [];
 
 function PromptSectionBody({ item }: { item: PromptChangedItem }) {
-  const [stepsOpen, setStepsOpen] = useState(false);
+  const iterations = item.iterations ?? NO_ITERATIONS;
 
-  // Always call useItemBaseline — used only when snapshots are absent (legacy path).
-  // For the snapshot path this result is ignored.
+  // Snapshots are only trusted when the whole chain was captured: mixing a
+  // frozen version with a live baseline is how a published change ends up
+  // diffing against itself.
+  const hasSnapshots =
+    iterations.length > 0 &&
+    item.baselineSnapshot !== undefined &&
+    iterations.every((it) => it.value !== undefined);
+
+  const versionIds = useMemo(
+    () => iterations.map((it) => it.promptVersionId),
+    [iterations],
+  );
+
+  // Live reconstruction — runs only when snapshots are missing.
+  const chain = usePromptVersionChain(item.promptId, versionIds, !hasSnapshots);
+
+  // Last-resort single diff. Snapshots are passed through so this never fires a
+  // network call on the snapshot path.
   const legacyBaseline = useItemBaseline({
     type: "PROMPT",
     promptId: item.promptId,
     promptVersionId: item.promptVersionId,
-    // Pass snapshots through when present so the hook skips the network call even here
     baselineSnapshot: item.baselineSnapshot,
-    versionSnapshot: item.iterations?.[item.iterations.length - 1]?.value !== undefined
-      ? {
-          value: item.iterations![item.iterations!.length - 1].value!,
-          versionNumber: item.iterations![item.iterations!.length - 1].versionNumber ?? 0,
-        }
-      : undefined,
+    versionSnapshot:
+      hasSnapshots && iterations.length > 0
+        ? {
+            value: iterations[iterations.length - 1].value!,
+            versionNumber: iterations[iterations.length - 1].versionNumber ?? 0,
+          }
+        : undefined,
   });
 
-  const iterations = item.iterations;
-  const hasIterations = iterations && iterations.length > 0;
-
-  // ── Snapshot path ────────────────────────────────────────────────────────────
-  // We have at least the versionSnapshot on the (latest) iteration.
-  if (hasIterations && iterations[iterations.length - 1].value !== undefined) {
-    const latestIteration = iterations[iterations.length - 1];
-    const latestValue = latestIteration.value!;
-    const latestVersionNumber = latestIteration.versionNumber;
-
-    // baselineSnapshot: undefined = absent field (legacy); null = no published version (new prompt)
-    const baselinePresent = item.baselineSnapshot !== undefined;
-    const baselineValue = item.baselineSnapshot?.value ?? null;
-    const baselineLabel =
-      item.baselineSnapshot != null && item.baselineSnapshot !== undefined
-        ? `vs published v${item.baselineSnapshot.versionNumber}`
-        : undefined;
-
-    const isMultiIteration = iterations.length > 1;
-
+  // ── 1. Captured snapshots ───────────────────────────────────────────────────
+  if (hasSnapshots) {
     return (
-      <div className="flex flex-col">
-        {/* Overall diff: baseline → latest */}
-        <div className="h-80">
-          <DiffView
-            original={baselinePresent ? baselineValue : legacyBaseline.baseline}
-            updated={latestValue}
-            label="prompt"
-            baselineLabel={baselineLabel}
-          />
-        </div>
+      <PromptStackedDiff
+        baselineValue={item.baselineSnapshot?.value ?? null}
+        baselineVersionNumber={item.baselineSnapshot?.versionNumber}
+        baselineLabel={baselineLabelFor(item.baselineSnapshot)}
+        steps={iterations.map((iter) => ({
+          key: iter.promptVersionId,
+          versionNumber: iter.versionNumber,
+          value: iter.value ?? null,
+        }))}
+      />
+    );
+  }
 
-        {/* Consecutive step diffs (expandable) — only when multi-iteration */}
-        {isMultiIteration && (
-          <div className="border-t border-border">
-            <button
-              type="button"
-              className="w-full flex items-center gap-2 px-4 py-2 text-xs text-muted-foreground hover:bg-muted/40 transition-colors text-left"
-              onClick={() => setStepsOpen((o) => !o)}
-              data-testid="prompt-steps-toggle"
-            >
-              {stepsOpen ? (
-                <ChevronDown className="w-3 h-3 flex-shrink-0" />
-              ) : (
-                <ChevronRight className="w-3 h-3 flex-shrink-0" />
-              )}
-              <Layers className="w-3 h-3 flex-shrink-0" />
-              <span>
-                {iterations.length} iteration{iterations.length !== 1 ? "s" : ""}
-                {latestVersionNumber !== undefined
-                  ? ` (up to v${latestVersionNumber})`
-                  : ""}
-              </span>
-            </button>
-
-            {stepsOpen && (
-              <div className="divide-y divide-border/60">
-                {iterations.map((iter, idx) => {
-                  const prevValue =
-                    idx === 0
-                      ? (item.baselineSnapshot?.value ?? null)
-                      : (iterations[idx - 1].value ?? null);
-                  const currValue = iter.value ?? null;
-                  const prevNum =
-                    idx === 0
-                      ? item.baselineSnapshot?.versionNumber
-                      : iterations[idx - 1].versionNumber;
-                  const currNum = iter.versionNumber;
-
-                  const stepLabel =
-                    prevNum !== undefined && currNum !== undefined
-                      ? `v${prevNum} → v${currNum}`
-                      : currNum !== undefined
-                        ? `→ v${currNum}`
-                        : `Step ${idx + 1}`;
-
-                  return (
-                    <div
-                      key={iter.promptVersionId}
-                      className="px-4 py-3"
-                      data-testid={`prompt-step-${idx}`}
-                    >
-                      <div className="text-xs font-mono text-muted-foreground mb-2">
-                        {stepLabel}
-                      </div>
-                      <div className="h-60">
-                        <DiffView
-                          original={prevValue}
-                          updated={currValue}
-                          label="prompt"
-                        />
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-        )}
+  // ── 2. Live reconstruction ──────────────────────────────────────────────────
+  if (chain.isLoading) {
+    return (
+      <div className="flex items-center justify-center p-6">
+        <span className="text-muted-foreground text-sm animate-pulse">Loading diff…</span>
       </div>
     );
   }
 
-  // ── Legacy path: no versionSnapshot — fall back to live lookup ───────────────
+  if (chain.iterations.length > 0) {
+    return (
+      <PromptStackedDiff
+        baselineValue={chain.baseline?.value ?? null}
+        baselineVersionNumber={chain.baseline?.versionNumber}
+        baselineLabel={
+          chain.baseline ? `vs v${chain.baseline.versionNumber}` : undefined
+        }
+        steps={chain.iterations.map((entry) => ({
+          key: entry.versionId,
+          versionNumber: entry.versionNumber,
+          value: entry.value,
+        }))}
+      />
+    );
+  }
+
+  // ── 3. Legacy single diff ───────────────────────────────────────────────────
   const { baseline, updated, isLoading, error, baselineLabel } = legacyBaseline;
 
   if (isLoading) {
@@ -460,20 +519,28 @@ interface CollapsibleChangeSectionProps {
 function CollapsibleChangeSection({ item, defaultOpen }: CollapsibleChangeSectionProps) {
   const [open, setOpen] = useState(defaultOpen);
 
-  // For workflow items we can compute counts synchronously; for prompt/script we
-  // approximate from names/ids (the DiffView itself shows precise counts when expanded).
-  // With captured versions the badge reflects the overall change (start → latest).
-  const stats =
-    item.type === "WORKFLOW"
-      ? item.iterations?.length
+  // Whenever both sides of the overall change are known we can count them here —
+  // that is any workflow item, and any prompt item with captured snapshots. Script
+  // items resolve their sides asynchronously, so they carry no badge.
+  // The counts always describe the overall change (baseline → latest).
+  const stats = useMemo(() => {
+    if (item.type === "WORKFLOW") {
+      return item.iterations?.length
         ? countAddDel(
             item.baselineSnapshot?.value ?? null,
             item.iterations[item.iterations.length - 1].value,
           )
-        : countAddDel(item.originalJson, item.updatedJson)
-      : { additions: 0, deletions: 0 };
+        : countAddDel(item.originalJson, item.updatedJson);
+    }
 
-  const showBadge = item.type === "WORKFLOW";
+    if (item.type === "PROMPT") {
+      const latest = item.iterations?.[item.iterations.length - 1];
+      if (latest?.value === undefined) return null; // legacy: sides come from a live lookup
+      return countAddDel(item.baselineSnapshot?.value ?? null, latest.value);
+    }
+
+    return null;
+  }, [item]);
 
   // Show multi-iteration badge for grouped prompt / multi-version workflow items
   const iterationCount =
@@ -509,7 +576,7 @@ function CollapsibleChangeSection({ item, defaultOpen }: CollapsibleChangeSectio
               {iterationCount}
             </span>
           )}
-          {showBadge && (
+          {stats && (
             <AddDelBadge additions={stats.additions} deletions={stats.deletions} />
           )}
         </button>
