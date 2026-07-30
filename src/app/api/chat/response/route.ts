@@ -182,14 +182,13 @@ export async function POST(request: NextRequest) {
               );
 
               if (updatedWorkflowJson) {
-                const formattedUpdatedJson = updatedWorkflowJson;
-
-                // Update the artifact: refresh workflowJson for the live Editor tab view.
-                // Note: originalWorkflowJson is no longer promoted here — the durable diff
-                // baseline is now stored as publishedWorkflowJson on publish artifacts.
+                // Update the artifact:
+                //   workflowJson       — drives the live Editor tab view (existing).
+                //   versionWorkflowJson — landing-time version-pinned snapshot for diff (new).
                 const updatedContent: WorkflowContent = {
                   ...content,
-                  workflowJson: formattedUpdatedJson,
+                  workflowJson: updatedWorkflowJson,
+                  versionWorkflowJson: updatedWorkflowJson,
                 };
 
                 await db.artifact.update({
@@ -201,17 +200,34 @@ export async function POST(request: NextRequest) {
 
                 // Update the local artifact for the response
                 Object.assign(dbArtifact.content as WorkflowContent, updatedContent);
+
+                console.log("[chat/response] Stored versionWorkflowJson on artifact:", {
+                  artifactId: dbArtifact.id,
+                  workflowId: content.workflowId,
+                  workflowVersionId: content.workflowVersionId,
+                  outcome: "ok",
+                });
               }
             } else {
               const errorText = await workflowResponse.text();
               console.error(
-                "[chat/response] Failed to fetch workflow from graph API:",
-                workflowResponse.status,
-                errorText,
+                "[chat/response] Failed to fetch workflow from graph API — versionWorkflowJson NOT stored:",
+                {
+                  workflowId: content.workflowId,
+                  workflowVersionId: content.workflowVersionId,
+                  status: workflowResponse.status,
+                  body: errorText,
+                  outcome: "failed",
+                },
               );
             }
           } catch (fetchError) {
-            console.error("Error fetching workflow spec:", fetchError);
+            console.error("[chat/response] Threw while fetching workflow version — versionWorkflowJson NOT stored:", {
+              workflowId: content.workflowId,
+              workflowVersionId: content.workflowVersionId,
+              outcome: "failed",
+              error: String(fetchError),
+            });
           }
         }
       }

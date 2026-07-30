@@ -6,7 +6,7 @@
 import { db } from "@/lib/db";
 import { config } from "@/config/env";
 import { ChatRole, ChatStatus, ArtifactType } from "@/lib/chat";
-import { WorkflowStatus, TaskStatus, StakworkRunType } from "@prisma/client";
+import { WorkflowStatus, TaskStatus, StakworkRunType, Prisma } from "@prisma/client";
 import { getBaseUrl } from "@/lib/utils";
 import { transformSwarmUrlToRepo2Graph } from "@/lib/utils/swarm";
 import { getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
@@ -141,12 +141,69 @@ interface WorkflowTaskContext {
  * Seed an initial WORKFLOW-type assistant message + artifact for a newly
  * created workflow-editor task.  Mirrors the artifact shape written by
  * `/api/workflow-editor/route.ts` after a successful Stakwork call.
+ *
+ * Captures the fixed task baseline via fetchLatestWorkflowJson with tri-state:
+ *   string  → real pre-task published baseline.
+ *   null    → fetch succeeded, no published version (brand-new workflow).
+ *   key absent → fetch error / env missing (panel must degrade visibly).
  */
 export async function saveWorkflowArtifact(
   taskId: string,
   workflowContext: WorkflowTaskContext
 ): Promise<void> {
   const { workflowId, workflowName, workflowRefId } = workflowContext;
+
+  // Capture the fixed task baseline before seeding the artifact.
+  // fetchLatestWorkflowJson returns: string (real baseline), null (brand-new / fetch-ok-no-result),
+  // or throws (which we catch below to keep key absent = unknown).
+  let baselineCapture: { baseline: string | null } | undefined;
+  try {
+    const fetched = await fetchLatestWorkflowJson(workflowId);
+    // fetchLatestWorkflowJson returns null both on fetch-error AND on no-nodes.
+    // We need to distinguish "no published version" (null, OK) from "fetch failed" (null, error).
+    // However, fetchLatestWorkflowJson already returns null for both; the caller cannot tell them
+    // apart. Per the architecture we must check env vars first — if env is missing we skip entirely,
+    // otherwise a null return from fetchLatestWorkflowJson means "no published version" (brand-new).
+    const envPresent =
+      !!process.env.STAKWORK_JARVIS_URL && !!process.env.STAKWORK_GRAPH_API_KEY;
+    if (envPresent || workflowId === null) {
+      // Env is set (fetch was attempted) or workflowId is null (new workflow → brand-new)
+      baselineCapture = { baseline: fetched };
+    }
+    // If env is not present, baselineCapture remains undefined → key omitted
+  } catch {
+    // Thrown errors → baseline unknown, key omitted
+    baselineCapture = undefined;
+  }
+
+  const baselineOutcome =
+    baselineCapture === undefined
+      ? "fetch-failed"
+      : baselineCapture.baseline === null
+        ? "brand-new"
+        : "captured";
+
+  console.log("[saveWorkflowArtifact] Baseline capture outcome:", {
+    taskId,
+    workflowId,
+    outcome: baselineOutcome,
+    baselineLength:
+      typeof baselineCapture?.baseline === "string"
+        ? baselineCapture.baseline.length
+        : null,
+  });
+
+  // Build artifact content — only include baselineWorkflowJson when we have a definitive value.
+  const artifactContent: Record<string, unknown> = {
+    workflowId: workflowId ?? null,
+    workflowName: workflowName || (workflowId ? `Workflow ${workflowId}` : "New Workflow"),
+    workflowRefId: workflowRefId || "",
+  };
+  if (baselineCapture !== undefined) {
+    // string or null — both are meaningful tri-state values
+    artifactContent.baselineWorkflowJson = baselineCapture.baseline;
+  }
+  // No originalWorkflowJson: "" — that empty-string sentinel collides with the brand-new null sentinel.
 
   try {
     const newMessage = await db.chatMessage.create({
@@ -157,17 +214,7 @@ export async function saveWorkflowArtifact(
         status: ChatStatus.SENT,
         contextTags: JSON.stringify([]),
         artifacts: {
-          create: [
-            {
-              type: ArtifactType.WORKFLOW,
-              content: {
-                workflowId: workflowId ?? null,
-                workflowName: workflowName || (workflowId ? `Workflow ${workflowId}` : "New Workflow"),
-                workflowRefId: workflowRefId || "",
-                originalWorkflowJson: "",
-              },
-            },
-          ],
+          create: [{ type: ArtifactType.WORKFLOW, content: artifactContent as Prisma.InputJsonValue }],
         },
       },
       include: { artifacts: true },
@@ -387,8 +434,45 @@ export async function triggerWorkflowEditorRun(params: {
       });
 
       try {
-        // Fetch live baseline at run-start time (agent hasn't touched workflow yet)
-        const baselineWorkflowJson = await fetchLatestWorkflowJson(workflowId);
+        // Capture fixed task baseline before agent touches the workflow.
+        // Use same tri-state semantics as saveWorkflowArtifact:
+        //   string  → real pre-task baseline
+        //   null    → brand-new (env present, fetch returned no published version)
+        //   key absent → fetch error / env missing
+        let baselineCapture: { baseline: string | null } | undefined;
+        try {
+          const fetched = await fetchLatestWorkflowJson(workflowId);
+          const envPresent =
+            !!process.env.STAKWORK_JARVIS_URL && !!process.env.STAKWORK_GRAPH_API_KEY;
+          if (envPresent || workflowId === null) {
+            baselineCapture = { baseline: fetched };
+          }
+        } catch {
+          baselineCapture = undefined;
+        }
+
+        const baselineOutcome =
+          baselineCapture === undefined
+            ? "fetch-failed"
+            : baselineCapture.baseline === null
+              ? "brand-new"
+              : "captured";
+
+        console.log("[triggerWorkflowEditorRun] Baseline capture outcome:", {
+          taskId,
+          workflowId,
+          outcome: baselineOutcome,
+        });
+
+        const artifactContent: Record<string, unknown> = {
+          projectId: result.data.project_id.toString(),
+          workflowId: workflowId ?? null,
+          workflowName: workflowName || (workflowId ? `Workflow ${workflowId}` : "New Workflow"),
+          workflowRefId: workflowRefId || "",
+        };
+        if (baselineCapture !== undefined) {
+          artifactContent.baselineWorkflowJson = baselineCapture.baseline;
+        }
 
         const newMessage = await db.chatMessage.create({
           data: {
@@ -398,19 +482,7 @@ export async function triggerWorkflowEditorRun(params: {
             status: ChatStatus.SENT,
             contextTags: JSON.stringify([]),
             artifacts: {
-              create: [
-                {
-                  type: ArtifactType.WORKFLOW,
-                  content: {
-                    projectId: result.data.project_id.toString(),
-                    workflowId: workflowId ?? null,
-                    workflowName: workflowName || (workflowId ? `Workflow ${workflowId}` : "New Workflow"),
-                    workflowRefId: workflowRefId || "",
-                    originalWorkflowJson: "",
-                    ...(baselineWorkflowJson ? { workflowJson: baselineWorkflowJson } : {}),
-                  },
-                },
-              ],
+              create: [{ type: ArtifactType.WORKFLOW, content: artifactContent as Prisma.InputJsonValue }],
             },
           },
           include: { artifacts: true },

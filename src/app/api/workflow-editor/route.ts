@@ -5,7 +5,7 @@ import { authOptions, getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
 import { config } from "@/config/env";
 import { ChatRole, ChatStatus, ArtifactType } from "@/lib/chat";
-import { WorkflowStatus } from "@prisma/client";
+import { WorkflowStatus, Prisma } from "@prisma/client";
 import { getBaseUrl } from "@/lib/utils";
 import { transformSwarmUrlToRepo2Graph } from "@/lib/utils/swarm";
 import { isDevelopmentMode } from "@/lib/runtime";
@@ -305,8 +305,41 @@ export async function POST(request: NextRequest) {
       // Create a new WORKFLOW artifact with the projectId so the panel can poll it
       if (result.data?.project_id) {
         try {
-          // Fetch live baseline at run-start time (agent hasn't touched workflow yet)
-          const baselineWorkflowJson = await fetchLatestWorkflowJson(Number(workflowId));
+          // Capture fixed task baseline before agent touches the workflow.
+          // Tri-state: string = real baseline, null = brand-new, key absent = fetch error.
+          let baselineCapture: { baseline: string | null } | undefined;
+          try {
+            const fetched = await fetchLatestWorkflowJson(Number(workflowId));
+            const envPresent =
+              !!process.env.STAKWORK_JARVIS_URL && !!process.env.STAKWORK_GRAPH_API_KEY;
+            if (envPresent || workflowId === null) {
+              baselineCapture = { baseline: fetched };
+            }
+          } catch {
+            baselineCapture = undefined;
+          }
+
+          const baselineOutcome =
+            baselineCapture === undefined
+              ? "fetch-failed"
+              : baselineCapture.baseline === null
+                ? "brand-new"
+                : "captured";
+          console.log("[workflow-editor/route] Baseline capture outcome:", {
+            taskId,
+            workflowId,
+            outcome: baselineOutcome,
+          });
+
+          const artifactContent: Record<string, unknown> = {
+            projectId: result.data.project_id.toString(),
+            workflowId: workflowId,
+            workflowName: workflowName || `Workflow ${workflowId}`,
+            workflowRefId: workflowRefId || "",
+          };
+          if (baselineCapture !== undefined) {
+            artifactContent.baselineWorkflowJson = baselineCapture.baseline;
+          }
 
           const newMessage = await db.chatMessage.create({
             data: {
@@ -316,19 +349,7 @@ export async function POST(request: NextRequest) {
               status: ChatStatus.SENT,
               contextTags: JSON.stringify([]),
               artifacts: {
-                create: [
-                  {
-                    type: ArtifactType.WORKFLOW,
-                    content: {
-                      projectId: result.data.project_id.toString(),
-                      workflowId: workflowId,
-                      workflowName: workflowName || `Workflow ${workflowId}`,
-                      workflowRefId: workflowRefId || "",
-                      originalWorkflowJson: "",
-                      ...(baselineWorkflowJson ? { workflowJson: baselineWorkflowJson } : {}),
-                    },
-                  },
-                ],
+                create: [{ type: ArtifactType.WORKFLOW, content: artifactContent as Prisma.InputJsonValue }],
               },
             },
             include: {

@@ -86,14 +86,32 @@ export interface BugReportContent {
 export interface WorkflowContent {
   projectId?: string; // For polling mode (Stakwork project)
   workflowJson?: string | object | null; // For direct rendering from graph (current/updated version)
-  originalWorkflowJson?: string | object | null; // Original workflow JSON before changes
-  publishedWorkflowJson?: string | object | null; // Durable snapshot of the just-published workflow JSON (set on publish artifacts)
+  originalWorkflowJson?: string | object | null; // Original workflow JSON before changes (legacy)
+  publishedWorkflowJson?: string | object | null; // Durable snapshot of the just-published workflow JSON (legacy / Editor view)
   workflowId?: number | string; // Workflow ID from graph, or "new" for new workflows
   workflowName?: string; // Optional workflow name
   workflowRefId?: string; // Graph node ref_id
   workflowVersionId?: string | number; // Workflow version ID (UUID or numeric) from graph
   projectInfo?: any; // Project data for project debugger mode
   debuggerProjectId?: string; // Project ID for debugger context
+  /**
+   * Version-pinned JSON captured at landing time (when this artifact was created).
+   * Populated by the chat/response ingestion block (WORKFLOW artifacts) and the
+   * publish route (PUBLISH_WORKFLOW / post-publish WORKFLOW artifacts).
+   * null  = brand-new workflow (no prior published version existed at capture time).
+   * Absent = capture not yet performed (legacy artifact) or fetch failed.
+   */
+  versionWorkflowJson?: string | object | null;
+  /**
+   * Fixed task baseline: the published workflow JSON at task-start time.
+   * Stored ONLY on the seed artifact created when the task first runs.
+   * Tri-state semantics (explicit):
+   *   string  → real pre-task published baseline (diff against this).
+   *   null    → GET succeeded, no published version yet → genuinely brand-new (all-additions view).
+   *   absent  → fetch error / env missing → baseline unknown; panel must degrade visibly,
+   *             NOT render a phantom all-green diff.
+   */
+  baselineWorkflowJson?: string | null;
 }
 
 export interface PublishWorkflowContent {
