@@ -23,7 +23,11 @@ vi.mock("@/config/env", () => ({
   config: {
     STAKWORK_BASE_URL: "https://api.stakwork.test",
     STAKWORK_API_KEY: "test-stakwork-key-123",
-    WORKFLOW_GRAPH_PROMPT_STORAGE_ID: "54286",
+    // Native dual-target graph writer config (replaces WORKFLOW_GRAPH_PROMPT_STORAGE_ID)
+    PROMPT_GRAPH_TARGET_1_URL: "https://jarvis-1.test",
+    PROMPT_GRAPH_TARGET_1_API_KEY: "jarvis-key-t1",
+    PROMPT_GRAPH_TARGET_2_URL: "https://jarvis-2.test",
+    PROMPT_GRAPH_TARGET_2_API_KEY: "jarvis-key-t2",
   },
   optionalEnvVars: {
     STAKWORK_BASE_URL: "https://api.stakwork.test",
@@ -41,22 +45,41 @@ vi.mock("@/lib/auth/nextauth", () => ({
   authOptions: {},
 }));
 
-const mockStakworkRequest = vi.fn().mockResolvedValue({ id: 1 });
-vi.mock("@/lib/service-factory", () => ({
-  stakworkService: vi.fn(() => ({
-    stakworkRequest: mockStakworkRequest,
-  })),
-}));
-
 import { isDevelopmentMode } from "@/lib/runtime";
 import { config } from "@/config/env";
 
 const mockGetServerSession = getMockedSession();
 const mockIsDevelopmentMode = vi.mocked(isDevelopmentMode);
 
-// Mock global fetch for Stakwork /prompts push
+// Mock global fetch for:
+//   - Stakwork /prompts POST/PUT (create/update/publish push)
+//   - Jarvis /v2/nodes POST (graph recorder, two targets)
 global.fetch = vi.fn();
 const mockFetch = global.fetch as ReturnType<typeof vi.fn>;
+
+// ─── Graph recorder fetch helpers ─────────────────────────────────────────────
+
+/** A successful Jarvis /v2/nodes response. */
+function jarvisGraphOk() {
+  return {
+    ok: true,
+    status: 200,
+    json: async () => ({
+      status: "success",
+      data: { ref_id: "node-ref-1" },
+      status_messages: [],
+    }),
+  } as unknown as Response;
+}
+
+/** A failed Jarvis /v2/nodes response. */
+function jarvisGraphFail() {
+  return {
+    ok: false,
+    status: 500,
+    text: async () => "Internal Server Error",
+  } as unknown as Response;
+}
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -91,18 +114,41 @@ function makeAuthReq(
   });
 }
 
+/**
+ * Queue Stakwork create OK + two successful Jarvis graph writes.
+ * Create triggers the graph recorder (create path in writePromptThrough).
+ */
 function stakworkOkCreate(id = 42) {
-  mockFetch.mockResolvedValueOnce({
-    ok: true,
-    json: async () => ({ success: true, data: { id } }),
-  } as Response);
+  mockFetch
+    .mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ success: true, data: { id } }),
+    } as Response)
+    .mockResolvedValueOnce(jarvisGraphOk())
+    .mockResolvedValueOnce(jarvisGraphOk());
 }
 
+/**
+ * Queue Stakwork update OK only.
+ * Update (draft save) does NOT trigger the graph recorder — no graph writes queued.
+ */
 function stakworkOkUpdate() {
   mockFetch.mockResolvedValueOnce({
     ok: true,
     json: async () => ({ success: true }),
+    text: async () => "",
   } as Response);
+}
+
+/**
+ * Queue Stakwork publish OK + two successful Jarvis graph writes.
+ * Publish triggers the graph recorder (publish path in publishVersion).
+ */
+function stakworkOkPublish() {
+  mockFetch
+    .mockResolvedValueOnce({ ok: true, text: async () => "" } as Response)
+    .mockResolvedValueOnce(jarvisGraphOk())
+    .mockResolvedValueOnce(jarvisGraphOk());
 }
 
 function stakworkFail() {
@@ -120,8 +166,6 @@ describe("Hive-native Prompt CRUD + Write-through Sync", () => {
   beforeEach(async () => {
     vi.clearAllMocks();
     mockFetch.mockReset();
-    mockStakworkRequest.mockReset();
-    mockStakworkRequest.mockResolvedValue({ id: 1 });
     mockIsDevelopmentMode.mockReturnValue(false);
 
     testUser = await createTestUser();
@@ -240,7 +284,8 @@ describe("Hive-native Prompt CRUD + Write-through Sync", () => {
       expect(prompt!.publishedVersion!.versionNumber).toBe(1);
 
       // Stakwork was called with hive_version_id nested inside prompt
-      expect(mockFetch).toHaveBeenCalledTimes(1);
+      // fetch calls: [0] = Stakwork POST, [1,2] = Jarvis /v2/nodes graph writes
+      expect(mockFetch).toHaveBeenCalledTimes(3);
       const [url, opts] = mockFetch.mock.calls[0];
       expect(url).toMatch(/\/prompts\//);
       const body = JSON.parse(opts.body as string);
@@ -435,8 +480,17 @@ describe("Hive-native Prompt CRUD + Write-through Sync", () => {
       expect(prompt!.publishedVersion!.value).toBe("original value");
 
       // Stakwork payload uses the new draft version id
-      const updateFetchCall = mockFetch.mock.calls[1]; // second call is the PUT
-      const sentBody = JSON.parse(updateFetchCall[1].body as string);
+      // fetch calls: [0,1,2] = create(Stakwork POST + 2xJarvis), [3] = update Stakwork PUT
+      // find the PUT call specifically (update is a PUT, create is a POST)
+      const updateFetchCall = mockFetch.mock.calls.find(
+        ([url, opts]: [string, RequestInit]) =>
+          typeof url === "string" &&
+          url.includes("/prompts/") &&
+          !url.includes("/v2/nodes") &&
+          opts?.method === "PUT",
+      ) as [string, RequestInit] | undefined;
+      expect(updateFetchCall).toBeDefined();
+      const sentBody = JSON.parse(updateFetchCall![1].body as string);
       expect(sentBody.hive_version_id).toBeUndefined(); // must NOT be top-level
       expect(sentBody.prompt.hive_version_id).toBe(updatedData.current_version_id);
       expect(sentBody.prompt.hive_version_id).not.toBe(originalPublishedVersionId);
@@ -510,8 +564,8 @@ describe("Hive-native Prompt CRUD + Write-through Sync", () => {
       expect(afterUpdate!.value).toBe("v1 value");
       expect(afterUpdate!.publishedVersionId).toBe(v1Id);
 
-      // Publish the draft (v2) as live
-      stakworkOkUpdate(); // best-effort publish push
+      // Publish the draft (v2) as live — triggers graph recorder (needs graph write mocks)
+      stakworkOkPublish();
       const publishRes = await PUBLISH(
         makeAuthReq(`http://localhost/publish`, "POST", testUser),
         { params: Promise.resolve({ id: created.id, versionId: v2Id }) },
@@ -534,10 +588,16 @@ describe("Hive-native Prompt CRUD + Write-through Sync", () => {
       expect(afterPublish!.versions[1].published).toBe(true);  // v2
 
       // Stakwork publish push sends full version content (name, value, description, hive_version_id, published)
-      // 3rd fetch call: create + update PUT + publish
-      const publishFetchCall = mockFetch.mock.calls[2];
+      // find the Stakwork PUT call (URL includes /prompts/N but not /v2/nodes)
+      const publishFetchCall = mockFetch.mock.calls.find(
+        ([url, opts]: [string, RequestInit]) =>
+          typeof url === "string" &&
+          url.includes("/prompts/") &&
+          !url.includes("/v2/nodes") &&
+          opts?.method === "PUT",
+      ) as [string, RequestInit] | undefined;
       expect(publishFetchCall).toBeDefined();
-      const publishBody = JSON.parse(publishFetchCall[1].body as string);
+      const publishBody = JSON.parse(publishFetchCall![1].body as string);
       expect(publishBody.hive_version_id).toBeUndefined();
       expect(publishBody).toEqual({
         prompt: {
@@ -836,8 +896,16 @@ describe("Hive-native Prompt CRUD + Write-through Sync", () => {
       const getData = (await getRes.json()).data;
       expect(getData.agent_names).toEqual(["canvas-agent", "coding-agent"]);
 
-      const updateFetchCall = mockFetch.mock.calls[1];
-      const sentBody = JSON.parse(updateFetchCall[1].body as string);
+      // Find the Stakwork PUT (not a Jarvis /v2/nodes call)
+      const updateFetchCall = mockFetch.mock.calls.find(
+        ([url, opts]: [string, RequestInit]) =>
+          typeof url === "string" &&
+          url.includes("/prompts/") &&
+          !url.includes("/v2/nodes") &&
+          opts?.method === "PUT",
+      ) as [string, RequestInit] | undefined;
+      expect(updateFetchCall).toBeDefined();
+      const sentBody = JSON.parse(updateFetchCall![1].body as string);
       expect(sentBody.prompt.agentNames).toBeUndefined();
       expect(sentBody.prompt.agent_names).toBeUndefined();
       expect((updatedData as Record<string, unknown>).agentNames).toBeUndefined();
@@ -932,8 +1000,16 @@ describe("Hive-native Prompt CRUD + Write-through Sync", () => {
       const data = (await res.json()).data;
       createdPromptIds.push(data.id);
 
-      const [, opts] = mockFetch.mock.calls[0];
-      const sentBody = JSON.parse(opts.body as string);
+      // Find the Stakwork POST to /prompts (not a Jarvis /v2/nodes call)
+      const createFetchCall = mockFetch.mock.calls.find(
+        ([url, opts]: [string, RequestInit]) =>
+          typeof url === "string" &&
+          url.includes("/prompts") &&
+          !url.includes("/v2/nodes") &&
+          opts?.method === "POST",
+      ) as [string, RequestInit] | undefined;
+      expect(createFetchCall).toBeDefined();
+      const sentBody = JSON.parse(createFetchCall![1].body as string);
       expect(sentBody.agentNames).toBeUndefined();
       expect(sentBody.agent_names).toBeUndefined();
       expect(sentBody.prompt.agentNames).toBeUndefined();
@@ -1032,11 +1108,55 @@ describe("Hive-native Prompt CRUD + Write-through Sync", () => {
   });
 
   // ─── Prompt Graph Recorder ───────────────────────────────────────────────────
+  //
+  // The graph recorder now writes the Prompt node natively to two Jarvis /v2/nodes
+  // targets (no Stakwork /projects dispatch).  fetch calls:
+  //   1. Stakwork /prompts POST (create push)
+  //   2. Jarvis target 1 /v2/nodes POST (graph write)
+  //   3. Jarvis target 2 /v2/nodes POST (graph write)
+  // For updates (PUT) the sequence is Stakwork PUT only — graph recorder does NOT fire.
+  // For publish: Stakwork PUT + two graph writes.
 
   describe("Prompt graph recorder (recordPromptOnGraph)", () => {
-    test("create: launches graph-recorder workflow with correct payload shape", async () => {
+
+    /** Return all fetch calls that hit a Jarvis /v2/nodes endpoint. */
+    function graphNodeCalls() {
+      return mockFetch.mock.calls.filter(([url]: [string]) =>
+        typeof url === "string" && url.includes("/v2/nodes"),
+      );
+    }
+
+    /** Stub Stakwork create OK (id) followed by two successful Jarvis graph writes. */
+    function stakworkCreateThenGraphOk(stakworkId = 50) {
+      mockFetch
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ success: true, data: { id: stakworkId } }),
+        } as Response)
+        .mockResolvedValueOnce(jarvisGraphOk())
+        .mockResolvedValueOnce(jarvisGraphOk());
+    }
+
+    /** Stub Stakwork update OK followed by no graph writes (update does NOT fire recorder). */
+    function stakworkUpdateOnly() {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        text: async () => "",
+        json: async () => ({ success: true }),
+      } as Response);
+    }
+
+    /** Stub Stakwork publish PUT OK + two successful Jarvis graph writes. */
+    function stakworkPublishThenGraphOk() {
+      mockFetch
+        .mockResolvedValueOnce({ ok: true, text: async () => "" } as Response)
+        .mockResolvedValueOnce(jarvisGraphOk())
+        .mockResolvedValueOnce(jarvisGraphOk());
+    }
+
+    test("create: writes Prompt node to both graph targets with correct node_data", async () => {
       authAs(testUser);
-      stakworkOkCreate(50);
+      stakworkCreateThenGraphOk(50);
 
       const req = makeReq("http://localhost/api/workflow/prompts", "POST", {
         name: "GRAPH_RECORDER_CREATE",
@@ -1048,31 +1168,33 @@ describe("Hive-native Prompt CRUD + Write-through Sync", () => {
       const data = (await res.json()).data;
       createdPromptIds.push(data.id);
 
-      // Find the graph-recorder call (stakworkRequest for /projects)
-      const graphCall = mockStakworkRequest.mock.calls.find(
-        ([endpoint]: [string]) => endpoint === "/projects",
-      );
-      expect(graphCall).toBeDefined();
-      const [, payload] = graphCall as [string, Record<string, unknown>];
+      // Exactly two /v2/nodes calls must have been made
+      const nodeCalls = graphNodeCalls();
+      expect(nodeCalls).toHaveLength(2);
 
-      expect(payload.workflow_id).toBe(54286);
-      expect(payload.name).toBe(`Prompt Graph Recorder ${data.id}`);
+      // Both must target their respective Jarvis instances
+      const [url1] = nodeCalls[0] as [string];
+      const [url2] = nodeCalls[1] as [string];
+      expect(url1).toContain("https://jarvis-1.test");
+      expect(url2).toContain("https://jarvis-2.test");
 
-      const vars = (payload as { workflow_params: { set_var: { attributes: { vars: { prompt: Record<string, unknown> } } } } })
-        .workflow_params.set_var.attributes.vars.prompt;
-
-      expect(vars.id).toBe(data.id);
-      expect(vars.prompt_id).toBe(data.id);
-      expect(vars.prompt_version_id).toBe(data.published_version_id);
-      expect(vars.name).toBe("GRAPH_RECORDER_CREATE");
-      expect(vars.description).toBe("graph recorder test");
-      expect(vars.value).toBe("initial value");
-      expect(vars.customer_id).toBeNull();
+      // Both must carry the correct node_type and node_data
+      for (const [, opts] of nodeCalls) {
+        const body = JSON.parse((opts as RequestInit).body as string);
+        expect(body.node_type).toBe("Prompt");
+        expect(body.reprocess).toBe(true);
+        expect(body.node_data.id).toBe(data.id);
+        expect(body.node_data.name).toBe("GRAPH_RECORDER_CREATE");
+        expect(body.node_data.description).toBe("graph recorder test");
+        expect(body.node_data.value).toBe("initial value");
+        expect(body.node_data.prompt_version_id).toBe(data.published_version_id);
+        expect(body.node_data.customer_id).toBeNull();
+      }
     });
 
-    test("update (save): does NOT launch graph-recorder (draft must not be recorded as live)", async () => {
+    test("update (save): does NOT fire graph recorder (draft must not be recorded as live)", async () => {
       authAs(testUser);
-      stakworkOkCreate(51);
+      stakworkCreateThenGraphOk(51);
 
       const createRes = await POST(
         makeReq("http://localhost/api/workflow/prompts", "POST", {
@@ -1082,11 +1204,11 @@ describe("Hive-native Prompt CRUD + Write-through Sync", () => {
       );
       const created = (await createRes.json()).data;
       createdPromptIds.push(created.id);
-      // Clear graph-recorder calls from the create step
-      mockStakworkRequest.mockClear();
 
+      // Reset fetch to track only the update's calls
+      mockFetch.mockReset();
       authAs(testUser);
-      stakworkOkUpdate();
+      stakworkUpdateOnly();
 
       const putRes = await PUT(
         makeReq(`http://localhost/api/workflow/prompts/${created.id}`, "PUT", {
@@ -1098,15 +1220,12 @@ describe("Hive-native Prompt CRUD + Write-through Sync", () => {
       expect(putRes.status).toBe(200);
 
       // Graph recorder must NOT have been called on a plain save
-      const graphCall = mockStakworkRequest.mock.calls.find(
-        ([endpoint]: [string]) => endpoint === "/projects",
-      );
-      expect(graphCall).toBeUndefined();
+      expect(graphNodeCalls()).toHaveLength(0);
     });
 
-    test("publish: launches graph-recorder with published version id and value", async () => {
+    test("publish: writes Prompt node to both targets with published version id and value", async () => {
       authAs(testUser);
-      stakworkOkCreate(52);
+      stakworkCreateThenGraphOk(52);
 
       // Create with v1
       const createRes = await POST(
@@ -1119,81 +1238,84 @@ describe("Hive-native Prompt CRUD + Write-through Sync", () => {
       createdPromptIds.push(created.id);
       const v1Id = created.published_version_id as string;
 
-      // Add v2
+      // Add v2 (no graph writes)
+      mockFetch.mockReset();
       authAs(testUser);
-      stakworkOkUpdate();
-      mockStakworkRequest.mockClear();
+      stakworkUpdateOnly();
       await PUT(
         makeReq(`http://localhost/api/workflow/prompts/${created.id}`, "PUT", {
           value: "v2 value",
         }),
         { params: Promise.resolve({ id: created.id }) },
       );
-      mockStakworkRequest.mockClear();
 
-      // Publish v1 (roll back)
+      // Publish v1 (graph writes should fire)
+      mockFetch.mockReset();
+      authAs(testUser);
+      stakworkPublishThenGraphOk();
+
       const publishRes = await PUBLISH(
         makeAuthReq(`http://localhost/api/workflow/prompts/${created.id}/versions/${v1Id}/publish`, "POST", testUser),
         { params: Promise.resolve({ id: created.id, versionId: v1Id }) },
       );
       expect(publishRes.status).toBe(200);
 
-      const graphCall = mockStakworkRequest.mock.calls.find(
-        ([endpoint]: [string]) => endpoint === "/projects",
-      );
-      expect(graphCall).toBeDefined();
-      const [, payload] = graphCall as [string, Record<string, unknown>];
+      const nodeCalls = graphNodeCalls();
+      expect(nodeCalls).toHaveLength(2);
 
-      const vars = (payload as { workflow_params: { set_var: { attributes: { vars: { prompt: Record<string, unknown> } } } } })
-        .workflow_params.set_var.attributes.vars.prompt;
-
-      expect(vars.prompt_version_id).toBe(v1Id);
-      expect(vars.value).toBe("v1 value");
-      expect(vars.id).toBe(created.id);
-      expect(vars.customer_id).toBeNull();
+      for (const [, opts] of nodeCalls) {
+        const body = JSON.parse((opts as RequestInit).body as string);
+        expect(body.node_type).toBe("Prompt");
+        expect(body.node_data.prompt_version_id).toBe(v1Id);
+        expect(body.node_data.value).toBe("v1 value");
+        expect(body.node_data.id).toBe(created.id);
+        expect(body.node_data.customer_id).toBeNull();
+      }
     });
 
-    test("unset env var: graph recorder is skipped, operation still succeeds", async () => {
-      // Override config to remove the workflow id (cast to bypass as const)
+    test("misconfigured targets: graph recorder warns but operation still succeeds", async () => {
+      // Remove target URLs to simulate misconfiguration
       const mutableConfig = config as Record<string, unknown>;
-      const original = mutableConfig.WORKFLOW_GRAPH_PROMPT_STORAGE_ID;
-      mutableConfig.WORKFLOW_GRAPH_PROMPT_STORAGE_ID = undefined;
+      const origUrl1 = mutableConfig.PROMPT_GRAPH_TARGET_1_URL;
+      const origKey1 = mutableConfig.PROMPT_GRAPH_TARGET_1_API_KEY;
+      mutableConfig.PROMPT_GRAPH_TARGET_1_URL = undefined;
+      mutableConfig.PROMPT_GRAPH_TARGET_1_API_KEY = undefined;
 
       authAs(testUser);
-      stakworkOkCreate(53);
+      // Stakwork create, then ONE graph write (only target 2 is configured)
+      mockFetch
+        .mockResolvedValueOnce({ ok: true, json: async () => ({ data: { id: 53 } }) } as Response)
+        .mockResolvedValueOnce(jarvisGraphOk());
 
       const req = makeReq("http://localhost/api/workflow/prompts", "POST", {
         name: "GRAPH_RECORDER_NO_ENV",
         value: "some value",
       });
       const res = await POST(req);
+      // Local write and Stakwork push must still succeed
       expect(res.status).toBe(200);
       const data = (await res.json()).data;
       createdPromptIds.push(data.id);
 
-      // No /projects call should have been made
-      const graphCall = mockStakworkRequest.mock.calls.find(
-        ([endpoint]: [string]) => endpoint === "/projects",
-      );
-      expect(graphCall).toBeUndefined();
-
       // Restore
-      mutableConfig.WORKFLOW_GRAPH_PROMPT_STORAGE_ID = original;
+      mutableConfig.PROMPT_GRAPH_TARGET_1_URL = origUrl1;
+      mutableConfig.PROMPT_GRAPH_TARGET_1_API_KEY = origKey1;
     });
 
-    test("stakworkRequest throws: error is swallowed, operation still succeeds", async () => {
+    test("graph node write fails: error is swallowed, operation still succeeds", async () => {
       authAs(testUser);
-      stakworkOkCreate(54);
-
-      // Graph recorder request will throw
-      mockStakworkRequest.mockRejectedValueOnce(new Error("Graph recorder network error"));
+      // Stakwork create OK, but both graph writes fail
+      mockFetch
+        .mockResolvedValueOnce({ ok: true, json: async () => ({ data: { id: 54 } }) } as Response)
+        .mockResolvedValueOnce(jarvisGraphFail())
+        .mockResolvedValueOnce(jarvisGraphFail());
 
       const req = makeReq("http://localhost/api/workflow/prompts", "POST", {
         name: "GRAPH_RECORDER_THROW",
         value: "value",
       });
       const res = await POST(req);
-      // Must still succeed despite graph recorder throwing
+      // Must still succeed despite graph recorder failing
       expect(res.status).toBe(200);
       const data = (await res.json()).data;
       expect(data.name).toBe("GRAPH_RECORDER_THROW");
@@ -1201,29 +1323,26 @@ describe("Hive-native Prompt CRUD + Write-through Sync", () => {
       createdPromptIds.push(data.id);
     });
 
-    test("graph recorder fires even when /prompts push fails", async () => {
+    test("graph recorder fires even when Stakwork /prompts push fails", async () => {
       authAs(testUser);
-      // Simulate /prompts push failure
-      stakworkFail();
-
-      // Graph recorder will still succeed
-      mockStakworkRequest.mockResolvedValue({ id: 1 });
+      // Stakwork push fails, but graph writes succeed
+      mockFetch
+        .mockRejectedValueOnce(new Error("Stakwork is down"))
+        .mockResolvedValueOnce(jarvisGraphOk())
+        .mockResolvedValueOnce(jarvisGraphOk());
 
       const req = makeReq("http://localhost/api/workflow/prompts", "POST", {
         name: "GRAPH_RECORDER_INDEPENDENT",
         value: "value",
       });
       const res = await POST(req);
-      // Local write succeeds (syncStatus=PENDING)
+      // Local write succeeds (syncStatus=PENDING), graph recorder fires
       expect(res.status).toBe(200);
       const data = (await res.json()).data;
       createdPromptIds.push(data.id);
 
-      // Graph recorder call must still have fired
-      const graphCall = mockStakworkRequest.mock.calls.find(
-        ([endpoint]: [string]) => endpoint === "/projects",
-      );
-      expect(graphCall).toBeDefined();
+      // Both /v2/nodes calls must have been attempted
+      expect(graphNodeCalls()).toHaveLength(2);
     });
   });
 });

@@ -27,7 +27,10 @@ vi.mock("@/config/env", () => ({
   config: {
     STAKWORK_BASE_URL: "https://api.stakwork.test",
     STAKWORK_API_KEY: "test-key-usages",
-    WORKFLOW_GRAPH_PROMPT_STORAGE_ID: "",
+    PROMPT_GRAPH_TARGET_1_URL: "https://jarvis-1.test",
+    PROMPT_GRAPH_TARGET_1_API_KEY: "jarvis-key-t1",
+    PROMPT_GRAPH_TARGET_2_URL: "https://jarvis-2.test",
+    PROMPT_GRAPH_TARGET_2_API_KEY: "jarvis-key-t2",
   },
   optionalEnvVars: {
     STAKWORK_BASE_URL: "https://api.stakwork.test",

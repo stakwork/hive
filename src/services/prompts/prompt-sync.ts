@@ -6,8 +6,9 @@
 import { db } from "@/lib/db";
 import { config } from "@/config/env";
 import { logger } from "@/lib/logger";
-import { stakworkService } from "@/lib/service-factory";
 import { Prisma } from "@prisma/client";
+import { addNode } from "@/services/swarm/api/nodes";
+import { getPromptGraphTargets } from "@/lib/helpers/prompt-graph-targets";
 
 const PROMPT_NAME_REGEX = /^[A-Z0-9_]+$/;
 
@@ -192,10 +193,38 @@ async function pushPublishToStakwork(
 // ─── Graph recorder ───────────────────────────────────────────────────────────
 
 /**
- * Dispatch a Stakwork graph-recorder workflow for the given prompt version.
- * Contains the single-source-of-truth payload shape.
- * Throws on failure — callers decide how to handle errors.
- * No-ops (with a warn log) when WORKFLOW_GRAPH_PROMPT_STORAGE_ID is unset or non-numeric.
+ * Build the node_data payload for a Prompt node write.
+ * Isolated here so the field mapping is easy to correct in one place.
+ */
+function buildPromptNodeData(
+  prompt: { id: string; name: string; description: string | null; createdAt: Date },
+  versionId: string,
+  value: string,
+): Record<string, unknown> {
+  return {
+    id: prompt.id,
+    prompt_id: prompt.id,
+    prompt_version_id: versionId,
+    name: prompt.name,
+    description: prompt.description ?? "",
+    value,
+    published_at: prompt.createdAt,
+    customer_id: null,
+  };
+}
+
+/**
+ * Write the Prompt node natively to both configured graph targets via Jarvis /v2/nodes.
+ *
+ * - Runs both target writes concurrently (Promise.allSettled) to halve worst-case latency.
+ * - addNode returns { success, error } and never throws — result.success is checked per target.
+ * - If either target write fails, throws so recordPromptOnGraph logs the event as failed.
+ *   The caller (recordPromptOnGraph) catches and swallows — graph failure never blocks the save.
+ * - A null target (misconfigured env) counts as a failed write for that target.
+ * - Per-target logging: info on success, warn on failure. API tokens are never logged.
+ *
+ * Keeps the exported name/signature intact — scripts/backfill-prompt-graph.ts imports it
+ * directly and must keep working unmodified.
  */
 export async function sendPromptGraphRequest(
   params: {
@@ -206,42 +235,63 @@ export async function sendPromptGraphRequest(
   },
   trigger: "create" | "update" | "publish",
 ): Promise<void> {
-  const { prompt, versionId, value } = params;
+  const { prompt, versionId, value, workspaceId } = params;
   const promptId = prompt.id;
   const promptName = prompt.name;
 
-  const rawWorkflowId = config.WORKFLOW_GRAPH_PROMPT_STORAGE_ID;
-  if (!rawWorkflowId || !/^\d+$/.test(rawWorkflowId)) {
-    logger.warn(
-      "[prompt-sync] Prompt graph recorder skipped — WORKFLOW_GRAPH_PROMPT_STORAGE_ID not set or non-numeric",
-      "prompt-sync",
-      { promptId, promptName, versionId, trigger, rawWorkflowId },
-    );
-    return;
-  }
+  const targets = getPromptGraphTargets(workspaceId);
+  const nodeData = buildPromptNodeData(prompt, versionId, value);
 
-  await stakworkService().stakworkRequest("/projects", {
-    name: `Prompt Graph Recorder ${prompt.id}`,
-    workflow_id: Number(rawWorkflowId),
-    workflow_params: {
-      set_var: {
-        attributes: {
-          vars: {
-            prompt: {
-              id: prompt.id,
-              prompt_id: prompt.id,
-              prompt_version_id: versionId,
-              name: prompt.name,
-              description: prompt.description ?? "",
-              value,
-              published_at: prompt.createdAt,
-              customer_id: null,
-            },
-          },
-        },
-      },
-    },
+  // Run both target writes concurrently — addNode has a 30s default timeout,
+  // serial writes would double worst-case latency.
+  const results = await Promise.allSettled(
+    targets.map(async (target) => {
+      if (!target) {
+        throw new Error("Target is misconfigured (null) — env vars missing");
+      }
+      const result = await addNode(
+        target.config,
+        { node_type: "Prompt", node_data: nodeData },
+        { reprocess: true },
+      );
+      if (!result.success) {
+        throw new Error(result.error ?? "addNode returned success: false");
+      }
+      return target.label;
+    }),
+  );
+
+  const failures: string[] = [];
+
+  results.forEach((result, i) => {
+    const label = targets[i]?.label ?? `target-${i}`;
+    if (result.status === "fulfilled") {
+      logger.info("[prompt-sync] Prompt graph node written", "prompt-sync", {
+        label,
+        promptId,
+        promptName,
+        versionId,
+        trigger,
+      });
+    } else {
+      const errorMsg = result.reason instanceof Error ? result.reason.message : String(result.reason);
+      logger.warn("[prompt-sync] Prompt graph node write failed", "prompt-sync", {
+        label,
+        promptId,
+        promptName,
+        versionId,
+        trigger,
+        error: errorMsg,
+      });
+      failures.push(label);
+    }
   });
+
+  if (failures.length > 0) {
+    throw new Error(
+      `Prompt graph write failed for target(s): ${failures.join(", ")}`,
+    );
+  }
 }
 
 /**
