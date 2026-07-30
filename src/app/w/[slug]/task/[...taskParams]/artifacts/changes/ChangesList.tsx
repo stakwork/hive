@@ -12,11 +12,24 @@ import { useItemBaseline } from "@/hooks/useItemBaseline";
 
 // ── Item types ────────────────────────────────────────────────────────────────
 
+/** One captured workflow version within a task (oldest first once sorted). */
+export type WorkflowIteration = {
+  workflowVersionId: string;
+  artifactId?: string;
+  /** Canonicalised spec for this version, captured at ingestion. */
+  value: string;
+};
+
 export type WorkflowChangedItem = {
   type: "WORKFLOW";
   name: string;
+  /** Legacy single-diff sides — used when no version iterations were captured. */
   originalJson: string | object | null;
   updatedJson: string | object | null;
+  /** Ordered captured versions, oldest first. Present = stacked-diff path. */
+  iterations?: WorkflowIteration[];
+  /** The version the task started from. null = no prior version to compare against. */
+  baselineSnapshot?: { workflowVersionId: string; value: string } | null;
 };
 
 /** One captured iteration of a prompt change within a task. */
@@ -114,6 +127,136 @@ function AddDelBadge({
         {deletions}
       </span>
     </span>
+  );
+}
+
+// ── WorkflowStepDiff ──────────────────────────────────────────────────────────
+// One "previous version → this version" diff, collapsible on its own so a long
+// edit history reads as an index you can drill into.
+
+function WorkflowStepDiff({
+  index,
+  previous,
+  iteration,
+}: {
+  index: number;
+  previous: { workflowVersionId: string; value: string } | null;
+  iteration: WorkflowIteration;
+}) {
+  // Closed by default — the version list reads as an index of what changed when,
+  // and you expand the step you care about.
+  const [open, setOpen] = useState(false);
+
+  const stepLabel = previous
+    ? `v${previous.workflowVersionId} → v${iteration.workflowVersionId}`
+    : `→ v${iteration.workflowVersionId}`;
+
+  return (
+    <div data-testid={`workflow-step-${index}`}>
+      <button
+        type="button"
+        className="w-full flex items-center gap-2 px-4 py-2 hover:bg-muted/40 transition-colors text-left"
+        onClick={() => setOpen((o) => !o)}
+        data-testid={`workflow-step-toggle-${index}`}
+        aria-expanded={open}
+      >
+        {open ? (
+          <ChevronDown className="w-3 h-3 text-muted-foreground flex-shrink-0" />
+        ) : (
+          <ChevronRight className="w-3 h-3 text-muted-foreground flex-shrink-0" />
+        )}
+        <span className="text-xs font-mono text-muted-foreground">{stepLabel}</span>
+      </button>
+
+      {open && (
+        <div className="px-4 pb-3">
+          <div className="h-60">
+            <DiffView
+              original={previous?.value ?? null}
+              updated={iteration.value}
+              label="workflow"
+            />
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── WorkflowSectionBody ───────────────────────────────────────────────────────
+// Two views over the same captured versions:
+//   • overall  — task's starting version → latest version ("all changes done")
+//   • steps    — previous version → this version, per landed version
+// Falls back to the single originalJson/updatedJson diff for artifacts that
+// predate version snapshots.
+
+function WorkflowSectionBody({ item }: { item: WorkflowChangedItem }) {
+  const [stepsOpen, setStepsOpen] = useState(false);
+
+  const iterations = item.iterations;
+
+  if (!iterations || iterations.length === 0) {
+    return (
+      <div className="h-80">
+        <DiffView original={item.originalJson} updated={item.updatedJson} label="workflow" />
+      </div>
+    );
+  }
+
+  const latest = iterations[iterations.length - 1];
+  // baselineSnapshot: undefined = never captured; null = no prior version (all-green)
+  const baselineValue = item.baselineSnapshot?.value ?? null;
+  const baselineLabel = item.baselineSnapshot
+    ? `vs v${item.baselineSnapshot.workflowVersionId}`
+    : undefined;
+
+  return (
+    <div className="flex flex-col">
+      {/* Overall: starting version → latest version */}
+      <div className="h-80">
+        <DiffView
+          original={baselineValue}
+          updated={latest.value}
+          label="workflow"
+          baselineLabel={baselineLabel}
+        />
+      </div>
+
+      {/* Per-version steps. Shown whenever versions landed, so a single change
+          can still be inspected on its own terms. */}
+      <div className="border-t border-border">
+        <button
+          type="button"
+          className="w-full flex items-center gap-2 px-4 py-2 text-xs text-muted-foreground hover:bg-muted/40 transition-colors text-left"
+          onClick={() => setStepsOpen((o) => !o)}
+          data-testid="workflow-steps-toggle"
+        >
+          {stepsOpen ? (
+            <ChevronDown className="w-3 h-3 flex-shrink-0" />
+          ) : (
+            <ChevronRight className="w-3 h-3 flex-shrink-0" />
+          )}
+          <Layers className="w-3 h-3 flex-shrink-0" />
+          <span>
+            {iterations.length} version{iterations.length !== 1 ? "s" : ""}
+            {` (up to v${latest.workflowVersionId})`}
+          </span>
+        </button>
+
+        {stepsOpen && (
+          <div className="divide-y divide-border/60">
+            {iterations.map((iter, idx) => (
+              <WorkflowStepDiff
+                key={iter.workflowVersionId}
+                index={idx}
+                previous={idx === 0 ? item.baselineSnapshot ?? null : iterations[idx - 1]}
+                iteration={iter}
+              />
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
   );
 }
 
@@ -319,18 +462,25 @@ function CollapsibleChangeSection({ item, defaultOpen }: CollapsibleChangeSectio
 
   // For workflow items we can compute counts synchronously; for prompt/script we
   // approximate from names/ids (the DiffView itself shows precise counts when expanded).
+  // With captured versions the badge reflects the overall change (start → latest).
   const stats =
     item.type === "WORKFLOW"
-      ? countAddDel(item.originalJson, item.updatedJson)
+      ? item.iterations?.length
+        ? countAddDel(
+            item.baselineSnapshot?.value ?? null,
+            item.iterations[item.iterations.length - 1].value,
+          )
+        : countAddDel(item.originalJson, item.updatedJson)
       : { additions: 0, deletions: 0 };
 
   const showBadge = item.type === "WORKFLOW";
 
-  // Show multi-iteration badge for grouped prompt items
-  const isMultiIterationPrompt =
-    item.type === "PROMPT" &&
-    item.iterations !== undefined &&
-    item.iterations.length > 1;
+  // Show multi-iteration badge for grouped prompt / multi-version workflow items
+  const iterationCount =
+    (item.type === "PROMPT" || item.type === "WORKFLOW") && item.iterations
+      ? item.iterations.length
+      : 0;
+  const isMultiIteration = iterationCount > 1;
 
   return (
     <Collapsible open={open} onOpenChange={setOpen} className="border-b border-border last:border-0">
@@ -350,13 +500,13 @@ function CollapsibleChangeSection({ item, defaultOpen }: CollapsibleChangeSectio
             {itemLabel(item.type)}{" "}
             <span className="text-muted-foreground font-normal">— {item.name}</span>
           </span>
-          {isMultiIterationPrompt && (
+          {isMultiIteration && (
             <span
               className="flex items-center gap-1 text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded"
               data-testid="multi-iteration-badge"
             >
               <Layers className="w-3 h-3" />
-              {item.iterations!.length}
+              {iterationCount}
             </span>
           )}
           {showBadge && (
@@ -365,15 +515,7 @@ function CollapsibleChangeSection({ item, defaultOpen }: CollapsibleChangeSectio
         </button>
       </CollapsibleTrigger>
       <CollapsibleContent>
-        {item.type === "WORKFLOW" && (
-          <div className="h-80">
-            <DiffView
-              original={item.originalJson}
-              updated={item.updatedJson}
-              label="workflow"
-            />
-          </div>
-        )}
+        {item.type === "WORKFLOW" && <WorkflowSectionBody item={item} />}
         {item.type === "PROMPT" && <PromptSectionBody item={item} />}
         {item.type === "SCRIPT" && <ScriptSectionBody item={item} />}
       </CollapsibleContent>

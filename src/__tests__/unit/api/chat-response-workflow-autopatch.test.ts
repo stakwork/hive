@@ -122,6 +122,7 @@ describe("POST /api/chat/response — WorkflowTask auto-patch", () => {
 
     mockedDb.workflowTask = {
       upsert: vi.fn().mockResolvedValue({}),
+      findUnique: vi.fn().mockResolvedValue(null),
     } as never;
 
     // Suppress workflow-version graph fetch (no workflowVersionId on artifact)
@@ -175,6 +176,7 @@ describe("POST /api/chat/response — WorkflowTask auto-patch", () => {
 
     mockedDb.workflowTask = {
       upsert: vi.fn().mockResolvedValue({}),
+      findUnique: vi.fn().mockResolvedValue(null),
     } as never;
 
     global.fetch = vi.fn().mockResolvedValue({ ok: false }) as unknown as typeof fetch;
@@ -217,6 +219,7 @@ describe("POST /api/chat/response — WorkflowTask auto-patch", () => {
 
     mockedDb.workflowTask = {
       upsert: vi.fn().mockResolvedValue({}),
+      findUnique: vi.fn().mockResolvedValue(null),
     } as never;
 
     global.fetch = vi.fn().mockResolvedValue({ ok: false }) as unknown as typeof fetch;
@@ -237,11 +240,8 @@ describe("POST /api/chat/response — WorkflowTask auto-patch", () => {
     expect(mockedDb.workflowTask.upsert).not.toHaveBeenCalled();
   });
 
-  test("populates artifact workflowJson from graph node using properties.body", async () => {
-    const taskId = "task-wfe-body";
-
-    process.env.STAKWORK_JARVIS_URL = "http://jarvis.test";
-    process.env.STAKWORK_GRAPH_API_KEY = "test-graph-key";
+  test("snapshots the artifact's version from Stakwork's version API (data.workflow), not the graph", async () => {
+    const taskId = "task-wfe-version";
 
     mockedDb.task.findFirst = vi.fn().mockResolvedValue({
       id: taskId,
@@ -249,40 +249,43 @@ describe("POST /api/chat/response — WorkflowTask auto-patch", () => {
       mode: "workflow_editor",
       assigneeId: null,
       createdById: "user-1",
-      title: "WFE Body Task",
+      title: "WFE Version Task",
     }) as never;
 
-    const workflowBody = '{"transitions":[{"id":"t1"}]}';
-    const artifact = makeWorkflowArtifact({ workflowVersionId: "ver-001" });
+    const artifact = makeWorkflowArtifact({ workflowVersionId: "187946" });
 
     mockedDb.chatMessage.create = vi.fn().mockResolvedValue({
-      id: "msg-body",
+      id: "msg-version",
       taskId,
       artifacts: [artifact],
       attachments: [],
-      task: { id: taskId, title: "WFE Body Task" },
+      task: { id: taskId, title: "WFE Version Task" },
     }) as never;
 
     mockedDb.workflowTask = {
       upsert: vi.fn().mockResolvedValue({}),
+      findUnique: vi.fn().mockResolvedValue({ workflowId: 42 }),
     } as never;
 
+    // No earlier WORKFLOW artifacts in this task → nothing to diff against yet.
     mockedDb.artifact.findMany = vi.fn().mockResolvedValue([]) as never;
     mockedDb.artifact.update = vi.fn().mockResolvedValue({}) as never;
 
-    // Graph API returns node with properties.body instead of properties.workflow_json
+    // `data.workflow` is the compact definition we snapshot; `data.spec` is the
+    // render payload and must be ignored (note transitions is a map there).
     global.fetch = vi.fn().mockResolvedValue({
       ok: true,
       json: async () => ({
-        nodes: [
-          {
-            ref_id: "ref-ver-001",
-            properties: {
-              workflow_version_id: "ver-001",
-              body: workflowBody,
-            },
+        success: true,
+        data: {
+          workflow_version_id: 187946,
+          spec: { transitions: { set_var: { template: "<div/>" } }, connections: [] },
+          workflow: {
+            transitions: [{ name: "SetVar", id: "set_var", attributes: { vars: {} } }],
+            connections: [{ id: "start-set_var", source: "start", target: "set_var" }],
+            version: 2,
           },
-        ],
+        },
       }),
     }) as unknown as typeof fetch;
 
@@ -296,7 +299,7 @@ describe("POST /api/chat/response — WorkflowTask auto-patch", () => {
             workflowId: 42,
             workflowName: "My Workflow",
             workflowRefId: "ref-42",
-            workflowVersionId: "ver-001",
+            workflowVersionId: "187946",
           },
         },
       ],
@@ -304,15 +307,36 @@ describe("POST /api/chat/response — WorkflowTask auto-patch", () => {
 
     await POST(req);
 
+    // Hit the version endpoint — no graph call.
+    const calledUrl = String(vi.mocked(global.fetch).mock.calls[0][0]);
+    expect(calledUrl).toContain("/workflows/42");
+    expect(calledUrl).toContain("workflow_version_id=187946");
+    expect(calledUrl).not.toContain("/api/graph/");
+
     expect(mockedDb.artifact.update).toHaveBeenCalledWith(
       expect.objectContaining({
+        where: { id: "artifact-1" },
         data: expect.objectContaining({
           content: expect.objectContaining({
-            workflowJson: workflowBody,
+            versionSnapshot: expect.objectContaining({ workflowVersionId: "187946" }),
+            baselineSnapshot: null,
           }),
         }),
       }),
     );
+
+    const stored = vi.mocked(mockedDb.artifact.update).mock.calls[0][0].data.content as {
+      workflowJson: string;
+      versionSnapshot: { value: string };
+    };
+
+    // The editor view and the diff share one canonicalised value.
+    expect(stored.workflowJson).toBe(stored.versionSnapshot.value);
+    // Array-shaped transitions prove data.workflow was used, not data.spec.
+    expect(stored.versionSnapshot.value).toContain('"transitions": [');
+    expect(stored.versionSnapshot.value).not.toContain("template");
+    // `version` is metadata — the diff is labelled with workflow version ids.
+    expect(stored.versionSnapshot.value).not.toContain('"version"');
   });
 
   test("returns 401 when API token is missing", async () => {

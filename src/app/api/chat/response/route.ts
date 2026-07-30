@@ -18,8 +18,8 @@ import { processScreenshotUpload, processRecordingUpload } from "@/lib/screensho
 import { parsePlanXml } from "@/lib/utils/plan-xml";
 import { createAndSendNotification } from "@/services/notifications";
 import { fanOutPlannerMessageToCanvas } from "@/services/canvas-planner-fanout";
-import { getWorkflowJsonFromNode } from "@/lib/workflow/get-workflow-json-from-node";
 import { enrichPublishPromptArtifacts } from "@/lib/helpers/prompt-baseline-snapshot";
+import { enrichWorkflowArtifacts } from "@/lib/helpers/workflow-version-snapshot";
 
 export const fetchCache = "force-no-store";
 
@@ -118,8 +118,11 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    // Check for WORKFLOW artifacts with workflowVersionId - fetch updated spec and compare with original
-    // This only applies to workflow_editor mode tasks
+    // WORKFLOW artifact specs are resolved from Stakwork's version API by
+    // enrichWorkflowArtifacts below (see the call after the WorkflowTask upsert).
+    // The graph is deliberately not used: a version created moments earlier is
+    // often not ingested yet, and its node shape differs from the API's, which
+    // makes graph-vs-API diffs pure noise.
     for (const dbArtifact of chatMessage.artifacts) {
       if (dbArtifact.type === ArtifactType.WORKFLOW) {
         const content = dbArtifact.content as WorkflowContent | null;
@@ -128,92 +131,6 @@ export async function POST(request: NextRequest) {
           workflowVersionId: content?.workflowVersionId,
           taskMode,
         });
-        // If we have workflowVersionId and workflowId, fetch the updated workflow spec
-        if (content?.workflowVersionId && content?.workflowId) {
-          try {
-            // Fetch the workflow version from the graph API using workflowVersionId
-            const graphApiUrl = process.env.STAKWORK_JARVIS_URL;
-            const graphApiKey = process.env.STAKWORK_GRAPH_API_KEY;
-
-            if (!graphApiKey) {
-              console.error("STAKWORK_GRAPH_API_KEY not configured");
-              continue;
-            }
-
-            const workflowResponse = await fetch(`${graphApiUrl}/api/graph/search/attributes`, {
-              method: "POST",
-              headers: {
-                "x-api-token": graphApiKey,
-                "Content-Type": "application/json",
-              },
-              body: JSON.stringify({
-                top_node_count: 10,
-                node_type: ["Workflow_version"],
-                include_properties: true,
-                limit: 1,
-                skip: 0,
-                skip_cache: true,
-                search_filters: [
-                  {
-                    attribute: "workflow_version_id",
-                    value: content.workflowVersionId,
-                    comparator: "=",
-                  },
-                ],
-              }),
-            });
-
-            if (workflowResponse.ok) {
-              const workflowResult = await workflowResponse.json();
-              console.log(
-                "[chat/response] Graph API response for workflowVersionId",
-                content.workflowVersionId,
-                ":",
-                JSON.stringify(workflowResult).substring(0, 500),
-              );
-              const workflowVersionNode = workflowResult.nodes?.[0] || workflowResult.data?.[0];
-              const updatedWorkflowJson = getWorkflowJsonFromNode(workflowVersionNode);
-
-              console.log(
-                "[chat/response] Found workflowVersionNode:",
-                !!workflowVersionNode,
-                "updatedWorkflowJson:",
-                !!updatedWorkflowJson,
-              );
-
-              if (updatedWorkflowJson) {
-                const formattedUpdatedJson = updatedWorkflowJson;
-
-                // Update the artifact: refresh workflowJson for the live Editor tab view.
-                // Note: originalWorkflowJson is no longer promoted here — the durable diff
-                // baseline is now stored as publishedWorkflowJson on publish artifacts.
-                const updatedContent: WorkflowContent = {
-                  ...content,
-                  workflowJson: formattedUpdatedJson,
-                };
-
-                await db.artifact.update({
-                  where: { id: dbArtifact.id },
-                  data: {
-                    content: updatedContent as unknown as Prisma.InputJsonValue,
-                  },
-                });
-
-                // Update the local artifact for the response
-                Object.assign(dbArtifact.content as WorkflowContent, updatedContent);
-              }
-            } else {
-              const errorText = await workflowResponse.text();
-              console.error(
-                "[chat/response] Failed to fetch workflow from graph API:",
-                workflowResponse.status,
-                errorText,
-              );
-            }
-          } catch (fetchError) {
-            console.error("Error fetching workflow spec:", fetchError);
-          }
-        }
       }
     }
 
@@ -248,6 +165,18 @@ export async function POST(request: NextRequest) {
             }
           }
         }
+      }
+    }
+
+    // Enrich WORKFLOW artifacts with durable version snapshots pulled from
+    // Stakwork's version API, so the Changes tab can diff each landed version
+    // against the previous one (and against the task's starting version).
+    // Runs after the WorkflowTask upsert so the IDOR guard sees the binding.
+    if (task && chatMessage.artifacts.some((a) => a.type === ArtifactType.WORKFLOW)) {
+      try {
+        await enrichWorkflowArtifacts(chatMessage, task);
+      } catch (enrichError) {
+        console.error("[chat/response] Failed to enrich WORKFLOW artifacts:", enrichError);
       }
     }
 
