@@ -6,7 +6,8 @@
 import { db } from "@/lib/db";
 import { config } from "@/config/env";
 import { logger } from "@/lib/logger";
-import { stakworkService } from "@/lib/service-factory";
+import { addNode } from "@/services/swarm/api/nodes";
+import { getPromptGraphTargets } from "@/lib/helpers/prompt-graph-targets";
 import { Prisma } from "@prisma/client";
 
 const PROMPT_NAME_REGEX = /^[A-Z0-9_]+$/;
@@ -192,10 +193,31 @@ async function pushPublishToStakwork(
 // ─── Graph recorder ───────────────────────────────────────────────────────────
 
 /**
- * Dispatch a Stakwork graph-recorder workflow for the given prompt version.
- * Contains the single-source-of-truth payload shape.
- * Throws on failure — callers decide how to handle errors.
- * No-ops (with a warn log) when WORKFLOW_GRAPH_PROMPT_STORAGE_ID is unset or non-numeric.
+ * Build the node_data payload for a Prompt node write.
+ * Single source of truth for field mapping — easy to correct if the schema changes.
+ */
+function buildPromptNodeData(
+  prompt: { id: string; name: string; description: string | null },
+  value: string,
+): Record<string, unknown> {
+  return {
+    id: prompt.id,
+    name: prompt.name,
+    description: prompt.description ?? "",
+    body: value,
+  };
+}
+
+/**
+ * Write the Prompt node natively to both configured Jarvis graph targets.
+ * Uses addNode with reprocess:true for idempotent upsert (re-create/re-publish
+ * does not create duplicate Prompt nodes).
+ *
+ * Runs both writes concurrently via Promise.allSettled.
+ * Throws if ANY target write fails — callers (recordPromptOnGraph) catch/log
+ * this to preserve the best-effort, non-blocking guarantee.
+ *
+ * Exported so scripts/backfill-prompt-graph.ts can call it directly.
  */
 export async function sendPromptGraphRequest(
   params: {
@@ -210,38 +232,49 @@ export async function sendPromptGraphRequest(
   const promptId = prompt.id;
   const promptName = prompt.name;
 
-  const rawWorkflowId = config.WORKFLOW_GRAPH_PROMPT_STORAGE_ID;
-  if (!rawWorkflowId || !/^\d+$/.test(rawWorkflowId)) {
-    logger.warn(
-      "[prompt-sync] Prompt graph recorder skipped — WORKFLOW_GRAPH_PROMPT_STORAGE_ID not set or non-numeric",
-      "prompt-sync",
-      { promptId, promptName, versionId, trigger, rawWorkflowId },
-    );
-    return;
-  }
+  const targets = getPromptGraphTargets();
+  const nodeData = buildPromptNodeData(prompt, value);
 
-  await stakworkService().stakworkRequest("/projects", {
-    name: `Prompt Graph Recorder ${prompt.id}`,
-    workflow_id: Number(rawWorkflowId),
-    workflow_params: {
-      set_var: {
-        attributes: {
-          vars: {
-            prompt: {
-              id: prompt.id,
-              prompt_id: prompt.id,
-              prompt_version_id: versionId,
-              name: prompt.name,
-              description: prompt.description ?? "",
-              value,
-              published_at: prompt.createdAt,
-              customer_id: null,
-            },
-          },
-        },
-      },
-    },
-  });
+  const results = await Promise.allSettled(
+    targets.map(async (target) => {
+      const result = await addNode(
+        target.config,
+        { node_type: "Prompt", node_data: nodeData },
+        { reprocess: true },
+      );
+
+      if (!result.success) {
+        logger.warn("[prompt-sync] Prompt graph write failed for target", "prompt-sync", {
+          target: target.label,
+          promptId,
+          promptName,
+          versionId,
+          trigger,
+          error: result.error,
+        });
+        throw new Error(result.error ?? `addNode failed for ${target.label}`);
+      }
+
+      logger.info("[prompt-sync] Prompt graph write succeeded for target", "prompt-sync", {
+        target: target.label,
+        promptId,
+        promptName,
+        versionId,
+        trigger,
+      });
+    }),
+  );
+
+  // Surface any target failures so recordPromptOnGraph can log the event as failed.
+  // Partial success (one target written, one failed) is auditable from the per-target logs.
+  const failures = results.filter((r) => r.status === "rejected");
+  if (failures.length > 0) {
+    const errors = failures
+      .map((r) => (r as PromiseRejectedResult).reason)
+      .map((e) => (e instanceof Error ? e.message : String(e)))
+      .join("; ");
+    throw new Error(`Prompt graph write failed for ${failures.length} target(s): ${errors}`);
+  }
 }
 
 /**
