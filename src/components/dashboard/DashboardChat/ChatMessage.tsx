@@ -9,7 +9,7 @@ interface ChatMessageProps {
     role: "user" | "assistant";
     content: string;
     timestamp: Date;
-    imageData?: string;
+    imageData?: string[];
   };
   isStreaming?: boolean;
 }

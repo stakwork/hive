@@ -181,10 +181,10 @@ describe('BugReportSlideout', () => {
       // Trigger the change event
       fireEvent.change(input);
 
-      // Wait for toast to be called
+      // Wait for toast to be called — filename is now prefixed
       await waitFor(() => {
         expect(toast.error).toHaveBeenCalledWith(
-          'Invalid file type. Only JPEG, PNG, GIF, and WebP images are allowed.'
+          'document.pdf: Invalid file type. Only JPEG, PNG, GIF, and WebP images are allowed.'
         );
       }, { timeout: 2000 });
 
@@ -221,7 +221,8 @@ describe('BugReportSlideout', () => {
       fireEvent.change(input);
 
       await waitFor(() => {
-        expect(toast.error).toHaveBeenCalledWith('File size exceeds 10MB limit.');
+        // filename is now prefixed in the error message
+        expect(toast.error).toHaveBeenCalledWith('large.png: File size exceeds 10MB limit.');
       }, { timeout: 2000 });
 
       // File should not be selected
@@ -258,7 +259,8 @@ describe('BugReportSlideout', () => {
 
       await waitFor(() => {
         expect(screen.getByText('screenshot.png')).toBeInTheDocument();
-        expect(screen.getByAltText('Screenshot preview')).toBeInTheDocument();
+        // alt is now the filename, not "Screenshot preview"
+        expect(screen.getByAltText('screenshot.png')).toBeInTheDocument();
       });
     });
 
@@ -278,7 +280,8 @@ describe('BugReportSlideout', () => {
         expect(screen.getByText('screenshot.png')).toBeInTheDocument();
       });
 
-      const removeButton = screen.getByTestId('remove-screenshot-button');
+      // testId is now indexed (remove-screenshot-button-0 for first file)
+      const removeButton = screen.getByTestId('remove-screenshot-button-0');
       await user.click(removeButton);
 
       expect(screen.queryByText('screenshot.png')).not.toBeInTheDocument();
@@ -708,8 +711,8 @@ describe('BugReportSlideout', () => {
         dataTransfer: createDataTransfer([createFile('test.png', 'image/png', 1000)]),
       });
 
-      // Should show "Drop image here" text
-      expect(screen.getByText('Drop image here')).toBeInTheDocument();
+      // Should show "Drop images here" text (plural after multi-file support)
+      expect(screen.getByText('Drop images here')).toBeInTheDocument();
     });
 
     it('should remove visual feedback when drag leaves the upload area', () => {
@@ -722,7 +725,7 @@ describe('BugReportSlideout', () => {
         dataTransfer: createDataTransfer([createFile('test.png', 'image/png', 1000)]),
       });
 
-      expect(screen.getByText('Drop image here')).toBeInTheDocument();
+      expect(screen.getByText('Drop images here')).toBeInTheDocument();
 
       // Simulate drag leave
       fireEvent.dragLeave(dropzone, {
@@ -751,11 +754,11 @@ describe('BugReportSlideout', () => {
         expect(screen.getByText('screenshot.png')).toBeInTheDocument();
       });
 
-      // Preview should be shown
-      expect(screen.getByAltText('Screenshot preview')).toBeInTheDocument();
+      // Preview uses filename as alt text
+      expect(screen.getByAltText('screenshot.png')).toBeInTheDocument();
     });
 
-    it('should show error toast when dropping multiple files', async () => {
+    it('should accept multiple dropped image files', async () => {
       render(<BugReportSlideout open={true} onOpenChange={vi.fn()} />);
 
       const dropzone = screen.getByTestId('bug-screenshot-dropzone');
@@ -768,14 +771,12 @@ describe('BugReportSlideout', () => {
         dataTransfer: createDataTransfer(files),
       });
 
-      await waitFor(() => {
-        expect(toast.error).toHaveBeenCalledWith('Please drop only one image at a time');
-      });
-
-      // Should still accept the first file
+      // Multiple files are now accepted — no error
       await waitFor(() => {
         expect(screen.getByText('screenshot1.png')).toBeInTheDocument();
+        expect(screen.getByText('screenshot2.png')).toBeInTheDocument();
       });
+      expect(toast.error).not.toHaveBeenCalled();
     });
 
     it('should show error toast when dropping non-image files', async () => {
@@ -789,8 +790,9 @@ describe('BugReportSlideout', () => {
       });
 
       await waitFor(() => {
+        // Message updated to plural after multi-file support
         expect(toast.error).toHaveBeenCalledWith(
-          'Please drop an image file (JPEG, PNG, GIF, or WebP)'
+          'Please drop image files (JPEG, PNG, GIF, or WebP)'
         );
       });
 
@@ -809,7 +811,8 @@ describe('BugReportSlideout', () => {
       });
 
       await waitFor(() => {
-        expect(toast.error).toHaveBeenCalledWith('File size exceeds 10MB limit.');
+        // filename is now prefixed in the error message
+        expect(toast.error).toHaveBeenCalledWith('large.png: File size exceeds 10MB limit.');
       });
 
       // No file should be selected
@@ -826,7 +829,7 @@ describe('BugReportSlideout', () => {
       fireEvent.dragEnter(dropzone, {
         dataTransfer: createDataTransfer([file]),
       });
-      expect(screen.getByText('Drop image here')).toBeInTheDocument();
+      expect(screen.getByText('Drop images here')).toBeInTheDocument();
 
       // Drag over
       fireEvent.dragOver(dropzone, {

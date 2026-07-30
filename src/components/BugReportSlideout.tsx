@@ -31,27 +31,30 @@ const ALLOWED_IMAGE_TYPES = [
   "image/webp",
 ];
 
+interface SelectedFile {
+  file: File;
+  previewUrl: string;
+}
+
 export function BugReportSlideout({
   open,
   onOpenChange,
 }: BugReportSlideoutProps) {
   const [description, setDescription] = useState("");
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [selectedFiles, setSelectedFiles] = useState<SelectedFile[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
 
   const { workspace, slug } = useWorkspace();
   const router = useRouter();
 
-  // Cleanup preview URL when file changes or component unmounts
+  // Cleanup all preview URLs on unmount
   useEffect(() => {
     return () => {
-      if (previewUrl) {
-        URL.revokeObjectURL(previewUrl);
-      }
+      selectedFiles.forEach((sf) => URL.revokeObjectURL(sf.previewUrl));
     };
-  }, [previewUrl]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const validateFile = (file: File): string | null => {
     if (!ALLOWED_IMAGE_TYPES.includes(file.type)) {
@@ -63,37 +66,42 @@ export function BugReportSlideout({
     return null;
   };
 
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  const handleFiles = (files: FileList | File[]) => {
+    const fileArray = Array.from(files);
+    const validEntries: SelectedFile[] = [];
 
-    const error = validateFile(file);
-    if (error) {
-      toast.error(error);
-      e.target.value = ""; // Reset input
-      return;
+    for (const file of fileArray) {
+      const error = validateFile(file);
+      if (error) {
+        toast.error(`${file.name}: ${error}`);
+        continue;
+      }
+      validEntries.push({ file, previewUrl: URL.createObjectURL(file) });
     }
 
-    // Clean up previous preview URL
-    if (previewUrl) {
-      URL.revokeObjectURL(previewUrl);
+    if (validEntries.length > 0) {
+      setSelectedFiles((prev) => [...prev, ...validEntries]);
     }
-
-    setSelectedFile(file);
-    setPreviewUrl(URL.createObjectURL(file));
   };
 
-  const handleRemoveFile = () => {
-    if (previewUrl) {
-      URL.revokeObjectURL(previewUrl);
-    }
-    setSelectedFile(null);
-    setPreviewUrl(null);
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!e.target.files || e.target.files.length === 0) return;
+    handleFiles(e.target.files);
+    e.target.value = ""; // Reset so same files can be re-added if removed
+  };
+
+  const handleRemoveFile = (index: number) => {
+    setSelectedFiles((prev) => {
+      const entry = prev[index];
+      if (entry) URL.revokeObjectURL(entry.previewUrl);
+      return prev.filter((_, i) => i !== index);
+    });
   };
 
   const resetForm = () => {
     setDescription("");
-    handleRemoveFile();
+    selectedFiles.forEach((sf) => URL.revokeObjectURL(sf.previewUrl));
+    setSelectedFiles([]);
     setIsSubmitting(false);
   };
 
@@ -107,7 +115,6 @@ export function BugReportSlideout({
   const handleDragLeave = (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
     e.stopPropagation();
-    // Only set dragging to false if we're leaving the container itself
     if (e.currentTarget === e.target) {
       setIsDragging(false);
     }
@@ -126,41 +133,21 @@ export function BugReportSlideout({
     const files = e.dataTransfer.files;
     if (files.length === 0) return;
 
-    // Filter to only image files
     const imageFiles = Array.from(files).filter((file) =>
       ALLOWED_IMAGE_TYPES.includes(file.type)
     );
 
     if (imageFiles.length === 0) {
-      toast.error("Please drop an image file (JPEG, PNG, GIF, or WebP)");
+      toast.error("Please drop image files (JPEG, PNG, GIF, or WebP)");
       return;
     }
 
-    if (imageFiles.length > 1) {
-      toast.error("Please drop only one image at a time");
-    }
-
-    // Use the first image file
-    const file = imageFiles[0];
-    const error = validateFile(file);
-    if (error) {
-      toast.error(error);
-      return;
-    }
-
-    // Clean up previous preview URL
-    if (previewUrl) {
-      URL.revokeObjectURL(previewUrl);
-    }
-
-    setSelectedFile(file);
-    setPreviewUrl(URL.createObjectURL(file));
+    handleFiles(imageFiles);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    // Validation
     if (description.trim().length < 10) {
       toast.error("Description must be at least 10 characters.");
       return;
@@ -194,54 +181,50 @@ export function BugReportSlideout({
       const featureResult = await featureResponse.json();
       const feature = featureResult.data;
 
-      // Step 2: If screenshot attached, upload it and collect attachments
-      let attachments: { path: string; filename: string; mimeType: string; size: number }[] = [];
+      // Step 2: Upload all screenshots sequentially, collect attachments
+      const attachments: { path: string; filename: string; mimeType: string; size: number }[] = [];
 
-      if (selectedFile && feature?.id) {
-        try {
-          // Get presigned upload URL
-          const uploadResponse = await fetch("/api/upload/image", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              featureId: feature.id,
-              filename: selectedFile.name,
-              contentType: selectedFile.type,
-              size: selectedFile.size,
-            }),
-          });
+      if (selectedFiles.length > 0 && feature?.id) {
+        for (const { file } of selectedFiles) {
+          try {
+            const uploadResponse = await fetch("/api/upload/image", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                featureId: feature.id,
+                filename: file.name,
+                contentType: file.type,
+                size: file.size,
+              }),
+            });
 
-          if (!uploadResponse.ok) {
-            const error = await uploadResponse.json();
-            throw new Error(error.message || "Failed to get upload URL");
-          }
+            if (!uploadResponse.ok) {
+              const error = await uploadResponse.json();
+              throw new Error(error.message || "Failed to get upload URL");
+            }
 
-          const { presignedUrl, s3Path } = await uploadResponse.json();
+            const { presignedUrl, s3Path } = await uploadResponse.json();
 
-          // Upload file to S3
-          const s3Response = await fetch(presignedUrl, {
-            method: "PUT",
-            body: selectedFile,
-            headers: {
-              "Content-Type": selectedFile.type,
-            },
-          });
+            const s3Response = await fetch(presignedUrl, {
+              method: "PUT",
+              body: file,
+              headers: { "Content-Type": file.type },
+            });
 
-          if (!s3Response.ok) {
-            throw new Error("Failed to upload screenshot to S3");
-          }
+            if (!s3Response.ok) {
+              throw new Error(`Failed to upload ${file.name} to S3`);
+            }
 
-          attachments = [
-            {
+            attachments.push({
               path: s3Path,
-              filename: selectedFile.name,
-              mimeType: selectedFile.type,
-              size: selectedFile.size,
-            },
-          ];
-        } catch (uploadError) {
-          // Screenshot upload failed — log and fall through with empty attachments
-          console.error("Image upload error:", uploadError);
+              filename: file.name,
+              mimeType: file.type,
+              size: file.size,
+            });
+          } catch (uploadError) {
+            console.error(`Image upload error for ${file.name}:`, uploadError);
+            // Continue with remaining files
+          }
         }
       }
 
@@ -261,7 +244,6 @@ export function BugReportSlideout({
       toast.error(
         error instanceof Error ? error.message : "Failed to submit bug report"
       );
-      // Keep slideout open on error
     } finally {
       setIsSubmitting(false);
     }
@@ -303,74 +285,81 @@ export function BugReportSlideout({
 
             {/* Screenshot Upload */}
             <div className="flex flex-col gap-2">
-              <Label htmlFor="bug-screenshot">Screenshot (optional)</Label>
-              {!selectedFile ? (
-                <div
-                  className="relative"
-                  onDragEnter={handleDragEnter}
-                  onDragLeave={handleDragLeave}
-                  onDragOver={handleDragOver}
-                  onDrop={handleImageDrop}
-                  data-testid="bug-screenshot-dropzone"
-                >
-                  <input
-                    id="bug-screenshot"
-                    type="file"
-                    accept="image/jpeg,image/jpg,image/png,image/gif,image/webp"
-                    onChange={handleFileSelect}
-                    className="hidden"
-                    data-testid="bug-screenshot-input"
-                  />
-                  <label htmlFor="bug-screenshot">
-                    <div
-                      className={cn(
-                        "border-2 border-dashed rounded-md p-6 text-center cursor-pointer transition-colors",
-                        isDragging
-                          ? "border-primary bg-primary/10"
-                          : "border-muted-foreground/25 hover:border-muted-foreground/50"
-                      )}
-                    >
-                      <Upload className="w-8 h-8 mx-auto mb-2 text-muted-foreground" />
-                      <p className="text-sm text-muted-foreground">
-                        {isDragging
-                          ? "Drop image here"
-                          : "Click to upload or drag and drop"}
-                      </p>
-                      <p className="text-xs text-muted-foreground mt-1">
-                        JPEG, PNG, GIF, WebP (max 10MB)
-                      </p>
-                    </div>
-                  </label>
-                </div>
-              ) : (
-                <div className="relative border rounded-md p-2">
-                  <div className="flex items-start gap-2">
-                    {previewUrl && (
-                      <img
-                        src={previewUrl}
-                        alt="Screenshot preview"
-                        className="w-20 h-20 object-cover rounded"
-                      />
+              <Label htmlFor="bug-screenshot">Screenshots (optional)</Label>
+
+              {/* Drop zone — always visible so users can add more files */}
+              <div
+                className="relative"
+                onDragEnter={handleDragEnter}
+                onDragLeave={handleDragLeave}
+                onDragOver={handleDragOver}
+                onDrop={handleImageDrop}
+                data-testid="bug-screenshot-dropzone"
+              >
+                <input
+                  id="bug-screenshot"
+                  type="file"
+                  accept="image/jpeg,image/jpg,image/png,image/gif,image/webp"
+                  onChange={handleFileSelect}
+                  multiple
+                  className="hidden"
+                  data-testid="bug-screenshot-input"
+                />
+                <label htmlFor="bug-screenshot">
+                  <div
+                    className={cn(
+                      "border-2 border-dashed rounded-md p-4 text-center cursor-pointer transition-colors",
+                      isDragging
+                        ? "border-primary bg-primary/10"
+                        : "border-muted-foreground/25 hover:border-muted-foreground/50"
                     )}
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium truncate">
-                        {selectedFile.name}
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        {(selectedFile.size / 1024 / 1024).toFixed(2)} MB
-                      </p>
-                    </div>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      onClick={handleRemoveFile}
-                      className="shrink-0"
-                      data-testid="remove-screenshot-button"
-                    >
-                      <X className="w-4 h-4" />
-                    </Button>
+                  >
+                    <Upload className="w-6 h-6 mx-auto mb-1 text-muted-foreground" />
+                    <p className="text-sm text-muted-foreground">
+                      {isDragging
+                        ? "Drop images here"
+                        : "Click to upload or drag and drop"}
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      JPEG, PNG, GIF, WebP (max 10MB each)
+                    </p>
                   </div>
+                </label>
+              </div>
+
+              {/* Thumbnail chips for selected files */}
+              {selectedFiles.length > 0 && (
+                <div className="flex flex-wrap gap-2 mt-1">
+                  {selectedFiles.map((sf, index) => (
+                    <div
+                      key={index}
+                      className="relative flex items-center gap-2 border rounded-md p-1.5 bg-muted/30 max-w-full"
+                    >
+                      <img
+                        src={sf.previewUrl}
+                        alt={sf.file.name}
+                        className="w-10 h-10 object-cover rounded shrink-0"
+                      />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-medium truncate max-w-[120px]">
+                          {sf.file.name}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          {(sf.file.size / 1024 / 1024).toFixed(2)} MB
+                        </p>
+                      </div>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => handleRemoveFile(index)}
+                        className="shrink-0 h-6 w-6"
+                        data-testid={`remove-screenshot-button-${index}`}
+                      >
+                        <X className="w-3 h-3" />
+                      </Button>
+                    </div>
+                  ))}
                 </div>
               )}
             </div>

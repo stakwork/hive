@@ -12,7 +12,7 @@ interface Message {
   role: "user" | "assistant";
   content: string;
   timestamp: Date;
-  imageData?: string;
+  imageData?: string[];
   toolCalls?: Array<{
     id: string;
     toolName: string;
