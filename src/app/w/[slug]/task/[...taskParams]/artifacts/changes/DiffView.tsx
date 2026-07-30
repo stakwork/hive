@@ -102,6 +102,34 @@ function parseAndFormat(raw: string | object | null): string {
   }
 }
 
+// ── Diff stats ────────────────────────────────────────────────────────────────
+
+/**
+ * Added/removed line counts for a pair of sides, using the same normalisation
+ * DiffView renders with — so a collapsed header badge and the expanded diff can
+ * never disagree.
+ */
+export function computeDiffStats(
+  original: string | object | null,
+  updated: string | object | null,
+): { additions: number; deletions: number } {
+  const normalizedOriginal = parseAndFormat(original);
+  const normalizedUpdated = parseAndFormat(updated);
+
+  if (!normalizedOriginal && !normalizedUpdated) return { additions: 0, deletions: 0 };
+
+  let additions = 0;
+  let deletions = 0;
+
+  for (const part of diffLines(normalizedOriginal, normalizedUpdated) as DiffPart[]) {
+    const lines = part.value.split("\n").filter((l) => l.length > 0).length;
+    if (part.added) additions += lines;
+    if (part.removed) deletions += lines;
+  }
+
+  return { additions, deletions };
+}
+
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 const CONTEXT = 5;
