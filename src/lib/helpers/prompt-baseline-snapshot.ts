@@ -3,6 +3,13 @@
  * captured once at ingestion time, so diffs don't drift when newer versions
  * are published later.
  *
+ * What a baseline is (mirrors the WORKFLOW version chain):
+ *  - The FIRST change to a prompt within a task is measured against the prompt's
+ *    currently published version — "here is what publishing this would change".
+ *  - Every change AFTER that is measured against the previous PUBLISH_PROMPT
+ *    artifact in the same task, so the task reads as a chain of consecutive
+ *    edits rather than N diffs against the same stale published text.
+ *
  * Security contract:
  *  - Only runs for tasks in the "stakwork" workspace (mirrors the gate in
  *    /api/workflow/prompts/[id]/versions/route.ts).
@@ -13,8 +20,14 @@
 
 import { db } from "@/lib/db";
 import { logger } from "@/lib/logger";
-import { ArtifactType, type PublishPromptContent } from "@/lib/chat";
+import {
+  ArtifactType,
+  type PromptBaselineSnapshot,
+  type PublishPromptContent,
+} from "@/lib/chat";
 import { Prisma } from "@prisma/client";
+
+const LOG_CONTEXT = "prompt-baseline-snapshot";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -80,13 +93,108 @@ export async function enrichPublishPromptArtifacts(
   // prompt text.
   const linkedPromptIds = await resolveLinkedPromptIds(task.workspaceId);
 
-  // ── 4. Enrich each artifact ────────────────────────────────────────────────
-  for (const artifact of publishPromptArtifacts) {
+  // ── 4. Enrich each artifact, oldest version first ──────────────────────────
+  // Each artifact's baseline may be the previous artifact's captured version, so
+  // a batch has to be walked in version order for the chain to link up.
+  const ordered = await orderByVersionNumber(publishPromptArtifacts);
+
+  for (const artifact of ordered) {
     await enrichSingleArtifact(artifact, linkedPromptIds, task);
   }
 }
 
 // ── Internal helpers ──────────────────────────────────────────────────────────
+
+/**
+ * Sorts a batch of artifacts by their prompt version number, oldest first.
+ *
+ * Artifacts in one webhook payload share a `createdAt`, so version number is the
+ * only monotonic key available. Artifacts whose version can't be resolved keep
+ * their relative position (the sort is stable).
+ */
+async function orderByVersionNumber(artifacts: ArtifactRow[]): Promise<ArtifactRow[]> {
+  if (artifacts.length < 2) return artifacts;
+
+  const versionIds = artifacts
+    .map((a) => (a.content as PublishPromptContent | null)?.promptVersionId)
+    .filter((id): id is string => typeof id === "string" && id.length > 0);
+
+  if (versionIds.length === 0) return artifacts;
+
+  const versions = await db.promptVersion.findMany({
+    where: { id: { in: versionIds } },
+    select: { id: true, versionNumber: true },
+  });
+
+  const numberById = new Map(versions.map((v) => [v.id, v.versionNumber]));
+
+  return artifacts
+    .map((artifact, index) => {
+      const versionId = (artifact.content as PublishPromptContent | null)?.promptVersionId;
+      return {
+        artifact,
+        index,
+        versionNumber: versionId ? numberById.get(versionId) : undefined,
+      };
+    })
+    .sort((a, b) => {
+      if (a.versionNumber === undefined || b.versionNumber === undefined) {
+        return a.index - b.index;
+      }
+      return a.versionNumber - b.versionNumber || a.index - b.index;
+    })
+    .map((entry) => entry.artifact);
+}
+
+/**
+ * The previous change to this prompt within the same task: the captured version
+ * with the highest number strictly below this artifact's own.
+ *
+ * Returns null when this is the task's first change to the prompt — the caller
+ * then falls back to the prompt's published version.
+ *
+ * Ordering is by version number rather than `createdAt` because artifacts from
+ * one webhook payload share a timestamp. Only artifacts that already carry a
+ * `versionSnapshot` count, so an unenriched artifact never becomes a baseline.
+ */
+async function resolveChainBaseline(
+  taskId: string,
+  currentArtifactId: string,
+  promptId: string,
+  currentVersionNumber: number,
+): Promise<PromptBaselineSnapshot | null> {
+  const priorArtifacts = await db.artifact.findMany({
+    where: {
+      type: ArtifactType.PUBLISH_PROMPT,
+      id: { not: currentArtifactId },
+      message: { taskId },
+    },
+    select: { id: true, content: true },
+  });
+
+  let best: PromptBaselineSnapshot | null = null;
+
+  for (const prior of priorArtifacts) {
+    const content = prior.content as PublishPromptContent | null;
+    if (!content || content.promptId !== promptId || !content.promptVersionId) continue;
+
+    const snapshot = content.versionSnapshot;
+    if (typeof snapshot?.value !== "string" || typeof snapshot.versionNumber !== "number") {
+      continue;
+    }
+    if (snapshot.versionNumber >= currentVersionNumber) continue;
+    if (best && snapshot.versionNumber <= best.versionNumber) continue;
+
+    best = {
+      value: snapshot.value,
+      versionId: content.promptVersionId,
+      versionNumber: snapshot.versionNumber,
+      source: "chain",
+    };
+  }
+
+  return best;
+}
 
 /**
  * Returns the Set of promptIds legitimately linked to `workspaceId` via
@@ -192,9 +300,29 @@ async function enrichSingleArtifact(
     versionNumber: thisVersion.versionNumber,
   };
 
-  let baselineSnapshot: { value: string; versionId: string; versionNumber: number } | null = null;
+  // ── Baseline ───────────────────────────────────────────────────────────────
+  // The previous change in this task wins: after the first artifact, each change
+  // is measured against the one before it. Only when this is the task's first
+  // change to the prompt do we fall back to the published version below.
+  let baselineSnapshot: PromptBaselineSnapshot | null = await resolveChainBaseline(
+    task.id,
+    artifact.id,
+    promptId,
+    thisVersion.versionNumber,
+  );
 
-  if (!prompt.publishedVersion) {
+  if (baselineSnapshot) {
+    logger.info(
+      "[prompt-baseline-snapshot] Baseline resolved to the previous change in this task",
+      LOG_CONTEXT,
+      {
+        promptId,
+        taskId: task.id,
+        baselineVersionNumber: baselineSnapshot.versionNumber,
+        versionNumber: thisVersion.versionNumber,
+      },
+    );
+  } else if (!prompt.publishedVersion) {
     // Brand-new prompt — no published version yet.
     logger.info(
       "[prompt-baseline-snapshot] No published baseline (new prompt)",
@@ -222,6 +350,7 @@ async function enrichSingleArtifact(
         value: previouslyPublished.value,
         versionId: previouslyPublished.id,
         versionNumber: previouslyPublished.versionNumber,
+        source: "published",
       };
       logger.info(
         "[prompt-baseline-snapshot] Drift guard applied — baseline resolved to previously published version",
@@ -245,6 +374,7 @@ async function enrichSingleArtifact(
           value: priorByNumber.value,
           versionId: priorByNumber.id,
           versionNumber: priorByNumber.versionNumber,
+          source: "published",
         };
         logger.info(
           "[prompt-baseline-snapshot] Drift guard applied — no publishedAt history, baseline resolved to prior version by number",
@@ -267,6 +397,7 @@ async function enrichSingleArtifact(
       value: prompt.publishedVersion.value,
       versionId: prompt.publishedVersion.id,
       versionNumber: prompt.publishedVersion.versionNumber,
+      source: "published",
     };
     logger.info(
       "[prompt-baseline-snapshot] Captured baseline snapshot",
