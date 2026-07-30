@@ -757,13 +757,17 @@ describe("Hive-native Prompt CRUD + Write-through Sync", () => {
       mockFetch
         .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ status: "success", data: { ref_id: "r1" } }) } as Response)
         .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ status: "success", data: { ref_id: "r2" } }) } as Response);
+      // Use a unique name to avoid conflicts from previous test runs
+      const deleteName = `DELETE_STAKWORK_FAIL_${Date.now()}`;
       const createRes = await POST(
         makeReq("http://localhost/api/workflow/prompts", "POST", {
-          name: "DELETE_STAKWORK_FAIL",
+          name: deleteName,
           value: "value",
         }),
       );
+      expect(createRes.status).toBe(200);
       const created = (await createRes.json()).data;
+      createdPromptIds.push(created.id); // ensure cleanup even if test fails
 
       // Set a stakworkId so the delete push is attempted
       await db.prompt.update({
