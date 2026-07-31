@@ -577,6 +577,16 @@ function ScriptSectionBody({ item }: { item: ScriptChangedItem }) {
     );
   }
 
+  // The legacy path below reads the same endpoints the chain just failed on, so
+  // retrying it would only repeat the failure under a vaguer message.
+  if (chain.error) {
+    return (
+      <div className="flex items-center justify-center p-6">
+        <span className="text-destructive text-sm">{chain.error}</span>
+      </div>
+    );
+  }
+
   // ── 3. Legacy single diff ───────────────────────────────────────────────────
   const { baseline, updated, isLoading, error } = legacyBaseline;
 

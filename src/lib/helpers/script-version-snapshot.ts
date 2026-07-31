@@ -145,6 +145,34 @@ export async function fetchScriptVersion(
   };
 }
 
+/**
+ * Fetches a version identified by either its version *id* or its version
+ * *number*.
+ *
+ * The two are easy to confuse — Stakwork's per-version endpoint is keyed by id
+ * (302), while everything a human reads talks in numbers (v2) — and a payload
+ * carrying the number 404s against an id-keyed route. When the direct lookup
+ * misses we resolve the value against the version list and retry with the id.
+ */
+async function fetchScriptVersionByIdOrNumber(
+  scriptId: number | string,
+  idOrNumber: number,
+): Promise<ScriptVersion | undefined> {
+  const direct = await fetchScriptVersion(scriptId, idOrNumber);
+  if (direct) return direct;
+
+  const match = (await fetchVersionList(scriptId)).find((v) => v.version_number === idOrNumber);
+  if (!match || match.id === idOrNumber) return undefined;
+
+  logger.info("Resolved a version number to its version id", LOG_CONTEXT, {
+    scriptId,
+    versionNumber: idOrNumber,
+    versionId: match.id,
+  });
+
+  return fetchScriptVersion(scriptId, match.id);
+}
+
 /** The script's published version id, or null when nothing is published yet. */
 async function fetchPublishedVersionId(scriptId: number | string): Promise<number | null> {
   const data = await stakworkGet<{ published_version_id?: number | null }>(
@@ -231,7 +259,7 @@ async function enrichSingleArtifact(artifact: ArtifactRow, task: TaskContext): P
     return;
   }
 
-  const thisVersion = await fetchScriptVersion(scriptId, scriptVersionId);
+  const thisVersion = await fetchScriptVersionByIdOrNumber(scriptId, scriptVersionId);
   if (!thisVersion) return; // logged upstream; leave the artifact unenriched
 
   const baselineSnapshot = await resolveBaselineSnapshot(

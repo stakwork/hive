@@ -83,9 +83,12 @@ export function useScriptVersionChain(
     setState({ ...EMPTY, isLoading: true });
 
     const fetchVersion = async (versionId: number): Promise<ScriptChainEntry | null> => {
-      const res = await fetch(`/api/workflow/scripts/${scriptId}/versions/${versionId}`);
+      const url = `/api/workflow/scripts/${scriptId}/versions/${versionId}`;
+      const res = await fetch(url);
       if (!res.ok) {
-        console.error(`Script version ${versionId} fetch failed: ${res.status}`);
+        // 404 here usually means the artifact carries a version *number* where a
+        // version *id* belongs, or a version id from a different script.
+        console.error(`Script version fetch failed: ${res.status} — ${url}`);
         return null;
       }
       const json: VersionDetailResponse = await res.json();
@@ -112,8 +115,16 @@ export function useScriptVersionChain(
         );
 
         const numberById = new Map(all.map((v) => [v.id, v.version_number]));
+        const idByNumber = new Map(all.map((v) => [v.version_number, v.id]));
 
-        const ordered = [...new Set(versionIds)].sort(
+        // An artifact may carry a version *number* where a version *id* belongs
+        // — they look alike but the endpoint is keyed by id, so the number 404s.
+        // Anything that isn't a known id is resolved through the list.
+        const resolvedIds = [...new Set(versionIds)].map((id) =>
+          numberById.has(id) ? id : idByNumber.get(id) ?? id,
+        );
+
+        const ordered = [...new Set(resolvedIds)].sort(
           (a, b) => (numberById.get(a) ?? 0) - (numberById.get(b) ?? 0),
         );
 
@@ -139,6 +150,14 @@ export function useScriptVersionChain(
             versionNumber: numberById.get(e.versionId) ?? e.versionNumber,
           }))
           .sort((a, b) => a.versionNumber - b.versionNumber);
+
+        if (iterations.length === 0) {
+          // Every body request failed — say so rather than returning an empty
+          // chain that reads as "this script has no versions".
+          throw new Error(
+            `Could not load any version of script ${scriptId}. The artifact may reference a version that no longer exists.`,
+          );
+        }
 
         if (!cancelled && mountedRef.current) {
           setState({
