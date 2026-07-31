@@ -19,6 +19,7 @@ import { parsePlanXml } from "@/lib/utils/plan-xml";
 import { createAndSendNotification } from "@/services/notifications";
 import { fanOutPlannerMessageToCanvas } from "@/services/canvas-planner-fanout";
 import { enrichPublishPromptArtifacts } from "@/lib/helpers/prompt-baseline-snapshot";
+import { enrichPublishScriptArtifacts } from "@/lib/helpers/script-version-snapshot";
 import { enrichWorkflowArtifacts } from "@/lib/helpers/workflow-version-snapshot";
 
 export const fetchCache = "force-no-store";
@@ -187,6 +188,17 @@ export async function POST(request: NextRequest) {
         await enrichPublishPromptArtifacts(chatMessage, task);
       } catch (enrichError) {
         console.error("[chat/response] Failed to enrich PUBLISH_PROMPT artifacts:", enrichError);
+      }
+    }
+
+    // Enrich PUBLISH_SCRIPT artifacts with version snapshots pulled from
+    // Stakwork's scripts API, so a published change keeps diffing against what it
+    // actually changed rather than against itself.
+    if (task && chatMessage.artifacts.some((a) => a.type === ArtifactType.PUBLISH_SCRIPT)) {
+      try {
+        await enrichPublishScriptArtifacts(chatMessage, task);
+      } catch (enrichError) {
+        console.error("[chat/response] Failed to enrich PUBLISH_SCRIPT artifacts:", enrichError);
       }
     }
 

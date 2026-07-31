@@ -10,7 +10,12 @@ import {
 import { DiffView, computeDiffStats } from "./DiffView";
 import { useItemBaseline } from "@/hooks/useItemBaseline";
 import { usePromptVersionChain } from "@/hooks/usePromptVersionChain";
-import type { PromptBaselineSnapshot } from "@/lib/chat";
+import { useScriptVersionChain } from "@/hooks/useScriptVersionChain";
+import type {
+  ChangeBaselineSource,
+  PromptBaselineSnapshot,
+  ScriptBaselineSnapshot,
+} from "@/lib/chat";
 
 // ── Item types ────────────────────────────────────────────────────────────────
 
@@ -56,11 +61,26 @@ export type PromptChangedItem = {
   baselineSnapshot?: PromptBaselineSnapshot | null;
 };
 
+/** One captured iteration of a script change within a task. */
+export type ScriptIteration = {
+  scriptVersionId: number;
+  artifactId?: string;
+  /** Captured source for this version (from versionSnapshot). Absent for legacy artifacts. */
+  value?: string;
+  /** Authoritative version number (from versionSnapshot). Absent for legacy artifacts. */
+  versionNumber?: number;
+};
+
 export type ScriptChangedItem = {
   type: "SCRIPT";
   name: string;
   scriptId: number;
+  /** Latest (or sole) version id — kept for the legacy single-diff fallback. */
   scriptVersionId: number;
+  /** Ordered list of all iterations (by versionNumber), oldest first. Absent = legacy single item. */
+  iterations?: ScriptIteration[];
+  /** What the earliest iteration is measured against. null = brand-new script. */
+  baselineSnapshot?: ScriptBaselineSnapshot | null;
 };
 
 export type ChangedItem = WorkflowChangedItem | PromptChangedItem | ScriptChangedItem;
@@ -120,8 +140,10 @@ function AddDelBadge({
 
 // ── StepDiff ──────────────────────────────────────────────────────────────────
 // One "previous → this" diff, collapsible on its own so a long edit history
-// reads as an index you can drill into. Shared by workflow versions and prompt
-// iterations — same interaction, different domain labels.
+// reads as an index you can drill into. Shared by every item type — same
+// interaction, different domain labels.
+
+type ChangeKind = "workflow" | "prompt" | "script";
 
 function StepDiff({
   kind,
@@ -130,7 +152,7 @@ function StepDiff({
   original,
   updated,
 }: {
-  kind: "workflow" | "prompt";
+  kind: ChangeKind;
   index: number;
   label: string;
   original: string | object | null;
@@ -255,38 +277,40 @@ function WorkflowSectionBody({ item }: { item: WorkflowChangedItem }) {
 }
 
 /**
- * Names the "before" side of a prompt diff. A baseline captured from the task's
- * own chain is another change in this task, not what is live — so only a
- * published baseline is labelled as published.
+ * Names the "before" side of a diff. A baseline taken from the task's own chain
+ * (or from the version that simply came before it) is not what is live — only a
+ * published baseline may be labelled as published.
  */
 function baselineLabelFor(
-  snapshot: PromptBaselineSnapshot | null | undefined,
+  snapshot: { versionNumber: number; source?: ChangeBaselineSource } | null | undefined,
 ): string | undefined {
   if (!snapshot) return undefined;
-  return snapshot.source === "chain"
+  return snapshot.source === "chain" || snapshot.source === "prior"
     ? `vs v${snapshot.versionNumber}`
     : `vs published v${snapshot.versionNumber}`;
 }
 
-// ── PromptStackedDiff ─────────────────────────────────────────────────────────
-// The prompt equivalent of WorkflowSectionBody's two views over one chain:
+// ── StackedDiff ───────────────────────────────────────────────────────────────
+// The prompt/script equivalent of WorkflowSectionBody's two views over one chain:
 //   • overall — the version the task started from → the latest version
 //   • steps   — previous version → this version, per landed version
 // Both the captured-snapshot path and the live-reconstruction path below feed
-// this same component, so a prompt always reads the same way.
+// this same component, so an item always reads the same way whichever resolved it.
 
-type PromptStep = { key: string; versionNumber?: number; value: string | null };
+type DiffStep = { key: string; versionNumber?: number; value: string | null };
 
-function PromptStackedDiff({
+function StackedDiff({
+  kind,
   baselineValue,
   baselineVersionNumber,
   baselineLabel,
   steps,
 }: {
+  kind: Exclude<ChangeKind, "workflow">;
   baselineValue: string | null;
   baselineVersionNumber?: number;
   baselineLabel?: string;
-  steps: PromptStep[];
+  steps: DiffStep[];
 }) {
   const [stepsOpen, setStepsOpen] = useState(false);
 
@@ -299,7 +323,7 @@ function PromptStackedDiff({
         <DiffView
           original={baselineValue}
           updated={latest.value}
-          label="prompt"
+          label={kind}
           baselineLabel={baselineLabel}
         />
       </div>
@@ -312,7 +336,7 @@ function PromptStackedDiff({
           type="button"
           className="w-full flex items-center gap-2 px-4 py-2 text-xs text-muted-foreground hover:bg-muted/40 transition-colors text-left"
           onClick={() => setStepsOpen((o) => !o)}
-          data-testid="prompt-steps-toggle"
+          data-testid={`${kind}-steps-toggle`}
         >
           {stepsOpen ? (
             <ChevronDown className="w-3 h-3 flex-shrink-0" />
@@ -344,7 +368,7 @@ function PromptStackedDiff({
               return (
                 <StepDiff
                   key={step.key}
-                  kind="prompt"
+                  kind={kind}
                   index={idx}
                   label={stepLabel}
                   original={prev.value}
@@ -407,7 +431,8 @@ function PromptSectionBody({ item }: { item: PromptChangedItem }) {
   // ── 1. Captured snapshots ───────────────────────────────────────────────────
   if (hasSnapshots) {
     return (
-      <PromptStackedDiff
+      <StackedDiff
+        kind="prompt"
         baselineValue={item.baselineSnapshot?.value ?? null}
         baselineVersionNumber={item.baselineSnapshot?.versionNumber}
         baselineLabel={baselineLabelFor(item.baselineSnapshot)}
@@ -431,7 +456,8 @@ function PromptSectionBody({ item }: { item: PromptChangedItem }) {
 
   if (chain.iterations.length > 0) {
     return (
-      <PromptStackedDiff
+      <StackedDiff
+        kind="prompt"
         baselineValue={chain.baseline?.value ?? null}
         baselineVersionNumber={chain.baseline?.versionNumber}
         baselineLabel={
@@ -477,14 +503,82 @@ function PromptSectionBody({ item }: { item: PromptChangedItem }) {
   );
 }
 
-// ── Script section body (calls useItemBaseline) ───────────────────────────────
+// ── ScriptSectionBody ─────────────────────────────────────────────────────────
+// Same three paths as prompts, in order of fidelity:
+//   1. captured snapshots — frozen at ingestion, never drifts
+//   2. live reconstruction — the stacked view rebuilt from Stakwork's versions
+//   3. legacy single diff — last resort when neither can resolve a chain
+// Script bodies live in Stakwork rather than Hive's DB, so path 2 costs one
+// request per version; snapshots are what keep that off the common path.
+
+const NO_SCRIPT_ITERATIONS: ScriptIteration[] = [];
 
 function ScriptSectionBody({ item }: { item: ScriptChangedItem }) {
-  const { baseline, updated, isLoading, error } = useItemBaseline({
+  const iterations = item.iterations ?? NO_SCRIPT_ITERATIONS;
+
+  const hasSnapshots =
+    iterations.length > 0 &&
+    item.baselineSnapshot !== undefined &&
+    iterations.every((it) => it.value !== undefined);
+
+  const versionIds = useMemo(
+    () => iterations.map((it) => it.scriptVersionId),
+    [iterations],
+  );
+
+  const chain = useScriptVersionChain(item.scriptId, versionIds, !hasSnapshots);
+
+  // Last-resort single diff — only reached when the chain can't be rebuilt.
+  const legacyBaseline = useItemBaseline({
     type: "SCRIPT",
     scriptId: item.scriptId,
     scriptVersionId: item.scriptVersionId,
   });
+
+  // ── 1. Captured snapshots ───────────────────────────────────────────────────
+  if (hasSnapshots) {
+    return (
+      <StackedDiff
+        kind="script"
+        baselineValue={item.baselineSnapshot?.value ?? null}
+        baselineVersionNumber={item.baselineSnapshot?.versionNumber}
+        baselineLabel={baselineLabelFor(item.baselineSnapshot)}
+        steps={iterations.map((iter) => ({
+          key: String(iter.scriptVersionId),
+          versionNumber: iter.versionNumber,
+          value: iter.value ?? null,
+        }))}
+      />
+    );
+  }
+
+  // ── 2. Live reconstruction ──────────────────────────────────────────────────
+  if (chain.isLoading) {
+    return (
+      <div className="flex items-center justify-center p-6">
+        <span className="text-muted-foreground text-sm animate-pulse">Loading diff…</span>
+      </div>
+    );
+  }
+
+  if (chain.iterations.length > 0) {
+    return (
+      <StackedDiff
+        kind="script"
+        baselineValue={chain.baseline?.value ?? null}
+        baselineVersionNumber={chain.baseline?.versionNumber}
+        baselineLabel={chain.baseline ? `vs v${chain.baseline.versionNumber}` : undefined}
+        steps={chain.iterations.map((entry) => ({
+          key: String(entry.versionId),
+          versionNumber: entry.versionNumber,
+          value: entry.value,
+        }))}
+      />
+    );
+  }
+
+  // ── 3. Legacy single diff ───────────────────────────────────────────────────
+  const { baseline, updated, isLoading, error } = legacyBaseline;
 
   if (isLoading) {
     return (
@@ -519,9 +613,10 @@ interface CollapsibleChangeSectionProps {
 function CollapsibleChangeSection({ item, defaultOpen }: CollapsibleChangeSectionProps) {
   const [open, setOpen] = useState(defaultOpen);
 
-  // Whenever both sides of the overall change are known we can count them here —
-  // that is any workflow item, and any prompt item with captured snapshots. Script
-  // items resolve their sides asynchronously, so they carry no badge.
+  // Countable whenever both sides of the overall change are already in hand:
+  // any workflow item, and any prompt/script item with captured snapshots. Items
+  // that resolve their sides asynchronously carry no badge — the expanded diff
+  // shows the counts once it loads.
   // The counts always describe the overall change (baseline → latest).
   const stats = useMemo(() => {
     if (item.type === "WORKFLOW") {
@@ -533,20 +628,13 @@ function CollapsibleChangeSection({ item, defaultOpen }: CollapsibleChangeSectio
         : countAddDel(item.originalJson, item.updatedJson);
     }
 
-    if (item.type === "PROMPT") {
-      const latest = item.iterations?.[item.iterations.length - 1];
-      if (latest?.value === undefined) return null; // legacy: sides come from a live lookup
-      return countAddDel(item.baselineSnapshot?.value ?? null, latest.value);
-    }
-
-    return null;
+    const latest = item.iterations?.[item.iterations.length - 1];
+    if (latest?.value === undefined) return null; // legacy: sides come from a live lookup
+    return countAddDel(item.baselineSnapshot?.value ?? null, latest.value);
   }, [item]);
 
-  // Show multi-iteration badge for grouped prompt / multi-version workflow items
-  const iterationCount =
-    (item.type === "PROMPT" || item.type === "WORKFLOW") && item.iterations
-      ? item.iterations.length
-      : 0;
+  // Multi-iteration badge for any grouped item
+  const iterationCount = item.iterations?.length ?? 0;
   const isMultiIteration = iterationCount > 1;
 
   return (

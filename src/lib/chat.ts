@@ -122,11 +122,43 @@ export interface PublishWorkflowContent {
   workflowVersionId?: number; // Version ID returned from publish API
 }
 
+/**
+ * Where a captured baseline came from — the "before" side of a change.
+ *
+ *  • "published" — what was live when the change was made. Only the task's first
+ *    change to an item can use this.
+ *  • "chain"     — the previous artifact for the same item in this task. Every
+ *    change after the first is measured against the one before it.
+ *  • "prior"     — the version immediately below the task's first change, used
+ *    when nothing is published yet. Positional, so it never moves.
+ *
+ * Absent on artifacts captured before this field existed.
+ */
+export type ChangeBaselineSource = "published" | "chain" | "prior";
+
+/** A script version's source captured at artifact-ingestion time. */
+export interface ScriptVersionSnapshot {
+  value: string;
+  versionNumber: number;
+}
+
+/** The version a PUBLISH_SCRIPT artifact's change is measured against. */
+export interface ScriptBaselineSnapshot {
+  value: string;
+  versionId: number;
+  versionNumber: number;
+  source?: ChangeBaselineSource;
+}
+
 export interface PublishScriptContent {
   scriptId: number; // Script ID
   scriptVersionId: number; // Script version ID to publish
   scriptName?: string; // Script name for display
   published?: boolean; // Whether the script has been published
+  /** Baseline captured at ingestion. null = nothing to compare against. Absent = legacy artifact (rebuilt live). */
+  baselineSnapshot?: ScriptBaselineSnapshot | null;
+  /** This artifact's own version source + number, captured at ingestion. */
+  versionSnapshot?: ScriptVersionSnapshot;
 }
 
 /** A prompt version's text captured at artifact-ingestion time, so a diff never drifts when newer versions land later. */
@@ -149,7 +181,7 @@ export interface PromptBaselineSnapshot {
   value: string;
   versionId: string;
   versionNumber: number;
-  source?: "published" | "chain";
+  source?: ChangeBaselineSource;
 }
 
 export interface PublishPromptContent {
