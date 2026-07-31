@@ -432,17 +432,75 @@ export function WorkflowArtifactPanel({ artifacts, isActive, onStepSelect, onVer
       });
     }
 
-    // Script items
+    // Script items — grouped by scriptId and chained exactly like prompts, so a
+    // task that touched one script several times reads as one section with a
+    // step per version rather than N unrelated sections.
+    type ScriptEntry = {
+      iteration: import("./changes/ChangesList").ScriptIteration;
+      baselineSnapshot: PublishScriptContent["baselineSnapshot"] | undefined;
+    };
+
+    const scriptGroupMap = new Map<
+      string,
+      { scriptId: number; name: string; entries: ScriptEntry[] }
+    >();
+
     for (const artifact of publishScriptArtifacts) {
       const content = artifact.content as PublishScriptContent;
-      if (content?.scriptId != null && content?.scriptVersionId != null) {
-        items.push({
-          type: "SCRIPT",
-          name: content.scriptName || String(content.scriptId),
+      if (content?.scriptId == null || content?.scriptVersionId == null) continue;
+
+      const key = String(content.scriptId);
+      if (!scriptGroupMap.has(key)) {
+        scriptGroupMap.set(key, {
           scriptId: content.scriptId,
-          scriptVersionId: content.scriptVersionId,
+          name: content.scriptName || String(content.scriptId),
+          entries: [],
         });
       }
+
+      scriptGroupMap.get(key)!.entries.push({
+        iteration: {
+          scriptVersionId: content.scriptVersionId,
+          artifactId: artifact.id,
+          value: content.versionSnapshot?.value,
+          versionNumber: content.versionSnapshot?.versionNumber,
+        },
+        baselineSnapshot: content.baselineSnapshot,
+      });
+    }
+
+    for (const group of scriptGroupMap.values()) {
+      const entries = [...group.entries];
+
+      // Sort by versionNumber when captured; version ids are monotonic in
+      // Stakwork, so they order the rest.
+      entries.sort((a, b) => {
+        const na = a.iteration.versionNumber;
+        const nb = b.iteration.versionNumber;
+        if (na !== undefined && nb !== undefined) return na - nb;
+        return a.iteration.scriptVersionId - b.iteration.scriptVersionId;
+      });
+
+      // Collapse duplicates — the same version can land more than once.
+      const seen = new Set<number>();
+      const deduped = entries.filter((e) => {
+        if (seen.has(e.iteration.scriptVersionId)) return false;
+        seen.add(e.iteration.scriptVersionId);
+        return true;
+      });
+
+      if (deduped.length === 0) continue;
+
+      const latest = deduped[deduped.length - 1].iteration;
+
+      items.push({
+        type: "SCRIPT",
+        name: group.name,
+        scriptId: group.scriptId,
+        scriptVersionId: latest.scriptVersionId,
+        iterations: deduped.map((e) => e.iteration),
+        baselineSnapshot: deduped[0].baselineSnapshot,
+      });
     }
 
     return items;
