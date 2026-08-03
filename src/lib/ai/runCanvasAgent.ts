@@ -153,6 +153,15 @@ export interface CanvasAgentHooks {
    * final `usage` so the caller can record token spend.
    */
   onFinish?: (args: { usage: unknown }) => void | Promise<void>;
+  /**
+   * Called when the stream errors mid-generation, after the internal
+   * error logging. Mid-stream errors do NOT reject `consumeStream()`
+   * or `result.steps` — they resolve with the steps completed so far —
+   * so this hook is the only way a caller can learn the turn died
+   * (e.g. to persist a visible error row instead of a silently
+   * truncated transcript). Must not throw; exceptions are swallowed.
+   */
+  onError?: (args: { error: unknown; message: string }) => void;
 }
 
 /**
@@ -1056,6 +1065,13 @@ export async function runCanvasAgent(
     tools,
     messages: modelMessages,
     providerOptions,
+    // The SDK default (2 retries, quick backoff) is easily exhausted by a
+    // transient network flake (e.g. ECONNRESET to the provider) or a
+    // rate-limit window, which silently ends the turn after the current
+    // step — observed in prod as the agent "going quiet" right before
+    // proposing. 5 retries with the SDK's exponential backoff rides out
+    // short incidents while staying well inside the route's maxDuration.
+    maxRetries: 5,
     stopWhen: [
       createHasEndMarkerCondition(),
       // User pressed Stop on a repo_agent run — end the whole turn after
@@ -1124,14 +1140,22 @@ export async function runCanvasAgent(
     // via `toUIMessageStreamResponse({ onError })` in the HTTP route.
     onError: (event) => {
       const err = (event as { error?: unknown })?.error ?? event;
+      const message = err instanceof Error ? err.message : String(err);
       console.error("[runCanvasAgent] streamText error:", {
         workspaces: workspaceSlugs,
         orgId: orgId ?? null,
-        message: err instanceof Error ? err.message : String(err),
+        message,
         name: err instanceof Error ? err.name : undefined,
         stack: err instanceof Error ? err.stack : undefined,
         error: err,
       });
+      // Caller hook runs last; its failures must not disturb the
+      // stream's own error handling.
+      try {
+        hooks?.onError?.({ error: err, message });
+      } catch {
+        // swallowed by contract (see CanvasAgentHooks.onError)
+      }
     },
   });
 

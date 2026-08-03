@@ -156,6 +156,20 @@ export interface FeatureProposalPayload {
    * the user override it before approving.
    */
   autoRespond?: boolean | null;
+
+  /**
+   * Repository ids to scope the feature's planning agent to. Maps
+   * directly to `Feature.selectedRepositoryIds`. undefined = plan
+   * against all repos (preserves current default behavior). An empty
+   * array is never valid — the card guards against it and falls back
+   * to undefined; `approveFeature` also rejects an empty array.
+   *
+   * Set from the ProposalCard's repo multi-select before approval.
+   * The approval handler intersects these ids against the resolved
+   * workspace's actual repositories (IDOR guard) before forwarding
+   * to `sendFeatureChatMessage`.
+   */
+  selectedRepositoryIds?: string[];
 }
 
 /**

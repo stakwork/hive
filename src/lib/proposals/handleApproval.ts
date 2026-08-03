@@ -519,7 +519,11 @@ async function approveFeature(args: {
       sourceControlOrgId: orgId,
       deleted: false,
     },
-    select: { id: true, slug: true },
+    select: {
+      id: true,
+      slug: true,
+      repositories: { select: { id: true } },
+    },
   });
   if (!workspace) {
     return {
@@ -527,6 +531,35 @@ async function approveFeature(args: {
       error: "Workspace not found in this organization.",
       status: 404,
     };
+  }
+
+  // ─── Validate selectedRepositoryIds (IDOR guard) ──────────────────
+  // Intersect the forwarded ids against the resolved workspace's actual
+  // repositories so the caller can only scope to repos that belong here.
+  // An all-foreign / empty result falls back to undefined (all-repos
+  // default). Never forward an empty array — downstream reinterprets
+  // that as all-repos but in a way that silently contradicts the user's
+  // narrowed intent.
+  let validatedRepoIds: string[] | undefined;
+  if (merged.selectedRepositoryIds && merged.selectedRepositoryIds.length > 0) {
+    const workspaceRepoIds = new Set(workspace.repositories.map((r) => r.id));
+    const intersection = merged.selectedRepositoryIds.filter((id) =>
+      workspaceRepoIds.has(id),
+    );
+    if (intersection.length > 0) {
+      validatedRepoIds = intersection;
+    } else {
+      // All ids were foreign/stale — fall back to all-repos default and
+      // log so it's visible in server logs without blocking the approval.
+      logger.warn(
+        "[handleApproval.approveFeature] selectedRepositoryIds had no overlap with workspace repos — falling back to all-repos",
+        "handleApproval",
+        {
+          workspaceId: merged.workspaceId,
+          forwarded: merged.selectedRepositoryIds,
+        },
+      );
+    }
   }
   if (resolvedInitiativeId) {
     const initiative = await db.initiative.findFirst({
@@ -925,6 +958,10 @@ async function approveFeature(args: {
           // redundant work (5-60s) and could re-frame context the
           // proposing agent already curated. Skip it.
           skipOrgContextScout: true,
+          // Forward validated repo scope from the ProposalCard
+          // selector. undefined → all-repos default (unchanged
+          // behavior); a non-empty intersection → exactly those repos.
+          ...(validatedRepoIds && { selectedRepositoryIds: validatedRepoIds }),
         });
       } catch (e) {
         console.error(

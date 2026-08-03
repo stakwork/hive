@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useState, useEffect } from "react";
 import {
   Check,
   X,
@@ -9,6 +9,7 @@ import {
   Lightbulb,
   Info,
   FileDiff,
+  Code2,
 } from "lucide-react";
 import { computeUnifiedDiff, type UnifiedDiff } from "@/lib/diff/unifiedLineDiff";
 import { Switch } from "@/components/ui/switch";
@@ -42,6 +43,23 @@ import {
 } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
+import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Button } from "@/components/ui/button";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import { cn } from "@/lib/utils";
+import { getPlanRepoPreference, setPlanRepoPreference } from "@/lib/ai/models";
 
 /**
  * Renders a single agent proposal as an inline card with Approve / Reject
@@ -140,6 +158,58 @@ export function ProposalCard({
     proposal.kind === "feature" ? (proposal.payload.autoRespond ?? false) : false,
   );
 
+  // Feature-only: repo selector state.
+  // Fetches the target workspace's repositories on mount (best-effort).
+  // On any failure (no meta, 404, empty list) the selector is hidden
+  // and nothing is forwarded — preserving the all-repos default.
+  // `reposLoaded` tracks whether the fetch resolved so we can handle
+  // the load-vs-approve race: only forward ids once repos are live.
+  type RepoOption = { id: string; name: string };
+  const [availableRepos, setAvailableRepos] = useState<RepoOption[]>([]);
+  const [selectedRepoIds, setSelectedRepoIds] = useState<string[]>([]);
+  const [reposLoaded, setReposLoaded] = useState(false);
+
+  const workspaceSlugForFetch =
+    proposal.kind === "feature" ? (proposal.meta?.workspaceSlug ?? null) : null;
+
+  useEffect(() => {
+    if (!workspaceSlugForFetch) return;
+    let cancelled = false;
+    fetch(`/api/workspaces/${workspaceSlugForFetch}`)
+      .then((res) => {
+        if (!res.ok) return null; // 404 / non-2xx → hide selector
+        return res.json() as Promise<{ workspace?: { repositories?: RepoOption[] } }>;
+      })
+      .then((data) => {
+        if (cancelled) return;
+        const repos: RepoOption[] = data?.workspace?.repositories ?? [];
+        if (repos.length === 0) return; // empty list → hide selector
+        setAvailableRepos(repos);
+        // Same per-workspace localStorage preference as the plan page,
+        // dropping ids for repos that no longer exist. Fallback: all selected.
+        const stored = getPlanRepoPreference(workspaceSlugForFetch)?.filter((id) =>
+          repos.some((r) => r.id === id),
+        );
+        setSelectedRepoIds(stored?.length ? stored : repos.map((r) => r.id));
+        setReposLoaded(true);
+      })
+      .catch(() => {
+        // Network error → hide selector (same as non-2xx)
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [workspaceSlugForFetch]);
+
+  // true when the selector is visible and live
+  const showRepoSelector =
+    proposal.kind === "feature" && reposLoaded && availableRepos.length > 0;
+
+  // Zero-selection guard: approve is blocked when selector is live but
+  // nothing is checked (would silently forward an empty array, which
+  // downstream reinterprets as all-repos — contradicting the user's intent).
+  const repoSelectionValid = !showRepoSelector || selectedRepoIds.length > 0;
+
   // Milestone-only: which features are currently checked for attach.
   // Initialized from `proposal.payload.featureIds` (the agent's
   // suggestion). The user can uncheck/re-check before approving;
@@ -192,10 +262,17 @@ export function ProposalCard({
     } else if (proposal.kind === "feature") {
       // autoRespond is always forwarded (unconditionally) so `false` is
       // never silently dropped — the server must receive an explicit value.
+      // selectedRepositoryIds: only forward once the selector is live (repos
+      // loaded). If approval fires before the fetch resolves, forward nothing
+      // → all-repos default. Mirror how `autoRespond` is sent explicitly.
       payload = {
         ...(editedTitle !== initialTitle && { title: editedTitle }),
         autoRespond,
+        ...(showRepoSelector && { selectedRepositoryIds: selectedRepoIds }),
       } as Partial<FeatureProposalPayload>;
+      if (showRepoSelector && workspaceSlugForFetch) {
+        setPlanRepoPreference(workspaceSlugForFetch, selectedRepoIds);
+      }
     } else if (
       proposal.kind === "promptCreate" ||
       proposal.kind === "promptUpdate" ||
@@ -456,6 +533,58 @@ export function ProposalCard({
                 />
               </div>
             )}
+            {/* Repo context selector — feature kind only, shown once repos load */}
+            {showRepoSelector && (
+              <DropdownMenu>
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <DropdownMenuTrigger asChild>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="icon"
+                          style={{ width: 24, height: 24 }}
+                          className="rounded-full"
+                          disabled={!isPending}
+                        >
+                          <Code2
+                            className={cn(
+                              "h-3 w-3",
+                              selectedRepoIds.length !== availableRepos.length &&
+                                "text-primary",
+                            )}
+                          />
+                        </Button>
+                      </DropdownMenuTrigger>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>Select repositories</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+                <DropdownMenuContent align="end" className="w-[220px]">
+                  <DropdownMenuLabel>Repositories</DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  {availableRepos.map((repo) => (
+                    <DropdownMenuCheckboxItem
+                      key={repo.id}
+                      checked={selectedRepoIds.includes(repo.id)}
+                      onCheckedChange={(checked) =>
+                        setSelectedRepoIds((prev) =>
+                          checked
+                            ? [...prev, repo.id]
+                            : prev.filter((id) => id !== repo.id),
+                        )
+                      }
+                      onSelect={(e) => e.preventDefault()}
+                    >
+                      {repo.name}
+                    </DropdownMenuCheckboxItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
             <div className="ml-auto flex items-center gap-1">
               {hasDetails && (
                 <button
@@ -472,11 +601,13 @@ export function ProposalCard({
                   <button
                     type="button"
                     onClick={handleApprove}
-                    disabled={!isPending || isInFlight || !allBlockersApproved}
+                    disabled={!isPending || isInFlight || !allBlockersApproved || !repoSelectionValid}
                     title={
                       !allBlockersApproved
                         ? "Approve blocking features first"
-                        : "Approve"
+                        : !repoSelectionValid
+                          ? "Select at least one repository"
+                          : "Approve"
                     }
                     className="flex h-6 w-6 items-center justify-center rounded text-emerald-600 transition-colors hover:bg-emerald-500/10 disabled:cursor-not-allowed disabled:opacity-40 dark:text-emerald-400"
                   >
