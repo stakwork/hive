@@ -184,8 +184,8 @@ export function buildWorkflowExplorerTools(ctx?: CapabilityContext): ToolSet {
       description:
         "Dispatch a research agent over the Stakwork workflow library (the stakwork workspace's knowledge graph) to find existing Workflows, Skills, and Scripts relevant to a workflow being designed. " +
         "It searches components semantically by what they take as input and produce as output, reads full workflow recipes (step orderings + the skills each step uses), and reports proven, reusable building blocks with usage statistics — plus gaps where nothing exists yet. " +
-        "It can also pull ground-truth run data from the Stakwork API: which workflows invoke a skill (with real use counts), recent runs and their success/error states, and the actual params and outputs each step sent — useful for citing working configurations (exact URL formats, variable interpolations) or diagnosing why a similar workflow failed. " +
-        "Use it when designing or discussing a NEW Stakwork workflow: e.g. 'what existing skills take a video url as input?', 'is there already a transcription workflow, and how does it compose its steps?', 'show me real params from a successful run that uses AzureOCR'. " +
+        "It researches how workflows are DEFINED, not how they ran: for run history, run logs, or diagnosing why a workflow/run failed, use the stakwork workspace's logs_agent (stakwork__logs_agent) instead — it sees the full, untruncated run logs. " +
+        "Use it when designing or discussing a NEW Stakwork workflow: e.g. 'what existing skills take a video url as input?', 'is there already a transcription workflow, and how does it compose its steps?'. " +
         "READ-ONLY by default — it cannot create or modify workflows. Pass run_step: true (ONLY when the user explicitly asks to run/execute/test a specific step) to additionally let it execute one workflow step with supplied inputs and report the output. " +
         "Heavy/slow (minutes): call it ONCE with a complete, self-contained prompt rather than several times. " +
         "In a canvas conversation this tool runs in the BACKGROUND: it returns immediately with a dispatch confirmation (no findings), and the explorer's full report is posted directly into the conversation when it finishes. Tell the user it's underway — do NOT re-call the tool to fetch results and do NOT invent findings.",
@@ -227,11 +227,21 @@ export function buildWorkflowExplorerTools(ctx?: CapabilityContext): ToolSet {
             console.log("[workflow_explorer_agent] step execution enabled for this call");
           }
 
+          // The Stakwork API key is passed ONLY for run_step calls: it gates
+          // registration of the stakwork_* API tools on the swarm side, and
+          // the step-execution flow needs stakwork_inspect_run to copy real
+          // input values. Ordinary research runs stay graph-only — the API's
+          // run logs are heavily truncated; run diagnosis goes through the
+          // stakwork workspace's logs_agent instead.
           const baseParams = {
             prompt,
             mode: "workflow" as const,
-            stakworkApiKey: config.STAKWORK_API_KEY || undefined,
-            ...(run_step ? { toolsConfig: { stakwork_run_step: true } } : {}),
+            ...(run_step
+              ? {
+                  stakworkApiKey: config.STAKWORK_API_KEY || undefined,
+                  toolsConfig: { stakwork_run_step: true },
+                }
+              : {}),
           };
 
           if (fanBack) {
