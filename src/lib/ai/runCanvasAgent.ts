@@ -37,7 +37,7 @@
  *     `result.textStream`)
  */
 
-import { streamText, ModelMessage, ToolSet } from "ai";
+import { streamText, stepCountIs, ModelMessage, ToolSet } from "ai";
 import type {
   StreamTextResult,
   StopCondition,
@@ -84,6 +84,13 @@ import { getWorkspaceChannelName, PUSHER_EVENTS, pusherServer } from "@/lib/push
 // namespaces a single-WS tool, we never strip those — every name in the
 // set is an org-scoped capability tool, which is NOT namespaced.
 // ---------------------------------------------------------------------------
+
+/**
+ * Hard ceiling on agentic steps per turn. A backstop against a tool-calling
+ * loop, not a policy cap — see the `stopWhen` array for why the other stop
+ * conditions can't be relied on to bound the loop.
+ */
+const MAX_AGENT_STEPS = 100;
 
 // Computed lazily, NOT at module scope: this module sits on an import
 // cycle (capabilities → tool factories → … → runCanvasAgent), so the
@@ -1077,6 +1084,17 @@ export async function runCanvasAgent(
       // User pressed Stop on a repo_agent run — end the whole turn after
       // the current step instead of letting the model retry the tool.
       () => cancellation.requested,
+      // Safety net. Passing `stopWhen` at all opts out of the SDK's own
+      // `stepCountIs(20)` default, and the end-marker condition can't be
+      // relied on to fire — `[END_OF_ANSWER]` is also sent as a stop
+      // sequence, and the provider strips a matched stop sequence from the
+      // content the condition scans. Without this, a model that keeps
+      // calling tools runs until `maxDuration` (800s), re-sending a growing
+      // context every step. Deliberately generous so it never truncates a
+      // legitimate turn; callers wanting a real policy cap pass a tighter
+      // `extraStopConditions` (ANY condition ends the loop, so the tighter
+      // one wins — a caller cap above this is clamped to it).
+      stepCountIs(MAX_AGENT_STEPS),
       ...(extraStopConditions
         ? Array.isArray(extraStopConditions)
           ? extraStopConditions

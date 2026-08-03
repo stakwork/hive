@@ -100,6 +100,13 @@ const mockStreamText = vi.fn();
 vi.mock("ai", () => ({
   streamText: (...args: unknown[]) => mockStreamText(...args),
   tool: vi.fn((t: unknown) => t),
+  // Explicit factory with no `importOriginal`, so every binding
+  // `runCanvasAgent` pulls from "ai" has to be listed here or it arrives
+  // undefined and the call throws before `streamText` is ever reached.
+  stepCountIs:
+    (n: number) =>
+    ({ steps }: { steps: unknown[] }) =>
+      steps.length >= n,
 }));
 
 // ---------------------------------------------------------------------------
