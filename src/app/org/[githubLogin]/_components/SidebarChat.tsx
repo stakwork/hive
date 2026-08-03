@@ -141,14 +141,59 @@ export function SidebarChat({ githubLogin }: SidebarChatProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const [userScrolledUp, setUserScrolledUp] = useState(false);
   const isProgrammaticScrollRef = useRef(false);
+  const mouseDownRef = useRef(false); // true while primary mouse button is held
+  const isMouseDragRef = useRef(false); // true only after movement detected — not on simple clicks
 
-  // Scroll to bottom on updates unless the user has manually scrolled up.
+  // Reset drag flag on conversation switch. Declared BEFORE the auto-scroll
+  // effect so React runs it first within the same render — clearing the flag
+  // before the scroll effect reads it.
   useEffect(() => {
-    if (!userScrolledUp) {
+    isMouseDragRef.current = false;
+  }, [activeId]);
+
+  // Scroll to bottom on updates unless the user has manually scrolled up,
+  // a text-selection drag is in progress, or a non-collapsed selection exists.
+  useEffect(() => {
+    const sel = window.getSelection();
+    const hasSelection = sel && !sel.isCollapsed; // secondary fallback: keyboard/prior selection
+    if (!userScrolledUp && !isMouseDragRef.current && !hasSelection) {
       isProgrammaticScrollRef.current = true;
       messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
     }
   }, [messages, activeToolCalls, isLoading, userScrolledUp]);
+
+  // Bind drag-tracking listeners to the scroll container.
+  // Two-phase: mousedown sets the "button held" flag; mousemove promotes it to
+  // "confirmed drag" so quick button clicks never suppress auto-scroll.
+  useEffect(() => {
+    const container = scrollRef.current;
+    if (!container) return;
+
+    const onMouseDown = () => {
+      mouseDownRef.current = true;
+    };
+    const onMouseMove = () => {
+      if (mouseDownRef.current) isMouseDragRef.current = true;
+    };
+    const onRelease = () => {
+      mouseDownRef.current = false;
+      isMouseDragRef.current = false;
+    };
+
+    container.addEventListener("mousedown", onMouseDown);
+    container.addEventListener("mousemove", onMouseMove);
+    window.addEventListener("mouseup", onRelease); // catches release outside container
+    window.addEventListener("blur", onRelease); // mouse released outside browser window
+    document.addEventListener("visibilitychange", onRelease); // tab switch mid-drag
+
+    return () => {
+      container.removeEventListener("mousedown", onMouseDown);
+      container.removeEventListener("mousemove", onMouseMove);
+      window.removeEventListener("mouseup", onRelease);
+      window.removeEventListener("blur", onRelease);
+      document.removeEventListener("visibilitychange", onRelease);
+    };
+  }, []); // scrollRef's host div is unconditionally rendered — structurally stable
 
   const handleScroll = () => {
     if (isProgrammaticScrollRef.current) {
