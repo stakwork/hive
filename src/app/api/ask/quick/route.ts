@@ -655,14 +655,18 @@ export async function POST(request: NextRequest) {
               // the public-chat rate-limit gate can sum recent spend on
               // the next request. Best-effort; failures are logged but
               // do not surface to the user — the stream already finished.
-              if (!tokenAttributionRowId) return;
+              // Org-canvas rows are workspace-null, so they never resolve a
+              // tokenAttributionRowId.
+              const attributionRowId =
+                canvasConversationRowId ?? tokenAttributionRowId;
+              if (!attributionRowId) return;
               const u = usage as
                 | { inputTokens?: number; outputTokens?: number }
                 | undefined;
               const inputTokens = Number(u?.inputTokens ?? 0);
               const outputTokens = Number(u?.outputTokens ?? 0);
               await recordTurnTokens({
-                conversationId: tokenAttributionRowId,
+                conversationId: attributionRowId,
                 inputTokens,
                 outputTokens,
               });
