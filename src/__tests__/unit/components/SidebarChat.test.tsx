@@ -370,6 +370,242 @@ describe("SidebarChat — scroll behaviour", () => {
   });
 });
 
+// ── Drag-guard scroll behaviour tests ─────────────────────────────────────────
+
+describe("SidebarChat — drag-guard scroll behaviour", () => {
+  let scrollIntoViewMock: ReturnType<typeof vi.fn>;
+
+  beforeEach(() => {
+    vi.resetModules();
+    mockIsActive = false;
+    mockStoreState = buildStoreState([SAMPLE_MESSAGE]) as typeof mockStoreState;
+    scrollIntoViewMock = vi.fn();
+    window.HTMLElement.prototype.scrollIntoView = scrollIntoViewMock;
+  });
+
+  afterEach(() => {
+    mockStoreState = {
+      activeConversationId: null,
+      conversations: {},
+      artifacts: {},
+      dismissedArtifactIds: {},
+      pendingInputDraft: null,
+    };
+  });
+
+  it("click (mousedown → mouseup, no move) does NOT suppress auto-scroll", async () => {
+    const { SidebarChat } = await import(
+      "@/app/org/[githubLogin]/_components/SidebarChat"
+    );
+    const { container, rerender } = render(<SidebarChat githubLogin="test-org" />);
+    const scrollEl = container.querySelector(".overflow-y-auto") as HTMLElement;
+
+    // Simulate a click: mousedown then mouseup with no mousemove
+    act(() => { fireEvent.mouseDown(scrollEl); });
+    act(() => { fireEvent.mouseUp(window); });
+
+    scrollIntoViewMock.mockClear();
+
+    // Trigger a re-render via new message
+    act(() => {
+      mockStoreState = buildStoreState([SAMPLE_MESSAGE, SECOND_MESSAGE]) as typeof mockStoreState;
+      rerender(<SidebarChat githubLogin="test-org" />);
+    });
+
+    expect(scrollIntoViewMock).toHaveBeenCalledWith({ behavior: "smooth" });
+  });
+
+  it("drag (mousedown → mousemove) suppresses auto-scroll", async () => {
+    const { SidebarChat } = await import(
+      "@/app/org/[githubLogin]/_components/SidebarChat"
+    );
+    const { container, rerender } = render(<SidebarChat githubLogin="test-org" />);
+    const scrollEl = container.querySelector(".overflow-y-auto") as HTMLElement;
+
+    // Simulate a drag: mousedown then mousemove
+    act(() => { fireEvent.mouseDown(scrollEl); });
+    act(() => { fireEvent.mouseMove(scrollEl); });
+
+    scrollIntoViewMock.mockClear();
+
+    // Trigger a re-render — drag should suppress scroll
+    act(() => {
+      mockStoreState = buildStoreState([SAMPLE_MESSAGE, SECOND_MESSAGE]) as typeof mockStoreState;
+      rerender(<SidebarChat githubLogin="test-org" />);
+    });
+
+    expect(scrollIntoViewMock).not.toHaveBeenCalled();
+  });
+
+  it("resumes auto-scroll after mouseup on window ends the drag", async () => {
+    const { SidebarChat } = await import(
+      "@/app/org/[githubLogin]/_components/SidebarChat"
+    );
+    const { container, rerender } = render(<SidebarChat githubLogin="test-org" />);
+    const scrollEl = container.querySelector(".overflow-y-auto") as HTMLElement;
+
+    // Start a drag
+    act(() => { fireEvent.mouseDown(scrollEl); });
+    act(() => { fireEvent.mouseMove(scrollEl); });
+
+    scrollIntoViewMock.mockClear();
+
+    // Release mouse on window
+    act(() => { fireEvent.mouseUp(window); });
+
+    // Trigger re-render — drag ended, scroll should resume
+    act(() => {
+      mockStoreState = buildStoreState([SAMPLE_MESSAGE, SECOND_MESSAGE]) as typeof mockStoreState;
+      rerender(<SidebarChat githubLogin="test-org" />);
+    });
+
+    expect(scrollIntoViewMock).toHaveBeenCalledWith({ behavior: "smooth" });
+  });
+
+  it("blur on window resets drag flag and resumes auto-scroll", async () => {
+    const { SidebarChat } = await import(
+      "@/app/org/[githubLogin]/_components/SidebarChat"
+    );
+    const { container, rerender } = render(<SidebarChat githubLogin="test-org" />);
+    const scrollEl = container.querySelector(".overflow-y-auto") as HTMLElement;
+
+    // Start a drag
+    act(() => { fireEvent.mouseDown(scrollEl); });
+    act(() => { fireEvent.mouseMove(scrollEl); });
+
+    scrollIntoViewMock.mockClear();
+
+    // Blur window (e.g. user alt-tabs while dragging)
+    act(() => { fireEvent.blur(window); });
+
+    // Trigger re-render — flag reset, scroll should resume
+    act(() => {
+      mockStoreState = buildStoreState([SAMPLE_MESSAGE, SECOND_MESSAGE]) as typeof mockStoreState;
+      rerender(<SidebarChat githubLogin="test-org" />);
+    });
+
+    expect(scrollIntoViewMock).toHaveBeenCalledWith({ behavior: "smooth" });
+  });
+
+  it("visibilitychange on document resets drag flag and resumes auto-scroll", async () => {
+    const { SidebarChat } = await import(
+      "@/app/org/[githubLogin]/_components/SidebarChat"
+    );
+    const { container, rerender } = render(<SidebarChat githubLogin="test-org" />);
+    const scrollEl = container.querySelector(".overflow-y-auto") as HTMLElement;
+
+    // Start a drag
+    act(() => { fireEvent.mouseDown(scrollEl); });
+    act(() => { fireEvent.mouseMove(scrollEl); });
+
+    scrollIntoViewMock.mockClear();
+
+    // Tab switch mid-drag
+    act(() => { fireEvent(document, new Event("visibilitychange")); });
+
+    // Trigger re-render — flag reset, scroll should resume
+    act(() => {
+      mockStoreState = buildStoreState([SAMPLE_MESSAGE, SECOND_MESSAGE]) as typeof mockStoreState;
+      rerender(<SidebarChat githubLogin="test-org" />);
+    });
+
+    expect(scrollIntoViewMock).toHaveBeenCalledWith({ behavior: "smooth" });
+  });
+
+  it("activeId change resets drag flag so new conversation scrolls to bottom", async () => {
+    const { SidebarChat } = await import(
+      "@/app/org/[githubLogin]/_components/SidebarChat"
+    );
+    const { container, rerender } = render(<SidebarChat githubLogin="test-org" />);
+    const scrollEl = container.querySelector(".overflow-y-auto") as HTMLElement;
+
+    // Start a drag in conversation conv-1
+    act(() => { fireEvent.mouseDown(scrollEl); });
+    act(() => { fireEvent.mouseMove(scrollEl); });
+
+    scrollIntoViewMock.mockClear();
+
+    // Switch to conv-2 with a *different* message so the messages dep changes,
+    // triggering the auto-scroll effect after the activeId reset effect clears
+    // the drag flag. (Same message array would not re-trigger the scroll effect.)
+    act(() => {
+      mockStoreState = {
+        activeConversationId: "conv-2",
+        conversations: {
+          "conv-2": {
+            messages: [SECOND_MESSAGE],
+            isLoading: false,
+            activeToolCalls: [],
+            serverConversationId: null,
+          },
+        },
+        artifacts: {},
+        dismissedArtifactIds: {},
+        pendingInputDraft: null,
+      } as typeof mockStoreState;
+      rerender(<SidebarChat githubLogin="test-org" />);
+    });
+
+    // The drag flag was reset by the activeId effect — scroll should fire
+    expect(scrollIntoViewMock).toHaveBeenCalledWith({ behavior: "smooth" });
+  });
+
+  it("selection guard (hasSelection) suppresses auto-scroll without drag", async () => {
+    const { SidebarChat } = await import(
+      "@/app/org/[githubLogin]/_components/SidebarChat"
+    );
+    const { rerender } = render(<SidebarChat githubLogin="test-org" />);
+
+    // Stub getSelection to return a non-collapsed selection
+    const getSelectionSpy = vi.spyOn(window, "getSelection").mockReturnValue({
+      isCollapsed: false,
+    } as Selection);
+
+    scrollIntoViewMock.mockClear();
+
+    // Trigger re-render with no drag in progress
+    act(() => {
+      mockStoreState = buildStoreState([SAMPLE_MESSAGE, SECOND_MESSAGE]) as typeof mockStoreState;
+      rerender(<SidebarChat githubLogin="test-org" />);
+    });
+
+    expect(scrollIntoViewMock).not.toHaveBeenCalled();
+
+    getSelectionSpy.mockRestore();
+  });
+
+  it("StreamScrollIndicator manual scroll fires scrollIntoView even during a drag", async () => {
+    const { SidebarChat } = await import(
+      "@/app/org/[githubLogin]/_components/SidebarChat"
+    );
+    const { container } = render(<SidebarChat githubLogin="test-org" />);
+    const scrollEl = container.querySelector(".overflow-y-auto") as HTMLElement;
+
+    // Simulate scroll-up so the StreamScrollIndicator button appears
+    Object.defineProperty(scrollEl, "scrollHeight", { value: 1000, configurable: true });
+    Object.defineProperty(scrollEl, "clientHeight", { value: 300, configurable: true });
+    Object.defineProperty(scrollEl, "scrollTop", { value: 0, configurable: true, writable: true });
+
+    act(() => { fireEvent.scroll(scrollEl); }); // consume programmatic flag
+    act(() => { fireEvent.scroll(scrollEl); }); // trigger userScrolledUp = true
+
+    // Start a drag
+    act(() => { fireEvent.mouseDown(scrollEl); });
+    act(() => { fireEvent.mouseMove(scrollEl); });
+
+    scrollIntoViewMock.mockClear();
+
+    // Click the "Latest response…" manual button — bypasses the guarded effect
+    const latestBtn = screen.queryByText("Latest response…");
+    expect(latestBtn).not.toBeNull();
+
+    act(() => { fireEvent.click(latestBtn!); });
+
+    // The manual path (StreamScrollIndicator onLatestClick) calls scrollIntoView directly
+    expect(scrollIntoViewMock).toHaveBeenCalledWith({ behavior: "smooth" });
+  });
+});
+
 // ── handleClear / New chat — URL param stripping tests ────────────────────────
 
 describe("SidebarChat — handleClear strips ?chat= param", () => {
