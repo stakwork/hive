@@ -585,7 +585,7 @@ describe('POST /api/ask/sync', () => {
       );
 
       // Without maxTurns: the default conditions only (end-marker +
-      // user-cancellation).
+      // user-cancellation + the MAX_AGENT_STEPS safety net).
       await POST(
         createAuthenticatedPostRequest(
           '/api/ask/sync',
@@ -594,9 +594,9 @@ describe('POST /api/ask/sync', () => {
         ),
       );
       const noCap = vi.mocked(streamText).mock.calls.at(-1)![0];
-      expect(noCap.stopWhen).toHaveLength(2);
+      expect(noCap.stopWhen).toHaveLength(3);
 
-      // With maxTurns: the step cap is appended on top of the defaults.
+      // With maxTurns: the caller's step cap is appended on top of the defaults.
       await POST(
         createAuthenticatedPostRequest(
           '/api/ask/sync',
@@ -605,7 +605,7 @@ describe('POST /api/ask/sync', () => {
         ),
       );
       const capped = vi.mocked(streamText).mock.calls.at(-1)![0];
-      expect(capped.stopWhen).toHaveLength(3);
+      expect(capped.stopWhen).toHaveLength(4);
     });
 
     it('counts generated steps, not input messages (100 in, 1 step out)', async () => {

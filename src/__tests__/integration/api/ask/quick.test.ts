@@ -27,10 +27,13 @@ vi.mock('next/server', async (importOriginal) => {
   };
 });
 
-// Mock the AI streaming service
-vi.mock('ai', () => ({
-  streamText: vi.fn(),
-}));
+// Mock the AI streaming service. Spread the real module (as sync.test.ts
+// does) so every other binding runCanvasAgent pulls from "ai" stays real —
+// an explicit factory silently returns undefined for anything not listed.
+vi.mock('ai', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('ai')>();
+  return { ...actual, streamText: vi.fn() };
+});
 
 // Mock the AI provider module (wrapper around aieo)
 vi.mock('@/lib/ai/provider', () => ({
