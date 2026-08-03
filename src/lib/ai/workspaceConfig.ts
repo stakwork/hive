@@ -27,41 +27,58 @@ export async function buildWorkspaceConfigs(
   userId: string
 ): Promise<WorkspaceConfig[]> {
   const encryptionService = EncryptionService.getInstance();
-  const configs: WorkspaceConfig[] = [];
 
-  for (const slug of slugs) {
-    const access = await validateWorkspaceAccess(slug, userId, true);
-    if (!access.hasAccess || !access.workspace) {
-      throw forbiddenError(`Access denied for workspace: ${slug}`);
+  // Slugs are independent of one another, so fan them out. This runs before
+  // every canvas turn — including prompt-cache hits, which skip the swarm
+  // concept fetch but not this — so at the 20-slug cap the serial version was
+  // ~100 round-trips deep on the critical path.
+  const settled = await Promise.allSettled(
+    slugs.map((slug) => buildOneWorkspaceConfig(slug, userId, encryptionService))
+  );
+
+  // Surface the first failure in *slug order* rather than whichever promise
+  // happened to reject first, so the error a caller sees doesn't depend on
+  // scheduling — that was the serial loop's behaviour and callers key off
+  // these messages.
+  for (const outcome of settled) {
+    if (outcome.status === "rejected") {
+      throw outcome.reason;
     }
+  }
 
-    const swarm = await db.swarm.findFirst({
-      where: { workspaceId: access.workspace.id },
-    });
-    if (!swarm?.swarmUrl) {
-      throw notFoundError(`Swarm not configured for workspace: ${slug}`);
-    }
+  return settled.map(
+    (outcome) => (outcome as PromiseFulfilledResult<WorkspaceConfig>).value
+  );
+}
 
-    const repositories = await db.repository.findMany({
-      where: { workspaceId: access.workspace.id },
+async function buildOneWorkspaceConfig(
+  slug: string,
+  userId: string,
+  encryptionService: EncryptionService
+): Promise<WorkspaceConfig> {
+  // The access check stays first and alone: it yields `workspace.id` that the
+  // rest depend on, and it is the authorization gate — nothing else should run
+  // for a workspace the caller can't see.
+  const access = await validateWorkspaceAccess(slug, userId, true);
+  if (!access.hasAccess || !access.workspace) {
+    throw forbiddenError(`Access denied for workspace: ${slug}`);
+  }
+  const workspaceId = access.workspace.id;
+
+  const [swarm, repositories, githubProfile, memberships] = await Promise.all([
+    db.swarm.findFirst({ where: { workspaceId } }),
+    db.repository.findMany({
+      where: { workspaceId },
       orderBy: { createdAt: "asc" },
-    });
-    if (repositories.length === 0) {
-      throw notFoundError(`No repositories for workspace: ${slug}`);
-    }
-
-    const githubProfile = await getGithubUsernameAndPAT(userId, slug);
-    if (!githubProfile?.token) {
-      throw notFoundError(`GitHub PAT not found for workspace: ${slug}`);
-    }
-
+    }),
+    getGithubUsernameAndPAT(userId, slug),
     // Fetch workspace members (name, github username, role, description).
     // `orderBy` is load-bearing: this roster is rendered near the top of
     // the cached system prompt, and `lastAccessedAt` writes churn these
     // rows — without a stable sort the heap order shifts and busts the
     // Anthropic prompt cache for the whole request.
-    const memberships = await db.workspaceMember.findMany({
-      where: { workspaceId: access.workspace.id, leftAt: null },
+    db.workspaceMember.findMany({
+      where: { workspaceId, leftAt: null },
       orderBy: [{ joinedAt: "asc" }, { id: "asc" }],
       select: {
         role: true,
@@ -73,36 +90,46 @@ export async function buildWorkspaceConfigs(
           },
         },
       },
-    });
+    }),
+  ]);
 
-    const swarmUrlObj = new URL(swarm.swarmUrl);
-    let baseSwarmUrl = `https://${swarmUrlObj.hostname}:3355`;
-    if (swarm.swarmUrl.includes("localhost")) {
-      baseSwarmUrl = "http://localhost:3355";
-    }
-
-    configs.push({
-      slug,
-      name: access.workspace.name,
-      description: access.workspace.description ?? undefined,
-      swarmUrl: baseSwarmUrl,
-      swarmApiKey: encryptionService.decryptField("swarmApiKey", swarm.swarmApiKey || ""),
-      swarmDomain: swarm.name ? getSwarmVanityAddress(swarm.name) : undefined,
-      repoUrls: repositories.map((r) => r.repositoryUrl),
-      pat: githubProfile.token,
-      currentUserGithubUsername: githubProfile.username ?? undefined,
-      workspaceId: access.workspace.id,
-      userId,
-      members: memberships.map((m) => ({
-        name: m.user.name,
-        githubUsername: m.user.githubAuth?.githubUsername ?? null,
-        role: m.role,
-        description: m.description,
-      })),
-    });
+  // Validated in the same order the serial version used, so the error a
+  // misconfigured workspace produces is unchanged.
+  if (!swarm?.swarmUrl) {
+    throw notFoundError(`Swarm not configured for workspace: ${slug}`);
+  }
+  if (repositories.length === 0) {
+    throw notFoundError(`No repositories for workspace: ${slug}`);
+  }
+  if (!githubProfile?.token) {
+    throw notFoundError(`GitHub PAT not found for workspace: ${slug}`);
   }
 
-  return configs;
+  const swarmUrlObj = new URL(swarm.swarmUrl);
+  let baseSwarmUrl = `https://${swarmUrlObj.hostname}:3355`;
+  if (swarm.swarmUrl.includes("localhost")) {
+    baseSwarmUrl = "http://localhost:3355";
+  }
+
+  return {
+    slug,
+    name: access.workspace.name,
+    description: access.workspace.description ?? undefined,
+    swarmUrl: baseSwarmUrl,
+    swarmApiKey: encryptionService.decryptField("swarmApiKey", swarm.swarmApiKey || ""),
+    swarmDomain: swarm.name ? getSwarmVanityAddress(swarm.name) : undefined,
+    repoUrls: repositories.map((r) => r.repositoryUrl),
+    pat: githubProfile.token,
+    currentUserGithubUsername: githubProfile.username ?? undefined,
+    workspaceId,
+    userId,
+    members: memberships.map((m) => ({
+      name: m.user.name,
+      githubUsername: m.user.githubAuth?.githubUsername ?? null,
+      role: m.role,
+      description: m.description,
+    })),
+  };
 }
 
 /**
