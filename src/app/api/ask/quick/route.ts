@@ -495,6 +495,12 @@ export async function POST(request: NextRequest) {
       // internally-wired dispatch_graph_walk tool; consumed in after()
       // to schedule one graph-walk sub-agent worker per dispatched intent.
       const dispatchedGraphWalks: DispatchedGraphWalkIntent[] = [];
+      // Set when the stream errors mid-generation (via the onError hook).
+      // Mid-stream errors do NOT reject `consumeStream()`/`result.steps`
+      // — they resolve with the completed steps — so without this flag
+      // the turn-persist block writes a silently truncated transcript
+      // and the failure is invisible after a reload.
+      let midStreamError: string | null = null;
 
       const tAgent = Date.now();
       const {
@@ -716,6 +722,9 @@ export async function POST(request: NextRequest) {
                 }
               }
             },
+            onError: ({ message }) => {
+              midStreamError = message;
+            },
           },
         });
 
@@ -793,6 +802,23 @@ export async function POST(request: NextRequest) {
               steps as Parameters<typeof messagesFromSteps>[0],
               assistantPrefix,
             );
+            // A mid-stream error resolves (not rejects) the awaits above,
+            // leaving a truncated transcript. Persist a trailing error row
+            // — in the SAME append, since `appendTurnMessages` is
+            // idempotent on the prefix and would no-op a second call — so
+            // a reload shows why the turn stopped (mirrors the client's
+            // inline error message). Also covers turns that died before
+            // producing any step: `rows` is empty, and without the error
+            // row the turn would persist nothing at all.
+            const errMsg: string | null = midStreamError;
+            if (errMsg !== null) {
+              rows.push({
+                id: `${assistantPrefix}error`,
+                role: "assistant",
+                content: `I'm sorry — this turn hit an error before completing: ${errMsg.slice(0, 300)}. Please try again.`,
+                timestamp: new Date().toISOString(),
+              });
+            }
             await appendTurnMessages({
               conversationId: rowId,
               rows,

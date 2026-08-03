@@ -22,6 +22,7 @@ type TaskJson = {
 type TreeEntry = {
   path: string;
   type: string;
+  sha: string;
 };
 
 type TreeResponse = {
@@ -140,22 +141,54 @@ const LABEL_OVERRIDES: Record<string, string> = {
   "antitrust-competition": "Antitrust & Competition",
 };
 
-async function main() {
-  console.log("Fetching recursive Git tree from stakwork/harvey-labs...");
-  const treeUrl = `https://api.github.com/repos/${REPO}/git/trees/main?recursive=1`;
-  const treeData = (await ghFetch(treeUrl)) as TreeResponse;
+async function fetchTree(sha: string, recursive: boolean): Promise<TreeResponse> {
+  const url = `https://api.github.com/repos/${REPO}/git/trees/${sha}${recursive ? "?recursive=1" : ""}`;
+  return (await ghFetch(url)) as TreeResponse;
+}
 
-  if (treeData.truncated) {
-    throw new Error(
-      "Git tree too large — results would be incomplete. " +
-        "The tree was truncated by GitHub; aborting to avoid writing a partial index."
-    );
+/**
+ * Collects task.json blob paths under the tree `sha`, whose full repo path is
+ * `basePath`. Tries a single recursive fetch first; when GitHub truncates it
+ * (the repo's document files push the full tree past the API's entry limit),
+ * splits into per-subtree fetches, pruning `documents/` folders since task.json
+ * never lives inside them.
+ */
+async function collectTaskPaths(sha: string, basePath: string): Promise<string[]> {
+  const recursive = await fetchTree(sha, true);
+  if (!recursive.truncated) {
+    return recursive.tree
+      .filter(
+        (entry) =>
+          entry.type === "blob" && TASK_PATH_RE.test(`${basePath}/${entry.path}`)
+      )
+      .map((entry) => `${basePath}/${entry.path}`);
   }
 
-  // Filter to task.json blobs at any depth under tasks/
-  const taskPaths = treeData.tree
-    .filter((entry) => entry.type === "blob" && TASK_PATH_RE.test(entry.path))
-    .map((entry) => entry.path);
+  console.log(`  Tree at ${basePath} truncated — descending into subtrees...`);
+  const flat = await fetchTree(sha, false);
+  const paths: string[] = [];
+  for (const entry of flat.tree) {
+    const fullPath = `${basePath}/${entry.path}`;
+    if (entry.type === "blob" && TASK_PATH_RE.test(fullPath)) {
+      paths.push(fullPath);
+    } else if (entry.type === "tree" && entry.path !== "documents") {
+      paths.push(...(await collectTaskPaths(entry.sha, fullPath)));
+    }
+  }
+  return paths;
+}
+
+async function main() {
+  console.log("Locating tasks/ tree in stakwork/harvey-labs...");
+  const rootTree = await fetchTree("main", false);
+  const tasksEntry = rootTree.tree.find(
+    (entry) => entry.type === "tree" && entry.path === "tasks"
+  );
+  if (!tasksEntry) {
+    throw new Error("No tasks/ directory found at the repo root.");
+  }
+
+  const taskPaths = await collectTaskPaths(tasksEntry.sha, "tasks");
 
   console.log(`Found ${taskPaths.length} task.json files`);
 
@@ -275,7 +308,10 @@ export const WORK_TYPE_STYLES: Record<WorkType, string> = {
   console.log(`\nWrote ${outPath}`);
 }
 
-main().catch((err) => {
-  console.error(err);
-  process.exit(1);
-});
+// Only run when executed directly (not when imported by unit tests)
+if (process.argv[1]?.includes("generate-harvey-lab-tasks")) {
+  main().catch((err) => {
+    console.error(err);
+    process.exit(1);
+  });
+}
