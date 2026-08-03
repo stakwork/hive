@@ -44,6 +44,35 @@ const FAKE_INSTANCES = [
     state: "running",
     instanceType: "t3.medium",
     launchTime: "2026-01-01T00:00:00.000Z",
+    tags: [
+      { key: "Swarm", value: "superadmin" },
+      { key: "UserAssignedName", value: "swarm-node-1" },
+    ],
+    publicIp: "54.123.45.67",
+    privateIp: "10.0.1.10",
+    hiveWorkspace: null,
+  },
+  {
+    instanceId: "i-mock0000000004",
+    name: "swarm-node-4",
+    state: "stopped",
+    instanceType: "t3.medium",
+    launchTime: "2026-01-04T00:00:00.000Z",
+    tags: [{ key: "Swarm", value: "superadmin" }],
+    publicIp: "18.234.56.90",
+    privateIp: "10.0.1.13",
+    hiveWorkspace: null,
+  },
+];
+
+// Used exclusively by the "skips fallback" test — no UserAssignedName tags on any entry.
+const FAKE_INSTANCES_WITHOUT_NAMES = [
+  {
+    instanceId: "i-mock0000000001",
+    name: "swarm-node-1",
+    state: "running",
+    instanceType: "t3.medium",
+    launchTime: "2026-01-01T00:00:00.000Z",
     tags: [{ key: "Swarm", value: "superadmin" }],
     publicIp: "54.123.45.67",
     privateIp: "10.0.1.10",
@@ -67,6 +96,7 @@ describe("Admin Swarms API", () => {
   let regularUser: Awaited<ReturnType<typeof createTestUser>>;
 
   beforeEach(async () => {
+    vi.resetAllMocks();
     superAdminUser = await createTestUser({
       role: UserRole.SUPER_ADMIN,
       email: "superadmin@test.com",
@@ -124,6 +154,8 @@ describe("Admin Swarms API", () => {
 
       vi.mocked(redis.get).mockResolvedValueOnce(null);
       vi.mocked(listSuperadminInstances).mockResolvedValueOnce(FAKE_INSTANCES as any);
+      // First call: ec2Id lookup. Second call: fallback (FAKE_INSTANCES has a UserAssignedName tag).
+      vi.mocked(db.swarm.findMany).mockResolvedValueOnce([]);
       vi.mocked(db.swarm.findMany).mockResolvedValueOnce([]);
       vi.mocked(redis.setex).mockResolvedValueOnce("OK");
 
@@ -152,12 +184,14 @@ describe("Admin Swarms API", () => {
 
       vi.mocked(redis.get).mockResolvedValueOnce(null);
       vi.mocked(listSuperadminInstances).mockResolvedValueOnce(FAKE_INSTANCES as any);
+      // First call: ec2Id lookup (returns a match). Second call: fallback for remaining unmatched instances.
       vi.mocked(db.swarm.findMany).mockResolvedValueOnce([
         {
           ec2Id: "i-mock0000000001",
           workspace: { name: "Alpha Workspace", slug: "alpha-workspace" },
         },
       ] as any);
+      vi.mocked(db.swarm.findMany).mockResolvedValueOnce([]);
       vi.mocked(redis.setex).mockResolvedValueOnce("OK");
 
       const request = createAuthenticatedGetRequest(
@@ -184,6 +218,8 @@ describe("Admin Swarms API", () => {
 
       vi.mocked(redis.get).mockResolvedValueOnce(null);
       vi.mocked(listSuperadminInstances).mockResolvedValueOnce(FAKE_INSTANCES as any);
+      // First call: ec2Id lookup. Second call: fallback (FAKE_INSTANCES has a UserAssignedName tag).
+      vi.mocked(db.swarm.findMany).mockResolvedValueOnce([]);
       vi.mocked(db.swarm.findMany).mockResolvedValueOnce([]);
       vi.mocked(redis.setex).mockResolvedValueOnce("OK");
 
@@ -197,6 +233,75 @@ describe("Admin Swarms API", () => {
       expect(response.status).toBe(200);
       const data = await response.json();
       expect(data.every((i: any) => i.hiveWorkspace === null)).toBe(true);
+    });
+
+    it("attaches hiveWorkspace via UserAssignedName fallback when ec2Id lookup misses", async () => {
+      const { redis } = await import("@/lib/redis");
+      const { listSuperadminInstances } = await import("@/services/ec2");
+      const { db } = await import("@/lib/db");
+
+      vi.mocked(redis.get).mockResolvedValueOnce(null);
+      vi.mocked(listSuperadminInstances).mockResolvedValueOnce(FAKE_INSTANCES as any);
+      // First call: ec2Id path returns nothing.
+      vi.mocked(db.swarm.findMany).mockResolvedValueOnce([]);
+      // Second call: swarmUrl fallback — include a numerically-adjacent entry to validate
+      // the domain-boundary anchor (swarm-node-1 must NOT match swarm-node-10.sphinx.chat).
+      vi.mocked(db.swarm.findMany).mockResolvedValueOnce([
+        {
+          swarmUrl: "https://swarm-node-1.sphinx.chat/api",
+          workspace: { name: "Alpha Workspace", slug: "alpha-workspace" },
+        },
+        {
+          swarmUrl: "https://swarm-node-10.sphinx.chat/api",
+          workspace: { name: "Other Workspace", slug: "other-workspace" },
+        },
+      ] as any);
+      vi.mocked(redis.setex).mockResolvedValueOnce("OK");
+
+      const request = createAuthenticatedGetRequest(
+        "/api/admin/swarms",
+        superAdminUser
+      );
+      const { GET } = await import("@/app/api/admin/swarms/route");
+      const response = await GET(request);
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+
+      // swarm-node-1 instance should be matched via the fallback.
+      const matched = data.find((i: any) => i.instanceId === "i-mock0000000001");
+      expect(matched.hiveWorkspace).toEqual({ name: "Alpha Workspace", slug: "alpha-workspace" });
+
+      // The numerically-adjacent swarm-node-10 entry must NOT produce a false-positive match
+      // for the swarm-node-1 anchor (domain-boundary validation).
+      expect(matched.hiveWorkspace).not.toEqual({ name: "Other Workspace", slug: "other-workspace" });
+
+      // swarm-node-4 has no UserAssignedName tag — hiveWorkspace stays null.
+      const unmatched = data.find((i: any) => i.instanceId === "i-mock0000000004");
+      expect(unmatched.hiveWorkspace).toBeNull();
+    });
+
+    it("skips fallback query when all instances lack UserAssignedName tag", async () => {
+      const { redis } = await import("@/lib/redis");
+      const { listSuperadminInstances } = await import("@/services/ec2");
+      const { db } = await import("@/lib/db");
+
+      vi.mocked(redis.get).mockResolvedValueOnce(null);
+      // Use FAKE_INSTANCES_WITHOUT_NAMES so no instance has a UserAssignedName tag.
+      vi.mocked(listSuperadminInstances).mockResolvedValueOnce(FAKE_INSTANCES_WITHOUT_NAMES as any);
+      vi.mocked(db.swarm.findMany).mockResolvedValueOnce([]);
+      vi.mocked(redis.setex).mockResolvedValueOnce("OK");
+
+      const request = createAuthenticatedGetRequest(
+        "/api/admin/swarms",
+        superAdminUser
+      );
+      const { GET } = await import("@/app/api/admin/swarms/route");
+      const response = await GET(request);
+
+      expect(response.status).toBe(200);
+      // findMany should have been called exactly once (the ec2Id path only — fallback skipped).
+      expect(db.swarm.findMany).toHaveBeenCalledTimes(1);
     });
   });
 

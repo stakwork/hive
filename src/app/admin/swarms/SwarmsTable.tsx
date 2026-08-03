@@ -281,13 +281,13 @@ export default function SwarmsTable() {
         <TableHeader>
           <TableRow>
             <SortableHeader field="name">Name</SortableHeader>
+            <TableHead>Workspace</TableHead>
             <TableHead>Instance ID</TableHead>
             <TableHead>State</TableHead>
             <TableHead>Type</TableHead>
             <SortableHeader field="launchTime">Launch Time</SortableHeader>
             <TableHead>Public IP</TableHead>
             <TableHead>Private IP</TableHead>
-            <TableHead>In Hive</TableHead>
             <TableHead>URL</TableHead>
             <TableHead>Tags</TableHead>
             <TableHead className="text-right">Actions</TableHead>
@@ -310,16 +310,6 @@ export default function SwarmsTable() {
                 onClick={isClickable ? () => router.push(`/admin/swarms/${instance.instanceId}`) : undefined}
               >
                 <TableCell className="font-medium">{instance.name}</TableCell>
-                <TableCell className="font-mono text-sm">{instance.instanceId}</TableCell>
-                <TableCell>
-                  <StateBadge state={instance.state} />
-                </TableCell>
-                <TableCell>{instance.instanceType}</TableCell>
-                <TableCell className="text-sm text-muted-foreground">
-                  {instance.launchTime ? new Date(instance.launchTime).toLocaleString() : "—"}
-                </TableCell>
-                <TableCell className="font-mono text-sm">{instance.publicIp ?? "—"}</TableCell>
-                <TableCell className="font-mono text-sm">{instance.privateIp ?? "—"}</TableCell>
                 <TableCell className="text-sm">
                   {instance.hiveWorkspace ? (
                     <Link
@@ -333,6 +323,16 @@ export default function SwarmsTable() {
                     "—"
                   )}
                 </TableCell>
+                <TableCell className="font-mono text-sm">{instance.instanceId}</TableCell>
+                <TableCell>
+                  <StateBadge state={instance.state} />
+                </TableCell>
+                <TableCell>{instance.instanceType}</TableCell>
+                <TableCell className="text-sm text-muted-foreground">
+                  {instance.launchTime ? new Date(instance.launchTime).toLocaleString() : "—"}
+                </TableCell>
+                <TableCell className="font-mono text-sm">{instance.publicIp ?? "—"}</TableCell>
+                <TableCell className="font-mono text-sm">{instance.privateIp ?? "—"}</TableCell>
                 <TableCell className="font-mono text-sm">
                   {userAssignedName ? `${userAssignedName}.sphinx.chat` : "—"}
                 </TableCell>
