@@ -59,6 +59,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
+import { getPlanRepoPreference, setPlanRepoPreference } from "@/lib/ai/models";
 
 /**
  * Renders a single agent proposal as an inline card with Approve / Reject
@@ -184,7 +185,12 @@ export function ProposalCard({
         const repos: RepoOption[] = data?.workspace?.repositories ?? [];
         if (repos.length === 0) return; // empty list → hide selector
         setAvailableRepos(repos);
-        setSelectedRepoIds(repos.map((r) => r.id)); // default: all selected
+        // Same per-workspace localStorage preference as the plan page,
+        // dropping ids for repos that no longer exist. Fallback: all selected.
+        const stored = getPlanRepoPreference(workspaceSlugForFetch)?.filter((id) =>
+          repos.some((r) => r.id === id),
+        );
+        setSelectedRepoIds(stored?.length ? stored : repos.map((r) => r.id));
         setReposLoaded(true);
       })
       .catch(() => {
@@ -264,6 +270,9 @@ export function ProposalCard({
         autoRespond,
         ...(showRepoSelector && { selectedRepositoryIds: selectedRepoIds }),
       } as Partial<FeatureProposalPayload>;
+      if (showRepoSelector && workspaceSlugForFetch) {
+        setPlanRepoPreference(workspaceSlugForFetch, selectedRepoIds);
+      }
     } else if (
       proposal.kind === "promptCreate" ||
       proposal.kind === "promptUpdate" ||

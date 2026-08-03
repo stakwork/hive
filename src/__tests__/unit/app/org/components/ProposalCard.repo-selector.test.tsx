@@ -12,6 +12,9 @@
  *   nothing is selected; never forwards an empty array.
  * - Approval-before-fetch race: if approval fires before the fetch resolves,
  *   selectedRepositoryIds is NOT forwarded (all-repos default).
+ * - localStorage persistence: selection is initialised from the shared
+ *   per-workspace plan-repo preference, stale ids are dropped (fallback to
+ *   all), and approving persists the current selection.
  */
 
 import React from "react";
@@ -19,6 +22,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, waitFor, act, fireEvent } from "@testing-library/react";
 import { ProposalCard } from "@/app/org/[githubLogin]/_components/ProposalCard";
 import type { ProposalOutput } from "@/lib/proposals/types";
+import { getPlanRepoPreference, setPlanRepoPreference } from "@/lib/ai/models";
 
 // ── Mutable store state ───────────────────────────────────────────────────────
 
@@ -215,6 +219,7 @@ const originalFetch = global.fetch;
 
 beforeEach(() => {
   vi.clearAllMocks();
+  localStorage.clear();
   mockSendMessage = vi.fn().mockResolvedValue(undefined);
   mockStoreState = {
     activeConversationId: "conv-1",
@@ -522,6 +527,115 @@ describe("ProposalCard — repo selector: approval-before-fetch race", () => {
     expect(call.approval.payload?.selectedRepositoryIds).toBeUndefined();
 
     // Clean up the pending promise to avoid open handles
+    resolveFetch({
+      ok: false,
+      json: () => Promise.resolve({}),
+    } as unknown as Response);
+  });
+});
+
+describe("ProposalCard — repo selector: localStorage persistence (shared with plan page)", () => {
+  it("initialises selection from the stored per-workspace preference", async () => {
+    const repos = [
+      { id: "repo-1", name: "alpha" },
+      { id: "repo-2", name: "beta" },
+      { id: "repo-3", name: "gamma" },
+    ];
+    global.fetch = makeFetchOk(repos);
+    setPlanRepoPreference("my-workspace", ["repo-2"]);
+
+    const proposal = makeFeatureProposal({
+      meta: { workspaceSlug: "my-workspace", workspaceName: "My Workspace" },
+    });
+
+    render(
+      <ProposalCard proposal={proposal} messageId="msg-10" githubLogin="myorg" />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getAllByTestId("repo-checkbox")).toHaveLength(3);
+    });
+
+    const checkboxes = screen.getAllByTestId("repo-checkbox") as HTMLInputElement[];
+    expect(checkboxes.map((cb) => cb.checked)).toEqual([false, true, false]);
+  });
+
+  it("falls back to all selected when every stored id is stale", async () => {
+    const repos = [
+      { id: "repo-1", name: "alpha" },
+      { id: "repo-2", name: "beta" },
+    ];
+    global.fetch = makeFetchOk(repos);
+    setPlanRepoPreference("my-workspace", ["deleted-repo"]);
+
+    const proposal = makeFeatureProposal({
+      meta: { workspaceSlug: "my-workspace", workspaceName: "My Workspace" },
+    });
+
+    render(
+      <ProposalCard proposal={proposal} messageId="msg-11" githubLogin="myorg" />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getAllByTestId("repo-checkbox")).toHaveLength(2);
+    });
+
+    const checkboxes = screen.getAllByTestId("repo-checkbox") as HTMLInputElement[];
+    expect(checkboxes.every((cb) => cb.checked)).toBe(true);
+  });
+
+  it("persists the current selection on approve", async () => {
+    const repos = [
+      { id: "repo-1", name: "alpha" },
+      { id: "repo-2", name: "beta" },
+    ];
+    global.fetch = makeFetchOk(repos);
+
+    const proposal = makeFeatureProposal({
+      meta: { workspaceSlug: "my-workspace", workspaceName: "My Workspace" },
+    });
+
+    render(
+      <ProposalCard proposal={proposal} messageId="msg-12" githubLogin="myorg" />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getAllByTestId("repo-checkbox")).toHaveLength(2);
+    });
+
+    const checkboxes = screen.getAllByTestId("repo-checkbox") as HTMLInputElement[];
+    await act(async () => {
+      fireEvent.click(checkboxes[1]); // uncheck "beta"
+    });
+
+    await act(async () => {
+      fireEvent.click(screen.getByTitle("Approve"));
+    });
+
+    expect(getPlanRepoPreference("my-workspace")).toEqual(["repo-1"]);
+  });
+
+  it("does not write a preference when approval fires before the fetch resolves", async () => {
+    let resolveFetch!: (value: Response) => void;
+    const pendingFetch = new Promise<Response>((resolve) => {
+      resolveFetch = resolve;
+    });
+    global.fetch = vi.fn().mockReturnValue(pendingFetch);
+
+    const proposal = makeFeatureProposal({
+      meta: { workspaceSlug: "my-workspace", workspaceName: "My Workspace" },
+    });
+
+    render(
+      <ProposalCard proposal={proposal} messageId="msg-13" githubLogin="myorg" />,
+    );
+
+    await act(async () => {
+      fireEvent.click(screen.getByTitle("Approve"));
+    });
+
+    expect(getPlanRepoPreference("my-workspace")).toBeNull();
+
     resolveFetch({
       ok: false,
       json: () => Promise.resolve({}),
