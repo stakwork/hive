@@ -2,6 +2,7 @@ import { getServiceConfig } from "@/config/services";
 import { authOptions } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
 import { decryptEnvVars, encryptEnvVars, EncryptionService } from "@/lib/encryption";
+import { checkIsSuperAdmin } from "@/lib/middleware/utils";
 import { getGithubWebhookCallbackUrl } from "@/lib/url";
 import { transformSwarmUrlToRepo2Graph } from "@/lib/utils/swarm";
 import { WebhookService } from "@/services/github/WebhookService";
@@ -17,6 +18,9 @@ import { SwarmStatus, PodState } from "@prisma/client";
 import { ServiceConfig as SwarmServiceConfig } from "@/services/swarm/db";
 import { getServerSession } from "next-auth/next";
 import { NextRequest, NextResponse } from "next/server";
+
+/** Fields that must never appear as values in audit logs. */
+const AUDIT_SECRET_FIELDS = new Set(["environmentVariables", "swarmApiKey", "poolApiKey"]);
 
 import type { ServiceDataConfig } from "@/components/stakgraph/types";
 
@@ -165,7 +169,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       );
     }
 
-    const workspace = await getWorkspaceBySlug(slug, userId);
+    const isSuperAdmin = await checkIsSuperAdmin(userId);
+    const workspace = await getWorkspaceBySlug(slug, userId, { isSuperAdmin });
     if (!workspace) {
       return NextResponse.json(
         {
@@ -175,6 +180,21 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         },
         { status: 404 },
       );
+    }
+
+    // Audit log when access was granted via super-admin bypass (non-member super admin)
+    if (isSuperAdmin && workspace.userRole === "OWNER") {
+      const isMemberOwner = workspace.owner?.id === userId;
+      if (!isMemberOwner) {
+        console.log(
+          JSON.stringify({
+            event: "superadmin_bypass_read",
+            endpoint: "GET /api/workspaces/[slug]/stakgraph",
+            userId,
+            workspaceSlug: slug,
+          }),
+        );
+      }
     }
 
     const swarm = (await db.swarm.findUnique({
@@ -375,8 +395,13 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     const apiToken = request.headers.get("x-api-token");
     const isApiTokenAuth = apiToken && apiToken === process.env.API_TOKEN;
 
-    let workspace: { id: string } | null = null;
+    let workspace: { id: string; userRole?: string } | null = null;
     let userId: string | null = null;
+    // Populated in the session-auth branch; tracks bypass state for downstream guards.
+    let sessionAuthMeta: { isSuperAdmin: boolean; userRole: string | null } = {
+      isSuperAdmin: false,
+      userRole: null,
+    };
 
     if (isApiTokenAuth) {
       // API token auth - get workspace by slug directly (no user session needed)
@@ -411,7 +436,10 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
         );
       }
 
-      workspace = await getWorkspaceBySlug(slug, userId);
+      const isSuperAdmin = await checkIsSuperAdmin(userId);
+      workspace = await getWorkspaceBySlug(slug, userId, { isSuperAdmin });
+      // Capture bypass/role info for use in downstream guards (no extra DB query)
+      sessionAuthMeta = { isSuperAdmin, userRole: workspace?.userRole ?? null };
     }
 
     if (!workspace) {
@@ -423,6 +451,23 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
         },
         { status: 404 },
       );
+    }
+
+    // IDOR fix: only OWNER or ADMIN members (and super-admins, who receive OWNER role)
+    // may write pod CPU/RAM, env vars, and swarm config. Lower roles (e.g. VIEWER,
+    // DEVELOPER) are rejected here even though getWorkspaceBySlug returns them.
+    if (!isApiTokenAuth) {
+      const { userRole } = sessionAuthMeta;
+      if (userRole !== "OWNER" && userRole !== "ADMIN") {
+        return NextResponse.json(
+          {
+            success: false,
+            message: "Forbidden: insufficient role",
+            error: "FORBIDDEN",
+          },
+          { status: 403 },
+        );
+      }
     }
 
     const body = await request.json();
@@ -731,8 +776,11 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       swarmPoolApiKey = await getSwarmPoolApiKeyFor(swarm.id);
     }
 
-    // Setup GitHub webhooks for all repos with code ingestion enabled (session auth only)
-    if (!isApiTokenAuth && userId) {
+    // Setup GitHub webhooks for all repos with code ingestion enabled.
+    // Skip when: (a) API-token auth, or (b) access was granted via the super-admin bypass —
+    // a non-member super admin's GitHub credentials are not valid for the target repos.
+    const accessViaBypass = sessionAuthMeta.isSuperAdmin && !isApiTokenAuth;
+    if (!isApiTokenAuth && !accessViaBypass && userId) {
       const callbackUrl = getGithubWebhookCallbackUrl(workspace.id, request);
       const webhookService = new WebhookService(getServiceConfig("github"));
       const reposForWebhook = allRepos.filter((r) => r.codeIngestionEnabled);
@@ -758,6 +806,35 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
           } catch (err) {
             console.error(`Failed to setup webhook for ${repo.name}:`, err);
           }
+        }),
+      );
+    }
+
+    // Audit log: emit a structured line whenever this write was made via a privileged path.
+    if (accessViaBypass && userId) {
+      const changedFields = Object.keys(settings).filter((k) => !AUDIT_SECRET_FIELDS.has(k));
+      const secretFieldsChanged = Object.keys(settings).filter((k) => AUDIT_SECRET_FIELDS.has(k));
+      console.log(
+        JSON.stringify({
+          event: "superadmin_bypass_write",
+          endpoint: "PUT /api/workspaces/[slug]/stakgraph",
+          userId,
+          workspaceSlug: slug,
+          changedFields,
+          secretFieldsChangedNames: secretFieldsChanged,
+        }),
+      );
+    } else if (isApiTokenAuth) {
+      const changedFields = Object.keys(settings).filter((k) => !AUDIT_SECRET_FIELDS.has(k));
+      const secretFieldsChanged = Object.keys(settings).filter((k) => AUDIT_SECRET_FIELDS.has(k));
+      console.log(
+        JSON.stringify({
+          event: "api_token_write",
+          endpoint: "PUT /api/workspaces/[slug]/stakgraph",
+          actor: "api-token",
+          workspaceSlug: slug,
+          changedFields,
+          secretFieldsChangedNames: secretFieldsChanged,
         }),
       );
     }
