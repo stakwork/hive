@@ -83,6 +83,16 @@ export default async function AdminWorkspaceDetailPage({
         Back to Admin
       </Link>
 
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-bold">{workspace.name}</h1>
+        <Link
+          href={`/w/${slug}/settings`}
+          className="text-sm text-primary hover:underline"
+        >
+          Manage settings →
+        </Link>
+      </div>
+
       <div className="space-y-6">
         {/* Workspace Info */}
         <Card>
