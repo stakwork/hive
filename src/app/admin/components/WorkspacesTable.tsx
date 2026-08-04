@@ -295,6 +295,12 @@ export function WorkspacesTable({ workspaces }: WorkspacesTableProps) {
                 >
                   View workspace →
                 </Link>
+                <Link
+                  href={`/w/${workspace.slug}/settings`}
+                  className="text-sm text-primary hover:underline"
+                >
+                  Manage settings
+                </Link>
                 <Button
                   variant="ghost"
                   size="sm"
