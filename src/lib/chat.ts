@@ -105,6 +105,14 @@ export interface WorkflowContent {
   workflowName?: string; // Optional workflow name
   workflowRefId?: string; // Graph node ref_id
   workflowVersionId?: string | number; // Workflow version ID (UUID or numeric) from graph
+  /**
+   * The version this change was based on, stated by whoever created the version.
+   *
+   * Authoritative: it is the only source that cannot be wrong about what this
+   * specific change forked from. `null` means a brand-new workflow with nothing
+   * before it; absent means an older producer that predates the field.
+   */
+  previousWorkflowVersionId?: string | number | null;
   projectInfo?: any; // Project data for project debugger mode
   debuggerProjectId?: string; // Project ID for debugger context
   /** This artifact's own workflow version spec, pulled at ingestion. Absent = legacy/unenriched artifact. */
