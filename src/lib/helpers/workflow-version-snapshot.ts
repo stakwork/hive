@@ -277,6 +277,7 @@ async function enrichSingleArtifact(
     artifact.id,
     workflowId,
     String(workflowVersionId),
+    readPreviousVersionId(content),
   );
 
   const updatedContent: WorkflowContent = {
@@ -304,22 +305,67 @@ async function enrichSingleArtifact(
 }
 
 /**
- * Resolves what this artifact's change should be measured against, walking the
- * task's WORKFLOW artifacts oldest → newest:
+ * Reads the producer-supplied "this change was based on version X" field.
  *
- *  1. The newest earlier artifact that already has a `versionSnapshot` — its
- *     spec is reused verbatim (already REST-sourced and canonical, no refetch).
- *  2. Otherwise the oldest earlier artifact with a different workflowVersionId
+ * Tolerates both spellings because the payload crosses a service boundary:
+ * Hive's own artifact content is camelCase, Stakwork's API is snake_case, and
+ * which one arrives depends on who wrote the emitting step.
+ *
+ * Returns a version id, or null for "explicitly nothing came before" / absent.
+ */
+function readPreviousVersionId(content: WorkflowContent): string | null {
+  const raw =
+    content.previousWorkflowVersionId ??
+    (content as { previous_workflow_version_id?: string | number | null })
+      .previous_workflow_version_id;
+
+  if (raw == null) return null;
+  const value = String(raw).trim();
+  return value === "" || value === "null" ? null : value;
+}
+
+/**
+ * Resolves what this artifact's change should be measured against:
+ *
+ *  1. `previousWorkflowVersionId`, when the producer supplied one. Authoritative
+ *     — it is the only source that cannot be wrong about what this specific
+ *     change forked from, and unlike a "currently published" pointer it cannot
+ *     drift onto the change itself after a publish.
+ *  2. Otherwise the newest earlier artifact in this task that already has a
+ *     `versionSnapshot` — its spec is reused verbatim (already REST-sourced and
+ *     canonical, no refetch).
+ *  3. Otherwise the oldest earlier artifact with a different workflowVersionId
  *     — i.e. the version the task started from. Its spec is pulled from the
  *     REST API so both sides of the diff share a source.
- *  3. Otherwise null (nothing to compare against yet).
+ *  4. Otherwise null (nothing to compare against — renders as all-green).
+ *
+ * Steps 2-3 still run when the producer says `null`, because "brand-new
+ * workflow" and "second change to a brand-new workflow" both report null on
+ * some producers, and a prior artifact in the same task genuinely precedes this
+ * one either way. For a truly new workflow's first artifact there are no priors,
+ * so the answer is null regardless.
  */
 async function resolveBaselineSnapshot(
   taskId: string,
   currentArtifactId: string,
   workflowId: string | number,
   currentVersionId: string,
+  previousVersionId: string | null,
 ): Promise<WorkflowVersionSnapshot | null> {
+  // 1. The producer told us exactly what this was based on.
+  if (previousVersionId && previousVersionId !== currentVersionId) {
+    const value = await fetchWorkflowVersionSpec(workflowId, previousVersionId);
+    if (value) {
+      logger.info("Baseline resolved from previousWorkflowVersionId", LOG_CONTEXT, {
+        workflowId,
+        currentVersionId,
+        previousVersionId,
+      });
+      return { workflowVersionId: previousVersionId, value };
+    }
+    // Fetch failed (logged upstream) — fall through to the in-task history.
+  }
+
   const priorArtifacts = await db.artifact.findMany({
     where: {
       type: ArtifactType.WORKFLOW,
@@ -332,7 +378,7 @@ async function resolveBaselineSnapshot(
 
   if (priorArtifacts.length === 0) return null;
 
-  // 1. Newest earlier snapshot wins — that is "the previous change".
+  // 2. Newest earlier snapshot wins — that is "the previous change".
   for (let i = priorArtifacts.length - 1; i >= 0; i--) {
     const priorContent = priorArtifacts[i].content as WorkflowContent | null;
     const snapshot = priorContent?.versionSnapshot;
@@ -345,7 +391,7 @@ async function resolveBaselineSnapshot(
     }
   }
 
-  // 2. Fall back to the task's starting version (oldest artifact with a version).
+  // 3. Fall back to the task's starting version (oldest artifact with a version).
   for (const prior of priorArtifacts) {
     const priorContent = prior.content as WorkflowContent | null;
     const priorVersionId = priorContent?.workflowVersionId;
