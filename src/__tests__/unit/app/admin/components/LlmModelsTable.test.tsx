@@ -96,8 +96,13 @@ const mockModels = [
     providerLabel: null,
     inputPricePer1M: 5.0,
     outputPricePer1M: 15.0,
+    cacheReadPer1MToken: null,
+    cacheWritePer1MToken: null,
     dateStart: null,
     dateEnd: null,
+    isPlanDefault: true,
+    isTaskDefault: false,
+    isPublic: true,
     createdAt: new Date("2024-01-01"),
     updatedAt: new Date("2024-01-01"),
   },
@@ -108,8 +113,13 @@ const mockModels = [
     providerLabel: null,
     inputPricePer1M: 0.25,
     outputPricePer1M: 1.25,
+    cacheReadPer1MToken: null,
+    cacheWritePer1MToken: null,
     dateStart: null,
     dateEnd: tomorrow,
+    isPlanDefault: false,
+    isTaskDefault: true,
+    isPublic: true,
     createdAt: new Date("2024-02-01"),
     updatedAt: new Date("2024-02-01"),
   },
@@ -120,8 +130,13 @@ const mockModels = [
     providerLabel: null,
     inputPricePer1M: 10.0,
     outputPricePer1M: 30.0,
+    cacheReadPer1MToken: null,
+    cacheWritePer1MToken: null,
     dateStart: null,
     dateEnd: oneYearAgo,
+    isPlanDefault: false,
+    isTaskDefault: false,
+    isPublic: false,
     createdAt: new Date("2024-03-01"),
     updatedAt: new Date("2024-03-01"),
   },
@@ -132,8 +147,13 @@ const mockModels = [
     providerLabel: "InternalAI",
     inputPricePer1M: 1.0,
     outputPricePer1M: 2.0,
+    cacheReadPer1MToken: null,
+    cacheWritePer1MToken: null,
     dateStart: null,
     dateEnd: null,
+    isPlanDefault: false,
+    isTaskDefault: false,
+    isPublic: false,
     createdAt: new Date("2024-04-01"),
     updatedAt: new Date("2024-04-01"),
   },
@@ -266,5 +286,59 @@ describe("LlmModelsTable", () => {
     await waitFor(() => {
       expect(toast.error).toHaveBeenCalledWith("Not found");
     });
+  });
+
+  it("toggling 'Public only' on hides non-public rows and keeps public rows visible", () => {
+    render(<LlmModelsTable initialData={mockModels} />);
+
+    // All rows visible initially
+    expect(screen.getByText("gpt-4o")).toBeInTheDocument();
+    expect(screen.getByText("claude-3-haiku")).toBeInTheDocument();
+    expect(screen.getByText("gpt-4-turbo")).toBeInTheDocument();
+    expect(screen.getByText("My Custom Model")).toBeInTheDocument();
+
+    // Toggle on "Public only"
+    const toggle = screen.getByRole("switch");
+    fireEvent.click(toggle);
+
+    // Public models remain
+    expect(screen.getByText("gpt-4o")).toBeInTheDocument();
+    expect(screen.getByText("claude-3-haiku")).toBeInTheDocument();
+    // Non-public models are hidden
+    expect(screen.queryByText("gpt-4-turbo")).not.toBeInTheDocument();
+    expect(screen.queryByText("My Custom Model")).not.toBeInTheDocument();
+  });
+
+  it("toggling 'Public only' off restores the full list", () => {
+    render(<LlmModelsTable initialData={mockModels} />);
+
+    const toggle = screen.getByRole("switch");
+
+    // Toggle on then off
+    fireEvent.click(toggle);
+    fireEvent.click(toggle);
+
+    // All rows restored
+    expect(screen.getByText("gpt-4o")).toBeInTheDocument();
+    expect(screen.getByText("claude-3-haiku")).toBeInTheDocument();
+    expect(screen.getByText("gpt-4-turbo")).toBeInTheDocument();
+    expect(screen.getByText("My Custom Model")).toBeInTheDocument();
+  });
+
+  it("shows 'No public models found.' when filter is on and no public models exist", () => {
+    const nonPublicModels = mockModels.map((m) => ({ ...m, isPublic: false }));
+    render(<LlmModelsTable initialData={nonPublicModels} />);
+
+    const toggle = screen.getByRole("switch");
+    fireEvent.click(toggle);
+
+    expect(screen.getByText("No public models found.")).toBeInTheDocument();
+    expect(screen.queryByText(/No LLM models found/)).not.toBeInTheDocument();
+  });
+
+  it("shows generic empty-state when initialData is empty (filter untouched)", () => {
+    render(<LlmModelsTable initialData={[]} />);
+    expect(screen.getByText(/No LLM models found/)).toBeInTheDocument();
+    expect(screen.queryByText("No public models found.")).not.toBeInTheDocument();
   });
 });
