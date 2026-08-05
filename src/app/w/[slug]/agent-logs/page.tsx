@@ -74,6 +74,8 @@ export default function AgentLogsPage() {
   const [timeRange, setTimeRange] = useState<TimeRange>("all");
   const [searchKeyword, setSearchKeyword] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [agentFilter, setAgentFilter] = useState("");
+  const [debouncedAgent, setDebouncedAgent] = useState("");
 
   // Chats tab state
   const [chatLogs, setChatLogs] = useState<AgentLogRecord[]>([]);
@@ -125,6 +127,8 @@ export default function AgentLogsPage() {
 
   // Track previous search keyword so we only reset page when it actually changes
   const prevSearchKeyword = useRef("");
+  // Track previous agent filter so we only reset page when it actually changes
+  const prevAgentFilter = useRef("");
 
   // Debounce search input
   useEffect(() => {
@@ -138,6 +142,19 @@ export default function AgentLogsPage() {
 
     return () => clearTimeout(timer);
   }, [searchKeyword]); // goToPage intentionally omitted — accessed via ref
+
+  // Debounce agent filter input (same 500ms interval as search)
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedAgent(agentFilter);
+      if (agentFilter !== prevAgentFilter.current) {
+        goToPageRef.current(1); // only reset page when agent filter actually changed
+      }
+      prevAgentFilter.current = agentFilter;
+    }, 500);
+
+    return () => clearTimeout(timer);
+  }, [agentFilter]); // goToPage intentionally omitted — accessed via ref
 
   // Fetch logs
   useEffect(() => {
@@ -160,6 +177,7 @@ export default function AgentLogsPage() {
         if (dateRange.start) params.append("start_date", dateRange.start);
         if (dateRange.end) params.append("end_date", dateRange.end);
         if (debouncedSearch) params.append("search", debouncedSearch);
+        if (debouncedAgent) params.append("agent", debouncedAgent);
 
         const response = await fetch(`/api/agent-logs?${params.toString()}`);
 
@@ -179,7 +197,7 @@ export default function AgentLogsPage() {
     };
 
     fetchLogs();
-  }, [workspaceId, page, timeRange, debouncedSearch]);
+  }, [workspaceId, page, timeRange, debouncedSearch, debouncedAgent]);
 
   // Fetch chats when chats tab is active
   useEffect(() => {
@@ -411,6 +429,15 @@ export default function AgentLogsPage() {
                 ))}
               {activeTab === "agents" && (
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                  <div className="relative w-full sm:w-48">
+                    <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                    <Input
+                      placeholder="Filter by agent…"
+                      value={agentFilter}
+                      onChange={(e) => setAgentFilter(e.target.value)}
+                      className="pl-9"
+                    />
+                  </div>
                   <div className="relative w-full sm:w-64">
                     <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                     <Input
