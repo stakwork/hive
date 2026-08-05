@@ -1,5 +1,5 @@
-import { describe, it, expect, beforeAll } from "vitest";
-import { getWorkspaceBySlug } from "@/services/workspace";
+import { describe, it, expect, vi } from "vitest";
+import { getWorkspaceBySlug, updateWorkspace } from "@/services/workspace";
 import { createTestUser, createTestWorkspace } from "@/__tests__/support/factories";
 
 describe("Workspace Service - Superadmin Bypass", () => {
@@ -102,6 +102,61 @@ describe("Workspace Service - Superadmin Bypass", () => {
       });
 
       expect(result).toBeNull();
+    });
+  });
+
+  describe("updateWorkspace with isSuperAdmin option", () => {
+    it("should allow non-member super admin to update core workspace settings via bypass", async () => {
+      // superAdminUser is not a member of workspace (owned by workspaceOwner)
+      const updateData = {
+        name: "Super Admin Updated Name",
+        slug: workspace.slug, // Keep same slug
+        description: "Updated by super admin",
+      };
+
+      const result = await updateWorkspace(workspace.slug, superAdminUser.id, updateData, {
+        isSuperAdmin: true,
+      });
+
+      expect(result).toBeDefined();
+      expect(result.name).toBe("Super Admin Updated Name");
+      expect(result.description).toBe("Updated by super admin");
+      expect(result.slug).toBe(workspace.slug);
+    });
+
+    it("should deny non-member regular user from updating workspace (no bypass)", async () => {
+      const updateData = {
+        name: "Regular User Hack",
+        slug: workspace.slug,
+        description: "Should not work",
+      };
+
+      await expect(
+        updateWorkspace(workspace.slug, regularUser.id, updateData)
+      ).rejects.toThrow("Workspace not found or access denied");
+    });
+
+    it("should deny non-member regular user even with isSuperAdmin: false", async () => {
+      const updateData = {
+        name: "Regular User Hack",
+        slug: workspace.slug,
+        description: "Should not work",
+      };
+
+      await expect(
+        updateWorkspace(workspace.slug, regularUser.id, updateData, { isSuperAdmin: false })
+      ).rejects.toThrow("Workspace not found or access denied");
+    });
+
+    it("should allow actual workspace owner to update without bypass flag", async () => {
+      const updateData = {
+        name: "Owner Updated Name",
+        slug: workspace.slug,
+        description: "Updated by owner",
+      };
+
+      const result = await updateWorkspace(workspace.slug, workspaceOwner.id, updateData);
+      expect(result.name).toBe("Owner Updated Name");
     });
   });
 });
