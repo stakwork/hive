@@ -15,6 +15,7 @@ import { validateWorkspaceAccessById } from "@/services/workspace";
  *   stakwork_run_id?: string  — optional filter by StakworkRun
  *   task_id?:         string  — optional filter by Task
  *   feature_id?:      string  — optional filter by Feature
+ *   agent?:           string  — optional case-insensitive substring filter on agent or source
  *   limit?:           number  — pagination limit (default: 20, max: 100)
  *   skip?:            number  — pagination offset (default: 0)
  *   start_date?:      string  — ISO date string, filter logs after this date
@@ -32,6 +33,7 @@ export async function GET(request: NextRequest) {
     const stakworkRunId = searchParams.get("stakwork_run_id");
     const taskId = searchParams.get("task_id");
     const featureId = searchParams.get("feature_id");
+    const agent = searchParams.get("agent")?.trim();
     const search = searchParams.get("search");
     const startDateParam = searchParams.get("start_date");
     const endDateParam = searchParams.get("end_date");
@@ -87,11 +89,24 @@ export async function GET(request: NextRequest) {
         gte?: Date;
         lte?: Date;
       };
+      OR?: Array<{
+        agent?: { contains: string; mode: "insensitive" };
+        source?: { contains: string; mode: "insensitive" };
+      }>;
     } = { workspaceId };
 
     if (stakworkRunId) where.stakworkRunId = stakworkRunId;
     if (taskId) where.taskId = taskId;
     if (featureId) where.featureId = featureId;
+
+    // Agent name filter: case-insensitive substring match on agent OR source.
+    // Sits as a sibling top-level key — Prisma ANDs it with all other filters.
+    if (agent) {
+      where.OR = [
+        { agent: { contains: agent, mode: "insensitive" } },
+        { source: { contains: agent, mode: "insensitive" } },
+      ];
+    }
 
     // Add date range filtering
     if (startDateParam || endDateParam) {
