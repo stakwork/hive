@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
+import { getMiddlewareContext, requireAuth, checkIsSuperAdmin } from "@/lib/middleware/utils";
 import {
   getWorkspaceBySlug,
   getPublicWorkspaceBySlug,
@@ -126,8 +126,11 @@ export async function PUT(
     const body = await request.json();
     const validatedData = updateWorkspaceSchema.parse(body);
 
-    // Update the workspace
-    const updatedWorkspace = await updateWorkspace(slug, userId, validatedData);
+    const isSuperAdmin = await checkIsSuperAdmin(userId);
+
+    // Update the workspace (super-admin bypass threaded through so non-member
+    // super admins can update any workspace with owner-level rights)
+    const updatedWorkspace = await updateWorkspace(slug, userId, validatedData, { isSuperAdmin });
 
     return NextResponse.json({ 
       workspace: updatedWorkspace,

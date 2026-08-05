@@ -665,5 +665,152 @@ describe("Workspace CRUD Operations", () => {
 
       await expect(updateWorkspace("original-slug", "user1", updateData)).rejects.toThrow(WORKSPACE_ERRORS.SLUG_ALREADY_EXISTS);
     });
+
+    test("should accept optional isSuperAdmin option without breaking existing callers", async () => {
+      const originalWorkspace = workspaceMocks.createMockWorkspaceWithRelations(
+        { id: "workspace1", slug: "test-workspace", ownerId: "user1" },
+        { id: "user1", name: "User", email: "user@example.com" },
+        null
+      );
+      const updatedWorkspace = workspaceMocks.createMockWorkspace({
+        id: "workspace1",
+        slug: "test-workspace",
+        name: "Updated Name",
+        ownerId: "user1",
+      });
+      workspaceMockSetup.mockWorkspaceUpdateScenario(mockedDb, originalWorkspace, updatedWorkspace);
+
+      const updateData = { name: "Updated Name", slug: "test-workspace", description: "desc" };
+
+      // Called without options — should still work (backward-compatible)
+      const result = await updateWorkspace("test-workspace", "user1", updateData);
+      expect(result.name).toBe("Updated Name");
+    });
+
+    test("should allow non-member super admin to update workspace with isSuperAdmin: true", async () => {
+      // Super admin (superUserId) accessing workspace owned by "ownerUserId" — non-member
+      const superUserId = "super-user-1";
+      const ownerUserId = "owner-user-1";
+      const originalWorkspace = workspaceMocks.createMockWorkspaceWithRelations(
+        { id: "workspace1", slug: "owned-workspace", ownerId: ownerUserId },
+        { id: ownerUserId, name: "Owner", email: "owner@example.com" },
+        null
+      );
+      const updatedWorkspace = workspaceMocks.createMockWorkspace({
+        id: "workspace1",
+        slug: "owned-workspace",
+        name: "SA Updated",
+        ownerId: ownerUserId,
+      });
+
+      // getWorkspaceBySlug with isSuperAdmin=true returns workspace even for non-members
+      vi.mocked(db.workspace.findFirst).mockResolvedValue(originalWorkspace);
+      // No membership record — non-member
+      vi.mocked(db.workspaceMember.findFirst).mockResolvedValue(null);
+      vi.mocked(db.workspace.findUnique).mockResolvedValue(null);
+      vi.mocked(db.workspace.update).mockResolvedValue(updatedWorkspace);
+
+      const updateData = { name: "SA Updated", slug: "owned-workspace", description: "test" };
+      const result = await updateWorkspace("owned-workspace", superUserId, updateData, { isSuperAdmin: true });
+
+      expect(result.name).toBe("SA Updated");
+    });
+
+    test("should NOT allow non-member regular user to update workspace (isSuperAdmin: false)", async () => {
+      const regularUserId = "regular-user-1";
+      // workspace.findFirst returns null when user is non-member without bypass
+      vi.mocked(db.workspace.findFirst).mockResolvedValue({
+        id: "workspace1",
+        slug: "owned-workspace",
+        ownerId: "other-owner",
+        name: "Test",
+        description: null,
+        deleted: false,
+        deletedAt: null,
+        stakworkApiKey: null,
+        nodeTypeOrder: null,
+        logoUrl: null,
+        logoKey: null,
+        repositoryDraft: null,
+        mission: null,
+        sourceControlOrgId: null,
+        originalSlug: null,
+        workspaceKind: null,
+        isPublicViewable: false,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        owner: { id: "other-owner", name: "Other", email: "other@example.com" },
+        swarm: null,
+        repositories: [],
+      } as any);
+      vi.mocked(db.workspaceMember.findFirst).mockResolvedValue(null);
+
+      const updateData = { name: "Hacked", slug: "owned-workspace", description: "test" };
+      await expect(
+        updateWorkspace("owned-workspace", regularUserId, updateData, { isSuperAdmin: false })
+      ).rejects.toThrow("Workspace not found or access denied");
+    });
+
+    test("should emit audit log when access is via super-admin bypass", async () => {
+      const superUserId = "super-user-audit";
+      const ownerUserId = "owner-user-audit";
+      const originalWorkspace = workspaceMocks.createMockWorkspaceWithRelations(
+        { id: "wsAudit", slug: "audit-workspace", ownerId: ownerUserId },
+        { id: ownerUserId, name: "Owner", email: "owner@example.com" },
+        null
+      );
+      const updatedWorkspace = workspaceMocks.createMockWorkspace({
+        id: "wsAudit",
+        slug: "audit-workspace",
+        ownerId: ownerUserId,
+      });
+      vi.mocked(db.workspace.findFirst).mockResolvedValue(originalWorkspace);
+      vi.mocked(db.workspaceMember.findFirst).mockResolvedValue(null);
+      vi.mocked(db.workspace.findUnique).mockResolvedValue(null);
+      vi.mocked(db.workspace.update).mockResolvedValue(updatedWorkspace);
+
+      const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+
+      const updateData = { name: "Audited", slug: "audit-workspace", description: "log test" };
+      await updateWorkspace("audit-workspace", superUserId, updateData, { isSuperAdmin: true });
+
+      expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining("superadmin_bypass_write"));
+      const logCall = consoleSpy.mock.calls.find((c) => c[0].includes("superadmin_bypass_write"));
+      const parsed = JSON.parse(logCall![0]);
+      expect(parsed.userId).toBe(superUserId);
+      expect(parsed.workspaceSlug).toBe("audit-workspace");
+      expect(parsed.changedFields).toEqual(expect.arrayContaining(["name", "slug"]));
+      // Must NOT contain secret-like keys
+      expect(parsed.changedFields).not.toContain("swarmApiKey");
+      expect(parsed.changedFields).not.toContain("poolApiKey");
+      expect(parsed.changedFields).not.toContain("environmentVariables");
+
+      consoleSpy.mockRestore();
+    });
+
+    test("should NOT emit audit log when access is by the actual workspace owner", async () => {
+      const ownerUserId = "owner-no-log";
+      const originalWorkspace = workspaceMocks.createMockWorkspaceWithRelations(
+        { id: "wsOwner", slug: "owner-workspace", ownerId: ownerUserId },
+        { id: ownerUserId, name: "Owner", email: "owner@example.com" },
+        null
+      );
+      const updatedWorkspace = workspaceMocks.createMockWorkspace({
+        id: "wsOwner",
+        slug: "owner-workspace",
+        ownerId: ownerUserId,
+      });
+      workspaceMockSetup.mockWorkspaceUpdateScenario(mockedDb, originalWorkspace, updatedWorkspace);
+
+      const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+
+      const updateData = { name: "Owner Update", slug: "owner-workspace", description: "desc" };
+      await updateWorkspace("owner-workspace", ownerUserId, updateData, { isSuperAdmin: true });
+
+      const bypassLog = consoleSpy.mock.calls.find((c) => c[0].includes("superadmin_bypass_write"));
+      expect(bypassLog).toBeUndefined(); // No bypass log when user IS the owner
+
+      consoleSpy.mockRestore();
+    });
   });
 });
