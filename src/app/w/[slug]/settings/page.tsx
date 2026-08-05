@@ -3,6 +3,7 @@ import { SettingsTabs } from "@/components/settings/SettingsTabs";
 import { PageHeader } from "@/components/ui/page-header";
 import { isBifrostEnabledForWorkspace } from "@/config/env";
 import { authOptions } from "@/lib/auth/nextauth";
+import { checkIsSuperAdmin } from "@/lib/middleware/utils";
 import { getWorkspaceBySlug } from "@/services/workspace";
 import { getServerSession } from "next-auth/next";
 import { notFound } from "next/navigation";
@@ -20,7 +21,8 @@ export default async function SettingsPage({ params }: { params: Promise<{ slug:
     notFound();
   }
 
-  const workspace = await getWorkspaceBySlug(slug, userId);
+  const isSuperAdmin = await checkIsSuperAdmin(userId);
+  const workspace = await getWorkspaceBySlug(slug, userId, { isSuperAdmin });
   if (!workspace) {
     notFound();
   }
@@ -41,7 +43,15 @@ export default async function SettingsPage({ params }: { params: Promise<{ slug:
   //
   // Remove once the proper "Open dashboard / copy password" card
   // lands in SettingsTabs.
-  const showBifrostDevLog = isBifrostEnabledForWorkspace(workspace.slug);
+  //
+  // Bifrost guard: never show the dev log when the OWNER role was
+  // granted only via the super-admin bypass (non-member super admin).
+  // The credentials endpoint itself still rejects non-members, but
+  // we avoid mounting the component at all for foreign workspaces.
+  // A super admin accessing via bypass is not the actual owner/member:
+  // ownerId !== userId (not the owner) and isSuperAdmin is what unlocked access.
+  const isAccessViaSuperAdminBypass = isSuperAdmin && workspace.ownerId !== userId;
+  const showBifrostDevLog = isBifrostEnabledForWorkspace(workspace.slug) && !isAccessViaSuperAdminBypass;
 
   return (
     <div className="space-y-6">
