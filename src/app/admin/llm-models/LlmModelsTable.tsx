@@ -104,6 +104,7 @@ interface LlmModelsTableProps {
 
 export default function LlmModelsTable({ initialData }: LlmModelsTableProps) {
   const [models, setModels] = useState<LlmModel[]>(initialData);
+  const [publicOnly, setPublicOnly] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingModel, setEditingModel] = useState<LlmModel | null>(null);
   const [form, setForm] = useState<FormState>(emptyForm);
@@ -218,13 +219,21 @@ export default function LlmModelsTable({ initialData }: LlmModelsTableProps) {
     }
   };
 
+  const visibleModels = publicOnly ? models.filter((m) => m.isPublic) : models;
+
   return (
     <div>
-      <div className="flex justify-end gap-2 mb-4">
-        <Button variant="outline" onClick={handleSync} disabled={syncing}>
-          {syncing ? 'Syncing…' : 'Sync Now'}
-        </Button>
-        <Button onClick={openAdd}>Add Model</Button>
+      <div className="flex items-center justify-between gap-2 mb-4">
+        <div className="flex items-center gap-2">
+          <Switch id="llm-public-only" checked={publicOnly} onCheckedChange={setPublicOnly} />
+          <Label htmlFor="llm-public-only">Public only</Label>
+        </div>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={handleSync} disabled={syncing}>
+            {syncing ? 'Syncing…' : 'Sync Now'}
+          </Button>
+          <Button onClick={openAdd}>Add Model</Button>
+        </div>
       </div>
 
       <div className="overflow-x-auto">
@@ -245,14 +254,16 @@ export default function LlmModelsTable({ initialData }: LlmModelsTableProps) {
             </tr>
           </thead>
           <tbody>
-            {models.length === 0 && (
+            {visibleModels.length === 0 && (
               <tr>
                 <td colSpan={11} className="py-8 text-center text-muted-foreground">
-                  No LLM models found. Add one to get started.
+                  {publicOnly && models.length > 0
+                    ? "No public models found."
+                    : "No LLM models found. Add one to get started."}
                 </td>
               </tr>
             )}
-            {models.map((model) => (
+            {visibleModels.map((model) => (
               <tr key={model.id} className="border-b last:border-0">
                 <td className="py-3 pr-4 font-medium">{model.name}</td>
                 <td className="py-3 pr-4">
