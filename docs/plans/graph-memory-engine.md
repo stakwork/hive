@@ -157,6 +157,35 @@ default package (top-k per role, rendered once at task creation and cached
 on the task) exists for cheap or non-agentic consumers; it is a
 convenience wrapper over `explore`, not a subsystem.
 
+### Relation to recursive graph-walking agents
+
+The current production pattern — graph-walking agents spawning child
+walkers so no single context holds everything — conflates two jobs, and
+this design splits them:
+
+- **Traversal (subsumed by the walk).** A recursive agent hierarchy is a
+  token-expensive Monte Carlo approximation of relevance propagation:
+  each child samples a subgraph and propagates its judgment upward. PPR
+  computes that propagation exactly, over the whole graph, in
+  milliseconds, for zero tokens. The context-window problem that forced
+  the hierarchy dissolves rather than getting partitioned — no agent
+  traverses the graph; `explore` returns only the ranked top-k. Child
+  walkers also only ever find what is *reachable* from where the parent
+  dropped them, so they inherit the missing-edge problem; soft seeds
+  reach disconnected-but-relevant nodes no recursive edge-following can.
+- **Comprehension (still agents, now cheaper).** Reading and judging
+  large volumes of retrieved content still fans out to child agents —
+  but they are readers with `read`/`neighbors` (and their own `explore`
+  subquestions), not walkers. Tokens go to comprehension, never
+  navigation.
+
+**Seed→walk is navigation; agents are comprehension.** One residual for
+agent-driven stepping: PPR propagates mass blindly and cannot express
+conditional traversal ("follow this citation chain only while each
+document amends the prior"). Path-constrained hops remain an agent
+stepping through `neighbors` — local and bounded, never a
+load-everything fan-out.
+
 ### Seed — a personalization vector, not a seed list
 
 Adopted from HippoRAG 2's core finding: **do not require an edge (or an
