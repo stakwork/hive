@@ -1370,9 +1370,10 @@ export async function updateWorkspace(
   currentSlug: string,
   userId: string,
   data: UpdateWorkspaceRequest,
+  options?: { isSuperAdmin?: boolean },
 ): Promise<WorkspaceResponse> {
   // First check if user has access and is authorized to update
-  const workspace = await getWorkspaceBySlug(currentSlug, userId);
+  const workspace = await getWorkspaceBySlug(currentSlug, userId, options);
 
   if (!workspace) {
     throw new Error("Workspace not found or access denied");
@@ -1381,6 +1382,19 @@ export async function updateWorkspace(
   // Only OWNER and ADMIN can update workspace settings
   if (workspace.userRole !== "OWNER" && workspace.userRole !== "ADMIN") {
     throw new Error("Only workspace owners and admins can update workspace settings");
+  }
+
+  // Audit log when access is granted via super-admin bypass (non-member super admin).
+  // Log field names only — never values — so no secrets land in logs.
+  const isViaBypass = options?.isSuperAdmin && workspace.ownerId !== userId;
+  if (isViaBypass) {
+    console.log(JSON.stringify({
+      event: "superadmin_bypass_write",
+      endpoint: "PUT /api/workspaces/[slug]",
+      userId,
+      workspaceSlug: currentSlug,
+      changedFields: Object.keys(data),
+    }));
   }
 
   // If slug is changing, validate it's available
