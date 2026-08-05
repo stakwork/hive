@@ -142,12 +142,27 @@ The engine's primary interface is a small set of verbs, exposed both as
 agent tools and as a CLI (the same surface the librarian and operators
 use):
 
-- **`explore(query, actor?) → ranked refs`** — seed + walk (below);
-  returns scored `(ref, role, name, one-liner)` rows, grouped by role.
+- **`search(query) → refs`** — direct hybrid index lookup (fulltext +
+  vector), no walk. For *locating* known things: "the node for Acme
+  Corp," "does a concept about this already exist?" Also the librarian's
+  duplicate-detection primitive. This is the same machinery `explore`
+  uses to seed, exposed on its own.
+- **`explore(query, actor?) → ranked refs`** — seed + walk (below), for
+  *discovering* relevant things; returns scored
+  `(ref, role, name, one-liner)` rows, grouped by role.
+- **`neighbors(ref, relation?) → refs`** — local expansion,
+  path-constrained stepping.
 - **`read(ref) → node`** — full content; for Concepts, includes support
   summary (n supporting Sources, freshness) so beliefs are always
   *labeled as beliefs*, never presented as evidence.
-- **`neighbors(ref, relation?) → refs`** — local expansion.
+
+The four map onto how a person uses a library: catalog lookup
+(`search`), asking what's related to a topic (`explore`), browsing the
+shelf around a book (`neighbors`), reading the book (`read`). One
+interface for every actor in the system — consuming agents, child
+readers, the librarian, and operators via the CLI. Mutation verbs
+(`merge`, `create-parent`, `retire`, `link`) are a separate guarded
+surface, available only to the librarian and ingestion.
 
 Retrieval is a conversation, not a one-shot: an agent that gets a weak
 result re-queries with different terms or expands from a promising node.
@@ -456,8 +471,8 @@ Runs from day one — benchmark labels already exist.
    before anything adaptive exists. Sets the bar.
 3. **Migration + ingestion**: role-classification pass over the existing
    Concept graph; legal ingestion honoring the contract.
-4. **Retrieval v1**: tools/CLI (`explore`, `read`, `neighbors`), soft
-   seeds, ambient map, thin default package. Loop B ships in the same
+4. **Retrieval v1**: tools/CLI (`search`, `explore`, `neighbors`,
+   `read`), soft seeds, ambient map, thin default package. Loop B ships in the same
    change. Measure rung (c).
 5. **Loop A**: outcome events (primary + proxies) → reinforcement +
    decay. Measure rung (d); A/B bias seeds here.
