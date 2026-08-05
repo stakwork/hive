@@ -93,7 +93,6 @@ describe("Enhanced Workspace [slug] API Integration Tests", () => {
       expect(mockGetWorkspaceBySlug).toHaveBeenCalledWith(
         mockWorkspace.slug,
         mockOwnerUser.id,
-        { allowPublicViewer: true },
       );
     });
 
@@ -114,7 +113,6 @@ describe("Enhanced Workspace [slug] API Integration Tests", () => {
       expect(mockGetWorkspaceBySlug).toHaveBeenCalledWith(
         mockWorkspace.slug,
         mockAdminUser.id,
-        { allowPublicViewer: true },
       );
     });
 
@@ -135,7 +133,6 @@ describe("Enhanced Workspace [slug] API Integration Tests", () => {
       expect(mockGetWorkspaceBySlug).toHaveBeenCalledWith(
         mockWorkspace.slug,
         mockMemberUser.id,
-        { allowPublicViewer: true },
       );
     });
 
@@ -150,7 +147,15 @@ describe("Enhanced Workspace [slug] API Integration Tests", () => {
 
       expect(response.status).toBe(404);
       expect(data.error).toBe("Workspace not found or access denied");
-      expect(mockGetWorkspaceBySlug).toHaveBeenCalledWith(
+      // First call is pure membership check (no options); second call is
+      // the public-viewer fallback after checkIsSuperAdmin returns false.
+      expect(mockGetWorkspaceBySlug).toHaveBeenNthCalledWith(
+        1,
+        mockWorkspace.slug,
+        mockOutsiderUser.id,
+      );
+      expect(mockGetWorkspaceBySlug).toHaveBeenNthCalledWith(
+        2,
         mockWorkspace.slug,
         mockOutsiderUser.id,
         { allowPublicViewer: true },
