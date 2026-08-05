@@ -12,6 +12,14 @@ vi.mock("@/services/workspace", () => ({
   deleteWorkspaceBySlug: vi.fn(),
 }));
 
+vi.mock("@/lib/middleware/utils", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/middleware/utils")>();
+  return {
+    ...actual,
+    checkIsSuperAdmin: vi.fn().mockResolvedValue(false),
+  };
+});
+
 const mockGetWorkspaceBySlug = getWorkspaceBySlug as vi.MockedFunction<typeof getWorkspaceBySlug>;
 const mockGetPublicWorkspaceBySlug = getPublicWorkspaceBySlug as vi.MockedFunction<typeof getPublicWorkspaceBySlug>;
 const mockUpdateWorkspace = updateWorkspace as vi.MockedFunction<typeof updateWorkspace>;
@@ -254,7 +262,7 @@ describe("Enhanced Workspace [slug] API Integration Tests", () => {
       expect(data.workspace.name).toBe("Updated Workspace");
       expect(data.workspace.slug).toBe("updated-workspace");
       expect(data.slugChanged).toBe("updated-workspace");
-      expect(mockUpdateWorkspace).toHaveBeenCalledWith(mockWorkspace.slug, mockOwnerUser.id, updateData);
+      expect(mockUpdateWorkspace).toHaveBeenCalledWith(mockWorkspace.slug, mockOwnerUser.id, updateData, { isSuperAdmin: false });
     });
 
     test("should handle malformed JSON gracefully", async () => {
