@@ -25,16 +25,30 @@ export async function GET(
     const context = getMiddlewareContext(request);
     const userOrResponse = requireAuth(context);
 
-    // Authenticated path. Signed-in non-members visiting a workspace
-    // flagged `isPublicViewable` should get the same sanitized VIEWER
-    // shape that anonymous visitors receive — this endpoint is the
-    // workspace-page data source, so it is one of the few callers that
-    // intentionally opts in to the public-viewer fallback.
+    // Authenticated path.
+    // Deny-then-elevate: first attempt is a pure membership check (no
+    // allowPublicViewer) so that non-members — including super admins —
+    // always resolve to null here and reach the elevate branch.
+    // Owners/members return immediately without paying checkIsSuperAdmin.
     if (!(userOrResponse instanceof NextResponse)) {
       const userId = userOrResponse.id;
-      const workspace = await getWorkspaceBySlug(slug, userId, {
-        allowPublicViewer: true,
-      });
+
+      // Step 1: pure membership lookup — non-null only for owner/member.
+      let workspace = await getWorkspaceBySlug(slug, userId);
+
+      if (!workspace) {
+        // Step 2: caller is a non-member; check super-admin status.
+        const isSuperAdmin = await checkIsSuperAdmin(userId);
+        if (isSuperAdmin) {
+          // Super admin → OWNER-shape workspace, bypassing membership.
+          workspace = await getWorkspaceBySlug(slug, userId, { isSuperAdmin: true });
+        } else {
+          // Ordinary non-member → fall back to public-viewer shape so
+          // workspaces flagged `isPublicViewable` still work as before.
+          workspace = await getWorkspaceBySlug(slug, userId, { allowPublicViewer: true });
+        }
+      }
+
       if (!workspace) {
         return NextResponse.json(
           { error: "Workspace not found or access denied" },
