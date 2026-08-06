@@ -35,6 +35,12 @@ vi.mock("@/lib/runtime", () => ({
   isSwarmFakeModeEnabled: vi.fn(() => false),
 }));
 
+vi.mock("@/lib/pusher", () => ({
+  pusherServer: { trigger: vi.fn().mockResolvedValue(undefined) },
+  getTaskChannelName: (id: string) => `task-${id}`,
+  PUSHER_EVENTS: { NEW_MESSAGE: "new-message" },
+}));
+
 import { isDevelopmentMode } from "@/lib/runtime";
 
 const mockIsDevelopmentMode = vi.mocked(isDevelopmentMode);
@@ -459,11 +465,16 @@ describe("POST /api/workflow/publish", () => {
 
   describe("Artifact Updates", () => {
     it("updates artifact with published status when artifactId provided", async () => {
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        status: 200,
-        json: async () => ({ success: true, data: { workflow_version_id: "v-123" } }),
-      } as Response);
+      // Route now issues: (1) pre-publish baseline GET, (2) publish POST
+      mockFetch
+        // 1. Pre-publish baseline GET (brand-new: no prior spec)
+        .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ data: {} }) } as Response)
+        // 2. Publish POST
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          json: async () => ({ success: true, data: { workflow_version_id: "v-123" } }),
+        } as Response);
 
       const request = createAuthenticatedPostRequest(
         BASE_URL,
@@ -486,11 +497,15 @@ describe("POST /api/workflow/publish", () => {
     });
 
     it("merges with existing artifact content", async () => {
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        status: 200,
-        json: async () => ({ success: true, data: { workflow_version_id: "v-123" } }),
-      } as Response);
+      mockFetch
+        // 1. Pre-publish baseline GET
+        .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ data: {} }) } as Response)
+        // 2. Publish POST
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          json: async () => ({ success: true, data: { workflow_version_id: "v-123" } }),
+        } as Response);
 
       const request = createAuthenticatedPostRequest(
         BASE_URL,
@@ -561,11 +576,15 @@ describe("POST /api/workflow/publish", () => {
     });
 
     it("includes publishedAt timestamp in ISO format", async () => {
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        status: 200,
-        json: async () => ({ success: true, data: { workflow_version_id: "v-123" } }),
-      } as Response);
+      mockFetch
+        // 1. Pre-publish baseline GET
+        .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ data: {} }) } as Response)
+        // 2. Publish POST
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          json: async () => ({ success: true, data: { workflow_version_id: "v-123" } }),
+        } as Response);
 
       const beforePublish = new Date();
 
@@ -591,11 +610,15 @@ describe("POST /api/workflow/publish", () => {
 
   describe("Response Structure", () => {
     it("returns complete success response structure", async () => {
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        status: 200,
-        json: async () => ({ success: true, data: { workflow_version_id: "v-response" } }),
-      } as Response);
+      mockFetch
+        // 1. Pre-publish baseline GET
+        .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ data: {} }) } as Response)
+        // 2. Publish POST
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          json: async () => ({ success: true, data: { workflow_version_id: "v-response" } }),
+        } as Response);
 
       const request = createAuthenticatedPostRequest(
         BASE_URL,
@@ -763,6 +786,555 @@ describe("POST /api/workflow/publish", () => {
     });
   });
 
+  describe("Publish Snapshot (publishedWorkflowJson + workflowVersionId)", () => {
+    const workflowJson = JSON.stringify({ steps: [{ id: "step-1", name: "Start" }], transitions: {} });
+
+    function makePublishFetch(workflowVersionId = "v-snap-123") {
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({ success: true, data: { workflow_version_id: workflowVersionId } }),
+      } as Response;
+    }
+
+    function makeWorkflowFetch(responseShape: Record<string, unknown>) {
+      return {
+        ok: true,
+        status: 200,
+        json: async () => responseShape,
+      } as Response;
+    }
+
+    // ── Fetch call ORDER: baseline GET must precede publish POST ──────────────
+    it("issues baseline GET before publish POST (order assertion)", async () => {
+      const baselineJson = JSON.stringify({ steps: [{ id: "old-step" }], transitions: {} });
+      const publishedJson = JSON.stringify({ steps: [{ id: "new-step" }], transitions: {} });
+      const callOrder: string[] = [];
+
+      mockFetch.mockImplementation((url: string, opts?: RequestInit) => {
+        const method = opts?.method ?? "GET";
+        if (url.includes("/publish") && method === "POST") {
+          callOrder.push("publish-POST");
+          return Promise.resolve(makePublishFetch("v-order-1"));
+        }
+        if (method === "GET") {
+          if (callOrder.includes("publish-POST")) {
+            // This is the post-publish GET
+            callOrder.push("post-publish-GET");
+            return Promise.resolve(
+              makeWorkflowFetch({ data: { workflow: { workflow_json: publishedJson } } }),
+            );
+          } else {
+            // Pre-publish baseline GET
+            callOrder.push("baseline-GET");
+            return Promise.resolve(
+              makeWorkflowFetch({ data: { workflow: { workflow_json: baselineJson } } }),
+            );
+          }
+        }
+        return Promise.reject(new Error("Unexpected fetch call"));
+      });
+
+      const request = createAuthenticatedPostRequest(
+        BASE_URL,
+        { workflowId: 57817, artifactId: artifact.id },
+        testUser,
+      );
+
+      await POST(request);
+
+      // Baseline GET must appear before publish POST in the call log
+      const baselineIdx = callOrder.indexOf("baseline-GET");
+      const publishIdx = callOrder.indexOf("publish-POST");
+      expect(baselineIdx).toBeGreaterThanOrEqual(0);
+      expect(publishIdx).toBeGreaterThan(baselineIdx);
+    });
+
+    // ── Republish: real baseline stored + real diff available ─────────────────
+    it("stores originalWorkflowJson (real baseline) when pre-publish GET returns a workflow spec", async () => {
+      const baselineJson = JSON.stringify({ steps: [{ id: "old-step" }], transitions: {} });
+      const publishedJson = JSON.stringify({ steps: [{ id: "new-step" }], transitions: {} });
+
+      mockFetch
+        // 1. Pre-publish baseline GET
+        .mockResolvedValueOnce(
+          makeWorkflowFetch({ data: { workflow: { workflow_json: baselineJson } } }),
+        )
+        // 2. Publish POST
+        .mockResolvedValueOnce(makePublishFetch("v-republish"))
+        // 3. Post-publish GET
+        .mockResolvedValueOnce(
+          makeWorkflowFetch({ data: { workflow: { workflow_json: publishedJson } } }),
+        );
+
+      const request = createAuthenticatedPostRequest(
+        BASE_URL,
+        { workflowId: 57817, artifactId: artifact.id },
+        testUser,
+      );
+
+      const response = await POST(request);
+      await expectSuccess(response, 200);
+
+      const newMessages = await db.chatMessage.findMany({
+        where: { taskId: testTask.id },
+        include: { artifacts: true },
+        orderBy: { createdAt: "desc" },
+      });
+
+      const newArtifact = newMessages
+        .flatMap((m) => m.artifacts)
+        .find((a) => (a.content as Record<string, unknown>)?.publishedWorkflowJson);
+
+      expect(newArtifact).toBeDefined();
+      const content = newArtifact!.content as Record<string, unknown>;
+      // originalWorkflowJson must be the pre-publish baseline string
+      expect(content.originalWorkflowJson).toBe(baselineJson);
+      // publishedWorkflowJson must be the just-published spec
+      expect(content.publishedWorkflowJson).toBe(publishedJson);
+      expect(content.workflowJson).toBe(publishedJson);
+    });
+
+    // ── Brand-new: GET succeeds with no currently-published version ────────────
+    it("stores originalWorkflowJson: null (brand-new) when baseline GET returns no spec", async () => {
+      const publishedJson = JSON.stringify({ steps: [{ id: "first-step" }], transitions: {} });
+
+      mockFetch
+        // 1. Pre-publish baseline GET — returns empty data (no workflow_json)
+        .mockResolvedValueOnce(makeWorkflowFetch({ data: {} }))
+        // 2. Publish POST
+        .mockResolvedValueOnce(makePublishFetch("v-brandnew"))
+        // 3. Post-publish GET
+        .mockResolvedValueOnce(
+          makeWorkflowFetch({ data: { workflow: { workflow_json: publishedJson } } }),
+        );
+
+      const request = createAuthenticatedPostRequest(
+        BASE_URL,
+        { workflowId: 57818, artifactId: artifact.id },
+        testUser,
+      );
+
+      const response = await POST(request);
+      await expectSuccess(response, 200);
+
+      const newMessages = await db.chatMessage.findMany({
+        where: { taskId: testTask.id },
+        include: { artifacts: true },
+        orderBy: { createdAt: "desc" },
+      });
+
+      const newArtifact = newMessages
+        .flatMap((m) => m.artifacts)
+        .find((a) => (a.content as Record<string, unknown>)?.publishedWorkflowJson);
+
+      expect(newArtifact).toBeDefined();
+      const content = newArtifact!.content as Record<string, unknown>;
+      // Genuine brand-new: originalWorkflowJson must be explicitly null
+      expect(content.originalWorkflowJson).toBeNull();
+      expect(Object.prototype.hasOwnProperty.call(content, "originalWorkflowJson")).toBe(true);
+      expect(content.publishedWorkflowJson).toBe(publishedJson);
+    });
+
+    // ── Baseline-fetch FAILURE: must not be treated as brand-new ──────────────
+    it("does not store originalWorkflowJson when baseline GET fails (non-ok)", async () => {
+      const publishedJson = JSON.stringify({ steps: [{ id: "s" }], transitions: {} });
+
+      mockFetch
+        // 1. Pre-publish baseline GET — FAILS (non-ok)
+        .mockResolvedValueOnce({ ok: false, status: 503, text: async () => "Service Unavailable" } as Response)
+        // 2. Publish POST — succeeds
+        .mockResolvedValueOnce(makePublishFetch("v-baseline-fail"))
+        // 3. Post-publish GET
+        .mockResolvedValueOnce(
+          makeWorkflowFetch({ data: { workflow: { workflow_json: publishedJson } } }),
+        );
+
+      const request = createAuthenticatedPostRequest(
+        BASE_URL,
+        { workflowId: 57819, artifactId: artifact.id },
+        testUser,
+      );
+
+      const response = await POST(request);
+      // Publish itself must still succeed
+      await expectSuccess(response, 200);
+
+      const newMessages = await db.chatMessage.findMany({
+        where: { taskId: testTask.id },
+        include: { artifacts: true },
+        orderBy: { createdAt: "desc" },
+      });
+
+      const newArtifact = newMessages
+        .flatMap((m) => m.artifacts)
+        .find((a) => (a.content as Record<string, unknown>)?.publishedWorkflowJson);
+
+      expect(newArtifact).toBeDefined();
+      const content = newArtifact!.content as Record<string, unknown>;
+      // originalWorkflowJson must be ABSENT (not null, not a string) —
+      // a fetch error must never be conflated with brand-new
+      expect(Object.prototype.hasOwnProperty.call(content, "originalWorkflowJson")).toBe(false);
+    });
+
+    it("does not store originalWorkflowJson when baseline GET throws (network error)", async () => {
+      const publishedJson = JSON.stringify({ steps: [{ id: "s" }], transitions: {} });
+
+      mockFetch
+        // 1. Pre-publish baseline GET — throws
+        .mockRejectedValueOnce(new Error("Network error"))
+        // 2. Publish POST — succeeds
+        .mockResolvedValueOnce(makePublishFetch("v-throw"))
+        // 3. Post-publish GET
+        .mockResolvedValueOnce(
+          makeWorkflowFetch({ data: { workflow: { workflow_json: publishedJson } } }),
+        );
+
+      const request = createAuthenticatedPostRequest(
+        BASE_URL,
+        { workflowId: 57820, artifactId: artifact.id },
+        testUser,
+      );
+
+      const response = await POST(request);
+      await expectSuccess(response, 200);
+
+      const newMessages = await db.chatMessage.findMany({
+        where: { taskId: testTask.id },
+        include: { artifacts: true },
+        orderBy: { createdAt: "desc" },
+      });
+
+      const newArtifact = newMessages
+        .flatMap((m) => m.artifacts)
+        .find((a) => (a.content as Record<string, unknown>)?.publishedWorkflowJson);
+
+      expect(newArtifact).toBeDefined();
+      const content = newArtifact!.content as Record<string, unknown>;
+      // originalWorkflowJson must be ABSENT — thrown errors are not brand-new
+      expect(Object.prototype.hasOwnProperty.call(content, "originalWorkflowJson")).toBe(false);
+    });
+
+    // ── Baseline selector uses data.workflow.workflow_json (same as post-publish) ─
+    it("reads baseline from data.workflow.workflow_json (same selector as post-publish fetch)", async () => {
+      const baselineJson = JSON.stringify({ transitions: { stepA: {} } });
+      const publishedJson = JSON.stringify({ transitions: { stepA: {}, stepB: {} } });
+
+      mockFetch
+        // 1. Pre-publish baseline GET with data.workflow.workflow_json shape
+        .mockResolvedValueOnce(
+          makeWorkflowFetch({ data: { workflow: { workflow_json: baselineJson } } }),
+        )
+        // 2. Publish POST
+        .mockResolvedValueOnce(makePublishFetch("v-selector"))
+        // 3. Post-publish GET
+        .mockResolvedValueOnce(
+          makeWorkflowFetch({ data: { workflow: { workflow_json: publishedJson } } }),
+        );
+
+      const request = createAuthenticatedPostRequest(
+        BASE_URL,
+        { workflowId: 57821, artifactId: artifact.id },
+        testUser,
+      );
+
+      await POST(request);
+
+      const newMessages = await db.chatMessage.findMany({
+        where: { taskId: testTask.id },
+        include: { artifacts: true },
+        orderBy: { createdAt: "desc" },
+      });
+
+      const newArtifact = newMessages
+        .flatMap((m) => m.artifacts)
+        .find((a) => (a.content as Record<string, unknown>)?.publishedWorkflowJson);
+
+      expect(newArtifact).toBeDefined();
+      const content = newArtifact!.content as Record<string, unknown>;
+      // Baseline must be the workflow_json string, not the data.workflow wrapper
+      expect(content.originalWorkflowJson).toBe(baselineJson);
+      expect(typeof content.originalWorkflowJson).toBe("string");
+    });
+
+    // ── Authorization: baseline fetch skipped when no artifactId ──────────────
+    it("skips baseline fetch when no artifactId is provided (no external call before publish)", async () => {
+      const callOrder: string[] = [];
+
+      mockFetch.mockImplementation((url: string, opts?: RequestInit) => {
+        const method = opts?.method ?? "GET";
+        if (url.includes("/publish") && method === "POST") {
+          callOrder.push("publish-POST");
+          return Promise.resolve(makePublishFetch("v-no-artifact"));
+        }
+        if (method === "GET") {
+          callOrder.push("GET");
+          return Promise.resolve(makeWorkflowFetch({ data: {} }));
+        }
+        return Promise.reject(new Error("Unexpected call"));
+      });
+
+      const request = createAuthenticatedPostRequest(
+        BASE_URL,
+        { workflowId: 57822 }, // no artifactId
+        testUser,
+      );
+
+      await POST(request);
+
+      // Without artifactId, the baseline fetch must NOT be issued
+      expect(callOrder.filter((c) => c === "GET")).toHaveLength(0);
+      expect(callOrder[0]).toBe("publish-POST");
+    });
+
+    // ── Authorization: baseline fetch skipped for cross-workspace IDOR artifact ─
+    it("skips baseline fetch when artifact is in a different workspace (IDOR protection)", async () => {
+      // Create an artifact in a DIFFERENT workspace (victim)
+      const victimUser = await createTestUser();
+      const victimWorkspace = await createTestWorkspace({
+        ownerId: victimUser.id,
+        name: "Victim Workspace",
+        slug: "victim-workspace-baseline",
+      });
+      const victimTask = await createTestTask({
+        workspaceId: victimWorkspace.id,
+        createdById: victimUser.id,
+        status: "TODO",
+      });
+      const { createTestChatMessage: ctcm } = await import("@/__tests__/support/fixtures");
+      const victimMessage = await ctcm({
+        taskId: victimTask.id,
+        message: "Victim msg",
+        role: "ASSISTANT",
+      });
+      const victimArtifact = await db.artifact.create({
+        data: {
+          type: "WORKFLOW",
+          messageId: victimMessage.id,
+          content: { secret: "do-not-fetch" },
+        },
+      });
+
+      const callOrder: string[] = [];
+
+      mockFetch.mockImplementation((url: string, opts?: RequestInit) => {
+        const method = opts?.method ?? "GET";
+        if (url.includes("/publish") && method === "POST") {
+          callOrder.push("publish-POST");
+          return Promise.resolve(makePublishFetch("v-idor-baseline"));
+        }
+        if (method === "GET") {
+          callOrder.push("GET");
+          return Promise.resolve(makeWorkflowFetch({ data: {} }));
+        }
+        return Promise.reject(new Error("Unexpected call"));
+      });
+
+      const request = createAuthenticatedPostRequest(
+        BASE_URL,
+        { workflowId: 57823, artifactId: victimArtifact.id },
+        testUser, // testUser is in stakwork workspace, NOT victim workspace
+      );
+
+      await POST(request);
+
+      // Baseline fetch must NOT be issued for a cross-workspace artifact
+      expect(callOrder.filter((c) => c === "GET")).toHaveLength(0);
+      expect(callOrder[0]).toBe("publish-POST");
+
+      // Victim artifact must remain untouched
+      const unchanged = await db.artifact.findUnique({ where: { id: victimArtifact.id } });
+      const uc = unchanged!.content as Record<string, unknown>;
+      expect(uc.secret).toBe("do-not-fetch");
+    });
+
+    // ── Original tests (updated for 3-fetch flow) ──────────────────────────────
+    it("stores publishedWorkflowJson + workflowVersionId on new WORKFLOW artifact (data.workflow.workflow_json branch)", async () => {
+      const baselineJson = JSON.stringify({ steps: [], transitions: {} });
+      mockFetch
+        // 1. Pre-publish baseline GET
+        .mockResolvedValueOnce(
+          makeWorkflowFetch({ data: { workflow: { workflow_json: baselineJson } } }),
+        )
+        // 2. Publish POST
+        .mockResolvedValueOnce(makePublishFetch("v-snap-1") as Response)
+        // 3. Post-publish GET
+        .mockResolvedValueOnce(makeWorkflowFetch({ data: { workflow: { workflow_json: workflowJson } } }) as Response);
+
+      const request = createAuthenticatedPostRequest(
+        BASE_URL,
+        { workflowId: testTask.stakworkProjectId ?? 123, artifactId: artifact.id },
+        testUser,
+      );
+
+      const response = await POST(request);
+      await expectSuccess(response, 200);
+
+      // Find the newly created WORKFLOW artifact in the task's messages
+      const newMessages = await db.chatMessage.findMany({
+        where: { taskId: testTask.id },
+        include: { artifacts: true },
+        orderBy: { createdAt: "desc" },
+      });
+
+      const newWorkflowArtifact = newMessages
+        .flatMap((m) => m.artifacts)
+        .find((a) => {
+          const c = a.content as Record<string, unknown>;
+          return c?.publishedWorkflowJson;
+        });
+
+      expect(newWorkflowArtifact).toBeDefined();
+      const content = newWorkflowArtifact!.content as Record<string, unknown>;
+      expect(content.publishedWorkflowJson).toBe(workflowJson);
+      expect(content.workflowVersionId).toBe("v-snap-1");
+      expect(content.workflowJson).toBe(workflowJson);
+      // baselineJson is not empty → stored as originalWorkflowJson
+      expect(content.originalWorkflowJson).toBe(baselineJson);
+    });
+
+    it("stores publishedWorkflowJson via data.spec fallback branch", async () => {
+      const specJson = JSON.stringify({ steps: [], transitions: {} });
+      mockFetch
+        // 1. Pre-publish baseline GET (brand-new: no spec)
+        .mockResolvedValueOnce(makeWorkflowFetch({ data: {} }))
+        // 2. Publish POST
+        .mockResolvedValueOnce(makePublishFetch("v-spec-1") as Response)
+        // 3. Post-publish GET
+        .mockResolvedValueOnce(makeWorkflowFetch({ data: { spec: specJson } }) as Response);
+
+      const request = createAuthenticatedPostRequest(
+        BASE_URL,
+        { workflowId: 999, artifactId: artifact.id },
+        testUser,
+      );
+
+      await POST(request);
+
+      const newMessages = await db.chatMessage.findMany({
+        where: { taskId: testTask.id },
+        include: { artifacts: true },
+        orderBy: { createdAt: "desc" },
+      });
+
+      const newWorkflowArtifact = newMessages
+        .flatMap((m) => m.artifacts)
+        .find((a) => {
+          const c = a.content as Record<string, unknown>;
+          return c?.publishedWorkflowJson;
+        });
+
+      expect(newWorkflowArtifact).toBeDefined();
+      const content = newWorkflowArtifact!.content as Record<string, unknown>;
+      expect(content.publishedWorkflowJson).toBe(specJson);
+      expect(content.workflowVersionId).toBe("v-spec-1");
+      // Brand-new (baseline GET returned no spec) → originalWorkflowJson: null
+      expect(content.originalWorkflowJson).toBeNull();
+    });
+
+    it("stores publishedWorkflowJson via data.workflow_json fallback branch", async () => {
+      const wfJson = JSON.stringify({ steps: [{ id: "a" }], transitions: {} });
+      const baselineWfJson = JSON.stringify({ steps: [], transitions: {} });
+      mockFetch
+        // 1. Pre-publish baseline GET
+        .mockResolvedValueOnce(makeWorkflowFetch({ data: { workflow_json: baselineWfJson } }))
+        // 2. Publish POST
+        .mockResolvedValueOnce(makePublishFetch("v-wfjson-1") as Response)
+        // 3. Post-publish GET
+        .mockResolvedValueOnce(makeWorkflowFetch({ data: { workflow_json: wfJson } }) as Response);
+
+      const request = createAuthenticatedPostRequest(
+        BASE_URL,
+        { workflowId: 888, artifactId: artifact.id },
+        testUser,
+      );
+
+      await POST(request);
+
+      const newMessages = await db.chatMessage.findMany({
+        where: { taskId: testTask.id },
+        include: { artifacts: true },
+        orderBy: { createdAt: "desc" },
+      });
+
+      const newWorkflowArtifact = newMessages
+        .flatMap((m) => m.artifacts)
+        .find((a) => {
+          const c = a.content as Record<string, unknown>;
+          return c?.publishedWorkflowJson;
+        });
+
+      expect(newWorkflowArtifact).toBeDefined();
+      const content = newWorkflowArtifact!.content as Record<string, unknown>;
+      expect(content.publishedWorkflowJson).toBe(wfJson);
+      expect(content.workflowVersionId).toBe("v-wfjson-1");
+      expect(content.originalWorkflowJson).toBe(baselineWfJson);
+    });
+
+    it("stores publishedWorkflowJson via top-level workflow_json fallback branch", async () => {
+      const topLevelJson = JSON.stringify({ steps: [{ id: "top" }], transitions: {} });
+      mockFetch
+        // 1. Pre-publish baseline GET (brand-new)
+        .mockResolvedValueOnce(makeWorkflowFetch({ data: {} }))
+        // 2. Publish POST
+        .mockResolvedValueOnce(makePublishFetch("v-toplevel-1") as Response)
+        // 3. Post-publish GET
+        .mockResolvedValueOnce(makeWorkflowFetch({ workflow_json: topLevelJson }) as Response);
+
+      const request = createAuthenticatedPostRequest(
+        BASE_URL,
+        { workflowId: 777, artifactId: artifact.id },
+        testUser,
+      );
+
+      await POST(request);
+
+      const newMessages = await db.chatMessage.findMany({
+        where: { taskId: testTask.id },
+        include: { artifacts: true },
+        orderBy: { createdAt: "desc" },
+      });
+
+      const newWorkflowArtifact = newMessages
+        .flatMap((m) => m.artifacts)
+        .find((a) => {
+          const c = a.content as Record<string, unknown>;
+          return c?.publishedWorkflowJson;
+        });
+
+      expect(newWorkflowArtifact).toBeDefined();
+      const content = newWorkflowArtifact!.content as Record<string, unknown>;
+      expect(content.publishedWorkflowJson).toBe(topLevelJson);
+      expect(content.workflowVersionId).toBe("v-toplevel-1");
+      // Brand-new (baseline GET returned no spec) → originalWorkflowJson: null
+      expect(content.originalWorkflowJson).toBeNull();
+    });
+
+    it("does not create new WORKFLOW artifact when GET workflow fetch fails", async () => {
+      mockFetch
+        // 1. Pre-publish baseline GET (brand-new)
+        .mockResolvedValueOnce(makeWorkflowFetch({ data: {} }))
+        // 2. Publish POST
+        .mockResolvedValueOnce(makePublishFetch("v-fail") as Response)
+        // 3. Post-publish GET — fails
+        .mockResolvedValueOnce({ ok: false, status: 500, text: async () => "error" } as Response);
+
+      const countBefore = await db.chatMessage.count({ where: { taskId: testTask.id } });
+
+      const request = createAuthenticatedPostRequest(
+        BASE_URL,
+        { workflowId: 666, artifactId: artifact.id },
+        testUser,
+      );
+
+      const response = await POST(request);
+      await expectSuccess(response, 200); // publish itself succeeds
+
+      const countAfter = await db.chatMessage.count({ where: { taskId: testTask.id } });
+      expect(countAfter).toBe(countBefore); // no new message created
+    });
+  });
+
   describe("Edge Cases", () => {
     it("handles malformed JSON body", async () => {
       const request = new NextRequest(BASE_URL, {
@@ -783,11 +1355,15 @@ describe("POST /api/workflow/publish", () => {
     });
 
     it("handles Stakwork API returning null data", async () => {
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        status: 200,
-        json: async () => ({ success: true, data: null }),
-      } as Response);
+      mockFetch
+        // 1. Pre-publish baseline GET
+        .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ data: {} }) } as Response)
+        // 2. Publish POST — returns null data
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          json: async () => ({ success: true, data: null }),
+        } as Response);
 
       const request = createAuthenticatedPostRequest(
         BASE_URL,

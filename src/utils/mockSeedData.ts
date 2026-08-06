@@ -731,6 +731,11 @@ async function seedTasks(
   // Seed prompt rows used by PUBLISH_PROMPT artifact and canvas agent
   const seededPromptIds = await seedPrompts();
 
+  // Seed additional PUBLISH_PROMPT artifacts with snapshot data for downstream
+  // stacked-history and stable-diff testing (new seed path, does not mutate
+  // the seedPrompts() return contract that mockSetup.ts consumers rely on).
+  await seedPromptSnapshotArtifacts(createdTasks.slice(0, 1), workspaceId);
+
   // Add chat messages with artifacts to some tasks
   await seedChatMessagesWithArtifacts(createdTasks.slice(0, 5), seededPromptIds);
 
@@ -913,6 +918,262 @@ async function seedPrompts(): Promise<{ promptId: string; promptVersionId: strin
 
   // Fallback — should never happen
   return { promptId: mockPrompt.id, promptVersionId: "" };
+}
+
+/**
+ * Seeds PUBLISH_PROMPT artifacts with pre-populated baselineSnapshot/versionSnapshot
+ * fields (as the enrichment helper would produce) so downstream stacked-history
+ * and stable-diff tests have realistic data.
+ *
+ * New seed path — does NOT mutate seedPrompts() return contract.
+ * Artifacts are placed only in a stakwork-workspace task (task index 0).
+ */
+async function seedPromptSnapshotArtifacts(
+  tasks: Array<{ id: string; title: string; status: string }>,
+  workspaceId: string,
+): Promise<void> {
+  const task = tasks[0];
+  if (!task) return;
+
+  // Only seed in the stakwork workspace.
+  const stakworkWs = await db.workspace.findFirst({ where: { slug: "stakwork", id: workspaceId }, select: { id: true } });
+  if (!stakworkWs) return;
+
+  // ── Multi-iteration prompt (published baseline + 2 later versions) ─────────
+  const MULTI_PROMPT_NAME = "MOCK_STACKED_PROMPT";
+  const existing = await db.prompt.findFirst({ where: { name: MULTI_PROMPT_NAME } });
+  if (!existing) {
+    const baseValue = "Base version of the stacked prompt.";
+    const v1Value = "First iteration of the stacked prompt.";
+    const v2Value = "Second iteration of the stacked prompt.";
+
+    const multiPrompt = await db.prompt.create({
+      data: {
+        name: MULTI_PROMPT_NAME,
+        value: v2Value, // mirrors published value
+        description: "Multi-iteration prompt for snapshot/stacked-diff testing",
+        versions: {
+          create: [
+            { versionNumber: 1, value: baseValue },
+            { versionNumber: 2, value: v1Value },
+            { versionNumber: 3, value: v2Value },
+          ],
+        },
+      },
+      include: { versions: { orderBy: { versionNumber: "asc" } } },
+    });
+
+    const [baseVer, v1Ver, v2Ver] = multiPrompt.versions;
+
+    // Publish v1 as the baseline (published before the changes were proposed)
+    if (baseVer) {
+      await db.prompt.update({ where: { id: multiPrompt.id }, data: { publishedVersionId: baseVer.id } });
+    }
+
+    // Add PromptUsage so the IDOR guard passes for this workspace
+    await db.promptUsage.create({
+      data: {
+        workspaceId,
+        promptId: multiPrompt.id,
+        promptName: MULTI_PROMPT_NAME,
+        workflowId: 99990,
+        workflowName: "mock-stacked-workflow",
+        stepId: "step-mock-stacked-1",
+      },
+    }).catch(() => { /* ignore duplicate */ });
+
+    // Artifact 1: first iteration (v1→v2, baseline=v1/baseVer)
+    if (v1Ver && baseVer) {
+      const msg1 = await db.chatMessage.create({
+        data: { taskId: task.id, message: "First prompt change:", role: "ASSISTANT" },
+      });
+      await db.artifact.create({
+        data: {
+          messageId: msg1.id,
+          type: ArtifactType.PUBLISH_PROMPT,
+          content: {
+            promptId: multiPrompt.id,
+            promptVersionId: v1Ver.id,
+            promptName: MULTI_PROMPT_NAME,
+            published: false,
+            baselineSnapshot: { value: baseValue, versionId: baseVer.id, versionNumber: 1 },
+            versionSnapshot: { value: v1Value, versionNumber: 2 },
+          },
+        },
+      });
+    }
+
+    // Artifact 2: second iteration (v2→v3, baseline=v1/baseVer same original)
+    if (v2Ver && baseVer) {
+      const msg2 = await db.chatMessage.create({
+        data: { taskId: task.id, message: "Second prompt change:", role: "ASSISTANT" },
+      });
+      await db.artifact.create({
+        data: {
+          messageId: msg2.id,
+          type: ArtifactType.PUBLISH_PROMPT,
+          content: {
+            promptId: multiPrompt.id,
+            promptVersionId: v2Ver.id,
+            promptName: MULTI_PROMPT_NAME,
+            published: false,
+            baselineSnapshot: { value: baseValue, versionId: baseVer.id, versionNumber: 1 },
+            versionSnapshot: { value: v2Value, versionNumber: 3 },
+          },
+        },
+      });
+    }
+  }
+
+  // ── Brand-new prompt (no published version, baselineSnapshot: null) ────────
+  const NEW_PROMPT_NAME = "MOCK_NEW_PROMPT_SNAPSHOT";
+  const existingNew = await db.prompt.findFirst({ where: { name: NEW_PROMPT_NAME } });
+  if (!existingNew) {
+    const newPrompt = await db.prompt.create({
+      data: {
+        name: NEW_PROMPT_NAME,
+        value: "Brand new prompt with no prior published version.",
+        description: "New prompt (no published version) for snapshot fallback testing",
+        versions: {
+          create: [{ versionNumber: 1, value: "Brand new prompt with no prior published version." }],
+        },
+      },
+      include: { versions: true },
+    });
+    const ver1 = newPrompt.versions[0];
+    if (ver1) {
+      const msgNew = await db.chatMessage.create({
+        data: { taskId: task.id, message: "New prompt created:", role: "ASSISTANT" },
+      });
+      await db.artifact.create({
+        data: {
+          messageId: msgNew.id,
+          type: ArtifactType.PUBLISH_PROMPT,
+          content: {
+            promptId: newPrompt.id,
+            promptVersionId: ver1.id,
+            promptName: NEW_PROMPT_NAME,
+            published: false,
+            baselineSnapshot: null, // no published baseline
+            versionSnapshot: { value: "Brand new prompt with no prior published version.", versionNumber: 1 },
+          },
+        },
+      });
+    }
+  }
+
+  // ── Drift artifact with precomputed baselineSnapshot (for manual UI QA) ─────
+  // Simulates the corrected enrichment output: an artifact whose version was
+  // published (drift scenario), but with a precomputed baselineSnapshot pointing
+  // at the actually-previously-published version.  Includes an intervening
+  // unpublished draft at a higher versionNumber to exercise the fast path.
+  const DRIFT_PROMPT_NAME = "MOCK_DRIFT_CORRECTED_SNAPSHOT";
+  const existingDrift = await db.prompt.findFirst({ where: { name: DRIFT_PROMPT_NAME } });
+  if (!existingDrift) {
+    const prevPublishedValue = "v1: first published version of the drift prompt.";
+    const draftValue = "v2: unpublished draft (should NOT be selected as baseline).";
+    const newlyPublishedValue = "v3: newly published version (drift: same as current published).";
+
+    const driftPrompt = await db.prompt.create({
+      data: {
+        name: DRIFT_PROMPT_NAME,
+        value: newlyPublishedValue,
+        description: "Drift prompt: precomputed baselineSnapshot pointing at previously-published v1 (v2 is an intervening unpublished draft)",
+        versions: {
+          create: [
+            { versionNumber: 1, value: prevPublishedValue },
+            { versionNumber: 2, value: draftValue },
+            { versionNumber: 3, value: newlyPublishedValue },
+          ],
+        },
+      },
+      include: { versions: { orderBy: { versionNumber: "asc" } } },
+    });
+
+    const [driftV1, , driftV3] = driftPrompt.versions;
+
+    // Publish v3 as current (collapse: publishedVersionId === artifact's own version)
+    if (driftV3) {
+      await db.prompt.update({ where: { id: driftPrompt.id }, data: { publishedVersionId: driftV3.id } });
+    }
+
+    await db.promptUsage.create({
+      data: {
+        workspaceId,
+        promptId: driftPrompt.id,
+        promptName: DRIFT_PROMPT_NAME,
+        workflowId: 99991,
+        workflowName: "mock-drift-workflow",
+        stepId: "step-mock-drift-1",
+      },
+    }).catch(() => { /* ignore duplicate */ });
+
+    // Artifact with a precomputed baselineSnapshot pointing at v1 (the
+    // previously-published version), simulating correct enrichment output so
+    // the fast path renders a real before→after diff in the UI.
+    if (driftV1 && driftV3) {
+      const msgDrift = await db.chatMessage.create({
+        data: { taskId: task.id, message: "Drift-corrected prompt published (v3, baseline=v1):", role: "ASSISTANT" },
+      });
+      await db.artifact.create({
+        data: {
+          messageId: msgDrift.id,
+          type: ArtifactType.PUBLISH_PROMPT,
+          content: {
+            promptId: driftPrompt.id,
+            promptVersionId: driftV3.id,
+            promptName: DRIFT_PROMPT_NAME,
+            published: true,
+            // Precomputed baselineSnapshot: points at v1 (previously-published),
+            // NOT v2 (the intervening unpublished draft with higher versionNumber).
+            baselineSnapshot: {
+              value: prevPublishedValue,
+              versionId: driftV1.id,
+              versionNumber: 1,
+            },
+            versionSnapshot: { value: newlyPublishedValue, versionNumber: 3 },
+          },
+        },
+      });
+    }
+  }
+
+  // ── Legacy artifact (no snapshot fields at all) ────────────────────────────
+  const LEGACY_PROMPT_NAME = "MOCK_LEGACY_PROMPT_SNAPSHOT";
+  const existingLegacy = await db.prompt.findFirst({ where: { name: LEGACY_PROMPT_NAME } });
+  if (!existingLegacy) {
+    const legacyPrompt = await db.prompt.create({
+      data: {
+        name: LEGACY_PROMPT_NAME,
+        value: "Legacy prompt without snapshot data.",
+        description: "Legacy prompt artifact (no snapshot) for live-lookup fallback testing",
+        versions: {
+          create: [{ versionNumber: 1, value: "Legacy prompt without snapshot data." }],
+        },
+      },
+      include: { versions: true },
+    });
+    const legacyVer = legacyPrompt.versions[0];
+    if (legacyVer) {
+      await db.prompt.update({ where: { id: legacyPrompt.id }, data: { publishedVersionId: legacyVer.id } });
+      const msgLegacy = await db.chatMessage.create({
+        data: { taskId: task.id, message: "Legacy prompt artifact (no snapshot):", role: "ASSISTANT" },
+      });
+      await db.artifact.create({
+        data: {
+          messageId: msgLegacy.id,
+          type: ArtifactType.PUBLISH_PROMPT,
+          content: {
+            // No baselineSnapshot / versionSnapshot — simulates pre-enrichment artifacts
+            promptId: legacyPrompt.id,
+            promptVersionId: legacyVer.id,
+            promptName: LEGACY_PROMPT_NAME,
+            published: false,
+          },
+        },
+      });
+    }
+  }
 }
 
 /**

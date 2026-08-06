@@ -40,6 +40,42 @@ vi.mock("lucide-react", () => ({
   SendHorizontal: () => <svg data-testid="send-icon" />,
 }));
 
+// ---- parseMessageSegments / usePromptResolution / link component mocks ------
+
+vi.mock("@/lib/prompts/detect-prompt-names", () => ({
+  parseMessageSegments: vi.fn((text: string) => [{ type: "text", value: text }]),
+}));
+
+vi.mock("@/hooks/usePromptResolution", () => ({
+  usePromptResolution: vi.fn(() => new Map()),
+}));
+
+vi.mock("@/components/prompts/PromptNameLink", () => ({
+  PromptNameLink: ({ name, promptId }: { name: string; promptId: string }) => (
+    <span data-testid="prompt-name-link" data-name={name} data-prompt-id={promptId}>
+      {name}
+    </span>
+  ),
+  VersionRefLink: ({
+    label,
+    versionNumber,
+    promptId,
+  }: {
+    label: string;
+    versionNumber: number;
+    promptId: string;
+  }) => (
+    <span
+      data-testid="version-ref-link"
+      data-label={label}
+      data-version-number={versionNumber}
+      data-prompt-id={promptId}
+    >
+      {label}
+    </span>
+  ),
+}));
+
 // jsdom doesn't implement scrollIntoView
 window.HTMLElement.prototype.scrollIntoView = vi.fn();
 
@@ -60,6 +96,10 @@ vi.mock("@/stores/useVoiceStore", () => ({
 function setStoreState(overrides: Partial<typeof storeState>) {
   storeState = { ...storeState, ...overrides };
 }
+
+// ---- import mocked modules (for vi.mocked access) -------------------------
+import * as detectPromptNames from "@/lib/prompts/detect-prompt-names";
+import * as usePromptResolutionModule from "@/hooks/usePromptResolution";
 
 // ---- import after mocks ---------------------------------------------------
 import { VoiceMessagesDrawer } from "@/components/voice/VoiceMessagesDrawer";
@@ -160,9 +200,15 @@ describe("VoiceMessagesDrawer — MessageBubble rendering", () => {
       messages: [{ id: "1", timestamp: Date.now(), message: "Hello user", sender: "agent" }],
     });
     renderDrawer();
-    const bubble = screen.getByText("Hello user");
-    expect(bubble.className).toContain("bg-muted");
-    expect(bubble.className).not.toContain("ml-auto");
+    // Walk up from the text node to the bubble div (parseMessageSegments wraps
+    // text in a <span>, so the direct parent may be a span inside the bubble).
+    const textEl = screen.getByText("Hello user");
+    const bubble =
+      textEl.closest('[class*="bg-muted"]') ??
+      textEl.closest('[class*="rounded-lg"]') ??
+      textEl;
+    expect(bubble!.className).toContain("bg-muted");
+    expect(bubble!.className).not.toContain("ml-auto");
   });
 
   test("user messages are rendered right-aligned with bg-primary", () => {
@@ -173,5 +219,98 @@ describe("VoiceMessagesDrawer — MessageBubble rendering", () => {
     const bubble = screen.getByText("My message");
     expect(bubble.className).toContain("bg-primary");
     expect(bubble.className).toContain("ml-auto");
+  });
+
+  test("Jamie message: resolved map has prompt → PromptNameLink rendered with correct name and promptId", () => {
+    const mockParse = vi.mocked(detectPromptNames.parseMessageSegments);
+    const mockUseResolution = vi.mocked(usePromptResolutionModule.usePromptResolution);
+
+    mockParse.mockReturnValueOnce([
+      { type: "text", value: "Check out " },
+      { type: "prompt", name: "MY_TEST_PROMPT" },
+    ]);
+    mockUseResolution.mockReturnValueOnce(
+      new Map([["MY_TEST_PROMPT", { id: "prompt-abc", publishedVersionId: "v1" }]]),
+    );
+
+    setStoreState({
+      messages: [
+        { id: "3", timestamp: Date.now(), message: "Check out MY_TEST_PROMPT", sender: "agent" },
+      ],
+    });
+    renderDrawer();
+
+    const link = screen.getByTestId("prompt-name-link");
+    expect(link).toBeInTheDocument();
+    expect(link).toHaveAttribute("data-name", "MY_TEST_PROMPT");
+    expect(link).toHaveAttribute("data-prompt-id", "prompt-abc");
+  });
+
+  test("Jamie message: resolved map empty (verification pending) → plain text, no PromptNameLink", () => {
+    const mockParse = vi.mocked(detectPromptNames.parseMessageSegments);
+    const mockUseResolution = vi.mocked(usePromptResolutionModule.usePromptResolution);
+
+    mockParse.mockReturnValueOnce([{ type: "prompt", name: "MY_TEST_PROMPT" }]);
+    // Empty map = verification still in flight
+    mockUseResolution.mockReturnValueOnce(new Map());
+
+    setStoreState({
+      messages: [
+        { id: "4", timestamp: Date.now(), message: "MY_TEST_PROMPT", sender: "agent" },
+      ],
+    });
+    renderDrawer();
+
+    expect(screen.queryByTestId("prompt-name-link")).not.toBeInTheDocument();
+    expect(screen.getByText("MY_TEST_PROMPT")).toBeInTheDocument();
+  });
+
+  test("Jamie message: resolved map has prompt + version segment → VersionRefLink rendered", () => {
+    const mockParse = vi.mocked(detectPromptNames.parseMessageSegments);
+    const mockUseResolution = vi.mocked(usePromptResolutionModule.usePromptResolution);
+
+    mockParse.mockReturnValueOnce([
+      { type: "prompt", name: "MY_TEST_PROMPT" },
+      { type: "text", value: " " },
+      { type: "version", label: "version 3", number: 3, promptName: "MY_TEST_PROMPT" },
+    ]);
+    mockUseResolution.mockReturnValueOnce(
+      new Map([["MY_TEST_PROMPT", { id: "prompt-xyz", publishedVersionId: "v3id" }]]),
+    );
+
+    setStoreState({
+      messages: [
+        {
+          id: "5",
+          timestamp: Date.now(),
+          message: "MY_TEST_PROMPT version 3",
+          sender: "agent",
+        },
+      ],
+    });
+    renderDrawer();
+
+    expect(screen.getByTestId("prompt-name-link")).toBeInTheDocument();
+    const versionLink = screen.getByTestId("version-ref-link");
+    expect(versionLink).toBeInTheDocument();
+    expect(versionLink).toHaveAttribute("data-label", "version 3");
+    expect(versionLink).toHaveAttribute("data-version-number", "3");
+    expect(versionLink).toHaveAttribute("data-prompt-id", "prompt-xyz");
+  });
+
+  test("user message with MY_TEST_PROMPT renders as plain text — no link components", () => {
+    const mockParse = vi.mocked(detectPromptNames.parseMessageSegments);
+
+    setStoreState({
+      messages: [
+        { id: "6", timestamp: Date.now(), message: "MY_TEST_PROMPT", sender: "user" },
+      ],
+    });
+    renderDrawer();
+
+    // parseMessageSegments must NOT be called for user messages
+    expect(mockParse).not.toHaveBeenCalled();
+    expect(screen.queryByTestId("prompt-name-link")).not.toBeInTheDocument();
+    expect(screen.getByText("MY_TEST_PROMPT")).toBeInTheDocument();
   });
 });

@@ -2,6 +2,7 @@ import { describe, test, expect, beforeEach, vi } from "vitest";
 import { GET, PUT, DELETE } from "@/app/api/workspaces/[slug]/route";
 import { db } from "@/lib/db";
 import { createTestWorkspaceScenario } from "@/__tests__/support/factories/workspace.factory";
+import { createTestUser } from "@/__tests__/support/factories";
 import {
   expectSuccess,
   expectUnauthorized,
@@ -276,6 +277,67 @@ describe("Workspace Update API Integration Tests", () => {
       });
       expect(unchangedWorkspaceInDb?.deleted).toBeFalsy();
       expect(unchangedWorkspaceInDb?.slug).toBe(workspace.slug); // Slug should remain unchanged
+    });
+  });
+
+  describe("PUT /api/workspaces/[slug] — super-admin bypass", () => {
+    test("non-member super admin can update workspace core settings via PUT", async () => {
+      // workspace is owned by ownerUser; superAdminUser has no membership
+      const { workspace } = await createTestWorkspace();
+      const superAdminUser = await createTestUser({
+        role: "SUPER_ADMIN",
+        email: `sa-put-test-${Date.now()}@example.com`,
+      });
+
+      const updateData = {
+        name: "SA Updated via API",
+        slug: workspace.slug, // Keep same slug to avoid redirect complications
+        description: "Updated by super admin via PUT endpoint",
+      };
+
+      const request = createAuthenticatedPutRequest(
+        `http://localhost:3000/api/workspaces/${workspace.slug}`,
+        superAdminUser,
+        updateData,
+      );
+
+      const response = await PUT(request, { params: Promise.resolve({ slug: workspace.slug }) });
+
+      const data = await expectSuccess(response);
+      expect(data.workspace.name).toBe("SA Updated via API");
+      expect(data.workspace.description).toBe("Updated by super admin via PUT endpoint");
+
+      // Verify persisted in DB
+      const updatedInDb = await db.workspace.findUnique({ where: { slug: workspace.slug } });
+      expect(updatedInDb?.name).toBe("SA Updated via API");
+    });
+
+    test("non-member non-super-admin gets 404 on PUT", async () => {
+      const { workspace } = await createTestWorkspace();
+      const outsider = await createTestUser({
+        role: "USER",
+        email: `outsider-put-test-${Date.now()}@example.com`,
+      });
+
+      const updateData = {
+        name: "Outsider Hack",
+        slug: workspace.slug,
+        description: "Should fail",
+      };
+
+      const request = createAuthenticatedPutRequest(
+        `http://localhost:3000/api/workspaces/${workspace.slug}`,
+        outsider,
+        updateData,
+      );
+
+      const response = await PUT(request, { params: Promise.resolve({ slug: workspace.slug }) });
+
+      await expectNotFound(response);
+
+      // Workspace must be unchanged
+      const unchangedInDb = await db.workspace.findUnique({ where: { slug: workspace.slug } });
+      expect(unchangedInDb?.name).toBe(workspace.name);
     });
   });
 });

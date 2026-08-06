@@ -1,15 +1,75 @@
 "use client";
 
-import { useState } from "react";
+import { Fragment, useMemo, useState } from "react";
 import { formatDistanceToNow } from "date-fns";
-import { Loader2 } from "lucide-react";
+import { ExternalLink, Loader2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { useLegalBenchmarkRunList } from "@/hooks/useLegalBenchmarkRunList";
 import { LegalBenchmarkResults } from "@/components/legal/LegalBenchmarkResults";
 import { StakworkRunLink } from "@/components/legal/StakworkRunLink";
+import { HillClimbChart } from "@/components/legal/HillClimbChart";
 import { WorkflowStatus } from "@prisma/client";
 import type { BenchmarkRunListRow } from "@/hooks/useLegalBenchmarkRunList";
+import type { EvalTriggerOutput } from "@/lib/harvey-lab/eval-normalizers";
+
+const ALL_TASKS = "all";
+
+interface TaskOption {
+  slug: string;
+  title: string;
+  count: number;
+}
+
+/** Unique tasks across the loaded runs, preserving most-recent-first order */
+function buildTaskOptions(runs: BenchmarkRunListRow[]): TaskOption[] {
+  const map = new Map<string, TaskOption>();
+  for (const run of runs) {
+    if (!run.taskSlug) continue;
+    const existing = map.get(run.taskSlug);
+    if (existing) {
+      existing.count += 1;
+    } else {
+      map.set(run.taskSlug, {
+        slug: run.taskSlug,
+        title: run.taskTitle || run.taskSlug,
+        count: 1,
+      });
+    }
+  }
+  return Array.from(map.values());
+}
+
+/**
+ * Map one task's scored runs (oldest → newest) into HillClimbChart input.
+ * The chart's legacy path derives the monotonic best-so-far line from n_passed.
+ * If n_total drifted between runs (criteria edited), the max is used as target.
+ */
+function toChartAttempts(taskRuns: BenchmarkRunListRow[]): EvalTriggerOutput[] {
+  const scored = taskRuns
+    .filter((r) => typeof r.n_passed === "number" && typeof r.n_total === "number")
+    .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+
+  const maxTotal = scored.reduce((max, r) => Math.max(max, r.n_total ?? 0), 0);
+
+  return scored.map((r, i) => ({
+    ref_id: r.id,
+    attempt_number: i + 1,
+    result: "",
+    score: r.n_passed ?? 0,
+    n_passed: r.n_passed,
+    n_total: maxTotal,
+    isBaseline: false,
+    label: `#${i + 1}`,
+  }));
+}
 
 /** Strip provider prefix for display, e.g. "anthropic/claude-sonnet-5" → "claude-sonnet-5" */
 function displayModelName(value: string | undefined): string {
@@ -33,6 +93,22 @@ export function BenchmarkRunsHistory() {
 
   const { runs, total, isLoading, error, setExpandedId } = useLegalBenchmarkRunList(workspaceId);
   const [expandedRunId, setExpandedRunId] = useState<string | null>(null);
+  const [taskFilter, setTaskFilter] = useState<string>(ALL_TASKS);
+
+  const taskOptions = useMemo(() => buildTaskOptions(runs), [runs]);
+
+  const selectedTask =
+    taskFilter === ALL_TASKS ? null : taskOptions.find((t) => t.slug === taskFilter) ?? null;
+
+  const filteredRuns = useMemo(
+    () => (selectedTask ? runs.filter((r) => r.taskSlug === selectedTask.slug) : runs),
+    [runs, selectedTask],
+  );
+
+  const chartAttempts = useMemo(
+    () => (selectedTask ? toChartAttempts(filteredRuns) : []),
+    [selectedTask, filteredRuns],
+  );
 
   const handleToggleExpand = (runId: string) => {
     const next = expandedRunId === runId ? null : runId;
@@ -43,6 +119,11 @@ export function BenchmarkRunsHistory() {
   const handleReset = () => {
     setExpandedRunId(null);
     setExpandedId(null);
+  };
+
+  const handleFilterChange = (value: string) => {
+    setTaskFilter(value);
+    if (expandedRunId) handleReset();
   };
 
   if (isLoading) {
@@ -70,11 +151,36 @@ export function BenchmarkRunsHistory() {
     );
   }
 
-  // colSpan: Task + Started + Runner Status + Score + (Stakwork if super admin)
-  const colSpan = isSuperAdmin ? 5 : 4;
+  // colSpan: Task + Started + Runner Status + Score + Report + (Stakwork if super admin)
+  const colSpan = isSuperAdmin ? 6 : 5;
 
   return (
     <div className="space-y-3">
+      <div className="flex items-center gap-2">
+        <Select value={taskFilter} onValueChange={handleFilterChange}>
+          <SelectTrigger className="w-[340px]" data-testid="task-filter-trigger">
+            <SelectValue placeholder="Filter by task" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value={ALL_TASKS}>All tasks</SelectItem>
+            {taskOptions.map((t) => (
+              <SelectItem key={t.slug} value={t.slug}>
+                {t.title} ({t.count})
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        {selectedTask && (
+          <span className="text-xs text-muted-foreground">
+            {filteredRuns.length} of {runs.length} runs
+          </span>
+        )}
+      </div>
+
+      {selectedTask && (
+        <TaskProgressCard task={selectedTask} attempts={chartAttempts} />
+      )}
+
       {total > 100 && (
         <div className="text-xs text-muted-foreground bg-muted rounded-md px-3 py-2">
           Showing the most recent 100 runs.
@@ -89,16 +195,16 @@ export function BenchmarkRunsHistory() {
               <th className="text-left px-4 py-3 font-medium text-muted-foreground">Started</th>
               <th className="text-left px-4 py-3 font-medium text-muted-foreground">Runner Status</th>
               <th className="text-left px-4 py-3 font-medium text-muted-foreground">Score</th>
+              <th className="text-left px-4 py-3 font-medium text-muted-foreground">Report</th>
               {isSuperAdmin && (
                 <th className="text-left px-4 py-3 font-medium text-muted-foreground">Stakwork</th>
               )}
             </tr>
           </thead>
           <tbody>
-            {runs.map((run) => (
-              <>
+            {filteredRuns.map((run) => (
+              <Fragment key={run.id}>
                 <tr
-                  key={run.id}
                   className="border-b last:border-0 cursor-pointer hover:bg-muted/30 transition-colors"
                   onClick={() => handleToggleExpand(run.id)}
                 >
@@ -133,6 +239,9 @@ export function BenchmarkRunsHistory() {
                   <td className="px-4 py-3">
                     <ScoreCell run={run} />
                   </td>
+                  <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
+                    <ReportCell run={run} />
+                  </td>
                   {isSuperAdmin && (
                     <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
                       <StakworkRunLink projectId={run.projectId} isSuperAdmin={isSuperAdmin} />
@@ -140,7 +249,7 @@ export function BenchmarkRunsHistory() {
                   )}
                 </tr>
                 {expandedRunId === run.id && (
-                  <tr key={`${run.id}-expanded`} className="border-b last:border-0 bg-muted/10">
+                  <tr className="border-b last:border-0 bg-muted/10">
                     <td colSpan={colSpan} className="px-4 pb-4">
                       <LegalBenchmarkResults
                         runId={run.id}
@@ -150,13 +259,80 @@ export function BenchmarkRunsHistory() {
                     </td>
                   </tr>
                 )}
-              </>
+              </Fragment>
             ))}
           </tbody>
         </table>
       </div>
     </div>
   );
+}
+
+function TaskProgressCard({
+  task,
+  attempts,
+}: {
+  task: TaskOption;
+  attempts: EvalTriggerOutput[];
+}) {
+  const best = attempts.reduce((max, a) => Math.max(max, a.n_passed ?? 0), 0);
+  const target = attempts[0]?.n_total ?? 0;
+
+  return (
+    <div className="rounded-lg border bg-card p-4" data-testid="task-progress-card">
+      <div className="flex items-baseline justify-between gap-4 mb-1">
+        <div className="font-medium text-sm leading-tight truncate">{task.title}</div>
+        {attempts.length > 0 && (
+          <div className="text-xs text-muted-foreground whitespace-nowrap tabular-nums">
+            Best: {best}/{target} · {attempts.length} scored{" "}
+            {attempts.length === 1 ? "run" : "runs"}
+          </div>
+        )}
+      </div>
+      {attempts.length > 0 ? (
+        <HillClimbChart attempts={attempts} height={160} />
+      ) : (
+        <div className="text-sm text-muted-foreground py-6 text-center">
+          No scored runs yet for this task.
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ReportCell({ run }: { run: BenchmarkRunListRow }) {
+  if (run.reportChatPath) {
+    return (
+      <a
+        href={run.reportChatPath}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="inline-flex items-center gap-1 text-primary hover:underline whitespace-nowrap"
+        data-testid="report-chat-link"
+      >
+        View Report
+        <ExternalLink className="h-3 w-3" />
+      </a>
+    );
+  }
+
+  if (run.reportStatus === "failed") {
+    return <span className="text-xs text-destructive">Failed</span>;
+  }
+
+  // Requested but not yet started/written (run still executing, or the
+  // completion webhook is generating the report right now). A FAILED run
+  // never triggers a report, so fall through to the dash instead.
+  if (run.generateReport && run.status !== WorkflowStatus.FAILED) {
+    return (
+      <span className="inline-flex items-center gap-1 text-xs text-muted-foreground whitespace-nowrap">
+        <Loader2 className="h-3 w-3 animate-spin" />
+        Pending
+      </span>
+    );
+  }
+
+  return <span className="text-muted-foreground">—</span>;
 }
 
 function ScoreCell({ run }: { run: BenchmarkRunListRow }) {

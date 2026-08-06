@@ -12,7 +12,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Button } from "@/components/ui/button";
 import { ExternalLink } from "lucide-react";
 import { PromptsPanel } from "@/components/prompts";
-import { ChangesList, type ChangedItem } from "./changes/ChangesList";
+import { ChangesList, type ChangedItem, type WorkflowIteration } from "./changes/ChangesList";
 import { ProjectInfoCard } from "@/components/ProjectInfoCard";
 import { StakworkRunDropdown } from "@/components/StakworkRunDropdown";
 import { computeWorkflowDiff } from "@/lib/utils/workflow-diff";
@@ -112,14 +112,10 @@ export function WorkflowArtifactPanel({ artifacts, isActive, onStepSelect, onVer
   // Merge data from all workflow artifacts, always using the LATEST values
   // This supports multiple executions and publishes - always shows the most recent:
   // - workflowJson: Latest published workflow (for Editor tab) — always last-wins
-  // - changesWorkflowJson: Only from agent-response artifacts (for Changes tab diff right-side)
-  // - originalWorkflowJson: Original workflow before changes (for Changes tab diff left-side)
   // - projectId: Latest execution project (for Stakwork tab)
   // - projectInfo: Project data for project debugger mode
   const mergedContent = useMemo(() => {
     let workflowJson: string | object | undefined;          // Editor tab — always latest winner
-    let changesWorkflowJson: string | object | undefined;   // Changes tab — only from agent-response artifacts
-    let originalWorkflowJson: string | object | undefined;
     let projectId: string | undefined;
     let workflowId: number | string | undefined;
     let workflowName: string | undefined;
@@ -132,20 +128,6 @@ export function WorkflowArtifactPanel({ artifacts, isActive, onStepSelect, onVer
     for (const artifact of activeArtifacts) {
       const content = artifact.content as WorkflowContent;
       if (content?.workflowJson) workflowJson = content.workflowJson;
-      // Only update changesWorkflowJson when the artifact has a real originalWorkflowJson
-      // (length > 100 distinguishes agent-response artifacts from run-start "" and publish artifacts without originalWorkflowJson)
-      const origJsonForGuard =
-        typeof content.originalWorkflowJson === "object" && content.originalWorkflowJson !== null
-          ? JSON.stringify(content.originalWorkflowJson)
-          : (content.originalWorkflowJson ?? "");
-      if (
-        content?.workflowJson &&
-        content?.originalWorkflowJson &&
-        origJsonForGuard.length > 100
-      ) {
-        changesWorkflowJson = content.workflowJson;
-      }
-      if (content?.originalWorkflowJson) originalWorkflowJson = content.originalWorkflowJson;
       if (content?.projectId) projectId = content.projectId;
       if (content?.workflowId) workflowId = content.workflowId;
       if (content?.workflowName) workflowName = content.workflowName;
@@ -157,8 +139,6 @@ export function WorkflowArtifactPanel({ artifacts, isActive, onStepSelect, onVer
 
     return {
       workflowJson,
-      changesWorkflowJson,
-      originalWorkflowJson,
       projectId,
       workflowId,
       workflowName,
@@ -169,7 +149,106 @@ export function WorkflowArtifactPanel({ artifacts, isActive, onStepSelect, onVer
     };
   }, [activeArtifacts]);
 
-  const { workflowJson, changesWorkflowJson, originalWorkflowJson, projectId, workflowId, projectInfo, debuggerProjectId, workflowVersionId } = mergedContent;
+  // Gather the captured workflow-version chain for the Changes tab.
+  //
+  // Each WORKFLOW artifact enriched at ingestion carries `versionSnapshot` (its
+  // own spec, pulled from Stakwork's version API) and `baselineSnapshot` (the
+  // version it should be measured against). Ordered oldest→newest they form the
+  // task's edit history: baseline → v1 → v2 → … → latest.
+  //
+  // Artifacts without a versionSnapshot are ignored here — notably the artifact
+  // created by /api/workflow/publish, which is why hitting Publish leaves the
+  // diff exactly as it was.
+  const workflowIterations = useMemo(() => {
+    const withSnapshots = activeArtifacts
+      .filter((a) => {
+        const content = a.content as WorkflowContent;
+        return !!content?.versionSnapshot?.value;
+      })
+      .sort((a, b) => {
+        const ta = a.createdAt instanceof Date ? a.createdAt.getTime() : new Date(a.createdAt).getTime();
+        const tb = b.createdAt instanceof Date ? b.createdAt.getTime() : new Date(b.createdAt).getTime();
+        if (ta !== tb) return ta - tb;
+        // Same-batch artifacts share a timestamp — fall back to version id order.
+        const va = Number((a.content as WorkflowContent).versionSnapshot!.workflowVersionId);
+        const vb = Number((b.content as WorkflowContent).versionSnapshot!.workflowVersionId);
+        return (Number.isNaN(va) ? 0 : va) - (Number.isNaN(vb) ? 0 : vb);
+      });
+
+    // Collapse duplicate versions (a version can land more than once).
+    const seen = new Set<string>();
+    const iterations: WorkflowIteration[] = [];
+    for (const artifact of withSnapshots) {
+      const snapshot = (artifact.content as WorkflowContent).versionSnapshot!;
+      if (seen.has(snapshot.workflowVersionId)) continue;
+      seen.add(snapshot.workflowVersionId);
+      iterations.push({
+        workflowVersionId: snapshot.workflowVersionId,
+        artifactId: artifact.id,
+        value: snapshot.value,
+      });
+    }
+
+    // The task's starting version comes from the earliest artifact's baseline.
+    // undefined = never captured; null = no prior version existed (all-green).
+    const earliest = withSnapshots[0]?.content as WorkflowContent | undefined;
+    const baselineSnapshot = earliest
+      ? earliest.baselineSnapshot ?? null
+      : undefined;
+
+    return { iterations, baselineSnapshot };
+  }, [activeArtifacts]);
+
+  // Gather durable publish snapshots for the Changes tab diff.
+  // Only artifacts that carry publishedWorkflowJson are considered — this naturally
+  // excludes legacy WORKFLOW artifacts (originalWorkflowJson: "", no publishedWorkflowJson)
+  // from workflow-editor.ts / workflow-editor-retry.ts / workflow-editor/route.ts.
+  // Sorted oldest→newest by artifact createdAt so the selection is deterministic regardless
+  // of the order the artifacts array arrives in.
+  const publishSnapshots = useMemo(() => {
+    return activeArtifacts
+      .filter((a) => {
+        const content = a.content as WorkflowContent;
+        return content?.publishedWorkflowJson != null;
+      })
+      .sort((a, b) => {
+        const ta = a.createdAt instanceof Date ? a.createdAt.getTime() : new Date(a.createdAt).getTime();
+        const tb = b.createdAt instanceof Date ? b.createdAt.getTime() : new Date(b.createdAt).getTime();
+        return ta - tb;
+      });
+  }, [activeArtifacts]);
+
+  // Derive diff sides from the LATEST publish-snapshot artifact's own fields.
+  // This is the single source of truth for the baseline:
+  //   originalWorkflowJson (per-artifact) → left side / baseline
+  //   publishedWorkflowJson (per-artifact) → right side / updated
+  //
+  // Outcomes:
+  //   no publish snapshot          → both undefined (panel shows "No changes")
+  //   originalWorkflowJson === null → brand-new first publish (all-green)
+  //   originalWorkflowJson is string → real republish diff
+  //
+  // Note: the cross-artifact two-snapshot derivation (publishSnapshots[len-2]) is
+  // intentionally retired here. A single artifact now carries both sides so there
+  // is one unambiguous source of truth and no risk of the two paths disagreeing.
+  const { changesWorkflowJson, originalWorkflowJson } = useMemo(() => {
+    if (publishSnapshots.length === 0) {
+      return { changesWorkflowJson: undefined, originalWorkflowJson: undefined };
+    }
+    const latestContent = publishSnapshots[publishSnapshots.length - 1].content as WorkflowContent;
+    return {
+      changesWorkflowJson: latestContent.publishedWorkflowJson ?? undefined,
+      // originalWorkflowJson is explicitly stored on the artifact:
+      //   null   → brand-new (no prior published version)
+      //   string → pre-publish baseline
+      //   key absent (undefined) → fetch error path; treat as "no baseline"
+      originalWorkflowJson: Object.prototype.hasOwnProperty.call(latestContent, "originalWorkflowJson")
+        ? (latestContent as WorkflowContent & { originalWorkflowJson?: string | null }).originalWorkflowJson ?? null
+        : undefined,
+    };
+  }, [publishSnapshots]);
+
+  const { workflowJson, projectId, workflowId, projectInfo, debuggerProjectId, workflowVersionId } = mergedContent;
 
   // Detect if we're in project debugger context
   const isProjectDebuggerMode = !!(projectInfo && debuggerProjectId);
@@ -177,8 +256,28 @@ export function WorkflowArtifactPanel({ artifacts, isActive, onStepSelect, onVer
   // Determine if we're in editor mode (workflowJson present)
   const isEditorMode = !!workflowJson;
 
-  // Check if we have changes to show (requires both a confirmed agent-response diff and an original)
-  const hasChanges = !!(originalWorkflowJson && changesWorkflowJson);
+  // The captured version chain is the source of truth when present; publish
+  // snapshots remain the fallback for tasks recorded before snapshots existed.
+  const hasVersionChain = workflowIterations.iterations.length > 0;
+
+  // Diff sides used for the graph highlights: start version → latest version.
+  const highlightSides = useMemo(() => {
+    if (hasVersionChain) {
+      const latest = workflowIterations.iterations[workflowIterations.iterations.length - 1];
+      return {
+        original: workflowIterations.baselineSnapshot?.value ?? null,
+        updated: latest.value,
+      };
+    }
+    return {
+      original: typeof originalWorkflowJson === "string" ? originalWorkflowJson : null,
+      updated: changesWorkflowJson ?? null,
+    };
+  }, [hasVersionChain, workflowIterations, originalWorkflowJson, changesWorkflowJson]);
+
+  // Check if we have changes to show (requires a real baseline + current side).
+  // A null baseline means brand-new (all-green) — nothing to highlight.
+  const hasChanges = !!(highlightSides.original && highlightSides.updated);
 
   // Collect PUBLISH_PROMPT and PUBLISH_SCRIPT artifacts from ALL artifacts (not just activeArtifacts)
   // so prompt/script-only tasks are covered even without a workflowId grouping.
@@ -202,53 +301,217 @@ export function WorkflowArtifactPanel({ artifacts, isActive, onStepSelect, onVer
   const changesItems: ChangedItem[] = useMemo(() => {
     const items: ChangedItem[] = [];
 
-    // Workflow diff item (only when we have workflow JSON)
-    if (isEditorMode) {
+    // Workflow diff item — preferred path: the captured version chain.
+    //
+    // One item carries both views the Changes tab needs:
+    //   • overall  — baselineSnapshot → last iteration ("all changes done")
+    //   • steps    — previous version → this version, per landed version
+    //
+    // baselineSnapshot === null means the task had no prior version to compare
+    // against, which renders as an all-green first version.
+    if (hasVersionChain) {
       items.push({
         type: "WORKFLOW",
         name: mergedContent.workflowName || `Workflow ${mergedContent.workflowId ?? ""}`,
-        originalJson: originalWorkflowJson || null,
+        originalJson: workflowIterations.baselineSnapshot?.value ?? null,
         updatedJson:
-          changesWorkflowJson ||
-          (!originalWorkflowJson ? workflowJson : null) ||
-          null,
+          workflowIterations.iterations[workflowIterations.iterations.length - 1].value,
+        iterations: workflowIterations.iterations,
+        baselineSnapshot: workflowIterations.baselineSnapshot,
       });
     }
 
-    // Prompt items
-    for (const artifact of publishPromptArtifacts) {
-      const content = artifact.content as PublishPromptContent;
-      if (content?.promptId && content?.promptVersionId) {
-        items.push({
-          type: "PROMPT",
-          name: content.promptName || content.promptId,
-          promptId: content.promptId,
-          promptVersionId: content.promptVersionId,
-        });
-      }
+    // Legacy fallback — publish-snapshot diff, for tasks whose artifacts were
+    // stored before version snapshots were captured at ingestion.
+    //
+    // Cases:
+    //  • No publish snapshot (publishSnapshots.length === 0):
+    //    → omit the WORKFLOW item entirely → ChangesList shows "No changes to display."
+    //    This covers fresh/un-edited task loads where only a bare workflowJson exists.
+    //
+    //  • Latest snapshot has originalWorkflowJson === null:
+    //    → genuine brand-new first publish (no prior published version existed).
+    //    Push all-green item (originalJson: null, updatedJson: publishedWorkflowJson).
+    //
+    //  • Latest snapshot has originalWorkflowJson as a string:
+    //    → real republish; push a proper diff item.
+    //
+    //  • originalWorkflowJson is undefined (baseline fetch error):
+    //    → omit the WORKFLOW item (same as "no snapshot") to avoid phantom all-green.
+    //
+    // The old `(!originalWorkflowJson ? workflowJson : null)` fallback is intentionally
+    // removed — workflowJson alone must never drive an all-green item.
+    if (
+      !hasVersionChain &&
+      publishSnapshots.length > 0 &&
+      changesWorkflowJson != null &&
+      originalWorkflowJson !== undefined
+    ) {
+      items.push({
+        type: "WORKFLOW",
+        name: mergedContent.workflowName || `Workflow ${mergedContent.workflowId ?? ""}`,
+        originalJson: originalWorkflowJson,   // null = brand-new (all-green), string = real diff
+        updatedJson: changesWorkflowJson,
+      });
     }
 
-    // Script items
+    // Prompt items — grouped by promptId, ordered by versionNumber (authoritative
+    // monotonic key). Artifacts created in the same batch share a createdAt, so
+    // versionNumber — not createdAt — decides the order. Legacy artifacts without
+    // a versionSnapshot keep their array order.
+    //
+    // Ordered oldest→newest the group forms the same chain the WORKFLOW item uses:
+    // baseline → v1 → v2 → … → latest, where the baseline belongs to the EARLIEST
+    // iteration (the task's first change), not to whichever artifact arrived first.
+    type PromptEntry = {
+      iteration: import("./changes/ChangesList").PromptIteration;
+      baselineSnapshot: PublishPromptContent["baselineSnapshot"] | undefined;
+    };
+
+    const promptGroupMap = new Map<string, { name: string; entries: PromptEntry[] }>();
+
+    for (const artifact of publishPromptArtifacts) {
+      const content = artifact.content as PublishPromptContent;
+      if (!content?.promptId || !content?.promptVersionId) continue;
+
+      const { promptId, promptVersionId, promptName, versionSnapshot, baselineSnapshot } = content;
+
+      if (!promptGroupMap.has(promptId)) {
+        promptGroupMap.set(promptId, { name: promptName || promptId, entries: [] });
+      }
+
+      promptGroupMap.get(promptId)!.entries.push({
+        iteration: {
+          promptVersionId,
+          artifactId: artifact.id,
+          value: versionSnapshot?.value,
+          versionNumber: versionSnapshot?.versionNumber,
+        },
+        baselineSnapshot,
+      });
+    }
+
+    for (const [promptId, group] of promptGroupMap) {
+      const entries = [...group.entries];
+
+      // Sort by versionNumber ascending (oldest first); entries without one keep
+      // their relative position.
+      if (entries.some((e) => e.iteration.versionNumber !== undefined)) {
+        entries.sort(
+          (a, b) =>
+            (a.iteration.versionNumber ?? Infinity) - (b.iteration.versionNumber ?? Infinity),
+        );
+      }
+
+      // Collapse duplicates — the same version can land more than once (e.g. a
+      // change artifact followed by the publish artifact for that same version).
+      const seen = new Set<string>();
+      const deduped = entries.filter((e) => {
+        const key =
+          e.iteration.versionNumber !== undefined
+            ? `n:${e.iteration.versionNumber}`
+            : `id:${e.iteration.promptVersionId}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+
+      if (deduped.length === 0) continue;
+
+      const latestIteration = deduped[deduped.length - 1].iteration;
+
+      items.push({
+        type: "PROMPT",
+        name: group.name,
+        promptId,
+        promptVersionId: latestIteration.promptVersionId,
+        iterations: deduped.map((e) => e.iteration),
+        // undefined = never captured (legacy → live lookup); null = nothing to
+        // compare against (brand-new prompt, all-green).
+        baselineSnapshot: deduped[0].baselineSnapshot,
+      });
+    }
+
+    // Script items — grouped by scriptId and chained exactly like prompts, so a
+    // task that touched one script several times reads as one section with a
+    // step per version rather than N unrelated sections.
+    type ScriptEntry = {
+      iteration: import("./changes/ChangesList").ScriptIteration;
+      baselineSnapshot: PublishScriptContent["baselineSnapshot"] | undefined;
+    };
+
+    const scriptGroupMap = new Map<
+      string,
+      { scriptId: number; name: string; entries: ScriptEntry[] }
+    >();
+
     for (const artifact of publishScriptArtifacts) {
       const content = artifact.content as PublishScriptContent;
-      if (content?.scriptId != null && content?.scriptVersionId != null) {
-        items.push({
-          type: "SCRIPT",
-          name: content.scriptName || String(content.scriptId),
+      if (content?.scriptId == null || content?.scriptVersionId == null) continue;
+
+      const key = String(content.scriptId);
+      if (!scriptGroupMap.has(key)) {
+        scriptGroupMap.set(key, {
           scriptId: content.scriptId,
-          scriptVersionId: content.scriptVersionId,
+          name: content.scriptName || String(content.scriptId),
+          entries: [],
         });
       }
+
+      scriptGroupMap.get(key)!.entries.push({
+        iteration: {
+          scriptVersionId: content.scriptVersionId,
+          artifactId: artifact.id,
+          value: content.versionSnapshot?.value,
+          versionNumber: content.versionSnapshot?.versionNumber,
+        },
+        baselineSnapshot: content.baselineSnapshot,
+      });
+    }
+
+    for (const group of scriptGroupMap.values()) {
+      const entries = [...group.entries];
+
+      // Sort by versionNumber when captured; version ids are monotonic in
+      // Stakwork, so they order the rest.
+      entries.sort((a, b) => {
+        const na = a.iteration.versionNumber;
+        const nb = b.iteration.versionNumber;
+        if (na !== undefined && nb !== undefined) return na - nb;
+        return a.iteration.scriptVersionId - b.iteration.scriptVersionId;
+      });
+
+      // Collapse duplicates — the same version can land more than once.
+      const seen = new Set<number>();
+      const deduped = entries.filter((e) => {
+        if (seen.has(e.iteration.scriptVersionId)) return false;
+        seen.add(e.iteration.scriptVersionId);
+        return true;
+      });
+
+      if (deduped.length === 0) continue;
+
+      const latest = deduped[deduped.length - 1].iteration;
+
+      items.push({
+        type: "SCRIPT",
+        name: group.name,
+        scriptId: group.scriptId,
+        scriptVersionId: latest.scriptVersionId,
+        iterations: deduped.map((e) => e.iteration),
+        baselineSnapshot: deduped[0].baselineSnapshot,
+      });
     }
 
     return items;
   }, [
-    isEditorMode,
+    hasVersionChain,
+    workflowIterations,
+    publishSnapshots,
     mergedContent.workflowName,
     mergedContent.workflowId,
     originalWorkflowJson,
     changesWorkflowJson,
-    workflowJson,
     publishPromptArtifacts,
     publishScriptArtifacts,
   ]);
@@ -258,8 +521,8 @@ export function WorkflowArtifactPanel({ artifacts, isActive, onStepSelect, onVer
     if (!hasChanges) {
       return { changedStepIds: new Set<string>(), changedConnectionIds: new Set<string>() };
     }
-    return computeWorkflowDiff(originalWorkflowJson ?? null, changesWorkflowJson ?? null);
-  }, [hasChanges, originalWorkflowJson, changesWorkflowJson]);
+    return computeWorkflowDiff(highlightSides.original, highlightSides.updated);
+  }, [hasChanges, highlightSides]);
 
 
 

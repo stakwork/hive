@@ -219,14 +219,168 @@ describe('MarkdownRenderer — user variant special character rendering', () => 
     });
   });
 
-  it('assistant variant is unaffected — renders HTML without escaping', async () => {
+  it('assistant variant escapes raw HTML — renders literal text, not a DOM element', async () => {
+    // New contract: with rehypeRaw removed, the assistant variant no longer
+    // re-parses raw HTML. <div>hello</div> is rendered as escaped literal
+    // text (angle brackets visible as text), consistent with the user variant.
     const { container } = render(
       <MarkdownRenderer variant="assistant">
         {'<div>hello</div>'}
       </MarkdownRenderer>
     );
     await waitFor(() => {
+      // The text content must contain the visible text
       expect(container.textContent).toContain('hello');
+      // The angle-bracket text must be present as literal characters, not
+      // parsed into a DOM element. Check the raw innerHTML of the prose
+      // wrapper contains the escaped entity or literal angle brackets.
+      const proseDiv = container.querySelector('.prose');
+      expect(proseDiv?.innerHTML).toContain('&lt;div&gt;');
+    });
+  });
+});
+
+describe('MarkdownRenderer — assistant variant regression tests', () => {
+  it('currency regression: adjacent $NNN.NM figures render in one blockquote, no <pre>', async () => {
+    const markdown =
+      '> $119.5M (stale); correct 2025 figure is\n> $126.4M (effective February 21, 2025)';
+    const { container } = render(
+      <MarkdownRenderer variant="assistant">{markdown}</MarkdownRenderer>
+    );
+    await waitFor(() => {
+      const blockquote = container.querySelector('blockquote');
+      expect(blockquote).not.toBeNull();
+      // Both figures must appear inside the blockquote
+      expect(blockquote?.textContent).toContain('$119.5M');
+      expect(blockquote?.textContent).toContain('$126.4M');
+      // No <pre> should be injected by a misinterpreted math node
+      expect(container.querySelector('pre')).toBeNull();
+    });
+  });
+
+  it('directive: text containing :8800 port number is preserved in output', async () => {
+    const markdown = 'Connect to https://example.com:8800 for access.';
+    const { container } = render(
+      <MarkdownRenderer variant="assistant">{markdown}</MarkdownRenderer>
+    );
+    await waitFor(() => {
+      expect(container.textContent).toContain(':8800');
+    });
+  });
+
+  it('angle brackets: literal <slug> in assistant text is preserved as text, not stripped', async () => {
+    const markdown = 'Replace <slug> with your workspace name.';
+    const { container } = render(
+      <MarkdownRenderer variant="assistant">{markdown}</MarkdownRenderer>
+    );
+    await waitFor(() => {
+      expect(container.textContent).toContain('<slug>');
+    });
+  });
+
+  it('block-in-paragraph: a normal paragraph renders as a single <p> with no nested block <div>', async () => {
+    const markdown = 'This is a plain paragraph with no special content.';
+    const { container } = render(
+      <MarkdownRenderer variant="assistant">{markdown}</MarkdownRenderer>
+    );
+    await waitFor(() => {
+      const paragraphs = container.querySelectorAll('p');
+      expect(paragraphs.length).toBeGreaterThanOrEqual(1);
+      // No block <div> injected inside a <p>
+      const divsInsideParagraph = container.querySelectorAll('p > div');
+      expect(divsInsideParagraph.length).toBe(0);
+    });
+  });
+
+  it('inline language-* guard: single-line code with a language class renders as inline <code>, not <pre>', async () => {
+    // This tests the structural hardening: even if a plugin emits an inline
+    // code node with a language-* class, the block guard (String(children).includes("\n"))
+    // prevents it from routing into SyntaxHighlighter.
+    // We simulate this by rendering a markdown fenced block where the content
+    // is a single line (no trailing newline after strip), confirming the
+    // guard works for normal inline `code` too.
+    const markdown = 'Use `ls -la` to list files.';
+    const { container } = render(
+      <MarkdownRenderer variant="assistant">{markdown}</MarkdownRenderer>
+    );
+    await waitFor(() => {
+      const codeEl = container.querySelector('code');
+      expect(codeEl).not.toBeNull();
+      // Must be inside a <p>, not a standalone <pre>
+      const preEl = container.querySelector('pre');
+      expect(preEl).toBeNull();
+    });
+  });
+
+  it('inline language-* guard: fenced single-line block still uses SyntaxHighlighter (isBlock=false after trim)', async () => {
+    // A fenced block with multiline content correctly goes to SyntaxHighlighter
+    const markdown = '```js\nconst x = 1;\nconst y = 2;\n```';
+    const { container } = render(
+      <MarkdownRenderer variant="assistant">{markdown}</MarkdownRenderer>
+    );
+    await waitFor(() => {
+      const pre = container.querySelector('pre');
+      expect(pre).not.toBeNull();
+    });
+  });
+
+  it('authored-content faithfulness: headings, lists, and links render correctly', async () => {
+    const markdown = `## Getting Started
+
+Install dependencies:
+
+- Run \`npm install\`
+- Visit [docs](https://example.com)
+
+> Note: requires Node 18+`;
+    const { container } = render(
+      <MarkdownRenderer variant="assistant">{markdown}</MarkdownRenderer>
+    );
+    await waitFor(() => {
+      expect(container.querySelector('h2')).not.toBeNull();
+      expect(container.querySelector('ul')).not.toBeNull();
+      expect(container.querySelector('li')).not.toBeNull();
+      expect(container.querySelector('a')).not.toBeNull();
+      expect(container.querySelector('blockquote')).not.toBeNull();
+      expect(container.querySelector('code')).not.toBeNull();
+    });
+  });
+
+  it('no regression: fenced code block still renders via SyntaxHighlighter', async () => {
+    const markdown = '```python\nprint("hello")\nprint("world")\n```';
+    const { container } = render(
+      <MarkdownRenderer variant="assistant">{markdown}</MarkdownRenderer>
+    );
+    await waitFor(() => {
+      const pre = container.querySelector('pre[data-wrap-long-lines]');
+      expect(pre).not.toBeNull();
+      expect(pre?.getAttribute('data-wrap-long-lines')).toBe('true');
+    });
+  });
+
+  it('no regression: table renders correctly', async () => {
+    const markdown = `| Name | Value |
+| --- | --- |
+| foo | bar |`;
+    const { container } = render(
+      <MarkdownRenderer variant="assistant">{markdown}</MarkdownRenderer>
+    );
+    await waitFor(() => {
+      expect(container.querySelector('table')).not.toBeNull();
+      expect(container.querySelector('th')).not.toBeNull();
+      expect(container.querySelector('td')).not.toBeNull();
+    });
+  });
+
+  it('no regression: links render correctly', async () => {
+    const markdown = '[Click here](https://example.com)';
+    const { container } = render(
+      <MarkdownRenderer variant="assistant">{markdown}</MarkdownRenderer>
+    );
+    await waitFor(() => {
+      const link = container.querySelector('a');
+      expect(link).not.toBeNull();
+      expect(link?.getAttribute('href')).toBe('https://example.com');
     });
   });
 });

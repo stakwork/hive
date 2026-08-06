@@ -21,6 +21,22 @@ vi.mock("@/services/workspace", () => {
   };
 });
 
+vi.mock("@/lib/middleware/utils", () => {
+  const mockCheckIsSuperAdmin = vi.fn();
+  return {
+    checkIsSuperAdmin: mockCheckIsSuperAdmin,
+    __mockCheckIsSuperAdmin: mockCheckIsSuperAdmin,
+  };
+});
+
+vi.mock("@/lib/logger", () => {
+  const mockWarn = vi.fn();
+  return {
+    logger: { warn: mockWarn },
+    __mockLoggerWarn: mockWarn,
+  };
+});
+
 vi.mock("@/lib/db", () => {
   const mockWorkspaceFindUnique = vi.fn();
   const mockSecretFindMany = vi.fn();
@@ -67,6 +83,14 @@ const workspaceMock = vi.mocked(await import("@/services/workspace"));
 const mockValidateWorkspaceAccess =
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   (workspaceMock as any).__mockValidateWorkspaceAccess as Mock;
+
+const utilsMock = vi.mocked(await import("@/lib/middleware/utils"));
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const mockCheckIsSuperAdmin = (utilsMock as any).__mockCheckIsSuperAdmin as Mock;
+
+const loggerMock = vi.mocked(await import("@/lib/logger"));
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const mockLoggerWarn = (loggerMock as any).__mockLoggerWarn as Mock;
 
 const dbMock = vi.mocked(await import("@/lib/db"));
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -332,5 +356,214 @@ describe("POST /api/workspaces/[slug]/secrets", () => {
     expect(res.status).toBe(403);
     expect(mockSecretCreate).not.toHaveBeenCalled();
     expect(mockCreateSecret).not.toHaveBeenCalled();
+  });
+});
+
+// ─── Super-admin bypass tests ─────────────────────────────────────────────────
+
+const DENIED_ACCESS = { hasAccess: false, canAdmin: false, workspace: null };
+const OWNER_ACCESS = { hasAccess: true, canAdmin: true, workspace: { id: WORKSPACE_ID } };
+
+describe("GET /api/workspaces/[slug]/secrets — super-admin bypass", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    setupSession();
+    mockSecretFindMany.mockResolvedValue([]);
+  });
+
+  test("non-member super admin: returns 200 and lists secrets", async () => {
+    // First access check denies; super-admin check elevates.
+    mockValidateWorkspaceAccess
+      .mockResolvedValueOnce(DENIED_ACCESS)
+      .mockResolvedValueOnce(OWNER_ACCESS);
+    mockCheckIsSuperAdmin.mockResolvedValueOnce(true);
+
+    const res = await GET(makeRequest("GET"), makeParams());
+
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body).toHaveProperty("secrets");
+  });
+
+  test("non-member super admin: validateWorkspaceAccess retried with { isSuperAdmin: true } on the elevate path", async () => {
+    mockValidateWorkspaceAccess
+      .mockResolvedValueOnce(DENIED_ACCESS)
+      .mockResolvedValueOnce(OWNER_ACCESS);
+    mockCheckIsSuperAdmin.mockResolvedValueOnce(true);
+
+    await GET(makeRequest("GET"), makeParams());
+
+    expect(mockValidateWorkspaceAccess).toHaveBeenCalledTimes(2);
+    expect(mockValidateWorkspaceAccess).toHaveBeenNthCalledWith(1, SLUG, USER_ID, true);
+    expect(mockValidateWorkspaceAccess).toHaveBeenNthCalledWith(2, SLUG, USER_ID, true, { isSuperAdmin: true });
+  });
+
+  test("checkIsSuperAdmin only called when first access check fails", async () => {
+    // First call grants access directly — hot path.
+    mockValidateWorkspaceAccess.mockResolvedValueOnce(OWNER_ACCESS);
+
+    await GET(makeRequest("GET"), makeParams());
+
+    expect(mockCheckIsSuperAdmin).not.toHaveBeenCalled();
+  });
+
+  test("non-member non-super-admin: still returns 403", async () => {
+    mockValidateWorkspaceAccess.mockResolvedValue(DENIED_ACCESS);
+    mockCheckIsSuperAdmin.mockResolvedValueOnce(false);
+
+    const res = await GET(makeRequest("GET"), makeParams());
+
+    expect(res.status).toBe(403);
+    // checkIsSuperAdmin was called but bypass not granted.
+    expect(mockCheckIsSuperAdmin).toHaveBeenCalledOnce();
+  });
+
+  test("no audit log on GET even for super-admin bypass", async () => {
+    mockValidateWorkspaceAccess
+      .mockResolvedValueOnce(DENIED_ACCESS)
+      .mockResolvedValueOnce(OWNER_ACCESS);
+    mockCheckIsSuperAdmin.mockResolvedValueOnce(true);
+
+    await GET(makeRequest("GET"), makeParams());
+
+    expect(mockLoggerWarn).not.toHaveBeenCalled();
+  });
+});
+
+describe("POST /api/workspaces/[slug]/secrets — super-admin bypass", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    setupSession();
+    setupWorkspaceWithCustomer();
+    mockDecryptField.mockReturnValue("decrypted-token");
+    mockEncryptField.mockReturnValue({ data: "enc", iv: "iv", tag: "tag", version: "1", encryptedAt: "now" });
+    mockCreateSecret.mockResolvedValue({ success: true });
+    mockSecretCreate.mockResolvedValue({
+      id: "secret-1",
+      name: "MY_SECRET",
+      description: null,
+      createdAt: new Date("2025-01-01"),
+    });
+  });
+
+  test("non-member super admin: returns 201 and creates secret", async () => {
+    mockValidateWorkspaceAccess
+      .mockResolvedValueOnce(DENIED_ACCESS)
+      .mockResolvedValueOnce(OWNER_ACCESS);
+    mockCheckIsSuperAdmin.mockResolvedValueOnce(true);
+
+    const res = await POST(
+      makeRequest("POST", { name: "SA_SECRET", value: "val" }),
+      makeParams()
+    );
+
+    expect(res.status).toBe(201);
+    const body = await res.json();
+    expect(body.secret).toHaveProperty("id");
+  });
+
+  test("non-member super admin: validateWorkspaceAccess retried with { isSuperAdmin: true }", async () => {
+    mockValidateWorkspaceAccess
+      .mockResolvedValueOnce(DENIED_ACCESS)
+      .mockResolvedValueOnce(OWNER_ACCESS);
+    mockCheckIsSuperAdmin.mockResolvedValueOnce(true);
+
+    await POST(
+      makeRequest("POST", { name: "SA_SECRET", value: "val" }),
+      makeParams()
+    );
+
+    expect(mockValidateWorkspaceAccess).toHaveBeenCalledTimes(2);
+    expect(mockValidateWorkspaceAccess).toHaveBeenNthCalledWith(1, SLUG, USER_ID, true);
+    expect(mockValidateWorkspaceAccess).toHaveBeenNthCalledWith(2, SLUG, USER_ID, true, { isSuperAdmin: true });
+  });
+
+  test("non-member super admin POST: emits audit log entry BEFORE write sequence", async () => {
+    mockValidateWorkspaceAccess
+      .mockResolvedValueOnce(DENIED_ACCESS)
+      .mockResolvedValueOnce(OWNER_ACCESS);
+    mockCheckIsSuperAdmin.mockResolvedValueOnce(true);
+
+    await POST(
+      makeRequest("POST", { name: "SA_SECRET", value: "val" }),
+      makeParams()
+    );
+
+    // Audit log must have fired.
+    expect(mockLoggerWarn).toHaveBeenCalledOnce();
+    const [message, , meta] = mockLoggerWarn.mock.calls[0];
+    expect(message).toContain("AUDIT");
+    expect(meta).toMatchObject({
+      userId: USER_ID,
+      workspaceId: WORKSPACE_ID,
+      slug: SLUG,
+      action: "secrets.create",
+      superAdminBypass: true,
+    });
+
+    // Audit log must fire before the Stakwork call.
+    const auditCallOrder = mockLoggerWarn.mock.invocationCallOrder[0];
+    const stakworkCallOrder = mockCreateSecret.mock.invocationCallOrder[0];
+    expect(auditCallOrder).toBeLessThan(stakworkCallOrder);
+  });
+
+  test("normal admin POST: NO audit log emitted", async () => {
+    // Direct access granted on first check — normal path.
+    mockValidateWorkspaceAccess.mockResolvedValueOnce(OWNER_ACCESS);
+
+    await POST(
+      makeRequest("POST", { name: "NORMAL_SECRET", value: "val" }),
+      makeParams()
+    );
+
+    expect(mockLoggerWarn).not.toHaveBeenCalled();
+  });
+
+  test("non-member non-super-admin: still returns 403 and no write occurs", async () => {
+    mockValidateWorkspaceAccess.mockResolvedValue(DENIED_ACCESS);
+    mockCheckIsSuperAdmin.mockResolvedValueOnce(false);
+
+    const res = await POST(
+      makeRequest("POST", { name: "X", value: "Y" }),
+      makeParams()
+    );
+
+    expect(res.status).toBe(403);
+    expect(mockCheckIsSuperAdmin).toHaveBeenCalledOnce();
+    expect(mockSecretCreate).not.toHaveBeenCalled();
+    expect(mockCreateSecret).not.toHaveBeenCalled();
+    expect(mockLoggerWarn).not.toHaveBeenCalled();
+  });
+
+  test("IDOR: workspaceId always comes from validated access, not caller-supplied value", async () => {
+    mockValidateWorkspaceAccess
+      .mockResolvedValueOnce(DENIED_ACCESS)
+      .mockResolvedValueOnce(OWNER_ACCESS);
+    mockCheckIsSuperAdmin.mockResolvedValueOnce(true);
+
+    await POST(
+      makeRequest("POST", { name: "X", value: "Y", workspaceId: "attacker-id" }),
+      makeParams()
+    );
+
+    if (mockSecretCreate.mock.calls.length > 0) {
+      expect(mockSecretCreate.mock.calls[0][0].data.workspaceId).toBe(WORKSPACE_ID);
+      expect(mockSecretCreate.mock.calls[0][0].data.workspaceId).not.toBe("attacker-id");
+    }
+  });
+
+  test("no secret values appear in the audit log entry", async () => {
+    mockValidateWorkspaceAccess
+      .mockResolvedValueOnce(DENIED_ACCESS)
+      .mockResolvedValueOnce(OWNER_ACCESS);
+    mockCheckIsSuperAdmin.mockResolvedValueOnce(true);
+
+    await POST(
+      makeRequest("POST", { name: "SA_SECRET", value: "super-secret-plaintext" }),
+      makeParams()
+    );
+
+    const logArgs = JSON.stringify(mockLoggerWarn.mock.calls);
+    expect(logArgs).not.toContain("super-secret-plaintext");
   });
 });

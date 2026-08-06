@@ -22,6 +22,8 @@ export interface DiffViewProps {
   updated: string | object | null;
   /** Human-readable label used in empty-state messages (e.g. "workflow", "prompt", "script"). */
   label?: string;
+  /** Optional label for the "before" side, e.g. "vs published v7". Rendered as plain text. */
+  baselineLabel?: string;
 }
 
 // ── Workflow JSON normalisation (noise-field stripping) ───────────────────────
@@ -100,6 +102,34 @@ function parseAndFormat(raw: string | object | null): string {
   }
 }
 
+// ── Diff stats ────────────────────────────────────────────────────────────────
+
+/**
+ * Added/removed line counts for a pair of sides, using the same normalisation
+ * DiffView renders with — so a collapsed header badge and the expanded diff can
+ * never disagree.
+ */
+export function computeDiffStats(
+  original: string | object | null,
+  updated: string | object | null,
+): { additions: number; deletions: number } {
+  const normalizedOriginal = parseAndFormat(original);
+  const normalizedUpdated = parseAndFormat(updated);
+
+  if (!normalizedOriginal && !normalizedUpdated) return { additions: 0, deletions: 0 };
+
+  let additions = 0;
+  let deletions = 0;
+
+  for (const part of diffLines(normalizedOriginal, normalizedUpdated) as DiffPart[]) {
+    const lines = part.value.split("\n").filter((l) => l.length > 0).length;
+    if (part.added) additions += lines;
+    if (part.removed) deletions += lines;
+  }
+
+  return { additions, deletions };
+}
+
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 const CONTEXT = 5;
@@ -111,7 +141,7 @@ const hideScrollbarStyle: React.CSSProperties = {
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
-export function DiffView({ original, updated, label = "content" }: DiffViewProps) {
+export function DiffView({ original, updated, label = "content", baselineLabel }: DiffViewProps) {
   const { resolvedTheme } = useTheme();
   const isDark = resolvedTheme === "dark";
   const [viewMode, setViewMode] = useState<"diff" | "full">("diff");
@@ -220,6 +250,11 @@ export function DiffView({ original, updated, label = "content" }: DiffViewProps
         <div className="flex items-center gap-3">
           <FileCode className="w-5 h-5" />
           <span className="text-sm font-medium capitalize">{label} Changes</span>
+          {baselineLabel && (
+            <span className="text-xs text-muted-foreground font-normal">
+              ({baselineLabel})
+            </span>
+          )}
         </div>
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-1 text-xs">

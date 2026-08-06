@@ -1,4 +1,5 @@
 import { db } from "@/lib/db";
+import { after } from "next/server";
 import {
   WorkflowStatus,
   StakworkRunType,
@@ -1053,6 +1054,32 @@ export async function processStakworkRunWebhook(
       });
     } catch (pusherError) {
       logger.error("[legal-benchmark] Pusher trigger failed (non-fatal)", "stakwork-run", { error: String(pusherError) });
+    }
+
+    // Operator-requested post-run report — fires after the scores were merged
+    // above, so the report agent sees the final result. Scheduled via after()
+    // so the webhook acks immediately (same shape as /api/chat/response).
+    if (status === WorkflowStatus.COMPLETED) {
+      let wantsReport = false;
+      try {
+        const resultJson = serializedResult ?? run.result;
+        wantsReport = resultJson
+          ? (JSON.parse(resultJson) as Record<string, unknown>).generateReport === true
+          : false;
+      } catch { /* ignore malformed result */ }
+      if (wantsReport) {
+        after(async () => {
+          try {
+            const { generateBenchmarkRunReport } = await import("@/services/legal-benchmark-report");
+            await generateBenchmarkRunReport(run.id);
+          } catch (err) {
+            logger.error("[legal-benchmark] Report generation failed (non-fatal)", "stakwork-run", {
+              runId: run.id,
+              error: String(err),
+            });
+          }
+        });
+      }
     }
     return { runId: run.id, status, dataType };
   }
@@ -2359,8 +2386,19 @@ export async function stopStakworkRun(
   }
 
   // Attempt to stop the Stakwork project (optimistic - don't fail if API errors)
+  // stopProject never throws; false means Stakwork refused or the call failed.
+  // We still halt locally so the UI reflects the user's intent — but log it
+  // loudly, because "run shows HALTED while the workflow keeps going" is
+  // otherwise invisible and is the usual cause of a stop that didn't take.
   try {
-    await stakworkService().stopProject(run.projectId);
+    const stopped = await stakworkService().stopProject(run.projectId);
+    if (!stopped) {
+      logger.error(
+        `[stopStakworkRun] Marking run HALTED but Stakwork did not confirm the stop — the workflow may still be running`,
+        "stakwork-run/stopStakworkRun",
+        { runId, projectId: run.projectId, workspaceSlug: run.workspace.slug },
+      );
+    }
   } catch (error) {
     console.error(`Failed to stop Stakwork project ${run.projectId}:`, error);
     // Continue with optimistic update even if Stakwork API fails

@@ -1,11 +1,20 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
+import type { PromptBaselineSnapshot, PromptVersionSnapshot } from "@/lib/chat";
 
 // ── Input types ───────────────────────────────────────────────────────────────
 
 export type ItemBaselineInput =
-  | { type: "PROMPT"; promptId: string; promptVersionId: string }
+  | {
+      type: "PROMPT";
+      promptId: string;
+      promptVersionId: string;
+      /** Captured baseline at artifact-ingestion time. null = nothing to compare against. Absent = legacy artifact (live lookup). */
+      baselineSnapshot?: PromptBaselineSnapshot | null;
+      /** Captured version value + number for this artifact's own version. Absent = legacy artifact (live lookup). */
+      versionSnapshot?: PromptVersionSnapshot;
+    }
   | { type: "SCRIPT"; scriptId: number; scriptVersionId: number };
 
 // ── Return type ───────────────────────────────────────────────────────────────
@@ -15,6 +24,8 @@ export interface ItemBaselineResult {
   updated: string | null;
   isLoading: boolean;
   error: string | null;
+  /** Human-readable label for the baseline side, e.g. "vs published v7". Null when no snapshot. */
+  baselineLabel: string | null;
 }
 
 // ── Prompt version response shape ─────────────────────────────────────────────
@@ -69,13 +80,19 @@ async function fetchPromptBaseline(
     throw new Error("Prompt versions response unsuccessful");
   }
 
-  const { versions, published_version_id } = json.data;
+  const { versions, published_version_id, current_version_id } = json.data;
 
   const publishedVersion = published_version_id
     ? versions.find((v) => v.id === published_version_id)
     : null;
 
-  const updatedVersion = versions.find((v) => v.id === promptVersionId);
+  let updatedVersion = versions.find((v) => v.id === promptVersionId);
+
+  // New-prompt fallback: only when there is no published baseline.
+  // Prevents masking stale/invalid ids on already-published prompts.
+  if (!updatedVersion && !published_version_id && current_version_id) {
+    updatedVersion = versions.find((v) => v.id === current_version_id);
+  }
 
   return {
     baseline: publishedVersion?.value ?? null,
@@ -138,7 +155,8 @@ async function fetchScriptBaseline(
  * Resolves the baseline (published) and updated (edited) text bodies for a
  * PROMPT or SCRIPT artifact, ready to feed into `DiffView`.
  *
- * - PROMPT: single `/api/workflow/prompts/{id}/versions` call (both bodies in one response).
+ * - PROMPT with snapshots: uses captured baselineSnapshot/versionSnapshot directly (no network call).
+ * - PROMPT without snapshots (legacy): single `/api/workflow/prompts/{id}/versions` call.
  * - SCRIPT: fetch versions list → parallel fetch of published + edited body.
  * - Never throws; resolves `baseline: null` on any fetch/parse failure.
  * - Guards against state-after-unmount.
@@ -149,12 +167,21 @@ export function useItemBaseline(input: ItemBaselineInput): ItemBaselineResult {
     updated: null,
     isLoading: true,
     error: null,
+    baselineLabel: null,
   });
 
-  // Stable key for memoisation / refetch detection
+  // Stable key for memoisation / refetch detection.
+  // For PROMPT items, include snapshot presence + versionId so a stale diff
+  // is invalidated when a snapshot appears or changes after mount.
   const key =
     input.type === "PROMPT"
-      ? `PROMPT:${input.promptId}:${input.promptVersionId}`
+      ? `PROMPT:${input.promptId}:${input.promptVersionId}:snap=${
+          input.baselineSnapshot !== undefined
+            ? input.baselineSnapshot === null
+              ? "null"
+              : input.baselineSnapshot.versionId
+            : "absent"
+        }:vs=${input.versionSnapshot !== undefined ? input.versionSnapshot.versionNumber : "absent"}`
       : `SCRIPT:${input.scriptId}:${input.scriptVersionId}`;
 
   const mountedRef = useRef(true);
@@ -169,8 +196,38 @@ export function useItemBaseline(input: ItemBaselineInput): ItemBaselineResult {
   useEffect(() => {
     let cancelled = false;
 
-    setState({ baseline: null, updated: null, isLoading: true, error: null });
+    setState({ baseline: null, updated: null, isLoading: true, error: null, baselineLabel: null });
 
+    // ── Fast path: PROMPT with captured snapshots (no network call) ────────────
+    if (input.type === "PROMPT" && input.baselineSnapshot !== undefined) {
+      // baselineSnapshot is defined (either a snapshot object or explicit null for new-prompt)
+      const baselineValue = input.baselineSnapshot?.value ?? null;
+      // A "chain" baseline is an earlier change within the same task, not what is
+      // live — only a published baseline may be labelled as published.
+      const baselineLabel =
+        input.baselineSnapshot != null
+          ? input.baselineSnapshot.source === "chain"
+            ? `vs v${input.baselineSnapshot.versionNumber}`
+            : `vs published v${input.baselineSnapshot.versionNumber}`
+          : null;
+      const updatedValue = input.versionSnapshot?.value ?? null;
+
+      if (mountedRef.current) {
+        setState({
+          baseline: baselineValue,
+          updated: updatedValue,
+          isLoading: false,
+          error:
+            updatedValue === null
+              ? "Could not load the updated version content."
+              : null,
+          baselineLabel,
+        });
+      }
+      return;
+    }
+
+    // ── Async path: legacy PROMPT or SCRIPT ────────────────────────────────────
     const run = async () => {
       try {
         let result: { baseline: string | null; updated: string | null };
@@ -190,6 +247,7 @@ export function useItemBaseline(input: ItemBaselineInput): ItemBaselineResult {
               result.updated === null
                 ? "Could not load the updated version content."
                 : null,
+            baselineLabel: null,
           });
         }
       } catch (e) {
@@ -200,6 +258,7 @@ export function useItemBaseline(input: ItemBaselineInput): ItemBaselineResult {
             updated: null,
             isLoading: false,
             error: e instanceof Error ? e.message : "Unknown error loading baseline.",
+            baselineLabel: null,
           });
         }
       }

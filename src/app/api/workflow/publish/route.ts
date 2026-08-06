@@ -17,6 +17,20 @@ interface PublishWorkflowRequest {
   artifactId?: string;
 }
 
+/** Extract the workflow_json string from a Stakwork workflow GET response. */
+function extractWorkflowJson(
+  result: Record<string, unknown>,
+): string | undefined {
+  const data = result.data as Record<string, unknown> | undefined;
+  const workflow = data?.workflow as Record<string, unknown> | undefined;
+  return (
+    (workflow?.workflow_json as string | undefined) ||
+    (data?.spec as string | undefined) ||
+    (data?.workflow_json as string | undefined) ||
+    (result.workflow_json as string | undefined)
+  );
+}
+
 export async function POST(request: NextRequest) {
   try {
     const userOrResponse = requireAuth(getMiddlewareContext(request));
@@ -48,7 +62,93 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Access denied - not a member of stakwork workspace" }, { status: 403 });
     }
 
-    // Call Stakwork API to publish the workflow
+    // ── Hoist authorization + context resolution BEFORE the publish POST ──────
+    // Resolve the artifact (and its workspace) ahead of time so that:
+    //  1. The pre-publish baseline fetch is only issued for authorised callers.
+    //  2. We avoid an IDOR where a caller could trigger an external fetch for an
+    //     artifact in a workspace they don't own.
+    let resolvedArtifactWithMessage: Awaited<ReturnType<typeof db.artifact.findUnique>> & {
+      message?: {
+        task?: {
+          id: string;
+          stakworkProjectId: number | null;
+          workspace?: { id: string } | null;
+        } | null;
+      } | null;
+    } | null = null;
+    let callerHasAccess = false;
+
+    if (artifactId) {
+      try {
+        resolvedArtifactWithMessage = await db.artifact.findUnique({
+          where: { id: artifactId },
+          include: {
+            message: {
+              include: {
+                task: {
+                  include: { workspace: true },
+                },
+              },
+            },
+          },
+        });
+
+        const artifactWorkspaceId =
+          resolvedArtifactWithMessage?.message?.task?.workspace?.id;
+        callerHasAccess =
+          devMode ||
+          !!(stakworkWorkspace && artifactWorkspaceId === stakworkWorkspace.id);
+      } catch (err) {
+        console.error("[publish] Error resolving artifact for authorization:", err);
+      }
+    }
+
+    // ── Capture pre-publish baseline (must happen BEFORE the publish POST) ───
+    // Only when artifactId is present and caller has verified access.
+    // baseline === undefined  → fetch not attempted (no artifactId / no access)
+    // baseline === null       → GET succeeded, no currently-published version (brand-new)
+    // baseline === string     → pre-publish workflow_json string
+    let baseline: string | null | undefined = undefined;
+
+    if (artifactId && callerHasAccess) {
+      const baselineUrl = `${config.STAKWORK_BASE_URL}/workflows/${encodeURIComponent(String(workflowId))}/`;
+      try {
+        const baselineResponse = await fetch(baselineUrl, {
+          method: "GET",
+          headers: {
+            Authorization: `Token token=${config.STAKWORK_API_KEY}`,
+            "Content-Type": "application/json",
+          },
+        });
+
+        if (baselineResponse.ok) {
+          const baselineResult = await baselineResponse.json();
+          const extracted = extractWorkflowJson(baselineResult);
+          // null = brand-new (GET succeeded but no spec returned)
+          baseline = extracted ?? null;
+          console.log(
+            `[publish] Pre-publish baseline captured: workflowId=${workflowId}, baselinePresent=${baseline !== null}, brandNew=${baseline === null}`,
+          );
+        } else {
+          // Non-ok → fetch failed; do NOT treat as brand-new
+          const errText = await baselineResponse.text().catch(() => "(unreadable)");
+          console.error(
+            `[publish] Baseline fetch FAILED (non-ok): workflowId=${workflowId}, status=${baselineResponse.status}, body=${errText}. ` +
+              `Baseline will NOT be stored — this is a fetch error, not a brand-new workflow.`,
+          );
+          // baseline remains undefined → skip storing baseline on new artifact
+        }
+      } catch (err) {
+        // Network / thrown error → also NOT brand-new
+        console.error(
+          `[publish] Baseline fetch FAILED (thrown): workflowId=${workflowId}, error=${String(err)}. ` +
+            `Baseline will NOT be stored — this is a fetch error, not a brand-new workflow.`,
+        );
+        // baseline remains undefined → skip storing baseline on new artifact
+      }
+    }
+
+    // ── Call Stakwork API to publish the workflow ─────────────────────────────
     const publishUrl = `${config.STAKWORK_BASE_URL}/workflows/${encodeURIComponent(String(workflowId))}/publish`;
 
     console.log("Publishing workflow to:", publishUrl);
@@ -78,34 +178,16 @@ export async function POST(request: NextRequest) {
 
     const workflowVersionId = result.data?.workflow_version_id;
 
-    // Fetch artifact with task+workspace context before any writes
+    // ── Update the PUBLISH_WORKFLOW artifact (published / publishedAt / workflowVersionId) ──
     if (artifactId) {
       try {
-        const artifactWithMessage = await db.artifact.findUnique({
-          where: { id: artifactId },
-          include: {
-            message: {
-              include: {
-                task: {
-                  include: { workspace: true },
-                },
-              },
-            },
-          },
-        });
-
-        // Verify the artifact belongs to a task in a workspace the caller has access to
-        const artifactWorkspaceId = artifactWithMessage?.message?.task?.workspace?.id;
-        const callerHasAccess =
-          devMode ||
-          (stakworkWorkspace && artifactWorkspaceId === stakworkWorkspace.id);
-
         if (!callerHasAccess) {
           // Artifact is not in the caller's workspace — skip all writes silently
           // (treat as not found to avoid leaking existence of other artifacts)
-        } else if (artifactWithMessage) {
+        } else if (resolvedArtifactWithMessage) {
           // Update the artifact to mark it as published
-          const currentContent = (artifactWithMessage.content as Record<string, unknown>) || {};
+          const currentContent =
+            (resolvedArtifactWithMessage.content as Record<string, unknown>) || {};
           await db.artifact.update({
             where: { id: artifactId },
             data: {
@@ -124,42 +206,30 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Fetch updated workflow and create new artifact message
+    // ── Fetch just-published workflow and create new WORKFLOW artifact message ─
     if (artifactId) {
       try {
-        // Get the artifact with its message and task (re-fetch with full context)
-        const artifactWithMessage = await db.artifact.findUnique({
-          where: { id: artifactId },
-          include: {
-            message: {
-              include: {
-                task: {
-                  include: { workspace: true },
-                },
-              },
-            },
-          },
-        });
-
-        // Re-verify workspace access before creating new messages
-        const artifactWorkspaceId = artifactWithMessage?.message?.task?.workspace?.id;
-        const callerHasAccess =
-          devMode ||
-          (stakworkWorkspace && artifactWorkspaceId === stakworkWorkspace.id);
-
         if (!callerHasAccess) {
           return NextResponse.json(
-            { success: true, data: { workflowId, workflowRefId, published: true, workflowVersionId, message: "Workflow published successfully" } },
+            {
+              success: true,
+              data: {
+                workflowId,
+                workflowRefId,
+                published: true,
+                workflowVersionId,
+                message: "Workflow published successfully",
+              },
+            },
             { status: 200 },
           );
         }
 
-        if (artifactWithMessage?.message?.task?.id && workflowVersionId) {
-          const task = artifactWithMessage.message.task;
-          const taskId = task.id;
-          const projectId = task.stakworkProjectId;
+        const taskId = resolvedArtifactWithMessage?.message?.task?.id;
+        const projectId = resolvedArtifactWithMessage?.message?.task?.stakworkProjectId;
 
-          // Fetch the updated workflow definition from Stakwork
+        if (taskId && workflowVersionId) {
+          // Fetch the just-published workflow definition from Stakwork
           const workflowUrl = `${config.STAKWORK_BASE_URL}/workflows/${encodeURIComponent(String(workflowId))}/`;
           console.log("Fetching updated workflow from:", workflowUrl);
 
@@ -180,27 +250,46 @@ export async function POST(request: NextRequest) {
             );
             console.log(
               "Fetched workflow.workflow keys:",
-              workflowResult.data?.workflow ? Object.keys(workflowResult.data.workflow) : "no workflow",
+              workflowResult.data?.workflow
+                ? Object.keys(workflowResult.data.workflow)
+                : "no workflow",
             );
 
-            // The workflow_json should be in data.workflow.workflow_json or data.spec
-            const updatedWorkflowJson =
-              workflowResult.data?.workflow?.workflow_json ||
-              workflowResult.data?.spec ||
-              workflowResult.data?.workflow_json ||
-              workflowResult.workflow_json;
+            const updatedWorkflowJson = extractWorkflowJson(workflowResult);
 
-            console.log("Updated workflow JSON found:", !!updatedWorkflowJson, typeof updatedWorkflowJson);
+            console.log(
+              "Updated workflow JSON found:",
+              !!updatedWorkflowJson,
+              typeof updatedWorkflowJson,
+            );
 
             if (updatedWorkflowJson) {
               // Get workflowName from the PUBLISH_WORKFLOW artifact content
-              const publishContent = (artifactWithMessage.content || {}) as {
+              const publishContent = (resolvedArtifactWithMessage?.content || {}) as {
                 workflowName?: string;
                 workflowRefId?: string;
               };
 
-              // Create a new message with the updated WORKFLOW artifact
-              // Include both workflowJson (for Editor tab) and projectId (for Stakwork tab)
+              // Determine originalWorkflowJson to store on the new WORKFLOW artifact.
+              // baseline === undefined  → fetch error; omit the field so the panel shows "No changes"
+              // baseline === null       → genuinely brand-new; store null (all-green path)
+              // baseline === string     → real pre-publish spec; store it (real diff path)
+              const originalWorkflowJsonValue: string | null | undefined =
+                baseline === undefined ? undefined : baseline;
+
+              // Log the boundary outcome
+              const baselinePresent = typeof baseline === "string";
+              const brandNew = baseline === null;
+              const fetchAttempted = baseline !== undefined;
+              console.log(
+                `[publish] Stored workflow snapshot: workflowId=${workflowId}, workflowVersionId=${workflowVersionId}, ` +
+                  `fetchAttempted=${fetchAttempted}, baselinePresent=${baselinePresent}, brandNew=${brandNew}`,
+              );
+
+              // Create a new message with the updated WORKFLOW artifact.
+              // originalWorkflowJson: pre-publish baseline (null=brand-new, undefined=not stored)
+              // publishedWorkflowJson: durable snapshot of the just-published workflow JSON
+              // workflowJson: same as publishedWorkflowJson (drives the editor)
               const newMessage = await db.chatMessage.create({
                 data: {
                   taskId,
@@ -214,9 +303,20 @@ export async function POST(request: NextRequest) {
                         type: ArtifactType.WORKFLOW,
                         content: {
                           workflowJson: updatedWorkflowJson as string,
+                          publishedWorkflowJson: updatedWorkflowJson as string,
+                          // Only include originalWorkflowJson when we have a meaningful value.
+                          // undefined → omit key entirely (fetch error path)
+                          // null      → brand-new (no prior published version)
+                          // string    → real pre-publish baseline
+                          ...(originalWorkflowJsonValue !== undefined && {
+                            originalWorkflowJson: originalWorkflowJsonValue,
+                          }),
+                          workflowVersionId: workflowVersionId,
                           workflowId: workflowId,
-                          workflowName: publishContent.workflowName || `Workflow ${workflowId}`,
-                          workflowRefId: workflowRefId || publishContent.workflowRefId || "",
+                          workflowName:
+                            publishContent.workflowName || `Workflow ${workflowId}`,
+                          workflowRefId:
+                            workflowRefId || publishContent.workflowRefId || "",
                           // Include projectId for Stakwork tab to show the project execution
                           ...(projectId && { projectId: projectId.toString() }),
                         },
@@ -233,10 +333,15 @@ export async function POST(request: NextRequest) {
               const channelName = getTaskChannelName(taskId);
               await pusherServer.trigger(channelName, PUSHER_EVENTS.NEW_MESSAGE, newMessage.id);
 
-              console.log(`Published workflow ${workflowId} and created new artifact message for task ${taskId}`);
+              console.log(
+                `Published workflow ${workflowId} and created new artifact message for task ${taskId}`,
+              );
             }
           } else {
-            console.error("Failed to fetch updated workflow from Stakwork:", await workflowResponse.text());
+            console.error(
+              "Failed to fetch updated workflow from Stakwork:",
+              await workflowResponse.text(),
+            );
           }
         }
       } catch (updateError) {

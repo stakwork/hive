@@ -83,16 +83,42 @@ export interface BugReportContent {
   };
 }
 
+/**
+ * A workflow spec captured from Stakwork's version API
+ * (`GET /workflows/:id?workflow_version_id=:vid`) at artifact-ingestion time.
+ *
+ * `value` is always the canonicalised spec string (stable key order) so two
+ * snapshots can be diffed directly. Never mix these with graph-sourced
+ * `workflowJson` — the graph returns a structurally different shape.
+ */
+export interface WorkflowVersionSnapshot {
+  workflowVersionId: string;
+  value: string;
+}
+
 export interface WorkflowContent {
   projectId?: string; // For polling mode (Stakwork project)
   workflowJson?: string | object | null; // For direct rendering from graph (current/updated version)
   originalWorkflowJson?: string | object | null; // Original workflow JSON before changes
+  publishedWorkflowJson?: string | object | null; // Durable snapshot of the just-published workflow JSON (set on publish artifacts)
   workflowId?: number | string; // Workflow ID from graph, or "new" for new workflows
   workflowName?: string; // Optional workflow name
   workflowRefId?: string; // Graph node ref_id
   workflowVersionId?: string | number; // Workflow version ID (UUID or numeric) from graph
+  /**
+   * The version this change was based on, stated by whoever created the version.
+   *
+   * Authoritative: it is the only source that cannot be wrong about what this
+   * specific change forked from. `null` means a brand-new workflow with nothing
+   * before it; absent means an older producer that predates the field.
+   */
+  previousWorkflowVersionId?: string | number | null;
   projectInfo?: any; // Project data for project debugger mode
   debuggerProjectId?: string; // Project ID for debugger context
+  /** This artifact's own workflow version spec, pulled at ingestion. Absent = legacy/unenriched artifact. */
+  versionSnapshot?: WorkflowVersionSnapshot;
+  /** The version this artifact's change is measured against: the previous WORKFLOW artifact's version, or the task's starting version. null = no prior version (brand-new). */
+  baselineSnapshot?: WorkflowVersionSnapshot | null;
 }
 
 export interface PublishWorkflowContent {
@@ -104,11 +130,66 @@ export interface PublishWorkflowContent {
   workflowVersionId?: number; // Version ID returned from publish API
 }
 
+/**
+ * Where a captured baseline came from — the "before" side of a change.
+ *
+ *  • "published" — what was live when the change was made. Only the task's first
+ *    change to an item can use this.
+ *  • "chain"     — the previous artifact for the same item in this task. Every
+ *    change after the first is measured against the one before it.
+ *  • "prior"     — the version immediately below the task's first change, used
+ *    when nothing is published yet. Positional, so it never moves.
+ *
+ * Absent on artifacts captured before this field existed.
+ */
+export type ChangeBaselineSource = "published" | "chain" | "prior";
+
+/** A script version's source captured at artifact-ingestion time. */
+export interface ScriptVersionSnapshot {
+  value: string;
+  versionNumber: number;
+}
+
+/** The version a PUBLISH_SCRIPT artifact's change is measured against. */
+export interface ScriptBaselineSnapshot {
+  value: string;
+  versionId: number;
+  versionNumber: number;
+  source?: ChangeBaselineSource;
+}
+
 export interface PublishScriptContent {
   scriptId: number; // Script ID
   scriptVersionId: number; // Script version ID to publish
   scriptName?: string; // Script name for display
   published?: boolean; // Whether the script has been published
+  /** Baseline captured at ingestion. null = nothing to compare against. Absent = legacy artifact (rebuilt live). */
+  baselineSnapshot?: ScriptBaselineSnapshot | null;
+  /** This artifact's own version source + number, captured at ingestion. */
+  versionSnapshot?: ScriptVersionSnapshot;
+}
+
+/** A prompt version's text captured at artifact-ingestion time, so a diff never drifts when newer versions land later. */
+export interface PromptVersionSnapshot {
+  value: string;
+  versionNumber: number;
+}
+
+/**
+ * The version a PUBLISH_PROMPT artifact's change is measured against.
+ *
+ * `source` says where it came from:
+ *  • "published" — the prompt's published version at ingestion. This is the
+ *    task's *first* change to the prompt, so the published text is the baseline.
+ *  • "chain" — the previous PUBLISH_PROMPT artifact for the same prompt in this
+ *    task. Every change after the first is measured against the one before it.
+ * Absent on artifacts captured before `source` existed (treated as "published").
+ */
+export interface PromptBaselineSnapshot {
+  value: string;
+  versionId: string;
+  versionNumber: number;
+  source?: ChangeBaselineSource;
 }
 
 export interface PublishPromptContent {
@@ -116,6 +197,10 @@ export interface PublishPromptContent {
   promptVersionId: string; // Prompt version ID to publish (Hive cuid)
   promptName?: string; // Prompt name for display
   published?: boolean; // Whether the prompt has been published
+  /** Baseline captured at ingestion time. null = nothing to compare against (brand-new prompt). Absent = legacy artifact (use live lookup fallback). */
+  baselineSnapshot?: PromptBaselineSnapshot | null;
+  /** This artifact's own version value + number captured at ingestion, needed for consecutive step diffs. */
+  versionSnapshot?: PromptVersionSnapshot;
 }
 
 export interface PublishSkillContent {

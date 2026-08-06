@@ -68,6 +68,19 @@ function TaskCardSkeleton() {
 
 // ─── Task Card ───────────────────────────────────────────────────────────────
 
+/**
+ * Path of a task within its practice area, e.g.
+ * "contracts/banking/account-control-agreement-first-draft/scenario-02"
+ * → "banking / account-control-agreement-first-draft / scenario-02".
+ *
+ * Titles come verbatim from the upstream task.json and are not unique — sibling
+ * scenarios covering the same document type share one title. The path is what
+ * actually distinguishes them, so cards render it under the title.
+ */
+export function taskPathLabel(slug: string): string {
+  return slug.split("/").slice(1).join(" / ");
+}
+
 interface TaskCardProps {
   task: HarveyTask;
   onSelect: (task: HarveyTask) => void;
@@ -78,11 +91,22 @@ interface TaskCardProps {
 function TaskCard({ task, onSelect, onViewDetails, isRunning }: TaskCardProps) {
   const visibleTags = task.tags.slice(0, 3);
   const overflowCount = task.tags.length - 3;
+  const pathLabel = taskPathLabel(task.slug);
 
   return (
     <Card className="hover:shadow-md transition-shadow">
       <CardContent className="p-4 space-y-3">
-        <p className="font-semibold text-sm leading-snug">{task.title}</p>
+        <div className="space-y-1">
+          <p className="font-semibold text-sm leading-snug">{task.title}</p>
+          {pathLabel && (
+            <p
+              className="font-mono text-xs text-muted-foreground truncate"
+              title={task.slug}
+            >
+              {pathLabel}
+            </p>
+          )}
+        </div>
 
         <div className="flex flex-wrap gap-1.5 items-center">
           <Badge
@@ -202,7 +226,10 @@ export function LegalBenchmarksPanel({ className }: { className?: string }) {
     fetchData();
   }, [slug]);
 
-  const handleSelectTask = async (task: HarveyTask) => {
+  const handleSelectTask = async (
+    task: HarveyTask,
+    options?: { generateReport?: boolean },
+  ) => {
     const res = await fetch(`/api/workspaces/${slug}/legal/benchmarks/run`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -211,6 +238,7 @@ export function LegalBenchmarksPanel({ className }: { className?: string }) {
         taskTitle: task.title,
         model: selectedModel,
         judgeModel: selectedJudgeModel,
+        generateReport: options?.generateReport === true,
       }),
     });
 
@@ -233,9 +261,13 @@ export function LegalBenchmarksPanel({ className }: { className?: string }) {
   const currentArea = practiceAreas.find((pa) => pa.slug === selectedArea);
 
   const filteredTasks =
-    currentArea?.tasks.filter((task) =>
-      task.title.toLowerCase().includes(search.toLowerCase())
-    ) ?? [];
+    currentArea?.tasks.filter((task) => {
+      const q = search.toLowerCase();
+      return (
+        task.title.toLowerCase().includes(q) ||
+        task.slug.toLowerCase().includes(q)
+      );
+    }) ?? [];
 
   // Build picker options — fall back to hardcoded defaults if catalog is empty
   const pickerOptions: LlmModelOption[] =
@@ -421,7 +453,7 @@ export function LegalBenchmarksPanel({ className }: { className?: string }) {
           onOpenChange={(o) => { if (!o) setDetailsTask(null); }}
           task={detailsTask}
           slug={slug!}
-          onRunTask={() => handleSelectTask(detailsTask)}
+          onRunTask={(options) => handleSelectTask(detailsTask, options)}
         />
       )}
     </div>
