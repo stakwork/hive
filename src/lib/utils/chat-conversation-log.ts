@@ -108,6 +108,17 @@ export function chatMessagesToParsedMessages(
       content = content ? `[image attached]\n${content}` : "[image attached]";
     }
     const parsed: ParsedMessage = { role: m.role, content, timestamp: m.timestamp ?? null };
+    // Turn-error rows (mid-stream failure, dead turn, output-cap
+    // truncation) persist with `source.kind === "error"`. Rows written
+    // before that marker existed are recognized by the `…error` id
+    // suffix every error writer uses (`${prefix}error`).
+    if (
+      m.role === "assistant" &&
+      (m.source?.kind === "error" ||
+        (typeof m.id === "string" && m.id.endsWith("error")))
+    ) {
+      parsed.isError = true;
+    }
     // Graph-walk result rows carry a link down into their standalone
     // tool-call trace conversation — surface it so the detail view can
     // render a "view trace" drill-in.

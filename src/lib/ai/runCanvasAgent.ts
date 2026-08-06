@@ -37,7 +37,7 @@
  *     `result.textStream`)
  */
 
-import { streamText, ModelMessage, ToolSet } from "ai";
+import { streamText, ModelMessage, ToolSet, NoSuchToolError } from "ai";
 import type {
   StreamTextResult,
   StopCondition,
@@ -150,9 +150,18 @@ export interface CanvasAgentHooks {
   onStepFinish?: (sf: { content: unknown }) => void | Promise<void>;
   /**
    * Called once when the stream finishes successfully. Receives the
-   * final `usage` so the caller can record token spend.
+   * final `usage` so the caller can record token spend, plus the
+   * turn's `finishReason` and the total visible text length across
+   * all steps (`visibleChars`) so callers can detect dead turns — a
+   * clean finish with zero visible output, which `onError` never
+   * fires for. Both extras are absent when the underlying stream
+   * doesn't report them.
    */
-  onFinish?: (args: { usage: unknown }) => void | Promise<void>;
+  onFinish?: (args: {
+    usage: unknown;
+    finishReason?: string;
+    visibleChars?: number;
+  }) => void | Promise<void>;
   /**
    * Called when the stream errors mid-generation, after the internal
    * error logging. Mid-stream errors do NOT reject `consumeStream()`
@@ -1085,6 +1094,27 @@ export async function runCanvasAgent(
     ],
     ...(prepareStep ? { prepareStep } : {}),
     stopSequences: ["[END_OF_ANSWER]"],
+    // Repair hallucinated `{workspace}__`-prefixed calls to org-level
+    // tools. Multi-workspace runs namespace the per-workspace tools as
+    // `{slug}__name`, and the model occasionally applies that pattern to
+    // a bare (org-level / global) tool — observed in prod as
+    // `stakwork__list_prompts` for `list_prompts`. When stripping a `__`
+    // prefix yields a registered tool, rewrite the call in place instead
+    // of burning a step on the SDK's NoSuchToolError tool-error round-
+    // trip. Anything else returns null → unrepaired, and the SDK feeds
+    // the model a tool-error result it can self-correct from.
+    experimental_repairToolCall: async ({ toolCall, tools: toolSet, error }) => {
+      if (!NoSuchToolError.isInstance(error)) return null;
+      const bareName = stripBogusWorkspacePrefix(toolCall.toolName, toolSet);
+      if (!bareName) return null;
+      console.log("[runCanvasAgent] repaired namespaced tool call", {
+        from: toolCall.toolName,
+        to: bareName,
+        workspaces: workspaceSlugs,
+        orgId: orgId ?? null,
+      });
+      return { ...toolCall, toolName: bareName };
+    },
     onStepFinish: async (sf) => {
       logStep(sf.content);
       // Internal bookkeeping is SYNCHRONOUS and non-awaiting on
@@ -1124,10 +1154,47 @@ export async function runCanvasAgent(
         console.log("[runCanvasAgent] timing", { stage: "time-to-first-token", ms: Date.now() - streamStart, model: resolvedModelId, workspaces: workspaceSlugs, orgId: orgId ?? null });
       }
     },
-    onFinish: async ({ usage }) => {
+    onFinish: async ({ usage, finishReason, text, steps }) => {
       console.log("[runCanvasAgent] timing", { stage: "streaming-duration-total", ms: Date.now() - streamStart, model: resolvedModelId, workspaces: workspaceSlugs, orgId: orgId ?? null });
+      // Abnormal-finish detection. A turn can end "successfully" (no
+      // onError) while the user sees nothing: text across every step is
+      // empty and the loop just stops. Sum visible text across ALL steps
+      // (not just the final one — earlier steps stream to the client too)
+      // and warn on the dead-turn shapes:
+      //   - "length": output cap hit mid-generation (truncated answer, or
+      //     empty when the cap was consumed before any text).
+      //   - empty + "stop": the model finished cleanly without producing
+      //     any visible output. Excludes "tool-calls" ends — those are the
+      //     legitimate silent finishes (cancellation, `stay_silent`,
+      //     `hasToolCall(...)` extra stop conditions).
+      //   - "content-filter" / "error": always worth a log line here even
+      //     though onError may also fire.
+      const visibleChars = Array.isArray(steps)
+        ? steps.reduce((n, s) => n + (s?.text?.length ?? 0), 0)
+        : (text?.length ?? 0);
+      const emptyTurn =
+        visibleChars === 0 &&
+        finishReason === "stop" &&
+        !cancellation.requested;
+      if (
+        finishReason === "length" ||
+        finishReason === "content-filter" ||
+        finishReason === "error" ||
+        emptyTurn
+      ) {
+        console.warn("[runCanvasAgent] abnormal finish", {
+          finishReason,
+          visibleChars,
+          steps: Array.isArray(steps) ? steps.length : undefined,
+          cancellationRequested: cancellation.requested,
+          model: resolvedModelId,
+          workspaces: workspaceSlugs,
+          orgId: orgId ?? null,
+          usage,
+        });
+      }
       if (hooks?.onFinish) {
-        await hooks.onFinish({ usage });
+        await hooks.onFinish({ usage, finishReason, visibleChars });
       }
     },
     // Surface errors that occur DURING streaming (after the 200 response
@@ -1192,6 +1259,31 @@ export { extractConceptIdsFromStep };
 // ---------------------------------------------------------------------------
 // Private helpers
 // ---------------------------------------------------------------------------
+
+/**
+ * Given a tool name the model called that is NOT in the registered
+ * toolset, find the org-level tool it was aiming at by stripping a
+ * bogus `{workspace}__` prefix — e.g. `stakwork__list_prompts` →
+ * `list_prompts`. Tries every `__` boundary left-to-right so a slug
+ * that itself contains `__` still resolves. Returns the registered
+ * bare name, or null when no suffix matches (no repair applies).
+ *
+ * Only ever *widens* to a name that actually exists in `tools`, so a
+ * repair can never grant access to anything the turn wasn't already
+ * composed with.
+ */
+export function stripBogusWorkspacePrefix(
+  calledName: string,
+  tools: ToolSet,
+): string | null {
+  let sep = calledName.indexOf("__");
+  while (sep > 0) {
+    const bareName = calledName.slice(sep + 2);
+    if (bareName in tools) return bareName;
+    sep = calledName.indexOf("__", sep + 1);
+  }
+  return null;
+}
 
 export function buildScopeHint(
   scope: RunCanvasAgentOptions["scope"],

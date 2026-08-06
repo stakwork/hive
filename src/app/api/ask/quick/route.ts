@@ -493,6 +493,15 @@ export async function POST(request: NextRequest) {
       // the turn-persist block writes a silently truncated transcript
       // and the failure is invisible after a reload.
       let midStreamError: string | null = null;
+      // Set when the stream finishes WITHOUT an error but in a dead or
+      // degraded shape: zero visible output on a clean stop, or cut off
+      // at the output cap ("length"). onError never fires for these, so
+      // without this flag the persisted trace just ends silently and
+      // there is no way to see from Agent Logs why the user got nothing.
+      // Captured via the onFinish hook; midStreamError takes precedence
+      // at persist time.
+      let abnormalFinish: { finishReason: string; visibleChars: number } | null =
+        null;
 
       const tAgent = Date.now();
       const {
@@ -581,7 +590,19 @@ export async function POST(request: NextRequest) {
               const conceptIds = extractConceptIdsFromStep(sf.content);
               conceptIds.forEach((id) => learnedConceptIds.add(id));
             },
-            onFinish: async ({ usage }) => {
+            onFinish: async ({ usage, finishReason, visibleChars }) => {
+              // Dead-turn / truncation capture — must run BEFORE the
+              // token-attribution early return below. "tool-calls" ends
+              // are excluded: that's how legitimate silent finishes
+              // (user cancellation via Stop) terminate the loop.
+              if (
+                finishReason === "length" ||
+                finishReason === "content-filter" ||
+                finishReason === "error" ||
+                (visibleChars === 0 && finishReason === "stop")
+              ) {
+                abnormalFinish = { finishReason, visibleChars: visibleChars ?? 0 };
+              }
               // Persist the turn's token usage to the conversation row so
               // the public-chat rate-limit gate can sum recent spend on
               // the next request. Best-effort; failures are logged but
@@ -693,6 +714,28 @@ export async function POST(request: NextRequest) {
                 role: "assistant",
                 content: `I'm sorry — this turn hit an error before completing: ${errMsg.slice(0, 300)}. Please try again.`,
                 timestamp: new Date().toISOString(),
+                // Marks the row as a turn error so the Agent Logs
+                // detail view renders it with error styling.
+                source: { kind: "error" },
+              });
+            } else if (abnormalFinish) {
+              // No thrown error, but the turn ended dead or truncated
+              // (see the onFinish hook). Persist an explicit error row
+              // so the trace shows why the user saw nothing — without
+              // it the transcript just ends and looks healthy.
+              const { finishReason, visibleChars } = abnormalFinish;
+              const detail =
+                finishReason === "length"
+                  ? "this response hit the model's output limit and was cut off"
+                  : visibleChars === 0
+                    ? "this turn finished without producing any visible response"
+                    : `this turn finished abnormally`;
+              rows.push({
+                id: `${assistantPrefix}error`,
+                role: "assistant",
+                content: `I'm sorry — ${detail} (finish reason: ${finishReason}). Please try again.`,
+                timestamp: new Date().toISOString(),
+                source: { kind: "error" },
               });
             }
             await appendTurnMessages({
@@ -712,6 +755,7 @@ export async function POST(request: NextRequest) {
               content:
                 "I'm sorry, but I encountered an error while processing your question. Please try again.",
               timestamp: new Date().toISOString(),
+              source: { kind: "error" },
             };
             await appendTurnMessages({
               conversationId: rowId,

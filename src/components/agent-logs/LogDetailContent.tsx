@@ -7,7 +7,7 @@ import { estimateTokens } from "@/lib/utils/token-estimate";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { Loader2, User, Bot, Wrench, Code2, ChevronDown, ChevronRight, Copy, Check, Flag, Waypoints } from "lucide-react";
+import { Loader2, User, Bot, Wrench, Code2, ChevronDown, ChevronRight, Copy, Check, Flag, Waypoints, AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { MarkdownRenderer } from "@/components/MarkdownRenderer";
 import { cn } from "@/lib/utils";
@@ -336,6 +336,10 @@ export function MessageBubble({
   const isUser = role === "user";
   const isTool = role === "tool";
   const isAssistant = role === "assistant";
+  // Persisted turn-error rows (mid-stream failure, dead turn, output-cap
+  // truncation) — rendered as a destructive-tinted bubble so failures are
+  // scannable in the trace instead of reading like a normal reply.
+  const isTurnError = isAssistant && message.isError === true;
 
   // Graph-walk result rows link into their standalone sub-agent trace.
   const graphWalkTrace = message.graphWalkTrace;
@@ -484,11 +488,13 @@ export function MessageBubble({
       <div
         className={cn(
           "shrink-0 mt-0.5 w-6 h-6 rounded-full flex items-center justify-center",
-          isUser ? "bg-primary" : "bg-muted",
+          isUser ? "bg-primary" : isTurnError ? "bg-destructive/15" : "bg-muted",
         )}
       >
         {isUser ? (
           <User className="w-3.5 h-3.5 text-primary-foreground" />
+        ) : isTurnError ? (
+          <AlertTriangle className="w-3.5 h-3.5 text-destructive" />
         ) : (
           <Bot className="w-3.5 h-3.5 text-muted-foreground" />
         )}
@@ -499,7 +505,11 @@ export function MessageBubble({
             <div
               className={cn(
                 "min-w-0 max-w-[90%] rounded-lg px-3 py-2",
-                isUser ? "bg-primary text-primary-foreground" : "bg-muted/50 border",
+                isUser
+                  ? "bg-primary text-primary-foreground"
+                  : isTurnError
+                    ? "border border-destructive/40 bg-destructive/10"
+                    : "bg-muted/50 border",
               )}
             >
               {isUser ? (
@@ -518,6 +528,11 @@ export function MessageBubble({
                 </>
               ) : (
                 <>
+                  {isTurnError && (
+                    <div className="mb-1 text-xs font-semibold text-destructive">
+                      Turn error
+                    </div>
+                  )}
                   {reasoning && <ReasoningSection text={reasoning} />}
                   {textContent && (
                     <>
@@ -558,7 +573,11 @@ export function MessageBubble({
         <div
           className={cn(
             "min-w-0 max-w-[90%] rounded-lg px-3 py-2",
-            isUser ? "bg-primary text-primary-foreground" : "bg-muted/50 border",
+            isUser
+              ? "bg-primary text-primary-foreground"
+              : isTurnError
+                ? "border border-destructive/40 bg-destructive/10"
+                : "bg-muted/50 border",
           )}
         >
           {isUser ? (
@@ -577,6 +596,11 @@ export function MessageBubble({
             </>
           ) : (
             <>
+              {isTurnError && (
+                <div className="mb-1 text-xs font-semibold text-destructive">
+                  Turn error
+                </div>
+              )}
               {reasoning && <ReasoningSection text={reasoning} />}
               {textContent && (
                 <>
