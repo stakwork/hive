@@ -5,6 +5,8 @@ import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
 import { stakworkService } from "@/lib/service-factory";
 import { validateWorkspaceAccess } from "@/services/workspace";
+import { checkIsSuperAdmin } from "@/lib/middleware/utils";
+import { logger } from "@/lib/logger";
 
 export const runtime = "nodejs";
 
@@ -28,7 +30,16 @@ export async function GET(
     const { slug } = await params;
     const userId = (session.user as { id: string }).id;
 
-    const access = await validateWorkspaceAccess(slug, userId, true);
+    // Deny-then-elevate: first attempt uses normal membership check;
+    // checkIsSuperAdmin only runs when that fails.
+    let access = await validateWorkspaceAccess(slug, userId, true);
+    if (!access.hasAccess || !access.canAdmin) {
+      const isSuperAdmin = await checkIsSuperAdmin(userId);
+      if (isSuperAdmin) {
+        access = await validateWorkspaceAccess(slug, userId, true, { isSuperAdmin: true });
+      }
+    }
+
     if (!access.hasAccess || !access.canAdmin) {
       return NextResponse.json(
         { error: "Forbidden - admin access required" },
@@ -71,8 +82,18 @@ export async function POST(
     const { slug } = await params;
     const userId = (session.user as { id: string }).id;
 
-    // IDOR guard: resolve workspaceId from validated slug — never trust caller-supplied ID
-    const access = await validateWorkspaceAccess(slug, userId, true);
+    // IDOR guard: resolve workspaceId from validated slug — never trust caller-supplied ID.
+    // Deny-then-elevate: checkIsSuperAdmin only runs when normal membership check fails.
+    let access = await validateWorkspaceAccess(slug, userId, true);
+    let grantedViaSuperAdminBypass = false;
+    if (!access.hasAccess || !access.canAdmin) {
+      const isSuperAdmin = await checkIsSuperAdmin(userId);
+      if (isSuperAdmin) {
+        access = await validateWorkspaceAccess(slug, userId, true, { isSuperAdmin: true });
+        grantedViaSuperAdminBypass = true;
+      }
+    }
+
     if (!access.hasAccess || !access.canAdmin) {
       return NextResponse.json(
         { error: "Forbidden - admin access required" },
@@ -119,6 +140,18 @@ export async function POST(
         { error: "Workspace Stakwork API key is not configured" },
         { status: 422 }
       );
+    }
+
+    // Audit log for cross-tenant write via super-admin bypass — emitted
+    // BEFORE any decrypt/external-call/DB-write so it is always traceable.
+    if (grantedViaSuperAdminBypass) {
+      logger.warn("[AUDIT] superAdminBypass", "SECRETS", {
+        userId,
+        workspaceId,
+        slug,
+        action: "secrets.create",
+        superAdminBypass: true,
+      });
     }
 
     // Decrypt the stakwork API key
