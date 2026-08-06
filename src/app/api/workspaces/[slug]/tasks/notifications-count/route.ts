@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
+import { getMiddlewareContext, requireAuth, checkIsSuperAdmin } from "@/lib/middleware/utils";
 
 export async function GET(
   request: NextRequest,
@@ -52,7 +52,11 @@ export async function GET(
     const isMember = workspace.members.length > 0;
 
     if (!isOwner && !isMember) {
-      return NextResponse.json({ error: "Access denied" }, { status: 403 });
+      // Deny-then-elevate: only pay checkIsSuperAdmin cost for non-members.
+      const isSuperAdmin = await checkIsSuperAdmin(userId);
+      if (!isSuperAdmin) {
+        return NextResponse.json({ error: "Access denied" }, { status: 403 });
+      }
     }
 
     // Count tasks waiting for user input (tasks with FORM artifacts in latest message only)
