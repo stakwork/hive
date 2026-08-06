@@ -154,13 +154,18 @@ export interface CanvasAgentHooks {
    * turn's `finishReason` and the total visible text length across
    * all steps (`visibleChars`) so callers can detect dead turns — a
    * clean finish with zero visible output, which `onError` never
-   * fires for. Both extras are absent when the underlying stream
-   * doesn't report them.
+   * fires for. The extras are absent when the underlying stream
+   * doesn't report them. `cancellationRequested` is true when the
+   * user's Stop press ended the loop — callers use it to tell a
+   * legitimate silent `"tool-calls"` finish (cancellation) from a
+   * suspicious one (a tool call that never got an output, which ends
+   * the loop cleanly with no error and no further steps).
    */
   onFinish?: (args: {
     usage: unknown;
     finishReason?: string;
     visibleChars?: number;
+    cancellationRequested?: boolean;
   }) => void | Promise<void>;
   /**
    * Called when the stream errors mid-generation, after the internal
@@ -1194,7 +1199,12 @@ export async function runCanvasAgent(
         });
       }
       if (hooks?.onFinish) {
-        await hooks.onFinish({ usage, finishReason, visibleChars });
+        await hooks.onFinish({
+          usage,
+          finishReason,
+          visibleChars,
+          cancellationRequested: cancellation.requested,
+        });
       }
     },
     // Surface errors that occur DURING streaming (after the 200 response

@@ -257,6 +257,10 @@ describe("runCanvasAgent — abnormal-finish detection", () => {
       usage: { inputTokens: 10, outputTokens: 5 },
       finishReason: "stop",
       visibleChars: 3,
+      // No Stop press in this run — threaded through so the quick-ask
+      // route can tell a cancellation "tool-calls" finish (legit) from
+      // a tool call that ended the turn without an output (flagged).
+      cancellationRequested: false,
     });
   });
 });

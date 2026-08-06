@@ -590,18 +590,39 @@ export async function POST(request: NextRequest) {
               const conceptIds = extractConceptIdsFromStep(sf.content);
               conceptIds.forEach((id) => learnedConceptIds.add(id));
             },
-            onFinish: async ({ usage, finishReason, visibleChars }) => {
+            onFinish: async ({
+              usage,
+              finishReason,
+              visibleChars,
+              cancellationRequested,
+            }) => {
               // Dead-turn / truncation capture — must run BEFORE the
-              // token-attribution early return below. "tool-calls" ends
-              // are excluded: that's how legitimate silent finishes
-              // (user cancellation via Stop) terminate the loop.
+              // token-attribution early return below.
+              //
+              // "tool-calls" is INCLUDED here (unlike runCanvasAgent's own
+              // conservative warn) whenever the user didn't press Stop: in
+              // this interactive route no `extraStopConditions` /
+              // `stay_silent` are wired, so the only legitimate way a turn
+              // ends on a tool-call step is cancellation. Any other
+              // "tool-calls" finish means a tool call completed a step
+              // without an output materializing — the SDK ends the loop
+              // cleanly (no error part, no further steps) and the chat
+              // just stops mid-action, e.g. right after a propose_* call.
               if (
                 finishReason === "length" ||
                 finishReason === "content-filter" ||
                 finishReason === "error" ||
-                (visibleChars === 0 && finishReason === "stop")
+                (visibleChars === 0 && finishReason === "stop") ||
+                (finishReason === "tool-calls" && !cancellationRequested)
               ) {
                 abnormalFinish = { finishReason, visibleChars: visibleChars ?? 0 };
+                console.warn("[quick-ask] abnormal finish", {
+                  finishReason,
+                  visibleChars: visibleChars ?? 0,
+                  turnId: turnIdStr,
+                  workspaces: slugs,
+                  orgId: orgId ?? null,
+                });
               }
               // Persist the turn's token usage to the conversation row so
               // the public-chat rate-limit gate can sum recent spend on
@@ -727,9 +748,11 @@ export async function POST(request: NextRequest) {
               const detail =
                 finishReason === "length"
                   ? "this response hit the model's output limit and was cut off"
-                  : visibleChars === 0
-                    ? "this turn finished without producing any visible response"
-                    : `this turn finished abnormally`;
+                  : finishReason === "tool-calls"
+                    ? "this turn stopped mid-action — a tool call ended the turn without completing"
+                    : visibleChars === 0
+                      ? "this turn finished without producing any visible response"
+                      : `this turn finished abnormally`;
               rows.push({
                 id: `${assistantPrefix}error`,
                 role: "assistant",
@@ -809,6 +832,26 @@ export async function POST(request: NextRequest) {
           // Stream errors are surfaced/logged elsewhere; we still want to
           // schedule whatever intents were collected before the failure.
         }
+        // Positive terminal marker: every turn that ran to completion —
+        // healthy, errored, or abnormal — emits exactly one of these. A
+        // `setup-to-stream` line with NO matching `turn-complete` line
+        // means the function died mid-stream (maxDuration kill, OOM,
+        // crash) — the one failure shape no callback can log, detectable
+        // only by this marker's absence. `status` pre-buckets the grep:
+        // "mid-stream-error" (onError fired), "abnormal-finish" (dead /
+        // truncated / stopped-mid-action shapes), or "ok".
+        console.log("[quick-ask] turn-complete", {
+          ms: Date.now() - t0,
+          status: midStreamError !== null
+            ? "mid-stream-error"
+            : abnormalFinish !== null
+              ? "abnormal-finish"
+              : "ok",
+          finishReason: abnormalFinish?.finishReason ?? null,
+          turnId: turnIdStr,
+          workspaces: slugs,
+          orgId: orgId ?? null,
+        });
         if (dispatchedResearch.length > 0) {
           const { runResearchSubAgent } = await import(
             "@/services/canvas-research-worker"
