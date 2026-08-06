@@ -14,7 +14,43 @@ vi.mock("@/lib/db", () => ({
   },
 }));
 
+vi.mock("@/lib/middleware/utils", () => {
+  const mockCheckIsSuperAdmin = vi.fn();
+
+  // Replicate the real header-reading behaviour so existing tests that
+  // build requests with x-middleware-* headers continue to work.
+  const getMiddlewareContext = (request: { headers: { get: (k: string) => string | null } }) => {
+    const authStatus = request.headers.get("x-middleware-auth-status") ?? "error";
+    const userId    = request.headers.get("x-middleware-user-id");
+    const userEmail = request.headers.get("x-middleware-user-email");
+    const userName  = request.headers.get("x-middleware-user-name");
+    const context: Record<string, unknown> = { requestId: "", authStatus };
+    if (authStatus === "authenticated" && userId && userEmail && userName) {
+      context.user = { id: userId, email: userEmail, name: userName };
+    }
+    return context;
+  };
+
+  const requireAuth = (context: { authStatus: string; user?: { id: string } }) => {
+    if (context.authStatus === "authenticated" && context.user) return context.user;
+    const { NextResponse } = require("next/server");
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  };
+
+  return {
+    getMiddlewareContext,
+    requireAuth,
+    checkIsSuperAdmin: mockCheckIsSuperAdmin,
+    __mockCheckIsSuperAdmin: mockCheckIsSuperAdmin,
+  };
+});
+
 const { db: mockDb } = await import("@/lib/db");
+const utilsMock = vi.mocked(await import("@/lib/middleware/utils"));
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const mockCheckIsSuperAdmin = (utilsMock as any).__mockCheckIsSuperAdmin as Mock;
+const mockGetMiddlewareContext = utilsMock.getMiddlewareContext as Mock;
+const mockRequireAuth = utilsMock.requireAuth as Mock;
 
 // Test Data Factories
 const TestDataFactory = {
@@ -121,6 +157,72 @@ const TestHelpers = {
     expect(data.data.waitingForInputCount).toBe(expectedCount);
   },
 };
+
+// ─── Super-admin bypass tests ─────────────────────────────────────────────────
+
+describe("GET /api/workspaces/[slug]/tasks/notifications-count — super-admin bypass", () => {
+  const NON_MEMBER_WORKSPACE = {
+    id: "workspace-123",
+    ownerId: "other-owner",
+    members: [], // authenticated user is NOT owner or member
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    (mockDb.task.findMany as Mock).mockResolvedValue([]);
+  });
+
+  test("non-member super admin: returns 200", async () => {
+    (mockDb.workspace.findFirst as Mock).mockResolvedValue(NON_MEMBER_WORKSPACE);
+    mockCheckIsSuperAdmin.mockResolvedValueOnce(true);
+
+    const request = TestHelpers.createAuthenticatedGetRequest("test-workspace", "super-admin-user");
+    const response = await GET(request, { params: Promise.resolve({ slug: "test-workspace" }) });
+
+    expect(response.status).toBe(200);
+    const data = await response.json();
+    expect(data.success).toBe(true);
+    expect(data.data).toHaveProperty("waitingForInputCount");
+  });
+
+  test("non-member non-super-admin: still returns 403", async () => {
+    (mockDb.workspace.findFirst as Mock).mockResolvedValue(NON_MEMBER_WORKSPACE);
+    mockCheckIsSuperAdmin.mockResolvedValueOnce(false);
+
+    const request = TestHelpers.createAuthenticatedGetRequest("test-workspace", "random-user");
+    const response = await GET(request, { params: Promise.resolve({ slug: "test-workspace" }) });
+
+    expect(response.status).toBe(403);
+    expect(mockCheckIsSuperAdmin).toHaveBeenCalledOnce();
+    expect(mockDb.task.findMany).not.toHaveBeenCalled();
+  });
+
+  test("owner: checkIsSuperAdmin NOT called", async () => {
+    (mockDb.workspace.findFirst as Mock).mockResolvedValue({
+      id: "workspace-123",
+      ownerId: "user-123", // authenticated user IS owner
+      members: [],
+    });
+
+    const request = TestHelpers.createAuthenticatedGetRequest("test-workspace", "user-123");
+    await GET(request, { params: Promise.resolve({ slug: "test-workspace" }) });
+
+    expect(mockCheckIsSuperAdmin).not.toHaveBeenCalled();
+  });
+
+  test("member: checkIsSuperAdmin NOT called", async () => {
+    (mockDb.workspace.findFirst as Mock).mockResolvedValue({
+      id: "workspace-123",
+      ownerId: "other-owner",
+      members: [{ role: "DEVELOPER" }], // authenticated user IS a member
+    });
+
+    const request = TestHelpers.createAuthenticatedGetRequest("test-workspace", "member-user");
+    await GET(request, { params: Promise.resolve({ slug: "test-workspace" }) });
+
+    expect(mockCheckIsSuperAdmin).not.toHaveBeenCalled();
+  });
+});
 
 describe("GET /api/workspaces/[slug]/tasks/notifications-count - Unit Tests", () => {
   beforeEach(() => {
