@@ -2,7 +2,8 @@
  * Unit tests for src/lib/harvey-lab/benchmark-summary.ts
  *
  * Covers:
- *   - isScoredRun: PENDING/IN_PROGRESS excluded; ERROR/HALTED included with score;
+ *   - isScoredRun: PENDING/IN_PROGRESS excluded; COMPLETED-only rule;
+ *     FAILED/HALTED excluded even when they carry a score;
  *     terminal runs without all_pass excluded
  *   - selectScoredRuns: ordering by updatedAt (primary), createdAt (secondary), id
  *     (tiebreaker); window slicing; fewer than SUMMARY_WINDOW runs
@@ -86,17 +87,26 @@ describe("isScoredRun", () => {
     expect(isScoredRun(makeRun({ status: WorkflowStatus.COMPLETED, all_pass: false }))).toBe(true);
   });
 
-  it("returns true for ERROR run with a score (terminal but not COMPLETED)", () => {
-    expect(isScoredRun(makeRun({ status: WorkflowStatus.ERROR, all_pass: false }))).toBe(true);
+  // COMPLETED-only rule: FAILED and HALTED are excluded even when they carry a score.
+  // These are the assertions most likely to be regressed — named explicitly.
+  it("returns false for FAILED run even when it carries a valid score (COMPLETED-only rule)", () => {
+    expect(
+      isScoredRun(
+        makeRun({ status: WorkflowStatus.FAILED, all_pass: false, n_passed: 3, n_total: 5 }),
+      ),
+    ).toBe(false);
   });
 
-  it("returns true for HALTED run with a score", () => {
-    expect(isScoredRun(makeRun({ status: WorkflowStatus.HALTED, all_pass: true }))).toBe(true);
+  it("returns false for HALTED run even when it carries a valid score (COMPLETED-only rule)", () => {
+    expect(
+      isScoredRun(
+        makeRun({ status: WorkflowStatus.HALTED, all_pass: true, n_passed: 5, n_total: 5 }),
+      ),
+    ).toBe(false);
   });
 
   it("returns false for FAILED run with no all_pass (no score data)", () => {
     const run = makeRun({ status: WorkflowStatus.FAILED });
-    delete (run as Partial<BenchmarkRunListRow>).all_pass;
     expect(isScoredRun({ ...run, all_pass: undefined as unknown as boolean })).toBe(false);
   });
 
@@ -123,12 +133,12 @@ describe("selectScoredRuns", () => {
     expect(selectScoredRuns(runs)).toHaveLength(1);
   });
 
-  it("includes ERROR and HALTED runs that carry a score", () => {
+  it("excludes FAILED and HALTED runs even when they carry a score (COMPLETED-only rule)", () => {
     const runs = [
-      makeRun({ status: WorkflowStatus.ERROR, all_pass: false }),
-      makeRun({ status: WorkflowStatus.HALTED, all_pass: true }),
+      makeRun({ status: WorkflowStatus.FAILED, all_pass: false, n_passed: 2, n_total: 5 }),
+      makeRun({ status: WorkflowStatus.HALTED, all_pass: true, n_passed: 5, n_total: 5 }),
     ];
-    expect(selectScoredRuns(runs)).toHaveLength(2);
+    expect(selectScoredRuns(runs)).toHaveLength(0);
   });
 
   it("excludes terminal runs with no all_pass", () => {
