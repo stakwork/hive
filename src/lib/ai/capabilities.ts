@@ -603,7 +603,7 @@ export function composeCapabilityPromptSuffix(
 
 ## More capabilities (load on demand)
 
-These advanced capabilities are available but their detailed rules are NOT loaded yet. Before using ANY of their tools, you MUST call \`learn_capability(<name>)\` first to load the instructions — do not call a capability's tools until you have loaded it this session:
+These advanced capabilities are available but their detailed rules are NOT loaded yet. Before using ANY of their tools, you MUST call \`learn_capability(<name>)\` first to load the instructions — do not call a capability's tools until you have loaded it this session. Capability tool names are exact and bare — NEVER \`{workspace}__\`-prefixed (e.g. call \`update_canvas\`, not \`{workspace}__update_canvas\`):
 
 ${menu}
 

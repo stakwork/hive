@@ -6,6 +6,7 @@ Build a system that lets us (Hive developers) understand how well our agents are
 
 ## Core Principle
 
+
 Don't over-specify what to look for. Compress the raw data faithfully, then let the LLM decide what matters. The system should surface things we haven't thought of yet, not just check a predefined list.
 
 ## Layers
