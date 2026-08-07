@@ -21,26 +21,28 @@ export const FAIL_BADGE_CLASS =
   "border-0 bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300";
 
 /**
- * Returns true when a run has a definitive score that should appear in the
- * summary strip and Runs table score column.
+ * Returns true when a run should appear as a pip in the rolling summary strip.
+ * COMPLETED-only — the strip is a clean-runs-only quality signal.
  *
- * Matches the predicate used by ScoreCell in BenchmarkRunsHistory.tsx:
- * - Excludes active (PENDING / IN_PROGRESS) runs — they haven't scored yet.
- * - Requires all_pass to be a boolean — terminal runs without score data are excluded.
- * - Intentionally INCLUDES ERROR and HALTED runs that carried a score in their
- *   result payload, because the workflow can emit scores even in non-COMPLETED
- *   terminal states.
+ * Intentional divergences (do NOT "fix" one to match the other):
  *
- * NOTE: toChartAttempts in BenchmarkRunsHistory.tsx uses a different, looser
- * predicate (checks for presence of n_passed/n_total, no status gate) for the
- * hill-climb chart. That divergence is pre-existing and intentionally NOT
- * unified here — the two predicates serve different purposes.
+ * 1. ScoreCell in BenchmarkRunsHistory.tsx uses a LOOSER predicate: it excludes
+ *    only PENDING/IN_PROGRESS, then requires a boolean all_pass. Consequence: a
+ *    FAILED or HALTED run that was judged before it died will still show a
+ *    PASS/FAIL badge in the Runs table but will NOT appear as a pip here. This
+ *    is intentional — the strip counts clean completions only.
+ *
+ * 2. toChartAttempts in BenchmarkRunsHistory.tsx uses a THIRD, even looser
+ *    predicate (counts present, no status check) for the hill-climb chart.
+ *    Also pre-existing and out of scope.
+ *
+ * Note: WorkflowStatus.ERROR is never assigned to a StakworkRun — mapStakworkStatus
+ * in src/utils/conversions.ts maps Stakwork "error"/"failed" → FAILED and
+ * "halted"/"paused"/"stopped" → HALTED — so no ERROR branch is needed.
  */
 export function isScoredRun(run: BenchmarkRunListRow): boolean {
   return (
-    run.status !== WorkflowStatus.PENDING &&
-    run.status !== WorkflowStatus.IN_PROGRESS &&
-    typeof run.all_pass === "boolean"
+    run.status === WorkflowStatus.COMPLETED && typeof run.all_pass === "boolean"
   );
 }
 
