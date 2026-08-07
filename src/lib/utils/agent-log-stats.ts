@@ -41,6 +41,14 @@ export interface ParsedMessage {
   };
   /** Per-turn LLM usage from the model response (Anthropic / OpenAI). */
   usage?: TokenUsage;
+  /**
+   * True for persisted turn-error rows (mid-stream failure, dead turn
+   * with zero visible output, output-cap truncation). The detail view
+   * renders these with error styling instead of a normal assistant
+   * bubble. Survives the `JSON.stringify` → `parseAgentLogStats`
+   * round-trip like `graphWalkTrace`.
+   */
+  isError?: boolean;
 }
 
 export interface AgentLogStats {
