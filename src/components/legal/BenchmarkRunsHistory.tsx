@@ -4,6 +4,7 @@ import { Fragment, useMemo, useState } from "react";
 import { formatDistanceToNow } from "date-fns";
 import { ExternalLink, Loader2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { PASS_BADGE_CLASS, FAIL_BADGE_CLASS } from "@/lib/harvey-lab/benchmark-summary";
 import {
   Select,
   SelectContent,
@@ -357,11 +358,7 @@ function ScoreCell({ run }: { run: BenchmarkRunListRow }) {
       )}
       <Badge
         variant="outline"
-        className={
-          run.all_pass
-            ? "border-0 bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300"
-            : "border-0 bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300"
-        }
+        className={run.all_pass ? PASS_BADGE_CLASS : FAIL_BADGE_CLASS}
       >
         {run.all_pass ? "PASS" : "FAIL"}
       </Badge>

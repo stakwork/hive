@@ -429,7 +429,9 @@ describe("useLegalBenchmarkRunList", () => {
     expect(vi.mocked(global.fetch).mock.calls.length).toBeGreaterThan(fetchCallsBefore);
   });
 
-  it("does NOT call fetchRuns when STAKWORK_RUN_UPDATE fires with a non-matching runId", async () => {
+  it("calls fetchRuns when STAKWORK_RUN_UPDATE fires with an UNKNOWN runId (relaxed handler)", async () => {
+    // The handler now refetches regardless of whether the run id is already in the
+    // loaded list — so a header strip that hasn't yet seen a brand-new run still updates.
     mockFetchOk([makeRow()]);
 
     renderHook(() => useLegalBenchmarkRunList("ws-cuid-123"));
@@ -438,12 +440,38 @@ describe("useLegalBenchmarkRunList", () => {
     const handler = mockChannelBind.mock.calls[0][1] as (data: { runId?: string }) => void;
     const fetchCallsBefore = vi.mocked(global.fetch).mock.calls.length;
 
+    mockFetchOk([makeRow()]);
     await act(async () => {
-      handler({ runId: "runner-unknown" });
+      handler({ runId: "runner-unknown-brand-new" });
       await Promise.resolve();
     });
 
-    expect(vi.mocked(global.fetch).mock.calls.length).toBe(fetchCallsBefore);
+    // Must have triggered a refetch even though the run was not in the loaded list
+    expect(vi.mocked(global.fetch).mock.calls.length).toBeGreaterThan(fetchCallsBefore);
+  });
+
+  it("isFetchingRef burst-guard prevents overlapping refetches from rapid Pusher events", async () => {
+    mockFetchOk([makeRow()]);
+
+    renderHook(() => useLegalBenchmarkRunList("ws-cuid-123"));
+    await waitFor(() => expect(mockChannelBind).toHaveBeenCalled());
+
+    const handler = mockChannelBind.mock.calls[0][1] as (data: { runId?: string }) => void;
+    const fetchCallsBefore = vi.mocked(global.fetch).mock.calls.length;
+
+    // Mock fetch to never resolve so isFetchingRef stays true
+    vi.mocked(global.fetch).mockImplementation(() => new Promise(() => {}));
+
+    await act(async () => {
+      // Fire three rapid events — only the first should trigger a fetch
+      handler({ runId: "runner-abc" });
+      handler({ runId: "runner-abc" });
+      handler({ runId: "runner-abc" });
+      await Promise.resolve();
+    });
+
+    // Only one additional fetch call despite three rapid events
+    expect(vi.mocked(global.fetch).mock.calls.length).toBe(fetchCallsBefore + 1);
   });
 
   it("unbinds STAKWORK_RUN_UPDATE event handler on unmount", async () => {
