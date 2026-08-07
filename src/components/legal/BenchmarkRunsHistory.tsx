@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { formatDistanceToNow } from "date-fns";
 import { ExternalLink, Loader2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -13,15 +13,17 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useWorkspace } from "@/hooks/useWorkspace";
-import { useLegalBenchmarkRunList } from "@/hooks/useLegalBenchmarkRunList";
+import {
+  useLegalBenchmarkRunList,
+  type BenchmarkRunListRow,
+} from "@/hooks/useLegalBenchmarkRunList";
 import { LegalBenchmarkResults } from "@/components/legal/LegalBenchmarkResults";
 import { StakworkRunLink } from "@/components/legal/StakworkRunLink";
 import { HillClimbChart } from "@/components/legal/HillClimbChart";
 import { WorkflowStatus } from "@prisma/client";
-import type { BenchmarkRunListRow } from "@/hooks/useLegalBenchmarkRunList";
 import type { EvalTriggerOutput } from "@/lib/harvey-lab/eval-normalizers";
 
-const ALL_TASKS = "all";
+export const ALL_TASKS = "all";
 
 interface TaskOption {
   slug: string;
@@ -88,13 +90,95 @@ function resolveModelDisplay(run: BenchmarkRunListRow) {
   return { exec, judge, hasAny };
 }
 
-export function BenchmarkRunsHistory() {
+export type RunListHookResult = ReturnType<typeof useLegalBenchmarkRunList>;
+
+interface BenchmarkRunsHistoryProps {
+  /** When supplied, the component uses this hook result instead of calling
+   *  useLegalBenchmarkRunList internally. Pass this from the page level to
+   *  share a single fetch/poll/Pusher subscription across the header strip
+   *  and this table. When omitted, the component self-manages as before. */
+  runList?: RunListHookResult;
+  /** Token from a pip click — triggers auto-scroll + expand of the target row. */
+  focusRequest?: { runId: string; nonce: number } | null;
+  /** Called once the focus effect has handled (or no-op'd) the request so the
+   *  parent can clear the token. */
+  onFocusHandled?: () => void;
+}
+
+export function BenchmarkRunsHistory({
+  runList: runListProp,
+  focusRequest,
+  onFocusHandled,
+}: BenchmarkRunsHistoryProps = {}) {
   const { workspace, isSuperAdmin } = useWorkspace();
   const workspaceId = workspace?.id;
 
-  const { runs, total, isLoading, error, setExpandedId } = useLegalBenchmarkRunList(workspaceId);
+  // When a runList prop is supplied, pass undefined to the hook so it never
+  // fetches, polls, or binds Pusher — all state comes from the prop.
+  const internalList = useLegalBenchmarkRunList(
+    runListProp ? undefined : workspaceId,
+  );
+  const { runs, total, isLoading, error, setExpandedId } =
+    runListProp ?? internalList;
+
   const [expandedRunId, setExpandedRunId] = useState<string | null>(null);
   const [taskFilter, setTaskFilter] = useState<string>(ALL_TASKS);
+
+  // ── Row refs for focus/scroll ────────────────────────────────────────────
+  const rowRefs = useRef<Map<string, HTMLTableRowElement>>(new Map());
+  const highlightTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // ── Focus effect ─────────────────────────────────────────────────────────
+  useEffect(() => {
+    if (!focusRequest) return;
+
+    const { runId } = focusRequest;
+    const found = runs.some((r) => r.id === runId);
+
+    if (!found) {
+      // Unknown run — clear the token so the next pip click isn't blocked.
+      onFocusHandled?.();
+      return;
+    }
+
+    // (a) Reset filter directly — do NOT call handleFilterChange/handleReset
+    //     because handleReset calls setExpandedId(null), which triggers an
+    //     unwanted refetch and would immediately collapse the row we're opening.
+    setTaskFilter(ALL_TASKS);
+
+    // (b) Expand the target row
+    setExpandedRunId(runId);
+
+    // (c) Preserve the hook's expansion/polling contract
+    setExpandedId(runId);
+
+    // (d) Scroll + highlight
+    requestAnimationFrame(() => {
+      const rowEl = rowRefs.current.get(runId);
+      if (rowEl) {
+        rowEl.scrollIntoView({ behavior: "smooth", block: "center" });
+
+        // Clear any previous highlight timer
+        if (highlightTimerRef.current) clearTimeout(highlightTimerRef.current);
+        rowEl.classList.add("ring-2", "ring-primary", "ring-inset");
+        highlightTimerRef.current = setTimeout(() => {
+          rowEl.classList.remove("ring-2", "ring-primary", "ring-inset");
+          highlightTimerRef.current = null;
+        }, 1500);
+      }
+    });
+
+    // (e) Clear the token
+    onFocusHandled?.();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusRequest, runs]);
+
+  // Cleanup highlight timer on unmount
+  useEffect(() => {
+    return () => {
+      if (highlightTimerRef.current) clearTimeout(highlightTimerRef.current);
+    };
+  }, []);
 
   const taskOptions = useMemo(() => buildTaskOptions(runs), [runs]);
 
@@ -206,8 +290,13 @@ export function BenchmarkRunsHistory() {
             {filteredRuns.map((run) => (
               <Fragment key={run.id}>
                 <tr
+                  ref={(el) => {
+                    if (el) rowRefs.current.set(run.id, el);
+                    else rowRefs.current.delete(run.id);
+                  }}
                   className="border-b last:border-0 cursor-pointer hover:bg-muted/30 transition-colors"
                   onClick={() => handleToggleExpand(run.id)}
+                  data-testid={`run-row-${run.id}`}
                 >
                   <td className="px-4 py-3">
                     <div className="font-medium leading-tight">
