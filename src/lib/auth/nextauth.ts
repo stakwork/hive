@@ -794,18 +794,27 @@ interface GithubUsernameAndPAT {
 }
 
 /**
- * Fetches the GitHub username and token for a given userId.
- * If workspaceSlug is provided, uses workspace-specific app token.
- * If workspaceSlug is omitted, falls back to user's OAuth token from sign-in.
- * Returns { username, token } or null if not found.
+ * The workspace-independent half of a PAT lookup: proof the user exists
+ * plus their GitHub username. See `resolveGithubIdentity`.
  */
-export async function getGithubUsernameAndPAT(
-  userId: string,
-  workspaceSlug?: string,
-): Promise<GithubUsernameAndPAT | null> {
-  console.log(`[getGithubUsernameAndPAT] Starting lookup for userId: ${userId}, workspaceSlug: ${workspaceSlug || 'none'}`);
+export interface GithubIdentity {
+  username: string;
+}
 
-  // Check if this is a mock user
+/**
+ * Resolves the caller's GitHub identity — the two lookups in
+ * `getGithubUsernameAndPAT` that do NOT depend on the workspace.
+ *
+ * Split out so multi-workspace callers can resolve it once and pass it
+ * to `getGithubUsernameAndPAT` via `identity`, instead of re-reading the
+ * same two rows for every slug. On an 8-workspace canvas turn that was
+ * 16 reads returning identical data.
+ */
+export async function resolveGithubIdentity(
+  userId: string,
+): Promise<GithubIdentity | null> {
+  // Deliberately sequential: with no user row there is no GitHubAuth row
+  // to find (FK), so the second query is pure waste on the miss path.
   const user = await db.user.findUnique({ where: { id: userId } });
   if (!user) {
     console.log(`[getGithubUsernameAndPAT] User not found: ${userId}`);
@@ -835,6 +844,31 @@ export async function getGithubUsernameAndPAT(
   }
 
   console.log(`[getGithubUsernameAndPAT] GitHub username found: ${githubAuth.githubUsername}`);
+  return { username: githubAuth.githubUsername };
+}
+
+/**
+ * Fetches the GitHub username and token for a given userId.
+ * If workspaceSlug is provided, uses workspace-specific app token.
+ * If workspaceSlug is omitted, falls back to user's OAuth token from sign-in.
+ * Returns { username, token } or null if not found.
+ *
+ * `identity` lets a caller that already resolved the user's GitHub
+ * identity (via `resolveGithubIdentity`) skip re-reading it. Omit it and
+ * the lookup happens inline, exactly as before.
+ */
+export async function getGithubUsernameAndPAT(
+  userId: string,
+  workspaceSlug?: string,
+  identity?: GithubIdentity,
+): Promise<GithubUsernameAndPAT | null> {
+  console.log(`[getGithubUsernameAndPAT] Starting lookup for userId: ${userId}, workspaceSlug: ${workspaceSlug || 'none'}`);
+
+  const resolvedIdentity = identity ?? (await resolveGithubIdentity(userId));
+  if (!resolvedIdentity) {
+    return null;
+  }
+  const githubUsername = resolvedIdentity.username;
 
   // If no workspace provided, use user's OAuth token from Account table
   if (!workspaceSlug) {
@@ -858,9 +892,9 @@ export async function getGithubUsernameAndPAT(
       const encryptionService = EncryptionService.getInstance();
       const token = encryptionService.decryptField("access_token", account.access_token);
 
-      console.log(`[getGithubUsernameAndPAT] Successfully decrypted OAuth token for user: ${githubAuth.githubUsername}`);
+      console.log(`[getGithubUsernameAndPAT] Successfully decrypted OAuth token for user: ${githubUsername}`);
       return {
-        username: githubAuth.githubUsername,
+        username: githubUsername,
         token: token,
       };
     } catch (error) {
@@ -904,7 +938,7 @@ export async function getGithubUsernameAndPAT(
       const token = encryptionService.decryptField("access_token", account.access_token);
       console.log(`[getGithubUsernameAndPAT] => falling back to personal access token!!! Not good for workspace: ${workspaceSlug}`);
       return {
-        username: githubAuth.githubUsername,
+        username: githubUsername,
         token: token,
       };
     } catch (error) {
@@ -936,9 +970,9 @@ export async function getGithubUsernameAndPAT(
     const encryptionService = EncryptionService.getInstance();
     const token = encryptionService.decryptField("source_control_token", sourceControlToken.token);
 
-    console.log(`[getGithubUsernameAndPAT] Successfully decrypted source control token for user: ${githubAuth.githubUsername}, org: ${workspace.sourceControlOrg.githubLogin}`);
+    console.log(`[getGithubUsernameAndPAT] Successfully decrypted source control token for user: ${githubUsername}, org: ${workspace.sourceControlOrg.githubLogin}`);
     return {
-      username: githubAuth.githubUsername,
+      username: githubUsername,
       token: token,
     };
   } catch (error) {
