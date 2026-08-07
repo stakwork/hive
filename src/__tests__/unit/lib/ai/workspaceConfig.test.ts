@@ -9,6 +9,7 @@ const {
   mockDbWorkspaceMemberFindMany,
   mockDbWorkspaceFindFirst,
   mockGetGithubUsernameAndPAT,
+  mockResolveGithubIdentity,
   mockDecryptField,
 } = vi.hoisted(() => ({
   mockValidateWorkspaceAccess: vi.fn(),
@@ -17,6 +18,7 @@ const {
   mockDbWorkspaceMemberFindMany: vi.fn(),
   mockDbWorkspaceFindFirst: vi.fn(),
   mockGetGithubUsernameAndPAT: vi.fn(),
+  mockResolveGithubIdentity: vi.fn(),
   mockDecryptField: vi.fn(),
 }));
 
@@ -35,6 +37,7 @@ vi.mock("@/lib/db", () => ({
 
 vi.mock("@/lib/auth/nextauth", () => ({
   getGithubUsernameAndPAT: mockGetGithubUsernameAndPAT,
+  resolveGithubIdentity: mockResolveGithubIdentity,
 }));
 
 vi.mock("@/lib/encryption", () => ({
@@ -76,6 +79,8 @@ function setupDefaultMocks(githubUsername = "alice", swarmName: string | null = 
   ]);
 
   mockDbWorkspaceMemberFindMany.mockResolvedValue([]);
+
+  mockResolveGithubIdentity.mockResolvedValue({ username: githubUsername });
 
   mockGetGithubUsernameAndPAT.mockResolvedValue({
     token: "ghp_test",
@@ -166,6 +171,151 @@ describe("buildWorkspaceConfigs", () => {
     const configs = await buildWorkspaceConfigs([SLUG], USER_ID);
 
     expect(configs[0].swarmDomain).toBeUndefined();
+  });
+});
+
+describe("buildWorkspaceConfigs — multi-slug concurrency", () => {
+  const SLUGS = ["alpha", "beta", "gamma"];
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("resolves all slugs concurrently rather than one after another", async () => {
+    setupDefaultMocks();
+
+    // Barrier: each call parks until all three have *started*. Under the
+    // old serial loop slug 2 never starts, so this would never settle and
+    // the test times out — which is exactly the regression we're locking.
+    let release!: () => void;
+    const allStarted = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let started = 0;
+
+    mockValidateWorkspaceAccess.mockImplementation(async (slug: string) => {
+      if (++started === SLUGS.length) release();
+      await allStarted;
+      return {
+        hasAccess: true,
+        workspace: { id: `ws-${slug}`, name: slug, description: null },
+      };
+    });
+
+    const configs = await buildWorkspaceConfigs(SLUGS, USER_ID);
+
+    expect(started).toBe(SLUGS.length);
+    expect(configs).toHaveLength(SLUGS.length);
+  });
+
+  it("returns configs in slug order, not completion order", async () => {
+    setupDefaultMocks();
+
+    // Invert the timing: the last slug resolves first.
+    mockValidateWorkspaceAccess.mockImplementation(async (slug: string) => {
+      const delay = (SLUGS.length - SLUGS.indexOf(slug)) * 5;
+      await new Promise((r) => setTimeout(r, delay));
+      return {
+        hasAccess: true,
+        workspace: { id: `ws-${slug}`, name: slug, description: null },
+      };
+    });
+
+    const configs = await buildWorkspaceConfigs(SLUGS, USER_ID);
+
+    expect(configs.map((c) => c.slug)).toEqual(SLUGS);
+    expect(configs.map((c) => c.workspaceId)).toEqual(["ws-alpha", "ws-beta", "ws-gamma"]);
+  });
+
+  it("surfaces the first failure in slug order even when a later slug fails sooner", async () => {
+    setupDefaultMocks();
+
+    // "alpha" (first in order) fails slowly; "beta" fails immediately.
+    // Plain `Promise.all` would surface beta's error; we want alpha's, to
+    // match what the original serial loop reported.
+    mockValidateWorkspaceAccess.mockImplementation(async (slug: string) => {
+      if (slug === "alpha") {
+        await new Promise((r) => setTimeout(r, 20));
+        return { hasAccess: false, workspace: null };
+      }
+      if (slug === "beta") {
+        return { hasAccess: false, workspace: null };
+      }
+      return {
+        hasAccess: true,
+        workspace: { id: `ws-${slug}`, name: slug, description: null },
+      };
+    });
+
+    await expect(buildWorkspaceConfigs(SLUGS, USER_ID)).rejects.toMatchObject({
+      kind: "forbidden",
+      message: "Access denied for workspace: alpha",
+    });
+  });
+
+  it("resolves the user's GitHub identity once for the whole batch", async () => {
+    setupDefaultMocks();
+
+    await buildWorkspaceConfigs(SLUGS, USER_ID);
+
+    // The identity does not vary by workspace; re-reading it per slug was
+    // 2 redundant round-trips each.
+    expect(mockResolveGithubIdentity).toHaveBeenCalledTimes(1);
+    expect(mockResolveGithubIdentity).toHaveBeenCalledWith(USER_ID);
+
+    // ...and it's handed to each per-workspace PAT lookup so those skip
+    // the re-read.
+    expect(mockGetGithubUsernameAndPAT).toHaveBeenCalledTimes(SLUGS.length);
+    for (const slug of SLUGS) {
+      expect(mockGetGithubUsernameAndPAT).toHaveBeenCalledWith(USER_ID, slug, {
+        username: "alice",
+      });
+    }
+  });
+
+  it("issues a workspace's swarm, repo, member and PAT reads concurrently", async () => {
+    setupDefaultMocks();
+
+    // Same barrier idea as above, but within a *single* workspace: each of
+    // the four reads parks until all four have started. Serially chained,
+    // only the first ever starts and this times out.
+    let release!: () => void;
+    const allStarted = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let started = 0;
+    const gate = async <T>(value: T): Promise<T> => {
+      if (++started === 4) release();
+      await allStarted;
+      return value;
+    };
+
+    mockDbSwarmFindFirst.mockImplementation(() =>
+      gate({ swarmUrl: "https://swarm.example.com:3333", swarmApiKey: "k", name: "swarm38" })
+    );
+    mockDbRepositoryFindMany.mockImplementation(() =>
+      gate([{ repositoryUrl: "https://github.com/owner/repo" }])
+    );
+    mockDbWorkspaceMemberFindMany.mockImplementation(() => gate([]));
+    mockGetGithubUsernameAndPAT.mockImplementation(() =>
+      gate({ token: "ghp_test", username: "alice" })
+    );
+
+    const configs = await buildWorkspaceConfigs([SLUG], USER_ID);
+
+    expect(started).toBe(4);
+    expect(configs).toHaveLength(1);
+  });
+
+  it("skips the PAT lookup entirely when the user has no GitHub identity", async () => {
+    setupDefaultMocks();
+    mockResolveGithubIdentity.mockResolvedValue(null);
+
+    await expect(buildWorkspaceConfigs([SLUG], USER_ID)).rejects.toMatchObject({
+      kind: "not_found",
+      message: `GitHub PAT not found for workspace: ${SLUG}`,
+    });
+    expect(mockGetGithubUsernameAndPAT).not.toHaveBeenCalled();
   });
 });
 
