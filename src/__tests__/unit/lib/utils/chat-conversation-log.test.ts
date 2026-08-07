@@ -188,6 +188,53 @@ describe("chatMessagesToParsedMessages", () => {
     expect(chatMessagesToParsedMessages(stored)[0].graphWalkTrace).toBeUndefined();
   });
 
+  it("marks assistant rows with source.kind=error as isError", () => {
+    const stored: StoredChatMessage[] = [
+      {
+        id: "turn-1-aerror",
+        role: "assistant",
+        content: "I'm sorry — this turn finished without producing any visible response.",
+        source: { kind: "error" },
+      },
+    ];
+    expect(chatMessagesToParsedMessages(stored)[0].isError).toBe(true);
+  });
+
+  it("marks legacy error rows (id ending in 'error', no source marker) as isError", () => {
+    const stored: StoredChatMessage[] = [
+      {
+        id: "turn-1-aerror",
+        role: "assistant",
+        content: "I'm sorry — this turn hit an error before completing: boom. Please try again.",
+      },
+    ];
+    expect(chatMessagesToParsedMessages(stored)[0].isError).toBe(true);
+  });
+
+  it("does not mark normal rows as isError (user rows even with error-suffixed ids)", () => {
+    const stored: StoredChatMessage[] = [
+      { id: "row-1", role: "assistant", content: "healthy answer" },
+      { id: "row-2-error", role: "user", content: "why did I get an error?" },
+    ];
+    const out = chatMessagesToParsedMessages(stored);
+    expect(out[0].isError).toBeUndefined();
+    expect(out[1].isError).toBeUndefined();
+  });
+
+  it("isError survives the JSON.stringify → parseAgentLogStats round-trip", () => {
+    const stored: StoredChatMessage[] = [
+      {
+        id: "turn-9-aerror",
+        role: "assistant",
+        content: "I'm sorry — this response hit the model's output limit and was cut off.",
+        source: { kind: "error" },
+      },
+    ];
+    const parsed = chatMessagesToParsedMessages(stored);
+    const { conversation } = parseAgentLogStats(JSON.stringify(parsed));
+    expect(conversation[0].isError).toBe(true);
+  });
+
   it("graphWalkTrace survives the JSON.stringify → parseAgentLogStats round-trip", () => {
     const stored: StoredChatMessage[] = [
       {
