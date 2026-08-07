@@ -13,6 +13,7 @@ export interface BenchmarkRunListRow {
   taskSlug: string;
   taskTitle: string;
   createdAt: string;
+  updatedAt: string;
   // Flat score fields from the runner webhook (single-run pipeline)
   n_passed?: number;
   n_total?: number;
@@ -73,6 +74,7 @@ export function useLegalBenchmarkRunList(
         projectId: number | null;
         result: string | null;
         createdAt: string;
+        updatedAt: string;
       }> = data.runs ?? [];
 
       const mapped: BenchmarkRunListRow[] = rawRows.map((r) => {
@@ -85,6 +87,7 @@ export function useLegalBenchmarkRunList(
           taskSlug: parsed?.taskSlug ?? "",
           taskTitle: parsed?.taskTitle ?? "",
           createdAt: r.createdAt,
+          updatedAt: r.updatedAt,
           n_passed: parsed?.n_passed,
           n_total: parsed?.n_total,
           all_pass: parsed?.all_pass,
@@ -170,15 +173,16 @@ export function useLegalBenchmarkRunList(
   // Pusher real-time completion detection
   useEffect(() => {
     if (!channel) return;
-    const handleUpdate = (data: { runId?: string; run_id?: string }) => {
-      const updatedId = data.runId ?? data.run_id;
+    const handleUpdate = (_data: { runId?: string; run_id?: string }) => {
+      // Refetch on any STAKWORK_RUN_UPDATE event on this workspace channel,
+      // regardless of whether the run id is already in the loaded list.
+      // This ensures the header strip updates live even when a brand-new run
+      // fires its first update before the list has had a chance to load it.
       if (isFetchingRef.current) return; // drop burst duplicates
-      if (runsRef.current.some((r) => r.id === updatedId)) {
-        isFetchingRef.current = true;
-        void Promise.resolve(fetchRunRef.current?.()).finally(() => {
-          isFetchingRef.current = false;
-        });
-      }
+      isFetchingRef.current = true;
+      void Promise.resolve(fetchRunRef.current?.()).finally(() => {
+        isFetchingRef.current = false;
+      });
     };
     channel.bind(PUSHER_EVENTS.STAKWORK_RUN_UPDATE, handleUpdate);
     return () => {
