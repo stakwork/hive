@@ -1922,6 +1922,286 @@ async function seedFeatureErrorIssueLink() {
   }
 }
 
+/**
+ * Seeds LEGAL_BENCHMARK_RUNNER StakworkRun rows onto the dev-mock workspace so
+ * the benchmark summary widget has realistic data in local development.
+ *
+ * Covers every exclusion/edge case the widget's logic exercises:
+ *   - COMPLETED with valid scores (the majority — pip + rated)
+ *   - FAILED with no result (excluded from both pip strip and average)
+ *   - COMPLETED with all_pass but missing counts (pips, excluded from average)
+ *   - COMPLETED with n_total === 0 (divide-by-zero guard — pips, excluded from average)
+ *   - Optional IN_PROGRESS row behind SEED_LEGAL_BENCHMARK_ACTIVE_RUN=true
+ *
+ * Safe to call multiple times (idempotent via findFirst guard).
+ * Never runs against a production database.
+ */
+async function seedLegalBenchmarkRuns() {
+  if (process.env.NODE_ENV === "production") {
+    console.log("✓ Skipping legal benchmark seed in production");
+    return;
+  }
+
+  const workspace = await prisma.workspace.findUnique({
+    where: { slug: "dev-mock" },
+  });
+  if (!workspace) {
+    console.log("⚠ dev-mock workspace not found — skipping legal benchmark seed");
+    return;
+  }
+
+  // Idempotency: skip if we already seeded this workspace
+  const existing = await prisma.stakworkRun.findFirst({
+    where: {
+      workspaceId: workspace.id,
+      type: StakworkRunType.LEGAL_BENCHMARK_RUNNER,
+    },
+  });
+  if (existing) {
+    console.log("✓ Legal benchmark seed runs already exist on dev-mock — skipping");
+    return;
+  }
+
+  // Reference timestamps spread over the last 7 days so updatedAt ordering
+  // is realistic and differs from createdAt (simulating runs that finish later
+  // than they were created, which is the normal production case).
+  const now = new Date();
+  const t = (daysAgo: number, hoursOffset = 0) =>
+    new Date(now.getTime() - daysAgo * 86_400_000 + hoursOffset * 3_600_000);
+
+  // ── 11 COMPLETED rows, mixed pass/fail ────────────────────────────────────
+
+  type RunSpec = {
+    taskSlug: string;
+    taskTitle: string;
+    all_pass: boolean;
+    n_passed: number;
+    n_total: number;
+    requestedModel?: string;
+    requestedJudgeModel?: string;
+    createdAt: Date;
+    updatedAt: Date;
+  };
+
+  const scoredRows: RunSpec[] = [
+    {
+      taskSlug: "funds-asset-management/draft-lpa/scenario-01",
+      taskTitle: "Draft LPA — Scenario 01",
+      all_pass: true,
+      n_passed: 5,
+      n_total: 5,
+      requestedModel: "claude-sonnet-5",
+      requestedJudgeModel: "claude-sonnet-4-6",
+      createdAt: t(7, 0),
+      updatedAt: t(7, 1),
+    },
+    {
+      taskSlug: "funds-asset-management/draft-lpa/scenario-02",
+      taskTitle: "Draft LPA — Scenario 02",
+      all_pass: false,
+      n_passed: 3,
+      n_total: 5,
+      createdAt: t(6, 2),
+      updatedAt: t(6, 3),
+    },
+    {
+      taskSlug: "funds-asset-management/review-subscription/scenario-01",
+      taskTitle: "Review Subscription Agreement — Scenario 01",
+      all_pass: true,
+      n_passed: 4,
+      n_total: 4,
+      createdAt: t(6, 4),
+      updatedAt: t(6, 5),
+    },
+    {
+      taskSlug: "corporate/identify-issues/scenario-01",
+      taskTitle: "Identify Issues — Scenario 01",
+      all_pass: false,
+      n_passed: 2,
+      n_total: 6,
+      requestedModel: "claude-sonnet-5",
+      createdAt: t(5, 0),
+      updatedAt: t(5, 2),
+    },
+    {
+      taskSlug: "corporate/compare-agreements/scenario-01",
+      taskTitle: "Compare Agreements — Scenario 01",
+      all_pass: true,
+      n_passed: 3,
+      n_total: 3,
+      createdAt: t(5, 6),
+      updatedAt: t(5, 7),
+    },
+    {
+      taskSlug: "litigation/extract-holdings/scenario-01",
+      taskTitle: "Extract Holdings — Scenario 01",
+      all_pass: false,
+      n_passed: 1,
+      n_total: 4,
+      createdAt: t(4, 1),
+      updatedAt: t(4, 3),
+    },
+    {
+      taskSlug: "litigation/extract-holdings/scenario-02",
+      taskTitle: "Extract Holdings — Scenario 02",
+      all_pass: true,
+      n_passed: 4,
+      n_total: 4,
+      createdAt: t(4, 8),
+      updatedAt: t(4, 9),
+    },
+    {
+      taskSlug: "real-estate/review-lease/scenario-01",
+      taskTitle: "Review Lease — Scenario 01",
+      all_pass: false,
+      n_passed: 2,
+      n_total: 5,
+      requestedJudgeModel: "claude-sonnet-4-6",
+      createdAt: t(3, 2),
+      updatedAt: t(3, 4),
+    },
+    {
+      taskSlug: "real-estate/draft-purchase/scenario-01",
+      taskTitle: "Draft Purchase Agreement — Scenario 01",
+      all_pass: true,
+      n_passed: 6,
+      n_total: 6,
+      createdAt: t(2, 0),
+      updatedAt: t(2, 1),
+    },
+    {
+      taskSlug: "ip/extract-claims/scenario-01",
+      taskTitle: "Extract Patent Claims — Scenario 01",
+      all_pass: false,
+      n_passed: 0,
+      n_total: 3,
+      createdAt: t(1, 4),
+      updatedAt: t(1, 6),
+    },
+    {
+      taskSlug: "ip/draft-license/scenario-01",
+      taskTitle: "Draft License Agreement — Scenario 01",
+      all_pass: true,
+      n_passed: 5,
+      n_total: 5,
+      requestedModel: "claude-sonnet-5",
+      requestedJudgeModel: "claude-sonnet-4-6",
+      createdAt: t(0, 2),
+      updatedAt: t(0, 3),
+    },
+  ];
+
+  for (const row of scoredRows) {
+    await prisma.stakworkRun.create({
+      data: {
+        webhookUrl: `https://example.com/webhook/legal-benchmark/${row.taskSlug}`,
+        type: StakworkRunType.LEGAL_BENCHMARK_RUNNER,
+        workspaceId: workspace.id,
+        status: WorkflowStatus.COMPLETED,
+        dataType: "json",
+        createdAt: row.createdAt,
+        updatedAt: row.updatedAt,
+        result: JSON.stringify({
+          taskSlug: row.taskSlug,
+          taskTitle: row.taskTitle,
+          all_pass: row.all_pass,
+          n_passed: row.n_passed,
+          n_total: row.n_total,
+          pass_rate: row.n_total > 0 ? row.n_passed / row.n_total : 0,
+          ...(row.requestedModel ? { requestedModel: row.requestedModel } : {}),
+          ...(row.requestedJudgeModel
+            ? { requestedJudgeModel: row.requestedJudgeModel }
+            : {}),
+        }),
+      },
+    });
+  }
+
+  // ── FAILED row — no result (excluded from pip strip entirely) ─────────────
+  await prisma.stakworkRun.create({
+    data: {
+      webhookUrl: "https://example.com/webhook/legal-benchmark/failed-no-score",
+      type: StakworkRunType.LEGAL_BENCHMARK_RUNNER,
+      workspaceId: workspace.id,
+      status: WorkflowStatus.FAILED,
+      dataType: "json",
+      createdAt: t(3, 10),
+      updatedAt: t(3, 11),
+      result: null,
+    },
+  });
+
+  // ── COMPLETED — all_pass true but missing n_passed/n_total ────────────────
+  // Proves: appears as a pip, excluded from averagePassRate / ratedCount.
+  await prisma.stakworkRun.create({
+    data: {
+      webhookUrl:
+        "https://example.com/webhook/legal-benchmark/missing-counts",
+      type: StakworkRunType.LEGAL_BENCHMARK_RUNNER,
+      workspaceId: workspace.id,
+      status: WorkflowStatus.COMPLETED,
+      dataType: "json",
+      createdAt: t(2, 6),
+      updatedAt: t(2, 7),
+      result: JSON.stringify({
+        taskSlug: "corporate/identify-issues/scenario-02",
+        taskTitle: "Identify Issues — Scenario 02",
+        all_pass: true,
+        // n_passed and n_total intentionally omitted
+      }),
+    },
+  });
+
+  // ── COMPLETED — n_total === 0 ─────────────────────────────────────────────
+  // Proves: divide-by-zero guard — appears as a pip, excluded from average.
+  await prisma.stakworkRun.create({
+    data: {
+      webhookUrl:
+        "https://example.com/webhook/legal-benchmark/zero-total",
+      type: StakworkRunType.LEGAL_BENCHMARK_RUNNER,
+      workspaceId: workspace.id,
+      status: WorkflowStatus.COMPLETED,
+      dataType: "json",
+      createdAt: t(1, 0),
+      updatedAt: t(1, 1),
+      result: JSON.stringify({
+        taskSlug: "corporate/compare-agreements/scenario-02",
+        taskTitle: "Compare Agreements — Scenario 02",
+        all_pass: false,
+        n_passed: 0,
+        n_total: 0,
+      }),
+    },
+  });
+
+  // ── Optional IN_PROGRESS row (opt-in via env flag) ────────────────────────
+  // Off by default — a permanently-active run in dev pins the run-list hook's
+  // 15s poller indefinitely.  Set SEED_LEGAL_BENCHMARK_ACTIVE_RUN=true to
+  // include it when you want to eyeball live-update behaviour.
+  if (process.env.SEED_LEGAL_BENCHMARK_ACTIVE_RUN === "true") {
+    await prisma.stakworkRun.create({
+      data: {
+        webhookUrl:
+          "https://example.com/webhook/legal-benchmark/in-progress",
+        type: StakworkRunType.LEGAL_BENCHMARK_RUNNER,
+        workspaceId: workspace.id,
+        status: WorkflowStatus.IN_PROGRESS,
+        dataType: "json",
+        createdAt: t(0, 0),
+        updatedAt: t(0, 0),
+        result: JSON.stringify({
+          taskSlug: "funds-asset-management/draft-lpa/scenario-03",
+          taskTitle: "Draft LPA — Scenario 03",
+        }),
+      },
+    });
+    console.log("✓ Seeded 1 optional IN_PROGRESS legal benchmark run (SEED_LEGAL_BENCHMARK_ACTIVE_RUN=true)");
+  }
+
+  const total = scoredRows.length + 3; // 11 scored + FAILED + missing-counts + zero-total
+  console.log(`✓ Seeded ${total} LEGAL_BENCHMARK_RUNNER StakworkRun rows on dev-mock`);
+}
+
 async function main() {
   await prisma.$connect();
 
@@ -1943,6 +2223,7 @@ async function main() {
   await seedDailyRecapRun(users);
   await seedVoiceCorrections(users);
   await seedFeatureErrorIssueLink();
+  await seedLegalBenchmarkRuns();
 
   console.log("Seed completed.");
 }
