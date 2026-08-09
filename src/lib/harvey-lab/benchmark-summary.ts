@@ -2,6 +2,16 @@ import { WorkflowStatus } from "@prisma/client";
 import type { BenchmarkRunListRow } from "@/hooks/useLegalBenchmarkRunList";
 
 /**
+ * How many runs one run-list fetch pulls. 100 is the hard server cap in
+ * /api/stakwork/runs, so it is also the widest window the dropdown can offer.
+ *
+ * Lives here rather than beside the fetch in useLegalBenchmarkRunList because
+ * it is half of the WINDOW_OPTIONS contract below — and because test suites
+ * routinely mock the hook module, which would leave this undefined.
+ */
+export const RUN_LIST_LIMIT = 100;
+
+/**
  * Window sizes offered in the Runs-tab dropdown, in display order.
  * The window counts SCORED runs: "Last 25" means the 25 most recent completed,
  * judged runs. The table then lists every run in that span whatever its state —

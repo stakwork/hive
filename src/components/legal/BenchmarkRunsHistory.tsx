@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import {
   PASS_BADGE_CLASS,
   FAIL_BADGE_CLASS,
+  RUN_LIST_LIMIT,
   SUMMARY_WINDOW,
   WINDOW_OPTIONS,
   isScoredRun,
@@ -24,7 +25,6 @@ import {
 import { useWorkspace } from "@/hooks/useWorkspace";
 import {
   useLegalBenchmarkRunList,
-  RUN_LIST_LIMIT,
   type BenchmarkRunListRow,
 } from "@/hooks/useLegalBenchmarkRunList";
 import { LegalBenchmarkResults } from "@/components/legal/LegalBenchmarkResults";

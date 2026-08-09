@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import { StakworkRunType, WorkflowStatus } from "@prisma/client";
 import { parseBenchmarkRunResult } from "@/types/legal";
+import { RUN_LIST_LIMIT } from "@/lib/harvey-lab/benchmark-summary";
 import { usePusherChannel } from "@/hooks/usePusherChannel";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { getWorkspaceChannelName, PUSHER_EVENTS } from "@/lib/pusher";
@@ -41,14 +42,6 @@ interface UseLegalBenchmarkRunListResult {
 }
 
 const POLL_INTERVAL_MS = 15_000;
-
-/**
- * How many runs one fetch pulls. 100 is the hard server cap in
- * /api/stakwork/runs, so this is also the widest rolling window the summary
- * strip can offer (see WINDOW_OPTIONS) — every window option is served from
- * this single payload, no refetch on window change.
- */
-export const RUN_LIST_LIMIT = 100;
 
 export function useLegalBenchmarkRunList(
   workspaceId: string | undefined,

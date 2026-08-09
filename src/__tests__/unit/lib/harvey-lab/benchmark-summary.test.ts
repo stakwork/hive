@@ -16,6 +16,7 @@
 import { describe, it, expect } from "vitest";
 import { WorkflowStatus } from "@prisma/client";
 import {
+  RUN_LIST_LIMIT,
   SUMMARY_WINDOW,
   WINDOW_OPTIONS,
   PASS_BADGE_CLASS,
@@ -27,10 +28,6 @@ import {
   summarize,
 } from "@/lib/harvey-lab/benchmark-summary";
 import type { BenchmarkRunListRow } from "@/hooks/useLegalBenchmarkRunList";
-
-/** Mirrors RUN_LIST_LIMIT in useLegalBenchmarkRunList (type-only import here to
- *  keep this suite free of the hook's React/Pusher module graph). */
-const RUN_LIST_LIMIT = 100;
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
