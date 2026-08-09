@@ -3,381 +3,198 @@
  */
 import React from "react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { WorkflowStatus } from "@prisma/client";
+import type { BenchmarkRunListRow } from "@/hooks/useLegalBenchmarkRunList";
 
 globalThis.React = React;
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
+let _seq = 0;
 const makeRun = (
-  overrides: Partial<{
-    id: string;
-    workspaceId: string;
-    status: string;
-    taskSlug: string;
-    taskTitle: string;
-    createdAt: string;
-    updatedAt: string;
-    n_passed: number;
-    n_total: number;
-    all_pass: boolean;
-  }> = {},
-) => ({
-  id: "run-1",
-  workspaceId: "ws-1",
-  status: "COMPLETED",
-  projectId: null,
-  taskSlug: "antitrust/task-1",
-  taskTitle: "Analyze Antitrust Strategy",
-  createdAt: new Date("2025-06-01T09:00:00Z").toISOString(),
-  updatedAt: new Date("2025-06-01T09:05:00Z").toISOString(),
-  n_passed: 8,
-  n_total: 10,
-  all_pass: true,
-  ...overrides,
-});
+  overrides: Partial<BenchmarkRunListRow> = {},
+): BenchmarkRunListRow => {
+  _seq += 1;
+  return {
+    id: `run-${_seq}`,
+    workspaceId: "ws-1",
+    status: WorkflowStatus.COMPLETED,
+    projectId: null,
+    taskSlug: "antitrust/task-1",
+    taskTitle: "Analyze Antitrust Strategy",
+    createdAt: new Date(1_700_000_000_000 + _seq * 1000).toISOString(),
+    updatedAt: new Date(1_700_000_000_000 + _seq * 1000).toISOString(),
+    n_passed: 8,
+    n_total: 10,
+    all_pass: true,
+    ...overrides,
+  };
+};
 
-// ─── Module mocks ─────────────────────────────────────────────────────────────
-
-// Default: legal slug, so gate passes
-const mockUseWorkspace = vi.fn(() => ({
-  workspace: { id: "ws-1", slug: "openlaw" },
-  isSuperAdmin: false,
-}));
-
-vi.mock("@/hooks/useWorkspace", () => ({
-  useWorkspace: () => mockUseWorkspace(),
-}));
-
-vi.mock("date-fns", () => ({
-  formatDistanceToNow: (_date: Date, _opts?: { addSuffix?: boolean }) =>
-    "2 months ago",
-}));
-
-// ─── Import after mocks ───────────────────────────────────────────────────────
+/** One run per supplied pass flag. */
+const makeRuns = (passFlags: boolean[]) =>
+  passFlags.map((all_pass) => makeRun({ all_pass }));
 
 const { BenchmarkSummaryStrip } = await import(
   "@/components/legal/BenchmarkSummaryStrip"
 );
 
+const renderStrip = (
+  runs: BenchmarkRunListRow[],
+  onWindowChange = vi.fn(),
+  windowSize: 10 | 25 | 50 | 100 = 10,
+) => {
+  render(
+    React.createElement(BenchmarkSummaryStrip, {
+      runs,
+      windowSize,
+      onWindowChange,
+    }),
+  );
+  return onWindowChange;
+};
+
 // ─── Tests ────────────────────────────────────────────────────────────────────
 
 describe("BenchmarkSummaryStrip", () => {
-  const onSelectRun = vi.fn();
-
   beforeEach(() => {
     vi.clearAllMocks();
-    mockUseWorkspace.mockReturnValue({
-      workspace: { id: "ws-1", slug: "openlaw" },
-      isSuperAdmin: false,
-    });
+
+    // Radix Select needs these APIs, which jsdom does not implement
+    if (!HTMLElement.prototype.hasPointerCapture) {
+      HTMLElement.prototype.hasPointerCapture = vi.fn(() => false);
+    }
+    if (!HTMLElement.prototype.setPointerCapture) {
+      HTMLElement.prototype.setPointerCapture = vi.fn();
+    }
+    if (!HTMLElement.prototype.releasePointerCapture) {
+      HTMLElement.prototype.releasePointerCapture = vi.fn();
+    }
+    if (!HTMLElement.prototype.scrollIntoView) {
+      HTMLElement.prototype.scrollIntoView = vi.fn();
+    }
   });
 
-  // ── Gate tests ─────────────────────────────────────────────────────────────
+  // ── No P/F pips ─────────────────────────────────────────────────────────────
 
-  it("renders content for a legal slug (openlaw)", () => {
-    render(
-      React.createElement(BenchmarkSummaryStrip, {
-        runs: [makeRun()],
-        isLoading: false,
-        error: null,
-        onSelectRun,
-      }),
-    );
-    // strip or empty state — either way, it renders something (not null)
-    expect(document.body.textContent).not.toBe("");
-  });
-
-  it("renders null for a non-legal, non-dev slug", () => {
-    mockUseWorkspace.mockReturnValue({
-      workspace: { id: "ws-2", slug: "some-other-workspace" },
-      isSuperAdmin: false,
-    });
+  it("renders no per-run P/F pips", () => {
     const { container } = render(
       React.createElement(BenchmarkSummaryStrip, {
-        runs: [makeRun()],
-        isLoading: false,
-        error: null,
-        onSelectRun,
+        runs: makeRuns([true, false, false]),
+        windowSize: 10 as const,
+        onWindowChange: vi.fn(),
       }),
     );
-    expect(container.firstChild).toBeNull();
+    expect(container.querySelector('[data-testid^="pip-"]')).toBeNull();
+    expect(screen.queryByText("P")).toBeNull();
+    expect(screen.queryByText("F")).toBeNull();
   });
 
-  // ── Loading skeleton ────────────────────────────────────────────────────────
+  // ── Rolling pass rate ───────────────────────────────────────────────────────
 
-  it("shows skeleton pips while isLoading and runs is empty", () => {
-    render(
-      React.createElement(BenchmarkSummaryStrip, {
-        runs: [],
-        isLoading: true,
-        error: null,
-        onSelectRun,
-      }),
-    );
-    expect(screen.getByTestId("benchmark-strip-skeleton")).toBeInTheDocument();
-    expect(screen.queryByTestId("benchmark-strip")).toBeNull();
-    expect(screen.queryByTestId("benchmark-strip-empty")).toBeNull();
+  it("shows the run-level pass rate, not the criteria average", () => {
+    // 2 of 8 runs fully passed → 25%
+    renderStrip(makeRuns([true, true, false, false, false, false, false, false]));
+    expect(screen.getByTestId("strip-pass-rate")).toHaveTextContent("25%");
+    expect(screen.getByText("rolling pass rate")).toBeInTheDocument();
   });
 
-  it("does NOT show skeleton when runs are already loaded (even if isLoading=true)", () => {
-    render(
-      React.createElement(BenchmarkSummaryStrip, {
-        runs: [makeRun()],
-        isLoading: true,
-        error: null,
-        onSelectRun,
-      }),
-    );
-    expect(screen.queryByTestId("benchmark-strip-skeleton")).toBeNull();
-    expect(screen.getByTestId("benchmark-strip")).toBeInTheDocument();
+  it("shows 100% when every scored run passed", () => {
+    renderStrip(makeRuns([true, true, true]));
+    expect(screen.getByTestId("strip-pass-rate")).toHaveTextContent("100%");
   });
 
-  // ── Error state ─────────────────────────────────────────────────────────────
-
-  it("shows error affordance when error is set (and not loading)", () => {
-    render(
-      React.createElement(BenchmarkSummaryStrip, {
-        runs: [],
-        isLoading: false,
-        error: "Network error",
-        onSelectRun,
-      }),
-    );
-    const errorEl = screen.getByTestId("benchmark-strip-error");
-    expect(errorEl).toBeInTheDocument();
-    expect(screen.queryByTestId("benchmark-strip-empty")).toBeNull();
-    expect(screen.queryByTestId("benchmark-strip")).toBeNull();
+  it("shows 0% when no scored run passed", () => {
+    renderStrip(makeRuns([false, false]));
+    expect(screen.getByTestId("strip-pass-rate")).toHaveTextContent("0%");
   });
 
-  it("error state is visually distinct from empty state (different testids)", () => {
-    const { unmount } = render(
-      React.createElement(BenchmarkSummaryStrip, {
-        runs: [],
-        isLoading: false,
-        error: "err",
-        onSelectRun,
-      }),
-    );
-    expect(screen.getByTestId("benchmark-strip-error")).toBeInTheDocument();
-    expect(screen.queryByTestId("benchmark-strip-empty")).toBeNull();
-    unmount();
-
-    render(
-      React.createElement(BenchmarkSummaryStrip, {
-        runs: [],
-        isLoading: false,
-        error: null,
-        onSelectRun,
-      }),
-    );
-    expect(screen.getByTestId("benchmark-strip-empty")).toBeInTheDocument();
-    expect(screen.queryByTestId("benchmark-strip-error")).toBeNull();
-  });
-
-  it("calls onRetry when the Retry button is clicked (error state)", () => {
-    const onRetry = vi.fn();
-    render(
-      React.createElement(BenchmarkSummaryStrip, {
-        runs: [],
-        isLoading: false,
-        error: "err",
-        onSelectRun,
-        onRetry,
-      }),
-    );
-    fireEvent.click(screen.getByText("Retry"));
-    expect(onRetry).toHaveBeenCalledTimes(1);
-  });
-
-  // ── Empty state ─────────────────────────────────────────────────────────────
-
-  it("shows empty state when loaded with no scored runs", () => {
-    // Unscored runs (PENDING) should produce empty state
-    render(
-      React.createElement(BenchmarkSummaryStrip, {
-        runs: [makeRun({ status: "PENDING", all_pass: undefined })],
-        isLoading: false,
-        error: null,
-        onSelectRun,
-      }),
-    );
-    expect(screen.getByTestId("benchmark-strip-empty")).toBeInTheDocument();
-    expect(screen.queryByTestId("benchmark-strip")).toBeNull();
-  });
-
-  it("shows 'No scored runs yet' text in empty state", () => {
-    render(
-      React.createElement(BenchmarkSummaryStrip, {
-        runs: [],
-        isLoading: false,
-        error: null,
-        onSelectRun,
-      }),
-    );
-    expect(screen.getByText("No scored runs yet")).toBeInTheDocument();
-  });
-
-  // ── Pip rendering ───────────────────────────────────────────────────────────
-
-  it("renders the strip with pips for scored runs", () => {
-    render(
-      React.createElement(BenchmarkSummaryStrip, {
-        runs: [makeRun({ id: "r1", all_pass: true }), makeRun({ id: "r2", all_pass: false })],
-        isLoading: false,
-        error: null,
-        onSelectRun,
-      }),
-    );
-    expect(screen.getByTestId("benchmark-strip")).toBeInTheDocument();
-    expect(screen.getByTestId("pip-r1")).toBeInTheDocument();
-    expect(screen.getByTestId("pip-r2")).toBeInTheDocument();
-  });
-
-  it("pip title includes task title, score, and date", () => {
-    render(
-      React.createElement(BenchmarkSummaryStrip, {
-        runs: [
-          makeRun({
-            id: "r1",
-            taskTitle: "Analyze Antitrust Strategy",
-            n_passed: 8,
-            n_total: 10,
-            all_pass: true,
-          }),
-        ],
-        isLoading: false,
-        error: null,
-        onSelectRun,
-      }),
-    );
-    const pip = screen.getByTestId("pip-r1");
-    expect(pip.getAttribute("title")).toContain("Analyze Antitrust Strategy");
-    expect(pip.getAttribute("title")).toContain("8/10");
-    expect(pip.getAttribute("title")).toContain("2 months ago");
-  });
-
-  it("pip aria-label matches title", () => {
-    render(
-      React.createElement(BenchmarkSummaryStrip, {
-        runs: [makeRun({ id: "r1", all_pass: true })],
-        isLoading: false,
-        error: null,
-        onSelectRun,
-      }),
-    );
-    const pip = screen.getByTestId("pip-r1");
-    expect(pip.getAttribute("aria-label")).toBe(pip.getAttribute("title"));
-  });
-
-  it("pip omits score from title when n_passed/n_total absent", () => {
-    render(
-      React.createElement(BenchmarkSummaryStrip, {
-        runs: [
-          makeRun({
-            id: "r1",
-            all_pass: true,
-            n_passed: undefined,
-            n_total: undefined,
-          }),
-        ],
-        isLoading: false,
-        error: null,
-        onSelectRun,
-      }),
-    );
-    const pip = screen.getByTestId("pip-r1");
-    expect(pip.getAttribute("title")).not.toContain("/");
-  });
-
-  it("clicking a pip calls onSelectRun with the correct run id", () => {
-    render(
-      React.createElement(BenchmarkSummaryStrip, {
-        runs: [makeRun({ id: "run-abc" })],
-        isLoading: false,
-        error: null,
-        onSelectRun,
-      }),
-    );
-    fireEvent.click(screen.getByTestId("pip-run-abc"));
-    expect(onSelectRun).toHaveBeenCalledWith("run-abc");
-  });
-
-  it("pips are <button> elements (keyboard reachable)", () => {
-    render(
-      React.createElement(BenchmarkSummaryStrip, {
-        runs: [makeRun({ id: "r1" })],
-        isLoading: false,
-        error: null,
-        onSelectRun,
-      }),
-    );
-    expect(screen.getByTestId("pip-r1").tagName).toBe("BUTTON");
-  });
-
-  // ── Average + sub-label ─────────────────────────────────────────────────────
-
-  it("renders avg criteria pass rate label", () => {
-    render(
-      React.createElement(BenchmarkSummaryStrip, {
-        runs: [makeRun({ n_passed: 8, n_total: 10, all_pass: true })],
-        isLoading: false,
-        error: null,
-        onSelectRun,
-      }),
-    );
-    expect(screen.getByText("avg criteria pass rate")).toBeInTheDocument();
-  });
-
-  it("renders '—' for average when no runs qualify for rating", () => {
-    // all_pass present (pip) but n_total is missing (no rating)
-    render(
-      React.createElement(BenchmarkSummaryStrip, {
-        runs: [makeRun({ all_pass: true, n_passed: undefined, n_total: undefined })],
-        isLoading: false,
-        error: null,
-        onSelectRun,
-      }),
-    );
-    expect(screen.getByText("—")).toBeInTheDocument();
-  });
-
-  it("sub-label reflects scoredCount and ratedCount when they differ", () => {
-    // 2 scored, 1 rated (second run has all_pass but no counts)
-    render(
-      React.createElement(BenchmarkSummaryStrip, {
-        runs: [
-          makeRun({ id: "r1", all_pass: true, n_passed: 8, n_total: 10 }),
-          makeRun({
-            id: "r2",
-            all_pass: false,
-            n_passed: undefined,
-            n_total: undefined,
-            updatedAt: new Date("2025-06-02T09:00:00Z").toISOString(),
-          }),
-        ],
-        isLoading: false,
-        error: null,
-        onSelectRun,
-      }),
-    );
+  it("sub-label reports passed-of-scored and the criteria average", () => {
+    renderStrip([
+      makeRun({ all_pass: true, n_passed: 10, n_total: 10 }),
+      makeRun({ all_pass: false, n_passed: 8, n_total: 10 }),
+    ]);
     const subLabel = screen.getByTestId("strip-sub-label");
-    // 2 scored, 1 rated
-    expect(subLabel.textContent).toContain("2 scored");
-    expect(subLabel.textContent).toContain("1 rated");
+    expect(subLabel.textContent).toContain("1/2 scored runs passed");
+    // mean(1.0, 0.8) = 0.9
+    expect(subLabel.textContent).toContain("90% avg criteria");
   });
 
-  it("sub-label scoredCount and ratedCount are equal when all runs have counts", () => {
-    render(
-      React.createElement(BenchmarkSummaryStrip, {
-        runs: [makeRun({ id: "r1", all_pass: true, n_passed: 5, n_total: 5 })],
-        isLoading: false,
-        error: null,
-        onSelectRun,
-      }),
-    );
+  it("omits the criteria average when no run carries counts", () => {
+    renderStrip([
+      makeRun({ all_pass: true, n_passed: undefined, n_total: undefined }),
+    ]);
     const subLabel = screen.getByTestId("strip-sub-label");
-    expect(subLabel.textContent).toContain("1 scored");
-    expect(subLabel.textContent).toContain("1 rated");
+    expect(subLabel.textContent).toContain("1/1 scored runs passed");
+    expect(subLabel.textContent).not.toContain("avg criteria");
+    expect(screen.getByTestId("strip-pass-rate")).toHaveTextContent("100%");
+  });
+
+  // ── Unscored rows are shown by the table but never move the rate ────────────
+
+  it("ignores unscored rows handed in alongside scored ones", () => {
+    // The table passes every row in the window, whatever its state
+    renderStrip([
+      makeRun({ all_pass: true }),
+      makeRun({ status: WorkflowStatus.FAILED, all_pass: false }),
+      makeRun({ status: WorkflowStatus.PENDING, all_pass: undefined }),
+      makeRun({ status: WorkflowStatus.IN_PROGRESS, all_pass: undefined }),
+    ]);
+    expect(screen.getByTestId("strip-pass-rate")).toHaveTextContent("100%");
+    expect(screen.getByTestId("strip-sub-label").textContent).toContain(
+      "1/1 scored runs passed",
+    );
+  });
+
+  it("shows the empty message when no row in view is scored", () => {
+    renderStrip([
+      makeRun({ status: WorkflowStatus.PENDING, all_pass: undefined }),
+      makeRun({ status: WorkflowStatus.FAILED, all_pass: undefined }),
+    ]);
+    expect(screen.getByTestId("benchmark-strip-empty")).toBeInTheDocument();
+    expect(screen.queryByTestId("strip-pass-rate")).toBeNull();
+  });
+
+  it("keeps the window dropdown available even with nothing scored", () => {
+    // The dropdown drives the table too, so it must never disappear
+    renderStrip([makeRun({ status: WorkflowStatus.PENDING, all_pass: undefined })]);
+    expect(screen.getByTestId("summary-window-trigger")).toBeInTheDocument();
+  });
+
+  // ── Window dropdown ─────────────────────────────────────────────────────────
+
+  it("renders the window it was given", () => {
+    renderStrip(makeRuns([true]), vi.fn(), 25);
+    expect(screen.getByTestId("summary-window-trigger")).toHaveTextContent(
+      "Last 25",
+    );
+  });
+
+  it("reports the chosen window to the parent instead of self-managing", async () => {
+    const user = userEvent.setup();
+    const onWindowChange = renderStrip(makeRuns([true, false]));
+
+    await user.click(screen.getByTestId("summary-window-trigger"));
+    await user.click(await screen.findByRole("option", { name: "Last 50" }));
+
+    expect(onWindowChange).toHaveBeenCalledWith(50);
+    // Still displays the prop value — the table owns the state
+    expect(screen.getByTestId("summary-window-trigger")).toHaveTextContent(
+      "Last 10",
+    );
+  });
+
+  it("offers 10 / 25 / 50 / 100 as window options", async () => {
+    const user = userEvent.setup();
+    renderStrip(makeRuns([true, false]));
+
+    await user.click(screen.getByTestId("summary-window-trigger"));
+    for (const size of [10, 25, 50, 100]) {
+      expect(
+        await screen.findByRole("option", { name: `Last ${size}` }),
+      ).toBeInTheDocument();
+    }
   });
 });
