@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import { StakworkRunType, WorkflowStatus } from "@prisma/client";
 import { parseBenchmarkRunResult } from "@/types/legal";
+import { RUN_LIST_LIMIT } from "@/lib/harvey-lab/benchmark-summary";
 import { usePusherChannel } from "@/hooks/usePusherChannel";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { getWorkspaceChannelName, PUSHER_EVENTS } from "@/lib/pusher";
@@ -62,7 +63,7 @@ export function useLegalBenchmarkRunList(
     if (!workspaceId) return;
     try {
       const res = await fetch(
-        `/api/stakwork/runs?type=${StakworkRunType.LEGAL_BENCHMARK_RUNNER}&workspaceId=${workspaceId}&limit=100&includeResult=true`,
+        `/api/stakwork/runs?type=${StakworkRunType.LEGAL_BENCHMARK_RUNNER}&workspaceId=${workspaceId}&limit=${RUN_LIST_LIMIT}&includeResult=true`,
       );
       if (!res.ok) throw new Error("Failed to fetch runs");
       const data = await res.json();

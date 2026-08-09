@@ -3,7 +3,7 @@
  *
  * Integration tests for the Legal Benchmarks page:
  * - Exactly one /api/stakwork/runs request fires on load (shared hook instance)
- * - Clicking a pip switches to the Runs tab and expands the corresponding row
+ * - Header summary strip and tab switching render off the shared run list
  */
 import React from "react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -170,7 +170,7 @@ const LegalBenchmarksPage = (await import(
 
 // ─── Tests ────────────────────────────────────────────────────────────────────
 
-describe("LegalBenchmarksPage — shared run-list", () => {
+describe("LegalBenchmarksPage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockRunListHook.mockReturnValue({
@@ -183,82 +183,36 @@ describe("LegalBenchmarksPage — shared run-list", () => {
     });
   });
 
-  it("calls useLegalBenchmarkRunList exactly once at page level with the workspace id", () => {
+  it("does not fetch runs at page level — the Runs tab owns the list now", () => {
     render(React.createElement(LegalBenchmarksPage));
-    // The page-level shared instance fires with the real workspace id
-    const calls = mockRunListHook.mock.calls;
-    const realCalls = calls.filter(([id]) => id === WORKSPACE_ID);
-    expect(realCalls).toHaveLength(1);
-    // BenchmarkRunsHistory (rendered inside an inactive Radix TabsContent) is
-    // deferred by Radix Presence and does not mount until the tab first becomes
-    // active — so we only assert the page-level call here rather than counting
-    // a noop call that depends on Radix internals.
-    // The unit tests in BenchmarkRunsHistory-focus.test.tsx independently verify
-    // that when runList prop is supplied the internal hook is called with undefined.
+    // Radix defers the inactive Runs tab, so nothing requests the run list
+    // until the user opens it.
+    expect(
+      mockRunListHook.mock.calls.filter(([id]) => id === WORKSPACE_ID),
+    ).toHaveLength(0);
   });
 
-  it("renders both the summary strip and the runs tab", () => {
+  it("keeps the header free of the summary strip", () => {
     render(React.createElement(LegalBenchmarksPage));
-    // Summary strip is visible in the header
-    expect(screen.getByTestId("benchmark-strip")).toBeInTheDocument();
-    // Benchmark tab (default) is shown
+    expect(screen.getByTestId("page-header")).toBeInTheDocument();
+    expect(screen.queryByTestId("benchmark-strip")).toBeNull();
     expect(screen.getByTestId("benchmarks-panel")).toBeInTheDocument();
   });
 
-  it("pip click switches to the Runs tab", async () => {
+  it("shows the summary strip inside the Runs tab, with no P/F pips", async () => {
     // Use real timers — fake timers + userEvent.click + Radix UI Tabs deadlock
     // because Radix's Presence animation callbacks call setTimeout/rAF
     // which userEvent's advanceTimers intercepts, causing an infinite loop.
     const user = userEvent.setup();
-    render(React.createElement(LegalBenchmarksPage));
+    const { container } = render(React.createElement(LegalBenchmarksPage));
 
-    // Strip is visible
-    const pip = screen.getByTestId("pip-run-page-1");
-    await user.click(pip);
+    await user.click(screen.getByText("Runs"));
 
-    // Runs tab content should now be rendered
     await waitFor(() => {
-      expect(screen.getByText("Antitrust Strategy")).toBeInTheDocument();
+      expect(screen.getByTestId("benchmark-strip")).toBeInTheDocument();
     });
-  });
-
-  it("pip click expands the corresponding row in BenchmarkRunsHistory", async () => {
-    const user = userEvent.setup();
-    render(React.createElement(LegalBenchmarksPage));
-
-    const pip = screen.getByTestId("pip-run-page-1");
-    await user.click(pip);
-
-    // After switching tabs and focus effect fires, the row should be expanded
-    await waitFor(() => {
-      expect(screen.getByTestId("results-run-page-1")).toBeInTheDocument();
-    });
-  });
-
-  it("clicking a pip twice with different nonces re-fires focus", async () => {
-    const user = userEvent.setup();
-    render(React.createElement(LegalBenchmarksPage));
-
-    const pip = screen.getByTestId("pip-run-page-1");
-
-    // First click — expand row
-    await user.click(pip);
-    await waitFor(() => {
-      expect(screen.getByTestId("results-run-page-1")).toBeInTheDocument();
-    });
-
-    // Collapse via reset button
-    await act(async () => {
-      const resetBtn = screen.getByTestId("reset-btn");
-      await user.click(resetBtn);
-    });
-    expect(screen.queryByTestId("results-run-page-1")).toBeNull();
-
-    // Second click — expand again
-    await user.click(pip);
-    await waitFor(() => {
-      expect(screen.getByTestId("results-run-page-1")).toBeInTheDocument();
-    });
+    expect(screen.getByText("Antitrust Strategy")).toBeInTheDocument();
+    expect(container.querySelector('[data-testid^="pip-"]')).toBeNull();
   });
 
   it("renders the Recursion tab when its trigger is clicked", async () => {
