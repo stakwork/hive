@@ -129,6 +129,33 @@ vi.mock("@/components/ui/select", () => ({
     ),
 }));
 
+// The summary strip owns a second Select; stub it so the shared select mock
+// above stays bound to the task filter. Exposes what the table hands down.
+vi.mock("@/components/legal/BenchmarkSummaryStrip", () => ({
+  BenchmarkSummaryStrip: ({
+    runs,
+    windowSize,
+    onWindowChange,
+  }: {
+    runs: Array<{ id: string }>;
+    windowSize: number;
+    onWindowChange: (size: number) => void;
+  }) =>
+    React.createElement(
+      "div",
+      {
+        "data-testid": "summary-strip",
+        "data-window": String(windowSize),
+        "data-rows": String(runs.length),
+      },
+      React.createElement(
+        "button",
+        { "data-testid": "set-window-25", onClick: () => onWindowChange(25) },
+        "Last 25",
+      ),
+    ),
+}));
+
 vi.mock("@/components/legal/HillClimbChart", () => ({
   HillClimbChart: ({
     attempts,
@@ -457,9 +484,12 @@ describe("BenchmarkRunsHistory", () => {
     ).toBeInTheDocument();
   });
 
-  it("shows 'Showing the most recent 100 runs' banner when total > 100", () => {
+  it("shows the window banner when the window holds rows back, including the fetch cap", () => {
+    // 12 scored runs, default window of 10 → 2 rows held back
     mockUseList.mockReturnValue({
-      runs: Array.from({ length: 5 }, (_, i) => makeRun({ id: `run-${i}` })),
+      runs: Array.from({ length: 12 }, (_, i) =>
+        makeRun({ id: `run-${i}`, status: "COMPLETED", all_pass: true }),
+      ),
       total: 150,
       isLoading: false,
       error: null,
@@ -467,12 +497,109 @@ describe("BenchmarkRunsHistory", () => {
       setExpandedId: mockSetExpandedId,
     });
     render(React.createElement(BenchmarkRunsHistory));
-    expect(screen.getByText("Showing the most recent 100 runs.")).toBeInTheDocument();
+    const note = screen.getByTestId("window-note");
+    expect(note.textContent).toContain("Showing 10 of 12 loaded runs");
+    expect(note.textContent).toContain("back to the 10 most recent scored runs");
+    // The fetch cap is disclosed too, rather than silently truncating
+    expect(note.textContent).toContain("Only the latest 100 of 150 runs are loaded");
   });
 
-  it("does NOT show the banner when total <= 100", () => {
+  it("does NOT show the window banner when every loaded run is on screen", () => {
     render(React.createElement(BenchmarkRunsHistory));
-    expect(screen.queryByText(/Showing the most recent 100 runs/)).toBeNull();
+    expect(screen.queryByTestId("window-note")).toBeNull();
+  });
+
+  // ── Window: counted in scored runs, rendered across all states ─────────────
+
+  it("keeps unscored rows that fall inside the window span", () => {
+    // 10 scored runs with a FAILED and a PENDING run interleaved: the window is
+    // 10 SCORED runs, so all 12 rows render.
+    const runs = [
+      makeRun({ id: "s-0", status: "COMPLETED", all_pass: true }),
+      makeRun({ id: "failed-1", status: "FAILED" }),
+      ...Array.from({ length: 8 }, (_, i) =>
+        makeRun({ id: `s-${i + 1}`, status: "COMPLETED", all_pass: false }),
+      ),
+      makeRun({ id: "pending-1", status: "PENDING" }),
+      makeRun({ id: "s-9", status: "COMPLETED", all_pass: true }),
+    ];
+    mockUseList.mockReturnValue({
+      runs,
+      total: runs.length,
+      isLoading: false,
+      error: null,
+      refetch: mockRefetch,
+      setExpandedId: mockSetExpandedId,
+    });
+    render(React.createElement(BenchmarkRunsHistory));
+
+    expect(screen.getAllByTestId(/^run-row-/)).toHaveLength(12);
+    expect(screen.getByTestId("run-row-failed-1")).toBeInTheDocument();
+    expect(screen.getByTestId("run-row-pending-1")).toBeInTheDocument();
+  });
+
+  it("cuts the table at the Nth most recent scored run", () => {
+    // 12 scored runs, window of 10 → the 2 oldest rows are dropped
+    const runs = Array.from({ length: 12 }, (_, i) =>
+      makeRun({ id: `s-${i}`, status: "COMPLETED", all_pass: true }),
+    );
+    mockUseList.mockReturnValue({
+      runs,
+      total: runs.length,
+      isLoading: false,
+      error: null,
+      refetch: mockRefetch,
+      setExpandedId: mockSetExpandedId,
+    });
+    render(React.createElement(BenchmarkRunsHistory));
+
+    expect(screen.getAllByTestId(/^run-row-/)).toHaveLength(10);
+    expect(screen.getByTestId("run-row-s-9")).toBeInTheDocument();
+    expect(screen.queryByTestId("run-row-s-10")).toBeNull();
+  });
+
+  it("hands the strip exactly the rows the table is showing", () => {
+    const runs = Array.from({ length: 12 }, (_, i) =>
+      makeRun({ id: `s-${i}`, status: "COMPLETED", all_pass: true }),
+    );
+    mockUseList.mockReturnValue({
+      runs,
+      total: runs.length,
+      isLoading: false,
+      error: null,
+      refetch: mockRefetch,
+      setExpandedId: mockSetExpandedId,
+    });
+    render(React.createElement(BenchmarkRunsHistory));
+
+    const strip = screen.getByTestId("summary-strip");
+    expect(strip.getAttribute("data-window")).toBe("10");
+    expect(strip.getAttribute("data-rows")).toBe(
+      String(screen.getAllByTestId(/^run-row-/).length),
+    );
+  });
+
+  it("widening the window from the strip grows the table", async () => {
+    const user = userEvent.setup();
+    const runs = Array.from({ length: 12 }, (_, i) =>
+      makeRun({ id: `s-${i}`, status: "COMPLETED", all_pass: true }),
+    );
+    mockUseList.mockReturnValue({
+      runs,
+      total: runs.length,
+      isLoading: false,
+      error: null,
+      refetch: mockRefetch,
+      setExpandedId: mockSetExpandedId,
+    });
+    render(React.createElement(BenchmarkRunsHistory));
+
+    expect(screen.getAllByTestId(/^run-row-/)).toHaveLength(10);
+
+    await user.click(screen.getByTestId("set-window-25"));
+
+    expect(screen.getAllByTestId(/^run-row-/)).toHaveLength(12);
+    expect(screen.getByTestId("summary-strip").getAttribute("data-window")).toBe("25");
   });
 
   it("shows loading state", () => {
