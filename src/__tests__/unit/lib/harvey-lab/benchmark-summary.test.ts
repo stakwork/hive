@@ -5,25 +5,32 @@
  *   - isScoredRun: PENDING/IN_PROGRESS excluded; COMPLETED-only rule;
  *     FAILED/HALTED excluded even when they carry a score;
  *     terminal runs without all_pass excluded
- *   - selectScoredRuns: ordering by updatedAt (primary), createdAt (secondary), id
- *     (tiebreaker); window slicing; fewer than SUMMARY_WINDOW runs
+ *   - selectWindowRows: window counted in scored runs, unscored rows carried
+ *     along, cut position, fewer scored runs than the window
  *   - averagePassRate: missing counts excluded; n_total=0 guard; null on empty;
  *     correct mean
+ *   - passRate: run-level P/F rate over the supplied rows; null on empty
  *   - summarize: scoredCount / ratedCount split; correct aggregation
- *   - Constants: PASS_BADGE_CLASS / FAIL_BADGE_CLASS are non-empty strings
+ *   - Constants: WINDOW_OPTIONS, PASS_BADGE_CLASS / FAIL_BADGE_CLASS
  */
 import { describe, it, expect } from "vitest";
 import { WorkflowStatus } from "@prisma/client";
 import {
   SUMMARY_WINDOW,
+  WINDOW_OPTIONS,
   PASS_BADGE_CLASS,
   FAIL_BADGE_CLASS,
   isScoredRun,
-  selectScoredRuns,
+  selectWindowRows,
   averagePassRate,
+  passRate,
   summarize,
 } from "@/lib/harvey-lab/benchmark-summary";
 import type { BenchmarkRunListRow } from "@/hooks/useLegalBenchmarkRunList";
+
+/** Mirrors RUN_LIST_LIMIT in useLegalBenchmarkRunList (type-only import here to
+ *  keep this suite free of the hook's React/Pusher module graph). */
+const RUN_LIST_LIMIT = 100;
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -53,6 +60,20 @@ function makeRun(
 describe("constants", () => {
   it("SUMMARY_WINDOW is 10", () => {
     expect(SUMMARY_WINDOW).toBe(10);
+  });
+
+  it("WINDOW_OPTIONS offers 10/25/50/100 in ascending order", () => {
+    expect([...WINDOW_OPTIONS]).toEqual([10, 25, 50, 100]);
+  });
+
+  it("SUMMARY_WINDOW is one of WINDOW_OPTIONS", () => {
+    expect(WINDOW_OPTIONS).toContain(SUMMARY_WINDOW);
+  });
+
+  // Guards the "no refetch on window change" contract: every option must be
+  // servable from the single already-fetched payload.
+  it("largest window does not exceed the run-list fetch limit", () => {
+    expect(Math.max(...WINDOW_OPTIONS)).toBeLessThanOrEqual(RUN_LIST_LIMIT);
   });
 
   it("PASS_BADGE_CLASS is a non-empty string containing green", () => {
@@ -121,135 +142,73 @@ describe("isScoredRun", () => {
   });
 });
 
-// ─── selectScoredRuns ─────────────────────────────────────────────────────────
+// ─── selectWindowRows ─────────────────────────────────────────────────────────
 
-describe("selectScoredRuns", () => {
-  it("filters out PENDING and IN_PROGRESS runs", () => {
+describe("selectWindowRows", () => {
+  const scored = (id: string) => makeRun({ id, all_pass: true });
+  const unscored = (id: string) =>
+    makeRun({ id, status: WorkflowStatus.FAILED, all_pass: undefined });
+
+  it("returns every row when fewer scored runs than the window exist", () => {
+    const runs = [scored("a"), unscored("b"), scored("c")];
+    expect(selectWindowRows(runs, 10).map((r) => r.id)).toEqual(["a", "b", "c"]);
+  });
+
+  it("returns an empty array for an empty input", () => {
+    expect(selectWindowRows([], 10)).toEqual([]);
+  });
+
+  it("cuts at the Nth scored run, counting only scored runs", () => {
+    const runs = [scored("s1"), scored("s2"), scored("s3"), scored("s4")];
+    expect(selectWindowRows(runs, 2).map((r) => r.id)).toEqual(["s1", "s2"]);
+  });
+
+  // The point of the whole design: the table shows every state, the rate doesn't.
+  it("carries unscored rows that sit inside the span", () => {
     const runs = [
-      makeRun({ status: WorkflowStatus.PENDING, all_pass: true }),
-      makeRun({ status: WorkflowStatus.IN_PROGRESS, all_pass: false }),
-      makeRun({ status: WorkflowStatus.COMPLETED, all_pass: true }),
+      scored("s1"),
+      unscored("f1"),
+      unscored("f2"),
+      scored("s2"),
+      scored("s3"),
     ];
-    expect(selectScoredRuns(runs)).toHaveLength(1);
+    // Window of 2 scored runs reaches s2, dragging f1/f2 along
+    expect(selectWindowRows(runs, 2).map((r) => r.id)).toEqual([
+      "s1",
+      "f1",
+      "f2",
+      "s2",
+    ]);
   });
 
-  it("excludes FAILED and HALTED runs even when they carry a score (COMPLETED-only rule)", () => {
+  it("excludes unscored rows that trail past the cut", () => {
+    const runs = [scored("s1"), scored("s2"), unscored("f1"), scored("s3")];
+    // The cut lands on s2 — f1 is older than the window and stays out
+    expect(selectWindowRows(runs, 2).map((r) => r.id)).toEqual(["s1", "s2"]);
+  });
+
+  it("counts PENDING and IN_PROGRESS rows as unscored", () => {
     const runs = [
-      makeRun({ status: WorkflowStatus.FAILED, all_pass: false, n_passed: 2, n_total: 5 }),
-      makeRun({ status: WorkflowStatus.HALTED, all_pass: true, n_passed: 5, n_total: 5 }),
+      makeRun({ id: "p1", status: WorkflowStatus.PENDING, all_pass: undefined }),
+      makeRun({ id: "i1", status: WorkflowStatus.IN_PROGRESS, all_pass: undefined }),
+      scored("s1"),
     ];
-    expect(selectScoredRuns(runs)).toHaveLength(0);
+    expect(selectWindowRows(runs, 1).map((r) => r.id)).toEqual(["p1", "i1", "s1"]);
   });
 
-  it("excludes terminal runs with no all_pass", () => {
-    const runs = [
-      makeRun({ status: WorkflowStatus.FAILED, all_pass: undefined as unknown as boolean }),
-      makeRun({ status: WorkflowStatus.COMPLETED, all_pass: true }),
-    ];
-    const result = selectScoredRuns(runs);
-    expect(result).toHaveLength(1);
-    expect(result[0].status).toBe(WorkflowStatus.COMPLETED);
+  it("defaults to SUMMARY_WINDOW scored runs", () => {
+    const runs = Array.from({ length: 15 }, (_, i) => scored(`s${i}`));
+    expect(selectWindowRows(runs)).toHaveLength(SUMMARY_WINDOW);
   });
 
-  it("returns runs oldest → newest (ascending updatedAt)", () => {
-    const older = makeRun({
-      updatedAt: new Date("2025-01-01T10:00:00Z").toISOString(),
-      createdAt: new Date("2025-01-01T09:00:00Z").toISOString(),
-    });
-    const newer = makeRun({
-      updatedAt: new Date("2025-01-02T10:00:00Z").toISOString(),
-      createdAt: new Date("2025-01-02T09:00:00Z").toISOString(),
-    });
-    // Supply newer first
-    const result = selectScoredRuns([newer, older]);
-    expect(result[0].id).toBe(older.id);
-    expect(result[1].id).toBe(newer.id);
+  it("returns an empty array for a non-positive window", () => {
+    expect(selectWindowRows([scored("s1")], 0)).toEqual([]);
   });
 
-  it("orders by updatedAt even when createdAt diverges in opposite direction", () => {
-    // run A created first but updated last → should appear later in the strip
-    const runA = makeRun({
-      createdAt: new Date("2025-01-01T08:00:00Z").toISOString(),
-      updatedAt: new Date("2025-01-03T12:00:00Z").toISOString(),
-    });
-    // run B created later but updated earlier → should appear first in the strip
-    const runB = makeRun({
-      createdAt: new Date("2025-01-02T08:00:00Z").toISOString(),
-      updatedAt: new Date("2025-01-02T12:00:00Z").toISOString(),
-    });
-    const result = selectScoredRuns([runA, runB]);
-    expect(result[0].id).toBe(runB.id);
-    expect(result[1].id).toBe(runA.id);
-  });
-
-  it("uses createdAt as secondary sort key when updatedAt is identical", () => {
-    const sharedUpdatedAt = new Date("2025-01-05T10:00:00Z").toISOString();
-    const earlier = makeRun({
-      updatedAt: sharedUpdatedAt,
-      createdAt: new Date("2025-01-04T10:00:00Z").toISOString(),
-    });
-    const later = makeRun({
-      updatedAt: sharedUpdatedAt,
-      createdAt: new Date("2025-01-05T09:00:00Z").toISOString(),
-    });
-    const result = selectScoredRuns([later, earlier]);
-    expect(result[0].id).toBe(earlier.id);
-    expect(result[1].id).toBe(later.id);
-  });
-
-  it("uses id as final tiebreaker for determinism when both timestamps are identical", () => {
-    const sharedTs = new Date("2025-01-05T10:00:00Z").toISOString();
-    const runA = makeRun({ id: "aaa-run", updatedAt: sharedTs, createdAt: sharedTs });
-    const runB = makeRun({ id: "zzz-run", updatedAt: sharedTs, createdAt: sharedTs });
-    // Supply in reverse alphabetical order
-    const result1 = selectScoredRuns([runB, runA]);
-    const result2 = selectScoredRuns([runA, runB]);
-    // Both orderings must yield the same deterministic result
-    expect(result1.map((r) => r.id)).toEqual(result2.map((r) => r.id));
-    // aaa < zzz alphabetically → aaa is the older position
-    expect(result1[0].id).toBe("aaa-run");
-    expect(result1[1].id).toBe("zzz-run");
-  });
-
-  it("returns at most SUMMARY_WINDOW runs", () => {
-    const runs = Array.from({ length: 15 }, (_, i) =>
-      makeRun({
-        updatedAt: new Date(1_700_000_000_000 + i * 1000).toISOString(),
-      }),
-    );
-    expect(selectScoredRuns(runs)).toHaveLength(SUMMARY_WINDOW);
-  });
-
-  it("returns the LAST N (most recent) when more than window exist", () => {
-    const base = 1_700_000_000_000;
-    const runs = Array.from({ length: 15 }, (_, i) =>
-      makeRun({
-        id: `ordered-${i}`,
-        updatedAt: new Date(base + i * 1000).toISOString(),
-      }),
-    );
-    const result = selectScoredRuns(runs);
-    // Should include runs 5..14 (the 10 newest), still oldest-first
-    expect(result[0].id).toBe("ordered-5");
-    expect(result[result.length - 1].id).toBe("ordered-14");
-  });
-
-  it("returns fewer than SUMMARY_WINDOW when not enough scored runs exist", () => {
-    const runs = [makeRun(), makeRun()];
-    expect(selectScoredRuns(runs)).toHaveLength(2);
-  });
-
-  it("returns empty array when no scored runs exist", () => {
-    const runs = [
-      makeRun({ status: WorkflowStatus.PENDING, all_pass: true }),
-      makeRun({ status: WorkflowStatus.IN_PROGRESS, all_pass: false }),
-    ];
-    expect(selectScoredRuns(runs)).toHaveLength(0);
-  });
-
-  it("respects a custom windowSize argument", () => {
-    const runs = Array.from({ length: 8 }, () => makeRun());
-    expect(selectScoredRuns(runs, 3)).toHaveLength(3);
+  it("leaves the input array untouched", () => {
+    const runs = [scored("s1"), scored("s2"), scored("s3")];
+    selectWindowRows(runs, 1);
+    expect(runs.map((r) => r.id)).toEqual(["s1", "s2", "s3"]);
   });
 });
 
@@ -319,15 +278,93 @@ describe("averagePassRate", () => {
   });
 });
 
+// ─── passRate ─────────────────────────────────────────────────────────────────
+
+describe("passRate", () => {
+  it("returns null for an empty array", () => {
+    expect(passRate([])).toBeNull();
+  });
+
+  it("returns 1 when every run fully passed", () => {
+    expect(passRate([makeRun({ all_pass: true }), makeRun({ all_pass: true })])).toBe(1);
+  });
+
+  it("returns 0 when no run fully passed", () => {
+    expect(passRate([makeRun({ all_pass: false }), makeRun({ all_pass: false })])).toBe(0);
+  });
+
+  it("computes the run-level fraction (2 of 5 passed → 0.4)", () => {
+    const runs = [
+      makeRun({ all_pass: true }),
+      makeRun({ all_pass: true }),
+      makeRun({ all_pass: false }),
+      makeRun({ all_pass: false }),
+      makeRun({ all_pass: false }),
+    ];
+    expect(passRate(runs)).toBeCloseTo(0.4);
+  });
+
+  it("ignores criteria counts entirely (a near-miss run counts as a fail)", () => {
+    // 9/10 criteria passed but all_pass=false → contributes 0 to the run-level rate
+    const runs = [makeRun({ all_pass: false, n_passed: 9, n_total: 10 })];
+    expect(passRate(runs)).toBe(0);
+  });
+
+  it("treats a non-boolean all_pass as a fail rather than counting it as a pass", () => {
+    const runs = [
+      { ...makeRun(), all_pass: undefined } as BenchmarkRunListRow,
+      makeRun({ all_pass: true }),
+    ];
+    expect(passRate(runs)).toBeCloseTo(0.5);
+  });
+});
+
 // ─── summarize ────────────────────────────────────────────────────────────────
 
 describe("summarize", () => {
-  it("returns zero counts and null averagePassRate for empty runs", () => {
+  it("returns zero counts and null rates for empty runs", () => {
     const result = summarize([]);
-    expect(result.pips).toHaveLength(0);
+    expect(result.scoredRuns).toHaveLength(0);
     expect(result.scoredCount).toBe(0);
     expect(result.ratedCount).toBe(0);
+    expect(result.passCount).toBe(0);
+    expect(result.passRate).toBeNull();
     expect(result.averagePassRate).toBeNull();
+  });
+
+  it("reports passCount and passRate over the supplied rows", () => {
+    const runs = [
+      makeRun({ all_pass: true }),
+      makeRun({ all_pass: false }),
+      makeRun({ all_pass: false }),
+      makeRun({ all_pass: false }),
+    ];
+    const result = summarize(runs);
+    expect(result.passCount).toBe(1);
+    expect(result.scoredCount).toBe(4);
+    expect(result.passRate).toBeCloseTo(0.25);
+  });
+
+  it("measures exactly the rows handed in — windowing is the caller's job", () => {
+    // Newest-first: 2 recent fails, then 2 older passes
+    const runs = [
+      makeRun({ all_pass: false }),
+      makeRun({ all_pass: false }),
+      makeRun({ all_pass: true }),
+      makeRun({ all_pass: true }),
+    ];
+    expect(summarize(selectWindowRows(runs, 2)).passRate).toBe(0);
+    expect(summarize(selectWindowRows(runs, 4)).passRate).toBeCloseTo(0.5);
+  });
+
+  it("passRate and averagePassRate are independent measures", () => {
+    // Every run misses exactly one criterion: 0% run-level, 90% criteria-level
+    const runs = Array.from({ length: 3 }, () =>
+      makeRun({ all_pass: false, n_passed: 9, n_total: 10 }),
+    );
+    const result = summarize(runs);
+    expect(result.passRate).toBe(0);
+    expect(result.averagePassRate).toBeCloseTo(0.9);
   });
 
   it("returns zero counts and null averagePassRate for only PENDING/IN_PROGRESS runs", () => {
@@ -336,21 +373,21 @@ describe("summarize", () => {
       makeRun({ status: WorkflowStatus.IN_PROGRESS, all_pass: false }),
     ];
     const result = summarize(runs);
-    expect(result.pips).toHaveLength(0);
+    expect(result.scoredRuns).toHaveLength(0);
     expect(result.scoredCount).toBe(0);
     expect(result.averagePassRate).toBeNull();
   });
 
-  it("scoredCount equals pips.length", () => {
+  it("scoredCount equals scoredRuns.length", () => {
     const runs = [makeRun(), makeRun(), makeRun()];
     const result = summarize(runs);
-    expect(result.scoredCount).toBe(result.pips.length);
+    expect(result.scoredCount).toBe(result.scoredRuns.length);
   });
 
   it("ratedCount reflects only runs with valid n_passed/n_total", () => {
     const runs = [
       makeRun({ n_passed: 5, n_total: 10 }),               // rated
-      makeRun({ n_passed: undefined, n_total: undefined, all_pass: true }), // pips but not rated
+      makeRun({ n_passed: undefined, n_total: undefined, all_pass: true }), // counted but not rated
       makeRun({ n_passed: 0, n_total: 0, all_pass: false }), // not rated (n_total=0)
     ];
     const result = summarize(runs);
@@ -361,7 +398,7 @@ describe("summarize", () => {
   it("averagePassRate is computed from rated runs only", () => {
     const runs = [
       makeRun({ n_passed: 4, n_total: 8 }),   // 0.5
-      makeRun({ n_passed: undefined, n_total: undefined, all_pass: true }), // pips only
+      makeRun({ n_passed: undefined, n_total: undefined, all_pass: true }), // counted only
     ];
     const result = summarize(runs);
     expect(result.averagePassRate).toBeCloseTo(0.5);
@@ -369,20 +406,13 @@ describe("summarize", () => {
     expect(result.scoredCount).toBe(2);
   });
 
-  it("passes custom windowSize to selectScoredRuns", () => {
-    const runs = Array.from({ length: 8 }, () => makeRun());
-    const result = summarize(runs, 3);
-    expect(result.pips).toHaveLength(3);
-    expect(result.scoredCount).toBe(3);
-  });
-
-  it("pips are in oldest-to-newest order", () => {
+  it("drops unscored rows from scoredRuns but keeps the given order", () => {
     const runs = [
-      makeRun({ id: "new-run", updatedAt: new Date("2025-02-01T00:00:00Z").toISOString() }),
-      makeRun({ id: "old-run", updatedAt: new Date("2025-01-01T00:00:00Z").toISOString() }),
+      makeRun({ id: "newest" }),
+      makeRun({ id: "failed", status: WorkflowStatus.FAILED, all_pass: undefined }),
+      makeRun({ id: "oldest" }),
     ];
     const result = summarize(runs);
-    expect(result.pips[0].id).toBe("old-run");
-    expect(result.pips[1].id).toBe("new-run");
+    expect(result.scoredRuns.map((r) => r.id)).toEqual(["newest", "oldest"]);
   });
 });
