@@ -132,6 +132,16 @@ vi.mock("date-fns", () => ({
   formatDistanceToNow: () => "about 1 month ago",
 }));
 
+// The summary strip owns a second Select; stub it so the shared select mock
+// below stays bound to the task filter.
+vi.mock("@/components/legal/BenchmarkSummaryStrip", () => ({
+  BenchmarkSummaryStrip: ({ windowSize }: { windowSize: number }) =>
+    React.createElement("div", {
+      "data-testid": "summary-strip",
+      "data-window": String(windowSize),
+    }),
+}));
+
 let selectOnValueChange: ((value: string) => void) | null = null;
 
 vi.mock("@/components/ui/select", () => ({

@@ -4,7 +4,17 @@ import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { formatDistanceToNow } from "date-fns";
 import { ExternalLink, Loader2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { PASS_BADGE_CLASS, FAIL_BADGE_CLASS } from "@/lib/harvey-lab/benchmark-summary";
+import {
+  PASS_BADGE_CLASS,
+  FAIL_BADGE_CLASS,
+  RUN_LIST_LIMIT,
+  SUMMARY_WINDOW,
+  WINDOW_OPTIONS,
+  isScoredRun,
+  selectWindowRows,
+  type SummaryWindow,
+} from "@/lib/harvey-lab/benchmark-summary";
+import { BenchmarkSummaryStrip } from "@/components/legal/BenchmarkSummaryStrip";
 import {
   Select,
   SelectContent,
@@ -98,7 +108,7 @@ interface BenchmarkRunsHistoryProps {
    *  share a single fetch/poll/Pusher subscription across the header strip
    *  and this table. When omitted, the component self-manages as before. */
   runList?: RunListHookResult;
-  /** Token from a pip click — triggers auto-scroll + expand of the target row. */
+  /** Deep-link token — triggers auto-scroll + expand of the target row. */
   focusRequest?: { runId: string; nonce: number } | null;
   /** Called once the focus effect has handled (or no-op'd) the request so the
    *  parent can clear the token. */
@@ -123,6 +133,7 @@ export function BenchmarkRunsHistory({
 
   const [expandedRunId, setExpandedRunId] = useState<string | null>(null);
   const [taskFilter, setTaskFilter] = useState<string>(ALL_TASKS);
+  const [windowSize, setWindowSize] = useState<SummaryWindow>(SUMMARY_WINDOW);
 
   // ── Row refs for focus/scroll ────────────────────────────────────────────
   const rowRefs = useRef<Map<string, HTMLTableRowElement>>(new Map());
@@ -145,6 +156,21 @@ export function BenchmarkRunsHistory({
     //     because handleReset calls setExpandedId(null), which triggers an
     //     unwanted refetch and would immediately collapse the row we're opening.
     setTaskFilter(ALL_TASKS);
+
+    // (a2) The window caps which rows are rendered, so a run older than the
+    //      current window has no row to expand or scroll to. Widen to the
+    //      smallest option whose scored-run count reaches it — an unscored
+    //      target needs one more, since the cut lands on a scored run.
+    const index = runs.findIndex((r) => r.id === runId);
+    const scoredThrough = runs.slice(0, index + 1).filter(isScoredRun).length;
+    const needed = scoredThrough + (isScoredRun(runs[index]) ? 0 : 1);
+    setWindowSize(
+      (current) =>
+        needed > current
+          ? WINDOW_OPTIONS.find((size) => size >= needed) ??
+            WINDOW_OPTIONS[WINDOW_OPTIONS.length - 1]
+          : current,
+    );
 
     // (b) Expand the target row
     setExpandedRunId(runId);
@@ -190,9 +216,18 @@ export function BenchmarkRunsHistory({
     [runs, selectedTask],
   );
 
+  // The window is measured in SCORED runs: the rows span back to the Nth most
+  // recent completed run, carrying the PENDING/FAILED rows in between so the
+  // table still shows every state. Chart and summary read from here, so what is
+  // measured is always what is listed.
+  const visibleRuns = useMemo(
+    () => selectWindowRows(filteredRuns, windowSize),
+    [filteredRuns, windowSize],
+  );
+
   const chartAttempts = useMemo(
-    () => (selectedTask ? toChartAttempts(filteredRuns) : []),
-    [selectedTask, filteredRuns],
+    () => (selectedTask ? toChartAttempts(visibleRuns) : []),
+    [selectedTask, visibleRuns],
   );
 
   const handleToggleExpand = (runId: string) => {
@@ -241,7 +276,7 @@ export function BenchmarkRunsHistory({
 
   return (
     <div className="space-y-3">
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2 flex-wrap">
         <Select value={taskFilter} onValueChange={handleFilterChange}>
           <SelectTrigger className="w-[340px]" data-testid="task-filter-trigger">
             <SelectValue placeholder="Filter by task" />
@@ -260,15 +295,28 @@ export function BenchmarkRunsHistory({
             {filteredRuns.length} of {runs.length} runs
           </span>
         )}
+        <div className="ml-auto">
+          <BenchmarkSummaryStrip
+            runs={visibleRuns}
+            windowSize={windowSize}
+            onWindowChange={setWindowSize}
+          />
+        </div>
       </div>
 
       {selectedTask && (
         <TaskProgressCard task={selectedTask} attempts={chartAttempts} />
       )}
 
-      {total > 100 && (
-        <div className="text-xs text-muted-foreground bg-muted rounded-md px-3 py-2">
-          Showing the most recent 100 runs.
+      {visibleRuns.length < filteredRuns.length && (
+        <div
+          className="text-xs text-muted-foreground bg-muted rounded-md px-3 py-2"
+          data-testid="window-note"
+        >
+          Showing {visibleRuns.length} of {filteredRuns.length} loaded runs —
+          back to the {windowSize} most recent scored runs.
+          {total > RUN_LIST_LIMIT &&
+            ` Only the latest ${RUN_LIST_LIMIT} of ${total} runs are loaded.`}
         </div>
       )}
 
@@ -287,7 +335,7 @@ export function BenchmarkRunsHistory({
             </tr>
           </thead>
           <tbody>
-            {filteredRuns.map((run) => (
+            {visibleRuns.map((run) => (
               <Fragment key={run.id}>
                 <tr
                   ref={(el) => {
