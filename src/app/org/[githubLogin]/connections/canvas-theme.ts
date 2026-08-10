@@ -7,6 +7,7 @@ import type {
   NodeActionGroup,
   SlotContext,
 } from "system-canvas";
+import { makeAttentionBadgeRenderer } from "./AttentionBadge";
 import { darkTheme, resolveTheme } from "system-canvas";
 import {
   CARD_H,
@@ -723,6 +724,23 @@ const featureCategory: CategoryDefinition = {
       render: (ctx: SlotContext) =>
         renderMetricsFooter(ctx, featureStatusColor(ctx.node)),
     },
+    // Live attention badge — renders a small icon pill in the
+    // top-right corner when the feature has an active signal
+    // (halted / awaiting-reply / plan-question / ready-to-review).
+    // Reads from `AttentionMapContext` (no per-card subscription).
+    // `topRightOuter` is unused by `featureCategory` today, so
+    // there's no slot collision with existing renderers.
+    topRightOuter: {
+      kind: "custom",
+      render: (ctx: SlotContext) => {
+        // Node id format: "feature:<cuid>" — parse the entity id.
+        const nodeId = ctx.node.id ?? "";
+        const entityId = nodeId.startsWith("feature:")
+          ? nodeId.slice("feature:".length)
+          : nodeId;
+        return makeAttentionBadgeRenderer("feature", entityId)(ctx);
+      },
+    },
   },
 } as CategoryDefinition;
 
@@ -796,6 +814,21 @@ const taskCategory: CategoryDefinition = {
       value: (ctx: SlotContext) => ctx.node.text ?? "",
       fontSize: 11,
       fontWeight: 500,
+    },
+    // Live attention badge — same pattern as featureCategory above.
+    // `topRightOuter` is unused by `taskCategory` today (only
+    // milestoneCategory and researchCategory use it), so there is no
+    // slot collision. Reads from `AttentionMapContext`.
+    topRightOuter: {
+      kind: "custom",
+      render: (ctx: SlotContext) => {
+        // Node id format: "task:<cuid>" — parse the entity id.
+        const nodeId = ctx.node.id ?? "";
+        const entityId = nodeId.startsWith("task:")
+          ? nodeId.slice("task:".length)
+          : nodeId;
+        return makeAttentionBadgeRenderer("task", entityId)(ctx);
+      },
     },
   },
 } as CategoryDefinition;

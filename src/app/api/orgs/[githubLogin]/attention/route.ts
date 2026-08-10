@@ -18,7 +18,14 @@ import { resolveAuthorizedOrgId } from "@/lib/auth/org-access";
 import { getTopAttentionItems } from "@/services/attention/topItems";
 
 const DEFAULT_LIMIT = 3;
-const MAX_LIMIT = 10;
+/**
+ * Bounded ceiling for canvas-scale usage. An org with more
+ * simultaneously-flagged items than this will see partial coverage —
+ * this is an accepted, documented tradeoff for this iteration, not a
+ * silent bug. Raising this further is always possible; the per-signal
+ * `take` caps in `topItems.ts` are proportionally raised to match.
+ */
+const MAX_LIMIT = 200;
 
 export async function GET(
   request: NextRequest,
