@@ -164,6 +164,8 @@ export function makeAttentionBadgeRenderer(
   entityKind: "feature" | "task",
   entityId: string,
 ): (ctx: SlotContext) => React.ReactNode {
-  return (ctx: SlotContext) =>
-    createElement(AttentionBadgeSlot, { ctx, entityKind, entityId });
+  function AttentionBadgeRenderer(ctx: SlotContext): React.ReactNode {
+    return createElement(AttentionBadgeSlot, { ctx, entityKind, entityId });
+  }
+  return AttentionBadgeRenderer;
 }
