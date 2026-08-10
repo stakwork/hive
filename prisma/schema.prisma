@@ -1242,6 +1242,7 @@ model AgentLog {
   repos         String[]     @default([]) @map("repos")
   config        Json? // full config blob: { model, provider, source, repos, tools, toolsConfig, temperature, schema, providerConfig } — provider/source/repos also promoted to columns
   stats         Json? // cached parsed blob stats: { totalMessages, estimatedTokens, durationSeconds, totalToolCalls, toolFrequency, bashFrequency, developerShellFrequency, conversationPreview }
+  reflection    Json? // stakgraph SessionReflection sidecar: { session_id, updated_at, concepts[], gap?, raw? } — canonical column so lists/queries never need the blob
   metadata      Json? // free-form metadata passed in webhook body as `_metadata`; stored as-is, not interpreted
   traceId         String?      @map("trace_id")
   phoenixTraceUrl String?      @map("phoenix_trace_url")
