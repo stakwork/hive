@@ -1,4 +1,5 @@
-import { describe, test, expect, beforeEach, vi } from "vitest";
+import { describe, test, expect, beforeEach, vi, afterEach } from "vitest";
+import { NextRequest } from "next/server";
 import { db } from "@/lib/db";
 import { TaskStatus, WorkflowStatus, FeatureStatus, Priority, ArtifactType } from "@prisma/client";
 import { PATCH } from "@/app/api/tasks/[taskId]/route";
@@ -336,10 +337,15 @@ describe("Feature Status Sync Integration Tests", () => {
       });
 
       // Simulate stakwork webhook for task2 completion
-      const request = createPostRequest(
-        `/api/stakwork/webhook?task_id=${task2.id}`,
+      const request = new NextRequest(
+        `http://localhost/api/stakwork/webhook?task_id=${task2.id}`,
         {
-          project_status: "completed",
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-api-token": TEST_API_TOKEN,
+          },
+          body: JSON.stringify({ project_status: "completed" }),
         }
       );
 
@@ -367,10 +373,15 @@ describe("Feature Status Sync Integration Tests", () => {
       const { user, workspace, feature, task1 } = await createFeatureWithTasks();
 
       // Simulate stakwork webhook for task1 failure
-      const request = createPostRequest(
-        `/api/stakwork/webhook?task_id=${task1.id}`,
+      const request = new NextRequest(
+        `http://localhost/api/stakwork/webhook?task_id=${task1.id}`,
         {
-          project_status: "failed",
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-api-token": TEST_API_TOKEN,
+          },
+          body: JSON.stringify({ project_status: "failed" }),
         }
       );
 
@@ -421,10 +432,15 @@ describe("Feature Status Sync Integration Tests", () => {
         },
       });
 
-      const request = createPostRequest(
-        `/api/stakwork/webhook?task_id=${task.id}`,
+      const request = new NextRequest(
+        `http://localhost/api/stakwork/webhook?task_id=${task.id}`,
         {
-          project_status: "completed",
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-api-token": TEST_API_TOKEN,
+          },
+          body: JSON.stringify({ project_status: "completed" }),
         }
       );
 

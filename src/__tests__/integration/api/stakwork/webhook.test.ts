@@ -1,4 +1,5 @@
 import { describe, test, expect, beforeEach, vi, afterEach } from "vitest";
+import { NextRequest } from "next/server";
 import { POST } from "@/app/api/stakwork/webhook/route";
 import { WorkflowStatus, TaskStatus, ChatRole, ChatStatus, ArtifactType } from "@prisma/client";
 import { db } from "@/lib/db";
