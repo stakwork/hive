@@ -26,6 +26,9 @@ export const fetchCache = "force-no-store";
  *   task_id?:       string   — optional Task to associate with
  *   feature_id?:    string   — optional Feature to associate with
  *   logs:           unknown  — the actual log data (JSON array, JSONL string, etc.)
+ *   reflection?:    object   — optional SessionReflection sidecar from stakgraph
+ *                              ({ session_id, updated_at, concepts[], gap?, raw? });
+ *                              stored on the AgentLog row (canonical column, like config)
  *   _metadata?:     object   — optional free-form metadata, stored as-is on the AgentLog record
  *
  * At least one of 'stakwork_run_id', 'task_id', or 'feature_id' is required.
@@ -55,6 +58,12 @@ export async function POST(request: NextRequest) {
         : undefined;
     const provider: string | undefined = config?.provider ? String(config.provider) : undefined;
     const source: string | undefined = config?.source ? String(config.source) : undefined;
+    // Concept reflection sidecar (stakgraph SessionReflection) — stored on the
+    // row, not interpreted here
+    const reflection: Record<string, unknown> | undefined =
+      body.reflection && typeof body.reflection === "object" && !Array.isArray(body.reflection)
+        ? (body.reflection as Record<string, unknown>)
+        : undefined;
     // Free-form metadata — stored as-is, not interpreted
     const metadata: Record<string, unknown> | undefined =
       body._metadata && typeof body._metadata === "object" && !Array.isArray(body._metadata)
@@ -162,7 +171,8 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Store transcript as blob: { sessionId?, messages } — config is the canonical DB column
+    // Store transcript as blob: { sessionId?, messages } — config and
+    // reflection are canonical DB columns
     const blobPayload = {
       ...(sessionId ? { sessionId } : {}),
       messages,
@@ -203,6 +213,9 @@ export async function POST(request: NextRequest) {
             blobUrl: blob.url,
             sessionId: sessionId ?? null,
             config: config as Prisma.InputJsonValue | undefined,
+            // undefined skips the field on update, so a re-post without a
+            // reflection doesn't clobber one stored by an earlier turn
+            reflection: reflection as Prisma.InputJsonValue | undefined,
             provider: provider ?? null,
             source: source ?? null,
             repos,
@@ -219,6 +232,7 @@ export async function POST(request: NextRequest) {
             workspaceId: workspace_id,
             sessionId: sessionId ?? null,
             config: config as Prisma.InputJsonValue | undefined,
+            reflection: reflection as Prisma.InputJsonValue | undefined,
             provider: provider ?? null,
             source: source ?? null,
             repos,
