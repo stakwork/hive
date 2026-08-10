@@ -725,12 +725,17 @@ const featureCategory: CategoryDefinition = {
         renderMetricsFooter(ctx, featureStatusColor(ctx.node)),
     },
     // Live attention badge — renders a small icon pill in the
-    // top-right corner when the feature has an active signal
+    // top-LEFT inner corner when the feature has an active signal
     // (halted / awaiting-reply / plan-question / ready-to-review).
     // Reads from `AttentionMapContext` (no per-card subscription).
-    // `topRightOuter` is unused by `featureCategory` today, so
-    // there's no slot collision with existing renderers.
-    topRightOuter: {
+    //
+    // Slot choice: `topLeft` is the inner corner slot, free on
+    // `featureCategory` (only `serviceCategory` uses it). We use
+    // the inner slot so that `topRightOuter` remains free for the
+    // separate agent-count badge (PR #4981). Note: `topLeftOuter`
+    // does not exist in system-canvas v0.2.x — only `topRightOuter`
+    // is an outer slot — so `topLeft` is the correct choice here.
+    topLeft: {
       kind: "custom",
       render: (ctx: SlotContext) => {
         // Node id format: "feature:<cuid>" — parse the entity id.
@@ -816,10 +821,12 @@ const taskCategory: CategoryDefinition = {
       fontWeight: 500,
     },
     // Live attention badge — same pattern as featureCategory above.
-    // `topRightOuter` is unused by `taskCategory` today (only
-    // milestoneCategory and researchCategory use it), so there is no
-    // slot collision. Reads from `AttentionMapContext`.
-    topRightOuter: {
+    // Placed in `topLeft` (inner corner) to leave `topRightOuter`
+    // free for the separate agent-count badge (PR #4981). `topLeft`
+    // is unused by `taskCategory`, so there is no slot collision.
+    // Note: `topLeftOuter` does not exist in system-canvas v0.2.x.
+    // Reads from `AttentionMapContext`.
+    topLeft: {
       kind: "custom",
       render: (ctx: SlotContext) => {
         // Node id format: "task:<cuid>" — parse the entity id.
