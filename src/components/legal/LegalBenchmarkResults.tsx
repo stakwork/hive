@@ -16,6 +16,7 @@ import { useProposedFixes } from "@/hooks/useProposedFixes";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { StakworkRunLink } from "@/components/legal/StakworkRunLink";
 import { EvalRunsBox } from "@/components/legal/EvalRunsBox";
+import { BenchmarkRunAgentLogs } from "@/components/legal/BenchmarkRunAgentLogs";
 
 /** Strip provider prefix for display, e.g. "anthropic/claude-sonnet-5" → "claude-sonnet-5" */
 function displayModelName(value: string | undefined): string {
@@ -179,6 +180,9 @@ export function LegalBenchmarkResults({ runId, onReset, isSuperAdmin = false }: 
     return (
       <div className="mt-6 space-y-6">
         {renderStaleWarning()}
+
+        {/* Agent sessions for this run — hidden when the run has no agent logs */}
+        <BenchmarkRunAgentLogs runId={run.id} />
 
         {/* Output document section */}
         <div className="rounded-lg border bg-card">

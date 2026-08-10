@@ -19,12 +19,14 @@ import type {
   AgentLogStats,
   AgentRunConfig,
 } from "@/lib/utils/agent-log-stats";
+import type { SessionReflection, ReflectedConcept } from "@/types/agent-logs";
 import { TurnTokenUsage } from "@/components/agent-logs/TurnTokenUsage";
 
 export interface LogDetailContentProps {
   conversation: ParsedMessage[] | null;
   stats: AgentLogStats | null;
   config?: AgentRunConfig | null;
+  reflection?: SessionReflection | null;
   rawContent: string;
   loading: boolean;
   error: string | null;
@@ -723,6 +725,92 @@ export function RunConfigPanel({ config }: { config: AgentRunConfig }) {
   );
 }
 
+// ---------------------------------------------------------------------------
+// ConceptsPanel — gitree Concepts the session read, from the reflection sidecar
+// ---------------------------------------------------------------------------
+
+function ConceptChip({ concept }: { concept: ReflectedConcept }) {
+  const name = concept.name || concept.ref_id || concept.id || "";
+  const isRanked = typeof concept.rank === "number";
+  const hasContradiction = !!concept.contradicts;
+
+  const detailLines: string[] = [];
+  if (concept.repo) detailLines.push(concept.repo);
+  if (typeof concept.read_order === "number") detailLines.push(`Read #${concept.read_order}`);
+  if (isRanked) detailLines.push(`Ranked #${concept.rank}`);
+  const hasTooltip = detailLines.length > 0 || !!concept.evidence || hasContradiction;
+
+  const chip = (
+    <Badge
+      variant={isRanked ? "default" : "outline"}
+      className={cn(
+        "text-xs font-mono px-1.5 py-0 max-w-[280px] gap-1",
+        isRanked
+          ? "bg-primary/10 text-primary border border-primary/20 hover:bg-primary/10"
+          : "text-muted-foreground",
+      )}
+    >
+      {isRanked && <span className="font-semibold">{concept.rank}</span>}
+      <span className="truncate">{name}</span>
+      {hasContradiction && (
+        <AlertTriangle className="w-3 h-3 shrink-0 text-amber-500" />
+      )}
+    </Badge>
+  );
+
+  if (!hasTooltip) return chip;
+
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>{chip}</TooltipTrigger>
+      <TooltipContent side="bottom" className="max-w-[320px] space-y-1">
+        {detailLines.length > 0 && (
+          <p className="text-xs text-muted-foreground">{detailLines.join(" · ")}</p>
+        )}
+        {concept.evidence && <p className="text-xs">{concept.evidence}</p>}
+        {hasContradiction && (
+          <p className="text-xs text-amber-500">Contradicts: {concept.contradicts}</p>
+        )}
+      </TooltipContent>
+    </Tooltip>
+  );
+}
+
+export function ConceptsPanel({ reflection }: { reflection: SessionReflection }) {
+  // Skip entries with no displayable identity; hide the panel entirely when
+  // nothing remains (including raw-only reflections that didn't parse upstream).
+  const concepts = (reflection.concepts ?? []).filter(
+    (c) => c && (c.name || c.ref_id || c.id),
+  );
+  if (concepts.length === 0) return null;
+
+  const rankedCount = concepts.filter((c) => typeof c.rank === "number").length;
+
+  return (
+    <div className="mb-3 rounded-md border bg-muted/30 px-3 py-2 space-y-2">
+      <div className="flex items-center gap-2">
+        <span className="text-xs font-semibold text-foreground uppercase tracking-wide">
+          Concepts
+        </span>
+        <span className="text-xs text-muted-foreground">
+          {concepts.length} read{rankedCount > 0 ? ` · ${rankedCount} ranked` : ""}
+        </span>
+      </div>
+      <div className="flex flex-wrap gap-1.5">
+        {concepts.map((c, i) => (
+          <ConceptChip key={c.ref_id || c.id || i} concept={c} />
+        ))}
+      </div>
+      {reflection.gap && (
+        <p className="text-xs text-muted-foreground pl-2 border-l-2 border-muted-foreground/30">
+          <span className="font-medium text-foreground">Gap: </span>
+          {reflection.gap}
+        </p>
+      )}
+    </div>
+  );
+}
+
 export function StatsBar({ stats }: { stats: AgentLogStats }) {
   const [showBash, setShowBash] = useState(false);
   const [showDeveloperShell, setShowDeveloperShell] = useState(false);
@@ -812,6 +900,7 @@ export function LogDetailContent({
   conversation,
   stats,
   config,
+  reflection,
   rawContent,
   loading,
   error,
@@ -842,6 +931,7 @@ export function LogDetailContent({
       {!loading && !error && hasContent && (
         <>
           {config && <RunConfigPanel config={config} />}
+          {reflection && <ConceptsPanel reflection={reflection} />}
           {stats && <StatsBar stats={stats} />}
           <ScrollArea
             className={cn(
