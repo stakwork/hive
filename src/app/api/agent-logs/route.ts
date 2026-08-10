@@ -153,6 +153,7 @@ export async function GET(request: NextRequest) {
           provider: true,
           source: true,
           repos: true,
+          reflection: true,
           traceId: true,
           phoenixTraceUrl: true,
           traceStatus: true,

@@ -149,7 +149,9 @@ export async function listFeatures({
           },
         },
         chatMessages: {
-          orderBy: { createdAt: "desc" },
+          // id (cuid) tiebreaker: createdAt has ms precision, so messages
+          // created in the same ms would otherwise order arbitrarily
+          orderBy: [{ createdAt: "desc" }, { id: "desc" }],
           take: 1,
           select: { role: true },
         },
