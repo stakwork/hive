@@ -80,6 +80,17 @@ export interface BenchmarkRunResult {
     suggested_fix?: string;
     log_evidence?: string;
     cause_ref_id?: string;
+    /**
+     * Judge-dispute fields: wire names mirror Jarvis `CriterionResult` attributes
+     * (`flagged`, `llm_flag_reason`). Nothing emits these yet — tracked external
+     * dependency on the `harvey_lab_score_rubric` Lambda in `stakwork/senza-lnd`,
+     * which currently only emits `id`/`title`/`verdict`/`reasoning`.
+     *
+     * All Hive-side consumption MUST go through the `resolveJudgeDispute` resolver
+     * (added in a follow-up ticket). Do not read these fields directly elsewhere.
+     */
+    flagged?: boolean;
+    llm_flag_reason?: string;
   }>;
 }
 
