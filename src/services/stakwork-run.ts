@@ -1548,6 +1548,15 @@ const RunnerScoreSchema = z.object({
         title: z.string(),
         verdict: z.string(),
         reasoning: z.string(),
+        // INVARIANT: `flagged` and `llm_flag_reason` MUST remain optional here.
+        // These are judge-dispute wire keys (mirroring Jarvis `CriterionResult`
+        // attributes). If they were required — or if a new dispute shape caused
+        // safeParse() to fail — `scoreFields` would become `{}`, silently
+        // dropping `n_passed`/`n_total`/`all_pass` from persistence. Keeping them
+        // optional ensures a shape change to dispute fields can never invalidate
+        // the whole score block.
+        flagged: z.boolean().optional(),
+        llm_flag_reason: z.string().optional(),
       }),
     )
     .optional(),
