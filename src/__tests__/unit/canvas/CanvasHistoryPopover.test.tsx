@@ -3,6 +3,15 @@ import React from "react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor, fireEvent } from "@testing-library/react";
 
+// ── next/navigation mock (router-regression guard) ─────────────────────────
+const mockRouterReplace = vi.fn();
+const mockRouterPush = vi.fn();
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ replace: mockRouterReplace, push: mockRouterPush }),
+  useSearchParams: () => new URLSearchParams(),
+  usePathname: () => "/org/test-org",
+}));
+
 // ── Mocks ──────────────────────────────────────────────────────────────────
 
 vi.mock("@/components/ui/popover", () => ({
@@ -57,7 +66,7 @@ vi.mock("@/app/org/[githubLogin]/_state/canvasChatStore", () => ({
   ),
 }));
 
-// Provide getState for imperative calls
+// Provide getState for imperative calls (import after vi.mock so the mock is in place)
 import * as canvasChatStoreModule from "@/app/org/[githubLogin]/_state/canvasChatStore";
 
 // ── Test data ──────────────────────────────────────────────────────────────
@@ -142,10 +151,17 @@ describe("CanvasHistoryPopover", () => {
     vi.clearAllMocks();
     mockStartConversation.mockReturnValue("new-conv-id");
 
-    // Wire getState for imperative store calls
-    (canvasChatStoreModule.useCanvasChatStore as any).getState = vi.fn(
-      () => mockStoreState,
-    );
+    // Wire getState so that after startConversation is called, activeConversationId
+    // reflects the new id — simulating the synchronous store update that the
+    // isActive guard in handleItemClick relies on.
+    (canvasChatStoreModule.useCanvasChatStore as any).getState = vi.fn(() => {
+      const calls = mockStartConversation.mock.results;
+      const lastNewId = calls.length ? calls[calls.length - 1].value : null;
+      return {
+        ...mockStoreState,
+        activeConversationId: lastNewId ?? mockStoreState.activeConversationId,
+      };
+    });
   });
 
   it("shows loading skeleton while fetching", async () => {
@@ -304,5 +320,155 @@ describe("CanvasHistoryPopover", () => {
       // Popover should be closed (content not visible)
       expect(screen.queryByTestId("popover-content")).not.toBeInTheDocument();
     });
+  });
+
+  // ── URL sync tests ──────────────────────────────────────────────────────
+
+  it("writes ?chat=<item.id> to the URL when a history item is clicked", async () => {
+    global.fetch = buildFetch(mockItems, { "conv-a": mockConversationDetail });
+    const replaceState = vi.spyOn(window.history, "replaceState");
+
+    // Start with an unrelated param that must be preserved
+    Object.defineProperty(window, "location", {
+      writable: true,
+      value: { ...window.location, pathname: "/org/my-org", search: "?canvas=root" },
+    });
+
+    render(<CanvasHistoryPopover githubLogin="my-org" />);
+    fireEvent.click(screen.getByTestId("popover-trigger"));
+    await waitFor(() => screen.getByText("Planning session"));
+    fireEvent.click(screen.getByText("Planning session"));
+
+    await waitFor(() => {
+      expect(replaceState).toHaveBeenCalledWith(
+        null,
+        "",
+        expect.stringContaining("chat=conv-a"),
+      );
+      // Other params must be preserved
+      const call = replaceState.mock.calls.find((c) =>
+        String(c[2]).includes("chat=conv-a"),
+      );
+      expect(call![2]).toContain("canvas=root");
+    });
+
+    replaceState.mockRestore();
+  });
+
+  it("does not call replaceState when ?chat= already equals the clicked item id", async () => {
+    global.fetch = buildFetch(mockItems, { "conv-a": mockConversationDetail });
+    const replaceState = vi.spyOn(window.history, "replaceState");
+
+    // Pre-set ?chat= to the same id we're about to click
+    Object.defineProperty(window, "location", {
+      writable: true,
+      value: { ...window.location, pathname: "/org/my-org", search: "?chat=conv-a" },
+    });
+
+    render(<CanvasHistoryPopover githubLogin="my-org" />);
+    fireEvent.click(screen.getByTestId("popover-trigger"));
+    await waitFor(() => screen.getByText("Planning session"));
+    fireEvent.click(screen.getByText("Planning session"));
+
+    await waitFor(() => {
+      expect(mockSetServerConversationId).toHaveBeenCalledWith("new-conv-id", "conv-a");
+    });
+
+    // replaceState must NOT have been called for a chat= write (no-op when already equal)
+    const chatWrites = replaceState.mock.calls.filter((c) =>
+      String(c[2]).includes("chat=conv-a"),
+    );
+    expect(chatWrites).toHaveLength(0);
+
+    replaceState.mockRestore();
+  });
+
+  it("strips only the chat param (preserving others) and drops trailing ? when New is clicked", async () => {
+    global.fetch = buildFetch(mockItems, {});
+    const replaceState = vi.spyOn(window.history, "replaceState");
+
+    // Set URL with ?chat= plus another param
+    Object.defineProperty(window, "location", {
+      writable: true,
+      value: {
+        ...window.location,
+        pathname: "/org/my-org",
+        search: "?chat=conv-a&canvas=root",
+      },
+    });
+
+    render(<CanvasHistoryPopover githubLogin="my-org" />);
+    fireEvent.click(screen.getByTestId("popover-trigger"));
+    await waitFor(() => screen.getByText("Planning session"));
+
+    fireEvent.click(screen.getByTitle("New conversation"));
+
+    // chat is stripped; canvas is kept
+    expect(replaceState).toHaveBeenCalledWith(
+      null,
+      "",
+      expect.stringMatching(/canvas=root/),
+    );
+    const call = replaceState.mock.calls.find((c) =>
+      String(c[2]).includes("canvas=root"),
+    )!;
+    expect(String(call[2])).not.toContain("chat=");
+
+    replaceState.mockRestore();
+  });
+
+  it("drops the trailing ? entirely when chat was the only param and New is clicked", async () => {
+    global.fetch = buildFetch(mockItems, {});
+    const replaceState = vi.spyOn(window.history, "replaceState");
+
+    Object.defineProperty(window, "location", {
+      writable: true,
+      value: {
+        ...window.location,
+        pathname: "/org/my-org",
+        search: "?chat=conv-a",
+      },
+    });
+
+    render(<CanvasHistoryPopover githubLogin="my-org" />);
+    fireEvent.click(screen.getByTestId("popover-trigger"));
+    await waitFor(() => screen.getByText("Planning session"));
+
+    fireEvent.click(screen.getByTitle("New conversation"));
+
+    // Should use bare pathname with no trailing ?
+    expect(replaceState).toHaveBeenCalledWith(null, "", "/org/my-org");
+
+    replaceState.mockRestore();
+  });
+
+  it("does not call Next router replace or push on either path (regression guard)", async () => {
+    global.fetch = buildFetch(mockItems, { "conv-a": mockConversationDetail });
+
+    Object.defineProperty(window, "location", {
+      writable: true,
+      value: { ...window.location, pathname: "/org/my-org", search: "" },
+    });
+
+    render(<CanvasHistoryPopover githubLogin="my-org" />);
+    fireEvent.click(screen.getByTestId("popover-trigger"));
+    await waitFor(() => screen.getByText("Planning session"));
+
+    // Click a history item
+    fireEvent.click(screen.getByText("Planning session"));
+    await waitFor(() =>
+      expect(mockSetServerConversationId).toHaveBeenCalledWith("new-conv-id", "conv-a"),
+    );
+
+    expect(mockRouterReplace).not.toHaveBeenCalled();
+    expect(mockRouterPush).not.toHaveBeenCalled();
+
+    // Open again and click New
+    fireEvent.click(screen.getByTestId("popover-trigger"));
+    await waitFor(() => screen.getByTitle("New conversation"));
+    fireEvent.click(screen.getByTitle("New conversation"));
+
+    expect(mockRouterReplace).not.toHaveBeenCalled();
+    expect(mockRouterPush).not.toHaveBeenCalled();
   });
 });
