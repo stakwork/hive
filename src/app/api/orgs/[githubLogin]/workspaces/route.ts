@@ -34,6 +34,9 @@ export async function GET(
         },
         _count: { select: { members: { where: { leftAt: null } } } },
       },
+      // The canvas agent namespaces its tools in this order, so heap-order
+      // churn would rewrite the tool definitions and bust the prompt cache.
+      orderBy: [{ createdAt: "asc" }, { id: "asc" }],
     });
 
     const result = workspaces.map((ws) => ({
