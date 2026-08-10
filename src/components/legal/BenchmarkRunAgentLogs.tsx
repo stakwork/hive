@@ -129,7 +129,7 @@ export function BenchmarkRunAgentLogs({ runId }: { runId: string }) {
               </div>
               {isExpanded && log.reflection && (
                 <div className="mt-2">
-                  <ConceptsPanel reflection={log.reflection} />
+                  <ConceptsPanel reflection={log.reflection} workspaceSlug={workspace?.slug} />
                 </div>
               )}
             </div>
@@ -142,6 +142,7 @@ export function BenchmarkRunAgentLogs({ runId }: { runId: string }) {
           if (!open) setDialogLogId(null);
         }}
         logId={dialogLogId}
+        workspaceSlug={workspace?.slug}
       />
     </div>
   );
