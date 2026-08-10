@@ -508,6 +508,46 @@ describe("parseAgentLogStats", () => {
     });
   });
 
+  describe("reflection extraction", () => {
+    const sampleMessages = [
+      { role: "user", content: "Hello" },
+      { role: "assistant", content: "Hi" },
+    ];
+    const sampleReflection = {
+      session_id: "sess-1",
+      updated_at: "2026-08-10T00:00:00.000Z",
+      concepts: [
+        { ref_id: "c1", name: "Task dual status", read_order: 1, rank: 1, evidence: "used in turn 3" },
+        { ref_id: "c2", name: "Pusher channels", read_order: 2, rank: null },
+      ],
+      gap: "blob payload shape",
+    };
+
+    it("extracts reflection from { sessionId, messages, reflection } shape", () => {
+      const input = JSON.stringify({ sessionId: "sess-1", messages: sampleMessages, reflection: sampleReflection });
+      const result = parseAgentLogStats(input);
+      expect(result.reflection).toEqual(sampleReflection);
+      expect(result.conversation).toHaveLength(2);
+    });
+
+    it("returns reflection=undefined for legacy blobs without the key", () => {
+      expect(parseAgentLogStats(bare(sampleMessages)).reflection).toBeUndefined();
+      expect(parseAgentLogStats(wrapped(sampleMessages)).reflection).toBeUndefined();
+    });
+
+    it("ignores non-object reflection values", () => {
+      const input = JSON.stringify({ messages: sampleMessages, reflection: ["not", "an", "object"] });
+      expect(parseAgentLogStats(input).reflection).toBeUndefined();
+    });
+
+    it("returns reflection when messages array is empty (zero-stat result still carries it)", () => {
+      const input = JSON.stringify({ messages: [], reflection: sampleReflection });
+      const result = parseAgentLogStats(input);
+      expect(result.stats.totalMessages).toBe(0);
+      expect(result.reflection).toEqual(sampleReflection);
+    });
+  });
+
   describe("conversation passthrough", () => {
     it("preserves message order", () => {
       const messages = [

@@ -571,6 +571,44 @@ describe("POST /api/webhook/agent-logs — new payload shape & config persistenc
     expect(blobBody).toHaveProperty("sessionId", "sess-abc-123");
   });
 
+  test("POST with reflection → 201, blob carries it; omitted → blob has no reflection key", async () => {
+    const { workspace, feature } = testData;
+    const reflection = {
+      session_id: "sess-refl-123",
+      updated_at: "2026-08-10T00:00:00.000Z",
+      concepts: [{ ref_id: "concept-1", name: "Auth flow", read_order: 1, rank: 1 }],
+      gap: null,
+    };
+
+    const response = await POST(
+      buildRequest({
+        agent: "plan-agent-reflection",
+        workspace_id: workspace.id,
+        feature_id: feature.id,
+        messages: [{ role: "user", content: "Hello" }],
+        sessionId: "sess-refl-123",
+        reflection,
+      })
+    );
+
+    expect(response.status).toBe(201);
+
+    const blobBody = JSON.parse((put as Mock).mock.calls[0][1] as string);
+    expect(blobBody.reflection).toEqual(reflection);
+
+    // Without reflection in the body, the blob must not carry the key
+    await POST(
+      buildRequest({
+        agent: "plan-agent-no-reflection",
+        workspace_id: workspace.id,
+        feature_id: feature.id,
+        messages: [{ role: "user", content: "Hello" }],
+      })
+    );
+    const secondBlobBody = JSON.parse((put as Mock).mock.calls[1][1] as string);
+    expect(secondBlobBody).not.toHaveProperty("reflection");
+  });
+
   test("POST with legacy { logs } shape → 201, config is null on DB row", async () => {
     const { workspace, feature } = testData;
 

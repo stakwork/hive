@@ -81,10 +81,38 @@ export interface AgentRunConfig {
   mcpServers?: unknown[]; // MCP server config list
 }
 
+/**
+ * One gitree Concept the session read, from stakgraph's SessionReflection
+ * sidecar (mcp/src/repo/session.ts). `read_order` is recorded for every
+ * concept; `rank`/`evidence`/`contradicts` only exist when a reflect pass
+ * judged it — null rank means "not judged", not "useless".
+ */
+export interface ReflectedConcept {
+  id?: string;
+  ref_id?: string;
+  repo?: string;
+  name?: string;
+  read_order?: number;
+  rank: number | null;
+  evidence?: string;
+  contradicts?: string;
+}
+
+export interface SessionReflection {
+  session_id?: string;
+  updated_at?: string;
+  concepts?: ReflectedConcept[];
+  /** Something the agent had to work out from source that no concept covered. */
+  gap?: string | null;
+  /** Raw model output, kept only when it didn't parse upstream. */
+  raw?: string;
+}
+
 export interface AgentLogStatsResult {
   conversation: ParsedMessage[];
   stats: AgentLogStats;
   config?: AgentRunConfig; // undefined for legacy blobs
+  reflection?: SessionReflection; // undefined when the blob carries none
 }
 
 export function isValidMessage(msg: unknown): msg is ParsedMessage {
@@ -124,6 +152,16 @@ export function parseAgentLogStats(content: string): AgentLogStatsResult {
       ? (((parsed as Record<string, unknown>).config as AgentRunConfig | null | undefined) ?? undefined)
       : undefined;
 
+  // Extract reflection from { sessionId, messages, reflection } shape
+  const rawReflection =
+    parsed && typeof parsed === "object" && !Array.isArray(parsed)
+      ? (parsed as Record<string, unknown>).reflection
+      : undefined;
+  const reflection: SessionReflection | undefined =
+    rawReflection && typeof rawReflection === "object" && !Array.isArray(rawReflection)
+      ? (rawReflection as SessionReflection)
+      : undefined;
+
   // Handle bare array or { messages: [...] } wrapper
   let candidates: unknown[] | null = null;
   if (Array.isArray(parsed)) {
@@ -132,10 +170,10 @@ export function parseAgentLogStats(content: string): AgentLogStatsResult {
     candidates = (parsed as Record<string, unknown>).messages as unknown[];
   }
 
-  if (!candidates || candidates.length === 0) return { ...emptyResult, config: runConfig };
+  if (!candidates || candidates.length === 0) return { ...emptyResult, config: runConfig, reflection };
 
   const conversation = candidates.filter(isValidMessage);
-  if (conversation.length === 0) return { ...emptyResult, config: runConfig };
+  if (conversation.length === 0) return { ...emptyResult, config: runConfig, reflection };
 
   // Token estimation: sum estimateTokens() per message across role + content + reasoning
   let estimatedTokens = 0;
@@ -240,5 +278,6 @@ export function parseAgentLogStats(content: string): AgentLogStatsResult {
       actualCacheWriteTokens,
     },
     config: runConfig,
+    reflection,
   };
 }

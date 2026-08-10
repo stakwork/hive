@@ -10,7 +10,7 @@ import { LogDetailContent } from "@/components/agent-logs/LogDetailContent";
 import { FlagAsEvalModal } from "@/components/evals/FlagAsEvalModal";
 import { AgentSessionCaptureModal } from "@/components/evals/AgentSessionCaptureModal";
 import { isEvalCaptureEnabled } from "@/lib/eval-capture-slugs";
-import type { ParsedMessage, AgentLogStats, AgentRunConfig } from "@/lib/utils/agent-log-stats";
+import type { ParsedMessage, AgentLogStats, AgentRunConfig, SessionReflection } from "@/lib/utils/agent-log-stats";
 
 interface LogMeta {
   id: string;
@@ -31,6 +31,7 @@ export default function AgentLogDetailPage() {
   const [conversation, setConversation] = useState<ParsedMessage[] | null>(null);
   const [stats, setStats] = useState<AgentLogStats | null>(null);
   const [config, setConfig] = useState<AgentRunConfig | null>(null);
+  const [reflection, setReflection] = useState<SessionReflection | null>(null);
   const [rawContent, setRawContent] = useState<string>("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -56,6 +57,7 @@ export default function AgentLogDetailPage() {
           setConversation(data.conversation);
           setStats(data.stats ?? null);
           setConfig(data.config ?? null);
+          setReflection(data.reflection ?? null);
         } else {
           setRawContent(JSON.stringify(data, null, 2));
         }
@@ -129,6 +131,7 @@ export default function AgentLogDetailPage() {
         conversation={conversation}
         stats={stats}
         config={config}
+        reflection={reflection}
         rawContent={rawContent}
         loading={loading}
         error={error}

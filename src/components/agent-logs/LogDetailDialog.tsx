@@ -12,7 +12,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Share2 } from "lucide-react";
 import { toast } from "sonner";
-import type { ParsedMessage, AgentLogStats } from "@/lib/utils/agent-log-stats";
+import type { ParsedMessage, AgentLogStats, SessionReflection } from "@/lib/utils/agent-log-stats";
 import { LogDetailContent } from "./LogDetailContent";
 
 interface LogDetailDialogProps {
@@ -24,6 +24,7 @@ interface LogDetailDialogProps {
 export function LogDetailDialog({ open, onOpenChange, logId }: LogDetailDialogProps) {
   const [conversation, setConversation] = useState<ParsedMessage[] | null>(null);
   const [stats, setStats] = useState<AgentLogStats | null>(null);
+  const [reflection, setReflection] = useState<SessionReflection | null>(null);
   const [rawContent, setRawContent] = useState<string>("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -32,6 +33,7 @@ export function LogDetailDialog({ open, onOpenChange, logId }: LogDetailDialogPr
     if (!open || !logId) {
       setConversation(null);
       setStats(null);
+      setReflection(null);
       setRawContent("");
       setError(null);
       return;
@@ -49,6 +51,7 @@ export function LogDetailDialog({ open, onOpenChange, logId }: LogDetailDialogPr
         if (data.conversation && Array.isArray(data.conversation) && data.conversation.length > 0) {
           setConversation(data.conversation);
           setStats(data.stats ?? null);
+          setReflection(data.reflection ?? null);
         } else {
           setRawContent(JSON.stringify(data, null, 2));
         }
@@ -77,6 +80,7 @@ export function LogDetailDialog({ open, onOpenChange, logId }: LogDetailDialogPr
           variant="modal"
           conversation={conversation}
           stats={stats}
+          reflection={reflection}
           rawContent={rawContent}
           loading={loading}
           error={error}

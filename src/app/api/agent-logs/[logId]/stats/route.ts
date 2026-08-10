@@ -106,10 +106,10 @@ export async function GET(
     }
 
     const content = await fetchBlobContent(agentLog.blobUrl);
-    const { conversation, stats, config } = parseAgentLogStats(content);
+    const { conversation, stats, config, reflection } = parseAgentLogStats(content);
 
     return NextResponse.json(
-      { conversation, stats, config },
+      { conversation, stats, config, reflection },
       {
         headers: {
           "Cache-Control": "private, no-store",
