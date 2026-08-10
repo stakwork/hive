@@ -267,10 +267,14 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
       .then((res) => res.json())
       .then((data) => {
         const list = Array.isArray(data)
-          ? data.map((ws: { id: string; slug: string }) => ({
-              id: ws.id,
-              slug: ws.slug,
-            }))
+          ? data.map(
+              (ws: { id: string; slug: string; isDefault?: boolean }) => ({
+                id: ws.id,
+                slug: ws.slug,
+                // Needed by the default-first sort in `chatWorkspaceSlugs`.
+                isDefault: ws.isDefault,
+              }),
+            )
           : [];
         setWorkspaces(list);
       })
