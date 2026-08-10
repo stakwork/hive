@@ -6,10 +6,11 @@ import { PageHeader } from "@/components/ui/page-header";
 import { LegalBenchmarksPanel } from "@/components/legal/LegalBenchmarksPanel";
 import { BenchmarkRunsHistory } from "@/components/legal/BenchmarkRunsHistory";
 import { RecursionList } from "@/components/legal/RecursionBox";
+import { CnhMattersPanel } from "@/components/legal/CnhMattersPanel";
 import { useLegalBenchmarkRecursionList } from "@/hooks/useLegalBenchmarkRecursionList";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 
-type TabValue = "benchmark" | "runs" | "recursion";
+type TabValue = "benchmark" | "runs" | "recursion" | "cnh";
 
 function RecursionTab() {
   const { entries, isLoading, error, refetch } = useLegalBenchmarkRecursionList();
@@ -44,6 +45,7 @@ export default function LegalBenchmarksPage() {
             <TabsTrigger value="benchmark">Benchmark</TabsTrigger>
             <TabsTrigger value="runs">Runs</TabsTrigger>
             <TabsTrigger value="recursion">Recursion</TabsTrigger>
+            <TabsTrigger value="cnh">C &amp; H Law Firm Tasks</TabsTrigger>
           </TabsList>
         </div>
         <TabsContent value="benchmark" className="flex-1 min-h-0 pt-2">
@@ -54,6 +56,9 @@ export default function LegalBenchmarksPage() {
         </TabsContent>
         <TabsContent value="recursion" className="flex-1 min-h-0 overflow-auto p-4">
           <RecursionTab />
+        </TabsContent>
+        <TabsContent value="cnh" className="flex-1 min-h-0 overflow-hidden">
+          <CnhMattersPanel />
         </TabsContent>
       </Tabs>
     </div>
