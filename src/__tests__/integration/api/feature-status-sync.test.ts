@@ -38,8 +38,11 @@ vi.mock("@/lib/pusher", () => ({
 }));
 
 describe("Feature Status Sync Integration Tests", () => {
+  const TEST_API_TOKEN = "test-api-token-feature-status";
+
   beforeEach(async () => {
     await resetDatabase();
+    process.env.API_TOKEN = TEST_API_TOKEN;
   });
 
   /**
