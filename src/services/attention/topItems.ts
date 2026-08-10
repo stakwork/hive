@@ -349,7 +349,9 @@ async function fetchPlanQuestions(
         select: { initiativeId: true, milestoneId: true },
       },
       chatMessages: {
-        orderBy: { timestamp: "desc" },
+        // id (cuid) tiebreaker: timestamp has ms precision, so messages
+        // created in the same ms would otherwise order arbitrarily
+        orderBy: [{ timestamp: "desc" }, { id: "desc" }],
         take: 1,
         select: {
           timestamp: true,
