@@ -29,6 +29,7 @@ const makeRun = (overrides: Partial<{
   generateReport: boolean;
   reportStatus: string;
   reportChatPath: string;
+  runType: string;
 }> = {}) => ({
   id: "runner-1",
   workspaceId: WORKSPACE_ID,
@@ -46,8 +47,21 @@ const makeRun = (overrides: Partial<{
   generateReport: undefined as boolean | undefined,
   reportStatus: undefined as string | undefined,
   reportChatPath: undefined as string | undefined,
+  runType: "LEGAL_BENCHMARK_RUNNER",
   ...overrides,
 });
+
+const makeCnhRun = (overrides: Partial<{ id: string; status: string; createdAt: string }> = {}) =>
+  makeRun({
+    id: "cnh-1",
+    taskSlug: "",
+    taskTitle: "C&H Ingest",
+    runType: "LEGAL_BENCHMARK_CNH_INGEST",
+    n_passed: undefined,
+    n_total: undefined,
+    all_pass: undefined,
+    ...overrides,
+  });
 
 // ─── Module mocks ─────────────────────────────────────────────────────────────
 
@@ -57,6 +71,7 @@ const mockRefetch = vi.fn();
 const mockUseList = vi.fn((_workspaceId: string | undefined) => ({
   runs: [makeRun()],
   total: 1,
+  runnerTotal: 1,
   isLoading: false,
   error: null,
   refetch: mockRefetch,
@@ -171,8 +186,8 @@ vi.mock("@/components/legal/HillClimbChart", () => ({
 }));
 
 vi.mock("@/components/ui/badge", () => ({
-  Badge: ({ children, className }: { children?: React.ReactNode; className?: string }) =>
-    React.createElement("span", { "data-testid": "badge", className }, children),
+  Badge: ({ children, className, ...rest }: { children?: React.ReactNode; className?: string; [key: string]: unknown }) =>
+    React.createElement("span", { "data-testid": "badge", className, ...rest }, children),
 }));
 
 vi.mock("date-fns", () => ({
@@ -193,6 +208,7 @@ describe("BenchmarkRunsHistory", () => {
     mockUseList.mockReturnValue({
       runs: [makeRun()],
       total: 1,
+      runnerTotal: 1,
       isLoading: false,
       error: null,
       refetch: mockRefetch,
@@ -978,5 +994,102 @@ describe("BenchmarkRunsHistory", () => {
     await user.click(screen.getByTestId(`task-filter-option-${TASK_A.taskSlug}`));
     expect(screen.queryByTestId("results-b1")).toBeNull();
     expect(mockSetExpandedId).toHaveBeenLastCalledWith(null);
+  });
+
+  // ─── CNH Ingest row tests ──────────────────────────────────────────────────
+
+  it("CNH row renders 'C&H' badge and 'C&H Ingest' label", () => {
+    mockUseList.mockReturnValue({
+      runs: [makeCnhRun()],
+      total: 0,
+      runnerTotal: 0,
+      isLoading: false,
+      error: null,
+      refetch: mockRefetch,
+      setExpandedId: mockSetExpandedId,
+    });
+    render(React.createElement(BenchmarkRunsHistory));
+    // jsdom decodes HTML entities, so getByText matches decoded text
+    expect(screen.getByTestId("cnh-badge")).toBeInTheDocument();
+    // "C&H Ingest" appears as text content (entities decoded by jsdom)
+    expect(screen.getAllByText(/C&H Ingest/i).length).toBeGreaterThan(0);
+  });
+
+  it("clicking a CNH row does NOT expand a detail panel", async () => {
+    mockUseList.mockReturnValue({
+      runs: [makeCnhRun()],
+      total: 0,
+      runnerTotal: 0,
+      isLoading: false,
+      error: null,
+      refetch: mockRefetch,
+      setExpandedId: mockSetExpandedId,
+    });
+    const user = userEvent.setup();
+    render(React.createElement(BenchmarkRunsHistory));
+
+    const row = screen.getByTestId("run-row-cnh-1");
+    await user.click(row);
+
+    // No LegalBenchmarkResults should be mounted
+    expect(screen.queryByTestId("results-cnh-1")).toBeNull();
+    // setExpandedId must NOT have been called with the CNH run id
+    expect(mockSetExpandedId).not.toHaveBeenCalledWith("cnh-1");
+  });
+
+  it("CNH row Score and Report columns show '—'", () => {
+    mockUseList.mockReturnValue({
+      runs: [makeCnhRun()],
+      total: 0,
+      runnerTotal: 0,
+      isLoading: false,
+      error: null,
+      refetch: mockRefetch,
+      setExpandedId: mockSetExpandedId,
+    });
+    render(React.createElement(BenchmarkRunsHistory));
+    // Both Score and Report cells render '—' for CNH rows (no all_pass, no report)
+    expect(screen.getAllByText("—").length).toBeGreaterThanOrEqual(2);
+    expect(screen.queryByText("PASS")).toBeNull();
+    expect(screen.queryByText("FAIL")).toBeNull();
+  });
+
+  it("CNH row does NOT appear in the task filter dropdown", () => {
+    mockUseList.mockReturnValue({
+      runs: [makeRun(), makeCnhRun()],
+      total: 1,
+      runnerTotal: 1,
+      isLoading: false,
+      error: null,
+      refetch: mockRefetch,
+      setExpandedId: mockSetExpandedId,
+    });
+    render(React.createElement(BenchmarkRunsHistory));
+    // The runner task should appear as an option
+    expect(screen.getByTestId("task-filter-option-antitrust/task-1")).toBeInTheDocument();
+    // CNH rows have no taskSlug — they must NOT appear in the dropdown
+    expect(screen.queryByTestId("task-filter-option-")).toBeNull();
+  });
+
+  it("window note uses runnerTotal — CNH rows don't inflate the 'loaded N of total' count", () => {
+    // 12 runner rows + 1 CNH row — runnerTotal=150 means we cap message on runner total only
+    const runs = [
+      ...Array.from({ length: 12 }, (_, i) =>
+        makeRun({ id: `s-${i}`, status: "COMPLETED", all_pass: true }),
+      ),
+      makeCnhRun({ id: "cnh-latest" }),
+    ];
+    mockUseList.mockReturnValue({
+      runs,
+      total: 150,
+      runnerTotal: 150,
+      isLoading: false,
+      error: null,
+      refetch: mockRefetch,
+      setExpandedId: mockSetExpandedId,
+    });
+    render(React.createElement(BenchmarkRunsHistory));
+    const note = screen.getByTestId("window-note");
+    expect(note.textContent).toContain("Only the latest 100 of 150 runs are loaded");
   });
 });

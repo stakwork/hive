@@ -30,7 +30,7 @@ import {
 import { LegalBenchmarkResults } from "@/components/legal/LegalBenchmarkResults";
 import { StakworkRunLink } from "@/components/legal/StakworkRunLink";
 import { HillClimbChart } from "@/components/legal/HillClimbChart";
-import { WorkflowStatus } from "@prisma/client";
+import { WorkflowStatus, StakworkRunType } from "@prisma/client";
 import type { EvalTriggerOutput } from "@/lib/harvey-lab/eval-normalizers";
 
 export const ALL_TASKS = "all";
@@ -41,7 +41,8 @@ interface TaskOption {
   count: number;
 }
 
-/** Unique tasks across the loaded runs, preserving most-recent-first order */
+/** Unique tasks across the loaded runs, preserving most-recent-first order.
+ *  CNH rows (no taskSlug) are intentionally excluded. */
 function buildTaskOptions(runs: BenchmarkRunListRow[]): TaskOption[] {
   const map = new Map<string, TaskOption>();
   for (const run of runs) {
@@ -100,6 +101,9 @@ function resolveModelDisplay(run: BenchmarkRunListRow) {
   return { exec, judge, hasAny };
 }
 
+const isCnhRun = (run: BenchmarkRunListRow) =>
+  run.runType === StakworkRunType.LEGAL_BENCHMARK_CNH_INGEST;
+
 export type RunListHookResult = ReturnType<typeof useLegalBenchmarkRunList>;
 
 interface BenchmarkRunsHistoryProps {
@@ -128,7 +132,7 @@ export function BenchmarkRunsHistory({
   const internalList = useLegalBenchmarkRunList(
     runListProp ? undefined : workspaceId,
   );
-  const { runs, total, isLoading, error, setExpandedId } =
+  const { runs, total: runnerTotal, isLoading, error, setExpandedId } =
     runListProp ?? internalList;
 
   const [expandedRunId, setExpandedRunId] = useState<string | null>(null);
@@ -148,6 +152,12 @@ export function BenchmarkRunsHistory({
 
     if (!found) {
       // Unknown run — clear the token so the next pip click isn't blocked.
+      onFocusHandled?.();
+      return;
+    }
+
+    // CNH rows cannot be expanded — skip expansion but still scroll/highlight
+    if (isCnhRun(runs.find((r) => r.id === runId)!)) {
       onFocusHandled?.();
       return;
     }
@@ -230,8 +240,12 @@ export function BenchmarkRunsHistory({
     [selectedTask, visibleRuns],
   );
 
-  const handleToggleExpand = (runId: string) => {
-    const next = expandedRunId === runId ? null : runId;
+  const handleToggleExpand = (run: BenchmarkRunListRow) => {
+    // CNH ingest rows are non-expandable: useLegalBenchmarkRun hardcodes
+    // type=LEGAL_BENCHMARK_RUNNER so a CNH run ID would never be found,
+    // producing a permanent spinner or empty detail panel.
+    if (isCnhRun(run)) return;
+    const next = expandedRunId === run.id ? null : run.id;
     setExpandedRunId(next);
     setExpandedId(next);
   };
@@ -315,8 +329,8 @@ export function BenchmarkRunsHistory({
         >
           Showing {visibleRuns.length} of {filteredRuns.length} loaded runs —
           back to the {windowSize} most recent scored runs.
-          {total > RUN_LIST_LIMIT &&
-            ` Only the latest ${RUN_LIST_LIMIT} of ${total} runs are loaded.`}
+          {runnerTotal > RUN_LIST_LIMIT &&
+            ` Only the latest ${RUN_LIST_LIMIT} of ${runnerTotal} runs are loaded.`}
         </div>
       )}
 
@@ -342,26 +356,45 @@ export function BenchmarkRunsHistory({
                     if (el) rowRefs.current.set(run.id, el);
                     else rowRefs.current.delete(run.id);
                   }}
-                  className="border-b last:border-0 cursor-pointer hover:bg-muted/30 transition-colors"
-                  onClick={() => handleToggleExpand(run.id)}
+                  className={`border-b last:border-0 transition-colors ${
+                    isCnhRun(run)
+                      ? "cursor-default"
+                      : "cursor-pointer hover:bg-muted/30"
+                  }`}
+                  onClick={() => handleToggleExpand(run)}
                   data-testid={`run-row-${run.id}`}
                 >
                   <td className="px-4 py-3">
-                    <div className="font-medium leading-tight">
-                      {run.taskTitle || "(Unknown task)"}
-                    </div>
-                    {run.taskSlug && (
-                      <div className="text-xs text-muted-foreground mt-0.5">{run.taskSlug}</div>
-                    )}
-                    {(() => {
-                      const { exec, judge, hasAny } = resolveModelDisplay(run);
-                      if (!hasAny) return null;
-                      return (
-                        <div className="text-xs text-muted-foreground mt-0.5" data-testid="model-sub-line">
-                          {exec} · Judge: {judge}
+                    {isCnhRun(run) ? (
+                      <div className="flex items-center gap-2">
+                        <Badge
+                          variant="outline"
+                          className="border-0 bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300 text-xs px-1.5 py-0"
+                          data-testid="cnh-badge"
+                        >
+                          C&amp;H
+                        </Badge>
+                        <span className="font-medium leading-tight">C&amp;H Ingest</span>
+                      </div>
+                    ) : (
+                      <div>
+                        <div className="font-medium leading-tight">
+                          {run.taskTitle || "(Unknown task)"}
                         </div>
-                      );
-                    })()}
+                        {run.taskSlug && (
+                          <div className="text-xs text-muted-foreground mt-0.5">{run.taskSlug}</div>
+                        )}
+                        {(() => {
+                          const { exec, judge, hasAny } = resolveModelDisplay(run);
+                          if (!hasAny) return null;
+                          return (
+                            <div className="text-xs text-muted-foreground mt-0.5" data-testid="model-sub-line">
+                              {exec} · Judge: {judge}
+                            </div>
+                          );
+                        })()}
+                      </div>
+                    )}
                   </td>
                   <td className="px-4 py-3 whitespace-nowrap">
                     <span
@@ -386,7 +419,7 @@ export function BenchmarkRunsHistory({
                     </td>
                   )}
                 </tr>
-                {expandedRunId === run.id && (
+                {expandedRunId === run.id && !isCnhRun(run) && (
                   <tr className="border-b last:border-0 bg-muted/10">
                     <td colSpan={colSpan} className="px-4 pb-4">
                       <LegalBenchmarkResults

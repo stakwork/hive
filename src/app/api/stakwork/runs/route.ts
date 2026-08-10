@@ -39,13 +39,17 @@ export async function GET(request: NextRequest) {
     };
 
     if (type) {
-      if (!Object.values(StakworkRunType).includes(type as StakworkRunType)) {
-        return NextResponse.json(
-          { error: `Invalid type: ${type}` },
-          { status: 400 }
-        );
+      const tokens = type.split(",").map((t) => t.trim());
+      const validValues = Object.values(StakworkRunType) as string[];
+      for (const token of tokens) {
+        if (!validValues.includes(token)) {
+          return NextResponse.json(
+            { error: `Invalid type: ${token}` },
+            { status: 400 }
+          );
+        }
       }
-      queryData.type = type;
+      queryData.type = tokens as StakworkRunType[];
     }
 
     if (featureId) {

@@ -26,12 +26,14 @@ global.fetch = vi.fn();
 
 const makeRow = (overrides: Partial<{
   id: string;
+  type: string;
   status: string;
   projectId: number | null;
   result: string | null;
   createdAt: string;
 }> = {}) => ({
   id: "runner-abc",
+  type: "LEGAL_BENCHMARK_RUNNER",
   workspaceId: "ws-cuid-123",
   status: "COMPLETED",
   projectId: 42,
@@ -49,11 +51,36 @@ const makeRow = (overrides: Partial<{
   ...overrides,
 });
 
-function mockFetchOk(runs: ReturnType<typeof makeRow>[], total?: number) {
-  vi.mocked(global.fetch).mockResolvedValue({
-    ok: true,
-    json: async () => ({ runs, total: total ?? runs.length }),
-  } as Response);
+const makeCnhRow = (overrides: Partial<{ id: string; status: string; createdAt: string }> = {}) => ({
+  id: "cnh-xyz",
+  type: "LEGAL_BENCHMARK_CNH_INGEST",
+  workspaceId: "ws-cuid-123",
+  status: "COMPLETED",
+  projectId: 55,
+  result: null,
+  createdAt: new Date("2025-01-02T10:00:00Z").toISOString(),
+  updatedAt: new Date("2025-01-02T10:05:00Z").toISOString(),
+  ...overrides,
+});
+
+/**
+ * Mock fetch for both parallel calls (runner + CNH).
+ * First call receives runner rows, second call receives CNH rows (empty by default).
+ */
+function mockFetchOk(
+  runnerRuns: ReturnType<typeof makeRow>[],
+  total?: number,
+  cnhRuns: ReturnType<typeof makeCnhRow>[] = [],
+) {
+  vi.mocked(global.fetch)
+    .mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ runs: runnerRuns, total: total ?? runnerRuns.length }),
+    } as Response)
+    .mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ runs: cnhRuns, total: cnhRuns.length }),
+    } as Response);
 }
 
 function mockFetchFail() {
@@ -87,7 +114,26 @@ describe("useLegalBenchmarkRunList", () => {
     expect(url).not.toContain("workspaceId=openlaw");
   });
 
-  it("includes type=LEGAL_BENCHMARK_RUNNER and limit=100 in query params", async () => {
+  it("issues two parallel fetch calls — one for RUNNER, one for CNH_INGEST", async () => {
+    mockFetchOk([makeRow()]);
+
+    const { result } = renderHook(() => useLegalBenchmarkRunList("ws-cuid-123"));
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    const urls = vi.mocked(global.fetch).mock.calls.map((c) => String(c[0]));
+    // First call — runner
+    expect(urls[0]).toContain("type=LEGAL_BENCHMARK_RUNNER");
+    expect(urls[0]).toContain("limit=100");
+    expect(urls[0]).toContain("includeResult=true");
+    // Second call — CNH ingest
+    expect(urls[1]).toContain("type=LEGAL_BENCHMARK_CNH_INGEST");
+    expect(urls[1]).toContain("includeResult=true");
+    // Both share the same workspaceId
+    expect(urls[0]).toContain("workspaceId=ws-cuid-123");
+    expect(urls[1]).toContain("workspaceId=ws-cuid-123");
+  });
+
+  it("includes type=LEGAL_BENCHMARK_RUNNER and limit=100 in query params (runner fetch)", async () => {
     mockFetchOk([makeRow()]);
 
     const { result } = renderHook(() => useLegalBenchmarkRunList("ws-cuid-123"));
@@ -97,6 +143,63 @@ describe("useLegalBenchmarkRunList", () => {
     expect(url).toContain("type=LEGAL_BENCHMARK_RUNNER");
     expect(url).toContain("limit=100");
     expect(url).toContain("includeResult=true");
+  });
+
+  it("merges runner and CNH rows sorted by createdAt descending", async () => {
+    const runnerRow = makeRow({
+      id: "runner-old",
+      createdAt: new Date("2025-01-01T10:00:00Z").toISOString(),
+    });
+    const cnhRow = makeCnhRow({
+      id: "cnh-new",
+      createdAt: new Date("2025-01-03T10:00:00Z").toISOString(),
+    });
+    mockFetchOk([runnerRow], 1, [cnhRow]);
+
+    const { result } = renderHook(() => useLegalBenchmarkRunList("ws-cuid-123"));
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    expect(result.current.runs).toHaveLength(2);
+    // CNH row is newer — must come first
+    expect(result.current.runs[0].id).toBe("cnh-new");
+    expect(result.current.runs[1].id).toBe("runner-old");
+  });
+
+  it("CNH row has runType=LEGAL_BENCHMARK_CNH_INGEST and taskTitle='C&H Ingest'", async () => {
+    mockFetchOk([], 0, [makeCnhRow()]);
+
+    const { result } = renderHook(() => useLegalBenchmarkRunList("ws-cuid-123"));
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    expect(result.current.runs).toHaveLength(1);
+    const row = result.current.runs[0];
+    expect(row.runType).toBe("LEGAL_BENCHMARK_CNH_INGEST");
+    expect(row.taskTitle).toBe("C&H Ingest");
+    expect(row.taskSlug).toBe("");
+    expect(row.n_passed).toBeUndefined();
+    expect(row.all_pass).toBeUndefined();
+  });
+
+  it("runner total is exposed as runnerTotal — CNH count does not inflate it", async () => {
+    mockFetchOk([makeRow()], 150, [makeCnhRow()]);
+
+    const { result } = renderHook(() => useLegalBenchmarkRunList("ws-cuid-123"));
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    // total/runnerTotal = 150 (runner only) — CNH total (1) must not add to it
+    expect(result.current.total).toBe(150);
+    expect(result.current.runnerTotal).toBe(150);
+    // But merged runs array contains both
+    expect(result.current.runs).toHaveLength(2);
+  });
+
+  it("runner rows have runType=LEGAL_BENCHMARK_RUNNER", async () => {
+    mockFetchOk([makeRow()]);
+
+    const { result } = renderHook(() => useLegalBenchmarkRunList("ws-cuid-123"));
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    expect(result.current.runs[0].runType).toBe("LEGAL_BENCHMARK_RUNNER");
   });
 
   it("maps run rows to BenchmarkRunListRow with parsed taskTitle and taskSlug", async () => {
@@ -470,8 +573,8 @@ describe("useLegalBenchmarkRunList", () => {
       await Promise.resolve();
     });
 
-    // Only one additional fetch call despite three rapid events
-    expect(vi.mocked(global.fetch).mock.calls.length).toBe(fetchCallsBefore + 1);
+    // Only the first event triggers a fetch (2 parallel calls); 2nd and 3rd are dropped by isFetchingRef
+    expect(vi.mocked(global.fetch).mock.calls.length).toBe(fetchCallsBefore + 2);
   });
 
   it("unbinds STAKWORK_RUN_UPDATE event handler on unmount", async () => {

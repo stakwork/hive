@@ -1957,7 +1957,9 @@ export async function getStakworkRuns(
   // Build where clause
   const where: Prisma.StakworkRunWhereInput = {
     workspaceId: query.workspaceId,
-    ...(query.type && { type: query.type }),
+    ...(query.type?.length && {
+      type: query.type.length === 1 ? query.type[0] : { in: query.type },
+    }),
     ...(query.featureId && { featureId: query.featureId }),
     ...(query.status && { status: query.status }),
   };
