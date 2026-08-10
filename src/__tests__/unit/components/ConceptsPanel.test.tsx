@@ -55,4 +55,49 @@ describe("ConceptsPanel", () => {
     render(<ConceptsPanel reflection={{ concepts: [{ ref_id: "ref-42", rank: null }] }} />);
     expect(screen.getByText("ref-42")).toBeTruthy();
   });
+
+  it("links concepts with a gitree id to the Learn page in a new tab", () => {
+    render(
+      <ConceptsPanel
+        workspaceSlug="openlaw"
+        reflection={{
+          concepts: [
+            {
+              id: "stakwork/claude-for-legal/legal-document-type-review-memo",
+              ref_id: "a4903a86",
+              name: "Review Memo",
+              rank: null,
+            },
+          ],
+        }}
+      />,
+    );
+    const link = screen.getByText("Review Memo").closest("a");
+    expect(link).toBeTruthy();
+    // Double-encoded: the Learn page decodes the param twice (searchParams.get
+    // + decodeURIComponent) before matching against concept ids.
+    expect(link?.getAttribute("href")).toBe(
+      "/w/openlaw/learn?concept=stakwork%252Fclaude-for-legal%252Flegal-document-type-review-memo",
+    );
+    expect(link?.getAttribute("target")).toBe("_blank");
+  });
+
+  it("does not link concepts without a gitree id, even with a slug", () => {
+    render(
+      <ConceptsPanel
+        workspaceSlug="openlaw"
+        reflection={{ concepts: [{ ref_id: "graph-only", name: "Graph only", rank: null }] }}
+      />,
+    );
+    expect(screen.getByText("Graph only").closest("a")).toBeNull();
+  });
+
+  it("does not link concepts when no workspace slug is provided", () => {
+    render(
+      <ConceptsPanel
+        reflection={{ concepts: [{ id: "org/repo/thing", name: "Thing", rank: null }] }}
+      />,
+    );
+    expect(screen.getByText("Thing").closest("a")).toBeNull();
+  });
 });
