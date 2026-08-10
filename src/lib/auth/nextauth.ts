@@ -1,4 +1,4 @@
-import { db, dbAdapter } from "@/lib/db";
+import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
 import { logger } from "@/lib/logger";
 import { ensureMockWorkspaceForUser, ensureStakworkMockWorkspace, ensureMockOrgData, ensureMockLlmModels } from "@/utils/mockSetup";
@@ -180,7 +180,7 @@ const getProviders = () => {
 
 export const authOptions: NextAuthOptions = {
   // Only use PrismaAdapter when not using credentials provider
-  ...(process.env.POD_URL ? {} : { adapter: PrismaAdapter(dbAdapter) }),
+  ...(process.env.POD_URL ? {} : { adapter: PrismaAdapter(db) }),
   providers: getProviders(),
   callbacks: {
     async signIn({ user, account }) {
