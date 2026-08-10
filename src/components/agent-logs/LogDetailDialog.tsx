@@ -20,9 +20,10 @@ interface LogDetailDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   logId: string | null;
+  workspaceSlug?: string;
 }
 
-export function LogDetailDialog({ open, onOpenChange, logId }: LogDetailDialogProps) {
+export function LogDetailDialog({ open, onOpenChange, logId, workspaceSlug }: LogDetailDialogProps) {
   const [conversation, setConversation] = useState<ParsedMessage[] | null>(null);
   const [stats, setStats] = useState<AgentLogStats | null>(null);
   const [reflection, setReflection] = useState<SessionReflection | null>(null);
@@ -85,6 +86,7 @@ export function LogDetailDialog({ open, onOpenChange, logId }: LogDetailDialogPr
           rawContent={rawContent}
           loading={loading}
           error={error}
+          workspaceSlug={workspaceSlug}
         />
 
         <DialogFooter>
