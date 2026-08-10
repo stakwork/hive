@@ -119,6 +119,24 @@ export function CanvasHistoryPopover({ githubLogin }: CanvasHistoryPopoverProps)
       );
       store.setServerConversationId(newId, item.id);
 
+      // Sync ?chat=<id> to the URL so the loaded conversation is shareable
+      // and survives a refresh — mirroring the new-chat path in
+      // useSendCanvasChatMessage.ts. The isActive guard handles the
+      // concurrent-click case (two rapid clicks can resolve out of order).
+      const isActive =
+        useCanvasChatStore.getState().activeConversationId === newId;
+      if (isActive && typeof window !== "undefined") {
+        const params = new URLSearchParams(window.location.search);
+        if (params.get("chat") !== item.id) {
+          params.set("chat", item.id);
+          window.history.replaceState(
+            null,
+            "",
+            `${window.location.pathname}?${params.toString()}`,
+          );
+        }
+      }
+
       // Opening the chat clears its unread flag — optimistically locally,
       // and persisted so the next list load agrees. Fire-and-forget.
       setItems((prev) =>
@@ -161,6 +179,23 @@ export function CanvasHistoryPopover({ githubLogin }: CanvasHistoryPopoverProps)
       undefined,
       0,
     );
+
+    // Clear ?chat= so a refresh lands in the fresh empty chat, not the
+    // previously loaded one. Mirrors the ?r=/slug strip in OrgCanvasView.
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      if (params.has("chat")) {
+        params.delete("chat");
+        window.history.replaceState(
+          null,
+          "",
+          params.toString()
+            ? `${window.location.pathname}?${params.toString()}`
+            : window.location.pathname,
+        );
+      }
+    }
+
     setOpen(false);
   };
 
