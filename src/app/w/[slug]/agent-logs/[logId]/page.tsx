@@ -10,7 +10,8 @@ import { LogDetailContent } from "@/components/agent-logs/LogDetailContent";
 import { FlagAsEvalModal } from "@/components/evals/FlagAsEvalModal";
 import { AgentSessionCaptureModal } from "@/components/evals/AgentSessionCaptureModal";
 import { isEvalCaptureEnabled } from "@/lib/eval-capture-slugs";
-import type { ParsedMessage, AgentLogStats, AgentRunConfig, SessionReflection } from "@/lib/utils/agent-log-stats";
+import type { ParsedMessage, AgentLogStats, AgentRunConfig } from "@/lib/utils/agent-log-stats";
+import type { SessionReflection } from "@/types/agent-logs";
 
 interface LogMeta {
   id: string;

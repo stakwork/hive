@@ -12,7 +12,8 @@ import {
 import { Button } from "@/components/ui/button";
 import { Share2 } from "lucide-react";
 import { toast } from "sonner";
-import type { ParsedMessage, AgentLogStats, SessionReflection } from "@/lib/utils/agent-log-stats";
+import type { ParsedMessage, AgentLogStats } from "@/lib/utils/agent-log-stats";
+import type { SessionReflection } from "@/types/agent-logs";
 import { LogDetailContent } from "./LogDetailContent";
 
 interface LogDetailDialogProps {

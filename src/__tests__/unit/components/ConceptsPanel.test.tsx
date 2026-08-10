@@ -3,7 +3,7 @@ import { describe, it, expect } from "vitest";
 import React from "react";
 import { render, screen } from "@testing-library/react";
 import { ConceptsPanel } from "@/components/agent-logs/LogDetailContent";
-import type { SessionReflection } from "@/lib/utils/agent-log-stats";
+import type { SessionReflection } from "@/types/agent-logs";
 
 const baseReflection: SessionReflection = {
   session_id: "sess-1",

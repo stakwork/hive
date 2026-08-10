@@ -92,10 +92,10 @@ export async function GET(
       }
     }
 
-    // Fetch the blob content
+    // Fetch the blob content; reflection is a canonical row column
     const agentLog = await db.agentLog.findUnique({
       where: { id: logId },
-      select: { blobUrl: true },
+      select: { blobUrl: true, reflection: true },
     });
 
     if (!agentLog) {
@@ -106,10 +106,10 @@ export async function GET(
     }
 
     const content = await fetchBlobContent(agentLog.blobUrl);
-    const { conversation, stats, config, reflection } = parseAgentLogStats(content);
+    const { conversation, stats, config } = parseAgentLogStats(content);
 
     return NextResponse.json(
-      { conversation, stats, config, reflection },
+      { conversation, stats, config, reflection: agentLog.reflection ?? undefined },
       {
         headers: {
           "Cache-Control": "private, no-store",

@@ -571,7 +571,7 @@ describe("POST /api/webhook/agent-logs — new payload shape & config persistenc
     expect(blobBody).toHaveProperty("sessionId", "sess-abc-123");
   });
 
-  test("POST with reflection → 201, blob carries it; omitted → blob has no reflection key", async () => {
+  test("POST with reflection → 201, stored on the DB row, never in the blob", async () => {
     const { workspace, feature } = testData;
     const reflection = {
       session_id: "sess-refl-123",
@@ -593,20 +593,39 @@ describe("POST /api/webhook/agent-logs — new payload shape & config persistenc
 
     expect(response.status).toBe(201);
 
-    const blobBody = JSON.parse((put as Mock).mock.calls[0][1] as string);
-    expect(blobBody.reflection).toEqual(reflection);
+    const agentLog = await db.agentLog.findFirst({
+      where: { agent: "plan-agent-reflection", workspaceId: workspace.id },
+      select: { reflection: true },
+    });
+    expect(agentLog?.reflection).toEqual(reflection);
 
-    // Without reflection in the body, the blob must not carry the key
-    await POST(
-      buildRequest({
-        agent: "plan-agent-no-reflection",
-        workspace_id: workspace.id,
-        feature_id: feature.id,
-        messages: [{ role: "user", content: "Hello" }],
-      })
-    );
-    const secondBlobBody = JSON.parse((put as Mock).mock.calls[1][1] as string);
-    expect(secondBlobBody).not.toHaveProperty("reflection");
+    // Blob must only carry the transcript — no reflection key
+    const blobBody = JSON.parse((put as Mock).mock.calls[0][1] as string);
+    expect(blobBody).not.toHaveProperty("reflection");
+  });
+
+  test("upsert without reflection preserves the one stored by an earlier post", async () => {
+    const { workspace, feature } = testData;
+    const reflection = {
+      session_id: "sess-keep",
+      concepts: [{ ref_id: "c1", name: "Kept concept", read_order: 1, rank: null }],
+    };
+    const base = {
+      agent: "plan-agent-keep-reflection",
+      workspace_id: workspace.id,
+      feature_id: feature.id,
+      messages: [{ role: "user", content: "Hello" }],
+    };
+
+    await POST(buildRequest({ ...base, reflection }));
+    // Same agent + feature → update path, no reflection in body
+    await POST(buildRequest(base));
+
+    const agentLog = await db.agentLog.findFirst({
+      where: { agent: "plan-agent-keep-reflection", workspaceId: workspace.id },
+      select: { reflection: true },
+    });
+    expect(agentLog?.reflection).toEqual(reflection);
   });
 
   test("POST with legacy { logs } shape → 201, config is null on DB row", async () => {

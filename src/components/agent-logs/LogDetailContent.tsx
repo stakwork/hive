@@ -18,9 +18,8 @@ import type {
   ToolResultContent,
   AgentLogStats,
   AgentRunConfig,
-  SessionReflection,
-  ReflectedConcept,
 } from "@/lib/utils/agent-log-stats";
+import type { SessionReflection, ReflectedConcept } from "@/types/agent-logs";
 import { TurnTokenUsage } from "@/components/agent-logs/TurnTokenUsage";
 
 export interface LogDetailContentProps {
