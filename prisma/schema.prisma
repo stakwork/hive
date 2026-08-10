@@ -1034,6 +1034,25 @@ model Phase {
   @@map("phases")
 }
 
+/// StakworkRun tracks AI workflow executions dispatched to the Stakwork platform.
+///
+/// ARTIFACT OWNERSHIP — two separate report artifacts, do NOT conflate:
+///
+/// 1. "Chat report" — an AI-written narrative produced post-run by the org-canvas agent.
+///    Fields: reportStatus / reportConversationId / reportChatPath (all nested in `result`
+///    JSON via mergeIntoRunResult in src/services/legal-benchmark-report.ts).
+///
+/// 2. "Run report bundle" — a structured JSON bundle produced by the Harvey LAB runner
+///    and uploaded to S3. Fields: reportUrl (canonical bundle-pointer, server-side only),
+///    reportBundle (sanitized projection persisted at ingest), reportBundleHash (SHA-256 of
+///    the raw bundle for re-sanitize integrity), reportPartial (projection truncated due to
+///    size), schemaUnsupported (schema_version not handled by this Hive version),
+///    reportUrlRejectionReason (why a supplied report_url was rejected — never the URL).
+///
+/// reportUrl and webhookUrl are globally omitted from Prisma reads (src/lib/db.ts) and
+/// must be accessed via an explicit select. webhookUrl embeds a raw HMAC run_token in its
+/// query string; leaking it to clients collapses the run_token gate. See follow-up ticket
+/// for moving the token to a dedicated hashed column.
 model StakworkRun {
   id          String               @id @default(cuid())
   webhookUrl  String               @map("webhook_url")
@@ -1053,6 +1072,26 @@ model StakworkRun {
   promptVersionId String?              @map("prompt_version_id")
   evalSetId       String?              @map("eval_set_id")
   userId          String?              @map("user_id")
+
+  // ── Run report bundle fields (see ARTIFACT OWNERSHIP note above) ──────────
+  /// S3 URL of the raw report bundle. Server-side only — globally omitted from
+  /// Prisma reads. Never forwarded to clients. Captured at webhook ingest under
+  /// run_token + S3-allowlist gate.
+  reportUrl             String?  @map("report_url")
+  /// Sanitized, redacted projection of the bundle stored at ingest while the
+  /// presigned URL is still valid. The view path reads only this field.
+  reportBundle          Json?    @map("report_bundle")
+  /// SHA-256 hex digest of the raw bundle bytes, for future re-sanitize passes.
+  reportBundleHash      String?  @map("report_bundle_hash")
+  /// True when the projection was truncated (source_docs html bodies dropped)
+  /// because the serialized projection exceeded the size cap.
+  reportPartial         Boolean  @default(false) @map("report_partial")
+  /// True when the bundle's schema_version is not supported by this Hive version.
+  schemaUnsupported     Boolean  @default(false) @map("schema_unsupported")
+  /// Opaque reason code recorded when a supplied report_url failed validation
+  /// (never the URL itself, never the S3 host, never a query string).
+  reportUrlRejectionReason String? @map("report_url_rejection_reason")
+
   agentLogs       AgentLog[]
   feature         Feature?             @relation(fields: [featureId], references: [id])
   task            Task?                @relation(fields: [taskId], references: [id])

@@ -1983,19 +1983,35 @@ export async function getStakworkRuns(
       feedback: true,
       createdAt: true,
       updatedAt: true,
-      webhookUrl: true,
+      // webhookUrl is globally omitted — never forwarded to clients
       taskId: true,
       autoAccept: true,
       promptVersionId: true,
       evalSetId: true,
       userId: true,
+      // Report bundle presence flags (not the URL — that stays server-side)
+      reportBundle: true,
+      reportPartial: true,
+      schemaUnsupported: true,
       ...(query.includeResult ? { result: true } : {}),
       feature: { select: { id: true, title: true } },
     },
   });
 
+  // Derive hasReport from the presence of the persisted projection,
+  // never by selecting and forwarding the URL column.
+  const mappedRuns = runs.map((run) => {
+    const { reportBundle, reportPartial, schemaUnsupported, ...rest } = run;
+    return {
+      ...rest,
+      hasReport: reportBundle !== null,
+      reportPartial: reportPartial ?? false,
+      schemaUnsupported: schemaUnsupported ?? false,
+    };
+  });
+
   return {
-    runs,
+    runs: mappedRuns,
     total,
     limit: query.limit,
     offset: query.offset,
