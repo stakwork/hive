@@ -34,6 +34,7 @@ import { parseOwnerRepo } from "@/lib/ai/utils";
 import {
   PROPOSE_NEW_CONCEPT_TOOL,
   PROPOSE_CONCEPT_UPDATE_TOOL,
+  type ConceptSourceAttachment,
 } from "@/lib/proposals/types";
 
 /** Read-only tool: fetch a single concept's current documentation body. */
@@ -217,6 +218,35 @@ export function buildConceptTools(orgId: string, userId: string): ToolSet {
           .string()
           .optional()
           .describe("Why this concept is being created — shown on the card."),
+        source: z
+          .object({
+            nodeRefId: z
+              .string()
+              .min(1)
+              .describe(
+                "ref_id of the Person or Organization node — obtain via " +
+                  "graph_search first, never fabricate.",
+              ),
+            nodeType: z.enum(["Person", "Organization"]),
+            authorityLevel: z
+              .enum(["owner", "expert", "contributor"])
+              .optional(),
+            context: z
+              .string()
+              .max(1000)
+              .optional()
+              .describe(
+                "Brief note on why this source is authoritative for this concept.",
+              ),
+            displayName: z
+              .string()
+              .optional()
+              .describe(
+                "Human-readable name from graph_search title — for card " +
+                  "rendering only, never forwarded to swarm.",
+              ),
+          })
+          .optional(),
       }),
       execute: async ({
         workspaceSlug,
@@ -226,6 +256,7 @@ export function buildConceptTools(orgId: string, userId: string): ToolSet {
         repo,
         parent,
         rationale,
+        source,
       }: {
         workspaceSlug: string;
         name: string;
@@ -234,6 +265,7 @@ export function buildConceptTools(orgId: string, userId: string): ToolSet {
         repo?: string;
         parent?: string;
         rationale?: string;
+        source?: ConceptSourceAttachment;
       }) => {
         try {
           const workspace = await resolveWorkspace(orgId, workspaceSlug);
@@ -279,11 +311,18 @@ export function buildConceptTools(orgId: string, userId: string): ToolSet {
               ...(description && { description }),
               ...(resolvedRepo && { repo: resolvedRepo }),
               ...(parent?.trim() && { parent: parent.trim() }),
+              ...(source && { source }),
             },
             meta: {
               workspaceName: workspace.name,
               workspaceSlug: workspace.slug,
               ...(resolvedRepo && { repo: resolvedRepo }),
+              ...(source && {
+                source: {
+                  displayName: source.displayName,
+                  authorityLevel: source.authorityLevel,
+                },
+              }),
             },
             ...(rationale && { rationale }),
           };
