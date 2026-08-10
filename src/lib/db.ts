@@ -1,6 +1,6 @@
 import { PrismaClient } from "@prisma/client";
 
-// Instantiate the clients first so we can use `typeof` for the global cache type.
+// Instantiate with omit config first so we can derive its type via `typeof`.
 const dbInstance = new PrismaClient({
   // log: ["query"],
   log: ["info", "warn", "error"],
@@ -25,7 +25,8 @@ const globalForPrisma = globalThis as unknown as {
   prismaAdapter: PrismaClient | undefined;
 };
 
-export const db: typeof dbInstance = globalForPrisma.prisma ?? dbInstance;
+export const db: typeof dbInstance =
+  globalForPrisma.prisma ?? dbInstance;
 
 export const dbAdapter: PrismaClient =
   globalForPrisma.prismaAdapter ?? dbAdapterInstance;
