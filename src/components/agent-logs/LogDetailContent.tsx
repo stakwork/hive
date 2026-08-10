@@ -729,10 +729,23 @@ export function RunConfigPanel({ config }: { config: AgentRunConfig }) {
 // ConceptsPanel — gitree Concepts the session read, from the reflection sidecar
 // ---------------------------------------------------------------------------
 
-function ConceptChip({ concept }: { concept: ReflectedConcept }) {
+function ConceptChip({
+  concept,
+  workspaceSlug,
+}: {
+  concept: ReflectedConcept;
+  workspaceSlug?: string;
+}) {
   const name = concept.name || concept.ref_id || concept.id || "";
   const isRanked = typeof concept.rank === "number";
   const hasContradiction = !!concept.contradicts;
+
+  // Deep link to the Learn page, which double-decodes its `concept` param
+  // (searchParams.get + decodeURIComponent), hence the double encode here.
+  const href =
+    workspaceSlug && concept.id
+      ? `/w/${workspaceSlug}/learn?concept=${encodeURIComponent(encodeURIComponent(concept.id))}`
+      : null;
 
   const detailLines: string[] = [];
   if (concept.repo) detailLines.push(concept.repo);
@@ -740,7 +753,7 @@ function ConceptChip({ concept }: { concept: ReflectedConcept }) {
   if (isRanked) detailLines.push(`Ranked #${concept.rank}`);
   const hasTooltip = detailLines.length > 0 || !!concept.evidence || hasContradiction;
 
-  const chip = (
+  const badge = (
     <Badge
       variant={isRanked ? "default" : "outline"}
       className={cn(
@@ -748,6 +761,10 @@ function ConceptChip({ concept }: { concept: ReflectedConcept }) {
         isRanked
           ? "bg-primary/10 text-primary border border-primary/20 hover:bg-primary/10"
           : "text-muted-foreground",
+        href &&
+          (isRanked
+            ? "cursor-pointer hover:bg-primary/20"
+            : "cursor-pointer hover:bg-muted hover:text-foreground"),
       )}
     >
       {isRanked && <span className="font-semibold">{concept.rank}</span>}
@@ -756,6 +773,14 @@ function ConceptChip({ concept }: { concept: ReflectedConcept }) {
         <AlertTriangle className="w-3 h-3 shrink-0 text-amber-500" />
       )}
     </Badge>
+  );
+
+  const chip = href ? (
+    <a href={href} target="_blank" rel="noopener noreferrer">
+      {badge}
+    </a>
+  ) : (
+    badge
   );
 
   if (!hasTooltip) return chip;
@@ -776,7 +801,13 @@ function ConceptChip({ concept }: { concept: ReflectedConcept }) {
   );
 }
 
-export function ConceptsPanel({ reflection }: { reflection: SessionReflection }) {
+export function ConceptsPanel({
+  reflection,
+  workspaceSlug,
+}: {
+  reflection: SessionReflection;
+  workspaceSlug?: string;
+}) {
   // Skip entries with no displayable identity; hide the panel entirely when
   // nothing remains (including raw-only reflections that didn't parse upstream).
   const concepts = (reflection.concepts ?? []).filter(
@@ -798,7 +829,7 @@ export function ConceptsPanel({ reflection }: { reflection: SessionReflection })
       </div>
       <div className="flex flex-wrap gap-1.5">
         {concepts.map((c, i) => (
-          <ConceptChip key={c.ref_id || c.id || i} concept={c} />
+          <ConceptChip key={c.ref_id || c.id || i} concept={c} workspaceSlug={workspaceSlug} />
         ))}
       </div>
       {reflection.gap && (
@@ -931,7 +962,7 @@ export function LogDetailContent({
       {!loading && !error && hasContent && (
         <>
           {config && <RunConfigPanel config={config} />}
-          {reflection && <ConceptsPanel reflection={reflection} />}
+          {reflection && <ConceptsPanel reflection={reflection} workspaceSlug={workspaceSlug} />}
           {stats && <StatsBar stats={stats} />}
           <ScrollArea
             className={cn(
