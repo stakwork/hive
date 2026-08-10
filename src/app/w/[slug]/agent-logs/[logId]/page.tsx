@@ -136,6 +136,7 @@ export default function AgentLogDetailPage() {
         rawContent={rawContent}
         loading={loading}
         error={error}
+        workspaceSlug={slug}
         onFlagTurn={isEvalCaptureEnabled(slug) ? (i) => { setCaptureTurnIndex(i); setCaptureOpen(true); } : undefined}
       />
 
