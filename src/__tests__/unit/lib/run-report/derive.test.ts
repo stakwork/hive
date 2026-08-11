@@ -60,9 +60,9 @@ describe("groupRubrics / isPassVerdict", () => {
     expect(isPassVerdict(undefined)).toBe(false);
   });
 
-  it("groups summaries into rubric rows", () => {
+  it("groups page_data rubrics into rubric rows", () => {
     const rows = groupRubrics({
-      summaries: [
+      rubrics: [
         { id: "R1", title: "One", verdict: "pass", reasoning: "ok" },
         { id: "R2", title: "Two", verdict: "fail", reasoning: "no", cause_type: "retrieval_miss" },
       ],
@@ -72,8 +72,8 @@ describe("groupRubrics / isPassVerdict", () => {
     expect(rows[1].causeType).toBe("retrieval_miss");
   });
 
-  it("skips entries with no id and tolerates a missing analysis", () => {
-    expect(groupRubrics({ summaries: [{ title: "no id" }] })).toHaveLength(0);
+  it("skips entries with no id and tolerates missing or empty page_data", () => {
+    expect(groupRubrics({ rubrics: [{ title: "no id" }] })).toHaveLength(0);
     expect(groupRubrics(undefined)).toHaveLength(0);
     expect(groupRubrics({})).toHaveLength(0);
   });
