@@ -7,10 +7,12 @@ import {
   aggregateFixes,
   buildTimeline,
   buildGantt,
+  readTraces,
+  readSummaries,
   isRecord,
   asString,
 } from "@/lib/run-report/derive";
-import type { RunReportProjection, RubricRow } from "@/lib/run-report/types";
+import type { RunReportProjection, RubricRow, TraceRow, AgentSummary } from "@/lib/run-report/types";
 import { formatInUserTz } from "@/lib/date-utils";
 import {
   Section,
@@ -310,44 +312,234 @@ function docTitle(projection: RunReportProjection, docId: string): string {
 
 // ── 5. Agent roster ──────────────────────────────────────────────────────────
 
+/** Map a trace Q/A pair to a readable label. */
+const Q_LABELS: Record<string, string> = {
+  q_ingested_to_graph: "Ingested to graph?",
+  q_knowable_or_derived: "Knowable or derived?",
+  q_draft_got_it: "Draft captured it?",
+  q_verify_got_it: "Verify confirmed it?",
+};
+
+function TraceCard({
+  trace,
+  index,
+  rubricTitle,
+}: {
+  trace: TraceRow;
+  index: number;
+  rubricTitle?: string;
+}) {
+  return (
+    <Panel className="mt-4">
+      <div className="flex flex-wrap items-baseline gap-3">
+        <span className="font-mono text-[11px] text-muted-foreground/70">{trace.rubric_id}</span>
+        <h3 className="text-[17px] font-semibold flex-1">
+          {rubricTitle ?? `Trace ${index + 1}`}
+        </h3>
+        {trace.classification && (
+          <StatusBadge kind="muted">{trace.classification}</StatusBadge>
+        )}
+      </div>
+
+      {trace.root_cause && (
+        <p className="text-[13px] text-muted-foreground mt-2 whitespace-pre-wrap">
+          {trace.root_cause}
+        </p>
+      )}
+
+      {trace.pathway.length > 0 && (
+        <>
+          <MiniHeading>Pathway ({trace.pathway.length} stations)</MiniHeading>
+          <ul className="space-y-1">
+            {trace.pathway.map((station, si) => (
+              <li
+                key={si}
+                className="flex items-start gap-2 text-[12.5px] rounded px-2 py-1 bg-muted/30"
+              >
+                <StatusBadge
+                  kind={
+                    /pass|ok|found/i.test(String(station.status))
+                      ? "pass"
+                      : /fail|miss|no/i.test(String(station.status))
+                        ? "fail"
+                        : "muted"
+                  }
+                >
+                  {String(station.status)}
+                </StatusBadge>
+                <span className="font-mono text-[11px] text-muted-foreground/70 shrink-0">
+                  {String(station.station)}
+                </span>
+                {station.evidence != null && (
+                  <span className="text-muted-foreground break-words flex-1">
+                    {typeof station.evidence === "string"
+                      ? station.evidence
+                      : JSON.stringify(station.evidence)}
+                  </span>
+                )}
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+
+      {(["q_ingested_to_graph", "q_knowable_or_derived", "q_draft_got_it", "q_verify_got_it"] as const).map(
+        (key) => {
+          const qa = trace[key];
+          if (!qa) return null;
+          return (
+            <React.Fragment key={key}>
+              <MiniHeading>{Q_LABELS[key]}</MiniHeading>
+              <div className="text-[13px] space-y-0.5">
+                <div className="flex items-center gap-2">
+                  <StatusBadge kind={/yes|pass|true/i.test(qa.answer) ? "pass" : "fail"}>
+                    {qa.answer}
+                  </StatusBadge>
+                </div>
+                {qa.evidence && (
+                  <p className="text-muted-foreground whitespace-pre-wrap pl-0.5">
+                    {qa.evidence}
+                  </p>
+                )}
+              </div>
+            </React.Fragment>
+          );
+        },
+      )}
+
+      {trace.fix_suggestions.length > 0 && (
+        <>
+          <MiniHeading>Fix suggestions</MiniHeading>
+          <ul className="list-disc pl-5 space-y-1">
+            {trace.fix_suggestions.map((s, si) => (
+              <li key={si} className="text-[13px] text-muted-foreground">
+                {s}
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+    </Panel>
+  );
+}
+
+function AgentSummaryCard({
+  summary,
+  index,
+}: {
+  summary: AgentSummary;
+  index: number;
+}) {
+  return (
+    <Panel className="mt-4">
+      <div className="flex flex-wrap items-baseline gap-3">
+        <h3 className="text-[17px] font-semibold">{summary.agent_name}</h3>
+        {summary.mission && (
+          <span className="text-[13px] text-muted-foreground truncate max-w-[40ch]">
+            {summary.mission}
+          </span>
+        )}
+      </div>
+
+      {summary.context_gathered && (
+        <p className="text-[13px] text-muted-foreground mt-2 whitespace-pre-wrap">
+          {summary.context_gathered}
+        </p>
+      )}
+
+      {summary.key_findings.length > 0 && (
+        <>
+          <MiniHeading>Key findings</MiniHeading>
+          <ul className="list-disc pl-5 space-y-1">
+            {summary.key_findings.map((f, fi) => (
+              <li key={fi} className="text-[13px] text-muted-foreground">
+                {f}
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+
+      {summary.anomalies.length > 0 && (
+        <>
+          <MiniHeading>Anomalies</MiniHeading>
+          <ul className="list-disc pl-5 space-y-1">
+            {summary.anomalies.map((a, ai) => (
+              <li key={ai} className="text-[13px] text-muted-foreground">
+                {a}
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+
+      {summary.tools.length > 0 && (
+        <Fold summary={`Tools used (${summary.tools.length})`}>
+          <ul className="space-y-1">
+            {summary.tools.map((tool, ti) => (
+              <li key={ti} className="flex items-baseline gap-2 text-[12.5px]">
+                <span className="font-mono text-[11px] text-muted-foreground/70 min-w-[80px]">
+                  {tool.name}
+                </span>
+                <span className="text-muted-foreground/60 tabular-nums">×{tool.count}</span>
+                {tool.purpose && (
+                  <span className="text-muted-foreground">{tool.purpose}</span>
+                )}
+              </li>
+            ))}
+          </ul>
+        </Fold>
+      )}
+
+      {summary.failed_rubric_relevance.length > 0 && (
+        <Fold summary={`Rubric relevance notes (${summary.failed_rubric_relevance.length})`}>
+          <ul className="space-y-1">
+            {summary.failed_rubric_relevance.map((r, ri) => (
+              <li key={ri} className="flex items-baseline gap-2 text-[12.5px]">
+                <span className="font-mono text-[11px] text-muted-foreground/70">{r.rubric_id}</span>
+                <span className="text-muted-foreground">{r.note}</span>
+              </li>
+            ))}
+          </ul>
+        </Fold>
+      )}
+    </Panel>
+  );
+}
+
 export function TracesSection({ projection }: { projection: RunReportProjection }) {
-  const traces = projection.analysis.traces;
+  const traces = readTraces(projection.analysis);
+  const summaries = readSummaries(projection.analysis);
+
+  // Build a quick rubric-id → title map for joining traces to rubric labels.
+  const rubricTitleById = new Map(projection.rubricRows.map((r) => [r.id, r.title]));
 
   return (
-    <Section
-      id="agents"
-      kicker="send_agent_logs"
-      title="Agent roster"
-      data-testid="run-report-section-agents"
-    >
+    <Section id="agents" kicker="send_agent_logs" title="Agent roster" data-testid="run-report-section-agents">
+      {/* ── Failure traces ──────────────────────────────────────────────── */}
+      <MiniHeading>Failure traces ({traces.length})</MiniHeading>
       {/* An empty traces array is the deterministic-only run — a LEGITIMATE
           empty state that must never route to the error state. */}
       {traces.length === 0 ? (
         <EmptyPanel label="No agent traces for this run." />
       ) : (
-        traces.filter(isRecord).map((trace, i) => (
-          <Panel key={i} className="mt-4">
-            <div className="flex flex-wrap items-baseline gap-3">
-              <h3 className="text-[19px] font-semibold">
-                {asString(trace.rubric_id) ?? `Trace ${i + 1}`}
-              </h3>
-              {asString(trace.classification) && (
-                <span className="font-mono text-[11px] text-muted-foreground/70">
-                  {asString(trace.classification)}
-                </span>
-              )}
-            </div>
-            {asString(trace.root_cause) && (
-              <p className="text-[13px] text-muted-foreground mt-2 whitespace-pre-wrap">
-                {asString(trace.root_cause)}
-              </p>
-            )}
-            <Fold summary="Trace details" monospace>
-              <pre className="text-[11.5px] whitespace-pre-wrap break-all font-mono text-muted-foreground">
-                {stringify(trace)}
-              </pre>
-            </Fold>
-          </Panel>
+        traces.map((trace, i) => (
+          <TraceCard
+            key={trace.rubric_id}
+            trace={trace}
+            index={i}
+            rubricTitle={rubricTitleById.get(trace.rubric_id)}
+          />
+        ))
+      )}
+
+      {/* ── Agent summaries ─────────────────────────────────────────────── */}
+      <MiniHeading className="mt-8">Agent summaries ({summaries.length})</MiniHeading>
+      {summaries.length === 0 ? (
+        <EmptyPanel label="No agent summaries for this run." />
+      ) : (
+        summaries.map((summary, i) => (
+          <AgentSummaryCard key={summary.agent_name} summary={summary} index={i} />
         ))
       )}
     </Section>

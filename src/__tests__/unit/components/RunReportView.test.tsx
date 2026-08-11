@@ -2,6 +2,7 @@ import React from "react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen } from "@testing-library/react";
 import { RunReportView } from "@/components/run-report/RunReportView";
+import { SectionErrorBoundary, EmptyPanel } from "@/components/run-report/chrome";
 import { projectBundle } from "@/lib/run-report/project";
 import { RUN_REPORT_FIXTURES } from "@/app/api/mock/run-report/fixtures";
 import type { RunReportPayload, RunReportProjection } from "@/lib/run-report/types";
@@ -56,8 +57,9 @@ describe("RunReportView — render states", () => {
     expect(railLinks).toContain("#system");
   });
 
-  it("renders the rubric heat-strip with one cell per criterion", () => {
+  it("renders the rubric heat-strip with one cell per criterion (≥3 from full fixture)", () => {
     render(<RunReportView payload={payload()} />);
+    // The full fixture has exactly 3 rubrics with mixed verdicts.
     expect(screen.getAllByTestId("run-report-rubric-cell")).toHaveLength(3);
   });
 
@@ -66,14 +68,15 @@ describe("RunReportView — render states", () => {
     expect(screen.getByTestId("run-report-state-absent")).toBeInTheDocument();
   });
 
-  it("shows the absent state when projection is null (gate removed — bumped schema now renders normally)", () => {
-    // The unsupported_schema error type is removed in T2; any schema_version
-    // now projects to "ok". A null projection (e.g. unfetched report) still
-    // routes to the absent/unavailable state.
-    render(
-      <RunReportView payload={payload({ hasReport: false, projection: null })} />,
-    );
-    expect(screen.getByTestId("run-report-state-absent")).toBeInTheDocument();
+  it("bumped schema_version renders normally — schema gate is removed", () => {
+    // The unsupported_schema error type was removed in T2; any schema_version
+    // including 99 now projects to "ok" and renders the full report.
+    render(<RunReportView payload={payload({ projection: projectionFor("bumped-schema") })} />);
+    expect(screen.getByTestId("run-report-view")).toBeInTheDocument();
+    expect(screen.queryByTestId("run-report-state-absent")).toBeNull();
+    // All sections must render, not just the error state.
+    expect(screen.getByTestId("run-report-section-overview")).toBeInTheDocument();
+    expect(screen.getByTestId("run-report-section-agents")).toBeInTheDocument();
   });
 
   it("distinguishes a failed S3 load from a run with no report", () => {
@@ -102,6 +105,50 @@ describe("RunReportView — empty shapes are not errors", () => {
   it("renders an all-pass run with no failures panel content", () => {
     render(<RunReportView payload={payload({ projection: projectionFor("all-pass") })} />);
     expect(screen.getByTestId("run-report-section-failures")).toHaveTextContent(/no failures/i);
+  });
+
+  it("renders strings-only fixture without errors (empty arrays degrade cleanly)", () => {
+    render(<RunReportView payload={payload({ projection: projectionFor("strings-only") })} />);
+    expect(screen.getByTestId("run-report-view")).toBeInTheDocument();
+    // security: [] renders the health section without throwing
+    expect(screen.getByTestId("run-report-section-system")).toBeInTheDocument();
+    // concepts: {} renders as "not run"
+    expect(screen.getByTestId("run-report-section-concepts")).toHaveTextContent(/not run/i);
+  });
+});
+
+/** A component that always throws — used to verify the error boundary catches it. */
+function Bomb(): React.ReactElement {
+  throw new Error("intentional render error");
+}
+
+describe("RunReportView — section error boundary", () => {
+  it("catches a thrown child and renders the fallback panel instead of blanking the page", () => {
+    // Suppress React error boundary console.error output during the test.
+    const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const { container } = render(
+      <div>
+        <SectionErrorBoundary>
+          <Bomb />
+        </SectionErrorBoundary>
+        <div data-testid="sibling-section">Still here</div>
+      </div>,
+    );
+
+    consoleSpy.mockRestore();
+
+    // The boundary renders the fallback instead of the throwing child.
+    expect(container.textContent).toContain("This section couldn't be rendered.");
+    // The sibling section is unaffected — the whole page did not unmount.
+    expect(screen.getByTestId("sibling-section")).toBeInTheDocument();
+    expect(screen.getByTestId("sibling-section")).toHaveTextContent("Still here");
+  });
+
+  it("keeps run-report-section-agents testid alive after the TracesSection renders", () => {
+    // The Agents section keeps its single nav destination and testid — not split.
+    render(<RunReportView payload={payload()} />);
+    expect(screen.getByTestId("run-report-section-agents")).toBeInTheDocument();
   });
 });
 
@@ -133,9 +180,13 @@ describe("RunReportView — no HTML sink reaches the DOM", () => {
     expect(container.querySelector("math")).toBeNull();
   });
 
-  it("never renders the bundle URL", () => {
+  it("never renders the bundle URL or any storage URL variant", () => {
     const { container } = render(<RunReportView payload={payload()} />);
     expect(container.innerHTML).not.toContain("amazonaws.com");
     expect(container.innerHTML).not.toContain("report_url");
+    expect(container.innerHTML).not.toContain("s3_url");
+    expect(container.innerHTML).not.toContain("signed_url");
+    expect(container.innerHTML).not.toContain("presigned_url");
+    expect(container.innerHTML).not.toContain("download_url");
   });
 });
