@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import { X, Upload, Loader2 } from "lucide-react";
+import { useFileDrop } from "@/hooks/useFileDrop";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
@@ -39,7 +40,6 @@ export function BugReportSlideout({
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [isDragging, setIsDragging] = useState(false);
 
   const { workspace, slug } = useWorkspace();
   const router = useRouter();
@@ -97,65 +97,37 @@ export function BugReportSlideout({
     setIsSubmitting(false);
   };
 
-  // Drag-and-drop handlers
-  const handleDragEnter = (e: React.DragEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setIsDragging(true);
-  };
+  // Drag-and-drop via shared hook
+  const { isDragging, dragProps } = useFileDrop<HTMLDivElement>({
+    onDrop: (files) => {
+      const imageFiles = Array.from(files).filter((file) =>
+        ALLOWED_IMAGE_TYPES.includes(file.type)
+      );
 
-  const handleDragLeave = (e: React.DragEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    e.stopPropagation();
-    // Only set dragging to false if we're leaving the container itself
-    if (e.currentTarget === e.target) {
-      setIsDragging(false);
-    }
-  };
+      if (imageFiles.length === 0) {
+        toast.error("Please drop an image file (JPEG, PNG, GIF, or WebP)");
+        return;
+      }
 
-  const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    e.stopPropagation();
-  };
+      if (imageFiles.length > 1) {
+        toast.error("Please drop only one image at a time");
+      }
 
-  const handleImageDrop = (e: React.DragEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setIsDragging(false);
+      const file = imageFiles[0];
+      const error = validateFile(file);
+      if (error) {
+        toast.error(error);
+        return;
+      }
 
-    const files = e.dataTransfer.files;
-    if (files.length === 0) return;
+      if (previewUrl) {
+        URL.revokeObjectURL(previewUrl);
+      }
 
-    // Filter to only image files
-    const imageFiles = Array.from(files).filter((file) =>
-      ALLOWED_IMAGE_TYPES.includes(file.type)
-    );
-
-    if (imageFiles.length === 0) {
-      toast.error("Please drop an image file (JPEG, PNG, GIF, or WebP)");
-      return;
-    }
-
-    if (imageFiles.length > 1) {
-      toast.error("Please drop only one image at a time");
-    }
-
-    // Use the first image file
-    const file = imageFiles[0];
-    const error = validateFile(file);
-    if (error) {
-      toast.error(error);
-      return;
-    }
-
-    // Clean up previous preview URL
-    if (previewUrl) {
-      URL.revokeObjectURL(previewUrl);
-    }
-
-    setSelectedFile(file);
-    setPreviewUrl(URL.createObjectURL(file));
-  };
+      setSelectedFile(file);
+      setPreviewUrl(URL.createObjectURL(file));
+    },
+  });
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -307,10 +279,7 @@ export function BugReportSlideout({
               {!selectedFile ? (
                 <div
                   className="relative"
-                  onDragEnter={handleDragEnter}
-                  onDragLeave={handleDragLeave}
-                  onDragOver={handleDragOver}
-                  onDrop={handleImageDrop}
+                  {...dragProps}
                   data-testid="bug-screenshot-dropzone"
                 >
                   <input

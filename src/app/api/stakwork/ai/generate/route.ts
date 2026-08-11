@@ -44,7 +44,9 @@ export async function POST(request: NextRequest) {
           status: run.status,
           workspaceId: run.workspaceId,
           featureId: run.featureId,
-          webhookUrl: run.webhookUrl,
+          // webhookUrl is deliberately NOT returned: it embeds the raw
+          // run_token HMAC in its query string. It is also hidden by the
+          // global Prisma omit in src/lib/db.ts.
           projectId: run.projectId,
           createdAt: run.createdAt,
         },
