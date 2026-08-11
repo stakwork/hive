@@ -66,11 +66,14 @@ describe("RunReportView — render states", () => {
     expect(screen.getByTestId("run-report-state-absent")).toBeInTheDocument();
   });
 
-  it("shows the unsupported state for a schema version gate rejection", () => {
+  it("shows the absent state when projection is null (gate removed — bumped schema now renders normally)", () => {
+    // The unsupported_schema error type is removed in T2; any schema_version
+    // now projects to "ok". A null projection (e.g. unfetched report) still
+    // routes to the absent/unavailable state.
     render(
-      <RunReportView payload={payload({ error: "unsupported_schema", projection: null })} />,
+      <RunReportView payload={payload({ hasReport: false, projection: null })} />,
     );
-    expect(screen.getByTestId("run-report-state-unsupported")).toBeInTheDocument();
+    expect(screen.getByTestId("run-report-state-absent")).toBeInTheDocument();
   });
 
   it("distinguishes a failed S3 load from a run with no report", () => {
