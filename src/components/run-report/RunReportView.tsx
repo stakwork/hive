@@ -1,9 +1,8 @@
 "use client";
 
-import React, { useMemo, useState } from "react";
+import React, { useState } from "react";
 import { AlertCircle, Info } from "lucide-react";
 import { useUserTimezone } from "@/hooks/useUserTimezone";
-import { groupRubrics } from "@/lib/run-report/derive";
 import type { RunReportPayload } from "@/lib/run-report/types";
 import { DocumentViewerModal } from "./DocumentViewerModal";
 import {
@@ -72,22 +71,8 @@ export function RunReportView({ payload, taskTitle = "Run report" }: Props) {
   const [openDoc, setOpenDoc] = useState<{ docId: string; tokens: string[] } | null>(null);
 
   const projection = payload.projection;
-  const rubricRows = useMemo(
-    () => (projection ? groupRubrics({ summaries: projection.analysis.summaries }) : []),
-    [projection],
-  );
-
-  // ── Schema version this build's projector cannot read ─────────────────────
-  if (payload.error === "unsupported_schema") {
-    return (
-      <StateNotice
-        icon={<AlertCircle className="h-5 w-5" />}
-        title="Report format not supported"
-        body="This report was produced in a bundle format that this version of Hive doesn't understand yet. Upgrading Hive should make it readable."
-        testId="run-report-state-unsupported"
-      />
-    );
-  }
+  // rubricRows is derived server-side (single source) — read from projection.
+  const rubricRows = projection?.rubricRows ?? [];
 
   // ── Report exists but could not be loaded from S3 ─────────────────────────
   if (payload.error === "unavailable") {
