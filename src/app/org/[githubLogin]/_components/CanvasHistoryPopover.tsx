@@ -18,7 +18,7 @@ interface CanvasHistoryPopoverProps {
   githubLogin: string;
 }
 
-function formatRelativeTime(dateStr: string | null): string {
+export function formatRelativeTime(dateStr: string | null): string {
   if (!dateStr) return "";
   const date = new Date(dateStr);
   const now = new Date();
