@@ -3,10 +3,11 @@
  *
  * Returns the persisted, sanitized run report bundle projection.
  *
- * The view path performs NO OUTBOUND FETCH. The bundle was fetched, sanitized,
- * redacted and projected once at webhook ingest; this route only authorizes and
- * serializes what is already in the database. That is what makes viewing
- * independent of the S3 object's continued existence.
+ * The view path performs an OUTBOUND FETCH to S3 on every request. The bundle
+ * JSON is never copied into the database — only the URL is stored. `loadRunReport`
+ * calls `fetchReportBundle` synchronously on each view, which means
+ * `validateReportUrl` is a live, load-bearing SSRF control on every request.
+ * Do not remove or weaken the URL guard in fetch-bundle.ts or url-guard.ts.
  *
  * `reportUrl` is never returned. It is additionally unreachable by default via
  * the global Prisma omit in src/lib/db.ts, so it cannot be leaked by accident
@@ -32,6 +33,29 @@ import { loadRunReport } from "@/lib/run-report/load";
 type RouteParams = {
   params: Promise<{ slug: string; runId: string }>;
 };
+
+// ── In-process fallback rate limiter ──────────────────────────────────────
+//
+// Applied ONLY when the primary Redis limiter errors. Lossy across instances
+// but provides a reasonable per-user bound during a limiter outage so a
+// Redis failure cannot fan out to unbounded S3 fetches (MAX_BUNDLE_BYTES = 25 MB).
+
+const FALLBACK_WINDOW_MS = 60_000;
+const FALLBACK_LIMIT = 10;
+
+const fallbackCounters = new Map<string, { count: number; resetAt: number }>();
+
+function checkFallbackLimit(userId: string): boolean {
+  const now = Date.now();
+  const entry = fallbackCounters.get(userId);
+  if (!entry || now >= entry.resetAt) {
+    fallbackCounters.set(userId, { count: 1, resetAt: now + FALLBACK_WINDOW_MS });
+    return true;
+  }
+  if (entry.count >= FALLBACK_LIMIT) return false;
+  entry.count += 1;
+  return true;
+}
 
 const LOG_SERVICE = "run-report/route";
 
@@ -74,16 +98,22 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     // getClientIp derives identity from the client-controlled x-forwarded-for
     // header, so an IP-keyed limit is trivially spoofed.
     //
-    // Fails OPEN on a Redis error: `redis.incr` is unguarded and the client is
-    // constructed eagerly from `process.env.REDIS_URL!`, so an unavailable
-    // Redis would otherwise 500 a read-only view path.
+    // Primary limiter (Redis): fails open on error so a Redis outage doesn't
+    // 500 a read-only view. But "fail open" here means an unbounded outbound
+    // S3 fetch on every call — so fall back to an in-process per-user counter
+    // when Redis is unavailable. The in-process counter is lossy across
+    // instances but provides a reasonable bound during a limiter outage.
+    const fallbackAllowed = checkFallbackLimit(userOrResponse.id);
+    if (!fallbackAllowed) {
+      return json({ error: "Too many requests" }, 429);
+    }
     try {
       const limit = await checkRateLimit(`run-report:${userOrResponse.id}:${runId}`, 60, 60);
       if (!limit.allowed) {
         return json({ error: "Too many requests", retryAfter: limit.retryAfter }, 429);
       }
     } catch (rateLimitError) {
-      logger.warn("[run-report] Rate limit unavailable — failing open", LOG_SERVICE, {
+      logger.warn("[run-report] Rate limit unavailable — using fallback", LOG_SERVICE, {
         runId,
         error: String(rateLimitError),
       });
