@@ -105,9 +105,17 @@ export function StatusBadge({
 }
 
 /** Small mono section label used inside panels — the viewer's `.mini-h`. */
-export function MiniHeading({ children }: { children: ReactNode }) {
+export function MiniHeading({
+  children,
+  className = "",
+}: {
+  children: ReactNode;
+  className?: string;
+}) {
   return (
-    <div className="font-mono text-[9.5px] uppercase tracking-[0.14em] text-muted-foreground/70 mt-3 mb-1.5">
+    <div
+      className={`font-mono text-[9.5px] uppercase tracking-[0.14em] text-muted-foreground/70 mt-3 mb-1.5 ${className}`}
+    >
       {children}
     </div>
   );
@@ -139,6 +147,43 @@ export function stringify(value: unknown): string {
     return JSON.stringify(value);
   } catch {
     return "[unserializable]";
+  }
+}
+
+// ── Section error boundary ────────────────────────────────────────────────────
+
+interface SectionErrorBoundaryState {
+  caught: boolean;
+}
+
+/**
+ * Catches render errors inside a single report section and renders
+ * `<EmptyPanel>` instead of unmounting the whole page. One bad section
+ * degrades independently — the rest of the report stays alive.
+ */
+export class SectionErrorBoundary extends React.Component<
+  { children: React.ReactNode },
+  SectionErrorBoundaryState
+> {
+  constructor(props: { children: React.ReactNode }) {
+    super(props);
+    this.state = { caught: false };
+  }
+
+  static getDerivedStateFromError(): SectionErrorBoundaryState {
+    return { caught: true };
+  }
+
+  override render() {
+    if (this.state.caught) {
+      return (
+        <EmptyPanel
+          label="This section couldn't be rendered."
+          data-testid="run-report-section-error"
+        />
+      );
+    }
+    return this.props.children;
   }
 }
 
