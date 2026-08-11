@@ -48,6 +48,16 @@ const SENSITIVE_KEYS = new Set([
   'providerAccountId',
   'lightningpubkey',
   'lightning_pubkey',
+  // Run report bundle URL: a public, unsigned, non-expiring S3 pointer to
+  // converted legal source documents. Log `{ host, pathHash }` via
+  // src/lib/run-report/safe-url-log.ts instead — never the URL.
+  'report_url',
+  'reporturl',
+  // Embeds the raw run_token HMAC in its query string.
+  'webhook_url',
+  'webhookurl',
+  'run_token',
+  'runtoken',
 ]);
 
 // Email pattern for partial masking

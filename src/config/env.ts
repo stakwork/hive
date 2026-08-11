@@ -98,6 +98,12 @@ export const optionalEnvVars = {
   USE_MOCKS,
   MOCK_BASE,
   REDIS_URL: process.env.REDIS_URL,
+  // Optional comma-separated hostname allowlist for run report bundle URLs.
+  // NARROWS/EXTENDS the built-in `*.s3.<region>.amazonaws.com` regex default in
+  // src/lib/run-report/url-guard.ts — it deliberately does NOT fail closed when
+  // unset, because an env var that must be populated everywhere before anything
+  // renders would ship the feature dark and present as a rendering bug.
+  RUN_REPORT_ALLOWED_HOSTS: process.env.RUN_REPORT_ALLOWED_HOSTS || "",
   ONBOARDING_FORK_REPOS: process.env.ONBOARDING_FORK_REPOS || "",
   LIGHTNING_NODE_URL: USE_MOCKS
     ? `${MOCK_BASE}/api/mock/lnd`

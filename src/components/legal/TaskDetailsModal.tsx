@@ -38,7 +38,7 @@ export interface TaskDetailsModalProps {
   onOpenChange: (open: boolean) => void;
   task: HarveyTask;
   slug: string;
-  onRunTask: (options: { generateReport: boolean }) => void;
+  onRunTask: (options: { generateJamieChat: boolean; generateRunReport: boolean }) => void;
 }
 
 // ─── Loading skeleton ─────────────────────────────────────────────────────────
@@ -87,7 +87,10 @@ export function TaskDetailsModal({
   const [error, setError] = useState<string | null>(null);
   const [sizeData, setSizeData] = useState<FileSizeData | null>(null);
   const [sizeLoading, setSizeLoading] = useState(true);
-  const [generateReport, setGenerateReport] = useState(false);
+  // The Jamie chat (org-canvas conversation), NOT the run report bundle.
+  const [generateJamieChat, setGenerateJamieChat] = useState(false);
+  // The run report bundle, NOT the Jamie chat.
+  const [generateRunReport, setGenerateRunReport] = useState(false);
 
   useEffect(() => {
     if (!open || !task?.slug) {
@@ -234,19 +237,39 @@ export function TaskDetailsModal({
                   ) : (
                     <p className="text-sm text-muted-foreground italic">No instructions available.</p>
                   )}
-                  <div className="flex items-center gap-2 mt-3">
-                    <Checkbox
-                      id="generate-report"
-                      checked={generateReport}
-                      onCheckedChange={(checked) => setGenerateReport(checked === true)}
-                      data-testid="generate-report-checkbox"
-                    />
-                    <label
-                      htmlFor="generate-report"
-                      className="text-sm font-medium cursor-pointer select-none"
-                    >
-                      Generate Report
-                    </label>
+                  {/* Two independent artifacts, two independent opt-ins.
+                      Jamie Chat  → org-canvas conversation written after the run.
+                      Generate Report → `generate_report` set_var to the Harvey
+                                        runner, which returns a report_url. */}
+                  <div className="mt-3 space-y-2">
+                    <div className="flex items-center gap-2">
+                      <Checkbox
+                        id="jamie-chat"
+                        checked={generateJamieChat}
+                        onCheckedChange={(checked) => setGenerateJamieChat(checked === true)}
+                        data-testid="jamie-chat-checkbox"
+                      />
+                      <label
+                        htmlFor="jamie-chat"
+                        className="text-sm font-medium cursor-pointer select-none"
+                      >
+                        Jamie Chat
+                      </label>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Checkbox
+                        id="generate-run-report"
+                        checked={generateRunReport}
+                        onCheckedChange={(checked) => setGenerateRunReport(checked === true)}
+                        data-testid="generate-run-report-checkbox"
+                      />
+                      <label
+                        htmlFor="generate-run-report"
+                        className="text-sm font-medium cursor-pointer select-none"
+                      >
+                        Generate Report
+                      </label>
+                    </div>
                   </div>
                 </section>
 
@@ -331,7 +354,7 @@ export function TaskDetailsModal({
           <Button
             onClick={() => {
               onOpenChange(false);
-              onRunTask({ generateReport });
+              onRunTask({ generateJamieChat, generateRunReport });
             }}
           >
             Run Task

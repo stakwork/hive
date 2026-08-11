@@ -32,18 +32,35 @@ export interface BenchmarkRunResult {
    * Same clobber-proof guarantee as requestedModel.
    */
   requestedJudgeModel?: string;
+  // ── Jamie chat ─────────────────────────────────────────────────────────────
+  // The Jamie chat is an org-canvas conversation written by `runCanvasAgent`.
+  // It is a DIFFERENT artifact from the run report bundle (`reportUrl` /
+  // `reportBundle` on the StakworkRun row itself). These fields were once named
+  // `generateReport`/`report*`; `parseBenchmarkRunResult` migrates those legacy
+  // keys on read so rows written before the rename keep working.
   /**
-   * Operator checked "Generate Report" in the task details modal.
+   * Operator checked "Jamie Chat" in the task details modal.
    * Stored at run creation under a clobber-proof key (the runner never
-   * emits it); read by the completion webhook to trigger the report.
+   * emits it); read by the completion webhook to trigger the chat.
    */
-  generateReport?: boolean;
-  /** Report lifecycle marker — also the idempotency guard against duplicate webhooks */
-  reportStatus?: "generating" | "completed" | "failed";
-  /** SharedConversation id of the generated report chat */
-  reportConversationId?: string;
-  /** Relative link to the report chat, e.g. "/org/<githubLogin>?chat=<conversationId>" */
-  reportChatPath?: string;
+  generateJamieChat?: boolean;
+  /** Jamie chat lifecycle marker — also the idempotency guard against duplicate webhooks */
+  jamieChatStatus?: "generating" | "completed" | "failed";
+  /** SharedConversation id of the generated Jamie chat */
+  jamieChatConversationId?: string;
+  /** Relative link to the Jamie chat, e.g. "/org/<githubLogin>?chat=<conversationId>" */
+  jamieChatPath?: string;
+  // ── Run report bundle ──────────────────────────────────────────────────────
+  /**
+   * Operator checked "Generate Report" in the task details modal. Sent to the
+   * Harvey runner as the `generate_report` set_var; the runner then returns a
+   * `report_url` on the completion webhook. Stored under a clobber-proof key
+   * (the runner never emits it) so the webhook merge cannot overwrite it.
+   *
+   * NOTE: the bundle itself is NOT stored here — it lives in the `reportBundle`
+   * column on StakworkRun. Only the operator's request flag is in `result`.
+   */
+  generateRunReport?: boolean;
   // ── Flat score fields from the runner webhook (workflow 57179 inline eval) ──
   /** Raw score (e.g. 72) */
   score?: number;
@@ -239,10 +256,31 @@ export interface EvalRunHistoryEntry {
  * Parse a StakworkRun.result JSON string into BenchmarkRunResult.
  * Returns null if the string is absent or unparseable.
  */
+/**
+ * Legacy Jamie-chat key names, written before the fields were renamed to
+ * distinguish the Jamie chat from the run report bundle. Rows created prior to
+ * the rename still carry these, so they are migrated on read.
+ *
+ * Safe to delete once no PENDING/IN_PROGRESS run predates the rename — the keys
+ * only matter between run creation and the completion webhook.
+ */
+const LEGACY_JAMIE_CHAT_KEYS = [
+  ["generateReport", "generateJamieChat"],
+  ["reportStatus", "jamieChatStatus"],
+  ["reportConversationId", "jamieChatConversationId"],
+  ["reportChatPath", "jamieChatPath"],
+] as const;
+
 export function parseBenchmarkRunResult(result: string | null | undefined): BenchmarkRunResult | null {
   if (!result) return null;
   try {
-    return JSON.parse(result) as BenchmarkRunResult;
+    const parsed = JSON.parse(result) as Record<string, unknown>;
+    for (const [legacyKey, currentKey] of LEGACY_JAMIE_CHAT_KEYS) {
+      if (parsed[currentKey] === undefined && parsed[legacyKey] !== undefined) {
+        parsed[currentKey] = parsed[legacyKey];
+      }
+    }
+    return parsed as unknown as BenchmarkRunResult;
   } catch {
     return null;
   }
