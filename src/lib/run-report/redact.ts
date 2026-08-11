@@ -20,6 +20,8 @@ export const REDACTED_KEYS = new Set([
   // bundle + this feature
   "report_url",
   "reporturl",
+  "scores_s3_url",
+  "scores_s3url",
   "webhook_url",
   "webhookurl",
   "run_token",
@@ -135,9 +137,12 @@ function walk(
 
     const result: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
-      result[k] = REDACTED_KEYS.has(k.toLowerCase())
-        ? REDACTED
-        : walk(v, depth + 1, seen, tokenShapes);
+      if (REDACTED_KEYS.has(k.toLowerCase())) {
+        // Omit the key entirely so neither the key name nor any URL value
+        // can leak into a serialized response.
+        continue;
+      }
+      result[k] = walk(v, depth + 1, seen, tokenShapes);
     }
     return result;
   } finally {

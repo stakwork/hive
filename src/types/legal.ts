@@ -121,6 +121,7 @@ export interface BenchmarkRunRow {
   status: WorkflowStatus;
   projectId: number | null;
   result: BenchmarkRunResult | null;
+  hasReport?: boolean;
   createdAt: string | Date;
   updatedAt: string | Date;
 }
@@ -148,6 +149,7 @@ export interface LegalBenchmarkRun {
   runnerRun: BenchmarkRunRow;
   /** @deprecated — scorer is no longer created; always null for new runs */
   scorerRun: BenchmarkRunRow | null;
+  hasReport?: boolean;
   /** Convenience access to runner output fields (read from runnerRun.result) */
   runnerOutputUrl: string | null;
   runnerOutputText: string | null;

@@ -16,7 +16,7 @@ import {
   isClarifyingQuestions,
 } from "@/types/stakwork";
 import { parseBenchmarkRunResult } from "@/types/legal";
-import { validateReportUrl } from "@/lib/run-report/url-guard";
+import { validateReportUrl, classifyS3HostForm } from "@/lib/run-report/url-guard";
 import { safeUrlParts } from "@/lib/run-report/safe-url-log";
 import { isAllowedS3Url } from "@/lib/run-report/url-guard";
 import { stakworkService } from "@/lib/service-factory";
@@ -1032,11 +1032,13 @@ export async function processStakworkRunWebhook(
       if (guard?.ok) {
         reportUrlToPersist = raw;
       } else if (guard) {
-        // Log the reason code, never the URL. An auxiliary artifact must not
-        // fail an otherwise-successful benchmark run.
+        // Log the reason code and host form, never the URL. The host form uses
+        // a fixed enum so no attacker-controlled string reaches the log stream.
+        // An auxiliary artifact must not fail an otherwise-successful benchmark run.
         logger.error("[run-report] report_url rejected", "stakwork-run", {
           runId: run.id,
           reason: guard.reason,
+          hostForm: classifyS3HostForm(raw),
         });
       }
     }
@@ -2039,6 +2041,10 @@ export async function getStakworkRuns(
     throw new Error("Access denied");
   }
 
+  // Derive the caller's effective role for downstream authorization decisions.
+  // OWNER is not a WorkspaceMember row — they always get the OWNER role.
+  const callerRole: string = isOwner ? "OWNER" : (workspace.members[0]?.role ?? "VIEWER");
+
   // Build where clause
   const where: Prisma.StakworkRunWhereInput = {
     workspaceId: query.workspaceId,
@@ -2089,6 +2095,7 @@ export async function getStakworkRuns(
       ...run,
       hasReport: reportUrl != null,
     })),
+    callerRole,
     total,
     limit: query.limit,
     offset: query.offset,
