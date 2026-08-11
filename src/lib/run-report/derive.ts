@@ -6,9 +6,27 @@
  * DOM. Nothing in this file performs IO or touches the database.
  */
 
-import type { RunReportStats, SanitizedNode } from "./types";
+import type {
+  RunReportStats,
+  SanitizedNode,
+  RubricRow,
+  TimelineStep,
+  TraceRow,
+  AgentSummary,
+  ConceptSynthesis,
+} from "./types";
 
 // ── Timestamps ───────────────────────────────────────────────────────────────
+
+/**
+ * Epoch-ms lower bound: 2000-01-01T00:00:00Z = 946684800000 ms.
+ *
+ * A numeric value below this floor cannot be a real bundle timestamp — it is
+ * either a relative/duration offset or a zero-initialised field. Treating it
+ * as epoch seconds would silently produce a 1970s date rather than null, so
+ * we reject it.
+ */
+const EPOCH_MS_FLOOR = 946_684_800_000;
 
 /**
  * Normalize a bundle timestamp to epoch ms, once, at ingest.
@@ -21,11 +39,17 @@ import type { RunReportStats, SanitizedNode } from "./types";
  * Returns null rather than NaN so callers can render "—" instead of "Invalid
  * Date". Display formatting is the renderer's job and must go through
  * `formatInUserTz` — never re-derive by string slicing.
+ *
+ * Numeric values below EPOCH_MS_FLOOR (year 2000) are rejected as likely
+ * relative/duration offsets rather than real timestamps.
  */
 export function toEpochMs(value: unknown): number | null {
   if (typeof value === "number" && Number.isFinite(value)) {
     // Heuristic: seconds vs milliseconds. Anything below 1e12 is seconds.
-    return value < 1e12 ? Math.round(value * 1000) : Math.round(value);
+    // Apply the floor check AFTER converting to ms so both code paths use
+    // the same boundary.
+    const ms = value < 1e12 ? Math.round(value * 1000) : Math.round(value);
+    return ms >= EPOCH_MS_FLOOR ? ms : null;
   }
   if (typeof value !== "string") return null;
 
@@ -158,6 +182,46 @@ export function buildGantt(
   return { bars, ticks, startMs, endMs, totalMs };
 }
 
+/**
+ * Build the `{name, startMs, endMs}[]` input that `buildGantt` expects, sourced
+ * from `timeline[]` and `agents[]` `start`/`end` fields.
+ *
+ * `start`/`end` are absolute UTC timestamp strings (space-separated or ISO8601)
+ * as emitted by `ts_str()` in `parse_project.py`. They are passed through
+ * `toEpochMs` and filtered: an entry with no valid start/end pair is silently
+ * dropped (it cannot be placed on a shared time axis).
+ *
+ * Agents are included so overlapping agent spans appear alongside the step
+ * timeline — this is the Gantt's primary purpose: showing concurrency.
+ */
+export function buildTimeline(
+  timeline: TimelineStep[],
+  agents: unknown[],
+): Array<{ name: string; startMs: number | null; endMs: number | null }> {
+  const entries: Array<{ name: string; startMs: number | null; endMs: number | null }> = [];
+
+  for (const step of timeline) {
+    entries.push({
+      name: step.step,
+      startMs: toEpochMs(step.start),
+      endMs: toEpochMs(step.end),
+    });
+  }
+
+  for (const agent of agents) {
+    if (!isRecord(agent)) continue;
+    const name = asString(agent.name) ?? asString(agent.agent_label);
+    if (!name) continue;
+    entries.push({
+      name,
+      startMs: toEpochMs(agent.start),
+      endMs: toEpochMs(agent.end),
+    });
+  }
+
+  return entries;
+}
+
 /** Human-readable duration. Returns "—" for unknown. */
 export function formatDuration(ms: number | null): string {
   if (ms == null || !Number.isFinite(ms) || ms < 0) return "—";
@@ -171,17 +235,7 @@ export function formatDuration(ms: number | null): string {
   return `${hours}h ${minutes % 60}m`;
 }
 
-// ── Rubric grouping / fix aggregation ────────────────────────────────────────
-
-export interface RubricRow {
-  id: string;
-  title: string;
-  passed: boolean;
-  reasoning: string;
-  suggestedFix?: string;
-  causeType?: string;
-  causeSummary?: string;
-}
+// ── Rubric grouping ───────────────────────────────────────────────────────────
 
 /**
  * Verdict casing from the producer is unverified, so match case-insensitively
@@ -191,11 +245,25 @@ export function isPassVerdict(verdict: unknown): boolean {
   return typeof verdict === "string" && /^\s*pass/i.test(verdict);
 }
 
-export function groupRubrics(analysis: unknown): RubricRow[] {
-  const summaries = readArray(analysis, "summaries");
+/**
+ * Build typed `RubricRow[]` from `page_data.rubrics[]` and the optional `score`
+ * block.
+ *
+ * Reads `id`, `title`, `match_criteria`, `verdict`, `reasoning` directly off
+ * each rubric entry. Suggesed-fix / cause-type / cause-summary fields are NOT
+ * on rubrics in the real contract — they live on matching `analysis.traces[]`
+ * entries and are rendered separately by the Traces section.
+ *
+ * This is the SINGLE source of rubric derivation: `project.ts` calls it once
+ * and stores the result on `projection.rubricRows`. Renderers read that field
+ * rather than re-deriving client-side.
+ */
+export function groupRubrics(rubrics: unknown[], _score?: unknown): RubricRow[] {
   const rows: RubricRow[] = [];
 
-  for (const entry of summaries) {
+  if (!Array.isArray(rubrics)) return rows;
+
+  for (const entry of rubrics) {
     if (!isRecord(entry)) continue;
     const id = asString(entry.id) ?? asString(entry.rubric_id) ?? "";
     if (!id) continue;
@@ -203,10 +271,8 @@ export function groupRubrics(analysis: unknown): RubricRow[] {
       id,
       title: asString(entry.title) ?? id,
       passed: isPassVerdict(entry.verdict),
+      verdict: asString(entry.verdict) ?? "",
       reasoning: asString(entry.reasoning) ?? "",
-      suggestedFix: asString(entry.suggested_fix),
-      causeType: asString(entry.cause_type),
-      causeSummary: asString(entry.cause_summary),
     });
   }
 
@@ -226,27 +292,127 @@ export function aggregateFixes(rows: RubricRow[]): AggregatedFix[] {
 
   for (const row of rows) {
     if (row.passed) continue;
-    const causeType = row.causeType?.trim() || "uncategorized";
+    // causeType is no longer on RubricRow — bucket everything as uncategorized
+    // unless traces provide the classification (rendered separately).
+    const causeType = "uncategorized";
     const existing = byCause.get(causeType);
-    const suggestion = row.suggestedFix?.trim();
 
     if (existing) {
       existing.count += 1;
       existing.rubricIds.push(row.id);
-      if (suggestion && !existing.suggestions.includes(suggestion)) {
-        existing.suggestions.push(suggestion);
-      }
     } else {
       byCause.set(causeType, {
         causeType,
         count: 1,
         rubricIds: [row.id],
-        suggestions: suggestion ? [suggestion] : [],
+        suggestions: [],
       });
     }
   }
 
   return [...byCause.values()].sort((a, b) => b.count - a.count);
+}
+
+// ── Analysis extractors ──────────────────────────────────────────────────────
+
+/**
+ * Extract typed `TraceRow[]` from `analysis` (bundle root, not page_data).
+ * Follows `TRACE_SCHEMA` from `analyze.py`.
+ */
+export function readTraces(analysis: unknown): TraceRow[] {
+  if (!isRecord(analysis)) return [];
+  const rows: TraceRow[] = [];
+
+  for (const entry of readArray(analysis, "traces")) {
+    if (!isRecord(entry)) continue;
+    const rubric_id = asString(entry.rubric_id);
+    if (!rubric_id) continue;
+
+    rows.push({
+      rubric_id,
+      pathway: readArray(entry, "pathway").filter(isRecord) as TraceRow["pathway"],
+      q_ingested_to_graph: readQA(entry.q_ingested_to_graph),
+      q_knowable_or_derived: readQA(entry.q_knowable_or_derived),
+      q_draft_got_it: readQA(entry.q_draft_got_it),
+      q_verify_got_it: readQA(entry.q_verify_got_it),
+      root_cause: asString(entry.root_cause) ?? "",
+      classification: asString(entry.classification) ?? "",
+      fix_suggestions: readArray(entry, "fix_suggestions").filter(
+        (v): v is string => typeof v === "string",
+      ),
+    });
+  }
+
+  return rows;
+}
+
+function readQA(value: unknown): { answer: string; evidence: string } | null {
+  if (!isRecord(value)) return null;
+  return {
+    answer: asString(value.answer) ?? "",
+    evidence: asString(value.evidence) ?? "",
+  };
+}
+
+/**
+ * Extract typed `AgentSummary[]` from `analysis` (bundle root, not page_data).
+ * Follows `SUMMARY_SCHEMA` from `analyze.py`.
+ * These are agent activity records — NOT rubric verdict records.
+ */
+export function readSummaries(analysis: unknown): AgentSummary[] {
+  if (!isRecord(analysis)) return [];
+  const rows: AgentSummary[] = [];
+
+  for (const entry of readArray(analysis, "summaries")) {
+    if (!isRecord(entry)) continue;
+    const agent_name = asString(entry.agent_name);
+    if (!agent_name) continue;
+
+    rows.push({
+      agent_name,
+      mission: asString(entry.mission) ?? "",
+      tools: readArray(entry, "tools").filter(isRecord) as AgentSummary["tools"],
+      files_touched: readArray(entry, "files_touched").filter(
+        isRecord,
+      ) as AgentSummary["files_touched"],
+      context_gathered: asString(entry.context_gathered) ?? "",
+      key_findings: readArray(entry, "key_findings").filter(
+        (v): v is string => typeof v === "string",
+      ),
+      anomalies: readArray(entry, "anomalies").filter(
+        (v): v is string => typeof v === "string",
+      ),
+      failed_rubric_relevance: readArray(entry, "failed_rubric_relevance").filter(
+        isRecord,
+      ) as AgentSummary["failed_rubric_relevance"],
+    });
+  }
+
+  return rows;
+}
+
+/**
+ * Extract `ConceptSynthesis` from the `concepts` bundle-root object.
+ * Returns `null` when concepts pass was not run (`concepts === {}`) or when
+ * `concepts.synthesis` is absent.
+ */
+export function readSynthesis(concepts: unknown): ConceptSynthesis | null {
+  if (!isRecord(concepts)) return null;
+  if (!isRecord(concepts.synthesis)) return null;
+
+  const s = concepts.synthesis;
+  return {
+    overall_narrative: asString(s.overall_narrative) ?? "",
+    concept_matrix: readArray(s, "concept_matrix").filter(
+      isRecord,
+    ) as ConceptSynthesis["concept_matrix"],
+    relation_to_failures: readArray(s, "relation_to_failures").filter(
+      isRecord,
+    ) as ConceptSynthesis["relation_to_failures"],
+    recommendations: readArray(s, "recommendations").filter(
+      (v): v is string => typeof v === "string",
+    ),
+  };
 }
 
 // ── Stats ────────────────────────────────────────────────────────────────────
@@ -261,7 +427,9 @@ export function computeStats(input: {
   sourceDocs: unknown[];
   workfiles: unknown[];
   traces: unknown[];
-  branches: unknown[];
+  branches: string[];
+  timeline: unknown[];
+  agents: unknown[];
   rubricRows: RubricRow[];
 }): RunReportStats {
   const { rubricRows } = input;
@@ -271,7 +439,9 @@ export function computeStats(input: {
     sourceDocCount: input.sourceDocs.length,
     workfileCount: input.workfiles.length,
     traceCount: input.traces.length,
-    branchCount: input.branches.length,
+    noteCount: input.branches.length,
+    stepCount: input.timeline.length,
+    agentCount: input.agents.length,
     rubricCount: rubricRows.length,
     passCount: hasRubrics ? rubricRows.filter((r) => r.passed).length : null,
     failCount: hasRubrics ? rubricRows.filter((r) => !r.passed).length : null,
