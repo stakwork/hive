@@ -1,14 +1,9 @@
 /**
- * Shared key-based redaction, promoted from `src/services/error-issues.ts`.
- *
- * Fixed rather than lifted unchanged. The original returned the object
- * UNTOUCHED once `depth > 10`, which is precisely where per-agent transcript
- * traces in a run report bundle live — so the old bound would have let the
- * deepest, most secret-dense part of the payload through unredacted. Changes:
- *   - depth bound raised substantially, and on overflow the subtree is dropped
- *     rather than passed through
- *   - WeakSet cycle guard (the original would stack-overflow on a cycle)
- *   - key set extended with the bundle's key names and report_url/reportUrl
+ * Shared key-based redaction, promoted from `src/services/error-issues.ts` and
+ * fixed rather than lifted: the original returned the object UNTOUCHED past
+ * `depth > 10`, which is exactly where per-agent transcript traces live. Now
+ * the depth bound is high, overflow DROPS rather than passes through, and a
+ * WeakSet guards cycles (the original stack-overflowed on one).
  */
 
 /** Exact-match keys whose values are always replaced wholesale. */

@@ -1949,17 +1949,6 @@ async function seedFeatureErrorIssueLink() {
  * of the caller's short-circuit.
  */
 async function seedRunReportBundleRun() {
-  // Imported lazily: this pulls in the sanitize pipeline, which the rest of the
-  // seed has no reason to load.
-  const { RUN_REPORT_FIXTURES } = await import("../../src/app/api/mock/run-report/fixtures");
-  const { projectBundle } = await import("../../src/lib/run-report/project");
-
-  const outcome = projectBundle(JSON.stringify(RUN_REPORT_FIXTURES.full));
-  if (outcome.status !== "ok") {
-    console.log(`⚠ Run report fixture failed to project (${outcome.status}) — skipping`);
-    return;
-  }
-
   const targets = await prisma.workspace.findMany({
     where: { slug: { in: ["openlaw", "dev-mock"] } },
     select: { id: true, slug: true },
@@ -1993,11 +1982,10 @@ async function seedRunReportBundleRun() {
       webhookUrl: "",
       result: resultJson,
       dataType: "json",
-      reportUrl: "https://stakwork-uploads.s3.us-east-1.amazonaws.com/runs/seed/report.json",
-      reportBundle: outcome.projection as unknown as object,
-      reportBundleHash: "seedhash0000000000000000000000000000000000000000000000000000seed",
-      reportPartial: outcome.projection.partial,
-      reportSchemaUnsupported: false,
+      // Points at the local mock endpoint, which serves the `full` fixture.
+      // The bundle JSON is fetched from S3 (here, the mock) when the report
+      // page is opened — it is never copied into the database.
+      reportUrl: `${process.env.NEXTAUTH_URL ?? "http://localhost:3000"}/api/mock/run-report/full`,
       updatedAt: now,
     };
 

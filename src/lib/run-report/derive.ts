@@ -45,30 +45,6 @@ export function toEpochMs(value: unknown): number | null {
 
 // ── Pipeline timeline ────────────────────────────────────────────────────────
 
-export interface TimelinePhase {
-  name: string;
-  startMs: number | null;
-  endMs: number | null;
-  durationMs: number | null;
-  /** 0–100, proportional to the longest phase. 0 when durations are unknown. */
-  widthPct: number;
-  colorClass: string;
-}
-
-/** Deterministic phase colouring — stable across renders, no hashing of time. */
-const PHASE_COLORS = [
-  "bg-blue-500",
-  "bg-violet-500",
-  "bg-emerald-500",
-  "bg-amber-500",
-  "bg-rose-500",
-  "bg-cyan-500",
-] as const;
-
-export function phaseColor(index: number): string {
-  return PHASE_COLORS[index % PHASE_COLORS.length];
-}
-
 // ── Workflow phases ──────────────────────────────────────────────────────────
 
 /**
@@ -144,7 +120,7 @@ export interface GanttLayout {
 /**
  * Lay steps out on a SHARED absolute time axis, so concurrent work reads as
  * overlapping bars and gaps read as idle time. This is what distinguishes a
- * timeline from a bar chart of durations — `scaleDurations` gives the latter.
+ * timeline from a plain bar chart of durations.
  */
 export function buildGantt(
   steps: Array<{ name: string; startMs: number | null; endMs: number | null }>,
@@ -180,36 +156,6 @@ export function buildGantt(
   });
 
   return { bars, ticks, startMs, endMs, totalMs };
-}
-
-/**
- * Scale phase durations to percentage widths against the longest phase.
- * Phases with unknown duration get width 0 and still render as a labelled row.
- */
-export function scaleDurations(
-  phases: Array<{ name: string; startMs: number | null; endMs: number | null }>,
-): TimelinePhase[] {
-  const withDuration = phases.map((p) => ({
-    ...p,
-    durationMs:
-      p.startMs != null && p.endMs != null && p.endMs >= p.startMs
-        ? p.endMs - p.startMs
-        : null,
-  }));
-
-  const longest = withDuration.reduce(
-    (max, p) => (p.durationMs != null && p.durationMs > max ? p.durationMs : max),
-    0,
-  );
-
-  return withDuration.map((p, i) => ({
-    ...p,
-    widthPct:
-      longest > 0 && p.durationMs != null
-        ? Math.max(1, Math.round((p.durationMs / longest) * 100))
-        : 0,
-    colorClass: phaseColor(i),
-  }));
 }
 
 /** Human-readable duration. Returns "—" for unknown. */

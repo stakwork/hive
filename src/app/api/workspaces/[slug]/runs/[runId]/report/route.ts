@@ -26,11 +26,8 @@ import { checkRateLimit } from "@/lib/rate-limit";
 import { db } from "@/lib/db";
 import { logger } from "@/lib/logger";
 import { StakworkRunType } from "@prisma/client";
-import {
-  canReadRunReport,
-  type RunReportPayload,
-  type RunReportProjection,
-} from "@/lib/run-report/types";
+import { canReadRunReport } from "@/lib/run-report/types";
+import { loadRunReport } from "@/lib/run-report/load";
 
 type RouteParams = {
   params: Promise<{ slug: string; runId: string }>;
@@ -102,26 +99,17 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
         workspaceId,
         type: { in: [StakworkRunType.LEGAL_BENCHMARK_RUNNER] },
       },
-      select: {
-        id: true,
-        reportBundle: true,
-        reportPartial: true,
-        reportSchemaUnsupported: true,
-        // reportUrl deliberately NOT selected.
-      },
+      // reportUrl IS selected here (opting through the global omit) because the
+      // server needs it to fetch the bundle. It is never put in the response.
+      select: { id: true, reportUrl: true },
     });
 
     if (!run) {
       return json({ error: "Not found" }, 404);
     }
 
-    const payload: RunReportPayload = {
-      runId: run.id,
-      hasReport: run.reportBundle != null,
-      partial: run.reportPartial,
-      schemaUnsupported: run.reportSchemaUnsupported,
-      projection: (run.reportBundle as unknown as RunReportProjection | null) ?? null,
-    };
+    // Fetched and sanitized here, server-side. The URL does not go in the body.
+    const payload = await loadRunReport(run.id, run.reportUrl);
 
     return json(payload, 200);
   } catch (error) {

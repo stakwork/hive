@@ -1,16 +1,13 @@
 /**
- * HTML → sanitized closed-node-shape projection.
+ * HTML → sanitized closed-node-shape projection. Server-side only; components
+ * never sanitize.
  *
- * Runs SERVER-SIDE ONLY, once, at webhook ingest. Components never sanitize.
+ * parse (document mode) → discard doctype/html/head → hast-util-sanitize with
+ * the pinned schema → project to `SanitizedNode`.
  *
- * Pipeline: parse (document mode) → discard doctype/html/head wrappers →
- * hast-util-sanitize with the pinned schema → project to `SanitizedNode`.
- *
- * Why document mode: the upstream converters emit whole documents (a full
- * `<!doctype html><html><head>…</head><body>…</body></html>`), not fragments.
- * Parsing those in fragment mode produces node types the pinned schema was
- * never written for, so we parse as a document and explicitly extract the
- * `body` children.
+ * Document mode because the upstream converters emit whole documents, not
+ * fragments; parsing those as fragments yields node types the pinned schema was
+ * never written for.
  */
 
 import { fromHtml } from "hast-util-from-html";

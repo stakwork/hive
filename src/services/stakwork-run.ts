@@ -16,7 +16,7 @@ import {
   isClarifyingQuestions,
 } from "@/types/stakwork";
 import { parseBenchmarkRunResult } from "@/types/legal";
-import { screenReportUrl, ingestReportBundle } from "@/lib/run-report/ingest";
+import { validateReportUrl } from "@/lib/run-report/url-guard";
 import { safeUrlParts } from "@/lib/run-report/safe-url-log";
 import { isAllowedS3Url } from "@/lib/run-report/url-guard";
 import { stakworkService } from "@/lib/service-factory";
@@ -1019,7 +1019,6 @@ export async function processStakworkRunWebhook(
       : undefined);
 
   let reportUrlToPersist: string | null = null;
-  let reportRejectionReason: string | null = null;
 
   if (incomingReportUrl !== undefined) {
     if (!isLegalBenchmarkType) {
@@ -1028,9 +1027,18 @@ export async function processStakworkRunWebhook(
         type: run.type,
       });
     } else {
-      const screened = screenReportUrl(incomingReportUrl, run.id);
-      if (screened.ok) reportUrlToPersist = screened.url;
-      else if (screened.reason !== "absent") reportRejectionReason = screened.reason;
+      const raw = typeof incomingReportUrl === "string" ? incomingReportUrl.trim() : "";
+      const guard = raw ? validateReportUrl(raw) : null;
+      if (guard?.ok) {
+        reportUrlToPersist = raw;
+      } else if (guard) {
+        // Log the reason code, never the URL. An auxiliary artifact must not
+        // fail an otherwise-successful benchmark run.
+        logger.error("[run-report] report_url rejected", "stakwork-run", {
+          runId: run.id,
+          reason: guard.reason,
+        });
+      }
     }
   }
 
@@ -1068,7 +1076,6 @@ export async function processStakworkRunWebhook(
       // the early return — skip the STAKWORK_RUN_UPDATE broadcast, leaving
       // hasReport to surface only on the next 15-second poll.
       ...(reportUrlToPersist ? { reportUrl: reportUrlToPersist } : {}),
-      ...(reportRejectionReason ? { reportRejectionReason } : {}),
     },
   });
 
@@ -1088,7 +1095,6 @@ export async function processStakworkRunWebhook(
         data: { reportUrl: reportUrlToPersist },
       });
       if (settled.count > 0) {
-        after(() => ingestReportBundle(run.id, reportUrlToPersist!));
         try {
           await pusherServer.trigger(
             getWorkspaceChannelName(run.workspace.slug),
@@ -1110,12 +1116,6 @@ export async function processStakworkRunWebhook(
     }
 
     return { runId: run.id, status: run.status };
-  }
-
-  // Fetch, sanitize and persist the bundle once, out of band, so the webhook
-  // acks immediately. The view path never fetches.
-  if (reportUrlToPersist) {
-    after(() => ingestReportBundle(run.id, reportUrlToPersist!));
   }
 
   // Step 2a: PROMPT_EVAL — fire Pusher event and return early (no auto-accept / fast-track)
@@ -2075,22 +2075,19 @@ export async function getStakworkRuns(
       evalSetId: true,
       userId: true,
       ...(query.includeResult ? { result: true } : {}),
-      // Report-bundle flags are DERIVED below, never forwarded as columns.
-      // reportUrl is not selected at all — it must never leave the server.
-      reportBundle: true,
-      reportPartial: true,
-      reportSchemaUnsupported: true,
+      // Selected only to derive the boolean below. Stripped in the mapper so
+      // the URL itself can never reach a client.
+      reportUrl: true,
       feature: { select: { id: true, title: true } },
     },
   });
 
   return {
-    // Explicit mapper: the raw rows carry `reportBundle`, which is large and
-    // is not what list consumers want. Callers get boolean flags instead, so
-    // the bundle pointer can never be forwarded by accident.
-    runs: runs.map(({ reportBundle, ...run }) => ({
+    // Explicit mapper: destructure reportUrl OUT and expose only a boolean, so
+    // the bundle pointer can never be forwarded to a client by accident.
+    runs: runs.map(({ reportUrl, ...run }) => ({
       ...run,
-      hasReport: reportBundle != null,
+      hasReport: reportUrl != null,
     })),
     total,
     limit: query.limit,

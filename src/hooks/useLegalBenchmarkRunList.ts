@@ -33,12 +33,8 @@ export interface BenchmarkRunListRow {
   // ── Run report bundle (distinct artifact from the Jamie chat) ──────────────
   /** Operator checked "Generate Report" at run creation */
   generateRunReport?: boolean;
-  /** A sanitized bundle projection is persisted. Derived server-side. */
+  /** This run has a report bundle. Derived server-side from reportUrl. */
   hasReport?: boolean;
-  /** Projection was truncated (source document bodies dropped). */
-  reportPartial?: boolean;
-  /** Bundle schema_version unsupported by this build. */
-  reportSchemaUnsupported?: boolean;
 }
 
 interface UseLegalBenchmarkRunListResult {
@@ -86,8 +82,6 @@ export function useLegalBenchmarkRunList(
         createdAt: string;
         updatedAt: string;
         hasReport?: boolean;
-        reportPartial?: boolean;
-        reportSchemaUnsupported?: boolean;
       }> = data.runs ?? [];
 
       const mapped: BenchmarkRunListRow[] = rawRows.map((r) => {
@@ -110,11 +104,8 @@ export function useLegalBenchmarkRunList(
           jamieChatStatus: parsed?.jamieChatStatus,
           jamieChatPath: parsed?.jamieChatPath,
           generateRunReport: parsed?.generateRunReport,
-          // Derived server-side from the persisted projection, NOT from the
-          // bundle URL — which never reaches this response.
+          // Derived server-side; the bundle URL never reaches this response.
           hasReport: r.hasReport === true,
-          reportPartial: r.reportPartial === true,
-          reportSchemaUnsupported: r.reportSchemaUnsupported === true,
           // Unified judge precedence: operator choice takes priority over runner-echoed value.
           // Format mirrors stakwork-run.ts — if the server-side format string changes, update this line to match.
           judgeNotes:

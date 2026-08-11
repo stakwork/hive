@@ -10,11 +10,8 @@ import { db } from "@/lib/db";
 import { PageHeader } from "@/components/ui/page-header";
 import { RunReportView } from "@/components/run-report/RunReportView";
 import { StakworkRunType } from "@prisma/client";
-import {
-  canReadRunReport,
-  type RunReportPayload,
-  type RunReportProjection,
-} from "@/lib/run-report/types";
+import { canReadRunReport } from "@/lib/run-report/types";
+import { loadRunReport } from "@/lib/run-report/load";
 
 /**
  * Deep-linkable run report page.
@@ -69,25 +66,14 @@ export default async function RunReportPage({ params }: PageProps) {
       workspaceId,
       type: { in: [StakworkRunType.LEGAL_BENCHMARK_RUNNER] },
     },
-    select: {
-      id: true,
-      result: true,
-      reportBundle: true,
-      reportPartial: true,
-      reportSchemaUnsupported: true,
-      // reportUrl deliberately NOT selected.
-    },
+    // reportUrl IS selected (opting through the global omit) so the server can
+    // fetch the bundle. It never enters the RSC payload or any client prop.
+    select: { id: true, result: true, reportUrl: true },
   });
 
   if (!run) notFound();
 
-  const payload: RunReportPayload = {
-    runId: run.id,
-    hasReport: run.reportBundle != null,
-    partial: run.reportPartial,
-    schemaUnsupported: run.reportSchemaUnsupported,
-    projection: (run.reportBundle as unknown as RunReportProjection | null) ?? null,
-  };
+  const payload = await loadRunReport(run.id, run.reportUrl);
 
   let taskTitle = "Run report";
   try {

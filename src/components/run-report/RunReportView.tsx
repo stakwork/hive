@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useMemo, useState } from "react";
-import { AlertCircle, FileWarning, Info } from "lucide-react";
+import { AlertCircle, Info } from "lucide-react";
 import { useUserTimezone } from "@/hooks/useUserTimezone";
 import { groupRubrics } from "@/lib/run-report/derive";
 import type { RunReportPayload } from "@/lib/run-report/types";
@@ -77,8 +77,8 @@ export function RunReportView({ payload, taskTitle = "Run report" }: Props) {
     [projection],
   );
 
-  // ── State 5: schema version this build's projector cannot read ────────────
-  if (payload.schemaUnsupported) {
+  // ── Schema version this build's projector cannot read ─────────────────────
+  if (payload.error === "unsupported_schema") {
     return (
       <StateNotice
         icon={<AlertCircle className="h-5 w-5" />}
@@ -89,7 +89,19 @@ export function RunReportView({ payload, taskTitle = "Run report" }: Props) {
     );
   }
 
-  // ── State 2: no report on this run ────────────────────────────────────────
+  // ── Report exists but could not be loaded from S3 ─────────────────────────
+  if (payload.error === "unavailable") {
+    return (
+      <StateNotice
+        icon={<AlertCircle className="h-5 w-5" />}
+        title="Report couldn't be loaded"
+        body="The report bundle exists for this run but couldn't be fetched from storage. It may have been moved or deleted. Reloading may help."
+        testId="run-report-state-unavailable"
+      />
+    );
+  }
+
+  // ── No report on this run ─────────────────────────────────────────────────
   if (!payload.hasReport || !projection) {
     return (
       <StateNotice
@@ -104,12 +116,6 @@ export function RunReportView({ payload, taskTitle = "Run report" }: Props) {
   const activeDoc = openDoc
     ? projection.sourceDocs.find((d) => d.id === openDoc.docId) ?? null
     : null;
-
-  // Absent-alongside-an-unexpected-sibling is genuine producer drift.
-  // Present-and-empty is normal and stays silent.
-  const showDrift =
-    projection.contractNotes.absent.length > 0 &&
-    projection.contractNotes.unexpected.length > 0;
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-[200px_minmax(0,1fr)] gap-8 max-w-[1180px]" data-testid="run-report-view">
@@ -134,33 +140,6 @@ export function RunReportView({ payload, taskTitle = "Run report" }: Props) {
       </nav>
 
       <main className="min-w-0 pb-24">
-        {payload.partial && (
-          <div
-            className="flex items-start gap-2 rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-amber-800 dark:text-amber-200 mb-4"
-            data-testid="run-report-partial-banner"
-          >
-            <FileWarning className="h-4 w-4 mt-0.5 shrink-0" />
-            <span>
-              This report exceeded the storage limit, so source document text was dropped.
-              Titles, rubrics, traces and references are complete.
-            </span>
-          </div>
-        )}
-
-        {showDrift && (
-          <div
-            className="flex items-start gap-2 rounded-lg border border-border bg-muted/40 p-3 text-sm text-muted-foreground mb-4"
-            data-testid="run-report-drift-banner"
-          >
-            <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
-            <span>
-              This bundle&apos;s shape differs from what Hive expects (missing:{" "}
-              {projection.contractNotes.absent.join(", ")}; unrecognised:{" "}
-              {projection.contractNotes.unexpected.join(", ")}). Some sections may be incomplete.
-            </span>
-          </div>
-        )}
-
         <OverviewSection projection={projection} timezone={timezone} taskTitle={taskTitle} />
         <PipelineSection projection={projection} />
         <RubricsSection rows={rubricRows} />
@@ -181,7 +160,6 @@ export function RunReportView({ payload, taskTitle = "Run report" }: Props) {
       <DocumentViewerModal
         doc={activeDoc}
         tokens={openDoc?.tokens ?? []}
-        partial={payload.partial}
         open={openDoc !== null}
         onOpenChange={(next) => !next && setOpenDoc(null)}
       />

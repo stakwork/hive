@@ -1,22 +1,15 @@
 /**
  * Shared SSRF guard for S3 URLs arriving on unauthenticated webhook bodies.
+ * Validates both `report_url` and the sibling `output_s3_url` so the two
+ * controls cannot drift.
  *
- * This is the promoted form of the `ALLOWED_S3_HOST_PATTERN` / `isAllowedS3Url`
- * pair that previously lived privately in `src/services/stakwork-run.ts` and
- * guarded only `output_s3_url`. It is now the single validator for both that
- * field and the run report bundle's `report_url`, so the two cannot drift.
+ * Beyond the host allowlist: userinfo is rejected, because
+ * `https://user:pass@bucket.s3.us-east-1.amazonaws.com/x` passes both `z.url()`
+ * and a naive host regex while leaking credentials into the request and logs.
  *
- * Layered on top of the original host regex:
- *   - explicit `https:` protocol check
- *   - empty username/password — `https://user:pass@bucket.s3.us-east-1.amazonaws.com/x`
- *     passes both `z.url()` and a naive host regex, and would otherwise leak
- *     credentials into the outbound request and into any log of the URL
- *   - empty or explicitly-allowed port
- *
- * `RUN_REPORT_ALLOWED_HOSTS` narrows/extends this by exact hostname. It does
- * NOT fail closed when unset: a new env var that must be populated in every
- * environment before anything renders would ship the feature dark and present
- * as a rendering bug rather than a config gap.
+ * `RUN_REPORT_ALLOWED_HOSTS` narrows/extends by exact hostname. It does NOT
+ * fail closed when unset — an env var that must be set everywhere before
+ * anything renders would ship the feature dark and look like a rendering bug.
  */
 
 import { config } from "@/config/env";

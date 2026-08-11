@@ -1,9 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   toEpochMs,
-  scaleDurations,
   formatDuration,
-  phaseColor,
   groupRubrics,
   aggregateFixes,
   computeStats,
@@ -43,44 +41,13 @@ describe("toEpochMs", () => {
   });
 });
 
-describe("scaleDurations / formatDuration / phaseColor", () => {
-  it("scales widths proportionally to the longest phase", () => {
-    const phases = scaleDurations([
-      { name: "a", startMs: 0, endMs: 1000 },
-      { name: "b", startMs: 0, endMs: 500 },
-      { name: "c", startMs: 0, endMs: 250 },
-    ]);
-    expect(phases[0].widthPct).toBe(100);
-    expect(phases[1].widthPct).toBe(50);
-    expect(phases[2].widthPct).toBe(25);
-  });
-
-  it("gives unknown-duration phases width 0 but still lists them", () => {
-    const phases = scaleDurations([
-      { name: "known", startMs: 0, endMs: 1000 },
-      { name: "unknown", startMs: null, endMs: null },
-    ]);
-    expect(phases).toHaveLength(2);
-    expect(phases[1].widthPct).toBe(0);
-    expect(phases[1].durationMs).toBeNull();
-  });
-
-  it("does not divide by zero when every duration is unknown", () => {
-    const phases = scaleDurations([{ name: "x", startMs: null, endMs: null }]);
-    expect(phases[0].widthPct).toBe(0);
-  });
-
+describe("formatDuration", () => {
   it("formats durations across unit boundaries", () => {
     expect(formatDuration(null)).toBe("—");
     expect(formatDuration(250)).toBe("250ms");
     expect(formatDuration(1500)).toBe("1.5s");
     expect(formatDuration(90_000)).toBe("1m 30s");
     expect(formatDuration(3_700_000)).toBe("1h 1m");
-  });
-
-  it("cycles phase colours deterministically", () => {
-    expect(phaseColor(0)).toBe(phaseColor(6));
-    expect(phaseColor(0)).not.toBe(phaseColor(1));
   });
 });
 

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { projectBundle, MAX_PROJECTION_BYTES } from "@/lib/run-report/project";
+import { projectBundle } from "@/lib/run-report/project";
 import { RUN_REPORT_FIXTURES } from "@/app/api/mock/run-report/fixtures";
 
 function project(fixture: unknown) {
@@ -82,18 +82,9 @@ describe("projectBundle — redaction scoping", () => {
 });
 
 describe("projectBundle — empty shapes", () => {
-  it("treats concepts: {} as present-and-empty, not absent", () => {
+  it("treats concepts: {} as not-run rather than an error", () => {
     const { projection } = ok(RUN_REPORT_FIXTURES["no-concepts"]);
     expect(Object.keys(projection.concepts)).toHaveLength(0);
-    expect(projection.contractNotes.presentButEmpty).toContain("concepts");
-    expect(projection.contractNotes.absent).not.toContain("concepts");
-  });
-
-  it("records a deleted key as absent", () => {
-    const bundle = { ...(RUN_REPORT_FIXTURES.full as Record<string, unknown>) };
-    delete bundle.concepts;
-    const { projection } = ok(bundle);
-    expect(projection.contractNotes.absent).toContain("concepts");
   });
 
   it("projects an empty analysis without error", () => {
@@ -108,11 +99,6 @@ describe("projectBundle — empty shapes", () => {
     expect(projection.stats.failCount).toBe(0);
   });
 
-  it("flags unexpected top-level keys", () => {
-    const bundle = { ...(RUN_REPORT_FIXTURES.full as Record<string, unknown>), surprise: 1 };
-    const { projection } = ok(bundle);
-    expect(projection.contractNotes.unexpected).toContain("surprise");
-  });
 });
 
 describe("projectBundle — unknown fields are dropped", () => {
@@ -131,35 +117,7 @@ describe("projectBundle — unknown fields are dropped", () => {
     // would match the concepts narrative, which legitimately carries raw HTML
     // as literal text (it renders escaped).
     expect(JSON.stringify(projection)).not.toContain("alert(1)");
-    // Named as drift, but not carried as data.
-    expect(projection.contractNotes.unexpected).toContain("rogue_html");
     expect((projection as unknown as Record<string, unknown>).rogue_html).toBeUndefined();
-  });
-});
-
-describe("projectBundle — size cap", () => {
-  it("degrades to a partial projection with titles intact when oversized", () => {
-    const bundle = { ...(RUN_REPORT_FIXTURES.full as Record<string, unknown>) };
-    // Must exceed MAX_PROJECTION_BYTES once projected. Many small paragraphs
-    // rather than one huge one, so the node overhead is realistic.
-    const filler = "<p>lorem ipsum dolor sit amet consectetur</p>".repeat(120_000);
-    bundle.source_docs = [
-      { id: "huge", title: "Enormous exhibit.docx", html: filler },
-      { id: "huge2", title: "Second exhibit.docx", html: filler },
-    ];
-
-    const { projection } = ok(bundle);
-    expect(projection.partial).toBe(true);
-    expect(projection.sourceDocs).toHaveLength(2);
-    expect(projection.sourceDocs[0].title).toBe("Enormous exhibit.docx");
-    expect(projection.sourceDocs[0].body).toBeUndefined();
-    expect(Buffer.byteLength(JSON.stringify(projection))).toBeLessThan(MAX_PROJECTION_BYTES);
-  });
-
-  it("leaves a normal-sized projection unflagged with bodies present", () => {
-    const { projection } = ok(RUN_REPORT_FIXTURES.full);
-    expect(projection.partial).toBe(false);
-    expect(projection.sourceDocs[0].body).toBeDefined();
   });
 });
 

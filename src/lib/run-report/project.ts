@@ -26,23 +26,8 @@ import {
   type RunReportProjection,
   type ProjectedSourceDoc,
   type ProjectedRubricLink,
-  type ContractNotes,
 } from "./types";
 
-/** Cap on the SERIALIZED projection — the raw byte cap does not bound this. */
-export const MAX_PROJECTION_BYTES = 6 * 1024 * 1024;
-
-/** Top-level keys the projector knows about. Anything else is "unexpected". */
-const KNOWN_TOP_LEVEL = [
-  "schema_version",
-  "page_data",
-  "analysis",
-  "concepts",
-  "source_docs",
-  "workfiles",
-  "rubric_links",
-  "generated_at",
-];
 
 export type ProjectOutcome =
   | { status: "ok"; projection: RunReportProjection; droppedElements: number }
@@ -73,8 +58,6 @@ export function projectBundle(rawText: string): ProjectOutcome {
   if (version !== SUPPORTED_SCHEMA_VERSION) {
     return { status: "unsupported_schema", version };
   }
-
-  const contractNotes = describeContract(parsed);
 
   // ── page_data ──────────────────────────────────────────────────────────────
   // set_var / log_stats / outputs are config+trace surfaces, so they get the
@@ -168,30 +151,9 @@ export function projectBundle(rawText: string): ProjectOutcome {
       branches: pageData.branches,
       rubricRows,
     }),
-    contractNotes,
-    partial: false,
   };
 
-  // ── Size check ─────────────────────────────────────────────────────────────
-  // The raw-stream byte cap does not bound what is stored: the projection is
-  // several times larger than the source HTML. On overflow, drop document
-  // bodies (keeping ids and titles) and flag the report as partial, rather
-  // than dropping the report entirely.
-  if (serializedSize(projection) > MAX_PROJECTION_BYTES) {
-    projection.sourceDocs = projection.sourceDocs.map(({ id, title }) => ({ id, title }));
-    projection.partial = true;
-  }
-
   return { status: "ok", projection, droppedElements };
-}
-
-function serializedSize(value: unknown): number {
-  try {
-    return Buffer.byteLength(JSON.stringify(value) ?? "", "utf8");
-  } catch {
-    // Cyclic or unserializable — treat as over-cap so it degrades to partial.
-    return Number.MAX_SAFE_INTEGER;
-  }
 }
 
 function redactRecord(value: unknown, tokenShapes: boolean): Record<string, unknown> {
@@ -203,28 +165,3 @@ function redactArray(value: unknown[], tokenShapes: boolean): unknown[] {
   return redactSensitiveKeys(value, { tokenShapes }) as unknown[];
 }
 
-/**
- * Distinguish *absent* from *present-and-empty* per top-level key, and collect
- * unexpected keys. Present-and-empty is normal and silent; absent alongside an
- * unexpected sibling is what raises the drift banner in the UI.
- */
-function describeContract(bundle: Record<string, unknown>): ContractNotes {
-  const absent: string[] = [];
-  const presentButEmpty: string[] = [];
-
-  for (const key of ["page_data", "analysis", "concepts", "source_docs", "workfiles", "rubric_links"]) {
-    if (!(key in bundle)) {
-      absent.push(key);
-      continue;
-    }
-    const value = bundle[key];
-    const empty = Array.isArray(value)
-      ? value.length === 0
-      : isRecord(value) && Object.keys(value).length === 0;
-    if (empty) presentButEmpty.push(key);
-  }
-
-  const unexpected = Object.keys(bundle).filter((k) => !KNOWN_TOP_LEVEL.includes(k));
-
-  return { absent, presentButEmpty, unexpected };
-}

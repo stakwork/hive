@@ -138,15 +138,10 @@ export interface StakworkRunResponse {
   createdAt: Date;
   updatedAt: Date;
   /**
-   * Whether a sanitized run report bundle projection is persisted for this run.
-   * DERIVED from the presence of `reportBundle` — never from `reportUrl`, which
-   * must not leave the server.
+   * Whether this run has a report bundle. DERIVED from the presence of
+   * `reportUrl`, which is stripped in the mapper and never sent to a client.
    */
   hasReport?: boolean;
-  /** Projection was persisted in truncated form (source_docs[].html dropped). */
-  reportPartial?: boolean;
-  /** Bundle schema_version is unsupported by this build's projector. */
-  reportSchemaUnsupported?: boolean;
 }
 
 export interface StakworkRunListResponse {

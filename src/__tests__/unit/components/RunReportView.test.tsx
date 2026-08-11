@@ -20,8 +20,6 @@ function payload(overrides: Partial<RunReportPayload> = {}): RunReportPayload {
   return {
     runId: "run-1",
     hasReport: true,
-    partial: false,
-    schemaUnsupported: false,
     projection: projectionFor("full"),
     ...overrides,
   };
@@ -69,18 +67,17 @@ describe("RunReportView — render states", () => {
   });
 
   it("shows the unsupported state for a schema version gate rejection", () => {
-    render(<RunReportView payload={payload({ schemaUnsupported: true, projection: null })} />);
+    render(
+      <RunReportView payload={payload({ error: "unsupported_schema", projection: null })} />,
+    );
     expect(screen.getByTestId("run-report-state-unsupported")).toBeInTheDocument();
   });
 
-  it("shows the truncation banner for a partial projection", () => {
-    render(<RunReportView payload={payload({ partial: true })} />);
-    expect(screen.getByTestId("run-report-partial-banner")).toBeInTheDocument();
-  });
-
-  it("does not show the truncation banner for a complete projection", () => {
-    render(<RunReportView payload={payload()} />);
-    expect(screen.queryByTestId("run-report-partial-banner")).toBeNull();
+  it("distinguishes a failed S3 load from a run with no report", () => {
+    // A report that exists but couldn't be fetched must not read as "no report".
+    render(<RunReportView payload={payload({ error: "unavailable", projection: null })} />);
+    expect(screen.getByTestId("run-report-state-unavailable")).toBeInTheDocument();
+    expect(screen.queryByTestId("run-report-state-absent")).toBeNull();
   });
 });
 

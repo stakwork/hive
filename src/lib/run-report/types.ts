@@ -61,24 +61,13 @@ export interface SanitizedElement {
 export interface ProjectedSourceDoc {
   id: string;
   title: string;
-  /** Sanitized body children. Absent when the projection was truncated. */
-  body?: SanitizedNode[];
+  /** Sanitized body children. */
+  body: SanitizedNode[];
 }
 
 export interface ProjectedRubricLink {
   doc: string;
   tokens: string[];
-}
-
-/**
- * Diagnostic that distinguishes *absent* from *present-and-empty* per top-level
- * key, plus any unexpected top-level keys. Absent-alongside-an-unexpected-
- * sibling is what raises the drift banner; present-and-empty is normal.
- */
-export interface ContractNotes {
-  absent: string[];
-  presentButEmpty: string[];
-  unexpected: string[];
 }
 
 export interface RunReportProjection {
@@ -102,9 +91,6 @@ export interface RunReportProjection {
   workfiles: Array<{ name?: string; text: string }>;
   rubricLinks: Record<string, ProjectedRubricLink[]>;
   stats: RunReportStats;
-  contractNotes: ContractNotes;
-  /** Source document bodies were dropped to fit the size cap. */
-  partial: boolean;
 }
 
 export interface RunReportStats {
@@ -118,12 +104,17 @@ export interface RunReportStats {
   failCount: number | null;
 }
 
-/** What the API route and the RSC page hand to the renderer. */
+/**
+ * What the API route and the RSC page hand to the renderer.
+ *
+ * `projection` is built at view time from the S3 JSON — it is never persisted.
+ * `error` distinguishes "this run has no report" from "the report exists but
+ * could not be loaded", which the UI renders differently.
+ */
 export interface RunReportPayload {
   runId: string;
   hasReport: boolean;
-  partial: boolean;
-  schemaUnsupported: boolean;
-  /** Null when there is no bundle, or the schema version is unsupported. */
+  /** Set when a report exists but could not be fetched, parsed or projected. */
+  error?: "unavailable" | "unsupported_schema";
   projection: RunReportProjection | null;
 }

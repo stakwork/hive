@@ -1,24 +1,18 @@
 /**
  * Pinned hast-util-sanitize schema for run report source documents.
  *
- * Pinned rather than derived from `defaultSchema` so an upstream change to the
- * default can never silently widen what we accept. `source_docs[].html` is real
- * HTML converted upstream from .docx/.eml/.xlsx, so it is arbitrary third-party
- * markup arriving through an unauthenticated webhook.
+ * Pinned rather than derived from `defaultSchema`, so an upstream change can
+ * never silently widen what we accept. `source_docs[].html` is arbitrary
+ * third-party markup (converted .docx/.eml/.xlsx) arriving via an
+ * unauthenticated webhook.
  *
- * Deliberately dropped:
- *   - `img` entirely — a beacon channel that would phone home to an attacker
- *     on render, and legal exhibits do not need to load remote images.
- *   - `svg` / `math` — foreign-content parsing is the classic mXSS vector.
- *   - `script` / `style` / `iframe` / `object` / `embed`.
- *   - all `on*` handlers, and `class` / `style` / `id` / `target` / `srcset`.
+ * Dropped: `img` (beacon channel), `svg`/`math` (foreign-content mXSS),
+ * script/style/iframe/object/embed, every `on*`, and class/style/id/target.
+ * `a[href]` is http(s)-only with a forced `rel`.
  *
- * `a[href]` is restricted to http(s) and every emitted anchor is forced to
- * carry `rel="noopener noreferrer"`.
- *
- * NOTE: regex/hand-rolled tag stripping is forbidden here — it is bypassable
- * via malformed tags and foreign content. `rehype-raw` must never enter this
- * pipeline: it re-parses raw HTML *after* sanitization and would undo it.
+ * Regex tag-stripping is forbidden (bypassable via malformed tags), and
+ * `rehype-raw` must never enter this pipeline — it re-parses raw HTML AFTER
+ * sanitization and would undo it.
  */
 
 import type { Schema } from "hast-util-sanitize";

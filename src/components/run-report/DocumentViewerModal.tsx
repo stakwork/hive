@@ -2,7 +2,7 @@
 
 import React, { useMemo, useCallback } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { AlertCircle, FileWarning } from "lucide-react";
+import { AlertCircle } from "lucide-react";
 import { SanitizedContent } from "./SanitizedContent";
 import { flattenText, findHighlightRanges } from "@/lib/run-report/derive";
 import type { ProjectedSourceDoc } from "@/lib/run-report/types";
@@ -25,13 +25,11 @@ import type { ProjectedSourceDoc } from "@/lib/run-report/types";
 interface Props {
   doc: ProjectedSourceDoc | null;
   tokens: string[];
-  /** Projection was persisted truncated — document bodies were dropped. */
-  partial: boolean;
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }
 
-export function DocumentViewerModal({ doc, tokens, partial, open, onOpenChange }: Props) {
+export function DocumentViewerModal({ doc, tokens, open, onOpenChange }: Props) {
   const { highlights, matched } = useMemo(() => {
     if (!doc?.body || tokens.length === 0) return { highlights: [], matched: true };
     const index = flattenText(doc.body);
@@ -60,20 +58,7 @@ export function DocumentViewerModal({ doc, tokens, partial, open, onOpenChange }
           <DialogTitle className="truncate">{doc?.title ?? "Document"}</DialogTitle>
         </DialogHeader>
 
-        {partial && (
-          <div
-            className="flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-200"
-            data-testid="run-report-truncation-notice"
-          >
-            <FileWarning className="h-4 w-4 mt-0.5 shrink-0" />
-            <span>
-              This report was stored in truncated form because it exceeded the size limit.
-              Document text is unavailable; titles and references are preserved.
-            </span>
-          </div>
-        )}
-
-        {!partial && !matched && tokens.length > 0 && (
+        {!matched && tokens.length > 0 && (
           <div
             className="flex items-start gap-2 rounded-md border border-muted bg-muted/40 p-3 text-sm text-muted-foreground"
             data-testid="run-report-no-match-notice"

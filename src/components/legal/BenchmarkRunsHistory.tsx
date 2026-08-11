@@ -460,15 +460,8 @@ function ReportCell({ run, slug }: { run: BenchmarkRunListRow; slug?: string }) 
         data-testid="run-report-link"
       >
         View Report
-        {run.reportPartial && (
-          <span className="text-xs text-muted-foreground">(partial)</span>
-        )}
       </a>
     );
-  }
-
-  if (run.reportSchemaUnsupported) {
-    return <span className="text-xs text-muted-foreground">Unsupported</span>;
   }
 
   // Requested but not yet delivered — the runner is still executing, or the
