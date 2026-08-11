@@ -30,16 +30,6 @@ export async function loadRunReport(
     const { text } = await fetchReportBundle(reportUrl);
     const outcome = projectBundle(text);
 
-    if (outcome.status === "unsupported_schema") {
-      logger.error("[run-report] Bundle schema_version unsupported", LOG_SERVICE, {
-        runId,
-        host,
-        pathHash,
-        version: outcome.version,
-      });
-      return { runId, hasReport: true, error: "unsupported_schema", projection: null };
-    }
-
     if (outcome.status === "unparseable") {
       logger.error("[run-report] Bundle unparseable", LOG_SERVICE, { runId, host, pathHash });
       return { runId, hasReport: true, error: "unavailable", projection: null };

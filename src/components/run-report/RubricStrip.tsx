@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import type { RubricRow } from "@/lib/run-report/derive";
+import type { RubricRow } from "@/lib/run-report/types";
 
 /**
  * Rubric scoreboard as a heat-strip: one cell per criterion, coloured by

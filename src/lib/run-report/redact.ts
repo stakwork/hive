@@ -35,6 +35,17 @@ export const REDACTED_KEYS = new Set([
   "credentials",
   "private_key",
   "privatekey",
+  // URL-family keys — prevent storage/signed URLs from leaking to clients
+  // (page_data.documents[].url, s3_url, signed_url, etc.)
+  "url",
+  "s3_url",
+  "s3url",
+  "signed_url",
+  "signedurl",
+  "presigned_url",
+  "presignedurl",
+  "download_url",
+  "downloadurl",
 ]);
 
 /**
