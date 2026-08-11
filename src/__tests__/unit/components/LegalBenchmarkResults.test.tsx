@@ -223,17 +223,23 @@ vi.mock("@/hooks/useLegalBenchmarkEval", () => ({
 }));
 
 // ─── eval-normalizers pass-through mock ──────────────────────────────────────
+// resolveJudgeDispute and JUDGE_DISPUTE_NO_PROSE_MARKER use the real
+// implementation so component behaviour is tested end-to-end.
 
-vi.mock("@/lib/harvey-lab/eval-normalizers", () => ({
-  normalizeOutput: (n: { ref_id: string; properties?: Record<string, unknown> }) => ({
-    ref_id: n.ref_id,
-    attempt_number: 0,
-    result: String(n.properties?.result ?? ""),
-    score: Number(n.properties?.score ?? 0),
-    judge_notes: n.properties?.judge_notes ? String(n.properties.judge_notes) : undefined,
-  }),
-  triggerHasIdentity: () => true,
-}));
+vi.mock("@/lib/harvey-lab/eval-normalizers", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/harvey-lab/eval-normalizers")>();
+  return {
+    ...actual,
+    normalizeOutput: (n: { ref_id: string; properties?: Record<string, unknown> }) => ({
+      ref_id: n.ref_id,
+      attempt_number: 0,
+      result: String(n.properties?.result ?? ""),
+      score: Number(n.properties?.score ?? 0),
+      judge_notes: n.properties?.judge_notes ? String(n.properties.judge_notes) : undefined,
+    }),
+    triggerHasIdentity: () => true,
+  };
+});
 
 // ─── date-fns mock ────────────────────────────────────────────────────────────
 
@@ -577,13 +583,26 @@ describe("LegalBenchmarkResults", () => {
 
   // ─── Rubric Details accordion ─────────────────────────────────────────────
 
-  const makeCriteriaResults = () => [
+  type CriterionFixture = {
+    id: string;
+    title: string;
+    verdict: string;
+    reasoning: string;
+    cause_type?: string;
+    flagged?: unknown;
+    llm_flag_reason?: unknown;
+  };
+
+  const makeCriteriaResults = (): CriterionFixture[] => [
     { id: "crit-1", title: "Accuracy", verdict: "fail", reasoning: "Missing key point" },
     { id: "crit-2", title: "Completeness", verdict: "pass", reasoning: "All sections covered" },
     { id: "crit-3", title: "Clarity", verdict: "fail", reasoning: "Ambiguous wording" },
   ];
 
-  function makeCompleteRunWithCriteria(criteriaResults: Array<{ id: string; title: string; verdict: string; reasoning: string }> | undefined, allPass = false) {
+  function makeCompleteRunWithCriteria(
+    criteriaResults: CriterionFixture[] | undefined,
+    allPass = false,
+  ) {
     return makeMockRun({
       status: "complete",
       runnerOutputText: "Output",
@@ -774,7 +793,7 @@ describe("LegalBenchmarkResults", () => {
     const lines = copied.split("\n");
     // header + 2 criteria = 3 lines total
     expect(lines).toHaveLength(3);
-    expect(lines[0]).toBe("Verdict\tID\tTitle\tReasoning");
+    expect(lines[0]).toBe("Verdict\tID\tTitle\tReasoning\tJudge Dispute");
     // no embedded newlines or tabs remain in data rows
     expect(lines[1]).not.toContain("\n");
     expect(lines[2]).not.toContain("\n");
@@ -816,6 +835,329 @@ describe("LegalBenchmarkResults", () => {
     render(React.createElement(LegalBenchmarkResults, { runId: "run-abc", onReset }));
 
     expect(screen.queryByRole("button", { name: "Copy rubric results" })).toBeNull();
+  });
+
+  // ─── Judge Dispute sub-block ──────────────────────────────────────────────
+
+  it("renders Judge Dispute sub-block for a failed criterion with both fields set", () => {
+    const criteriaResults: CriterionFixture[] = [
+      {
+        id: "crit-1",
+        title: "Accuracy",
+        verdict: "fail",
+        reasoning: "Missing key point",
+        flagged: true,
+        llm_flag_reason: "The judge misread the source document.",
+      },
+    ];
+    mockUseLegalBenchmarkRun.mockReturnValue({
+      run: makeCompleteRunWithCriteria(criteriaResults, false),
+      isLoading: false,
+      isStale: false,
+      refetch: vi.fn(),
+    });
+
+    render(React.createElement(LegalBenchmarkResults, { runId: "run-abc", onReset }));
+
+    expect(screen.getByText("Judge Dispute")).toBeInTheDocument();
+    expect(screen.getByText("The judge misread the source document.")).toBeInTheDocument();
+  });
+
+  it("does NOT render Judge Dispute sub-block for a failed criterion with no dispute fields", () => {
+    const criteriaResults: CriterionFixture[] = [
+      { id: "crit-1", title: "Accuracy", verdict: "fail", reasoning: "Missing key point" },
+    ];
+    mockUseLegalBenchmarkRun.mockReturnValue({
+      run: makeCompleteRunWithCriteria(criteriaResults, false),
+      isLoading: false,
+      isStale: false,
+      refetch: vi.fn(),
+    });
+
+    render(React.createElement(LegalBenchmarkResults, { runId: "run-abc", onReset }));
+
+    expect(screen.queryByText("Judge Dispute")).toBeNull();
+  });
+
+  it("does NOT render Judge Dispute sub-block for a PASSED criterion even with stray llm_flag_reason", () => {
+    const criteriaResults: CriterionFixture[] = [
+      {
+        id: "crit-1",
+        title: "Accuracy",
+        verdict: "pass",
+        reasoning: "All good",
+        flagged: true,
+        llm_flag_reason: "Stray prose that should be ignored.",
+      },
+    ];
+    mockUseLegalBenchmarkRun.mockReturnValue({
+      run: makeCompleteRunWithCriteria(criteriaResults, true),
+      isLoading: false,
+      isStale: false,
+      refetch: vi.fn(),
+    });
+
+    render(React.createElement(LegalBenchmarkResults, { runId: "run-abc", onReset }));
+
+    expect(screen.queryByText("Judge Dispute")).toBeNull();
+  });
+
+  it("shows marker text for marked-without-prose case in the panel", () => {
+    const criteriaResults: CriterionFixture[] = [
+      {
+        id: "crit-1",
+        title: "Accuracy",
+        verdict: "fail",
+        reasoning: "Missing key point",
+        flagged: true,
+        // no llm_flag_reason
+      },
+    ];
+    mockUseLegalBenchmarkRun.mockReturnValue({
+      run: makeCompleteRunWithCriteria(criteriaResults, false),
+      isLoading: false,
+      isStale: false,
+      refetch: vi.fn(),
+    });
+
+    render(React.createElement(LegalBenchmarkResults, { runId: "run-abc", onReset }));
+
+    expect(screen.getByText("Judge Dispute")).toBeInTheDocument();
+    expect(screen.getByText("Disputed — no explanation provided")).toBeInTheDocument();
+  });
+
+  it("renders Judge Dispute for prose-only case (no flagged field)", () => {
+    const criteriaResults: CriterionFixture[] = [
+      {
+        id: "crit-1",
+        title: "Accuracy",
+        verdict: "fail",
+        reasoning: "Missing key point",
+        llm_flag_reason: "The citation numbers are correct per source.",
+      },
+    ];
+    mockUseLegalBenchmarkRun.mockReturnValue({
+      run: makeCompleteRunWithCriteria(criteriaResults, false),
+      isLoading: false,
+      isStale: false,
+      refetch: vi.fn(),
+    });
+
+    render(React.createElement(LegalBenchmarkResults, { runId: "run-abc", onReset }));
+
+    expect(screen.getByText("Judge Dispute")).toBeInTheDocument();
+    expect(screen.getByText("The citation numbers are correct per source.")).toBeInTheDocument();
+  });
+
+  it("does NOT render Judge Dispute when non-string llm_flag_reason and no flagged", () => {
+    const criteriaResults: CriterionFixture[] = [
+      {
+        id: "crit-1",
+        title: "Accuracy",
+        verdict: "fail",
+        reasoning: "Missing key point",
+        llm_flag_reason: { object: "value" } as unknown as string,
+      },
+    ];
+    mockUseLegalBenchmarkRun.mockReturnValue({
+      run: makeCompleteRunWithCriteria(criteriaResults, false),
+      isLoading: false,
+      isStale: false,
+      refetch: vi.fn(),
+    });
+
+    render(React.createElement(LegalBenchmarkResults, { runId: "run-abc", onReset }));
+
+    expect(screen.queryByText("Judge Dispute")).toBeNull();
+    // safety: [object Object] must never appear
+    expect(document.body.textContent).not.toContain("[object Object]");
+  });
+
+  it("shows marker when non-string llm_flag_reason but flagged is true", () => {
+    const criteriaResults: CriterionFixture[] = [
+      {
+        id: "crit-1",
+        title: "Accuracy",
+        verdict: "fail",
+        reasoning: "Missing key point",
+        flagged: true,
+        llm_flag_reason: { object: "value" } as unknown as string,
+      },
+    ];
+    mockUseLegalBenchmarkRun.mockReturnValue({
+      run: makeCompleteRunWithCriteria(criteriaResults, false),
+      isLoading: false,
+      isStale: false,
+      refetch: vi.fn(),
+    });
+
+    render(React.createElement(LegalBenchmarkResults, { runId: "run-abc", onReset }));
+
+    expect(screen.getByText("Judge Dispute")).toBeInTheDocument();
+    expect(screen.getByText("Disputed — no explanation provided")).toBeInTheDocument();
+    expect(document.body.textContent).not.toContain("[object Object]");
+  });
+
+  it("clipboard export includes Judge Dispute column and sanitizes dispute prose", async () => {
+    const user = userEvent.setup();
+    const writeSpy = vi.spyOn(navigator.clipboard, "writeText").mockResolvedValue(undefined);
+
+    const criteriaResults: CriterionFixture[] = [
+      {
+        id: "crit-1",
+        title: "Accuracy",
+        verdict: "fail",
+        reasoning: "Missing key point",
+        flagged: true,
+        llm_flag_reason: "Rebuttal with\ttab and\nnewline.",
+      },
+      { id: "crit-2", title: "Completeness", verdict: "pass", reasoning: "All covered" },
+    ];
+    mockUseLegalBenchmarkRun.mockReturnValue({
+      run: makeCompleteRunWithCriteria(criteriaResults, false),
+      isLoading: false,
+      isStale: false,
+      refetch: vi.fn(),
+    });
+
+    render(React.createElement(LegalBenchmarkResults, { runId: "run-abc", onReset }));
+    const copyBtn = screen.getByRole("button", { name: "Copy rubric results" });
+    await user.click(copyBtn);
+
+    expect(writeSpy).toHaveBeenCalledTimes(1);
+    const copied: string = writeSpy.mock.calls[0][0];
+    const lines = copied.split("\n");
+
+    // header ends with Judge Dispute column
+    expect(lines[0]).toBe("Verdict\tID\tTitle\tReasoning\tJudge Dispute");
+    // tabs/newlines in dispute prose are sanitized
+    const failRow = lines.find((l) => l.includes("crit-1"));
+    expect(failRow).toBeDefined();
+    expect(failRow).not.toContain("\n");
+    // dispute text present, sanitized
+    expect(failRow).toContain("Rebuttal with tab and newline.");
+
+    vi.restoreAllMocks();
+  });
+
+  it("clipboard export writes blank Judge Dispute for criterion with no dispute", async () => {
+    const user = userEvent.setup();
+    const writeSpy = vi.spyOn(navigator.clipboard, "writeText").mockResolvedValue(undefined);
+
+    const criteriaResults: CriterionFixture[] = [
+      { id: "crit-1", title: "Accuracy", verdict: "fail", reasoning: "Missing key point" },
+    ];
+    mockUseLegalBenchmarkRun.mockReturnValue({
+      run: makeCompleteRunWithCriteria(criteriaResults, false),
+      isLoading: false,
+      isStale: false,
+      refetch: vi.fn(),
+    });
+
+    render(React.createElement(LegalBenchmarkResults, { runId: "run-abc", onReset }));
+    const copyBtn = screen.getByRole("button", { name: "Copy rubric results" });
+    await user.click(copyBtn);
+
+    const copied: string = writeSpy.mock.calls[0][0];
+    const dataRow = copied.split("\n")[1];
+    // five tab-separated columns, last one blank
+    const cols = dataRow.split("\t");
+    expect(cols).toHaveLength(5);
+    expect(cols[4]).toBe("");
+
+    vi.restoreAllMocks();
+  });
+
+  it("clipboard export writes marker for marked-without-prose case", async () => {
+    const user = userEvent.setup();
+    const writeSpy = vi.spyOn(navigator.clipboard, "writeText").mockResolvedValue(undefined);
+
+    const criteriaResults: CriterionFixture[] = [
+      {
+        id: "crit-1",
+        title: "Accuracy",
+        verdict: "fail",
+        reasoning: "Missing key point",
+        flagged: true,
+      },
+    ];
+    mockUseLegalBenchmarkRun.mockReturnValue({
+      run: makeCompleteRunWithCriteria(criteriaResults, false),
+      isLoading: false,
+      isStale: false,
+      refetch: vi.fn(),
+    });
+
+    render(React.createElement(LegalBenchmarkResults, { runId: "run-abc", onReset }));
+    const copyBtn = screen.getByRole("button", { name: "Copy rubric results" });
+    await user.click(copyBtn);
+
+    const copied: string = writeSpy.mock.calls[0][0];
+    const dataRow = copied.split("\n")[1];
+    const cols = dataRow.split("\t");
+    expect(cols[4]).toBe("Disputed — no explanation provided");
+
+    vi.restoreAllMocks();
+  });
+
+  it("filter matches dispute prose and surfaces criterion", async () => {
+    const user = userEvent.setup();
+    const criteriaResults: CriterionFixture[] = [
+      {
+        id: "crit-1",
+        title: "Accuracy",
+        verdict: "fail",
+        reasoning: "Missing key point",
+        flagged: true,
+        llm_flag_reason: "uniqueDisputeProseXYZ",
+      },
+      { id: "crit-2", title: "Completeness", verdict: "pass", reasoning: "All covered" },
+    ];
+    mockUseLegalBenchmarkRun.mockReturnValue({
+      run: makeCompleteRunWithCriteria(criteriaResults, false),
+      isLoading: false,
+      isStale: false,
+      refetch: vi.fn(),
+    });
+
+    render(React.createElement(LegalBenchmarkResults, { runId: "run-abc", onReset }));
+
+    const filterInput = screen.getByTestId("filter-input");
+    await user.type(filterInput, "uniqueDisputeProseXYZ");
+
+    // Only the disputed criterion should remain
+    expect(screen.getByText("Accuracy")).toBeInTheDocument();
+    expect(screen.queryByText("Completeness")).toBeNull();
+  });
+
+  it("score summary, PASS/FAIL badge, and n_passed/n_total are unaffected by disputes", () => {
+    const criteriaResults: CriterionFixture[] = [
+      {
+        id: "crit-1",
+        title: "Accuracy",
+        verdict: "fail",
+        reasoning: "Missing key point",
+        flagged: true,
+        llm_flag_reason: "Disputed.",
+      },
+      { id: "crit-2", title: "Clarity", verdict: "fail", reasoning: "Ambiguous" },
+      { id: "crit-3", title: "Completeness", verdict: "pass", reasoning: "Good" },
+    ];
+    mockUseLegalBenchmarkRun.mockReturnValue({
+      run: makeCompleteRunWithCriteria(criteriaResults, false),
+      isLoading: false,
+      isStale: false,
+      refetch: vi.fn(),
+    });
+
+    render(React.createElement(LegalBenchmarkResults, { runId: "run-abc", onReset }));
+
+    // n_passed/n_total unchanged
+    expect(screen.getByText(/1\/3 criteria passed/)).toBeInTheDocument();
+    // FAIL badge unchanged
+    expect(screen.getByText("FAIL")).toBeInTheDocument();
+    // Rubric header count unchanged: 2 failed / 3 total
+    expect(screen.getByText(/2 failed \/ 3 total/)).toBeInTheDocument();
   });
 
   // ─── Run Eval button ──────────────────────────────────────────────────────

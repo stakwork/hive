@@ -17,6 +17,7 @@ import { useWorkspace } from "@/hooks/useWorkspace";
 import { StakworkRunLink } from "@/components/legal/StakworkRunLink";
 import { EvalRunsBox } from "@/components/legal/EvalRunsBox";
 import { BenchmarkRunAgentLogs } from "@/components/legal/BenchmarkRunAgentLogs";
+import { resolveJudgeDispute } from "@/lib/harvey-lab/eval-normalizers";
 
 /** Strip provider prefix for display, e.g. "anthropic/claude-sonnet-5" → "claude-sonnet-5" */
 function displayModelName(value: string | undefined): string {
@@ -63,14 +64,15 @@ export function LegalBenchmarkResults({ runId, onReset, isSuperAdmin = false }: 
     const filtered = q
       ? criteriaResults.filter(
           (c) =>
-            c.id.toLowerCase().includes(q) ||
-            c.title.toLowerCase().includes(q) ||
-            c.reasoning.toLowerCase().includes(q),
+            c.id?.toLowerCase().includes(q) ||
+            c.title?.toLowerCase().includes(q) ||
+            c.reasoning?.toLowerCase().includes(q) ||
+            resolveJudgeDispute(c)?.displayText.toLowerCase().includes(q),
         )
       : criteriaResults;
     return [...filtered].sort((a, b) => {
-      const aPass = a.verdict.toLowerCase() === "pass";
-      const bPass = b.verdict.toLowerCase() === "pass";
+      const aPass = a.verdict?.toLowerCase() === "pass";
+      const bPass = b.verdict?.toLowerCase() === "pass";
       if (aPass === bPass) return 0;
       return aPass ? 1 : -1; // failed first
     });
@@ -83,11 +85,12 @@ export function LegalBenchmarkResults({ runId, onReset, isSuperAdmin = false }: 
   };
 
   const handleCopyRubric = () => {
-    if (!criteriaResults || criteriaResults.length === 0) return;
+    if (!sortedFiltered || sortedFiltered.length === 0) return;
     const sanitize = (s: string) => s.replace(/\t/g, " ").replace(/[\n\r]/g, " ");
-    const header = "Verdict\tID\tTitle\tReasoning";
-    const rows = criteriaResults.map(
-      (c) => `${sanitize(c.verdict)}\t${sanitize(c.id)}\t${sanitize(c.title)}\t${sanitize(c.reasoning)}`
+    const header = "Verdict\tID\tTitle\tReasoning\tJudge Dispute";
+    const rows = sortedFiltered.map(
+      (c) =>
+        `${sanitize(c.verdict)}\t${sanitize(c.id)}\t${sanitize(c.title)}\t${sanitize(c.reasoning)}\t${sanitize(resolveJudgeDispute(c)?.displayText ?? "")}`,
     );
     navigator.clipboard.writeText([header, ...rows].join("\n"));
   };
@@ -305,7 +308,7 @@ export function LegalBenchmarkResults({ runId, onReset, isSuperAdmin = false }: 
                   <Input
                     value={filterQuery}
                     onChange={(e) => setFilterQuery(e.target.value)}
-                    placeholder="Filter by ID, title, or keyword…"
+                    placeholder="Filter by ID, title, reasoning, or dispute…"
                     className="h-8 text-sm"
                   />
                 </div>
@@ -334,8 +337,27 @@ export function LegalBenchmarkResults({ runId, onReset, isSuperAdmin = false }: 
                           </button>
                         </CollapsibleTrigger>
                         <CollapsibleContent>
-                          <div className="px-4 pb-3 pt-1 text-sm text-muted-foreground bg-muted/20">
-                            {criterion.reasoning}
+                          <div className="bg-muted/20">
+                            <div className="px-4 pb-3 pt-1 text-sm text-muted-foreground">
+                              {criterion.reasoning}
+                            </div>
+                            {(() => {
+                              const dispute = resolveJudgeDispute(criterion);
+                              if (!dispute) return null;
+                              return (
+                                <div
+                                  data-judge-dispute
+                                  className="mx-4 mb-3 border-l-2 border-amber-400/60 pl-3"
+                                >
+                                  <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground/70 mb-1">
+                                    Judge Dispute
+                                  </p>
+                                  <p className="text-sm text-muted-foreground">
+                                    {dispute.displayText}
+                                  </p>
+                                </div>
+                              );
+                            })()}
                           </div>
                         </CollapsibleContent>
                       </Collapsible>
