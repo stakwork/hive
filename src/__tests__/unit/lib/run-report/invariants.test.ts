@@ -68,14 +68,32 @@ describe("renderer invariants — src/components/run-report", () => {
     expect(offenders).toEqual([]);
   });
 
-  it("never references the bundle URL field", () => {
-    const offenders = files.filter((f) => /reportUrl|report_url/.test(read(f)));
+  it("never references the bundle URL or any storage URL variant in rendered output", () => {
+    // Guards the documents surface — a new url-key spelling must never reach the DOM.
+    const pattern =
+      /reportUrl|report_url|s3_url|s3url|signed_url|signedurl|presigned_url|presignedurl|download_url|downloadurl/;
+    const offenders = files.filter((f) => pattern.test(read(f)));
     expect(offenders).toEqual([]);
   });
 
   it("uses formatInUserTz, never the UTC-hardcoded formatFeatureDate", () => {
     const offenders = files.filter((f) => /formatFeatureDate/.test(read(f)));
     expect(offenders).toEqual([]);
+  });
+
+  it("has a SectionErrorBoundary exported from chrome.tsx", () => {
+    const chrome = read(join(RENDERER_DIR, "chrome.tsx"));
+    expect(chrome).toMatch(/export class SectionErrorBoundary/);
+    expect(chrome).toMatch(/getDerivedStateFromError/);
+  });
+
+  it("RunReportView wraps every section with SectionErrorBoundary", () => {
+    const view = read(join(RENDERER_DIR, "RunReportView.tsx"));
+    expect(view).toMatch(/SectionErrorBoundary/);
+    // Each of the 8 section components must be wrapped — confirm at least 8
+    // closing tags appear (one per boundary around each section).
+    const closeMatches = (view.match(/<\/SectionErrorBoundary>/g) ?? []).length;
+    expect(closeMatches).toBeGreaterThanOrEqual(8);
   });
 });
 
