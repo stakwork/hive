@@ -5,12 +5,12 @@ import { FileText, AlertTriangle } from "lucide-react";
 import {
   formatDuration,
   aggregateFixes,
-  toEpochMs,
+  buildTimeline,
+  buildGantt,
   isRecord,
   asString,
-  type RubricRow,
 } from "@/lib/run-report/derive";
-import type { RunReportProjection } from "@/lib/run-report/types";
+import type { RunReportProjection, RubricRow } from "@/lib/run-report/types";
 import { formatInUserTz } from "@/lib/date-utils";
 import {
   Section,
@@ -53,8 +53,9 @@ export function OverviewSection({
   timezone: string;
   taskTitle: string;
 }) {
-  const { stats, schemaVersion, generatedAtMs } = projection;
-  const goal = asString(projection.pageData.setVar.task_goal);
+  const { stats, generatedAtMs } = projection;
+  // config replaces the old set_var; task_goal is under config in the real contract.
+  const goal = asString((projection.pageData.config as Record<string, unknown>).task_goal);
   const allPassed = stats.failCount === 0 && stats.passCount !== null;
 
   return (
@@ -86,9 +87,11 @@ export function OverviewSection({
           <div className="flex flex-wrap gap-2 mt-3">
             <Chip label="docs" value={stats.sourceDocCount} />
             <Chip label="workfiles" value={stats.workfileCount} />
-            <Chip label="agents" value={stats.traceCount} />
-            <Chip label="steps" value={stats.branchCount} />
-            <Chip label="schema" value={`v${schemaVersion}`} />
+            <Chip label="agents" value={stats.agentCount} />
+            <Chip label="steps" value={stats.stepCount} />
+            {projection.pageData.wallClockMin !== null && (
+              <Chip label="wall clock" value={`${projection.pageData.wallClockMin.toFixed(1)}m`} />
+            )}
           </div>
           {generatedAtMs !== null && (
             <div className="font-mono text-[10.5px] text-muted-foreground/70 mt-3">
@@ -100,7 +103,7 @@ export function OverviewSection({
 
       <Panel className="mt-6">
         <MiniHeading>Run configuration</MiniHeading>
-        <KeyValues data={projection.pageData.setVar} />
+        <KeyValues data={projection.pageData.config} />
       </Panel>
     </section>
   );
@@ -109,25 +112,39 @@ export function OverviewSection({
 // ── 2. Pipeline ──────────────────────────────────────────────────────────────
 
 export function PipelineSection({ projection }: { projection: RunReportProjection }) {
-  const branches = projection.pageData.branches;
+  const { timeline, agents, branches } = projection.pageData;
 
-  const steps = branches.filter(isRecord).map((b) => ({
-    name: asString(b.name) ?? asString(b.step) ?? "step",
-    startMs: toEpochMs(b.start),
-    endMs: toEpochMs(b.end),
-  }));
+  // Build Gantt from timeline[] + agents[] (absolute timestamps).
+  // branches[] are plain strings — rendered as a list below the Gantt.
+  const ganttSteps = buildTimeline(timeline, agents);
+  const gantt = buildGantt(ganttSteps);
 
   return (
     <Section
       id="pipeline"
       kicker="Data flow"
       title="Pipeline timeline"
-      lede={steps.length > 0 ? `${steps.length} workflow steps on a shared time axis.` : undefined}
+      lede={gantt ? `${gantt.bars.length} workflow steps on a shared time axis.` : undefined}
     >
-      {steps.length === 0 ? (
-        <EmptyPanel label="No pipeline data for this run." />
+      {gantt ? (
+        <Gantt steps={ganttSteps} />
       ) : (
-        <Gantt steps={steps} />
+        <EmptyPanel label="No timing data for this run." />
+      )}
+
+      {branches.length > 0 && (
+        <>
+          <MiniHeading>Branch conditions ({branches.length})</MiniHeading>
+          <Panel>
+            <ul className="space-y-1">
+              {branches.map((note, i) => (
+                <li key={i} className="text-[13px] text-muted-foreground">
+                  {note}
+                </li>
+              ))}
+            </ul>
+          </Panel>
+        </>
       )}
     </Section>
   );
@@ -182,7 +199,7 @@ export function RubricsSection({ rows }: { rows: RubricRow[] }) {
               </span>
               <span className="flex-1 text-[13.5px]">{row.title}</span>
               <StatusBadge kind={row.passed ? "pass" : "fail"}>
-                {row.passed ? "pass" : "fail"}
+                {row.verdict || (row.passed ? "pass" : "fail")}
               </StatusBadge>
             </summary>
             {row.reasoning && (
@@ -232,15 +249,6 @@ export function FailuresSection({
                   <p className="text-[13px] text-muted-foreground mt-2 whitespace-pre-wrap">
                     {row.reasoning}
                   </p>
-                )}
-
-                {row.causeSummary && (
-                  <div className="border-l-[3px] border-destructive bg-destructive/[0.06] rounded-r-lg px-4 py-2.5 mt-3 text-[14px]">
-                    <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-muted-foreground block mb-1">
-                      {row.causeType ?? "root cause"}
-                    </span>
-                    {row.causeSummary}
-                  </div>
                 )}
 
                 {links.length > 0 && (
@@ -306,7 +314,12 @@ export function TracesSection({ projection }: { projection: RunReportProjection 
   const traces = projection.analysis.traces;
 
   return (
-    <Section id="agents" kicker="send_agent_logs" title="Agent roster">
+    <Section
+      id="agents"
+      kicker="send_agent_logs"
+      title="Agent roster"
+      data-testid="run-report-section-agents"
+    >
       {/* An empty traces array is the deterministic-only run — a LEGITIMATE
           empty state that must never route to the error state. */}
       {traces.length === 0 ? (
@@ -316,15 +329,20 @@ export function TracesSection({ projection }: { projection: RunReportProjection 
           <Panel key={i} className="mt-4">
             <div className="flex flex-wrap items-baseline gap-3">
               <h3 className="text-[19px] font-semibold">
-                {asString(trace.agent) ?? `Agent ${i + 1}`}
+                {asString(trace.rubric_id) ?? `Trace ${i + 1}`}
               </h3>
-              {asString(trace.started_at) && (
+              {asString(trace.classification) && (
                 <span className="font-mono text-[11px] text-muted-foreground/70">
-                  {asString(trace.started_at)}
+                  {asString(trace.classification)}
                 </span>
               )}
             </div>
-            <Fold summary="Transcript" monospace>
+            {asString(trace.root_cause) && (
+              <p className="text-[13px] text-muted-foreground mt-2 whitespace-pre-wrap">
+                {asString(trace.root_cause)}
+              </p>
+            )}
+            <Fold summary="Trace details" monospace>
               <pre className="text-[11.5px] whitespace-pre-wrap break-all font-mono text-muted-foreground">
                 {stringify(trace)}
               </pre>
@@ -354,7 +372,9 @@ export function ConceptsSection({ projection }: { projection: RunReportProjectio
 
   const synthesis = isRecord(concepts.synthesis) ? concepts.synthesis : {};
   const narrative = asString(synthesis.overall_narrative);
-  const nodes = Array.isArray(concepts.nodes) ? concepts.nodes.filter(isRecord) : [];
+  const conceptMatrix = Array.isArray(synthesis.concept_matrix)
+    ? synthesis.concept_matrix.filter(isRecord)
+    : [];
 
   return (
     <Section id="concepts" kicker="Concept usage" title="Concept pulls">
@@ -373,12 +393,24 @@ export function ConceptsSection({ projection }: { projection: RunReportProjectio
         <EmptyPanel label="No synthesis narrative for this run." />
       )}
 
-      {nodes.length > 0 && (
+      {conceptMatrix.length > 0 && (
         <>
-          <MiniHeading>Concepts referenced</MiniHeading>
-          <div className="flex flex-wrap gap-2">
-            {nodes.map((node, i) => (
-              <Chip key={i} label={asString(node.kind) ?? "concept"} value={asString(node.label) ?? asString(node.id) ?? "—"} />
+          <MiniHeading>Concept matrix</MiniHeading>
+          <div className="space-y-2">
+            {conceptMatrix.map((entry, i) => (
+              <div key={i} className="flex items-start gap-3 text-[13px]">
+                <span className="font-mono text-[11px] text-muted-foreground/70 min-w-[80px]">
+                  {asString(entry.concept) ?? `concept-${i}`}
+                </span>
+                <span className="text-muted-foreground flex-1">
+                  {asString(entry.note)}
+                </span>
+                {asString(entry.verdict) && (
+                  <StatusBadge kind={asString(entry.verdict) === "addressed" ? "pass" : "fail"}>
+                    {asString(entry.verdict)}
+                  </StatusBadge>
+                )}
+              </div>
             ))}
           </div>
         </>
@@ -397,6 +429,7 @@ export function SourcesSection({
   onOpenDoc: (docId: string, tokens: string[]) => void;
 }) {
   const { sourceDocs, workfiles } = projection;
+  const documents = projection.pageData.documents;
 
   return (
     <Section id="sources" kicker="Context" title="Sources &amp; artifacts">
@@ -425,6 +458,30 @@ export function SourcesSection({
         </div>
       )}
 
+      {documents.length > 0 && (
+        <>
+          <MiniHeading>Run documents ({documents.length})</MiniHeading>
+          <Panel>
+            <ul className="space-y-1">
+              {documents.map((doc, i) => (
+                <li key={i} className="flex items-center gap-3 text-[13px]">
+                  <FileText className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                  <span className="flex-1 text-muted-foreground break-words">{doc.name}</span>
+                  {doc.type && (
+                    <span className="font-mono text-[10px] text-muted-foreground/60">{doc.type}</span>
+                  )}
+                  {doc.sizeBytes !== undefined && (
+                    <span className="font-mono text-[10px] text-muted-foreground/60">
+                      {(doc.sizeBytes / 1024).toFixed(1)} KB
+                    </span>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </Panel>
+        </>
+      )}
+
       <MiniHeading>Workfiles ({workfiles.length})</MiniHeading>
       {workfiles.length === 0 ? (
         <EmptyPanel label="No workfiles for this run." />
@@ -448,7 +505,7 @@ export function SourcesSection({
 export function HealthSection({ projection }: { projection: RunReportProjection }) {
   const { security, healthNotes, logStats, outputs } = projection.pageData;
   const isEmpty =
-    Object.keys(security).length === 0 &&
+    security.length === 0 &&
     healthNotes.length === 0 &&
     Object.keys(logStats).length === 0 &&
     Object.keys(outputs).length === 0;
@@ -462,18 +519,11 @@ export function HealthSection({ projection }: { projection: RunReportProjection 
           {healthNotes.length > 0 && (
             <Panel>
               <ul className="space-y-1.5">
-                {healthNotes.filter(isRecord).map((note, i) => (
+                {/* healthNotes are plain strings in the real contract */}
+                {healthNotes.map((note, i) => (
                   <li key={i} className="flex items-start gap-2 text-[13px]">
-                    <AlertTriangle
-                      className={`h-3.5 w-3.5 mt-0.5 shrink-0 ${
-                        asString(note.level) === "warn"
-                          ? "text-amber-500"
-                          : "text-muted-foreground/50"
-                      }`}
-                    />
-                    <span className="text-muted-foreground">
-                      {asString(note.message) ?? stringify(note)}
-                    </span>
+                    <AlertTriangle className="h-3.5 w-3.5 mt-0.5 shrink-0 text-muted-foreground/50" />
+                    <span className="text-muted-foreground">{note}</span>
                   </li>
                 ))}
               </ul>
@@ -481,10 +531,23 @@ export function HealthSection({ projection }: { projection: RunReportProjection 
           )}
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mt-4">
-            {Object.keys(security).length > 0 && (
+            {security.length > 0 && (
               <Panel>
-                <MiniHeading>Security</MiniHeading>
-                <KeyValues data={security} />
+                <MiniHeading>Security findings ({security.length})</MiniHeading>
+                <ul className="space-y-2">
+                  {security.map((finding, i) => (
+                    <li key={i} className="flex items-start gap-2 text-[13px]">
+                      <StatusBadge kind={finding.severity === "high" ? "fail" : "warn"}>
+                        {finding.severity ?? "info"}
+                      </StatusBadge>
+                      <span className="text-muted-foreground flex-1">
+                        {asString(finding.detail) ??
+                          asString(finding.where) ??
+                          stringify(finding)}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
               </Panel>
             )}
             {Object.keys(logStats).length > 0 && (
