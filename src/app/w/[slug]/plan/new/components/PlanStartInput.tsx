@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useRef, useEffect, useCallback } from "react";
+import { useFileDrop } from "@/hooks/useFileDrop";
 import { motion } from "framer-motion";
 import { Card } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
@@ -83,7 +84,6 @@ export function PlanStartInput({ onSubmit, isLoading = false, loadingStatus, ini
 
   // File attachment state
   const [selectedFiles, setSelectedFiles] = useState<{ file: File; previewUrl: string }[]>([]);
-  const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const filteredWorkspaces =
@@ -244,29 +244,9 @@ export function PlanStartInput({ onSubmit, isLoading = false, loadingStatus, ini
   };
 
   // Drag-and-drop handlers
-  const handleDragEnter = (e: React.DragEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setIsDragging(true);
-  };
-
-  const handleDragLeave = (e: React.DragEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setIsDragging(false);
-  };
-
-  const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    e.stopPropagation();
-  };
-
-  const handleImageDrop = (e: React.DragEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setIsDragging(false);
-    if (e.dataTransfer.files.length > 0) handleFiles(e.dataTransfer.files);
-  };
+  const { isDragging, dragProps } = useFileDrop<HTMLDivElement>({
+    onDrop: (files) => handleFiles(files),
+  });
 
   // Paste handler for the textarea
   const handlePaste = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
@@ -431,10 +411,7 @@ export function PlanStartInput({ onSubmit, isLoading = false, loadingStatus, ini
           <div className="mx-8 mb-4">
             {selectedFiles.length === 0 ? (
               <div
-                onDragEnter={handleDragEnter}
-                onDragLeave={handleDragLeave}
-                onDragOver={handleDragOver}
-                onDrop={handleImageDrop}
+                {...dragProps}
               >
                 <label htmlFor={fileInputId} className="cursor-pointer">
                   <div
@@ -455,10 +432,7 @@ export function PlanStartInput({ onSubmit, isLoading = false, loadingStatus, ini
             ) : (
               <div
                 className="flex flex-wrap gap-2"
-                onDragEnter={handleDragEnter}
-                onDragLeave={handleDragLeave}
-                onDragOver={handleDragOver}
-                onDrop={handleImageDrop}
+                {...dragProps}
                 data-testid="file-preview"
               >
                 {selectedFiles.map((entry, index) => (

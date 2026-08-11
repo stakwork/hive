@@ -54,6 +54,7 @@ import { forkCanvasConversation } from "../_state/forkCanvasConversation";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { useCanvasAgentActivity } from "@/hooks/useCanvasAgentActivity";
 import { uploadFileToS3 } from "@/lib/upload-image-to-s3";
+import { useFileDrop } from "@/hooks/useFileDrop";
 import { StreamScrollIndicator } from "@/components/dashboard/DashboardChat/StreamScrollIndicator";
 
 /**
@@ -790,7 +791,6 @@ function SidebarChatInput({
 }: SidebarChatInputProps) {
   const [input, setInput] = useState("");
   const [pendingFiles, setPendingFiles] = useState<PendingFile[]>([]);
-  const [isDragging, setIsDragging] = useState(false);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -1003,21 +1003,9 @@ function SidebarChatInput({
 
   // ─── Drag-and-drop ──────────────────────────────────────────────────
 
-  const handleDragEnter = (e: React.DragEvent) => {
-    e.preventDefault();
-    setIsDragging(true);
-  };
-  const handleDragOver = (e: React.DragEvent) => {
-    e.preventDefault();
-  };
-  const handleDragLeave = (e: React.DragEvent) => {
-    if (e.currentTarget === e.target) setIsDragging(false);
-  };
-  const handleDrop = (e: React.DragEvent) => {
-    e.preventDefault();
-    setIsDragging(false);
-    if (e.dataTransfer.files.length) handleFiles(e.dataTransfer.files);
-  };
+  const { isDragging, dragProps } = useFileDrop({
+    onDrop: (files) => handleFiles(files),
+  });
 
   // Button column count: send is always present, mic is conditional, paperclip is always present
   // right-1.5 = send, right-9 = mic (when supported), right-[3.75rem] = paperclip (when mic present), right-9 = paperclip (when no mic)
@@ -1101,10 +1089,7 @@ function SidebarChatInput({
       <form
         onSubmit={handleSubmit}
         className="flex items-end gap-2"
-        onDragEnter={handleDragEnter}
-        onDragOver={handleDragOver}
-        onDragLeave={handleDragLeave}
-        onDrop={handleDrop}
+        {...dragProps}
       >
         <div className="relative flex-1 min-w-0">
           <Textarea
