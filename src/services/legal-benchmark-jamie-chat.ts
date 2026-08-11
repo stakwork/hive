@@ -39,10 +39,21 @@ import { parseBenchmarkRunResult, type BenchmarkRunResult } from "@/types/legal"
 
 const LOG_SERVICE = "legal-benchmark-jamie-chat";
 
+/**
+ * Parse a run's result JSON.
+ *
+ * Goes through `parseBenchmarkRunResult` rather than a bare `JSON.parse` so
+ * legacy Jamie-chat key names (`generateReport`, `reportStatus`,
+ * `reportConversationId`, `reportChatPath`) are migrated on read. Without that,
+ * a run created before the rename would fail the claim check below and its
+ * chat would be silently skipped — and a run left mid-generation under the old
+ * keys would not be recognised as claimed, so a duplicate delivery could spawn
+ * a second chat.
+ */
 function parseResultJson(result: string | null): Record<string, unknown> {
   if (!result) return {};
   try {
-    return JSON.parse(result) as Record<string, unknown>;
+    return (parseBenchmarkRunResult(result) ?? {}) as Record<string, unknown>;
   } catch {
     return {};
   }
