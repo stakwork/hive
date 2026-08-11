@@ -24,12 +24,21 @@ export interface BenchmarkRunListRow {
   requestedModel?: string;
   /** Operator-chosen judge model (bare name). Absent on legacy runs. */
   requestedJudgeModel?: string;
+  /** Operator checked "Jamie Chat" at run creation (legacy key name) */
+  generateJamieChat?: boolean;
+  /** Jamie chat lifecycle: "generating" | "completed" | "failed" */
+  jamieChatStatus?: string;
+  /** Relative link to the Jamie chat, e.g. "/org/<login>?chat=<id>" */
+  jamieChatPath?: string;
+  // ── Run report bundle (distinct artifact from the Jamie chat) ──────────────
   /** Operator checked "Generate Report" at run creation */
-  generateReport?: boolean;
-  /** Report lifecycle: "generating" | "completed" | "failed" */
-  reportStatus?: string;
-  /** Relative link to the report chat, e.g. "/org/<login>?chat=<id>" */
-  reportChatPath?: string;
+  generateRunReport?: boolean;
+  /** A sanitized bundle projection is persisted. Derived server-side. */
+  hasReport?: boolean;
+  /** Projection was truncated (source document bodies dropped). */
+  reportPartial?: boolean;
+  /** Bundle schema_version unsupported by this build. */
+  reportSchemaUnsupported?: boolean;
 }
 
 interface UseLegalBenchmarkRunListResult {
@@ -76,6 +85,9 @@ export function useLegalBenchmarkRunList(
         result: string | null;
         createdAt: string;
         updatedAt: string;
+        hasReport?: boolean;
+        reportPartial?: boolean;
+        reportSchemaUnsupported?: boolean;
       }> = data.runs ?? [];
 
       const mapped: BenchmarkRunListRow[] = rawRows.map((r) => {
@@ -94,9 +106,15 @@ export function useLegalBenchmarkRunList(
           all_pass: parsed?.all_pass,
           requestedModel: parsed?.requestedModel,
           requestedJudgeModel: parsed?.requestedJudgeModel,
-          generateReport: parsed?.generateReport,
-          reportStatus: parsed?.reportStatus,
-          reportChatPath: parsed?.reportChatPath,
+          generateJamieChat: parsed?.generateJamieChat,
+          jamieChatStatus: parsed?.jamieChatStatus,
+          jamieChatPath: parsed?.jamieChatPath,
+          generateRunReport: parsed?.generateRunReport,
+          // Derived server-side from the persisted projection, NOT from the
+          // bundle URL — which never reaches this response.
+          hasReport: r.hasReport === true,
+          reportPartial: r.reportPartial === true,
+          reportSchemaUnsupported: r.reportSchemaUnsupported === true,
           // Unified judge precedence: operator choice takes priority over runner-echoed value.
           // Format mirrors stakwork-run.ts — if the server-side format string changes, update this line to match.
           judgeNotes:

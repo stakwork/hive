@@ -1936,6 +1936,81 @@ async function seedFeatureErrorIssueLink() {
  * Safe to call multiple times (idempotent via findFirst guard).
  * Never runs against a production database.
  */
+/**
+ * Seed one LEGAL_BENCHMARK_RUNNER run carrying a run report bundle: a populated
+ * `reportUrl` plus the persisted sanitized projection, so the report page has
+ * something to render without a live Stakwork run.
+ *
+ * Attached to `openlaw` as well as `dev-mock`, because every legal-benchmark
+ * route hard-gates on `slug === "openlaw"` — a run seeded only onto dev-mock
+ * would be invisible through the UI it exists to exercise.
+ *
+ * Fixed-id upsert so re-running the seed is idempotent and so it can sit ahead
+ * of the caller's short-circuit.
+ */
+async function seedRunReportBundleRun() {
+  // Imported lazily: this pulls in the sanitize pipeline, which the rest of the
+  // seed has no reason to load.
+  const { RUN_REPORT_FIXTURES } = await import("../../src/app/api/mock/run-report/fixtures");
+  const { projectBundle } = await import("../../src/lib/run-report/project");
+
+  const outcome = projectBundle(JSON.stringify(RUN_REPORT_FIXTURES.full));
+  if (outcome.status !== "ok") {
+    console.log(`⚠ Run report fixture failed to project (${outcome.status}) — skipping`);
+    return;
+  }
+
+  const targets = await prisma.workspace.findMany({
+    where: { slug: { in: ["openlaw", "dev-mock"] } },
+    select: { id: true, slug: true },
+  });
+
+  if (targets.length === 0) {
+    console.log("⚠ Neither openlaw nor dev-mock found — skipping run report seed");
+    return;
+  }
+
+  const now = new Date();
+
+  for (const target of targets) {
+    const id = `seed-run-report-${target.slug}`;
+    const resultJson = JSON.stringify({
+      taskSlug: "contract-review-nda-01",
+      taskTitle: "Contract Review — Mutual NDA (seeded report)",
+      requestedModel: "claude-sonnet-5",
+      requestedJudgeModel: "claude-sonnet-4-6",
+      generateRunReport: true,
+      n_passed: 1,
+      n_total: 3,
+      all_pass: false,
+      final_output: "Reviewed the NDA and flagged the indemnity cap.",
+    });
+
+    const data = {
+      workspaceId: target.id,
+      type: StakworkRunType.LEGAL_BENCHMARK_RUNNER,
+      status: WorkflowStatus.COMPLETED,
+      webhookUrl: "",
+      result: resultJson,
+      dataType: "json",
+      reportUrl: "https://stakwork-uploads.s3.us-east-1.amazonaws.com/runs/seed/report.json",
+      reportBundle: outcome.projection as unknown as object,
+      reportBundleHash: "seedhash0000000000000000000000000000000000000000000000000000seed",
+      reportPartial: outcome.projection.partial,
+      reportSchemaUnsupported: false,
+      updatedAt: now,
+    };
+
+    await prisma.stakworkRun.upsert({
+      where: { id },
+      update: data,
+      create: { id, createdAt: now, ...data },
+    });
+
+    console.log(`✓ Seeded run report bundle run on ${target.slug} (${id})`);
+  }
+}
+
 async function seedLegalBenchmarkRuns() {
   if (process.env.NODE_ENV === "production") {
     console.log("✓ Skipping legal benchmark seed in production");
@@ -1949,6 +2024,12 @@ async function seedLegalBenchmarkRuns() {
     console.log("⚠ dev-mock workspace not found — skipping legal benchmark seed");
     return;
   }
+
+  // Report-bearing run FIRST, before the idempotency short-circuit below.
+  // That check bails on the first existing LEGAL_BENCHMARK_RUNNER row, so a
+  // database seeded before this feature existed would never receive the report
+  // run if it were created after the short-circuit.
+  await seedRunReportBundleRun();
 
   // Idempotency: skip if we already seeded this workspace
   const existing = await prisma.stakworkRun.findFirst({

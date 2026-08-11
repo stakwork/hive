@@ -84,6 +84,16 @@ export const StakworkRunWebhookSchema = z.object({
   project_id: z.number().optional(),
   project_output: z.record(z.string(), z.unknown()).optional(),
   recap_unchanged: z.boolean().optional(),
+  /**
+   * S3 URL of the run report bundle. MUST be declared here — this is a plain
+   * `z.object`, which strips unknown keys, so an undeclared field would not
+   * survive validation on the non-legal-benchmark paths.
+   *
+   * Shape-checked only (`z.url()`); the real control is the host allowlist +
+   * SSRF guard in `src/lib/run-report/url-guard.ts`, applied at ingest and
+   * again at fetch time. `z.string().url()` is deprecated in zod 4.
+   */
+  report_url: z.url().optional(),
 });
 
 export const UpdateStakworkRunDecisionSchema = z.object({
@@ -113,7 +123,9 @@ export type StakworkRunQuery = z.infer<typeof StakworkRunQuerySchema>;
 // API Response types
 export interface StakworkRunResponse {
   id: string;
-  webhookUrl: string;
+  // NOTE: `webhookUrl` is deliberately absent. It embeds the raw run_token
+  // HMAC in its query string, and is hidden by the global Prisma omit in
+  // src/lib/db.ts. Do not add it back.
   projectId: number | null;
   type: StakworkRunType;
   featureId: string | null;
@@ -125,6 +137,16 @@ export interface StakworkRunResponse {
   decision: StakworkRunDecision | null;
   createdAt: Date;
   updatedAt: Date;
+  /**
+   * Whether a sanitized run report bundle projection is persisted for this run.
+   * DERIVED from the presence of `reportBundle` — never from `reportUrl`, which
+   * must not leave the server.
+   */
+  hasReport?: boolean;
+  /** Projection was persisted in truncated form (source_docs[].html dropped). */
+  reportPartial?: boolean;
+  /** Bundle schema_version is unsupported by this build's projector. */
+  reportSchemaUnsupported?: boolean;
 }
 
 export interface StakworkRunListResponse {

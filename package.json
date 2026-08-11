@@ -121,6 +121,9 @@
     "globrex": "^0.1.2",
     "gpt-tokenizer": "^3.4.0",
     "gsap": "^3.13.0",
+    "hast-util-from-html": "^2.0.3",
+    "hast-util-sanitize": "^5.0.2",
+    "hast-util-to-jsx-runtime": "^2.3.6",
     "ioredis": "^5.10.1",
     "jsonwebtoken": "^9.0.3",
     "jspdf": "^3.0.4",
@@ -167,6 +170,7 @@
     "task-master-ai": "^0.19.0",
     "three": "^0.180.0",
     "tiny-secp256k1": "^2.2.4",
+    "undici": "^7.29.0",
     "zod": "^4.1.12",
     "zustand": "^5.0.6"
   },

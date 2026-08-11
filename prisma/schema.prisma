@@ -1053,6 +1053,30 @@ model StakworkRun {
   promptVersionId String?              @map("prompt_version_id")
   evalSetId       String?              @map("eval_set_id")
   userId          String?              @map("user_id")
+
+  // ── Run report bundle ──────────────────────────────────────────────────────
+  // Canonical owner of the report-bundle POINTER only. This does NOT compete
+  // with the Jamie chat lifecycle (generateJamieChat / jamieChatStatus /
+  // jamieChatConversationId / jamieChatPath), which lives in the `result` JSON
+  // via mergeIntoRunResult and owns the org-canvas conversation. Two different
+  // artifacts: "Jamie chat" vs. "Run report bundle".
+  //
+  // reportUrl is hidden by a global Prisma `omit` in src/lib/db.ts and must
+  // never reach a client — the bundle is a public unsigned S3 object, so the
+  // URL is a non-expiring bearer capability over legal source documents.
+  /// S3 URL of the report bundle, captured at webhook ingest. Server-only.
+  reportUrl              String?  @map("report_url")
+  /// Sanitized, redacted projection of the bundle. The only thing clients see.
+  reportBundle           Json?    @map("report_bundle")
+  /// SHA-256 of the raw bundle bytes — integrity anchor for a future re-sanitize.
+  reportBundleHash       String?  @map("report_bundle_hash")
+  /// Projection exceeded the size cap; source_docs[].html bodies were dropped.
+  reportPartial          Boolean  @default(false) @map("report_partial")
+  /// Bundle schema_version is one this build's projector was not written for.
+  reportSchemaUnsupported Boolean @default(false) @map("report_schema_unsupported")
+  /// Reason code when report_url failed validation. Never contains the URL.
+  reportRejectionReason  String?  @map("report_rejection_reason")
+
   agentLogs       AgentLog[]
   feature         Feature?             @relation(fields: [featureId], references: [id])
   task            Task?                @relation(fields: [taskId], references: [id])

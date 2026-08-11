@@ -1,16 +1,21 @@
 /**
- * Post-run report generation for legal benchmark runs.
+ * Post-run Jamie chat generation for legal benchmark runs.
  *
- * When an operator checks "Generate Report" in the task details modal, the
+ * This is the Jamie chat — an org-canvas conversation written by the canvas
+ * agent — and is a DIFFERENT artifact from the run report bundle, which is
+ * fetched from S3 at webhook ingest and lives in `reportUrl`/`reportBundle` on
+ * the StakworkRun row. The two share nothing but the word "report" in prose.
+ *
+ * When an operator checks "Jamie Chat" in the task details modal, the
  * flag is stored in the runner StakworkRun's `result` JSON. After the final
  * result webhook merges the scores and marks the run COMPLETED, the webhook
- * handler calls `generateBenchmarkRunReport` (inside Next's `after()`), which:
- *   1. Atomically claims the report (`reportStatus: "generating"` in the
- *      result JSON) so duplicate webhook deliveries can't spawn two reports.
+ * handler calls `generateBenchmarkJamieChat` (inside Next's `after()`), which:
+ *   1. Atomically claims the chat (`jamieChatStatus: "generating"` in the
+ *      result JSON) so duplicate webhook deliveries can't spawn two chats.
  *   2. Creates a fresh org-canvas `SharedConversation` seeded with the review
  *      prompt (same shape as `automation-dispatcher`).
  *   3. Runs `runCanvasAgent` and appends the assistant turn.
- *   4. Merges `reportConversationId` / `reportChatPath` back into the run's
+ *   4. Merges `jamieChatConversationId` / `jamieChatPath` back into the run's
  *      result JSON and broadcasts STAKWORK_RUN_UPDATE so the Runs table
  *      picks up the link.
  */
@@ -32,7 +37,7 @@ import {
 import { logger } from "@/lib/logger";
 import { parseBenchmarkRunResult, type BenchmarkRunResult } from "@/types/legal";
 
-const LOG_SERVICE = "legal-benchmark-report";
+const LOG_SERVICE = "legal-benchmark-jamie-chat";
 
 function parseResultJson(result: string | null): Record<string, unknown> {
   if (!result) return {};
@@ -66,12 +71,12 @@ async function mergeIntoRunResult(
 }
 
 /**
- * Generate the operator-requested post-run report for a completed
- * LEGAL_BENCHMARK_RUNNER run. No-op when the flag is absent or a report was
+ * Generate the operator-requested post-run Jamie chat for a completed
+ * LEGAL_BENCHMARK_RUNNER run. No-op when the flag is absent or a chat was
  * already generated/claimed. Errors are recorded on the run
- * (`reportStatus: "failed"`) and rethrown to the caller's catch.
+ * (`jamieChatStatus: "failed"`) and rethrown to the caller's catch.
  */
-export async function generateBenchmarkRunReport(runId: string): Promise<void> {
+export async function generateBenchmarkJamieChat(runId: string): Promise<void> {
   const run = await db.stakworkRun.findUnique({
     where: { id: runId },
     include: {
@@ -87,7 +92,7 @@ export async function generateBenchmarkRunReport(runId: string): Promise<void> {
   });
 
   if (!run) {
-    logger.error("[report] Run not found", LOG_SERVICE, { runId });
+    logger.error("[jamie-chat] Run not found", LOG_SERVICE, { runId });
     return;
   }
 
@@ -98,12 +103,12 @@ export async function generateBenchmarkRunReport(runId: string): Promise<void> {
       select: { result: true },
     });
     const json = parseResultJson(row?.result ?? null);
-    if (json.generateReport !== true) return false;
-    if (json.reportStatus || json.reportConversationId) return false;
+    if (json.generateJamieChat !== true) return false;
+    if (json.jamieChatStatus || json.jamieChatConversationId) return false;
     await tx.stakworkRun.update({
       where: { id: runId },
       data: {
-        result: JSON.stringify({ ...json, reportStatus: "generating" }),
+        result: JSON.stringify({ ...json, jamieChatStatus: "generating" }),
       },
     });
     return true;
@@ -111,7 +116,7 @@ export async function generateBenchmarkRunReport(runId: string): Promise<void> {
 
   if (!claimed) {
     logger.info(
-      "[report] Skipping — report not requested or already claimed",
+      "[jamie-chat] Skipping — chat not requested or already claimed",
       LOG_SERVICE,
       { runId },
     );
@@ -126,7 +131,7 @@ export async function generateBenchmarkRunReport(runId: string): Promise<void> {
 
     if (!orgId || !githubLogin) {
       throw new Error(
-        `Workspace ${run.workspace.slug} has no linked SourceControlOrg — cannot create an org-canvas report`,
+        `Workspace ${run.workspace.slug} has no linked SourceControlOrg — cannot create an org-canvas Jamie chat`,
       );
     }
     if (!run.projectId) {
@@ -151,7 +156,7 @@ Context: this was a legal benchmark run of the Harvey LAB task "${parsed.taskTit
 At the end of the report, please use the graph walker to find the "Law" Concept node. Then find its neighbors, and propose an update to a sub Concept that includes some learnings from this run, so that next time, the agents will have better information and instructions.`;
 
     const now = new Date();
-    const idPrefix = `benchmark-report-${runId}-${now.getTime().toString(36)}-`;
+    const idPrefix = `benchmark-jamie-chat-${runId}-${now.getTime().toString(36)}-`;
     const userRow: StoredMessage = {
       id: `${idPrefix}u`,
       role: "user",
@@ -165,7 +170,7 @@ At the end of the report, please use the graph walker to find the "Law" Concept 
         userId,
         workspaceId: null,
         messages: [userRow] as unknown as never,
-        title: `Benchmark Report: ${parsed.taskTitle ?? runId}`,
+        title: `Benchmark Jamie Chat: ${parsed.taskTitle ?? runId}`,
         lastMessageAt: now,
         source: "org-canvas",
         settings: {
@@ -180,15 +185,15 @@ At the end of the report, please use the graph walker to find the "Law" Concept 
     });
 
     // Persist the link before the (slow) agent run so the Runs table can
-    // surface it while the report is still being written.
-    const reportChatPath = `/org/${githubLogin}?chat=${conversation.id}`;
+    // surface it while the chat is still being written.
+    const jamieChatPath = `/org/${githubLogin}?chat=${conversation.id}`;
     await mergeIntoRunResult(runId, {
-      reportConversationId: conversation.id,
-      reportChatPath,
+      jamieChatConversationId: conversation.id,
+      jamieChatPath,
     });
     await broadcastRunUpdate(run.workspace.slug, runId, run.type, run.featureId);
 
-    logger.info("[report] Running canvas agent", LOG_SERVICE, {
+    logger.info("[jamie-chat] Running canvas agent", LOG_SERVICE, {
       runId,
       conversationId: conversation.id,
       projectId: run.projectId,
@@ -226,19 +231,19 @@ At the end of the report, please use the graph walker to find the "Law" Concept 
       conversationId: conversation.id,
       rows,
       idPrefix: assistantPrefix,
-      reason: "benchmark-report",
+      reason: "benchmark-jamie-chat",
     });
 
-    await mergeIntoRunResult(runId, { reportStatus: "completed" });
+    await mergeIntoRunResult(runId, { jamieChatStatus: "completed" });
     await broadcastRunUpdate(run.workspace.slug, runId, run.type, run.featureId);
 
-    logger.info("[report] Report generated", LOG_SERVICE, {
+    logger.info("[jamie-chat] Jamie chat generated", LOG_SERVICE, {
       runId,
       conversationId: conversation.id,
       messageRows: rows.length,
     });
   } catch (err) {
-    await mergeIntoRunResult(runId, { reportStatus: "failed" }).catch(() => {});
+    await mergeIntoRunResult(runId, { jamieChatStatus: "failed" }).catch(() => {});
     await broadcastRunUpdate(
       run.workspace.slug,
       runId,
@@ -262,7 +267,7 @@ async function broadcastRunUpdate(
       { runId, type, featureId, timestamp: new Date() },
     );
   } catch (pusherError) {
-    logger.error("[report] Pusher trigger failed (non-fatal)", LOG_SERVICE, {
+    logger.error("[jamie-chat] Pusher trigger failed (non-fatal)", LOG_SERVICE, {
       runId,
       error: String(pusherError),
     });

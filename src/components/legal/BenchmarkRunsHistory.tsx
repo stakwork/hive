@@ -271,8 +271,8 @@ export function BenchmarkRunsHistory({
     );
   }
 
-  // colSpan: Task + Started + Runner Status + Score + Report + (Stakwork if super admin)
-  const colSpan = isSuperAdmin ? 6 : 5;
+  // colSpan: Task + Started + Runner Status + Score + Chat + Report + (Stakwork if super admin)
+  const colSpan = isSuperAdmin ? 7 : 6;
 
   return (
     <div className="space-y-3">
@@ -328,6 +328,7 @@ export function BenchmarkRunsHistory({
               <th className="text-left px-4 py-3 font-medium text-muted-foreground">Started</th>
               <th className="text-left px-4 py-3 font-medium text-muted-foreground">Runner Status</th>
               <th className="text-left px-4 py-3 font-medium text-muted-foreground">Score</th>
+              <th className="text-left px-4 py-3 font-medium text-muted-foreground">Chat</th>
               <th className="text-left px-4 py-3 font-medium text-muted-foreground">Report</th>
               {isSuperAdmin && (
                 <th className="text-left px-4 py-3 font-medium text-muted-foreground">Stakwork</th>
@@ -378,7 +379,10 @@ export function BenchmarkRunsHistory({
                     <ScoreCell run={run} />
                   </td>
                   <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
-                    <ReportCell run={run} />
+                    <ChatCell run={run} />
+                  </td>
+                  <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
+                    <ReportCell run={run} slug={workspace?.slug} />
                   </td>
                   {isSuperAdmin && (
                     <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
@@ -438,30 +442,78 @@ function TaskProgressCard({
   );
 }
 
-function ReportCell({ run }: { run: BenchmarkRunListRow }) {
-  if (run.reportChatPath) {
+/**
+ * The run report bundle — the nine-section report built from the Harvey
+ * runner's S3 output. A DIFFERENT artifact from the Jamie chat next door: this
+ * one is produced by the runner itself and rendered natively by Hive, while the
+ * chat is an org-canvas conversation written afterwards by the canvas agent.
+ *
+ * `hasReport` is derived server-side from the presence of the persisted
+ * projection — never from the bundle URL, which does not reach this component.
+ */
+function ReportCell({ run, slug }: { run: BenchmarkRunListRow; slug?: string }) {
+  if (run.hasReport && slug) {
     return (
       <a
-        href={run.reportChatPath}
+        href={`/w/${slug}/legal/benchmarks/runs/${run.id}/report`}
+        className="inline-flex items-center gap-1 text-primary hover:underline whitespace-nowrap"
+        data-testid="run-report-link"
+      >
+        View Report
+        {run.reportPartial && (
+          <span className="text-xs text-muted-foreground">(partial)</span>
+        )}
+      </a>
+    );
+  }
+
+  if (run.reportSchemaUnsupported) {
+    return <span className="text-xs text-muted-foreground">Unsupported</span>;
+  }
+
+  // Requested but not yet delivered — the runner is still executing, or the
+  // completion webhook is fetching the bundle right now. A FAILED run can still
+  // deliver a report, so it is not excluded here (unlike the chat).
+  if (run.generateRunReport) {
+    return (
+      <span className="inline-flex items-center gap-1 text-xs text-muted-foreground whitespace-nowrap">
+        <Loader2 className="h-3 w-3 animate-spin" />
+        Pending
+      </span>
+    );
+  }
+
+  return <span className="text-muted-foreground">—</span>;
+}
+
+/**
+ * The Jamie chat produced by `generateBenchmarkJamieChat` — an org-canvas
+ * conversation. Distinct from the run report bundle, which has its own column.
+ */
+function ChatCell({ run }: { run: BenchmarkRunListRow }) {
+  if (run.jamieChatPath) {
+    return (
+      <a
+        href={run.jamieChatPath}
         target="_blank"
         rel="noopener noreferrer"
         className="inline-flex items-center gap-1 text-primary hover:underline whitespace-nowrap"
         data-testid="report-chat-link"
       >
-        View Report
+        View Chat
         <ExternalLink className="h-3 w-3" />
       </a>
     );
   }
 
-  if (run.reportStatus === "failed") {
+  if (run.jamieChatStatus === "failed") {
     return <span className="text-xs text-destructive">Failed</span>;
   }
 
   // Requested but not yet started/written (run still executing, or the
-  // completion webhook is generating the report right now). A FAILED run
-  // never triggers a report, so fall through to the dash instead.
-  if (run.generateReport && run.status !== WorkflowStatus.FAILED) {
+  // completion webhook is generating the chat right now). A FAILED run
+  // never triggers a chat, so fall through to the dash instead.
+  if (run.generateJamieChat && run.status !== WorkflowStatus.FAILED) {
     return (
       <span className="inline-flex items-center gap-1 text-xs text-muted-foreground whitespace-nowrap">
         <Loader2 className="h-3 w-3 animate-spin" />
