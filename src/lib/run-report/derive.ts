@@ -191,11 +191,11 @@ export function isPassVerdict(verdict: unknown): boolean {
   return typeof verdict === "string" && /^\s*pass/i.test(verdict);
 }
 
-export function groupRubrics(analysis: unknown): RubricRow[] {
-  const summaries = readArray(analysis, "summaries");
+export function groupRubrics(pageData: unknown): RubricRow[] {
+  const rubrics = readArray(pageData, "rubrics");
   const rows: RubricRow[] = [];
 
-  for (const entry of summaries) {
+  for (const entry of rubrics) {
     if (!isRecord(entry)) continue;
     const id = asString(entry.id) ?? asString(entry.rubric_id) ?? "";
     if (!id) continue;

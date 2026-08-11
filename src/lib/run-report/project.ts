@@ -67,6 +67,7 @@ export function projectBundle(rawText: string): ProjectOutcome {
   const pageData = {
     setVar: redactRecord(pageDataRaw.set_var, true),
     security: redactRecord(pageDataRaw.security, false),
+    rubrics: redactArray(readArray(pageDataRaw, "rubrics"), false),
     branches: redactArray(readArray(pageDataRaw, "branches"), false),
     healthNotes: redactArray(readArray(pageDataRaw, "health_notes"), false),
     logStats: redactRecord(pageDataRaw.log_stats, true),
@@ -133,7 +134,7 @@ export function projectBundle(rawText: string): ProjectOutcome {
     }
   }
 
-  const rubricRows = groupRubrics(analysisRaw);
+  const rubricRows = groupRubrics(pageDataRaw);
 
   const projection: RunReportProjection = {
     schemaVersion: version,
