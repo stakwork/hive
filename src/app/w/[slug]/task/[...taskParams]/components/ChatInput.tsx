@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useState, useCallback, useRef } from "react";
+import { useFileDrop } from "@/hooks/useFileDrop";
 import { motion, AnimatePresence } from "framer-motion";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
@@ -103,7 +104,6 @@ export function ChatInput({
 }: ChatInputProps) {
   const [input, setInput] = useState("");
   const [pendingImages, setPendingImages] = useState<PendingImage[]>([]);
-  const [isDragging, setIsDragging] = useState(false);
   const [mentionQuery, setMentionQuery] = useState<string | null>(null);
   const [mentionIndex, setMentionIndex] = useState(0);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -291,40 +291,10 @@ export function ChatInput({
     }
   };
 
-  const handleDragEnter = (e: React.DragEvent) => {
-    if (!isImageUploadEnabled) return;
-    e.preventDefault();
-    e.stopPropagation();
-    setIsDragging(true);
-  };
-
-  const handleDragOver = (e: React.DragEvent) => {
-    if (!isImageUploadEnabled) return;
-    e.preventDefault();
-    e.stopPropagation();
-  };
-
-  const handleDragLeave = (e: React.DragEvent) => {
-    if (!isImageUploadEnabled) return;
-    e.preventDefault();
-    e.stopPropagation();
-    // Only set isDragging to false if we're leaving the form element
-    if (e.currentTarget === e.target) {
-      setIsDragging(false);
-    }
-  };
-
-  const handleDrop = (e: React.DragEvent) => {
-    if (!isImageUploadEnabled) return;
-    e.preventDefault();
-    e.stopPropagation();
-    setIsDragging(false);
-
-    const files = e.dataTransfer.files;
-    if (files.length > 0) {
-      handleFiles(files);
-    }
-  };
+  const { isDragging, dragProps } = useFileDrop({
+    disabled: !isImageUploadEnabled,
+    onDrop: (files) => handleFiles(files),
+  });
 
   const handlePaste = (e: React.ClipboardEvent) => {
     // Handle image paste first
@@ -653,10 +623,7 @@ export function ChatInput({
       <form
         ref={formRef}
         onSubmit={handleSubmit}
-        onDragEnter={handleDragEnter}
-        onDragOver={handleDragOver}
-        onDragLeave={handleDragLeave}
-        onDrop={handleDrop}
+        {...dragProps}
         className={cn(
           "relative flex items-end gap-2 px-4 py-3 md:px-6 md:py-4 border-t bg-background",
           !isMobile && "sticky bottom-0 z-10",
