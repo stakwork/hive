@@ -65,9 +65,49 @@ describe("redactSensitiveKeys — key set", () => {
   });
 
   it("still covers the original eight keys", () => {
-    for (const key of ["authorization", "cookie", "token", "secret", "password", "x-api-key", "api_key", "apikey"]) {
+    for (const key of [
+      "authorization",
+      "cookie",
+      "token",
+      "secret",
+      "password",
+      "x-api-key",
+      "api_key",
+      "apikey",
+    ]) {
       expect(REDACTED_KEYS.has(key)).toBe(true);
     }
+  });
+
+  it("covers URL-family keys added for documents surface protection", () => {
+    for (const key of [
+      "url",
+      "s3_url",
+      "s3url",
+      "signed_url",
+      "signedurl",
+      "presigned_url",
+      "presignedurl",
+      "download_url",
+      "downloadurl",
+    ]) {
+      expect(REDACTED_KEYS.has(key)).toBe(true);
+    }
+  });
+
+  it("redacts url, s3_url, signed_url, presigned_url, download_url values", () => {
+    const out = JSON.stringify(
+      redactSensitiveKeys({
+        url: "https://bucket.s3.amazonaws.com/file.docx",
+        s3_url: "s3://bucket/path/file.json",
+        signed_url: "https://bucket.s3.amazonaws.com/file?X-Amz-Signature=abc",
+        presigned_url: "https://bucket.s3.amazonaws.com/file?AWSAccessKeyId=AKIA",
+        download_url: "https://cdn.example.com/private/file.pdf",
+      }),
+    );
+    expect(out).not.toContain("amazonaws.com");
+    expect(out).not.toContain("s3://");
+    expect(out).not.toContain("cdn.example.com");
   });
 });
 
@@ -113,5 +153,49 @@ describe("token-shape pass — scoped, not global", () => {
     const input = `prefix ${SECRETS.aws} suffix`;
     expect(redactTokenShapes(input)).not.toContain(SECRETS.aws);
     expect(redactTokenShapes(input)).not.toContain(SECRETS.aws);
+  });
+});
+
+describe("token-shape pass — prose fields must survive verbatim", () => {
+  const AWS_KEY = "AKIAIOSFODNN7EXAMPLE";
+
+  it("an AKIA-shaped string in agents[].final_answer survives the projection (prose, not swept)", () => {
+    // The full fixture places AKIAIOSFODNN7EXAMPLE in cross_check_agent's
+    // final_answer intentionally. project.ts excludes final_answer from the
+    // token-shape regex sweep because prose fields must not be mangled.
+    // This test confirms the scoped-pass contract at the redact level:
+    // withOUT tokenShapes, the key survives.
+    const obj = { final_answer: `The identifier ${AWS_KEY} appears in the exhibit.` };
+    const out = JSON.stringify(redactSensitiveKeys(obj, { tokenShapes: false }));
+    expect(out).toContain(AWS_KEY);
+  });
+
+  it("the same AKIA-shaped string inside log_stats IS masked (metadata field, swept)", () => {
+    const obj = { log_stats: { last_auth_header: `Bearer AKIA${AWS_KEY.slice(4)}` } };
+    const out = JSON.stringify(redactSensitiveKeys(obj, { tokenShapes: true }));
+    expect(out).not.toContain(AWS_KEY);
+  });
+
+  it("an AKIA-shaped string inside a trace evidence field IS masked when tokenShapes:true", () => {
+    const trace = {
+      rubric_id: "R2",
+      pathway: [
+        {
+          station: "retrieval",
+          status: "miss",
+          evidence: `Retriever used key ${AWS_KEY} for auth.`,
+        },
+      ],
+    };
+    const out = JSON.stringify(redactSensitiveKeys({ traces: [trace] }, { tokenShapes: true }));
+    expect(out).not.toContain(AWS_KEY);
+  });
+
+  it("log_stats with a JWT-shaped string is swept when tokenShapes:true", () => {
+    const jwtShape =
+      "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dozjgNryP4J3jVmNHl0w5N";
+    const obj = { log_stats: { last_auth_header: jwtShape } };
+    const out = JSON.stringify(redactSensitiveKeys(obj, { tokenShapes: true }));
+    expect(out).not.toContain(jwtShape);
   });
 });
