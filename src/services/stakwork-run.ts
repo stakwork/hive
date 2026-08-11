@@ -15,6 +15,10 @@ import {
   DataType,
   isClarifyingQuestions,
 } from "@/types/stakwork";
+import { parseBenchmarkRunResult } from "@/types/legal";
+import { validateReportUrl } from "@/lib/run-report/url-guard";
+import { safeUrlParts } from "@/lib/run-report/safe-url-log";
+import { isAllowedS3Url } from "@/lib/run-report/url-guard";
 import { stakworkService } from "@/lib/service-factory";
 import { config } from "@/config/env";
 import { getBaseUrl } from "@/lib/utils";
@@ -801,7 +805,7 @@ export async function processStakworkRunWebhook(
     run_token?: string;
   }
 ) {
-  const { result, project_status, project_id, recap_unchanged } = webhookData;
+  const { result, project_status, project_id, recap_unchanged, report_url } = webhookData;
   const { workspace_id, feature_id, type, run_id } = queryParams;
 
   logger.info("[webhook] processStakworkRunWebhook called", "stakwork-run", {
@@ -982,7 +986,60 @@ export async function processStakworkRunWebhook(
       // Malformed existing JSON — start fresh (but we still lose the correlation
       // data, which is better than crashing).
     }
+    // Strip report_url from the merged result JSON before it is persisted.
+    // normalizeLegalBenchmarkPayload nests every unpreserved Harvey field under
+    // `result`, and /api/stakwork/runs returns `result` unmodified under
+    // includeResult=true — which the benchmark runs list requests. Without this
+    // strip the bundle URL would reach every workspace member's browser inside
+    // the result blob, regardless of the column-level Prisma omit.
+    delete (incomingFields as Record<string, unknown>).report_url;
+    delete (existingResult as Record<string, unknown>).report_url;
+
     serializedResult = JSON.stringify({ ...existingResult, ...incomingFields });
+  }
+
+  // ── Run report bundle pointer ────────────────────────────────────────────
+  // Accepted ONLY for LEGAL_BENCHMARK_* types, which are exactly the types
+  // whose run_token HMAC was verified above. An unauthenticated caller posting
+  // type=DIAGRAM_GENERATION|TASK_GENERATION|DAILY_RECAP with a workspace_id and
+  // no run_id reaches the match-any fallback arm with zero verification, so on
+  // any other type the value is dropped and a warn is logged.
+  const isLegalBenchmarkType =
+    run.type === StakworkRunType.LEGAL_BENCHMARK_RUNNER ||
+    run.type === StakworkRunType.LEGAL_BENCHMARK_SCORER ||
+    run.type === StakworkRunType.LEGAL_BENCHMARK_EVAL ||
+    run.type === StakworkRunType.LEGAL_BENCHMARK_RECURSION;
+
+  // Read from the PRE-normalization payload so promoting the value to its own
+  // column does not destroy its own fallback.
+  const incomingReportUrl =
+    report_url ??
+    (typeof result === "object" && result !== null
+      ? (result as Record<string, unknown>).report_url
+      : undefined);
+
+  let reportUrlToPersist: string | null = null;
+
+  if (incomingReportUrl !== undefined) {
+    if (!isLegalBenchmarkType) {
+      logger.warn("[run-report] report_url dropped — unverified run type", "stakwork-run", {
+        runId: run.id,
+        type: run.type,
+      });
+    } else {
+      const raw = typeof incomingReportUrl === "string" ? incomingReportUrl.trim() : "";
+      const guard = raw ? validateReportUrl(raw) : null;
+      if (guard?.ok) {
+        reportUrlToPersist = raw;
+      } else if (guard) {
+        // Log the reason code, never the URL. An auxiliary artifact must not
+        // fail an otherwise-successful benchmark run.
+        logger.error("[run-report] report_url rejected", "stakwork-run", {
+          runId: run.id,
+          reason: guard.reason,
+        });
+      }
+    }
   }
 
   // Step 1: Atomic update to prevent race conditions
@@ -1012,6 +1069,13 @@ export async function processStakworkRunWebhook(
       ...(isRecapUnchanged ? {} : { result: serializedResult }),
       dataType,
       updatedAt: new Date(),
+      // Written INSIDE the guarded updateMany rather than as a separate write:
+      // two non-transactional writes can interleave under concurrent
+      // deliveries, bypass the count === 0 idempotency guard that makes
+      // duplicate deliveries safe, and — because the write would land before
+      // the early return — skip the STAKWORK_RUN_UPDATE broadcast, leaving
+      // hasReport to surface only on the next 15-second poll.
+      ...(reportUrlToPersist ? { reportUrl: reportUrlToPersist } : {}),
     },
   });
 
@@ -1019,6 +1083,38 @@ export async function processStakworkRunWebhook(
 
   if (updateResult.count === 0) {
     logger.warn("[webhook] Run was already updated by another request", "stakwork-run", { runId: run.id });
+
+    // The run is already terminal (typically FAILED). Its report must still be
+    // preserved. `reportUrl: null` in the WHERE clause makes this write-once,
+    // so a replayed delivery can never repoint a settled run's artifact
+    // pointer. Broadcast on this path too, or the flag would only appear on
+    // the next poll.
+    if (reportUrlToPersist) {
+      const settled = await db.stakworkRun.updateMany({
+        where: { id: run.id, reportUrl: null },
+        data: { reportUrl: reportUrlToPersist },
+      });
+      if (settled.count > 0) {
+        try {
+          await pusherServer.trigger(
+            getWorkspaceChannelName(run.workspace.slug),
+            PUSHER_EVENTS.STAKWORK_RUN_UPDATE,
+            {
+              runId: run.id,
+              type: run.type,
+              status: run.status,
+              featureId: run.featureId,
+              timestamp: new Date(),
+            },
+          );
+        } catch (pusherError) {
+          logger.error("[run-report] Pusher trigger failed (non-fatal)", "stakwork-run", {
+            error: String(pusherError),
+          });
+        }
+      }
+    }
+
     return { runId: run.id, status: run.status };
   }
 
@@ -1056,22 +1152,19 @@ export async function processStakworkRunWebhook(
       logger.error("[legal-benchmark] Pusher trigger failed (non-fatal)", "stakwork-run", { error: String(pusherError) });
     }
 
-    // Operator-requested post-run report — fires after the scores were merged
-    // above, so the report agent sees the final result. Scheduled via after()
+    // Operator-requested post-run Jamie chat — fires after the scores were
+    // merged above, so the agent sees the final result. Scheduled via after()
     // so the webhook acks immediately (same shape as /api/chat/response).
+    // Parsed via parseBenchmarkRunResult so runs created before the
+    // generateReport → generateJamieChat rename still trigger.
     if (status === WorkflowStatus.COMPLETED) {
-      let wantsReport = false;
-      try {
-        const resultJson = serializedResult ?? run.result;
-        wantsReport = resultJson
-          ? (JSON.parse(resultJson) as Record<string, unknown>).generateReport === true
-          : false;
-      } catch { /* ignore malformed result */ }
-      if (wantsReport) {
+      const wantsJamieChat =
+        parseBenchmarkRunResult(serializedResult ?? run.result)?.generateJamieChat === true;
+      if (wantsJamieChat) {
         after(async () => {
           try {
-            const { generateBenchmarkRunReport } = await import("@/services/legal-benchmark-report");
-            await generateBenchmarkRunReport(run.id);
+            const { generateBenchmarkJamieChat } = await import("@/services/legal-benchmark-jamie-chat");
+            await generateBenchmarkJamieChat(run.id);
           } catch (err) {
             logger.error("[legal-benchmark] Report generation failed (non-fatal)", "stakwork-run", {
               runId: run.id,
@@ -1505,21 +1598,9 @@ export async function processStakworkRunWebhook(
 // Legal Benchmark webhook helpers
 // ─────────────────────────────────────────────────────────────────────────────
 
-/**
- * Allowlisted S3 host pattern for Harvey LAB output URLs.
- * Must be https:// and must match the Stakwork uploads bucket domain.
- * Reject anything else to prevent SSRF via `output_s3_url`.
- */
-const ALLOWED_S3_HOST_PATTERN = /^https:\/\/[a-zA-Z0-9-]+\.s3\.[a-z0-9-]+\.amazonaws\.com(\/|$)/;
-
-function isAllowedS3Url(url: string): boolean {
-  try {
-    const parsed = new URL(url);
-    return parsed.protocol === "https:" && ALLOWED_S3_HOST_PATTERN.test(url);
-  } catch {
-    return false;
-  }
-}
+// `isAllowedS3Url` now lives in src/lib/run-report/url-guard.ts, shared with the
+// report bundle's `report_url` so the two controls cannot drift. The promoted
+// version additionally rejects userinfo-bearing URLs and non-standard ports.
 
 type RunWithWorkspace = {
   id: string;
@@ -1591,9 +1672,13 @@ async function processLegalBenchmarkRunnerWebhook(
 
   // SSRF guard: validate output_s3_url against allowlist
   if (outputS3Url && !isAllowedS3Url(outputS3Url)) {
+    // Log hostname + hashed path only. The previous version logged the full
+    // rejected URL, which defeats the point of rejecting it: a rejected URL is
+    // attacker-supplied, and its query string is exactly where a signature or
+    // token would sit.
     logger.error("[legal-benchmark/runner] output_s3_url rejected (not on allowlist)", "stakwork-run", {
       runId: run.id,
-      url: outputS3Url,
+      ...safeUrlParts(outputS3Url),
     });
     await db.stakworkRun.update({
       where: { id: run.id },
@@ -1983,19 +2068,27 @@ export async function getStakworkRuns(
       feedback: true,
       createdAt: true,
       updatedAt: true,
-      webhookUrl: true,
+      // webhookUrl is deliberately absent: it embeds the raw run_token HMAC.
       taskId: true,
       autoAccept: true,
       promptVersionId: true,
       evalSetId: true,
       userId: true,
       ...(query.includeResult ? { result: true } : {}),
+      // Selected only to derive the boolean below. Stripped in the mapper so
+      // the URL itself can never reach a client.
+      reportUrl: true,
       feature: { select: { id: true, title: true } },
     },
   });
 
   return {
-    runs,
+    // Explicit mapper: destructure reportUrl OUT and expose only a boolean, so
+    // the bundle pointer can never be forwarded to a client by accident.
+    runs: runs.map(({ reportUrl, ...run }) => ({
+      ...run,
+      hasReport: reportUrl != null,
+    })),
     total,
     limit: query.limit,
     offset: query.offset,
