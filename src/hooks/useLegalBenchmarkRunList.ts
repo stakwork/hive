@@ -30,11 +30,18 @@ export interface BenchmarkRunListRow {
   reportStatus?: string;
   /** Relative link to the report chat, e.g. "/org/<login>?chat=<id>" */
   reportChatPath?: string;
+  /** Run type — present for mixed lists so components can distinguish CNH rows */
+  runType?: StakworkRunType;
 }
 
 interface UseLegalBenchmarkRunListResult {
   runs: BenchmarkRunListRow[];
+  /** Total runner (LEGAL_BENCHMARK_RUNNER) runs available on the server.
+   *  Does NOT include CNH ingest runs so the summary strip / "loaded N of total"
+   *  message is not inflated. */
   total: number;
+  /** Alias for total — benchmark-runner total only */
+  runnerTotal: number;
   isLoading: boolean;
   error: string | null;
   refetch: () => Promise<void>;
@@ -42,6 +49,19 @@ interface UseLegalBenchmarkRunListResult {
 }
 
 const POLL_INTERVAL_MS = 15_000;
+/** Separate limit for CNH ingest runs so they cannot displace runner rows. */
+const CNH_RUN_LIMIT = 50;
+
+type RawRow = {
+  id: string;
+  workspaceId: string;
+  type: string;
+  status: string;
+  projectId: number | null;
+  result: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
 
 export function useLegalBenchmarkRunList(
   workspaceId: string | undefined,
@@ -62,33 +82,38 @@ export function useLegalBenchmarkRunList(
   const fetchRuns = useCallback(async () => {
     if (!workspaceId) return;
     try {
-      const res = await fetch(
-        `/api/stakwork/runs?type=${StakworkRunType.LEGAL_BENCHMARK_RUNNER}&workspaceId=${workspaceId}&limit=${RUN_LIST_LIMIT}&includeResult=true`,
-      );
-      if (!res.ok) throw new Error("Failed to fetch runs");
-      const data = await res.json();
+      // Two parallel fetches to prevent CNH runs from displacing runner rows
+      // within the RUN_LIST_LIMIT window.
+      const [runnerRes, cnhRes] = await Promise.all([
+        fetch(
+          `/api/stakwork/runs?type=${StakworkRunType.LEGAL_BENCHMARK_RUNNER}&workspaceId=${workspaceId}&limit=${RUN_LIST_LIMIT}&includeResult=true`,
+        ),
+        fetch(
+          `/api/stakwork/runs?type=${StakworkRunType.LEGAL_BENCHMARK_CNH_INGEST}&workspaceId=${workspaceId}&limit=${CNH_RUN_LIMIT}&includeResult=true`,
+        ),
+      ]);
 
-      const rawRows: Array<{
-        id: string;
-        workspaceId: string;
-        status: string;
-        projectId: number | null;
-        result: string | null;
-        createdAt: string;
-        updatedAt: string;
-      }> = data.runs ?? [];
+      if (!runnerRes.ok) throw new Error("Failed to fetch runs");
+      // CNH fetch failure is non-fatal — degrade gracefully
+      const runnerData = await runnerRes.json();
+      const cnhData = cnhRes.ok ? await cnhRes.json() : { runs: [], total: 0 };
 
-      const mapped: BenchmarkRunListRow[] = rawRows.map((r) => {
-        const parsed = parseBenchmarkRunResult(r.result);
+      const runnerRows: RawRow[] = runnerData.runs ?? [];
+      const cnhRows: RawRow[] = cnhData.runs ?? [];
+
+      const mapRow = (r: RawRow): BenchmarkRunListRow => {
+        const isCnh = r.type === StakworkRunType.LEGAL_BENCHMARK_CNH_INGEST;
+        const parsed = isCnh ? null : parseBenchmarkRunResult(r.result);
         return {
           id: r.id,
           workspaceId: r.workspaceId,
           status: r.status as WorkflowStatus,
           projectId: r.projectId,
           taskSlug: parsed?.taskSlug ?? "",
-          taskTitle: parsed?.taskTitle ?? "",
+          taskTitle: isCnh ? "C&H Ingest" : (parsed?.taskTitle ?? ""),
           createdAt: r.createdAt,
           updatedAt: r.updatedAt,
+          runType: r.type as StakworkRunType,
           n_passed: parsed?.n_passed,
           n_total: parsed?.n_total,
           all_pass: parsed?.all_pass,
@@ -98,7 +123,6 @@ export function useLegalBenchmarkRunList(
           reportStatus: parsed?.reportStatus,
           reportChatPath: parsed?.reportChatPath,
           // Unified judge precedence: operator choice takes priority over runner-echoed value.
-          // Format mirrors stakwork-run.ts — if the server-side format string changes, update this line to match.
           judgeNotes:
             parsed?.n_passed != null && parsed?.n_total != null
               ? `${parsed.n_passed}/${parsed.n_total} criteria passed${
@@ -108,11 +132,17 @@ export function useLegalBenchmarkRunList(
                 }`
               : undefined,
         };
-      });
+      };
 
-      runsRef.current = mapped;
-      setRuns(mapped);
-      setTotal(data.total ?? mapped.length);
+      // Merge and sort combined list by createdAt descending
+      const merged = [...runnerRows.map(mapRow), ...cnhRows.map(mapRow)].sort(
+        (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+      );
+
+      runsRef.current = merged;
+      setRuns(merged);
+      // Expose only the runner total — CNH total must not inflate this count
+      setTotal(runnerData.total ?? runnerRows.length);
       setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unknown error");
@@ -205,5 +235,5 @@ export function useLegalBenchmarkRunList(
     [fetchRuns, startPolling, hasActiveRuns],
   );
 
-  return { runs, total, isLoading, error, refetch: fetchRuns, setExpandedId };
+  return { runs, total, runnerTotal: total, isLoading, error, refetch: fetchRuns, setExpandedId };
 }

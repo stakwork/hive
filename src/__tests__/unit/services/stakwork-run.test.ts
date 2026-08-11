@@ -3072,7 +3072,7 @@ describe("Stakwork Run Service", () => {
       expect(result.offset).toBe(0);
     });
 
-    test("should filter runs by type and status", async () => {
+    test("should filter runs by type and status — single type collapses to scalar", async () => {
       const mockWorkspace = {
         id: "ws-1",
         members: [{ userId: "user-1" }],
@@ -3085,8 +3085,42 @@ describe("Stakwork Run Service", () => {
       await getStakworkRuns(
         {
           workspaceId: "ws-1",
+          type: [StakworkRunType.ARCHITECTURE],
+          status: WorkflowStatus.COMPLETED,
+          limit: 10,
+          offset: 0,
+        },
+        "user-1"
+      );
+
+      // Single-element array collapses to a plain enum value in the where clause.
+      expect(db.stakworkRun.findMany).toHaveBeenCalledWith({
+        where: {
+          workspaceId: "ws-1",
           type: StakworkRunType.ARCHITECTURE,
           status: WorkflowStatus.COMPLETED,
+        },
+        orderBy: { createdAt: "desc" },
+        skip: 0,
+        take: 10,
+        select: expect.any(Object),
+      });
+    });
+
+    test("should filter runs by multiple types using Prisma { in: [...] }", async () => {
+      const mockWorkspace = {
+        id: "ws-1",
+        members: [{ userId: "user-1" }],
+      };
+
+      mockedDb.workspace.findUnique = vi.fn().mockResolvedValue(mockWorkspace);
+      mockedDb.stakworkRun.count = vi.fn().mockResolvedValue(2);
+      mockedDb.stakworkRun.findMany = vi.fn().mockResolvedValue([]);
+
+      await getStakworkRuns(
+        {
+          workspaceId: "ws-1",
+          type: [StakworkRunType.LEGAL_BENCHMARK_RUNNER, StakworkRunType.LEGAL_BENCHMARK_CNH_INGEST],
           limit: 10,
           offset: 0,
         },
@@ -3096,8 +3130,7 @@ describe("Stakwork Run Service", () => {
       expect(db.stakworkRun.findMany).toHaveBeenCalledWith({
         where: {
           workspaceId: "ws-1",
-          type: StakworkRunType.ARCHITECTURE,
-          status: WorkflowStatus.COMPLETED,
+          type: { in: [StakworkRunType.LEGAL_BENCHMARK_RUNNER, StakworkRunType.LEGAL_BENCHMARK_CNH_INGEST] },
         },
         orderBy: { createdAt: "desc" },
         skip: 0,

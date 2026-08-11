@@ -94,7 +94,7 @@ export const UpdateStakworkRunDecisionSchema = z.object({
 
 export const StakworkRunQuerySchema = z.object({
   workspaceId: z.string().cuid(),
-  type: z.nativeEnum(StakworkRunType).optional(),
+  type: z.array(z.nativeEnum(StakworkRunType)).optional(),
   featureId: z.string().cuid().optional(),
   status: z.nativeEnum(WorkflowStatus).optional(),
   limit: z.number().int().positive().max(100).optional().default(20),
