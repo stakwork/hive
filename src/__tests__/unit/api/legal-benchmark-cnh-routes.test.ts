@@ -26,6 +26,8 @@
  * 14. Invalid matterId → 400
  * 15. Stakwork POST failure → rollback run row, return 500
  * 16. Success → run created IN_PROGRESS, returns { run_id, project_id }
+ * 17. Missing swarmSecretAlias → 400, no DB write
+ * 18. Credential injection — graph_base_url, secret, workspace_id in workflow_params
  */
 
 import { describe, test, expect, vi, beforeEach } from "vitest";
@@ -74,6 +76,7 @@ vi.mock("@/config/env", () => ({
 import { GET as listMatters } from "@/app/api/workspaces/[slug]/legal/benchmarks/cnh/matters/route";
 import { GET as getMatterDetail } from "@/app/api/workspaces/[slug]/legal/benchmarks/cnh/matters/[matterId]/route";
 import { POST as ingestMatter } from "@/app/api/workspaces/[slug]/legal/benchmarks/cnh/matters/[matterId]/ingest/route";
+import { getJarvisUrl } from "@/lib/utils/swarm";
 
 // ─── Shared fixture data ──────────────────────────────────────────────────────
 
@@ -378,5 +381,56 @@ describe("POST /cnh/matters/[matterId]/ingest — Ingest Trigger", () => {
         data: expect.objectContaining({ status: "IN_PROGRESS" }),
       }),
     );
+
+    // Verify graph credential vars are included in the Stakwork payload
+    const successBody = JSON.parse(mockFetch.mock.calls[0][1].body as string);
+    const successVars = successBody.workflow_params.set_var.attributes.vars;
+    expect(successVars.graph_base_url).toBe(getJarvisUrl(MOCK_SWARM_ACCESS.data.swarmName));
+    expect(successVars.secret).toBe("openlaw-alias");
+    expect(successVars.workspace_id).toBe(WORKSPACE_ID);
+  });
+
+  test("17. Missing swarmSecretAlias → 400, no DB write", async () => {
+    mockGetWorkspaceSwarmAccess.mockResolvedValueOnce({
+      ...MOCK_SWARM_ACCESS,
+      data: { ...MOCK_SWARM_ACCESS.data, swarmSecretAlias: null },
+    });
+
+    const req = new NextRequest(
+      "http://localhost/api/workspaces/openlaw/legal/benchmarks/cnh/matters/1001-00001/ingest",
+      { method: "POST" },
+    );
+    const res = await ingestMatter(req, {
+      params: Promise.resolve({ slug: "openlaw", matterId: "1001-00001" }),
+    });
+
+    expect(res.status).toBe(400);
+    expect(mockDbStakworkRunCreate).toHaveBeenCalledTimes(0);
+  });
+
+  test("18. Credential injection — graph_base_url, secret, workspace_id in workflow_params", async () => {
+    const RUN_ID = "run-creds";
+    const PROJECT_ID = 99999;
+
+    mockDbStakworkRunCreate.mockResolvedValue({ id: RUN_ID });
+    mockDbStakworkRunUpdate.mockResolvedValue({});
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ data: { project_id: PROJECT_ID } }),
+    });
+
+    const req = new NextRequest(
+      "http://localhost/api/workspaces/openlaw/legal/benchmarks/cnh/matters/1001-00001/ingest",
+      { method: "POST" },
+    );
+    await ingestMatter(req, {
+      params: Promise.resolve({ slug: "openlaw", matterId: "1001-00001" }),
+    });
+
+    const rawBody = JSON.parse(mockFetch.mock.calls[0][1].body as string);
+    const vars = rawBody.workflow_params.set_var.attributes.vars;
+    expect(vars.graph_base_url).toBe(getJarvisUrl(MOCK_SWARM_ACCESS.data.swarmName));
+    expect(vars.secret).toBe("openlaw-alias");
+    expect(vars.workspace_id).toBe(WORKSPACE_ID);
   });
 });
