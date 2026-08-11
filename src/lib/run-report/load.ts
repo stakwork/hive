@@ -8,7 +8,7 @@
  * Never throws: every failure becomes a payload the renderer can display.
  */
 
-import { fetchReportBundle } from "./fetch-bundle";
+import { fetchReportBundle, BundleFetchError } from "./fetch-bundle";
 import { projectBundle } from "./project";
 import { safeUrlParts } from "./safe-url-log";
 import { logger } from "@/lib/logger";
@@ -37,13 +37,22 @@ export async function loadRunReport(
 
     return { runId, hasReport: true, projection: outcome.projection };
   } catch (err) {
-    // Opaque by construction — BundleFetchError carries a reason code, never a URL.
+    // BundleFetchError carries a reason code — distinguish url_rejected (a guard
+    // decision that needs operator attention) from transient fetch failures.
+    const isUrlRejected =
+      err instanceof BundleFetchError && err.reason === "url_rejected";
+
     logger.error("[run-report] Bundle load failed", LOG_SERVICE, {
       runId,
       host,
       pathHash,
       reason: err instanceof Error ? err.message : "unknown",
     });
-    return { runId, hasReport: true, error: "unavailable", projection: null };
+    return {
+      runId,
+      hasReport: true,
+      error: isUrlRejected ? "url_rejected" : "unavailable",
+      projection: null,
+    };
   }
 }
