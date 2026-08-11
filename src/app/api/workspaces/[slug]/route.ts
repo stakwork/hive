@@ -140,9 +140,7 @@ export async function PUT(
 
     // Authorization check before touching the body: non-members (including
     // non-super-admin outsiders) must get 404, not a body-validation error.
-    const workspaceCheck = await import("@/services/workspace").then(m =>
-      m.getWorkspaceBySlug(slug, userId, { isSuperAdmin })
-    );
+    const workspaceCheck = await getWorkspaceBySlug(slug, userId, { isSuperAdmin });
     if (!workspaceCheck) {
       return NextResponse.json(
         { error: "Workspace not found or access denied" },
