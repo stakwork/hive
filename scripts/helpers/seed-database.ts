@@ -1996,6 +1996,35 @@ async function seedRunReportBundleRun() {
     });
 
     console.log(`✓ Seeded run report bundle run on ${target.slug} (${id})`);
+
+    // A second row exercising the url_rejected error state — the guard rejects
+    // `reports.invalid` before any outbound fetch, so this is safe for dev/CI.
+    const rejectedId = `seed-run-report-rejected-${target.slug}`;
+    const rejectedData = {
+      workspaceId: target.id,
+      type: StakworkRunType.LEGAL_BENCHMARK_RUNNER,
+      status: WorkflowStatus.COMPLETED,
+      webhookUrl: "",
+      result: JSON.stringify({
+        taskSlug: "contract-review-nda-01",
+        taskTitle: "Contract Review — Mutual NDA (rejected URL seed)",
+        requestedModel: "claude-sonnet-5",
+        n_passed: 0,
+        n_total: 3,
+        all_pass: false,
+      }),
+      dataType: "json",
+      reportUrl: "https://reports.invalid/bundle.tar.gz",
+      updatedAt: now,
+    };
+
+    await prisma.stakworkRun.upsert({
+      where: { id: rejectedId },
+      update: rejectedData,
+      create: { id: rejectedId, createdAt: now, ...rejectedData },
+    });
+
+    console.log(`✓ Seeded url_rejected run report seed on ${target.slug} (${rejectedId})`);
   }
 }
 
