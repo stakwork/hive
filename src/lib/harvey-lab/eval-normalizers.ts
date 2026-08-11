@@ -176,6 +176,64 @@ export function sortAttemptsChronologically(
     .map(({ o }) => o);
 }
 
+// ─── Judge Dispute Resolver ───────────────────────────────────────────────────
+
+/**
+ * Fixed marker shown when a criterion is marked as disputed but the runner
+ * emitted no usable prose. Exported so tests can assert against it without
+ * repeating the magic string.
+ */
+export const JUDGE_DISPUTE_NO_PROSE_MARKER = "Disputed — no explanation provided";
+
+/**
+ * Resolve the judge dispute for a single criterion entry.
+ *
+ * Wire keys (`flagged`, `llm_flag_reason`) mirror Jarvis `CriterionResult`
+ * attribute names. Nothing emits them yet (tracked external dependency: the
+ * `harvey_lab_score_rubric` Lambda in stakwork/senza-lnd). All Hive-side
+ * consumption must go through this resolver — do not read `flagged` or
+ * `llm_flag_reason` directly elsewhere.
+ *
+ * Returns:
+ *   - `null`  when the criterion is a pass OR there is genuinely nothing to
+ *             show (not marked AND no usable prose) — renders exactly as today.
+ *   - object  when there is a real dispute to surface (marked OR usable prose).
+ *             `hasReason` is true only when usable prose is present.
+ *             `displayText` is the single rendering string consumed identically
+ *             by the panel, clipboard export, and filter — never "[object Object]".
+ */
+export function resolveJudgeDispute(criterion: {
+  verdict?: string;
+  flagged?: unknown;
+  llm_flag_reason?: unknown;
+}): { reason: string; hasReason: boolean; displayText: string } | null {
+  // 1. Verdict gate — passing criteria never show a dispute affordance.
+  if (criterion.verdict?.toLowerCase() === "pass") return null;
+
+  // 2. Loose truthiness for `flagged`: accept true, "true" (any case), or 1.
+  const f = criterion.flagged;
+  const judgeDisputeMarked =
+    f === true ||
+    f === 1 ||
+    (typeof f === "string" && f.toLowerCase() === "true");
+
+  // 3. Defensive prose handling — usable only when it is a non-empty string.
+  const raw = criterion.llm_flag_reason;
+  const judgeDisputeProse =
+    typeof raw === "string" && raw.trim().length > 0 ? raw.trim() : null;
+
+  // 4. Tri-state return.
+  if (!judgeDisputeMarked && judgeDisputeProse === null) return null;
+
+  const hasReason = judgeDisputeProse !== null;
+  const reason = judgeDisputeProse ?? "";
+  const displayText = hasReason ? reason : JUDGE_DISPUTE_NO_PROSE_MARKER;
+
+  return { reason, hasReason, displayText };
+}
+
+// ─── Trigger identity guard ───────────────────────────────────────────────────
+
 /**
  * Filter out partial Jarvis trigger nodes that lack agent, start_point, or
  * end_point — these are incomplete/legacy nodes that add phantom rows.
