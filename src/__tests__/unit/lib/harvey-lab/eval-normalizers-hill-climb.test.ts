@@ -7,6 +7,8 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import {
   normalizeOutput,
   sortAttemptsChronologically,
+  resolveJudgeDispute,
+  JUDGE_DISPUTE_NO_PROSE_MARKER,
   type EvalTriggerOutput,
   type RawJarvisNode,
 } from "@/lib/harvey-lab/eval-normalizers";
@@ -277,5 +279,201 @@ describe("sortAttemptsChronologically", () => {
     // Should be ordered by date: b first (earlier), then a
     expect(result[0].ref_id).toBe("b");
     expect(result[1].ref_id).toBe("a");
+  });
+});
+
+// ─── resolveJudgeDispute ──────────────────────────────────────────────────────
+
+describe("resolveJudgeDispute", () => {
+  const PROSE = "The deliverable cites $15M but the source says $10M — this is a real failure.";
+
+  // ── Verdict gate ────────────────────────────────────────────────────────────
+  describe("verdict gate — passed criteria always return null", () => {
+    it("returns null for verdict 'pass' even when flagged and prose are both set", () => {
+      expect(
+        resolveJudgeDispute({ verdict: "pass", flagged: true, llm_flag_reason: PROSE }),
+      ).toBeNull();
+    });
+
+    it("returns null for verdict 'PASS' (uppercase)", () => {
+      expect(
+        resolveJudgeDispute({ verdict: "PASS", flagged: true, llm_flag_reason: PROSE }),
+      ).toBeNull();
+    });
+
+    it("returns null for verdict 'Pass' (mixed case)", () => {
+      expect(
+        resolveJudgeDispute({ verdict: "Pass", flagged: true }),
+      ).toBeNull();
+    });
+  });
+
+  // ── Happy-path: both fields set ─────────────────────────────────────────────
+  it("failed + flagged:true + prose → hasReason:true, displayText is prose", () => {
+    const result = resolveJudgeDispute({
+      verdict: "fail",
+      flagged: true,
+      llm_flag_reason: PROSE,
+    });
+    expect(result).not.toBeNull();
+    expect(result!.hasReason).toBe(true);
+    expect(result!.reason).toBe(PROSE);
+    expect(result!.displayText).toBe(PROSE);
+  });
+
+  // ── Marked, no usable prose ─────────────────────────────────────────────────
+  it("failed + flagged:true + no llm_flag_reason → hasReason:false, displayText is marker", () => {
+    const result = resolveJudgeDispute({ verdict: "fail", flagged: true });
+    expect(result).not.toBeNull();
+    expect(result!.hasReason).toBe(false);
+    expect(result!.reason).toBe("");
+    expect(result!.displayText).toBe(JUDGE_DISPUTE_NO_PROSE_MARKER);
+  });
+
+  it("failed + flagged:true + whitespace-only prose → hasReason:false, displayText is marker", () => {
+    const result = resolveJudgeDispute({ verdict: "fail", flagged: true, llm_flag_reason: "   " });
+    expect(result).not.toBeNull();
+    expect(result!.hasReason).toBe(false);
+    expect(result!.displayText).toBe(JUDGE_DISPUTE_NO_PROSE_MARKER);
+  });
+
+  // ── Prose only (no flagged) ─────────────────────────────────────────────────
+  it("failed + prose only (flagged absent) → hasReason:true, displayText is prose", () => {
+    const result = resolveJudgeDispute({ verdict: "fail", llm_flag_reason: PROSE });
+    expect(result).not.toBeNull();
+    expect(result!.hasReason).toBe(true);
+    expect(result!.displayText).toBe(PROSE);
+  });
+
+  it("failed + prose only (flagged:false) → hasReason:true, displayText is prose", () => {
+    const result = resolveJudgeDispute({ verdict: "fail", flagged: false, llm_flag_reason: PROSE });
+    expect(result).not.toBeNull();
+    expect(result!.hasReason).toBe(true);
+    expect(result!.displayText).toBe(PROSE);
+  });
+
+  // ── Neither field present → null ────────────────────────────────────────────
+  it("failed + neither flagged nor prose → null", () => {
+    expect(resolveJudgeDispute({ verdict: "fail" })).toBeNull();
+  });
+
+  it("failed + flagged:false + no prose → null", () => {
+    expect(resolveJudgeDispute({ verdict: "fail", flagged: false })).toBeNull();
+  });
+
+  it("failed + flagged:0 + no prose → null", () => {
+    expect(resolveJudgeDispute({ verdict: "fail", flagged: 0 })).toBeNull();
+  });
+
+  // ── Non-string prose handling ───────────────────────────────────────────────
+  it("failed + non-string prose (object) + flagged absent → null", () => {
+    expect(
+      resolveJudgeDispute({ verdict: "fail", llm_flag_reason: { text: "bad" } }),
+    ).toBeNull();
+  });
+
+  it("failed + non-string prose (object) + flagged:true → hasReason:false, displayText is marker", () => {
+    const result = resolveJudgeDispute({
+      verdict: "fail",
+      flagged: true,
+      llm_flag_reason: { text: "bad" },
+    });
+    expect(result).not.toBeNull();
+    expect(result!.hasReason).toBe(false);
+    expect(result!.displayText).toBe(JUDGE_DISPUTE_NO_PROSE_MARKER);
+  });
+
+  it("failed + non-string prose (number) + flagged absent → null", () => {
+    expect(resolveJudgeDispute({ verdict: "fail", llm_flag_reason: 42 })).toBeNull();
+  });
+
+  it("failed + non-string prose (array) + flagged:true → hasReason:false, displayText is marker", () => {
+    const result = resolveJudgeDispute({
+      verdict: "fail",
+      flagged: true,
+      llm_flag_reason: ["reason one", "reason two"],
+    });
+    expect(result).not.toBeNull();
+    expect(result!.hasReason).toBe(false);
+    expect(result!.displayText).toBe(JUDGE_DISPUTE_NO_PROSE_MARKER);
+  });
+
+  // ── displayText never contains "[object Object]" ────────────────────────────
+  it("displayText never contains '[object Object]' for any non-string prose input", () => {
+    const nonStringInputs = [
+      { text: "oops" },
+      ["a", "b"],
+      42,
+      true,
+      null,
+      undefined,
+    ];
+    for (const bad of nonStringInputs) {
+      const result = resolveJudgeDispute({
+        verdict: "fail",
+        flagged: true,
+        llm_flag_reason: bad,
+      });
+      // When flagged:true, we always get a result — it must not contain [object Object]
+      expect(result?.displayText).not.toContain("[object Object]");
+    }
+  });
+
+  // ── Loose truthiness for flagged ────────────────────────────────────────────
+  it("flagged:'true' (string) is treated as marked", () => {
+    const result = resolveJudgeDispute({ verdict: "fail", flagged: "true" });
+    expect(result).not.toBeNull();
+    expect(result!.hasReason).toBe(false);
+    expect(result!.displayText).toBe(JUDGE_DISPUTE_NO_PROSE_MARKER);
+  });
+
+  it("flagged:'TRUE' (uppercase string) is treated as marked", () => {
+    const result = resolveJudgeDispute({ verdict: "fail", flagged: "TRUE" });
+    expect(result).not.toBeNull();
+    expect(result!.displayText).toBe(JUDGE_DISPUTE_NO_PROSE_MARKER);
+  });
+
+  it("flagged:1 (number) is treated as marked", () => {
+    const result = resolveJudgeDispute({ verdict: "fail", flagged: 1 });
+    expect(result).not.toBeNull();
+    expect(result!.hasReason).toBe(false);
+    expect(result!.displayText).toBe(JUDGE_DISPUTE_NO_PROSE_MARKER);
+  });
+
+  it("flagged:'false' (string) is NOT treated as marked", () => {
+    // No prose either → null
+    expect(resolveJudgeDispute({ verdict: "fail", flagged: "false" })).toBeNull();
+  });
+
+  // ── Whitespace-only prose ───────────────────────────────────────────────────
+  it("whitespace-only llm_flag_reason is treated as absent prose", () => {
+    // No flagged → null
+    expect(
+      resolveJudgeDispute({ verdict: "fail", llm_flag_reason: "   \t\n  " }),
+    ).toBeNull();
+  });
+
+  it("whitespace-only llm_flag_reason with flagged:true → marker, not whitespace string", () => {
+    const result = resolveJudgeDispute({ verdict: "fail", flagged: true, llm_flag_reason: "\n\n" });
+    expect(result!.hasReason).toBe(false);
+    expect(result!.reason).toBe("");
+    expect(result!.displayText).toBe(JUDGE_DISPUTE_NO_PROSE_MARKER);
+  });
+
+  // ── prose is trimmed ────────────────────────────────────────────────────────
+  it("trims leading/trailing whitespace from prose in displayText and reason", () => {
+    const result = resolveJudgeDispute({
+      verdict: "fail",
+      llm_flag_reason: "  the judge overreached  ",
+    });
+    expect(result!.reason).toBe("the judge overreached");
+    expect(result!.displayText).toBe("the judge overreached");
+  });
+
+  // ── no verdict field (undefined) ────────────────────────────────────────────
+  it("no verdict field at all is treated as non-pass (not gated)", () => {
+    const result = resolveJudgeDispute({ flagged: true, llm_flag_reason: PROSE });
+    expect(result).not.toBeNull();
+    expect(result!.hasReason).toBe(true);
   });
 });
