@@ -6,6 +6,10 @@
       "*": false
     }
   },
+  "functions": {
+    "src/app/api/w/*/pool/status/route.ts": { "memory": 768 },
+    "src/app/api/stakwork/runs/route.ts": { "memory": 512 }
+  },
   "crons": [{
       "path": "/api/cron/daily-recap",
       "schedule": "0 * * * *"

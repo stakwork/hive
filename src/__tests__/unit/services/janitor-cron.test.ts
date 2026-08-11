@@ -44,6 +44,38 @@ describe("Janitor Cron Configuration", () => {
       expect(scheduleParts).toHaveLength(5);
     });
   });
+
+  describe("vercel.json functions memory configuration", () => {
+    it("should have a functions block with well-formed memory overrides for target routes", () => {
+      const vercelPath = path.join(process.cwd(), "vercel.json");
+      const vercelConfig = JSON.parse(fs.readFileSync(vercelPath, "utf8"));
+
+      expect(vercelConfig.functions).toBeDefined();
+      expect(typeof vercelConfig.functions).toBe("object");
+
+      const poolStatusKey = "src/app/api/w/*/pool/status/route.ts";
+      const stakworkRunsKey = "src/app/api/stakwork/runs/route.ts";
+
+      expect(vercelConfig.functions[poolStatusKey]).toBeDefined();
+      expect(typeof vercelConfig.functions[poolStatusKey].memory).toBe("number");
+      expect(vercelConfig.functions[poolStatusKey].memory).toBe(768);
+
+      expect(vercelConfig.functions[stakworkRunsKey]).toBeDefined();
+      expect(typeof vercelConfig.functions[stakworkRunsKey].memory).toBe("number");
+      expect(vercelConfig.functions[stakworkRunsKey].memory).toBe(512);
+    });
+
+    it("should not have functions entries for streaming/agent or cron routes", () => {
+      const vercelPath = path.join(process.cwd(), "vercel.json");
+      const vercelConfig = JSON.parse(fs.readFileSync(vercelPath, "utf8"));
+      const functionKeys: string[] = Object.keys(vercelConfig.functions ?? {});
+
+      const forbidden = functionKeys.filter(
+        (k) => k.includes("/api/ask/") || k.includes("/api/cron/"),
+      );
+      expect(forbidden).toHaveLength(0);
+    });
+  });
 });
 
 describe("shouldSkipJanitorRun", () => {
