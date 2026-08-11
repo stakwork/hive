@@ -261,6 +261,6 @@ export interface RunReportPayload {
   runId: string;
   hasReport: boolean;
   /** Set when a report exists but could not be fetched, parsed or projected. */
-  error?: "unavailable";
+  error?: "unavailable" | "unsupported_schema" | "url_rejected";
   projection: RunReportProjection | null;
 }
