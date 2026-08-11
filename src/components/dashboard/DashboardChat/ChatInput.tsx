@@ -1,5 +1,6 @@
 "use client";
 
+import React from "react";
 import { Button } from "@/components/ui/button";
 import { Image as ImageIcon, Plus, Send, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
@@ -14,6 +15,7 @@ import {
 } from "@/components/ui/command";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { WorkspacePills } from "./WorkspacePills";
+import { useFileDrop } from "@/hooks/useFileDrop";
 
 const DEFAULT_MAX_EXTRA_WORKSPACES = 4; // current + 4 = 5 total
 
@@ -43,12 +45,10 @@ export function ChatInput({
   maxExtraWorkspaces = DEFAULT_MAX_EXTRA_WORKSPACES,
 }: ChatInputProps) {
   const [input, setInput] = useState("");
-  const [isDragging, setIsDragging] = useState(false);
   const [rows, setRows] = useState(1);
   const [isWorkspacePickerOpen, setIsWorkspacePickerOpen] = useState(false);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const dragCounterRef = useRef(0);
 
   const { workspaces } = useWorkspace();
 
@@ -130,61 +130,29 @@ export function ChatInput({
     }
   };
 
-  const handleDragEnter = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    dragCounterRef.current++;
-    if (e.dataTransfer.items && e.dataTransfer.items.length > 0) {
-      setIsDragging(true);
-    }
-  };
-
-  const handleDragLeave = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    dragCounterRef.current--;
-    if (dragCounterRef.current === 0) {
-      setIsDragging(false);
-    }
-  };
-
-  const handleDragOver = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-  };
-
-  const handleDrop = async (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setIsDragging(false);
-    dragCounterRef.current = 0;
-
-    if (disabled) return;
-
-    const file = e.dataTransfer.files[0];
-    if (!file) return;
-
-    if (!file.type.startsWith("image/")) {
-      alert("Please drop an image file");
-      return;
-    }
-
-    try {
-      const base64 = await convertToBase64(file);
-      onImageUpload?.(base64);
-    } catch (error) {
-      console.error("Error reading file:", error);
-      alert("Failed to read image file");
-    }
-  };
+  const { isDragging, dragProps } = useFileDrop({
+    disabled,
+    onDrop: async (files) => {
+      const file = files[0];
+      if (!file) return;
+      if (!file.type.startsWith("image/")) {
+        alert("Please drop an image file");
+        return;
+      }
+      try {
+        const base64 = await convertToBase64(file);
+        onImageUpload?.(base64);
+      } catch (error) {
+        console.error("Error reading file:", error);
+        alert("Failed to read image file");
+      }
+    },
+  });
 
   return (
     <form
       onSubmit={handleSubmit}
-      onDragEnter={handleDragEnter}
-      onDragLeave={handleDragLeave}
-      onDragOver={handleDragOver}
-      onDrop={handleDrop}
+      {...dragProps}
       className="relative flex flex-col items-center gap-1 w-full px-4 py-4 -mb-4"
     >
       {/* Drag overlay */}
