@@ -6,6 +6,7 @@ import { LEGAL_SLUGS } from "@/lib/eval-capture-slugs";
 import { db } from "@/lib/db";
 import { optionalEnvVars } from "@/config/env";
 import { WorkflowStatus, StakworkRunType } from "@prisma/client";
+import { getJarvisUrl } from "@/lib/utils/swarm";
 
 type RouteParams = {
   params: Promise<{ slug: string; matterId: string }>;
@@ -44,7 +45,16 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: "Access denied" }, { status: 403 });
     }
 
-    const { workspaceId } = swarmResult.data;
+    const { workspaceId, swarmSecretAlias, swarmName } = swarmResult.data;
+
+    if (!swarmSecretAlias) {
+      return NextResponse.json(
+        { error: "Swarm secret alias not configured for this workspace" },
+        { status: 400 },
+      );
+    }
+
+    const graphBaseUrl = getJarvisUrl(swarmName);
 
     const workflowId = optionalEnvVars.STAKWORK_CNH_INGEST_WORKFLOW_ID ?? "57982";
     if (!optionalEnvVars.STAKWORK_CNH_INGEST_WORKFLOW_ID) {
@@ -107,6 +117,9 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
             vars: {
               matter_id: matterId,
               webhook_url: signedResultUrl,
+              graph_base_url: graphBaseUrl,
+              secret: swarmSecretAlias,
+              workspace_id: workspaceId,
             },
           },
         },
