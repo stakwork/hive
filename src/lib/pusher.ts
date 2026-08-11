@@ -143,9 +143,9 @@ export type CanvasConversationUpdateReason =
   // A recurring automation fired: the cron created a fresh org-canvas
   // conversation and appended the agent's response to it.
   | "automation"
-  // A legal benchmark run completed with "Generate Report" checked: the
-  // webhook created a report conversation and appended the agent's analysis.
-  | "benchmark-report"
+  // A legal benchmark run completed with "Jamie Chat" checked: the
+  // webhook created a chat conversation and appended the agent's analysis.
+  | "benchmark-jamie-chat"
   // A graph-walk sub-agent completed and fanned its synthesized answer
   // back into the conversation as an assistant bubble.
   | "graph_walk"

@@ -1053,6 +1053,24 @@ model StakworkRun {
   promptVersionId String?              @map("prompt_version_id")
   evalSetId       String?              @map("eval_set_id")
   userId          String?              @map("user_id")
+
+  // ── Run report bundle ──────────────────────────────────────────────────────
+  // The S3 URL of the report bundle, captured from the result webhook. The
+  // bundle itself is NOT stored: it is fetched and sanitized when someone opens
+  // the report page, because the URL is stable and public rather than a
+  // short-lived presigned one.
+  //
+  // Does NOT compete with the Jamie chat lifecycle (generateJamieChat /
+  // jamieChatStatus / jamieChatConversationId / jamieChatPath), which lives in
+  // the `result` JSON and owns the org-canvas conversation. Two different
+  // artifacts: "Jamie chat" vs. "Run report bundle".
+  //
+  // Hidden by a global Prisma `omit` in src/lib/db.ts: the object is public and
+  // unsigned, so the URL is a non-expiring bearer capability over converted
+  // legal source documents and must not reach a client.
+  /// S3 URL of the report bundle. Server-only.
+  reportUrl String? @map("report_url")
+
   agentLogs       AgentLog[]
   feature         Feature?             @relation(fields: [featureId], references: [id])
   task            Task?                @relation(fields: [taskId], references: [id])
