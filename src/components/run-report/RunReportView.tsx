@@ -101,6 +101,18 @@ export function RunReportView({ payload, taskTitle = "Run report" }: Props) {
     );
   }
 
+  // ── Report URL rejected by the SSRF guard ────────────────────────────────
+  if (payload.error === "url_rejected") {
+    return (
+      <StateNotice
+        icon={<AlertCircle className="h-5 w-5" />}
+        title="Report location not permitted"
+        body="The report bundle for this run is stored at a location that is not permitted by this deployment's security policy. Contact your workspace administrator."
+        testId="run-report-state-url-rejected"
+      />
+    );
+  }
+
   // ── No report on this run ─────────────────────────────────────────────────
   if (!payload.hasReport || !projection) {
     return (

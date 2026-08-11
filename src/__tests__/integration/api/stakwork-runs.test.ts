@@ -49,6 +49,13 @@ vi.mock("@/lib/pusher", () => ({
   },
 }));
 
+// Rate limit: default allow — Redis is not available in the test environment.
+// Tests that specifically exercise rate limiting override this mock.
+vi.mock("@/lib/rate-limit", () => ({
+  checkRateLimit: vi.fn().mockResolvedValue({ allowed: true }),
+  getClientIp: vi.fn().mockReturnValue("127.0.0.1"),
+}));
+
 const mockStakworkService = stakworkService as vi.MockedFunction<typeof stakworkService>;
 
 describe("Stakwork Runs API Integration Tests", () => {
@@ -97,6 +104,55 @@ describe("Stakwork Runs API Integration Tests", () => {
       });
 
       return { user, workspace, feature, githubAuth };
+    });
+  }
+
+  /**
+   * Creates a workspace owned by a separate owner user, then adds a second
+   * non-owner member with the specified restricted role. Returns the non-owner
+   * member as `user` so role-gating tests exercise a real non-OWNER path.
+   *
+   * The regular `createTestWorkspaceWithFeature` makes the requesting user the
+   * workspace owner, so `isOwner=true` and they always receive OWNER-level
+   * authorization regardless of their WorkspaceMember role.
+   */
+  async function createWorkspaceWithNonOwnerMember(memberRole: WorkspaceRole) {
+    return await db.$transaction(async (tx) => {
+      // Workspace owner (not the user making the API request)
+      const owner = await tx.user.create({
+        data: {
+          id: generateUniqueId("owner"),
+          email: `owner-${generateUniqueId()}@example.com`,
+          name: "Workspace Owner",
+        },
+      });
+
+      const workspace = await tx.workspace.create({
+        data: {
+          name: `Test Workspace ${generateUniqueId()}`,
+          slug: generateUniqueSlug("test-workspace"),
+          ownerId: owner.id,
+        },
+      });
+
+      // Non-owner member — this is the user whose role is being tested
+      const user = await tx.user.create({
+        data: {
+          id: generateUniqueId("member"),
+          email: `member-${generateUniqueId()}@example.com`,
+          name: "Workspace Member",
+        },
+      });
+
+      await tx.workspaceMember.create({
+        data: {
+          workspaceId: workspace.id,
+          userId: user.id,
+          role: memberRole,
+        },
+      });
+
+      return { user, owner, workspace };
     });
   }
 
@@ -368,6 +424,209 @@ describe("Stakwork Runs API Integration Tests", () => {
       expect(response.status).toBe(200);
       expect(responseData.runs).toHaveLength(1);
       expect(responseData.runs[0]).not.toHaveProperty("result");
+    });
+
+    test("forwards hasReport: true for OWNER with a populated reportUrl", async () => {
+      const { user, workspace } = await createTestWorkspaceWithFeature("OWNER");
+
+      await db.stakworkRun.create({
+        data: {
+          type: StakworkRunType.LEGAL_BENCHMARK_RUNNER,
+          workspaceId: workspace.id,
+          status: "COMPLETED",
+          webhookUrl: "",
+          dataType: "json",
+          // bypasses validateReportUrl by writing directly via Prisma
+          reportUrl: "http://localhost:3000/api/mock/run-report/full",
+        },
+      });
+
+      const request = createAuthenticatedGetRequest(
+        `http://localhost/api/test?workspaceId=${workspace.id}&type=LEGAL_BENCHMARK_RUNNER`,
+        user
+      );
+      const response = await GetRuns(request);
+      const responseData = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(responseData.runs).toHaveLength(1);
+      expect(responseData.runs[0].hasReport).toBe(true);
+    });
+
+    test("forwards hasReport: false for a run without reportUrl", async () => {
+      const { user, workspace } = await createTestWorkspaceWithFeature("OWNER");
+
+      await db.stakworkRun.create({
+        data: {
+          type: StakworkRunType.LEGAL_BENCHMARK_RUNNER,
+          workspaceId: workspace.id,
+          status: "COMPLETED",
+          webhookUrl: "",
+          dataType: "json",
+        },
+      });
+
+      const request = createAuthenticatedGetRequest(
+        `http://localhost/api/test?workspaceId=${workspace.id}&type=LEGAL_BENCHMARK_RUNNER`,
+        user
+      );
+      const response = await GetRuns(request);
+      const responseData = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(responseData.runs[0].hasReport).toBe(false);
+    });
+
+    test("returns hasReport: false for VIEWER even with a populated reportUrl (role gating)", async () => {
+      // Must use a non-owner member: createTestWorkspaceWithFeature sets the
+      // requesting user as workspace owner, so isOwner=true always → OWNER role.
+      const { user, workspace } = await createWorkspaceWithNonOwnerMember("VIEWER");
+
+      await db.stakworkRun.create({
+        data: {
+          type: StakworkRunType.LEGAL_BENCHMARK_RUNNER,
+          workspaceId: workspace.id,
+          status: "COMPLETED",
+          webhookUrl: "",
+          dataType: "json",
+          reportUrl: "http://localhost:3000/api/mock/run-report/full",
+        },
+      });
+
+      const request = createAuthenticatedGetRequest(
+        `http://localhost/api/test?workspaceId=${workspace.id}&type=LEGAL_BENCHMARK_RUNNER`,
+        user
+      );
+      const response = await GetRuns(request);
+      const responseData = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(responseData.runs[0].hasReport).toBe(false);
+    });
+
+    test("returns hasReport: false for STAKEHOLDER even with a populated reportUrl", async () => {
+      // Must use a non-owner member for the same reason as the VIEWER test above.
+      const { user, workspace } = await createWorkspaceWithNonOwnerMember("STAKEHOLDER");
+
+      await db.stakworkRun.create({
+        data: {
+          type: StakworkRunType.LEGAL_BENCHMARK_RUNNER,
+          workspaceId: workspace.id,
+          status: "COMPLETED",
+          webhookUrl: "",
+          dataType: "json",
+          reportUrl: "http://localhost:3000/api/mock/run-report/full",
+        },
+      });
+
+      const request = createAuthenticatedGetRequest(
+        `http://localhost/api/test?workspaceId=${workspace.id}&type=LEGAL_BENCHMARK_RUNNER`,
+        user
+      );
+      const response = await GetRuns(request);
+      const responseData = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(responseData.runs[0].hasReport).toBe(false);
+    });
+
+    test("returns hasReport: true for DEVELOPER with a populated reportUrl", async () => {
+      const { user, workspace } = await createTestWorkspaceWithFeature("DEVELOPER");
+
+      await db.stakworkRun.create({
+        data: {
+          type: StakworkRunType.LEGAL_BENCHMARK_RUNNER,
+          workspaceId: workspace.id,
+          status: "COMPLETED",
+          webhookUrl: "",
+          dataType: "json",
+          reportUrl: "http://localhost:3000/api/mock/run-report/full",
+        },
+      });
+
+      const request = createAuthenticatedGetRequest(
+        `http://localhost/api/test?workspaceId=${workspace.id}&type=LEGAL_BENCHMARK_RUNNER`,
+        user
+      );
+      const response = await GetRuns(request);
+      const responseData = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(responseData.runs[0].hasReport).toBe(true);
+    });
+
+    test("response key set equals the intended allowlist (no extra fields leak)", async () => {
+      const { user, workspace } = await createTestWorkspaceWithFeature("OWNER");
+
+      await db.stakworkRun.create({
+        data: {
+          type: StakworkRunType.ARCHITECTURE,
+          workspaceId: workspace.id,
+          status: "COMPLETED",
+          webhookUrl: "secret-webhook-url",
+          dataType: "string",
+          userId: user.id,
+        },
+      });
+
+      const request = createAuthenticatedGetRequest(
+        `http://localhost/api/test?workspaceId=${workspace.id}`,
+        user
+      );
+      const response = await GetRuns(request);
+      const responseData = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(responseData.runs).toHaveLength(1);
+      const keys = Object.keys(responseData.runs[0]).sort();
+      const ALLOWED_KEYS = [
+        "id", "type", "status", "workspaceId", "featureId", "projectId",
+        "dataType", "decision", "feedback", "createdAt", "updatedAt", "feature",
+        "hasReport",
+      ].sort();
+      expect(keys).toEqual(ALLOWED_KEYS);
+      // Sensitive fields must never appear
+      expect(responseData.runs[0]).not.toHaveProperty("reportUrl");
+      expect(responseData.runs[0]).not.toHaveProperty("webhookUrl");
+      expect(responseData.runs[0]).not.toHaveProperty("userId");
+      expect(responseData.runs[0]).not.toHaveProperty("taskId");
+      expect(responseData.runs[0]).not.toHaveProperty("autoAccept");
+      expect(responseData.runs[0]).not.toHaveProperty("promptVersionId");
+      expect(responseData.runs[0]).not.toHaveProperty("evalSetId");
+    });
+
+    test("no amazonaws.com or report_url appears anywhere in includeResult=true payload", async () => {
+      const { user, workspace } = await createTestWorkspaceWithFeature("OWNER");
+      const nestedResult = JSON.stringify({
+        taskSlug: "test-task",
+        result: {
+          report_url: "https://stakwork-uploads.s3.amazonaws.com/leaked.json",
+          scores_s3_url: "https://stakwork-uploads.s3.amazonaws.com/scores.json",
+        },
+      });
+
+      await db.stakworkRun.create({
+        data: {
+          type: StakworkRunType.LEGAL_BENCHMARK_RUNNER,
+          workspaceId: workspace.id,
+          status: "COMPLETED",
+          webhookUrl: "",
+          dataType: "json",
+          result: nestedResult,
+        },
+      });
+
+      const request = createAuthenticatedGetRequest(
+        `http://localhost/api/test?workspaceId=${workspace.id}&type=LEGAL_BENCHMARK_RUNNER&includeResult=true`,
+        user
+      );
+      const response = await GetRuns(request);
+      const serialized = await response.text();
+
+      expect(serialized).not.toContain("amazonaws.com");
+      expect(serialized).not.toContain("report_url");
+      expect(serialized).not.toContain("scores_s3_url");
+      expect(serialized).not.toContain("reportUrl");
     });
   });
 

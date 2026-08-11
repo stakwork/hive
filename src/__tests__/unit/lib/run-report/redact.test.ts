@@ -14,7 +14,8 @@ describe("redactSensitiveKeys — depth", () => {
 
     const out = JSON.stringify(redactSensitiveKeys(node));
     expect(out).not.toContain("DEEPSECRET");
-    expect(out).toContain("[REDACTED]");
+    // Sensitive keys are now omitted entirely (no key → no value leakage).
+    expect(out).not.toContain("token");
   });
 
   it("drops rather than passes through beyond the depth bound", () => {

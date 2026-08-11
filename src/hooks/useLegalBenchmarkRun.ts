@@ -29,6 +29,7 @@ interface RawRunRow {
   status: string;
   projectId: number | null;
   result: string | null;
+  hasReport?: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -77,6 +78,7 @@ export function useLegalBenchmarkRun(runId: string): UseLegalBenchmarkRunResult 
         status: rawRunner.status as WorkflowStatus,
         projectId: rawRunner.projectId,
         result: runnerResult,
+        hasReport: rawRunner.hasReport === true,
         createdAt: rawRunner.createdAt,
         updatedAt: rawRunner.updatedAt,
       };
@@ -91,6 +93,7 @@ export function useLegalBenchmarkRun(runId: string): UseLegalBenchmarkRunResult 
         status: compositeStatus,
         runnerRun: runnerRow,
         scorerRun: null,
+        hasReport: runnerRow.hasReport === true,
         runnerOutputUrl: runnerResult?.runnerOutputUrl ?? null,
         runnerOutputText: runnerResult?.runnerOutputText ?? null,
         scoreJson: null,
