@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useRef, useEffect, useCallback, useMemo } from "react";
+import { useFileDrop } from "@/hooks/useFileDrop";
 import { useSearchParams } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
 import { Card } from "@/components/ui/card";
@@ -113,7 +114,6 @@ export function TaskStartInput({
   const [hasInteractedWithWorkflowInput, setHasInteractedWithWorkflowInput] = useState(false);
   const [selectedVersionId, setSelectedVersionId] = useState<string | null>(null);
   const [pendingImages, setPendingImages] = useState<PendingImage[]>([]);
-  const [isDragging, setIsDragging] = useState(false);
   const [autoMerge, setAutoMerge] = useState(true);
   const [runBuild, setRunBuild] = useState(true);
   const [runTestSuite, setRunTestSuite] = useState(true);
@@ -302,40 +302,10 @@ export function TaskStartInput({
     });
   };
 
-  const handleDragEnter = (e: React.DragEvent) => {
-    if (!isImageUploadEnabled) return;
-    e.preventDefault();
-    e.stopPropagation();
-    setIsDragging(true);
-  };
-
-  const handleDragOver = (e: React.DragEvent) => {
-    if (!isImageUploadEnabled) return;
-    e.preventDefault();
-    e.stopPropagation();
-  };
-
-  const handleDragLeave = (e: React.DragEvent) => {
-    if (!isImageUploadEnabled) return;
-    e.preventDefault();
-    e.stopPropagation();
-    // Only set isDragging to false if we're leaving the card element
-    if (e.currentTarget === e.target) {
-      setIsDragging(false);
-    }
-  };
-
-  const handleDrop = (e: React.DragEvent) => {
-    if (!isImageUploadEnabled) return;
-    e.preventDefault();
-    e.stopPropagation();
-    setIsDragging(false);
-
-    const files = e.dataTransfer.files;
-    if (files.length > 0) {
-      handleFiles(files);
-    }
-  };
+  const { isDragging, dragProps } = useFileDrop({
+    disabled: !isImageUploadEnabled,
+    onDrop: (files) => handleFiles(files),
+  });
 
   const handlePaste = (e: React.ClipboardEvent) => {
     if (!isImageUploadEnabled) return;
@@ -662,10 +632,7 @@ export function TaskStartInput({
               "relative w-full p-0 bg-card rounded-3xl shadow-sm border-0 group",
               isDragging && "ring-2 ring-primary ring-offset-2"
             )}
-            onDragEnter={handleDragEnter}
-            onDragOver={handleDragOver}
-            onDragLeave={handleDragLeave}
-            onDrop={handleDrop}
+            {...dragProps}
           >
             {/* Drag and drop overlay */}
             {isDragging && isImageUploadEnabled && (

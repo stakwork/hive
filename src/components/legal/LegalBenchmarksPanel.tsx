@@ -228,7 +228,7 @@ export function LegalBenchmarksPanel({ className }: { className?: string }) {
 
   const handleSelectTask = async (
     task: HarveyTask,
-    options?: { generateReport?: boolean },
+    options?: { generateJamieChat?: boolean; generateRunReport?: boolean },
   ) => {
     const res = await fetch(`/api/workspaces/${slug}/legal/benchmarks/run`, {
       method: "POST",
@@ -238,7 +238,8 @@ export function LegalBenchmarksPanel({ className }: { className?: string }) {
         taskTitle: task.title,
         model: selectedModel,
         judgeModel: selectedJudgeModel,
-        generateReport: options?.generateReport === true,
+        generateJamieChat: options?.generateJamieChat === true,
+        generateRunReport: options?.generateRunReport === true,
       }),
     });
 

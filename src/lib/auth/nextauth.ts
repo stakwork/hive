@@ -4,6 +4,7 @@ import { logger } from "@/lib/logger";
 import { ensureMockWorkspaceForUser, ensureStakworkMockWorkspace, ensureMockOrgData, ensureMockLlmModels } from "@/utils/mockSetup";
 import { isSuperAdminUserId } from "@/config/env";
 import { PrismaAdapter } from "@auth/prisma-adapter";
+import type { PrismaClient } from "@prisma/client";
 import axios from "axios";
 import { NextAuthOptions } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
@@ -179,8 +180,16 @@ const getProviders = () => {
 };
 
 export const authOptions: NextAuthOptions = {
-  // Only use PrismaAdapter when not using credentials provider
-  ...(process.env.POD_URL ? {} : { adapter: PrismaAdapter(db) }),
+  // Only use PrismaAdapter when not using credentials provider.
+  //
+  // The cast is needed because `db` carries a global `omit` in its type (see
+  // src/lib/db.ts), and @auth/prisma-adapter's signature only accepts a
+  // PrismaClient with default generics. It is safe: the omit applies solely to
+  // `stakworkRun`, and the adapter only touches User / Account / Session /
+  // VerificationToken, none of which have omitted fields.
+  ...(process.env.POD_URL
+    ? {}
+    : { adapter: PrismaAdapter(db as unknown as PrismaClient) }),
   providers: getProviders(),
   callbacks: {
     async signIn({ user, account }) {

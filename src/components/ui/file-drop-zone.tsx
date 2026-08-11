@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, useRef, DragEvent, ChangeEvent } from "react";
+import React, { useRef, ChangeEvent } from "react";
 import { Upload, FileText } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useFileDrop } from "@/hooks/useFileDrop";
 
 interface FileDropZoneProps {
   onFileContent: (content: string, fileName: string) => void;
@@ -15,56 +16,19 @@ export function FileDropZone({
   onFileContent,
   accept = ".env,.txt,text/plain",
   className,
-  disabled = false
+  disabled = false,
 }: FileDropZoneProps) {
-  const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const handleDragEnter = (e: DragEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    e.stopPropagation();
-    if (!disabled) {
-      setIsDragging(true);
-    }
-  };
+  const { isDragging, dragProps } = useFileDrop<HTMLDivElement>({
+    disabled,
+    onDrop: async (files) => {
+      const file = files[0];
+      if (!file) return;
 
-  const handleDragOver = (e: DragEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    e.stopPropagation();
-    if (!disabled) {
-      setIsDragging(true);
-    }
-  };
-
-  const handleDragLeave = (e: DragEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    e.stopPropagation();
-
-    // Check if we're leaving the drop zone entirely
-    const rect = e.currentTarget.getBoundingClientRect();
-    const x = e.clientX;
-    const y = e.clientY;
-
-    if (x < rect.left || x >= rect.right || y < rect.top || y >= rect.bottom) {
-      setIsDragging(false);
-    }
-  };
-
-  const handleDrop = async (e: DragEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setIsDragging(false);
-
-    if (disabled) return;
-
-    const files = Array.from(e.dataTransfer.files);
-    const file = files[0];
-
-    if (file) {
-      // Accept .env files, text files, or files with no extension
-      const isEnvFile = file.name.endsWith('.env');
+      const isEnvFile = file.name.endsWith(".env");
       const isTextFile = file.type === "text/plain" || file.type === "";
-      const isTxtFile = file.name.endsWith('.txt');
+      const isTxtFile = file.name.endsWith(".txt");
 
       if (isEnvFile || isTextFile || isTxtFile) {
         try {
@@ -74,8 +38,8 @@ export function FileDropZone({
           console.error("Error reading file:", error);
         }
       }
-    }
-  };
+    },
+  });
 
   const handleFileSelect = async (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -85,16 +49,13 @@ export function FileDropZone({
     }
     // Reset input
     if (fileInputRef.current) {
-      fileInputRef.current.value = '';
+      fileInputRef.current.value = "";
     }
   };
 
   return (
     <div
-      onDragEnter={handleDragEnter}
-      onDragOver={handleDragOver}
-      onDragLeave={handleDragLeave}
-      onDrop={handleDrop}
+      {...dragProps}
       className={cn(
         "relative border-2 border-dashed rounded-lg p-4 text-center transition-all",
         isDragging && !disabled
