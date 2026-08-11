@@ -328,7 +328,12 @@ describe("POST /api/webhook/stakwork/response — run_token security", () => {
     vi.clearAllMocks();
   });
 
-  test("returns 500 when service throws Unauthorized: invalid run token", async () => {
+  // This route is `access: "webhook"` and bypasses auth entirely, so it must
+  // NOT echo internal error detail back to the caller. Telling an unauthenticated
+  // caller that their run_token was specifically invalid — versus the workspace
+  // not matching — hands them a probing oracle. The detail goes to the server
+  // log; the response body stays generic.
+  test("rejects an invalid run token without disclosing why", async () => {
     mockProcessStakworkRunWebhook.mockRejectedValue(
       new Error("Unauthorized: invalid run token"),
     );
@@ -336,10 +341,11 @@ describe("POST /api/webhook/stakwork/response — run_token security", () => {
     const res = await postWebhook(makeRunnerRequest("runner-1", "ws-1", "badtoken"));
     expect(res.status).toBe(500);
     const body = await res.json();
-    expect(body.error).toMatch(/unauthorized.*invalid run token/i);
+    expect(body.error).toBe("Failed to process webhook");
+    expect(JSON.stringify(body)).not.toMatch(/run token|unauthorized/i);
   });
 
-  test("returns 500 when service throws workspace mismatch error", async () => {
+  test("rejects a workspace mismatch without disclosing why", async () => {
     mockProcessStakworkRunWebhook.mockRejectedValue(
       new Error("Unauthorized: workspace mismatch"),
     );
@@ -347,7 +353,8 @@ describe("POST /api/webhook/stakwork/response — run_token security", () => {
     const res = await postWebhook(makeRunnerRequest("runner-1", "ws-other", "anytoken"));
     expect(res.status).toBe(500);
     const body = await res.json();
-    expect(body.error).toMatch(/workspace mismatch/i);
+    expect(body.error).toBe("Failed to process webhook");
+    expect(JSON.stringify(body)).not.toMatch(/workspace mismatch/i);
   });
 
   test("missing run_token → service receives undefined token and can reject", async () => {
@@ -403,7 +410,11 @@ describe("POST /api/webhook/stakwork/response — SSRF output_s3_url guard", () 
     );
     expect(res.status).toBe(500);
     const body = await res.json();
-    expect(body.error).toMatch(/allowlist/i);
+    // Generic body: never confirm to an unauthenticated caller that an
+    // allowlist exists, nor echo back the host they probed with.
+    expect(body.error).toBe("Failed to process webhook");
+    expect(JSON.stringify(body)).not.toMatch(/allowlist/i);
+    expect(JSON.stringify(body)).not.toContain("attacker.example.com");
   });
 
   test("valid allowlisted S3 URL succeeds", async () => {

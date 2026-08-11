@@ -26,9 +26,9 @@ const makeRun = (overrides: Partial<{
   judgeNotes: string;
   requestedModel: string;
   requestedJudgeModel: string;
-  generateReport: boolean;
-  reportStatus: string;
-  reportChatPath: string;
+  generateJamieChat: boolean;
+  jamieChatStatus: string;
+  jamieChatPath: string;
 }> = {}) => ({
   id: "runner-1",
   workspaceId: WORKSPACE_ID,
@@ -43,9 +43,9 @@ const makeRun = (overrides: Partial<{
   judgeNotes: undefined as string | undefined,
   requestedModel: undefined as string | undefined,
   requestedJudgeModel: undefined as string | undefined,
-  generateReport: undefined as boolean | undefined,
-  reportStatus: undefined as string | undefined,
-  reportChatPath: undefined as string | undefined,
+  generateJamieChat: undefined as boolean | undefined,
+  jamieChatStatus: undefined as string | undefined,
+  jamieChatPath: undefined as string | undefined,
   ...overrides,
 });
 
@@ -430,7 +430,7 @@ describe("BenchmarkRunsHistory", () => {
     await user.click(row);
 
     const expandedCell = screen.getByTestId("results-runner-1").closest("td")!;
-    expect(expandedCell.getAttribute("colspan")).toBe("5");
+    expect(expandedCell.getAttribute("colspan")).toBe("6");
   });
 
   it("expanded row colSpan is 6 for super-admin (adds Stakwork column)", async () => {
@@ -447,7 +447,7 @@ describe("BenchmarkRunsHistory", () => {
     await user.click(row);
 
     const expandedCell = screen.getByTestId("results-runner-1").closest("td")!;
-    expect(expandedCell.getAttribute("colspan")).toBe("6");
+    expect(expandedCell.getAttribute("colspan")).toBe("7");
   });
 
   // ─── Existing interaction tests ────────────────────────────────────────────
@@ -729,22 +729,22 @@ describe("BenchmarkRunsHistory", () => {
     await user.click(row);
 
     const expandedCell = screen.getByTestId("results-runner-1").closest("td")!;
-    expect(expandedCell.getAttribute("colspan")).toBe("5");
+    expect(expandedCell.getAttribute("colspan")).toBe("6");
   });
 
-  // ─── Report column tests ───────────────────────────────────────────────────
+  // ─── Chat column tests ─────────────────────────────────────────────────────
 
-  it("renders Report column header", () => {
+  it("renders Chat column header", () => {
     render(React.createElement(BenchmarkRunsHistory));
-    expect(screen.getByText("Report")).toBeInTheDocument();
+    expect(screen.getByText("Chat")).toBeInTheDocument();
   });
 
-  it("renders 'View Report' link when reportChatPath is present", () => {
+  it("renders 'View Chat' link when jamieChatPath is present", () => {
     mockUseList.mockReturnValue({
       runs: [makeRun({
-        generateReport: true,
-        reportStatus: "completed",
-        reportChatPath: "/org/stakwork?chat=conv-123",
+        generateJamieChat: true,
+        jamieChatStatus: "completed",
+        jamieChatPath: "/org/stakwork?chat=conv-123",
       })],
       total: 1,
       isLoading: false,
@@ -761,7 +761,7 @@ describe("BenchmarkRunsHistory", () => {
 
   it("shows Pending spinner when report requested but not yet written", () => {
     mockUseList.mockReturnValue({
-      runs: [makeRun({ status: "IN_PROGRESS", generateReport: true })],
+      runs: [makeRun({ status: "IN_PROGRESS", generateJamieChat: true })],
       total: 1,
       isLoading: false,
       error: null,
@@ -773,9 +773,9 @@ describe("BenchmarkRunsHistory", () => {
     expect(screen.queryByTestId("report-chat-link")).toBeNull();
   });
 
-  it("shows 'Failed' when reportStatus is failed", () => {
+  it("shows 'Failed' when jamieChatStatus is failed", () => {
     mockUseList.mockReturnValue({
-      runs: [makeRun({ generateReport: true, reportStatus: "failed" })],
+      runs: [makeRun({ generateJamieChat: true, jamieChatStatus: "failed" })],
       total: 1,
       isLoading: false,
       error: null,
@@ -786,9 +786,9 @@ describe("BenchmarkRunsHistory", () => {
     expect(screen.getByText("Failed")).toBeInTheDocument();
   });
 
-  it("shows dash (not Pending) for a FAILED run with generateReport (report will never fire)", () => {
+  it("shows dash (not Pending) for a FAILED run with generateJamieChat (report will never fire)", () => {
     mockUseList.mockReturnValue({
-      runs: [makeRun({ status: "FAILED", generateReport: true })],
+      runs: [makeRun({ status: "FAILED", generateJamieChat: true })],
       total: 1,
       isLoading: false,
       error: null,
