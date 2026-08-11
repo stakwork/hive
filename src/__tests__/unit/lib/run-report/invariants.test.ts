@@ -125,13 +125,40 @@ describe("global omit invariant — src/lib/db.ts", () => {
 });
 
 describe("response-shape invariants", () => {
-  it("the runs list select does not include webhookUrl", () => {
+  it("the runs list select does not include webhookUrl, and reportUrl is stripped by the mapper", () => {
     const service = read(join(process.cwd(), "src/services/stakwork-run.ts"));
-    const start = service.indexOf("const runs = await db.stakworkRun.findMany");
+    // Re-anchored on `getStakworkRuns` — the first `findMany` in the file is
+    // `getFeatureRunHistory`, not the list query. Anchoring on the wrong call
+    // site produced a vacuously-passing test that gave false assurance on
+    // exactly this bug class.
+    const fnStart = service.indexOf("export async function getStakworkRuns");
+    expect(fnStart).toBeGreaterThan(-1);
+    const start = service.indexOf("const runs = await db.stakworkRun.findMany", fnStart);
     expect(start).toBeGreaterThan(-1);
     const select = service.slice(start, start + 1400);
+
+    // webhookUrl must never appear in the select — it embeds a raw run_token HMAC.
     expect(select).not.toMatch(/^\s*webhookUrl:\s*true/m);
-    expect(select).not.toMatch(/^\s*reportUrl:\s*true/m);
+
+    // reportUrl IS selected (to derive the hasReport boolean) but must be
+    // destructured out by the mapper so the raw URL never reaches the caller.
+    // Assert the select includes it AND the mapper strips it.
+    expect(select).toMatch(/^\s*reportUrl:\s*true/m);
+    // The mapper must destructure reportUrl out of the run object before returning.
+    expect(select).toMatch(/\(\s*\{\s*reportUrl\s*,/);
+  });
+
+  it("the re-anchored invariant fails when webhookUrl leaks into the list select — negative case", () => {
+    const service = read(join(process.cwd(), "src/services/stakwork-run.ts"));
+    const fnStart = service.indexOf("export async function getStakworkRuns");
+    expect(fnStart).toBeGreaterThan(-1);
+    const start = service.indexOf("const runs = await db.stakworkRun.findMany", fnStart);
+    expect(start).toBeGreaterThan(-1);
+    const select = service.slice(start, start + 1400);
+    // Proves the invariant is non-vacuous: if we inject the forbidden key into
+    // the scanned window, the pattern DOES match.
+    const poisoned = select + "\n      webhookUrl: true,";
+    expect(poisoned).toMatch(/^\s*webhookUrl:\s*true/m);
   });
 
   it("StakworkRunResponse does not declare webhookUrl", () => {
