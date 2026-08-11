@@ -15,6 +15,7 @@ import {
   SourcesSection,
   HealthSection,
 } from "./sections";
+import { SectionErrorBoundary } from "./chrome";
 
 /**
  * Run report renderer.
@@ -125,21 +126,37 @@ export function RunReportView({ payload, taskTitle = "Run report" }: Props) {
       </nav>
 
       <main className="min-w-0 pb-24">
-        <OverviewSection projection={projection} timezone={timezone} taskTitle={taskTitle} />
-        <PipelineSection projection={projection} />
-        <RubricsSection rows={rubricRows} />
-        <FailuresSection
-          rows={rubricRows}
-          projection={projection}
-          onOpenDoc={(docId, tokens) => setOpenDoc({ docId, tokens })}
-        />
-        <TracesSection projection={projection} />
-        <ConceptsSection projection={projection} />
-        <SourcesSection
-          projection={projection}
-          onOpenDoc={(docId, tokens) => setOpenDoc({ docId, tokens })}
-        />
-        <HealthSection projection={projection} />
+        <SectionErrorBoundary>
+          <OverviewSection projection={projection} timezone={timezone} taskTitle={taskTitle} />
+        </SectionErrorBoundary>
+        <SectionErrorBoundary>
+          <PipelineSection projection={projection} />
+        </SectionErrorBoundary>
+        <SectionErrorBoundary>
+          <RubricsSection rows={rubricRows} />
+        </SectionErrorBoundary>
+        <SectionErrorBoundary>
+          <FailuresSection
+            rows={rubricRows}
+            projection={projection}
+            onOpenDoc={(docId, tokens) => setOpenDoc({ docId, tokens })}
+          />
+        </SectionErrorBoundary>
+        <SectionErrorBoundary>
+          <TracesSection projection={projection} />
+        </SectionErrorBoundary>
+        <SectionErrorBoundary>
+          <ConceptsSection projection={projection} />
+        </SectionErrorBoundary>
+        <SectionErrorBoundary>
+          <SourcesSection
+            projection={projection}
+            onOpenDoc={(docId, tokens) => setOpenDoc({ docId, tokens })}
+          />
+        </SectionErrorBoundary>
+        <SectionErrorBoundary>
+          <HealthSection projection={projection} />
+        </SectionErrorBoundary>
       </main>
 
       <DocumentViewerModal
