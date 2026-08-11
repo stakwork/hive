@@ -77,6 +77,7 @@ export interface RunReportProjection {
   pageData: {
     setVar: Record<string, unknown>;
     security: Record<string, unknown>;
+    rubrics: unknown[];
     branches: unknown[];
     healthNotes: unknown[];
     logStats: Record<string, unknown>;

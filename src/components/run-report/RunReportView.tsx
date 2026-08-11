@@ -73,7 +73,7 @@ export function RunReportView({ payload, taskTitle = "Run report" }: Props) {
 
   const projection = payload.projection;
   const rubricRows = useMemo(
-    () => (projection ? groupRubrics({ summaries: projection.analysis.summaries }) : []),
+    () => (projection ? groupRubrics(projection.pageData) : []),
     [projection],
   );
 
