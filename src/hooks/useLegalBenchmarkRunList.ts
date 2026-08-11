@@ -30,6 +30,13 @@ export interface BenchmarkRunListRow {
   reportStatus?: string;
   /** Relative link to the report chat, e.g. "/org/<login>?chat=<id>" */
   reportChatPath?: string;
+  // Run report bundle flags — derived server-side from the persisted projection
+  /** True when a sanitized run report bundle is available for this run */
+  hasReport?: boolean;
+  /** True when the bundle was truncated due to size limits */
+  reportPartialBundle?: boolean;
+  /** True when the bundle's schema_version is unsupported by this Hive version */
+  schemaUnsupported?: boolean;
 }
 
 interface UseLegalBenchmarkRunListResult {
@@ -76,6 +83,9 @@ export function useLegalBenchmarkRunList(
         result: string | null;
         createdAt: string;
         updatedAt: string;
+        hasReport?: boolean;
+        reportPartial?: boolean;
+        schemaUnsupported?: boolean;
       }> = data.runs ?? [];
 
       const mapped: BenchmarkRunListRow[] = rawRows.map((r) => {
@@ -97,6 +107,10 @@ export function useLegalBenchmarkRunList(
           generateReport: parsed?.generateReport,
           reportStatus: parsed?.reportStatus,
           reportChatPath: parsed?.reportChatPath,
+          // Run report bundle flags from the server-side mapper
+          hasReport: r.hasReport ?? false,
+          reportPartialBundle: r.reportPartial ?? false,
+          schemaUnsupported: r.schemaUnsupported ?? false,
           // Unified judge precedence: operator choice takes priority over runner-echoed value.
           // Format mirrors stakwork-run.ts — if the server-side format string changes, update this line to match.
           judgeNotes:

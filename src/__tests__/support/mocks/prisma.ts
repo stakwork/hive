@@ -101,6 +101,7 @@ const { db: dbMock, reset } = hoisted;
 
 vi.mock("@/lib/db", () => ({
   db: dbMock,
+  dbAdapter: dbMock,
 }));
 
 export { dbMock };

@@ -113,7 +113,7 @@ export type StakworkRunQuery = z.infer<typeof StakworkRunQuerySchema>;
 // API Response types
 export interface StakworkRunResponse {
   id: string;
-  webhookUrl: string;
+  // webhookUrl is globally omitted (embeds raw HMAC run_token — never sent to clients)
   projectId: number | null;
   type: StakworkRunType;
   featureId: string | null;
@@ -125,6 +125,10 @@ export interface StakworkRunResponse {
   decision: StakworkRunDecision | null;
   createdAt: Date;
   updatedAt: Date;
+  // Run report bundle flags — derived from the persisted projection, never from reportUrl
+  hasReport: boolean;
+  reportPartial: boolean;
+  schemaUnsupported: boolean;
 }
 
 export interface StakworkRunListResponse {

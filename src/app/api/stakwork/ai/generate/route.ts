@@ -44,7 +44,7 @@ export async function POST(request: NextRequest) {
           status: run.status,
           workspaceId: run.workspaceId,
           featureId: run.featureId,
-          webhookUrl: run.webhookUrl,
+          // webhookUrl is globally omitted (embeds raw HMAC run_token)
           projectId: run.projectId,
           createdAt: run.createdAt,
         },
