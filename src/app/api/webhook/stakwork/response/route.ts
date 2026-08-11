@@ -13,24 +13,51 @@ const LEGAL_BENCHMARK_TYPES = new Set<string>([
 ]);
 
 /**
- * Normalize the flat Harvey LAB webhook payload into the standard
- * `{ result: {...} }` shape that `StakworkRunWebhookSchema` expects.
+ * Normalize a Harvey LAB webhook payload into the standard `{ result: {...} }`
+ * shape that `StakworkRunWebhookSchema` expects.
  *
- * Harvey workflows POST either:
- *   runner:  { final_output, output_s3_url, project_status?, project_id? }
- *   scorer:  { scores, project_status?, project_id? }
+ * Accepts BOTH wire shapes:
+ *
+ *   flat    { final_output, output_s3_url, n_passed, …, project_status? }
+ *           → everything unrecognized is collected into `result`
+ *
+ *   nested  { result: { final_output, … }, project_status? }
+ *           → `result` is passed through as-is
+ *
+ * The nested form must be unwrapped explicitly. Without this, an explicit
+ * `result` key is not one of the destructured names, so it lands in
+ * `harveyFields` and gets wrapped a second time — producing `result.result.*`.
+ * Every downstream reader (`resultJson.final_output`, `RunnerScoreSchema`)
+ * looks one level up from there, so the run would persist with no output and
+ * no scores, silently.
+ *
+ * When both forms appear in one body, the explicit `result` wins per key and
+ * stray flat siblings are merged underneath it rather than dropped.
  *
  * Since `StakworkRunWebhookSchema` uses `result: z.unknown()` with no
- * unknown-key stripping at the top level, we can safely nest Harvey's
- * fields under `result` while preserving `project_status` / `project_id`.
+ * unknown-key stripping at the top level, nesting here is safe.
  */
 function normalizeLegalBenchmarkPayload(body: Record<string, unknown>): Record<string, unknown> {
-  const { project_status, project_id, recap_unchanged, ...harveyFields } = body;
+  const { project_status, project_id, recap_unchanged, report_url, result, ...harveyFields } = body;
+
+  // Only a plain object counts as the nested form. A string/array `result` is
+  // legacy free-form data and keeps the flat treatment.
+  const isNested = typeof result === "object" && result !== null && !Array.isArray(result);
+
   return {
-    result: harveyFields,
+    result: isNested
+      ? { ...harveyFields, ...(result as Record<string, unknown>) }
+      : result !== undefined
+        ? result
+        : harveyFields,
     ...(project_status !== undefined ? { project_status } : {}),
     ...(project_id !== undefined ? { project_id } : {}),
     ...(recap_unchanged !== undefined ? { recap_unchanged } : {}),
+    // Preserved at the top level rather than nested under `result`. Everything
+    // in `result` is persisted verbatim and served back under
+    // includeResult=true, so leaving the bundle URL there would hand it to
+    // every workspace member's browser.
+    ...(report_url !== undefined ? { report_url } : {}),
   };
 }
 
@@ -129,11 +156,12 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error("Error processing Stakwork webhook:", error);
 
-    const errorMessage =
-      error instanceof Error ? error.message : "Failed to process webhook";
-
+    // Generic message only. This route is `access: "webhook"` and bypasses auth
+    // entirely, so echoing raw `error.message` back would disclose internals —
+    // including, on the report path, a URL or host embedded in a thrown error.
+    // The detail is in the server log above.
     return NextResponse.json(
-      { error: errorMessage },
+      { error: "Failed to process webhook" },
       { status: 500 }
     );
   }

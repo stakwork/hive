@@ -452,11 +452,11 @@ export function Sidebar({ user }: SidebarProps) {
     slug: workspaceSlug,
   });
 
-  // Fetch pool status for capacity count with real-time polling (every 10 seconds).
+  // Fetch pool status for capacity count with real-time polling (every 30 seconds).
   // Skip polling entirely for public viewers — the pool status endpoint is auth-only.
   const isPoolActive = workspace?.poolState === "COMPLETE" && !isPublicViewer;
   const { poolStatus } = usePoolStatus(workspaceSlug || "", isPoolActive, {
-    pollingInterval: 10000 // Poll every 10 seconds
+    pollingInterval: 30000 // Poll every 30 seconds
   });
 
   // Calculate pool capacity count (in use / total)

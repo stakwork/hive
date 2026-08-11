@@ -99,7 +99,8 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       taskTitle?: string;
       model?: string;
       judgeModel?: string;
-      generateReport?: boolean;
+      generateJamieChat?: boolean;
+      generateRunReport?: boolean;
     };
     try {
       body = await request.json();
@@ -118,7 +119,8 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     // Apply defaults for model selection
     const model = body.model ?? DEFAULT_BENCHMARK_MODEL;
     const judgeModel = body.judgeModel ?? DEFAULT_JUDGE_MODEL;
-    const generateReport = body.generateReport === true;
+    const generateJamieChat = body.generateJamieChat === true;
+    const generateRunReport = body.generateRunReport === true;
 
     // Validate: isValidModel + Anthropic-only gate + DB catalog membership
     const validateModel = async (m: string, label: string): Promise<NextResponse | null> => {
@@ -283,9 +285,12 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
           //  the webhook merge cannot overwrite them).
           requestedModel: bareModel,
           requestedJudgeModel: bareJudgeModel,
-          // Same clobber-proof guarantee: the runner never emits generateReport,
-          // so the completion webhook can read it back and trigger the report.
-          ...(generateReport ? { generateReport: true } : {}),
+          // Same clobber-proof guarantee: the runner never emits generateJamieChat,
+          // so the completion webhook can read it back and trigger the chat.
+          ...(generateJamieChat ? { generateJamieChat: true } : {}),
+          // Records that the operator asked for a report bundle. The bundle
+          // itself never lands here — it goes to the reportBundle column.
+          ...(generateRunReport ? { generateRunReport: true } : {}),
           // evalTriggerRef will be added later (non-fatal Jarvis step)
         };
 
@@ -352,6 +357,11 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
               secret: swarmSecretAlias,
               model: bareModel,
               judge_model: bareJudgeModel,
+              // Tells the Harvey runner to build a report bundle and return its
+              // S3 URL as `report_url` on the completion webhook. The workflow
+              // side of this handshake is a separate Stakwork change; until it
+              // lands, setting this is simply a no-op.
+              generate_report: generateRunReport,
               apiKey: resolvedApiKey,
               baseUrl: bifrost?.baseUrl ?? "",
               ...(bifrost && Object.keys(bifrost.headers).length > 0

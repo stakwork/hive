@@ -73,6 +73,7 @@ export function AutoSaveTextarea({
     handlePaste,
   } = useImageUpload({
     featureId: featureId || '',
+    disabled: !(enableImageUpload && featureId),
     onImageInserted: (markdownImage) => {
       // The value is already updated by the hook
       console.log('Image inserted:', markdownImage);

@@ -1155,10 +1155,15 @@ describe("Stakwork Runs API Integration Tests", () => {
 
       const response = await WebhookHandler(request);
 
-      // Returns 500 because no matching stakwork run exists
+      // Returns 500 because no matching stakwork run exists, but the body stays
+      // generic. This route is `access: "webhook"` and bypasses auth entirely,
+      // so confirming whether a given run id exists would hand an
+      // unauthenticated caller a run-enumeration oracle. The detail is logged
+      // server-side instead.
       expect(response.status).toBe(500);
       const responseData = await response.json();
-      expect(responseData.error).toContain("StakworkRun not found");
+      expect(responseData.error).toBe("Failed to process webhook");
+      expect(JSON.stringify(responseData)).not.toContain("StakworkRun not found");
     });
   });
 
