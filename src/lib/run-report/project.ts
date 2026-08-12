@@ -25,7 +25,17 @@ import {
   isRecord,
   asString,
   readArray,
+  readRosterNames,
 } from "./derive";
+import {
+  readToolActivity,
+  buildNodeIdentities,
+  countWithheldInputFields,
+  readRawToolActivityRecords,
+  TOOL_ACTIVITY_CONTAINER_KEYS,
+  TOOL_ACTIVITY_CALLS_PER_AGENT_CAP,
+  TOOL_ACTIVITY_NODES_PER_CALL_CAP,
+} from "./tool-activity";
 import type {
   RunReportProjection,
   ProjectedSourceDoc,
@@ -34,6 +44,7 @@ import type {
   ProjectedDocument,
   ScoreBlock,
   SecurityFinding,
+  ToolActivityProjection,
 } from "./types";
 
 // ── Constants ────────────────────────────────────────────────────────────────
@@ -46,6 +57,11 @@ import type {
  * Entries beyond this ceiling are dropped and noted on `contractNotes`.
  */
 export const PROJECTION_ARRAY_CAP = 500;
+
+/** Maximum calls per agent group in the tool-activity projection. */
+export const TOOL_ACTIVITY_CALL_CAP = TOOL_ACTIVITY_CALLS_PER_AGENT_CAP;
+/** Maximum nodes per call in the tool-activity projection. */
+export const TOOL_ACTIVITY_NODE_CAP = TOOL_ACTIVITY_NODES_PER_CALL_CAP;
 
 // ── Known key sets (for drift diagnostic) ────────────────────────────────────
 
@@ -216,10 +232,141 @@ export function projectBundle(rawText: string): ProjectOutcome {
     traces: redactArray(tracesArr, true),
   };
 
+  // ── tool_activity ──────────────────────────────────────────────────────────
+  // Derive from the raw concepts subtree BEFORE any redaction runs, so
+  // classification can see the pre-redaction inputs and withheld fields are
+  // counted correctly.
+  //
+  // Detection is presence-based: derive when `concepts.tool_activity` (or an
+  // aliased key) is present — do NOT branch on schema_version.
+  //
+  // Redaction is two-scoped:
+  //   - tool inputs  → tokenShapes: true  (trace-class, new model-authored surface)
+  //   - node names/identities → tokenShapes: false (identifier-class, must survive verbatim)
+  const rawConceptsForActivity = isRecord(parsed.concepts) ? parsed.concepts : {};
+  const hasToolActivity = TOOL_ACTIVITY_CONTAINER_KEYS.some(
+    (k) => Array.isArray(rawConceptsForActivity[k]),
+  );
+
+  let toolActivity: ToolActivityProjection;
+  if (hasToolActivity) {
+    // Build the roster map from the already-projected analysis + agents.
+    const rosterMap = readRosterNames(parsed.analysis, readArray(pageDataRaw, "agents"));
+
+    // Derive raw tool records (pre-redaction).
+    const rawActivity = readToolActivity(rawConceptsForActivity, rosterMap, TOOL_ACTIVITY_CALL_CAP, TOOL_ACTIVITY_NODE_CAP);
+
+    // Apply withheld input field counts using pre-redaction inputs.
+    // We walk each group's calls and update withheldInputFieldCount from
+    // the raw (pre-redaction) input.
+    // Since readToolActivity stores raw inputs in call.input at this point,
+    // we count before redaction by reading from rawConceptsForActivity.
+    let totalWithheld = 0;
+    const rawRecords: unknown[] = readRawToolActivityRecords(rawConceptsForActivity);
+
+    // Build a map from call position to withheld count.
+    const withheldByPos = new Map<number, number>();
+    for (let i = 0; i < rawRecords.length; i++) {
+      const rec = rawRecords[i];
+      if (typeof rec === "object" && rec !== null && !Array.isArray(rec)) {
+        const recObj = rec as Record<string, unknown>;
+        // Resolve raw input using candidate keys
+        const rawInput = (() => {
+          for (const k of ["input", "inputs", "args", "arguments", "params"]) {
+            if (k in recObj && recObj[k] !== undefined && recObj[k] !== null) {
+              const v = recObj[k];
+              if (typeof v === "string") return { value: v };
+              if (typeof v === "object" && v !== null && !Array.isArray(v)) return v as Record<string, unknown>;
+              return { value: String(v) };
+            }
+          }
+          return {};
+        })();
+        const wc = countWithheldInputFields(rawInput);
+        if (wc > 0) {
+          withheldByPos.set(i, wc);
+          totalWithheld += wc;
+        }
+      }
+    }
+
+    // Apply withheld counts to call objects and redact inputs.
+    for (const group of rawActivity.groups) {
+      for (const call of group.calls) {
+        const wc = withheldByPos.get(call.position) ?? 0;
+        call.withheldInputFieldCount = wc;
+        // Redact tool inputs: tokenShapes: true (trace-class).
+        call.input = redactSensitiveKeys(call.input, { tokenShapes: true }) as Record<string, unknown>;
+        // Redact node name/identity fields: tokenShapes: false (identifier-class).
+        for (const node of call.nodes) {
+          if (node.name) {
+            const redacted = redactSensitiveKeys({ name: node.name }, { tokenShapes: false }) as { name?: string };
+            node.name = redacted.name ?? node.name;
+          }
+          // identity and canonicalKey: key-based redaction only, no token shapes.
+          if (node.identity) {
+            const redacted = redactSensitiveKeys({ identity: node.identity }, { tokenShapes: false }) as { identity?: string };
+            node.identity = redacted.identity ?? node.identity;
+          }
+        }
+      }
+    }
+
+    // Cap agent groups at PROJECTION_ARRAY_CAP.
+    const groupsTruncated = Math.max(0, rawActivity.groups.length - PROJECTION_ARRAY_CAP);
+    const cappedGroups = groupsTruncated > 0
+      ? rawActivity.groups.slice(0, PROJECTION_ARRAY_CAP)
+      : rawActivity.groups;
+
+    // Build run-wide identity list (from already-classified, now-capped groups).
+    const nodeIdentities = buildNodeIdentities(cappedGroups);
+
+    toolActivity = {
+      present: true,
+      schemaVersion: typeof parsed.schema_version === "number" ? parsed.schema_version : null,
+      groups: cappedGroups,
+      nodeIdentities,
+      orderingBasis: rawActivity.orderingBasis,
+      unidentifiedNodeCount: rawActivity.unidentifiedNodeCount,
+      unattributedRecordCount: rawActivity.unattributedRecordCount,
+      unknownToolNames: rawActivity.unknownToolNames,
+      ambiguousIdentityCount: rawActivity.ambiguousIdentityCount,
+      withheldInputFieldCount: totalWithheld,
+      allSurfacedHint: rawActivity.allSurfacedHint,
+      truncated: {
+        groups: groupsTruncated,
+        callsPerAgent: rawActivity.truncated.callsPerAgent,
+        nodesPerCall: rawActivity.truncated.nodesPerCall,
+      },
+    };
+  } else {
+    toolActivity = {
+      present: false,
+      schemaVersion: typeof parsed.schema_version === "number" ? parsed.schema_version : null,
+      groups: [],
+      nodeIdentities: [],
+      orderingBasis: "position",
+      unidentifiedNodeCount: 0,
+      unattributedRecordCount: 0,
+      unknownToolNames: [],
+      ambiguousIdentityCount: 0,
+      withheldInputFieldCount: 0,
+      allSurfacedHint: false,
+      truncated: { groups: 0, callsPerAgent: [], nodesPerCall: 0 },
+    };
+  }
+
   // ── concepts ───────────────────────────────────────────────────────────────
-  // `{}` is the generator default (the concepts pass is opt-in behind
-  // --concepts) and is the COMMON shape. It means "not run", never an error.
-  const concepts = redactRecord(parsed.concepts, false);
+  // Strip the raw tool-activity records from the concepts passthrough using the
+  // SAME candidate-key list the normalizer resolves with (not a single literal
+  // key name) — prevents raw, unswept records from crossing the RSC boundary.
+  const conceptsForPassthrough = isRecord(parsed.concepts)
+    ? { ...parsed.concepts }
+    : {};
+  for (const k of TOOL_ACTIVITY_CONTAINER_KEYS) {
+    delete (conceptsForPassthrough as Record<string, unknown>)[k];
+  }
+  const concepts = redactRecord(conceptsForPassthrough, false);
 
   // ── source_docs ────────────────────────────────────────────────────────────
   // The only HTML-bearing field. Sanitized here, once, server-side.
@@ -292,6 +439,7 @@ export function projectBundle(rawText: string): ProjectOutcome {
     workfiles,
     rubricLinks,
     rubricRows,
+    toolActivity,
     stats: computeStats({
       sourceDocs,
       workfiles,
