@@ -1,24 +1,15 @@
 /**
- * SSRF-guarded fetch of a run report bundle from S3.
+ * SSRF-guarded fetch of a report bundle from S3, at view time — the JSON lives
+ * in S3 and is never copied into the database.
  *
- * Runs at VIEW time: the bundle JSON lives in S3 and is never copied into the
- * database. Only the URL is stored. That is possible because the object is
- * stable and public rather than a short-lived presigned URL.
+ * `report_url` arrives on an unauthenticated webhook, so it is attacker
+ * influenced: the URL is validated before the request and the URL actually
+ * landed on is re-validated after redirects, so a redirect cannot escape the
+ * allowlist. Body size is capped mid-stream, before any parse. Errors are
+ * opaque and URL-free.
  *
- * Deliberately NOT built on `fetchBlobContent` (src/lib/utils/blob-fetch.ts):
- * that helper is Vercel-Blob-only, does a bare `fetch(url)` with no validation,
- * and embeds the target URL in the messages it throws.
- *
- * Controls:
- *   1. Full URL validation through the shared guard (protocol, userinfo, port,
- *      host allowlist) — `report_url` arrives on an unauthenticated webhook, so
- *      it is attacker-influenced input.
- *   2. Redirects followed by the platform, then the FINAL URL re-validated
- *      through the same guard, so a redirect cannot escape the allowlist.
- *   3. Timeout, Content-Length pre-check, and a streaming byte-count abort that
- *      fires before parsing.
- *
- * Every error thrown here is opaque and URL-free.
+ * Not built on `fetchBlobContent` — that helper is Vercel-Blob-only, does a
+ * bare `fetch(url)` with no validation, and puts the URL in thrown messages.
  */
 
 import { validateReportUrl } from "./url-guard";
@@ -121,11 +112,7 @@ export async function fetchReportBundle(rawUrl: string): Promise<FetchedBundle> 
   return { text: new TextDecoder().decode(body) };
 }
 
-/**
- * Read the body with a running byte counter, aborting as soon as the cap is
- * exceeded — before any JSON parsing, so an oversized body is never buffered
- * whole and never reaches the parser.
- */
+/** Read with a running byte count, aborting over the cap before any parse. */
 async function readCapped(response: Response): Promise<Uint8Array> {
   const reader = response.body?.getReader();
   if (!reader) throw new BundleFetchError("network_error");
