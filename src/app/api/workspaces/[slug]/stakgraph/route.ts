@@ -89,6 +89,13 @@ const stakgraphSettingsSchema = z.object({
         mocksEnabled: z.boolean().optional(),
         embeddingsEnabled: z.boolean().optional(),
         triggerPodRepair: z.boolean().optional(),
+        shallowClone: z.boolean().optional(),
+        blobSizeLimit: z
+          .string()
+          .regex(/^[1-9][0-9]*[kmg]?$/i)
+          .max(20)
+          .or(z.literal(""))
+          .optional(),
       }),
     )
     .optional(),
@@ -507,6 +514,8 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       mocksEnabled?: boolean;
       embeddingsEnabled?: boolean;
       triggerPodRepair?: boolean;
+      shallowClone?: boolean;
+      blobSizeLimit?: string | null;
     }> = [];
 
     // Only process repositories if provided
@@ -532,6 +541,8 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
             mocksEnabled: repo.mocksEnabled ?? false,
             embeddingsEnabled: repo.embeddingsEnabled ?? true,
             triggerPodRepair: repo.triggerPodRepair ?? false,
+            shallowClone: repo.shallowClone ?? false,
+            blobSizeLimit: repo.blobSizeLimit === "" ? null : (repo.blobSizeLimit ?? null),
           })),
         });
       }

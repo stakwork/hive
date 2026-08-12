@@ -1381,4 +1381,177 @@ describe("/api/workspaces/[slug]/stakgraph", () => {
       });
     });
   });
+
+  describe("PUT /api/workspaces/[slug]/stakgraph – shallowClone/blobSizeLimit creation", () => {
+    let creationTestData: { workspace: any; user: any; swarm: any };
+
+    beforeEach(async () => {
+      await db.$transaction(async (tx) => {
+        const user = await tx.user.create({
+          data: { name: "Clone Test User", email: `clone-test-${Date.now()}@example.com` },
+        });
+        const workspace = await tx.workspace.create({
+          data: {
+            name: `Clone Test Workspace ${Date.now()}`,
+            slug: `clone-test-ws-${Date.now()}`,
+            ownerId: user.id,
+            members: {
+              create: { userId: user.id, role: "OWNER" },
+            },
+          },
+        });
+        const swarm = await tx.swarm.create({
+          data: {
+            workspaceId: workspace.id,
+            name: "Test Swarm",
+            swarmUrl: "https://swarm.example.com",
+            poolName: "test-pool",
+          },
+        });
+        creationTestData = { user, workspace, swarm };
+      });
+
+      getMockedSession().mockResolvedValue(
+        createAuthenticatedSession(creationTestData.user),
+      );
+      vi.mocked(syncPoolManagerSettings).mockResolvedValue({ success: true } as any);
+    });
+
+    it("persists shallowClone=true when creating a new repository", async () => {
+      const req = createPutRequest(
+        `http://localhost:3000/api/workspaces/${creationTestData.workspace.slug}/stakgraph`,
+        {
+          repositories: [
+            {
+              repositoryUrl: "https://github.com/org/shallow-test",
+              branch: "main",
+              name: "shallow-test",
+              shallowClone: true,
+            },
+          ],
+        },
+      );
+
+      const res = await PUT_STAK(req, {
+        params: Promise.resolve({ slug: creationTestData.workspace.slug }),
+      });
+
+      await expectSuccess(res, 200);
+
+      const saved = await db.repository.findFirst({
+        where: { workspaceId: creationTestData.workspace.id },
+      });
+      expect(saved?.shallowClone).toBe(true);
+    });
+
+    it("persists blobSizeLimit when creating a new repository", async () => {
+      const req = createPutRequest(
+        `http://localhost:3000/api/workspaces/${creationTestData.workspace.slug}/stakgraph`,
+        {
+          repositories: [
+            {
+              repositoryUrl: "https://github.com/org/blob-test",
+              branch: "main",
+              name: "blob-test",
+              blobSizeLimit: "500k",
+            },
+          ],
+        },
+      );
+
+      const res = await PUT_STAK(req, {
+        params: Promise.resolve({ slug: creationTestData.workspace.slug }),
+      });
+
+      await expectSuccess(res, 200);
+
+      const saved = await db.repository.findFirst({
+        where: { workspaceId: creationTestData.workspace.id },
+      });
+      expect(saved?.blobSizeLimit).toBe("500k");
+    });
+
+    it("normalizes empty blobSizeLimit to null on creation", async () => {
+      const req = createPutRequest(
+        `http://localhost:3000/api/workspaces/${creationTestData.workspace.slug}/stakgraph`,
+        {
+          repositories: [
+            {
+              repositoryUrl: "https://github.com/org/empty-limit-test",
+              branch: "main",
+              name: "empty-limit-test",
+              blobSizeLimit: "",
+            },
+          ],
+        },
+      );
+
+      const res = await PUT_STAK(req, {
+        params: Promise.resolve({ slug: creationTestData.workspace.slug }),
+      });
+
+      await expectSuccess(res, 200);
+
+      const saved = await db.repository.findFirst({
+        where: { workspaceId: creationTestData.workspace.id },
+      });
+      expect(saved?.blobSizeLimit).toBeNull();
+    });
+
+    it("defaults shallowClone=false and blobSizeLimit=null when not provided", async () => {
+      const req = createPutRequest(
+        `http://localhost:3000/api/workspaces/${creationTestData.workspace.slug}/stakgraph`,
+        {
+          repositories: [
+            {
+              repositoryUrl: "https://github.com/org/defaults-test",
+              branch: "main",
+              name: "defaults-test",
+            },
+          ],
+        },
+      );
+
+      const res = await PUT_STAK(req, {
+        params: Promise.resolve({ slug: creationTestData.workspace.slug }),
+      });
+
+      await expectSuccess(res, 200);
+
+      const saved = await db.repository.findFirst({
+        where: { workspaceId: creationTestData.workspace.id },
+      });
+      expect(saved?.shallowClone).toBe(false);
+      expect(saved?.blobSizeLimit).toBeNull();
+    });
+
+    it("persists both shallowClone and blobSizeLimit together on creation", async () => {
+      const req = createPutRequest(
+        `http://localhost:3000/api/workspaces/${creationTestData.workspace.slug}/stakgraph`,
+        {
+          repositories: [
+            {
+              repositoryUrl: "https://github.com/org/both-test",
+              branch: "main",
+              name: "both-test",
+              shallowClone: true,
+              blobSizeLimit: "1m",
+            },
+          ],
+        },
+      );
+
+      const res = await PUT_STAK(req, {
+        params: Promise.resolve({ slug: creationTestData.workspace.slug }),
+      });
+
+      await expectSuccess(res, 200);
+
+      const saved = await db.repository.findFirst({
+        where: { workspaceId: creationTestData.workspace.id },
+      });
+      expect(saved?.shallowClone).toBe(true);
+      expect(saved?.blobSizeLimit).toBe("1m");
+    });
+  });
 });

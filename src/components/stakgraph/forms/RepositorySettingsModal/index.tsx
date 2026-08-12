@@ -12,7 +12,8 @@ import {
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
-import { Loader2, Database, FileText, Copy, Layers, RefreshCw } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Loader2, Database, FileText, Copy, Layers, RefreshCw, GitBranch, Filter } from "lucide-react";
 import type { Repository } from "../../types";
 
 export interface RepositorySyncSettings {
@@ -21,6 +22,8 @@ export interface RepositorySyncSettings {
   mocksEnabled: boolean;
   embeddingsEnabled: boolean;
   triggerPodRepair: boolean;
+  shallowClone: boolean;
+  blobSizeLimit: string;
 }
 
 interface RepositorySettingsModalProps {
@@ -30,6 +33,12 @@ interface RepositorySettingsModalProps {
   isNewRepository: boolean;
   onSave: (settings: RepositorySyncSettings) => Promise<void>;
   loading?: boolean;
+}
+
+const BLOB_SIZE_LIMIT_REGEX = /^[1-9][0-9]*[kmg]?$/i;
+
+function isValidBlobSizeLimit(value: string): boolean {
+  return value === "" || BLOB_SIZE_LIMIT_REGEX.test(value);
 }
 
 export function RepositorySettingsModal({
@@ -46,6 +55,8 @@ export function RepositorySettingsModal({
     mocksEnabled: repository.mocksEnabled ?? false,
     embeddingsEnabled: repository.embeddingsEnabled ?? true,
     triggerPodRepair: repository.triggerPodRepair ?? false,
+    shallowClone: repository.shallowClone ?? false,
+    blobSizeLimit: repository.blobSizeLimit ?? "",
   });
   const [isSaving, setIsSaving] = useState(false);
 
@@ -57,10 +68,16 @@ export function RepositorySettingsModal({
       mocksEnabled: repository.mocksEnabled ?? false,
       embeddingsEnabled: repository.embeddingsEnabled ?? true,
       triggerPodRepair: repository.triggerPodRepair ?? false,
+      shallowClone: repository.shallowClone ?? false,
+      blobSizeLimit: repository.blobSizeLimit ?? "",
     });
   }, [repository, isNewRepository]);
 
+  const blobSizeLimitValid = isValidBlobSizeLimit(settings.blobSizeLimit);
+  const canSave = blobSizeLimitValid;
+
   const handleSave = async () => {
+    if (!canSave) return;
     setIsSaving(true);
     try {
       await onSave(settings);
@@ -207,6 +224,60 @@ export function RepositorySettingsModal({
                   disabled={loading || isSaving}
                 />
               </div>
+
+              {/* Shallow Clone Toggle */}
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <GitBranch className="h-4 w-4 text-muted-foreground" />
+                  <div className="space-y-0.5">
+                    <Label htmlFor="shallow-clone" className="text-sm font-medium">
+                      Shallow Clone
+                    </Label>
+                    <p className="text-xs text-muted-foreground">
+                      Fetch only the latest commit (--depth 1)
+                    </p>
+                  </div>
+                </div>
+                <Switch
+                  id="shallow-clone"
+                  checked={settings.shallowClone}
+                  onCheckedChange={(checked) =>
+                    setSettings((prev) => ({ ...prev, shallowClone: checked }))
+                  }
+                  disabled={loading || isSaving}
+                />
+              </div>
+
+              {/* Per-file Size Limit Input */}
+              <div className="space-y-2">
+                <div className="flex items-center gap-3">
+                  <Filter className="h-4 w-4 text-muted-foreground" />
+                  <div className="space-y-0.5">
+                    <Label htmlFor="blob-size-limit" className="text-sm font-medium">
+                      Per-file Size Limit
+                    </Label>
+                    <p className="text-xs text-muted-foreground">
+                      Skip blobs larger than this (e.g. 1m, 500k). Leave empty for no limit.
+                    </p>
+                  </div>
+                </div>
+                <Input
+                  id="blob-size-limit"
+                  value={settings.blobSizeLimit}
+                  onChange={(e) =>
+                    setSettings((prev) => ({ ...prev, blobSizeLimit: e.target.value }))
+                  }
+                  placeholder="e.g. 1m"
+                  disabled={loading || isSaving}
+                  className={!blobSizeLimitValid ? "border-destructive focus-visible:ring-destructive" : ""}
+                  aria-describedby={!blobSizeLimitValid ? "blob-size-limit-error" : undefined}
+                />
+                {!blobSizeLimitValid && (
+                  <p id="blob-size-limit-error" className="text-xs text-destructive">
+                    Invalid size format. Use a number followed by k, m, or g (e.g. 500k, 1m, 2g).
+                  </p>
+                )}
+              </div>
             </div>
           )}
 
@@ -225,7 +296,7 @@ export function RepositorySettingsModal({
           >
             Cancel
           </Button>
-          <Button onClick={handleSave} disabled={loading || isSaving}>
+          <Button onClick={handleSave} disabled={loading || isSaving || !canSave}>
             {isSaving ? (
               <>
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
