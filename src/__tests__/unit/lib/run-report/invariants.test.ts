@@ -93,7 +93,7 @@ describe("renderer invariants — src/components/run-report", () => {
     // Each of the 8 section components must be wrapped — confirm at least 8
     // closing tags appear (one per boundary around each section).
     const closeMatches = (view.match(/<\/SectionErrorBoundary>/g) ?? []).length;
-    expect(closeMatches).toBeGreaterThanOrEqual(8);
+    expect(closeMatches).toBeGreaterThanOrEqual(9);
   });
 });
 
