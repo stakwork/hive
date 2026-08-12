@@ -16,7 +16,10 @@ function baseProjection(
     generatedAtMs: null,
     pageData: {
       config: {},
-      score: { pass: 0, total: 0, pct: null },
+      score: {
+        score: 0, max_score: 0, all_pass: false, n_criteria: 0,
+        n_passed: 0, judge_model: null, scored_at: null,
+      },
       rubrics: [],
       timeline: [],
       agents: [],
@@ -34,7 +37,21 @@ function baseProjection(
     workfiles: [],
     rubricLinks: {},
     rubricRows: [],
-    stats: { passCount: null, failCount: 0, rubricCount: 0, sourceDocCount: 0, workfileCount: 0, agentCount: 0, stepCount: 0 },
+    stats: { passCount: null, failCount: 0, rubricCount: 0, sourceDocCount: 0, workfileCount: 0, agentCount: 0, stepCount: 0, traceCount: 0, noteCount: 0 },
+    toolActivity: {
+      present: false,
+      schemaVersion: null,
+      groups: [],
+      nodeIdentities: [],
+      orderingBasis: "position" as const,
+      unidentifiedNodeCount: 0,
+      unattributedRecordCount: 0,
+      unknownToolNames: [],
+      ambiguousIdentityCount: 0,
+      withheldInputFieldCount: 0,
+      allSurfacedHint: false,
+      truncated: { groups: 0, callsPerAgent: [], nodesPerCall: 0 },
+    },
     ...overrides,
   };
 }
@@ -64,7 +81,10 @@ function projectionWithSecurity(findings: SecurityFinding[]): RunReportProjectio
   return baseProjection({
     pageData: {
       config: {},
-      score: { pass: 0, total: 0, pct: null },
+      score: {
+        score: 0, max_score: 0, all_pass: false, n_criteria: 0,
+        n_passed: 0, judge_model: null, scored_at: null,
+      },
       rubrics: [],
       timeline: [],
       agents: [],
