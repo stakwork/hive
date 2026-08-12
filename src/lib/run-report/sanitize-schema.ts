@@ -1,18 +1,14 @@
 /**
- * Pinned hast-util-sanitize schema for run report source documents.
+ * Pinned sanitize schema for source documents.
  *
- * Pinned rather than derived from `defaultSchema`, so an upstream change can
- * never silently widen what we accept. `source_docs[].html` is arbitrary
- * third-party markup (converted .docx/.eml/.xlsx) arriving via an
- * unauthenticated webhook.
+ * Pinned rather than derived from `defaultSchema` so an upstream change cannot
+ * silently widen what we accept — this is arbitrary third-party markup arriving
+ * through an unauthenticated webhook.
  *
- * Dropped: `img` (beacon channel), `svg`/`math` (foreign-content mXSS),
- * script/style/iframe/object/embed, every `on*`, and class/style/id/target.
- * `a[href]` is http(s)-only with a forced `rel`.
- *
- * Regex tag-stripping is forbidden (bypassable via malformed tags), and
- * `rehype-raw` must never enter this pipeline — it re-parses raw HTML AFTER
- * sanitization and would undo it.
+ * `img` is dropped as a beacon channel; `svg`/`math` because foreign content is
+ * the classic mXSS vector. `rehype-raw` must never enter this pipeline — it
+ * re-parses raw HTML after sanitization and would undo it. Regex tag-stripping
+ * is not an acceptable substitute (bypassable via malformed tags).
  */
 
 import type { Schema } from "hast-util-sanitize";
@@ -71,11 +67,8 @@ export const RUN_REPORT_SANITIZE_SCHEMA: Schema = {
 };
 
 /**
- * Attributes serialized into the projection, per tag.
- *
- * Keys are hast PROPERTY names (`colSpan`), values are the HTML attribute names
- * the renderer emits (`colspan`). These differ — hast normalizes attributes to
- * DOM property spelling — and conflating them silently drops the attribute.
+ * Keys are hast PROPERTY names (`colSpan`), values the HTML attribute names we
+ * emit (`colspan`). Conflating the two silently drops the attribute.
  */
 export const PROJECTED_ATTRIBUTES: Record<string, Readonly<Record<string, string>>> = {
   a: { href: "href", title: "title", rel: "rel" },
