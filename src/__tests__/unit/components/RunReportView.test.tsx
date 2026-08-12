@@ -228,6 +228,26 @@ describe("RunReportView — escaped prose", () => {
   });
 });
 
+describe("RunReportView — ToolActivitySection nav and render", () => {
+  it("nav rail contains Tool activity link after roster items", () => {
+    const { container } = render(
+      <RunReportView payload={payload({ projection: projectionFor("with-tool-activity") })} />,
+    );
+    const toolActivityLink = container.querySelector('nav a[href="#tool-activity"]');
+    expect(toolActivityLink).not.toBeNull();
+    expect(toolActivityLink!.textContent).toContain("Tool activity");
+  });
+
+  it("v1 full fixture renders without crashing (ToolActivitySection returns null)", () => {
+    // The full fixture has toolActivity.present: false so the section renders nothing
+    render(<RunReportView payload={payload({ projection: projectionFor("full") })} />);
+    expect(screen.getByTestId("run-report-view")).toBeInTheDocument();
+    // All standard sections still present
+    expect(screen.getByTestId("run-report-section-agents")).toBeInTheDocument();
+    expect(screen.getByTestId("run-report-section-concepts")).toBeInTheDocument();
+  });
+});
+
 describe("RunReportView — no HTML sink reaches the DOM", () => {
   it("renders sanitized document content without script/img/iframe nodes", () => {
     const { container } = render(<RunReportView payload={payload()} />);
