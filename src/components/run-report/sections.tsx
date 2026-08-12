@@ -12,7 +12,16 @@ import {
   isRecord,
   asString,
 } from "@/lib/run-report/derive";
-import type { RunReportProjection, RubricRow, TraceRow, AgentSummary } from "@/lib/run-report/types";
+import type {
+  RunReportProjection,
+  RubricRow,
+  TraceRow,
+  AgentSummary,
+  ToolActivityProjection,
+  ToolActivityGroup,
+  NodeIdentityRow,
+} from "@/lib/run-report/types";
+import { buildNodeIdentities } from "@/lib/run-report/tool-activity";
 import { formatInUserTz } from "@/lib/date-utils";
 import {
   anchorId,
@@ -27,6 +36,8 @@ import {
   Kicker,
   stringify,
   renderValue,
+  CopyableId,
+  SectionErrorBoundary,
 } from "./chrome";
 import { Gantt } from "./Gantt";
 import { RubricStrip, FilterPills } from "./RubricStrip";
@@ -434,7 +445,7 @@ function toolEntries(value: unknown): [string, number][] {
 
 function ToolCountsFold({ tools }: { tools: [string, number][] }) {
   return (
-    <Fold summary={`Tool calls (${tools.length})`}>
+    <Fold summary={`Tool calls (${tools.length}) — as reported in the agent summary`}>
       <ul className="space-y-1">
         {tools.map(([toolName, count]) => (
           <li key={toolName} className="flex items-baseline gap-2 text-[12.5px]">
@@ -518,7 +529,7 @@ function AgentSummaryCard({
       )}
 
       {summary.tools.length > 0 && (
-        <Fold summary={`Tools used (${summary.tools.length})`}>
+        <Fold summary={`Tools used (${summary.tools.length}) — as reported in the agent summary`}>
           <ul className="space-y-1">
             {summary.tools.map((tool, ti) => (
               <li key={ti} className="flex items-baseline gap-2 text-[12.5px]">
@@ -675,66 +686,291 @@ export function TracesSection({ projection }: { projection: RunReportProjection 
   );
 }
 
-// ── 6. Concept pulls ─────────────────────────────────────────────────────────
+// ── 6. Tool activity ─────────────────────────────────────────────────────────
+
+/** Map call.status to badge kind + label. */
+function callStatusBadge(status: "ok" | "empty" | "error"): { kind: "pass" | "muted" | "fail"; label: string } | null {
+  if (status === "ok") return null;
+  if (status === "empty") return { kind: "muted", label: "EMPTY" };
+  return { kind: "fail", label: "ERROR" };
+}
+
+export function ToolActivitySection({ projection }: { projection: RunReportProjection }) {
+  const ta = projection.toolActivity;
+  if (!ta.present || ta.groups.length === 0) return null;
+
+  const { groups, unknownToolNames, unidentifiedNodeCount, unattributedRecordCount,
+    ambiguousIdentityCount, allSurfacedHint, truncated, withheldInputFieldCount } = ta;
+
+  return (
+    <Section id="tool-activity" kicker="Graph traversal" title="Tool activity">
+      {/* Data-quality counters */}
+      {(unknownToolNames.length > 0 ||
+        unidentifiedNodeCount > 0 ||
+        unattributedRecordCount > 0 ||
+        ambiguousIdentityCount > 0 ||
+        allSurfacedHint ||
+        truncated.groups > 0 ||
+        truncated.callsPerAgent.length > 0 ||
+        truncated.nodesPerCall > 0 ||
+        withheldInputFieldCount > 0) && (
+        <Panel className="mb-4">
+          <ul className="space-y-0.5 text-[12.5px] text-muted-foreground">
+            {unknownToolNames.length > 0 && (
+              <li>
+                <StatusBadge kind="warn">unknown tool names</StatusBadge>{" "}
+                {unknownToolNames.join(", ")}
+              </li>
+            )}
+            {unidentifiedNodeCount > 0 && (
+              <li>{unidentifiedNodeCount} node(s) with no identity</li>
+            )}
+            {unattributedRecordCount > 0 && (
+              <li>{unattributedRecordCount} record(s) unattributed</li>
+            )}
+            {ambiguousIdentityCount > 0 && (
+              <li>{ambiguousIdentityCount} ambiguous identity</li>
+            )}
+            {allSurfacedHint && (
+              <li>All returned nodes were surfaced (no content/input retrieval observed)</li>
+            )}
+            {truncated.groups > 0 && (
+              <li>{truncated.groups} agent group(s) truncated</li>
+            )}
+            {truncated.callsPerAgent.length > 0 && (
+              <li>
+                Calls capped per agent:{" "}
+                {truncated.callsPerAgent.map((n, i) => `agent ${i + 1}: ${n} dropped`).join(", ")}
+              </li>
+            )}
+            {truncated.nodesPerCall > 0 && (
+              <li>{truncated.nodesPerCall} call(s) had nodes truncated</li>
+            )}
+            {withheldInputFieldCount > 0 && (
+              <li>{withheldInputFieldCount} input field(s) withheld across all calls</li>
+            )}
+          </ul>
+        </Panel>
+      )}
+
+      {groups.map((group) => {
+        // Count calls per toolName
+        const toolCounts = new Map<string, number>();
+        for (const call of group.calls) {
+          toolCounts.set(call.toolName, (toolCounts.get(call.toolName) ?? 0) + 1);
+        }
+
+        return (
+          <div key={group.agentKey} className="mt-6">
+            <h3
+              id={anchorId("tool", group.agentKey)}
+              className="text-[15px] font-semibold scroll-mt-4 mb-1"
+            >
+              {group.isUnattributed ? "(unattributed)" : group.agentName}
+            </h3>
+
+            {/* Per-tool call summary */}
+            <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[12.5px] text-muted-foreground mb-0.5">
+              {[...toolCounts.entries()].map(([toolName, count]) => (
+                <span key={toolName}>
+                  <span className="font-mono">{toolName}</span>
+                  {" "}×{count}
+                </span>
+              ))}
+            </div>
+            <div className="text-[11px] text-muted-foreground/60 mb-3">
+              (as derived from parsed tool records)
+            </div>
+
+            <div className="space-y-2">
+              {group.calls.map((call, ci) => {
+                const foldLabel = call.rawToolName || call.toolName;
+                const statusBadge = call.status === "ok" && call.nodes.length === 0 && !call.isUnknownTool
+                  ? null
+                  : call.status === "ok"
+                    ? null
+                    : callStatusBadge(call.status);
+
+                return (
+                  <Fold
+                    key={ci}
+                    summary={
+                      <span className="flex items-center gap-2 flex-wrap">
+                        <span className="font-mono text-[12px]">{foldLabel}</span>
+                        {statusBadge && (
+                          <StatusBadge kind={statusBadge.kind}>{statusBadge.label}</StatusBadge>
+                        )}
+                        {call.isUnknownTool && (
+                          <StatusBadge kind="warn">unknown tool</StatusBadge>
+                        )}
+                      </span>
+                    }
+                  >
+                    {/* Input */}
+                    {Object.keys(call.input).length > 0 && (
+                      <>
+                        <div className="text-[11px] font-mono text-muted-foreground/60 mb-1">input</div>
+                        <KeyValues data={call.input as Record<string, unknown>} />
+                      </>
+                    )}
+                    {call.withheldInputFieldCount > 0 && (
+                      <div className="text-[11.5px] text-muted-foreground/70 mt-1">
+                        {call.withheldInputFieldCount} input field(s) withheld
+                      </div>
+                    )}
+
+                    {/* Returned nodes */}
+                    {call.nodes.length > 0 ? (
+                      <div className="mt-2 space-y-1">
+                        <div className="text-[11px] font-mono text-muted-foreground/60 mb-1">nodes</div>
+                        {call.nodes.map((node, ni) => (
+                          <div key={ni} className="flex flex-wrap items-baseline gap-2 text-[12.5px]">
+                            {node.nodeType && (
+                              <span className="font-mono text-[10.5px] text-muted-foreground/70">
+                                {node.nodeType}
+                              </span>
+                            )}
+                            {node.name && (
+                              <span className="text-muted-foreground">{node.name}</span>
+                            )}
+                            {node.identity && <CopyableId identity={node.identity} />}
+                          </div>
+                        ))}
+                        {call.nodesTruncated && (
+                          <div className="text-[11.5px] text-muted-foreground/60 mt-1">
+                            {call.nodesDroppedCount} more node(s) not shown
+                          </div>
+                        )}
+                      </div>
+                    ) : call.status === "ok" ? (
+                      <div className="mt-2 text-[12.5px] text-muted-foreground">
+                        no nodes returned
+                      </div>
+                    ) : null}
+                  </Fold>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })}
+    </Section>
+  );
+}
+
+// ── 7. Concept pulls ─────────────────────────────────────────────────────────
 
 export function ConceptsSection({ projection }: { projection: RunReportProjection }) {
   const concepts = projection.concepts;
+  const ta = projection.toolActivity;
 
-  // `concepts: {}` is the generator DEFAULT (the pass is opt-in behind
-  // --concepts) and therefore the common shape. It means "not run", never an
-  // error.
-  if (Object.keys(concepts).length === 0) {
-    return (
-      <Section id="concepts" kicker="Concept usage" title="Concept pulls">
-        <EmptyPanel label="Concept synthesis was not run for this benchmark." />
-      </Section>
-    );
-  }
+  // `concepts.synthesis` absent means synthesis was not run — a common shape.
+  const hasSynthesis = isRecord(concepts.synthesis);
 
-  const synthesis = isRecord(concepts.synthesis) ? concepts.synthesis : {};
+  const synthesis = hasSynthesis ? (concepts.synthesis as Record<string, unknown>) : {};
   const narrative = asString(synthesis.overall_narrative);
   const conceptMatrix = Array.isArray(synthesis.concept_matrix)
     ? synthesis.concept_matrix.filter(isRecord)
     : [];
 
+  const nodeIdentities = ta.present && ta.nodeIdentities.length > 0
+    ? buildNodeIdentities(ta.groups)
+    : [];
+
   return (
     <Section id="concepts" kicker="Concept usage" title="Concept pulls">
-      {narrative ? (
-        <Panel>
-          {/* Escaped React text. This string is known to contain ```mermaid
-              fences and raw HTML; both must render as literal characters. */}
-          <p
-            className="text-[13.5px] whitespace-pre-wrap text-muted-foreground"
-            data-testid="run-report-concept-narrative"
-          >
-            {narrative}
-          </p>
-        </Panel>
-      ) : (
-        <EmptyPanel label="No synthesis narrative for this run." />
-      )}
-
-      {conceptMatrix.length > 0 && (
+      {/* Graph nodes used block */}
+      {nodeIdentities.length > 0 && (
         <>
-          <MiniHeading>Concept matrix</MiniHeading>
-          <div className="space-y-2">
-            {conceptMatrix.map((entry, i) => (
-              <div key={i} className="flex items-start gap-3 text-[13px]">
-                <span className="font-mono text-[11px] text-muted-foreground/70 min-w-[80px]">
-                  {asString(entry.concept) ?? `concept-${i}`}
-                </span>
-                <span className="text-muted-foreground flex-1">
-                  {asString(entry.note)}
-                </span>
-                {asString(entry.verdict) && (
-                  <StatusBadge kind={asString(entry.verdict) === "addressed" ? "pass" : "fail"}>
-                    {asString(entry.verdict)}
-                  </StatusBadge>
+          <MiniHeading>Graph nodes used ({nodeIdentities.length})</MiniHeading>
+          <div className="space-y-2 mb-6">
+            {nodeIdentities.map((identity) => (
+              <div
+                key={identity.canonicalKey}
+                className="flex flex-wrap items-baseline gap-2 text-[12.5px] rounded px-2 py-1.5 bg-muted/20"
+              >
+                {identity.nodeType && (
+                  <span className="font-mono text-[10.5px] text-muted-foreground/70">
+                    {identity.nodeType}
+                  </span>
+                )}
+                {identity.name && (
+                  <span className="text-muted-foreground">{identity.name}</span>
+                )}
+                <CopyableId identity={identity.identity} />
+                <StatusBadge kind={identity.runStatus === "retrieved" ? "pass" : "muted"}>
+                  {identity.runStatus}
+                </StatusBadge>
+                {identity.runBasis && (
+                  <span className="text-[10.5px] text-muted-foreground/60">
+                    via {identity.runBasis}
+                  </span>
+                )}
+                {identity.agents.map((agentEntry) => (
+                  <span
+                    key={agentEntry.agentKey}
+                    className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-[10.5px] text-muted-foreground"
+                  >
+                    {agentEntry.agentName}
+                    {agentEntry.count > 1 && (
+                      <span className="tabular-nums">×{agentEntry.count}</span>
+                    )}
+                  </span>
+                ))}
+                {identity.hasOffScreenEvidence && (
+                  <span className="text-[10.5px] text-muted-foreground/60">
+                    (additional evidence off-screen)
+                  </span>
                 )}
               </div>
             ))}
           </div>
         </>
+      )}
+
+      {/* Synthesis narrative */}
+      {hasSynthesis ? (
+        <>
+          {narrative ? (
+            <Panel>
+              {/* Escaped React text. This string is known to contain ```mermaid
+                  fences and raw HTML; both must render as literal characters. */}
+              <p
+                className="text-[13.5px] whitespace-pre-wrap text-muted-foreground"
+                data-testid="run-report-concept-narrative"
+              >
+                {narrative}
+              </p>
+            </Panel>
+          ) : (
+            <EmptyPanel label="No synthesis narrative for this run." />
+          )}
+
+          {conceptMatrix.length > 0 && (
+            <>
+              <MiniHeading>Concept matrix</MiniHeading>
+              <div className="space-y-2">
+                {conceptMatrix.map((entry, i) => (
+                  <div key={i} className="flex items-start gap-3 text-[13px]">
+                    <span className="font-mono text-[11px] text-muted-foreground/70 min-w-[80px]">
+                      {asString(entry.concept) ?? `concept-${i}`}
+                    </span>
+                    <span className="text-muted-foreground flex-1">
+                      {asString(entry.note)}
+                    </span>
+                    {asString(entry.verdict) && (
+                      <StatusBadge kind={asString(entry.verdict) === "addressed" ? "pass" : "fail"}>
+                        {asString(entry.verdict)}
+                      </StatusBadge>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+        </>
+      ) : (
+        <EmptyPanel label="Concept synthesis was not run for this benchmark." />
       )}
     </Section>
   );
