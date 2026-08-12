@@ -5,6 +5,7 @@ import { getWorkspaceChannelName, PUSHER_EVENTS, pusherServer } from "@/lib/push
 import { matchPathToEndpoint, type EndpointNode } from "@/lib/vercel/path-matcher";
 import type { VercelLogEntry } from "@/types/vercel";
 import { NextRequest, NextResponse } from "next/server";
+import { endpointCache, inflight, ENDPOINT_CACHE_TTL_MS } from "./endpoint-cache";
 
 /**
  * Compute HMAC-SHA1 signature for Vercel webhook verification
@@ -17,20 +18,6 @@ export const fetchCache = "force-no-store";
 
 const encryptionService = EncryptionService.getInstance();
 
-// ---------------------------------------------------------------------------
-// Module-level cache for Endpoint nodes (per-swarm, keyed by swarm.id)
-// ---------------------------------------------------------------------------
-
-const ENDPOINT_CACHE_TTL_MS = 60_000;
-
-const endpointCache = new Map<string, { nodes: EndpointNode[]; expiresAt: number }>();
-const inflight = new Map<string, Promise<EndpointNode[]>>();
-
-/** Clear both cache maps — called in tests between cases for deterministic isolation. */
-export function resetEndpointCache(): void {
-  endpointCache.clear();
-  inflight.clear();
-}
 
 /**
  * Vercel Log Drain Webhook Handler

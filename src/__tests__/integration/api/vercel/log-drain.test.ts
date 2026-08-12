@@ -1,6 +1,7 @@
 import crypto from "crypto";
 import { describe, test, expect, beforeEach, vi, afterEach } from "vitest";
-import { POST, resetEndpointCache } from "@/app/api/vercel/log-drain/route";
+import { POST } from "@/app/api/vercel/log-drain/route";
+import { resetEndpointCache } from "@/app/api/vercel/log-drain/endpoint-cache";
 import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
 import { generateUniqueId, generateUniqueSlug } from "@/__tests__/support/helpers";
