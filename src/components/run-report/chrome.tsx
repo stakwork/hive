@@ -1,6 +1,6 @@
 "use client";
 
-import React, { type ReactNode } from "react";
+import React, { type ReactNode, useState, useCallback } from "react";
 
 /**
  * Editorial chrome for the run report.
@@ -270,13 +270,85 @@ export class SectionErrorBoundary extends React.Component<
   }
 }
 
+// ── CopyableId ────────────────────────────────────────────────────────────────
+
+/**
+ * Renders a graph node identity as monospace text with a copy button.
+ *
+ * Identities are NEVER rendered as links — they are copyable only, per the
+ * requirements. Uses `navigator.clipboard?.writeText` behind a `typeof` guard
+ * with a no-throw select-text fallback so jsdom tests neither throw nor need a
+ * clipboard mock.
+ *
+ * This is the only interactive element in this directory. It is a small
+ * `"use client"` component — the file is already `"use client"`.
+ */
+export function CopyableId({ identity }: { identity: string }) {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = useCallback(() => {
+    if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
+      navigator.clipboard.writeText(identity).then(
+        () => {
+          setCopied(true);
+          setTimeout(() => setCopied(false), 1500);
+        },
+        () => {
+          // Clipboard API rejected — fall back silently.
+          selectText(identity);
+        },
+      );
+    } else {
+      // jsdom / environments without Clipboard API — select text as fallback.
+      selectText(identity);
+    }
+  }, [identity]);
+
+  return (
+    <span className="inline-flex items-center gap-1 font-mono text-[10.5px] text-muted-foreground/80">
+      <span
+        className="break-all"
+        data-testid="copyable-id-text"
+        title={identity}
+      >
+        {identity}
+      </span>
+      <button
+        type="button"
+        onClick={handleCopy}
+        aria-label={copied ? "Copied" : "Copy identity"}
+        data-testid="copyable-id-button"
+        className="shrink-0 rounded px-1 py-0.5 text-[9px] border border-border/50 hover:border-border hover:text-foreground transition-colors"
+      >
+        {copied ? "✓" : "copy"}
+      </button>
+    </span>
+  );
+}
+
+/** Select text by creating a temporary element — no-throw clipboard fallback. */
+function selectText(text: string): void {
+  try {
+    const el = document.createElement("textarea");
+    el.value = text;
+    el.style.position = "fixed";
+    el.style.opacity = "0";
+    document.body.appendChild(el);
+    el.select();
+    document.execCommand("copy");
+    document.body.removeChild(el);
+  } catch {
+    // Best-effort only — never throw.
+  }
+}
+
 /** Native-`<details>` disclosure — the viewer's `details.fold`. */
 export function Fold({
   summary,
   monospace,
   children,
 }: {
-  summary: string;
+  summary: string | ReactNode;
   monospace?: boolean;
   children: ReactNode;
 }) {
