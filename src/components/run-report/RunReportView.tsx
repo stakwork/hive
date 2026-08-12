@@ -11,12 +11,13 @@ import {
   RubricsSection,
   FailuresSection,
   TracesSection,
+  ToolActivitySection,
   ConceptsSection,
   SourcesSection,
   HealthSection,
 } from "./sections";
 import { SectionErrorBoundary, anchorId } from "./chrome";
-import { readSummaries, isRecord, asString } from "@/lib/run-report/derive";
+import { readSummaries, isRecord, asString, readRosterNames } from "@/lib/run-report/derive";
 
 /**
  * Run report renderer.
@@ -119,16 +120,8 @@ export function RunReportView({ payload, taskTitle = "Run report" }: Props) {
   // The rail lists every failed rubric and every agent, mirroring the
   // generator's own viewer: tap C-038 → its investigation, tap an agent →
   // its roster card. Names join the same way TracesSection renders them.
-  const summaryNames = readSummaries(projection.analysis).map((s) => s.agent_name);
-  const rosterNames = [
-    ...new Set([
-      ...summaryNames,
-      ...projection.pageData.agents
-        .filter(isRecord)
-        .map((a) => asString(a.name) ?? "")
-        .filter(Boolean),
-    ]),
-  ];
+  const rosterMap = readRosterNames(projection.analysis, projection.pageData.agents);
+  const rosterNames = [...rosterMap.values()];
   const navGroups = NAV_GROUPS.map((group) => {
     if (group.group === "Failures") {
       return {
@@ -144,7 +137,11 @@ export function RunReportView({ payload, taskTitle = "Run report" }: Props) {
     if (group.group === "Agents") {
       return {
         ...group,
-        items: [...group.items, ...rosterNames.map((n) => ({ id: anchorId("agent", n), label: n }))],
+        items: [
+          ...group.items,
+          ...rosterNames.map((n) => ({ id: anchorId("agent", n), label: n })),
+          { id: "tool-activity", label: "Tool activity" },
+        ],
       };
     }
     return group;
@@ -192,6 +189,9 @@ export function RunReportView({ payload, taskTitle = "Run report" }: Props) {
         </SectionErrorBoundary>
         <SectionErrorBoundary>
           <TracesSection projection={projection} />
+        </SectionErrorBoundary>
+        <SectionErrorBoundary>
+          <ToolActivitySection projection={projection} />
         </SectionErrorBoundary>
         <SectionErrorBoundary>
           <ConceptsSection projection={projection} />
