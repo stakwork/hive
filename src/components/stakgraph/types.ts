@@ -54,6 +54,8 @@ export interface Repository {
   docsEnabled?: boolean;           // default true - whether to generate docs on ingest/sync
   mocksEnabled?: boolean;          // default false - whether to generate mocks on ingest/sync
   embeddingsEnabled?: boolean;     // default true - generate embeddings for semantic search
+  shallowClone?: boolean;          // default false - fetch only latest commit (--depth 1)
+  blobSizeLimit?: string | null;   // default null - per-file size limit e.g. "1m", "500k"
   // Pod repair trigger (transient field - not persisted to database)
   triggerPodRepair?: boolean;      // triggers pod repair workflow when adding new repository
 }
