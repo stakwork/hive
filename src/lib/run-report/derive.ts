@@ -199,6 +199,18 @@ export function buildTimeline(
   agents: unknown[],
 ): Array<{ name: string; startMs: number | null; endMs: number | null }> {
   const entries: Array<{ name: string; startMs: number | null; endMs: number | null }> = [];
+  const stepNames = new Set(timeline.map((s) => s.step));
+
+  // Agents per launching step. A step that launched exactly ONE agent is a
+  // 1:1 launch — its agent row would duplicate the step's own window (the
+  // "run_draft"/"draft" double bar). Only fan-out steps (foreach_ingest_doc
+  // → one agent per document) add per-agent rows.
+  const perStep = new Map<string, number>();
+  for (const agent of agents) {
+    if (!isRecord(agent)) continue;
+    const step = asString(agent.step);
+    if (step) perStep.set(step, (perStep.get(step) ?? 0) + 1);
+  }
 
   for (const step of timeline) {
     entries.push({
@@ -212,6 +224,8 @@ export function buildTimeline(
     if (!isRecord(agent)) continue;
     const name = asString(agent.name) ?? asString(agent.agent_label);
     if (!name) continue;
+    const step = asString(agent.step);
+    if (step && stepNames.has(step) && (perStep.get(step) ?? 0) === 1) continue;
     entries.push({
       name,
       startMs: toEpochMs(agent.start),
@@ -219,7 +233,19 @@ export function buildTimeline(
     });
   }
 
-  return entries;
+  // Chronological interleave: timed rows sort by start (stable); untimed
+  // rows keep their relative order at the end.
+  return entries
+    .map((entry, i) => ({ entry, i }))
+    .sort((a, b) => {
+      const as = a.entry.startMs;
+      const bs = b.entry.startMs;
+      if (as == null && bs == null) return a.i - b.i;
+      if (as == null) return 1;
+      if (bs == null) return -1;
+      return as - bs || a.i - b.i;
+    })
+    .map(({ entry }) => entry);
 }
 
 /** Human-readable duration. Returns "—" for unknown. */
