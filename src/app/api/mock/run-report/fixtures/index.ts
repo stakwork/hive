@@ -11,6 +11,8 @@
  */
 
 import { FULL_BUNDLE } from "./full";
+import { WITH_TOOL_ACTIVITY } from "./with-tool-activity";
+import { TOOL_ACTIVITY_EDGE_CASES } from "./tool-activity-edge-cases";
 
 type Bundle = Record<string, unknown>;
 
@@ -225,6 +227,8 @@ export const RUN_REPORT_FIXTURES = {
   "split-token": SPLIT_TOKEN,
   "strings-only": STRINGS_ONLY,
   "unknown-keys": UNKNOWN_KEYS,
+  "with-tool-activity": WITH_TOOL_ACTIVITY,
+  "tool-activity-edge-cases": TOOL_ACTIVITY_EDGE_CASES,
 } as const;
 
 export type RunReportFixtureName = keyof typeof RUN_REPORT_FIXTURES;
