@@ -113,6 +113,17 @@ describe("RunReportView — empty shapes are not errors", () => {
     expect(screen.queryByTestId("run-report-state-absent")).toBeNull();
   });
 
+  it("renders unsummarized workers alongside LLM summaries", () => {
+    render(
+      <RunReportView payload={payload({ projection: projectionFor("with-ingest-worker") })} />,
+    );
+    const section = screen.getByTestId("run-report-section-agents");
+    expect(section).toHaveTextContent(/other agent activity \(1\)/i);
+    expect(section).toHaveTextContent(/ingest: appointment-chronology\.xlsx/);
+    // summaries still render in full
+    expect(section).toHaveTextContent(/agent summaries/i);
+  });
+
   it("keeps the plain empty state when both summaries and agents are empty", () => {
     render(<RunReportView payload={payload({ projection: projectionFor("no-analysis") })} />);
     expect(screen.getByTestId("run-report-section-agents")).toHaveTextContent(
