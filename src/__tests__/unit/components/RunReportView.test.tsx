@@ -102,6 +102,25 @@ describe("RunReportView — empty shapes are not errors", () => {
     expect(screen.queryByTestId("run-report-state-absent")).toBeNull();
   });
 
+  it("renders the deterministic agent roster when summaries are empty but agents exist", () => {
+    render(<RunReportView payload={payload({ projection: projectionFor("deterministic") })} />);
+    const section = screen.getByTestId("run-report-section-agents");
+    expect(section).toHaveTextContent(/agent activity/i);
+    expect(section).toHaveTextContent(/deterministic run/i);
+    expect(screen.getAllByTestId("run-report-deterministic-agent").length).toBeGreaterThan(0);
+    // record-form tools render a fold; the roster is metadata, never an error state
+    expect(section).toHaveTextContent(/tools used \(2\)/i);
+    expect(screen.queryByTestId("run-report-state-absent")).toBeNull();
+  });
+
+  it("keeps the plain empty state when both summaries and agents are empty", () => {
+    render(<RunReportView payload={payload({ projection: projectionFor("no-analysis") })} />);
+    expect(screen.getByTestId("run-report-section-agents")).toHaveTextContent(
+      /no agent summaries/i,
+    );
+    expect(screen.queryByTestId("run-report-deterministic-agent")).toBeNull();
+  });
+
   it("renders an all-pass run with no failures panel content", () => {
     render(<RunReportView payload={payload({ projection: projectionFor("all-pass") })} />);
     expect(screen.getByTestId("run-report-section-failures")).toHaveTextContent(/no failures/i);
