@@ -2,12 +2,10 @@
  * HTML → sanitized closed-node-shape projection. Server-side only; components
  * never sanitize.
  *
- * parse (document mode) → discard doctype/html/head → hast-util-sanitize with
- * the pinned schema → project to `SanitizedNode`.
- *
- * Document mode because the upstream converters emit whole documents, not
- * fragments; parsing those as fragments yields node types the pinned schema was
- * never written for.
+ * Parsed in document mode because the upstream converters emit whole documents
+ * (`<!doctype><html><head>…`), not fragments — the pinned schema was never
+ * written for those wrapper node types, so `<body>` children are extracted
+ * explicitly.
  */
 
 import { fromHtml } from "hast-util-from-html";
@@ -22,12 +20,7 @@ export interface SanitizeResult {
   droppedCount: number;
 }
 
-/**
- * Sanitize one source document's HTML into the closed node shape.
- *
- * Returns an empty node list (not a throw) for unparseable input, so one bad
- * document can never fail the whole bundle.
- */
+/** Returns [] for unparseable input so one bad document cannot fail a bundle. */
 export function sanitizeDocumentHtml(html: string): SanitizeResult {
   if (typeof html !== "string" || html.length === 0) {
     return { nodes: [], droppedCount: 0 };
@@ -61,10 +54,7 @@ export function sanitizeDocumentHtml(html: string): SanitizeResult {
   return { nodes, droppedCount: Math.max(0, beforeCount - afterCount) };
 }
 
-/**
- * Pull the children of `<body>` out of a parsed document, discarding the
- * doctype / html / head wrapper nodes explicitly.
- */
+/** Extract `<body>` children, discarding the doctype/html/head wrapper. */
 function extractBodyChildren(tree: Nodes): RootContent[] {
   if (tree.type === "element" && tree.tagName === "body") {
     return tree.children;
@@ -94,13 +84,10 @@ function extractBodyChildren(tree: Nodes): RootContent[] {
 }
 
 /**
- * Project a sanitized hast node into the closed wire shape.
- *
- * Anything that is not a text node or an element is dropped — comments,
- * doctypes and raw nodes never reach the client. Attribute values are coerced
- * to strings and filtered through the per-tag projection allowlist, so an
- * attribute the sanitize schema permitted but the renderer does not understand
- * cannot ride along.
+ * Project into the closed wire shape. Anything not text or an element is
+ * dropped, and attributes are filtered through the per-tag allowlist — so an
+ * attribute the schema permitted but the renderer does not understand cannot
+ * ride along.
  */
 function projectNode(node: RootContent): SanitizedNode | null {
   if (node.type === "text") {
