@@ -562,6 +562,10 @@ export function TracesSection({ projection }: { projection: RunReportProjection 
   const traces = readTraces(projection.analysis);
   const summaries = readSummaries(projection.analysis);
   const deterministicAgents = projection.pageData.agents.filter(isRecord);
+  const summarizedNames = new Set(summaries.map((s) => s.agent_name));
+  const unsummarizedAgents = deterministicAgents.filter(
+    (a) => !summarizedNames.has(asString(a.name) ?? ""),
+  );
 
   // Build a quick rubric-id → title map for joining traces to rubric labels.
   const rubricTitleById = new Map(projection.rubricRows.map((r) => [r.id, r.title]));
@@ -592,6 +596,19 @@ export function TracesSection({ projection }: { projection: RunReportProjection 
           {summaries.map((summary, i) => (
             <AgentSummaryCard key={summary.agent_name} summary={summary} index={i} />
           ))}
+          {/* Workers without an LLM summary (e.g. per-document ingestion
+              agents) still render as deterministic cards so the roster shows
+              every child project that did work. */}
+          {unsummarizedAgents.length > 0 && (
+            <>
+              <MiniHeading className="mt-8">
+                Other agent activity ({unsummarizedAgents.length})
+              </MiniHeading>
+              {unsummarizedAgents.map((agent, i) => (
+                <DeterministicAgentCard key={asString(agent.name) ?? String(i)} agent={agent} />
+              ))}
+            </>
+          )}
         </>
       ) : deterministicAgents.length > 0 ? (
         <>
