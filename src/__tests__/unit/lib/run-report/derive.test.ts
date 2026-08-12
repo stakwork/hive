@@ -252,10 +252,36 @@ describe("buildTimeline", () => {
     }
   });
 
-  it("includes agent entries alongside timeline steps", () => {
-    const entries = buildTimeline(TIMELINE, AGENTS);
-    // timeline steps + agent entries
-    expect(entries.length).toBe(TIMELINE.length + AGENTS.length);
+  it("dedups 1:1 launch agents and keeps fan-out agents as extra rows", () => {
+    // full fixture: both agents are 1:1 with steps already on the timeline —
+    // their rows would duplicate the step bars (run_draft / draft, twice)
+    const deduped = buildTimeline(TIMELINE, AGENTS);
+    expect(deduped.length).toBe(TIMELINE.length);
+    expect(deduped.some((e) => e.name === "cross_check_agent")).toBe(false);
+
+    // a fan-out step (several agents per step) adds one row per agent
+    const fanout = [
+      { name: "ingest: a.docx", step: "foreach_ingest", start: "2026-08-10 14:28:12.000", end: "2026-08-10 14:28:20.000" },
+      { name: "ingest: b.docx", step: "foreach_ingest", start: "2026-08-10 14:28:13.000", end: "2026-08-10 14:28:25.000" },
+    ];
+    expect(buildTimeline(TIMELINE, fanout).length).toBe(TIMELINE.length + 2);
+
+    // an agent whose step is unknown to the timeline keeps its row too
+    const stray = [{ name: "judge", step: "not_on_timeline", start: null, end: null }];
+    expect(buildTimeline(TIMELINE, stray).length).toBe(TIMELINE.length + 1);
+  });
+
+  it("interleaves rows chronologically by start time", () => {
+    const fanout = [
+      { name: "ingest: a.docx", step: "foreach_ingest", start: "2026-08-10 14:28:12.000", end: "2026-08-10 14:28:20.000" },
+    ];
+    const entries = buildTimeline(TIMELINE, fanout);
+    const timed = entries.filter((e) => e.startMs != null);
+    for (let i = 1; i < timed.length; i++) {
+      expect(timed[i - 1].startMs! <= timed[i].startMs!).toBe(true);
+    }
+    // the fan-out row lands right after check_documents, not appended at the end
+    expect(entries[1].name).toBe("ingest: a.docx");
   });
 
   it("feeds buildGantt with at least one non-other phase for the full fixture", () => {
@@ -267,8 +293,12 @@ describe("buildTimeline", () => {
     expect(nonOther.length).toBeGreaterThan(0);
   });
 
-  it("produces at least one pair of overlapping spans for the full fixture", () => {
-    const entries = buildTimeline(TIMELINE, AGENTS);
+  it("produces at least one pair of overlapping spans when a step fans out", () => {
+    const fanout = [
+      { name: "ingest: a.docx", step: "foreach_ingest", start: "2026-08-10 14:28:12.000", end: "2026-08-10 14:28:20.000" },
+      { name: "ingest: b.docx", step: "foreach_ingest", start: "2026-08-10 14:28:13.000", end: "2026-08-10 14:28:25.000" },
+    ];
+    const entries = buildTimeline(TIMELINE, fanout);
     const valid = entries.filter(
       (e): e is { name: string; startMs: number; endMs: number } =>
         e.startMs != null && e.endMs != null,
