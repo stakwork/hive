@@ -15,7 +15,8 @@ import {
   SourcesSection,
   HealthSection,
 } from "./sections";
-import { SectionErrorBoundary } from "./chrome";
+import { SectionErrorBoundary, anchorId } from "./chrome";
+import { readSummaries, isRecord, asString } from "@/lib/run-report/derive";
 
 /**
  * Run report renderer.
@@ -115,11 +116,45 @@ export function RunReportView({ payload, taskTitle = "Run report" }: Props) {
     ? projection.sourceDocs.find((d) => d.id === openDoc.docId) ?? null
     : null;
 
+  // The rail lists every failed rubric and every agent, mirroring the
+  // generator's own viewer: tap C-038 → its investigation, tap an agent →
+  // its roster card. Names join the same way TracesSection renders them.
+  const summaryNames = readSummaries(projection.analysis).map((s) => s.agent_name);
+  const rosterNames = [
+    ...new Set([
+      ...summaryNames,
+      ...projection.pageData.agents
+        .filter(isRecord)
+        .map((a) => asString(a.name) ?? "")
+        .filter(Boolean),
+    ]),
+  ];
+  const navGroups = NAV_GROUPS.map((group) => {
+    if (group.group === "Failures") {
+      return {
+        ...group,
+        items: [
+          ...group.items,
+          ...rubricRows
+            .filter((r) => !r.passed)
+            .map((r) => ({ id: anchorId("failure", r.id), label: r.id })),
+        ],
+      };
+    }
+    if (group.group === "Agents") {
+      return {
+        ...group,
+        items: [...group.items, ...rosterNames.map((n) => ({ id: anchorId("agent", n), label: n }))],
+      };
+    }
+    return group;
+  });
+
   return (
     <div className="grid grid-cols-1 lg:grid-cols-[200px_minmax(0,1fr)] gap-8 max-w-[1180px]" data-testid="run-report-view">
       {/* Sticky section rail */}
       <nav className="hidden lg:block sticky top-4 self-start max-h-[calc(100vh-2rem)] overflow-y-auto font-mono text-[11px] border-r border-border pr-4">
-        {NAV_GROUPS.map((group) => (
+        {navGroups.map((group) => (
           <div key={group.group}>
             <div className="text-[9px] uppercase tracking-[0.14em] text-muted-foreground/50 mt-4 mb-1.5 first:mt-0">
               {group.group}
@@ -128,7 +163,8 @@ export function RunReportView({ payload, taskTitle = "Run report" }: Props) {
               <a
                 key={item.id}
                 href={`#${item.id}`}
-                className="block text-muted-foreground hover:text-foreground hover:bg-muted/50 rounded px-2 -ml-2 py-0.5 transition-colors"
+                title={item.label}
+                className="block truncate text-muted-foreground hover:text-foreground hover:bg-muted/50 rounded px-2 -ml-2 py-0.5 transition-colors"
               >
                 {item.label}
               </a>

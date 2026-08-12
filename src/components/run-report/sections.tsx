@@ -15,6 +15,7 @@ import {
 import type { RunReportProjection, RubricRow, TraceRow, AgentSummary } from "@/lib/run-report/types";
 import { formatInUserTz } from "@/lib/date-utils";
 import {
+  anchorId,
   Section,
   Panel,
   EmptyPanel,
@@ -242,7 +243,8 @@ export function FailuresSection({
             // deep link; without it that pathway has no wiring.
             const links = projection.rubricLinks[row.id] ?? [];
             return (
-              <Panel key={row.id} tone="fail" className="mt-4">
+              <div key={row.id} id={anchorId("failure", row.id)} className="scroll-mt-4">
+              <Panel tone="fail" className="mt-4">
                 <div className="flex items-baseline gap-3">
                   <span className="font-mono text-[11px] text-muted-foreground/70">{row.id}</span>
                   <h3 className="text-[17px] font-semibold flex-1">{row.title}</h3>
@@ -274,6 +276,7 @@ export function FailuresSection({
                   </>
                 )}
               </Panel>
+              </div>
             );
           })}
 
@@ -469,6 +472,7 @@ function AgentSummaryCard({
   const finalAnswer = agent ? asString(agent.final_answer) : null;
 
   return (
+    <div id={anchorId("agent", summary.agent_name)} className="scroll-mt-4">
     <Panel className="mt-4">
       <div className="flex flex-wrap items-baseline gap-3">
         <h3 className="text-[17px] font-semibold">{summary.agent_name}</h3>
@@ -551,6 +555,7 @@ function AgentSummaryCard({
       )}
       {finalAnswer && <FinalAnswerFold text={finalAnswer} />}
     </Panel>
+    </div>
   );
 }
 
@@ -570,6 +575,7 @@ function DeterministicAgentCard({ agent }: { agent: Record<string, unknown> }) {
   const finalAnswer = asString(agent.final_answer);
 
   return (
+    <div id={anchorId("agent", name)} className="scroll-mt-4">
     <Panel className="mt-4">
       <div className="flex flex-wrap items-baseline gap-3" data-testid="run-report-deterministic-agent">
         <h3 className="text-[17px] font-semibold">{name}</h3>
@@ -581,6 +587,7 @@ function DeterministicAgentCard({ agent }: { agent: Record<string, unknown> }) {
       {tools.length > 0 && <ToolCountsFold tools={tools} />}
       {finalAnswer && <FinalAnswerFold text={finalAnswer} />}
     </Panel>
+    </div>
   );
 }
 

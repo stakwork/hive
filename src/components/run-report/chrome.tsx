@@ -44,6 +44,14 @@ export function Section({
   );
 }
 
+/**
+ * Stable DOM id for sidebar deep links (agent cards, failure panels).
+ * Names can carry spaces/colons/dots ("ingest: protocol-v3.docx").
+ */
+export function anchorId(prefix: string, name: string): string {
+  return `${prefix}-${name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "")}`;
+}
+
 /** Bordered surface — the viewer's `.panel`. */
 export function Panel({
   children,
