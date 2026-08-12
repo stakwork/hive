@@ -17,6 +17,21 @@ export const fetchCache = "force-no-store";
 
 const encryptionService = EncryptionService.getInstance();
 
+// ---------------------------------------------------------------------------
+// Module-level cache for Endpoint nodes (per-swarm, keyed by swarm.id)
+// ---------------------------------------------------------------------------
+
+const ENDPOINT_CACHE_TTL_MS = 60_000;
+
+const endpointCache = new Map<string, { nodes: EndpointNode[]; expiresAt: number }>();
+const inflight = new Map<string, Promise<EndpointNode[]>>();
+
+/** Clear both cache maps — called in tests between cases for deterministic isolation. */
+export function resetEndpointCache(): void {
+  endpointCache.clear();
+  inflight.clear();
+}
+
 /**
  * Vercel Log Drain Webhook Handler
  *
@@ -116,6 +131,13 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "No valid log entries found" }, { status: 400 });
     }
 
+    // Early-out: if no entry has a usable path there is nothing to match —
+    // skip the swarm fetch entirely and return a no-op success.
+    const hasCandidatePath = logEntries.some((e) => e.path || e.proxy?.path);
+    if (!hasCandidatePath) {
+      return NextResponse.json({ success: true, processed: logEntries.length, matched: 0, highlighted: 0 });
+    }
+
     // Fetch endpoint nodes once for all log entries
     if (!workspace.swarm) {
       console.warn(`[Vercel Logs] No swarm found for workspace ${workspace.slug}`);
@@ -127,7 +149,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: true, processed: logEntries.length, matched: 0, highlighted: 0 });
     }
 
-    console.log("logEntries:", JSON.stringify(logEntries, null, 2));
     // Process all log entries with the pre-fetched endpoint nodes
     const results = await Promise.all(logEntries.map((entry) => processLogEntry(entry, workspace.slug, endpointNodes)));
 
@@ -181,9 +202,14 @@ async function processLogEntry(
 }
 
 /**
- * Fetch endpoint nodes from workspace swarm
+ * Fetch endpoint nodes from workspace swarm with per-swarm caching and
+ * in-flight coalescing to avoid hammering the /nodes endpoint.
+ *
+ * Cache TTL: 60 s. Empty successful results are not cached (swarm may be
+ * mid-ingest). Errors are never cached (no poisoning).
  */
 async function fetchEndpointNodes(swarm: {
+  id: string;
   swarmUrl: string | null;
   swarmApiKey: string | null;
 }): Promise<EndpointNode[]> {
@@ -192,48 +218,81 @@ async function fetchEndpointNodes(swarm: {
     return [];
   }
 
-  try {
-    // Extract hostname from swarm URL and construct gitree endpoint
-    const swarmUrlObj = new URL(swarm.swarmUrl);
-    const protocol = swarmUrlObj.hostname.includes("localhost") ? "http" : "https";
+  const key = swarm.id;
 
-    // Allow environment overrides for development/testing
-    let graphUrl = `${protocol}://${swarmUrlObj.hostname}:3355`;
-    let apiKey = encryptionService.decryptField("swarmApiKey", swarm.swarmApiKey);
+  // --- Cache hit ---
+  const cached = endpointCache.get(key);
+  if (cached && cached.expiresAt > Date.now()) {
+    return cached.nodes;
+  }
 
-    if (process.env.CUSTOM_SWARM_URL) {
-      graphUrl = `${process.env.CUSTOM_SWARM_URL}:3355`;
-    }
-    if (process.env.CUSTOM_SWARM_API_KEY) {
-      apiKey = process.env.CUSTOM_SWARM_API_KEY;
-    }
+  // --- Coalesce: share an existing in-flight fetch ---
+  const existing = inflight.get(key);
+  if (existing) {
+    return existing;
+  }
 
-    // Fetch endpoint nodes from stakgraph
-    const url = new URL(`${graphUrl}/nodes`);
-    url.searchParams.set("node_type", "Endpoint");
-    url.searchParams.set("concise", "true");
-    url.searchParams.set("output", "json");
+  // --- Fresh fetch — register synchronously before the first await ---
+  const promise = (async (): Promise<EndpointNode[]> => {
+    try {
+      // Extract hostname from swarm URL and construct gitree endpoint
+      const swarmUrlObj = new URL(swarm.swarmUrl!);
+      const protocol = swarmUrlObj.hostname.includes("localhost") ? "http" : "https";
 
-    const response = await fetch(url.toString(), {
-      headers: {
-        "x-api-token": apiKey,
-      },
-    });
+      // Allow environment overrides for development/testing
+      let graphUrl = `${protocol}://${swarmUrlObj.hostname}:3355`;
+      let apiKey = encryptionService.decryptField("swarmApiKey", swarm.swarmApiKey!);
 
-    if (!response.ok) {
-      console.error(`[Vercel Logs] Failed to fetch endpoints: ${response.status} from ${url.toString()}`);
+      if (process.env.CUSTOM_SWARM_URL) {
+        graphUrl = `${process.env.CUSTOM_SWARM_URL}:3355`;
+      }
+      if (process.env.CUSTOM_SWARM_API_KEY) {
+        apiKey = process.env.CUSTOM_SWARM_API_KEY;
+      }
+
+      // Fetch endpoint nodes from stakgraph
+      const url = new URL(`${graphUrl}/nodes`);
+      url.searchParams.set("node_type", "Endpoint");
+      url.searchParams.set("concise", "true");
+      url.searchParams.set("output", "json");
+
+      const response = await fetch(url.toString(), {
+        headers: {
+          "x-api-token": apiKey,
+        },
+      });
+
+      if (!response.ok) {
+        console.error(`[Vercel Logs] Failed to fetch endpoints: ${response.status} from ${url.toString()}`);
+        inflight.delete(key);
+        return [];
+      }
+
+      const nodes: EndpointNode[] = await response.json();
+
+      console.log(`[Vercel Logs] Fetched ${nodes.length} endpoints from swarm`);
+
+      inflight.delete(key);
+
+      // Only cache non-empty results — a swarm mid-ingest should be retried
+      // on the next batch rather than stuck empty for the full TTL.
+      if (nodes.length > 0) {
+        endpointCache.set(key, { nodes, expiresAt: Date.now() + ENDPOINT_CACHE_TTL_MS });
+      }
+
+      return nodes;
+    } catch (error) {
+      console.error("[Vercel Logs] Error fetching endpoint nodes:", error);
+      inflight.delete(key);
+      // Do not write endpointCache — error must not poison the cache.
       return [];
     }
+  })();
 
-    const nodes: EndpointNode[] = await response.json();
+  // Register before awaiting so concurrent callers hit the coalesce branch
+  inflight.set(key, promise);
 
-    console.log(`[Vercel Logs] Fetched ${nodes.length} endpoints from swarm`);
-
-    return nodes;
-  } catch (error) {
-    console.error("[Vercel Logs] Error fetching endpoint nodes:", error);
-    return [];
-  }
+  return promise;
 }
 
 /**
