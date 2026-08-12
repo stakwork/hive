@@ -458,6 +458,9 @@ function ReportCell({ run, slug }: { run: BenchmarkRunListRow; slug?: string }) 
         href={`/w/${slug}/legal/benchmarks/runs/${run.id}/report`}
         className="inline-flex items-center gap-1 text-primary hover:underline whitespace-nowrap"
         data-testid="run-report-link"
+        target="_blank"
+        rel="noopener noreferrer"
+        aria-label="View Report (opens in new tab)"
       >
         View Report
       </a>

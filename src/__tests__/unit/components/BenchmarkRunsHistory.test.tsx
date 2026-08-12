@@ -29,6 +29,7 @@ const makeRun = (overrides: Partial<{
   generateJamieChat: boolean;
   jamieChatStatus: string;
   jamieChatPath: string;
+  hasReport: boolean;
 }> = {}) => ({
   id: "runner-1",
   workspaceId: WORKSPACE_ID,
@@ -46,6 +47,7 @@ const makeRun = (overrides: Partial<{
   generateJamieChat: undefined as boolean | undefined,
   jamieChatStatus: undefined as string | undefined,
   jamieChatPath: undefined as string | undefined,
+  hasReport: undefined as boolean | undefined,
   ...overrides,
 });
 
@@ -757,6 +759,45 @@ describe("BenchmarkRunsHistory", () => {
     expect(link).toBeInTheDocument();
     expect(link.getAttribute("href")).toBe("/org/stakwork?chat=conv-123");
     expect(link.getAttribute("target")).toBe("_blank");
+  });
+
+  it("renders 'View Report' link with correct attributes when hasReport is true", () => {
+    const run = makeRun({ hasReport: true });
+    mockUseList.mockReturnValue({
+      runs: [run],
+      total: 1,
+      isLoading: false,
+      error: null,
+      refetch: mockRefetch,
+      setExpandedId: mockSetExpandedId,
+    });
+    render(React.createElement(BenchmarkRunsHistory));
+    const link = screen.getByTestId("run-report-link");
+    expect(link).toBeInTheDocument();
+    expect(link.getAttribute("href")).toBe(
+      `/w/${WORKSPACE_SLUG}/legal/benchmarks/runs/${run.id}/report`
+    );
+    expect(link.getAttribute("target")).toBe("_blank");
+    expect(link.getAttribute("rel")).toBe("noopener noreferrer");
+    expect(link.getAttribute("aria-label")).toBe("View Report (opens in new tab)");
+    expect(link.textContent).toBe("View Report");
+  });
+
+  it("clicking 'View Report' link does not expand the row", async () => {
+    const run = makeRun({ hasReport: true });
+    mockUseList.mockReturnValue({
+      runs: [run],
+      total: 1,
+      isLoading: false,
+      error: null,
+      refetch: mockRefetch,
+      setExpandedId: mockSetExpandedId,
+    });
+    render(React.createElement(BenchmarkRunsHistory));
+    const link = screen.getByTestId("run-report-link");
+    fireEvent.click(link);
+    expect(mockSetExpandedId).not.toHaveBeenCalled();
+    expect(screen.queryByTestId("benchmark-results")).toBeNull();
   });
 
   it("shows Pending spinner when report requested but not yet written", () => {
