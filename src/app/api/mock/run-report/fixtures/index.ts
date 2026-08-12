@@ -177,6 +177,30 @@ const UNKNOWN_KEYS: Bundle = (() => {
  * remaining agents keep the legacy array form, which renders without a tools
  * fold (tolerated, never an error).
  */
+/**
+ * Full run whose page_data.agents includes a worker with no matching LLM
+ * summary (a per-document ingestion agent) - exercises the "Other agent
+ * activity" sub-list that renders alongside summaries.
+ */
+const WITH_INGEST_WORKER: Bundle = (() => {
+  const b = clone(FULL_BUNDLE) as Bundle;
+  const pageData = b.page_data as Record<string, unknown>;
+  const agents = pageData.agents as Array<Record<string, unknown>>;
+  agents.push({
+    name: "ingest: appointment-chronology.xlsx",
+    step: "foreach_ingest_doc",
+    kind: "ingest",
+    start: "2026-08-10 14:26:11.000",
+    end: "2026-08-10 14:26:27.000",
+    duration_s: 16.0,
+    n_messages: 0,
+    tools: {},
+    final_answer:
+      "Parsed appointment-chronology.xlsx with strategy auto into 3 element(s); graph node b41a... already existed (create skipped).",
+  });
+  return b;
+})();
+
 const DETERMINISTIC: Bundle = (() => {
   const b = clone(FULL_BUNDLE) as Bundle;
   const pageData = b.page_data as Record<string, unknown>;
@@ -196,6 +220,7 @@ export const RUN_REPORT_FIXTURES = {
   "all-pass": ALL_PASS,
   "no-analysis": NO_ANALYSIS,
   deterministic: DETERMINISTIC,
+  "with-ingest-worker": WITH_INGEST_WORKER,
   "bumped-schema": BUMPED_SCHEMA,
   "split-token": SPLIT_TOKEN,
   "strings-only": STRINGS_ONLY,
