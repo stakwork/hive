@@ -2,11 +2,21 @@ import { authOptions } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
 import { syncPoolManagerSettings } from "@/services/pool-manager/sync";
 import { getSwarmPoolApiKeyFor } from "@/services/swarm/secrets";
+import { validateWorkspaceAccessById } from "@/services/workspace";
 import { getServerSession } from "next-auth/next";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 
 export const runtime = "nodejs";
+
+// Regex: numeric part >= 1 (no bare 0), optional k/m/g suffix, max 20 chars
+const blobSizeLimitSchema = z
+  .string()
+  .regex(/^[1-9][0-9]*[kmg]?$/i, {
+    message: "Size must be a positive number optionally followed by k, m, or g (e.g. 1m, 500k)",
+  })
+  .max(20, "Size limit value is too long")
+  .or(z.literal(""));
 
 // Validation schema for repository sync settings
 const repositorySettingsSchema = z.object({
@@ -15,6 +25,8 @@ const repositorySettingsSchema = z.object({
   mocksEnabled: z.boolean().optional(),
   embeddingsEnabled: z.boolean().optional(),
   triggerPodRepair: z.boolean().optional(),
+  shallowClone: z.boolean().optional(),
+  blobSizeLimit: blobSizeLimitSchema.optional(),
 });
 
 export async function PATCH(
@@ -48,17 +60,13 @@ export async function PATCH(
       );
     }
 
-    // Find repository and verify user has access via workspace membership
+    // Find repository to get workspaceId
     const repository = await db.repository.findUnique({
       where: { id },
-      include: {
-        workspace: {
-          include: {
-            members: {
-              where: { userId },
-            },
-          },
-        },
+      select: {
+        id: true,
+        triggerPodRepair: true,
+        workspace: { select: { id: true, slug: true } },
       },
     });
 
@@ -73,8 +81,9 @@ export async function PATCH(
       );
     }
 
-    // Check if user is a member of the workspace
-    if (repository.workspace.members.length === 0) {
+    // Enforce write permission (DEVELOPER+ role) — consistent with ingest/sync routes
+    const access = await validateWorkspaceAccessById(repository.workspace.id, userId);
+    if (!access.canWrite) {
       return NextResponse.json(
         {
           success: false,
@@ -106,6 +115,10 @@ export async function PATCH(
     // Capture existing value to detect change
     const previousTriggerPodRepair = repository.triggerPodRepair;
 
+    // Normalize empty blobSizeLimit to null (empty = no filtering)
+    const blobSizeLimitValue =
+      settings.blobSizeLimit === "" ? null : settings.blobSizeLimit;
+
     // Update repository settings
     const updatedRepository = await db.repository.update({
       where: { id },
@@ -125,6 +138,12 @@ export async function PATCH(
         ...(settings.triggerPodRepair !== undefined && {
           triggerPodRepair: settings.triggerPodRepair,
         }),
+        ...(settings.shallowClone !== undefined && {
+          shallowClone: settings.shallowClone,
+        }),
+        ...(settings.blobSizeLimit !== undefined && {
+          blobSizeLimit: blobSizeLimitValue,
+        }),
       },
       select: {
         id: true,
@@ -136,6 +155,8 @@ export async function PATCH(
         mocksEnabled: true,
         embeddingsEnabled: true,
         triggerPodRepair: true,
+        shallowClone: true,
+        blobSizeLimit: true,
       },
     });
 
@@ -284,6 +305,8 @@ export async function GET(
         mocksEnabled: repository.mocksEnabled,
         embeddingsEnabled: repository.embeddingsEnabled,
         triggerPodRepair: repository.triggerPodRepair,
+        shallowClone: repository.shallowClone,
+        blobSizeLimit: repository.blobSizeLimit,
       },
     });
   } catch (error) {
