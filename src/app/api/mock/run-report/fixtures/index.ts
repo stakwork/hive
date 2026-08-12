@@ -169,6 +169,24 @@ const UNKNOWN_KEYS: Bundle = (() => {
   return b;
 })();
 
+/**
+ * Deterministic run: real page_data (agents included) with the analysis
+ * phases deliberately skipped (run_llm=false). The agents section must render
+ * the roster from page_data.agents[] — not an empty state. The first agent's
+ * `tools` uses the producer's current record form ({toolName: count}); the
+ * remaining agents keep the legacy array form, which renders without a tools
+ * fold (tolerated, never an error).
+ */
+const DETERMINISTIC: Bundle = (() => {
+  const b = clone(FULL_BUNDLE) as Bundle;
+  const pageData = b.page_data as Record<string, unknown>;
+  const agents = pageData.agents as Array<Record<string, unknown>>;
+  agents[0].tools = { graph_search: 5, bash: 3 };
+  b.analysis = { summaries: [], traces: [] };
+  b.concepts = {};
+  return b;
+})();
+
 // ── Export map ───────────────────────────────────────────────────────────────
 
 /** Hardcoded literal record — the only way a variant name resolves. */
@@ -177,6 +195,7 @@ export const RUN_REPORT_FIXTURES = {
   "no-concepts": NO_CONCEPTS,
   "all-pass": ALL_PASS,
   "no-analysis": NO_ANALYSIS,
+  deterministic: DETERMINISTIC,
   "bumped-schema": BUMPED_SCHEMA,
   "split-token": SPLIT_TOKEN,
   "strings-only": STRINGS_ONLY,

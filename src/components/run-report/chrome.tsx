@@ -132,10 +132,85 @@ export function KeyValues({ data }: { data: Record<string, unknown> }) {
       {entries.map(([key, value]) => (
         <React.Fragment key={key}>
           <dt className="font-mono text-[11px] text-muted-foreground/70 pt-0.5 truncate">{key}</dt>
-          <dd className="break-all">{stringify(value)}</dd>
+          <dd className="break-all">{renderValue(value)}</dd>
         </React.Fragment>
       ))}
     </dl>
+  );
+}
+
+/**
+ * Recursively renders an unknown value as structured React nodes.
+ *
+ * - Primitives → `<span>`
+ * - Arrays → `<ul>` with bullet items
+ * - Objects → `<dl>` key/value list
+ * - depth > 5 or non-serializable → `<pre>` fallback (never throws)
+ */
+export function renderValue(value: unknown, depth = 0): React.ReactNode {
+  // Depth cap: prevents unbounded recursion on deeply nested structures.
+  if (depth > 5) {
+    return (
+      <pre className="text-[11px] font-mono whitespace-pre-wrap break-all bg-muted/40 rounded p-1">
+        {(() => {
+          try {
+            return JSON.stringify(value, null, 2);
+          } catch {
+            return "[unserializable]";
+          }
+        })()}
+      </pre>
+    );
+  }
+
+  // Primitives
+  if (
+    value === null ||
+    value === undefined ||
+    typeof value === "string" ||
+    typeof value === "number" ||
+    typeof value === "boolean"
+  ) {
+    return <span>{String(value)}</span>;
+  }
+
+  // Arrays
+  if (Array.isArray(value)) {
+    return (
+      <ul className="list-disc pl-4 space-y-0.5">
+        {value.map((item, i) => (
+          <li key={i}>{renderValue(item, depth + 1)}</li>
+        ))}
+      </ul>
+    );
+  }
+
+  // Objects (non-null, non-array)
+  if (typeof value === "object") {
+    const entries = Object.entries(value as Record<string, unknown>);
+    return (
+      <dl className="ml-3 space-y-0.5 text-[11px]">
+        {entries.map(([key, val]) => (
+          <React.Fragment key={key}>
+            <dt className="font-medium">{key}</dt>
+            <dd>{renderValue(val, depth + 1)}</dd>
+          </React.Fragment>
+        ))}
+      </dl>
+    );
+  }
+
+  // Last-resort fallback
+  return (
+    <pre className="text-[11px] font-mono whitespace-pre-wrap break-all bg-muted/40 rounded p-1">
+      {(() => {
+        try {
+          return JSON.stringify(value, null, 2);
+        } catch {
+          return "[unserializable]";
+        }
+      })()}
+    </pre>
   );
 }
 
