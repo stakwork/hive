@@ -136,3 +136,76 @@ Both forms appear in real bundles; `toEpochMs` in `derive.ts` handles both.
 ## Deviation Notes
 
 None recorded. Contract aligns with reading of `tomsmith8/harvey-run-report` source.
+
+---
+
+## `concepts.tool_activity` Shape (PROVISIONAL — UNCONFIRMED)
+
+**Status: INFERRED.** Field names below are derived from architecture docs and
+fixture design, not from a real generated bundle. The upstream contract is not
+yet finalized. The normalizer in `src/lib/run-report/tool-activity.ts` resolves
+fields via candidate-key lists so a producer rename requires only one fixture
+edit and zero test edits.
+
+When present, `concepts.tool_activity` is an **array** of per-tool-call records.
+Each record carries:
+
+```
+{
+  // Which agent made the call — resolved from first of:
+  agent_name: string,   // or: agentName
+  agent: string,
+
+  // Tool name — resolved from first of:
+  tool_name: string,    // or: toolName, tool, name
+  
+  // Input to the tool — accepted as object OR scalar string (wrapped as { value }):
+  input: object | string,   // or: inputs, args, arguments, params
+
+  // Returned nodes — resolved from first of:
+  nodes: NodeRecord[],  // or: results, output_nodes, outputNodes
+                        // or nested: result.nodes, output.nodes
+  
+  // Optional producer-reported error:
+  error?: boolean | "error" | "fail",  // or: is_error, failed, status
+
+  // Optional ordering key (used when present+numeric on ALL records):
+  seq?: number,   // or: sequence, order, index
+}
+```
+
+### `NodeRecord` shape (within `nodes[]`):
+
+```
+{
+  // Identity — resolved from first of:
+  ref_id: string,   // or: refId, urn, node_id, nodeId, id
+  
+  // Display:
+  name?: string,
+  node_type?: string,   // or: nodeType, type
+  
+  // Content (marks node as "retrieved" not just "surfaced"):
+  properties?: object,  // or: body, content, text, snippet
+  
+  // Any other fields passed through
+}
+```
+
+### Candidate keys accepted by the normalizer
+
+The normalizer accepts `tool_activity`, `toolActivity`, `tool_calls`, or
+`toolCalls` as the container key. All are equivalent; first present wins.
+
+### Tool classification (`TOOL_CLASS` in `tool-activity.ts`)
+
+Verified against `src/lib/ai/graphWalkerTools.ts`:
+- `graph_search` → surfacing
+- `graph_get` → retrieval
+- `graph_neighbors` → retrieval
+- `graph_ontology` → none
+
+Inferred (harness-side, review on first real bundle):
+- `graph_node` → retrieval (presumed legacy name for graph_get)
+- `get_ontology` → none
+- `get_ontology_type` → none
