@@ -154,6 +154,45 @@ export interface ConceptSynthesis {
   recommendations: string[];
 }
 
+// ── Tool activity projection types ───────────────────────────────────────────
+
+export type { ToolCallStatus, RetrievalBasis, RetrievalStatus, OrderingBasis, IdentityKind } from "./tool-activity";
+export type {
+  NormalizedNode,
+  NormalizedToolCall,
+  ToolActivityGroup,
+  NodeIdentityRow,
+} from "./tool-activity";
+
+/**
+ * Projected tool-activity: the fully-normalized, classified, and capped
+ * output of `readToolActivity()`, plus data-quality counters that live here
+ * (not on `contractNotes`) because they have readers in the UI.
+ *
+ * When absent (v1 / no-concepts bundles), `present: false` and all arrays
+ * are empty so the renderer can branch on a single field.
+ */
+export interface ToolActivityProjection {
+  present: boolean;
+  /** `schema_version` from the bundle, carried for display-only diagnostics. */
+  schemaVersion: number | null;
+  groups: import("./tool-activity").ToolActivityGroup[];
+  nodeIdentities: import("./tool-activity").NodeIdentityRow[];
+  orderingBasis: import("./tool-activity").OrderingBasis;
+  // ── Data-quality counters ──────────────────────────────────────────────────
+  unidentifiedNodeCount: number;
+  unattributedRecordCount: number;
+  unknownToolNames: string[];
+  ambiguousIdentityCount: number;
+  withheldInputFieldCount: number;
+  allSurfacedHint: boolean;
+  truncated: {
+    groups: number;
+    callsPerAgent: number[];
+    nodesPerCall: number;
+  };
+}
+
 // ── Persisted projection ─────────────────────────────────────────────────────
 
 export interface ProjectedSourceDoc {
@@ -213,6 +252,11 @@ export interface RunReportProjection {
   rubricLinks: Record<string, ProjectedRubricLink[]>;
   /** Rubric rows derived server-side — the single source of rubric derivation. */
   rubricRows: RubricRow[];
+  /**
+   * Tool activity derived server-side from `concepts.tool_activity`.
+   * Empty when the bundle lacks the section (v1 / no-concepts fixtures).
+   */
+  toolActivity: ToolActivityProjection;
   stats: RunReportStats;
   /**
    * Drift diagnostic. Unknown bundle keys land here (key names only, never

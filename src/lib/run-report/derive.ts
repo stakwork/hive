@@ -562,6 +562,42 @@ function mergeRanges(
   return merged;
 }
 
+// ── Roster helper ─────────────────────────────────────────────────────────────
+
+/**
+ * Build the unified agent roster name set from `analysis` and `pageData.agents`.
+ *
+ * This is the SINGLE source of roster computation. Both the projector (when
+ * building tool-activity groups) and `RunReportView` (when building nav
+ * anchors) must call this rather than re-deriving inline, so the two cannot
+ * drift.
+ *
+ * @param analysis     The projected `analysis` object (has `summaries[]`).
+ * @param agentsArr    The projected `pageData.agents[]`.
+ * @returns Map from normalized (trimmed, lowercased) name → display name.
+ */
+export function readRosterNames(
+  analysis: unknown,
+  agentsArr: unknown[],
+): Map<string, string> {
+  const map = new Map<string, string>();
+
+  for (const summary of readSummaries(analysis)) {
+    const display = summary.agent_name;
+    const key = display.trim().toLowerCase();
+    if (key) map.set(key, display);
+  }
+
+  for (const agent of agentsArr) {
+    if (!isRecord(agent)) continue;
+    const display = asString(agent.name) ?? "";
+    const key = display.trim().toLowerCase();
+    if (key && !map.has(key)) map.set(key, display);
+  }
+
+  return map;
+}
+
 // ── Small shared readers ─────────────────────────────────────────────────────
 
 export function isRecord(value: unknown): value is Record<string, unknown> {
