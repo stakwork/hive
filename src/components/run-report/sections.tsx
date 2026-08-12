@@ -15,6 +15,7 @@ import {
 import type { RunReportProjection, RubricRow, TraceRow, AgentSummary } from "@/lib/run-report/types";
 import { formatInUserTz } from "@/lib/date-utils";
 import {
+  anchorId,
   Section,
   Panel,
   EmptyPanel,
@@ -242,7 +243,8 @@ export function FailuresSection({
             // deep link; without it that pathway has no wiring.
             const links = projection.rubricLinks[row.id] ?? [];
             return (
-              <Panel key={row.id} tone="fail" className="mt-4">
+              <div key={row.id} id={anchorId("failure", row.id)} className="scroll-mt-4">
+              <Panel tone="fail" className="mt-4">
                 <div className="flex items-baseline gap-3">
                   <span className="font-mono text-[11px] text-muted-foreground/70">{row.id}</span>
                   <h3 className="text-[17px] font-semibold flex-1">{row.title}</h3>
@@ -274,6 +276,7 @@ export function FailuresSection({
                   </>
                 )}
               </Panel>
+              </div>
             );
           })}
 
@@ -422,17 +425,59 @@ function TraceCard({
   );
 }
 
+/** page_data.agents[].tools is a {toolName: count} record from send_agent_logs. */
+function toolEntries(value: unknown): [string, number][] {
+  return isRecord(value)
+    ? Object.entries(value).filter((e): e is [string, number] => typeof e[1] === "number")
+    : [];
+}
+
+function ToolCountsFold({ tools }: { tools: [string, number][] }) {
+  return (
+    <Fold summary={`Tool calls (${tools.length})`}>
+      <ul className="space-y-1">
+        {tools.map(([toolName, count]) => (
+          <li key={toolName} className="flex items-baseline gap-2 text-[12.5px]">
+            <span className="font-mono text-[11px] text-muted-foreground/70 min-w-[80px]">
+              {toolName}
+            </span>
+            <span className="text-muted-foreground/60 tabular-nums">×{count}</span>
+          </li>
+        ))}
+      </ul>
+    </Fold>
+  );
+}
+
+function FinalAnswerFold({ text }: { text: string }) {
+  return (
+    <Fold summary="Final answer">
+      <p className="text-[13px] text-muted-foreground whitespace-pre-wrap">{text}</p>
+    </Fold>
+  );
+}
+
 function AgentSummaryCard({
   summary,
   index,
+  agent,
 }: {
   summary: AgentSummary;
   index: number;
+  agent?: Record<string, unknown>;
 }) {
+  const durationS = agent && typeof agent.duration_s === "number" ? agent.duration_s : null;
+  const nMessages = agent && typeof agent.n_messages === "number" ? agent.n_messages : null;
+  const recordedTools = agent ? toolEntries(agent.tools) : [];
+  const finalAnswer = agent ? asString(agent.final_answer) : null;
+
   return (
+    <div id={anchorId("agent", summary.agent_name)} className="scroll-mt-4">
     <Panel className="mt-4">
       <div className="flex flex-wrap items-baseline gap-3">
         <h3 className="text-[17px] font-semibold">{summary.agent_name}</h3>
+        {durationS != null && <Chip label="ran" value={formatDuration(durationS * 1000)} />}
+        {nMessages != null && <Chip label="messages" value={nMessages} />}
         {summary.mission && (
           <span className="text-[13px] text-muted-foreground truncate max-w-[40ch]">
             {summary.mission}
@@ -502,7 +547,15 @@ function AgentSummaryCard({
           </ul>
         </Fold>
       )}
+
+      {/* Recorded activity from page_data.agents — ground truth regardless of
+          what the LLM summary chose to mention. */}
+      {summary.tools.length === 0 && recordedTools.length > 0 && (
+        <ToolCountsFold tools={recordedTools} />
+      )}
+      {finalAnswer && <FinalAnswerFold text={finalAnswer} />}
     </Panel>
+    </div>
   );
 }
 
@@ -518,14 +571,11 @@ function DeterministicAgentCard({ agent }: { agent: Record<string, unknown> }) {
   const step = asString(agent.step);
   const durationS = typeof agent.duration_s === "number" ? agent.duration_s : null;
   const nMessages = typeof agent.n_messages === "number" ? agent.n_messages : null;
-  const tools = isRecord(agent.tools)
-    ? Object.entries(agent.tools).filter(
-        (e): e is [string, number] => typeof e[1] === "number",
-      )
-    : [];
+  const tools = toolEntries(agent.tools);
   const finalAnswer = asString(agent.final_answer);
 
   return (
+    <div id={anchorId("agent", name)} className="scroll-mt-4">
     <Panel className="mt-4">
       <div className="flex flex-wrap items-baseline gap-3" data-testid="run-report-deterministic-agent">
         <h3 className="text-[17px] font-semibold">{name}</h3>
@@ -534,27 +584,10 @@ function DeterministicAgentCard({ agent }: { agent: Record<string, unknown> }) {
         {nMessages != null && <Chip label="messages" value={nMessages} />}
       </div>
 
-      {tools.length > 0 && (
-        <Fold summary={`Tools used (${tools.length})`}>
-          <ul className="space-y-1">
-            {tools.map(([toolName, count]) => (
-              <li key={toolName} className="flex items-baseline gap-2 text-[12.5px]">
-                <span className="font-mono text-[11px] text-muted-foreground/70 min-w-[80px]">
-                  {toolName}
-                </span>
-                <span className="text-muted-foreground/60 tabular-nums">×{count}</span>
-              </li>
-            ))}
-          </ul>
-        </Fold>
-      )}
-
-      {finalAnswer && (
-        <Fold summary="Final answer">
-          <p className="text-[13px] text-muted-foreground whitespace-pre-wrap">{finalAnswer}</p>
-        </Fold>
-      )}
+      {tools.length > 0 && <ToolCountsFold tools={tools} />}
+      {finalAnswer && <FinalAnswerFold text={finalAnswer} />}
     </Panel>
+    </div>
   );
 }
 
@@ -565,6 +598,11 @@ export function TracesSection({ projection }: { projection: RunReportProjection 
   const summarizedNames = new Set(summaries.map((s) => s.agent_name));
   const unsummarizedAgents = deterministicAgents.filter(
     (a) => !summarizedNames.has(asString(a.name) ?? ""),
+  );
+  // Recorded activity per agent (tool counts, final answer) joins the LLM
+  // summary card by name so every card carries ground truth.
+  const agentByName = new Map(
+    deterministicAgents.map((a) => [asString(a.name) ?? "", a]),
   );
 
   // Build a quick rubric-id → title map for joining traces to rubric labels.
@@ -594,7 +632,12 @@ export function TracesSection({ projection }: { projection: RunReportProjection 
         <>
           <MiniHeading className="mt-8">Agent summaries ({summaries.length})</MiniHeading>
           {summaries.map((summary, i) => (
-            <AgentSummaryCard key={summary.agent_name} summary={summary} index={i} />
+            <AgentSummaryCard
+              key={summary.agent_name}
+              summary={summary}
+              index={i}
+              agent={agentByName.get(summary.agent_name)}
+            />
           ))}
           {/* Workers without an LLM summary (e.g. per-document ingestion
               agents) still render as deterministic cards so the roster shows

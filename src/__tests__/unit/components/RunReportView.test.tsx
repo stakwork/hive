@@ -109,7 +109,7 @@ describe("RunReportView — empty shapes are not errors", () => {
     expect(section).toHaveTextContent(/deterministic run/i);
     expect(screen.getAllByTestId("run-report-deterministic-agent").length).toBeGreaterThan(0);
     // record-form tools render a fold; the roster is metadata, never an error state
-    expect(section).toHaveTextContent(/tools used \(2\)/i);
+    expect(section).toHaveTextContent(/tool calls \(2\)/i);
     expect(screen.queryByTestId("run-report-state-absent")).toBeNull();
   });
 
@@ -122,6 +122,37 @@ describe("RunReportView — empty shapes are not errors", () => {
     expect(section).toHaveTextContent(/ingest: appointment-chronology\.xlsx/);
     // summaries still render in full
     expect(section).toHaveTextContent(/agent summaries/i);
+  });
+
+  it("shows the recorded final answer on summarized agent cards", () => {
+    render(<RunReportView payload={payload({ projection: projectionFor("full") })} />);
+    const section = screen.getByTestId("run-report-section-agents");
+    // both summarized agents carry page_data.agents[].final_answer - each
+    // summary card now folds it in alongside the LLM summary
+    expect(section.textContent?.match(/final answer/gi)?.length ?? 0).toBeGreaterThanOrEqual(2);
+  });
+
+  it("lists failed rubrics and every agent in the section rail with matching anchors", () => {
+    const { container } = render(
+      <RunReportView payload={payload({ projection: projectionFor("full") })} />,
+    );
+    // failed rubric R2 gets a rail link and an anchored investigation panel
+    const failLink = container.querySelector('nav a[href="#failure-r2"]');
+    expect(failLink).not.toBeNull();
+    expect(container.querySelector("#failure-r2")).not.toBeNull();
+    // both summarized agents get rail links and anchored cards
+    const agentLink = container.querySelector('nav a[href="#agent-cross-check-agent"]');
+    expect(agentLink).not.toBeNull();
+    expect(container.querySelector("#agent-cross-check-agent")).not.toBeNull();
+    expect(container.querySelector("#agent-drafter")).not.toBeNull();
+  });
+
+  it("rail lists deterministic-only agents too", () => {
+    const { container } = render(
+      <RunReportView payload={payload({ projection: projectionFor("deterministic") })} />,
+    );
+    expect(container.querySelector('nav a[href="#agent-cross-check-agent"]')).not.toBeNull();
+    expect(container.querySelector("#agent-cross-check-agent")).not.toBeNull();
   });
 
   it("keeps the plain empty state when both summaries and agents are empty", () => {
