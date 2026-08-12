@@ -506,9 +506,62 @@ function AgentSummaryCard({
   );
 }
 
+/**
+ * Deterministic agent card — rendered from `page_data.agents[]` when the run
+ * has no LLM summaries (deterministic mode, or every summary phase failed).
+ * The producer contract for an entry: name, step, start/end, duration_s,
+ * n_messages, tools as a {toolName: count} record, final_answer prose.
+ * Everything renders as escaped React text per this directory's rule.
+ */
+function DeterministicAgentCard({ agent }: { agent: Record<string, unknown> }) {
+  const name = asString(agent.name) ?? asString(agent.agent_label) ?? "(unnamed agent)";
+  const step = asString(agent.step);
+  const durationS = typeof agent.duration_s === "number" ? agent.duration_s : null;
+  const nMessages = typeof agent.n_messages === "number" ? agent.n_messages : null;
+  const tools = isRecord(agent.tools)
+    ? Object.entries(agent.tools).filter(
+        (e): e is [string, number] => typeof e[1] === "number",
+      )
+    : [];
+  const finalAnswer = asString(agent.final_answer);
+
+  return (
+    <Panel className="mt-4">
+      <div className="flex flex-wrap items-baseline gap-3" data-testid="run-report-deterministic-agent">
+        <h3 className="text-[17px] font-semibold">{name}</h3>
+        {step && <Chip label="step" value={step} />}
+        {durationS != null && <Chip label="ran" value={formatDuration(durationS * 1000)} />}
+        {nMessages != null && <Chip label="messages" value={nMessages} />}
+      </div>
+
+      {tools.length > 0 && (
+        <Fold summary={`Tools used (${tools.length})`}>
+          <ul className="space-y-1">
+            {tools.map(([toolName, count]) => (
+              <li key={toolName} className="flex items-baseline gap-2 text-[12.5px]">
+                <span className="font-mono text-[11px] text-muted-foreground/70 min-w-[80px]">
+                  {toolName}
+                </span>
+                <span className="text-muted-foreground/60 tabular-nums">×{count}</span>
+              </li>
+            ))}
+          </ul>
+        </Fold>
+      )}
+
+      {finalAnswer && (
+        <Fold summary="Final answer">
+          <p className="text-[13px] text-muted-foreground whitespace-pre-wrap">{finalAnswer}</p>
+        </Fold>
+      )}
+    </Panel>
+  );
+}
+
 export function TracesSection({ projection }: { projection: RunReportProjection }) {
   const traces = readTraces(projection.analysis);
   const summaries = readSummaries(projection.analysis);
+  const deterministicAgents = projection.pageData.agents.filter(isRecord);
 
   // Build a quick rubric-id → title map for joining traces to rubric labels.
   const rubricTitleById = new Map(projection.rubricRows.map((r) => [r.id, r.title]));
@@ -533,13 +586,30 @@ export function TracesSection({ projection }: { projection: RunReportProjection 
       )}
 
       {/* ── Agent summaries ─────────────────────────────────────────────── */}
-      <MiniHeading className="mt-8">Agent summaries ({summaries.length})</MiniHeading>
-      {summaries.length === 0 ? (
-        <EmptyPanel label="No agent summaries for this run." />
+      {summaries.length > 0 ? (
+        <>
+          <MiniHeading className="mt-8">Agent summaries ({summaries.length})</MiniHeading>
+          {summaries.map((summary, i) => (
+            <AgentSummaryCard key={summary.agent_name} summary={summary} index={i} />
+          ))}
+        </>
+      ) : deterministicAgents.length > 0 ? (
+        <>
+          {/* Deterministic runs (run_llm=false) carry no LLM summaries, but
+              page_data.agents still has the roster — show it rather than an
+              empty state, flagged as activity metadata rather than analysis. */}
+          <MiniHeading className="mt-8">
+            Agent activity ({deterministicAgents.length}) — deterministic run, no LLM summaries
+          </MiniHeading>
+          {deterministicAgents.map((agent, i) => (
+            <DeterministicAgentCard key={asString(agent.name) ?? String(i)} agent={agent} />
+          ))}
+        </>
       ) : (
-        summaries.map((summary, i) => (
-          <AgentSummaryCard key={summary.agent_name} summary={summary} index={i} />
-        ))
+        <>
+          <MiniHeading className="mt-8">Agent summaries (0)</MiniHeading>
+          <EmptyPanel label="No agent summaries for this run." />
+        </>
       )}
     </Section>
   );
