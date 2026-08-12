@@ -132,6 +132,29 @@ describe("RunReportView — empty shapes are not errors", () => {
     expect(section.textContent?.match(/final answer/gi)?.length ?? 0).toBeGreaterThanOrEqual(2);
   });
 
+  it("lists failed rubrics and every agent in the section rail with matching anchors", () => {
+    const { container } = render(
+      <RunReportView payload={payload({ projection: projectionFor("full") })} />,
+    );
+    // failed rubric R2 gets a rail link and an anchored investigation panel
+    const failLink = container.querySelector('nav a[href="#failure-r2"]');
+    expect(failLink).not.toBeNull();
+    expect(container.querySelector("#failure-r2")).not.toBeNull();
+    // both summarized agents get rail links and anchored cards
+    const agentLink = container.querySelector('nav a[href="#agent-cross-check-agent"]');
+    expect(agentLink).not.toBeNull();
+    expect(container.querySelector("#agent-cross-check-agent")).not.toBeNull();
+    expect(container.querySelector("#agent-drafter")).not.toBeNull();
+  });
+
+  it("rail lists deterministic-only agents too", () => {
+    const { container } = render(
+      <RunReportView payload={payload({ projection: projectionFor("deterministic") })} />,
+    );
+    expect(container.querySelector('nav a[href="#agent-cross-check-agent"]')).not.toBeNull();
+    expect(container.querySelector("#agent-cross-check-agent")).not.toBeNull();
+  });
+
   it("keeps the plain empty state when both summaries and agents are empty", () => {
     render(<RunReportView payload={payload({ projection: projectionFor("no-analysis") })} />);
     expect(screen.getByTestId("run-report-section-agents")).toHaveTextContent(
