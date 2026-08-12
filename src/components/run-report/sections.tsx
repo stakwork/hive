@@ -25,6 +25,7 @@ import {
   Fold,
   Kicker,
   stringify,
+  renderValue,
 } from "./chrome";
 import { Gantt } from "./Gantt";
 import { RubricStrip, FilterPills } from "./RubricStrip";
@@ -371,11 +372,9 @@ function TraceCard({
                   {String(station.station)}
                 </span>
                 {station.evidence != null && (
-                  <span className="text-muted-foreground break-words flex-1">
-                    {typeof station.evidence === "string"
-                      ? station.evidence
-                      : JSON.stringify(station.evidence)}
-                  </span>
+                  <div className="text-muted-foreground break-words flex-1">
+                    {renderValue(station.evidence)}
+                  </div>
                 )}
               </li>
             ))}
@@ -732,11 +731,21 @@ export function HealthSection({ projection }: { projection: RunReportProjection 
                       <StatusBadge kind={finding.severity === "high" ? "fail" : "warn"}>
                         {finding.severity ?? "info"}
                       </StatusBadge>
-                      <span className="text-muted-foreground flex-1">
+                      <div className="text-muted-foreground flex-1">
                         {asString(finding.detail) ??
                           asString(finding.where) ??
-                          stringify(finding)}
-                      </span>
+                          asString(finding.kind) ?? (
+                            <pre className="text-[11px] font-mono whitespace-pre-wrap break-all bg-muted/40 rounded p-1">
+                              {(() => {
+                                try {
+                                  return JSON.stringify(finding, null, 2);
+                                } catch {
+                                  return "[unserializable]";
+                                }
+                              })()}
+                            </pre>
+                          )}
+                      </div>
                     </li>
                   ))}
                 </ul>
