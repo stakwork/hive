@@ -11,6 +11,8 @@ export interface CreateTestRepositoryOptions {
   testingFrameworkSetup?: boolean;
   playwrightSetup?: boolean;
   triggerPodRepair?: boolean;
+  shallowClone?: boolean;
+  blobSizeLimit?: string | null;
 }
 
 export async function createTestRepository(
@@ -29,6 +31,12 @@ export async function createTestRepository(
       playwrightSetup: options.playwrightSetup ?? false,
       ...(options.triggerPodRepair !== undefined && {
         triggerPodRepair: options.triggerPodRepair,
+      }),
+      ...(options.shallowClone !== undefined && {
+        shallowClone: options.shallowClone,
+      }),
+      ...(options.blobSizeLimit !== undefined && {
+        blobSizeLimit: options.blobSizeLimit,
       }),
     },
   });
