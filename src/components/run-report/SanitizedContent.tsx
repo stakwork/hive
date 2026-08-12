@@ -4,18 +4,13 @@ import React, { createElement, Fragment, type ReactNode } from "react";
 import type { SanitizedNode } from "@/lib/run-report/types";
 
 /**
- * Render the pipeline's closed sanitized-node shape as React elements.
+ * Render the closed sanitized-node shape as React elements.
  *
- * There is NO `dangerouslySetInnerHTML` in this directory — greppable and
- * absolute. The nodes arrive already sanitized server-side, and this renderer
- * only ever calls `createElement` with a tag name and an attribute bag, so the
- * no-HTML-sink guarantee is structural rather than conventional.
+ * There is NO `dangerouslySetInnerHTML` in this directory — this only ever
+ * calls `createElement` with a tag name and an allowlisted attribute bag.
  *
- * `highlights` are character ranges into the document's flattened text index
- * (see `flattenText` in src/lib/run-report/derive.ts). They are applied by
- * walking the same tree in the same order, so a range can span several nodes —
- * which is the normal case, because the generator's tokens are matched against
- * a plain-text rendition it strips before shipping.
+ * `highlights` are character ranges into the flattened text index, applied by
+ * walking the tree in the same order, so a range can span several nodes.
  */
 
 interface Props {
@@ -63,11 +58,7 @@ function renderNode(
   return createElement(node.t, { key, ...(node.a ?? {}) }, children);
 }
 
-/**
- * Split one text node against the highlight ranges, emitting `<mark>` for the
- * overlapping slices. Returns the bare string when nothing overlaps, so the
- * common case allocates nothing.
- */
+/** Split a text node against overlapping ranges; bare string if none overlap. */
 function applyHighlights(
   text: string,
   nodeStart: number,
