@@ -515,6 +515,8 @@ model Repository {
   mocksEnabled          Boolean                 @default(false) @map("mocks_enabled")
   embeddingsEnabled     Boolean                 @default(true) @map("embeddings_enabled")
   triggerPodRepair      Boolean                 @default(false) @map("trigger_pod_repair")
+  shallowClone          Boolean                 @default(false) @map("shallow_clone")
+  blobSizeLimit         String?                 @map("blob_size_limit")
   allowAutoMerge        Boolean                 @default(false) @map("allow_auto_merge")
   deployments           Deployment[]
   recommendations       JanitorRecommendation[]
