@@ -79,8 +79,8 @@ function NodePeekBody({ payload }: { payload: unknown }) {
       )}
       {prose.length === 0 && rest.length === 0 && (
         <p className="text-[12px] text-muted-foreground italic">
-          The graph stores no content on this node — identity only. A concept carrying
-          doctrine would have a description attribute here.
+          The graph stores no content on this node — identity only. A populated
+          concept would carry its doctrine in a docs attribute here.
         </p>
       )}
     </div>
