@@ -33,36 +33,92 @@ function parseChecklistItems(text: string): ChecklistItem[] {
 }
 
 type Hover = { side: "item" | "rubric"; key: string } | null;
+/** Hover highlights transiently; a click PINS the selection until re-clicked. */
 
 export function ChecklistMap({ chain }: { chain: ChainModel }) {
   const model = chain;
   const containerRef = useRef<HTMLDivElement>(null);
   const rowRefs = useRef(new Map<string, HTMLElement>());
   const [hover, setHover] = useState<Hover>(null);
+  // Clicking a row expands it to show its matches inline - the answer
+  // appears under the click, never off-screen in the other column.
+  const [expanded, setExpanded] = useState<Hover>(null);
+  const active = hover ?? expanded;
+  const toggle = (side: "item" | "rubric", key: string) =>
+    setExpanded((p) => (p?.key === key ? null : { side, key }));
+
+  // Tapping a checklist item with matches NAVIGATES: the right column scrolls
+  // to its first matched rubric and opens that rubric's inline view. An item
+  // with no matches expands in place to say so.
+  const onItemClick = (key: string) => {
+    const matches = joins.byItem.get(key) ?? [];
+    if (matches.length === 0) {
+      toggle("item", key);
+      return;
+    }
+    const first = matches[0].id;
+    setExpanded((p) => {
+      if (p?.side === "rubric" && p.key === first) return null;
+      requestAnimationFrame(() => {
+        rowRefs.current
+          .get(`rubric-${first}`)
+          ?.scrollIntoView({ block: "center", behavior: "smooth" });
+      });
+      return { side: "rubric", key: first };
+    });
+  };
+
+  // Tapping a rubric opens its inline view and brings its first matched
+  // checklist item into view on the left.
+  const onRubricClick = (id: string) => {
+    const first = (joins.byRubric.get(id) ?? [])[0];
+    setExpanded((p) => {
+      if (p?.key === id) return null;
+      if (first) {
+        requestAnimationFrame(() => {
+          rowRefs.current.get(first.key)?.scrollIntoView({ block: "center", behavior: "smooth" });
+        });
+      }
+      return { side: "rubric", key: id };
+    });
+  };
 
   const items = useMemo(
     () => (model.checklist ? parseChecklistItems(model.checklist.text) : []),
     [model.checklist],
   );
 
-  // item.key -> rubric ids, rubric id -> item keys (term matches, len >= 4)
+  // item.key -> rubric matches (with the term that joined them), and back
   const joins = useMemo(() => {
-    const byItem = new Map<string, string[]>();
-    const byRubric = new Map<string, string[]>();
+    const byItem = new Map<string, { id: string; token: string }[]>();
+    const byRubric = new Map<string, { key: string; text: string; token: string }[]>();
     for (const item of items) {
       const lower = item.text.toLowerCase();
       for (const c of model.criteria) {
-        if (c.tokens.some((tok) => tok.length >= 4 && lower.includes(tok.toLowerCase()))) {
-          byItem.set(item.key, [...(byItem.get(item.key) ?? []), c.id]);
-          byRubric.set(c.id, [...(byRubric.get(c.id) ?? []), item.key]);
+        const token = c.tokens.find((tok) => tok.length >= 4 && lower.includes(tok.toLowerCase()));
+        if (token) {
+          byItem.set(item.key, [...(byItem.get(item.key) ?? []), { id: c.id, token }]);
+          byRubric.set(c.id, [...(byRubric.get(c.id) ?? []), { key: item.key, text: item.text, token }]);
         }
       }
     }
     return { byItem, byRubric };
   }, [items, model.criteria]);
 
-  const hoveredRubrics = new Set(hover?.side === "item" ? joins.byItem.get(hover.key) ?? [] : hover?.side === "rubric" ? [hover.key] : []);
-  const hoveredItems = new Set(hover?.side === "rubric" ? joins.byRubric.get(hover.key) ?? [] : hover?.side === "item" ? [hover.key] : []);
+  const hoveredRubrics = new Set(
+    active?.side === "item"
+      ? (joins.byItem.get(active.key) ?? []).map((m) => m.id)
+      : active?.side === "rubric"
+        ? [active.key]
+        : [],
+  );
+  const hoveredItems = new Set(
+    active?.side === "rubric"
+      ? (joins.byRubric.get(active.key) ?? []).map((m) => m.key)
+      : active?.side === "item"
+        ? [active.key]
+        : [],
+  );
 
   if (!model.checklist) {
     return (
@@ -99,12 +155,34 @@ export function ChecklistMap({ chain }: { chain: ChainModel }) {
                   ref={(el) => { if (el) rowRefs.current.set(item.key, el); }}
                   onMouseEnter={() => setHover({ side: "item", key: item.key })}
                   onMouseLeave={() => setHover(null)}
-                  className={`flex items-baseline gap-2 rounded px-2 py-1 text-[11.5px] cursor-default transition-colors ${
+                  onClick={() => onItemClick(item.key)}
+                  className={`flex items-baseline gap-2 rounded px-2 py-1 text-[11.5px] cursor-pointer transition-colors ${
                     hot ? "bg-primary/10" : n > 0 ? "hover:bg-muted/50" : "opacity-60"
                   }`}
                 >
                   <span className="font-mono text-[9.5px] text-muted-foreground/50 min-w-[20px] text-right">{i + 1}</span>
-                  <span className="flex-1">{item.text}</span>
+                  <span className="flex-1">
+                    {item.text}
+                    {expanded?.key === item.key && (
+                      <span className="block mt-1.5" onClick={(e) => e.stopPropagation()}>
+                        {(joins.byItem.get(item.key) ?? []).length === 0 ? (
+                          <span className="font-mono text-[10px] text-muted-foreground/60">
+                            no term match to any rubric
+                          </span>
+                        ) : (
+                          (joins.byItem.get(item.key) ?? []).map((m) => (
+                            <a
+                              key={m.id}
+                              href={`#rubric-${m.id}`}
+                              className="inline-flex items-center gap-1.5 rounded-full border border-primary/40 bg-primary/[0.06] px-2 py-0.5 font-mono text-[10px] mr-1.5 hover:border-primary transition-colors"
+                            >
+                              {m.id} <span className="text-muted-foreground/70">via “{m.token}”</span> ↑
+                            </a>
+                          ))
+                        )}
+                      </span>
+                    )}
+                  </span>
                   {n > 0 && (
                     <span className="font-mono text-[9.5px] text-muted-foreground/70 tabular-nums shrink-0">⇢{n}</span>
                   )}
@@ -128,7 +206,8 @@ export function ChecklistMap({ chain }: { chain: ChainModel }) {
                   ref={(el) => { if (el) rowRefs.current.set(`rubric-${c.id}`, el); }}
                   onMouseEnter={() => setHover({ side: "rubric", key: c.id })}
                   onMouseLeave={() => setHover(null)}
-                  className={`flex items-baseline gap-2 rounded px-2 py-1 text-[11.5px] cursor-default transition-colors ${
+                  onClick={() => onRubricClick(c.id)}
+                  className={`group flex items-baseline gap-2 rounded px-2 py-1 text-[11.5px] cursor-pointer transition-colors ${
                     hot ? "bg-primary/10" : "hover:bg-muted/50"
                   } ${c.verdict === "fail" ? "text-destructive" : c.verdict === "unscored" ? "text-amber-600 dark:text-amber-400" : ""}`}
                 >
@@ -136,7 +215,36 @@ export function ChecklistMap({ chain }: { chain: ChainModel }) {
                     <span className="font-mono text-[9.5px] text-muted-foreground/70 tabular-nums shrink-0">{n}⇠</span>
                   )}
                   <span className="font-mono text-[9.5px] text-muted-foreground/60 min-w-[40px]">{c.id}</span>
-                  <span className="flex-1">{c.title}</span>
+                  <span className="flex-1">
+                    {c.title}
+                    {expanded?.key === c.id && (
+                      <span className="block mt-1.5 text-foreground" onClick={(e) => e.stopPropagation()}>
+                        {(joins.byRubric.get(c.id) ?? []).length === 0 ? (
+                          <span className="font-mono text-[10px] text-muted-foreground/60">
+                            no checklist item shares a distinctive term with this rubric
+                          </span>
+                        ) : (
+                          (joins.byRubric.get(c.id) ?? []).map((m) => (
+                            <span
+                              key={m.key}
+                              className="block rounded border border-primary/30 bg-primary/[0.05] px-2 py-1 text-[10.5px] mb-1"
+                            >
+                              {m.text.slice(0, 140)}
+                              <span className="font-mono text-muted-foreground/70"> — via “{m.token}”</span>
+                            </span>
+                          ))
+                        )}
+                      </span>
+                    )}
+                  </span>
+                  <a
+                    href={`#rubric-${c.id}`}
+                    onClick={(e) => e.stopPropagation()}
+                    title="open in the rubric ledger"
+                    className="opacity-0 group-hover:opacity-100 font-mono text-[10px] text-primary shrink-0"
+                  >
+                    open ↑
+                  </a>
                 </div>
               );
             })}
