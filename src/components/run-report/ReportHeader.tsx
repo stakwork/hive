@@ -345,10 +345,12 @@ export function ReportHeader({
 
       <div className="mt-4">
         <div className="font-mono text-[9.5px] uppercase tracking-[0.14em] text-muted-foreground/70 mb-1.5">
-          Concepts pulled{" "}
+          Concepts read{" "}
           <span className="normal-case tracking-normal">
-            — top {Math.min(8, chain.topConcepts.length)} of {chain.topConcepts.length}, from the
-            run&apos;s tool records
+            — top {Math.min(8, chain.topConcepts.length)} of {chain.topConcepts.length} opened via
+            graph_get
+            {chain.conceptsSurfacedOnly > 0 &&
+              ` · ${chain.conceptsSurfacedOnly} surfaced in search but never read`}
           </span>
         </div>
         {chain.conceptsGap ? (

@@ -82,8 +82,13 @@ export interface ChainModel {
   criteria: CriterionChain[];
   inputDocs: { id: string; title: string; kind: string }[];
   workfiles: { name: string; text: string }[];
-  /** Deterministic: graph nodes pulled during the run, ranked by retrieval count. */
+  /** Deterministic: Concept nodes the agents actually READ (graph_get /
+   * graph_neighbors), ranked by read count. A node that only appeared in
+   * search results was never opened and does not count as a pull. */
   topConcepts: ConceptPull[];
+  /** Concept nodes surfaced in search results but never read - a registry
+   * effectiveness signal, not a pull. */
+  conceptsSurfacedOnly: number;
   conceptsGap: string | null;
 }
 
@@ -284,6 +289,7 @@ export function buildChainModel(projection: RunReportProjection): ChainModel {
   // Concepts pulled — deterministic, from the run's own tool-activity records.
   const ta = projection.toolActivity;
   let topConcepts: ConceptPull[] = [];
+  let surfacedOnly = 0;
   let conceptsGap: string | null = null;
   if (ta.present && ta.groups.length > 0) {
     // Aggregate identities sharing a display name (same node reached via
@@ -295,14 +301,23 @@ export function buildChainModel(projection: RunReportProjection): ChainModel {
       if (!CONCEPT_NODE_TYPES.has(identity.nodeType ?? "")) continue;
       const name = identity.name;
       if (!name) continue;
+      // A real pull is a READ: the normalizer marks an identity retrieved
+      // only on retrieval-class evidence (graph_get) or returned content -
+      // a name in a graph_search result list is surfacing, not reading.
+      if (identity.runStatus !== "retrieved") {
+        surfacedOnly += 1;
+        continue;
+      }
       const key = `${identity.nodeType ?? ""}|${name}`;
-      const total = identity.agents.reduce((sum, a) => sum + a.count, 0) || 1;
+      const total = agentsForCount.reduce((sum, a) => sum + a.count, 0) || 1;
       const refId = identity.identityKind === "ref_id" ? identity.identity : null;
+      const readAgents = identity.agents.filter((a) => a.status === "retrieved");
+      const agentsForCount = readAgents.length > 0 ? readAgents : identity.agents;
       const existing = byName.get(key);
       if (existing) {
         existing.total += total;
         existing.refId = existing.refId ?? refId;
-        for (const a of identity.agents) {
+        for (const a of agentsForCount) {
           const ea = existing.agents.find((x) => x.name === a.agentName);
           if (ea) ea.count += a.count;
           else existing.agents.push({ name: a.agentName, count: a.count });
@@ -312,7 +327,7 @@ export function buildChainModel(projection: RunReportProjection): ChainModel {
           name,
           nodeType: identity.nodeType ?? null,
           total,
-          agents: identity.agents.map((a) => ({ name: a.agentName, count: a.count })),
+          agents: agentsForCount.map((a) => ({ name: a.agentName, count: a.count })),
           refId,
         });
       }
@@ -330,6 +345,7 @@ export function buildChainModel(projection: RunReportProjection): ChainModel {
     inputDocs,
     workfiles,
     topConcepts,
+    conceptsSurfacedOnly: surfacedOnly,
     conceptsGap,
   };
 }
