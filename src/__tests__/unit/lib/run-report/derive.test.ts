@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
+  RUBRIC_EXCERPT_CHAR_CAP,
   toEpochMs,
   formatDuration,
   groupRubrics,
@@ -79,6 +80,38 @@ describe("formatDuration", () => {
 });
 
 describe("groupRubrics", () => {
+  it("carries match criteria and judge-review keys, narrowing to primitives", () => {
+    const rows = groupRubrics([
+      {
+        id: "X1",
+        title: "t",
+        verdict: "fail",
+        match_criteria: "asks for the cap",
+        flagged: "true",
+        llm_flag_reason: "judge note",
+        document_excerpt: "quoted evidence",
+      },
+      // object/array judge values must never ride the projection
+      { id: "X2", title: "t", verdict: "fail", flagged: { nested: true }, llm_flag_reason: 42 },
+    ]);
+    expect(rows[0].matchCriteria).toBe("asks for the cap");
+    expect(rows[0].judgeFlagged).toBe("true");
+    expect(rows[0].judgeFlagReason).toBe("judge note");
+    expect(rows[0].documentExcerpt).toBe("quoted evidence");
+    expect(rows[1].judgeFlagged).toBeUndefined();
+    expect(rows[1].judgeFlagReason).toBeUndefined();
+    expect(rows[1].matchCriteria).toBe("");
+    expect(rows[1].documentExcerpt).toBe("");
+  });
+
+  it("clamps an over-long document excerpt", () => {
+    const rows = groupRubrics([
+      { id: "X1", title: "t", verdict: "fail", document_excerpt: "a".repeat(RUBRIC_EXCERPT_CHAR_CAP + 50) },
+    ]);
+    expect(rows[0].documentExcerpt.length).toBe(RUBRIC_EXCERPT_CHAR_CAP + 1);
+    expect(rows[0].documentExcerpt.endsWith("\u2026")).toBe(true);
+  });
+
   it("accepts rubrics[] as first argument (new signature)", () => {
     const rows = groupRubrics([
       { id: "R1", title: "One", verdict: "pass", reasoning: "ok" },
