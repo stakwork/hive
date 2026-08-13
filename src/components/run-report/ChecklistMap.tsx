@@ -33,12 +33,15 @@ function parseChecklistItems(text: string): ChecklistItem[] {
 }
 
 type Hover = { side: "item" | "rubric"; key: string } | null;
+/** Hover highlights transiently; a click PINS the selection until re-clicked. */
 
 export function ChecklistMap({ chain }: { chain: ChainModel }) {
   const model = chain;
   const containerRef = useRef<HTMLDivElement>(null);
   const rowRefs = useRef(new Map<string, HTMLElement>());
   const [hover, setHover] = useState<Hover>(null);
+  const [pinned, setPinned] = useState<Hover>(null);
+  const active = hover ?? pinned;
 
   const items = useMemo(
     () => (model.checklist ? parseChecklistItems(model.checklist.text) : []),
@@ -61,8 +64,8 @@ export function ChecklistMap({ chain }: { chain: ChainModel }) {
     return { byItem, byRubric };
   }, [items, model.criteria]);
 
-  const hoveredRubrics = new Set(hover?.side === "item" ? joins.byItem.get(hover.key) ?? [] : hover?.side === "rubric" ? [hover.key] : []);
-  const hoveredItems = new Set(hover?.side === "rubric" ? joins.byRubric.get(hover.key) ?? [] : hover?.side === "item" ? [hover.key] : []);
+  const hoveredRubrics = new Set(active?.side === "item" ? joins.byItem.get(active.key) ?? [] : active?.side === "rubric" ? [active.key] : []);
+  const hoveredItems = new Set(active?.side === "rubric" ? joins.byRubric.get(active.key) ?? [] : active?.side === "item" ? [active.key] : []);
 
   if (!model.checklist) {
     return (
@@ -99,7 +102,10 @@ export function ChecklistMap({ chain }: { chain: ChainModel }) {
                   ref={(el) => { if (el) rowRefs.current.set(item.key, el); }}
                   onMouseEnter={() => setHover({ side: "item", key: item.key })}
                   onMouseLeave={() => setHover(null)}
-                  className={`flex items-baseline gap-2 rounded px-2 py-1 text-[11.5px] cursor-default transition-colors ${
+                  onClick={() =>
+                    setPinned((p) => (p?.key === item.key ? null : { side: "item", key: item.key }))
+                  }
+                  className={`flex items-baseline gap-2 rounded px-2 py-1 text-[11.5px] cursor-pointer transition-colors ${
                     hot ? "bg-primary/10" : n > 0 ? "hover:bg-muted/50" : "opacity-60"
                   }`}
                 >
@@ -128,7 +134,10 @@ export function ChecklistMap({ chain }: { chain: ChainModel }) {
                   ref={(el) => { if (el) rowRefs.current.set(`rubric-${c.id}`, el); }}
                   onMouseEnter={() => setHover({ side: "rubric", key: c.id })}
                   onMouseLeave={() => setHover(null)}
-                  className={`flex items-baseline gap-2 rounded px-2 py-1 text-[11.5px] cursor-default transition-colors ${
+                  onClick={() =>
+                    setPinned((p) => (p?.key === c.id ? null : { side: "rubric", key: c.id }))
+                  }
+                  className={`group flex items-baseline gap-2 rounded px-2 py-1 text-[11.5px] cursor-pointer transition-colors ${
                     hot ? "bg-primary/10" : "hover:bg-muted/50"
                   } ${c.verdict === "fail" ? "text-destructive" : c.verdict === "unscored" ? "text-amber-600 dark:text-amber-400" : ""}`}
                 >
@@ -137,6 +146,14 @@ export function ChecklistMap({ chain }: { chain: ChainModel }) {
                   )}
                   <span className="font-mono text-[9.5px] text-muted-foreground/60 min-w-[40px]">{c.id}</span>
                   <span className="flex-1">{c.title}</span>
+                  <a
+                    href={`#rubric-${c.id}`}
+                    onClick={(e) => e.stopPropagation()}
+                    title="open in the rubric ledger"
+                    className="opacity-0 group-hover:opacity-100 font-mono text-[10px] text-primary shrink-0"
+                  >
+                    open ↑
+                  </a>
                 </div>
               );
             })}

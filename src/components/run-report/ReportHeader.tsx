@@ -17,52 +17,49 @@ import { formatInUserTz } from "@/lib/date-utils";
 type OpenDoc = (docId: string, tokens: string[]) => void;
 
 /**
- * Renders the lingo node response as a concept card: properties, then edges
- * grouped by type with neighbor chips. Unknown shapes fall back to the
- * generic value tree so the dialog never blanks.
+ * Renders a raw graph node: content-bearing properties (description,
+ * definition, body...) as prose first, every remaining attribute as
+ * key/values. No edge expansion - this is the node itself.
  */
 function NodePeekBody({ payload }: { payload: unknown }) {
   if (!isRecord(payload)) {
     return <div className="text-[12.5px]">{renderValue(payload)}</div>;
   }
-  const node = isRecord(payload.node) ? payload.node : payload;
-  const edges = Array.isArray(payload.edges) ? payload.edges.filter(isRecord) : [];
+  const nested = isRecord(payload.properties) ? payload.properties : {};
+  const merged: Record<string, unknown> = { ...payload, ...nested };
+  const IDENTITY = new Set(["ref_id", "node_type", "name", "properties", "date_added_to_graph"]);
+  const CONTENT_KEYS = ["description", "definition", "body", "content", "text", "summary"];
 
-  const added = node.date_added_to_graph;
+  const added = merged.date_added_to_graph ?? payload.date_added_to_graph;
   const addedSec =
     typeof added === "number" ? added : typeof added === "string" && /^\d+$/.test(added) ? Number(added) : null;
-  const HIDDEN = new Set(["ref_id", "node_type", "name", "date_added_to_graph"]);
-  const props = Object.entries(node).filter(
-    ([k, v]) => !HIDDEN.has(k) && v !== null && v !== undefined && v !== "",
+
+  const prose = CONTENT_KEYS.map((k) => [k, merged[k]] as const).filter(
+    (entry): entry is readonly [string, string] => typeof entry[1] === "string" && entry[1].trim().length > 0,
+  );
+  const proseKeys = new Set(prose.map(([k]) => k));
+  const rest = Object.entries(merged).filter(
+    ([k, v]) => !IDENTITY.has(k) && !proseKeys.has(k) && v !== null && v !== undefined && v !== "",
   );
 
-  const groups = new Map<string, { name?: string; type?: string; ref?: string }[]>();
-  for (const e of edges) {
-    const edgeType = asString(e.edge_type) ?? "RELATED";
-    const nn = isRecord(e.neighbor_node) ? e.neighbor_node : {};
-    groups.set(edgeType, [
-      ...(groups.get(edgeType) ?? []),
-      { name: asString(nn.name), type: asString(nn.node_type), ref: asString(nn.ref_id) },
-    ]);
-  }
-
   return (
-    <div className="text-[12.5px] space-y-1">
+    <div className="text-[12.5px] space-y-2">
       {addedSec !== null && (
         <div className="font-mono text-[10.5px] text-muted-foreground/70">
           added to graph {new Date(addedSec * 1000).toISOString().slice(0, 10)}
         </div>
       )}
-      {props.length === 0 && (
-        <p className="text-[12px] text-muted-foreground italic">
-          The graph stores no content on this node — name and relationships only. (A
-          Concept with doctrine would carry a description attribute, like Lingo nodes
-          carry a definition.)
-        </p>
-      )}
-      {props.length > 0 && (
+      {prose.map(([k, v]) => (
+        <div key={k}>
+          <div className="font-mono text-[9px] uppercase tracking-[0.12em] text-muted-foreground/60 mb-0.5">
+            {k}
+          </div>
+          <p className="whitespace-pre-wrap">{v}</p>
+        </div>
+      ))}
+      {rest.length > 0 && (
         <dl className="grid grid-cols-[minmax(0,160px)_minmax(0,1fr)] gap-x-3 gap-y-0.5">
-          {props.map(([k, v]) => (
+          {rest.map(([k, v]) => (
             <React.Fragment key={k}>
               <dt className="font-mono text-[10.5px] text-muted-foreground/70 truncate pt-0.5">{k}</dt>
               <dd className="break-words">{typeof v === "object" ? renderValue(v) : String(v)}</dd>
@@ -70,30 +67,12 @@ function NodePeekBody({ payload }: { payload: unknown }) {
           ))}
         </dl>
       )}
-      {[...groups.entries()].map(([edgeType, neighbors]) => (
-        <div key={edgeType}>
-          <MiniHeading>
-            {edgeType} ({neighbors.length})
-          </MiniHeading>
-          <div className="flex flex-wrap gap-1">
-            {neighbors.slice(0, 24).map((n, i) => (
-              <span
-                key={`${n.ref ?? i}`}
-                title={n.ref ?? undefined}
-                className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-[10.5px] text-muted-foreground"
-              >
-                {n.type && <span className="text-muted-foreground/50">{n.type}</span>}
-                {n.name ?? (n.ref ? `${n.ref.slice(0, 8)}…` : "unnamed")}
-              </span>
-            ))}
-            {neighbors.length > 24 && (
-              <span className="text-[10.5px] text-muted-foreground/60">
-                +{neighbors.length - 24} more
-              </span>
-            )}
-          </div>
-        </div>
-      ))}
+      {prose.length === 0 && rest.length === 0 && (
+        <p className="text-[12px] text-muted-foreground italic">
+          The graph stores no content on this node — identity only. A concept carrying
+          doctrine would have a description attribute here.
+        </p>
+      )}
     </div>
   );
 }
@@ -130,7 +109,7 @@ function ConceptStrip({
     setPeek({ c, state: "loading" });
     try {
       const res = await fetch(
-        `/api/workspaces/${encodeURIComponent(workspaceSlug)}/lingo/nodes/${encodeURIComponent(c.refId)}`,
+        `/api/workspaces/${encodeURIComponent(workspaceSlug)}/run-report/nodes/${encodeURIComponent(c.refId)}`,
       );
       const json = await res.json().catch(() => null);
       if (!res.ok || !json?.success) {
