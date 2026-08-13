@@ -150,7 +150,10 @@ export function RunReportView({ payload, taskTitle = "Run report" }: Props) {
   return (
     <div className="grid grid-cols-1 lg:grid-cols-[200px_minmax(0,1fr)] gap-8 max-w-[1180px]" data-testid="run-report-view">
       {/* Sticky section rail */}
-      <nav className="hidden lg:block sticky top-4 self-start max-h-[calc(100vh-2rem)] overflow-y-auto font-mono text-[11px] border-r border-border pr-4">
+      {/* App shell scrolls in <main> (overflow-auto), not the window: size the
+          rail against the dynamic viewport minus shell chrome so its own
+          scrollbar engages instead of pinning entries out of reach. */}
+      <nav className="hidden lg:block sticky top-0 self-start max-h-[calc(100dvh-9rem)] overflow-y-auto overscroll-contain font-mono text-[11px] border-r border-border pr-4">
         {navGroups.map((group) => (
           <div key={group.group}>
             <div className="text-[9px] uppercase tracking-[0.14em] text-muted-foreground/50 mt-4 mb-1.5 first:mt-0">
