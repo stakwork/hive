@@ -47,6 +47,42 @@ export function ChecklistMap({ chain }: { chain: ChainModel }) {
   const toggle = (side: "item" | "rubric", key: string) =>
     setExpanded((p) => (p?.key === key ? null : { side, key }));
 
+  // Tapping a checklist item with matches NAVIGATES: the right column scrolls
+  // to its first matched rubric and opens that rubric's inline view. An item
+  // with no matches expands in place to say so.
+  const onItemClick = (key: string) => {
+    const matches = joins.byItem.get(key) ?? [];
+    if (matches.length === 0) {
+      toggle("item", key);
+      return;
+    }
+    const first = matches[0].id;
+    setExpanded((p) => {
+      if (p?.side === "rubric" && p.key === first) return null;
+      requestAnimationFrame(() => {
+        rowRefs.current
+          .get(`rubric-${first}`)
+          ?.scrollIntoView({ block: "center", behavior: "smooth" });
+      });
+      return { side: "rubric", key: first };
+    });
+  };
+
+  // Tapping a rubric opens its inline view and brings its first matched
+  // checklist item into view on the left.
+  const onRubricClick = (id: string) => {
+    const first = (joins.byRubric.get(id) ?? [])[0];
+    setExpanded((p) => {
+      if (p?.key === id) return null;
+      if (first) {
+        requestAnimationFrame(() => {
+          rowRefs.current.get(first.key)?.scrollIntoView({ block: "center", behavior: "smooth" });
+        });
+      }
+      return { side: "rubric", key: id };
+    });
+  };
+
   const items = useMemo(
     () => (model.checklist ? parseChecklistItems(model.checklist.text) : []),
     [model.checklist],
@@ -119,7 +155,7 @@ export function ChecklistMap({ chain }: { chain: ChainModel }) {
                   ref={(el) => { if (el) rowRefs.current.set(item.key, el); }}
                   onMouseEnter={() => setHover({ side: "item", key: item.key })}
                   onMouseLeave={() => setHover(null)}
-                  onClick={() => toggle("item", item.key)}
+                  onClick={() => onItemClick(item.key)}
                   className={`flex items-baseline gap-2 rounded px-2 py-1 text-[11.5px] cursor-pointer transition-colors ${
                     hot ? "bg-primary/10" : n > 0 ? "hover:bg-muted/50" : "opacity-60"
                   }`}
@@ -170,7 +206,7 @@ export function ChecklistMap({ chain }: { chain: ChainModel }) {
                   ref={(el) => { if (el) rowRefs.current.set(`rubric-${c.id}`, el); }}
                   onMouseEnter={() => setHover({ side: "rubric", key: c.id })}
                   onMouseLeave={() => setHover(null)}
-                  onClick={() => toggle("rubric", c.id)}
+                  onClick={() => onRubricClick(c.id)}
                   className={`group flex items-baseline gap-2 rounded px-2 py-1 text-[11.5px] cursor-pointer transition-colors ${
                     hot ? "bg-primary/10" : "hover:bg-muted/50"
                   } ${c.verdict === "fail" ? "text-destructive" : c.verdict === "unscored" ? "text-amber-600 dark:text-amber-400" : ""}`}
