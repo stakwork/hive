@@ -4,7 +4,8 @@ import React, { useEffect, useState } from "react";
 import type { RunReportProjection } from "@/lib/run-report/types";
 import { readTraces } from "@/lib/run-report/derive";
 import type { ChainModel, CriterionChain, Hop, HopLink } from "@/lib/run-report/chain";
-import { Kicker, StatusBadge } from "./chrome";
+import { Kicker, StatusBadge, EmptyPanel } from "./chrome";
+import { resolveJudgeDispute } from "@/lib/harvey-lab/eval-normalizers";
 
 /**
  * Rubric-first review ledger.
@@ -208,7 +209,15 @@ export function RubricLedger({
   const open = chain.criteria.filter((c) => c.verdict !== "pass");
   const passed = chain.criteria.filter((c) => c.verdict === "pass");
 
-  if (chain.criteria.length === 0) return null;
+  if (chain.criteria.length === 0) {
+    return (
+      <section id="rubrics" className="scroll-mt-6" data-testid="run-report-section-rubrics">
+        <Kicker>Review</Kicker>
+        <h2 className="text-2xl font-semibold tracking-tight mb-4">Rubrics</h2>
+        <EmptyPanel label="This run is ungraded — the bundle carries no rubric results." />
+      </section>
+    );
+  }
 
   return (
     <section id="rubrics" className="scroll-mt-6" data-testid="run-report-section-rubrics">
@@ -247,11 +256,47 @@ export function RubricLedger({
                 {selected.verdict}
               </StatusBadge>
             </div>
+            {selected.matchCriteria && (
+              <div className="mb-3">
+                <div className="font-mono text-[9px] uppercase tracking-[0.12em] text-muted-foreground/70 mb-0.5">
+                  Criteria
+                </div>
+                <p className="text-[12.5px] text-muted-foreground whitespace-pre-wrap">
+                  {selected.matchCriteria}
+                </p>
+              </div>
+            )}
             {selected.reasoning && (
               <p className="text-[12.5px] text-muted-foreground border-l-2 border-border pl-3 mb-4 whitespace-pre-wrap">
                 <b className="text-foreground">Judge:</b> {selected.reasoning}
               </p>
             )}
+            {(() => {
+              // Treatment mirrors LegalBenchmarkResults' dispute panel; all
+              // interpretation of the wire keys stays in resolveJudgeDispute.
+              const dispute = resolveJudgeDispute({
+                verdict: selected.verdict,
+                flagged: selected.judgeFlagged,
+                llm_flag_reason: selected.judgeFlagReason,
+              });
+              if (!dispute) return null;
+              return (
+                <div
+                  className="rounded border border-amber-500/40 bg-amber-500/[0.06] px-3.5 py-2.5 mb-4"
+                  data-testid="run-report-judge-dispute"
+                >
+                  <div className="font-mono text-[9px] uppercase tracking-[0.12em] text-amber-700 dark:text-amber-400 mb-1">
+                    Judge review
+                  </div>
+                  <p className="text-[12.5px] whitespace-pre-wrap">{dispute.displayText}</p>
+                  {selected.documentExcerpt && (
+                    <blockquote className="mt-2 max-h-40 overflow-y-auto overscroll-contain border-l-2 border-amber-500/40 pl-3 text-[12px] text-muted-foreground whitespace-pre-wrap">
+                      {selected.documentExcerpt}
+                    </blockquote>
+                  )}
+                </div>
+              );
+            })()}
             {hasCommentary && selected.verdictNote && (
               <div className="rounded border border-destructive/30 bg-destructive/[0.04] px-3.5 py-2.5 mb-4">
                 <div className="flex items-baseline gap-2">

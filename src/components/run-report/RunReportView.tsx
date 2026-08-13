@@ -17,8 +17,7 @@ import {
   SourcesSection,
   HealthSection,
 } from "./sections";
-import { SectionErrorBoundary, anchorId, Kicker } from "./chrome";
-import { readRosterNames } from "@/lib/run-report/derive";
+import { SectionErrorBoundary, Kicker } from "./chrome";
 
 /**
  * Run report renderer — rubric-first.
@@ -48,35 +47,6 @@ interface Props {
   taskTitle?: string;
   workspaceSlug?: string | null;
 }
-
-const NAV_GROUPS: Array<{ group: string; items: Array<{ id: string; label: string }> }> = [
-  {
-    group: "Review",
-    items: [
-      { id: "run-report-header", label: "Overview" },
-      { id: "rubrics", label: "Rubrics" },
-    ],
-  },
-  {
-    group: "Coverage",
-    items: [{ id: "checklist-map", label: "Checklist ↔ Rubrics" }],
-  },
-  {
-    group: "Context",
-    items: [
-      { id: "concepts", label: "Concept pulls" },
-      { id: "sources", label: "Sources & artifacts" },
-    ],
-  },
-  {
-    group: "Debugging",
-    items: [
-      { id: "pipeline", label: "Pipeline" },
-      { id: "agents", label: "Agent roster" },
-      { id: "system", label: "System health" },
-    ],
-  },
-];
 
 export function RunReportView({ payload, taskTitle = "Run report", workspaceSlug = null }: Props) {
   const { timezone } = useUserTimezone();
@@ -126,62 +96,10 @@ export function RunReportView({ payload, taskTitle = "Run report", workspaceSlug
     : null;
   const onOpenDoc = (docId: string, tokens: string[]) => setOpenDoc({ docId, tokens });
 
-  // The rail lists every failed/unscored rubric (selecting it in the ledger)
-  // and every agent, mirroring the review motion: tap C-038 → its chain.
-  const rosterMap = readRosterNames(projection.analysis, projection.pageData.agents);
-  const rosterNames = [...rosterMap.values()];
-  const navGroups = NAV_GROUPS.map((group) => {
-    if (group.group === "Review") {
-      return {
-        ...group,
-        items: [
-          ...group.items,
-          ...chain.criteria
-            .filter((c) => c.verdict !== "pass")
-            .map((c) => ({ id: `rubric-${c.id}`, label: c.id })),
-        ],
-      };
-    }
-    if (group.group === "Debugging") {
-      return {
-        ...group,
-        items: [
-          ...group.items.slice(0, 2),
-          ...rosterNames.map((n) => ({ id: anchorId("agent", n), label: n })),
-          { id: "tool-activity", label: "Tool activity" },
-          ...group.items.slice(2),
-        ],
-      };
-    }
-    return group;
-  });
-
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-[200px_minmax(0,1fr)] gap-8 max-w-[1180px]" data-testid="run-report-view">
-      {/* Sticky section rail */}
-      {/* App shell scrolls in <main> (overflow-auto), not the window: size the
-          rail against the dynamic viewport minus shell chrome so its own
-          scrollbar engages instead of pinning entries out of reach. */}
-      <nav className="hidden lg:block sticky top-0 self-start max-h-[calc(100dvh-9rem)] overflow-y-auto overscroll-contain font-mono text-[11px] border-r border-border pr-4">
-        {navGroups.map((group) => (
-          <div key={group.group}>
-            <div className="text-[9px] uppercase tracking-[0.14em] text-muted-foreground/50 mt-4 mb-1.5 first:mt-0">
-              {group.group}
-            </div>
-            {group.items.map((item) => (
-              <a
-                key={item.id}
-                href={`#${item.id}`}
-                title={item.label}
-                className="block truncate text-muted-foreground hover:text-foreground hover:bg-muted/50 rounded px-2 -ml-2 py-0.5 transition-colors"
-              >
-                {item.label}
-              </a>
-            ))}
-          </div>
-        ))}
-      </nav>
-
+    <div className="max-w-[1080px] mx-auto" data-testid="run-report-view">
+      {/* No section rail - the ledger's criterion list IS the navigation;
+          the page reads top-to-bottom in review order. */}
       <main className="min-w-0 pb-24">
         <div id="run-report-header" className="scroll-mt-6">
           <SectionErrorBoundary>
