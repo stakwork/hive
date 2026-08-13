@@ -119,7 +119,7 @@ function ConceptStrip({
     setPeek({ c, state: "loading" });
     try {
       const res = await fetch(
-        `/api/workspaces/${encodeURIComponent(workspaceSlug)}/run-report/nodes/${encodeURIComponent(c.refId)}`,
+        `/api/workspaces/${encodeURIComponent(workspaceSlug)}/nodes/${encodeURIComponent(c.refId)}`,
       );
       const json = await res.json().catch(() => null);
       if (!res.ok || !json?.success) {

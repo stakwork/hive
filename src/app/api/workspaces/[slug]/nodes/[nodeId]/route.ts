@@ -20,7 +20,53 @@ function handleSwarmAccessError(error: { type: string }) {
   return NextResponse.json({ error: errorInfo.message }, { status: errorInfo.status });
 }
 
+/**
+ * Raw node fetch by ref_id: plain `GET {jarvis}/v2/nodes/{ref_id}` returned
+ * whole - no Lingo-shape normalization, no edge expansion (unlike the lingo
+ * route). Consumed by the run report's concept peek; renderers must treat
+ * the payload as untrusted text.
+ */
+export async function GET(request: NextRequest, { params }: RouteParams) {
+  try {
+    const context = getMiddlewareContext(request);
+    const userOrResponse = requireAuth(context);
+    if (userOrResponse instanceof NextResponse) return userOrResponse;
+
+    const { slug, nodeId } = await params;
+
+    const swarmAccessResult = await getWorkspaceSwarmAccess(slug, userOrResponse.id);
+    if (!swarmAccessResult.success) {
+      return handleSwarmAccessError(swarmAccessResult.error);
+    }
+
+    const { swarmName, swarmApiKey } = swarmAccessResult.data;
+    const jarvisUrl = getJarvisUrl(swarmName);
+
+    const response = await fetch(`${jarvisUrl}/v2/nodes/${encodeURIComponent(nodeId)}`, {
+      method: "GET",
+      headers: {
+        "x-api-token": swarmApiKey,
+        "Content-Type": "application/json",
+      },
+    });
+    if (!response.ok) {
+      return NextResponse.json({ success: false, error: "Node not found" }, { status: 404 });
+    }
+    const data = await response.json();
+    // Jarvis answers {nodes: [node]}, {node}, or the node itself.
+    const node = Array.isArray(data?.nodes) ? (data.nodes[0] ?? null) : (data?.node ?? data);
+    if (!node) {
+      return NextResponse.json({ success: false, error: "Node not found" }, { status: 404 });
+    }
+    return NextResponse.json({ success: true, data: node });
+  } catch (error) {
+    console.error("[Nodes] GET error:", error);
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+  }
+}
+
 export async function PUT(request: NextRequest, { params }: RouteParams) {
+
   try {
     const context = getMiddlewareContext(request);
     const userOrResponse = requireAuth(context);
