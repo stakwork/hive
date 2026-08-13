@@ -704,7 +704,7 @@ export function ToolActivitySection({ projection }: { projection: RunReportProje
 
   return (
     <Section id="tool-activity" kicker="Graph traversal" title="Tool activity">
-      {/* Data-quality counters */}
+      {/* Data-quality counters — diagnostics, not the story: folded away */}
       {(unknownToolNames.length > 0 ||
         unidentifiedNodeCount > 0 ||
         unattributedRecordCount > 0 ||
@@ -714,7 +714,7 @@ export function ToolActivitySection({ projection }: { projection: RunReportProje
         truncated.callsPerAgent.length > 0 ||
         truncated.nodesPerCall > 0 ||
         withheldInputFieldCount > 0) && (
-        <Panel className="mb-4">
+        <Fold summary="data-quality notes">
           <ul className="space-y-0.5 text-[12.5px] text-muted-foreground">
             {unknownToolNames.length > 0 && (
               <li>
@@ -750,7 +750,7 @@ export function ToolActivitySection({ projection }: { projection: RunReportProje
               <li>{withheldInputFieldCount} input field(s) withheld across all calls</li>
             )}
           </ul>
-        </Panel>
+        </Fold>
       )}
 
       {groups.map((group) => {
@@ -759,29 +759,50 @@ export function ToolActivitySection({ projection }: { projection: RunReportProje
         for (const call of group.calls) {
           toolCounts.set(call.toolName, (toolCounts.get(call.toolName) ?? 0) + 1);
         }
+        const sortedTools = [...toolCounts.entries()].sort((a, b) => b[1] - a[1]);
+        const maxToolCount = sortedTools[0]?.[1] ?? 1;
+        const emptyCalls = group.calls.filter((c) => c.status === "empty").length;
+        const errorCalls = group.calls.filter((c) => c.status === "error").length;
 
         return (
           <div key={group.agentKey} className="mt-6">
-            <h3
-              id={anchorId("tool", group.agentKey)}
-              className="text-[15px] font-semibold scroll-mt-4 mb-1"
-            >
-              {group.isUnattributed ? "(unattributed)" : group.agentName}
-            </h3>
+            <div className="flex flex-wrap items-baseline gap-3 mb-2">
+              <h3
+                id={anchorId("tool", group.agentKey)}
+                className="text-[15px] font-semibold scroll-mt-4"
+              >
+                {group.isUnattributed ? "(unattributed)" : group.agentName}
+              </h3>
+              <Chip label="calls" value={group.calls.length} />
+              {emptyCalls > 0 && <Chip label="empty" value={emptyCalls} />}
+              {errorCalls > 0 && <Chip label="errors" value={errorCalls} />}
+            </div>
 
-            {/* Per-tool call summary */}
-            <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[12.5px] text-muted-foreground mb-0.5">
-              {[...toolCounts.entries()].map(([toolName, count]) => (
-                <span key={toolName}>
-                  <span className="font-mono">{toolName}</span>
-                  {" "}×{count}
-                </span>
+            {/* What this agent leaned on, at a glance */}
+            <div className="space-y-1 mb-2 max-w-[440px]">
+              {sortedTools.map(([toolName, count]) => (
+                <div
+                  key={toolName}
+                  className="grid grid-cols-[minmax(0,170px)_1fr_auto] items-center gap-2"
+                >
+                  <span className="font-mono text-[11px] text-muted-foreground truncate">
+                    {toolName}
+                  </span>
+                  <div className="h-1.5 rounded-full bg-muted overflow-hidden">
+                    <div
+                      className="h-full rounded-full bg-primary/60"
+                      style={{ width: `${Math.max(4, (count / maxToolCount) * 100)}%` }}
+                    />
+                  </div>
+                  <span className="font-mono text-[11px] text-muted-foreground/70 tabular-nums">
+                    ×{count}
+                  </span>
+                </div>
               ))}
             </div>
-            <div className="text-[11px] text-muted-foreground/60 mb-3">
-              (as derived from parsed tool records)
-            </div>
 
+            {/* The per-call record is drill-down, not the default view */}
+            <Fold summary={`call-by-call detail (${group.calls.length})`}>
             <div className="space-y-2">
               {group.calls.map((call, ci) => {
                 const foldLabel = call.rawToolName || call.toolName;
@@ -851,6 +872,7 @@ export function ToolActivitySection({ projection }: { projection: RunReportProje
                 );
               })}
             </div>
+            </Fold>
           </div>
         );
       })}
@@ -859,6 +881,57 @@ export function ToolActivitySection({ projection }: { projection: RunReportProje
 }
 
 // ── 7. Concept pulls ─────────────────────────────────────────────────────────
+
+const TOP_CONCEPTS = 10;
+
+/** One ranked row: how often a graph node was pulled, and by which stage. */
+function ConceptRankRow({
+  identity,
+  total,
+  maxTotal,
+}: {
+  identity: NodeIdentityRow;
+  total: number;
+  maxTotal: number;
+}) {
+  return (
+    <div className="py-1" data-testid="run-report-concept-rank-row">
+      <div className="flex items-baseline gap-2 min-w-0">
+        <span className="font-mono text-[11px] text-muted-foreground/70 tabular-nums w-9 shrink-0 text-right">
+          ×{total}
+        </span>
+        {identity.nodeType && (
+          <span className="font-mono text-[10px] uppercase tracking-[0.08em] text-muted-foreground/60 shrink-0">
+            {identity.nodeType}
+          </span>
+        )}
+        <span className="text-[13px] truncate">{identity.name ?? identity.identity}</span>
+        {identity.runStatus !== "retrieved" && (
+          <StatusBadge kind="muted">{identity.runStatus}</StatusBadge>
+        )}
+      </div>
+      <div className="grid grid-cols-[130px_minmax(0,1fr)] items-center gap-2 mt-1 ml-11">
+        <div className="h-1.5 rounded-full bg-muted overflow-hidden">
+          <div
+            className="h-full rounded-full bg-primary/60"
+            style={{ width: `${Math.max(4, (total / maxTotal) * 100)}%` }}
+          />
+        </div>
+        <div className="flex flex-wrap gap-1">
+          {identity.agents.map((agentEntry) => (
+            <span
+              key={agentEntry.agentKey}
+              className="inline-flex items-center gap-1 rounded-full bg-muted px-1.5 py-px text-[10px] text-muted-foreground"
+            >
+              {agentEntry.agentName}
+              {agentEntry.count > 1 && <span className="tabular-nums">×{agentEntry.count}</span>}
+            </span>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export function ConceptsSection({ projection }: { projection: RunReportProjection }) {
   const concepts = projection.concepts;
@@ -879,54 +952,87 @@ export function ConceptsSection({ projection }: { projection: RunReportProjectio
 
   return (
     <Section id="concepts" kicker="Concept usage" title="Concept pulls">
-      {/* Graph nodes used block */}
-      {nodeIdentities.length > 0 && (
-        <>
-          <MiniHeading>Graph nodes used ({nodeIdentities.length})</MiniHeading>
-          <div className="space-y-2 mb-6">
-            {nodeIdentities.map((identity) => (
-              <div
-                key={identity.canonicalKey}
-                className="flex flex-wrap items-baseline gap-2 text-[12.5px] rounded px-2 py-1.5 bg-muted/20"
-              >
-                {identity.nodeType && (
-                  <span className="font-mono text-[10.5px] text-muted-foreground/70">
-                    {identity.nodeType}
-                  </span>
-                )}
-                {identity.name && (
-                  <span className="text-muted-foreground">{identity.name}</span>
-                )}
-                <CopyableId identity={identity.identity} />
-                <StatusBadge kind={identity.runStatus === "retrieved" ? "pass" : "muted"}>
-                  {identity.runStatus}
-                </StatusBadge>
-                {identity.runBasis && (
-                  <span className="text-[10.5px] text-muted-foreground/60">
-                    via {identity.runBasis}
-                  </span>
-                )}
-                {identity.agents.map((agentEntry) => (
-                  <span
-                    key={agentEntry.agentKey}
-                    className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-[10.5px] text-muted-foreground"
-                  >
-                    {agentEntry.agentName}
-                    {agentEntry.count > 1 && (
-                      <span className="tabular-nums">×{agentEntry.count}</span>
-                    )}
-                  </span>
+      {/* Ranked retrieval view: the story is which concepts the run leaned on
+          and at what stage — not an exhaustive node dump. The full identity
+          list (with copyable ids) is drill-down behind a fold. */}
+      {nodeIdentities.length > 0 &&
+        (() => {
+          const ranked = nodeIdentities
+            .map((identity) => ({
+              identity,
+              total: identity.agents.reduce((sum, a) => sum + a.count, 0) || 1,
+            }))
+            .sort((a, b) => b.total - a.total);
+          const top = ranked.slice(0, TOP_CONCEPTS);
+          const maxTotal = top[0]?.total || 1;
+          return (
+            <>
+              <MiniHeading>
+                Top retrieved concepts ({Math.min(TOP_CONCEPTS, ranked.length)} of{" "}
+                {ranked.length} graph nodes)
+              </MiniHeading>
+              <div className="mb-3">
+                {top.map(({ identity, total }) => (
+                  <ConceptRankRow
+                    key={identity.canonicalKey}
+                    identity={identity}
+                    total={total}
+                    maxTotal={maxTotal}
+                  />
                 ))}
-                {identity.hasOffScreenEvidence && (
-                  <span className="text-[10.5px] text-muted-foreground/60">
-                    (additional evidence off-screen)
-                  </span>
-                )}
               </div>
-            ))}
-          </div>
-        </>
-      )}
+              <div className="mb-6">
+                <Fold summary={`all graph nodes (${ranked.length})`}>
+                  <div className="space-y-2">
+                    {ranked.map(({ identity, total }) => (
+                      <div
+                        key={identity.canonicalKey}
+                        className="flex flex-wrap items-baseline gap-2 text-[12.5px] rounded px-2 py-1.5 bg-muted/20"
+                      >
+                        <span className="font-mono text-[10.5px] text-muted-foreground/70 tabular-nums">
+                          ×{total}
+                        </span>
+                        {identity.nodeType && (
+                          <span className="font-mono text-[10.5px] text-muted-foreground/70">
+                            {identity.nodeType}
+                          </span>
+                        )}
+                        {identity.name && (
+                          <span className="text-muted-foreground">{identity.name}</span>
+                        )}
+                        <CopyableId identity={identity.identity} />
+                        <StatusBadge kind={identity.runStatus === "retrieved" ? "pass" : "muted"}>
+                          {identity.runStatus}
+                        </StatusBadge>
+                        {identity.runBasis && (
+                          <span className="text-[10.5px] text-muted-foreground/60">
+                            via {identity.runBasis}
+                          </span>
+                        )}
+                        {identity.agents.map((agentEntry) => (
+                          <span
+                            key={agentEntry.agentKey}
+                            className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-[10.5px] text-muted-foreground"
+                          >
+                            {agentEntry.agentName}
+                            {agentEntry.count > 1 && (
+                              <span className="tabular-nums">×{agentEntry.count}</span>
+                            )}
+                          </span>
+                        ))}
+                        {identity.hasOffScreenEvidence && (
+                          <span className="text-[10.5px] text-muted-foreground/60">
+                            (additional evidence off-screen)
+                          </span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </Fold>
+              </div>
+            </>
+          );
+        })()}
 
       {/* Synthesis narrative */}
       {hasSynthesis ? (
