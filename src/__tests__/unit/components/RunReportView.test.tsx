@@ -46,15 +46,9 @@ describe("RunReportView — render states", () => {
     }
   });
 
-  it("renders the section rail with a link per section", () => {
+  it("renders no section rail — the ledger is the navigation", () => {
     const { container } = render(<RunReportView payload={payload()} />);
-    const railLinks = [...container.querySelectorAll('nav a[href^="#"]')].map((a) =>
-      a.getAttribute("href"),
-    );
-    expect(railLinks).toContain("#run-report-header");
-    expect(railLinks).toContain("#rubrics");
-    expect(railLinks).toContain("#checklist-map");
-    expect(railLinks).toContain("#system");
+    expect(container.querySelector("nav")).toBeNull();
   });
 
   it("renders the rubric ledger: failed and unscored listed, passes folded", () => {
@@ -67,6 +61,21 @@ describe("RunReportView — render states", () => {
     // failed-first ordering selects R2 by default; its chain renders hops
     expect(screen.getAllByText(/The deliverable/i).length).toBeGreaterThan(0);
     expect(screen.getAllByText(/Did the checklist represent what the rubric expected/i).length).toBeGreaterThan(0);
+  });
+
+  it("renders match criteria and the judge review on the selected failed rubric", () => {
+    render(<RunReportView payload={payload()} />);
+    // R2 (fail) is selected by default; its criteria text and judge-review
+    // block (flagged + prose + excerpt from the fixture) render
+    expect(screen.getByText(/identifies section 12\.4 as unilateral/i)).toBeInTheDocument();
+    const dispute = screen.getByTestId("run-report-judge-dispute");
+    expect(dispute).toHaveTextContent(/may be too strict/i);
+    expect(dispute).toHaveTextContent(/terminate this Agreement for convenience/i);
+  });
+
+  it("renders no judge review on an all-pass run", () => {
+    render(<RunReportView payload={payload({ projection: projectionFor("all-pass") })} />);
+    expect(screen.queryByTestId("run-report-judge-dispute")).toBeNull();
   });
 
   it("shows agent commentary slots only when the bundle carries traces", () => {
@@ -151,27 +160,7 @@ describe("RunReportView — empty shapes are not errors", () => {
     expect(section.textContent?.match(/final answer/gi)?.length ?? 0).toBeGreaterThanOrEqual(2);
   });
 
-  it("lists failed rubrics and every agent in the section rail with matching anchors", () => {
-    const { container } = render(
-      <RunReportView payload={payload({ projection: projectionFor("full") })} />,
-    );
-    // failed rubric R2 gets a rail link that selects it in the ledger
-    const failLink = container.querySelector('nav a[href="#rubric-R2"]');
-    expect(failLink).not.toBeNull();
-    // both summarized agents get rail links and anchored cards
-    const agentLink = container.querySelector('nav a[href="#agent-cross-check-agent"]');
-    expect(agentLink).not.toBeNull();
-    expect(container.querySelector("#agent-cross-check-agent")).not.toBeNull();
-    expect(container.querySelector("#agent-drafter")).not.toBeNull();
-  });
 
-  it("rail lists deterministic-only agents too", () => {
-    const { container } = render(
-      <RunReportView payload={payload({ projection: projectionFor("deterministic") })} />,
-    );
-    expect(container.querySelector('nav a[href="#agent-cross-check-agent"]')).not.toBeNull();
-    expect(container.querySelector("#agent-cross-check-agent")).not.toBeNull();
-  });
 
   it("keeps the plain empty state when both summaries and agents are empty", () => {
     render(<RunReportView payload={payload({ projection: projectionFor("no-analysis") })} />);
@@ -247,14 +236,6 @@ describe("RunReportView — escaped prose", () => {
 });
 
 describe("RunReportView — ToolActivitySection nav and render", () => {
-  it("nav rail contains Tool activity link after roster items", () => {
-    const { container } = render(
-      <RunReportView payload={payload({ projection: projectionFor("with-tool-activity") })} />,
-    );
-    const toolActivityLink = container.querySelector('nav a[href="#tool-activity"]');
-    expect(toolActivityLink).not.toBeNull();
-    expect(toolActivityLink!.textContent).toContain("Tool activity");
-  });
 
   it("v1 full fixture renders without crashing (ToolActivitySection returns null)", () => {
     // The full fixture has toolActivity.present: false so the section renders nothing

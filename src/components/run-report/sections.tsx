@@ -737,15 +737,22 @@ export function ConceptsSection({ projection }: { projection: RunReportProjectio
           // Organization/Excerpt identities are retrieval plumbing. The full
           // identity list (all types) stays in the fold below.
           const conceptRanked = ranked.filter(
-            ({ identity }) => identity.nodeType === "Concept" && identity.name,
+            ({ identity }) =>
+              identity.nodeType === "Concept" && identity.name && identity.runStatus === "retrieved",
           );
+          const surfacedOnly = ranked.filter(
+            ({ identity }) =>
+              identity.nodeType === "Concept" && identity.name && identity.runStatus !== "retrieved",
+          ).length;
           const top = conceptRanked.slice(0, TOP_CONCEPTS);
           const maxTotal = top[0]?.total || 1;
           return (
             <>
               <MiniHeading>
                 Top retrieved concepts ({Math.min(TOP_CONCEPTS, conceptRanked.length)} of{" "}
-                {conceptRanked.length} concept nodes · {ranked.length} graph nodes total)
+                {conceptRanked.length} read
+                {surfacedOnly > 0 ? ` · ${surfacedOnly} surfaced-only` : ""} ·{" "}
+                {ranked.length} graph nodes total)
               </MiniHeading>
               {conceptRanked.length === 0 && (
                 <p className="text-[12.5px] text-muted-foreground italic mb-2">
