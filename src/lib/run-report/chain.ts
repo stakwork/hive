@@ -309,10 +309,10 @@ export function buildChainModel(projection: RunReportProjection): ChainModel {
         continue;
       }
       const key = `${identity.nodeType ?? ""}|${name}`;
-      const total = agentsForCount.reduce((sum, a) => sum + a.count, 0) || 1;
-      const refId = identity.identityKind === "ref_id" ? identity.identity : null;
       const readAgents = identity.agents.filter((a) => a.status === "retrieved");
       const agentsForCount = readAgents.length > 0 ? readAgents : identity.agents;
+      const total = agentsForCount.reduce((sum, a) => sum + a.count, 0) || 1;
+      const refId = identity.identityKind === "ref_id" ? identity.identity : null;
       const existing = byName.get(key);
       if (existing) {
         existing.total += total;
