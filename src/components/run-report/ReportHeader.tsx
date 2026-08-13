@@ -2,10 +2,9 @@
 
 import React, { useState } from "react";
 import type { RunReportProjection } from "@/lib/run-report/types";
-import { asString } from "@/lib/run-report/derive";
+import { asString, isRecord } from "@/lib/run-report/derive";
 import type { ChainModel, ConceptPull } from "@/lib/run-report/chain";
-import { StatusBadge, Chip, Kicker } from "./chrome";
-import { renderValue } from "./chrome";
+import { StatusBadge, Chip, Kicker, MiniHeading, renderValue } from "./chrome";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { formatInUserTz } from "@/lib/date-utils";
 
@@ -16,6 +15,82 @@ import { formatInUserTz } from "@/lib/date-utils";
  */
 
 type OpenDoc = (docId: string, tokens: string[]) => void;
+
+/**
+ * Renders the lingo node response as a concept card: properties, then edges
+ * grouped by type with neighbor chips. Unknown shapes fall back to the
+ * generic value tree so the dialog never blanks.
+ */
+function NodePeekBody({ payload }: { payload: unknown }) {
+  if (!isRecord(payload)) {
+    return <div className="text-[12.5px]">{renderValue(payload)}</div>;
+  }
+  const node = isRecord(payload.node) ? payload.node : payload;
+  const edges = Array.isArray(payload.edges) ? payload.edges.filter(isRecord) : [];
+
+  const added = node.date_added_to_graph;
+  const addedSec =
+    typeof added === "number" ? added : typeof added === "string" && /^\d+$/.test(added) ? Number(added) : null;
+  const HIDDEN = new Set(["ref_id", "node_type", "name", "date_added_to_graph"]);
+  const props = Object.entries(node).filter(
+    ([k, v]) => !HIDDEN.has(k) && v !== null && v !== undefined && v !== "",
+  );
+
+  const groups = new Map<string, { name?: string; type?: string; ref?: string }[]>();
+  for (const e of edges) {
+    const edgeType = asString(e.edge_type) ?? "RELATED";
+    const nn = isRecord(e.neighbor_node) ? e.neighbor_node : {};
+    groups.set(edgeType, [
+      ...(groups.get(edgeType) ?? []),
+      { name: asString(nn.name), type: asString(nn.node_type), ref: asString(nn.ref_id) },
+    ]);
+  }
+
+  return (
+    <div className="text-[12.5px] space-y-1">
+      {addedSec !== null && (
+        <div className="font-mono text-[10.5px] text-muted-foreground/70">
+          added to graph {new Date(addedSec * 1000).toISOString().slice(0, 10)}
+        </div>
+      )}
+      {props.length > 0 && (
+        <dl className="grid grid-cols-[minmax(0,160px)_minmax(0,1fr)] gap-x-3 gap-y-0.5">
+          {props.map(([k, v]) => (
+            <React.Fragment key={k}>
+              <dt className="font-mono text-[10.5px] text-muted-foreground/70 truncate pt-0.5">{k}</dt>
+              <dd className="break-words">{typeof v === "object" ? renderValue(v) : String(v)}</dd>
+            </React.Fragment>
+          ))}
+        </dl>
+      )}
+      {[...groups.entries()].map(([edgeType, neighbors]) => (
+        <div key={edgeType}>
+          <MiniHeading>
+            {edgeType} ({neighbors.length})
+          </MiniHeading>
+          <div className="flex flex-wrap gap-1">
+            {neighbors.slice(0, 24).map((n, i) => (
+              <span
+                key={`${n.ref ?? i}`}
+                title={n.ref ?? undefined}
+                className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-[10.5px] text-muted-foreground"
+              >
+                {n.type && <span className="text-muted-foreground/50">{n.type}</span>}
+                {n.name ?? (n.ref ? `${n.ref.slice(0, 8)}…` : "unnamed")}
+              </span>
+            ))}
+            {neighbors.length > 24 && (
+              <span className="text-[10.5px] text-muted-foreground/60">
+                +{neighbors.length - 24} more
+              </span>
+            )}
+          </div>
+        </div>
+      ))}
+      {props.length === 0 && groups.size === 0 && renderValue(payload)}
+    </div>
+  );
+}
 
 /**
  * Concept chips with shared "Prefix: " families collapsed into one labeled
@@ -147,8 +222,8 @@ function ConceptStrip({
             <p className="text-[12.5px] text-muted-foreground">{peek.note}</p>
           )}
           {peek?.state === "done" && (
-            <div className="max-h-[55vh] overflow-y-auto overscroll-contain text-[12.5px]">
-              {renderValue(peek.payload)}
+            <div className="max-h-[55vh] overflow-y-auto overscroll-contain">
+              <NodePeekBody payload={peek.payload} />
             </div>
           )}
         </DialogContent>
@@ -270,10 +345,12 @@ export function ReportHeader({
 
       <div className="mt-4">
         <div className="font-mono text-[9.5px] uppercase tracking-[0.14em] text-muted-foreground/70 mb-1.5">
-          Concepts pulled{" "}
+          Concepts read{" "}
           <span className="normal-case tracking-normal">
-            — top {Math.min(8, chain.topConcepts.length)} of {chain.topConcepts.length}, from the
-            run&apos;s tool records
+            — top {Math.min(8, chain.topConcepts.length)} of {chain.topConcepts.length} opened via
+            graph_get
+            {chain.conceptsSurfacedOnly > 0 &&
+              ` · ${chain.conceptsSurfacedOnly} surfaced in search but never read`}
           </span>
         </div>
         {chain.conceptsGap ? (
