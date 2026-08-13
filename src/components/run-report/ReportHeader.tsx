@@ -25,12 +25,13 @@ function NodePeekBody({ payload }: { payload: unknown }) {
   if (!isRecord(payload)) {
     return <div className="text-[12.5px]">{renderValue(payload)}</div>;
   }
-  const nested = isRecord(payload.properties) ? payload.properties : {};
-  const merged: Record<string, unknown> = { ...payload, ...nested };
+  const base = isRecord(payload.node) ? payload.node : payload;
+  const nested = isRecord(base.properties) ? base.properties : {};
+  const merged: Record<string, unknown> = { ...base, ...nested };
   const IDENTITY = new Set(["ref_id", "node_type", "name", "properties", "date_added_to_graph"]);
   const CONTENT_KEYS = ["description", "definition", "body", "content", "text", "summary"];
 
-  const added = merged.date_added_to_graph ?? payload.date_added_to_graph;
+  const added = merged.date_added_to_graph ?? base.date_added_to_graph;
   const addedSec =
     typeof added === "number" ? added : typeof added === "string" && /^\d+$/.test(added) ? Number(added) : null;
 

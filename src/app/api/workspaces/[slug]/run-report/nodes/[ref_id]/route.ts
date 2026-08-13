@@ -50,8 +50,8 @@ export async function GET(
       return NextResponse.json({ success: false, error: "Node not found" }, { status: 404 });
     }
     const data = await response.json();
-    // Jarvis answers either {nodes: [node], ...} or the node itself.
-    const node = Array.isArray(data?.nodes) ? (data.nodes[0] ?? null) : data;
+    // Jarvis answers {nodes: [node]}, {node}, or the node itself.
+    const node = Array.isArray(data?.nodes) ? (data.nodes[0] ?? null) : (data?.node ?? data);
     if (!node) {
       return NextResponse.json({ success: false, error: "Node not found" }, { status: 404 });
     }
