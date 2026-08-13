@@ -375,7 +375,7 @@ describe("ToolActivitySection", () => {
 // ── ConceptsSection — Graph nodes used block ──────────────────────────────────
 
 describe("ConceptsSection", () => {
-  it("shows 'Graph nodes used' block when toolActivity has nodeIdentities", () => {
+  it("ranks retrieved concepts when toolActivity has nodeIdentities", () => {
     const group: ToolActivityGroup = {
       agentKey: "cross_check_agent",
       agentName: "cross_check_agent",
@@ -416,8 +416,11 @@ describe("ConceptsSection", () => {
       concepts: { synthesis: { overall_narrative: "Test narrative" } },
     });
     render(<ConceptsSection projection={projection} />);
-    expect(screen.getByText(/Graph nodes used/)).toBeInTheDocument();
-    expect(screen.getByText("termination_clause")).toBeInTheDocument();
+    // ranked view leads; the exhaustive identity list is behind a fold
+    expect(screen.getByText(/Top retrieved concepts/)).toBeInTheDocument();
+    expect(screen.getAllByTestId("run-report-concept-rank-row").length).toBe(1);
+    expect(screen.getAllByText("termination_clause").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText(/all graph nodes \(1\)/)).toBeInTheDocument();
     expect(screen.getByText("retrieved")).toBeInTheDocument();
   });
 
