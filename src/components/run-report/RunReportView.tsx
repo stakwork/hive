@@ -1,81 +1,89 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import { AlertCircle, Info } from "lucide-react";
 import { useUserTimezone } from "@/hooks/useUserTimezone";
 import type { RunReportPayload } from "@/lib/run-report/types";
+import { buildChainModel } from "@/lib/run-report/chain";
 import { DocumentViewerModal } from "./DocumentViewerModal";
+import { ReportHeader } from "./ReportHeader";
+import { RubricLedger } from "./RubricLedger";
+import { ChecklistMap } from "./ChecklistMap";
 import {
-  OverviewSection,
   PipelineSection,
-  RubricsSection,
-  FailuresSection,
   TracesSection,
   ToolActivitySection,
   ConceptsSection,
   SourcesSection,
   HealthSection,
 } from "./sections";
-import { SectionErrorBoundary, anchorId } from "./chrome";
-import { readSummaries, isRecord, asString, readRosterNames } from "@/lib/run-report/derive";
+import { SectionErrorBoundary, anchorId, Kicker } from "./chrome";
+import { readRosterNames } from "@/lib/run-report/derive";
 
 /**
- * Run report renderer.
+ * Run report renderer — rubric-first.
  *
- * Laid out as an editorial report — sticky section rail, numeric hero, gantt,
- * rubric heat-strip — following the information design of the generator's own
- * viewer, rendered with Hive's tokens and primitives.
+ * A reviewer opens this page because a criterion failed. The page reads in
+ * that order: a header that sets the scene (task, score, goal, materials,
+ * concepts pulled), the rubric ledger walking each criterion backwards from
+ * the deliverable to the raw materials, and the checklist↔rubric coverage
+ * view. Pipeline timeline, agent roster, tool activity and health remain
+ * below as debugging context.
+ *
+ * Tier 1 (everything above) is deterministic bundle data. Tier 2 — agent
+ * commentary from analysis.traces[] — appends per hop when present and never
+ * determines whether a hop exists.
  *
  * A client component so it can read the user's timezone and pass it into
  * `formatInUserTz` — explicitly NOT `formatFeatureDate`, which hardcodes UTC.
  *
  * Sanitization and redaction are server-only and already complete before the
- * projection crosses the boundary; this component never sanitizes and never
- * fetches. The raw bundle URL is not part of its props and cannot be.
- *
- * Deliberately workspace-agnostic so a generic `/w/[slug]/reports` route is a
- * later drop-in.
+ * projection crosses the boundary; this component never sanitizes. The raw
+ * bundle URL is not part of its props and cannot be. `workspaceSlug` only
+ * enables the concept peek's authed node fetch (the /learn nodes route).
  */
 
 interface Props {
   payload: RunReportPayload;
   taskTitle?: string;
+  workspaceSlug?: string | null;
 }
 
 const NAV_GROUPS: Array<{ group: string; items: Array<{ id: string; label: string }> }> = [
   {
-    group: "Report",
+    group: "Review",
     items: [
-      { id: "overview", label: "Overview" },
-      { id: "pipeline", label: "Pipeline" },
-      { id: "rubrics", label: "Rubric scoreboard" },
+      { id: "run-report-header", label: "Overview" },
+      { id: "rubrics", label: "Rubrics" },
     ],
   },
   {
-    group: "Failures",
-    items: [{ id: "failures", label: "Investigations" }],
-  },
-  {
-    group: "Agents",
-    items: [{ id: "agents", label: "Agent roster" }],
+    group: "Coverage",
+    items: [{ id: "checklist-map", label: "Checklist ↔ Rubrics" }],
   },
   {
     group: "Context",
     items: [
       { id: "concepts", label: "Concept pulls" },
       { id: "sources", label: "Sources & artifacts" },
+    ],
+  },
+  {
+    group: "Debugging",
+    items: [
+      { id: "pipeline", label: "Pipeline" },
+      { id: "agents", label: "Agent roster" },
       { id: "system", label: "System health" },
     ],
   },
 ];
 
-export function RunReportView({ payload, taskTitle = "Run report" }: Props) {
+export function RunReportView({ payload, taskTitle = "Run report", workspaceSlug = null }: Props) {
   const { timezone } = useUserTimezone();
   const [openDoc, setOpenDoc] = useState<{ docId: string; tokens: string[] } | null>(null);
 
   const projection = payload.projection;
-  // rubricRows is derived server-side (single source) — read from projection.
-  const rubricRows = projection?.rubricRows ?? [];
+  const chain = useMemo(() => (projection ? buildChainModel(projection) : null), [projection]);
 
   // ── Report exists but could not be loaded from S3 ─────────────────────────
   if (payload.error === "unavailable") {
@@ -102,7 +110,7 @@ export function RunReportView({ payload, taskTitle = "Run report" }: Props) {
   }
 
   // ── No report on this run ─────────────────────────────────────────────────
-  if (!payload.hasReport || !projection) {
+  if (!payload.hasReport || !projection || !chain) {
     return (
       <StateNotice
         icon={<Info className="h-5 w-5" />}
@@ -116,31 +124,32 @@ export function RunReportView({ payload, taskTitle = "Run report" }: Props) {
   const activeDoc = openDoc
     ? projection.sourceDocs.find((d) => d.id === openDoc.docId) ?? null
     : null;
+  const onOpenDoc = (docId: string, tokens: string[]) => setOpenDoc({ docId, tokens });
 
-  // The rail lists every failed rubric and every agent, mirroring the
-  // generator's own viewer: tap C-038 → its investigation, tap an agent →
-  // its roster card. Names join the same way TracesSection renders them.
+  // The rail lists every failed/unscored rubric (selecting it in the ledger)
+  // and every agent, mirroring the review motion: tap C-038 → its chain.
   const rosterMap = readRosterNames(projection.analysis, projection.pageData.agents);
   const rosterNames = [...rosterMap.values()];
   const navGroups = NAV_GROUPS.map((group) => {
-    if (group.group === "Failures") {
+    if (group.group === "Review") {
       return {
         ...group,
         items: [
           ...group.items,
-          ...rubricRows
-            .filter((r) => !r.passed)
-            .map((r) => ({ id: anchorId("failure", r.id), label: r.id })),
+          ...chain.criteria
+            .filter((c) => c.verdict !== "pass")
+            .map((c) => ({ id: `rubric-${c.id}`, label: c.id })),
         ],
       };
     }
-    if (group.group === "Agents") {
+    if (group.group === "Debugging") {
       return {
         ...group,
         items: [
-          ...group.items,
+          ...group.items.slice(0, 2),
           ...rosterNames.map((n) => ({ id: anchorId("agent", n), label: n })),
           { id: "tool-activity", label: "Tool activity" },
+          ...group.items.slice(2),
         ],
       };
     }
@@ -174,40 +183,47 @@ export function RunReportView({ payload, taskTitle = "Run report" }: Props) {
       </nav>
 
       <main className="min-w-0 pb-24">
+        <div id="run-report-header" className="scroll-mt-6">
+          <SectionErrorBoundary>
+            <ReportHeader
+              projection={projection}
+              chain={chain}
+              taskTitle={taskTitle}
+              timezone={timezone}
+              workspaceSlug={workspaceSlug}
+              onOpenDoc={onOpenDoc}
+            />
+          </SectionErrorBoundary>
+        </div>
         <SectionErrorBoundary>
-          <OverviewSection projection={projection} timezone={timezone} taskTitle={taskTitle} />
+          <RubricLedger projection={projection} chain={chain} onOpenDoc={onOpenDoc} />
         </SectionErrorBoundary>
         <SectionErrorBoundary>
-          <PipelineSection projection={projection} />
+          <ChecklistMap chain={chain} />
         </SectionErrorBoundary>
-        <SectionErrorBoundary>
-          <RubricsSection rows={rubricRows} />
-        </SectionErrorBoundary>
-        <SectionErrorBoundary>
-          <FailuresSection
-            rows={rubricRows}
-            projection={projection}
-            onOpenDoc={(docId, tokens) => setOpenDoc({ docId, tokens })}
-          />
-        </SectionErrorBoundary>
-        <SectionErrorBoundary>
-          <TracesSection projection={projection} />
-        </SectionErrorBoundary>
-        <SectionErrorBoundary>
-          <ToolActivitySection projection={projection} />
-        </SectionErrorBoundary>
-        <SectionErrorBoundary>
-          <ConceptsSection projection={projection} />
-        </SectionErrorBoundary>
-        <SectionErrorBoundary>
-          <SourcesSection
-            projection={projection}
-            onOpenDoc={(docId, tokens) => setOpenDoc({ docId, tokens })}
-          />
-        </SectionErrorBoundary>
-        <SectionErrorBoundary>
-          <HealthSection projection={projection} />
-        </SectionErrorBoundary>
+
+        {/* Debugging context, demoted below the review surface */}
+        <div className="mt-16 pt-4 border-t border-border">
+          <Kicker>Debugging context</Kicker>
+          <SectionErrorBoundary>
+            <PipelineSection projection={projection} />
+          </SectionErrorBoundary>
+          <SectionErrorBoundary>
+            <TracesSection projection={projection} />
+          </SectionErrorBoundary>
+          <SectionErrorBoundary>
+            <ToolActivitySection projection={projection} />
+          </SectionErrorBoundary>
+          <SectionErrorBoundary>
+            <ConceptsSection projection={projection} />
+          </SectionErrorBoundary>
+          <SectionErrorBoundary>
+            <SourcesSection projection={projection} onOpenDoc={onOpenDoc} />
+          </SectionErrorBoundary>
+          <SectionErrorBoundary>
+            <HealthSection projection={projection} />
+          </SectionErrorBoundary>
+        </div>
       </main>
 
       <DocumentViewerModal
