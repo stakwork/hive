@@ -93,7 +93,7 @@ export default async function RunReportPage({ params }: PageProps) {
           <ArrowLeft className="h-3 w-3" />
           Legal Benchmarks
         </Link>
-        <RunReportView payload={payload} taskTitle={taskTitle} />
+        <RunReportView payload={payload} taskTitle={taskTitle} workspaceSlug={slug} />
       </div>
     </div>
   );

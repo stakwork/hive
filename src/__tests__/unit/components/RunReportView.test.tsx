@@ -34,10 +34,9 @@ describe("RunReportView — render states", () => {
   it("renders every report section for a valid bundle", () => {
     render(<RunReportView payload={payload()} />);
     for (const testId of [
-      "run-report-section-overview",
-      "run-report-section-pipeline",
+      "run-report-header",
       "run-report-section-rubrics",
-      "run-report-section-failures",
+      "run-report-section-pipeline",
       "run-report-section-agents",
       "run-report-section-concepts",
       "run-report-section-sources",
@@ -52,15 +51,35 @@ describe("RunReportView — render states", () => {
     const railLinks = [...container.querySelectorAll('nav a[href^="#"]')].map((a) =>
       a.getAttribute("href"),
     );
-    expect(railLinks).toContain("#overview");
+    expect(railLinks).toContain("#run-report-header");
     expect(railLinks).toContain("#rubrics");
+    expect(railLinks).toContain("#checklist-map");
     expect(railLinks).toContain("#system");
   });
 
-  it("renders the rubric heat-strip with one cell per criterion (≥3 from full fixture)", () => {
+  it("renders the rubric ledger: failed and unscored listed, passes folded", () => {
     render(<RunReportView payload={payload()} />);
-    // The full fixture has exactly 3 rubrics with mixed verdicts.
-    expect(screen.getAllByTestId("run-report-rubric-cell")).toHaveLength(3);
+    // full fixture: R1 pass, R2 fail, R3 unscored - two open list items,
+    // one behind the passes fold
+    const items = screen.getAllByTestId("run-report-ledger-item");
+    expect(items).toHaveLength(3);
+    expect(screen.getByText(/✓ 1 passed/)).toBeInTheDocument();
+    // failed-first ordering selects R2 by default; its chain renders hops
+    expect(screen.getAllByText(/The deliverable/i).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/Did the checklist represent what the rubric expected/i).length).toBeGreaterThan(0);
+  });
+
+  it("shows agent commentary slots only when the bundle carries traces", () => {
+    // full fixture has traces -> commentary tier renders
+    render(<RunReportView payload={payload()} />);
+    expect(screen.getAllByText(/not yet assessed/i).length).toBeGreaterThan(0);
+  });
+
+  it("renders the pure scaffold with no commentary slots on deterministic runs", () => {
+    render(<RunReportView payload={payload({ projection: projectionFor("deterministic") })} />);
+    expect(screen.queryByText(/not yet assessed/i)).toBeNull();
+    // the chain itself still stands
+    expect(screen.getAllByTestId("run-report-ledger-item").length).toBeGreaterThan(0);
   });
 
   it("shows the no-report state when there is no projection", () => {
@@ -75,7 +94,7 @@ describe("RunReportView — render states", () => {
     expect(screen.getByTestId("run-report-view")).toBeInTheDocument();
     expect(screen.queryByTestId("run-report-state-absent")).toBeNull();
     // All sections must render, not just the error state.
-    expect(screen.getByTestId("run-report-section-overview")).toBeInTheDocument();
+    expect(screen.getByTestId("run-report-header")).toBeInTheDocument();
     expect(screen.getByTestId("run-report-section-agents")).toBeInTheDocument();
   });
 
@@ -136,10 +155,9 @@ describe("RunReportView — empty shapes are not errors", () => {
     const { container } = render(
       <RunReportView payload={payload({ projection: projectionFor("full") })} />,
     );
-    // failed rubric R2 gets a rail link and an anchored investigation panel
-    const failLink = container.querySelector('nav a[href="#failure-r2"]');
+    // failed rubric R2 gets a rail link that selects it in the ledger
+    const failLink = container.querySelector('nav a[href="#rubric-R2"]');
     expect(failLink).not.toBeNull();
-    expect(container.querySelector("#failure-r2")).not.toBeNull();
     // both summarized agents get rail links and anchored cards
     const agentLink = container.querySelector('nav a[href="#agent-cross-check-agent"]');
     expect(agentLink).not.toBeNull();
@@ -163,9 +181,9 @@ describe("RunReportView — empty shapes are not errors", () => {
     expect(screen.queryByTestId("run-report-deterministic-agent")).toBeNull();
   });
 
-  it("renders an all-pass run with no failures panel content", () => {
+  it("renders an all-pass run with every criterion in the passes fold", () => {
     render(<RunReportView payload={payload({ projection: projectionFor("all-pass") })} />);
-    expect(screen.getByTestId("run-report-section-failures")).toHaveTextContent(/no failures/i);
+    expect(screen.getByTestId("run-report-section-rubrics")).toHaveTextContent(/passed/i);
   });
 
   it("renders strings-only fixture without errors (empty arrays degrade cleanly)", () => {

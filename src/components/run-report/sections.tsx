@@ -1,10 +1,9 @@
 "use client";
 
-import React, { useState } from "react";
+import React from "react";
 import { FileText, AlertTriangle } from "lucide-react";
 import {
   formatDuration,
-  aggregateFixes,
   buildTimeline,
   buildGantt,
   readTraces,
@@ -14,7 +13,6 @@ import {
 } from "@/lib/run-report/derive";
 import type {
   RunReportProjection,
-  RubricRow,
   TraceRow,
   AgentSummary,
   ToolActivityProjection,
@@ -22,7 +20,6 @@ import type {
   NodeIdentityRow,
 } from "@/lib/run-report/types";
 import { buildNodeIdentities } from "@/lib/run-report/tool-activity";
-import { formatInUserTz } from "@/lib/date-utils";
 import {
   anchorId,
   Section,
@@ -40,7 +37,7 @@ import {
   SectionErrorBoundary,
 } from "./chrome";
 import { Gantt } from "./Gantt";
-import { RubricStrip, FilterPills } from "./RubricStrip";
+import { SafeMarkdown } from "./SafeMarkdown";
 
 /**
  * The nine report sections, laid out as an editorial report rather than a stack
@@ -56,73 +53,6 @@ import { RubricStrip, FilterPills } from "./RubricStrip";
  * The only sanitized-HTML surface is `source_docs[].html`, rendered through
  * `SanitizedContent` in the document modal.
  */
-
-// ── 1. Overview (hero) ───────────────────────────────────────────────────────
-
-export function OverviewSection({
-  projection,
-  timezone,
-  taskTitle,
-}: {
-  projection: RunReportProjection;
-  timezone: string;
-  taskTitle: string;
-}) {
-  const { stats, generatedAtMs } = projection;
-  // config replaces the old set_var; task_goal is under config in the real contract.
-  const goal = asString((projection.pageData.config as Record<string, unknown>).task_goal);
-  const allPassed = stats.failCount === 0 && stats.passCount !== null;
-
-  return (
-    <section id="overview" className="scroll-mt-6 pt-2" data-testid="run-report-section-overview">
-      <Kicker>Run summary</Kicker>
-      <h1 className="text-3xl sm:text-4xl font-semibold tracking-tight mb-2">{taskTitle}</h1>
-      {goal && <p className="text-[15px] text-muted-foreground max-w-[70ch]">{goal}</p>}
-
-      <div className="flex flex-wrap items-end gap-8 mt-6">
-        <div>
-          <div className="text-[64px] leading-none font-semibold tracking-tight tabular-nums">
-            {stats.passCount ?? "—"}
-            <span className="text-3xl text-muted-foreground/60 font-normal">
-              {" / "}
-              {stats.rubricCount}
-            </span>
-          </div>
-          <div className="font-mono text-[10.5px] uppercase tracking-[0.1em] text-muted-foreground/70 mt-2">
-            Rubric criteria passed
-          </div>
-        </div>
-
-        <div className="flex-1 min-w-[240px]">
-          {stats.passCount !== null && (
-            <StatusBadge kind={allPassed ? "pass" : "fail"}>
-              {allPassed ? "All criteria passed" : `${stats.failCount} criteria failed`}
-            </StatusBadge>
-          )}
-          <div className="flex flex-wrap gap-2 mt-3">
-            <Chip label="docs" value={stats.sourceDocCount} />
-            <Chip label="workfiles" value={stats.workfileCount} />
-            <Chip label="agents" value={stats.agentCount} />
-            <Chip label="steps" value={stats.stepCount} />
-            {projection.pageData.wallClockMin !== null && (
-              <Chip label="wall clock" value={`${projection.pageData.wallClockMin.toFixed(1)}m`} />
-            )}
-          </div>
-          {generatedAtMs !== null && (
-            <div className="font-mono text-[10.5px] text-muted-foreground/70 mt-3">
-              Generated {formatInUserTz(new Date(generatedAtMs), timezone)}
-            </div>
-          )}
-        </div>
-      </div>
-
-      <Panel className="mt-6">
-        <MiniHeading>Run configuration</MiniHeading>
-        <KeyValues data={projection.pageData.config} />
-      </Panel>
-    </section>
-  );
-}
 
 // ── 2. Pipeline ──────────────────────────────────────────────────────────────
 
@@ -163,166 +93,6 @@ export function PipelineSection({ projection }: { projection: RunReportProjectio
       )}
     </Section>
   );
-}
-
-// ── 3. Rubric scoreboard ─────────────────────────────────────────────────────
-
-export function RubricsSection({ rows }: { rows: RubricRow[] }) {
-  const [filter, setFilter] = useState<"all" | "pass" | "fail">("all");
-
-  if (rows.length === 0) {
-    return (
-      <Section id="rubrics" kicker="format_results" title="Rubric scoreboard">
-        <EmptyPanel label="No rubric results for this run." />
-      </Section>
-    );
-  }
-
-  const counts = {
-    all: rows.length,
-    pass: rows.filter((r) => r.passed).length,
-    fail: rows.filter((r) => !r.passed).length,
-  };
-  const visible =
-    filter === "all" ? rows : rows.filter((r) => (filter === "pass" ? r.passed : !r.passed));
-
-  const scrollToRubric = (rubricId: string) => {
-    setFilter("all");
-    // Defer so the filtered-in node exists before we scroll to it.
-    requestAnimationFrame(() => {
-      document.getElementById(`rubric-${rubricId}`)?.scrollIntoView({ block: "center" });
-    });
-  };
-
-  return (
-    <Section id="rubrics" kicker="format_results" title="Rubric scoreboard">
-      <RubricStrip rows={rows} onSelect={scrollToRubric} />
-      <FilterPills value={filter} onChange={setFilter} counts={counts} />
-
-      <div className="space-y-2">
-        {visible.map((row) => (
-          <details
-            key={row.id}
-            id={`rubric-${row.id}`}
-            className={`rounded-lg border bg-muted/20 scroll-mt-24 ${
-              row.passed ? "border-border" : "border-destructive/40"
-            }`}
-          >
-            <summary className="flex gap-3 items-baseline px-3.5 py-2.5 cursor-pointer list-none [&::-webkit-details-marker]:hidden">
-              <span className="font-mono text-[11px] text-muted-foreground/70 min-w-[46px]">
-                {row.id}
-              </span>
-              <span className="flex-1 text-[13.5px]">{row.title}</span>
-              <StatusBadge kind={row.passed ? "pass" : "fail"}>
-                {row.verdict || (row.passed ? "pass" : "fail")}
-              </StatusBadge>
-            </summary>
-            {row.reasoning && (
-              <p className="px-3.5 pb-3.5 pl-[72px] text-[13px] text-muted-foreground whitespace-pre-wrap">
-                {row.reasoning}
-              </p>
-            )}
-          </details>
-        ))}
-      </div>
-    </Section>
-  );
-}
-
-// ── 4. Failure investigations ────────────────────────────────────────────────
-
-export function FailuresSection({
-  rows,
-  projection,
-  onOpenDoc,
-}: {
-  rows: RubricRow[];
-  projection: RunReportProjection;
-  onOpenDoc: (docId: string, tokens: string[]) => void;
-}) {
-  const failures = rows.filter((r) => !r.passed);
-  const fixes = aggregateFixes(rows);
-
-  return (
-    <Section id="failures" kicker="Root cause" title="Failure investigations">
-      {failures.length === 0 ? (
-        <EmptyPanel label="No failures for this run." />
-      ) : (
-        <>
-          {failures.map((row) => {
-            // rubric_links is the SOLE data source for the failure → document
-            // deep link; without it that pathway has no wiring.
-            const links = projection.rubricLinks[row.id] ?? [];
-            return (
-              <div key={row.id} id={anchorId("failure", row.id)} className="scroll-mt-4">
-              <Panel tone="fail" className="mt-4">
-                <div className="flex items-baseline gap-3">
-                  <span className="font-mono text-[11px] text-muted-foreground/70">{row.id}</span>
-                  <h3 className="text-[17px] font-semibold flex-1">{row.title}</h3>
-                </div>
-
-                {row.reasoning && (
-                  <p className="text-[13px] text-muted-foreground mt-2 whitespace-pre-wrap">
-                    {row.reasoning}
-                  </p>
-                )}
-
-                {links.length > 0 && (
-                  <>
-                    <MiniHeading>Evidence</MiniHeading>
-                    <div className="flex flex-wrap gap-2">
-                      {links.map((link, i) => (
-                        <button
-                          key={`${link.doc}-${i}`}
-                          type="button"
-                          onClick={() => onOpenDoc(link.doc, link.tokens)}
-                          className="inline-flex items-center gap-1.5 rounded-full border border-border px-3 py-1 font-mono text-[11px] text-muted-foreground hover:text-primary hover:border-primary/50 transition-colors"
-                          data-testid="run-report-failure-doc-link"
-                        >
-                          <FileText className="h-3 w-3" />
-                          {docTitle(projection, link.doc)}
-                        </button>
-                      ))}
-                    </div>
-                  </>
-                )}
-              </Panel>
-              </div>
-            );
-          })}
-
-          {fixes.length > 0 && (
-            <>
-              <MiniHeading>Aggregated root causes</MiniHeading>
-              <Panel>
-                <ul className="space-y-3">
-                  {fixes.map((fix) => (
-                    <li key={fix.causeType} className="text-[13.5px]">
-                      <div className="flex items-baseline gap-2">
-                        <span className="font-mono text-[11px] text-foreground">{fix.causeType}</span>
-                        <span className="text-muted-foreground text-xs">
-                          {fix.count} rubric{fix.count === 1 ? "" : "s"} · {fix.rubricIds.join(", ")}
-                        </span>
-                      </div>
-                      {fix.suggestions.map((suggestion, i) => (
-                        <p key={i} className="text-muted-foreground mt-1">
-                          {suggestion}
-                        </p>
-                      ))}
-                    </li>
-                  ))}
-                </ul>
-              </Panel>
-            </>
-          )}
-        </>
-      )}
-    </Section>
-  );
-}
-
-function docTitle(projection: RunReportProjection, docId: string): string {
-  return projection.sourceDocs.find((d) => d.id === docId)?.title ?? docId;
 }
 
 // ── 5. Agent roster ──────────────────────────────────────────────────────────
@@ -463,7 +233,7 @@ function ToolCountsFold({ tools }: { tools: [string, number][] }) {
 function FinalAnswerFold({ text }: { text: string }) {
   return (
     <Fold summary="Final answer">
-      <p className="text-[13px] text-muted-foreground whitespace-pre-wrap">{text}</p>
+      <SafeMarkdown text={text} />
     </Fold>
   );
 }
@@ -963,14 +733,25 @@ export function ConceptsSection({ projection }: { projection: RunReportProjectio
               total: identity.agents.reduce((sum, a) => sum + a.count, 0) || 1,
             }))
             .sort((a, b) => b.total - a.total);
-          const top = ranked.slice(0, TOP_CONCEPTS);
+          // Only Concept-typed, named nodes rank as concepts - Document/
+          // Organization/Excerpt identities are retrieval plumbing. The full
+          // identity list (all types) stays in the fold below.
+          const conceptRanked = ranked.filter(
+            ({ identity }) => identity.nodeType === "Concept" && identity.name,
+          );
+          const top = conceptRanked.slice(0, TOP_CONCEPTS);
           const maxTotal = top[0]?.total || 1;
           return (
             <>
               <MiniHeading>
-                Top retrieved concepts ({Math.min(TOP_CONCEPTS, ranked.length)} of{" "}
-                {ranked.length} graph nodes)
+                Top retrieved concepts ({Math.min(TOP_CONCEPTS, conceptRanked.length)} of{" "}
+                {conceptRanked.length} concept nodes · {ranked.length} graph nodes total)
               </MiniHeading>
+              {conceptRanked.length === 0 && (
+                <p className="text-[12.5px] text-muted-foreground italic mb-2">
+                  No Concept-typed nodes were pulled in this run.
+                </p>
+              )}
               <div className="mb-3">
                 {top.map(({ identity, total }) => (
                   <ConceptRankRow
