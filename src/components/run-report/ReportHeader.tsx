@@ -53,6 +53,13 @@ function NodePeekBody({ payload }: { payload: unknown }) {
           added to graph {new Date(addedSec * 1000).toISOString().slice(0, 10)}
         </div>
       )}
+      {props.length === 0 && (
+        <p className="text-[12px] text-muted-foreground italic">
+          The graph stores no content on this node — name and relationships only. (A
+          Concept with doctrine would carry a description attribute, like Lingo nodes
+          carry a definition.)
+        </p>
+      )}
       {props.length > 0 && (
         <dl className="grid grid-cols-[minmax(0,160px)_minmax(0,1fr)] gap-x-3 gap-y-0.5">
           {props.map(([k, v]) => (
@@ -87,7 +94,6 @@ function NodePeekBody({ payload }: { payload: unknown }) {
           </div>
         </div>
       ))}
-      {props.length === 0 && groups.size === 0 && renderValue(payload)}
     </div>
   );
 }
