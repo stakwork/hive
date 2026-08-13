@@ -6,6 +6,7 @@ import { asString, isRecord } from "@/lib/run-report/derive";
 import type { ChainModel, ConceptPull } from "@/lib/run-report/chain";
 import { StatusBadge, Chip, Kicker, MiniHeading, renderValue } from "./chrome";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { SafeMarkdown } from "./SafeMarkdown";
 import { formatInUserTz } from "@/lib/date-utils";
 
 /**
@@ -29,14 +30,22 @@ function NodePeekBody({ payload }: { payload: unknown }) {
   const nested = isRecord(base.properties) ? base.properties : {};
   const merged: Record<string, unknown> = { ...base, ...nested };
   const IDENTITY = new Set(["ref_id", "node_type", "name", "properties", "date_added_to_graph"]);
-  const CONTENT_KEYS = ["description", "definition", "body", "content", "text", "summary"];
+  // Concept nodes carry their content in `docs`; other node types use the rest.
+  const CONTENT_KEYS = ["docs", "description", "definition", "body", "content", "text", "summary"];
 
   const added = merged.date_added_to_graph ?? base.date_added_to_graph;
   const addedSec =
     typeof added === "number" ? added : typeof added === "string" && /^\d+$/.test(added) ? Number(added) : null;
 
-  const prose = CONTENT_KEYS.map((k) => [k, merged[k]] as const).filter(
-    (entry): entry is readonly [string, string] => typeof entry[1] === "string" && entry[1].trim().length > 0,
+  const asProse = (v: unknown): string | null => {
+    if (typeof v === "string" && v.trim().length > 0) return v;
+    if (Array.isArray(v) && v.length > 0 && v.every((x) => typeof x === "string")) {
+      return v.join("\n\n");
+    }
+    return null;
+  };
+  const prose = CONTENT_KEYS.map((k) => [k, asProse(merged[k])] as const).filter(
+    (entry): entry is readonly [string, string] => entry[1] !== null,
   );
   const proseKeys = new Set(prose.map(([k]) => k));
   const rest = Object.entries(merged).filter(
@@ -55,7 +64,7 @@ function NodePeekBody({ payload }: { payload: unknown }) {
           <div className="font-mono text-[9px] uppercase tracking-[0.12em] text-muted-foreground/60 mb-0.5">
             {k}
           </div>
-          <p className="whitespace-pre-wrap">{v}</p>
+          <SafeMarkdown text={v} />
         </div>
       ))}
       {rest.length > 0 && (
