@@ -50,6 +50,12 @@ export interface CriterionChain {
   title: string;
   verdict: "fail" | "unscored" | "pass";
   reasoning: string;
+  /** What the criterion asked for (empty when the bundle lacks it). */
+  matchCriteria: string;
+  /** Judge-review fields; interpreted only via resolveJudgeDispute. */
+  judgeFlagged?: boolean | number | string;
+  judgeFlagReason?: string;
+  documentExcerpt: string;
   hops: Hop[];
   /** Distinctive rubric terms (figures + quoted phrases) for term matching. */
   tokens: string[];
@@ -124,7 +130,7 @@ export function buildChainModel(projection: RunReportProjection): ChainModel {
     const links = projection.rubricLinks[row.id] ?? [];
     const delivHits = links.filter((l) => deliverableIds.has(l.doc));
     const srcHits = links.filter((l) => !deliverableIds.has(l.doc));
-    const tokens = rubricTokens(row.title, row.reasoning ?? "");
+    const tokens = rubricTokens(row.title, row.matchCriteria || row.reasoning || "");
     // "no terms found" is only meaningful when the rubric HAS distinctive
     // terms - otherwise term matching is not applicable, a different state.
     const termable = tokens.length > 0 || links.length > 0;
@@ -255,6 +261,10 @@ export function buildChainModel(projection: RunReportProjection): ChainModel {
       title: row.title,
       verdict,
       reasoning: row.reasoning ?? "",
+      matchCriteria: row.matchCriteria ?? "",
+      judgeFlagged: row.judgeFlagged,
+      judgeFlagReason: row.judgeFlagReason,
+      documentExcerpt: row.documentExcerpt ?? "",
       hops,
       tokens,
       verdictNote: trace && rootCause

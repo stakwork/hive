@@ -292,6 +292,14 @@ export interface RubricRow {
   /** Empty-string when the bundle carries no verdict (graceful degradation). */
   verdict: string;
   reasoning: string;
+  /** What the criterion asked for. Empty-string when absent, like reasoning. */
+  matchCriteria: string;
+  /** Judge-review keys from the run_judge_dispute stage. Genuinely absent on
+   * runs without the dispute stage; interpreted ONLY by resolveJudgeDispute. */
+  judgeFlagged?: boolean | number | string;
+  judgeFlagReason?: string;
+  /** Supporting excerpt from the dispute review; empty-string when absent. */
+  documentExcerpt: string;
 }
 
 /**

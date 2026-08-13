@@ -284,6 +284,13 @@ export function isPassVerdict(verdict: unknown): boolean {
  * and stores the result on `projection.rubricRows`. Renderers read that field
  * rather than re-deriving client-side.
  */
+/** Verbatim producer text with no ceiling upstream - cap like every other bulk surface. */
+export const RUBRIC_EXCERPT_CHAR_CAP = 2000;
+
+function clampText(text: string, cap: number): string {
+  return text.length > cap ? `${text.slice(0, cap)}\u2026` : text;
+}
+
 export function groupRubrics(rubrics: unknown[], _score?: unknown): RubricRow[] {
   const rows: RubricRow[] = [];
 
@@ -293,13 +300,24 @@ export function groupRubrics(rubrics: unknown[], _score?: unknown): RubricRow[] 
     if (!isRecord(entry)) continue;
     const id = asString(entry.id) ?? asString(entry.rubric_id) ?? "";
     if (!id) continue;
-    rows.push({
+    const row: RubricRow = {
       id,
       title: asString(entry.title) ?? id,
       passed: isPassVerdict(entry.verdict),
       verdict: asString(entry.verdict) ?? "",
       reasoning: asString(entry.reasoning) ?? "",
-    });
+      matchCriteria: asString(entry.match_criteria) ?? "",
+      documentExcerpt: clampText(asString(entry.document_excerpt) ?? "", RUBRIC_EXCERPT_CHAR_CAP),
+    };
+    // Narrow to primitives at the boundary: keeps the resolver's loose
+    // truthiness intact while an object/array can never ride the projection.
+    const flagged = entry.flagged;
+    if (typeof flagged === "boolean" || typeof flagged === "number" || typeof flagged === "string") {
+      row.judgeFlagged = flagged;
+    }
+    const flagReason = asString(entry.llm_flag_reason);
+    if (flagReason !== null) row.judgeFlagReason = flagReason;
+    rows.push(row);
   }
 
   return rows;
