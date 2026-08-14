@@ -6,6 +6,7 @@ import {
   BookOpen,
   Lightbulb,
   GitBranch,
+  GitPullRequest,
   Plus,
   Pencil,
   RefreshCw,
@@ -39,6 +40,10 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { toast } from "sonner";
+import {
+  conceptProposalLabel,
+  type ConceptProposal,
+} from "@/types/concept-proposals";
 
 interface Doc {
   repoName: string;
@@ -80,7 +85,15 @@ interface LearnSidebarProps {
   isDocsLoading: boolean;
   isConceptsLoading: boolean;
   isDiagramsLoading: boolean;
+  /** Pending concept change proposals (member-only; empty for public viewers). */
+  proposals?: ConceptProposal[];
+  /** Concept ids that should carry a pending-proposal marker. */
+  pendingProposalConceptIds?: Set<string>;
+  onProposalClick?: (proposal: ConceptProposal) => void;
+  isProposalsLoading?: boolean;
 }
+
+const EMPTY_CONCEPT_ID_SET: Set<string> = new Set();
 
 function getRepoFromConceptId(id: string): string {
   const parts = id.split("/");
@@ -102,6 +115,10 @@ export function LearnSidebar({
   isDocsLoading,
   isConceptsLoading,
   isDiagramsLoading,
+  proposals = [],
+  pendingProposalConceptIds = EMPTY_CONCEPT_ID_SET,
+  onProposalClick,
+  isProposalsLoading = false,
 }: LearnSidebarProps) {
   const { timezone } = useUserTimezone();
   const { workspace, isPublicViewer } = useWorkspace();
@@ -110,6 +127,7 @@ export function LearnSidebar({
   const [isDocsExpanded, setIsDocsExpanded] = useState(true);
   const [isConceptsExpanded, setIsConceptsExpanded] = useState(true);
   const [isDiagramsExpanded, setIsDiagramsExpanded] = useState(true);
+  const [isProposalsExpanded, setIsProposalsExpanded] = useState(true);
   const [expandedRepoGroups, setExpandedRepoGroups] = useState<Record<string, boolean>>({});
 
   // Process Repository state
@@ -679,13 +697,20 @@ export function LearnSidebar({
                                           onConceptClick(concept.id, concept.name, concept.content || "")
                                         }
                                         className={cn(
-                                          "w-full text-left p-2 rounded-md text-sm transition-colors",
+                                          "w-full text-left p-2 rounded-md text-sm transition-colors flex items-center justify-between gap-2",
                                           isActive
                                             ? "bg-muted/60 font-medium"
                                             : "bg-muted/30 hover:bg-muted/50"
                                         )}
                                       >
-                                        {concept.name}
+                                        <span className="truncate">{concept.name}</span>
+                                        {pendingProposalConceptIds.has(concept.id) && (
+                                          <span
+                                            data-testid="concept-pending-marker"
+                                            title="Pending proposal"
+                                            className="h-2 w-2 flex-shrink-0 rounded-full bg-amber-500"
+                                          />
+                                        )}
                                       </button>
                                     );
                                   })}
@@ -702,6 +727,84 @@ export function LearnSidebar({
             )}
           </AnimatePresence>
         </div>
+
+        {/* Proposals Section — pending concept change proposals awaiting review.
+            Hidden entirely when there's nothing pending (public viewers never
+            receive proposals, so it's hidden for them too). */}
+        {(isProposalsLoading || proposals.length > 0) && (
+          <div data-testid="learn-proposals-section">
+            <Button
+              variant="ghost"
+              className="w-full justify-between p-2 h-auto"
+              onClick={() => setIsProposalsExpanded(!isProposalsExpanded)}
+              data-testid="learn-proposals-header"
+            >
+              <div className="flex items-center gap-2">
+                <GitPullRequest className="h-4 w-4" />
+                <span className="font-medium">Proposals</span>
+                <Badge variant="secondary" className="ml-1">
+                  {proposals.length}
+                </Badge>
+              </div>
+              <ChevronDown
+                className={cn(
+                  "h-4 w-4 transition-transform",
+                  isProposalsExpanded && "rotate-180"
+                )}
+              />
+            </Button>
+
+            <AnimatePresence>
+              {isProposalsExpanded && (
+                <motion.div
+                  initial={{ height: 0, opacity: 0 }}
+                  animate={{ height: "auto", opacity: 1 }}
+                  exit={{ height: 0, opacity: 0 }}
+                  transition={{ duration: 0.2 }}
+                  className="overflow-hidden"
+                >
+                  <div className="mt-2 space-y-1">
+                    {isProposalsLoading ? (
+                      <div className="space-y-2 p-2">
+                        {[1, 2, 3].map((i) => (
+                          <div key={i} className="h-8 bg-muted/30 rounded animate-pulse" />
+                        ))}
+                      </div>
+                    ) : (
+                      proposals.map((proposal) => {
+                        const itemKey = `proposal-${proposal.id}`;
+                        const isActive = activeItemKey === itemKey;
+                        return (
+                          <button
+                            key={proposal.id}
+                            data-testid="learn-proposal-item"
+                            onClick={() => onProposalClick?.(proposal)}
+                            className={cn(
+                              "w-full text-left p-2 rounded-md text-sm transition-colors flex items-center gap-2",
+                              isActive
+                                ? "bg-muted/60 font-medium"
+                                : "bg-muted/30 hover:bg-muted/50"
+                            )}
+                          >
+                            <Badge
+                              variant="outline"
+                              className="flex-shrink-0 text-[10px] uppercase"
+                            >
+                              {proposal.action}
+                            </Badge>
+                            <span className="truncate">
+                              {conceptProposalLabel(proposal)}
+                            </span>
+                          </button>
+                        );
+                      })
+                    )}
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+        )}
       </div>
 
       {/* Process Repository Section - pinned to bottom (hidden for public viewers; the underlying actions require write access) */}
