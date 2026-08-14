@@ -1,14 +1,16 @@
 /**
- * Unit tests for `buildInitiativeTools` — `send_to_feature_planner` model forwarding.
+ * Unit tests for `buildInitiativeTools` — `send_to_feature_planner` tool.
  *
- * Verifies that `chatAgentModel` passed to `buildInitiativeTools` is
- * forwarded as the `model` arg to `sendFeatureChatMessage`, covering
- * features whose `Feature.model` is not already set (e.g. features not
- * created via canvas). When absent, `sendFeatureChatMessage` is called
- * without a `model` arg so the existing `getDefaultModel("plan")`
- * fallback is unchanged.
+ * Covers:
+ *  - chatAgentModel forwarding (existing)
+ *  - Bounded re-check loop before IN_PROGRESS reject (new)
+ *
+ * Every test-case that enters the re-check loop uses vi.useFakeTimers()
+ * and drives it with interleaved `await vi.advanceTimersByTimeAsync(RECHECK_INTERVAL_MS)`
+ * so the awaited setTimeout and the subsequent findUnique promise both
+ * resolve per iteration.
  */
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 vi.mock("@/lib/db", () => ({
   db: {
@@ -42,35 +44,63 @@ import { buildInitiativeTools } from "@/lib/ai/initiativeTools";
 
 const SEND_TO_FEATURE_PLANNER = "send_to_feature_planner";
 
+// Must match the consts in initiativeTools.ts.
+const RECHECK_INTERVAL_MS = 2_500;
+const RECHECK_MAX_ATTEMPTS = 8;
+
+type ExecuteOptions = { abortSignal?: AbortSignal };
+
 function getFeaturePlannerTool(chatAgentModel?: string) {
-  const tools = buildInitiativeTools("org_1", "user_1", undefined, chatAgentModel);
+  const tools = buildInitiativeTools(
+    "org_1",
+    "user_1",
+    undefined,
+    chatAgentModel,
+  );
   const t = tools[SEND_TO_FEATURE_PLANNER];
   if (!t || typeof t !== "object" || !("execute" in t)) {
     throw new Error("send_to_feature_planner tool not registered");
   }
   return t as unknown as {
-    execute: (input: { featureId: string; message: string }) => Promise<unknown>;
+    execute: (
+      input: { featureId: string; message: string },
+      opts?: ExecuteOptions,
+    ) => Promise<unknown>;
   };
 }
 
-function mockFeature(overrides: Partial<{
-  workflowStatus: string;
-  parentCanvasConversationId: string | null;
-  orgId: string;
-}> = {}) {
-  (db.feature.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({
+/** Build the standard resolved feature object. */
+function featureRow(workflowStatus: string) {
+  return {
     id: "feat_1",
     title: "Test Feature",
     workspaceId: "ws_1",
-    workflowStatus: overrides.workflowStatus ?? "COMPLETED",
-    parentCanvasConversationId: overrides.parentCanvasConversationId ?? null,
+    workflowStatus,
+    parentCanvasConversationId: null,
     workspace: {
       slug: "test-ws",
       name: "Test Workspace",
-      sourceControlOrgId: overrides.orgId ?? "org_1",
+      sourceControlOrgId: "org_1",
     },
-  });
+  };
 }
+
+/** Shorthand: set a single resolved value for findUnique. */
+function mockFeatureOnce(workflowStatus: string) {
+  (db.feature.findUnique as ReturnType<typeof vi.fn>).mockResolvedValueOnce(
+    featureRow(workflowStatus),
+  );
+}
+
+/** Expected structured IN_PROGRESS reject payload. */
+const IN_PROGRESS_PAYLOAD = {
+  error: expect.stringMatching(/planner is currently running/i),
+  workflowStatus: "IN_PROGRESS",
+  featureId: "feat_1",
+  featureTitle: "Test Feature",
+  workspaceSlug: "test-ws",
+  workspaceName: "Test Workspace",
+};
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -81,12 +111,25 @@ beforeEach(() => {
   });
 });
 
+afterEach(() => {
+  // Restore real timers in case a test used fake ones.
+  vi.useRealTimers();
+});
+
+// ---------------------------------------------------------------------------
+// Existing behaviour — chatAgentModel forwarding
+// ---------------------------------------------------------------------------
 describe("send_to_feature_planner — chatAgentModel forwarding", () => {
   it("forwards chatAgentModel as model to sendFeatureChatMessage when supplied", async () => {
-    mockFeature();
+    (db.feature.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(
+      featureRow("COMPLETED"),
+    );
     const tool = getFeaturePlannerTool("anthropic/claude-opus-4-6");
 
-    const result = await tool.execute({ featureId: "feat_1", message: "Hello planner" });
+    const result = await tool.execute({
+      featureId: "feat_1",
+      message: "Hello planner",
+    });
 
     expect(result).toMatchObject({ status: "sent" });
     expect(sendFeatureChatMessage).toHaveBeenCalledWith(
@@ -98,18 +141,26 @@ describe("send_to_feature_planner — chatAgentModel forwarding", () => {
   });
 
   it("does not pass model to sendFeatureChatMessage when chatAgentModel is absent", async () => {
-    mockFeature();
+    (db.feature.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(
+      featureRow("COMPLETED"),
+    );
     const tool = getFeaturePlannerTool(); // no chatAgentModel
 
-    const result = await tool.execute({ featureId: "feat_1", message: "Hello planner" });
+    const result = await tool.execute({
+      featureId: "feat_1",
+      message: "Hello planner",
+    });
 
     expect(result).toMatchObject({ status: "sent" });
-    const call = (sendFeatureChatMessage as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    const call = (sendFeatureChatMessage as ReturnType<typeof vi.fn>).mock
+      .calls[0][0];
     expect(call).not.toHaveProperty("model");
   });
 
   it("forwards a non-Anthropic model unchanged", async () => {
-    mockFeature();
+    (db.feature.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(
+      featureRow("COMPLETED"),
+    );
     const tool = getFeaturePlannerTool("openai/gpt-4o");
 
     await tool.execute({ featureId: "feat_1", message: "Hello planner" });
@@ -118,14 +169,279 @@ describe("send_to_feature_planner — chatAgentModel forwarding", () => {
       expect.objectContaining({ model: "openai/gpt-4o" }),
     );
   });
+});
 
-  it("does not call sendFeatureChatMessage when the planner is IN_PROGRESS", async () => {
-    mockFeature({ workflowStatus: "IN_PROGRESS" });
-    const tool = getFeaturePlannerTool("anthropic/claude-opus-4-6");
+// ---------------------------------------------------------------------------
+// (a) Idle on first read — no re-check, no extra reads
+// ---------------------------------------------------------------------------
+describe("send_to_feature_planner — (a) idle on first read", () => {
+  it("sends immediately with a single findUnique call when status is not IN_PROGRESS", async () => {
+    (db.feature.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(
+      featureRow("COMPLETED"),
+    );
+    const tool = getFeaturePlannerTool();
 
-    const result = await tool.execute({ featureId: "feat_1", message: "Hello planner" }) as { error?: string };
+    const result = await tool.execute({
+      featureId: "feat_1",
+      message: "Hello planner",
+    });
 
-    expect(result.error).toMatch(/planner is currently running/i);
+    expect(result).toMatchObject({ status: "sent" });
+    // Only the initial read — no re-check reads.
+    expect(db.feature.findUnique).toHaveBeenCalledTimes(1);
+    expect(sendFeatureChatMessage).toHaveBeenCalledTimes(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// (c) IN_PROGRESS throughout — rework of the original "does not call
+//     sendFeatureChatMessage when IN_PROGRESS" test with fake timers.
+// ---------------------------------------------------------------------------
+describe("send_to_feature_planner — (c) IN_PROGRESS throughout the window", () => {
+  it("returns the structured rejection unchanged and never calls sendFeatureChatMessage", async () => {
+    vi.useFakeTimers();
+
+    // Initial read returns IN_PROGRESS; all re-check reads also return IN_PROGRESS.
+    (db.feature.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(
+      featureRow("IN_PROGRESS"),
+    );
+    // Re-check queries select only { workflowStatus }.
+    (db.feature.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({
+      workflowStatus: "IN_PROGRESS",
+    });
+
+    // Reset to a consistent persistent mock.
+    (db.feature.findUnique as ReturnType<typeof vi.fn>).mockReset();
+    // First call: full feature object (initial read).
+    (db.feature.findUnique as ReturnType<typeof vi.fn>).mockResolvedValueOnce(
+      featureRow("IN_PROGRESS"),
+    );
+    // All subsequent calls (re-checks): still IN_PROGRESS.
+    (db.feature.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({
+      workflowStatus: "IN_PROGRESS",
+    });
+
+    const tool = getFeaturePlannerTool();
+    const executePromise = tool.execute({
+      featureId: "feat_1",
+      message: "Hello planner",
+    });
+
+    // Advance through all RECHECK_MAX_ATTEMPTS iterations.
+    for (let i = 0; i < RECHECK_MAX_ATTEMPTS; i++) {
+      await vi.advanceTimersByTimeAsync(RECHECK_INTERVAL_MS);
+    }
+
+    const result = await executePromise;
+
+    expect(result).toMatchObject(IN_PROGRESS_PAYLOAD);
     expect(sendFeatureChatMessage).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// (b) IN_PROGRESS then clears mid-window
+// ---------------------------------------------------------------------------
+describe("send_to_feature_planner — (b) IN_PROGRESS clears mid-window", () => {
+  it("proceeds with the send once status clears", async () => {
+    vi.useFakeTimers();
+
+    // Initial read: IN_PROGRESS.
+    (db.feature.findUnique as ReturnType<typeof vi.fn>).mockResolvedValueOnce(
+      featureRow("IN_PROGRESS"),
+    );
+    // First re-check: still IN_PROGRESS.
+    (db.feature.findUnique as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      workflowStatus: "IN_PROGRESS",
+    });
+    // Second re-check: cleared.
+    (db.feature.findUnique as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      workflowStatus: "COMPLETED",
+    });
+
+    const tool = getFeaturePlannerTool();
+    const executePromise = tool.execute({
+      featureId: "feat_1",
+      message: "Hello planner",
+    });
+
+    // Advance past the first re-check interval (status still IN_PROGRESS).
+    await vi.advanceTimersByTimeAsync(RECHECK_INTERVAL_MS);
+    // Advance past the second re-check interval (status clears).
+    await vi.advanceTimersByTimeAsync(RECHECK_INTERVAL_MS);
+
+    const result = await executePromise;
+
+    expect(result).toMatchObject({ status: "sent" });
+    expect(sendFeatureChatMessage).toHaveBeenCalledTimes(1);
+    // 1 initial + 2 re-checks = 3 total findUnique calls.
+    expect(db.feature.findUnique).toHaveBeenCalledTimes(3);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// (d) Feature deleted mid-window
+// ---------------------------------------------------------------------------
+describe("send_to_feature_planner — (d) feature deleted mid-window", () => {
+  it("returns { error: 'Feature not found' } without calling sendFeatureChatMessage", async () => {
+    vi.useFakeTimers();
+
+    // Initial read: IN_PROGRESS.
+    (db.feature.findUnique as ReturnType<typeof vi.fn>).mockResolvedValueOnce(
+      featureRow("IN_PROGRESS"),
+    );
+    // First re-check: feature deleted (null).
+    (db.feature.findUnique as ReturnType<typeof vi.fn>).mockResolvedValueOnce(
+      null,
+    );
+
+    const tool = getFeaturePlannerTool();
+    const executePromise = tool.execute({
+      featureId: "feat_1",
+      message: "Hello planner",
+    });
+
+    await vi.advanceTimersByTimeAsync(RECHECK_INTERVAL_MS);
+
+    const result = await executePromise;
+
+    expect(result).toEqual({ error: "Feature not found" });
+    expect(sendFeatureChatMessage).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// (e) Abort signal mid-wait
+// ---------------------------------------------------------------------------
+describe("send_to_feature_planner — (e) abort signal", () => {
+  it("stops the loop early when abortSignal is already aborted", async () => {
+    vi.useFakeTimers();
+
+    // Initial read: IN_PROGRESS.
+    (db.feature.findUnique as ReturnType<typeof vi.fn>).mockResolvedValueOnce(
+      featureRow("IN_PROGRESS"),
+    );
+    // Any re-check that might slip through also returns IN_PROGRESS.
+    (db.feature.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({
+      workflowStatus: "IN_PROGRESS",
+    });
+
+    const controller = new AbortController();
+    controller.abort(); // already aborted before execute() is called
+
+    const tool = getFeaturePlannerTool();
+    const executePromise = tool.execute(
+      { featureId: "feat_1", message: "Hello planner" },
+      { abortSignal: controller.signal },
+    );
+
+    // No timer advancement needed — the loop should detect the pre-aborted
+    // signal before waiting.
+    await vi.advanceTimersByTimeAsync(0);
+
+    const result = await executePromise;
+
+    // Should return the IN_PROGRESS rejection (loop exited before clearing).
+    expect(result).toMatchObject(IN_PROGRESS_PAYLOAD);
+    expect(sendFeatureChatMessage).not.toHaveBeenCalled();
+    // Re-check queries should be at most 1 (none or the abort-after-wait branch).
+    // The key assertion is that the loop did NOT run all 8 iterations.
+    expect(db.feature.findUnique).toHaveBeenCalledTimes(1); // only initial read
+  });
+
+  it("stops the loop mid-way when signal is aborted between iterations", async () => {
+    vi.useFakeTimers();
+
+    const controller = new AbortController();
+
+    // Initial read: IN_PROGRESS.
+    (db.feature.findUnique as ReturnType<typeof vi.fn>).mockResolvedValueOnce(
+      featureRow("IN_PROGRESS"),
+    );
+    // First re-check: still IN_PROGRESS; abort after this.
+    (db.feature.findUnique as ReturnType<typeof vi.fn>).mockImplementationOnce(
+      async () => {
+        controller.abort();
+        return { workflowStatus: "IN_PROGRESS" };
+      },
+    );
+
+    const tool = getFeaturePlannerTool();
+    const executePromise = tool.execute(
+      { featureId: "feat_1", message: "Hello planner" },
+      { abortSignal: controller.signal },
+    );
+
+    // Advance through the first interval so the re-check fires and aborts.
+    await vi.advanceTimersByTimeAsync(RECHECK_INTERVAL_MS);
+
+    const result = await executePromise;
+
+    expect(result).toMatchObject(IN_PROGRESS_PAYLOAD);
+    expect(sendFeatureChatMessage).not.toHaveBeenCalled();
+    // 1 initial + 1 re-check = 2 total; loop stops after the first re-check.
+    expect(db.feature.findUnique).toHaveBeenCalledTimes(2);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// (f) Race: status clears, tool proceeds, sendFeatureChatMessage throws
+//     "already running" → catch returns structured IN_PROGRESS payload.
+// ---------------------------------------------------------------------------
+describe("send_to_feature_planner — (f) race after clear", () => {
+  it("returns structured IN_PROGRESS payload when sendFeatureChatMessage throws 'already running'", async () => {
+    vi.useFakeTimers();
+
+    // Initial read: IN_PROGRESS.
+    (db.feature.findUnique as ReturnType<typeof vi.fn>).mockResolvedValueOnce(
+      featureRow("IN_PROGRESS"),
+    );
+    // First re-check: cleared.
+    (db.feature.findUnique as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      workflowStatus: "COMPLETED",
+    });
+
+    // A concurrent send raced ahead and the downstream guard throws.
+    (sendFeatureChatMessage as ReturnType<typeof vi.fn>).mockRejectedValueOnce(
+      new Error("A planning workflow is already running for this feature"),
+    );
+
+    const tool = getFeaturePlannerTool();
+    const executePromise = tool.execute({
+      featureId: "feat_1",
+      message: "Hello planner",
+    });
+
+    // Advance past the first re-check interval so the status clears.
+    await vi.advanceTimersByTimeAsync(RECHECK_INTERVAL_MS);
+
+    const result = await executePromise;
+
+    // Must return all five structured fields, not an opaque { error }.
+    expect(result).toMatchObject(IN_PROGRESS_PAYLOAD);
+    // sendFeatureChatMessage was called (the tool did proceed after clear).
+    expect(sendFeatureChatMessage).toHaveBeenCalledTimes(1);
+  });
+
+  it("returns opaque { error } for any other thrown error (not the race error)", async () => {
+    (db.feature.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(
+      featureRow("COMPLETED"),
+    );
+
+    (sendFeatureChatMessage as ReturnType<typeof vi.fn>).mockRejectedValueOnce(
+      new Error("Some unexpected DB error"),
+    );
+
+    const tool = getFeaturePlannerTool();
+
+    const result = (await tool.execute({
+      featureId: "feat_1",
+      message: "Hello planner",
+    })) as { error?: string };
+
+    expect(result).toEqual({ error: "Some unexpected DB error" });
+    // Must NOT include structured fields.
+    expect(result).not.toHaveProperty("workflowStatus");
+    expect(result).not.toHaveProperty("featureId");
   });
 });
