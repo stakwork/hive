@@ -36,6 +36,7 @@ import {
   TOOL_ACTIVITY_CALLS_PER_AGENT_CAP,
   TOOL_ACTIVITY_NODES_PER_CALL_CAP,
 } from "./tool-activity";
+import { deriveAllSurfacedHint } from "./concept-facts";
 import type {
   RunReportProjection,
   ProjectedSourceDoc,
@@ -332,7 +333,7 @@ export function projectBundle(rawText: string): ProjectOutcome {
       unknownToolNames: rawActivity.unknownToolNames,
       ambiguousIdentityCount: rawActivity.ambiguousIdentityCount,
       withheldInputFieldCount: totalWithheld,
-      allSurfacedHint: rawActivity.allSurfacedHint,
+      allSurfacedHint: deriveAllSurfacedHint(nodeIdentities, cappedGroups),
       truncated: {
         groups: groupsTruncated,
         callsPerAgent: rawActivity.truncated.callsPerAgent,
