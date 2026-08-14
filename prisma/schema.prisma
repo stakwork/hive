@@ -2298,19 +2298,42 @@ model AgentRun {
   /// SHA-256 hash of the high-entropy callback bearer token. Never stored plaintext.
   tokenHash      String        @map("token_hash")
   /// Delivery target for canvas-linked runs (SharedConversation id). Null for
-  /// future non-canvas run types, whose webhook endpoints deliver elsewhere.
+  /// non-canvas run types (e.g. graph_chat), whose results are stored on the row.
   conversationId String?       @map("conversation_id")
-  orgId          String        @map("org_id")
+  /// SourceControlOrg id for canvas-linked runs. Null for graph_chat runs on
+  /// workspaces without a linked source-control org. No FK (consistent with
+  /// the rest of this table).
+  orgId          String?       @map("org_id")
   userId         String        @map("user_id")
   title          String
   /// Swarm request_id — observability / log-correlation only. NOT part of the arbitration key.
   requestId      String?       @map("request_id")
   status         AgentRunStatus @default(PENDING)
   error          String?       @db.Text
+
+  /// Run-type discriminator: "workflow_explorer" (canvas fan-out) | "graph_chat"
+  /// (result stored on the row, surfaced in the Graph Explorer chat sidebar).
+  agentKind      String        @default("workflow_explorer") @map("agent_kind")
+  /// Set for graph_chat runs; null for canvas runs.
+  workspaceId    String?       @map("workspace_id")
+  /// Denormalized workspace slug snapshotted at create time so the webhook
+  /// handler can Pusher-nudge the workspace channel without a lookup.
+  workspaceSlug  String?       @map("workspace_slug")
+  /// repo/agent session id — groups graph_chat runs into a chat thread.
+  sessionId      String?       @map("session_id")
+  /// The user message for this run (display only).
+  prompt         String?       @db.Text
+  /// Terminal result content, capped at 128KB by hardenContent.
+  result         String?       @db.Text
+  /// Per-thread "Allow concept change proposals" checkbox, snapshotted onto
+  /// every run in the session. Immutable per thread (enforced at dispatch).
+  proposalsEnabled Boolean     @default(false) @map("proposals_enabled")
+
   createdAt      DateTime      @default(now()) @map("created_at")
   updatedAt      DateTime      @updatedAt @map("updated_at")
 
   @@index([conversationId])
+  @@index([workspaceId, sessionId])
   @@map("agent_runs")
 }
 

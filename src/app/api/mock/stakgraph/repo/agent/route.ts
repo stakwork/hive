@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
+import crypto from "crypto";
+import { mockProposals } from "@/app/api/mock/stakgraph/gitree/proposals/fixtures";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -34,6 +36,17 @@ export const dynamic = "force-dynamic";
  *
  * The poll path continues to be exercised by the existing mock progress
  * route (`/api/mock/stakgraph/progress/route.ts`).
+ *
+ * ## Graph Agent Chat simulation
+ *
+ * When `mode: "graph"` is sent (the Graph Explorer chat dispatch), the
+ * success callback carries a graph-flavored markdown answer echoing the
+ * prompt. If the dispatch also enabled the proposal tools
+ * (`toolsConfig.propose_concept_change`) and carries a `sessionId`, a canned
+ * pending `MockProposal` tagged with that `sessionId` is inserted into the
+ * stateful gitree proposal fixtures BEFORE the callback fires — so the chip
+ * flow (webhook nudge → proposals fetch → sessionIds filter) is testable
+ * end-to-end against the mocks.
  */
 export async function POST(request: NextRequest) {
   try {
@@ -51,11 +64,49 @@ export async function POST(request: NextRequest) {
 
     const webhookUrl = body.webhookUrl as string | undefined;
     const webhookMode = (body.webhookMode as string | undefined) ?? "success";
+    const isGraphMode = body.mode === "graph";
+    const sessionId = typeof body.sessionId === "string" ? body.sessionId : undefined;
+    const toolsConfig = (body.toolsConfig ?? {}) as Record<string, unknown>;
+    const proposalsEnabled = toolsConfig.propose_concept_change === true;
 
     console.log("[StakgraphMock] POST /repo/agent - returning mock request_id", {
       hasWebhookUrl: !!webhookUrl,
       webhookMode,
+      isGraphMode,
+      proposalsEnabled,
     });
+
+    // Graph chat with proposals on: file a canned pending proposal tagged
+    // with this session BEFORE the terminal callback fires, so the chip flow
+    // finds it as soon as the run completes.
+    if (isGraphMode && proposalsEnabled && sessionId && webhookMode === "success") {
+      mockProposals.push({
+        id: `proposal-graph-chat-${crypto.randomUUID()}`,
+        action: "update",
+        status: "pending",
+        conceptId: "stakwork/hive/tasks",
+        documentation:
+          "Core task CRUD with dual status system (user vs workflow). The graph agent noted that task threads now group agent runs by sessionId.",
+        baseDocs: "Core task CRUD with dual status system (user vs workflow).",
+        rationale: "Filed by the mock graph agent from a proposals-enabled chat thread.",
+        source: "graph_chat",
+        prNumbers: [],
+        sessionIds: [sessionId],
+        createdAt: new Date().toISOString(),
+        repo: "stakwork/hive",
+      });
+    }
+
+    const graphContent = [
+      "## Mock graph agent answer",
+      "",
+      `You asked: ${typeof body.prompt === "string" ? body.prompt.slice(0, 200) : "(no prompt)"}`,
+      "",
+      "The workspace graph contains **5 concepts**; `stakwork/hive/tasks` is the most connected node.",
+      ...(proposalsEnabled
+        ? ["", "I filed one concept change proposal for review on the Learn page."]
+        : []),
+    ].join("\n");
 
     // Schedule a simulated terminal callback when webhookUrl is present and
     // webhookMode is not "inline" (inline mode is exercised by the poll route).
@@ -66,16 +117,18 @@ export async function POST(request: NextRequest) {
       setTimeout(() => {
         // Mirror stakgraph's TerminalWebhookPayload shape exactly.
         const callbackStatus = isSuccess ? "completed" : "failed";
+        const successContent = isGraphMode
+          ? graphContent
+          : "Mock workflow explorer result: found 3 matching workflows with video-to-transcript skills.";
         const callbackBody: Record<string, unknown> = isSuccess
           ? {
               request_id: "mock-diagram-req-001",
               status: "completed",
               result: {
                 success: true,
-                final_answer:
-                  "Mock workflow explorer result: found 3 matching workflows with video-to-transcript skills.",
-                content:
-                  "Mock workflow explorer result: found 3 matching workflows with video-to-transcript skills.",
+                final_answer: successContent,
+                content: successContent,
+                sessionId,
               },
             }
           : {
