@@ -41,9 +41,10 @@ export async function GET(request: NextRequest) {
     filtered = filtered.filter((p) => p.status === statusFilter);
   }
 
+  // The real swarm returns repo: "all" when no repo filter is given.
   return NextResponse.json({
     proposals: filtered,
     count: filtered.length,
-    repo: repoFilter ?? null,
+    repo: repoFilter ?? "all",
   });
 }

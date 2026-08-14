@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { config } from "@/config/env";
 import { getSwarmConfig } from "@/app/api/learnings/utils";
-import { resolveWorkspaceAccess, requireReadAccess } from "@/lib/auth/workspace-access";
+import { resolveWorkspaceAccess, requireMemberAccess } from "@/lib/auth/workspace-access";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -12,6 +12,9 @@ export const dynamic = "force-dynamic";
  * Fetches a single concept proposal by id.
  * Proxies to stakgraph's GET /gitree/proposals/:id, returning body verbatim
  * (including 404 { error } when not found).
+ *
+ * Member-only, consistent with the list route: proposals are un-reviewed
+ * internal content and are not exposed to public viewers.
  */
 export async function GET(
   request: NextRequest,
@@ -29,7 +32,7 @@ export async function GET(
     }
 
     const access = await resolveWorkspaceAccess(request, { slug: workspaceSlug });
-    const ok = requireReadAccess(access);
+    const ok = requireMemberAccess(access);
     if (ok instanceof NextResponse) return ok;
 
     const { id } = await params;
@@ -59,7 +62,11 @@ export async function GET(
       },
     });
 
-    const body = await response.json();
+    // Guard the parse: a non-JSON upstream body (proxy 502 HTML, empty 204)
+    // must not collapse the real status into a generic 500.
+    const body = await response
+      .json()
+      .catch(() => ({ error: `Upstream returned a non-JSON response (status ${response.status})` }));
     return NextResponse.json(body, { status: response.status });
   } catch (error) {
     console.error("Proposal detail proxy error:", error);

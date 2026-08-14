@@ -6,7 +6,7 @@
  * standard workspace-access mock pattern.  `globalThis.fetch` is spied per-test.
  */
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { NextRequest } from "next/server";
 import { WorkspaceRole } from "@/lib/auth/roles";
 
@@ -298,8 +298,13 @@ describe("POST /api/learnings/concepts/proposals/[id]/accept", () => {
 
   // ── Status/body forwarding ─────────────────────────────────────────────────
 
-  it("forwards stale_base 409 verbatim (no error field)", async () => {
-    stubFetch(409, { code: "stale_base", conceptId: "stakwork/hive/auth" });
+  it("forwards stale_base 409 verbatim (error + code + conceptId)", async () => {
+    stubFetch(409, {
+      error:
+        "Documentation of concept stakwork/hive/auth has changed since this proposal was created; re-review or pass force=true",
+      code: "stale_base",
+      conceptId: "stakwork/hive/auth",
+    });
     const res = await acceptPost(makeActionReq("/api/.../accept"), {
       params: makeParams("p1"),
     });
@@ -307,18 +312,18 @@ describe("POST /api/learnings/concepts/proposals/[id]/accept", () => {
     const body = await res.json();
     expect(body.code).toBe("stale_base");
     expect(body.conceptId).toBeDefined();
-    expect(body.error).toBeUndefined();
+    expect(body.error).toBeDefined();
   });
 
-  it("forwards already-decided 409 verbatim (no error field)", async () => {
-    stubFetch(409, { status: "accepted" });
+  it("forwards already-decided 409 verbatim (error + status)", async () => {
+    stubFetch(409, { error: "Proposal p1 was already accepted", status: "accepted" });
     const res = await acceptPost(makeActionReq("/api/.../accept"), {
       params: makeParams("p1"),
     });
     expect(res.status).toBe(409);
     const body = await res.json();
     expect(body.status).toBe("accepted");
-    expect(body.error).toBeUndefined();
+    expect(body.error).toBeDefined();
   });
 
   it("forwards 404 verbatim", async () => {
@@ -439,15 +444,15 @@ describe("POST /api/learnings/concepts/proposals/[id]/reject", () => {
 
   // ── Status/body forwarding ─────────────────────────────────────────────────
 
-  it("forwards already-decided 409 verbatim (no error field)", async () => {
-    stubFetch(409, { status: "rejected" });
+  it("forwards already-decided 409 verbatim (error + status)", async () => {
+    stubFetch(409, { error: "Proposal p1 was already rejected", status: "rejected" });
     const res = await rejectPost(makeActionReq("/api/.../reject"), {
       params: makeParams("p1"),
     });
     expect(res.status).toBe(409);
     const body = await res.json();
     expect(body.status).toBe("rejected");
-    expect(body.error).toBeUndefined();
+    expect(body.error).toBeDefined();
   });
 
   it("forwards 404 verbatim", async () => {
@@ -503,15 +508,44 @@ describe("POST /api/learnings/concepts/proposals/[id]/reject", () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe("Mock-aware routing (USE_MOCKS=true)", () => {
-  it("targets MOCK_BASE when USE_MOCKS is true — verified via config branch in route", () => {
-    // This is tested indirectly through the mock endpoints in proposals-mock.test.ts.
-    // The USE_MOCKS branch in each proxy route substitutes base/apiKey before the
-    // fetch call; the module-level vi.mock above fixes USE_MOCKS=false so we can
-    // assert the swarm URL is used in all tests above.
-    //
-    // A live USE_MOCKS=true round-trip is covered by the mock endpoint tests which
-    // directly call the mock handlers (no HTTP), which is equivalent to an
-    // integration-level verification of the mock contract.
-    expect(true).toBe(true);
+  afterEach(() => {
+    vi.doUnmock("@/config/env");
+    vi.resetModules();
+    vi.restoreAllMocks();
+  });
+
+  it("targets the mock stakgraph base with the mock token", async () => {
+    // The file-level vi.mock pins USE_MOCKS=false, so exercise the mock branch
+    // by re-importing the route with a USE_MOCKS=true env.
+    vi.resetModules();
+    vi.doMock("@/config/env", () => ({
+      config: { USE_MOCKS: true, MOCK_BASE: "http://localhost:3000" },
+    }));
+
+    const { GET: mockedListGet } = await import(
+      "@/app/api/learnings/concepts/proposals/route"
+    );
+    // resetModules re-ran the workspace-access mock factory — grab the fresh
+    // mock the re-imported route now uses and stub it.
+    const { resolveWorkspaceAccess: freshResolve } = await import(
+      "@/lib/auth/workspace-access"
+    );
+    vi.mocked(freshResolve).mockResolvedValue(memberAccess());
+
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce({
+      status: 200,
+      json: () => Promise.resolve({ proposals: [], count: 0, repo: "all" }),
+    } as unknown as Response);
+
+    const res = await mockedListGet(makeListReq());
+    expect(res.status).toBe(200);
+
+    const calledUrl = fetchSpy.mock.calls[0][0] as string;
+    expect(calledUrl).toBe(
+      "http://localhost:3000/api/mock/stakgraph/gitree/proposals",
+    );
+    const headers = (fetchSpy.mock.calls[0][1] as RequestInit)
+      .headers as Record<string, string>;
+    expect(headers["x-api-token"]).toBe("mock");
   });
 });

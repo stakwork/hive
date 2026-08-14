@@ -22,8 +22,8 @@ export const dynamic = "force-dynamic";
  *
  * Swarm responses are forwarded verbatim (status + body), including:
  *   200 { status: "success", proposal }
- *   409 { status }   — proposal already decided
- *   404 { error }    — proposal not found
+ *   409 { error, status }   — proposal already decided
+ *   404 { error }           — proposal not found
  */
 export async function POST(
   request: NextRequest,
@@ -91,7 +91,11 @@ export async function POST(
       }),
     });
 
-    const body = await response.json();
+    // Guard the parse: a non-JSON upstream body (proxy 502 HTML, empty 204)
+    // must not collapse the real status into a generic 500.
+    const body = await response
+      .json()
+      .catch(() => ({ error: `Upstream returned a non-JSON response (status ${response.status})` }));
     return NextResponse.json(body, { status: response.status });
   } catch (error) {
     console.error("Proposal reject proxy error:", error);

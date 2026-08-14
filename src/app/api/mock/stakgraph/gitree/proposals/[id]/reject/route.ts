@@ -9,10 +9,10 @@ export const dynamic = "force-dynamic";
  *
  * POST — Rejects a pending proposal, mutating its status in-place.
  *
- * Returns:
- *   200 { status: "success", proposal }           — rejected
- *   409 { status: "accepted" | "rejected" }       — already decided
- *   404                                           — proposal not found
+ * Returns (matching the swarm contract):
+ *   200 { status: "success", proposal }                 — rejected
+ *   409 { error, status: "accepted" | "rejected" }      — already decided
+ *   404 { error }                                       — proposal not found
  */
 export async function POST(
   request: NextRequest,
@@ -30,9 +30,14 @@ export async function POST(
     return NextResponse.json({ error: `Proposal '${id}' not found` }, { status: 404 });
   }
 
-  // Already decided — return 409 { status } with no `error` field (matches swarm contract)
   if (proposal.status !== "pending") {
-    return NextResponse.json({ status: proposal.status }, { status: 409 });
+    return NextResponse.json(
+      {
+        error: `Proposal ${proposal.id} was already ${proposal.status}`,
+        status: proposal.status,
+      },
+      { status: 409 },
+    );
   }
 
   let decidedBy: string | undefined;

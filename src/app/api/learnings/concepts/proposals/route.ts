@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { config } from "@/config/env";
 import { getSwarmConfig } from "@/app/api/learnings/utils";
-import { resolveWorkspaceAccess, requireReadAccess } from "@/lib/auth/workspace-access";
+import { resolveWorkspaceAccess, requireMemberAccess } from "@/lib/auth/workspace-access";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -11,6 +11,12 @@ export const dynamic = "force-dynamic";
  *
  * Lists pending (or filtered) concept proposals for a workspace.
  * Proxies to stakgraph's GET /gitree/proposals, returning the body verbatim.
+ *
+ * Member-only: proposals are un-reviewed internal content (draft docs,
+ * rationales, PR references), so unlike published concepts they are NOT
+ * readable by public viewers — even though the middleware wildcard marks
+ * /api/learnings/concepts/* GET as public, requireMemberAccess here rejects
+ * anonymous and public-viewer callers.
  *
  * Query params:
  *   workspace (required) — workspace slug
@@ -30,7 +36,7 @@ export async function GET(request: NextRequest) {
     }
 
     const access = await resolveWorkspaceAccess(request, { slug: workspaceSlug });
-    const ok = requireReadAccess(access);
+    const ok = requireMemberAccess(access);
     if (ok instanceof NextResponse) return ok;
 
     let base: string;
@@ -63,7 +69,11 @@ export async function GET(request: NextRequest) {
       },
     });
 
-    const body = await response.json();
+    // Guard the parse: a non-JSON upstream body (proxy 502 HTML, empty 204)
+    // must not collapse the real status into a generic 500.
+    const body = await response
+      .json()
+      .catch(() => ({ error: `Upstream returned a non-JSON response (status ${response.status})` }));
     return NextResponse.json(body, { status: response.status });
   } catch (error) {
     console.error("Proposals list proxy error:", error);

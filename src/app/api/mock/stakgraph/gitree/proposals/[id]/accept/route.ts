@@ -7,13 +7,15 @@ export const dynamic = "force-dynamic";
 /**
  * Mock Stakgraph Gitree Proposal Accept Endpoint
  *
- * POST — Accepts a pending proposal, mutating its status in-place.
+ * POST — Accepts a pending proposal, mutating its status in-place and applying
+ * the proposed change to the mock concept docs (mirroring the real swarm,
+ * where accept writes through to the Concept graph).
  *
- * Returns:
- *   200 { status: "success", proposal }                — accepted
- *   409 { code: "stale_base", conceptId }              — baseDocs mismatch + force not set
- *   409 { status: "accepted" | "rejected" }            — already decided
- *   404                                                — proposal not found
+ * Returns (matching the swarm contract):
+ *   200 { status: "success", proposal }                       — accepted
+ *   409 { error, code: "stale_base", conceptId }              — docs drifted + force not set
+ *   409 { error, status: "accepted" | "rejected" }            — already decided
+ *   404 { error }                                             — proposal not found
  */
 export async function POST(
   request: NextRequest,
@@ -31,9 +33,14 @@ export async function POST(
     return NextResponse.json({ error: `Proposal '${id}' not found` }, { status: 404 });
   }
 
-  // Already decided — return 409 { status } with no `error` field (matches swarm contract)
   if (proposal.status !== "pending") {
-    return NextResponse.json({ status: proposal.status }, { status: 409 });
+    return NextResponse.json(
+      {
+        error: `Proposal ${proposal.id} was already ${proposal.status}`,
+        status: proposal.status,
+      },
+      { status: 409 },
+    );
   }
 
   let force = false;
@@ -46,13 +53,20 @@ export async function POST(
     // body is optional
   }
 
-  // Stale-base check: for proposals with a conceptId and baseDocs, compare
-  // baseDocs against the current mock concept documentation.
-  if (!force && proposal.conceptId && proposal.baseDocs !== undefined) {
-    const currentDocs = mockConceptDocs[proposal.conceptId];
+  // Stale-base check against the concept being EDITED: the target for
+  // update/delete, the SURVIVOR for merge (matching the real swarm — drift
+  // on the absorbed concept doesn't matter, it's being deleted).
+  const staleTargetId =
+    proposal.action === "merge" ? proposal.mergeIntoConceptId : proposal.conceptId;
+  if (!force && staleTargetId && proposal.baseDocs !== undefined) {
+    const currentDocs = mockConceptDocs[staleTargetId];
     if (currentDocs !== undefined && proposal.baseDocs !== currentDocs) {
       return NextResponse.json(
-        { code: "stale_base", conceptId: proposal.conceptId },
+        {
+          error: `Documentation of concept ${staleTargetId} has changed since this proposal was created; re-review or pass force=true`,
+          code: "stale_base",
+          conceptId: staleTargetId,
+        },
         { status: 409 },
       );
     }
@@ -68,6 +82,34 @@ export async function POST(
     proposal.createdConceptId = `stakwork/hive/${(proposal.name ?? "new-concept")
       .toLowerCase()
       .replace(/\s+/g, "-")}`;
+  }
+
+  // Apply the accepted change to the mock concept docs, like the real swarm
+  // applies it to the Concept graph.
+  switch (proposal.action) {
+    case "create":
+      if (proposal.createdConceptId) {
+        mockConceptDocs[proposal.createdConceptId] = proposal.documentation ?? "";
+      }
+      break;
+    case "update":
+      if (proposal.conceptId && proposal.documentation !== undefined) {
+        mockConceptDocs[proposal.conceptId] = proposal.documentation;
+      }
+      break;
+    case "delete":
+      if (proposal.conceptId) {
+        delete mockConceptDocs[proposal.conceptId];
+      }
+      break;
+    case "merge":
+      if (proposal.mergeIntoConceptId && proposal.documentation !== undefined) {
+        mockConceptDocs[proposal.mergeIntoConceptId] = proposal.documentation;
+      }
+      if (proposal.conceptId) {
+        delete mockConceptDocs[proposal.conceptId];
+      }
+      break;
   }
 
   return NextResponse.json({ status: "success", proposal });
