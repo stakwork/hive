@@ -14,55 +14,17 @@
  * must reset as a unit or tests become order-dependent.
  */
 
-export type ProposalAction = "create" | "update" | "delete" | "merge";
-export type ProposalStatus = "pending" | "accepted" | "rejected";
+import type {
+  ConceptProposal,
+  ProposalAction,
+  ProposalStatus,
+} from "@/types/concept-proposals";
 
-export interface MockProposal {
-  id: string;
-  action: ProposalAction;
-  status: ProposalStatus;
-  /** For update/delete/merge — the concept being changed or absorbed */
-  conceptId?: string;
-  /** For merge — the survivor concept that absorbs the deleted one */
-  mergeIntoConceptId?: string;
-  /** Proposed new name (create) */
-  name?: string;
-  /** Optional one-line description (create/update) */
-  description?: string;
-  /** Proposed documentation (create / update / merge result) */
-  documentation?: string;
-  /**
-   * Docs snapshot of the concept being EDITED, captured at proposal-creation
-   * time. For update/delete this is the target concept; for merge it is the
-   * SURVIVING concept (mergeIntoConceptId) — the stale_base check runs against
-   * the survivor, matching the real swarm.
-   */
-  baseDocs?: string;
-  /** Docs of the absorbed concept (merge only) */
-  absorbedDocs?: string;
-  /** Optional parent concept id (create only) */
-  parent?: string;
-  /** Human-readable rationale for the proposal */
-  rationale: string;
-  /** Source of the proposal (e.g. PR url or tool name) */
-  source: string;
-  /** Related PR numbers */
-  prNumbers: number[];
-  /** Agent sessions that motivated this proposal */
-  sessionIds?: string[];
-  /** Set to the new concept id on accepted create proposals */
-  createdConceptId?: string;
-  /** User id that accepted/rejected this proposal */
-  decidedBy?: string;
-  /** Optional rejection reason */
-  decisionReason?: string;
-  /** ISO timestamp of the decision */
-  decidedAt?: string;
-  /** ISO timestamp of proposal creation */
-  createdAt: string;
-  /** Repository this proposal belongs to */
-  repo: string;
-}
+// Canonical proposal types live in src/types/concept-proposals.ts (shared
+// with the /learn review UI). Re-exported here so the mock routes and their
+// tests keep importing from the fixtures module.
+export type { ProposalAction, ProposalStatus };
+export type MockProposal = ConceptProposal;
 
 /**
  * Current documentation for mock concepts (mirrors the concepts/[id] mock).
