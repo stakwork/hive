@@ -643,6 +643,9 @@ describe("POST /run — credential pattern: swarmSecretAlias in payload", () => 
     const vars = (capturedPayloads[0] as { workflow_params: { set_var: { attributes: { vars: Record<string, string> } } } }).workflow_params.set_var.attributes.vars;
     expect(vars.graph_base_url).toBe("https://graph.example.com");
     expect(vars.workspace_id).toBe("ws-1");
+    // task.json fetch returns 404 → falls back to request-supplied taskTitle
+    expect(typeof vars.task_title).toBe("string");
+    expect(vars.task_title).toBe("Task A");
   });
 
   test("vars.repo2graph_url is the :3355-transformed swarmUrl", async () => {
@@ -716,6 +719,9 @@ describe("POST /run — task context pre-fetch for Stakwork vars", () => {
     const vars = (capturedPayloads[0] as { workflow_params: { set_var: { attributes: { vars: Record<string, string> } } } }).workflow_params.set_var.attributes.vars;
     expect(vars.task_goal).toBe("Do this thing.");
     expect(vars.task_output_desc).toBe("Memo, Summary");
+    // task.json title is "Task A" and request taskTitle is also "Task A" — canonical wins
+    expect(typeof vars.task_title).toBe("string");
+    expect(vars.task_title).toBe("Task A");
     expect(JSON.parse(vars.documents_json)).toEqual([
       "https://raw.githubusercontent.com/stakwork/harvey-labs/main/tasks/task-a/documents/doc1.txt",
       "https://raw.githubusercontent.com/stakwork/harvey-labs/main/tasks/task-a/documents/doc2.txt",
@@ -1417,6 +1423,128 @@ describe("POST /run — model & judge model selection", () => {
     // Confirm apiKey from Bifrost used
     const vars = await varsPromise;
     expect(vars.apiKey).toBe("bifrost-key-for-chosen-model");
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// POST /run — task_title in dispatch vars (canonical resolution + input hardening)
+// ═══════════════════════════════════════════════════════════════════════════
+
+describe("POST /run — task_title in dispatch vars", () => {
+  beforeEach(() => {
+    (getWorkspaceSwarmAccess as Mock).mockResolvedValue(MOCK_SWARM_ACCESS);
+    setupTransactionMock({ runnerResult: { id: "runner-new" } });
+  });
+
+  test("canonical task.json title wins over client-supplied taskTitle when task.json fetch succeeds", async () => {
+    const capturedPayloads: unknown[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockImplementation((url: string, opts?: RequestInit) => {
+        if (String(url).includes("task.json")) {
+          return Promise.resolve({
+            ok: true,
+            json: async () => ({
+              title: "Canonical Title",
+              instructions: "Do the thing.",
+              criteria: [],
+            }),
+          });
+        }
+        if (String(url).includes("contents")) {
+          return Promise.resolve({ ok: true, json: async () => [] });
+        }
+        capturedPayloads.push(opts?.body ? JSON.parse(opts.body as string) : null);
+        return Promise.resolve({ ok: true, json: async () => ({ data: { project_id: 99 } }) });
+      }),
+    );
+
+    const res = await postRun(
+      makeRunRequest({ taskSlug: "task-a", taskTitle: "Client Title" }),
+      { params: Promise.resolve({ slug: "openlaw" }) },
+    );
+    expect(res.status).toBe(201);
+    expect(capturedPayloads).toHaveLength(1);
+
+    const vars = (capturedPayloads[0] as { workflow_params: { set_var: { attributes: { vars: Record<string, string> } } } }).workflow_params.set_var.attributes.vars;
+    expect(typeof vars.task_title).toBe("string");
+    expect(vars.task_title).toBe("Canonical Title");
+  });
+
+  test("returns 400 and dispatches nothing when taskTitle is whitespace-only", async () => {
+    const mockFetch = vi.fn();
+    vi.stubGlobal("fetch", mockFetch);
+
+    const res = await postRun(
+      makeRunRequest({ taskSlug: "task-a", taskTitle: "   " }),
+      { params: Promise.resolve({ slug: "openlaw" }) },
+    );
+    expect(res.status).toBe(400);
+
+    // No outbound fetch should have occurred (guard fires before any pre-fetch)
+    const projectCalls = mockFetch.mock.calls.filter(([url]: [string]) =>
+      String(url).includes("/projects"),
+    );
+    expect(projectCalls).toHaveLength(0);
+  });
+
+  test("returns 400 and dispatches nothing when taskTitle is a non-string (object)", async () => {
+    const mockFetch = vi.fn();
+    vi.stubGlobal("fetch", mockFetch);
+
+    const res = await postRun(
+      makeRunRequest({ taskSlug: "task-a", taskTitle: { a: 1 } }),
+      { params: Promise.resolve({ slug: "openlaw" }) },
+    );
+    expect(res.status).toBe(400);
+
+    const projectCalls = mockFetch.mock.calls.filter(([url]: [string]) =>
+      String(url).includes("/projects"),
+    );
+    expect(projectCalls).toHaveLength(0);
+  });
+
+  test("returns 400 and dispatches nothing when taskTitle exceeds 300 characters", async () => {
+    const mockFetch = vi.fn();
+    vi.stubGlobal("fetch", mockFetch);
+
+    const res = await postRun(
+      makeRunRequest({ taskSlug: "task-a", taskTitle: "x".repeat(301) }),
+      { params: Promise.resolve({ slug: "openlaw" }) },
+    );
+    expect(res.status).toBe(400);
+
+    const projectCalls = mockFetch.mock.calls.filter(([url]: [string]) =>
+      String(url).includes("/projects"),
+    );
+    expect(projectCalls).toHaveLength(0);
+  });
+
+  test("returns 400 and makes NO fetch to raw.githubusercontent.com or api.github.com when taskSlug fails TASK_SLUG_RE", async () => {
+    const mockFetch = vi.fn();
+    vi.stubGlobal("fetch", mockFetch);
+
+    const res = await postRun(
+      makeRunRequest({ taskSlug: "../../etc/passwd", taskTitle: "Task A" }),
+      { params: Promise.resolve({ slug: "openlaw" }) },
+    );
+    expect(res.status).toBe(400);
+
+    // Slug guard must short-circuit before the pre-fetch Promise.all
+    const githubRawCalls = mockFetch.mock.calls.filter(([url]: [string]) =>
+      String(url).includes("raw.githubusercontent.com"),
+    );
+    const githubApiCalls = mockFetch.mock.calls.filter(([url]: [string]) =>
+      String(url).includes("api.github.com"),
+    );
+    expect(githubRawCalls).toHaveLength(0);
+    expect(githubApiCalls).toHaveLength(0);
+
+    // No dispatch to Stakwork /projects either
+    const projectCalls = mockFetch.mock.calls.filter(([url]: [string]) =>
+      String(url).includes("/projects"),
+    );
+    expect(projectCalls).toHaveLength(0);
   });
 });
 
