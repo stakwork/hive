@@ -300,6 +300,7 @@ describe("pusher.ts", () => {
         CANVAS_USER_LEAVE: "canvas-user-leave",
         CANVAS_SELECTION_UPDATE: "canvas-selection-update",
         CANVAS_RUN_ACTIVE: "canvas-run-active",
+        GRAPH_AGENT_RUN_UPDATED: "graph-agent-run-updated",
         RESEARCH_UPDATED: "research-updated",
         AGENT_LOG_UPDATED: "agent-log-updated",
         CANVAS_CONVERSATION_UPDATED: "canvas-conversation-updated",

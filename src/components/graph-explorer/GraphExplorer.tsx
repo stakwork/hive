@@ -9,6 +9,8 @@ import {
   DatabaseZap,
   Search,
   ChevronRight,
+  MessageSquare,
+  Plus,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -33,6 +35,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 
 import { stakgraphToRawGraph } from "./stakgraphToRawGraph";
 import { useKGGraph } from "./useKGGraph";
+import { GraphChatSidebar, NewGraphChatModal } from "./chat";
 import type { RawNode, RawEdge } from "@/graph-viz-kit";
 
 // Dynamically import the 3D canvas — Three.js is browser-only
@@ -181,6 +184,11 @@ export function GraphExplorer({ workspaceSlug }: GraphExplorerProps) {
   const [searchResults, setSearchResults] = useState<SearchResultItem[]>([]);
   const [searchLoading, setSearchLoading] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
+
+  // ── Graph agent chat state ────────────────────────────────────────────────
+  const [chatOpen, setChatOpen] = useState(false);
+  const [chatSessionId, setChatSessionId] = useState<string | null>(null);
+  const [newChatOpen, setNewChatOpen] = useState(false);
 
   // ── Update raw graph whenever query result changes ────────────────────────
   useEffect(() => {
@@ -362,185 +370,222 @@ export function GraphExplorer({ workspaceSlug }: GraphExplorerProps) {
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
-    <div className="flex flex-col gap-4 flex-1 min-h-0">
-      {/* ── Search panel ── */}
-      <div className="flex gap-2 items-center" data-testid="search-panel">
-        <Input
-          data-testid="search-input"
-          placeholder="Keyword / semantic search…"
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          onKeyDown={handleSearchKeyDown}
-          className="flex-1"
-        />
-        <Button
-          data-testid="search-button"
-          variant="secondary"
-          onClick={runSearch}
-          disabled={searchLoading || !searchQuery.trim()}
-        >
-          {searchLoading ? (
-            <Loader2 className="h-4 w-4 animate-spin mr-2" />
-          ) : (
-            <Search className="h-4 w-4 mr-2" />
-          )}
-          Search
-        </Button>
-      </div>
-
-      {/* Search results */}
-      {searchError && (
-        <p className="text-xs text-destructive" data-testid="search-error">
-          {searchError}
-        </p>
-      )}
-      {searchResults.length > 0 && (
-        <div
-          className="flex flex-wrap gap-2 p-2 border rounded-md bg-muted/40"
-          data-testid="search-results"
-        >
-          {searchResults.map((item) => (
-            <button
-              key={item.ref_id}
-              data-testid={`search-result-${item.ref_id}`}
-              onClick={() => handleSearchResultClick(item)}
-              className="flex items-center gap-1 px-2 py-1 rounded border bg-background hover:bg-accent text-xs transition-colors"
-            >
-              <span className="font-medium">{item.name}</span>
-              <ChevronRight className="h-3 w-3 text-muted-foreground" />
-              <span className="text-muted-foreground truncate max-w-[140px]">{item.file}</span>
-            </button>
-          ))}
+    <div className="flex flex-1 min-h-0 gap-4">
+      <div className="flex flex-col gap-4 flex-1 min-h-0 min-w-0">
+        {/* ── Search panel ── */}
+        <div className="flex gap-2 items-center" data-testid="search-panel">
+          <Input
+            data-testid="search-input"
+            placeholder="Keyword / semantic search…"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            onKeyDown={handleSearchKeyDown}
+            className="flex-1"
+          />
+          <Button
+            data-testid="search-button"
+            variant="secondary"
+            onClick={runSearch}
+            disabled={searchLoading || !searchQuery.trim()}
+          >
+            {searchLoading ? (
+              <Loader2 className="h-4 w-4 animate-spin mr-2" />
+            ) : (
+              <Search className="h-4 w-4 mr-2" />
+            )}
+            Search
+          </Button>
+          <Button
+            data-testid="graph-chat-toggle-button"
+            variant={chatOpen ? "secondary" : "outline"}
+            onClick={() => setChatOpen((open) => !open)}
+          >
+            <MessageSquare className="h-4 w-4 mr-2" />
+            Chat
+          </Button>
+          <Button
+            data-testid="graph-chat-new-button"
+            variant="outline"
+            onClick={() => setNewChatOpen(true)}
+          >
+            <Plus className="h-4 w-4 mr-2" />
+            New
+          </Button>
         </div>
-      )}
 
-      {/* ── Cypher query bar ── */}
-      <div className="flex gap-2 items-start" data-testid="query-bar">
-        <Textarea
-          data-testid="cypher-input"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          onKeyDown={handleKeyDown}
-          rows={3}
-          placeholder="MATCH (n) RETURN n LIMIT 25"
-          className="font-mono text-sm resize-none flex-1"
-          spellCheck={false}
-        />
-        <Button
-          data-testid="run-query-button"
-          onClick={() => runQuery()}
-          disabled={loading || !query.trim()}
-          className="shrink-0"
-        >
-          {loading ? (
-            <Loader2 className="h-4 w-4 animate-spin mr-2" />
-          ) : (
-            <Play className="h-4 w-4 mr-2" />
-          )}
-          Run
-        </Button>
-      </div>
-
-      <p className="text-xs text-muted-foreground -mt-2">
-        Press{" "}
-        <kbd className="px-1 py-0.5 rounded border text-xs font-mono">Ctrl+Enter</kbd> to run
-      </p>
-
-      {/* ── Status states ── */}
-      {notConfigured && (
-        <div
-          data-testid="not-configured-state"
-          className="flex flex-col items-center justify-center py-16 text-center gap-3"
-        >
-          <DatabaseZap className="h-10 w-10 text-muted-foreground" />
-          <p className="font-medium text-foreground">Graph DB not configured for this workspace</p>
-          <p className="text-sm text-muted-foreground max-w-sm">
-            Attach a swarm with a graph endpoint to start exploring.
+        {/* Search results */}
+        {searchError && (
+          <p className="text-xs text-destructive" data-testid="search-error">
+            {searchError}
           </p>
-        </div>
-      )}
-
-      {error && (
-        <Alert variant="destructive" data-testid="error-state">
-          <AlertCircle className="h-4 w-4" />
-          <AlertDescription>{error}</AlertDescription>
-        </Alert>
-      )}
-
-      {loading && (
-        <div
-          data-testid="loading-state"
-          className="flex items-center justify-center py-16 gap-2 text-muted-foreground"
-        >
-          <Loader2 className="h-5 w-5 animate-spin" />
-          <span>Running query…</span>
-        </div>
-      )}
-
-      {/* ── Results ── */}
-      {!loading && queryResult !== null && !error && !notConfigured && (
-        <>
-          {queryResult.rows.length === 0 ? (
-            <div
-              data-testid="empty-state"
-              className="flex flex-col items-center justify-center py-16 gap-2 text-muted-foreground"
-            >
-              <Search className="h-8 w-8" />
-              <p>No results returned.</p>
-            </div>
-          ) : (
-            <Tabs value={tab} onValueChange={setTab} className="flex flex-col flex-1 min-h-0">
-              <div className="flex items-center gap-3">
-                <TabsList>
-                  <TabsTrigger value="table" data-testid="tab-table">
-                    Table
-                  </TabsTrigger>
-                  <TabsTrigger value="graph" data-testid="tab-graph">
-                    Graph
-                  </TabsTrigger>
-                </TabsList>
-                <span className="text-xs text-muted-foreground">
-                  {queryResult.rows.length} record{queryResult.rows.length !== 1 ? "s" : ""}
-                </span>
-                {viewState.mode === "subgraph" && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={goOverview}
-                    data-testid="go-overview-button"
-                    className="text-xs"
-                  >
-                    ← Overview
-                  </Button>
-                )}
-              </div>
-
-              <TabsContent value="table" className="flex-1 min-h-0 mt-2 overflow-auto">
-                <ResultTable columns={queryResult.columns} rows={queryResult.rows} />
-              </TabsContent>
-
-              <TabsContent
-                value="graph"
-                className="flex-1 min-h-0 mt-2 border rounded-md overflow-hidden"
-                style={{ minHeight: 400 }}
+        )}
+        {searchResults.length > 0 && (
+          <div
+            className="flex flex-wrap gap-2 p-2 border rounded-md bg-muted/40"
+            data-testid="search-results"
+          >
+            {searchResults.map((item) => (
+              <button
+                key={item.ref_id}
+                data-testid={`search-result-${item.ref_id}`}
+                onClick={() => handleSearchResultClick(item)}
+                className="flex items-center gap-1 px-2 py-1 rounded border bg-background hover:bg-accent text-xs transition-colors"
               >
-                {graph.nodes.length > 0 ? (
-                  <KGCanvas
-                    graph={graph}
-                    viewState={viewState}
-                    onNodeClick={handleCanvasNodeClick}
-                    searchMatches={searchMatches}
-                  />
-                ) : (
-                  <div className="flex items-center justify-center h-full text-muted-foreground text-sm">
-                    No graph nodes found in these results.
-                  </div>
-                )}
-              </TabsContent>
-            </Tabs>
-          )}
-        </>
+                <span className="font-medium">{item.name}</span>
+                <ChevronRight className="h-3 w-3 text-muted-foreground" />
+                <span className="text-muted-foreground truncate max-w-[140px]">{item.file}</span>
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* ── Cypher query bar ── */}
+        <div className="flex gap-2 items-start" data-testid="query-bar">
+          <Textarea
+            data-testid="cypher-input"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={handleKeyDown}
+            rows={3}
+            placeholder="MATCH (n) RETURN n LIMIT 25"
+            className="font-mono text-sm resize-none flex-1"
+            spellCheck={false}
+          />
+          <Button
+            data-testid="run-query-button"
+            onClick={() => runQuery()}
+            disabled={loading || !query.trim()}
+            className="shrink-0"
+          >
+            {loading ? (
+              <Loader2 className="h-4 w-4 animate-spin mr-2" />
+            ) : (
+              <Play className="h-4 w-4 mr-2" />
+            )}
+            Run
+          </Button>
+        </div>
+
+        <p className="text-xs text-muted-foreground -mt-2">
+          Press{" "}
+          <kbd className="px-1 py-0.5 rounded border text-xs font-mono">Ctrl+Enter</kbd> to run
+        </p>
+
+        {/* ── Status states ── */}
+        {notConfigured && (
+          <div
+            data-testid="not-configured-state"
+            className="flex flex-col items-center justify-center py-16 text-center gap-3"
+          >
+            <DatabaseZap className="h-10 w-10 text-muted-foreground" />
+            <p className="font-medium text-foreground">Graph DB not configured for this workspace</p>
+            <p className="text-sm text-muted-foreground max-w-sm">
+              Attach a swarm with a graph endpoint to start exploring.
+            </p>
+          </div>
+        )}
+
+        {error && (
+          <Alert variant="destructive" data-testid="error-state">
+            <AlertCircle className="h-4 w-4" />
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
+        )}
+
+        {loading && (
+          <div
+            data-testid="loading-state"
+            className="flex items-center justify-center py-16 gap-2 text-muted-foreground"
+          >
+            <Loader2 className="h-5 w-5 animate-spin" />
+            <span>Running query…</span>
+          </div>
+        )}
+
+        {/* ── Results ── */}
+        {!loading && queryResult !== null && !error && !notConfigured && (
+          <>
+            {queryResult.rows.length === 0 ? (
+              <div
+                data-testid="empty-state"
+                className="flex flex-col items-center justify-center py-16 gap-2 text-muted-foreground"
+              >
+                <Search className="h-8 w-8" />
+                <p>No results returned.</p>
+              </div>
+            ) : (
+              <Tabs value={tab} onValueChange={setTab} className="flex flex-col flex-1 min-h-0">
+                <div className="flex items-center gap-3">
+                  <TabsList>
+                    <TabsTrigger value="table" data-testid="tab-table">
+                      Table
+                    </TabsTrigger>
+                    <TabsTrigger value="graph" data-testid="tab-graph">
+                      Graph
+                    </TabsTrigger>
+                  </TabsList>
+                  <span className="text-xs text-muted-foreground">
+                    {queryResult.rows.length} record{queryResult.rows.length !== 1 ? "s" : ""}
+                  </span>
+                  {viewState.mode === "subgraph" && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={goOverview}
+                      data-testid="go-overview-button"
+                      className="text-xs"
+                    >
+                      ← Overview
+                    </Button>
+                  )}
+                </div>
+
+                <TabsContent value="table" className="flex-1 min-h-0 mt-2 overflow-auto">
+                  <ResultTable columns={queryResult.columns} rows={queryResult.rows} />
+                </TabsContent>
+
+                <TabsContent
+                  value="graph"
+                  className="flex-1 min-h-0 mt-2 border rounded-md overflow-hidden"
+                  style={{ minHeight: 400 }}
+                >
+                  {graph.nodes.length > 0 ? (
+                    <KGCanvas
+                      graph={graph}
+                      viewState={viewState}
+                      onNodeClick={handleCanvasNodeClick}
+                      searchMatches={searchMatches}
+                    />
+                  ) : (
+                    <div className="flex items-center justify-center h-full text-muted-foreground text-sm">
+                      No graph nodes found in these results.
+                    </div>
+                  )}
+                </TabsContent>
+              </Tabs>
+            )}
+          </>
+        )}
+      </div>
+
+      {/* ── Graph agent chat sidebar + new-chat modal ── */}
+      {chatOpen && (
+        <GraphChatSidebar
+          workspaceSlug={workspaceSlug}
+          activeSessionId={chatSessionId}
+          onSelectThread={setChatSessionId}
+          onClose={() => setChatOpen(false)}
+        />
       )}
+      <NewGraphChatModal
+        workspaceSlug={workspaceSlug}
+        open={newChatOpen}
+        onOpenChange={setNewChatOpen}
+        onCreated={(sessionId) => {
+          setChatSessionId(sessionId);
+          setChatOpen(true);
+        }}
+      />
 
       {/* ── Node properties / path-tracing sheet ── */}
       <Sheet open={!!selectedNode} onOpenChange={(open) => !open && setSelectedNode(null)}>
