@@ -28,6 +28,14 @@ interface TaskJson {
 
 const HARVEY_BASE = "https://raw.githubusercontent.com/stakwork/harvey-labs/main";
 const GITHUB_API = "https://api.github.com/repos/stakwork/harvey-labs/contents";
+
+/**
+ * Allowed characters for a Harvey LAB task slug.
+ * Mirrors the constant in src/services/legal-benchmark-eval.ts to close the
+ * path-traversal / URL-injection hole that exists when taskSlug is interpolated
+ * directly into GitHub Contents and raw.githubusercontent.com URLs.
+ */
+const TASK_SLUG_RE = /^[a-z0-9_\-/]+$/i;
 const githubHeaders: HeadersInit = {
   Accept: "application/vnd.github+json",
   ...(process.env.GITHUB_TOKEN ? { Authorization: `Bearer ${process.env.GITHUB_TOKEN}` } : {}),
@@ -116,6 +124,24 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       );
     }
 
+    // Validate taskSlug format — closes the path-traversal / URL-injection hole
+    // that would otherwise exist when the raw value is interpolated into GitHub
+    // Contents and raw.githubusercontent.com URLs below. The sibling service
+    // (legal-benchmark-eval.ts) gates its equivalent slug usages on the same regex.
+    if (typeof taskSlug !== "string" || !TASK_SLUG_RE.test(taskSlug)) {
+      return NextResponse.json({ error: "Invalid taskSlug" }, { status: 400 });
+    }
+
+    // Validate taskTitle — both fields reach outbound URLs or LLM workflow prompt
+    // vars, so tighten beyond the falsy check above.
+    if (
+      typeof taskTitle !== "string" ||
+      taskTitle.trim().length === 0 ||
+      taskTitle.length > 300
+    ) {
+      return NextResponse.json({ error: "Invalid taskTitle" }, { status: 400 });
+    }
+
     // Apply defaults for model selection
     const model = body.model ?? DEFAULT_BENCHMARK_MODEL;
     const judgeModel = body.judgeModel ?? DEFAULT_JUDGE_MODEL;
@@ -202,6 +228,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     // Pre-fetch task context for Stakwork workflow vars
     let taskGoal = "";
     let taskOutputDesc = "";
+    let canonicalTaskTitle = "";
     let documents: string[] = [];
     let rubrics: NonNullable<TaskJson["criteria"]> = [];
 
@@ -214,6 +241,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       try {
         const taskJson = (await taskJsonRes.json()) as TaskJson;
         taskGoal = taskJson.instructions ?? "";
+        canonicalTaskTitle = typeof taskJson.title === "string" ? taskJson.title.trim() : "";
         if (taskJson.deliverables && Object.keys(taskJson.deliverables).length > 0) {
           taskOutputDesc = Object.keys(taskJson.deliverables).join(", ");
         } else {
@@ -336,6 +364,11 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     // This mirrors the pattern used by dispatchLegalBenchmarkEvalRun / dispatchLegalBenchmarkRecursionRun.
     const statusWebhookUrl = `${baseUrl}/api/stakwork/webhook?run_id=${runnerRun.id}`;
 
+    // Prefer the repo-owned title from task.json; fall back to the validated request value
+    // when task.json was not fetched (404, network error, or parse failure).
+    const resolvedTaskTitle = canonicalTaskTitle || taskTitle.trim();
+    const taskTitleSource = canonicalTaskTitle ? "json" : "request";
+
     const payload = {
       name: `harvey-runner-${runnerRun.id}`,
       workflow_id: parseInt(runnerWorkflowId, 10),
@@ -345,6 +378,17 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
           attributes: {
             vars: {
               task_slug: taskSlug,
+              // task_title is resolved from task.json (authoritative) with a fallback to the
+              // validated request value. Note: runnerResultJson, ensureHarveyLabEvalNodes, and
+              // the EvalTrigger body (~line 460) deliberately continue to use the raw request
+              // taskTitle — swapping those would alter persisted records and graph node names,
+              // which is out of scope here and tracked separately.
+              //
+              // Echo-back safety: if the Harvey runner echoes task_title on completion,
+              // normalizeLegalBenchmarkPayload nests it under `result`, and the merge in
+              // stakwork-run.ts lets incoming fields win. No consumer reads task_title back
+              // out of the run result, so an overwrite is inert — no code change needed.
+              task_title: resolvedTaskTitle,
               task_goal: taskGoal,
               task_output_desc: taskOutputDesc,
               documents_json: JSON.stringify(documents),
@@ -382,7 +426,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       );
     }
     console.log(
-      `[legal/benchmarks/run] dispatching model=${bareModel} judge_model=${bareJudgeModel}`,
+      `[legal/benchmarks/run] dispatching model=${bareModel} judge_model=${bareJudgeModel} task_title_source=${taskTitleSource} task_title_len=${resolvedTaskTitle.length}`,
     );
 
     const stakworkResponse = await fetch(`${optionalEnvVars.STAKWORK_BASE_URL}/projects`, {
