@@ -29,6 +29,29 @@ function formatTokens(n: number): string {
 }
 
 /**
+ * Pure formatting helper for the cache read/write split.
+ * Returns JSX with "· cache read: X · write: Y" or null when both are absent.
+ * Shared between both tooltip-wrapped and plain message branches.
+ */
+function CacheSplit({
+  read,
+  write,
+}: {
+  read: number | null | undefined;
+  write: number | null | undefined;
+}) {
+  const r = read ?? 0;
+  const w = write ?? 0;
+  if (r === 0 && w === 0) return null;
+  return (
+    <>
+      {r > 0 && <> · cache read: {formatTokens(r)}</>}
+      {w > 0 && <> · write: {formatTokens(w)}</>}
+    </>
+  );
+}
+
+/**
  * Parse message content to extract <logs> sections
  * Returns the message without logs and an array of log sections
  */
@@ -73,7 +96,14 @@ function arePropsEqual(prevProps: ChatMessageProps, nextProps: ChatMessageProps)
     prevProps.message.artifacts === nextProps.message.artifacts &&
     prevProps.message.workflowUrl === nextProps.message.workflowUrl &&
     prevProps.message.stakworkProjectId === nextProps.message.stakworkProjectId &&
-    prevProps.message.createdBy?.id === nextProps.message.createdBy?.id;
+    prevProps.message.createdBy?.id === nextProps.message.createdBy?.id &&
+    // Token usage fields — must be compared explicitly because updatedAt
+    // may not change when only token counts are backfilled onto an existing
+    // message row. Without these, a usage update silently fails to re-render.
+    prevProps.message.inputTokens === nextProps.message.inputTokens &&
+    prevProps.message.outputTokens === nextProps.message.outputTokens &&
+    prevProps.message.cacheReadTokens === nextProps.message.cacheReadTokens &&
+    prevProps.message.cacheWriteTokens === nextProps.message.cacheWriteTokens;
 
   // Compare replyMessage if present
   const replyMessageEqual = prevProps.replyMessage?.id === nextProps.replyMessage?.id;
@@ -187,9 +217,7 @@ export const ChatMessage = memo(function ChatMessage({
                         <p className="mt-1 text-xs text-muted-foreground">
                           {message.inputTokens != null && <>↑{formatTokens(message.inputTokens)}</>}
                           {message.outputTokens != null && <> ↓{formatTokens(message.outputTokens)}</>}
-                          {(message.cacheReadTokens || message.cacheWriteTokens) ? (
-                            <> · cache: {formatTokens((message.cacheReadTokens ?? 0) + (message.cacheWriteTokens ?? 0))}</>
-                          ) : null}
+                          <CacheSplit read={message.cacheReadTokens} write={message.cacheWriteTokens} />
                         </p>
                       )}
                       {/* Suggestion chips */}
@@ -244,9 +272,7 @@ export const ChatMessage = memo(function ChatMessage({
                   <p className="mt-1 text-xs text-muted-foreground">
                     {message.inputTokens != null && <>↑{formatTokens(message.inputTokens)}</>}
                     {message.outputTokens != null && <> ↓{formatTokens(message.outputTokens)}</>}
-                    {(message.cacheReadTokens || message.cacheWriteTokens) ? (
-                      <> · cache: {formatTokens((message.cacheReadTokens ?? 0) + (message.cacheWriteTokens ?? 0))}</>
-                    ) : null}
+                    <CacheSplit read={message.cacheReadTokens} write={message.cacheWriteTokens} />
                   </p>
                 )}
                 {/* Suggestion chips */}

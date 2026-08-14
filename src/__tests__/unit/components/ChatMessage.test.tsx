@@ -1629,7 +1629,7 @@ describe('ChatMessage', () => {
       expect(screen.queryByText(/↓/)).not.toBeInTheDocument();
     });
 
-    it('shows cache total when cacheReadTokens or cacheWriteTokens are present', () => {
+    it('shows cache read/write split instead of combined cache total', () => {
       const message = createTestMessage({
         role: ChatRole.ASSISTANT,
         message: 'Hello',
@@ -1646,7 +1646,53 @@ describe('ChatMessage', () => {
         />
       );
 
-      expect(screen.getByText(/cache: 230/)).toBeInTheDocument();
+      // New split rendering — must NOT show the old collapsed total
+      expect(screen.queryByText(/cache: 230/)).not.toBeInTheDocument();
+      // Must show read and write separately
+      expect(screen.getByText(/cache read: 200/)).toBeInTheDocument();
+      expect(screen.getByText(/write: 30/)).toBeInTheDocument();
+    });
+
+    it('shows only read when writeTokens is zero', () => {
+      const message = createTestMessage({
+        role: ChatRole.ASSISTANT,
+        message: 'Hello',
+        inputTokens: 10,
+        outputTokens: 5,
+        cacheReadTokens: 512,
+        cacheWriteTokens: 0,
+      } as any);
+
+      render(
+        <ChatMessage
+          message={message}
+          onArtifactAction={mockOnArtifactAction}
+        />
+      );
+
+      expect(screen.getByText(/cache read: 512/)).toBeInTheDocument();
+      expect(screen.queryByText(/write:/)).not.toBeInTheDocument();
+    });
+
+    it('shows only write when readTokens is zero', () => {
+      const message = createTestMessage({
+        role: ChatRole.ASSISTANT,
+        message: 'Hello',
+        inputTokens: 10,
+        outputTokens: 5,
+        cacheReadTokens: 0,
+        cacheWriteTokens: 256,
+      } as any);
+
+      render(
+        <ChatMessage
+          message={message}
+          onArtifactAction={mockOnArtifactAction}
+        />
+      );
+
+      expect(screen.queryByText(/cache read:/)).not.toBeInTheDocument();
+      expect(screen.getByText(/write: 256/)).toBeInTheDocument();
     });
 
     it('does not show token footer for USER messages', () => {
@@ -1666,6 +1712,44 @@ describe('ChatMessage', () => {
 
       expect(screen.queryByText(/↑/)).not.toBeInTheDocument();
       expect(screen.queryByText(/↓/)).not.toBeInTheDocument();
+    });
+
+    it('re-renders when only token fields change (arePropsEqual regression)', () => {
+      const baseMessage = createTestMessage({
+        role: ChatRole.ASSISTANT,
+        message: 'Token test',
+        inputTokens: 10,
+        outputTokens: 5,
+      } as any);
+
+      const { rerender } = render(
+        <ChatMessage
+          message={baseMessage}
+          onArtifactAction={mockOnArtifactAction}
+        />
+      );
+
+      // Same id and updatedAt, only token fields changed
+      const updatedMessage = {
+        ...baseMessage,
+        inputTokens: 999,
+        outputTokens: 500,
+        cacheReadTokens: 128,
+        cacheWriteTokens: 64,
+      };
+
+      rerender(
+        <ChatMessage
+          message={updatedMessage}
+          onArtifactAction={mockOnArtifactAction}
+        />
+      );
+
+      // If arePropsEqual correctly compares token fields, the component
+      // should re-render with the new values
+      expect(screen.getByText(/↑999/)).toBeInTheDocument();
+      expect(screen.getByText(/↓500/)).toBeInTheDocument();
+      expect(screen.getByText(/cache read: 128/)).toBeInTheDocument();
     });
   });
 });
