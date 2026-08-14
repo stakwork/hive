@@ -136,11 +136,21 @@ export async function PUT(
       );
     }
 
-    // Parse and validate request body
+    const isSuperAdmin = await checkIsSuperAdmin(userId);
+
+    // Authorization check before touching the body: non-members (including
+    // non-super-admin outsiders) must get 404, not a body-validation error.
+    const workspaceCheck = await getWorkspaceBySlug(slug, userId, { isSuperAdmin });
+    if (!workspaceCheck) {
+      return NextResponse.json(
+        { error: "Workspace not found or access denied" },
+        { status: 404 },
+      );
+    }
+
+    // Parse and validate request body (after auth is confirmed)
     const body = await request.json();
     const validatedData = updateWorkspaceSchema.parse(body);
-
-    const isSuperAdmin = await checkIsSuperAdmin(userId);
 
     // Update the workspace (super-admin bypass threaded through so non-member
     // super admins can update any workspace with owner-level rights)
