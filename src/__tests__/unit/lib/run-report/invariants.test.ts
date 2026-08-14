@@ -112,6 +112,48 @@ describe("pipeline invariants — src/lib/run-report", () => {
     const offenders = files.filter((f) => /replace\(\s*\/<[^)]*script/i.test(read(f)));
     expect(offenders).toEqual([]);
   });
+
+  it("never imports hast utilities — pipeline modules are client-reachable", () => {
+    // chain.ts is imported by RunReportView.tsx ("use client"), so the whole
+    // pipeline directory must stay free of hast. This guard covers both the
+    // components/ directory (checked above) and the lib/run-report pipeline.
+    // Scope: direct import strings only (text-based grep, NOT transitive).
+    //
+    // Permitted exceptions (explicitly server-only, NOT reachable from chain.ts):
+    //   - sanitize.ts       — HTML sanitizer; imported only by project.ts
+    //   - sanitize-schema.ts — pinned hast schema; imported only by sanitize.ts
+    // These two files legitimately use hast-util. Every other pipeline module
+    // must remain client-bundle safe.
+    const SERVER_ONLY_HAST_USERS = new Set([
+      join(PIPELINE_DIR, "sanitize.ts"),
+      join(PIPELINE_DIR, "sanitize-schema.ts"),
+    ]);
+    const offenders = files.filter(
+      (f) => !SERVER_ONLY_HAST_USERS.has(f) && /from "hast-util|from 'hast-util/.test(read(f)),
+    );
+    expect(offenders).toEqual([]);
+  });
+
+  it("concept-facts.ts does not import @/lib/logger", () => {
+    // concept-facts.ts is imported by chain.ts → RunReportView.tsx ("use client").
+    // @/lib/logger uses pino (server-only); importing it would break the client build.
+    // Scope: direct import strings only — text-based grep, not transitive traversal.
+    const cfPath = join(PIPELINE_DIR, "concept-facts.ts");
+    const content = read(cfPath);
+    expect(content).not.toMatch(/from ["']@\/lib\/logger["']/);
+  });
+
+  it("concept-facts.ts does not import ./project", () => {
+    // project.ts pulls in zod + sanitizeDocumentHtml → hast-util-from-html /
+    // hast-util-sanitize. Importing it from concept-facts.ts would bypass the
+    // hast guard above (the hast guard globs only this pipeline dir; concept-facts
+    // importing project would drag hast in transitively, which a text-only grep
+    // cannot see — so we check the direct import as an explicit invariant).
+    // Scope: direct import strings only.
+    const cfPath = join(PIPELINE_DIR, "concept-facts.ts");
+    const content = read(cfPath);
+    expect(content).not.toMatch(/from ["']\.\/project["']/);
+  });
 });
 
 describe("global omit invariant — src/lib/db.ts", () => {
