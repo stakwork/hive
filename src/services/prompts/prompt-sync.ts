@@ -837,12 +837,15 @@ export async function deletePrompt(promptId: string): Promise<void> {
     throw Object.assign(new Error("Prompt not found"), { status: 404 });
   }
 
-  // Wrap in a transaction: clear the publishedVersionId FK first to break the circular
-  // reference (Prompt.publishedVersionId → PromptVersion), then delete (cascades versions).
+  // Wrap in a transaction:
+  // 1. Clear publishedVersionId FK to break the circular reference.
+  // 2. Explicitly delete PromptVersion rows (don't rely on DB cascade alone).
+  // 3. Delete the Prompt row.
   await db.$transaction(async (tx) => {
     if (prompt.publishedVersionId) {
       await tx.prompt.update({ where: { id: promptId }, data: { publishedVersionId: null } });
     }
+    await tx.promptVersion.deleteMany({ where: { promptId } });
     await tx.prompt.delete({ where: { id: promptId } });
   });
 
