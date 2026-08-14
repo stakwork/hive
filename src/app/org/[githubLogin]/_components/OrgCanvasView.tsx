@@ -31,6 +31,7 @@ import {
   ResizablePanel,
   ResizablePanelGroup,
 } from "@/components/ui/resizable";
+import { AttentionMapProvider } from "../connections/AttentionMapContext";
 
 /**
  * Sidebar layout sizes (percent of container width).
@@ -834,6 +835,10 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
   useSubAgentStatusRefresh({ githubLogin });
 
   return (
+    <AttentionMapProvider
+      githubLogin={githubLogin}
+      visibleWorkspaceSlugs={chatWorkspaceSlugs}
+    >
     <div ref={containerRef} className="relative flex h-full w-full overflow-hidden">
       <OrgCanvasBackground
         githubLogin={githubLogin}
@@ -917,5 +922,6 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
         </ResizablePanelGroup>
       </div>
     </div>
+    </AttentionMapProvider>
   );
 }
