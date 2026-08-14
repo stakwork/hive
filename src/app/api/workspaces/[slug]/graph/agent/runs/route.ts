@@ -60,6 +60,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
           status: true,
           error: true,
           proposalsEnabled: true,
+          reflection: true,
           createdAt: true,
         },
       });

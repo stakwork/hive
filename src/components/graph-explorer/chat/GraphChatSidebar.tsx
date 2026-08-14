@@ -9,7 +9,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { MarkdownRenderer } from "@/components/MarkdownRenderer";
 import { usePusherChannel } from "@/hooks/usePusherChannel";
 import { getWorkspaceChannelName, PUSHER_EVENTS } from "@/lib/pusher";
-import { filterProposalsForSession } from "@/lib/graph-chat/threads";
+import { filterProposalsForSession, latestReflection } from "@/lib/graph-chat/threads";
+import { ConceptsPanel } from "@/components/agent-logs/LogDetailContent";
 import type { ConceptProposal, ConceptProposalListResponse } from "@/types/concept-proposals";
 import type {
   GraphChatRun,
@@ -109,6 +110,10 @@ export function GraphChatSidebar({
   const proposalsEnabled = runs.length > 0 && runs[runs.length - 1].proposalsEnabled;
   const anyPending = runs.some((r) => r.status === "PENDING");
   const anyCompleted = runs.some((r) => r.status === "DELIVERED_WEBHOOK");
+
+  // Concepts the session read (stakgraph reflection sidecar) — cumulative,
+  // so the latest run carrying a snapshot represents the whole thread.
+  const reflection = useMemo(() => latestReflection(runs), [runs]);
 
   // Proposals filed from this thread's session. One unfiltered-status call —
   // decided proposals keep showing their outcome instead of vanishing.
@@ -306,6 +311,12 @@ export function GraphChatSidebar({
                 )}
               </div>
             ))}
+
+            {reflection && (
+              <div className="pt-1" data-testid="graph-chat-concepts">
+                <ConceptsPanel reflection={reflection} workspaceSlug={workspaceSlug} />
+              </div>
+            )}
 
             {proposals.length > 0 && (
               <div className="space-y-2 pt-1" data-testid="graph-chat-proposals">

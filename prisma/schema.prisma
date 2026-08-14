@@ -2325,6 +2325,10 @@ model AgentRun {
   prompt         String?       @db.Text
   /// Terminal result content, capped at 128KB by hardenContent.
   result         String?       @db.Text
+  /// stakgraph SessionReflection sidecar delivered on the terminal webhook
+  /// (graph_chat runs): { session_id, updated_at, concepts[], gap?, raw? }.
+  /// Session-cumulative — the latest run's snapshot supersedes earlier ones.
+  reflection     Json?
   /// Per-thread "Allow concept change proposals" checkbox, snapshotted onto
   /// every run in the session. Immutable per thread (enforced at dispatch).
   proposalsEnabled Boolean     @default(false) @map("proposals_enabled")

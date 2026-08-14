@@ -7,6 +7,8 @@
  * DELIVERED_WEBHOOK / FAILED; DELIVERED_INLINE is unused by this flow.
  */
 
+import type { SessionReflection } from "@/types/agent-logs";
+
 export type GraphChatRunStatus = "PENDING" | "DELIVERED_INLINE" | "DELIVERED_WEBHOOK" | "FAILED";
 
 /** One prompt/result pair in a thread (a single AgentRun row). */
@@ -17,6 +19,13 @@ export interface GraphChatRun {
   status: GraphChatRunStatus;
   error: string | null;
   proposalsEnabled: boolean;
+  /**
+   * stakgraph SessionReflection sidecar from the terminal webhook — which
+   * gitree Concepts the session read (always recorded; ranked only when the
+   * dispatch opts into the reflect pass, which graph chat does not).
+   * Session-cumulative: the latest run's snapshot supersedes earlier ones.
+   */
+  reflection?: SessionReflection | null;
   createdAt: string;
 }
 

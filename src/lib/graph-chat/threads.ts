@@ -64,3 +64,16 @@ export function groupRunsIntoThreads(runs: ThreadSourceRun[]): GraphChatThread[]
 export function filterProposalsForSession(proposals: ConceptProposal[], sessionId: string): ConceptProposal[] {
   return proposals.filter((p) => p.sessionIds?.includes(sessionId) ?? false);
 }
+
+/**
+ * The thread's current Concept-reads reflection: the sidecar is
+ * session-cumulative on the swarm (each terminal webhook delivers the merged
+ * session state), so the LATEST run carrying one supersedes earlier
+ * snapshots. Expects runs oldest-first, as the runs GET returns them.
+ */
+export function latestReflection<R extends { reflection?: unknown }>(runs: R[]): R["reflection"] | null {
+  for (let i = runs.length - 1; i >= 0; i--) {
+    if (runs[i].reflection) return runs[i].reflection;
+  }
+  return null;
+}

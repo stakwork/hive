@@ -169,6 +169,10 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     try {
       // `proposalsEnabled` is enforced server-side per dispatch: toolsConfig
       // is omitted entirely unless the thread was created with it on.
+      // `reflect` is deliberately NOT sent: Concept READS are recorded to the
+      // session sidecar (and delivered on the terminal webhook) regardless;
+      // the opt-in only adds a post-run ranking pass that would hold the run
+      // open for an extra agent call on every message.
       const requestId = await dispatchRepoAgent(swarmUrl, swarmApiKey, {
         prompt,
         mode: "graph",

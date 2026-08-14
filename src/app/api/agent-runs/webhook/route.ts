@@ -45,7 +45,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import crypto from "crypto";
 import { db } from "@/lib/db";
-import { AgentRunStatus } from "@prisma/client";
+import { AgentRunStatus, Prisma } from "@prisma/client";
 import { timingSafeEqual } from "@/lib/encryption";
 import { checkRateLimit, getClientIp } from "@/lib/rate-limit";
 import {
@@ -73,6 +73,13 @@ interface WebhookPayload {
   result?: {
     content?: unknown;
     final_answer?: unknown;
+    /**
+     * stakgraph SessionReflection sidecar — present when the run read any
+     * gitree Concepts (reads are always recorded; rank/evidence/gap only
+     * when the dispatch opted into the reflect pass). Stored on graph_chat
+     * rows; ignored for canvas runs.
+     */
+    reflection?: unknown;
   } | null;
   /** Error detail on failure (e.g. "aborted", or an exception message). */
   error?: unknown;
@@ -81,6 +88,24 @@ interface WebhookPayload {
 /** Hash a raw token with SHA-256 (hex digest). */
 function hashToken(token: string): string {
   return crypto.createHash("sha256").update(token).digest("hex");
+}
+
+/** Max serialized size accepted for the reflection sidecar (same cap as content). */
+const MAX_REFLECTION_LENGTH = 128 * 1024;
+
+/**
+ * Harden the external reflection payload: must be a plain object and fit the
+ * size cap. Returns null when missing/malformed/oversized — the run is still
+ * delivered normally; reflection is a best-effort sidecar, never load-bearing.
+ */
+function hardenReflection(raw: unknown): Prisma.InputJsonObject | null {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  try {
+    if (JSON.stringify(raw).length > MAX_REFLECTION_LENGTH) return null;
+  } catch {
+    return null;
+  }
+  return raw as Prisma.InputJsonObject;
 }
 
 export async function POST(request: NextRequest) {
@@ -200,9 +225,13 @@ export async function POST(request: NextRequest) {
       : (isSuccess ? "oversized or malformed result payload" : errorDetail);
 
   // graph_chat runs have no canvas conversation — the row itself is the
-  // delivery destination: the terminal result is stored on it in the same
-  // updateMany that claims it, and the workspace channel gets a nudge.
+  // delivery destination: the terminal result (and the Concept-reads
+  // reflection sidecar, when present) is stored on it in the same updateMany
+  // that claims it, and the workspace channel gets a nudge.
   const isGraphChat = row.agentKind === "graph_chat";
+  const reflection = isGraphChat
+    ? hardenReflection(payload.result?.reflection)
+    : null;
 
   // ── Atomic, token-gated claim ─────────────────────────────────────────────
   // `tokenHash` in the where-clause makes the claim itself credential-gated —
@@ -219,7 +248,7 @@ export async function POST(request: NextRequest) {
         status: effectiveStatus,
         ...(errorField ? { error: errorField } : {}),
         ...(isGraphChat && effectiveStatus === AgentRunStatus.DELIVERED_WEBHOOK
-          ? { result: content! }
+          ? { result: content!, ...(reflection ? { reflection } : {}) }
           : {}),
       },
     });

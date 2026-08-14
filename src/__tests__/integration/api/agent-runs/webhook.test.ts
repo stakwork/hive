@@ -566,6 +566,72 @@ describe("POST /api/agent-runs/webhook", () => {
       expect(notifyCanvasConversationUpdated).not.toHaveBeenCalled();
     });
 
+    it("stores the reflection sidecar alongside the result when the payload carries one", async () => {
+      const agentRun = await createGraphChatRun();
+      const reflection = {
+        session_id: "session-abc",
+        updated_at: "2026-08-14T12:00:00.000Z",
+        concepts: [
+          { id: "stakwork/hive/auth", name: "Authentication", read_order: 1, rank: null },
+        ],
+      };
+      const req = makeWebhookRequest({
+        runId: agentRun.id,
+        token: rawToken,
+        body: {
+          status: "completed",
+          result: { content: "Answer", reflection },
+        },
+      });
+      const res = await POST(req);
+      expect(res.status).toBe(200);
+
+      const row = await db.agentRun.findUnique({ where: { id: agentRun.id } });
+      expect(row?.result).toBe("Answer");
+      expect(row?.reflection).toEqual(reflection);
+    });
+
+    it("drops a malformed reflection but still delivers the result", async () => {
+      const agentRun = await createGraphChatRun();
+      const req = makeWebhookRequest({
+        runId: agentRun.id,
+        token: rawToken,
+        body: {
+          status: "completed",
+          result: { content: "Answer", reflection: ["not", "an", "object"] },
+        },
+      });
+      const res = await POST(req);
+      expect(res.status).toBe(200);
+
+      const row = await db.agentRun.findUnique({ where: { id: agentRun.id } });
+      expect(row?.status).toBe("DELIVERED_WEBHOOK");
+      expect(row?.result).toBe("Answer");
+      expect(row?.reflection).toBeNull();
+    });
+
+    it("drops an oversized reflection but still delivers the result", async () => {
+      const agentRun = await createGraphChatRun();
+      const req = makeWebhookRequest({
+        runId: agentRun.id,
+        token: rawToken,
+        body: {
+          status: "completed",
+          result: {
+            content: "Answer",
+            reflection: { gap: "x".repeat(128 * 1024 + 1) },
+          },
+        },
+      });
+      const res = await POST(req);
+      expect(res.status).toBe(200);
+
+      const row = await db.agentRun.findUnique({ where: { id: agentRun.id } });
+      expect(row?.status).toBe("DELIVERED_WEBHOOK");
+      expect(row?.result).toBe("Answer");
+      expect(row?.reflection).toBeNull();
+    });
+
     it("demotes oversized content to FAILED without storing a result", async () => {
       const agentRun = await createGraphChatRun();
       const oversized = "x".repeat(128 * 1024 + 1);
@@ -621,15 +687,23 @@ describe("POST /api/agent-runs/webhook", () => {
     const req = makeWebhookRequest({
       runId: agentRun.id,
       token: rawToken,
-      body: { status: "completed", result: { content: "Canvas result" } },
+      body: {
+        status: "completed",
+        result: {
+          content: "Canvas result",
+          reflection: { session_id: "s", concepts: [] },
+        },
+      },
     });
     const res = await POST(req);
     expect(res.status).toBe(200);
 
-    // Result is NOT stored on the row for canvas runs (fan-out only — path unchanged)
+    // Result/reflection are NOT stored on the row for canvas runs (fan-out
+    // only — path unchanged)
     const row = await db.agentRun.findUnique({ where: { id: agentRun.id } });
     expect(row?.status).toBe("DELIVERED_WEBHOOK");
     expect(row?.result).toBeNull();
+    expect(row?.reflection).toBeNull();
 
     expect(notifyGraphAgentRunUpdated).not.toHaveBeenCalled();
     expect(notifyCanvasConversationUpdated).toHaveBeenCalledWith(conversation.id, "agent_run");

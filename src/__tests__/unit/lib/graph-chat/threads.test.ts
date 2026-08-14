@@ -1,5 +1,10 @@
 import { describe, it, expect } from "vitest";
-import { groupRunsIntoThreads, filterProposalsForSession, type ThreadSourceRun } from "@/lib/graph-chat/threads";
+import {
+  groupRunsIntoThreads,
+  filterProposalsForSession,
+  latestReflection,
+  type ThreadSourceRun,
+} from "@/lib/graph-chat/threads";
 import type { ConceptProposal } from "@/types/concept-proposals";
 
 function run(overrides: Partial<ThreadSourceRun>): ThreadSourceRun {
@@ -88,5 +93,25 @@ describe("filterProposalsForSession", () => {
     const none = proposal({ id: "none", sessionIds: undefined });
     const empty = proposal({ id: "empty", sessionIds: [] });
     expect(filterProposalsForSession([none, empty], "s1")).toEqual([]);
+  });
+});
+
+describe("latestReflection", () => {
+  it("returns the reflection from the LATEST run carrying one (runs are oldest-first)", () => {
+    const early = { session_id: "s1", concepts: [{ id: "a", rank: null }] };
+    const late = {
+      session_id: "s1",
+      concepts: [
+        { id: "a", rank: null },
+        { id: "b", rank: null },
+      ],
+    };
+    const runs = [{ reflection: early }, { reflection: null }, { reflection: late }, { reflection: undefined }];
+    expect(latestReflection(runs)).toBe(late);
+  });
+
+  it("returns null when no run carries a reflection", () => {
+    expect(latestReflection([{ reflection: null }, {}])).toBeNull();
+    expect(latestReflection([])).toBeNull();
   });
 });

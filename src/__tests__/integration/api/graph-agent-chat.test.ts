@@ -288,7 +288,11 @@ describe("Graph Agent Chat routes", () => {
     }
 
     it("returns runs for a session oldest-first with display fields", async () => {
-      await seedRun({ createdAt: new Date("2026-08-01T10:00:00Z") });
+      const reflection = {
+        session_id: "session-1",
+        concepts: [{ id: "stakwork/hive/auth", name: "Authentication", read_order: 1, rank: null }],
+      };
+      await seedRun({ reflection, createdAt: new Date("2026-08-01T10:00:00Z") });
       await seedRun({
         prompt: "second prompt",
         status: "PENDING",
@@ -304,8 +308,9 @@ describe("Graph Agent Chat routes", () => {
         prompt: "first prompt",
         result: "the answer",
         status: "DELIVERED_WEBHOOK",
+        reflection: reflection,
       });
-      expect(body.runs[1]).toMatchObject({ prompt: "second prompt", status: "PENDING" });
+      expect(body.runs[1]).toMatchObject({ prompt: "second prompt", status: "PENDING", reflection: null });
       // No token material in the payload
       expect(JSON.stringify(body)).not.toContain("tokenHash");
     });

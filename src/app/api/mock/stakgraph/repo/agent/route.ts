@@ -120,6 +120,31 @@ export async function POST(request: NextRequest) {
         const successContent = isGraphMode
           ? graphContent
           : "Mock workflow explorer result: found 3 matching workflows with video-to-transcript skills.";
+        // Graph runs also carry the Concept-reads reflection sidecar, exactly
+        // as stakgraph's terminal payload does (reads recorded, rank null —
+        // graph chat does not opt into the reflect ranking pass).
+        const reflection = isGraphMode
+          ? {
+              session_id: sessionId,
+              updated_at: new Date().toISOString(),
+              concepts: [
+                {
+                  id: "stakwork/hive/tasks",
+                  name: "Tasks",
+                  repo: "stakwork/hive",
+                  read_order: 1,
+                  rank: null,
+                },
+                {
+                  id: "stakwork/hive/auth",
+                  name: "Authentication",
+                  repo: "stakwork/hive",
+                  read_order: 2,
+                  rank: null,
+                },
+              ],
+            }
+          : undefined;
         const callbackBody: Record<string, unknown> = isSuccess
           ? {
               request_id: "mock-diagram-req-001",
@@ -129,6 +154,7 @@ export async function POST(request: NextRequest) {
                 final_answer: successContent,
                 content: successContent,
                 sessionId,
+                ...(reflection ? { reflection } : {}),
               },
             }
           : {
