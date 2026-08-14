@@ -5,6 +5,11 @@ import type { CanvasEdge, CanvasNode } from "system-canvas";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { MousePointerClick } from "lucide-react";
+import {
+  Popover,
+  PopoverTrigger,
+  PopoverContent,
+} from "@/components/ui/popover";
 import { NodeDetail } from "./NodeDetail";
 import { MultiNodeDetail } from "./MultiNodeDetail";
 import { ConnectionsListBody } from "./ConnectionsListBody";
@@ -12,6 +17,11 @@ import { SidebarChat } from "./SidebarChat";
 import { ConnectionViewer } from "../connections/ConnectionViewer";
 import type { ConnectionData } from "../connections/types";
 import type { InternalEdge } from "../connections/OrgCanvasBackground";
+import {
+  useAutomationInbox,
+  type InboxRun,
+} from "../_state/useAutomationInbox";
+import { formatRelativeTime } from "./CanvasHistoryPopover";
 
 type Tab = "chat" | "details" | "connections";
 
@@ -127,6 +137,8 @@ export function OrgRightPanel({
   // (not the object identity) so the canvas re-emitting the same
   // object on reselect still re-fires.
   const [tab, setTab] = useState<Tab>("chat");
+  const [inboxOpen, setInboxOpen] = useState(false);
+
   useEffect(() => {
     if (selectedNode) setTab("details");
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -143,6 +155,14 @@ export function OrgRightPanel({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedEdge?.edge.id]);
 
+  const { count, runs, openRun } = useAutomationInbox(githubLogin, { chatReady });
+
+  const handleRunClick = async (run: InboxRun) => {
+    setInboxOpen(false);
+    await openRun(run);
+    setTab("chat");
+  };
+
   /**
    * Local wrapper around `onCreateConnectionForEdge`: switch to the
    * Chat tab in the same call so the user immediately sees the
@@ -158,11 +178,75 @@ export function OrgRightPanel({
   return (
     <div className="h-full w-full flex flex-col border-l bg-background">
       <div className="flex items-stretch border-b text-sm">
-        <TabButton
-          label="Chat"
-          isActive={tab === "chat"}
-          onClick={() => setTab("chat")}
-        />
+        {/* Chat tab — restructured as a sibling pair to avoid nesting a
+            Radix PopoverTrigger (interactive) inside a <button> (invalid
+            HTML content model). The tab-switch button and the inbox badge
+            button are siblings inside a flex wrapper. */}
+        <div className="flex-1 flex items-stretch">
+          <button
+            onClick={() => setTab("chat")}
+            className={cn(
+              "flex-1 px-3 py-2.5 font-medium transition-colors flex items-center justify-center gap-1.5",
+              "border-b-2 -mb-[1px]",
+              tab === "chat"
+                ? "border-foreground text-foreground"
+                : "border-transparent text-muted-foreground hover:text-foreground",
+            )}
+          >
+            Chat
+          </button>
+
+          {count > 0 && (
+            <Popover open={inboxOpen} onOpenChange={setInboxOpen}>
+              <PopoverTrigger asChild>
+                <button
+                  disabled={!chatReady}
+                  className={cn(
+                    "flex items-center px-1.5 py-2.5 border-b-2 -mb-[1px] border-transparent",
+                    "transition-colors",
+                    chatReady
+                      ? "cursor-pointer hover:text-foreground"
+                      : "opacity-50 cursor-not-allowed",
+                  )}
+                  aria-label={`${count} unseen automation run${count !== 1 ? "s" : ""}`}
+                >
+                  <Badge variant="secondary" className="ml-0">
+                    {count}
+                  </Badge>
+                </button>
+              </PopoverTrigger>
+              <PopoverContent
+                align="end"
+                side="bottom"
+                className="w-72 p-0 overflow-hidden"
+              >
+                <div className="px-3 py-2 border-b">
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                    Unseen automation runs
+                  </p>
+                </div>
+                <ul className="max-h-60 overflow-y-auto divide-y">
+                  {runs.map((run) => (
+                    <li key={run.automationId}>
+                      <button
+                        className="w-full text-left px-3 py-2.5 hover:bg-muted transition-colors"
+                        onClick={() => handleRunClick(run)}
+                      >
+                        <p className="text-sm font-medium truncate">
+                          {run.automationName}
+                        </p>
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          {formatRelativeTime(run.lastRunAt)}
+                        </p>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </PopoverContent>
+            </Popover>
+          )}
+        </div>
+
         <TabButton
           label="Details"
           isActive={tab === "details"}

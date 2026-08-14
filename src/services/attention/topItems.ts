@@ -174,7 +174,12 @@ async function fetchHalted(
         },
       },
       orderBy: { updatedAt: "desc" },
-      take: 25,
+      // Canvas-scale cap: proportionally raised from the original 25
+      // to match the new MAX_LIMIT=200 in the route. Coverage remains
+      // bounded — orgs with more simultaneously-flagged items than
+      // this will see partial coverage (accepted tradeoff, documented
+      // in route.ts and the architecture plan).
+      take: 100,
     }),
     db.feature.findMany({
       where: {
@@ -194,7 +199,8 @@ async function fetchHalted(
         milestoneId: true,
       },
       orderBy: { updatedAt: "desc" },
-      take: 25,
+      // Canvas-scale cap: proportionally raised from the original 25.
+      take: 100,
     }),
   ]);
 
@@ -289,7 +295,8 @@ async function fetchAwaitingReply(
         ORDER BY cm.timestamp DESC LIMIT 1
       ) = 'ASSISTANT'::"ChatRole"
     ORDER BY f.updated_at DESC
-    LIMIT 25
+    -- Canvas-scale cap: proportionally raised from the original 25.
+    LIMIT 100
   `);
 
   const now = Date.now();
@@ -360,7 +367,9 @@ async function fetchPlanQuestions(
       },
     },
     orderBy: { updatedAt: "desc" },
-    take: 50,
+    // Canvas-scale cap: proportionally raised from the original 50
+    // to match the new MAX_LIMIT=200 in the route.
+    take: 200,
   });
 
   const now = Date.now();
@@ -434,7 +443,8 @@ async function fetchReadyToReview(
         },
       },
       orderBy: { updatedAt: "desc" },
-      take: 25,
+      // Canvas-scale cap: proportionally raised from the original 25.
+      take: 100,
     }),
     db.feature.findMany({
       where: {
@@ -455,7 +465,8 @@ async function fetchReadyToReview(
         milestoneId: true,
       },
       orderBy: { updatedAt: "desc" },
-      take: 25,
+      // Canvas-scale cap: proportionally raised from the original 25.
+      take: 100,
     }),
   ]);
 

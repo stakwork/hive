@@ -49,7 +49,6 @@ import {
   type ToolCall,
 } from "../_state/canvasChatStore";
 import { useSendCanvasChatMessage } from "../_state/useSendCanvasChatMessage";
-import { useAutomationInbox } from "../_state/useAutomationInbox";
 import { forkCanvasConversation } from "../_state/forkCanvasConversation";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { useCanvasAgentActivity } from "@/hooks/useCanvasAgentActivity";
@@ -82,8 +81,7 @@ interface SidebarChatProps {
 }
 
 export function SidebarChat({ githubLogin }: SidebarChatProps) {
-  // Auto-open the most recent unseen automation run, if any, once on load.
-  useAutomationInbox(githubLogin);
+
 
   // ─── Selectors — narrow on purpose ─────────────────────────────────
   // Each selector returns a primitive or a stable reference so

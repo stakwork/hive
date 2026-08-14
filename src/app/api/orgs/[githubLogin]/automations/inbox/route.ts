@@ -13,12 +13,12 @@ async function resolveOrg(githubLogin: string) {
 /**
  * GET /api/orgs/[githubLogin]/automations/inbox
  *
- * Returns the conversation id of the most recent UNSEEN automation run for
- * the calling user (so the canvas can auto-open it), and marks all currently
- * unseen runs as seen. Reading the inbox IS the "seen" signal — the canvas
- * fetches this once on load.
+ * Returns all unseen automation runs for the calling user (bounded by
+ * `take`). Does NOT mark anything as seen — runs are only marked seen
+ * via POST .../automations/[automationId]/seen, triggered client-side
+ * when the user explicitly opens a run's conversation.
  *
- * Response: { conversationId: string | null, automationId?, automationName? }
+ * Response: { count: number, runs: InboxRun[] }
  */
 export async function GET(
   request: NextRequest,
@@ -49,25 +49,18 @@ export async function GET(
         lastRunConversationId: { not: null },
       },
       orderBy: { lastRunAt: "desc" },
-      select: { id: true, name: true, lastRunConversationId: true },
+      take: 20,
+      select: { id: true, name: true, lastRunConversationId: true, lastRunAt: true },
     });
 
-    if (unseen.length === 0) {
-      return NextResponse.json({ conversationId: null });
-    }
-
-    // Mark every unseen run as seen; only the most recent one is auto-opened.
-    const now = new Date();
-    await db.automation.updateMany({
-      where: { id: { in: unseen.map((a) => a.id) } },
-      data: { lastRunSeenAt: now },
-    });
-
-    const latest = unseen[0];
     return NextResponse.json({
-      conversationId: latest.lastRunConversationId,
-      automationId: latest.id,
-      automationName: latest.name,
+      count: unseen.length,
+      runs: unseen.map((a) => ({
+        automationId: a.id,
+        automationName: a.name,
+        conversationId: a.lastRunConversationId,
+        lastRunAt: a.lastRunAt?.toISOString() ?? null,
+      })),
     });
   } catch (error) {
     console.error("[GET /api/orgs/[githubLogin]/automations/inbox] Error:", error);
