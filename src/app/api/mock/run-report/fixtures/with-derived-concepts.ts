@@ -1,11 +1,12 @@
 /**
- * PROVISIONAL — field names inferred from architecture docs; upstream contract
- * not yet finalized. See fixtures/reference/CONTRACT.md.
- *
  * `with-derived-concepts` — the WITH_TOOL_ACTIVITY bundle extended with
- * producer-supplied `concepts.node_identities` and `concepts.top_concepts`,
+ * producer-supplied `concepts.nodeIdentities` and `concepts.topConcepts`,
  * programmatically derived from the same `tool_activity` records by running
  * Hive's own local derivation.
+ *
+ * Wire format: camelCase keys (`nodeIdentities`, `topConcepts`, `identityKind`,
+ * `nodeType`, `runStatus`, `runBasis`) matching the live producer contract
+ * (workflow 58019 / version 188497).
  *
  * Purpose: ROUND-TRIP assertion. Proves that `readBundleNodeIdentities`
  * faithfully reproduces a well-formed row set produced by Hive's own code.
@@ -14,7 +15,7 @@
  *
  * Derived by calling `readToolActivity` + `buildNodeIdentities` over the
  * WITH_TOOL_ACTIVITY `tool_activity` records. Do not hand-edit the
- * `node_identities` entries below — re-derive if the base fixture changes.
+ * `nodeIdentities` entries below — re-derive if the base fixture changes.
  */
 
 import { WITH_TOOL_ACTIVITY } from "./with-tool-activity";
@@ -43,14 +44,16 @@ function deriveIdentitiesAndConcepts(base: Bundle): {
   const result = readToolActivity(concepts, rosterMap);
   const identities = buildNodeIdentities(result.groups);
 
-  // node_identities: serialize as the producer contract shape
+  // nodeIdentities: serialize as the live producer wire shape (camelCase).
+  // The reader in concept-facts.ts accepts both camelCase and snake_case;
+  // emitting camelCase here makes the round-trip test exercise the live path.
   const nodeIdentities = identities.map((row) => ({
     identity: row.identity,
-    identity_kind: row.identityKind,
+    identityKind: row.identityKind,
     name: row.name,
-    node_type: row.nodeType,
-    run_status: row.runStatus,
-    run_basis: row.runBasis ?? null,
+    nodeType: row.nodeType,
+    runStatus: row.runStatus,
+    runBasis: row.runBasis ?? null,
     agents: row.agents.map((a) => ({
       agentKey: a.agentKey,
       count: a.count,
@@ -59,11 +62,12 @@ function deriveIdentitiesAndConcepts(base: Bundle): {
     })),
   }));
 
-  // top_concepts: Concept-typed retrieved identities sorted by total desc
+  // topConcepts: Concept-typed retrieved identities sorted by total desc.
+  // camelCase to match the live producer wire shape.
   const topConcepts = identities
     .filter((id) => id.nodeType === "Concept" && id.runStatus === "retrieved" && id.name)
     .map((id) => ({
-      node_type: id.nodeType,
+      nodeType: id.nodeType,
       name: id.name,
       total: id.agents.filter((a) => a.status === "retrieved").reduce((s, a) => s + a.count, 0) || 1,
     }))
@@ -80,8 +84,11 @@ export const WITH_DERIVED_CONCEPTS: Bundle = (() => {
 
   b.concepts = {
     ...(b.concepts as Record<string, unknown>),
-    node_identities: nodeIdentities,
-    top_concepts: topConcepts,
+    // camelCase container keys — the live producer wire format (workflow 58019 / v188497).
+    // The strip loop in project.ts uses NODE_IDENTITIES_CONTAINER_KEYS /
+    // TOP_CONCEPTS_CONTAINER_KEYS which include both spellings.
+    nodeIdentities,
+    topConcepts,
   };
 
   return b;

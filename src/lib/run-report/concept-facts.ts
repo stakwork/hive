@@ -40,8 +40,8 @@ import type { ConceptPull } from "./chain";
  * Parallel to TOOL_ACTIVITY_CONTAINER_KEYS; no existing list covers this key.
  */
 export const NODE_IDENTITIES_CONTAINER_KEYS = [
-  "node_identities",
   "nodeIdentities",
+  "node_identities",
 ] as const;
 
 /**
@@ -49,8 +49,21 @@ export const NODE_IDENTITIES_CONTAINER_KEYS = [
  * Parallel to TOOL_ACTIVITY_CONTAINER_KEYS; no existing list covers this key.
  */
 export const TOP_CONCEPTS_CONTAINER_KEYS = [
-  "top_concepts",
   "topConcepts",
+  "top_concepts",
+] as const;
+
+/**
+ * Keys under which the producer may ship activity diagnostics.
+ *
+ * Stripped from the concepts passthrough in project.ts — not consumed here.
+ * Hive derives its own diagnostics counters locally; the producer-side
+ * `unattributed_record_count` is hardcoded 0 upstream by design, so adopting
+ * it would mislead.
+ */
+export const ACTIVITY_DIAGNOSTICS_CONTAINER_KEYS = [
+  "activityDiagnostics",
+  "activity_diagnostics",
 ] as const;
 
 // ── Shared helpers ────────────────────────────────────────────────────────────
@@ -176,7 +189,14 @@ export function readBundleNodeIdentities(
     if (!isRecord(rawRow)) return { rows: null, reason: "malformed-shape" };
 
     // ── identity_kind ──────────────────────────────────────────────────────
-    const rawKind = (rawRow as Record<string, unknown>).identity_kind;
+    // Live producer emits camelCase `identityKind`; accept snake_case fallback
+    // for backward-compatibility with test fixtures and older bundles.
+    // identityKind is NOT emitted yet by the current producer — every real
+    // bundle will reject with "unresolvable-identity-kind" and fall back to
+    // local derivation. That is correct and expected: a producer follow-up is
+    // pending. Do NOT relax this validation.
+    const rawRow_ = rawRow as Record<string, unknown>;
+    const rawKind = rawRow_.identityKind ?? rawRow_.identity_kind;
     if (typeof rawKind !== "string" || !VALID_IDENTITY_KINDS.has(rawKind)) {
       return { rows: null, reason: "unresolvable-identity-kind" };
     }
@@ -209,8 +229,10 @@ export function readBundleNodeIdentities(
     const canonicalKey = canonicalKeyOf(identityRaw);
 
     // ── run_status / run_basis ─────────────────────────────────────────────
-    const rawRunStatus = (rawRow as Record<string, unknown>).run_status;
-    const rawRunBasis = (rawRow as Record<string, unknown>).run_basis;
+    // Live producer emits camelCase `runStatus`/`runBasis`; accept snake_case
+    // fallback for backward-compatibility with test fixtures and older bundles.
+    const rawRunStatus = rawRow_.runStatus ?? rawRow_.run_status;
+    const rawRunBasis = rawRow_.runBasis ?? rawRow_.run_basis;
 
     if (typeof rawRunStatus !== "string" || !VALID_RUN_STATUSES.has(rawRunStatus)) {
       return { rows: null, reason: "inconsistent-status" };
@@ -302,8 +324,9 @@ export function readBundleNodeIdentities(
     }
 
     // ── name / node_type ────────────────────────────────────────────────────
-    const rawName = (rawRow as Record<string, unknown>).name;
-    const rawNodeType = (rawRow as Record<string, unknown>).node_type;
+    // Live producer emits camelCase `nodeType`; accept snake_case fallback.
+    const rawName = rawRow_.name;
+    const rawNodeType = rawRow_.nodeType ?? rawRow_.node_type;
     const name = typeof rawName === "string" ? rawName || null : null;
     const nodeType = typeof rawNodeType === "string" ? rawNodeType || null : null;
 
