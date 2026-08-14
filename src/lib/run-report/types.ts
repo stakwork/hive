@@ -191,6 +191,29 @@ export interface ToolActivityProjection {
     callsPerAgent: number[];
     nodesPerCall: number;
   };
+  /**
+   * Which source supplied the node-identity rows for this bundle.
+   * Set by project.ts after calling selectNodeIdentities().
+   * Optional so existing exhaustive test literals keep compiling unchanged.
+   */
+  nodeIdentitiesSource?: "bundle" | "derived";
+  /**
+   * When bundle-supplied node_identities were present but rejected, the
+   * rejection reason string. Null when source is "bundle" (accepted).
+   * Optional — defaulted to null at read sites.
+   */
+  nodeIdentitiesRejectedReason?: string | null;
+  /**
+   * Count of identity rows dropped because the projection array cap was hit.
+   * Optional — defaulted to 0 at read sites.
+   */
+  identitiesTruncated?: number;
+  /**
+   * True when the bundle's top_concepts key set differs from the locally-derived
+   * concept list. A set-membership mismatch (not order/total/slice differences).
+   * Optional — defaulted to false at read sites.
+   */
+  topConceptsMismatch?: boolean;
 }
 
 // ── Persisted projection ─────────────────────────────────────────────────────

@@ -36,6 +36,12 @@ import {
   TOOL_ACTIVITY_CALLS_PER_AGENT_CAP,
   TOOL_ACTIVITY_NODES_PER_CALL_CAP,
 } from "./tool-activity";
+import {
+  deriveAllSurfacedHint,
+  NODE_IDENTITIES_CONTAINER_KEYS,
+  TOP_CONCEPTS_CONTAINER_KEYS,
+  ACTIVITY_DIAGNOSTICS_CONTAINER_KEYS,
+} from "./concept-facts";
 import type {
   RunReportProjection,
   ProjectedSourceDoc,
@@ -332,7 +338,7 @@ export function projectBundle(rawText: string): ProjectOutcome {
       unknownToolNames: rawActivity.unknownToolNames,
       ambiguousIdentityCount: rawActivity.ambiguousIdentityCount,
       withheldInputFieldCount: totalWithheld,
-      allSurfacedHint: rawActivity.allSurfacedHint,
+      allSurfacedHint: deriveAllSurfacedHint(nodeIdentities, cappedGroups),
       truncated: {
         groups: groupsTruncated,
         callsPerAgent: rawActivity.truncated.callsPerAgent,
@@ -357,15 +363,26 @@ export function projectBundle(rawText: string): ProjectOutcome {
   }
 
   // ── concepts ───────────────────────────────────────────────────────────────
-  // Strip the raw tool-activity records from the concepts passthrough using the
-  // SAME candidate-key list the normalizer resolves with (not a single literal
-  // key name) — prevents raw, unswept records from crossing the RSC boundary.
+  // Strip confirmed producer keys from the concepts passthrough using the SAME
+  // candidate-key lists the normalizer resolves with (not single literal key
+  // names) — prevents raw, unswept records from crossing the RSC boundary.
+  //
+  // Keys stripped:
+  //   TOOL_ACTIVITY_CONTAINER_KEYS — raw per-call records (normalised above)
+  //   NODE_IDENTITIES_CONTAINER_KEYS — pre-derived identity array (consumed above)
+  //   TOP_CONCEPTS_CONTAINER_KEYS — pre-derived concept list (consumed above)
+  //   ACTIVITY_DIAGNOSTICS_CONTAINER_KEYS — producer diagnostics block;
+  //     stripped but NOT consumed — Hive derives its own counters locally.
+  //     The producer's `unattributed_record_count` is hardcoded 0 upstream by
+  //     design, so adopting it would mislead.
   const conceptsForPassthrough = isRecord(parsed.concepts)
     ? { ...parsed.concepts }
     : {};
-  for (const k of TOOL_ACTIVITY_CONTAINER_KEYS) {
-    delete (conceptsForPassthrough as Record<string, unknown>)[k];
-  }
+  const _cp = conceptsForPassthrough as Record<string, unknown>;
+  for (const k of TOOL_ACTIVITY_CONTAINER_KEYS) delete _cp[k];
+  for (const k of NODE_IDENTITIES_CONTAINER_KEYS) delete _cp[k];
+  for (const k of TOP_CONCEPTS_CONTAINER_KEYS) delete _cp[k];
+  for (const k of ACTIVITY_DIAGNOSTICS_CONTAINER_KEYS) delete _cp[k];
   const concepts = redactRecord(conceptsForPassthrough, false);
 
   // ── source_docs ────────────────────────────────────────────────────────────

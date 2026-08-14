@@ -57,6 +57,14 @@ const IDENTITY_KEYS = ["ref_id", "refId", "urn", "node_id", "nodeId", "id"] as c
 /** Keys whose presence indicates content (not just metadata). */
 const CONTENT_KEYS = ["properties", "body", "content", "text", "snippet"] as const;
 
+/**
+ * Keys under which a producer may ship an explicit boolean `has_content` flag.
+ * Consumed by readContentFlag — NOT added to CONTENT_KEYS, because
+ * `has_content: false` through hasContentField would misread it as "content
+ * present" (the presence rule treats any non-null/non-empty value as true).
+ */
+export const HAS_CONTENT_KEYS = ["has_content", "hasContent"] as const;
+
 // ── Identity kind ────────────────────────────────────────────────────────────
 
 /** Which candidate key the identity came from. */
@@ -192,8 +200,6 @@ export interface ToolActivityResult {
   ambiguousIdentityCount: number;
   /** Total withheld input field count across all calls. Set by project.ts. */
   withheldInputFieldCount: number;
-  /** True when ≥1 identity exists but zero classify as retrieved. */
-  allSurfacedHint: boolean;
   /** Per-axis truncation counts. */
   truncated: {
     groups: number;
@@ -213,7 +219,7 @@ function normalizeName(s: string): string {
   return s.trim().toLowerCase();
 }
 
-function toolClassOf(normalizedName: string): "surfacing" | "retrieval" | "none" | undefined {
+export function toolClassOf(normalizedName: string): "surfacing" | "retrieval" | "none" | undefined {
   return TOOL_CLASS[normalizedName];
 }
 
@@ -271,7 +277,7 @@ function resolveIdentity(raw: Record<string, unknown>): {
   return {};
 }
 
-function hasContentField(raw: Record<string, unknown>): boolean {
+export function hasContentField(raw: Record<string, unknown>): boolean {
   for (const k of CONTENT_KEYS) {
     const v = raw[k];
     if (v !== undefined && v !== null && v !== "") return true;
@@ -283,6 +289,28 @@ function hasContentField(raw: Record<string, unknown>): boolean {
     }
   }
   return false;
+}
+
+/**
+ * Read the explicit boolean `has_content` flag from a raw node record.
+ *
+ * Strict boolean-only check. Any non-boolean value (including undefined, null,
+ * strings like "true") returns `undefined`, falling through to the existing
+ * CONTENT_KEYS presence rule unchanged. This is intentional: only an explicit
+ * boolean `false` can short-circuit the presence rule (which treats any
+ * non-null/non-empty value as content-present, so routing `false` through it
+ * would misclassify the node as having content).
+ */
+export function readContentFlag(raw: Record<string, unknown>): true | false | undefined {
+  for (const k of HAS_CONTENT_KEYS) {
+    if (k in raw) {
+      const v = raw[k];
+      if (typeof v === "boolean") return v;
+      // Non-boolean: ignore — do not mis-parse a string or number.
+      return undefined;
+    }
+  }
+  return undefined;
 }
 
 /**
@@ -313,7 +341,8 @@ function normalizeNode(raw: unknown): NormalizedNode {
     asString(raw.nodeType) ??
     asString(raw.type) ??
     null;
-  const hasContent = hasContentField(raw);
+  const flag = readContentFlag(raw);
+  const hasContent = flag !== undefined ? flag : hasContentField(raw);
   return { identity, identityKind, canonicalKey, name, nodeType, hasContent };
 }
 
@@ -722,7 +751,6 @@ export function readToolActivity(
       unidentifiedNodeCount: 0,
       ambiguousIdentityCount: 0,
       withheldInputFieldCount: 0,
-      allSurfacedHint: false,
       truncated: { groups: 0, callsPerAgent: [], nodesPerCall: 0 },
     };
   }
@@ -765,25 +793,6 @@ export function readToolActivity(
   // Groups cap is applied by project.ts (it has PROJECTION_ARRAY_CAP).
   const groupsTruncated = 0;
 
-  // All-surfaced hint: ≥1 identity exists but zero classify as retrieved.
-  let totalIdentities = 0;
-  let retrievedCount = 0;
-  for (const g of groupsArr) {
-    for (const call of g.calls) {
-      const cls = toolClassOf(call.toolName);
-      for (const node of call.nodes) {
-        if (!node.identity) continue;
-        totalIdentities++;
-        const isRetrieved =
-          node.hasContent ||
-          node.retrievalBasis === "input" ||
-          (cls === "retrieval" && node.retrievalBasis === "tool-class");
-        if (isRetrieved) retrievedCount++;
-      }
-    }
-  }
-  const allSurfacedHint = totalIdentities > 0 && retrievedCount === 0;
-
   return {
     groups: groupsArr,
     orderingBasis,
@@ -792,13 +801,107 @@ export function readToolActivity(
     unidentifiedNodeCount,
     ambiguousIdentityCount,
     withheldInputFieldCount: 0, // set by project.ts
-    allSurfacedHint,
     truncated: {
       groups: groupsTruncated,
       callsPerAgent: callsPerAgentTruncated,
       nodesPerCall: nodesPerCallTruncated,
     },
   };
+}
+
+/**
+ * Merge bare-id rows into their URN counterparts (and vice versa) so that one
+ * node reached by two spellings collapses to a single canonical row.
+ *
+ * Deterministic: URN-form rows are processed before bare-id rows so "first URN
+ * wins" is an invariant independent of input array order.
+ *
+ * If two rows share a canonical key AFTER the merge (a true collision that is
+ * not a URN/bare-id pair), they are left as-is — the caller must detect and
+ * report the collision.
+ */
+export function mergeIdentityRows(rows: NodeIdentityRow[]): NodeIdentityRow[] {
+  // Phase 1: process URN rows first so bareIdToUrnCanonical is populated
+  // before any bare-id row is examined.
+  const urnRows = rows.filter((r) => r.identity.startsWith("urn:"));
+  const bareRows = rows.filter((r) => !r.identity.startsWith("urn:"));
+  const ordered = [...urnRows, ...bareRows];
+
+  const rowMap = new Map<string, NodeIdentityRow>();
+  const bareIdToUrnCanonical = new Map<string, string>();
+
+  for (const row of ordered) {
+    if (row.identity.startsWith("urn:")) {
+      const parsed = parseUrn(row.identity);
+      if (parsed) {
+        if (!bareIdToUrnCanonical.has(parsed.id)) {
+          bareIdToUrnCanonical.set(parsed.id, row.canonicalKey);
+        }
+        // Absorb any existing bare-id row.
+        const existingBare = rowMap.get(parsed.id);
+        if (existingBare && !rowMap.has(row.canonicalKey)) {
+          rowMap.set(row.canonicalKey, {
+            ...existingBare,
+            canonicalKey: row.canonicalKey,
+            identity: row.identity,
+            identityKind: row.identityKind,
+          });
+          rowMap.delete(parsed.id);
+        }
+      }
+      if (!rowMap.has(row.canonicalKey)) {
+        rowMap.set(row.canonicalKey, { ...row });
+      } else {
+        // Merge into existing URN row (upgrade status, add agents).
+        const existing = rowMap.get(row.canonicalKey)!;
+        if (row.runStatus === "retrieved" && existing.runStatus !== "retrieved") {
+          existing.runStatus = "retrieved";
+          existing.runBasis = row.runBasis;
+        }
+        for (const a of row.agents) {
+          const ea = existing.agents.find((x) => x.agentKey === a.agentKey);
+          if (ea) {
+            ea.count += a.count;
+            if (a.status === "retrieved" && ea.status !== "retrieved") {
+              ea.status = "retrieved";
+              ea.basis = a.basis;
+            }
+          } else {
+            existing.agents.push({ ...a });
+          }
+        }
+        if (row.hasOffScreenEvidence) existing.hasOffScreenEvidence = true;
+      }
+    } else {
+      // Bare-id row: check if a URN row claimed this id.
+      const urnCanonical = bareIdToUrnCanonical.get(row.canonicalKey);
+      const effectiveKey = urnCanonical ?? row.canonicalKey;
+      const existing = rowMap.get(effectiveKey);
+      if (existing) {
+        if (row.runStatus === "retrieved" && existing.runStatus !== "retrieved") {
+          existing.runStatus = "retrieved";
+          existing.runBasis = row.runBasis;
+        }
+        for (const a of row.agents) {
+          const ea = existing.agents.find((x) => x.agentKey === a.agentKey);
+          if (ea) {
+            ea.count += a.count;
+            if (a.status === "retrieved" && ea.status !== "retrieved") {
+              ea.status = "retrieved";
+              ea.basis = a.basis;
+            }
+          } else {
+            existing.agents.push({ ...a });
+          }
+        }
+        if (row.hasOffScreenEvidence) existing.hasOffScreenEvidence = true;
+      } else {
+        rowMap.set(effectiveKey, { ...row, canonicalKey: effectiveKey });
+      }
+    }
+  }
+
+  return [...rowMap.values()];
 }
 
 /**
@@ -809,11 +912,14 @@ export function readToolActivity(
  * across agents.
  *
  * Nodes from `none`-class tool calls contribute no identities.
+ *
+ * The merge logic lives in `mergeIdentityRows`; this function feeds it a flat
+ * list built from the groups.
  */
 export function buildNodeIdentities(groups: ToolActivityGroup[]): NodeIdentityRow[] {
+  // Build a flat list of per-observation rows (one per node per group),
+  // then let mergeIdentityRows handle dedup and URN/bare-id collapsing.
   const rowMap = new Map<string, NodeIdentityRow>();
-  // Maps bare id → canonical key of the URN row that claimed it.
-  const bareIdToUrnCanonical = new Map<string, string>();
 
   for (const group of groups) {
     for (const call of group.calls) {
@@ -830,35 +936,7 @@ export function buildNodeIdentities(groups: ToolActivityGroup[]): NodeIdentityRo
         const nodeStatus: RetrievalStatus = isRetrieved ? "retrieved" : "surfaced";
         const basis: RetrievalBasis = node.retrievalBasis ?? "tool-class";
 
-        let effectiveKey = node.canonicalKey;
-
-        // Register URN rows and enable merge of bare ref_id rows.
-        if (node.identity.startsWith("urn:")) {
-          const parsed = parseUrn(node.identity);
-          if (parsed) {
-            // Register canonical key for this bare id (first URN wins).
-            if (!bareIdToUrnCanonical.has(parsed.id)) {
-              bareIdToUrnCanonical.set(parsed.id, node.canonicalKey);
-            }
-            // Absorb any existing bare-id row into this URN row.
-            const existingBare = rowMap.get(parsed.id);
-            if (existingBare && !rowMap.has(node.canonicalKey)) {
-              rowMap.set(node.canonicalKey, {
-                ...existingBare,
-                canonicalKey: node.canonicalKey,
-                identity: node.identity,
-                identityKind: node.identityKind!,
-              });
-              rowMap.delete(parsed.id);
-            }
-          }
-        } else if (node.identityKind === "ref_id") {
-          // Bare ref_id: check if a URN row already claimed this id.
-          const urnCanonical = bareIdToUrnCanonical.get(node.identity);
-          if (urnCanonical) effectiveKey = urnCanonical;
-        }
-
-        const existing = rowMap.get(effectiveKey);
+        const existing = rowMap.get(node.canonicalKey);
         if (existing) {
           if (nodeStatus === "retrieved" && existing.runStatus !== "retrieved") {
             existing.runStatus = "retrieved";
@@ -886,8 +964,8 @@ export function buildNodeIdentities(groups: ToolActivityGroup[]): NodeIdentityRo
           }
           if (node.evidenceTruncated) existing.hasOffScreenEvidence = true;
         } else {
-          rowMap.set(effectiveKey, {
-            canonicalKey: effectiveKey,
+          rowMap.set(node.canonicalKey, {
+            canonicalKey: node.canonicalKey,
             identity: node.identity,
             identityKind: node.identityKind!,
             name: node.name,
@@ -910,5 +988,5 @@ export function buildNodeIdentities(groups: ToolActivityGroup[]): NodeIdentityRo
     }
   }
 
-  return [...rowMap.values()];
+  return mergeIdentityRows([...rowMap.values()]);
 }
