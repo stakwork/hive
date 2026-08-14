@@ -13,6 +13,8 @@
 import { FULL_BUNDLE } from "./full";
 import { WITH_TOOL_ACTIVITY } from "./with-tool-activity";
 import { TOOL_ACTIVITY_EDGE_CASES } from "./tool-activity-edge-cases";
+import { WITH_DERIVED_CONCEPTS } from "./with-derived-concepts";
+import { ONTOLOGY_ONLY, ONTOLOGY_WITH_IDENTITIES, NAME_COLLISION, HAS_CONTENT_TRUE, HAS_CONTENT_FALSE, HAS_CONTENT_ABSENT } from "./concept-facts-scenarios";
 
 type Bundle = Record<string, unknown>;
 
@@ -230,6 +232,13 @@ export const RUN_REPORT_FIXTURES = {
   "unknown-keys": UNKNOWN_KEYS,
   "with-tool-activity": WITH_TOOL_ACTIVITY,
   "tool-activity-edge-cases": TOOL_ACTIVITY_EDGE_CASES,
+  "with-derived-concepts": WITH_DERIVED_CONCEPTS,
+  "ontology-only": ONTOLOGY_ONLY,
+  "ontology-with-identities": ONTOLOGY_WITH_IDENTITIES,
+  "name-collision": NAME_COLLISION,
+  "has-content-true": HAS_CONTENT_TRUE,
+  "has-content-false": HAS_CONTENT_FALSE,
+  "has-content-absent": HAS_CONTENT_ABSENT,
 } as const;
 
 export type RunReportFixtureName = keyof typeof RUN_REPORT_FIXTURES;

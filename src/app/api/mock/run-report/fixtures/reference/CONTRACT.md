@@ -209,3 +209,99 @@ Inferred (harness-side, review on first real bundle):
 - `graph_node` → retrieval (presumed legacy name for graph_get)
 - `get_ontology` → none
 - `get_ontology_type` → none
+
+---
+
+## `concepts.node_identities` Shape (PROVISIONAL / UNCONFIRMED)
+
+**Status: PROVISIONAL / UNCONFIRMED** — None of `node_identities`, `top_concepts`,
+`has_content` is a confirmed producer contract. The producer is a workflow Script step
+whose current output sets `graph_activity_json` verbatim onto `concepts.tool_activity`;
+no generated bundle carrying these fields has been observed. Do not treat anything in
+this section as settled fact. Revisit and remove the PROVISIONAL marker when a real
+bundle is available.
+
+### Row contract that Hive requires
+
+When present, `concepts.node_identities` is an **array** of pre-derived identity rows.
+Any row that fails the following contract causes the **entire bundle** to be rejected
+back to local derivation (no per-row salvage, no merging of bundle and derived rows):
+
+```
+{
+  // REQUIRED — identity value (string, non-empty)
+  identity: string,
+
+  // REQUIRED — must be one of "ref_id" | "urn" | "id" (supplied by producer,
+  // NOT inferred from the identity string).
+  // A "urn:"-prefixed identity with identity_kind !== "urn" is malformed.
+  // A "ref_id" identity must not contain slashes or control characters
+  // (security: this value becomes a path segment in authenticated graph fetches).
+  identity_kind: "ref_id" | "urn" | "id",
+
+  // Optional display fields
+  name: string | null,
+  node_type: string | null,
+
+  // REQUIRED — run-wide retrieval status
+  run_status: "retrieved" | "surfaced",
+
+  // REQUIRED when run_status === "retrieved"; null/absent when "surfaced"
+  run_basis: "content" | "input" | "tool-class" | null,
+
+  // REQUIRED — array of per-agent attribution entries; MUST NOT be empty.
+  // A retrieved run_status requires ≥1 agent entry with status === "retrieved".
+  agents: Array<{
+    agentKey: string,        // normalized (lowercased) agent key
+    count: number,           // number of observations for this agent
+    status: "retrieved" | "surfaced",
+    basis: "content" | "input" | "tool-class",
+  }>,
+}
+```
+
+### Candidate container keys
+
+Hive accepts `node_identities` or `nodeIdentities` as the container key.
+
+### Validation rules (each causes whole-bundle fallback to local derivation)
+
+| Rejection reason | Trigger |
+|-----------------|---------|
+| `absent` | Container key not present in `concepts` |
+| `malformed-shape` | Container value is not an array, or is empty |
+| `unresolvable-identity-kind` | `identity_kind` missing, not a recognized enum value, or a `urn:`-prefixed identity declared as non-`urn` |
+| `inconsistent-status` | `run_basis` non-null when `run_status === "surfaced"`, or null when `run_status === "retrieved"`, or `retrieved` status with no agent having `status === "retrieved"` |
+| `missing-agents` | `agents[]` missing, empty, or containing malformed entries |
+| `key-collision` | Two rows share the same canonical key after `mergeIdentityRows` (not a URN/bare-id pair) |
+| `cap-divergence` | Any Hive cap was hit for this bundle (`truncated.callsPerAgent` or `truncated.nodesPerCall` non-zero, or row count exceeds projection array cap) |
+
+### `has_content` field (PROVISIONAL / UNCONFIRMED)
+
+**Status: PROVISIONAL / UNCONFIRMED** — field name and semantics are unconfirmed.
+
+When a node record in `tool_activity` carries `has_content` (or `hasContent`) as a
+**boolean** field, Hive uses it as an explicit override for the content-presence rule:
+
+- `true` → node is treated as having content (→ `retrievalBasis: "content"`)
+- `false` → node is treated as **NOT** having content; short-circuits the
+  existing `CONTENT_KEYS` presence rule (which would otherwise misread `false`
+  as content-present since any non-null non-empty value passes the rule)
+- absent or non-boolean → existing `CONTENT_KEYS` behaviour, byte-for-byte unchanged
+
+The tri-state reader (`readContentFlag`) is intentionally strict — any non-boolean
+value (including strings `"true"`, `"false"`, numbers) falls through to the existing
+behaviour unchanged.
+
+`has_content` must NOT be added to `CONTENT_KEYS`. Routing it through `hasContentField`
+would misclassify an explicit `false` as content-present.
+
+### `concepts.top_concepts` Shape (PROVISIONAL / UNCONFIRMED)
+
+When present, `concepts.top_concepts` is compared against Hive's locally-derived
+concept list. Only the **set of `(node_type, name)` keys** is compared — ordering,
+totals, and slice length are ignored. A set-membership difference sets
+`topConceptsMismatch: true` on the projection, which renders as a viewer-visible
+diagnostics signal.
+
+Accepted container keys: `top_concepts` or `topConcepts`.
