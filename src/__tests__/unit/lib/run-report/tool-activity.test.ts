@@ -6,9 +6,13 @@ import {
   TOOL_ACTIVITY_NODES_PER_CALL_CAP,
   readToolActivity,
   buildNodeIdentities,
+  mergeIdentityRows,
+  readContentFlag,
+  HAS_CONTENT_KEYS,
   countWithheldInputFields,
   readRawToolActivityRecords,
 } from "@/lib/run-report/tool-activity";
+import { deriveAllSurfacedHint } from "@/lib/run-report/concept-facts";
 import type { ToolActivityGroup } from "@/lib/run-report/tool-activity";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -482,14 +486,17 @@ describe("readToolActivity — classification (surfaced vs retrieved)", () => {
     const res = runActivity([
       singleCall("graph_search", [{ ref_id: "s1", node_type: "Concept", name: "surfaced only" }]),
     ]);
-    expect(res.allSurfacedHint).toBe(true);
+    // allSurfacedHint moved to deriveAllSurfacedHint in concept-facts.ts
+    const ids = buildNodeIdentities(res.groups);
+    expect(deriveAllSurfacedHint(ids, res.groups)).toBe(true);
   });
 
   it("all-surfaced hint does NOT fire when some identities are retrieved", () => {
     const res = runActivity([
       singleCall("graph_get", [{ ref_id: "r1", node_type: "Concept", name: "N", properties: { x: 1 } }]),
     ]);
-    expect(res.allSurfacedHint).toBe(false);
+    const ids = buildNodeIdentities(res.groups);
+    expect(deriveAllSurfacedHint(ids, res.groups)).toBe(false);
   });
 
   it("none-class calls contribute no identities", () => {
