@@ -27,8 +27,13 @@ import crypto from "crypto";
 vi.mock("@/lib/pusher", () => ({
   pusherServer: { trigger: vi.fn().mockResolvedValue({}) },
   getCanvasConversationChannelName: vi.fn((id: string) => `canvas-conversation-${id}`),
-  PUSHER_EVENTS: { CANVAS_CONVERSATION_UPDATED: "canvas-conversation-updated" },
+  getWorkspaceChannelName: vi.fn((slug: string) => `workspace-${slug}`),
+  PUSHER_EVENTS: {
+    CANVAS_CONVERSATION_UPDATED: "canvas-conversation-updated",
+    GRAPH_AGENT_RUN_UPDATED: "graph-agent-run-updated",
+  },
   notifyCanvasConversationUpdated: vi.fn(),
+  notifyGraphAgentRunUpdated: vi.fn(),
 }));
 
 // Rate limit: default allow — specific tests override
@@ -38,7 +43,10 @@ vi.mock("@/lib/rate-limit", () => ({
 }));
 
 import { checkRateLimit } from "@/lib/rate-limit";
-import { notifyCanvasConversationUpdated } from "@/lib/pusher";
+import {
+  notifyCanvasConversationUpdated,
+  notifyGraphAgentRunUpdated,
+} from "@/lib/pusher";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -465,6 +473,240 @@ describe("POST /api/agent-runs/webhook", () => {
     const row = await db.agentRun.findUnique({ where: { id: agentRun.id } });
     expect(row?.status).toBe("DELIVERED_WEBHOOK");
     expect(notifyCanvasConversationUpdated).not.toHaveBeenCalled();
+  });
+
+  // ── graph_chat branch ─────────────────────────────────────────────────────
+
+  describe("graph_chat runs (result stored on row, workspace nudge, no canvas fan-out)", () => {
+    let workspace: { id: string; slug: string };
+
+    beforeEach(async () => {
+      const ts = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      workspace = await db.workspace.create({
+        data: {
+          name: "Graph Chat WS",
+          slug: `graph-chat-ws-${ts}`,
+          ownerId: user.id,
+        },
+        select: { id: true, slug: true },
+      });
+    });
+
+    async function createGraphChatRun(overrides: Record<string, unknown> = {}) {
+      return db.agentRun.create({
+        data: {
+          tokenHash: hashToken(rawToken),
+          conversationId: null,
+          orgId: null,
+          userId: user.id,
+          title: "What does the auth module do?",
+          agentKind: "graph_chat",
+          workspaceId: workspace.id,
+          workspaceSlug: workspace.slug,
+          sessionId: "session-abc",
+          prompt: "What does the auth module do?",
+          proposalsEnabled: false,
+          ...overrides,
+        },
+      });
+    }
+
+    it("stores the result on the row, nudges the workspace channel, and skips canvas fan-out", async () => {
+      const agentRun = await createGraphChatRun();
+      const req = makeWebhookRequest({
+        runId: agentRun.id,
+        token: rawToken,
+        body: {
+          request_id: "req-g1",
+          status: "completed",
+          result: { success: true, content: "## Graph answer\n\nAuth handles JWT." },
+        },
+      });
+      const res = await POST(req);
+      expect(res.status).toBe(200);
+
+      const row = await db.agentRun.findUnique({ where: { id: agentRun.id } });
+      expect(row?.status).toBe("DELIVERED_WEBHOOK");
+      expect(row?.result).toBe("## Graph answer\n\nAuth handles JWT.");
+      expect(row?.error).toBeNull();
+
+      // Workspace nudge fired with the run's identifiers
+      expect(notifyGraphAgentRunUpdated).toHaveBeenCalledWith(workspace.slug, {
+        runId: agentRun.id,
+        sessionId: "session-abc",
+        status: "DELIVERED_WEBHOOK",
+      });
+
+      // No canvas fan-out of any kind
+      expect(notifyCanvasConversationUpdated).not.toHaveBeenCalled();
+      const conv = await db.sharedConversation.findUnique({ where: { id: conversation.id } });
+      expect(conv?.messages as unknown[]).toHaveLength(0);
+    });
+
+    it("stores the error (not result) and nudges FAILED on a failure payload", async () => {
+      const agentRun = await createGraphChatRun();
+      const req = makeWebhookRequest({
+        runId: agentRun.id,
+        token: rawToken,
+        body: { request_id: "req-g2", status: "failed", error: "graph agent exploded" },
+      });
+      const res = await POST(req);
+      expect(res.status).toBe(200);
+
+      const row = await db.agentRun.findUnique({ where: { id: agentRun.id } });
+      expect(row?.status).toBe("FAILED");
+      expect(row?.error).toBe("graph agent exploded");
+      expect(row?.result).toBeNull();
+
+      expect(notifyGraphAgentRunUpdated).toHaveBeenCalledWith(workspace.slug, {
+        runId: agentRun.id,
+        sessionId: "session-abc",
+        status: "FAILED",
+      });
+      expect(notifyCanvasConversationUpdated).not.toHaveBeenCalled();
+    });
+
+    it("stores the reflection sidecar alongside the result when the payload carries one", async () => {
+      const agentRun = await createGraphChatRun();
+      const reflection = {
+        session_id: "session-abc",
+        updated_at: "2026-08-14T12:00:00.000Z",
+        concepts: [
+          { id: "stakwork/hive/auth", name: "Authentication", read_order: 1, rank: null },
+        ],
+      };
+      const req = makeWebhookRequest({
+        runId: agentRun.id,
+        token: rawToken,
+        body: {
+          status: "completed",
+          result: { content: "Answer", reflection },
+        },
+      });
+      const res = await POST(req);
+      expect(res.status).toBe(200);
+
+      const row = await db.agentRun.findUnique({ where: { id: agentRun.id } });
+      expect(row?.result).toBe("Answer");
+      expect(row?.reflection).toEqual(reflection);
+    });
+
+    it("drops a malformed reflection but still delivers the result", async () => {
+      const agentRun = await createGraphChatRun();
+      const req = makeWebhookRequest({
+        runId: agentRun.id,
+        token: rawToken,
+        body: {
+          status: "completed",
+          result: { content: "Answer", reflection: ["not", "an", "object"] },
+        },
+      });
+      const res = await POST(req);
+      expect(res.status).toBe(200);
+
+      const row = await db.agentRun.findUnique({ where: { id: agentRun.id } });
+      expect(row?.status).toBe("DELIVERED_WEBHOOK");
+      expect(row?.result).toBe("Answer");
+      expect(row?.reflection).toBeNull();
+    });
+
+    it("drops an oversized reflection but still delivers the result", async () => {
+      const agentRun = await createGraphChatRun();
+      const req = makeWebhookRequest({
+        runId: agentRun.id,
+        token: rawToken,
+        body: {
+          status: "completed",
+          result: {
+            content: "Answer",
+            reflection: { gap: "x".repeat(128 * 1024 + 1) },
+          },
+        },
+      });
+      const res = await POST(req);
+      expect(res.status).toBe(200);
+
+      const row = await db.agentRun.findUnique({ where: { id: agentRun.id } });
+      expect(row?.status).toBe("DELIVERED_WEBHOOK");
+      expect(row?.result).toBe("Answer");
+      expect(row?.reflection).toBeNull();
+    });
+
+    it("demotes oversized content to FAILED without storing a result", async () => {
+      const agentRun = await createGraphChatRun();
+      const oversized = "x".repeat(128 * 1024 + 1);
+      const req = makeWebhookRequest({
+        runId: agentRun.id,
+        token: rawToken,
+        body: { request_id: "req-g3", status: "completed", result: { content: oversized } },
+      });
+      const res = await POST(req);
+      expect(res.status).toBe(200);
+
+      const row = await db.agentRun.findUnique({ where: { id: agentRun.id } });
+      expect(row?.status).toBe("FAILED");
+      expect(row?.result).toBeNull();
+    });
+
+    it("resolves the slug by workspaceId lookup when workspaceSlug is not snapshotted", async () => {
+      const agentRun = await createGraphChatRun({ workspaceSlug: null });
+      const req = makeWebhookRequest({ runId: agentRun.id, token: rawToken });
+      const res = await POST(req);
+      expect(res.status).toBe(200);
+
+      expect(notifyGraphAgentRunUpdated).toHaveBeenCalledWith(
+        workspace.slug,
+        expect.objectContaining({ runId: agentRun.id }),
+      );
+    });
+
+    it("a second webhook call is a no-op — the first result wins", async () => {
+      const agentRun = await createGraphChatRun();
+      const req1 = makeWebhookRequest({
+        runId: agentRun.id,
+        token: rawToken,
+        body: { status: "completed", result: { content: "Result A" } },
+      });
+      const req2 = makeWebhookRequest({
+        runId: agentRun.id,
+        token: rawToken,
+        body: { status: "completed", result: { content: "Result B" } },
+      });
+      await POST(req1);
+      const res2 = await POST(req2);
+      expect(res2.status).toBe(200);
+
+      const row = await db.agentRun.findUnique({ where: { id: agentRun.id } });
+      expect(row?.result).toBe("Result A");
+      expect(notifyGraphAgentRunUpdated).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  it("canvas (workflow_explorer) runs never trigger the graph workspace nudge", async () => {
+    const agentRun = await createAgentRun({ conversationId: conversation.id, orgId: org.id, userId: user.id, rawToken });
+    const req = makeWebhookRequest({
+      runId: agentRun.id,
+      token: rawToken,
+      body: {
+        status: "completed",
+        result: {
+          content: "Canvas result",
+          reflection: { session_id: "s", concepts: [] },
+        },
+      },
+    });
+    const res = await POST(req);
+    expect(res.status).toBe(200);
+
+    // Result/reflection are NOT stored on the row for canvas runs (fan-out
+    // only — path unchanged)
+    const row = await db.agentRun.findUnique({ where: { id: agentRun.id } });
+    expect(row?.status).toBe("DELIVERED_WEBHOOK");
+    expect(row?.result).toBeNull();
+    expect(row?.reflection).toBeNull();
+
+    expect(notifyGraphAgentRunUpdated).not.toHaveBeenCalled();
+    expect(notifyCanvasConversationUpdated).toHaveBeenCalledWith(conversation.id, "agent_run");
   });
 
   // ── tokenHash gating of the claim ─────────────────────────────────────────

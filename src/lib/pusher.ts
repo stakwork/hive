@@ -109,6 +109,10 @@ export const PUSHER_EVENTS = {
   // Canvas chat: a repo_agent run started or ended in this conversation.
   // Payload is ONLY `{ active: boolean }` — no request_id or workspace identifiers.
   CANVAS_RUN_ACTIVE: "canvas-run-active",
+  // A graph_chat AgentRun reached a terminal state (webhook claimed it).
+  // Fired on the workspace channel; payload is a nudge only
+  // `{ runId, sessionId, status, at }` — the client refetches the thread.
+  GRAPH_AGENT_RUN_UPDATED: "graph-agent-run-updated",
 } as const;
 
 /**
@@ -187,6 +191,35 @@ export function notifyCanvasConversationUpdated(
       "[pusher] notifyCanvasConversationUpdated threw (non-fatal):",
       err,
     );
+  }
+}
+
+/**
+ * Fire-and-forget broadcast that a graph_chat AgentRun reached a terminal
+ * state. The webhook handler calls this AFTER the atomic claim commits so an
+ * open Graph Explorer chat sidebar refetches the thread. Never throws — a
+ * Pusher outage must not break the webhook claim (the swarm would retry a
+ * 5xx against an already-claimed row).
+ */
+export function notifyGraphAgentRunUpdated(
+  workspaceSlug: string,
+  payload: { runId: string; sessionId: string | null; status: string },
+): void {
+  try {
+    void pusherServer
+      .trigger(
+        getWorkspaceChannelName(workspaceSlug),
+        PUSHER_EVENTS.GRAPH_AGENT_RUN_UPDATED,
+        { ...payload, at: Date.now() },
+      )
+      .catch((err) => {
+        console.error(
+          "[pusher] notifyGraphAgentRunUpdated failed (non-fatal):",
+          err,
+        );
+      });
+  } catch (err) {
+    console.error("[pusher] notifyGraphAgentRunUpdated threw (non-fatal):", err);
   }
 }
 

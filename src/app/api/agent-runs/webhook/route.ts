@@ -1,11 +1,15 @@
 /**
  * POST /api/agent-runs/webhook?id=<runId>&token=<rawToken>
  *
- * Session-less callback for canvas-linked workflow-explorer runs that outlive
- * the Vercel lambda that kicked them off (the "webhook fan-back safety net").
- * The swarm POSTs here when a run reaches a terminal state; Hive claims the
- * `AgentRun` arbitration row exactly once and fans the result into the owning
- * canvas conversation.
+ * Session-less callback for agent runs that outlive the Vercel lambda that
+ * kicked them off (the "webhook fan-back safety net"). The swarm POSTs here
+ * when a run reaches a terminal state; Hive claims the `AgentRun` arbitration
+ * row exactly once and delivers by `agentKind`:
+ *   - "workflow_explorer" (canvas-linked): fans the result into the owning
+ *     canvas conversation.
+ *   - "graph_chat": stores the result on the row itself (in the same
+ *     updateMany that claims it) and Pusher-nudges the workspace channel so
+ *     the Graph Explorer chat sidebar refetches.
  *
  * The payload is what stakgraph's `postTerminalWebhook` actually sends
  * (stakgraph `mcp/src/repo/index.ts`) — the swarm POSTs the registered
@@ -41,13 +45,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import crypto from "crypto";
 import { db } from "@/lib/db";
-import { AgentRunStatus } from "@prisma/client";
+import { AgentRunStatus, Prisma } from "@prisma/client";
 import { timingSafeEqual } from "@/lib/encryption";
 import { checkRateLimit, getClientIp } from "@/lib/rate-limit";
 import {
   fanOutAgentRunToCanvas,
   hardenContent,
 } from "@/services/canvas-agent-run-fanout";
+import { notifyGraphAgentRunUpdated } from "@/lib/pusher";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -68,6 +73,13 @@ interface WebhookPayload {
   result?: {
     content?: unknown;
     final_answer?: unknown;
+    /**
+     * stakgraph SessionReflection sidecar — present when the run read any
+     * gitree Concepts (reads are always recorded; rank/evidence/gap only
+     * when the dispatch opted into the reflect pass). Stored on graph_chat
+     * rows; ignored for canvas runs.
+     */
+    reflection?: unknown;
   } | null;
   /** Error detail on failure (e.g. "aborted", or an exception message). */
   error?: unknown;
@@ -76,6 +88,24 @@ interface WebhookPayload {
 /** Hash a raw token with SHA-256 (hex digest). */
 function hashToken(token: string): string {
   return crypto.createHash("sha256").update(token).digest("hex");
+}
+
+/** Max serialized size accepted for the reflection sidecar (same cap as content). */
+const MAX_REFLECTION_LENGTH = 128 * 1024;
+
+/**
+ * Harden the external reflection payload: must be a plain object and fit the
+ * size cap. Returns null when missing/malformed/oversized — the run is still
+ * delivered normally; reflection is a best-effort sidecar, never load-bearing.
+ */
+function hardenReflection(raw: unknown): Prisma.InputJsonObject | null {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  try {
+    if (JSON.stringify(raw).length > MAX_REFLECTION_LENGTH) return null;
+  } catch {
+    return null;
+  }
+  return raw as Prisma.InputJsonObject;
 }
 
 export async function POST(request: NextRequest) {
@@ -120,6 +150,10 @@ export async function POST(request: NextRequest) {
       userId: true,
       title: true,
       status: true,
+      agentKind: true,
+      workspaceId: true,
+      workspaceSlug: true,
+      sessionId: true,
     },
   });
 
@@ -190,6 +224,15 @@ export async function POST(request: NextRequest) {
       ? content!
       : (isSuccess ? "oversized or malformed result payload" : errorDetail);
 
+  // graph_chat runs have no canvas conversation — the row itself is the
+  // delivery destination: the terminal result (and the Concept-reads
+  // reflection sidecar, when present) is stored on it in the same updateMany
+  // that claims it, and the workspace channel gets a nudge.
+  const isGraphChat = row.agentKind === "graph_chat";
+  const reflection = isGraphChat
+    ? hardenReflection(payload.result?.reflection)
+    : null;
+
   // ── Atomic, token-gated claim ─────────────────────────────────────────────
   // `tokenHash` in the where-clause makes the claim itself credential-gated —
   // not only the preceding compare — so a race with a concurrent webhook call
@@ -204,6 +247,9 @@ export async function POST(request: NextRequest) {
       data: {
         status: effectiveStatus,
         ...(errorField ? { error: errorField } : {}),
+        ...(isGraphChat && effectiveStatus === AgentRunStatus.DELIVERED_WEBHOOK
+          ? { result: content!, ...(reflection ? { reflection } : {}) }
+          : {}),
       },
     });
 
@@ -221,12 +267,41 @@ export async function POST(request: NextRequest) {
       parsedStatus: effectiveStatus,
     });
 
+    // ── graph_chat delivery: result is on the row — nudge the workspace ───
+    // No canvas fan-out. The slug is snapshotted on the row at create time
+    // (webhook path stays DB-light); fall back to one indexed lookup for
+    // rows created before the snapshot existed.
+    if (isGraphChat) {
+      let slug = row.workspaceSlug;
+      if (!slug && row.workspaceId) {
+        const ws = await db.workspace.findUnique({
+          where: { id: row.workspaceId },
+          select: { slug: true },
+        });
+        slug = ws?.slug ?? null;
+      }
+      if (slug) {
+        notifyGraphAgentRunUpdated(slug, {
+          runId,
+          sessionId: row.sessionId,
+          status: effectiveStatus,
+        });
+      } else {
+        console.warn("[graph-agent-chat] webhook: no workspace slug for run — skipping nudge", {
+          runId,
+        });
+      }
+      return NextResponse.json({ ok: true });
+    }
+
     // ── Fan out to canvas conversation ────────────────────────────────────
     // AgentRun is generalized: conversationId is null for non-canvas run
     // types, which have their own webhook endpoints. A null here means the
     // row was misrouted to this canvas-specific endpoint — the claim above
     // still recorded the terminal state; there is just nowhere to deliver.
-    if (!row.conversationId) {
+    // (`orgId` joined the guard when it became nullable for graph_chat rows;
+    // canvas rows always carry it, so behavior for them is unchanged.)
+    if (!row.conversationId || !row.orgId) {
       console.warn("[canvas-agent-run-fanout] webhook: row has no conversationId — claimed without fan-out", {
         runId,
       });
