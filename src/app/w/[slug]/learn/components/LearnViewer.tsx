@@ -1,12 +1,17 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { LearnSidebar } from "./LearnSidebar";
 import { LearnDocViewer } from "./LearnDocViewer";
 import { DiagramViewer } from "./DiagramViewer";
 import { CreateDiagramModal } from "./CreateDiagramModal";
+import { ConceptProposalReviewCard } from "./ConceptProposalReviewCard";
+import {
+  derivePendingProposalConceptIds,
+  type ConceptProposal,
+} from "@/types/concept-proposals";
 import { toast } from "sonner";
 
 interface Doc {
@@ -51,15 +56,21 @@ export function LearnViewer({ workspaceSlug }: LearnViewerProps) {
   const [docs, setDocs] = useState<Doc[]>([]);
   const [concepts, setConcepts] = useState<Concept[]>([]);
   const [diagrams, setDiagrams] = useState<Diagram[]>([]);
+  const [proposals, setProposals] = useState<ConceptProposal[]>([]);
   const [activeItem, setActiveItem] = useState<ActiveItem | null>(null);
+  const [selectedProposal, setSelectedProposal] = useState<ConceptProposal | null>(null);
   const [isDocsLoading, setIsDocsLoading] = useState(true);
   const [isConceptsLoading, setIsConceptsLoading] = useState(true);
   const [isDiagramsLoading, setIsDiagramsLoading] = useState(true);
+  const [isProposalsLoading, setIsProposalsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [isCreateDiagramOpen, setIsCreateDiagramOpen] = useState(false);
   const [editingDiagram, setEditingDiagram] = useState<Diagram | null>(null);
 
-  const setUrlParam = (key: "doc" | "concept" | "diagram", value: string) => {
+  const setUrlParam = (
+    key: "doc" | "concept" | "diagram" | "proposal",
+    value: string
+  ) => {
     const p = new URLSearchParams();
     p.set(key, encodeURIComponent(value));
     router.replace(`${pathname}?${p.toString()}`, { scroll: false });
@@ -81,6 +92,36 @@ export function LearnViewer({ workspaceSlug }: LearnViewerProps) {
     }
     return [];
   };
+
+  const refreshProposals = async () => {
+    if (isPublicViewer) return;
+    try {
+      const response = await fetch(
+        `/api/learnings/concepts/proposals?workspace=${encodeURIComponent(workspaceSlug)}&status=pending`
+      );
+      if (response.ok) {
+        const data = await response.json();
+        setProposals(Array.isArray(data?.proposals) ? data.proposals : []);
+      }
+    } catch (error) {
+      console.error("Failed to fetch proposals:", error);
+    } finally {
+      setIsProposalsLoading(false);
+    }
+  };
+
+  // Proposals are member-only (the proxy rejects public viewers), so don't
+  // even fetch for them — just resolve the loading flag.
+  useEffect(() => {
+    if (isPublicViewer) {
+      setProposals([]);
+      setIsProposalsLoading(false);
+      return;
+    }
+    setIsProposalsLoading(true);
+    refreshProposals();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [workspaceSlug, isPublicViewer]);
 
   useEffect(() => {
     async function fetchData() {
@@ -151,13 +192,19 @@ export function LearnViewer({ workspaceSlug }: LearnViewerProps) {
 
   // Restore active item from URL params once all data has loaded
   useEffect(() => {
-    if (isDocsLoading || isConceptsLoading || isDiagramsLoading) return;
+    if (isDocsLoading || isConceptsLoading || isDiagramsLoading || isProposalsLoading)
+      return;
 
     const docParam = searchParams.get("doc");
     const conceptParam = searchParams.get("concept");
     const diagramParam = searchParams.get("diagram");
+    const proposalParam = searchParams.get("proposal");
 
-    if (docParam) {
+    if (proposalParam) {
+      const id = decodeURIComponent(proposalParam);
+      const match = proposals.find((p) => p.id === id);
+      if (match) setSelectedProposal(match);
+    } else if (docParam) {
       const repoName = decodeURIComponent(docParam);
       const match = docs.find((d) => d.repoName === repoName);
       if (match) {
@@ -177,7 +224,7 @@ export function LearnViewer({ workspaceSlug }: LearnViewerProps) {
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isDocsLoading, isConceptsLoading, isDiagramsLoading]);
+  }, [isDocsLoading, isConceptsLoading, isDiagramsLoading, isProposalsLoading]);
 
   const refreshConcepts = async () => {
     try {
@@ -194,6 +241,7 @@ export function LearnViewer({ workspaceSlug }: LearnViewerProps) {
   };
 
   const handleDocClick = (repoName: string, content: string) => {
+    setSelectedProposal(null);
     setActiveItem({
       type: "doc",
       repoName,
@@ -205,6 +253,7 @@ export function LearnViewer({ workspaceSlug }: LearnViewerProps) {
 
   const handleConceptClick = async (id: string, name: string, content: string) => {
     const cachedDescription = concepts.find((c) => c.id === id)?.description ?? null;
+    setSelectedProposal(null);
     setActiveItem({ type: "concept", id, name, content, description: cachedDescription });
     setUrlParam("concept", id);
 
@@ -235,8 +284,44 @@ export function LearnViewer({ workspaceSlug }: LearnViewerProps) {
     body: string,
     description?: string | null
   ) => {
+    setSelectedProposal(null);
     setActiveItem({ type: "diagram", id, name, content: "", body, description });
     setUrlParam("diagram", id);
+  };
+
+  const handleProposalClick = (proposal: ConceptProposal) => {
+    setSelectedProposal(proposal);
+    setUrlParam("proposal", proposal.id);
+  };
+
+  const handleProposalDecided = async (result: {
+    outcome: "accepted" | "rejected";
+    createdConceptId?: string;
+  }) => {
+    const proposalName = selectedProposal?.name;
+    setSelectedProposal(null);
+    await Promise.all([refreshProposals(), refreshConcepts()]);
+    if (result.createdConceptId) {
+      // Select the new concept directly — the URL-restore effect only runs
+      // on initial load, so navigating to ?concept= alone wouldn't do it.
+      handleConceptClick(
+        result.createdConceptId,
+        proposalName ?? result.createdConceptId,
+        ""
+      );
+    } else if (activeItem?.type === "doc" && activeItem.repoName) {
+      setUrlParam("doc", activeItem.repoName);
+    } else if (activeItem && activeItem.type !== "doc" && activeItem.id) {
+      setUrlParam(activeItem.type, activeItem.id);
+    } else {
+      router.replace(pathname, { scroll: false });
+    }
+  };
+
+  // The proposal turned out to be already decided (or gone): keep the card's
+  // terminal banner on screen, just refresh the pending list and markers.
+  const handleProposalTerminal = () => {
+    refreshProposals();
   };
 
   const handleDiagramCreated = async () => {
@@ -316,17 +401,31 @@ export function LearnViewer({ workspaceSlug }: LearnViewerProps) {
   };
 
   const getActiveItemKey = () => {
+    if (selectedProposal) return `proposal-${selectedProposal.id}`;
     if (!activeItem) return null;
     if (activeItem.type === "doc") return `doc-${activeItem.repoName}`;
     if (activeItem.type === "concept") return `concept-${activeItem.id}`;
     return `diagram-${activeItem.id}`;
   };
 
+  const pendingProposalConceptIds = useMemo(
+    () => derivePendingProposalConceptIds(proposals),
+    [proposals]
+  );
+
   return (
     <div className="flex h-full w-full">
       {/* Main content area */}
       <div className="flex-1 pr-80">
-        {activeItem?.type === "diagram" ? (
+        {selectedProposal ? (
+          <ConceptProposalReviewCard
+            key={selectedProposal.id}
+            proposal={selectedProposal}
+            workspaceSlug={workspaceSlug}
+            onDecided={handleProposalDecided}
+            onTerminal={handleProposalTerminal}
+          />
+        ) : activeItem?.type === "diagram" ? (
           <DiagramViewer
             name={activeItem.name}
             body={activeItem.body ?? ""}
@@ -358,6 +457,10 @@ export function LearnViewer({ workspaceSlug }: LearnViewerProps) {
         isDocsLoading={isDocsLoading}
         isConceptsLoading={isConceptsLoading}
         isDiagramsLoading={isDiagramsLoading}
+        proposals={proposals}
+        pendingProposalConceptIds={pendingProposalConceptIds}
+        onProposalClick={handleProposalClick}
+        isProposalsLoading={isProposalsLoading}
       />
 
       <CreateDiagramModal

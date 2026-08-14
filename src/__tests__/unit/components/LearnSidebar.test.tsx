@@ -90,6 +90,7 @@ vi.mock("lucide-react", () => ({
   BookOpen: () => <span data-testid="book-icon" />,
   Lightbulb: () => <span data-testid="lightbulb-icon" />,
   GitBranch: () => <span data-testid="gitbranch-icon" />,
+  GitPullRequest: () => <span data-testid="gitpullrequest-icon" />,
   Plus: () => <span data-testid="plus-icon" />,
   Pencil: () => <span data-testid="pencil-icon" />,
   RefreshCw: () => <span data-testid="refresh-icon" />,
@@ -663,5 +664,126 @@ describe("LearnSidebar — concept search", () => {
 
     fireEvent.click(screen.getByTestId("concept-search-result-semantic"));
     expect(onConceptClick).toHaveBeenCalledWith("stakwork/hive/tasks", "Tasks", "");
+  });
+});
+
+describe("LearnSidebar — concept proposals", () => {
+  const pendingProposals = [
+    {
+      id: "proposal-create-1",
+      action: "create" as const,
+      status: "pending" as const,
+      name: "Encryption Service",
+      rationale: "r",
+      source: "s",
+      prNumbers: [],
+      createdAt: "2025-08-05T10:00:00.000Z",
+      repo: "stakwork/hive",
+    },
+    {
+      id: "proposal-update-1",
+      action: "update" as const,
+      status: "pending" as const,
+      conceptId: "stakwork/hive/tasks",
+      rationale: "r",
+      source: "s",
+      prNumbers: [],
+      createdAt: "2025-08-06T14:30:00.000Z",
+      repo: "stakwork/hive",
+    },
+    {
+      id: "proposal-merge-1",
+      action: "merge" as const,
+      status: "pending" as const,
+      conceptId: "stakwork/hive/auth",
+      mergeIntoConceptId: "stakwork/hive/tasks",
+      rationale: "r",
+      source: "s",
+      prNumbers: [],
+      createdAt: "2025-08-08T16:45:00.000Z",
+      repo: "stakwork/hive",
+    },
+  ];
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockUseWorkspace.mockReturnValue({ workspace: { repositories: [] } });
+    global.fetch = vi.fn().mockResolvedValue({ ok: false });
+  });
+
+  it("hides the Proposals section when there are no proposals", () => {
+    render(<LearnSidebar {...defaultProps} />);
+    expect(screen.queryByTestId("learn-proposals-section")).toBeNull();
+  });
+
+  it("renders the Proposals section with a count badge", () => {
+    render(<LearnSidebar {...defaultProps} proposals={pendingProposals} />);
+    const header = screen.getByTestId("learn-proposals-header");
+    expect(header.textContent).toContain("Proposals");
+    expect(header.textContent).toContain("3");
+  });
+
+  it("lists every proposal, including create proposals with no concept row", () => {
+    render(<LearnSidebar {...defaultProps} proposals={pendingProposals} />);
+    const items = screen.getAllByTestId("learn-proposal-item");
+    expect(items).toHaveLength(3);
+    expect(items[0].textContent).toContain("Encryption Service");
+    expect(items[1].textContent).toContain("stakwork/hive/tasks");
+    expect(items[2].textContent).toContain(
+      "stakwork/hive/auth → stakwork/hive/tasks"
+    );
+  });
+
+  it("collapses and re-expands on header click", () => {
+    render(<LearnSidebar {...defaultProps} proposals={pendingProposals} />);
+    expect(screen.getAllByTestId("learn-proposal-item")).toHaveLength(3);
+    fireEvent.click(screen.getByTestId("learn-proposals-header"));
+    expect(screen.queryAllByTestId("learn-proposal-item")).toHaveLength(0);
+    fireEvent.click(screen.getByTestId("learn-proposals-header"));
+    expect(screen.getAllByTestId("learn-proposal-item")).toHaveLength(3);
+  });
+
+  it("clicking a proposal row calls onProposalClick with the proposal", () => {
+    const onProposalClick = vi.fn();
+    render(
+      <LearnSidebar
+        {...defaultProps}
+        proposals={pendingProposals}
+        onProposalClick={onProposalClick}
+      />
+    );
+    fireEvent.click(screen.getAllByTestId("learn-proposal-item")[1]);
+    expect(onProposalClick).toHaveBeenCalledWith(pendingProposals[1]);
+  });
+
+  it("marks concept rows on both sides of a merge, and not unflagged rows", () => {
+    render(
+      <LearnSidebar
+        {...defaultProps}
+        concepts={multiRepoConcepts}
+        proposals={pendingProposals}
+        pendingProposalConceptIds={
+          new Set(["stakwork/hive/auth", "stakwork/hive/tasks"])
+        }
+      />
+    );
+    const items = screen.getAllByTestId("learn-concept-item");
+    const flagged = items.filter(
+      (el) => el.querySelector('[data-testid="concept-pending-marker"]') !== null
+    );
+    expect(flagged.map((el) => el.textContent)).toEqual(["Auth", "Tasks"]);
+  });
+
+  it("highlights the active proposal row via activeItemKey", () => {
+    render(
+      <LearnSidebar
+        {...defaultProps}
+        proposals={pendingProposals}
+        activeItemKey="proposal-proposal-update-1"
+      />
+    );
+    const items = screen.getAllByTestId("learn-proposal-item");
+    expect(items[1].className).toContain("bg-muted/60");
+    expect(items[0].className).not.toContain("bg-muted/60");
   });
 });
