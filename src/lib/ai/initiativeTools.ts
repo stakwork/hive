@@ -634,13 +634,29 @@ export function buildInitiativeTools(
               "direct user reply.",
           ),
       }),
-      execute: async ({
-        featureId,
-        message,
-      }: {
-        featureId: string;
-        message: string;
-      }) => {
+      execute: async (
+        {
+          featureId,
+          message,
+        }: {
+          featureId: string;
+          message: string;
+        },
+        { abortSignal }: { abortSignal?: AbortSignal } = {},
+      ) => {
+        // Re-check constants: 8 × 2.5s ≈ 20s total window.
+        // Fixed iteration count (not Date.now()) keeps the loop
+        // deterministic under vi.useFakeTimers().
+        const RECHECK_INTERVAL_MS = 2_500;
+        const RECHECK_MAX_ATTEMPTS = 8;
+
+        // Hoisted so the catch block can build the structured IN_PROGRESS
+        // payload even when `sendFeatureChatMessage` throws the race error
+        // (the catch is outside the try scope where these are captured).
+        let _featureTitle = "";
+        let _workspaceSlug = "";
+        let _workspaceName = "";
+
         try {
           // Validate the feature belongs to this org via the workspace
           // → org chain. Same pattern as the other initiative tools.
@@ -681,26 +697,101 @@ export function buildInitiativeTools(
           // error path can include them — the UI card needs the title
           // even when the send was rejected, so the user can see
           // *which* planner the agent tried to message.
-          const featureTitle = feature.title;
-          const workspaceSlug = feature.workspace.slug;
-          const workspaceName = feature.workspace.name;
-          // Early-return the "already running" case with a clear
-          // message so the agent can tell the user without retrying.
-          // (The service throws the same error, but catching here lets
-          // us return a structured payload instead of an opaque
-          // exception.)
+          // Assign to the hoisted vars so the catch block can build
+          // the structured IN_PROGRESS payload on the race path.
+          _featureTitle = feature.title;
+          _workspaceSlug = feature.workspace.slug;
+          _workspaceName = feature.workspace.name;
+
+          const featureTitle = _featureTitle;
+          const workspaceSlug = _workspaceSlug;
+          const workspaceName = _workspaceName;
+
+          // Structured IN_PROGRESS rejection payload — shared by the
+          // loop-timeout path and the race-catch path below.
+          const inProgressReject = {
+            error:
+              "The planner is currently running on this feature. " +
+              "Use `<slug>__read_feature` to check `workflowStatus` " +
+              "and wait until it leaves `IN_PROGRESS` before sending.",
+            workflowStatus: "IN_PROGRESS" as const,
+            featureId,
+            featureTitle,
+            workspaceSlug,
+            workspaceName,
+          };
+
+          // Bounded re-check: when the initial read shows IN_PROGRESS
+          // the webhook that clears the status may still be in-flight.
+          // Poll for up to ~20s before giving up, so a just-finished
+          // workflow doesn't get falsely rejected.
           if (feature.workflowStatus === "IN_PROGRESS") {
-            return {
-              error:
-                "The planner is currently running on this feature. " +
-                "Use `<slug>__read_feature` to check `workflowStatus` " +
-                "and wait until it leaves `IN_PROGRESS` before sending.",
-              workflowStatus: feature.workflowStatus,
-              featureId,
-              featureTitle,
-              workspaceSlug,
-              workspaceName,
-            };
+            console.log(
+              `[send_to_feature_planner] featureId=${featureId} — ` +
+                "status is IN_PROGRESS, entering re-check loop",
+            );
+
+            let attempt = 0;
+            let cleared = false;
+            let deletedMidWindow = false;
+
+            while (attempt < RECHECK_MAX_ATTEMPTS) {
+              if (abortSignal?.aborted) {
+                console.log(
+                  `[send_to_feature_planner] featureId=${featureId} — ` +
+                    `aborted after ${attempt} attempt(s)`,
+                );
+                break;
+              }
+
+              await new Promise<void>((r) => setTimeout(r, RECHECK_INTERVAL_MS));
+
+              if (abortSignal?.aborted) {
+                console.log(
+                  `[send_to_feature_planner] featureId=${featureId} — ` +
+                    `aborted after ${attempt} attempt(s)`,
+                );
+                break;
+              }
+
+              const recheck = await db.feature.findUnique({
+                where: { id: featureId },
+                select: { workflowStatus: true },
+              });
+
+              attempt++;
+
+              if (recheck === null) {
+                // Feature was deleted during the wait.
+                deletedMidWindow = true;
+                break;
+              }
+
+              if (recheck.workflowStatus !== "IN_PROGRESS") {
+                cleared = true;
+                console.log(
+                  `[send_to_feature_planner] featureId=${featureId} — ` +
+                    `cleared after ${attempt} attempt(s), proceeding`,
+                );
+                break;
+              }
+            }
+
+            if (deletedMidWindow) {
+              return { error: "Feature not found" };
+            }
+
+            if (!cleared) {
+              // Aborted or still IN_PROGRESS after the full window.
+              if (!abortSignal?.aborted) {
+                console.log(
+                  `[send_to_feature_planner] featureId=${featureId} — ` +
+                    `still IN_PROGRESS after ${attempt} attempt(s), rejecting`,
+                );
+              }
+              return inProgressReject;
+            }
+            // Status cleared — fall through to the send path below.
           }
 
           // Lazy-claim ownership: if this feature was created from a
@@ -777,11 +868,38 @@ export function buildInitiativeTools(
             "[initiativeTools.send_to_feature_planner] error:",
             e,
           );
-          const message =
+          const errMsg =
             e instanceof Error
               ? e.message
               : "Failed to send message to feature planner";
-          return { error: message };
+
+          // When the re-check loop observes a clear and proceeds, a
+          // concurrently-started run can race ahead and cause
+          // `sendFeatureChatMessage` to throw the "already running"
+          // guard. Return the same structured payload (with all five
+          // fields) instead of an opaque { error } so callers can
+          // handle it identically to the loop-timeout path.
+          // Uses the hoisted `_featureTitle`/`_workspaceSlug`/`_workspaceName`
+          // vars (assigned before the loop) because `inProgressReject` is
+          // in the `try` scope and not reachable from `catch`.
+          if (
+            errMsg ===
+            "A planning workflow is already running for this feature"
+          ) {
+            return {
+              error:
+                "The planner is currently running on this feature. " +
+                "Use `<slug>__read_feature` to check `workflowStatus` " +
+                "and wait until it leaves `IN_PROGRESS` before sending.",
+              workflowStatus: "IN_PROGRESS" as const,
+              featureId,
+              featureTitle: _featureTitle,
+              workspaceSlug: _workspaceSlug,
+              workspaceName: _workspaceName,
+            };
+          }
+
+          return { error: errMsg };
         }
       },
     }),
