@@ -142,12 +142,42 @@ function buildFeatureNode(
     title: string;
     status: string;
     workflowStatus: string | null;
-    tasks?: Array<{ status: string }>;
+    tasks?: Array<{ id: string; status: string; workflowStatus: string | null; mode?: string | null }>;
   },
   pos: { x: number; y: number },
 ): CanvasNode {
-  const taskCount = feature.tasks?.length ?? 0;
-  const taskDone = feature.tasks?.filter((t) => t.status === "DONE").length ?? 0;
+  const tasks = feature.tasks ?? [];
+  const taskCount = tasks.length;
+  const taskDone = tasks.filter((t) => t.status === "DONE").length;
+
+  // `plannerRunning`: true ONLY when workflowStatus === "IN_PROGRESS".
+  // Deliberately excludes "PENDING" (the Prisma schema default) so a
+  // brand-new, never-started feature never false-positives as "running."
+  // Forced false when any child task has FAILED/ERROR — that's the same
+  // halt condition `updateFeatureStatusFromTasks` recognises, and a
+  // feature sitting on a stale IN_PROGRESS read with broken tasks should
+  // not pulse indefinitely.
+  const hasErrorTask = tasks.some(
+    (t) => t.workflowStatus === "FAILED" || t.workflowStatus === "ERROR",
+  );
+  const plannerRunning =
+    !hasErrorTask && feature.workflowStatus === "IN_PROGRESS";
+
+  // `agentTasks`: per-task `{id, workflowStatus}[]` array preserved
+  // (not collapsed to a count) so the client-side incremental merger
+  // can upsert a single incoming event by `taskId` without losing the
+  // others. "In-flight" mirrors TaskCard.tsx's established convention:
+  //   - workflowStatus === "IN_PROGRESS", OR
+  //   - mode === "agent" AND workflowStatus === "PENDING"
+  //     (agent-mode tasks are active from PENDING until completion)
+  // Non-agent PENDING tasks sit in the default state and are NOT counted.
+  const agentTasks = tasks.map((t) => ({ id: t.id, workflowStatus: t.workflowStatus }));
+  const agentsRunningCount = tasks.filter(
+    (t) =>
+      t.workflowStatus === "IN_PROGRESS" ||
+      (t.mode === "agent" && t.workflowStatus === "PENDING"),
+  ).length;
+
   return {
     id: `feature:${feature.id}`,
     type: "text",
@@ -160,6 +190,11 @@ function buildFeatureNode(
       workflowStatus: feature.workflowStatus,
       taskCount,
       taskDone,
+      // Live-agent indicators — consumed by canvas-theme slots and the
+      // client-side mergeFeatureLiveState reducer (Change #5).
+      plannerRunning,
+      agentTasks,
+      agentsRunningCount,
       ...(taskCount > 0 && {
         secondary: `${taskDone}/${taskCount} task${taskCount === 1 ? "" : "s"}`,
       }),
@@ -312,7 +347,9 @@ export const workspaceProjector: Projector = {
           workflowStatus: true,
           tasks: {
             where: { deleted: false, archived: false },
-            select: { status: true },
+            // id/workflowStatus/mode required for plannerRunning and
+            // agentTasks computation in buildFeatureNode.
+            select: { id: true, status: true, workflowStatus: true, mode: true },
           },
         },
       });
@@ -772,7 +809,9 @@ export const milestoneTimelineProjector: Projector = {
         dependsOnFeatureIds: true,
         tasks: {
           where: { deleted: false, archived: false },
-          select: { status: true },
+          // id/workflowStatus/mode required for plannerRunning and
+          // agentTasks computation in buildFeatureNode.
+          select: { id: true, status: true, workflowStatus: true, mode: true },
         },
       },
     });
