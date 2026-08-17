@@ -109,10 +109,10 @@ export interface BenchmarkRunResult {
     flagged?: boolean;
     llm_flag_reason?: string;
     /**
-     * Contested flag: the criterion *definition* is considered suspect and was
-     * excluded from scoring. Set by the contest agent; human-overridable via
-     * the eval set editor. Absent on all live runs until the contest agent
-     * ships — tracked same external dependency as `flagged`.
+     * Contested flag: set by the contest agent when the criterion *definition*
+     * is considered broken/invalid. Independent of verdict — a passing criterion
+     * can also be contested. Human-overridable via the eval set editor.
+     * Nothing emits this yet; ships dark (tracked same external dependency as `flagged`).
      */
     contested?: boolean;
   }>;

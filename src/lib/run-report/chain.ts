@@ -55,6 +55,12 @@ export interface CriterionChain {
   /** Judge-review fields; interpreted only via resolveJudgeDispute. */
   judgeFlagged?: boolean | number | string;
   judgeFlagReason?: string;
+  /**
+   * Narrowed from wire `contested` — set by the contest agent when the
+   * criterion *definition* itself is considered broken. Independent of verdict.
+   * Provenance prefix keeps it visibly distinct from the raw wire key.
+   */
+  criterionContested?: boolean | number | string;
   documentExcerpt: string;
   hops: Hop[];
   /** Distinctive rubric terms (figures + quoted phrases) for term matching. */
@@ -269,6 +275,7 @@ export function buildChainModel(projection: RunReportProjection): ChainModel {
       matchCriteria: row.matchCriteria ?? "",
       judgeFlagged: row.judgeFlagged,
       judgeFlagReason: row.judgeFlagReason,
+      criterionContested: row.criterionContested,
       documentExcerpt: row.documentExcerpt ?? "",
       hops,
       tokens,
@@ -282,9 +289,24 @@ export function buildChainModel(projection: RunReportProjection): ChainModel {
     };
   });
 
-  // Review order: failed first, then unscored, then passed — stable by id.
-  const rank = { fail: 0, unscored: 1, pass: 2 } as const;
-  criteria.sort((a, b) => rank[a.verdict] - rank[b.verdict] || a.id.localeCompare(b.id));
+  // Review order: failed first, then contested-unscored (sorts with failures),
+  // then remaining unscored, then passed — stable by id within each group.
+  // A criterion excluded from scoring (no verdict → "unscored") with
+  // `criterionContested` truthy is a broken definition, not a genuine gap,
+  // so it sorts with the open/failed group rather than the ambiguous middle.
+  function criterionRank(c: CriterionChain): number {
+    if (c.verdict === "fail") return 0;
+    if (c.verdict === "unscored") {
+      const isContested =
+        c.criterionContested === true ||
+        c.criterionContested === 1 ||
+        (typeof c.criterionContested === "string" &&
+          c.criterionContested.toLowerCase() === "true");
+      return isContested ? 0 : 1;
+    }
+    return 2; // pass
+  }
+  criteria.sort((a, b) => criterionRank(a) - criterionRank(b) || a.id.localeCompare(b.id));
 
   // Concepts pulled — deterministic, from the run's own tool-activity records.
   const ta = projection.toolActivity;
