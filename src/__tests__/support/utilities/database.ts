@@ -103,6 +103,10 @@ export async function resetDatabase() {
     await db.fiatPayment.deleteMany();
     await db.workspaceMember.deleteMany();
     await db.workspace.deleteMany();
+    await db.prompt.deleteMany();
+    await db.promptVersion.deleteMany();
+    await db.promptDailyRun.deleteMany();
+    await db.promptUsage.deleteMany();
     await db.llmModel.deleteMany();
     await db.session.deleteMany();
     await db.account.deleteMany();
@@ -160,6 +164,10 @@ async function aggressiveReset() {
       "users",
       "source_control_tokens",
       "source_control_orgs",
+      "prompt_versions",
+      "prompt_daily_runs",
+      "prompt_usages",
+      "prompts",
     ];
 
     for (const table of tables) {
