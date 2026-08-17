@@ -321,6 +321,13 @@ export interface RubricRow {
    * runs without the dispute stage; interpreted ONLY by resolveJudgeDispute. */
   judgeFlagged?: boolean | number | string;
   judgeFlagReason?: string;
+  /**
+   * Narrowed from wire `contested` — set by the contest agent when the
+   * criterion *definition* itself is considered broken. Independent of verdict.
+   * Provenance prefix keeps it distinct from the raw wire key. Primitives only;
+   * an object/array can never ride the projection.
+   */
+  criterionContested?: boolean | number | string;
   /** Supporting excerpt from the dispute review; empty-string when absent. */
   documentExcerpt: string;
 }

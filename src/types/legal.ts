@@ -108,6 +108,12 @@ export interface BenchmarkRunResult {
      */
     flagged?: boolean;
     llm_flag_reason?: string;
+    /**
+     * Contested flag: set by the contest agent when the criterion *definition*
+     * is considered broken/invalid. Independent of verdict — a passing criterion
+     * can also be contested. Nothing emits this yet; ships dark.
+     */
+    contested?: boolean;
   }>;
 }
 
