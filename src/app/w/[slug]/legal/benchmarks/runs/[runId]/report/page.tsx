@@ -12,6 +12,9 @@ import { RunReportView } from "@/components/run-report/RunReportView";
 import { StakworkRunType } from "@prisma/client";
 import { canReadRunReport } from "@/lib/run-report/types";
 import { loadRunReport } from "@/lib/run-report/load";
+import { getJarvisConfigForWorkspace } from "@/lib/helpers/jarvis-config";
+import { fetchTaskRubricRoster } from "@/services/legal-benchmark-rubrics";
+import type { GraphRubric } from "@/lib/harvey-lab/rubric-scoring";
 
 /**
  * Deep-linkable run report page.
@@ -76,11 +79,31 @@ export default async function RunReportPage({ params }: PageProps) {
   const payload = await loadRunReport(run.id, run.reportUrl);
 
   let taskTitle = "Run report";
+  let taskSlug: string | null = null;
   try {
-    const parsed = run.result ? (JSON.parse(run.result) as { taskTitle?: string }) : null;
+    const parsed = run.result
+      ? (JSON.parse(run.result) as { taskTitle?: string; taskSlug?: string })
+      : null;
     if (parsed?.taskTitle) taskTitle = parsed.taskTitle;
+    if (parsed?.taskSlug) taskSlug = parsed.taskSlug;
   } catch {
     // Malformed result JSON — the default title is fine.
+  }
+
+  // Graph rubric roster for the task (EvalSet → EvalRequirement) — drives the
+  // graph-first score denominator and contested exclusions in the header and
+  // ledger. Strictly non-fatal: any failure falls back to bundle-local scoring.
+  let graphRubrics: GraphRubric[] | null = null;
+  if (taskSlug) {
+    try {
+      const jarvisConfig = await getJarvisConfigForWorkspace(workspaceId);
+      if (jarvisConfig) {
+        const rosterResult = await fetchTaskRubricRoster(jarvisConfig, taskSlug);
+        if (rosterResult.ok) graphRubrics = rosterResult.roster?.rubrics ?? null;
+      }
+    } catch {
+      // Graph unreachable — render with bundle-local scoring.
+    }
   }
 
   return (
@@ -93,7 +116,12 @@ export default async function RunReportPage({ params }: PageProps) {
           <ArrowLeft className="h-3 w-3" />
           Legal Benchmarks
         </Link>
-        <RunReportView payload={payload} taskTitle={taskTitle} workspaceSlug={slug} />
+        <RunReportView
+          payload={payload}
+          taskTitle={taskTitle}
+          workspaceSlug={slug}
+          graphRubrics={graphRubrics}
+        />
       </div>
     </div>
   );
