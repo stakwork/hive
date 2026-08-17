@@ -99,6 +99,33 @@ export function criterionStatus(
   return isPassVerdict(criterion.verdict) ? "PASS" : "FAIL";
 }
 
+export interface RosterSummary {
+  /** Full rubric roster size. */
+  total: number;
+  /** Contested definitions, excluded from scoring. */
+  contested: number;
+  /** Scorable criteria: total − contested. */
+  denominator: number;
+}
+
+/**
+ * Aggregate counts for a graph roster — the denominator surfaces that only
+ * have flat attempt counts (recursion tab, hill-climb series) read this
+ * instead of computeBenchmarkScore, which needs per-run data.
+ * Returns null when there is no roster.
+ */
+export function rosterSummary(
+  rubrics: GraphRubric[] | null | undefined,
+): RosterSummary | null {
+  if (!rubrics || rubrics.length === 0) return null;
+  const contested = rubrics.filter((r) => r.contested).length;
+  return {
+    total: rubrics.length,
+    contested,
+    denominator: Math.max(0, rubrics.length - contested),
+  };
+}
+
 export interface BenchmarkScore {
   /** Criteria that passed, excluding contested ones — the score numerator. */
   passed: number;
