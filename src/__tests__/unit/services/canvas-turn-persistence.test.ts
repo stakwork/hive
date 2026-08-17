@@ -121,6 +121,113 @@ describe("messagesFromSteps", () => {
       errorText: "Tool call failed",
     });
   });
+
+  // ── per-step timestamp tests ────────────────────────────────────────
+
+  test("uses response.timestamp for each step, falling back for steps without one", () => {
+    const ts = new Date("2025-01-01T12:00:00.000Z");
+    const steps = [
+      { text: "Step one", response: { timestamp: ts } },
+      { text: "Step two" }, // no response.timestamp → forward-fill from step one
+    ];
+
+    const rows = messagesFromSteps(steps, "t-");
+
+    expect(rows[0].timestamp).toBe(ts.toISOString());
+    // Step two falls back to the last valid timestamp (step one's)
+    expect(rows[1].timestamp).toBe(ts.toISOString());
+  });
+
+  test("text row and tool-call row from the same step share identical stepTimestamp", () => {
+    const ts = new Date("2025-06-15T09:30:00.000Z");
+    const steps = [
+      {
+        text: "Running a tool.",
+        toolCalls: [{ toolCallId: "tc1", toolName: "search", input: {} }],
+        toolResults: [{ toolCallId: "tc1", output: { hits: 1 } }],
+        response: { timestamp: ts },
+      },
+    ];
+
+    const rows = messagesFromSteps(steps, "t-");
+
+    expect(rows).toHaveLength(2);
+    expect(rows[0].timestamp).toBe(ts.toISOString());
+    expect(rows[1].timestamp).toBe(ts.toISOString());
+    // Both rows carry the same value — not different per-row stamps
+    expect(rows[0].timestamp).toBe(rows[1].timestamp);
+  });
+
+  test("forward-fill keeps timestamps non-decreasing when an early step lacks a timestamp", () => {
+    const ts = new Date("2025-03-10T08:00:00.000Z");
+    const steps = [
+      { text: "Step one" }, // no timestamp → falls back to `now` (initial lastTimestamp)
+      { text: "Step two", response: { timestamp: ts } }, // real timestamp
+    ];
+
+    const rows = messagesFromSteps(steps, "t-");
+
+    // Step one gets the fallback (now), step two gets its real timestamp.
+    // The real timestamp (ts) is in the past relative to `now`, so we just
+    // assert both are valid ISO strings and step two uses ts exactly.
+    expect(rows[1].timestamp).toBe(ts.toISOString());
+    // Both must be parseable
+    expect(isNaN(new Date(rows[0].timestamp!).getTime())).toBe(false);
+    expect(isNaN(new Date(rows[1].timestamp!).getTime())).toBe(false);
+  });
+
+  test("malformed response.timestamp does not throw; falls back to last valid timestamp", () => {
+    const ts = new Date("2025-07-20T00:00:00.000Z");
+    const steps = [
+      { text: "Good step", response: { timestamp: ts } },
+      { text: "Bad step", response: { timestamp: "not-a-date" as unknown as Date } },
+    ];
+
+    // Must not throw
+    let rows: ReturnType<typeof messagesFromSteps>;
+    expect(() => {
+      rows = messagesFromSteps(steps, "t-");
+    }).not.toThrow();
+
+    // Good step uses its own timestamp
+    expect(rows![0].timestamp).toBe(ts.toISOString());
+    // Bad step falls back to the last valid timestamp (step one's)
+    expect(rows![1].timestamp).toBe(ts.toISOString());
+  });
+
+  test("malformed first-step timestamp falls back to the pre-loop `now`", () => {
+    const before = Date.now();
+    const steps = [
+      { text: "Broken first step", response: { timestamp: "garbage" as unknown as Date } },
+    ];
+
+    const rows = messagesFromSteps(steps, "t-");
+    const after = Date.now();
+
+    const rowTs = new Date(rows[0].timestamp!).getTime();
+    // Timestamp should be in the vicinity of `now` (within 5 seconds)
+    expect(rowTs).toBeGreaterThanOrEqual(before - 5000);
+    expect(rowTs).toBeLessThanOrEqual(after + 5000);
+  });
+
+  test("existing fixtures without response field continue to work unchanged", () => {
+    const steps = [
+      {
+        text: "Looking into it.",
+        toolCalls: [{ toolCallId: "tc1", toolName: "search", input: { q: "x" } }],
+        toolResults: [{ toolCallId: "tc1", output: { hits: 2 } }],
+      },
+      { text: "Here's the answer." },
+    ];
+
+    // Should not throw; timestamps fall back to `now` chain
+    const rows = messagesFromSteps(steps, "legacy-");
+    expect(rows).toHaveLength(3);
+    rows.forEach((row) => {
+      expect(typeof row.timestamp).toBe("string");
+      expect(isNaN(new Date(row.timestamp!).getTime())).toBe(false);
+    });
+  });
 });
 
 describe("appendTurnMessages", () => {

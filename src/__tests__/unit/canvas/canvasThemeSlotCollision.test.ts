@@ -86,11 +86,8 @@ describe("canvas-theme slot placement — attention badge vs agent-count badge",
       expect(featureDef.slots!.topLeft).toBeDefined();
     });
 
-    it("does NOT define a topRightOuter slot (must stay free for PR #4981 agent-count badge)", () => {
-      // topRightOuter is reserved for the agent-count badge from the
-      // live-agents-indicators feature. The attention badge must NOT
-      // occupy this slot.
-      expect(featureDef.slots?.topRightOuter).toBeUndefined();
+    it("defines a topRightOuter slot (agent-count badge position)", () => {
+      expect(featureDef.slots?.topRightOuter).toBeDefined();
     });
 
     it("topLeft slot is a custom renderer (attention badge)", () => {
@@ -101,8 +98,6 @@ describe("canvas-theme slot placement — attention badge vs agent-count badge",
       const slots = featureDef.slots ?? {};
       const attentionSlot = slots.topLeft;
       const agentSlot     = slots.topRightOuter;
-      // The two slots must not be the same object — they are distinct
-      // spec entries (or one is absent, which is equally non-colliding).
       expect(attentionSlot).not.toBe(agentSlot);
     });
   });
