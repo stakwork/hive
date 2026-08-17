@@ -11,6 +11,24 @@ vi.mock("@/lib/db", () => ({
   },
 }));
 
+const REPO_SELECT = {
+  id: true,
+  repositoryUrl: true,
+  ignoreDirs: true,
+  unitGlob: true,
+  integrationGlob: true,
+  e2eGlob: true,
+  name: true,
+  description: true,
+  branch: true,
+  codeIngestionEnabled: true,
+  docsEnabled: true,
+  mocksEnabled: true,
+  embeddingsEnabled: true,
+  shallowClone: true,
+  blobSizeLimit: true,
+};
+
 describe("getPrimaryRepository", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -35,6 +53,8 @@ describe("getPrimaryRepository", () => {
           docsEnabled: true,
           mocksEnabled: true,
           embeddingsEnabled: true,
+          shallowClone: false,
+          blobSizeLimit: null,
         },
       ],
     };
@@ -47,21 +67,7 @@ describe("getPrimaryRepository", () => {
       where: { id: "workspace-1" },
       include: {
         repositories: {
-          select: {
-            id: true,
-            repositoryUrl: true,
-            ignoreDirs: true,
-            unitGlob: true,
-            integrationGlob: true,
-            e2eGlob: true,
-            name: true,
-            description: true,
-            branch: true,
-            codeIngestionEnabled: true,
-            docsEnabled: true,
-            mocksEnabled: true,
-            embeddingsEnabled: true,
-          },
+          select: REPO_SELECT,
           orderBy: { createdAt: "asc" },
         },
       },
@@ -80,6 +86,8 @@ describe("getPrimaryRepository", () => {
       docsEnabled: true,
       mocksEnabled: true,
       embeddingsEnabled: true,
+      shallowClone: false,
+      blobSizeLimit: null,
     });
   });
 
@@ -97,21 +105,7 @@ describe("getPrimaryRepository", () => {
       where: { id: "workspace-without-repos" },
       include: {
         repositories: {
-          select: {
-            id: true,
-            repositoryUrl: true,
-            ignoreDirs: true,
-            unitGlob: true,
-            integrationGlob: true,
-            e2eGlob: true,
-            name: true,
-            description: true,
-            branch: true,
-            codeIngestionEnabled: true,
-            docsEnabled: true,
-            mocksEnabled: true,
-            embeddingsEnabled: true,
-          },
+          select: REPO_SELECT,
           orderBy: { createdAt: "asc" },
         },
       },
@@ -128,21 +122,7 @@ describe("getPrimaryRepository", () => {
       where: { id: "non-existent-workspace" },
       include: {
         repositories: {
-          select: {
-            id: true,
-            repositoryUrl: true,
-            ignoreDirs: true,
-            unitGlob: true,
-            integrationGlob: true,
-            e2eGlob: true,
-            name: true,
-            description: true,
-            branch: true,
-            codeIngestionEnabled: true,
-            docsEnabled: true,
-            mocksEnabled: true,
-            embeddingsEnabled: true,
-          },
+          select: REPO_SELECT,
           orderBy: { createdAt: "asc" },
         },
       },
@@ -168,6 +148,8 @@ describe("getPrimaryRepository", () => {
           docsEnabled: true,
           mocksEnabled: true,
           embeddingsEnabled: true,
+          shallowClone: false,
+          blobSizeLimit: null,
         },
         {
           id: "repo-2",
@@ -183,6 +165,8 @@ describe("getPrimaryRepository", () => {
           docsEnabled: true,
           mocksEnabled: true,
           embeddingsEnabled: true,
+          shallowClone: false,
+          blobSizeLimit: null,
         },
       ],
     };
@@ -195,21 +179,7 @@ describe("getPrimaryRepository", () => {
       where: { id: "workspace-1" },
       include: {
         repositories: {
-          select: {
-            id: true,
-            repositoryUrl: true,
-            ignoreDirs: true,
-            unitGlob: true,
-            integrationGlob: true,
-            e2eGlob: true,
-            name: true,
-            description: true,
-            branch: true,
-            codeIngestionEnabled: true,
-            docsEnabled: true,
-            mocksEnabled: true,
-            embeddingsEnabled: true,
-          },
+          select: REPO_SELECT,
           orderBy: { createdAt: "asc" },
         },
       },
@@ -230,21 +200,7 @@ describe("getPrimaryRepository", () => {
       where: { id: "workspace-1" },
       include: {
         repositories: {
-          select: {
-            id: true,
-            repositoryUrl: true,
-            ignoreDirs: true,
-            unitGlob: true,
-            integrationGlob: true,
-            e2eGlob: true,
-            name: true,
-            description: true,
-            branch: true,
-            codeIngestionEnabled: true,
-            docsEnabled: true,
-            mocksEnabled: true,
-            embeddingsEnabled: true,
-          },
+          select: REPO_SELECT,
           orderBy: { createdAt: "asc" },
         },
       },
@@ -262,21 +218,7 @@ describe("getPrimaryRepository", () => {
       where: { id: workspaceId },
       include: {
         repositories: {
-          select: {
-            id: true,
-            repositoryUrl: true,
-            ignoreDirs: true,
-            unitGlob: true,
-            integrationGlob: true,
-            e2eGlob: true,
-            name: true,
-            description: true,
-            branch: true,
-            codeIngestionEnabled: true,
-            docsEnabled: true,
-            mocksEnabled: true,
-            embeddingsEnabled: true,
-          },
+          select: REPO_SELECT,
           orderBy: { createdAt: "asc" },
         },
       },
@@ -301,6 +243,8 @@ describe("getPrimaryRepository", () => {
           docsEnabled: true,
           mocksEnabled: true,
           embeddingsEnabled: true,
+          shallowClone: false,
+          blobSizeLimit: null,
         },
       ],
     };
@@ -338,6 +282,8 @@ describe("getPrimaryRepository", () => {
           docsEnabled: true,
           mocksEnabled: true,
           embeddingsEnabled: true,
+          shallowClone: true,
+          blobSizeLimit: "10m",
         },
       ],
     };
@@ -360,6 +306,8 @@ describe("getPrimaryRepository", () => {
       docsEnabled: true,
       mocksEnabled: true,
       embeddingsEnabled: true,
+      shallowClone: true,
+      blobSizeLimit: "10m",
     });
     expect(result).toHaveProperty("id");
     expect(result).toHaveProperty("name");
@@ -374,6 +322,8 @@ describe("getPrimaryRepository", () => {
     expect(result).toHaveProperty("docsEnabled");
     expect(result).toHaveProperty("mocksEnabled");
     expect(result).toHaveProperty("embeddingsEnabled");
+    expect(result).toHaveProperty("shallowClone");
+    expect(result).toHaveProperty("blobSizeLimit");
   });
 
   test("should handle Prisma query timeout errors", async () => {
@@ -403,6 +353,8 @@ describe("getPrimaryRepository", () => {
           docsEnabled: true,
           mocksEnabled: true,
           embeddingsEnabled: true,
+          shallowClone: false,
+          blobSizeLimit: null,
         },
       ],
     };
@@ -415,21 +367,7 @@ describe("getPrimaryRepository", () => {
       expect.objectContaining({
         include: expect.objectContaining({
           repositories: expect.objectContaining({
-            select: {
-              id: true,
-              repositoryUrl: true,
-              ignoreDirs: true,
-              unitGlob: true,
-              integrationGlob: true,
-              e2eGlob: true,
-              name: true,
-              description: true,
-              branch: true,
-              codeIngestionEnabled: true,
-              docsEnabled: true,
-              mocksEnabled: true,
-              embeddingsEnabled: true,
-            },
+            select: REPO_SELECT,
           }),
         }),
       })
