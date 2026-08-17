@@ -554,7 +554,7 @@ export function Sidebar({ user }: SidebarProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [isBugReportOpen, setIsBugReportOpen] = useState(false);
   const pathname = usePathname();
-  const isFullscreenPage = pathname.includes("/task/") || pathname.includes("/plan/");
+  const isFullscreenPage = pathname.includes("/task/") || pathname.includes("/plan/") || pathname.includes("/documents/");
 
   return (
     <>
