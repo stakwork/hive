@@ -154,6 +154,12 @@ export interface AgentCascade {
   rows: CascadeRowModel[];
   /** This session or any descendant is still running. */
   live: boolean;
+  /**
+   * Parallel-launch grouping: agents start in batches, not sequentially
+   * (sibling sessions within ~220ms is normal). Agents sharing a batchIndex
+   * render as siblings, not a chain.
+   */
+  batchIndex: number;
 }
 
 export interface CascadeSummary {
