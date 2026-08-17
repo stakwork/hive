@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import { StakworkRunType, WorkflowStatus } from "@prisma/client";
-import { parseBenchmarkRunResult } from "@/types/legal";
+import { parseBenchmarkRunResult, type BenchmarkRunResult } from "@/types/legal";
 import { RUN_LIST_LIMIT } from "@/lib/harvey-lab/benchmark-summary";
 import { usePusherChannel } from "@/hooks/usePusherChannel";
 import { useWorkspace } from "@/hooks/useWorkspace";
@@ -19,6 +19,8 @@ export interface BenchmarkRunListRow {
   n_passed?: number;
   n_total?: number;
   all_pass?: boolean;
+  /** Per-criterion results — carried so graph-aware scoring can exclude contested criteria per row. */
+  criteria_results?: BenchmarkRunResult["criteria_results"];
   judgeNotes?: string; // "${n_passed}/${n_total} criteria passed. Judge: ${judge_model}"
   /** Operator-chosen execution model (bare name). Absent on legacy runs. */
   requestedModel?: string;
@@ -98,6 +100,7 @@ export function useLegalBenchmarkRunList(
           n_passed: parsed?.n_passed,
           n_total: parsed?.n_total,
           all_pass: parsed?.all_pass,
+          criteria_results: parsed?.criteria_results,
           requestedModel: parsed?.requestedModel,
           requestedJudgeModel: parsed?.requestedJudgeModel,
           generateJamieChat: parsed?.generateJamieChat,
