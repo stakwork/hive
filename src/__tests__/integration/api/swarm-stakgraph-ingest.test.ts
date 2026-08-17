@@ -750,3 +750,267 @@ describe("GET /api/swarm/stakgraph/ingest - Integration Tests", () => {
     });
   });
 });
+
+describe("POST /api/swarm/stakgraph/ingest — shallowClone/blobSizeLimit plumbing", () => {
+  const enc = EncryptionService.getInstance();
+  const PLAINTEXT_SWARM_API_KEY = "swarm_test_key_shallow";
+  const PLAINTEXT_GITHUB_PAT = "github_pat_shallow";
+
+  let workspaceId: string;
+
+  beforeEach(async () => {
+    vi.clearAllMocks();
+
+    const testData = await db.$transaction(async (tx) => {
+      const user = await tx.user.create({
+        data: {
+          id: generateUniqueId("user"),
+          email: `shallow-user-${generateUniqueId()}@example.com`,
+          name: "Shallow Test User",
+        },
+      });
+
+      const workspace = await tx.workspace.create({
+        data: {
+          name: "Shallow Test Workspace",
+          slug: generateUniqueSlug("shallow-ws"),
+          ownerId: user.id,
+        },
+      });
+
+      const sourceControlOrg = await tx.sourceControlOrg.create({
+        data: {
+          githubLogin: `shallow-org-${generateUniqueId()}`,
+          githubInstallationId: Math.floor(Math.random() * 1000000),
+          type: "ORG",
+        },
+      });
+
+      await tx.sourceControlToken.create({
+        data: {
+          userId: user.id,
+          sourceControlOrgId: sourceControlOrg.id,
+          token: JSON.stringify(enc.encryptField("source_control_token", PLAINTEXT_GITHUB_PAT)),
+          scopes: ["repo"],
+        },
+      });
+
+      await tx.workspace.update({
+        where: { id: workspace.id },
+        data: { sourceControlOrgId: sourceControlOrg.id },
+      });
+
+      await tx.gitHubAuth.create({
+        data: {
+          userId: user.id,
+          githubUserId: "654321",
+          githubUsername: "shallow-testuser",
+        },
+      });
+
+      const swarm = await tx.swarm.create({
+        data: {
+          workspaceId: workspace.id,
+          name: `shallow-swarm-${generateUniqueId()}`,
+          swarmId: generateUniqueId("swarm"),
+          status: "ACTIVE",
+          swarmUrl: "https://shallow-swarm.sphinx.chat/api",
+          swarmApiKey: JSON.stringify(enc.encryptField("swarmApiKey", PLAINTEXT_SWARM_API_KEY)),
+          agentRequestId: null,
+          agentStatus: null,
+          ingestRequestInProgress: false,
+        },
+      });
+
+      return { user, workspace, swarm };
+    });
+
+    workspaceId = testData.workspace.id;
+    getMockedSession().mockResolvedValue(createAuthenticatedSession(testData.user));
+  });
+
+  it("sends depth:1 in /ingest_async body when shallowClone=true (single-repo, docs/mocks off)", async () => {
+    // Create a repo with shallowClone=true, all other flags off
+    const repo = await db.repository.create({
+      data: {
+        name: "shallow-repo",
+        repositoryUrl: `https://github.com/test/shallow-${generateUniqueId()}.git`,
+        workspaceId,
+        status: "PENDING",
+        branch: "main",
+        codeIngestionEnabled: true,
+        docsEnabled: false,
+        mocksEnabled: false,
+        embeddingsEnabled: false,
+        shallowClone: true,
+        blobSizeLimit: null,
+      },
+    });
+
+    mockTriggerIngestAsync.mockResolvedValue({
+      ok: true,
+      status: 200,
+      data: { request_id: "shallow-req-1" },
+    } as AsyncSyncResult);
+
+    const response = await POST(createPostRequest({ workspaceId, repositoryId: repo.id }));
+    expect(response.status).toBe(200);
+
+    expect(mockTriggerIngestAsync).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.any(String),
+      repo.repositoryUrl,
+      expect.any(Object),
+      expect.any(String),
+      expect.any(Boolean),
+      expect.objectContaining({ depth: 1 }),
+    );
+
+    const options = mockTriggerIngestAsync.mock.calls[0][6];
+    expect(options?.filter).toBeUndefined();
+  });
+
+  it("sends filter in /ingest_async body when blobSizeLimit is set", async () => {
+    const repo = await db.repository.create({
+      data: {
+        name: "blob-limit-repo",
+        repositoryUrl: `https://github.com/test/blob-${generateUniqueId()}.git`,
+        workspaceId,
+        status: "PENDING",
+        branch: "main",
+        codeIngestionEnabled: true,
+        docsEnabled: false,
+        mocksEnabled: false,
+        embeddingsEnabled: false,
+        shallowClone: false,
+        blobSizeLimit: "500k",
+      },
+    });
+
+    mockTriggerIngestAsync.mockResolvedValue({
+      ok: true,
+      status: 200,
+      data: { request_id: "blob-req-1" },
+    } as AsyncSyncResult);
+
+    const response = await POST(createPostRequest({ workspaceId, repositoryId: repo.id }));
+    expect(response.status).toBe(200);
+
+    const options = mockTriggerIngestAsync.mock.calls[0][6];
+    expect(options?.filter).toBe("blob:limit=500k");
+    expect(options?.depth).toBeUndefined();
+  });
+
+  it("omits depth/filter when both fields are unset (backward compat)", async () => {
+    const repo = await db.repository.create({
+      data: {
+        name: "plain-repo",
+        repositoryUrl: `https://github.com/test/plain-${generateUniqueId()}.git`,
+        workspaceId,
+        status: "PENDING",
+        branch: "main",
+        codeIngestionEnabled: true,
+        docsEnabled: false,
+        mocksEnabled: false,
+        embeddingsEnabled: false,
+        shallowClone: false,
+        blobSizeLimit: null,
+      },
+    });
+
+    mockTriggerIngestAsync.mockResolvedValue({
+      ok: true,
+      status: 200,
+      data: { request_id: "plain-req-1" },
+    } as AsyncSyncResult);
+
+    const response = await POST(createPostRequest({ workspaceId, repositoryId: repo.id }));
+    expect(response.status).toBe(200);
+
+    const options = mockTriggerIngestAsync.mock.calls[0][6];
+    expect(options?.depth).toBeUndefined();
+    expect(options?.filter).toBeUndefined();
+  });
+
+  it("silently skips invalid persisted blobSizeLimit (boundary re-validation)", async () => {
+    // Simulates a direct-DB write that bypassed the PATCH Zod validation
+    const repo = await db.repository.create({
+      data: {
+        name: "invalid-blob-repo",
+        repositoryUrl: `https://github.com/test/invalid-${generateUniqueId()}.git`,
+        workspaceId,
+        status: "PENDING",
+        branch: "main",
+        codeIngestionEnabled: true,
+        docsEnabled: false,
+        mocksEnabled: false,
+        embeddingsEnabled: false,
+        shallowClone: false,
+        blobSizeLimit: "abc", // invalid: bypassed validation
+      },
+    });
+
+    mockTriggerIngestAsync.mockResolvedValue({
+      ok: true,
+      status: 200,
+      data: { request_id: "invalid-req-1" },
+    } as AsyncSyncResult);
+
+    const response = await POST(createPostRequest({ workspaceId, repositoryId: repo.id }));
+    expect(response.status).toBe(200);
+
+    const options = mockTriggerIngestAsync.mock.calls[0][6];
+    // The invalid value must NOT be forwarded
+    expect(options?.filter).toBeUndefined();
+  });
+
+  it("multi-repo batch never sends depth or filter even when repos have shallowClone set", async () => {
+    // Create two repos; one with shallowClone+blobSizeLimit
+    await db.repository.create({
+      data: {
+        name: "shallow-multi-1",
+        repositoryUrl: `https://github.com/test/shallow-multi-1-${generateUniqueId()}.git`,
+        workspaceId,
+        status: "PENDING",
+        branch: "main",
+        codeIngestionEnabled: true,
+        docsEnabled: false,
+        mocksEnabled: false,
+        embeddingsEnabled: false,
+        shallowClone: true,
+        blobSizeLimit: "1m",
+      },
+    });
+
+    await db.repository.create({
+      data: {
+        name: "shallow-multi-2",
+        repositoryUrl: `https://github.com/test/shallow-multi-2-${generateUniqueId()}.git`,
+        workspaceId,
+        status: "PENDING",
+        branch: "main",
+        codeIngestionEnabled: true,
+        docsEnabled: false,
+        mocksEnabled: false,
+        embeddingsEnabled: false,
+        shallowClone: false,
+        blobSizeLimit: null,
+      },
+    });
+
+    mockTriggerIngestAsync.mockResolvedValue({
+      ok: true,
+      status: 200,
+      data: { request_id: "multi-req-1" },
+    } as AsyncSyncResult);
+
+    // No repositoryId → multi-repo path
+    const response = await POST(createPostRequest({ workspaceId }));
+    expect(response.status).toBe(200);
+
+    const options = mockTriggerIngestAsync.mock.calls[0][6];
+    // depth/filter must be omitted on multi-repo batches (v1 limitation)
+    expect(options?.depth).toBeUndefined();
+    expect(options?.filter).toBeUndefined();
+  });
+});
