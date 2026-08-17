@@ -17,7 +17,8 @@ import { useWorkspace } from "@/hooks/useWorkspace";
 import { StakworkRunLink } from "@/components/legal/StakworkRunLink";
 import { EvalRunsBox } from "@/components/legal/EvalRunsBox";
 import { BenchmarkRunAgentLogs } from "@/components/legal/BenchmarkRunAgentLogs";
-import { resolveJudgeDispute } from "@/lib/harvey-lab/eval-normalizers";
+import { resolveJudgeDispute, resolveContested } from "@/lib/harvey-lab/eval-normalizers";
+import { CriterionMarkers } from "@/components/run-report/CriterionMarkers";
 
 /** Strip provider prefix for display, e.g. "anthropic/claude-sonnet-5" → "claude-sonnet-5" */
 function displayModelName(value: string | undefined): string {
@@ -67,7 +68,8 @@ export function LegalBenchmarkResults({ runId, onReset, isSuperAdmin = false }: 
             c.id?.toLowerCase().includes(q) ||
             c.title?.toLowerCase().includes(q) ||
             c.reasoning?.toLowerCase().includes(q) ||
-            resolveJudgeDispute(c)?.displayText.toLowerCase().includes(q),
+            resolveJudgeDispute(c)?.displayText.toLowerCase().includes(q) ||
+            (resolveContested(c) && "contested".includes(q)),
         )
       : criteriaResults;
     return [...filtered].sort((a, b) => {
@@ -87,10 +89,10 @@ export function LegalBenchmarkResults({ runId, onReset, isSuperAdmin = false }: 
   const handleCopyRubric = () => {
     if (!sortedFiltered || sortedFiltered.length === 0) return;
     const sanitize = (s: string) => s.replace(/\t/g, " ").replace(/[\n\r]/g, " ");
-    const header = "Verdict\tID\tTitle\tReasoning\tJudge Dispute";
+    const header = "Verdict\tID\tTitle\tReasoning\tJudge Dispute\tContested";
     const rows = sortedFiltered.map(
       (c) =>
-        `${sanitize(c.verdict)}\t${sanitize(c.id)}\t${sanitize(c.title)}\t${sanitize(c.reasoning)}\t${sanitize(resolveJudgeDispute(c)?.displayText ?? "")}`,
+        `${sanitize(c.verdict)}\t${sanitize(c.id)}\t${sanitize(c.title)}\t${sanitize(c.reasoning)}\t${sanitize(resolveJudgeDispute(c)?.displayText ?? "")}\t${resolveContested(c) ? "true" : ""}`,
     );
     navigator.clipboard.writeText([header, ...rows].join("\n"));
   };
@@ -308,7 +310,7 @@ export function LegalBenchmarkResults({ runId, onReset, isSuperAdmin = false }: 
                   <Input
                     value={filterQuery}
                     onChange={(e) => setFilterQuery(e.target.value)}
-                    placeholder="Filter by ID, title, reasoning, or dispute…"
+                    placeholder="Filter by ID, title, reasoning, dispute, or contested…"
                     className="h-8 text-sm"
                   />
                 </div>
@@ -334,6 +336,10 @@ export function LegalBenchmarkResults({ runId, onReset, isSuperAdmin = false }: 
                             </Badge>
                             <code className="text-xs text-muted-foreground shrink-0">{criterion.id}</code>
                             <span className="truncate">{criterion.title}</span>
+                            <CriterionMarkers
+                              disputed={resolveJudgeDispute(criterion) !== null}
+                              contested={resolveContested(criterion)}
+                            />
                           </button>
                         </CollapsibleTrigger>
                         <CollapsibleContent>
@@ -358,6 +364,19 @@ export function LegalBenchmarkResults({ runId, onReset, isSuperAdmin = false }: 
                                 </div>
                               );
                             })()}
+                            {resolveContested(criterion) && (
+                              <div
+                                data-testid="criterion-contested-note"
+                                className="mx-4 mb-3 border-l-2 border-violet-500/40 pl-3"
+                              >
+                                <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground/70 mb-1">
+                                  Contested Definition
+                                </p>
+                                <p className="text-sm text-muted-foreground">
+                                  This criterion&apos;s definition was flagged as potentially broken. This reflects what this run recorded — editing the criterion today does not rewrite historical runs.
+                                </p>
+                              </div>
+                            )}
                           </div>
                         </CollapsibleContent>
                       </Collapsible>
