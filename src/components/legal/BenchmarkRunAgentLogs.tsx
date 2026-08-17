@@ -5,6 +5,7 @@ import { formatDistanceToNow } from "date-fns";
 import { Badge } from "@/components/ui/badge";
 import { ConceptsPanel } from "@/components/agent-logs/LogDetailContent";
 import { LogDetailDialog } from "@/components/agent-logs/LogDetailDialog";
+import { PillSection } from "@/components/legal/PillSection";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import type { SessionReflection } from "@/types/agent-logs";
 
@@ -31,14 +32,16 @@ function conceptCount(reflection: SessionReflection | null): number {
 
 /**
  * Agent sessions attached to a benchmark run (AgentLog rows keyed by
- * stakworkRunId). Renders nothing until logs load — legacy runs without
- * agent logs show no section at all.
+ * stakworkRunId). Renders nothing until logs load, then pops in as a small
+ * pill that expands into the full panel on click — legacy runs without agent
+ * logs show no section at all.
  */
 export function BenchmarkRunAgentLogs({ runId }: { runId: string }) {
   const { workspace } = useWorkspace();
   const workspaceId = workspace?.id;
 
   const [logs, setLogs] = useState<RunAgentLogRow[]>([]);
+  const [open, setOpen] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [dialogLogId, setDialogLogId] = useState<string | null>(null);
 
@@ -82,13 +85,17 @@ export function BenchmarkRunAgentLogs({ runId }: { runId: string }) {
   if (logs.length === 0) return null;
 
   return (
-    <div className="rounded-lg border bg-card" data-testid="run-agent-logs">
-      <div className="px-4 py-3 border-b">
-        <h3 className="font-semibold text-sm">
+    <PillSection
+      testId="run-agent-logs"
+      open={open}
+      onOpenChange={setOpen}
+      label={
+        <>
           Agents{" "}
           <span className="text-muted-foreground font-normal">({logs.length})</span>
-        </h3>
-      </div>
+        </>
+      }
+    >
       <div className="divide-y">
         {logs.map((log) => {
           const model = displayModelName(log.model);
@@ -138,12 +145,12 @@ export function BenchmarkRunAgentLogs({ runId }: { runId: string }) {
       </div>
       <LogDetailDialog
         open={!!dialogLogId}
-        onOpenChange={(open) => {
-          if (!open) setDialogLogId(null);
+        onOpenChange={(isOpen) => {
+          if (!isOpen) setDialogLogId(null);
         }}
         logId={dialogLogId}
         workspaceSlug={workspace?.slug}
       />
-    </div>
+    </PillSection>
   );
 }
