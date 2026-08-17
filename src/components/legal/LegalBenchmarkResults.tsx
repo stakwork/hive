@@ -17,6 +17,7 @@ import { useWorkspace } from "@/hooks/useWorkspace";
 import { StakworkRunLink } from "@/components/legal/StakworkRunLink";
 import { EvalRunsBox } from "@/components/legal/EvalRunsBox";
 import { BenchmarkRunAgentLogs } from "@/components/legal/BenchmarkRunAgentLogs";
+import { BenchmarkRunCascade } from "@/components/legal/RunCascade";
 import { resolveJudgeDispute } from "@/lib/harvey-lab/eval-normalizers";
 import { CriterionMarkers } from "@/components/run-report/CriterionMarkers";
 import { useBenchmarkRubrics } from "@/hooks/useBenchmarkRubrics";
@@ -148,10 +149,17 @@ export function LegalBenchmarkResults({ runId, onReset, isSuperAdmin = false }: 
 
   if (run.status === "running") {
     return (
-      <div className="mt-6 rounded-lg border bg-card p-4">
-        {renderStaleWarning()}
-        <SpinnerMessage message="Running task… (document ingestion & analysis)" />
-        <StakworkRunLink projectId={run.runnerRun.projectId} isSuperAdmin={isSuperAdmin} />
+      <div className="mt-6 space-y-4">
+        <div className="rounded-lg border bg-card p-4">
+          {renderStaleWarning()}
+          <SpinnerMessage message="Running task… (document ingestion & analysis)" />
+          <StakworkRunLink projectId={run.runnerRun.projectId} isSuperAdmin={isSuperAdmin} />
+        </div>
+        {/* Live trace — rows appear as the agents work; the pill pops in once
+            the run's first session exists. */}
+        <div className="flex flex-wrap items-start gap-2 empty:hidden">
+          <BenchmarkRunCascade runId={run.id} runStatus={run.runnerRun.status} />
+        </div>
       </div>
     );
   }
@@ -219,8 +227,12 @@ export function LegalBenchmarkResults({ runId, onReset, isSuperAdmin = false }: 
       <div className="mt-6 space-y-6">
         {renderStaleWarning()}
 
-        {/* Agent sessions for this run — hidden when the run has no agent logs */}
-        <BenchmarkRunAgentLogs runId={run.id} />
+        {/* Pop-in pills that expand into panels: agent sessions and the
+            session-cascade trace. Hidden entirely when a run has neither. */}
+        <div className="flex flex-wrap items-start gap-2 empty:hidden">
+          <BenchmarkRunAgentLogs runId={run.id} />
+          <BenchmarkRunCascade runId={run.id} runStatus={run.runnerRun.status} />
+        </div>
 
         {/* Output document section */}
         <div className="rounded-lg border bg-card">
