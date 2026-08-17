@@ -71,9 +71,9 @@ export function CriterionMarkers({
             </span>
           </TooltipTrigger>
           <TooltipContent side="top" className="max-w-xs text-xs">
-            This criterion&apos;s definition was flagged as potentially broken.
-            Reflects what this run recorded — editing the criterion today does
-            not rewrite historical runs.
+            This criterion&apos;s definition is flagged as broken (contested in
+            the rubric graph or recorded by this run). Contested criteria are
+            excluded from the score.
           </TooltipContent>
         </Tooltip>
       )}

@@ -27,6 +27,8 @@ import {
   useLegalBenchmarkRunList,
   type BenchmarkRunListRow,
 } from "@/hooks/useLegalBenchmarkRunList";
+import { useBenchmarkRubricsMap } from "@/hooks/useBenchmarkRubrics";
+import { computeBenchmarkScore } from "@/lib/harvey-lab/rubric-scoring";
 import { LegalBenchmarkResults } from "@/components/legal/LegalBenchmarkResults";
 import { StakworkRunLink } from "@/components/legal/StakworkRunLink";
 import { HillClimbChart } from "@/components/legal/HillClimbChart";
@@ -101,6 +103,18 @@ function resolveModelDisplay(run: BenchmarkRunListRow) {
 }
 
 export type RunListHookResult = ReturnType<typeof useLegalBenchmarkRunList>;
+
+/**
+ * A run row after graph-first score adjustment: n_passed/n_total/all_pass are
+ * rewritten to the contested-excluded score (denominator = graph roster minus
+ * contested definitions), with the exclusions carried alongside for display.
+ */
+type AdjustedRun = BenchmarkRunListRow & {
+  /** Contested criteria excluded from this row's score. */
+  n_contested?: number;
+  /** Full rubric roster size before contested exclusion. */
+  roster_total?: number;
+};
 
 interface BenchmarkRunsHistoryProps {
   /** When supplied, the component uses this hook result instead of calling
@@ -225,9 +239,47 @@ export function BenchmarkRunsHistory({
     [filteredRuns, windowSize],
   );
 
+  // Graph-first scoring: read each task's rubric roster from the graph and
+  // rewrite row scores so contested criteria are dropped from both sides.
+  // Every consumer below (table, summary strip, hill-climb chart) reads the
+  // adjusted rows, so the denominator is the graph everywhere.
+  const taskSlugsInView = useMemo(
+    () => visibleRuns.map((r) => r.taskSlug),
+    [visibleRuns],
+  );
+  const rosters = useBenchmarkRubricsMap(taskSlugsInView);
+
+  const adjustedRuns = useMemo<AdjustedRun[]>(
+    () =>
+      visibleRuns.map((run) => {
+        const roster = rosters.get(run.taskSlug) ?? null;
+        // Without a roster or per-criterion results there is nothing to
+        // adjust FROM — leave the run's own numbers and verdict untouched.
+        if (!roster && !run.criteria_results?.length) return run;
+        const score = computeBenchmarkScore({
+          criteriaResults: run.criteria_results,
+          nPassed: run.n_passed,
+          nTotal: run.n_total,
+          graphRubrics: roster,
+        });
+        if (!score) return run;
+        return {
+          ...run,
+          n_passed: score.passed,
+          n_total: score.denominator,
+          // Only rewrite all_pass for runs that were actually judged — the
+          // boolean's presence is what marks a row as scored downstream.
+          all_pass: typeof run.all_pass === "boolean" ? score.allPass : run.all_pass,
+          n_contested: score.contested,
+          roster_total: score.total,
+        };
+      }),
+    [visibleRuns, rosters],
+  );
+
   const chartAttempts = useMemo(
-    () => (selectedTask ? toChartAttempts(visibleRuns) : []),
-    [selectedTask, visibleRuns],
+    () => (selectedTask ? toChartAttempts(adjustedRuns) : []),
+    [selectedTask, adjustedRuns],
   );
 
   const handleToggleExpand = (runId: string) => {
@@ -297,7 +349,7 @@ export function BenchmarkRunsHistory({
         )}
         <div className="ml-auto">
           <BenchmarkSummaryStrip
-            runs={visibleRuns}
+            runs={adjustedRuns}
             windowSize={windowSize}
             onWindowChange={setWindowSize}
           />
@@ -336,7 +388,7 @@ export function BenchmarkRunsHistory({
             </tr>
           </thead>
           <tbody>
-            {visibleRuns.map((run) => (
+            {adjustedRuns.map((run) => (
               <Fragment key={run.id}>
                 <tr
                   ref={(el) => {
@@ -521,7 +573,7 @@ function ChatCell({ run }: { run: BenchmarkRunListRow }) {
   return <span className="text-muted-foreground">—</span>;
 }
 
-function ScoreCell({ run }: { run: BenchmarkRunListRow }) {
+function ScoreCell({ run }: { run: AdjustedRun }) {
   const isActive =
     run.status === WorkflowStatus.PENDING || run.status === WorkflowStatus.IN_PROGRESS;
 
@@ -547,6 +599,15 @@ function ScoreCell({ run }: { run: BenchmarkRunListRow }) {
       >
         {run.all_pass ? "PASS" : "FAIL"}
       </Badge>
+      {run.n_contested ? (
+        <span
+          className="text-xs text-violet-700 dark:text-violet-400 whitespace-nowrap"
+          data-testid="score-cell-contested"
+          title={`${run.n_contested} contested criteria excluded from the score · ${run.roster_total} total in the rubric roster`}
+        >
+          +{run.n_contested} contested
+        </span>
+      ) : null}
     </div>
   );
 }
