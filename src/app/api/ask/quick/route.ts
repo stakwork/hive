@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse, after } from "next/server";
 import { validationError, serverError, forbiddenError, isApiError } from "@/types/errors";
 import { validateUserBelongsToOrg, validateWorkspaceAccess } from "@/services/workspace";
-import { ModelMessage } from "ai";
+import { ModelMessage, createUIMessageStream, createUIMessageStreamResponse } from "ai";
+import { normalizeTokenUsage } from "@/lib/utils/token-usage";
 import { getMiddlewareContext } from "@/lib/middleware/utils";
 import { getBaseUrl } from "@/lib/utils";
 import { resolveWorkspaceAccess } from "@/lib/auth/workspace-access";
@@ -475,6 +476,14 @@ export async function POST(request: NextRequest) {
     console.log("[quick-ask] timing", { stage: "persistCanvasUserMessage", ms: Date.now() - tPersist, workspaces: slugs, orgId: orgId ?? null });
 
     try {
+      // Mutable holder that lets the onStepFinish hook (constructed before
+      // the stream writer exists) write mid-stream usage events once the
+      // writer becomes available. Starts as a no-op; attached below when
+      // createUIMessageStream hands us a writer.
+      let writerRef: {
+        write: (chunk: { type: string; data: unknown }) => void;
+      } = { write: () => {} };
+
       // Tracks concept ids learned in this turn so the `after()` block
       // can fetch their provenance from stakgraph after the stream
       // finishes. Populated via the onStepFinish hook below.
@@ -589,6 +598,19 @@ export async function POST(request: NextRequest) {
             onStepFinish: (sf) => {
               const conceptIds = extractConceptIdsFromStep(sf.content);
               conceptIds.forEach((id) => learnedConceptIds.add(id));
+
+              // Emit a live mid-stream usage update so the client can
+              // display incrementally-increasing token counts during
+              // a multi-step turn rather than waiting for "finish".
+              // Gated off for public-viewer/budget-limited sessions
+              // (isPublicViewerRequest) to avoid leaking per-step
+              // timing signals to anonymous callers.
+              if (!isPublicViewerRequest && sf.totalUsage) {
+                const cumulativeUsage = normalizeTokenUsage(
+                  sf.totalUsage as Parameters<typeof normalizeTokenUsage>[0],
+                );
+                writerRef.write({ type: "data-usage", data: cumulativeUsage });
+              }
             },
             onFinish: async ({
               usage,
@@ -882,34 +904,48 @@ export async function POST(request: NextRequest) {
       });
 
       console.log("[quick-ask] timing", { stage: "setup-to-stream", ms: Date.now() - t0, workspaces: slugs, orgId: orgId ?? null });
-      return result.toUIMessageStreamResponse({
-        // Hand the server-created/validated org-canvas row id back to the
-        // client (same pattern as `X-Approval-Result`) so it can stamp
-        // `serverConversationId` on the first turn without a separate POST.
-        ...(canvasConversationRowId
-          ? {
-              headers: {
-                "X-Conversation-Id": canvasConversationRowId,
-                "Access-Control-Expose-Headers": "X-Conversation-Id",
-              },
-            }
-          : {}),
-        // By default the AI SDK masks mid-stream errors as the literal
-        // string "An error occurred." — useless for diagnosis and
-        // indistinguishable from a clean finish on the client. Forward
-        // the real message instead. `runCanvasAgent`'s `onError` logs the
-        // full error + stack server-side; this surfaces a readable
-        // message to the chat so the user sees *why* it failed rather
-        // than a generic fallback.
-        onError: (error) => {
-          const message =
-            error instanceof Error ? error.message : String(error);
-          console.error("❌ [quick-ask] Mid-stream error:", {
-            workspaces: slugs,
-            message,
-          });
-          return message;
+
+      // Build the extra response headers that were previously forwarded
+      // via `toUIMessageStreamResponse({ headers: … })`. We re-apply
+      // them manually after switching to the createUIMessageStream path.
+      const extraHeaders: Record<string, string> = canvasConversationRowId
+        ? {
+            "X-Conversation-Id": canvasConversationRowId,
+            "Access-Control-Expose-Headers": "X-Conversation-Id",
+          }
+        : {};
+
+      // The onError handler that was riding on toUIMessageStreamResponse.
+      // Forwarding the real message instead of the SDK's generic
+      // "An error occurred." so the user sees *why* it failed.
+      const onError = (error: unknown) => {
+        const message =
+          error instanceof Error ? error.message : String(error);
+        console.error("❌ [quick-ask] Mid-stream error:", {
+          workspaces: slugs,
+          message,
+        });
+        return message;
+      };
+
+      // Wrap the existing stream in a UIMessageStream so we can inject
+      // custom `data-usage` chunks mid-stream (live per-step usage).
+      // The writer is attached to `writerRef` before `result.toUIMessageStream()`
+      // is merged in, so any step-finish events that fire during the
+      // stream's first flush can already write to it.
+      const uiStream = createUIMessageStream({
+        execute: ({ writer }) => {
+          // Attach the writer so the onStepFinish hook can call
+          // writerRef.write({ type: "data-usage", data: … }).
+          writerRef = writer as typeof writerRef;
+          writer.merge(result.toUIMessageStream({ onError }));
         },
+        onError,
+      });
+
+      return createUIMessageStreamResponse({
+        stream: uiStream,
+        headers: extraHeaders,
       });
     } catch (streamError) {
       // Preserve typed ApiError statuses (forbidden, notFound,
