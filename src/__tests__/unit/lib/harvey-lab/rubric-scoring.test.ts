@@ -4,6 +4,7 @@ import {
   criterionStatus,
   computeBenchmarkScore,
   formatBenchmarkScore,
+  rosterSummary,
   type GraphRubric,
 } from "@/lib/harvey-lab/rubric-scoring";
 
@@ -73,6 +74,30 @@ describe("criterionStatus", () => {
     expect(criterionStatus(criterion("C-003", "PASSED"), index)).toBe("PASS");
     expect(criterionStatus(criterion("C-003", "fail"), index)).toBe("FAIL");
     expect(criterionStatus(criterion("C-003", ""), index)).toBe("FAIL");
+  });
+});
+
+describe("rosterSummary", () => {
+  it("summarises total/contested/denominator", () => {
+    expect(rosterSummary(roster(50, ["C-001", "C-002", "C-003", "C-004", "C-005", "C-006", "C-007"]))).toEqual({
+      total: 50,
+      contested: 7,
+      denominator: 43,
+    });
+  });
+
+  it("returns null for null/undefined/empty rosters", () => {
+    expect(rosterSummary(null)).toBeNull();
+    expect(rosterSummary(undefined)).toBeNull();
+    expect(rosterSummary([])).toBeNull();
+  });
+
+  it("floors the denominator at zero when everything is contested", () => {
+    expect(rosterSummary(roster(2, ["C-001", "C-002"]))).toEqual({
+      total: 2,
+      contested: 2,
+      denominator: 0,
+    });
   });
 });
 
