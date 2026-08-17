@@ -7,14 +7,19 @@
 import { describe, it, expect } from "vitest";
 
 /** Mirrors the isFullscreenPage logic in DashboardLayout.tsx */
+function isDocumentsPage(pathname: string): boolean {
+  return pathname.includes("/documents/");
+}
+
 function isFullscreenPage(pathname: string): boolean {
-  return pathname.includes("/task/") || pathname.includes("/plan/");
+  return isDocumentsPage(pathname) || pathname.includes("/task/") || pathname.includes("/plan/");
 }
 
 /** Mirrors the <main> className logic in DashboardLayout.tsx */
 function mainClassName(pathname: string): string {
+  const docs = isDocumentsPage(pathname);
   const fullscreen = isFullscreenPage(pathname);
-  return `flex-1 flex flex-col min-h-0 ${fullscreen ? "overflow-hidden p-1 md:p-3" : "overflow-auto p-4 md:p-6"}`;
+  return `flex-1 flex flex-col min-h-0 ${docs ? "overflow-hidden p-0" : fullscreen ? "overflow-hidden p-1 md:p-3" : "overflow-auto p-4 md:p-6"}`;
 }
 
 describe("DashboardLayout — isFullscreenPage", () => {
@@ -24,6 +29,10 @@ describe("DashboardLayout — isFullscreenPage", () => {
 
   it("returns true for a /task/ route", () => {
     expect(isFullscreenPage("/w/my-workspace/task/some-task-id")).toBe(true);
+  });
+
+  it("returns true for a /documents/ route", () => {
+    expect(isFullscreenPage("/w/my-workspace/documents/docid")).toBe(true);
   });
 
   it("returns false for a settings route", () => {
@@ -50,6 +59,15 @@ describe("DashboardLayout — <main> overflow class", () => {
     const cls = mainClassName("/w/my-workspace/task/some-task-id");
     expect(cls).toContain("overflow-hidden");
     expect(cls).not.toContain("overflow-auto");
+  });
+
+  it("applies overflow-hidden and p-0 on a /documents/ route", () => {
+    const cls = mainClassName("/w/slug/documents/docid");
+    expect(cls).toContain("overflow-hidden");
+    expect(cls).toContain("p-0");
+    expect(cls).not.toContain("overflow-auto");
+    expect(cls).not.toContain("p-1");
+    expect(cls).not.toContain("md:p-3");
   });
 
   it("applies overflow-auto on a non-fullscreen route", () => {
