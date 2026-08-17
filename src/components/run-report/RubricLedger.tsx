@@ -5,7 +5,8 @@ import type { RunReportProjection } from "@/lib/run-report/types";
 import { readTraces } from "@/lib/run-report/derive";
 import type { ChainModel, CriterionChain, Hop, HopLink } from "@/lib/run-report/chain";
 import { Kicker, StatusBadge, EmptyPanel } from "./chrome";
-import { resolveJudgeDispute } from "@/lib/harvey-lab/eval-normalizers";
+import { resolveJudgeDispute, resolveContested } from "@/lib/harvey-lab/eval-normalizers";
+import { CriterionMarkers } from "./CriterionMarkers";
 
 /**
  * Rubric-first review ledger.
@@ -154,6 +155,8 @@ function CriterionButton({
   small?: boolean;
   onSelect: (id: string) => void;
 }) {
+  const isDisputed = resolveJudgeDispute({ verdict: c.verdict, flagged: c.judgeFlagged, llm_flag_reason: c.judgeFlagReason }) !== null;
+  const isContested = resolveContested({ contested: c.criterionContested });
   return (
     <button
       type="button"
@@ -170,6 +173,7 @@ function CriterionButton({
       <span className={`${small ? "text-[11.5px] text-muted-foreground" : "text-[12px]"} truncate flex-1`}>
         {c.title}
       </span>
+      <CriterionMarkers disputed={isDisputed} contested={isContested} />
     </button>
   );
 }
@@ -250,6 +254,10 @@ export function RubricLedger({
             <div className="flex items-baseline gap-3 mb-2">
               <span className="font-mono text-[11px] text-muted-foreground/70">{selected.id}</span>
               <h3 className="text-[16px] font-semibold flex-1">{selected.title}</h3>
+              <CriterionMarkers
+                disputed={resolveJudgeDispute({ verdict: selected.verdict, flagged: selected.judgeFlagged, llm_flag_reason: selected.judgeFlagReason }) !== null}
+                contested={resolveContested({ contested: selected.criterionContested })}
+              />
               <StatusBadge
                 kind={selected.verdict === "pass" ? "pass" : selected.verdict === "fail" ? "fail" : "warn"}
               >

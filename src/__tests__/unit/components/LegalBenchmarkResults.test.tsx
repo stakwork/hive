@@ -793,7 +793,7 @@ describe("LegalBenchmarkResults", () => {
     const lines = copied.split("\n");
     // header + 2 criteria = 3 lines total
     expect(lines).toHaveLength(3);
-    expect(lines[0]).toBe("Verdict\tID\tTitle\tReasoning\tJudge Dispute");
+    expect(lines[0]).toBe("Verdict\tID\tTitle\tReasoning\tJudge Dispute\tContested");
     // no embedded newlines or tabs remain in data rows
     expect(lines[1]).not.toContain("\n");
     expect(lines[2]).not.toContain("\n");
@@ -1029,7 +1029,7 @@ describe("LegalBenchmarkResults", () => {
     const lines = copied.split("\n");
 
     // header ends with Judge Dispute column
-    expect(lines[0]).toBe("Verdict\tID\tTitle\tReasoning\tJudge Dispute");
+    expect(lines[0]).toBe("Verdict\tID\tTitle\tReasoning\tJudge Dispute\tContested");
     // tabs/newlines in dispute prose are sanitized
     const failRow = lines.find((l) => l.includes("crit-1"));
     expect(failRow).toBeDefined();
@@ -1060,9 +1060,9 @@ describe("LegalBenchmarkResults", () => {
 
     const copied: string = writeSpy.mock.calls[0][0];
     const dataRow = copied.split("\n")[1];
-    // five tab-separated columns, last one blank
+    // six tab-separated columns, last one blank (Contested)
     const cols = dataRow.split("\t");
-    expect(cols).toHaveLength(5);
+    expect(cols).toHaveLength(6);
     expect(cols[4]).toBe("");
 
     vi.restoreAllMocks();

@@ -193,6 +193,57 @@ describe("groupRubrics", () => {
     expect(rows[2].passed).toBe(false);
     expect(rows[2].verdict).toBe("");
   });
+
+  // ─── criterionContested narrowing ──────────────────────────────────────────
+
+  it("carries boolean contested: true as criterionContested", () => {
+    const rows = groupRubrics([
+      { id: "C1", title: "t", verdict: "fail", contested: true },
+    ]);
+    expect(rows[0].criterionContested).toBe(true);
+  });
+
+  it("carries number contested: 1 as criterionContested", () => {
+    const rows = groupRubrics([
+      { id: "C2", title: "t", verdict: "fail", contested: 1 },
+    ]);
+    expect(rows[0].criterionContested).toBe(1);
+  });
+
+  it("carries string contested: 'true' as criterionContested", () => {
+    const rows = groupRubrics([
+      { id: "C3", title: "t", verdict: "pass", contested: "true" },
+    ]);
+    expect(rows[0].criterionContested).toBe("true");
+  });
+
+  it("carries boolean contested: false as criterionContested", () => {
+    const rows = groupRubrics([
+      { id: "C4", title: "t", verdict: "fail", contested: false },
+    ]);
+    expect(rows[0].criterionContested).toBe(false);
+  });
+
+  it("omits criterionContested when wire contested is an object (narrowing rejects it)", () => {
+    const rows = groupRubrics([
+      { id: "C5", title: "t", verdict: "fail", contested: { nested: true } },
+    ]);
+    expect(rows[0].criterionContested).toBeUndefined();
+  });
+
+  it("omits criterionContested when wire contested is an array (narrowing rejects it)", () => {
+    const rows = groupRubrics([
+      { id: "C6", title: "t", verdict: "fail", contested: ["true"] },
+    ]);
+    expect(rows[0].criterionContested).toBeUndefined();
+  });
+
+  it("omits criterionContested when wire contested is absent", () => {
+    const rows = groupRubrics([
+      { id: "C7", title: "t", verdict: "fail" },
+    ]);
+    expect(rows[0].criterionContested).toBeUndefined();
+  });
 });
 
 describe("aggregateFixes", () => {
