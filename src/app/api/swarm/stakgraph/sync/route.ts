@@ -121,12 +121,22 @@ export async function POST(request: NextRequest) {
     const swarmVanityHost = getSwarmVanityAddress(swarm.name);
     console.log(`[Sync] Resolved vanity host — swarm.name: ${swarm.name}, vanityHost: ${swarmVanityHost}`);
 
+    // Build sync options: pass filter from blobSizeLimit (re-validated at the boundary).
+    // Per the stakgraph contract, sync ignores depth, so we never send it here.
+    const BLOB_SIZE_LIMIT_RE = /^[1-9][0-9]*[kmg]?$/i;
+    const rawLimit = primaryRepo?.blobSizeLimit;
+    const syncOptions = rawLimit && BLOB_SIZE_LIMIT_RE.test(rawLimit)
+      ? { filter: `blob:limit=${rawLimit}` }
+      : undefined;
+
     const apiResult: AsyncSyncResult = await triggerAsyncSync(
       swarmVanityHost,
       swarm.swarmApiKey,
       repositoryUrl,
       username && pat ? { username, pat } : undefined,
       callbackUrl,
+      false,
+      syncOptions,
     );
 
     console.log("[Sync] Async sync response", {
