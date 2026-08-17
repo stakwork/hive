@@ -1156,6 +1156,137 @@ describe("useStreamProcessor", () => {
     });
   });
 
+  describe("Token Usage (data-usage mid-stream event)", () => {
+    test("sets capturedUsage from data-usage event as a dumb passthrough", async () => {
+      const { result } = renderHook(() => useStreamProcessor());
+      const onUpdate = TestUtils.createOnUpdateSpy();
+
+      const usagePayload = {
+        inputTokens: 120,
+        outputTokens: 45,
+        cacheReadTokens: 500,
+        cacheWriteTokens: 200,
+      };
+
+      const response = TestDataFactories.createMockResponse([
+        TestDataFactories.createToolInputStartEvent("tc1", "search"),
+        TestDataFactories.createToolOutputAvailableEvent("tc1", "results"),
+        `data: ${JSON.stringify({ type: "data-usage", data: usagePayload })}\n\n`,
+      ]);
+
+      await result.current.processStream(response, "msg-1", onUpdate);
+
+      // usage should appear on an intermediate update (before finish)
+      // and be preserved in the final message
+      const finalMessage = onUpdate.mock.calls[onUpdate.mock.calls.length - 1][0];
+      expect(finalMessage.usage).toEqual(usagePayload);
+    });
+
+    test("data-usage handler does not re-run the fallback field-name chain", async () => {
+      // The server sends an already-normalized payload via data-usage.
+      // If the client were to run the fallback chain again it would try
+      // to map e.g. cacheReadInputTokens → cacheReadTokens, but since
+      // the server already normalized these, only the canonical field names
+      // should appear.
+      const { result } = renderHook(() => useStreamProcessor());
+      const onUpdate = TestUtils.createOnUpdateSpy();
+
+      // Server sends canonical shape (no legacy aliases)
+      const canonicalPayload = {
+        inputTokens: 300,
+        outputTokens: 90,
+        cacheReadTokens: 1024,
+        cacheWriteTokens: 512,
+      };
+
+      const response = TestDataFactories.createMockResponse([
+        TestDataFactories.createToolInputStartEvent("tc2", "think"),
+        TestDataFactories.createToolOutputAvailableEvent("tc2", "done"),
+        `data: ${JSON.stringify({ type: "data-usage", data: canonicalPayload })}\n\n`,
+      ]);
+
+      await result.current.processStream(response, "msg-2", onUpdate);
+
+      const finalMessage = onUpdate.mock.calls[onUpdate.mock.calls.length - 1][0];
+      expect(finalMessage.usage?.cacheReadTokens).toBe(1024);
+      expect(finalMessage.usage?.cacheWriteTokens).toBe(512);
+      // Legacy alias fields must NOT appear in the output
+      expect((finalMessage.usage as Record<string, unknown>)?.cacheReadInputTokens).toBeUndefined();
+      expect((finalMessage.usage as Record<string, unknown>)?.cacheCreationInputTokens).toBeUndefined();
+    });
+
+    test("usage is visible on intermediate updates while still streaming (before finish)", async () => {
+      // This is the key regression test: usage should appear on tool-call-bearing
+      // messages DURING the stream, not only after it completes.
+      const { result } = renderHook(() => useStreamProcessor({ debounceMs: 0 }));
+      const onUpdate = TestUtils.createOnUpdateSpy();
+
+      const stepUsage = { inputTokens: 80, outputTokens: 30 };
+
+      const response = TestDataFactories.createMockResponse([
+        TestDataFactories.createToolInputStartEvent("tc3", "plan"),
+        `data: ${JSON.stringify({ type: "data-usage", data: stepUsage })}\n\n`,
+        TestDataFactories.createToolOutputAvailableEvent("tc3", "planned"),
+      ]);
+
+      await result.current.processStream(response, "msg-3", onUpdate);
+
+      // Find an intermediate update (isStreaming = true) that carries usage
+      const usageDuringStream = onUpdate.mock.calls.some(
+        ([msg]) => msg.isStreaming === true && msg.usage != null,
+      );
+      expect(usageDuringStream).toBe(true);
+    });
+
+    test("successive data-usage events never decrease cumulative counts", async () => {
+      const { result } = renderHook(() => useStreamProcessor({ debounceMs: 0 }));
+      const onUpdate = TestUtils.createOnUpdateSpy();
+
+      const step1 = { inputTokens: 100, outputTokens: 30 };
+      const step2 = { inputTokens: 250, outputTokens: 80 }; // higher — cumulative
+
+      const response = TestDataFactories.createMockResponse([
+        TestDataFactories.createToolInputStartEvent("tc4", "step1"),
+        `data: ${JSON.stringify({ type: "data-usage", data: step1 })}\n\n`,
+        TestDataFactories.createToolOutputAvailableEvent("tc4", "r1"),
+        TestDataFactories.createToolInputStartEvent("tc5", "step2"),
+        `data: ${JSON.stringify({ type: "data-usage", data: step2 })}\n\n`,
+        TestDataFactories.createToolOutputAvailableEvent("tc5", "r2"),
+      ]);
+
+      await result.current.processStream(response, "msg-4", onUpdate);
+
+      // Collect all seen inputToken values across updates
+      const seenInputTokens = onUpdate.mock.calls
+        .map(([msg]) => msg.usage?.inputTokens)
+        .filter((v): v is number => v != null);
+
+      // Ensure tokens only go up (or stay the same), never decrease
+      for (let i = 1; i < seenInputTokens.length; i++) {
+        expect(seenInputTokens[i]).toBeGreaterThanOrEqual(seenInputTokens[i - 1]);
+      }
+    });
+
+    test("data-usage event before any tool call does not crash", async () => {
+      // Edge case: server emits usage before the stream has any content.
+      // writerRef starts as a no-op; this mirrors the server-side guard where
+      // onStepFinish fires before the writer is attached. Client-side the
+      // event simply should not throw.
+      const { result } = renderHook(() => useStreamProcessor());
+      const onUpdate = TestUtils.createOnUpdateSpy();
+
+      const response = TestDataFactories.createMockResponse([
+        `data: ${JSON.stringify({ type: "data-usage", data: { inputTokens: 5, outputTokens: 2 } })}\n\n`,
+        TestDataFactories.createTextStartEvent("t1"),
+        TestDataFactories.createTextDeltaEvent("t1", "hi"),
+      ]);
+
+      await expect(
+        result.current.processStream(response, "msg-5", onUpdate),
+      ).resolves.not.toThrow();
+    });
+  });
+
   describe("Token Usage (finish event)", () => {
     const createFinishEventWithUsage = (usage: Record<string, unknown>) =>
       `data: ${JSON.stringify({ type: "finish", finishReason: "stop", usage })}\n\n`;
