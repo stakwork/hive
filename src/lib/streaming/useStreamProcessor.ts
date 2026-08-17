@@ -1,6 +1,7 @@
 import { useCallback } from "react";
 import type { BaseStreamingMessage, StreamProcessorConfig, StreamEvent, ToolCallStatus } from "@/types/streaming";
 import type { TokenUsage } from "@/types/usage";
+import { normalizeTokenUsage } from "@/lib/utils/token-usage";
 import { DEFAULT_DEBOUNCE_MS } from "./constants";
 import { parseSSELine } from "./helpers";
 
@@ -391,29 +392,23 @@ export function useStreamProcessor<T extends BaseStreamingMessage = BaseStreamin
                   errorText: typeof data.error === "string" ? data.error : "Tool error",
                 });
               }
+            } else if (data.type === "data-usage") {
+              // Mid-stream per-step cumulative usage update from the server.
+              // The server already normalized the shape via normalizeTokenUsage,
+              // so this is a dumb passthrough — no field-name fallback chain needed.
+              capturedUsage = data.data;
+              debouncedUpdate();
             } else if (data.type === "finish") {
               // Capture aggregated per-turn token usage from the AI SDK finish event.
-              // AI SDK field names differ from our canonical TokenUsage names:
-              //   inputTokens / outputTokens — same in both
-              //   cacheReadInputTokens       → cacheReadTokens
-              //   cacheCreationInputTokens   → cacheWriteTokens
-              // Cache fields may appear directly in data.usage OR in
-              // data.providerMetadata?.anthropic (confirmed shape varies by SDK version).
-              const u = data.usage;
-              if (u) {
-                const anthropicMeta = data.providerMetadata?.anthropic;
-                capturedUsage = {
-                  inputTokens: u.inputTokens,
-                  outputTokens: u.outputTokens,
-                  cacheReadTokens:
-                    u.cacheReadInputTokens ??
-                    u.cacheReadTokens ??
-                    anthropicMeta?.cacheReadInputTokens,
-                  cacheWriteTokens:
-                    u.cacheCreationInputTokens ??
-                    u.cacheWriteTokens ??
-                    anthropicMeta?.cacheCreationInputTokens,
-                };
+              // Delegate field-name normalization to the shared utility so this
+              // handler and the server-side emission never drift.
+              // Guard: only normalize when the event actually carries usage data;
+              // an absent usage field must leave capturedUsage as undefined (not {}).
+              if (data.usage) {
+                capturedUsage = normalizeTokenUsage(
+                  data.usage as Parameters<typeof normalizeTokenUsage>[0],
+                  data.providerMetadata?.anthropic,
+                );
               }
             } else if (data.type === "error") {
               error = data.errorText;
