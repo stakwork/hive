@@ -10,6 +10,8 @@ export interface EvalRequirement {
     name: string;
     description?: string;
     order?: number;
+    contested?: boolean;
+    contest_reason?: string;
   };
 }
 

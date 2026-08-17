@@ -33,6 +33,8 @@ interface RequirementNode extends JarvisNode {
     undesirable_cases?: string[];
     linked_session_count?: number;
     order?: number;
+    contested?: boolean;
+    contest_reason?: string;
     [key: string]: unknown;
   };
 }
@@ -169,6 +171,15 @@ export function EvalSetDetail({ evalSet, onBack }: EvalSetDetailProps) {
                         <Badge variant="secondary" className="gap-1 text-xs">
                           <Link2 className="h-3 w-3" />
                           {sessionCount} session{sessionCount !== 1 ? "s" : ""}
+                        </Badge>
+                      )}
+                      {req.properties?.contested && (
+                        <Badge
+                          variant="outline"
+                          className="gap-1 border-violet-500/40 bg-violet-500/10 text-xs text-violet-700 dark:text-violet-400"
+                          data-testid="contested-badge"
+                        >
+                          Contested
                         </Badge>
                       )}
                     </div>

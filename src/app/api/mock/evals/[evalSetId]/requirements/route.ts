@@ -11,6 +11,8 @@ type RequirementNode = JarvisNode & {
     desirable_cases: string[];
     undesirable_cases: string[];
     order: number;
+    contested?: boolean;
+    contest_reason?: string;
   };
 };
 
@@ -38,6 +40,9 @@ const SEED_REQUIREMENTS: Record<string, RequirementNode[]> = {
         desirable_cases: ["Output is valid JavaScript", "Function accepts two arguments", "Returns the sum"],
         undesirable_cases: ["Syntax errors present", "Wrong return value"],
         order: 1,
+        contested: true,
+        contest_reason:
+          "The criterion conflates syntactic correctness with semantic accuracy. A function can be syntactically valid but return the wrong result, making this criterion too broad to be a reliable signal.",
       },
     },
     {
@@ -82,18 +87,31 @@ const SEED_REQUIREMENTS: Record<string, RequirementNode[]> = {
 };
 
 export async function GET(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: Promise<{ evalSetId: string }> },
 ) {
+  if (process.env.USE_MOCKS !== "true") {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
   const { evalSetId } = await params;
   const nodes = SEED_REQUIREMENTS[evalSetId] ?? [];
   return NextResponse.json({ success: true, data: { nodes, total: nodes.length } });
 }
 
 export async function POST(request: NextRequest) {
+  if (process.env.USE_MOCKS !== "true") {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
   const body = await request.json().catch(() => ({}));
-  const { name, description, prompt_snippet, desirable_cases, undesirable_cases } =
-    body ?? {};
+  const {
+    name,
+    description,
+    prompt_snippet,
+    desirable_cases,
+    undesirable_cases,
+    contested,
+    contest_reason,
+  } = body ?? {};
 
   const newNode: JarvisNode = {
     ref_id: crypto.randomUUID(),
@@ -104,8 +122,13 @@ export async function POST(request: NextRequest) {
       prompt_snippet,
       desirable_cases: desirable_cases ?? [],
       undesirable_cases: undesirable_cases ?? [],
+      ...(contested !== undefined ? { contested: Boolean(contested) } : {}),
+      ...(contest_reason !== undefined ? { contest_reason } : {}),
     },
   };
 
-  return NextResponse.json({ success: true, data: { ref_id: newNode.ref_id } });
+  return NextResponse.json({
+    success: true,
+    data: { ref_id: newNode.ref_id, ...newNode.properties },
+  });
 }
