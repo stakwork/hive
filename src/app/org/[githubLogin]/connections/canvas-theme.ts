@@ -686,6 +686,75 @@ function featureStatusColor(node: CanvasNode): string {
   return MUTED;
 }
 
+/**
+ * Pulsing SVG spinner for the feature card's `plannerRunning` state.
+ * Mirrors `renderResearchingBadge` in structure but uses the amber agent
+ * accent so it's visually distinct from the emerald research spinner.
+ *
+ * Slot layout for the feature card's topRightOuter area (three potential
+ * indicators, ordered top-to-bottom / right-to-left to avoid overlap):
+ *
+ *   ┌──────────────────────────────────────────┐
+ *   │                                   [count]│  ← agentsRunningCount (count slot, outermost)
+ *   │                                   [pulse]│  ← plannerRunning (this fn, below count)
+ *   │                                  [attn?] │  ← attention badge (foundation hook, innermost)
+ *   └──────────────────────────────────────────┘
+ *
+ * The `count` slot (agentsRunningCount) uses `hideWhenEmpty: true` and sits
+ * in `topRightOuter`, so it occupies the same corner as a milestone's agent
+ * badge — consistent visual language.
+ *
+ * The planner pulse rides in `topRight` (the INNER slot) so it never
+ * visually clashes with the count badge in `topRightOuter`. Same separation
+ * pattern as the milestone card's team-stack vs agent badge.
+ *
+ * Any future "attention" badge from the foundation hook should go in a
+ * `topLeftOuter` or dedicated named slot to maintain separation.
+ */
+function renderFeaturePlannerBadge(ctx: SlotContext): React.ReactNode {
+  const { region, node } = ctx;
+  const isRunning = Boolean(node.customData?.plannerRunning);
+  if (!isRunning) return null;
+
+  const cx = region.x + region.width / 2;
+  const cy = region.y + region.height / 2;
+  const r = Math.min(region.width, region.height) / 2 - 2;
+  if (r <= 0) return null;
+  const arcD = `M ${cx} ${cy - r} A ${r} ${r} 0 1 1 ${cx - r} ${cy}`;
+  return createElement(
+    "g",
+    { pointerEvents: "none" },
+    createElement("circle", {
+      cx,
+      cy,
+      r,
+      fill: hexAlpha(ACCENT.agent, 0.12),
+      stroke: hexAlpha(ACCENT.agent, 0.35),
+      strokeWidth: 1,
+    }),
+    createElement(
+      "g",
+      null,
+      createElement("path", {
+        d: arcD,
+        fill: "none",
+        stroke: ACCENT.agent,
+        strokeWidth: 1.5,
+        strokeLinecap: "round",
+      }),
+      createElement("animateTransform", {
+        attributeName: "transform",
+        attributeType: "XML",
+        type: "rotate",
+        from: `0 ${cx} ${cy}`,
+        to: `360 ${cx} ${cy}`,
+        dur: "1.1s",
+        repeatCount: "indefinite",
+      }),
+    ),
+  );
+}
+
 const featureCategory: CategoryDefinition = {
   ...baseCard,
   defaultWidth: FEATURE_W,
@@ -745,6 +814,36 @@ const featureCategory: CategoryDefinition = {
           : nodeId;
         return makeAttentionBadgeRenderer("feature", entityId)(ctx);
       },
+    },
+    // --- Live agent-activity indicators ---
+    //
+    // LAYOUT (see renderFeaturePlannerBadge for the full diagram):
+    //   topLeft       → attention badge (halted/awaiting-reply/plan-question/ready-to-review)
+    //   topRightOuter → task-agent count badge (amber; hidden when 0)
+    //   topRight      → planner pulse spinner (amber; hidden when not running)
+    //
+    // `topLeft` (attention) and `topRightOuter`/`topRight` (agent indicators)
+    // are on opposite corners so they never overlap.
+
+    // Task-agent count badge. Uses the system-canvas `count` slot's built-in
+    // `hideWhenEmpty` so a feature with no active task agents shows no badge.
+    // Color is amber ("attention-worthy now") — same as the milestone's
+    // agentCount badge for consistent visual language across the canvas.
+    topRightOuter: {
+      kind: "count",
+      value: (ctx: SlotContext) => {
+        const v = ctx.node.customData?.agentsRunningCount;
+        return typeof v === "number" ? v : 0;
+      },
+      color: ACCENT.agent,
+      hideWhenEmpty: true,
+    },
+    // Planner pulse — SVG spinner in the INNER topRight slot so it doesn't
+    // collide with the task-agent count badge in topRightOuter.
+    // Renders nothing when plannerRunning is false.
+    topRight: {
+      kind: "custom",
+      render: renderFeaturePlannerBadge,
     },
   },
 } as CategoryDefinition;
