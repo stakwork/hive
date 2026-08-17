@@ -77,6 +77,23 @@ describe("CascadeTrace", () => {
     );
   });
 
+  it("renders same-batch agents as parallel siblings and separate batches without the wrapper", () => {
+    // Pull the two top-level agents into the same start-time window.
+    const sessions = [...buildMockSessionMap("147813394").values()].map((s) =>
+      s.agent_name.startsWith("repair-agent")
+        ? { ...s, timestamp: new Date(Date.parse(s.timestamp) - 120_000 + 200).toISOString() }
+        : s,
+    );
+    const parallel = assembleRunCascade(sessions, buildMockTurnsBySession());
+    const { unmount } = render(<CascadeTrace model={parallel} />);
+    expect(screen.getByTestId("cascade-batch-0").textContent).toContain("parallel ×2");
+    unmount();
+
+    // The stock fixture starts them 2 minutes apart — no batch wrapper.
+    render(<CascadeTrace model={mockModel()} />);
+    expect(screen.queryByTestId("cascade-batch-0")).toBeNull();
+  });
+
   it("expand all unrolls every pill; collapse all folds them", () => {
     render(<CascadeTrace model={mockModel()} />);
 

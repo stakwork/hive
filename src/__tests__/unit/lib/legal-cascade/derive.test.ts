@@ -412,6 +412,37 @@ describe("assembleRunCascade", () => {
     );
   });
 
+  it("groups top-level agents into parallel-launch batches by start-time window", () => {
+    // Agents launch in parallel batches: four sessions with consecutive ids
+    // starting within ~220ms is normal. Siblings share a batchIndex.
+    const t0 = Date.parse("2026-08-17T18:00:00.000Z");
+    const at = (ms: number) => new Date(t0 + ms).toISOString();
+    const sessions = [
+      makeSession({ id: "a", agent_name: "ingest-agent-1", timestamp: at(0) }),
+      makeSession({ id: "b", agent_name: "map-agent-1", timestamp: at(220) }),
+      makeSession({ id: "c", agent_name: "audit-agent-1", timestamp: at(900) }),
+      makeSession({ id: "d", agent_name: "repair-agent-1", timestamp: at(60_000) }),
+    ];
+    const model = assembleRunCascade(sessions, new Map());
+    expect(model.agents.map((a) => a.session.id)).toEqual(["a", "b", "c", "d"]);
+    expect(model.agents.map((a) => a.batchIndex)).toEqual([0, 0, 0, 1]);
+  });
+
+  it("dedupes a transiently repeated session id, keeping the row with more turns", () => {
+    // Known upstream state: a session can appear twice in /api/sessions until
+    // repo2graph's dedupe pass runs on its next boot.
+    const dupe = makeSession({
+      id: "dup-1",
+      agent_name: "plan-agent-1",
+      turn_count: 3,
+    });
+    const fresher = { ...dupe, turn_count: 9 };
+    const model = assembleRunCascade([dupe, fresher], new Map());
+    expect(model.agents).toHaveLength(1);
+    expect(model.summary.agents).toBe(1);
+    expect(model.agents[0].session.turn_count).toBe(9);
+  });
+
   it("top-level list alone (no descendants fetched yet) still renders", () => {
     const model = assembleRunCascade(
       buildMockCascadeSessions(identifier),

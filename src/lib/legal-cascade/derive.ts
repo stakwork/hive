@@ -421,20 +421,39 @@ export function buildChildrenIndex(
 }
 
 /**
+ * Top-level agents launch in parallel batches, not sequentially — sibling
+ * sessions starting within ~220ms of each other are normal. Starts within
+ * this window of a batch's first session belong to the same batch.
+ */
+export const PARALLEL_BATCH_WINDOW_MS = 2_000;
+
+/** Defensive: the upstream list can transiently repeat a session id (known
+ *  pre-dedupe-restart state); keep the row with the most turns. */
+export function dedupeSessionsById(sessions: CascadeSession[]): CascadeSession[] {
+  const byId = new Map<string, CascadeSession>();
+  for (const s of sessions) {
+    const existing = byId.get(s.id);
+    if (!existing || s.turn_count > existing.turn_count) byId.set(s.id, s);
+  }
+  return [...byId.values()];
+}
+
+/**
  * Assemble the whole run: one cascade per top-level agent (ordered by start
- * time — that is the agent chain), children nested inside, plus the run-level
- * summary strip numbers.
+ * time, grouped into parallel-launch batches), children nested inside, plus
+ * the run-level summary strip numbers.
  */
 export function assembleRunCascade(
   sessions: CascadeSession[],
   turnsBySession: Map<string, CascadeTurn[]>,
 ): RunCascadeModel {
-  const topLevel = sessions.filter(isTopLevel).sort(byStartTime);
-  const childrenOf = buildChildrenIndex(sessions);
+  const deduped = dedupeSessionsById(sessions);
+  const topLevel = deduped.filter(isTopLevel).sort(byStartTime);
+  const childrenOf = buildChildrenIndex(deduped);
   const ctx: SessionTreeContext = { childrenOf, turnsBySession };
 
   const runningIds = new Set(
-    sessions.filter((s) => s.status === "running").map((s) => s.id),
+    deduped.filter((s) => s.status === "running").map((s) => s.id),
   );
   const hasRunningDescendant = (id: string): boolean => {
     for (const child of childrenOf.get(id) ?? []) {
@@ -443,11 +462,23 @@ export function assembleRunCascade(
     return false;
   };
 
-  const agents: AgentCascade[] = topLevel.map((session) => ({
-    session,
-    rows: deriveSessionRows(session, 0, ctx),
-    live: runningIds.has(session.id) || hasRunningDescendant(session.id),
-  }));
+  // Batch by start-time window: a session joins the current batch when it
+  // started within the window of the batch's FIRST session.
+  let batchIndex = -1;
+  let batchStart = -Infinity;
+  const agents: AgentCascade[] = topLevel.map((session) => {
+    const start = Date.parse(session.timestamp) || 0;
+    if (start - batchStart > PARALLEL_BATCH_WINDOW_MS) {
+      batchIndex += 1;
+      batchStart = start;
+    }
+    return {
+      session,
+      rows: deriveSessionRows(session, 0, ctx),
+      live: runningIds.has(session.id) || hasRunningDescendant(session.id),
+      batchIndex,
+    };
+  });
 
   const conceptKeys = new Set<string>();
   for (const agent of agents) {
@@ -457,7 +488,7 @@ export function assembleRunCascade(
   }
 
   let toolCalls = 0;
-  const sessionIds = new Set(sessions.map((s) => s.id));
+  const sessionIds = new Set(deduped.map((s) => s.id));
   for (const [id, turns] of turnsBySession) {
     if (!sessionIds.has(id)) continue;
     for (const t of turns) if (t.turn_type === "tool_call") toolCalls += 1;
@@ -467,9 +498,9 @@ export function assembleRunCascade(
     agents,
     summary: {
       agents: topLevel.length,
-      subAgents: sessions.length - topLevel.length,
+      subAgents: deduped.length - topLevel.length,
       concepts: conceptKeys.size,
-      totalTokens: sessions.reduce((sum, s) => sum + (s.token_usage?.total ?? 0), 0),
+      totalTokens: deduped.reduce((sum, s) => sum + (s.token_usage?.total ?? 0), 0),
       toolCalls,
       running: agents.some((a) => a.live),
     },

@@ -51,6 +51,16 @@ function statusBadgeKind(status: CascadeSessionStatus): "pass" | "fail" | "warn"
   }
 }
 
+function groupByBatch(agents: AgentCascade[]): AgentCascade[][] {
+  const batches: AgentCascade[][] = [];
+  for (const agent of agents) {
+    const last = batches[batches.length - 1];
+    if (last && last[0].batchIndex === agent.batchIndex) last.push(agent);
+    else batches.push([agent]);
+  }
+  return batches;
+}
+
 function runStartMs(model: RunCascadeModel): number | null {
   let min = Infinity;
   for (const agent of model.agents) {
@@ -305,17 +315,34 @@ export function CascadeTrace({ model }: { model: RunCascadeModel }) {
       />
       <div className="overflow-x-auto px-4 pb-4">
         <div className="space-y-1" style={{ minWidth: MIN_W }}>
-          {model.agents.map((agent) => (
-            <AgentSection
-              key={agent.session.id}
-              agent={agent}
-              startMs={startMs}
-              expandedPills={expandedPills}
-              openPrompts={openPrompts}
-              onTogglePill={togglePill}
-              onToggleAgent={toggleAgent}
-            />
-          ))}
+          {groupByBatch(model.agents).map((batch, bi) => {
+            const sections = batch.map((agent) => (
+              <AgentSection
+                key={agent.session.id}
+                agent={agent}
+                startMs={startMs}
+                expandedPills={expandedPills}
+                openPrompts={openPrompts}
+                onTogglePill={togglePill}
+                onToggleAgent={toggleAgent}
+              />
+            ));
+            // Agents launch in parallel batches, not sequentially — a batch's
+            // members are siblings (concurrent lanes), not a chain.
+            if (batch.length === 1) return sections;
+            return (
+              <div
+                key={`batch-${bi}`}
+                className="border-l-2 border-dashed border-border pl-2"
+                data-testid={`cascade-batch-${bi}`}
+              >
+                <div className="px-1 pt-2 font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground/70">
+                  ∥ parallel ×{batch.length}
+                </div>
+                {sections}
+              </div>
+            );
+          })}
         </div>
       </div>
     </div>
