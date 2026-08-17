@@ -17,6 +17,7 @@ export type StreamEventType =
   | "tool-error"
   | "start"
   | "finish"
+  | "data-usage"
   | "error";
 
 export type ToolCallStatus =
@@ -144,6 +145,13 @@ export interface FinishEvent extends BaseStreamEvent {
   };
 }
 
+/** Mid-stream per-step usage update emitted by the server after each agentic step. */
+export interface UsageUpdateEvent extends BaseStreamEvent {
+  type: "data-usage";
+  /** Already-normalized cumulative TokenUsage (built by normalizeTokenUsage server-side). */
+  data: TokenUsage;
+}
+
 export type StreamEvent =
   | TextStartEvent
   | TextDeltaEvent
@@ -160,6 +168,7 @@ export type StreamEvent =
   | ToolErrorEvent
   | StartEvent
   | FinishEvent
+  | UsageUpdateEvent
   | ErrorEvent;
 
 // Generic streaming message structure
