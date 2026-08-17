@@ -78,8 +78,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, message: "Swarm not found" }, { status: 404 });
     }
 
-    console.log(swarm)
-
     console.log(`[STAKGRAPH_INGEST] Found swarm - ID: ${swarm.id}, name: ${swarm.name}, ingestRequestInProgress: ${swarm.ingestRequestInProgress}`);
 
     if (!swarm.swarmUrl || !swarm.swarmApiKey) {
@@ -100,6 +98,8 @@ export async function POST(request: NextRequest) {
       docsEnabled: boolean;
       mocksEnabled: boolean;
       embeddingsEnabled: boolean;
+      shallowClone: boolean;
+      blobSizeLimit: string | null;
     };
     let allFetchedRepos: RepoWithSyncConfig[];
 
@@ -117,6 +117,8 @@ export async function POST(request: NextRequest) {
           docsEnabled: true,
           mocksEnabled: true,
           embeddingsEnabled: true,
+          shallowClone: true,
+          blobSizeLimit: true,
         },
       });
 
@@ -160,8 +162,40 @@ export async function POST(request: NextRequest) {
     const mocksRepos = repositoriesToIngest.filter(r => r.mocksEnabled);
     const embeddingsRepos = repositoriesToIngest.filter(r => r.embeddingsEnabled);
 
+    // Regex for validating git blob size limit specs at the ingest boundary.
+    // Defense against direct-DB / seed writes that bypass the PATCH Zod check.
+    const BLOB_SIZE_LIMIT_RE = /^[1-9][0-9]*[kmg]?$/i;
+
+    // Resolve depth/filter for single-repo ingestion only.
+    // Multi-repo batches deliberately omit these fields: stakgraph applies
+    // depth/filter as one global scalar per request across all comma-joined
+    // repos, so there is no correct per-repo value to send in a batch.
+    // This is the accepted v1 limitation.
+    let resolvedDepth: number | undefined;
+    let resolvedFilter: string | undefined;
+    if (repositoriesToIngest.length === 1) {
+      const singleRepo = repositoriesToIngest[0];
+      if (singleRepo.shallowClone) {
+        resolvedDepth = 1;
+      }
+      const rawLimit = singleRepo.blobSizeLimit;
+      if (rawLimit && BLOB_SIZE_LIMIT_RE.test(rawLimit)) {
+        resolvedFilter = `blob:limit=${rawLimit}`;
+      }
+    }
+
+    // Build syncOptions whenever any option (docs/mocks/embeddings/depth/filter) applies.
+    // Previously this block was only entered when docs/mocks/embeddings were set, which
+    // caused shallow-clone/size-limit-only repos to never send depth/filter (gating bug).
+    const needsSyncOptions =
+      docsRepos.length > 0 ||
+      mocksRepos.length > 0 ||
+      embeddingsRepos.length > 0 ||
+      resolvedDepth !== undefined ||
+      resolvedFilter !== undefined;
+
     let syncOptions: SyncOptions | undefined;
-    if (docsRepos.length > 0 || mocksRepos.length > 0 || embeddingsRepos.length > 0) {
+    if (needsSyncOptions) {
       syncOptions = {};
 
       // If all repos have docs enabled, use true; otherwise use comma-separated repo names
@@ -185,7 +219,13 @@ export async function POST(request: NextRequest) {
           : embeddingsRepos.map(r => r.name).join(',');
       }
 
-      console.log(`[STAKGRAPH_INGEST] Sync options - docs: ${syncOptions.docs}, mocks: ${syncOptions.mocks}, embeddings: ${syncOptions.embeddings}`);
+      if (resolvedDepth !== undefined) syncOptions.depth = resolvedDepth;
+      if (resolvedFilter !== undefined) syncOptions.filter = resolvedFilter;
+
+      console.log(
+        `[STAKGRAPH_INGEST] Sync options - docs: ${syncOptions.docs}, mocks: ${syncOptions.mocks}, ` +
+        `embeddings: ${syncOptions.embeddings}, depth: ${syncOptions.depth}, filter: ${syncOptions.filter}`
+      );
     }
 
     const finalRepoUrls = repositoriesToIngest.map(repo => repo.repositoryUrl).join(',');
