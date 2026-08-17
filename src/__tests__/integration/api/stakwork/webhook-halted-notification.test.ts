@@ -70,7 +70,10 @@ async function waitForNotification(
 function makeRequest(body: object): NextRequest {
   return new NextRequest("http://localhost:3000/api/stakwork/webhook", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      "x-api-token": process.env.API_TOKEN ?? "test-token",
+    },
     body: JSON.stringify(body),
   });
 }
