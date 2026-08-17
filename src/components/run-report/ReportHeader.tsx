@@ -4,6 +4,11 @@ import React, { useState } from "react";
 import type { RunReportProjection } from "@/lib/run-report/types";
 import { asString, isRecord } from "@/lib/run-report/derive";
 import type { ChainModel, ConceptPull } from "@/lib/run-report/chain";
+import {
+  computeBenchmarkScore,
+  formatBenchmarkScore,
+  type GraphRubric,
+} from "@/lib/harvey-lab/rubric-scoring";
 import { StatusBadge, Chip, Kicker, MiniHeading, renderValue } from "./chrome";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { SafeMarkdown } from "./SafeMarkdown";
@@ -233,6 +238,7 @@ export function ReportHeader({
   taskTitle,
   timezone,
   workspaceSlug,
+  graphRubrics = null,
   onOpenDoc,
 }: {
   projection: RunReportProjection;
@@ -240,6 +246,7 @@ export function ReportHeader({
   taskTitle: string;
   timezone: string;
   workspaceSlug: string | null;
+  graphRubrics?: GraphRubric[] | null;
   onOpenDoc: OpenDoc;
 }) {
   const cfg = projection.pageData.config as Record<string, unknown>;
@@ -247,7 +254,24 @@ export function ReportHeader({
   const goal = asString(cfg.task_goal);
   const runId = asString(cfg.run_id);
   const { stats, generatedAtMs } = projection;
-  const allPassed = stats.failCount === 0 && stats.passCount !== null;
+
+  // Graph-first score: denominator from the task's EvalRequirement roster with
+  // contested definitions dropped from both sides. Falls back to bundle-local
+  // rubric counts when neither roster nor rubric rows are usable.
+  const score = computeBenchmarkScore({
+    criteriaResults: projection.rubricRows.map((r) => ({
+      id: r.id,
+      title: r.title,
+      verdict: r.verdict,
+      contested: r.criterionContested,
+    })),
+    graphRubrics,
+  });
+  const scoreDisplay = score ? formatBenchmarkScore(score) : null;
+  const passCount = score ? score.passed : stats.passCount;
+  const denominator = score ? score.denominator : stats.rubricCount;
+  const failCount = score ? score.denominator - score.passed : stats.failCount;
+  const allPassed = score ? score.allPass : stats.failCount === 0 && stats.passCount !== null;
 
   return (
     <header
@@ -267,17 +291,26 @@ export function ReportHeader({
       <div className="flex flex-wrap items-end gap-8 mt-5">
         <div>
           <div className="text-[56px] leading-none font-semibold tracking-tight tabular-nums">
-            {stats.passCount ?? "—"}
-            <span className="text-2xl text-muted-foreground/60 font-normal"> / {stats.rubricCount}</span>
+            {passCount ?? "—"}
+            <span className="text-2xl text-muted-foreground/60 font-normal"> / {denominator}</span>
           </div>
           <div className="font-mono text-[10px] uppercase tracking-[0.1em] text-muted-foreground/70 mt-1.5">
             criteria passed
           </div>
+          {scoreDisplay?.annotation && (
+            <div
+              className="font-mono text-[10px] uppercase tracking-[0.1em] text-violet-700 dark:text-violet-400 mt-1"
+              data-testid="run-report-contested-annotation"
+              title="Contested criteria are excluded from the score. The total is the task's rubric roster in the graph."
+            >
+              {scoreDisplay.annotation}
+            </div>
+          )}
         </div>
         <div className="flex-1 min-w-[260px]">
-          {stats.passCount !== null && (
+          {passCount !== null && (
             <StatusBadge kind={allPassed ? "pass" : "fail"}>
-              {allPassed ? "All criteria passed" : `${stats.failCount} failed`}
+              {allPassed ? "All criteria passed" : `${failCount} failed`}
             </StatusBadge>
           )}
           {goal && <p className="text-[14px] text-muted-foreground max-w-[72ch] mt-2">{goal}</p>}

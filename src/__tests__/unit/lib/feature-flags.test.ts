@@ -379,6 +379,80 @@ describe("WHITEBOARD_STAKWORK_POSITIONING feature flag", () => {
   });
 });
 
+describe("AI_DOC_EDITOR feature flag", () => {
+  let originalEnv: typeof process.env;
+
+  beforeEach(() => {
+    originalEnv = { ...process.env };
+    delete process.env.NEXT_PUBLIC_FEATURE_AI_DOC_EDITOR;
+  });
+
+  afterEach(() => {
+    process.env = { ...originalEnv };
+    vi.clearAllMocks();
+  });
+
+  describe("canAccessFeature", () => {
+    test("should return false when env var is unset (default off)", () => {
+      const result = canAccessFeature(FEATURE_FLAGS.AI_DOC_EDITOR);
+      expect(result).toBe(false);
+    });
+
+    test("should return false when NEXT_PUBLIC_FEATURE_AI_DOC_EDITOR=false", () => {
+      process.env.NEXT_PUBLIC_FEATURE_AI_DOC_EDITOR = "false";
+      const result = canAccessFeature(FEATURE_FLAGS.AI_DOC_EDITOR);
+      expect(result).toBe(false);
+    });
+
+    test("should return true when NEXT_PUBLIC_FEATURE_AI_DOC_EDITOR=true", () => {
+      process.env.NEXT_PUBLIC_FEATURE_AI_DOC_EDITOR = "true";
+      const result = canAccessFeature(FEATURE_FLAGS.AI_DOC_EDITOR);
+      expect(result).toBe(true);
+    });
+
+    test("no role restriction — all WorkspaceRole values return true when enabled", () => {
+      process.env.NEXT_PUBLIC_FEATURE_AI_DOC_EDITOR = "true";
+      const roles: WorkspaceRole[] = ["VIEWER", "DEVELOPER", "PM", "STAKEHOLDER", "ADMIN", "OWNER"];
+      roles.forEach((role) => {
+        expect(canAccessFeature(FEATURE_FLAGS.AI_DOC_EDITOR, role)).toBe(true);
+      });
+    });
+
+    test("no role restriction — returns true with no role when enabled", () => {
+      process.env.NEXT_PUBLIC_FEATURE_AI_DOC_EDITOR = "true";
+      expect(canAccessFeature(FEATURE_FLAGS.AI_DOC_EDITOR, undefined)).toBe(true);
+    });
+  });
+
+  describe("canAccessServerFeature", () => {
+    test("should return false when env var is unset", () => {
+      const result = canAccessServerFeature(FEATURE_FLAGS.AI_DOC_EDITOR);
+      expect(result).toBe(false);
+    });
+
+    test("should return true when NEXT_PUBLIC_FEATURE_AI_DOC_EDITOR=true", () => {
+      process.env.NEXT_PUBLIC_FEATURE_AI_DOC_EDITOR = "true";
+      const result = canAccessServerFeature(FEATURE_FLAGS.AI_DOC_EDITOR);
+      expect(result).toBe(true);
+    });
+
+    test("canAccessServerFeature returns same result as canAccessFeature (server parity)", () => {
+      process.env.NEXT_PUBLIC_FEATURE_AI_DOC_EDITOR = "true";
+      const clientResult = canAccessFeature(FEATURE_FLAGS.AI_DOC_EDITOR, "ADMIN");
+      const serverResult = canAccessServerFeature(FEATURE_FLAGS.AI_DOC_EDITOR, "ADMIN");
+      expect(clientResult).toBe(serverResult);
+      expect(serverResult).toBe(true);
+    });
+
+    test("server parity — both disabled when env var unset", () => {
+      const clientResult = canAccessFeature(FEATURE_FLAGS.AI_DOC_EDITOR);
+      const serverResult = canAccessServerFeature(FEATURE_FLAGS.AI_DOC_EDITOR);
+      expect(clientResult).toBe(serverResult);
+      expect(serverResult).toBe(false);
+    });
+  });
+});
+
 describe("CHAT_CODE_FORMATTING feature flag", () => {
   let originalEnv: typeof process.env;
 
