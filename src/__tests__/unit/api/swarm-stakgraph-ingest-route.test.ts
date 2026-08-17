@@ -14,6 +14,7 @@ vi.mock("@/lib/db", () => ({
       updateMany: vi.fn(),
     },
     repository: {
+      findUnique: vi.fn(),
       update: vi.fn(),
     },
     workspace: {
@@ -159,6 +160,9 @@ const mockRepositoryInfo = {
   codeIngestionEnabled: true,
   docsEnabled: true,
   mocksEnabled: true,
+  embeddingsEnabled: false,
+  shallowClone: false,
+  blobSizeLimit: null,
 };
 
 describe("POST /api/swarm/stakgraph/ingest", () => {
@@ -278,6 +282,180 @@ describe("POST /api/swarm/stakgraph/ingest", () => {
       workspaceId: mockSwarm.workspaceId,
       ingestRequestInProgress: false,
     });
+  });
+});
+
+describe("depth/filter — shallowClone and blobSizeLimit plumbing", () => {
+  const singleRepoWithFlags = (overrides: Partial<typeof mockRepositoryInfo> = {}) => ({
+    ...mockRepositoryInfo,
+    ...overrides,
+  });
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(getServerSession).mockResolvedValue(mockSession);
+    vi.mocked(db.swarm.findUnique).mockResolvedValue(mockSwarm);
+    vi.mocked(db.swarm.update).mockResolvedValue(mockSwarm);
+    vi.mocked(db.swarm.updateMany).mockResolvedValue({ count: 1 });
+    vi.mocked(db.repository.update).mockResolvedValue(mockRepository);
+    vi.mocked(db.workspace.findUnique).mockResolvedValue(mockWorkspace);
+    vi.mocked(getGithubUsernameAndPAT).mockResolvedValue(mockGithubProfile);
+    vi.mocked(triggerIngestAsync).mockResolvedValue({ ok: true, status: 200, data: { request_id: "req-123" } });
+    vi.mocked(checkStakgraphAvailability).mockResolvedValue(true);
+    vi.mocked(saveOrUpdateSwarm).mockResolvedValue(mockSwarm as any);
+  });
+
+  // Helper: mock db.repository.findUnique for single-repo path
+  function mockSingleRepo(overrides: Partial<typeof mockRepositoryInfo> = {}) {
+    vi.mocked(db.repository.findUnique).mockResolvedValue({
+      ...mockRepositoryInfo,
+      workspaceId: "workspace-123",
+      ...overrides,
+    } as any);
+  }
+
+  test("single-repo with shallowClone=true sends depth:1 in syncOptions", async () => {
+    mockSingleRepo({ shallowClone: true, blobSizeLimit: null, docsEnabled: false, mocksEnabled: false, embeddingsEnabled: false });
+
+    const request = new NextRequest("http://localhost/api/swarm/stakgraph/ingest", {
+      method: "POST",
+      body: JSON.stringify({ workspaceId: "workspace-123", repositoryId: "repo-123" }),
+    });
+
+    const response = await POST(request);
+    expect(response.status).toBe(200);
+
+    expect(triggerIngestAsync).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.any(String),
+      expect.any(String),
+      expect.any(Object),
+      expect.any(String),
+      expect.any(Boolean),
+      expect.objectContaining({ depth: 1 }),
+    );
+
+    const callArgs = vi.mocked(triggerIngestAsync).mock.calls[0];
+    const options = callArgs[6];
+    expect(options?.filter).toBeUndefined();
+  });
+
+  test("single-repo with valid blobSizeLimit sends filter spec", async () => {
+    mockSingleRepo({ shallowClone: false, blobSizeLimit: "1m", docsEnabled: false, mocksEnabled: false, embeddingsEnabled: false });
+
+    const request = new NextRequest("http://localhost/api/swarm/stakgraph/ingest", {
+      method: "POST",
+      body: JSON.stringify({ workspaceId: "workspace-123", repositoryId: "repo-123" }),
+    });
+
+    await POST(request);
+
+    const options = vi.mocked(triggerIngestAsync).mock.calls[0][6];
+    expect(options?.filter).toBe("blob:limit=1m");
+    expect(options?.depth).toBeUndefined();
+  });
+
+  test("single-repo with both shallowClone and valid blobSizeLimit sends both depth and filter", async () => {
+    mockSingleRepo({ shallowClone: true, blobSizeLimit: "500k", docsEnabled: false, mocksEnabled: false, embeddingsEnabled: false });
+
+    const request = new NextRequest("http://localhost/api/swarm/stakgraph/ingest", {
+      method: "POST",
+      body: JSON.stringify({ workspaceId: "workspace-123", repositoryId: "repo-123" }),
+    });
+
+    await POST(request);
+
+    const options = vi.mocked(triggerIngestAsync).mock.calls[0][6];
+    expect(options?.depth).toBe(1);
+    expect(options?.filter).toBe("blob:limit=500k");
+  });
+
+  test("gating-bug regression: shallow-only repo (docs/mocks/embeddings all off) still produces syncOptions with depth", async () => {
+    // This is the key regression guard: before the fix, syncOptions was only
+    // created when docsRepos/mocksRepos/embeddingsRepos were non-empty.
+    mockSingleRepo({ shallowClone: true, blobSizeLimit: null, docsEnabled: false, mocksEnabled: false, embeddingsEnabled: false });
+
+    const request = new NextRequest("http://localhost/api/swarm/stakgraph/ingest", {
+      method: "POST",
+      body: JSON.stringify({ workspaceId: "workspace-123", repositoryId: "repo-123" }),
+    });
+
+    await POST(request);
+
+    // syncOptions must be passed and must contain depth:1
+    expect(triggerIngestAsync).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.any(String),
+      expect.any(String),
+      expect.any(Object),
+      expect.any(String),
+      expect.any(Boolean),
+      expect.objectContaining({ depth: 1 }),
+    );
+  });
+
+  test("repo with both fields unset sends no depth or filter (backward compat)", async () => {
+    mockSingleRepo({ shallowClone: false, blobSizeLimit: null, docsEnabled: false, mocksEnabled: false, embeddingsEnabled: false });
+
+    const request = new NextRequest("http://localhost/api/swarm/stakgraph/ingest", {
+      method: "POST",
+      body: JSON.stringify({ workspaceId: "workspace-123", repositoryId: "repo-123" }),
+    });
+
+    await POST(request);
+
+    const options = vi.mocked(triggerIngestAsync).mock.calls[0][6];
+    // syncOptions should be undefined or not carry depth/filter
+    expect(options?.depth).toBeUndefined();
+    expect(options?.filter).toBeUndefined();
+  });
+
+  test("invalid persisted blobSizeLimit is silently skipped (boundary re-validation)", async () => {
+    // Simulates a direct-DB write that bypassed the PATCH Zod validation
+    mockSingleRepo({ shallowClone: false, blobSizeLimit: "abc", docsEnabled: false, mocksEnabled: false, embeddingsEnabled: false });
+
+    const request = new NextRequest("http://localhost/api/swarm/stakgraph/ingest", {
+      method: "POST",
+      body: JSON.stringify({ workspaceId: "workspace-123", repositoryId: "repo-123" }),
+    });
+
+    await POST(request);
+
+    const options = vi.mocked(triggerIngestAsync).mock.calls[0][6];
+    expect(options?.filter).toBeUndefined();
+  });
+
+  test("invalid blobSizeLimit '0' is silently skipped", async () => {
+    mockSingleRepo({ shallowClone: false, blobSizeLimit: "0", docsEnabled: false, mocksEnabled: false, embeddingsEnabled: false });
+
+    const request = new NextRequest("http://localhost/api/swarm/stakgraph/ingest", {
+      method: "POST",
+      body: JSON.stringify({ workspaceId: "workspace-123", repositoryId: "repo-123" }),
+    });
+
+    await POST(request);
+
+    const options = vi.mocked(triggerIngestAsync).mock.calls[0][6];
+    expect(options?.filter).toBeUndefined();
+  });
+
+  test("multi-repo batch never sends depth or filter", async () => {
+    // Two repos, one with shallowClone — multi-repo path must omit depth/filter
+    const repo1 = { ...mockRepositoryInfo, shallowClone: true, blobSizeLimit: "1m" };
+    const repo2 = { ...mockRepositoryInfo, id: "repo-456", name: "repo2", shallowClone: false, blobSizeLimit: null };
+    vi.mocked(getAllRepositories).mockResolvedValue([repo1, repo2]);
+
+    const request = new NextRequest("http://localhost/api/swarm/stakgraph/ingest", {
+      method: "POST",
+      // No repositoryId → multi-repo path
+      body: JSON.stringify({ workspaceId: "workspace-123" }),
+    });
+
+    await POST(request);
+
+    const options = vi.mocked(triggerIngestAsync).mock.calls[0][6];
+    expect(options?.depth).toBeUndefined();
+    expect(options?.filter).toBeUndefined();
   });
 });
 
