@@ -495,12 +495,13 @@ export function useSendCanvasChatMessage() {
             });
           }
 
-          // When streaming is done and the finish event carried usage data,
-          // stamp it onto the last tool-call batch row so StreamingMessage
-          // can render TurnTokenUsage + Complete pill. No text-only fallback:
-          // text-only turns render via SidebarChatMessage which has no
-          // TurnTokenUsage render path.
-          if (!updatedMessage.isStreaming && updatedMessage.usage) {
+          // Stamp cumulative usage onto the last tool-call batch row so
+          // StreamingMessage can render TurnTokenUsage live (mid-stream,
+          // after each step) and as a final value once the turn ends.
+          // Runs on every update when usage is present, not only on finish.
+          // No text-only fallback: text-only turns render via
+          // SidebarChatMessage which has no TurnTokenUsage render path.
+          if (updatedMessage.usage) {
             for (let i = timelineMessages.length - 1; i >= 0; i--) {
               const m = timelineMessages[i];
               if (m.role === "assistant" && !!m.timeline?.length) {
