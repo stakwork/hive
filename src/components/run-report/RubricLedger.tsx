@@ -1,11 +1,16 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import type { RunReportProjection } from "@/lib/run-report/types";
 import { readTraces } from "@/lib/run-report/derive";
 import type { ChainModel, CriterionChain, Hop, HopLink } from "@/lib/run-report/chain";
 import { Kicker, StatusBadge, EmptyPanel } from "./chrome";
-import { resolveJudgeDispute, resolveContested } from "@/lib/harvey-lab/eval-normalizers";
+import { resolveJudgeDispute } from "@/lib/harvey-lab/eval-normalizers";
+import {
+  buildContestedIndex,
+  isCriterionContested,
+  type GraphRubric,
+} from "@/lib/harvey-lab/rubric-scoring";
 import { CriterionMarkers } from "./CriterionMarkers";
 
 /**
@@ -148,15 +153,17 @@ function CriterionButton({
   c,
   selected,
   small,
+  contested,
   onSelect,
 }: {
   c: CriterionChain;
   selected: boolean;
   small?: boolean;
+  contested: boolean;
   onSelect: (id: string) => void;
 }) {
   const isDisputed = resolveJudgeDispute({ verdict: c.verdict, flagged: c.judgeFlagged, llm_flag_reason: c.judgeFlagReason }) !== null;
-  const isContested = resolveContested({ contested: c.criterionContested });
+  const isContested = contested;
   return (
     <button
       type="button"
@@ -181,15 +188,26 @@ function CriterionButton({
 export function RubricLedger({
   projection,
   chain,
+  graphRubrics = null,
   onOpenDoc,
 }: {
   projection: RunReportProjection;
   chain: ChainModel;
+  graphRubrics?: GraphRubric[] | null;
   onOpenDoc: OpenDoc;
 }) {
   // Tier 2 renders only when the bundle actually carries failure traces —
   // a deterministic run shows the pure scaffold, no empty slots.
   const hasCommentary = readTraces(projection.analysis).length > 0;
+
+  // Contested definitions from the graph roster; the run-recorded flag is the
+  // fallback inside isCriterionContested.
+  const contestedIndex = useMemo(() => buildContestedIndex(graphRubrics), [graphRubrics]);
+  const contestedOf = (c: CriterionChain) =>
+    isCriterionContested(
+      { id: c.id, title: c.title, contested: c.criterionContested },
+      contestedIndex,
+    );
 
   const [selectedId, setSelectedId] = useState(chain.criteria[0]?.id ?? "");
   const selected = chain.criteria.find((c) => c.id === selectedId) ?? chain.criteria[0];
@@ -232,7 +250,13 @@ export function RubricLedger({
         <div className="md:sticky md:top-4 max-h-[calc(100dvh-8rem)] overflow-y-auto overscroll-contain">
           <div className="rounded-lg border border-border divide-y divide-border">
             {open.map((c) => (
-              <CriterionButton key={c.id} c={c} selected={c.id === selected?.id} onSelect={setSelectedId} />
+              <CriterionButton
+                key={c.id}
+                c={c}
+                selected={c.id === selected?.id}
+                contested={contestedOf(c)}
+                onSelect={setSelectedId}
+              />
             ))}
           </div>
           {passed.length > 0 && (
@@ -242,7 +266,14 @@ export function RubricLedger({
               </summary>
               <div className="rounded-lg border border-border divide-y divide-border mt-1">
                 {passed.map((c) => (
-                  <CriterionButton key={c.id} c={c} small selected={c.id === selected?.id} onSelect={setSelectedId} />
+                  <CriterionButton
+                    key={c.id}
+                    c={c}
+                    small
+                    selected={c.id === selected?.id}
+                    contested={contestedOf(c)}
+                    onSelect={setSelectedId}
+                  />
                 ))}
               </div>
             </details>
@@ -256,7 +287,7 @@ export function RubricLedger({
               <h3 className="text-[16px] font-semibold flex-1">{selected.title}</h3>
               <CriterionMarkers
                 disputed={resolveJudgeDispute({ verdict: selected.verdict, flagged: selected.judgeFlagged, llm_flag_reason: selected.judgeFlagReason }) !== null}
-                contested={resolveContested({ contested: selected.criterionContested })}
+                contested={contestedOf(selected)}
               />
               <StatusBadge
                 kind={selected.verdict === "pass" ? "pass" : selected.verdict === "fail" ? "fail" : "warn"}

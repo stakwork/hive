@@ -136,12 +136,11 @@ describe("CriterionMarkers", () => {
     expect(disputedTooltip).toBeDefined();
   });
 
-  it("CONTESTED chip tooltip mentions historical context", () => {
+  it("CONTESTED chip tooltip explains score exclusion", () => {
     render(<CriterionMarkers contested={true} />);
     const tooltipContents = screen.getAllByTestId("tooltip-content");
     const contestedTooltip = tooltipContents.find((el) =>
-      el.textContent?.toLowerCase().includes("does not rewrite") ||
-      el.textContent?.toLowerCase().includes("historical"),
+      el.textContent?.toLowerCase().includes("excluded from the score"),
     );
     expect(contestedTooltip).toBeDefined();
   });
