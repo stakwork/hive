@@ -1,5 +1,6 @@
 import "@testing-library/jest-dom";
-import { beforeAll, afterAll, vi } from "vitest";
+import { beforeAll, afterAll, afterEach, vi } from "vitest";
+import { cleanup } from "@testing-library/react";
 import { TextEncoder, TextDecoder } from "util";
 
 // Polyfill TextEncoder/TextDecoder for jsdom environment
@@ -68,6 +69,14 @@ if (typeof window !== 'undefined') {
     })),
   });
 }
+
+// Ensure React Testing Library's DOM cleanup runs after every test.
+// With singleFork: true all jsdom test files share one process, so automatic
+// per-file cleanup does not fire between files — explicit afterEach is required
+// to prevent rendered components from leaking across test boundaries.
+afterEach(() => {
+  cleanup();
+});
 
 beforeAll(() => {
   // Global test hooks can be added here when needed.
