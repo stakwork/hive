@@ -232,6 +232,32 @@ export function resolveJudgeDispute(criterion: {
   return { reason, hasReason, displayText };
 }
 
+// ─── Contested Criterion Resolver ────────────────────────────────────────────
+
+/**
+ * Resolve whether a criterion's *definition* has been flagged as contested
+ * (i.e. the criterion itself is considered broken, not just the run's scoring).
+ *
+ * Deliberately a sibling of `resolveJudgeDispute`, NOT folded into it:
+ * - No verdict gate — a passing criterion CAN be contested (the definition is
+ *   independent of how that criterion happened to score in this run).
+ * - Wire key: `contested` (vs. `flagged` / `llm_flag_reason` for disputes).
+ *
+ * Returns true for: `true`, `1`, `"true"` (case-insensitive).
+ * Returns false for everything else (including `false`, `0`, `"false"`,
+ * `undefined`, `null`, objects, arrays).
+ *
+ * Note: nothing emits `contested` on a live run yet — tracked external
+ * dependency on the contest agent producer. This is fixture-verified and ships
+ * dark: absent keys return false and render exactly as today.
+ */
+export function resolveContested(criterion: { contested?: unknown }): boolean {
+  const c = criterion.contested;
+  if (c === true || c === 1) return true;
+  if (typeof c === "string" && c.toLowerCase() === "true") return true;
+  return false;
+}
+
 // ─── Trigger identity guard ───────────────────────────────────────────────────
 
 /**

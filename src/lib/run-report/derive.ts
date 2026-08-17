@@ -317,6 +317,12 @@ export function groupRubrics(rubrics: unknown[], _score?: unknown): RubricRow[] 
     }
     const flagReason = asString(entry.llm_flag_reason);
     if (flagReason !== null) row.judgeFlagReason = flagReason;
+    // Narrow wire `contested` → `criterionContested` using the same primitive-only
+    // narrowing applied to `flagged` — an object/array must never ride the projection.
+    const contested = entry.contested;
+    if (typeof contested === "boolean" || typeof contested === "number" || typeof contested === "string") {
+      row.criterionContested = contested;
+    }
     rows.push(row);
   }
 
