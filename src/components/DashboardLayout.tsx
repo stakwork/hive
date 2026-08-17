@@ -29,6 +29,7 @@ const PUBLIC_VIEWER_BLOCKED_SEGMENTS = [
   "projects",         // stakwork write surface
   "settings",         // already server-gated, but belt-and-suspenders
   "graph-admin",      // already server-gated
+  "documents",        // editor write surface
 ] as const;
 
 function isBlockedForPublicViewer(pathname: string): boolean {
@@ -64,7 +65,8 @@ export function DashboardLayout({ children, user, isPublicWorkspace = false }: D
   const { workspace, loading, error, isPublicViewer } = useWorkspace();
   const pathname = usePathname();
   const router = useRouter();
-  const isFullscreenPage = pathname.includes("/task/") || pathname.includes("/plan/");
+  const isDocumentsPage = pathname.includes("/documents/");
+  const isFullscreenPage = isDocumentsPage || pathname.includes("/task/") || pathname.includes("/plan/");
   const [workspaceLogoUrl, setWorkspaceLogoUrl] = useState<string | null>(null);
 
   // Redirect public viewers away from sensitive or write-only pages.
@@ -174,7 +176,7 @@ export function DashboardLayout({ children, user, isPublicWorkspace = false }: D
       <div className={`flex-1 flex flex-col min-h-0 overflow-hidden ${isFullscreenPage ? "md:pl-0" : "md:pl-64"}`}>
         <ViewerAccessBanner />
         <PublicWorkspaceBanner />
-        <main className={`flex-1 flex flex-col min-h-0 ${isFullscreenPage ? "overflow-hidden p-1 md:p-3" : "overflow-auto p-4 md:p-6"}`}>
+        <main className={`flex-1 flex flex-col min-h-0 ${isDocumentsPage ? "overflow-hidden p-0" : isFullscreenPage ? "overflow-hidden p-1 md:p-3" : "overflow-auto p-4 md:p-6"}`}>
           {children}
         </main>
       </div>
