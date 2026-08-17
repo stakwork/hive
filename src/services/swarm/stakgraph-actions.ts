@@ -10,6 +10,8 @@ export interface SyncOptions {
   docs?: boolean | string;       // true = all repos, string = comma-separated repo names
   mocks?: boolean | string;      // true = all repos, string = comma-separated repo names
   embeddings?: boolean | string; // true = all repos, string = comma-separated repo names
+  depth?: number;                // shallow clone depth (>= 1); omit for full clone
+  filter?: string;               // git filter spec, e.g. "blob:limit=1m"; omit for no filtering
 }
 
 export interface AsyncSyncResult {
@@ -73,13 +75,16 @@ export async function triggerAsyncSync(
 ): Promise<AsyncSyncResult> {
   console.log(`[STAKGRAPH] triggerAsyncSync — swarmHost: ${swarmHost}, stakgraphUrl: https://${swarmHost}:7799`);
   const stakgraphUrl = getStakgraphUrl(swarmHost);
-  const data: Record<string, string | boolean> = { repo_url: repoUrl, use_lsp: useLsp };
+  const data: Record<string, string | boolean | number> = { repo_url: repoUrl, use_lsp: useLsp };
   if (creds?.username) data.username = creds.username;
   if (creds?.pat) data.pat = creds.pat;
-  if (callbackUrl) (data as Record<string, string>).callback_url = callbackUrl;
+  if (callbackUrl) data.callback_url = callbackUrl;
   if (options?.docs) data.docs = String(options.docs);
   if (options?.mocks) data.mocks = String(options.mocks);
   if (options?.embeddings) data.embeddings = String(options.embeddings);
+  // depth/filter: only set when present (omit = no shallow clone / no size filter)
+  if (options?.depth !== undefined) data.depth = Math.trunc(options.depth);
+  if (options?.filter !== undefined) data.filter = options.filter;
   const result = await swarmApiRequest({
     swarmUrl: stakgraphUrl,
     endpoint: "/sync_async",
@@ -107,7 +112,7 @@ export async function triggerIngestAsync(
 ) {
   console.log(`[STAKGRAPH] triggerIngestAsync — swarmName: ${swarmName}, stakgraphUrl: https://${swarmName}:7799, useLsp: ${useLsp}`);
   const stakgraphUrl = getStakgraphUrl(swarmName);
-  const data: Record<string, string | boolean> = {
+  const data: Record<string, string | boolean | number> = {
     repo_url: repoUrl,
     username: creds.username,
     pat: creds.pat,
@@ -118,6 +123,9 @@ export async function triggerIngestAsync(
   if (options?.docs) data.docs = String(options.docs);
   if (options?.mocks) data.mocks = String(options.mocks);
   if (options?.embeddings) data.embeddings = String(options.embeddings);
+  // depth/filter: only set when present (omit = no shallow clone / no size filter)
+  if (options?.depth !== undefined) data.depth = Math.trunc(options.depth);
+  if (options?.filter !== undefined) data.filter = options.filter;
   return swarmApiRequest({
     swarmUrl: stakgraphUrl,
     endpoint: "/ingest_async",

@@ -299,6 +299,8 @@ describe("POST /api/swarm/stakgraph/sync - Integration Tests", () => {
         testRepositoryUrl,
         { username: "testuser", pat: "github-pat-token" },
         expect.stringContaining("/api/swarm/stakgraph/webhook"),
+        false,
+        undefined,
       );
     });
 
@@ -326,6 +328,8 @@ describe("POST /api/swarm/stakgraph/sync - Integration Tests", () => {
         testRepositoryUrl,
         undefined,
         expect.stringContaining("/api/swarm/stakgraph/webhook"),
+        false,
+        undefined,
       );
     });
 
@@ -671,7 +675,9 @@ describe("POST /api/swarm/stakgraph/sync - Integration Tests", () => {
         expect.any(String),
         expect.any(String),
         expect.any(Object),
-        expect.stringMatching(/\/api\/swarm\/stakgraph\/webhook$/)
+        expect.stringMatching(/\/api\/swarm\/stakgraph\/webhook$/),
+        false,
+        undefined,
       );
     });
 
@@ -876,12 +882,154 @@ describe("POST /api/swarm/stakgraph/sync - Integration Tests", () => {
         testSwarm.swarmApiKey,
         testRepositoryUrl,
         { username: "e2e-testuser", pat: "e2e-github-token" },
-        expect.stringContaining("/api/swarm/stakgraph/webhook")
+        expect.stringContaining("/api/swarm/stakgraph/webhook"),
+        false,
+        undefined,
       );
 
       // Verify API key still encrypted in database
       const storedApiKey = updatedSwarm?.swarmApiKey || "";
       expect(storedApiKey).not.toContain(PLAINTEXT_SWARM_API_KEY);
     });
+  });
+});
+
+describe("POST /api/swarm/stakgraph/sync — blobSizeLimit filter plumbing", () => {
+  const enc = EncryptionService.getInstance();
+  const PLAINTEXT_SWARM_API_KEY = "swarm_sync_blob_key";
+
+  let testUser: User;
+  let testWorkspace: Workspace;
+  let testSwarm: Swarm;
+
+  function createSyncRequest(body: object) {
+    return createPostRequest("http://localhost:3000/api/swarm/stakgraph/sync", body);
+  }
+
+  beforeEach(async () => {
+    vi.clearAllMocks();
+
+    const syncRepositoryUrl = `https://github.com/test/sync-blob-${generateUniqueId()}.git`;
+
+    const testData = await db.$transaction(async (tx) => {
+      const user = await tx.user.create({
+        data: {
+          id: generateUniqueId("user"),
+          email: `sync-blob-user-${generateUniqueId()}@example.com`,
+          name: "Sync Blob Test User",
+        },
+      });
+
+      const workspace = await tx.workspace.create({
+        data: {
+          name: "Sync Blob Test Workspace",
+          slug: generateUniqueSlug("sync-blob-ws"),
+          ownerId: user.id,
+        },
+      });
+
+      const swarm = await tx.swarm.create({
+        data: {
+          workspaceId: workspace.id,
+          name: `sync-blob-swarm-${generateUniqueId()}`,
+          swarmId: generateUniqueId("swarm"),
+          status: "ACTIVE",
+          swarmUrl: "https://sync-blob-swarm.sphinx.chat/api",
+          swarmApiKey: JSON.stringify(enc.encryptField("swarmApiKey", PLAINTEXT_SWARM_API_KEY)),
+          services: [],
+          agentRequestId: null,
+          agentStatus: null,
+        },
+      });
+
+      await tx.repository.create({
+        data: {
+          name: "sync-blob-repo",
+          repositoryUrl: syncRepositoryUrl,
+          workspaceId: workspace.id,
+          status: RepositoryStatus.SYNCED,
+          branch: "main",
+          codeIngestionEnabled: true,
+          shallowClone: false,
+          blobSizeLimit: "2m",
+        },
+      });
+
+      return { user, workspace, swarm };
+    });
+
+    testUser = testData.user;
+    testWorkspace = testData.workspace;
+    testSwarm = testData.swarm;
+
+    getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
+    mockGetGithubUsernameAndPAT.mockResolvedValue({ username: "blobuser", token: "blob-token" });
+  });
+
+  it("passes filter to /sync_async when repo has valid blobSizeLimit, never passes depth", async () => {
+    mockTriggerAsyncSync.mockResolvedValue({
+      ok: true,
+      status: 200,
+      data: { request_id: "sync-blob-req-1" },
+    });
+
+    const response = await POST(createSyncRequest({ workspaceId: testWorkspace.id }));
+    expect(response.status).toBe(200);
+
+    // Should be called with the filter option derived from blobSizeLimit
+    expect(mockTriggerAsyncSync).toHaveBeenCalledWith(
+      expect.stringContaining(testSwarm.name),
+      testSwarm.swarmApiKey,
+      expect.any(String),
+      expect.any(Object),
+      expect.any(String),
+      false,
+      { filter: "blob:limit=2m" },
+    );
+
+    // Must never send depth (sync ignores it per the stakgraph contract)
+    const options = mockTriggerAsyncSync.mock.calls[0][6];
+    expect(options?.depth).toBeUndefined();
+  });
+
+  it("omits filter option when blobSizeLimit is not set on the primary repo", async () => {
+    // Update repo to have no blobSizeLimit
+    await db.repository.updateMany({
+      where: { workspaceId: testWorkspace.id },
+      data: { blobSizeLimit: null },
+    });
+
+    mockTriggerAsyncSync.mockResolvedValue({
+      ok: true,
+      status: 200,
+      data: { request_id: "sync-noblob-req-1" },
+    });
+
+    const response = await POST(createSyncRequest({ workspaceId: testWorkspace.id }));
+    expect(response.status).toBe(200);
+
+    const options = mockTriggerAsyncSync.mock.calls[0][6];
+    // No filter when blobSizeLimit is unset
+    expect(options).toBeUndefined();
+  });
+
+  it("silently skips invalid blobSizeLimit on sync (boundary re-validation)", async () => {
+    // Simulate a direct-DB write with an invalid value
+    await db.repository.updateMany({
+      where: { workspaceId: testWorkspace.id },
+      data: { blobSizeLimit: "not-valid" },
+    });
+
+    mockTriggerAsyncSync.mockResolvedValue({
+      ok: true,
+      status: 200,
+      data: { request_id: "sync-invalid-req-1" },
+    });
+
+    const response = await POST(createSyncRequest({ workspaceId: testWorkspace.id }));
+    expect(response.status).toBe(200);
+
+    const options = mockTriggerAsyncSync.mock.calls[0][6];
+    expect(options).toBeUndefined();
   });
 });

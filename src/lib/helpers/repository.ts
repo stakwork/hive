@@ -15,6 +15,8 @@ export type RepositoryInfo = {
   docsEnabled: boolean;
   mocksEnabled: boolean;
   embeddingsEnabled: boolean;
+  shallowClone: boolean;
+  blobSizeLimit: string | null;
 };
 
 export async function getPrimaryRepository(workspaceId: string): Promise<RepositoryInfo | null> {
@@ -36,6 +38,8 @@ export async function getPrimaryRepository(workspaceId: string): Promise<Reposit
           docsEnabled: true,
           mocksEnabled: true,
           embeddingsEnabled: true,
+          shallowClone: true,
+          blobSizeLimit: true,
         },
         orderBy: { createdAt: "asc" },
       },
@@ -62,6 +66,8 @@ export async function getPrimaryRepository(workspaceId: string): Promise<Reposit
     docsEnabled: primaryRepo.docsEnabled,
     mocksEnabled: primaryRepo.mocksEnabled,
     embeddingsEnabled: primaryRepo.embeddingsEnabled,
+    shallowClone: primaryRepo.shallowClone,
+    blobSizeLimit: primaryRepo.blobSizeLimit,
   };
 }
 
@@ -82,6 +88,8 @@ export async function getRepositoryById(repositoryId: string, workspaceId: strin
       docsEnabled: true,
       mocksEnabled: true,
       embeddingsEnabled: true,
+      shallowClone: true,
+      blobSizeLimit: true,
       workspaceId: true,
     },
   });
@@ -104,6 +112,8 @@ export async function getRepositoryById(repositoryId: string, workspaceId: strin
     docsEnabled: repo.docsEnabled,
     mocksEnabled: repo.mocksEnabled,
     embeddingsEnabled: repo.embeddingsEnabled,
+    shallowClone: repo.shallowClone,
+    blobSizeLimit: repo.blobSizeLimit,
   };
 }
 
@@ -126,6 +136,8 @@ export async function getAllRepositories(workspaceId: string): Promise<Repositor
           docsEnabled: true,
           mocksEnabled: true,
           embeddingsEnabled: true,
+          shallowClone: true,
+          blobSizeLimit: true,
         },
         orderBy: { createdAt: "asc" },
       },
@@ -150,6 +162,8 @@ export async function getAllRepositories(workspaceId: string): Promise<Repositor
     docsEnabled: repo.docsEnabled,
     mocksEnabled: repo.mocksEnabled,
     embeddingsEnabled: repo.embeddingsEnabled,
+    shallowClone: repo.shallowClone,
+    blobSizeLimit: repo.blobSizeLimit,
   }));
 }
 
