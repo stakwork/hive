@@ -147,7 +147,35 @@ export interface CanvasAgentHooks {
    * uses this for token-attribution prep work; programmatic callers
    * typically don't need it.
    */
-  onStepFinish?: (sf: { content: unknown }) => void | Promise<void>;
+  onStepFinish?: (sf: {
+    content: unknown;
+    /**
+     * Token usage for this individual step.
+     * Maps directly from the AI SDK's `LanguageModelUsage` fields.
+     */
+    usage?: {
+      inputTokens?: number;
+      outputTokens?: number;
+      inputTokenDetails?: {
+        cacheReadTokens?: number;
+        cacheWriteTokens?: number;
+        noCacheTokens?: number;
+      };
+    };
+    /**
+     * Cumulative token usage across all steps so far (AI SDK's own
+     * running sum — preferred over hand-rolling an accumulator).
+     */
+    totalUsage?: {
+      inputTokens?: number;
+      outputTokens?: number;
+      inputTokenDetails?: {
+        cacheReadTokens?: number;
+        cacheWriteTokens?: number;
+        noCacheTokens?: number;
+      };
+    };
+  }) => void | Promise<void>;
   /**
    * Called once when the stream finishes successfully. Receives the
    * final `usage` so the caller can record token spend, plus the
@@ -1136,8 +1164,18 @@ export async function runCanvasAgent(
       // token recording, custom logging). Callers MUST keep this fast
       // or they re-introduce the per-step latency regression we just
       // avoided above.
+      //
+      // Forward `usage` (this step) and `totalUsage` (AI SDK's running
+      // cumulative sum across all steps so far) so callers can emit
+      // live per-step usage updates without hand-rolling an accumulator.
+      // The SDK's `totalUsage` is the canonical figure — it is computed
+      // internally and never double-counts a step that was retried.
       if (hooks?.onStepFinish) {
-        await hooks.onStepFinish(sf);
+        await hooks.onStepFinish({
+          content: sf.content,
+          usage: (sf as { usage?: unknown }).usage as Parameters<NonNullable<CanvasAgentHooks["onStepFinish"]>>[0]["usage"],
+          totalUsage: (sf as { totalUsage?: unknown }).totalUsage as Parameters<NonNullable<CanvasAgentHooks["onStepFinish"]>>[0]["totalUsage"],
+        });
       }
     },
     onChunk: ({ chunk }) => {
