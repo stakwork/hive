@@ -391,6 +391,11 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
 
   const handleWorkflowStatusUpdate = useCallback(
     (update: WorkflowStatusUpdate) => {
+      // Guard: since the webhook now fans child-task events to the
+      // feature channel, only update OUR planner state when the event
+      // targets this feature itself (taskId === featureId). Child-task
+      // events (taskId !== featureId) must not overwrite planner status.
+      if (update.taskId !== featureId) return;
       setWorkflowStatus(update.workflowStatus);
       if (
         update.workflowStatus === WorkflowStatus.COMPLETED ||
@@ -403,7 +408,7 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
       }
       onStreamStatusUpdate(update);
     },
-    [onStreamStatusUpdate],
+    [featureId, onStreamStatusUpdate],
   );
 
   const handleFeatureTitleUpdate = useCallback(

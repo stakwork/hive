@@ -32,6 +32,15 @@ function buildWorkflowTimestamps(status: WorkflowStatus): Record<string, unknown
 
 export async function POST(request: NextRequest) {
   try {
+    // Auth guard — same pattern as /api/webhook/agent-logs.
+    // Must run before any DB read/write to prevent IDOR via
+    // attacker-controlled task_id/run_id in the request body.
+    const apiToken = request.headers.get("x-api-token");
+    if (!apiToken || apiToken !== process.env.API_TOKEN) {
+      console.error("[stakwork/webhook] rejected: invalid token");
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const body = (await request.json()) as StakworkStatusPayload;
     const { project_status, task_id } = body;
 
@@ -221,10 +230,13 @@ export async function POST(request: NextRequest) {
         }
 
         try {
+          // Uniformly timestamped so client-side discriminator and
+          // dedup logic works consistently: taskId === featureId →
+          // planner event; timestamp allows ordering/dedup.
           await pusherServer.trigger(
             getFeatureChannelName(feature.id),
             PUSHER_EVENTS.WORKFLOW_STATUS_UPDATE,
-            { taskId: feature.id, workflowStatus },
+            { taskId: feature.id, workflowStatus, timestamp: new Date() },
           );
         } catch (error) {
           console.error("Error broadcasting feature status to Pusher:", error);
@@ -306,8 +318,9 @@ export async function POST(request: NextRequest) {
 
     // Sync feature status if task belongs to a feature
     if (updatedTask.featureId) {
+      const featureId = updatedTask.featureId;
       try {
-        await updateFeatureStatusFromTasks(updatedTask.featureId);
+        await updateFeatureStatusFromTasks(featureId);
       } catch (error) {
         console.error('Failed to sync feature status:', error);
         // Don't fail the request if feature sync fails
@@ -315,9 +328,27 @@ export async function POST(request: NextRequest) {
       // Stakwork webhook fires on every workflow status transition,
       // including PENDING→IN_PROGRESS and IN_PROGRESS→COMPLETED. Both
       // change the milestone's agent count. Refresh the canvas.
-      void notifyFeatureCanvasRefresh(updatedTask.featureId, "stakwork-status", {
+      void notifyFeatureCanvasRefresh(featureId, "stakwork-status", {
         taskId: finalTaskId,
       });
+
+      // Fan out child-task status to the feature's Pusher channel so
+      // Feature cards on the org canvas can show a live task-agent
+      // count badge without polling.
+      // Discriminator for consumers: taskId !== featureId → child-task event.
+      try {
+        await pusherServer.trigger(
+          getFeatureChannelName(featureId),
+          PUSHER_EVENTS.WORKFLOW_STATUS_UPDATE,
+          { taskId: finalTaskId, workflowStatus, timestamp: new Date() },
+        );
+        console.log(
+          "[stakwork/webhook] fan out task status to feature channel",
+          { featureId, taskId: finalTaskId, workflowStatus },
+        );
+      } catch (error) {
+        console.error("[stakwork/webhook] Error broadcasting task status to feature channel:", error);
+      }
     }
 
     try {
