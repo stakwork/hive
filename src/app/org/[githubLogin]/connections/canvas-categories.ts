@@ -248,6 +248,23 @@ export const CATEGORY_REGISTRY: CategorySpec[] = [
         key: "secondary",
         description: 'footer text — e.g. `"2/3 tasks"`. Hidden when `taskCount === 0`.',
       },
+      // --- Live agent-activity indicators (computed by projector; updated
+      //     incrementally by the mergeFeatureLiveState reducer on Pusher events) ---
+      {
+        key: "plannerRunning",
+        description:
+          "`true` when the feature's own planning-workflow (`Feature.workflowStatus === \"IN_PROGRESS\"`) is active, OR when a matching `STAKWORK_RUN_UPDATE` is received on the workspace channel. Drives the amber pulsing spinner in the `topRight` slot. Forced `false` when any child task has `FAILED`/`ERROR` (same halt condition as `updateFeatureStatusFromTasks`). Excluded from `PENDING` (the schema default) to avoid false-positives on brand-new features.",
+      },
+      {
+        key: "agentTasks",
+        description:
+          "per-task array `{id, workflowStatus}[]` seeded by the projector. Used as the trusted id set for the client-side live-state merge: only task ids present here can be upserted from incoming Pusher events (prevents IDOR via untrusted wire ids). Kept as a full array (not a count) so a single `WORKFLOW_STATUS_UPDATE` can be merged by id without losing other tasks.",
+      },
+      {
+        key: "agentsRunningCount",
+        description:
+          "count of in-flight tasks derived from `agentTasks`: `workflowStatus === \"IN_PROGRESS\"` OR (`task.mode === \"agent\"` AND `workflowStatus === \"PENDING\"`). Drives the amber count badge in `topRightOuter` (hidden when 0, same as the milestone's `agentCount` badge). Updated incrementally by the live-state reducer on `WORKFLOW_STATUS_UPDATE` child-task events.",
+      },
     ],
   },
   {

@@ -119,6 +119,13 @@ type StepLike = {
   text?: string;
   toolCalls?: Array<{ toolCallId: string; toolName: string; input?: unknown }>;
   toolResults?: Array<{ toolCallId: string; output?: unknown; result?: unknown }>;
+  /**
+   * Mirrors `LanguageModelResponseMetadata.timestamp` from the AI SDK.
+   * Kept optional and as `Date | string` so plain test fixtures without
+   * a `response` field continue to type-check, and the `string` branch
+   * is handled by the defensive parsing in `messagesFromSteps`.
+   */
+  response?: { timestamp?: Date | string };
 };
 
 const NO_STRIP: ReadonlySet<string> = new Set();
@@ -146,9 +153,33 @@ export function messagesFromSteps(
   const rows: StoredMessage[] = [];
   let idx = 0;
   const nextId = () => `${idPrefix}${idx++}`;
+  // `now` is used only as the initial fallback for the first step in a turn
+  // that lacks its own response.timestamp.
   const now = new Date().toISOString();
+  // Forward-fill: tracks the most recent valid timestamp seen in this turn so
+  // that steps without their own timestamp stay in chronological order.
+  let lastTimestamp = now;
 
   for (const step of steps) {
+    // Derive per-step timestamp from response.timestamp (the moment the model's
+    // response for this step arrived).  Note: this reflects model-response
+    // completion, not necessarily when a tool call *inside* the step finished
+    // executing — per-tool-call timing is out of scope here.
+    let stepTimestamp = lastTimestamp;
+    try {
+      const raw = step.response?.timestamp;
+      if (raw !== undefined && raw !== null) {
+        const parsed = new Date(raw as string | number | Date);
+        if (!isNaN(parsed.getTime())) {
+          stepTimestamp = parsed.toISOString();
+          lastTimestamp = stepTimestamp;
+        }
+      }
+    } catch {
+      // A malformed response.timestamp must never abort the whole turn's
+      // persistence — degrade silently to lastTimestamp.
+    }
+
     // Extract any schedule_check result from this step so it can be
     // attached to the text row as `deferredCheck` metadata.
     const deferredCheck = extractDeferredCheckFromStep(step);
@@ -158,7 +189,7 @@ export function messagesFromSteps(
         id: nextId(),
         role: "assistant",
         content: step.text,
-        timestamp: now,
+        timestamp: stepTimestamp,
       };
       if (deferredCheck) {
         textRow.deferredCheck = deferredCheck;
@@ -198,11 +229,13 @@ export function messagesFromSteps(
       });
 
     if (toolCalls.length > 0) {
+      // Both the text row and tool-call row from the same step share the same
+      // stepTimestamp — the AI SDK exposes timing at step granularity only.
       const toolRow: StoredMessage = {
         id: nextId(),
         role: "assistant",
         content: "",
-        timestamp: now,
+        timestamp: stepTimestamp,
         toolCalls,
       };
       // If there was no text in this step, attach deferredCheck to the
