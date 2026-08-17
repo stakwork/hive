@@ -5,6 +5,7 @@ import { getWorkspaceSwarmAccess } from "@/lib/helpers/swarm-access";
 import { transformSwarmUrlToRepo2Graph } from "@/lib/utils/swarm";
 import { checkRateLimit, getClientIp } from "@/lib/rate-limit";
 import { db } from "@/lib/db";
+import { dedupeSessionsById } from "./derive";
 import type {
   CascadeConcept,
   CascadeSession,
@@ -249,9 +250,11 @@ export async function fetchRunSessions(access: CascadeAccess): Promise<RunSessio
       `/api/sessions?agent_name_contains=${encodeURIComponent(candidate)}&limit=${SESSION_LIST_LIMIT}`,
     )) as { sessions?: unknown[] } | unknown[];
     const rawRows = Array.isArray(body) ? body : (body?.sessions ?? []);
-    const sessions = rawRows
-      .map(toCascadeSession)
-      .filter((s): s is CascadeSession => s !== null);
+    // Dedupe by id: the upstream list can transiently repeat a session until
+    // its dedupe pass runs on the next repo2graph boot.
+    const sessions = dedupeSessionsById(
+      rawRows.map(toCascadeSession).filter((s): s is CascadeSession => s !== null),
+    );
     if (sessions.length > 0) return { identifier: candidate, sessions };
   }
   return { identifier: null, sessions: [] };
