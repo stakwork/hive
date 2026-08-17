@@ -17,8 +17,15 @@ import { useWorkspace } from "@/hooks/useWorkspace";
 import { StakworkRunLink } from "@/components/legal/StakworkRunLink";
 import { EvalRunsBox } from "@/components/legal/EvalRunsBox";
 import { BenchmarkRunAgentLogs } from "@/components/legal/BenchmarkRunAgentLogs";
-import { resolveJudgeDispute, resolveContested } from "@/lib/harvey-lab/eval-normalizers";
+import { resolveJudgeDispute } from "@/lib/harvey-lab/eval-normalizers";
 import { CriterionMarkers } from "@/components/run-report/CriterionMarkers";
+import { useBenchmarkRubrics } from "@/hooks/useBenchmarkRubrics";
+import {
+  buildContestedIndex,
+  computeBenchmarkScore,
+  criterionStatus,
+  formatBenchmarkScore,
+} from "@/lib/harvey-lab/rubric-scoring";
 
 /** Strip provider prefix for display, e.g. "anthropic/claude-sonnet-5" → "claude-sonnet-5" */
 function displayModelName(value: string | undefined): string {
@@ -55,6 +62,12 @@ export function LegalBenchmarkResults({ runId, onReset, isSuperAdmin = false }: 
   const allPass = run?.runnerRun?.result?.all_pass;
   const criteriaResults = run?.runnerRun?.result?.criteria_results;
 
+  // Graph rubric roster — the source of truth for the score denominator and
+  // contested definitions. Null (no roster / still loading) falls back to
+  // run-local scoring.
+  const { rubrics: graphRubrics } = useBenchmarkRubrics(run?.taskSlug);
+  const contestedIndex = useMemo(() => buildContestedIndex(graphRubrics), [graphRubrics]);
+
   const [isOpen, setIsOpen] = useState<boolean>(!allPass);
   const [filterQuery, setFilterQuery] = useState<string>("");
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -69,16 +82,17 @@ export function LegalBenchmarkResults({ runId, onReset, isSuperAdmin = false }: 
             c.title?.toLowerCase().includes(q) ||
             c.reasoning?.toLowerCase().includes(q) ||
             resolveJudgeDispute(c)?.displayText.toLowerCase().includes(q) ||
-            (resolveContested(c) && "contested".includes(q)),
+            (criterionStatus(c, contestedIndex) === "CONTESTED" &&
+              "contested".includes(q)),
         )
       : criteriaResults;
-    return [...filtered].sort((a, b) => {
-      const aPass = a.verdict?.toLowerCase() === "pass";
-      const bPass = b.verdict?.toLowerCase() === "pass";
-      if (aPass === bPass) return 0;
-      return aPass ? 1 : -1; // failed first
-    });
-  }, [criteriaResults, filterQuery]);
+    // Review order: FAIL first, then CONTESTED, passes last.
+    const rank = { FAIL: 0, CONTESTED: 1, PASS: 2 } as const;
+    return [...filtered].sort(
+      (a, b) =>
+        rank[criterionStatus(a, contestedIndex)] - rank[criterionStatus(b, contestedIndex)],
+    );
+  }, [criteriaResults, filterQuery, contestedIndex]);
 
   const handleCopy = () => {
     if (run?.runnerOutputText) {
@@ -92,7 +106,7 @@ export function LegalBenchmarkResults({ runId, onReset, isSuperAdmin = false }: 
     const header = "Verdict\tID\tTitle\tReasoning\tJudge Dispute\tContested";
     const rows = sortedFiltered.map(
       (c) =>
-        `${sanitize(c.verdict)}\t${sanitize(c.id)}\t${sanitize(c.title)}\t${sanitize(c.reasoning)}\t${sanitize(resolveJudgeDispute(c)?.displayText ?? "")}\t${resolveContested(c) ? "true" : ""}`,
+        `${sanitize(c.verdict)}\t${sanitize(c.id)}\t${sanitize(c.title)}\t${sanitize(c.reasoning)}\t${sanitize(resolveJudgeDispute(c)?.displayText ?? "")}\t${criterionStatus(c, contestedIndex) === "CONTESTED" ? "true" : ""}`,
     );
     navigator.clipboard.writeText([header, ...rows].join("\n"));
   };
@@ -163,11 +177,28 @@ export function LegalBenchmarkResults({ runId, onReset, isSuperAdmin = false }: 
 
   if (run.status === "complete") {
     const result = run.runnerRun.result;
-    const nPassed = result?.n_passed;
-    const nTotal = result?.n_total;
-    const hasScore = typeof allPass === "boolean";
+    // Graph-first score: the denominator comes from the task's EvalRequirement
+    // roster (minus contested definitions) when available; contested criteria
+    // are dropped from both sides of the score.
+    const score = computeBenchmarkScore({
+      criteriaResults,
+      nPassed: result?.n_passed,
+      nTotal: result?.n_total,
+      graphRubrics,
+    });
+    const scoreDisplay = score ? formatBenchmarkScore(score) : null;
+    const hasScore = score !== null || typeof allPass === "boolean";
     const hasCriteriaResults = Array.isArray(criteriaResults) && criteriaResults.length > 0;
-    const failedCount = criteriaResults?.filter((c) => c.verdict.toLowerCase() !== "pass").length ?? 0;
+    // Derive PASS/FAIL only when there is something to derive it FROM —
+    // per-criterion results, a graph roster, or contested exclusions. A run
+    // carrying only flat counts keeps the runner's own verdict.
+    const displayAllPass =
+      score && (hasCriteriaResults || score.source === "graph" || score.contested > 0)
+        ? score.allPass
+        : allPass;
+    const failedCount =
+      criteriaResults?.filter((c) => criterionStatus(c, contestedIndex) === "FAIL").length ?? 0;
+    const contestedCount = score?.contested ?? 0;
 
     // Unified model display precedence
     const execModel = displayModelName(result?.requestedModel ?? result?.model);
@@ -175,10 +206,12 @@ export function LegalBenchmarkResults({ runId, onReset, isSuperAdmin = false }: 
     const isLegacyExec = !result?.requestedModel && !result?.model;
     const isLegacyJudge = !result?.requestedJudgeModel && !result?.judge_model;
 
-    // Criteria that failed AND have not yet been evaluated (no cause_type)
+    // Criteria that failed AND have not yet been evaluated (no cause_type).
+    // Contested criteria are excluded — a broken definition is not a genuine
+    // failure worth root-causing.
     const unevaluatedFailedCount =
       criteriaResults?.filter(
-        (c) => c.verdict.toLowerCase() !== "pass" && !c.cause_type,
+        (c) => criterionStatus(c, contestedIndex) === "FAIL" && !c.cause_type,
       ).length ?? 0;
     const showRunEvalButton = unevaluatedFailedCount > 0;
 
@@ -255,21 +288,30 @@ export function LegalBenchmarkResults({ runId, onReset, isSuperAdmin = false }: 
           </div>
           {hasScore ? (
             <div className="px-4 py-4 flex items-center gap-4">
-              {nPassed !== undefined && nTotal !== undefined && (
-                <span className="text-sm font-medium">
-                  {nPassed}/{nTotal} criteria passed
+              {scoreDisplay && (
+                <span className="text-sm font-medium" data-testid="score-summary-line">
+                  {scoreDisplay.headline} criteria passed
                 </span>
               )}
               <Badge
                 variant="outline"
                 className={
-                  allPass
+                  displayAllPass
                     ? "border-0 bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300"
                     : "border-0 bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300"
                 }
               >
-                {allPass ? "PASS" : "FAIL"}
+                {displayAllPass ? "PASS" : "FAIL"}
               </Badge>
+              {scoreDisplay?.annotation && (
+                <span
+                  className="text-xs text-violet-700 dark:text-violet-400"
+                  data-testid="score-contested-annotation"
+                  title="Contested criteria are excluded from the score. The total is the task's rubric roster in the graph."
+                >
+                  {scoreDisplay.annotation}
+                </span>
+              )}
             </div>
           ) : (
             <div className="px-4 py-6 text-center text-sm text-muted-foreground">
@@ -286,7 +328,8 @@ export function LegalBenchmarkResults({ runId, onReset, isSuperAdmin = false }: 
                 <CollapsibleTrigger asChild>
                   <button className="flex items-center justify-between flex-1 px-4 py-3 text-left hover:bg-muted/40 transition-colors">
                     <span className="font-semibold text-sm">
-                      Rubric Details ({failedCount} failed / {criteriaResults!.length} total)
+                      Rubric Details ({failedCount} failed / {criteriaResults!.length} total
+                      {contestedCount > 0 ? ` · ${contestedCount} contested` : ""})
                     </span>
                     {isOpen ? (
                       <ChevronUp className="h-4 w-4 text-muted-foreground shrink-0" />
@@ -316,7 +359,7 @@ export function LegalBenchmarkResults({ runId, onReset, isSuperAdmin = false }: 
                 </div>
                 <div className="divide-y">
                   {sortedFiltered.map((criterion) => {
-                    const isPass = criterion.verdict.toLowerCase() === "pass";
+                    const status = criterionStatus(criterion, contestedIndex);
                     return (
                       <Collapsible
                         key={criterion.id}
@@ -327,18 +370,19 @@ export function LegalBenchmarkResults({ runId, onReset, isSuperAdmin = false }: 
                           <button className="flex items-center gap-3 w-full px-4 py-3 text-left hover:bg-muted/40 transition-colors text-sm">
                             <Badge
                               className={
-                                isPass
-                                  ? "border-0 bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300 shrink-0"
-                                  : "border-0 bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300 shrink-0"
+                                status === "CONTESTED"
+                                  ? "border-0 bg-violet-500/15 text-violet-700 dark:text-violet-400 shrink-0"
+                                  : status === "PASS"
+                                    ? "border-0 bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300 shrink-0"
+                                    : "border-0 bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300 shrink-0"
                               }
                             >
-                              {criterion.verdict}
+                              {status === "CONTESTED" ? "CONTESTED" : criterion.verdict}
                             </Badge>
                             <code className="text-xs text-muted-foreground shrink-0">{criterion.id}</code>
                             <span className="truncate">{criterion.title}</span>
                             <CriterionMarkers
                               disputed={resolveJudgeDispute(criterion) !== null}
-                              contested={resolveContested(criterion)}
                             />
                           </button>
                         </CollapsibleTrigger>
@@ -364,7 +408,7 @@ export function LegalBenchmarkResults({ runId, onReset, isSuperAdmin = false }: 
                                 </div>
                               );
                             })()}
-                            {resolveContested(criterion) && (
+                            {criterionStatus(criterion, contestedIndex) === "CONTESTED" && (
                               <div
                                 data-testid="criterion-contested-note"
                                 className="mx-4 mb-3 border-l-2 border-violet-500/40 pl-3"
@@ -373,7 +417,8 @@ export function LegalBenchmarkResults({ runId, onReset, isSuperAdmin = false }: 
                                   Contested Definition
                                 </p>
                                 <p className="text-sm text-muted-foreground">
-                                  This criterion&apos;s definition was flagged as potentially broken. This reflects what this run recorded — editing the criterion today does not rewrite historical runs.
+                                  This criterion&apos;s definition is flagged as broken, so it is
+                                  excluded from the score (recorded verdict: {criterion.verdict || "none"}).
                                 </p>
                               </div>
                             )}

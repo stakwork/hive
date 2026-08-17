@@ -4,6 +4,7 @@ import React, { useMemo, useState } from "react";
 import { AlertCircle, Info } from "lucide-react";
 import { useUserTimezone } from "@/hooks/useUserTimezone";
 import type { RunReportPayload } from "@/lib/run-report/types";
+import type { GraphRubric } from "@/lib/harvey-lab/rubric-scoring";
 import { buildChainModel } from "@/lib/run-report/chain";
 import { DocumentViewerModal } from "./DocumentViewerModal";
 import { ReportHeader } from "./ReportHeader";
@@ -46,9 +47,20 @@ interface Props {
   payload: RunReportPayload;
   taskTitle?: string;
   workspaceSlug?: string | null;
+  /**
+   * The task's rubric roster read from the graph (EvalSet → EvalRequirement),
+   * fetched server-side by the page. Drives the graph-first score denominator
+   * and contested exclusions; null falls back to bundle-local scoring.
+   */
+  graphRubrics?: GraphRubric[] | null;
 }
 
-export function RunReportView({ payload, taskTitle = "Run report", workspaceSlug = null }: Props) {
+export function RunReportView({
+  payload,
+  taskTitle = "Run report",
+  workspaceSlug = null,
+  graphRubrics = null,
+}: Props) {
   const { timezone } = useUserTimezone();
   const [openDoc, setOpenDoc] = useState<{ docId: string; tokens: string[] } | null>(null);
 
@@ -109,12 +121,18 @@ export function RunReportView({ payload, taskTitle = "Run report", workspaceSlug
               taskTitle={taskTitle}
               timezone={timezone}
               workspaceSlug={workspaceSlug}
+              graphRubrics={graphRubrics}
               onOpenDoc={onOpenDoc}
             />
           </SectionErrorBoundary>
         </div>
         <SectionErrorBoundary>
-          <RubricLedger projection={projection} chain={chain} onOpenDoc={onOpenDoc} />
+          <RubricLedger
+            projection={projection}
+            chain={chain}
+            graphRubrics={graphRubrics}
+            onOpenDoc={onOpenDoc}
+          />
         </SectionErrorBoundary>
         <SectionErrorBoundary>
           <ChecklistMap chain={chain} />
