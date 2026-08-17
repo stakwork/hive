@@ -12,6 +12,10 @@
  * - POST .../run → returns project_ids for all triggers; zero triggers → 404
  * - Run route passes apiKey.createdById as userId to dispatchEvalTriggerRun
  *   → getBifrostForLLM is called with that userId
+ * - `contested`: create default / loose coercion / un-coercible → 400 /
+ *   omission preserves the stored value / transition logging
+ * - Ownership: unresolvable eval set or cross-eval-set reqId → 404, no write
+ * - Rate limit: past the per-key limit → 429
  */
 
 import { describe, test, expect, beforeEach, afterEach, vi } from "vitest";
@@ -42,7 +46,16 @@ vi.mock("@/services/bifrost/orchestrator", () => ({
   BIFROST_AGENT_NAMES: ["repo-agent", "canvas-agent"],
 }));
 
+vi.mock("@/lib/redis", () => ({
+  redis: {
+    incr: vi.fn(),
+    expire: vi.fn(),
+    ttl: vi.fn(),
+  },
+}));
+
 import { getBifrostForLLM } from "@/services/bifrost/orchestrator";
+import { redis } from "@/lib/redis";
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -84,6 +97,66 @@ function makeApiKeyRequest(
     headers,
     body: body !== undefined ? JSON.stringify(body) : undefined,
   });
+}
+
+/**
+ * Queue the ownership fetch every requirement write now performs: the eval set
+ * resolved inside the caller's own swarm, with its HAS_REQUIREMENT children.
+ * Mirrors Jarvis's real casing ("Evalset" / "Evalrequirement").
+ */
+function mockEvalSetScope(
+  setId: string,
+  requirements: Array<{ ref_id: string; properties?: Record<string, unknown> }> = [],
+) {
+  mockFetch.mockResolvedValueOnce({
+    ok: true,
+    status: 200,
+    json: async () => ({
+      nodes: [
+        { ref_id: setId, node_type: "Evalset", properties: { name: "The set" } },
+        ...requirements.map((r) => ({
+          ref_id: r.ref_id,
+          node_type: "Evalrequirement",
+          properties: r.properties ?? {},
+        })),
+      ],
+      edges: [],
+    }),
+  } as Response);
+}
+
+/** Queue an ownership fetch that resolves nothing — an id outside this swarm. */
+function mockEvalSetNotFound() {
+  mockFetch.mockResolvedValueOnce({
+    ok: true,
+    status: 200,
+    json: async () => ({ nodes: [], edges: [] }),
+  } as Response);
+}
+
+/** node_data sent to Jarvis by addNode (POST /v2/nodes). */
+function capturedAddNodeData(): Record<string, unknown> | null {
+  const call = mockFetch.mock.calls.find(
+    (c) => c[1]?.method === "POST" && String(c[0]).endsWith("/v2/nodes"),
+  );
+  if (!call) return null;
+  return JSON.parse(call[1].body as string)?.node_data ?? null;
+}
+
+/** node_data sent to Jarvis by updateNode (PUT /node?ref_id=...). */
+function capturedUpdateNodeData(): Record<string, unknown> | null {
+  const call = mockFetch.mock.calls.find((c) => String(c[0]).includes("/node?ref_id="));
+  if (!call) return null;
+  return JSON.parse(call[1].body as string)?.node_data ?? null;
+}
+
+function jarvisWriteCalls() {
+  return mockFetch.mock.calls.filter(
+    (c) =>
+      (c[1]?.method === "POST" && String(c[0]).endsWith("/v2/nodes")) ||
+      String(c[0]).includes("/node?ref_id=") ||
+      String(c[0]).includes("/node/edge"),
+  );
 }
 
 async function capturedStakworkVars(): Promise<Record<string, unknown> | null> {
@@ -153,6 +226,11 @@ beforeEach(() => {
   process.env.STAKWORK_BASE_URL = "https://api.stakwork.com/api/v1";
 
   vi.mocked(getBifrostForLLM).mockResolvedValue(undefined);
+
+  // Under the limit by default; individual tests push the counter over.
+  vi.mocked(redis.incr).mockResolvedValue(1);
+  vi.mocked(redis.expire).mockResolvedValue(1);
+  vi.mocked(redis.ttl).mockResolvedValue(60);
 });
 
 afterEach(async () => {
@@ -396,11 +474,8 @@ describe("POST /api/gateway/evals/:setId/requirements", () => {
   test("returns ref_id on successful create", async () => {
     const ctx = await createTestContext(RAW_KEY_1, SWARM_NAME_1 + "-req-post");
 
-    // First fetch: sibling count
-    mockFetch.mockResolvedValueOnce({
-      ok: true,
-      json: async () => ({ nodes: [], edges: [] }),
-    } as Response);
+    // First fetch: ownership resolution, which also supplies the sibling count
+    mockEvalSetScope(SET_ID);
     // Second fetch: addNode
     mockFetch.mockResolvedValueOnce({
       ok: true,
@@ -463,6 +538,7 @@ describe("PUT /api/gateway/evals/:setId/requirements/:reqId", () => {
   test("returns 204 on successful update", async () => {
     const ctx = await createTestContext(RAW_KEY_1, SWARM_NAME_1 + "-req-put");
 
+    mockEvalSetScope(SET_ID, [{ ref_id: REQ_ID }]);
     mockFetch.mockResolvedValueOnce({
       ok: true,
       json: async () => ({ status: "success" }),
@@ -525,6 +601,402 @@ describe("DELETE /api/gateway/evals/:setId/requirements/:reqId", () => {
       params: Promise.resolve({ setId: SET_ID, reqId: REQ_ID }),
     });
     expect(res.status).toBe(401);
+  });
+});
+
+// ── contested field ───────────────────────────────────────────────────────────
+
+describe("contested — POST /api/gateway/evals/:setId/requirements", () => {
+  function mockCreateSuccess() {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ status: "success", data: { ref_id: "new-req-ref" } }),
+    } as Response); // addNode
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ status: "success", edges: [{}] }),
+    } as Response); // addEdge
+  }
+
+  async function post(body: unknown) {
+    const req = makeRequest(
+      "POST",
+      `http://localhost/api/gateway/evals/${SET_ID}/requirements`,
+      RAW_KEY_1,
+      body,
+    );
+    return postRequirement(req as any, { params: Promise.resolve({ setId: SET_ID }) });
+  }
+
+  test("persists false when contested is omitted", async () => {
+    await createTestContext(RAW_KEY_1, SWARM_NAME_1 + "-c-post-omit");
+    mockEvalSetScope(SET_ID);
+    mockCreateSuccess();
+
+    const res = await post({ name: "Req" });
+    expect(res.status).toBe(201);
+    expect(capturedAddNodeData()?.contested).toBe(false);
+  });
+
+  test("persists true when contested is true", async () => {
+    await createTestContext(RAW_KEY_1, SWARM_NAME_1 + "-c-post-true");
+    mockEvalSetScope(SET_ID);
+    mockCreateSuccess();
+
+    const res = await post({ name: "Req", contested: true });
+    expect(res.status).toBe(201);
+    expect(capturedAddNodeData()?.contested).toBe(true);
+  });
+
+  test('coerces "true" to a real boolean', async () => {
+    await createTestContext(RAW_KEY_1, SWARM_NAME_1 + "-c-post-str");
+    mockEvalSetScope(SET_ID);
+    mockCreateSuccess();
+
+    const res = await post({ name: "Req", contested: "TRUE" });
+    expect(res.status).toBe(201);
+    expect(capturedAddNodeData()?.contested).toBe(true);
+  });
+
+  test("400s with a field-specific message on an un-coercible value, before any write", async () => {
+    await createTestContext(RAW_KEY_1, SWARM_NAME_1 + "-c-post-bad");
+
+    const res = await post({ name: "Req", contested: "maybe" });
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error).toMatch(/contested/i);
+    expect(jarvisWriteCalls()).toHaveLength(0);
+  });
+});
+
+describe("contested — PUT /api/gateway/evals/:setId/requirements/:reqId", () => {
+  function mockUpdateSuccess() {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ status: "success" }),
+    } as Response);
+  }
+
+  async function put(body: unknown) {
+    const req = makeRequest(
+      "PUT",
+      `http://localhost/api/gateway/evals/${SET_ID}/requirements/${REQ_ID}`,
+      RAW_KEY_1,
+      body,
+    );
+    return putRequirement(req as any, {
+      params: Promise.resolve({ setId: SET_ID, reqId: REQ_ID }),
+    });
+  }
+
+  test("omitting contested leaves the key out of the update payload entirely", async () => {
+    await createTestContext(RAW_KEY_1, SWARM_NAME_1 + "-c-put-omit");
+    mockEvalSetScope(SET_ID, [{ ref_id: REQ_ID, properties: { contested: true } }]);
+    mockUpdateSuccess();
+
+    const res = await put({ name: "Renamed only" });
+    expect(res.status).toBe(204);
+
+    // updateNode is a partial merge — absence preserves the stored `true`.
+    // A literal `false` here would silently un-contest the requirement.
+    const nodeData = capturedUpdateNodeData();
+    expect(nodeData).not.toHaveProperty("contested");
+  });
+
+  test("coerces a string flag to a real boolean", async () => {
+    await createTestContext(RAW_KEY_1, SWARM_NAME_1 + "-c-put-str");
+    mockEvalSetScope(SET_ID, [{ ref_id: REQ_ID }]);
+    mockUpdateSuccess();
+
+    const res = await put({ name: "Req", contested: "true" });
+    expect(res.status).toBe(204);
+    expect(capturedUpdateNodeData()?.contested).toBe(true);
+  });
+
+  test("writes an explicit false when contested is turned off", async () => {
+    await createTestContext(RAW_KEY_1, SWARM_NAME_1 + "-c-put-false");
+    mockEvalSetScope(SET_ID, [{ ref_id: REQ_ID, properties: { contested: true } }]);
+    mockUpdateSuccess();
+
+    const res = await put({ name: "Req", contested: false });
+    expect(res.status).toBe(204);
+    expect(capturedUpdateNodeData()?.contested).toBe(false);
+  });
+
+  test("an un-coercible value 400s and leaves the requirement untouched", async () => {
+    await createTestContext(RAW_KEY_1, SWARM_NAME_1 + "-c-put-bad");
+
+    const res = await put({ name: "Req", contested: "maybe" });
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error).toMatch(/contested/i);
+    expect(jarvisWriteCalls()).toHaveLength(0);
+  });
+
+  test("logs the transition with explicit scalars and no secrets", async () => {
+    const ctx = await createTestContext(RAW_KEY_1, SWARM_NAME_1 + "-c-put-log");
+    mockEvalSetScope(SET_ID, [{ ref_id: REQ_ID, properties: { contested: false } }]);
+    mockUpdateSuccess();
+
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    try {
+      const res = await put({ name: "Req", contested: true });
+      expect(res.status).toBe(204);
+
+      const transition = logSpy.mock.calls
+        .map((c) => c.join(" "))
+        .find((line) => line.includes("contested transition"));
+      expect(transition).toBeDefined();
+      expect(transition).toContain(`setId=${SET_ID}`);
+      expect(transition).toContain(`reqId=${REQ_ID}`);
+      expect(transition).toContain(`keyId=${ctx.apiKey.id}`);
+      expect(transition).toContain("contestedBefore=false");
+      expect(transition).toContain("contestedAfter=true");
+    } finally {
+      logSpy.mockRestore();
+    }
+  });
+});
+
+// ── Ownership (IDOR) ──────────────────────────────────────────────────────────
+
+describe("ownership validation", () => {
+  test("POST 404s when the eval set does not resolve in the caller's swarm", async () => {
+    await createTestContext(RAW_KEY_1, SWARM_NAME_1 + "-own-post");
+    mockEvalSetNotFound();
+
+    const req = makeRequest(
+      "POST",
+      `http://localhost/api/gateway/evals/${SET_ID}/requirements`,
+      RAW_KEY_1,
+      { name: "Req", contested: true },
+    );
+    const res = await postRequirement(req as any, {
+      params: Promise.resolve({ setId: SET_ID }),
+    });
+
+    expect(res.status).toBe(404);
+    expect(jarvisWriteCalls()).toHaveLength(0);
+  });
+
+  test("POST 404s when the ref_id resolves to a node that is not an EvalSet", async () => {
+    await createTestContext(RAW_KEY_1, SWARM_NAME_1 + "-own-wrongtype");
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        nodes: [{ ref_id: SET_ID, node_type: "Task", properties: {} }],
+        edges: [],
+      }),
+    } as Response);
+
+    const req = makeRequest(
+      "POST",
+      `http://localhost/api/gateway/evals/${SET_ID}/requirements`,
+      RAW_KEY_1,
+      { name: "Req" },
+    );
+    const res = await postRequirement(req as any, {
+      params: Promise.resolve({ setId: SET_ID }),
+    });
+
+    expect(res.status).toBe(404);
+    expect(jarvisWriteCalls()).toHaveLength(0);
+  });
+
+  test("PUT 404s for a reqId that belongs to a different eval set", async () => {
+    await createTestContext(RAW_KEY_1, SWARM_NAME_1 + "-own-cross");
+    mockEvalSetScope(SET_ID, [{ ref_id: "some-other-requirement" }]);
+
+    const req = makeRequest(
+      "PUT",
+      `http://localhost/api/gateway/evals/${SET_ID}/requirements/${REQ_ID}`,
+      RAW_KEY_1,
+      { name: "Req", contested: true },
+    );
+    const res = await putRequirement(req as any, {
+      params: Promise.resolve({ setId: SET_ID, reqId: REQ_ID }),
+    });
+
+    expect(res.status).toBe(404);
+    expect(jarvisWriteCalls()).toHaveLength(0);
+  });
+
+  test("PUT 404s when the eval set itself does not resolve", async () => {
+    await createTestContext(RAW_KEY_1, SWARM_NAME_1 + "-own-put-set");
+    mockEvalSetNotFound();
+
+    const req = makeRequest(
+      "PUT",
+      `http://localhost/api/gateway/evals/${SET_ID}/requirements/${REQ_ID}`,
+      RAW_KEY_1,
+      { name: "Req" },
+    );
+    const res = await putRequirement(req as any, {
+      params: Promise.resolve({ setId: SET_ID, reqId: REQ_ID }),
+    });
+
+    expect(res.status).toBe(404);
+    expect(jarvisWriteCalls()).toHaveLength(0);
+  });
+
+  test("the ownership fetch targets the caller's own swarm and encodes setId", async () => {
+    await createTestContext(RAW_KEY_1, SWARM_NAME_1 + "-own-url");
+    mockEvalSetNotFound();
+
+    const req = makeRequest(
+      "POST",
+      `http://localhost/api/gateway/evals/${SET_ID}/requirements`,
+      RAW_KEY_1,
+      { name: "Req" },
+    );
+    await postRequirement(req as any, { params: Promise.resolve({ setId: SET_ID }) });
+
+    const calledUrl = String(mockFetch.mock.calls[0][0]);
+    expect(calledUrl).toContain(SWARM_NAME_1 + "-own-url");
+    expect(calledUrl).toContain(`/v2/nodes/${SET_ID}`);
+    expect(calledUrl).toContain(encodeURIComponent("['HAS_REQUIREMENT']"));
+  });
+
+  test("a setId that is not a valid ref_id is rejected before any fetch", async () => {
+    await createTestContext(RAW_KEY_1, SWARM_NAME_1 + "-own-badid");
+
+    const badSetId = "../../v2/nodes";
+    const req = makeRequest(
+      "POST",
+      `http://localhost/api/gateway/evals/${badSetId}/requirements`,
+      RAW_KEY_1,
+      { name: "Req" },
+    );
+    const res = await postRequirement(req as any, {
+      params: Promise.resolve({ setId: badSetId }),
+    });
+
+    expect(res.status).toBe(400);
+    expect(mockFetch).not.toHaveBeenCalled();
+  });
+});
+
+// ── Rate limiting ─────────────────────────────────────────────────────────────
+
+describe("rate limiting", () => {
+  test("POST 429s past the limit, before any write", async () => {
+    await createTestContext(RAW_KEY_1, SWARM_NAME_1 + "-rl-post");
+    vi.mocked(redis.incr).mockResolvedValue(9999);
+
+    const req = makeRequest(
+      "POST",
+      `http://localhost/api/gateway/evals/${SET_ID}/requirements`,
+      RAW_KEY_1,
+      { name: "Req" },
+    );
+    const res = await postRequirement(req as any, {
+      params: Promise.resolve({ setId: SET_ID }),
+    });
+
+    expect(res.status).toBe(429);
+    expect(mockFetch).not.toHaveBeenCalled();
+  });
+
+  test("PUT 429s past the limit, before any write", async () => {
+    await createTestContext(RAW_KEY_1, SWARM_NAME_1 + "-rl-put");
+    vi.mocked(redis.incr).mockResolvedValue(9999);
+
+    const req = makeRequest(
+      "PUT",
+      `http://localhost/api/gateway/evals/${SET_ID}/requirements/${REQ_ID}`,
+      RAW_KEY_1,
+      { name: "Req", contested: true },
+    );
+    const res = await putRequirement(req as any, {
+      params: Promise.resolve({ setId: SET_ID, reqId: REQ_ID }),
+    });
+
+    expect(res.status).toBe(429);
+    expect(mockFetch).not.toHaveBeenCalled();
+  });
+
+  test("the limiter is keyed on the API key id, not the client IP", async () => {
+    const ctx = await createTestContext(RAW_KEY_1, SWARM_NAME_1 + "-rl-key");
+    mockEvalSetScope(SET_ID, [{ ref_id: REQ_ID }]);
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ status: "success" }),
+    } as Response);
+
+    const req = makeRequest(
+      "PUT",
+      `http://localhost/api/gateway/evals/${SET_ID}/requirements/${REQ_ID}`,
+      RAW_KEY_1,
+      { name: "Req" },
+    );
+    await putRequirement(req as any, {
+      params: Promise.resolve({ setId: SET_ID, reqId: REQ_ID }),
+    });
+
+    expect(redis.incr).toHaveBeenCalledWith(expect.stringContaining(ctx.apiKey.id));
+  });
+
+  test("a limiter outage fails open rather than blocking the write", async () => {
+    await createTestContext(RAW_KEY_1, SWARM_NAME_1 + "-rl-down");
+    vi.mocked(redis.incr).mockRejectedValue(new Error("ECONNREFUSED"));
+    mockEvalSetScope(SET_ID, [{ ref_id: REQ_ID }]);
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ status: "success" }),
+    } as Response);
+
+    const req = makeRequest(
+      "PUT",
+      `http://localhost/api/gateway/evals/${SET_ID}/requirements/${REQ_ID}`,
+      RAW_KEY_1,
+      { name: "Req", contested: true },
+    );
+    const res = await putRequirement(req as any, {
+      params: Promise.resolve({ setId: SET_ID, reqId: REQ_ID }),
+    });
+
+    expect(res.status).toBe(204);
+  });
+});
+
+// ── Secret hygiene ────────────────────────────────────────────────────────────
+
+describe("logging", () => {
+  test("no log line carries the API key or the decrypted swarm key", async () => {
+    await createTestContext(RAW_KEY_1, SWARM_NAME_1 + "-log-secrets");
+    mockEvalSetScope(SET_ID, [{ ref_id: REQ_ID, properties: { contested: false } }]);
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ status: "success" }),
+    } as Response);
+
+    const spies = (["log", "info", "warn", "error"] as const).map((level) =>
+      vi.spyOn(console, level).mockImplementation(() => {}),
+    );
+
+    try {
+      const req = makeRequest(
+        "PUT",
+        `http://localhost/api/gateway/evals/${SET_ID}/requirements/${REQ_ID}`,
+        RAW_KEY_1,
+        { name: "Req", contested: true },
+      );
+      const res = await putRequirement(req as any, {
+        params: Promise.resolve({ setId: SET_ID, reqId: REQ_ID }),
+      });
+      expect(res.status).toBe(204);
+
+      const emitted = spies
+        .flatMap((spy) => spy.mock.calls)
+        .map((call) => call.map((arg) => JSON.stringify(arg) ?? String(arg)).join(" "))
+        .join("\n");
+
+      expect(emitted).not.toContain("test-swarm-key");
+      expect(emitted).not.toContain(RAW_KEY_1);
+    } finally {
+      spies.forEach((spy) => spy.mockRestore());
+    }
   });
 });
 

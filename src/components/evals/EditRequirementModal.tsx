@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import type { JarvisNode } from "@/types/jarvis";
 
@@ -32,6 +33,7 @@ export function EditRequirementModal({
   const { slug } = useWorkspace();
   const [name, setName] = useState("");
   const [reason, setReason] = useState("");
+  const [contested, setContested] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
 
@@ -40,6 +42,7 @@ export function EditRequirementModal({
     if (open) {
       setName(String(requirement.properties?.name ?? ""));
       setReason(String(requirement.properties?.description ?? ""));
+      setContested(requirement.properties?.contested === true);
       setError("");
     }
   }, [open, requirement]);
@@ -81,6 +84,7 @@ export function EditRequirementModal({
             prompt_snippet: promptSnippet,
             desirable_cases: desirableCases,
             undesirable_cases: undesirableCases,
+            contested,
           }),
         },
       );
@@ -130,6 +134,22 @@ export function EditRequirementModal({
               onChange={(e) => setReason(e.target.value)}
               placeholder="Why does this matter?"
             />
+          </div>
+
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between gap-4">
+              <Label htmlFor="edit-req-contested">Contested</Label>
+              <Switch
+                id="edit-req-contested"
+                checked={contested}
+                onCheckedChange={setContested}
+              />
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Marks this criterion&apos;s definition as disputed. Applies to the criterion
+              itself and to runs from here on — it does not change runs already recorded,
+              which are immutable snapshots.
+            </p>
           </div>
 
           <DialogFooter>

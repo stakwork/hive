@@ -4,10 +4,19 @@
  * Create an EvalRequirement node and link it to the EvalSet via HAS_REQUIREMENT edge.
  * Authenticated via workspace API key (Bearer / x-api-key).
  * Workspace is derived solely from the key — no path/body scope.
+ *
+ * `setId` is caller-supplied and therefore resolved against the key's own swarm
+ * before any write; see `resolveEvalSetScope`.
  */
 import { randomUUID } from "crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { resolveGatewayAuth } from "@/lib/evals/gateway-auth";
+import {
+  checkGatewayWriteRateLimit,
+  coerce,
+  hasContestedKey,
+  resolveEvalSetScope,
+} from "@/lib/evals/requirement-writes";
 import { addNode, addEdge } from "@/services/swarm/api/nodes";
 
 type RouteParams = { params: Promise<{ setId: string }> };
@@ -19,6 +28,9 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
 
     const { workspaceId, keyId, jarvisUrl, swarmApiKey } = authOrResponse;
     const { setId } = await params;
+
+    const limited = await checkGatewayWriteRateLimit(keyId, "post");
+    if (limited) return limited;
 
     let body: Record<string, unknown>;
     try {
@@ -32,30 +44,30 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: "name is required" }, { status: 400 });
     }
 
+    // On create, an omitted `contested` means "not contested" — unlike the
+    // update path, where omission must preserve whatever is stored.
+    let contested = false;
+    if (hasContestedKey(body)) {
+      const coerced = coerce(body.contested, "contested");
+      if (!coerced.ok) {
+        return NextResponse.json({ error: coerced.error }, { status: 400 });
+      }
+      contested = coerced.value;
+    }
+
     console.log(`[Gateway Evals Requirements POST] workspaceId=${workspaceId}, keyId=${keyId}, setId=${setId}`);
 
     const config = { jarvisUrl, apiKey: swarmApiKey };
 
-    // Determine order by fetching current sibling count
-    let siblingCount = 0;
-    try {
-      const edgeType = encodeURIComponent("['HAS_REQUIREMENT']");
-      const siblingsRes = await fetch(
-        `${jarvisUrl}/v2/nodes/${setId}?expand=edges&edge_type=${edgeType}&depth=1`,
-        { headers: { "x-api-token": swarmApiKey } },
-      );
-      if (siblingsRes.ok) {
-        const siblingsData = await siblingsRes.json();
-        const siblings = (siblingsData?.nodes ?? []).filter(
-          (n: { ref_id?: string; node_type?: string }) =>
-            n.ref_id !== setId &&
-            String(n.node_type ?? "").toLowerCase() === "evalrequirement",
-        );
-        siblingCount = siblings.length;
-      }
-    } catch {
-      // Non-fatal — order defaults to 0
+    // Ownership + order in one read: the eval set must resolve inside the swarm
+    // this API key maps to (the key alone proves nothing about `setId`), and its
+    // HAS_REQUIREMENT children are the sibling count the new edge orders after.
+    const scope = await resolveEvalSetScope(config, setId);
+    if (!scope.ok) {
+      console.warn(`[Gateway Evals Requirements POST] Eval set not writable: ${scope.error}`, { workspaceId, keyId });
+      return NextResponse.json({ error: scope.error }, { status: scope.status });
     }
+    const siblingCount = scope.requirements.length;
 
     const id = randomUUID();
     const nodeResult = await addNode(config, {
@@ -67,6 +79,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
         prompt_snippet: typeof prompt_snippet === "string" ? prompt_snippet.trim() : undefined,
         desirable_cases: Array.isArray(desirable_cases) ? desirable_cases : [],
         undesirable_cases: Array.isArray(undesirable_cases) ? undesirable_cases : [],
+        contested,
       },
     });
 

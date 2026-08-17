@@ -82,7 +82,7 @@ vi.mock("@/components/ui/button", () => ({
 }));
 
 vi.mock("@/components/ui/badge", () => ({
-  Badge: ({ children }: any) => <span>{children}</span>,
+  Badge: ({ children, ...props }: any) => <span {...props}>{children}</span>,
 }));
 
 vi.mock("@/components/ui/skeleton", () => ({
@@ -93,6 +93,7 @@ vi.mock("lucide-react", () => ({
   ArrowLeft: () => <span>←</span>,
   Check: () => <span>✓</span>,
   ClipboardList: () => <span>📋</span>,
+  Flag: () => <span>🚩</span>,
   Link2: () => <span>🔗</span>,
   Pencil: () => <span>✏️</span>,
   Plus: () => <span>+</span>,
@@ -336,6 +337,65 @@ describe("EvalSetDetail", () => {
 
     expect(screen.queryByTestId("link-run-modal")).toBeNull();
     expect(screen.queryByText(/Link Run/i)).toBeNull();
+  });
+
+  describe("Contested badge", () => {
+    it("renders the badge on a contested requirement row only", async () => {
+      const nodes = [
+        {
+          ...MOCK_REQUIREMENTS[0],
+          properties: { ...MOCK_REQUIREMENTS[0].properties, contested: true },
+        },
+        MOCK_REQUIREMENTS[1],
+      ];
+      global.fetch = vi.fn().mockResolvedValue({
+        json: async () => ({ data: { nodes, total: 2 } }),
+      }) as any;
+
+      render(<EvalSetDetail evalSet={EVAL_SET} onBack={() => {}} />);
+      await waitFor(() => expect(screen.getAllByTestId("requirement-row")).toHaveLength(2));
+
+      expect(screen.getAllByTestId("requirement-contested-badge")).toHaveLength(1);
+
+      const rows = screen.getAllByTestId("requirement-row");
+      expect(rows[0].textContent).toContain("Contested");
+      expect(rows[1].textContent).not.toContain("Contested");
+    });
+
+    it("does not render the badge when contested is absent or false", async () => {
+      const nodes = [
+        MOCK_REQUIREMENTS[0],
+        {
+          ...MOCK_REQUIREMENTS[1],
+          properties: { ...MOCK_REQUIREMENTS[1].properties, contested: false },
+        },
+      ];
+      global.fetch = vi.fn().mockResolvedValue({
+        json: async () => ({ data: { nodes, total: 2 } }),
+      }) as any;
+
+      render(<EvalSetDetail evalSet={EVAL_SET} onBack={() => {}} />);
+      await waitFor(() => expect(screen.getAllByTestId("requirement-row")).toHaveLength(2));
+
+      expect(screen.queryByTestId("requirement-contested-badge")).toBeNull();
+    });
+
+    it("does not treat a truthy non-boolean contested value as contested", async () => {
+      const nodes = [
+        {
+          ...MOCK_REQUIREMENTS[0],
+          properties: { ...MOCK_REQUIREMENTS[0].properties, contested: "false" },
+        },
+      ];
+      global.fetch = vi.fn().mockResolvedValue({
+        json: async () => ({ data: { nodes, total: 1 } }),
+      }) as any;
+
+      render(<EvalSetDetail evalSet={EVAL_SET} onBack={() => {}} />);
+      await waitFor(() => expect(screen.getAllByTestId("requirement-row")).toHaveLength(1));
+
+      expect(screen.queryByTestId("requirement-contested-badge")).toBeNull();
+    });
   });
 
   it("mounts EvalTriggerList below each requirement row", async () => {

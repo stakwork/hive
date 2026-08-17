@@ -185,3 +185,127 @@ describe("EditRequirementModal", () => {
     expect(defaultProps.onUpdated).not.toHaveBeenCalled();
   });
 });
+
+describe("EditRequirementModal — contested", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    global.fetch = vi.fn().mockResolvedValue({ ok: true, json: async () => ({}) }) as any;
+  });
+
+  function withProperties(extra: Record<string, unknown>) {
+    return { ...REQUIREMENT, properties: { ...REQUIREMENT.properties, ...extra } };
+  }
+
+  /** The JSON body of the last PUT. */
+  function lastRequestBody() {
+    const calls = (global.fetch as any).mock.calls;
+    return JSON.parse(calls[calls.length - 1][1].body);
+  }
+
+  async function save() {
+    await userEvent.click(screen.getByRole("button", { name: "Save" }));
+  }
+
+  describe("pre-population", () => {
+    it("opens with the switch off when contested is absent", () => {
+      render(<EditRequirementModal {...defaultProps} />);
+      expect(screen.getByRole("switch")).not.toBeChecked();
+    });
+
+    it("opens with the switch on when contested is true", () => {
+      render(
+        <EditRequirementModal
+          {...defaultProps}
+          requirement={withProperties({ contested: true })}
+        />,
+      );
+      expect(screen.getByRole("switch")).toBeChecked();
+    });
+
+    it("opens with the switch off when contested is explicitly false", () => {
+      render(
+        <EditRequirementModal
+          {...defaultProps}
+          requirement={withProperties({ contested: false })}
+        />,
+      );
+      expect(screen.getByRole("switch")).not.toBeChecked();
+    });
+
+    it("re-syncs the switch when a different requirement is shown", () => {
+      const { rerender } = render(<EditRequirementModal {...defaultProps} />);
+      expect(screen.getByRole("switch")).not.toBeChecked();
+
+      rerender(
+        <EditRequirementModal
+          {...defaultProps}
+          requirement={withProperties({ contested: true })}
+        />,
+      );
+      expect(screen.getByRole("switch")).toBeChecked();
+    });
+  });
+
+  describe("submit payload", () => {
+    it("sends contested: true when toggled on", async () => {
+      render(<EditRequirementModal {...defaultProps} />);
+
+      await userEvent.click(screen.getByRole("switch"));
+      await save();
+
+      await waitFor(() => expect(global.fetch).toHaveBeenCalled());
+      expect(lastRequestBody().contested).toBe(true);
+    });
+
+    it("sends contested: false when toggled off", async () => {
+      render(
+        <EditRequirementModal
+          {...defaultProps}
+          requirement={withProperties({ contested: true })}
+        />,
+      );
+
+      await userEvent.click(screen.getByRole("switch"));
+      await save();
+
+      await waitFor(() => expect(global.fetch).toHaveBeenCalled());
+      expect(lastRequestBody().contested).toBe(false);
+    });
+
+    it("sends a real boolean, never a string", async () => {
+      render(<EditRequirementModal {...defaultProps} />);
+
+      await userEvent.click(screen.getByRole("switch"));
+      await save();
+
+      await waitFor(() => expect(global.fetch).toHaveBeenCalled());
+      expect(typeof lastRequestBody().contested).toBe("boolean");
+    });
+
+    it("still preserves the legacy prompt_snippet and example cases", async () => {
+      render(
+        <EditRequirementModal
+          {...defaultProps}
+          requirement={withProperties({ contested: true })}
+        />,
+      );
+
+      await save();
+
+      await waitFor(() => expect(global.fetch).toHaveBeenCalled());
+      const body = lastRequestBody();
+      expect(body.contested).toBe(true);
+      expect(body.prompt_snippet).toBe("When asked to do X...");
+      expect(body.desirable_cases).toEqual(["Does A", "Does B"]);
+      expect(body.undesirable_cases).toEqual(["Fails to C"]);
+    });
+  });
+
+  describe("helper copy", () => {
+    it("states that the flag governs later runs, not recorded ones", () => {
+      render(<EditRequirementModal {...defaultProps} />);
+      const content = screen.getByTestId("dialog-content").textContent ?? "";
+      expect(content).toMatch(/does not change runs already recorded/i);
+    });
+  });
+});

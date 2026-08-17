@@ -3,6 +3,20 @@ import type { JarvisNode } from "@/types/jarvis";
 
 export const runtime = "nodejs";
 
+/**
+ * Mock routes are gated on NODE_ENV === "production" in src/middleware.ts, which
+ * leaves them wide open on every preview/staging build — and this one reflects
+ * caller-supplied JSON. Require the same flag the real routes use to delegate
+ * here, so a deployed-but-not-mocked environment answers 404.
+ */
+function mocksDisabled() {
+  return process.env.USE_MOCKS !== "true";
+}
+
+function notFound() {
+  return NextResponse.json({ error: "Not found" }, { status: 404 });
+}
+
 type RequirementNode = JarvisNode & {
   properties: {
     name: string;
@@ -11,6 +25,7 @@ type RequirementNode = JarvisNode & {
     desirable_cases: string[];
     undesirable_cases: string[];
     order: number;
+    contested?: boolean;
   };
 };
 
@@ -50,6 +65,7 @@ const SEED_REQUIREMENTS: Record<string, RequirementNode[]> = {
         desirable_cases: ["Explains the concept clearly", "Provides an example"],
         undesirable_cases: ["Response is too technical", "No explanation given"],
         order: 2,
+        contested: true,
       },
     },
   ],
@@ -85,14 +101,18 @@ export async function GET(
   _request: NextRequest,
   { params }: { params: Promise<{ evalSetId: string }> },
 ) {
+  if (mocksDisabled()) return notFound();
+
   const { evalSetId } = await params;
   const nodes = SEED_REQUIREMENTS[evalSetId] ?? [];
   return NextResponse.json({ success: true, data: { nodes, total: nodes.length } });
 }
 
 export async function POST(request: NextRequest) {
+  if (mocksDisabled()) return notFound();
+
   const body = await request.json().catch(() => ({}));
-  const { name, description, prompt_snippet, desirable_cases, undesirable_cases } =
+  const { name, description, prompt_snippet, desirable_cases, undesirable_cases, contested } =
     body ?? {};
 
   const newNode: JarvisNode = {
@@ -104,8 +124,14 @@ export async function POST(request: NextRequest) {
       prompt_snippet,
       desirable_cases: desirable_cases ?? [],
       undesirable_cases: undesirable_cases ?? [],
+      contested: contested ?? false,
     },
   };
 
-  return NextResponse.json({ success: true, data: { ref_id: newNode.ref_id } });
+  // Echo the created node back. SEED_REQUIREMENTS is a module-level const and is
+  // never written to, so nothing persists — a later GET will not show this node.
+  return NextResponse.json({
+    success: true,
+    data: { ref_id: newNode.ref_id, ...newNode.properties },
+  });
 }

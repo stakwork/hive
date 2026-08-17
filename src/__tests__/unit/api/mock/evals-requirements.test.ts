@@ -1,6 +1,24 @@
-import { describe, test, expect } from "vitest";
+import { describe, test, expect, beforeEach, afterEach } from "vitest";
 import { GET, POST } from "@/app/api/mock/evals/[evalSetId]/requirements/route";
+import {
+  PUT as putRequirement,
+  DELETE as deleteRequirement,
+} from "@/app/api/mock/evals/[evalSetId]/requirements/[reqId]/route";
 import { NextRequest } from "next/server";
+
+const originalUseMocks = process.env.USE_MOCKS;
+
+beforeEach(() => {
+  process.env.USE_MOCKS = "true";
+});
+
+afterEach(() => {
+  if (originalUseMocks === undefined) {
+    delete process.env.USE_MOCKS;
+  } else {
+    process.env.USE_MOCKS = originalUseMocks;
+  }
+});
 
 function makeGetRequest(evalSetId: string): NextRequest {
   return new NextRequest(
@@ -14,6 +32,17 @@ function makePostRequest(evalSetId: string, body: object): NextRequest {
     `http://localhost:3000/api/mock/evals/${evalSetId}/requirements`,
     {
       method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    },
+  );
+}
+
+function makePutRequest(evalSetId: string, reqId: string, body: object): NextRequest {
+  return new NextRequest(
+    `http://localhost:3000/api/mock/evals/${evalSetId}/requirements/${reqId}`,
+    {
+      method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     },
@@ -99,5 +128,131 @@ describe("POST /api/mock/evals/[evalSetId]/requirements", () => {
     expect(data.success).toBe(true);
     expect(typeof data.data.ref_id).toBe("string");
     expect(data.data.ref_id.length).toBeGreaterThan(0);
+  });
+
+  test("echoes the created properties including contested", async () => {
+    const request = makePostRequest("eval-set-1", {
+      name: "Contested at birth",
+      description: "A description",
+      contested: true,
+    });
+    const response = await POST(request);
+    const data = await response.json();
+
+    expect(data.data.name).toBe("Contested at birth");
+    expect(data.data.contested).toBe(true);
+  });
+
+  test("defaults contested to false when omitted", async () => {
+    const request = makePostRequest("eval-set-1", { name: "Plain req" });
+    const response = await POST(request);
+    const data = await response.json();
+
+    expect(data.data.contested).toBe(false);
+  });
+});
+
+describe("Seeded contested requirement", () => {
+  test("exactly one seeded requirement is marked contested", async () => {
+    const response = await GET(makeGetRequest("eval-set-1"), {
+      params: Promise.resolve({ evalSetId: "eval-set-1" }),
+    });
+    const data = await response.json();
+
+    const contestedNodes = data.data.nodes.filter(
+      (n: { properties: { contested?: boolean } }) => n.properties.contested === true,
+    );
+    expect(contestedNodes).toHaveLength(1);
+  });
+
+  test("uncontested seeded requirements omit the flag entirely", async () => {
+    const response = await GET(makeGetRequest("eval-set-2"), {
+      params: Promise.resolve({ evalSetId: "eval-set-2" }),
+    });
+    const data = await response.json();
+
+    for (const node of data.data.nodes) {
+      expect(node.properties.contested).toBeUndefined();
+    }
+  });
+});
+
+describe("PUT /api/mock/evals/[evalSetId]/requirements/[reqId]", () => {
+  // The mock PUT reflects the whole body, so `contested` round-trips with no
+  // field list to keep in sync — this is the regression guard on that.
+  test("echoes contested back on both toggle directions", async () => {
+    for (const contested of [true, false]) {
+      const response = await putRequirement(
+        makePutRequest("eval-set-1", "req-1-1", { name: "Req", contested }),
+        { params: Promise.resolve({ evalSetId: "eval-set-1", reqId: "req-1-1" }) },
+      );
+      const data = await response.json();
+
+      expect(data.success).toBe(true);
+      expect(data.data.ref_id).toBe("req-1-1");
+      expect(data.data.contested).toBe(contested);
+    }
+  });
+});
+
+// ── USE_MOCKS guard ───────────────────────────────────────────────────────────
+//
+// middleware.ts only blocks /api/mock when NODE_ENV === "production", so without
+// an in-handler guard these are live, arbitrary-JSON-reflecting endpoints on
+// every preview/staging build.
+describe("USE_MOCKS guard", () => {
+  test.each([undefined, "false", "1", "TRUE"])(
+    "GET 404s when USE_MOCKS is %o",
+    async (value) => {
+      if (value === undefined) delete process.env.USE_MOCKS;
+      else process.env.USE_MOCKS = value;
+
+      const response = await GET(makeGetRequest("eval-set-1"), {
+        params: Promise.resolve({ evalSetId: "eval-set-1" }),
+      });
+      expect(response.status).toBe(404);
+    },
+  );
+
+  test("POST 404s when USE_MOCKS is not \"true\"", async () => {
+    delete process.env.USE_MOCKS;
+
+    const response = await POST(makePostRequest("eval-set-1", { name: "Req" }));
+    expect(response.status).toBe(404);
+  });
+
+  test("PUT 404s when USE_MOCKS is not \"true\"", async () => {
+    delete process.env.USE_MOCKS;
+
+    const response = await putRequirement(
+      makePutRequest("eval-set-1", "req-1-1", { name: "Req", contested: true }),
+      { params: Promise.resolve({ evalSetId: "eval-set-1", reqId: "req-1-1" }) },
+    );
+    expect(response.status).toBe(404);
+  });
+
+  test("DELETE 404s when USE_MOCKS is not \"true\"", async () => {
+    delete process.env.USE_MOCKS;
+
+    const response = await deleteRequirement(
+      makePutRequest("eval-set-1", "req-1-1", {}),
+      { params: Promise.resolve({ evalSetId: "eval-set-1", reqId: "req-1-1" }) },
+    );
+    expect(response.status).toBe(404);
+  });
+
+  test("the guard does not depend on NODE_ENV", async () => {
+    // Explicitly non-production: the middleware block would not fire here, so
+    // the in-handler guard is the only thing standing.
+    expect(process.env.NODE_ENV).not.toBe("production");
+    delete process.env.USE_MOCKS;
+
+    const response = await putRequirement(
+      makePutRequest("eval-set-1", "req-1-1", { injected: "payload" }),
+      { params: Promise.resolve({ evalSetId: "eval-set-1", reqId: "req-1-1" }) },
+    );
+    expect(response.status).toBe(404);
+    const data = await response.json();
+    expect(data.injected).toBeUndefined();
   });
 });

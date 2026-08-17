@@ -12,7 +12,7 @@ import {
   EmptyMedia,
   EmptyTitle,
 } from "@/components/ui/empty";
-import { ArrowLeft, ClipboardList, Link2, Pencil, Plus, Trash2 } from "lucide-react";
+import { ArrowLeft, ClipboardList, Flag, Link2, Pencil, Plus, Trash2 } from "lucide-react";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { CreateRequirementModal } from "./CreateRequirementModal";
 import { EditRequirementModal } from "./EditRequirementModal";
@@ -33,6 +33,7 @@ interface RequirementNode extends JarvisNode {
     undesirable_cases?: string[];
     linked_session_count?: number;
     order?: number;
+    contested?: boolean;
     [key: string]: unknown;
   };
 }
@@ -154,6 +155,7 @@ export function EvalSetDetail({ evalSet, onBack }: EvalSetDetailProps) {
               typeof req.properties?.linked_session_count === "number"
                 ? req.properties.linked_session_count
                 : 0;
+            const contested = req.properties?.contested === true;
 
             return (
               <div
@@ -165,6 +167,16 @@ export function EvalSetDetail({ evalSet, onBack }: EvalSetDetailProps) {
                   <div className="min-w-0 flex-1 space-y-1.5">
                     <div className="flex flex-wrap items-center gap-2">
                       <span className="font-medium">{name}</span>
+                      {contested && (
+                        <Badge
+                          variant="outline"
+                          className="gap-1 border-amber-500/40 text-xs text-amber-600 dark:text-amber-400"
+                          data-testid="requirement-contested-badge"
+                        >
+                          <Flag className="h-3 w-3" />
+                          Contested
+                        </Badge>
+                      )}
                       {sessionCount > 0 && (
                         <Badge variant="secondary" className="gap-1 text-xs">
                           <Link2 className="h-3 w-3" />

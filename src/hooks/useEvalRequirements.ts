@@ -10,6 +10,8 @@ export interface EvalRequirement {
     name: string;
     description?: string;
     order?: number;
+    /** Human- or agent-set flag that this criterion's definition is disputed. */
+    contested?: boolean;
   };
 }
 

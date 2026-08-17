@@ -36,6 +36,41 @@ import * as nodesService from "@/services/swarm/api/nodes";
 // Mock the Jarvis nodes service and fetch
 vi.mock("@/services/swarm/api/nodes");
 
+/**
+ * Stub the ownership fetch that every requirement write now performs: the eval
+ * set resolved in this workspace's own swarm, plus its HAS_REQUIREMENT children.
+ * Mirrors Jarvis's real casing ("Evalset" / "Evalrequirement").
+ */
+function mockEvalSetScope(
+  evalSetId: string,
+  requirements: Array<{ ref_id: string; properties?: Record<string, unknown> }> = [],
+) {
+  global.fetch = vi.fn().mockResolvedValue({
+    ok: true,
+    status: 200,
+    json: async () => ({
+      nodes: [
+        { ref_id: evalSetId, node_type: "Evalset", properties: { name: "The set" } },
+        ...requirements.map((r) => ({
+          ref_id: r.ref_id,
+          node_type: "Evalrequirement",
+          properties: r.properties ?? {},
+        })),
+      ],
+      edges: [],
+    }),
+  } as any);
+}
+
+/** An ownership fetch that resolves nothing — an eval set outside this swarm. */
+function mockEvalSetNotFound() {
+  global.fetch = vi.fn().mockResolvedValue({
+    ok: true,
+    status: 200,
+    json: async () => ({ nodes: [], edges: [] }),
+  } as any);
+}
+
 describe("Evals API — Integration Tests", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -645,6 +680,7 @@ describe("Evals API — Integration Tests", () => {
         await createTestMembership({ workspaceId: workspace.id, userId: owner.id, role: "OWNER" });
         await createTestSwarm({ workspaceId: workspace.id, swarmApiKey: "test-key" });
 
+        mockEvalSetScope("eval-set-1");
         vi.mocked(nodesService.addNode).mockResolvedValueOnce({ success: true, ref_id: "req-ref-1" });
         vi.mocked(nodesService.addEdge).mockResolvedValueOnce({ success: true });
 
@@ -693,6 +729,7 @@ describe("Evals API — Integration Tests", () => {
         await createTestMembership({ workspaceId: workspace.id, userId: owner.id, role: "OWNER" });
         await createTestSwarm({ workspaceId: workspace.id, swarmApiKey: "test-key" });
 
+        mockEvalSetScope("set-1");
         vi.mocked(nodesService.addNode).mockResolvedValueOnce({ success: true, ref_id: "req-2" });
         vi.mocked(nodesService.addEdge).mockResolvedValueOnce({ success: true });
 
@@ -744,6 +781,7 @@ describe("Evals API — Integration Tests", () => {
         await createTestMembership({ workspaceId: workspace.id, userId: owner.id, role: "OWNER" });
         await createTestSwarm({ workspaceId: workspace.id, swarmApiKey: "test-key" });
 
+        mockEvalSetScope("set-1");
         vi.mocked(nodesService.addNode).mockResolvedValueOnce({ success: true, ref_id: "req-min" });
         vi.mocked(nodesService.addEdge).mockResolvedValueOnce({ success: true });
 
@@ -818,6 +856,7 @@ describe("Evals API — Integration Tests", () => {
         await createTestMembership({ workspaceId: workspace.id, userId: owner.id, role: "OWNER" });
         await createTestSwarm({ workspaceId: workspace.id, swarmApiKey: "test-key" });
 
+        mockEvalSetScope("set-1");
         vi.mocked(nodesService.addNode).mockResolvedValueOnce({ success: false, error: "Node error" });
 
         const request = createAuthenticatedPostRequest(
@@ -840,6 +879,7 @@ describe("Evals API — Integration Tests", () => {
         await createTestMembership({ workspaceId: workspace.id, userId: owner.id, role: "OWNER" });
         await createTestSwarm({ workspaceId: workspace.id, swarmApiKey: "test-key" });
 
+        mockEvalSetScope("set-1");
         vi.mocked(nodesService.addNode).mockResolvedValueOnce({ success: true, ref_id: "req-1" });
         vi.mocked(nodesService.addEdge).mockResolvedValueOnce({ success: false, error: "Edge error" });
 
@@ -1360,6 +1400,7 @@ describe("Evals API — Integration Tests", () => {
         await createTestMembership({ workspaceId: workspace.id, userId: owner.id, role: "OWNER" });
         await createTestSwarm({ workspaceId: workspace.id, swarmApiKey: "test-key" });
 
+        mockEvalSetScope("set-1", [{ ref_id: "req-1" }]);
         vi.mocked(nodesService.updateNode).mockResolvedValueOnce({ success: true });
 
         const request = createAuthenticatedPutRequest(
@@ -1394,6 +1435,7 @@ describe("Evals API — Integration Tests", () => {
         await createTestMembership({ workspaceId: workspace.id, userId: owner.id, role: "OWNER" });
         await createTestSwarm({ workspaceId: workspace.id, swarmApiKey: "test-key" });
 
+        mockEvalSetScope("set-1", [{ ref_id: "req-1" }]);
         vi.mocked(nodesService.updateNode).mockResolvedValueOnce({ success: true });
 
         const request = createAuthenticatedPutRequest(
@@ -2492,6 +2534,454 @@ describe("Evals API — Integration Tests", () => {
         });
 
         expect(response.status).toBe(502);
+      });
+    });
+  });
+  // ---------------------------------------------------------------------------
+  // contested — POST/PUT /api/workspaces/[slug]/evals/[evalSetId]/requirements
+  // ---------------------------------------------------------------------------
+  describe("contested field", () => {
+    async function ownerWorkspace() {
+      const owner = await createTestUser();
+      const workspace = await createTestWorkspace({ ownerId: owner.id });
+      await createTestMembership({ workspaceId: workspace.id, userId: owner.id, role: "OWNER" });
+      await createTestSwarm({ workspaceId: workspace.id, swarmApiKey: "test-key" });
+      return { owner, workspace };
+    }
+
+    function addNodeData() {
+      return vi.mocked(nodesService.addNode).mock.calls[0]?.[1]?.node_data;
+    }
+
+    function updateNodeData() {
+      return vi.mocked(nodesService.updateNode).mock.calls[0]?.[1]?.node_data;
+    }
+
+    describe("Create", () => {
+      test("persists false when contested is omitted", async () => {
+        const { owner, workspace } = await ownerWorkspace();
+        mockEvalSetScope("set-1");
+        vi.mocked(nodesService.addNode).mockResolvedValueOnce({ success: true, ref_id: "req-1" });
+        vi.mocked(nodesService.addEdge).mockResolvedValueOnce({ success: true });
+
+        const response = await createRequirement(
+          createAuthenticatedPostRequest(
+            `http://localhost:3000/api/workspaces/${workspace.slug}/evals/set-1/requirements`,
+            owner,
+            { name: "Req" },
+          ),
+          { params: Promise.resolve({ slug: workspace.slug, evalSetId: "set-1" }) },
+        );
+
+        expect(response.status).toBe(200);
+        expect(addNodeData()?.contested).toBe(false);
+      });
+
+      test("persists true when contested is true", async () => {
+        const { owner, workspace } = await ownerWorkspace();
+        mockEvalSetScope("set-1");
+        vi.mocked(nodesService.addNode).mockResolvedValueOnce({ success: true, ref_id: "req-1" });
+        vi.mocked(nodesService.addEdge).mockResolvedValueOnce({ success: true });
+
+        const response = await createRequirement(
+          createAuthenticatedPostRequest(
+            `http://localhost:3000/api/workspaces/${workspace.slug}/evals/set-1/requirements`,
+            owner,
+            { name: "Req", contested: true },
+          ),
+          { params: Promise.resolve({ slug: workspace.slug, evalSetId: "set-1" }) },
+        );
+
+        expect(response.status).toBe(200);
+        expect(addNodeData()?.contested).toBe(true);
+      });
+
+      test("coerces a string flag into a real boolean", async () => {
+        const { owner, workspace } = await ownerWorkspace();
+        mockEvalSetScope("set-1");
+        vi.mocked(nodesService.addNode).mockResolvedValueOnce({ success: true, ref_id: "req-1" });
+        vi.mocked(nodesService.addEdge).mockResolvedValueOnce({ success: true });
+
+        const response = await createRequirement(
+          createAuthenticatedPostRequest(
+            `http://localhost:3000/api/workspaces/${workspace.slug}/evals/set-1/requirements`,
+            owner,
+            { name: "Req", contested: "True" },
+          ),
+          { params: Promise.resolve({ slug: workspace.slug, evalSetId: "set-1" }) },
+        );
+
+        expect(response.status).toBe(200);
+        expect(addNodeData()?.contested).toBe(true);
+      });
+
+      test("400s with a field message on an un-coercible value, before any write", async () => {
+        const { owner, workspace } = await ownerWorkspace();
+
+        const response = await createRequirement(
+          createAuthenticatedPostRequest(
+            `http://localhost:3000/api/workspaces/${workspace.slug}/evals/set-1/requirements`,
+            owner,
+            { name: "Req", contested: "maybe" },
+          ),
+          { params: Promise.resolve({ slug: workspace.slug, evalSetId: "set-1" }) },
+        );
+
+        expect(response.status).toBe(400);
+        const data = await response.json();
+        expect(data.error).toMatch(/contested/i);
+        expect(nodesService.addNode).not.toHaveBeenCalled();
+        expect(nodesService.addEdge).not.toHaveBeenCalled();
+      });
+    });
+
+    describe("Update", () => {
+      test("omitting contested leaves the key out of the update payload entirely", async () => {
+        const { owner, workspace } = await ownerWorkspace();
+        mockEvalSetScope("set-1", [{ ref_id: "req-1", properties: { contested: true } }]);
+        vi.mocked(nodesService.updateNode).mockResolvedValueOnce({ success: true });
+
+        const response = await updateRequirement(
+          createAuthenticatedPutRequest(
+            `http://localhost:3000/api/workspaces/${workspace.slug}/evals/set-1/requirements/req-1`,
+            owner,
+            { name: "Renamed only" },
+          ),
+          { params: Promise.resolve({ slug: workspace.slug, evalSetId: "set-1", reqId: "req-1" }) },
+        );
+
+        expect(response.status).toBe(200);
+        // updateNode is a partial merge — absence preserves the stored `true`.
+        // A literal `false` here would silently un-contest the requirement.
+        expect(updateNodeData()).not.toHaveProperty("contested");
+      });
+
+      test("coerces a string flag into a real boolean", async () => {
+        const { owner, workspace } = await ownerWorkspace();
+        mockEvalSetScope("set-1", [{ ref_id: "req-1" }]);
+        vi.mocked(nodesService.updateNode).mockResolvedValueOnce({ success: true });
+
+        const response = await updateRequirement(
+          createAuthenticatedPutRequest(
+            `http://localhost:3000/api/workspaces/${workspace.slug}/evals/set-1/requirements/req-1`,
+            owner,
+            { name: "Req", contested: "true" },
+          ),
+          { params: Promise.resolve({ slug: workspace.slug, evalSetId: "set-1", reqId: "req-1" }) },
+        );
+
+        expect(response.status).toBe(200);
+        expect(updateNodeData()?.contested).toBe(true);
+      });
+
+      test("writes an explicit false when the flag is turned off", async () => {
+        const { owner, workspace } = await ownerWorkspace();
+        mockEvalSetScope("set-1", [{ ref_id: "req-1", properties: { contested: true } }]);
+        vi.mocked(nodesService.updateNode).mockResolvedValueOnce({ success: true });
+
+        const response = await updateRequirement(
+          createAuthenticatedPutRequest(
+            `http://localhost:3000/api/workspaces/${workspace.slug}/evals/set-1/requirements/req-1`,
+            owner,
+            { name: "Req", contested: false },
+          ),
+          { params: Promise.resolve({ slug: workspace.slug, evalSetId: "set-1", reqId: "req-1" }) },
+        );
+
+        expect(response.status).toBe(200);
+        expect(updateNodeData()?.contested).toBe(false);
+      });
+
+      test("an un-coercible value 400s and leaves the requirement untouched", async () => {
+        const { owner, workspace } = await ownerWorkspace();
+
+        const response = await updateRequirement(
+          createAuthenticatedPutRequest(
+            `http://localhost:3000/api/workspaces/${workspace.slug}/evals/set-1/requirements/req-1`,
+            owner,
+            { name: "Req", contested: 7 },
+          ),
+          { params: Promise.resolve({ slug: workspace.slug, evalSetId: "set-1", reqId: "req-1" }) },
+        );
+
+        expect(response.status).toBe(400);
+        const data = await response.json();
+        expect(data.error).toMatch(/contested/i);
+        expect(nodesService.updateNode).not.toHaveBeenCalled();
+      });
+    });
+
+    // Parity with the gateway routes: the same body must behave identically on
+    // both surfaces, so the contest agent and the UI cannot diverge.
+    describe("Workspace ↔ gateway parity", () => {
+      test("create defaults contested to false on both surfaces", async () => {
+        const { owner, workspace } = await ownerWorkspace();
+        mockEvalSetScope("set-1");
+        vi.mocked(nodesService.addNode).mockResolvedValueOnce({ success: true, ref_id: "req-1" });
+        vi.mocked(nodesService.addEdge).mockResolvedValueOnce({ success: true });
+
+        await createRequirement(
+          createAuthenticatedPostRequest(
+            `http://localhost:3000/api/workspaces/${workspace.slug}/evals/set-1/requirements`,
+            owner,
+            { name: "Req" },
+          ),
+          { params: Promise.resolve({ slug: workspace.slug, evalSetId: "set-1" }) },
+        );
+
+        // See gateway-evals.test.ts "persists false when contested is omitted".
+        expect(addNodeData()?.contested).toBe(false);
+      });
+
+      test("update omits the key on both surfaces rather than writing false", async () => {
+        const { owner, workspace } = await ownerWorkspace();
+        mockEvalSetScope("set-1", [{ ref_id: "req-1", properties: { contested: true } }]);
+        vi.mocked(nodesService.updateNode).mockResolvedValueOnce({ success: true });
+
+        await updateRequirement(
+          createAuthenticatedPutRequest(
+            `http://localhost:3000/api/workspaces/${workspace.slug}/evals/set-1/requirements/req-1`,
+            owner,
+            { name: "Req" },
+          ),
+          { params: Promise.resolve({ slug: workspace.slug, evalSetId: "set-1", reqId: "req-1" }) },
+        );
+
+        // See gateway-evals.test.ts "omitting contested leaves the key out".
+        expect(updateNodeData()).not.toHaveProperty("contested");
+      });
+    });
+
+    // ------------------------------------------------------------------------
+    // Role gate — only on the contested field
+    // ------------------------------------------------------------------------
+    describe("Role gate", () => {
+      async function memberWorkspace(role: "VIEWER" | "STAKEHOLDER" | "DEVELOPER") {
+        const owner = await createTestUser();
+        const member = await createTestUser();
+        const workspace = await createTestWorkspace({ ownerId: owner.id });
+        await createTestMembership({ workspaceId: workspace.id, userId: member.id, role });
+        await createTestSwarm({ workspaceId: workspace.id, swarmApiKey: "test-key" });
+        return { member, workspace };
+      }
+
+      test.each(["VIEWER", "STAKEHOLDER"] as const)(
+        "%s sending contested is rejected with 403 and no write",
+        async (role) => {
+          const { member, workspace } = await memberWorkspace(role);
+          vi.mocked(nodesService.updateNode).mockResolvedValueOnce({ success: true });
+
+          const response = await updateRequirement(
+            createAuthenticatedPutRequest(
+              `http://localhost:3000/api/workspaces/${workspace.slug}/evals/set-1/requirements/req-1`,
+              member,
+              { name: "Req", contested: true },
+            ),
+            { params: Promise.resolve({ slug: workspace.slug, evalSetId: "set-1", reqId: "req-1" }) },
+          );
+
+          expect(response.status).toBe(403);
+          expect(nodesService.updateNode).not.toHaveBeenCalled();
+        },
+      );
+
+      test("the same VIEWER editing only name still succeeds", async () => {
+        const { member, workspace } = await memberWorkspace("VIEWER");
+        mockEvalSetScope("set-1", [{ ref_id: "req-1" }]);
+        vi.mocked(nodesService.updateNode).mockResolvedValueOnce({ success: true });
+
+        const response = await updateRequirement(
+          createAuthenticatedPutRequest(
+            `http://localhost:3000/api/workspaces/${workspace.slug}/evals/set-1/requirements/req-1`,
+            member,
+            { name: "Renamed by viewer" },
+          ),
+          { params: Promise.resolve({ slug: workspace.slug, evalSetId: "set-1", reqId: "req-1" }) },
+        );
+
+        expect(response.status).toBe(200);
+        expect(nodesService.updateNode).toHaveBeenCalled();
+      });
+
+      test("a VIEWER sending contested on create is rejected with 403", async () => {
+        const { member, workspace } = await memberWorkspace("VIEWER");
+
+        const response = await createRequirement(
+          createAuthenticatedPostRequest(
+            `http://localhost:3000/api/workspaces/${workspace.slug}/evals/set-1/requirements`,
+            member,
+            { name: "Req", contested: true },
+          ),
+          { params: Promise.resolve({ slug: workspace.slug, evalSetId: "set-1" }) },
+        );
+
+        expect(response.status).toBe(403);
+        expect(nodesService.addNode).not.toHaveBeenCalled();
+      });
+
+      test("a DEVELOPER may set contested", async () => {
+        const { member, workspace } = await memberWorkspace("DEVELOPER");
+        mockEvalSetScope("set-1", [{ ref_id: "req-1" }]);
+        vi.mocked(nodesService.updateNode).mockResolvedValueOnce({ success: true });
+
+        const response = await updateRequirement(
+          createAuthenticatedPutRequest(
+            `http://localhost:3000/api/workspaces/${workspace.slug}/evals/set-1/requirements/req-1`,
+            member,
+            { name: "Req", contested: true },
+          ),
+          { params: Promise.resolve({ slug: workspace.slug, evalSetId: "set-1", reqId: "req-1" }) },
+        );
+
+        expect(response.status).toBe(200);
+        expect(updateNodeData()?.contested).toBe(true);
+      });
+
+      test("a VIEWER sending contested: false is still rejected — writes are writes", async () => {
+        const { member, workspace } = await memberWorkspace("VIEWER");
+
+        const response = await updateRequirement(
+          createAuthenticatedPutRequest(
+            `http://localhost:3000/api/workspaces/${workspace.slug}/evals/set-1/requirements/req-1`,
+            member,
+            { name: "Req", contested: false },
+          ),
+          { params: Promise.resolve({ slug: workspace.slug, evalSetId: "set-1", reqId: "req-1" }) },
+        );
+
+        expect(response.status).toBe(403);
+        expect(nodesService.updateNode).not.toHaveBeenCalled();
+      });
+    });
+
+    // ------------------------------------------------------------------------
+    // Ownership (IDOR)
+    // ------------------------------------------------------------------------
+    describe("Ownership validation", () => {
+      test("POST 404s when the eval set does not resolve in this workspace's swarm", async () => {
+        const { owner, workspace } = await ownerWorkspace();
+        mockEvalSetNotFound();
+
+        const response = await createRequirement(
+          createAuthenticatedPostRequest(
+            `http://localhost:3000/api/workspaces/${workspace.slug}/evals/other-ws-set/requirements`,
+            owner,
+            { name: "Req" },
+          ),
+          { params: Promise.resolve({ slug: workspace.slug, evalSetId: "other-ws-set" }) },
+        );
+
+        expect(response.status).toBe(404);
+        expect(nodesService.addNode).not.toHaveBeenCalled();
+        expect(nodesService.addEdge).not.toHaveBeenCalled();
+      });
+
+      test("PUT 404s for a reqId that is not reachable from the given eval set", async () => {
+        const { owner, workspace } = await ownerWorkspace();
+        mockEvalSetScope("set-1", [{ ref_id: "a-different-requirement" }]);
+
+        const response = await updateRequirement(
+          createAuthenticatedPutRequest(
+            `http://localhost:3000/api/workspaces/${workspace.slug}/evals/set-1/requirements/req-from-other-set`,
+            owner,
+            { name: "Req", contested: true },
+          ),
+          {
+            params: Promise.resolve({
+              slug: workspace.slug,
+              evalSetId: "set-1",
+              reqId: "req-from-other-set",
+            }),
+          },
+        );
+
+        expect(response.status).toBe(404);
+        expect(nodesService.updateNode).not.toHaveBeenCalled();
+      });
+
+      test("PUT 404s when the eval set belongs to another workspace", async () => {
+        const { owner, workspace } = await ownerWorkspace();
+        // The other workspace's set is simply absent from this swarm's graph.
+        mockEvalSetNotFound();
+
+        const response = await updateRequirement(
+          createAuthenticatedPutRequest(
+            `http://localhost:3000/api/workspaces/${workspace.slug}/evals/other-ws-set/requirements/req-1`,
+            owner,
+            { name: "Req" },
+          ),
+          {
+            params: Promise.resolve({
+              slug: workspace.slug,
+              evalSetId: "other-ws-set",
+              reqId: "req-1",
+            }),
+          },
+        );
+
+        expect(response.status).toBe(404);
+        expect(nodesService.updateNode).not.toHaveBeenCalled();
+      });
+
+      test("404 is used rather than 403 so resource existence is not confirmed", async () => {
+        const { owner, workspace } = await ownerWorkspace();
+        mockEvalSetNotFound();
+
+        const response = await updateRequirement(
+          createAuthenticatedPutRequest(
+            `http://localhost:3000/api/workspaces/${workspace.slug}/evals/someone-elses-set/requirements/req-1`,
+            owner,
+            { name: "Req" },
+          ),
+          {
+            params: Promise.resolve({
+              slug: workspace.slug,
+              evalSetId: "someone-elses-set",
+              reqId: "req-1",
+            }),
+          },
+        );
+
+        expect(response.status).not.toBe(403);
+        expect(response.status).toBe(404);
+      });
+
+      test("the ownership fetch is scoped to this workspace's own swarm", async () => {
+        const { owner, workspace } = await ownerWorkspace();
+        mockEvalSetScope("set-1", [{ ref_id: "req-1" }]);
+        vi.mocked(nodesService.updateNode).mockResolvedValueOnce({ success: true });
+
+        await updateRequirement(
+          createAuthenticatedPutRequest(
+            `http://localhost:3000/api/workspaces/${workspace.slug}/evals/set-1/requirements/req-1`,
+            owner,
+            { name: "Req" },
+          ),
+          { params: Promise.resolve({ slug: workspace.slug, evalSetId: "set-1", reqId: "req-1" }) },
+        );
+
+        const calledUrl = String((global.fetch as ReturnType<typeof vi.fn>).mock.calls[0][0]);
+        expect(calledUrl).toContain("/v2/nodes/set-1");
+        expect(calledUrl).toContain(encodeURIComponent("['HAS_REQUIREMENT']"));
+      });
+
+      test("a malformed evalSetId is rejected before any Jarvis call", async () => {
+        const { owner, workspace } = await ownerWorkspace();
+        const fetchMock = vi.fn();
+        global.fetch = fetchMock as any;
+
+        const response = await createRequirement(
+          createAuthenticatedPostRequest(
+            `http://localhost:3000/api/workspaces/${workspace.slug}/evals/bad/requirements`,
+            owner,
+            { name: "Req" },
+          ),
+          { params: Promise.resolve({ slug: workspace.slug, evalSetId: "../../v2/nodes" }) },
+        );
+
+        expect(response.status).toBe(400);
+        expect(fetchMock).not.toHaveBeenCalled();
+        expect(nodesService.addNode).not.toHaveBeenCalled();
       });
     });
   });

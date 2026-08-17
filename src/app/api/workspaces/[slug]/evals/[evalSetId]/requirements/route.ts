@@ -1,8 +1,15 @@
 import { randomUUID } from "crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
+import { resolveWorkspaceAccess, requireMemberAccess } from "@/lib/auth/workspace-access";
 import { getJarvisUrl } from "@/lib/utils/swarm";
 import { getWorkspaceSwarmAccess } from "@/lib/helpers/swarm-access";
+import {
+  canWriteContested,
+  coerce,
+  hasContestedKey,
+  resolveEvalSetScope,
+} from "@/lib/evals/requirement-writes";
 import { addNode, addEdge } from "@/services/swarm/api/nodes";
 import type { JarvisNode } from "@/types/jarvis";
 
@@ -116,12 +123,38 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: "name is required" }, { status: 400 });
     }
 
+    // On create, an omitted `contested` means "not contested" — unlike the
+    // update path, where omission must preserve whatever is stored.
+    let contested = false;
+    if (hasContestedKey(body)) {
+      const coerced = coerce(body.contested, "contested");
+      if (!coerced.ok) {
+        return NextResponse.json({ error: coerced.error }, { status: 400 });
+      }
+      contested = coerced.value;
+    }
+
     const swarmAccessResult = await getWorkspaceSwarmAccess(slug, userOrResponse.id);
     if (!swarmAccessResult.success) {
       console.warn(`[Evals Requirements POST] Swarm access denied: ${swarmAccessResult.error.type}`);
       return handleSwarmAccessError(swarmAccessResult.error);
     }
     console.log(`[Evals Requirements POST] Swarm access granted — swarmName=${swarmAccessResult.data.swarmName}, apiKey present=${!!swarmAccessResult.data.swarmApiKey}`);
+
+    // Role gate applies ONLY when the body carries `contested`, so name /
+    // description permissions stay exactly as they were for every existing user.
+    if (hasContestedKey(body)) {
+      const access = await resolveWorkspaceAccess(request, { slug });
+      const member = requireMemberAccess(access);
+      if (member instanceof NextResponse) return member;
+      if (!canWriteContested(member.role)) {
+        console.warn(`[Evals Requirements POST] contested write denied for role=${member.role}`);
+        return NextResponse.json(
+          { error: "Insufficient permissions to set contested" },
+          { status: 403 },
+        );
+      }
+    }
 
     if (process.env.USE_MOCKS === "true") {
       console.log(`[Evals Requirements POST] USE_MOCKS=true, routing to mock endpoint`);
@@ -141,6 +174,15 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     const config = { jarvisUrl, apiKey: swarmApiKey };
     console.log(`[Evals Requirements POST] Jarvis URL: ${jarvisUrl}`);
 
+    // Ownership: `evalSetId` is an opaque ref_id the caller supplied, and
+    // addEdge would otherwise write to it unvalidated. Resolve it in this
+    // workspace's own swarm first, and 404 if it isn't there.
+    const scope = await resolveEvalSetScope(config, evalSetId);
+    if (!scope.ok) {
+      console.warn(`[Evals Requirements POST] Eval set not writable: ${scope.error}`);
+      return NextResponse.json({ error: scope.error }, { status: scope.status });
+    }
+
     const id = randomUUID();
     const nodeResult = await addNode(config, {
       node_type: "EvalRequirement",
@@ -152,6 +194,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
           typeof prompt_snippet === "string" ? prompt_snippet.trim() : undefined,
         desirable_cases: Array.isArray(desirable_cases) ? desirable_cases : [],
         undesirable_cases: Array.isArray(undesirable_cases) ? undesirable_cases : [],
+        contested,
       },
     });
     console.log(`[Evals Requirements POST] addNode result: success=${nodeResult.success}, ref_id=${nodeResult.ref_id ?? 'n/a'}, error=${nodeResult.error ?? 'none'}`);
