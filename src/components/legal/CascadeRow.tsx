@@ -1,11 +1,19 @@
 "use client";
 
-import React, { type ReactNode } from "react";
+import React, { useState, type ReactNode } from "react";
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { NodePeekBody, fetchNodePeek, type NodePeek } from "@/components/run-report/NodePeek";
 import type {
   AgentRow,
   CascadeRowModel,
@@ -27,6 +35,28 @@ export const LANE_X = [96, 176, 248];
 export const RAIL_CHIP_W = 224;
 export const RAIL_RIGHT = 8;
 export const MIN_W = 980;
+
+/**
+ * Workspace slug for the trace being rendered. The concept chips fetch their
+ * own node to fill the peek, and threading the slug through sections and rows
+ * to reach them would be pure prop drilling. Null outside a workspace (tests,
+ * embeds): the chip still opens, and the peek says why it cannot fetch.
+ */
+const CascadeWorkspaceContext = React.createContext<string | null>(null);
+
+export function CascadeWorkspaceProvider({
+  slug,
+  children,
+}: {
+  slug: string | null;
+  children: ReactNode;
+}) {
+  return (
+    <CascadeWorkspaceContext.Provider value={slug}>
+      {children}
+    </CascadeWorkspaceContext.Provider>
+  );
+}
 
 export function laneIndex(depth: number): number {
   return Math.min(Math.max(depth, 0), LANE_X.length - 1);
@@ -405,44 +435,92 @@ function renderContent(
   }
 }
 
+/**
+ * A rail chip opens a peek at the Concept it names: the node fetched live from
+ * the graph, so the modal carries the current name/id/description/docs rather
+ * than the thin identity the trace recorded.
+ */
 function ConceptChip({ row }: { row: ConceptRow }) {
+  const workspaceSlug = React.useContext(CascadeWorkspaceContext);
+  const [peek, setPeek] = useState<NodePeek | null>(null);
   const created = row.verb !== "READ";
+
+  const openPeek = async () => {
+    setPeek({ state: "loading" });
+    setPeek(await fetchNodePeek(workspaceSlug, row.refId));
+  };
+
   return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <div
-          data-testid={`cascade-concept-${row.refId ?? row.name}`}
-          className={`absolute top-1/2 flex h-[26px] -translate-y-1/2 items-center gap-1.5 rounded-full border px-2.5 font-mono text-[11px] ${
-            created
-              ? "border-amber-600 bg-amber-600 text-white dark:border-amber-400 dark:bg-amber-400 dark:text-amber-950"
-              : "border-amber-600/45 bg-amber-500/10 text-amber-700 dark:border-amber-400/45 dark:text-amber-400"
-          }`}
-          style={{ right: RAIL_RIGHT, width: RAIL_CHIP_W }}
-        >
-          <svg width={11} height={11} viewBox="0 0 12 12" aria-hidden>
-            <rect
-              x={2.5}
-              y={2.5}
-              width={7}
-              height={7}
-              transform="rotate(45 6 6)"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth={1.6}
-            />
-          </svg>
-          <span className="min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap font-semibold">
-            {row.name}
-          </span>
-          <span className="shrink-0 text-[9px] tracking-[0.12em] opacity-85">
-            {row.verb === "CREATED" ? "+ CREATED" : row.verb}
-          </span>
-        </div>
-      </TooltipTrigger>
-      <TooltipContent side="left" className="max-w-md font-mono text-xs">
-        turn {row.order} · {row.verb === "READ" ? "READ_CONCEPT edge" : `${row.verb} (display-parsed)`}
-        {row.via ? ` · via ${row.via}` : ""}
-      </TooltipContent>
-    </Tooltip>
+    <>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button
+            type="button"
+            onClick={openPeek}
+            data-testid={`cascade-concept-${row.refId ?? row.name}`}
+            className={`absolute top-1/2 flex h-[26px] -translate-y-1/2 items-center gap-1.5 rounded-full border px-2.5 font-mono text-[11px] transition-shadow hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+              created
+                ? "border-amber-600 bg-amber-600 text-white hover:bg-amber-500 dark:border-amber-400 dark:bg-amber-400 dark:text-amber-950 dark:hover:bg-amber-300"
+                : "border-amber-600/45 bg-amber-500/10 text-amber-700 hover:border-amber-600 hover:bg-amber-500/20 dark:border-amber-400/45 dark:text-amber-400 dark:hover:border-amber-400"
+            }`}
+            style={{ right: RAIL_RIGHT, width: RAIL_CHIP_W }}
+          >
+            <svg width={11} height={11} viewBox="0 0 12 12" aria-hidden>
+              <rect
+                x={2.5}
+                y={2.5}
+                width={7}
+                height={7}
+                transform="rotate(45 6 6)"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth={1.6}
+              />
+            </svg>
+            <span className="min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap text-left font-semibold">
+              {row.name}
+            </span>
+            <span className="shrink-0 text-[9px] tracking-[0.12em] opacity-85">
+              {row.verb === "CREATED" ? "+ CREATED" : row.verb}
+            </span>
+          </button>
+        </TooltipTrigger>
+        <TooltipContent side="left" className="max-w-md font-mono text-xs">
+          turn {row.order} · {row.verb === "READ" ? "READ_CONCEPT edge" : `${row.verb} (display-parsed)`}
+          {row.via ? ` · via ${row.via}` : ""}
+        </TooltipContent>
+      </Tooltip>
+
+      <Dialog open={peek !== null} onOpenChange={(next) => !next && setPeek(null)}>
+        <DialogContent className="max-w-2xl" data-testid="cascade-concept-peek">
+          <DialogHeader>
+            <DialogTitle className="flex items-baseline gap-2 text-[15px]">
+              <span className="font-mono text-[9.5px] uppercase tracking-[0.1em] text-muted-foreground/60">
+                concept
+              </span>
+              {row.name}
+            </DialogTitle>
+            <DialogDescription className="space-y-0.5 font-mono text-[10px] text-muted-foreground/60">
+              {row.refId && <span className="block truncate">ref {row.refId}</span>}
+              <span className="block">
+                turn {row.order} · {row.verb}
+                {row.via ? ` · via ${row.via}` : ""}
+              </span>
+            </DialogDescription>
+          </DialogHeader>
+          {peek?.state === "loading" && (
+            <p className="text-[12.5px] italic text-muted-foreground">fetching from the graph…</p>
+          )}
+          {peek?.state === "error" && (
+            <p className="text-[12.5px] text-muted-foreground">{peek.note}</p>
+          )}
+          {peek?.state === "done" && (
+            <div className="max-h-[55vh] overflow-y-auto overscroll-contain">
+              <NodePeekBody payload={peek.payload} />
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
