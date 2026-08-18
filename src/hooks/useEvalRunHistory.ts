@@ -24,6 +24,7 @@ import {
   type RawJarvisNode,
 } from "@/lib/harvey-lab/eval-normalizers";
 import { buildHillClimbSeries, type SubgraphNode, type SubgraphEdge } from "@/lib/harvey-lab/hill-climb-series";
+import { buildEvalOutputSeries } from "@/lib/harvey-lab/eval-output-series";
 import { logger } from "@/lib/logger";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -42,13 +43,46 @@ interface StakworkRunRow {
   createdAt: string;
 }
 
+/**
+ * Which builder produced `attempts`:
+ *  - "fix-chain"   — ProposedFix hill-climb (authoritative when it has a scored
+ *                    non-baseline point); monotonic best-so-far line.
+ *  - "eval-output" — flat per-EvalTriggerOutput series for concept-driven
+ *                    recursion; the line traces real, possibly falling scores.
+ *  - "legacy"      — the pre-existing flat list of completed outputs.
+ */
+export type EvalSeriesKind = "fix-chain" | "eval-output" | "legacy";
+
 interface UseEvalRunHistoryReturn {
   history: EvalRunHistoryEntry[];
   /** All completed EvalTriggerOutput nodes, sorted chronologically (baseline first). */
   attempts: EvalTriggerOutput[];
+  /** Which builder produced `attempts` — drives badge + caption semantics. */
+  seriesKind: EvalSeriesKind;
+  /** True when the graph walk hit a cap or a hop failed, so `attempts` may be short. */
+  partial: boolean;
   isLoading: boolean;
   error: string | null;
   refetch: () => void;
+}
+
+/**
+ * The hill-climb series is authoritative only when it actually charts a fix.
+ * A bare `hillClimbAttempts.length > 0` is true for a baseline-only series, so
+ * the fallback would never fire. Counting non-baseline points is not enough
+ * either: `buildHillClimbSeries` emits slot points (`actualPassed: null`,
+ * `accepted: false`) for rejected-and-unscored fixes, so an eval set whose only
+ * fixes were rejected would keep the hill-climb path and its concept re-runs
+ * would stay invisible — the original bug, re-created one layer up.
+ */
+function hasScoredFixPoint(points: EvalTriggerOutput[]): boolean {
+  return points.some((pt) => {
+    if (pt.isBaseline) return false;
+    // Mirrors HillClimbChart's own resolution: an explicit `actualPassed: null`
+    // (a slot point) never falls back to n_passed, so slots stay excluded.
+    const score = pt.actualPassed !== undefined ? pt.actualPassed : (pt.n_passed ?? null);
+    return score != null;
+  });
 }
 
 // ── Node-type casing helpers ──────────────────────────────────────────────────
@@ -95,6 +129,8 @@ export function useEvalRunHistory(input: UseEvalRunHistoryInput): UseEvalRunHist
 
   const [history, setHistory] = useState<EvalRunHistoryEntry[]>([]);
   const [attempts, setAttempts] = useState<EvalTriggerOutput[]>([]);
+  const [seriesKind, setSeriesKind] = useState<EvalSeriesKind>("legacy");
+  const [partial, setPartial] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [fetchCount, setFetchCount] = useState(0);
@@ -138,6 +174,8 @@ export function useEvalRunHistory(input: UseEvalRunHistoryInput): UseEvalRunHist
           if (!cancelled) {
             setHistory([]);
             setAttempts([]);
+            setSeriesKind("legacy");
+            setPartial(false);
             setIsLoading(false);
           }
           return;
@@ -162,6 +200,8 @@ export function useEvalRunHistory(input: UseEvalRunHistoryInput): UseEvalRunHist
           if (!cancelled) {
             setHistory([]);
             setAttempts([]);
+            setSeriesKind("legacy");
+            setPartial(false);
             setIsLoading(false);
           }
           return;
@@ -188,14 +228,16 @@ export function useEvalRunHistory(input: UseEvalRunHistoryInput): UseEvalRunHist
         );
 
         // ── Step 3: Build hill-climb series for the chart ─────────────────
-        const hillClimbAttempts = buildHillClimbSeries({
+        const subgraph = {
           nodes: [
-            // Inject EvalSet stub so buildHillClimbSeries can locate the root
+            // Inject EvalSet stub so the builders can locate the root
             { ref_id: evalSetRefId, node_type: "EvalSet" },
             ...fixChain.nodes,
           ],
           edges: fixChain.edges,
-        });
+        };
+
+        const hillClimbAttempts = buildHillClimbSeries(subgraph);
 
         // ── Step 4: Build history table (EvalRunsBox) ─────────────────────
         // For the history table we reconstruct EvalTrigger objects from the
@@ -244,8 +286,51 @@ export function useEvalRunHistory(input: UseEvalRunHistoryInput): UseEvalRunHist
           };
         });
 
-        // Use hill-climb series if non-empty, else fall back to legacy flat list
-        const finalAttempts = hillClimbAttempts.length > 0 ? hillClimbAttempts : enrichedSortedAttempts;
+        // ── Step 4b: Pick the series ──────────────────────────────────────
+        // scored-fix hill-climb → flat eval-output → legacy flat list.
+        const evalOutputSeries = buildEvalOutputSeries(subgraph);
+
+        let finalAttempts: EvalTriggerOutput[];
+        let finalSeriesKind: EvalSeriesKind;
+
+        if (hasScoredFixPoint(hillClimbAttempts)) {
+          finalAttempts = hillClimbAttempts;
+          finalSeriesKind = "fix-chain";
+          // Mixed set: a real ProposedFix chain AND concept re-runs. The
+          // hill-climb line wins and the concept re-runs do not chart — that is
+          // the intended behaviour, logged rather than left implicit because it
+          // is the shape most likely to appear next.
+          if (evalOutputSeries.points.length > 1) {
+            logger.info(
+              `[legal/benchmarks/useEvalRunHistory] Mixed set — ProposedFix chain wins, ${evalOutputSeries.points.length} eval-output points not charted`,
+              "legal",
+              {
+                evalSetRefId,
+                fixChainPoints: hillClimbAttempts.length,
+                evalOutputPoints: evalOutputSeries.points.length,
+              },
+            );
+          }
+        } else if (evalOutputSeries.points.length > 0) {
+          finalAttempts = evalOutputSeries.points;
+          finalSeriesKind = "eval-output";
+        } else {
+          finalAttempts = enrichedSortedAttempts;
+          finalSeriesKind = "legacy";
+        }
+
+        logger.info(
+          `[legal/benchmarks/useEvalRunHistory] Series selected kind=${finalSeriesKind} points=${finalAttempts.length} partial=${fixChain.partial ?? false}`,
+          "legal",
+          {
+            evalSetRefId,
+            seriesKind: finalSeriesKind,
+            seriesLength: finalAttempts.length,
+            partial: fixChain.partial ?? false,
+            orderingMode: evalOutputSeries.orderingMode,
+            denominator: evalOutputSeries.denominator,
+          },
+        );
 
         // ── Step 5: Join triggers with StakworkRun rows ───────────────────
         const runsData = (await runsRes.json()) as
@@ -296,6 +381,8 @@ export function useEvalRunHistory(input: UseEvalRunHistoryInput): UseEvalRunHist
         if (!cancelled) {
           setHistory(entries);
           setAttempts(finalAttempts);
+          setSeriesKind(finalSeriesKind);
+          setPartial(fixChain.partial ?? false);
         }
       } catch (err) {
         if (!cancelled) {
@@ -313,5 +400,5 @@ export function useEvalRunHistory(input: UseEvalRunHistoryInput): UseEvalRunHist
     };
   }, [inputRefId, taskSlug, workspaceSlug, workspaceId, fetchCount]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  return { history, attempts, isLoading, error, refetch };
+  return { history, attempts, seriesKind, partial, isLoading, error, refetch };
 }

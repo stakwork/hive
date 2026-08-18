@@ -55,10 +55,22 @@ export interface WalkFixChainResult {
 export interface WalkFixChainOpts {
   /**
    * Edge types to use for the FIRST hop from the EvalSet node.
-   * - chart: `["HAS_BASELINE_TRIGGER"]`
-   * - cron:  `["HAS_BASELINE_TRIGGER", "HAS_TRIGGER"]`
+   * Both the chart and the cron pass `["HAS_BASELINE_TRIGGER", "HAS_TRIGGER"]`:
+   * concept-driven recursion writes a fresh EvalTrigger via HAS_TRIGGER rather
+   * than a ProposedFix, so a baseline-only first hop never loads those runs.
    */
   triggerEdgeTypes: string[];
+
+  /**
+   * Opt-in second trigger host: also fan out `HAS_TRIGGER` over the
+   * EvalRequirement nodes the EvalSet owns via `HAS_REQUIREMENT`.
+   *
+   * Hive's own benchmark run route attaches its EvalTrigger to the
+   * EvalRequirement, not to the EvalSet, so those runs are unreachable from the
+   * EvalSet's own edges no matter which trigger edge types the first hop asks
+   * for. Set by the chart route only — the cron keeps its current behaviour.
+   */
+  includeRequirementTriggers?: boolean;
 }
 
 // ── Safety caps ───────────────────────────────────────────────────────────────
@@ -74,6 +86,13 @@ const WALL_CLOCK_BUDGET_MS = 25_000;
 
 /** Concurrency limit for parallel per-hop fetches. */
 const FETCH_CONCURRENCY = 10;
+
+/**
+ * Sub-cap on the requirement fan-out (`includeRequirementTriggers`). An EvalSet
+ * can own many EvalRequirement nodes; this bounds the extra hop independently of
+ * the shared node+edge cap so it can never dominate the walk.
+ */
+const REQUIREMENT_FANOUT_CAP = 50;
 
 // ── ref_id validation ─────────────────────────────────────────────────────────
 
@@ -313,8 +332,14 @@ export async function walkFixChain(
   // Inject a stub EvalSet node so downstream locateBaselineTriggerRoot can find it
   addNode({ ref_id: evalSetRefId, node_type: "EvalSet", properties: {} });
 
+  // When requirement-hosted triggers are requested, HAS_REQUIREMENT rides along
+  // on the same hop (one extra GET) rather than costing a separate round-trip.
+  const step1EdgeTypes = opts.includeRequirementTriggers
+    ? [...opts.triggerEdgeTypes, "HAS_REQUIREMENT"]
+    : opts.triggerEdgeTypes;
+
   const step1 = await fetchNodeForEdgeTypes(
-    base, swarmApiKey, evalSetRefId, opts.triggerEdgeTypes, controller.signal,
+    base, swarmApiKey, evalSetRefId, step1EdgeTypes, controller.signal,
   );
 
   if (!step1.ok) {
@@ -330,204 +355,363 @@ export async function walkFixChain(
   for (const n of step1.nodes) addNode(n);
   for (const e of step1.edges) addEdge(e);
 
-  // Collect EvalTrigger ref_ids from the edges returned
-  const triggerRefIds = step1.edges
-    .filter((e) => e.source === evalSetRefId && opts.triggerEdgeTypes.includes(e.edge_type))
-    .map((e) => e.target)
-    .filter(isValidRefId);
+  // Collect EvalTrigger ref_ids from the edges returned, keeping the baseline
+  // branch separate. Everything downstream is ordered baseline-first: the walk
+  // shares ONE node+edge cap and ONE wall-clock budget across all branches, so
+  // without this ordering an EvalSet with many re-runs — exactly what this
+  // feature targets — could exhaust the budget on new branches and truncate the
+  // baseline ProposedFix chain, shortening the existing hill-climb line.
+  // Baseline-first makes truncation degrade the new feature, never the old one.
+  const evalSetTriggerEdges = step1.edges.filter(
+    (e) => e.source === evalSetRefId && opts.triggerEdgeTypes.includes(e.edge_type),
+  );
+
+  const baselineTriggerRefIds = [
+    ...new Set(
+      evalSetTriggerEdges
+        .filter((e) => e.edge_type === "HAS_BASELINE_TRIGGER")
+        .map((e) => e.target)
+        .filter(isValidRefId),
+    ),
+  ];
+  const baselineTriggerSet = new Set(baselineTriggerRefIds);
+
+  const otherEvalSetTriggerRefIds = [
+    ...new Set(
+      evalSetTriggerEdges
+        .filter((e) => e.edge_type !== "HAS_BASELINE_TRIGGER")
+        .map((e) => e.target)
+        .filter(isValidRefId),
+    ),
+  ].filter((id) => !baselineTriggerSet.has(id));
 
   logger.info(
     "[legal/fix-chain-walker] EvalSet hop complete",
     "legal",
-    { evalSetRefId, triggerEdgeTypes: opts.triggerEdgeTypes, triggerCount: triggerRefIds.length },
+    {
+      evalSetRefId,
+      triggerEdgeTypes: opts.triggerEdgeTypes,
+      includeRequirementTriggers: opts.includeRequirementTriggers === true,
+      baselineTriggerCount: baselineTriggerRefIds.length,
+      otherTriggerCount: otherEvalSetTriggerRefIds.length,
+    },
   );
 
-  if (triggerRefIds.length === 0) {
-    clearTimeout(budgetTimer);
-    return { nodes: [...nodeMap.values()], edges: [...edgeMap.values()], partial: false };
-  }
+  // ── Shared hop helpers (used baseline-first, then for later branches) ──────
 
-  // ── Step 2: EvalTrigger(s) → root ProposedFix + baseline EvalTriggerOutput ──
-
-  hopDepth = 1;
   const step2EdgeTypes = ["HAS_PROPOSED_FIX", "HAS_OUTPUT"];
-
-  const step2Tasks = triggerRefIds.map((triggerId) => async () => {
-    if (isBudgetExhausted() || isNodeEdgeCapped()) return;
-    const data = await fetchNodeForEdgeTypes(
-      base, swarmApiKey, triggerId, step2EdgeTypes, controller.signal,
-    );
-    if (!data.ok) {
-      logger.warn(
-        "[legal/fix-chain-walker] Failed to fetch EvalTrigger edges",
-        "legal",
-        { triggerId },
-      );
-      failedBranches.push(triggerId);
-      partial = true;
-      return;
-    }
-    for (const n of data.nodes) addNode(n);
-    for (const e of data.edges) addEdge(e);
-
-    logger.info(
-      "[legal/fix-chain-walker] EvalTrigger hop complete",
-      "legal",
-      {
-        triggerId,
-        edgeTypes: step2EdgeTypes,
-        nodeCount: data.nodes.length,
-        edgeCount: data.edges.length,
-      },
-    );
-  });
-
-  await batchedAll(step2Tasks, FETCH_CONCURRENCY);
-
-  // ── Step 3: BFS over ProposedFix nodes via DERIVED_FROM + PRODUCED_BY ──────
-
-  // Seed BFS queue with root ProposedFix ref_ids
-  // (these are targets of HAS_PROPOSED_FIX edges from any EvalTrigger)
-  const rootFixEdgeTypes = new Set(["HAS_PROPOSED_FIX"]);
-  const triggerSet = new Set(triggerRefIds);
-
-  let bfsQueue: string[] = [...edgeMap.values()]
-    .filter((e) => triggerSet.has(e.source) && rootFixEdgeTypes.has(e.edge_type))
-    .map((e) => e.target)
-    .filter(isValidRefId);
-
-  const visitedFixes = new Set<string>();
   const fixEdgeTypes = ["DERIVED_FROM", "PRODUCED_BY"];
+  const visitedTriggers = new Set<string>();
+  const visitedFixes = new Set<string>();
 
-  logger.info(
-    "[legal/fix-chain-walker] Starting ProposedFix BFS",
-    "legal",
-    { rootFixCount: bfsQueue.length, fixEdgeTypes },
-  );
+  /** Fetch HAS_PROPOSED_FIX + HAS_OUTPUT for a batch of EvalTrigger ref_ids. */
+  async function fetchTriggerHop(triggerIds: string[]) {
+    const fresh = triggerIds.filter((id) => !visitedTriggers.has(id));
+    for (const id of fresh) visitedTriggers.add(id);
+    if (fresh.length === 0) return;
 
-  // Cap check before entering BFS — step 2 may already have pushed past the cap
-  if (isNodeEdgeCapped()) {
-    logger.warn(
-      "[legal/fix-chain-walker] Node+edge cap already reached after trigger hop — skipping BFS",
-      "legal",
-      { total: totalCount(), cap: NODE_EDGE_CAP },
-    );
-    partial = true;
-  }
-
-  while (bfsQueue.length > 0 && !isNodeEdgeCapped() && !isBudgetExhausted()) {
-    hopDepth++;
-
-    if (hopDepth > HOP_DEPTH_CAP) {
-      logger.warn(
-        "[legal/fix-chain-walker] Hop-depth cap reached — stopping BFS",
-        "legal",
-        { hopDepth, cap: HOP_DEPTH_CAP, remainingQueue: bfsQueue.length },
-      );
-      partial = true;
-      break;
-    }
-
-    // Dedup: only fetch ref_ids we haven't visited yet
-    const currentBatch = bfsQueue.filter((id) => !visitedFixes.has(id));
-    bfsQueue = [];
-
-    for (const id of currentBatch) visitedFixes.add(id);
-
-    if (currentBatch.length === 0) break;
-
-    // Fetch each fix node in the batch with bounded concurrency
-    const fetchTasks = currentBatch.map((fixRefId) => async () => {
-      if (isBudgetExhausted() || isNodeEdgeCapped()) return { fixRefId, nodes: [], edges: [] as SubgraphEdge[] };
-
+    const tasks = fresh.map((triggerId) => async () => {
+      if (isBudgetExhausted() || isNodeEdgeCapped()) {
+        partial = true;
+        return;
+      }
       const data = await fetchNodeForEdgeTypes(
-        base, swarmApiKey, fixRefId, fixEdgeTypes, controller.signal,
+        base, swarmApiKey, triggerId, step2EdgeTypes, controller.signal,
       );
-
       if (!data.ok) {
         logger.warn(
-          "[legal/fix-chain-walker] Mid-walk hop failure",
+          "[legal/fix-chain-walker] Failed to fetch EvalTrigger edges",
           "legal",
-          { fixRefId, hopDepth, reason: "all edge-type fetches failed" },
+          { triggerId },
         );
-        failedBranches.push(fixRefId);
+        failedBranches.push(triggerId);
         partial = true;
-        return { fixRefId, nodes: [] as SubgraphNode[], edges: [] as SubgraphEdge[] };
+        return;
       }
-
-      // Log per-hop detail including eval_status/status for the fix node
-      const fixNode = data.nodes.find((n) => n.ref_id === fixRefId);
-      const evalStatus = fixNode?.properties?.eval_status;
-      const legacyStatus = fixNode?.properties?.status;
-      const statusResolved = evalStatus != null ? `eval_status=${evalStatus}` : `status=${legacyStatus ?? "absent"}`;
-
-      const siblingCount = data.edges.filter(
-        (e) => e.source === fixRefId && e.edge_type === "DERIVED_FROM",
-      ).length;
+      for (const n of data.nodes) addNode(n);
+      for (const e of data.edges) addEdge(e);
 
       logger.info(
-        "[legal/fix-chain-walker] ProposedFix hop complete",
+        "[legal/fix-chain-walker] EvalTrigger hop complete",
         "legal",
         {
-          fixRefId,
-          hopDepth,
-          statusResolved,
-          siblingCount,
-          edgeTypes: fixEdgeTypes,
+          triggerId,
+          edgeTypes: step2EdgeTypes,
           nodeCount: data.nodes.length,
           edgeCount: data.edges.length,
         },
       );
-
-      return { fixRefId, nodes: data.nodes, edges: data.edges };
     });
 
-    const batchResults = await batchedAll(fetchTasks, FETCH_CONCURRENCY);
+    await batchedAll(tasks, FETCH_CONCURRENCY);
 
-    for (const { nodes, edges } of batchResults) {
-      for (const n of nodes) addNode(n);
-      for (const e of edges) addEdge(e);
+    // A hop that lands past the cap means later branches get skipped — report it
+    // rather than letting a truncated walk look complete.
+    if (isNodeEdgeCapped()) {
+      logger.warn(
+        "[legal/fix-chain-walker] Node+edge cap reached during trigger hop — later branches will be skipped",
+        "legal",
+        { total: totalCount(), cap: NODE_EDGE_CAP },
+      );
+      partial = true;
+    }
+  }
+
+  /** Root ProposedFix ref_ids hanging off the given triggers (unvisited only). */
+  function rootFixesFor(triggerIds: string[]): string[] {
+    const scope = new Set(triggerIds);
+    return [...edgeMap.values()]
+      .filter((e) => scope.has(e.source) && e.edge_type === "HAS_PROPOSED_FIX")
+      .map((e) => e.target)
+      .filter(isValidRefId)
+      .filter((id) => !visitedFixes.has(id));
+  }
+
+  /** BFS over ProposedFix nodes via DERIVED_FROM + PRODUCED_BY, to completion. */
+  async function walkFixes(seedIds: string[]) {
+    let bfsQueue = [...seedIds];
+    if (bfsQueue.length === 0) return;
+
+    logger.info(
+      "[legal/fix-chain-walker] Starting ProposedFix BFS",
+      "legal",
+      { rootFixCount: bfsQueue.length, fixEdgeTypes },
+    );
+
+    // Cap check before entering BFS — the trigger hop may already have pushed
+    // past the cap.
+    if (isNodeEdgeCapped()) {
+      logger.warn(
+        "[legal/fix-chain-walker] Node+edge cap already reached after trigger hop — skipping BFS",
+        "legal",
+        { total: totalCount(), cap: NODE_EDGE_CAP },
+      );
+      partial = true;
+      return;
     }
 
-    // Enqueue next-hop fix children (nodes reached via DERIVED_FROM edges from
-    // THIS batch's nodes that are not yet visited)
-    for (const { fixRefId, edges } of batchResults) {
-      if (!fixRefId) continue;
-      // Children via DERIVED_FROM: edges where TARGET is fixRefId (child --DERIVED_FROM--> parent)
-      const children = edges.filter(
-        (e) => e.target === fixRefId && e.edge_type === "DERIVED_FROM",
-      ).map((e) => e.source).filter(isValidRefId);
+    while (bfsQueue.length > 0 && !isNodeEdgeCapped() && !isBudgetExhausted()) {
+      hopDepth++;
 
-      // Also: children FROM fixRefId via DERIVED_FROM (in case Jarvis returns forward edges)
-      const childrenForward = edges.filter(
-        (e) => e.source === fixRefId && e.edge_type === "DERIVED_FROM",
-      ).map((e) => e.target).filter(isValidRefId);
+      if (hopDepth > HOP_DEPTH_CAP) {
+        logger.warn(
+          "[legal/fix-chain-walker] Hop-depth cap reached — stopping BFS",
+          "legal",
+          { hopDepth, cap: HOP_DEPTH_CAP, remainingQueue: bfsQueue.length },
+        );
+        partial = true;
+        break;
+      }
 
-      for (const c of [...children, ...childrenForward]) {
-        if (!visitedFixes.has(c)) bfsQueue.push(c);
+      // Dedup: only fetch ref_ids we haven't visited yet
+      const currentBatch = bfsQueue.filter((id) => !visitedFixes.has(id));
+      bfsQueue = [];
+
+      for (const id of currentBatch) visitedFixes.add(id);
+
+      if (currentBatch.length === 0) break;
+
+      // Fetch each fix node in the batch with bounded concurrency
+      const fetchTasks = currentBatch.map((fixRefId) => async () => {
+        if (isBudgetExhausted() || isNodeEdgeCapped()) {
+          partial = true;
+          return { fixRefId, nodes: [] as SubgraphNode[], edges: [] as SubgraphEdge[] };
+        }
+
+        const data = await fetchNodeForEdgeTypes(
+          base, swarmApiKey, fixRefId, fixEdgeTypes, controller.signal,
+        );
+
+        if (!data.ok) {
+          logger.warn(
+            "[legal/fix-chain-walker] Mid-walk hop failure",
+            "legal",
+            { fixRefId, hopDepth, reason: "all edge-type fetches failed" },
+          );
+          failedBranches.push(fixRefId);
+          partial = true;
+          return { fixRefId, nodes: [] as SubgraphNode[], edges: [] as SubgraphEdge[] };
+        }
+
+        // Log per-hop detail including eval_status/status for the fix node
+        const fixNode = data.nodes.find((n) => n.ref_id === fixRefId);
+        const evalStatus = fixNode?.properties?.eval_status;
+        const legacyStatus = fixNode?.properties?.status;
+        const statusResolved = evalStatus != null ? `eval_status=${evalStatus}` : `status=${legacyStatus ?? "absent"}`;
+
+        const siblingCount = data.edges.filter(
+          (e) => e.source === fixRefId && e.edge_type === "DERIVED_FROM",
+        ).length;
+
+        logger.info(
+          "[legal/fix-chain-walker] ProposedFix hop complete",
+          "legal",
+          {
+            fixRefId,
+            hopDepth,
+            statusResolved,
+            siblingCount,
+            edgeTypes: fixEdgeTypes,
+            nodeCount: data.nodes.length,
+            edgeCount: data.edges.length,
+          },
+        );
+
+        return { fixRefId, nodes: data.nodes, edges: data.edges };
+      });
+
+      const batchResults = await batchedAll(fetchTasks, FETCH_CONCURRENCY);
+
+      for (const { nodes, edges } of batchResults) {
+        for (const n of nodes) addNode(n);
+        for (const e of edges) addEdge(e);
+      }
+
+      // Enqueue next-hop fix children (nodes reached via DERIVED_FROM edges from
+      // THIS batch's nodes that are not yet visited)
+      for (const { fixRefId, edges } of batchResults) {
+        if (!fixRefId) continue;
+        // Children via DERIVED_FROM: edges where TARGET is fixRefId (child --DERIVED_FROM--> parent)
+        const children = edges.filter(
+          (e) => e.target === fixRefId && e.edge_type === "DERIVED_FROM",
+        ).map((e) => e.source).filter(isValidRefId);
+
+        // Also: children FROM fixRefId via DERIVED_FROM (in case Jarvis returns forward edges)
+        const childrenForward = edges.filter(
+          (e) => e.source === fixRefId && e.edge_type === "DERIVED_FROM",
+        ).map((e) => e.target).filter(isValidRefId);
+
+        for (const c of [...children, ...childrenForward]) {
+          if (!visitedFixes.has(c)) bfsQueue.push(c);
+        }
+      }
+
+      if (isNodeEdgeCapped()) {
+        logger.warn(
+          "[legal/fix-chain-walker] Node+edge cap reached — stopping BFS",
+          "legal",
+          { total: totalCount(), cap: NODE_EDGE_CAP, hopDepth },
+        );
+        partial = true;
+        break;
+      }
+
+      if (isBudgetExhausted()) {
+        logger.warn(
+          "[legal/fix-chain-walker] Wall-clock budget exhausted — stopping BFS",
+          "legal",
+          { elapsedMs: Date.now() - startMs, budget: WALL_CLOCK_BUDGET_MS, hopDepth },
+        );
+        partial = true;
+        break;
       }
     }
+  }
+
+  // ── Step 2a + 3a: baseline branch, fetched and walked to completion first ──
+
+  hopDepth = 1;
+  await fetchTriggerHop(baselineTriggerRefIds);
+  await walkFixes(rootFixesFor(baselineTriggerRefIds));
+
+  // ── Step 2b: non-baseline triggers hanging directly off the EvalSet ───────
+
+  await fetchTriggerHop(otherEvalSetTriggerRefIds);
+
+  // ── Step 2c: requirement-hosted triggers (opt-in) ─────────────────────────
+
+  const requirementTriggerRefIds: string[] = [];
+
+  if (opts.includeRequirementTriggers) {
+    const requirementRefIds = [
+      ...new Set(
+        step1.edges
+          .filter((e) => e.source === evalSetRefId && e.edge_type === "HAS_REQUIREMENT")
+          .map((e) => e.target)
+          .filter(isValidRefId),
+      ),
+    ];
+
+    const cappedRequirementRefIds = requirementRefIds.slice(0, REQUIREMENT_FANOUT_CAP);
+    if (cappedRequirementRefIds.length < requirementRefIds.length) {
+      logger.warn(
+        "[legal/fix-chain-walker] Requirement fan-out cap reached — some requirement-hosted triggers not walked",
+        "legal",
+        {
+          evalSetRefId,
+          requirementCount: requirementRefIds.length,
+          cap: REQUIREMENT_FANOUT_CAP,
+        },
+      );
+      partial = true;
+    }
+
+    const requirementTasks = cappedRequirementRefIds.map((requirementId) => async () => {
+      if (isBudgetExhausted() || isNodeEdgeCapped()) {
+        partial = true;
+        return;
+      }
+      const data = await fetchNodeForEdgeTypes(
+        base, swarmApiKey, requirementId, ["HAS_TRIGGER"], controller.signal,
+      );
+      if (!data.ok) {
+        logger.warn(
+          "[legal/fix-chain-walker] Failed to fetch EvalRequirement trigger edges",
+          "legal",
+          { requirementId },
+        );
+        failedBranches.push(requirementId);
+        partial = true;
+        return;
+      }
+      for (const n of data.nodes) addNode(n);
+      for (const e of data.edges) addEdge(e);
+
+      for (const e of data.edges) {
+        if (e.source !== requirementId || e.edge_type !== "HAS_TRIGGER") continue;
+        if (!isValidRefId(e.target)) continue;
+        if (baselineTriggerSet.has(e.target)) continue;
+        requirementTriggerRefIds.push(e.target);
+      }
+    });
+
+    await batchedAll(requirementTasks, FETCH_CONCURRENCY);
 
     if (isNodeEdgeCapped()) {
       logger.warn(
-        "[legal/fix-chain-walker] Node+edge cap reached — stopping BFS",
+        "[legal/fix-chain-walker] Node+edge cap reached during requirement fan-out",
         "legal",
-        { total: totalCount(), cap: NODE_EDGE_CAP, hopDepth },
+        { total: totalCount(), cap: NODE_EDGE_CAP },
       );
       partial = true;
-      break;
     }
 
-    if (isBudgetExhausted()) {
-      logger.warn(
-        "[legal/fix-chain-walker] Wall-clock budget exhausted — stopping BFS",
-        "legal",
-        { elapsedMs: Date.now() - startMs, budget: WALL_CLOCK_BUDGET_MS, hopDepth },
-      );
-      partial = true;
-      break;
-    }
+    logger.info(
+      "[legal/fix-chain-walker] Requirement fan-out complete",
+      "legal",
+      {
+        evalSetRefId,
+        requirementCount: cappedRequirementRefIds.length,
+        requirementTriggerCount: new Set(requirementTriggerRefIds).size,
+      },
+    );
+
+    await fetchTriggerHop([...new Set(requirementTriggerRefIds)]);
   }
+
+  // ── Step 3b: remaining ProposedFix branches ───────────────────────────────
+  // `visitedFixes` is shared with the baseline walk, so nothing is re-fetched.
+  //
+  // NOTE: this can legitimately GROW the fix-driven series relative to a
+  // baseline-only walk. `walkDerivedFromChain` builds its children map from
+  // every DERIVED_FROM edge with no trigger scoping, so a fix hanging off a
+  // non-baseline trigger that derives from a node in the baseline chain now
+  // re-enters that chain. Such a fix genuinely does derive from the baseline
+  // chain, so including it is correct — but it is a change in rendered output,
+  // pinned by test rather than asserted away.
+  await walkFixes(
+    rootFixesFor([...otherEvalSetTriggerRefIds, ...new Set(requirementTriggerRefIds)]),
+  );
 
   clearTimeout(budgetTimer);
 
@@ -540,6 +724,8 @@ export async function walkFixChain(
     {
       evalSetRefId,
       triggerEdgeTypes: opts.triggerEdgeTypes,
+      includeRequirementTriggers: opts.includeRequirementTriggers === true,
+      triggerCount: visitedTriggers.size,
       nodeCount: finalNodes.length,
       edgeCount: finalEdges.length,
       hopDepth,
