@@ -83,7 +83,11 @@ import { buildInitiativeTools } from "@/lib/ai/initiativeTools";
 import { buildPromptTools } from "@/lib/ai/promptTools";
 import { buildConceptTools } from "@/lib/ai/conceptTools";
 import { buildWorkflowExplorerTools } from "@/lib/ai/workflowExplorerTools";
-import { isPromptsCapabilityEnabledForOrg } from "@/lib/ai/capabilityGates";
+import {
+  isPromptsCapabilityEnabledForOrg,
+  isCodeChangeCapabilityEnabledForOrg,
+} from "@/lib/ai/capabilityGates";
+import { buildCodeChangeTools } from "@/lib/ai/codeChangeTools";
 import {
   buildResearchTools,
   type CapturedSearchResult,
@@ -101,6 +105,7 @@ import {
   PROPOSE_NODE_EDIT_TOOL,
   PROPOSE_CREATE_TRIPLET_TOOL,
   PROPOSE_CREATE_BATCH_TRIPLET_TOOL,
+  PROPOSE_CODE_CHANGE_TOOL,
 } from "@/lib/proposals/types";
 import {
   getConceptsCapabilitySnippet,
@@ -125,7 +130,8 @@ export type OrgCapability =
   | "infra"
   | "prompts"
   | "concepts"
-  | "workflows";
+  | "workflows"
+  | "code_change";
 
 /**
  * Everything a capability's `buildTools` may need. Mirrors the
@@ -257,6 +263,7 @@ export const ALL_CAPABILITIES: readonly OrgCapability[] = [
   "prompts",
   "concepts",
   "workflows",
+  "code_change",
 ];
 
 export const CAPABILITY_REGISTRY: Record<OrgCapability, CapabilityDefinition> =
@@ -466,6 +473,67 @@ export const CAPABILITY_REGISTRY: Record<OrgCapability, CapabilityDefinition> =
       // gate as the global prompt library. Like `prompts`, it must never
       // appear in an `includes` list (the sync resolver can't run the gate).
       orgGate: isPromptsCapabilityEnabledForOrg,
+    },
+    code_change: {
+      // `propose_code_change` — read-only preview diff → approvable PR card.
+      // The tool runs a read-only swarm repo_agent call (no create_pr in
+      // toolsConfig) and returns a CodeChangeProposalPayload for the user
+      // to approve. The actual PR lands via the createPr adapter in
+      // `src/services/swarm/createPr.ts`.
+      //
+      // NOT in any `includes` list: org-gated via orgGate below, and the
+      // sync resolver can't run async gates.
+      buildTools: (ctx) => buildCodeChangeTools(ctx),
+      promptSnippet: () => `
+
+## Code-Change Tools
+
+You have a \`propose_code_change\` tool that generates a real unified diff preview
+for a small, focused code change in a single-repository workspace, then surfaces
+it as an approvable PR proposal card.
+
+### When to use \`propose_code_change\`
+
+Use this when the user asks for a small, targeted code change in a workspace
+that has **exactly one** repository and the change is:
+- Focused (≤ 50 files, ≤ 200 KB diff)
+- Self-contained (no DB migrations, no multi-repo coordination)
+
+### When to use \`propose_feature\` instead
+
+- The workspace has multiple repositories (multi-repo ambiguity)
+- The change involves a database migration or schema update
+- The change is large or spans many files
+- The user wants a full feature with planning, story, and coding pipeline
+
+### Usage
+
+\`\`\`
+propose_code_change({
+  workspaceSlug: "<slug>",
+  repositoryUrl: "https://github.com/org/repo",
+  title: "Fix null check in auth middleware",
+  body: "Adds a guard clause to prevent NPE when user.session is undefined.",
+  prompt: "In src/lib/auth/middleware.ts, add a null check for user.session before accessing session.id. Output git diff when done."
+})
+\`\`\`
+
+The user will see a diff card and must click **Approve** to open the PR.
+A \`[Jamie]\` prefix is added to the PR title automatically.
+`,
+      core: false,
+      menuBlurb:
+        "**code_change** — generate a real diff preview for a small, " +
+        "focused code change (`propose_code_change`). Load when the user " +
+        "asks to fix or patch code in a single-repo workspace and the " +
+        "change is small enough to review as a diff card.",
+      // `propose_code_change` is a write tool (emits a proposal card that,
+      // when approved, opens a real PR). Strip in readonly mode.
+      writeToolNames: [PROPOSE_CODE_CHANGE_TOOL],
+      // Org-gated: exposure control only. Real write authorization is
+      // enforced at approval time by the createPr adapter.
+      // Like `prompts` and `workflows`, must never appear in `includes`.
+      orgGate: isCodeChangeCapabilityEnabledForOrg,
     },
   };
 
