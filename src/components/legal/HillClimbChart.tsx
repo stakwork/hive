@@ -20,6 +20,8 @@ interface TooltipState {
   x: number;
   y: number;
   point: AttemptPoint;
+  /** Running-best state of the hovered dot; null for unscored slots. */
+  meta: { state: "target" | "best" | "below"; bestBefore: number } | null;
 }
 
 interface HillClimbChartProps {
@@ -75,8 +77,8 @@ export function toAttemptPoints(attempts: EvalTriggerOutput[]): AttemptPoint[] {
 
 const MARGIN = { top: 14, right: 52, bottom: 26, left: 40 };
 
-/** Padding on the dot clip so edge dots aren't sliced by their own clip rect. */
-const DOT_CLIP_PAD = 8;
+/** Padding on the dot clip so edge dots (and the target halo) aren't sliced. */
+const DOT_CLIP_PAD = 11;
 
 /** SVG width used before the ResizeObserver delivers a measurement. */
 const FALLBACK_WIDTH = 640;
@@ -165,6 +167,23 @@ export function HillClimbChart({ attempts, height = 160 }: HillClimbChartProps) 
   // Target y position
   const targetY = yScale(n_total);
 
+  // Index of the last point that has a dot — carries the direct end label.
+  const lastScoredIdx = (() => {
+    for (let i = points.length - 1; i >= 0; i--) {
+      if (points[i].actualPassed != null) return i;
+    }
+    return -1;
+  })();
+
+  // The end label sits just right of the last dot — the same corner the
+  // target-edge value occupies. When the series ends at/near the target the
+  // two would collide, so the end label (the reader's headline) wins and the
+  // target value yields; the left tick still shows the target number.
+  const showTargetEdgeValue =
+    lastScoredIdx < 0 ||
+    points.length < 2 ||
+    Math.abs(yScale(points[lastScoredIdx].actualPassed as number) - targetY) >= 14;
+
   // Ticks: floor, midpoint, target — the floor tick shows its real value so a
   // fitted (non-zero) domain is never read as starting at zero.
   const yTicks = [yMin, Math.round((yMin + yMax) / 2), yMax].filter((v, i, a) => a.indexOf(v) === i);
@@ -177,12 +196,27 @@ export function HillClimbChart({ attempts, height = 160 }: HillClimbChartProps) 
   const showXLabel = (i: number) =>
     i === lastIdx || (i % labelStep === 0 && lastIdx - i >= labelStep);
 
-  // Index of the last point that has a dot — carries the direct end label.
-  const lastScoredIdx = (() => {
-    for (let i = points.length - 1; i >= 0; i--) {
-      if (points[i].actualPassed != null) return i;
-    }
-    return -1;
+  // Per-dot state against the running best:
+  //   "target" — reached n_total (status green; also on the target line and
+  //              named in tooltip/aria, so color never carries it alone)
+  //   "best"   — sets or ties the best so far (series color)
+  //   "below"  — under the running best (muted gray until the score recovers)
+  // Computed from actualPassed on both series kinds — bestPassed can't be used
+  // because the flat eval-output series sets bestPassed = actualPassed.
+  const dotMeta: Array<{ state: "target" | "best" | "below"; bestBefore: number } | null> = (() => {
+    let runningBest = -Infinity;
+    return points.map((pt) => {
+      if (pt.actualPassed == null) return null;
+      const bestBefore = runningBest;
+      const state: "target" | "best" | "below" =
+        pt.actualPassed >= n_total && n_total > 0
+          ? "target"
+          : pt.actualPassed >= runningBest
+            ? "best"
+            : "below";
+      runningBest = Math.max(runningBest, pt.actualPassed);
+      return { state, bestBefore };
+    });
   })();
 
   function tooltipFor(idx: number) {
@@ -200,7 +234,7 @@ export function HillClimbChart({ attempts, height = 160 }: HillClimbChartProps) 
     const tipY = cy < 56 ? cy + 18 : cy - 58;
     const tipX = Math.min(Math.max(cx - 52, 4), Math.max(rect.width - 116, 4));
 
-    setTooltip({ x: tipX, y: tipY, point });
+    setTooltip({ x: tipX, y: tipY, point, meta: dotMeta[idx] });
     setHoverIdx(idx);
   }
 
@@ -294,16 +328,19 @@ export function HillClimbChart({ attempts, height = 160 }: HillClimbChartProps) 
             strokeDasharray="4 3"
             data-testid="target-line"
           />
-          <text
-            x={innerW + 6}
-            y={targetY}
-            dy="0.35em"
-            fontSize={10}
-            className="fill-muted-foreground"
-            style={{ fontVariantNumeric: "tabular-nums" }}
-          >
-            {n_total}
-          </text>
+          {showTargetEdgeValue && (
+            <text
+              x={innerW + 6}
+              y={targetY}
+              dy="0.35em"
+              fontSize={10}
+              className="fill-muted-foreground"
+              style={{ fontVariantNumeric: "tabular-nums" }}
+              data-testid="target-edge-value"
+            >
+              {n_total}
+            </text>
+          )}
 
           {/* Crosshair: snaps to the hovered attempt column */}
           {hoverIdx != null && (
@@ -336,36 +373,70 @@ export function HillClimbChart({ attempts, height = 160 }: HillClimbChartProps) 
               />
             )}
 
-            {/* Data points — skip circle when actualPassed is null, keep x-slot */}
+            {/* Data points — skip circle when actualPassed is null, keep x-slot.
+                Accepted dots wear a 2px surface ring so they stay legible where
+                the line passes through; rejected dots are hollow with the series
+                stroke — fill absence, plus the tooltip/aria "rejected", carries
+                the state (never color alone). Dot fill follows the running-best
+                state: series color while setting/holding the best, muted gray
+                below it, status green (larger, haloed) on the target. */}
             <g clipPath={`url(#${clipId}-dots)`} data-testid="dot-group">
-              {points.map((pt, i) =>
-                pt.actualPassed != null ? (
-                  <circle
-                    key={i}
-                    cx={xScale(i)}
-                    cy={yScale(pt.actualPassed)}
-                    r={4.5}
-                    fill={pt.accepted ? "currentColor" : "none"}
-                    fillOpacity={pt.isBaseline ? 0.55 : 1}
-                    // Accepted dots wear a 2px surface ring so they stay
-                    // legible where the line passes through; rejected dots are
-                    // hollow with the series stroke — fill absence, plus the
-                    // tooltip/aria "rejected", carries the state (never color alone).
-                    className={pt.accepted ? "stroke-card" : ""}
-                    stroke={pt.accepted ? undefined : "currentColor"}
-                    strokeWidth={pt.accepted ? 2 : 1.5}
-                    strokeOpacity={pt.accepted ? 1 : 0.55}
-                    onMouseEnter={(e) => handleMouseEnter(pt, i, e)}
-                    onFocus={(e) => handleMouseEnter(pt, i, e as unknown as React.MouseEvent<SVGCircleElement>)}
-                    tabIndex={0}
-                    aria-label={`${pt.label}: ${pt.actualPassed}/${pt.n_total}${pt.accepted ? "" : " (rejected)"}`}
-                    data-testid={`dot-${i}`}
-                  />
-                ) : (
+              {points.map((pt, i) => {
+                if (pt.actualPassed == null) {
                   // No dot — keep x-slot so labels never shift; render nothing visible
-                  <g key={i} data-testid={`slot-${i}`} />
-                ),
-              )}
+                  return <g key={i} data-testid={`slot-${i}`} />;
+                }
+                const meta = dotMeta[i]!;
+                const isTarget = pt.accepted && meta.state === "target";
+                const isBelow = pt.accepted && meta.state === "below";
+                const stateSuffix = !pt.accepted
+                  ? " (rejected)"
+                  : isTarget
+                    ? " (target reached)"
+                    : isBelow
+                      ? " (below best)"
+                      : "";
+                const fillClass = isTarget
+                  ? "fill-green-600 stroke-card"
+                  : isBelow
+                    ? "fill-muted-foreground stroke-card"
+                    : pt.accepted
+                      ? "stroke-card"
+                      : "";
+                return (
+                  <g key={i}>
+                    {/* Soft halo marks the achievement — decorative, aria-hidden */}
+                    {isTarget && (
+                      <circle
+                        cx={xScale(i)}
+                        cy={yScale(pt.actualPassed)}
+                        r={9}
+                        className="fill-green-600"
+                        fillOpacity={0.2}
+                        aria-hidden="true"
+                        data-testid={`halo-${i}`}
+                      />
+                    )}
+                    <circle
+                      cx={xScale(i)}
+                      cy={yScale(pt.actualPassed)}
+                      r={isTarget ? 5.5 : 4.5}
+                      fill={pt.accepted && !isTarget && !isBelow ? "currentColor" : !pt.accepted ? "none" : undefined}
+                      fillOpacity={pt.isBaseline && !isTarget ? 0.55 : 1}
+                      className={fillClass}
+                      stroke={pt.accepted ? undefined : "currentColor"}
+                      strokeWidth={pt.accepted ? 2 : 1.5}
+                      strokeOpacity={pt.accepted ? 1 : 0.55}
+                      onMouseEnter={(e) => handleMouseEnter(pt, i, e)}
+                      onFocus={(e) => handleMouseEnter(pt, i, e as unknown as React.MouseEvent<SVGCircleElement>)}
+                      tabIndex={0}
+                      aria-label={`${pt.label}: ${pt.actualPassed}/${pt.n_total}${stateSuffix}`}
+                      data-state={meta.state}
+                      data-testid={`dot-${i}`}
+                    />
+                  </g>
+                );
+              })}
             </g>
           </g>
 
@@ -433,6 +504,14 @@ export function HillClimbChart({ attempts, height = 160 }: HillClimbChartProps) 
           <div className="text-muted-foreground">{tooltip.point.label}</div>
           {!tooltip.point.accepted && (
             <div className="text-muted-foreground/60 italic">rejected</div>
+          )}
+          {tooltip.point.accepted && tooltip.meta?.state === "target" && (
+            <div className="text-green-600 dark:text-green-400">target reached</div>
+          )}
+          {tooltip.point.accepted && tooltip.meta?.state === "below" && (
+            <div className="text-muted-foreground/60 italic">
+              below best · {tooltip.meta.bestBefore}
+            </div>
           )}
         </div>
       )}

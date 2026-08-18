@@ -423,3 +423,82 @@ describe("HillClimbChart — dots are clipped to the plot", () => {
     expect(Number(dot.getAttribute("cy"))).toBeLessThan(0);
   });
 });
+
+// ─── Running-best dot states ─────────────────────────────────────────────────
+
+describe("HillClimbChart — running-best dot states", () => {
+  /** base 50 → r1 58 (new best) → r2 52 (below) → r3 74 (target) of 74 */
+  const STATE_SERIES: EvalTriggerOutput[] = [
+    makeOutput({ ref_id: "s0", n_passed: 50, n_total: 74, isBaseline: true, accepted: true, actualPassed: 50, bestPassed: 50, label: "base" }),
+    makeOutput({ ref_id: "s1", n_passed: 58, n_total: 74, isBaseline: false, accepted: true, actualPassed: 58, bestPassed: 58, label: "r1" }),
+    makeOutput({ ref_id: "s2", n_passed: 52, n_total: 74, isBaseline: false, accepted: true, actualPassed: 52, bestPassed: 52, label: "r2" }),
+    makeOutput({ ref_id: "s3", n_passed: 74, n_total: 74, isBaseline: false, accepted: true, actualPassed: 74, bestPassed: 74, label: "r3" }),
+  ];
+
+  it("marks dots that set or hold the best with the series color", () => {
+    render(<HillClimbChart attempts={STATE_SERIES} />);
+    expect(screen.getByTestId("dot-0").getAttribute("data-state")).toBe("best");
+    expect(screen.getByTestId("dot-1").getAttribute("data-state")).toBe("best");
+    expect(screen.getByTestId("dot-1").getAttribute("fill")).toBe("currentColor");
+  });
+
+  it("grays a dot below the running best and says so in tooltip and aria", () => {
+    render(<HillClimbChart attempts={STATE_SERIES} />);
+    const below = screen.getByTestId("dot-2");
+    expect(below.getAttribute("data-state")).toBe("below");
+    expect(below.getAttribute("class")).toContain("fill-muted-foreground");
+    expect(below.getAttribute("aria-label")).toMatch(/below best/i);
+
+    fireEvent.mouseEnter(below);
+    expect(screen.getByTestId("chart-tooltip").textContent).toMatch(/below best · 58/);
+  });
+
+  it("turns the target hit green, larger, haloed, and names it", () => {
+    render(<HillClimbChart attempts={STATE_SERIES} />);
+    const target = screen.getByTestId("dot-3");
+    expect(target.getAttribute("data-state")).toBe("target");
+    expect(target.getAttribute("class")).toContain("fill-green-600");
+    expect(Number(target.getAttribute("r"))).toBeGreaterThan(
+      Number(screen.getByTestId("dot-1").getAttribute("r")),
+    );
+    expect(screen.getByTestId("halo-3")).toBeTruthy();
+    expect(target.getAttribute("aria-label")).toMatch(/target reached/i);
+
+    fireEvent.mouseEnter(target);
+    expect(screen.getByTestId("chart-tooltip").textContent).toMatch(/target reached/i);
+  });
+
+  it("returns to the series color once the score beats the old best again", () => {
+    const recovery: EvalTriggerOutput[] = [
+      makeOutput({ ref_id: "a", n_passed: 50, n_total: 74, isBaseline: true, accepted: true, actualPassed: 50, bestPassed: 50, label: "base" }),
+      makeOutput({ ref_id: "b", n_passed: 58, n_total: 74, isBaseline: false, accepted: true, actualPassed: 58, bestPassed: 58, label: "r1" }),
+      makeOutput({ ref_id: "c", n_passed: 52, n_total: 74, isBaseline: false, accepted: true, actualPassed: 52, bestPassed: 52, label: "r2" }),
+      makeOutput({ ref_id: "d", n_passed: 60, n_total: 74, isBaseline: false, accepted: true, actualPassed: 60, bestPassed: 60, label: "r3" }),
+    ];
+    render(<HillClimbChart attempts={recovery} />);
+    expect(screen.getByTestId("dot-3").getAttribute("data-state")).toBe("best");
+    expect(screen.getByTestId("dot-3").getAttribute("fill")).toBe("currentColor");
+  });
+
+  it("a tie with the running best stays in the series color", () => {
+    const tie: EvalTriggerOutput[] = [
+      makeOutput({ ref_id: "a", n_passed: 50, n_total: 74, isBaseline: true, accepted: true, actualPassed: 50, bestPassed: 50, label: "base" }),
+      makeOutput({ ref_id: "b", n_passed: 58, n_total: 74, isBaseline: false, accepted: true, actualPassed: 58, bestPassed: 58, label: "r1" }),
+      makeOutput({ ref_id: "c", n_passed: 58, n_total: 74, isBaseline: false, accepted: true, actualPassed: 58, bestPassed: 58, label: "r2" }),
+    ];
+    render(<HillClimbChart attempts={tie} />);
+    expect(screen.getByTestId("dot-2").getAttribute("data-state")).toBe("best");
+  });
+
+  it("suppresses the target-edge value when the end label lands on it", () => {
+    render(<HillClimbChart attempts={STATE_SERIES} />);
+    // Series ends at 74/74 — the bold end label owns the right corner.
+    expect(screen.queryByTestId("target-edge-value")).toBeNull();
+    expect(screen.getByTestId("end-label").textContent).toBe("74");
+  });
+
+  it("keeps the target-edge value when the series ends well below the target", () => {
+    render(<HillClimbChart attempts={MULTI_POINT_ATTEMPTS} />);
+    expect(screen.getByTestId("target-edge-value")).toBeTruthy();
+  });
+});
