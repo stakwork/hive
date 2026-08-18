@@ -57,6 +57,30 @@ export async function GET(
       orderBy: { versionNumber: "desc" },
     });
 
+    // ── Lean state-only branch (`?fields=state`) ─────────────────────────────
+    // Returns a minimal projection used by PublishPromptSlot to check live
+    // publish state without fetching run-count aggregates or contributor emails.
+    // Placement: after the membership gate and prompt/version fetch, but before
+    // the two promptDailyRun queries and the batched user.findMany below.
+    const fieldsParam = request.nextUrl.searchParams.get("fields");
+    if (fieldsParam === "state") {
+      return NextResponse.json({
+        success: true,
+        data: {
+          prompt_id: id,
+          versions: versions.map((v) => ({
+            id: v.id,
+            version_number: v.versionNumber,
+            published: v.published,
+            created_at: v.createdAt.toISOString(),
+            source: v.source,
+          })),
+          current_version_id: versions[0]?.id ?? prompt.publishedVersionId,
+          published_version_id: prompt.publishedVersionId,
+        },
+      });
+    }
+
     // Enrich versions with run_count from local mirror table — one grouped query, no N+1.
     const [dailyRunGroups, totalRunCountResult] = await Promise.all([
       db.promptDailyRun.groupBy({
