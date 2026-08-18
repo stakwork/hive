@@ -73,7 +73,12 @@ import { getModel, getApiKeyForProvider, type Provider } from "@/lib/ai/provider
 import { getProviderOptions } from "aieo";
 // Deep import — see comment in services/task-workflow.ts.
 import { getBifrostForLLM } from "@/services/bifrost/orchestrator";
+import {
+  startCanvasSessionIngest,
+  type CanvasSessionIngest,
+} from "@/services/stakgraph-session-ingest";
 import { getWorkspaceChannelName, PUSHER_EVENTS, pusherServer } from "@/lib/pusher";
+import { parseGithubOwnerRepo } from "@/utils/repositoryParser";
 
 // ---------------------------------------------------------------------------
 // Write-mode tool names — stripped when `readonly: true` is requested.
@@ -147,7 +152,35 @@ export interface CanvasAgentHooks {
    * uses this for token-attribution prep work; programmatic callers
    * typically don't need it.
    */
-  onStepFinish?: (sf: { content: unknown }) => void | Promise<void>;
+  onStepFinish?: (sf: {
+    content: unknown;
+    /**
+     * Token usage for this individual step.
+     * Maps directly from the AI SDK's `LanguageModelUsage` fields.
+     */
+    usage?: {
+      inputTokens?: number;
+      outputTokens?: number;
+      inputTokenDetails?: {
+        cacheReadTokens?: number;
+        cacheWriteTokens?: number;
+        noCacheTokens?: number;
+      };
+    };
+    /**
+     * Cumulative token usage across all steps so far (AI SDK's own
+     * running sum — preferred over hand-rolling an accumulator).
+     */
+    totalUsage?: {
+      inputTokens?: number;
+      outputTokens?: number;
+      inputTokenDetails?: {
+        cacheReadTokens?: number;
+        cacheWriteTokens?: number;
+        noCacheTokens?: number;
+      };
+    };
+  }) => void | Promise<void>;
   /**
    * Called once when the stream finishes successfully. Receives the
    * final `usage` so the caller can record token spend, plus the
@@ -565,6 +598,23 @@ function maybeHighlightLearnedConcept(
     });
 }
 
+/**
+ * `owner/repo` for the first repo of the primary workspace, used to
+ * stamp the stakgraph session and to resolve bare concept slugs.
+ * Undefined when the workspace has no repo or the URL doesn't parse —
+ * `repo` is optional throughout the ingest API.
+ */
+function primaryOwnerRepo(repoUrls: string[]): string | undefined {
+  const url = repoUrls[0];
+  if (!url) return undefined;
+  try {
+    const { owner, repo } = parseGithubOwnerRepo(url);
+    return `${owner}/${repo}`;
+  } catch {
+    return undefined;
+  }
+}
+
 // ---------------------------------------------------------------------------
 // runCanvasAgent
 // ---------------------------------------------------------------------------
@@ -652,6 +702,9 @@ export async function runCanvasAgent(
   let cacheableConcepts: CachedConcepts = {};
   let primarySwarmUrl: string;
   let primarySwarmApiKey: string;
+  // Repo URLs of the primary workspace, kept only to stamp `owner/repo`
+  // onto the stakgraph session (and to resolve bare concept slugs).
+  let primaryRepoUrls: string[] = [];
   // Workspace + user identity for the **primary** slug (slugs[0]).
   // Used to:
   //   1. Mint a Bifrost VK / macaroon for this LLM call, when the
@@ -821,6 +874,7 @@ export async function runCanvasAgent(
     primarySwarmApiKey = workspaceConfigs[0].swarmApiKey;
     primaryWorkspaceId = workspaceConfigs[0].workspaceId;
     primaryUserId = workspaceConfigs[0].userId;
+    primaryRepoUrls = workspaceConfigs[0].repoUrls ?? [];
   } else {
     // Single-workspace mode. Public-viewer requests use the workspace
     // owner's PAT via `buildPublicWorkspaceConfig`; members get the
@@ -924,6 +978,7 @@ export async function runCanvasAgent(
     // requests; getBifrostForLLM short-circuits that case to
     // `undefined`. Member requests carry the real NextAuth user id.
     primaryUserId = ws.userId;
+    primaryRepoUrls = ws.repoUrls ?? [];
   }
 
   if (readonly) {
@@ -1071,6 +1126,32 @@ export async function runCanvasAgent(
   });
 
   // ------------------------------------------------------------------
+  // Stakgraph session ingest — mirror this run into the org's graph as
+  // a live Turn chain, watchable in the sessions UI while it streams.
+  //
+  // One session per conversation (the id is derived from
+  // `currentCanvasConversationId`), targeting the org's default
+  // workspace swarm. Returns null when the flag is off or this isn't an
+  // org run, and every method on it is fire-and-forget — a swarm outage
+  // costs a log line, never the turn. See the module doc-comment.
+  // ------------------------------------------------------------------
+  let sessionIngest: CanvasSessionIngest | null = null;
+  try {
+    sessionIngest = startCanvasSessionIngest({
+      orgId,
+      conversationId: currentCanvasConversationId,
+      fallbackTarget: {
+        baseUrl: primarySwarmUrl,
+        apiKey: primarySwarmApiKey,
+      },
+      repo: primaryOwnerRepo(primaryRepoUrls),
+      messages: modelMessages,
+    });
+  } catch (err) {
+    console.warn("[runCanvasAgent] session ingest setup failed", err);
+  }
+
+  // ------------------------------------------------------------------
   // Kick off the agentic loop
   // ------------------------------------------------------------------
   const streamStart = Date.now();
@@ -1131,13 +1212,27 @@ export async function runCanvasAgent(
       if (!silentPusher) {
         maybeHighlightLearnedConcept(sf.content, primarySlug, features);
       }
+      // Fire-and-forget, same rationale as the Pusher call above: this
+      // callback is awaited, so a swarm round-trip here would land on
+      // every step's wall-clock time.
+      sessionIngest?.recordStep(sf.content, features);
       // Caller hook runs LAST so it observes the internal bookkeeping
       // state. Awaited so callers can perform async work (e.g. async
       // token recording, custom logging). Callers MUST keep this fast
       // or they re-introduce the per-step latency regression we just
       // avoided above.
+      //
+      // Forward `usage` (this step) and `totalUsage` (AI SDK's running
+      // cumulative sum across all steps so far) so callers can emit
+      // live per-step usage updates without hand-rolling an accumulator.
+      // The SDK's `totalUsage` is the canonical figure — it is computed
+      // internally and never double-counts a step that was retried.
       if (hooks?.onStepFinish) {
-        await hooks.onStepFinish(sf);
+        await hooks.onStepFinish({
+          content: sf.content,
+          usage: (sf as { usage?: unknown }).usage as Parameters<NonNullable<CanvasAgentHooks["onStepFinish"]>>[0]["usage"],
+          totalUsage: (sf as { totalUsage?: unknown }).totalUsage as Parameters<NonNullable<CanvasAgentHooks["onStepFinish"]>>[0]["totalUsage"],
+        });
       }
     },
     onChunk: ({ chunk }) => {
@@ -1198,6 +1293,23 @@ export async function runCanvasAgent(
           usage,
         });
       }
+      // Close the graph session. `end` is idempotent per run, so an
+      // `onError` that already closed it wins and this is a no-op —
+      // which matters because `/end` accumulates token totals.
+      sessionIngest?.end({
+        status: cancellation.requested
+          ? "aborted"
+          : finishReason === "error"
+            ? "error"
+            : "success",
+        // `resolvedModelId` falls back to the literal "unknown"; send
+        // nothing rather than that, so stakgraph's provider derivation
+        // doesn't key off a non-model.
+        ...(resolvedModelId && resolvedModelId !== "unknown"
+          ? { model: resolvedModelId }
+          : {}),
+        usage,
+      });
       if (hooks?.onFinish) {
         await hooks.onFinish({
           usage,
@@ -1226,6 +1338,12 @@ export async function runCanvasAgent(
         stack: err instanceof Error ? err.stack : undefined,
         error: err,
       });
+      // Close the graph session as failed. Mid-stream errors do not
+      // reject the stream, so `onFinish` may still fire afterwards —
+      // `end` is idempotent per run and this call is the one that
+      // records the failure. Token totals are omitted: they may be
+      // unreliable on a torn stream, and `/end` accumulates them.
+      sessionIngest?.end({ status: "error", errorMessage: message });
       // Caller hook runs last; its failures must not disturb the
       // stream's own error handling.
       try {

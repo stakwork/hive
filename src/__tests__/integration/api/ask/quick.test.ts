@@ -30,6 +30,13 @@ vi.mock('next/server', async (importOriginal) => {
 // Mock the AI streaming service
 vi.mock('ai', () => ({
   streamText: vi.fn(),
+  createUIMessageStream: vi.fn(({ execute }) => {
+    execute({ writer: { write: vi.fn(), merge: vi.fn() } });
+    return {};
+  }),
+  createUIMessageStreamResponse: vi.fn(
+    ({ headers }) => new Response('test', { status: 200, headers }),
+  ),
 }));
 
 // Mock the AI provider module (wrapper around aieo)
@@ -478,7 +485,7 @@ describe('POST /api/ask/quick - Quick Ask Integration Tests', () => {
       });
 
       const mockStream = {
-        toUIMessageStreamResponse: vi.fn(() =>
+        toUIMessageStream: vi.fn(() =>
           new Response('test', {
             headers: { 'Content-Type': 'text/plain' },
           })
@@ -581,7 +588,7 @@ describe('POST /api/ask/quick - Quick Ask Integration Tests', () => {
       });
 
       const mockStream = {
-        toUIMessageStreamResponse: vi.fn(() =>
+        toUIMessageStream: vi.fn(() =>
           new Response('test', {
             headers: { 'Content-Type': 'text/plain' },
           })
@@ -666,7 +673,7 @@ describe('POST /api/ask/quick - Quick Ask Integration Tests', () => {
       });
 
       const mockStream = {
-        toUIMessageStreamResponse: vi.fn(() =>
+        toUIMessageStream: vi.fn(() =>
           new Response('test response', {
             headers: { 'Content-Type': 'text/plain' },
           })
@@ -725,7 +732,7 @@ describe('POST /api/ask/quick - Quick Ask Integration Tests', () => {
       });
 
       const mockStream = {
-        toUIMessageStreamResponse: vi.fn(() =>
+        toUIMessageStream: vi.fn(() =>
           new Response('test response', {
             headers: { 'Content-Type': 'text/plain' },
           })
@@ -781,7 +788,7 @@ describe('POST /api/ask/quick - Quick Ask Integration Tests', () => {
       });
 
       const mockStream = {
-        toUIMessageStreamResponse: vi.fn(() =>
+        toUIMessageStream: vi.fn(() =>
           new Response('test response', {
             headers: { 'Content-Type': 'text/plain' },
           })
@@ -851,7 +858,7 @@ describe('POST /api/ask/quick - Quick Ask Integration Tests', () => {
       });
 
       const mockStream = {
-        toUIMessageStreamResponse: vi.fn(
+        toUIMessageStream: vi.fn(
           () => new Response('ok', { headers: { 'Content-Type': 'text/plain' } }),
         ),
       };
@@ -951,7 +958,7 @@ describe('POST /api/ask/quick - Quick Ask Integration Tests', () => {
       });
 
       const mockStream = {
-        toUIMessageStreamResponse: vi.fn(
+        toUIMessageStream: vi.fn(
           () => new Response('ok', { headers: { 'Content-Type': 'text/plain' } }),
         ),
       };
@@ -1045,7 +1052,7 @@ describe('POST /api/ask/quick - Quick Ask Integration Tests', () => {
         await setupWorkspaceWithConversation(storedMessages);
 
       const mockStream = {
-        toUIMessageStreamResponse: vi.fn(() =>
+        toUIMessageStream: vi.fn(() =>
           new Response('test', {
             headers: { 'Content-Type': 'text/plain' },
           })
@@ -1208,7 +1215,7 @@ describe('POST /api/ask/quick - Quick Ask Integration Tests', () => {
       });
 
       const mockStream = {
-        toUIMessageStreamResponse: vi.fn(() =>
+        toUIMessageStream: vi.fn(() =>
           new Response('test', { headers: { 'Content-Type': 'text/plain' } })
         ),
       };
@@ -1310,7 +1317,7 @@ describe('POST /api/ask/quick - Quick Ask Integration Tests', () => {
         await setupWorkspaceWithConversation(storedMessages);
 
       const mockStream = {
-        toUIMessageStreamResponse: vi.fn(() =>
+        toUIMessageStream: vi.fn(() =>
           new Response('test', {
             headers: { 'Content-Type': 'text/plain' },
           })
@@ -1483,7 +1490,7 @@ describe('POST /api/ask/quick - Quick Ask Integration Tests', () => {
       });
 
       const mockStream = {
-        toUIMessageStreamResponse: vi.fn(
+        toUIMessageStream: vi.fn(
           () => new Response('ok', { headers: { 'Content-Type': 'text/plain' } }),
         ),
       };
@@ -1537,7 +1544,7 @@ describe('POST /api/ask/quick - Quick Ask Integration Tests', () => {
       });
 
       const mockStream = {
-        toUIMessageStreamResponse: vi.fn(
+        toUIMessageStream: vi.fn(
           () => new Response('ok', { headers: { 'Content-Type': 'text/plain' } }),
         ),
       };

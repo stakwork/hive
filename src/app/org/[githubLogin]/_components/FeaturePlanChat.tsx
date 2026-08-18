@@ -111,7 +111,12 @@ export function FeaturePlanChat({
   }, []);
 
   const handleWorkflowStatusUpdate = useCallback(
-    (update: { workflowStatus: WorkflowStatus }) => {
+    (update: { taskId?: string; workflowStatus: WorkflowStatus }) => {
+      // Guard: since the webhook now fans child-task events to the
+      // feature channel, only update OUR planner state when the event
+      // targets this feature itself (taskId === featureId). Child-task
+      // events (taskId !== featureId) must not overwrite planner status.
+      if (update.taskId !== undefined && update.taskId !== featureId) return;
       setWorkflowStatus(update.workflowStatus);
       if (
         update.workflowStatus === WorkflowStatus.COMPLETED ||
@@ -122,7 +127,7 @@ export function FeaturePlanChat({
         setSending(false);
       }
     },
-    [],
+    [featureId],
   );
 
   usePusherConnection({
