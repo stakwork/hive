@@ -19,6 +19,7 @@ vi.mock("@/lib/ai/graphWalkerTools", () => ({ buildGraphWalkerTools: vi.fn(() =>
 vi.mock("@/lib/ai/graphWalkDispatchTools", () => ({
   buildGraphWalkDispatchTools: vi.fn(() => ({})),
 }));
+vi.mock("@/lib/ai/graphWriteTools", () => ({ buildGraphWriteTools: vi.fn(() => ({})) }));
 vi.mock("@/lib/ai/promptTools", () => ({ buildPromptTools: vi.fn(() => ({})) }));
 vi.mock("@/lib/ai/conceptTools", () => ({ buildConceptTools: vi.fn(() => ({})) }));
 vi.mock("@/lib/ai/workflowExplorerTools", () => ({
@@ -45,6 +46,10 @@ vi.mock("@/lib/proposals/types", () => ({
   PROPOSE_PROMPT_UPDATE_TOOL: "propose_prompt_update",
   PROPOSE_NEW_CONCEPT_TOOL: "propose_new_concept",
   PROPOSE_CONCEPT_UPDATE_TOOL: "propose_concept_update",
+  PROPOSE_CREATE_NODE_TOOL: "propose_create_node",
+  PROPOSE_NODE_EDIT_TOOL: "propose_node_edit",
+  PROPOSE_CREATE_TRIPLET_TOOL: "propose_create_triplet",
+  PROPOSE_CREATE_BATCH_TRIPLET_TOOL: "propose_create_batch_triplet",
 }));
 
 // The gate itself is exercised elsewhere; here we control its verdict.
