@@ -67,6 +67,7 @@ import {
   resolveOrgCapabilities,
   type OrgCapability,
 } from "@/lib/ai/capabilities";
+import { isGraphWriteCapabilityEnabledForOrg } from "@/lib/ai/capabilityGates";
 import { getLinkedWorkspacesForInitiative } from "@/lib/canvas/linkedWorkspaces";
 import { sanitizeAndCompleteToolCalls } from "@/lib/ai/message-sanitizer";
 import { getModel, getApiKeyForProvider, type Provider } from "@/lib/ai/provider";
@@ -750,6 +751,12 @@ export async function runCanvasAgent(
   const orgPromptSuffix = orgId
     ? composeCapabilityPromptSuffix(orgCapabilities)
     : undefined;
+  // `graph_walker` is core (read tools always composed), so its four
+  // graph-write propose tools cannot ride an `orgGate` on the capability
+  // itself — the gate is resolved here and threaded into the capability
+  // context below, which is what `graph_walker.buildTools` keys off.
+  // Fails closed: no orgId / unknown org / lookup error → write tools off.
+  const graphWriteEnabled = await isGraphWriteCapabilityEnabledForOrg(orgId);
 
   // Per-invocation timing state — allocated here (inside the function body)
   // so concurrent calls never share flags or maps.
@@ -806,6 +813,7 @@ export async function runCanvasAgent(
           dispatchedGraphWalks,
           graphWalkAnswerSink,
           publicBaseUrl,
+          graphWriteEnabled,
         }),
       };
     }
@@ -947,6 +955,7 @@ export async function runCanvasAgent(
           dispatchedGraphWalks,
           graphWalkAnswerSink,
           publicBaseUrl,
+          graphWriteEnabled,
         }),
       };
     }
