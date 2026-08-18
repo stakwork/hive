@@ -371,7 +371,7 @@ describe("buildEvalOutputSeries — denominator and scores", () => {
     expect(points.map((p) => p.n_passed)).toEqual([10, 30, 40]);
   });
 
-  it("traces real scores — bestPassed equals actualPassed, so the line can fall", () => {
+  it("keeps real scores in actualPassed while bestPassed ratchets up-or-flat", () => {
     const sg = merge(
       evalSetRun("base", "HAS_BASELINE_TRIGGER", { n_passed: 50, n_total: 74 }, "100"),
       evalSetRun("up", "HAS_TRIGGER", { n_passed: 58, n_total: 74 }, "200"),
@@ -380,8 +380,10 @@ describe("buildEvalOutputSeries — denominator and scores", () => {
 
     const { points } = buildEvalOutputSeries(sg);
 
-    expect(points.map((p) => p.bestPassed)).toEqual([50, 58, 52]);
-    expect(points.map((p) => p.bestPassed)).toEqual(scoresOf(points));
+    // The regression keeps its real score…
+    expect(scoresOf(points)).toEqual([50, 58, 52]);
+    // …but the line the chart draws never falls: the run is "ignored".
+    expect(points.map((p) => p.bestPassed)).toEqual([50, 58, 58]);
     expect(points.every((p) => p.accepted === true)).toBe(true);
   });
 });
@@ -410,6 +412,8 @@ describe("buildEvalOutputSeries — concept-only fixture", () => {
 
     // Real scores, including the deliberate regression at r2
     expect(scoresOf(points)).toEqual([50, 58, 52, 61, 64]);
+    // The line ratchets: the r2 regression never pulls it down
+    expect(points.map((p) => p.bestPassed)).toEqual([50, 58, 58, 61, 64]);
 
     // The degenerate "0/0 criteria passed" output never becomes a point
     expect(dropped).toEqual([
