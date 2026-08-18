@@ -1263,7 +1263,12 @@ function ConceptCreateMeta({
   meta,
 }: {
   payload: { name: string; documentation: string; description?: string; repo?: string };
-  meta?: { workspaceName?: string; workspaceSlug?: string; repo?: string };
+  meta?: {
+    workspaceName?: string;
+    workspaceSlug?: string;
+    repo?: string;
+    source?: { displayName?: string; authorityLevel?: string };
+  };
 }) {
   const parts: string[] = [];
   if (meta?.workspaceName ?? meta?.workspaceSlug) {
@@ -1271,6 +1276,16 @@ function ConceptCreateMeta({
   }
   const repo = payload.repo ?? meta?.repo;
   if (repo) parts.push(repo);
+
+  // Source provenance row
+  const sourceParts: string[] = [];
+  if (meta?.source?.displayName) {
+    sourceParts.push(`Source: ${meta.source.displayName}`);
+    if (meta.source.authorityLevel) {
+      sourceParts.push(meta.source.authorityLevel);
+    }
+  }
+
   return (
     <div className="mt-0.5">
       {payload.description && (
@@ -1282,6 +1297,11 @@ function ConceptCreateMeta({
         {parts.length > 0 && <span>{parts.join(" · ")}</span>}
         <span>{payload.documentation.length} chars</span>
       </div>
+      {sourceParts.length > 0 && (
+        <div className="mt-0.5 text-[11px] text-muted-foreground">
+          {sourceParts.join(" · ")}
+        </div>
+      )}
     </div>
   );
 }

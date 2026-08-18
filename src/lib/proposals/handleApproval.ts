@@ -66,7 +66,11 @@ import {
   type MilestoneProposalPayload,
   type ProposalOutput,
   type RejectionIntent,
+  type SourceForwardPayload,
 } from "./types";
+import { kgGetNode } from "@/lib/ai/kg-adapter";
+import { getSwarmAccessByWorkspaceId as getWorkspaceSwarmForKg } from "@/lib/helpers/swarm-access";
+import { getJarvisUrl } from "@/lib/utils/swarm";
 import { mcpCreatePrompt, mcpUpdatePrompt } from "@/lib/mcp/mcpTools";
 import { getSwarmAccessByWorkspaceId } from "@/lib/helpers/swarm-access";
 import { logger } from "@/lib/logger";
@@ -1529,12 +1533,41 @@ async function resolveConceptSwarm(
   };
 }
 
+/** Guard: verify a nodeRefId belongs to the caller's org via the workspace KG.
+ *  Explicitly re-checks that workspaceId belongs to orgId before fetching any
+ *  KG credentials, so the check is self-contained regardless of call order.
+ */
+async function verifySourceNodeInOrg(
+  orgId: string,
+  workspaceId: string,
+  nodeRefId: string,
+): Promise<boolean> {
+  try {
+    // Re-verify org ownership of the workspace before touching any credentials.
+    const workspace = await db.workspace.findFirst({
+      where: { id: workspaceId, sourceControlOrgId: orgId, deleted: false },
+      select: { id: true },
+    });
+    if (!workspace) return false;
+
+    const swarm = await getWorkspaceSwarmForKg(workspaceId);
+    if (!swarm.success || !swarm.data.swarmName) return false;
+    const jarvisUrl = getJarvisUrl(swarm.data.swarmName);
+    const node = await kgGetNode(jarvisUrl, swarm.data.swarmApiKey, nodeRefId);
+    return !!node;
+  } catch {
+    return false;
+  }
+}
+
+const VALID_AUTHORITY_LEVELS = ["owner", "expert", "contributor"] as const;
+
 async function approveConceptCreate(args: {
   orgId: string;
   proposal: Extract<ProposalOutput, { kind: "conceptCreate" }>;
 }): Promise<HandleApprovalReturn> {
   const { orgId, proposal } = args;
-  const { workspaceId, workspaceSlug, name, documentation, description, repo, parent } =
+  const { workspaceId, workspaceSlug, name, documentation, description, repo, parent, source } =
     proposal.payload;
 
   if (!name || !name.trim()) {
@@ -1544,10 +1577,46 @@ async function approveConceptCreate(args: {
     return { ok: false, error: "Concept documentation is required.", status: 400 };
   }
 
+  // ── B6.1 Enum validation (before any swarm call) ────────────────────
+  if (
+    source?.authorityLevel !== undefined &&
+    !(VALID_AUTHORITY_LEVELS as readonly string[]).includes(source.authorityLevel)
+  ) {
+    return {
+      ok: false,
+      error: `Invalid authorityLevel '${source.authorityLevel}'. Must be one of: owner, expert, contributor.`,
+      status: 400,
+    };
+  }
+
   const resolved = await resolveConceptSwarm(orgId, workspaceId);
   if (!resolved.ok) {
     return { ok: false, error: resolved.error, status: resolved.status };
   }
+
+  // ── B6.2 IDOR guard ─────────────────────────────────────────────────
+  if (source?.nodeRefId) {
+    const allowed = await verifySourceNodeInOrg(orgId, workspaceId, source.nodeRefId);
+    if (!allowed) {
+      return {
+        ok: false,
+        error:
+          "Source node not found or does not belong to this organization. " +
+          "Use graph_search to obtain a valid ref_id.",
+        status: 403,
+      };
+    }
+  }
+
+  // ── B6.3 Build SourceForwardPayload (no displayName) ────────────────
+  const sourceForward: SourceForwardPayload | undefined = source
+    ? {
+        nodeRefId: source.nodeRefId,
+        nodeType: source.nodeType,
+        ...(source.authorityLevel && { authorityLevel: source.authorityLevel }),
+        ...(source.context && { context: source.context }),
+      }
+    : undefined;
 
   let createdId = "";
   try {
@@ -1563,6 +1632,7 @@ async function approveConceptCreate(args: {
         ...(description && { description }),
         ...(repo && { repo }),
         ...(parent && { parent }),
+        ...(sourceForward && { source: sourceForward }),
       }),
     });
     const data = await res.json().catch(() => ({}));
@@ -1574,6 +1644,15 @@ async function approveConceptCreate(args: {
       return { ok: false, error: msg, status: res.status === 409 ? 409 : 400 };
     }
     createdId = data?.concept?.id ?? "";
+
+    // ── B6.4 sourceWarning handling ──────────────────────────────────
+    if (typeof data?.sourceWarning === "string" && data.sourceWarning) {
+      logger.warn(
+        "[handleApproval.approveConceptCreate] source edge warning",
+        "handleApproval",
+        { proposalId: proposal.proposalId, sourceWarning: data.sourceWarning },
+      );
+    }
   } catch (e) {
     logger.error(
       "[handleApproval.approveConceptCreate] swarm write failed",

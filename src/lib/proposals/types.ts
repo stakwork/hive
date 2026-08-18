@@ -340,11 +340,14 @@ export type ProposalOutput =
       rationale?: string;
       /** Render-only labels for the card (workspace + repo the concept
        *  will be filed under). The approval handler re-resolves the swarm
-       *  from `payload.workspaceId` and does NOT trust this. */
+       *  from `payload.workspaceId` and does NOT trust this.
+       *  `source` carries render-only provenance fields (displayName,
+       *  authorityLevel) for display on the approval card. */
       meta?: {
         workspaceName?: string;
         workspaceSlug?: string;
         repo?: string;
+        source?: Pick<ConceptSourceAttachment, "displayName" | "authorityLevel">;
       };
     };
 
@@ -370,6 +373,28 @@ export interface PromptUpdateProposalPayload {
   promptId: string;
   value: string;
   description?: string;
+}
+
+// ─── Concept source provenance ─────────────────────────────────────────
+
+/**
+ * Forwarded to the swarm on concept creation — excludes render-only fields
+ * by type construction (TypeScript rejects `displayName` at the call site).
+ */
+export type SourceForwardPayload = {
+  nodeRefId: string;
+  nodeType: "Person" | "Organization";
+  authorityLevel?: "owner" | "expert" | "contributor";
+  context?: string;
+};
+
+/**
+ * Full type stored in the proposal payload.
+ * `displayName` is resolved at tool-call time for card rendering; it is
+ * never forwarded to any backend.
+ */
+export interface ConceptSourceAttachment extends SourceForwardPayload {
+  displayName?: string; // resolved at tool-call time; never forwarded to any backend
 }
 
 // ─── Concept proposal payloads ─────────────────────────────────────────
@@ -398,6 +423,10 @@ export interface ConceptUpdateProposalPayload {
  * analysis) via gitree's `POST /gitree/create-concept-direct`.
  * `repo` ("owner/repo") is optional — when present the concept id is
  * repo-prefixed; when absent the swarm defaults are used.
+ *
+ * `source` is optional provenance: when present the approval handler
+ * will create a `HAS_SOURCE` edge from the new Concept to the specified
+ * Person/Organization node after concept creation.
  */
 export interface ConceptCreateProposalPayload {
   workspaceId: string;
@@ -407,6 +436,10 @@ export interface ConceptCreateProposalPayload {
   description?: string;
   repo?: string;
   parent?: string;
+  /** Optional provenance attachment. Stored as full ConceptSourceAttachment
+   *  (including displayName) but only SourceForwardPayload fields are
+   *  forwarded to the swarm. */
+  source?: ConceptSourceAttachment;
 }
 
 /**

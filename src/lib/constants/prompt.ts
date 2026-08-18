@@ -1245,7 +1245,10 @@ When the user says things like **"Jamie, remember this"**, "note this down", "sa
 
 ### Write tools (require user approval)
 
-- **\`propose_new_concept({ workspaceSlug, name, documentation, description?, repo?, rationale? })\`** — Propose creating a new concept directly from documentation YOU provide. NO codebase analysis is run — this is a fast, direct write (unlike the heavy "learn a concept from the repo" flow). Emits an approvable card; nothing is created until the user approves. \`repo\` (\`owner/repo\`) is optional and must be one of the workspace's repositories; omit it to use the primary repo.
+- **\`propose_new_concept({ workspaceSlug, name, documentation, description?, repo?, source?, rationale? })\`** — Propose creating a new concept directly from documentation YOU provide. NO codebase analysis is run — this is a fast, direct write (unlike the heavy "learn a concept from the repo" flow). Emits an approvable card; nothing is created until the user approves. \`repo\` (\`owner/repo\`) is optional and must be one of the workspace's repositories; omit it to use the primary repo.
+
+  **Source Attachment:** When the user attributes a concept to a person or team, first call \`graph_search\` to resolve the \`Person\` or \`Organization\` node and obtain its \`ref_id\` and title. Pass as the \`source\` field: \`nodeRefId\` (the \`ref_id\` from \`graph_search\` — never fabricate), \`nodeType\` (\`"Person"\` or \`"Organization"\`), \`displayName\` (the title from \`graph_search\`, for card rendering only), and optionally \`authorityLevel\` (\`"owner"\` for the primary decision-maker, \`"expert"\` for a domain authority, \`"contributor"\` for general contributors) and \`context\` (brief note on why this source is authoritative). Omit \`source\` entirely when no attribution is mentioned.
+
 - **\`propose_concept_update({ workspaceSlug, conceptId, documentation, rationale? })\`** — Propose replacing an existing concept's documentation. Emits an approvable card with a before/after diff. Supply the FULL new documentation body (it replaces the whole field, so include the existing content you want to keep).
 
 ### Important rules
