@@ -76,6 +76,9 @@ export function toAttemptPoints(attempts: EvalTriggerOutput[]): AttemptPoint[] {
 
 const MARGIN = { top: 16, right: 20, bottom: 28, left: 32 };
 
+/** Padding on the dot clip so edge dots aren't sliced by their own clip rect. */
+const DOT_CLIP_PAD = 6;
+
 export function HillClimbChart({ attempts, height = 140 }: HillClimbChartProps) {
   const clipId = useId();
   const svgRef = useRef<SVGSVGElement>(null);
@@ -155,6 +158,22 @@ export function HillClimbChart({ attempts, height = 140 }: HillClimbChartProps) 
           <clipPath id={clipId}>
             <rect x={0} y={0} width={innerW} height={innerH} />
           </clipPath>
+          {/*
+            Dot clip: the plot rect padded by the dot radius + stroke. Dots sit
+            exactly on the plot edges (cx=0 at index 0, cy=0 when a point equals
+            the y-domain max), so the polyline's own clip would slice them in
+            half. The padding keeps edge dots whole while still cutting off any
+            point that falls outside the y-domain — a safety net behind the
+            series builders' clamp, not a rendering change for in-range data.
+          */}
+          <clipPath id={`${clipId}-dots`}>
+            <rect
+              x={-DOT_CLIP_PAD}
+              y={-DOT_CLIP_PAD}
+              width={innerW + DOT_CLIP_PAD * 2}
+              height={innerH + DOT_CLIP_PAD * 2}
+            />
+          </clipPath>
         </defs>
 
         <g transform={`translate(${MARGIN.left},${MARGIN.top})`}>
@@ -221,30 +240,32 @@ export function HillClimbChart({ attempts, height = 140 }: HillClimbChartProps) 
           )}
 
           {/* Data points — skip circle when actualPassed is null, keep x-slot */}
-          {points.map((pt, i) =>
-            pt.actualPassed != null ? (
-              <circle
-                key={i}
-                cx={xScale(i)}
-                cy={yScale(pt.actualPassed)}
-                r={4}
-                fill={pt.accepted ? "currentColor" : "none"}
-                stroke="currentColor"
-                strokeWidth={1.5}
-                strokeOpacity={pt.accepted ? 1 : 0.4}
-                fillOpacity={pt.isBaseline ? 0.55 : pt.accepted ? 1 : 0}
-                className="cursor-pointer"
-                onMouseEnter={(e) => handleMouseEnter(pt, i, e)}
-                onFocus={(e) => handleMouseEnter(pt, i, e as unknown as React.MouseEvent<SVGCircleElement>)}
-                tabIndex={0}
-                aria-label={`${pt.label}: ${pt.actualPassed}/${pt.n_total}${pt.accepted ? "" : " (rejected)"}`}
-                data-testid={`dot-${i}`}
-              />
-            ) : (
-              // No dot — keep x-slot so labels never shift; render nothing visible
-              <g key={i} data-testid={`slot-${i}`} />
-            ),
-          )}
+          <g clipPath={`url(#${clipId}-dots)`} data-testid="dot-group">
+            {points.map((pt, i) =>
+              pt.actualPassed != null ? (
+                <circle
+                  key={i}
+                  cx={xScale(i)}
+                  cy={yScale(pt.actualPassed)}
+                  r={4}
+                  fill={pt.accepted ? "currentColor" : "none"}
+                  stroke="currentColor"
+                  strokeWidth={1.5}
+                  strokeOpacity={pt.accepted ? 1 : 0.4}
+                  fillOpacity={pt.isBaseline ? 0.55 : pt.accepted ? 1 : 0}
+                  className="cursor-pointer"
+                  onMouseEnter={(e) => handleMouseEnter(pt, i, e)}
+                  onFocus={(e) => handleMouseEnter(pt, i, e as unknown as React.MouseEvent<SVGCircleElement>)}
+                  tabIndex={0}
+                  aria-label={`${pt.label}: ${pt.actualPassed}/${pt.n_total}${pt.accepted ? "" : " (rejected)"}`}
+                  data-testid={`dot-${i}`}
+                />
+              ) : (
+                // No dot — keep x-slot so labels never shift; render nothing visible
+                <g key={i} data-testid={`slot-${i}`} />
+              ),
+            )}
+          </g>
 
           {/* X-axis attempt labels — sourced from series label, never recomputed from index */}
           {points.map((pt, i) => (

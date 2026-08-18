@@ -115,13 +115,17 @@ function makeOutput(n_passed: number, n_total: number, idx = 0) {
   };
 }
 
-function mockHistoryLoaded(attempts: ReturnType<typeof makeOutput>[] = []) {
+function mockHistoryLoaded(
+  attempts: Array<ReturnType<typeof makeOutput> & Record<string, unknown>> = [],
+  extra: { seriesKind?: string; partial?: boolean } = {},
+) {
   mockUseEvalRunHistory.mockReturnValue({
     history: [],
     attempts,
     isLoading: false,
     error: null,
     refetch: vi.fn(),
+    ...extra,
   });
 }
 
@@ -548,5 +552,68 @@ describe("RecursionList", () => {
     expect(screen.queryByText("Active")).toBeNull();
     expect(screen.queryByText("Running")).toBeNull();
     expect(screen.queryByText("Inactive")).toBeNull();
+  });
+});
+
+// ─── Series-kind semantics ───────────────────────────────────────────────────
+
+describe("RecursionCard — badge and caption per series kind", () => {
+  const mockRefetch = vi.fn();
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockRefetch.mockResolvedValue(undefined);
+    mockUseBenchmarkRubrics.mockReturnValue({ rubrics: null });
+    mockFetchOk();
+  });
+
+  function renderCard() {
+    render(
+      <RecursionList
+        entries={[makeEntry()]}
+        isLoading={false}
+        error={null}
+        refetch={mockRefetch}
+      />,
+    );
+  }
+
+  /** base 50 → 58 → 52: the last point is NOT the maximum. */
+  const REGRESSING_SERIES = [
+    { ...makeOutput(50, 74, 0), isBaseline: true, accepted: true, actualPassed: 50, bestPassed: 50, label: "base" },
+    { ...makeOutput(58, 74, 1), isBaseline: false, accepted: true, actualPassed: 58, bestPassed: 58, label: "r1" },
+    { ...makeOutput(52, 74, 2), isBaseline: false, accepted: true, actualPassed: 52, bestPassed: 52, label: "r2" },
+  ];
+
+  it("shows the historical maximum for a fix-chain series", () => {
+    mockHistoryLoaded(REGRESSING_SERIES, { seriesKind: "fix-chain" });
+    renderCard();
+    expect(screen.getByTestId("score-display").textContent).toBe("58/74");
+  });
+
+  it("shows the historical maximum when seriesKind is absent (legacy callers)", () => {
+    mockHistoryLoaded(REGRESSING_SERIES);
+    renderCard();
+    expect(screen.getByTestId("score-display").textContent).toBe("58/74");
+  });
+
+  it("shows the latest point for an eval-output series, so the badge tracks the chart", () => {
+    mockHistoryLoaded(REGRESSING_SERIES, { seriesKind: "eval-output" });
+    renderCard();
+    expect(screen.getByTestId("score-display").textContent).toBe("52/74");
+  });
+
+  it("adds an incomplete-data note to the chart caption only when the walk was partial", () => {
+    mockHistoryLoaded(REGRESSING_SERIES, { seriesKind: "eval-output", partial: true });
+    renderCard();
+    fireEvent.click(screen.getByTestId("expand-toggle"));
+    expect(screen.getByTestId("chart-partial-note").textContent).toMatch(/incomplete/i);
+  });
+
+  it("omits the incomplete-data note when the walk was complete", () => {
+    mockHistoryLoaded(REGRESSING_SERIES, { seriesKind: "eval-output", partial: false });
+    renderCard();
+    fireEvent.click(screen.getByTestId("expand-toggle"));
+    expect(screen.queryByTestId("chart-partial-note")).toBeNull();
   });
 });

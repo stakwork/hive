@@ -101,10 +101,65 @@ export const PLATEAU_CAP_NODE_IDS = {
   PLATEAU_CAP_FIX3_OUTPUT_ID,
 } as const;
 
+// ── Scenario C: Concept-only EvalSet (no ProposedFix anywhere) ───────────────
+// Models concept-driven recursion: each re-run writes a fresh EvalTrigger +
+// EvalTriggerOutput and NO ProposedFix, so buildHillClimbSeries yields a single
+// flat baseline point and buildEvalOutputSeries must carry the chart instead.
+//
+// Covers, in one payload:
+//   - a baseline trigger plus two EvalSet-hosted HAS_TRIGGER re-runs
+//   - a requirement-hosted trigger (EvalSet -HAS_REQUIREMENT-> EvalRequirement
+//     -HAS_TRIGGER-> EvalTrigger), mirroring what legal/benchmarks/run writes
+//   - a degenerate output with no n_passed/n_total and judge_notes
+//     "0/0 criteria passed" — the shape stakwork-run.ts emits today — which must
+//     be DROPPED rather than charted as a 0/0 point
+//   - an output whose n_total differs from its siblings, pinning denominator
+//     normalization to max(n_total)
+//   - one score that goes DOWN, pinning that the line traces real scores
+export const CONCEPT_ONLY_EVALSET_ID = "mock-evalset-concept-only-001";
+
+/** Fixed epoch base so point ordering in this scenario is deterministic. */
+export const CONCEPT_ONLY_BASE_TS = 1760000000;
+
+export const CONCEPT_ONLY_BASELINE_TRIGGER_ID = "mock-evaltrigger-conceptonly-baseline-001";
+export const CONCEPT_ONLY_BASELINE_OUTPUT_ID = "mock-evaltriggeroutput-conceptonly-baseline-001";
+export const CONCEPT_ONLY_RERUN1_TRIGGER_ID = "mock-evaltrigger-conceptonly-rerun-001";
+export const CONCEPT_ONLY_RERUN1_OUTPUT_ID = "mock-evaltriggeroutput-conceptonly-rerun-001";
+export const CONCEPT_ONLY_RERUN2_TRIGGER_ID = "mock-evaltrigger-conceptonly-rerun-002";
+export const CONCEPT_ONLY_RERUN2_OUTPUT_ID = "mock-evaltriggeroutput-conceptonly-rerun-002";
+export const CONCEPT_ONLY_REQUIREMENT_ID = "mock-evalrequirement-conceptonly-001";
+export const CONCEPT_ONLY_REQ_TRIGGER_ID = "mock-evaltrigger-conceptonly-req-001";
+export const CONCEPT_ONLY_REQ_OUTPUT_ID = "mock-evaltriggeroutput-conceptonly-req-001";
+export const CONCEPT_ONLY_DEGENERATE_TRIGGER_ID = "mock-evaltrigger-conceptonly-degenerate-001";
+export const CONCEPT_ONLY_DEGENERATE_OUTPUT_ID = "mock-evaltriggeroutput-conceptonly-degenerate-001";
+export const CONCEPT_ONLY_WIDE_TRIGGER_ID = "mock-evaltrigger-conceptonly-wide-001";
+export const CONCEPT_ONLY_WIDE_OUTPUT_ID = "mock-evaltriggeroutput-conceptonly-wide-001";
+
+export const CONCEPT_ONLY_NODE_IDS = {
+  CONCEPT_ONLY_EVALSET_ID,
+  CONCEPT_ONLY_BASELINE_TRIGGER_ID,
+  CONCEPT_ONLY_BASELINE_OUTPUT_ID,
+  CONCEPT_ONLY_RERUN1_TRIGGER_ID,
+  CONCEPT_ONLY_RERUN1_OUTPUT_ID,
+  CONCEPT_ONLY_RERUN2_TRIGGER_ID,
+  CONCEPT_ONLY_RERUN2_OUTPUT_ID,
+  CONCEPT_ONLY_REQUIREMENT_ID,
+  CONCEPT_ONLY_REQ_TRIGGER_ID,
+  CONCEPT_ONLY_REQ_OUTPUT_ID,
+  CONCEPT_ONLY_DEGENERATE_TRIGGER_ID,
+  CONCEPT_ONLY_DEGENERATE_OUTPUT_ID,
+  CONCEPT_ONLY_WIDE_TRIGGER_ID,
+  CONCEPT_ONLY_WIDE_OUTPUT_ID,
+} as const;
+
 const BASELINE_TRIGGER_ID = "mock-evaltrigger-baseline-001";
 const BASELINE_OUTPUT_ID = "mock-evaltriggeroutput-baseline-001";
 
 const RERUN_TRIGGER_ID = "mock-evaltrigger-rerun-001"; // casing variant node_type
+// The rerun trigger scores an output of its own — without this the widened
+// walk (HAS_BASELINE_TRIGGER + HAS_TRIGGER) has no non-baseline HAS_OUTPUT to
+// exercise, so the concept-driven path would be untested against this fixture.
+export const RERUN_TRIGGER_OUTPUT_ID = "mock-evaltriggeroutput-rerun-trigger-001";
 
 const FIX_ROOT_ID = "mock-proposedfix-root-001";
 const FIX_ROOT_RERUN_OUTPUT_ID = "mock-evaltriggeroutput-rerun-001";
@@ -279,6 +334,21 @@ export function buildRecursionNodes(): JarvisNode[] {
       },
     },
 
+    // ── Rerun EvalTrigger's own output (n_passed=51, n_total=74) ─────────────
+    {
+      ref_id: RERUN_TRIGGER_OUTPUT_ID,
+      node_type: "EvalTriggerOutput",
+      date_added_to_graph: ts,
+      properties: {
+        attempt_number: 2,
+        result: "partial",
+        score: 51,
+        n_passed: 51,
+        n_total: 74,
+        judge_notes: "51/74 criteria passed (rerun trigger own output)",
+      },
+    },
+
     // ── NEW: Multi-edge accepted ProposedFix ──────────────────────────────────
     // Has TWO PRODUCED_BY edges: one empty EvalTriggerOutput (no n_passed/n_total),
     // one valid (n_passed=32, n_total=33). The builder must pick the valid one.
@@ -419,6 +489,9 @@ export function buildRecursionEdges() {
     // Rejected fix with no resolvable score (derived from rejected-scored)
     { source: FIX_REJECTED_UNSCORED_ID, target: FIX_REJECTED_SCORED_ID, edge_type: "DERIVED_FROM" },
     // (No PRODUCED_BY edge, no after_score — x-slot only)
+
+    // Rerun trigger → its own output (exercises the widened HAS_TRIGGER walk)
+    { source: RERUN_TRIGGER_ID, target: RERUN_TRIGGER_OUTPUT_ID, edge_type: "HAS_OUTPUT" },
 
     // Rerun trigger → rejected fix (original — attached to rerun trigger, not baseline)
     { source: RERUN_TRIGGER_ID, target: FIX_REJECTED_ID, edge_type: "HAS_PROPOSED_FIX" },
@@ -653,11 +726,207 @@ export function buildPlateauCapEdges() {
   ];
 }
 
+// ── Scenario C: Concept-only builder ─────────────────────────────────────────
+
+/**
+ * Build nodes for the concept-only scenario. ZERO ProposedFix nodes — every
+ * re-run is its own EvalTrigger + EvalTriggerOutput, which is what
+ * concept-driven recursion actually writes.
+ *
+ * Expected `buildEvalOutputSeries` result (denominator normalized to 80):
+ *   base 50/80 · r1 58/80 · r2 52/80 (down) · r3 61/80 · r4 64/80
+ * The degenerate 0/0 output is dropped, never charted.
+ *
+ * Kept as its OWN builder rather than folded into `buildRecursionNodes()`:
+ * the EvalSet locator is `nodes.find((n) => isNodeType(n, "EvalSet"))`, so two
+ * EvalSet nodes in one payload would silently resolve to whichever came first.
+ */
+export function buildConceptOnlyNodes(): JarvisNode[] {
+  const at = (offsetSeconds: number) => String(CONCEPT_ONLY_BASE_TS + offsetSeconds);
+  const identity = { agent: "concept-agent", start_point: "start", end_point: "end" };
+
+  return [
+    {
+      ref_id: CONCEPT_ONLY_EVALSET_ID,
+      node_type: "EvalSet",
+      date_added_to_graph: at(0),
+      properties: {
+        name: "Concept-only Recursion EvalSet",
+        description: "Re-run via concepts — no ProposedFix nodes are ever written",
+        task_slug: "mock-concept-task-001",
+      },
+    },
+
+    // ── Baseline: EvalSet --HAS_BASELINE_TRIGGER--> trigger --HAS_OUTPUT--> ──
+    {
+      ref_id: CONCEPT_ONLY_BASELINE_TRIGGER_ID,
+      node_type: "EvalTrigger",
+      date_added_to_graph: at(0),
+      properties: { ...identity, environment: "test", change_type: "baseline" },
+    },
+    {
+      ref_id: CONCEPT_ONLY_BASELINE_OUTPUT_ID,
+      node_type: "EvalTriggerOutput",
+      date_added_to_graph: at(0),
+      properties: {
+        attempt_number: 1,
+        result: "partial",
+        score: 50 / 74,
+        n_passed: 50,
+        n_total: 74,
+        judge_notes: "50/74 criteria passed (concept baseline)",
+      },
+    },
+
+    // ── Re-run 1: EvalSet-hosted HAS_TRIGGER, score improves ────────────────
+    {
+      ref_id: CONCEPT_ONLY_RERUN1_TRIGGER_ID,
+      node_type: "EvalTrigger",
+      date_added_to_graph: at(3600),
+      properties: { ...identity, environment: "test", change_type: "concept_rerun" },
+    },
+    {
+      ref_id: CONCEPT_ONLY_RERUN1_OUTPUT_ID,
+      node_type: "EvalTriggerOutput",
+      date_added_to_graph: at(3600),
+      properties: {
+        attempt_number: 1,
+        result: "partial",
+        score: 58 / 74,
+        n_passed: 58,
+        n_total: 74,
+        judge_notes: "58/74 criteria passed (concept re-run 1)",
+      },
+    },
+
+    // ── Re-run 2: score goes DOWN — pins that the line traces real scores ────
+    {
+      ref_id: CONCEPT_ONLY_RERUN2_TRIGGER_ID,
+      // Intentional lowercase to exercise case-insensitive node_type matching
+      node_type: "evaltrigger",
+      date_added_to_graph: at(7200),
+      properties: { ...identity, environment: "test", change_type: "concept_rerun" },
+    },
+    {
+      ref_id: CONCEPT_ONLY_RERUN2_OUTPUT_ID,
+      node_type: "EvalTriggerOutput",
+      date_added_to_graph: at(7200),
+      properties: {
+        attempt_number: 1,
+        result: "partial",
+        score: 52 / 74,
+        n_passed: 52,
+        n_total: 74,
+        judge_notes: "52/74 criteria passed (concept re-run 2 — regression)",
+      },
+    },
+
+    // ── Requirement-hosted trigger — the shape legal/benchmarks/run writes ───
+    {
+      ref_id: CONCEPT_ONLY_REQUIREMENT_ID,
+      node_type: "EvalRequirement",
+      date_added_to_graph: at(0),
+      properties: { id: "C-001", name: "Concept requirement" },
+    },
+    {
+      ref_id: CONCEPT_ONLY_REQ_TRIGGER_ID,
+      node_type: "EvalTrigger",
+      date_added_to_graph: at(10800),
+      properties: {
+        ...identity,
+        agent: "wfe-agent",
+        source: "provider_direct",
+        environment: "test",
+      },
+    },
+    {
+      ref_id: CONCEPT_ONLY_REQ_OUTPUT_ID,
+      node_type: "EvalTriggerOutput",
+      date_added_to_graph: at(10800),
+      properties: {
+        attempt_number: 1,
+        result: "partial",
+        score: 61 / 74,
+        n_passed: 61,
+        n_total: 74,
+        judge_notes: "61/74 criteria passed (requirement-hosted run)",
+      },
+    },
+
+    // ── Degenerate output — no counts, "0/0 criteria passed" → must be dropped ─
+    {
+      ref_id: CONCEPT_ONLY_DEGENERATE_TRIGGER_ID,
+      node_type: "EvalTrigger",
+      date_added_to_graph: at(14400),
+      properties: { ...identity, environment: "test" },
+    },
+    {
+      ref_id: CONCEPT_ONLY_DEGENERATE_OUTPUT_ID,
+      node_type: "EvalTriggerOutput",
+      date_added_to_graph: at(14400),
+      properties: {
+        attempt_number: 1,
+        result: "",
+        score: 0,
+        // No n_passed / n_total properties at all — exactly what stakwork-run.ts
+        // writes; the judge_notes parser would otherwise yield a 0/0 point.
+        judge_notes: "0/0 criteria passed. Judge: unknown",
+      },
+    },
+
+    // ── Wider denominator — pins normalization to max(n_total) ──────────────
+    {
+      ref_id: CONCEPT_ONLY_WIDE_TRIGGER_ID,
+      node_type: "EvalTrigger",
+      date_added_to_graph: at(18000),
+      properties: { ...identity, environment: "test" },
+    },
+    {
+      ref_id: CONCEPT_ONLY_WIDE_OUTPUT_ID,
+      node_type: "EvalTriggerOutput",
+      date_added_to_graph: at(18000),
+      properties: {
+        attempt_number: 1,
+        result: "partial",
+        score: 64 / 80,
+        n_passed: 64,
+        n_total: 80,
+        judge_notes: "64/80 criteria passed (rubric roster grew)",
+      },
+    },
+  ];
+}
+
+export function buildConceptOnlyEdges() {
+  return [
+    { source: CONCEPT_ONLY_EVALSET_ID, target: CONCEPT_ONLY_BASELINE_TRIGGER_ID, edge_type: "HAS_BASELINE_TRIGGER" },
+    { source: CONCEPT_ONLY_BASELINE_TRIGGER_ID, target: CONCEPT_ONLY_BASELINE_OUTPUT_ID, edge_type: "HAS_OUTPUT" },
+
+    { source: CONCEPT_ONLY_EVALSET_ID, target: CONCEPT_ONLY_RERUN1_TRIGGER_ID, edge_type: "HAS_TRIGGER" },
+    { source: CONCEPT_ONLY_RERUN1_TRIGGER_ID, target: CONCEPT_ONLY_RERUN1_OUTPUT_ID, edge_type: "HAS_OUTPUT" },
+
+    { source: CONCEPT_ONLY_EVALSET_ID, target: CONCEPT_ONLY_RERUN2_TRIGGER_ID, edge_type: "HAS_TRIGGER" },
+    { source: CONCEPT_ONLY_RERUN2_TRIGGER_ID, target: CONCEPT_ONLY_RERUN2_OUTPUT_ID, edge_type: "HAS_OUTPUT" },
+
+    // Requirement-hosted: the trigger hangs off the EvalRequirement, NOT the EvalSet
+    { source: CONCEPT_ONLY_EVALSET_ID, target: CONCEPT_ONLY_REQUIREMENT_ID, edge_type: "HAS_REQUIREMENT" },
+    { source: CONCEPT_ONLY_REQUIREMENT_ID, target: CONCEPT_ONLY_REQ_TRIGGER_ID, edge_type: "HAS_TRIGGER" },
+    { source: CONCEPT_ONLY_REQ_TRIGGER_ID, target: CONCEPT_ONLY_REQ_OUTPUT_ID, edge_type: "HAS_OUTPUT" },
+
+    { source: CONCEPT_ONLY_EVALSET_ID, target: CONCEPT_ONLY_DEGENERATE_TRIGGER_ID, edge_type: "HAS_TRIGGER" },
+    { source: CONCEPT_ONLY_DEGENERATE_TRIGGER_ID, target: CONCEPT_ONLY_DEGENERATE_OUTPUT_ID, edge_type: "HAS_OUTPUT" },
+
+    { source: CONCEPT_ONLY_EVALSET_ID, target: CONCEPT_ONLY_WIDE_TRIGGER_ID, edge_type: "HAS_TRIGGER" },
+    { source: CONCEPT_ONLY_WIDE_TRIGGER_ID, target: CONCEPT_ONLY_WIDE_OUTPUT_ID, edge_type: "HAS_OUTPUT" },
+  ];
+}
+
 export const RECURSION_NODE_IDS = {
   EVAL_SET_ID,
   BASELINE_TRIGGER_ID,
   BASELINE_OUTPUT_ID,
   RERUN_TRIGGER_ID,
+  RERUN_TRIGGER_OUTPUT_ID,
   FIX_ROOT_ID,
   FIX_ROOT_RERUN_OUTPUT_ID,
   FIX_DERIVED_ID,
