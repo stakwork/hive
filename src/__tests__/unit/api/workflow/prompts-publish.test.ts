@@ -10,6 +10,12 @@ vi.mock("@/lib/db", () => ({
       findUnique: vi.fn(),
       update: vi.fn(),
     },
+    prompt: {
+      findUnique: vi.fn(),
+    },
+    promptVersion: {
+      findFirst: vi.fn(),
+    },
   },
 }));
 vi.mock("@/lib/runtime");
@@ -19,6 +25,9 @@ vi.mock("@/services/prompts/prompt-sync", () => ({
 vi.mock("@/lib/rate-limit", () => ({
   getClientIp: vi.fn().mockReturnValue("1.2.3.4"),
   checkRateLimit: vi.fn().mockResolvedValue({ allowed: true }),
+}));
+vi.mock("@/lib/logger", () => ({
+  logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }));
 
 import { db } from "@/lib/db";
@@ -48,11 +57,14 @@ function makeTokenRequest(url: string, body?: unknown): NextRequest {
   });
 }
 
+/** Default resolved PublishOutcome returned by the mock unless overridden. */
+const DEFAULT_OUTCOME = { versionId: "version-456", versionNumber: 2, syncOutcome: "PUSHED" as const };
+
 describe("POST /api/workflow/prompts/[id]/versions/[versionId]/publish", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(runtime.isDevelopmentMode).mockReturnValue(false);
-    vi.mocked(publishVersion).mockResolvedValue(undefined as never);
+    vi.mocked(publishVersion).mockResolvedValue(DEFAULT_OUTCOME);
     vi.mocked(checkRateLimit).mockResolvedValue({ allowed: true });
     // Default: no API token in env
     delete process.env.API_TOKEN;
@@ -139,7 +151,7 @@ describe("POST /api/workflow/prompts/[id]/versions/[versionId]/publish", () => {
     const data = await response.json();
 
     expect(response.status).toBe(200);
-    expect(data).toEqual({ success: true });
+    expect(data).toEqual({ success: true, syncOutcome: "PUSHED" });
     expect(publishVersion).toHaveBeenCalledWith("prompt-123", "version-456", "ws-1", mockUser.id, "UI");
     // Workspace membership check used the userId from middleware
     expect(vi.mocked(db.workspace.findFirst)).toHaveBeenCalledWith(
@@ -182,7 +194,7 @@ describe("POST /api/workflow/prompts/[id]/versions/[versionId]/publish", () => {
     const data = await response.json();
 
     expect(response.status).toBe(200);
-    expect(data).toEqual({ success: true });
+    expect(data).toEqual({ success: true, syncOutcome: "PUSHED" });
   });
 
   it("calls publishVersion with actor=API_TOKEN_ACTOR on token publish", async () => {
@@ -212,6 +224,158 @@ describe("POST /api/workflow/prompts/[id]/versions/[versionId]/publish", () => {
 
     // Token branch uses slug only — no ownerId / members check
     expect(db.workspace.findFirst).toHaveBeenCalledWith({ where: { slug: "stakwork" } });
+  });
+
+  // ── syncOutcome forwarding ─────────────────────────────────────────────────
+
+  it("response includes syncOutcome=PUSH_FAILED when publishVersion reports a sync failure", async () => {
+    vi.mocked(db.workspace.findFirst).mockResolvedValue({ id: "ws-1", slug: "stakwork" } as never);
+    vi.mocked(publishVersion).mockResolvedValue(
+      { versionId: "version-456", versionNumber: 2, syncOutcome: "PUSH_FAILED" }
+    );
+
+    const { POST } = await import(
+      "@/app/api/workflow/prompts/[id]/versions/[versionId]/publish/route"
+    );
+    const request = createAuthenticatedPostRequest(TEST_URL, mockUser, {});
+    const response = await POST(request, mockParams("prompt-123", "version-456"));
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(data.syncOutcome).toBe("PUSH_FAILED");
+    expect(data.success).toBe(true);
+  });
+
+  it("response includes syncOutcome=NOT_CONFIGURED when stakworkId is null (no push attempted)", async () => {
+    vi.mocked(db.workspace.findFirst).mockResolvedValue({ id: "ws-1", slug: "stakwork" } as never);
+    vi.mocked(publishVersion).mockResolvedValue(
+      { versionId: "version-456", versionNumber: 2, syncOutcome: "NOT_CONFIGURED" }
+    );
+
+    const { POST } = await import(
+      "@/app/api/workflow/prompts/[id]/versions/[versionId]/publish/route"
+    );
+    const request = createAuthenticatedPostRequest(TEST_URL, mockUser, {});
+    const response = await POST(request, mockParams("prompt-123", "version-456"));
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(data.syncOutcome).toBe("NOT_CONFIGURED");
+    expect(data.success).toBe(true);
+  });
+
+  // ── Stale-publish guard (409) ─────────────────────────────────────────────
+
+  it("returns 409 when expectedPublishedVersionId disagrees with current state", async () => {
+    vi.mocked(db.workspace.findFirst).mockResolvedValue({ id: "ws-1", slug: "stakwork" } as never);
+    // Target version exists
+    vi.mocked(db.promptVersion.findFirst).mockResolvedValue(
+      { id: "version-456", promptId: "prompt-123" } as never
+    );
+    // Prompt state: published version is different from what the client expected
+    vi.mocked(db.prompt.findUnique).mockResolvedValue({
+      publishedVersionId: "published-v1",
+      versions: [{ versionNumber: 2 }],
+    } as never);
+
+    const { POST } = await import(
+      "@/app/api/workflow/prompts/[id]/versions/[versionId]/publish/route"
+    );
+    const request = createAuthenticatedPostRequest(TEST_URL, mockUser, {
+      expectedPublishedVersionId: "stale-expected-id",  // disagrees
+    });
+    const response = await POST(request, mockParams("prompt-123", "version-456"));
+    const data = await response.json();
+
+    expect(response.status).toBe(409);
+    expect(data.error).toContain("Conflict");
+    expect(data.currentPublishedVersionId).toBe("published-v1");
+    // publishVersion must NOT have been called
+    expect(publishVersion).not.toHaveBeenCalled();
+  });
+
+  it("returns 409 when expectedLatestVersionNumber disagrees with current state", async () => {
+    vi.mocked(db.workspace.findFirst).mockResolvedValue({ id: "ws-1", slug: "stakwork" } as never);
+    vi.mocked(db.promptVersion.findFirst).mockResolvedValue(
+      { id: "version-456", promptId: "prompt-123" } as never
+    );
+    vi.mocked(db.prompt.findUnique).mockResolvedValue({
+      publishedVersionId: "published-v1",
+      versions: [{ versionNumber: 5 }],  // latest is v5 on server
+    } as never);
+
+    const { POST } = await import(
+      "@/app/api/workflow/prompts/[id]/versions/[versionId]/publish/route"
+    );
+    const request = createAuthenticatedPostRequest(TEST_URL, mockUser, {
+      expectedLatestVersionNumber: 3,  // client thought v3 was latest
+    });
+    const response = await POST(request, mockParams("prompt-123", "version-456"));
+    const data = await response.json();
+
+    expect(response.status).toBe(409);
+    expect(data.currentLatestVersionNumber).toBe(5);
+    expect(publishVersion).not.toHaveBeenCalled();
+  });
+
+  it("returns 200 and publishes when both expected fields match current state", async () => {
+    vi.mocked(db.workspace.findFirst).mockResolvedValue({ id: "ws-1", slug: "stakwork" } as never);
+    vi.mocked(db.promptVersion.findFirst).mockResolvedValue(
+      { id: "version-456", promptId: "prompt-123" } as never
+    );
+    vi.mocked(db.prompt.findUnique).mockResolvedValue({
+      publishedVersionId: "published-v1",
+      versions: [{ versionNumber: 2 }],
+    } as never);
+
+    const { POST } = await import(
+      "@/app/api/workflow/prompts/[id]/versions/[versionId]/publish/route"
+    );
+    const request = createAuthenticatedPostRequest(TEST_URL, mockUser, {
+      expectedPublishedVersionId: "published-v1",  // matches
+      expectedLatestVersionNumber: 2,              // matches
+    });
+    const response = await POST(request, mockParams("prompt-123", "version-456"));
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(data.success).toBe(true);
+    expect(publishVersion).toHaveBeenCalled();
+  });
+
+  it("omitting both expected fields skips the guard (existing callers unaffected)", async () => {
+    vi.mocked(db.workspace.findFirst).mockResolvedValue({ id: "ws-1", slug: "stakwork" } as never);
+
+    const { POST } = await import(
+      "@/app/api/workflow/prompts/[id]/versions/[versionId]/publish/route"
+    );
+    const request = createAuthenticatedPostRequest(TEST_URL, mockUser, {});
+    const response = await POST(request, mockParams("prompt-123", "version-456"));
+
+    expect(response.status).toBe(200);
+    // No DB read for stale-check (no prompt.findUnique / promptVersion.findFirst calls)
+    expect(db.promptVersion.findFirst).not.toHaveBeenCalled();
+    expect(publishVersion).toHaveBeenCalled();
+  });
+
+  it("returns 404 when target version is not found during stale-guard check", async () => {
+    vi.mocked(db.workspace.findFirst).mockResolvedValue({ id: "ws-1", slug: "stakwork" } as never);
+    vi.mocked(db.promptVersion.findFirst).mockResolvedValue(null);
+    vi.mocked(db.prompt.findUnique).mockResolvedValue({
+      publishedVersionId: "v1",
+      versions: [{ versionNumber: 1 }],
+    } as never);
+
+    const { POST } = await import(
+      "@/app/api/workflow/prompts/[id]/versions/[versionId]/publish/route"
+    );
+    const request = createAuthenticatedPostRequest(TEST_URL, mockUser, {
+      expectedPublishedVersionId: "v1",
+    });
+    const response = await POST(request, mockParams("prompt-123", "version-456"));
+
+    expect(response.status).toBe(404);
+    expect(publishVersion).not.toHaveBeenCalled();
   });
 
   // ── Rate limiting ─────────────────────────────────────────────────────────
@@ -276,7 +440,7 @@ describe("POST /api/workflow/prompts/[id]/versions/[versionId]/publish", () => {
     const data = await response.json();
 
     expect(response.status).toBe(200);
-    expect(data).toEqual({ success: true });
+    expect(data.success).toBe(true);
     expect(db.artifact.findUnique).toHaveBeenCalledWith(
       expect.objectContaining({ where: { id: "artifact-1" } })
     );
@@ -299,7 +463,6 @@ describe("POST /api/workflow/prompts/[id]/versions/[versionId]/publish", () => {
     );
     const request = createAuthenticatedPostRequest(TEST_URL, mockUser, {});
     const response = await POST(request, mockParams("prompt-123", "version-456"));
-    const data = await response.json();
 
     expect(response.status).toBe(404);
   });
@@ -317,7 +480,7 @@ describe("POST /api/workflow/prompts/[id]/versions/[versionId]/publish", () => {
     const data = await response.json();
 
     expect(response.status).toBe(200);
-    expect(data).toEqual({ success: true });
+    expect(data.success).toBe(true);
     // Workspace membership check must NOT run in dev mode (only session path)
     expect(db.workspace.findFirst).not.toHaveBeenCalled();
     // publishVersion called with undefined workspaceId, userId as actor
