@@ -13,6 +13,10 @@ import { releaseTaskPod } from "@/lib/pods/utils";
 
 export const fetchCache = "force-no-store";
 
+/** Truncates untrusted request-controlled strings before logging them. */
+const truncate = (s: string, max = 200): string =>
+  typeof s === "string" && s.length > max ? s.slice(0, max) + "…" : s;
+
 function buildWorkflowTimestamps(status: WorkflowStatus): Record<string, unknown> {
   const data: Record<string, unknown> = {
     workflowStatus: status,
@@ -52,18 +56,30 @@ export async function POST(request: NextRequest) {
 
     // Must provide either task_id or run_id
     if (!finalTaskId && !finalRunId) {
-      console.error("No task_id or run_id provided in webhook");
+      console.error("[stakwork/webhook] No task_id or run_id provided in webhook");
       return NextResponse.json({ error: "Either task_id or run_id is required" }, { status: 400 });
     }
 
     if (!project_status) {
-      console.error("No project_status provided in webhook");
+      console.error("[stakwork/webhook] No project_status provided in webhook");
       return NextResponse.json({ error: "project_status is required" }, { status: 400 });
     }
 
     const workflowStatus = mapStakworkStatus(project_status);
 
+    console.log("[stakwork/webhook]", {
+      finalTaskId,
+      finalRunId,
+      rawProjectStatus: truncate(project_status),
+      mappedStatus: workflowStatus,
+    });
+
     if (workflowStatus === null) {
+      console.warn("[stakwork/webhook]", {
+        finalTaskId,
+        finalRunId,
+        rawProjectStatus: truncate(project_status),
+      });
       return NextResponse.json(
         {
           success: true,
@@ -95,7 +111,12 @@ export async function POST(request: NextRequest) {
       });
 
       if (!run) {
-        console.error(`StakworkRun not found: ${finalRunId}`);
+        console.error("[stakwork/webhook]", {
+          message: "StakworkRun not found",
+          finalTaskId,
+          finalRunId,
+          rawProjectStatus: truncate(project_status),
+        });
         return NextResponse.json({ error: "Run not found" }, { status: 404 });
       }
 
@@ -105,6 +126,13 @@ export async function POST(request: NextRequest) {
           status: workflowStatus,
           updatedAt: new Date(),
         },
+      });
+
+      console.log("[stakwork/webhook]", {
+        entityType: "run",
+        entityId: finalRunId,
+        priorStatus: run.status,
+        newStatus: workflowStatus,
       });
 
       // Broadcast via Pusher
@@ -185,9 +213,17 @@ export async function POST(request: NextRequest) {
       });
 
       if (feature) {
+        const priorFeatureStatus = feature.workflowStatus;
         await db.feature.update({
           where: { id: feature.id },
           data: buildWorkflowTimestamps(workflowStatus),
+        });
+
+        console.log("[stakwork/webhook]", {
+          entityType: "feature",
+          featureId: feature.id,
+          priorStatus: priorFeatureStatus,
+          newStatus: workflowStatus,
         });
 
         // Patch the (frozen) `source.workflowStatus` snapshot on the
@@ -248,7 +284,12 @@ export async function POST(request: NextRequest) {
         }, { status: 200 });
       }
 
-      console.error(`Task not found: ${finalTaskId}`);
+      console.error("[stakwork/webhook]", {
+        message: "Task not found",
+        finalTaskId,
+        finalRunId,
+        rawProjectStatus: truncate(project_status),
+      });
       return NextResponse.json({ error: "Task not found" }, { status: 404 });
     }
 
@@ -261,6 +302,11 @@ export async function POST(request: NextRequest) {
     if (isTerminal) {
       const retried = await retryWorkflowEditorTask(task.id);
       if (retried) {
+        console.warn("[stakwork/webhook]", {
+          message: "terminal status swallowed into retryWorkflowEditorTask",
+          taskId: task.id,
+          originalStatus: workflowStatus,
+        });
         return NextResponse.json({ success: true, action: "retried" }, { status: 200 });
       }
     }
@@ -273,6 +319,14 @@ export async function POST(request: NextRequest) {
         workflowCompletedAt: true,
         featureId: true,
       },
+    });
+
+    console.log("[stakwork/webhook]", {
+      entityType: "task",
+      entityId: finalTaskId,
+      featureId: updatedTask.featureId,
+      priorStatus: task.workflowStatus,
+      newStatus: workflowStatus,
     });
 
     // Fire WORKFLOW_HALTED notification for task path (fire-and-forget)

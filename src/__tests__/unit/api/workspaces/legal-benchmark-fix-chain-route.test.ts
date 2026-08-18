@@ -13,7 +13,7 @@
  * - Auth sequence order: auth → workspace access → IDOR → rate limit → walkFixChain
  */
 
-import { describe, test, expect, vi, beforeEach } from "vitest";
+import { describe, test, expect, vi, beforeEach, afterEach } from "vitest";
 import { NextRequest, NextResponse } from "next/server";
 
 // ── Hoisted mocks ─────────────────────────────────────────────────────────────
@@ -65,6 +65,11 @@ vi.mock("@/lib/logger", () => ({
 // ── Import after mocks ────────────────────────────────────────────────────────
 
 import { GET } from "@/app/api/workspaces/[slug]/legal/benchmarks/fix-chain/route";
+import {
+  CONCEPT_ONLY_EVALSET_ID,
+  CONCEPT_ONLY_REQ_TRIGGER_ID,
+  EVAL_SET_ID,
+} from "@/app/api/mock/jarvis/graph/recursion-fixture";
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
 
@@ -281,13 +286,19 @@ describe("GET /api/workspaces/[slug]/legal/benchmarks/fix-chain", () => {
     expect(body.data.edges).toHaveLength(1);
   });
 
-  test("calls walkFixChain with correct args including triggerEdgeTypes: ['HAS_BASELINE_TRIGGER']", async () => {
+  test("calls walkFixChain with both trigger edge types and requirement-hosted triggers", async () => {
+    // Concept-driven recursion writes a fresh EvalTrigger (HAS_TRIGGER) instead
+    // of a ProposedFix, and hive's own run route hangs its trigger off the
+    // EvalRequirement — a baseline-only first hop loads neither.
     await GET(makeGetRequest("openlaw", "ref-evalset-1"), makeParams());
     expect(mockWalkFixChain).toHaveBeenCalledWith(
       expect.stringContaining("openlaw-swarm"),
       "swarm-key",
       "ref-evalset-1",
-      { triggerEdgeTypes: ["HAS_BASELINE_TRIGGER"] },
+      {
+        triggerEdgeTypes: ["HAS_BASELINE_TRIGGER", "HAS_TRIGGER"],
+        includeRequirementTriggers: true,
+      },
     );
   });
 
@@ -345,5 +356,84 @@ describe("GET /api/workspaces/[slug]/legal/benchmarks/fix-chain", () => {
       "checkRateLimit",
       "walkFixChain",
     ]);
+  });
+});
+
+// ── USE_MOCKS scenario switch ─────────────────────────────────────────────────
+
+describe("GET fix-chain — USE_MOCKS scenario switch", () => {
+  const originalUseMocks = process.env.USE_MOCKS;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    process.env.USE_MOCKS = "true";
+    mockGetMiddlewareContext.mockReturnValue({ userId: "user-1" });
+    mockRequireAuth.mockReturnValue({ id: "user-1" });
+    mockGetWorkspaceSwarmAccess.mockResolvedValue(MOCK_SWARM_ACCESS);
+    mockKgGetNode.mockResolvedValue(MOCK_EVAL_SET_NODE);
+    mockCheckRateLimit.mockResolvedValue({ allowed: true });
+    mockWalkFixChain.mockResolvedValue(MOCK_FIX_CHAIN_RESULT);
+  });
+
+  afterEach(() => {
+    process.env.USE_MOCKS = originalUseMocks;
+  });
+
+  test("returns the concept-only fixture for CONCEPT_ONLY_EVALSET_ID", async () => {
+    const res = await GET(
+      makeGetRequest("openlaw", CONCEPT_ONLY_EVALSET_ID),
+      makeParams(),
+    );
+    expect(res.status).toBe(200);
+    const body = await res.json();
+
+    const refIds = body.data.nodes.map((n: { ref_id: string }) => n.ref_id);
+    expect(refIds).toContain(CONCEPT_ONLY_EVALSET_ID);
+    expect(refIds).toContain(CONCEPT_ONLY_REQ_TRIGGER_ID);
+    // Concept-driven recursion writes no ProposedFix at all
+    expect(
+      body.data.nodes.some(
+        (n: { node_type?: string }) => (n.node_type ?? "").toLowerCase() === "proposedfix",
+      ),
+    ).toBe(false);
+    expect(mockWalkFixChain).not.toHaveBeenCalled();
+  });
+
+  test("returns the default fixture for every unrecognised ref_id", async () => {
+    const res = await GET(makeGetRequest("openlaw", "ref-evalset-1"), makeParams());
+    expect(res.status).toBe(200);
+    const body = await res.json();
+
+    const refIds = body.data.nodes.map((n: { ref_id: string }) => n.ref_id);
+    expect(refIds).toContain(EVAL_SET_ID);
+    expect(refIds).not.toContain(CONCEPT_ONLY_EVALSET_ID);
+    expect(mockWalkFixChain).not.toHaveBeenCalled();
+  });
+
+  test("still enforces auth, the openlaw gate, IDOR and the rate limit before the fixture", async () => {
+    mockRequireAuth.mockReturnValue(
+      NextResponse.json({ error: "Unauthorized" }, { status: 401 }) as unknown as { id: string },
+    );
+    const unauth = await GET(
+      makeGetRequest("openlaw", CONCEPT_ONLY_EVALSET_ID),
+      makeParams(),
+    );
+    expect(unauth.status).toBe(401);
+
+    mockRequireAuth.mockReturnValue({ id: "user-1" });
+    mockKgGetNode.mockResolvedValue(null);
+    const idor = await GET(
+      makeGetRequest("openlaw", CONCEPT_ONLY_EVALSET_ID),
+      makeParams(),
+    );
+    expect(idor.status).toBe(404);
+
+    mockKgGetNode.mockResolvedValue(MOCK_EVAL_SET_NODE);
+    mockCheckRateLimit.mockResolvedValue({ allowed: false, retryAfter: 30 });
+    const limited = await GET(
+      makeGetRequest("openlaw", CONCEPT_ONLY_EVALSET_ID),
+      makeParams(),
+    );
+    expect(limited.status).toBe(429);
   });
 });
