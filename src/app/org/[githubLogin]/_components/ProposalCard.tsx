@@ -27,6 +27,10 @@ import {
   PROPOSE_PROMPT_UPDATE_TOOL,
   PROPOSE_NEW_CONCEPT_TOOL,
   PROPOSE_CONCEPT_UPDATE_TOOL,
+  PROPOSE_CREATE_NODE_TOOL,
+  PROPOSE_NODE_EDIT_TOOL,
+  PROPOSE_CREATE_TRIPLET_TOOL,
+  PROPOSE_CREATE_BATCH_TRIPLET_TOOL,
   getProposalStatus,
   type ApprovalIntent,
   type ProposalOutput,
@@ -155,14 +159,18 @@ export function ProposalCard({
                         : proposal.payload.title;
   const [editedTitle, setEditedTitle] = useState(initialTitle);
   const [isEditing, setIsEditing] = useState(false);
-  // Prompt/concept proposals forward no inline-edit override (handleApprove
+  // Prompt/concept/graph proposals forward no inline-edit override (handleApprove
   // sets payload = undefined for them), so an editable title would be a lie —
   // the name/id shown is fixed. Only roadmap kinds get the click-to-edit.
   const titleEditable =
     proposal.kind !== "promptCreate" &&
     proposal.kind !== "promptUpdate" &&
     proposal.kind !== "conceptCreate" &&
-    proposal.kind !== "conceptUpdate";
+    proposal.kind !== "conceptUpdate" &&
+    proposal.kind !== "graphNodeCreate" &&
+    proposal.kind !== "graphNodeEdit" &&
+    proposal.kind !== "graphTripletCreate" &&
+    proposal.kind !== "graphBatchTripletCreate";
 
   // Feature-only: per-feature auto-respond toggle.
   // Initialized from the proposal payload (which is seeded from the
@@ -290,11 +298,14 @@ export function ProposalCard({
       proposal.kind === "promptCreate" ||
       proposal.kind === "promptUpdate" ||
       proposal.kind === "conceptCreate" ||
-      proposal.kind === "conceptUpdate"
+      proposal.kind === "conceptUpdate" ||
+      proposal.kind === "graphNodeCreate" ||
+      proposal.kind === "graphNodeEdit" ||
+      proposal.kind === "graphTripletCreate" ||
+      proposal.kind === "graphBatchTripletCreate"
     ) {
-      // Prompt/concept proposals have no inline-edit overrides in v1 — the
-      // agent should propose well; the user's only action is approve/reject.
-      // No viewport / editedTitle / checkedFeatureIds logic applies.
+      // Prompt/concept/graph proposals have no inline-edit overrides —
+      // the agent should propose well; the user's only action is approve/reject.
       payload = undefined;
     } else {
       const titleChanged = editedTitle !== initialTitle;
@@ -406,6 +417,38 @@ export function ProposalCard({
       return { text, deepLink: deepLink as string | null, newTab: true };
     }
 
+    // Graph write approvals — workspace KG writes, no canvas placement.
+    if (
+      r.kind === "graphNodeCreate" ||
+      r.kind === "graphNodeEdit" ||
+      r.kind === "graphTripletCreate" ||
+      r.kind === "graphBatchTripletCreate"
+    ) {
+      const where = r.landedOnName ? `**${r.landedOnName}**` : "the workspace KG";
+      let text: string;
+      if (r.kind === "graphNodeCreate") {
+        text = r.alreadyExisted
+          ? `Node already existed in ${where} — no duplicate created ✓`
+          : `Node created in ${where} ✓`;
+      } else if (r.kind === "graphNodeEdit") {
+        text = `Node updated in ${where} ✓`;
+      } else if (r.kind === "graphTripletCreate") {
+        text = r.alreadyExisted
+          ? `Edge already existed in ${where} — no duplicate created ✓`
+          : `Relationship created in ${where} ✓`;
+      } else {
+        // graphBatchTripletCreate — may be partial
+        const items = r.items ?? [];
+        const ok = items.filter((it) => it.ok).length;
+        const total = items.length;
+        text =
+          ok === total
+            ? `${ok} relationship${ok === 1 ? "" : "s"} created in ${where} ✓`
+            : `${ok} of ${total} relationship${total === 1 ? "" : "s"} created in ${where} (${total - ok} failed)`;
+      }
+      return { text, deepLink: null as string | null, newTab: false };
+    }
+
     // Initiative / milestone: keep existing behavior unchanged.
     const onCurrent = r.landedOn === currentRef;
     if (onCurrent) {
@@ -443,7 +486,15 @@ export function ProposalCard({
                     ? "Proposed New Concept"
                     : proposal.kind === "conceptUpdate"
                       ? "Proposed Concept Update"
-                      : `Proposed ${proposal.kind}`}
+                      : proposal.kind === "graphNodeCreate"
+                        ? "Proposed New Graph Node"
+                        : proposal.kind === "graphNodeEdit"
+                          ? "Proposed Graph Node Edit"
+                          : proposal.kind === "graphTripletCreate"
+                            ? "Proposed Graph Relationship"
+                            : proposal.kind === "graphBatchTripletCreate"
+                              ? "Proposed Batch Graph Relationships"
+                              : `Proposed ${proposal.kind}`}
             </span>
           </div>
           {/* Title — inline-editable on click while pending (roadmap kinds only) */}
@@ -501,6 +552,23 @@ export function ProposalCard({
           )}
           {proposal.kind === "conceptUpdate" && (
             <ConceptUpdateMeta meta={proposal.meta} />
+          )}
+          {proposal.kind === "graphNodeCreate" && (
+            <GraphNodeCreateMeta proposal={proposal} />
+          )}
+          {proposal.kind === "graphNodeEdit" && (
+            <GraphNodeEditMeta proposal={proposal} />
+          )}
+          {proposal.kind === "graphTripletCreate" && (
+            <GraphTripletCreateMeta proposal={proposal} />
+          )}
+          {proposal.kind === "graphBatchTripletCreate" && (
+            <GraphBatchTripletCreateMeta
+              proposal={proposal}
+              approvalItems={
+                status.status === "approved" ? status.result.items : undefined
+              }
+            />
           )}
           {proposal.rationale && (
             <div className="mt-1 text-xs text-muted-foreground italic">
@@ -684,7 +752,15 @@ function ProposalDetailsDialog({
               ? "New Concept"
               : proposal.kind === "conceptUpdate"
                 ? "Concept Update"
-                : "Feature";
+                : proposal.kind === "graphNodeCreate"
+                  ? "New Graph Node"
+                  : proposal.kind === "graphNodeEdit"
+                    ? "Graph Node Edit"
+                    : proposal.kind === "graphTripletCreate"
+                      ? "Graph Relationship"
+                      : proposal.kind === "graphBatchTripletCreate"
+                        ? "Batch Graph Relationships"
+                        : "Feature";
 
   const title =
     proposal.kind === "initiative"
@@ -1378,6 +1454,202 @@ function labelForRef(ref: string): string {
 
 const EMPTY_MESSAGES: CanvasChatMessage[] = [];
 
+// ─── Graph write proposal meta components ─────────────────────────────────
+
+/** Compact body for a create-node proposal: workspace, type, and node_data. */
+function GraphNodeCreateMeta({
+  proposal,
+}: {
+  proposal: Extract<ProposalOutput, { kind: "graphNodeCreate" }>;
+}) {
+  const { payload, meta } = proposal;
+  const entries = Object.entries(payload.node_data ?? {});
+  return (
+    <div className="mt-0.5 space-y-0.5">
+      <div className="text-[11px] text-muted-foreground">
+        {meta?.workspaceName ?? meta?.workspaceSlug ?? payload.workspaceSlug} ·{" "}
+        <span className="font-mono">{payload.node_type}</span>
+      </div>
+      {entries.length > 0 && (
+        <div className="mt-1 rounded border border-border/50 bg-muted/30 px-2 py-1 text-[11px] font-mono space-y-0.5">
+          {entries.map(([k, v]) => (
+            <div key={k} className="flex gap-1">
+              <span className="text-muted-foreground">{k}:</span>
+              <span className="break-all">{JSON.stringify(v)}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Body for a node-edit proposal. Reuses `UnifiedDiffView` fed from the
+ * propose-time snapshot. When the propose tool refused the edit (mirror-
+ * owned type or ref_id not found), surfaces a clear disabled-with-reason
+ * state rather than a generic error.
+ */
+function GraphNodeEditMeta({
+  proposal,
+}: {
+  proposal: Extract<ProposalOutput, { kind: "graphNodeEdit" }>;
+}) {
+  const [open, setOpen] = useState(false);
+  const { meta, payload } = proposal;
+  const diff = useMemo(
+    () => computeUnifiedDiff(meta.oldStr ?? "", meta.newStr ?? ""),
+    [meta.oldStr, meta.newStr],
+  );
+
+  if (meta.refusedReason) {
+    return (
+      <div className="mt-0.5 space-y-0.5">
+        <div className="text-[11px] text-muted-foreground font-mono">
+          {payload.ref_id}
+        </div>
+        <div className="mt-1 flex items-start gap-1 rounded border border-amber-400/40 bg-amber-50/30 dark:bg-amber-900/10 px-2 py-1 text-[11px] text-amber-800 dark:text-amber-300">
+          <span>⚠</span>
+          <span>{meta.refusedReason}</span>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="mt-0.5 space-y-0.5">
+      <div className="flex flex-wrap items-center gap-x-2 text-[11px] text-muted-foreground">
+        {meta.node_type && <span className="font-mono">{meta.node_type}</span>}
+        <span className="font-mono text-muted-foreground/60">{payload.ref_id}</span>
+        {!diff.unchanged && (
+          <>
+            <span className="font-mono">
+              <span className="text-emerald-600 dark:text-emerald-400">+{diff.added}</span>{" "}
+              <span className="text-rose-600 dark:text-rose-400">−{diff.removed}</span>
+            </span>
+            <button
+              type="button"
+              onClick={() => setOpen(true)}
+              className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-foreground/80 transition-colors hover:bg-muted/60 hover:text-foreground"
+            >
+              <FileDiff className="h-3 w-3" />
+              View changes
+            </button>
+          </>
+        )}
+      </div>
+      {open && (
+        <Dialog open={open} onOpenChange={setOpen}>
+          <DialogContent className="sm:max-w-3xl">
+            <DialogHeader className="min-w-0">
+              <div className={SECTION_LABEL_CLASS}>Node edit diff</div>
+              <DialogTitle className="text-base min-w-0 break-words [overflow-wrap:anywhere]">
+                {meta.node_type ?? proposal.payload.ref_id}
+              </DialogTitle>
+            </DialogHeader>
+            <ScrollArea className="max-h-[65vh] min-w-0">
+              <UnifiedDiffView diff={diff} emptyText="No property changes." />
+            </ScrollArea>
+          </DialogContent>
+        </Dialog>
+      )}
+    </div>
+  );
+}
+
+/** Compact body for a single triplet proposal: source —EDGE→ target. */
+function GraphTripletCreateMeta({
+  proposal,
+}: {
+  proposal: Extract<ProposalOutput, { kind: "graphTripletCreate" }>;
+}) {
+  const { payload, meta } = proposal;
+  const sourceLabel =
+    "ref_id" in payload.source
+      ? payload.source.ref_id
+      : payload.source.node_type;
+  const targetLabel =
+    "ref_id" in payload.target
+      ? payload.target.ref_id
+      : payload.target.node_type;
+  return (
+    <div className="mt-0.5 space-y-0.5">
+      <div className="text-[11px] text-muted-foreground">
+        {meta?.workspaceName ?? meta?.workspaceSlug ?? payload.workspaceSlug}
+      </div>
+      <div className="mt-1 flex items-center gap-1 font-mono text-[11px] break-all">
+        <span>{sourceLabel}</span>
+        <span className="text-muted-foreground shrink-0">
+          —{payload.edge_type}→
+        </span>
+        <span>{targetLabel}</span>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Body for a batch-triplet proposal: list of source→edge→target rows.
+ * When approval items are present (post-approval), shows per-row
+ * created / already-existed / failed state (partial-success).
+ */
+function GraphBatchTripletCreateMeta({
+  proposal,
+  approvalItems,
+}: {
+  proposal: Extract<ProposalOutput, { kind: "graphBatchTripletCreate" }>;
+  approvalItems?: Array<{ index: number; ok: boolean; refId?: string; error?: string }>;
+}) {
+  const { payload, meta } = proposal;
+  return (
+    <div className="mt-0.5 space-y-0.5">
+      <div className="text-[11px] text-muted-foreground">
+        {meta?.workspaceName ?? meta?.workspaceSlug ?? payload.workspaceSlug} ·{" "}
+        {payload.triplets.length} triplet{payload.triplets.length === 1 ? "" : "s"}
+      </div>
+      <div className="mt-1 space-y-1">
+        {payload.triplets.map((t, i) => {
+          const sourceLabel =
+            "ref_id" in t.source ? t.source.ref_id : t.source.node_type;
+          const targetLabel =
+            "ref_id" in t.target ? t.target.ref_id : t.target.node_type;
+          const item = approvalItems?.find((it) => it.index === i);
+          return (
+            <div
+              key={i}
+              className="flex items-start gap-1.5 font-mono text-[11px] break-all"
+            >
+              {item && (
+                <span
+                  className={cn(
+                    "mt-0.5 shrink-0",
+                    item.ok
+                      ? "text-emerald-600 dark:text-emerald-400"
+                      : "text-rose-600 dark:text-rose-400",
+                  )}
+                >
+                  {item.ok ? "✓" : "✗"}
+                </span>
+              )}
+              <span className="text-muted-foreground shrink-0">{i + 1}.</span>
+              <span className="min-w-0">
+                {sourceLabel}{" "}
+                <span className="text-muted-foreground">—{t.edge_type}→</span>{" "}
+                {targetLabel}
+                {item?.error && (
+                  <span className="block text-rose-600 dark:text-rose-400 text-[10px]">
+                    {item.error}
+                  </span>
+                )}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 /**
  * Helper consumed by `SidebarChat` to extract proposal tool outputs
  * from a message's `toolCalls` array. Returns the typed `ProposalOutput`
@@ -1396,7 +1668,11 @@ export function getProposalsFromMessage(
       tc.toolName !== PROPOSE_NEW_PROMPT_TOOL &&
       tc.toolName !== PROPOSE_PROMPT_UPDATE_TOOL &&
       tc.toolName !== PROPOSE_NEW_CONCEPT_TOOL &&
-      tc.toolName !== PROPOSE_CONCEPT_UPDATE_TOOL
+      tc.toolName !== PROPOSE_CONCEPT_UPDATE_TOOL &&
+      tc.toolName !== PROPOSE_CREATE_NODE_TOOL &&
+      tc.toolName !== PROPOSE_NODE_EDIT_TOOL &&
+      tc.toolName !== PROPOSE_CREATE_TRIPLET_TOOL &&
+      tc.toolName !== PROPOSE_CREATE_BATCH_TRIPLET_TOOL
     )
       continue;
     const o = tc.output;

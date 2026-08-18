@@ -49,3 +49,42 @@ export async function isPromptsCapabilityEnabledForOrg(
     return false;
   }
 }
+
+/**
+ * Whether the `graph_walker` graph-write propose tools are available to the
+ * given source-control org. Controls the four `propose_create_node`,
+ * `propose_node_edit`, `propose_create_triplet`, `propose_create_batch_triplet`
+ * tools. When this gate is off the read-only graph_walker tools remain; only
+ * the write-propose tools are suppressed.
+ *
+ * Driven by `GRAPH_WRITE_CAPABILITY_ORG_LOGINS` (comma-separated GitHub
+ * logins, case-insensitive). Defaults to "" (empty → disabled for all orgs)
+ * so rollout is opt-in per org.
+ *
+ * Fails closed: a missing orgId, an unknown org, or a lookup error → false.
+ */
+export async function isGraphWriteCapabilityEnabledForOrg(
+  orgId: string | undefined,
+): Promise<boolean> {
+  if (!orgId) return false;
+  const allowList = (process.env.GRAPH_WRITE_CAPABILITY_ORG_LOGINS || "")
+    .split(",")
+    .map((s) => s.trim().toLowerCase())
+    .filter(Boolean);
+  if (allowList.length === 0) return false;
+  try {
+    const org = await db.sourceControlOrg.findUnique({
+      where: { id: orgId },
+      select: { githubLogin: true },
+    });
+    const login = (org?.githubLogin ?? "").trim().toLowerCase();
+    return Boolean(login) && allowList.includes(login);
+  } catch (err) {
+    logger.error(
+      "[capabilityGates] graph_write org gate lookup failed — denying",
+      "capabilityGates",
+      { orgId, error: err instanceof Error ? err.message : String(err) },
+    );
+    return false;
+  }
+}
