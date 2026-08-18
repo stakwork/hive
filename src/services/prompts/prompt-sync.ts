@@ -14,6 +14,20 @@ const PROMPT_NAME_REGEX = /^[A-Z0-9_]+$/;
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
+/**
+ * Outcome of a `publishVersion` call, reporting whether the best-effort
+ * Stakwork push was attempted and whether it succeeded.
+ *
+ * - `NOT_CONFIGURED` — `prompt.stakworkId` is null; nothing was pushed (not a failure).
+ * - `PUSHED`         — The push succeeded, or the version was already synced (benign no-op).
+ * - `PUSH_FAILED`    — The push was attempted but threw; Hive DB is still updated.
+ */
+export type PublishOutcome = {
+  versionId: string;
+  versionNumber: number;
+  syncOutcome: "PUSHED" | "PUSH_FAILED" | "NOT_CONFIGURED";
+};
+
 export interface WritePromptThroughParams {
   promptId?: string; // undefined = create, defined = update
   name: string;
@@ -549,7 +563,7 @@ export async function publishVersion(
   workspaceId?: string,
   actor?: string,
   source?: string,
-): Promise<void> {
+): Promise<PublishOutcome> {
   // ── Resolve prompt: id first, then name fallback ──────────────────────────
   let prompt = await db.prompt.findUnique({ where: { id: promptId } });
   if (!prompt) {
@@ -589,6 +603,7 @@ export async function publishVersion(
   }
 
   const resolvedVersionId = targetVersion.id;
+  const resolvedVersionNumber = targetVersion.versionNumber;
 
   await db.$transaction([
     db.promptVersion.updateMany({
@@ -611,7 +626,7 @@ export async function publishVersion(
   logger.info("[prompt-sync] Version published", "prompt-sync", {
     promptId: resolvedPromptId,
     versionId: resolvedVersionId,
-    versionNumber: targetVersion.versionNumber,
+    versionNumber: resolvedVersionNumber,
     actor: actor ?? null,
   });
 
@@ -623,50 +638,57 @@ export async function publishVersion(
   );
 
   // Best-effort Stakwork push — full version content so the live prompt is updated.
-  if (prompt.stakworkId) {
-    try {
-      const { alreadyExists } = await pushPublishToStakwork(
-        prompt.stakworkId,
-        prompt.name,
-        targetVersion.value,
-        targetVersion.description ?? undefined,
-        resolvedVersionId,
-      );
+  // Report an honest per-call outcome rather than re-reading the prompt-level syncStatus
+  // field, which is also written by draft-save failures and doesn't reflect this call.
+  if (!prompt.stakworkId) {
+    // Nothing to push — not a failure.
+    return { versionId: resolvedVersionId, versionNumber: resolvedVersionNumber, syncOutcome: "NOT_CONFIGURED" };
+  }
 
-      if (alreadyExists) {
-        // The draft-save (writePromptThrough) already synced this hive_version_id to Stakwork.
-        // Treat as a benign no-op: the content is already there; just clear any PENDING state.
-        logger.info("[prompt-sync] Stakwork publish push — version already synced (no-op success)", "prompt-sync", {
-          promptName: prompt.name,
-          stakworkId: prompt.stakworkId,
-          hiveVersionId: resolvedVersionId,
-        });
-      } else {
-        logger.info("[prompt-sync] Stakwork publish push succeeded", "prompt-sync", {
-          promptName: prompt.name,
-          stakworkId: prompt.stakworkId,
-          hiveVersionId: resolvedVersionId,
-        });
-      }
+  try {
+    const { alreadyExists } = await pushPublishToStakwork(
+      prompt.stakworkId,
+      prompt.name,
+      targetVersion.value,
+      targetVersion.description ?? undefined,
+      resolvedVersionId,
+    );
 
-      // On success (or benign already-exists), clear any previously PENDING state.
-      await db.prompt.update({
-        where: { id: resolvedPromptId },
-        data: { syncStatus: "OK", lastSyncedAt: new Date() },
-      });
-    } catch (syncErr) {
-      logger.warn("[prompt-sync] Stakwork publish push failed (non-fatal)", "prompt-sync", {
+    if (alreadyExists) {
+      // The draft-save (writePromptThrough) already synced this hive_version_id to Stakwork.
+      // Treat as a benign no-op: the content is already there; just clear any PENDING state.
+      logger.info("[prompt-sync] Stakwork publish push — version already synced (no-op success)", "prompt-sync", {
         promptName: prompt.name,
         stakworkId: prompt.stakworkId,
         hiveVersionId: resolvedVersionId,
-        error: String(syncErr),
       });
-      // Persist PENDING so a future re-sync can retry — mirrors the create/update failure path.
-      await db.prompt.update({
-        where: { id: resolvedPromptId },
-        data: { syncStatus: "PENDING" },
+    } else {
+      logger.info("[prompt-sync] Stakwork publish push succeeded", "prompt-sync", {
+        promptName: prompt.name,
+        stakworkId: prompt.stakworkId,
+        hiveVersionId: resolvedVersionId,
       });
     }
+
+    // On success (or benign already-exists), clear any previously PENDING state.
+    await db.prompt.update({
+      where: { id: resolvedPromptId },
+      data: { syncStatus: "OK", lastSyncedAt: new Date() },
+    });
+    return { versionId: resolvedVersionId, versionNumber: resolvedVersionNumber, syncOutcome: "PUSHED" };
+  } catch (syncErr) {
+    logger.warn("[prompt-sync] Stakwork publish push failed (non-fatal)", "prompt-sync", {
+      promptName: prompt.name,
+      stakworkId: prompt.stakworkId,
+      hiveVersionId: resolvedVersionId,
+      error: String(syncErr),
+    });
+    // Persist PENDING so a future re-sync can retry — mirrors the create/update failure path.
+    await db.prompt.update({
+      where: { id: resolvedPromptId },
+      data: { syncStatus: "PENDING" },
+    });
+    return { versionId: resolvedVersionId, versionNumber: resolvedVersionNumber, syncOutcome: "PUSH_FAILED" };
   }
 }
 
