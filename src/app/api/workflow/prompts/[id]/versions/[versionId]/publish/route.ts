@@ -5,6 +5,7 @@ import { isDevelopmentMode } from "@/lib/runtime";
 import { publishVersion } from "@/services/prompts/prompt-sync";
 import { validateApiToken, API_TOKEN_ACTOR, resolveSource } from "@/lib/auth/api-token";
 import { checkRateLimit, getClientIp } from "@/lib/rate-limit";
+import { logger } from "@/lib/logger";
 
 export const runtime = "nodejs";
 export const fetchCache = "force-no-store";
@@ -66,13 +67,85 @@ export async function POST(
       return NextResponse.json({ error: "Version ID is required" }, { status: 400 });
     }
 
-    const body = await request.json().catch(() => ({})) as { artifactId?: string };
-    const { artifactId } = body;
+    const body = await request.json().catch(() => ({})) as {
+      artifactId?: string;
+      expectedPublishedVersionId?: string | null;
+      expectedLatestVersionNumber?: number;
+    };
+    const { artifactId, expectedPublishedVersionId, expectedLatestVersionNumber } = body;
+
+    // ── Stale-publish guard (409) ─────────────────────────────────────────
+    // When the slot supplies expected-state fields, verify the prompt hasn't
+    // been updated since the slot last fetched. `publishVersion` runs an
+    // unpublish-all transaction with no optimistic-lock parameter, so a
+    // publish from a stale snapshot would silently overwrite a newer draft.
+    // Both fields are optional — existing callers that omit them are unaffected.
+    if (
+      expectedPublishedVersionId !== undefined ||
+      expectedLatestVersionNumber !== undefined
+    ) {
+      // Resolve the target version by exact id scoped to this prompt (no
+      // numeric-versionNumber fallback for slot-originated calls).
+      const [targetVersion, promptState] = await Promise.all([
+        db.promptVersion.findFirst({ where: { id: versionId, promptId: id } }),
+        db.prompt.findUnique({
+          where: { id },
+          select: {
+            publishedVersionId: true,
+            versions: {
+              select: { versionNumber: true },
+              orderBy: { versionNumber: "desc" },
+              take: 1,
+            },
+          },
+        }),
+      ]);
+
+      if (!targetVersion) {
+        return NextResponse.json({ error: "Version not found" }, { status: 404 });
+      }
+      if (!promptState) {
+        return NextResponse.json({ error: "Prompt not found" }, { status: 404 });
+      }
+
+      const currentPublishedVersionId = promptState.publishedVersionId;
+      const currentLatestVersionNumber = promptState.versions[0]?.versionNumber ?? 0;
+
+      const publishedMismatch =
+        expectedPublishedVersionId !== undefined &&
+        expectedPublishedVersionId !== currentPublishedVersionId;
+      const latestMismatch =
+        expectedLatestVersionNumber !== undefined &&
+        expectedLatestVersionNumber !== currentLatestVersionNumber;
+
+      if (publishedMismatch || latestMismatch) {
+        logger.info(
+          "[publish-route] Stale-state guard rejected publish (409)",
+          "publish-route",
+          {
+            promptId: id,
+            requestedVersionId: versionId,
+            currentPublishedVersionId,
+            currentLatestVersionNumber,
+            expectedPublishedVersionId,
+            expectedLatestVersionNumber,
+          },
+        );
+        return NextResponse.json(
+          {
+            error: "Conflict: prompt state has changed since this card was rendered",
+            currentPublishedVersionId,
+            currentLatestVersionNumber,
+          },
+          { status: 409 },
+        );
+      }
+    }
 
     const source = resolveSource(request, isApiToken);
 
     // Publish the version in Hive (+ best-effort Stakwork push inside service)
-    await publishVersion(id, versionId, workspaceId ?? undefined, actor, source);
+    const outcome = await publishVersion(id, versionId, workspaceId ?? undefined, actor, source);
 
     // Optionally update artifact published state
     const devMode = isDevelopmentMode();
@@ -80,7 +153,7 @@ export async function POST(
       await updateArtifactPublished(artifactId, workspaceId ?? null, devMode);
     }
 
-    return NextResponse.json({ success: true });
+    return NextResponse.json({ success: true, syncOutcome: outcome.syncOutcome });
   } catch (err: unknown) {
     const e = err as { status?: number; message?: string };
     if (e.status === 404) {
