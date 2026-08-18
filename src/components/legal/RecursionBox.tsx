@@ -1,11 +1,14 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import { Loader2, RefreshCw, ChevronDown, ChevronUp, AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "@/components/ui/collapsible";
 import { useEvalRunHistory } from "@/hooks/useEvalRunHistory";
+import { useBenchmarkRubrics } from "@/hooks/useBenchmarkRubrics";
+import { rosterSummary, type RosterSummary } from "@/lib/harvey-lab/rubric-scoring";
 import { HillClimbChart } from "@/components/legal/HillClimbChart";
+import type { EvalTriggerOutput } from "@/lib/harvey-lab/eval-normalizers";
 import type { RecursionEntry } from "@/hooks/useLegalBenchmarkRecursionList";
 
 // ─── ScoreBadge ──────────────────────────────────────────────────────────────
@@ -15,11 +18,14 @@ function ScoreBadge({
   error,
   n_passed,
   n_total,
+  roster,
 }: {
   isLoading: boolean;
   error: string | null;
   n_passed: number | undefined;
   n_total: number | undefined;
+  /** Graph roster summary — enables the "+N contested" annotation. */
+  roster: RosterSummary | null;
 }) {
   if (isLoading) {
     return (
@@ -48,22 +54,56 @@ function ScoreBadge({
   }
 
   const pct = n_total > 0 ? Math.round((n_passed / n_total) * 100) : 0;
-  const allPass = n_passed === n_total;
+  const allPass = n_total > 0 && n_passed === n_total;
 
   return (
-    <span
-      className={[
-        "tabular-nums text-xs font-mono font-medium",
-        allPass
-          ? "text-green-600 dark:text-green-400"
-          : "text-foreground",
-      ].join(" ")}
-      data-testid="score-display"
-      title={`${pct}% pass rate`}
-    >
-      {n_passed}/{n_total}
+    <span className="flex items-center gap-1.5">
+      <span
+        className={[
+          "tabular-nums text-xs font-mono font-medium",
+          allPass
+            ? "text-green-600 dark:text-green-400"
+            : "text-foreground",
+        ].join(" ")}
+        data-testid="score-display"
+        title={`${pct}% pass rate`}
+      >
+        {n_passed}/{n_total}
+      </span>
+      {roster && roster.contested > 0 && (
+        <span
+          className="text-xs text-violet-700 dark:text-violet-400 whitespace-nowrap"
+          data-testid="score-contested-annotation"
+          title={`${roster.contested} contested criteria excluded from the score · ${roster.total} total in the rubric roster`}
+        >
+          +{roster.contested} contested
+        </span>
+      )}
     </span>
   );
+}
+
+/**
+ * Clamp hill-climb attempt counts to the graph roster's contested-excluded
+ * denominator. Attempts carry only aggregate n_passed/n_total (no
+ * per-criterion data), so — mirroring computeBenchmarkScore's flat-count
+ * rule — the denominator is replaced and passes are clamped rather than
+ * guessed. No roster → attempts pass through untouched.
+ */
+function adjustAttemptsToRoster(
+  attempts: EvalTriggerOutput[],
+  roster: RosterSummary | null,
+): EvalTriggerOutput[] {
+  if (!roster) return attempts;
+  const clamp = (v: number | null | undefined) =>
+    typeof v === "number" ? Math.min(v, roster.denominator) : v;
+  return attempts.map((a) => ({
+    ...a,
+    n_total: roster.denominator,
+    n_passed: clamp(a.n_passed) as number | undefined,
+    bestPassed: clamp(a.bestPassed) as number | undefined,
+    actualPassed: clamp(a.actualPassed) as number | null | undefined,
+  }));
 }
 
 // ─── RecursionCard ────────────────────────────────────────────────────────────
@@ -80,10 +120,19 @@ function RecursionCard({ entry, refetch }: RecursionCardProps) {
 
   // Use entry.refId (EvalSet ref_id) + entry.id (task slug) for eval run history.
   // refId is preferred; slug is the fallback when refId is absent.
-  const { attempts, isLoading: historyLoading, error: historyError } = useEvalRunHistory({
+  const { attempts: rawAttempts, isLoading: historyLoading, error: historyError } = useEvalRunHistory({
     refId: entry.refId,
     slug: entry.id,
   });
+
+  // Graph-first denominator: the task's EvalRequirement roster minus contested
+  // definitions. Null (no roster / loading) leaves attempt counts untouched.
+  const { rubrics: graphRubrics } = useBenchmarkRubrics(entry.id);
+  const roster = useMemo(() => rosterSummary(graphRubrics), [graphRubrics]);
+  const attempts = useMemo(
+    () => adjustAttemptsToRoster(rawAttempts, roster),
+    [rawAttempts, roster],
+  );
 
   // Use the best score so far (highest bestPassed) so a trailing rejected
   // attempt doesn't make the badge show a lower/stale score.
@@ -141,6 +190,7 @@ function RecursionCard({ entry, refetch }: RecursionCardProps) {
               error={historyError}
               n_passed={latest?.bestPassed ?? latest?.n_passed}
               n_total={latest?.n_total}
+              roster={roster}
             />
           </div>
           <span className="text-xs text-muted-foreground truncate">{entry.id}</span>
@@ -192,6 +242,15 @@ function RecursionCard({ entry, refetch }: RecursionCardProps) {
             <div className="border-t px-4 pt-3 pb-4 bg-muted/20">
               <p className="text-xs text-muted-foreground mb-2">
                 Score per attempt — target: {attempts[0].n_total}
+                {roster && roster.contested > 0 && (
+                  <span
+                    className="text-violet-700 dark:text-violet-400"
+                    data-testid="chart-contested-note"
+                  >
+                    {" "}
+                    (+{roster.contested} contested excluded · {roster.total} total)
+                  </span>
+                )}
               </p>
               <HillClimbChart attempts={attempts} height={140} />
             </div>

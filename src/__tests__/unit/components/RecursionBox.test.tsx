@@ -66,6 +66,25 @@ vi.mock("@/hooks/useEvalRunHistory", () => ({
   useEvalRunHistory: (input: { refId?: string | null; slug: string }) => mockUseEvalRunHistory(input),
 }));
 
+// useBenchmarkRubrics mock — the graph rubric roster. Default: no roster
+// (set in beforeEach), so attempt counts pass through untouched.
+const mockUseBenchmarkRubrics = vi.fn();
+
+vi.mock("@/hooks/useBenchmarkRubrics", () => ({
+  useBenchmarkRubrics: (taskSlug?: string) => mockUseBenchmarkRubrics(taskSlug),
+}));
+
+function mockRoster(total: number, contestedCount: number) {
+  mockUseBenchmarkRubrics.mockReturnValue({
+    rubrics: Array.from({ length: total }, (_, i) => ({
+      ref_id: `req-${i}`,
+      id: `C-${String(i + 1).padStart(3, "0")}`,
+      name: `Rubric ${i + 1}`,
+      contested: i < contestedCount,
+    })),
+  });
+}
+
 // useWorkspace mock (needed by useEvalRunHistory through the component chain)
 vi.mock("@/hooks/useWorkspace", () => ({
   useWorkspace: () => ({ workspace: { slug: "openlaw", id: "ws-1" } }),
@@ -154,6 +173,7 @@ describe("RecursionCard", () => {
     vi.clearAllMocks();
     mockRefetch.mockResolvedValue(undefined);
     mockHistoryLoaded(); // default: loaded, no attempts
+    mockUseBenchmarkRubrics.mockReturnValue({ rubrics: null }); // default: no roster
   });
 
   function renderCard(overrides: Partial<{ refId: string; id: string; name: string }> = {}) {
@@ -375,6 +395,67 @@ describe("RecursionCard", () => {
       expect(chart.getAttribute("data-count")).toBe("2");
     });
   });
+
+  // ─── Graph-first denominator (contested exclusion) ─────────────────────────
+
+  it("uses the graph roster denominator and shows the contested annotation", () => {
+    // 50-rubric roster, 7 contested → denominator 43. Attempt says 43/50.
+    mockRoster(50, 7);
+    mockHistoryLoaded([makeOutput(43, 50, 0)]);
+    renderCard();
+
+    expect(screen.getByTestId("score-display").textContent).toBe("43/43");
+    const note = screen.getByTestId("score-contested-annotation");
+    expect(note.textContent).toBe("+7 contested");
+  });
+
+  it("clamps attempt passes to the contested-excluded denominator", () => {
+    // Runner-reported 48/50 with 7 contested → clamp to 43/43.
+    mockRoster(50, 7);
+    mockHistoryLoaded([makeOutput(48, 50, 0)]);
+    renderCard();
+
+    expect(screen.getByTestId("score-display").textContent).toBe("43/43");
+  });
+
+  it("shows no contested annotation when the roster has no contested rubrics", () => {
+    mockRoster(42, 0);
+    mockHistoryLoaded([makeOutput(38, 42, 0)]);
+    renderCard();
+
+    expect(screen.getByTestId("score-display").textContent).toBe("38/42");
+    expect(screen.queryByTestId("score-contested-annotation")).toBeNull();
+  });
+
+  it("leaves scores untouched when no roster exists", () => {
+    mockUseBenchmarkRubrics.mockReturnValue({ rubrics: null });
+    mockHistoryLoaded([makeOutput(38, 42, 0)]);
+    renderCard();
+
+    expect(screen.getByTestId("score-display").textContent).toBe("38/42");
+    expect(screen.queryByTestId("score-contested-annotation")).toBeNull();
+  });
+
+  it("chart target reflects the roster denominator with a contested note", async () => {
+    mockRoster(50, 7);
+    mockHistoryLoaded([makeOutput(40, 50, 0), makeOutput(43, 50, 1)]);
+    renderCard();
+
+    fireEvent.click(screen.getByTestId("expand-toggle"));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("hill-climb-chart")).toBeTruthy();
+    });
+    expect(screen.getByText(/target: 43/)).toBeTruthy();
+    expect(screen.getByTestId("chart-contested-note").textContent).toMatch(
+      /\+7 contested excluded · 50 total/,
+    );
+  });
+
+  it("requests the roster with the entry's task slug", () => {
+    renderCard({ id: "contracts/some-task" });
+    expect(mockUseBenchmarkRubrics).toHaveBeenCalledWith("contracts/some-task");
+  });
 });
 
 // ─── RecursionList ────────────────────────────────────────────────────────────
@@ -386,6 +467,7 @@ describe("RecursionList", () => {
     vi.clearAllMocks();
     mockRefetch.mockResolvedValue(undefined);
     mockHistoryLoaded();
+    mockUseBenchmarkRubrics.mockReturnValue({ rubrics: null });
   });
 
   it("shows loading spinner when isLoading=true", () => {
