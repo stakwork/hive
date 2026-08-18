@@ -286,19 +286,18 @@ describe("GET /api/workspaces/[slug]/legal/benchmarks/fix-chain", () => {
     expect(body.data.edges).toHaveLength(1);
   });
 
-  test("calls walkFixChain with both trigger edge types and requirement-hosted triggers", async () => {
+  test("calls walkFixChain with both trigger edge types and NO requirement fan-out", async () => {
     // Concept-driven recursion writes a fresh EvalTrigger (HAS_TRIGGER) instead
-    // of a ProposedFix, and hive's own run route hangs its trigger off the
-    // EvalRequirement — a baseline-only first hop loads neither.
+    // of a ProposedFix, so both edge types are required. The requirement
+    // fan-out is deliberately absent: one GET per EvalRequirement burned the
+    // walker's whole wall-clock budget in production. The exact-object match
+    // pins that it stays off until the batched-fetch spike lands.
     await GET(makeGetRequest("openlaw", "ref-evalset-1"), makeParams());
     expect(mockWalkFixChain).toHaveBeenCalledWith(
       expect.stringContaining("openlaw-swarm"),
       "swarm-key",
       "ref-evalset-1",
-      {
-        triggerEdgeTypes: ["HAS_BASELINE_TRIGGER", "HAS_TRIGGER"],
-        includeRequirementTriggers: true,
-      },
+      { triggerEdgeTypes: ["HAS_BASELINE_TRIGGER", "HAS_TRIGGER"] },
     );
   });
 

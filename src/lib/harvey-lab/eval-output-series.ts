@@ -2,8 +2,11 @@
  * eval-output-series.ts
  *
  * Pure builder: given a subgraph `{ nodes, edges }` rooted at an EvalSet,
- * produce one chart point per EvalTriggerOutput, in date order, at its ACTUAL
- * score — no monotonic best-so-far, no ProposedFix requirement.
+ * produce one chart point per EvalTriggerOutput, in date order — no
+ * ProposedFix requirement. Each point keeps its ACTUAL score in
+ * `actualPassed`; `bestPassed` is the monotonic running best, so the chart's
+ * line only ever climbs or holds while regressions render as hollow dots
+ * below it.
  *
  * ## Why this exists
  * `buildHillClimbSeries` only charts nodes that pass
@@ -169,10 +172,11 @@ function collectTriggers(
 
 /**
  * Build the flat eval-output series: one point per scored EvalTriggerOutput,
- * in date order, each showing its own score.
+ * in date order, each carrying its own score in `actualPassed`.
  *
- * Every point carries `bestPassed === actualPassed`, so `HillClimbChart`'s
- * polyline traces the real (possibly decreasing) scores with no chart changes.
+ * `bestPassed` is the monotonic running best (assigned after ordering), so
+ * `HillClimbChart`'s polyline ratchets up-or-flat exactly like the fix-chain
+ * series — a regressed run sits as a hollow dot under the flat line.
  */
 export function buildEvalOutputSeries(subgraph: Subgraph): EvalOutputSeriesResult {
   const { nodes, edges } = subgraph;
@@ -283,7 +287,7 @@ export function buildEvalOutputSeries(subgraph: Subgraph): EvalOutputSeriesResul
       accepted: true,
       isBaseline,
       actualPassed,
-      // Flat series: the line traces real scores, no best-so-far ratchet.
+      // bestPassed assigned after ordering — it depends on point order.
       bestPassed: actualPassed,
     };
   });
@@ -324,9 +328,15 @@ export function buildEvalOutputSeries(subgraph: Subgraph): EvalOutputSeriesResul
     sorted.unshift(baseline);
   }
 
-  // ── 7. Labels ─────────────────────────────────────────────────────────────
+  // ── 7. Labels + monotonic running best ────────────────────────────────────
+  // The line only climbs or holds; a run that scored below the standing best
+  // keeps its real score in actualPassed (the chart draws it as a hollow dot)
+  // while bestPassed carries the ratchet the polyline follows.
   let rerunCounter = 0;
+  let runningBest = 0;
   sorted.forEach((pt, i) => {
+    runningBest = Math.max(runningBest, pt.actualPassed ?? 0);
+    pt.bestPassed = runningBest;
     if (i === 0 && pt.isBaseline) {
       pt.label = "base";
       return;
