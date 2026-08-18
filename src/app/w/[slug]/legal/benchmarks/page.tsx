@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { Scale } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
 import { LegalBenchmarksPanel } from "@/components/legal/LegalBenchmarksPanel";
@@ -11,6 +12,15 @@ import { useLegalBenchmarkRecursionList } from "@/hooks/useLegalBenchmarkRecursi
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 
 type TabValue = "benchmark" | "runs" | "recursion" | "cnh";
+
+const TAB_VALUES: readonly TabValue[] = ["benchmark", "runs", "recursion", "cnh"];
+
+/** Parse `?tab=` into a valid tab; anything unrecognised lands on Benchmark. */
+function parseTab(value: string | null): TabValue {
+  return (TAB_VALUES as readonly string[]).includes(value ?? "")
+    ? (value as TabValue)
+    : "benchmark";
+}
 
 function RecursionTab() {
   const { entries, isLoading, error, refetch } = useLegalBenchmarkRecursionList();
@@ -26,7 +36,16 @@ function RecursionTab() {
 }
 
 export default function LegalBenchmarksPage() {
-  const [activeTab, setActiveTab] = useState<TabValue>("benchmark");
+  const searchParams = useSearchParams();
+  const [activeTab, setActiveTab] = useState<TabValue>(() =>
+    parseTab(searchParams?.get("tab") ?? null),
+  );
+
+  // Follow ?tab= changes after mount — in-page links (e.g. the Runs tab's
+  // recursion badge) navigate by query param rather than lifting tab state.
+  useEffect(() => {
+    setActiveTab(parseTab(searchParams?.get("tab") ?? null));
+  }, [searchParams]);
 
   return (
     <div className="flex flex-col h-full">
