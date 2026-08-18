@@ -170,4 +170,66 @@ describe("toModelMessages", () => {
       value: "already typed",
     });
   });
+
+  it("truncates a propose_code_change diff on the way into model context", () => {
+    const bigDiff = "--- a/foo.ts\n+++ b/foo.ts\n@@ -1 +1 @@\n" + "+x\n".repeat(5_000);
+    const output = {
+      kind: "codeChange",
+      proposalId: "p1",
+      payload: { title: "Fix it", diff: bigDiff, diffSha256: "abc" },
+    };
+    const stored: StoredMessage[] = [
+      {
+        role: "assistant",
+        content: null,
+        toolCalls: [
+          {
+            id: "tc5",
+            toolName: "propose_code_change",
+            input: {},
+            output,
+          },
+        ],
+      } as unknown as StoredMessage,
+    ];
+
+    const result = toModelMessages(stored);
+    const toolResultMsg = result.find((m) => m.role === "tool") as any;
+    const replayed = toolResultMsg.content[0].output.value;
+    expect(replayed.payload.diff.length).toBeLessThan(bigDiff.length);
+    expect(replayed.payload.diff).toMatch(/truncated \d+ chars/);
+    // Sibling fields survive, and the stored row is never mutated.
+    expect(replayed.payload.diffSha256).toBe("abc");
+    expect(replayed.proposalId).toBe("p1");
+    expect(output.payload.diff).toBe(bigDiff);
+  });
+
+  it("leaves a small propose_code_change diff and other tools untouched", () => {
+    const smallDiff = "--- a/foo.ts\n+++ b/foo.ts\n@@ -1 +1 @@\n+x\n";
+    const stored: StoredMessage[] = [
+      {
+        role: "assistant",
+        content: null,
+        toolCalls: [
+          {
+            id: "tc6",
+            toolName: "propose_code_change",
+            input: {},
+            output: { payload: { diff: smallDiff } },
+          },
+          {
+            id: "tc7",
+            toolName: "search",
+            input: {},
+            output: { payload: { diff: "x".repeat(10_000) } },
+          },
+        ],
+      } as unknown as StoredMessage,
+    ];
+
+    const result = toModelMessages(stored);
+    const toolResultMsg = result.find((m) => m.role === "tool") as any;
+    expect(toolResultMsg.content[0].output.value.payload.diff).toBe(smallDiff);
+    expect(toolResultMsg.content[1].output.value.payload.diff.length).toBe(10_000);
+  });
 });

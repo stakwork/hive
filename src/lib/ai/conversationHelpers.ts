@@ -5,11 +5,46 @@
 
 import type { ModelMessage } from "ai";
 import type { StoredMessage } from "@/services/canvas-turn-persistence";
+import { truncateField } from "@/lib/ai/mcpResult";
+import { PROPOSE_CODE_CHANGE_TOOL } from "@/lib/proposals/types";
+
+/** Max chars of a proposed diff replayed back into model context. */
+const REPLAY_DIFF_CHAR_CAP = 4_000;
+
+/**
+ * Shrink a stored tool output before it is replayed into model context.
+ *
+ * `propose_code_change` stores the full approved diff on `payload.diff` —
+ * up to the 200 KB `diffHygiene` cap. Those exact bytes have to survive in
+ * the stored row (the approval handler re-hashes them against
+ * `diffSha256`), but re-feeding them to the model on every subsequent turn
+ * of the conversation is pure context burn. Truncate on the way out; the
+ * stored message is never mutated.
+ */
+function shrinkToolOutputForReplay(toolName: string, output: unknown): unknown {
+  if (toolName !== PROPOSE_CODE_CHANGE_TOOL) return output;
+  if (!output || typeof output !== "object") return output;
+  const payload = (output as { payload?: unknown }).payload;
+  if (!payload || typeof payload !== "object") return output;
+  const diff = (payload as { diff?: unknown }).diff;
+  if (typeof diff !== "string" || diff.length <= REPLAY_DIFF_CHAR_CAP) {
+    return output;
+  }
+  return {
+    ...(output as Record<string, unknown>),
+    payload: {
+      ...(payload as Record<string, unknown>),
+      diff: truncateField(diff, REPLAY_DIFF_CHAR_CAP),
+    },
+  };
+}
 
 /**
  * Converts stored canvas/conversation messages into AI SDK `ModelMessage[]`.
  * Filters out empty messages, expands assistant tool-call turns into the
- * three-part shape the AI SDK expects (tool-call, tool-result, text).
+ * three-part shape the AI SDK expects (tool-call, tool-result, text), and
+ * shrinks oversized tool outputs on the way out (see
+ * `shrinkToolOutputForReplay`) — the stored rows are left untouched.
  */
 export function toModelMessages(messages: StoredMessage[]): ModelMessage[] {
   return messages
@@ -33,13 +68,14 @@ export function toModelMessages(messages: StoredMessage[]): ModelMessage[] {
           out.push({
             role: "tool",
             content: toolResults.map((tc) => {
-              let wrappedOutput = tc.output;
+              const shrunk = shrinkToolOutputForReplay(tc.toolName, tc.output);
+              let wrappedOutput = shrunk;
               if (
-                tc.output &&
-                typeof tc.output === "object" &&
-                !("type" in tc.output)
+                shrunk &&
+                typeof shrunk === "object" &&
+                !("type" in shrunk)
               ) {
-                wrappedOutput = { type: "json", value: tc.output };
+                wrappedOutput = { type: "json", value: shrunk };
               }
               return {
                 type: "tool-result" as const,
