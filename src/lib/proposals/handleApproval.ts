@@ -84,7 +84,9 @@ import {
   updateNodeV2,
   addEdgeV2,
   readNodeByRef,
+  type JarvisEdgeEndpoint,
 } from "@/services/swarm/api/nodes";
+import { findReservedKeyViolation } from "@/lib/proposals/graphWriteValidation";
 
 // ─── Conversation-shape primitives ────────────────────────────────────
 // We accept a permissive `MessageLike` to avoid a runtime dependency
@@ -1727,6 +1729,14 @@ async function approveGraphNodeCreate(args: {
     return { ok: false, error: "Invalid graph node create proposal payload.", status: 400 };
   }
 
+  // Re-check reserved keys. The propose tool already rejected them, but the
+  // payload reaches us through the client-supplied transcript, so a forged
+  // approval would otherwise write straight over Jarvis / Neo4j metadata.
+  const reserved = findReservedKeyViolation([["node_data", payload.node_data]]);
+  if (reserved) {
+    return { ok: false, error: reserved, status: 400 };
+  }
+
   // Re-run resolveGraphJarvis at approval time — validateUserBelongsToOrg
   // only checks org-wide membership, not membership in the specific workspace.
   const resolved = await resolveGraphJarvis(orgId, userId, {
@@ -1791,6 +1801,12 @@ async function approveGraphNodeEdit(args: {
 
   if (!payload.workspaceId || !payload.ref_id) {
     return { ok: false, error: "Invalid graph node edit proposal payload.", status: 400 };
+  }
+
+  // Re-check reserved keys — see approveGraphNodeCreate.
+  const reserved = findReservedKeyViolation([["node_data", payload.node_data]]);
+  if (reserved) {
+    return { ok: false, error: reserved, status: 400 };
   }
 
   // Authorization runs before reading meta or any external call — a caller
@@ -1868,16 +1884,37 @@ async function approveGraphNodeEdit(args: {
 
 // ── Approve: graph triplet create ───────────────────────────────────
 
-/** Resolve an inline triplet endpoint to a JarvisEdgeEndpoint shape. */
+/** `node_data` of an inline endpoint; `undefined` for a ref_id endpoint. */
+function inlineNodeData(
+  endpoint: JarvisEdgeEndpoint,
+): Record<string, unknown> | undefined {
+  return "ref_id" in endpoint ? undefined : endpoint.node_data;
+}
+
+/**
+ * Resolve an inline triplet endpoint to a `JarvisEdgeEndpoint`.
+ *
+ * `addNode` gives create-or-merge semantics, but it legitimately returns
+ * `{ success: true, alreadyExists: true, ref_id: undefined }` when the node
+ * already existed and Jarvis reported the duplicate only in
+ * `status_messages`. That is a success, not a failure: the node is there, we
+ * just don't know its ref. In that case we hand the inline spec straight to
+ * `addEdgeV2`, which resolves endpoints by schema node_key.
+ */
 async function resolveInlineNode(
   config: { jarvisUrl: string; apiKey: string },
   endpoint: { node_type: string; node_data: Record<string, unknown> },
-): Promise<{ success: boolean; ref_id?: string; error?: string }> {
-  // Use addNode — create-or-merge semantics match what we want.
-  return addNode(config, {
+): Promise<{ ok: true; endpoint: JarvisEdgeEndpoint } | { ok: false; error: string }> {
+  const result = await addNode(config, {
     node_type: endpoint.node_type,
     node_data: endpoint.node_data,
   });
+
+  if (!result.success) {
+    return { ok: false, error: result.error ?? "unknown error" };
+  }
+
+  return { ok: true, endpoint: result.ref_id ? { ref_id: result.ref_id } : endpoint };
 }
 
 async function approveGraphTripletCreate(args: {
@@ -1892,6 +1929,16 @@ async function approveGraphTripletCreate(args: {
     return { ok: false, error: "Invalid graph triplet create proposal payload.", status: 400 };
   }
 
+  // Re-check reserved keys — see approveGraphNodeCreate.
+  const reserved = findReservedKeyViolation([
+    ["edge_data", payload.edge_data],
+    ["source.node_data", inlineNodeData(payload.source)],
+    ["target.node_data", inlineNodeData(payload.target)],
+  ]);
+  if (reserved) {
+    return { ok: false, error: reserved, status: 400 };
+  }
+
   const resolved = await resolveGraphJarvis(orgId, userId, {
     workspaceId: payload.workspaceId,
   });
@@ -1901,27 +1948,27 @@ async function approveGraphTripletCreate(args: {
   const { workspaceId, workspaceSlug, config } = resolved.access;
 
   // Resolve inline source/target nodes (if any).
-  let sourceEndpoint: { ref_id: string } | { node_type: string; node_data: Record<string, unknown> };
-  let targetEndpoint: { ref_id: string } | { node_type: string; node_data: Record<string, unknown> };
+  let sourceEndpoint: JarvisEdgeEndpoint;
+  let targetEndpoint: JarvisEdgeEndpoint;
 
   if ("ref_id" in payload.source) {
     sourceEndpoint = { ref_id: payload.source.ref_id };
   } else {
     const r = await resolveInlineNode(config, payload.source);
-    if (!r.success || !r.ref_id) {
-      return { ok: false, error: `Failed to resolve source node: ${r.error ?? "unknown error"}`, status: 502 };
+    if (!r.ok) {
+      return { ok: false, error: `Failed to resolve source node: ${r.error}`, status: 502 };
     }
-    sourceEndpoint = { ref_id: r.ref_id };
+    sourceEndpoint = r.endpoint;
   }
 
   if ("ref_id" in payload.target) {
     targetEndpoint = { ref_id: payload.target.ref_id };
   } else {
     const r = await resolveInlineNode(config, payload.target);
-    if (!r.success || !r.ref_id) {
-      return { ok: false, error: `Failed to resolve target node: ${r.error ?? "unknown error"}`, status: 502 };
+    if (!r.ok) {
+      return { ok: false, error: `Failed to resolve target node: ${r.error}`, status: 502 };
     }
-    targetEndpoint = { ref_id: r.ref_id };
+    targetEndpoint = r.endpoint;
   }
 
   const edgeResult = await addEdgeV2(config, {
@@ -1997,6 +2044,21 @@ async function approveGraphBatchTripletCreate(args: {
     };
   }
 
+  // Re-check reserved keys across every triplet — see approveGraphNodeCreate.
+  // Rejected as a whole: a partially-applied batch is worse than none.
+  const batchEntries: Array<[string, Record<string, unknown> | undefined]> = [];
+  payload.triplets.forEach((t, i) => {
+    batchEntries.push(
+      [`triplets[${i}].edge_data`, t.edge_data],
+      [`triplets[${i}].source.node_data`, inlineNodeData(t.source)],
+      [`triplets[${i}].target.node_data`, inlineNodeData(t.target)],
+    );
+  });
+  const reserved = findReservedKeyViolation(batchEntries);
+  if (reserved) {
+    return { ok: false, error: reserved, status: 400 };
+  }
+
   const resolved = await resolveGraphJarvis(orgId, userId, {
     workspaceId: payload.workspaceId,
   });
@@ -2006,24 +2068,24 @@ async function approveGraphBatchTripletCreate(args: {
   const { workspaceId, workspaceSlug, config } = resolved.access;
 
   // Dedup inline nodes by (node_type, node_key) within the batch so we
-  // don't create duplicates when multiple triplets reference the same node.
-  const inlineNodeCache = new Map<string, string>(); // cacheKey → ref_id
+  // don't re-issue addNode when multiple triplets reference the same node.
+  const inlineNodeCache = new Map<string, JarvisEdgeEndpoint>();
 
   async function resolveEndpoint(
     endpoint: GraphBatchTripletCreateProposalPayload["triplets"][number]["source"],
-  ): Promise<{ ref_id: string } | { error: string }> {
-    if ("ref_id" in endpoint) return { ref_id: endpoint.ref_id };
+  ): Promise<{ endpoint: JarvisEdgeEndpoint } | { error: string }> {
+    if ("ref_id" in endpoint) return { endpoint: { ref_id: endpoint.ref_id } };
 
     const cacheKey = `${endpoint.node_type}::${JSON.stringify(endpoint.node_data)}`;
     const cached = inlineNodeCache.get(cacheKey);
-    if (cached) return { ref_id: cached };
+    if (cached) return { endpoint: cached };
 
     const r = await resolveInlineNode(config, endpoint);
-    if (!r.success || !r.ref_id) {
-      return { error: r.error ?? "Failed to resolve inline node" };
+    if (!r.ok) {
+      return { error: r.error };
     }
-    inlineNodeCache.set(cacheKey, r.ref_id);
-    return { ref_id: r.ref_id };
+    inlineNodeCache.set(cacheKey, r.endpoint);
+    return { endpoint: r.endpoint };
   }
 
   // Process triplets sequentially, collecting per-item results.
@@ -2051,8 +2113,8 @@ async function approveGraphBatchTripletCreate(args: {
         ...(t.edge_data ? { edge_data: t.edge_data } : {}),
         ...(t.weight !== undefined ? { weight: t.weight } : {}),
       },
-      source: { ref_id: srcResult.ref_id },
-      target: { ref_id: tgtResult.ref_id },
+      source: srcResult.endpoint,
+      target: tgtResult.endpoint,
     });
 
     const outcome = edgeResult.alreadyExists
@@ -2086,13 +2148,29 @@ async function approveGraphBatchTripletCreate(args: {
     }
   }
 
+  // Nothing landed — report a failure rather than stamping an approvalResult.
+  // A successful return marks the proposal approved, and `findPriorApproval`
+  // then short-circuits every retry, so an all-failed batch would be
+  // unrecoverable: no edges written and no way to re-run the write.
+  if (!anySuccess) {
+    const firstError = items.find((it) => !it.ok)?.error;
+    return {
+      ok: false,
+      error:
+        items.length === 0
+          ? "Batch contained no triplets."
+          : `None of the ${items.length} triplet(s) could be created.${firstError ? ` First error: ${firstError}` : ""}`,
+      status: 502,
+    };
+  }
+
   return {
     ok: true,
     alreadyApproved: false,
     result: {
       proposalId: proposal.proposalId,
       kind: "graphBatchTripletCreate",
-      createdEntityId: anySuccess ? workspaceId : "",
+      createdEntityId: workspaceId,
       landedOn: `workspace:${workspaceId}`,
       workspaceSlug,
       items,

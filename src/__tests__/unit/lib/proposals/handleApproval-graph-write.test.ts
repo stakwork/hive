@@ -192,6 +192,28 @@ function makeTripletMsg(proposalId = PROPOSAL_ID): MessageLike {
   };
 }
 
+function makeInlineTripletMsg(proposalId = PROPOSAL_ID): MessageLike {
+  return {
+    role: "assistant",
+    toolCalls: [
+      {
+        toolName: PROPOSE_CREATE_TRIPLET_TOOL,
+        output: {
+          kind: "graphTripletCreate",
+          proposalId,
+          payload: {
+            workspaceId: WS_ID,
+            workspaceSlug: WS_SLUG,
+            edge_type: "USES",
+            source: { node_type: "Concept", node_data: { name: "Inline Src" } },
+            target: { ref_id: "n2" },
+          },
+        },
+      },
+    ],
+  };
+}
+
 function makeBatchMsg(proposalId = PROPOSAL_ID, count = 2): MessageLike {
   return {
     role: "assistant",
@@ -370,6 +392,58 @@ describe("approveGraphTripletCreate", () => {
     expect(mockAddEdgeV2).toHaveBeenCalledOnce();
   });
 
+  it("inline endpoint whose node already exists (no ref_id) still creates the edge", async () => {
+    // Jarvis reports the duplicate only via status_messages, so addNode
+    // succeeds without a ref_id. The node exists — the approval must not fail.
+    mockAddNode.mockResolvedValue({ success: true, alreadyExists: true });
+
+    const messages: MessageLike[] = [makeInlineTripletMsg()];
+    const result = await handleApproval({
+      orgId: ORG_ID, userId: USER_ID, messages, intent: baseIntent,
+    });
+
+    expect(result.ok).toBe(true);
+    expect(mockAddEdgeV2).toHaveBeenCalledOnce();
+    // The inline spec is handed to addEdgeV2, which resolves it by node_key.
+    expect(mockAddEdgeV2).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        source: { node_type: "Concept", node_data: { name: "Inline Src" } },
+        target: { ref_id: "n2" },
+      }),
+    );
+  });
+
+  it("inline endpoint uses the returned ref_id when Jarvis provides one", async () => {
+    mockAddNode.mockResolvedValue({ success: true, ref_id: "resolved-ref" });
+
+    const messages: MessageLike[] = [makeInlineTripletMsg()];
+    await handleApproval({
+      orgId: ORG_ID, userId: USER_ID, messages, intent: baseIntent,
+    });
+
+    expect(mockAddEdgeV2).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ source: { ref_id: "resolved-ref" } }),
+    );
+  });
+
+  it("inline endpoint whose node write fails → 502", async () => {
+    mockAddNode.mockResolvedValue({ success: false, error: "jarvis down" });
+
+    const messages: MessageLike[] = [makeInlineTripletMsg()];
+    const result = await handleApproval({
+      orgId: ORG_ID, userId: USER_ID, messages, intent: baseIntent,
+    });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.status).toBe(502);
+      expect(result.error).toContain("jarvis down");
+    }
+    expect(mockAddEdgeV2).not.toHaveBeenCalled();
+  });
+
   it("Warning duplicate → alreadyExisted flag", async () => {
     mockAddEdgeV2.mockResolvedValue({
       success: true,
@@ -411,6 +485,24 @@ describe("approveGraphBatchTripletCreate", () => {
     }
   });
 
+  it("every triplet failing → ok:false so the approval is retryable", async () => {
+    // A successful return stamps an approvalResult, and findPriorApproval
+    // would then short-circuit every retry — leaving nothing written and no
+    // way to re-run the batch.
+    mockAddEdgeV2.mockResolvedValue({ success: false, message: "jarvis 500" });
+
+    const messages: MessageLike[] = [makeBatchMsg(PROPOSAL_ID, 3)];
+    const result = await handleApproval({
+      orgId: ORG_ID, userId: USER_ID, messages, intent: baseIntent,
+    });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.status).toBe(502);
+      expect(result.error).toContain("jarvis 500");
+    }
+  });
+
   it("all triplets succeed → all items ok", async () => {
     const messages: MessageLike[] = [makeBatchMsg(PROPOSAL_ID, 2)];
     const result = await handleApproval({
@@ -420,6 +512,89 @@ describe("approveGraphBatchTripletCreate", () => {
     if (result.ok) {
       expect(result.result.items?.every((i) => i.ok)).toBe(true);
     }
+  });
+});
+
+// ── Reserved-key re-validation (forged transcript) ────────────────────────
+//
+// The proposal payload reaches handleApproval through the client-supplied
+// `canvasChatMessages` transcript, so the propose-time reserved-key check is
+// bypassable. These assert the approval-time guard actually blocks the write.
+
+describe("reserved-key re-validation at approval time", () => {
+  it("node create with a forged reserved key → 400, no write", async () => {
+    const messages: MessageLike[] = [
+      makeNodeCreateMsg(PROPOSAL_ID, {
+        node_data: { name: "x", is_deleted: true, algo_pagerank: 1 },
+      }),
+    ];
+    const result = await handleApproval({
+      orgId: ORG_ID, userId: USER_ID, messages, intent: baseIntent,
+    });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.status).toBe(400);
+      expect(result.error).toContain("reserved key");
+      expect(result.error).toContain("is_deleted");
+      expect(result.error).toContain("algo_pagerank");
+    }
+    expect(mockAddNode).not.toHaveBeenCalled();
+  });
+
+  it("node edit with a forged reserved key → 400, no write", async () => {
+    const msg = makeNodeEditMsg();
+    (
+      msg.toolCalls![0].output as { payload: { node_data: Record<string, unknown> } }
+    ).payload.node_data = { status: "active" };
+
+    const result = await handleApproval({
+      orgId: ORG_ID, userId: USER_ID, messages: [msg], intent: baseIntent,
+    });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.status).toBe(400);
+    expect(mockUpdateNodeV2).not.toHaveBeenCalled();
+  });
+
+  it("triplet with a forged reserved key in edge_data → 400, no write", async () => {
+    const msg = makeTripletMsg();
+    (
+      msg.toolCalls![0].output as { payload: Record<string, unknown> }
+    ).payload.edge_data = { boost: 99 };
+
+    const result = await handleApproval({
+      orgId: ORG_ID, userId: USER_ID, messages: [msg], intent: baseIntent,
+    });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toContain("boost");
+    expect(mockAddEdgeV2).not.toHaveBeenCalled();
+  });
+
+  it("batch rejects the whole payload when one triplet carries a reserved key", async () => {
+    const msg = makeBatchMsg(PROPOSAL_ID, 3);
+    (
+      msg.toolCalls![0].output as {
+        payload: { triplets: Array<Record<string, unknown>> };
+      }
+    ).payload.triplets[1].source = {
+      node_type: "Concept",
+      node_data: { name: "x", ref_id: "forged" },
+    };
+
+    const result = await handleApproval({
+      orgId: ORG_ID, userId: USER_ID, messages: [msg], intent: baseIntent,
+    });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.status).toBe(400);
+      expect(result.error).toContain("triplets[1].source.node_data");
+    }
+    // No partial application — nothing is written.
+    expect(mockAddEdgeV2).not.toHaveBeenCalled();
+    expect(mockAddNode).not.toHaveBeenCalled();
   });
 });
 

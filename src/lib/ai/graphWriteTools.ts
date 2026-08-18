@@ -20,6 +20,7 @@ import { nanoid } from "nanoid";
 import { resolveGraphJarvis } from "@/lib/ai/graphWriteAuth";
 import { readNodeByRef } from "@/services/swarm/api/nodes";
 import { kgGetOntology } from "@/lib/ai/kg-adapter";
+import { findReservedKeys } from "@/lib/proposals/graphWriteValidation";
 import {
   PROPOSE_CREATE_NODE_TOOL,
   PROPOSE_NODE_EDIT_TOOL,
@@ -31,12 +32,6 @@ import {
 
 /** Maximum triplets in a single batch proposal. */
 const BATCH_TRIPLET_CAP = 25;
-
-/**
- * Reserved / system attribute keys that callers must not set in `node_data`
- * or `edge_data`. Overwriting these would corrupt Jarvis / Neo4j metadata.
- */
-const RESERVED_KEYS = new Set(["status", "is_deleted", "boost", "ref_id"]);
 
 /**
  * Mirror-owned node types. Written by `jarvis-mirror-cron` /
@@ -54,14 +49,6 @@ const MIRROR_OWNED_TYPES = new Set([
 ]);
 
 // ─── Validation helpers ───────────────────────────────────────────────────
-
-function isReservedKey(key: string): boolean {
-  return RESERVED_KEYS.has(key) || key.startsWith("algo_");
-}
-
-function findReservedKeys(data: Record<string, unknown>): string[] {
-  return Object.keys(data).filter(isReservedKey);
-}
 
 /**
  * XOR-validate a triplet endpoint: exactly one of `ref_id` or
