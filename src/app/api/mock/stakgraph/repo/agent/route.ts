@@ -175,9 +175,11 @@ export async function POST(request: NextRequest) {
       const repoUrl =
         (body.repo_url as string | undefined) ??
         "https://github.com/stakwork/hive";
+      // Mirrors the labelled-block prompt format `createPr` dispatches.
       const prTitle =
         typeof body.prompt === "string"
-          ? body.prompt.match(/title="([^"]+)"/)?.[1] ?? "[Jamie] Mock change"
+          ? body.prompt.match(/^TITLE:\n(.+)$/m)?.[1]?.trim() ??
+            "[Jamie] Mock change"
           : "[Jamie] Mock change";
 
       // Default scenario: success

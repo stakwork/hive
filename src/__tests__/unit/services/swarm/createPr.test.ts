@@ -2,11 +2,14 @@
  * Unit tests for the createPr adapter.
  *
  * Covers:
- *   - Classifier: every LandChangeFailureCode + HTTP admission statuses
- *   - already_landed ok:true → success with prior PR; ok:false → prior failure
- *   - No failure branch ever returns/logs pr.diff or error
- *   - hardenPrResult: malformed, over-cap, secret hit
- *   - PR-URL validation: host/owner-repo mismatch
+ *   - hardenPrResult: malformed shape, over-cap diff, secret hit
+ *   - PR-URL validation: host / owner-repo mismatch
+ *   - _processCompletedResult: already_landed ok:true → prior PR (hardened
+ *     on the same terms as a fresh success); ok:false → prior failure with
+ *     no raw swarm `error` passed through
+ *
+ * The classifier table and the network/DB paths of `createPr` itself need
+ * fetch + Prisma mocks and belong in integration tests.
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -14,7 +17,10 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 // ── hardenPrResult is the only pure-function export we need for unit tests.
 // Everything else in createPr.ts requires DB/network mocks which belong in
 // integration tests. We import it directly from the module.
-import { hardenPrResult } from "@/services/swarm/createPr";
+import {
+  hardenPrResult,
+  _processCompletedResult,
+} from "@/services/swarm/createPr";
 
 // ── Minimal valid LandChangeSuccess shape ──────────────────────────────────
 
@@ -205,6 +211,99 @@ describe("hardenPrResult", () => {
 // output through the plain-language message invariants — specifically that
 // no raw git/error text passes through and that every code maps to a
 // human-readable message.
+
+// ─── _processCompletedResult: already_landed replay ───────────────────────
+//
+// `already_landed` can arrive with `ok: true` (a replay of a run whose first
+// landChange succeeded). That path persists a PR URL exactly like a fresh
+// success, so it must clear the same hardening.
+
+describe("_processCompletedResult — already_landed replay", () => {
+  const APPROVED_DIFF = VALID_PR.diff;
+
+  it("returns the prior PR on an ok:true already_landed replay", () => {
+    const result = _processCompletedResult(
+      { pr: { ...VALID_PR, failure: "already_landed" } },
+      APPROVED_DIFF,
+      REPO_URL,
+    );
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.prUrl).toBe(VALID_PR.url);
+      expect(result.prNumber).toBe(42);
+      expect(result.pathSetVerified).toBe(true);
+    }
+  });
+
+  it("refuses an already_landed replay whose PR URL points at another repo", () => {
+    const result = _processCompletedResult(
+      {
+        pr: {
+          ...VALID_PR,
+          url: "https://github.com/attacker/evil/pull/1",
+          failure: "already_landed",
+        },
+      },
+      APPROVED_DIFF,
+      REPO_URL,
+    );
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.failureCode).toBe("pr_create_failed");
+    }
+  });
+
+  it("refuses an already_landed replay whose diff carries a credential", () => {
+    const secretDiff =
+      "--- a/foo.ts\n+++ b/foo.ts\n@@ -1 +1 @@\n" +
+      "+const token = 'ghp_" + "a".repeat(36) + "';\n";
+    const result = _processCompletedResult(
+      { pr: { ...VALID_PR, diff: secretDiff, failure: "already_landed" } },
+      APPROVED_DIFF,
+      REPO_URL,
+    );
+    expect(result.ok).toBe(false);
+  });
+
+  it("does not throw on an already_landed replay missing `diff`", () => {
+    const { diff: _diff, ...noDiff } = VALID_PR;
+    const result = _processCompletedResult(
+      { pr: { ...noDiff, failure: "already_landed" } },
+      APPROVED_DIFF,
+      REPO_URL,
+    );
+    expect(result.ok).toBe(false);
+  });
+
+  it("maps an ok:false already_landed replay to the already_landed code", () => {
+    const result = _processCompletedResult(
+      {
+        pr: {
+          ok: false,
+          failure: "already_landed",
+          diff: "should never surface",
+          error: "raw git stderr",
+        },
+      },
+      APPROVED_DIFF,
+      REPO_URL,
+    );
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.failureCode).toBe("already_landed");
+      expect(JSON.stringify(result)).not.toMatch(/raw git stderr/);
+    }
+  });
+
+  it("hardens a fresh success the same way", () => {
+    const result = _processCompletedResult(
+      { pr: { ...VALID_PR, url: "https://gitlab.com/stakwork/hive/pull/42" } },
+      APPROVED_DIFF,
+      REPO_URL,
+    );
+    expect(result.ok).toBe(false);
+  });
+});
 
 // Import the module just to verify it loads (imports are checked at parse time).
 describe("createPr module loads", () => {

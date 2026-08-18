@@ -23,8 +23,10 @@
  *   this is a structural guarantee, not a naming convention.
  * - A `secrets_found` hygiene hit discards the diff immediately and returns
  *   a clean refusal. The bytes never reach a log or transcript.
- * - The model-visible replay of the tool output is shrunk via `truncateField`
- *   so a 200 KB diff does not re-enter LLM context on every turn.
+ * - The full diff is returned on `payload.diff` (the approval handler needs
+ *   those exact bytes), and `toModelMessages` truncates it on the way into
+ *   model messages so a 200 KB diff does not re-enter LLM context on every
+ *   turn.
  */
 
 import crypto from "crypto";
@@ -41,18 +43,12 @@ import {
   scanForSecrets,
   unifiedDiffToActionResults,
 } from "@/lib/github/diffHygiene";
-import { truncateField } from "@/lib/ai/mcpResult";
 import { getBifrostForLLM } from "@/services/bifrost/orchestrator";
 import { parseGithubOwnerRepo } from "@/utils/repositoryParser";
 import type { CapabilityContext } from "@/lib/ai/capabilities";
 import { PROPOSE_CODE_CHANGE_TOOL } from "@/lib/proposals/types";
 import type { ProposalOutput } from "@/lib/proposals/types";
 import { EncryptionService } from "@/lib/encryption";
-
-// ─── Constants ────────────────────────────────────────────────────────────
-
-/** Max bytes of diff shown in the model-visible tool-result replay. */
-const DIFF_REPLAY_CHAR_CAP = 4_000;
 
 // ─── Helpers ──────────────────────────────────────────────────────────────
 
@@ -326,7 +322,7 @@ export function buildCodeChangeTools(ctx: CapabilityContext): ToolSet {
             bifrost,
             hooks,
           );
-        } catch (e) {
+        } catch {
           return {
             error:
               "The code-change preview timed out or the swarm returned an error. " +
@@ -445,15 +441,16 @@ export function buildCodeChangeTools(ctx: CapabilityContext): ToolSet {
           },
         };
 
-        // ── 13. Shrink model-visible replay ────────────────────────────
-        // Attach a `_replayDiff` field with a truncated copy so the full
-        // diff never bloats the model's context window on subsequent turns.
-        // `sanitizeAndCompleteToolCalls` will serialize this whole object;
-        // the approval handler reads `payload.diff` (full bytes).
-        return {
-          ...output,
-          _replayDiff: truncateField(rawDiff, DIFF_REPLAY_CHAR_CAP),
-        } as ProposalOutput;
+        // ── 13. Return ─────────────────────────────────────────────────
+        // `payload.diff` carries the FULL bytes: they are persisted on
+        // `CanvasChatMessage.toolCalls[].output`, which is the only place
+        // the approved diff lives, and the approval handler re-hashes them
+        // against `diffSha256`. Keeping the model's context from carrying
+        // those bytes on every later turn is handled at the replay boundary
+        // (`toModelMessages` in `@/lib/ai/conversationHelpers`), which
+        // truncates the diff on the way into model messages while leaving
+        // the stored row intact.
+        return output;
       },
     }),
   };

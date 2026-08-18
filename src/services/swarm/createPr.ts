@@ -27,8 +27,10 @@
  *
  * The approved diff bytes are re-verified against `diffSha256` before dispatch.
  * The agent is instructed to `apply_patch` them verbatim, then call
- * `create_pr`.  PR title always carries the `[Jamie]` prefix — the durable
- * Jamie discriminator.
+ * `create_pr` with the approved title and body, which ride the prompt as
+ * labelled `TITLE:` / `BODY:` / `DIFF:` blocks (not inline quoted values, so
+ * a quote character in either cannot corrupt the instruction).  PR title
+ * always carries the `[Jamie]` prefix — the durable Jamie discriminator.
  *
  * ## URL validation
  *
@@ -40,8 +42,10 @@
  *
  * `hardenPrResult()` shape-validates the raw swarm response against
  * `LandChangeResult`, re-applies byte/file caps, and re-runs the secret scan.
- * On `ok: false`, `pr.diff` and `error` are discarded at the adapter
- * boundary — only `{ failureCode, message }` propagates.
+ * EVERY path that yields a success runs it — the fresh success and the
+ * `already_landed` replay alike (see `_hardenAndBuild`), because both persist
+ * a PR URL.  On `ok: false`, `pr.diff` and `error` are discarded at the
+ * adapter boundary — only `{ failureCode, message }` propagates.
  *
  * ## Recovery
  *
@@ -57,11 +61,7 @@ import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
 import { getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
 import { refreshAndUpdateAccessTokens } from "@/lib/githubApp";
-import {
-  parseUnifiedDiff,
-  enforceDiffCaps,
-  scanForSecrets,
-} from "@/lib/github/diffHygiene";
+import { enforceDiffCaps, scanForSecrets } from "@/lib/github/diffHygiene";
 import { parseGithubOwnerRepo } from "@/utils/repositoryParser";
 import {
   isAlreadyLanded,
@@ -589,11 +589,16 @@ export async function createPr(params: {
     // Non-fatal: let the swarm's own identity check catch drift.
   }
 
-  // ── 5. PR title with [Jamie] prefix ────────────────────────────────
+  // ── 5. PR title with [Jamie] prefix + body ─────────────────────────
   const normalizedTitle = title.replace(/[\r\n]+/g, " ").trim();
   const prTitle = normalizedTitle.startsWith(JAMIE_PREFIX)
     ? normalizedTitle
     : `${JAMIE_PREFIX}${normalizedTitle}`;
+  // The approved body is forwarded verbatim (CRLF normalized only). Both
+  // ride the prompt as labelled blocks rather than inline quoted values —
+  // a title or body containing a double quote must not corrupt the
+  // instruction the swarm-side agent parses.
+  const prBody = body.replace(/\r\n/g, "\n").trimEnd();
 
   // ── 6. Dispatch to swarm via plain fetch ───────────────────────────
   // `create_pr` is registered in `toolsConfig` so the swarm's `repo_agent`
@@ -605,7 +610,9 @@ export async function createPr(params: {
     pat, // Never logged — redacted at the adapter boundary on any error path.
     prompt:
       `Apply the following unified diff verbatim using apply_patch, ` +
-      `then call create_pr with title="${prTitle}" and the provided body.\n\n` +
+      `then call create_pr with exactly the title and body given below.\n\n` +
+      `TITLE:\n${prTitle}\n\n` +
+      `BODY:\n${prBody}\n\n` +
       `DIFF:\n${approvedDiff}`,
     toolsConfig: {
       create_pr: true,
@@ -736,10 +743,13 @@ function _processCompletedResult(
   // Check `already_landed` BEFORE branching on `ok` — see contract comments.
   const typed = landResult as unknown as LandChangeResult;
   if (isAlreadyLanded(typed)) {
-    const pr = landedPr(typed);
-    if (pr) {
-      // already_landed success replay — reuse the prior PR.
-      return _buildSuccess(pr, approvedDiff, repositoryUrl);
+    if (landedPr(typed)) {
+      // already_landed success replay — reuse the prior PR. This path
+      // persists a PR URL exactly like a fresh success does, so it must
+      // clear the same shape / URL / cap / secret checks: `hardenPrResult`
+      // is what stops a wrong-repo URL from later becoming a branch write
+      // by `pr-monitor.ts` under the workspace owner's token.
+      return _hardenAndBuild(landResult, approvedDiff, repositoryUrl);
     }
     // already_landed failure replay.
     return { ok: false, ...classify("already_landed") };
@@ -761,6 +771,22 @@ function _processCompletedResult(
   }
 
   // Success
+  return _hardenAndBuild(landResult, approvedDiff, repositoryUrl);
+}
+
+/**
+ * Harden a raw swarm success payload, then build the adapter result.
+ *
+ * Every path that yields a `CreatePrSuccess` — fresh success and
+ * already-landed replay alike — goes through here, so no path can persist
+ * a PR URL that skipped shape validation, the byte/file caps, the secret
+ * re-scan, or `validatePrUrl`.
+ */
+function _hardenAndBuild(
+  landResult: Record<string, unknown>,
+  approvedDiff: string,
+  repositoryUrl: string,
+): CreatePrResult {
   const harden = hardenPrResult(landResult, repositoryUrl);
   if (!harden.ok) {
     logger.warn("[createPr] hardenPrResult failed", "createPr", {
@@ -907,5 +933,5 @@ export async function reconcilePr(claim: CreatePrClaim): Promise<ReconcileOutcom
   return { outcome: "unknown" };
 }
 
-// Re-export hardenPrResult for tests
-export { hardenPrResult };
+// Re-exported for tests: both are pure functions over a swarm payload.
+export { hardenPrResult, _processCompletedResult };
