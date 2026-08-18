@@ -2,7 +2,6 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { getToken } from "next-auth/jwt";
 import { MIDDLEWARE_HEADERS, resolveRouteAccess } from "@/config/middleware";
-import { verifyCookie, isLandingPageEnabled, LANDING_COOKIE_NAME } from "@/lib/auth/landing-cookie";
 import type { ApiError } from "@/types/errors";
 // Environment validation - fail fast if required secrets are missing
 if (!process.env.NEXTAUTH_SECRET) {
@@ -134,26 +133,6 @@ export async function middleware(request: NextRequest) {
     // The route handler is responsible for validating the token value itself
     if (isApiRoute && request.headers.get("x-api-token")) {
       return continueRequest(requestHeaders, "api-token");
-    }
-
-    // Landing page protection (when enabled) for all non-system/webhook routes
-    if (isLandingPageEnabled()) {
-      const token = await getToken({
-        req: request,
-        secret: process.env.NEXTAUTH_SECRET,
-        secureCookie: shouldUseSecureCookie(request),
-      });
-      const landingCookie = request.cookies.get(LANDING_COOKIE_NAME);
-      const hasValidCookie = landingCookie && (await verifyCookie(landingCookie.value));
-      if (!hasValidCookie && !token) {
-        if (pathname === "/") {
-          return continueRequest(requestHeaders, "landing_required");
-        }
-        if (pathname === "/api/auth/verify-landing") {
-          return continueRequest(requestHeaders, "landing_required");
-        }
-        return redirectTo("/", request, { requestId, authStatus: "landing_required" });
-      }
     }
 
     // Public routes are reachable without a session, but if the caller

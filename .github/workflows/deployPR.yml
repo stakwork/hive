@@ -191,12 +191,69 @@ jobs:
           fi
 
           # Wait until endpoint is ready (GET endpoint does not return credentials)
+          CONSECUTIVE_NOT_FOUND=0
           for i in {1..30}; do
-            STATUS=$(neon_curl "https://console.neon.tech/api/v2/projects/$NEON_PROJECT_ID/endpoints/$ENDPOINT_ID" "endpoint")
-            STATE=$(echo "$STATUS" | jq -r '.endpoint.current_state')
-            DB_HOST=$(echo "$STATUS" | jq -r '.endpoint.host')
+            # Use || true so set -e doesn't exit if neon_curl returns non-zero (e.g. endpoint temporarily not found)
+            STATUS=$(neon_curl "https://console.neon.tech/api/v2/projects/$NEON_PROJECT_ID/endpoints/$ENDPOINT_ID" "endpoint" || true)
+            STATE=$(echo "$STATUS" | jq -r '.endpoint.current_state // empty')
+            DB_HOST=$(echo "$STATUS" | jq -r '.endpoint.host // empty')
             if [ "$STATE" = "ready" ] && [ -n "$DB_HOST" ] && [ "$DB_HOST" != "null" ]; then
+              CONSECUTIVE_NOT_FOUND=0
               break
+            fi
+            # If the endpoint vanished, track consecutive failures and try to recover
+            if [ -z "$STATE" ]; then
+              CONSECUTIVE_NOT_FOUND=$((CONSECUTIVE_NOT_FOUND + 1))
+              echo "⚠️  Endpoint $ENDPOINT_ID unavailable (attempt $CONSECUTIVE_NOT_FOUND), trying to recover..."
+              # After 2 consecutive not-found responses, assume the endpoint is permanently gone
+              # and try to create a brand-new one for this branch
+              if [ $CONSECUTIVE_NOT_FOUND -ge 2 ]; then
+                echo "♻️  Endpoint persistently unavailable — attempting to create a fresh endpoint for branch $BRANCH_ID..."
+                NEW_EP_RESP=$(curl -s -H "Authorization: Bearer $NEON_API_KEY" \
+                  -X POST -H "Content-Type: application/json" \
+                  -d "{\"endpoint\":{\"branch_id\":\"$BRANCH_ID\",\"type\":\"read_write\"}}" \
+                  "https://console.neon.tech/api/v2/projects/$NEON_PROJECT_ID/endpoints")
+                if echo "$NEW_EP_RESP" | jq -e '.endpoint' > /dev/null 2>&1; then
+                  ENDPOINT_ID=$(echo "$NEW_EP_RESP" | jq -r '.endpoint.id')
+                  echo "✅ Created new endpoint: $ENDPOINT_ID"
+                  CONSECUTIVE_NOT_FOUND=0
+                else
+                  echo "⚠️  Could not create endpoint: $(echo "$NEW_EP_RESP" | jq -r '.message // .code // empty')"
+                  # Creation failed (limit exceeded) — try to reassign a stale endpoint that is NOT the dead one
+                  REFRESHED=$(curl -s -H "Authorization: Bearer $NEON_API_KEY" \
+                    "https://console.neon.tech/api/v2/projects/$NEON_PROJECT_ID/endpoints" || echo '{}')
+                  STALE_ID=$(echo "$REFRESHED" | jq -r \
+                    --arg bid "$BRANCH_ID" \
+                    --arg pbid "$PARENT_BRANCH_ID" \
+                    --arg dead "$ENDPOINT_ID" \
+                    '.endpoints[]? | select(.branch_id != $bid and .branch_id != $pbid and .type == "read_write" and .id != $dead) | .id' \
+                    | head -1)
+                  if [ -n "$STALE_ID" ] && [ "$STALE_ID" != "null" ]; then
+                    echo "♻️  Reassigning stale endpoint $STALE_ID to branch $BRANCH_ID..."
+                    PATCH_RESP=$(neon_curl \
+                      "https://console.neon.tech/api/v2/projects/$NEON_PROJECT_ID/endpoints/$STALE_ID" "endpoint" \
+                      -X PATCH -H "Content-Type: application/json" \
+                      -d "{\"endpoint\":{\"branch_id\":\"$BRANCH_ID\"}}" || true)
+                    NEW_ID=$(echo "$PATCH_RESP" | jq -r '.endpoint.id // empty')
+                    if [ -n "$NEW_ID" ] && [ "$NEW_ID" != "null" ]; then
+                      ENDPOINT_ID="$NEW_ID"
+                      CONSECUTIVE_NOT_FOUND=0
+                    fi
+                  fi
+                fi
+              else
+                # First failure: re-fetch list in case a different endpoint was already assigned
+                REFRESHED=$(curl -s -H "Authorization: Bearer $NEON_API_KEY" \
+                  "https://console.neon.tech/api/v2/projects/$NEON_PROJECT_ID/endpoints" || echo '{}')
+                NEW_ID=$(echo "$REFRESHED" | jq -r ".endpoints[]? | select(.branch_id==\"$BRANCH_ID\") | .id" | head -1)
+                if [ -n "$NEW_ID" ] && [ "$NEW_ID" != "null" ] && [ "$NEW_ID" != "$ENDPOINT_ID" ]; then
+                  echo "♻️  Switching to endpoint $NEW_ID for branch $BRANCH_ID"
+                  ENDPOINT_ID="$NEW_ID"
+                  CONSECUTIVE_NOT_FOUND=0
+                fi
+              fi
+            else
+              CONSECUTIVE_NOT_FOUND=0
             fi
             echo "Waiting for endpoint... ($i)"
             sleep 3
