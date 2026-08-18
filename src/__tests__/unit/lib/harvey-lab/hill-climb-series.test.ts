@@ -1235,3 +1235,100 @@ describe("buildHillClimbSeries", () => {
     expect(new Set(fixRefIds).size).toBe(2);
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Cross-branch DERIVED_FROM re-entry
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * `walkDerivedFromChain` builds its children map from EVERY DERIVED_FROM edge
+ * with no trigger scoping (`parent = e.target; child = e.source`). So once the
+ * walk fetches a non-baseline branch, a fix hanging off that branch which
+ * derives from a node in the baseline chain re-enters the baseline chain and
+ * charts. That fix genuinely does derive from the baseline chain, so including
+ * it is correct — but it IS a change in rendered output, pinned here rather
+ * than asserted away.
+ */
+describe("buildHillClimbSeries — non-baseline fix that DERIVED_FROM re-enters the baseline chain", () => {
+  const evalSetId = "evalset-reentry";
+  const baselineTriggerId = "trigger-baseline-reentry";
+  const rerunTriggerId = "trigger-rerun-reentry";
+  const baselineOutputId = "output-baseline-reentry";
+  const fix1Id = "fix-1-reentry";
+  const fix1OutputId = "output-fix-1-reentry";
+  const branch2FixId = "fix-branch2-reentry";
+
+  const nodes: SubgraphNode[] = [
+    { ref_id: evalSetId, node_type: "EvalSet", date_added_to_graph: "1720000000", properties: {} },
+    {
+      ref_id: baselineTriggerId,
+      node_type: "EvalTrigger",
+      date_added_to_graph: "1720001000",
+      properties: { agent: "a", start_point: "s", end_point: "e" },
+    },
+    {
+      ref_id: rerunTriggerId,
+      node_type: "EvalTrigger",
+      date_added_to_graph: "1720005000",
+      properties: { agent: "a", start_point: "s", end_point: "e" },
+    },
+    {
+      ref_id: baselineOutputId,
+      node_type: "EvalTriggerOutput",
+      date_added_to_graph: "1720001500",
+      properties: { n_passed: 50, n_total: 100, result: "pass", score: 0.5, attempt_number: 1 },
+    },
+    {
+      ref_id: fix1Id,
+      node_type: "ProposedFix",
+      date_added_to_graph: "1720002000",
+      properties: { eval_status: "accepted" },
+    },
+    {
+      ref_id: fix1OutputId,
+      node_type: "EvalTriggerOutput",
+      date_added_to_graph: "1720002500",
+      properties: { n_passed: 60, n_total: 100, result: "pass", score: 0.6, attempt_number: 2 },
+    },
+    {
+      ref_id: branch2FixId,
+      node_type: "ProposedFix",
+      date_added_to_graph: "1720006000",
+      properties: { eval_status: "accepted", after_score: "65" },
+    },
+  ];
+
+  const baselineOnlyEdges: SubgraphEdge[] = [
+    { source: evalSetId, target: baselineTriggerId, edge_type: "HAS_BASELINE_TRIGGER" },
+    { source: baselineTriggerId, target: baselineOutputId, edge_type: "HAS_OUTPUT" },
+    { source: baselineTriggerId, target: fix1Id, edge_type: "HAS_PROPOSED_FIX" },
+    { source: fix1Id, target: fix1OutputId, edge_type: "PRODUCED_BY" },
+  ];
+
+  // What the widened walk additionally brings back
+  const widenedEdges: SubgraphEdge[] = [
+    ...baselineOnlyEdges,
+    { source: evalSetId, target: rerunTriggerId, edge_type: "HAS_TRIGGER" },
+    { source: rerunTriggerId, target: branch2FixId, edge_type: "HAS_PROPOSED_FIX" },
+    { source: branch2FixId, target: fix1Id, edge_type: "DERIVED_FROM" },
+  ];
+
+  it("baseline-only subgraph charts base + fix-1 only", () => {
+    const series = buildHillClimbSeries({
+      nodes: nodes.filter((n) => n.ref_id !== rerunTriggerId && n.ref_id !== branch2FixId),
+      edges: baselineOnlyEdges,
+    });
+
+    expect(series.map((p) => p.label)).toEqual(["base", "r1"]);
+    expect(series.map((p) => p.actualPassed)).toEqual([50, 60]);
+  });
+
+  it("widened subgraph also charts the re-entering branch-2 fix", () => {
+    const series = buildHillClimbSeries({ nodes, edges: widenedEdges });
+
+    expect(series.map((p) => p.label)).toEqual(["base", "r1", "r2"]);
+    // branch-2's score is derived from after_score against the baseline n_total
+    expect(series.map((p) => p.actualPassed)).toEqual([50, 60, 65]);
+    expect(series.map((p) => p.bestPassed)).toEqual([50, 60, 65]);
+  });
+});

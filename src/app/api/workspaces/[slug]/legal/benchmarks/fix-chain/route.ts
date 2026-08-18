@@ -7,6 +7,19 @@ import { isEvalSetLabel } from "@/services/legal-benchmark-recursion";
 import { checkRateLimit, getClientIp } from "@/lib/rate-limit";
 import { walkFixChain } from "@/lib/harvey-lab/fix-chain-walker";
 import { logger } from "@/lib/logger";
+import {
+  ATTEMPT_CAP_EVALSET_ID,
+  CONCEPT_ONLY_EVALSET_ID,
+  PLATEAU_CAP_EVALSET_ID,
+  buildAttemptCapEdges,
+  buildAttemptCapNodes,
+  buildConceptOnlyEdges,
+  buildConceptOnlyNodes,
+  buildPlateauCapEdges,
+  buildPlateauCapNodes,
+  buildRecursionEdges,
+  buildRecursionNodes,
+} from "@/app/api/mock/jarvis/graph/recursion-fixture";
 
 export const runtime = "nodejs";
 export const fetchCache = "force-no-store";
@@ -24,6 +37,29 @@ function handleSwarmAccessError(error: { type: string }) {
   };
   const errorInfo = errorMap[error.type] ?? { message: "Unknown error", status: 500 };
   return NextResponse.json({ error: errorInfo.message }, { status: errorInfo.status });
+}
+
+// ── USE_MOCKS fixture scenarios ───────────────────────────────────────────────
+
+/**
+ * Maps a mock EvalSet ref_id to the fixture builders that model it. Anything
+ * not listed here falls through to `default`, preserving the original
+ * unconditional behaviour.
+ */
+const MOCK_SCENARIO_BUILDERS = {
+  default: { nodes: buildRecursionNodes, edges: buildRecursionEdges },
+  conceptOnly: { nodes: buildConceptOnlyNodes, edges: buildConceptOnlyEdges },
+  attemptCap: { nodes: buildAttemptCapNodes, edges: buildAttemptCapEdges },
+  plateauCap: { nodes: buildPlateauCapNodes, edges: buildPlateauCapEdges },
+} as const;
+
+type MockScenario = keyof typeof MOCK_SCENARIO_BUILDERS;
+
+function resolveMockScenario(evalSetRefId: string): MockScenario {
+  if (evalSetRefId === CONCEPT_ONLY_EVALSET_ID) return "conceptOnly";
+  if (evalSetRefId === ATTEMPT_CAP_EVALSET_ID) return "attemptCap";
+  if (evalSetRefId === PLATEAU_CAP_EVALSET_ID) return "plateauCap";
+  return "default";
 }
 
 /**
@@ -99,21 +135,23 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       );
     }
 
-    // Step 7: USE_MOCKS guard — return fixture response in dev/test mode
+    // Step 7: USE_MOCKS guard — return fixture response in dev/test mode.
+    // Scenario-switched on evalSetRefId so fixtures beyond the default one are
+    // reachable through the route; every unrecognised id keeps the default
+    // fixture, so existing callers and tests are unaffected.
     if (process.env.USE_MOCKS === "true") {
+      const scenario = resolveMockScenario(evalSetRefId);
       logger.info(
         "[legal/benchmarks/fix-chain] USE_MOCKS=true, returning mock fixture",
         "legal",
-        { evalSetRefId },
+        { evalSetRefId, scenario },
       );
-      const { buildRecursionNodes, buildRecursionEdges } = await import(
-        "@/app/api/mock/jarvis/graph/recursion-fixture"
-      );
+      const build = MOCK_SCENARIO_BUILDERS[scenario];
       return NextResponse.json({
         success: true,
         data: {
-          nodes: buildRecursionNodes(),
-          edges: buildRecursionEdges(),
+          nodes: build.nodes(),
+          edges: build.edges(),
           partial: false,
         },
       });
@@ -126,8 +164,13 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       { evalSetRefId, slug },
     );
 
+    // Both trigger edge types, plus the requirement-hosted host: concept-driven
+    // recursion writes a fresh EvalTrigger (HAS_TRIGGER) instead of a
+    // ProposedFix, and hive's own run route hangs its trigger off the
+    // EvalRequirement — neither is reachable from a baseline-only first hop.
     const result = await walkFixChain(jarvisUrl, swarmApiKey, evalSetRefId, {
-      triggerEdgeTypes: ["HAS_BASELINE_TRIGGER"],
+      triggerEdgeTypes: ["HAS_BASELINE_TRIGGER", "HAS_TRIGGER"],
+      includeRequirementTriggers: true,
     });
 
     if (result.partial) {
