@@ -32,6 +32,7 @@
     "seed:db": "tsx scripts/helpers/seed-database.ts",
     "seed:auto-seed": "tsx scripts/seed-from-github-account.ts",
     "seed:prompts": "tsx scripts/seed-stakwork-prompts.ts",
+    "seed:prompts:dev": "tsx scripts/seed-dev-prompts.ts",
     "seed:action-nodes": "tsx scripts/helpers/seed-graph-action-nodes.ts",
     "seed:workflow-versions": "tsx scripts/helpers/seed-workflow-versions.ts",
     "test:decrypt": "tsx scripts/helpers/decrypt-and-log.ts",
