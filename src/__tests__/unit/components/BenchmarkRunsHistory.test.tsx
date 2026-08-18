@@ -69,6 +69,18 @@ vi.mock("@/hooks/useLegalBenchmarkRunList", () => ({
   useLegalBenchmarkRunList: (workspaceId: string | undefined) => mockUseList(workspaceId),
 }));
 
+// Recursion enrollment list — default: nothing enrolled, no badges.
+const mockUseRecursionList = vi.fn(() => ({
+  entries: [] as Array<{ refId: string; id: string; name: string }>,
+  isLoading: false,
+  error: null,
+  refetch: vi.fn(),
+}));
+
+vi.mock("@/hooks/useLegalBenchmarkRecursionList", () => ({
+  useLegalBenchmarkRecursionList: () => mockUseRecursionList(),
+}));
+
 vi.mock("@/hooks/useWorkspace", () => ({
   useWorkspace: vi.fn(() => ({
     workspace: { id: WORKSPACE_ID, slug: WORKSPACE_SLUG },
@@ -1019,5 +1031,82 @@ describe("BenchmarkRunsHistory", () => {
     await user.click(screen.getByTestId(`task-filter-option-${TASK_A.taskSlug}`));
     expect(screen.queryByTestId("results-b1")).toBeNull();
     expect(mockSetExpandedId).toHaveBeenLastCalledWith(null);
+  });
+});
+
+// ─── Recursion badge ─────────────────────────────────────────────────────────
+
+describe("BenchmarkRunsHistory — recursion badge", () => {
+  beforeEach(() => {
+    mockUseRecursionList.mockReturnValue({
+      entries: [],
+      isLoading: false,
+      error: null,
+      refetch: vi.fn(),
+    });
+  });
+
+  it("shows no badge when nothing is enrolled", () => {
+    render(<BenchmarkRunsHistory />);
+    expect(screen.queryByTestId("recursion-badge")).toBeNull();
+  });
+
+  it("badges only the runs whose task is recursion-enrolled", () => {
+    mockUseList.mockReturnValue({
+      runs: [
+        makeRun({ id: "r-enrolled", taskSlug: "antitrust/task-1" }),
+        makeRun({ id: "r-other", taskSlug: "privacy/task-2", taskTitle: "Privacy Task" }),
+      ],
+      total: 2,
+      isLoading: false,
+      error: null,
+      refetch: mockRefetch,
+      setExpandedId: mockSetExpandedId,
+    });
+    mockUseRecursionList.mockReturnValue({
+      entries: [{ refId: "ref-1", id: "antitrust/task-1", name: "Antitrust" }],
+      isLoading: false,
+      error: null,
+      refetch: vi.fn(),
+    });
+
+    render(<BenchmarkRunsHistory />);
+
+    const enrolledRow = screen.getByTestId("run-row-r-enrolled");
+    const otherRow = screen.getByTestId("run-row-r-other");
+    expect(enrolledRow.querySelector('[data-testid="recursion-badge"]')).not.toBeNull();
+    expect(otherRow.querySelector('[data-testid="recursion-badge"]')).toBeNull();
+  });
+
+  it("links the badge to the Recursion tab via ?tab=recursion", () => {
+    mockUseRecursionList.mockReturnValue({
+      entries: [{ refId: "ref-1", id: "antitrust/task-1", name: "Antitrust" }],
+      isLoading: false,
+      error: null,
+      refetch: vi.fn(),
+    });
+
+    render(<BenchmarkRunsHistory />);
+
+    const badge = screen.getByTestId("recursion-badge");
+    expect(badge.getAttribute("href")).toBe(
+      `/w/${WORKSPACE_SLUG}/legal/benchmarks?tab=recursion`,
+    );
+  });
+
+  it("clicking the badge does not toggle the row expansion", () => {
+    mockUseRecursionList.mockReturnValue({
+      entries: [{ refId: "ref-1", id: "antitrust/task-1", name: "Antitrust" }],
+      isLoading: false,
+      error: null,
+      refetch: vi.fn(),
+    });
+
+    render(<BenchmarkRunsHistory />);
+
+    fireEvent.click(screen.getByTestId("recursion-badge"));
+    // Row expansion renders the LegalBenchmarkResults mock — must be absent.
+    expect(screen.queryByTestId("results-runner-1")).toBeNull();
+    expect(mockSetExpandedId).not.toHaveBeenCalledWith("runner-1");
   });
 });
