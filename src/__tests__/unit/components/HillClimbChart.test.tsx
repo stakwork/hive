@@ -173,11 +173,16 @@ describe("HillClimbChart", () => {
     expect(stroke).not.toMatch(/hsl\(var\(/i);
   });
 
-  it("accepted dot uses currentColor fill and stroke", () => {
+  it("accepted dot: series fill via currentColor, surface ring via token class", () => {
+    // The series group carries text-chart-1; the dot inherits it through
+    // currentColor. The ring is the card surface (stroke-card class), never a
+    // stroke drawn in the series color — separation comes from surface ink.
     render(<HillClimbChart attempts={MULTI_POINT_ATTEMPTS} />);
     const dot = screen.getByTestId("dot-1");
     expect(dot.getAttribute("fill")).toBe("currentColor");
-    expect(dot.getAttribute("stroke")).toBe("currentColor");
+    expect(dot.getAttribute("stroke")).toBeNull();
+    expect(dot.getAttribute("class")).toContain("stroke-card");
+    expect(dot.closest("g.text-chart-1")).not.toBeNull();
   });
 
   // ─── Rejected dot styling ───────────────────────────────────────────────────
@@ -342,11 +347,12 @@ describe("HillClimbChart", () => {
 // ─── Flat eval-output series (concept-driven recursion) ──────────────────────
 
 describe("HillClimbChart — flat eval-output series", () => {
-  /** What buildEvalOutputSeries emits: bestPassed === actualPassed on every point. */
+  /** What buildEvalOutputSeries emits: real scores in actualPassed, a monotonic
+   *  running best in bestPassed (the r2 regression keeps 52 but the line holds 58). */
   const CONCEPT_SERIES: EvalTriggerOutput[] = [
     makeOutput({ ref_id: "o-base", n_passed: 50, n_total: 80, isBaseline: true, accepted: true, actualPassed: 50, bestPassed: 50, label: "base" }),
     makeOutput({ ref_id: "o-r1", n_passed: 58, n_total: 80, isBaseline: false, accepted: true, actualPassed: 58, bestPassed: 58, label: "r1" }),
-    makeOutput({ ref_id: "o-r2", n_passed: 52, n_total: 80, isBaseline: false, accepted: true, actualPassed: 52, bestPassed: 52, label: "r2" }),
+    makeOutput({ ref_id: "o-r2", n_passed: 52, n_total: 80, isBaseline: false, accepted: true, actualPassed: 52, bestPassed: 58, label: "r2" }),
     makeOutput({ ref_id: "o-r3", n_passed: 61, n_total: 80, isBaseline: false, accepted: true, actualPassed: 61, bestPassed: 61, label: "r3" }),
     makeOutput({ ref_id: "o-r4", n_passed: 64, n_total: 80, isBaseline: false, accepted: true, actualPassed: 64, bestPassed: 64, label: "r4" }),
   ];
@@ -367,19 +373,21 @@ describe("HillClimbChart — flat eval-output series", () => {
     }
   });
 
-  it("draws the real, non-monotonic line — the dip at r2 is visible", () => {
+  it("the regressed dot dips below the line, which itself never falls", () => {
     render(<HillClimbChart attempts={CONCEPT_SERIES} />);
 
     // Higher n_passed → smaller cy (SVG y grows downward). r2 (52) scored below
-    // r1 (58), so its dot must sit LOWER on the chart — a best-so-far line would
-    // have flattened instead.
+    // r1 (58): its DOT sits lower on the chart while the line — driven by the
+    // monotonic bestPassed — holds flat at 58 above it.
     const cy = (i: number) => Number(screen.getByTestId(`dot-${i}`).getAttribute("cy"));
     expect(cy(1)).toBeLessThan(cy(0));
     expect(cy(2)).toBeGreaterThan(cy(1));
     expect(cy(3)).toBeLessThan(cy(2));
 
-    // The connecting line is driven by bestPassed, which equals actualPassed here,
-    // so the path must reach the same y as the dipping dot.
+    // The regressed run is "ignored" by the line: hollow, like a rejected fix.
+    expect(screen.getByTestId("dot-2").getAttribute("fill")).toBe("none");
+    expect(screen.getByTestId("dot-2").getAttribute("data-state")).toBe("below");
+
     const path = screen.getByTestId("climb-polyline").getAttribute("d") ?? "";
     expect(path.length).toBeGreaterThan(0);
   });
@@ -416,5 +424,95 @@ describe("HillClimbChart — dots are clipped to the plot", () => {
     expect(group.contains(dot)).toBe(true);
     // Above the plot area — exactly the case the clip exists for
     expect(Number(dot.getAttribute("cy"))).toBeLessThan(0);
+  });
+});
+
+// ─── Running-best dot states ─────────────────────────────────────────────────
+
+describe("HillClimbChart — running-best dot states", () => {
+  /** base 50 → r1 58 (new best) → r2 52 (below) → r3 74 (target) of 74 */
+  const STATE_SERIES: EvalTriggerOutput[] = [
+    makeOutput({ ref_id: "s0", n_passed: 50, n_total: 74, isBaseline: true, accepted: true, actualPassed: 50, bestPassed: 50, label: "base" }),
+    makeOutput({ ref_id: "s1", n_passed: 58, n_total: 74, isBaseline: false, accepted: true, actualPassed: 58, bestPassed: 58, label: "r1" }),
+    makeOutput({ ref_id: "s2", n_passed: 52, n_total: 74, isBaseline: false, accepted: true, actualPassed: 52, bestPassed: 52, label: "r2" }),
+    makeOutput({ ref_id: "s3", n_passed: 74, n_total: 74, isBaseline: false, accepted: true, actualPassed: 74, bestPassed: 74, label: "r3" }),
+  ];
+
+  it("marks dots that set or hold the best with the series color", () => {
+    render(<HillClimbChart attempts={STATE_SERIES} />);
+    expect(screen.getByTestId("dot-0").getAttribute("data-state")).toBe("best");
+    expect(screen.getByTestId("dot-1").getAttribute("data-state")).toBe("best");
+    expect(screen.getByTestId("dot-1").getAttribute("fill")).toBe("currentColor");
+  });
+
+  it("renders a below-best dot hollow — like a rejected fix — and says so", () => {
+    render(<HillClimbChart attempts={STATE_SERIES} />);
+    const below = screen.getByTestId("dot-2");
+    expect(below.getAttribute("data-state")).toBe("below");
+    expect(below.getAttribute("fill")).toBe("none");
+    expect(below.getAttribute("stroke")).toBe("currentColor");
+    expect(below.getAttribute("aria-label")).toMatch(/below best/i);
+
+    fireEvent.mouseEnter(below);
+    expect(screen.getByTestId("chart-tooltip").textContent).toMatch(/below best · 58/);
+  });
+
+  it("turns the ENTIRE series green on a target hit — line, dots, halo", () => {
+    render(<HillClimbChart attempts={STATE_SERIES} />);
+    const target = screen.getByTestId("dot-3");
+    expect(target.getAttribute("data-state")).toBe("target");
+    // The whole series group swaps to status green; every currentColor mark
+    // (line, filled dots, hollow strokes) inherits it.
+    expect(target.closest("g.text-green-600")).not.toBeNull();
+    expect(screen.getByTestId("climb-polyline").closest("g.text-green-600")).not.toBeNull();
+    expect(target.closest("g.text-chart-1")).toBeNull();
+    expect(Number(target.getAttribute("r"))).toBeGreaterThan(
+      Number(screen.getByTestId("dot-1").getAttribute("r")),
+    );
+    expect(screen.getByTestId("halo-3")).toBeTruthy();
+    expect(target.getAttribute("aria-label")).toMatch(/target reached/i);
+
+    fireEvent.mouseEnter(target);
+    expect(screen.getByTestId("chart-tooltip").textContent).toMatch(/target reached/i);
+  });
+
+  it("keeps the series hue when the target has not been reached", () => {
+    render(<HillClimbChart attempts={MULTI_POINT_ATTEMPTS} />);
+    expect(screen.getByTestId("dot-1").closest("g.text-chart-1")).not.toBeNull();
+    expect(screen.getByTestId("dot-1").closest("g.text-green-600")).toBeNull();
+  });
+
+  it("returns to the series color once the score beats the old best again", () => {
+    const recovery: EvalTriggerOutput[] = [
+      makeOutput({ ref_id: "a", n_passed: 50, n_total: 74, isBaseline: true, accepted: true, actualPassed: 50, bestPassed: 50, label: "base" }),
+      makeOutput({ ref_id: "b", n_passed: 58, n_total: 74, isBaseline: false, accepted: true, actualPassed: 58, bestPassed: 58, label: "r1" }),
+      makeOutput({ ref_id: "c", n_passed: 52, n_total: 74, isBaseline: false, accepted: true, actualPassed: 52, bestPassed: 52, label: "r2" }),
+      makeOutput({ ref_id: "d", n_passed: 60, n_total: 74, isBaseline: false, accepted: true, actualPassed: 60, bestPassed: 60, label: "r3" }),
+    ];
+    render(<HillClimbChart attempts={recovery} />);
+    expect(screen.getByTestId("dot-3").getAttribute("data-state")).toBe("best");
+    expect(screen.getByTestId("dot-3").getAttribute("fill")).toBe("currentColor");
+  });
+
+  it("a tie with the running best stays in the series color", () => {
+    const tie: EvalTriggerOutput[] = [
+      makeOutput({ ref_id: "a", n_passed: 50, n_total: 74, isBaseline: true, accepted: true, actualPassed: 50, bestPassed: 50, label: "base" }),
+      makeOutput({ ref_id: "b", n_passed: 58, n_total: 74, isBaseline: false, accepted: true, actualPassed: 58, bestPassed: 58, label: "r1" }),
+      makeOutput({ ref_id: "c", n_passed: 58, n_total: 74, isBaseline: false, accepted: true, actualPassed: 58, bestPassed: 58, label: "r2" }),
+    ];
+    render(<HillClimbChart attempts={tie} />);
+    expect(screen.getByTestId("dot-2").getAttribute("data-state")).toBe("best");
+  });
+
+  it("suppresses the target-edge value when the end label lands on it", () => {
+    render(<HillClimbChart attempts={STATE_SERIES} />);
+    // Series ends at 74/74 — the bold end label owns the right corner.
+    expect(screen.queryByTestId("target-edge-value")).toBeNull();
+    expect(screen.getByTestId("end-label").textContent).toBe("74");
+  });
+
+  it("keeps the target-edge value when the series ends well below the target", () => {
+    render(<HillClimbChart attempts={MULTI_POINT_ATTEMPTS} />);
+    expect(screen.getByTestId("target-edge-value")).toBeTruthy();
   });
 });

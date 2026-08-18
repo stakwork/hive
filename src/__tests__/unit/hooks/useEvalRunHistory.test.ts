@@ -451,7 +451,8 @@ describe("useEvalRunHistory — series selection", () => {
     expect(result.current.attempts.map((a) => a.label)).toEqual(["base", "r1", "r2"]);
     // Real scores, in date order — including the regression at r2
     expect(result.current.attempts.map((a) => a.actualPassed)).toEqual([50, 58, 52]);
-    expect(result.current.attempts.map((a) => a.bestPassed)).toEqual([50, 58, 52]);
+    // The line ratchets: bestPassed never falls
+    expect(result.current.attempts.map((a) => a.bestPassed)).toEqual([50, 58, 58]);
   });
 
   it("charts concept re-runs when there is no ProposedFix at all", async () => {
