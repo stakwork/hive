@@ -5,6 +5,7 @@ import { getStakworkTokenReference } from "@/lib/vercel/stakwork-token";
 import { getBaseUrl } from "@/lib/utils";
 import { db } from "@/lib/db";
 import { optionalEnvVars } from "@/config/env";
+import type { StakworkEvalVarsBase } from "@/types/stakwork";
 
 type RouteParams = {
   params: Promise<{ slug: string; promptId: string; versionId: string }>;
@@ -122,13 +123,14 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
           attributes: {
             vars: {
               evalSetId,
+              workspace_id: workspaceId,
               swarmUrl,
               swarmSecretAlias: swarmSecretAlias ?? "",
               prompt_overrides: [{ name: promptName, prompt_id: promptId, prompt_version_id: versionId }],
               sourceHiveUrl: getBaseUrl(),
               tokenReference: getStakworkTokenReference(),
               webhookUrl: `${baseUrl}/api/webhook/stakwork/response?type=PROMPT_EVAL&workspace_id=${workspaceId}`,
-            },
+            } satisfies StakworkEvalVarsBase & Record<string, unknown>,
           },
         },
       },

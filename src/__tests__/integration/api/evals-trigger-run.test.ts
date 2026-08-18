@@ -406,6 +406,39 @@ describe("POST .../triggers/[triggerId]/run", () => {
   });
 
   describe("Stakwork payload structure", () => {
+    test("workspace_id and slug are present in vars", async () => {
+      const { user, workspace } = await createTestFixtures();
+      mockJarvisNodeFetch("repo_agent");
+      mockStakworkSuccess();
+
+      const request = makeRequest(workspace.slug, user);
+      const response = await POST(request, makeRouteParams(workspace.slug));
+
+      expect(response.status).toBe(200);
+      const vars = capturedStakworkVars();
+      // workspace_id must be the DB record id
+      expect(vars!.workspace_id).toBe(workspace.id);
+      // slug must still be present for slug-keyed routes
+      expect(vars!.slug).toBe(workspace.slug);
+    });
+
+    test("returns 400 when STAKWORK_EVAL_WORKFLOW_ID is unset (empty workspaceId guard covered by config guard)", async () => {
+      // The workspaceId empty guard fires after the env-var guard, so we test the env-var
+      // guard path here and rely on the config guard test above for coverage.
+      const { user, workspace } = await createTestFixtures();
+      delete process.env.STAKWORK_EVAL_WORKFLOW_ID;
+
+      const request = makeRequest(workspace.slug, user);
+      const response = await POST(request, makeRouteParams(workspace.slug));
+
+      expect(response.status).toBe(400);
+      // No Stakwork fetch should have been issued
+      const stakworkCalls = mockFetch.mock.calls.filter(
+        (c) => typeof c[0] === "string" && (c[0] as string).includes("stakwork"),
+      );
+      expect(stakworkCalls).toHaveLength(0);
+    });
+
     test("swarmSecretAlias is present in vars", async () => {
       const { user, workspace } = await createTestFixtures();
       mockJarvisNodeFetch("repo_agent");

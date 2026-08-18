@@ -164,6 +164,20 @@ export interface StopStakworkRunResponse {
 export type DataType = "string" | "number" | "boolean" | "json" | "array" | "null";
 
 // =============================================
+// EVAL DISPATCHER VARS CONTRACT
+// =============================================
+
+/**
+ * Minimal shared contract for Stakwork eval dispatcher vars objects.
+ * All eval/agent-log dispatchers must include `workspace_id` so that
+ * downstream agent steps can reach workspace-keyed Hive APIs
+ * (e.g. POST /api/webhook/agent-logs).
+ */
+export interface StakworkEvalVarsBase {
+  workspace_id: string;
+}
+
+// =============================================
 // CLARIFYING QUESTIONS TYPES
 // =============================================
 

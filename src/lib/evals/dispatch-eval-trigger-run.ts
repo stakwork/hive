@@ -11,6 +11,7 @@ import { getBifrostForLLM } from "@/services/bifrost/orchestrator";
 import type { BifrostAgentName } from "@/services/bifrost/orchestrator";
 import { isBifrostAgentName } from "@/lib/utils/hive-agent";
 import type { EvalTriggerSource } from "@/lib/utils/eval-source";
+import type { StakworkEvalVarsBase } from "@/types/stakwork";
 
 export interface DispatchEvalTriggerRunParams {
   /** Trigger node ref_id */
@@ -108,6 +109,10 @@ export async function dispatchEvalTriggerRun(
     throw new Error("STAKWORK_API_KEY is not configured");
   }
 
+  if (!workspaceId) {
+    throw new Error("workspaceId is required to dispatch an eval trigger run");
+  }
+
   const stakworkBaseUrl =
     process.env.STAKWORK_BASE_URL || "https://api.stakwork.com/api/v1";
 
@@ -146,6 +151,7 @@ export async function dispatchEvalTriggerRun(
     reqId,
     evalSetId,
     slug: workspaceSlug,
+    workspace_id: workspaceId,
     tokenReference: getStakworkTokenReference(),
     sourceHiveUrl: baseUrl,
     swarmUrl: swarmUrl ?? "",
@@ -159,7 +165,7 @@ export async function dispatchEvalTriggerRun(
           bifrostHeaders: bifrost.headers,
         }
       : {}),
-  };
+  } satisfies StakworkEvalVarsBase & Record<string, unknown>;
 
   const stakworkPayload = {
     name: `hive-eval-trigger-${triggerId}`,
