@@ -341,3 +341,176 @@ describe("useEvalRunHistory — new { refId, slug } signature + fix-chain route"
     );
   });
 });
+
+// ─── Series selection ────────────────────────────────────────────────────────
+
+describe("useEvalRunHistory — series selection", () => {
+  const EVAL_SET_REF = "ref-series-001";
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    mockBuildHillClimbSeries.mockReset();
+    mockLoggerWarn.mockReset();
+    mockLoggerInfo.mockReset();
+  });
+
+  /** EvalSet-hosted trigger + one scored output. */
+  function conceptRun(name: string, edgeType: string, n_passed: number, date: string) {
+    const trigger = `trigger-${name}`;
+    const output = `output-${name}`;
+    return {
+      nodes: [makeTriggerNode(trigger), makeOutputNode(output, n_passed, 74, date)],
+      edges: [
+        { source: EVAL_SET_REF, target: trigger, edge_type: edgeType },
+        { source: trigger, target: output, edge_type: "HAS_OUTPUT" },
+      ],
+    };
+  }
+
+  function conceptOnlyGraph() {
+    const parts = [
+      conceptRun("base", "HAS_BASELINE_TRIGGER", 50, "1720000000"),
+      conceptRun("r1", "HAS_TRIGGER", 58, "1720086400"),
+      conceptRun("r2", "HAS_TRIGGER", 52, "1720172800"),
+    ];
+    return {
+      nodes: parts.flatMap((p) => p.nodes),
+      edges: parts.flatMap((p) => p.edges),
+    };
+  }
+
+  it("keeps the hill-climb series when it has a scored non-baseline point", async () => {
+    mockBuildHillClimbSeries.mockReturnValue([
+      { ref_id: "base", attempt_number: 1, result: "pass", score: 0.6, n_passed: 50, n_total: 74, isBaseline: true, accepted: true, actualPassed: 50, bestPassed: 50, label: "base" },
+      { ref_id: "fix", attempt_number: 2, result: "pass", score: 0.8, n_passed: 60, n_total: 74, isBaseline: false, accepted: true, actualPassed: 60, bestPassed: 60, label: "r1" },
+    ]);
+
+    const graph = conceptOnlyGraph();
+    mockFetch({
+      "fix-chain": makeFixChainResponse(graph.nodes, graph.edges),
+      "type=LEGAL_BENCHMARK_RUNNER": { data: [] },
+    });
+
+    const { result } = renderHook(() =>
+      useEvalRunHistory({ refId: EVAL_SET_REF, slug: "antitrust/task-1" }),
+    );
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false), { timeout: 5000 });
+
+    expect(result.current.seriesKind).toBe("fix-chain");
+    expect(result.current.attempts.map((a) => a.actualPassed)).toEqual([50, 60]);
+  });
+
+  it("logs the mixed-set case when a fix chain and concept re-runs coexist", async () => {
+    mockBuildHillClimbSeries.mockReturnValue([
+      { ref_id: "base", attempt_number: 1, result: "pass", score: 0.6, n_passed: 50, n_total: 74, isBaseline: true, accepted: true, actualPassed: 50, bestPassed: 50, label: "base" },
+      { ref_id: "fix", attempt_number: 2, result: "pass", score: 0.8, n_passed: 60, n_total: 74, isBaseline: false, accepted: true, actualPassed: 60, bestPassed: 60, label: "r1" },
+    ]);
+
+    const graph = conceptOnlyGraph();
+    mockFetch({
+      "fix-chain": makeFixChainResponse(graph.nodes, graph.edges),
+      "type=LEGAL_BENCHMARK_RUNNER": { data: [] },
+    });
+
+    const { result } = renderHook(() =>
+      useEvalRunHistory({ refId: EVAL_SET_REF, slug: "antitrust/task-1" }),
+    );
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false), { timeout: 5000 });
+
+    expect(mockLoggerInfo).toHaveBeenCalledWith(
+      expect.stringContaining("Mixed set"),
+      "legal",
+      expect.objectContaining({ evalOutputPoints: 3 }),
+    );
+  });
+
+  it("falls through to the eval-output series when the only fixes were rejected and unscored", async () => {
+    // buildHillClimbSeries emits slot points (actualPassed: null, accepted: false)
+    // for rejected-and-unscored fixes. Counting bare non-baseline points would
+    // keep the hill-climb path here and hide the concept re-runs entirely.
+    mockBuildHillClimbSeries.mockReturnValue([
+      { ref_id: "base", attempt_number: 1, result: "pass", score: 0.6, n_passed: 50, n_total: 74, isBaseline: true, accepted: true, actualPassed: 50, bestPassed: 50, label: "base" },
+      { ref_id: "slot-fix-1", attempt_number: 0, result: "", score: 0, isBaseline: false, accepted: false, actualPassed: null, bestPassed: 50, label: "r1" },
+    ]);
+
+    const graph = conceptOnlyGraph();
+    mockFetch({
+      "fix-chain": makeFixChainResponse(graph.nodes, graph.edges),
+      "type=LEGAL_BENCHMARK_RUNNER": { data: [] },
+    });
+
+    const { result } = renderHook(() =>
+      useEvalRunHistory({ refId: EVAL_SET_REF, slug: "antitrust/task-1" }),
+    );
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false), { timeout: 5000 });
+
+    expect(result.current.seriesKind).toBe("eval-output");
+    expect(result.current.attempts.map((a) => a.label)).toEqual(["base", "r1", "r2"]);
+    // Real scores, in date order — including the regression at r2
+    expect(result.current.attempts.map((a) => a.actualPassed)).toEqual([50, 58, 52]);
+    expect(result.current.attempts.map((a) => a.bestPassed)).toEqual([50, 58, 52]);
+  });
+
+  it("charts concept re-runs when there is no ProposedFix at all", async () => {
+    mockBuildHillClimbSeries.mockReturnValue([]);
+
+    const graph = conceptOnlyGraph();
+    mockFetch({
+      "fix-chain": makeFixChainResponse(graph.nodes, graph.edges),
+      "type=LEGAL_BENCHMARK_RUNNER": { data: [] },
+    });
+
+    const { result } = renderHook(() =>
+      useEvalRunHistory({ refId: EVAL_SET_REF, slug: "antitrust/task-1" }),
+    );
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false), { timeout: 5000 });
+
+    expect(result.current.seriesKind).toBe("eval-output");
+    expect(result.current.attempts).toHaveLength(3);
+    expect(result.current.partial).toBe(false);
+  });
+
+  it("surfaces the walk's partial flag on the returned value", async () => {
+    mockBuildHillClimbSeries.mockReturnValue([]);
+
+    const graph = conceptOnlyGraph();
+    mockFetch({
+      "fix-chain": makeFixChainResponse(graph.nodes, graph.edges, true /* partial */),
+      "type=LEGAL_BENCHMARK_RUNNER": { data: [] },
+    });
+
+    const { result } = renderHook(() =>
+      useEvalRunHistory({ refId: EVAL_SET_REF, slug: "antitrust/task-1" }),
+    );
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false), { timeout: 5000 });
+    expect(result.current.partial).toBe(true);
+  });
+
+  it("lists every identity trigger the widened walk brings back as a history row", async () => {
+    // Concept re-runs now appear as history rows. That is a consequence of
+    // fetching non-baseline triggers, accepted deliberately and pinned here.
+    mockBuildHillClimbSeries.mockReturnValue([]);
+
+    const graph = conceptOnlyGraph();
+    mockFetch({
+      "fix-chain": makeFixChainResponse(graph.nodes, graph.edges),
+      "type=LEGAL_BENCHMARK_RUNNER": { data: [] },
+    });
+
+    const { result } = renderHook(() =>
+      useEvalRunHistory({ refId: EVAL_SET_REF, slug: "antitrust/task-1" }),
+    );
+
+    await waitFor(() => expect(result.current.history).toHaveLength(3), { timeout: 5000 });
+    expect(result.current.history.map((h) => h.triggerId).sort()).toEqual([
+      "trigger-base",
+      "trigger-r1",
+      "trigger-r2",
+    ]);
+  });
+});
