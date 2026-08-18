@@ -349,6 +349,9 @@ export async function handleApproval(
   if (proposal.kind === "graphBatchTripletCreate") {
     return approveGraphBatchTripletCreate({ orgId, userId, proposal });
   }
+  if (proposal.kind === "codeChange") {
+    return { ok: false, error: "Code-change approval is not yet implemented.", status: 501 };
+  }
   return approveFeature({
     orgId,
     userId,
