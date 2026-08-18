@@ -61,12 +61,15 @@ ${result.problemDetails || ""}`;
 
 Failed checks: ${result.failedChecks?.join(", ") || "unknown"}
 
+Before making any changes:
+1. Read the full failing test file and understand exactly what the test is asserting.
+2. Determine whether the failure is a broken test assertion (the test expectation is wrong) or a code regression (the implementation broke something the test correctly captures).
+3. Only modify the test if the assertion itself is genuinely incorrect — never change a test just to make CI green. If the code is broken, fix the code.
+
 Please:
 1. Review the CI failure logs below
 2. Fix the issues causing the failures
 3. Changes will be pushed to the PR automatically, you don't need to push manually.
-
-(if the error is from playwright, you might just need to increase playwright timeouts a bit... github CI can be slow sometimes)
 
 ${result.problemDetails || ""}`;
 
