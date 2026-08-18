@@ -250,12 +250,19 @@ describe("addEdgeV2", () => {
 // ── readNodeByRef ─────────────────────────────────────────────────────────
 
 describe("readNodeByRef", () => {
-  it("returns success with properties when node is found", async () => {
+  it("returns success with properties when node is found (wrapped shape)", async () => {
+    // Deployed Jarvis wraps the node in { nodes, edges, status }.
     mockFetch.mockResolvedValue(
       makeResponse({
-        ref_id: "node-ref-001",
-        node_type: "Concept",
-        properties: { name: "My Concept", description: "A thing" },
+        status: "success",
+        nodes: [
+          {
+            ref_id: "node-ref-001",
+            node_type: "Concept",
+            properties: { name: "My Concept", description: "A thing" },
+          },
+        ],
+        edges: [],
       }),
     );
 
@@ -265,6 +272,54 @@ describe("readNodeByRef", () => {
     expect(result.ref_id).toBe("node-ref-001");
     expect(result.node_type).toBe("Concept");
     expect(result.properties).toEqual({ name: "My Concept", description: "A thing" });
+  });
+
+  it("requests ?limit=1 to avoid materializing hub-node neighborhoods", async () => {
+    mockFetch.mockResolvedValue(
+      makeResponse({
+        status: "success",
+        nodes: [{ ref_id: "abc123", node_type: "Concept", properties: {} }],
+      }),
+    );
+
+    await readNodeByRef(config, "abc123");
+
+    const calledUrl = mockFetch.mock.calls[0][0] as string;
+    expect(calledUrl).toContain("limit=1");
+  });
+
+  it("picks the matching ref_id from a multi-node response", async () => {
+    mockFetch.mockResolvedValue(
+      makeResponse({
+        status: "success",
+        nodes: [
+          { ref_id: "other-ref", node_type: "Concept", properties: { name: "other" } },
+          { ref_id: "target-ref", node_type: "Function", properties: { name: "target" } },
+        ],
+      }),
+    );
+
+    const result = await readNodeByRef(config, "target-ref");
+
+    expect(result.success).toBe(true);
+    expect(result.ref_id).toBe("target-ref");
+    expect(result.node_type).toBe("Function");
+  });
+
+  it("falls back to a bare-node response body", async () => {
+    mockFetch.mockResolvedValue(
+      makeResponse({
+        ref_id: "bare-ref-001",
+        node_type: "Concept",
+        properties: { name: "bare" },
+      }),
+    );
+
+    const result = await readNodeByRef(config, "bare-ref-001");
+
+    expect(result.success).toBe(true);
+    expect(result.ref_id).toBe("bare-ref-001");
+    expect(result.node_type).toBe("Concept");
   });
 
   it("returns success=false when node is not found (404)", async () => {
@@ -292,9 +347,8 @@ describe("readNodeByRef", () => {
   it("URL-encodes the ref_id in the path segment", async () => {
     mockFetch.mockResolvedValue(
       makeResponse({
-        ref_id: "node:with:colons",
-        node_type: "Concept",
-        properties: {},
+        status: "success",
+        nodes: [{ ref_id: "node:with:colons", node_type: "Concept", properties: {} }],
       }),
     );
 
@@ -303,24 +357,6 @@ describe("readNodeByRef", () => {
 
     const calledUrl = mockFetch.mock.calls[0][0] as string;
     expect(calledUrl).toContain(encodeURIComponent(refId));
-  });
-
-  it("handles node nested under 'node' key (Jarvis v2 format)", async () => {
-    mockFetch.mockResolvedValue(
-      makeResponse({
-        node: {
-          ref_id: "nested-ref-001",
-          node_type: "Function",
-          properties: { name: "myFn" },
-        },
-      }),
-    );
-
-    const result = await readNodeByRef(config, "nested-ref-001");
-
-    expect(result.success).toBe(true);
-    expect(result.ref_id).toBe("nested-ref-001");
-    expect(result.node_type).toBe("Function");
   });
 
   it("returns failure on network error without throwing", async () => {
@@ -333,7 +369,10 @@ describe("readNodeByRef", () => {
 
   it("never sends X-Is-Admin header", async () => {
     mockFetch.mockResolvedValue(
-      makeResponse({ ref_id: "abc123", node_type: "Concept", properties: {} }),
+      makeResponse({
+        status: "success",
+        nodes: [{ ref_id: "abc123", node_type: "Concept", properties: {} }],
+      }),
     );
 
     await readNodeByRef(config, "abc123");

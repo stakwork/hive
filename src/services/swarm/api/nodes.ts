@@ -745,9 +745,11 @@ export async function readNodeByRef(
     };
   }
 
+  // limit=1 keeps Jarvis from materializing the node's whole neighborhood,
+  // which can OOM Neo4j on hub nodes — we only need the node itself here.
   const result = await jarvisRequest({
     config,
-    endpoint: `/v2/nodes/${encodeURIComponent(ref_id)}`,
+    endpoint: `/v2/nodes/${encodeURIComponent(ref_id)}?limit=1`,
     method: "GET",
   });
 
@@ -761,15 +763,22 @@ export async function readNodeByRef(
 
   const body = result.body as
     | {
-        node?: { ref_id?: string; node_type?: string; properties?: Record<string, unknown> };
+        nodes?: Array<{
+          ref_id?: string;
+          node_type?: string;
+          properties?: Record<string, unknown>;
+        }>;
         ref_id?: string;
         node_type?: string;
         properties?: Record<string, unknown>;
       }
     | undefined;
 
-  // Jarvis may return the node directly or nested under `node`
-  const node = body?.node ?? body;
+  // Deployed Jarvis wraps the node in `{ nodes, edges, status }`; some builds
+  // return the node directly. Handle both shapes (mirrors stakgraph's graph_get).
+  const node = Array.isArray(body?.nodes)
+    ? body!.nodes!.find((n) => n?.ref_id === ref_id) ?? body!.nodes![0]
+    : body;
   const resolvedRefId = node?.ref_id ?? ref_id;
 
   return {

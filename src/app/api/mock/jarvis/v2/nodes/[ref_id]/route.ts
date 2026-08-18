@@ -70,15 +70,22 @@ export async function GET(
     );
   }
 
-  // Default: return a mock node
+  // Default: return a mock node in the deployed Jarvis shape
+  // ({ nodes, edges, status } wrapper, mirroring stakgraph's graph_get).
   return NextResponse.json(
     {
-      ref_id,
-      node_type: "Concept",
-      properties: {
-        name: "Mock Node",
-        description: "A mock node for testing",
-      },
+      status: "success",
+      nodes: [
+        {
+          ref_id,
+          node_type: "Concept",
+          properties: {
+            name: "Mock Node",
+            description: "A mock node for testing",
+          },
+        },
+      ],
+      edges: [],
     },
     { status: 200 },
   );
