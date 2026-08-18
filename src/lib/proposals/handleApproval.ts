@@ -1459,6 +1459,23 @@ async function approvePromptUpdate(args: {
     return { ok: false, error: msg, status: 400 };
   }
 
+  // Extract versionId from the MCP result non-fatally — same pattern as approvePromptCreate.
+  // NEVER spread `parsed`: the payload also contains the full prompt `value`.
+  let promptVersionId = "";
+  try {
+    const parsed = JSON.parse(result.content[0]?.text ?? "{}");
+    promptVersionId = typeof parsed.versionId === "string" ? parsed.versionId : "";
+  } catch {
+    logger.warn(
+      "[handleApproval.approvePromptUpdate] versionId parse failed",
+      "handleApproval",
+      {
+        proposalId: proposal.proposalId,
+        promptId,
+      },
+    );
+  }
+
   return {
     ok: true,
     alreadyApproved: false,
@@ -1467,6 +1484,8 @@ async function approvePromptUpdate(args: {
       kind: "promptUpdate",
       createdEntityId: promptId,
       landedOn: "",
+      workspaceSlug: stakworkWorkspace.slug,
+      ...(promptVersionId ? { promptVersionId } : {}),
     },
   };
 }

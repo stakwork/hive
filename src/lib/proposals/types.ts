@@ -565,12 +565,18 @@ export interface ApprovalResult {
    */
   landedOnName?: string;
   /**
-   * Slug of the workspace the feature belongs to.
-   * Present only for `kind === "feature"` approvals.
+   * Slug of the workspace the entity belongs to.
+   * Present for `kind === "feature"` and `kind === "promptUpdate"` approvals.
    * Absent on older results that pre-date this field — client must
    * degrade gracefully (text-only, no link) when missing.
    */
   workspaceSlug?: string;
+  /**
+   * The id of the `PromptVersion` draft created when a `promptUpdate`
+   * proposal was approved. Absent on results persisted before this field
+   * was added — consumers must fall back to legacy resolution.
+   */
+  promptVersionId?: string;
 }
 
 // ─── Status derivation (pure helper) ───────────────────────────────────
