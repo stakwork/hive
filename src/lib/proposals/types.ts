@@ -261,6 +261,36 @@ export interface MilestoneProposalMeta {
   initiativeName: string;
 }
 
+// ─── Code-change proposal payload ──────────────────────────────────────────
+//
+// Cap: 200 KB diff / 50 files (enforced in src/lib/github/diffHygiene.ts
+// before any container is allocated). This is intentionally stricter than
+// the swarm's own 200-file cap so oversized work is refused early.
+//
+// Note: `baseBranch` and `branchHint` are NOT caller inputs. The swarm's
+// shipped `create_pr` tool schema is { title, body } only; base branch
+// and branch name are server-generated on the swarm side and are
+// display-only in `baseBranchDisplay`.
+
+/**
+ * Payload the agent fills in for a code-change (PR) proposal.
+ * Validated by the propose tool and re-validated at approval time.
+ */
+export interface CodeChangeProposalPayload {
+  workspaceId: string;
+  workspaceSlug: string;
+  repositoryUrl: string;
+  title: string;
+  body: string;
+  diff: string;
+  /** SHA-256 hex digest of `diff` — used to detect drift between propose
+   *  and approve. The approval handler re-hashes and rejects if mismatched. */
+  diffSha256: string;
+  filesChanged: number;
+  /** Display-only: the base branch the swarm resolved server-side. */
+  baseBranchDisplay?: string;
+}
+
 /** What the propose tools return from `execute(...)` on success. */
 export type ProposalOutput =
   | {
@@ -392,6 +422,18 @@ export type ProposalOutput =
       rationale?: string;
       /** Render-only workspace name for the card subtext. */
       meta?: { workspaceName?: string; workspaceSlug?: string };
+    }
+  | {
+      kind: "codeChange";
+      proposalId: string;
+      payload: CodeChangeProposalPayload;
+      rationale?: string;
+      /** Render-only metadata for the PR card (repo name, file count, etc.). */
+      meta?: {
+        repoName?: string;
+        workspaceName?: string;
+        workspaceSlug?: string;
+      };
     };
 
 // ─── Prompt proposal payloads ──────────────────────────────────────────
@@ -551,6 +593,7 @@ export const PROPOSE_NODE_EDIT_TOOL = "propose_node_edit" as const;
 export const PROPOSE_CREATE_TRIPLET_TOOL = "propose_create_triplet" as const;
 export const PROPOSE_CREATE_BATCH_TRIPLET_TOOL =
   "propose_create_batch_triplet" as const;
+export const PROPOSE_CODE_CHANGE_TOOL = "propose_code_change" as const;
 
 export type ProposeToolName =
   | typeof PROPOSE_INITIATIVE_TOOL
@@ -563,7 +606,8 @@ export type ProposeToolName =
   | typeof PROPOSE_CREATE_NODE_TOOL
   | typeof PROPOSE_NODE_EDIT_TOOL
   | typeof PROPOSE_CREATE_TRIPLET_TOOL
-  | typeof PROPOSE_CREATE_BATCH_TRIPLET_TOOL;
+  | typeof PROPOSE_CREATE_BATCH_TRIPLET_TOOL
+  | typeof PROPOSE_CODE_CHANGE_TOOL;
 
 /**
  * Sub-agent delegation tool name. Not a proposal (no approve/reject
@@ -597,7 +641,8 @@ export interface ApprovalIntent {
   payload?:
     | Partial<InitiativeProposalPayload>
     | Partial<FeatureProposalPayload>
-    | Partial<MilestoneProposalPayload>;
+    | Partial<MilestoneProposalPayload>
+    | Partial<CodeChangeProposalPayload>;
   currentRef?: string;
   viewport?: { x: number; y: number };
   /**
@@ -658,7 +703,8 @@ export interface ApprovalResult {
     | "graphNodeCreate"
     | "graphNodeEdit"
     | "graphTripletCreate"
-    | "graphBatchTripletCreate";
+    | "graphBatchTripletCreate"
+    | "codeChange";
   createdEntityId: string;
   /** Canvas ref the new node landed on. Empty string = root. */
   landedOn: string;
@@ -699,6 +745,26 @@ export interface ApprovalResult {
     refId?: string;
     error?: string;
   }>;
+  /**
+   * Fields populated when `kind === "codeChange"`. Mapped 1:1 from the
+   * swarm's `LandChangeResult` (see `src/services/swarm/landChangeContract.ts`).
+   * Present only on codeChange approvals; absent on all other kinds.
+   */
+  codeChange?: {
+    /** URL of the opened pull request (success path). */
+    prUrl?: string;
+    prNumber?: number;
+    branch?: string;
+    baseBranch?: string;
+    headSha?: string;
+    filesChanged?: number;
+    repositoryUrl?: string;
+    /** Failure code from `LandChangeFailureCode` (failure path). */
+    failureCode?: string;
+    failureMessage?: string;
+    /** Whether the swarm's file-set verification passed (used in auditing). */
+    pathSetVerified?: boolean;
+  };
 }
 
 // ─── Status derivation (pure helper) ───────────────────────────────────
