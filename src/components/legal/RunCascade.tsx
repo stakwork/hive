@@ -19,9 +19,11 @@ import {
   LANE_TEXT,
   LANE_STROKE,
   MIN_W,
+  CascadeWorkspaceProvider,
   type ViewRow,
 } from "@/components/legal/CascadeRow";
 import { useRunCascade } from "@/hooks/useRunCascade";
+import { useWorkspace } from "@/hooks/useWorkspace";
 import type {
   AgentCascade,
   CascadeSessionStatus,
@@ -275,7 +277,14 @@ function AgentSection({
 
 // ── The full trace (pure — takes an assembled model) ─────────────────────────
 
-export function CascadeTrace({ model }: { model: RunCascadeModel }) {
+export function CascadeTrace({
+  model,
+  workspaceSlug = null,
+}: {
+  model: RunCascadeModel;
+  /** Enables the concept chips' live node peek; null leaves them inert. */
+  workspaceSlug?: string | null;
+}) {
   const [expandedPills, setExpandedPills] = useState<ReadonlySet<string>>(new Set());
   const [openPrompts, setOpenPrompts] = useState<ReadonlySet<string>>(new Set());
 
@@ -305,47 +314,49 @@ export function CascadeTrace({ model }: { model: RunCascadeModel }) {
     });
 
   return (
-    <div data-testid="run-cascade-trace">
-      <CascadeHeader
-        summary={model.summary}
-        allExpanded={allExpanded}
-        onToggleExpandAll={() =>
-          setExpandedPills(allExpanded ? new Set() : new Set(allPillKeys))
-        }
-      />
-      <div className="overflow-x-auto px-4 pb-4">
-        <div className="space-y-1" style={{ minWidth: MIN_W }}>
-          {groupByBatch(model.agents).map((batch, bi) => {
-            const sections = batch.map((agent) => (
-              <AgentSection
-                key={agent.session.id}
-                agent={agent}
-                startMs={startMs}
-                expandedPills={expandedPills}
-                openPrompts={openPrompts}
-                onTogglePill={togglePill}
-                onToggleAgent={toggleAgent}
-              />
-            ));
-            // Agents launch in parallel batches, not sequentially — a batch's
-            // members are siblings (concurrent lanes), not a chain.
-            if (batch.length === 1) return sections;
-            return (
-              <div
-                key={`batch-${bi}`}
-                className="border-l-2 border-dashed border-border pl-2"
-                data-testid={`cascade-batch-${bi}`}
-              >
-                <div className="px-1 pt-2 font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground/70">
-                  ∥ parallel ×{batch.length}
+    <CascadeWorkspaceProvider slug={workspaceSlug}>
+      <div data-testid="run-cascade-trace">
+        <CascadeHeader
+          summary={model.summary}
+          allExpanded={allExpanded}
+          onToggleExpandAll={() =>
+            setExpandedPills(allExpanded ? new Set() : new Set(allPillKeys))
+          }
+        />
+        <div className="overflow-x-auto px-4 pb-4">
+          <div className="space-y-1" style={{ minWidth: MIN_W }}>
+            {groupByBatch(model.agents).map((batch, bi) => {
+              const sections = batch.map((agent) => (
+                <AgentSection
+                  key={agent.session.id}
+                  agent={agent}
+                  startMs={startMs}
+                  expandedPills={expandedPills}
+                  openPrompts={openPrompts}
+                  onTogglePill={togglePill}
+                  onToggleAgent={toggleAgent}
+                />
+              ));
+              // Agents launch in parallel batches, not sequentially — a batch's
+              // members are siblings (concurrent lanes), not a chain.
+              if (batch.length === 1) return sections;
+              return (
+                <div
+                  key={`batch-${bi}`}
+                  className="border-l-2 border-dashed border-border pl-2"
+                  data-testid={`cascade-batch-${bi}`}
+                >
+                  <div className="px-1 pt-2 font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground/70">
+                    ∥ parallel ×{batch.length}
+                  </div>
+                  {sections}
                 </div>
-                {sections}
-              </div>
-            );
-          })}
+              );
+            })}
+          </div>
         </div>
       </div>
-    </div>
+    </CascadeWorkspaceProvider>
   );
 }
 
@@ -366,6 +377,7 @@ interface BenchmarkRunCascadeProps {
  */
 export function BenchmarkRunCascade({ runId, runStatus }: BenchmarkRunCascadeProps) {
   const [open, setOpen] = useState(false);
+  const { workspace } = useWorkspace();
   const { sessions, model, error, isLive } = useRunCascade(runId, {
     enabled: open,
     runStatus,
@@ -406,7 +418,7 @@ export function BenchmarkRunCascade({ runId, runStatus }: BenchmarkRunCascadePro
           No agent sessions recorded for this run.
         </p>
       ) : (
-        <CascadeTrace model={model} />
+        <CascadeTrace model={model} workspaceSlug={workspace?.slug ?? null} />
       )}
     </PillSection>
   );
