@@ -59,6 +59,10 @@ import {
   PROPOSE_PROMPT_UPDATE_TOOL,
   PROPOSE_NEW_CONCEPT_TOOL,
   PROPOSE_CONCEPT_UPDATE_TOOL,
+  PROPOSE_CREATE_NODE_TOOL,
+  PROPOSE_NODE_EDIT_TOOL,
+  PROPOSE_CREATE_TRIPLET_TOOL,
+  PROPOSE_CREATE_BATCH_TRIPLET_TOOL,
   type ApprovalIntent,
   type ApprovalResult,
   type FeatureProposalPayload,
@@ -66,10 +70,21 @@ import {
   type MilestoneProposalPayload,
   type ProposalOutput,
   type RejectionIntent,
+  type GraphNodeCreateProposalPayload,
+  type GraphNodeEditProposalPayload,
+  type GraphTripletCreateProposalPayload,
+  type GraphBatchTripletCreateProposalPayload,
 } from "./types";
 import { mcpCreatePrompt, mcpUpdatePrompt } from "@/lib/mcp/mcpTools";
 import { getSwarmAccessByWorkspaceId } from "@/lib/helpers/swarm-access";
 import { logger } from "@/lib/logger";
+import { resolveGraphJarvis } from "@/lib/ai/graphWriteAuth";
+import {
+  addNode,
+  updateNodeV2,
+  addEdgeV2,
+  readNodeByRef,
+} from "@/services/swarm/api/nodes";
 
 // ─── Conversation-shape primitives ────────────────────────────────────
 // We accept a permissive `MessageLike` to avoid a runtime dependency
@@ -120,7 +135,11 @@ function findProposal(
         tc.toolName !== PROPOSE_NEW_PROMPT_TOOL &&
         tc.toolName !== PROPOSE_PROMPT_UPDATE_TOOL &&
         tc.toolName !== PROPOSE_NEW_CONCEPT_TOOL &&
-        tc.toolName !== PROPOSE_CONCEPT_UPDATE_TOOL
+        tc.toolName !== PROPOSE_CONCEPT_UPDATE_TOOL &&
+        tc.toolName !== PROPOSE_CREATE_NODE_TOOL &&
+        tc.toolName !== PROPOSE_NODE_EDIT_TOOL &&
+        tc.toolName !== PROPOSE_CREATE_TRIPLET_TOOL &&
+        tc.toolName !== PROPOSE_CREATE_BATCH_TRIPLET_TOOL
       )
         continue;
       const out = tc.output;
@@ -315,6 +334,18 @@ export async function handleApproval(
   }
   if (proposal.kind === "conceptUpdate") {
     return approveConceptUpdate({ orgId, proposal });
+  }
+  if (proposal.kind === "graphNodeCreate") {
+    return approveGraphNodeCreate({ orgId, userId, proposal });
+  }
+  if (proposal.kind === "graphNodeEdit") {
+    return approveGraphNodeEdit({ orgId, userId, proposal });
+  }
+  if (proposal.kind === "graphTripletCreate") {
+    return approveGraphTripletCreate({ orgId, userId, proposal });
+  }
+  if (proposal.kind === "graphBatchTripletCreate") {
+    return approveGraphBatchTripletCreate({ orgId, userId, proposal });
   }
   return approveFeature({
     orgId,
@@ -1666,6 +1697,410 @@ interface HandleRejectionArgs {
   messages: MessageLike[];
   intent: RejectionIntent;
 }
+
+// ── Approve: graph node create ──────────────────────────────────────
+
+/**
+ * Mirror-owned types that the propose_node_edit tool refuses at propose time
+ * and we doubly-guard here so a client-crafted approval cannot bypass it.
+ */
+const GRAPH_MIRROR_OWNED_TYPES = new Set([
+  "HiveFeature",
+  "HiveTask",
+  "HiveChatMessage",
+  "ErrorIssue",
+  "Initiative",
+  "Milestone",
+  "Research",
+]);
+
+async function approveGraphNodeCreate(args: {
+  orgId: string;
+  userId: string;
+  proposal: Extract<ProposalOutput, { kind: "graphNodeCreate" }>;
+}): Promise<HandleApprovalReturn> {
+  const { orgId, userId, proposal } = args;
+  // Ignore intent.payload — always use the server-persisted proposal payload.
+  const payload = proposal.payload as GraphNodeCreateProposalPayload;
+
+  if (!payload.workspaceId || !payload.node_type) {
+    return { ok: false, error: "Invalid graph node create proposal payload.", status: 400 };
+  }
+
+  // Re-run resolveGraphJarvis at approval time — validateUserBelongsToOrg
+  // only checks org-wide membership, not membership in the specific workspace.
+  const resolved = await resolveGraphJarvis(orgId, userId, {
+    workspaceId: payload.workspaceId,
+  });
+  if (!resolved.ok) {
+    return { ok: false, error: "Workspace not found or access denied.", status: 403 };
+  }
+  const { workspaceId, workspaceSlug, config } = resolved.access;
+
+  const result = await addNode(config, {
+    node_type: payload.node_type,
+    node_data: payload.node_data,
+  });
+
+  const outcome = result.alreadyExists ? "already-existed" : result.success ? "created" : "failed";
+  logger.info(
+    `[handleApproval.approveGraphNodeCreate] ${outcome}`,
+    "handleApproval",
+    {
+      workspaceId,
+      workspaceSlug,
+      kind: "graphNodeCreate",
+      node_type: payload.node_type,
+      ref_id: result.ref_id,
+      outcome,
+    },
+  );
+
+  if (!result.success) {
+    return {
+      ok: false,
+      error: result.error ?? "Failed to create node in knowledge graph.",
+      status: 502,
+    };
+  }
+
+  return {
+    ok: true,
+    alreadyApproved: false,
+    result: {
+      proposalId: proposal.proposalId,
+      kind: "graphNodeCreate",
+      createdEntityId: result.ref_id ?? "",
+      landedOn: `workspace:${workspaceId}`,
+      workspaceSlug,
+      alreadyExisted: result.alreadyExists,
+    },
+  };
+}
+
+// ── Approve: graph node edit ────────────────────────────────────────
+
+async function approveGraphNodeEdit(args: {
+  orgId: string;
+  userId: string;
+  proposal: Extract<ProposalOutput, { kind: "graphNodeEdit" }>;
+}): Promise<HandleApprovalReturn> {
+  const { orgId, userId, proposal } = args;
+  // Ignore intent.payload — always use the server-persisted proposal payload.
+  const payload = proposal.payload as GraphNodeEditProposalPayload;
+
+  if (!payload.workspaceId || !payload.ref_id) {
+    return { ok: false, error: "Invalid graph node edit proposal payload.", status: 400 };
+  }
+
+  // Authorization runs before reading meta or any external call — a caller
+  // must be a verified member of the specific workspace before we reveal
+  // anything about the proposal's refused/accepted state.
+  const resolved = await resolveGraphJarvis(orgId, userId, {
+    workspaceId: payload.workspaceId,
+  });
+  if (!resolved.ok) {
+    return { ok: false, error: "Workspace not found or access denied.", status: 403 };
+  }
+  const { workspaceId, workspaceSlug, config } = resolved.access;
+
+  // If the propose tool itself refused (refusedReason in meta), surface as error.
+  const meta = proposal.meta as { refusedReason?: string } | undefined;
+  if (meta?.refusedReason) {
+    return { ok: false, error: meta.refusedReason, status: 400 };
+  }
+
+  // Re-read the node at approval time to verify it still exists and is not mirror-owned.
+  const existing = await readNodeByRef(config, payload.ref_id);
+  if (!existing.success) {
+    return {
+      ok: false,
+      error: `Node "${payload.ref_id}" not found in this workspace's graph.`,
+      status: 404,
+    };
+  }
+  const nodeType = existing.node_type ?? "";
+  if (GRAPH_MIRROR_OWNED_TYPES.has(nodeType)) {
+    return {
+      ok: false,
+      error: `"${nodeType}" is a mirror-owned type and cannot be edited — changes would be reverted on the next mirror pass.`,
+      status: 400,
+    };
+  }
+
+  const result = await updateNodeV2(config, payload.ref_id, payload.node_data);
+
+  const outcome = result.success ? "created" : "failed";
+  logger.info(
+    `[handleApproval.approveGraphNodeEdit] ${outcome}`,
+    "handleApproval",
+    {
+      workspaceId,
+      workspaceSlug,
+      kind: "graphNodeEdit",
+      node_type: nodeType,
+      ref_id: payload.ref_id,
+      outcome,
+      ...(result.success ? {} : { message: result.message }),
+    },
+  );
+
+  if (!result.success) {
+    return {
+      ok: false,
+      error: result.message ?? "Failed to update node in knowledge graph.",
+      status: 502,
+    };
+  }
+
+  return {
+    ok: true,
+    alreadyApproved: false,
+    result: {
+      proposalId: proposal.proposalId,
+      kind: "graphNodeEdit",
+      createdEntityId: payload.ref_id,
+      landedOn: `workspace:${workspaceId}`,
+      workspaceSlug,
+    },
+  };
+}
+
+// ── Approve: graph triplet create ───────────────────────────────────
+
+/** Resolve an inline triplet endpoint to a JarvisEdgeEndpoint shape. */
+async function resolveInlineNode(
+  config: { jarvisUrl: string; apiKey: string },
+  endpoint: { node_type: string; node_data: Record<string, unknown> },
+): Promise<{ success: boolean; ref_id?: string; error?: string }> {
+  // Use addNode — create-or-merge semantics match what we want.
+  return addNode(config, {
+    node_type: endpoint.node_type,
+    node_data: endpoint.node_data,
+  });
+}
+
+async function approveGraphTripletCreate(args: {
+  orgId: string;
+  userId: string;
+  proposal: Extract<ProposalOutput, { kind: "graphTripletCreate" }>;
+}): Promise<HandleApprovalReturn> {
+  const { orgId, userId, proposal } = args;
+  const payload = proposal.payload as GraphTripletCreateProposalPayload;
+
+  if (!payload.workspaceId || !payload.edge_type) {
+    return { ok: false, error: "Invalid graph triplet create proposal payload.", status: 400 };
+  }
+
+  const resolved = await resolveGraphJarvis(orgId, userId, {
+    workspaceId: payload.workspaceId,
+  });
+  if (!resolved.ok) {
+    return { ok: false, error: "Workspace not found or access denied.", status: 403 };
+  }
+  const { workspaceId, workspaceSlug, config } = resolved.access;
+
+  // Resolve inline source/target nodes (if any).
+  let sourceEndpoint: { ref_id: string } | { node_type: string; node_data: Record<string, unknown> };
+  let targetEndpoint: { ref_id: string } | { node_type: string; node_data: Record<string, unknown> };
+
+  if ("ref_id" in payload.source) {
+    sourceEndpoint = { ref_id: payload.source.ref_id };
+  } else {
+    const r = await resolveInlineNode(config, payload.source);
+    if (!r.success || !r.ref_id) {
+      return { ok: false, error: `Failed to resolve source node: ${r.error ?? "unknown error"}`, status: 502 };
+    }
+    sourceEndpoint = { ref_id: r.ref_id };
+  }
+
+  if ("ref_id" in payload.target) {
+    targetEndpoint = { ref_id: payload.target.ref_id };
+  } else {
+    const r = await resolveInlineNode(config, payload.target);
+    if (!r.success || !r.ref_id) {
+      return { ok: false, error: `Failed to resolve target node: ${r.error ?? "unknown error"}`, status: 502 };
+    }
+    targetEndpoint = { ref_id: r.ref_id };
+  }
+
+  const edgeResult = await addEdgeV2(config, {
+    edge: {
+      edge_type: payload.edge_type,
+      ...(payload.edge_data ? { edge_data: payload.edge_data } : {}),
+      ...(payload.weight !== undefined ? { weight: payload.weight } : {}),
+    },
+    source: sourceEndpoint,
+    target: targetEndpoint,
+  });
+
+  const outcome = edgeResult.alreadyExists
+    ? "already-existed"
+    : edgeResult.success
+      ? "created"
+      : "failed";
+  logger.info(
+    `[handleApproval.approveGraphTripletCreate] ${outcome}`,
+    "handleApproval",
+    {
+      workspaceId,
+      workspaceSlug,
+      kind: "graphTripletCreate",
+      edge_type: payload.edge_type,
+      ref_id: edgeResult.ref_id,
+      outcome,
+    },
+  );
+
+  if (!edgeResult.success) {
+    return {
+      ok: false,
+      error: edgeResult.message ?? "Failed to create edge in knowledge graph.",
+      status: 502,
+    };
+  }
+
+  return {
+    ok: true,
+    alreadyApproved: false,
+    result: {
+      proposalId: proposal.proposalId,
+      kind: "graphTripletCreate",
+      createdEntityId: edgeResult.ref_id ?? "",
+      landedOn: `workspace:${workspaceId}`,
+      workspaceSlug,
+      alreadyExisted: edgeResult.alreadyExists,
+    },
+  };
+}
+
+// ── Approve: graph batch triplet create ──────────────────────────────
+
+const GRAPH_BATCH_TRIPLET_CAP = 25;
+
+async function approveGraphBatchTripletCreate(args: {
+  orgId: string;
+  userId: string;
+  proposal: Extract<ProposalOutput, { kind: "graphBatchTripletCreate" }>;
+}): Promise<HandleApprovalReturn> {
+  const { orgId, userId, proposal } = args;
+  const payload = proposal.payload as GraphBatchTripletCreateProposalPayload;
+
+  if (!payload.workspaceId || !Array.isArray(payload.triplets)) {
+    return { ok: false, error: "Invalid graph batch triplet proposal payload.", status: 400 };
+  }
+  if (payload.triplets.length > GRAPH_BATCH_TRIPLET_CAP) {
+    return {
+      ok: false,
+      error: `Batch exceeds the ${GRAPH_BATCH_TRIPLET_CAP}-triplet cap.`,
+      status: 400,
+    };
+  }
+
+  const resolved = await resolveGraphJarvis(orgId, userId, {
+    workspaceId: payload.workspaceId,
+  });
+  if (!resolved.ok) {
+    return { ok: false, error: "Workspace not found or access denied.", status: 403 };
+  }
+  const { workspaceId, workspaceSlug, config } = resolved.access;
+
+  // Dedup inline nodes by (node_type, node_key) within the batch so we
+  // don't create duplicates when multiple triplets reference the same node.
+  const inlineNodeCache = new Map<string, string>(); // cacheKey → ref_id
+
+  async function resolveEndpoint(
+    endpoint: GraphBatchTripletCreateProposalPayload["triplets"][number]["source"],
+  ): Promise<{ ref_id: string } | { error: string }> {
+    if ("ref_id" in endpoint) return { ref_id: endpoint.ref_id };
+
+    const cacheKey = `${endpoint.node_type}::${JSON.stringify(endpoint.node_data)}`;
+    const cached = inlineNodeCache.get(cacheKey);
+    if (cached) return { ref_id: cached };
+
+    const r = await resolveInlineNode(config, endpoint);
+    if (!r.success || !r.ref_id) {
+      return { error: r.error ?? "Failed to resolve inline node" };
+    }
+    inlineNodeCache.set(cacheKey, r.ref_id);
+    return { ref_id: r.ref_id };
+  }
+
+  // Process triplets sequentially, collecting per-item results.
+  const items: Array<{ index: number; ok: boolean; refId?: string; error?: string }> = [];
+  let anySuccess = false;
+
+  for (let i = 0; i < payload.triplets.length; i++) {
+    const t = payload.triplets[i];
+
+    const srcResult = await resolveEndpoint(t.source);
+    if ("error" in srcResult) {
+      items.push({ index: i, ok: false, error: `source: ${srcResult.error}` });
+      continue;
+    }
+
+    const tgtResult = await resolveEndpoint(t.target);
+    if ("error" in tgtResult) {
+      items.push({ index: i, ok: false, error: `target: ${tgtResult.error}` });
+      continue;
+    }
+
+    const edgeResult = await addEdgeV2(config, {
+      edge: {
+        edge_type: t.edge_type,
+        ...(t.edge_data ? { edge_data: t.edge_data } : {}),
+        ...(t.weight !== undefined ? { weight: t.weight } : {}),
+      },
+      source: { ref_id: srcResult.ref_id },
+      target: { ref_id: tgtResult.ref_id },
+    });
+
+    const outcome = edgeResult.alreadyExists
+      ? "already-existed"
+      : edgeResult.success
+        ? "created"
+        : "failed";
+    logger.info(
+      `[handleApproval.approveGraphBatchTripletCreate] triplet[${i}] ${outcome}`,
+      "handleApproval",
+      {
+        workspaceId,
+        workspaceSlug,
+        kind: "graphBatchTripletCreate",
+        index: i,
+        edge_type: t.edge_type,
+        ref_id: edgeResult.ref_id,
+        outcome,
+      },
+    );
+
+    if (edgeResult.success) {
+      anySuccess = true;
+      items.push({ index: i, ok: true, refId: edgeResult.ref_id });
+    } else {
+      items.push({
+        index: i,
+        ok: false,
+        error: edgeResult.message ?? "Edge creation failed",
+      });
+    }
+  }
+
+  return {
+    ok: true,
+    alreadyApproved: false,
+    result: {
+      proposalId: proposal.proposalId,
+      kind: "graphBatchTripletCreate",
+      createdEntityId: anySuccess ? workspaceId : "",
+      landedOn: `workspace:${workspaceId}`,
+      workspaceSlug,
+      items,
+    },
+  };
+}
+
+// ── Reject ───────────────────────────────────────────────────────────
 
 /**
  * Rejection has no DB side effect — the rejection is purely a chat
