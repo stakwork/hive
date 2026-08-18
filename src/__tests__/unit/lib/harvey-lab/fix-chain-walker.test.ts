@@ -1352,3 +1352,332 @@ describe("Integration — walkFixChain feeds buildHillClimbSeries + computeAttem
     expect(fix?.accepted).toBe(true);
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 13. Requirement-hosted triggers + baseline-first traversal
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Fetch mock that records the URL sequence so traversal ORDER can be asserted. */
+function makeRecordingFetchMock(
+  urlHandlers: Map<string, () => unknown>,
+  fallback: () => unknown,
+): { fetchMock: ReturnType<typeof vi.fn>; urls: string[] } {
+  const urls: string[] = [];
+  const fetchMock = vi.fn(async (url: string) => {
+    urls.push(url);
+    for (const [pattern, handler] of urlHandlers) {
+      if (url.includes(pattern)) {
+        return { ok: true, status: 200, json: async () => handler() };
+      }
+    }
+    return { ok: true, status: 200, json: async () => fallback() };
+  });
+  return { fetchMock, urls };
+}
+
+describe("walkFixChain — includeRequirementTriggers", () => {
+  const REQUIREMENT_REF = "req-1";
+  const REQ_TRIGGER_REF = "trigger-req-1";
+  const REQ_OUTPUT_REF = "req-output-1";
+
+  function buildRequirementUrlMap() {
+    const urlMap = new Map<string, () => unknown>();
+
+    urlMap.set(
+      `/${EVAL_SET_REF}?expand=edges&edge_type=%5B%22HAS_BASELINE_TRIGGER%22%5D`,
+      () =>
+        jarvisResponse(
+          EVAL_SET_REF, "EvalSet", {},
+          [{ ref_id: TRIGGER_REF, node_type: "EvalTrigger", date_added_to_graph: "1720001000" }],
+          [{ source: EVAL_SET_REF, target: TRIGGER_REF, edge_type: "HAS_BASELINE_TRIGGER" }],
+        ),
+    );
+    urlMap.set(
+      `/${EVAL_SET_REF}?expand=edges&edge_type=%5B%22HAS_TRIGGER%22%5D`,
+      () => emptyResponse(EVAL_SET_REF, "EvalSet"),
+    );
+    urlMap.set(
+      `/${EVAL_SET_REF}?expand=edges&edge_type=%5B%22HAS_REQUIREMENT%22%5D`,
+      () =>
+        jarvisResponse(
+          EVAL_SET_REF, "EvalSet", {},
+          [{ ref_id: REQUIREMENT_REF, node_type: "EvalRequirement", date_added_to_graph: "1720000500" }],
+          [{ source: EVAL_SET_REF, target: REQUIREMENT_REF, edge_type: "HAS_REQUIREMENT" }],
+        ),
+    );
+    urlMap.set(
+      `/${REQUIREMENT_REF}?expand=edges&edge_type=%5B%22HAS_TRIGGER%22%5D`,
+      () =>
+        jarvisResponse(
+          REQUIREMENT_REF, "EvalRequirement", {},
+          [{ ref_id: REQ_TRIGGER_REF, node_type: "EvalTrigger", date_added_to_graph: "1720007000" }],
+          [{ source: REQUIREMENT_REF, target: REQ_TRIGGER_REF, edge_type: "HAS_TRIGGER" }],
+        ),
+    );
+    urlMap.set(
+      `/${REQ_TRIGGER_REF}?expand=edges&edge_type=%5B%22HAS_OUTPUT%22%5D`,
+      () =>
+        jarvisResponse(
+          REQ_TRIGGER_REF, "EvalTrigger", {},
+          [{ ref_id: REQ_OUTPUT_REF, node_type: "EvalTriggerOutput", date_added_to_graph: "1720007100", properties: { n_passed: 61, n_total: 74, result: "partial", score: 0.82, attempt_number: 1 } }],
+          [{ source: REQ_TRIGGER_REF, target: REQ_OUTPUT_REF, edge_type: "HAS_OUTPUT" }],
+        ),
+    );
+    urlMap.set(
+      `/${REQ_TRIGGER_REF}?expand=edges&edge_type=%5B%22HAS_PROPOSED_FIX%22%5D`,
+      () => emptyResponse(REQ_TRIGGER_REF, "EvalTrigger"),
+    );
+    urlMap.set(
+      `/${TRIGGER_REF}?expand=edges&edge_type=%5B%22HAS_OUTPUT%22%5D`,
+      () =>
+        jarvisResponse(
+          TRIGGER_REF, "EvalTrigger", {},
+          [{ ref_id: BASE_OUTPUT_REF, node_type: "EvalTriggerOutput", date_added_to_graph: "1720001500", properties: { n_passed: 50, n_total: 74, result: "pass", score: 0.67, attempt_number: 1 } }],
+          [{ source: TRIGGER_REF, target: BASE_OUTPUT_REF, edge_type: "HAS_OUTPUT" }],
+        ),
+    );
+    urlMap.set(
+      `/${TRIGGER_REF}?expand=edges&edge_type=%5B%22HAS_PROPOSED_FIX%22%5D`,
+      () => emptyResponse(TRIGGER_REF, "EvalTrigger"),
+    );
+
+    return urlMap;
+  }
+
+  it("reaches an EvalRequirement-hosted trigger and its output when opted in", async () => {
+    const { fetchMock } = makeRecordingFetchMock(buildRequirementUrlMap(), () =>
+      emptyResponse("fallback"),
+    );
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+
+    const result = await walkFixChain(JARVIS_URL, API_KEY, EVAL_SET_REF, {
+      triggerEdgeTypes: ["HAS_BASELINE_TRIGGER", "HAS_TRIGGER"],
+      includeRequirementTriggers: true,
+    });
+
+    const refIds = result.nodes.map((n) => n.ref_id);
+    expect(refIds).toContain(REQUIREMENT_REF);
+    expect(refIds).toContain(REQ_TRIGGER_REF);
+    expect(refIds).toContain(REQ_OUTPUT_REF);
+    expect(result.partial).toBe(false);
+  });
+
+  it("does NOT fetch HAS_REQUIREMENT when the option is absent (cron's options object)", async () => {
+    const { fetchMock, urls } = makeRecordingFetchMock(buildRequirementUrlMap(), () =>
+      emptyResponse("fallback"),
+    );
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+
+    const result = await walkFixChain(JARVIS_URL, API_KEY, EVAL_SET_REF, {
+      triggerEdgeTypes: ["HAS_BASELINE_TRIGGER", "HAS_TRIGGER"],
+    });
+
+    expect(urls.some((u) => u.includes("HAS_REQUIREMENT"))).toBe(false);
+    expect(result.nodes.map((n) => n.ref_id)).not.toContain(REQ_TRIGGER_REF);
+  });
+});
+
+describe("walkFixChain — baseline-first traversal", () => {
+  const RERUN_TRIGGER_REF = "trigger-rerun-first";
+  const RERUN_FIX_REF = "fix-rerun-first";
+
+  it("walks the baseline branch to completion before any non-baseline branch", async () => {
+    const urlMap = new Map<string, () => unknown>();
+
+    urlMap.set(
+      `/${EVAL_SET_REF}?expand=edges&edge_type=%5B%22HAS_BASELINE_TRIGGER%22%5D`,
+      () =>
+        jarvisResponse(
+          EVAL_SET_REF, "EvalSet", {},
+          [{ ref_id: TRIGGER_REF, node_type: "EvalTrigger", date_added_to_graph: "1720001000" }],
+          [{ source: EVAL_SET_REF, target: TRIGGER_REF, edge_type: "HAS_BASELINE_TRIGGER" }],
+        ),
+    );
+    urlMap.set(
+      `/${EVAL_SET_REF}?expand=edges&edge_type=%5B%22HAS_TRIGGER%22%5D`,
+      () =>
+        jarvisResponse(
+          EVAL_SET_REF, "EvalSet", {},
+          [{ ref_id: RERUN_TRIGGER_REF, node_type: "EvalTrigger", date_added_to_graph: "1720005000" }],
+          [{ source: EVAL_SET_REF, target: RERUN_TRIGGER_REF, edge_type: "HAS_TRIGGER" }],
+        ),
+    );
+    urlMap.set(
+      `/${TRIGGER_REF}?expand=edges&edge_type=%5B%22HAS_PROPOSED_FIX%22%5D`,
+      () =>
+        jarvisResponse(
+          TRIGGER_REF, "EvalTrigger", {},
+          [{ ref_id: FIX1_REF, node_type: "ProposedFix", date_added_to_graph: "1720002000", properties: { eval_status: "accepted" } }],
+          [{ source: TRIGGER_REF, target: FIX1_REF, edge_type: "HAS_PROPOSED_FIX" }],
+        ),
+    );
+    urlMap.set(`/${TRIGGER_REF}?expand=edges&edge_type=%5B%22HAS_OUTPUT%22%5D`, () =>
+      emptyResponse(TRIGGER_REF, "EvalTrigger"),
+    );
+    urlMap.set(
+      `/${FIX1_REF}?expand=edges&edge_type=%5B%22DERIVED_FROM%22%5D`,
+      () =>
+        jarvisResponse(
+          FIX1_REF, "ProposedFix", {},
+          [{ ref_id: FIX2_REF, node_type: "ProposedFix", date_added_to_graph: "1720003000", properties: { eval_status: "accepted" } }],
+          [{ source: FIX2_REF, target: FIX1_REF, edge_type: "DERIVED_FROM" }],
+        ),
+    );
+    urlMap.set(`/${FIX1_REF}?expand=edges&edge_type=%5B%22PRODUCED_BY%22%5D`, () =>
+      emptyResponse(FIX1_REF, "ProposedFix"),
+    );
+    urlMap.set(`/${FIX2_REF}?expand=edges&edge_type=%5B%22DERIVED_FROM%22%5D`, () =>
+      emptyResponse(FIX2_REF, "ProposedFix"),
+    );
+    urlMap.set(`/${FIX2_REF}?expand=edges&edge_type=%5B%22PRODUCED_BY%22%5D`, () =>
+      emptyResponse(FIX2_REF, "ProposedFix"),
+    );
+    urlMap.set(
+      `/${RERUN_TRIGGER_REF}?expand=edges&edge_type=%5B%22HAS_PROPOSED_FIX%22%5D`,
+      () =>
+        jarvisResponse(
+          RERUN_TRIGGER_REF, "EvalTrigger", {},
+          [{ ref_id: RERUN_FIX_REF, node_type: "ProposedFix", date_added_to_graph: "1720006000", properties: { eval_status: "accepted" } }],
+          [{ source: RERUN_TRIGGER_REF, target: RERUN_FIX_REF, edge_type: "HAS_PROPOSED_FIX" }],
+        ),
+    );
+    urlMap.set(`/${RERUN_TRIGGER_REF}?expand=edges&edge_type=%5B%22HAS_OUTPUT%22%5D`, () =>
+      emptyResponse(RERUN_TRIGGER_REF, "EvalTrigger"),
+    );
+    urlMap.set(`/${RERUN_FIX_REF}?expand=edges&edge_type=%5B%22DERIVED_FROM%22%5D`, () =>
+      emptyResponse(RERUN_FIX_REF, "ProposedFix"),
+    );
+    urlMap.set(`/${RERUN_FIX_REF}?expand=edges&edge_type=%5B%22PRODUCED_BY%22%5D`, () =>
+      emptyResponse(RERUN_FIX_REF, "ProposedFix"),
+    );
+
+    const { fetchMock, urls } = makeRecordingFetchMock(urlMap, () => emptyResponse("fallback"));
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+
+    const result = await walkFixChain(JARVIS_URL, API_KEY, EVAL_SET_REF, {
+      triggerEdgeTypes: ["HAS_BASELINE_TRIGGER", "HAS_TRIGGER"],
+    });
+
+    const firstIdx = (needle: string) => urls.findIndex((u) => u.includes(needle));
+
+    // The whole baseline chain (trigger hop → fix-1 → fix-2) is fetched before
+    // the non-baseline trigger hop even starts.
+    const deepestBaselineHop = firstIdx(`/${FIX2_REF}?expand=edges`);
+    const firstRerunHop = firstIdx(`/${RERUN_TRIGGER_REF}?expand=edges&edge_type=%5B%22HAS_PROPOSED_FIX%22%5D`);
+
+    expect(deepestBaselineHop).toBeGreaterThan(-1);
+    expect(firstRerunHop).toBeGreaterThan(-1);
+    expect(deepestBaselineHop).toBeLessThan(firstRerunHop);
+
+    // Both branches still land in the result.
+    const refIds = result.nodes.map((n) => n.ref_id);
+    expect(refIds).toEqual(expect.arrayContaining([FIX1_REF, FIX2_REF, RERUN_FIX_REF]));
+  });
+
+  it("under cap pressure the baseline branch survives and partial is set", async () => {
+    // 12 non-baseline trigger branches, each returning enough neighbours to blow
+    // past NODE_EDGE_CAP (500). The baseline branch is walked first, so it must
+    // come back whole while the new branches are the ones that get truncated.
+    const OTHER_TRIGGERS = Array.from({ length: 12 }, (_, i) => `trigger-bulk-${i}`);
+
+    const urlMap = new Map<string, () => unknown>();
+
+    urlMap.set(
+      `/${EVAL_SET_REF}?expand=edges&edge_type=%5B%22HAS_BASELINE_TRIGGER%22%5D`,
+      () =>
+        jarvisResponse(
+          EVAL_SET_REF, "EvalSet", {},
+          [{ ref_id: TRIGGER_REF, node_type: "EvalTrigger", date_added_to_graph: "1720001000" }],
+          [{ source: EVAL_SET_REF, target: TRIGGER_REF, edge_type: "HAS_BASELINE_TRIGGER" }],
+        ),
+    );
+    urlMap.set(
+      `/${EVAL_SET_REF}?expand=edges&edge_type=%5B%22HAS_TRIGGER%22%5D`,
+      () =>
+        jarvisResponse(
+          EVAL_SET_REF, "EvalSet", {},
+          OTHER_TRIGGERS.map((ref_id) => ({ ref_id, node_type: "EvalTrigger", date_added_to_graph: "1720005000" })),
+          OTHER_TRIGGERS.map((target) => ({ source: EVAL_SET_REF, target, edge_type: "HAS_TRIGGER" })),
+        ),
+    );
+    urlMap.set(
+      `/${TRIGGER_REF}?expand=edges&edge_type=%5B%22HAS_PROPOSED_FIX%22%5D`,
+      () =>
+        jarvisResponse(
+          TRIGGER_REF, "EvalTrigger", {},
+          [{ ref_id: FIX1_REF, node_type: "ProposedFix", date_added_to_graph: "1720002000", properties: { eval_status: "accepted" } }],
+          [{ source: TRIGGER_REF, target: FIX1_REF, edge_type: "HAS_PROPOSED_FIX" }],
+        ),
+    );
+    urlMap.set(
+      `/${TRIGGER_REF}?expand=edges&edge_type=%5B%22HAS_OUTPUT%22%5D`,
+      () =>
+        jarvisResponse(
+          TRIGGER_REF, "EvalTrigger", {},
+          [{ ref_id: BASE_OUTPUT_REF, node_type: "EvalTriggerOutput", date_added_to_graph: "1720001500", properties: { n_passed: 50, n_total: 74, result: "pass", score: 0.67, attempt_number: 1 } }],
+          [{ source: TRIGGER_REF, target: BASE_OUTPUT_REF, edge_type: "HAS_OUTPUT" }],
+        ),
+    );
+    urlMap.set(
+      `/${FIX1_REF}?expand=edges&edge_type=%5B%22PRODUCED_BY%22%5D`,
+      () =>
+        jarvisResponse(
+          FIX1_REF, "ProposedFix", {},
+          [{ ref_id: FIX1_OUTPUT_REF, node_type: "EvalTriggerOutput", date_added_to_graph: "1720002500", properties: { n_passed: 58, n_total: 74, result: "pass", score: 0.78, attempt_number: 2 } }],
+          [{ source: FIX1_REF, target: FIX1_OUTPUT_REF, edge_type: "PRODUCED_BY" }],
+        ),
+    );
+    urlMap.set(`/${FIX1_REF}?expand=edges&edge_type=%5B%22DERIVED_FROM%22%5D`, () =>
+      emptyResponse(FIX1_REF, "ProposedFix"),
+    );
+
+    // Each bulk trigger returns 60 filler nodes — 12 × 60 blows the 500 cap.
+    for (const triggerRef of OTHER_TRIGGERS) {
+      urlMap.set(
+        `/${triggerRef}?expand=edges&edge_type=%5B%22HAS_OUTPUT%22%5D`,
+        () =>
+          jarvisResponse(
+            triggerRef, "EvalTrigger", {},
+            Array.from({ length: 60 }, (_, j) => ({
+              ref_id: `${triggerRef}-out-${j}`,
+              node_type: "EvalTriggerOutput",
+              date_added_to_graph: "1720009000",
+              properties: { n_passed: 1, n_total: 74, result: "partial", score: 0.01, attempt_number: 1 },
+            })),
+            Array.from({ length: 60 }, (_, j) => ({
+              source: triggerRef,
+              target: `${triggerRef}-out-${j}`,
+              edge_type: "HAS_OUTPUT",
+            })),
+          ),
+      );
+      urlMap.set(`/${triggerRef}?expand=edges&edge_type=%5B%22HAS_PROPOSED_FIX%22%5D`, () =>
+        emptyResponse(triggerRef, "EvalTrigger"),
+      );
+    }
+
+    const { fetchMock } = makeRecordingFetchMock(urlMap, () => emptyResponse("fallback"));
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+
+    const result = await walkFixChain(JARVIS_URL, API_KEY, EVAL_SET_REF, {
+      triggerEdgeTypes: ["HAS_BASELINE_TRIGGER", "HAS_TRIGGER"],
+    });
+
+    expect(result.partial).toBe(true);
+
+    // The baseline branch — trigger, baseline output, root fix and its score —
+    // is intact even though the walk was truncated.
+    const refIds = result.nodes.map((n) => n.ref_id);
+    expect(refIds).toContain(TRIGGER_REF);
+    expect(refIds).toContain(BASE_OUTPUT_REF);
+    expect(refIds).toContain(FIX1_REF);
+    expect(refIds).toContain(FIX1_OUTPUT_REF);
+
+    // And it still produces the full hill-climb series.
+    const series = buildHillClimbSeries({
+      nodes: result.nodes,
+      edges: result.edges,
+    });
+    expect(series.map((p) => p.actualPassed)).toEqual([50, 58]);
+  });
+});
