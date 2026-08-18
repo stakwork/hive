@@ -77,12 +77,13 @@ import {
   type DispatchedGraphWalkIntent,
 } from "@/lib/ai/graphWalkDispatchTools";
 import { buildGraphWalkerTools } from "@/lib/ai/graphWalkerTools";
+import { buildGraphWriteTools } from "@/lib/ai/graphWriteTools";
 import { buildInfraTools } from "@/lib/ai/infraTools";
 import { buildInitiativeTools } from "@/lib/ai/initiativeTools";
 import { buildPromptTools } from "@/lib/ai/promptTools";
 import { buildConceptTools } from "@/lib/ai/conceptTools";
 import { buildWorkflowExplorerTools } from "@/lib/ai/workflowExplorerTools";
-import { isPromptsCapabilityEnabledForOrg } from "@/lib/ai/capabilityGates";
+import { isPromptsCapabilityEnabledForOrg, isGraphWriteCapabilityEnabledForOrg } from "@/lib/ai/capabilityGates";
 import {
   buildResearchTools,
   type CapturedSearchResult,
@@ -96,6 +97,10 @@ import {
   PROPOSE_PROMPT_UPDATE_TOOL,
   PROPOSE_NEW_CONCEPT_TOOL,
   PROPOSE_CONCEPT_UPDATE_TOOL,
+  PROPOSE_CREATE_NODE_TOOL,
+  PROPOSE_NODE_EDIT_TOOL,
+  PROPOSE_CREATE_TRIPLET_TOOL,
+  PROPOSE_CREATE_BATCH_TRIPLET_TOOL,
 } from "@/lib/proposals/types";
 import {
   getConceptsCapabilitySnippet,
@@ -152,6 +157,13 @@ export interface CapabilityContext {
   dispatchedResearch?: DispatchedResearchIntent[];
   dispatchedGraphWalks?: DispatchedGraphWalkIntent[];
   graphWalkAnswerSink?: { answer: string | null };
+  /**
+   * Set to `true` when the calling org has been granted the graph-write
+   * propose tools (checked via `isGraphWriteCapabilityEnabledForOrg` by
+   * the caller before composing the capability context). Defaults to
+   * `false` / absent — graph writes are off unless explicitly enabled.
+   */
+  graphWriteEnabled?: boolean;
 }
 
 // Re-export so callers can import from a single location.
@@ -356,6 +368,9 @@ export const CAPABILITY_REGISTRY: Record<OrgCapability, CapabilityDefinition> =
       buildTools: (ctx) => ({
         ...buildGraphWalkerTools(ctx.orgId, ctx.userId),
         ...buildGraphWalkDispatchTools(ctx),
+        ...(ctx.graphWriteEnabled
+          ? buildGraphWriteTools(ctx.orgId, ctx.userId)
+          : {}),
       }),
       promptSnippet: getGraphWalkerCapabilitySnippet,
       // CORE: graph traversal is a hot path (walking roadmap→code, URN
@@ -365,8 +380,16 @@ export const CAPABILITY_REGISTRY: Record<OrgCapability, CapabilityDefinition> =
       // No menuBlurb: core capabilities are inlined, not menu-listed.
       core: true,
       // dispatch_graph_walk and finalize_graph_walk are stripped in readonly mode
-      // to prevent sub-agents from re-dispatching themselves.
-      writeToolNames: ["dispatch_graph_walk", "finalize_graph_walk"],
+      // to prevent sub-agents from re-dispatching themselves. The four graph-write
+      // propose tools are also stripped in readonly mode.
+      writeToolNames: [
+        "dispatch_graph_walk",
+        "finalize_graph_walk",
+        PROPOSE_CREATE_NODE_TOOL,
+        PROPOSE_NODE_EDIT_TOOL,
+        PROPOSE_CREATE_TRIPLET_TOOL,
+        PROPOSE_CREATE_BATCH_TRIPLET_TOOL,
+      ],
     },
     infra: {
       buildTools: (ctx) => buildInfraTools(ctx.orgId, ctx.userId),

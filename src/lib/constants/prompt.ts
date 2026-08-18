@@ -817,7 +817,7 @@ export function getGraphWalkerCapabilitySnippet(): string {
 
 ## Graph Walker Tools
 
-You have four **read-only** tools for graph traversal, focused on the swarm knowledge graph (kg). These tools never create, modify, or delete nodes or edges.
+You have tools for traversing the swarm knowledge graph (kg) — and, when graph-write tools are available, for proposing new nodes and edges for human approval.
 
 ### Where the data lives now
 
@@ -836,7 +836,7 @@ kg      →  urn:{org}:kg:{workspace}:{type}:{id}
 
 Realms: \`kg\` (the swarm knowledge-graph — HiveFeature/HiveTask/HiveChatMessage plus code concepts, files, functions, data models) and \`canvas\` (canvas nodes). \`pg\` is disabled.
 
-### Tools
+### Read tools
 
 - **\`graph_ontology({ workspace })\`** — Fetch the list of valid KG node types (with descriptions) for a workspace's knowledge graph. **Call this first** before using \`graph_search\` with \`realm: "kg"\` — the returned \`type\` values are the exact strings to pass as the \`type\` filter in \`graph_search\`. This is how you discover the Hive node types (e.g. \`HiveFeature\`, \`HiveTask\`, \`HiveChatMessage\`) and the code node types. Returns \`{ node_types: [{ type, description }] }\`.
 
@@ -879,9 +879,25 @@ In the \`stakwork\` workspace specifically, the kg also holds \`Workflow\` nodes
 
 kg traversal talks to the live swarm, so it can fail if the swarm is unconfigured/unreachable — those calls return an \`{ error }\` you should treat as "unavailable", not "empty".
 
-### Read-only
+### Graph-write propose tools (when available)
 
-These tools are purely read-only. They never create, modify, or delete nodes or edges in any realm.
+When the four \`propose_*\` tools are present in your toolset, you can propose knowledge-graph writes that the user approves with a single click. **These tools never write directly — the write happens only after the user clicks Approve on the card.**
+
+#### Rules
+
+1. **Propose, don't write.** Call the propose tool; a card appears in chat. The actual Jarvis write happens server-side only after user approval. Never assert that a write has happened until you see an \`approvalResult\` in the conversation.
+
+2. **\`workspaceSlug\` is required on every propose call.** When you have performed a \`graph_search\` that fanned out across multiple member workspaces (i.e. you omitted the \`workspace\` parameter or searched multiple), the results include a \`workspace\` tag per node. **Always confirm with the user which workspace to write to before calling a propose tool** — do not guess. A \`ref_id\` from workspace A written via workspace B's credentials will silently fail.
+
+3. **Prefer \`ref_id\` over inline node specs.** When a matching node is already known from a prior \`graph_get\`, \`graph_neighbors\`, or \`graph_search\` call, pass its \`ref_id\` as the triplet endpoint rather than an inline \`node_type + node_data\`. Inline specs create-or-merge on upsert; a \`ref_id\` targets an exact existing node.
+
+4. **Obtain \`ref_id\`s from inline read tools only.** \`graph_get\`, \`graph_neighbors\`, and \`graph_search\` return \`ref_id\` on kg results. Do **not** use \`ref_id\`s returned by \`finalize_graph_walk\` — that tool returns prose only and carries no structured \`ref_id\`s back from the sub-agent. If you need a \`ref_id\` for a write, fetch it inline first.
+
+5. **\`"Warning"\` / already-existed is a success.** If an approval result says \`alreadyExisted: true\`, the node or edge already existed — no duplicate was created. Report this to the user as a success ("already existed, no duplicate created"), not as a failure.
+
+6. **Validate types first.** Before calling \`propose_create_node\` or \`propose_create_triplet\`, call \`graph_ontology({ workspace })\` to confirm the \`node_type\` / \`edge_type\` is valid for that workspace. Unknown types are rejected at propose time with a clear error.
+
+7. **Mirror-owned types are not editable.** \`propose_node_edit\` will refuse edits to \`HiveFeature\`, \`HiveTask\`, \`HiveChatMessage\`, \`ErrorIssue\`, \`Initiative\`, \`Milestone\`, and \`Research\` nodes — those are written by sync crons and any edit would be silently reverted on the next pass.
 ` + getGraphWalkDispatchSnippet() + `
 `;
 }
