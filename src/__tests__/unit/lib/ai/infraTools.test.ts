@@ -67,6 +67,10 @@ vi.mock("@/lib/proposals/types", () => ({
   PROPOSE_PROMPT_UPDATE_TOOL: "propose_prompt_update",
   PROPOSE_NEW_CONCEPT_TOOL: "propose_new_concept",
   PROPOSE_CONCEPT_UPDATE_TOOL: "propose_concept_update",
+  PROPOSE_CREATE_NODE_TOOL: "propose_create_node",
+  PROPOSE_NODE_EDIT_TOOL: "propose_node_edit",
+  PROPOSE_CREATE_TRIPLET_TOOL: "propose_create_triplet",
+  PROPOSE_CREATE_BATCH_TRIPLET_TOOL: "propose_create_batch_triplet",
 }));
 
 // ─── Imports (after mocks) ───────────────────────────────────────────────────
