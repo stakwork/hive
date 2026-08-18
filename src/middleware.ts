@@ -136,8 +136,10 @@ export async function middleware(request: NextRequest) {
       return continueRequest(requestHeaders, "api-token");
     }
 
-    // Landing page protection (when enabled) for all non-system/webhook routes
-    if (isLandingPageEnabled()) {
+    // Landing page protection (when enabled) for all non-system/webhook routes.
+    // Public routes are exempt so service-to-service callers (e.g. sphinx-voice
+    // exchanging a callKey) can reach them without a landing cookie.
+    if (isLandingPageEnabled() && routeAccess !== "public") {
       const token = await getToken({
         req: request,
         secret: process.env.NEXTAUTH_SECRET,
