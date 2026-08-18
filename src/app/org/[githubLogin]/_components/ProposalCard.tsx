@@ -1050,6 +1050,7 @@ export function proposalHasDetails(p: ProposalOutput): boolean {
   if (p.kind === "graphNodeEdit") return false;
   if (p.kind === "graphTripletCreate") return false;
   if (p.kind === "graphBatchTripletCreate") return false;
+  if (p.kind === "codeChange") return false;
   // milestone
   return !!(p.payload.description || p.payload.status || p.payload.dueDate);
 }

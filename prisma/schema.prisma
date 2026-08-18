@@ -586,6 +586,11 @@ model Task {
   // Set by `jarvis-pr-link-cron` once this task's PR(s) are linked to their
   // PullRequest graph nodes. Null ⇒ still needs linking (scanned each run).
   jarvisPrLinkedAt       DateTime?             @map("jarvis_pr_linked_at")
+  // Idempotency anchor for code-change proposals. The composite unique index
+  // @@unique([workspaceId, proposalId]) makes concurrent double-approval safe:
+  // the losing concurrent insert raises Prisma P2002, and that branch returns
+  // the winning claim's result instead of creating a second Task/PR.
+  proposalId             String?               @map("proposal_id")
   agentLogs              AgentLog[]
   chatMessages           ChatMessage[]
   deployments            Deployment[]
@@ -615,6 +620,7 @@ model Task {
   @@index([deploymentStatus])
   @@index([repositoryId])
   @@index([jarvisPrLinkedAt])
+  @@unique([workspaceId, proposalId])
   @@map("tasks")
 }
 
