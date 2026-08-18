@@ -224,6 +224,7 @@ describe("Prompt Eval Run API — Integration Tests", () => {
       expect(vars.tokenReference).toBe(getStakworkTokenReference());
 
       // webhookUrl/webhook_url must still derive from NEXTAUTH_URL || request host (not getBaseUrl)
+      expect(vars.workspace_id).toBe(workspace.id);
       expect(vars.webhookUrl).toContain(`/api/webhook/stakwork/response?type=PROMPT_EVAL&workspace_id=${workspace.id}`);
       expect(fetchBody.webhook_url).toContain("/api/stakwork/webhook?run_id=");
       expect(vars.resultWebhookUrl).toBeUndefined();
