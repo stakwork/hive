@@ -93,6 +93,8 @@ import { getPlanRepoPreference, setPlanRepoPreference } from "@/lib/ai/models";
  * carries an editable `payload` override locally; on Approve we forward
  * it as `intent.payload`. The original tool-call output stays intact.
  */
+import { PublishPromptSlot, type PublishState } from "./PublishPromptSlot";
+
 interface ProposalCardProps {
   /** Tool call output the agent emitted. */
   proposal: ProposalOutput;
@@ -101,12 +103,16 @@ interface ProposalCardProps {
   messageId: string;
   /** The github login of the org — used to resolve `landedOn` deep links. */
   githubLogin: string;
+  /** Timestamp of the message that bears the proposal — forwarded to
+   *  PublishPromptSlot for legacy version resolution. */
+  messageTimestamp?: Date;
 }
 
 export function ProposalCard({
   proposal,
   messageId,
   githubLogin,
+  messageTimestamp,
 }: ProposalCardProps) {
   // Status comes from a conversation scan. We pull the full message
   // list once with a stable selector — re-renders only when the list
@@ -255,6 +261,10 @@ export function ProposalCard({
   // Details dialog state
   const [detailsOpen, setDetailsOpen] = useState(false);
   const hasDetails = useMemo(() => proposalHasDetails(proposal), [proposal]);
+
+  // Track the resolved publish state from PublishPromptSlot so we can
+  // conditionally suppress the "New draft version saved ✓" subtext.
+  const [slotPublishState, setSlotPublishState] = useState<PublishState | null>(null);
 
   const isPending = status.status === "pending";
   const isInFlight = status.status === "pending-in-flight";
@@ -410,6 +420,9 @@ export function ProposalCard({
       return { text: "Prompt created ✓", deepLink: null as string | null, newTab: false };
     }
     if (r.kind === "promptUpdate") {
+      // Suppress subtext when the slot is showing "Published ✓" to avoid
+      // rendering both simultaneously.
+      if (slotPublishState?.kind === "published") return null;
       return { text: "New draft version saved ✓", deepLink: null as string | null, newTab: false };
     }
 
@@ -633,6 +646,18 @@ export function ProposalCard({
               )}
             </div>
           )}
+          {/* PublishPromptSlot — approved promptUpdate cards only */}
+          {isApproved &&
+            proposal.kind === "promptUpdate" &&
+            status.result.kind === "promptUpdate" && (
+              <PublishPromptSlot
+                promptId={proposal.payload.promptId}
+                promptVersionId={status.result.promptVersionId}
+                workspaceSlug={status.result.workspaceSlug}
+                approvalTimestamp={messageTimestamp ?? new Date()}
+                onStateChange={setSlotPublishState}
+              />
+            )}
           {isRejected && (
             <div className="mt-1.5 text-xs text-muted-foreground">
               Rejected
