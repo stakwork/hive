@@ -21,7 +21,7 @@ interface TooltipState {
   y: number;
   point: AttemptPoint;
   /** Running-best state of the hovered dot; null for unscored slots. */
-  meta: { state: "target" | "best" | "below"; bestBefore: number } | null;
+  meta: { state: "target" | "best" | "below" | "rejected"; bestBefore: number } | null;
 }
 
 interface HillClimbChartProps {
@@ -175,14 +175,18 @@ export function HillClimbChart({ attempts, height = 160 }: HillClimbChartProps) 
     return -1;
   })();
 
-  // The end label sits just right of the last dot — the same corner the
-  // target-edge value occupies. When the series ends at/near the target the
-  // two would collide, so the end label (the reader's headline) wins and the
-  // target value yields; the left tick still shows the target number.
+  // The end label reads the LINE's final level — the standing best — because
+  // regressions are ignored by the line; a series that ended on a hollow dot
+  // still headlines the best, right where the line ends. It occupies the same
+  // corner as the target-edge value: when they'd collide the end label (the
+  // reader's headline) wins and the target value yields; the left tick still
+  // shows the target number.
+  const endLineValue =
+    lastScoredIdx >= 0
+      ? (points[lastScoredIdx].bestPassed ?? points[lastScoredIdx].actualPassed ?? 0)
+      : 0;
   const showTargetEdgeValue =
-    lastScoredIdx < 0 ||
-    points.length < 2 ||
-    Math.abs(yScale(points[lastScoredIdx].actualPassed as number) - targetY) >= 14;
+    lastScoredIdx < 0 || points.length < 2 || Math.abs(yScale(endLineValue) - targetY) >= 14;
 
   // Ticks: floor, midpoint, target — the floor tick shows its real value so a
   // fitted (non-zero) domain is never read as starting at zero.
@@ -197,18 +201,21 @@ export function HillClimbChart({ attempts, height = 160 }: HillClimbChartProps) 
     i === lastIdx || (i % labelStep === 0 && lastIdx - i >= labelStep);
 
   // Per-dot state against the running best:
-  //   "target" — reached n_total (status green; also on the target line and
-  //              named in tooltip/aria, so color never carries it alone)
-  //   "best"   — sets or ties the best so far (series color)
-  //   "below"  — under the running best (muted gray until the score recovers)
-  // Computed from actualPassed on both series kinds — bestPassed can't be used
-  // because the flat eval-output series sets bestPassed = actualPassed.
-  const dotMeta: Array<{ state: "target" | "best" | "below"; bestBefore: number } | null> = (() => {
+  //   "target"   — reached n_total (larger, haloed, named in tooltip/aria)
+  //   "best"     — sets or ties the best so far (filled, on the line)
+  //   "below"    — under the running best: drawn hollow, exactly like a
+  //                rejected fix — the run happened, the line ignores it
+  //   "rejected" — a rejected fix; hollow, never advances the best
+  // Computed from actualPassed on both series kinds. Only accepted runs
+  // advance the running best, mirroring the series builders.
+  type DotState = "target" | "best" | "below" | "rejected";
+  const dotMeta: Array<{ state: DotState; bestBefore: number } | null> = (() => {
     let runningBest = -Infinity;
     return points.map((pt) => {
       if (pt.actualPassed == null) return null;
       const bestBefore = runningBest;
-      const state: "target" | "best" | "below" =
+      if (!pt.accepted) return { state: "rejected" as const, bestBefore };
+      const state: DotState =
         pt.actualPassed >= n_total && n_total > 0
           ? "target"
           : pt.actualPassed >= runningBest
@@ -218,6 +225,13 @@ export function HillClimbChart({ attempts, height = 160 }: HillClimbChartProps) 
       return { state, bestBefore };
     });
   })();
+
+  // Series-level achievement: once the running best reaches the target, the
+  // ENTIRE series — line, dots, hollow strokes — wears status green instead of
+  // the series hue. Green is validated >=3:1 on both card surfaces; the state
+  // is also carried by the target dot's halo, its tooltip/aria text, and the
+  // line resting on the target rule, so color never announces it alone.
+  const targetReached = dotMeta.some((m) => m?.state === "target");
 
   function tooltipFor(idx: number) {
     const point = points[idx];
@@ -356,8 +370,9 @@ export function HillClimbChart({ attempts, height = 160 }: HillClimbChartProps) 
             />
           )}
 
-          {/* Series layer — --chart-1 carries identity; marks only, never text */}
-          <g className="text-chart-1">
+          {/* Series layer — --chart-1 carries identity (status green once the
+              target is reached); marks only, never text */}
+          <g className={targetReached ? "text-green-600" : "text-chart-1"}>
             {/* Climbing polyline — bestPassed (monotonic best-so-far on the
                 fix-chain series; the real score line on the flat series) */}
             {linePath && (
@@ -387,22 +402,19 @@ export function HillClimbChart({ attempts, height = 160 }: HillClimbChartProps) 
                   return <g key={i} data-testid={`slot-${i}`} />;
                 }
                 const meta = dotMeta[i]!;
-                const isTarget = pt.accepted && meta.state === "target";
-                const isBelow = pt.accepted && meta.state === "below";
-                const stateSuffix = !pt.accepted
-                  ? " (rejected)"
-                  : isTarget
-                    ? " (target reached)"
-                    : isBelow
-                      ? " (below best)"
-                      : "";
-                const fillClass = isTarget
-                  ? "fill-green-600 stroke-card"
-                  : isBelow
-                    ? "fill-muted-foreground stroke-card"
-                    : pt.accepted
-                      ? "stroke-card"
-                      : "";
+                const isTarget = meta.state === "target";
+                // Hollow = "the line ignores this run": both rejected fixes and
+                // below-best re-runs. Identical look on purpose — aria and the
+                // tooltip say which one it is.
+                const isHollow = meta.state === "rejected" || meta.state === "below";
+                const stateSuffix =
+                  meta.state === "rejected"
+                    ? " (rejected)"
+                    : isTarget
+                      ? " (target reached)"
+                      : meta.state === "below"
+                        ? " (below best)"
+                        : "";
                 return (
                   <g key={i}>
                     {/* Soft halo marks the achievement — decorative, aria-hidden */}
@@ -411,7 +423,7 @@ export function HillClimbChart({ attempts, height = 160 }: HillClimbChartProps) 
                         cx={xScale(i)}
                         cy={yScale(pt.actualPassed)}
                         r={9}
-                        className="fill-green-600"
+                        fill="currentColor"
                         fillOpacity={0.2}
                         aria-hidden="true"
                         data-testid={`halo-${i}`}
@@ -421,12 +433,12 @@ export function HillClimbChart({ attempts, height = 160 }: HillClimbChartProps) 
                       cx={xScale(i)}
                       cy={yScale(pt.actualPassed)}
                       r={isTarget ? 5.5 : 4.5}
-                      fill={pt.accepted && !isTarget && !isBelow ? "currentColor" : !pt.accepted ? "none" : undefined}
+                      fill={isHollow ? "none" : "currentColor"}
                       fillOpacity={pt.isBaseline && !isTarget ? 0.55 : 1}
-                      className={fillClass}
-                      stroke={pt.accepted ? undefined : "currentColor"}
-                      strokeWidth={pt.accepted ? 2 : 1.5}
-                      strokeOpacity={pt.accepted ? 1 : 0.55}
+                      className={isHollow ? "" : "stroke-card"}
+                      stroke={isHollow ? "currentColor" : undefined}
+                      strokeWidth={isHollow ? 1.5 : 2}
+                      strokeOpacity={isHollow ? 0.55 : 1}
                       onMouseEnter={(e) => handleMouseEnter(pt, i, e)}
                       onFocus={(e) => handleMouseEnter(pt, i, e as unknown as React.MouseEvent<SVGCircleElement>)}
                       tabIndex={0}
@@ -445,7 +457,7 @@ export function HillClimbChart({ attempts, height = 160 }: HillClimbChartProps) 
           {lastScoredIdx >= 0 && points.length >= 2 && (
             <text
               x={xScale(lastScoredIdx) + 9}
-              y={yScale(points[lastScoredIdx].actualPassed as number)}
+              y={yScale(endLineValue)}
               dy="0.35em"
               fontSize={11}
               fontWeight={600}
@@ -453,7 +465,7 @@ export function HillClimbChart({ attempts, height = 160 }: HillClimbChartProps) 
               style={{ fontVariantNumeric: "tabular-nums" }}
               data-testid="end-label"
             >
-              {points[lastScoredIdx].actualPassed}
+              {endLineValue}
             </text>
           )}
 

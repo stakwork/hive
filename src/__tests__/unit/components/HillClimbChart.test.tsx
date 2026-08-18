@@ -347,11 +347,12 @@ describe("HillClimbChart", () => {
 // ─── Flat eval-output series (concept-driven recursion) ──────────────────────
 
 describe("HillClimbChart — flat eval-output series", () => {
-  /** What buildEvalOutputSeries emits: bestPassed === actualPassed on every point. */
+  /** What buildEvalOutputSeries emits: real scores in actualPassed, a monotonic
+   *  running best in bestPassed (the r2 regression keeps 52 but the line holds 58). */
   const CONCEPT_SERIES: EvalTriggerOutput[] = [
     makeOutput({ ref_id: "o-base", n_passed: 50, n_total: 80, isBaseline: true, accepted: true, actualPassed: 50, bestPassed: 50, label: "base" }),
     makeOutput({ ref_id: "o-r1", n_passed: 58, n_total: 80, isBaseline: false, accepted: true, actualPassed: 58, bestPassed: 58, label: "r1" }),
-    makeOutput({ ref_id: "o-r2", n_passed: 52, n_total: 80, isBaseline: false, accepted: true, actualPassed: 52, bestPassed: 52, label: "r2" }),
+    makeOutput({ ref_id: "o-r2", n_passed: 52, n_total: 80, isBaseline: false, accepted: true, actualPassed: 52, bestPassed: 58, label: "r2" }),
     makeOutput({ ref_id: "o-r3", n_passed: 61, n_total: 80, isBaseline: false, accepted: true, actualPassed: 61, bestPassed: 61, label: "r3" }),
     makeOutput({ ref_id: "o-r4", n_passed: 64, n_total: 80, isBaseline: false, accepted: true, actualPassed: 64, bestPassed: 64, label: "r4" }),
   ];
@@ -372,19 +373,21 @@ describe("HillClimbChart — flat eval-output series", () => {
     }
   });
 
-  it("draws the real, non-monotonic line — the dip at r2 is visible", () => {
+  it("the regressed dot dips below the line, which itself never falls", () => {
     render(<HillClimbChart attempts={CONCEPT_SERIES} />);
 
     // Higher n_passed → smaller cy (SVG y grows downward). r2 (52) scored below
-    // r1 (58), so its dot must sit LOWER on the chart — a best-so-far line would
-    // have flattened instead.
+    // r1 (58): its DOT sits lower on the chart while the line — driven by the
+    // monotonic bestPassed — holds flat at 58 above it.
     const cy = (i: number) => Number(screen.getByTestId(`dot-${i}`).getAttribute("cy"));
     expect(cy(1)).toBeLessThan(cy(0));
     expect(cy(2)).toBeGreaterThan(cy(1));
     expect(cy(3)).toBeLessThan(cy(2));
 
-    // The connecting line is driven by bestPassed, which equals actualPassed here,
-    // so the path must reach the same y as the dipping dot.
+    // The regressed run is "ignored" by the line: hollow, like a rejected fix.
+    expect(screen.getByTestId("dot-2").getAttribute("fill")).toBe("none");
+    expect(screen.getByTestId("dot-2").getAttribute("data-state")).toBe("below");
+
     const path = screen.getByTestId("climb-polyline").getAttribute("d") ?? "";
     expect(path.length).toBeGreaterThan(0);
   });
@@ -442,22 +445,27 @@ describe("HillClimbChart — running-best dot states", () => {
     expect(screen.getByTestId("dot-1").getAttribute("fill")).toBe("currentColor");
   });
 
-  it("grays a dot below the running best and says so in tooltip and aria", () => {
+  it("renders a below-best dot hollow — like a rejected fix — and says so", () => {
     render(<HillClimbChart attempts={STATE_SERIES} />);
     const below = screen.getByTestId("dot-2");
     expect(below.getAttribute("data-state")).toBe("below");
-    expect(below.getAttribute("class")).toContain("fill-muted-foreground");
+    expect(below.getAttribute("fill")).toBe("none");
+    expect(below.getAttribute("stroke")).toBe("currentColor");
     expect(below.getAttribute("aria-label")).toMatch(/below best/i);
 
     fireEvent.mouseEnter(below);
     expect(screen.getByTestId("chart-tooltip").textContent).toMatch(/below best · 58/);
   });
 
-  it("turns the target hit green, larger, haloed, and names it", () => {
+  it("turns the ENTIRE series green on a target hit — line, dots, halo", () => {
     render(<HillClimbChart attempts={STATE_SERIES} />);
     const target = screen.getByTestId("dot-3");
     expect(target.getAttribute("data-state")).toBe("target");
-    expect(target.getAttribute("class")).toContain("fill-green-600");
+    // The whole series group swaps to status green; every currentColor mark
+    // (line, filled dots, hollow strokes) inherits it.
+    expect(target.closest("g.text-green-600")).not.toBeNull();
+    expect(screen.getByTestId("climb-polyline").closest("g.text-green-600")).not.toBeNull();
+    expect(target.closest("g.text-chart-1")).toBeNull();
     expect(Number(target.getAttribute("r"))).toBeGreaterThan(
       Number(screen.getByTestId("dot-1").getAttribute("r")),
     );
@@ -466,6 +474,12 @@ describe("HillClimbChart — running-best dot states", () => {
 
     fireEvent.mouseEnter(target);
     expect(screen.getByTestId("chart-tooltip").textContent).toMatch(/target reached/i);
+  });
+
+  it("keeps the series hue when the target has not been reached", () => {
+    render(<HillClimbChart attempts={MULTI_POINT_ATTEMPTS} />);
+    expect(screen.getByTestId("dot-1").closest("g.text-chart-1")).not.toBeNull();
+    expect(screen.getByTestId("dot-1").closest("g.text-green-600")).toBeNull();
   });
 
   it("returns to the series color once the score beats the old best again", () => {

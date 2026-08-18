@@ -578,29 +578,32 @@ describe("RecursionCard — badge and caption per series kind", () => {
     );
   }
 
-  /** base 50 → 58 → 52: the last point is NOT the maximum. */
+  /** base 50 → 58 → 52: builders emit a monotonic bestPassed, so the trailing
+   *  regression carries bestPassed 58 while its actual score stays 52. */
   const REGRESSING_SERIES = [
     { ...makeOutput(50, 74, 0), isBaseline: true, accepted: true, actualPassed: 50, bestPassed: 50, label: "base" },
     { ...makeOutput(58, 74, 1), isBaseline: false, accepted: true, actualPassed: 58, bestPassed: 58, label: "r1" },
-    { ...makeOutput(52, 74, 2), isBaseline: false, accepted: true, actualPassed: 52, bestPassed: 52, label: "r2" },
+    { ...makeOutput(52, 74, 2), isBaseline: false, accepted: true, actualPassed: 52, bestPassed: 58, label: "r2" },
   ];
 
-  it("shows the historical maximum for a fix-chain series", () => {
+  it("badges the standing best for a fix-chain series", () => {
     mockHistoryLoaded(REGRESSING_SERIES, { seriesKind: "fix-chain" });
     renderCard();
     expect(screen.getByTestId("score-display").textContent).toBe("58/74");
   });
 
-  it("shows the historical maximum when seriesKind is absent (legacy callers)", () => {
+  it("badges the standing best when seriesKind is absent (legacy callers)", () => {
     mockHistoryLoaded(REGRESSING_SERIES);
     renderCard();
     expect(screen.getByTestId("score-display").textContent).toBe("58/74");
   });
 
-  it("shows the latest point for an eval-output series, so the badge tracks the chart", () => {
+  it("badges the standing best for an eval-output series — regressions are ignored", () => {
+    // Matches the chart: the line only climbs or holds, a regressed run is a
+    // hollow dot the line ignores, so the badge is the line's final level.
     mockHistoryLoaded(REGRESSING_SERIES, { seriesKind: "eval-output" });
     renderCard();
-    expect(screen.getByTestId("score-display").textContent).toBe("52/74");
+    expect(screen.getByTestId("score-display").textContent).toBe("58/74");
   });
 
   it("adds an incomplete-data note to the chart caption only when the walk was partial", () => {
