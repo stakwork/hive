@@ -2,7 +2,8 @@
 
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { formatDistanceToNow } from "date-fns";
-import { ExternalLink, Loader2 } from "lucide-react";
+import { ExternalLink, Loader2, Repeat } from "lucide-react";
+import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import {
   PASS_BADGE_CLASS,
@@ -27,6 +28,7 @@ import {
   useLegalBenchmarkRunList,
   type BenchmarkRunListRow,
 } from "@/hooks/useLegalBenchmarkRunList";
+import { useLegalBenchmarkRecursionList } from "@/hooks/useLegalBenchmarkRecursionList";
 import { useBenchmarkRubricsMap } from "@/hooks/useBenchmarkRubrics";
 import { computeBenchmarkScore } from "@/lib/harvey-lab/rubric-scoring";
 import { LegalBenchmarkResults } from "@/components/legal/LegalBenchmarkResults";
@@ -136,6 +138,7 @@ export function BenchmarkRunsHistory({
 }: BenchmarkRunsHistoryProps = {}) {
   const { workspace, isSuperAdmin } = useWorkspace();
   const workspaceId = workspace?.id;
+  const workspaceSlug = workspace?.slug;
 
   // When a runList prop is supplied, pass undefined to the hook so it never
   // fetches, polls, or binds Pusher — all state comes from the prop.
@@ -144,6 +147,15 @@ export function BenchmarkRunsHistory({
   );
   const { runs, total, isLoading, error, setExpandedId } =
     runListProp ?? internalList;
+
+  // Recursion-enrolled task slugs — same source the Recursion tab renders
+  // from, so the badge and that tab can never disagree. Non-openlaw
+  // workspaces 404 the endpoint, the set stays empty, and no badges render.
+  const { entries: recursionEntries } = useLegalBenchmarkRecursionList();
+  const recursionSlugs = useMemo(
+    () => new Set(recursionEntries.map((e) => e.id)),
+    [recursionEntries],
+  );
 
   const [expandedRunId, setExpandedRunId] = useState<string | null>(null);
   const [taskFilter, setTaskFilter] = useState<string>(ALL_TASKS);
@@ -357,7 +369,12 @@ export function BenchmarkRunsHistory({
       </div>
 
       {selectedTask && (
-        <TaskProgressCard task={selectedTask} attempts={chartAttempts} />
+        <TaskProgressCard
+          task={selectedTask}
+          attempts={chartAttempts}
+          recursionEnabled={recursionSlugs.has(selectedTask.slug)}
+          workspaceSlug={workspaceSlug ?? ""}
+        />
       )}
 
       {visibleRuns.length < filteredRuns.length && (
@@ -400,8 +417,13 @@ export function BenchmarkRunsHistory({
                   data-testid={`run-row-${run.id}`}
                 >
                   <td className="px-4 py-3">
-                    <div className="font-medium leading-tight">
-                      {run.taskTitle || "(Unknown task)"}
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <div className="font-medium leading-tight">
+                        {run.taskTitle || "(Unknown task)"}
+                      </div>
+                      {run.taskSlug && recursionSlugs.has(run.taskSlug) && workspaceSlug && (
+                        <RecursionEnabledBadge workspaceSlug={workspaceSlug} />
+                      )}
                     </div>
                     {run.taskSlug && (
                       <div className="text-xs text-muted-foreground mt-0.5">{run.taskSlug}</div>
@@ -465,9 +487,13 @@ export function BenchmarkRunsHistory({
 function TaskProgressCard({
   task,
   attempts,
+  recursionEnabled,
+  workspaceSlug,
 }: {
   task: TaskOption;
   attempts: EvalTriggerOutput[];
+  recursionEnabled: boolean;
+  workspaceSlug: string;
 }) {
   const best = attempts.reduce((max, a) => Math.max(max, a.n_passed ?? 0), 0);
   const target = attempts[0]?.n_total ?? 0;
@@ -475,7 +501,12 @@ function TaskProgressCard({
   return (
     <div className="rounded-lg border bg-card p-4" data-testid="task-progress-card">
       <div className="flex items-baseline justify-between gap-4 mb-1">
-        <div className="font-medium text-sm leading-tight truncate">{task.title}</div>
+        <div className="flex items-center gap-2 min-w-0">
+          <div className="font-medium text-sm leading-tight truncate">{task.title}</div>
+          {recursionEnabled && workspaceSlug && (
+            <RecursionEnabledBadge workspaceSlug={workspaceSlug} />
+          )}
+        </div>
         {attempts.length > 0 && (
           <div className="text-xs text-muted-foreground whitespace-nowrap tabular-nums">
             Best: {best}/{target} · {attempts.length} scored{" "}
@@ -609,6 +640,33 @@ function ScoreCell({ run }: { run: AdjustedRun }) {
         </span>
       ) : null}
     </div>
+  );
+}
+
+/**
+ * Small badge marking a run whose task's EvalSet has recursion enabled.
+ * Links to the Recursion tab (same page, `?tab=recursion`) — clicks must not
+ * toggle the row expansion, hence the stopPropagation.
+ * Teal: the existing badge vocabulary is taken (runner status gray/blue/
+ * green/red, violet contested, amber incomplete-data).
+ */
+function RecursionEnabledBadge({ workspaceSlug }: { workspaceSlug: string }) {
+  return (
+    <Link
+      href={`/w/${workspaceSlug}/legal/benchmarks?tab=recursion`}
+      onClick={(e) => e.stopPropagation()}
+      className="w-fit"
+      title="Recursion is enabled for this task — open the Recursion tab"
+      data-testid="recursion-badge"
+    >
+      <Badge
+        variant="outline"
+        className="border-0 bg-teal-100 text-teal-800 dark:bg-teal-900/30 dark:text-teal-300 flex items-center gap-1 w-fit hover:bg-teal-200 dark:hover:bg-teal-900/50 transition-colors"
+      >
+        <Repeat className="h-3 w-3" />
+        recursion
+      </Badge>
+    </Link>
   );
 }
 
