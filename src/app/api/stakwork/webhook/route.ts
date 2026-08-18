@@ -36,15 +36,6 @@ function buildWorkflowTimestamps(status: WorkflowStatus): Record<string, unknown
 
 export async function POST(request: NextRequest) {
   try {
-    // Auth guard — same pattern as /api/webhook/agent-logs.
-    // Must run before any DB read/write to prevent IDOR via
-    // attacker-controlled task_id/run_id in the request body.
-    const apiToken = request.headers.get("x-api-token");
-    if (!apiToken || apiToken !== process.env.API_TOKEN) {
-      console.error("[stakwork/webhook] rejected: invalid token");
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
     const body = (await request.json()) as StakworkStatusPayload;
     const { project_status, task_id } = body;
 
