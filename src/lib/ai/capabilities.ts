@@ -83,7 +83,7 @@ import { buildInitiativeTools } from "@/lib/ai/initiativeTools";
 import { buildPromptTools } from "@/lib/ai/promptTools";
 import { buildConceptTools } from "@/lib/ai/conceptTools";
 import { buildWorkflowExplorerTools } from "@/lib/ai/workflowExplorerTools";
-import { isPromptsCapabilityEnabledForOrg, isGraphWriteCapabilityEnabledForOrg } from "@/lib/ai/capabilityGates";
+import { isPromptsCapabilityEnabledForOrg } from "@/lib/ai/capabilityGates";
 import {
   buildResearchTools,
   type CapturedSearchResult,
