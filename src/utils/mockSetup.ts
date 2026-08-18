@@ -55,6 +55,7 @@ export async function ensureMockWorkspaceForUser(
 
   // Create encrypted tokens for mock (optional - gracefully handle if encryption not available)
   let encryptedPoolApiKey: string | null = null;
+  let encryptedSwarmApiKey: string | null = null;
   let encryptedGitHubToken: string | null = null;
   let encryptedGitHubRefreshToken: string | null = null;
 
@@ -62,6 +63,9 @@ export async function ensureMockWorkspaceForUser(
     const encryptionService = EncryptionService.getInstance();
     encryptedPoolApiKey = JSON.stringify(
       encryptionService.encryptField("poolApiKey", "mock-pool-api-key")
+    );
+    encryptedSwarmApiKey = JSON.stringify(
+      encryptionService.encryptField("swarmApiKey", "mock-swarm-api-key")
     );
     encryptedGitHubToken = JSON.stringify(
       encryptionService.encryptField("access_token", `gho_mock_token_${mockGitHubUserId}`)
@@ -190,6 +194,7 @@ export async function ensureMockWorkspaceForUser(
         podState: PodState.COMPLETED, // Skip "Validating..." message for mock users
         poolName: "mock-pool",
         poolApiKey: encryptedPoolApiKey, // Mock pool API key for Pool Manager mock
+        swarmApiKey: encryptedSwarmApiKey, // Mock swarm API key for Jarvis v2 write helpers
       },
     });
 
