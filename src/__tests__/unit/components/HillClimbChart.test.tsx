@@ -516,3 +516,60 @@ describe("HillClimbChart — running-best dot states", () => {
     expect(screen.getByTestId("target-edge-value")).toBeTruthy();
   });
 });
+
+// ─── Improvement delta labels ────────────────────────────────────────────────
+
+describe("HillClimbChart — improvement delta labels", () => {
+  const RISE_SERIES: EvalTriggerOutput[] = [
+    makeOutput({ ref_id: "d0", n_passed: 50, n_total: 74, isBaseline: true, accepted: true, actualPassed: 50, bestPassed: 50, label: "base" }),
+    makeOutput({ ref_id: "d1", n_passed: 58, n_total: 74, isBaseline: false, accepted: true, actualPassed: 58, bestPassed: 58, label: "r1" }),
+    makeOutput({ ref_id: "d2", n_passed: 52, n_total: 74, isBaseline: false, accepted: true, actualPassed: 52, bestPassed: 58, label: "r2" }),
+    makeOutput({ ref_id: "d3", n_passed: 60, n_total: 74, isBaseline: false, accepted: true, actualPassed: 60, bestPassed: 60, label: "r3" }),
+  ];
+
+  it("labels each ratchet step with +N against the previous best", () => {
+    render(<HillClimbChart attempts={RISE_SERIES} />);
+    expect(screen.getByTestId("delta-1").textContent).toBe("+8");
+    // Recovery is measured against the standing best (58), not the dip (52)
+    expect(screen.getByTestId("delta-3").textContent).toBe("+2");
+  });
+
+  it("labels neither the baseline, nor a below-best run, nor a tie", () => {
+    const tie: EvalTriggerOutput[] = [
+      ...RISE_SERIES,
+      makeOutput({ ref_id: "d4", n_passed: 60, n_total: 74, isBaseline: false, accepted: true, actualPassed: 60, bestPassed: 60, label: "r4" }),
+    ];
+    render(<HillClimbChart attempts={tie} />);
+    expect(screen.queryByTestId("delta-0")).toBeNull(); // baseline
+    expect(screen.queryByTestId("delta-2")).toBeNull(); // below best
+    expect(screen.queryByTestId("delta-4")).toBeNull(); // tie
+  });
+
+  it("drops all on-chart delta labels past the noise guard, tooltip still carries them", () => {
+    // 12 strict rises — over MAX_DELTA_LABELS (10)
+    const many: EvalTriggerOutput[] = Array.from({ length: 13 }, (_, i) =>
+      makeOutput({
+        ref_id: `m${i}`,
+        n_passed: 40 + i,
+        n_total: 74,
+        isBaseline: i === 0,
+        accepted: true,
+        actualPassed: 40 + i,
+        bestPassed: 40 + i,
+        label: i === 0 ? "base" : `r${i}`,
+      }),
+    );
+    render(<HillClimbChart attempts={many} />);
+    for (let i = 0; i < many.length; i++) {
+      expect(screen.queryByTestId(`delta-${i}`)).toBeNull();
+    }
+    fireEvent.mouseEnter(screen.getByTestId("dot-5"));
+    expect(screen.getByTestId("chart-tooltip").textContent).toMatch(/\+1 vs previous best/);
+  });
+
+  it("shows the delta in the tooltip on an improving dot", () => {
+    render(<HillClimbChart attempts={RISE_SERIES} />);
+    fireEvent.mouseEnter(screen.getByTestId("dot-1"));
+    expect(screen.getByTestId("chart-tooltip").textContent).toMatch(/\+8 vs previous best/);
+  });
+});
