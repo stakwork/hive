@@ -173,11 +173,16 @@ describe("HillClimbChart", () => {
     expect(stroke).not.toMatch(/hsl\(var\(/i);
   });
 
-  it("accepted dot uses currentColor fill and stroke", () => {
+  it("accepted dot: series fill via currentColor, surface ring via token class", () => {
+    // The series group carries text-chart-1; the dot inherits it through
+    // currentColor. The ring is the card surface (stroke-card class), never a
+    // stroke drawn in the series color — separation comes from surface ink.
     render(<HillClimbChart attempts={MULTI_POINT_ATTEMPTS} />);
     const dot = screen.getByTestId("dot-1");
     expect(dot.getAttribute("fill")).toBe("currentColor");
-    expect(dot.getAttribute("stroke")).toBe("currentColor");
+    expect(dot.getAttribute("stroke")).toBeNull();
+    expect(dot.getAttribute("class")).toContain("stroke-card");
+    expect(dot.closest("g.text-chart-1")).not.toBeNull();
   });
 
   // ─── Rejected dot styling ───────────────────────────────────────────────────

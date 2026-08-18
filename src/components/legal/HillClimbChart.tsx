@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useRef, useState, useId } from "react";
+import React, { useEffect, useId, useRef, useState } from "react";
 import * as d3 from "d3";
 import type { EvalTriggerOutput } from "@/lib/harvey-lab/eval-normalizers";
 
@@ -24,7 +24,7 @@ interface TooltipState {
 
 interface HillClimbChartProps {
   attempts: EvalTriggerOutput[];
-  /** Visual height of the SVG (px) — defaults to 140 */
+  /** Visual height of the SVG (px) — defaults to 160 */
   height?: number;
 }
 
@@ -45,8 +45,7 @@ export function toAttemptPoints(attempts: EvalTriggerOutput[]): AttemptPoint[] {
     const accepted = o.accepted ?? true; // legacy: treat all as accepted
 
     // Prefer series-provided actualPassed; fall back to n_passed (possibly null for slot-only)
-    const actualPassed: number | null =
-      o.actualPassed !== undefined ? o.actualPassed : (o.n_passed ?? null);
+    const actualPassed: number | null = o.actualPassed !== undefined ? o.actualPassed : (o.n_passed ?? null);
 
     // Prefer series-provided bestPassed; compute for legacy path
     let bestPassed: number;
@@ -74,83 +73,167 @@ export function toAttemptPoints(attempts: EvalTriggerOutput[]): AttemptPoint[] {
   });
 }
 
-const MARGIN = { top: 16, right: 20, bottom: 28, left: 32 };
+const MARGIN = { top: 14, right: 52, bottom: 26, left: 40 };
 
 /** Padding on the dot clip so edge dots aren't sliced by their own clip rect. */
-const DOT_CLIP_PAD = 6;
+const DOT_CLIP_PAD = 8;
 
-export function HillClimbChart({ attempts, height = 140 }: HillClimbChartProps) {
+/** SVG width used before the ResizeObserver delivers a measurement. */
+const FALLBACK_WIDTH = 640;
+
+/** Max x-axis labels before thinning kicks in (long concept-rerun series). */
+const MAX_X_LABELS = 12;
+
+/**
+ * Fit the y-domain floor to the data instead of always starting at 0.
+ *
+ * Scores on a mature eval set cluster near the target (e.g. 43–49 of 49); a
+ * [0, n_total] domain compresses every run-to-run movement into the top sliver
+ * of the plot and the chart reads as a flat line regardless of what happened.
+ * Lines (unlike bars) may zoom their domain — the bottom tick renders its real
+ * value so a raised floor is never mistaken for zero. The floor snaps back to 0
+ * when the data already spans most of the range, and the target stays the
+ * ceiling so the reference line is always in view.
+ */
+function fitYDomain(values: number[], target: number): [number, number] {
+  const yMax = Math.max(target, 1);
+  if (values.length === 0) return [0, yMax];
+  const dataMin = Math.min(...values);
+  const pad = Math.max(2, Math.round((yMax - dataMin) * 0.25));
+  let yMin = Math.max(0, dataMin - pad);
+  // Data already reaches into the lower third → a raised floor buys nothing.
+  if (yMin < yMax * 0.35) yMin = 0;
+  if (yMin >= yMax) yMin = Math.max(0, yMax - pad);
+  return [yMin, yMax];
+}
+
+export function HillClimbChart({ attempts, height = 160 }: HillClimbChartProps) {
   const clipId = useId();
+  const containerRef = useRef<HTMLDivElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
   const [tooltip, setTooltip] = useState<TooltipState | null>(null);
+  const [hoverIdx, setHoverIdx] = useState<number | null>(null);
+  const [width, setWidth] = useState(FALLBACK_WIDTH);
+
+  // Measure the container so the viewBox matches real pixels (1 unit = 1px).
+  // The previous fixed 400px viewBox letterboxed inside wide cards.
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver((entries) => {
+      const w = entries[0]?.contentRect.width;
+      if (w && w > 0) setWidth(Math.round(w));
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
 
   const points = toAttemptPoints(attempts);
 
   if (points.length === 0) return null;
 
   const n_total = points[0].n_total;
-  const W = 400; // viewBox logical width
+  const W = width;
   const H = height;
-  const innerW = W - MARGIN.left - MARGIN.right;
+  const innerW = Math.max(W - MARGIN.left - MARGIN.right, 1);
   const innerH = H - MARGIN.top - MARGIN.bottom;
 
   // x: attempt index
-  const xScale = d3.scaleLinear()
+  const xScale = d3
+    .scaleLinear()
     .domain([0, Math.max(points.length - 1, 1)])
     .range([0, innerW]);
 
-  // y: 0..n_total
-  const yScale = d3.scaleLinear()
-    .domain([0, n_total])
-    .range([innerH, 0])
-    .nice();
+  // y: fitted to the data, target as the ceiling
+  const plottedValues = [
+    ...points.map((p) => p.actualPassed).filter((v): v is number => v != null),
+    ...points.map((p) => p.bestPassed).filter((v) => Number.isFinite(v)),
+  ];
+  const [yMin, yMax] = fitYDomain(plottedValues, n_total);
+  const yScale = d3.scaleLinear().domain([yMin, yMax]).range([innerH, 0]);
 
-  // Connected line driven by bestPassed (monotonic non-decreasing)
-  const lineGen = d3.line<AttemptPoint>()
+  // Connected line driven by bestPassed (monotonic on the fix-chain series;
+  // equal to actualPassed on the flat eval-output series)
+  const lineGen = d3
+    .line<AttemptPoint>()
     .x((_, i) => xScale(i))
     .y((d) => yScale(d.bestPassed))
     .curve(d3.curveMonotoneX);
 
-  const linePath = points.length >= 2 ? lineGen(points) ?? "" : "";
+  const linePath = points.length >= 2 ? (lineGen(points) ?? "") : "";
 
   // Target y position
   const targetY = yScale(n_total);
 
-  // Tick labels for y axis
-  const yTicks = [0, Math.round(n_total / 2), n_total].filter(
-    (v, i, a) => a.indexOf(v) === i,
-  );
+  // Ticks: floor, midpoint, target — the floor tick shows its real value so a
+  // fitted (non-zero) domain is never read as starting at zero.
+  const yTicks = [yMin, Math.round((yMin + yMax) / 2), yMax].filter((v, i, a) => a.indexOf(v) === i);
 
-  function handleMouseEnter(point: AttemptPoint, idx: number, e: React.MouseEvent<SVGCircleElement>) {
+  // Thin x labels on long series; always keep the first and last slots. A
+  // stepped label that would land within one step of the end is skipped so it
+  // never collides with the always-shown last label.
+  const labelStep = Math.max(1, Math.ceil(points.length / MAX_X_LABELS));
+  const lastIdx = points.length - 1;
+  const showXLabel = (i: number) =>
+    i === lastIdx || (i % labelStep === 0 && lastIdx - i >= labelStep);
+
+  // Index of the last point that has a dot — carries the direct end label.
+  const lastScoredIdx = (() => {
+    for (let i = points.length - 1; i >= 0; i--) {
+      if (points[i].actualPassed != null) return i;
+    }
+    return -1;
+  })();
+
+  function tooltipFor(idx: number) {
+    const point = points[idx];
     const svgEl = svgRef.current;
     if (!svgEl) return;
     const rect = svgEl.getBoundingClientRect();
-    const svgW = rect.width;
-    const svgH = rect.height;
-    const scaleX = svgW / W;
-    const scaleY = svgH / H;
+    const scaleX = rect.width / W;
+    const scaleY = rect.height / H;
 
-    // Position tooltip relative to the dot (bestPassed drives the line; dot is at actualPassed)
     const dotY = point.actualPassed != null ? yScale(point.actualPassed) : yScale(point.bestPassed);
     const cx = (MARGIN.left + xScale(idx)) * scaleX;
     const cy = (MARGIN.top + dotY) * scaleY;
 
-    const tipY = cy < 50 ? cy + 16 : cy - 52;
-    const tipX = Math.min(Math.max(cx - 52, 4), svgW - 112);
+    const tipY = cy < 56 ? cy + 18 : cy - 58;
+    const tipX = Math.min(Math.max(cx - 52, 4), Math.max(rect.width - 116, 4));
 
     setTooltip({ x: tipX, y: tipY, point });
+    setHoverIdx(idx);
+  }
+
+  function handleMouseEnter(_point: AttemptPoint, idx: number, e: React.MouseEvent<SVGCircleElement>) {
+    tooltipFor(idx);
     void e;
   }
 
+  // Crosshair hover: the whole plot is the hit target — the pointer snaps to
+  // the nearest attempt column, so nobody has to land on an 9px dot.
+  function handleOverlayMove(e: React.PointerEvent<SVGRectElement>) {
+    const svgEl = svgRef.current;
+    if (!svgEl) return;
+    const rect = svgEl.getBoundingClientRect();
+    const px = ((e.clientX - rect.left) / Math.max(rect.width, 1)) * W - MARGIN.left;
+    const idx = Math.min(points.length - 1, Math.max(0, Math.round(xScale.invert(px))));
+    tooltipFor(idx);
+  }
+
+  function clearHover() {
+    setTooltip(null);
+    setHoverIdx(null);
+  }
+
   return (
-    <div className="relative select-none" data-testid="hill-climb-chart">
+    <div className="relative select-none" data-testid="hill-climb-chart" ref={containerRef}>
       <svg
         ref={svgRef}
         viewBox={`0 0 ${W} ${H}`}
         preserveAspectRatio="xMidYMid meet"
         className="w-full overflow-visible"
         style={{ height }}
-        onMouseLeave={() => setTooltip(null)}
+        onMouseLeave={clearHover}
         aria-label={`Hill-climb chart: ${points.length} attempts, target ${n_total}`}
         role="img"
       >
@@ -159,7 +242,7 @@ export function HillClimbChart({ attempts, height = 140 }: HillClimbChartProps) 
             <rect x={0} y={0} width={innerW} height={innerH} />
           </clipPath>
           {/*
-            Dot clip: the plot rect padded by the dot radius + stroke. Dots sit
+            Dot clip: the plot rect padded by the dot radius + ring. Dots sit
             exactly on the plot edges (cx=0 at index 0, cy=0 when a point equals
             the y-domain max), so the polyline's own clip would slice them in
             half. The padding keeps edge dots whole while still cutting off any
@@ -177,127 +260,177 @@ export function HillClimbChart({ attempts, height = 140 }: HillClimbChartProps) 
         </defs>
 
         <g transform={`translate(${MARGIN.left},${MARGIN.top})`}>
-          {/* Y-axis ticks */}
+          {/* Gridlines: solid hairlines in the border token, recessive. The
+              target tick keeps its text but not its gridline — the dashed
+              target line already sits at that y, and doubling the ink there
+              muddies the one reference that matters. */}
           {yTicks.map((v) => (
             <g key={v} transform={`translate(0,${yScale(v)})`}>
-              <line
-                x1={-4}
-                x2={innerW}
-                stroke="currentColor"
-                strokeOpacity={v === 0 ? 0.15 : 0.07}
-                strokeWidth={1}
-              />
+              {v !== n_total && (
+                <line x1={0} x2={innerW} className="stroke-border" strokeWidth={1} />
+              )}
               <text
                 x={-8}
                 dy="0.35em"
                 textAnchor="end"
-                fontSize={9}
-                fill="currentColor"
-                fillOpacity={0.45}
-                fontFamily="ui-monospace, monospace"
+                fontSize={10}
+                className="fill-muted-foreground"
+                style={{ fontVariantNumeric: "tabular-nums" }}
               >
                 {v}
               </text>
             </g>
           ))}
 
-          {/* Target reference line */}
+          {/* Target reference line — chrome, not data, so it wears muted ink */}
           <line
             x1={0}
             y1={targetY}
             x2={innerW}
             y2={targetY}
-            stroke="currentColor"
-            strokeOpacity={0.35}
-            strokeWidth={1.5}
+            className="stroke-muted-foreground"
+            strokeOpacity={0.5}
+            strokeWidth={1}
             strokeDasharray="4 3"
             data-testid="target-line"
           />
           <text
-            x={innerW + 3}
+            x={innerW + 6}
             y={targetY}
             dy="0.35em"
-            fontSize={8}
-            fill="currentColor"
-            fillOpacity={0.4}
-            fontFamily="ui-monospace, monospace"
+            fontSize={10}
+            className="fill-muted-foreground"
+            style={{ fontVariantNumeric: "tabular-nums" }}
           >
             {n_total}
           </text>
 
-          {/* Climbing polyline — driven by bestPassed for monotonic best-so-far line */}
-          {linePath && (
-            <path
-              d={linePath}
-              fill="none"
-              stroke="currentColor"
-              strokeWidth={2}
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              clipPath={`url(#${clipId})`}
-              data-testid="climb-polyline"
+          {/* Crosshair: snaps to the hovered attempt column */}
+          {hoverIdx != null && (
+            <line
+              x1={xScale(hoverIdx)}
+              x2={xScale(hoverIdx)}
+              y1={0}
+              y2={innerH}
+              className="stroke-muted-foreground"
+              strokeOpacity={0.35}
+              strokeWidth={1}
+              data-testid="crosshair"
             />
           )}
 
-          {/* Data points — skip circle when actualPassed is null, keep x-slot */}
-          <g clipPath={`url(#${clipId}-dots)`} data-testid="dot-group">
-            {points.map((pt, i) =>
-              pt.actualPassed != null ? (
-                <circle
-                  key={i}
-                  cx={xScale(i)}
-                  cy={yScale(pt.actualPassed)}
-                  r={4}
-                  fill={pt.accepted ? "currentColor" : "none"}
-                  stroke="currentColor"
-                  strokeWidth={1.5}
-                  strokeOpacity={pt.accepted ? 1 : 0.4}
-                  fillOpacity={pt.isBaseline ? 0.55 : pt.accepted ? 1 : 0}
-                  className="cursor-pointer"
-                  onMouseEnter={(e) => handleMouseEnter(pt, i, e)}
-                  onFocus={(e) => handleMouseEnter(pt, i, e as unknown as React.MouseEvent<SVGCircleElement>)}
-                  tabIndex={0}
-                  aria-label={`${pt.label}: ${pt.actualPassed}/${pt.n_total}${pt.accepted ? "" : " (rejected)"}`}
-                  data-testid={`dot-${i}`}
-                />
-              ) : (
-                // No dot — keep x-slot so labels never shift; render nothing visible
-                <g key={i} data-testid={`slot-${i}`} />
-              ),
+          {/* Series layer — --chart-1 carries identity; marks only, never text */}
+          <g className="text-chart-1">
+            {/* Climbing polyline — bestPassed (monotonic best-so-far on the
+                fix-chain series; the real score line on the flat series) */}
+            {linePath && (
+              <path
+                d={linePath}
+                fill="none"
+                stroke="currentColor"
+                strokeWidth={2}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                clipPath={`url(#${clipId})`}
+                data-testid="climb-polyline"
+              />
             )}
+
+            {/* Data points — skip circle when actualPassed is null, keep x-slot */}
+            <g clipPath={`url(#${clipId}-dots)`} data-testid="dot-group">
+              {points.map((pt, i) =>
+                pt.actualPassed != null ? (
+                  <circle
+                    key={i}
+                    cx={xScale(i)}
+                    cy={yScale(pt.actualPassed)}
+                    r={4.5}
+                    fill={pt.accepted ? "currentColor" : "none"}
+                    fillOpacity={pt.isBaseline ? 0.55 : 1}
+                    // Accepted dots wear a 2px surface ring so they stay
+                    // legible where the line passes through; rejected dots are
+                    // hollow with the series stroke — fill absence, plus the
+                    // tooltip/aria "rejected", carries the state (never color alone).
+                    className={pt.accepted ? "stroke-card" : ""}
+                    stroke={pt.accepted ? undefined : "currentColor"}
+                    strokeWidth={pt.accepted ? 2 : 1.5}
+                    strokeOpacity={pt.accepted ? 1 : 0.55}
+                    onMouseEnter={(e) => handleMouseEnter(pt, i, e)}
+                    onFocus={(e) => handleMouseEnter(pt, i, e as unknown as React.MouseEvent<SVGCircleElement>)}
+                    tabIndex={0}
+                    aria-label={`${pt.label}: ${pt.actualPassed}/${pt.n_total}${pt.accepted ? "" : " (rejected)"}`}
+                    data-testid={`dot-${i}`}
+                  />
+                ) : (
+                  // No dot — keep x-slot so labels never shift; render nothing visible
+                  <g key={i} data-testid={`slot-${i}`} />
+                ),
+              )}
+            </g>
           </g>
 
-          {/* X-axis attempt labels — sourced from series label, never recomputed from index */}
-          {points.map((pt, i) => (
+          {/* Direct end label: the current score, in ink — text never wears
+              the series color */}
+          {lastScoredIdx >= 0 && points.length >= 2 && (
             <text
-              key={i}
-              x={xScale(i)}
-              y={innerH + 16}
-              textAnchor="middle"
-              fontSize={8}
-              fill="currentColor"
-              fillOpacity={0.4}
-              fontFamily="ui-monospace, monospace"
+              x={xScale(lastScoredIdx) + 9}
+              y={yScale(points[lastScoredIdx].actualPassed as number)}
+              dy="0.35em"
+              fontSize={11}
+              fontWeight={600}
+              className="fill-foreground"
+              style={{ fontVariantNumeric: "tabular-nums" }}
+              data-testid="end-label"
             >
-              {pt.label}
+              {points[lastScoredIdx].actualPassed}
             </text>
-          ))}
+          )}
+
+          {/* X-axis attempt labels — thinned on long series, ends always kept */}
+          {points.map((pt, i) =>
+            showXLabel(i) ? (
+              <text
+                key={i}
+                x={xScale(i)}
+                y={innerH + 17}
+                textAnchor="middle"
+                fontSize={10}
+                className="fill-muted-foreground"
+              >
+                {pt.label}
+              </text>
+            ) : null,
+          )}
+
+          {/* Hover overlay: the whole plot is the hit target for the crosshair */}
+          <rect
+            x={-DOT_CLIP_PAD}
+            y={-DOT_CLIP_PAD}
+            width={innerW + DOT_CLIP_PAD * 2}
+            height={innerH + DOT_CLIP_PAD * 2}
+            fill="transparent"
+            onPointerMove={handleOverlayMove}
+            onPointerLeave={clearHover}
+            data-testid="hit-overlay"
+          />
         </g>
       </svg>
 
-      {/* Floating tooltip */}
+      {/* Floating tooltip — the value leads, the label follows */}
       {tooltip && (
         <div
           className="pointer-events-none absolute z-10 rounded-md border bg-popover px-2.5 py-1.5 text-xs shadow-md"
           style={{ left: tooltip.x, top: tooltip.y, minWidth: 100 }}
           data-testid="chart-tooltip"
         >
-          <div className="font-medium text-popover-foreground">{tooltip.point.label}</div>
-          <div className="tabular-nums text-muted-foreground">
+          <div
+            className="font-semibold tabular-nums text-popover-foreground"
+          >
             {tooltip.point.actualPassed != null
               ? `${tooltip.point.actualPassed}/${tooltip.point.n_total} passed`
               : "no score"}
           </div>
+          <div className="text-muted-foreground">{tooltip.point.label}</div>
           {!tooltip.point.accepted && (
             <div className="text-muted-foreground/60 italic">rejected</div>
           )}

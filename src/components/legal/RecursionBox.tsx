@@ -288,7 +288,7 @@ function RecursionCard({ entry, refetch }: RecursionCardProps) {
                   </span>
                 )}
               </p>
-              <HillClimbChart attempts={attempts} height={140} />
+              <HillClimbChart attempts={attempts} height={176} />
             </div>
           )}
         </CollapsibleContent>
