@@ -1,6 +1,6 @@
 import React from "react";
-import { render, screen, fireEvent } from "@testing-library/react";
-import { describe, it, expect } from "vitest";
+import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { describe, it, expect, vi, afterEach } from "vitest";
 import { CascadeTrace } from "@/components/legal/RunCascade";
 import { assembleRunCascade } from "@/lib/legal-cascade/derive";
 import {
@@ -19,6 +19,10 @@ function mockModel() {
 }
 
 describe("CascadeTrace", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
   it("renders one section per top-level agent with the child spliced in", () => {
     render(<CascadeTrace model={mockModel()} />);
 
@@ -92,6 +96,48 @@ describe("CascadeTrace", () => {
     // The stock fixture starts them 2 minutes apart — no batch wrapper.
     render(<CascadeTrace model={mockModel()} />);
     expect(screen.queryByTestId("cascade-batch-0")).toBeNull();
+  });
+
+  it("opens a concept peek on chip click, fetching the node for the workspace", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        success: true,
+        data: {
+          ref_id: "onto-1",
+          node_type: "Concept",
+          name: "wfa-ontology",
+          id: "g-1",
+          properties: { docs: "The WFA clause ontology." },
+        },
+      }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<CascadeTrace model={mockModel()} workspaceSlug="acme" />);
+    expect(screen.queryByTestId("cascade-concept-peek")).toBeNull();
+
+    fireEvent.click(screen.getByTestId("cascade-concept-onto-1"));
+
+    const peek = await screen.findByTestId("cascade-concept-peek");
+    expect(fetchMock).toHaveBeenCalledWith("/api/workspaces/acme/nodes/onto-1");
+    await waitFor(() => {
+      expect(peek.textContent).toContain("The WFA clause ontology.");
+    });
+    // Identity the trace carries plus what the graph knows.
+    expect(peek.textContent).toContain("wfa-ontology");
+    expect(peek.textContent).toContain("onto-1");
+    expect(peek.textContent).toContain("g-1");
+  });
+
+  it("says why a concept peek cannot fetch without a workspace", async () => {
+    render(<CascadeTrace model={mockModel()} />);
+
+    fireEvent.click(screen.getByTestId("cascade-concept-onto-1"));
+
+    const peek = await screen.findByTestId("cascade-concept-peek");
+    expect(peek.textContent).toContain("Live node fetch needs a workspace context.");
   });
 
   it("expand all unrolls every pill; collapse all folds them", () => {
