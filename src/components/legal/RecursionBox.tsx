@@ -122,7 +122,6 @@ function RecursionCard({ entry, refetch }: RecursionCardProps) {
   // refId is preferred; slug is the fallback when refId is absent.
   const {
     attempts: rawAttempts,
-    seriesKind,
     partial,
     isLoading: historyLoading,
     error: historyError,
@@ -140,23 +139,18 @@ function RecursionCard({ entry, refetch }: RecursionCardProps) {
     [rawAttempts, roster],
   );
 
-  // Headline number, per series kind:
-  //  - fix-chain / legacy: the best score so far (highest bestPassed), so a
-  //    trailing rejected attempt doesn't make the badge show a stale-looking
-  //    dip. Unchanged from before this series-kind branch existed.
-  //  - eval-output: the LAST point in series order. That series sets
-  //    bestPassed = actualPassed, so a reduce-max would silently report a
-  //    historical high while the chart visibly dips — for a flat re-run series
-  //    the current score is the meaningful headline.
+  // Headline number: the best score so far (highest bestPassed). Both series
+  // builders now emit a monotonic bestPassed — the chart's line only climbs or
+  // holds, regressions render as hollow "ignored" dots — so the badge always
+  // matches the level the line ends at.
   const latest = useMemo(() => {
     if (attempts.length === 0) return null;
-    if (seriesKind === "eval-output") return attempts[attempts.length - 1];
     return attempts.reduce((best, pt) => {
       const ptBest = pt.bestPassed ?? pt.n_passed ?? 0;
       const curBest = best.bestPassed ?? best.n_passed ?? 0;
       return ptBest >= curBest ? pt : best;
     });
-  }, [attempts, seriesKind]);
+  }, [attempts]);
 
   const handleToggle = async (enabled: boolean) => {
     setToggling(true);
@@ -205,6 +199,20 @@ function RecursionCard({ entry, refetch }: RecursionCardProps) {
               n_total={latest?.n_total}
               roster={roster}
             />
+            {/* A truncated graph walk must be loud: a capped walk renders a
+                flat-looking chart that is indistinguishable from a real
+                plateau, so the warning sits in the always-visible header, not
+                only inside the collapsed chart. */}
+            {partial && !historyLoading && !historyError && (
+              <span
+                className="flex items-center gap-1 text-xs text-amber-600 dark:text-amber-400"
+                data-testid="partial-warning"
+                title="The graph walk hit a safety cap before finishing — runs may be missing and the chart below may under-report progress."
+              >
+                <AlertCircle className="h-3 w-3 shrink-0" />
+                <span>incomplete data</span>
+              </span>
+            )}
           </div>
           <span className="text-xs text-muted-foreground truncate">{entry.id}</span>
           {toggleError && (
@@ -266,7 +274,7 @@ function RecursionCard({ entry, refetch }: RecursionCardProps) {
                 )}
                 {partial && (
                   <span
-                    className="text-muted-foreground/60 italic"
+                    className="text-amber-600 dark:text-amber-400"
                     data-testid="chart-partial-note"
                   >
                     {" "}
@@ -274,7 +282,7 @@ function RecursionCard({ entry, refetch }: RecursionCardProps) {
                   </span>
                 )}
               </p>
-              <HillClimbChart attempts={attempts} height={140} />
+              <HillClimbChart attempts={attempts} height={176} />
             </div>
           )}
         </CollapsibleContent>
