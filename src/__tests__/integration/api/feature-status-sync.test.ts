@@ -1,5 +1,4 @@
-import { describe, test, expect, beforeEach, vi, afterEach } from "vitest";
-import { NextRequest } from "next/server";
+import { describe, test, expect, beforeEach, vi } from "vitest";
 import { db } from "@/lib/db";
 import { TaskStatus, WorkflowStatus, FeatureStatus, Priority, ArtifactType } from "@prisma/client";
 import { PATCH } from "@/app/api/tasks/[taskId]/route";
@@ -39,11 +38,8 @@ vi.mock("@/lib/pusher", () => ({
 }));
 
 describe("Feature Status Sync Integration Tests", () => {
-  const TEST_API_TOKEN = "test-api-token-feature-status";
-
   beforeEach(async () => {
     await resetDatabase();
-    process.env.API_TOKEN = TEST_API_TOKEN;
   });
 
   /**
@@ -337,15 +333,10 @@ describe("Feature Status Sync Integration Tests", () => {
       });
 
       // Simulate stakwork webhook for task2 completion
-      const request = new NextRequest(
-        `http://localhost/api/stakwork/webhook?task_id=${task2.id}`,
+      const request = createPostRequest(
+        `/api/stakwork/webhook?task_id=${task2.id}`,
         {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "x-api-token": TEST_API_TOKEN,
-          },
-          body: JSON.stringify({ project_status: "completed" }),
+          project_status: "completed",
         }
       );
 
@@ -373,15 +364,10 @@ describe("Feature Status Sync Integration Tests", () => {
       const { user, workspace, feature, task1 } = await createFeatureWithTasks();
 
       // Simulate stakwork webhook for task1 failure
-      const request = new NextRequest(
-        `http://localhost/api/stakwork/webhook?task_id=${task1.id}`,
+      const request = createPostRequest(
+        `/api/stakwork/webhook?task_id=${task1.id}`,
         {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "x-api-token": TEST_API_TOKEN,
-          },
-          body: JSON.stringify({ project_status: "failed" }),
+          project_status: "failed",
         }
       );
 
@@ -432,15 +418,10 @@ describe("Feature Status Sync Integration Tests", () => {
         },
       });
 
-      const request = new NextRequest(
-        `http://localhost/api/stakwork/webhook?task_id=${task.id}`,
+      const request = createPostRequest(
+        `/api/stakwork/webhook?task_id=${task.id}`,
         {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "x-api-token": TEST_API_TOKEN,
-          },
-          body: JSON.stringify({ project_status: "completed" }),
+          project_status: "completed",
         }
       );
 
