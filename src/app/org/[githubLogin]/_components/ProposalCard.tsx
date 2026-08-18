@@ -144,7 +144,15 @@ export function ProposalCard({
               ? proposal.payload.name
               : proposal.kind === "conceptUpdate"
                 ? (proposal.meta.conceptName ?? proposal.payload.conceptId)
-                : proposal.payload.title;
+                : proposal.kind === "graphNodeCreate"
+                  ? proposal.payload.node_type
+                  : proposal.kind === "graphNodeEdit"
+                    ? proposal.payload.ref_id
+                    : proposal.kind === "graphTripletCreate"
+                      ? proposal.payload.edge_type
+                      : proposal.kind === "graphBatchTripletCreate"
+                        ? "Batch Triplets"
+                        : proposal.payload.title;
   const [editedTitle, setEditedTitle] = useState(initialTitle);
   const [isEditing, setIsEditing] = useState(false);
   // Prompt/concept proposals forward no inline-edit override (handleApprove
@@ -691,7 +699,15 @@ function ProposalDetailsDialog({
               ? proposal.payload.name
               : proposal.kind === "conceptUpdate"
                 ? (proposal.meta.conceptName ?? proposal.payload.conceptId)
-                : proposal.payload.title;
+                : proposal.kind === "graphNodeCreate"
+                  ? proposal.payload.node_type
+                  : proposal.kind === "graphNodeEdit"
+                    ? proposal.payload.ref_id
+                    : proposal.kind === "graphTripletCreate"
+                      ? proposal.payload.edge_type
+                      : proposal.kind === "graphBatchTripletCreate"
+                        ? "Batch Triplets"
+                        : proposal.payload.title;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -954,6 +970,10 @@ export function proposalHasDetails(p: ProposalOutput): boolean {
   // conceptUpdate: the doc diff lives in its own "View changes" modal on
   // the card, so there's nothing extra to show in the details dialog.
   if (p.kind === "conceptUpdate") return false;
+  if (p.kind === "graphNodeCreate") return false;
+  if (p.kind === "graphNodeEdit") return false;
+  if (p.kind === "graphTripletCreate") return false;
+  if (p.kind === "graphBatchTripletCreate") return false;
   // milestone
   return !!(p.payload.description || p.payload.status || p.payload.dueDate);
 }
