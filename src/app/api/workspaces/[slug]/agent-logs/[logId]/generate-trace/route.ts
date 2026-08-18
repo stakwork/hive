@@ -6,6 +6,7 @@ import { config } from "@/config/env";
 import { generateSignedUrl } from "@/lib/signed-urls";
 import { getBaseUrl } from "@/lib/utils";
 import { logger } from "@/lib/logger";
+import type { StakworkEvalVarsBase } from "@/types/stakwork";
 
 type RouteParams = { params: Promise<{ slug: string; logId: string }> };
 
@@ -61,7 +62,8 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
               agentLogId: logId,
               blobUrl: signedUrl,
               webhookUrl,
-            },
+              workspace_id: workspace.id,
+            } satisfies StakworkEvalVarsBase & Record<string, unknown>,
           },
         },
       },
