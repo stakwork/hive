@@ -78,6 +78,9 @@ export async function seedMockData(
   // Seed Attachments linked to chat messages
   await seedAttachments(workspaceId, allTasks, userId);
 
+  // Seed code-change mock fixture (propose_code_change → createPr end-to-end)
+  await seedCodeChangeFixture(workspaceId, userId, allTasks);
+
   console.log("[MockSeed] Mock data seeding complete");
 }
 
@@ -2833,6 +2836,171 @@ async function seedAttachments(
 
     console.log(`[MockSeed] Created ${diagramSeeds.length} seed diagrams`);
   }
+}
+
+// ─── Mock diff fixture ────────────────────────────────────────────────────
+
+/** Realistic multi-file diff used by the code-change fixture. */
+const CODE_CHANGE_MOCK_DIFF = `--- a/src/lib/auth/middleware.ts
++++ b/src/lib/auth/middleware.ts
+@@ -12,6 +12,9 @@ export async function authMiddleware(req: Request) {
+   const session = await getSession(req);
++  if (!session) {
++    throw new Error("Unauthenticated request");
++  }
+   const userId = session.userId;
+   return { userId };
+ }
+--- a/src/lib/auth/guards.ts
++++ b/src/lib/auth/guards.ts
+@@ -1,5 +1,8 @@
+ export function requireAuth(fn: Function) {
++  if (!fn) throw new Error("fn required");
+   return function (...args: unknown[]) {
+     return fn(...args);
+   };
+ }
+`;
+
+/**
+ * Seeds a single success mock fixture for the `propose_code_change` →
+ * `createPr` end-to-end flow.
+ *
+ * Creates a SYSTEM/mode:"live"/workflowStatus:COMPLETED Task with:
+ *   - `repositoryId` and `proposalId` set
+ *   - A DIFF artifact with a realistic multi-file diff
+ *   - A PULL_REQUEST artifact with status outside DONE/CANCELLED
+ *     (so `findOpenPRArtifacts` does NOT skip it for an hour)
+ *   - `janitorConfig.prMonitorEnabled: true` (verified/updated)
+ *
+ * Idempotent: skips if the task title already exists in the workspace.
+ */
+async function seedCodeChangeFixture(
+  workspaceId: string,
+  userId: string,
+  allTasks: Array<{ id: string; title: string; status: TaskStatus; sourceType: TaskSourceType }>,
+): Promise<void> {
+  const FIXTURE_TITLE = "[Jamie] Fix auth middleware null check (mock)";
+
+  // Idempotency: skip if already seeded.
+  const existing = await db.task.findFirst({
+    where: { workspaceId, title: FIXTURE_TITLE },
+    select: { id: true },
+  });
+  if (existing) {
+    console.log("[MockSeed] Code-change fixture already seeded, skipping.");
+    return;
+  }
+
+  // Resolve the workspace's primary repository.
+  const repository = await db.repository.findFirst({
+    where: { workspaceId },
+    orderBy: { createdAt: "asc" },
+    select: { id: true, repositoryUrl: true },
+  });
+  if (!repository) {
+    console.log("[MockSeed] No repository found — skipping code-change fixture.");
+    return;
+  }
+
+  const proposalId = "mock-code-change-proposal-001";
+
+  // Create the task (SYSTEM source, mode "live", workflowStatus COMPLETED).
+  const task = await db.task.create({
+    data: {
+      title: FIXTURE_TITLE,
+      description:
+        "Mock seed fixture for the propose_code_change → createPr E2E flow. " +
+        "Demonstrates a landed PR with a multi-file diff review.",
+      status: TaskStatus.IN_PROGRESS, // NOT DONE/CANCELLED so pr-monitor sees it
+      workflowStatus: WorkflowStatus.COMPLETED,
+      sourceType: TaskSourceType.SYSTEM,
+      workspaceId,
+      createdById: userId,
+      updatedById: userId,
+      assigneeId: userId,
+      repositoryId: repository.id,
+      proposalId,
+      branch: "swarm/swarm-change-mock-001",
+      mode: "live",
+    },
+  });
+
+  // ── DIFF artifact (preview diff card) ──────────────────────────────
+  const diffMsg = await db.chatMessage.create({
+    data: {
+      taskId: task.id,
+      message: "Here is the proposed code change for your review:",
+      role: "ASSISTANT",
+    },
+  });
+
+  await db.artifact.create({
+    data: {
+      messageId: diffMsg.id,
+      type: ArtifactType.DIFF,
+      content: {
+        diffs: [
+          {
+            file: "src/lib/auth/middleware.ts",
+            action: "modify",
+            content: CODE_CHANGE_MOCK_DIFF,
+            repoName: "stakwork/hive",
+          },
+          {
+            file: "src/lib/auth/guards.ts",
+            action: "modify",
+            content: CODE_CHANGE_MOCK_DIFF,
+            repoName: "stakwork/hive",
+          },
+        ],
+      },
+    },
+  });
+
+  // ── PULL_REQUEST artifact ──────────────────────────────────────────
+  // Status OUTSIDE "DONE"/"CANCELLED" so findOpenPRArtifacts includes it.
+  // progress omitted (not "healthy") so pr-monitor does NOT skip for an hour.
+  const prMsg = await db.chatMessage.create({
+    data: {
+      taskId: task.id,
+      message:
+        "The pull request has been opened. It is awaiting review.",
+      role: "ASSISTANT",
+    },
+  });
+
+  const repoUrl = repository.repositoryUrl;
+  await db.artifact.create({
+    data: {
+      messageId: prMsg.id,
+      type: ArtifactType.PULL_REQUEST,
+      content: {
+        repo: "stakwork/hive",
+        url: `${repoUrl}/pull/99`,
+        status: "open", // NOT "DONE" or "CANCELLED" → findOpenPRArtifacts sees it
+        repoUrl,
+        // progress deliberately omitted → not "healthy" → no 1-hour cooldown
+      },
+    },
+  });
+
+  // ── Ensure pr_monitor_enabled = true on this workspace's JanitorConfig ─
+  await db.janitorConfig.upsert({
+    where: { workspaceId },
+    create: {
+      workspaceId,
+      prMonitorEnabled: true,
+    },
+    update: {
+      prMonitorEnabled: true,
+    },
+  });
+
+  console.log(
+    `[MockSeed] Code-change fixture seeded: task ${task.id}, ` +
+      `PR at ${repoUrl}/pull/99`,
+  );
 }
 
 /**
