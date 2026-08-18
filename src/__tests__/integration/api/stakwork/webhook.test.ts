@@ -1,4 +1,4 @@
-import { describe, test, expect, beforeEach, vi, afterEach } from "vitest";
+import { describe, test, expect, beforeEach, afterEach, vi } from "vitest";
 import { NextRequest } from "next/server";
 import { POST } from "@/app/api/stakwork/webhook/route";
 import { WorkflowStatus, TaskStatus, ChatRole, ChatStatus, ArtifactType } from "@prisma/client";
@@ -11,11 +11,11 @@ import {
 
 /**
  * Integration Tests for POST /api/stakwork/webhook
- * 
+ *
  * SECURITY NOTE: This endpoint currently has NO signature verification,
  * unlike other webhooks (GitHub, Stakgraph). This is a known security gap.
  * Any client can send POST requests to manipulate task statuses.
- * 
+ *
  * Future enhancement: Implement HMAC-SHA256 signature verification
  * similar to Stakgraph webhook (see src/app/api/swarm/stakgraph/webhook/route.ts)
  */
@@ -58,6 +58,15 @@ let originalFetch: typeof global.fetch;
 
 describe("Stakwork Webhook API - POST /api/stakwork/webhook", () => {
   const webhookUrl = "http://localhost:3000/api/stakwork/webhook";
+
+  // Console spies — suppress output and enable log assertions.
+  // Implementation: vi.fn() swallows output; vi.restoreAllMocks() in afterEach
+  // tears down the spies so they never leak into adjacent tests.
+  let consoleSpy: {
+    log: ReturnType<typeof vi.spyOn>;
+    warn: ReturnType<typeof vi.spyOn>;
+    error: ReturnType<typeof vi.spyOn>;
+  };
 
   async function createTestTask(workflowStatus: WorkflowStatus = WorkflowStatus.PENDING) {
     return await db.$transaction(async (tx) => {
@@ -188,35 +197,73 @@ describe("Stakwork Webhook API - POST /api/stakwork/webhook", () => {
     });
   }
 
-  const TEST_API_TOKEN = "test-api-token-webhook";
+  /**
+   * Seeds a Feature record that can be used to exercise the task-miss /
+   * feature-fallback branch (plan mode passes featureId as task_id).
+   */
+  async function createTestFeature(workflowStatus: WorkflowStatus = WorkflowStatus.PENDING) {
+    return await db.$transaction(async (tx) => {
+      const user = await tx.user.create({
+        data: {
+          id: generateUniqueId("user"),
+          email: `user-${generateUniqueId()}@example.com`,
+          name: "Feature User",
+        },
+      });
 
-  /** Wrapper around createPostRequest that always includes x-api-token. */
-  function webhookRequest(url: string, body: object): NextRequest {
-    const req = createPostRequest(url, body);
-    return new NextRequest(req, {
-      headers: {
-        ...Object.fromEntries(req.headers.entries()),
-        "x-api-token": TEST_API_TOKEN,
-      },
+      const workspace = await tx.workspace.create({
+        data: {
+          name: `Feature Workspace ${generateUniqueId()}`,
+          slug: generateUniqueSlug("feature-workspace"),
+          ownerId: user.id,
+        },
+      });
+
+      await tx.workspaceMember.create({
+        data: {
+          workspaceId: workspace.id,
+          userId: user.id,
+          role: "OWNER",
+        },
+      });
+
+      const feature = await tx.feature.create({
+        data: {
+          title: "Test Feature for Webhook",
+          workspaceId: workspace.id,
+          createdById: user.id,
+          updatedById: user.id,
+          workflowStatus,
+        },
+      });
+
+      return { user, workspace, feature };
     });
   }
 
   beforeEach(() => {
     vi.clearAllMocks();
     originalFetch = global.fetch;
-    process.env.API_TOKEN = TEST_API_TOKEN;
+
+    // Spy on console methods and suppress output so test logs stay clean.
+    // Tests that need to assert on these calls use the returned spy references.
+    consoleSpy = {
+      log: vi.spyOn(console, "log").mockImplementation(() => {}),
+      warn: vi.spyOn(console, "warn").mockImplementation(() => {}),
+      error: vi.spyOn(console, "error").mockImplementation(() => {}),
+    };
   });
 
   afterEach(() => {
     global.fetch = originalFetch;
-    delete process.env.API_TOKEN;
+    vi.restoreAllMocks();
   });
 
   describe("Security - No Signature Verification", () => {
     test("should accept webhook without signature verification (SECURITY GAP)", async () => {
       const { task } = await createTestTask();
 
-      const request = webhookRequest(webhookUrl, {
+      const request = createPostRequest(webhookUrl, {
         task_id: task.id,
         project_status: "completed",
       });
@@ -230,7 +277,7 @@ describe("Stakwork Webhook API - POST /api/stakwork/webhook", () => {
 
   describe("Payload Validation", () => {
     test("should return 400 when both task_id and run_id are missing", async () => {
-      const request = webhookRequest(webhookUrl, {
+      const request = createPostRequest(webhookUrl, {
         project_status: "completed",
       });
 
@@ -244,7 +291,7 @@ describe("Stakwork Webhook API - POST /api/stakwork/webhook", () => {
     test("should return 400 when project_status is missing", async () => {
       const { task } = await createTestTask();
 
-      const request = webhookRequest(webhookUrl, {
+      const request = createPostRequest(webhookUrl, {
         task_id: task.id,
       });
 
@@ -258,7 +305,7 @@ describe("Stakwork Webhook API - POST /api/stakwork/webhook", () => {
     test("should accept task_id from query parameter as fallback", async () => {
       const { task } = await createTestTask();
 
-      const request = webhookRequest(
+      const request = createPostRequest(
         `${webhookUrl}?task_id=${task.id}`,
         {
           project_status: "completed",
@@ -277,7 +324,7 @@ describe("Stakwork Webhook API - POST /api/stakwork/webhook", () => {
       const { task } = await createTestTask();
       const { task: anotherTask } = await createTestTask();
 
-      const request = webhookRequest(
+      const request = createPostRequest(
         `${webhookUrl}?task_id=${anotherTask.id}`,
         {
           task_id: task.id,
@@ -293,11 +340,10 @@ describe("Stakwork Webhook API - POST /api/stakwork/webhook", () => {
     });
 
     test("should handle invalid JSON payload gracefully", async () => {
-      const request = new Request(webhookUrl, {
+      const request = new NextRequest(webhookUrl, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "x-api-token": TEST_API_TOKEN,
         },
         body: "invalid json {",
       });
@@ -312,7 +358,7 @@ describe("Stakwork Webhook API - POST /api/stakwork/webhook", () => {
     test("should return 404 when task is not found", async () => {
       const nonExistentTaskId = "cltasknotexistxxxxxxxxxx";
 
-      const request = webhookRequest(webhookUrl, {
+      const request = createPostRequest(webhookUrl, {
         task_id: nonExistentTaskId,
         project_status: "completed",
       });
@@ -332,7 +378,7 @@ describe("Stakwork Webhook API - POST /api/stakwork/webhook", () => {
         data: { deleted: true },
       });
 
-      const request = webhookRequest(webhookUrl, {
+      const request = createPostRequest(webhookUrl, {
         task_id: task.id,
         project_status: "completed",
       });
@@ -349,7 +395,7 @@ describe("Stakwork Webhook API - POST /api/stakwork/webhook", () => {
     test("should update task to IN_PROGRESS and set workflowStartedAt", async () => {
       const { task } = await createTestTask(WorkflowStatus.PENDING);
 
-      const request = webhookRequest(webhookUrl, {
+      const request = createPostRequest(webhookUrl, {
         task_id: task.id,
         project_status: "in_progress",
       });
@@ -373,7 +419,7 @@ describe("Stakwork Webhook API - POST /api/stakwork/webhook", () => {
     test("should update task to COMPLETED and set workflowCompletedAt", async () => {
       const { task } = await createTestTask(WorkflowStatus.IN_PROGRESS);
 
-      const request = webhookRequest(webhookUrl, {
+      const request = createPostRequest(webhookUrl, {
         task_id: task.id,
         project_status: "completed",
       });
@@ -395,7 +441,7 @@ describe("Stakwork Webhook API - POST /api/stakwork/webhook", () => {
     test("should update task to FAILED and set workflowCompletedAt", async () => {
       const { task } = await createTestTask(WorkflowStatus.IN_PROGRESS);
 
-      const request = webhookRequest(webhookUrl, {
+      const request = createPostRequest(webhookUrl, {
         task_id: task.id,
         project_status: "failed",
       });
@@ -415,7 +461,7 @@ describe("Stakwork Webhook API - POST /api/stakwork/webhook", () => {
     test("should update task to HALTED and set workflowCompletedAt", async () => {
       const { task } = await createTestTask(WorkflowStatus.IN_PROGRESS);
 
-      const request = webhookRequest(webhookUrl, {
+      const request = createPostRequest(webhookUrl, {
         task_id: task.id,
         project_status: "halted",
       });
@@ -436,7 +482,7 @@ describe("Stakwork Webhook API - POST /api/stakwork/webhook", () => {
       const { task } = await createTestTask(WorkflowStatus.PENDING);
       const originalUpdatedAt = task.updatedAt;
 
-      const request = webhookRequest(webhookUrl, {
+      const request = createPostRequest(webhookUrl, {
         task_id: task.id,
         project_status: "unknown_status_xyz",
       });
@@ -455,6 +501,25 @@ describe("Stakwork Webhook API - POST /api/stakwork/webhook", () => {
 
       expect(taskAfter?.workflowStatus).toBe(WorkflowStatus.PENDING);
       expect(taskAfter?.updatedAt.getTime()).toBe(originalUpdatedAt.getTime());
+
+      // Entry log fires even for unknown statuses (post-validation)
+      expect(consoleSpy.log).toHaveBeenCalledWith(
+        "[stakwork/webhook]",
+        expect.objectContaining({
+          finalTaskId: task.id,
+          rawProjectStatus: "unknown_status_xyz",
+          mappedStatus: null,
+        }),
+      );
+
+      // Unknown-status warn fires with the raw status and both ids
+      expect(consoleSpy.warn).toHaveBeenCalledWith(
+        "[stakwork/webhook]",
+        expect.objectContaining({
+          finalTaskId: task.id,
+          rawProjectStatus: "unknown_status_xyz",
+        }),
+      );
     });
 
     test("should map various status strings correctly", async () => {
@@ -471,7 +536,7 @@ describe("Stakwork Webhook API - POST /api/stakwork/webhook", () => {
       for (const { input, expected } of statusMappings) {
         const { task } = await createTestTask();
 
-        const request = webhookRequest(webhookUrl, {
+        const request = createPostRequest(webhookUrl, {
           task_id: task.id,
           project_status: input,
         });
@@ -495,7 +560,7 @@ describe("Stakwork Webhook API - POST /api/stakwork/webhook", () => {
     test("should broadcast status update to Pusher channel", async () => {
       const { task } = await createTestTask();
 
-      const request = webhookRequest(webhookUrl, {
+      const request = createPostRequest(webhookUrl, {
         task_id: task.id,
         project_status: "completed",
       });
@@ -516,7 +581,7 @@ describe("Stakwork Webhook API - POST /api/stakwork/webhook", () => {
     test("should include timestamps in Pusher payload", async () => {
       const { task } = await createTestTask(WorkflowStatus.PENDING);
 
-      const request = webhookRequest(webhookUrl, {
+      const request = createPostRequest(webhookUrl, {
         task_id: task.id,
         project_status: "in_progress",
       });
@@ -538,7 +603,7 @@ describe("Stakwork Webhook API - POST /api/stakwork/webhook", () => {
 
       const { task } = await createTestTask();
 
-      const request = webhookRequest(webhookUrl, {
+      const request = createPostRequest(webhookUrl, {
         task_id: task.id,
         project_status: "completed",
       });
@@ -558,7 +623,7 @@ describe("Stakwork Webhook API - POST /api/stakwork/webhook", () => {
     test("should not broadcast when status is unknown", async () => {
       const { task } = await createTestTask();
 
-      const request = webhookRequest(webhookUrl, {
+      const request = createPostRequest(webhookUrl, {
         task_id: task.id,
         project_status: "unknown_status",
       });
@@ -577,7 +642,7 @@ describe("Stakwork Webhook API - POST /api/stakwork/webhook", () => {
         where: { id: task.id },
       });
 
-      const request = webhookRequest(webhookUrl, {
+      const request = createPostRequest(webhookUrl, {
         task_id: task.id,
         project_status: "completed",
       });
@@ -593,11 +658,11 @@ describe("Stakwork Webhook API - POST /api/stakwork/webhook", () => {
       const { task } = await createTestTask(WorkflowStatus.PENDING);
 
       const requests = [
-        webhookRequest(webhookUrl, {
+        createPostRequest(webhookUrl, {
           task_id: task.id,
           project_status: "in_progress",
         }),
-        webhookRequest(webhookUrl, {
+        createPostRequest(webhookUrl, {
           task_id: task.id,
           project_status: "completed",
         }),
@@ -624,7 +689,7 @@ describe("Stakwork Webhook API - POST /api/stakwork/webhook", () => {
     test("should return success with task data", async () => {
       const { task } = await createTestTask(WorkflowStatus.PENDING);
 
-      const request = webhookRequest(webhookUrl, {
+      const request = createPostRequest(webhookUrl, {
         task_id: task.id,
         project_status: "completed",
       });
@@ -645,7 +710,7 @@ describe("Stakwork Webhook API - POST /api/stakwork/webhook", () => {
     test("should include action field for unknown status", async () => {
       const { task } = await createTestTask();
 
-      const request = webhookRequest(webhookUrl, {
+      const request = createPostRequest(webhookUrl, {
         task_id: task.id,
         project_status: "unknown",
       });
@@ -665,7 +730,7 @@ describe("Stakwork Webhook API - POST /api/stakwork/webhook", () => {
     test("should handle empty string status", async () => {
       const { task } = await createTestTask();
 
-      const request = webhookRequest(webhookUrl, {
+      const request = createPostRequest(webhookUrl, {
         task_id: task.id,
         project_status: "",
       });
@@ -680,7 +745,7 @@ describe("Stakwork Webhook API - POST /api/stakwork/webhook", () => {
     test("should handle case-sensitive status strings", async () => {
       const { task } = await createTestTask();
 
-      const request = webhookRequest(webhookUrl, {
+      const request = createPostRequest(webhookUrl, {
         task_id: task.id,
         project_status: "COMPLETED",
       });
@@ -698,7 +763,7 @@ describe("Stakwork Webhook API - POST /api/stakwork/webhook", () => {
         data: { status: TaskStatus.IN_PROGRESS },
       });
 
-      const request = webhookRequest(webhookUrl, {
+      const request = createPostRequest(webhookUrl, {
         task_id: task.id,
         project_status: "completed",
       });
@@ -719,7 +784,7 @@ describe("Stakwork Webhook API - POST /api/stakwork/webhook", () => {
       const statuses = ["in_progress", "completed"];
 
       for (const status of statuses) {
-        const request = webhookRequest(webhookUrl, {
+        const request = createPostRequest(webhookUrl, {
           task_id: task.id,
           project_status: status,
         });
@@ -755,7 +820,7 @@ describe("Stakwork Webhook API - POST /api/stakwork/webhook", () => {
         json: async () => ({ success: true, data: { project_id: 9001 } }),
       });
 
-      const request = webhookRequest(webhookUrl, {
+      const request = createPostRequest(webhookUrl, {
         task_id: task.id,
         project_status: "halted",
       });
@@ -777,6 +842,16 @@ describe("Stakwork Webhook API - POST /api/stakwork/webhook", () => {
         (c) => c[1] === "workflow-status-update",
       );
       expect(statusUpdateCalls).toHaveLength(0);
+
+      // Retry short-circuit warn fires with taskId and originalStatus
+      expect(consoleSpy.warn).toHaveBeenCalledWith(
+        "[stakwork/webhook]",
+        expect.objectContaining({
+          message: "terminal status swallowed into retryWorkflowEditorTask",
+          taskId: task.id,
+          originalStatus: WorkflowStatus.HALTED,
+        }),
+      );
     });
 
     test("second terminal webhook (haltRetryAttempted=true) writes terminal status and broadcasts", async () => {
@@ -786,7 +861,7 @@ describe("Stakwork Webhook API - POST /api/stakwork/webhook", () => {
         withWorkflowArtifact: true,
       });
 
-      const request = webhookRequest(webhookUrl, {
+      const request = createPostRequest(webhookUrl, {
         task_id: task.id,
         project_status: "halted",
       });
@@ -804,13 +879,24 @@ describe("Stakwork Webhook API - POST /api/stakwork/webhook", () => {
         (c) => c[1] === "workflow-status-update",
       );
       expect(statusUpdateCalls.length).toBeGreaterThan(0);
+
+      // Task write log fires with prior/new status
+      expect(consoleSpy.log).toHaveBeenCalledWith(
+        "[stakwork/webhook]",
+        expect.objectContaining({
+          entityType: "task",
+          entityId: task.id,
+          priorStatus: WorkflowStatus.IN_PROGRESS,
+          newStatus: WorkflowStatus.HALTED,
+        }),
+      );
     });
 
     test("non-workflow_editor task + terminal status proceeds normally (no retry)", async () => {
       // Regular (live mode) task
       const { task } = await createTestTask(WorkflowStatus.IN_PROGRESS);
 
-      const request = webhookRequest(webhookUrl, {
+      const request = createPostRequest(webhookUrl, {
         task_id: task.id,
         project_status: "halted",
       });
@@ -847,7 +933,7 @@ describe("Stakwork Webhook API - POST /api/stakwork/webhook", () => {
         },
       });
 
-      const request = webhookRequest(webhookUrl, {
+      const request = createPostRequest(webhookUrl, {
         task_id: task.id,
         project_status: "halted",
       });
@@ -872,7 +958,7 @@ describe("Stakwork Webhook API - POST /api/stakwork/webhook", () => {
         json: async () => ({ success: true, data: { project_id: 9002 } }),
       });
 
-      const request = webhookRequest(webhookUrl, {
+      const request = createPostRequest(webhookUrl, {
         task_id: task.id,
         project_status: "failed",
       });
@@ -921,7 +1007,7 @@ describe("Stakwork Webhook API - POST /api/stakwork/webhook", () => {
     test("LEGAL_BENCHMARK_EVAL with project_status=completed: status → COMPLETED and Pusher broadcast fires with eval run id", async () => {
       const { run, workspace } = await createStakworkRun("LEGAL_BENCHMARK_EVAL");
 
-      const request = webhookRequest(
+      const request = createPostRequest(
         `${webhookUrl}?run_id=${run.id}`,
         { project_status: "completed" },
       );
@@ -939,12 +1025,33 @@ describe("Stakwork Webhook API - POST /api/stakwork/webhook", () => {
       );
       expect(evalBroadcast).toBeDefined();
       expect(evalBroadcast![0]).toContain(workspace.slug);
+
+      // Entry log fires with run id and no task id
+      expect(consoleSpy.log).toHaveBeenCalledWith(
+        "[stakwork/webhook]",
+        expect.objectContaining({
+          finalRunId: run.id,
+          rawProjectStatus: "completed",
+          mappedStatus: WorkflowStatus.COMPLETED,
+        }),
+      );
+
+      // Run write log fires with prior/new status
+      expect(consoleSpy.log).toHaveBeenCalledWith(
+        "[stakwork/webhook]",
+        expect.objectContaining({
+          entityType: "run",
+          entityId: run.id,
+          priorStatus: WorkflowStatus.IN_PROGRESS,
+          newStatus: WorkflowStatus.COMPLETED,
+        }),
+      );
     });
 
     test("LEGAL_BENCHMARK_RECURSION with project_status=completed: status → COMPLETED and Pusher broadcast fires", async () => {
       const { run, workspace } = await createStakworkRun("LEGAL_BENCHMARK_RECURSION");
 
-      const request = webhookRequest(
+      const request = createPostRequest(
         `${webhookUrl}?run_id=${run.id}`,
         { project_status: "completed" },
       );
@@ -961,6 +1068,182 @@ describe("Stakwork Webhook API - POST /api/stakwork/webhook", () => {
       );
       expect(recursionBroadcast).toBeDefined();
       expect(recursionBroadcast![0]).toContain(workspace.slug);
+    });
+
+    test("run not found: logs structured error with project_status and ids", async () => {
+      const nonExistentRunId = "run-does-not-exist-xxxxx";
+
+      const request = createPostRequest(
+        `${webhookUrl}?run_id=${nonExistentRunId}`,
+        { project_status: "completed" },
+      );
+
+      const response = await POST(request);
+      expect(response.status).toBe(404);
+
+      expect(consoleSpy.error).toHaveBeenCalledWith(
+        "[stakwork/webhook]",
+        expect.objectContaining({
+          message: "StakworkRun not found",
+          finalRunId: nonExistentRunId,
+          rawProjectStatus: "completed",
+        }),
+      );
+    });
+  });
+
+  // ────────────────────────────────────────────────────────────────────────────
+  // Structured logging assertions
+  // ────────────────────────────────────────────────────────────────────────────
+  describe("Structured logging", () => {
+    test("post-validation entry log fires on task-update path with correct fields", async () => {
+      const { task } = await createTestTask(WorkflowStatus.PENDING);
+
+      const request = createPostRequest(webhookUrl, {
+        task_id: task.id,
+        project_status: "completed",
+      });
+
+      await POST(request);
+
+      expect(consoleSpy.log).toHaveBeenCalledWith(
+        "[stakwork/webhook]",
+        expect.objectContaining({
+          finalTaskId: task.id,
+          finalRunId: null,
+          rawProjectStatus: "completed",
+          mappedStatus: WorkflowStatus.COMPLETED,
+        }),
+      );
+    });
+
+    test("task write log fires with entityType/entityId/priorStatus/newStatus", async () => {
+      const { task } = await createTestTask(WorkflowStatus.PENDING);
+
+      const request = createPostRequest(webhookUrl, {
+        task_id: task.id,
+        project_status: "in_progress",
+      });
+
+      await POST(request);
+
+      expect(consoleSpy.log).toHaveBeenCalledWith(
+        "[stakwork/webhook]",
+        expect.objectContaining({
+          entityType: "task",
+          entityId: task.id,
+          priorStatus: WorkflowStatus.PENDING,
+          newStatus: WorkflowStatus.IN_PROGRESS,
+        }),
+      );
+    });
+
+    test("task not-found path logs structured error with project_status and ids", async () => {
+      const nonExistentId = "task-not-exist-xxxxxxxxxxx";
+
+      const request = createPostRequest(webhookUrl, {
+        task_id: nonExistentId,
+        project_status: "completed",
+      });
+
+      const response = await POST(request);
+      expect(response.status).toBe(404);
+
+      expect(consoleSpy.error).toHaveBeenCalledWith(
+        "[stakwork/webhook]",
+        expect.objectContaining({
+          message: "Task not found",
+          finalTaskId: nonExistentId,
+          rawProjectStatus: "completed",
+        }),
+      );
+    });
+
+    test("long project_status is truncated to 200 chars + ellipsis in logs", async () => {
+      const { task } = await createTestTask(WorkflowStatus.PENDING);
+      const longStatus = "x".repeat(300);
+
+      const request = createPostRequest(webhookUrl, {
+        task_id: task.id,
+        project_status: longStatus,
+      });
+
+      await POST(request);
+
+      // Should have been truncated; the entry log fires with rawProjectStatus truncated
+      const logCall = consoleSpy.log.mock.calls.find(
+        (c) =>
+          c[0] === "[stakwork/webhook]" &&
+          typeof (c[1] as Record<string, unknown>)?.rawProjectStatus === "string",
+      );
+      expect(logCall).toBeDefined();
+      const logged = (logCall![1] as Record<string, unknown>).rawProjectStatus as string;
+      expect(logged.length).toBeLessThanOrEqual(204); // 200 chars + "…" (3 bytes UTF-8)
+      expect(logged.endsWith("…")).toBe(true);
+    });
+  });
+
+  // ────────────────────────────────────────────────────────────────────────────
+  // Feature-fallback write path
+  // ────────────────────────────────────────────────────────────────────────────
+  describe("Feature-fallback write path (plan mode)", () => {
+    test("when task_id resolves to a feature, writes workflow status and logs feature transition", async () => {
+      const { feature } = await createTestFeature(WorkflowStatus.PENDING);
+
+      // Post webhook with task_id = feature.id — db.task.findFirst misses,
+      // db.feature.findFirst hits, triggering the feature fallback branch.
+      const request = createPostRequest(webhookUrl, {
+        task_id: feature.id,
+        project_status: "completed",
+      });
+
+      const response = await POST(request);
+      const data = await response.json();
+
+      // Response is unchanged (existing behavior)
+      expect(response.status).toBe(200);
+      expect(data).toMatchObject({
+        success: true,
+        data: {
+          featureId: feature.id,
+          workflowStatus: WorkflowStatus.COMPLETED,
+        },
+      });
+
+      // DB was actually updated
+      const updatedFeature = await db.feature.findUnique({ where: { id: feature.id } });
+      expect(updatedFeature?.workflowStatus).toBe(WorkflowStatus.COMPLETED);
+
+      // Feature transition log fires with correct shape
+      expect(consoleSpy.log).toHaveBeenCalledWith(
+        "[stakwork/webhook]",
+        expect.objectContaining({
+          entityType: "feature",
+          featureId: feature.id,
+          priorStatus: WorkflowStatus.PENDING,
+          newStatus: WorkflowStatus.COMPLETED,
+        }),
+      );
+    });
+
+    test("feature-fallback: entry log fires with feature id as finalTaskId", async () => {
+      const { feature } = await createTestFeature(WorkflowStatus.IN_PROGRESS);
+
+      const request = createPostRequest(webhookUrl, {
+        task_id: feature.id,
+        project_status: "halted",
+      });
+
+      await POST(request);
+
+      expect(consoleSpy.log).toHaveBeenCalledWith(
+        "[stakwork/webhook]",
+        expect.objectContaining({
+          finalTaskId: feature.id,
+          rawProjectStatus: "halted",
+          mappedStatus: WorkflowStatus.HALTED,
+        }),
+      );
     });
   });
 });

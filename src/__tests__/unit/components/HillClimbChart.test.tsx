@@ -338,3 +338,83 @@ describe("HillClimbChart", () => {
     expect(dot.getAttribute("aria-label")).toMatch(/28\/42/);
   });
 });
+
+// ─── Flat eval-output series (concept-driven recursion) ──────────────────────
+
+describe("HillClimbChart — flat eval-output series", () => {
+  /** What buildEvalOutputSeries emits: bestPassed === actualPassed on every point. */
+  const CONCEPT_SERIES: EvalTriggerOutput[] = [
+    makeOutput({ ref_id: "o-base", n_passed: 50, n_total: 80, isBaseline: true, accepted: true, actualPassed: 50, bestPassed: 50, label: "base" }),
+    makeOutput({ ref_id: "o-r1", n_passed: 58, n_total: 80, isBaseline: false, accepted: true, actualPassed: 58, bestPassed: 58, label: "r1" }),
+    makeOutput({ ref_id: "o-r2", n_passed: 52, n_total: 80, isBaseline: false, accepted: true, actualPassed: 52, bestPassed: 52, label: "r2" }),
+    makeOutput({ ref_id: "o-r3", n_passed: 61, n_total: 80, isBaseline: false, accepted: true, actualPassed: 61, bestPassed: 61, label: "r3" }),
+    makeOutput({ ref_id: "o-r4", n_passed: 64, n_total: 80, isBaseline: false, accepted: true, actualPassed: 64, bestPassed: 64, label: "r4" }),
+  ];
+
+  it("renders one dot per re-run, with no slots", () => {
+    render(<HillClimbChart attempts={CONCEPT_SERIES} />);
+    for (let i = 0; i < CONCEPT_SERIES.length; i++) {
+      expect(screen.getByTestId(`dot-${i}`)).toBeTruthy();
+    }
+    expect(screen.queryByTestId(`dot-${CONCEPT_SERIES.length}`)).toBeNull();
+    expect(screen.queryByTestId("slot-0")).toBeNull();
+  });
+
+  it("labels the baseline and every re-run from the series", () => {
+    render(<HillClimbChart attempts={CONCEPT_SERIES} />);
+    for (const label of ["base", "r1", "r2", "r3", "r4"]) {
+      expect(screen.getByText(label)).toBeTruthy();
+    }
+  });
+
+  it("draws the real, non-monotonic line — the dip at r2 is visible", () => {
+    render(<HillClimbChart attempts={CONCEPT_SERIES} />);
+
+    // Higher n_passed → smaller cy (SVG y grows downward). r2 (52) scored below
+    // r1 (58), so its dot must sit LOWER on the chart — a best-so-far line would
+    // have flattened instead.
+    const cy = (i: number) => Number(screen.getByTestId(`dot-${i}`).getAttribute("cy"));
+    expect(cy(1)).toBeLessThan(cy(0));
+    expect(cy(2)).toBeGreaterThan(cy(1));
+    expect(cy(3)).toBeLessThan(cy(2));
+
+    // The connecting line is driven by bestPassed, which equals actualPassed here,
+    // so the path must reach the same y as the dipping dot.
+    const path = screen.getByTestId("climb-polyline").getAttribute("d") ?? "";
+    expect(path.length).toBeGreaterThan(0);
+  });
+
+  it("uses the normalized denominator for the target line and aria labels", () => {
+    render(<HillClimbChart attempts={CONCEPT_SERIES} />);
+    expect(screen.getByTestId("target-line")).toBeTruthy();
+    expect(screen.getByTestId("dot-4").getAttribute("aria-label")).toMatch(/64\/80/);
+  });
+});
+
+// ─── Dot clipping ────────────────────────────────────────────────────────────
+
+describe("HillClimbChart — dots are clipped to the plot", () => {
+  it("wraps the dots in a clipped group", () => {
+    render(<HillClimbChart attempts={MULTI_POINT_ATTEMPTS} />);
+    const group = screen.getByTestId("dot-group");
+    expect(group.getAttribute("clip-path")).toMatch(/^url\(#.+-dots\)$/);
+    // The dots really live inside that group
+    expect(group.contains(screen.getByTestId("dot-1"))).toBe(true);
+  });
+
+  it("keeps an out-of-domain point inside the clipped group rather than loose in the SVG", () => {
+    // points[0].n_total drives the whole y-domain; a later point scoring above it
+    // would otherwise draw outside the plot.
+    const overflowing: EvalTriggerOutput[] = [
+      makeOutput({ ref_id: "a", n_passed: 10, n_total: 20, isBaseline: true, accepted: true, actualPassed: 10, bestPassed: 10, label: "base" }),
+      makeOutput({ ref_id: "b", n_passed: 90, n_total: 20, isBaseline: false, accepted: true, actualPassed: 90, bestPassed: 90, label: "r1" }),
+    ];
+    render(<HillClimbChart attempts={overflowing} />);
+
+    const group = screen.getByTestId("dot-group");
+    const dot = screen.getByTestId("dot-1");
+    expect(group.contains(dot)).toBe(true);
+    // Above the plot area — exactly the case the clip exists for
+    expect(Number(dot.getAttribute("cy"))).toBeLessThan(0);
+  });
+});
