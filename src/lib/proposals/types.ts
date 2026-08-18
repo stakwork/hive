@@ -346,6 +346,52 @@ export type ProposalOutput =
         workspaceSlug?: string;
         repo?: string;
       };
+    }
+  | {
+      kind: "graphNodeCreate";
+      proposalId: string;
+      payload: GraphNodeCreateProposalPayload;
+      rationale?: string;
+      /** Render-only workspace name for the card subtext. */
+      meta?: { workspaceName?: string; workspaceSlug?: string };
+    }
+  | {
+      kind: "graphNodeEdit";
+      proposalId: string;
+      payload: GraphNodeEditProposalPayload;
+      rationale?: string;
+      /**
+       * Render-only diff snapshot from propose time.
+       * `oldStr` = JSON-stringified existing node properties.
+       * `newStr` = JSON-stringified merged (old + patch) properties.
+       * The approval handler re-reads the node before writing; this is
+       * only for the card's diff view.
+       */
+      meta: {
+        oldStr: string;
+        newStr: string;
+        node_type?: string;
+        workspaceSlug?: string;
+        /** Set when the propose tool refused the edit (mirror-owned type
+         *  or ref_id not found). The card renders as disabled-with-reason. */
+        refusedReason?: string;
+      };
+    }
+  | {
+      kind: "graphTripletCreate";
+      proposalId: string;
+      payload: GraphTripletCreateProposalPayload;
+      rationale?: string;
+      /** Render-only workspace name for the card subtext. */
+      meta?: { workspaceName?: string; workspaceSlug?: string };
+    }
+  | {
+      kind: "graphBatchTripletCreate";
+      proposalId: string;
+      payload: GraphBatchTripletCreateProposalPayload;
+      rationale?: string;
+      /** Render-only workspace name for the card subtext. */
+      meta?: { workspaceName?: string; workspaceSlug?: string };
     };
 
 // ─── Prompt proposal payloads ──────────────────────────────────────────
@@ -409,6 +455,78 @@ export interface ConceptCreateProposalPayload {
   parent?: string;
 }
 
+// ─── Graph write proposal payloads ────────────────────────────────────────
+//
+// All four payloads carry `workspaceId` (the cuid — authoritative for
+// credential resolution at approval time) and `workspaceSlug` (display-only).
+// Never conflate the two: workspaceId drives resolveGraphJarvis; workspaceSlug
+// is only for logging/links. No `namespace` or `create_schema_if_missing` field
+// is ever present — those are out of scope for user-approved writes.
+
+/**
+ * Payload for creating a new KG node.
+ * `node_data` carries the node's attributes; reserved/system keys are
+ * rejected at propose time (see buildGraphWriteTools).
+ */
+export interface GraphNodeCreateProposalPayload {
+  workspaceId: string;
+  workspaceSlug: string;
+  node_type: string;
+  node_data: Record<string, unknown>;
+}
+
+/**
+ * Payload for editing (merging into) an existing KG node.
+ * `ref_id` is the opaque Jarvis node identifier; it must resolve in the
+ * verified workspace's graph at propose time (readNodeByRef).
+ * `node_data` is a MERGE-only patch — no properties are deleted.
+ */
+export interface GraphNodeEditProposalPayload {
+  workspaceId: string;
+  workspaceSlug: string;
+  ref_id: string;
+  node_data: Record<string, unknown>;
+}
+
+/**
+ * A single edge endpoint: either an existing node (ref_id) or an inline
+ * node spec to be created-or-merged on the spot.
+ * Exactly one of the two shapes must be present (XOR-validated at propose time).
+ */
+export type GraphEdgeEndpoint =
+  | { ref_id: string }
+  | { node_type: string; node_data: Record<string, unknown> };
+
+/**
+ * Payload for a single source→edge→target triplet.
+ * `create_schema_if_missing` is deliberately absent — callers cannot choose it.
+ */
+export interface GraphTripletCreateProposalPayload {
+  workspaceId: string;
+  workspaceSlug: string;
+  edge_type: string;
+  edge_data?: Record<string, unknown>;
+  weight?: number;
+  source: GraphEdgeEndpoint;
+  target: GraphEdgeEndpoint;
+}
+
+/**
+ * Payload for a batch of up to 25 triplets.
+ * The approval handler processes them sequentially and returns per-item results.
+ */
+export interface GraphBatchTripletCreateProposalPayload {
+  workspaceId: string;
+  workspaceSlug: string;
+  triplets: Array<{
+    edge_type: string;
+    edge_data?: Record<string, unknown>;
+    weight?: number;
+    source: GraphEdgeEndpoint;
+    target: GraphEdgeEndpoint;
+  }>;
+}
+
 /**
  * Tool name constants — referenced by the chat UI to find proposal
  * tool calls inside `message.toolCalls[]`, by the route's scanner, and
@@ -422,6 +540,18 @@ export const PROPOSE_PROMPT_UPDATE_TOOL = "propose_prompt_update" as const;
 export const PROPOSE_NEW_CONCEPT_TOOL = "propose_new_concept" as const;
 export const PROPOSE_CONCEPT_UPDATE_TOOL = "propose_concept_update" as const;
 
+// ─── Graph write tool name constants ──────────────────────────────────────
+// These four tools emit approvable proposal cards; the actual Jarvis write
+// happens only after the user clicks Approve. Named distinctly from the
+// read-only graph_walker tools so the card scanner and route handler have
+// a single enum-like source to key off.
+
+export const PROPOSE_CREATE_NODE_TOOL = "propose_create_node" as const;
+export const PROPOSE_NODE_EDIT_TOOL = "propose_node_edit" as const;
+export const PROPOSE_CREATE_TRIPLET_TOOL = "propose_create_triplet" as const;
+export const PROPOSE_CREATE_BATCH_TRIPLET_TOOL =
+  "propose_create_batch_triplet" as const;
+
 export type ProposeToolName =
   | typeof PROPOSE_INITIATIVE_TOOL
   | typeof PROPOSE_FEATURE_TOOL
@@ -429,7 +559,11 @@ export type ProposeToolName =
   | typeof PROPOSE_NEW_PROMPT_TOOL
   | typeof PROPOSE_PROMPT_UPDATE_TOOL
   | typeof PROPOSE_NEW_CONCEPT_TOOL
-  | typeof PROPOSE_CONCEPT_UPDATE_TOOL;
+  | typeof PROPOSE_CONCEPT_UPDATE_TOOL
+  | typeof PROPOSE_CREATE_NODE_TOOL
+  | typeof PROPOSE_NODE_EDIT_TOOL
+  | typeof PROPOSE_CREATE_TRIPLET_TOOL
+  | typeof PROPOSE_CREATE_BATCH_TRIPLET_TOOL;
 
 /**
  * Sub-agent delegation tool name. Not a proposal (no approve/reject
@@ -520,7 +654,11 @@ export interface ApprovalResult {
     | "promptCreate"
     | "promptUpdate"
     | "conceptCreate"
-    | "conceptUpdate";
+    | "conceptUpdate"
+    | "graphNodeCreate"
+    | "graphNodeEdit"
+    | "graphTripletCreate"
+    | "graphBatchTripletCreate";
   createdEntityId: string;
   /** Canvas ref the new node landed on. Empty string = root. */
   landedOn: string;
@@ -544,6 +682,23 @@ export interface ApprovalResult {
    * was added — consumers must fall back to legacy resolution.
    */
   promptVersionId?: string;
+  /**
+   * Set to `true` when the approved write returned a "Warning" / already-exists
+   * response from Jarvis (the node or edge already existed — no new row was
+   * created, but the operation is still a success).
+   */
+  alreadyExisted?: boolean;
+  /**
+   * Per-item results for `graphBatchTripletCreate` approvals.
+   * Each entry corresponds to a triplet in the batch by zero-based index.
+   * Present only on batch approvals; absent on all other kinds.
+   */
+  items?: Array<{
+    index: number;
+    ok: boolean;
+    refId?: string;
+    error?: string;
+  }>;
 }
 
 // ─── Status derivation (pure helper) ───────────────────────────────────

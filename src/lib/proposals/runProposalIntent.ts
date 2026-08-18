@@ -127,7 +127,23 @@ export async function runProposalIntent(args: {
                   ? "concept"
                   : r.kind === "conceptUpdate"
                     ? "concept update"
-                    : "feature";
+                    : r.kind === "graphNodeCreate"
+                      ? "graph node"
+                      : r.kind === "graphNodeEdit"
+                        ? "graph node edit"
+                        : r.kind === "graphTripletCreate"
+                          ? "graph triplet"
+                          : r.kind === "graphBatchTripletCreate"
+                            ? "graph batch triplet"
+                            : "feature";
+
+      // For graph writes, `landedOn` is `workspace:<id>` — map it to a
+      // sensible display label rather than falling through to "the canvas".
+      const graphRefLabel =
+        r.landedOn.startsWith("workspace:")
+          ? "the workspace knowledge graph"
+          : refLabel;
+      const graphWhere = r.landedOnName ? `**${r.landedOnName}**` : graphRefLabel;
 
       summaryText = alreadyApproved
         ? `Already created — ${kindLabel} already exists.`
@@ -143,7 +159,27 @@ export async function runProposalIntent(args: {
                   ? `Created the new concept successfully.`
                   : r.kind === "conceptUpdate"
                     ? `Updated the concept's documentation.`
-                    : `Created the feature on ${where}.`;
+                    : r.kind === "graphNodeCreate"
+                      ? r.alreadyExisted
+                        ? `Node already existed in ${graphWhere} — no duplicate created.`
+                        : `Created the node in ${graphWhere}.`
+                      : r.kind === "graphNodeEdit"
+                        ? `Updated the node in ${graphWhere}.`
+                        : r.kind === "graphTripletCreate"
+                          ? r.alreadyExisted
+                            ? `Edge already existed in ${graphWhere} — no duplicate created.`
+                            : `Created the relationship in ${graphWhere}.`
+                          : r.kind === "graphBatchTripletCreate"
+                            ? (() => {
+                                const items = r.items ?? [];
+                                const ok = items.filter((it) => it.ok).length;
+                                const fail = items.filter((it) => !it.ok).length;
+                                if (fail === 0) {
+                                  return `Created ${ok} relationship${ok === 1 ? "" : "s"} in ${graphWhere}.`;
+                                }
+                                return `Created ${ok} of ${items.length} relationship${items.length === 1 ? "" : "s"} in ${graphWhere} (${fail} failed — see details).`;
+                              })()
+                            : `Created the feature on ${where}.`;
     }
   } else if (rejectionIntent) {
     const outcome = handleRejection({
