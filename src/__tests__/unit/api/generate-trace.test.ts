@@ -124,6 +124,7 @@ describe("POST /api/workspaces/[slug]/agent-logs/[logId]/generate-trace", () => 
     expect(body.name).toBe("agent-trace-log-1");
     expect(body.workflow_params.set_var.attributes.vars.agentLogId).toBe("log-1");
     expect(body.workflow_params.set_var.attributes.vars.blobUrl).toContain("sig=abc");
+    expect(body.workflow_params.set_var.attributes.vars.workspace_id).toBe("ws-1");
     expect(opts.headers.Authorization).toContain("Token token=");
   });
 

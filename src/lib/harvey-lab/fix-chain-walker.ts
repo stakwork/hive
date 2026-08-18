@@ -68,7 +68,14 @@ export interface WalkFixChainOpts {
    * Hive's own benchmark run route attaches its EvalTrigger to the
    * EvalRequirement, not to the EvalSet, so those runs are unreachable from the
    * EvalSet's own edges no matter which trigger edge types the first hop asks
-   * for. Set by the chart route only — the cron keeps its current behaviour.
+   * for.
+   *
+   * NO production caller sets this today. The chart route shipped with it and
+   * backed it out: the per-requirement fan-out is one GET per EvalRequirement
+   * (~50 per EvalSet at ~3-6s each under FETCH_CONCURRENCY=10), which burned
+   * the entire WALL_CLOCK_BUDGET_MS in production and aborted the in-flight
+   * batch. Re-enable only behind a batched fetch (Jarvis depth=2 expand spike)
+   * so the requirement host costs one call instead of N.
    */
   includeRequirementTriggers?: boolean;
 }

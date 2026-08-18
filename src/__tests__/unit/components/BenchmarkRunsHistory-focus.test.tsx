@@ -69,6 +69,15 @@ vi.mock("@/hooks/useLegalBenchmarkRunList", () => ({
     mockInternalList(workspaceId),
 }));
 
+vi.mock("@/hooks/useLegalBenchmarkRecursionList", () => ({
+  useLegalBenchmarkRecursionList: () => ({
+    entries: [],
+    isLoading: false,
+    error: null,
+    refetch: vi.fn(),
+  }),
+}));
+
 vi.mock("@/hooks/useWorkspace", () => ({
   useWorkspace: vi.fn(() => ({
     workspace: { id: WORKSPACE_ID, slug: WORKSPACE_SLUG },
