@@ -205,6 +205,20 @@ function RecursionCard({ entry, refetch }: RecursionCardProps) {
               n_total={latest?.n_total}
               roster={roster}
             />
+            {/* A truncated graph walk must be loud: a capped walk renders a
+                flat-looking chart that is indistinguishable from a real
+                plateau, so the warning sits in the always-visible header, not
+                only inside the collapsed chart. */}
+            {partial && !historyLoading && !historyError && (
+              <span
+                className="flex items-center gap-1 text-xs text-amber-600 dark:text-amber-400"
+                data-testid="partial-warning"
+                title="The graph walk hit a safety cap before finishing — runs may be missing and the chart below may under-report progress."
+              >
+                <AlertCircle className="h-3 w-3 shrink-0" />
+                <span>incomplete data</span>
+              </span>
+            )}
           </div>
           <span className="text-xs text-muted-foreground truncate">{entry.id}</span>
           {toggleError && (
@@ -266,7 +280,7 @@ function RecursionCard({ entry, refetch }: RecursionCardProps) {
                 )}
                 {partial && (
                   <span
-                    className="text-muted-foreground/60 italic"
+                    className="text-amber-600 dark:text-amber-400"
                     data-testid="chart-partial-note"
                   >
                     {" "}

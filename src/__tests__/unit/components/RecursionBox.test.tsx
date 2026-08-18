@@ -616,4 +616,32 @@ describe("RecursionCard — badge and caption per series kind", () => {
     fireEvent.click(screen.getByTestId("expand-toggle"));
     expect(screen.queryByTestId("chart-partial-note")).toBeNull();
   });
+
+  it("shows the header incomplete-data warning WITHOUT expanding when the walk was partial", () => {
+    // A capped walk renders a flat-looking chart indistinguishable from a real
+    // plateau — the warning must be visible on the collapsed card.
+    mockHistoryLoaded(REGRESSING_SERIES, { seriesKind: "eval-output", partial: true });
+    renderCard();
+    expect(screen.getByTestId("partial-warning").textContent).toMatch(/incomplete data/i);
+  });
+
+  it("hides the header warning when the walk was complete", () => {
+    mockHistoryLoaded(REGRESSING_SERIES, { seriesKind: "eval-output", partial: false });
+    renderCard();
+    expect(screen.queryByTestId("partial-warning")).toBeNull();
+  });
+
+  it("hides the header warning while history is loading", () => {
+    mockUseEvalRunHistory.mockReturnValue({
+      history: [],
+      attempts: [],
+      isLoading: true,
+      error: null,
+      refetch: vi.fn(),
+      seriesKind: "legacy",
+      partial: true,
+    });
+    renderCard();
+    expect(screen.queryByTestId("partial-warning")).toBeNull();
+  });
 });

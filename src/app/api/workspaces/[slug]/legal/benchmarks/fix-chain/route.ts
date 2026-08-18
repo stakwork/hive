@@ -164,13 +164,20 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       { evalSetRefId, slug },
     );
 
-    // Both trigger edge types, plus the requirement-hosted host: concept-driven
-    // recursion writes a fresh EvalTrigger (HAS_TRIGGER) instead of a
-    // ProposedFix, and hive's own run route hangs its trigger off the
-    // EvalRequirement — neither is reachable from a baseline-only first hop.
+    // Both trigger edge types: concept-driven recursion writes a fresh
+    // EvalTrigger (HAS_TRIGGER) instead of a ProposedFix, so a baseline-only
+    // first hop never loads those runs.
+    //
+    // `includeRequirementTriggers` is deliberately NOT set. In production the
+    // per-requirement fan-out (one GET per EvalRequirement, ~50 per EvalSet)
+    // burned the walker's entire 25s wall-clock budget and aborted the last
+    // in-flight batch, returning partial data. The capability stays implemented
+    // and tested in the walker; re-enabling it is gated on a Jarvis depth=2
+    // batched-expand spike so requirement-hosted triggers cost one call, not N.
+    // Until then, runs attached to an EvalRequirement (hive's run route) do not
+    // appear in this subgraph.
     const result = await walkFixChain(jarvisUrl, swarmApiKey, evalSetRefId, {
       triggerEdgeTypes: ["HAS_BASELINE_TRIGGER", "HAS_TRIGGER"],
-      includeRequirementTriggers: true,
     });
 
     if (result.partial) {
