@@ -14,6 +14,14 @@
  * against the `PROMPTS_CAPABILITY_ORG_LOGINS` allow-list (default: the
  * Stakwork org only). When per-user agents/prompts land, relax the
  * allow-list (or add a per-user gate) here.
+ *
+ * `code_change` is also gated. The `propose_code_change` tool invokes a
+ * swarm `repo_agent` run on the user's behalf and is an exposure gate only
+ * (not an authorization gate — write authorization is enforced at approval
+ * time by the `createPr` adapter). Driven by
+ * `CODE_CHANGE_CAPABILITY_ORG_LOGINS` (comma-separated `SourceControlOrg.
+ * githubLogin` values, case-insensitive). Defaults to "" (empty → disabled
+ * for all orgs) so rollout is strictly opt-in.
  */
 
 import { db } from "@/lib/db";
@@ -82,6 +90,49 @@ export async function isGraphWriteCapabilityEnabledForOrg(
   } catch (err) {
     logger.error(
       "[capabilityGates] graph_write org gate lookup failed — denying",
+      "capabilityGates",
+      { orgId, error: err instanceof Error ? err.message : String(err) },
+    );
+    return false;
+  }
+}
+
+/**
+ * Whether the `code_change` capability (`propose_code_change` tool) is
+ * available to the given source-control org.
+ *
+ * This is an **exposure gate only** — it controls whether the tool appears
+ * in the agent's toolset. Actual write authorization (PAT validation, org
+ * membership, push permission) is enforced at approval time by the
+ * `createPr` adapter. Using `orgGate` (not `canAccessFeature`) because
+ * `buildTools`'s context carries no `WorkspaceRole` to evaluate a
+ * role-based flag against.
+ *
+ * Driven by `CODE_CHANGE_CAPABILITY_ORG_LOGINS` (comma-separated GitHub
+ * logins, case-insensitive). Defaults to "" (empty → disabled for all orgs)
+ * so rollout is strictly opt-in per org.
+ *
+ * Fails closed: a missing orgId, an unknown org, or a lookup error → false.
+ */
+export async function isCodeChangeCapabilityEnabledForOrg(
+  orgId: string | undefined,
+): Promise<boolean> {
+  if (!orgId) return false;
+  const allowList = (process.env.CODE_CHANGE_CAPABILITY_ORG_LOGINS || "")
+    .split(",")
+    .map((s) => s.trim().toLowerCase())
+    .filter(Boolean);
+  if (allowList.length === 0) return false;
+  try {
+    const org = await db.sourceControlOrg.findUnique({
+      where: { id: orgId },
+      select: { githubLogin: true },
+    });
+    const login = (org?.githubLogin ?? "").trim().toLowerCase();
+    return Boolean(login) && allowList.includes(login);
+  } catch (err) {
+    logger.error(
+      "[capabilityGates] code_change org gate lookup failed — denying",
       "capabilityGates",
       { orgId, error: err instanceof Error ? err.message : String(err) },
     );

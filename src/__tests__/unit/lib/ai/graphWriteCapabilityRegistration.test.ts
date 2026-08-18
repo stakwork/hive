@@ -78,6 +78,7 @@ vi.mock("@/lib/proposals/types", () => ({
   PROPOSE_NODE_EDIT_TOOL: "propose_node_edit",
   PROPOSE_CREATE_TRIPLET_TOOL: "propose_create_triplet",
   PROPOSE_CREATE_BATCH_TRIPLET_TOOL: "propose_create_batch_triplet",
+  PROPOSE_CODE_CHANGE_TOOL: "propose_code_change",
 }));
 
 // Gate mocks — both resolving independently.
@@ -92,6 +93,8 @@ vi.mock("@/lib/ai/capabilityGates", () => ({
     isPromptsCapabilityEnabledForOrg(orgId),
   isGraphWriteCapabilityEnabledForOrg: (orgId: string | undefined) =>
     isGraphWriteCapabilityEnabledForOrg(orgId),
+  // code_change gate — always false in these tests (not under test here)
+  isCodeChangeCapabilityEnabledForOrg: vi.fn(async () => false),
 }));
 
 import {
