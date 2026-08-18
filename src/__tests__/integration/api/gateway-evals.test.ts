@@ -706,6 +706,9 @@ describe("POST /api/gateway/evals/:setId/requirements/:reqId/run", () => {
     // Bifrost vars must appear in the Stakwork payload
     const vars = await capturedStakworkVars();
     expect(vars?.bifrostApiKey).toBe("vk-key-abc");
+    // workspace_id must be the resolved workspace DB id
+    expect(vars?.workspace_id).toBe(ctx.workspace.id);
+    void ctx;
   });
 
   test("resolves Bifrost identity from the trigger's stored agent", async () => {
