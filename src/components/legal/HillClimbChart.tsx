@@ -86,6 +86,9 @@ const FALLBACK_WIDTH = 640;
 /** Max x-axis labels before thinning kicks in (long concept-rerun series). */
 const MAX_X_LABELS = 12;
 
+/** Max on-chart "+N" improvement labels before they yield to the tooltip. */
+const MAX_DELTA_LABELS = 10;
+
 /**
  * Fit the y-domain floor to the data instead of always starting at 0.
  *
@@ -225,6 +228,22 @@ export function HillClimbChart({ attempts, height = 160 }: HillClimbChartProps) 
       return { state, bestBefore };
     });
   })();
+
+  // Improvement deltas: a dot that ADVANCES the running best gets a small
+  // "+N" — the ratchet step, measured against the previous best, not the
+  // previous run (recovering 58 → 52 → 60 reads "+2": what the line did).
+  // Rises are inherently sparse on a ratchet line, but past MAX_DELTA_LABELS
+  // of them the on-chart labels drop out and the tooltip carries the delta —
+  // selective labeling, never a number on every point.
+  const riseDeltas = dotMeta.map((m, i) => {
+    const actual = points[i]?.actualPassed;
+    if (!m || actual == null) return null;
+    if (m.state !== "best" && m.state !== "target") return null;
+    if (!Number.isFinite(m.bestBefore) || actual <= m.bestBefore) return null;
+    return actual - m.bestBefore;
+  });
+  const riseCount = riseDeltas.filter((d) => d != null).length;
+  const showDeltaLabels = riseCount > 0 && riseCount <= MAX_DELTA_LABELS;
 
   // Series-level achievement: once the running best reaches the target, the
   // ENTIRE series — line, dots, hollow strokes — wears status green instead of
@@ -469,6 +488,30 @@ export function HillClimbChart({ attempts, height = 160 }: HillClimbChartProps) 
             </text>
           )}
 
+          {/* Improvement deltas — "+N" above each dot that advanced the best.
+              Ink, not series color; sits in the unclipped layer so a rise at
+              the domain ceiling labels into the top margin instead of vanishing. */}
+          {showDeltaLabels &&
+            points.map((pt, i) => {
+              const delta = riseDeltas[i];
+              if (delta == null || pt.actualPassed == null) return null;
+              const isTarget = dotMeta[i]?.state === "target";
+              return (
+                <text
+                  key={`delta-${i}`}
+                  x={xScale(i)}
+                  y={yScale(pt.actualPassed) - (isTarget ? 14 : 11)}
+                  textAnchor="middle"
+                  fontSize={9}
+                  className="fill-muted-foreground"
+                  style={{ fontVariantNumeric: "tabular-nums" }}
+                  data-testid={`delta-${i}`}
+                >
+                  +{delta}
+                </text>
+              );
+            })}
+
           {/* X-axis attempt labels — thinned on long series, ends always kept */}
           {points.map((pt, i) =>
             showXLabel(i) ? (
@@ -517,6 +560,15 @@ export function HillClimbChart({ attempts, height = 160 }: HillClimbChartProps) 
           {!tooltip.point.accepted && (
             <div className="text-muted-foreground/60 italic">rejected</div>
           )}
+          {tooltip.point.accepted &&
+            (tooltip.meta?.state === "best" || tooltip.meta?.state === "target") &&
+            tooltip.point.actualPassed != null &&
+            Number.isFinite(tooltip.meta.bestBefore) &&
+            tooltip.point.actualPassed > tooltip.meta.bestBefore && (
+              <div className="text-muted-foreground">
+                +{tooltip.point.actualPassed - tooltip.meta.bestBefore} vs previous best
+              </div>
+            )}
           {tooltip.point.accepted && tooltip.meta?.state === "target" && (
             <div className="text-green-600 dark:text-green-400">target reached</div>
           )}
