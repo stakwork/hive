@@ -578,6 +578,218 @@ export async function deleteEdge(
   return { success: true };
 }
 
+// ── Jarvis v2 write helpers (user-approved graph writes) ─────────────────────
+
+/**
+ * Normalised result returned by every v2 write/read helper.
+ * Raw Jarvis response bodies are never forwarded to callers.
+ */
+export interface JarvisV2Result {
+  success: boolean;
+  ref_id?: string;
+  status?: string;
+  message?: string;
+  alreadyExists?: boolean;
+}
+
+/**
+ * Allowed charset for opaque Jarvis ref_ids.
+ * Rejects path-traversal-shaped values (containing `/`, `..`, `\0`, etc.)
+ * before the value is interpolated into a URL segment.
+ */
+const REF_ID_SAFE_RE = /^[A-Za-z0-9_\-.:@]+$/;
+
+function isSafeRefId(ref_id: string): boolean {
+  return typeof ref_id === "string" && ref_id.length > 0 && REF_ID_SAFE_RE.test(ref_id);
+}
+
+/**
+ * Update an existing node via `POST /v2/nodes/{ref_id}`.
+ * Body is `{ node_data }` only — never `node_type`, `type_to_be_deleted`, or
+ * `properties_to_be_deleted` (merge-only; property deletion is out of scope).
+ *
+ * Success requires BOTH `res.ok` AND `body.status === "success"` because
+ * Jarvis can return HTTP 200 with `{ status: "fail", message }` on a
+ * node_key collision.
+ *
+ * Does NOT send `X-Is-Admin` — user-approved writes must not execute with
+ * admin authority on Jarvis.
+ *
+ * Never throws.
+ */
+export async function updateNodeV2(
+  config: JarvisConnectionConfig,
+  ref_id: string,
+  node_data: Record<string, unknown>,
+): Promise<JarvisV2Result> {
+  if (!isSafeRefId(ref_id)) {
+    return {
+      success: false,
+      message: `Invalid ref_id: must match [A-Za-z0-9_\\-.:@]+ (got ${JSON.stringify(ref_id)})`,
+    };
+  }
+
+  const result = await jarvisRequest({
+    config,
+    endpoint: `/v2/nodes/${encodeURIComponent(ref_id)}`,
+    method: "POST",
+    data: { node_data },
+  });
+
+  if (!result.ok) {
+    return {
+      success: false,
+      status: String(result.status),
+      message: result.error ?? `Request failed with status ${result.status}`,
+    };
+  }
+
+  const body = result.body as
+    | { status?: string; message?: string }
+    | undefined;
+
+  // Jarvis `update_node` returns 200 + { status: "fail", message } on failure
+  if (body?.status === "success") {
+    return { success: true, ref_id, status: "success" };
+  }
+
+  return {
+    success: false,
+    status: body?.status,
+    message: body?.message ?? "Node update returned unexpected status",
+  };
+}
+
+/**
+ * Create an edge via `POST /v2/edges`.
+ *
+ * `create_schema_if_missing` is hardcoded `false` and never accepted from
+ * callers — an approved chat click must not permanently extend a workspace's
+ * ontology.
+ *
+ * Treats `status ∈ { "success", "Warning" }` as success (matching the
+ * existing `executeBulkEdgeRequest` comment: Jarvis returns "Warning" on
+ * duplicate edges which is benign).
+ *
+ * Does NOT send `X-Is-Admin`.  Never throws.
+ */
+export async function addEdgeV2(
+  config: JarvisConnectionConfig,
+  payload: {
+    edge: { edge_type: string; weight?: number; edge_data?: Record<string, unknown> };
+    source: JarvisEdgeEndpoint;
+    target: JarvisEdgeEndpoint;
+  },
+): Promise<JarvisV2Result> {
+  const result = await jarvisRequest({
+    config,
+    endpoint: "/v2/edges",
+    method: "POST",
+    data: {
+      edge: payload.edge,
+      source: payload.source,
+      target: payload.target,
+      create_schema_if_missing: false,
+    },
+  });
+
+  if (!result.ok) {
+    return {
+      success: false,
+      status: String(result.status),
+      message: result.error ?? `Request failed with status ${result.status}`,
+    };
+  }
+
+  const body = result.body as
+    | {
+        status?: string;
+        message?: string;
+        data?: { ref_id?: string };
+        edges?: Array<{ ref_id?: string }>;
+      }
+    | undefined;
+
+  // "Warning" on duplicate edge is treated as success (same as executeBulkEdgeRequest).
+  const statusLower = (body?.status ?? "").toLowerCase();
+  if (statusLower === "success" || statusLower === "warning") {
+    const ref_id = body?.edges?.[0]?.ref_id ?? body?.data?.ref_id;
+    const alreadyExists = statusLower === "warning";
+    return { success: true, ref_id, status: body?.status, alreadyExists };
+  }
+
+  return {
+    success: false,
+    status: body?.status,
+    message: body?.message ?? "Edge creation returned unexpected status",
+  };
+}
+
+/**
+ * Read a single node by `ref_id` via `GET /v2/nodes/{ref_id}`.
+ * Used by the `propose_node_edit` tool at propose time to:
+ *  - confirm the node exists in the workspace's graph
+ *  - supply the current properties for the diff view (`meta.oldStr`)
+ *
+ * Returns `{ success: false }` for any failure (not found, transport error, etc.).
+ * Never throws.
+ */
+export async function readNodeByRef(
+  config: JarvisConnectionConfig,
+  ref_id: string,
+): Promise<JarvisV2Result & { properties?: Record<string, unknown>; node_type?: string }> {
+  if (!isSafeRefId(ref_id)) {
+    return {
+      success: false,
+      message: `Invalid ref_id: must match [A-Za-z0-9_\\-.:@]+ (got ${JSON.stringify(ref_id)})`,
+    };
+  }
+
+  // limit=1 keeps Jarvis from materializing the node's whole neighborhood,
+  // which can OOM Neo4j on hub nodes — we only need the node itself here.
+  const result = await jarvisRequest({
+    config,
+    endpoint: `/v2/nodes/${encodeURIComponent(ref_id)}?limit=1`,
+    method: "GET",
+  });
+
+  if (!result.ok) {
+    return {
+      success: false,
+      status: String(result.status),
+      message: result.error ?? `Request failed with status ${result.status}`,
+    };
+  }
+
+  const body = result.body as
+    | {
+        nodes?: Array<{
+          ref_id?: string;
+          node_type?: string;
+          properties?: Record<string, unknown>;
+        }>;
+        ref_id?: string;
+        node_type?: string;
+        properties?: Record<string, unknown>;
+      }
+    | undefined;
+
+  // Deployed Jarvis wraps the node in `{ nodes, edges, status }`; some builds
+  // return the node directly. Handle both shapes (mirrors stakgraph's graph_get).
+  const node = Array.isArray(body?.nodes)
+    ? body!.nodes!.find((n) => n?.ref_id === ref_id) ?? body!.nodes![0]
+    : body;
+  const resolvedRefId = node?.ref_id ?? ref_id;
+
+  return {
+    success: true,
+    ref_id: resolvedRefId,
+    node_type: node?.node_type,
+    properties: node?.properties,
+    status: "success",
+  };
+}
+
 // ── Error-impact centrality helpers ──────────────────────────────────────────
 
 export interface CentralityNode {
