@@ -56,16 +56,29 @@ export type LandChangeResult = LandChangeSuccess | LandChangeFailure;
 // runs — they are not part of LandChangeResult and never appear in its
 // `failure` field.
 //
-// Status → canonical body string:
+// IMPORTANT — the body field each constant matches differs by check.
+//
+// Matched VERBATIM against the body's `error` field. These responses carry
+// no `failure` field:
 //   401  → LAND_CHANGE_ERR_UNAUTH        (API_TOKEN not set on swarm)
 //   400  → LAND_CHANGE_ERR_MULTI_REPO    (comma-separated / missing repo_url)
 //   400  → LAND_CHANGE_ERR_EMPTY_PAT     (non-empty pat required)
+//
+// Matched against the body's `failure` field. The `error` field on these is a
+// longer — and for identity, dynamic — message ("no_push_permission: PAT does
+// not have push access to this repo", "rate_limited: too many PRs landed in
+// this hour", "Token login 'x' does not match supplied username 'y'"). Never
+// compare `error` for equality on these three:
 //   400  → LAND_CHANGE_ERR_IDENTITY      (identity_mismatch admission check)
 //   403  → LAND_CHANGE_ERR_NO_PUSH       (no_push_permission admission check)
 //   429  → LAND_CHANGE_ERR_RATE_LIMITED  (rate_limited — never in LandChangeFailureCode)
+//
+// Two further admission responses have no constant here because they carry
+// dynamic text: 400 "create_pr: repo_url must be in owner/repo form" and
+// 500 "create_pr admission failed: <reason>".
 
 export const LAND_CHANGE_ERR_UNAUTH =
-  "API_TOKEN is not set" as const;
+  "create_pr requires API_TOKEN to be configured" as const;
 
 export const LAND_CHANGE_ERR_MULTI_REPO =
   "create_pr requires exactly one explicit repo_url (no comma-separated list, no omission)" as const;

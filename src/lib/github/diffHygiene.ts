@@ -43,20 +43,16 @@ export function parseUnifiedDiff(diff: string): DiffHygieneResult {
     return err("empty_diff", "Diff is empty.");
   }
 
-  const lines = diff.split("\n");
+  const sections = splitDiffIntoFileSections(diff);
 
-  const hasFilePairs =
-    lines.some((l) => l.startsWith("--- ")) &&
-    lines.some((l) => l.startsWith("+++ "));
-
-  if (!hasFilePairs) {
+  if (sections.length === 0) {
     return err(
       "malformed_diff",
       "Diff has no --- / +++ file header pairs. Expected unified diff format.",
     );
   }
 
-  const hasHunk = lines.some((l) => l.startsWith("@@"));
+  const hasHunk = sections.some((s) => s.hunkCount > 0);
   if (!hasHunk) {
     return err(
       "binary_or_malformed",
@@ -95,10 +91,11 @@ export function enforceDiffCaps(
     );
   }
 
-  // Count distinct file pairs (each "--- a/..." starts a new file entry)
-  const fileCount = diff
-    .split("\n")
-    .filter((l) => l.startsWith("--- ")).length;
+  // Count distinct file pairs. Must go through the hunk-aware splitter: a
+  // deleted line whose own content starts with "-- " (e.g. the "-- AlterTable"
+  // comments in a Prisma migration) renders as "--- AlterTable" inside a hunk
+  // body and would otherwise be counted as a file header.
+  const fileCount = splitDiffIntoFileSections(diff).length;
 
   if (fileCount > maxFiles) {
     return err(
@@ -193,15 +190,10 @@ export function scanForSecrets(diff: string): DiffHygieneResult {
     /-----BEGIN [A-Z ]+-----/,
   ];
 
-  // Sensitive file path patterns in diff headers
-  const sensitivePathPatterns = [
-    /\+\+\+ .*\.env(\b|$)/,
-    /\+\+\+ .*\.env\./,
-    /--- .*\.env(\b|$)/,
-    /--- .*\.env\./,
-    /\+\+\+ .*\bkey\b/i,
-    /--- .*\bkey\b/i,
-  ];
+  // Sensitive file names, tested against parsed header paths rather than raw
+  // lines: a removed "-- key rotation notes" comment renders as
+  // "--- key rotation notes" inside a hunk body and is not a file header.
+  const sensitivePathPatterns = [/\.env(\b|$)/, /\bkey\b/i];
 
   for (const pattern of tokenPatterns) {
     if (pattern.test(diff)) {
@@ -212,12 +204,15 @@ export function scanForSecrets(diff: string): DiffHygieneResult {
     }
   }
 
-  for (const pattern of sensitivePathPatterns) {
-    if (pattern.test(diff)) {
-      return err(
-        "secrets_found",
-        "Diff touches a file with a sensitive name (e.g. .env, *key*). Refusing to persist.",
-      );
+  for (const section of splitDiffIntoFileSections(diff)) {
+    for (const filePath of [section.oldPath, section.newPath]) {
+      if (filePath === "/dev/null") continue;
+      if (sensitivePathPatterns.some((pattern) => pattern.test(filePath))) {
+        return err(
+          "secrets_found",
+          "Diff touches a file with a sensitive name (e.g. .env, *key*). Refusing to persist.",
+        );
+      }
     }
   }
 
@@ -246,50 +241,25 @@ export function unifiedDiffToActionResults(
   repoName: string,
 ): ActionResult[] {
   const results: ActionResult[] = [];
-  const lines = diff.split("\n");
 
-  let i = 0;
-  while (i < lines.length) {
-    const line = lines[i];
-
-    if (!line.startsWith("--- ")) {
-      i++;
-      continue;
-    }
-
-    const oldRaw = line.slice(4).trim();
-    const nextLine = lines[i + 1] ?? "";
-
-    if (!nextLine.startsWith("+++ ")) {
-      i++;
-      continue;
-    }
-
-    const newRaw = nextLine.slice(4).trim();
-    i += 2; // consume both header lines
-
-    const oldPath = stripGitPrefix(oldRaw);
-    const newPath = stripGitPrefix(newRaw);
+  for (const section of splitDiffIntoFileSections(diff)) {
+    const { oldRaw, newRaw, oldPath, newPath } = section;
+    const content = section.bodyLines.join("\n");
 
     const isNewFile = oldRaw === "/dev/null";
     const isDeletedFile = newRaw === "/dev/null";
-    const isRename =
-      !isNewFile && !isDeletedFile && oldPath !== newPath;
+    const isRename = !isNewFile && !isDeletedFile && oldPath !== newPath;
 
     if (isNewFile) {
-      // Collect hunk content for the new file
-      const content = collectHunkContent(lines, i);
       results.push({ file: newPath, action: "create", content, repoName });
     } else if (isDeletedFile) {
       results.push({ file: oldPath, action: "delete", content: "", repoName });
     } else if (isRename) {
       results.push({ file: oldPath, action: "delete", content: "", repoName });
-      const content = collectHunkContent(lines, i);
       results.push({ file: newPath, action: "create", content, repoName });
     } else {
       // Same file — determine modify vs rewrite
-      const content = collectHunkContent(lines, i);
-      const action = isWholeFileReplacement(lines, i) ? "rewrite" : "modify";
+      const action = isWholeFileReplacement(section) ? "rewrite" : "modify";
       results.push({ file: newPath, action, content, repoName });
     }
   }
@@ -307,44 +277,125 @@ function stripGitPrefix(path: string): string {
   return path;
 }
 
+/** One file entry in a unified diff, produced by `splitDiffIntoFileSections`. */
+interface DiffFileSection {
+  /** Raw text after `--- `, e.g. `a/foo.ts` or `/dev/null`. */
+  oldRaw: string;
+  /** Raw text after `+++ `, e.g. `b/foo.ts` or `/dev/null`. */
+  newRaw: string;
+  /** `oldRaw` with any `a/` prefix stripped. */
+  oldPath: string;
+  /** `newRaw` with any `b/` prefix stripped. */
+  newPath: string;
+  /** Hunk headers and hunk body lines belonging to this file. */
+  bodyLines: string[];
+  /** Number of `@@` hunks in this entry. */
+  hunkCount: number;
+  /** Whether any hunk retains a context line. */
+  hasContextLine: boolean;
+}
+
+const HUNK_HEADER_RE = /^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/;
+
 /**
- * Collect the raw diff content for the current file section.
- * Stops when the next `--- ` line (next file) or end of diff is reached.
+ * Split a unified diff into per-file sections, tracking each hunk's declared
+ * line budget so body content is never mistaken for structure.
+ *
+ * A naive `line.startsWith("--- ")` test is wrong: a removed line whose own
+ * content begins with `-- ` renders as `--- ...` inside a hunk body. SQL, Lua,
+ * and Haskell comments all look like this — every Prisma migration in this repo
+ * opens with `-- AlterTable` — and treating one as a file header inflates file
+ * counts and truncates collected content.
+ *
+ * Each `@@ -a,b +c,d @@` header declares how many old- and new-side lines its
+ * body holds; we consume exactly that many before resuming header scanning.
+ * Counts default to 1 when omitted (`@@ -1 +1 @@`). Parsing stays tolerant of
+ * hand-written diffs whose counts are inaccurate: a body line carrying no
+ * context/add/remove marker ends the hunk early and is reprocessed as structure.
  */
-function collectHunkContent(lines: string[], startIdx: number): string {
-  const parts: string[] = [];
-  let i = startIdx;
-  while (i < lines.length && !lines[i].startsWith("--- ")) {
-    parts.push(lines[i]);
-    i++;
+function splitDiffIntoFileSections(diff: string): DiffFileSection[] {
+  const lines = diff.split("\n");
+  // Drop the empty string left by a trailing newline so it is not consumed as
+  // a context line, which would mask a whole-file replacement as a modify.
+  if (lines.length > 0 && lines[lines.length - 1] === "") lines.pop();
+
+  const sections: DiffFileSection[] = [];
+  let current: DiffFileSection | null = null;
+  let oldRemaining = 0;
+  let newRemaining = 0;
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+
+    // Inside a hunk body every line is content, never a header.
+    if (current && (oldRemaining > 0 || newRemaining > 0)) {
+      if (line.startsWith("\\")) {
+        // "\ No newline at end of file" — an annotation, not a counted line.
+        current.bodyLines.push(line);
+        continue;
+      }
+      if (line.startsWith("-")) {
+        current.bodyLines.push(line);
+        oldRemaining--;
+        continue;
+      }
+      if (line.startsWith("+")) {
+        current.bodyLines.push(line);
+        newRemaining--;
+        continue;
+      }
+      if (line.startsWith(" ") || line === "") {
+        current.bodyLines.push(line);
+        current.hasContextLine = true;
+        oldRemaining--;
+        newRemaining--;
+        continue;
+      }
+      // Declared counts overshot the real body. End the hunk and fall through
+      // so this line is reprocessed as structure.
+      oldRemaining = 0;
+      newRemaining = 0;
+    }
+
+    const hunk = HUNK_HEADER_RE.exec(line);
+    if (hunk && current) {
+      current.bodyLines.push(line);
+      current.hunkCount++;
+      oldRemaining = hunk[2] === undefined ? 1 : parseInt(hunk[2], 10);
+      newRemaining = hunk[4] === undefined ? 1 : parseInt(hunk[4], 10);
+      continue;
+    }
+
+    // A `--- ` line opens a file entry only when `+++ ` follows immediately.
+    const nextLine = lines[i + 1] ?? "";
+    if (line.startsWith("--- ") && nextLine.startsWith("+++ ")) {
+      const oldRaw = line.slice(4).trim();
+      const newRaw = nextLine.slice(4).trim();
+      current = {
+        oldRaw,
+        newRaw,
+        oldPath: stripGitPrefix(oldRaw),
+        newPath: stripGitPrefix(newRaw),
+        bodyLines: [],
+        hunkCount: 0,
+        hasContextLine: false,
+      };
+      sections.push(current);
+      i++; // consume the `+++ ` line as well
+      continue;
+    }
+
+    // Anything else outside a hunk — `diff --git`, `index`, `new file mode`,
+    // `Binary files ... differ`, blank separators — is metadata.
   }
-  return parts.join("\n");
+
+  return sections;
 }
 
 /**
- * Determine whether the file's hunks constitute a whole-file replacement:
- * no context lines (lines starting with " ") appear in any hunk that
- * belongs to this file.
- *
- * A whole-file replacement has only `+` and `-` lines inside `@@` hunks.
- * If there are context lines the file is `modify`.
+ * Whether a file entry is a whole-file replacement: it has at least one hunk
+ * and no hunk retains a context line, so every original line was replaced.
  */
-function isWholeFileReplacement(lines: string[], startIdx: number): boolean {
-  let inHunk = false;
-  let hasContext = false;
-
-  for (let i = startIdx; i < lines.length; i++) {
-    const l = lines[i];
-    if (l.startsWith("--- ")) break; // next file
-    if (l.startsWith("@@")) {
-      inHunk = true;
-      continue;
-    }
-    if (inHunk && l.startsWith(" ")) {
-      hasContext = true;
-      break;
-    }
-  }
-
-  return inHunk && !hasContext;
+function isWholeFileReplacement(section: DiffFileSection): boolean {
+  return section.hunkCount > 0 && !section.hasContextLine;
 }

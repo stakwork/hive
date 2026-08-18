@@ -353,3 +353,110 @@ describe("unifiedDiffToActionResults", () => {
     }
   });
 });
+
+// ─── Content lines that mimic structural markers ──────────────────────────
+//
+// A removed line whose own content starts with "-- " renders as "--- ..." in
+// a unified diff. SQL/Lua/Haskell comments all look like this — every Prisma
+// migration in this repo opens with "-- AlterTable" — and a parser keying on
+// `startsWith("--- ")` reads them as file headers.
+
+// Deletes two "-- " SQL comments from a migration. One real file.
+const SQL_COMMENT_DELETION_DIFF = `\
+--- a/prisma/migrations/0001_init/migration.sql
++++ b/prisma/migrations/0001_init/migration.sql
+@@ -1,5 +1,3 @@
+--- AlterTable
+--- CreateIndex
+ ALTER TABLE "tasks" ADD COLUMN "proposal_id" TEXT;
+-DROP INDEX "tasks_old_idx";
++CREATE INDEX "tasks_new_idx" ON "tasks"("proposal_id");
+`;
+
+// The pathological case: a deleted "-- " line immediately followed by an
+// added "++ " line, which together mimic a --- / +++ header pair.
+const ADJACENT_MARKER_LINES_DIFF = `\
+--- a/notes.md
++++ b/notes.md
+@@ -1,2 +1,2 @@
+ # Notes
+--- old bullet
++++ new marker
+`;
+
+// A doc line mentioning "key" that is removed — renders as "--- key ...".
+const KEY_COMMENT_DIFF = `\
+--- a/docs/rotation.md
++++ b/docs/rotation.md
+@@ -1,2 +1,2 @@
+ # Rotation
+--- key rotation happens quarterly
++Key rotation happens monthly.
+`;
+
+describe("content lines that look like file headers", () => {
+  it("parseUnifiedDiff accepts a diff deleting '-- ' SQL comments", () => {
+    expect(parseUnifiedDiff(SQL_COMMENT_DELETION_DIFF).ok).toBe(true);
+  });
+
+  it("enforceDiffCaps counts one file, not one per deleted '-- ' comment", () => {
+    // Three "--- " lines appear, but only one is a real file header.
+    const result = enforceDiffCaps(SQL_COMMENT_DELETION_DIFF, { maxFiles: 1 });
+    expect(result.ok).toBe(true);
+  });
+
+  it("enforceDiffCaps does not inflate the count on adjacent -- / ++ lines", () => {
+    const result = enforceDiffCaps(ADJACENT_MARKER_LINES_DIFF, { maxFiles: 1 });
+    expect(result.ok).toBe(true);
+  });
+
+  it("unifiedDiffToActionResults yields one entry for the SQL migration", () => {
+    const results = unifiedDiffToActionResults(
+      SQL_COMMENT_DELETION_DIFF,
+      "owner/repo",
+    );
+    expect(results).toHaveLength(1);
+    expect(results[0].file).toBe("prisma/migrations/0001_init/migration.sql");
+    expect(results[0].action).toBe("modify");
+  });
+
+  it("keeps the full hunk body instead of truncating at a '--- ' content line", () => {
+    const results = unifiedDiffToActionResults(
+      SQL_COMMENT_DELETION_DIFF,
+      "owner/repo",
+    );
+    // The last line of the hunk must survive collection.
+    expect(results[0].content).toContain("tasks_new_idx");
+    expect(results[0].content).toContain("--- AlterTable");
+  });
+
+  it("does not split a file on an adjacent '--- ' / '+++ ' content pair", () => {
+    const results = unifiedDiffToActionResults(
+      ADJACENT_MARKER_LINES_DIFF,
+      "owner/repo",
+    );
+    expect(results).toHaveLength(1);
+    expect(results[0].file).toBe("notes.md");
+  });
+
+  it("scanForSecrets does not flag a removed line mentioning 'key'", () => {
+    const result = scanForSecrets(KEY_COMMENT_DIFF);
+    expect(result.ok).toBe(true);
+  });
+
+  it("scanForSecrets still flags a real *key* file path", () => {
+    const result = scanForSecrets(
+      `--- a/config/private.key\n+++ b/config/private.key\n@@ -1 +1 @@\n-old\n+new\n`,
+    );
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.code).toBe("secrets_found");
+  });
+
+  it("scanForSecrets still flags a newly added .env file", () => {
+    const result = scanForSecrets(
+      `--- /dev/null\n+++ b/.env.production\n@@ -0,0 +1 @@\n+SECRET=abc\n`,
+    );
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.code).toBe("secrets_found");
+  });
+});
