@@ -135,7 +135,9 @@ export async function runProposalIntent(args: {
                           ? "graph triplet"
                           : r.kind === "graphBatchTripletCreate"
                             ? "graph batch triplet"
-                            : "feature";
+                            : r.kind === "codeChange"
+                              ? "code change"
+                              : "feature";
 
       // For graph writes, `landedOn` is `workspace:<id>` — map it to a
       // sensible display label rather than falling through to "the canvas".
@@ -179,7 +181,21 @@ export async function runProposalIntent(args: {
                                 }
                                 return `Created ${ok} of ${items.length} relationship${items.length === 1 ? "" : "s"} in ${graphWhere} (${fail} failed — see details).`;
                               })()
-                            : `Created the feature on ${where}.`;
+                            : r.kind === "codeChange"
+                              ? (() => {
+                                  const cc = r.codeChange;
+                                  if (!cc?.prUrl) {
+                                    return cc?.failureMessage
+                                      ? `Code change failed: ${cc.failureMessage}`
+                                      : "Code change approval recorded.";
+                                  }
+                                  const pathWarning =
+                                    cc.pathSetVerified === false
+                                      ? " (⚠ some files were not in the approved diff)"
+                                      : "";
+                                  return `Opened pull request: ${cc.prUrl}${pathWarning}`;
+                                })()
+                              : `Created the feature on ${where}.`;
     }
   } else if (rejectionIntent) {
     const outcome = handleRejection({

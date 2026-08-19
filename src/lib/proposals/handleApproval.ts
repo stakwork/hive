@@ -63,6 +63,7 @@ import {
   PROPOSE_NODE_EDIT_TOOL,
   PROPOSE_CREATE_TRIPLET_TOOL,
   PROPOSE_CREATE_BATCH_TRIPLET_TOOL,
+  PROPOSE_CODE_CHANGE_TOOL,
   type ApprovalIntent,
   type ApprovalResult,
   type FeatureProposalPayload,
@@ -74,7 +75,22 @@ import {
   type GraphNodeEditProposalPayload,
   type GraphTripletCreateProposalPayload,
   type GraphBatchTripletCreateProposalPayload,
+  type CodeChangeProposalPayload,
 } from "./types";
+import { checkRateLimit } from "@/lib/rate-limit";
+import { validateWorkspaceAccessById } from "@/services/workspace";
+import { fetchOrgCanvasConversationMessages } from "@/services/org-canvas-conversation";
+import { createPr } from "@/services/swarm/createPr";
+import { addPrLabels } from "@/lib/github/labels";
+import { unifiedDiffToActionResults } from "@/lib/github/diffHygiene";
+import {
+  ChatRole,
+  ChatStatus,
+  ArtifactType,
+  WorkflowStatus,
+  TaskSourceType,
+} from "@prisma/client";
+import type { PullRequestContent, DiffContent } from "@/lib/chat";
 import { mcpCreatePrompt, mcpUpdatePrompt } from "@/lib/mcp/mcpTools";
 import { getSwarmAccessByWorkspaceId } from "@/lib/helpers/swarm-access";
 import { logger } from "@/lib/logger";
@@ -141,7 +157,8 @@ function findProposal(
         tc.toolName !== PROPOSE_CREATE_NODE_TOOL &&
         tc.toolName !== PROPOSE_NODE_EDIT_TOOL &&
         tc.toolName !== PROPOSE_CREATE_TRIPLET_TOOL &&
-        tc.toolName !== PROPOSE_CREATE_BATCH_TRIPLET_TOOL
+        tc.toolName !== PROPOSE_CREATE_BATCH_TRIPLET_TOOL &&
+        tc.toolName !== PROPOSE_CODE_CHANGE_TOOL
       )
         continue;
       const out = tc.output;
@@ -350,7 +367,12 @@ export async function handleApproval(
     return approveGraphBatchTripletCreate({ orgId, userId, proposal });
   }
   if (proposal.kind === "codeChange") {
-    return { ok: false, error: "Code-change approval is not yet implemented.", status: 501 };
+    return approveCodeChange({
+      orgId,
+      userId,
+      proposal,
+      conversationId,
+    });
   }
   return approveFeature({
     orgId,
@@ -361,6 +383,536 @@ export async function handleApproval(
     conversationId,
     chatAgentModel,
   });
+}
+
+// ── Approve: codeChange ─────────────────────────────────────────────
+
+/**
+ * Land an approved `codeChange` proposal as a PR.
+ *
+ * Security sequence (all must pass before any swarm dispatch):
+ *   1. Re-read the persisted transcript server-side; verify the
+ *      `propose_code_change` output IS in the stored conversation
+ *      and that its `originatorUserId` matches the approver (IDOR).
+ *   2. Workspace authorization via `validateWorkspaceAccessById`
+ *      (requires `canWrite`). Re-validate `repositoryUrl` against DB.
+ *   3. Rate limit — two buckets, fail closed if Redis is down.
+ *   4. Claim before write — insert Task with unique `(workspaceId,
+ *      proposalId)`. On P2002 return winner's result (idempotency).
+ *   5. Dispatch via `createPr`, record `requestId` immediately.
+ *   6. Post-dispatch: attach PR artifact, update branch, add label.
+ *   7. Classified no-PR failures delete the claim; unknown drops keep
+ *      it for `reconcilePr`.
+ */
+async function approveCodeChange(args: {
+  orgId: string;
+  userId: string;
+  proposal: Extract<ProposalOutput, { kind: "codeChange" }>;
+  conversationId?: string;
+}): Promise<HandleApprovalReturn> {
+  const { orgId, userId, proposal, conversationId } = args;
+  const payload = proposal.payload as CodeChangeProposalPayload;
+
+  // ── Step 1: Re-read server-side transcript + originator check ────────────
+  // conversationId is REQUIRED for codeChange. Without it we cannot re-read
+  // the stored transcript and cannot enforce the originator guard — both are
+  // IDOR-critical. canWrite alone is insufficient (any org member with write
+  // access could approve someone else's proposal). Refuse hard.
+  if (!conversationId) {
+    return {
+      ok: false,
+      error:
+        "Code-change approvals require a conversation context. " +
+        "Please approve from the canvas chat where the proposal was generated.",
+      status: 403,
+    };
+  }
+
+  const storedMessages = await fetchOrgCanvasConversationMessages({
+    conversationId,
+    userId,
+    orgId,
+  });
+
+  if (!storedMessages) {
+    return {
+      ok: false,
+      error:
+        "Could not read the stored conversation — unable to verify the proposal. " +
+        "Please reload the page and try again.",
+      status: 403,
+    };
+  }
+
+  // Find the proposal in the stored transcript.
+  let foundInStored = false;
+  let originatorUserId: string | undefined;
+
+  for (let i = storedMessages.length - 1; i >= 0; i--) {
+    const msg = storedMessages[i] as {
+      role?: string;
+      toolCalls?: Array<{ toolName: string; output?: unknown }>;
+      userId?: string;
+    };
+    if (msg.role !== "assistant" || !msg.toolCalls) continue;
+    for (const tc of msg.toolCalls) {
+      if (tc.toolName !== PROPOSE_CODE_CHANGE_TOOL) continue;
+      const out = tc.output as { proposalId?: string } | null;
+      if (out?.proposalId === proposal.proposalId) {
+        foundInStored = true;
+        originatorUserId = msg.userId;
+        break;
+      }
+    }
+    if (foundInStored) break;
+  }
+
+  if (!foundInStored) {
+    return {
+      ok: false,
+      error:
+        "This proposal was not found in the stored conversation. " +
+        "It may have been generated with different parameters — please re-generate the proposal.",
+      status: 403,
+    };
+  }
+
+  // Originator guard: only the user who triggered the proposal may approve it.
+  // canWrite alone is insufficient — a second org member sharing the room
+  // must not be able to approve someone else's code-change proposal.
+  if (originatorUserId && originatorUserId !== userId) {
+    return {
+      ok: false,
+      error:
+        "Only the person who generated this code-change proposal can approve it. " +
+        "Ask the original author to approve, or generate a new proposal yourself.",
+      status: 403,
+    };
+  }
+
+  // ── Step 2: Workspace authorization + repository re-validation ──────────
+  const workspaceAccess = await validateWorkspaceAccessById(
+    payload.workspaceId,
+    userId,
+  );
+  if (!workspaceAccess.hasAccess || !workspaceAccess.canWrite) {
+    return {
+      ok: false,
+      error:
+        "You do not have write access to this workspace. " +
+        "Ask an Admin to grant you at least Developer access.",
+      status: 403,
+    };
+  }
+
+  // Re-validate that repositoryUrl belongs to this workspace server-side.
+  const dbRepo = await db.repository.findFirst({
+    where: {
+      workspaceId: payload.workspaceId,
+      repositoryUrl: payload.repositoryUrl,
+    },
+    select: { id: true },
+  });
+  if (!dbRepo) {
+    return {
+      ok: false,
+      error:
+        "The repository in this proposal is not registered in the workspace. " +
+        "The workspace configuration may have changed since the preview was generated.",
+      status: 400,
+    };
+  }
+
+  // Verify the workspace belongs to the current org (cross-org IDOR guard).
+  const workspaceOrg = await db.workspace.findFirst({
+    where: { id: payload.workspaceId },
+    select: { sourceControlOrg: { select: { id: true } } },
+  });
+  if (workspaceOrg?.sourceControlOrg?.id !== orgId) {
+    return {
+      ok: false,
+      error: "The workspace does not belong to the current organization.",
+      status: 403,
+    };
+  }
+
+  // ── Step 3: Rate limiting — two buckets, fail closed ────────────────────
+  const rateLimitKeys = [
+    { key: `codechange:user:${userId}`, label: "user" },
+    { key: `codechange:${userId}:${payload.workspaceId}`, label: "workspace" },
+  ] as const;
+
+  for (const { key, label } of rateLimitKeys) {
+    let rlResult: { allowed: boolean; retryAfter?: number };
+    try {
+      rlResult = await checkRateLimit(key, 10, 3600);
+    } catch (err) {
+      logger.error(
+        "[approveCodeChange] Rate limiter threw — refusing (fail-closed)",
+        "approveCodeChange",
+        { userId, label, error: err instanceof Error ? err.message : String(err) },
+      );
+      return {
+        ok: false,
+        error:
+          "Can't verify your rate limit right now — please try again shortly.",
+        status: 503,
+      };
+    }
+    if (!rlResult.allowed) {
+      return {
+        ok: false,
+        error: `You've approved too many code changes recently (${label} limit). Please wait before trying again.`,
+        status: 429,
+      };
+    }
+  }
+
+  // ── Step 4: Claim before write ──────────────────────────────────────────
+  // Insert the Task with proposalId set. The @@unique([workspaceId, proposalId])
+  // constraint guarantees exactly one claim wins on concurrent double-approval.
+  // workflowStatus MUST be COMPLETED so pr-monitor's fix path is reachable.
+  let claimTaskId: string;
+  let claimMsgId: string;
+
+  try {
+    // Create the claim task + a seed ChatMessage in one transaction.
+    const claimResult = await db.$transaction(async (tx) => {
+      const task = await tx.task.create({
+        data: {
+          title: `[Jamie] ${payload.title}`,
+          workspaceId: payload.workspaceId,
+          createdById: userId,
+          updatedById: userId,
+          sourceType: TaskSourceType.SYSTEM,
+          mode: "live",
+          workflowStatus: WorkflowStatus.COMPLETED,
+          stakworkProjectId: null,
+          podId: null,
+          repositoryId: dbRepo.id,
+          featureId: null,
+          proposalId: proposal.proposalId,
+        },
+        select: { id: true },
+      });
+
+      // Attach the preview DIFF artifact in a ChatMessage so the UI can render
+      // the diff before the PR is created.
+      const { parseGithubOwnerRepo } = await import("@/utils/repositoryParser");
+      let repoName: string;
+      try {
+        const { owner, repo } = parseGithubOwnerRepo(payload.repositoryUrl);
+        repoName = `${owner}/${repo}`;
+      } catch {
+        repoName = payload.repositoryUrl;
+      }
+
+      const diffDiffs = unifiedDiffToActionResults(payload.diff, repoName);
+      const diffContent: DiffContent = { diffs: diffDiffs };
+
+      const msg = await tx.chatMessage.create({
+        data: {
+          taskId: task.id,
+          message: `[Jamie] Approving PR: ${payload.title}`,
+          role: ChatRole.ASSISTANT,
+          status: ChatStatus.SENT,
+          artifacts: {
+            create: {
+              type: ArtifactType.DIFF,
+              content: diffContent as unknown as import("@prisma/client").Prisma.InputJsonValue,
+            },
+          },
+        },
+        select: { id: true },
+      });
+
+      return { taskId: task.id, msgId: msg.id };
+    });
+
+    claimTaskId = claimResult.taskId;
+    claimMsgId = claimResult.msgId;
+
+    logger.info(
+      "[approveCodeChange] Claim task created",
+      "approveCodeChange",
+      { userId, proposalId: proposal.proposalId, claimTaskId },
+    );
+  } catch (err) {
+    // P2002 = unique constraint violation — another concurrent request claimed
+    // this (workspaceId, proposalId) pair first.
+    if (
+      err instanceof Prisma.PrismaClientKnownRequestError &&
+      err.code === "P2002"
+    ) {
+      logger.info(
+        "[approveCodeChange] P2002 — concurrent claim, returning winner result",
+        "approveCodeChange",
+        { userId, proposalId: proposal.proposalId },
+      );
+      // Fetch the winning claim. Verify it belongs to THIS workspace before
+      // returning its result (cross-tenant collision must not leak another
+      // org's PR URL).
+      const winner = await db.task.findFirst({
+        where: {
+          workspaceId: payload.workspaceId,
+          proposalId: proposal.proposalId,
+        },
+        select: {
+          id: true,
+          createdById: true,
+          workspaceId: true,
+          branch: true,
+          chatMessages: {
+            take: 1,
+            orderBy: { createdAt: "desc" },
+            select: {
+              artifacts: {
+                where: { type: ArtifactType.PULL_REQUEST },
+                take: 1,
+                select: { content: true },
+              },
+            },
+          },
+        },
+      });
+
+      // Cross-tenant collision: a different workspaceId won with the same
+      // proposalId — this is a security boundary. Return generic "in progress"
+      // rather than leaking the other org's Task or PR URL.
+      if (!winner || winner.workspaceId !== payload.workspaceId) {
+        return {
+          ok: false,
+          error: "This approval is already in progress. Please wait.",
+          status: 409,
+        };
+      }
+
+      // If the winner already has a PR artifact, return it as alreadyApproved.
+      const prContent = winner.chatMessages[0]?.artifacts[0]
+        ?.content as unknown as PullRequestContent | undefined;
+      if (prContent?.url) {
+        return {
+          ok: true,
+          alreadyApproved: true,
+          result: {
+            proposalId: proposal.proposalId,
+            kind: "codeChange",
+            createdEntityId: winner.id,
+            landedOn: `ws:${payload.workspaceId}`,
+            workspaceSlug: payload.workspaceSlug,
+            codeChange: {
+              prUrl: prContent.url,
+              repositoryUrl: payload.repositoryUrl,
+            },
+          },
+        };
+      }
+
+      return {
+        ok: false,
+        error:
+          "This approval is already in progress by another session. Please wait for it to complete.",
+        status: 409,
+      };
+    }
+
+    logger.error(
+      "[approveCodeChange] Unexpected error during claim insert",
+      "approveCodeChange",
+      { userId, proposalId: proposal.proposalId, error: String(err) },
+    );
+    return {
+      ok: false,
+      error: "An unexpected error occurred while creating the approval record.",
+      status: 500,
+    };
+  }
+
+  // ── Step 5: Dispatch via createPr ───────────────────────────────────────
+  let prResult: Awaited<ReturnType<typeof createPr>>;
+  try {
+    prResult = await createPr({
+      userId,
+      workspaceSlug: payload.workspaceSlug,
+      repositoryUrl: payload.repositoryUrl,
+      title: payload.title,
+      body: payload.body,
+      approvedDiff: payload.diff,
+      diffSha256: payload.diffSha256,
+    });
+  } catch (err) {
+    // Unknown/dropped outcome — keep the claim so reconcilePr can recover.
+    logger.error(
+      "[approveCodeChange] createPr threw unexpectedly — keeping claim for reconciliation",
+      "approveCodeChange",
+      { userId, claimTaskId, error: String(err) },
+    );
+    return {
+      ok: false,
+      error:
+        "PR creation failed with an unexpected error. " +
+        "The system has recorded your approval — contact support if the PR does not appear shortly.",
+      status: 500,
+    };
+  }
+
+  // ── Step 6a: Classified no-PR failure → delete claim ───────────────────
+  const DELETABLE_FAILURE_CODES = new Set([
+    "no_changes",
+    "patch_conflict",
+    "secrets_detected",
+    "change_too_large",
+    "identity_mismatch",
+    "no_push_permission",
+    "no_access",
+    "rate_limited",
+    "swarm_unauth",
+    "swarm_bad_request",
+  ]);
+
+  if (!prResult.ok) {
+    if (DELETABLE_FAILURE_CODES.has(prResult.failureCode)) {
+      // Provably no PR was created — delete the claim so the user can retry.
+      await db.task
+        .delete({ where: { id: claimTaskId } })
+        .catch((deleteErr) =>
+          logger.warn(
+            "[approveCodeChange] Failed to delete claim task on classified failure",
+            "approveCodeChange",
+            { claimTaskId, error: String(deleteErr) },
+          ),
+        );
+
+      logger.info(
+        "[approveCodeChange] Classified failure — claim deleted",
+        "approveCodeChange",
+        { userId, claimTaskId, failureCode: prResult.failureCode },
+      );
+    } else {
+      // Unknown/ambiguous outcome — KEEP the claim for reconcilePr.
+      logger.warn(
+        "[approveCodeChange] Non-classified failure — keeping claim for reconciliation",
+        "approveCodeChange",
+        { userId, claimTaskId, failureCode: prResult.failureCode },
+      );
+    }
+
+    return {
+      ok: false,
+      error: prResult.message,
+      status: 502,
+    };
+  }
+
+  // ── Step 6b: Post-dispatch success ──────────────────────────────────────
+  const pr = prResult;
+
+  // Build the PULL_REQUEST artifact content.
+  // No `progress` field → `findOpenPRArtifacts` treats this as "never checked"
+  // and picks it up immediately (NULLS FIRST in the ORDER BY).
+  const { parseGithubOwnerRepo } = await import("@/utils/repositoryParser");
+  let repoNameFinal: string;
+  try {
+    const { owner, repo } = parseGithubOwnerRepo(pr.repositoryUrl);
+    repoNameFinal = `${owner}/${repo}`;
+  } catch {
+    repoNameFinal = pr.repositoryUrl;
+  }
+
+  const prArtifactContent: PullRequestContent = {
+    repo: repoNameFinal,
+    url: pr.prUrl,
+    status: "IN_PROGRESS",
+  };
+  const hardenedDiffDiffs = unifiedDiffToActionResults(
+    payload.diff,
+    repoNameFinal,
+  );
+  const hardenedDiffContent: DiffContent = { diffs: hardenedDiffDiffs };
+
+  // Persist all post-dispatch writes.
+  await db.$transaction(async (tx) => {
+    // Update the claim Task with the branch from the server-generated result.
+    await tx.task.update({
+      where: { id: claimTaskId },
+      data: { branch: pr.branch },
+    });
+
+    // Refresh the DIFF artifact with the hardened diff.
+    // Use messageId filter (artifacts are linked by messageId, not via chatMessage relation).
+    await tx.artifact.updateMany({
+      where: {
+        messageId: claimMsgId,
+        type: ArtifactType.DIFF,
+      },
+      data: {
+        content: hardenedDiffContent as unknown as import("@prisma/client").Prisma.InputJsonValue,
+      },
+    });
+
+    // Attach the PULL_REQUEST artifact to the existing seed message.
+    await tx.artifact.create({
+      data: {
+        messageId: claimMsgId,
+        type: ArtifactType.PULL_REQUEST,
+        content: prArtifactContent as unknown as import("@prisma/client").Prisma.InputJsonValue,
+      },
+    });
+  }).catch((updateErr) => {
+    // Non-fatal: the claim exists and the PR was created. Log and continue.
+    logger.error(
+      "[approveCodeChange] Post-dispatch DB update failed (PR was created)",
+      "approveCodeChange",
+      { claimTaskId, prUrl: pr.prUrl, error: String(updateErr) },
+    );
+  });
+
+  // Best-effort PR labeling — never blocks or rolls back.
+  addPrLabels(userId, pr.repositoryUrl, pr.prNumber).catch((labelErr) => {
+    logger.warn(
+      "[approveCodeChange] addPrLabels failed (non-fatal)",
+      "approveCodeChange",
+      { prNumber: pr.prNumber, error: String(labelErr) },
+    );
+  });
+
+  logger.info(
+    "[approveCodeChange] PR created successfully",
+    "approveCodeChange",
+    {
+      userId,
+      claimTaskId,
+      prUrl: pr.prUrl,
+      prNumber: pr.prNumber,
+      branch: pr.branch,
+      pathSetVerified: pr.pathSetVerified,
+    },
+  );
+
+  return {
+    ok: true,
+    alreadyApproved: false,
+    result: {
+      proposalId: proposal.proposalId,
+      kind: "codeChange",
+      createdEntityId: claimTaskId,
+      landedOn: `ws:${payload.workspaceId}`,
+      workspaceSlug: payload.workspaceSlug,
+      codeChange: {
+        prUrl: pr.prUrl,
+        prNumber: pr.prNumber,
+        branch: pr.branch,
+        baseBranch: pr.baseBranch,
+        headSha: pr.headSha,
+        filesChanged: pr.filesChanged,
+        repositoryUrl: pr.repositoryUrl,
+        pathSetVerified: pr.pathSetVerified,
+        ...(pr.pathSetVerified === false && pr.unapprovedPaths?.length
+          ? {}
+          : {}),
+      },
+    },
+  };
 }
 
 // ── Approve: initiative ─────────────────────────────────────────────
