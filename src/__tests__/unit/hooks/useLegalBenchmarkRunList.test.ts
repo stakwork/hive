@@ -49,11 +49,35 @@ const makeRow = (overrides: Partial<{
   ...overrides,
 });
 
-function mockFetchOk(runs: ReturnType<typeof makeRow>[], total?: number) {
-  vi.mocked(global.fetch).mockResolvedValue({
-    ok: true,
-    json: async () => ({ runs, total: total ?? runs.length }),
-  } as Response);
+/**
+ * The hook now issues one fetch per pipeline. Manual rows go to the RUNNER
+ * request; analysis/recursion requests get their own lists (empty by default)
+ * so single-pipeline tests keep their exact pre-split behaviour.
+ */
+function mockFetchOk(
+  runs: ReturnType<typeof makeRow>[],
+  total?: number,
+  extra: { evalRuns?: ReturnType<typeof makeRow>[]; recursionRuns?: ReturnType<typeof makeRow>[]; evalOk?: boolean } = {},
+) {
+  vi.mocked(global.fetch).mockImplementation(async (input) => {
+    const url = String(input);
+    if (url.includes("type=LEGAL_BENCHMARK_EVAL")) {
+      return {
+        ok: extra.evalOk ?? true,
+        json: async () => ({ runs: extra.evalRuns ?? [] }),
+      } as Response;
+    }
+    if (url.includes("type=LEGAL_BENCHMARK_RECURSION")) {
+      return {
+        ok: true,
+        json: async () => ({ runs: extra.recursionRuns ?? [] }),
+      } as Response;
+    }
+    return {
+      ok: true,
+      json: async () => ({ runs, total: total ?? runs.length }),
+    } as Response;
+  });
 }
 
 function mockFetchFail() {
@@ -470,8 +494,8 @@ describe("useLegalBenchmarkRunList", () => {
       await Promise.resolve();
     });
 
-    // Only one additional fetch call despite three rapid events
-    expect(vi.mocked(global.fetch).mock.calls.length).toBe(fetchCallsBefore + 1);
+    // Only one additional fetchRuns (= 3 pipeline requests) despite three rapid events
+    expect(vi.mocked(global.fetch).mock.calls.length).toBe(fetchCallsBefore + 3);
   });
 
   it("unbinds STAKWORK_RUN_UPDATE event handler on unmount", async () => {
@@ -589,5 +613,68 @@ describe("useLegalBenchmarkRunList", () => {
     const row = result.current.runs[0];
     expect(row.judgeNotes).toBe("5/5 criteria passed");
     expect(row.judgeNotes).not.toContain("Judge:");
+  });
+});
+
+// ─── Multi-pipeline rows ─────────────────────────────────────────────────────
+
+describe("useLegalBenchmarkRunList — analysis/recursion pipelines", () => {
+  it("fetches all three run types", async () => {
+    mockFetchOk([makeRow()]);
+    renderHook(() => useLegalBenchmarkRunList("ws-cuid-123"));
+    await waitFor(() => expect(vi.mocked(global.fetch).mock.calls.length).toBe(3));
+
+    const urls = vi.mocked(global.fetch).mock.calls.map((c) => String(c[0]));
+    expect(urls.some((u) => u.includes("type=LEGAL_BENCHMARK_RUNNER"))).toBe(true);
+    expect(urls.some((u) => u.includes("type=LEGAL_BENCHMARK_EVAL"))).toBe(true);
+    expect(urls.some((u) => u.includes("type=LEGAL_BENCHMARK_RECURSION"))).toBe(true);
+  });
+
+  it("tags rows by pipeline and merges newest-first", async () => {
+    mockFetchOk([makeRow({ id: "manual-1", createdAt: "2025-01-01T10:00:00.000Z" })], undefined, {
+      evalRuns: [
+        makeRow({
+          id: "eval-1",
+          createdAt: "2025-01-01T12:00:00.000Z",
+          result: JSON.stringify({ taskSlug: "antitrust/task-1", sourceRunId: "manual-1" }),
+        }),
+      ],
+      recursionRuns: [
+        makeRow({
+          id: "rec-1",
+          createdAt: "2025-01-01T11:00:00.000Z",
+          result: JSON.stringify({ taskSlug: "antitrust/task-1", recursionId: "r-1" }),
+        }),
+      ],
+    });
+
+    const { result } = renderHook(() => useLegalBenchmarkRunList("ws-cuid-123"));
+    await waitFor(() => expect(result.current.runs).toHaveLength(3));
+
+    expect(result.current.runs.map((r) => r.id)).toEqual(["eval-1", "rec-1", "manual-1"]);
+    expect(result.current.runs.map((r) => r.runType)).toEqual(["analysis", "recursion", "manual"]);
+    // Secondary rows carry slug but no title (derived at render time) and no score
+    const evalRow = result.current.runs[0];
+    expect(evalRow.taskSlug).toBe("antitrust/task-1");
+    expect(evalRow.taskTitle).toBe("");
+    expect(evalRow.n_passed).toBeUndefined();
+  });
+
+  it("degrades to manual-only when a secondary fetch fails", async () => {
+    mockFetchOk([makeRow({ id: "manual-1" })], undefined, { evalOk: false });
+
+    const { result } = renderHook(() => useLegalBenchmarkRunList("ws-cuid-123"));
+    await waitFor(() => expect(result.current.runs).toHaveLength(1));
+
+    expect(result.current.runs[0].runType).toBe("manual");
+    expect(result.current.error).toBeNull();
+  });
+
+  it("total still reflects the manual pipeline only", async () => {
+    mockFetchOk([makeRow()], 42, {
+      recursionRuns: [makeRow({ id: "rec-1", result: JSON.stringify({ taskSlug: "x" }) })],
+    });
+    const { result } = renderHook(() => useLegalBenchmarkRunList("ws-cuid-123"));
+    await waitFor(() => expect(result.current.total).toBe(42));
   });
 });

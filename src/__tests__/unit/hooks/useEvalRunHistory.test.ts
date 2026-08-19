@@ -515,3 +515,218 @@ describe("useEvalRunHistory — series selection", () => {
     ]);
   });
 });
+
+// ─── Activity-rail rows ──────────────────────────────────────────────────────
+
+describe("useEvalRunHistory — attemptRows", () => {
+  const EVAL_SET_REF = "ref-rail-001";
+  const TASK_SLUG = "antitrust/task-1";
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    mockBuildHillClimbSeries.mockReset();
+  });
+
+  /** EvalSet-hosted trigger + one scored output (n_passed/n_total). */
+  function railRun(name: string, edgeType: string, n_passed: number, date: string) {
+    const trigger = `trigger-${name}`;
+    const output = `output-${name}`;
+    return {
+      nodes: [makeTriggerNode(trigger), makeOutputNode(output, n_passed, 74, date)],
+      edges: [
+        { source: EVAL_SET_REF, target: trigger, edge_type: edgeType },
+        { source: trigger, target: output, edge_type: "HAS_OUTPUT" },
+      ],
+    };
+  }
+
+  function railGraph() {
+    const parts = [
+      railRun("base", "HAS_BASELINE_TRIGGER", 50, "1720000000"),
+      railRun("r1", "HAS_TRIGGER", 58, "1720086400"),
+    ];
+    return {
+      nodes: parts.flatMap((p) => p.nodes),
+      edges: parts.flatMap((p) => p.edges),
+    };
+  }
+
+  function runRow(
+    id: string,
+    over: Partial<{
+      status: string;
+      projectId: number | null;
+      createdAt: string;
+      hasReport: boolean;
+      result: Record<string, unknown>;
+    }> = {},
+  ) {
+    return {
+      id,
+      projectId: over.projectId ?? 100,
+      status: over.status ?? "COMPLETED",
+      createdAt: over.createdAt ?? "2026-08-18T10:00:00.000Z",
+      hasReport: over.hasReport ?? false,
+      result: JSON.stringify({ taskSlug: TASK_SLUG, ...(over.result ?? {}) }),
+    };
+  }
+
+  function renderRail(routes: Record<string, unknown>) {
+    mockBuildHillClimbSeries.mockReturnValue([]);
+    mockFetch(routes);
+    return renderHook(() => useEvalRunHistory({ refId: EVAL_SET_REF, slug: TASK_SLUG }));
+  }
+
+  it("fetches runner, eval, and recursion run lists", async () => {
+    const graph = railGraph();
+    const { result } = renderRail({
+      "fix-chain": makeFixChainResponse(graph.nodes, graph.edges),
+      "type=LEGAL_BENCHMARK_RUNNER": { runs: [] },
+      "type=LEGAL_BENCHMARK_EVAL": { runs: [] },
+      "type=LEGAL_BENCHMARK_RECURSION": { runs: [] },
+    });
+    await waitFor(() => expect(result.current.isLoading).toBe(false), { timeout: 5000 });
+
+    const urls = vi.mocked(global.fetch).mock.calls.map((c) => c[0] as string);
+    expect(urls.some((u) => u.includes("type=LEGAL_BENCHMARK_RUNNER"))).toBe(true);
+    expect(urls.some((u) => u.includes("type=LEGAL_BENCHMARK_EVAL"))).toBe(true);
+    expect(urls.some((u) => u.includes("type=LEGAL_BENCHMARK_RECURSION"))).toBe(true);
+  });
+
+  it("joins a runner run onto its trigger row with chart label and score", async () => {
+    const graph = railGraph();
+    const { result } = renderRail({
+      "fix-chain": makeFixChainResponse(graph.nodes, graph.edges),
+      "type=LEGAL_BENCHMARK_RUNNER": {
+        runs: [runRow("run-base", { result: { evalTriggerRef: "trigger-base" }, projectId: 77 })],
+      },
+      "type=LEGAL_BENCHMARK_EVAL": { runs: [] },
+      "type=LEGAL_BENCHMARK_RECURSION": { runs: [] },
+    });
+    await waitFor(() => expect(result.current.isLoading).toBe(false), { timeout: 5000 });
+
+    const base = result.current.attemptRows.find((r) => r.key === "trigger-base");
+    expect(base).toBeDefined();
+    expect(base!.label).toBe("base");
+    expect(base!.attemptIndex).toBe(0);
+    expect(base!.status).toBe("COMPLETED");
+    expect(base!.runType).toBe("runner");
+    expect(base!.projectId).toBe(77);
+    expect(base!.score).toEqual({ passed: 50, total: 74 });
+    expect(base!.timestamp).toBe("2026-08-18T10:00:00.000Z");
+  });
+
+  it("an active eval run outranks a terminal runner run on the same trigger", async () => {
+    const graph = railGraph();
+    const { result } = renderRail({
+      "fix-chain": makeFixChainResponse(graph.nodes, graph.edges),
+      "type=LEGAL_BENCHMARK_RUNNER": {
+        runs: [runRow("run-old", { result: { evalTriggerRef: "trigger-r1" }, createdAt: "2026-08-18T09:00:00.000Z" })],
+      },
+      "type=LEGAL_BENCHMARK_EVAL": {
+        runs: [runRow("run-live", { status: "IN_PROGRESS", result: { evalTriggerRef: "trigger-r1" } })],
+      },
+      "type=LEGAL_BENCHMARK_RECURSION": { runs: [] },
+    });
+    await waitFor(() => expect(result.current.isLoading).toBe(false), { timeout: 5000 });
+
+    const row = result.current.attemptRows.find((r) => r.key === "trigger-r1");
+    expect(row!.status).toBe("IN_PROGRESS");
+    expect(row!.runType).toBe("eval");
+    expect(row!.inFlight).toBe(true);
+  });
+
+  it("a trigger with no matching run stays graph-only: null status, graph timestamp", async () => {
+    const graph = railGraph();
+    const { result } = renderRail({
+      "fix-chain": makeFixChainResponse(graph.nodes, graph.edges),
+      "type=LEGAL_BENCHMARK_RUNNER": { runs: [] },
+      "type=LEGAL_BENCHMARK_EVAL": { runs: [] },
+      "type=LEGAL_BENCHMARK_RECURSION": { runs: [] },
+    });
+    await waitFor(() => expect(result.current.isLoading).toBe(false), { timeout: 5000 });
+
+    const row = result.current.attemptRows.find((r) => r.key === "trigger-base");
+    expect(row!.status).toBeNull();
+    expect(row!.runType).toBeNull();
+    // 1720000000 epoch-seconds → ISO
+    expect(row!.timestamp).toBe(new Date(1720000000 * 1000).toISOString());
+  });
+
+  it("surfaces an in-flight recursion run (no evalTriggerRef by design) as a run-only row", async () => {
+    const graph = railGraph();
+    const { result } = renderRail({
+      "fix-chain": makeFixChainResponse(graph.nodes, graph.edges),
+      "type=LEGAL_BENCHMARK_RUNNER": { runs: [] },
+      "type=LEGAL_BENCHMARK_EVAL": { runs: [] },
+      "type=LEGAL_BENCHMARK_RECURSION": {
+        runs: [
+          runRow("rec-live", { status: "PENDING" }),
+          // Different task — must not appear on this card
+          runRow("rec-other", { status: "PENDING", result: { taskSlug: "other/task" } }),
+          // Terminal recursion runs are noise — their outcome shows up as new attempts
+          runRow("rec-done", { status: "COMPLETED" }),
+        ],
+      },
+    });
+    await waitFor(() => expect(result.current.isLoading).toBe(false), { timeout: 5000 });
+
+    const keys = result.current.attemptRows.map((r) => r.key);
+    expect(keys).toContain("rec-live");
+    expect(keys).not.toContain("rec-other");
+    expect(keys).not.toContain("rec-done");
+
+    const live = result.current.attemptRows.find((r) => r.key === "rec-live")!;
+    expect(live.label).toBeNull();
+    expect(live.runType).toBe("recursion");
+    expect(live.inFlight).toBe(true);
+    // Run-only rows sort after the charted rows
+    expect(result.current.attemptRows[result.current.attemptRows.length - 1].key).toBe("rec-live");
+  });
+
+  it("report pending: completed run with a report requested but no bundle yet", async () => {
+    const graph = railGraph();
+    const { result } = renderRail({
+      "fix-chain": makeFixChainResponse(graph.nodes, graph.edges),
+      "type=LEGAL_BENCHMARK_RUNNER": {
+        runs: [
+          runRow("run-pending-report", {
+            result: { evalTriggerRef: "trigger-base", generateRunReport: true },
+            hasReport: false,
+          }),
+          runRow("run-with-report", {
+            result: { evalTriggerRef: "trigger-r1", generateRunReport: true },
+            hasReport: true,
+          }),
+        ],
+      },
+      "type=LEGAL_BENCHMARK_EVAL": { runs: [] },
+      "type=LEGAL_BENCHMARK_RECURSION": { runs: [] },
+    });
+    await waitFor(() => expect(result.current.isLoading).toBe(false), { timeout: 5000 });
+
+    const pending = result.current.attemptRows.find((r) => r.key === "trigger-base")!;
+    expect(pending.reportPending).toBe(true);
+    expect(pending.hasReport).toBe(false);
+
+    const landed = result.current.attemptRows.find((r) => r.key === "trigger-r1")!;
+    expect(landed.reportPending).toBe(false);
+    expect(landed.hasReport).toBe(true);
+  });
+
+  it("orders charted rows by dot index ahead of run-only rows", async () => {
+    const graph = railGraph();
+    const { result } = renderRail({
+      "fix-chain": makeFixChainResponse(graph.nodes, graph.edges),
+      "type=LEGAL_BENCHMARK_RUNNER": { runs: [] },
+      "type=LEGAL_BENCHMARK_EVAL": {
+        runs: [runRow("eval-live", { status: "IN_PROGRESS" })],
+      },
+      "type=LEGAL_BENCHMARK_RECURSION": { runs: [] },
+    });
+    await waitFor(() => expect(result.current.isLoading).toBe(false), { timeout: 5000 });
+
+    const keys = result.current.attemptRows.map((r) => r.key);
+    expect(keys).toEqual(["trigger-base", "trigger-r1", "eval-live"]);
+  });
+});
