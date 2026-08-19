@@ -82,7 +82,7 @@ describe("RecursionActivityRail", () => {
         partial={false}
       />,
     );
-    expect(screen.getByTestId("rail-row-rec-1").textContent).toContain("fix");
+    expect(screen.getByTestId("rail-row-rec-1").textContent).toContain("recursion");
   });
 
   it("links to the report when the bundle exists", () => {

@@ -63,9 +63,12 @@ function RowLabel({ row }: { row: AttemptRailRow }) {
       <span className="font-mono text-xs font-medium w-9 shrink-0 tabular-nums">{row.label}</span>
     );
   }
+  // Pipeline names, not internal jargon: LEGAL_BENCHMARK_RECURSION drives the
+  // loop ("recursion"); LEGAL_BENCHMARK_EVAL is failure analysis — its webhook
+  // writes cause annotations, never a score ("analysis").
   return (
-    <span className="text-xs italic text-muted-foreground w-9 shrink-0 truncate">
-      {row.runType === "recursion" ? "fix" : row.runType === "eval" ? "eval" : "run"}
+    <span className="text-xs italic text-muted-foreground shrink-0">
+      {row.runType === "recursion" ? "recursion" : row.runType === "eval" ? "analysis" : "run"}
     </span>
   );
 }
