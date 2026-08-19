@@ -188,31 +188,49 @@ export const JUDGE_DISPUTE_NO_PROSE_MARKER = "Disputed — no explanation provid
 /**
  * Resolve the judge dispute for a single criterion entry.
  *
- * Wire keys (`flagged`, `llm_flag_reason`) mirror Jarvis `CriterionResult`
- * attribute names. Nothing emits them yet (tracked external dependency: the
- * `harvey_lab_score_rubric` Lambda in stakwork/senza-lnd). All Hive-side
- * consumption must go through this resolver — do not read `flagged` or
- * `llm_flag_reason` directly elsewhere.
+ * Wire keys (`flagged`, `llm_flag_reason`, `contested`) arrive on live payloads
+ * (verified against production). `flag_basis` currently arrives as an empty
+ * string on every production run pending an upstream Task Runner `jsonSchema`
+ * fix — Hive must tolerate absent/empty `flag_basis` indefinitely.
+ *
+ * All Hive-side consumption must go through this resolver — do not read
+ * `flagged`, `llm_flag_reason`, or `flag_basis` directly elsewhere.
+ *
+ * `flagBasis` is tooltip/display copy only and is NEVER a suppression input
+ * for `isDispute` — only `flagged` gates the dispute badge.
  *
  * Returns:
  *   - `null`  when the criterion is a pass OR there is genuinely nothing to
  *             show (not marked AND no usable prose) — renders exactly as today.
- *   - object  when there is a real dispute to surface (marked OR usable prose).
- *             `hasReason` is true only when usable prose is present.
- *             `displayText` is the single rendering string consumed identically
- *             by the panel, clipboard export, and filter — never "[object Object]".
+ *   - object  when there is something to surface (marked OR usable prose):
+ *             `isDispute`   — true only when `flagged` is truthy (sole badge gate).
+ *             `flagBasis`   — normalised `flag_basis` string (trimmed+lowercased)
+ *                             or null when absent/empty. Unknown tokens preserved.
+ *             `hasReason`   — true only when usable prose is present.
+ *             `displayText` — single rendering string for panel/clipboard/filter;
+ *                             never "[object Object]".
  */
 export function resolveJudgeDispute(criterion: {
   verdict?: string;
   flagged?: unknown;
   llm_flag_reason?: unknown;
-}): { reason: string; hasReason: boolean; displayText: string } | null {
+  flag_basis?: unknown;
+}): {
+  reason: string;
+  hasReason: boolean;
+  displayText: string;
+  isDispute: boolean;
+  flagBasis: string | null;
+} | null {
   // 1. Verdict gate — passing criteria never show a dispute affordance.
-  if (criterion.verdict?.toLowerCase() === "pass") return null;
+  //    Uses the same /^\s*pass/i prefix match as isPassVerdict in rubric-scoring.ts
+  //    and derive.ts:306 — avoids a circular import (rubric-scoring.ts already
+  //    imports resolveContested from this module).
+  if (/^\s*pass/i.test(criterion.verdict ?? "")) return null;
 
   // 2. Loose truthiness for `flagged`: accept true, "true" (any case), or 1.
   const f = criterion.flagged;
-  const judgeDisputeMarked =
+  const isDispute =
     f === true ||
     f === 1 ||
     (typeof f === "string" && f.toLowerCase() === "true");
@@ -222,14 +240,26 @@ export function resolveJudgeDispute(criterion: {
   const judgeDisputeProse =
     typeof raw === "string" && raw.trim().length > 0 ? raw.trim() : null;
 
-  // 4. Tri-state return.
-  if (!judgeDisputeMarked && judgeDisputeProse === null) return null;
+  // 4. Normalise flag_basis: trim + lowercase when a non-empty string, else null.
+  //    Unknown tokens are preserved verbatim — display-copy mapping is the UI's job.
+  const rawBasis = criterion.flag_basis;
+  const flagBasis =
+    typeof rawBasis === "string" && rawBasis.trim().length > 0
+      ? rawBasis.trim().toLowerCase()
+      : null;
+
+  // 5. Tri-state return.
+  //    Nothing to show: not disputed AND no prose → null.
+  if (!isDispute && judgeDisputeProse === null) return null;
 
   const hasReason = judgeDisputeProse !== null;
   const reason = judgeDisputeProse ?? "";
+  // JUDGE_DISPUTE_NO_PROSE_MARKER is emitted ONLY when isDispute is true —
+  // an unflagged, prose-less failure must resolve to null (handled above),
+  // never render text that asserts a dispute the badge correctly denies.
   const displayText = hasReason ? reason : JUDGE_DISPUTE_NO_PROSE_MARKER;
 
-  return { reason, hasReason, displayText };
+  return { reason, hasReason, displayText, isDispute, flagBasis };
 }
 
 // ─── Contested Criterion Resolver ────────────────────────────────────────────
