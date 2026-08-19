@@ -17,12 +17,26 @@ export interface KGGraphHandle {
   setSearchMatches: (matches: Set<number> | null) => void;
 }
 
-function buildAndLayout(nodes: RawNode[], edges: RawEdge[]): Graph {
+/**
+ * Build the graph and position every node.
+ *
+ * `centerId` re-roots the radial layout on a specific node instead of the
+ * best-root heuristic. Graph-walking needs this: as neighbors accumulate, the
+ * layout has to re-center on the node just expanded, or the newly appended
+ * nodes have no position at all and stack at the origin.
+ */
+function buildAndLayout(nodes: RawNode[], edges: RawEdge[], centerId?: number): Graph {
   if (nodes.length === 0) {
     return { nodes: [], edges: [], adj: [], outAdj: [], inAdj: [] };
   }
   const graph = buildGraph(nodes, edges);
-  const sub = extractInitialSubgraph(graph);
+  // Undirected BFS from the center so the whole accumulated walk gets laid
+  // out — a directed traversal would strand every node reached by a reverse
+  // edge at the origin.
+  const sub =
+    centerId !== undefined && graph.nodes[centerId]
+      ? extractSubgraph(graph, centerId, 30, { useAdj: "undirected" })
+      : extractInitialSubgraph(graph);
   const { positions, treeEdgeSet, childrenOf } = computeRadialLayout(
     sub.centerId,
     sub.neighborsByDepth,
@@ -46,16 +60,18 @@ function makeOverviewState(): ViewState {
 
 export function useKGGraph(
   rawNodes: RawNode[],
-  rawEdges: RawEdge[]
+  rawEdges: RawEdge[],
+  /** Index into `rawNodes` to center the layout on (the graph-walk focus). */
+  centerId?: number
 ): KGGraphHandle {
   // Stable ref so graph rebuild only happens when data changes
   const nodesKey = rawNodes.map((n) => n.id).join(",");
   const edgesKey = rawEdges.map((e) => `${e.source}→${e.target}`).join(",");
 
   const graph = useMemo(
-    () => buildAndLayout(rawNodes, rawEdges),
+    () => buildAndLayout(rawNodes, rawEdges, centerId),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [nodesKey, edgesKey]
+    [nodesKey, edgesKey, centerId]
   );
 
   const [viewState, setViewState] = useState<ViewState>(makeOverviewState);
