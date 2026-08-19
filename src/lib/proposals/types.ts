@@ -428,6 +428,17 @@ export type ProposalOutput =
       proposalId: string;
       payload: CodeChangeProposalPayload;
       rationale?: string;
+      /**
+       * The userId that ran `propose_code_change`, stamped server-side by the
+       * tool. Read back from the STORED transcript at approval time to enforce
+       * that only the originator can approve — org-canvas rooms are shared by
+       * default (`isShared: true`), so `canWrite` alone would let any member
+       * who opens the `?chat=<id>` URL approve someone else's code change.
+       *
+       * Never trust the copy on the client-submitted transcript: the approval
+       * handler reads this off the row it re-fetched from the DB.
+       */
+      originatorUserId?: string;
       /** Render-only metadata for the PR card (repo name, file count, etc.). */
       meta?: {
         repoName?: string;

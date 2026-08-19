@@ -31,14 +31,18 @@ import {
   PROPOSE_NODE_EDIT_TOOL,
   PROPOSE_CREATE_TRIPLET_TOOL,
   PROPOSE_CREATE_BATCH_TRIPLET_TOOL,
+  PROPOSE_CODE_CHANGE_TOOL,
   getProposalStatus,
   type ApprovalIntent,
+  type ApprovalResult,
   type ProposalOutput,
   type FeatureProposalMeta,
   type FeatureProposalPayload,
   type InitiativeProposalPayload,
   type MilestoneProposalPayload,
 } from "@/lib/proposals/types";
+import { MultiFileDiffView } from "./artifacts/diff";
+import { unifiedDiffToActionResults } from "@/lib/github/diffHygiene";
 import {
   useCanvasChatStore,
   type CanvasChatMessage,
@@ -170,7 +174,10 @@ export function ProposalCard({
     proposal.kind !== "graphNodeCreate" &&
     proposal.kind !== "graphNodeEdit" &&
     proposal.kind !== "graphTripletCreate" &&
-    proposal.kind !== "graphBatchTripletCreate";
+    proposal.kind !== "graphBatchTripletCreate" &&
+    // codeChange: the title becomes the PR title — editing it here would
+    // desync from what was actually verified server-side.
+    proposal.kind !== "codeChange";
 
   // Feature-only: per-feature auto-respond toggle.
   // Initialized from the proposal payload (which is seeded from the
@@ -302,10 +309,13 @@ export function ProposalCard({
       proposal.kind === "graphNodeCreate" ||
       proposal.kind === "graphNodeEdit" ||
       proposal.kind === "graphTripletCreate" ||
-      proposal.kind === "graphBatchTripletCreate"
+      proposal.kind === "graphBatchTripletCreate" ||
+      proposal.kind === "codeChange"
     ) {
-      // Prompt/concept/graph proposals have no inline-edit overrides —
+      // Prompt/concept/graph/codeChange proposals have no inline-edit overrides —
       // the agent should propose well; the user's only action is approve/reject.
+      // codeChange: the approved title becomes the PR title — editing post-hoc
+      // would desync from what was actually verified.
       payload = undefined;
     } else {
       const titleChanged = editedTitle !== initialTitle;
@@ -449,6 +459,25 @@ export function ProposalCard({
       return { text, deepLink: null as string | null, newTab: false };
     }
 
+    // codeChange: render PR link, failure copy, or path-set warning.
+    if (r.kind === "codeChange") {
+      const cc = r.codeChange;
+      if (!cc?.prUrl) {
+        const text = cc?.failureMessage
+          ? `PR creation failed: ${cc.failureMessage}`
+          : "Code change approval recorded.";
+        return { text, deepLink: null as string | null, newTab: false };
+      }
+      const pathWarning = cc.pathSetVerified === false
+        ? " ⚠ Some files were not in the approved diff."
+        : "";
+      return {
+        text: `PR opened ✓${pathWarning}`,
+        deepLink: cc.prUrl as string | null,
+        newTab: true,
+      };
+    }
+
     // Initiative / milestone: keep existing behavior unchanged.
     const onCurrent = r.landedOn === currentRef;
     if (onCurrent) {
@@ -494,7 +523,9 @@ export function ProposalCard({
                             ? "Proposed Graph Relationship"
                             : proposal.kind === "graphBatchTripletCreate"
                               ? "Proposed Batch Graph Relationships"
-                              : `Proposed ${proposal.kind}`}
+                              : proposal.kind === "codeChange"
+                                ? "Proposed Code Change"
+                                : `Proposed ${proposal.kind}`}
             </span>
           </div>
           {/* Title — inline-editable on click while pending (roadmap kinds only) */}
@@ -567,6 +598,14 @@ export function ProposalCard({
               proposal={proposal}
               approvalItems={
                 status.status === "approved" ? status.result.items : undefined
+              }
+            />
+          )}
+          {proposal.kind === "codeChange" && (
+            <CodeChangeMeta
+              proposal={proposal}
+              approvalResult={
+                status.status === "approved" ? status.result : undefined
               }
             />
           )}
@@ -1455,6 +1494,118 @@ function labelForRef(ref: string): string {
 
 const EMPTY_MESSAGES: CanvasChatMessage[] = [];
 
+// ─── CodeChange proposal meta component ──────────────────────────────────
+
+/**
+ * Compact body for a code-change proposal card.
+ * Shows: workspace · repo · base branch (read-only) · file count.
+ * On approval: PR link + optional unapproved-paths warning.
+ */
+function CodeChangeMeta({
+  proposal,
+  approvalResult,
+}: {
+  proposal: Extract<ProposalOutput, { kind: "codeChange" }>;
+  approvalResult?: ApprovalResult;
+}) {
+  const { payload, meta } = proposal;
+  const [showDiff, setShowDiff] = useState(false);
+
+  // Build subtext parts.
+  const parts: string[] = [];
+  if (meta?.workspaceName ?? meta?.workspaceSlug) {
+    parts.push((meta?.workspaceName ?? meta?.workspaceSlug)!);
+  }
+  if (meta?.repoName) parts.push(meta.repoName);
+  if (payload.baseBranchDisplay) parts.push(`base: ${payload.baseBranchDisplay}`);
+  parts.push(`${payload.filesChanged} file${payload.filesChanged !== 1 ? "s" : ""}`);
+
+  // Build diff ActionResults from the raw unified diff for the viewer.
+  //
+  // Uses the shared `unifiedDiffToActionResults` splitter rather than a local
+  // one: a deleted line whose own content starts with "-- " (the "-- AlterTable"
+  // comments in a Prisma migration, SQL/Lua/Haskell comments generally) renders
+  // as "--- ..." inside a hunk body, and a naive `startsWith("--- ")` split
+  // would treat it as a file header and shred the preview into phantom files.
+  // The shared splitter is hunk-aware. It is also what the server persists into
+  // the DIFF artifact, so the preview and the stored artifact agree.
+  const diffDiffs = useMemo(
+    () =>
+      payload.diff
+        ? unifiedDiffToActionResults(payload.diff, meta?.repoName ?? "")
+        : [],
+    [payload.diff, meta?.repoName],
+  );
+
+  const cc = approvalResult?.codeChange;
+
+  return (
+    <div className="mt-0.5 space-y-1">
+      {/* Subtext line */}
+      <div className="text-[11px] text-muted-foreground">
+        {parts.join(" · ")}
+      </div>
+
+      {/* Base branch (read-only, never editable) */}
+      {payload.baseBranchDisplay && (
+        <div className="text-[11px] text-muted-foreground">
+          Base branch:{" "}
+          <span className="font-mono">{payload.baseBranchDisplay}</span>
+        </div>
+      )}
+
+      {/* PR body preview */}
+      {payload.body && (
+        <div className="mt-1 text-[11px] text-muted-foreground line-clamp-2 italic">
+          {payload.body}
+        </div>
+      )}
+
+      {/* Diff viewer toggle */}
+      {diffDiffs.length > 0 && (
+        <button
+          type="button"
+          onClick={() => setShowDiff((v) => !v)}
+          className="mt-1 inline-flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground transition-colors"
+        >
+          <FileDiff className="h-3 w-3" />
+          {showDiff ? "Hide diff" : "Preview diff"}
+        </button>
+      )}
+      {showDiff && diffDiffs.length > 0 && (
+        <div className="mt-1">
+          <MultiFileDiffView diffs={diffDiffs} maxHeight="40vh" />
+        </div>
+      )}
+
+      {/* Approval result: PR link + path-set warning */}
+      {cc?.prUrl && (
+        <div className="mt-1 text-[11px]">
+          <a
+            href={cc.prUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1 text-emerald-700 dark:text-emerald-400 hover:underline"
+          >
+            <ExternalLink className="h-3 w-3" />
+            View pull request
+          </a>
+        </div>
+      )}
+      {cc?.pathSetVerified === false && (
+        <div className="mt-1 text-[10px] text-amber-600 dark:text-amber-400">
+          ⚠ Some files in the final diff were not in the approved preview.
+        </div>
+      )}
+      {cc && !cc.prUrl && cc.failureCode && (
+        <div className="mt-1 text-[11px] text-rose-600 dark:text-rose-400">
+          Failed: {cc.failureMessage ?? cc.failureCode}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Graph write proposal meta components ─────────────────────────────────
 
 /** Compact body for a create-node proposal: workspace, type, and node_data. */
@@ -1673,7 +1824,8 @@ export function getProposalsFromMessage(
       tc.toolName !== PROPOSE_CREATE_NODE_TOOL &&
       tc.toolName !== PROPOSE_NODE_EDIT_TOOL &&
       tc.toolName !== PROPOSE_CREATE_TRIPLET_TOOL &&
-      tc.toolName !== PROPOSE_CREATE_BATCH_TRIPLET_TOOL
+      tc.toolName !== PROPOSE_CREATE_BATCH_TRIPLET_TOOL &&
+      tc.toolName !== PROPOSE_CODE_CHANGE_TOOL
     )
       continue;
     const o = tc.output;
