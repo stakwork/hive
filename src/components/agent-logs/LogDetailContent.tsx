@@ -7,7 +7,7 @@ import { estimateTokens } from "@/lib/utils/token-estimate";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { Loader2, User, Bot, Wrench, Code2, ChevronDown, ChevronRight, Copy, Check, Flag, Waypoints, AlertTriangle } from "lucide-react";
+import { Loader2, User, Bot, Wrench, Code2, ChevronDown, ChevronRight, Copy, Check, Flag, Waypoints, AlertTriangle, Share2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { MarkdownRenderer } from "@/components/MarkdownRenderer";
 import { cn } from "@/lib/utils";
@@ -775,12 +775,40 @@ function ConceptChip({
     </Badge>
   );
 
-  const chip = href ? (
+  const chipLink = href ? (
     <a href={href} target="_blank" rel="noopener noreferrer">
       {badge}
     </a>
   ) : (
     badge
+  );
+
+  // Graph Explorer deep link — needs the Jarvis ref_id, which the reflection
+  // only carries for some concepts. Admin-gated on the far end, so it sits
+  // alongside the Learn link rather than replacing it.
+  const graphHref =
+    workspaceSlug && concept.ref_id
+      ? `/w/${workspaceSlug}/context/graph?ref_id=${encodeURIComponent(concept.ref_id)}`
+      : null;
+
+  const chip = graphHref ? (
+    <span className="inline-flex items-center gap-0.5">
+      {chipLink}
+      <a
+        href={graphHref}
+        target="_blank"
+        rel="noopener noreferrer"
+        title="Open in Graph Explorer"
+        aria-label="Open in Graph Explorer"
+        data-testid={`concept-graph-link-${concept.ref_id}`}
+        className="text-muted-foreground hover:text-foreground shrink-0"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <Share2 className="w-3 h-3" />
+      </a>
+    </span>
+  ) : (
+    chipLink
   );
 
   if (!hasTooltip) return chip;

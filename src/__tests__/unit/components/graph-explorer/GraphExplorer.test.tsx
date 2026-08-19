@@ -127,10 +127,75 @@ const MOCK_ROWS: unknown[][] = [
   ],
 ];
 
-const MOCK_SEARCH_RESULTS = [
-  { name: "processData", file: "src/lib/data.ts", ref_id: "ref-1" },
-  { name: "validateInput", file: "src/lib/validation.ts", ref_id: "ref-2" },
-];
+const MOCK_SEARCH_RESULTS = {
+  results: [
+    {
+      ref_id: "ref-1",
+      node_type: "Concept",
+      name: "processData",
+      description: "How raw records get normalized.",
+    },
+    {
+      ref_id: "ref-2",
+      node_type: "Concept",
+      name: "validateInput",
+      description: "Input validation rules.",
+    },
+  ],
+};
+
+/** ref-2's own neighborhood, reached by walking from ref-1. */
+const MOCK_NODE_DETAIL_REF2 = {
+  node: {
+    ref_id: "ref-2",
+    node_type: "Function",
+    name: "validateInput",
+    properties: {},
+  },
+  neighbors: [
+    {
+      ref_id: "ref-9",
+      node_type: "File",
+      name: "validation.ts",
+      edge_type: "CONTAINS",
+      direction: "reverse" as const,
+    },
+  ],
+};
+
+const MOCK_NODE_TYPES = {
+  node_types: [
+    { type: "Concept", domain: "knowledge", description: "A documented idea." },
+    { type: "Function", domain: "code", description: "A function." },
+    { type: "File", domain: "code", description: "A source file." },
+  ],
+};
+
+const MOCK_NODE_DETAIL = {
+  node: {
+    ref_id: "ref-1",
+    node_type: "Function",
+    name: "processData",
+    properties: { name: "processData", file: "src/lib/data.ts" },
+  },
+  neighbors: [
+    {
+      ref_id: "ref-2",
+      node_type: "Function",
+      name: "validateInput",
+      edge_type: "CALLS",
+      direction: "forward" as const,
+      importance: 0.8,
+    },
+    {
+      ref_id: "ref-3",
+      node_type: "File",
+      name: "src/lib/data.ts",
+      edge_type: "CONTAINS",
+      direction: "reverse" as const,
+    },
+  ],
+};
 
 type FetchMockArgs = { ok: boolean; status: number; body?: unknown; text?: string };
 
@@ -141,6 +206,40 @@ function makeFetch({ ok, status, body, text }: FetchMockArgs) {
     json: () => Promise.resolve(body ?? {}),
     text: () => Promise.resolve(text ?? ""),
   });
+}
+
+/**
+ * Route fetch responses by URL substring. The component fires a node-types
+ * request on mount, so index-based sequencing is too brittle — match on the
+ * endpoint instead. Unmatched URLs resolve to an empty 200.
+ */
+type RouteSpec = FetchMockArgs & { match: string };
+
+function makeRoutedFetch(routes: RouteSpec[]) {
+  return vi.fn().mockImplementation((url: string) => {
+    const cfg = routes.find((r) => url.includes(r.match));
+    return Promise.resolve({
+      ok: cfg?.ok ?? true,
+      status: cfg?.status ?? 200,
+      json: () => Promise.resolve(cfg?.body ?? {}),
+      text: () => Promise.resolve(cfg?.text ?? ""),
+    });
+  });
+}
+
+/** Default route set: the ontology every render requests. */
+const NODE_TYPES_ROUTE: RouteSpec = {
+  match: "/graph/node-types",
+  ok: true,
+  status: 200,
+  body: MOCK_NODE_TYPES,
+};
+
+/** URLs the mock was called with that contain `substring`. */
+function urlsFor(fetchMock: ReturnType<typeof vi.fn>, substring: string): string[] {
+  return fetchMock.mock.calls
+    .map((c) => String(c[0]))
+    .filter((u) => u.includes(substring));
 }
 
 // Helper: set global.fetch to handle multiple calls in sequence
@@ -249,7 +348,7 @@ describe("GraphExplorer", () => {
     await userEvent.keyboard("{Control>}{Enter}{/Control}");
 
     await waitFor(() => {
-      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(urlsFor(fetchMock, "/graph/query")).toHaveLength(1);
     });
   });
 
@@ -275,73 +374,143 @@ describe("GraphExplorer", () => {
     expect(screen.getByTestId("search-button")).toBeInTheDocument();
   });
 
-  // ── 9. Search panel calls /graph/search and shows results ─────────────────
-  test("search panel calls /graph/search and renders results", async () => {
-    global.fetch = makeFetch({
-      ok: true,
-      status: 200,
-      body: MOCK_SEARCH_RESULTS,
-    });
+  // ── 9. Search calls the Jarvis node search and shows results ──────────────
+  test("search panel calls /graph/nodes/search and renders results", async () => {
+    const fetchMock = makeRoutedFetch([
+      NODE_TYPES_ROUTE,
+      { match: "/graph/nodes/search", ok: true, status: 200, body: MOCK_SEARCH_RESULTS },
+    ]);
+    global.fetch = fetchMock;
 
     render(<GraphExplorer workspaceSlug="test-ws" />);
 
-    const searchInput = screen.getByTestId("search-input");
-    await userEvent.type(searchInput, "processData");
+    await userEvent.type(screen.getByTestId("search-input"), "processData");
     await userEvent.click(screen.getByTestId("search-button"));
 
     await waitFor(() => {
       expect(screen.getByTestId("search-results")).toBeInTheDocument();
     });
 
-    expect(
-      (global.fetch as ReturnType<typeof vi.fn>).mock.calls[0][0]
-    ).toContain("/graph/search");
+    expect(urlsFor(fetchMock, "/api/workspaces/test-ws/graph/nodes/search")).toHaveLength(1);
 
-    // Both result items should appear
+    // Both hits appear, each labelled with its node type
     expect(screen.getByTestId("search-result-ref-1")).toBeInTheDocument();
     expect(screen.getByTestId("search-result-ref-2")).toBeInTheDocument();
     expect(screen.getByText("processData")).toBeInTheDocument();
     expect(screen.getByText("validateInput")).toBeInTheDocument();
+    expect(screen.getByTestId("search-result-ref-1")).toHaveTextContent("Concept");
   });
 
-  // ── 10. Search sends correct query params ─────────────────────────────────
-  test("search request includes method=hybrid and output=json params", async () => {
-    const fetchMock = makeFetch({ ok: true, status: 200, body: [] });
+  // ── 10. Search defaults to the Concept type filter ────────────────────────
+  test("search defaults to types=Concept", async () => {
+    const fetchMock = makeRoutedFetch([NODE_TYPES_ROUTE]);
     global.fetch = fetchMock;
 
     render(<GraphExplorer workspaceSlug="test-ws" />);
+    await waitFor(() => expect(urlsFor(fetchMock, "/graph/node-types")).toHaveLength(1));
+
+    expect(screen.getByTestId("node-type-filter-button")).toHaveTextContent("Concept");
+
     await userEvent.type(screen.getByTestId("search-input"), "authService");
     await userEvent.click(screen.getByTestId("search-button"));
 
-    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    await waitFor(() => expect(urlsFor(fetchMock, "/graph/nodes/search")).toHaveLength(1));
 
-    const url = (fetchMock.mock.calls[0] as [string])[0];
-    expect(url).toContain("method=hybrid");
-    expect(url).toContain("output=json");
-    expect(url).toContain("query=authService");
-    expect(url).toContain(`/api/workspaces/test-ws/graph/search`);
+    const url = urlsFor(fetchMock, "/graph/nodes/search")[0];
+    expect(url).toContain("q=authService");
+    expect(url).toContain("types=Concept");
+    expect(url).toContain("/api/workspaces/test-ws/graph/nodes/search");
+  });
+
+  // ── 10b. The type filter is selectable ────────────────────────────────────
+  test("selecting another node type changes the types param", async () => {
+    const fetchMock = makeRoutedFetch([NODE_TYPES_ROUTE]);
+    global.fetch = fetchMock;
+
+    render(<GraphExplorer workspaceSlug="test-ws" />);
+    await waitFor(() => expect(urlsFor(fetchMock, "/graph/node-types")).toHaveLength(1));
+
+    // Options come from the workspace's own ontology
+    await userEvent.click(screen.getByTestId("node-type-filter-button"));
+    await waitFor(() => screen.getByTestId("node-type-filter-option-Function"));
+    await userEvent.click(screen.getByTestId("node-type-filter-option-Function"));
+
+    // Checkbox items keep the menu open so several types can be picked at once.
+    await userEvent.keyboard("{Escape}");
+
+    await userEvent.type(screen.getByTestId("search-input"), "auth");
+    await userEvent.click(screen.getByTestId("search-button"));
+
+    await waitFor(() => expect(urlsFor(fetchMock, "/graph/nodes/search")).toHaveLength(1));
+    expect(urlsFor(fetchMock, "/graph/nodes/search")[0]).toContain(
+      `types=${encodeURIComponent("Concept,Function")}`,
+    );
+  });
+
+  // ── 10c. "All types" clears the filter ────────────────────────────────────
+  test("choosing All types drops the types param", async () => {
+    const fetchMock = makeRoutedFetch([NODE_TYPES_ROUTE]);
+    global.fetch = fetchMock;
+
+    render(<GraphExplorer workspaceSlug="test-ws" />);
+    await waitFor(() => expect(urlsFor(fetchMock, "/graph/node-types")).toHaveLength(1));
+
+    await userEvent.click(screen.getByTestId("node-type-filter-button"));
+    await waitFor(() => screen.getByTestId("node-type-filter-all"));
+    await userEvent.click(screen.getByTestId("node-type-filter-all"));
+
+    expect(screen.getByTestId("node-type-filter-button")).toHaveTextContent("All types");
+
+    await userEvent.type(screen.getByTestId("search-input"), "auth");
+    await userEvent.click(screen.getByTestId("search-button"));
+
+    await waitFor(() => expect(urlsFor(fetchMock, "/graph/nodes/search")).toHaveLength(1));
+    expect(urlsFor(fetchMock, "/graph/nodes/search")[0]).not.toContain("types=");
+  });
+
+  // ── 10d. No Concept type in the ontology → search everything ──────────────
+  test("falls back to all types when the ontology has no Concept", async () => {
+    const fetchMock = makeRoutedFetch([
+      {
+        match: "/graph/node-types",
+        ok: true,
+        status: 200,
+        body: { node_types: [{ type: "File", domain: "code", description: "A file." }] },
+      },
+    ]);
+    global.fetch = fetchMock;
+
+    render(<GraphExplorer workspaceSlug="test-ws" />);
+
+    await waitFor(() =>
+      expect(screen.getByTestId("node-type-filter-button")).toHaveTextContent("All types"),
+    );
+
+    await userEvent.type(screen.getByTestId("search-input"), "auth");
+    await userEvent.click(screen.getByTestId("search-button"));
+
+    await waitFor(() => expect(urlsFor(fetchMock, "/graph/nodes/search")).toHaveLength(1));
+    expect(urlsFor(fetchMock, "/graph/nodes/search")[0]).not.toContain("types=");
   });
 
   // ── 11. Search Enter key triggers search ──────────────────────────────────
   test("pressing Enter in search input triggers search", async () => {
-    const fetchMock = makeFetch({ ok: true, status: 200, body: [] });
+    const fetchMock = makeRoutedFetch([NODE_TYPES_ROUTE]);
     global.fetch = fetchMock;
 
     render(<GraphExplorer workspaceSlug="test-ws" />);
-    const searchInput = screen.getByTestId("search-input");
-    await userEvent.type(searchInput, "foo");
+    await userEvent.type(screen.getByTestId("search-input"), "foo");
     await userEvent.keyboard("{Enter}");
 
-    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
-    expect((fetchMock.mock.calls[0] as [string])[0]).toContain("/graph/search");
+    await waitFor(() => expect(urlsFor(fetchMock, "/graph/nodes/search")).toHaveLength(1));
   });
 
-  // ── 12. Clicking a result that's NOT in the graph runs a Cypher query ─────
-  test("clicking a search result not in graph fires a Cypher query", async () => {
-    // First call: search, second call: Cypher load
-    const fetchMock = makeSequentialFetch([
-      { ok: true, status: 200, body: MOCK_SEARCH_RESULTS },
-      { ok: true, status: 200, body: { columns: ["n"], rows: [] } },
+  // ── 12. Clicking a result loads that node from Jarvis ─────────────────────
+  test("clicking a search result fetches the node detail", async () => {
+    const fetchMock = makeRoutedFetch([
+      NODE_TYPES_ROUTE,
+      { match: "/graph/nodes/search", ok: true, status: 200, body: MOCK_SEARCH_RESULTS },
+      { match: "/graph/node/", ok: true, status: 200, body: MOCK_NODE_DETAIL },
     ]);
     global.fetch = fetchMock;
 
@@ -350,100 +519,240 @@ describe("GraphExplorer", () => {
     await userEvent.click(screen.getByTestId("search-button"));
 
     await waitFor(() => screen.getByTestId("search-results"));
-
     await userEvent.click(screen.getByTestId("search-result-ref-1"));
 
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
-
-    const secondCallUrl = (fetchMock.mock.calls[1] as [string])[0];
-    expect(secondCallUrl).toContain("/graph/query");
+    await waitFor(() => expect(urlsFor(fetchMock, "/graph/node/")).toHaveLength(1));
+    expect(urlsFor(fetchMock, "/graph/node/")[0]).toBe(
+      "/api/workspaces/test-ws/graph/node/ref-1",
+    );
   });
 
-  // ── 13. Trace buttons appear in sheet when node has ref_id ────────────────
-  test("trace buttons appear in node sheet", async () => {
-    // Mock: query returns rows, then trace returns text
-    const fetchMock = makeSequentialFetch([
-      { ok: true, status: 200, body: { columns: MOCK_COLUMNS, rows: MOCK_ROWS } },
-      { ok: true, status: 200, text: "├── processData (src/lib/data.ts)" },
+  // ── 13. Node panel shows type, properties and directly-linked nodes ───────
+  test("node panel renders node type, properties and linked nodes", async () => {
+    global.fetch = makeRoutedFetch([
+      NODE_TYPES_ROUTE,
+      { match: "/graph/nodes/search", ok: true, status: 200, body: MOCK_SEARCH_RESULTS },
+      { match: "/graph/node/", ok: true, status: 200, body: MOCK_NODE_DETAIL },
     ]);
-    global.fetch = fetchMock;
 
     render(<GraphExplorer workspaceSlug="test-ws" />);
-    await userEvent.click(screen.getByTestId("run-query-button"));
-
-    await waitFor(() => screen.getByTestId("result-table"));
-
-    // Directly open the sheet by simulating state - we need to trigger handleCanvasNodeClick
-    // The KGCanvas is mocked, so we simulate opening via search result → sheet
-    // Instead, verify trace buttons are present when sheet is open with ref_id
-    // We trigger this via search results clicking
-    const searchFetch = makeSequentialFetch([
-      { ok: true, status: 200, body: [{ name: "processData", file: "src/lib/data.ts", ref_id: "ref-1" }] },
-      { ok: true, status: 200, body: { columns: MOCK_COLUMNS, rows: MOCK_ROWS } },
-    ]);
-    global.fetch = searchFetch;
-
     await userEvent.type(screen.getByTestId("search-input"), "processData");
     await userEvent.click(screen.getByTestId("search-button"));
-
     await waitFor(() => screen.getByTestId("search-results"));
-    // clicking a result opens the sheet only if node is in graph (which is empty due to mock)
-    // so it fires a Cypher query - sheet won't open in this test flow
-    // Verify the trace buttons exist in the DOM conceptually is handled in test 14
+    await userEvent.click(screen.getByTestId("search-result-ref-1"));
+
+    await waitFor(() => screen.getByTestId("node-type-badge"));
+
+    // Real node_type, not the hardcoded "Node" placeholder
+    expect(screen.getByTestId("node-type-badge")).toHaveTextContent("Function");
+    expect(screen.getByTestId("node-type-badge")).not.toHaveTextContent("Node");
+
+    // Properties from Jarvis
+    const props = screen.getByTestId("node-properties-section");
+    expect(props).toHaveTextContent("file");
+    expect(props).toHaveTextContent("src/lib/data.ts");
+
+    // Directly-linked nodes, grouped by edge type
+    const linked = screen.getByTestId("linked-nodes-section");
+    expect(linked).toHaveTextContent("Linked Nodes (2)");
+    expect(linked).toHaveTextContent("CALLS");
+    expect(linked).toHaveTextContent("CONTAINS");
+    expect(screen.getByTestId("linked-node-ref-2")).toBeInTheDocument();
+    expect(screen.getByTestId("linked-node-ref-3")).toBeInTheDocument();
   });
 
-  // ── 14. Trace upstream calls /graph/map with direction=up ─────────────────
-  test("Trace Upstream button calls /graph/map with direction=up", async () => {
-    // We need to open the sheet. Since KGCanvas is mocked and can't click nodes,
-    // we'll test via the useKGGraph-selected node path via search → load flow.
-    // Instead, we unit-test the fetch call directly by rendering with a pre-set
-    // selectedNode. We expose this by checking what fetch receives after button click.
-
-    // Approach: render, do a search that returns a result, click result → Cypher loads
-    // graph (empty from mock), sheet won't open via canvas. So we test the trace fetch
-    // in isolation by checking the URL pattern.
-
-    const traceText = "├── functionA (src/a.ts)\n└── functionB (src/b.ts)";
-    const fetchMock = makeSequentialFetch([
-      // search
-      { ok: true, status: 200, body: [{ name: "processData", file: "src/lib/data.ts", ref_id: "ref-99" }] },
-      // cypher load (clicking result when not in graph)
-      { ok: true, status: 200, body: { columns: MOCK_COLUMNS, rows: MOCK_ROWS } },
-      // trace (if sheet opened - not reachable from mocked canvas)
-      { ok: true, status: 200, text: traceText },
+  // ── 14. Clicking a linked node walks to it ────────────────────────────────
+  test("clicking a linked node loads that neighbor", async () => {
+    const fetchMock = makeRoutedFetch([
+      NODE_TYPES_ROUTE,
+      { match: "/graph/nodes/search", ok: true, status: 200, body: MOCK_SEARCH_RESULTS },
+      { match: "/graph/node/ref-2", ok: true, status: 200, body: { ...MOCK_NODE_DETAIL, neighbors: [] } },
+      { match: "/graph/node/", ok: true, status: 200, body: MOCK_NODE_DETAIL },
     ]);
     global.fetch = fetchMock;
 
     render(<GraphExplorer workspaceSlug="test-ws" />);
+    await userEvent.type(screen.getByTestId("search-input"), "processData");
+    await userEvent.click(screen.getByTestId("search-button"));
+    await waitFor(() => screen.getByTestId("search-results"));
+    await userEvent.click(screen.getByTestId("search-result-ref-1"));
 
-    // The sheet/trace buttons are only reachable via handleCanvasNodeClick which requires
-    // a real 3D canvas. We verify the fetch call parameters indirectly:
-    // This test verifies the URL construction for the trace endpoint.
-    // The trace functionality is covered in the integration flow below.
-    expect(true).toBe(true); // placeholder - see test 15 for URL verification
+    await waitFor(() => screen.getByTestId("linked-node-ref-2"));
+    await userEvent.click(screen.getByTestId("linked-node-ref-2"));
+
+    await waitFor(() => expect(urlsFor(fetchMock, "/graph/node/ref-2")).toHaveLength(1));
+    expect(urlsFor(fetchMock, "/graph/node/ref-2")[0]).toBe(
+      "/api/workspaces/test-ws/graph/node/ref-2",
+    );
   });
 
-  // ── 15. Trace fetch URL is correct ────────────────────────────────────────
-  test("trace fetch URL contains correct direction and ref_id params", async () => {
-    // We test the URL shape by intercepting what would be called
-    // The actual click-through is prevented by the mocked canvas,
-    // so we verify the trace URL pattern via a focused fetch spy test.
+  // ── 15. Trace Upstream calls /graph/map with the focused node ─────────────
+  test("Trace Upstream button calls /graph/map with direction=up", async () => {
+    const fetchMock = makeRoutedFetch([
+      NODE_TYPES_ROUTE,
+      { match: "/graph/nodes/search", ok: true, status: 200, body: MOCK_SEARCH_RESULTS },
+      { match: "/graph/node/", ok: true, status: 200, body: MOCK_NODE_DETAIL },
+      { match: "/graph/map", ok: true, status: 200, text: "├── functionA (src/a.ts)" },
+    ]);
+    global.fetch = fetchMock;
 
-    // Build the expected URL pattern for direction=up
-    const workspaceSlug = "test-ws";
-    const refId = "some-ref";
-    const direction = "up";
-    const expectedUrl = `/api/workspaces/${workspaceSlug}/graph/map?ref_id=${refId}&direction=${direction}&depth=3`;
+    render(<GraphExplorer workspaceSlug="test-ws" />);
+    await userEvent.type(screen.getByTestId("search-input"), "processData");
+    await userEvent.click(screen.getByTestId("search-button"));
+    await waitFor(() => screen.getByTestId("search-results"));
+    await userEvent.click(screen.getByTestId("search-result-ref-1"));
 
-    // Manually verify the URL pattern is correct
-    expect(expectedUrl).toContain("direction=up");
-    expect(expectedUrl).toContain("depth=3");
-    expect(expectedUrl).toContain("/graph/map");
+    await waitFor(() => screen.getByTestId("trace-up-button"));
+    await userEvent.click(screen.getByTestId("trace-up-button"));
+
+    await waitFor(() => expect(urlsFor(fetchMock, "/graph/map")).toHaveLength(1));
+    const traceUrl = urlsFor(fetchMock, "/graph/map")[0];
+    expect(traceUrl).toContain("ref_id=ref-1");
+    expect(traceUrl).toContain("direction=up");
+    expect(traceUrl).toContain("depth=3");
+  });
+
+  // ── 15b. `?ref_id=` deep link opens that node on mount ────────────────────
+  test("initialRefId deep link loads the node on mount", async () => {
+    const fetchMock = makeRoutedFetch([
+      NODE_TYPES_ROUTE,
+      { match: "/graph/node/", ok: true, status: 200, body: MOCK_NODE_DETAIL },
+    ]);
+    global.fetch = fetchMock;
+
+    render(<GraphExplorer workspaceSlug="test-ws" initialRefId="ref-1" />);
+
+    await waitFor(() => expect(urlsFor(fetchMock, "/graph/node/")).toHaveLength(1));
+    expect(urlsFor(fetchMock, "/graph/node/")[0]).toBe(
+      "/api/workspaces/test-ws/graph/node/ref-1",
+    );
+
+    // Panel opens, and the canvas is seeded with the node + its neighbors
+    await waitFor(() => screen.getByTestId("node-type-badge"));
+    expect(screen.getByTestId("focused-node-badge")).toHaveTextContent("processData");
+    // The graph tab is rendered without any Cypher result behind it
+    expect(screen.getByTestId("tab-content-graph")).toBeInTheDocument();
+  });
+
+  // ── 15c. A malformed 200 surfaces an error instead of crashing ────────────
+  test("malformed node response shows an error", async () => {
+    global.fetch = makeRoutedFetch([
+      NODE_TYPES_ROUTE,
+      { match: "/graph/node/", ok: true, status: 200, body: { unexpected: true } },
+    ]);
+
+    render(<GraphExplorer workspaceSlug="test-ws" initialRefId="ref-1" />);
+
+    await waitFor(() => screen.getByTestId("node-detail-error"));
+    expect(screen.getByTestId("node-detail-error")).toHaveTextContent(
+      "Malformed node response",
+    );
+  });
+
+  // ── 15d. Walking accumulates instead of replacing ─────────────────────────
+  test("expanding a linked node accumulates onto the existing walk", async () => {
+    global.fetch = makeRoutedFetch([
+      NODE_TYPES_ROUTE,
+      { match: "/graph/node/ref-2", ok: true, status: 200, body: MOCK_NODE_DETAIL_REF2 },
+      { match: "/graph/node/", ok: true, status: 200, body: MOCK_NODE_DETAIL },
+    ]);
+
+    render(<GraphExplorer workspaceSlug="test-ws" initialRefId="ref-1" />);
+
+    // ref-1 plus its two neighbors
+    await waitFor(() =>
+      expect(screen.getByTestId("walk-node-count")).toHaveTextContent("3 nodes"),
+    );
+
+    await userEvent.click(screen.getByTestId("linked-node-ref-2"));
+
+    // ref-9 joins; ref-1 and ref-3 are still there rather than being replaced
+    await waitFor(() =>
+      expect(screen.getByTestId("walk-node-count")).toHaveTextContent("4 nodes"),
+    );
+    expect(screen.getByTestId("focused-node-badge")).toHaveTextContent("validateInput");
+  });
+
+  // ── 15e. Jumping somewhere unrelated starts a fresh walk ──────────────────
+  test("focusing a node outside the current walk resets the graph", async () => {
+    global.fetch = makeRoutedFetch([
+      NODE_TYPES_ROUTE,
+      {
+        match: "/graph/nodes/search",
+        ok: true,
+        status: 200,
+        body: {
+          results: [
+            {
+              ref_id: "ref-99",
+              node_type: "Concept",
+              name: "Unrelated",
+              description: "Somewhere else entirely.",
+            },
+          ],
+        },
+      },
+      {
+        match: "/graph/node/ref-99",
+        ok: true,
+        status: 200,
+        body: {
+          node: { ref_id: "ref-99", node_type: "Concept", name: "Unrelated", properties: {} },
+          neighbors: [],
+        },
+      },
+      { match: "/graph/node/", ok: true, status: 200, body: MOCK_NODE_DETAIL },
+    ]);
+
+    render(<GraphExplorer workspaceSlug="test-ws" initialRefId="ref-1" />);
+    await waitFor(() =>
+      expect(screen.getByTestId("walk-node-count")).toHaveTextContent("3 nodes"),
+    );
+
+    await userEvent.type(screen.getByTestId("search-input"), "unrelated");
+    await userEvent.click(screen.getByTestId("search-button"));
+    await waitFor(() => screen.getByTestId("search-result-ref-99"));
+    await userEvent.click(screen.getByTestId("search-result-ref-99"));
+
+    // A disconnected node can't be laid out alongside the old walk, so the
+    // canvas starts over rather than accumulating an unreachable island.
+    await waitFor(() =>
+      expect(screen.getByTestId("walk-node-count")).toHaveTextContent("1 node"),
+    );
+  });
+
+  // ── 15f. Expansion can be limited to chosen node types ────────────────────
+  test("the expand filter limits which neighbor types are pulled in", async () => {
+    const fetchMock = makeRoutedFetch([
+      NODE_TYPES_ROUTE,
+      { match: "/graph/node/", ok: true, status: 200, body: MOCK_NODE_DETAIL },
+    ]);
+    global.fetch = fetchMock;
+
+    render(<GraphExplorer workspaceSlug="test-ws" initialRefId="ref-1" />);
+    await waitFor(() => screen.getByTestId("expand-filter"));
+
+    // Unfiltered by default — expanding shouldn't silently hide real edges
+    expect(urlsFor(fetchMock, "/graph/node/")[0]).not.toContain("types=");
+    expect(screen.getByTestId("expand-type-filter-button")).toHaveTextContent("All types");
+
+    await userEvent.click(screen.getByTestId("expand-type-filter-button"));
+    await waitFor(() => screen.getByTestId("expand-type-filter-option-Concept"));
+    await userEvent.click(screen.getByTestId("expand-type-filter-option-Concept"));
+    await userEvent.keyboard("{Escape}");
+
+    await userEvent.click(screen.getByTestId("linked-node-ref-2"));
+
+    await waitFor(() => expect(urlsFor(fetchMock, "/graph/node/")).toHaveLength(2));
+    expect(urlsFor(fetchMock, "/graph/node/")[1]).toContain("types=Concept");
   });
 
   // ── 16. Search shows error message on failure ──────────────────────────────
   test("search shows error on failure", async () => {
-    global.fetch = makeFetch({ ok: false, status: 500, body: { message: "Search failed" } });
+    global.fetch = makeRoutedFetch([
+      NODE_TYPES_ROUTE,
+      { match: "/graph/nodes/search", ok: false, status: 500, body: { message: "Search failed" } },
+    ]);
 
     render(<GraphExplorer workspaceSlug="test-ws" />);
     await userEvent.type(screen.getByTestId("search-input"), "query");
