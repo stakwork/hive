@@ -342,18 +342,17 @@ function selectText(text: string): void {
   }
 }
 
-/** Native-`<details>` disclosure — the viewer's `details.fold`. */
-export function Fold({
-  summary,
-  monospace,
-  children,
-}: {
+interface FoldProps {
   summary: string | ReactNode;
   monospace?: boolean;
   children: ReactNode;
-}) {
+  action?: ReactNode;
+}
+
+/** Native-`<details>` disclosure — the viewer's `details.fold`. */
+export function Fold({ summary, monospace, children, action }: FoldProps) {
   return (
-    <details className="group rounded-lg border border-border bg-muted/20 mt-2">
+    <details className="relative group rounded-lg border border-border bg-muted/20 mt-2">
       <summary
         className={`flex cursor-pointer items-center gap-1.5 px-3 py-2 text-[12px] text-muted-foreground list-none [&::-webkit-details-marker]:hidden hover:text-foreground ${
           monospace ? "font-mono" : ""
@@ -362,6 +361,11 @@ export function Fold({
         <span className="text-muted-foreground/50 transition-transform group-open:rotate-90">▸</span>
         <span className="truncate">{summary}</span>
       </summary>
+      {action && (
+        <div className="absolute right-2 top-0 flex items-center h-full pointer-events-auto">
+          {action}
+        </div>
+      )}
       <div className="px-4 pb-4 pt-1 max-h-[480px] overflow-y-auto">{children}</div>
     </details>
   );
