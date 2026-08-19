@@ -46,7 +46,6 @@ jobs:
       - name: Build the application
         run: npm run build
         env:
-          NEXT_SKIP_TYPE_CHECK: "true"
           NEXTAUTH_URL: "http://localhost:3000"
           NEXTAUTH_SECRET: "dummy-secret"
           JWT_SECRET: "dummy-jwt-secret"
