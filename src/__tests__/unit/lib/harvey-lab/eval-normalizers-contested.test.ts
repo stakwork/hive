@@ -100,11 +100,12 @@ describe("resolveContested — truthiness matrix", () => {
     expect(resolveContested(criterion)).toBe(true);
   });
 
-  // ── resolveJudgeDispute is UNCHANGED ────────────────────────────────────
+  // ── resolveJudgeDispute contract (sibling function) ─────────────────────
   // Verify that resolveContested's sibling still has its verdict gate
-  // (contested deliberately drops the gate; resolveJudgeDispute keeps it).
+  // (contested deliberately drops the gate; resolveJudgeDispute keeps it),
+  // and now surfaces isDispute and flagBasis on its return.
 
-  it("does not affect resolveJudgeDispute — it is a separate export", async () => {
+  it("resolveJudgeDispute — verdict gate intact (pass → null)", async () => {
     const { resolveJudgeDispute } = await import("@/lib/harvey-lab/eval-normalizers");
     // resolveJudgeDispute returns null for passing rows (verdict gate intact)
     expect(
@@ -112,5 +113,23 @@ describe("resolveContested — truthiness matrix", () => {
     ).toBeNull();
     // resolveContested does NOT apply a verdict gate
     expect(resolveContested({ contested: true })).toBe(true);
+  });
+
+  it("resolveJudgeDispute — returns isDispute:true when flagged is truthy", async () => {
+    const { resolveJudgeDispute } = await import("@/lib/harvey-lab/eval-normalizers");
+    const result = resolveJudgeDispute({ verdict: "fail", flagged: true });
+    expect(result).not.toBeNull();
+    expect(result!.isDispute).toBe(true);
+  });
+
+  it("resolveJudgeDispute — returns isDispute:false when only prose is present", async () => {
+    const { resolveJudgeDispute } = await import("@/lib/harvey-lab/eval-normalizers");
+    const result = resolveJudgeDispute({
+      verdict: "fail",
+      llm_flag_reason: "The criterion definition itself is ambiguous.",
+    });
+    expect(result).not.toBeNull();
+    expect(result!.isDispute).toBe(false);
+    expect(result!.flagBasis).toBeNull();
   });
 });

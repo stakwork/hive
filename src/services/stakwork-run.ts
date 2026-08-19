@@ -1631,15 +1631,20 @@ const RunnerScoreSchema = z.object({
         title: z.string(),
         verdict: z.string(),
         reasoning: z.string(),
-        // INVARIANT: `flagged` and `llm_flag_reason` MUST remain optional here.
+        // INVARIANT: `flagged`, `llm_flag_reason`, `flag_basis`, and `contested`
+        // MUST remain optional and maximally permissive here.
         // These are judge-dispute wire keys (mirroring Jarvis `CriterionResult`
         // attributes). If they were required — or if a new dispute shape caused
         // safeParse() to fail — `scoreFields` would become `{}`, silently
         // dropping `n_passed`/`n_total`/`all_pass` from persistence. Keeping them
-        // optional ensures a shape change to dispute fields can never invalidate
-        // the whole score block.
-        flagged: z.boolean().optional(),
+        // optional and union-typed ensures loose wire values (`flagged: 1`,
+        // `flagged: "true"`, `contested: "true"`) never invalidate the score block.
+        // `flag_basis` currently arrives as an empty string on every production
+        // run pending an upstream Task Runner jsonSchema fix; tolerate indefinitely.
+        flagged: z.union([z.boolean(), z.number(), z.string()]).optional(),
         llm_flag_reason: z.string().optional(),
+        flag_basis: z.string().optional(),
+        contested: z.union([z.boolean(), z.number(), z.string()]).optional(),
       }),
     )
     .optional(),

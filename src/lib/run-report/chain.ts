@@ -56,6 +56,12 @@ export interface CriterionChain {
   judgeFlagged?: boolean | number | string;
   judgeFlagReason?: string;
   /**
+   * Narrowed from wire `flag_basis` — tooltip/display copy only; never a
+   * suppression input for the dispute badge. Empty string on all current
+   * production runs (upstream Task Runner jsonSchema fix pending).
+   */
+  judgeFlagBasis?: string;
+  /**
    * Narrowed from wire `contested` — set by the contest agent when the
    * criterion *definition* itself is considered broken. Independent of verdict.
    * Provenance prefix keeps it visibly distinct from the raw wire key.
@@ -275,6 +281,7 @@ export function buildChainModel(projection: RunReportProjection): ChainModel {
       matchCriteria: row.matchCriteria ?? "",
       judgeFlagged: row.judgeFlagged,
       judgeFlagReason: row.judgeFlagReason,
+      judgeFlagBasis: row.judgeFlagBasis,
       criterionContested: row.criterionContested,
       documentExcerpt: row.documentExcerpt ?? "",
       hops,
