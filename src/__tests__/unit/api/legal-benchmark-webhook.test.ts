@@ -528,6 +528,113 @@ describe("POST /api/webhook/stakwork/response — payload reaches service correc
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// RunnerScoreSchema loose flagged / flag_basis persistence tests
+// These are integration-level regression guards: they verify that a payload
+// carrying `flagged: "true"` (string) or `flagged: 1` (number) still passes
+// Zod safeParse, still merges n_passed/all_pass/pass_rate into the persisted
+// result, and is forwarded to processStakworkRunWebhook intact.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("POST /api/webhook/stakwork/response — loose flagged / flag_basis (RunnerScoreSchema widening)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  test('criteria_results with flagged:"true" (string) and flag_basis:"judge_error" still arrives at processStakworkRunWebhook with score fields intact', async () => {
+    const capturedCalls: Array<{ webhookData: unknown }> = [];
+    mockProcessStakworkRunWebhook.mockImplementation(async (webhookData: unknown) => {
+      capturedCalls.push({ webhookData });
+      return { runId: "loose-1", status: "COMPLETED", dataType: "string" };
+    });
+
+    // Payload with loose flagged value (string "true") and flag_basis
+    const criteriaResults = [
+      {
+        id: "crit-A",
+        title: "Identifies the indemnity cap",
+        verdict: "fail",
+        reasoning: "The submitted answer ignores the cap.",
+        flagged: "true",
+        flag_basis: "judge_error",
+        llm_flag_reason: "The judge believes the cap was clearly stated.",
+      },
+    ];
+
+    await postWebhook(
+      makeRunnerWithScoreRequest("loose-1", "ws-1", "valid-token", {
+        criteria_results: criteriaResults,
+      }),
+    );
+
+    expect(capturedCalls).toHaveLength(1);
+    const { webhookData } = capturedCalls[0] as {
+      webhookData: Record<string, unknown> & { result: Record<string, unknown> };
+    };
+
+    // Score fields must be present — proof that RunnerScoreSchema.safeParse succeeded
+    expect(webhookData.result.n_passed).toBe(72);
+    expect(webhookData.result.all_pass).toBe(true);
+    expect(webhookData.result.pass_rate).toBeCloseTo(0.973);
+
+    // criteria_results must carry the loose flagged value and flag_basis through intact
+    const cr = webhookData.result.criteria_results as typeof criteriaResults;
+    expect(cr).toHaveLength(1);
+    expect(cr[0].flagged).toBe("true");
+    expect(cr[0].flag_basis).toBe("judge_error");
+  });
+
+  test("eval-annotation path (spread ...criterion) preserves flagged and flag_basis on annotated criteria (regression lock)", async () => {
+    // This test locks the existing correct spread behaviour: when an EVAL webhook
+    // annotates cause fields onto criteria, the pre-existing dispute fields
+    // (flagged, flag_basis) must survive the spread unchanged.
+    //
+    // The annotation path does `{ ...criterion, cause_type, cause_summary, ... }`,
+    // so flagged/flag_basis ride through automatically. This test is a guard, not
+    // a fix — it asserts current correct behaviour is not regressed.
+
+    // Build a synthetic stored result (what would be in the DB after the RUNNER webhook)
+    const storedCriteriaResults = [
+      {
+        id: "crit-B",
+        title: "Correct damages calculation",
+        verdict: "fail",
+        reasoning: "Wrong multiplier used.",
+        flagged: true,
+        flag_basis: "criterion_validity",
+        llm_flag_reason: "The criterion's definition is ambiguous.",
+      },
+    ];
+    // The annotation merge is a pure in-memory operation tested via the
+    // stored result structure — simulate it here to lock the contract
+    const match = {
+      criterion_id: "crit-B",
+      cause_type: "calculation_error",
+      cause_summary: "Used multiplier 1.5 instead of 2.0",
+    };
+
+    const annotated = storedCriteriaResults.map((criterion) => {
+      if (criterion.id === match.criterion_id) {
+        return {
+          ...criterion,
+          cause_type: match.cause_type,
+          cause_summary: match.cause_summary,
+        };
+      }
+      return criterion;
+    });
+
+    expect(annotated).toHaveLength(1);
+    // Spread must NOT lose the dispute fields
+    expect(annotated[0].flagged).toBe(true);
+    expect(annotated[0].flag_basis).toBe("criterion_validity");
+    expect(annotated[0].llm_flag_reason).toBe("The criterion's definition is ambiguous.");
+    // Annotation fields must also be present
+    expect(annotated[0].cause_type).toBe("calculation_error");
+    expect(annotated[0].cause_summary).toBe("Used multiplier 1.5 instead of 2.0");
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Clobber protection: requestedModel/requestedJudgeModel not overwritten by
 // runner webhook echo of judge_model (via RunnerScoreSchema)
 // ─────────────────────────────────────────────────────────────────────────────

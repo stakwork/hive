@@ -99,21 +99,33 @@ export interface BenchmarkRunResult {
     cause_ref_id?: string;
     /**
      * Judge-dispute fields: wire names mirror Jarvis `CriterionResult` attributes
-     * (`flagged`, `llm_flag_reason`). Nothing emits these yet — tracked external
-     * dependency on the `harvey_lab_score_rubric` Lambda in `stakwork/senza-lnd`,
-     * which currently only emits `id`/`title`/`verdict`/`reasoning`.
+     * (`flagged`, `llm_flag_reason`, `flag_basis`). These arrive on live payloads
+     * (verified against production). `flag_basis` currently arrives as an empty
+     * string on every production run pending an upstream Task Runner `jsonSchema`
+     * fix — Hive must tolerate absent/empty `flag_basis` indefinitely.
      *
-     * All Hive-side consumption MUST go through the `resolveJudgeDispute` resolver
-     * (added in a follow-up ticket). Do not read these fields directly elsewhere.
+     * `flagged` is widened to `boolean | number | string` to accommodate loose
+     * wire values (`1`, `"true"`) that must not fail Zod safeParse or typecheck.
+     *
+     * All Hive-side consumption MUST go through the `resolveJudgeDispute` resolver.
+     * Do not read these fields directly elsewhere.
      */
-    flagged?: boolean;
+    flagged?: boolean | number | string;
     llm_flag_reason?: string;
+    /**
+     * Basis for the judge's dispute verdict. Arrives as an empty string on all
+     * current production runs; Hive tolerates absent/empty values gracefully.
+     * Known tokens: `criterion_validity`, `judge_error`, `legitimate_failure`,
+     * `indeterminate`. Unknown tokens are preserved, not discarded.
+     * Used for tooltip copy only — never a suppression input for the dispute badge.
+     */
+    flag_basis?: string;
     /**
      * Contested flag: set by the contest agent when the criterion *definition*
      * is considered broken/invalid. Independent of verdict — a passing criterion
-     * can also be contested. Nothing emits this yet; ships dark.
+     * can also be contested. Widened to `boolean | number | string` for wire parity.
      */
-    contested?: boolean;
+    contested?: boolean | number | string;
   }>;
 }
 

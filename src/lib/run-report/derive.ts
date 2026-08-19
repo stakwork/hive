@@ -317,6 +317,10 @@ export function groupRubrics(rubrics: unknown[], _score?: unknown): RubricRow[] 
     }
     const flagReason = asString(entry.llm_flag_reason);
     if (flagReason !== null) row.judgeFlagReason = flagReason;
+    // Narrow wire `flag_basis` → `judgeFlagBasis` using the same string-only guard
+    // as `llm_flag_reason` above — mirrors the criterionContested block below.
+    const flagBasis = asString(entry.flag_basis);
+    if (flagBasis !== null) row.judgeFlagBasis = flagBasis;
     // Narrow wire `contested` → `criterionContested` using the same primitive-only
     // narrowing applied to `flagged` — an object/array must never ride the projection.
     const contested = entry.contested;
