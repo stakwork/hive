@@ -476,4 +476,108 @@ describe("resolveJudgeDispute", () => {
     expect(result).not.toBeNull();
     expect(result!.hasReason).toBe(true);
   });
+
+  // ── isDispute field ──────────────────────────────────────────────────────────
+
+  it("isDispute:true when flagged:true", () => {
+    const result = resolveJudgeDispute({ verdict: "fail", flagged: true, llm_flag_reason: PROSE });
+    expect(result!.isDispute).toBe(true);
+  });
+
+  it("isDispute:true when flagged:1", () => {
+    const result = resolveJudgeDispute({ verdict: "fail", flagged: 1 });
+    expect(result!.isDispute).toBe(true);
+  });
+
+  it('isDispute:true when flagged:"true" (string)', () => {
+    const result = resolveJudgeDispute({ verdict: "fail", flagged: "true" });
+    expect(result!.isDispute).toBe(true);
+  });
+
+  it("isDispute:false when only prose present (flagged absent)", () => {
+    const result = resolveJudgeDispute({ verdict: "fail", llm_flag_reason: PROSE });
+    expect(result).not.toBeNull();
+    expect(result!.isDispute).toBe(false);
+  });
+
+  it("isDispute:false when flagged:false + prose present", () => {
+    const result = resolveJudgeDispute({ verdict: "fail", flagged: false, llm_flag_reason: PROSE });
+    expect(result).not.toBeNull();
+    expect(result!.isDispute).toBe(false);
+  });
+
+  it("flagged:false + no prose → null (marker suppressed, not emitted)", () => {
+    expect(resolveJudgeDispute({ verdict: "fail", flagged: false })).toBeNull();
+  });
+
+  // ── flagBasis field ──────────────────────────────────────────────────────────
+
+  it("flagBasis is null when flag_basis is absent", () => {
+    const result = resolveJudgeDispute({ verdict: "fail", flagged: true });
+    expect(result!.flagBasis).toBeNull();
+  });
+
+  it("flagBasis is null when flag_basis is empty string", () => {
+    const result = resolveJudgeDispute({ verdict: "fail", flagged: true, flag_basis: "" });
+    expect(result!.flagBasis).toBeNull();
+  });
+
+  it("flagBasis is null when flag_basis is whitespace-only", () => {
+    const result = resolveJudgeDispute({ verdict: "fail", flagged: true, flag_basis: "   " });
+    expect(result!.flagBasis).toBeNull();
+  });
+
+  it("flagBasis is trimmed and lowercased when flag_basis is a non-empty string", () => {
+    const result = resolveJudgeDispute({
+      verdict: "fail",
+      flagged: true,
+      flag_basis: "  Criterion_Validity  ",
+    });
+    expect(result!.flagBasis).toBe("criterion_validity");
+  });
+
+  it("flagBasis preserves unknown tokens verbatim (lowercased)", () => {
+    const result = resolveJudgeDispute({
+      verdict: "fail",
+      flagged: true,
+      flag_basis: "SOME_UNKNOWN_BASIS",
+    });
+    expect(result!.flagBasis).toBe("some_unknown_basis");
+  });
+
+  it("flagBasis:legitimate_failure does NOT suppress isDispute (basis never suppresses)", () => {
+    const result = resolveJudgeDispute({
+      verdict: "fail",
+      flagged: true,
+      flag_basis: "legitimate_failure",
+    });
+    expect(result).not.toBeNull();
+    expect(result!.isDispute).toBe(true);
+    expect(result!.flagBasis).toBe("legitimate_failure");
+  });
+
+  it("prose-only result still returns flagBasis:null (no flag_basis input)", () => {
+    const result = resolveJudgeDispute({ verdict: "fail", llm_flag_reason: PROSE });
+    expect(result!.flagBasis).toBeNull();
+  });
+
+  // ── pass-verdict prefix gate ─────────────────────────────────────────────────
+
+  it('verdict:"passed" → null under the prefix gate', () => {
+    expect(
+      resolveJudgeDispute({ verdict: "passed", flagged: true, llm_flag_reason: PROSE }),
+    ).toBeNull();
+  });
+
+  it('verdict:" pass" (leading space) → null under the prefix gate', () => {
+    expect(
+      resolveJudgeDispute({ verdict: " pass", flagged: true, llm_flag_reason: PROSE }),
+    ).toBeNull();
+  });
+
+  it('verdict:"PASSED" (uppercase) → null under the prefix gate', () => {
+    expect(
+      resolveJudgeDispute({ verdict: "PASSED", flagged: true, llm_flag_reason: PROSE }),
+    ).toBeNull();
+  });
 });

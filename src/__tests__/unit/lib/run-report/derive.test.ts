@@ -244,6 +244,51 @@ describe("groupRubrics", () => {
     ]);
     expect(rows[0].criterionContested).toBeUndefined();
   });
+
+  // ─── judgeFlagBasis narrowing ───────────────────────────────────────────────
+
+  it("carries string flag_basis as judgeFlagBasis", () => {
+    const rows = groupRubrics([
+      { id: "D1", title: "t", verdict: "fail", flag_basis: "criterion_validity" },
+    ]);
+    expect(rows[0].judgeFlagBasis).toBe("criterion_validity");
+  });
+
+  it("carries empty-string flag_basis as judgeFlagBasis (asString passes empty strings)", () => {
+    const rows = groupRubrics([
+      { id: "D2", title: "t", verdict: "fail", flag_basis: "" },
+    ]);
+    // asString("") returns "" which is not null, so judgeFlagBasis is set to ""
+    expect(rows[0].judgeFlagBasis).toBe("");
+  });
+
+  it("omits judgeFlagBasis when wire flag_basis is absent", () => {
+    const rows = groupRubrics([
+      { id: "D3", title: "t", verdict: "fail" },
+    ]);
+    expect(rows[0].judgeFlagBasis).toBeUndefined();
+  });
+
+  it("omits judgeFlagBasis when wire flag_basis is an object (asString rejects it)", () => {
+    const rows = groupRubrics([
+      { id: "D4", title: "t", verdict: "fail", flag_basis: { nested: true } },
+    ]);
+    expect(rows[0].judgeFlagBasis).toBeUndefined();
+  });
+
+  it("omits judgeFlagBasis when wire flag_basis is an array (asString rejects it)", () => {
+    const rows = groupRubrics([
+      { id: "D5", title: "t", verdict: "fail", flag_basis: ["judge_error"] },
+    ]);
+    expect(rows[0].judgeFlagBasis).toBeUndefined();
+  });
+
+  it("carries unknown flag_basis tokens verbatim as judgeFlagBasis", () => {
+    const rows = groupRubrics([
+      { id: "D6", title: "t", verdict: "fail", flag_basis: "some_unknown_basis" },
+    ]);
+    expect(rows[0].judgeFlagBasis).toBe("some_unknown_basis");
+  });
 });
 
 describe("aggregateFixes", () => {
