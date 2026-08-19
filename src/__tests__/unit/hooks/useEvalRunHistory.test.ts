@@ -802,10 +802,10 @@ describe("useEvalRunHistory — unique_source_id join", () => {
     return renderHook(() => useEvalRunHistory({ refId: EVAL_SET_REF, slug: TASK_SLUG }));
   }
 
-  it("does NOT wear a run's status via the graph-stamped project id — lineage, not identity", async () => {
-    // The stamp can be the ROOT PARENT's project, not this attempt's
-    // re-runner: joining status/report on it would let a rerun row wear the
-    // parent run's outcome. Only the Stakwork link may use it.
+  it("does NOT wear a run's status via the graph-stamped project id", async () => {
+    // The stamp is the CHILD re-runner's project id; hive run rows carry the
+    // PARENT orchestrator's. A projectId match is coincidence, never identity —
+    // so only the Stakwork link may use the stamp.
     const graph = conceptGraph("152583201");
     const { result } = renderUsid({
       "fix-chain": makeFixChainResponse(graph.nodes, graph.edges),
