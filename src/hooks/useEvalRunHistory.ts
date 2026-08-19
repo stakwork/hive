@@ -497,11 +497,14 @@ export function useEvalRunHistory(input: UseEvalRunHistoryInput): UseEvalRunHist
           for (const o of t.outputs ?? []) triggerByOutputRef.set(o.ref_id, t);
         }
 
-        // Graph-side Stakwork project id per attempt. jarvis-backend stamps
-        // `unique_source_id` on nodes at dispatch (and it appears on edges in
-        // some writers), so a concept attempt that never created a StakworkRun
-        // row still knows which Stakwork project produced it. Precedence:
-        // output node → owning trigger node → any edge touching either.
+        // Graph-side Stakwork project id per attempt — LINEAGE, not identity.
+        // jarvis-backend stamps `unique_source_id` on nodes at dispatch (and it
+        // appears on edges in some writers), but field data shows the stamp can
+        // be the ROOT PARENT's project (the orchestrating dispatch), not the
+        // re-runner that produced this specific attempt. It is therefore used
+        // ONLY to power the Stakwork link — never as a status/report join,
+        // which would let a rerun row wear the parent run's outcome.
+        // Precedence: output node → owning trigger node → any edge touching either.
         const rawNodeByRef = new Map(fixChain.nodes.map((n) => [n.ref_id, n]));
         const edgeProjectIdByRef = new Map<string, number>();
         for (const e of fixChain.edges) {
@@ -517,7 +520,6 @@ export function useEvalRunHistory(input: UseEvalRunHistoryInput): UseEvalRunHist
           (triggerRefId ? edgeProjectIdByRef.get(triggerRefId) : null) ??
           null;
 
-        const allRunRows = [...runRows, ...evalRunRows, ...recursionRunRows];
 
         const triggerJoinableRuns = [...runRows, ...evalRunRows];
         const claimedRunIds = new Set<string>();
@@ -563,15 +565,10 @@ export function useEvalRunHistory(input: UseEvalRunHistoryInput): UseEvalRunHist
           if (trigger) chartedTriggerRefs.add(trigger.ref_id);
           const graphProjectId = graphProjectIdFor(attempt.ref_id, trigger?.ref_id ?? null);
 
-          // Join key 1: result.evalTriggerRef (hive-dispatched runs).
-          // Join key 2: the graph-stamped Stakwork project id — this is how a
-          // concept attempt (no evalTriggerRef anywhere) finds its run row.
-          let statusRun = trigger ? pickStatusRun(runsForTrigger(trigger.ref_id)) : null;
-          if (!statusRun && graphProjectId != null) {
-            const byProject = allRunRows.filter((r) => r.projectId === graphProjectId);
-            for (const c of byProject) claimedRunIds.add(c.id);
-            statusRun = pickStatusRun(byProject);
-          }
+          // Status joins on result.evalTriggerRef only — the one key that is
+          // per-attempt by construction. The graph-stamped project id is
+          // deliberately NOT a status join key (see lineage note above).
+          const statusRun = trigger ? pickStatusRun(runsForTrigger(trigger.ref_id)) : null;
 
           const passed = attempt.actualPassed ?? attempt.n_passed;
           const total = attempt.n_total;
@@ -581,8 +578,9 @@ export function useEvalRunHistory(input: UseEvalRunHistoryInput): UseEvalRunHist
             score: passed != null && total != null ? { passed, total } : null,
             graphTime: graphEpochToIso(attempt.date_added_to_graph),
           });
-          // No run row anywhere, but the graph knows the Stakwork project —
-          // keep the link (super-admin) even for row-less concept attempts.
+          // No per-attempt run join — but the graph knows the Stakwork
+          // lineage, so the super-admin link still opens the project that
+          // orchestrated this attempt (parent, when the stamp is lineage-level).
           if (row.projectId == null && graphProjectId != null) {
             row.projectId = graphProjectId;
           }

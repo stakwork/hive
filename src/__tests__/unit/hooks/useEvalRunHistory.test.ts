@@ -802,7 +802,10 @@ describe("useEvalRunHistory — unique_source_id join", () => {
     return renderHook(() => useEvalRunHistory({ refId: EVAL_SET_REF, slug: TASK_SLUG }));
   }
 
-  it("joins a concept attempt to its run row by graph-stamped project id", async () => {
+  it("does NOT wear a run's status via the graph-stamped project id — lineage, not identity", async () => {
+    // The stamp can be the ROOT PARENT's project, not this attempt's
+    // re-runner: joining status/report on it would let a rerun row wear the
+    // parent run's outcome. Only the Stakwork link may use it.
     const graph = conceptGraph("152583201");
     const { result } = renderUsid({
       "fix-chain": makeFixChainResponse(graph.nodes, graph.edges),
@@ -824,14 +827,11 @@ describe("useEvalRunHistory — unique_source_id join", () => {
     await waitFor(() => expect(result.current.isLoading).toBe(false), { timeout: 5000 });
 
     const row = result.current.attemptRows.find((r) => r.key === "output-c1")!;
-    // No evalTriggerRef anywhere — joined purely on projectId
-    expect(row.status).toBe("COMPLETED");
-    expect(row.runType).toBe("recursion");
-    expect(row.runId).toBe("rec-run-1");
-    expect(row.hasReport).toBe(true);
+    expect(row.status).toBeNull();
+    expect(row.runId).toBeNull();
+    expect(row.hasReport).toBe(false);
+    // …but the lineage link survives
     expect(row.projectId).toBe(152583201);
-    // Claimed by the join — must not duplicate as a run-only row
-    expect(result.current.attemptRows.filter((r) => r.runId === "rec-run-1")).toHaveLength(1);
   });
 
   it("keeps the Stakwork link from the graph when no run row exists at all", async () => {
