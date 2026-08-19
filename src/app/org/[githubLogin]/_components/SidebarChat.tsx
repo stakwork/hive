@@ -611,6 +611,7 @@ export function SidebarChat({ githubLogin }: SidebarChatProps) {
                         proposal={p}
                         messageId={message.id}
                         githubLogin={githubLogin}
+                        messageTimestamp={message.timestamp}
                       />
                     ))}
                   </div>

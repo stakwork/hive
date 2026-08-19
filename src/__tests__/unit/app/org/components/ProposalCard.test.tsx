@@ -33,6 +33,13 @@ vi.mock("@/app/org/[githubLogin]/_state/canvasChatStore", () => ({
   useCanvasChatStore: (selector: (s: any) => any) => selector(mockStoreState),
 }));
 
+vi.mock("@/app/org/[githubLogin]/_components/PublishPromptSlot", () => ({
+  PublishPromptSlot: () => <div data-testid="publish-prompt-slot" />,
+  derivePublishState: vi.fn(),
+  resolveLegacyVersion: vi.fn(),
+  publishPromptVersion: vi.fn(),
+}));
+
 vi.mock("@/app/org/[githubLogin]/_state/useSendCanvasChatMessage", () => ({
   useSendCanvasChatMessage: () => vi.fn(),
 }));

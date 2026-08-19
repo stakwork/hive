@@ -156,7 +156,7 @@ export async function runProposalIntent(args: {
             : r.kind === "promptCreate"
               ? `Created the new prompt successfully.`
               : r.kind === "promptUpdate"
-                ? `Saved a new draft version of the prompt. It is not published yet — publish it from the Prompts management page when ready.`
+                ? `Saved a new draft version of the prompt. It is not published yet — publish it from this card when ready.`
                 : r.kind === "conceptCreate"
                   ? `Created the new concept successfully.`
                   : r.kind === "conceptUpdate"
