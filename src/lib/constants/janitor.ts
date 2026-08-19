@@ -1,5 +1,5 @@
 import { JanitorType, Priority } from "@prisma/client";
-import { FlaskConical, Zap, Monitor, Shield, Boxes, Wrench, Layers, BookOpen, LucideIcon } from "lucide-react";
+import { FlaskConical, Zap, Monitor, Shield, Boxes, Wrench, Layers, BookOpen, Brain, LucideIcon } from "lucide-react";
 
 /**
  * Janitor system error messages
@@ -30,6 +30,7 @@ export interface JanitorConfigFields {
   generalRefactoringEnabled: boolean;
   deduplicationEnabled: boolean;
   lingoExtractionEnabled: boolean;
+  conceptReviewEnabled: boolean;
   legalBenchmarkRecursionEnabled?: boolean;
 }
 
@@ -90,13 +91,23 @@ export const JANITOR_CONFIG: Record<JanitorType, {
     icon: BookOpen,
     enabledField: "lingoExtractionEnabled",
   },
+  CONCEPT_REVIEW: {
+    name: "Concept Review",
+    description: "Propose concept graph changes based on recent PRs and sessions.",
+    icon: Brain,
+    enabledField: "conceptReviewEnabled",
+  },
 } as const;
 
 /**
  * Janitor types that are dispatched through the GraphMindset proxy workflow.
  * These run workspace-wide (not per-repository) and do not produce Hive recommendations.
  */
-export const GRAPHMINDSET_JANITOR_TYPES: JanitorType[] = [JanitorType.DEDUPLICATION, JanitorType.LINGO_EXTRACTION];
+export const GRAPHMINDSET_JANITOR_TYPES: JanitorType[] = [
+  JanitorType.DEDUPLICATION,
+  JanitorType.LINGO_EXTRACTION,
+  JanitorType.CONCEPT_REVIEW,
+];
 
 /**
  * Maps GraphMindset janitor types to the job_type variable passed in the Stakwork payload.

@@ -15,6 +15,8 @@ const updateJanitorConfigSchema = z.object({
   recommendationSweepEnabled: z.boolean().optional(),
   ticketSweepEnabled: z.boolean().optional(),
   deduplicationEnabled: z.boolean().optional(),
+  lingoExtractionEnabled: z.boolean().optional(),
+  conceptReviewEnabled: z.boolean().optional(),
   legalBenchmarkRecursionEnabled: z.boolean().optional(),
   // Stale PR Task Janitor settings
   stalePrTasksEnabled: z.boolean().optional(),

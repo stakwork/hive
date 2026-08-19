@@ -47,6 +47,12 @@ export interface DismissRecommendationRequest {
   reason?: string;
 }
 
+export interface ConceptProposalPayload {
+  type: "create" | "update" | "merge" | "delete";
+  conceptId: string;
+  [key: string]: unknown;
+}
+
 export interface StakworkWebhookPayload {
   projectId: number;
   status: string;
@@ -61,6 +67,7 @@ export interface StakworkWebhookPayload {
       impact?: string;
       metadata?: Record<string, unknown>;
     }>;
+    proposals?: ConceptProposalPayload[];
   };
   error?: string;
 }
