@@ -107,7 +107,10 @@ export default async function RunReportPage({ params }: PageProps) {
   }
 
   return (
-    <div className="flex flex-col h-full">
+    <div
+      className="dark flex flex-col h-full bg-black text-white"
+      style={{ "--muted-foreground": "oklch(0.75 0 0)" } as React.CSSProperties}
+    >
       <div className="flex-1 overflow-y-auto px-6 py-5">
         <Link
           href={`/w/${slug}/legal/benchmarks`}
