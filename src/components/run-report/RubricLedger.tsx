@@ -162,8 +162,12 @@ function CriterionButton({
   contested: boolean;
   onSelect: (id: string) => void;
 }) {
-  const isDisputed = resolveJudgeDispute({ verdict: c.verdict, flagged: c.judgeFlagged, llm_flag_reason: c.judgeFlagReason }) !== null;
-  const isContested = contested;
+  const dispute = resolveJudgeDispute({
+    verdict: c.verdict,
+    flagged: c.judgeFlagged,
+    llm_flag_reason: c.judgeFlagReason,
+    flag_basis: c.judgeFlagBasis,
+  });
   return (
     <button
       type="button"
@@ -180,7 +184,11 @@ function CriterionButton({
       <span className={`${small ? "text-[11.5px] text-muted-foreground" : "text-[12px]"} truncate flex-1`}>
         {c.title}
       </span>
-      <CriterionMarkers disputed={isDisputed} contested={isContested} />
+      <CriterionMarkers
+        disputed={dispute?.isDispute}
+        contested={contested}
+        flagBasis={dispute?.flagBasis}
+      />
     </button>
   );
 }
@@ -280,106 +288,106 @@ export function RubricLedger({
           )}
         </div>
 
-        {selected && (
-          <div className="rounded-lg border border-border p-5">
-            <div className="flex items-baseline gap-3 mb-2">
-              <span className="font-mono text-[11px] text-muted-foreground/70">{selected.id}</span>
-              <h3 className="text-[16px] font-semibold flex-1">{selected.title}</h3>
-              <CriterionMarkers
-                disputed={resolveJudgeDispute({ verdict: selected.verdict, flagged: selected.judgeFlagged, llm_flag_reason: selected.judgeFlagReason }) !== null}
-                contested={contestedOf(selected)}
-              />
-              <StatusBadge
-                kind={selected.verdict === "pass" ? "pass" : selected.verdict === "fail" ? "fail" : "warn"}
-              >
-                {selected.verdict}
-              </StatusBadge>
-            </div>
-            {selected.matchCriteria && (
-              <div className="mb-3">
-                <div className="font-mono text-[9px] uppercase tracking-[0.12em] text-muted-foreground/70 mb-0.5">
-                  Criteria
-                </div>
-                <p className="text-[12.5px] text-muted-foreground whitespace-pre-wrap">
-                  {selected.matchCriteria}
-                </p>
+        {selected && (() => {
+          const detailDispute = resolveJudgeDispute({
+            verdict: selected.verdict,
+            flagged: selected.judgeFlagged,
+            llm_flag_reason: selected.judgeFlagReason,
+            flag_basis: selected.judgeFlagBasis,
+          });
+          return (
+            <div className="rounded-lg border border-border p-5">
+              <div className="flex items-baseline gap-3 mb-2">
+                <span className="font-mono text-[11px] text-muted-foreground/70">{selected.id}</span>
+                <h3 className="text-[16px] font-semibold flex-1">{selected.title}</h3>
+                <CriterionMarkers
+                  disputed={detailDispute?.isDispute}
+                  contested={contestedOf(selected)}
+                  flagBasis={detailDispute?.flagBasis}
+                />
+                <StatusBadge
+                  kind={selected.verdict === "pass" ? "pass" : selected.verdict === "fail" ? "fail" : "warn"}
+                >
+                  {selected.verdict}
+                </StatusBadge>
               </div>
-            )}
-            {selected.reasoning && (
-              <p className="text-[12.5px] text-muted-foreground border-l-2 border-border pl-3 mb-4 whitespace-pre-wrap">
-                <b className="text-foreground">Judge:</b> {selected.reasoning}
-              </p>
-            )}
-            {(() => {
-              // Treatment mirrors LegalBenchmarkResults' dispute panel; all
-              // interpretation of the wire keys stays in resolveJudgeDispute.
-              const dispute = resolveJudgeDispute({
-                verdict: selected.verdict,
-                flagged: selected.judgeFlagged,
-                llm_flag_reason: selected.judgeFlagReason,
-              });
-              if (!dispute) return null;
-              return (
+              {selected.matchCriteria && (
+                <div className="mb-3">
+                  <div className="font-mono text-[9px] uppercase tracking-[0.12em] text-muted-foreground/70 mb-0.5">
+                    Criteria
+                  </div>
+                  <p className="text-[12.5px] text-muted-foreground whitespace-pre-wrap">
+                    {selected.matchCriteria}
+                  </p>
+                </div>
+              )}
+              {selected.reasoning && (
+                <p className="text-[12.5px] text-muted-foreground border-l-2 border-border pl-3 mb-4 whitespace-pre-wrap">
+                  <b className="text-foreground">Judge:</b> {selected.reasoning}
+                </p>
+              )}
+              {detailDispute && (
                 <div
                   className="rounded border border-amber-500/40 bg-amber-500/[0.06] px-3.5 py-2.5 mb-4"
                   data-testid="run-report-judge-dispute"
+                  data-judge-state={detailDispute.isDispute ? "dispute" : "note"}
                 >
                   <div className="font-mono text-[9px] uppercase tracking-[0.12em] text-amber-700 dark:text-amber-400 mb-1">
-                    Judge review
+                    {detailDispute.isDispute ? "Judge Dispute" : "Judge Note"}
                   </div>
-                  <p className="text-[12.5px] whitespace-pre-wrap">{dispute.displayText}</p>
+                  <p className="text-[12.5px] whitespace-pre-wrap">{detailDispute.displayText}</p>
                   {selected.documentExcerpt && (
                     <blockquote className="mt-2 max-h-40 overflow-y-auto overscroll-contain border-l-2 border-amber-500/40 pl-3 text-[12px] text-muted-foreground whitespace-pre-wrap">
                       {selected.documentExcerpt}
                     </blockquote>
                   )}
                 </div>
-              );
-            })()}
-            {hasCommentary && selected.verdictNote && (
-              <div className="rounded border border-destructive/30 bg-destructive/[0.04] px-3.5 py-2.5 mb-4">
-                <div className="flex items-baseline gap-2">
-                  <StatusBadge kind="fail">{selected.verdictNote.classification || "root cause"}</StatusBadge>
-                  <span className="text-[13px]">{selected.verdictNote.rootCause}</span>
+              )}
+              {hasCommentary && selected.verdictNote && (
+                <div className="rounded border border-destructive/30 bg-destructive/[0.04] px-3.5 py-2.5 mb-4">
+                  <div className="flex items-baseline gap-2">
+                    <StatusBadge kind="fail">{selected.verdictNote.classification || "root cause"}</StatusBadge>
+                    <span className="text-[13px]">{selected.verdictNote.rootCause}</span>
+                  </div>
+                  {selected.verdictNote.fixes.length > 0 && (
+                    <ul className="list-disc pl-5 mt-1.5 space-y-0.5">
+                      {selected.verdictNote.fixes.map((f, i) => (
+                        <li key={i} className="text-[12.5px] text-muted-foreground">
+                          {f}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
                 </div>
-                {selected.verdictNote.fixes.length > 0 && (
-                  <ul className="list-disc pl-5 mt-1.5 space-y-0.5">
-                    {selected.verdictNote.fixes.map((f, i) => (
-                      <li key={i} className="text-[12.5px] text-muted-foreground">
-                        {f}
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-            )}
+              )}
 
-            <div className="divide-y divide-border/60">
-              {selected.hops.map((hop) => (
-                <div
-                  key={hop.n}
-                  className="grid grid-cols-[210px_minmax(0,1fr)] gap-4 py-3 first:pt-0 last:pb-0"
-                >
-                  <div className="font-mono text-[10px] uppercase tracking-[0.1em] text-muted-foreground/70 pt-0.5">
-                    <span className="text-muted-foreground/40 mr-1">{hop.n}</span>
-                    {hop.question}
+              <div className="divide-y divide-border/60">
+                {selected.hops.map((hop) => (
+                  <div
+                    key={hop.n}
+                    className="grid grid-cols-[210px_minmax(0,1fr)] gap-4 py-3 first:pt-0 last:pb-0"
+                  >
+                    <div className="font-mono text-[10px] uppercase tracking-[0.1em] text-muted-foreground/70 pt-0.5">
+                      <span className="text-muted-foreground/40 mr-1">{hop.n}</span>
+                      {hop.question}
+                    </div>
+                    <div>
+                      {hop.answer ? (
+                        <div className="flex items-center gap-2 text-[13px]">
+                          <span className={`inline-block h-2 w-2 rounded-full shrink-0 ${TONE_DOT[hop.tone]}`} />
+                          <span>{hop.answer}</span>
+                          <MethodTag method={hop.method} />
+                        </div>
+                      ) : null}
+                      <HopLinks links={hop.links} chain={chain} onOpenDoc={onOpenDoc} />
+                      <CommentarySlot hop={hop} show={hasCommentary} />
+                    </div>
                   </div>
-                  <div>
-                    {hop.answer ? (
-                      <div className="flex items-center gap-2 text-[13px]">
-                        <span className={`inline-block h-2 w-2 rounded-full shrink-0 ${TONE_DOT[hop.tone]}`} />
-                        <span>{hop.answer}</span>
-                        <MethodTag method={hop.method} />
-                      </div>
-                    ) : null}
-                    <HopLinks links={hop.links} chain={chain} onOpenDoc={onOpenDoc} />
-                    <CommentarySlot hop={hop} show={hasCommentary} />
-                  </div>
-                </div>
-              ))}
+                ))}
+              </div>
             </div>
-          </div>
-        )}
+          );
+        })()}
       </div>
     </section>
   );
