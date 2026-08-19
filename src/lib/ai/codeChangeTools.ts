@@ -8,7 +8,8 @@
  * ## What this tool does
  *
  * 1. Validates the caller-supplied `repositoryUrl` against the DB — must
- *    belong to the workspace and the workspace must have exactly one repo.
+ *    belong to the workspace. The workspace may own any number of repos; the
+ *    named one is the single `repo_url` that reaches the swarm.
  * 2. Fetches `baseBranchDisplay` live from GitHub (default_branch) rather
  *    than trusting `Repository.branch`.
  * 3. Runs a **read-only** `repo_agent` call without `toolsConfig.create_pr`
@@ -90,14 +91,16 @@ export function buildCodeChangeTools(ctx: CapabilityContext): ToolSet {
     [PROPOSE_CODE_CHANGE_TOOL]: tool({
       description:
         "Generate a real unified diff preview for a proposed code change " +
-        "in a single repository, then surface it as an approvable proposal card. " +
+        "in one repository, then surface it as an approvable proposal card. " +
         "The swarm runs a read-only analysis — no PR is opened during preview. " +
         "The user reviews the diff and clicks Approve to land it as a PR. " +
-        "**Requires exactly one repository in the workspace.** " +
-        "If the workspace has multiple repos, use `propose_feature` instead " +
-        "(the feature pipeline resolves the repo context). " +
-        "Do NOT use this for database migrations, schema changes, or large " +
-        "multi-file refactors — use `propose_feature` for those.",
+        "Works in workspaces with any number of repositories: name the target " +
+        "in `repositoryUrl`. Pick it from where the code you are changing " +
+        "actually lives — if you have not established that, investigate with " +
+        "`repo_agent` first, or ask the user. " +
+        "Use `propose_feature` instead when the change spans MORE THAN ONE " +
+        "repository, when you cannot tell which repository it belongs in, or " +
+        "for database migrations, schema changes, and large multi-file refactors.",
       inputSchema: z.object({
         workspaceSlug: z
           .string()
@@ -106,9 +109,11 @@ export function buildCodeChangeTools(ctx: CapabilityContext): ToolSet {
           .string()
           .url()
           .describe(
-            "HTTPS URL of the GitHub repository to patch " +
+            "HTTPS URL of the single GitHub repository to patch " +
               "(e.g. https://github.com/org/repo). " +
-              "Must be the single repository registered in the workspace.",
+              "Must be registered in the workspace — the workspace may own " +
+              "others. Choose the one containing the files you are changing; " +
+              "if that is unclear, use `propose_feature` instead of guessing.",
           ),
         title: z
           .string()
@@ -193,20 +198,20 @@ export function buildCodeChangeTools(ctx: CapabilityContext): ToolSet {
           };
         }
 
-        // Refuse multi-repo ambiguity — server-side enforcement mirrors the
-        // prompt guidance that routes multi-repo work to `propose_feature`.
-        const repoCount = await db.repository.count({
-          where: { workspaceId: workspace.id },
-        });
-        if (repoCount > 1) {
-          return {
-            error:
-              "This workspace has multiple repositories. " +
-              "`propose_code_change` requires exactly one — " +
-              "use `propose_feature` so the feature pipeline can resolve " +
-              "the correct repository context.",
-          };
-        }
+        // NOTE: the workspace's repository COUNT is deliberately not checked.
+        // `repositoryUrl` is a required input that has just been validated
+        // against this workspace, and it is the single explicit `repo_url` sent
+        // to both the read-only preview below and `create_pr` at approval time.
+        // That is the only thing the swarm contract actually requires —
+        // `LAND_CHANGE_ERR_MULTI_REPO` refuses a comma-separated list or an
+        // omitted repo_url, not a workspace that happens to own several repos
+        // (`Repository` is workspace-scoped, with no binding to the Swarm).
+        //
+        // Most workspaces have more than one repo, so gating on the count made
+        // the tool unreachable for the common case while adding no safety: a
+        // wrong repo choice is a judgment error, and it is caught where every
+        // other judgment error in this flow is caught — the approval card,
+        // which names the repo next to the diff and requires an explicit click.
 
         // ── 2. Swarm credentials ───────────────────────────────────────
         if (!workspace.swarm?.swarmUrl || !workspace.swarm.swarmApiKey) {
@@ -430,6 +435,10 @@ export function buildCodeChangeTools(ctx: CapabilityContext): ToolSet {
             filesChanged: diffs.length,
             baseBranchDisplay,
           },
+          // Stamped server-side from the tool's own context — never a caller
+          // input. The approval handler reads this back off the STORED
+          // transcript to enforce that only the originator can approve.
+          originatorUserId: ctx.userId,
           rationale:
             `Preview diff for '${title}' — ${diffs.length} file(s) changed. ` +
             `Base branch: ${baseBranchDisplay}. ` +

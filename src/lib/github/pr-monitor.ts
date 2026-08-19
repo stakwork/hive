@@ -1646,6 +1646,7 @@ export async function triggerLiveModeFix(
         phaseId: true,
         autoMerge: true,
         model: true,
+        proposalId: true,
         workspace: {
           select: {
             ownerId: true,
@@ -1673,12 +1674,37 @@ export async function triggerLiveModeFix(
       return { success: false, error: `Workflow already in progress (status: ${task.workflowStatus})` };
     }
 
-    // Prefer task creator; fall back to workspace owner if they have no GitHub credentials
+    // Prefer task creator; fall back to workspace owner if they have no GitHub credentials.
+    //
+    // IDENTITY GUARD for Jamie-originated tasks (proposalId non-null = system
+    // code-change task): if the task creator's credentials cannot be resolved,
+    // DO NOT silently escalate into the workspace owner's identity and budget.
+    // That would violate the requirement that PRs are authored by the approving
+    // user's own identity. Instead, skip the fix and record why.
     const creatorCredentials = await getGithubUsernameAndPAT(
       task.createdById,
       task.workspace.slug,
     );
     if (!creatorCredentials) {
+      // Jamie-originated system task: refuse the identity escalation.
+      // Use != null (covers both null and undefined) since Prisma returns null
+      // for absent nullable fields while test mocks may return undefined.
+      if (task.proposalId != null) {
+        log.warn(
+          "Skipping live mode fix for Jamie task — creator credentials missing, refusing owner escalation",
+          {
+            taskId,
+            createdById: task.createdById,
+            proposalId: task.proposalId,
+          },
+        );
+        return {
+          success: false,
+          error:
+            "Creator credentials not available for this Jamie-originated task. " +
+            "Fix skipped to avoid identity escalation.",
+        };
+      }
       log.info("Task creator has no GitHub credentials, falling back to workspace owner", {
         taskId,
         createdById: task.createdById,
