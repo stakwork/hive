@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import type { JarvisNode } from "@/types/jarvis";
 
@@ -32,6 +33,7 @@ export function EditRequirementModal({
   const { slug } = useWorkspace();
   const [name, setName] = useState("");
   const [reason, setReason] = useState("");
+  const [contested, setContested] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
 
@@ -40,6 +42,7 @@ export function EditRequirementModal({
     if (open) {
       setName(String(requirement.properties?.name ?? ""));
       setReason(String(requirement.properties?.description ?? ""));
+      setContested(Boolean(requirement.properties?.contested));
       setError("");
     }
   }, [open, requirement]);
@@ -69,6 +72,8 @@ export function EditRequirementModal({
       ? props.undesirable_cases
       : undefined;
 
+    // Always send the contested value (switch is always shown and pre-populated,
+    // so the user's current toggle state is always intentional).
     try {
       const res = await fetch(
         `/api/workspaces/${slug}/evals/${evalSetId}/requirements/${requirement.ref_id}`,
@@ -81,21 +86,32 @@ export function EditRequirementModal({
             prompt_snippet: promptSnippet,
             desirable_cases: desirableCases,
             undesirable_cases: undesirableCases,
+            contested,
           }),
         },
       );
 
-      if (!res.ok) throw new Error("Request failed");
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error((data as { error?: string }).error ?? "Request failed");
+      }
 
       toast.success("Requirement updated");
       onUpdated();
       handleClose();
-    } catch {
-      toast.error("Failed to update requirement");
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? err.message : "Failed to update requirement",
+      );
     } finally {
       setSubmitting(false);
     }
   }
+
+  const contestReason =
+    typeof requirement.properties?.contest_reason === "string"
+      ? requirement.properties.contest_reason
+      : null;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -130,6 +146,41 @@ export function EditRequirementModal({
               onChange={(e) => setReason(e.target.value)}
               placeholder="Why does this matter?"
             />
+          </div>
+
+          {/* Contested toggle — governs criterion definition, not historical runs */}
+          <div className="rounded-md border p-3 space-y-2">
+            {contestReason && (
+              <div className="space-y-1">
+                <Label className="text-xs text-muted-foreground">
+                  Contest reason (agent-authored, read-only)
+                </Label>
+                <p
+                  className="rounded bg-muted px-2 py-1.5 text-xs text-muted-foreground"
+                  data-testid="contest-reason-display"
+                >
+                  {contestReason}
+                </p>
+              </div>
+            )}
+            <div className="flex items-center justify-between gap-3">
+              <div className="space-y-0.5">
+                <Label htmlFor="edit-req-contested" className="text-sm font-medium">
+                  Contested
+                </Label>
+                <p className="text-xs text-muted-foreground">
+                  Marks this criterion definition as suspect. Applies to subsequent
+                  runs — historical run results are immutable snapshots and are not
+                  affected.
+                </p>
+              </div>
+              <Switch
+                id="edit-req-contested"
+                checked={contested}
+                onCheckedChange={setContested}
+                data-testid="contested-switch"
+              />
+            </div>
           </div>
 
           <DialogFooter>

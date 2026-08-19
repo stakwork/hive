@@ -111,7 +111,8 @@ export interface BenchmarkRunResult {
     /**
      * Contested flag: set by the contest agent when the criterion *definition*
      * is considered broken/invalid. Independent of verdict — a passing criterion
-     * can also be contested. Nothing emits this yet; ships dark.
+     * can also be contested. Human-overridable via the eval set editor.
+     * Nothing emits this yet; ships dark (tracked same external dependency as `flagged`).
      */
     contested?: boolean;
   }>;

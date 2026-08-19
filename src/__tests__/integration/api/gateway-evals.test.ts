@@ -42,6 +42,11 @@ vi.mock("@/services/bifrost/orchestrator", () => ({
   BIFROST_AGENT_NAMES: ["repo-agent", "canvas-agent"],
 }));
 
+vi.mock("@/lib/rate-limit", () => ({
+  checkRateLimit: vi.fn().mockResolvedValue({ allowed: true }),
+  getClientIp: vi.fn().mockReturnValue("127.0.0.1"),
+}));
+
 import { getBifrostForLLM } from "@/services/bifrost/orchestrator";
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -396,10 +401,13 @@ describe("POST /api/gateway/evals/:setId/requirements", () => {
   test("returns ref_id on successful create", async () => {
     const ctx = await createTestContext(RAW_KEY_1, SWARM_NAME_1 + "-req-post");
 
-    // First fetch: sibling count
+    // First fetch: IDOR ownership check + sibling count (HAS_REQUIREMENT expand)
     mockFetch.mockResolvedValueOnce({
       ok: true,
-      json: async () => ({ nodes: [], edges: [] }),
+      json: async () => ({
+        nodes: [{ ref_id: SET_ID, node_type: "EvalSet", properties: {} }],
+        edges: [],
+      }),
     } as Response);
     // Second fetch: addNode
     mockFetch.mockResolvedValueOnce({
@@ -463,6 +471,18 @@ describe("PUT /api/gateway/evals/:setId/requirements/:reqId", () => {
   test("returns 204 on successful update", async () => {
     const ctx = await createTestContext(RAW_KEY_1, SWARM_NAME_1 + "-req-put");
 
+    // First fetch: IDOR ownership check (HAS_REQUIREMENT edge expand)
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        nodes: [
+          { ref_id: SET_ID, node_type: "EvalSet", properties: {} },
+          { ref_id: REQ_ID, node_type: "EvalRequirement", properties: {} },
+        ],
+        edges: [],
+      }),
+    } as Response);
+    // Second fetch: updateNode
     mockFetch.mockResolvedValueOnce({
       ok: true,
       json: async () => ({ status: "success" }),
@@ -499,6 +519,18 @@ describe("DELETE /api/gateway/evals/:setId/requirements/:reqId", () => {
   test("returns 204 on successful delete", async () => {
     const ctx = await createTestContext(RAW_KEY_1, SWARM_NAME_1 + "-req-del");
 
+    // First fetch: IDOR ownership check (HAS_REQUIREMENT expand)
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        nodes: [
+          { ref_id: SET_ID, node_type: "EvalSet", properties: {} },
+          { ref_id: REQ_ID, node_type: "EvalRequirement", properties: {} },
+        ],
+        edges: [],
+      }),
+    } as Response);
+    // Second fetch: deleteNode
     mockFetch.mockResolvedValueOnce({
       ok: true,
       json: async () => ({ status: "success" }),
@@ -871,5 +903,332 @@ describe("POST /api/gateway/evals/:setId/requirements/:reqId/run", () => {
     });
     expect(res.status).toBe(502);
     void ctx;
+  });
+});
+
+// ── `contested` field — gateway POST and PUT ──────────────────────────────────
+
+describe("contested field — gateway POST /api/gateway/evals/:setId/requirements", () => {
+  function mockSiblingsOk() {
+    // Returns the set node (required for fail-closed ownership check) with no
+    // existing requirements, so siblingCount = 0.
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        nodes: [{ ref_id: SET_ID, node_type: "EvalSet", properties: {} }],
+        edges: [],
+      }),
+    } as Response);
+  }
+  function mockAddNodeOk(refId = "new-req-ref") {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ status: "success", data: { ref_id: refId } }),
+    } as Response);
+  }
+  function mockAddEdgeOk() {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ status: "success", edges: [{}] }),
+    } as Response);
+  }
+
+  test("omitting contested defaults to false in node_data", async () => {
+    const ctx = await createTestContext(RAW_KEY_1, SWARM_NAME_1 + "-contested-default");
+    mockSiblingsOk();
+    mockAddNodeOk();
+    mockAddEdgeOk();
+
+    const req = makeRequest(
+      "POST",
+      `http://localhost/api/gateway/evals/${SET_ID}/requirements`,
+      RAW_KEY_1,
+      { name: "Req without contested" },
+    );
+    const res = await postRequirement(req as any, {
+      params: Promise.resolve({ setId: SET_ID }),
+    });
+    expect(res.status).toBe(201);
+
+    // The addNode call (second fetch) should have contested: false in node_data
+    const addNodeCall = mockFetch.mock.calls[1];
+    if (addNodeCall) {
+      const body = JSON.parse(addNodeCall[1].body as string);
+      expect(body.node_data?.contested).toBe(false);
+    }
+    void ctx;
+  });
+
+  test("contested: true is passed as boolean true in node_data", async () => {
+    const ctx = await createTestContext(RAW_KEY_1, SWARM_NAME_1 + "-contested-true");
+    mockSiblingsOk();
+    mockAddNodeOk();
+    mockAddEdgeOk();
+
+    const req = makeRequest(
+      "POST",
+      `http://localhost/api/gateway/evals/${SET_ID}/requirements`,
+      RAW_KEY_1,
+      { name: "Contested req", contested: true },
+    );
+    const res = await postRequirement(req as any, {
+      params: Promise.resolve({ setId: SET_ID }),
+    });
+    expect(res.status).toBe(201);
+
+    const addNodeCall = mockFetch.mock.calls[1];
+    if (addNodeCall) {
+      const body = JSON.parse(addNodeCall[1].body as string);
+      expect(body.node_data?.contested).toBe(true);
+    }
+    void ctx;
+  });
+
+  test('contested: "true" (string) is coerced to boolean true', async () => {
+    const ctx = await createTestContext(RAW_KEY_1, SWARM_NAME_1 + "-contested-str-true");
+    mockSiblingsOk();
+    mockAddNodeOk();
+    mockAddEdgeOk();
+
+    const req = makeRequest(
+      "POST",
+      `http://localhost/api/gateway/evals/${SET_ID}/requirements`,
+      RAW_KEY_1,
+      { name: "Req with string contested", contested: "true" },
+    );
+    const res = await postRequirement(req as any, {
+      params: Promise.resolve({ setId: SET_ID }),
+    });
+    expect(res.status).toBe(201);
+
+    const addNodeCall = mockFetch.mock.calls[1];
+    if (addNodeCall) {
+      const body = JSON.parse(addNodeCall[1].body as string);
+      expect(body.node_data?.contested).toBe(true);
+    }
+    void ctx;
+  });
+
+  test('contested: "maybe" returns 400 with field message', async () => {
+    const ctx = await createTestContext(RAW_KEY_1, SWARM_NAME_1 + "-contested-bad");
+
+    // Rate limit fetch + sibling fetch may not happen if validation fails first
+    const req = makeRequest(
+      "POST",
+      `http://localhost/api/gateway/evals/${SET_ID}/requirements`,
+      RAW_KEY_1,
+      { name: "Bad contested", contested: "maybe" },
+    );
+    const res = await postRequirement(req as any, {
+      params: Promise.resolve({ setId: SET_ID }),
+    });
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error).toMatch(/contested/i);
+    void ctx;
+  });
+});
+
+describe("contested field — gateway PUT /api/gateway/evals/:setId/requirements/:reqId", () => {
+  function mockOwnershipOk(reqId = REQ_ID, contested?: boolean) {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        nodes: [
+          {
+            ref_id: SET_ID,
+            node_type: "EvalSet",
+            properties: {},
+          },
+          {
+            ref_id: reqId,
+            node_type: "EvalRequirement",
+            properties: contested !== undefined ? { contested } : {},
+          },
+        ],
+        edges: [],
+      }),
+    } as Response);
+  }
+  function mockUpdateNodeOk() {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ status: "success" }),
+    } as Response);
+  }
+
+  test("omitting contested means key is absent from updateNode payload (tri-state)", async () => {
+    const ctx = await createTestContext(RAW_KEY_1, SWARM_NAME_1 + "-put-omit");
+    mockOwnershipOk(REQ_ID, true); // stored as true
+    mockUpdateNodeOk();
+
+    const req = makeRequest(
+      "PUT",
+      `http://localhost/api/gateway/evals/${SET_ID}/requirements/${REQ_ID}`,
+      RAW_KEY_1,
+      { name: "Name only edit" }, // no contested key
+    );
+    const res = await putRequirement(req as any, {
+      params: Promise.resolve({ setId: SET_ID, reqId: REQ_ID }),
+    });
+    expect(res.status).toBe(204);
+
+    // The updateNode call (second fetch) must NOT contain contested key
+    const updateCall = mockFetch.mock.calls[1];
+    if (updateCall) {
+      const body = JSON.parse(updateCall[1].body as string);
+      expect(Object.keys(body.node_data ?? {})).not.toContain("contested");
+    }
+    void ctx;
+  });
+
+  test("contested: false is sent explicitly when provided", async () => {
+    const ctx = await createTestContext(RAW_KEY_1, SWARM_NAME_1 + "-put-false");
+    mockOwnershipOk(REQ_ID, true);
+    mockUpdateNodeOk();
+
+    const req = makeRequest(
+      "PUT",
+      `http://localhost/api/gateway/evals/${SET_ID}/requirements/${REQ_ID}`,
+      RAW_KEY_1,
+      { name: "Clear contested", contested: false },
+    );
+    const res = await putRequirement(req as any, {
+      params: Promise.resolve({ setId: SET_ID, reqId: REQ_ID }),
+    });
+    expect(res.status).toBe(204);
+
+    const updateCall = mockFetch.mock.calls[1];
+    if (updateCall) {
+      const body = JSON.parse(updateCall[1].body as string);
+      expect(body.node_data?.contested).toBe(false);
+    }
+    void ctx;
+  });
+
+  test('contested: "TRUE" (string) is coerced to boolean true', async () => {
+    const ctx = await createTestContext(RAW_KEY_1, SWARM_NAME_1 + "-put-str");
+    mockOwnershipOk();
+    mockUpdateNodeOk();
+
+    const req = makeRequest(
+      "PUT",
+      `http://localhost/api/gateway/evals/${SET_ID}/requirements/${REQ_ID}`,
+      RAW_KEY_1,
+      { name: "String contested", contested: "TRUE" },
+    );
+    const res = await putRequirement(req as any, {
+      params: Promise.resolve({ setId: SET_ID, reqId: REQ_ID }),
+    });
+    expect(res.status).toBe(204);
+
+    const updateCall = mockFetch.mock.calls[1];
+    if (updateCall) {
+      const body = JSON.parse(updateCall[1].body as string);
+      expect(body.node_data?.contested).toBe(true);
+    }
+    void ctx;
+  });
+
+  test('contested: "invalid" returns 400 with field message', async () => {
+    const ctx = await createTestContext(RAW_KEY_1, SWARM_NAME_1 + "-put-bad");
+
+    const req = makeRequest(
+      "PUT",
+      `http://localhost/api/gateway/evals/${SET_ID}/requirements/${REQ_ID}`,
+      RAW_KEY_1,
+      { name: "Bad contested", contested: "invalid" },
+    );
+    const res = await putRequirement(req as any, {
+      params: Promise.resolve({ setId: SET_ID, reqId: REQ_ID }),
+    });
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error).toMatch(/contested/i);
+    void ctx;
+  });
+
+  test("reqId not in eval set returns 404 before any write", async () => {
+    const ctx = await createTestContext(RAW_KEY_1, SWARM_NAME_1 + "-put-idor");
+    // Ownership check: setId exists but reqId is NOT among its requirements
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        nodes: [
+          { ref_id: SET_ID, node_type: "EvalSet", properties: {} },
+          // A different req — not REQ_ID
+          {
+            ref_id: "other-req-id",
+            node_type: "EvalRequirement",
+            properties: {},
+          },
+        ],
+        edges: [],
+      }),
+    } as Response);
+
+    const req = makeRequest(
+      "PUT",
+      `http://localhost/api/gateway/evals/${SET_ID}/requirements/${REQ_ID}`,
+      RAW_KEY_1,
+      { name: "IDOR attempt" },
+    );
+    const res = await putRequirement(req as any, {
+      params: Promise.resolve({ setId: SET_ID, reqId: REQ_ID }),
+    });
+    expect(res.status).toBe(404);
+
+    // updateNode (second fetch) must NOT have been called
+    const updateCalls = mockFetch.mock.calls.filter((call) =>
+      String(call[0]).includes("/node?") || String(call[1]?.method ?? "GET") === "PUT",
+    );
+    expect(updateCalls.length).toBe(0);
+    void ctx;
+  });
+
+  test("mock PUT 404s when USE_MOCKS is not 'true'", async () => {
+    const prev = process.env.USE_MOCKS;
+    delete process.env.USE_MOCKS;
+    try {
+      const { PUT: mockPut } = await import(
+        "@/app/api/mock/evals/[evalSetId]/requirements/[reqId]/route"
+      );
+      const req = new Request(
+        `http://localhost/api/mock/evals/eval-set-1/requirements/req-1-1`,
+        {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name: "test" }),
+        },
+      );
+      const res = await mockPut(req as any, {
+        params: Promise.resolve({ evalSetId: "eval-set-1", reqId: "req-1-1" }),
+      });
+      expect(res.status).toBe(404);
+    } finally {
+      if (prev !== undefined) process.env.USE_MOCKS = prev;
+    }
+  });
+
+  test("mock POST 404s when USE_MOCKS is not 'true'", async () => {
+    const prev = process.env.USE_MOCKS;
+    delete process.env.USE_MOCKS;
+    try {
+      const { POST: mockPost } = await import(
+        "@/app/api/mock/evals/[evalSetId]/requirements/route"
+      );
+      const req = new Request(
+        `http://localhost/api/mock/evals/eval-set-1/requirements`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name: "test" }),
+        },
+      );
+      const res = await mockPost(req as any);
+      expect(res.status).toBe(404);
+    } finally {
+      if (prev !== undefined) process.env.USE_MOCKS = prev;
+    }
   });
 });

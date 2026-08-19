@@ -172,15 +172,35 @@ describe("EditRequirementModal", () => {
     });
   });
 
-  it("shows error toast when request fails", async () => {
-    global.fetch = vi.fn().mockResolvedValue({ ok: false }) as any;
+  it("shows error toast when request fails (generic)", async () => {
+    // When the server returns ok:false with no error body, the component
+    // surfaces the fallback message from the thrown Error.
+    global.fetch = vi.fn().mockResolvedValue({ ok: false, json: async () => ({}) }) as any;
 
     render(<EditRequirementModal {...defaultProps} />);
 
     await userEvent.click(screen.getByRole("button", { name: "Save" }));
 
     await waitFor(() => {
-      expect(toast.error).toHaveBeenCalledWith("Failed to update requirement");
+      expect(toast.error).toHaveBeenCalledWith("Request failed");
+    });
+    expect(defaultProps.onUpdated).not.toHaveBeenCalled();
+  });
+
+  it("shows server error message in toast when request fails with error body", async () => {
+    // When the server returns ok:false with a specific error message, the
+    // component surfaces that message rather than a generic fallback.
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: false,
+      json: async () => ({ error: "Insufficient permissions to set contested" }),
+    }) as any;
+
+    render(<EditRequirementModal {...defaultProps} />);
+
+    await userEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith("Insufficient permissions to set contested");
     });
     expect(defaultProps.onUpdated).not.toHaveBeenCalled();
   });
