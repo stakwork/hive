@@ -1,4 +1,5 @@
 import { createConsumer } from '@anycable/web';
+import { cableUrl } from '@/lib/anycable';
 import type { WorkflowEditData } from '@/types/stakwork/websocket';
 
 class WorkflowEdit {
@@ -8,7 +9,7 @@ class WorkflowEdit {
   private onUpdate: (data: WorkflowEditData) => void;
 
   constructor(railsEnv: string, workflowId: string, onUpdate: (data: WorkflowEditData) => void) {
-    this.cable = createConsumer();
+    this.cable = createConsumer(cableUrl(railsEnv));
     this.workflowId = workflowId;
     this.onUpdate = onUpdate;
   }
