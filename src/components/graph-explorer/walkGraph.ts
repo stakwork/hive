@@ -14,14 +14,18 @@ export interface RawGraph {
 export function detailToRawGraph(detail: GraphNodeDetailResponse): RawGraph {
   const seen = new Set<string>([detail.node.ref_id]);
   const nodes: RawNode[] = [
-    { id: detail.node.ref_id, label: detail.node.name || detail.node.ref_id },
+    {
+      id: detail.node.ref_id,
+      label: detail.node.name || detail.node.ref_id,
+      nodeType: detail.node.node_type,
+    },
   ];
   const edges: RawEdge[] = [];
 
   for (const n of detail.neighbors) {
     if (!seen.has(n.ref_id)) {
       seen.add(n.ref_id);
-      nodes.push({ id: n.ref_id, label: n.name || n.ref_id });
+      nodes.push({ id: n.ref_id, label: n.name || n.ref_id, nodeType: n.node_type });
     }
     // `direction` is relative to the queried node: forward = it's the source.
     edges.push(

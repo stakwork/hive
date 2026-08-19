@@ -3,6 +3,8 @@ import type { Graph, GraphEdge } from "./types";
 export interface RawNode {
   id: string;
   label: string;
+  /** Source node label (File, Function, Concept…) — drives 2D type coloring. */
+  nodeType?: string;
   link?: string;
   icon?: string;
   status?: "executing" | "done" | "idle";
