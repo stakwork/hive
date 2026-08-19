@@ -181,7 +181,7 @@ function SignInContent() {
                       data-testid="mock-signin-button"
                       onClick={handleMockSignIn}
                       disabled={isMockSigningIn || isSigningIn}
-                      className="w-full h-12 text-base font-medium bg-orange-500 text-white hover:bg-orange-600 transition-colors disabled:opacity-50"
+                      className="w-full h-12 text-base font-medium bg-blue-500 text-white hover:bg-blue-600 transition-colors disabled:opacity-50"
                     >
                       {isMockSigningIn ? (
                         <>
@@ -285,7 +285,7 @@ function SignInContent() {
                     data-testid="mock-signin-button"
                     onClick={handleMockSignIn}
                     disabled={isMockSigningIn || isSigningIn}
-                    className="w-full h-12 text-base font-medium bg-orange-500 text-white hover:bg-orange-600 transition-colors disabled:opacity-50"
+                    className="w-full h-12 text-base font-medium bg-blue-500 text-white hover:bg-blue-600 transition-colors disabled:opacity-50"
                   >
                     {isMockSigningIn ? (
                       <>
