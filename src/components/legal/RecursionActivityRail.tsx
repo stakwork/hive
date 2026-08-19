@@ -1,7 +1,7 @@
 "use client";
 
 import { formatDistanceToNow } from "date-fns";
-import { FileText, Loader2 } from "lucide-react";
+import { FileText, Loader2, Repeat } from "lucide-react";
 import { StakworkRunLink } from "@/components/legal/StakworkRunLink";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import type { AttemptRailRow } from "@/hooks/useEvalRunHistory";
@@ -19,19 +19,29 @@ interface RecursionActivityRailProps {
  * exists in Jarvis but no StakworkRun matched) and renders as an em dash
  * rather than pretending to know.
  */
-const STATUS_STYLES: Record<string, { dot: string; text: string; label: string }> = {
+const STATUS_STYLES: Record<string, { dot: string; text: string; label: string; wordy?: boolean }> = {
   PENDING: { dot: "bg-gray-400", text: "text-muted-foreground", label: "pending" },
   IN_PROGRESS: { dot: "bg-blue-500", text: "text-blue-700 dark:text-blue-300", label: "running" },
   COMPLETED: { dot: "bg-green-600", text: "text-green-700 dark:text-green-400", label: "completed" },
-  ERROR: { dot: "bg-red-500", text: "text-red-700 dark:text-red-400", label: "error" },
-  FAILED: { dot: "bg-red-500", text: "text-red-700 dark:text-red-400", label: "failed" },
+  // Exceptional states keep their word — a red dot alone under-sells a failure.
+  ERROR: { dot: "bg-red-500", text: "text-red-700 dark:text-red-400", label: "error", wordy: true },
+  FAILED: { dot: "bg-red-500", text: "text-red-700 dark:text-red-400", label: "failed", wordy: true },
   HALTED: { dot: "bg-gray-400", text: "text-muted-foreground", label: "halted" },
 };
 
+/**
+ * Icons carry the state: spinner = running, colored dot = terminal, em dash =
+ * graph-only. The word rides in the tooltip; only failure states spell it out.
+ */
 function RowStatus({ row }: { row: AttemptRailRow }) {
   if (!row.status) {
     return (
-      <span className="text-xs text-muted-foreground/60" data-testid={`rail-status-${row.key}`}>
+      <span
+        className="text-xs text-muted-foreground/60"
+        title="No StakworkRun recorded for this attempt — it exists in the graph only."
+        data-testid={`rail-status-${row.key}`}
+        data-status="none"
+      >
         —
       </span>
     );
@@ -44,31 +54,40 @@ function RowStatus({ row }: { row: AttemptRailRow }) {
   return (
     <span
       className={`flex items-center gap-1.5 text-xs whitespace-nowrap ${style.text}`}
+      title={style.label}
       data-testid={`rail-status-${row.key}`}
+      data-status={row.status}
     >
       {row.inFlight ? (
-        <Loader2 className="h-3 w-3 animate-spin shrink-0" />
+        <Loader2 className="h-3 w-3 animate-spin shrink-0" aria-label={style.label} />
       ) : (
-        <span className={`h-1.5 w-1.5 rounded-full shrink-0 ${style.dot}`} />
+        <span className={`h-1.5 w-1.5 rounded-full shrink-0 ${style.dot}`} aria-label={style.label} />
       )}
-      {style.label}
+      {style.wordy && style.label}
     </span>
   );
 }
 
-/** Row identity chip: the chart label when charted, else the pipeline name. */
+/**
+ * Row identity: the chart label when charted; the recursion-loop icon for
+ * run-only rows (in-flight pipeline work with no dot yet) — the stage name
+ * rides in the tooltip rather than cluttering the rail.
+ */
 function RowLabel({ row }: { row: AttemptRailRow }) {
   if (row.label) {
     return (
-      <span className="font-mono text-xs font-medium w-9 shrink-0 tabular-nums">{row.label}</span>
+      <span className="font-mono text-xs font-medium tabular-nums">{row.label}</span>
     );
   }
-  // Pipeline names, not internal jargon: LEGAL_BENCHMARK_RECURSION drives the
-  // loop ("recursion"); LEGAL_BENCHMARK_EVAL is failure analysis — its webhook
-  // writes cause annotations, never a score ("analysis").
+  const stage =
+    row.runType === "recursion"
+      ? "recursion loop — fix proposal"
+      : row.runType === "eval"
+        ? "recursion loop — failure analysis"
+        : "run";
   return (
-    <span className="text-xs italic text-muted-foreground shrink-0">
-      {row.runType === "recursion" ? "recursion" : row.runType === "eval" ? "analysis" : "run"}
+    <span title={stage} data-testid={`rail-pipeline-${row.key}`}>
+      <Repeat className="h-3 w-3 text-teal-700 dark:text-teal-400" aria-label={stage} />
     </span>
   );
 }
@@ -126,30 +145,34 @@ export function RecursionActivityRail({ rows, partial }: RecursionActivityRailPr
   return (
     <div className="flex flex-col min-h-0" data-testid="activity-rail">
       <div className="flex-1 overflow-y-auto max-h-[176px] pr-1" role="list" aria-label="Attempt activity">
+        {/* One shared grid template so every column lines up across rows:
+            label | status icon | relative time | trailing links + score. */}
         {rows.map((row) => (
           <div
             key={row.key}
             role="listitem"
-            className="flex items-center gap-2 py-1 border-b border-border/40 last:border-0"
+            className="grid grid-cols-[2.75rem_3.5rem_minmax(0,1fr)_auto] items-center gap-x-2 py-1 border-b border-border/40 last:border-0"
             data-testid={`rail-row-${row.key}`}
           >
             <RowLabel row={row} />
             <RowStatus row={row} />
             <span
-              className="text-xs text-muted-foreground whitespace-nowrap truncate min-w-0 flex-1"
+              className="text-xs text-muted-foreground whitespace-nowrap truncate"
               title={row.timestamp ?? undefined}
             >
               {row.timestamp
                 ? formatDistanceToNow(new Date(row.timestamp), { addSuffix: true })
                 : "—"}
             </span>
-            <RowReport row={row} workspaceSlug={workspaceSlug} />
-            {row.score && (
-              <span className="font-mono text-xs tabular-nums whitespace-nowrap">
-                {row.score.passed}/{row.score.total}
-              </span>
-            )}
-            <StakworkRunLink projectId={row.projectId} isSuperAdmin={isSuperAdmin} />
+            <span className="flex items-center gap-2 justify-end">
+              <RowReport row={row} workspaceSlug={workspaceSlug} />
+              {row.score && (
+                <span className="font-mono text-xs tabular-nums whitespace-nowrap">
+                  {row.score.passed}/{row.score.total}
+                </span>
+              )}
+              <StakworkRunLink projectId={row.projectId} isSuperAdmin={isSuperAdmin} />
+            </span>
           </div>
         ))}
       </div>

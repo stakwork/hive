@@ -46,13 +46,17 @@ describe("RecursionActivityRail", () => {
     expect(screen.getByTestId("activity-rail-empty")).toBeTruthy();
   });
 
-  it("renders label, status, score and relative time per row", () => {
+  it("renders label, status icon, score and relative time per row", () => {
     render(<RecursionActivityRail rows={[makeRow()]} partial={false} />);
     const row = screen.getByTestId("rail-row-trigger-1");
     expect(row.textContent).toContain("base");
-    expect(row.textContent).toContain("completed");
     expect(row.textContent).toContain("50/74");
     expect(row.textContent).toContain("ago");
+    // Terminal success is a dot with a tooltip — no word cluttering the rail
+    const status = screen.getByTestId("rail-status-trigger-1");
+    expect(status.getAttribute("data-status")).toBe("COMPLETED");
+    expect(status.getAttribute("title")).toBe("completed");
+    expect(status.textContent).not.toContain("completed");
   });
 
   it("renders a graph-only row with an em dash for status", () => {
@@ -65,24 +69,40 @@ describe("RecursionActivityRail", () => {
     expect(screen.getByTestId("rail-status-trigger-1").textContent).toBe("—");
   });
 
-  it("shows a spinner-style running state for in-flight rows", () => {
+  it("in-flight rows spin without the word 'running'", () => {
     render(
       <RecursionActivityRail
         rows={[makeRow({ status: "IN_PROGRESS", inFlight: true, score: null })]}
         partial={false}
       />,
     );
-    expect(screen.getByTestId("rail-status-trigger-1").textContent).toContain("running");
+    const status = screen.getByTestId("rail-status-trigger-1");
+    expect(status.getAttribute("data-status")).toBe("IN_PROGRESS");
+    expect(status.textContent).not.toContain("running");
+    expect(status.querySelector(".animate-spin")).not.toBeNull();
   });
 
-  it("labels a run-only recursion row by pipeline name", () => {
+  it("failure states keep their word — a red dot alone under-sells them", () => {
+    render(
+      <RecursionActivityRail
+        rows={[makeRow({ status: "FAILED", score: null })]}
+        partial={false}
+      />,
+    );
+    expect(screen.getByTestId("rail-status-trigger-1").textContent).toContain("failed");
+  });
+
+  it("marks a run-only row with the loop icon, stage in the tooltip — no words", () => {
     render(
       <RecursionActivityRail
         rows={[makeRow({ key: "rec-1", label: null, attemptIndex: null, runType: "recursion", status: "PENDING", inFlight: true, score: null })]}
         partial={false}
       />,
     );
-    expect(screen.getByTestId("rail-row-rec-1").textContent).toContain("recursion");
+    const icon = screen.getByTestId("rail-pipeline-rec-1");
+    expect(icon.getAttribute("title")).toMatch(/recursion loop/i);
+    expect(screen.getByTestId("rail-row-rec-1").textContent).not.toContain("analysis");
+    expect(screen.getByTestId("rail-row-rec-1").textContent).not.toContain("recursion");
   });
 
   it("links to the report when the bundle exists", () => {
