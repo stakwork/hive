@@ -51,7 +51,7 @@ const ALL_PASS: Bundle = (() => {
   pageData.rubrics = rubrics.map((r) => {
     // Strip the judge-review keys with the verdict rewrite: a passing
     // criterion carrying a dispute is a shape no producer emits.
-    const { flagged: _f, llm_flag_reason: _r, document_excerpt: _e, ...rest } = r;
+    const { flagged: _f, llm_flag_reason: _r, document_excerpt: _e, flag_basis: _b, ...rest } = r;
     return { ...rest, verdict: "pass", reasoning: "Satisfied." };
   });
 

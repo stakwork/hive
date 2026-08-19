@@ -793,7 +793,7 @@ describe("LegalBenchmarkResults", () => {
     const lines = copied.split("\n");
     // header + 2 criteria = 3 lines total
     expect(lines).toHaveLength(3);
-    expect(lines[0]).toBe("Verdict\tID\tTitle\tReasoning\tJudge Dispute\tContested");
+    expect(lines[0]).toBe("Verdict\tID\tTitle\tReasoning\tDisputed\tJudge Reason\tContested");
     // no embedded newlines or tabs remain in data rows
     expect(lines[1]).not.toContain("\n");
     expect(lines[2]).not.toContain("\n");
@@ -926,7 +926,7 @@ describe("LegalBenchmarkResults", () => {
     expect(screen.getByText("Disputed — no explanation provided")).toBeInTheDocument();
   });
 
-  it("renders Judge Dispute for prose-only case (no flagged field)", () => {
+  it("renders Judge Note (not Judge Dispute) for prose-only case (no flagged field)", () => {
     const criteriaResults: CriterionFixture[] = [
       {
         id: "crit-1",
@@ -945,8 +945,12 @@ describe("LegalBenchmarkResults", () => {
 
     render(React.createElement(LegalBenchmarkResults, { runId: "run-abc", onReset }));
 
-    expect(screen.getByText("Judge Dispute")).toBeInTheDocument();
+    // prose renders under "Judge Note", not "Judge Dispute" — not a real dispute
+    expect(screen.queryByText("Judge Dispute")).toBeNull();
+    expect(screen.getByText("Judge Note")).toBeInTheDocument();
     expect(screen.getByText("The citation numbers are correct per source.")).toBeInTheDocument();
+    // no DISPUTED badge — prose-only is not a dispute
+    expect(screen.queryByTestId("criterion-disputed-badge")).not.toBeInTheDocument();
   });
 
   it("does NOT render Judge Dispute when non-string llm_flag_reason and no flagged", () => {
@@ -1028,14 +1032,17 @@ describe("LegalBenchmarkResults", () => {
     const copied: string = writeSpy.mock.calls[0][0];
     const lines = copied.split("\n");
 
-    // header ends with Judge Dispute column
-    expect(lines[0]).toBe("Verdict\tID\tTitle\tReasoning\tJudge Dispute\tContested");
+    // header has split Disputed + Judge Reason columns
+    expect(lines[0]).toBe("Verdict\tID\tTitle\tReasoning\tDisputed\tJudge Reason\tContested");
     // tabs/newlines in dispute prose are sanitized
     const failRow = lines.find((l) => l.includes("crit-1"));
     expect(failRow).toBeDefined();
     expect(failRow).not.toContain("\n");
-    // dispute text present, sanitized
+    // dispute text present, sanitized, in the Judge Reason column (col 5)
     expect(failRow).toContain("Rebuttal with tab and newline.");
+    // Disputed column (col 4) should be "true" for a flagged criterion
+    const failCols = failRow!.split("\t");
+    expect(failCols[4]).toBe("true");
 
     vi.restoreAllMocks();
   });
@@ -1060,10 +1067,13 @@ describe("LegalBenchmarkResults", () => {
 
     const copied: string = writeSpy.mock.calls[0][0];
     const dataRow = copied.split("\n")[1];
-    // six tab-separated columns, last one blank (Contested)
+    // seven tab-separated columns: Verdict ID Title Reasoning Disputed JudgeReason Contested
     const cols = dataRow.split("\t");
-    expect(cols).toHaveLength(6);
+    expect(cols).toHaveLength(7);
+    // Disputed column blank (not a dispute)
     expect(cols[4]).toBe("");
+    // Judge Reason column also blank (no prose)
+    expect(cols[5]).toBe("");
 
     vi.restoreAllMocks();
   });
@@ -1095,7 +1105,9 @@ describe("LegalBenchmarkResults", () => {
     const copied: string = writeSpy.mock.calls[0][0];
     const dataRow = copied.split("\n")[1];
     const cols = dataRow.split("\t");
-    expect(cols[4]).toBe("Disputed — no explanation provided");
+    // Disputed column (4) = "true"; Judge Reason column (5) = marker text
+    expect(cols[4]).toBe("true");
+    expect(cols[5]).toBe("Disputed — no explanation provided");
 
     vi.restoreAllMocks();
   });

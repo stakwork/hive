@@ -6,6 +6,21 @@
  * upstream harvey_lab_score_rubric Lambda (tracked external dependency in
  * stakwork/senza-lnd).
  *
+ * NOTE: The `market-definition` entry now includes `flag_basis: "criterion_validity"`
+ * and `contested: true`. This means that criterion is excluded from both the
+ * score numerator and denominator (via isCriterionContested / criterionStatus).
+ * The seed's hand-authored n_passed/n_total do not reflect this exclusion —
+ * the graph-first score denominator (from EvalRequirement roster) overrides
+ * runner-echoed counts in the UI. This is expected and intentional.
+ *
+ * Matrix of dispute states exercised by this seed:
+ *   market-definition  — flagged + flag_basis ("criterion_validity") + contested: true
+ *   hhi-calculation    — flagged, no prose (marker "Disputed — no explanation provided")
+ *   remedy-proposal    — prose only, no flagged (flag_basis "legitimate_failure"), renders as "Judge Note"
+ *   empty-basis        — flagged + empty flag_basis (badge shown, generic tooltip)
+ *   string-true        — flagged as "true" (string), exercises loose-value path
+ *   efficiencies-analysis / procedural-compliance — plain pass, no dispute
+ *
  * Usage:
  *   DATABASE_URL=<dev-db-url> WORKSPACE_ID=<id> npx tsx scripts/seed-judge-dispute-run.ts
  *
@@ -57,7 +72,8 @@ async function main() {
     model: "claude-sonnet-5",
     judge_model: "claude-opus-4-5",
     criteria_results: [
-      // ── Both fields set (full dispute) ─────────────────────────────────────
+      // ── Both fields set (full dispute) + contested + flag_basis ────────────
+      // NOTE: contested:true excludes this from graph-first score denominator.
       {
         id: "market-definition",
         title: "Correct market definition applied",
@@ -67,13 +83,15 @@ async function main() {
           "distinguishing online vs brick-and-mortar, which the applicable precedent " +
           "(FTC v. Whole Foods) requires.",
         flagged: true,
+        flag_basis: "criterion_validity",
+        contested: true,
         llm_flag_reason:
           "The task brief did not specify the Whole Foods precedent as a mandatory " +
           "citation. The market definition provided is consistent with the EC Horizontal " +
           "Merger Guidelines §12, which the brief did reference. The judge appears to be " +
           "applying a US-law standard to an EU-law deliverable.",
       },
-      // ── Marked, no prose (marker-only dispute) ──────────────────────────────
+      // ── Marked, no prose (marker-only dispute) — flag_basis intentionally absent
       {
         id: "hhi-calculation",
         title: "HHI delta computed correctly",
@@ -82,8 +100,9 @@ async function main() {
           "The post-merger HHI is stated as 2,847 but the source data yields 2,612.",
         flagged: true,
         // intentionally no llm_flag_reason — triggers "Disputed — no explanation provided"
+        // intentionally no flag_basis — tests graceful degradation (generic tooltip)
       },
-      // ── Prose only, no flagged field ────────────────────────────────────────
+      // ── Prose only, no flagged field — renders as "Judge Note" (not a dispute)
       {
         id: "remedy-proposal",
         title: "Proposed remedy addresses competitive harm",
@@ -91,9 +110,30 @@ async function main() {
         reasoning:
           "Structural remedies are not discussed; the deliverable only proposes " +
           "behavioural undertakings.",
+        flag_basis: "legitimate_failure",
         llm_flag_reason:
           "The brief explicitly restricted analysis to behavioural remedies in §4.2. " +
           "A structural remedy discussion was out of scope for this deliverable.",
+      },
+      // ── flagged with empty flag_basis — badge shown, tooltip falls back to generic copy
+      {
+        id: "empty-basis",
+        title: "Empty flag_basis graceful degradation",
+        verdict: "fail",
+        reasoning: "This criterion tests the empty flag_basis path.",
+        flagged: true,
+        flag_basis: "",
+        llm_flag_reason: "The judge may have misread the source table.",
+      },
+      // ── flagged as string "true" — exercises loose-value path end-to-end
+      {
+        id: "string-true-flagged",
+        title: "String-typed flagged graceful handling",
+        verdict: "fail",
+        reasoning: "This criterion tests flagged as a string value.",
+        flagged: "true",
+        flag_basis: "judge_error",
+        llm_flag_reason: "The judge misidentified the controlling precedent.",
       },
       // ── No dispute (today's shape — renders exactly as before) ─────────────
       {
