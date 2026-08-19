@@ -25,7 +25,7 @@ export async function GET(
     if (access instanceof NextResponse) return access;
 
     if (process.env.USE_MOCKS === "true") {
-      const { getMockNodeTypes } = await import("@/app/api/mock/graph/node-types/route");
+      const { getMockNodeTypes } = await import("@/app/api/mock/graph/node-types/fixtures");
       return NextResponse.json(getMockNodeTypes(), { status: 200 });
     }
 

@@ -46,7 +46,7 @@ export async function GET(
     if (access instanceof NextResponse) return access;
 
     if (process.env.USE_MOCKS === "true") {
-      const { getMockGraphSearch } = await import("@/app/api/mock/graph/nodes-search/route");
+      const { getMockGraphSearch } = await import("@/app/api/mock/graph/nodes-search/fixtures");
       return NextResponse.json(getMockGraphSearch(query, types), { status: 200 });
     }
 
