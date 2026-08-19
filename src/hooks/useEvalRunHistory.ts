@@ -451,60 +451,60 @@ export function useEvalRunHistory(input: UseEvalRunHistoryInput): UseEvalRunHist
           return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
         });
 
-        // ── Step 5b: Assemble the activity-rail rows ──────────────────────
-        // Row source is the identity triggers (the same rows `history` is
-        // built from — no new traversal), enriched with:
-        //   - the chart label/score when the trigger's output is a charted
-        //     point (matched on output ref_id, which is the attempt ref_id on
-        //     both series paths)
-        //   - real run status: runner + eval runs joined per-attempt on
-        //     result.evalTriggerRef, an active run beating a terminal one
-        //   - report state off the joined run; "pending" when the run
+        // ── Step 5b: Assemble the activity-rail rows — GRAPH-FIRST ────────
+        // Every charted attempt gets a row, unconditionally. The concept
+        // pipeline writes triggers with no identity fields (agent/start/end)
+        // and often no StakworkRun row at all, so gating rows on
+        // `triggerHasIdentity` — as `history` does for the runs table — left
+        // the rail empty while the chart happily rendered those same nodes.
+        // Identity stays a `history` concern only. Runs are joined
+        // opportunistically on top:
+        //   - the attempt's owning trigger (via its HAS_OUTPUT edge) is
+        //     matched to runner + eval runs on result.evalTriggerRef, an
+        //     active run beating a terminal one
+        //   - report state comes off the joined run; "pending" when the run
         //     completed with a report requested but the bundle hasn't landed
-        //     (report_url is written asynchronously after completion)
-        // plus run-only rows for in-flight runs that no trigger claims yet —
-        // recursion runs (no evalTriggerRef by design) and dispatches whose
-        // trigger write hasn't landed. Those are the "is it still running?"
-        // rows the chart cannot show: no output node exists yet, so no dot.
+        //   - no owning trigger or no matching run → em-dash status, graph
+        //     write-time timestamp: honest graph-only rows
+        // Plus rows the CHART cannot show (no output node yet, so no dot):
+        // identity triggers whose run is still in flight, and unclaimed
+        // non-terminal runs (recursion runs carry no evalTriggerRef by design
+        // and join per-task).
         const runTypeById = new Map<string, AttemptRunType>();
         for (const r of runRows) runTypeById.set(r.id, "runner");
         for (const r of evalRunRows) runTypeById.set(r.id, "eval");
         for (const r of recursionRunRows) runTypeById.set(r.id, "recursion");
 
-        const attemptByOutputRef = new Map(
-          finalAttempts.map((a, i) => [a.ref_id, { attempt: a, index: i }]),
-        );
+        // Owning trigger per output — from ALL walked triggers, identity or not.
+        const triggerByOutputRef = new Map<string, EvalTrigger>();
+        for (const t of allRawTriggers) {
+          for (const o of t.outputs ?? []) triggerByOutputRef.set(o.ref_id, t);
+        }
 
         const triggerJoinableRuns = [...runRows, ...evalRunRows];
         const claimedRunIds = new Set<string>();
 
-        const triggerRows: AttemptRailRow[] = identityTriggers.map((trigger) => {
+        const runsForTrigger = (triggerRefId: string): StakworkRunRow[] => {
           const candidates = triggerJoinableRuns.filter((run) => {
             const parsed = parseBenchmarkRunResult(run.result);
-            return parsed?.evalTriggerRef === trigger.ref_id;
+            return parsed?.evalTriggerRef === triggerRefId;
           });
           for (const c of candidates) claimedRunIds.add(c.id);
-          const statusRun = pickStatusRun(candidates);
+          return candidates;
+        };
+
+        const rowFromRun = (
+          key: string,
+          statusRun: StakworkRunRow | null,
+          extras: Pick<AttemptRailRow, "label" | "attemptIndex" | "score"> & { graphTime?: string | null },
+        ): AttemptRailRow => {
           const parsedStatusRun = statusRun ? parseBenchmarkRunResult(statusRun.result) : null;
-
-          const completedOutput =
-            trigger.outputs?.find((o) => o.result.trim() !== "") ?? null;
-          const chartMatch = completedOutput
-            ? attemptByOutputRef.get(completedOutput.ref_id)
-            : undefined;
-
-          const scoreSource = chartMatch?.attempt ?? completedOutput;
-          const passed = chartMatch?.attempt.actualPassed ?? scoreSource?.n_passed;
-          const total = scoreSource?.n_total;
-
           return {
-            key: trigger.ref_id,
-            label: chartMatch?.attempt.label ?? null,
-            attemptIndex: chartMatch?.index ?? null,
-            timestamp:
-              statusRun?.createdAt ??
-              graphEpochToIso(completedOutput?.date_added_to_graph),
-            score: passed != null && total != null ? { passed, total } : null,
+            key,
+            label: extras.label,
+            attemptIndex: extras.attemptIndex,
+            timestamp: statusRun?.createdAt ?? extras.graphTime ?? null,
+            score: extras.score,
             status: statusRun?.status ?? null,
             runType: statusRun ? (runTypeById.get(statusRun.id) ?? null) : null,
             runId: statusRun?.id ?? null,
@@ -516,7 +516,37 @@ export function useEvalRunHistory(input: UseEvalRunHistoryInput): UseEvalRunHist
               statusRun?.hasReport !== true,
             inFlight: NON_TERMINAL_STATUSES.has(statusRun?.status ?? ""),
           };
+        };
+
+        // One row per charted attempt, in dot order.
+        const chartedTriggerRefs = new Set<string>();
+        const chartedRows: AttemptRailRow[] = finalAttempts.map((attempt, index) => {
+          const trigger = triggerByOutputRef.get(attempt.ref_id) ?? null;
+          if (trigger) chartedTriggerRefs.add(trigger.ref_id);
+          const statusRun = trigger ? pickStatusRun(runsForTrigger(trigger.ref_id)) : null;
+          const passed = attempt.actualPassed ?? attempt.n_passed;
+          const total = attempt.n_total;
+          return rowFromRun(attempt.ref_id, statusRun, {
+            label: attempt.label ?? null,
+            attemptIndex: index,
+            score: passed != null && total != null ? { passed, total } : null,
+            graphTime: graphEpochToIso(attempt.date_added_to_graph),
+          });
         });
+
+        // Identity triggers with no charted output yet — a dispatched run whose
+        // output node hasn't landed. Still worth a row: it answers "is the
+        // newest attempt in flight?".
+        const unchartedTriggerRows: AttemptRailRow[] = identityTriggers
+          .filter((t) => !chartedTriggerRefs.has(t.ref_id))
+          .map((trigger) =>
+            rowFromRun(trigger.ref_id, pickStatusRun(runsForTrigger(trigger.ref_id)), {
+              label: null,
+              attemptIndex: null,
+              score: null,
+              graphTime: null,
+            }),
+          );
 
         const runOnlyRows: AttemptRailRow[] = [
           ...runRows,
@@ -544,15 +574,9 @@ export function useEvalRunHistory(input: UseEvalRunHistoryInput): UseEvalRunHist
             inFlight: true,
           }));
 
-        // Mirror the chart: charted rows in dot order first, then unmatched
-        // rows (in-flight work with no dot yet) chronologically at the end.
-        const chartedRows = triggerRows
-          .filter((r) => r.attemptIndex != null)
-          .sort((a, b) => (a.attemptIndex ?? 0) - (b.attemptIndex ?? 0));
-        const unchartedRows = [
-          ...triggerRows.filter((r) => r.attemptIndex == null),
-          ...runOnlyRows,
-        ].sort((a, b) => {
+        // Mirror the chart: charted rows in dot order first, then rows with no
+        // dot yet (in-flight work) chronologically at the end.
+        const unchartedRows = [...unchartedTriggerRows, ...runOnlyRows].sort((a, b) => {
           if (!a.timestamp && !b.timestamp) return 0;
           if (!a.timestamp) return 1;
           if (!b.timestamp) return -1;
