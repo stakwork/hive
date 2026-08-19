@@ -82,6 +82,16 @@ describe("useFeatureLiveState", () => {
     expect(latest.get("f1")?.agentsRunningCount).toBe(1);
   });
 
+  it("counts a newly-spawned task not present in the seed", () => {
+    render(<Probe seeds={[seed("f1", { agentsRunningCount: 0 })]} />);
+    expect(latest.get("f1")?.agentsRunningCount).toBe(0);
+
+    act(() => {
+      handlers.get("f1")!({ taskId: "brand-new-task", workflowStatus: "IN_PROGRESS" });
+    });
+    expect(latest.get("f1")?.agentsRunningCount).toBe(1);
+  });
+
   it("reconciles from the authoritative snapshot on refetch", () => {
     const { rerender } = render(<Probe seeds={[seed("f1")]} />);
 
