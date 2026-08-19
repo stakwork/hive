@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ArrowLeft, Loader2, MessageSquare, Send, Sparkles, X } from "lucide-react";
+import { ArrowLeft, Loader2, MessageSquare, Plus, Send, Sparkles, X } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -53,12 +53,15 @@ export function GraphChatSidebar({
   workspaceSlug,
   activeSessionId,
   onSelectThread,
+  onNewChat,
   onClose,
 }: {
   workspaceSlug: string;
   /** null → thread list view */
   activeSessionId: string | null;
   onSelectThread: (sessionId: string | null) => void;
+  /** Starting a chat only makes sense from here, so the button lives here. */
+  onNewChat: () => void;
   onClose: () => void;
 }) {
   const [threads, setThreads] = useState<GraphChatThread[]>([]);
@@ -254,6 +257,16 @@ export function GraphChatSidebar({
             <span className="text-sm font-medium flex-1">Graph chats</span>
           </>
         )}
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-7 w-7"
+          onClick={onNewChat}
+          title="New chat"
+          data-testid="graph-chat-new-button"
+        >
+          <Plus className="h-4 w-4" />
+        </Button>
         <Button variant="ghost" size="icon" className="h-7 w-7" onClick={onClose} data-testid="graph-chat-close-button">
           <X className="h-4 w-4" />
         </Button>
@@ -371,7 +384,15 @@ export function GraphChatSidebar({
             <div className="flex flex-col items-center gap-2 py-12 text-center text-muted-foreground px-4">
               <MessageSquare className="h-8 w-8" />
               <p className="text-sm">No graph chats yet.</p>
-              <p className="text-xs">Use the New button to start a conversation with the graph agent.</p>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={onNewChat}
+                data-testid="graph-chat-empty-new-button"
+              >
+                <Plus className="h-4 w-4 mr-1.5" />
+                New chat
+              </Button>
             </div>
           ) : (
             threads.map((thread) => (
