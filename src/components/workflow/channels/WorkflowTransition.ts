@@ -1,6 +1,6 @@
 import { createConsumer } from '@anycable/web';
 import type { WorkflowTransitionData } from '@/types/stakwork/websocket';
-import { cableUrl } from '@/lib/anycable';
+import { cableUrl, type CableSubscription } from '@/lib/anycable';
 
 class WorkflowTransition {
   // Configuration
@@ -8,7 +8,7 @@ class WorkflowTransition {
   private readonly MAX_WAIT_TIME = 2000; // Don't wait more than 2 seconds between updates
 
   private cable: ReturnType<typeof createConsumer>;
-  private channel: any | null = null;
+  private channel: CableSubscription | null = null;
   private projectId: string;
   private onUpdate: (data: WorkflowTransitionData) => void;
   private lastProcessedTime: number = 0;
@@ -117,9 +117,12 @@ class WorkflowTransition {
 
   unsubscribe = (): WorkflowTransition => {
     if (this.channel) {
-      this.channel.disconnect();
+      this.channel.unsubscribe();
       this.channel = null;
     }
+    // The consumer is created per instance, so nothing else is using this
+    // socket — leaving it open leaks a connection that keeps reconnecting.
+    this.cable.disconnect();
 
     if (this.updateTimeout) {
       clearTimeout(this.updateTimeout);

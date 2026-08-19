@@ -1,3 +1,16 @@
+import type { ActionCableConsumer } from "@anycable/web";
+
+/**
+ * What `cable.subscriptions.create()` hands back.
+ *
+ * Its teardown method is `unsubscribe()`. `disconnect()` belongs to the
+ * underlying Channel (and to the consumer), NOT to the subscription — calling
+ * it here throws at unmount and takes the whole React tree down with it.
+ */
+export type CableSubscription = ReturnType<
+  ActionCableConsumer["subscriptions"]["create"]
+>;
+
 /**
  * Returns the AnyCable WebSocket URL for the given Rails environment.
  *

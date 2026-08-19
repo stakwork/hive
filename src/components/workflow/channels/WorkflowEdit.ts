@@ -1,10 +1,10 @@
 import { createConsumer } from '@anycable/web';
 import type { WorkflowEditData } from '@/types/stakwork/websocket';
-import { cableUrl } from '@/lib/anycable';
+import { cableUrl, type CableSubscription } from '@/lib/anycable';
 
 class WorkflowEdit {
   private cable: ReturnType<typeof createConsumer>;
-  private channel: any | null = null;
+  private channel: CableSubscription | null = null;
   private workflowId: string;
   private onUpdate: (data: WorkflowEditData) => void;
 
@@ -45,9 +45,12 @@ class WorkflowEdit {
 
   unsubscribe = (): void => {
     if (this.channel) {
-      this.channel.disconnect();
+      this.channel.unsubscribe();
       this.channel = null;
     }
+    // The consumer is created per instance, so nothing else is using this
+    // socket — leaving it open leaks a connection that keeps reconnecting.
+    this.cable.disconnect();
   };
 }
 
