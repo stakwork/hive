@@ -789,6 +789,7 @@ model JanitorConfig {
   prUseMergeForUpdates       Boolean      @default(true) @map("pr_use_merge_for_updates")
   deduplicationEnabled       Boolean      @default(false) @map("deduplication_enabled")
   lingoExtractionEnabled              Boolean      @default(false) @map("lingo_extraction_enabled")
+  conceptReviewEnabled       Boolean      @default(false) @map("concept_review_enabled")
   legalBenchmarkRecursionEnabled      Boolean      @default(false) @map("legal_benchmark_recursion_enabled")
   stalePrTasksEnabled        Boolean      @default(false) @map("stale_pr_tasks_enabled")
   stalePrTaskThresholdDays   Int          @default(7)     @map("stale_pr_task_threshold_days")
@@ -1475,6 +1476,7 @@ enum JanitorType {
   GENERAL_REFACTORING
   DEDUPLICATION
   LINGO_EXTRACTION
+  CONCEPT_REVIEW
 }
 
 enum JanitorStatus {

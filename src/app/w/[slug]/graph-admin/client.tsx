@@ -67,11 +67,11 @@ export function GraphAdminClient({ swarmUrl, workspaceSlug, workspaceName }: Gra
   const [setOwnerOpen, setSetOwnerOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<BoltwallUser | null>(null);
 
-  // ── Janitor state ──
-  const [janitorConfig, setJanitorConfig] = useState<{ deduplicationEnabled: boolean } | null>(null);
+  // ── Janitor state (generalized) ──
+  const [janitorConfig, setJanitorConfig] = useState<Record<string, boolean> | null>(null);
   const [janitorConfigLoading, setJanitorConfigLoading] = useState(true);
-  const [lastDeduplicationRun, setLastDeduplicationRun] = useState<{ status: string; createdAt: string } | null>(null);
-  const [deduplicationRunning, setDeduplicationRunning] = useState(false);
+  const [lastRuns, setLastRuns] = useState<Record<string, { status: string; createdAt: string } | null>>({});
+  const [runningJanitors, setRunningJanitors] = useState<Set<string>>(new Set());
   const [janitorToggleLoading, setJanitorToggleLoading] = useState(false);
 
   // ── Graph title state ──
@@ -165,21 +165,40 @@ export function GraphAdminClient({ swarmUrl, workspaceSlug, workspaceName }: Gra
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [swarmUrl, workspaceSlug]);
 
-  // ── Load janitor config + last deduplication run ──
+  // ── Load janitor config + last runs for all GraphMindset types ──
   async function fetchJanitorData() {
     setJanitorConfigLoading(true);
     try {
-      const [configRes, runsRes] = await Promise.allSettled([
+      const janitorItems = getAllGraphMindsetJanitorItems();
+      const [configRes, ...runResults] = await Promise.allSettled([
         fetch(`/api/workspaces/${workspaceSlug}/janitors/config`).then((r) => r.json()),
-        fetch(`/api/workspaces/${workspaceSlug}/janitors/runs?type=DEDUPLICATION&limit=1`).then((r) => r.json()),
+        ...janitorItems.map((item) =>
+          fetch(`/api/workspaces/${workspaceSlug}/janitors/runs?type=${item.id}&limit=1`).then((r) => r.json()),
+        ),
       ]);
+
       if (configRes.status === "fulfilled") {
-        setJanitorConfig({ deduplicationEnabled: configRes.value?.config?.deduplicationEnabled ?? false });
+        const cfg = configRes.value?.config ?? {};
+        const configMap: Record<string, boolean> = {};
+        for (const item of janitorItems) {
+          if (item.configKey) {
+            configMap[item.configKey] = cfg[item.configKey] ?? false;
+          }
+        }
+        setJanitorConfig(configMap);
       }
-      if (runsRes.status === "fulfilled") {
-        const runs = runsRes.value?.runs ?? [];
-        setLastDeduplicationRun(runs.length > 0 ? { status: runs[0].status, createdAt: runs[0].createdAt } : null);
-      }
+
+      const newLastRuns: Record<string, { status: string; createdAt: string } | null> = {};
+      janitorItems.forEach((item, idx) => {
+        const res = runResults[idx];
+        if (res.status === "fulfilled") {
+          const runs = res.value?.runs ?? [];
+          newLastRuns[item.id] = runs.length > 0 ? { status: runs[0].status, createdAt: runs[0].createdAt } : null;
+        } else {
+          newLastRuns[item.id] = null;
+        }
+      });
+      setLastRuns(newLastRuns);
     } finally {
       setJanitorConfigLoading(false);
     }
@@ -190,44 +209,49 @@ export function GraphAdminClient({ swarmUrl, workspaceSlug, workspaceName }: Gra
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workspaceSlug]);
 
-  // ── Janitor toggle ──
-  async function handleJanitorToggle(enabled: boolean) {
+  // ── Janitor toggle (generalized) ──
+  async function handleJanitorToggle(configKey: string, enabled: boolean) {
+    if (!configKey) return;
     setJanitorToggleLoading(true);
     const previous = janitorConfig;
-    setJanitorConfig((prev) => (prev ? { ...prev, deduplicationEnabled: enabled } : { deduplicationEnabled: enabled }));
+    setJanitorConfig((prev) => (prev ? { ...prev, [configKey]: enabled } : { [configKey]: enabled }));
     try {
       const res = await fetch(`/api/workspaces/${workspaceSlug}/janitors/config`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ deduplicationEnabled: enabled }),
+        body: JSON.stringify({ [configKey]: enabled }),
       });
       if (!res.ok) throw new Error("Failed to update config");
     } catch {
       setJanitorConfig(previous);
-      toast.error("Failed to update Deduplication setting");
+      toast.error("Failed to update janitor setting");
     } finally {
       setJanitorToggleLoading(false);
     }
   }
 
-  // ── Run deduplication now ──
-  async function handleRunDeduplication() {
-    if (!janitorConfig?.deduplicationEnabled || deduplicationRunning) return;
-    setDeduplicationRunning(true);
+  // ── Run janitor now (generalized) ──
+  async function handleRunJanitor(janitorType: string, janitorName: string) {
+    if (runningJanitors.has(janitorType)) return;
+    setRunningJanitors((prev) => new Set(prev).add(janitorType));
     try {
-      const res = await fetch(`/api/workspaces/${workspaceSlug}/janitors/DEDUPLICATION/run`, {
+      const res = await fetch(`/api/workspaces/${workspaceSlug}/janitors/${janitorType}/run`, {
         method: "POST",
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
         throw new Error(data?.error ?? "Failed to start run");
       }
-      toast.success("Deduplication run started");
+      toast.success(`${janitorName} run started`);
       await fetchJanitorData();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to start Deduplication run");
+      toast.error(err instanceof Error ? err.message : `Failed to start ${janitorName} run`);
     } finally {
-      setDeduplicationRunning(false);
+      setRunningJanitors((prev) => {
+        const next = new Set(prev);
+        next.delete(janitorType);
+        return next;
+      });
     }
   }
 
@@ -832,8 +856,9 @@ export function GraphAdminClient({ swarmUrl, workspaceSlug, workspaceName }: Gra
             <div className="rounded-lg border">
               {getAllGraphMindsetJanitorItems().map((item, idx) => {
                 const Icon = item.icon;
-                const isEnabled = janitorConfig?.deduplicationEnabled ?? false;
-                const lastRun = item.id === "DEDUPLICATION" ? lastDeduplicationRun : null;
+                const isEnabled = item.configKey ? (janitorConfig?.[item.configKey] ?? false) : false;
+                const lastRun = lastRuns[item.id] ?? null;
+                const isRunning = runningJanitors.has(item.id);
                 return (
                   <div
                     key={item.id}
@@ -862,17 +887,17 @@ export function GraphAdminClient({ swarmUrl, workspaceSlug, workspaceName }: Gra
                       {!swarmUrl ? (
                         <p className="flex items-center gap-1.5 text-xs text-amber-600 dark:text-amber-400">
                           <AlertCircle className="h-3.5 w-3.5 shrink-0" />
-                          No swarm configured — cannot run Deduplication.
+                          No swarm configured — cannot run {item.name}.
                         </p>
                       ) : (
                         <Button
                           size="sm"
                           variant="outline"
                           className="h-8 text-xs"
-                          disabled={!isEnabled || deduplicationRunning}
-                          onClick={handleRunDeduplication}
+                          disabled={!isEnabled || isRunning}
+                          onClick={() => handleRunJanitor(item.id, item.name)}
                         >
-                          {deduplicationRunning ? (
+                          {isRunning ? (
                             <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
                           ) : (
                             <Play className="mr-1.5 h-3.5 w-3.5" />
@@ -886,8 +911,8 @@ export function GraphAdminClient({ swarmUrl, workspaceSlug, workspaceName }: Gra
                         )}
                         <Switch
                           checked={isEnabled}
-                          onCheckedChange={handleJanitorToggle}
-                          disabled={janitorToggleLoading}
+                          onCheckedChange={(enabled) => item.configKey && handleJanitorToggle(item.configKey, enabled)}
+                          disabled={janitorToggleLoading || !item.configKey}
                           aria-label={`Toggle ${item.name}`}
                         />
                       </div>

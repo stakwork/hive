@@ -40,6 +40,7 @@ export async function getWorkspacesWithEnabledJanitors(): Promise<
       generalRefactoringEnabled: boolean;
       deduplicationEnabled: boolean;
       lingoExtractionEnabled: boolean;
+      conceptReviewEnabled: boolean;
     } | null;
     swarm: {
       swarmUrl: string | null;
@@ -76,6 +77,7 @@ export async function getWorkspacesWithEnabledJanitors(): Promise<
           generalRefactoringEnabled: true,
           deduplicationEnabled: true,
           lingoExtractionEnabled: true,
+          conceptReviewEnabled: true,
         },
       },
       swarm: {
@@ -108,6 +110,8 @@ const SEQUENTIAL_JANITOR_TYPES: JanitorType[] = [
   JanitorType.MOCK_GENERATION,
   JanitorType.GENERAL_REFACTORING,
   JanitorType.DEDUPLICATION,
+  JanitorType.LINGO_EXTRACTION,
+  JanitorType.CONCEPT_REVIEW,
 ];
 
 /**
