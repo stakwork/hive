@@ -10,9 +10,6 @@ import {
   Search,
   ChevronRight,
   MessageSquare,
-  Plus,
-  ArrowRight,
-  ArrowLeft,
   Crosshair,
   X,
   ChevronDown,
@@ -29,12 +26,6 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet";
 import { Badge } from "@/components/ui/badge";
 import {
   DropdownMenu,
@@ -51,9 +42,9 @@ import { stakgraphToRawGraph } from "./stakgraphToRawGraph";
 import { detailToRawGraph, mergeRawGraph, type RawGraph } from "./walkGraph";
 import { useKGGraph } from "./useKGGraph";
 import { GraphChatSidebar, NewGraphChatModal } from "./chat";
+import { NodePanel } from "./NodePanel";
 import type {
   GraphNodeDetailResponse,
-  GraphNodeNeighbor,
   GraphNodeType,
   GraphNodeTypesResponse,
   GraphSearchHit,
@@ -73,31 +64,13 @@ interface StakgraphResult {
 }
 
 /**
- * The node the sheet is showing. `label` is the optimistic title (from the
- * canvas / search result) so the panel can open before the fetch resolves;
+ * The node the detail panel is showing. `label` is the optimistic title (from
+ * the canvas / search result) so the panel can open before the fetch resolves;
  * once `nodeDetail` lands it supplies the real name.
  */
-interface SheetTarget {
+interface PanelTarget {
   refId: string;
   label: string;
-}
-
-// ---------------------------------------------------------------------------
-// Helpers — extract node type / colour (kept for sheet badge)
-// ---------------------------------------------------------------------------
-
-const TYPE_COLORS: Record<string, string> = {
-  Function: "#3b82f6",
-  Class: "#8b5cf6",
-  Variable: "#10b981",
-  Interface: "#f59e0b",
-  Method: "#6366f1",
-  Module: "#ec4899",
-  Default: "#64748b",
-};
-
-function nodeColor(type: string): string {
-  return TYPE_COLORS[type] ?? TYPE_COLORS.Default;
 }
 
 /** Multi-select node-type filter, shared by search and graph-walk expansion. */
@@ -162,26 +135,6 @@ function typeFilterLabelFor(selected: string[]): string {
   if (selected.length === 0) return "All types";
   if (selected.length === 1) return selected[0];
   return `${selected.length} types`;
-}
-
-/** Group neighbors by edge type, preserving the importance order Jarvis returned. */
-function groupByEdgeType(
-  neighbors: GraphNodeNeighbor[],
-): Array<[string, GraphNodeNeighbor[]]> {
-  const groups = new Map<string, GraphNodeNeighbor[]>();
-  for (const n of neighbors) {
-    const existing = groups.get(n.edge_type);
-    if (existing) existing.push(n);
-    else groups.set(n.edge_type, [n]);
-  }
-  return [...groups.entries()];
-}
-
-/** Property values can be objects/arrays — render those as JSON, not "[object Object]". */
-function formatPropertyValue(value: unknown): string {
-  if (value === null || value === undefined) return "—";
-  if (typeof value === "object") return JSON.stringify(value, null, 2);
-  return String(value);
 }
 
 /** Parse the plain-text ASCII tree response for node labels */
@@ -284,8 +237,8 @@ export function GraphExplorer({ workspaceSlug, initialRefId }: GraphExplorerProp
   const [rawGraph, setRawGraph] = useState<RawGraph>({ nodes: [], edges: [] });
   const rawNodes = rawGraph.nodes;
 
-  // ── Selected node for the side sheet ─────────────────────────────────────
-  const [sheetTarget, setSheetTarget] = useState<SheetTarget | null>(null);
+  // ── Selected node for the docked detail panel ────────────────────────────
+  const [panelTarget, setPanelTarget] = useState<PanelTarget | null>(null);
   const [nodeDetail, setNodeDetail] = useState<GraphNodeDetailResponse | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState<string | null>(null);
@@ -351,7 +304,7 @@ export function GraphExplorer({ workspaceSlug, initialRefId }: GraphExplorerProp
       setRawGraph({ nodes: [], edges: [] });
       setFocusedNode(null);
       setFocusError(null);
-      setSheetTarget(null);
+      setPanelTarget(null);
       setNodeDetail(null);
       setTraceText(null);
 
@@ -446,7 +399,7 @@ export function GraphExplorer({ workspaceSlug, initialRefId }: GraphExplorerProp
   /** Open the side panel for a node already on the canvas (leaves the graph alone). */
   const openNodeDetail = useCallback(
     (refId: string, label: string) => {
-      setSheetTarget({ refId, label });
+      setPanelTarget({ refId, label });
       void fetchNodeDetail(refId, expandTypes);
     },
     [fetchNodeDetail, expandTypes]
@@ -459,7 +412,7 @@ export function GraphExplorer({ workspaceSlug, initialRefId }: GraphExplorerProp
    */
   const focusNode = useCallback(
     async (refId: string, label?: string) => {
-      setSheetTarget({ refId, label: label ?? refId });
+      setPanelTarget({ refId, label: label ?? refId });
       setFocusLoading(true);
       setFocusError(null);
       setTab("graph");
@@ -615,7 +568,7 @@ export function GraphExplorer({ workspaceSlug, initialRefId }: GraphExplorerProp
   // ── Path tracing ──────────────────────────────────────────────────────────
   const runTrace = useCallback(
     async (direction: "up" | "down" | "both") => {
-      const refId = sheetTarget?.refId;
+      const refId = panelTarget?.refId;
       if (!refId) return;
       setTraceLoading(true);
       setTraceText(null);
@@ -647,15 +600,19 @@ export function GraphExplorer({ workspaceSlug, initialRefId }: GraphExplorerProp
         setTraceLoading(false);
       }
     },
-    [sheetTarget, workspaceSlug, graph.nodes, setSearchMatches]
+    [panelTarget, workspaceSlug, graph.nodes, setSearchMatches]
   );
-
   // ── Render ────────────────────────────────────────────────────────────────
   return (
     <div className="flex flex-1 min-h-0 gap-4">
-      <div className="flex flex-col gap-4 flex-1 min-h-0 min-w-0">
+      {/* The canvas column scrolls on its own so the graph can be nearly
+          viewport-tall without pushing the docked panels off-screen. */}
+      <div
+        className="flex flex-col gap-4 flex-1 min-h-0 min-w-0 overflow-y-auto pr-1"
+        data-testid="graph-explorer-main"
+      >
         {/* ── Search panel ── */}
-        <div className="flex gap-2 items-center" data-testid="search-panel">
+        <div className="flex gap-2 items-center shrink-0" data-testid="search-panel">
           <Input
             data-testid="search-input"
             placeholder="Semantic search…"
@@ -685,6 +642,8 @@ export function GraphExplorer({ workspaceSlug, initialRefId }: GraphExplorerProp
             )}
             Search
           </Button>
+          {/* "New" lives in the chat panel's header — it only means anything
+              once you're looking at chats. */}
           <Button
             data-testid="graph-chat-toggle-button"
             variant={chatOpen ? "secondary" : "outline"}
@@ -693,31 +652,23 @@ export function GraphExplorer({ workspaceSlug, initialRefId }: GraphExplorerProp
             <MessageSquare className="h-4 w-4 mr-2" />
             Chat
           </Button>
-          <Button
-            data-testid="graph-chat-new-button"
-            variant="outline"
-            onClick={() => setNewChatOpen(true)}
-          >
-            <Plus className="h-4 w-4 mr-2" />
-            New
-          </Button>
         </div>
 
         {/* Search results */}
         {searchError && (
-          <p className="text-xs text-destructive" data-testid="search-error">
+          <p className="text-xs text-destructive shrink-0" data-testid="search-error">
             {searchError}
           </p>
         )}
         {searched && !searchLoading && !searchError && searchResults.length === 0 && (
-          <p className="text-xs text-muted-foreground" data-testid="search-empty">
+          <p className="text-xs text-muted-foreground shrink-0" data-testid="search-empty">
             No matches{selectedTypes.length > 0 ? ` in ${selectedTypes.join(", ")}` : ""}.
           </p>
         )}
 
         {searchResults.length > 0 && (
           <div
-            className="flex flex-col gap-1 p-2 border rounded-md bg-muted/40 max-h-56 overflow-y-auto"
+            className="flex flex-col gap-1 p-2 border rounded-md bg-muted/40 max-h-56 overflow-y-auto shrink-0"
             data-testid="search-results"
           >
             {searchResults.map((item) => (
@@ -744,14 +695,14 @@ export function GraphExplorer({ workspaceSlug, initialRefId }: GraphExplorerProp
         )}
 
         {/* ── Cypher query bar ── */}
-        <div className="flex gap-2 items-start" data-testid="query-bar">
+        <div className="flex gap-2 items-start shrink-0" data-testid="query-bar">
           <Textarea
             data-testid="cypher-input"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={handleKeyDown}
-            rows={3}
-            placeholder="MATCH (n) RETURN n LIMIT 25"
+            rows={2}
+            placeholder="MATCH (n) RETURN n LIMIT 25 — Ctrl+Enter to run"
             className="font-mono text-sm resize-none flex-1"
             spellCheck={false}
           />
@@ -769,11 +720,6 @@ export function GraphExplorer({ workspaceSlug, initialRefId }: GraphExplorerProp
             Run
           </Button>
         </div>
-
-        <p className="text-xs text-muted-foreground -mt-2">
-          Press{" "}
-          <kbd className="px-1 py-0.5 rounded border text-xs font-mono">Ctrl+Enter</kbd> to run
-        </p>
 
         {/* ── Status states ── */}
         {notConfigured && (
@@ -806,16 +752,6 @@ export function GraphExplorer({ workspaceSlug, initialRefId }: GraphExplorerProp
           </div>
         )}
 
-        {focusLoading && (
-          <div
-            data-testid="focus-loading-state"
-            className="flex items-center justify-center py-16 gap-2 text-muted-foreground"
-          >
-            <Loader2 className="h-5 w-5 animate-spin" />
-            <span>Loading node…</span>
-          </div>
-        )}
-
         {focusError && (
           <Alert variant="destructive" data-testid="focus-error-state">
             <AlertCircle className="h-4 w-4" />
@@ -824,8 +760,11 @@ export function GraphExplorer({ workspaceSlug, initialRefId }: GraphExplorerProp
         )}
 
         {/* ── Results ── */}
-        {!loading && !focusLoading && !error && !notConfigured &&
-          (queryResult !== null || rawNodes.length > 0) && (
+        {/* `focusLoading` deliberately does NOT gate this: expanding a node
+            adds to the canvas, so blanking it for a spinner would throw away
+            the map the user is walking. The spinner lives in the toolbar. */}
+        {!loading && !error && !notConfigured &&
+          (queryResult !== null || rawNodes.length > 0 || focusLoading) && (
           <>
             {queryResult !== null && queryResult.rows.length === 0 && rawNodes.length === 0 ? (
               <div
@@ -836,8 +775,8 @@ export function GraphExplorer({ workspaceSlug, initialRefId }: GraphExplorerProp
                 <p>No results returned.</p>
               </div>
             ) : (
-              <Tabs value={tab} onValueChange={setTab} className="flex flex-col flex-1 min-h-0">
-                <div className="flex items-center gap-3 flex-wrap">
+              <Tabs value={tab} onValueChange={setTab} className="flex flex-col shrink-0">
+                <div className="flex items-center gap-3 flex-wrap shrink-0">
                   <TabsList>
                     {queryResult !== null && (
                       <TabsTrigger value="table" data-testid="tab-table">
@@ -875,13 +814,22 @@ export function GraphExplorer({ workspaceSlug, initialRefId }: GraphExplorerProp
                         onClick={() => {
                           setFocusedNode(null);
                           setRawGraph({ nodes: [], edges: [] });
-                          setSheetTarget(null);
+                          setPanelTarget(null);
                           setNodeDetail(null);
                         }}
                       >
                         <X className="h-3 w-3" />
                       </Button>
                     </div>
+                  )}
+                  {focusLoading && (
+                    <span
+                      className="flex items-center gap-1.5 text-xs text-muted-foreground"
+                      data-testid="focus-loading-state"
+                    >
+                      <Loader2 className="h-3 w-3 animate-spin" />
+                      Loading node…
+                    </span>
                   )}
                   {walkMode && (
                     <div className="flex items-center gap-1.5" data-testid="expand-filter">
@@ -910,15 +858,19 @@ export function GraphExplorer({ workspaceSlug, initialRefId }: GraphExplorerProp
                 </div>
 
                 {queryResult !== null && (
-                  <TabsContent value="table" className="flex-1 min-h-0 mt-2 overflow-auto">
+                  <TabsContent
+                    value="table"
+                    className="mt-2 max-h-[60vh] overflow-auto shrink-0"
+                  >
                     <ResultTable columns={queryResult.columns} rows={queryResult.rows} />
                   </TabsContent>
                 )}
 
+                {/* Sized off the viewport, not the leftover space: scrolling
+                    this column down puts the canvas at effectively full screen. */}
                 <TabsContent
                   value="graph"
-                  className="flex-1 min-h-0 mt-2 border rounded-md overflow-hidden"
-                  style={{ minHeight: 400 }}
+                  className="mt-2 border rounded-md overflow-hidden shrink-0 h-[calc(100vh-12rem)] min-h-[420px]"
                 >
                   {graph.nodes.length > 0 ? (
                     <KGCanvas
@@ -927,6 +879,11 @@ export function GraphExplorer({ workspaceSlug, initialRefId }: GraphExplorerProp
                       onNodeClick={handleCanvasNodeClick}
                       searchMatches={searchMatches}
                     />
+                  ) : focusLoading ? (
+                    <div className="flex items-center justify-center h-full gap-2 text-muted-foreground text-sm">
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Loading node…
+                    </div>
                   ) : (
                     <div className="flex items-center justify-center h-full text-muted-foreground text-sm">
                       No graph nodes found in these results.
@@ -939,12 +896,33 @@ export function GraphExplorer({ workspaceSlug, initialRefId }: GraphExplorerProp
         )}
       </div>
 
+      {/* ── Node detail panel: docked beside the canvas, never over it ── */}
+      {panelTarget && (
+        <NodePanel
+          refId={panelTarget.refId}
+          label={panelTarget.label}
+          detail={nodeDetail}
+          loading={detailLoading}
+          error={detailError}
+          traceText={traceText}
+          traceLoading={traceLoading}
+          onClose={() => {
+            setPanelTarget(null);
+            setNodeDetail(null);
+            setDetailError(null);
+          }}
+          onFocusNeighbor={(refId, name) => void focusNode(refId, name)}
+          onTrace={runTrace}
+        />
+      )}
+
       {/* ── Graph agent chat sidebar + new-chat modal ── */}
       {chatOpen && (
         <GraphChatSidebar
           workspaceSlug={workspaceSlug}
           activeSessionId={chatSessionId}
           onSelectThread={setChatSessionId}
+          onNewChat={() => setNewChatOpen(true)}
           onClose={() => setChatOpen(false)}
         />
       )}
@@ -957,177 +935,6 @@ export function GraphExplorer({ workspaceSlug, initialRefId }: GraphExplorerProp
           setChatOpen(true);
         }}
       />
-
-      {/* ── Node detail sheet: properties + directly-linked nodes ── */}
-      <Sheet
-        open={!!sheetTarget}
-        onOpenChange={(open) => {
-          if (!open) {
-            setSheetTarget(null);
-            setNodeDetail(null);
-            setDetailError(null);
-          }
-        }}
-      >
-        <SheetContent
-          data-testid="node-properties-sheet"
-          className="overflow-y-auto sm:max-w-md w-full"
-        >
-          <SheetHeader>
-            <SheetTitle className="flex items-center gap-2 text-left">
-              <span
-                className="inline-block w-3 h-3 rounded-full shrink-0"
-                style={{ background: nodeColor(nodeDetail?.node.node_type ?? "") }}
-              />
-              <span className="truncate">
-                {nodeDetail?.node.name || sheetTarget?.label}
-              </span>
-            </SheetTitle>
-          </SheetHeader>
-
-          {sheetTarget && (
-            <div className="mt-4 space-y-5 px-4 pb-6">
-              <div className="flex items-center gap-2 flex-wrap">
-                {nodeDetail && (
-                  <Badge variant="secondary" data-testid="node-type-badge">
-                    {nodeDetail.node.node_type}
-                  </Badge>
-                )}
-                <span className="text-xs text-muted-foreground font-mono break-all">
-                  {sheetTarget.refId}
-                </span>
-              </div>
-
-              {detailLoading && (
-                <div
-                  className="flex items-center gap-2 text-sm text-muted-foreground"
-                  data-testid="node-detail-loading"
-                >
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  Loading node…
-                </div>
-              )}
-
-              {detailError && (
-                <Alert variant="destructive" data-testid="node-detail-error">
-                  <AlertCircle className="h-4 w-4" />
-                  <AlertDescription>{detailError}</AlertDescription>
-                </Alert>
-              )}
-
-              {/* Directly-linked nodes, grouped by edge type */}
-              {nodeDetail && (
-                <div className="space-y-2" data-testid="linked-nodes-section">
-                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                    Linked Nodes ({nodeDetail.neighbors.length})
-                  </p>
-                  {nodeDetail.neighbors.length === 0 ? (
-                    <p className="text-sm text-muted-foreground">
-                      No directly-linked nodes.
-                    </p>
-                  ) : (
-                    <div className="space-y-3">
-                      {groupByEdgeType(nodeDetail.neighbors).map(([edgeType, group]) => (
-                        <div key={edgeType} className="space-y-1">
-                          <p className="text-xs font-mono text-muted-foreground">
-                            {edgeType}
-                          </p>
-                          {group.map((neighbor) => (
-                            <button
-                              key={`${edgeType}-${neighbor.ref_id}`}
-                              data-testid={`linked-node-${neighbor.ref_id}`}
-                              onClick={() => focusNode(neighbor.ref_id, neighbor.name)}
-                              className="w-full flex items-center gap-2 px-2 py-1.5 rounded border bg-background hover:bg-accent text-left transition-colors"
-                              title={`Focus ${neighbor.name || neighbor.ref_id}`}
-                            >
-                              {neighbor.direction === "forward" ? (
-                                <ArrowRight className="h-3 w-3 shrink-0 text-muted-foreground" />
-                              ) : (
-                                <ArrowLeft className="h-3 w-3 shrink-0 text-muted-foreground" />
-                              )}
-                              <span className="text-sm truncate flex-1">
-                                {neighbor.name || neighbor.ref_id}
-                              </span>
-                              <Badge variant="outline" className="text-xs shrink-0">
-                                {neighbor.node_type}
-                              </Badge>
-                            </button>
-                          ))}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* Node properties */}
-              {nodeDetail && Object.keys(nodeDetail.node.properties).length > 0 && (
-                <div className="space-y-2" data-testid="node-properties-section">
-                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                    Properties
-                  </p>
-                  {Object.entries(nodeDetail.node.properties).map(([k, v]) => (
-                    <div key={k} className="flex flex-col gap-0.5">
-                      <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                        {k}
-                      </span>
-                      <span className="text-sm break-all whitespace-pre-wrap">
-                        {formatPropertyValue(v)}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              {/* Path-tracing actions */}
-              <div className="space-y-2">
-                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                  Path Tracing
-                </p>
-                <div className="flex gap-2 flex-wrap">
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    data-testid="trace-up-button"
-                    onClick={() => runTrace("up")}
-                    disabled={traceLoading}
-                  >
-                    {traceLoading ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : null}
-                    Trace Upstream
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    data-testid="trace-down-button"
-                    onClick={() => runTrace("down")}
-                    disabled={traceLoading}
-                  >
-                    Trace Downstream
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    data-testid="trace-both-button"
-                    onClick={() => runTrace("both")}
-                    disabled={traceLoading}
-                  >
-                    Trace Both
-                  </Button>
-                </div>
-
-                {traceText && (
-                  <pre
-                    data-testid="trace-result"
-                    className="text-xs bg-muted p-3 rounded-md overflow-auto max-h-64 whitespace-pre-wrap"
-                  >
-                    {traceText}
-                  </pre>
-                )}
-              </div>
-            </div>
-          )}
-        </SheetContent>
-      </Sheet>
     </div>
   );
 }

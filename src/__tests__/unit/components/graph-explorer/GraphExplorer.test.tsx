@@ -50,17 +50,6 @@ vi.mock("next/dynamic", () => ({
   },
 }));
 
-// ── Mock shadcn Sheet ─────────────────────────────────────────────────────────
-vi.mock("@/components/ui/sheet", () => ({
-  Sheet: ({ children, open }: { children: React.ReactNode; open?: boolean }) =>
-    open ? <div data-testid="sheet">{children}</div> : null,
-  SheetContent: ({ children }: { children: React.ReactNode }) => (
-    <div data-testid="sheet-content">{children}</div>
-  ),
-  SheetHeader: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
-  SheetTitle: ({ children }: { children: React.ReactNode }) => <h2>{children}</h2>,
-}));
-
 vi.mock("@/components/ui/tabs", () => ({
   Tabs: ({
     children,
@@ -769,6 +758,76 @@ describe("GraphExplorer", () => {
     global.fetch = vi.fn();
     render(<GraphExplorer workspaceSlug="test-ws" />);
     expect(screen.getByTestId("search-button")).toBeDisabled();
+  });
+
+  // ── 18. The node panel is docked beside the graph, not over it ────────────
+  test("the node panel renders alongside the graph instead of covering it", async () => {
+    global.fetch = makeRoutedFetch([
+      NODE_TYPES_ROUTE,
+      { match: "/graph/node/", ok: true, status: 200, body: MOCK_NODE_DETAIL },
+    ]);
+
+    render(<GraphExplorer workspaceSlug="test-ws" initialRefId="ref-1" />);
+
+    await waitFor(() => screen.getByTestId("node-detail-panel"));
+    // Both visible at once — the panel is a sibling column, not an overlay.
+    expect(screen.getByTestId("tab-content-graph")).toBeInTheDocument();
+
+    await userEvent.click(screen.getByTestId("node-detail-close-button"));
+    expect(screen.queryByTestId("node-detail-panel")).not.toBeInTheDocument();
+    expect(screen.getByTestId("tab-content-graph")).toBeInTheDocument();
+  });
+
+  // ── 19. Expanding never blanks the canvas behind a spinner ────────────────
+  test("expanding a neighbor keeps the graph on screen while it loads", async () => {
+    const respond = (body: unknown) => ({
+      ok: true,
+      status: 200,
+      json: () => Promise.resolve(body),
+      text: () => Promise.resolve(""),
+    });
+    let releaseRef2: (() => void) | undefined;
+    global.fetch = vi.fn().mockImplementation((url: string) => {
+      if (url.includes("/graph/node-types")) return Promise.resolve(respond(MOCK_NODE_TYPES));
+      if (url.includes("/graph/node/ref-2")) {
+        return new Promise((resolve) => {
+          releaseRef2 = () => resolve(respond(MOCK_NODE_DETAIL_REF2));
+        });
+      }
+      return Promise.resolve(respond(MOCK_NODE_DETAIL));
+    });
+
+    render(<GraphExplorer workspaceSlug="test-ws" initialRefId="ref-1" />);
+    await waitFor(() =>
+      expect(screen.getByTestId("walk-node-count")).toHaveTextContent("3 nodes"),
+    );
+
+    await userEvent.click(screen.getByTestId("linked-node-ref-2"));
+    await waitFor(() => screen.getByTestId("focus-loading-state"));
+
+    // The accumulated walk stays rendered — the spinner sits in the toolbar.
+    expect(screen.getByTestId("tab-content-graph")).toBeInTheDocument();
+    expect(screen.getByTestId("walk-node-count")).toHaveTextContent("3 nodes");
+
+    releaseRef2?.();
+    await waitFor(() =>
+      expect(screen.getByTestId("walk-node-count")).toHaveTextContent("4 nodes"),
+    );
+    expect(screen.queryByTestId("focus-loading-state")).not.toBeInTheDocument();
+  });
+
+  // ── 20. "New" belongs to the chat panel, not the main toolbar ─────────────
+  test("the new-chat button is not shown while the chat panel is closed", async () => {
+    global.fetch = makeRoutedFetch([NODE_TYPES_ROUTE]);
+
+    render(<GraphExplorer workspaceSlug="test-ws" />);
+    // Let the on-mount ontology fetch settle before asserting.
+    await waitFor(() =>
+      expect(screen.getByTestId("node-type-filter-button")).toHaveTextContent("Concept"),
+    );
+
+    expect(screen.getByTestId("graph-chat-toggle-button")).toBeInTheDocument();
+    expect(screen.queryByTestId("graph-chat-new-button")).not.toBeInTheDocument();
   });
 });
 
