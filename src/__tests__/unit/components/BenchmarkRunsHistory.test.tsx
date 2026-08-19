@@ -1188,13 +1188,13 @@ describe("BenchmarkRunsHistory — run types", () => {
     expect(screen.getByTestId("run-row-a-1").textContent).toContain("Analyze Antitrust Strategy");
   });
 
-  it("Recursion chip shows only recursion rows", () => {
+  it("Recursion chip shows the whole loop — analysis AND fix-proposal rows", () => {
     mockMixedRuns();
     render(<BenchmarkRunsHistory />);
     fireEvent.click(screen.getByTestId("type-filter-recursion"));
     expect(screen.getByTestId("run-row-r-1")).toBeInTheDocument();
+    expect(screen.getByTestId("run-row-a-1")).toBeInTheDocument();
     expect(screen.queryByTestId("run-row-m-1")).toBeNull();
-    expect(screen.queryByTestId("run-row-a-1")).toBeNull();
   });
 
   it("summary strip stays pinned to manual rows whatever the filter", () => {
@@ -1213,5 +1213,19 @@ describe("BenchmarkRunsHistory — run types", () => {
     expect(screen.queryByTestId("results-a-1")).toBeNull();
     fireEvent.click(screen.getByTestId("run-row-m-1"));
     expect(screen.getByTestId("results-m-1")).toBeInTheDocument();
+  });
+
+  it("explains an empty Recursion filter instead of showing a bare table", () => {
+    mockUseList.mockReturnValue({
+      runs: [makeRun({ id: "m-1" })],
+      total: 1,
+      isLoading: false,
+      error: null,
+      refetch: mockRefetch,
+      setExpandedId: mockSetExpandedId,
+    });
+    render(<BenchmarkRunsHistory />);
+    fireEvent.click(screen.getByTestId("type-filter-recursion"));
+    expect(screen.getByTestId("type-filter-empty").textContent).toMatch(/Recursion tab/);
   });
 });
