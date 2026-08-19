@@ -39,6 +39,7 @@ function makeRun(
   return {
     id: `run-${_seq}`,
     workspaceId: "ws-1",
+    runType: "manual",
     status: WorkflowStatus.COMPLETED,
     projectId: null,
     taskSlug: `task-${_seq}`,
