@@ -80,9 +80,18 @@ import {
 import { checkRateLimit } from "@/lib/rate-limit";
 import { validateWorkspaceAccessById } from "@/services/workspace";
 import { fetchOrgCanvasConversationMessages } from "@/services/org-canvas-conversation";
-import { createPr } from "@/services/swarm/createPr";
+import {
+  createPr,
+  reconcilePr,
+  type CreatePrClaim,
+} from "@/services/swarm/createPr";
 import { addPrLabels } from "@/lib/github/labels";
-import { unifiedDiffToActionResults } from "@/lib/github/diffHygiene";
+import { parseGithubOwnerRepo } from "@/utils/repositoryParser";
+import {
+  unifiedDiffToActionResults,
+  enforceDiffCaps,
+  scanForSecrets,
+} from "@/lib/github/diffHygiene";
 import {
   ChatRole,
   ChatStatus,
@@ -388,21 +397,113 @@ export async function handleApproval(
 // ── Approve: codeChange ─────────────────────────────────────────────
 
 /**
+ * Narrow the `Task.codeChangeClaim` JSON column back to a `CreatePrClaim`.
+ * Returns null for anything that isn't a complete claim — an old row, a
+ * half-written value, hand-edited JSON. A partial claim is worse than none:
+ * `reconcilePr` would query the wrong branch and could mis-attribute a PR.
+ */
+function parseCreatePrClaim(value: unknown): CreatePrClaim | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const c = value as Record<string, unknown>;
+  const required = [
+    "requestId",
+    "repositoryUrl",
+    "userId",
+    "workspaceSlug",
+    "runIdPrefix",
+  ] as const;
+  for (const k of required) {
+    if (typeof c[k] !== "string" || (c[k] as string).length === 0) return null;
+  }
+  return {
+    requestId: c.requestId as string,
+    repositoryUrl: c.repositoryUrl as string,
+    userId: c.userId as string,
+    workspaceSlug: c.workspaceSlug as string,
+    runIdPrefix: c.runIdPrefix as string,
+  };
+}
+
+/**
+ * Attach a PULL_REQUEST artifact to a claim Task's seed message so the PR
+ * becomes visible to the UI and to `findOpenPRArtifacts` (pr-monitor).
+ *
+ * Best-effort and idempotent: a failure here must never turn a landed PR into
+ * a reported failure, and a concurrent reconcile must not produce two
+ * artifacts for the same PR.
+ */
+async function attachPrArtifact(
+  taskId: string,
+  prUrl: string,
+  repositoryUrl: string,
+): Promise<void> {
+  try {
+    const msg = await db.chatMessage.findFirst({
+      where: { taskId },
+      orderBy: { createdAt: "desc" },
+      select: {
+        id: true,
+        artifacts: {
+          where: { type: ArtifactType.PULL_REQUEST },
+          take: 1,
+          select: { id: true },
+        },
+      },
+    });
+    if (!msg || msg.artifacts.length > 0) return;
+
+    let repoName: string;
+    try {
+      const { owner, repo } = parseGithubOwnerRepo(repositoryUrl);
+      repoName = `${owner}/${repo}`;
+    } catch {
+      repoName = repositoryUrl;
+    }
+
+    const content: PullRequestContent = {
+      repo: repoName,
+      url: prUrl,
+      status: "IN_PROGRESS",
+    };
+    await db.artifact.create({
+      data: {
+        messageId: msg.id,
+        type: ArtifactType.PULL_REQUEST,
+        content:
+          content as unknown as import("@prisma/client").Prisma.InputJsonValue,
+      },
+    });
+  } catch (err) {
+    logger.error(
+      "[approveCodeChange] Failed to attach reconciled PR artifact",
+      "approveCodeChange",
+      { taskId, prUrl, error: String(err) },
+    );
+  }
+}
+
+
+/**
  * Land an approved `codeChange` proposal as a PR.
  *
  * Security sequence (all must pass before any swarm dispatch):
- *   1. Re-read the persisted transcript server-side; verify the
- *      `propose_code_change` output IS in the stored conversation
- *      and that its `originatorUserId` matches the approver (IDOR).
+ *   1. Re-read the persisted transcript server-side and take the
+ *      proposal payload FROM IT. `args.messages` is the request body,
+ *      so the stored copy is the only trustworthy source of the diff
+ *      bytes, the target repo, and `originatorUserId` — which must
+ *      equal the approver (shared rooms make `canWrite` insufficient).
+ *      Re-run `enforceDiffCaps` / `scanForSecrets` on those bytes.
  *   2. Workspace authorization via `validateWorkspaceAccessById`
  *      (requires `canWrite`). Re-validate `repositoryUrl` against DB.
  *   3. Rate limit — two buckets, fail closed if Redis is down.
  *   4. Claim before write — insert Task with unique `(workspaceId,
- *      proposalId)`. On P2002 return winner's result (idempotency).
- *   5. Dispatch via `createPr`, record `requestId` immediately.
+ *      proposalId)`. On P2002 return the winner's result, or reconcile
+ *      its stored claim when it has no PR artifact yet.
+ *   5. Dispatch via `createPr`, whose `onDispatch` hook writes the
+ *      `requestId` receipt onto the claim Task before the result poll.
  *   6. Post-dispatch: attach PR artifact, update branch, add label.
  *   7. Classified no-PR failures delete the claim; unknown drops keep
- *      it for `reconcilePr`.
+ *      it, and the next approval attempt runs `reconcilePr` on it.
  */
 async function approveCodeChange(args: {
   orgId: string;
@@ -411,13 +512,12 @@ async function approveCodeChange(args: {
   conversationId?: string;
 }): Promise<HandleApprovalReturn> {
   const { orgId, userId, proposal, conversationId } = args;
-  const payload = proposal.payload as CodeChangeProposalPayload;
 
   // ── Step 1: Re-read server-side transcript + originator check ────────────
   // conversationId is REQUIRED for codeChange. Without it we cannot re-read
-  // the stored transcript and cannot enforce the originator guard — both are
-  // IDOR-critical. canWrite alone is insufficient (any org member with write
-  // access could approve someone else's proposal). Refuse hard.
+  // the stored transcript, and everything below — the diff bytes, the target
+  // repo, the originator — would come from the caller's own request body.
+  // `canWrite` alone is insufficient. Refuse hard.
   if (!conversationId) {
     return {
       ok: false,
@@ -444,30 +544,45 @@ async function approveCodeChange(args: {
     };
   }
 
-  // Find the proposal in the stored transcript.
-  let foundInStored = false;
-  let originatorUserId: string | undefined;
+  // Find the proposal in the stored transcript and take the AUTHORITATIVE
+  // copy of its output from there.
+  //
+  // `proposal` came out of `findProposal(args.messages, …)`, and `messages` is
+  // the `canvasChatMessages` array in the POST body — fully caller-controlled.
+  // Matching on `proposalId` alone and then dispatching `proposal.payload`
+  // would let a caller pair a real proposalId with an arbitrary diff:
+  // `diffSha256` is part of that same payload, so `createPr`'s integrity check
+  // re-hashes the caller's diff against the caller's digest and passes. That
+  // bypasses every propose-time guard (`enforceDiffCaps`, `scanForSecrets`,
+  // the no-migration rule), and `createPr` only re-checks caps/secrets on the
+  // diff the swarm RETURNS — i.e. after the branch is pushed and the PR open.
+  //
+  // So: locate by id, then use the stored `payload` for everything downstream.
+  // The stored row carries the full diff bytes (see the note at the end of
+  // `buildCodeChangeTools`), so nothing is lost by ignoring the client's copy.
+  let storedOutput:
+    | Extract<ProposalOutput, { kind: "codeChange" }>
+    | undefined;
 
-  for (let i = storedMessages.length - 1; i >= 0; i--) {
+  for (let i = storedMessages.length - 1; i >= 0 && !storedOutput; i--) {
     const msg = storedMessages[i] as {
       role?: string;
       toolCalls?: Array<{ toolName: string; output?: unknown }>;
-      userId?: string;
     };
     if (msg.role !== "assistant" || !msg.toolCalls) continue;
     for (const tc of msg.toolCalls) {
       if (tc.toolName !== PROPOSE_CODE_CHANGE_TOOL) continue;
-      const out = tc.output as { proposalId?: string } | null;
+      const out = tc.output as
+        | Extract<ProposalOutput, { kind: "codeChange" }>
+        | null;
       if (out?.proposalId === proposal.proposalId) {
-        foundInStored = true;
-        originatorUserId = msg.userId;
+        storedOutput = out;
         break;
       }
     }
-    if (foundInStored) break;
   }
 
-  if (!foundInStored) {
+  if (!storedOutput) {
     return {
       ok: false,
       error:
@@ -477,16 +592,84 @@ async function approveCodeChange(args: {
     };
   }
 
-  // Originator guard: only the user who triggered the proposal may approve it.
-  // canWrite alone is insufficient — a second org member sharing the room
-  // must not be able to approve someone else's code-change proposal.
-  if (originatorUserId && originatorUserId !== userId) {
+  // Originator guard: only the user who ran `propose_code_change` may approve
+  // it. `canWrite` alone is insufficient — org-canvas rows are created with
+  // `isShared: true`, so any org member who opens the `?chat=<id>` URL joins
+  // the same room and would otherwise be able to approve someone else's diff.
+  //
+  // Fails closed when the field is absent: proposals generated before this
+  // field existed cannot be attributed, and a code change is not the place to
+  // guess. Re-generating the proposal is one click.
+  if (storedOutput.originatorUserId !== userId) {
+    logger.warn(
+      "[approveCodeChange] Originator mismatch — refusing approval",
+      "approveCodeChange",
+      {
+        userId,
+        proposalId: proposal.proposalId,
+        hasOriginator: Boolean(storedOutput.originatorUserId),
+      },
+    );
+    return {
+      ok: false,
+      error: storedOutput.originatorUserId
+        ? "Only the person who generated this code-change proposal can approve it. " +
+          "Ask the original author to approve, or generate a new proposal yourself."
+        : "This proposal predates the current approval checks and can no longer be " +
+          "approved. Please re-generate it.",
+      status: 403,
+    };
+  }
+
+  // From here on, `payload` is the server-stored copy — NOT `proposal.payload`.
+  const payload = storedOutput.payload as CodeChangeProposalPayload;
+
+  // Shape-check the stored payload before anything reads it. A row written by
+  // an older tool version (or hand-edited) must not reach the dispatch path.
+  if (
+    typeof payload?.workspaceId !== "string" ||
+    typeof payload?.workspaceSlug !== "string" ||
+    typeof payload?.repositoryUrl !== "string" ||
+    typeof payload?.title !== "string" ||
+    typeof payload?.diff !== "string" ||
+    typeof payload?.diffSha256 !== "string" ||
+    payload.diff.length === 0
+  ) {
     return {
       ok: false,
       error:
-        "Only the person who generated this code-change proposal can approve it. " +
-        "Ask the original author to approve, or generate a new proposal yourself.",
-      status: 403,
+        "The stored proposal is missing required fields — please re-generate it.",
+      status: 400,
+    };
+  }
+
+  // Defence in depth: re-run diff hygiene on the input bytes before dispatch.
+  // `createPr` only enforces these on the diff the swarm returns, which is too
+  // late — the branch is already pushed by then. Cheap, and it also catches a
+  // stored diff that predates a tightening of the caps.
+  const capsResult = enforceDiffCaps(payload.diff);
+  if (!capsResult.ok) {
+    return {
+      ok: false,
+      error:
+        `This diff exceeds the size limits (${capsResult.code}). ` +
+        "Use `propose_feature` — the feature pipeline handles large changes.",
+      status: 400,
+    };
+  }
+  const secretsResult = scanForSecrets(payload.diff);
+  if (!secretsResult.ok) {
+    logger.error(
+      "[approveCodeChange] Secret detected in stored diff — refusing dispatch",
+      "approveCodeChange",
+      { userId, proposalId: proposal.proposalId },
+    );
+    return {
+      ok: false,
+      error:
+        "The diff contains patterns matching known credentials. " +
+        "The PR was not created. Review the change manually.",
+      status: 400,
     };
   }
 
@@ -598,7 +781,6 @@ async function approveCodeChange(args: {
 
       // Attach the preview DIFF artifact in a ChatMessage so the UI can render
       // the diff before the PR is created.
-      const { parseGithubOwnerRepo } = await import("@/utils/repositoryParser");
       let repoName: string;
       try {
         const { owner, repo } = parseGithubOwnerRepo(payload.repositoryUrl);
@@ -662,6 +844,7 @@ async function approveCodeChange(args: {
           createdById: true,
           workspaceId: true,
           branch: true,
+          codeChangeClaim: true,
           chatMessages: {
             take: 1,
             orderBy: { createdAt: "desc" },
@@ -708,6 +891,61 @@ async function approveCodeChange(args: {
         };
       }
 
+      // No PR artifact on the winner. Two cases look identical here: a genuinely
+      // concurrent approval still inside its poll, and an earlier attempt whose
+      // request died mid-flight. The second is the one that matters — the PR may
+      // well have landed — and the dispatch receipt is what tells them apart.
+      //
+      // Re-approving is the retry path (the unique constraint means the insert
+      // always lands here), so this is where recovery belongs. `reconcilePr`
+      // never re-dispatches: it re-reads the swarm's own result cache and then
+      // queries GitHub directly, so calling it here cannot produce a second PR.
+      const claim = parseCreatePrClaim(winner.codeChangeClaim);
+      if (claim) {
+        const outcome = await reconcilePr(claim);
+        if (outcome.outcome === "landed") {
+          logger.info(
+            "[approveCodeChange] Reconciled a dropped dispatch to a landed PR",
+            "approveCodeChange",
+            { userId, claimTaskId: winner.id, prUrl: outcome.prUrl },
+          );
+          await attachPrArtifact(winner.id, outcome.prUrl, payload.repositoryUrl);
+          return {
+            ok: true,
+            alreadyApproved: true,
+            result: {
+              proposalId: proposal.proposalId,
+              kind: "codeChange",
+              createdEntityId: winner.id,
+              landedOn: `ws:${payload.workspaceId}`,
+              workspaceSlug: payload.workspaceSlug,
+              codeChange: {
+                prUrl: outcome.prUrl,
+                prNumber: outcome.prNumber,
+                repositoryUrl: payload.repositoryUrl,
+              },
+            },
+          };
+        }
+        // Outcome genuinely unknown. Never delete the claim and never
+        // re-dispatch — a duplicate PR is worse than a blocked proposal, and
+        // re-running `propose_code_change` yields a fresh proposalId that is
+        // not blocked.
+        logger.warn(
+          "[approveCodeChange] Claim could not be reconciled — outcome unknown",
+          "approveCodeChange",
+          { userId, claimTaskId: winner.id, requestId: claim.requestId },
+        );
+        return {
+          ok: false,
+          error:
+            "An earlier approval of this proposal was dispatched but its outcome " +
+            "could not be confirmed. Check the repository for a new pull request " +
+            "before retrying — if there is none, re-generate the proposal.",
+          status: 409,
+        };
+      }
+
       return {
         ok: false,
         error:
@@ -739,6 +977,21 @@ async function approveCodeChange(args: {
       body: payload.body,
       approvedDiff: payload.diff,
       diffSha256: payload.diffSha256,
+      // Record the dispatch receipt the instant the swarm hands back a
+      // request_id — before the up-to-10-minute result poll. If this request
+      // dies in that window (maxDuration kill, dropped connection) the claim
+      // Task is all that survives, and without the receipt on it `reconcilePr`
+      // has nothing to resolve against: the PR would land with nothing on our
+      // side ever learning about it.
+      onDispatch: async (claim) => {
+        await db.task.update({
+          where: { id: claimTaskId },
+          data: {
+            codeChangeClaim:
+              claim as unknown as import("@prisma/client").Prisma.InputJsonValue,
+          },
+        });
+      },
     });
   } catch (err) {
     // Unknown/dropped outcome — keep the claim so reconcilePr can recover.
@@ -810,7 +1063,6 @@ async function approveCodeChange(args: {
   // Build the PULL_REQUEST artifact content.
   // No `progress` field → `findOpenPRArtifacts` treats this as "never checked"
   // and picks it up immediately (NULLS FIRST in the ORDER BY).
-  const { parseGithubOwnerRepo } = await import("@/utils/repositoryParser");
   let repoNameFinal: string;
   try {
     const { owner, repo } = parseGithubOwnerRepo(pr.repositoryUrl);

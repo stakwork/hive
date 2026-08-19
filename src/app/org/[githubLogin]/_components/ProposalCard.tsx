@@ -42,6 +42,7 @@ import {
   type MilestoneProposalPayload,
 } from "@/lib/proposals/types";
 import { MultiFileDiffView } from "./artifacts/diff";
+import { unifiedDiffToActionResults } from "@/lib/github/diffHygiene";
 import {
   useCanvasChatStore,
   type CanvasChatMessage,
@@ -1520,44 +1521,21 @@ function CodeChangeMeta({
   parts.push(`${payload.filesChanged} file${payload.filesChanged !== 1 ? "s" : ""}`);
 
   // Build diff ActionResults from the raw unified diff for the viewer.
-  const diffDiffs = useMemo(() => {
-    if (!payload.diff) return [];
-    // Extract file-name hints from the diff header lines.
-    const lines = payload.diff.split("\n");
-    const files: Array<{ file: string; action: "create" | "modify" | "delete" | "rewrite"; content: string }> = [];
-    let current: { file: string; action: "create" | "modify" | "delete" | "rewrite"; lines: string[] } | null = null;
-
-    for (const line of lines) {
-      if (line.startsWith("--- ")) {
-        if (current) {
-          files.push({ file: current.file, action: current.action, content: current.lines.join("\n") });
-        }
-        const path = line.slice(4).replace(/^a\//, "").trim();
-        current = { file: path === "/dev/null" ? "(new file)" : path, action: "modify", lines: [] };
-      } else if (line.startsWith("+++ ")) {
-        const path = line.slice(4).replace(/^b\//, "").trim();
-        if (current) {
-          if (current.file === "/dev/null" || current.file === "(new file)") {
-            current.file = path === "/dev/null" ? "(deleted)" : path;
-            current.action = "create";
-          } else if (path === "/dev/null") {
-            current.action = "delete";
-          }
-        }
-      }
-      if (current) current.lines.push(line);
-    }
-    if (current) {
-      files.push({ file: current.file, action: current.action, content: current.lines.join("\n") });
-    }
-
-    return files.map((f) => ({
-      file: f.file,
-      action: f.action,
-      content: f.content,
-      repoName: meta?.repoName ?? "",
-    }));
-  }, [payload.diff, meta?.repoName]);
+  //
+  // Uses the shared `unifiedDiffToActionResults` splitter rather than a local
+  // one: a deleted line whose own content starts with "-- " (the "-- AlterTable"
+  // comments in a Prisma migration, SQL/Lua/Haskell comments generally) renders
+  // as "--- ..." inside a hunk body, and a naive `startsWith("--- ")` split
+  // would treat it as a file header and shred the preview into phantom files.
+  // The shared splitter is hunk-aware. It is also what the server persists into
+  // the DIFF artifact, so the preview and the stored artifact agree.
+  const diffDiffs = useMemo(
+    () =>
+      payload.diff
+        ? unifiedDiffToActionResults(payload.diff, meta?.repoName ?? "")
+        : [],
+    [payload.diff, meta?.repoName],
+  );
 
   const cc = approvalResult?.codeChange;
 
