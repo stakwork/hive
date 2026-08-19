@@ -83,6 +83,22 @@ export interface AttemptRailRow {
 
 const NON_TERMINAL_STATUSES = new Set(["PENDING", "IN_PROGRESS"]);
 
+/**
+ * Stakwork project id from graph properties — same precedence as
+ * proposed-fixes/route.ts: `unique_source_id` (written by jarvis-backend at
+ * Stakwork dispatch) wins over legacy `project_id`.
+ */
+function projectIdFromProps(props: Record<string, unknown> | undefined): number | null {
+  if (!props) return null;
+  for (const key of ["unique_source_id", "project_id"]) {
+    const raw = props[key];
+    if (raw == null) continue;
+    const n = Number(raw);
+    if (Number.isFinite(n) && n > 0) return n;
+  }
+  return null;
+}
+
 /** Convert a Jarvis epoch-seconds string to ISO; null when unparseable. */
 function graphEpochToIso(raw: string | undefined): string | null {
   if (!raw) return null;
@@ -481,6 +497,28 @@ export function useEvalRunHistory(input: UseEvalRunHistoryInput): UseEvalRunHist
           for (const o of t.outputs ?? []) triggerByOutputRef.set(o.ref_id, t);
         }
 
+        // Graph-side Stakwork project id per attempt. jarvis-backend stamps
+        // `unique_source_id` on nodes at dispatch (and it appears on edges in
+        // some writers), so a concept attempt that never created a StakworkRun
+        // row still knows which Stakwork project produced it. Precedence:
+        // output node → owning trigger node → any edge touching either.
+        const rawNodeByRef = new Map(fixChain.nodes.map((n) => [n.ref_id, n]));
+        const edgeProjectIdByRef = new Map<string, number>();
+        for (const e of fixChain.edges) {
+          const pid = projectIdFromProps(e.properties);
+          if (pid == null) continue;
+          if (!edgeProjectIdByRef.has(e.target)) edgeProjectIdByRef.set(e.target, pid);
+          if (!edgeProjectIdByRef.has(e.source)) edgeProjectIdByRef.set(e.source, pid);
+        }
+        const graphProjectIdFor = (outputRefId: string, triggerRefId: string | null): number | null =>
+          projectIdFromProps(rawNodeByRef.get(outputRefId)?.properties) ??
+          (triggerRefId ? projectIdFromProps(rawNodeByRef.get(triggerRefId)?.properties) : null) ??
+          edgeProjectIdByRef.get(outputRefId) ??
+          (triggerRefId ? edgeProjectIdByRef.get(triggerRefId) : null) ??
+          null;
+
+        const allRunRows = [...runRows, ...evalRunRows, ...recursionRunRows];
+
         const triggerJoinableRuns = [...runRows, ...evalRunRows];
         const claimedRunIds = new Set<string>();
 
@@ -523,15 +561,32 @@ export function useEvalRunHistory(input: UseEvalRunHistoryInput): UseEvalRunHist
         const chartedRows: AttemptRailRow[] = finalAttempts.map((attempt, index) => {
           const trigger = triggerByOutputRef.get(attempt.ref_id) ?? null;
           if (trigger) chartedTriggerRefs.add(trigger.ref_id);
-          const statusRun = trigger ? pickStatusRun(runsForTrigger(trigger.ref_id)) : null;
+          const graphProjectId = graphProjectIdFor(attempt.ref_id, trigger?.ref_id ?? null);
+
+          // Join key 1: result.evalTriggerRef (hive-dispatched runs).
+          // Join key 2: the graph-stamped Stakwork project id — this is how a
+          // concept attempt (no evalTriggerRef anywhere) finds its run row.
+          let statusRun = trigger ? pickStatusRun(runsForTrigger(trigger.ref_id)) : null;
+          if (!statusRun && graphProjectId != null) {
+            const byProject = allRunRows.filter((r) => r.projectId === graphProjectId);
+            for (const c of byProject) claimedRunIds.add(c.id);
+            statusRun = pickStatusRun(byProject);
+          }
+
           const passed = attempt.actualPassed ?? attempt.n_passed;
           const total = attempt.n_total;
-          return rowFromRun(attempt.ref_id, statusRun, {
+          const row = rowFromRun(attempt.ref_id, statusRun, {
             label: attempt.label ?? null,
             attemptIndex: index,
             score: passed != null && total != null ? { passed, total } : null,
             graphTime: graphEpochToIso(attempt.date_added_to_graph),
           });
+          // No run row anywhere, but the graph knows the Stakwork project —
+          // keep the link (super-admin) even for row-less concept attempts.
+          if (row.projectId == null && graphProjectId != null) {
+            row.projectId = graphProjectId;
+          }
+          return row;
         });
 
         // Identity triggers with no charted output yet — a dispatched run whose
