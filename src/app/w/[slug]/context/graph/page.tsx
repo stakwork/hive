@@ -31,7 +31,7 @@ export default function GraphExplorerPage() {
   if (!slug) return null;
 
   return (
-    <div className="flex flex-col h-full p-6">
+    <div className="flex flex-col h-full">
       <PageHeader
         icon={Share2}
         title="Graph Explorer"
