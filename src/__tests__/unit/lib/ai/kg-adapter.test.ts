@@ -166,6 +166,51 @@ describe("kgGetNode", () => {
 describe("kgGetNeighbors", () => {
   const QUERIED_REF = "ref-source";
 
+  it("omits the root by default and returns it with includeRoot", async () => {
+    const raw = {
+      nodes: [
+        {
+          ref_id: QUERIED_REF,
+          node_type: "Concept",
+          properties: { name: "Auth Flow", description: "How login works" },
+        },
+        { ref_id: "ref-target", node_type: "File", name: "auth.ts" },
+      ],
+      edges: [
+        { source: QUERIED_REF, target: "ref-target", edge_type: "DESCRIBES", properties: {} },
+      ],
+    };
+
+    globalThis.fetch = mockFetch(raw);
+    const withoutRoot = await kgGetNeighbors(JARVIS_URL, API_KEY, QUERIED_REF);
+    expect(withoutRoot.root).toBeUndefined();
+
+    globalThis.fetch = mockFetch(raw);
+    const withRoot = await kgGetNeighbors(JARVIS_URL, API_KEY, QUERIED_REF, {
+      includeRoot: true,
+    });
+
+    expect(withRoot.root).toEqual({
+      ref_id: QUERIED_REF,
+      node_type: "Concept",
+      name: "Auth Flow",
+      properties: { name: "Auth Flow", description: "How login works" },
+    });
+    // The root never leaks into the neighbor list.
+    expect(withRoot.neighbors.map((n) => n.ref_id)).toEqual(["ref-target"]);
+  });
+
+  it("leaves root undefined when the queried node is absent from the response", async () => {
+    globalThis.fetch = mockFetch({ nodes: [], edges: [] });
+
+    const result = await kgGetNeighbors(JARVIS_URL, API_KEY, QUERIED_REF, {
+      includeRoot: true,
+    });
+
+    expect(result.reachable).toBe(true);
+    expect(result.root).toBeUndefined();
+  });
+
   it("direction forward when edge.source === refId (MODIFIES edge)", async () => {
     const raw = {
       nodes: [
