@@ -430,6 +430,10 @@ export function buildCodeChangeTools(ctx: CapabilityContext): ToolSet {
             filesChanged: diffs.length,
             baseBranchDisplay,
           },
+          // Stamped server-side from the tool's own context — never a caller
+          // input. The approval handler reads this back off the STORED
+          // transcript to enforce that only the originator can approve.
+          originatorUserId: ctx.userId,
           rationale:
             `Preview diff for '${title}' — ${diffs.length} file(s) changed. ` +
             `Base branch: ${baseBranchDisplay}. ` +
