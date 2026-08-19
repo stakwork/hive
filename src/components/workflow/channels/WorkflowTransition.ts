@@ -1,5 +1,6 @@
 import { createConsumer } from '@anycable/web';
 import type { WorkflowTransitionData } from '@/types/stakwork/websocket';
+import { cableUrl } from '@/lib/anycable';
 
 class WorkflowTransition {
   // Configuration
@@ -17,7 +18,7 @@ class WorkflowTransition {
   private updateQueue: any[] = [];
 
   constructor(railsEnv: string, projectId: string, onUpdate: (data: WorkflowTransitionData) => void) {
-    this.cable = createConsumer();
+    this.cable = createConsumer(cableUrl(railsEnv));
     this.projectId = projectId;
     this.onUpdate = onUpdate;
   }
