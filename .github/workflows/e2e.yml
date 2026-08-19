@@ -12,6 +12,7 @@ jobs:
   playwright-shards:
     name: Playwright (shard ${{ matrix.shard }}/3)
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -60,7 +61,7 @@ jobs:
           key: playwright-browsers-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
 
       - name: Install Playwright Browsers
-        run: npx playwright install --with-deps chromium
+        run: npx playwright install chromium
         if: steps.playwright-cache.outputs.cache-hit != 'true'
 
       - name: Cache Next.js build
@@ -97,18 +98,10 @@ jobs:
           NEXT_PUBLIC_FEATURE_CODEBASE_RECOMMENDATION: "true"
           NEXT_SKIP_TYPE_CHECK: "true"
         run: |
-          # Install Playwright OS deps in background if browsers were cached
-          if [ "${{ steps.playwright-cache.outputs.cache-hit }}" = "true" ]; then
-            npx playwright install-deps chromium &
-            PW_DEPS_PID=$!
-          fi
           npx prisma migrate deploy &
           DB_PID=$!
           npm run build
           wait $DB_PID
-          if [ -n "${PW_DEPS_PID:-}" ]; then
-            wait $PW_DEPS_PID
-          fi
           npm start &
 
       - name: Wait for application to be ready
