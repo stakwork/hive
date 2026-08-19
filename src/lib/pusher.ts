@@ -156,7 +156,12 @@ export type CanvasConversationUpdateReason =
   // A canvas-linked agent run (e.g. workflow-explorer) delivered its
   // result into the conversation — either inline (short run) or via
   // the webhook fan-back safety net (long run).
-  | "agent_run";
+  | "agent_run"
+  // A code-change claim reached a terminal PR outcome (webhook delivery
+  // or reconcile cron) and the stored approvalResult row was patched in
+  // place — clients reconcile existing rows so the proposal card flips
+  // from "PR in progress" to the PR link (or an honest failure).
+  | "code-change-pr-update";
 
 /**
  * Fire-and-forget broadcast that a canvas conversation's `messages` JSON

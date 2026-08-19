@@ -762,6 +762,13 @@ export interface ApprovalResult {
    * Present only on codeChange approvals; absent on all other kinds.
    */
   codeChange?: {
+    /**
+     * True while the PR run is dispatched but its terminal webhook has not
+     * arrived yet ("dispatched, PR pending"). Cleared — and replaced by
+     * either `prUrl` or `failureCode` — when the webhook (or the reconcile
+     * cron) patches this approvalResult in place.
+     */
+    prPending?: boolean;
     /** URL of the opened pull request (success path). */
     prUrl?: string;
     prNumber?: number;
@@ -775,6 +782,11 @@ export interface ApprovalResult {
     failureMessage?: string;
     /** Whether the swarm's file-set verification passed (used in auditing). */
     pathSetVerified?: boolean;
+    /**
+     * Paths present in the landed diff but absent from the approved preview
+     * (populated when `pathSetVerified === false`).
+     */
+    unapprovedPaths?: string[];
   };
 }
 

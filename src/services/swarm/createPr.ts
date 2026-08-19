@@ -52,7 +52,7 @@
  * `reconcilePr(claim)` resolves an outcome after a dropped connection without
  * re-dispatching:
  *   1. Re-read `GET /progress?request_id=...`
- *   2. `GET /repos/{owner}/{repo}/pulls?head=<owner>:swarm/swarm-change-<prefix>`
+ *   2. `GET /repos/{owner}/{repo}/pulls?head=<owner>:<claim.prBranch>`
  *   3. Unknown outcome — never a second dispatch.
  */
 
@@ -111,6 +111,21 @@ export type CreatePrFailure = {
 
 export type CreatePrResult = CreatePrSuccess | CreatePrFailure;
 
+/**
+ * Successful dispatch of an async `create_pr` run. The terminal outcome
+ * arrives later on the code-change webhook (or via the reconcile cron);
+ * this only asserts the swarm accepted the run and returned identifiers.
+ */
+export type CreatePrDispatched = {
+  ok: true;
+  dispatched: true;
+  requestId: string;
+  /** Exact head branch from the dispatch response's `pr_branch` (null on older swarms). */
+  prBranch: string | null;
+};
+
+export type CreatePrDispatchResult = CreatePrDispatched | CreatePrFailure;
+
 export type ReconcileOutcome =
   | { outcome: "landed"; prUrl: string; prNumber: number }
   | { outcome: "unknown" };
@@ -123,8 +138,25 @@ export interface CreatePrClaim {
   /** The approving userId — used for GitHub authorship check during reconcile. */
   userId: string;
   workspaceSlug: string;
-  /** Run-id prefix used to build the head-branch filter for GitHub search. */
-  runIdPrefix: string;
+  /**
+   * Exact head branch the swarm will push, from the dispatch response's
+   * `pr_branch` field. Used VERBATIM in reconcile's GitHub `head` filter,
+   * never derived: the swarm names branches from its own runId, which is
+   * independent of `requestId`.
+   */
+  prBranch?: string;
+  /**
+   * Legacy pre-webhook claims only: `requestId` copied verbatim. The branch
+   * is derived from an independent swarm-side runId, so this never matched
+   * a real branch — kept solely so old persisted claims still parse.
+   */
+  runIdPrefix?: string;
+  /** File paths of the approved diff, for path-set verification at completion. */
+  approvedPaths?: string[];
+  /** Conversation whose stored approvalResult row the terminal patch rewrites. */
+  conversationId?: string;
+  /** Proposal id keying that row's `approvalResult.proposalId`. */
+  proposalId?: string;
 }
 
 // ─── Classification table ─────────────────────────────────────────────────
@@ -214,6 +246,14 @@ function classify(
         failureCode,
         message:
           "The swarm indicates this change was already landed in a previous run.",
+      };
+    case "create_pr_not_called":
+      return {
+        failureCode,
+        message:
+          "The swarm run finished without calling the create_pr tool, so no " +
+          "verified pull request was recorded. A branch or PR may still exist " +
+          "on the repository — check it before retrying.",
       };
     // HTTP admission codes
     case "no_access":
@@ -472,7 +512,12 @@ async function resolveSwarmCredentials(
 // ─── createPr ─────────────────────────────────────────────────────────────
 
 /**
- * Land an approved code-change diff as a PR via the swarm's `create_pr`.
+ * Dispatch an approved code-change diff to the swarm's `create_pr` and
+ * RETURN — the terminal result is delivered to `webhookUrl` by the swarm
+ * (`postTerminalWebhook`), processed by `/api/code-change/webhook`, with the
+ * reconcile cron as the backstop for a webhook that never arrives. There is
+ * no in-process result poll: the approval HTTP request is no longer held
+ * open for the life of the PR run.
  *
  * @param userId         — The approving user's NextAuth id.
  * @param workspaceSlug  — Target workspace slug.
@@ -481,6 +526,9 @@ async function resolveSwarmCredentials(
  * @param body           — PR body.
  * @param approvedDiff   — The diff bytes approved by the user.
  * @param diffSha256     — SHA-256 hex of the approved diff for re-verification.
+ * @param webhookUrl     — Swarm-reachable terminal-callback URL. Carries the
+ *                         per-claim bearer token in its query string (the
+ *                         swarm sends no custom headers) — NEVER log it.
  */
 export async function createPr(params: {
   userId: string;
@@ -490,19 +538,19 @@ export async function createPr(params: {
   body: string;
   approvedDiff: string;
   diffSha256: string;
+  webhookUrl: string;
   /**
-   * Invoked once, the moment the swarm returns a `request_id` and BEFORE the
-   * result poll begins. This is the only window in which the claim can be
-   * persisted: the poll below runs for up to 10 minutes and the request can
-   * die at any point in it (platform `maxDuration` kill, dropped connection),
-   * leaving a PR that landed with nothing on our side pointing at it.
+   * Invoked once, the moment the swarm returns a `request_id`. The claim must
+   * be durably recorded before `createPr` returns: the terminal webhook can
+   * arrive at any moment after dispatch, and the receiver resolves the claim
+   * by the receipt this persists.
    *
    * Awaited, and a throw here is fatal to the dispatch by design — a claim we
    * failed to record is exactly the unrecoverable state this exists to
-   * prevent, and failing before the poll keeps the outcome classifiable.
+   * prevent.
    */
   onDispatch?: (claim: CreatePrClaim) => Promise<void> | void;
-}): Promise<CreatePrResult> {
+}): Promise<CreatePrDispatchResult> {
   const {
     userId,
     workspaceSlug,
@@ -511,6 +559,7 @@ export async function createPr(params: {
     body,
     approvedDiff,
     diffSha256,
+    webhookUrl,
     onDispatch,
   } = params;
 
@@ -583,6 +632,7 @@ export async function createPr(params: {
         Accept: "application/vnd.github+json",
         "X-GitHub-Api-Version": "2022-11-28",
       },
+      signal: AbortSignal.timeout(15_000),
     });
     if (userRes.ok) {
       const userData = (await userRes.json()) as { login?: string };
@@ -621,6 +671,10 @@ export async function createPr(params: {
     repo_url: repositoryUrl,
     username,
     pat, // Never logged — redacted at the adapter boundary on any error path.
+    // Terminal fan-back: the swarm POSTs `{ request_id, status, result|error }`
+    // here on completion/failure (3 attempts, plus boot-time orphan sweep).
+    // The URL embeds the per-claim token — never logged.
+    webhookUrl,
     prompt:
       `Apply the following unified diff verbatim using apply_patch, ` +
       `then call create_pr with exactly the title and body given below.\n\n` +
@@ -642,6 +696,9 @@ export async function createPr(params: {
         "x-api-token": swarmApiKey,
       },
       body: JSON.stringify(requestBody),
+      // Admission is fast (pre-flight checks only) — a hung connection here
+      // must not silently burn the route budget.
+      signal: AbortSignal.timeout(30_000),
     });
   } catch (e) {
     logger.error("[createPr] Network error dispatching to swarm", "createPr", {
@@ -669,6 +726,7 @@ export async function createPr(params: {
 
   const dispatchData = (await dispatchResponse.json()) as {
     request_id?: string;
+    pr_branch?: string;
   };
   requestId = dispatchData.request_id ?? "";
   if (!requestId) {
@@ -679,13 +737,19 @@ export async function createPr(params: {
     };
   }
 
-  // ── 6b. Hand the claim to the caller BEFORE polling ─────────────────
-  // `runIdPrefix` is the request id: it is the only identifier we hold at
-  // dispatch time, and the swarm derives its `swarm/swarm-change-<run>` branch
-  // from the same run. If that derivation ever drifts, `reconcilePr`'s GitHub
-  // head-filter channel degrades to a miss and it falls back to the `/progress`
-  // re-read, which keys off `requestId` directly — so a drift costs recall on
-  // one channel, never correctness.
+  // The exact head branch the run will push — the swarm derives it from its
+  // own runId (independent of `request_id`), so this response field is the
+  // ONLY way to know it. Stored verbatim in the claim for reconcile's GitHub
+  // `head` filter; null on a swarm build predating the field.
+  const prBranch =
+    typeof dispatchData.pr_branch === "string" && dispatchData.pr_branch
+      ? dispatchData.pr_branch
+      : null;
+
+  // ── 6b. Persist the claim receipt, then return ──────────────────────
+  // The terminal webhook can arrive at any moment from here on. The receiver
+  // resolves the claim by this receipt, so it must be durable before we
+  // return.
   if (onDispatch) {
     try {
       await onDispatch({
@@ -693,10 +757,11 @@ export async function createPr(params: {
         repositoryUrl,
         userId,
         workspaceSlug,
-        runIdPrefix: requestId,
+        ...(prBranch ? { prBranch } : {}),
+        approvedPaths: [...extractFilePaths(approvedDiff)],
       });
     } catch (e) {
-      logger.error("[createPr] onDispatch failed — refusing to poll", "createPr", {
+      logger.error("[createPr] onDispatch failed after dispatch", "createPr", {
         userId,
         workspaceSlug,
         repositoryUrl,
@@ -712,67 +777,54 @@ export async function createPr(params: {
     }
   }
 
-  // ── 7. Poll for result ──────────────────────────────────────────────
-  const maxAttempts = 120;
-  const pollInterval = 5000;
-
-  for (let attempt = 0; attempt < maxAttempts; attempt++) {
-    await new Promise((r) => setTimeout(r, pollInterval));
-
-    let progressResponse: Response;
-    try {
-      progressResponse = await fetch(
-        `${swarmUrl}/progress?request_id=${encodeURIComponent(requestId)}`,
-        {
-          method: "GET",
-          headers: {
-            "Content-Type": "application/json",
-            "x-api-token": swarmApiKey,
-          },
-        },
-      );
-    } catch {
-      continue;
-    }
-
-    if (!progressResponse.ok) continue;
-
-    const progressData = (await progressResponse.json()) as {
-      status: string;
-      result?: unknown;
-      error?: string;
-    };
-
-    if (progressData.status === "completed") {
-      return _processCompletedResult(
-        progressData.result,
-        approvedDiff,
-        repositoryUrl,
-      );
-    }
-    if (
-      progressData.status === "failed" ||
-      progressData.status === "aborted"
-    ) {
-      return { ok: false, ...classify("aborted") };
-    }
-  }
-
-  return {
-    ok: false,
-    failureCode: "unknown",
-    message: "PR creation timed out. Use reconcilePr() to check the outcome.",
-  };
+  return { ok: true, dispatched: true, requestId, prBranch };
 }
 
 // ─── Result processing ────────────────────────────────────────────────────
 
+/**
+ * Diagnostic shape summary for a non-success swarm result. `pr.diff` and
+ * `error` stay discarded at the adapter boundary; keys and tool names carry
+ * no payload but would have named this incident's cause (`bash`, no
+ * `create_pr`) in one log line.
+ */
+function _logResultShape(
+  branch: string,
+  raw: Record<string, unknown> | null,
+  landResult: Record<string, unknown> | null,
+  ctx?: { requestId?: string },
+): void {
+  const toolUse = raw?.tool_use;
+  logger.warn("[createPr] Non-success swarm result", "createPr", {
+    branch,
+    requestId: ctx?.requestId,
+    rawKeys: raw ? Object.keys(raw) : null,
+    landResultKeys: landResult ? Object.keys(landResult) : null,
+    sessionId: typeof raw?.sessionId === "string" ? raw.sessionId : undefined,
+    toolUse: Array.isArray(toolUse)
+      ? toolUse
+          .map((t) =>
+            t && typeof t === "object" && "name" in (t as object)
+              ? String((t as { name: unknown }).name)
+              : typeof t === "string"
+                ? t
+                : "?",
+          )
+          .slice(0, 50)
+      : toolUse !== undefined
+        ? typeof toolUse
+        : undefined,
+  });
+}
+
 function _processCompletedResult(
   result: unknown,
-  approvedDiff: string,
+  approvedPaths: ReadonlySet<string> | null,
   repositoryUrl: string,
+  ctx?: { requestId?: string },
 ): CreatePrResult {
   if (!result || typeof result !== "object") {
+    _logResultShape("empty-result", null, null, ctx);
     return {
       ok: false,
       failureCode: "unknown",
@@ -795,7 +847,7 @@ function _processCompletedResult(
       // clear the same shape / URL / cap / secret checks: `hardenPrResult`
       // is what stops a wrong-repo URL from later becoming a branch write
       // by `pr-monitor.ts` under the workspace owner's token.
-      return _hardenAndBuild(landResult, approvedDiff, repositoryUrl);
+      return _hardenAndBuild(landResult, approvedPaths, repositoryUrl);
     }
     // already_landed failure replay.
     return { ok: false, ...classify("already_landed") };
@@ -803,6 +855,7 @@ function _processCompletedResult(
 
   // Normal result dispatch.
   if (!("ok" in landResult)) {
+    _logResultShape("missing-ok", raw, landResult, ctx);
     return {
       ok: false,
       failureCode: "unknown",
@@ -813,11 +866,12 @@ function _processCompletedResult(
   if (!landResult.ok) {
     // Failure — discard `pr.diff` and `error` at the adapter boundary.
     const failureCode = (landResult.failure as LandChangeFailureCode) ?? "unknown";
+    _logResultShape(`failure:${failureCode}`, raw, landResult, ctx);
     return { ok: false, ...classify(failureCode) };
   }
 
   // Success
-  return _hardenAndBuild(landResult, approvedDiff, repositoryUrl);
+  return _hardenAndBuild(landResult, approvedPaths, repositoryUrl);
 }
 
 /**
@@ -830,7 +884,7 @@ function _processCompletedResult(
  */
 function _hardenAndBuild(
   landResult: Record<string, unknown>,
-  approvedDiff: string,
+  approvedPaths: ReadonlySet<string> | null,
   repositoryUrl: string,
 ): CreatePrResult {
   const harden = hardenPrResult(landResult, repositoryUrl);
@@ -846,19 +900,22 @@ function _hardenAndBuild(
     };
   }
 
-  return _buildSuccess(harden.hardened, approvedDiff, repositoryUrl);
+  return _buildSuccess(harden.hardened, approvedPaths, repositoryUrl);
 }
 
 function _buildSuccess(
   pr: LandChangeSuccess,
-  approvedDiff: string,
+  // null ⇒ the approved path set is unavailable (legacy claim) — skip the
+  // comparison rather than reporting every path as unapproved.
+  approvedPaths: ReadonlySet<string> | null,
   repositoryUrl: string,
 ): CreatePrResult {
-  const approvedPaths = extractFilePaths(approvedDiff);
   const returnedPaths = extractFilePaths(pr.diff);
   const unapprovedPaths: string[] = [];
-  for (const p of returnedPaths) {
-    if (!approvedPaths.has(p)) unapprovedPaths.push(p);
+  if (approvedPaths) {
+    for (const p of returnedPaths) {
+      if (!approvedPaths.has(p)) unapprovedPaths.push(p);
+    }
   }
   const pathSetVerified = unapprovedPaths.length === 0;
 
@@ -886,16 +943,22 @@ function _buildSuccess(
 // ─── reconcilePr ─────────────────────────────────────────────────────────
 
 /**
- * Recover the outcome of a PR creation after a dropped connection.
+ * Recover the outcome of a PR creation whose webhook never arrived.
  *
  * Never re-dispatches. Three resolution channels in priority order:
  *   1. `GET /progress?request_id=...` — swarm's own result cache.
- *   2. `GET /repos/{owner}/{repo}/pulls?head=<owner>:swarm/swarm-change-<prefix>` —
- *      GitHub direct query. Confirms branch + author before accepting.
+ *   2. `GET /repos/{owner}/{repo}/pulls?head=<owner>:<claim.prBranch>` —
+ *      GitHub direct query using the EXACT branch from the dispatch
+ *      response. Skipped for legacy claims without `prBranch` (their
+ *      `runIdPrefix` never matched a real branch — the swarm derives the
+ *      branch from its own runId, not from `request_id`).
  *   3. Unknown outcome — caller must surface this to the user.
  */
 export async function reconcilePr(claim: CreatePrClaim): Promise<ReconcileOutcome> {
-  const { requestId, repositoryUrl, userId, workspaceSlug, runIdPrefix } = claim;
+  const { requestId, repositoryUrl, userId, workspaceSlug, prBranch } = claim;
+  const approvedPaths = Array.isArray(claim.approvedPaths)
+    ? new Set(claim.approvedPaths)
+    : null;
 
   // ── 1. Re-read swarm progress ───────────────────────────────────────
   const swarmCreds = await resolveSwarmCredentials(workspaceSlug, userId);
@@ -909,6 +972,7 @@ export async function reconcilePr(claim: CreatePrClaim): Promise<ReconcileOutcom
             "Content-Type": "application/json",
             "x-api-token": swarmCreds.swarmApiKey,
           },
+          signal: AbortSignal.timeout(15_000),
         },
       );
       if (progressRes.ok) {
@@ -919,9 +983,9 @@ export async function reconcilePr(claim: CreatePrClaim): Promise<ReconcileOutcom
         if (data.status === "completed" && data.result) {
           const prResult = _processCompletedResult(
             data.result,
-            // approvedDiff unavailable at reconcile time — skip path verification
-            "",
+            approvedPaths,
             repositoryUrl,
+            { requestId },
           );
           if (prResult.ok) {
             return { outcome: "landed", prUrl: prResult.prUrl, prNumber: prResult.prNumber };
@@ -933,13 +997,18 @@ export async function reconcilePr(claim: CreatePrClaim): Promise<ReconcileOutcom
     }
   }
 
-  // ── 2. GitHub direct query ──────────────────────────────────────────
+  // ── 2. GitHub direct query (requires the exact branch) ─────────────
   try {
+    if (!prBranch || !prBranch.startsWith(SWARM_BRANCH_PREFIX)) {
+      // Legacy claim (no pr_branch recorded) or an unexpected branch shape —
+      // GitHub's `head` filter is an exact match, so guessing yields nothing.
+      throw new Error("No usable prBranch on claim");
+    }
     const githubProfile = await getGithubUsernameAndPAT(userId, workspaceSlug);
     if (!githubProfile) throw new Error("No profile");
 
     const { owner, repo } = parseGithubOwnerRepo(repositoryUrl);
-    const headFilter = `${owner}:${SWARM_BRANCH_PREFIX}${runIdPrefix}`;
+    const headFilter = `${owner}:${prBranch}`;
     const searchUrl =
       `https://api.github.com/repos/${encodeURIComponent(owner)}/` +
       `${encodeURIComponent(repo)}/pulls?head=${encodeURIComponent(headFilter)}&state=open&per_page=5`;
@@ -950,6 +1019,7 @@ export async function reconcilePr(claim: CreatePrClaim): Promise<ReconcileOutcom
         Accept: "application/vnd.github+json",
         "X-GitHub-Api-Version": "2022-11-28",
       },
+      signal: AbortSignal.timeout(15_000),
     });
     if (searchRes.ok) {
       const pulls = (await searchRes.json()) as Array<{
@@ -979,5 +1049,6 @@ export async function reconcilePr(claim: CreatePrClaim): Promise<ReconcileOutcom
   return { outcome: "unknown" };
 }
 
-// Re-exported for tests: both are pure functions over a swarm payload.
-export { hardenPrResult, _processCompletedResult };
+// Re-exported for the webhook/reconcile completion path and tests:
+// pure functions over a swarm payload / diff.
+export { hardenPrResult, _processCompletedResult, extractFilePaths };

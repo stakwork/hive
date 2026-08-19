@@ -357,3 +357,70 @@ export async function appendTurnMessages(args: {
   if (didAppend) notifyCanvasConversationUpdated(conversationId, reason);
   return didAppend;
 }
+
+/**
+ * Patch a stored `approvalResult` row IN PLACE (same row id) — the
+ * code-change webhook / reconcile path: the approval turn was persisted
+ * with `codeChange.prPending: true`, and the terminal PR outcome arrives
+ * minutes later on a different request entirely.
+ *
+ * Locates the assistant row whose `approvalResult.proposalId` matches
+ * (regardless of which writer persisted it — the server-side
+ * `${turnId}-a0` row or a client autosave copy) under the same
+ * `SELECT … FOR UPDATE` row lock every other conversation writer uses,
+ * replaces its `approvalResult.codeChange` with the given value, and
+ * optionally rewrites the row's visible `content` text.
+ *
+ * Idempotent by construction: re-applying the same terminal patch
+ * produces an identical row. Returns whether a row was actually changed;
+ * fires a `code-change-pr-update` nudge only then, so open browsers
+ * reconcile the row and flip the proposal card.
+ */
+export async function patchStoredCodeChangeResult(args: {
+  conversationId: string;
+  proposalId: string;
+  codeChange: Record<string, unknown>;
+  /** Replacement for the row's visible assistant text (omit to keep). */
+  content?: string;
+}): Promise<boolean> {
+  const { conversationId, proposalId, codeChange, content } = args;
+
+  let didChange = false;
+  await db.$transaction(async (tx) => {
+    const locked = await tx.$queryRaw<{ messages: unknown }[]>`
+      SELECT messages FROM shared_conversations WHERE id = ${conversationId} FOR UPDATE
+    `;
+    if (locked.length === 0) return; // conversation deleted
+
+    const existing = Array.isArray(locked[0].messages)
+      ? (locked[0].messages as StoredMessage[])
+      : [];
+
+    const next = existing.map((m) => {
+      if (m.role !== "assistant") return m;
+      const ar = m.approvalResult as
+        | { proposalId?: string; codeChange?: unknown }
+        | undefined;
+      if (!ar || ar.proposalId !== proposalId) return m;
+      const patched: StoredMessage = {
+        ...m,
+        approvalResult: { ...ar, codeChange },
+        ...(content !== undefined ? { content } : {}),
+      };
+      if (JSON.stringify(patched) !== JSON.stringify(m)) didChange = true;
+      return patched;
+    });
+
+    if (!didChange) return;
+
+    await tx.sharedConversation.update({
+      where: { id: conversationId },
+      data: { messages: next as unknown as never },
+    });
+  });
+
+  if (didChange) {
+    notifyCanvasConversationUpdated(conversationId, "code-change-pr-update");
+  }
+  return didChange;
+}
