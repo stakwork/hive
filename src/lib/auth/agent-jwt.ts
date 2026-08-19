@@ -55,6 +55,29 @@ export function decodeWebhookToken(token: string): WebhookTokenPayload | null {
 }
 
 /**
+ * Create a JWT for the code-change webhook.
+ *
+ * Long-lived by design: the swarm's terminal webhook can arrive well after
+ * dispatch (retry ladder, boot-time orphan sweep after a container restart),
+ * and the reconcile cron may still be resolving the claim days later. The
+ * per-claim secret — generated fresh for every claim Task and stored
+ * encrypted — is the real credential; the expiry is a backstop, not the
+ * security boundary.
+ *
+ * @param taskId - The claim Task id
+ * @param secret - The per-claim webhook secret
+ */
+export async function createCodeChangeWebhookToken(taskId: string, secret: string): Promise<string> {
+  const secretKey = new TextEncoder().encode(secret);
+
+  return new SignJWT({ taskId })
+    .setProtectedHeader({ alg: "HS256" })
+    .setIssuedAt()
+    .setExpirationTime("30d")
+    .sign(secretKey);
+}
+
+/**
  * Generate a random webhook secret
  * @returns 32-byte hex string
  */

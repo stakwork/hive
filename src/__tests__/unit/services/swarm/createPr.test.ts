@@ -20,6 +20,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import {
   hardenPrResult,
   _processCompletedResult,
+  extractFilePaths,
 } from "@/services/swarm/createPr";
 
 // ── Minimal valid LandChangeSuccess shape ──────────────────────────────────
@@ -219,7 +220,9 @@ describe("hardenPrResult", () => {
 // success, so it must clear the same hardening.
 
 describe("_processCompletedResult — already_landed replay", () => {
-  const APPROVED_DIFF = VALID_PR.diff;
+  // Second param is now the APPROVED PATH SET (a ReadonlySet<string> —
+  // stored on the claim at dispatch time), not the raw diff.
+  const APPROVED_DIFF = extractFilePaths(VALID_PR.diff);
 
   it("returns the prior PR on an ok:true already_landed replay", () => {
     const result = _processCompletedResult(

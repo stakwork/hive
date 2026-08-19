@@ -272,6 +272,11 @@ export async function POST(request: NextRequest) {
         transcript,
         approvalIntent,
         rejectionIntent,
+        // Captured from the request host HERE at the route level — the same
+        // trap `CapabilityContext.publicBaseUrl` documents: deriving it any
+        // deeper yields localhost. codeChange approvals need it for webhook
+        // delivery.
+        publicBaseUrl: getBaseUrl(request.headers.get("host")),
         ...(approvalConversationId ? { conversationId: approvalConversationId } : {}),
         ...(typeof turnId === "string" && turnId ? { turnId } : {}),
         ...(approvalChatAgentModel ? { chatAgentModel: approvalChatAgentModel } : {}),

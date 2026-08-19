@@ -322,6 +322,10 @@ export function buildCodeChangeTools(ctx: CapabilityContext): ToolSet {
               repo_url: repositoryUrl,
               prompt: agentPrompt,
               pat,
+              // Throwaway detached worktree: the preview can never dirty
+              // the shared checkout (or push — bash is confined and
+              // tokens are blanked on ephemeral runs).
+              ephemeral: true,
               // `toolsConfig.create_pr` deliberately absent.
             },
             bifrost,

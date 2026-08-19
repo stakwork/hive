@@ -592,12 +592,16 @@ model Task {
   // the winning claim's result instead of creating a second Task/PR.
   proposalId             String?               @map("proposal_id")
   // Dispatch receipt for a code-change approval, written by `createPr`'s
-  // `onDispatch` hook the moment the swarm returns a `request_id` — i.e.
-  // BEFORE the ~10-minute result poll that can be killed mid-flight. Shape is
+  // `onDispatch` hook the moment the swarm returns a `request_id`. Shape is
   // `CreatePrClaim` (src/services/swarm/createPr.ts). Without it a dropped
   // dispatch leaves a claim Task that `reconcilePr` can never resolve, so the
   // approval reports failure even when the PR actually landed.
   codeChangeClaim        Json?                 @map("code_change_claim")
+  // Encrypted per-claim secret signing the code-change webhook JWT. The swarm
+  // sends no custom headers, so the token rides the `webhookUrl` query string
+  // and is verified against this secret on receipt (mirrors
+  // `agentWebhookSecret`, kept separate so the names stay honest).
+  codeChangeWebhookSecret String?              @map("code_change_webhook_secret")
   agentLogs              AgentLog[]
   chatMessages           ChatMessage[]
   deployments            Deployment[]

@@ -114,12 +114,8 @@ export async function GET(request: NextRequest) {
     const prResult = mockPrResultStore.get(requestId);
     if (prResult) {
       mockPrResultStore.delete(requestId);
-      const prData = prResult.ok
-        ? prResult.pr
-        : {
-            ok: false,
-            failure: (prResult as { ok: false; failure: string }).failure,
-          };
+      // The store holds the FLAT LandChangeResult — serve it verbatim.
+      const prData = prResult;
       return NextResponse.json({
         status: "completed",
         result: {

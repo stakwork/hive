@@ -54,6 +54,12 @@ export async function runProposalIntent(args: {
    * `feature.model || model || undefined` chain.
    */
   chatAgentModel?: string;
+  /**
+   * Swarm-reachable base URL captured at the route level
+   * (`getBaseUrl(request.headers.get("host"))`). Required by codeChange
+   * approvals for webhook delivery; other kinds ignore it.
+   */
+  publicBaseUrl?: string;
 }): Promise<Response> {
   const {
     orgId,
@@ -64,6 +70,7 @@ export async function runProposalIntent(args: {
     conversationId,
     turnId,
     chatAgentModel,
+    publicBaseUrl,
   } = args;
 
   let summaryText: string;
@@ -79,6 +86,7 @@ export async function runProposalIntent(args: {
       intent: approvalIntent,
       ...(conversationId ? { conversationId } : {}),
       ...(chatAgentModel ? { chatAgentModel } : {}),
+      ...(publicBaseUrl ? { publicBaseUrl } : {}),
     });
     if (!outcome.ok) {
       // Surface validation errors as the assistant text. The card UI
@@ -184,6 +192,13 @@ export async function runProposalIntent(args: {
                             : r.kind === "codeChange"
                               ? (() => {
                                   const cc = r.codeChange;
+                                  if (cc?.prPending) {
+                                    return (
+                                      "Dispatched — the pull request is being " +
+                                      "opened now. This card will update with " +
+                                      "the link when it's ready."
+                                    );
+                                  }
                                   if (!cc?.prUrl) {
                                     return cc?.failureMessage
                                       ? `Code change failed: ${cc.failureMessage}`
