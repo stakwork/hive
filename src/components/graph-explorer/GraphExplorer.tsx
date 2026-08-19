@@ -48,9 +48,9 @@ import {
 import { Alert, AlertDescription } from "@/components/ui/alert";
 
 import { stakgraphToRawGraph } from "./stakgraphToRawGraph";
+import { detailToRawGraph, mergeRawGraph, type RawGraph } from "./walkGraph";
 import { useKGGraph } from "./useKGGraph";
 import { GraphChatSidebar, NewGraphChatModal } from "./chat";
-import type { RawNode, RawEdge } from "@/graph-viz-kit";
 import type {
   GraphNodeDetailResponse,
   GraphNodeNeighbor,
@@ -100,35 +100,68 @@ function nodeColor(type: string): string {
   return TYPE_COLORS[type] ?? TYPE_COLORS.Default;
 }
 
-/**
- * Turn a node-detail response into the star graph the 3D canvas renders: the
- * queried node first (so it lands at index 0 and wins `findBestRoot`), then one
- * node + edge per directly-linked neighbor.
- */
-function detailToRawGraph(detail: GraphNodeDetailResponse): {
-  nodes: RawNode[];
-  edges: RawEdge[];
-} {
-  const seen = new Set<string>([detail.node.ref_id]);
-  const nodes: RawNode[] = [
-    { id: detail.node.ref_id, label: detail.node.name || detail.node.ref_id },
-  ];
-  const edges: RawEdge[] = [];
+/** Multi-select node-type filter, shared by search and graph-walk expansion. */
+function NodeTypeFilter({
+  label,
+  nodeTypes,
+  selected,
+  onToggle,
+  onClear,
+  testId,
+}: {
+  label: string;
+  nodeTypes: GraphNodeType[];
+  selected: string[];
+  onToggle: (type: string) => void;
+  onClear: () => void;
+  testId: string;
+}) {
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button
+          variant="outline"
+          size="sm"
+          data-testid={`${testId}-button`}
+          className="shrink-0 min-w-[130px] justify-between"
+        >
+          <span className="truncate">{label}</span>
+          <ChevronDown className="h-4 w-4 ml-2 shrink-0" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="max-h-80 overflow-y-auto w-56">
+        <DropdownMenuLabel>Node types</DropdownMenuLabel>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem data-testid={`${testId}-all`} onSelect={onClear}>
+          All types
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
+        {nodeTypes.length === 0 ? (
+          <DropdownMenuItem disabled>No types available</DropdownMenuItem>
+        ) : (
+          nodeTypes.map((nt) => (
+            <DropdownMenuCheckboxItem
+              key={nt.type}
+              data-testid={`${testId}-option-${nt.type}`}
+              checked={selected.includes(nt.type)}
+              // Keep the menu open so several types can be picked at once.
+              onSelect={(e) => e.preventDefault()}
+              onCheckedChange={() => onToggle(nt.type)}
+            >
+              {nt.type}
+            </DropdownMenuCheckboxItem>
+          ))
+        )}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
 
-  for (const n of detail.neighbors) {
-    if (!seen.has(n.ref_id)) {
-      seen.add(n.ref_id);
-      nodes.push({ id: n.ref_id, label: n.name || n.ref_id });
-    }
-    // `direction` is relative to the queried node: forward = it's the source.
-    edges.push(
-      n.direction === "forward"
-        ? { source: detail.node.ref_id, target: n.ref_id, label: n.edge_type }
-        : { source: n.ref_id, target: detail.node.ref_id, label: n.edge_type },
-    );
-  }
-
-  return { nodes, edges };
+/** Trigger label for a type filter: "All types" / "Concept" / "3 types". */
+function typeFilterLabelFor(selected: string[]): string {
+  if (selected.length === 0) return "All types";
+  if (selected.length === 1) return selected[0];
+  return `${selected.length} types`;
 }
 
 /** Group neighbors by edge type, preserving the importance order Jarvis returned. */
@@ -245,12 +278,11 @@ export function GraphExplorer({ workspaceSlug, initialRefId }: GraphExplorerProp
   const [tab, setTab] = useState("table");
 
   // ── Raw graph data fed to 3D canvas ──────────────────────────────────────
-  const [rawNodes, setRawNodes] = useState<RawNode[]>([]);
-  const [rawEdges, setRawEdges] = useState<RawEdge[]>([]);
-
-  // ── 3D graph hook ─────────────────────────────────────────────────────────
-  const { graph, viewState, selectNode, goOverview, searchMatches, setSearchMatches } =
-    useKGGraph(rawNodes, rawEdges);
+  // One piece of state, not two: graph-walk expansion appends to both halves
+  // from the same `present?` decision, and splitting them invites a merge that
+  // adds edges for nodes it didn't add.
+  const [rawGraph, setRawGraph] = useState<RawGraph>({ nodes: [], edges: [] });
+  const rawNodes = rawGraph.nodes;
 
   // ── Selected node for the side sheet ─────────────────────────────────────
   const [sheetTarget, setSheetTarget] = useState<SheetTarget | null>(null);
@@ -260,14 +292,29 @@ export function GraphExplorer({ workspaceSlug, initialRefId }: GraphExplorerProp
   const [traceText, setTraceText] = useState<string | null>(null);
   const [traceLoading, setTraceLoading] = useState(false);
 
-  // ── Focused node (the `?ref_id=` deep link / neighbor-walk seed) ──────────
+  // ── Focused node (the `?ref_id=` deep link / graph-walk center) ───────────
   const [focusedNode, setFocusedNode] = useState<GraphNodeDetailResponse["node"] | null>(null);
   const [focusLoading, setFocusLoading] = useState(false);
   const [focusError, setFocusError] = useState<string | null>(null);
-  /** Ref_id to select once the rebuilt graph lands (see the effect below). */
-  const pendingSelectRef = useRef<string | null>(null);
   /** Guards against a slow detail fetch overwriting a newer one. */
   const detailRequestRef = useRef(0);
+
+  /**
+   * Walking is a distinct mode from running a Cypher query: the canvas shows an
+   * accumulating neighborhood centered on the focused node rather than a query
+   * result to drill into. The two are mutually exclusive by construction —
+   * focusing clears `queryResult`, running a query clears `focusedNode`.
+   */
+  const walkMode = focusedNode !== null;
+
+  // Re-root the layout on the focused node so each expansion re-centers.
+  const centerIndex = focusedNode
+    ? rawGraph.nodes.findIndex((n) => n.id === focusedNode.ref_id)
+    : -1;
+
+  // ── 3D graph hook ─────────────────────────────────────────────────────────
+  const { graph, viewState, selectNode, goOverview, searchMatches, setSearchMatches } =
+    useKGGraph(rawGraph.nodes, rawGraph.edges, centerIndex === -1 ? undefined : centerIndex);
 
   // ── Keyword search state ──────────────────────────────────────────────────
   const [searchQuery, setSearchQuery] = useState("");
@@ -279,6 +326,13 @@ export function GraphExplorer({ workspaceSlug, initialRefId }: GraphExplorerProp
   // ── Node-type filter ──────────────────────────────────────────────────────
   const [nodeTypes, setNodeTypes] = useState<GraphNodeType[]>([]);
   const [selectedTypes, setSelectedTypes] = useState<string[]>(DEFAULT_SEARCH_TYPES);
+  /**
+   * Neighbor types pulled in when expanding a node. Separate from the search
+   * filter and unrestricted by default — narrowing it is what makes walking a
+   * dense graph tractable ("show me only the Concepts this touches"), but
+   * defaulting it would silently hide most of a node's real edges.
+   */
+  const [expandTypes, setExpandTypes] = useState<string[]>([]);
 
   // ── Graph agent chat state ────────────────────────────────────────────────
   const [chatOpen, setChatOpen] = useState(false);
@@ -294,8 +348,7 @@ export function GraphExplorer({ workspaceSlug, initialRefId }: GraphExplorerProp
       setError(null);
       setNotConfigured(false);
       setQueryResult(null);
-      setRawNodes([]);
-      setRawEdges([]);
+      setRawGraph({ nodes: [], edges: [] });
       setFocusedNode(null);
       setFocusError(null);
       setSheetTarget(null);
@@ -323,8 +376,7 @@ export function GraphExplorer({ workspaceSlug, initialRefId }: GraphExplorerProp
         const data: StakgraphResult = await res.json();
         setQueryResult(data);
         const { nodes, edges } = stakgraphToRawGraph(data.columns, data.rows);
-        setRawNodes(nodes);
-        setRawEdges(edges);
+        setRawGraph({ nodes, edges });
       } catch (err) {
         setError(err instanceof Error ? err.message : "Unknown error");
       } finally {
@@ -348,7 +400,7 @@ export function GraphExplorer({ workspaceSlug, initialRefId }: GraphExplorerProp
    * dropped so a slow fetch can't overwrite a newer selection.
    */
   const fetchNodeDetail = useCallback(
-    async (refId: string): Promise<GraphNodeDetailResponse | null> => {
+    async (refId: string, types?: string[]): Promise<GraphNodeDetailResponse | null> => {
       const requestId = ++detailRequestRef.current;
       setDetailLoading(true);
       setDetailError(null);
@@ -356,8 +408,9 @@ export function GraphExplorer({ workspaceSlug, initialRefId }: GraphExplorerProp
       setTraceText(null);
 
       try {
+        const query = types && types.length > 0 ? `?types=${encodeURIComponent(types.join(","))}` : "";
         const res = await fetch(
-          `/api/workspaces/${workspaceSlug}/graph/node/${encodeURIComponent(refId)}`
+          `/api/workspaces/${workspaceSlug}/graph/node/${encodeURIComponent(refId)}${query}`
         );
         if (requestId !== detailRequestRef.current) return null;
 
@@ -394,9 +447,9 @@ export function GraphExplorer({ workspaceSlug, initialRefId }: GraphExplorerProp
   const openNodeDetail = useCallback(
     (refId: string, label: string) => {
       setSheetTarget({ refId, label });
-      void fetchNodeDetail(refId);
+      void fetchNodeDetail(refId, expandTypes);
     },
-    [fetchNodeDetail]
+    [fetchNodeDetail, expandTypes]
   );
 
   /**
@@ -411,42 +464,33 @@ export function GraphExplorer({ workspaceSlug, initialRefId }: GraphExplorerProp
       setFocusError(null);
       setTab("graph");
 
-      const detail = await fetchNodeDetail(refId);
+      const detail = await fetchNodeDetail(refId, expandTypes);
       if (!detail) {
         setFocusLoading(false);
         setFocusError(`Could not load node ${refId}`);
         return;
       }
 
-      const { nodes, edges } = detailToRawGraph(detail);
+      const star = detailToRawGraph(detail);
       // Focusing replaces the query result view — the canvas now shows the
       // node's neighborhood, not the rows the table is describing.
       setQueryResult(null);
       setError(null);
       setNotConfigured(false);
-      setRawNodes(nodes);
-      setRawEdges(edges);
+      setRawGraph((prev) => {
+        // Expanding a node that's already on the canvas continues the walk, so
+        // the trail stays visible. Jumping to an unrelated node (a search hit,
+        // a deep link) starts a fresh one — accumulating there would leave a
+        // disconnected island the radial layout can't place.
+        const continuesWalk = prev.nodes.some((n) => n.id === detail.node.ref_id);
+        return continuesWalk ? mergeRawGraph(prev, star) : star;
+      });
       setFocusedNode(detail.node);
       setSearchMatches(null);
-      pendingSelectRef.current = detail.node.ref_id;
       setFocusLoading(false);
     },
-    [fetchNodeDetail, setSearchMatches]
+    [fetchNodeDetail, expandTypes, setSearchMatches]
   );
-
-  /**
-   * Select the focused node once the graph has been rebuilt around it.
-   * `useKGGraph` resets to overview whenever the data changes, and its effect
-   * runs before this one, so selecting here wins.
-   */
-  useEffect(() => {
-    const refId = pendingSelectRef.current;
-    if (!refId) return;
-    const index = rawNodes.findIndex((n) => n.id === refId);
-    if (index === -1 || !graph.nodes[index]) return;
-    pendingSelectRef.current = null;
-    selectNode(index);
-  }, [graph, rawNodes, selectNode]);
 
   /** `?ref_id=` deep link — focus once on mount. */
   const deepLinkedRef = useRef<string | null>(null);
@@ -461,14 +505,24 @@ export function GraphExplorer({ workspaceSlug, initialRefId }: GraphExplorerProp
     (id: number) => {
       const node = graph.nodes[id];
       if (!node) return;
-      // rawNodes and graph.nodes share indices (buildGraph preserves order),
-      // so the ref_id is a direct lookup.
+      // rawGraph.nodes and graph.nodes share indices (buildGraph preserves
+      // order), so the ref_id is a direct lookup.
       const refId = rawNodes[id]?.id;
-      selectNode(id);
       if (!refId) return;
+
+      if (walkMode) {
+        // Walking: clicking a node expands it and re-centers, growing the map.
+        // Staying in overview keeps every accumulated node visible — subgraph
+        // mode hides anything outside the selected node's directed subtree.
+        void focusNode(refId, node.label);
+        return;
+      }
+
+      // Cypher-result mode keeps its drill-down behavior.
+      selectNode(id);
       openNodeDetail(refId, node.label);
     },
-    [graph.nodes, rawNodes, selectNode, openNodeDetail]
+    [graph.nodes, rawNodes, walkMode, focusNode, selectNode, openNodeDetail]
   );
 
   // ── Node types for the search filter (Jarvis ontology) ────────────────────
@@ -506,6 +560,12 @@ export function GraphExplorer({ workspaceSlug, initialRefId }: GraphExplorerProp
     );
   }, []);
 
+  const toggleExpandType = useCallback((type: string) => {
+    setExpandTypes((prev) =>
+      prev.includes(type) ? prev.filter((t) => t !== type) : [...prev, type],
+    );
+  }, []);
+
   // ── Semantic search (Jarvis hybrid keyword + vector) ──────────────────────
   const runSearch = useCallback(async () => {
     if (!searchQuery.trim()) return;
@@ -535,12 +595,7 @@ export function GraphExplorer({ workspaceSlug, initialRefId }: GraphExplorerProp
     }
   }, [searchQuery, selectedTypes, workspaceSlug]);
 
-  const typeFilterLabel =
-    selectedTypes.length === 0
-      ? "All types"
-      : selectedTypes.length === 1
-        ? selectedTypes[0]
-        : `${selectedTypes.length} types`;
+  const typeFilterLabel = typeFilterLabelFor(selectedTypes);
 
   const handleSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Enter") {
@@ -609,44 +664,14 @@ export function GraphExplorer({ workspaceSlug, initialRefId }: GraphExplorerProp
             onKeyDown={handleSearchKeyDown}
             className="flex-1"
           />
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                variant="outline"
-                data-testid="node-type-filter-button"
-                className="shrink-0 min-w-[130px] justify-between"
-              >
-                <span className="truncate">{typeFilterLabel}</span>
-                <ChevronDown className="h-4 w-4 ml-2 shrink-0" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="max-h-80 overflow-y-auto w-56">
-              <DropdownMenuLabel>Node types</DropdownMenuLabel>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem
-                data-testid="node-type-filter-all"
-                onSelect={() => setSelectedTypes([])}
-              >
-                All types
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              {nodeTypes.length === 0 ? (
-                <DropdownMenuItem disabled>No types available</DropdownMenuItem>
-              ) : (
-                nodeTypes.map((nt) => (
-                  <DropdownMenuCheckboxItem
-                    key={nt.type}
-                    data-testid={`node-type-option-${nt.type}`}
-                    checked={selectedTypes.includes(nt.type)}
-                    onSelect={(e) => e.preventDefault()}
-                    onCheckedChange={() => toggleType(nt.type)}
-                  >
-                    {nt.type}
-                  </DropdownMenuCheckboxItem>
-                ))
-              )}
-            </DropdownMenuContent>
-          </DropdownMenu>
+          <NodeTypeFilter
+            label={typeFilterLabel}
+            nodeTypes={nodeTypes}
+            selected={selectedTypes}
+            onToggle={toggleType}
+            onClear={() => setSelectedTypes([])}
+            testId="node-type-filter"
+          />
           <Button
             data-testid="search-button"
             variant="secondary"
@@ -837,7 +862,11 @@ export function GraphExplorer({ workspaceSlug, initialRefId }: GraphExplorerProp
                       <span className="font-medium text-foreground truncate max-w-[220px]">
                         {focusedNode.name || focusedNode.ref_id}
                       </span>
-                      <span>· {nodeDetail?.neighbors.length ?? 0} linked</span>
+                      {/* Grows as the walk accumulates — the signal that
+                          expanding is adding to the map, not replacing it. */}
+                      <span data-testid="walk-node-count">
+                        · {rawGraph.nodes.length} node{rawGraph.nodes.length !== 1 ? "s" : ""}
+                      </span>
                       <Button
                         variant="ghost"
                         size="icon"
@@ -845,14 +874,26 @@ export function GraphExplorer({ workspaceSlug, initialRefId }: GraphExplorerProp
                         data-testid="clear-focus-button"
                         onClick={() => {
                           setFocusedNode(null);
-                          setRawNodes([]);
-                          setRawEdges([]);
+                          setRawGraph({ nodes: [], edges: [] });
                           setSheetTarget(null);
                           setNodeDetail(null);
                         }}
                       >
                         <X className="h-3 w-3" />
                       </Button>
+                    </div>
+                  )}
+                  {walkMode && (
+                    <div className="flex items-center gap-1.5" data-testid="expand-filter">
+                      <span className="text-xs text-muted-foreground">Expand with</span>
+                      <NodeTypeFilter
+                        label={typeFilterLabelFor(expandTypes)}
+                        nodeTypes={nodeTypes}
+                        selected={expandTypes}
+                        onToggle={toggleExpandType}
+                        onClear={() => setExpandTypes([])}
+                        testId="expand-type-filter"
+                      />
                     </div>
                   )}
                   {viewState.mode === "subgraph" && (

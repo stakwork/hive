@@ -37,16 +37,19 @@ vi.mock("@/lib/encryption", () => ({
 
 vi.mock("@/lib/ai/kg-adapter", () => ({
   kgGetNeighbors: vi.fn(),
+  kgGetNode: vi.fn(),
 }));
 
 import { GET } from "@/app/api/workspaces/[slug]/graph/node/[ref_id]/route";
 import { getServerSession } from "next-auth/next";
 import { validateWorkspaceAccess } from "@/services/workspace";
 import { db } from "@/lib/db";
-import { kgGetNeighbors } from "@/lib/ai/kg-adapter";
+import { kgGetNeighbors, kgGetNode } from "@/lib/ai/kg-adapter";
 
-function makeRequest() {
-  return new NextRequest("http://localhost/api/workspaces/ws/graph/node/ref-1");
+function makeRequest(query: Record<string, string> = {}) {
+  const url = new URL("http://localhost/api/workspaces/ws/graph/node/ref-1");
+  Object.entries(query).forEach(([k, v]) => url.searchParams.set(k, v));
+  return new NextRequest(url.toString());
 }
 
 const params = Promise.resolve({ slug: "ws", ref_id: "ref-1" });
@@ -188,6 +191,59 @@ describe("GET /api/workspaces/[slug]/graph/node/[ref_id]", () => {
     (kgGetNeighbors as Mock).mockResolvedValue({ neighbors: [], reachable: true });
 
     const res = await GET(makeRequest(), { params });
+
+    expect(res.status).toBe(404);
+    // No filter was applied, so there's nothing to second-guess.
+    expect(kgGetNode).not.toHaveBeenCalled();
+  });
+
+  test("passes the neighbor-type filter through to Jarvis", async () => {
+    grantAccess();
+    (kgGetNeighbors as Mock).mockResolvedValue({
+      reachable: true,
+      root: { ref_id: "ref-1", node_type: "Concept", name: "A", properties: {} },
+      neighbors: [],
+    });
+
+    await GET(makeRequest({ types: "Concept, ,File" }), { params });
+
+    expect((kgGetNeighbors as Mock).mock.calls[0][3]).toEqual({
+      includeRoot: true,
+      nodeTypes: ["Concept", "File"],
+    });
+  });
+
+  test("still resolves the node when a type filter matches no neighbors", async () => {
+    grantAccess();
+    // A narrow enough filter can drop the queried node from the payload too.
+    (kgGetNeighbors as Mock).mockResolvedValue({ neighbors: [], reachable: true });
+    (kgGetNode as Mock).mockResolvedValue({
+      ref_id: "ref-1",
+      node_type: "Concept",
+      name: "Auth Flow",
+      properties: { name: "Auth Flow" },
+    });
+
+    const res = await GET(makeRequest({ types: "Datamodel" }), { params });
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({
+      node: {
+        ref_id: "ref-1",
+        node_type: "Concept",
+        name: "Auth Flow",
+        properties: { name: "Auth Flow" },
+      },
+      neighbors: [],
+    });
+  });
+
+  test("returns 404 when the filtered fallback also finds nothing", async () => {
+    grantAccess();
+    (kgGetNeighbors as Mock).mockResolvedValue({ neighbors: [], reachable: true });
+    (kgGetNode as Mock).mockResolvedValue(null);
+
+    const res = await GET(makeRequest({ types: "Datamodel" }), { params });
 
     expect(res.status).toBe(404);
   });

@@ -1,4 +1,4 @@
-import { kgGetNeighbors } from "@/lib/ai/kg-adapter";
+import { kgGetNeighbors, kgGetNode } from "@/lib/ai/kg-adapter";
 import { resolveJarvisAccess } from "@/lib/helpers/graph-jarvis";
 import { NextRequest, NextResponse } from "next/server";
 import type { GraphNodeDetailResponse, GraphNodeNeighbor } from "@/types/graph-node";
@@ -12,13 +12,23 @@ export const runtime = "nodejs";
  * `/v2/nodes/{ref_id}?expand=edges` call (via `kgGetNeighbors`, so the UI sees
  * exactly what the graph agent sees: importance-sorted, internal types
  * excluded, parallel edges deduped).
+ *
+ * `types` is an optional comma-separated neighbor-type filter. Jarvis applies
+ * it inside the Cypher, BEFORE the traversal limit — so filtering yields 50
+ * relevant neighbors rather than 50 arbitrary ones filtered down to a handful.
  */
 export async function GET(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: Promise<{ slug: string; ref_id: string }> },
 ) {
   try {
     const { slug, ref_id } = await params;
+
+    // Drop blank entries so a trailing comma doesn't become an empty filter.
+    const nodeTypes = (request.nextUrl.searchParams.get("types") ?? "")
+      .split(",")
+      .map((t) => t.trim())
+      .filter(Boolean);
 
     if (!ref_id) {
       return NextResponse.json({ success: false, message: "ref_id is required" }, { status: 400 });
@@ -35,6 +45,7 @@ export async function GET(
 
     const result = await kgGetNeighbors(access.jarvisUrl, access.apiKey, ref_id, {
       includeRoot: true,
+      ...(nodeTypes.length > 0 ? { nodeTypes } : {}),
     });
 
     // kgGetNeighbors never throws — it reports failure as `reachable: false`.
@@ -42,7 +53,18 @@ export async function GET(
       return NextResponse.json({ success: false, message: "Graph lookup failed" }, { status: 502 });
     }
 
-    if (!result.root) {
+    let root = result.root;
+
+    // A neighbor-type filter narrow enough to match nothing can leave the
+    // queried node out of the `expand=edges` payload entirely. That's "no
+    // neighbors of those types", not "no such node" — resolve the node on its
+    // own so the panel still opens. Only costs a call in that edge case.
+    if (!root && nodeTypes.length > 0) {
+      const node = await kgGetNode(access.jarvisUrl, access.apiKey, ref_id);
+      if (node) root = node;
+    }
+
+    if (!root) {
       return NextResponse.json({ success: false, message: "Node not found" }, { status: 404 });
     }
 
@@ -57,10 +79,10 @@ export async function GET(
 
     const payload: GraphNodeDetailResponse = {
       node: {
-        ref_id: result.root.ref_id,
-        node_type: result.root.node_type,
-        name: result.root.name,
-        properties: (result.root.properties ?? {}) as Record<string, unknown>,
+        ref_id: root.ref_id,
+        node_type: root.node_type,
+        name: root.name,
+        properties: (root.properties ?? {}) as Record<string, unknown>,
       },
       neighbors,
     };

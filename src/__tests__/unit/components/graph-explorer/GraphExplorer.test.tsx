@@ -144,6 +144,25 @@ const MOCK_SEARCH_RESULTS = {
   ],
 };
 
+/** ref-2's own neighborhood, reached by walking from ref-1. */
+const MOCK_NODE_DETAIL_REF2 = {
+  node: {
+    ref_id: "ref-2",
+    node_type: "Function",
+    name: "validateInput",
+    properties: {},
+  },
+  neighbors: [
+    {
+      ref_id: "ref-9",
+      node_type: "File",
+      name: "validation.ts",
+      edge_type: "CONTAINS",
+      direction: "reverse" as const,
+    },
+  ],
+};
+
 const MOCK_NODE_TYPES = {
   node_types: [
     { type: "Concept", domain: "knowledge", description: "A documented idea." },
@@ -413,8 +432,8 @@ describe("GraphExplorer", () => {
 
     // Options come from the workspace's own ontology
     await userEvent.click(screen.getByTestId("node-type-filter-button"));
-    await waitFor(() => screen.getByTestId("node-type-option-Function"));
-    await userEvent.click(screen.getByTestId("node-type-option-Function"));
+    await waitFor(() => screen.getByTestId("node-type-filter-option-Function"));
+    await userEvent.click(screen.getByTestId("node-type-filter-option-Function"));
 
     // Checkbox items keep the menu open so several types can be picked at once.
     await userEvent.keyboard("{Escape}");
@@ -628,6 +647,104 @@ describe("GraphExplorer", () => {
     expect(screen.getByTestId("node-detail-error")).toHaveTextContent(
       "Malformed node response",
     );
+  });
+
+  // ── 15d. Walking accumulates instead of replacing ─────────────────────────
+  test("expanding a linked node accumulates onto the existing walk", async () => {
+    global.fetch = makeRoutedFetch([
+      NODE_TYPES_ROUTE,
+      { match: "/graph/node/ref-2", ok: true, status: 200, body: MOCK_NODE_DETAIL_REF2 },
+      { match: "/graph/node/", ok: true, status: 200, body: MOCK_NODE_DETAIL },
+    ]);
+
+    render(<GraphExplorer workspaceSlug="test-ws" initialRefId="ref-1" />);
+
+    // ref-1 plus its two neighbors
+    await waitFor(() =>
+      expect(screen.getByTestId("walk-node-count")).toHaveTextContent("3 nodes"),
+    );
+
+    await userEvent.click(screen.getByTestId("linked-node-ref-2"));
+
+    // ref-9 joins; ref-1 and ref-3 are still there rather than being replaced
+    await waitFor(() =>
+      expect(screen.getByTestId("walk-node-count")).toHaveTextContent("4 nodes"),
+    );
+    expect(screen.getByTestId("focused-node-badge")).toHaveTextContent("validateInput");
+  });
+
+  // ── 15e. Jumping somewhere unrelated starts a fresh walk ──────────────────
+  test("focusing a node outside the current walk resets the graph", async () => {
+    global.fetch = makeRoutedFetch([
+      NODE_TYPES_ROUTE,
+      {
+        match: "/graph/nodes/search",
+        ok: true,
+        status: 200,
+        body: {
+          results: [
+            {
+              ref_id: "ref-99",
+              node_type: "Concept",
+              name: "Unrelated",
+              description: "Somewhere else entirely.",
+            },
+          ],
+        },
+      },
+      {
+        match: "/graph/node/ref-99",
+        ok: true,
+        status: 200,
+        body: {
+          node: { ref_id: "ref-99", node_type: "Concept", name: "Unrelated", properties: {} },
+          neighbors: [],
+        },
+      },
+      { match: "/graph/node/", ok: true, status: 200, body: MOCK_NODE_DETAIL },
+    ]);
+
+    render(<GraphExplorer workspaceSlug="test-ws" initialRefId="ref-1" />);
+    await waitFor(() =>
+      expect(screen.getByTestId("walk-node-count")).toHaveTextContent("3 nodes"),
+    );
+
+    await userEvent.type(screen.getByTestId("search-input"), "unrelated");
+    await userEvent.click(screen.getByTestId("search-button"));
+    await waitFor(() => screen.getByTestId("search-result-ref-99"));
+    await userEvent.click(screen.getByTestId("search-result-ref-99"));
+
+    // A disconnected node can't be laid out alongside the old walk, so the
+    // canvas starts over rather than accumulating an unreachable island.
+    await waitFor(() =>
+      expect(screen.getByTestId("walk-node-count")).toHaveTextContent("1 node"),
+    );
+  });
+
+  // ── 15f. Expansion can be limited to chosen node types ────────────────────
+  test("the expand filter limits which neighbor types are pulled in", async () => {
+    const fetchMock = makeRoutedFetch([
+      NODE_TYPES_ROUTE,
+      { match: "/graph/node/", ok: true, status: 200, body: MOCK_NODE_DETAIL },
+    ]);
+    global.fetch = fetchMock;
+
+    render(<GraphExplorer workspaceSlug="test-ws" initialRefId="ref-1" />);
+    await waitFor(() => screen.getByTestId("expand-filter"));
+
+    // Unfiltered by default — expanding shouldn't silently hide real edges
+    expect(urlsFor(fetchMock, "/graph/node/")[0]).not.toContain("types=");
+    expect(screen.getByTestId("expand-type-filter-button")).toHaveTextContent("All types");
+
+    await userEvent.click(screen.getByTestId("expand-type-filter-button"));
+    await waitFor(() => screen.getByTestId("expand-type-filter-option-Concept"));
+    await userEvent.click(screen.getByTestId("expand-type-filter-option-Concept"));
+    await userEvent.keyboard("{Escape}");
+
+    await userEvent.click(screen.getByTestId("linked-node-ref-2"));
+
+    await waitFor(() => expect(urlsFor(fetchMock, "/graph/node/")).toHaveLength(2));
+    expect(urlsFor(fetchMock, "/graph/node/")[1]).toContain("types=Concept");
   });
 
   // ── 16. Search shows error message on failure ──────────────────────────────
