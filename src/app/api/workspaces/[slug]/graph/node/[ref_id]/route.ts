@@ -39,7 +39,7 @@ export async function GET(
 
     // Mock fallback — after the access check so the gate is never bypassed.
     if (process.env.USE_MOCKS === "true") {
-      const { getMockGraphNode } = await import("@/app/api/mock/graph/node/route");
+      const { getMockGraphNode } = await import("@/app/api/mock/graph/node/fixtures");
       return NextResponse.json(getMockGraphNode(ref_id), { status: 200 });
     }
 
