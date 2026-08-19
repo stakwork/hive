@@ -37,6 +37,13 @@ let mockStoreState: any = {
   canvasViewport: null,
 };
 
+vi.mock("@/app/org/[githubLogin]/_components/PublishPromptSlot", () => ({
+  PublishPromptSlot: () => <div data-testid="publish-prompt-slot" />,
+  derivePublishState: vi.fn(),
+  resolveLegacyVersion: vi.fn(),
+  publishPromptVersion: vi.fn(),
+}));
+
 vi.mock("@/app/org/[githubLogin]/_state/canvasChatStore", () => {
   // The component calls useCanvasChatStore(selector) as a hook AND
   // useCanvasChatStore.getState() imperatively inside handleApprove.
