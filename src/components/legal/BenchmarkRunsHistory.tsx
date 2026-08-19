@@ -27,6 +27,7 @@ import { useWorkspace } from "@/hooks/useWorkspace";
 import {
   useLegalBenchmarkRunList,
   type BenchmarkRunListRow,
+  type BenchmarkRunType,
 } from "@/hooks/useLegalBenchmarkRunList";
 import { useLegalBenchmarkRecursionList } from "@/hooks/useLegalBenchmarkRecursionList";
 import { useBenchmarkRubricsMap } from "@/hooks/useBenchmarkRubrics";
@@ -159,6 +160,9 @@ export function BenchmarkRunsHistory({
 
   const [expandedRunId, setExpandedRunId] = useState<string | null>(null);
   const [taskFilter, setTaskFilter] = useState<string>(ALL_TASKS);
+  // Default "manual" keeps the tab identical to its pre-type-column self —
+  // cron pipelines (analysis/recursion) are opt-in via the chips.
+  const [typeFilter, setTypeFilter] = useState<"all" | BenchmarkRunType>("manual");
   const [windowSize, setWindowSize] = useState<SummaryWindow>(SUMMARY_WINDOW);
 
   // ── Row refs for focus/scroll ────────────────────────────────────────────
@@ -232,15 +236,43 @@ export function BenchmarkRunsHistory({
     };
   }, []);
 
-  const taskOptions = useMemo(() => buildTaskOptions(runs), [runs]);
+  // Everything metric-bearing — task options/titles, the scored-run window,
+  // the summary strip, the per-task chart — is pinned to MANUAL runs. The
+  // analysis/recursion pipelines never score, so letting them into these
+  // derivations could only distort the numbers, and pinning guarantees the
+  // headline pass-rate cannot move when the type filter changes.
+  const manualRuns = useMemo(() => runs.filter((r) => r.runType === "manual"), [runs]);
+
+  const taskOptions = useMemo(() => buildTaskOptions(manualRuns), [manualRuns]);
 
   const selectedTask =
     taskFilter === ALL_TASKS ? null : taskOptions.find((t) => t.slug === taskFilter) ?? null;
 
   const filteredRuns = useMemo(
-    () => (selectedTask ? runs.filter((r) => r.taskSlug === selectedTask.slug) : runs),
+    () => (selectedTask ? manualRuns.filter((r) => r.taskSlug === selectedTask.slug) : manualRuns),
+    [manualRuns, selectedTask],
+  );
+
+  // Cron-pipeline rows shown alongside (or instead of) the manual window when
+  // the type filter asks for them. Operational only — no scores, no windowing.
+  const secondaryRows = useMemo(
+    () =>
+      runs.filter(
+        (r) =>
+          r.runType !== "manual" &&
+          (!selectedTask || r.taskSlug === selectedTask.slug),
+      ),
     [runs, selectedTask],
   );
+
+  // Task titles for secondary rows — their result JSON carries only the slug.
+  const titleBySlug = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const r of manualRuns) {
+      if (r.taskSlug && r.taskTitle && !map.has(r.taskSlug)) map.set(r.taskSlug, r.taskTitle);
+    }
+    return map;
+  }, [manualRuns]);
 
   // The window is measured in SCORED runs: the rows span back to the Nth most
   // recent completed run, carrying the PENDING/FAILED rows in between so the
@@ -294,6 +326,18 @@ export function BenchmarkRunsHistory({
     [selectedTask, adjustedRuns],
   );
 
+  // What the table body renders. Manual rows keep the scored-run windowing +
+  // roster adjustment; secondary rows join chronologically when opted in.
+  const displayRows = useMemo<AdjustedRun[]>(() => {
+    if (typeFilter === "manual") return adjustedRuns;
+    if (typeFilter === "all") {
+      return [...adjustedRuns, ...secondaryRows].sort(
+        (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+      );
+    }
+    return secondaryRows.filter((r) => r.runType === typeFilter);
+  }, [typeFilter, adjustedRuns, secondaryRows]);
+
   const handleToggleExpand = (runId: string) => {
     const next = expandedRunId === runId ? null : runId;
     setExpandedRunId(next);
@@ -336,7 +380,7 @@ export function BenchmarkRunsHistory({
   }
 
   // colSpan: Task + Started + Runner Status + Score + Chat + Report + (Stakwork if super admin)
-  const colSpan = isSuperAdmin ? 7 : 6;
+  const colSpan = isSuperAdmin ? 8 : 7;
 
   return (
     <div className="space-y-3">
@@ -354,9 +398,37 @@ export function BenchmarkRunsHistory({
             ))}
           </SelectContent>
         </Select>
+        {/* Pipeline filter — default Manual preserves today's view. The
+            summary strip reads the manual window regardless, so switching
+            chips never moves the headline pass-rate. */}
+        <div className="flex items-center rounded-md border p-0.5 gap-0.5" role="group" aria-label="Run type filter">
+          {(
+            [
+              ["manual", "Manual"],
+              ["analysis", "Analysis"],
+              ["recursion", "Recursion"],
+              ["all", "All"],
+            ] as const
+          ).map(([value, label]) => (
+            <button
+              key={value}
+              onClick={() => setTypeFilter(value)}
+              className={[
+                "rounded px-2.5 py-1 text-xs transition-colors",
+                typeFilter === value
+                  ? "bg-muted text-foreground"
+                  : "text-muted-foreground hover:text-foreground",
+              ].join(" ")}
+              data-testid={`type-filter-${value}`}
+              aria-pressed={typeFilter === value}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
         {selectedTask && (
           <span className="text-xs text-muted-foreground">
-            {filteredRuns.length} of {runs.length} runs
+            {filteredRuns.length} of {manualRuns.length} runs
           </span>
         )}
         <div className="ml-auto">
@@ -394,6 +466,7 @@ export function BenchmarkRunsHistory({
           <thead>
             <tr className="border-b bg-muted/50">
               <th className="text-left px-4 py-3 font-medium text-muted-foreground">Task</th>
+              <th className="text-left px-4 py-3 font-medium text-muted-foreground">Type</th>
               <th className="text-left px-4 py-3 font-medium text-muted-foreground">Started</th>
               <th className="text-left px-4 py-3 font-medium text-muted-foreground">Runner Status</th>
               <th className="text-left px-4 py-3 font-medium text-muted-foreground">Score</th>
@@ -405,21 +478,26 @@ export function BenchmarkRunsHistory({
             </tr>
           </thead>
           <tbody>
-            {adjustedRuns.map((run) => (
+            {displayRows.map((run) => (
               <Fragment key={run.id}>
                 <tr
                   ref={(el) => {
                     if (el) rowRefs.current.set(run.id, el);
                     else rowRefs.current.delete(run.id);
                   }}
-                  className="border-b last:border-0 cursor-pointer hover:bg-muted/30 transition-colors"
-                  onClick={() => handleToggleExpand(run.id)}
+                  className={[
+                    "border-b last:border-0 transition-colors",
+                    // Only manual rows expand — the detail panel renders
+                    // runner criteria, which the cron pipelines don't have.
+                    run.runType === "manual" ? "cursor-pointer hover:bg-muted/30" : "",
+                  ].join(" ")}
+                  onClick={() => run.runType === "manual" && handleToggleExpand(run.id)}
                   data-testid={`run-row-${run.id}`}
                 >
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-2 flex-wrap">
                       <div className="font-medium leading-tight">
-                        {run.taskTitle || "(Unknown task)"}
+                        {run.taskTitle || titleBySlug.get(run.taskSlug) || run.taskSlug || "(Unknown task)"}
                       </div>
                       {run.taskSlug && recursionSlugs.has(run.taskSlug) && workspaceSlug && (
                         <RecursionEnabledBadge workspaceSlug={workspaceSlug} />
@@ -438,6 +516,9 @@ export function BenchmarkRunsHistory({
                       );
                     })()}
                   </td>
+                  <td className="px-4 py-3">
+                    <RunTypeBadge runType={run.runType} />
+                  </td>
                   <td className="px-4 py-3 whitespace-nowrap">
                     <span
                       title={new Date(run.createdAt).toISOString()}
@@ -450,13 +531,28 @@ export function BenchmarkRunsHistory({
                     <RunnerStatusBadge status={run.status} />
                   </td>
                   <td className="px-4 py-3">
-                    <ScoreCell run={run} />
+                    {run.runType === "manual" ? (
+                      <ScoreCell run={run} />
+                    ) : (
+                      // Analysis runs write cause annotations, recursion runs
+                      // drive the loop — neither ever scores. Attempts scored
+                      // by the loop live on the Recursion tab.
+                      <span className="text-muted-foreground/60" data-testid="score-na">—</span>
+                    )}
                   </td>
                   <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
-                    <ChatCell run={run} />
+                    {run.runType === "manual" ? (
+                      <ChatCell run={run} />
+                    ) : (
+                      <span className="text-muted-foreground/60">—</span>
+                    )}
                   </td>
                   <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
-                    <ReportCell run={run} slug={workspace?.slug} />
+                    {run.runType === "manual" ? (
+                      <ReportCell run={run} slug={workspace?.slug} />
+                    ) : (
+                      <span className="text-muted-foreground/60">—</span>
+                    )}
                   </td>
                   {isSuperAdmin && (
                     <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
@@ -667,6 +763,42 @@ function RecursionEnabledBadge({ workspaceSlug }: { workspaceSlug: string }) {
         recursion
       </Badge>
     </Link>
+  );
+}
+
+/**
+ * Pipeline badge for the Type column. Teal echoes the recursion-enrolled task
+ * badge (same feature family); indigo is new to the vocabulary (gray/blue/
+ * green/red are runner statuses, violet contested, amber incomplete-data).
+ */
+function RunTypeBadge({ runType }: { runType: BenchmarkRunType }) {
+  if (runType === "analysis") {
+    return (
+      <Badge
+        variant="outline"
+        className="border-0 bg-indigo-100 text-indigo-800 dark:bg-indigo-900/30 dark:text-indigo-300 w-fit"
+        data-testid="run-type-analysis"
+      >
+        analysis
+      </Badge>
+    );
+  }
+  if (runType === "recursion") {
+    return (
+      <Badge
+        variant="outline"
+        className="border-0 bg-teal-100 text-teal-800 dark:bg-teal-900/30 dark:text-teal-300 flex items-center gap-1 w-fit"
+        data-testid="run-type-recursion"
+      >
+        <Repeat className="h-3 w-3" />
+        recursion
+      </Badge>
+    );
+  }
+  return (
+    <Badge variant="outline" className="text-muted-foreground w-fit" data-testid="run-type-manual">
+      manual
+    </Badge>
   );
 }
 

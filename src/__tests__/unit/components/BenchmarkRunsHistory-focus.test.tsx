@@ -37,6 +37,7 @@ const makeRun = (
 ) => ({
   id: "runner-1",
   workspaceId: WORKSPACE_ID,
+  runType: "manual",
   status: "COMPLETED",
   projectId: null,
   taskSlug: "antitrust/task-1",

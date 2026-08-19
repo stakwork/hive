@@ -33,6 +33,7 @@ const makeRun = (overrides: Partial<{
 }> = {}) => ({
   id: "runner-1",
   workspaceId: WORKSPACE_ID,
+  runType: "manual",
   status: "COMPLETED",
   projectId: 99,
   taskSlug: "antitrust/task-1",
@@ -185,8 +186,8 @@ vi.mock("@/components/legal/HillClimbChart", () => ({
 }));
 
 vi.mock("@/components/ui/badge", () => ({
-  Badge: ({ children, className }: { children?: React.ReactNode; className?: string }) =>
-    React.createElement("span", { "data-testid": "badge", className }, children),
+  Badge: ({ children, className, ...rest }: { children?: React.ReactNode; className?: string; [k: string]: unknown }) =>
+    React.createElement("span", { "data-testid": "badge", className, ...rest }, children),
 }));
 
 vi.mock("date-fns", () => ({
@@ -436,7 +437,7 @@ describe("BenchmarkRunsHistory", () => {
 
   // ─── colSpan tests ─────────────────────────────────────────────────────────
 
-  it("expanded row colSpan is 5 for non-super-admin (Task + Started + Runner Status + Score + Report)", async () => {
+  it("expanded row colSpan is 7 for non-super-admin (Task + Type + Started + Runner Status + Score + Chat + Report)", async () => {
     const user = userEvent.setup();
     render(React.createElement(BenchmarkRunsHistory));
 
@@ -444,10 +445,10 @@ describe("BenchmarkRunsHistory", () => {
     await user.click(row);
 
     const expandedCell = screen.getByTestId("results-runner-1").closest("td")!;
-    expect(expandedCell.getAttribute("colspan")).toBe("6");
+    expect(expandedCell.getAttribute("colspan")).toBe("7");
   });
 
-  it("expanded row colSpan is 6 for super-admin (adds Stakwork column)", async () => {
+  it("expanded row colSpan is 8 for super-admin (adds Stakwork column)", async () => {
     const { useWorkspace } = await import("@/hooks/useWorkspace");
     (useWorkspace as ReturnType<typeof vi.fn>).mockReturnValue({
       workspace: { id: WORKSPACE_ID, slug: WORKSPACE_SLUG },
@@ -461,7 +462,7 @@ describe("BenchmarkRunsHistory", () => {
     await user.click(row);
 
     const expandedCell = screen.getByTestId("results-runner-1").closest("td")!;
-    expect(expandedCell.getAttribute("colspan")).toBe("7");
+    expect(expandedCell.getAttribute("colspan")).toBe("8");
   });
 
   // ─── Existing interaction tests ────────────────────────────────────────────
@@ -743,7 +744,7 @@ describe("BenchmarkRunsHistory", () => {
     await user.click(row);
 
     const expandedCell = screen.getByTestId("results-runner-1").closest("td")!;
-    expect(expandedCell.getAttribute("colspan")).toBe("6");
+    expect(expandedCell.getAttribute("colspan")).toBe("7");
   });
 
   // ─── Chat column tests ─────────────────────────────────────────────────────
@@ -1108,5 +1109,109 @@ describe("BenchmarkRunsHistory — recursion badge", () => {
     // Row expansion renders the LegalBenchmarkResults mock — must be absent.
     expect(screen.queryByTestId("results-runner-1")).toBeNull();
     expect(mockSetExpandedId).not.toHaveBeenCalledWith("runner-1");
+  });
+});
+
+// ─── Run-type filter and Type column ─────────────────────────────────────────
+
+describe("BenchmarkRunsHistory — run types", () => {
+  const manualRun = () =>
+    makeRun({ id: "m-1", taskSlug: "antitrust/task-1" });
+  const analysisRun = () => ({
+    ...makeRun({ id: "a-1" }),
+    runType: "analysis",
+    taskSlug: "antitrust/task-1",
+    taskTitle: "",
+    n_passed: undefined,
+    n_total: undefined,
+    all_pass: undefined,
+    createdAt: new Date("2025-06-02T09:00:00Z").toISOString(),
+  });
+  const recursionRun = () => ({
+    ...makeRun({ id: "r-1" }),
+    runType: "recursion",
+    taskSlug: "antitrust/task-1",
+    taskTitle: "",
+    n_passed: undefined,
+    n_total: undefined,
+    all_pass: undefined,
+    status: "IN_PROGRESS",
+    createdAt: new Date("2025-06-02T10:00:00Z").toISOString(),
+  });
+
+  function mockMixedRuns() {
+    mockUseList.mockReturnValue({
+      runs: [recursionRun(), analysisRun(), manualRun()],
+      total: 1,
+      isLoading: false,
+      error: null,
+      refetch: mockRefetch,
+      setExpandedId: mockSetExpandedId,
+    });
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockUseRecursionList.mockReturnValue({
+      entries: [],
+      isLoading: false,
+      error: null,
+      refetch: vi.fn(),
+    });
+  });
+
+  it("defaults to Manual: cron rows hidden, view identical to before", () => {
+    mockMixedRuns();
+    render(<BenchmarkRunsHistory />);
+    expect(screen.getByTestId("run-row-m-1")).toBeInTheDocument();
+    expect(screen.queryByTestId("run-row-a-1")).toBeNull();
+    expect(screen.queryByTestId("run-row-r-1")).toBeNull();
+    expect(screen.getByTestId("run-type-manual")).toBeInTheDocument();
+  });
+
+  it("All shows every pipeline newest-first with type badges and score dashes", () => {
+    mockMixedRuns();
+    render(<BenchmarkRunsHistory />);
+    fireEvent.click(screen.getByTestId("type-filter-all"));
+
+    const rows = screen.getAllByTestId(/^run-row-/);
+    expect(rows.map((r) => r.getAttribute("data-testid"))).toEqual([
+      "run-row-r-1",
+      "run-row-a-1",
+      "run-row-m-1",
+    ]);
+    expect(screen.getByTestId("run-type-recursion")).toBeInTheDocument();
+    expect(screen.getByTestId("run-type-analysis")).toBeInTheDocument();
+    // Cron rows never score — explicit dash, not a blank
+    expect(screen.getAllByTestId("score-na")).toHaveLength(2);
+    // Title derived from the manual row sharing the slug
+    expect(screen.getByTestId("run-row-a-1").textContent).toContain("Analyze Antitrust Strategy");
+  });
+
+  it("Recursion chip shows only recursion rows", () => {
+    mockMixedRuns();
+    render(<BenchmarkRunsHistory />);
+    fireEvent.click(screen.getByTestId("type-filter-recursion"));
+    expect(screen.getByTestId("run-row-r-1")).toBeInTheDocument();
+    expect(screen.queryByTestId("run-row-m-1")).toBeNull();
+    expect(screen.queryByTestId("run-row-a-1")).toBeNull();
+  });
+
+  it("summary strip stays pinned to manual rows whatever the filter", () => {
+    mockMixedRuns();
+    render(<BenchmarkRunsHistory />);
+    expect(screen.getByTestId("summary-strip").getAttribute("data-rows")).toBe("1");
+    fireEvent.click(screen.getByTestId("type-filter-all"));
+    expect(screen.getByTestId("summary-strip").getAttribute("data-rows")).toBe("1");
+  });
+
+  it("cron rows do not expand on click", () => {
+    mockMixedRuns();
+    render(<BenchmarkRunsHistory />);
+    fireEvent.click(screen.getByTestId("type-filter-all"));
+    fireEvent.click(screen.getByTestId("run-row-a-1"));
+    expect(screen.queryByTestId("results-a-1")).toBeNull();
+    fireEvent.click(screen.getByTestId("run-row-m-1"));
+    expect(screen.getByTestId("results-m-1")).toBeInTheDocument();
   });
 });
