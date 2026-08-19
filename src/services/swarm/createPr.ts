@@ -490,6 +490,18 @@ export async function createPr(params: {
   body: string;
   approvedDiff: string;
   diffSha256: string;
+  /**
+   * Invoked once, the moment the swarm returns a `request_id` and BEFORE the
+   * result poll begins. This is the only window in which the claim can be
+   * persisted: the poll below runs for up to 10 minutes and the request can
+   * die at any point in it (platform `maxDuration` kill, dropped connection),
+   * leaving a PR that landed with nothing on our side pointing at it.
+   *
+   * Awaited, and a throw here is fatal to the dispatch by design — a claim we
+   * failed to record is exactly the unrecoverable state this exists to
+   * prevent, and failing before the poll keeps the outcome classifiable.
+   */
+  onDispatch?: (claim: CreatePrClaim) => Promise<void> | void;
 }): Promise<CreatePrResult> {
   const {
     userId,
@@ -499,6 +511,7 @@ export async function createPr(params: {
     body,
     approvedDiff,
     diffSha256,
+    onDispatch,
   } = params;
 
   // ── 1. Re-verify diff integrity ─────────────────────────────────────
@@ -664,6 +677,39 @@ export async function createPr(params: {
       failureCode: "unknown",
       message: "Swarm did not return a request_id.",
     };
+  }
+
+  // ── 6b. Hand the claim to the caller BEFORE polling ─────────────────
+  // `runIdPrefix` is the request id: it is the only identifier we hold at
+  // dispatch time, and the swarm derives its `swarm/swarm-change-<run>` branch
+  // from the same run. If that derivation ever drifts, `reconcilePr`'s GitHub
+  // head-filter channel degrades to a miss and it falls back to the `/progress`
+  // re-read, which keys off `requestId` directly — so a drift costs recall on
+  // one channel, never correctness.
+  if (onDispatch) {
+    try {
+      await onDispatch({
+        requestId,
+        repositoryUrl,
+        userId,
+        workspaceSlug,
+        runIdPrefix: requestId,
+      });
+    } catch (e) {
+      logger.error("[createPr] onDispatch failed — refusing to poll", "createPr", {
+        userId,
+        workspaceSlug,
+        repositoryUrl,
+        error: e instanceof Error ? e.message : String(e),
+      });
+      return {
+        ok: false,
+        failureCode: "unknown",
+        message:
+          "The PR request was dispatched but could not be recorded. " +
+          "Check the repository for a new pull request before retrying.",
+      };
+    }
   }
 
   // ── 7. Poll for result ──────────────────────────────────────────────

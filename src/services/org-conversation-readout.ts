@@ -30,6 +30,7 @@ import {
   PROPOSE_FEATURE_TOOL,
   PROPOSE_INITIATIVE_TOOL,
   PROPOSE_MILESTONE_TOOL,
+  PROPOSE_CODE_CHANGE_TOOL,
   type ProposalOutput,
 } from "@/lib/proposals/types";
 import { fetchOrgCanvasConversationMessages } from "@/services/org-canvas-conversation";
@@ -42,6 +43,7 @@ const PROPOSE_TOOL_NAMES = new Set<string>([
   PROPOSE_FEATURE_TOOL,
   PROPOSE_INITIATIVE_TOOL,
   PROPOSE_MILESTONE_TOOL,
+  PROPOSE_CODE_CHANGE_TOOL,
 ]);
 
 const END_MARKER = /\[END_OF_ANSWER\]/g;

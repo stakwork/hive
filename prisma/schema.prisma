@@ -591,6 +591,13 @@ model Task {
   // the losing concurrent insert raises Prisma P2002, and that branch returns
   // the winning claim's result instead of creating a second Task/PR.
   proposalId             String?               @map("proposal_id")
+  // Dispatch receipt for a code-change approval, written by `createPr`'s
+  // `onDispatch` hook the moment the swarm returns a `request_id` — i.e.
+  // BEFORE the ~10-minute result poll that can be killed mid-flight. Shape is
+  // `CreatePrClaim` (src/services/swarm/createPr.ts). Without it a dropped
+  // dispatch leaves a claim Task that `reconcilePr` can never resolve, so the
+  // approval reports failure even when the PR actually landed.
+  codeChangeClaim        Json?                 @map("code_change_claim")
   agentLogs              AgentLog[]
   chatMessages           ChatMessage[]
   deployments            Deployment[]

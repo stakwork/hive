@@ -63,6 +63,7 @@ import {
   PROPOSE_NODE_EDIT_TOOL,
   PROPOSE_CREATE_TRIPLET_TOOL,
   PROPOSE_CREATE_BATCH_TRIPLET_TOOL,
+  PROPOSE_CODE_CHANGE_TOOL,
   type ApprovalIntent,
   type ApprovalResult,
   type FeatureProposalPayload,
@@ -74,7 +75,31 @@ import {
   type GraphNodeEditProposalPayload,
   type GraphTripletCreateProposalPayload,
   type GraphBatchTripletCreateProposalPayload,
+  type CodeChangeProposalPayload,
 } from "./types";
+import { checkRateLimit } from "@/lib/rate-limit";
+import { validateWorkspaceAccessById } from "@/services/workspace";
+import { fetchOrgCanvasConversationMessages } from "@/services/org-canvas-conversation";
+import {
+  createPr,
+  reconcilePr,
+  type CreatePrClaim,
+} from "@/services/swarm/createPr";
+import { addPrLabels } from "@/lib/github/labels";
+import { parseGithubOwnerRepo } from "@/utils/repositoryParser";
+import {
+  unifiedDiffToActionResults,
+  enforceDiffCaps,
+  scanForSecrets,
+} from "@/lib/github/diffHygiene";
+import {
+  ChatRole,
+  ChatStatus,
+  ArtifactType,
+  WorkflowStatus,
+  TaskSourceType,
+} from "@prisma/client";
+import type { PullRequestContent, DiffContent } from "@/lib/chat";
 import { mcpCreatePrompt, mcpUpdatePrompt } from "@/lib/mcp/mcpTools";
 import { getSwarmAccessByWorkspaceId } from "@/lib/helpers/swarm-access";
 import { logger } from "@/lib/logger";
@@ -141,7 +166,8 @@ function findProposal(
         tc.toolName !== PROPOSE_CREATE_NODE_TOOL &&
         tc.toolName !== PROPOSE_NODE_EDIT_TOOL &&
         tc.toolName !== PROPOSE_CREATE_TRIPLET_TOOL &&
-        tc.toolName !== PROPOSE_CREATE_BATCH_TRIPLET_TOOL
+        tc.toolName !== PROPOSE_CREATE_BATCH_TRIPLET_TOOL &&
+        tc.toolName !== PROPOSE_CODE_CHANGE_TOOL
       )
         continue;
       const out = tc.output;
@@ -350,7 +376,12 @@ export async function handleApproval(
     return approveGraphBatchTripletCreate({ orgId, userId, proposal });
   }
   if (proposal.kind === "codeChange") {
-    return { ok: false, error: "Code-change approval is not yet implemented.", status: 501 };
+    return approveCodeChange({
+      orgId,
+      userId,
+      proposal,
+      conversationId,
+    });
   }
   return approveFeature({
     orgId,
@@ -361,6 +392,779 @@ export async function handleApproval(
     conversationId,
     chatAgentModel,
   });
+}
+
+// ── Approve: codeChange ─────────────────────────────────────────────
+
+/**
+ * Narrow the `Task.codeChangeClaim` JSON column back to a `CreatePrClaim`.
+ * Returns null for anything that isn't a complete claim — an old row, a
+ * half-written value, hand-edited JSON. A partial claim is worse than none:
+ * `reconcilePr` would query the wrong branch and could mis-attribute a PR.
+ */
+function parseCreatePrClaim(value: unknown): CreatePrClaim | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const c = value as Record<string, unknown>;
+  const required = [
+    "requestId",
+    "repositoryUrl",
+    "userId",
+    "workspaceSlug",
+    "runIdPrefix",
+  ] as const;
+  for (const k of required) {
+    if (typeof c[k] !== "string" || (c[k] as string).length === 0) return null;
+  }
+  return {
+    requestId: c.requestId as string,
+    repositoryUrl: c.repositoryUrl as string,
+    userId: c.userId as string,
+    workspaceSlug: c.workspaceSlug as string,
+    runIdPrefix: c.runIdPrefix as string,
+  };
+}
+
+/**
+ * Attach a PULL_REQUEST artifact to a claim Task's seed message so the PR
+ * becomes visible to the UI and to `findOpenPRArtifacts` (pr-monitor).
+ *
+ * Best-effort and idempotent: a failure here must never turn a landed PR into
+ * a reported failure, and a concurrent reconcile must not produce two
+ * artifacts for the same PR.
+ */
+async function attachPrArtifact(
+  taskId: string,
+  prUrl: string,
+  repositoryUrl: string,
+): Promise<void> {
+  try {
+    const msg = await db.chatMessage.findFirst({
+      where: { taskId },
+      orderBy: { createdAt: "desc" },
+      select: {
+        id: true,
+        artifacts: {
+          where: { type: ArtifactType.PULL_REQUEST },
+          take: 1,
+          select: { id: true },
+        },
+      },
+    });
+    if (!msg || msg.artifacts.length > 0) return;
+
+    let repoName: string;
+    try {
+      const { owner, repo } = parseGithubOwnerRepo(repositoryUrl);
+      repoName = `${owner}/${repo}`;
+    } catch {
+      repoName = repositoryUrl;
+    }
+
+    const content: PullRequestContent = {
+      repo: repoName,
+      url: prUrl,
+      status: "IN_PROGRESS",
+    };
+    await db.artifact.create({
+      data: {
+        messageId: msg.id,
+        type: ArtifactType.PULL_REQUEST,
+        content:
+          content as unknown as import("@prisma/client").Prisma.InputJsonValue,
+      },
+    });
+  } catch (err) {
+    logger.error(
+      "[approveCodeChange] Failed to attach reconciled PR artifact",
+      "approveCodeChange",
+      { taskId, prUrl, error: String(err) },
+    );
+  }
+}
+
+
+/**
+ * Land an approved `codeChange` proposal as a PR.
+ *
+ * Security sequence (all must pass before any swarm dispatch):
+ *   1. Re-read the persisted transcript server-side and take the
+ *      proposal payload FROM IT. `args.messages` is the request body,
+ *      so the stored copy is the only trustworthy source of the diff
+ *      bytes, the target repo, and `originatorUserId` — which must
+ *      equal the approver (shared rooms make `canWrite` insufficient).
+ *      Re-run `enforceDiffCaps` / `scanForSecrets` on those bytes.
+ *   2. Workspace authorization via `validateWorkspaceAccessById`
+ *      (requires `canWrite`). Re-validate `repositoryUrl` against DB.
+ *   3. Rate limit — two buckets, fail closed if Redis is down.
+ *   4. Claim before write — insert Task with unique `(workspaceId,
+ *      proposalId)`. On P2002 return the winner's result, or reconcile
+ *      its stored claim when it has no PR artifact yet.
+ *   5. Dispatch via `createPr`, whose `onDispatch` hook writes the
+ *      `requestId` receipt onto the claim Task before the result poll.
+ *   6. Post-dispatch: attach PR artifact, update branch, add label.
+ *   7. Classified no-PR failures delete the claim; unknown drops keep
+ *      it, and the next approval attempt runs `reconcilePr` on it.
+ */
+async function approveCodeChange(args: {
+  orgId: string;
+  userId: string;
+  proposal: Extract<ProposalOutput, { kind: "codeChange" }>;
+  conversationId?: string;
+}): Promise<HandleApprovalReturn> {
+  const { orgId, userId, proposal, conversationId } = args;
+
+  // ── Step 1: Re-read server-side transcript + originator check ────────────
+  // conversationId is REQUIRED for codeChange. Without it we cannot re-read
+  // the stored transcript, and everything below — the diff bytes, the target
+  // repo, the originator — would come from the caller's own request body.
+  // `canWrite` alone is insufficient. Refuse hard.
+  if (!conversationId) {
+    return {
+      ok: false,
+      error:
+        "Code-change approvals require a conversation context. " +
+        "Please approve from the canvas chat where the proposal was generated.",
+      status: 403,
+    };
+  }
+
+  const storedMessages = await fetchOrgCanvasConversationMessages({
+    conversationId,
+    userId,
+    orgId,
+  });
+
+  if (!storedMessages) {
+    return {
+      ok: false,
+      error:
+        "Could not read the stored conversation — unable to verify the proposal. " +
+        "Please reload the page and try again.",
+      status: 403,
+    };
+  }
+
+  // Find the proposal in the stored transcript and take the AUTHORITATIVE
+  // copy of its output from there.
+  //
+  // `proposal` came out of `findProposal(args.messages, …)`, and `messages` is
+  // the `canvasChatMessages` array in the POST body — fully caller-controlled.
+  // Matching on `proposalId` alone and then dispatching `proposal.payload`
+  // would let a caller pair a real proposalId with an arbitrary diff:
+  // `diffSha256` is part of that same payload, so `createPr`'s integrity check
+  // re-hashes the caller's diff against the caller's digest and passes. That
+  // bypasses every propose-time guard (`enforceDiffCaps`, `scanForSecrets`,
+  // the no-migration rule), and `createPr` only re-checks caps/secrets on the
+  // diff the swarm RETURNS — i.e. after the branch is pushed and the PR open.
+  //
+  // So: locate by id, then use the stored `payload` for everything downstream.
+  // The stored row carries the full diff bytes (see the note at the end of
+  // `buildCodeChangeTools`), so nothing is lost by ignoring the client's copy.
+  let storedOutput:
+    | Extract<ProposalOutput, { kind: "codeChange" }>
+    | undefined;
+
+  for (let i = storedMessages.length - 1; i >= 0 && !storedOutput; i--) {
+    const msg = storedMessages[i] as {
+      role?: string;
+      toolCalls?: Array<{ toolName: string; output?: unknown }>;
+    };
+    if (msg.role !== "assistant" || !msg.toolCalls) continue;
+    for (const tc of msg.toolCalls) {
+      if (tc.toolName !== PROPOSE_CODE_CHANGE_TOOL) continue;
+      const out = tc.output as
+        | Extract<ProposalOutput, { kind: "codeChange" }>
+        | null;
+      if (out?.proposalId === proposal.proposalId) {
+        storedOutput = out;
+        break;
+      }
+    }
+  }
+
+  if (!storedOutput) {
+    return {
+      ok: false,
+      error:
+        "This proposal was not found in the stored conversation. " +
+        "It may have been generated with different parameters — please re-generate the proposal.",
+      status: 403,
+    };
+  }
+
+  // Originator guard: only the user who ran `propose_code_change` may approve
+  // it. `canWrite` alone is insufficient — org-canvas rows are created with
+  // `isShared: true`, so any org member who opens the `?chat=<id>` URL joins
+  // the same room and would otherwise be able to approve someone else's diff.
+  //
+  // Fails closed when the field is absent: proposals generated before this
+  // field existed cannot be attributed, and a code change is not the place to
+  // guess. Re-generating the proposal is one click.
+  if (storedOutput.originatorUserId !== userId) {
+    logger.warn(
+      "[approveCodeChange] Originator mismatch — refusing approval",
+      "approveCodeChange",
+      {
+        userId,
+        proposalId: proposal.proposalId,
+        hasOriginator: Boolean(storedOutput.originatorUserId),
+      },
+    );
+    return {
+      ok: false,
+      error: storedOutput.originatorUserId
+        ? "Only the person who generated this code-change proposal can approve it. " +
+          "Ask the original author to approve, or generate a new proposal yourself."
+        : "This proposal predates the current approval checks and can no longer be " +
+          "approved. Please re-generate it.",
+      status: 403,
+    };
+  }
+
+  // From here on, `payload` is the server-stored copy — NOT `proposal.payload`.
+  const payload = storedOutput.payload as CodeChangeProposalPayload;
+
+  // Shape-check the stored payload before anything reads it. A row written by
+  // an older tool version (or hand-edited) must not reach the dispatch path.
+  if (
+    typeof payload?.workspaceId !== "string" ||
+    typeof payload?.workspaceSlug !== "string" ||
+    typeof payload?.repositoryUrl !== "string" ||
+    typeof payload?.title !== "string" ||
+    typeof payload?.diff !== "string" ||
+    typeof payload?.diffSha256 !== "string" ||
+    payload.diff.length === 0
+  ) {
+    return {
+      ok: false,
+      error:
+        "The stored proposal is missing required fields — please re-generate it.",
+      status: 400,
+    };
+  }
+
+  // Defence in depth: re-run diff hygiene on the input bytes before dispatch.
+  // `createPr` only enforces these on the diff the swarm returns, which is too
+  // late — the branch is already pushed by then. Cheap, and it also catches a
+  // stored diff that predates a tightening of the caps.
+  const capsResult = enforceDiffCaps(payload.diff);
+  if (!capsResult.ok) {
+    return {
+      ok: false,
+      error:
+        `This diff exceeds the size limits (${capsResult.code}). ` +
+        "Use `propose_feature` — the feature pipeline handles large changes.",
+      status: 400,
+    };
+  }
+  const secretsResult = scanForSecrets(payload.diff);
+  if (!secretsResult.ok) {
+    logger.error(
+      "[approveCodeChange] Secret detected in stored diff — refusing dispatch",
+      "approveCodeChange",
+      { userId, proposalId: proposal.proposalId },
+    );
+    return {
+      ok: false,
+      error:
+        "The diff contains patterns matching known credentials. " +
+        "The PR was not created. Review the change manually.",
+      status: 400,
+    };
+  }
+
+  // ── Step 2: Workspace authorization + repository re-validation ──────────
+  const workspaceAccess = await validateWorkspaceAccessById(
+    payload.workspaceId,
+    userId,
+  );
+  if (!workspaceAccess.hasAccess || !workspaceAccess.canWrite) {
+    return {
+      ok: false,
+      error:
+        "You do not have write access to this workspace. " +
+        "Ask an Admin to grant you at least Developer access.",
+      status: 403,
+    };
+  }
+
+  // Re-validate that repositoryUrl belongs to this workspace server-side.
+  const dbRepo = await db.repository.findFirst({
+    where: {
+      workspaceId: payload.workspaceId,
+      repositoryUrl: payload.repositoryUrl,
+    },
+    select: { id: true },
+  });
+  if (!dbRepo) {
+    return {
+      ok: false,
+      error:
+        "The repository in this proposal is not registered in the workspace. " +
+        "The workspace configuration may have changed since the preview was generated.",
+      status: 400,
+    };
+  }
+
+  // Verify the workspace belongs to the current org (cross-org IDOR guard).
+  const workspaceOrg = await db.workspace.findFirst({
+    where: { id: payload.workspaceId },
+    select: { sourceControlOrg: { select: { id: true } } },
+  });
+  if (workspaceOrg?.sourceControlOrg?.id !== orgId) {
+    return {
+      ok: false,
+      error: "The workspace does not belong to the current organization.",
+      status: 403,
+    };
+  }
+
+  // ── Step 3: Rate limiting — two buckets, fail closed ────────────────────
+  const rateLimitKeys = [
+    { key: `codechange:user:${userId}`, label: "user" },
+    { key: `codechange:${userId}:${payload.workspaceId}`, label: "workspace" },
+  ] as const;
+
+  for (const { key, label } of rateLimitKeys) {
+    let rlResult: { allowed: boolean; retryAfter?: number };
+    try {
+      rlResult = await checkRateLimit(key, 10, 3600);
+    } catch (err) {
+      logger.error(
+        "[approveCodeChange] Rate limiter threw — refusing (fail-closed)",
+        "approveCodeChange",
+        { userId, label, error: err instanceof Error ? err.message : String(err) },
+      );
+      return {
+        ok: false,
+        error:
+          "Can't verify your rate limit right now — please try again shortly.",
+        status: 503,
+      };
+    }
+    if (!rlResult.allowed) {
+      return {
+        ok: false,
+        error: `You've approved too many code changes recently (${label} limit). Please wait before trying again.`,
+        status: 429,
+      };
+    }
+  }
+
+  // ── Step 4: Claim before write ──────────────────────────────────────────
+  // Insert the Task with proposalId set. The @@unique([workspaceId, proposalId])
+  // constraint guarantees exactly one claim wins on concurrent double-approval.
+  // workflowStatus MUST be COMPLETED so pr-monitor's fix path is reachable.
+  let claimTaskId: string;
+  let claimMsgId: string;
+
+  try {
+    // Create the claim task + a seed ChatMessage in one transaction.
+    const claimResult = await db.$transaction(async (tx) => {
+      const task = await tx.task.create({
+        data: {
+          title: `[Jamie] ${payload.title}`,
+          workspaceId: payload.workspaceId,
+          createdById: userId,
+          updatedById: userId,
+          sourceType: TaskSourceType.SYSTEM,
+          mode: "live",
+          workflowStatus: WorkflowStatus.COMPLETED,
+          stakworkProjectId: null,
+          podId: null,
+          repositoryId: dbRepo.id,
+          featureId: null,
+          proposalId: proposal.proposalId,
+        },
+        select: { id: true },
+      });
+
+      // Attach the preview DIFF artifact in a ChatMessage so the UI can render
+      // the diff before the PR is created.
+      let repoName: string;
+      try {
+        const { owner, repo } = parseGithubOwnerRepo(payload.repositoryUrl);
+        repoName = `${owner}/${repo}`;
+      } catch {
+        repoName = payload.repositoryUrl;
+      }
+
+      const diffDiffs = unifiedDiffToActionResults(payload.diff, repoName);
+      const diffContent: DiffContent = { diffs: diffDiffs };
+
+      const msg = await tx.chatMessage.create({
+        data: {
+          taskId: task.id,
+          message: `[Jamie] Approving PR: ${payload.title}`,
+          role: ChatRole.ASSISTANT,
+          status: ChatStatus.SENT,
+          artifacts: {
+            create: {
+              type: ArtifactType.DIFF,
+              content: diffContent as unknown as import("@prisma/client").Prisma.InputJsonValue,
+            },
+          },
+        },
+        select: { id: true },
+      });
+
+      return { taskId: task.id, msgId: msg.id };
+    });
+
+    claimTaskId = claimResult.taskId;
+    claimMsgId = claimResult.msgId;
+
+    logger.info(
+      "[approveCodeChange] Claim task created",
+      "approveCodeChange",
+      { userId, proposalId: proposal.proposalId, claimTaskId },
+    );
+  } catch (err) {
+    // P2002 = unique constraint violation — another concurrent request claimed
+    // this (workspaceId, proposalId) pair first.
+    if (
+      err instanceof Prisma.PrismaClientKnownRequestError &&
+      err.code === "P2002"
+    ) {
+      logger.info(
+        "[approveCodeChange] P2002 — concurrent claim, returning winner result",
+        "approveCodeChange",
+        { userId, proposalId: proposal.proposalId },
+      );
+      // Fetch the winning claim. Verify it belongs to THIS workspace before
+      // returning its result (cross-tenant collision must not leak another
+      // org's PR URL).
+      const winner = await db.task.findFirst({
+        where: {
+          workspaceId: payload.workspaceId,
+          proposalId: proposal.proposalId,
+        },
+        select: {
+          id: true,
+          createdById: true,
+          workspaceId: true,
+          branch: true,
+          codeChangeClaim: true,
+          chatMessages: {
+            take: 1,
+            orderBy: { createdAt: "desc" },
+            select: {
+              artifacts: {
+                where: { type: ArtifactType.PULL_REQUEST },
+                take: 1,
+                select: { content: true },
+              },
+            },
+          },
+        },
+      });
+
+      // Cross-tenant collision: a different workspaceId won with the same
+      // proposalId — this is a security boundary. Return generic "in progress"
+      // rather than leaking the other org's Task or PR URL.
+      if (!winner || winner.workspaceId !== payload.workspaceId) {
+        return {
+          ok: false,
+          error: "This approval is already in progress. Please wait.",
+          status: 409,
+        };
+      }
+
+      // If the winner already has a PR artifact, return it as alreadyApproved.
+      const prContent = winner.chatMessages[0]?.artifacts[0]
+        ?.content as unknown as PullRequestContent | undefined;
+      if (prContent?.url) {
+        return {
+          ok: true,
+          alreadyApproved: true,
+          result: {
+            proposalId: proposal.proposalId,
+            kind: "codeChange",
+            createdEntityId: winner.id,
+            landedOn: `ws:${payload.workspaceId}`,
+            workspaceSlug: payload.workspaceSlug,
+            codeChange: {
+              prUrl: prContent.url,
+              repositoryUrl: payload.repositoryUrl,
+            },
+          },
+        };
+      }
+
+      // No PR artifact on the winner. Two cases look identical here: a genuinely
+      // concurrent approval still inside its poll, and an earlier attempt whose
+      // request died mid-flight. The second is the one that matters — the PR may
+      // well have landed — and the dispatch receipt is what tells them apart.
+      //
+      // Re-approving is the retry path (the unique constraint means the insert
+      // always lands here), so this is where recovery belongs. `reconcilePr`
+      // never re-dispatches: it re-reads the swarm's own result cache and then
+      // queries GitHub directly, so calling it here cannot produce a second PR.
+      const claim = parseCreatePrClaim(winner.codeChangeClaim);
+      if (claim) {
+        const outcome = await reconcilePr(claim);
+        if (outcome.outcome === "landed") {
+          logger.info(
+            "[approveCodeChange] Reconciled a dropped dispatch to a landed PR",
+            "approveCodeChange",
+            { userId, claimTaskId: winner.id, prUrl: outcome.prUrl },
+          );
+          await attachPrArtifact(winner.id, outcome.prUrl, payload.repositoryUrl);
+          return {
+            ok: true,
+            alreadyApproved: true,
+            result: {
+              proposalId: proposal.proposalId,
+              kind: "codeChange",
+              createdEntityId: winner.id,
+              landedOn: `ws:${payload.workspaceId}`,
+              workspaceSlug: payload.workspaceSlug,
+              codeChange: {
+                prUrl: outcome.prUrl,
+                prNumber: outcome.prNumber,
+                repositoryUrl: payload.repositoryUrl,
+              },
+            },
+          };
+        }
+        // Outcome genuinely unknown. Never delete the claim and never
+        // re-dispatch — a duplicate PR is worse than a blocked proposal, and
+        // re-running `propose_code_change` yields a fresh proposalId that is
+        // not blocked.
+        logger.warn(
+          "[approveCodeChange] Claim could not be reconciled — outcome unknown",
+          "approveCodeChange",
+          { userId, claimTaskId: winner.id, requestId: claim.requestId },
+        );
+        return {
+          ok: false,
+          error:
+            "An earlier approval of this proposal was dispatched but its outcome " +
+            "could not be confirmed. Check the repository for a new pull request " +
+            "before retrying — if there is none, re-generate the proposal.",
+          status: 409,
+        };
+      }
+
+      return {
+        ok: false,
+        error:
+          "This approval is already in progress by another session. Please wait for it to complete.",
+        status: 409,
+      };
+    }
+
+    logger.error(
+      "[approveCodeChange] Unexpected error during claim insert",
+      "approveCodeChange",
+      { userId, proposalId: proposal.proposalId, error: String(err) },
+    );
+    return {
+      ok: false,
+      error: "An unexpected error occurred while creating the approval record.",
+      status: 500,
+    };
+  }
+
+  // ── Step 5: Dispatch via createPr ───────────────────────────────────────
+  let prResult: Awaited<ReturnType<typeof createPr>>;
+  try {
+    prResult = await createPr({
+      userId,
+      workspaceSlug: payload.workspaceSlug,
+      repositoryUrl: payload.repositoryUrl,
+      title: payload.title,
+      body: payload.body,
+      approvedDiff: payload.diff,
+      diffSha256: payload.diffSha256,
+      // Record the dispatch receipt the instant the swarm hands back a
+      // request_id — before the up-to-10-minute result poll. If this request
+      // dies in that window (maxDuration kill, dropped connection) the claim
+      // Task is all that survives, and without the receipt on it `reconcilePr`
+      // has nothing to resolve against: the PR would land with nothing on our
+      // side ever learning about it.
+      onDispatch: async (claim) => {
+        await db.task.update({
+          where: { id: claimTaskId },
+          data: {
+            codeChangeClaim:
+              claim as unknown as import("@prisma/client").Prisma.InputJsonValue,
+          },
+        });
+      },
+    });
+  } catch (err) {
+    // Unknown/dropped outcome — keep the claim so reconcilePr can recover.
+    logger.error(
+      "[approveCodeChange] createPr threw unexpectedly — keeping claim for reconciliation",
+      "approveCodeChange",
+      { userId, claimTaskId, error: String(err) },
+    );
+    return {
+      ok: false,
+      error:
+        "PR creation failed with an unexpected error. " +
+        "The system has recorded your approval — contact support if the PR does not appear shortly.",
+      status: 500,
+    };
+  }
+
+  // ── Step 6a: Classified no-PR failure → delete claim ───────────────────
+  const DELETABLE_FAILURE_CODES = new Set([
+    "no_changes",
+    "patch_conflict",
+    "secrets_detected",
+    "change_too_large",
+    "identity_mismatch",
+    "no_push_permission",
+    "no_access",
+    "rate_limited",
+    "swarm_unauth",
+    "swarm_bad_request",
+  ]);
+
+  if (!prResult.ok) {
+    if (DELETABLE_FAILURE_CODES.has(prResult.failureCode)) {
+      // Provably no PR was created — delete the claim so the user can retry.
+      await db.task
+        .delete({ where: { id: claimTaskId } })
+        .catch((deleteErr) =>
+          logger.warn(
+            "[approveCodeChange] Failed to delete claim task on classified failure",
+            "approveCodeChange",
+            { claimTaskId, error: String(deleteErr) },
+          ),
+        );
+
+      logger.info(
+        "[approveCodeChange] Classified failure — claim deleted",
+        "approveCodeChange",
+        { userId, claimTaskId, failureCode: prResult.failureCode },
+      );
+    } else {
+      // Unknown/ambiguous outcome — KEEP the claim for reconcilePr.
+      logger.warn(
+        "[approveCodeChange] Non-classified failure — keeping claim for reconciliation",
+        "approveCodeChange",
+        { userId, claimTaskId, failureCode: prResult.failureCode },
+      );
+    }
+
+    return {
+      ok: false,
+      error: prResult.message,
+      status: 502,
+    };
+  }
+
+  // ── Step 6b: Post-dispatch success ──────────────────────────────────────
+  const pr = prResult;
+
+  // Build the PULL_REQUEST artifact content.
+  // No `progress` field → `findOpenPRArtifacts` treats this as "never checked"
+  // and picks it up immediately (NULLS FIRST in the ORDER BY).
+  let repoNameFinal: string;
+  try {
+    const { owner, repo } = parseGithubOwnerRepo(pr.repositoryUrl);
+    repoNameFinal = `${owner}/${repo}`;
+  } catch {
+    repoNameFinal = pr.repositoryUrl;
+  }
+
+  const prArtifactContent: PullRequestContent = {
+    repo: repoNameFinal,
+    url: pr.prUrl,
+    status: "IN_PROGRESS",
+  };
+  const hardenedDiffDiffs = unifiedDiffToActionResults(
+    payload.diff,
+    repoNameFinal,
+  );
+  const hardenedDiffContent: DiffContent = { diffs: hardenedDiffDiffs };
+
+  // Persist all post-dispatch writes.
+  await db.$transaction(async (tx) => {
+    // Update the claim Task with the branch from the server-generated result.
+    await tx.task.update({
+      where: { id: claimTaskId },
+      data: { branch: pr.branch },
+    });
+
+    // Refresh the DIFF artifact with the hardened diff.
+    // Use messageId filter (artifacts are linked by messageId, not via chatMessage relation).
+    await tx.artifact.updateMany({
+      where: {
+        messageId: claimMsgId,
+        type: ArtifactType.DIFF,
+      },
+      data: {
+        content: hardenedDiffContent as unknown as import("@prisma/client").Prisma.InputJsonValue,
+      },
+    });
+
+    // Attach the PULL_REQUEST artifact to the existing seed message.
+    await tx.artifact.create({
+      data: {
+        messageId: claimMsgId,
+        type: ArtifactType.PULL_REQUEST,
+        content: prArtifactContent as unknown as import("@prisma/client").Prisma.InputJsonValue,
+      },
+    });
+  }).catch((updateErr) => {
+    // Non-fatal: the claim exists and the PR was created. Log and continue.
+    logger.error(
+      "[approveCodeChange] Post-dispatch DB update failed (PR was created)",
+      "approveCodeChange",
+      { claimTaskId, prUrl: pr.prUrl, error: String(updateErr) },
+    );
+  });
+
+  // Best-effort PR labeling — never blocks or rolls back.
+  addPrLabels(userId, pr.repositoryUrl, pr.prNumber).catch((labelErr) => {
+    logger.warn(
+      "[approveCodeChange] addPrLabels failed (non-fatal)",
+      "approveCodeChange",
+      { prNumber: pr.prNumber, error: String(labelErr) },
+    );
+  });
+
+  logger.info(
+    "[approveCodeChange] PR created successfully",
+    "approveCodeChange",
+    {
+      userId,
+      claimTaskId,
+      prUrl: pr.prUrl,
+      prNumber: pr.prNumber,
+      branch: pr.branch,
+      pathSetVerified: pr.pathSetVerified,
+    },
+  );
+
+  return {
+    ok: true,
+    alreadyApproved: false,
+    result: {
+      proposalId: proposal.proposalId,
+      kind: "codeChange",
+      createdEntityId: claimTaskId,
+      landedOn: `ws:${payload.workspaceId}`,
+      workspaceSlug: payload.workspaceSlug,
+      codeChange: {
+        prUrl: pr.prUrl,
+        prNumber: pr.prNumber,
+        branch: pr.branch,
+        baseBranch: pr.baseBranch,
+        headSha: pr.headSha,
+        filesChanged: pr.filesChanged,
+        repositoryUrl: pr.repositoryUrl,
+        pathSetVerified: pr.pathSetVerified,
+        ...(pr.pathSetVerified === false && pr.unapprovedPaths?.length
+          ? {}
+          : {}),
+      },
+    },
+  };
 }
 
 // ── Approve: initiative ─────────────────────────────────────────────
