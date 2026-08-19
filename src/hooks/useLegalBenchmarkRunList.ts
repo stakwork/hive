@@ -65,9 +65,17 @@ export function useLegalBenchmarkRunList(
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const expandedIdRef = useRef<string | null>(null);
   const isFetchingRef = useRef(false);
+  // Records that a refetch was skipped because the tab was hidden (from
+  // either the interval tick or a Pusher event), so we can do exactly ONE
+  // catch-up refetch when the tab becomes visible again.
+  const missedUpdateRef = useRef(false);
 
   const fetchRuns = useCallback(async () => {
     if (!workspaceId) return;
+    if (typeof document !== "undefined" && document.visibilityState !== "visible") {
+      missedUpdateRef.current = true;
+      return;
+    }
     try {
       const res = await fetch(
         `/api/stakwork/runs?type=${StakworkRunType.LEGAL_BENCHMARK_RUNNER}&workspaceId=${workspaceId}&limit=${RUN_LIST_LIMIT}&includeResult=true`,
@@ -154,6 +162,7 @@ export function useLegalBenchmarkRunList(
 
   const startPolling = useCallback(() => {
     stopPolling();
+    if (typeof document !== "undefined" && document.visibilityState !== "visible") return;
     intervalRef.current = setInterval(() => {
       // Keep polling while active runs exist, even if a row is expanded.
       if (hasActiveRuns()) {
@@ -183,6 +192,31 @@ export function useLegalBenchmarkRunList(
     return stopPolling;
   }, [runs, startPolling, stopPolling]);
 
+  // Gate all refetching on browser tab visibility: pause polling while
+  // hidden, and do exactly one catch-up refetch when the tab becomes
+  // visible again (consuming missedUpdateRef, which fetchRuns sets
+  // whenever it no-ops due to the tab being hidden).
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    const handleVisibility = () => {
+      if (document.visibilityState !== "visible") {
+        stopPolling();
+        return;
+      }
+      // Became visible: one catch-up refetch if we missed anything, then resume.
+      if (missedUpdateRef.current) {
+        missedUpdateRef.current = false;
+        void fetchRuns().then(() => {
+          if (hasActiveRuns()) startPolling();
+        });
+      } else if (hasActiveRuns()) {
+        startPolling();
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibility);
+    return () => document.removeEventListener("visibilitychange", handleVisibility);
+  }, [fetchRuns, stopPolling, startPolling, hasActiveRuns]);
+
   // Pusher real-time completion detection
   useEffect(() => {
     if (!channel) return;
@@ -191,6 +225,9 @@ export function useLegalBenchmarkRunList(
       // regardless of whether the run id is already in the loaded list.
       // This ensures the header strip updates live even when a brand-new run
       // fires its first update before the list has had a chance to load it.
+      // Visibility deferral is handled inside fetchRuns itself (it early-returns
+      // and sets missedUpdateRef while hidden), so this handler's semantics
+      // are unchanged — it just may be a no-op while the tab is hidden.
       if (isFetchingRef.current) return; // drop burst duplicates
       isFetchingRef.current = true;
       void Promise.resolve(fetchRunRef.current?.()).finally(() => {
