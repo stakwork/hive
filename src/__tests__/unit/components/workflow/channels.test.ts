@@ -2,10 +2,20 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 // ── mock @anycable/web before any channel import ──────────────────────────────
-const mockDisconnect = vi.fn();
-const mockCreate = vi.fn(() => ({ disconnect: mockDisconnect }));
+//
+// The shapes here must mirror @anycable/core's ActionCable compat layer, or the
+// suite green-lights calls that throw in the browser:
+//   • subscriptions.create() returns an ActionCableSubscription, whose teardown
+//     is unsubscribe(). It has NO disconnect() — that lives on the Channel it
+//     wraps, and on the consumer.
+//   • createConsumer() returns an ActionCableConsumer, which DOES have
+//     disconnect() (closes the socket).
+const mockUnsubscribe = vi.fn();
+const mockCableDisconnect = vi.fn();
+const mockCreate = vi.fn(() => ({ unsubscribe: mockUnsubscribe }));
 const mockCreateConsumer = vi.fn(() => ({
   subscriptions: { create: mockCreate },
+  disconnect: mockCableDisconnect,
 }));
 
 vi.mock("@anycable/web", () => ({
@@ -21,6 +31,7 @@ beforeEach(() => {
   // Reset the mock factory so each test gets a fresh consumer object
   mockCreateConsumer.mockImplementation(() => ({
     subscriptions: { create: mockCreate },
+    disconnect: mockCableDisconnect,
   }));
 });
 
@@ -61,11 +72,20 @@ describe("WorkflowTransition — createConsumer URL", () => {
 // WorkflowTransition — unsubscribe teardown
 // ─────────────────────────────────────────────────────────────────────────────
 describe("WorkflowTransition — unsubscribe teardown", () => {
-  it("calls disconnect on the subscription channel when unsubscribe() is invoked", () => {
+  it("unsubscribes the subscription and closes the socket when unsubscribe() is invoked", () => {
     const channel = new WorkflowTransition("production", "proj-1", vi.fn());
     channel.subscribe();
     channel.unsubscribe();
-    expect(mockDisconnect).toHaveBeenCalledTimes(1);
+    expect(mockUnsubscribe).toHaveBeenCalledTimes(1);
+    expect(mockCableDisconnect).toHaveBeenCalledTimes(1);
+  });
+
+  it("only calls methods that exist on the real anycable subscription", () => {
+    const channel = new WorkflowTransition("production", "proj-1", vi.fn());
+    channel.subscribe();
+    // The mock deliberately omits disconnect(); calling it would throw here
+    // exactly as it did in the browser.
+    expect(() => channel.unsubscribe()).not.toThrow();
   });
 });
 
@@ -99,15 +119,25 @@ describe("WorkflowEdit — createConsumer URL", () => {
 // WorkflowEdit — unsubscribe teardown (method added in this fix)
 // ─────────────────────────────────────────────────────────────────────────────
 describe("WorkflowEdit — unsubscribe teardown", () => {
-  it("calls disconnect on the subscription channel when unsubscribe() is invoked", () => {
+  it("unsubscribes the subscription and closes the socket when unsubscribe() is invoked", () => {
     const edit = new WorkflowEdit("production", "wf-1", vi.fn());
     edit.subscribe();
     edit.unsubscribe();
-    expect(mockDisconnect).toHaveBeenCalledTimes(1);
+    expect(mockUnsubscribe).toHaveBeenCalledTimes(1);
+    expect(mockCableDisconnect).toHaveBeenCalledTimes(1);
   });
 
   it("does not throw when unsubscribe() is called before subscribe()", () => {
     const edit = new WorkflowEdit("production", "wf-1", vi.fn());
+    expect(() => edit.unsubscribe()).not.toThrow();
+  });
+
+  it("only calls methods that exist on the real anycable subscription", () => {
+    const edit = new WorkflowEdit("production", "wf-1", vi.fn());
+    edit.subscribe();
+    // Regression guard: unsubscribe() used to call channel.disconnect(), which
+    // does not exist on an ActionCableSubscription. Thrown from the unmount
+    // cleanup, that took down the whole React tree.
     expect(() => edit.unsubscribe()).not.toThrow();
   });
 });
