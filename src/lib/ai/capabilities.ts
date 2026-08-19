@@ -489,19 +489,33 @@ export const CAPABILITY_REGISTRY: Record<OrgCapability, CapabilityDefinition> =
 ## Code-Change Tools
 
 You have a \`propose_code_change\` tool that generates a real unified diff preview
-for a small, focused code change in a single-repository workspace, then surfaces
-it as an approvable PR proposal card.
+for a small, focused code change in **one** repository, then surfaces it as an
+approvable PR proposal card.
+
+The workspace may own any number of repositories — \`repositoryUrl\` names the one
+you are patching. What matters is that the CHANGE lands in a single repo, not
+that the workspace only has one.
 
 ### When to use \`propose_code_change\`
 
-Use this when the user asks for a small, targeted code change in a workspace
-that has **exactly one** repository and the change is:
-- Focused (≤ 50 files, ≤ 200 KB diff)
-- Self-contained (no DB migrations, no multi-repo coordination)
+Use this when the user asks for a small, targeted code change and:
+- You know which repository the change belongs in
+- It touches exactly one repository
+- It is focused (≤ 50 files, ≤ 200 KB diff)
+- It is self-contained (no DB migrations)
+
+### Picking \`repositoryUrl\`
+
+Choose the repo containing the code you are changing. Usually you already know
+it — you found the file with \`repo_agent\`, or the user named it. If you are
+guessing between repos, stop: either investigate first, or use
+\`propose_feature\` and let the pipeline resolve it. Never pick the first repo
+in the workspace just to have a value.
 
 ### When to use \`propose_feature\` instead
 
-- The workspace has multiple repositories (multi-repo ambiguity)
+- The change spans more than one repository
+- You cannot tell which repository it belongs in
 - The change involves a database migration or schema update
 - The change is large or spans many files
 - The user wants a full feature with planning, story, and coding pipeline
