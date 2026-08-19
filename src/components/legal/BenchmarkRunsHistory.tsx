@@ -23,6 +23,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import {
   useLegalBenchmarkRunList,
@@ -160,9 +161,12 @@ export function BenchmarkRunsHistory({
 
   const [expandedRunId, setExpandedRunId] = useState<string | null>(null);
   const [taskFilter, setTaskFilter] = useState<string>(ALL_TASKS);
-  // Default "manual" keeps the tab identical to its pre-type-column self —
-  // cron pipelines (analysis/recursion) are opt-in via the chips.
-  const [typeFilter, setTypeFilter] = useState<"all" | BenchmarkRunType>("manual");
+  // Default "manual" keeps the tab identical to its pre-type-column self.
+  // "recursion" groups BOTH cron pipelines (the analysis stage and the
+  // fix-proposal stage) — analysis is an internal stage of the recursion
+  // loop, not a category an operator filters by. The Type column still
+  // badges the stage.
+  const [typeFilter, setTypeFilter] = useState<"manual" | "recursion" | "all">("manual");
   const [windowSize, setWindowSize] = useState<SummaryWindow>(SUMMARY_WINDOW);
 
   // ── Row refs for focus/scroll ────────────────────────────────────────────
@@ -335,7 +339,8 @@ export function BenchmarkRunsHistory({
         (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
       );
     }
-    return secondaryRows.filter((r) => r.runType === typeFilter);
+    // "recursion" = the whole loop: analysis + fix-proposal rows.
+    return secondaryRows;
   }, [typeFilter, adjustedRuns, secondaryRows]);
 
   const handleToggleExpand = (runId: string) => {
@@ -400,32 +405,28 @@ export function BenchmarkRunsHistory({
         </Select>
         {/* Pipeline filter — default Manual preserves today's view. The
             summary strip reads the manual window regardless, so switching
-            chips never moves the headline pass-rate. */}
-        <div className="flex items-center rounded-md border p-0.5 gap-0.5" role="group" aria-label="Run type filter">
-          {(
-            [
-              ["manual", "Manual"],
-              ["analysis", "Analysis"],
-              ["recursion", "Recursion"],
-              ["all", "All"],
-            ] as const
-          ).map(([value, label]) => (
-            <button
-              key={value}
-              onClick={() => setTypeFilter(value)}
-              className={[
-                "rounded px-2.5 py-1 text-xs transition-colors",
-                typeFilter === value
-                  ? "bg-muted text-foreground"
-                  : "text-muted-foreground hover:text-foreground",
-              ].join(" ")}
-              data-testid={`type-filter-${value}`}
-              aria-pressed={typeFilter === value}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
+            never moves the headline pass-rate. ToggleGroup is the system's
+            segmented-control idiom (see TasksList). */}
+        <ToggleGroup
+          type="single"
+          value={typeFilter}
+          onValueChange={(v) => {
+            // ToggleGroup emits "" when the active item is clicked again —
+            // a filter must always have a value.
+            if (v) setTypeFilter(v as "manual" | "recursion" | "all");
+          }}
+          aria-label="Run type filter"
+        >
+          <ToggleGroupItem value="manual" className="h-8 px-3 text-xs" data-testid="type-filter-manual">
+            Manual
+          </ToggleGroupItem>
+          <ToggleGroupItem value="recursion" className="h-8 px-3 text-xs" data-testid="type-filter-recursion">
+            Recursion
+          </ToggleGroupItem>
+          <ToggleGroupItem value="all" className="h-8 px-3 text-xs" data-testid="type-filter-all">
+            All
+          </ToggleGroupItem>
+        </ToggleGroup>
         {selectedTask && (
           <span className="text-xs text-muted-foreground">
             {filteredRuns.length} of {manualRuns.length} runs
@@ -478,6 +479,15 @@ export function BenchmarkRunsHistory({
             </tr>
           </thead>
           <tbody>
+            {displayRows.length === 0 && typeFilter !== "manual" && (
+              <tr>
+                <td colSpan={colSpan} className="px-4 py-8 text-center text-sm text-muted-foreground" data-testid="type-filter-empty">
+                  No {typeFilter === "all" ? "" : "recursion-pipeline "}runs recorded here.
+                  Concept-driven attempts often exist only in the graph — see the
+                  Recursion tab for per-attempt history.
+                </td>
+              </tr>
+            )}
             {displayRows.map((run) => (
               <Fragment key={run.id}>
                 <tr
