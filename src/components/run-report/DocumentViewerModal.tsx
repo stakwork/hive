@@ -2,7 +2,8 @@
 
 import React, { useMemo, useCallback } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { AlertCircle } from "lucide-react";
+import { AlertCircle, Download } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { SanitizedContent } from "./SanitizedContent";
 import { flattenText, findHighlightRanges } from "@/lib/run-report/derive";
 import type { ProjectedSourceDoc } from "@/lib/run-report/types";
@@ -37,6 +38,23 @@ export function DocumentViewerModal({ doc, tokens, open, onOpenChange }: Props) 
     return { highlights: ranges, matched: ranges.length > 0 };
   }, [doc, tokens]);
 
+  const bodyText = useMemo(
+    () => (doc ? flattenText(doc.body).text : ""),
+    [doc],
+  );
+
+  const handleDownload = useCallback(() => {
+    const filename =
+      (doc?.title ?? "document").replace(/[^a-zA-Z0-9_\-. ]/g, "_") + ".txt";
+    const blob = new Blob([bodyText], { type: "text/plain" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(url);
+  }, [doc, bodyText]);
+
   // Scroll the first match into view via a ref callback rather than an effect
   // keyed on the node, so it fires exactly when the element mounts.
   const scrollToFirstMatch = useCallback((node: HTMLDivElement | null) => {
@@ -55,7 +73,19 @@ export function DocumentViewerModal({ doc, tokens, open, onOpenChange }: Props) 
         data-testid="run-report-document-modal"
       >
         <DialogHeader>
-          <DialogTitle className="truncate">{doc?.title ?? "Document"}</DialogTitle>
+          <div className="flex items-center gap-2 pr-10">
+            <DialogTitle className="truncate">{doc?.title ?? "Document"}</DialogTitle>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={handleDownload}
+              disabled={!bodyText}
+              aria-label="Download document"
+              data-testid="run-report-download-doc"
+            >
+              <Download className="h-4 w-4" />
+            </Button>
+          </div>
         </DialogHeader>
 
         {!matched && tokens.length > 0 && (

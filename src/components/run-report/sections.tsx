@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { FileText, AlertTriangle } from "lucide-react";
+import { FileText, AlertTriangle, Download } from "lucide-react";
 import {
   formatDuration,
   buildTimeline,
@@ -870,6 +870,16 @@ export function ConceptsSection({ projection }: { projection: RunReportProjectio
   );
 }
 
+function downloadText(text: string, filename: string): void {
+  const blob = new Blob([text], { type: "text/plain" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
 // ── 7 + 8. Sources & artifacts ───────────────────────────────────────────────
 
 export function SourcesSection({
@@ -938,7 +948,23 @@ export function SourcesSection({
         <EmptyPanel label="No workfiles for this run." />
       ) : (
         workfiles.map((file, i) => (
-          <Fold key={i} summary={file.name ?? `Workfile ${i + 1}`} monospace>
+          <Fold
+            key={i}
+            summary={file.name ?? `workfile-${i + 1}`}
+            monospace
+            action={
+              <button
+                aria-label="Download workfile"
+                data-testid="run-report-download-workfile"
+                onClick={() =>
+                  downloadText(file.text, file.name ?? `workfile-${i + 1}.txt`)
+                }
+                className="p-1 rounded hover:bg-muted"
+              >
+                <Download className="h-3.5 w-3.5" />
+              </button>
+            }
+          >
             {/* Plain text, rendered escaped. Running it through the HTML
                 sanitizer would swallow angle-bracketed legal prose. */}
             <pre className="text-[11.5px] whitespace-pre-wrap break-words font-mono text-muted-foreground">
