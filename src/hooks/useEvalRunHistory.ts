@@ -41,6 +41,67 @@ interface StakworkRunRow {
   projectId: number | null;
   result: string | null;
   createdAt: string;
+  /** WorkflowStatus name — PENDING/IN_PROGRESS/COMPLETED/ERROR/HALTED/FAILED */
+  status?: string;
+  /** Server-derived, role-gated: this run has a viewable report bundle */
+  hasReport?: boolean;
+}
+
+/** Which StakworkRun pipeline a rail row's status came from. */
+export type AttemptRunType = "runner" | "eval" | "recursion";
+
+/**
+ * One row of the per-attempt activity rail rendered beside the hill-climb
+ * chart. Assembled here — not in the component — so the joins are unit-testable
+ * without rendering.
+ */
+export interface AttemptRailRow {
+  /** Stable row key: trigger ref_id for attempt rows, run id for run-only rows */
+  key: string;
+  /** Chart label ("base"/"rN") when the row's output is a charted point */
+  label: string | null;
+  /** Index into `attempts` for the matching chart dot (future hover-sync) */
+  attemptIndex: number | null;
+  /** ISO timestamp — run.createdAt when joined, graph write-time otherwise */
+  timestamp: string | null;
+  score: { passed: number; total: number } | null;
+  /** WorkflowStatus name; null = graph-only row (no run matched) */
+  status: string | null;
+  runType: AttemptRunType | null;
+  runId: string | null;
+  projectId: number | null;
+  hasReport: boolean;
+  /**
+   * Run completed with a report requested but the bundle hasn't landed yet —
+   * report_url is written asynchronously after completion, so this is a
+   * legitimate transient state, not an error.
+   */
+  reportPending: boolean;
+  /** PENDING or IN_PROGRESS — the attempt is still running */
+  inFlight: boolean;
+}
+
+const NON_TERMINAL_STATUSES = new Set(["PENDING", "IN_PROGRESS"]);
+
+/** Convert a Jarvis epoch-seconds string to ISO; null when unparseable. */
+function graphEpochToIso(raw: string | undefined): string | null {
+  if (!raw) return null;
+  const seconds = parseFloat(raw);
+  if (!Number.isFinite(seconds) || seconds <= 0) return null;
+  return new Date(seconds * 1000).toISOString();
+}
+
+/**
+ * Pick the run that carries a trigger's current status. An active run beats a
+ * terminal one (the newest attempt may still be in flight on a trigger that
+ * already has older completed runs); ties resolve to the most recent.
+ */
+function pickStatusRun(candidates: StakworkRunRow[]): StakworkRunRow | null {
+  if (candidates.length === 0) return null;
+  const byNewest = [...candidates].sort(
+    (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+  );
+  return byNewest.find((r) => NON_TERMINAL_STATUSES.has(r.status ?? "")) ?? byNewest[0];
 }
 
 /**
@@ -55,6 +116,8 @@ export type EvalSeriesKind = "fix-chain" | "eval-output" | "legacy";
 
 interface UseEvalRunHistoryReturn {
   history: EvalRunHistoryEntry[];
+  /** Per-attempt rows for the activity rail — history joined with run status. */
+  attemptRows: AttemptRailRow[];
   /** All completed EvalTriggerOutput nodes, sorted chronologically (baseline first). */
   attempts: EvalTriggerOutput[];
   /** Which builder produced `attempts` — drives badge + caption semantics. */
@@ -128,6 +191,7 @@ export function useEvalRunHistory(input: UseEvalRunHistoryInput): UseEvalRunHist
   const { refId: inputRefId, slug: taskSlug } = input;
 
   const [history, setHistory] = useState<EvalRunHistoryEntry[]>([]);
+  const [attemptRows, setAttemptRows] = useState<AttemptRailRow[]>([]);
   const [attempts, setAttempts] = useState<EvalTriggerOutput[]>([]);
   const [seriesKind, setSeriesKind] = useState<EvalSeriesKind>("legacy");
   const [partial, setPartial] = useState(false);
@@ -173,6 +237,7 @@ export function useEvalRunHistory(input: UseEvalRunHistoryInput): UseEvalRunHist
         if (!evalSetRefId) {
           if (!cancelled) {
             setHistory([]);
+            setAttemptRows([]);
             setAttempts([]);
             setSeriesKind("legacy");
             setPartial(false);
@@ -182,11 +247,18 @@ export function useEvalRunHistory(input: UseEvalRunHistoryInput): UseEvalRunHist
         }
 
         // ── Step 2: Fetch fix-chain + runs in parallel ────────────────────
-        const [fixChain, runsRes] = await Promise.all([
+        // The runs route accepts a single `type` per request, so the three
+        // pipelines are three parallel fetches. Runner runs carry the history
+        // join; EVAL runs carry per-attempt status via result.evalTriggerRef;
+        // RECURSION runs carry no evalTriggerRef (their result is only
+        // {recursionId, sourceRunId, taskSlug}) so they join per-task.
+        const runsUrl = (runType: string) =>
+          `/api/stakwork/runs?type=${runType}&workspaceId=${workspaceId}&includeResult=true`;
+        const [fixChain, runsRes, evalRunsRes, recursionRunsRes] = await Promise.all([
           fetchFixChain(workspaceSlug, evalSetRefId),
-          fetch(
-            `/api/stakwork/runs?type=LEGAL_BENCHMARK_RUNNER&workspaceId=${workspaceId}&includeResult=true`,
-          ),
+          fetch(runsUrl("LEGAL_BENCHMARK_RUNNER")),
+          fetch(runsUrl("LEGAL_BENCHMARK_EVAL")),
+          fetch(runsUrl("LEGAL_BENCHMARK_RECURSION")),
         ]);
 
         if (cancelled) return;
@@ -199,6 +271,7 @@ export function useEvalRunHistory(input: UseEvalRunHistoryInput): UseEvalRunHist
           );
           if (!cancelled) {
             setHistory([]);
+            setAttemptRows([]);
             setAttempts([]);
             setSeriesKind("legacy");
             setPartial(false);
@@ -333,12 +406,19 @@ export function useEvalRunHistory(input: UseEvalRunHistoryInput): UseEvalRunHist
         );
 
         // ── Step 5: Join triggers with StakworkRun rows ───────────────────
-        const runsData = (await runsRes.json()) as
-          | { runs?: StakworkRunRow[] }
-          | StakworkRunRow[];
-        const runRows: StakworkRunRow[] = Array.isArray(runsData)
-          ? runsData
-          : (runsData?.runs ?? []);
+        const parseRunsResponse = async (res: Response): Promise<StakworkRunRow[]> => {
+          if (!res.ok) return [];
+          const data = (await res.json().catch(() => null)) as
+            | { runs?: StakworkRunRow[] }
+            | StakworkRunRow[]
+            | null;
+          if (!data) return [];
+          return Array.isArray(data) ? data : (data.runs ?? []);
+        };
+
+        const runRows = await parseRunsResponse(runsRes);
+        const evalRunRows = await parseRunsResponse(evalRunsRes);
+        const recursionRunRows = await parseRunsResponse(recursionRunsRes);
 
         const entries: EvalRunHistoryEntry[] = identityTriggers.map((trigger) => {
           const matchedRun = runRows.find((run) => {
@@ -371,6 +451,115 @@ export function useEvalRunHistory(input: UseEvalRunHistoryInput): UseEvalRunHist
           return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
         });
 
+        // ── Step 5b: Assemble the activity-rail rows ──────────────────────
+        // Row source is the identity triggers (the same rows `history` is
+        // built from — no new traversal), enriched with:
+        //   - the chart label/score when the trigger's output is a charted
+        //     point (matched on output ref_id, which is the attempt ref_id on
+        //     both series paths)
+        //   - real run status: runner + eval runs joined per-attempt on
+        //     result.evalTriggerRef, an active run beating a terminal one
+        //   - report state off the joined run; "pending" when the run
+        //     completed with a report requested but the bundle hasn't landed
+        //     (report_url is written asynchronously after completion)
+        // plus run-only rows for in-flight runs that no trigger claims yet —
+        // recursion runs (no evalTriggerRef by design) and dispatches whose
+        // trigger write hasn't landed. Those are the "is it still running?"
+        // rows the chart cannot show: no output node exists yet, so no dot.
+        const runTypeById = new Map<string, AttemptRunType>();
+        for (const r of runRows) runTypeById.set(r.id, "runner");
+        for (const r of evalRunRows) runTypeById.set(r.id, "eval");
+        for (const r of recursionRunRows) runTypeById.set(r.id, "recursion");
+
+        const attemptByOutputRef = new Map(
+          finalAttempts.map((a, i) => [a.ref_id, { attempt: a, index: i }]),
+        );
+
+        const triggerJoinableRuns = [...runRows, ...evalRunRows];
+        const claimedRunIds = new Set<string>();
+
+        const triggerRows: AttemptRailRow[] = identityTriggers.map((trigger) => {
+          const candidates = triggerJoinableRuns.filter((run) => {
+            const parsed = parseBenchmarkRunResult(run.result);
+            return parsed?.evalTriggerRef === trigger.ref_id;
+          });
+          for (const c of candidates) claimedRunIds.add(c.id);
+          const statusRun = pickStatusRun(candidates);
+          const parsedStatusRun = statusRun ? parseBenchmarkRunResult(statusRun.result) : null;
+
+          const completedOutput =
+            trigger.outputs?.find((o) => o.result.trim() !== "") ?? null;
+          const chartMatch = completedOutput
+            ? attemptByOutputRef.get(completedOutput.ref_id)
+            : undefined;
+
+          const scoreSource = chartMatch?.attempt ?? completedOutput;
+          const passed = chartMatch?.attempt.actualPassed ?? scoreSource?.n_passed;
+          const total = scoreSource?.n_total;
+
+          return {
+            key: trigger.ref_id,
+            label: chartMatch?.attempt.label ?? null,
+            attemptIndex: chartMatch?.index ?? null,
+            timestamp:
+              statusRun?.createdAt ??
+              graphEpochToIso(completedOutput?.date_added_to_graph),
+            score: passed != null && total != null ? { passed, total } : null,
+            status: statusRun?.status ?? null,
+            runType: statusRun ? (runTypeById.get(statusRun.id) ?? null) : null,
+            runId: statusRun?.id ?? null,
+            projectId: statusRun?.projectId ?? null,
+            hasReport: statusRun?.hasReport === true,
+            reportPending:
+              statusRun?.status === "COMPLETED" &&
+              parsedStatusRun?.generateRunReport === true &&
+              statusRun?.hasReport !== true,
+            inFlight: NON_TERMINAL_STATUSES.has(statusRun?.status ?? ""),
+          };
+        });
+
+        const runOnlyRows: AttemptRailRow[] = [
+          ...runRows,
+          ...evalRunRows,
+          ...recursionRunRows,
+        ]
+          .filter((run) => {
+            if (claimedRunIds.has(run.id)) return false;
+            if (!NON_TERMINAL_STATUSES.has(run.status ?? "")) return false;
+            const parsed = parseBenchmarkRunResult(run.result);
+            return parsed?.taskSlug === taskSlug;
+          })
+          .map((run) => ({
+            key: run.id,
+            label: null,
+            attemptIndex: null,
+            timestamp: run.createdAt,
+            score: null,
+            status: run.status ?? null,
+            runType: runTypeById.get(run.id) ?? null,
+            runId: run.id,
+            projectId: run.projectId,
+            hasReport: false,
+            reportPending: false,
+            inFlight: true,
+          }));
+
+        // Mirror the chart: charted rows in dot order first, then unmatched
+        // rows (in-flight work with no dot yet) chronologically at the end.
+        const chartedRows = triggerRows
+          .filter((r) => r.attemptIndex != null)
+          .sort((a, b) => (a.attemptIndex ?? 0) - (b.attemptIndex ?? 0));
+        const unchartedRows = [
+          ...triggerRows.filter((r) => r.attemptIndex == null),
+          ...runOnlyRows,
+        ].sort((a, b) => {
+          if (!a.timestamp && !b.timestamp) return 0;
+          if (!a.timestamp) return 1;
+          if (!b.timestamp) return -1;
+          return new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime();
+        });
+        const railRows = [...chartedRows, ...unchartedRows];
+
         const acceptedFixCount = hillClimbAttempts.filter((pt) => !pt.isBaseline && pt.accepted === true).length;
         logger.info(
           `[legal/benchmarks/useEvalRunHistory] Loaded history=${entries.length} hillClimbPts=${hillClimbAttempts.length} acceptedFixes=${acceptedFixCount}`,
@@ -380,6 +569,7 @@ export function useEvalRunHistory(input: UseEvalRunHistoryInput): UseEvalRunHist
 
         if (!cancelled) {
           setHistory(entries);
+          setAttemptRows(railRows);
           setAttempts(finalAttempts);
           setSeriesKind(finalSeriesKind);
           setPartial(fixChain.partial ?? false);
@@ -400,5 +590,5 @@ export function useEvalRunHistory(input: UseEvalRunHistoryInput): UseEvalRunHist
     };
   }, [inputRefId, taskSlug, workspaceSlug, workspaceId, fetchCount]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  return { history, attempts, seriesKind, partial, isLoading, error, refetch };
+  return { history, attemptRows, attempts, seriesKind, partial, isLoading, error, refetch };
 }

@@ -6,9 +6,21 @@ import { usePusherChannel } from "@/hooks/usePusherChannel";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { getWorkspaceChannelName, PUSHER_EVENTS } from "@/lib/pusher";
 
+/**
+ * Display name per StakworkRun pipeline:
+ *  - "manual"    — LEGAL_BENCHMARK_RUNNER: a human clicked Run; scored
+ *  - "analysis"  — LEGAL_BENCHMARK_EVAL: failure analysis; its webhook writes
+ *                  cause annotations onto the source run and never a score
+ *  - "recursion" — LEGAL_BENCHMARK_RECURSION: the cron's fix-proposal step;
+ *                  re-scored attempts land graph-side (Recursion tab), so
+ *                  these rows never carry a score either
+ */
+export type BenchmarkRunType = "manual" | "analysis" | "recursion";
+
 export interface BenchmarkRunListRow {
   id: string;
   workspaceId: string;
+  runType: BenchmarkRunType;
   status: WorkflowStatus;
   projectId: number | null;
   taskSlug: string;
@@ -77,13 +89,26 @@ export function useLegalBenchmarkRunList(
       return;
     }
     try {
-      const res = await fetch(
-        `/api/stakwork/runs?type=${StakworkRunType.LEGAL_BENCHMARK_RUNNER}&workspaceId=${workspaceId}&limit=${RUN_LIST_LIMIT}&includeResult=true`,
-      );
+      // One fetch per pipeline — the runs route accepts a single `type` per
+      // request. Analysis/recursion rows are operational-only (status, timing,
+      // Stakwork link); their scores, when they exist at all, live graph-side.
+      const fetchType = (runType: StakworkRunType) =>
+        fetch(
+          `/api/stakwork/runs?type=${runType}&workspaceId=${workspaceId}&limit=${RUN_LIST_LIMIT}&includeResult=true`,
+        );
+      const [res, evalRes, recursionRes] = await Promise.all([
+        fetchType(StakworkRunType.LEGAL_BENCHMARK_RUNNER),
+        fetchType(StakworkRunType.LEGAL_BENCHMARK_EVAL),
+        fetchType(StakworkRunType.LEGAL_BENCHMARK_RECURSION),
+      ]);
+      // Manual runs are the tab's backbone — fail hard when they fail. The
+      // secondary pipelines degrade to empty lists rather than blanking the tab.
       if (!res.ok) throw new Error("Failed to fetch runs");
       const data = await res.json();
+      const evalData = evalRes.ok ? await evalRes.json().catch(() => null) : null;
+      const recursionData = recursionRes.ok ? await recursionRes.json().catch(() => null) : null;
 
-      const rawRows: Array<{
+      interface RawRunRow {
         id: string;
         workspaceId: string;
         status: string;
@@ -92,13 +117,36 @@ export function useLegalBenchmarkRunList(
         createdAt: string;
         updatedAt: string;
         hasReport?: boolean;
-      }> = data.runs ?? [];
+      }
+
+      const rawRows: RawRunRow[] = data.runs ?? [];
+      const rawEvalRows: RawRunRow[] = evalData?.runs ?? [];
+      const rawRecursionRows: RawRunRow[] = recursionData?.runs ?? [];
+
+      const mapSecondary = (r: RawRunRow, runType: BenchmarkRunType): BenchmarkRunListRow => {
+        const parsed = parseBenchmarkRunResult(r.result);
+        return {
+          id: r.id,
+          workspaceId: r.workspaceId,
+          runType,
+          status: r.status as WorkflowStatus,
+          projectId: r.projectId,
+          taskSlug: parsed?.taskSlug ?? "",
+          // Analysis/recursion results carry no taskTitle — derived from the
+          // manual rows by slug at render time.
+          taskTitle: "",
+          createdAt: r.createdAt,
+          updatedAt: r.updatedAt,
+          hasReport: r.hasReport === true,
+        };
+      };
 
       const mapped: BenchmarkRunListRow[] = rawRows.map((r) => {
         const parsed = parseBenchmarkRunResult(r.result);
         return {
           id: r.id,
           workspaceId: r.workspaceId,
+          runType: "manual" as const,
           status: r.status as WorkflowStatus,
           projectId: r.projectId,
           taskSlug: parsed?.taskSlug ?? "",
@@ -130,8 +178,16 @@ export function useLegalBenchmarkRunList(
         };
       });
 
-      runsRef.current = mapped;
-      setRuns(mapped);
+      const merged = [
+        ...mapped,
+        ...rawEvalRows.map((r) => mapSecondary(r, "analysis")),
+        ...rawRecursionRows.map((r) => mapSecondary(r, "recursion")),
+      ].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+      runsRef.current = merged;
+      setRuns(merged);
+      // `total` keeps its established meaning: the manual-run count that the
+      // summary window and "N runs" copy were built around.
       setTotal(data.total ?? mapped.length);
       setError(null);
     } catch (err) {

@@ -117,10 +117,11 @@ function makeOutput(n_passed: number, n_total: number, idx = 0) {
 
 function mockHistoryLoaded(
   attempts: Array<ReturnType<typeof makeOutput> & Record<string, unknown>> = [],
-  extra: { seriesKind?: string; partial?: boolean } = {},
+  extra: { seriesKind?: string; partial?: boolean; attemptRows?: unknown[] } = {},
 ) {
   mockUseEvalRunHistory.mockReturnValue({
     history: [],
+    attemptRows: [],
     attempts,
     isLoading: false,
     error: null,
@@ -132,6 +133,7 @@ function mockHistoryLoaded(
 function mockHistoryLoading() {
   mockUseEvalRunHistory.mockReturnValue({
     history: [],
+    attemptRows: [],
     attempts: [],
     isLoading: true,
     error: null,
@@ -142,6 +144,7 @@ function mockHistoryLoading() {
 function mockHistoryError(msg = "Fetch error") {
   mockUseEvalRunHistory.mockReturnValue({
     history: [],
+    attemptRows: [],
     attempts: [],
     isLoading: false,
     error: msg,
@@ -637,6 +640,7 @@ describe("RecursionCard — badge and caption per series kind", () => {
   it("hides the header warning while history is loading", () => {
     mockUseEvalRunHistory.mockReturnValue({
       history: [],
+      attemptRows: [],
       attempts: [],
       isLoading: true,
       error: null,
@@ -646,5 +650,61 @@ describe("RecursionCard — badge and caption per series kind", () => {
     });
     renderCard();
     expect(screen.queryByTestId("partial-warning")).toBeNull();
+  });
+});
+
+// ─── Activity rail ───────────────────────────────────────────────────────────
+
+describe("RecursionCard — activity rail", () => {
+  const mockRefetch = vi.fn();
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockRefetch.mockResolvedValue(undefined);
+    mockUseBenchmarkRubrics.mockReturnValue({ rubrics: null });
+    mockFetchOk();
+  });
+
+  const ATTEMPTS = [
+    { ...makeOutput(50, 74, 0), isBaseline: true, accepted: true, actualPassed: 50, bestPassed: 50, label: "base" },
+    { ...makeOutput(58, 74, 1), isBaseline: false, accepted: true, actualPassed: 58, bestPassed: 58, label: "r1" },
+  ];
+
+  const ROWS = [
+    {
+      key: "trigger-base",
+      label: "base",
+      attemptIndex: 0,
+      timestamp: "2026-08-18T10:00:00.000Z",
+      score: { passed: 50, total: 74 },
+      status: "COMPLETED",
+      runType: "runner",
+      runId: "run-1",
+      projectId: 42,
+      hasReport: false,
+      reportPending: false,
+      inFlight: false,
+    },
+  ];
+
+  it("renders the rail beside the chart inside the expanded card", () => {
+    mockHistoryLoaded(ATTEMPTS, { attemptRows: ROWS });
+    render(
+      <RecursionList entries={[makeEntry()]} isLoading={false} error={null} refetch={mockRefetch} />,
+    );
+    fireEvent.click(screen.getByTestId("expand-toggle"));
+
+    expect(screen.getByTestId("hill-climb-chart")).toBeTruthy();
+    expect(screen.getByTestId("activity-rail")).toBeTruthy();
+    expect(screen.getByTestId("rail-row-trigger-base")).toBeTruthy();
+  });
+
+  it("renders the rail's empty state when no rows exist", () => {
+    mockHistoryLoaded(ATTEMPTS, { attemptRows: [] });
+    render(
+      <RecursionList entries={[makeEntry()]} isLoading={false} error={null} refetch={mockRefetch} />,
+    );
+    fireEvent.click(screen.getByTestId("expand-toggle"));
+    expect(screen.getByTestId("activity-rail-empty")).toBeTruthy();
   });
 });
