@@ -211,14 +211,22 @@ function WorkflowApp(workflowApp: WorkflowAppProps) {
     };
   }, [onStepGoto]); // Add onStepGoto to dependencies array
 
+  const channelRef = useRef<{ unsubscribe: () => void } | null>(null);
+
   useEffect(() => {
     if (projectId) {
       const workflowChannel = new WorkflowTransitionChannel(rails_env, projectId, onWorkflowUpdate);
       workflowChannel.subscribe();
+      channelRef.current = workflowChannel;
     } else if (workflowId) {
       const workflowEditChannel = new WorkflowEdit(rails_env, workflowId, onWorkflowEdit);
       workflowEditChannel.subscribe();
+      channelRef.current = workflowEditChannel;
     }
+    return () => {
+      channelRef.current?.unsubscribe();
+      channelRef.current = null;
+    };
   }, []);
 
   useEffect(() => {
