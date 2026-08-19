@@ -59,10 +59,12 @@ export const dynamic = "force-dynamic";
 // (The progress route imports this map if it needs persistent state, but
 //  for now we use a module-level map that's in-process for the server run.)
 
-export const mockPrResultStore = new Map<
-  string,
-  { ok: true; pr: Record<string, unknown> } | { ok: false; failure: string }
->();
+// Holds the FLAT LandChangeResult exactly as production serves it under
+// `result.pr` — success (`{ ok: true, url, … }`), failure
+// (`{ ok: false, failure, diff, error }`), or the `create_pr_not_called`
+// sentinel. Never wrap it again: `result.pr.pr` was a real mock/prod
+// divergence that green-lit payloads production rejects.
+export const mockPrResultStore = new Map<string, Record<string, unknown>>();
 
 // ─── Handler ──────────────────────────────────────────────────────────────
 
@@ -170,6 +172,14 @@ export async function POST(request: NextRequest) {
       ? `mock-create-pr-req-${crypto.randomUUID().slice(0, 8)}`
       : "mock-diagram-req-001";
 
+    // The swarm derives the branch from its own runId — a fresh UUID
+    // INDEPENDENT of request_id — and exposes it only via the dispatch
+    // response's `pr_branch`. Mirror that: no transformation of requestId
+    // can produce this value. (`slice(0, 8)`: first 8 chars, matching
+    // `git_pr.ts`.)
+    const mockRunId = crypto.randomUUID();
+    const prBranch = `swarm/swarm-change-${mockRunId.slice(0, 8)}`;
+
     // ── Prepare create_pr result for the progress store ────────────────
     if (isCreatePrRun) {
       const repoUrl =
@@ -182,27 +192,36 @@ export async function POST(request: NextRequest) {
             "[Jamie] Mock change"
           : "[Jamie] Mock change";
 
-      // Default scenario: success
-      const prResult = {
-        ok: true as const,
-        url: `${repoUrl}/pull/42`,
-        number: 42,
-        branch: `swarm/swarm-change-${requestId.slice(-8)}`,
-        base: "main",
-        headSha: "abc123def456abc123def456abc123def456abc1",
-        diff:
-          "--- a/src/example.ts\n" +
-          "+++ b/src/example.ts\n" +
-          "@@ -1,3 +1,4 @@\n" +
-          " const x = 1;\n" +
-          "+const y = 2;\n" +
-          " export { x };\n",
-        filesChanged: 1,
-        title: prTitle,
-      };
+      // `webhookMode: "not_called"` reproduces the sentinel stakgraph
+      // emits when a create_pr run ends without the tool ever running.
+      const prResult: Record<string, unknown> =
+        webhookMode === "not_called"
+          ? {
+              ok: false,
+              failure: "create_pr_not_called",
+              diff: "",
+              error: `create_pr was enabled but never called; unpushed branch ${prBranch}`,
+            }
+          : {
+              ok: true,
+              url: `${repoUrl}/pull/42`,
+              number: 42,
+              branch: prBranch,
+              base: "main",
+              headSha: "abc123def456abc123def456abc123def456abc1",
+              diff:
+                "--- a/src/example.ts\n" +
+                "+++ b/src/example.ts\n" +
+                "@@ -1,3 +1,4 @@\n" +
+                " const x = 1;\n" +
+                "+const y = 2;\n" +
+                " export { x };\n",
+              filesChanged: 1,
+              title: prTitle,
+            };
 
-      // Store for the progress route to serve.
-      mockPrResultStore.set(requestId, { ok: true, pr: prResult });
+      // Store FLAT for the progress route and webhook to serve verbatim.
+      mockPrResultStore.set(requestId, prResult);
     }
 
     // ── Graph chat with proposals on ────────────────────────────────────
@@ -242,6 +261,8 @@ export async function POST(request: NextRequest) {
 
     // ── Webhook fan-back simulation ────────────────────────────────────
     if (webhookUrl && webhookMode !== "inline") {
+      // "not_called" is a COMPLETED run whose result carries the sentinel —
+      // only "fail" exercises the failed-status channel.
       const isSuccess = webhookMode !== "fail";
 
       setTimeout(() => {
@@ -249,7 +270,7 @@ export async function POST(request: NextRequest) {
         let successContent: string;
 
         if (isCreatePrRun) {
-          successContent = JSON.stringify({ pr: mockPrResultStore.get(requestId) });
+          successContent = "PR creation complete.";
         } else if (isGraphMode) {
           successContent = graphContent;
         } else {
@@ -301,6 +322,7 @@ export async function POST(request: NextRequest) {
               request_id: requestId,
               status: "failed",
               error: "aborted",
+              retryable: false,
             };
 
         fetch(webhookUrl, {
@@ -320,7 +342,10 @@ export async function POST(request: NextRequest) {
       }, 500);
     }
 
-    return NextResponse.json({ request_id: requestId });
+    return NextResponse.json({
+      request_id: requestId,
+      ...(isCreatePrRun ? { pr_branch: prBranch } : {}),
+    });
   } catch (error) {
     console.error("[StakgraphMock] POST /repo/agent error:", error);
     return NextResponse.json(

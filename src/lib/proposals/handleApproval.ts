@@ -85,12 +85,19 @@ import {
   reconcilePr,
   type CreatePrClaim,
 } from "@/services/swarm/createPr";
-import { addPrLabels } from "@/lib/github/labels";
 import { parseGithubOwnerRepo } from "@/utils/repositoryParser";
+import {
+  attachPrArtifact,
+  DELETABLE_FAILURE_CODES,
+  parseCreatePrClaim,
+} from "@/lib/proposals/codeChangeCompletion";
+import { createCodeChangeWebhookToken, generateWebhookSecret } from "@/lib/auth/agent-jwt";
+import { EncryptionService } from "@/lib/encryption";
 import {
   unifiedDiffToActionResults,
   enforceDiffCaps,
   scanForSecrets,
+  validatePrArgs,
 } from "@/lib/github/diffHygiene";
 import {
   ChatRole,
@@ -305,12 +312,21 @@ interface HandleApprovalArgs {
    * `getDefaultModel("plan")` fallback is unchanged.
    */
   chatAgentModel?: string;
+  /**
+   * Swarm-reachable base URL of this deployment, captured from the request
+   * `host` header AT THE ROUTE LEVEL (`getBaseUrl(request.headers.get("host"))`).
+   * Required for codeChange approvals — the swarm's terminal webhook is the
+   * sole delivery path for the PR result, and deriving a base URL any deeper
+   * in the stack yields `localhost:3000` (no host header in scope). See
+   * `CapabilityContext.publicBaseUrl` for the same trap.
+   */
+  publicBaseUrl?: string;
 }
 
 export async function handleApproval(
   args: HandleApprovalArgs,
 ): Promise<HandleApprovalReturn> {
-  const { orgId, userId, messages, intent, conversationId, chatAgentModel } = args;
+  const { orgId, userId, messages, intent, conversationId, chatAgentModel, publicBaseUrl } = args;
 
   // 1. Find the proposal.
   const proposal = findProposal(messages, intent.proposalId);
@@ -381,6 +397,7 @@ export async function handleApproval(
       userId,
       proposal,
       conversationId,
+      publicBaseUrl,
     });
   }
   return approveFeature({
@@ -396,91 +413,7 @@ export async function handleApproval(
 
 // ── Approve: codeChange ─────────────────────────────────────────────
 
-/**
- * Narrow the `Task.codeChangeClaim` JSON column back to a `CreatePrClaim`.
- * Returns null for anything that isn't a complete claim — an old row, a
- * half-written value, hand-edited JSON. A partial claim is worse than none:
- * `reconcilePr` would query the wrong branch and could mis-attribute a PR.
- */
-function parseCreatePrClaim(value: unknown): CreatePrClaim | null {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
-  const c = value as Record<string, unknown>;
-  const required = [
-    "requestId",
-    "repositoryUrl",
-    "userId",
-    "workspaceSlug",
-    "runIdPrefix",
-  ] as const;
-  for (const k of required) {
-    if (typeof c[k] !== "string" || (c[k] as string).length === 0) return null;
-  }
-  return {
-    requestId: c.requestId as string,
-    repositoryUrl: c.repositoryUrl as string,
-    userId: c.userId as string,
-    workspaceSlug: c.workspaceSlug as string,
-    runIdPrefix: c.runIdPrefix as string,
-  };
-}
 
-/**
- * Attach a PULL_REQUEST artifact to a claim Task's seed message so the PR
- * becomes visible to the UI and to `findOpenPRArtifacts` (pr-monitor).
- *
- * Best-effort and idempotent: a failure here must never turn a landed PR into
- * a reported failure, and a concurrent reconcile must not produce two
- * artifacts for the same PR.
- */
-async function attachPrArtifact(
-  taskId: string,
-  prUrl: string,
-  repositoryUrl: string,
-): Promise<void> {
-  try {
-    const msg = await db.chatMessage.findFirst({
-      where: { taskId },
-      orderBy: { createdAt: "desc" },
-      select: {
-        id: true,
-        artifacts: {
-          where: { type: ArtifactType.PULL_REQUEST },
-          take: 1,
-          select: { id: true },
-        },
-      },
-    });
-    if (!msg || msg.artifacts.length > 0) return;
-
-    let repoName: string;
-    try {
-      const { owner, repo } = parseGithubOwnerRepo(repositoryUrl);
-      repoName = `${owner}/${repo}`;
-    } catch {
-      repoName = repositoryUrl;
-    }
-
-    const content: PullRequestContent = {
-      repo: repoName,
-      url: prUrl,
-      status: "IN_PROGRESS",
-    };
-    await db.artifact.create({
-      data: {
-        messageId: msg.id,
-        type: ArtifactType.PULL_REQUEST,
-        content:
-          content as unknown as import("@prisma/client").Prisma.InputJsonValue,
-      },
-    });
-  } catch (err) {
-    logger.error(
-      "[approveCodeChange] Failed to attach reconciled PR artifact",
-      "approveCodeChange",
-      { taskId, prUrl, error: String(err) },
-    );
-  }
-}
 
 
 /**
@@ -499,19 +432,26 @@ async function attachPrArtifact(
  *   4. Claim before write — insert Task with unique `(workspaceId,
  *      proposalId)`. On P2002 return the winner's result, or reconcile
  *      its stored claim when it has no PR artifact yet.
- *   5. Dispatch via `createPr`, whose `onDispatch` hook writes the
- *      `requestId` receipt onto the claim Task before the result poll.
- *   6. Post-dispatch: attach PR artifact, update branch, add label.
- *   7. Classified no-PR failures delete the claim; unknown drops keep
- *      it, and the next approval attempt runs `reconcilePr` on it.
+ *   5. Dispatch via `createPr` WITH a per-claim webhook URL, whose
+ *      `onDispatch` hook writes the receipt (requestId + pr_branch +
+ *      approved paths + conversation/proposal ids) onto the claim Task.
+ *      `createPr` returns as soon as the claim is durable — the terminal
+ *      PR result arrives on `/api/code-change/webhook` (reconcile cron
+ *      as backstop) and is persisted by `codeChangeCompletion`.
+ *   6. Return "dispatched, PR pending" — the stored approvalResult row
+ *      carries `codeChange.prPending: true` and is patched in place when
+ *      the terminal outcome lands.
+ *   7. Classified admission failures delete the claim; unknown dispatch
+ *      drops keep it, and the next approval attempt runs `reconcilePr`.
  */
 async function approveCodeChange(args: {
   orgId: string;
   userId: string;
   proposal: Extract<ProposalOutput, { kind: "codeChange" }>;
   conversationId?: string;
+  publicBaseUrl?: string;
 }): Promise<HandleApprovalReturn> {
-  const { orgId, userId, proposal, conversationId } = args;
+  const { orgId, userId, proposal, conversationId, publicBaseUrl } = args;
 
   // ── Step 1: Re-read server-side transcript + originator check ────────────
   // conversationId is REQUIRED for codeChange. Without it we cannot re-read
@@ -673,6 +613,18 @@ async function approveCodeChange(args: {
     };
   }
 
+  // PR-arg hygiene at the approval boundary: leading-dash rejection (a `-`
+  // prefix is read as a git flag by `commit -F`), newline normalization,
+  // length caps. The normalized values are what gets dispatched.
+  const prArgs = validatePrArgs(payload.title, payload.body ?? "");
+  if (!prArgs.ok) {
+    return {
+      ok: false,
+      error: `Invalid PR title or body: ${prArgs.message}`,
+      status: 400,
+    };
+  }
+
   // ── Step 2: Workspace authorization + repository re-validation ──────────
   const workspaceAccess = await validateWorkspaceAccessById(
     payload.workspaceId,
@@ -722,7 +674,7 @@ async function approveCodeChange(args: {
   // ── Step 3: Rate limiting — two buckets, fail closed ────────────────────
   const rateLimitKeys = [
     { key: `codechange:user:${userId}`, label: "user" },
-    { key: `codechange:${userId}:${payload.workspaceId}`, label: "workspace" },
+    { key: `codechange:ws:${payload.workspaceId}`, label: "workspace" },
   ] as const;
 
   for (const { key, label } of rateLimitKeys) {
@@ -751,12 +703,42 @@ async function approveCodeChange(args: {
     }
   }
 
+  // ── Step 3b: Webhook delivery prerequisites ─────────────────────────────
+  // The terminal PR result is delivered ONLY via the swarm's webhook (plus
+  // the reconcile cron). Without a route-captured base URL there is nowhere
+  // to deliver it — refuse before creating a claim rather than dispatching a
+  // run whose outcome could never be recorded.
+  if (!publicBaseUrl) {
+    logger.error(
+      "[approveCodeChange] No publicBaseUrl — refusing dispatch",
+      "approveCodeChange",
+      { userId, proposalId: proposal.proposalId },
+    );
+    return {
+      ok: false,
+      error:
+        "This deployment could not determine its public URL for webhook " +
+        "delivery. Please retry; if it persists, contact your administrator.",
+      status: 500,
+    };
+  }
+
+  // Per-claim webhook secret: generated fresh for every claim, stored
+  // encrypted on the claim Task, and carried (as a signed JWT) in the
+  // webhook URL's query string — the swarm sends no custom headers.
+  const webhookSecret = generateWebhookSecret();
+  const encryptedWebhookSecret = JSON.stringify(
+    EncryptionService.getInstance().encryptField(
+      "codeChangeWebhookSecret",
+      webhookSecret,
+    ),
+  );
+
   // ── Step 4: Claim before write ──────────────────────────────────────────
   // Insert the Task with proposalId set. The @@unique([workspaceId, proposalId])
   // constraint guarantees exactly one claim wins on concurrent double-approval.
   // workflowStatus MUST be COMPLETED so pr-monitor's fix path is reachable.
   let claimTaskId: string;
-  let claimMsgId: string;
 
   try {
     // Create the claim task + a seed ChatMessage in one transaction.
@@ -775,6 +757,7 @@ async function approveCodeChange(args: {
           repositoryId: dbRepo.id,
           featureId: null,
           proposalId: proposal.proposalId,
+          codeChangeWebhookSecret: encryptedWebhookSecret,
         },
         select: { id: true },
       });
@@ -812,7 +795,6 @@ async function approveCodeChange(args: {
     });
 
     claimTaskId = claimResult.taskId;
-    claimMsgId = claimResult.msgId;
 
     logger.info(
       "[approveCodeChange] Claim task created",
@@ -966,29 +948,44 @@ async function approveCodeChange(args: {
     };
   }
 
-  // ── Step 5: Dispatch via createPr ───────────────────────────────────────
+  // ── Step 5: Build the webhook URL, then dispatch via createPr ──────────
+  // The token is a JWT over { taskId } signed with the per-claim secret; the
+  // receiver decodes it to find the claim Task, decrypts the stored secret,
+  // and verifies. Long-lived — the swarm's orphan sweep can deliver well
+  // after dispatch. The full URL embeds the token: NEVER log it.
+  const webhookToken = await createCodeChangeWebhookToken(
+    claimTaskId,
+    webhookSecret,
+  );
+  const webhookUrl = `${publicBaseUrl}/api/code-change/webhook?token=${encodeURIComponent(webhookToken)}`;
+
   let prResult: Awaited<ReturnType<typeof createPr>>;
   try {
     prResult = await createPr({
       userId,
       workspaceSlug: payload.workspaceSlug,
       repositoryUrl: payload.repositoryUrl,
-      title: payload.title,
-      body: payload.body,
+      title: prArgs.title,
+      body: prArgs.body,
       approvedDiff: payload.diff,
       diffSha256: payload.diffSha256,
+      webhookUrl,
       // Record the dispatch receipt the instant the swarm hands back a
-      // request_id — before the up-to-10-minute result poll. If this request
-      // dies in that window (maxDuration kill, dropped connection) the claim
-      // Task is all that survives, and without the receipt on it `reconcilePr`
-      // has nothing to resolve against: the PR would land with nothing on our
-      // side ever learning about it.
+      // request_id. The webhook can arrive at any moment after dispatch and
+      // resolves the claim by this receipt; the conversation/proposal ids
+      // are merged in so the terminal patch can rewrite the stored
+      // approvalResult row in place.
       onDispatch: async (claim) => {
+        const fullClaim: CreatePrClaim = {
+          ...claim,
+          proposalId: proposal.proposalId,
+          ...(conversationId ? { conversationId } : {}),
+        };
         await db.task.update({
           where: { id: claimTaskId },
           data: {
             codeChangeClaim:
-              claim as unknown as import("@prisma/client").Prisma.InputJsonValue,
+              fullClaim as unknown as import("@prisma/client").Prisma.InputJsonValue,
           },
         });
       },
@@ -1009,23 +1006,13 @@ async function approveCodeChange(args: {
     };
   }
 
-  // ── Step 6a: Classified no-PR failure → delete claim ───────────────────
-  const DELETABLE_FAILURE_CODES = new Set([
-    "no_changes",
-    "patch_conflict",
-    "secrets_detected",
-    "change_too_large",
-    "identity_mismatch",
-    "no_push_permission",
-    "no_access",
-    "rate_limited",
-    "swarm_unauth",
-    "swarm_bad_request",
-  ]);
-
+  // ── Step 6a: Classified admission failure → delete claim ───────────────
+  // With dispatch-and-return, a synchronous failure means the swarm REFUSED
+  // the run (admission) or the dispatch itself failed — the run never
+  // started. Deletable codes provably created no PR; anything else keeps
+  // the claim for the reconcile cron.
   if (!prResult.ok) {
     if (DELETABLE_FAILURE_CODES.has(prResult.failureCode)) {
-      // Provably no PR was created — delete the claim so the user can retry.
       await db.task
         .delete({ where: { id: claimTaskId } })
         .catch((deleteErr) =>
@@ -1042,7 +1029,6 @@ async function approveCodeChange(args: {
         { userId, claimTaskId, failureCode: prResult.failureCode },
       );
     } else {
-      // Unknown/ambiguous outcome — KEEP the claim for reconcilePr.
       logger.warn(
         "[approveCodeChange] Non-classified failure — keeping claim for reconciliation",
         "approveCodeChange",
@@ -1057,87 +1043,19 @@ async function approveCodeChange(args: {
     };
   }
 
-  // ── Step 6b: Post-dispatch success ──────────────────────────────────────
-  const pr = prResult;
-
-  // Build the PULL_REQUEST artifact content.
-  // No `progress` field → `findOpenPRArtifacts` treats this as "never checked"
-  // and picks it up immediately (NULLS FIRST in the ORDER BY).
-  let repoNameFinal: string;
-  try {
-    const { owner, repo } = parseGithubOwnerRepo(pr.repositoryUrl);
-    repoNameFinal = `${owner}/${repo}`;
-  } catch {
-    repoNameFinal = pr.repositoryUrl;
-  }
-
-  const prArtifactContent: PullRequestContent = {
-    repo: repoNameFinal,
-    url: pr.prUrl,
-    status: "IN_PROGRESS",
-  };
-  const hardenedDiffDiffs = unifiedDiffToActionResults(
-    payload.diff,
-    repoNameFinal,
-  );
-  const hardenedDiffContent: DiffContent = { diffs: hardenedDiffDiffs };
-
-  // Persist all post-dispatch writes.
-  await db.$transaction(async (tx) => {
-    // Update the claim Task with the branch from the server-generated result.
-    await tx.task.update({
-      where: { id: claimTaskId },
-      data: { branch: pr.branch },
-    });
-
-    // Refresh the DIFF artifact with the hardened diff.
-    // Use messageId filter (artifacts are linked by messageId, not via chatMessage relation).
-    await tx.artifact.updateMany({
-      where: {
-        messageId: claimMsgId,
-        type: ArtifactType.DIFF,
-      },
-      data: {
-        content: hardenedDiffContent as unknown as import("@prisma/client").Prisma.InputJsonValue,
-      },
-    });
-
-    // Attach the PULL_REQUEST artifact to the existing seed message.
-    await tx.artifact.create({
-      data: {
-        messageId: claimMsgId,
-        type: ArtifactType.PULL_REQUEST,
-        content: prArtifactContent as unknown as import("@prisma/client").Prisma.InputJsonValue,
-      },
-    });
-  }).catch((updateErr) => {
-    // Non-fatal: the claim exists and the PR was created. Log and continue.
-    logger.error(
-      "[approveCodeChange] Post-dispatch DB update failed (PR was created)",
-      "approveCodeChange",
-      { claimTaskId, prUrl: pr.prUrl, error: String(updateErr) },
-    );
-  });
-
-  // Best-effort PR labeling — never blocks or rolls back.
-  addPrLabels(userId, pr.repositoryUrl, pr.prNumber).catch((labelErr) => {
-    logger.warn(
-      "[approveCodeChange] addPrLabels failed (non-fatal)",
-      "approveCodeChange",
-      { prNumber: pr.prNumber, error: String(labelErr) },
-    );
-  });
-
+  // ── Step 6b: Dispatched — return "PR pending" immediately ──────────────
+  // The stored approvalResult row this result lands on carries
+  // `codeChange.prPending: true`; the webhook (or reconcile cron) patches it
+  // in place with the PR link / honest failure, and a Pusher nudge flips the
+  // card live. No PR data exists yet, so nothing else is persisted here.
   logger.info(
-    "[approveCodeChange] PR created successfully",
+    "[approveCodeChange] Dispatched — PR pending via webhook",
     "approveCodeChange",
     {
       userId,
       claimTaskId,
-      prUrl: pr.prUrl,
-      prNumber: pr.prNumber,
-      branch: pr.branch,
-      pathSetVerified: pr.pathSetVerified,
+      requestId: prResult.requestId,
+      prBranch: prResult.prBranch,
     },
   );
 
@@ -1151,17 +1069,8 @@ async function approveCodeChange(args: {
       landedOn: `ws:${payload.workspaceId}`,
       workspaceSlug: payload.workspaceSlug,
       codeChange: {
-        prUrl: pr.prUrl,
-        prNumber: pr.prNumber,
-        branch: pr.branch,
-        baseBranch: pr.baseBranch,
-        headSha: pr.headSha,
-        filesChanged: pr.filesChanged,
-        repositoryUrl: pr.repositoryUrl,
-        pathSetVerified: pr.pathSetVerified,
-        ...(pr.pathSetVerified === false && pr.unapprovedPaths?.length
-          ? {}
-          : {}),
+        prPending: true,
+        repositoryUrl: payload.repositoryUrl,
       },
     },
   };
