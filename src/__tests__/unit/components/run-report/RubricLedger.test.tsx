@@ -380,3 +380,61 @@ describe("RubricLedger — data-testid hooks", () => {
     expect(items).toHaveLength(3);
   });
 });
+
+describe("RubricLedger — judge dispute / note label and data-judge-state", () => {
+  // A plain-fail row with prose but no flagged — renders as "Judge Note"
+  const PROSE_ONLY = makeRow({
+    id: "C-PROSE",
+    title: "Prose only criterion",
+    judgeFlagReason: "The task brief excluded this requirement.",
+  });
+
+  // A flagged row with prose — renders as "Judge Dispute"
+  const FLAGGED_WITH_PROSE = makeRow({
+    id: "C-FLAGGED-PROSE",
+    title: "Flagged with prose",
+    judgeFlagged: true,
+    judgeFlagReason: "The judge made an error.",
+  });
+
+  it("shows no DISPUTED badge for prose-only (unflagged) criterion", () => {
+    renderLedger([PROSE_ONLY]);
+    expect(screen.queryByTestId("criterion-disputed-badge")).not.toBeInTheDocument();
+  });
+
+  it("prose still renders for unflagged criterion in the detail panel", () => {
+    renderLedger([PROSE_ONLY]);
+    expect(screen.getByText("The task brief excluded this requirement.")).toBeInTheDocument();
+  });
+
+  it("detail panel shows 'Judge Note' label for prose-only criterion", () => {
+    renderLedger([PROSE_ONLY]);
+    expect(screen.getByText("Judge Note")).toBeInTheDocument();
+    expect(screen.queryByText("Judge Dispute")).toBeNull();
+  });
+
+  it("data-judge-state is 'note' for prose-only criterion", () => {
+    renderLedger([PROSE_ONLY]);
+    const panel = screen.getByTestId("run-report-judge-dispute");
+    expect(panel).toHaveAttribute("data-judge-state", "note");
+  });
+
+  it("shows DISPUTED badge and 'Judge Dispute' label for flagged criterion", () => {
+    renderLedger([FLAGGED_WITH_PROSE]);
+    expect(screen.getAllByTestId("criterion-disputed-badge").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText("Judge Dispute")).toBeInTheDocument();
+    expect(screen.queryByText("Judge Note")).toBeNull();
+  });
+
+  it("data-judge-state is 'dispute' for flagged criterion", () => {
+    renderLedger([FLAGGED_WITH_PROSE]);
+    const panel = screen.getByTestId("run-report-judge-dispute");
+    expect(panel).toHaveAttribute("data-judge-state", "dispute");
+  });
+
+  it("no badge but prose renders for PLAIN_FAIL (no dispute keys)", () => {
+    renderLedger([PLAIN_FAIL]);
+    expect(screen.queryByTestId("criterion-disputed-badge")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("run-report-judge-dispute")).not.toBeInTheDocument();
+  });
+});

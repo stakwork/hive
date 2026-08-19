@@ -110,6 +110,7 @@ export const FULL_BUNDLE = {
         // Judge-review keys as emitted by the run_judge_dispute stage
         // (disputes_json entries merged onto rubric rows by the producer).
         flagged: true,
+        flag_basis: "criterion_validity",
         llm_flag_reason:
           "The judge's verdict may be too strict: section 12.4 is quoted in " +
           "the response's risk table, though never named by number.",
