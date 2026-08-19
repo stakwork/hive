@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import { Share2 } from "lucide-react";
 import { isRecord } from "@/lib/run-report/derive";
 import { renderValue } from "./chrome";
 import { SafeMarkdown } from "./SafeMarkdown";
@@ -43,6 +44,38 @@ export async function fetchNodePeek(
   } catch {
     return { state: "error", note: "Fetch failed." };
   }
+}
+
+/**
+ * "View in graph" — opens the Graph Explorer focused on this node, which loads
+ * it with one hop of neighbors and drops you into walk mode, so the peek is a
+ * jumping-off point rather than a dead end.
+ *
+ * Renders nothing without both a slug and a ref_id: the explorer keys entirely
+ * off `?ref_id=`, and a link that lands on an empty canvas is worse than none.
+ * New tab, so the run being read stays open behind it. The far end is
+ * admin-gated; non-admins get the explorer's own access-denied page.
+ */
+export function ViewInGraphLink({
+  workspaceSlug,
+  refId,
+}: {
+  workspaceSlug: string | null | undefined;
+  refId: string | null | undefined;
+}) {
+  if (!workspaceSlug || !refId) return null;
+  return (
+    <a
+      href={`/w/${encodeURIComponent(workspaceSlug)}/context/graph?ref_id=${encodeURIComponent(refId)}`}
+      target="_blank"
+      rel="noopener noreferrer"
+      data-testid="node-peek-view-in-graph"
+      className="inline-flex w-fit items-center gap-1.5 rounded-full border border-primary/25 bg-primary/10 px-2.5 py-1 font-mono text-[10.5px] uppercase tracking-[0.1em] text-primary transition-colors hover:border-primary/50 hover:bg-primary/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+    >
+      <Share2 className="h-3 w-3" />
+      View in graph
+    </a>
+  );
 }
 
 /**

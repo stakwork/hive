@@ -43,6 +43,7 @@ import { detailToRawGraph, mergeRawGraph, type RawGraph } from "./walkGraph";
 import { useKGGraph } from "./useKGGraph";
 import { GraphChatSidebar, NewGraphChatModal } from "./chat";
 import { NodePanel } from "./NodePanel";
+import { Graph2DView } from "./Graph2DView";
 import type {
   GraphNodeDetailResponse,
   GraphNodeType,
@@ -415,7 +416,9 @@ export function GraphExplorer({ workspaceSlug, initialRefId }: GraphExplorerProp
       setPanelTarget({ refId, label: label ?? refId });
       setFocusLoading(true);
       setFocusError(null);
-      setTab("graph");
+      // Focusing clears the query result, so the Table tab is about to vanish —
+      // move off it. "2d" is already a graph view, so leave that choice alone.
+      setTab((t) => (t === "2d" ? t : "graph"));
 
       const detail = await fetchNodeDetail(refId, expandTypes);
       if (!detail) {
@@ -476,6 +479,16 @@ export function GraphExplorer({ workspaceSlug, initialRefId }: GraphExplorerProp
       openNodeDetail(refId, node.label);
     },
     [graph.nodes, rawNodes, walkMode, focusNode, selectNode, openNodeDetail]
+  );
+
+  // The 2D view is keyed by ref_id, the 3D canvas by node index. Map across so
+  // both clicks land in the same walk/drill-down behavior.
+  const handle2DNodeClick = useCallback(
+    (refId: string) => {
+      const index = rawNodes.findIndex((n) => n.id === refId);
+      if (index !== -1) handleCanvasNodeClick(index);
+    },
+    [rawNodes, handleCanvasNodeClick]
   );
 
   // ── Node types for the search filter (Jarvis ontology) ────────────────────
@@ -786,6 +799,9 @@ export function GraphExplorer({ workspaceSlug, initialRefId }: GraphExplorerProp
                     <TabsTrigger value="graph" data-testid="tab-graph">
                       Graph
                     </TabsTrigger>
+                    <TabsTrigger value="2d" data-testid="tab-2d">
+                      2D
+                    </TabsTrigger>
                   </TabsList>
                   {queryResult !== null && (
                     <span className="text-xs text-muted-foreground">
@@ -870,7 +886,7 @@ export function GraphExplorer({ workspaceSlug, initialRefId }: GraphExplorerProp
                     this column down puts the canvas at effectively full screen. */}
                 <TabsContent
                   value="graph"
-                  className="mt-2 border rounded-md overflow-hidden shrink-0 h-[calc(100vh-12rem)] min-h-[420px]"
+                  className="mt-2 border rounded-md overflow-hidden flex-none h-[calc(100vh-12rem)] min-h-[420px]"
                 >
                   {graph.nodes.length > 0 ? (
                     <KGCanvas
@@ -879,6 +895,26 @@ export function GraphExplorer({ workspaceSlug, initialRefId }: GraphExplorerProp
                       onNodeClick={handleCanvasNodeClick}
                       searchMatches={searchMatches}
                     />
+                  ) : focusLoading ? (
+                    <div className="flex items-center justify-center h-full gap-2 text-muted-foreground text-sm">
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Loading node…
+                    </div>
+                  ) : (
+                    <div className="flex items-center justify-center h-full text-muted-foreground text-sm">
+                      No graph nodes found in these results.
+                    </div>
+                  )}
+                </TabsContent>
+
+                {/* Flat 2D reading of the same graph — easier to scan than the
+                    radial 3D walk when the result set is small. */}
+                <TabsContent
+                  value="2d"
+                  className="mt-2 border rounded-md overflow-hidden flex-none h-[calc(100vh-12rem)] min-h-[420px]"
+                >
+                  {rawGraph.nodes.length > 0 ? (
+                    <Graph2DView rawGraph={rawGraph} onNodeSelect={handle2DNodeClick} />
                   ) : focusLoading ? (
                     <div className="flex items-center justify-center h-full gap-2 text-muted-foreground text-sm">
                       <Loader2 className="h-4 w-4 animate-spin" />

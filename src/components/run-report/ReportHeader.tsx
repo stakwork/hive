@@ -10,7 +10,7 @@ import {
   type GraphRubric,
 } from "@/lib/harvey-lab/rubric-scoring";
 import { StatusBadge, Chip, Kicker, MiniHeading } from "./chrome";
-import { NodePeekBody, fetchNodePeek, type NodePeek } from "./NodePeek";
+import { NodePeekBody, ViewInGraphLink, fetchNodePeek, type NodePeek } from "./NodePeek";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { formatInUserTz } from "@/lib/date-utils";
 
@@ -93,6 +93,7 @@ function ConceptStrip({
       <Dialog open={peek !== null} onOpenChange={(next) => !next && setPeek(null)}>
         <DialogContent className="max-w-2xl">
           <DialogHeader>
+            <ViewInGraphLink workspaceSlug={workspaceSlug} refId={peek?.c.refId} />
             <DialogTitle className="flex items-baseline gap-2 text-[15px]">
               <span className="font-mono text-[9.5px] uppercase tracking-[0.1em] text-muted-foreground/60">
                 {peek?.c.nodeType ?? "node"}

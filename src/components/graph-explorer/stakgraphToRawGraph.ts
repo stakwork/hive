@@ -36,6 +36,7 @@ export function stakgraphToRawGraph(
       nodeMap.set(id, {
         id,
         label: String(obj.name ?? obj.node_type ?? obj.type ?? id),
+        ...(obj.node_type != null && { nodeType: String(obj.node_type) }),
         ...(obj.link != null && { link: String(obj.link) }),
         ...(obj.icon != null && { icon: String(obj.icon) }),
       });
