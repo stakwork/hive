@@ -138,6 +138,7 @@ interface JarvisExpandResponse {
     target: string;
     ref_id?: string;
     edge_type: string;
+    properties?: Record<string, unknown>;
   }>;
 }
 
@@ -229,6 +230,7 @@ async function fetchNodeForEdgeTypes(
           source: e.source,
           target: e.target,
           edge_type: e.edge_type,
+          ...(e.properties ? { properties: e.properties } : {}),
         });
       }
     }
