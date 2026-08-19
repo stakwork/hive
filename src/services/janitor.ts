@@ -25,6 +25,7 @@ import { getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
 import { getStakworkTokenReference } from "@/lib/vercel/stakwork-token";
 import { getSwarmBaseUrl, getSecondBrainBaseUrl } from "@/lib/utils/swarm";
 import { getBaseUrl } from "@/lib/utils";
+import { EncryptionService } from "@/lib/encryption";
 
 /**
  * Cron-safe helper: checks whether the legal benchmark recursion janitor is
@@ -227,6 +228,99 @@ async function createGraphMindsetJanitorRun(
 }
 
 /**
+ * Internal helper: dispatch a Concept Review janitor run (workspace-wide, no repo loop).
+ */
+async function createConceptReviewJanitorRun(
+  workspaceId: string,
+  triggeredBy: JanitorTrigger,
+  userId: string,
+) {
+  let config = await db.janitorConfig.findUnique({ where: { workspaceId } });
+  if (!config) {
+    config = await db.janitorConfig.create({ data: { workspaceId } });
+  }
+
+  const workspace = await db.workspace.findUnique({
+    where: { id: workspaceId },
+    select: {
+      slug: true,
+      swarm: { select: { swarmUrl: true, swarmSecretAlias: true } },
+    },
+  });
+
+  const swarm = workspace?.swarm;
+  if (!swarm?.swarmUrl || !swarm?.swarmSecretAlias) {
+    throw new Error(`[ConceptReview] workspace ${workspaceId} has no swarm URL or secret alias`);
+  }
+
+  if (!envConfig.STAKWORK_API_KEY) {
+    throw new Error("STAKWORK_API_KEY is required for Concept Review runs");
+  }
+  const workflowId = envConfig.STAKWORK_CONCEPT_REVIEW_WORKFLOW_ID;
+  if (!workflowId) {
+    throw new Error("STAKWORK_CONCEPT_REVIEW_WORKFLOW_ID is required for Concept Review runs");
+  }
+
+  const baseUrl = getBaseUrl();
+  const webhookUrl = `${baseUrl}/api/janitors/webhook`;
+
+  let janitorRun = await db.janitorRun.create({
+    data: {
+      janitorConfigId: config.id,
+      janitorType: JanitorType.CONCEPT_REVIEW,
+      triggeredBy,
+      status: "PENDING",
+      repositoryId: null,
+      metadata: { triggeredByUserId: userId, workspaceId },
+    },
+  });
+
+  try {
+    const vars = {
+      workspaceId,
+      janitorRunId: janitorRun.id,
+      swarmUrl: swarm.swarmUrl,
+      swarmSecretAlias: swarm.swarmSecretAlias,
+      webhookUrl,
+    };
+
+    console.log(
+      `[ConceptReview] dispatch — workspaceId=${workspaceId} workflowId=${workflowId} runId=${janitorRun.id}`,
+    );
+
+    const stakworkPayload = {
+      name: `concept-review-${Date.now()}`,
+      workflow_id: parseInt(workflowId),
+      workflow_params: { set_var: { attributes: { vars } } },
+    };
+
+    const stakworkProject = await stakworkService().stakworkRequest("/projects", stakworkPayload);
+    const projectId = (stakworkProject as any)?.data?.project_id;
+    if (!projectId) throw new Error("No project ID returned from Stakwork");
+
+    janitorRun = await db.janitorRun.update({
+      where: { id: janitorRun.id },
+      data: { stakworkProjectId: projectId, status: "RUNNING", startedAt: new Date() },
+    });
+
+    return janitorRun;
+  } catch (err) {
+    console.error(`[ConceptReview] dispatch failed for workspaceId=${workspaceId}:`, err instanceof Error ? err.message : String(err));
+    await db.janitorRun.update({
+      where: { id: janitorRun.id },
+      data: {
+        status: "FAILED",
+        completedAt: new Date(),
+        error: `Failed to initialize Stakwork project: ${err instanceof Error ? err.message : "Unknown error"}`,
+      },
+    });
+    throw new Error(
+      `Failed to start Concept Review janitor run: ${err instanceof Error ? err.message : "Stakwork integration failed"}`,
+    );
+  }
+}
+
+/**
  * Internal helper: dispatch a Lingo extraction janitor run (workspace-wide, no repo loop).
  */
 async function createLingoExtractionJanitorRun(
@@ -401,6 +495,12 @@ export async function createJanitorRun(
 
   // Allow multiple manual runs - concurrent check removed for manual triggers
   // This will be replaced by cron scheduling in the future
+
+  // ── Concept Review dispatch ───────────────────────────────────────────────
+  if (janitorType === JanitorType.CONCEPT_REVIEW) {
+    return await createConceptReviewJanitorRun(workspaceId, triggeredBy, userId);
+  }
+  // ─────────────────────────────────────────────────────────────────────────
 
   // ── Lingo extraction dispatch ─────────────────────────────────────────────
   if (janitorType === JanitorType.LINGO_EXTRACTION) {
@@ -1021,6 +1121,74 @@ export async function processJanitorWebhook(webhookData: StakworkWebhookPayload)
       if (!janitorRun) {
         throw new Error(JANITOR_ERRORS.RUN_NOT_FOUND);
       }
+
+      // ── CONCEPT_REVIEW: forward proposals to swarm, skip recommendation DB path ──
+      if (janitorRun.janitorType === JanitorType.CONCEPT_REVIEW) {
+        const runId = janitorRun.id;
+        const workspaceId = janitorRun.janitorConfig.workspace.id;
+
+        // Mark run COMPLETED with metadata first
+        await db.janitorRun.update({
+          where: { id: runId },
+          data: {
+            metadata: {
+              ...janitorRun.metadata as object,
+              stakworkStatus: status,
+              completedByWebhook: true,
+            },
+          },
+        });
+
+        // Re-fetch swarm with swarmApiKey for direct HTTP auth
+        const swarmWithKey = await db.swarm.findFirst({
+          where: { workspace: { id: workspaceId } },
+          select: { swarmUrl: true, swarmApiKey: true },
+        });
+
+        if (!swarmWithKey?.swarmApiKey || !swarmWithKey?.swarmUrl) {
+          console.warn(`[Janitor:CONCEPT_REVIEW] No swarmApiKey or swarmUrl for workspaceId=${workspaceId} runId=${runId} — skipping proposals`);
+          return { runId, status: "COMPLETED" as JanitorStatus, proposalCount: 0 };
+        }
+
+        let decryptedKey: string;
+        try {
+          decryptedKey = EncryptionService.getInstance().decryptField("swarmApiKey", swarmWithKey.swarmApiKey);
+        } catch {
+          console.warn(`[Janitor:CONCEPT_REVIEW] Failed to decrypt swarmApiKey workspaceId=${workspaceId} runId=${runId} — skipping proposals`);
+          return { runId, status: "COMPLETED" as JanitorStatus, proposalCount: 0 };
+        }
+
+        const swarmBase = `https://${new URL(swarmWithKey.swarmUrl).hostname}:3355`;
+        const proposals = (results?.proposals ?? []).slice(0, 100);
+
+        console.log(`[Janitor:CONCEPT_REVIEW] Forwarding ${proposals.length} proposals to swarm workspaceId=${workspaceId} runId=${runId}`);
+
+        let proposalCount = 0;
+        for (const proposal of proposals) {
+          try {
+            const res = await fetch(`${swarmBase}/gitree/proposals`, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                "x-api-token": decryptedKey,
+              },
+              body: JSON.stringify({ ...proposal, source: "janitor:concept_review" }),
+            });
+            if (!res.ok) {
+              const msg = await res.text().catch(() => res.statusText);
+              console.error(`[Janitor:CONCEPT_REVIEW] Failed to forward proposal ${(proposal as any).id ?? "unknown"}: ${msg}`);
+            } else {
+              proposalCount++;
+            }
+          } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            console.error(`[Janitor:CONCEPT_REVIEW] Failed to forward proposal ${(proposal as any).id ?? "unknown"}: ${msg}`);
+          }
+        }
+
+        return { runId, status: "COMPLETED" as JanitorStatus, proposalCount };
+      }
+      // ──────────────────────────────────────────────────────────────────────────
 
       // Update metadata and create recommendations in a transaction
       await db.$transaction(async (tx) => {

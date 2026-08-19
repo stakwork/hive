@@ -1830,4 +1830,72 @@ describe("GET /api/cron/janitors", () => {
       ).rejects.toThrow(/no swarm URL or secret alias/i);
     });
   });
+
+  describe("getWorkspacesWithEnabledJanitors — conceptReviewEnabled", () => {
+    beforeEach(async () => {
+      await resetDatabase();
+    });
+
+    it("returns conceptReviewEnabled as true when set in DB", async () => {
+      const { getWorkspacesWithEnabledJanitors } = await import("@/services/janitor-cron");
+
+      // Create a workspace with conceptReviewEnabled: true
+      const owner = await db.user.create({
+        data: {
+          email: `owner-cr-${Date.now()}@test.com`,
+          name: "CR Owner",
+        },
+      });
+      const workspace = await db.workspace.create({
+        data: {
+          slug: `cr-ws-${Date.now()}`,
+          name: "Concept Review WS",
+          ownerId: owner.id,
+        },
+      });
+      await db.janitorConfig.create({
+        data: {
+          workspaceId: workspace.id,
+          conceptReviewEnabled: true,
+        },
+      });
+
+      const workspaces = await getWorkspacesWithEnabledJanitors();
+      const found = workspaces.find((w) => w.id === workspace.id);
+
+      expect(found).toBeDefined();
+      expect(found?.janitorConfig?.conceptReviewEnabled).toBe(true);
+    });
+
+    it("does not return workspace when conceptReviewEnabled is false and all other types disabled", async () => {
+      const { getWorkspacesWithEnabledJanitors } = await import("@/services/janitor-cron");
+
+      const owner = await db.user.create({
+        data: {
+          email: `owner-cr-false-${Date.now()}@test.com`,
+          name: "CR Disabled Owner",
+        },
+      });
+      const workspace = await db.workspace.create({
+        data: {
+          slug: `cr-disabled-ws-${Date.now()}`,
+          name: "CR Disabled WS",
+          ownerId: owner.id,
+        },
+      });
+      await db.janitorConfig.create({
+        data: {
+          workspaceId: workspace.id,
+          conceptReviewEnabled: false,
+          // all others default to false
+        },
+      });
+
+      const workspaces = await getWorkspacesWithEnabledJanitors();
+      const found = workspaces.find((w) => w.id === workspace.id);
+
+      // Workspace should not appear because no janitors are enabled
+      expect(found).toBeUndefined();
+    });
+  });
 });

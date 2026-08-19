@@ -2,6 +2,12 @@ import { NextRequest, NextResponse } from "next/server";
 import { processJanitorWebhook } from "@/services/janitor";
 import { JANITOR_ERRORS } from "@/lib/constants/janitor";
 import { z } from "zod";
+import { timingSafeEqual } from "crypto";
+
+const conceptProposalSchema = z.object({
+  type: z.enum(["create", "update", "merge", "delete"]),
+  conceptId: z.string().uuid(),
+}).passthrough();
 
 const stakworkWebhookSchema = z.object({
   projectId: z.number(),
@@ -16,16 +22,27 @@ const stakworkWebhookSchema = z.object({
       priority: z.string(),
       impact: z.string().optional(),
       metadata: z.record(z.string(), z.any()).optional(),
-    }))
+    })).optional().default([]),
+    proposals: z.array(conceptProposalSchema).max(100).optional(),
   }).optional(),
   error: z.string().optional(),
 });
 
 export async function POST(request: NextRequest) {
   try {
-    // Check API token authentication
+    // Check API token authentication using timing-safe comparison.
+    // timingSafeEqual requires same-length buffers; mismatched lengths are
+    // unconditionally rejected (different lengths can never be equal).
     const apiToken = request.headers.get("x-api-token");
-    if (!apiToken || apiToken !== process.env.API_TOKEN) {
+    const expectedToken = process.env.API_TOKEN ?? "";
+    const apiTokenBuf = Buffer.from(apiToken ?? "");
+    const expectedTokenBuf = Buffer.from(expectedToken);
+    if (
+      !apiToken ||
+      !expectedToken ||
+      apiTokenBuf.length !== expectedTokenBuf.length ||
+      !timingSafeEqual(apiTokenBuf, expectedTokenBuf)
+    ) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
@@ -48,6 +65,7 @@ export async function POST(request: NextRequest) {
       ...(result.runId && { runId: result.runId }),
       status: result.status,
       ...('recommendationCount' in result ? { recommendationCount: result.recommendationCount } : {}),
+      ...('proposalCount' in result ? { proposalCount: result.proposalCount } : {}),
       ...('error' in result ? { error: result.error } : {})
     });
 
