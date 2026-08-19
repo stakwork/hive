@@ -12,8 +12,8 @@
  *     before the claim is inserted and before any dispatch.
  *  3. Only the originator may approve; a proposal with no `originatorUserId`
  *     fails closed.
- *  4. The dispatch receipt is written onto the claim Task before `createPr`
- *     polls for a result.
+ *  4. The dispatch receipt is written onto the claim Task via `onDispatch`,
+ *     enriched with the conversation/proposal ids the webhook path needs.
  *  5. Re-approving a claim that has a receipt but no PR artifact reconciles
  *     instead of dead-ending, and never re-dispatches.
  */
@@ -56,11 +56,25 @@ vi.mock("@/services/org-canvas-conversation", () => ({
 vi.mock("@/services/swarm/createPr", () => ({
   createPr: mockCreatePr,
   reconcilePr: mockReconcilePr,
+  _processCompletedResult: vi.fn(),
+  extractFilePaths: vi.fn(() => new Set<string>()),
 }));
 vi.mock("@/services/workspace", () => ({
   validateWorkspaceAccessById: mockValidateWsAccess,
 }));
 vi.mock("@/lib/rate-limit", () => ({ checkRateLimit: mockCheckRateLimit }));
+vi.mock("@/lib/encryption", () => ({
+  EncryptionService: {
+    getInstance: () => ({
+      encryptField: vi.fn((_f: string, v: string) => ({ data: `enc:${v}` })),
+      decryptField: vi.fn((_f: string, v: string) => String(v)),
+    }),
+  },
+}));
+vi.mock("@/services/canvas-turn-persistence", () => ({
+  patchStoredCodeChangeResult: vi.fn(),
+  appendTurnMessages: vi.fn(),
+}));
 vi.mock("@/lib/github/labels", () => ({ addPrLabels: mockAddPrLabels }));
 vi.mock("@/lib/canvas", () => ({
   notifyCanvasUpdated: vi.fn(),
@@ -165,18 +179,16 @@ function msg(output: unknown): MessageLike {
   } as MessageLike;
 }
 
-const PR_SUCCESS = {
+// Dispatch-and-return: `createPr` resolves as soon as the swarm accepts
+// the run — the PR itself arrives later on the webhook.
+const PR_DISPATCHED = {
   ok: true as const,
-  prUrl: "https://github.com/acme/widgets/pull/7",
-  prNumber: 7,
-  branch: "swarm/swarm-change-req1",
-  baseBranch: "main",
-  headSha: "abc123",
-  filesChanged: 1,
-  repositoryUrl: REPO_URL,
-  pathSetVerified: true,
-  unapprovedPaths: [],
+  dispatched: true as const,
+  requestId: "req-1",
+  prBranch: "swarm/swarm-change-abcd1234",
 };
+
+const PUBLIC_BASE_URL = "https://hive.example.com";
 
 function approve(messages: MessageLike[], userId = USER_ID) {
   return handleApproval({
@@ -185,6 +197,7 @@ function approve(messages: MessageLike[], userId = USER_ID) {
     messages,
     intent: { proposalId: PROPOSAL_ID },
     conversationId: CONVERSATION_ID,
+    publicBaseUrl: PUBLIC_BASE_URL,
   } as Parameters<typeof handleApproval>[0]);
 }
 
@@ -193,7 +206,7 @@ beforeEach(() => {
 
   mockValidateWsAccess.mockResolvedValue({ hasAccess: true, canWrite: true });
   mockCheckRateLimit.mockResolvedValue({ allowed: true });
-  mockCreatePr.mockResolvedValue(PR_SUCCESS);
+  mockCreatePr.mockResolvedValue(PR_DISPATCHED);
   mockAddPrLabels.mockResolvedValue(undefined);
 
   vi.mocked(db.repository.findFirst).mockResolvedValue({ id: "repo-1" } as never);
@@ -326,10 +339,10 @@ describe("approveCodeChange — originator guard", () => {
 });
 
 describe("approveCodeChange — dispatch receipt", () => {
-  it("writes the claim onto the Task via onDispatch before the poll resolves", async () => {
+  it("writes the claim onto the Task via onDispatch, enriched with conversation/proposal ids", async () => {
     mockFetchStored.mockResolvedValue([msg(codeChangeOutput())]);
 
-    let receiptWrittenBeforeResult = false;
+    let receiptWrittenBeforeReturn = false;
     mockCreatePr.mockImplementation(async (p: Record<string, unknown>) => {
       const onDispatch = p.onDispatch as (c: unknown) => Promise<void>;
       await onDispatch({
@@ -337,24 +350,102 @@ describe("approveCodeChange — dispatch receipt", () => {
         repositoryUrl: REPO_URL,
         userId: USER_ID,
         workspaceSlug: WS_SLUG,
-        runIdPrefix: "req-1",
+        prBranch: "swarm/swarm-change-abcd1234",
+        approvedPaths: ["src/a.ts"],
       });
-      receiptWrittenBeforeResult = vi.mocked(db.task.update).mock.calls.length > 0;
-      return PR_SUCCESS;
+      receiptWrittenBeforeReturn = vi.mocked(db.task.update).mock.calls.length > 0;
+      return PR_DISPATCHED;
     });
 
     const res = await approve([msg(codeChangeOutput())]);
 
     expect(res.ok).toBe(true);
-    expect(receiptWrittenBeforeResult).toBe(true);
+    expect(receiptWrittenBeforeReturn).toBe(true);
     expect(db.task.update).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { id: CLAIM_TASK_ID },
         data: expect.objectContaining({
-          codeChangeClaim: expect.objectContaining({ requestId: "req-1" }),
+          codeChangeClaim: expect.objectContaining({
+            requestId: "req-1",
+            prBranch: "swarm/swarm-change-abcd1234",
+            // The webhook path resolves the stored approvalResult row by
+            // these two — they must ride the persisted claim.
+            conversationId: CONVERSATION_ID,
+            proposalId: PROPOSAL_ID,
+          }),
         }),
       }),
     );
+  });
+
+  it("dispatches with a webhook URL built on the route-captured base URL", async () => {
+    mockFetchStored.mockResolvedValue([msg(codeChangeOutput())]);
+
+    const res = await approve([msg(codeChangeOutput())]);
+
+    expect(res.ok).toBe(true);
+    const dispatched = mockCreatePr.mock.calls[0][0] as Record<string, unknown>;
+    expect(String(dispatched.webhookUrl)).toMatch(
+      new RegExp(`^${PUBLIC_BASE_URL}/api/code-change/webhook\\?token=.+`),
+    );
+  });
+
+  it("returns prPending (no PR data) on a successful dispatch", async () => {
+    mockFetchStored.mockResolvedValue([msg(codeChangeOutput())]);
+
+    const res = await approve([msg(codeChangeOutput())]);
+
+    expect(res.ok).toBe(true);
+    if (res.ok) {
+      expect(res.result.codeChange?.prPending).toBe(true);
+      expect(res.result.codeChange?.prUrl).toBeUndefined();
+    }
+  });
+
+  it("refuses before creating any claim when no publicBaseUrl was captured", async () => {
+    mockFetchStored.mockResolvedValue([msg(codeChangeOutput())]);
+
+    const res = await handleApproval({
+      orgId: ORG_ID,
+      userId: USER_ID,
+      messages: [msg(codeChangeOutput())],
+      intent: { proposalId: PROPOSAL_ID },
+      conversationId: CONVERSATION_ID,
+      // no publicBaseUrl
+    } as Parameters<typeof handleApproval>[0]);
+
+    expect(res.ok).toBe(false);
+    expect(res.ok === false && res.status).toBe(500);
+    expect(db.$transaction).not.toHaveBeenCalled();
+    expect(mockCreatePr).not.toHaveBeenCalled();
+  });
+
+  it("stores an encrypted per-claim webhook secret on the claim Task", async () => {
+    mockFetchStored.mockResolvedValue([msg(codeChangeOutput())]);
+
+    let createdData: Record<string, unknown> | null = null;
+    vi.mocked(db.$transaction).mockImplementation(async (arg: unknown) => {
+      if (typeof arg !== "function") return undefined as never;
+      const tx = {
+        task: {
+          create: vi.fn().mockImplementation((a: { data: Record<string, unknown> }) => {
+            createdData = a.data;
+            return Promise.resolve({ id: CLAIM_TASK_ID });
+          }),
+          update: vi.fn().mockResolvedValue({}),
+        },
+        chatMessage: { create: vi.fn().mockResolvedValue({ id: SEED_MSG_ID }) },
+        artifact: { create: vi.fn().mockResolvedValue({}), updateMany: vi.fn().mockResolvedValue({}) },
+      };
+      return (arg as (t: unknown) => Promise<unknown>)(tx) as never;
+    });
+
+    const res = await approve([msg(codeChangeOutput())]);
+
+    expect(res.ok).toBe(true);
+    expect(createdData).not.toBeNull();
+    expect(typeof createdData!.codeChangeWebhookSecret).toBe("string");
+    expect(String(createdData!.codeChangeWebhookSecret)).toContain("enc:");
   });
 });
 

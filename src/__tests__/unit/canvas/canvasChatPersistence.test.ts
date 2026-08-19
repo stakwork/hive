@@ -13,6 +13,7 @@ import {
   seedPersistedIds,
   computeUnsaved,
   mergeServerMessages,
+  reconcileApprovalResults,
   reconcilePlannerSources,
   applyFeatureStatusPatch,
   type PersistableMessage,
@@ -356,5 +357,95 @@ describe("applyFeatureStatusPatch — in-place status refresh for planner rows",
     const { messages: out, changed } = applyFeatureStatusPatch(messages, patch);
     expect(changed).toBe(false);
     expect(out).toBe(messages);
+  });
+});
+
+// ─── reconcileApprovalResults — code-change card flip ─────────────────────
+//
+// The terminal code-change webhook patches the stored approvalResult row IN
+// PLACE. Two consumers can't see that through the append-only merge: viewer
+// tabs (same row id, merge only adds new ids) and the authoring tab (its
+// `${turnId}-` server rows are filtered out; its optimistic row has a
+// different id). This reconcile matches by `approvalResult.proposalId`.
+
+describe("reconcileApprovalResults — code-change outcomes swap in", () => {
+  const pendingAr = {
+    proposalId: "prop-1",
+    kind: "codeChange",
+    codeChange: { prPending: true, repositoryUrl: "https://github.com/a/b" },
+  };
+  const landedAr = {
+    proposalId: "prop-1",
+    kind: "codeChange",
+    codeChange: {
+      prUrl: "https://github.com/a/b/pull/7",
+      prNumber: 7,
+      repositoryUrl: "https://github.com/a/b",
+    },
+  };
+
+  test("refreshes a same-id row whose server codeChange changed", () => {
+    const local = [
+      { id: "t1-a0", content: "Dispatched…", approvalResult: pendingAr },
+    ];
+    const server = [
+      { id: "t1-a0", content: "Opened pull request: …", approvalResult: landedAr },
+    ];
+    const { messages, changed } = reconcileApprovalResults(local, server);
+    expect(changed).toBe(true);
+    expect(messages[0].approvalResult).toEqual(landedAr);
+    expect(messages[0].content).toBe("Opened pull request: …");
+  });
+
+  test("matches the authoring tab's optimistic row by proposalId across DIFFERENT ids", () => {
+    const local = [
+      { id: "local-opt-1", content: "Dispatched…", approvalResult: pendingAr },
+    ];
+    const server = [
+      { id: "t1-a0", content: "Opened pull request: …", approvalResult: landedAr },
+    ];
+    const { messages, changed } = reconcileApprovalResults(local, server);
+    expect(changed).toBe(true);
+    expect(messages[0].id).toBe("local-opt-1"); // row identity untouched
+    expect(messages[0].approvalResult).toEqual(landedAr);
+  });
+
+  test("no-ops (same array reference) when the codeChange is unchanged", () => {
+    const local = [
+      { id: "t1-a0", content: "x", approvalResult: landedAr },
+    ];
+    const server = [
+      { id: "t1-a0", content: "x", approvalResult: landedAr },
+    ];
+    const { messages, changed } = reconcileApprovalResults(local, server);
+    expect(changed).toBe(false);
+    expect(messages).toBe(local);
+  });
+
+  test("ignores non-codeChange approvalResults entirely", () => {
+    const featureAr = { proposalId: "prop-2", kind: "feature" };
+    const local = [{ id: "a", content: "x", approvalResult: featureAr }];
+    const server = [
+      {
+        id: "a",
+        content: "y",
+        approvalResult: { ...featureAr, codeChange: { prPending: true } },
+      },
+    ];
+    const { changed } = reconcileApprovalResults(local, server);
+    expect(changed).toBe(false);
+  });
+
+  test("never drops, adds, or reorders rows", () => {
+    const local = [
+      { id: "u1", content: "hi" },
+      { id: "t1-a0", content: "Dispatched…", approvalResult: pendingAr },
+      { id: "u2", content: "later local row" },
+    ];
+    const server = [
+      { id: "t1-a0", content: "done", approvalResult: landedAr },
+    ];
+    const { messages } = reconcileApprovalResults(local, server);
+    expect(messages.map((m) => m.id)).toEqual(["u1", "t1-a0", "u2"]);
   });
 });

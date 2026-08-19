@@ -472,9 +472,17 @@ export function ProposalCard({
       return { text, deepLink: null as string | null, newTab: false };
     }
 
-    // codeChange: render PR link, failure copy, or path-set warning.
+    // codeChange: render pending state, PR link, failure copy, or
+    // path-set warning.
     if (r.kind === "codeChange") {
       const cc = r.codeChange;
+      if (cc?.prPending && !cc.prUrl && !cc.failureCode) {
+        return {
+          text: "PR in progress…",
+          deepLink: null as string | null,
+          newTab: false,
+        };
+      }
       if (!cc?.prUrl) {
         const text = cc?.failureMessage
           ? `PR creation failed: ${cc.failureMessage}`
@@ -1603,6 +1611,15 @@ function CodeChangeMeta({
         </div>
       )}
 
+      {/* Dispatched, PR pending — the terminal webhook patches the stored
+          approvalResult in place and a live-sync nudge flips this state. */}
+      {cc?.prPending && !cc.prUrl && !cc.failureCode && (
+        <div className="mt-1 inline-flex items-center gap-1.5 text-[11px] text-muted-foreground">
+          <Loader2 className="h-3 w-3 animate-spin" />
+          Opening pull request… this card will update with the link.
+        </div>
+      )}
+
       {/* Approval result: PR link + path-set warning */}
       {cc?.prUrl && (
         <div className="mt-1 text-[11px]">
@@ -1620,14 +1637,94 @@ function CodeChangeMeta({
       {cc?.pathSetVerified === false && (
         <div className="mt-1 text-[10px] text-amber-600 dark:text-amber-400">
           ⚠ Some files in the final diff were not in the approved preview.
+          {cc.unapprovedPaths && cc.unapprovedPaths.length > 0 && (
+            <span className="font-mono">
+              {" "}
+              ({cc.unapprovedPaths.slice(0, 5).join(", ")}
+              {cc.unapprovedPaths.length > 5 ? ", …" : ""})
+            </span>
+          )}
         </div>
       )}
       {cc && !cc.prUrl && cc.failureCode && (
-        <div className="mt-1 text-[11px] text-rose-600 dark:text-rose-400">
-          Failed: {cc.failureMessage ?? cc.failureCode}
+        <div className="mt-1 space-y-1">
+          <div className="text-[11px] text-rose-600 dark:text-rose-400">
+            Failed: {cc.failureMessage ?? cc.failureCode}
+          </div>
+          {AMBIGUOUS_CODE_CHANGE_FAILURES.has(cc.failureCode) &&
+            approvalResult?.createdEntityId && (
+              <AbandonClaimButton taskId={approvalResult.createdEntityId} />
+            )}
         </div>
       )}
     </div>
+  );
+}
+
+/**
+ * Failure codes whose claim survives (ambiguous outcome — a PR/branch may
+ * exist). These proposals stay blocked from re-approval until the claim
+ * resolves or is explicitly abandoned; the button below is that escape
+ * hatch (`POST /api/code-change/claims/[taskId]/abandon`).
+ */
+const AMBIGUOUS_CODE_CHANGE_FAILURES: ReadonlySet<string> = new Set([
+  "create_pr_not_called",
+  "push_rejected",
+  "pr_create_failed",
+  "base_repo_vanished",
+  "aborted",
+  "already_landed",
+  "swarm_run_failed",
+  "unknown",
+]);
+
+/**
+ * Escape hatch for a stuck code-change claim. The endpoint runs a final
+ * reconcile first — if the PR turns out to exist it is adopted (409) and
+ * the card flips via the usual live-sync patch instead.
+ */
+function AbandonClaimButton({ taskId }: { taskId: string }) {
+  const [state, setState] = useState<
+    { phase: "idle" } | { phase: "busy" } | { phase: "done"; message: string }
+  >({ phase: "idle" });
+
+  if (state.phase === "done") {
+    return (
+      <div className="text-[10px] text-muted-foreground">{state.message}</div>
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      disabled={state.phase === "busy"}
+      onClick={async () => {
+        setState({ phase: "busy" });
+        try {
+          const res = await fetch(
+            `/api/code-change/claims/${encodeURIComponent(taskId)}/abandon`,
+            { method: "POST" },
+          );
+          const body = (await res.json()) as {
+            message?: string;
+            error?: string;
+          };
+          setState({
+            phase: "done",
+            message:
+              body.message ??
+              body.error ??
+              (res.ok ? "Claim abandoned." : "Could not abandon the claim."),
+          });
+        } catch {
+          setState({ phase: "idle" });
+        }
+      }}
+      className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground disabled:opacity-50"
+    >
+      {state.phase === "busy" && <Loader2 className="h-3 w-3 animate-spin" />}
+      Abandon claim &amp; unblock re-approval
+    </button>
   );
 }
 

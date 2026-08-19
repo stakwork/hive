@@ -162,6 +162,16 @@ export async function repoAgent(
      */
     stakworkApiKey?: string;
     /**
+     * Preview isolation (stakgraph 2.4): run in a throwaway detached
+     * worktree at the shared checkout's HEAD — no fetch, no credentials,
+     * no branch — with the same bash/editor confinement as prMode,
+     * released on every exit path. Set on read-only preview runs so they
+     * can never dirty the shared checkout or push. The swarm 400s on
+     * `ephemeral` + `create_pr`, and on `ephemeral` without exactly one
+     * `repo_url`.
+     */
+    ephemeral?: boolean;
+    /**
      * Webhook fan-back URL. When present, the swarm POSTs a terminal-status
      * callback here in addition to serving the inline poll path
      * (stakgraph `postTerminalWebhook`, payload `{ request_id, status:
