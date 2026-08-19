@@ -501,7 +501,7 @@ that the workspace only has one.
 Use this when the user asks for a small, targeted code change and:
 - You know which repository the change belongs in
 - It touches exactly one repository
-- It is focused (≤ 50 files, ≤ 200 KB diff)
+- It is focused (aim for < 10 files; hard cap ≤ 50 files / 200 KB diff)
 - It is self-contained (no DB migrations)
 
 ### Picking \`repositoryUrl\`
