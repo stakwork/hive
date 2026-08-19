@@ -10,8 +10,9 @@ import {
 /**
  * Compact read-only marker chips for criterion-level quality signals.
  *
- * DISPUTED (amber) — judge's scoring may be wrong (`flagged`/`llm_flag_reason`
- *   from the judge-dispute stage).
+ * DISPUTED (amber) — judge's verdict was flagged as wrong (`flagged` from the
+ *   judge-dispute stage). The judge's reason prose renders independently of
+ *   this chip — a conceded failure with prose shows no badge.
  * CONTESTED (violet) — the criterion *definition* is considered broken
  *   (set by the contest agent; independent of verdict).
  *
@@ -23,11 +24,41 @@ import {
  * drift apart visually.
  */
 
+/**
+ * Maps a normalised `flagBasis` token to human-readable tooltip copy.
+ * Unknown tokens are humanised (underscores → spaces, sentence case) rather
+ * than dropped — per the gap note the resolver preserves unknown tokens, and
+ * the UI must not leak raw snake_case strings.
+ */
+function flagBasisCopy(basis: string): string {
+  switch (basis) {
+    case "criterion_validity":
+      return "the criterion definition itself is disputed";
+    case "judge_error":
+      return "the judge is believed to have made an error";
+    case "legitimate_failure":
+      return "the failure was judged legitimate by the dispute reviewer";
+    case "indeterminate":
+      return "the dispute outcome is indeterminate";
+    default: {
+      // Humanise unknown tokens: underscores → spaces, sentence case.
+      const spaced = basis.replace(/_/g, " ");
+      return spaced.charAt(0).toUpperCase() + spaced.slice(1);
+    }
+  }
+}
+
 interface CriterionMarkersProps {
-  /** Whether to show the DISPUTED (amber) chip. */
+  /** Whether to show the DISPUTED (amber) chip. Gated on `flagged` alone. */
   disputed?: boolean;
   /** Whether to show the CONTESTED (violet) chip. */
   contested?: boolean;
+  /**
+   * Normalised `flag_basis` from the resolver (trimmed + lowercased, or null).
+   * When non-empty, appended to the DISPUTED tooltip as basis-specific copy.
+   * Never a suppression input — `disputed` prop controls chip visibility.
+   */
+  flagBasis?: string | null;
   /** Additional class names for the wrapper span. */
   className?: string;
 }
@@ -35,6 +66,7 @@ interface CriterionMarkersProps {
 export function CriterionMarkers({
   disputed,
   contested,
+  flagBasis,
   className,
 }: CriterionMarkersProps) {
   if (!disputed && !contested) return null;
@@ -53,10 +85,22 @@ export function CriterionMarkers({
               DISPUTED
             </span>
           </TooltipTrigger>
-          <TooltipContent side="top" className="max-w-xs text-xs">
+          <TooltipContent
+            side="top"
+            className="max-w-xs text-xs"
+            data-testid="criterion-disputed-tooltip"
+          >
             The judge&apos;s scoring was flagged as potentially wrong. Reflects
             what this run recorded — editing the criterion today does not
             rewrite historical runs.
+            {flagBasis && flagBasis.length > 0 && (
+              <span
+                className="block mt-1 text-amber-300/80"
+                data-testid="criterion-dispute-basis"
+              >
+                Basis: {flagBasisCopy(flagBasis)}.
+              </span>
+            )}
           </TooltipContent>
         </Tooltip>
       )}

@@ -158,4 +158,64 @@ describe("CriterionMarkers", () => {
     const badge = screen.getByTestId("criterion-contested-badge");
     expect(badge).toBeTruthy();
   });
+
+  // ── flagBasis tooltip ─────────────────────────────────────────────────────
+
+  it("criterion-dispute-basis is absent when flagBasis is null", () => {
+    render(<CriterionMarkers disputed={true} flagBasis={null} />);
+    expect(screen.queryByTestId("criterion-dispute-basis")).not.toBeInTheDocument();
+  });
+
+  it("criterion-dispute-basis is absent when flagBasis is empty string", () => {
+    render(<CriterionMarkers disputed={true} flagBasis="" />);
+    expect(screen.queryByTestId("criterion-dispute-basis")).not.toBeInTheDocument();
+  });
+
+  it("criterion-dispute-basis is absent when flagBasis is undefined", () => {
+    render(<CriterionMarkers disputed={true} />);
+    expect(screen.queryByTestId("criterion-dispute-basis")).not.toBeInTheDocument();
+  });
+
+  it("renders basis line for criterion_validity token", () => {
+    render(<CriterionMarkers disputed={true} flagBasis="criterion_validity" />);
+    const basisEl = screen.getByTestId("criterion-dispute-basis");
+    expect(basisEl).toBeInTheDocument();
+    expect(basisEl.textContent).toContain("criterion definition");
+  });
+
+  it("renders basis line for judge_error token", () => {
+    render(<CriterionMarkers disputed={true} flagBasis="judge_error" />);
+    const basisEl = screen.getByTestId("criterion-dispute-basis");
+    expect(basisEl).toBeInTheDocument();
+    expect(basisEl.textContent).toContain("judge");
+  });
+
+  it("renders basis line for legitimate_failure token", () => {
+    render(<CriterionMarkers disputed={true} flagBasis="legitimate_failure" />);
+    const basisEl = screen.getByTestId("criterion-dispute-basis");
+    expect(basisEl).toBeInTheDocument();
+    expect(basisEl.textContent).toContain("legitimate");
+  });
+
+  it("renders basis line for indeterminate token", () => {
+    render(<CriterionMarkers disputed={true} flagBasis="indeterminate" />);
+    const basisEl = screen.getByTestId("criterion-dispute-basis");
+    expect(basisEl).toBeInTheDocument();
+    expect(basisEl.textContent).toContain("indeterminate");
+  });
+
+  it("humanizes an unknown token (never raw snake_case)", () => {
+    render(<CriterionMarkers disputed={true} flagBasis="some_unknown_basis" />);
+    const basisEl = screen.getByTestId("criterion-dispute-basis");
+    expect(basisEl).toBeInTheDocument();
+    // must not contain raw underscores
+    expect(basisEl.textContent).not.toContain("some_unknown_basis");
+    // spaces instead of underscores, sentence case
+    expect(basisEl.textContent).toContain("Some unknown basis");
+  });
+
+  it("criterion-dispute-basis is not present when chip is not disputed", () => {
+    render(<CriterionMarkers disputed={false} contested={true} flagBasis="judge_error" />);
+    expect(screen.queryByTestId("criterion-dispute-basis")).not.toBeInTheDocument();
+  });
 });

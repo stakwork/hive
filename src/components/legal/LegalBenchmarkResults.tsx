@@ -104,11 +104,13 @@ export function LegalBenchmarkResults({ runId, onReset, isSuperAdmin = false }: 
   const handleCopyRubric = () => {
     if (!sortedFiltered || sortedFiltered.length === 0) return;
     const sanitize = (s: string) => s.replace(/\t/g, " ").replace(/[\n\r]/g, " ");
-    const header = "Verdict\tID\tTitle\tReasoning\tJudge Dispute\tContested";
-    const rows = sortedFiltered.map(
-      (c) =>
-        `${sanitize(c.verdict)}\t${sanitize(c.id)}\t${sanitize(c.title)}\t${sanitize(c.reasoning)}\t${sanitize(resolveJudgeDispute(c)?.displayText ?? "")}\t${criterionStatus(c, contestedIndex) === "CONTESTED" ? "true" : ""}`,
-    );
+    // Split into separate Disputed (boolean) and Judge Reason columns so
+    // reviewers can distinguish a flagged dispute from a conceded note.
+    const header = "Verdict\tID\tTitle\tReasoning\tDisputed\tJudge Reason\tContested";
+    const rows = sortedFiltered.map((c) => {
+      const dispute = resolveJudgeDispute(c);
+      return `${sanitize(c.verdict)}\t${sanitize(c.id)}\t${sanitize(c.title)}\t${sanitize(c.reasoning)}\t${dispute?.isDispute ? "true" : ""}\t${sanitize(dispute?.displayText ?? "")}\t${criterionStatus(c, contestedIndex) === "CONTESTED" ? "true" : ""}`;
+    });
     navigator.clipboard.writeText([header, ...rows].join("\n"));
   };
 
@@ -393,9 +395,15 @@ export function LegalBenchmarkResults({ runId, onReset, isSuperAdmin = false }: 
                             </Badge>
                             <code className="text-xs text-muted-foreground shrink-0">{criterion.id}</code>
                             <span className="truncate">{criterion.title}</span>
-                            <CriterionMarkers
-                              disputed={resolveJudgeDispute(criterion) !== null}
-                            />
+                            {(() => {
+                              const d = resolveJudgeDispute(criterion);
+                              return (
+                                <CriterionMarkers
+                                  disputed={d?.isDispute}
+                                  flagBasis={d?.flagBasis}
+                                />
+                              );
+                            })()}
                           </button>
                         </CollapsibleTrigger>
                         <CollapsibleContent>
@@ -409,10 +417,11 @@ export function LegalBenchmarkResults({ runId, onReset, isSuperAdmin = false }: 
                               return (
                                 <div
                                   data-judge-dispute
+                                  data-judge-state={dispute.isDispute ? "dispute" : "note"}
                                   className="mx-4 mb-3 border-l-2 border-amber-400/60 pl-3"
                                 >
                                   <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground/70 mb-1">
-                                    Judge Dispute
+                                    {dispute.isDispute ? "Judge Dispute" : "Judge Note"}
                                   </p>
                                   <p className="text-sm text-muted-foreground">
                                     {dispute.displayText}
