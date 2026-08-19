@@ -23,6 +23,7 @@ const WORKSPACE_SLUG = "openlaw";
 const makeRun = (overrides: Record<string, unknown> = {}) => ({
   id: "run-page-1",
   workspaceId: WORKSPACE_ID,
+  runType: "manual",
   status: "COMPLETED",
   projectId: null,
   taskSlug: "antitrust/task-1",

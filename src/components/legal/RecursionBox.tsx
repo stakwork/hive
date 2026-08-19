@@ -5,6 +5,7 @@ import { Loader2, RefreshCw, ChevronDown, ChevronUp, AlertCircle } from "lucide-
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "@/components/ui/collapsible";
 import { useEvalRunHistory } from "@/hooks/useEvalRunHistory";
+import { RecursionActivityRail } from "@/components/legal/RecursionActivityRail";
 import { useBenchmarkRubrics } from "@/hooks/useBenchmarkRubrics";
 import { rosterSummary, type RosterSummary } from "@/lib/harvey-lab/rubric-scoring";
 import { HillClimbChart } from "@/components/legal/HillClimbChart";
@@ -122,6 +123,7 @@ function RecursionCard({ entry, refetch }: RecursionCardProps) {
   // refId is preferred; slug is the fallback when refId is absent.
   const {
     attempts: rawAttempts,
+    attemptRows,
     partial,
     isLoading: historyLoading,
     error: historyError,
@@ -282,7 +284,15 @@ function RecursionCard({ entry, refetch }: RecursionCardProps) {
                   </span>
                 )}
               </p>
-              <HillClimbChart attempts={attempts} height={176} />
+              {/* Chart ~2/3, activity rail ~1/3; stacked on small screens */}
+              <div className="flex flex-col md:flex-row gap-4">
+                <div className="md:basis-2/3 min-w-0">
+                  <HillClimbChart attempts={attempts} height={176} />
+                </div>
+                <div className="md:basis-1/3 min-w-0">
+                  <RecursionActivityRail rows={attemptRows} partial={partial} />
+                </div>
+              </div>
             </div>
           )}
         </CollapsibleContent>
