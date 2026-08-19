@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import type { CanvasData } from "system-canvas-react";
 import { useEntityChannel } from "@/hooks/useEntityChannel";
@@ -175,17 +175,17 @@ export function useFeatureLiveState(seeds: FeatureSeed[]): {
     return map;
   }, [stateMap]);
 
-  const binders = useMemo(
-    () =>
-      seeds.map((seed) => (
-        <FeatureChannelBinder
-          key={seed.featureId}
-          featureId={seed.featureId}
-          onEvent={onEvent}
-        />
-      )),
-    [seeds, onEvent],
+  const featureIdKey = useMemo(
+    () => seeds.map((s) => s.featureId).sort().join(","),
+    [seeds],
   );
+
+  const binders = useMemo(() => {
+    const ids = featureIdKey ? featureIdKey.split(",") : [];
+    return ids.map((id) => (
+      <FeatureChannelBinder key={id} featureId={id} onEvent={onEvent} />
+    ));
+  }, [featureIdKey, onEvent]);
 
   return { liveByFeatureId, binders };
 }
