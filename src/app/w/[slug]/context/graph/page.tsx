@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import { useSearchParams } from "next/navigation";
 import { Share2 } from "lucide-react";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { useWorkspaceAccess } from "@/hooks/useWorkspaceAccess";
@@ -10,6 +11,10 @@ import { GraphExplorer } from "@/components/graph-explorer/GraphExplorer";
 export default function GraphExplorerPage() {
   const { slug } = useWorkspace();
   const { canAdmin } = useWorkspaceAccess();
+  const searchParams = useSearchParams();
+  // Deep link from anywhere that knows a ref_id (e.g. agent-session concept
+  // chips) — open the explorer focused on that node.
+  const initialRefId = searchParams.get("ref_id");
 
   if (!canAdmin) {
     return (
@@ -32,7 +37,7 @@ export default function GraphExplorerPage() {
         title="Graph Explorer"
         description="Run read-only Cypher queries against the workspace graph database."
       />
-      <GraphExplorer workspaceSlug={slug} />
+      <GraphExplorer workspaceSlug={slug} initialRefId={initialRefId} />
     </div>
   );
 }

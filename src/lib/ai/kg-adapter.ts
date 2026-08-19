@@ -63,6 +63,12 @@ export interface KgNeighborResult extends NeighborResult {
 export interface KgNeighborsResponse {
   neighbors: KgNeighborResult[];
   reachable: boolean;
+  /**
+   * The queried node itself, with its raw properties. Present only when the
+   * call opted in via `includeRoot` — the `?expand=edges` response already
+   * carries it in `nodes`, so this costs no extra round trip.
+   */
+  root?: KgNode;
 }
 
 // ---------------------------------------------------------------------------
@@ -367,6 +373,12 @@ export interface KgGetNeighborsOpts {
    * next without a per-neighbor round trip.
    */
   includeEdgeCounts?: boolean;
+  /**
+   * When true, also return the queried node itself (with properties) as
+   * `root`. Jarvis includes it in the `nodes` array of the same response, so
+   * this saves a separate `kgGetNode` call for callers that need both.
+   */
+  includeRoot?: boolean;
 }
 
 /**
@@ -429,8 +441,20 @@ export async function kgGetNeighbors(
       string,
       { node_type: string; name: string; edges?: Record<string, number> }
     >();
+    let root: KgNode | undefined;
     for (const node of data.nodes ?? []) {
-      if (node.ref_id !== refId) {
+      if (node.ref_id === refId) {
+        // The queried node rides along in the same response — keep it when the
+        // caller asked, so the node panel doesn't need a second fetch.
+        if (opts?.includeRoot) {
+          root = {
+            ref_id: node.ref_id,
+            node_type: node.node_type,
+            name: deriveNodeName(node, (node.properties ?? {}) as Record<string, unknown>),
+            properties: node.properties,
+          };
+        }
+      } else {
         nodeMap.set(node.ref_id, {
           node_type: node.node_type,
           name: deriveNodeName(node, (node.properties ?? {}) as Record<string, unknown>),
@@ -477,7 +501,7 @@ export async function kgGetNeighbors(
       if (neighbors.length >= KG_NEIGHBOR_CAP) break;
     }
 
-    return { neighbors, reachable: true };
+    return { neighbors, reachable: true, ...(root ? { root } : {}) };
   } catch {
     return { neighbors: [], reachable: false };
   }
