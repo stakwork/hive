@@ -605,7 +605,7 @@ describe("useEvalRunHistory — attemptRows", () => {
     });
     await waitFor(() => expect(result.current.isLoading).toBe(false), { timeout: 5000 });
 
-    const base = result.current.attemptRows.find((r) => r.key === "trigger-base");
+    const base = result.current.attemptRows.find((r) => r.key === "output-base");
     expect(base).toBeDefined();
     expect(base!.label).toBe("base");
     expect(base!.attemptIndex).toBe(0);
@@ -630,7 +630,7 @@ describe("useEvalRunHistory — attemptRows", () => {
     });
     await waitFor(() => expect(result.current.isLoading).toBe(false), { timeout: 5000 });
 
-    const row = result.current.attemptRows.find((r) => r.key === "trigger-r1");
+    const row = result.current.attemptRows.find((r) => r.key === "output-r1");
     expect(row!.status).toBe("IN_PROGRESS");
     expect(row!.runType).toBe("eval");
     expect(row!.inFlight).toBe(true);
@@ -646,7 +646,7 @@ describe("useEvalRunHistory — attemptRows", () => {
     });
     await waitFor(() => expect(result.current.isLoading).toBe(false), { timeout: 5000 });
 
-    const row = result.current.attemptRows.find((r) => r.key === "trigger-base");
+    const row = result.current.attemptRows.find((r) => r.key === "output-base");
     expect(row!.status).toBeNull();
     expect(row!.runType).toBeNull();
     // 1720000000 epoch-seconds → ISO
@@ -705,13 +705,42 @@ describe("useEvalRunHistory — attemptRows", () => {
     });
     await waitFor(() => expect(result.current.isLoading).toBe(false), { timeout: 5000 });
 
-    const pending = result.current.attemptRows.find((r) => r.key === "trigger-base")!;
+    const pending = result.current.attemptRows.find((r) => r.key === "output-base")!;
     expect(pending.reportPending).toBe(true);
     expect(pending.hasReport).toBe(false);
 
-    const landed = result.current.attemptRows.find((r) => r.key === "trigger-r1")!;
+    const landed = result.current.attemptRows.find((r) => r.key === "output-r1")!;
     expect(landed.reportPending).toBe(false);
     expect(landed.hasReport).toBe(true);
+  });
+
+  it("charts rows for identity-less triggers — the concept pipeline writes none", async () => {
+    // Trigger nodes with no agent/start_point/end_point (external concept
+    // workflow). history filters these out; the rail must NOT.
+    const bareTrigger = makeTriggerNode("trigger-bare", false);
+    const graph = {
+      nodes: [bareTrigger, makeOutputNode("output-bare", 70, 71, "1720000000")],
+      edges: [
+        { source: EVAL_SET_REF, target: "trigger-bare", edge_type: "HAS_BASELINE_TRIGGER" },
+        { source: "trigger-bare", target: "output-bare", edge_type: "HAS_OUTPUT" },
+      ],
+    };
+    const { result } = renderRail({
+      "fix-chain": makeFixChainResponse(graph.nodes, graph.edges),
+      "type=LEGAL_BENCHMARK_RUNNER": { runs: [] },
+      "type=LEGAL_BENCHMARK_EVAL": { runs: [] },
+      "type=LEGAL_BENCHMARK_RECURSION": { runs: [] },
+    });
+    await waitFor(() => expect(result.current.isLoading).toBe(false), { timeout: 5000 });
+
+    // history stays identity-gated (runs-table concern)…
+    expect(result.current.history).toHaveLength(0);
+    // …but the rail mirrors the chart: one row per dot, graph-only.
+    expect(result.current.attemptRows).toHaveLength(1);
+    expect(result.current.attemptRows[0].key).toBe("output-bare");
+    expect(result.current.attemptRows[0].label).toBe("base");
+    expect(result.current.attemptRows[0].score).toEqual({ passed: 70, total: 71 });
+    expect(result.current.attemptRows[0].status).toBeNull();
   });
 
   it("orders charted rows by dot index ahead of run-only rows", async () => {
@@ -727,6 +756,6 @@ describe("useEvalRunHistory — attemptRows", () => {
     await waitFor(() => expect(result.current.isLoading).toBe(false), { timeout: 5000 });
 
     const keys = result.current.attemptRows.map((r) => r.key);
-    expect(keys).toEqual(["trigger-base", "trigger-r1", "eval-live"]);
+    expect(keys).toEqual(["output-base", "output-r1", "eval-live"]);
   });
 });
