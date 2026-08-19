@@ -1,5 +1,6 @@
 import { createConsumer } from '@anycable/web';
 import type { WorkflowEditData } from '@/types/stakwork/websocket';
+import { cableUrl } from '@/lib/anycable';
 
 class WorkflowEdit {
   private cable: ReturnType<typeof createConsumer>;
@@ -8,7 +9,7 @@ class WorkflowEdit {
   private onUpdate: (data: WorkflowEditData) => void;
 
   constructor(railsEnv: string, workflowId: string, onUpdate: (data: WorkflowEditData) => void) {
-    this.cable = createConsumer();
+    this.cable = createConsumer(cableUrl(railsEnv));
     this.workflowId = workflowId;
     this.onUpdate = onUpdate;
   }
@@ -40,6 +41,13 @@ class WorkflowEdit {
 
   private rejected = (): void => {
     console.warn('I was rejected! :(');
+  };
+
+  unsubscribe = (): void => {
+    if (this.channel) {
+      this.channel.disconnect();
+      this.channel = null;
+    }
   };
 }
 
