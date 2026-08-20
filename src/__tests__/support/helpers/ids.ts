@@ -1,3 +1,5 @@
+import { WORKSPACE_SLUG_PATTERNS } from "@/lib/constants";
+
 /**
  * Generate a unique ID using timestamp + random string
  * This prevents collisions during parallel test execution
@@ -18,6 +20,33 @@ export function generateUniqueId(prefix?: string): string {
  */
 export function generateUniqueSlug(prefix: string = "test"): string {
   return `${prefix}-${generateUniqueId()}`;
+}
+
+/**
+ * Generate a unique workspace slug that satisfies the product's own slug
+ * rules (`WORKSPACE_SLUG_PATTERNS`: 2-50 chars, alphanumeric at both ends).
+ *
+ * API integration tests echo a fixture's slug straight back through
+ * `updateWorkspaceSchema`, so an over-long fixture slug makes the route
+ * answer 400 instead of 200. `generateUniqueSlug("test-workspace")` ran 50 to
+ * 52 characters against the 50-character cap, because
+ * `Math.random().toString(36)` yields a variable-length tail — roughly 2% of
+ * slugs went over, surfacing as a rare, unattributable PUT failure.
+ *
+ * Fixed-width by construction; throws rather than returning an invalid slug.
+ */
+export function generateUniqueWorkspaceSlug(prefix: string = "test-ws"): string {
+  const stamp = Date.now().toString(36); // 8 chars until year 2059
+  const rand = Math.random().toString(36).slice(2).padEnd(8, "0").slice(0, 8);
+  const slug = `${prefix}-${stamp}-${rand}`;
+
+  if (slug.length > WORKSPACE_SLUG_PATTERNS.MAX_LENGTH) {
+    throw new Error(
+      `Fixture slug '${slug}' is ${slug.length} chars, over the ` +
+        `${WORKSPACE_SLUG_PATTERNS.MAX_LENGTH}-char workspace slug cap.`,
+    );
+  }
+  return slug;
 }
 
 /**
