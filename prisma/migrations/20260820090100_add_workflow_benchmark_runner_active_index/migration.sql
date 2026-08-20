@@ -10,6 +10,6 @@
 -- findFirst({ where: { workspaceId, type, status } }) that parses result in application
 -- code. The JSON expression would index weight for a query nobody issues.
 CREATE INDEX "stakwork_runs_workflow_benchmark_active_run_idx"
-  ON "StakworkRun" (workspace_id, type, status)
+  ON "stakwork_runs" (workspace_id, type, status)
   WHERE status IN ('PENDING', 'IN_PROGRESS')
   AND type = 'WORKFLOW_BENCHMARK_RUNNER';
