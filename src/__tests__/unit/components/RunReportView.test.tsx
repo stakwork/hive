@@ -115,6 +115,44 @@ describe("RunReportView — render states", () => {
   });
 });
 
+describe("RunReportView — fix snapshot section", () => {
+  const FIXES = [
+    {
+      ref_id: "fix-1",
+      target_type: "concept",
+      target_name: "Limitation of Liability",
+      target_ref: "concept-ref-1",
+      old_value: JSON.stringify({ docs: "before text" }),
+      new_value: JSON.stringify({ docs: "after text" }),
+    },
+  ];
+
+  it("renders the section in the debugging context when fixSnapshots are provided", () => {
+    render(<RunReportView payload={payload()} fixSnapshots={FIXES} />);
+    expect(screen.getByTestId("run-report-section-fix-snapshots")).toBeInTheDocument();
+    expect(screen.getByText("Limitation of Liability")).toBeInTheDocument();
+  });
+
+  it("omits the section when fixSnapshots is null or empty", () => {
+    render(<RunReportView payload={payload()} />);
+    expect(screen.queryByTestId("run-report-section-fix-snapshots")).toBeNull();
+
+    render(<RunReportView payload={payload()} fixSnapshots={[]} />);
+    expect(screen.queryByTestId("run-report-section-fix-snapshots")).toBeNull();
+  });
+
+  it("still renders the section when the S3 bundle is unavailable — the data is graph-sourced", () => {
+    render(
+      <RunReportView
+        payload={payload({ error: "unavailable", projection: null })}
+        fixSnapshots={FIXES}
+      />,
+    );
+    expect(screen.getByTestId("run-report-state-unavailable")).toBeInTheDocument();
+    expect(screen.getByTestId("run-report-section-fix-snapshots")).toBeInTheDocument();
+  });
+});
+
 describe("RunReportView — empty shapes are not errors", () => {
   it("renders concepts: {} as 'not run', never an error", () => {
     render(<RunReportView payload={payload({ projection: projectionFor("no-concepts") })} />);

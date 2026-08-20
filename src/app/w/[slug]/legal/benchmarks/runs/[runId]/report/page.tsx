@@ -14,7 +14,9 @@ import { canReadRunReport } from "@/lib/run-report/types";
 import { loadRunReport } from "@/lib/run-report/load";
 import { getJarvisConfigForWorkspace } from "@/lib/helpers/jarvis-config";
 import { fetchTaskRubricRoster } from "@/services/legal-benchmark-rubrics";
+import { fetchFixSnapshots } from "@/services/legal-benchmark-fix-snapshots";
 import type { GraphRubric } from "@/lib/harvey-lab/rubric-scoring";
+import type { FixSnapshotEntry } from "@/types/legal";
 
 /**
  * Deep-linkable run report page.
@@ -79,7 +81,8 @@ export default async function RunReportPage({ params }: PageProps) {
     },
     // reportUrl IS selected (opting through the global omit) so the server can
     // fetch the bundle. It never enters the RSC payload or any client prop.
-    select: { id: true, result: true, reportUrl: true },
+    // projectId feeds fix-snapshot run attribution (unique_source_id match).
+    select: { id: true, result: true, reportUrl: true, projectId: true },
   });
 
   if (!run) notFound();
@@ -102,15 +105,29 @@ export default async function RunReportPage({ params }: PageProps) {
   // graph-first score denominator and contested exclusions in the header and
   // ledger. Strictly non-fatal: any failure falls back to bundle-local scoring.
   let graphRubrics: GraphRubric[] | null = null;
+  // ProposedFix snapshot history for the task, run-attributed. Graph-sourced,
+  // so it renders even when the S3 bundle is missing. Strictly non-fatal.
+  let fixSnapshots: FixSnapshotEntry[] | null = null;
   if (taskSlug) {
-    try {
-      const jarvisConfig = await getJarvisConfigForWorkspace(workspaceId);
-      if (jarvisConfig) {
+    const jarvisConfig = await getJarvisConfigForWorkspace(workspaceId);
+    if (jarvisConfig) {
+      try {
         const rosterResult = await fetchTaskRubricRoster(jarvisConfig, taskSlug);
         if (rosterResult.ok) graphRubrics = rosterResult.roster?.rubrics ?? null;
+      } catch {
+        // Graph unreachable — render with bundle-local scoring.
       }
+    }
+    try {
+      // Called even without a jarvisConfig: the helper's USE_MOCKS branch
+      // doesn't need one, and it returns [] (never throws) otherwise.
+      const snapshots = await fetchFixSnapshots(jarvisConfig, taskSlug, {
+        runId: run.id,
+        projectId: run.projectId,
+      });
+      fixSnapshots = snapshots.length > 0 ? snapshots : null;
     } catch {
-      // Graph unreachable — render with bundle-local scoring.
+      // Graph unreachable — render without the fix snapshot section.
     }
   }
 
@@ -132,6 +149,7 @@ export default async function RunReportPage({ params }: PageProps) {
           taskTitle={taskTitle}
           workspaceSlug={slug}
           graphRubrics={graphRubrics}
+          fixSnapshots={fixSnapshots}
         />
       </div>
     </div>
