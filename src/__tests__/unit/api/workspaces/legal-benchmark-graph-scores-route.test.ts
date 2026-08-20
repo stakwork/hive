@@ -139,6 +139,33 @@ describe("GET /api/workspaces/[slug]/legal/benchmarks/graph-scores", () => {
     expect(passedRefs.length).toBeLessThanOrEqual(GRAPH_SCORES_TRIGGER_CAP);
   });
 
+  test("7b. outputRefs validated, capped, and passed through to the service", async () => {
+    await GET(
+      makeRequest("openlaw", "?taskSlug=t&outputRefs=out-1,bad%20ref,out-2"),
+      makeParams("openlaw"),
+    );
+    const passedOutputRefs = mockFetchTaskGraphOutputs.mock.calls[0][3] as string[];
+    expect(passedOutputRefs).toEqual(["out-1", "out-2"]);
+  });
+
+  test("6b. USE_MOCKS echoes requested outputRefs so pointer joins resolve", async () => {
+    const origEnv = process.env.NODE_ENV;
+    // @ts-expect-error — setting NODE_ENV for test
+    process.env.NODE_ENV = "test";
+    process.env.USE_MOCKS = "true";
+
+    const res = await GET(
+      makeRequest("openlaw", "?taskSlug=task-a&outputRefs=out-9"),
+      makeParams("openlaw"),
+    );
+    const body = await res.json();
+    expect(body.data.outputs[0].ref_id).toBe("out-9");
+    expect(body.data.outputs[0].n_passed).toBe(9);
+
+    // @ts-expect-error
+    process.env.NODE_ENV = origEnv;
+  });
+
   test("8. Happy path passes the service result through", async () => {
     const res = await GET(makeRequest("openlaw", "?taskSlug=t"), makeParams("openlaw"));
     const body = await res.json();

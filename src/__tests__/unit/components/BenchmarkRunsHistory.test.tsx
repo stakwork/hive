@@ -1376,13 +1376,12 @@ describe("BenchmarkRunsHistory — graph-first score numerators", () => {
   });
 
   it("prefers the graph output over echoed counts on a manual row and requests its trigger ref", () => {
+    const manualWithTrigger = {
+      ...makeRun({ id: "m-1", taskSlug: TASK, status: "COMPLETED", n_passed: 50, n_total: 74, all_pass: false }),
+      evalTriggerRef: "trig-1",
+    };
     mockUseList.mockReturnValue({
-      runs: [
-        {
-          ...makeRun({ id: "m-1", taskSlug: TASK, status: "COMPLETED", n_passed: 50, n_total: 74, all_pass: false }),
-          evalTriggerRef: "trig-1",
-        },
-      ],
+      runs: [manualWithTrigger],
       total: 1,
       isLoading: false,
       error: null,
@@ -1401,7 +1400,44 @@ describe("BenchmarkRunsHistory — graph-first score numerators", () => {
     // The hook was asked for this task's trigger ref (the requirement-hosted
     // trigger only the row knows about).
     expect(mockGraphScoresMapHook).toHaveBeenCalledWith([
-      { taskSlug: TASK, triggerRefs: ["trig-1"] },
+      { taskSlug: TASK, triggerRefs: ["trig-1"], outputRefs: [] },
+    ]);
+  });
+
+  it("a stored evalOutputRef pointer scores verbatim from the node — both numbers, no roster overlay", () => {
+    const manualWithPointer = {
+      ...makeRun({ id: "m-1", taskSlug: TASK, status: "COMPLETED", n_passed: 50, n_total: 74, all_pass: false }),
+      evalTriggerRef: "trig-1",
+      evalOutputRef: "out-9",
+      criteria_results: [{ id: "C-0", title: "Rubric 0", verdict: "PASS", reasoning: "" }],
+    };
+    mockUseList.mockReturnValue({
+      runs: [manualWithPointer],
+      total: 1,
+      isLoading: false,
+      error: null,
+      refetch: mockRefetch,
+      setExpandedId: mockSetExpandedId,
+    });
+    // Roster present — but the pointer must win over roster math entirely.
+    mockRubricsMapHook.mockImplementation(() => new Map([[TASK, roster]]));
+    mockGraphScoresMapHook.mockImplementation(
+      () =>
+        new Map([
+          [TASK, [graphOutput({ ref_id: "out-9", triggerRef: undefined, n_passed: 9, n_total: 10 })]],
+        ]),
+    );
+
+    render(<BenchmarkRunsHistory />);
+
+    const row = screen.getByTestId("run-row-m-1");
+    // Node counts verbatim: NOT contested-adjusted, NOT the result-column 50/74
+    expect(row.textContent).toContain("9/10");
+    expect(scoreSourceOf("run-row-m-1")).toBe("output-ref");
+    expect(screen.queryByTestId("score-cell-contested")).toBeNull();
+    // The pointer was requested from the graph-scores hook
+    expect(mockGraphScoresMapHook).toHaveBeenCalledWith([
+      { taskSlug: TASK, triggerRefs: ["trig-1"], outputRefs: ["out-9"] },
     ]);
   });
 
