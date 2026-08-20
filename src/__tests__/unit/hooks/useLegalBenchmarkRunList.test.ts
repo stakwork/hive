@@ -694,3 +694,46 @@ describe("useLegalBenchmarkRunList — analysis/recursion pipelines", () => {
     await waitFor(() => expect(result.current.total).toBe(42));
   });
 });
+
+describe("useLegalBenchmarkRunList — evalTriggerRef mapping", () => {
+  it("maps evalTriggerRef on manual rows (graph score join key)", async () => {
+    mockFetchOk([
+      makeRow({
+        result: JSON.stringify({
+          taskSlug: "antitrust/task-1",
+          taskTitle: "Analyze Antitrust Strategy",
+          evalTriggerRef: "trigger-ref-1",
+          n_passed: 72,
+          n_total: 74,
+          all_pass: true,
+        }),
+      }),
+    ]);
+
+    const { result } = renderHook(() => useLegalBenchmarkRunList("ws-cuid-123"));
+    await waitFor(() => expect(result.current.runs).toHaveLength(1));
+    expect(result.current.runs[0].evalTriggerRef).toBe("trigger-ref-1");
+  });
+
+  it("does NOT map evalTriggerRef on secondary rows — an EVAL row carries the SOURCE run's ref", async () => {
+    mockFetchOk([], undefined, {
+      evalRuns: [
+        makeRow({
+          id: "eval-1",
+          result: JSON.stringify({
+            taskSlug: "antitrust/task-1",
+            sourceRunId: "manual-1",
+            // Copied from the source run at EVAL dispatch — joining it would
+            // paint the source run's score onto an analysis row.
+            evalTriggerRef: "source-trigger-ref",
+          }),
+        }),
+      ],
+    });
+
+    const { result } = renderHook(() => useLegalBenchmarkRunList("ws-cuid-123"));
+    await waitFor(() => expect(result.current.runs).toHaveLength(1));
+    expect(result.current.runs[0].runType).toBe("recursion");
+    expect(result.current.runs[0].evalTriggerRef).toBeUndefined();
+  });
+});
