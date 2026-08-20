@@ -2,7 +2,7 @@
 
 import React, { useMemo, useEffect, useState, useCallback } from "react";
 import { useWorkspace } from "@/hooks/useWorkspace";
-import { Artifact, WorkflowContent } from "@/lib/chat";
+import { Artifact, ArtifactType, WorkflowContent } from "@/lib/chat";
 import { useWorkflowPolling } from "@/hooks/useWorkflowPolling";
 import WorkflowComponent from "@/components/workflow";
 import { StepDetailsModal } from "@/components/StepDetailsModal";
@@ -18,6 +18,19 @@ import { StakworkRunDropdown } from "@/components/StakworkRunDropdown";
 import { computeWorkflowDiff } from "@/lib/utils/workflow-diff";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { PublishPromptContent, PublishScriptContent } from "@/lib/chat";
+
+/**
+ * Whether an artifact belongs to the "workflow" family for grouping/merging
+ * purposes. Deliberately explicit about type rather than inferring from the
+ * presence of a `workflowId` field on content — a PUBLISH_SCRIPT or
+ * PUBLISH_PROMPT artifact published in the same chat message can carry
+ * unrelated fields that happen to collide in shape, and a heuristic based on
+ * content alone would incorrectly pull those into the workflow bucket
+ * (mixing an unrelated script/prompt diff into the workflow's diff).
+ */
+function isWorkflowArtifact(artifact: Artifact): boolean {
+  return artifact.type === ArtifactType.WORKFLOW || artifact.type === ArtifactType.PUBLISH_WORKFLOW;
+}
 
 interface WorkflowArtifactPanelProps {
   artifacts: Artifact[];
@@ -61,6 +74,7 @@ export function WorkflowArtifactPanel({ artifacts, isActive, onStepSelect, onVer
   const workflowGroups = useMemo(() => {
     const map = new Map<string, { workflowId: number | string; workflowName: string; artifacts: Artifact[] }>();
     for (const artifact of artifacts) {
+      if (!isWorkflowArtifact(artifact)) continue;
       const content = artifact.content as WorkflowContent;
       if (!content?.workflowId) continue;
       const key = String(content.workflowId);
@@ -124,8 +138,12 @@ export function WorkflowArtifactPanel({ artifacts, isActive, onStepSelect, onVer
     let debuggerProjectId: string | undefined;
     let workflowVersionId: string | number | undefined;
 
-    // Iterate oldest to newest - later values override earlier ones
+    // Iterate oldest to newest - later values override earlier ones.
+    // Only workflow-type artifacts contribute here — a PUBLISH_SCRIPT/PUBLISH_PROMPT
+    // artifact published alongside a workflow in the same chat message must never
+    // be allowed to overwrite workflowJson/workflowVersionId etc.
     for (const artifact of activeArtifacts) {
+      if (!isWorkflowArtifact(artifact)) continue;
       const content = artifact.content as WorkflowContent;
       if (content?.workflowJson) workflowJson = content.workflowJson;
       if (content?.projectId) projectId = content.projectId;
@@ -162,6 +180,7 @@ export function WorkflowArtifactPanel({ artifacts, isActive, onStepSelect, onVer
   const workflowIterations = useMemo(() => {
     const withSnapshots = activeArtifacts
       .filter((a) => {
+        if (!isWorkflowArtifact(a)) return false;
         const content = a.content as WorkflowContent;
         return !!content?.versionSnapshot?.value;
       })

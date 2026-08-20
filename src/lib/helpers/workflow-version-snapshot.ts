@@ -27,7 +27,12 @@
 import { db } from "@/lib/db";
 import { logger } from "@/lib/logger";
 import { config } from "@/config/env";
-import { ArtifactType, type WorkflowContent, type WorkflowVersionSnapshot } from "@/lib/chat";
+import {
+  ArtifactType,
+  type PublishWorkflowContent,
+  type WorkflowContent,
+  type WorkflowVersionSnapshot,
+} from "@/lib/chat";
 import { Prisma } from "@prisma/client";
 
 const LOG_CONTEXT = "workflow-version-snapshot";
@@ -410,4 +415,103 @@ async function resolveBaselineSnapshot(
   }
 
   return null;
+}
+
+// ── PUBLISH_WORKFLOW enrichment ───────────────────────────────────────────────
+
+/**
+ * Enriches PUBLISH_WORKFLOW artifacts with durable version snapshots, mirroring
+ * `enrichPublishScriptArtifacts` in script-version-snapshot.ts.
+ *
+ * A PUBLISH_WORKFLOW artifact already states both sides of its own diff
+ * explicitly:
+ *   - `workflowVersionId`         → the "updated" side (this publish)
+ *   - `previousWorkflowVersionId` → the "baseline" side (what it was published
+ *                                   over) — null means brand-new, nothing to
+ *                                   compare against.
+ *
+ * Unlike WORKFLOW artifacts there is no in-task chain to resolve: the producer
+ * already told us exactly what this change forked from, so this just pulls
+ * both specs and pins them on the artifact as `versionSnapshot` /
+ * `baselineSnapshot`, in the same shape the Changes tab already reads for
+ * WORKFLOW artifacts (see `WorkflowContent`) so it picks them up unchanged.
+ *
+ * Best-effort: an artifact that can't be resolved is left as-is, and the
+ * Changes tab simply has nothing to show for it (it is filtered out alongside
+ * other artifacts lacking a `versionSnapshot`).
+ */
+export async function enrichPublishWorkflowArtifacts(
+  chatMessage: MessageWithArtifacts,
+  task: TaskContext,
+): Promise<void> {
+  const publishArtifacts = chatMessage.artifacts.filter(
+    (a) => a.type === ArtifactType.PUBLISH_WORKFLOW,
+  );
+  if (publishArtifacts.length === 0) return;
+
+  for (const artifact of publishArtifacts) {
+    await enrichSinglePublishWorkflowArtifact(artifact, task);
+  }
+}
+
+async function enrichSinglePublishWorkflowArtifact(
+  artifact: ArtifactRow,
+  task: TaskContext,
+): Promise<void> {
+  const content = artifact.content as PublishWorkflowContent | null;
+  if (!content) return;
+
+  // Idempotent — never re-fetch or overwrite a captured snapshot.
+  if (content.versionSnapshot !== undefined) return;
+
+  const { workflowId, workflowVersionId, previousWorkflowVersionId } = content;
+  if (workflowId == null || workflowVersionId == null) {
+    logger.info("Artifact missing workflowId/workflowVersionId, skipping", LOG_CONTEXT, {
+      artifactId: artifact.id,
+      taskId: task.id,
+    });
+    return;
+  }
+
+  const value = await fetchWorkflowVersionSpec(workflowId, workflowVersionId);
+  if (!value) return; // logged upstream; leave the artifact unenriched
+
+  const versionSnapshot: WorkflowVersionSnapshot = {
+    workflowVersionId: String(workflowVersionId),
+    value,
+  };
+
+  // null / absent previousWorkflowVersionId → nothing to compare against
+  // (brand-new workflow at publish time).
+  let baselineSnapshot: WorkflowVersionSnapshot | null = null;
+  if (previousWorkflowVersionId != null) {
+    const baselineValue = await fetchWorkflowVersionSpec(workflowId, previousWorkflowVersionId);
+    if (baselineValue) {
+      baselineSnapshot = {
+        workflowVersionId: String(previousWorkflowVersionId),
+        value: baselineValue,
+      };
+    }
+    // Fetch failure (logged upstream) leaves baselineSnapshot null rather than
+    // undefined — the artifact is still considered enriched (versionSnapshot is
+    // set), it simply has nothing to diff against.
+  }
+
+  const updatedContent: PublishWorkflowContent = {
+    ...content,
+    versionSnapshot,
+    baselineSnapshot,
+  };
+
+  await db.artifact.update({
+    where: { id: artifact.id },
+    data: { content: updatedContent as unknown as Prisma.InputJsonValue },
+  });
+
+  logger.info("Stored publish-workflow version snapshot", LOG_CONTEXT, {
+    artifactId: artifact.id,
+    workflowId,
+    workflowVersionId: versionSnapshot.workflowVersionId,
+    baselineVersionId: baselineSnapshot?.workflowVersionId ?? null,
+  });
 }
