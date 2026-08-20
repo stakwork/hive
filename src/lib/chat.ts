@@ -128,6 +128,12 @@ export interface PublishWorkflowContent {
   published?: boolean; // Whether the workflow has been published
   publishedAt?: string; // ISO timestamp of when it was published
   workflowVersionId?: number; // Version ID returned from publish API
+  /** The version this publish's change is measured against, stated by the producer. null = brand-new workflow with nothing before it. */
+  previousWorkflowVersionId?: number | null;
+  /** Baseline captured at ingestion (previousWorkflowVersionId's spec). null = nothing to compare against. Absent = legacy/unenriched artifact. */
+  baselineSnapshot?: WorkflowVersionSnapshot | null;
+  /** This artifact's own workflow version spec (workflowVersionId's spec), pulled at ingestion. */
+  versionSnapshot?: WorkflowVersionSnapshot;
 }
 
 /**
