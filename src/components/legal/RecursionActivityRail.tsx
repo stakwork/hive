@@ -108,6 +108,24 @@ function RowReport({ row, workspaceSlug }: { row: AttemptRailRow; workspaceSlug:
       </a>
     );
   }
+  // Graph-node fallback: the eval workflow writes report_url onto the
+  // EvalTriggerOutput node itself, so recursion attempts that never joined a
+  // StakworkRun row (em-dash status) still get their report link.
+  if (row.reportUrl) {
+    return (
+      <a
+        href={row.reportUrl}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="inline-flex items-center gap-1 text-xs text-primary hover:underline whitespace-nowrap"
+        aria-label="View report (opens in new tab)"
+        data-testid={`rail-report-${row.key}`}
+      >
+        <FileText className="h-3 w-3 shrink-0" />
+        report
+      </a>
+    );
+  }
   if (row.reportPending) {
     // The bundle is written asynchronously after the run completes — a
     // legitimate transient state, distinct from "no report requested".
