@@ -6,7 +6,10 @@ import type {
   WorkspaceMember,
 } from "@prisma/client";
 import type { WorkspaceRole } from "@/lib/auth/roles";
-import { generateUniqueId } from "@/__tests__/support/helpers/ids";
+import {
+  generateUniqueId,
+  generateUniqueWorkspaceSlug,
+} from "@/__tests__/support/helpers/ids";
 import {
   createTestUser,
   type CreateTestUserOptions,
@@ -54,7 +57,7 @@ export async function createTestWorkspace(
     : null;
 
   const uniqueId = generateUniqueId("workspace");
-  const slug = options.slug ?? baseValues?.slug ?? `test-workspace-${uniqueId}`;
+  const slug = options.slug ?? baseValues?.slug ?? generateUniqueWorkspaceSlug();
   const name = options.name ?? baseValues?.name ?? `Test Workspace ${uniqueId}`;
   const description = options.description ?? baseValues?.description ?? null;
 
