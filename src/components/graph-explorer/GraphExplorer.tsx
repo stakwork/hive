@@ -263,6 +263,12 @@ export function GraphExplorer({ workspaceSlug, initialRefId }: GraphExplorerProp
   const [focusedNode, setFocusedNode] = useState<GraphNodeDetailResponse["node"] | null>(null);
   const [focusLoading, setFocusLoading] = useState(false);
   const [focusError, setFocusError] = useState<string | null>(null);
+  /**
+   * Neutral counterpart to `focusError`: the lookup worked and there is simply
+   * nothing to draw. Kept separate so "this chat read no concepts" doesn't
+   * render as a destructive alert.
+   */
+  const [focusNotice, setFocusNotice] = useState<string | null>(null);
   /** Guards against a slow detail fetch overwriting a newer one. */
   const detailRequestRef = useRef(0);
 
@@ -425,10 +431,11 @@ export function GraphExplorer({ workspaceSlug, initialRefId }: GraphExplorerProp
    * point and what neighbor rows / search results use.
    */
   const focusNode = useCallback(
-    async (refId: string, label?: string) => {
+    async (refId: string, label?: string): Promise<GraphNodeDetailResponse | null> => {
       setPanelTarget({ refId, label: label ?? refId });
       setFocusLoading(true);
       setFocusError(null);
+      setFocusNotice(null);
       // Focusing clears the query result, so the Table tab is about to vanish —
       // move off it. "2d" is already a graph view, so leave that choice alone.
       setTab((t) => (t === "2d" ? t : "graph"));
@@ -437,7 +444,7 @@ export function GraphExplorer({ workspaceSlug, initialRefId }: GraphExplorerProp
       if (!detail) {
         setFocusLoading(false);
         setFocusError(`Could not load node ${refId}`);
-        return;
+        return null;
       }
 
       const star = detailToRawGraph(detail);
@@ -457,6 +464,7 @@ export function GraphExplorer({ workspaceSlug, initialRefId }: GraphExplorerProp
       setFocusedNode(detail.node);
       setSearchMatches(null);
       setFocusLoading(false);
+      return detail;
     },
     [fetchNodeDetail, expandTypes, setSearchMatches]
   );
@@ -484,6 +492,7 @@ export function GraphExplorer({ workspaceSlug, initialRefId }: GraphExplorerProp
   const showSessionOnGraph = useCallback(
     async (sessionId: string, sidecarConcepts: SessionConceptSeed[]) => {
       setFocusError(null);
+      setFocusNotice(null);
       setFocusLoading(true);
 
       let hit: GraphSearchHit | undefined;
@@ -508,7 +517,12 @@ export function GraphExplorer({ workspaceSlug, initialRefId }: GraphExplorerProp
       setFocusLoading(false);
 
       if (hit) {
-        await focusNode(hit.ref_id, hit.name);
+        const star = await focusNode(hit.ref_id, hit.name);
+        // The node exists but nothing hangs off it: this session read no
+        // Concepts. A lone dot on the canvas doesn't say that, so spell it out.
+        if (star && !star.neighbors.some((n) => n.edge_type === "READ_CONCEPT")) {
+          setFocusNotice("This chat didn't read any concepts, so there's nothing to plot.");
+        }
         return;
       }
 
@@ -861,6 +875,13 @@ export function GraphExplorer({ workspaceSlug, initialRefId }: GraphExplorerProp
             <Loader2 className="h-5 w-5 animate-spin" />
             <span>Running query…</span>
           </div>
+        )}
+
+        {focusNotice && (
+          <Alert data-testid="focus-notice-state">
+            <AlertCircle className="h-4 w-4" />
+            <AlertDescription>{focusNotice}</AlertDescription>
+          </Alert>
         )}
 
         {focusError && (

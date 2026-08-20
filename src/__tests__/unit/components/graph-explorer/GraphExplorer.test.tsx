@@ -995,6 +995,42 @@ describe("GraphExplorer", () => {
     await waitFor(() => expect(screen.getByTestId("tab-graph")).toBeInTheDocument());
     expect(urlsFor(fetchMock, "/graph/node/")).toHaveLength(0);
   });
+
+  test("show-on-graph says so when the session read no concepts", async () => {
+    const fetchMock = makeRoutedFetch([
+      CHAT_RUNS_ROUTE,
+      CHAT_THREADS_ROUTE,
+      NODE_TYPES_ROUTE,
+      {
+        match: "/graph/nodes/search",
+        ok: true,
+        status: 200,
+        body: {
+          results: [
+            { ref_id: AGENT_SESSION_REF, node_type: "AgentSession", name: CHAT_SESSION_ID, description: "" },
+          ],
+        },
+      },
+      // The session node is real, but nothing survived filtering to hang off
+      // it — every edge pointed at a denylisted Turn.
+      {
+        match: "/graph/node/",
+        ok: true,
+        status: 200,
+        body: { node: MOCK_SESSION_STAR.node, neighbors: [] },
+      },
+    ]);
+    global.fetch = fetchMock;
+
+    render(<GraphExplorer workspaceSlug="test-ws" />);
+    await openThread();
+    await userEvent.click(screen.getByTestId("graph-chat-show-on-graph-button"));
+
+    // Plain notice, not the destructive alert the failure path uses.
+    await waitFor(() => expect(screen.getByTestId("focus-notice-state")).toBeInTheDocument());
+    expect(screen.getByTestId("focus-notice-state")).toHaveTextContent(/didn't read any concepts/);
+    expect(screen.queryByTestId("focus-error-state")).not.toBeInTheDocument();
+  });
 });
 
 // ── extractGraph / stakgraphToRawGraph integration via table ─────────────────
