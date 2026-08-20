@@ -13,6 +13,15 @@ export interface BenchmarkRunResult {
   evalTriggerRef?: string;
   /** Whether the aggregate EvalTriggerOutput node has already been written (idempotency guard) */
   evalOutputWritten?: boolean;
+  /**
+   * Exact ref of the run's EvalTriggerOutput node. Written by the runner
+   * completion webhook alongside `evalOutputWritten`; absent on rows scored
+   * before it existed. External pipelines (recursion re-score workflow) may
+   * supply it in their webhook payloads, where the result merge carries it
+   * through. When present, score surfaces read the node directly instead of
+   * joining via the trigger hop or the output-id project suffix.
+   */
+  evalOutputRef?: string;
   /** Project ID returned by Stakwork on runner dispatch */
   runnerProjectId?: number;
   /** S3 URL of the runner's output document */

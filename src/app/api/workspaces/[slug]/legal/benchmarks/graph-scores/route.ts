@@ -41,7 +41,11 @@ const TRIGGER_REF_RE = /^[A-Za-z0-9._-]{1,128}$/;
  * Stakwork project (57419) so the recursion-row projectId join is exercisable
  * end to end in dev.
  */
-function buildMockOutputs(taskSlug: string, triggerRefs: string[]): GraphScoreOutput[] {
+function buildMockOutputs(
+  taskSlug: string,
+  triggerRefs: string[],
+  outputRefs: string[] = [],
+): GraphScoreOutput[] {
   const perTrigger: GraphScoreOutput[] = triggerRefs.map((triggerRef, i) => ({
     ref_id: `mock-output-${taskSlug}-${i}`,
     triggerRef,
@@ -53,7 +57,19 @@ function buildMockOutputs(taskSlug: string, triggerRefs: string[]): GraphScoreOu
     judge_notes: "7/10 criteria passed. Judge: mock-judge",
     date_added_to_graph: String(1760000000 + i),
   }));
+  // Pointer reads echo the requested ref_id back so exact joins resolve.
+  const perOutputRef: GraphScoreOutput[] = outputRefs.map((refId, i) => ({
+    ref_id: refId,
+    attempt_number: 1,
+    result: "fail",
+    score: 0.9,
+    n_passed: 9,
+    n_total: 10,
+    judge_notes: "9/10 criteria passed. Judge: mock-judge",
+    date_added_to_graph: String(1760050000 + i),
+  }));
   return [
+    ...perOutputRef,
     ...perTrigger,
     {
       ref_id: `mock-output-${taskSlug}-rerun`,
@@ -72,13 +88,14 @@ function buildMockOutputs(taskSlug: string, triggerRefs: string[]): GraphScoreOu
 
 /**
  * GET /api/workspaces/[slug]/legal/benchmarks/graph-scores
- *       ?taskSlug=...&triggerRefs=a,b,c
+ *       ?taskSlug=...&triggerRefs=a,b,c&outputRefs=x,y
  *
  * Returns the task's EvalTriggerOutput nodes so the Runs tab can score rows
  * from the graph instead of the StakworkRun `result` column. Outputs come
- * from the EvalSet's own trigger chain (re-scored recursion attempts) plus
- * the caller-supplied trigger refs (manual runs' requirement-hosted
- * triggers, known per-row via `result.evalTriggerRef`).
+ * from stored `evalOutputRef` pointers (exact single-node reads — the
+ * authoritative join), the EvalSet's own trigger chain (re-scored recursion
+ * attempts), and the caller-supplied trigger refs (manual runs'
+ * requirement-hosted triggers, known per-row via `result.evalTriggerRef`).
  *
  * Returns:
  *  - 200 `{ success: true, data: { evalSetRefId, outputs, partial } }`
@@ -109,11 +126,14 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     if (!taskSlug) {
       return NextResponse.json({ error: "taskSlug query param is required" }, { status: 400 });
     }
-    const triggerRefs = (url.searchParams.get("triggerRefs") ?? "")
-      .split(",")
-      .map((r) => r.trim())
-      .filter((r) => r !== "" && TRIGGER_REF_RE.test(r))
-      .slice(0, GRAPH_SCORES_TRIGGER_CAP);
+    const parseRefList = (param: string) =>
+      (url.searchParams.get(param) ?? "")
+        .split(",")
+        .map((r) => r.trim())
+        .filter((r) => r !== "" && TRIGGER_REF_RE.test(r))
+        .slice(0, GRAPH_SCORES_TRIGGER_CAP);
+    const triggerRefs = parseRefList("triggerRefs");
+    const outputRefs = parseRefList("outputRefs");
 
     // Step 4: Rate limit — fails OPEN when the limiter backend is down, so a
     // dead Redis degrades to no-limit rather than a table of dashes.
@@ -147,7 +167,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
         success: true,
         data: {
           evalSetRefId: `mock-evalset-${taskSlug}`,
-          outputs: buildMockOutputs(taskSlug, triggerRefs),
+          outputs: buildMockOutputs(taskSlug, triggerRefs, outputRefs),
           partial: false,
         },
       });
@@ -159,7 +179,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: "Swarm not configured" }, { status: 400 });
     }
 
-    const result = await fetchTaskGraphOutputs(jarvisConfig, taskSlug, triggerRefs);
+    const result = await fetchTaskGraphOutputs(jarvisConfig, taskSlug, triggerRefs, outputRefs);
     if (!result.ok) {
       return NextResponse.json({ error: "Graph unreachable" }, { status: 502 });
     }

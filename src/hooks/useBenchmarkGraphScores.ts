@@ -26,8 +26,9 @@ async function fetchOutputs(
   workspaceSlug: string,
   taskSlug: string,
   triggerRefs: string[],
+  outputRefs: string[],
 ): Promise<GraphScoreOutput[] | null> {
-  const cacheKey = `${workspaceSlug}:${taskSlug}:${triggerRefs.join(",")}`;
+  const cacheKey = `${workspaceSlug}:${taskSlug}:${triggerRefs.join(",")}:${outputRefs.join(",")}`;
   if (outputsCache.has(cacheKey)) return outputsCache.get(cacheKey)!;
 
   const pending = inflight.get(cacheKey);
@@ -37,6 +38,7 @@ async function fetchOutputs(
     try {
       const qs = new URLSearchParams({ taskSlug });
       if (triggerRefs.length > 0) qs.set("triggerRefs", triggerRefs.join(","));
+      if (outputRefs.length > 0) qs.set("outputRefs", outputRefs.join(","));
       const res = await fetch(
         `/api/workspaces/${workspaceSlug}/legal/benchmarks/graph-scores?${qs.toString()}`,
       );
@@ -69,6 +71,8 @@ export interface GraphScoreRequest {
   taskSlug: string;
   /** Trigger refs the task's visible rows carry (manual runs' evalTriggerRef). */
   triggerRefs: string[];
+  /** Stored EvalTriggerOutput pointers (evalOutputRef) — exact node reads. */
+  outputRefs?: string[];
 }
 
 /**
@@ -83,14 +87,17 @@ export function useBenchmarkGraphScoresMap(
   const { workspace } = useWorkspace();
   const workspaceSlug = workspace?.slug;
 
-  // Stable key so the effect re-runs only when the task/trigger sets change.
-  // "|" as the field separator: task slugs are /[a-z0-9_\-/]/i and trigger
-  // refs are validated by the route to a charset excluding it.
+  // Stable key so the effect re-runs only when the task/ref sets change.
+  // "|" as the field separator: task slugs are /[a-z0-9_\-/]/i and refs are
+  // validated by the route to a charset excluding it.
   const requestKey = useMemo(
     () =>
       requests
         .filter((r) => r.taskSlug)
-        .map((r) => `${r.taskSlug}|${[...new Set(r.triggerRefs)].sort().join(",")}`)
+        .map(
+          (r) =>
+            `${r.taskSlug}|${[...new Set(r.triggerRefs)].sort().join(",")}|${[...new Set(r.outputRefs ?? [])].sort().join(",")}`,
+        )
         .sort()
         .join("\n"),
     [requests],
@@ -107,14 +114,18 @@ export function useBenchmarkGraphScoresMap(
     }
     let cancelled = false;
     const parsed = requestKey.split("\n").map((line) => {
-      const [taskSlug, refs] = line.split("|");
-      return { taskSlug, triggerRefs: refs ? refs.split(",").filter(Boolean) : [] };
+      const [taskSlug, triggers, pointers] = line.split("|");
+      return {
+        taskSlug,
+        triggerRefs: triggers ? triggers.split(",").filter(Boolean) : [],
+        outputRefs: pointers ? pointers.split(",").filter(Boolean) : [],
+      };
     });
 
     (async () => {
       const entries = await Promise.all(
-        parsed.map(async ({ taskSlug, triggerRefs }) => {
-          const result = await fetchOutputs(workspaceSlug, taskSlug, triggerRefs);
+        parsed.map(async ({ taskSlug, triggerRefs, outputRefs }) => {
+          const result = await fetchOutputs(workspaceSlug, taskSlug, triggerRefs, outputRefs);
           return [taskSlug, result] as const;
         }),
       );
