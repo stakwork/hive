@@ -49,6 +49,11 @@ import {
 import { useCanvasHiddenLive } from "./useCanvasHiddenLive";
 import { useCanvasEdgeOps } from "./useCanvasEdgeOps";
 import { useCanvasNodeOps } from "./useCanvasNodeOps";
+import {
+  useFeatureLiveState,
+  deriveFeatureSnapshots,
+  decorateNodesWithLiveState,
+} from "./useFeatureLiveState";
 
 /**
  * Full-screen interactive system-canvas background for the Connections page.
@@ -802,9 +807,20 @@ export function OrgCanvasBackground({
     [],
   );
 
+  const featureSeeds = useMemo(
+    () => deriveFeatureSnapshots([root, ...Object.values(subCanvases)]),
+    [root, subCanvases],
+  );
+  const { liveByFeatureId, binders: featureLiveBinders } =
+    useFeatureLiveState(featureSeeds);
+
   const canvasForRender = useMemo<CanvasData>(
-    () => decorateEdgesWithLinkVisual(root ?? { nodes: [], edges: [] }),
-    [root, decorateEdgesWithLinkVisual],
+    () =>
+      decorateNodesWithLiveState(
+        decorateEdgesWithLinkVisual(root ?? { nodes: [], edges: [] }),
+        liveByFeatureId,
+      ),
+    [root, decorateEdgesWithLinkVisual, liveByFeatureId],
   );
 
   // Sub-canvases also need decoration so links are highlighted on
@@ -813,10 +829,13 @@ export function OrgCanvasBackground({
   const subCanvasesForRender = useMemo<Record<string, CanvasData>>(() => {
     const out: Record<string, CanvasData> = {};
     for (const [ref, data] of Object.entries(subCanvases)) {
-      out[ref] = decorateEdgesWithLinkVisual(data);
+      out[ref] = decorateNodesWithLiveState(
+        decorateEdgesWithLinkVisual(data),
+        liveByFeatureId,
+      );
     }
     return out;
-  }, [subCanvases, decorateEdgesWithLinkVisual]);
+  }, [subCanvases, decorateEdgesWithLinkVisual, liveByFeatureId]);
 
   // Set of connection ids referenced by at least one edge across all
   // canvases we've loaded this session. Walked off the same `root` +
@@ -1176,6 +1195,7 @@ export function OrgCanvasBackground({
 
   return (
     <>
+      {featureLiveBinders}
       <div className="absolute inset-0 bg-[#15171c]" aria-hidden />
       <div ref={canvasContainerRef} className="absolute inset-y-0 left-0" style={canvasContainerStyle}>
         <SystemCanvas

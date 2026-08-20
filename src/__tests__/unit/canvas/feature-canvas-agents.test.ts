@@ -183,16 +183,28 @@ describe("mergeWorkflowStatusUpdate — child-task branch", () => {
     expect(next).toBe(state);
   });
 
-  it("REJECTS (ignores) a taskId not present in the seeded agentTasks set", () => {
+  it("registers a newly-created task id not present in the seed and counts it", () => {
     const state = stateWithTask("IN_PROGRESS");
+    const before = state.agentsRunningCount;
     const next = mergeWorkflowStatusUpdate(state, {
-      taskId: "untrusted-task-99",
+      taskId: "new-task-99",
+      workflowStatus: "IN_PROGRESS",
+      timestamp: new Date(),
+    });
+    expect(next.agentTasksById.has("new-task-99")).toBe(true);
+    expect(next.agentsRunningCount).toBe(before + 1);
+  });
+
+  it("does not count a newly-created non-running task", () => {
+    const state = stateWithTask("IN_PROGRESS");
+    const before = state.agentsRunningCount;
+    const next = mergeWorkflowStatusUpdate(state, {
+      taskId: "new-task-100",
       workflowStatus: "COMPLETED",
       timestamp: new Date(),
     });
-    // State must be unchanged — no injection from untrusted wire ids
-    expect(next).toBe(state);
-    expect(next.agentTasksById.has("untrusted-task-99")).toBe(false);
+    expect(next.agentTasksById.has("new-task-100")).toBe(true);
+    expect(next.agentsRunningCount).toBe(before);
   });
 });
 
