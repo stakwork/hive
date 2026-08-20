@@ -235,6 +235,16 @@ export function scanForSecrets(diff: string): DiffHygieneResult {
  *   - mode-only or binary entries         → `modify` (no `binary` action exists)
  *
  * File paths are stripped of the `a/` / `b/` prefixes that `git diff` adds.
+ *
+ * Each entry's `content` is a SELF-CONTAINED patch: the section's hunks
+ * prefixed with a synthesized `diff --git` + `---` / `+++` header. The header
+ * is not decoration — `react-diff-view`'s `parseDiff` only passes text through
+ * untouched when it starts with `diff --git`. Anything else is treated as a
+ * bare unidiff whose first two lines are the header pair, so a hunks-only
+ * string has its `@@` line eaten as a filename and the parser then walks into
+ * a hunk body with no open hunk (`Cannot read properties of undefined
+ * (reading 'changes')`). The rendered card degrades to a per-file parse error
+ * with a +0/−0 summary.
  */
 export function unifiedDiffToActionResults(
   diff: string,
@@ -244,7 +254,7 @@ export function unifiedDiffToActionResults(
 
   for (const section of splitDiffIntoFileSections(diff)) {
     const { oldRaw, newRaw, oldPath, newPath } = section;
-    const content = section.bodyLines.join("\n");
+    const content = toStandalonePatch(section);
 
     const isNewFile = oldRaw === "/dev/null";
     const isDeletedFile = newRaw === "/dev/null";
@@ -253,8 +263,10 @@ export function unifiedDiffToActionResults(
     if (isNewFile) {
       results.push({ file: newPath, action: "create", content, repoName });
     } else if (isDeletedFile) {
-      results.push({ file: oldPath, action: "delete", content: "", repoName });
+      results.push({ file: oldPath, action: "delete", content, repoName });
     } else if (isRename) {
+      // The section's hunks describe the surviving file, so only the `create`
+      // half carries them; the `delete` half is a marker for the old path.
       results.push({ file: oldPath, action: "delete", content: "", repoName });
       results.push({ file: newPath, action: "create", content, repoName });
     } else {
@@ -268,6 +280,31 @@ export function unifiedDiffToActionResults(
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────
+
+/**
+ * Render one file section as a standalone unified diff that `parseDiff` can
+ * consume on its own: a `diff --git` line (so the normalizer leaves the text
+ * alone), then normalized `---` / `+++` headers, then the section's hunks.
+ *
+ * `/dev/null` sides are preserved verbatim so the parser still derives
+ * `add` / `delete` file types; every other path is re-emitted with its
+ * canonical `a/` / `b/` prefix rather than whatever the source diff used.
+ */
+function toStandalonePatch(section: DiffFileSection): string {
+  const { oldRaw, newRaw, oldPath, newPath } = section;
+
+  // git names both sides after the surviving path when one side is /dev/null.
+  const gitOld = oldRaw === "/dev/null" ? newPath : oldPath;
+  const gitNew = newRaw === "/dev/null" ? oldPath : newPath;
+
+  const header = [
+    `diff --git a/${gitOld} b/${gitNew}`,
+    oldRaw === "/dev/null" ? "--- /dev/null" : `--- a/${oldPath}`,
+    newRaw === "/dev/null" ? "+++ /dev/null" : `+++ b/${newPath}`,
+  ];
+
+  return [...header, ...section.bodyLines].join("\n");
+}
 
 /** Strip the `a/` or `b/` prefix that `git diff` adds to paths. */
 function stripGitPrefix(path: string): string {
