@@ -4,6 +4,7 @@ import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
 import { validateWorkspaceAccess } from "@/services/workspace";
 import { listConcepts } from "@/lib/ai/askTools";
+import { MAX_SEEDED_CONCEPTS_PER_WORKSPACE } from "@/lib/ai/concepts";
 import { getSwarmVanityAddress } from "@/lib/constants";
 import { WorkspaceConfig } from "./types";
 
@@ -306,7 +307,7 @@ export async function fetchConceptsForWorkspaces(
     configs.map(async (ws) => {
       try {
         const concepts = await listConcepts(ws.swarmUrl, ws.swarmApiKey);
-        conceptsByWorkspace[ws.slug] = (concepts.concepts as Record<string, unknown>[]) || [];
+        conceptsByWorkspace[ws.slug] = ((concepts.concepts as Record<string, unknown>[]) || []).slice(0, MAX_SEEDED_CONCEPTS_PER_WORKSPACE);
       } catch (e) {
         console.error(`Failed to fetch concepts for ${ws.slug}:`, e);
         conceptsByWorkspace[ws.slug] = [];
