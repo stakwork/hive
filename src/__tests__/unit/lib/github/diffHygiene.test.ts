@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import { parseDiff } from "react-diff-view";
 import {
   parseUnifiedDiff,
   enforceDiffCaps,
@@ -342,6 +343,79 @@ describe("unifiedDiffToActionResults", () => {
     // Verify the 'binary' action literal doesn't appear
     const actions = results.map((r) => r.action);
     expect(actions).not.toContain("binary");
+  });
+
+  // Each entry's `content` must be a standalone patch. `react-diff-view`'s
+  // `parseDiff` only leaves text alone when it opens with `diff --git`;
+  // hunks-only content makes it read the `@@` line as a filename and then
+  // throw `Cannot read properties of undefined (reading 'changes')`, which
+  // surfaced as a per-file parse error and a +0/−0 summary on the card.
+  it("emits content that parseDiff can consume standalone", () => {
+    const results = unifiedDiffToActionResults(VALID_MULTI_FILE_DIFF, repo);
+    expect(results).toHaveLength(2);
+
+    for (const r of results) {
+      expect(r.content.startsWith("diff --git ")).toBe(true);
+
+      const files = parseDiff(r.content, { nearbySequences: "zip" });
+      expect(files).toHaveLength(1);
+      expect(files[0].hunks.length).toBeGreaterThan(0);
+
+      const changes = files[0].hunks.flatMap((h) => h.changes);
+      expect(changes.some((c) => c.type === "insert")).toBe(true);
+    }
+  });
+
+  it("preserves /dev/null sides so parseDiff derives add/delete types", () => {
+    const [created] = unifiedDiffToActionResults(NEW_FILE_DIFF, repo);
+    const createdFile = parseDiff(created.content, {
+      nearbySequences: "zip",
+    })[0];
+    expect(createdFile.type).toBe("add");
+    expect(createdFile.newPath).toBe("newfile.ts");
+    expect(
+      createdFile.hunks.flatMap((h) => h.changes).filter((c) => c.isInsert),
+    ).toHaveLength(3);
+
+    const [deleted] = unifiedDiffToActionResults(DELETED_FILE_DIFF, repo);
+    const deletedFile = parseDiff(deleted.content, {
+      nearbySequences: "zip",
+    })[0];
+    expect(deletedFile.type).toBe("delete");
+    expect(deletedFile.oldPath).toBe("oldfile.ts");
+    expect(
+      deletedFile.hunks.flatMap((h) => h.changes).filter((c) => c.isDelete),
+    ).toHaveLength(2);
+  });
+
+  it("gives the rename's create half the hunks, the delete half none", () => {
+    const results = unifiedDiffToActionResults(RENAME_DIFF, repo);
+    const del = results.find((r) => r.action === "delete")!;
+    const cre = results.find((r) => r.action === "create")!;
+
+    expect(del.content).toBe("");
+    expect(cre.content).toContain("--- a/old-name.ts");
+    expect(cre.content).toContain("+++ b/new-name.ts");
+    expect(
+      parseDiff(cre.content, { nearbySequences: "zip" })[0].hunks,
+    ).toHaveLength(1);
+  });
+
+  it("keeps hunk bodies that mimic file headers intact through parseDiff", () => {
+    const [result] = unifiedDiffToActionResults(
+      SQL_COMMENT_DELETION_DIFF,
+      repo,
+    );
+    const file = parseDiff(result.content, { nearbySequences: "zip" })[0];
+    const deletions = file.hunks
+      .flatMap((h) => h.changes)
+      .filter((c) => c.isDelete);
+
+    // The "-- AlterTable" / "-- CreateIndex" comments are body lines, not a
+    // second file: one file, and both deletions survive as content.
+    expect(parseDiff(result.content).length).toBe(1);
+    expect(deletions.map((c) => c.content)).toContain("-- AlterTable");
+    expect(deletions.map((c) => c.content)).toContain("-- CreateIndex");
   });
 
   it("handles a multi-file diff with mixed actions", () => {
