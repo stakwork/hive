@@ -193,8 +193,30 @@ describe("GET /api/workspaces/[slug]/graph/node/[ref_id]", () => {
     const res = await GET(makeRequest(), { params });
 
     expect(res.status).toBe(404);
-    // No filter was applied, so there's nothing to second-guess.
-    expect(kgGetNode).not.toHaveBeenCalled();
+    // The route always second-guesses an absent root, but the node genuinely
+    // isn't there, so the fallback comes back empty too.
+    expect(kgGetNode).toHaveBeenCalled();
+  });
+
+  test("resolves an unfiltered node whose every neighbor was denylisted", async () => {
+    grantAccess();
+    // An AgentSession that read no Concepts has only HAS_TURN edges, and Turn
+    // is denylisted — so `expand=edges` returns nothing at all, root included,
+    // even though no caller-supplied type filter is in play.
+    (kgGetNeighbors as Mock).mockResolvedValue({ neighbors: [], reachable: true });
+    (kgGetNode as Mock).mockResolvedValue({
+      ref_id: "ref-1",
+      node_type: "AgentSession",
+      name: "sess-1",
+      properties: { name: "sess-1" },
+    });
+
+    const res = await GET(makeRequest(), { params });
+
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.node).toMatchObject({ ref_id: "ref-1", node_type: "AgentSession" });
+    expect(body.neighbors).toEqual([]);
   });
 
   test("passes the neighbor-type filter through to Jarvis", async () => {
