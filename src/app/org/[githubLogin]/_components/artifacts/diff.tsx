@@ -42,6 +42,67 @@ interface ParsedFile {
 
 const EMPTY_HUNKS: HunkData[] = [];
 
+// ─── Theme palette ────────────────────────────────────────────────────────────
+
+/**
+ * react-diff-view ships a light-only palette: `--diff-text-color` defaults to
+ * `initial` and the insert/delete rows to near-white pastels. Under the app's
+ * dark theme that puts a light foreground on a near-white row, so changed
+ * lines render as unreadable blocks. The task route fixes this by importing a
+ * stylesheet that redefines the variables on `:root`; this component stays
+ * CSS-import-free, so the same palette is scoped to its own container here.
+ *
+ * Normal lines inherit the surrounding card (transparent background,
+ * inherited text) so they always match the active theme; only the changed
+ * rows and their gutters get explicit GitHub-style colors.
+ *
+ * Every dark rule in this file uses `[.dark_&]`, NOT `dark:`. This project
+ * declares no `@custom-variant dark` and does not load its `tailwind.config.js`
+ * from CSS, so Tailwind v4 compiles `dark:` to
+ * `@media (prefers-color-scheme: dark)` — the OS setting — while the app's own
+ * ThemeProvider toggles a `.dark` class on <html>. Verified in the running app:
+ * a `dark:text-yellow-400` probe computed to the same color under `.dark` and
+ * `.light`. Only `[.dark_&]` follows the in-app theme switch, so mixing the two
+ * would leave this component half-themed whenever the OS and the app setting
+ * disagree.
+ */
+const DIFF_PALETTE = [
+  // `--diff-background-color` / `--diff-text-color` are deliberately NOT set:
+  // their stock value is the `initial` keyword, which makes the `var()`
+  // substitution fail, so unchanged rows fall back to a transparent
+  // background and the inherited foreground — i.e. the surrounding card's
+  // theme, which is what we want. Setting them to `inherit` would be a no-op
+  // (a CSS-wide keyword in a custom property resolves to nothing here).
+
+  // Light
+  "[--diff-gutter-insert-background-color:#ccffd8]",
+  "[--diff-gutter-insert-text-color:#24292e]",
+  "[--diff-gutter-delete-background-color:#ffd7d5]",
+  "[--diff-gutter-delete-text-color:#24292e]",
+  "[--diff-code-insert-background-color:#e6ffec]",
+  "[--diff-code-insert-text-color:#24292e]",
+  "[--diff-code-delete-background-color:#ffebe9]",
+  "[--diff-code-delete-text-color:#24292e]",
+  "[--diff-code-insert-edit-background-color:#abf2bc]",
+  "[--diff-code-insert-edit-text-color:#24292e]",
+  "[--diff-code-delete-edit-background-color:#ffc1bc]",
+  "[--diff-code-delete-edit-text-color:#24292e]",
+
+  // Dark
+  "[.dark_&]:[--diff-gutter-insert-background-color:rgba(26,77,46,0.6)]",
+  "[.dark_&]:[--diff-gutter-insert-text-color:#56d364]",
+  "[.dark_&]:[--diff-gutter-delete-background-color:rgba(111,40,40,0.6)]",
+  "[.dark_&]:[--diff-gutter-delete-text-color:#ffa198]",
+  "[.dark_&]:[--diff-code-insert-background-color:rgba(26,77,46,0.4)]",
+  "[.dark_&]:[--diff-code-insert-text-color:#aff5b4]",
+  "[.dark_&]:[--diff-code-delete-background-color:rgba(111,40,40,0.4)]",
+  "[.dark_&]:[--diff-code-delete-text-color:#ffdcd7]",
+  "[.dark_&]:[--diff-code-insert-edit-background-color:#2ea043]",
+  "[.dark_&]:[--diff-code-insert-edit-text-color:#ffffff]",
+  "[.dark_&]:[--diff-code-delete-edit-background-color:#da3633]",
+  "[.dark_&]:[--diff-code-delete-edit-text-color:#ffffff]",
+].join(" ");
+
 // ─── Action icon helper ───────────────────────────────────────────────────────
 
 function getActionInfo(action: Action) {
@@ -49,25 +110,25 @@ function getActionInfo(action: Action) {
     case "create":
       return {
         icon: FilePlus,
-        color: "text-green-600 dark:text-green-400",
+        color: "text-green-600 [.dark_&]:text-green-400",
         label: "Created",
       };
     case "delete":
       return {
         icon: FileX,
-        color: "text-red-600 dark:text-red-400",
+        color: "text-red-600 [.dark_&]:text-red-400",
         label: "Deleted",
       };
     case "rewrite":
       return {
         icon: FileCode,
-        color: "text-blue-600 dark:text-blue-400",
+        color: "text-blue-600 [.dark_&]:text-blue-400",
         label: "Rewritten",
       };
     default:
       return {
         icon: FileEdit,
-        color: "text-yellow-600 dark:text-yellow-400",
+        color: "text-yellow-600 [.dark_&]:text-yellow-400",
         label: "Modified",
       };
   }
@@ -201,14 +262,14 @@ export function MultiFileDiffView({
   }
 
   return (
-    <div className={`flex flex-col gap-2 ${className}`}>
+    <div className={`flex flex-col gap-2 ${DIFF_PALETTE} ${className}`}>
       {/* Summary row */}
       <div className="flex items-center gap-3 text-xs text-muted-foreground px-1">
         <span>{totalStats.files} file{totalStats.files !== 1 ? "s" : ""}</span>
-        <span className="text-emerald-600 dark:text-emerald-400">
+        <span className="text-emerald-600 [.dark_&]:text-emerald-400">
           +{totalStats.additions}
         </span>
-        <span className="text-rose-600 dark:text-rose-400">
+        <span className="text-rose-600 [.dark_&]:text-rose-400">
           −{totalStats.deletions}
         </span>
       </div>
@@ -249,12 +310,12 @@ export function MultiFileDiffView({
                 </span>
                 <span className="flex items-center gap-2 flex-shrink-0 font-mono ml-2">
                   {file.additions > 0 && (
-                    <span className="text-emerald-600 dark:text-emerald-400">
+                    <span className="text-emerald-600 [.dark_&]:text-emerald-400">
                       +{file.additions}
                     </span>
                   )}
                   {file.deletions > 0 && (
-                    <span className="text-rose-600 dark:text-rose-400">
+                    <span className="text-rose-600 [.dark_&]:text-rose-400">
                       −{file.deletions}
                     </span>
                   )}
@@ -265,7 +326,7 @@ export function MultiFileDiffView({
               {isExpanded && (
                 <div className="border-t border-border">
                   {file.hasError && (
-                    <div className="flex items-center gap-2 px-3 py-2 text-xs text-rose-600 bg-rose-50 dark:bg-rose-900/20">
+                    <div className="flex items-center gap-2 px-3 py-2 text-xs text-rose-600 bg-rose-50 [.dark_&]:bg-rose-900/20">
                       <AlertCircle className="h-3.5 w-3.5" />
                       <span>{file.errorMessage ?? "Failed to render diff"}</span>
                     </div>
