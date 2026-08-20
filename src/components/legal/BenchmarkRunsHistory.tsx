@@ -532,14 +532,10 @@ export function BenchmarkRunsHistory({
                     <RunnerStatusBadge status={run.status} />
                   </td>
                   <td className="px-4 py-3">
-                    {run.runType === "manual" ? (
-                      <ScoreCell run={run} />
-                    ) : (
-                      // Analysis runs write cause annotations, recursion runs
-                      // drive the loop — neither ever scores. Attempts scored
-                      // by the loop live on the Recursion tab.
-                      <span className="text-muted-foreground/60" data-testid="score-na">—</span>
-                    )}
+                    {/* Recursion re-runs now report post-fix scores back onto
+                        their run row; ScoreCell renders its own dash when no
+                        score landed (older rows, fix-proposal stage). */}
+                    <ScoreCell run={run} />
                   </td>
                   <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
                     {run.runType === "manual" ? (
@@ -549,11 +545,9 @@ export function BenchmarkRunsHistory({
                     )}
                   </td>
                   <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
-                    {run.runType === "manual" ? (
-                      <ReportCell run={run} slug={workspace?.slug} />
-                    ) : (
-                      <span className="text-muted-foreground/60">—</span>
-                    )}
+                    {/* Report bundles land on recursion rows too (reportUrl
+                        column via webhook) — ReportCell self-handles absence. */}
+                    <ReportCell run={run} slug={workspace?.slug} />
                   </td>
                   {isSuperAdmin && (
                     <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
