@@ -29,6 +29,7 @@ function makeRow(overrides: Partial<AttemptRailRow> = {}): AttemptRailRow {
     graphReportRef: null,
     reportPending: false,
     inFlight: false,
+    fixSnapshot: null,
     ...overrides,
   };
 }
@@ -210,5 +211,34 @@ describe("RecursionActivityRail", () => {
     unmount();
     render(<RecursionActivityRail rows={[makeRow()]} partial={false} />);
     expect(screen.queryByTestId("rail-partial-note")).toBeNull();
+  });
+});
+
+describe("RecursionActivityRail — fix snapshot diff control", () => {
+  beforeEach(() => {
+    mockUseWorkspace.mockReturnValue({
+      workspace: { slug: "openlaw", id: "ws-1" },
+      role: "ADMIN",
+      isSuperAdmin: false,
+    });
+  });
+
+  it("renders the diff control only when the row carries a snapshot", () => {
+    const rows = [
+      makeRow({
+        key: "with-snapshot",
+        fixSnapshot: {
+          ref_id: "fix-1",
+          target_type: "concept",
+          target_name: "Limitation of Liability",
+          old_value: '{"docs": "before"}',
+          new_value: '{"docs": "after"}',
+        },
+      }),
+      makeRow({ key: "without-snapshot" }),
+    ];
+    render(<RecursionActivityRail rows={rows} partial={false} />);
+    expect(screen.getByTestId("rail-fix-snapshot-with-snapshot")).toBeTruthy();
+    expect(screen.queryByTestId("rail-fix-snapshot-without-snapshot")).toBeNull();
   });
 });

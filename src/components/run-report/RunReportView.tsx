@@ -5,7 +5,9 @@ import { AlertCircle, Info } from "lucide-react";
 import { useUserTimezone } from "@/hooks/useUserTimezone";
 import type { RunReportPayload } from "@/lib/run-report/types";
 import type { GraphRubric } from "@/lib/harvey-lab/rubric-scoring";
+import type { FixSnapshotEntry } from "@/types/legal";
 import { buildChainModel } from "@/lib/run-report/chain";
+import { FixSnapshotSection } from "@/components/legal/FixSnapshotPanel";
 import { DocumentViewerModal } from "./DocumentViewerModal";
 import { ReportHeader } from "./ReportHeader";
 import { RubricLedger } from "./RubricLedger";
@@ -53,6 +55,13 @@ interface Props {
    * and contested exclusions; null falls back to bundle-local scoring.
    */
   graphRubrics?: GraphRubric[] | null;
+  /**
+   * The task's ProposedFix history with before/after snapshots, fetched
+   * server-side by the page via `fetchFixSnapshots` (this component never
+   * fetches). Null/empty omits the section entirely. Graph-sourced, so it
+   * still renders when the S3 report bundle is unavailable.
+   */
+  fixSnapshots?: FixSnapshotEntry[] | null;
 }
 
 export function RunReportView({
@@ -60,6 +69,7 @@ export function RunReportView({
   taskTitle = "Run report",
   workspaceSlug = null,
   graphRubrics = null,
+  fixSnapshots = null,
 }: Props) {
   const { timezone } = useUserTimezone();
   const [openDoc, setOpenDoc] = useState<{ docId: string; tokens: string[] } | null>(null);
@@ -67,15 +77,27 @@ export function RunReportView({
   const projection = payload.projection;
   const chain = useMemo(() => (projection ? buildChainModel(projection) : null), [projection]);
 
+  // Graph-sourced, so it must not die with the S3 bundle — it renders in the
+  // "unavailable" state below, which is exactly when a reviewer needs it.
+  const fixSnapshotSection =
+    fixSnapshots && fixSnapshots.length > 0 ? (
+      <SectionErrorBoundary>
+        <FixSnapshotSection fixes={fixSnapshots} workspaceSlug={workspaceSlug} />
+      </SectionErrorBoundary>
+    ) : null;
+
   // ── Report exists but could not be loaded from S3 ─────────────────────────
   if (payload.error === "unavailable") {
     return (
-      <StateNotice
-        icon={<AlertCircle className="h-5 w-5" />}
-        title="Report couldn't be loaded"
-        body="The report bundle exists for this run but couldn't be fetched from storage. It may have been moved or deleted. Reloading may help."
-        testId="run-report-state-unavailable"
-      />
+      <div className="max-w-[1080px] mx-auto">
+        <StateNotice
+          icon={<AlertCircle className="h-5 w-5" />}
+          title="Report couldn't be loaded"
+          body="The report bundle exists for this run but couldn't be fetched from storage. It may have been moved or deleted. Reloading may help."
+          testId="run-report-state-unavailable"
+        />
+        {fixSnapshotSection && <main className="min-w-0 pb-24">{fixSnapshotSection}</main>}
+      </div>
     );
   }
 
@@ -153,6 +175,7 @@ export function RunReportView({
           <SectionErrorBoundary>
             <ConceptsSection projection={projection} />
           </SectionErrorBoundary>
+          {fixSnapshotSection}
           <SectionErrorBoundary>
             <SourcesSection projection={projection} onOpenDoc={onOpenDoc} />
           </SectionErrorBoundary>

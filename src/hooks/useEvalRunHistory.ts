@@ -25,6 +25,7 @@ import {
 } from "@/lib/harvey-lab/eval-normalizers";
 import { buildHillClimbSeries, type SubgraphNode, type SubgraphEdge } from "@/lib/harvey-lab/hill-climb-series";
 import { buildEvalOutputSeries } from "@/lib/harvey-lab/eval-output-series";
+import type { FixSnapshotProps } from "@/lib/harvey-lab/fix-snapshot";
 import { logger } from "@/lib/logger";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -87,6 +88,14 @@ export interface AttemptRailRow {
   reportPending: boolean;
   /** PENDING or IN_PROGRESS — the attempt is still running */
   inFlight: boolean;
+  /**
+   * The before/after snapshot of the ProposedFix behind this charted attempt,
+   * from `buildHillClimbSeries`'s sidecar map. Non-null only on `fix-chain`
+   * series rows whose fix actually recorded a snapshot — the rail renders its
+   * diff control exactly when this is set, so legacy fixes and eval-output
+   * rows (which never populate it) get no control by construction.
+   */
+  fixSnapshot: FixSnapshotProps | null;
 }
 
 const NON_TERMINAL_STATUSES = new Set(["PENDING", "IN_PROGRESS"]);
@@ -318,7 +327,15 @@ export function useEvalRunHistory(input: UseEvalRunHistoryInput): UseEvalRunHist
           edges: fixChain.edges,
         };
 
-        const hillClimbAttempts = buildHillClimbSeries(subgraph);
+        // Sidecar: fix snapshots keyed by FIX ref_id; each entry's
+        // point_ref_id names the series point it resolved to (null when the
+        // fix emitted no point). Inverted below to join snapshots onto rows.
+        const fixSnapshots = new Map<string, FixSnapshotProps>();
+        const hillClimbAttempts = buildHillClimbSeries(subgraph, { fixSnapshotsOut: fixSnapshots });
+        const snapshotByPointRef = new Map<string, FixSnapshotProps>();
+        for (const snapshot of fixSnapshots.values()) {
+          if (snapshot.point_ref_id) snapshotByPointRef.set(snapshot.point_ref_id, snapshot);
+        }
 
         // ── Step 4: Build history table (EvalRunsBox) ─────────────────────
         // For the history table we reconstruct EvalTrigger objects from the
@@ -507,6 +524,7 @@ export function useEvalRunHistory(input: UseEvalRunHistoryInput): UseEvalRunHist
           extras: Pick<AttemptRailRow, "label" | "attemptIndex" | "score"> & {
             graphTime?: string | null;
             graphReportRef?: string | null;
+            fixSnapshot?: FixSnapshotProps | null;
           },
         ): AttemptRailRow => {
           const parsedStatusRun = statusRun ? parseBenchmarkRunResult(statusRun.result) : null;
@@ -527,6 +545,7 @@ export function useEvalRunHistory(input: UseEvalRunHistoryInput): UseEvalRunHist
               parsedStatusRun?.generateRunReport === true &&
               statusRun?.hasReport !== true,
             inFlight: NON_TERMINAL_STATUSES.has(statusRun?.status ?? ""),
+            fixSnapshot: extras.fixSnapshot ?? null,
           };
         };
 
@@ -544,6 +563,14 @@ export function useEvalRunHistory(input: UseEvalRunHistoryInput): UseEvalRunHist
             score: passed != null && total != null ? { passed, total } : null,
             graphTime: graphEpochToIso(attempt.date_added_to_graph),
             graphReportRef: attempt.report_url ? attempt.ref_id : null,
+            // Rail snapshot coverage is the fix-chain series only (v1):
+            // concept-driven recursion writes no ProposedFix, so eval-output
+            // rows legitimately carry none — the attempts-report path still
+            // shows the task's fixes when they exist.
+            fixSnapshot:
+              finalSeriesKind === "fix-chain"
+                ? snapshotByPointRef.get(attempt.ref_id) ?? null
+                : null,
           });
         });
 
@@ -586,6 +613,7 @@ export function useEvalRunHistory(input: UseEvalRunHistoryInput): UseEvalRunHist
             graphReportRef: null,
             reportPending: false,
             inFlight: true,
+            fixSnapshot: null,
           }));
 
         // Mirror the chart: charted rows in dot order first, then rows with no
