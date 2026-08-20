@@ -734,10 +734,13 @@ describe("POST /api/tasks/[taskId]/recording - Integration Tests", () => {
 
       const data = await expectSuccess(response, 201);
 
-      // Verify artifacts exist
-      const artifacts = await db.artifact.findMany({
-        where: { id: { in: data.data.artifactIds } },
+      // Verify artifacts exist via the message relation (same pattern used elsewhere in this file)
+      const message = await db.chatMessage.findUnique({
+        where: { id: data.data.messageId },
+        include: { artifacts: true },
       });
+
+      const artifacts = message?.artifacts ?? [];
 
       expect(artifacts).toHaveLength(2);
       expect(artifacts.some((a) => a.type === "MEDIA")).toBe(true);
