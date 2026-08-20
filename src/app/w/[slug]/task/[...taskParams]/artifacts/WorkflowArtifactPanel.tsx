@@ -29,7 +29,8 @@ import { PublishPromptContent, PublishScriptContent } from "@/lib/chat";
  * (mixing an unrelated script/prompt diff into the workflow's diff).
  */
 function isWorkflowArtifact(artifact: Artifact): boolean {
-  return artifact.type === ArtifactType.WORKFLOW || artifact.type === ArtifactType.PUBLISH_WORKFLOW;
+  const t = String(artifact.type).toUpperCase();
+  return t === ArtifactType.WORKFLOW || t === ArtifactType.PUBLISH_WORKFLOW;
 }
 
 interface WorkflowArtifactPanelProps {
@@ -115,13 +116,8 @@ export function WorkflowArtifactPanel({ artifacts, isActive, onStepSelect, onVer
     return t === "WORKFLOW" || t === "PUBLISH_PROMPT" || t === "PUBLISH_SCRIPT";
   });
 
-  if (!hasAnyRelevantArtifacts) {
-    return (
-      <div className="flex items-center justify-center h-full p-8">
-        <div className="text-muted-foreground text-sm">No workflow available</div>
-      </div>
-    );
-  }
+  // NOTE: We do NOT return early here — all hooks below must be called unconditionally
+  // to satisfy React's Rules of Hooks. The early-return guard is applied after all hooks.
 
   // Merge data from all workflow artifacts, always using the LATEST values
   // This supports multiple executions and publishes - always shows the most recent:
@@ -610,6 +606,15 @@ export function WorkflowArtifactPanel({ artifacts, isActive, onStepSelect, onVer
       console.error("Error fetching workflow data:", error);
     }
   }, [error]);
+
+  // Early return guard — placed after all hooks to satisfy React's Rules of Hooks.
+  if (!hasAnyRelevantArtifacts) {
+    return (
+      <div className="flex items-center justify-center h-full p-8">
+        <div className="text-muted-foreground text-sm">No workflow available</div>
+      </div>
+    );
+  }
 
   // If workflowJson present but failed to parse — error state
   if (isEditorMode && !parsedWorkflowData) {
