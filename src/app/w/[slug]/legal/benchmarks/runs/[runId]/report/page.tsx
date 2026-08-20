@@ -63,11 +63,19 @@ export default async function RunReportPage({ params }: PageProps) {
 
   // IDOR guard in the WHERE clause — id, workspaceId AND type — so a
   // cross-workspace or wrong-type runId 404s with no post-fetch check.
+  // EVAL and RECURSION are allowlisted alongside RUNNER: the recursion
+  // pipeline's re-runs deliver report bundles onto those rows too.
   const run = await db.stakworkRun.findFirst({
     where: {
       id: runId,
       workspaceId,
-      type: { in: [StakworkRunType.LEGAL_BENCHMARK_RUNNER] },
+      type: {
+        in: [
+          StakworkRunType.LEGAL_BENCHMARK_RUNNER,
+          StakworkRunType.LEGAL_BENCHMARK_EVAL,
+          StakworkRunType.LEGAL_BENCHMARK_RECURSION,
+        ],
+      },
     },
     // reportUrl IS selected (opting through the global omit) so the server can
     // fetch the bundle. It never enters the RSC payload or any client prop.
