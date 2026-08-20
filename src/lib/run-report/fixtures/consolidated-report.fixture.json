@@ -1,0 +1,195 @@
+{
+  "consolidated": true,
+  "taskDescription": "Analyze the merger agreement between Acme Corp and TechCo, focusing on closing conditions, representations and warranties, and termination provisions.",
+  "sourceFileLinks": [
+    "https://raw.githubusercontent.com/stakwork/harvey-labs/main/tasks/m_a_analysis/documents/merger_agreement.pdf",
+    "https://raw.githubusercontent.com/stakwork/harvey-labs/main/tasks/m_a_analysis/documents/disclosure_schedule.pdf"
+  ],
+  "runs": [
+    {
+      "runId": "run_001_latest",
+      "timestamp": 1724198400000,
+      "model": "claude-sonnet-4-5",
+      "score": 0.6,
+      "nPassed": 3,
+      "nTotal": 5
+    },
+    {
+      "runId": "run_002_middle",
+      "timestamp": 1724112000000,
+      "model": "claude-opus-4-0",
+      "score": 0.8,
+      "nPassed": 4,
+      "nTotal": 5
+    },
+    {
+      "runId": "run_003_oldest",
+      "timestamp": 1724025600000,
+      "model": "claude-sonnet-4-5",
+      "score": 0.4,
+      "nPassed": 2,
+      "nTotal": 5
+    }
+  ],
+  "rubricMatrix": [
+    {
+      "id": "criterion_001",
+      "title": "Closing Conditions Identified",
+      "results": [
+        { "runId": "run_001_latest", "passed": true, "verdict": "PASS" },
+        { "runId": "run_002_middle", "passed": true, "verdict": "PASS" },
+        { "runId": "run_003_oldest", "passed": true, "verdict": "PASS" }
+      ]
+    },
+    {
+      "id": "criterion_002",
+      "title": "MAE Definition Analysis",
+      "results": [
+        { "runId": "run_001_latest", "passed": false, "verdict": "FAIL — incomplete MAE carve-outs analysis" },
+        { "runId": "run_002_middle", "passed": true, "verdict": "PASS" },
+        { "runId": "run_003_oldest", "passed": false, "verdict": "FAIL — MAE definition not analyzed" }
+      ]
+    },
+    {
+      "id": "criterion_003",
+      "title": "Termination Rights Summary",
+      "results": [
+        { "runId": "run_001_latest", "passed": false, "verdict": "FAIL — termination fee not quantified" },
+        { "runId": "run_002_middle", "passed": false, "verdict": "FAIL — reverse termination fee omitted" },
+        { "runId": "run_003_oldest", "passed": false, "verdict": "FAIL — termination provisions not identified" }
+      ]
+    },
+    {
+      "id": "criterion_004",
+      "title": "Representations and Warranties Coverage",
+      "results": [
+        { "runId": "run_001_latest", "passed": true, "verdict": "PASS" },
+        { "runId": "run_002_middle", "passed": true, "verdict": "PASS" },
+        { "runId": "run_003_oldest", "passed": false, "verdict": "FAIL — survival period not addressed" }
+      ]
+    },
+    {
+      "id": "criterion_005",
+      "title": "Indemnification Caps Identified",
+      "results": [
+        { "runId": "run_001_latest", "passed": true, "verdict": "PASS" },
+        { "runId": "run_002_middle", "passed": true, "verdict": "PASS" },
+        { "runId": "run_003_oldest", "passed": false, "verdict": "FAIL — indemnification structure not addressed" }
+      ]
+    }
+  ],
+  "rubricDetails": [
+    {
+      "id": "criterion_002",
+      "title": "MAE Definition Analysis",
+      "matchCriteria": "The response must identify the Material Adverse Effect definition, enumerate all carve-outs, and explain their implications for the merger closing conditions.",
+      "perRun": [
+        {
+          "runId": "run_001_latest",
+          "verdict": "FAIL",
+          "reasoning": "The response identified the MAE definition but failed to enumerate the pandemic carve-out and the general economic conditions exception. The analysis was incomplete.",
+          "judgeFlagReason": "",
+          "criterionContested": false
+        },
+        {
+          "runId": "run_002_middle",
+          "verdict": "PASS",
+          "reasoning": "Complete analysis of all MAE carve-outs including pandemic exceptions, general economic conditions, and industry-specific provisions.",
+          "judgeFlagReason": "",
+          "criterionContested": false
+        },
+        {
+          "runId": "run_003_oldest",
+          "verdict": "FAIL",
+          "reasoning": "Response did not address the MAE definition or its carve-outs at all.",
+          "judgeFlagReason": "Response appears to have focused on a different section of the agreement.",
+          "criterionContested": false
+        }
+      ]
+    },
+    {
+      "id": "criterion_003",
+      "title": "Termination Rights Summary",
+      "matchCriteria": "The response must identify all termination rights for each party, quantify any termination fees (including reverse termination fees), and explain the conditions under which each right may be exercised.",
+      "perRun": [
+        {
+          "runId": "run_001_latest",
+          "verdict": "FAIL",
+          "reasoning": "Termination rights were identified but the $50M termination fee was not quantified and the reverse termination fee structure was omitted.",
+          "judgeFlagReason": "",
+          "criterionContested": false
+        },
+        {
+          "runId": "run_002_middle",
+          "verdict": "FAIL",
+          "reasoning": "Termination rights listed but the $75M reverse termination fee payable by buyer was not mentioned.",
+          "judgeFlagReason": "",
+          "criterionContested": true
+        },
+        {
+          "runId": "run_003_oldest",
+          "verdict": "FAIL",
+          "reasoning": "No termination provisions were identified or analyzed.",
+          "judgeFlagReason": "",
+          "criterionContested": false
+        }
+      ]
+    },
+    {
+      "id": "criterion_004",
+      "title": "Representations and Warranties Coverage",
+      "matchCriteria": "The response must summarize the key representations and warranties made by each party, including the survival period and any knowledge qualifiers.",
+      "perRun": [
+        {
+          "runId": "run_001_latest",
+          "verdict": "PASS",
+          "reasoning": "Comprehensive coverage of R&W provisions including 18-month survival period and knowledge qualifiers.",
+          "judgeFlagReason": "",
+          "criterionContested": false
+        },
+        {
+          "runId": "run_002_middle",
+          "verdict": "PASS",
+          "reasoning": "All key R&W provisions addressed including survival period and knowledge qualifiers.",
+          "judgeFlagReason": "",
+          "criterionContested": false
+        },
+        {
+          "runId": "run_003_oldest",
+          "verdict": "FAIL",
+          "reasoning": "R&W provisions identified but the 18-month survival period was not mentioned.",
+          "judgeFlagReason": "",
+          "criterionContested": false
+        }
+      ]
+    },
+    {
+      "id": "criterion_005",
+      "title": "Indemnification Caps Identified",
+      "matchCriteria": "The response must identify the indemnification cap amounts, basket/deductible thresholds, and any special indemnification provisions.",
+      "perRun": [
+        {
+          "runId": "run_001_latest",
+          "verdict": "PASS",
+          "reasoning": "Indemnification structure correctly identified including 10% cap and $500K deductible.",
+          "judgeFlagReason": "",
+          "criterionContested": false
+        },
+        {
+          "runId": "run_002_middle",
+          "verdict": "PASS",
+          "reasoning": "Full indemnification analysis provided.",
+          "judgeFlagReason": "",
+          "criterionContested": false
+        },
+        {
+          "runId": "run_003_oldest",
+          "verdict": "FAIL",
+          "reasoning": "Indemnification provisions not analyzed.",
+          "judgeFlagReason": "",
+          "criterionContested": false
+        }
+      ]
+    }
+  ]
+}

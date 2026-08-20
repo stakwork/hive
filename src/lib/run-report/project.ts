@@ -44,6 +44,8 @@ import {
 } from "./concept-facts";
 import type {
   RunReportProjection,
+  ConsolidatedReportProjection,
+  BundleProjection,
   ProjectedSourceDoc,
   ProjectedRubricLink,
   TimelineStep,
@@ -80,6 +82,13 @@ const KNOWN_BUNDLE_ROOT_KEYS = new Set([
   "source_docs",
   "workfiles",
   "rubric_links",
+  // Consolidated report bundle keys — prevent drift-diagnostic false positives
+  "consolidated",
+  "taskDescription",
+  "sourceFileLinks",
+  "runs",
+  "rubricMatrix",
+  "rubricDetails",
 ]);
 
 const KNOWN_PAGE_DATA_KEYS = new Set([
@@ -102,7 +111,7 @@ const KNOWN_PAGE_DATA_KEYS = new Set([
 // ── ProjectOutcome ───────────────────────────────────────────────────────────
 
 export type ProjectOutcome =
-  | { status: "ok"; projection: RunReportProjection; droppedElements: number }
+  | { status: "ok"; projection: BundleProjection; droppedElements: number }
   | { status: "unparseable" };
 
 // ── Loose top-level schema ───────────────────────────────────────────────────
@@ -111,6 +120,112 @@ export type ProjectOutcome =
 const BundleSchema = z.looseObject({
   schema_version: z.number().optional(),
 });
+
+// ── Consolidated bundle projector ────────────────────────────────────────────
+
+/**
+ * Project a LEGAL_BENCHMARK_CONSOLIDATED bundle into a `ConsolidatedReportProjection`.
+ *
+ * Sanitization pass: strips raw HTML from rubric text fields (matchCriteria,
+ * verdict, reasoning, judgeFlagReason) before they reach the projection. This
+ * is defence-in-depth upstream of SafeMarkdown rendering on the client.
+ */
+function projectConsolidatedBundle(parsed: unknown): ProjectOutcome {
+  if (!isRecord(parsed)) return { status: "unparseable" };
+
+  const contractNotes: string[] = [];
+
+  const taskDescription = asString((parsed as Record<string, unknown>).taskDescription) ?? "";
+  const sourceFileLinks = readArray(parsed, "sourceFileLinks")
+    .filter((v): v is string => typeof v === "string");
+
+  // ── runs[] ──────────────────────────────────────────────────────────────────
+  const rawRuns = readArray(parsed, "runs");
+  const [cappedRuns, runsTruncated] = capArray(rawRuns, PROJECTION_ARRAY_CAP);
+  if (runsTruncated > 0) {
+    contractNotes.push(`runs: truncated from ${rawRuns.length} to ${PROJECTION_ARRAY_CAP}`);
+  }
+
+  const runs: ConsolidatedReportProjection["runs"] = cappedRuns
+    .filter(isRecord)
+    .map((r) => ({
+      runId: asString(r.runId) ?? asString(r.run_id) ?? "",
+      timestamp: typeof r.timestamp === "number" ? r.timestamp : 0,
+      model: asString(r.model) ?? "",
+      score: typeof r.score === "number" ? r.score : 0,
+      nPassed: typeof r.nPassed === "number" ? r.nPassed : typeof r.n_passed === "number" ? r.n_passed : 0,
+      nTotal: typeof r.nTotal === "number" ? r.nTotal : typeof r.n_total === "number" ? r.n_total : 0,
+    }))
+    .filter((r) => r.runId !== "");
+
+  // ── rubricMatrix[] ──────────────────────────────────────────────────────────
+  const rawMatrix = readArray(parsed, "rubricMatrix");
+  const [cappedMatrix, matrixTruncated] = capArray(rawMatrix, PROJECTION_ARRAY_CAP);
+  if (matrixTruncated > 0) {
+    contractNotes.push(`rubricMatrix: truncated from ${rawMatrix.length} to ${PROJECTION_ARRAY_CAP}`);
+  }
+
+  const rubricMatrix: ConsolidatedReportProjection["rubricMatrix"] = cappedMatrix
+    .filter(isRecord)
+    .map((row) => ({
+      id: asString(row.id) ?? "",
+      title: sanitizeRubricText(asString(row.title) ?? ""),
+      results: readArray(row, "results")
+        .filter(isRecord)
+        .map((res) => ({
+          runId: asString(res.runId) ?? asString(res.run_id) ?? "",
+          passed: res.passed === true,
+          verdict: sanitizeRubricText(asString(res.verdict) ?? ""),
+        })),
+    }))
+    .filter((row) => row.id !== "");
+
+  // ── rubricDetails[] — only criteria where at least one run failed ───────────
+  const rawDetails = readArray(parsed, "rubricDetails");
+
+  const rubricDetails: ConsolidatedReportProjection["rubricDetails"] = rawDetails
+    .filter(isRecord)
+    .map((block) => ({
+      id: asString(block.id) ?? "",
+      title: sanitizeRubricText(asString(block.title) ?? ""),
+      matchCriteria: sanitizeRubricText(asString(block.matchCriteria) ?? asString(block.match_criteria) ?? ""),
+      perRun: readArray(block, "perRun")
+        .filter(isRecord)
+        .map((pr) => ({
+          runId: asString(pr.runId) ?? asString(pr.run_id) ?? "",
+          verdict: sanitizeRubricText(asString(pr.verdict) ?? ""),
+          reasoning: sanitizeRubricText(asString(pr.reasoning) ?? ""),
+          judgeFlagReason: sanitizeRubricText(asString(pr.judgeFlagReason) ?? asString(pr.judge_flag_reason) ?? ""),
+          criterionContested: pr.criterionContested === true || pr.contested === true,
+        })),
+    }))
+    .filter((block) => block.id !== "" && block.perRun.some((pr) => !pr.verdict.includes("PASS") || block.perRun.some((p) => p.criterionContested)));
+
+  if (contractNotes.length > 0) {
+    console.warn("[run-report/consolidated] Projection notes", { notes: contractNotes });
+  }
+
+  const projection: ConsolidatedReportProjection = {
+    consolidated: true,
+    taskDescription: sanitizeRubricText(taskDescription),
+    sourceFileLinks,
+    runs,
+    rubricMatrix,
+    rubricDetails,
+  };
+
+  return { status: "ok", projection, droppedElements: 0 };
+}
+
+/**
+ * Strip raw HTML tags from rubric text fields before they reach the projection.
+ * Defence-in-depth upstream of SafeMarkdown; keeps legal document prose intact.
+ */
+function sanitizeRubricText(text: string): string {
+  // Remove HTML tags only — preserve all other characters including legal
+  // identifiers, docket numbers, markdown, and special characters.
+  return text.replace(/<[^>]*>/g, "");
+}
 
 // ── Main projector ───────────────────────────────────────────────────────────
 
@@ -124,6 +239,14 @@ export function projectBundle(rawText: string): ProjectOutcome {
 
   const loose = BundleSchema.safeParse(parsed);
   if (!loose.success || !isRecord(parsed)) return { status: "unparseable" };
+
+  // ── Consolidated bundle fast-path ─────────────────────────────────────────
+  // Dispatch before drift detection — consolidated bundles have a completely
+  // different shape from the standard report bundle and the drift check would
+  // flag every consolidated-specific root key as unexpected.
+  if ((parsed as Record<string, unknown>).consolidated === true) {
+    return projectConsolidatedBundle(parsed);
+  }
 
   // ── Drift diagnostic ──────────────────────────────────────────────────────
   // Collect unknown key names from both the bundle root and page_data.

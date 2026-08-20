@@ -10,6 +10,12 @@ const LEGAL_BENCHMARK_TYPES = new Set<string>([
   StakworkRunType.LEGAL_BENCHMARK_RUNNER,
   StakworkRunType.LEGAL_BENCHMARK_SCORER,
   StakworkRunType.LEGAL_BENCHMARK_EVAL,
+  // TODO(consolidated-wire-format): LEGAL_BENCHMARK_CONSOLIDATED is included here
+  // ONLY if workflow 58345 sends a Harvey flat-payload (same shape as RUNNER/SCORER/EVAL).
+  // If it follows RECURSION's nested-result path instead, remove this line — adding it
+  // incorrectly would double-wrap `result` and corrupt `report_url` extraction.
+  // Confirm with the Stakwork team before deploying. Current assumption: flat payload.
+  StakworkRunType.LEGAL_BENCHMARK_CONSOLIDATED,
 ]);
 
 /**

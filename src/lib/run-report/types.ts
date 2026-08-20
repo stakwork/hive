@@ -338,6 +338,88 @@ export interface RubricRow {
   documentExcerpt: string;
 }
 
+// ── ConsolidatedReportProjection ─────────────────────────────────────────────
+
+/**
+ * Metadata for a single run included in a consolidated report.
+ */
+export interface ConsolidatedRunMeta {
+  runId: string;
+  /** Epoch ms, sorted latest-first by the report generator. */
+  timestamp: number;
+  model: string;
+  /** Fraction 0–1. */
+  score: number;
+  nPassed: number;
+  nTotal: number;
+}
+
+/**
+ * One row of the rubric matrix (cross-run pass/fail view).
+ */
+export interface RubricMatrixRow {
+  id: string;
+  title: string;
+  results: Array<{ runId: string; passed: boolean; verdict: string }>;
+}
+
+/**
+ * Per-criterion detail block for the cross-run comparison table.
+ */
+export interface RubricDetailBlock {
+  id: string;
+  title: string;
+  /** What the criterion requires — rendered via SafeMarkdown, never raw HTML. */
+  matchCriteria: string;
+  perRun: Array<{
+    runId: string;
+    verdict: string;
+    reasoning: string;
+    /** "Judgement Review" text. Empty string when absent. */
+    judgeFlagReason: string;
+    criterionContested: boolean;
+  }>;
+}
+
+/**
+ * Projection for a LEGAL_BENCHMARK_CONSOLIDATED run report bundle.
+ *
+ * Deliberately a standalone interface (does NOT extend RunReportProjection).
+ * Inheriting RunReportProjection's 15+ unrelated fields (toolActivity, traces,
+ * sourceDocs, concepts, workfiles …) would inflate RSC payload size and create
+ * a misleading type boundary.
+ *
+ * The `consolidated: true` discriminant is sufficient for exhaustive narrowing
+ * at all call sites — no unsafe casts needed.
+ */
+export interface ConsolidatedReportProjection {
+  /** Discriminant — always `true` for this type. */
+  consolidated: true;
+  taskDescription: string;
+  sourceFileLinks: string[];
+  /**
+   * Per-run metadata, sorted latest-first by timestamp.
+   * Capped at PROJECTION_ARRAY_CAP entries by the projector.
+   */
+  runs: ConsolidatedRunMeta[];
+  /**
+   * Cross-run rubric matrix. Only criteria where at least one run failed
+   * appear in `rubricDetails`; the matrix itself includes all criteria.
+   * Capped at PROJECTION_ARRAY_CAP entries.
+   */
+  rubricMatrix: RubricMatrixRow[];
+  /**
+   * Per-criterion detail blocks. Only criteria where at least one run failed.
+   */
+  rubricDetails: RubricDetailBlock[];
+}
+
+/**
+ * Union of all possible projection types returned by `projectBundle`.
+ * The `consolidated` discriminant narrows cleanly without unsafe casts.
+ */
+export type BundleProjection = RunReportProjection | ConsolidatedReportProjection;
+
 /**
  * What the API route and the RSC page hand to the renderer.
  *
@@ -350,5 +432,5 @@ export interface RunReportPayload {
   hasReport: boolean;
   /** Set when a report exists but could not be fetched, parsed or projected. */
   error?: "unavailable" | "unsupported_schema" | "url_rejected";
-  projection: RunReportProjection | null;
+  projection: BundleProjection | null;
 }
