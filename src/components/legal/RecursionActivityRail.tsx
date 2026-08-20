@@ -4,12 +4,15 @@ import { formatDistanceToNow } from "date-fns";
 import { FileText, Loader2, Repeat } from "lucide-react";
 import { StakworkRunLink } from "@/components/legal/StakworkRunLink";
 import { useWorkspace } from "@/hooks/useWorkspace";
+import { canReadRunReport } from "@/lib/run-report/types";
 import type { AttemptRailRow } from "@/hooks/useEvalRunHistory";
 
 interface RecursionActivityRailProps {
   rows: AttemptRailRow[];
   /** The graph walk was truncated — the list may be missing attempts. */
   partial: boolean;
+  /** Task slug of the card's EvalSet — carried on attempt-report links for title/rubrics. */
+  taskSlug?: string;
 }
 
 /**
@@ -92,7 +95,17 @@ function RowLabel({ row }: { row: AttemptRailRow }) {
   );
 }
 
-function RowReport({ row, workspaceSlug }: { row: AttemptRailRow; workspaceSlug: string }) {
+function RowReport({
+  row,
+  workspaceSlug,
+  taskSlug,
+  canReadReports,
+}: {
+  row: AttemptRailRow;
+  workspaceSlug: string;
+  taskSlug?: string;
+  canReadReports: boolean;
+}) {
   if (row.hasReport && row.runId && workspaceSlug) {
     return (
       <a
@@ -110,11 +123,16 @@ function RowReport({ row, workspaceSlug }: { row: AttemptRailRow; workspaceSlug:
   }
   // Graph-node fallback: the eval workflow writes report_url onto the
   // EvalTriggerOutput node itself, so recursion attempts that never joined a
-  // StakworkRun row (em-dash status) still get their report link.
-  if (row.reportUrl) {
+  // StakworkRun row (em-dash status) still get a report link — routed through
+  // the attempt-report page, which resolves and fetches the bundle
+  // server-side. Never the raw S3 URL: that opens bare JSON and bypasses the
+  // viewer. Gated on the same role check the report pages enforce so
+  // viewer-tier members don't get a link that 404s.
+  if (row.graphReportRef && workspaceSlug && canReadReports) {
+    const taskParam = taskSlug ? `?task=${encodeURIComponent(taskSlug)}` : "";
     return (
       <a
-        href={row.reportUrl}
+        href={`/w/${workspaceSlug}/legal/benchmarks/attempts/${encodeURIComponent(row.graphReportRef)}/report${taskParam}`}
         target="_blank"
         rel="noopener noreferrer"
         className="inline-flex items-center gap-1 text-xs text-primary hover:underline whitespace-nowrap"
@@ -148,9 +166,10 @@ function RowReport({ row, workspaceSlug }: { row: AttemptRailRow; workspaceSlug:
  * state, and the super-admin Stakwork link — the chart shows THAT the score
  * moved; this shows WHICH attempt moved it and where to open it.
  */
-export function RecursionActivityRail({ rows, partial }: RecursionActivityRailProps) {
-  const { workspace, isSuperAdmin } = useWorkspace();
+export function RecursionActivityRail({ rows, partial, taskSlug }: RecursionActivityRailProps) {
+  const { workspace, role, isSuperAdmin } = useWorkspace();
   const workspaceSlug = workspace?.slug ?? "";
+  const canReadReports = canReadRunReport(role ?? "");
 
   if (rows.length === 0) {
     return (
@@ -183,7 +202,12 @@ export function RecursionActivityRail({ rows, partial }: RecursionActivityRailPr
                 : "—"}
             </span>
             <span className="flex items-center gap-2 justify-end">
-              <RowReport row={row} workspaceSlug={workspaceSlug} />
+              <RowReport
+                row={row}
+                workspaceSlug={workspaceSlug}
+                taskSlug={taskSlug}
+                canReadReports={canReadReports}
+              />
               {row.score && (
                 <span className="font-mono text-xs tabular-nums whitespace-nowrap">
                   {row.score.passed}/{row.score.total}

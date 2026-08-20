@@ -682,7 +682,7 @@ describe("RecursionCard — activity rail", () => {
       runId: "run-1",
       projectId: 42,
       hasReport: false,
-      reportUrl: null,
+      graphReportRef: null,
       reportPending: false,
       inFlight: false,
     },
