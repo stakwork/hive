@@ -1,2 +1,0 @@
--- AlterEnum
-ALTER TYPE "StakworkRunType" ADD VALUE 'WORKFLOW_BENCHMARK_RUNNER';

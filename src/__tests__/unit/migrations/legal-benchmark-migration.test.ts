@@ -86,7 +86,7 @@ describe("No orphaned legalBenchmarkRun references in src/ (outside migrating fi
    */
   const ALLOWED_FILES = new Set([
     "src/__tests__/unit/api/legal-benchmark.test.ts",
-    "src/__tests__/unit/api/workflow-benchmark-webhook.test.ts",
+    "src/__tests__/unit/api/benchmark-runner-webhook.test.ts",
     "src/__tests__/unit/api/legal-benchmark-webhook.test.ts",
     "src/app/api/workspaces/[slug]/legal/benchmarks/run/route.ts",
     "src/app/api/workspaces/[slug]/legal/benchmarks/runs/[runId]/route.ts",

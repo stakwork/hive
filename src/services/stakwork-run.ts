@@ -64,15 +64,18 @@ const encryptionService = EncryptionService.getInstance();
 //
 // Deliberately does NOT control report_url persistence — that is gated by
 // isLegalBenchmarkType (defined below) and is intentionally narrower:
-// WORKFLOW_BENCHMARK_RUNNER has no report_url producer.
+// BENCHMARK_RUNNER has no report_url producer.
 //
-// Do not widen this set without a corresponding security review.
+// BENCHMARK_RUNNER is the generic benchmark run type. LEGAL_BENCHMARK_RUNNER is a
+// SEPARATE enum value — it is NOT an alias and will NOT be migrated onto the generic
+// type as part of this change. Do not widen TOKEN_VERIFIED_RUN_TYPES beyond the
+// existing legal types plus BENCHMARK_RUNNER without a security review.
 export const TOKEN_VERIFIED_RUN_TYPES = new Set<StakworkRunType>([
   StakworkRunType.LEGAL_BENCHMARK_RUNNER,
   StakworkRunType.LEGAL_BENCHMARK_SCORER,
   StakworkRunType.LEGAL_BENCHMARK_EVAL,
   StakworkRunType.LEGAL_BENCHMARK_RECURSION,
-  StakworkRunType.WORKFLOW_BENCHMARK_RUNNER,
+  StakworkRunType.BENCHMARK_RUNNER,
 ]);
 
 /**
@@ -1148,20 +1151,21 @@ export async function processStakworkRunWebhook(
     return { runId: run.id, status, dataType };
   }
 
-  // ── Step 2b: LEGAL_BENCHMARK_RUNNER / WORKFLOW_BENCHMARK_RUNNER — persist output + inline score ──
-  // WORKFLOW_BENCHMARK_RUNNER uses the same score-validation path as LEGAL_BENCHMARK_RUNNER but
-  // with a strict-criteria capability that:
+  // ── Step 2b: LEGAL_BENCHMARK_RUNNER / BENCHMARK_RUNNER — persist output + inline score ──
+  // BENCHMARK_RUNNER is the generic benchmark run type. It uses the same score-validation
+  // path as LEGAL_BENCHMARK_RUNNER but with a strict-criteria capability:
   //   - Never persists unvalidated criteria_results (strictCriteria: true)
   //   - Skips EvalTriggerOutput graph write (writeGraphOutput: false, no evalTriggerRef on this type)
   //   - Skips Jamie-chat after() and report-bundle handling (legalSideEffects: false)
   //   - Enforces a replay guard: rejects if stored result already has criteria_results
-  const isWorkflowBenchmarkRunner = run.type === StakworkRunType.WORKFLOW_BENCHMARK_RUNNER;
-  if (run.type === StakworkRunType.LEGAL_BENCHMARK_RUNNER || isWorkflowBenchmarkRunner) {
-    const caps = isWorkflowBenchmarkRunner
+  // LEGAL_BENCHMARK_RUNNER is NOT an alias — legalSideEffects/writeGraphOutput are the discriminator.
+  const isBenchmarkRunner = run.type === StakworkRunType.BENCHMARK_RUNNER;
+  if (run.type === StakworkRunType.LEGAL_BENCHMARK_RUNNER || isBenchmarkRunner) {
+    const caps = isBenchmarkRunner
       ? { validateScore: true, strictCriteria: true, writeGraphOutput: false, legalSideEffects: false }
       : { validateScore: true, strictCriteria: false, writeGraphOutput: true, legalSideEffects: true };
 
-    // Replay guard for WORKFLOW_BENCHMARK_RUNNER: reject if criteria_results already settled.
+    // Replay guard for BENCHMARK_RUNNER: reject if criteria_results already settled.
     // The run_token is a static, non-expiring HMAC over run.id, so a replayed delivery
     // could rewrite a settled score without this guard.
     if (caps.strictCriteria) {
@@ -1173,7 +1177,7 @@ export async function processStakworkRunWebhook(
       }
       if (existingResultForReplay.criteria_results !== undefined) {
         logger.warn(
-          "[workflow-benchmark/runner] Replay rejected — criteria_results already settled",
+          "[benchmark-runner] Replay rejected — criteria_results already settled",
           "stakwork-run",
           { runId: run.id },
         );
@@ -1196,7 +1200,7 @@ export async function processStakworkRunWebhook(
       logger.error("[legal-benchmark] Pusher trigger failed (non-fatal)", "stakwork-run", { error: String(pusherError) });
     }
 
-    // legalSideEffects: false — skip Jamie-chat trigger for WORKFLOW_BENCHMARK_RUNNER
+    // legalSideEffects: false — skip Jamie-chat trigger for BENCHMARK_RUNNER
     if (caps.legalSideEffects && status === WorkflowStatus.COMPLETED) {
       const wantsJamieChat =
         parseBenchmarkRunResult(serializedResult ?? run.result)?.generateJamieChat === true;
@@ -1828,7 +1832,7 @@ async function processLegalBenchmarkRunnerWebhook(
   const hasValidScore = scoreFields.all_pass !== undefined && scoreFields.pass_rate !== undefined;
 
   // writeGraphOutput: false — EvalTriggerOutput write skipped cleanly as a no-op (not an error).
-  // For WORKFLOW_BENCHMARK_RUNNER, evalTriggerRef will never be set (no EvalTrigger node is created
+  // For BENCHMARK_RUNNER, evalTriggerRef will never be set (no EvalTrigger node is created
   // at dispatch time for this type), so this condition would be false anyway. The capability flag
   // makes the intent explicit and prevents accidental graph writes if evalTriggerRef were ever set.
   if (caps.writeGraphOutput && evalTriggerRef && hasValidScore) {

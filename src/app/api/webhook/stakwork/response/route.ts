@@ -19,7 +19,7 @@ const FLAT_PAYLOAD_RUN_TYPES = new Set<string>([
   StakworkRunType.LEGAL_BENCHMARK_RUNNER,
   StakworkRunType.LEGAL_BENCHMARK_SCORER,
   StakworkRunType.LEGAL_BENCHMARK_EVAL,
-  StakworkRunType.WORKFLOW_BENCHMARK_RUNNER,
+  StakworkRunType.BENCHMARK_RUNNER,
 ]);
 
 /**

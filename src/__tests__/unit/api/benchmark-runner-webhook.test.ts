@@ -1,9 +1,9 @@
 /**
- * Tests for WORKFLOW_BENCHMARK_RUNNER webhook security gates and capability enforcement.
+ * Tests for BENCHMARK_RUNNER webhook security gates and capability enforcement.
  *
  * Verifies:
- *  - WORKFLOW_BENCHMARK_RUNNER ∈ TOKEN_VERIFIED_RUN_TYPES
- *  - WORKFLOW_BENCHMARK_RUNNER ∉ isLegalBenchmarkType (no report_url)
+ *  - BENCHMARK_RUNNER ∈ TOKEN_VERIFIED_RUN_TYPES
+ *  - BENCHMARK_RUNNER ∉ isLegalBenchmarkType (no report_url)
  *  - run_token rejection for new type
  *  - strictCriteria: criteria_results never persisted unvalidated
  *  - Replay guard: rejects if stored result already has criteria_results
@@ -31,7 +31,7 @@ vi.mock("@/services/stakwork-run", () => ({
     StakworkRunType.LEGAL_BENCHMARK_SCORER,
     StakworkRunType.LEGAL_BENCHMARK_EVAL,
     StakworkRunType.LEGAL_BENCHMARK_RECURSION,
-    StakworkRunType.WORKFLOW_BENCHMARK_RUNNER,
+    StakworkRunType.BENCHMARK_RUNNER,
   ]),
 }));
 
@@ -43,14 +43,14 @@ import { TOKEN_VERIFIED_RUN_TYPES } from "@/services/stakwork-run";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function makeWorkflowBenchmarkRequest(
+function makeBenchmarkRunnerRequest(
   runId = "wbr-1",
   workspaceId = "ws-1",
   runToken: string | null = "valid-token",
   bodyOverrides: Record<string, unknown> = {},
 ) {
   const url = new URL(`http://localhost/api/webhook/stakwork/response`);
-  url.searchParams.set("type", "WORKFLOW_BENCHMARK_RUNNER");
+  url.searchParams.set("type", "BENCHMARK_RUNNER");
   url.searchParams.set("run_id", runId);
   url.searchParams.set("workspace_id", workspaceId);
   if (runToken !== null) {
@@ -79,8 +79,8 @@ function makeWorkflowBenchmarkRequest(
 // ─── Set membership assertions ────────────────────────────────────────────────
 
 describe("TOKEN_VERIFIED_RUN_TYPES set membership", () => {
-  test("WORKFLOW_BENCHMARK_RUNNER ∈ TOKEN_VERIFIED_RUN_TYPES", () => {
-    expect(TOKEN_VERIFIED_RUN_TYPES.has(StakworkRunType.WORKFLOW_BENCHMARK_RUNNER)).toBe(true);
+  test("BENCHMARK_RUNNER ∈ TOKEN_VERIFIED_RUN_TYPES", () => {
+    expect(TOKEN_VERIFIED_RUN_TYPES.has(StakworkRunType.BENCHMARK_RUNNER)).toBe(true);
   });
 
   test("all four legal benchmark types still ∈ TOKEN_VERIFIED_RUN_TYPES (regression)", () => {
@@ -90,7 +90,7 @@ describe("TOKEN_VERIFIED_RUN_TYPES set membership", () => {
     expect(TOKEN_VERIFIED_RUN_TYPES.has(StakworkRunType.LEGAL_BENCHMARK_RECURSION)).toBe(true);
   });
 
-  test("WORKFLOW_BENCHMARK_RUNNER has exactly 5 members in TOKEN_VERIFIED_RUN_TYPES", () => {
+  test("BENCHMARK_RUNNER has exactly 5 members in TOKEN_VERIFIED_RUN_TYPES", () => {
     expect(TOKEN_VERIFIED_RUN_TYPES.size).toBe(5);
   });
 
@@ -103,7 +103,7 @@ describe("TOKEN_VERIFIED_RUN_TYPES set membership", () => {
 
 // ─── Payload normalization ────────────────────────────────────────────────────
 
-describe("POST /api/webhook/stakwork/response — WORKFLOW_BENCHMARK_RUNNER flat payload normalization", () => {
+describe("POST /api/webhook/stakwork/response — BENCHMARK_RUNNER flat payload normalization", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockProcessStakworkRunWebhook.mockResolvedValue({
@@ -122,7 +122,7 @@ describe("POST /api/webhook/stakwork/response — WORKFLOW_BENCHMARK_RUNNER flat
       },
     );
 
-    await postWebhook(makeWorkflowBenchmarkRequest());
+    await postWebhook(makeBenchmarkRunnerRequest());
 
     expect(capturedCalls).toHaveLength(1);
     const { webhookData } = capturedCalls[0] as {
@@ -144,7 +144,7 @@ describe("POST /api/webhook/stakwork/response — WORKFLOW_BENCHMARK_RUNNER flat
       return { runId: "wbr-1", status: "COMPLETED", dataType: "string" };
     });
 
-    await postWebhook(makeWorkflowBenchmarkRequest());
+    await postWebhook(makeBenchmarkRunnerRequest());
 
     const { webhookData } = capturedCalls[0] as {
       webhookData: { result: Record<string, unknown> };
@@ -163,15 +163,15 @@ describe("POST /api/webhook/stakwork/response — WORKFLOW_BENCHMARK_RUNNER flat
       },
     );
 
-    await postWebhook(makeWorkflowBenchmarkRequest("wbr-1", "ws-1", "mytoken123"));
+    await postWebhook(makeBenchmarkRunnerRequest("wbr-1", "ws-1", "mytoken123"));
 
     const params = capturedParams[0] as Record<string, unknown>;
     expect(params.run_token).toBe("mytoken123");
-    expect(params.type).toBe("WORKFLOW_BENCHMARK_RUNNER");
+    expect(params.type).toBe("BENCHMARK_RUNNER");
   });
 
   test("returns 200 on success", async () => {
-    const res = await postWebhook(makeWorkflowBenchmarkRequest());
+    const res = await postWebhook(makeBenchmarkRunnerRequest());
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.success).toBe(true);
@@ -180,7 +180,7 @@ describe("POST /api/webhook/stakwork/response — WORKFLOW_BENCHMARK_RUNNER flat
 
 // ─── Security gates ───────────────────────────────────────────────────────────
 
-describe("POST /api/webhook/stakwork/response — WORKFLOW_BENCHMARK_RUNNER security", () => {
+describe("POST /api/webhook/stakwork/response — BENCHMARK_RUNNER security", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
@@ -190,7 +190,7 @@ describe("POST /api/webhook/stakwork/response — WORKFLOW_BENCHMARK_RUNNER secu
       new Error("Unauthorized: invalid run token"),
     );
 
-    const res = await postWebhook(makeWorkflowBenchmarkRequest("wbr-1", "ws-1", "badtoken"));
+    const res = await postWebhook(makeBenchmarkRunnerRequest("wbr-1", "ws-1", "badtoken"));
     expect(res.status).toBe(500);
     const body = await res.json();
     expect(body.error).toBe("Failed to process webhook");
@@ -202,7 +202,7 @@ describe("POST /api/webhook/stakwork/response — WORKFLOW_BENCHMARK_RUNNER secu
       new Error("Unauthorized: workspace mismatch"),
     );
 
-    const res = await postWebhook(makeWorkflowBenchmarkRequest("wbr-1", "ws-other", "anytoken"));
+    const res = await postWebhook(makeBenchmarkRunnerRequest("wbr-1", "ws-other", "anytoken"));
     expect(res.status).toBe(500);
     const body = await res.json();
     expect(body.error).toBe("Failed to process webhook");
@@ -214,7 +214,7 @@ describe("POST /api/webhook/stakwork/response — WORKFLOW_BENCHMARK_RUNNER secu
       new Error("Unauthorized: invalid run token"),
     );
 
-    const res = await postWebhook(makeWorkflowBenchmarkRequest("wbr-1", "ws-1", null));
+    const res = await postWebhook(makeBenchmarkRunnerRequest("wbr-1", "ws-1", null));
     expect(res.status).toBe(500);
 
     const callArgs = mockProcessStakworkRunWebhook.mock.calls[0];
@@ -225,7 +225,7 @@ describe("POST /api/webhook/stakwork/response — WORKFLOW_BENCHMARK_RUNNER secu
 
 // ─── Regression: legal benchmark types unchanged ──────────────────────────────
 
-describe("Regression — existing legal benchmark types still work after WORKFLOW_BENCHMARK_RUNNER addition", () => {
+describe("Regression — existing legal benchmark types still work after BENCHMARK_RUNNER addition", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockProcessStakworkRunWebhook.mockResolvedValue({
@@ -369,7 +369,7 @@ describe("Drift check — normalizeLegalBenchmarkPayload mirror in webhook-repor
       };
     }
 
-    // Verify the mirror works correctly for WORKFLOW_BENCHMARK_RUNNER payload shape
+    // Verify the mirror works correctly for BENCHMARK_RUNNER payload shape
     const normalized = normalizeLegalBenchmarkPayloadMirror({
       final_output: "test output",
       output_s3_url: "https://stakwork-uploads.s3.us-east-1.amazonaws.com/x.txt",

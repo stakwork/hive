@@ -480,14 +480,18 @@ jobs:
             npx prisma migrate resolve --rolled-back "20260224130756_add_tasks_artifact_type" 2>&1 || true
           fi
 
-          echo "Resolving 20260820090100_add_workflow_benchmark_runner_active_index..."
-          WBR_IDX=$(psql "$DATABASE_URL" -tAc "SELECT COUNT(*) FROM pg_indexes WHERE indexname='stakwork_runs_workflow_benchmark_active_run_idx';" 2>/dev/null | tr -d '[:space:]' || echo "0")
-          if [ "$WBR_IDX" = "1" ]; then
-            echo "  stakwork_runs_workflow_benchmark_active_run_idx exists — marking as applied"
-            npx prisma migrate resolve --applied "20260820090100_add_workflow_benchmark_runner_active_index" 2>&1 || true
+          echo "Resolving 20260820090100_add_benchmark_runner_active_index (clearing any stale old-name records)..."
+          # Clear stale failed records under the old name from before the rename
+          psql "$DATABASE_URL" -c "DELETE FROM _prisma_migrations WHERE migration_name='20260820090100_add_workflow_benchmark_runner_active_index' AND finished_at IS NULL;" 2>/dev/null || true
+          npx prisma migrate resolve --rolled-back "20260820090100_add_workflow_benchmark_runner_active_index" 2>&1 || true
+          # Now resolve the renamed migration against the actual index name
+          BRR_IDX=$(psql "$DATABASE_URL" -tAc "SELECT COUNT(*) FROM pg_indexes WHERE indexname='stakwork_runs_benchmark_active_run_idx';" 2>/dev/null | tr -d '[:space:]' || echo "0")
+          if [ "$BRR_IDX" = "1" ]; then
+            echo "  stakwork_runs_benchmark_active_run_idx exists — marking as applied"
+            npx prisma migrate resolve --applied "20260820090100_add_benchmark_runner_active_index" 2>&1 || true
           else
-            echo "  stakwork_runs_workflow_benchmark_active_run_idx absent — rolling back for Prisma to re-run"
-            npx prisma migrate resolve --rolled-back "20260820090100_add_workflow_benchmark_runner_active_index" 2>&1 || true
+            echo "  stakwork_runs_benchmark_active_run_idx absent — rolling back for Prisma to re-run"
+            npx prisma migrate resolve --rolled-back "20260820090100_add_benchmark_runner_active_index" 2>&1 || true
           fi
 
           # Retry prisma migrate deploy — Neon endpoint may sleep between steps
@@ -549,11 +553,14 @@ jobs:
             else
               npx prisma migrate resolve --rolled-back "20260224130756_add_tasks_artifact_type" 2>&1 || true
             fi
-            WBR_IDX=$(psql "$DATABASE_URL" -tAc "SELECT COUNT(*) FROM pg_indexes WHERE indexname='stakwork_runs_workflow_benchmark_active_run_idx';" 2>/dev/null | tr -d '[:space:]' || echo "0")
-            if [ "$WBR_IDX" = "1" ]; then
-              npx prisma migrate resolve --applied "20260820090100_add_workflow_benchmark_runner_active_index" 2>&1 || true
+            # Clear stale failed records under the old name from before the rename
+            psql "$DATABASE_URL" -c "DELETE FROM _prisma_migrations WHERE migration_name='20260820090100_add_workflow_benchmark_runner_active_index' AND finished_at IS NULL;" 2>/dev/null || true
+            npx prisma migrate resolve --rolled-back "20260820090100_add_workflow_benchmark_runner_active_index" 2>&1 || true
+            BRR_IDX=$(psql "$DATABASE_URL" -tAc "SELECT COUNT(*) FROM pg_indexes WHERE indexname='stakwork_runs_benchmark_active_run_idx';" 2>/dev/null | tr -d '[:space:]' || echo "0")
+            if [ "$BRR_IDX" = "1" ]; then
+              npx prisma migrate resolve --applied "20260820090100_add_benchmark_runner_active_index" 2>&1 || true
             else
-              npx prisma migrate resolve --rolled-back "20260820090100_add_workflow_benchmark_runner_active_index" 2>&1 || true
+              npx prisma migrate resolve --rolled-back "20260820090100_add_benchmark_runner_active_index" 2>&1 || true
             fi
             sleep 15
           done
