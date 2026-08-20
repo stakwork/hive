@@ -55,11 +55,15 @@ export async function GET(
 
     let root = result.root;
 
-    // A neighbor-type filter narrow enough to match nothing can leave the
-    // queried node out of the `expand=edges` payload entirely. That's "no
-    // neighbors of those types", not "no such node" — resolve the node on its
-    // own so the panel still opens. Only costs a call in that edge case.
-    if (!root && nodeTypes.length > 0) {
+    // `expand=edges` omits the queried node when nothing links to it that
+    // survives filtering. That's "no visible neighbors", not "no such node" —
+    // resolve it on its own so the panel still opens. Two ways in: a
+    // neighbor-type filter narrow enough to match nothing, or a node whose
+    // every edge points at a denylisted type (an AgentSession that read no
+    // Concepts has only HAS_TURN edges, and Turn is denylisted). Unguarded
+    // because both look identical here, and it only costs a call when the
+    // node came back empty.
+    if (!root) {
       const node = await kgGetNode(access.jarvisUrl, access.apiKey, ref_id);
       if (node) root = node;
     }
