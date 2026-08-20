@@ -227,6 +227,9 @@ export function buildRecursionNodes(): JarvisNode[] {
         n_passed: 50,
         n_total: 74,
         judge_notes: "50/74 criteria passed (baseline run)",
+        // Written onto the node by the Stakwork eval workflow — the activity
+        // rail links it directly for graph-only rows.
+        report_url: "https://example.com/reports/mock-baseline-report",
       },
     },
 
@@ -273,6 +276,7 @@ export function buildRecursionNodes(): JarvisNode[] {
         n_passed: 54,
         n_total: 74,
         judge_notes: "54/74 criteria passed (rerun after root fix)",
+        report_url: "https://example.com/reports/mock-rerun-report-001",
       },
     },
 

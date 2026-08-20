@@ -26,6 +26,7 @@ function makeRow(overrides: Partial<AttemptRailRow> = {}): AttemptRailRow {
     runId: "run-1",
     projectId: 42,
     hasReport: false,
+    reportUrl: null,
     reportPending: false,
     inFlight: false,
     ...overrides,
@@ -111,6 +112,50 @@ describe("RecursionActivityRail", () => {
     );
     const link = screen.getByTestId("rail-report-trigger-1");
     expect(link.getAttribute("href")).toBe("/w/openlaw/legal/benchmarks/runs/run-1/report");
+  });
+
+  it("links the graph node's report_url when no run report exists", () => {
+    // Recursion attempts written by the eval workflow carry report_url on the
+    // EvalTriggerOutput node and usually never join a StakworkRun row.
+    render(
+      <RecursionActivityRail
+        rows={[
+          makeRow({
+            status: null,
+            runType: null,
+            runId: null,
+            projectId: null,
+            reportUrl: "https://example.com/reports/base",
+          }),
+        ]}
+        partial={false}
+      />,
+    );
+    const link = screen.getByTestId("rail-report-trigger-1");
+    expect(link.getAttribute("href")).toBe("https://example.com/reports/base");
+    expect(link.getAttribute("target")).toBe("_blank");
+  });
+
+  it("prefers the role-gated run report page over the graph report_url", () => {
+    render(
+      <RecursionActivityRail
+        rows={[makeRow({ hasReport: true, reportUrl: "https://example.com/reports/base" })]}
+        partial={false}
+      />,
+    );
+    const link = screen.getByTestId("rail-report-trigger-1");
+    expect(link.getAttribute("href")).toBe("/w/openlaw/legal/benchmarks/runs/run-1/report");
+  });
+
+  it("a landed graph report_url outranks the report-pending state", () => {
+    render(
+      <RecursionActivityRail
+        rows={[makeRow({ reportPending: true, reportUrl: "https://example.com/reports/base" })]}
+        partial={false}
+      />,
+    );
+    expect(screen.getByTestId("rail-report-trigger-1")).toBeTruthy();
+    expect(screen.queryByTestId("rail-report-pending-trigger-1")).toBeNull();
   });
 
   it("renders the distinct report-pending state, not a link and not blank", () => {
