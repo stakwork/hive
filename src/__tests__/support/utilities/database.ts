@@ -119,69 +119,90 @@ export async function resetDatabase() {
   }
 }
 
+/**
+ * Tables the aggressive path truncates, ordered child-first for readability.
+ * `TRUNCATE ... CASCADE` also empties any table that references one of these,
+ * so the list does not have to be exhaustive.
+ */
+const RESET_TABLES = [
+  "screenshots",
+  "attachments",
+  "artifacts",
+  "chat_messages",
+  "deployments",
+  "notification_triggers",
+  "workflow_tasks",
+  "tasks",
+  "janitor_recommendations",
+  "janitor_runs",
+  "janitor_configs",
+  "agent_logs",
+  "stakwork_runs",
+  "whiteboards",
+  "user_stories",
+  "user_feature_presence",
+  "scorer_digests",
+  "legal_benchmark_runs",
+  "phases",
+  "features",
+  "repositories",
+  "pods",
+  "swarms",
+  "workspace_transactions",
+  "lightning_payments",
+  "fiat_payments",
+  "workspace_members",
+  "workspaces",
+  "llm_models",
+  "sessions",
+  "accounts",
+  "github_auth",
+  "users",
+  "source_control_tokens",
+  "source_control_orgs",
+  "prompt_versions",
+  "prompt_daily_runs",
+  "prompt_usages",
+  "prompts",
+];
+
+/**
+ * Fallback reset: one `TRUNCATE ... CASCADE` over every table that exists.
+ *
+ * This must NOT reach for `SET session_replication_role = replica`. That GUC
+ * is per-CONNECTION, and Prisma runs each raw query on whatever pooled
+ * connection is free — so the `SET` and its matching reset can land on
+ * different connections, leaving one stuck in replica mode for the rest of
+ * the run. Postgres implements foreign keys as system triggers, which replica
+ * mode skips, so any later query served by that connection silently loses FK
+ * enforcement AND referential actions: `prompt.delete()` succeeds while its
+ * `onDelete: Cascade` versions survive as orphans. The integration suite
+ * shares one client and one pool across all files (vitest `singleThread`), so
+ * a single poisoned connection produces failures in unrelated files far later
+ * in the run.
+ *
+ * `TRUNCATE ... CASCADE` needs no such hack: it follows FK dependencies on its
+ * own, in a single statement on a single connection.
+ */
 async function aggressiveReset() {
+  let existing: Array<{ tablename: string }>;
   try {
-    await db.$executeRaw`SET session_replication_role = replica;`;
+    existing = await db.$queryRaw<Array<{ tablename: string }>>`
+      SELECT tablename FROM pg_tables
+      WHERE schemaname = current_schema()
+        AND tablename = ANY(${RESET_TABLES})
+    `;
   } catch {
     // Engine not yet connected — nothing to reset, return silently
     return;
   }
 
-  try {
-    const tables = [
-      "screenshots",
-      "attachments",
-      "artifacts",
-      "chat_messages",
-      "deployments",
-      "notification_triggers",
-      "workflow_tasks",
-      "tasks",
-      "janitor_recommendations",
-      "janitor_runs",
-      "janitor_configs",
-      "agent_logs",
-      "stakwork_runs",
-      "whiteboards",
-      "user_stories",
-      "user_feature_presence",
-      "scorer_digests",
-      "legal_benchmark_runs",
-      "phases",
-      "features",
-      "repositories",
-      "pods",
-      "swarms",
-      "workspace_transactions",
-      "lightning_payments",
-      "fiat_payments",
-      "workspace_members",
-      "workspaces",
-      "llm_models",
-      "sessions",
-      "accounts",
-      "github_auth",
-      "users",
-      "source_control_tokens",
-      "source_control_orgs",
-      "prompt_versions",
-      "prompt_daily_runs",
-      "prompt_usages",
-      "prompts",
-    ];
+  if (existing.length === 0) return;
 
-    for (const table of tables) {
-      try {
-        await db.$executeRawUnsafe(`TRUNCATE TABLE "${table}" CASCADE;`);
-      } catch {
-        // Some tables may not exist in certain schemas; ignore.
-      }
-    }
-  } finally {
-    try {
-      await db.$executeRaw`SET session_replication_role = DEFAULT;`;
-    } catch {
-      // Ignore reset failure if engine disconnected
-    }
+  const list = existing.map((t) => `"${t.tablename}"`).join(", ");
+  try {
+    await db.$executeRawUnsafe(`TRUNCATE TABLE ${list} CASCADE;`);
+  } catch {
+    // Best-effort: the ordered deleteMany path above is the primary reset.
   }
 }
