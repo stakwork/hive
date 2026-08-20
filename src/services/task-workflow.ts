@@ -889,6 +889,9 @@ export async function callStakworkAPI(params: {
     name: mode === "plan_mode" ? `hive-plan-${featureId ?? taskId}` : `hive-task-${taskId}`,
     workflow_id: parseInt(workflowId),
     webhook_url: workflowWebhookUrl,
+    ...(mode === "plan_mode" || mode === "workflow_editor"
+      ? { webhook_full_output: false }
+      : {}),
     workflow_params: {
       set_var: {
         attributes: {
