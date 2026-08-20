@@ -58,6 +58,11 @@ export interface KgNeighborResult extends NeighborResult {
    * only when the call opted in via `includeEdgeCounts`.
    */
   edges?: Record<string, number>;
+  /**
+   * `read_order` off a `READ_CONCEPT` edge — the 1-based order an
+   * AgentSession read this Concept in. Absent on every other edge type.
+   */
+  read_order?: number;
 }
 
 export interface KgNeighborsResponse {
@@ -485,6 +490,10 @@ export async function kgGetNeighbors(
       const node_type = nodeDetail?.node_type ?? "unknown";
 
       const importance = (edge.properties?.importance as number | undefined);
+      // READ_CONCEPT edges carry the order the session read each concept in.
+      // Cherry-picked like `importance` rather than passing the whole
+      // properties bag through — the UI only has a use for these two.
+      const readOrder = (edge.properties?.read_order as number | undefined);
 
       neighbors.push({
         urn: "", // caller mints the URN using parsed.org / parsed.workspace
@@ -494,6 +503,7 @@ export async function kgGetNeighbors(
         ref_id: neighborRefId,
         name: nodeDetail?.name ?? "",
         ...(importance !== undefined ? { importance } : {}),
+        ...(readOrder !== undefined ? { read_order: readOrder } : {}),
         ...(nodeDetail?.edges !== undefined ? { edges: nodeDetail.edges } : {}),
       });
 

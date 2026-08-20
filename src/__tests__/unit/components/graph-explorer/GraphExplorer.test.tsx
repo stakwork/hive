@@ -34,6 +34,24 @@ vi.mock("@/graph-viz-kit", () => ({
   VIRTUAL_CENTER: -1,
 }));
 
+// jsdom implements no scrolling — the chat sidebar keeps its newest bubble in
+// view on every render, which would otherwise blow up as an unhandled error.
+if (!Element.prototype.scrollTo) {
+  Element.prototype.scrollTo = () => {};
+}
+
+// ── Mock the chat bubble renderer ────────────────────────────────────────────
+// MarkdownRenderer pulls in useTheme -> window.matchMedia, which jsdom doesn't
+// implement. None of these tests assert on rendered markdown.
+vi.mock("@/components/MarkdownRenderer", () => ({
+  MarkdownRenderer: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+}));
+
+// ── Mock Pusher (the chat sidebar subscribes on mount) ───────────────────────
+vi.mock("@/hooks/usePusherChannel", () => ({
+  usePusherChannel: () => null,
+}));
+
 // ── Mock KGCanvas (dynamic import) ────────────────────────────────────────────
 vi.mock("@/components/graph-explorer/KGCanvas", () => ({
   default: () => <div data-testid="kg-canvas" />,
@@ -186,6 +204,38 @@ const MOCK_NODE_DETAIL = {
   ],
 };
 
+// ── Graph-chat fixtures ──────────────────────────────────────────────────────
+const CHAT_SESSION_ID = "sess-1";
+const AGENT_SESSION_REF = "agent-session-ref-1";
+
+/** One concept the thread read, carrying the ref_id the fallback needs. */
+const MOCK_REFLECTION = {
+  session_id: CHAT_SESSION_ID,
+  concepts: [
+    { id: "repo/auth-flow", ref_id: "concept-1", name: "Auth Flow", rank: null, read_order: 1 },
+  ],
+};
+
+/** What focusing the session node returns: the hub plus the concept it read. */
+const MOCK_SESSION_STAR = {
+  node: {
+    ref_id: AGENT_SESSION_REF,
+    node_type: "AgentSession",
+    name: CHAT_SESSION_ID,
+    properties: { name: CHAT_SESSION_ID },
+  },
+  neighbors: [
+    {
+      ref_id: "concept-1",
+      node_type: "Concept",
+      name: "Auth Flow",
+      edge_type: "READ_CONCEPT",
+      direction: "forward" as const,
+      read_order: 1,
+    },
+  ],
+};
+
 type FetchMockArgs = { ok: boolean; status: number; body?: unknown; text?: string };
 
 function makeFetch({ ok, status, body, text }: FetchMockArgs) {
@@ -222,6 +272,48 @@ const NODE_TYPES_ROUTE: RouteSpec = {
   ok: true,
   status: 200,
   body: MOCK_NODE_TYPES,
+};
+
+/**
+ * Per-session runs. MUST be listed before CHAT_THREADS_ROUTE — both URLs share
+ * the `/graph/agent/runs` prefix and `makeRoutedFetch` takes the first match.
+ */
+const CHAT_RUNS_ROUTE: RouteSpec = {
+  match: "/graph/agent/runs?sessionId=",
+  ok: true,
+  status: 200,
+  body: {
+    runs: [
+      {
+        id: "run-1",
+        prompt: "How does auth work?",
+        result: "It uses NextAuth.",
+        status: "DELIVERED_WEBHOOK",
+        error: null,
+        proposalsEnabled: false,
+        reflection: MOCK_REFLECTION,
+        createdAt: "2026-08-20T00:00:00.000Z",
+      },
+    ],
+  },
+};
+
+/** Thread list. */
+const CHAT_THREADS_ROUTE: RouteSpec = {
+  match: "/graph/agent/runs",
+  ok: true,
+  status: 200,
+  body: {
+    threads: [
+      {
+        sessionId: CHAT_SESSION_ID,
+        title: "How does auth work?",
+        proposalsEnabled: false,
+        lastStatus: "DELIVERED_WEBHOOK",
+        updatedAt: "2026-08-20T00:00:00.000Z",
+      },
+    ],
+  },
 };
 
 /** URLs the mock was called with that contain `substring`. */
@@ -828,6 +920,80 @@ describe("GraphExplorer", () => {
 
     expect(screen.getByTestId("graph-chat-toggle-button")).toBeInTheDocument();
     expect(screen.queryByTestId("graph-chat-new-button")).not.toBeInTheDocument();
+  });
+
+  // ── 21-22. "Show on graph" from a chat thread ─────────────────────────────
+  // A session's Concept reads live in the graph as (AgentSession)-[:READ_CONCEPT]->
+  // (Concept), so the button resolves the session node and focuses it. When that
+  // node isn't there, it draws the same star from the reflection sidecar instead.
+
+  /** Open the chat panel and drill into the one seeded thread. */
+  async function openThread() {
+    await userEvent.click(screen.getByTestId("graph-chat-toggle-button"));
+    await waitFor(() =>
+      expect(screen.getByTestId(`graph-chat-thread-${CHAT_SESSION_ID}`)).toBeInTheDocument(),
+    );
+    await userEvent.click(screen.getByTestId(`graph-chat-thread-${CHAT_SESSION_ID}`));
+    await waitFor(() =>
+      expect(screen.getByTestId("graph-chat-show-on-graph-button")).toBeInTheDocument(),
+    );
+  }
+
+  test("show-on-graph focuses the session's AgentSession node", async () => {
+    const fetchMock = makeRoutedFetch([
+      CHAT_RUNS_ROUTE,
+      CHAT_THREADS_ROUTE,
+      NODE_TYPES_ROUTE,
+      {
+        match: "/graph/nodes/search",
+        ok: true,
+        status: 200,
+        // The session node is the hit whose name IS the session id; the
+        // runner-up is a fulltext near-match that must be ignored.
+        body: {
+          results: [
+            { ref_id: "other", node_type: "AgentSession", name: "sess-9999", description: "" },
+            { ref_id: AGENT_SESSION_REF, node_type: "AgentSession", name: CHAT_SESSION_ID, description: "" },
+          ],
+        },
+      },
+      { match: "/graph/node/", ok: true, status: 200, body: MOCK_SESSION_STAR },
+    ]);
+    global.fetch = fetchMock;
+
+    render(<GraphExplorer workspaceSlug="test-ws" />);
+    await openThread();
+    await userEvent.click(screen.getByTestId("graph-chat-show-on-graph-button"));
+
+    const searchUrls = urlsFor(fetchMock, "/graph/nodes/search");
+    expect(searchUrls).toHaveLength(1);
+    expect(searchUrls[0]).toContain(`q=${CHAT_SESSION_ID}`);
+    expect(searchUrls[0]).toContain("types=AgentSession");
+
+    // Focused the exact-name hit, not the higher-scoring near-match.
+    await waitFor(() =>
+      expect(urlsFor(fetchMock, `/graph/node/${AGENT_SESSION_REF}`)).not.toHaveLength(0),
+    );
+    expect(urlsFor(fetchMock, "/graph/node/other")).toHaveLength(0);
+  });
+
+  test("show-on-graph falls back to the reflection sidecar when the session node is missing", async () => {
+    const fetchMock = makeRoutedFetch([
+      CHAT_RUNS_ROUTE,
+      CHAT_THREADS_ROUTE,
+      NODE_TYPES_ROUTE,
+      // Edge sync never ran for this session — no node whose name matches.
+      { match: "/graph/nodes/search", ok: true, status: 200, body: { results: [] } },
+    ]);
+    global.fetch = fetchMock;
+
+    render(<GraphExplorer workspaceSlug="test-ws" />);
+    await openThread();
+    await userEvent.click(screen.getByTestId("graph-chat-show-on-graph-button"));
+
+    // The star is drawn client-side, so nothing is resolved against the graph…
+    await waitFor(() => expect(screen.getByTestId("tab-graph")).toBeInTheDocument());
+    expect(urlsFor(fetchMock, "/graph/node/")).toHaveLength(0);
   });
 });
 
