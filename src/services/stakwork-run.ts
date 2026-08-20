@@ -46,6 +46,7 @@ import { getBifrostForLLM } from "@/services/bifrost/orchestrator";
 import { optionalEnvVars } from "@/config/env";
 import { getJarvisConfigForWorkspace } from "@/lib/helpers/jarvis-config";
 import { addNode, addEdge } from "@/services/swarm/api/nodes";
+import { syncPlannerWorkflowStatusToCanvas } from "@/services/canvas-planner-fanout";
 import { z } from "zod";
 
 const encryptionService = EncryptionService.getInstance();
@@ -2642,6 +2643,7 @@ export async function stopStakworkRun(
           members: { where: { userId }, select: { role: true } },
         },
       },
+      feature: { select: { parentCanvasConversationId: true } },
     },
   });
 
@@ -2710,6 +2712,50 @@ export async function stopStakworkRun(
   } catch (error) {
     console.error("Error broadcasting to Pusher:", error);
     // Don't throw - update succeeded
+  }
+
+  // Only a PLAN_CHAT run owns the feature's workflowStatus (feature-chat.ts
+  // sets it IN_PROGRESS on dispatch). DIAGRAM_GENERATION / TASK_GENERATION
+  // runs also carry a featureId but must not halt the plan. Guarded so a
+  // feature the webhook already moved to a terminal state isn't clobbered.
+  if (run.type === StakworkRunType.PLAN_CHAT && run.featureId) {
+    const halted = await db.feature.updateMany({
+      where: { id: run.featureId, workflowStatus: WorkflowStatus.IN_PROGRESS },
+      data: {
+        workflowStatus: WorkflowStatus.HALTED,
+        workflowCompletedAt: new Date(),
+        updatedAt: new Date(),
+      },
+    });
+
+    if (halted.count > 0) {
+      const conversationId = run.feature?.parentCanvasConversationId;
+      if (conversationId) {
+        try {
+          await syncPlannerWorkflowStatusToCanvas(
+            conversationId,
+            run.featureId,
+            WorkflowStatus.HALTED,
+          );
+        } catch (error) {
+          console.error("Error syncing planner status to canvas:", error);
+        }
+      }
+
+      try {
+        await pusherServer.trigger(
+          getFeatureChannelName(run.featureId),
+          PUSHER_EVENTS.WORKFLOW_STATUS_UPDATE,
+          {
+            taskId: run.featureId,
+            workflowStatus: WorkflowStatus.HALTED,
+            timestamp: new Date(),
+          },
+        );
+      } catch (error) {
+        console.error("Error broadcasting feature status to Pusher:", error);
+      }
+    }
   }
 
   return updatedRun;
