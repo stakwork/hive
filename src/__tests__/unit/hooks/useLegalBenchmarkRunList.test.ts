@@ -652,7 +652,9 @@ describe("useLegalBenchmarkRunList — analysis/recursion pipelines", () => {
     await waitFor(() => expect(result.current.runs).toHaveLength(3));
 
     expect(result.current.runs.map((r) => r.id)).toEqual(["eval-1", "rec-1", "manual-1"]);
-    expect(result.current.runs.map((r) => r.runType)).toEqual(["analysis", "recursion", "manual"]);
+    // Both cron pipelines tag as "recursion" — analysis is an internal stage
+    // of the loop, not an operator-facing category.
+    expect(result.current.runs.map((r) => r.runType)).toEqual(["recursion", "recursion", "manual"]);
     // Secondary rows carry slug but no title (derived at render time) and no score
     const evalRow = result.current.runs[0];
     expect(evalRow.taskSlug).toBe("antitrust/task-1");
