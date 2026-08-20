@@ -74,6 +74,19 @@ interface PanelTarget {
   label: string;
 }
 
+/**
+ * Id prefix for the stand-in center of a sidecar-drawn session star. The real
+ * AgentSession node has a ref_id; this one does not exist in the graph at all,
+ * so every lookup path has to treat it as inert.
+ */
+const SYNTHETIC_SESSION_PREFIX = "session:";
+
+/** Minimum a chat thread has to tell us to draw its reads without the graph. */
+export interface SessionConceptSeed {
+  ref_id?: string;
+  name?: string;
+}
+
 /** Multi-select node-type filter, shared by search and graph-walk expansion. */
 function NodeTypeFilter({
   label,
@@ -456,6 +469,89 @@ export function GraphExplorer({ workspaceSlug, initialRefId }: GraphExplorerProp
     void focusNode(initialRefId);
   }, [initialRefId, focusNode]);
 
+  /**
+   * "Show on graph" from a chat thread. A session's Concept reads are already
+   * in the graph as (AgentSession)-[:READ_CONCEPT]->(Concept) edges, so the
+   * whole picture is one `focusNode` away — all we need is the session node's
+   * ref_id, and the upsert sets `name = sessionId`, so it resolves by search.
+   *
+   * Stakgraph's edge sync is fire-and-forget and silently skips concepts it
+   * can't match, so a missing session node is an ordinary outcome, not an
+   * error: fall back to drawing the star from the reflection sidecar the chat
+   * already holds. The sidecar is the source of truth; these edges are an
+   * index over it.
+   */
+  const showSessionOnGraph = useCallback(
+    async (sessionId: string, sidecarConcepts: SessionConceptSeed[]) => {
+      setFocusError(null);
+      setFocusLoading(true);
+
+      let hit: GraphSearchHit | undefined;
+      try {
+        const params = new URLSearchParams({
+          q: sessionId,
+          types: "AgentSession",
+          limit: "5",
+        });
+        const res = await fetch(
+          `/api/workspaces/${workspaceSlug}/graph/nodes/search?${params.toString()}`,
+        );
+        if (res.ok) {
+          const data: GraphSearchResponse = await res.json();
+          // Fulltext search returns near-matches too — the session node is the
+          // one whose name IS the session id, never a scoring runner-up.
+          hit = data.results?.find((r) => r.name === sessionId);
+        }
+      } catch {
+        // Fall through to the sidecar.
+      }
+      setFocusLoading(false);
+
+      if (hit) {
+        await focusNode(hit.ref_id, hit.name);
+        return;
+      }
+
+      // ── Sidecar fallback ──
+      // Only concepts carrying a ref_id can be drawn: a name-only read has
+      // nothing to resolve on click, and it's the same filter stakgraph
+      // applies before it writes edges at all.
+      const linkable = sidecarConcepts.filter(
+        (c): c is SessionConceptSeed & { ref_id: string } => Boolean(c.ref_id),
+      );
+      if (linkable.length === 0) {
+        setFocusError("This chat's concept reads aren't in the graph yet.");
+        return;
+      }
+
+      const centerId = `${SYNTHETIC_SESSION_PREFIX}${sessionId}`;
+      setQueryResult(null);
+      setError(null);
+      setNotConfigured(false);
+      setRawGraph({
+        nodes: [
+          { id: centerId, label: "This chat", nodeType: "AgentSession" },
+          ...linkable.map((c) => ({
+            id: c.ref_id,
+            label: c.name || c.ref_id,
+            nodeType: "Concept",
+          })),
+        ],
+        edges: linkable.map((c) => ({
+          source: centerId,
+          target: c.ref_id,
+          label: "READ_CONCEPT",
+        })),
+      });
+      // Left as drill-down (not walk) mode deliberately: the center is
+      // synthetic, so re-centering the walk on it would strand the layout.
+      setFocusedNode(null);
+      setSearchMatches(null);
+      setTab((t) => (t === "2d" ? t : "graph"));
+    },
+    [workspaceSlug, focusNode, setSearchMatches],
+  );
+
   // ── 3D canvas node click → open sheet ────────────────────────────────────
   const handleCanvasNodeClick = useCallback(
     (id: number) => {
@@ -465,6 +561,8 @@ export function GraphExplorer({ workspaceSlug, initialRefId }: GraphExplorerProp
       // order), so the ref_id is a direct lookup.
       const refId = rawNodes[id]?.id;
       if (!refId) return;
+      // The sidecar star's center isn't a real node — nothing to open or walk.
+      if (refId.startsWith(SYNTHETIC_SESSION_PREFIX)) return;
 
       if (walkMode) {
         // Walking: clicking a node expands it and re-centers, growing the map.
@@ -959,6 +1057,7 @@ export function GraphExplorer({ workspaceSlug, initialRefId }: GraphExplorerProp
           activeSessionId={chatSessionId}
           onSelectThread={setChatSessionId}
           onNewChat={() => setNewChatOpen(true)}
+          onShowOnGraph={showSessionOnGraph}
           onClose={() => setChatOpen(false)}
         />
       )}

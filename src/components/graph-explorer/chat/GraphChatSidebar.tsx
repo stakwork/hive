@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ArrowLeft, Loader2, MessageSquare, Plus, Send, Sparkles, X } from "lucide-react";
+import { ArrowLeft, Loader2, MessageSquare, Plus, Send, Share2, Sparkles, X } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -11,6 +11,7 @@ import { usePusherChannel } from "@/hooks/usePusherChannel";
 import { getWorkspaceChannelName, PUSHER_EVENTS } from "@/lib/pusher";
 import { filterProposalsForSession, latestReflection } from "@/lib/graph-chat/threads";
 import { ConceptsPanel } from "@/components/agent-logs/LogDetailContent";
+import type { ReflectedConcept } from "@/types/agent-logs";
 import type { ConceptProposal, ConceptProposalListResponse } from "@/types/concept-proposals";
 import type {
   GraphChatRun,
@@ -54,6 +55,7 @@ export function GraphChatSidebar({
   activeSessionId,
   onSelectThread,
   onNewChat,
+  onShowOnGraph,
   onClose,
 }: {
   workspaceSlug: string;
@@ -62,6 +64,12 @@ export function GraphChatSidebar({
   onSelectThread: (sessionId: string | null) => void;
   /** Starting a chat only makes sense from here, so the button lives here. */
   onNewChat: () => void;
+  /**
+   * Draw this thread's Concept reads on the canvas. The sidecar concepts ride
+   * along as the fallback for when the session's graph edges never synced —
+   * the explorer prefers the real AgentSession node when it can find it.
+   */
+  onShowOnGraph: (sessionId: string, sidecarConcepts: ReflectedConcept[]) => void;
   onClose: () => void;
 }) {
   const [threads, setThreads] = useState<GraphChatThread[]>([]);
@@ -267,6 +275,18 @@ export function GraphChatSidebar({
         >
           <Plus className="h-4 w-4" />
         </Button>
+        {activeSessionId && (
+          <Button
+            variant="outline"
+            size="icon"
+            className="h-7 w-7"
+            onClick={() => onShowOnGraph(activeSessionId, reflection?.concepts ?? [])}
+            title="Show this chat's concept reads on the graph"
+            data-testid="graph-chat-show-on-graph-button"
+          >
+            <Share2 className="h-4 w-4" />
+          </Button>
+        )}
         <Button variant="ghost" size="icon" className="h-7 w-7" onClick={onClose} data-testid="graph-chat-close-button">
           <X className="h-4 w-4" />
         </Button>
