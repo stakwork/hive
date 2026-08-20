@@ -620,4 +620,140 @@ describe("resolveJudgeDispute", () => {
       resolveJudgeDispute({ verdict: "PASSED", flagged: true, llm_flag_reason: PROSE }),
     ).toBeNull();
   });
+
+  // ── flag_basis canonicalisation ───────────────────────────────────────────────
+
+  it('flag_basis "judgeerror" (unpunctuated) → canonical "judge_error"', () => {
+    const result = resolveJudgeDispute({
+      verdict: "fail",
+      flagged: true,
+      flag_basis: "judgeerror",
+    });
+    expect(result!.flagBasis).toBe("judge_error");
+  });
+
+  it('flag_basis "criterionvalidity" (unpunctuated) → canonical "criterion_validity"', () => {
+    const result = resolveJudgeDispute({
+      verdict: "fail",
+      flagged: true,
+      flag_basis: "criterionvalidity",
+    });
+    expect(result!.flagBasis).toBe("criterion_validity");
+  });
+
+  it('flag_basis "legitimatefailure" (unpunctuated) → canonical "legitimate_failure"', () => {
+    const result = resolveJudgeDispute({
+      verdict: "fail",
+      flagged: true,
+      flag_basis: "legitimatefailure",
+    });
+    expect(result!.flagBasis).toBe("legitimate_failure");
+  });
+
+  it('flag_basis "indeterminate" → canonical "indeterminate" (unchanged — no underscores to add)', () => {
+    const result = resolveJudgeDispute({
+      verdict: "fail",
+      flagged: true,
+      flag_basis: "indeterminate",
+    });
+    expect(result!.flagBasis).toBe("indeterminate");
+  });
+
+  it("underscored tokens are unchanged after canonicalisation", () => {
+    for (const token of ["judge_error", "criterion_validity", "legitimate_failure", "indeterminate"]) {
+      const result = resolveJudgeDispute({ verdict: "fail", flagged: true, flag_basis: token });
+      expect(result!.flagBasis).toBe(token);
+    }
+  });
+
+  it('hyphenated variant "judge-error" canonicalises to "judge_error"', () => {
+    const result = resolveJudgeDispute({
+      verdict: "fail",
+      flagged: true,
+      flag_basis: "judge-error",
+    });
+    expect(result!.flagBasis).toBe("judge_error");
+  });
+
+  it('spaced variant "judge error" canonicalises to "judge_error"', () => {
+    const result = resolveJudgeDispute({
+      verdict: "fail",
+      flagged: true,
+      flag_basis: "judge error",
+    });
+    expect(result!.flagBasis).toBe("judge_error");
+  });
+
+  it('hyphenated variant "criterion-validity" canonicalises to "criterion_validity"', () => {
+    const result = resolveJudgeDispute({
+      verdict: "fail",
+      flagged: true,
+      flag_basis: "criterion-validity",
+    });
+    expect(result!.flagBasis).toBe("criterion_validity");
+  });
+
+  it("unknown token is returned verbatim (lowercased) — not dropped, not coerced", () => {
+    const result = resolveJudgeDispute({
+      verdict: "fail",
+      flagged: true,
+      flag_basis: "SOMETHINGELSE",
+    });
+    expect(result!.flagBasis).toBe("somethingelse");
+  });
+
+  it("unknown token with underscores is returned verbatim (lowercased)", () => {
+    const result = resolveJudgeDispute({
+      verdict: "fail",
+      flagged: true,
+      flag_basis: "SOME_UNKNOWN_BASIS",
+    });
+    expect(result!.flagBasis).toBe("some_unknown_basis");
+  });
+
+  it("isDispute is unaffected by flag_basis value — only flagged gates the badge (regression guard)", () => {
+    // flagged=false, flag_basis present → isDispute must be false regardless
+    const noFlag = resolveJudgeDispute({
+      verdict: "fail",
+      flagged: false,
+      llm_flag_reason: PROSE,
+      flag_basis: "judgeerror",
+    });
+    expect(noFlag).not.toBeNull();
+    expect(noFlag!.isDispute).toBe(false);
+
+    // flagged=true, flag_basis="legitimate_failure" → isDispute must still be true
+    const withFlag = resolveJudgeDispute({
+      verdict: "fail",
+      flagged: true,
+      flag_basis: "legitimatefailure",
+    });
+    expect(withFlag!.isDispute).toBe(true);
+
+    // flagged=true, unknown basis → isDispute must be true
+    const unknownBasis = resolveJudgeDispute({
+      verdict: "fail",
+      flagged: true,
+      flag_basis: "somethingelse",
+    });
+    expect(unknownBasis!.isDispute).toBe(true);
+  });
+
+  it("mixed-case unpunctuated token is normalised case-insensitively", () => {
+    const result = resolveJudgeDispute({
+      verdict: "fail",
+      flagged: true,
+      flag_basis: "JudgeError",
+    });
+    expect(result!.flagBasis).toBe("judge_error");
+  });
+
+  it("flag_basis with leading/trailing whitespace is trimmed before canonicalisation", () => {
+    const result = resolveJudgeDispute({
+      verdict: "fail",
+      flagged: true,
+      flag_basis: "  judgeerror  ",
+    });
+    expect(result!.flagBasis).toBe("judge_error");
+  });
 });

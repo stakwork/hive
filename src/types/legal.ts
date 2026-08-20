@@ -100,9 +100,10 @@ export interface BenchmarkRunResult {
     /**
      * Judge-dispute fields: wire names mirror Jarvis `CriterionResult` attributes
      * (`flagged`, `llm_flag_reason`, `flag_basis`). These arrive on live payloads
-     * (verified against production). `flag_basis` currently arrives as an empty
-     * string on every production run pending an upstream Task Runner `jsonSchema`
-     * fix — Hive must tolerate absent/empty `flag_basis` indefinitely.
+     * (verified against production). `flag_basis` is now populated on production
+     * runs but may arrive without underscores (e.g. `"judgeerror"` instead of
+     * `"judge_error"`) — canonicalised on read in `resolveJudgeDispute`.
+     * Hive must tolerate absent/empty `flag_basis` indefinitely.
      *
      * `flagged` is widened to `boolean | number | string` to accommodate loose
      * wire values (`1`, `"true"`) that must not fail Zod safeParse or typecheck.
@@ -113,11 +114,14 @@ export interface BenchmarkRunResult {
     flagged?: boolean | number | string;
     llm_flag_reason?: string;
     /**
-     * Basis for the judge's dispute verdict. Arrives as an empty string on all
-     * current production runs; Hive tolerates absent/empty values gracefully.
-     * Known tokens: `criterion_validity`, `judge_error`, `legitimate_failure`,
-     * `indeterminate`. Unknown tokens are preserved, not discarded.
-     * Used for tooltip copy only — never a suppression input for the dispute badge.
+     * Basis for the judge's dispute verdict. Now populated on production runs;
+     * may arrive unpunctuated (e.g. `"judgeerror"`, `"criterionvalidity"`) and
+     * is canonicalised to the underscored form on read in `resolveJudgeDispute`.
+     * Hive tolerates absent/empty values gracefully.
+     * Known canonical tokens: `criterion_validity`, `judge_error`,
+     * `legitimate_failure`, `indeterminate`. Unknown tokens are preserved, not
+     * discarded. Used for tooltip copy only — never a suppression input for the
+     * dispute badge.
      */
     flag_basis?: string;
     /**

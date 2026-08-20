@@ -205,12 +205,27 @@ export function sortAttemptsChronologically(
 export const JUDGE_DISPUTE_NO_PROSE_MARKER = "Disputed — no explanation provided";
 
 /**
+ * Canonical `flag_basis` token map — compacted (alphanumerics only) → underscored form.
+ * Live eval payloads emit tokens without underscores (e.g. "judgeerror"), so we strip
+ * all non-alphanumeric characters from the already-trimmed/lowercased token and look it
+ * up here. This also absorbs hyphenated and spaced variants without another patch.
+ * Tokens that don't match any key are returned verbatim (post trim/lowercase).
+ */
+const FLAG_BASIS_CANONICAL: Record<string, string> = {
+  criterionvalidity: "criterion_validity",
+  judgeerror: "judge_error",
+  legitimatefailure: "legitimate_failure",
+  indeterminate: "indeterminate",
+};
+
+/**
  * Resolve the judge dispute for a single criterion entry.
  *
  * Wire keys (`flagged`, `llm_flag_reason`, `contested`) arrive on live payloads
- * (verified against production). `flag_basis` currently arrives as an empty
- * string on every production run pending an upstream Task Runner `jsonSchema`
- * fix — Hive must tolerate absent/empty `flag_basis` indefinitely.
+ * (verified against production). `flag_basis` is now populated on production runs
+ * but may arrive without underscores (e.g. "judgeerror", "criterionvalidity") —
+ * it is canonicalised on read via `FLAG_BASIS_CANONICAL`. Hive must tolerate
+ * absent/empty `flag_basis` indefinitely.
  *
  * All Hive-side consumption must go through this resolver — do not read
  * `flagged`, `llm_flag_reason`, or `flag_basis` directly elsewhere.
@@ -223,8 +238,9 @@ export const JUDGE_DISPUTE_NO_PROSE_MARKER = "Disputed — no explanation provid
  *             show (not marked AND no usable prose) — renders exactly as today.
  *   - object  when there is something to surface (marked OR usable prose):
  *             `isDispute`   — true only when `flagged` is truthy (sole badge gate).
- *             `flagBasis`   — normalised `flag_basis` string (trimmed+lowercased)
- *                             or null when absent/empty. Unknown tokens preserved.
+ *             `flagBasis`   — canonicalised `flag_basis` string (underscored) or
+ *                             the raw trimmed+lowercased token for unknowns, or null
+ *                             when absent/empty.
  *             `hasReason`   — true only when usable prose is present.
  *             `displayText` — single rendering string for panel/clipboard/filter;
  *                             never "[object Object]".
@@ -259,13 +275,18 @@ export function resolveJudgeDispute(criterion: {
   const judgeDisputeProse =
     typeof raw === "string" && raw.trim().length > 0 ? raw.trim() : null;
 
-  // 4. Normalise flag_basis: trim + lowercase when a non-empty string, else null.
-  //    Unknown tokens are preserved verbatim — display-copy mapping is the UI's job.
+  // 4. Normalise flag_basis: trim + lowercase, then canonicalise against the
+  //    known-token map by stripping non-alphanumeric characters and looking up
+  //    the compacted form. This absorbs unpunctuated ("judgeerror"), hyphenated,
+  //    and spaced variants without further patches. Unknown tokens are preserved
+  //    verbatim (post trim/lowercase) — display-copy mapping is the UI's job.
   const rawBasis = criterion.flag_basis;
-  const flagBasis =
-    typeof rawBasis === "string" && rawBasis.trim().length > 0
-      ? rawBasis.trim().toLowerCase()
-      : null;
+  let flagBasis: string | null = null;
+  if (typeof rawBasis === "string" && rawBasis.trim().length > 0) {
+    const trimmed = rawBasis.trim().toLowerCase();
+    const compacted = trimmed.replace(/[^a-z0-9]/g, "");
+    flagBasis = FLAG_BASIS_CANONICAL[compacted] ?? trimmed;
+  }
 
   // 5. Tri-state return.
   //    Nothing to show: not disputed AND no prose → null.
