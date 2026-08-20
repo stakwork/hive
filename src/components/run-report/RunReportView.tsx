@@ -75,7 +75,12 @@ export function RunReportView({
   const [openDoc, setOpenDoc] = useState<{ docId: string; tokens: string[] } | null>(null);
 
   const projection = payload.projection;
-  const chain = useMemo(() => (projection ? buildChainModel(projection) : null), [projection]);
+  // Narrow to RunReportProjection — ConsolidatedReportProjection is rendered by a
+  // separate ConsolidatedReportView component and never reaches RunReportView.
+  const runProjection = projection && !("consolidated" in projection && projection.consolidated)
+    ? (projection as import("@/lib/run-report/types").RunReportProjection)
+    : null;
+  const chain = useMemo(() => (runProjection ? buildChainModel(runProjection) : null), [runProjection]);
 
   // Graph-sourced, so it must not die with the S3 bundle — it renders in the
   // "unavailable" state below, which is exactly when a reviewer needs it.
