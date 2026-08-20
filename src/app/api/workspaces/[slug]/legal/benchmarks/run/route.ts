@@ -373,6 +373,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       name: `harvey-runner-${runnerRun.id}`,
       workflow_id: parseInt(runnerWorkflowId, 10),
       webhook_url: statusWebhookUrl,
+      webhook_full_output: false,
       workflow_params: {
         set_var: {
           attributes: {
