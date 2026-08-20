@@ -12,7 +12,9 @@ import { loadRunReport } from "@/lib/run-report/load";
 import { getJarvisConfigForWorkspace } from "@/lib/helpers/jarvis-config";
 import { readNodeByRef } from "@/services/swarm/api/nodes";
 import { fetchTaskRubricRoster } from "@/services/legal-benchmark-rubrics";
+import { fetchFixSnapshots } from "@/services/legal-benchmark-fix-snapshots";
 import type { GraphRubric } from "@/lib/harvey-lab/rubric-scoring";
+import type { FixSnapshotEntry } from "@/types/legal";
 
 /**
  * Deep-linkable report page for a graph-only recursion attempt.
@@ -98,12 +100,23 @@ export default async function AttemptReportPage({ params, searchParams }: PagePr
   // report page. Strictly non-fatal: any failure falls back to bundle-local
   // scoring.
   let graphRubrics: GraphRubric[] | null = null;
+  // ProposedFix snapshot history for the task. Graph-only recursion attempts
+  // have no StakworkRun row, so there is no runId to attribute against — the
+  // section shows the task-scoped history unbadged. Omitted when the query
+  // string carried no (valid) task slug. Strictly non-fatal.
+  let fixSnapshots: FixSnapshotEntry[] | null = null;
   if (taskSlug) {
     try {
       const rosterResult = await fetchTaskRubricRoster(jarvisConfig, taskSlug);
       if (rosterResult.ok) graphRubrics = rosterResult.roster?.rubrics ?? null;
     } catch {
       // Graph unreachable — render with bundle-local scoring.
+    }
+    try {
+      const snapshots = await fetchFixSnapshots(jarvisConfig, taskSlug);
+      fixSnapshots = snapshots.length > 0 ? snapshots : null;
+    } catch {
+      // Graph unreachable — render without the fix snapshot section.
     }
   }
 
@@ -125,6 +138,7 @@ export default async function AttemptReportPage({ params, searchParams }: PagePr
           taskTitle={taskTitle}
           workspaceSlug={slug}
           graphRubrics={graphRubrics}
+          fixSnapshots={fixSnapshots}
         />
       </div>
     </div>

@@ -3,6 +3,8 @@ import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 import { getWorkspaceSwarmAccess } from "@/lib/helpers/swarm-access";
 import { getJarvisConfigForWorkspace } from "@/lib/helpers/jarvis-config";
 import { searchNodesByAttributes } from "@/services/swarm/api/nodes";
+import { projectFix } from "@/services/legal-benchmark-fix-snapshots";
+import { buildSnapshotMockFixes } from "@/app/api/mock/jarvis/graph/fix-snapshot-fixtures";
 import { db } from "@/lib/db";
 import { StakworkRunType } from "@prisma/client";
 import { parseBenchmarkRunResult } from "@/types/legal";
@@ -23,59 +25,6 @@ function handleSwarmAccessError(error: { type: string }) {
   };
   const errorInfo = errorMap[error.type] ?? { message: "Unknown error", status: 500 };
   return NextResponse.json({ error: errorInfo.message }, { status: errorInfo.status });
-}
-
-/**
- * Map a raw graph node's properties into the whitelisted ProposedFix projection.
- * Tolerates any missing key (returns null for it) — never leaks unexpected node data.
- *
- * `project_id` is sourced primarily from the node's `unique_source_id` property,
- * which jarvis-backend writes via `NodeHelper.update_node_unique_source_id` when
- * a node is dispatched to Stakwork. The legacy `project_id` node property is used
- * only as a fallback for older nodes written before `unique_source_id` existed.
- */
-function projectFix(refId: string, props: Record<string, unknown> | undefined): ProposedFix {
-  const p = props ?? {};
-  const str = (key: string): string | null => {
-    const v = p[key];
-    return v != null ? String(v) : null;
-  };
-
-  /**
-   * Resolve the Stakwork project id with explicit precedence:
-   *   1. `unique_source_id` — written by jarvis-backend on Stakwork dispatch (preferred).
-   *   2. `project_id`       — legacy fallback for older ProposedFix nodes.
-   * WARNING: do not silently reorder this precedence; `unique_source_id` must win
-   * whenever it is present and numeric, to ensure the super-admin link resolves.
-   */
-  const toProjectId = (v: unknown): number | null =>
-    v != null && v !== "" && !isNaN(Number(v)) ? Number(v) : null;
-  const project_id =
-    toProjectId(p["unique_source_id"]) ?? toProjectId(p["project_id"]);
-
-  return {
-    ref_id: refId,
-    criterion_id: str("criterion_id"),
-    criterion_title: str("criterion_title"),
-    prompt_name: str("prompt_name"),
-    prompt_id: str("prompt_id"),
-    prompt_version_id: str("prompt_version_id"),
-    new_prompt_version_id: str("new_prompt_version_id"),
-    failing_value: str("failing_value"),
-    passing_value: str("passing_value"),
-    delta: str("delta"),
-    reasoning: str("reasoning"),
-    eval_status: str("eval_status"),
-    status: str("status"),
-    rerun_status: str("rerun_status"),
-    before_score: str("before_score"),
-    after_score: str("after_score"),
-    score_delta: str("score_delta"),
-    rerun_run_id: str("rerun_run_id"),
-    resolved_by: str("resolved_by"),
-    resolved_at: str("resolved_at"),
-    project_id,
-  };
 }
 
 /**
@@ -129,52 +78,15 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: "Run not found" }, { status: 404 });
     }
 
-    // Step 5: USE_MOCKS branch — only in non-production, placed after slug + run checks
+    // Step 5: USE_MOCKS branch — only in non-production, placed after slug + run checks.
+    // Sourced from the shared fixture module (also feeding the recursion
+    // fixture and the run-report server helper) so the shapes cannot drift.
+    // This route's historical contract excludes rejected fixes, so the mock
+    // list is filtered the same way the real path is in Step 9.
     if (process.env.USE_MOCKS === "true" && process.env.NODE_ENV !== "production") {
-      const mockFixes: ProposedFix[] = [
-        {
-          ref_id: "mock-fix-1",
-          criterion_id: "criterion-1",
-          criterion_title: "Citation Accuracy",
-          prompt_name: "citation_verifier_v2",
-          prompt_id: "prompt-abc",
-          prompt_version_id: "v2.1",
-          new_prompt_version_id: "v2.2",
-          failing_value: "The court held in Smith v. Jones (2018)...",
-          passing_value: "The court held in Smith v. Jones, 123 F.3d 456 (9th Cir. 2018)...",
-          delta: "Added full citation format with reporter and circuit information",
-          reasoning:
-            "The original prompt did not instruct the model to include reporter citations, causing incomplete legal references.",
-          status: "pending",
-          rerun_status: "pending",
-          before_score: undefined,
-          after_score: undefined,
-          score_delta: undefined,
-          rerun_run_id: undefined,
-          project_id: null,
-        },
-        {
-          ref_id: "mock-fix-2",
-          criterion_id: "criterion-2",
-          criterion_title: "Argument Completeness",
-          prompt_name: "argument_builder_v3",
-          prompt_id: "prompt-def",
-          prompt_version_id: "v3.0",
-          new_prompt_version_id: "v3.1",
-          failing_value: "50",
-          passing_value: "54",
-          delta: "Enhanced prompt to require explicit counter-argument analysis",
-          reasoning:
-            "The model missed the counter-argument section. New version explicitly instructs inclusion.",
-          status: "pending",
-          rerun_status: "improved",
-          before_score: "50",
-          after_score: "54",
-          score_delta: "+4",
-          rerun_run_id: "rerun-run-mock-1",
-          project_id: 57419,
-        },
-      ];
+      const mockFixes: ProposedFix[] = buildSnapshotMockFixes().filter(
+        (f) => f.status !== "rejected",
+      );
       return NextResponse.json({ fixes: mockFixes });
     }
 

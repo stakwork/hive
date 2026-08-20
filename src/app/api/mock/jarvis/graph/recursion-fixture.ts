@@ -28,6 +28,7 @@
  */
 
 import type { JarvisNode } from "@/types/jarvis";
+import { FIX_SNAPSHOT_SHAPES } from "@/app/api/mock/jarvis/graph/fix-snapshot-fixtures";
 
 // ── Node ref_ids (stable, referenced by edges and tests) ─────────────────────
 export const EVAL_SET_ID = "mock-evalset-001"; // same as MOCK_EVAL_SET_REF_ID
@@ -261,6 +262,8 @@ export function buildRecursionNodes(): JarvisNode[] {
         // rerun_run_id matches PRODUCED_BY output ref_id
         rerun_run_id: FIX_ROOT_RERUN_OUTPUT_ID,
         rerun_status: "completed",
+        // Snapshot: prompt-target edit (body under `text`)
+        ...FIX_SNAPSHOT_SHAPES.promptEdit,
       },
     },
 
@@ -304,6 +307,8 @@ export function buildRecursionNodes(): JarvisNode[] {
         score_delta: "+4",
         rerun_run_id: FIX_DERIVED_RERUN_OUTPUT_ID,
         rerun_status: "completed",
+        // Snapshot: concept edit with the body under the live `docs` key
+        ...FIX_SNAPSHOT_SHAPES.conceptEditDocs,
       },
     },
 
@@ -367,6 +372,8 @@ export function buildRecursionNodes(): JarvisNode[] {
         before_score: "58",
         after_score: "32",
         rerun_run_id: null,
+        // Snapshot: concept CREATE (no old_value, body under `documentation`)
+        ...FIX_SNAPSHOT_SHAPES.conceptCreate,
       },
     },
 
@@ -416,6 +423,9 @@ export function buildRecursionNodes(): JarvisNode[] {
         score_delta: "-3",
         rerun_run_id: null,
         rerun_status: null,
+        // Snapshot: a REJECTED fix carrying a good `documentation` edit — the
+        // reader must still surface this diff, badged rejected.
+        ...FIX_SNAPSHOT_SHAPES.conceptEditDocumentation,
       },
     },
 
@@ -433,10 +443,16 @@ export function buildRecursionNodes(): JarvisNode[] {
         rerun_run_id: null,
         rerun_status: null,
         // No before_score / after_score → unresolvable
+        // Snapshot: unparseable new_value — the rail's slot row still carries
+        // it, and the reader renders the raw-envelope fallback banner.
+        ...FIX_SNAPSHOT_SHAPES.conceptUnparseable,
       },
     },
 
     // ── Rejected ProposedFix (original — must NOT appear in accepted series) ──
+    // Deliberately carries NO snapshot fields (legacy fix shape) — like the
+    // attempt-cap and plateau-cap fixes, it pins the no-snapshot path: no
+    // sidecar entry, no rail diff control.
     {
       ref_id: FIX_REJECTED_ID,
       node_type: "ProposedFix",
@@ -549,7 +565,14 @@ export function buildAttemptCapNodes(): JarvisNode[] {
       ref_id: ATTEMPT_CAP_FIX_BRANCH2_ID,
       node_type: "ProposedFix",
       date_added_to_graph: ts,
-      properties: { eval_status: "accepted", after_score: "65" },
+      properties: {
+        eval_status: "accepted",
+        after_score: "65",
+        // Snapshot: legacy fix_type fallback (no target_type) — rail-reachable
+        // through the attemptCap fix-chain scenario. The stats tests ignore
+        // snapshot props entirely.
+        ...FIX_SNAPSHOT_SHAPES.legacyFixType,
+      },
     },
   ];
 
@@ -668,7 +691,9 @@ export function buildPlateauCapNodes(): JarvisNode[] {
       ref_id: PLATEAU_CAP_FIX1_ID,
       node_type: "ProposedFix",
       date_added_to_graph: String(Number(ts) + 1),
-      properties: { eval_status: "accepted" },
+      // Snapshot with NO target_ref — the rail's dialog must suppress the
+      // live-node link, not render a broken one.
+      properties: { eval_status: "accepted", ...FIX_SNAPSHOT_SHAPES.conceptEditNoRef },
     },
     {
       ref_id: PLATEAU_CAP_FIX1_OUTPUT_ID,
@@ -681,7 +706,9 @@ export function buildPlateauCapNodes(): JarvisNode[] {
       ref_id: PLATEAU_CAP_FIX2_ID,
       node_type: "ProposedFix",
       date_added_to_graph: String(Number(ts) + 2),
-      properties: { eval_status: "accepted" },
+      // Snapshot: valid JSON with no recognizable body key → renders the
+      // empty state, never the unparseable banner.
+      properties: { eval_status: "accepted", ...FIX_SNAPSHOT_SHAPES.conceptNoBodyKey },
     },
     {
       ref_id: PLATEAU_CAP_FIX2_OUTPUT_ID,
