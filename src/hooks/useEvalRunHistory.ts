@@ -72,12 +72,13 @@ export interface AttemptRailRow {
   projectId: number | null;
   hasReport: boolean;
   /**
-   * Report URL carried on the attempt's EvalTriggerOutput graph node
-   * (written by the Stakwork eval workflow; already scheme-checked by
-   * normalizeOutput). Lets graph-only rows link a report even when no
-   * StakworkRun row joined.
+   * EvalTriggerOutput ref_id, set only when that graph node carries a
+   * report_url (written by the Stakwork eval workflow). Lets graph-only rows
+   * link the attempt-report page even when no StakworkRun row joined. The raw
+   * bundle URL itself deliberately stays out of the row — the page resolves it
+   * server-side, same as the runs report.
    */
-  reportUrl: string | null;
+  graphReportRef: string | null;
   /**
    * Run completed with a report requested but the bundle hasn't landed yet —
    * report_url is written asynchronously after completion, so this is a
@@ -505,7 +506,7 @@ export function useEvalRunHistory(input: UseEvalRunHistoryInput): UseEvalRunHist
           statusRun: StakworkRunRow | null,
           extras: Pick<AttemptRailRow, "label" | "attemptIndex" | "score"> & {
             graphTime?: string | null;
-            reportUrl?: string | null;
+            graphReportRef?: string | null;
           },
         ): AttemptRailRow => {
           const parsedStatusRun = statusRun ? parseBenchmarkRunResult(statusRun.result) : null;
@@ -520,7 +521,7 @@ export function useEvalRunHistory(input: UseEvalRunHistoryInput): UseEvalRunHist
             runId: statusRun?.id ?? null,
             projectId: statusRun?.projectId ?? null,
             hasReport: statusRun?.hasReport === true,
-            reportUrl: extras.reportUrl ?? null,
+            graphReportRef: extras.graphReportRef ?? null,
             reportPending:
               statusRun?.status === "COMPLETED" &&
               parsedStatusRun?.generateRunReport === true &&
@@ -542,7 +543,7 @@ export function useEvalRunHistory(input: UseEvalRunHistoryInput): UseEvalRunHist
             attemptIndex: index,
             score: passed != null && total != null ? { passed, total } : null,
             graphTime: graphEpochToIso(attempt.date_added_to_graph),
-            reportUrl: attempt.report_url ?? null,
+            graphReportRef: attempt.report_url ? attempt.ref_id : null,
           });
         });
 
@@ -582,7 +583,7 @@ export function useEvalRunHistory(input: UseEvalRunHistoryInput): UseEvalRunHist
             runId: run.id,
             projectId: run.projectId,
             hasReport: false,
-            reportUrl: null,
+            graphReportRef: null,
             reportPending: false,
             inFlight: true,
           }));
