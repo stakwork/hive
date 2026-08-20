@@ -636,7 +636,15 @@ describe("useLegalBenchmarkRunList — analysis/recursion pipelines", () => {
         makeRow({
           id: "eval-1",
           createdAt: "2025-01-01T12:00:00.000Z",
-          result: JSON.stringify({ taskSlug: "antitrust/task-1", sourceRunId: "manual-1" }),
+          // Post-fix score fields as the wire actually sends them: counts are
+          // STRINGS (verified against a live concept_rerun payload).
+          result: JSON.stringify({
+            taskSlug: "antitrust/task-1",
+            sourceRunId: "manual-1",
+            n_passed: "34",
+            n_total: "39",
+            all_pass: false,
+          }),
         }),
       ],
       recursionRuns: [
@@ -655,11 +663,17 @@ describe("useLegalBenchmarkRunList — analysis/recursion pipelines", () => {
     // Both cron pipelines tag as "recursion" — analysis is an internal stage
     // of the loop, not an operator-facing category.
     expect(result.current.runs.map((r) => r.runType)).toEqual(["recursion", "recursion", "manual"]);
-    // Secondary rows carry slug but no title (derived at render time) and no score
+    // Secondary rows carry slug but no title (derived at render time). Score
+    // fields ride along when the webhook reported them — coerced to numbers
+    // from the wire's string counts.
     const evalRow = result.current.runs[0];
     expect(evalRow.taskSlug).toBe("antitrust/task-1");
     expect(evalRow.taskTitle).toBe("");
-    expect(evalRow.n_passed).toBeUndefined();
+    expect(evalRow.n_passed).toBe(34);
+    expect(evalRow.n_total).toBe(39);
+    expect(evalRow.all_pass).toBe(false);
+    // The fix-proposal row reported no score — fields stay absent.
+    expect(result.current.runs[1].n_passed).toBeUndefined();
   });
 
   it("degrades to manual-only when a secondary fetch fails", async () => {

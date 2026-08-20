@@ -122,12 +122,20 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     // IDOR guard entirely in the WHERE clause — id, workspaceId AND type.
     // Without the type constraint, any run in the workspace that ever acquires
     // a reportUrl becomes fetchable through this endpoint. A cross-workspace
-    // runId returns null with no post-fetch ownership check.
+    // runId returns null with no post-fetch ownership check. EVAL and
+    // RECURSION are allowlisted alongside RUNNER: the recursion pipeline's
+    // re-runs deliver report bundles onto those rows via the same webhook.
     const run = await db.stakworkRun.findFirst({
       where: {
         id: runId,
         workspaceId,
-        type: { in: [StakworkRunType.LEGAL_BENCHMARK_RUNNER] },
+        type: {
+          in: [
+            StakworkRunType.LEGAL_BENCHMARK_RUNNER,
+            StakworkRunType.LEGAL_BENCHMARK_EVAL,
+            StakworkRunType.LEGAL_BENCHMARK_RECURSION,
+          ],
+        },
       },
       // reportUrl IS selected here (opting through the global omit) because the
       // server needs it to fetch the bundle. It is never put in the response.
