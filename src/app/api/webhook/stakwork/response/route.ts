@@ -5,11 +5,21 @@ import { StakworkRunType } from "@prisma/client";
 
 export const fetchCache = "force-no-store";
 
-/** Legal Benchmark run types that use a flat Harvey payload shape */
-const LEGAL_BENCHMARK_TYPES = new Set<string>([
+/**
+ * Run types that use a flat Harvey payload shape requiring normalization.
+ *
+ * This set governs PAYLOAD SHAPE ONLY and is deliberately NOT the authorization set.
+ * Authorization is controlled by `TOKEN_VERIFIED_RUN_TYPES` in stakwork-run.ts.
+ *
+ * Existing asymmetry (do not "fix"): LEGAL_BENCHMARK_RECURSION is in TOKEN_VERIFIED_RUN_TYPES
+ * (token-verified) but absent here because it does not use the flat Harvey payload shape.
+ * Pointing security gates at this shape set would silently exclude it.
+ */
+const FLAT_PAYLOAD_RUN_TYPES = new Set<string>([
   StakworkRunType.LEGAL_BENCHMARK_RUNNER,
   StakworkRunType.LEGAL_BENCHMARK_SCORER,
   StakworkRunType.LEGAL_BENCHMARK_EVAL,
+  StakworkRunType.WORKFLOW_BENCHMARK_RUNNER,
 ]);
 
 /**
@@ -113,7 +123,7 @@ export async function POST(request: NextRequest) {
 
     // For Legal Benchmark types: normalize the flat Harvey payload into the
     // standard { result: {...} } shape before schema validation.
-    const bodyToValidate = LEGAL_BENCHMARK_TYPES.has(type)
+    const bodyToValidate = FLAT_PAYLOAD_RUN_TYPES.has(type)
       ? normalizeLegalBenchmarkPayload(rawBody)
       : rawBody;
 
