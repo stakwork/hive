@@ -140,6 +140,26 @@ describe("CascadeTrace", () => {
     expect(peek.textContent).toContain("Live node fetch needs a workspace context.");
   });
 
+  it("offers a graph deep link from the peek, keyed on the concept's ref_id", async () => {
+    render(<CascadeTrace model={mockModel()} workspaceSlug="acme" />);
+
+    fireEvent.click(screen.getByTestId("cascade-concept-onto-1"));
+
+    await screen.findByTestId("cascade-concept-peek");
+    const link = screen.getByTestId("node-peek-view-in-graph");
+    // `?ref_id=` is what puts the explorer into walk mode on load.
+    expect(link).toHaveAttribute("href", "/w/acme/context/graph?ref_id=onto-1");
+  });
+
+  it("omits the graph link when there is no workspace to link into", async () => {
+    render(<CascadeTrace model={mockModel()} />);
+
+    fireEvent.click(screen.getByTestId("cascade-concept-onto-1"));
+
+    await screen.findByTestId("cascade-concept-peek");
+    expect(screen.queryByTestId("node-peek-view-in-graph")).toBeNull();
+  });
+
   it("expand all unrolls every pill; collapse all folds them", () => {
     render(<CascadeTrace model={mockModel()} />);
 

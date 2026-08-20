@@ -13,7 +13,12 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { NodePeekBody, fetchNodePeek, type NodePeek } from "@/components/run-report/NodePeek";
+import {
+  NodePeekBody,
+  ViewInGraphLink,
+  fetchNodePeek,
+  type NodePeek,
+} from "@/components/run-report/NodePeek";
 import type {
   AgentRow,
   CascadeRowModel,
@@ -494,6 +499,7 @@ function ConceptChip({ row }: { row: ConceptRow }) {
       <Dialog open={peek !== null} onOpenChange={(next) => !next && setPeek(null)}>
         <DialogContent className="max-w-2xl" data-testid="cascade-concept-peek">
           <DialogHeader>
+            <ViewInGraphLink workspaceSlug={workspaceSlug} refId={row.refId} />
             <DialogTitle className="flex items-baseline gap-2 text-[15px]">
               <span className="font-mono text-[9.5px] uppercase tracking-[0.1em] text-muted-foreground/60">
                 concept
