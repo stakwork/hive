@@ -66,6 +66,7 @@ vi.mock("@/services/swarm/api/nodes", () => ({
 // ─── Import subject under test ────────────────────────────────────────────────
 
 import { GET } from "@/app/api/workspaces/[slug]/legal/benchmarks/proposed-fixes/route";
+import { buildSnapshotMockFixes } from "@/app/api/mock/jarvis/graph/fix-snapshot-fixtures";
 import { StakworkRunType } from "@prisma/client";
 
 // ─── Shared fixture data ──────────────────────────────────────────────────────
@@ -500,11 +501,25 @@ describe("GET /api/workspaces/[slug]/legal/benchmarks/proposed-fixes", () => {
     const res = await GET(makeRequest("openlaw", RUNNER_RUN_ID), makeParams("openlaw"));
     expect(res.status).toBe(200);
     const body = await res.json();
-    expect(body.fixes).toHaveLength(2);
-    // One pending, one improved
+    // Mock fixes come from the shared snapshot fixture module, minus the
+    // rejected entries (this route's historical contract filters those).
+    const expected = buildSnapshotMockFixes().filter((f) => f.status !== "rejected");
+    expect(body.fixes).toHaveLength(expected.length);
+    expect(body.fixes.map((f: { ref_id: string }) => f.ref_id)).toEqual(
+      expected.map((f) => f.ref_id),
+    );
+    // The long-standing anchors survive: one pending, one improved rerun
     const statuses = body.fixes.map((f: { rerun_status: string }) => f.rerun_status);
     expect(statuses).toContain("pending");
     expect(statuses).toContain("improved");
+    // Snapshot fields ride through the mock branch (fed to the reader)
+    const withSnapshot = body.fixes.find((f: { ref_id: string }) => f.ref_id === "mock-fix-2");
+    expect(withSnapshot.target_type).toBe("concept");
+    expect(typeof withSnapshot.new_value).toBe("string");
+    // No rejected entry leaks through this route's mock branch
+    expect(
+      body.fixes.every((f: { status?: string | null }) => f.status !== "rejected"),
+    ).toBe(true);
     // Graph should not have been called
     expect(mockSearchNodesByAttributes).not.toHaveBeenCalled();
 
@@ -564,5 +579,37 @@ describe("GET /api/workspaces/[slug]/legal/benchmarks/proposed-fixes", () => {
     expect(fix.before_score).toBe("50");
     expect(fix.after_score).toBe("54");
     expect(fix.score_delta).toBe("+4");
+  });
+
+  // ── Snapshot field projection ─────────────────────────────────────────────
+
+  test("Projection passes the seven snapshot fields through without leaking extras", async () => {
+    mockSearchNodesByAttributes.mockResolvedValue({
+      ok: true,
+      nodes: [
+        makeProposedFixNode({
+          target_type: "concept",
+          target_name: "Limitation of Liability",
+          target_version: "3",
+          target_ref: "concept-ref-1",
+          old_value: '{"docs": "before"}',
+          new_value: '{"docs": "after"}',
+          fix_type: "concept",
+        }),
+      ],
+    });
+
+    const res = await GET(makeRequest("openlaw", RUNNER_RUN_ID), makeParams("openlaw"));
+    const body = await res.json();
+    const fix = body.fixes[0];
+    expect(fix.target_type).toBe("concept");
+    expect(fix.target_name).toBe("Limitation of Liability");
+    expect(fix.target_version).toBe("3");
+    expect(fix.target_ref).toBe("concept-ref-1");
+    expect(fix.old_value).toBe('{"docs": "before"}');
+    expect(fix.new_value).toBe('{"docs": "after"}');
+    expect(fix.fix_type).toBe("concept");
+    // The whitelist still holds — the builder's canary never leaks
+    expect("extra_secret_field" in fix).toBe(false);
   });
 });
