@@ -75,6 +75,7 @@ export async function GET(
       edge_type: n.edgeType,
       direction: n.direction,
       ...(n.importance !== undefined ? { importance: n.importance } : {}),
+      ...(n.read_order !== undefined ? { read_order: n.read_order } : {}),
     }));
 
     const payload: GraphNodeDetailResponse = {
