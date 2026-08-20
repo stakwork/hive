@@ -9,13 +9,15 @@ import { getWorkspaceChannelName, PUSHER_EVENTS } from "@/lib/pusher";
 /**
  * Display name per StakworkRun pipeline:
  *  - "manual"    — LEGAL_BENCHMARK_RUNNER: a human clicked Run; scored
- *  - "analysis"  — LEGAL_BENCHMARK_EVAL: failure analysis; its webhook writes
- *                  cause annotations onto the source run and never a score
- *  - "recursion" — LEGAL_BENCHMARK_RECURSION: the cron's fix-proposal step;
- *                  re-scored attempts land graph-side (Recursion tab), so
- *                  these rows never carry a score either
+ *  - "recursion" — the automated loop, covering BOTH cron pipelines:
+ *                  LEGAL_BENCHMARK_EVAL (failure analysis; writes cause
+ *                  annotations onto the source run) and
+ *                  LEGAL_BENCHMARK_RECURSION (the fix-proposal step).
+ *                  Analysis is an internal stage of the loop, not a category
+ *                  an operator distinguishes — neither pipeline ever scores;
+ *                  re-scored attempts land graph-side (Recursion tab).
  */
-export type BenchmarkRunType = "manual" | "analysis" | "recursion";
+export type BenchmarkRunType = "manual" | "recursion";
 
 export interface BenchmarkRunListRow {
   id: string;
@@ -180,7 +182,7 @@ export function useLegalBenchmarkRunList(
 
       const merged = [
         ...mapped,
-        ...rawEvalRows.map((r) => mapSecondary(r, "analysis")),
+        ...rawEvalRows.map((r) => mapSecondary(r, "recursion")),
         ...rawRecursionRows.map((r) => mapSecondary(r, "recursion")),
       ].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
