@@ -1,9 +1,11 @@
 import { tool, ToolSet } from "ai";
 import { z } from "zod";
+import { StakworkRunType, WorkflowStatus } from "@prisma/client";
 import { db } from "@/lib/db";
 import { updateFeature } from "@/services/roadmap";
 import { sendFeatureChatMessage } from "@/services/roadmap/feature-chat";
 import { getUserActivityFeed } from "@/services/roadmap/user-activity";
+import { stopStakworkRun } from "@/services/stakwork-run";
 import {
   assignFeatureOnCanvas,
   notifyFeatureAssignmentRefreshByOrg,
@@ -900,6 +902,117 @@ export function buildInitiativeTools(
           }
 
           return { error: errMsg };
+        }
+      },
+    }),
+
+    // ─── cancel_feature_planner ──────────────────────────────────────
+    // Chat twin of the canvas card's "Stop Planner". Resolves the
+    // feature's active plan_mode run and halts it via `stopStakworkRun`,
+    // which (as of the stop-halts-feature change) also marks the feature
+    // HALTED — so the wedge doesn't reappear.
+    cancel_feature_planner: tool({
+      description:
+        "Stop a feature's currently-running planning agent. Use this " +
+        "when the user asks to stop, cancel, kill, or halt a planner — " +
+        "or when a planner is stuck and needs interrupting. Halts the " +
+        "active plan_mode run and marks the feature HALTED (the chat " +
+        "twin of the canvas card's **Stop Planner** action). Fails " +
+        "cleanly with `no_active_run` when no planner is running.",
+      inputSchema: z.object({
+        featureId: z
+          .string()
+          .min(1)
+          .describe(
+            "The cuid of the feature whose planner to stop. From a " +
+              "canvas live id of the form `feature:<cuid>`, pass just " +
+              "the `<cuid>` part.",
+          ),
+      }),
+      execute: async ({ featureId }: { featureId: string }) => {
+        try {
+          const feature = await db.feature.findUnique({
+            where: { id: featureId },
+            select: {
+              title: true,
+              workspace: {
+                select: { slug: true, name: true, sourceControlOrgId: true },
+              },
+            },
+          });
+          if (!feature) {
+            return { error: "Feature not found" };
+          }
+          if (feature.workspace.sourceControlOrgId !== orgId) {
+            return { error: "Feature does not belong to this organization" };
+          }
+
+          const featureTitle = feature.title;
+          const workspaceSlug = feature.workspace.slug;
+          const workspaceName = feature.workspace.name;
+
+          // Same active-run definition as createStakworkRun's duplicate
+          // guard: PENDING (starting) or IN_PROGRESS (running).
+          const run = await db.stakworkRun.findFirst({
+            where: {
+              featureId,
+              type: StakworkRunType.PLAN_CHAT,
+              status: {
+                in: [WorkflowStatus.PENDING, WorkflowStatus.IN_PROGRESS],
+              },
+            },
+            orderBy: { createdAt: "desc" },
+            select: { id: true, projectId: true },
+          });
+
+          if (!run) {
+            return {
+              status: "no_active_run" as const,
+              featureId,
+              featureTitle,
+              workspaceSlug,
+              workspaceName,
+              note:
+                "No planner is currently running on this feature — " +
+                "nothing to stop.",
+            };
+          }
+
+          // A run without a Stakwork projectId hasn't fully launched;
+          // stopStakworkRun can't halt it yet.
+          if (!run.projectId) {
+            return {
+              status: "starting" as const,
+              featureId,
+              featureTitle,
+              workspaceSlug,
+              workspaceName,
+              note:
+                "The planner is still starting up and can't be stopped " +
+                "yet — try again in a moment.",
+            };
+          }
+
+          await stopStakworkRun(run.id, userId);
+
+          return {
+            status: "halted" as const,
+            featureId,
+            featureTitle,
+            workspaceSlug,
+            workspaceName,
+            note:
+              "Planner stopped — the feature is now HALTED. It can be " +
+              "resumed from the feature's plan chat.",
+          };
+        } catch (e) {
+          console.error("[initiativeTools.cancel_feature_planner] error:", e);
+          return {
+            error:
+              e instanceof Error
+                ? e.message
+                : "Failed to stop the feature planner",
+          };
         }
       },
     }),
