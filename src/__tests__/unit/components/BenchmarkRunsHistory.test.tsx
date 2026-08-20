@@ -1117,9 +1117,11 @@ describe("BenchmarkRunsHistory — recursion badge", () => {
 describe("BenchmarkRunsHistory — run types", () => {
   const manualRun = () =>
     makeRun({ id: "m-1", taskSlug: "antitrust/task-1" });
+  // The analysis pipeline (LEGAL_BENCHMARK_EVAL) maps to runType "recursion" —
+  // it is an internal stage of the loop, not an operator-facing category.
   const analysisRun = () => ({
     ...makeRun({ id: "a-1" }),
-    runType: "analysis",
+    runType: "recursion",
     taskSlug: "antitrust/task-1",
     taskTitle: "",
     n_passed: undefined,
@@ -1160,19 +1162,9 @@ describe("BenchmarkRunsHistory — run types", () => {
     });
   });
 
-  it("defaults to Manual: cron rows hidden, view identical to before", () => {
+  it("defaults to All: every pipeline newest-first with type badges and score dashes", () => {
     mockMixedRuns();
     render(<BenchmarkRunsHistory />);
-    expect(screen.getByTestId("run-row-m-1")).toBeInTheDocument();
-    expect(screen.queryByTestId("run-row-a-1")).toBeNull();
-    expect(screen.queryByTestId("run-row-r-1")).toBeNull();
-    expect(screen.getByTestId("run-type-manual")).toBeInTheDocument();
-  });
-
-  it("All shows every pipeline newest-first with type badges and score dashes", () => {
-    mockMixedRuns();
-    render(<BenchmarkRunsHistory />);
-    fireEvent.click(screen.getByTestId("type-filter-all"));
 
     const rows = screen.getAllByTestId(/^run-row-/);
     expect(rows.map((r) => r.getAttribute("data-testid"))).toEqual([
@@ -1180,18 +1172,29 @@ describe("BenchmarkRunsHistory — run types", () => {
       "run-row-a-1",
       "run-row-m-1",
     ]);
-    expect(screen.getByTestId("run-type-recursion")).toBeInTheDocument();
-    expect(screen.getByTestId("run-type-analysis")).toBeInTheDocument();
+    // Both cron pipelines wear the same recursion badge — no "analysis" facing
+    // the operator.
+    expect(screen.getAllByTestId("run-type-recursion")).toHaveLength(2);
+    expect(screen.getByTestId("run-type-manual")).toBeInTheDocument();
     // Cron rows never score — explicit dash, not a blank
     expect(screen.getAllByTestId("score-na")).toHaveLength(2);
     // Title derived from the manual row sharing the slug
     expect(screen.getByTestId("run-row-a-1").textContent).toContain("Analyze Antitrust Strategy");
   });
 
-  it("Recursion chip shows the whole loop — analysis AND fix-proposal rows", () => {
+  it("the Type column dropdown narrows to Manual", () => {
     mockMixedRuns();
     render(<BenchmarkRunsHistory />);
-    fireEvent.click(screen.getByTestId("type-filter-recursion"));
+    fireEvent.change(screen.getByTestId("type-filter"), { target: { value: "manual" } });
+    expect(screen.getByTestId("run-row-m-1")).toBeInTheDocument();
+    expect(screen.queryByTestId("run-row-a-1")).toBeNull();
+    expect(screen.queryByTestId("run-row-r-1")).toBeNull();
+  });
+
+  it("the Recursion filter shows the whole loop — analysis AND fix-proposal rows", () => {
+    mockMixedRuns();
+    render(<BenchmarkRunsHistory />);
+    fireEvent.change(screen.getByTestId("type-filter"), { target: { value: "recursion" } });
     expect(screen.getByTestId("run-row-r-1")).toBeInTheDocument();
     expect(screen.getByTestId("run-row-a-1")).toBeInTheDocument();
     expect(screen.queryByTestId("run-row-m-1")).toBeNull();
@@ -1201,14 +1204,13 @@ describe("BenchmarkRunsHistory — run types", () => {
     mockMixedRuns();
     render(<BenchmarkRunsHistory />);
     expect(screen.getByTestId("summary-strip").getAttribute("data-rows")).toBe("1");
-    fireEvent.click(screen.getByTestId("type-filter-all"));
+    fireEvent.change(screen.getByTestId("type-filter"), { target: { value: "recursion" } });
     expect(screen.getByTestId("summary-strip").getAttribute("data-rows")).toBe("1");
   });
 
   it("cron rows do not expand on click", () => {
     mockMixedRuns();
     render(<BenchmarkRunsHistory />);
-    fireEvent.click(screen.getByTestId("type-filter-all"));
     fireEvent.click(screen.getByTestId("run-row-a-1"));
     expect(screen.queryByTestId("results-a-1")).toBeNull();
     fireEvent.click(screen.getByTestId("run-row-m-1"));
@@ -1225,7 +1227,7 @@ describe("BenchmarkRunsHistory — run types", () => {
       setExpandedId: mockSetExpandedId,
     });
     render(<BenchmarkRunsHistory />);
-    fireEvent.click(screen.getByTestId("type-filter-recursion"));
+    fireEvent.change(screen.getByTestId("type-filter"), { target: { value: "recursion" } });
     expect(screen.getByTestId("type-filter-empty").textContent).toMatch(/Recursion tab/);
   });
 });
