@@ -10,7 +10,8 @@ import {
 import { relayoutDiagram, sanitiseDiagram } from "@/services/excalidraw-layout";
 import { db } from "@/lib/db";
 import { stakworkService } from "@/lib/service-factory";
-import { pusherServer } from "@/lib/pusher";
+import { pusherServer, getFeatureChannelName, PUSHER_EVENTS } from "@/lib/pusher";
+import { syncPlannerWorkflowStatusToCanvas } from "@/services/canvas-planner-fanout";
 import { FieldEncryptionService } from "@/lib/encryption/field-encryption";
 import { StakworkRunType, StakworkRunDecision, WorkflowStatus } from "@prisma/client";
 import { isClarifyingQuestions } from "@/types/stakwork";
@@ -31,6 +32,7 @@ vi.mock("@/lib/pusher", () => ({
     STAKWORK_RUN_UPDATE: "stakwork-run-update",
     STAKWORK_RUN_DECISION: "stakwork-run-decision",
     WHITEBOARD_CHAT_MESSAGE: "whiteboard-chat-message",
+    WORKFLOW_STATUS_UPDATE: "workflow-status-update",
   },
 }));
 vi.mock("@/services/excalidraw-layout", () => ({
@@ -89,6 +91,10 @@ vi.mock("@/lib/runtime", () => ({
 vi.mock("@/services/workflow-editor", () => ({
   saveWorkflowArtifact: vi.fn().mockResolvedValue(undefined),
   triggerWorkflowEditorRun: vi.fn().mockResolvedValue(undefined),
+}));
+
+vi.mock("@/services/canvas-planner-fanout", () => ({
+  syncPlannerWorkflowStatusToCanvas: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock("@/config/env", () => ({
@@ -3683,6 +3689,161 @@ describe("Stakwork Run Service", () => {
           feedback: null,
         },
       });
+    });
+
+    test("should halt the feature for a PLAN_CHAT run", async () => {
+      const mockRun = {
+        id: "run-1",
+        projectId: "12345",
+        type: StakworkRunType.PLAN_CHAT,
+        featureId: "feature-1",
+        workspace: {
+          id: "ws-1",
+          slug: "test-workspace",
+          ownerId: "user-1",
+          deleted: false,
+          members: [{ userId: "user-1", role: "OWNER" }],
+        },
+        feature: { parentCanvasConversationId: "conv-1" },
+      };
+
+      mockedDb.stakworkRun.findUnique = vi.fn().mockResolvedValue(mockRun);
+      mockedDb.stakworkRun.update = vi
+        .fn()
+        .mockResolvedValue({ ...mockRun, status: WorkflowStatus.HALTED });
+      mockedDb.feature.updateMany = vi.fn().mockResolvedValue({ count: 1 });
+      mockedPusherServer.trigger = vi.fn().mockResolvedValue({});
+      mockedStakworkService.mockReturnValue({
+        stopProject: vi.fn().mockResolvedValue({}),
+      } as any);
+
+      await stopStakworkRun("run-1", "user-1");
+
+      expect(db.feature.updateMany).toHaveBeenCalledWith({
+        where: {
+          id: "feature-1",
+          workflowStatus: WorkflowStatus.IN_PROGRESS,
+        },
+        data: expect.objectContaining({
+          workflowStatus: WorkflowStatus.HALTED,
+        }),
+      });
+      expect(syncPlannerWorkflowStatusToCanvas).toHaveBeenCalledWith(
+        "conv-1",
+        "feature-1",
+        WorkflowStatus.HALTED,
+      );
+      expect(pusherServer.trigger).toHaveBeenCalledWith(
+        getFeatureChannelName("feature-1"),
+        PUSHER_EVENTS.WORKFLOW_STATUS_UPDATE,
+        expect.objectContaining({
+          taskId: "feature-1",
+          workflowStatus: WorkflowStatus.HALTED,
+        }),
+      );
+    });
+
+    test("should NOT halt the feature for a non-PLAN_CHAT run", async () => {
+      const mockRun = {
+        id: "run-1",
+        projectId: "12345",
+        type: StakworkRunType.DIAGRAM_GENERATION,
+        featureId: "feature-1",
+        workspace: {
+          id: "ws-1",
+          slug: "test-workspace",
+          ownerId: "user-1",
+          deleted: false,
+          members: [{ userId: "user-1", role: "OWNER" }],
+        },
+        feature: { parentCanvasConversationId: "conv-1" },
+      };
+
+      mockedDb.stakworkRun.findUnique = vi.fn().mockResolvedValue(mockRun);
+      mockedDb.stakworkRun.update = vi
+        .fn()
+        .mockResolvedValue({ ...mockRun, status: WorkflowStatus.HALTED });
+      mockedDb.feature.updateMany = vi.fn().mockResolvedValue({ count: 0 });
+      mockedPusherServer.trigger = vi.fn().mockResolvedValue({});
+      mockedStakworkService.mockReturnValue({
+        stopProject: vi.fn().mockResolvedValue({}),
+      } as any);
+
+      await stopStakworkRun("run-1", "user-1");
+
+      expect(db.feature.updateMany).not.toHaveBeenCalled();
+      expect(syncPlannerWorkflowStatusToCanvas).not.toHaveBeenCalled();
+    });
+
+    test("should not fire feature side effects when the feature was already terminal", async () => {
+      const mockRun = {
+        id: "run-1",
+        projectId: "12345",
+        type: StakworkRunType.PLAN_CHAT,
+        featureId: "feature-1",
+        workspace: {
+          id: "ws-1",
+          slug: "test-workspace",
+          ownerId: "user-1",
+          deleted: false,
+          members: [{ userId: "user-1", role: "OWNER" }],
+        },
+        feature: { parentCanvasConversationId: "conv-1" },
+      };
+
+      mockedDb.stakworkRun.findUnique = vi.fn().mockResolvedValue(mockRun);
+      mockedDb.stakworkRun.update = vi
+        .fn()
+        .mockResolvedValue({ ...mockRun, status: WorkflowStatus.HALTED });
+      mockedDb.feature.updateMany = vi.fn().mockResolvedValue({ count: 0 });
+      mockedPusherServer.trigger = vi.fn().mockResolvedValue({});
+      mockedStakworkService.mockReturnValue({
+        stopProject: vi.fn().mockResolvedValue({}),
+      } as any);
+
+      await stopStakworkRun("run-1", "user-1");
+
+      expect(db.feature.updateMany).toHaveBeenCalled();
+      expect(syncPlannerWorkflowStatusToCanvas).not.toHaveBeenCalled();
+      expect(pusherServer.trigger).not.toHaveBeenCalledWith(
+        getFeatureChannelName("feature-1"),
+        PUSHER_EVENTS.WORKFLOW_STATUS_UPDATE,
+        expect.anything(),
+      );
+    });
+
+    test("should still stop the run when the canvas sync throws", async () => {
+      const mockRun = {
+        id: "run-1",
+        projectId: "12345",
+        type: StakworkRunType.PLAN_CHAT,
+        featureId: "feature-1",
+        workspace: {
+          id: "ws-1",
+          slug: "test-workspace",
+          ownerId: "user-1",
+          deleted: false,
+          members: [{ userId: "user-1", role: "OWNER" }],
+        },
+        feature: { parentCanvasConversationId: "conv-1" },
+      };
+
+      mockedDb.stakworkRun.findUnique = vi.fn().mockResolvedValue(mockRun);
+      mockedDb.stakworkRun.update = vi
+        .fn()
+        .mockResolvedValue({ ...mockRun, status: WorkflowStatus.HALTED });
+      mockedDb.feature.updateMany = vi.fn().mockResolvedValue({ count: 1 });
+      mockedPusherServer.trigger = vi.fn().mockResolvedValue({});
+      mockedStakworkService.mockReturnValue({
+        stopProject: vi.fn().mockResolvedValue({}),
+      } as any);
+      vi.mocked(syncPlannerWorkflowStatusToCanvas).mockRejectedValueOnce(
+        new Error("canvas boom"),
+      );
+
+      const result = await stopStakworkRun("run-1", "user-1");
+
+      expect(result.status).toBe(WorkflowStatus.HALTED);
     });
   });
 
