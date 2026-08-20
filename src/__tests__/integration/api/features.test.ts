@@ -919,12 +919,17 @@ describe("Features API - Integration Tests", () => {
           updatedById: user.id,
         },
       });
+      // Explicit timestamps: `created_at` is TIMESTAMP(3) and two inserts land
+      // in the same millisecond most of the time, leaving "the last message"
+      // (ORDER BY created_at DESC LIMIT 1) to an arbitrary, plan-dependent
+      // tie-break. This test is about roles, not timing — so pin the order.
       await db.chatMessage.create({
         data: {
           featureId: repliedFeature.id,
           role: ChatRole.ASSISTANT,
           message: "What are your requirements?",
           status: ChatStatus.SENT,
+          createdAt: new Date("2026-01-01T00:00:00.000Z"),
         },
       });
       await db.chatMessage.create({
@@ -933,6 +938,7 @@ describe("Features API - Integration Tests", () => {
           role: ChatRole.USER,
           message: "Here they are...",
           status: ChatStatus.SENT,
+          createdAt: new Date("2026-01-01T00:00:01.000Z"),
         },
       });
 
