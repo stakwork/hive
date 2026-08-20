@@ -156,13 +156,13 @@ export function mergeWorkflowStatusUpdate(
   }
 
   // --- Child-task branch: event targets a child task ---
-  // Security: only trust task ids that were seeded from the projector.
-  // This prevents a malicious/misconfigured caller from injecting arbitrary
-  // task ids into the client state via the un-scoped Pusher channel.
-  if (!state.agentTasksById.has(taskId)) return state;
-
-  const existing = state.agentTasksById.get(taskId)!;
-  if (existing.workflowStatus === workflowStatus) return state; // no change
+  // Upsert by task id. Feature-channel events are server-published (the
+  // webhook fan-out), never client-triggerable on a public channel, so a
+  // task id absent from the initial projection is a newly-created task and
+  // is registered live rather than dropped — otherwise its count never
+  // updates until the next full refetch.
+  const existing = state.agentTasksById.get(taskId);
+  if (existing && existing.workflowStatus === workflowStatus) return state; // no change
 
   const newTasks = new Map(state.agentTasksById);
   newTasks.set(taskId, { id: taskId, workflowStatus });
