@@ -13,6 +13,18 @@ export interface BenchmarkRunResult {
   evalTriggerRef?: string;
   /** Whether the aggregate EvalTriggerOutput node has already been written (idempotency guard) */
   evalOutputWritten?: boolean;
+  /**
+   * Graph ref_id of the EvalTrigger node written by the eval run.
+   * Copied from the LEGAL_BENCHMARK_EVAL row's result onto the source
+   * LEGAL_BENCHMARK_RUNNER row by processLegalBenchmarkEvalWebhook Step 5.
+   * Only present on runs going forward (historical runs will not have this).
+   */
+  eval_trigger_ref_id?: string;
+  /**
+   * Graph ref_id of the EvalTriggerOutput node paired with the eval trigger.
+   * Copied alongside eval_trigger_ref_id.
+   */
+  eval_trigger_output_ref_id?: string;
   /** Project ID returned by Stakwork on runner dispatch */
   runnerProjectId?: number;
   /** S3 URL of the runner's output document */
@@ -251,6 +263,41 @@ export interface ProposedFix {
    * backward compatibility with downstream consumers (EvalRunsBox, StakworkRunLink).
    */
   project_id?: number | null;
+  // ── Target-snapshot fields (jarvis migration 105_proposed_fix_target_snapshot) ──
+  /**
+   * Type of the graph node that was changed by this fix.
+   * e.g. "concept", "prompt", "workflow". Generic — the UI keys off this.
+   */
+  target_type?: string | null;
+  /**
+   * Human-readable name of the target node (e.g. concept name, prompt name).
+   * Untrusted — must be rendered as escaped text, never raw HTML.
+   */
+  target_name?: string | null;
+  /** Version string of the target at fix time, for display only. */
+  target_version?: string | null;
+  /**
+   * Graph ref_id of the target node.
+   * Load-bearing for the live-node peek: fetchNodePeek / ViewInGraphLink
+   * early-return when this is absent.
+   */
+  target_ref?: string | null;
+  /**
+   * JSON-serialised snapshot of the target BEFORE the fix.
+   * Absent / empty / "null" means this was a create (no prior state).
+   * Untrusted — must be JSON.parse'd in try/catch.
+   */
+  old_value?: string | null;
+  /**
+   * JSON-serialised snapshot of the target AFTER the fix.
+   * Untrusted — must be JSON.parse'd in try/catch.
+   */
+  new_value?: string | null;
+  /**
+   * Legacy fix type field, predating `target_type`.
+   * Used as a fallback kind label when `target_type` is absent.
+   */
+  fix_type?: string | null;
 }
 
 /**

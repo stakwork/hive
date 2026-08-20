@@ -15,6 +15,8 @@ import { loadRunReport } from "@/lib/run-report/load";
 import { getJarvisConfigForWorkspace } from "@/lib/helpers/jarvis-config";
 import { fetchTaskRubricRoster } from "@/services/legal-benchmark-rubrics";
 import type { GraphRubric } from "@/lib/harvey-lab/rubric-scoring";
+import { fetchFixSnapshots } from "@/services/legal-benchmark-fix-snapshots";
+import type { ProposedFix } from "@/types/legal";
 
 /**
  * Deep-linkable run report page.
@@ -106,6 +108,25 @@ export default async function RunReportPage({ params }: PageProps) {
     }
   }
 
+  // Fix snapshots for the task's fix history (graph-sourced, non-fatal).
+  let fixSnapshots: ProposedFix[] | null = null;
+  if (taskSlug) {
+    try {
+      const jarvisConfig = await getJarvisConfigForWorkspace(workspaceId);
+      if (jarvisConfig) {
+        const evalTriggerRef = (run.result
+          ? (JSON.parse(run.result) as Record<string, unknown>)?.eval_trigger_ref_id as string | undefined
+          : undefined) ?? undefined;
+        fixSnapshots = await fetchFixSnapshots(jarvisConfig, taskSlug, {
+          runId: run.id,
+          evalTriggerRef,
+        });
+      }
+    } catch {
+      // Non-fatal — render without fix snapshots.
+    }
+  }
+
   return (
     <div
       className="dark flex flex-col h-full bg-black text-white"
@@ -124,6 +145,7 @@ export default async function RunReportPage({ params }: PageProps) {
           taskTitle={taskTitle}
           workspaceSlug={slug}
           graphRubrics={graphRubrics}
+          fixSnapshots={fixSnapshots}
         />
       </div>
     </div>

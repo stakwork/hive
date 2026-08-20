@@ -75,6 +75,13 @@ function projectFix(refId: string, props: Record<string, unknown> | undefined): 
     resolved_by: str("resolved_by"),
     resolved_at: str("resolved_at"),
     project_id,
+    target_type: str("target_type"),
+    target_name: str("target_name"),
+    target_version: str("target_version"),
+    target_ref: str("target_ref"),
+    old_value: str("old_value"),
+    new_value: str("new_value"),
+    fix_type: str("fix_type"),
   };
 }
 

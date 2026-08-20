@@ -5,6 +5,8 @@ import { AlertCircle, Info } from "lucide-react";
 import { useUserTimezone } from "@/hooks/useUserTimezone";
 import type { RunReportPayload } from "@/lib/run-report/types";
 import type { GraphRubric } from "@/lib/harvey-lab/rubric-scoring";
+import type { ProposedFix } from "@/types/legal";
+import { FixSnapshotSection } from "./sections";
 import { buildChainModel } from "@/lib/run-report/chain";
 import { DocumentViewerModal } from "./DocumentViewerModal";
 import { ReportHeader } from "./ReportHeader";
@@ -53,6 +55,12 @@ interface Props {
    * and contested exclusions; null falls back to bundle-local scoring.
    */
   graphRubrics?: GraphRubric[] | null;
+  /**
+   * ProposedFix nodes fetched server-side for this task's fix history.
+   * Rendered even when payload.error === "unavailable" — the data is
+   * graph-sourced and still good when the S3 bundle is missing.
+   */
+  fixSnapshots?: ProposedFix[] | null;
 }
 
 export function RunReportView({
@@ -60,6 +68,7 @@ export function RunReportView({
   taskTitle = "Run report",
   workspaceSlug = null,
   graphRubrics = null,
+  fixSnapshots = null,
 }: Props) {
   const { timezone } = useUserTimezone();
   const [openDoc, setOpenDoc] = useState<{ docId: string; tokens: string[] } | null>(null);
@@ -67,27 +76,40 @@ export function RunReportView({
   const projection = payload.projection;
   const chain = useMemo(() => (projection ? buildChainModel(projection) : null), [projection]);
 
+  // ── Fix snapshots — graph-sourced, render even when S3 bundle is missing ──
+  const fixSnapshotSection = fixSnapshots != null && fixSnapshots.length > 0 && workspaceSlug ? (
+    <SectionErrorBoundary>
+      <FixSnapshotSection fixes={fixSnapshots} workspaceSlug={workspaceSlug} />
+    </SectionErrorBoundary>
+  ) : null;
+
   // ── Report exists but could not be loaded from S3 ─────────────────────────
   if (payload.error === "unavailable") {
     return (
-      <StateNotice
-        icon={<AlertCircle className="h-5 w-5" />}
-        title="Report couldn't be loaded"
-        body="The report bundle exists for this run but couldn't be fetched from storage. It may have been moved or deleted. Reloading may help."
-        testId="run-report-state-unavailable"
-      />
+      <div>
+        {fixSnapshotSection}
+        <StateNotice
+          icon={<AlertCircle className="h-5 w-5" />}
+          title="Report couldn't be loaded"
+          body="The report bundle exists for this run but couldn't be fetched from storage. It may have been moved or deleted. Reloading may help."
+          testId="run-report-state-unavailable"
+        />
+      </div>
     );
   }
 
   // ── Report URL rejected by the SSRF guard ────────────────────────────────
   if (payload.error === "url_rejected") {
     return (
-      <StateNotice
-        icon={<AlertCircle className="h-5 w-5" />}
-        title="Report location not permitted"
-        body="The report bundle for this run is stored at a location that is not permitted by this deployment's security policy. Contact your workspace administrator."
-        testId="run-report-state-url-rejected"
-      />
+      <div>
+        {fixSnapshotSection}
+        <StateNotice
+          icon={<AlertCircle className="h-5 w-5" />}
+          title="Report location not permitted"
+          body="The report bundle for this run is stored at a location that is not permitted by this deployment's security policy. Contact your workspace administrator."
+          testId="run-report-state-url-rejected"
+        />
+      </div>
     );
   }
 
@@ -153,6 +175,7 @@ export function RunReportView({
           <SectionErrorBoundary>
             <ConceptsSection projection={projection} />
           </SectionErrorBoundary>
+          {fixSnapshotSection}
           <SectionErrorBoundary>
             <SourcesSection projection={projection} onOpenDoc={onOpenDoc} />
           </SectionErrorBoundary>

@@ -92,7 +92,7 @@ export function NodePeekBody({ payload }: { payload: unknown }) {
   const merged: Record<string, unknown> = { ...base, ...nested };
   const IDENTITY = new Set(["ref_id", "node_type", "name", "properties", "date_added_to_graph"]);
   // Concept nodes carry their content in `docs`; other node types use the rest.
-  const CONTENT_KEYS = ["docs", "description", "definition", "body", "content", "text", "summary"];
+  const CONTENT_KEYS = ["documentation", "docs", "description", "definition", "body", "content", "text", "summary"];
 
   const added = merged.date_added_to_graph ?? base.date_added_to_graph;
   const addedSec =

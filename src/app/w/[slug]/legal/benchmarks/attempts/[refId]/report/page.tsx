@@ -13,6 +13,8 @@ import { getJarvisConfigForWorkspace } from "@/lib/helpers/jarvis-config";
 import { readNodeByRef } from "@/services/swarm/api/nodes";
 import { fetchTaskRubricRoster } from "@/services/legal-benchmark-rubrics";
 import type { GraphRubric } from "@/lib/harvey-lab/rubric-scoring";
+import { fetchFixSnapshots } from "@/services/legal-benchmark-fix-snapshots";
+import type { ProposedFix } from "@/types/legal";
 
 /**
  * Deep-linkable report page for a graph-only recursion attempt.
@@ -107,6 +109,17 @@ export default async function AttemptReportPage({ params, searchParams }: PagePr
     }
   }
 
+  // Fix snapshots for the task's fix history (graph-sourced, non-fatal).
+  // taskSlug sourced from TASK_SLUG_RE-validated `task` query param — never from a graph ref.
+  let fixSnapshots: ProposedFix[] | null = null;
+  if (taskSlug && jarvisConfig) {
+    try {
+      fixSnapshots = await fetchFixSnapshots(jarvisConfig, taskSlug, {});
+    } catch {
+      // Non-fatal — render without fix snapshots.
+    }
+  }
+
   return (
     <div
       className="dark flex flex-col h-full bg-black text-white"
@@ -125,6 +138,7 @@ export default async function AttemptReportPage({ params, searchParams }: PagePr
           taskTitle={taskTitle}
           workspaceSlug={slug}
           graphRubrics={graphRubrics}
+          fixSnapshots={fixSnapshots}
         />
       </div>
     </div>

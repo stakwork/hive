@@ -361,6 +361,14 @@ describe("GET /api/workspaces/[slug]/legal/benchmarks/proposed-fixes", () => {
       "resolved_by",
       "resolved_at",
       "project_id",
+      // Target-snapshot fields added by migration 105_proposed_fix_target_snapshot
+      "target_type",
+      "target_name",
+      "target_version",
+      "target_ref",
+      "old_value",
+      "new_value",
+      "fix_type",
     ]);
 
     for (const key of Object.keys(fix)) {

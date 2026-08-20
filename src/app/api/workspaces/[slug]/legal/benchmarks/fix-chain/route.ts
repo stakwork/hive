@@ -139,7 +139,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     // Scenario-switched on evalSetRefId so fixtures beyond the default one are
     // reachable through the route; every unrecognised id keeps the default
     // fixture, so existing callers and tests are unaffected.
-    if (process.env.USE_MOCKS === "true") {
+    if (process.env.USE_MOCKS === "true" && process.env.NODE_ENV !== "production") {
       const scenario = resolveMockScenario(evalSetRefId);
       logger.info(
         "[legal/benchmarks/fix-chain] USE_MOCKS=true, returning mock fixture",

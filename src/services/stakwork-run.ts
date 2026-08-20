@@ -1898,10 +1898,18 @@ async function processLegalBenchmarkEvalWebhook(
           return criterion;
         });
 
+        // Also copy eval_trigger_ref_id / eval_trigger_output_ref_id to the
+        // source run's result so the report page can use them to scope fix fetches.
+        const evalTriggerRefId = resultJson.eval_trigger_ref_id as string | undefined;
+        const evalTriggerOutputRefId = resultJson.eval_trigger_output_ref_id as string | undefined;
+        const evalPointerFields: Record<string, unknown> = {};
+        if (evalTriggerRefId) evalPointerFields.eval_trigger_ref_id = evalTriggerRefId;
+        if (evalTriggerOutputRefId) evalPointerFields.eval_trigger_output_ref_id = evalTriggerOutputRefId;
+
         await db.stakworkRun.update({
           where: { id: sourceRunId, workspaceId: run.workspaceId },
           data: {
-            result: JSON.stringify({ ...sourceResult, criteria_results: annotated }),
+            result: JSON.stringify({ ...sourceResult, criteria_results: annotated, ...evalPointerFields }),
           },
         });
 

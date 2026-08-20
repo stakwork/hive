@@ -1057,3 +1057,29 @@ export function HealthSection({ projection }: { projection: RunReportProjection 
 }
 
 export { formatDuration };
+
+// ── Fix snapshots ─────────────────────────────────────────────────────────────
+
+import type { ProposedFix } from "@/types/legal";
+import { FixSnapshotPanel } from "@/components/legal/FixSnapshotPanel";
+
+export function FixSnapshotSection({
+  fixes,
+  workspaceSlug,
+  sectionLabel,
+}: {
+  fixes: ProposedFix[];
+  workspaceSlug: string;
+  sectionLabel?: string;
+}) {
+  if (fixes.length === 0) return null;
+  return (
+    <Section id="fix-snapshots" kicker="Recursion loop" title={sectionLabel ?? "Concept changes from this task's fix loop"} data-testid="run-report-section-fix-snapshots">
+      <div className="space-y-4">
+        {fixes.map((fix, i) => (
+          <FixSnapshotPanel key={fix.ref_id ?? i} fix={fix} workspaceSlug={workspaceSlug} />
+        ))}
+      </div>
+    </Section>
+  );
+}
