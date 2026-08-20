@@ -20,7 +20,7 @@ import { createAndSendNotification } from "@/services/notifications";
 import { fanOutPlannerMessageToCanvas } from "@/services/canvas-planner-fanout";
 import { enrichPublishPromptArtifacts } from "@/lib/helpers/prompt-baseline-snapshot";
 import { enrichPublishScriptArtifacts } from "@/lib/helpers/script-version-snapshot";
-import { enrichWorkflowArtifacts } from "@/lib/helpers/workflow-version-snapshot";
+import { enrichWorkflowArtifacts, enrichPublishWorkflowArtifacts } from "@/lib/helpers/workflow-version-snapshot";
 
 export const fetchCache = "force-no-store";
 
@@ -199,6 +199,18 @@ export async function POST(request: NextRequest) {
         await enrichPublishScriptArtifacts(chatMessage, task);
       } catch (enrichError) {
         console.error("[chat/response] Failed to enrich PUBLISH_SCRIPT artifacts:", enrichError);
+      }
+    }
+
+    // Enrich PUBLISH_WORKFLOW artifacts with version snapshots pulled from
+    // Stakwork's workflow version API, mirroring the WORKFLOW/PUBLISH_SCRIPT
+    // enrichment above so a workflow published alongside a script or prompt in
+    // the same chat message gets its own, correctly-scoped diff.
+    if (task && chatMessage.artifacts.some((a) => a.type === ArtifactType.PUBLISH_WORKFLOW)) {
+      try {
+        await enrichPublishWorkflowArtifacts(chatMessage, task);
+      } catch (enrichError) {
+        console.error("[chat/response] Failed to enrich PUBLISH_WORKFLOW artifacts:", enrichError);
       }
     }
 

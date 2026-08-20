@@ -1218,7 +1218,7 @@ describe("Integration — walkFixChain feeds buildHillClimbSeries + computeAttem
     expect(walkerResult.partial).toBe(false);
 
     // Feed walker output directly into buildHillClimbSeries — zero downstream changes
-    const series = buildHillClimbSeries({ nodes: walkerResult.nodes, edges: walkerResult.edges }, EVAL_SET_REF);
+    const series = buildHillClimbSeries({ nodes: walkerResult.nodes, edges: walkerResult.edges });
 
     // Should have: baseline + fix1 + fix2 = 3 points
     expect(series.length).toBe(3);
@@ -1342,7 +1342,7 @@ describe("Integration — walkFixChain feeds buildHillClimbSeries + computeAttem
     expect(walkerResult.partial).toBe(false);
 
     // buildHillClimbSeries must handle cased nodes — it uses case-insensitive isNodeType
-    const series = buildHillClimbSeries({ nodes: walkerResult.nodes, edges: walkerResult.edges }, casedEvalSet);
+    const series = buildHillClimbSeries({ nodes: walkerResult.nodes, edges: walkerResult.edges });
 
     expect(series.length).toBe(2); // baseline + fix
     const baseline = series.find((p) => p.isBaseline);

@@ -9,13 +9,15 @@ import { getWorkspaceChannelName, PUSHER_EVENTS } from "@/lib/pusher";
 /**
  * Display name per StakworkRun pipeline:
  *  - "manual"    — LEGAL_BENCHMARK_RUNNER: a human clicked Run; scored
- *  - "analysis"  — LEGAL_BENCHMARK_EVAL: failure analysis; its webhook writes
- *                  cause annotations onto the source run and never a score
- *  - "recursion" — LEGAL_BENCHMARK_RECURSION: the cron's fix-proposal step;
- *                  re-scored attempts land graph-side (Recursion tab), so
- *                  these rows never carry a score either
+ *  - "recursion" — the automated loop, covering BOTH cron pipelines:
+ *                  LEGAL_BENCHMARK_EVAL (failure analysis; writes cause
+ *                  annotations onto the source run) and
+ *                  LEGAL_BENCHMARK_RECURSION (the fix-proposal step).
+ *                  Analysis is an internal stage of the loop, not a category
+ *                  an operator distinguishes — neither pipeline ever scores;
+ *                  re-scored attempts land graph-side (Recursion tab).
  */
-export type BenchmarkRunType = "manual" | "analysis" | "recursion";
+export type BenchmarkRunType = "manual" | "recursion";
 
 export interface BenchmarkRunListRow {
   id: string;
@@ -31,6 +33,20 @@ export interface BenchmarkRunListRow {
   n_passed?: number;
   n_total?: number;
   all_pass?: boolean;
+  /**
+   * The run's own EvalTrigger node ref (Jarvis instrumentation) — the join
+   * key for graph-first score numerators. Mapped for MANUAL rows only: an
+   * EVAL row's result carries the SOURCE run's trigger ref, and joining that
+   * would paint the source run's score onto an analysis row that never scores.
+   */
+  evalTriggerRef?: string;
+  /**
+   * Exact ref of the run's own EvalTriggerOutput node — the strongest score
+   * join. Mapped for ALL row types: unlike evalTriggerRef, this field is
+   * authored per run (the EVAL dispatch's targeted field copy excludes it),
+   * so it can never borrow another run's score.
+   */
+  evalOutputRef?: string;
   /** Per-criterion results — carried so graph-aware scoring can exclude contested criteria per row. */
   criteria_results?: BenchmarkRunResult["criteria_results"];
   judgeNotes?: string; // "${n_passed}/${n_total} criteria passed. Judge: ${judge_model}"
@@ -61,6 +77,13 @@ interface UseLegalBenchmarkRunListResult {
 }
 
 const POLL_INTERVAL_MS = 15_000;
+
+/** Coerce a wire score count (number or numeric string) to a number; undefined otherwise. */
+function toCount(value: unknown): number | undefined {
+  if (value == null) return undefined;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : undefined;
+}
 
 export function useLegalBenchmarkRunList(
   workspaceId: string | undefined,
@@ -137,6 +160,17 @@ export function useLegalBenchmarkRunList(
           taskTitle: "",
           createdAt: r.createdAt,
           updatedAt: r.updatedAt,
+          // The recursion pipeline's webhook now reports post-fix score fields
+          // and a report bundle back onto the run row — carry them so the table
+          // renders them exactly like manual rows. Absent on older rows. The
+          // wire sends counts as STRINGS ("34"/"39") — verified against a live
+          // concept_rerun payload — so coerce; the manual path gets the same
+          // treatment from RunnerScoreSchema at ingest.
+          n_passed: toCount(parsed?.n_passed),
+          n_total: toCount(parsed?.n_total),
+          all_pass: typeof parsed?.all_pass === "boolean" ? parsed.all_pass : undefined,
+          evalOutputRef: parsed?.evalOutputRef,
+          generateRunReport: parsed?.generateRunReport,
           hasReport: r.hasReport === true,
         };
       };
@@ -156,6 +190,8 @@ export function useLegalBenchmarkRunList(
           n_passed: parsed?.n_passed,
           n_total: parsed?.n_total,
           all_pass: parsed?.all_pass,
+          evalTriggerRef: parsed?.evalTriggerRef,
+          evalOutputRef: parsed?.evalOutputRef,
           criteria_results: parsed?.criteria_results,
           requestedModel: parsed?.requestedModel,
           requestedJudgeModel: parsed?.requestedJudgeModel,
@@ -180,7 +216,7 @@ export function useLegalBenchmarkRunList(
 
       const merged = [
         ...mapped,
-        ...rawEvalRows.map((r) => mapSecondary(r, "analysis")),
+        ...rawEvalRows.map((r) => mapSecondary(r, "recursion")),
         ...rawRecursionRows.map((r) => mapSecondary(r, "recursion")),
       ].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 

@@ -26,8 +26,10 @@ function makeRow(overrides: Partial<AttemptRailRow> = {}): AttemptRailRow {
     runId: "run-1",
     projectId: 42,
     hasReport: false,
+    graphReportRef: null,
     reportPending: false,
     inFlight: false,
+    fixSnapshot: null,
     ...overrides,
   };
 }
@@ -37,6 +39,7 @@ describe("RecursionActivityRail", () => {
     vi.clearAllMocks();
     mockUseWorkspace.mockReturnValue({
       workspace: { slug: "openlaw", id: "ws-1" },
+      role: "DEVELOPER",
       isSuperAdmin: false,
     });
   });
@@ -113,6 +116,70 @@ describe("RecursionActivityRail", () => {
     expect(link.getAttribute("href")).toBe("/w/openlaw/legal/benchmarks/runs/run-1/report");
   });
 
+  it("links graph-only rows to the attempt-report page, never the raw bundle URL", () => {
+    // Recursion attempts written by the eval workflow carry report_url on the
+    // EvalTriggerOutput node and usually never join a StakworkRun row. The link
+    // must route through the server-side viewer — a direct S3 href opens bare
+    // bundle JSON in the browser.
+    render(
+      <RecursionActivityRail
+        rows={[
+          makeRow({
+            status: null,
+            runType: null,
+            runId: null,
+            projectId: null,
+            graphReportRef: "output-base",
+          }),
+        ]}
+        partial={false}
+        taskSlug="environmental-esg/extract-evidence"
+      />,
+    );
+    const link = screen.getByTestId("rail-report-trigger-1");
+    expect(link.getAttribute("href")).toBe(
+      "/w/openlaw/legal/benchmarks/attempts/output-base/report?task=environmental-esg%2Fextract-evidence",
+    );
+    expect(link.getAttribute("target")).toBe("_blank");
+  });
+
+  it("hides the graph report link from roles below the report gate", () => {
+    mockUseWorkspace.mockReturnValue({
+      workspace: { slug: "openlaw", id: "ws-1" },
+      role: "VIEWER",
+      isSuperAdmin: false,
+    });
+    render(
+      <RecursionActivityRail
+        rows={[makeRow({ runId: null, graphReportRef: "output-base" })]}
+        partial={false}
+      />,
+    );
+    expect(screen.queryByTestId("rail-report-trigger-1")).toBeNull();
+  });
+
+  it("prefers the run report page over the graph attempt link", () => {
+    render(
+      <RecursionActivityRail
+        rows={[makeRow({ hasReport: true, graphReportRef: "output-base" })]}
+        partial={false}
+      />,
+    );
+    const link = screen.getByTestId("rail-report-trigger-1");
+    expect(link.getAttribute("href")).toBe("/w/openlaw/legal/benchmarks/runs/run-1/report");
+  });
+
+  it("a landed graph report outranks the report-pending state", () => {
+    render(
+      <RecursionActivityRail
+        rows={[makeRow({ reportPending: true, graphReportRef: "output-base" })]}
+        partial={false}
+      />,
+    );
+    expect(screen.getByTestId("rail-report-trigger-1")).toBeTruthy();
+    expect(screen.queryByTestId("rail-report-pending-trigger-1")).toBeNull();
+  });
+
   it("renders the distinct report-pending state, not a link and not blank", () => {
     render(
       <RecursionActivityRail rows={[makeRow({ reportPending: true })]} partial={false} />,
@@ -144,5 +211,34 @@ describe("RecursionActivityRail", () => {
     unmount();
     render(<RecursionActivityRail rows={[makeRow()]} partial={false} />);
     expect(screen.queryByTestId("rail-partial-note")).toBeNull();
+  });
+});
+
+describe("RecursionActivityRail — fix snapshot diff control", () => {
+  beforeEach(() => {
+    mockUseWorkspace.mockReturnValue({
+      workspace: { slug: "openlaw", id: "ws-1" },
+      role: "ADMIN",
+      isSuperAdmin: false,
+    });
+  });
+
+  it("renders the diff control only when the row carries a snapshot", () => {
+    const rows = [
+      makeRow({
+        key: "with-snapshot",
+        fixSnapshot: {
+          ref_id: "fix-1",
+          target_type: "concept",
+          target_name: "Limitation of Liability",
+          old_value: '{"docs": "before"}',
+          new_value: '{"docs": "after"}',
+        },
+      }),
+      makeRow({ key: "without-snapshot" }),
+    ];
+    render(<RecursionActivityRail rows={rows} partial={false} />);
+    expect(screen.getByTestId("rail-fix-snapshot-with-snapshot")).toBeTruthy();
+    expect(screen.queryByTestId("rail-fix-snapshot-without-snapshot")).toBeNull();
   });
 });
