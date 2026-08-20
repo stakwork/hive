@@ -42,6 +42,7 @@ import { useWorkspace } from "@/hooks/useWorkspace";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import { useFeatureFlag } from "@/hooks/useFeatureFlag";
 import { useStreamContext } from "@/hooks/useStreamContext";
+import { useStreamedAgentLog } from "@/hooks/useStreamedAgentLog";
 import { FEATURE_FLAGS } from "@/lib/feature-flags";
 import { useSession } from "next-auth/react";
 import { WorkflowTransition, getStepType } from "@/types/stakwork/workflow";
@@ -159,6 +160,7 @@ export default function TaskChatPage() {
   const { hasActiveChatForm, webhook: chatWebhook } = useChatForm(messages);
 
   const { streamContext, onMessage: onStreamMessage, onWorkflowStatusUpdate: onStreamStatusUpdate } = useStreamContext();
+  const streamedLog = useStreamedAgentLog(streamContext);
 
   const { logs, lastLogLine, clearLogs } = useProjectLogWebSocket(projectId, currentTaskId, false);
 
@@ -1332,6 +1334,7 @@ export default function TaskChatPage() {
               taskId: options?.taskId || currentTaskId,
               message: messageText,
               artifacts: backendArtifacts,
+              startStreamInBackground: true,
             }),
           });
 
@@ -1340,7 +1343,18 @@ export default function TaskChatPage() {
             throw new Error(errorData.error || `Failed to create session: ${sessionResponse.statusText}`);
           }
 
-          const { streamToken, streamUrl, resume, historyContext, podUrls } = await sessionResponse.json();
+          const {
+            streamToken,
+            streamUrl,
+            resume,
+            historyContext,
+            podUrls,
+            backgroundStream,
+            eventsToken,
+            eventsBaseUrl,
+          } = await sessionResponse.json();
+
+          const responseArtifacts: Artifact[] = [];
 
           // If backend claimed a pod (new task or re-claim), update state and add artifacts
           if (podUrls) {
@@ -1361,18 +1375,47 @@ export default function TaskChatPage() {
               content: { url: podUrls.ide },
             });
 
-            // Update the message with new artifacts
+            responseArtifacts.push(browserArtifact, ideArtifact);
+          }
+
+          if (backgroundStream) {
+            const streamArtifact = createArtifact({
+              id: generateUniqueId(),
+              messageId: "",
+              type: ArtifactType.STREAM,
+              content: {
+                requestId: options?.taskId || currentTaskId || "",
+                eventsToken: eventsToken ?? streamToken,
+                baseUrl: eventsBaseUrl ?? streamUrl.replace(/\/stream\/.*$/, ""),
+                agent: "coder-agent",
+              },
+            });
+            responseArtifacts.push(streamArtifact);
+          }
+
+          if (responseArtifacts.length > 0) {
             setMessages((msgs) =>
               msgs.map((msg) =>
                 msg.id === newMessage.id
-                  ? { ...msg, artifacts: [...(msg.artifacts || []), browserArtifact, ideArtifact] }
+                  ? { ...msg, artifacts: [...(msg.artifacts || []), ...responseArtifacts] }
                   : msg
               )
             );
+
+            onStreamMessage({
+              ...newMessage,
+              status: ChatStatus.SENT,
+              artifacts: [...(newMessage.artifacts || []), ...responseArtifacts],
+            });
           }
 
           // Signal that pod is ready (for handleStart to switch views)
           options?.onPodReady?.();
+
+          if (backgroundStream) {
+            setWorkflowStatus(WorkflowStatus.IN_PROGRESS);
+            return;
+          }
 
           // 2. Connect directly to remote server for streaming
           // If historyContext is provided, the session was not found on the pod
@@ -1518,7 +1561,7 @@ export default function TaskChatPage() {
         setIsLoading(false);
       }
     },
-    [taskMode, currentTaskId, processStream, clearLogs],
+    [taskMode, currentTaskId, processStream, clearLogs, onStreamMessage],
   );
 
   const handleArtifactAction = useCallback(
@@ -1949,6 +1992,7 @@ Plan and implement the real feature from this branch.`;
                     isMobile={isMobile}
                     onTogglePreview={() => setShowPreview(!showPreview)}
                     isSuperAdmin={isSuperAdmin}
+                    streamingLog={streamedLog}
                   />
                 ) : (
                   <AgentChatArea
@@ -2028,6 +2072,7 @@ Plan and implement the real feature from this branch.`;
                       podId={podId}
                       onDebugMessage={handleDebugMessage}
                       isSuperAdmin={isSuperAdmin}
+                      streamingLog={streamedLog}
                     />
                   </div>
                 </ResizablePanel>
@@ -2080,6 +2125,7 @@ Plan and implement the real feature from this branch.`;
                     onVersionChange={taskMode === "workflow_editor" ? handleVersionChange : undefined}
                     browserRefreshTrigger={browserRefreshTrigger}
                     isSuperAdmin={isSuperAdmin}
+                    streamingLog={streamedLog}
                   />
                 ) : (
                   <ChatArea
@@ -2172,6 +2218,7 @@ Plan and implement the real feature from this branch.`;
                       onVersionChange={taskMode === "workflow_editor" ? handleVersionChange : undefined}
                       browserRefreshTrigger={browserRefreshTrigger}
                       isSuperAdmin={isSuperAdmin}
+                      streamingLog={streamedLog}
                     />
                   </div>
                 </ResizablePanel>
