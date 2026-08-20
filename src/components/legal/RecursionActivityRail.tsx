@@ -3,6 +3,7 @@
 import { formatDistanceToNow } from "date-fns";
 import { FileText, Loader2, Repeat } from "lucide-react";
 import { StakworkRunLink } from "@/components/legal/StakworkRunLink";
+import { FixSnapshotDiffControl } from "@/components/legal/FixSnapshotPanel";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { canReadRunReport } from "@/lib/run-report/types";
 import type { AttemptRailRow } from "@/hooks/useEvalRunHistory";
@@ -202,6 +203,17 @@ export function RecursionActivityRail({ rows, partial, taskSlug }: RecursionActi
                 : "—"}
             </span>
             <span className="flex items-center gap-2 justify-end">
+              {/* The snapshot diff control renders only when the row's fix
+                  actually carries a snapshot — eval-output and legacy rows
+                  leave fixSnapshot unset, so the hide rule falls out of the
+                  data rather than a series-kind check here. */}
+              {row.fixSnapshot && (
+                <FixSnapshotDiffControl
+                  fix={row.fixSnapshot}
+                  workspaceSlug={workspaceSlug || null}
+                  testId={`rail-fix-snapshot-${row.key}`}
+                />
+              )}
               <RowReport
                 row={row}
                 workspaceSlug={workspaceSlug}

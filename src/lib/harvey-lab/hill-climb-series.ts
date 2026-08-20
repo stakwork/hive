@@ -38,6 +38,7 @@ import {
   type EvalTriggerOutput,
   type RawJarvisNode,
 } from "@/lib/harvey-lab/eval-normalizers";
+import { extractFixSnapshotProps, type FixSnapshotProps } from "@/lib/harvey-lab/fix-snapshot";
 import { logger } from "@/lib/logger";
 
 // ── Shared edge/node shape ────────────────────────────────────────────────────
@@ -327,6 +328,20 @@ function resolveFixOutput(
 
 // ── Main builder ──────────────────────────────────────────────────────────────
 
+export interface BuildHillClimbSeriesOptions {
+  /**
+   * Sidecar out-param: when provided, every walked ProposedFix that carries a
+   * before/after snapshot (per `extractFixSnapshotProps`) is recorded here,
+   * keyed by the FIX node's ref_id — in all three terminal branches: the
+   * resolved-output point, the rejected-no-score slot point, AND the
+   * accepted-no-score fix that emits no point at all. Each entry's
+   * `point_ref_id` names the series point the fix resolved to (null when no
+   * point was emitted), so consumers can join snapshots to chart points
+   * without widening `EvalTriggerOutput` — which stays byte-identical.
+   */
+  fixSnapshotsOut?: Map<string, FixSnapshotProps>;
+}
+
 /**
  * Build the hill-climb attempt series from a subgraph rooted at an EvalSet.
  *
@@ -338,7 +353,10 @@ function resolveFixOutput(
  * The second trigger's chain (reached via HAS_TRIGGER) is intentionally
  * excluded — this is deliberate chart UX, not a bug.
  */
-export function buildHillClimbSeries(subgraph: Subgraph): EvalTriggerOutput[] {
+export function buildHillClimbSeries(
+  subgraph: Subgraph,
+  opts?: BuildHillClimbSeriesOptions,
+): EvalTriggerOutput[] {
   const { nodes, edges } = subgraph;
 
   // Index nodes by ref_id for O(1) lookup
@@ -453,6 +471,17 @@ export function buildHillClimbSeries(subgraph: Subgraph): EvalTriggerOutput[] {
       // Accept/reject — eval_status is canonical, status is fallback
       const accepted = isAccepted(fixNode.properties);
 
+      // Sidecar snapshot: recorded for every fix that carries one, whichever
+      // terminal branch it lands in below. Legacy snapshot-less fixes yield
+      // null and stay out of the map — the rail's hide rule falls out of that.
+      const recordSnapshot = (pointRefId: string | null) => {
+        if (!opts?.fixSnapshotsOut) return;
+        const snapshot = extractFixSnapshotProps(fixNode.ref_id, fixNode.properties);
+        if (snapshot) {
+          opts.fixSnapshotsOut.set(fixNode.ref_id, { ...snapshot, point_ref_id: pointRefId });
+        }
+      };
+
       const output = resolveFixOutput(
         fixNode,
         edges,
@@ -462,6 +491,7 @@ export function buildHillClimbSeries(subgraph: Subgraph): EvalTriggerOutput[] {
       );
 
       if (output !== null) {
+        recordSnapshot(output.ref_id);
         series.push({
           ...output,
           accepted,
@@ -483,10 +513,15 @@ export function buildHillClimbSeries(subgraph: Subgraph): EvalTriggerOutput[] {
             "legal",
             { fixId: fixNode.ref_id },
           );
-          // For accepted fixes with no score, we still drop the point (legacy behaviour)
+          // For accepted fixes with no score, we still drop the point (legacy
+          // behaviour) — but the snapshot is still recorded (point_ref_id null)
+          // so the fix's diff isn't lost with the dot.
+          recordSnapshot(null);
           continue;
         }
-        // Emit a slot-only point for rejected with no score
+        // Emit a slot-only point for rejected with no score. A rejected fix
+        // with no score is precisely a diff a reviewer wants — record it.
+        recordSnapshot(`slot-${fixNode.ref_id}`);
         const slotPoint: EvalTriggerOutput = {
           ref_id: `slot-${fixNode.ref_id}`,
           attempt_number: 0,
