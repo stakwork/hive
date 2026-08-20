@@ -4,6 +4,7 @@ import React from "react";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import {
+  Activity,
   BarChart3,
   Blocks,
   BookOpen,
@@ -504,6 +505,19 @@ export function Sidebar({ user }: SidebarProps) {
       ]
     : [];
 
+  // Create Workflow Benchmarks item for stakwork workspace (or dev mode)
+  const showWorkflowBenchmarks = STAK_TOOLKIT_SLUGS.includes(workspaceSlug ?? "") || devMode;
+  const workflowBenchmarkItems: NavigationItem[] = showWorkflowBenchmarks
+    ? [
+        {
+          icon: Activity,
+          label: "Workflow Benchmarks",
+          href: "/workflow-benchmarks",
+          children: [],
+        },
+      ]
+    : [];
+
   const excludeLabels: string[] = [];
   if (!canAccessDefense) excludeLabels.push("Protect");
 
@@ -514,11 +528,12 @@ export function Sidebar({ user }: SidebarProps) {
     excludeLabels.push("Capacity", "Protect");
   }
 
-  // Insert Stak Toolkit and Legal items before Build section
+  // Insert Stak Toolkit, Legal, and Workflow Benchmarks items before Build section
   const allNavigationItems = [
     ...baseNavigationItems.slice(0, 2), // Graph and Capacity
     ...stakToolkitItems, // Stak Toolkit (conditionally)
     ...legalItems, // Legal (conditionally)
+    ...workflowBenchmarkItems, // Workflow Benchmarks (conditionally)
     ...baseNavigationItems.slice(2), // Build, Protect, Context
   ];
 

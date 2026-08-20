@@ -5,11 +5,12 @@ import { StakworkRunType } from "@prisma/client";
 
 export const fetchCache = "force-no-store";
 
-/** Legal Benchmark run types that use a flat Harvey payload shape */
+/** Benchmark run types that use a flat Harvey payload shape */
 const LEGAL_BENCHMARK_TYPES = new Set<string>([
   StakworkRunType.LEGAL_BENCHMARK_RUNNER,
   StakworkRunType.LEGAL_BENCHMARK_SCORER,
   StakworkRunType.LEGAL_BENCHMARK_EVAL,
+  StakworkRunType.BENCHMARK_RUNNER,
 ]);
 
 /**
