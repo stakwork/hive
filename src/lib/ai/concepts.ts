@@ -48,3 +48,14 @@ export async function swarmFetch(
 export function shouldTrimConceptsToIds(workspaces: WorkspaceConfig[]): boolean {
   return workspaces.length > 2;
 }
+
+/**
+ * Hard cap on how many concepts we seed into the canvas-chat context per
+ * workspace. Concept catalogs can grow unbounded as repos are indexed;
+ * without a ceiling a single workspace could balloon the pre-seeded
+ * `list_concepts` tool-result and blow out the context budget before the
+ * agent even reads the user's question. Applied at both seeding
+ * chokepoints (multi-workspace fetch and single-workspace prefix) so
+ * neither path can regress independently.
+ */
+export const MAX_SEEDED_CONCEPTS_PER_WORKSPACE = 150;

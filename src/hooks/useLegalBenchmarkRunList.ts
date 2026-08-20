@@ -33,6 +33,20 @@ export interface BenchmarkRunListRow {
   n_passed?: number;
   n_total?: number;
   all_pass?: boolean;
+  /**
+   * The run's own EvalTrigger node ref (Jarvis instrumentation) — the join
+   * key for graph-first score numerators. Mapped for MANUAL rows only: an
+   * EVAL row's result carries the SOURCE run's trigger ref, and joining that
+   * would paint the source run's score onto an analysis row that never scores.
+   */
+  evalTriggerRef?: string;
+  /**
+   * Exact ref of the run's own EvalTriggerOutput node — the strongest score
+   * join. Mapped for ALL row types: unlike evalTriggerRef, this field is
+   * authored per run (the EVAL dispatch's targeted field copy excludes it),
+   * so it can never borrow another run's score.
+   */
+  evalOutputRef?: string;
   /** Per-criterion results — carried so graph-aware scoring can exclude contested criteria per row. */
   criteria_results?: BenchmarkRunResult["criteria_results"];
   judgeNotes?: string; // "${n_passed}/${n_total} criteria passed. Judge: ${judge_model}"
@@ -155,6 +169,7 @@ export function useLegalBenchmarkRunList(
           n_passed: toCount(parsed?.n_passed),
           n_total: toCount(parsed?.n_total),
           all_pass: typeof parsed?.all_pass === "boolean" ? parsed.all_pass : undefined,
+          evalOutputRef: parsed?.evalOutputRef,
           generateRunReport: parsed?.generateRunReport,
           hasReport: r.hasReport === true,
         };
@@ -175,6 +190,8 @@ export function useLegalBenchmarkRunList(
           n_passed: parsed?.n_passed,
           n_total: parsed?.n_total,
           all_pass: parsed?.all_pass,
+          evalTriggerRef: parsed?.evalTriggerRef,
+          evalOutputRef: parsed?.evalOutputRef,
           criteria_results: parsed?.criteria_results,
           requestedModel: parsed?.requestedModel,
           requestedJudgeModel: parsed?.requestedJudgeModel,
