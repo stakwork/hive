@@ -470,6 +470,7 @@ jobs:
           fi
 
           echo "Resolving 20260414105821_add_plan_task_defaults_to_llm_model..."
+          psql "$DATABASE_URL" -c "DELETE FROM _prisma_migrations WHERE migration_name='20260414105821_add_plan_task_defaults_to_llm_model' AND finished_at IS NULL;" 2>/dev/null || true
           PLAN_DEFAULT_COL=$(psql "$DATABASE_URL" -tAc "SELECT COUNT(*) FROM information_schema.columns WHERE table_name='llm_models' AND column_name='is_plan_default';" 2>/dev/null | tr -d '[:space:]' || echo "0")
           if [ "$PLAN_DEFAULT_COL" = "1" ]; then
             echo "  is_plan_default column exists — marking as applied"
@@ -549,6 +550,7 @@ jobs:
             else
               npx prisma migrate resolve --rolled-back "20260224130756_add_tasks_artifact_type" 2>&1 || true
             fi
+            psql "$DATABASE_URL" -c "DELETE FROM _prisma_migrations WHERE migration_name='20260414105821_add_plan_task_defaults_to_llm_model' AND finished_at IS NULL;" 2>/dev/null || true
             PLAN_DEFAULT_COL=$(psql "$DATABASE_URL" -tAc "SELECT COUNT(*) FROM information_schema.columns WHERE table_name='llm_models' AND column_name='is_plan_default';" 2>/dev/null | tr -d '[:space:]' || echo "0")
             if [ "$PLAN_DEFAULT_COL" = "1" ]; then
               npx prisma migrate resolve --applied "20260414105821_add_plan_task_defaults_to_llm_model" 2>&1 || true
