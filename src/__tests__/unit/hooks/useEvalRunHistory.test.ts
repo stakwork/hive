@@ -714,10 +714,11 @@ describe("useEvalRunHistory — attemptRows", () => {
     expect(landed.hasReport).toBe(true);
   });
 
-  it("carries the graph node's report_url onto graph-only rows", async () => {
+  it("sets graphReportRef on graph-only rows whose node carries a report_url", async () => {
     // The Stakwork eval workflow writes report_url onto the EvalTriggerOutput
     // node itself — recursion attempts that never join a StakworkRun row must
-    // still surface it.
+    // still surface a report handle. The row carries the node REF, not the raw
+    // bundle URL: the attempt-report page resolves the URL server-side.
     const output = makeOutputNode("output-base", 50, 74, "1720000000");
     (output.properties as Record<string, unknown>).report_url =
       "https://example.com/reports/base";
@@ -739,7 +740,7 @@ describe("useEvalRunHistory — attemptRows", () => {
     const row = result.current.attemptRows.find((r) => r.key === "output-base")!;
     expect(row.status).toBeNull();
     expect(row.hasReport).toBe(false);
-    expect(row.reportUrl).toBe("https://example.com/reports/base");
+    expect(row.graphReportRef).toBe("output-base");
   });
 
   it("charts rows for identity-less triggers — the concept pipeline writes none", async () => {
