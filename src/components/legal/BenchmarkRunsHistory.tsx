@@ -23,7 +23,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import {
   useLegalBenchmarkRunList,
@@ -32,7 +31,9 @@ import {
 } from "@/hooks/useLegalBenchmarkRunList";
 import { useLegalBenchmarkRecursionList } from "@/hooks/useLegalBenchmarkRecursionList";
 import { useBenchmarkRubricsMap } from "@/hooks/useBenchmarkRubrics";
+import { useBenchmarkGraphScoresMap, type GraphScoreRequest } from "@/hooks/useBenchmarkGraphScores";
 import { computeBenchmarkScore } from "@/lib/harvey-lab/rubric-scoring";
+import { resolveGraphOutputForRun } from "@/lib/harvey-lab/graph-run-score";
 import { LegalBenchmarkResults } from "@/components/legal/LegalBenchmarkResults";
 import { StakworkRunLink } from "@/components/legal/StakworkRunLink";
 import { HillClimbChart } from "@/components/legal/HillClimbChart";
@@ -118,7 +119,38 @@ type AdjustedRun = BenchmarkRunListRow & {
   n_contested?: number;
   /** Full rubric roster size before contested exclusion. */
   roster_total?: number;
+  /**
+   * Where the score came from:
+   *  - "output-ref" — the row's stored EvalTriggerOutput pointer: the node is
+   *                   authoritative for numerator AND denominator, verbatim
+   *  - "criteria"   — per-criterion verdicts in the run's result JSON
+   *  - "graph"      — an EvalTriggerOutput joined by trigger/project (numerator only)
+   *  - "result"     — flat counts echoed into the result JSON (fallback)
+   */
+  score_source?: "output-ref" | "criteria" | "graph" | "result";
 };
+
+/**
+ * Verbatim score from a row's own EvalTriggerOutput node, used when the row
+ * stores an exact `evalOutputRef` pointer: numerator AND denominator come
+ * from the node as written at scoring time — no roster overlay, no contested
+ * annotation. Rows without a pointer keep the roster-adjusted path.
+ */
+function pointerAdjustedRun(
+  run: BenchmarkRunListRow,
+  output: { n_passed?: number; n_total?: number; judge_notes?: string },
+): AdjustedRun {
+  const scored =
+    output.n_passed != null && output.n_total != null && output.n_total > 0;
+  return {
+    ...run,
+    n_passed: output.n_passed,
+    n_total: output.n_total,
+    all_pass: scored ? output.n_passed === output.n_total : run.all_pass,
+    judgeNotes: run.judgeNotes ?? output.judge_notes,
+    score_source: "output-ref",
+  };
+}
 
 interface BenchmarkRunsHistoryProps {
   /** When supplied, the component uses this hook result instead of calling
@@ -161,12 +193,10 @@ export function BenchmarkRunsHistory({
 
   const [expandedRunId, setExpandedRunId] = useState<string | null>(null);
   const [taskFilter, setTaskFilter] = useState<string>(ALL_TASKS);
-  // Default "manual" keeps the tab identical to its pre-type-column self.
-  // "recursion" groups BOTH cron pipelines (the analysis stage and the
-  // fix-proposal stage) — analysis is an internal stage of the recursion
-  // loop, not a category an operator filters by. The Type column still
-  // badges the stage.
-  const [typeFilter, setTypeFilter] = useState<"manual" | "recursion" | "all">("manual");
+  // One merged chronological list by default; the Type column header carries a
+  // dropdown to narrow to one pipeline. The summary strip stays pinned to
+  // manual runs regardless, so filtering never moves the headline pass-rate.
+  const [typeFilter, setTypeFilter] = useState<"all" | "manual" | "recursion">("all");
   const [windowSize, setWindowSize] = useState<SummaryWindow>(SUMMARY_WINDOW);
 
   // ── Row refs for focus/scroll ────────────────────────────────────────────
@@ -186,10 +216,13 @@ export function BenchmarkRunsHistory({
       return;
     }
 
-    // (a) Reset filter directly — do NOT call handleFilterChange/handleReset
+    // (a) Reset filters directly — do NOT call handleFilterChange/handleReset
     //     because handleReset calls setExpandedId(null), which triggers an
     //     unwanted refetch and would immediately collapse the row we're opening.
+    //     The type filter must reset too: a focus target is a manual run, which
+    //     has no row while the Type dropdown is narrowed to Recursion.
     setTaskFilter(ALL_TASKS);
+    setTypeFilter("all");
 
     // (a2) The window caps which rows are rendered, so a run older than the
     //      current window has no row to expand or scroll to. Widen to the
@@ -291,38 +324,80 @@ export function BenchmarkRunsHistory({
   // rewrite row scores so contested criteria are dropped from both sides.
   // Every consumer below (table, summary strip, hill-climb chart) reads the
   // adjusted rows, so the denominator is the graph everywhere.
+  // Secondary (recursion-loop) rows are included: their re-scored attempts
+  // also live graph-side and must score against the same roster.
   const taskSlugsInView = useMemo(
-    () => visibleRuns.map((r) => r.taskSlug),
-    [visibleRuns],
+    () => [...visibleRuns, ...secondaryRows].map((r) => r.taskSlug),
+    [visibleRuns, secondaryRows],
   );
   const rosters = useBenchmarkRubricsMap(taskSlugsInView);
+
+  // Graph-first NUMERATORS: per task, the EvalTriggerOutput nodes reachable
+  // from the EvalSet's trigger chain plus each visible manual row's own
+  // evalTriggerRef (manual triggers hang off an EvalRequirement, which the
+  // EvalSet expand cannot reach — the row ref is the direct path).
+  const graphScoreRequests = useMemo<GraphScoreRequest[]>(() => {
+    const byTask = new Map<string, { triggerRefs: Set<string>; outputRefs: Set<string> }>();
+    for (const run of [...visibleRuns, ...secondaryRows]) {
+      if (!run.taskSlug) continue;
+      if (!byTask.has(run.taskSlug)) {
+        byTask.set(run.taskSlug, { triggerRefs: new Set(), outputRefs: new Set() });
+      }
+      const entry = byTask.get(run.taskSlug)!;
+      if (run.evalTriggerRef) entry.triggerRefs.add(run.evalTriggerRef);
+      if (run.evalOutputRef) entry.outputRefs.add(run.evalOutputRef);
+    }
+    return [...byTask].map(([taskSlug, refs]) => ({
+      taskSlug,
+      triggerRefs: [...refs.triggerRefs],
+      outputRefs: [...refs.outputRefs],
+    }));
+  }, [visibleRuns, secondaryRows]);
+  const graphOutputs = useBenchmarkGraphScoresMap(graphScoreRequests);
 
   const adjustedRuns = useMemo<AdjustedRun[]>(
     () =>
       visibleRuns.map((run) => {
         const roster = rosters.get(run.taskSlug) ?? null;
-        // Without a roster or per-criterion results there is nothing to
-        // adjust FROM — leave the run's own numbers and verdict untouched.
-        if (!roster && !run.criteria_results?.length) return run;
+        const match = resolveGraphOutputForRun(run, graphOutputs.get(run.taskSlug));
+        // A stored evalOutputRef pointer is authoritative for BOTH numbers —
+        // the node is used verbatim, no roster overlay.
+        if (match?.matchedBy === "output-ref") {
+          return pointerAdjustedRun(run, match.output);
+        }
+        // Numerator preference: the run's EvalTriggerOutput node beats the
+        // flat counts echoed into the result column. Per-criterion verdicts
+        // (criteria_results) still outrank both inside computeBenchmarkScore —
+        // they are the only source that can exclude contested PASSES.
+        const graphOut = match?.output ?? null;
+        const nPassed = graphOut?.n_passed ?? run.n_passed;
+        const nTotal = graphOut?.n_total ?? run.n_total;
+        // Without a roster, per-criterion results, or a graph output there is
+        // nothing to adjust FROM — leave the run's own numbers untouched.
+        if (!roster && !run.criteria_results?.length && !graphOut) return run;
         const score = computeBenchmarkScore({
           criteriaResults: run.criteria_results,
-          nPassed: run.n_passed,
-          nTotal: run.n_total,
+          nPassed,
+          nTotal,
           graphRubrics: roster,
         });
         if (!score) return run;
+        const usedCriteria = (run.criteria_results?.length ?? 0) > 0;
         return {
           ...run,
           n_passed: score.passed,
           n_total: score.denominator,
-          // Only rewrite all_pass for runs that were actually judged — the
-          // boolean's presence is what marks a row as scored downstream.
-          all_pass: typeof run.all_pass === "boolean" ? score.allPass : run.all_pass,
+          // Rewrite all_pass for runs that were actually judged — either the
+          // webhook marked them (boolean present) or the graph scored them.
+          all_pass:
+            typeof run.all_pass === "boolean" || graphOut ? score.allPass : run.all_pass,
           n_contested: score.contested,
           roster_total: score.total,
+          judgeNotes: run.judgeNotes ?? graphOut?.judge_notes,
+          score_source: usedCriteria ? "criteria" : graphOut ? "graph" : "result",
         };
       }),
-    [visibleRuns, rosters],
+    [visibleRuns, rosters, graphOutputs],
   );
 
   const chartAttempts = useMemo(
@@ -330,18 +405,54 @@ export function BenchmarkRunsHistory({
     [selectedTask, adjustedRuns],
   );
 
+  // Secondary (recursion-loop) rows score graph-first: the re-score workflow
+  // writes the attempt's EvalTriggerOutput into the graph with an id suffixed
+  // by its Stakwork project (`--<project_id>`), which is the row's only join
+  // key — these rows carry no evalTriggerRef. The result-column fields the
+  // webhook echoes remain the fallback so older rows keep their score, and
+  // either numerator is put through the same roster adjustment as manual rows.
+  const adjustedSecondaryRows = useMemo<AdjustedRun[]>(
+    () =>
+      secondaryRows.map((run) => {
+        const roster = rosters.get(run.taskSlug) ?? null;
+        const match = resolveGraphOutputForRun(run, graphOutputs.get(run.taskSlug));
+        if (match?.matchedBy === "output-ref") {
+          return pointerAdjustedRun(run, match.output);
+        }
+        const graphOut = match?.output ?? null;
+        const nPassed = graphOut?.n_passed ?? run.n_passed;
+        const nTotal = graphOut?.n_total ?? run.n_total;
+        // Most loop rows (analysis, fix-proposal) never score — leave them be.
+        if (nPassed == null || nTotal == null) return run;
+        const score = computeBenchmarkScore({ nPassed, nTotal, graphRubrics: roster });
+        if (!score) return run;
+        return {
+          ...run,
+          n_passed: score.passed,
+          n_total: score.denominator,
+          all_pass:
+            typeof run.all_pass === "boolean" || graphOut ? score.allPass : run.all_pass,
+          n_contested: score.contested,
+          roster_total: score.total,
+          judgeNotes: run.judgeNotes ?? graphOut?.judge_notes,
+          score_source: graphOut ? "graph" : "result",
+        };
+      }),
+    [secondaryRows, rosters, graphOutputs],
+  );
+
   // What the table body renders. Manual rows keep the scored-run windowing +
   // roster adjustment; secondary rows join chronologically when opted in.
   const displayRows = useMemo<AdjustedRun[]>(() => {
     if (typeFilter === "manual") return adjustedRuns;
     if (typeFilter === "all") {
-      return [...adjustedRuns, ...secondaryRows].sort(
+      return [...adjustedRuns, ...adjustedSecondaryRows].sort(
         (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
       );
     }
     // "recursion" = the whole loop: analysis + fix-proposal rows.
-    return secondaryRows;
-  }, [typeFilter, adjustedRuns, secondaryRows]);
+    return adjustedSecondaryRows;
+  }, [typeFilter, adjustedRuns, adjustedSecondaryRows]);
 
   const handleToggleExpand = (runId: string) => {
     const next = expandedRunId === runId ? null : runId;
@@ -403,30 +514,6 @@ export function BenchmarkRunsHistory({
             ))}
           </SelectContent>
         </Select>
-        {/* Pipeline filter — default Manual preserves today's view. The
-            summary strip reads the manual window regardless, so switching
-            never moves the headline pass-rate. ToggleGroup is the system's
-            segmented-control idiom (see TasksList). */}
-        <ToggleGroup
-          type="single"
-          value={typeFilter}
-          onValueChange={(v) => {
-            // ToggleGroup emits "" when the active item is clicked again —
-            // a filter must always have a value.
-            if (v) setTypeFilter(v as "manual" | "recursion" | "all");
-          }}
-          aria-label="Run type filter"
-        >
-          <ToggleGroupItem value="manual" className="h-8 px-3 text-xs" data-testid="type-filter-manual">
-            Manual
-          </ToggleGroupItem>
-          <ToggleGroupItem value="recursion" className="h-8 px-3 text-xs" data-testid="type-filter-recursion">
-            Recursion
-          </ToggleGroupItem>
-          <ToggleGroupItem value="all" className="h-8 px-3 text-xs" data-testid="type-filter-all">
-            All
-          </ToggleGroupItem>
-        </ToggleGroup>
         {selectedTask && (
           <span className="text-xs text-muted-foreground">
             {filteredRuns.length} of {manualRuns.length} runs
@@ -467,7 +554,22 @@ export function BenchmarkRunsHistory({
           <thead>
             <tr className="border-b bg-muted/50">
               <th className="text-left px-4 py-3 font-medium text-muted-foreground">Task</th>
-              <th className="text-left px-4 py-3 font-medium text-muted-foreground">Type</th>
+              <th className="text-left px-4 py-3 font-medium text-muted-foreground">
+                {/* Column-header micro-filter: a native select keeps the header
+                    one line tall and dodges portal/overlay complexity inside a
+                    table head. Default "all" shows every pipeline merged. */}
+                <select
+                  value={typeFilter}
+                  onChange={(e) => setTypeFilter(e.target.value as "all" | "manual" | "recursion")}
+                  className="bg-transparent font-medium text-muted-foreground text-sm cursor-pointer focus:outline-none hover:text-foreground [&>option]:bg-popover [&>option]:text-popover-foreground"
+                  aria-label="Filter by run type"
+                  data-testid="type-filter"
+                >
+                  <option value="all">All types</option>
+                  <option value="manual">Manual</option>
+                  <option value="recursion">Recursion</option>
+                </select>
+              </th>
               <th className="text-left px-4 py-3 font-medium text-muted-foreground">Started</th>
               <th className="text-left px-4 py-3 font-medium text-muted-foreground">Runner Status</th>
               <th className="text-left px-4 py-3 font-medium text-muted-foreground">Score</th>
@@ -479,12 +581,12 @@ export function BenchmarkRunsHistory({
             </tr>
           </thead>
           <tbody>
-            {displayRows.length === 0 && typeFilter !== "manual" && (
+            {displayRows.length === 0 && (
               <tr>
                 <td colSpan={colSpan} className="px-4 py-8 text-center text-sm text-muted-foreground" data-testid="type-filter-empty">
-                  No {typeFilter === "all" ? "" : "recursion-pipeline "}runs recorded here.
-                  Concept-driven attempts often exist only in the graph — see the
-                  Recursion tab for per-attempt history.
+                  No {typeFilter === "all" ? "" : `${typeFilter} `}runs recorded here.
+                  {typeFilter === "recursion" &&
+                    " Concept-driven attempts often exist only in the graph — see the Recursion tab for per-attempt history."}
                 </td>
               </tr>
             )}
@@ -541,14 +643,10 @@ export function BenchmarkRunsHistory({
                     <RunnerStatusBadge status={run.status} />
                   </td>
                   <td className="px-4 py-3">
-                    {run.runType === "manual" ? (
-                      <ScoreCell run={run} />
-                    ) : (
-                      // Analysis runs write cause annotations, recursion runs
-                      // drive the loop — neither ever scores. Attempts scored
-                      // by the loop live on the Recursion tab.
-                      <span className="text-muted-foreground/60" data-testid="score-na">—</span>
-                    )}
+                    {/* Recursion re-runs now report post-fix scores back onto
+                        their run row; ScoreCell renders its own dash when no
+                        score landed (older rows, fix-proposal stage). */}
+                    <ScoreCell run={run} />
                   </td>
                   <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
                     {run.runType === "manual" ? (
@@ -558,11 +656,9 @@ export function BenchmarkRunsHistory({
                     )}
                   </td>
                   <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
-                    {run.runType === "manual" ? (
-                      <ReportCell run={run} slug={workspace?.slug} />
-                    ) : (
-                      <span className="text-muted-foreground/60">—</span>
-                    )}
+                    {/* Report bundles land on recursion rows too (reportUrl
+                        column via webhook) — ReportCell self-handles absence. */}
+                    <ReportCell run={run} slug={workspace?.slug} />
                   </td>
                   {isSuperAdmin && (
                     <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
@@ -724,6 +820,7 @@ function ScoreCell({ run }: { run: AdjustedRun }) {
       className={run.judgeNotes ? "flex items-center gap-2 cursor-help" : "flex items-center gap-2"}
       title={run.judgeNotes}
       aria-label={run.judgeNotes}
+      data-score-source={run.score_source}
     >
       {run.n_passed !== undefined && run.n_total !== undefined && (
         <span className="text-sm tabular-nums">
@@ -782,17 +879,6 @@ function RecursionEnabledBadge({ workspaceSlug }: { workspaceSlug: string }) {
  * green/red are runner statuses, violet contested, amber incomplete-data).
  */
 function RunTypeBadge({ runType }: { runType: BenchmarkRunType }) {
-  if (runType === "analysis") {
-    return (
-      <Badge
-        variant="outline"
-        className="border-0 bg-indigo-100 text-indigo-800 dark:bg-indigo-900/30 dark:text-indigo-300 w-fit"
-        data-testid="run-type-analysis"
-      >
-        analysis
-      </Badge>
-    );
-  }
   if (runType === "recursion") {
     return (
       <Badge

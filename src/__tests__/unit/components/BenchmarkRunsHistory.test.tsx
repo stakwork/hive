@@ -78,6 +78,21 @@ const mockUseRecursionList = vi.fn(() => ({
   refetch: vi.fn(),
 }));
 
+// Graph-first scoring hooks — defaults mirror their real failure mode in
+// jsdom (fetch fails → empty maps → result-table fallback), so every
+// pre-existing test renders exactly as before these mocks existed.
+const mockRubricsMapHook = vi.fn((_slugs: string[]) => new Map());
+const mockGraphScoresMapHook = vi.fn((_requests: unknown[]) => new Map());
+
+vi.mock("@/hooks/useBenchmarkRubrics", () => ({
+  useBenchmarkRubricsMap: (slugs: string[]) => mockRubricsMapHook(slugs),
+  useBenchmarkRubrics: () => ({ rubrics: null }),
+}));
+
+vi.mock("@/hooks/useBenchmarkGraphScores", () => ({
+  useBenchmarkGraphScoresMap: (requests: unknown[]) => mockGraphScoresMapHook(requests),
+}));
+
 vi.mock("@/hooks/useLegalBenchmarkRecursionList", () => ({
   useLegalBenchmarkRecursionList: () => mockUseRecursionList(),
 }));
@@ -1117,9 +1132,11 @@ describe("BenchmarkRunsHistory — recursion badge", () => {
 describe("BenchmarkRunsHistory — run types", () => {
   const manualRun = () =>
     makeRun({ id: "m-1", taskSlug: "antitrust/task-1" });
+  // The analysis pipeline (LEGAL_BENCHMARK_EVAL) maps to runType "recursion" —
+  // it is an internal stage of the loop, not an operator-facing category.
   const analysisRun = () => ({
     ...makeRun({ id: "a-1" }),
-    runType: "analysis",
+    runType: "recursion",
     taskSlug: "antitrust/task-1",
     taskTitle: "",
     n_passed: undefined,
@@ -1160,19 +1177,9 @@ describe("BenchmarkRunsHistory — run types", () => {
     });
   });
 
-  it("defaults to Manual: cron rows hidden, view identical to before", () => {
+  it("defaults to All: every pipeline newest-first with type badges and score dashes", () => {
     mockMixedRuns();
     render(<BenchmarkRunsHistory />);
-    expect(screen.getByTestId("run-row-m-1")).toBeInTheDocument();
-    expect(screen.queryByTestId("run-row-a-1")).toBeNull();
-    expect(screen.queryByTestId("run-row-r-1")).toBeNull();
-    expect(screen.getByTestId("run-type-manual")).toBeInTheDocument();
-  });
-
-  it("All shows every pipeline newest-first with type badges and score dashes", () => {
-    mockMixedRuns();
-    render(<BenchmarkRunsHistory />);
-    fireEvent.click(screen.getByTestId("type-filter-all"));
 
     const rows = screen.getAllByTestId(/^run-row-/);
     expect(rows.map((r) => r.getAttribute("data-testid"))).toEqual([
@@ -1180,18 +1187,57 @@ describe("BenchmarkRunsHistory — run types", () => {
       "run-row-a-1",
       "run-row-m-1",
     ]);
-    expect(screen.getByTestId("run-type-recursion")).toBeInTheDocument();
-    expect(screen.getByTestId("run-type-analysis")).toBeInTheDocument();
-    // Cron rows never score — explicit dash, not a blank
-    expect(screen.getAllByTestId("score-na")).toHaveLength(2);
+    // Both cron pipelines wear the same recursion badge — no "analysis" facing
+    // the operator.
+    expect(screen.getAllByTestId("run-type-recursion")).toHaveLength(2);
+    expect(screen.getByTestId("run-type-manual")).toBeInTheDocument();
     // Title derived from the manual row sharing the slug
     expect(screen.getByTestId("run-row-a-1").textContent).toContain("Analyze Antitrust Strategy");
   });
 
-  it("Recursion chip shows the whole loop — analysis AND fix-proposal rows", () => {
+  it("renders score and report link on recursion rows that carry them", () => {
+    mockUseList.mockReturnValue({
+      runs: [
+        {
+          ...analysisRun(),
+          status: "COMPLETED",
+          n_passed: 34,
+          n_total: 39,
+          all_pass: false,
+          hasReport: true,
+        },
+        manualRun(),
+      ],
+      total: 1,
+      isLoading: false,
+      error: null,
+      refetch: mockRefetch,
+      setExpandedId: mockSetExpandedId,
+    });
+    render(<BenchmarkRunsHistory />);
+
+    const row = screen.getByTestId("run-row-a-1");
+    expect(row.textContent).toContain("34/39");
+    expect(row.textContent).toContain("FAIL");
+    const links = screen.getAllByTestId("run-report-link");
+    expect(
+      links.some((l) => l.getAttribute("href") === "/w/openlaw/legal/benchmarks/runs/a-1/report"),
+    ).toBe(true);
+  });
+
+  it("the Type column dropdown narrows to Manual", () => {
     mockMixedRuns();
     render(<BenchmarkRunsHistory />);
-    fireEvent.click(screen.getByTestId("type-filter-recursion"));
+    fireEvent.change(screen.getByTestId("type-filter"), { target: { value: "manual" } });
+    expect(screen.getByTestId("run-row-m-1")).toBeInTheDocument();
+    expect(screen.queryByTestId("run-row-a-1")).toBeNull();
+    expect(screen.queryByTestId("run-row-r-1")).toBeNull();
+  });
+
+  it("the Recursion filter shows the whole loop — analysis AND fix-proposal rows", () => {
+    mockMixedRuns();
+    render(<BenchmarkRunsHistory />);
+    fireEvent.change(screen.getByTestId("type-filter"), { target: { value: "recursion" } });
     expect(screen.getByTestId("run-row-r-1")).toBeInTheDocument();
     expect(screen.getByTestId("run-row-a-1")).toBeInTheDocument();
     expect(screen.queryByTestId("run-row-m-1")).toBeNull();
@@ -1201,14 +1247,13 @@ describe("BenchmarkRunsHistory — run types", () => {
     mockMixedRuns();
     render(<BenchmarkRunsHistory />);
     expect(screen.getByTestId("summary-strip").getAttribute("data-rows")).toBe("1");
-    fireEvent.click(screen.getByTestId("type-filter-all"));
+    fireEvent.change(screen.getByTestId("type-filter"), { target: { value: "recursion" } });
     expect(screen.getByTestId("summary-strip").getAttribute("data-rows")).toBe("1");
   });
 
   it("cron rows do not expand on click", () => {
     mockMixedRuns();
     render(<BenchmarkRunsHistory />);
-    fireEvent.click(screen.getByTestId("type-filter-all"));
     fireEvent.click(screen.getByTestId("run-row-a-1"));
     expect(screen.queryByTestId("results-a-1")).toBeNull();
     fireEvent.click(screen.getByTestId("run-row-m-1"));
@@ -1225,7 +1270,202 @@ describe("BenchmarkRunsHistory — run types", () => {
       setExpandedId: mockSetExpandedId,
     });
     render(<BenchmarkRunsHistory />);
-    fireEvent.click(screen.getByTestId("type-filter-recursion"));
+    fireEvent.change(screen.getByTestId("type-filter"), { target: { value: "recursion" } });
     expect(screen.getByTestId("type-filter-empty").textContent).toMatch(/Recursion tab/);
+  });
+});
+
+// ─── Graph-first score numerators ────────────────────────────────────────────
+
+describe("BenchmarkRunsHistory — graph-first score numerators", () => {
+  const TASK = "antitrust/task-1";
+
+  /** Ten-rubric roster, two contested — denominator 8 after exclusion. */
+  const roster = Array.from({ length: 10 }, (_, i) => ({
+    ref_id: `req-${i}`,
+    id: `C-${i}`,
+    name: `Rubric ${i}`,
+    contested: i < 2,
+  }));
+
+  const graphOutput = (overrides: Record<string, unknown> = {}) => ({
+    ref_id: "out-1",
+    triggerRef: "trig-1",
+    attempt_number: 1,
+    result: "fail",
+    score: 0.8,
+    n_passed: 8,
+    n_total: 10,
+    judge_notes: "8/10 criteria passed. Judge: mock-judge",
+    date_added_to_graph: "1760000000",
+    ...overrides,
+  });
+
+  const scoreSourceOf = (rowTestId: string) =>
+    screen
+      .getByTestId(rowTestId)
+      .querySelector("[data-score-source]")
+      ?.getAttribute("data-score-source");
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockRubricsMapHook.mockImplementation(() => new Map());
+    mockGraphScoresMapHook.mockImplementation(() => new Map());
+    mockUseRecursionList.mockReturnValue({
+      entries: [],
+      isLoading: false,
+      error: null,
+      refetch: vi.fn(),
+    });
+  });
+
+  it("scores a recursion row from the graph output joined by projectId suffix", () => {
+    mockUseList.mockReturnValue({
+      runs: [
+        {
+          ...makeRun({ id: "r-1", taskSlug: TASK, projectId: 57419, status: "COMPLETED" }),
+          runType: "recursion",
+          taskTitle: "",
+        },
+        makeRun({ id: "m-1", taskSlug: TASK }),
+      ],
+      total: 1,
+      isLoading: false,
+      error: null,
+      refetch: mockRefetch,
+      setExpandedId: mockSetExpandedId,
+    });
+    mockRubricsMapHook.mockImplementation(() => new Map([[TASK, roster]]));
+    mockGraphScoresMapHook.mockImplementation(
+      () => new Map([[TASK, [graphOutput({ id: "task-src--57419" })]]]),
+    );
+
+    render(<BenchmarkRunsHistory />);
+
+    const row = screen.getByTestId("run-row-r-1");
+    // Graph numerator 8/10 against the roster denominator (10 - 2 contested)
+    expect(row.textContent).toContain("8/8");
+    expect(row.textContent).toContain("PASS");
+    expect(scoreSourceOf("run-row-r-1")).toBe("graph");
+    expect(screen.getByTestId("score-cell-contested")).toBeInTheDocument();
+  });
+
+  it("falls back to the result-table score when no graph output joins", () => {
+    mockUseList.mockReturnValue({
+      runs: [
+        {
+          ...makeRun({ id: "r-1", taskSlug: TASK, projectId: 111, status: "COMPLETED", n_passed: 34, n_total: 39, all_pass: false }),
+          runType: "recursion",
+          taskTitle: "",
+        },
+        makeRun({ id: "m-1", taskSlug: TASK }),
+      ],
+      total: 1,
+      isLoading: false,
+      error: null,
+      refetch: mockRefetch,
+      setExpandedId: mockSetExpandedId,
+    });
+
+    render(<BenchmarkRunsHistory />);
+
+    const row = screen.getByTestId("run-row-r-1");
+    expect(row.textContent).toContain("34/39");
+    expect(row.textContent).toContain("FAIL");
+    expect(scoreSourceOf("run-row-r-1")).toBe("result");
+  });
+
+  it("prefers the graph output over echoed counts on a manual row and requests its trigger ref", () => {
+    const manualWithTrigger = {
+      ...makeRun({ id: "m-1", taskSlug: TASK, status: "COMPLETED", n_passed: 50, n_total: 74, all_pass: false }),
+      evalTriggerRef: "trig-1",
+    };
+    mockUseList.mockReturnValue({
+      runs: [manualWithTrigger],
+      total: 1,
+      isLoading: false,
+      error: null,
+      refetch: mockRefetch,
+      setExpandedId: mockSetExpandedId,
+    });
+    mockGraphScoresMapHook.mockImplementation(
+      () => new Map([[TASK, [graphOutput({ n_passed: 60, n_total: 74 })]]]),
+    );
+
+    render(<BenchmarkRunsHistory />);
+
+    const row = screen.getByTestId("run-row-m-1");
+    expect(row.textContent).toContain("60/74");
+    expect(scoreSourceOf("run-row-m-1")).toBe("graph");
+    // The hook was asked for this task's trigger ref (the requirement-hosted
+    // trigger only the row knows about).
+    expect(mockGraphScoresMapHook).toHaveBeenCalledWith([
+      { taskSlug: TASK, triggerRefs: ["trig-1"], outputRefs: [] },
+    ]);
+  });
+
+  it("a stored evalOutputRef pointer scores verbatim from the node — both numbers, no roster overlay", () => {
+    const manualWithPointer = {
+      ...makeRun({ id: "m-1", taskSlug: TASK, status: "COMPLETED", n_passed: 50, n_total: 74, all_pass: false }),
+      evalTriggerRef: "trig-1",
+      evalOutputRef: "out-9",
+      criteria_results: [{ id: "C-0", title: "Rubric 0", verdict: "PASS", reasoning: "" }],
+    };
+    mockUseList.mockReturnValue({
+      runs: [manualWithPointer],
+      total: 1,
+      isLoading: false,
+      error: null,
+      refetch: mockRefetch,
+      setExpandedId: mockSetExpandedId,
+    });
+    // Roster present — but the pointer must win over roster math entirely.
+    mockRubricsMapHook.mockImplementation(() => new Map([[TASK, roster]]));
+    mockGraphScoresMapHook.mockImplementation(
+      () =>
+        new Map([
+          [TASK, [graphOutput({ ref_id: "out-9", triggerRef: undefined, n_passed: 9, n_total: 10 })]],
+        ]),
+    );
+
+    render(<BenchmarkRunsHistory />);
+
+    const row = screen.getByTestId("run-row-m-1");
+    // Node counts verbatim: NOT contested-adjusted, NOT the result-column 50/74
+    expect(row.textContent).toContain("9/10");
+    expect(scoreSourceOf("run-row-m-1")).toBe("output-ref");
+    expect(screen.queryByTestId("score-cell-contested")).toBeNull();
+    // The pointer was requested from the graph-scores hook
+    expect(mockGraphScoresMapHook).toHaveBeenCalledWith([
+      { taskSlug: TASK, triggerRefs: ["trig-1"], outputRefs: ["out-9"] },
+    ]);
+  });
+
+  it("keeps analysis rows scoreless even when the task has graph outputs", () => {
+    mockUseList.mockReturnValue({
+      runs: [
+        {
+          ...makeRun({ id: "a-1", taskSlug: TASK, projectId: null, status: "COMPLETED" }),
+          runType: "recursion",
+          taskTitle: "",
+        },
+        makeRun({ id: "m-1", taskSlug: TASK }),
+      ],
+      total: 1,
+      isLoading: false,
+      error: null,
+      refetch: mockRefetch,
+      setExpandedId: mockSetExpandedId,
+    });
+    mockGraphScoresMapHook.mockImplementation(
+      () => new Map([[TASK, [graphOutput({ id: "task-src--57419" })]]]),
+    );
+
+    render(<BenchmarkRunsHistory />);
+
+    // No trigger ref, no matching project → honest dash, never a borrowed score
+    const row = screen.getByTestId("run-row-a-1");
+    expect(row.textContent).toContain("—");
+    expect(row.textContent).not.toContain("8/");
   });
 });

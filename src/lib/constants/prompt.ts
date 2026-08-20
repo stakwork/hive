@@ -1,6 +1,6 @@
 import { ModelMessage } from "ai";
 import { WorkspaceConfig, WorkspaceMemberInfo } from "@/lib/ai/types";
-import { shouldTrimConceptsToIds } from "@/lib/ai/concepts";
+import { shouldTrimConceptsToIds, MAX_SEEDED_CONCEPTS_PER_WORKSPACE } from "@/lib/ai/concepts";
 import { buildPromptCategorySection } from "@/app/org/[githubLogin]/connections/canvas-categories";
 import { jamieName } from "@/lib/constants/jamie";
 
@@ -149,7 +149,7 @@ export function getQuickAskPrefixMessages(
           toolName: "list_concepts",
           output: {
             type: "json",
-            value: concepts as any,
+            value: concepts.slice(0, MAX_SEEDED_CONCEPTS_PER_WORKSPACE) as any,
           },
         },
       ],

@@ -1,4 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
+import { MOCK_LIVE_TARGET_NODES } from "@/app/api/mock/jarvis/graph/fix-snapshot-fixtures";
+import {
+  buildAttemptCapNodes,
+  buildConceptOnlyNodes,
+  buildPlateauCapNodes,
+  buildRecursionNodes,
+} from "@/app/api/mock/jarvis/graph/recursion-fixture";
 
 /**
  * Mock routes for /v2/nodes/{ref_id}
@@ -11,7 +18,34 @@ import { NextRequest, NextResponse } from "next/server";
  *   - "warning"  → 200 { status: "Warning", data: { ref_id } }
  *   - "fail"     → 200 { status: "fail", message }
  *   - default    → 200 { status: "success", ... }
+ *
+ * Known fixture ref_ids resolve to their REAL fixture node (recursion
+ * scenarios + the fix-snapshot live-target concepts) so guards that check
+ * node_type — e.g. the fix-chain route's EvalSet IDOR check via kgGetNode,
+ * or the attempt report page's EvalTriggerOutput check — pass in mock mode,
+ * and the fix reader's "open live node" peek shows real content. Unknown
+ * ref_ids keep the original generic-Concept fallback.
  */
+
+/** Lazy, memoized ref_id → fixture-node index across all fixture sources. */
+let fixtureNodeIndex: Map<string, unknown> | null = null;
+function lookupFixtureNode(refId: string): unknown | null {
+  if (!fixtureNodeIndex) {
+    fixtureNodeIndex = new Map<string, unknown>();
+    for (const node of [
+      ...buildRecursionNodes(),
+      ...buildConceptOnlyNodes(),
+      ...buildAttemptCapNodes(),
+      ...buildPlateauCapNodes(),
+    ]) {
+      if (!fixtureNodeIndex.has(node.ref_id)) fixtureNodeIndex.set(node.ref_id, node);
+    }
+    for (const node of Object.values(MOCK_LIVE_TARGET_NODES)) {
+      fixtureNodeIndex.set(node.ref_id, node);
+    }
+  }
+  return fixtureNodeIndex.get(refId) ?? null;
+}
 export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ ref_id: string }> },
@@ -66,6 +100,16 @@ export async function GET(
   if (scenario === "fail") {
     return NextResponse.json(
       { status: "fail", message: "Lookup failed" },
+      { status: 200 },
+    );
+  }
+
+  // Known fixture ref_ids answer with their real node so node_type-checking
+  // guards (EvalSet IDOR, EvalTriggerOutput report gate) pass in mock mode.
+  const fixtureNode = lookupFixtureNode(ref_id);
+  if (fixtureNode) {
+    return NextResponse.json(
+      { status: "success", nodes: [fixtureNode], edges: [] },
       { status: 200 },
     );
   }

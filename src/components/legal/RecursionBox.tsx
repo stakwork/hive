@@ -290,7 +290,7 @@ function RecursionCard({ entry, refetch }: RecursionCardProps) {
                   <HillClimbChart attempts={attempts} height={176} />
                 </div>
                 <div className="md:basis-1/3 min-w-0">
-                  <RecursionActivityRail rows={attemptRows} partial={partial} />
+                  <RecursionActivityRail rows={attemptRows} partial={partial} taskSlug={entry.id} />
                 </div>
               </div>
             </div>

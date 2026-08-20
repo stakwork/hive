@@ -59,6 +59,46 @@ describe("normalizeOutput", () => {
     expect(out?.id).toBe("task-slug-run-123");
   });
 
+  it("surfaces report_url from properties when it is an http(s) URL", () => {
+    const node: RawJarvisNode = {
+      ref_id: "out-r1",
+      properties: { n_passed: 5, n_total: 10, report_url: "https://example.com/report/1" },
+    };
+    expect(normalizeOutput(node)?.report_url).toBe("https://example.com/report/1");
+  });
+
+  it("trims surrounding whitespace on report_url", () => {
+    const node: RawJarvisNode = {
+      ref_id: "out-r2",
+      properties: { report_url: "  https://example.com/report/2  " },
+    };
+    expect(normalizeOutput(node)?.report_url).toBe("https://example.com/report/2");
+  });
+
+  it("drops report_url when it is not an http(s) URL", () => {
+    for (const bad of [
+      "javascript:alert(1)",
+      "ftp://example.com/x",
+      "example.com/no-scheme",
+      "",
+      "   ",
+      42,
+      { url: "https://example.com" },
+      null,
+    ]) {
+      const node: RawJarvisNode = {
+        ref_id: "out-r3",
+        properties: { report_url: bad },
+      };
+      expect(normalizeOutput(node)?.report_url).toBeUndefined();
+    }
+  });
+
+  it("leaves report_url undefined when absent", () => {
+    const node: RawJarvisNode = { ref_id: "out-r4", properties: { n_passed: 1, n_total: 2 } };
+    expect(normalizeOutput(node)?.report_url).toBeUndefined();
+  });
+
   it("falls back to judge_notes parse when n_passed/n_total absent from properties", () => {
     const node: RawJarvisNode = {
       ref_id: "out-5",

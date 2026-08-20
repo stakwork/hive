@@ -27,6 +27,11 @@ export interface GraphNodeNeighbor {
   direction: "forward" | "reverse";
   /** Jarvis edge `importance` (0–1), when the edge carries one. */
   importance?: number;
+  /**
+   * 1-based order an agent session read this node, from a `READ_CONCEPT`
+   * edge's `read_order`. Only present on session→Concept edges.
+   */
+  read_order?: number;
 }
 
 export interface GraphNodeDetailResponse {
