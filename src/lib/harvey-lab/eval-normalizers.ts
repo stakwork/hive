@@ -17,6 +17,12 @@ export interface EvalTriggerOutput {
   date_added_to_graph?: string;
   /** Node id (e.g. "task_slug-source_run_id" or "task_slug-source_run_id--<rerun_id>") */
   id?: string;
+  /**
+   * Report URL written onto the node by the Stakwork eval workflow.
+   * Only http(s) values survive normalization — anything else is dropped so
+   * downstream renderers never see an unsafe href.
+   */
+  report_url?: string;
   // ── Hill-climb series fields (set by buildHillClimbSeries) ───────────────
   /** Whether this attempt was accepted; false for rejected/pending */
   accepted?: boolean;
@@ -58,6 +64,18 @@ export type RawJarvisNode = {
  * whose properties don't carry these fields.
  * Format: "{n_passed}/{n_total} criteria passed…"
  */
+/**
+ * Keep a report_url only when it is a non-empty http(s) URL. The value is
+ * graph data (written by the external eval workflow), so it must never reach
+ * an href without a scheme check.
+ */
+function sanitizeReportUrl(raw: unknown): string | undefined {
+  if (typeof raw !== "string") return undefined;
+  const trimmed = raw.trim();
+  if (!/^https?:\/\//i.test(trimmed)) return undefined;
+  return trimmed;
+}
+
 function parseCountsFromJudgeNotes(
   judgeNotes: string | undefined,
 ): { n_passed: number; n_total: number } | null {
@@ -111,6 +129,7 @@ export function normalizeOutput(n: RawJarvisNode): EvalTriggerOutput | null {
       ? String(n.date_added_to_graph)
       : undefined,
     id: n.properties?.id ? String(n.properties.id) : undefined,
+    report_url: sanitizeReportUrl(n.properties?.report_url),
   };
 }
 

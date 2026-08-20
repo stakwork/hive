@@ -72,6 +72,13 @@ export interface AttemptRailRow {
   projectId: number | null;
   hasReport: boolean;
   /**
+   * Report URL carried on the attempt's EvalTriggerOutput graph node
+   * (written by the Stakwork eval workflow; already scheme-checked by
+   * normalizeOutput). Lets graph-only rows link a report even when no
+   * StakworkRun row joined.
+   */
+  reportUrl: string | null;
+  /**
    * Run completed with a report requested but the bundle hasn't landed yet —
    * report_url is written asynchronously after completion, so this is a
    * legitimate transient state, not an error.
@@ -496,7 +503,10 @@ export function useEvalRunHistory(input: UseEvalRunHistoryInput): UseEvalRunHist
         const rowFromRun = (
           key: string,
           statusRun: StakworkRunRow | null,
-          extras: Pick<AttemptRailRow, "label" | "attemptIndex" | "score"> & { graphTime?: string | null },
+          extras: Pick<AttemptRailRow, "label" | "attemptIndex" | "score"> & {
+            graphTime?: string | null;
+            reportUrl?: string | null;
+          },
         ): AttemptRailRow => {
           const parsedStatusRun = statusRun ? parseBenchmarkRunResult(statusRun.result) : null;
           return {
@@ -510,6 +520,7 @@ export function useEvalRunHistory(input: UseEvalRunHistoryInput): UseEvalRunHist
             runId: statusRun?.id ?? null,
             projectId: statusRun?.projectId ?? null,
             hasReport: statusRun?.hasReport === true,
+            reportUrl: extras.reportUrl ?? null,
             reportPending:
               statusRun?.status === "COMPLETED" &&
               parsedStatusRun?.generateRunReport === true &&
@@ -531,6 +542,7 @@ export function useEvalRunHistory(input: UseEvalRunHistoryInput): UseEvalRunHist
             attemptIndex: index,
             score: passed != null && total != null ? { passed, total } : null,
             graphTime: graphEpochToIso(attempt.date_added_to_graph),
+            reportUrl: attempt.report_url ?? null,
           });
         });
 
@@ -570,6 +582,7 @@ export function useEvalRunHistory(input: UseEvalRunHistoryInput): UseEvalRunHist
             runId: run.id,
             projectId: run.projectId,
             hasReport: false,
+            reportUrl: null,
             reportPending: false,
             inFlight: true,
           }));

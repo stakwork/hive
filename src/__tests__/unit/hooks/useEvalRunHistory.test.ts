@@ -714,6 +714,34 @@ describe("useEvalRunHistory — attemptRows", () => {
     expect(landed.hasReport).toBe(true);
   });
 
+  it("carries the graph node's report_url onto graph-only rows", async () => {
+    // The Stakwork eval workflow writes report_url onto the EvalTriggerOutput
+    // node itself — recursion attempts that never join a StakworkRun row must
+    // still surface it.
+    const output = makeOutputNode("output-base", 50, 74, "1720000000");
+    (output.properties as Record<string, unknown>).report_url =
+      "https://example.com/reports/base";
+    const graph = {
+      nodes: [makeTriggerNode("trigger-base"), output],
+      edges: [
+        { source: EVAL_SET_REF, target: "trigger-base", edge_type: "HAS_BASELINE_TRIGGER" },
+        { source: "trigger-base", target: "output-base", edge_type: "HAS_OUTPUT" },
+      ],
+    };
+    const { result } = renderRail({
+      "fix-chain": makeFixChainResponse(graph.nodes, graph.edges),
+      "type=LEGAL_BENCHMARK_RUNNER": { runs: [] },
+      "type=LEGAL_BENCHMARK_EVAL": { runs: [] },
+      "type=LEGAL_BENCHMARK_RECURSION": { runs: [] },
+    });
+    await waitFor(() => expect(result.current.isLoading).toBe(false), { timeout: 5000 });
+
+    const row = result.current.attemptRows.find((r) => r.key === "output-base")!;
+    expect(row.status).toBeNull();
+    expect(row.hasReport).toBe(false);
+    expect(row.reportUrl).toBe("https://example.com/reports/base");
+  });
+
   it("charts rows for identity-less triggers — the concept pipeline writes none", async () => {
     // Trigger nodes with no agent/start_point/end_point (external concept
     // workflow). history filters these out; the rail must NOT.
