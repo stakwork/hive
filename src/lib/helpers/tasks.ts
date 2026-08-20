@@ -137,21 +137,44 @@ interface PublishArtifactContent {
 export type { ChatMessagesSnapshot } from "./tasks-shared";
 export { allWorkflowArtifactsPublished } from "./tasks-shared";
 
+type ExtractedPublishArtifact = {
+  id: string;
+  type: PublishArtifactType;
+  content: { published?: boolean; name?: string };
+};
+
 /**
  * Extract the last publish artifact (Workflow, Script, or Prompt) from task chat messages.
  * PUBLISH_SKILL is explicitly excluded as it follows the PR flow.
  *
+ * Tracks the last-seen artifact of EACH publish type as it walks the chat
+ * messages (not just the overall last one), so that when a workflow and a
+ * script/prompt are published together in the same message the two don't
+ * clobber each other — a caller that knows it wants the workflow can ask for
+ * it via `preferredType` and get it back even if a script/prompt artifact
+ * happened to land after it in the same batch.
+ *
+ * Default behaviour (no `preferredType`) is unchanged for backward
+ * compatibility: the overall last publish artifact across all types, in the
+ * order chat messages/artifacts were created.
+ *
  * @param task - Task object with chatMessages array containing artifacts
- * @returns The last publish artifact or null if none found
+ * @param preferredType - When provided, prefer the last artifact of this
+ *   specific type; falls back to the overall last publish artifact when none
+ *   of that type exist.
+ * @returns The last publish artifact (or the last of `preferredType`, when
+ *   given and present) or null if none found
  */
 export function extractPublishArtifact(
   task: TaskPrContext,
-): { id: string; type: PublishArtifactType; content: { published?: boolean; name?: string } } | null {
+  preferredType?: PublishArtifactType,
+): ExtractedPublishArtifact | null {
   if (!task.chatMessages || task.chatMessages.length === 0) {
     return null;
   }
 
-  let result: { id: string; type: PublishArtifactType; content: { published?: boolean; name?: string } } | null = null;
+  let lastOverall: ExtractedPublishArtifact | null = null;
+  const lastByType: Partial<Record<PublishArtifactType, ExtractedPublishArtifact>> = {};
 
   for (const message of task.chatMessages) {
     if (!message.artifacts || message.artifacts.length === 0) continue;
@@ -159,19 +182,26 @@ export function extractPublishArtifact(
       if (PUBLISH_ARTIFACT_TYPES.includes(artifact.type as PublishArtifactType)) {
         const raw = artifact.content as PublishArtifactContent | null;
         const name = raw?.workflowName ?? raw?.scriptName ?? raw?.promptName ?? raw?.name;
-        result = {
+        const type = artifact.type as PublishArtifactType;
+        const entry: ExtractedPublishArtifact = {
           id: artifact.id,
-          type: artifact.type as PublishArtifactType,
+          type,
           content: {
             published: typeof raw?.published === "boolean" ? raw.published : undefined,
             name: typeof name === "string" ? name : undefined,
           },
         };
+        lastOverall = entry;
+        lastByType[type] = entry;
       }
     }
   }
 
-  return result;
+  if (preferredType) {
+    return lastByType[preferredType] ?? lastOverall;
+  }
+
+  return lastOverall;
 }
 
 /**
