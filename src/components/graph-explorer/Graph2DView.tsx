@@ -3,6 +3,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { GraphVisualization } from "@/components/graph/GraphVisualization";
 import type { GraphEdge, GraphNode } from "@/components/graph/graphUtils";
+import { GRAPH_EXPLORER_COLORS } from "./nodeColors";
 import type { RawGraph } from "./walkGraph";
 
 /**
@@ -71,6 +72,7 @@ export function Graph2DView({
           edges={edges}
           width={size.width}
           height={size.height}
+          colorMap={GRAPH_EXPLORER_COLORS}
           onNodeClick={handleNodeClick}
         />
       )}
