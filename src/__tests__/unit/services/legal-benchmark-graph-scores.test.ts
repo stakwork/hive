@@ -35,7 +35,10 @@ const CONFIG: JarvisConnectionConfig = {
 
 type MockNode = { ref_id: string; node_type: string; properties?: Record<string, unknown>; date_added_to_graph?: string };
 
-/** Route fetch by expanded ref_id → returned neighbor nodes. */
+/** Route fetch by ref_id → returned nodes. For expand calls, a generic root
+ *  is prepended (Jarvis returns it alongside neighbors — proves filtering);
+ *  when the configured list already contains the requested node (direct
+ *  pointer reads), it is returned as-is. */
 function mockFetchByRef(responses: Record<string, MockNode[] | "fail">) {
   return vi.fn(async (url: string) => {
     const match = /\/v2\/nodes\/([^?]+)\?/.exec(url);
@@ -43,10 +46,12 @@ function mockFetchByRef(responses: Record<string, MockNode[] | "fail">) {
     const nodes = responses[refId];
     if (nodes === "fail" ) return { ok: false, status: 502, text: async () => "" } as Response;
     if (!nodes) return { ok: true, json: async () => ({ nodes: [] }) } as unknown as Response;
-    // Jarvis returns the root alongside neighbors — include it to prove filtering.
+    const selfContained = nodes.some((n) => n.ref_id === refId);
     return {
       ok: true,
-      json: async () => ({ nodes: [{ ref_id: refId, node_type: "EvalSet" }, ...nodes] }),
+      json: async () => ({
+        nodes: selfContained ? nodes : [{ ref_id: refId, node_type: "EvalSet" }, ...nodes],
+      }),
     } as unknown as Response;
   });
 }
@@ -134,6 +139,37 @@ describe("fetchTaskGraphOutputs", () => {
     const result = await fetchTaskGraphOutputs(CONFIG, "task-a", ["trig-dead"]);
     expect(result.ok).toBe(false);
     expect(result.outputs).toEqual([]);
+  });
+
+  it("reads stored output-ref pointers directly, deduping against trigger expands", async () => {
+    vi.stubGlobal("fetch", mockFetchByRef({
+      "evalset-1": [{ ref_id: "trig-1", node_type: "EvalTrigger" }],
+      // Direct pointer read: the node itself, no expand
+      "out-pointer": [
+        { ref_id: "out-pointer", node_type: "EvalTriggerOutput", properties: { result: "fail", score: 0.9, n_passed: 9, n_total: 10 } },
+      ],
+      // The same node also hangs behind trig-1 — must not duplicate, and the
+      // expand should attach the triggerRef onto the pointer-fetched entry.
+      "trig-1": [
+        { ref_id: "out-pointer", node_type: "EvalTriggerOutput", properties: { result: "fail", score: 0.9, n_passed: 9, n_total: 10 } },
+      ],
+    }));
+
+    const result = await fetchTaskGraphOutputs(CONFIG, "task-a", [], ["out-pointer"]);
+    expect(result.outputs).toHaveLength(1);
+    expect(result.outputs[0].ref_id).toBe("out-pointer");
+    expect(result.outputs[0].triggerRef).toBe("trig-1");
+  });
+
+  it("a non-output node behind a pointer is ignored, not returned", async () => {
+    vi.stubGlobal("fetch", mockFetchByRef({
+      "evalset-1": [],
+      "not-an-output": [{ ref_id: "not-an-output", node_type: "Concept", properties: {} }],
+    }));
+
+    const result = await fetchTaskGraphOutputs(CONFIG, "task-a", [], ["not-an-output"]);
+    expect(result.outputs).toEqual([]);
+    expect(result.partial).toBe(false); // read succeeded; the node just isn't an output
   });
 
   it("caps the trigger fan-out", async () => {
