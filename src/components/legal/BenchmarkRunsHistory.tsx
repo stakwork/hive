@@ -120,13 +120,37 @@ type AdjustedRun = BenchmarkRunListRow & {
   /** Full rubric roster size before contested exclusion. */
   roster_total?: number;
   /**
-   * Where the score NUMERATOR came from:
-   *  - "criteria" — per-criterion verdicts in the run's result JSON (richest)
-   *  - "graph"    — the run's EvalTriggerOutput node
-   *  - "result"   — flat counts echoed into the result JSON (fallback)
+   * Where the score came from:
+   *  - "output-ref" — the row's stored EvalTriggerOutput pointer: the node is
+   *                   authoritative for numerator AND denominator, verbatim
+   *  - "criteria"   — per-criterion verdicts in the run's result JSON
+   *  - "graph"      — an EvalTriggerOutput joined by trigger/project (numerator only)
+   *  - "result"     — flat counts echoed into the result JSON (fallback)
    */
-  score_source?: "criteria" | "graph" | "result";
+  score_source?: "output-ref" | "criteria" | "graph" | "result";
 };
+
+/**
+ * Verbatim score from a row's own EvalTriggerOutput node, used when the row
+ * stores an exact `evalOutputRef` pointer: numerator AND denominator come
+ * from the node as written at scoring time — no roster overlay, no contested
+ * annotation. Rows without a pointer keep the roster-adjusted path.
+ */
+function pointerAdjustedRun(
+  run: BenchmarkRunListRow,
+  output: { n_passed?: number; n_total?: number; judge_notes?: string },
+): AdjustedRun {
+  const scored =
+    output.n_passed != null && output.n_total != null && output.n_total > 0;
+  return {
+    ...run,
+    n_passed: output.n_passed,
+    n_total: output.n_total,
+    all_pass: scored ? output.n_passed === output.n_total : run.all_pass,
+    judgeNotes: run.judgeNotes ?? output.judge_notes,
+    score_source: "output-ref",
+  };
+}
 
 interface BenchmarkRunsHistoryProps {
   /** When supplied, the component uses this hook result instead of calling
@@ -313,13 +337,21 @@ export function BenchmarkRunsHistory({
   // evalTriggerRef (manual triggers hang off an EvalRequirement, which the
   // EvalSet expand cannot reach — the row ref is the direct path).
   const graphScoreRequests = useMemo<GraphScoreRequest[]>(() => {
-    const byTask = new Map<string, Set<string>>();
+    const byTask = new Map<string, { triggerRefs: Set<string>; outputRefs: Set<string> }>();
     for (const run of [...visibleRuns, ...secondaryRows]) {
       if (!run.taskSlug) continue;
-      if (!byTask.has(run.taskSlug)) byTask.set(run.taskSlug, new Set());
-      if (run.evalTriggerRef) byTask.get(run.taskSlug)!.add(run.evalTriggerRef);
+      if (!byTask.has(run.taskSlug)) {
+        byTask.set(run.taskSlug, { triggerRefs: new Set(), outputRefs: new Set() });
+      }
+      const entry = byTask.get(run.taskSlug)!;
+      if (run.evalTriggerRef) entry.triggerRefs.add(run.evalTriggerRef);
+      if (run.evalOutputRef) entry.outputRefs.add(run.evalOutputRef);
     }
-    return [...byTask].map(([taskSlug, refs]) => ({ taskSlug, triggerRefs: [...refs] }));
+    return [...byTask].map(([taskSlug, refs]) => ({
+      taskSlug,
+      triggerRefs: [...refs.triggerRefs],
+      outputRefs: [...refs.outputRefs],
+    }));
   }, [visibleRuns, secondaryRows]);
   const graphOutputs = useBenchmarkGraphScoresMap(graphScoreRequests);
 
@@ -327,11 +359,17 @@ export function BenchmarkRunsHistory({
     () =>
       visibleRuns.map((run) => {
         const roster = rosters.get(run.taskSlug) ?? null;
+        const match = resolveGraphOutputForRun(run, graphOutputs.get(run.taskSlug));
+        // A stored evalOutputRef pointer is authoritative for BOTH numbers —
+        // the node is used verbatim, no roster overlay.
+        if (match?.matchedBy === "output-ref") {
+          return pointerAdjustedRun(run, match.output);
+        }
         // Numerator preference: the run's EvalTriggerOutput node beats the
         // flat counts echoed into the result column. Per-criterion verdicts
         // (criteria_results) still outrank both inside computeBenchmarkScore —
         // they are the only source that can exclude contested PASSES.
-        const graphOut = resolveGraphOutputForRun(run, graphOutputs.get(run.taskSlug));
+        const graphOut = match?.output ?? null;
         const nPassed = graphOut?.n_passed ?? run.n_passed;
         const nTotal = graphOut?.n_total ?? run.n_total;
         // Without a roster, per-criterion results, or a graph output there is
@@ -377,7 +415,11 @@ export function BenchmarkRunsHistory({
     () =>
       secondaryRows.map((run) => {
         const roster = rosters.get(run.taskSlug) ?? null;
-        const graphOut = resolveGraphOutputForRun(run, graphOutputs.get(run.taskSlug));
+        const match = resolveGraphOutputForRun(run, graphOutputs.get(run.taskSlug));
+        if (match?.matchedBy === "output-ref") {
+          return pointerAdjustedRun(run, match.output);
+        }
+        const graphOut = match?.output ?? null;
         const nPassed = graphOut?.n_passed ?? run.n_passed;
         const nTotal = graphOut?.n_total ?? run.n_total;
         // Most loop rows (analysis, fix-proposal) never score — leave them be.

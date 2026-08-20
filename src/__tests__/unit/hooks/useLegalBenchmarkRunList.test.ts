@@ -715,6 +715,42 @@ describe("useLegalBenchmarkRunList — evalTriggerRef mapping", () => {
     expect(result.current.runs[0].evalTriggerRef).toBe("trigger-ref-1");
   });
 
+  it("maps evalOutputRef on manual AND secondary rows — it is authored per run", async () => {
+    mockFetchOk(
+      [
+        makeRow({
+          result: JSON.stringify({
+            taskSlug: "antitrust/task-1",
+            evalOutputRef: "out-ref-manual",
+            n_passed: 72,
+            n_total: 74,
+            all_pass: true,
+          }),
+        }),
+      ],
+      undefined,
+      {
+        recursionRuns: [
+          makeRow({
+            id: "rec-1",
+            result: JSON.stringify({
+              taskSlug: "antitrust/task-1",
+              recursionId: "r-1",
+              evalOutputRef: "out-ref-rerun",
+            }),
+          }),
+        ],
+      },
+    );
+
+    const { result } = renderHook(() => useLegalBenchmarkRunList("ws-cuid-123"));
+    await waitFor(() => expect(result.current.runs).toHaveLength(2));
+    const manual = result.current.runs.find((r) => r.runType === "manual");
+    const rerun = result.current.runs.find((r) => r.runType === "recursion");
+    expect(manual?.evalOutputRef).toBe("out-ref-manual");
+    expect(rerun?.evalOutputRef).toBe("out-ref-rerun");
+  });
+
   it("does NOT map evalTriggerRef on secondary rows — an EVAL row carries the SOURCE run's ref", async () => {
     mockFetchOk([], undefined, {
       evalRuns: [

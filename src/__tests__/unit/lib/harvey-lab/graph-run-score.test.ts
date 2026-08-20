@@ -3,12 +3,13 @@
  * graph EvalTriggerOutput nodes.
  *
  * Contract under test:
- *   resolveGraphOutputForRun({ evalTriggerRef?, projectId? }, outputs) → output | null
+ *   resolveGraphOutputForRun({ evalOutputRef?, evalTriggerRef?, projectId? }, outputs)
+ *     → { output, matchedBy } | null
  *
- * Joins covered:
- *   - evalTriggerRef exact match (manual rows)
+ * Joins covered, in precedence order:
+ *   - evalOutputRef exact pointer (authoritative for numerator + denominator)
+ *   - evalTriggerRef match (manual rows)
  *   - projectId `--<suffix>` id match (recursion re-run rows)
- *   - precedence: trigger match beats projectId match
  *   - unusable outputs (no counts / zero total) are skipped
  *   - newest output wins when a trigger re-scored
  *   - null when nothing joins (caller falls back to result-table fields)
@@ -33,12 +34,51 @@ function output(overrides: Partial<GraphScoreOutput> = {}): GraphScoreOutput {
   };
 }
 
-describe("resolveGraphOutputForRun", () => {
+describe("resolveGraphOutputForRun — evalOutputRef pointer", () => {
+  it("resolves the exact stored pointer first, marked output-ref", () => {
+    const outputs = [
+      output({ ref_id: "out-a" }),
+      output({ ref_id: "out-b", triggerRef: undefined, n_passed: 9 }),
+    ];
+    const resolved = resolveGraphOutputForRun({ evalOutputRef: "out-b" }, outputs);
+    expect(resolved?.matchedBy).toBe("output-ref");
+    expect(resolved?.output.ref_id).toBe("out-b");
+  });
+
+  it("pointer outranks both the trigger and projectId joins", () => {
+    const outputs = [
+      output({ ref_id: "by-pointer", triggerRef: undefined }),
+      output({ ref_id: "by-trigger", triggerRef: "trigger-1" }),
+      output({ ref_id: "by-project", triggerRef: "other", id: "x--42" }),
+    ];
+    const resolved = resolveGraphOutputForRun(
+      { evalOutputRef: "by-pointer", evalTriggerRef: "trigger-1", projectId: 42 },
+      outputs,
+    );
+    expect(resolved?.matchedBy).toBe("output-ref");
+    expect(resolved?.output.ref_id).toBe("by-pointer");
+  });
+
+  it("falls through to weaker joins when the pointed-at node lacks usable counts", () => {
+    const outputs = [
+      output({ ref_id: "empty-pointer", n_passed: undefined, n_total: undefined }),
+      output({ ref_id: "by-trigger", triggerRef: "trigger-1" }),
+    ];
+    const resolved = resolveGraphOutputForRun(
+      { evalOutputRef: "empty-pointer", evalTriggerRef: "trigger-1" },
+      outputs,
+    );
+    expect(resolved?.matchedBy).toBe("trigger-ref");
+    expect(resolved?.output.ref_id).toBe("by-trigger");
+  });
+});
+
+describe("resolveGraphOutputForRun — derived joins", () => {
   it("joins a manual row by its evalTriggerRef", () => {
     const outputs = [output(), output({ ref_id: "out-2", triggerRef: "trigger-2", n_passed: 3 })];
     const resolved = resolveGraphOutputForRun({ evalTriggerRef: "trigger-2" }, outputs);
-    expect(resolved?.ref_id).toBe("out-2");
-    expect(resolved?.n_passed).toBe(3);
+    expect(resolved?.matchedBy).toBe("trigger-ref");
+    expect(resolved?.output.n_passed).toBe(3);
   });
 
   it("joins a recursion row by projectId id-suffix when it has no trigger ref", () => {
@@ -47,7 +87,8 @@ describe("resolveGraphOutputForRun", () => {
       output({ ref_id: "out-rerun", id: "task-a-src--57419", n_passed: 8 }),
     ];
     const resolved = resolveGraphOutputForRun({ projectId: 57419 }, outputs);
-    expect(resolved?.ref_id).toBe("out-rerun");
+    expect(resolved?.matchedBy).toBe("project-id");
+    expect(resolved?.output.ref_id).toBe("out-rerun");
   });
 
   it("does not suffix-match a different project id", () => {
@@ -64,19 +105,7 @@ describe("resolveGraphOutputForRun", () => {
       { evalTriggerRef: "trigger-1", projectId: 42 },
       outputs,
     );
-    expect(resolved?.ref_id).toBe("by-trigger");
-  });
-
-  it("falls through to the projectId join when the trigger match has no usable counts", () => {
-    const outputs = [
-      output({ ref_id: "no-counts", triggerRef: "trigger-1", n_passed: undefined, n_total: undefined }),
-      output({ ref_id: "by-project", triggerRef: "other", id: "x--42" }),
-    ];
-    const resolved = resolveGraphOutputForRun(
-      { evalTriggerRef: "trigger-1", projectId: 42 },
-      outputs,
-    );
-    expect(resolved?.ref_id).toBe("by-project");
+    expect(resolved?.output.ref_id).toBe("by-trigger");
   });
 
   it("skips zero-total outputs (degenerate 0/0 writes)", () => {
@@ -90,7 +119,7 @@ describe("resolveGraphOutputForRun", () => {
       output({ ref_id: "new", date_added_to_graph: "1760009999", n_passed: 9 }),
     ];
     const resolved = resolveGraphOutputForRun({ evalTriggerRef: "trigger-1" }, outputs);
-    expect(resolved?.ref_id).toBe("new");
+    expect(resolved?.output.ref_id).toBe("new");
   });
 
   it("returns null for empty/absent output lists and joinless rows", () => {
