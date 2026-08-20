@@ -7,7 +7,10 @@
  * `legal-benchmark-rubrics.ts`, which already sources the DENOMINATOR
  * (EvalSet → EvalRequirement roster, contested excluded).
  *
- * Two collection paths, matching where triggers actually live:
+ * Three collection paths, strongest first:
+ *  0. Stored `evalOutputRef` pointers — exact single-node reads for rows
+ *     whose result JSON names its own output node (persisted by the runner
+ *     completion webhook; external pipelines may supply it too).
  *  1. EvalSet-hosted triggers (HAS_BASELINE_TRIGGER / HAS_TRIGGER) — where
  *     the recursion loop's re-scored attempts land. One depth-1 expand from
  *     the EvalSet resolved by task slug.
@@ -88,6 +91,40 @@ function isNodeType(node: JarvisNode, expected: string): boolean {
 }
 
 /**
+ * Direct single-node read for stored evalOutputRef pointers — the same
+ * `{ nodes: [node] }` wire shape kgGetNode consumes. Returns null on failure.
+ */
+async function readNode(
+  config: JarvisConnectionConfig,
+  refId: string,
+): Promise<JarvisNode | null> {
+  const url = `${config.jarvisUrl}/v2/nodes/${encodeURIComponent(refId)}?limit=1`;
+  try {
+    const res = await fetch(url, { headers: { "x-api-token": config.apiKey } });
+    if (!res.ok) {
+      logger.warn(
+        `[legal/benchmarks/graph-scores] Jarvis node read failed status=${res.status}`,
+        "legal",
+        { refId, status: res.status },
+      );
+      return null;
+    }
+    const data = (await res.json()) as JarvisNode | { nodes?: JarvisNode[] };
+    const node = Array.isArray((data as { nodes?: JarvisNode[] }).nodes)
+      ? ((data as { nodes: JarvisNode[] }).nodes.find((n) => n.ref_id === refId) ??
+        (data as { nodes: JarvisNode[] }).nodes[0])
+      : (data as JarvisNode);
+    return node?.ref_id ? node : null;
+  } catch (err) {
+    logger.warn("[legal/benchmarks/graph-scores] Jarvis node read threw", "legal", {
+      refId,
+      error: err instanceof Error ? err.message : String(err),
+    });
+    return null;
+  }
+}
+
+/**
  * Collect the EvalTriggerOutput nodes for a task: EvalSet-hosted triggers
  * plus any caller-supplied trigger refs, each expanded one HAS_OUTPUT hop.
  *
@@ -99,10 +136,28 @@ export async function fetchTaskGraphOutputs(
   config: JarvisConnectionConfig,
   taskSlug: string,
   triggerRefs: string[] = [],
+  outputRefs: string[] = [],
 ): Promise<TaskGraphOutputsResult> {
   let partial = false;
 
   const evalSetRefId = await resolveEvalSetRefIdBySlug(config, taskSlug);
+
+  // 0. Stored evalOutputRef pointers — exact single-node reads, no expand.
+  const outputs: GraphScoreOutput[] = [];
+  const dedupedOutputRefs = [...new Set(outputRefs)].slice(0, GRAPH_SCORES_TRIGGER_CAP);
+  const pointerNodes = await Promise.all(
+    dedupedOutputRefs.map((refId) => readNode(config, refId)),
+  );
+  for (let i = 0; i < pointerNodes.length; i++) {
+    const node = pointerNodes[i];
+    if (node === null) {
+      partial = true;
+      continue;
+    }
+    if (!isNodeType(node, "EvalTriggerOutput")) continue;
+    const normalized = normalizeOutput(node as RawJarvisNode);
+    if (normalized) outputs.push(normalized);
+  }
 
   // 1. Set-hosted triggers (recursion re-runs).
   const setTriggerRefs: string[] = [];
@@ -133,7 +188,6 @@ export async function fetchTaskGraphOutputs(
   }
 
   // 3. One HAS_OUTPUT hop per trigger.
-  const outputs: GraphScoreOutput[] = [];
   const perTrigger = await Promise.all(
     allTriggerRefs.map(async (triggerRef) => ({
       triggerRef,
@@ -147,6 +201,13 @@ export async function fetchTaskGraphOutputs(
     }
     for (const n of neighbors) {
       if (!isNodeType(n, "EvalTriggerOutput")) continue;
+      // A pointer-fetched node reappearing behind its trigger gains the
+      // triggerRef on the existing entry rather than duplicating.
+      const existing = outputs.find((o) => o.ref_id === n.ref_id);
+      if (existing) {
+        existing.triggerRef ??= triggerRef;
+        continue;
+      }
       const normalized = normalizeOutput(n as RawJarvisNode);
       if (normalized) outputs.push({ ...normalized, triggerRef });
     }

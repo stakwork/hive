@@ -1789,10 +1789,19 @@ async function processLegalBenchmarkRunnerWebhook(
             source: { ref_id: evalTriggerRef },
             target: { ref_id: outputResult.ref_id },
           });
-          // Persist idempotency marker
+          // Persist idempotency marker + the output node's ref. The ref is
+          // the EXACT graph pointer score surfaces prefer over the
+          // trigger-hop / project-id-suffix joins — without it the node's
+          // identity was discarded here and had to be re-derived.
           await db.stakworkRun.update({
             where: { id: run.id },
-            data: { result: JSON.stringify({ ...mergedResult, evalOutputWritten: true }) },
+            data: {
+              result: JSON.stringify({
+                ...mergedResult,
+                evalOutputWritten: true,
+                evalOutputRef: outputResult.ref_id,
+              }),
+            },
           });
           logger.info("[legal-benchmark/runner] EvalTriggerOutput node written", "stakwork-run", {
             runId: run.id,
