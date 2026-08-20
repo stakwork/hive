@@ -23,7 +23,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import {
   useLegalBenchmarkRunList,
@@ -161,12 +160,10 @@ export function BenchmarkRunsHistory({
 
   const [expandedRunId, setExpandedRunId] = useState<string | null>(null);
   const [taskFilter, setTaskFilter] = useState<string>(ALL_TASKS);
-  // Default "manual" keeps the tab identical to its pre-type-column self.
-  // "recursion" groups BOTH cron pipelines (the analysis stage and the
-  // fix-proposal stage) — analysis is an internal stage of the recursion
-  // loop, not a category an operator filters by. The Type column still
-  // badges the stage.
-  const [typeFilter, setTypeFilter] = useState<"manual" | "recursion" | "all">("manual");
+  // One merged chronological list by default; the Type column header carries a
+  // dropdown to narrow to one pipeline. The summary strip stays pinned to
+  // manual runs regardless, so filtering never moves the headline pass-rate.
+  const [typeFilter, setTypeFilter] = useState<"all" | "manual" | "recursion">("all");
   const [windowSize, setWindowSize] = useState<SummaryWindow>(SUMMARY_WINDOW);
 
   // ── Row refs for focus/scroll ────────────────────────────────────────────
@@ -186,10 +183,13 @@ export function BenchmarkRunsHistory({
       return;
     }
 
-    // (a) Reset filter directly — do NOT call handleFilterChange/handleReset
+    // (a) Reset filters directly — do NOT call handleFilterChange/handleReset
     //     because handleReset calls setExpandedId(null), which triggers an
     //     unwanted refetch and would immediately collapse the row we're opening.
+    //     The type filter must reset too: a focus target is a manual run, which
+    //     has no row while the Type dropdown is narrowed to Recursion.
     setTaskFilter(ALL_TASKS);
+    setTypeFilter("all");
 
     // (a2) The window caps which rows are rendered, so a run older than the
     //      current window has no row to expand or scroll to. Widen to the
@@ -403,30 +403,6 @@ export function BenchmarkRunsHistory({
             ))}
           </SelectContent>
         </Select>
-        {/* Pipeline filter — default Manual preserves today's view. The
-            summary strip reads the manual window regardless, so switching
-            never moves the headline pass-rate. ToggleGroup is the system's
-            segmented-control idiom (see TasksList). */}
-        <ToggleGroup
-          type="single"
-          value={typeFilter}
-          onValueChange={(v) => {
-            // ToggleGroup emits "" when the active item is clicked again —
-            // a filter must always have a value.
-            if (v) setTypeFilter(v as "manual" | "recursion" | "all");
-          }}
-          aria-label="Run type filter"
-        >
-          <ToggleGroupItem value="manual" className="h-8 px-3 text-xs" data-testid="type-filter-manual">
-            Manual
-          </ToggleGroupItem>
-          <ToggleGroupItem value="recursion" className="h-8 px-3 text-xs" data-testid="type-filter-recursion">
-            Recursion
-          </ToggleGroupItem>
-          <ToggleGroupItem value="all" className="h-8 px-3 text-xs" data-testid="type-filter-all">
-            All
-          </ToggleGroupItem>
-        </ToggleGroup>
         {selectedTask && (
           <span className="text-xs text-muted-foreground">
             {filteredRuns.length} of {manualRuns.length} runs
@@ -467,7 +443,22 @@ export function BenchmarkRunsHistory({
           <thead>
             <tr className="border-b bg-muted/50">
               <th className="text-left px-4 py-3 font-medium text-muted-foreground">Task</th>
-              <th className="text-left px-4 py-3 font-medium text-muted-foreground">Type</th>
+              <th className="text-left px-4 py-3 font-medium text-muted-foreground">
+                {/* Column-header micro-filter: a native select keeps the header
+                    one line tall and dodges portal/overlay complexity inside a
+                    table head. Default "all" shows every pipeline merged. */}
+                <select
+                  value={typeFilter}
+                  onChange={(e) => setTypeFilter(e.target.value as "all" | "manual" | "recursion")}
+                  className="bg-transparent font-medium text-muted-foreground text-sm cursor-pointer focus:outline-none hover:text-foreground [&>option]:bg-popover [&>option]:text-popover-foreground"
+                  aria-label="Filter by run type"
+                  data-testid="type-filter"
+                >
+                  <option value="all">All types</option>
+                  <option value="manual">Manual</option>
+                  <option value="recursion">Recursion</option>
+                </select>
+              </th>
               <th className="text-left px-4 py-3 font-medium text-muted-foreground">Started</th>
               <th className="text-left px-4 py-3 font-medium text-muted-foreground">Runner Status</th>
               <th className="text-left px-4 py-3 font-medium text-muted-foreground">Score</th>
@@ -479,12 +470,12 @@ export function BenchmarkRunsHistory({
             </tr>
           </thead>
           <tbody>
-            {displayRows.length === 0 && typeFilter !== "manual" && (
+            {displayRows.length === 0 && (
               <tr>
                 <td colSpan={colSpan} className="px-4 py-8 text-center text-sm text-muted-foreground" data-testid="type-filter-empty">
-                  No {typeFilter === "all" ? "" : "recursion-pipeline "}runs recorded here.
-                  Concept-driven attempts often exist only in the graph — see the
-                  Recursion tab for per-attempt history.
+                  No {typeFilter === "all" ? "" : `${typeFilter} `}runs recorded here.
+                  {typeFilter === "recursion" &&
+                    " Concept-driven attempts often exist only in the graph — see the Recursion tab for per-attempt history."}
                 </td>
               </tr>
             )}
@@ -782,17 +773,6 @@ function RecursionEnabledBadge({ workspaceSlug }: { workspaceSlug: string }) {
  * green/red are runner statuses, violet contested, amber incomplete-data).
  */
 function RunTypeBadge({ runType }: { runType: BenchmarkRunType }) {
-  if (runType === "analysis") {
-    return (
-      <Badge
-        variant="outline"
-        className="border-0 bg-indigo-100 text-indigo-800 dark:bg-indigo-900/30 dark:text-indigo-300 w-fit"
-        data-testid="run-type-analysis"
-      >
-        analysis
-      </Badge>
-    );
-  }
   if (runType === "recursion") {
     return (
       <Badge
