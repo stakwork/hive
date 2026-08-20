@@ -64,6 +64,13 @@ interface UseLegalBenchmarkRunListResult {
 
 const POLL_INTERVAL_MS = 15_000;
 
+/** Coerce a wire score count (number or numeric string) to a number; undefined otherwise. */
+function toCount(value: unknown): number | undefined {
+  if (value == null) return undefined;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : undefined;
+}
+
 export function useLegalBenchmarkRunList(
   workspaceId: string | undefined,
 ): UseLegalBenchmarkRunListResult {
@@ -139,6 +146,16 @@ export function useLegalBenchmarkRunList(
           taskTitle: "",
           createdAt: r.createdAt,
           updatedAt: r.updatedAt,
+          // The recursion pipeline's webhook now reports post-fix score fields
+          // and a report bundle back onto the run row — carry them so the table
+          // renders them exactly like manual rows. Absent on older rows. The
+          // wire sends counts as STRINGS ("34"/"39") — verified against a live
+          // concept_rerun payload — so coerce; the manual path gets the same
+          // treatment from RunnerScoreSchema at ingest.
+          n_passed: toCount(parsed?.n_passed),
+          n_total: toCount(parsed?.n_total),
+          all_pass: typeof parsed?.all_pass === "boolean" ? parsed.all_pass : undefined,
+          generateRunReport: parsed?.generateRunReport,
           hasReport: r.hasReport === true,
         };
       };

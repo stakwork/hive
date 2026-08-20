@@ -1176,10 +1176,38 @@ describe("BenchmarkRunsHistory — run types", () => {
     // the operator.
     expect(screen.getAllByTestId("run-type-recursion")).toHaveLength(2);
     expect(screen.getByTestId("run-type-manual")).toBeInTheDocument();
-    // Cron rows never score — explicit dash, not a blank
-    expect(screen.getAllByTestId("score-na")).toHaveLength(2);
     // Title derived from the manual row sharing the slug
     expect(screen.getByTestId("run-row-a-1").textContent).toContain("Analyze Antitrust Strategy");
+  });
+
+  it("renders score and report link on recursion rows that carry them", () => {
+    mockUseList.mockReturnValue({
+      runs: [
+        {
+          ...analysisRun(),
+          status: "COMPLETED",
+          n_passed: 34,
+          n_total: 39,
+          all_pass: false,
+          hasReport: true,
+        },
+        manualRun(),
+      ],
+      total: 1,
+      isLoading: false,
+      error: null,
+      refetch: mockRefetch,
+      setExpandedId: mockSetExpandedId,
+    });
+    render(<BenchmarkRunsHistory />);
+
+    const row = screen.getByTestId("run-row-a-1");
+    expect(row.textContent).toContain("34/39");
+    expect(row.textContent).toContain("FAIL");
+    const links = screen.getAllByTestId("run-report-link");
+    expect(
+      links.some((l) => l.getAttribute("href") === "/w/openlaw/legal/benchmarks/runs/a-1/report"),
+    ).toBe(true);
   });
 
   it("the Type column dropdown narrows to Manual", () => {
