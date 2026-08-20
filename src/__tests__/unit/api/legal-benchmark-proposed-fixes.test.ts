@@ -362,6 +362,14 @@ describe("GET /api/workspaces/[slug]/legal/benchmarks/proposed-fixes", () => {
       "resolved_by",
       "resolved_at",
       "project_id",
+      // Generic before/after target snapshot (jarvis-backend migration 105)
+      "target_type",
+      "target_name",
+      "target_version",
+      "target_ref",
+      "old_value",
+      "new_value",
+      "fix_type",
     ]);
 
     for (const key of Object.keys(fix)) {
