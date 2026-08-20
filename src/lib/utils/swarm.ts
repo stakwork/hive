@@ -29,7 +29,17 @@ export function transformSwarmUrlToRepo2Graph(
     : swarmUrl + ":3355";
 }
 
+// Mock mode — resolved at module load, mirroring src/config/env.ts. In local
+// dev with USE_MOCKS=true every Jarvis call would otherwise dead-end against
+// a nonexistent `<swarm>.sphinx.chat` host; routing to the local mock Jarvis
+// endpoints instead makes the graph-backed surfaces (legal benchmarks, node
+// peeks) exercisable without a live swarm. Never active in production.
+const USE_MOCK_JARVIS =
+  process.env.USE_MOCKS === "true" && process.env.NODE_ENV !== "production";
+const MOCK_JARVIS_BASE = `${process.env.NEXTAUTH_URL || "http://localhost:3000"}/api/mock/jarvis`;
+
 export function getJarvisUrl(swarmName: string): string {
+  if (USE_MOCK_JARVIS) return MOCK_JARVIS_BASE;
   return `https://${swarmName}.sphinx.chat:8444`;
 }
 

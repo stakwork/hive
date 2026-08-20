@@ -1332,3 +1332,112 @@ describe("buildHillClimbSeries — non-baseline fix that DERIVED_FROM re-enters 
     expect(series.map((p) => p.bestPassed)).toEqual([50, 60, 65]);
   });
 });
+
+// ─── Fix snapshot sidecar ────────────────────────────────────────────────────
+
+describe("buildHillClimbSeries — fix snapshot sidecar", () => {
+  const SNAPSHOT = {
+    target_type: "concept",
+    target_name: "Limitation of Liability",
+    target_version: "3",
+    target_ref: "concept-ref-1",
+    old_value: JSON.stringify({ docs: "before text" }),
+    new_value: JSON.stringify({ docs: "after text" }),
+  };
+
+  function snapshotFixNode(
+    ref_id: string,
+    opts: Parameters<typeof fixNode>[1] = {},
+  ): SubgraphNode {
+    const base = fixNode(ref_id, opts);
+    return { ...base, properties: { ...base.properties, ...SNAPSHOT } };
+  }
+
+  function subgraphWith(fixes: SubgraphNode[], extraEdges: SubgraphEdge[]): Subgraph {
+    return {
+      nodes: [
+        evalSetNode("evalset-1"),
+        triggerNode("trig-1", "1720001000"),
+        outputNode("out-base", 50, 74, "1720001500"),
+        ...fixes,
+      ],
+      edges: [
+        edge("evalset-1", "trig-1", "HAS_BASELINE_TRIGGER"),
+        edge("trig-1", "out-base", "HAS_OUTPUT"),
+        ...extraEdges,
+      ],
+    };
+  }
+
+  it("resolved-output branch: records the snapshot keyed by fix ref with the point ref", () => {
+    const sg = subgraphWith(
+      [snapshotFixNode("fix-1", { eval_status: "accepted", ts: "1720002000" }), outputNode("out-fix", 58, 74, "1720002500")],
+      [edge("trig-1", "fix-1", "HAS_PROPOSED_FIX"), edge("fix-1", "out-fix", "PRODUCED_BY")],
+    );
+    const snapshots = new Map();
+    buildHillClimbSeries(sg, { fixSnapshotsOut: snapshots });
+
+    expect(snapshots.size).toBe(1);
+    expect(snapshots.get("fix-1")).toMatchObject({
+      ref_id: "fix-1",
+      target_type: "concept",
+      target_name: "Limitation of Liability",
+      point_ref_id: "out-fix",
+    });
+  });
+
+  it("rejected-no-score branch: records the snapshot against the synthetic slot point", () => {
+    const sg = subgraphWith(
+      [snapshotFixNode("fix-rej", { eval_status: "rejected", ts: "1720002000" })],
+      [edge("trig-1", "fix-rej", "HAS_PROPOSED_FIX")],
+    );
+    const snapshots = new Map();
+    const series = buildHillClimbSeries(sg, { fixSnapshotsOut: snapshots });
+
+    expect(snapshots.get("fix-rej")).toMatchObject({ point_ref_id: "slot-fix-rej" });
+    // The slot point itself is still emitted for the x-axis
+    expect(series.some((p) => p.ref_id === "slot-fix-rej")).toBe(true);
+  });
+
+  it("accepted-no-score branch: records the snapshot even though no point is emitted", () => {
+    const sg = subgraphWith(
+      [snapshotFixNode("fix-acc", { eval_status: "accepted", ts: "1720002000" })],
+      [edge("trig-1", "fix-acc", "HAS_PROPOSED_FIX")],
+    );
+    const snapshots = new Map();
+    const series = buildHillClimbSeries(sg, { fixSnapshotsOut: snapshots });
+
+    // Dropped from the chart (legacy behaviour)…
+    expect(series).toHaveLength(1);
+    // …but the diff is not lost with the dot
+    expect(snapshots.get("fix-acc")).toMatchObject({ point_ref_id: null });
+  });
+
+  it("legacy fixes without snapshot fields never enter the map", () => {
+    const sg = subgraphWith(
+      [fixNode("fix-legacy", { eval_status: "accepted", ts: "1720002000" }), outputNode("out-fix", 58, 74, "1720002500")],
+      [edge("trig-1", "fix-legacy", "HAS_PROPOSED_FIX"), edge("fix-legacy", "out-fix", "PRODUCED_BY")],
+    );
+    const snapshots = new Map();
+    buildHillClimbSeries(sg, { fixSnapshotsOut: snapshots });
+
+    expect(snapshots.size).toBe(0);
+  });
+
+  it("EvalTriggerOutput points are unchanged: no snapshot fields leak, series identical without opts", () => {
+    const sg = subgraphWith(
+      [snapshotFixNode("fix-1", { eval_status: "accepted", ts: "1720002000" }), outputNode("out-fix", 58, 74, "1720002500")],
+      [edge("trig-1", "fix-1", "HAS_PROPOSED_FIX"), edge("fix-1", "out-fix", "PRODUCED_BY")],
+    );
+    const snapshots = new Map();
+    const withSidecar = buildHillClimbSeries(sg, { fixSnapshotsOut: snapshots });
+    const withoutSidecar = buildHillClimbSeries(sg);
+
+    expect(withSidecar).toEqual(withoutSidecar);
+    for (const pt of withSidecar) {
+      expect("target_type" in pt).toBe(false);
+      expect("old_value" in pt).toBe(false);
+      expect("new_value" in pt).toBe(false);
+    }
+  });
+});

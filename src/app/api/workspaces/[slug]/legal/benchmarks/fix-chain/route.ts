@@ -126,20 +126,31 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 
     // Step 6: Rate limit — placed after IDOR guard but before walkFixChain since
     // each request can fan out ~100 Jarvis calls, amplifying downstream load.
-    const ip = getClientIp(request);
-    const rl = await checkRateLimit(`fix-chain:get:${ip}`, 20, 60);
-    if (!rl.allowed) {
-      return NextResponse.json(
-        { error: "Too many requests", retryAfter: rl.retryAfter },
-        { status: 429 },
-      );
+    // Fails OPEN when the limiter backend is unreachable (same policy as the
+    // stakwork-runs route): a dead Redis must degrade to no-limit, not turn
+    // every fix-chain read into a 500.
+    try {
+      const ip = getClientIp(request);
+      const rl = await checkRateLimit(`fix-chain:get:${ip}`, 20, 60);
+      if (!rl.allowed) {
+        return NextResponse.json(
+          { error: "Too many requests", retryAfter: rl.retryAfter },
+          { status: 429 },
+        );
+      }
+    } catch (rateLimitError) {
+      logger.warn("[legal/benchmarks/fix-chain] Rate limit unavailable — failing open", "legal", {
+        error: String(rateLimitError),
+      });
     }
 
     // Step 7: USE_MOCKS guard — return fixture response in dev/test mode.
     // Scenario-switched on evalSetRefId so fixtures beyond the default one are
     // reachable through the route; every unrecognised id keeps the default
-    // fixture, so existing callers and tests are unaffected.
-    if (process.env.USE_MOCKS === "true") {
+    // fixture, so existing callers and tests are unaffected. The NODE_ENV
+    // check matches the proposed-fixes route: a stray USE_MOCKS=true must
+    // never serve fixtures in production.
+    if (process.env.USE_MOCKS === "true" && process.env.NODE_ENV !== "production") {
       const scenario = resolveMockScenario(evalSetRefId);
       logger.info(
         "[legal/benchmarks/fix-chain] USE_MOCKS=true, returning mock fixture",

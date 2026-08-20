@@ -251,7 +251,35 @@ export interface ProposedFix {
    * backward compatibility with downstream consumers (EvalRunsBox, StakworkRunLink).
    */
   project_id?: number | null;
+  // ── Generic before/after target snapshot ────────────────────────────────────
+  // Written by jarvis-backend (migration `105_proposed_fix_target_snapshot`) on
+  // every new fix; absent on legacy nodes. Parsed via `parseFixSnapshot` in
+  // `@/lib/harvey-lab/fix-snapshot` — do not read old_value/new_value directly.
+  /** Kind of node the fix targeted ("concept", "prompt", "workflow", …) */
+  target_type?: string | null;
+  /** Display name of the targeted node at fix time (graph-authored, untrusted) */
+  target_name?: string | null;
+  /** Version of the targeted node at fix time */
+  target_version?: string | null;
+  /** Live graph ref_id of the targeted node — drives the open-live-node link */
+  target_ref?: string | null;
+  /** JSON envelope of the node before the fix (json.dumps'd; absent on create) */
+  old_value?: string | null;
+  /** JSON envelope of the node after the fix (json.dumps'd) */
+  new_value?: string | null;
+  /** Legacy fix-kind field — documented fallback when target_type is absent */
+  fix_type?: string | null;
 }
+
+/**
+ * A ProposedFix as returned by `fetchFixSnapshots` for the run-report fix
+ * snapshot section: the projected fix plus run attribution. The underlying
+ * graph query is task-scoped, so `fromThisRun` marks the subset attributable
+ * to the run being viewed (rerun_run_id or Stakwork project match).
+ */
+export type FixSnapshotEntry = ProposedFix & {
+  fromThisRun?: boolean;
+};
 
 /**
  * A single entry in the Eval Runs history table, joining an EvalTrigger node
