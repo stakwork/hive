@@ -994,6 +994,12 @@ export function OrgCanvasBackground({
               node.id.startsWith("ws:") || node.id.startsWith("initiative:"),
           },
         },
+        // Focus — center and zoom the viewport on any node
+        {
+          id: "focus",
+          label: "Focus",
+          match: { when: () => true },
+        },
         // Copy Link — available on every node
         {
           id: "copy-link",
@@ -1039,6 +1045,10 @@ export function OrgCanvasBackground({
           void canvasHandleRef.current?.zoomIntoNode(node.id);
           return;
         }
+        if (itemId === "focus") {
+          scrollToNode(node.id);
+          return;
+        }
         if (itemId === "promote-to-feature") {
           const text = (node.text ?? "").trim();
           // Title pre-fill: first non-empty line, capped to fit the
@@ -1078,6 +1088,7 @@ export function OrgCanvasBackground({
       handleUnpinFeatureFromWorkspace,
       handleNodeDelete,
       handleSelectionChange,
+      scrollToNode,
       canvasHandleRef,
     ],
   );
