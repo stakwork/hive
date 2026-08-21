@@ -33,6 +33,12 @@ const FLAT_PAYLOAD_RUN_TYPES = new Set<string>([
   // Generic benchmark runner — also uses the flat Harvey payload shape.
   // LEGAL_BENCHMARK_RUNNER is NOT an alias; both values coexist deliberately.
   StakworkRunType.BENCHMARK_RUNNER,
+  // TODO(consolidated-wire-format): LEGAL_BENCHMARK_CONSOLIDATED is included here
+  // ONLY if workflow 58345 sends a Harvey flat-payload (same shape as RUNNER/SCORER/EVAL).
+  // If it follows RECURSION's nested-result path instead, remove this line — adding it
+  // incorrectly would double-wrap `result` and corrupt `report_url` extraction.
+  // Confirm with the Stakwork team before deploying. Current assumption: flat payload.
+  StakworkRunType.LEGAL_BENCHMARK_CONSOLIDATED,
 ]);
 
 /**
