@@ -1,0 +1,195 @@
+{
+  "consolidated": true,
+  "taskDescription": "Analyze the merger agreement and identify all representations and warranties made by the target company, highlighting any that are qualified by materiality.",
+  "sourceFileLinks": [
+    "https://raw.githubusercontent.com/stakwork/harvey-labs/main/tasks/corporate/merger-reps/documents/merger_agreement.pdf",
+    "https://raw.githubusercontent.com/stakwork/harvey-labs/main/tasks/corporate/merger-reps/documents/disclosure_schedule.pdf"
+  ],
+  "runs": [
+    {
+      "runId": "run_001",
+      "timestamp": 1724196000000,
+      "model": "claude-opus-4-5",
+      "score": 0.6,
+      "nPassed": 3,
+      "nTotal": 5
+    },
+    {
+      "runId": "run_002",
+      "timestamp": 1724109600000,
+      "model": "claude-sonnet-4-5",
+      "score": 0.4,
+      "nPassed": 2,
+      "nTotal": 5
+    },
+    {
+      "runId": "run_003",
+      "timestamp": 1724023200000,
+      "model": "claude-haiku-3-5",
+      "score": 0.4,
+      "nPassed": 2,
+      "nTotal": 5
+    }
+  ],
+  "rubricMatrix": [
+    {
+      "id": "crit_001",
+      "title": "Identifies all material reps and warranties",
+      "results": [
+        { "runId": "run_001", "passed": true, "verdict": "PASS" },
+        { "runId": "run_002", "passed": true, "verdict": "PASS" },
+        { "runId": "run_003", "passed": true, "verdict": "PASS" }
+      ]
+    },
+    {
+      "id": "crit_002",
+      "title": "Correctly identifies materiality qualifiers",
+      "results": [
+        { "runId": "run_001", "passed": true, "verdict": "PASS" },
+        { "runId": "run_002", "passed": false, "verdict": "FAIL" },
+        { "runId": "run_003", "passed": false, "verdict": "FAIL" }
+      ]
+    },
+    {
+      "id": "crit_003",
+      "title": "Distinguishes operating and financial reps",
+      "results": [
+        { "runId": "run_001", "passed": false, "verdict": "FAIL" },
+        { "runId": "run_002", "passed": false, "verdict": "FAIL" },
+        { "runId": "run_003", "passed": true, "verdict": "PASS" }
+      ]
+    },
+    {
+      "id": "crit_004",
+      "title": "Cites section numbers for each rep",
+      "results": [
+        { "runId": "run_001", "passed": true, "verdict": "PASS" },
+        { "runId": "run_002", "passed": false, "verdict": "FAIL" },
+        { "runId": "run_003", "passed": false, "verdict": "FAIL" }
+      ]
+    },
+    {
+      "id": "crit_005",
+      "title": "Summarises survival periods",
+      "results": [
+        { "runId": "run_001", "passed": false, "verdict": "FAIL" },
+        { "runId": "run_002", "passed": true, "verdict": "PASS" },
+        { "runId": "run_003", "passed": true, "verdict": "PASS" }
+      ]
+    }
+  ],
+  "rubricDetails": [
+    {
+      "id": "crit_002",
+      "title": "Correctly identifies materiality qualifiers",
+      "matchCriteria": "The response must correctly identify and explain all materiality-qualified representations, including the standard used (e.g., Material Adverse Effect definition).",
+      "perRun": [
+        {
+          "runId": "run_001",
+          "verdict": "PASS",
+          "reasoning": "The agent correctly identified all seven materiality-qualified representations and cited the MAE definition from Section 1.1.",
+          "judgeFlagReason": "",
+          "criterionContested": false
+        },
+        {
+          "runId": "run_002",
+          "verdict": "FAIL",
+          "reasoning": "The agent identified only four of seven materiality-qualified representations and did not cite the MAE definition.",
+          "judgeFlagReason": "Criterion may be under-specified regarding which sections constitute materiality qualifiers.",
+          "criterionContested": false
+        },
+        {
+          "runId": "run_003",
+          "verdict": "FAIL",
+          "reasoning": "The agent conflated materiality qualifiers with knowledge qualifiers in three instances.",
+          "judgeFlagReason": "",
+          "criterionContested": true
+        }
+      ]
+    },
+    {
+      "id": "crit_003",
+      "title": "Distinguishes operating and financial reps",
+      "matchCriteria": "The response must clearly separate operational representations (business conduct, IP, employees) from financial representations (financial statements, tax, debt).",
+      "perRun": [
+        {
+          "runId": "run_001",
+          "verdict": "FAIL",
+          "reasoning": "The agent did not clearly separate the categories; tax representations were listed under operating instead of financial.",
+          "judgeFlagReason": "",
+          "criterionContested": false
+        },
+        {
+          "runId": "run_002",
+          "verdict": "FAIL",
+          "reasoning": "The agent produced a flat list without categorisation.",
+          "judgeFlagReason": "This criterion was added post-task and may not match the original instructions.",
+          "criterionContested": true
+        },
+        {
+          "runId": "run_003",
+          "verdict": "PASS",
+          "reasoning": "The agent correctly separated all representations into the two required categories.",
+          "judgeFlagReason": "",
+          "criterionContested": false
+        }
+      ]
+    },
+    {
+      "id": "crit_004",
+      "title": "Cites section numbers for each rep",
+      "matchCriteria": "Every identified representation must include the section number from the merger agreement where it appears.",
+      "perRun": [
+        {
+          "runId": "run_001",
+          "verdict": "PASS",
+          "reasoning": "All representations were accompanied by precise section references.",
+          "judgeFlagReason": "",
+          "criterionContested": false
+        },
+        {
+          "runId": "run_002",
+          "verdict": "FAIL",
+          "reasoning": "Three representations lacked section citations.",
+          "judgeFlagReason": "",
+          "criterionContested": false
+        },
+        {
+          "runId": "run_003",
+          "verdict": "FAIL",
+          "reasoning": "Section references were omitted entirely from the response.",
+          "judgeFlagReason": "",
+          "criterionContested": false
+        }
+      ]
+    },
+    {
+      "id": "crit_005",
+      "title": "Summarises survival periods",
+      "matchCriteria": "The response must include the survival period for each representation as stated in the merger agreement's indemnification section.",
+      "perRun": [
+        {
+          "runId": "run_001",
+          "verdict": "FAIL",
+          "reasoning": "Survival periods were not mentioned.",
+          "judgeFlagReason": "",
+          "criterionContested": false
+        },
+        {
+          "runId": "run_002",
+          "verdict": "PASS",
+          "reasoning": "All survival periods correctly summarised with reference to Section 9.1.",
+          "judgeFlagReason": "",
+          "criterionContested": false
+        },
+        {
+          "runId": "run_003",
+          "verdict": "PASS",
+          "reasoning": "Survival periods correctly noted; fundamental reps correctly identified as surviving indefinitely.",
+          "judgeFlagReason": "",
+          "criterionContested": false
+        }
+      ]
+    }
+  ]
+}

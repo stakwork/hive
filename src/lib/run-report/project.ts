@@ -51,6 +51,12 @@ import type {
   ScoreBlock,
   SecurityFinding,
   ToolActivityProjection,
+  ConsolidatedReportProjection,
+  BundleProjection,
+  RunMeta,
+  RubricMatrixRow,
+  RubricDetailBlock,
+  RubricDetailPerRun,
 } from "./types";
 
 // ── Constants ────────────────────────────────────────────────────────────────
@@ -80,6 +86,16 @@ const KNOWN_BUNDLE_ROOT_KEYS = new Set([
   "source_docs",
   "workfiles",
   "rubric_links",
+  // ── Consolidated report keys ─────────────────────────────────────────────
+  // These are only present when `consolidated: true`. Without registering them
+  // here, every consolidated bundle load would fire drift-diagnostic warnings
+  // for every root key, polluting structured logs.
+  "consolidated",
+  "taskDescription",
+  "sourceFileLinks",
+  "runs",
+  "rubricMatrix",
+  "rubricDetails",
 ]);
 
 const KNOWN_PAGE_DATA_KEYS = new Set([
@@ -102,7 +118,7 @@ const KNOWN_PAGE_DATA_KEYS = new Set([
 // ── ProjectOutcome ───────────────────────────────────────────────────────────
 
 export type ProjectOutcome =
-  | { status: "ok"; projection: RunReportProjection; droppedElements: number }
+  | { status: "ok"; projection: BundleProjection; droppedElements: number }
   | { status: "unparseable" };
 
 // ── Loose top-level schema ───────────────────────────────────────────────────
@@ -124,6 +140,15 @@ export function projectBundle(rawText: string): ProjectOutcome {
 
   const loose = BundleSchema.safeParse(parsed);
   if (!loose.success || !isRecord(parsed)) return { status: "unparseable" };
+
+  // ── Consolidated bundle dispatch ──────────────────────────────────────────
+  // Check for the consolidated discriminant BEFORE the drift diagnostic so
+  // consolidated-specific keys are not flagged as unexpected by the standard
+  // pipeline (they are registered in KNOWN_BUNDLE_ROOT_KEYS for safety, but
+  // the early exit here is the primary guard).
+  if (parsed.consolidated === true) {
+    return projectConsolidatedBundle(parsed);
+  }
 
   // ── Drift diagnostic ──────────────────────────────────────────────────────
   // Collect unknown key names from both the bundle root and page_data.
@@ -601,4 +626,107 @@ function projectSecurity(raw: unknown[]): SecurityFinding[] {
 function capArray<T>(arr: T[], cap: number): [T[], number] {
   if (arr.length <= cap) return [arr, 0];
   return [arr.slice(0, cap), arr.length - cap];
+}
+
+// ── Consolidated bundle projector ─────────────────────────────────────────────
+
+/**
+ * Strip basic HTML tags from a string.
+ * Defence-in-depth upstream of SafeMarkdown — applied to all rubric text fields
+ * in consolidated bundles, which carry converted legal document content.
+ */
+function stripHtml(value: unknown): string {
+  if (typeof value !== "string") return "";
+  // Remove all HTML tags. SafeMarkdown renders the output so we need clean text.
+  return value.replace(/<[^>]*>/g, "");
+}
+
+/**
+ * Project a LEGAL_BENCHMARK_CONSOLIDATED bundle.
+ *
+ * The consolidated bundle has a completely different shape from the standard
+ * RunReportProjection — it cannot reuse the main `projectBundle` pipeline.
+ * This function implements its own sanitization pass over rubric text fields,
+ * which contain legal document content.
+ *
+ * Called from `projectBundle` when `parsed.consolidated === true`.
+ */
+function projectConsolidatedBundle(parsed: Record<string, unknown>): ProjectOutcome {
+  const contractNotes: { unexpected: string[] } = { unexpected: [] };
+
+  // ── runs[] ────────────────────────────────────────────────────────────────
+  const rawRuns = readArray(parsed, "runs");
+  const [cappedRuns, runsTruncated] = capArray(rawRuns, PROJECTION_ARRAY_CAP);
+  if (runsTruncated > 0) {
+    contractNotes.unexpected.push(`runs: truncated from ${rawRuns.length} to ${PROJECTION_ARRAY_CAP}`);
+  }
+  const runs: RunMeta[] = cappedRuns.filter(isRecord).map((r) => ({
+    runId: asString(r.runId) ?? asString(r.run_id) ?? "",
+    timestamp: typeof r.timestamp === "number" ? r.timestamp : 0,
+    model: asString(r.model) ?? "",
+    score: typeof r.score === "number" ? r.score : 0,
+    nPassed: typeof r.nPassed === "number" ? r.nPassed : typeof r.n_passed === "number" ? r.n_passed : 0,
+    nTotal: typeof r.nTotal === "number" ? r.nTotal : typeof r.n_total === "number" ? r.n_total : 0,
+  }));
+
+  // ── rubricMatrix[] ────────────────────────────────────────────────────────
+  const rawMatrix = readArray(parsed, "rubricMatrix");
+  const [cappedMatrix, matrixTruncated] = capArray(rawMatrix, PROJECTION_ARRAY_CAP);
+  if (matrixTruncated > 0) {
+    contractNotes.unexpected.push(`rubricMatrix: truncated from ${rawMatrix.length} to ${PROJECTION_ARRAY_CAP}`);
+  }
+  const rubricMatrix: RubricMatrixRow[] = cappedMatrix.filter(isRecord).map((row) => {
+    const results = readArray(row, "results").filter(isRecord).map((r) => ({
+      runId: asString(r.runId) ?? asString(r.run_id) ?? "",
+      passed: r.passed === true,
+      verdict: stripHtml(r.verdict),
+    }));
+    return {
+      id: asString(row.id) ?? "",
+      title: stripHtml(row.title),
+      results,
+    };
+  });
+
+  // ── rubricDetails[] — only criteria with at least one failing run ─────────
+  const rawDetails = readArray(parsed, "rubricDetails");
+  const rubricDetails: RubricDetailBlock[] = rawDetails
+    .filter(isRecord)
+    .map((detail) => {
+      const perRun: RubricDetailPerRun[] = readArray(detail, "perRun")
+        .filter(isRecord)
+        .map((pr) => ({
+          runId: asString(pr.runId) ?? asString(pr.run_id) ?? "",
+          verdict: stripHtml(pr.verdict),
+          reasoning: stripHtml(pr.reasoning),
+          judgeFlagReason: stripHtml(pr.judgeFlagReason ?? pr.judge_flag_reason),
+          criterionContested: pr.criterionContested === true || pr.criterion_contested === true,
+        }));
+      return {
+        id: asString(detail.id) ?? "",
+        title: stripHtml(detail.title),
+        matchCriteria: stripHtml(detail.matchCriteria ?? detail.match_criteria),
+        perRun,
+      };
+    })
+    // Only criteria where at least one run failed.
+    .filter((d) => {
+      // If rubricMatrix has an entry for this criterion, use it to determine
+      // if any run failed. Otherwise, keep by default (graceful degradation).
+      const matrixRow = rubricMatrix.find((r) => r.id === d.id);
+      if (!matrixRow) return true;
+      return matrixRow.results.some((r) => !r.passed);
+    });
+
+  const projection: ConsolidatedReportProjection = {
+    consolidated: true,
+    taskDescription: stripHtml(parsed.taskDescription),
+    sourceFileLinks: readArray(parsed, "sourceFileLinks")
+      .filter((v): v is string => typeof v === "string"),
+    runs,
+    rubricMatrix,
+    rubricDetails,
+  };
+
+  return { status: "ok", projection, droppedElements: 0 };
 }
