@@ -338,24 +338,24 @@ export interface RubricRow {
   documentExcerpt: string;
 }
 
-// ── ConsolidatedReportProjection ─────────────────────────────────────────────
+// ── Consolidated Report types ─────────────────────────────────────────────────
 
 /**
- * Metadata for a single run included in a consolidated report.
+ * One run's metadata as included in a consolidated report.
+ * `timestamp` is epoch-ms, latest-first.
  */
-export interface ConsolidatedRunMeta {
+export interface RunMeta {
   runId: string;
-  /** Epoch ms, sorted latest-first by the report generator. */
   timestamp: number;
   model: string;
-  /** Fraction 0–1. */
   score: number;
   nPassed: number;
   nTotal: number;
 }
 
 /**
- * One row of the rubric matrix (cross-run pass/fail view).
+ * One rubric criterion row in the cross-run matrix.
+ * `results` has one entry per run (matching `ConsolidatedReportProjection.runs`).
  */
 export interface RubricMatrixRow {
   id: string;
@@ -364,59 +364,54 @@ export interface RubricMatrixRow {
 }
 
 /**
- * Per-criterion detail block for the cross-run comparison table.
+ * Per-run detail for a single failing criterion.
+ */
+export interface RubricDetailPerRun {
+  runId: string;
+  verdict: string;
+  reasoning: string;
+  judgeFlagReason: string;
+  criterionContested: boolean;
+}
+
+/**
+ * Detail block for one failing criterion, with per-run breakdown.
  */
 export interface RubricDetailBlock {
   id: string;
   title: string;
-  /** What the criterion requires — rendered via SafeMarkdown, never raw HTML. */
   matchCriteria: string;
-  perRun: Array<{
-    runId: string;
-    verdict: string;
-    reasoning: string;
-    /** "Judgement Review" text. Empty string when absent. */
-    judgeFlagReason: string;
-    criterionContested: boolean;
-  }>;
+  perRun: RubricDetailPerRun[];
 }
 
 /**
- * Projection for a LEGAL_BENCHMARK_CONSOLIDATED run report bundle.
+ * Projection for a `LEGAL_BENCHMARK_CONSOLIDATED` run report.
  *
- * Deliberately a standalone interface (does NOT extend RunReportProjection).
- * Inheriting RunReportProjection's 15+ unrelated fields (toolActivity, traces,
- * sourceDocs, concepts, workfiles …) would inflate RSC payload size and create
- * a misleading type boundary.
+ * Defined as a **standalone interface** (not extending `RunReportProjection`)
+ * to avoid inflating RSC payload size with unrelated fields and to create
+ * a clear type boundary.
  *
- * The `consolidated: true` discriminant is sufficient for exhaustive narrowing
- * at all call sites — no unsafe casts needed.
+ * The `consolidated: true` discriminant enables exhaustive narrowing at
+ * call sites without unsafe casts.
  */
 export interface ConsolidatedReportProjection {
-  /** Discriminant — always `true` for this type. */
   consolidated: true;
   taskDescription: string;
   sourceFileLinks: string[];
-  /**
-   * Per-run metadata, sorted latest-first by timestamp.
-   * Capped at PROJECTION_ARRAY_CAP entries by the projector.
-   */
-  runs: ConsolidatedRunMeta[];
-  /**
-   * Cross-run rubric matrix. Only criteria where at least one run failed
-   * appear in `rubricDetails`; the matrix itself includes all criteria.
-   * Capped at PROJECTION_ARRAY_CAP entries.
-   */
+  runs: RunMeta[];
   rubricMatrix: RubricMatrixRow[];
   /**
-   * Per-criterion detail blocks. Only criteria where at least one run failed.
+   * Only criteria where at least one run failed are included.
+   * Sorted alphabetically by title — deterministic across multiple consolidated reports.
    */
   rubricDetails: RubricDetailBlock[];
 }
 
 /**
- * Union of all possible projection types returned by `projectBundle`.
- * The `consolidated` discriminant narrows cleanly without unsafe casts.
+ * Union of all bundle projection shapes.
+ * Use the `consolidated` discriminant for exhaustive narrowing:
+ *   if (p.consolidated) { ... ConsolidatedReportProjection ... }
+ *   else { ... RunReportProjection ... }
  */
 export type BundleProjection = RunReportProjection | ConsolidatedReportProjection;
 
@@ -426,6 +421,10 @@ export type BundleProjection = RunReportProjection | ConsolidatedReportProjectio
  * `projection` is built at view time from the S3 JSON — it is never persisted.
  * `error` distinguishes "this run has no report" from "the report exists but
  * could not be loaded", which the UI renders differently.
+ *
+ * `projection` carries `BundleProjection` so callers that receive a
+ * `ConsolidatedReportProjection` can access it; use the `consolidated`
+ * discriminant to narrow before passing to `RunReportView`.
  */
 export interface RunReportPayload {
   runId: string;

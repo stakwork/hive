@@ -1243,20 +1243,28 @@ export async function processStakworkRunWebhook(
     return { runId: run.id, status, dataType };
   }
 
-  // ── Step 2f: LEGAL_BENCHMARK_CONSOLIDATED — mark completed, broadcast ────────
-  // report_url was already written by the atomic updateMany above.
-  // Broadcast so the RecursionCard's useLegalBenchmarkRun subscription fires.
+  // ── Step 2f: LEGAL_BENCHMARK_CONSOLIDATED — mark completed, broadcast ───────
+  // report_url is already persisted by the atomic updateMany above.
+  // Broadcast STAKWORK_RUN_UPDATE so the RecursionCard's useLegalBenchmarkRun
+  // subscription fires and the "View Consolidated Report" link surfaces.
+  // Unlike RECURSION (Step 2e), CONSOLIDATED needs no secondary dispatch.
   if (run.type === StakworkRunType.LEGAL_BENCHMARK_CONSOLIDATED) {
     try {
-      await pusherServer.trigger(getWorkspaceChannelName(run.workspace.slug), PUSHER_EVENTS.STAKWORK_RUN_UPDATE, {
-        runId: run.id,
-        type: run.type,
-        status,
-        featureId: run.featureId,
-        timestamp: new Date(),
-      });
+      await pusherServer.trigger(
+        getWorkspaceChannelName(run.workspace.slug),
+        PUSHER_EVENTS.STAKWORK_RUN_UPDATE,
+        {
+          runId: run.id,
+          type: run.type,
+          status,
+          featureId: run.featureId,
+          timestamp: new Date(),
+        },
+      );
     } catch (pusherError) {
-      logger.error("Pusher trigger failed (non-fatal)", "stakwork-run", { error: String(pusherError) });
+      logger.error("[consolidated] Pusher trigger failed (non-fatal)", "stakwork-run", {
+        error: String(pusherError),
+      });
     }
     return { runId: run.id, status, dataType };
   }
