@@ -18,6 +18,7 @@ vi.mock("@/lib/db", () => ({
       findUnique: vi.fn(),
       update: vi.fn(),
     },
+    stakworkRun: { findFirst: vi.fn() },
     user: { findUnique: vi.fn() },
     initiative: { findFirst: vi.fn() },
     milestone: { findFirst: vi.fn() },
@@ -27,6 +28,10 @@ vi.mock("@/lib/db", () => ({
 
 vi.mock("@/services/roadmap/feature-chat", () => ({
   sendFeatureChatMessage: vi.fn(),
+}));
+
+vi.mock("@/services/stakwork-run", () => ({
+  stopStakworkRun: vi.fn(),
 }));
 
 vi.mock("@/lib/canvas", () => ({
@@ -40,9 +45,11 @@ vi.mock("@/services/orgs/nodeDetail", () => ({
 
 import { db } from "@/lib/db";
 import { sendFeatureChatMessage } from "@/services/roadmap/feature-chat";
+import { stopStakworkRun } from "@/services/stakwork-run";
 import { buildInitiativeTools } from "@/lib/ai/initiativeTools";
 
 const SEND_TO_FEATURE_PLANNER = "send_to_feature_planner";
+const CANCEL_FEATURE_PLANNER = "cancel_feature_planner";
 
 // Must match the consts in initiativeTools.ts.
 const RECHECK_INTERVAL_MS = 2_500;
@@ -443,5 +450,110 @@ describe("send_to_feature_planner — (f) race after clear", () => {
     // Must NOT include structured fields.
     expect(result).not.toHaveProperty("workflowStatus");
     expect(result).not.toHaveProperty("featureId");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// cancel_feature_planner
+// ---------------------------------------------------------------------------
+function getCancelTool() {
+  const tools = buildInitiativeTools("org_1", "user_1", undefined, undefined);
+  const t = tools[CANCEL_FEATURE_PLANNER];
+  if (!t || typeof t !== "object" || !("execute" in t)) {
+    throw new Error("cancel_feature_planner tool not registered");
+  }
+  return t as unknown as {
+    execute: (input: { featureId: string }) => Promise<Record<string, unknown>>;
+  };
+}
+
+function mockCancelFeatureOnce() {
+  (db.feature.findUnique as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+    title: "Test Feature",
+    workspace: {
+      slug: "test-ws",
+      name: "Test Workspace",
+      sourceControlOrgId: "org_1",
+    },
+  });
+}
+
+describe("cancel_feature_planner", () => {
+  it("resolves the active run and halts it via stopStakworkRun", async () => {
+    mockCancelFeatureOnce();
+    (db.stakworkRun.findFirst as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      id: "run_1",
+      projectId: 42,
+    });
+
+    const result = await getCancelTool().execute({ featureId: "feat_1" });
+
+    expect(stopStakworkRun).toHaveBeenCalledWith("run_1", "user_1");
+    expect(result).toMatchObject({
+      status: "halted",
+      featureId: "feat_1",
+      featureTitle: "Test Feature",
+    });
+  });
+
+  it("returns no_active_run when nothing is running", async () => {
+    mockCancelFeatureOnce();
+    (db.stakworkRun.findFirst as ReturnType<typeof vi.fn>).mockResolvedValueOnce(
+      null,
+    );
+
+    const result = await getCancelTool().execute({ featureId: "feat_1" });
+
+    expect(stopStakworkRun).not.toHaveBeenCalled();
+    expect(result).toMatchObject({ status: "no_active_run" });
+  });
+
+  it("returns starting when the run has no projectId yet", async () => {
+    mockCancelFeatureOnce();
+    (db.stakworkRun.findFirst as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      id: "run_1",
+      projectId: null,
+    });
+
+    const result = await getCancelTool().execute({ featureId: "feat_1" });
+
+    expect(stopStakworkRun).not.toHaveBeenCalled();
+    expect(result).toMatchObject({ status: "starting" });
+  });
+
+  it("rejects a feature that belongs to another org", async () => {
+    (db.feature.findUnique as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      title: "Test Feature",
+      workspace: {
+        slug: "test-ws",
+        name: "Test Workspace",
+        sourceControlOrgId: "other_org",
+      },
+    });
+
+    const result = await getCancelTool().execute({ featureId: "feat_1" });
+
+    expect(db.stakworkRun.findFirst).not.toHaveBeenCalled();
+    expect(stopStakworkRun).not.toHaveBeenCalled();
+    expect(result).toMatchObject({
+      error: "Feature does not belong to this organization",
+    });
+  });
+
+  it("returns { error } when stopStakworkRun throws", async () => {
+    mockCancelFeatureOnce();
+    (db.stakworkRun.findFirst as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      id: "run_1",
+      projectId: 42,
+    });
+    (stopStakworkRun as ReturnType<typeof vi.fn>).mockRejectedValueOnce(
+      new Error("Access denied: user is not a member of this workspace"),
+    );
+
+    const result = await getCancelTool().execute({ featureId: "feat_1" });
+
+    expect(result).toEqual({
+      error: "Access denied: user is not a member of this workspace",
+    });
   });
 });

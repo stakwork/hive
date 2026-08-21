@@ -244,7 +244,11 @@ const ROADMAP_INITIATIVE_TOOL_NAMES = [
   PROPOSE_MILESTONE_TOOL,
 ] as const;
 
-const PLANNER_TOOL_NAMES = ["send_to_feature_planner", "read_user_activity"] as const;
+const PLANNER_TOOL_NAMES = [
+  "send_to_feature_planner",
+  "cancel_feature_planner",
+  "read_user_activity",
+] as const;
 
 // `read_canvas` is a roadmap tool (used to find anchors before
 // proposing / placing). `update_canvas` + `patch_canvas` are the
@@ -318,10 +322,10 @@ export const CAPABILITY_REGISTRY: Record<OrgCapability, CapabilityDefinition> =
         ),
       promptSnippet: getPlannerCapabilitySnippet,
       core: true,
-      // No write tools to strip: send_to_feature_planner survives
-      // readonly mode (matches the pre-registry strip set — it messages
-      // an agent rather than mutating org state directly).
-      writeToolNames: [],
+      // send_to_feature_planner survives readonly mode — it messages an
+      // agent rather than mutating org state directly. cancel_feature_planner
+      // does mutate run + feature status, so it is stripped in readonly.
+      writeToolNames: ["cancel_feature_planner"],
     },
     whiteboard: {
       buildTools: (ctx) =>
