@@ -141,6 +141,12 @@ interface UseEvalRunHistoryReturn {
   seriesKind: EvalSeriesKind;
   /** True when the graph walk hit a cap or a hop failed, so `attempts` may be short. */
   partial: boolean;
+  /**
+   * The raw fix-chain subgraph — exposed so callers (e.g. RecursionCard) can
+   * drive secondary visualisations (timeline, graph panel) without a second fetch.
+   * Null until the first successful load.
+   */
+  subgraphData: { nodes: SubgraphNode[]; edges: SubgraphEdge[] } | null;
   isLoading: boolean;
   error: string | null;
   refetch: () => void;
@@ -212,6 +218,7 @@ export function useEvalRunHistory(input: UseEvalRunHistoryInput): UseEvalRunHist
   const [attempts, setAttempts] = useState<EvalTriggerOutput[]>([]);
   const [seriesKind, setSeriesKind] = useState<EvalSeriesKind>("legacy");
   const [partial, setPartial] = useState(false);
+  const [subgraphData, setSubgraphData] = useState<{ nodes: SubgraphNode[]; edges: SubgraphEdge[] } | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [fetchCount, setFetchCount] = useState(0);
@@ -639,6 +646,7 @@ export function useEvalRunHistory(input: UseEvalRunHistoryInput): UseEvalRunHist
           setAttempts(finalAttempts);
           setSeriesKind(finalSeriesKind);
           setPartial(fixChain.partial ?? false);
+          setSubgraphData({ nodes: fixChain.nodes, edges: fixChain.edges });
         }
       } catch (err) {
         if (!cancelled) {
@@ -656,5 +664,5 @@ export function useEvalRunHistory(input: UseEvalRunHistoryInput): UseEvalRunHist
     };
   }, [inputRefId, taskSlug, workspaceSlug, workspaceId, fetchCount]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  return { history, attemptRows, attempts, seriesKind, partial, isLoading, error, refetch };
+  return { history, attemptRows, attempts, seriesKind, partial, subgraphData, isLoading, error, refetch };
 }
