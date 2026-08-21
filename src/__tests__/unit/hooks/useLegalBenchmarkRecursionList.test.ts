@@ -41,17 +41,44 @@ describe("useLegalBenchmarkRecursionList", () => {
     await waitFor(() => expect(result.current.isLoading).toBe(false));
 
     expect(result.current.entries).toHaveLength(2);
-    expect(result.current.entries[0]).toEqual({
+    expect(result.current.entries[0]).toMatchObject({
       refId: "ref-1",
       id: "antitrust/task-1",
       name: "Antitrust Task 1",
     });
-    expect(result.current.entries[1]).toEqual({
+    expect(result.current.entries[1]).toMatchObject({
       refId: "ref-2",
       id: "contracts/task-2",
       name: "Contracts Task 2",
     });
     expect(result.current.error).toBeNull();
+  });
+
+  it("maps reason field from API response when present", async () => {
+    const dataWithReason = [
+      { ref_id: "ref-1", id: "tax/task-1", name: "Tax Task 1", reason: "active" },
+      { ref_id: "ref-2", id: "contracts/task-2", name: "Contracts Task 2", reason: "wasEnabled" },
+      { ref_id: "ref-3", id: "antitrust/task-3", name: "Antitrust Task 3", reason: "multipleRuns" },
+    ];
+    mockFetchSuccess(dataWithReason);
+
+    const { result } = renderHook(() => useLegalBenchmarkRecursionList());
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    expect(result.current.entries[0].reason).toBe("active");
+    expect(result.current.entries[1].reason).toBe("wasEnabled");
+    expect(result.current.entries[2].reason).toBe("multipleRuns");
+  });
+
+  it("sets reason to undefined when not present in API response", async () => {
+    // MOCK_API_DATA does not have a reason field
+    mockFetchSuccess(MOCK_API_DATA);
+
+    const { result } = renderHook(() => useLegalBenchmarkRecursionList());
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    // reason should be undefined (not present), not null or an empty string
+    expect(result.current.entries[0].reason).toBeUndefined();
   });
 
   it("calls the correct endpoint URL", async () => {
