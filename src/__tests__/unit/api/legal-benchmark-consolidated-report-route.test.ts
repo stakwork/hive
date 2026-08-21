@@ -136,7 +136,9 @@ beforeEach(() => {
   mockDbTransaction.mockImplementation(async (fn: (tx: unknown) => Promise<unknown>) => {
     const tx = {
       stakworkRun: {
-        findFirst: vi.fn().mockResolvedValue(null),
+        // The route uses findMany (not findFirst) inside the transaction to
+        // fetch in-flight rows, then checks taskSlug equality in application code.
+        findMany: vi.fn().mockResolvedValue([]),
         create: vi.fn().mockResolvedValue({ id: "consolidated-run-1" }),
       },
     };
@@ -245,7 +247,11 @@ describe("POST /api/workspaces/[slug]/legal/benchmarks/consolidated-report", () 
     mockDbTransaction.mockImplementation(async (fn: (tx: unknown) => Promise<unknown>) => {
       const tx = {
         stakworkRun: {
-          findFirst: vi.fn().mockResolvedValue({ id: "existing-run" }),
+          // Return a row whose stored taskSlug matches the request's taskSlug so
+          // the application-level equality check triggers the 409.
+          findMany: vi.fn().mockResolvedValue([
+            { id: "existing-run", result: JSON.stringify({ taskSlug: TASK_SLUG }) },
+          ]),
           create: vi.fn(),
         },
       };
