@@ -39,7 +39,16 @@ import type { UrnEdgeNeighbor } from "@/lib/urn";
 import { pgNeighbors } from "@/lib/graph-walker";
 import type { NeighborResult, PgNeighborContext } from "@/lib/graph-walker";
 import { resolveKgSeam } from "@/lib/urn/resolvers/kg";
-import { kgGetNode, kgGetNeighbors, kgGetNodesByRefs, kgSearch, kgGetOntology } from "./kg-adapter";
+import {
+  kgGetNode,
+  kgGetNeighbors,
+  kgGetNodesByRefs,
+  kgSearch,
+  kgGetOntology,
+  kgGetOntologyType,
+  KG_ONTOLOGY_TYPE_SWARM_UNAVAILABLE,
+  KG_ONTOLOGY_TYPE_UNKNOWN,
+} from "./kg-adapter";
 import { getSwarmAccessByWorkspaceId } from "@/lib/helpers/swarm-access";
 import { getJarvisUrl } from "@/lib/utils/swarm";
 
@@ -1032,6 +1041,64 @@ export function buildGraphWalkerTools(
           seam.swarmApiKey,
         );
         return { domains, node_types };
+      },
+    }),
+
+    get_ontology_type: tool({
+      description:
+        "Fetch the FULL schema for a single KG node type — its attributes (with value types " +
+        "and required/optional flag, including inherited attributes from parent types), " +
+        "the `node_key`, the `parent` type, and the valid edge/relationship schemas " +
+        "(source type, target type, edge type) for that type. " +
+        "Read-only. Call this BEFORE proposing a write via `propose_create_node`, " +
+        "`propose_create_triplet`, or `propose_create_batch_triplet` to learn which " +
+        "attributes the type requires so `node_data`/`edge_data` can be shaped correctly. " +
+        "Jarvis remains the authoritative validator — this is for inspection only.",
+      inputSchema: z.object({
+        workspace: z.string().describe("Workspace slug whose KG schema to query."),
+        type: z.string().describe(
+          "The node type to look up (e.g. 'Concept', 'HiveFeature', 'PullRequest'). " +
+            "Case-insensitive. Use the `type` values returned by `graph_ontology` to avoid guessing.",
+        ),
+      }),
+      execute: async ({ workspace, type }: { workspace: string; type: string }) => {
+        const orgRow = await db.sourceControlOrg.findUnique({
+          where: { id: orgId },
+          select: { githubLogin: true },
+        });
+        if (!orgRow) return { error: "org not found" };
+        const urnOrg = orgRow.githubLogin;
+
+        const syntheticUrn = formatUrn({
+          realm: "kg",
+          org: urnOrg,
+          workspace,
+          type: "node",
+          id: "x",
+        });
+        const seam = await resolveKgSeam(syntheticUrn, { userId });
+        if (!seam) return { error: "swarm not configured or access denied" };
+
+        const result = await kgGetOntologyType(seam.jarvisUrl, seam.swarmApiKey, type);
+
+        if (result === KG_ONTOLOGY_TYPE_SWARM_UNAVAILABLE) {
+          return {
+            error:
+              `Swarm unreachable or unconfigured for workspace '${workspace}' — ` +
+              `schema for '${type}' is temporarily unavailable. Try again later.`,
+          };
+        }
+        if (result === KG_ONTOLOGY_TYPE_UNKNOWN) {
+          return {
+            error:
+              `No registered schema found for type '${type}' in workspace '${workspace}'. ` +
+              `The type may appear in graph_ontology if it has live Neo4j labels but no ` +
+              `registered schema — in that case no attribute or edge schema is available here. ` +
+              `Check the spelling or call graph_ontology({ workspace }) to see valid types.`,
+          };
+        }
+
+        return result;
       },
     }),
 
