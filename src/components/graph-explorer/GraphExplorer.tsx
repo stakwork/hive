@@ -233,9 +233,17 @@ interface GraphExplorerProps {
   workspaceSlug: string;
   /** `?ref_id=` deep link — focus this node (and its neighbors) on first load. */
   initialRefId?: string | null;
+  /**
+   * `?cypher=` deep link — pre-fill the query bar and run it on first load, so
+   * callers that know a whole subgraph shape (e.g. the recursion card's loop
+   * subgraph) can land on a rendered canvas instead of a single focused node.
+   * `ref_id` wins when both are present. Same power as typing in the query bar:
+   * the route is admin-gated and read-only, and the query stays visible/editable.
+   */
+  initialCypher?: string | null;
 }
 
-export function GraphExplorer({ workspaceSlug, initialRefId }: GraphExplorerProps) {
+export function GraphExplorer({ workspaceSlug, initialRefId, initialCypher }: GraphExplorerProps) {
   // ── Cypher query state ────────────────────────────────────────────────────
   const [query, setQuery] = useState(DEFAULT_QUERY);
   const [loading, setLoading] = useState(false);
@@ -476,6 +484,15 @@ export function GraphExplorer({ workspaceSlug, initialRefId }: GraphExplorerProp
     deepLinkedRef.current = initialRefId;
     void focusNode(initialRefId);
   }, [initialRefId, focusNode]);
+
+  /** `?cypher=` deep link — run once on mount; `ref_id` takes precedence. */
+  const deepLinkedCypher = useRef<string | null>(null);
+  useEffect(() => {
+    if (!initialCypher || initialRefId || deepLinkedCypher.current === initialCypher) return;
+    deepLinkedCypher.current = initialCypher;
+    setQuery(initialCypher);
+    void runQuery(initialCypher);
+  }, [initialCypher, initialRefId, runQuery]);
 
   /**
    * "Show on graph" from a chat thread. A session's Concept reads are already
