@@ -34,10 +34,22 @@ interface RawRunRow {
   updatedAt: string;
 }
 
-export function useLegalBenchmarkRun(runId: string): UseLegalBenchmarkRunResult {
+/**
+ * Fetch and subscribe to a single benchmark run of any pipeline type.
+ *
+ * `type` defaults to `LEGAL_BENCHMARK_RUNNER` so all existing callers are
+ * backwards-compatible and require no updates.  Pass
+ * `StakworkRunType.LEGAL_BENCHMARK_CONSOLIDATED` from `RecursionCard` to poll
+ * consolidated-report runs; `null` for `runId` no-ops the hook (returns
+ * `{ run: null, isLoading: false, isStale: false }`).
+ */
+export function useLegalBenchmarkRun(
+  runId: string | null,
+  type: StakworkRunType = StakworkRunType.LEGAL_BENCHMARK_RUNNER,
+): UseLegalBenchmarkRunResult {
   const { workspace } = useWorkspace();
   const [run, setRun] = useState<LegalBenchmarkRun | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(runId !== null);
   const [isStale, setIsStale] = useState(false);
 
   // Keep refs so async timer / Pusher callbacks always read latest values.
@@ -51,7 +63,7 @@ export function useLegalBenchmarkRun(runId: string): UseLegalBenchmarkRunResult 
       setIsLoading(true);
 
       const res = await fetch(
-        `/api/stakwork/runs?workspaceId=${workspace.id}&type=${StakworkRunType.LEGAL_BENCHMARK_RUNNER}&includeResult=true`,
+        `/api/stakwork/runs?workspaceId=${workspace.id}&type=${type}&includeResult=true`,
       );
 
       if (!res.ok) {
@@ -109,7 +121,7 @@ export function useLegalBenchmarkRun(runId: string): UseLegalBenchmarkRunResult 
     } finally {
       setIsLoading(false);
     }
-  }, [workspace?.id, runId]);
+  }, [workspace?.id, runId, type]);
 
   fetchRunRef.current = fetchRun;
 

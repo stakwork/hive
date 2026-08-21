@@ -119,10 +119,14 @@ export function useLegalBenchmarkRunList(
         fetch(
           `/api/stakwork/runs?type=${runType}&workspaceId=${workspaceId}&limit=${RUN_LIST_LIMIT}&includeResult=true`,
         );
-      const [res, evalRes, recursionRes] = await Promise.all([
+      const [res, evalRes, recursionRes, consolidatedRes] = await Promise.all([
         fetchType(StakworkRunType.LEGAL_BENCHMARK_RUNNER),
         fetchType(StakworkRunType.LEGAL_BENCHMARK_EVAL),
         fetchType(StakworkRunType.LEGAL_BENCHMARK_RECURSION),
+        // CONSOLIDATED rows flow through Pusher updates so the RecursionCard
+        // can surface in-flight / completed consolidated report status after
+        // a page refresh without any new polling logic.
+        fetchType(StakworkRunType.LEGAL_BENCHMARK_CONSOLIDATED),
       ]);
       // Manual runs are the tab's backbone — fail hard when they fail. The
       // secondary pipelines degrade to empty lists rather than blanking the tab.
@@ -130,6 +134,7 @@ export function useLegalBenchmarkRunList(
       const data = await res.json();
       const evalData = evalRes.ok ? await evalRes.json().catch(() => null) : null;
       const recursionData = recursionRes.ok ? await recursionRes.json().catch(() => null) : null;
+      const consolidatedData = consolidatedRes.ok ? await consolidatedRes.json().catch(() => null) : null;
 
       interface RawRunRow {
         id: string;
@@ -145,6 +150,7 @@ export function useLegalBenchmarkRunList(
       const rawRows: RawRunRow[] = data.runs ?? [];
       const rawEvalRows: RawRunRow[] = evalData?.runs ?? [];
       const rawRecursionRows: RawRunRow[] = recursionData?.runs ?? [];
+      const rawConsolidatedRows: RawRunRow[] = consolidatedData?.runs ?? [];
 
       const mapSecondary = (r: RawRunRow, runType: BenchmarkRunType): BenchmarkRunListRow => {
         const parsed = parseBenchmarkRunResult(r.result);
@@ -218,6 +224,12 @@ export function useLegalBenchmarkRunList(
         ...mapped,
         ...rawEvalRows.map((r) => mapSecondary(r, "recursion")),
         ...rawRecursionRows.map((r) => mapSecondary(r, "recursion")),
+        // CONSOLIDATED rows are merged so Pusher updates for them flow through
+        // the existing channel subscription without new polling logic, enabling
+        // RecursionCard to surface in-flight / completed consolidated report
+        // status after a page refresh. They are not surfaced in the Runs tab
+        // table — the runType tag keeps them invisible there.
+        ...rawConsolidatedRows.map((r) => mapSecondary(r, "recursion")),
       ].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
       runsRef.current = merged;
