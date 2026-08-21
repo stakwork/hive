@@ -57,7 +57,12 @@ const makeRow = (overrides: Partial<{
 function mockFetchOk(
   runs: ReturnType<typeof makeRow>[],
   total?: number,
-  extra: { evalRuns?: ReturnType<typeof makeRow>[]; recursionRuns?: ReturnType<typeof makeRow>[]; evalOk?: boolean } = {},
+  extra: {
+    evalRuns?: ReturnType<typeof makeRow>[];
+    recursionRuns?: ReturnType<typeof makeRow>[];
+    consolidatedRuns?: ReturnType<typeof makeRow>[];
+    evalOk?: boolean;
+  } = {},
 ) {
   vi.mocked(global.fetch).mockImplementation(async (input) => {
     const url = String(input);
@@ -71,6 +76,12 @@ function mockFetchOk(
       return {
         ok: true,
         json: async () => ({ runs: extra.recursionRuns ?? [] }),
+      } as Response;
+    }
+    if (url.includes("type=LEGAL_BENCHMARK_CONSOLIDATED")) {
+      return {
+        ok: true,
+        json: async () => ({ runs: extra.consolidatedRuns ?? [] }),
       } as Response;
     }
     return {
@@ -494,8 +505,9 @@ describe("useLegalBenchmarkRunList", () => {
       await Promise.resolve();
     });
 
-    // Only one additional fetchRuns (= 3 pipeline requests) despite three rapid events
-    expect(vi.mocked(global.fetch).mock.calls.length).toBe(fetchCallsBefore + 3);
+    // Only one additional fetchRuns (= 4 pipeline requests: RUNNER + EVAL + RECURSION + CONSOLIDATED)
+    // despite three rapid events
+    expect(vi.mocked(global.fetch).mock.calls.length).toBe(fetchCallsBefore + 4);
   });
 
   it("unbinds STAKWORK_RUN_UPDATE event handler on unmount", async () => {
@@ -619,15 +631,16 @@ describe("useLegalBenchmarkRunList", () => {
 // ─── Multi-pipeline rows ─────────────────────────────────────────────────────
 
 describe("useLegalBenchmarkRunList — analysis/recursion pipelines", () => {
-  it("fetches all three run types", async () => {
+  it("fetches all four run types (RUNNER, EVAL, RECURSION, CONSOLIDATED)", async () => {
     mockFetchOk([makeRow()]);
     renderHook(() => useLegalBenchmarkRunList("ws-cuid-123"));
-    await waitFor(() => expect(vi.mocked(global.fetch).mock.calls.length).toBe(3));
+    await waitFor(() => expect(vi.mocked(global.fetch).mock.calls.length).toBe(4));
 
     const urls = vi.mocked(global.fetch).mock.calls.map((c) => String(c[0]));
     expect(urls.some((u) => u.includes("type=LEGAL_BENCHMARK_RUNNER"))).toBe(true);
     expect(urls.some((u) => u.includes("type=LEGAL_BENCHMARK_EVAL"))).toBe(true);
     expect(urls.some((u) => u.includes("type=LEGAL_BENCHMARK_RECURSION"))).toBe(true);
+    expect(urls.some((u) => u.includes("type=LEGAL_BENCHMARK_CONSOLIDATED"))).toBe(true);
   });
 
   it("tags rows by pipeline and merges newest-first", async () => {

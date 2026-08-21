@@ -13,8 +13,11 @@ import { graphExplorerHref as graphHref } from "@/components/run-report/NodePeek
 import { canReadRunReport } from "@/lib/run-report/types";
 import { rosterSummary, type GraphRubric, type RosterSummary } from "@/lib/harvey-lab/rubric-scoring";
 import { HillClimbChart } from "@/components/legal/HillClimbChart";
+import { useLegalBenchmarkRun } from "@/hooks/useLegalBenchmarkRun";
+import { useLegalBenchmarkRunList } from "@/hooks/useLegalBenchmarkRunList";
 import type { EvalTriggerOutput } from "@/lib/harvey-lab/eval-normalizers";
 import type { RecursionEntry } from "@/hooks/useLegalBenchmarkRecursionList";
+import { StakworkRunType, WorkflowStatus } from "@prisma/client";
 
 /** Edge types the recursion loop writes — the subgraph query's whole alphabet. */
 const LOOP_EDGE_TYPES =
@@ -235,6 +238,13 @@ function RecursionCard({ entry, refetch }: RecursionCardProps) {
   const workspaceSlug = workspace?.slug ?? "";
   const canReadReports = canReadRunReport(role ?? "");
 
+  // ── Consolidated report state ──────────────────────────────────────────────
+  // `consolidatedRunId` is initialised from the run list below so in-flight
+  // status survives a page refresh without a second POST.
+  const [consolidatedRunId, setConsolidatedRunId] = useState<string | null>(null);
+  const [isTriggering, setIsTriggering] = useState(false);
+  const [triggerError, setTriggerError] = useState<string | null>(null);
+
   // Use entry.refId (EvalSet ref_id) + entry.id (task slug) for eval run history.
   // refId is preferred; slug is the fallback when refId is absent.
   const {
@@ -300,6 +310,35 @@ function RecursionCard({ entry, refetch }: RecursionCardProps) {
     return best - baseScore;
   }, [attempts, latest]);
 
+  // ── Consolidated run — seed from run list (survives page refresh) ──────────
+  const { runs: allRuns } = useLegalBenchmarkRunList(workspace?.id);
+
+  // Find the most recent CONSOLIDATED run for this taskSlug.
+  // `mapSecondary` tags it as "recursion" runType — so we match any "recursion"
+  // tagged row that is PENDING or IN_PROGRESS (no hasReport) as a proxy for
+  // in-flight consolidated runs, to prevent double-dispatch.
+  const existingConsolidated = useMemo(() => {
+    return allRuns
+      .filter(
+        (r) =>
+          r.taskSlug === entry.id &&
+          r.runType === "recursion" &&
+          (r.status === WorkflowStatus.PENDING ||
+            r.status === WorkflowStatus.IN_PROGRESS) &&
+          !r.hasReport,
+      )
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0] ?? null;
+  }, [allRuns, entry.id]);
+
+  // Seed state from the run list on first render so refreshing doesn't lose the run.
+  const effectiveConsolidatedRunId = consolidatedRunId ?? existingConsolidated?.id ?? null;
+
+  // Poll the consolidated run's status.
+  const { run: consolidatedRun } = useLegalBenchmarkRun(
+    effectiveConsolidatedRunId,
+    StakworkRunType.LEGAL_BENCHMARK_CONSOLIDATED,
+  );
+
   const handleToggle = async (enabled: boolean) => {
     setToggling(true);
     setToggleError(null);
@@ -328,6 +367,65 @@ function RecursionCard({ entry, refetch }: RecursionCardProps) {
       setToggling(false);
     }
   };
+
+  // ── Consolidated report trigger ────────────────────────────────────────────
+  const handleConsolidatedReport = async () => {
+    setIsTriggering(true);
+    setTriggerError(null);
+    try {
+      // Assemble runIds from attemptRows:
+      // - Only RUNNER-type rows with hasReport=true (Recursion/Eval rows never score)
+      // - Latest-first by timestamp
+      // - Rows with runId: null are off-graph / pre-instrumentation runs; excluded
+      //   with a console.warn. Known limitation: a follow-on task should back-fill
+      //   missing run graph edges if this causes material gaps.
+      const runIds = attemptRows
+        .filter((r) => {
+          if (r.runType !== "runner") return false;
+          if (!r.hasReport) return false;
+          if (r.runId === null) {
+            console.warn(
+              "[RecursionCard] Skipping off-graph attempt row with null runId",
+              { key: r.key, taskSlug: entry.id },
+            );
+            return false;
+          }
+          return true;
+        })
+        .sort((a, b) => {
+          const ta = a.timestamp ? new Date(a.timestamp).getTime() : 0;
+          const tb = b.timestamp ? new Date(b.timestamp).getTime() : 0;
+          return tb - ta;
+        })
+        .map((r) => r.runId as string);
+
+      const res = await fetch(
+        `/api/workspaces/openlaw/legal/benchmarks/consolidated-report`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ taskSlug: entry.id, runIds }),
+        },
+      );
+      if (res.ok) {
+        const data = await res.json();
+        setConsolidatedRunId((data as { run_id: string }).run_id);
+      } else {
+        const body = await res.json().catch(() => ({}));
+        setTriggerError((body as { error?: string }).error ?? `Request failed (${res.status})`);
+      }
+    } catch (err) {
+      setTriggerError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setIsTriggering(false);
+    }
+  };
+
+  // Button is disabled while triggering or while a consolidated run is in-flight
+  // (no report yet). Prevents double-dispatch.
+  const consolidatedInFlight =
+    !!effectiveConsolidatedRunId && !consolidatedRun?.hasReport;
+  const canTriggerConsolidated = !isTriggering && !consolidatedInFlight;
 
   const canExpand = !historyLoading && !historyError && attempts.length > 0;
 
@@ -403,9 +501,37 @@ function RecursionCard({ entry, refetch }: RecursionCardProps) {
           {toggleError && (
             <span className="text-xs text-destructive mt-1">{toggleError}</span>
           )}
+          {triggerError && (
+            <span className="text-xs text-destructive mt-1" data-testid="trigger-error">
+              {triggerError}
+            </span>
+          )}
         </div>
 
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex items-center gap-2 shrink-0 flex-wrap justify-end">
+          {/* Consolidated report status: spinner while in-flight, link when ready */}
+          {consolidatedInFlight && (
+            <span
+              className="flex items-center gap-1 text-xs text-muted-foreground"
+              data-testid="consolidated-generating"
+            >
+              <Loader2 className="h-3 w-3 animate-spin" />
+              Generating…
+            </span>
+          )}
+          {consolidatedRun?.hasReport && effectiveConsolidatedRunId && (
+            <a
+              href={`/w/openlaw/legal/benchmarks/consolidated/${effectiveConsolidatedRunId}/report`}
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label="View consolidated report (opens in new tab)"
+              className="text-xs text-primary underline underline-offset-2 hover:no-underline"
+              data-testid="consolidated-report-link"
+            >
+              View Consolidated Report ↗
+            </a>
+          )}
+
           {/* The card's ONE graph affordance: a labeled button (an icon alone
               read as "share") that renders the whole recursion subgraph —
               eval set, triggers, outputs, fixes, rubrics — via the ?cypher=
@@ -439,6 +565,25 @@ function RecursionCard({ entry, refetch }: RecursionCardProps) {
               )}
             </button>
           )}
+
+          {/* Consolidated Report trigger button */}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleConsolidatedReport}
+            disabled={!canTriggerConsolidated}
+            className="shrink-0"
+            data-testid="consolidated-report-button"
+          >
+            {isTriggering ? (
+              <>
+                <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" />
+                Generating…
+              </>
+            ) : (
+              "Consolidated Report"
+            )}
+          </Button>
 
           <Button
             variant="outline"
