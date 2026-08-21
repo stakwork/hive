@@ -14,6 +14,7 @@ import {
   NodePeekBody,
   ViewInGraphLink,
   fetchNodePeek,
+  graphExplorerHref,
   type NodePeek,
 } from "@/components/run-report/NodePeek";
 import {
@@ -223,14 +224,31 @@ export function FixSnapshotPanel({
         )
       )}
 
-      {/* Live-node click-through — suppressed (not broken) without a target_ref */}
-      {parsed.refId && (
-        <LiveNodeControl
-          workspaceSlug={workspaceSlug}
-          refId={parsed.refId}
-          title={parsed.title}
-          kind={parsed.kind}
-        />
+      {/* Live-node click-through — suppressed (not broken) without a target_ref.
+          The ProposedFix node itself gets its own graph link: the target shows
+          what changed, the fix node shows the loop's decision trail
+          (DERIVED_FROM chain, eval_status, rerun attribution). */}
+      {(parsed.refId || (fix.ref_id && workspaceSlug)) && (
+        <div className="flex flex-wrap items-center gap-2">
+          {parsed.refId && (
+            <LiveNodeControl
+              workspaceSlug={workspaceSlug}
+              refId={parsed.refId}
+              title={parsed.title}
+              kind={parsed.kind}
+            />
+          )}
+          {fix.ref_id && workspaceSlug && (
+            <a
+              href={graphExplorerHref(workspaceSlug, fix.ref_id)}
+              className="inline-flex items-center gap-1.5 rounded-full border border-border bg-muted/40 px-2.5 py-1 font-mono text-[10.5px] uppercase tracking-[0.1em] text-muted-foreground transition-colors hover:border-primary/50 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              data-testid="fix-snapshot-fix-node-link"
+            >
+              <Share2 className="h-3 w-3" />
+              fix node in graph
+            </a>
+          )}
+        </div>
       )}
     </div>
   );
