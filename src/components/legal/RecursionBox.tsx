@@ -142,8 +142,6 @@ function ScoreBadge({
                   {workspaceSlug && rubric.ref_id && (
                     <a
                       href={graphHref(workspaceSlug, rubric.ref_id)}
-                      target="_blank"
-                      rel="noopener noreferrer"
                       className="shrink-0 mt-0.5 text-muted-foreground hover:text-primary transition-colors"
                       aria-label={`Open rubric ${rubric.id} in Graph Explorer`}
                       title="Open in Graph Explorer"
@@ -416,10 +414,8 @@ function RecursionCard({ entry, refetch }: RecursionCardProps) {
           {workspaceSlug && entry.refId && (
             <a
               href={loopSubgraphHref(workspaceSlug, entry.refId)}
-              target="_blank"
-              rel="noopener noreferrer"
               className="inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors whitespace-nowrap"
-              aria-label="View this task's recursion subgraph in the Graph Explorer (opens in new tab)"
+              aria-label="View this task's recursion subgraph in the Graph Explorer"
               title="Render this task's full recursion subgraph — eval set, triggers, outputs, fixes, rubrics — in the Graph Explorer"
               data-testid="card-graph-link"
             >
@@ -514,8 +510,6 @@ function RecursionCard({ entry, refetch }: RecursionCardProps) {
                       <a
                         key={target.key}
                         href={graphHref(workspaceSlug, target.refId)}
-                        target="_blank"
-                        rel="noopener noreferrer"
                         className="inline-flex items-center gap-1.5 rounded-full border bg-background px-2 py-0.5 text-xs transition-colors hover:border-primary/50 hover:text-primary"
                         title={`Open this ${target.kind ?? "node"} in the Graph Explorer`}
                         data-testid={`climb-target-${target.key}`}
