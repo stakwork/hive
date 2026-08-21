@@ -14,7 +14,9 @@ vi.mock("@/hooks/useUserTimezone", () => ({
 function projectionFor(name: keyof typeof RUN_REPORT_FIXTURES): RunReportProjection {
   const outcome = projectBundle(JSON.stringify(RUN_REPORT_FIXTURES[name]));
   if (outcome.status !== "ok") throw new Error(`fixture ${name} did not project`);
-  return outcome.projection;
+  // All RUN_REPORT_FIXTURES are standard RunReportProjection bundles (no
+  // consolidated:true discriminant), so the narrowing cast is safe here.
+  return outcome.projection as RunReportProjection;
 }
 
 function payload(overrides: Partial<RunReportPayload> = {}): RunReportPayload {

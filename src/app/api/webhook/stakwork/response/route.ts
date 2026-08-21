@@ -5,7 +5,16 @@ import { StakworkRunType } from "@prisma/client";
 
 export const fetchCache = "force-no-store";
 
-/** Benchmark run types that use a flat Harvey payload shape */
+/**
+ * Legal Benchmark run types that use a flat Harvey payload shape.
+ *
+ * TODO(consolidated): Add `StakworkRunType.LEGAL_BENCHMARK_CONSOLIDATED` here
+ * ONLY after the Stakwork team confirms that workflow 58345 uses the same
+ * flat Harvey payload shape as RUNNER/SCORER/EVAL (not the nested shape used
+ * by LEGAL_BENCHMARK_RECURSION). Adding it prematurely when the payload is
+ * nested would double-wrap `result` and corrupt `report_url` extraction,
+ * potentially persisting the S3 URL inside the result JSON blob.
+ */
 const LEGAL_BENCHMARK_TYPES = new Set<string>([
   StakworkRunType.LEGAL_BENCHMARK_RUNNER,
   StakworkRunType.LEGAL_BENCHMARK_SCORER,

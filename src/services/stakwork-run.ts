@@ -883,7 +883,8 @@ export async function processStakworkRunWebhook(
       run.type === StakworkRunType.LEGAL_BENCHMARK_SCORER ||
       run.type === StakworkRunType.LEGAL_BENCHMARK_EVAL ||
       run.type === StakworkRunType.LEGAL_BENCHMARK_RECURSION ||
-      run.type === StakworkRunType.BENCHMARK_RUNNER) &&
+      run.type === StakworkRunType.BENCHMARK_RUNNER ||
+      run.type === StakworkRunType.LEGAL_BENCHMARK_CONSOLIDATED) &&
     run.workspaceId !== workspace_id
   ) {
     logger.error("[legal-benchmark] Workspace mismatch — rejecting webhook", "stakwork-run", {
@@ -932,7 +933,8 @@ export async function processStakworkRunWebhook(
     run.type === StakworkRunType.LEGAL_BENCHMARK_SCORER ||
     run.type === StakworkRunType.LEGAL_BENCHMARK_EVAL ||
     run.type === StakworkRunType.LEGAL_BENCHMARK_RECURSION ||
-    run.type === StakworkRunType.BENCHMARK_RUNNER
+    run.type === StakworkRunType.BENCHMARK_RUNNER ||
+    run.type === StakworkRunType.LEGAL_BENCHMARK_CONSOLIDATED
   ) {
     const { run_token } = queryParams;
     const webhookSecret = process.env.NEXTAUTH_SECRET ?? "";
@@ -977,7 +979,8 @@ export async function processStakworkRunWebhook(
       run.type === StakworkRunType.LEGAL_BENCHMARK_SCORER ||
       run.type === StakworkRunType.LEGAL_BENCHMARK_EVAL ||
       run.type === StakworkRunType.LEGAL_BENCHMARK_RECURSION ||
-      run.type === StakworkRunType.BENCHMARK_RUNNER) &&
+      run.type === StakworkRunType.BENCHMARK_RUNNER ||
+      run.type === StakworkRunType.LEGAL_BENCHMARK_CONSOLIDATED) &&
     serializedResult !== null
   ) {
     const incomingFields =
@@ -1013,7 +1016,8 @@ export async function processStakworkRunWebhook(
     run.type === StakworkRunType.LEGAL_BENCHMARK_RUNNER ||
     run.type === StakworkRunType.LEGAL_BENCHMARK_SCORER ||
     run.type === StakworkRunType.LEGAL_BENCHMARK_EVAL ||
-    run.type === StakworkRunType.LEGAL_BENCHMARK_RECURSION;
+    run.type === StakworkRunType.LEGAL_BENCHMARK_RECURSION ||
+    run.type === StakworkRunType.LEGAL_BENCHMARK_CONSOLIDATED;
 
   // Read from the PRE-normalization payload so promoting the value to its own
   // column does not destroy its own fallback.
@@ -1257,6 +1261,32 @@ export async function processStakworkRunWebhook(
       });
     } catch (pusherError) {
       logger.error("[workflow-benchmark] Pusher trigger failed (non-fatal)", "stakwork-run", { error: String(pusherError) });
+    }
+    return { runId: run.id, status, dataType };
+  }
+
+  // ── Step 2g: LEGAL_BENCHMARK_CONSOLIDATED — mark completed, broadcast ───────
+  // report_url is already persisted by the atomic updateMany above.
+  // Broadcast STAKWORK_RUN_UPDATE so the RecursionCard's useLegalBenchmarkRun
+  // subscription fires and the "View Consolidated Report" link surfaces.
+  // Unlike RECURSION (Step 2e), CONSOLIDATED needs no secondary dispatch.
+  if (run.type === StakworkRunType.LEGAL_BENCHMARK_CONSOLIDATED) {
+    try {
+      await pusherServer.trigger(
+        getWorkspaceChannelName(run.workspace.slug),
+        PUSHER_EVENTS.STAKWORK_RUN_UPDATE,
+        {
+          runId: run.id,
+          type: run.type,
+          status,
+          featureId: run.featureId,
+          timestamp: new Date(),
+        },
+      );
+    } catch (pusherError) {
+      logger.error("[consolidated] Pusher trigger failed (non-fatal)", "stakwork-run", {
+        error: String(pusherError),
+      });
     }
     return { runId: run.id, status, dataType };
   }

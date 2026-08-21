@@ -338,17 +338,98 @@ export interface RubricRow {
   documentExcerpt: string;
 }
 
+// ── Consolidated Report types ─────────────────────────────────────────────────
+
+/**
+ * One run's metadata as included in a consolidated report.
+ * `timestamp` is epoch-ms, latest-first.
+ */
+export interface RunMeta {
+  runId: string;
+  timestamp: number;
+  model: string;
+  score: number;
+  nPassed: number;
+  nTotal: number;
+}
+
+/**
+ * One rubric criterion row in the cross-run matrix.
+ * `results` has one entry per run (matching `ConsolidatedReportProjection.runs`).
+ */
+export interface RubricMatrixRow {
+  id: string;
+  title: string;
+  results: Array<{ runId: string; passed: boolean; verdict: string }>;
+}
+
+/**
+ * Per-run detail for a single failing criterion.
+ */
+export interface RubricDetailPerRun {
+  runId: string;
+  verdict: string;
+  reasoning: string;
+  judgeFlagReason: string;
+  criterionContested: boolean;
+}
+
+/**
+ * Detail block for one failing criterion, with per-run breakdown.
+ */
+export interface RubricDetailBlock {
+  id: string;
+  title: string;
+  matchCriteria: string;
+  perRun: RubricDetailPerRun[];
+}
+
+/**
+ * Projection for a `LEGAL_BENCHMARK_CONSOLIDATED` run report.
+ *
+ * Defined as a **standalone interface** (not extending `RunReportProjection`)
+ * to avoid inflating RSC payload size with unrelated fields and to create
+ * a clear type boundary.
+ *
+ * The `consolidated: true` discriminant enables exhaustive narrowing at
+ * call sites without unsafe casts.
+ */
+export interface ConsolidatedReportProjection {
+  consolidated: true;
+  taskDescription: string;
+  sourceFileLinks: string[];
+  runs: RunMeta[];
+  rubricMatrix: RubricMatrixRow[];
+  /**
+   * Only criteria where at least one run failed are included.
+   * Sorted alphabetically by title — deterministic across multiple consolidated reports.
+   */
+  rubricDetails: RubricDetailBlock[];
+}
+
+/**
+ * Union of all bundle projection shapes.
+ * Use the `consolidated` discriminant for exhaustive narrowing:
+ *   if (p.consolidated) { ... ConsolidatedReportProjection ... }
+ *   else { ... RunReportProjection ... }
+ */
+export type BundleProjection = RunReportProjection | ConsolidatedReportProjection;
+
 /**
  * What the API route and the RSC page hand to the renderer.
  *
  * `projection` is built at view time from the S3 JSON — it is never persisted.
  * `error` distinguishes "this run has no report" from "the report exists but
  * could not be loaded", which the UI renders differently.
+ *
+ * `projection` carries `BundleProjection` so callers that receive a
+ * `ConsolidatedReportProjection` can access it; use the `consolidated`
+ * discriminant to narrow before passing to `RunReportView`.
  */
 export interface RunReportPayload {
   runId: string;
   hasReport: boolean;
   /** Set when a report exists but could not be fetched, parsed or projected. */
   error?: "unavailable" | "unsupported_schema" | "url_rejected";
-  projection: RunReportProjection | null;
+  projection: BundleProjection | null;
 }
