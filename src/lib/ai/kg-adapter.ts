@@ -538,13 +538,51 @@ interface JarvisGraphLabelsResponse {
   labels?: Array<{ type?: string; description?: string }>;
 }
 
+interface JarvisSchemaEntry {
+  type?: string;
+  domain?: string;
+  description?: string;
+  is_deleted?: boolean;
+  node_key?: string;
+  parent?: string;
+  attributes?: Record<string, unknown>;
+  inherited_attributes?: Record<string, unknown>;
+}
+
+interface JarvisSchemaEdge {
+  ref_id?: string;
+  source?: string;
+  target?: string;
+  source_type?: string;
+  target_type?: string;
+  edge_type?: string;
+  attributes?: Record<string, unknown>;
+}
+
 interface JarvisSchemaResponse {
-  schemas?: Array<{
-    type?: string;
-    domain?: string;
-    description?: string;
-    is_deleted?: boolean;
-  }>;
+  schemas?: JarvisSchemaEntry[];
+  edges?: JarvisSchemaEdge[];
+}
+
+export interface KgTypeSchemaAttribute {
+  name: string;
+  type: string;
+  required: boolean;
+}
+
+export interface KgTypeSchemaEdge {
+  source_type: string;
+  target_type: string;
+  edge_type: string;
+  attributes?: Record<string, unknown>;
+}
+
+export interface KgTypeSchema {
+  type: string;
+  node_key?: string;
+  parent?: string;
+  attributes: KgTypeSchemaAttribute[];
+  edges: KgTypeSchemaEdge[];
 }
 
 /**
@@ -792,4 +830,114 @@ export async function kgSearch(
   } catch {
     return [];
   }
+}
+
+// ---------------------------------------------------------------------------
+// kgGetOntologyType
+// ---------------------------------------------------------------------------
+
+/** Returned when the swarm is unreachable/unconfigured. */
+export const KG_ONTOLOGY_TYPE_SWARM_UNAVAILABLE = "swarm-unavailable" as const;
+/** Returned when the type has no registered schema in this workspace's KG. */
+export const KG_ONTOLOGY_TYPE_UNKNOWN = "unknown-type" as const;
+
+const RESERVED_SCHEMA_KEYS = new Set(["status", "is_deleted", "boost"]);
+const ALGO_KEY_PREFIX = "algo_";
+
+function isReservedSchemaKey(key: string): boolean {
+  return RESERVED_SCHEMA_KEYS.has(key) || key.startsWith(ALGO_KEY_PREFIX);
+}
+
+/**
+ * Fetch the full schema for a single KG node type from Jarvis's `/v2/schema`.
+ *
+ * Returns:
+ * - `KgTypeSchema` on success.
+ * - `KG_ONTOLOGY_TYPE_SWARM_UNAVAILABLE` when the swarm is unreachable / the fetch throws.
+ * - `KG_ONTOLOGY_TYPE_UNKNOWN` when the type is not found in the schema registry
+ *   (either a genuinely unknown type, or a label-only type with no registered schema).
+ *
+ * Never throws.
+ */
+export async function kgGetOntologyType(
+  jarvisUrl: string,
+  swarmApiKey: string,
+  type: string,
+): Promise<KgTypeSchema | typeof KG_ONTOLOGY_TYPE_SWARM_UNAVAILABLE | typeof KG_ONTOLOGY_TYPE_UNKNOWN> {
+  let data: JarvisSchemaResponse;
+  try {
+    const base = jarvisUrl.replace(/\/$/, "");
+    const url = `${base}/v2/schema?include_attributes=true&include_edges=true`;
+    const res = await kgFetch(url, swarmApiKey);
+    if (!res.ok) return KG_ONTOLOGY_TYPE_SWARM_UNAVAILABLE;
+    data = (await res.json()) as JarvisSchemaResponse;
+  } catch {
+    return KG_ONTOLOGY_TYPE_SWARM_UNAVAILABLE;
+  }
+
+  // Find the matching schema entry, applying the same exclusions as kgGetOntology.
+  const typeLower = type.toLowerCase();
+  const entry = (data.schemas ?? []).find(
+    (s) =>
+      typeof s?.type === "string" &&
+      s.type !== "*" &&
+      !s.is_deleted &&
+      s.type.toLowerCase() === typeLower,
+  );
+
+  if (!entry) return KG_ONTOLOGY_TYPE_UNKNOWN;
+
+  // Normalize attributes from both declared and inherited maps into one list.
+  // Required-ness is encoded by the ABSENCE of a leading "?" on the type string.
+  function normalizeAttrMap(
+    map: Record<string, unknown> | undefined,
+  ): KgTypeSchemaAttribute[] {
+    if (!map) return [];
+    const result: KgTypeSchemaAttribute[] = [];
+    for (const [key, val] of Object.entries(map)) {
+      if (isReservedSchemaKey(key)) continue;
+      if (typeof val !== "string") continue;
+      const required = !val.startsWith("?");
+      const typeName = required ? val : val.slice(1);
+      result.push({ name: key, type: typeName, required });
+    }
+    return result;
+  }
+
+  // Merge both maps; deduplicate by name (declared wins over inherited).
+  const declaredAttrs = normalizeAttrMap(entry.attributes as Record<string, unknown> | undefined);
+  const inheritedAttrs = normalizeAttrMap(entry.inherited_attributes as Record<string, unknown> | undefined);
+  const seenNames = new Set(declaredAttrs.map((a) => a.name));
+  const allAttrs: KgTypeSchemaAttribute[] = [
+    ...declaredAttrs,
+    ...inheritedAttrs.filter((a) => !seenNames.has(a.name)),
+  ];
+
+  // Filter edges: keep those matching the type (case-insensitive) OR wildcard "*".
+  const relevantEdges: KgTypeSchemaEdge[] = (data.edges ?? [])
+    .filter((e): e is JarvisSchemaEdge & { source_type: string; target_type: string; edge_type: string } => {
+      if (!e?.source_type || !e?.target_type || !e?.edge_type) return false;
+      const srcLower = e.source_type.toLowerCase();
+      const tgtLower = e.target_type.toLowerCase();
+      return (
+        srcLower === typeLower ||
+        tgtLower === typeLower ||
+        e.source_type === "*" ||
+        e.target_type === "*"
+      );
+    })
+    .map((e) => ({
+      source_type: e.source_type,
+      target_type: e.target_type,
+      edge_type: e.edge_type,
+      ...(e.attributes ? { attributes: e.attributes } : {}),
+    }));
+
+  return {
+    type: entry.type!,
+    ...(entry.node_key !== undefined ? { node_key: entry.node_key } : {}),
+    ...(entry.parent !== undefined ? { parent: entry.parent } : {}),
+    attributes: allAttrs,
+    edges: relevantEdges,
+  };
 }
