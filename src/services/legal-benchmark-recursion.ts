@@ -15,6 +15,8 @@ import {
   updateNode,
 } from "@/services/swarm/api/nodes";
 import { logger } from "@/lib/logger";
+import { db } from "@/lib/db";
+import { StakworkRunType } from "@prisma/client";
 
 // ── EvalSet label casing helpers ───────────────────────────────────────────
 //
@@ -59,6 +61,8 @@ export interface RecursionServiceResult {
   ok: boolean;
   nodes?: RecursionEvalSetEntry[];
   error?: string;
+  /** true when Sources 2 or 3 failed but Source 1 succeeded — callers still get 200 */
+  partial?: boolean;
 }
 
 /** Whitelisted node shape — only these fields are surfaced to callers. */
@@ -73,12 +77,70 @@ export interface RecursionEvalSetEntry {
    * not yet be live on every swarm; see zero-node / possibly-missing-attribute pattern).
    */
   projectId?: number | string | null;
+  /**
+   * Why this EvalSet appears in the list. Highest-priority wins on dedup:
+   *   "active"       — recursion=true on the graph node (authoritative)
+   *   "wasEnabled"   — recursionEnabledAt is set, even if recursion is now false
+   *   "multipleRuns" — more than one LEGAL_BENCHMARK_RUNNER StakworkRun in Postgres
+   */
+  reason?: "active" | "wasEnabled" | "multipleRuns";
 }
 
 // ── listRecursionEvalSets ──────────────────────────────────────────────────
 
+/** Priority order for dedup — lower index = higher priority. */
+const REASON_PRIORITY: RecursionEvalSetEntry["reason"][] = ["active", "wasEnabled", "multipleRuns"];
+
+function reasonPriority(r: RecursionEvalSetEntry["reason"]): number {
+  const idx = REASON_PRIORITY.indexOf(r);
+  return idx === -1 ? Infinity : idx;
+}
+
+/** Map a raw JarvisGraphNode to a RecursionEvalSetEntry with a given reason. */
+function mapEvalSetNode(
+  node: { ref_id: string; properties?: Record<string, unknown> },
+  reason: RecursionEvalSetEntry["reason"],
+): RecursionEvalSetEntry {
+  return {
+    ref_id: node.ref_id,
+    // node.properties.id holds the task-slug / node_key; fall back to ref_id
+    // if the property is absent (older node or schema mismatch).
+    id: node.properties?.id != null ? String(node.properties.id) : node.ref_id,
+    name: node.properties?.name != null ? String(node.properties.name) : "",
+    // project_id attribute may be absent on older nodes or before the schema ships.
+    projectId: node.properties?.project_id != null
+      ? (node.properties.project_id as number | string)
+      : null,
+    reason,
+  };
+}
+
+/** Merge a list of entries into the dedup map, keeping the highest-priority reason. */
+function mergeIntoMap(
+  map: Map<string, RecursionEvalSetEntry>,
+  entries: RecursionEvalSetEntry[],
+): void {
+  for (const entry of entries) {
+    const existing = map.get(entry.ref_id);
+    if (!existing || reasonPriority(entry.reason) < reasonPriority(existing.reason)) {
+      map.set(entry.ref_id, entry);
+    }
+  }
+}
+
 /**
- * Returns all EvalSet nodes where `recursion = true`.
+ * Returns EvalSet nodes that should appear in the Recursion tab, merging three sources:
+ *
+ *   Source 1 (authoritative): `recursion = true` on the graph node → reason "active"
+ *   Source 2 (ever-enabled):  `recursionEnabledAt` is set (even if recursion is now false) → reason "wasEnabled"
+ *   Source 3 (multi-run):     more than one LEGAL_BENCHMARK_RUNNER StakworkRun in Postgres
+ *                             for the same evalSetId, scoped to `workspaceId` → reason "multipleRuns"
+ *
+ * Sources 2 and 3 are non-fatal — on failure the endpoint still returns 200 with Source 1
+ * results and `partial: true`. Source 1 failure returns `{ ok: false }` as before.
+ *
+ * `workspaceId` is optional so the existing one-argument call in the recursion cron
+ * compiles unchanged; Source 3 is skipped when absent.
  *
  * NOTE: `searchNodesByAttributes` returns `{ ok: true, nodes: [] }` (not an
  * error) when an attribute is unknown. An empty result therefore cannot be
@@ -88,24 +150,116 @@ export interface RecursionEvalSetEntry {
  */
 export async function listRecursionEvalSets(
   config: JarvisConnectionConfig,
+  workspaceId?: string,
 ): Promise<RecursionServiceResult> {
-  const result = await searchNodesByAttributes(config, {
-    nodeTypes: EVALSET_NODE_LABELS,
-    filters: [{ attribute: "recursion", value: true, comparator: "=" }],
-    includeProperties: true,
-    skipCache: true,
-  });
-
-  if (!result.ok) {
-    logger.warn("[legal/benchmarks/recursion] listRecursionEvalSets graph query failed", "legal", {
-      status: result.status,
-      error: result.error,
-      endpointMissing: result.endpointMissing,
+  // ── Source 1: recursion = true (authoritative) ───────────────────────────
+  const source1Thunk = async () =>
+    searchNodesByAttributes(config, {
+      nodeTypes: EVALSET_NODE_LABELS,
+      filters: [{ attribute: "recursion", value: true, comparator: "=" }],
+      includeProperties: true,
+      skipCache: true,
     });
-    return { ok: false, error: result.error ?? "Graph query failed" };
+
+  // ── Source 2: recursionEnabledAt is set (ever-enabled) ──────────────────
+  // Passes `"!=" + null` to Jarvis `/graph/search/attributes` as a best-effort
+  // "attribute exists" filter. If Jarvis rejects this comparator, the result
+  // will be { ok: false } — treated as non-fatal (partial result).
+  const source2Thunk = async () =>
+    searchNodesByAttributes(config, {
+      nodeTypes: EVALSET_NODE_LABELS,
+      filters: [{ attribute: "recursionEnabledAt", value: null, comparator: "!=" }],
+      includeProperties: true,
+      skipCache: true,
+    });
+
+  // ── Source 3: >1 LEGAL_BENCHMARK_RUNNER runs per evalSetId ──────────────
+  // Only executed when workspaceId is provided; scoped to that workspace to
+  // prevent cross-workspace data leakage (IDOR-safe: workspaceId comes from
+  // the caller's authenticated getWorkspaceSwarmAccess result).
+  const source3Thunk = async (): Promise<RecursionEvalSetEntry[]> => {
+    if (!workspaceId) return [];
+
+    const multiRunGroups = await db.stakworkRun.groupBy({
+      by: ["evalSetId"],
+      where: {
+        type: StakworkRunType.LEGAL_BENCHMARK_RUNNER,
+        workspaceId,
+        evalSetId: { not: null },
+      },
+      _count: { evalSetId: true },
+      having: { evalSetId: { _count: { gt: 1 } } },
+    });
+
+    const ids = multiRunGroups
+      .map((g) => g.evalSetId)
+      .filter((id): id is string => id != null);
+
+    if (ids.length === 0) return [];
+
+    // Cap at 50 to avoid excessive graph round-trips.
+    const CAP = 50;
+    if (ids.length > CAP) {
+      logger.warn(
+        `[legal/benchmarks/recursion] Source 3: capping eval set ID resolution at ${CAP}; ${ids.length - CAP} IDs truncated`,
+        "legal",
+        { workspaceId },
+      );
+    }
+    const cappedIds = ids.slice(0, CAP);
+
+    // Resolve each evalSetId to an EvalSet graph node.
+    const batches = await Promise.all(
+      cappedIds.map((id) =>
+        searchNodesByAttributes(config, {
+          nodeTypes: EVALSET_NODE_LABELS,
+          filters: [{ attribute: "id", value: id, comparator: "=" }],
+          includeProperties: true,
+          skipCache: true,
+        }),
+      ),
+    );
+
+    const entries: RecursionEvalSetEntry[] = [];
+    for (const batch of batches) {
+      if (!batch.ok || batch.nodes.length === 0) continue;
+      const winnerRefId = selectEvalSetByTieBreak(batch.nodes);
+      const winnerNode = batch.nodes.find((n) => n.ref_id === winnerRefId) ?? batch.nodes[0];
+      entries.push(mapEvalSetNode(winnerNode, "multipleRuns"));
+    }
+    return entries;
+  };
+
+  // ── Run all three sources concurrently ───────────────────────────────────
+  // Each source is wrapped in an async thunk so synchronous throws are captured
+  // as rejected settlements rather than escaping Promise.allSettled.
+  const [s1Settlement, s2Settlement, s3Settlement] = await Promise.allSettled([
+    source1Thunk(),
+    source2Thunk(),
+    source3Thunk(),
+  ]);
+
+  // Source 1 is authoritative — any failure aborts.
+  if (s1Settlement.status === "rejected") {
+    const err = s1Settlement.reason instanceof Error
+      ? s1Settlement.reason.message
+      : "Graph query failed";
+    logger.warn("[legal/benchmarks/recursion] listRecursionEvalSets Source 1 threw", "legal", {
+      error: err,
+    });
+    return { ok: false, error: err };
+  }
+  const s1Result = s1Settlement.value;
+  if (!s1Result.ok) {
+    logger.warn("[legal/benchmarks/recursion] listRecursionEvalSets graph query failed", "legal", {
+      status: s1Result.status,
+      error: s1Result.error,
+      endpointMissing: s1Result.endpointMissing,
+    });
+    return { ok: false, error: s1Result.error ?? "Graph query failed" };
   }
 
-  if (result.nodes.length === 0) {
+  if (s1Result.nodes.length === 0) {
     // Distinct signal: zero nodes may indicate the attribute hasn't shipped yet
     // rather than a genuinely empty result — preserves a breadcrumb for the
     // known attribute-availability gap.
@@ -117,19 +271,54 @@ export async function listRecursionEvalSets(
     );
   }
 
-  const nodes: RecursionEvalSetEntry[] = result.nodes.map((node) => ({
-    ref_id: node.ref_id,
-    // node.properties.id holds the task-slug / node_key; fall back to ref_id
-    // if the property is absent (older node or schema mismatch).
-    id: node.properties?.id != null ? String(node.properties.id) : node.ref_id,
-    name: node.properties?.name != null ? String(node.properties.name) : "",
-    // project_id attribute may be absent on older nodes or before the schema ships.
-    projectId: node.properties?.project_id != null
-      ? (node.properties.project_id as number | string)
-      : null,
-  }));
+  // ── Dedup map: ref_id → entry, highest-priority reason wins ─────────────
+  const dedupMap = new Map<string, RecursionEvalSetEntry>();
+  mergeIntoMap(dedupMap, s1Result.nodes.map((n) => mapEvalSetNode(n, "active")));
 
-  return { ok: true, nodes };
+  let partial = false;
+
+  // Source 2 — non-fatal
+  if (s2Settlement.status === "rejected") {
+    const err = s2Settlement.reason instanceof Error
+      ? s2Settlement.reason.message
+      : "Graph query failed";
+    logger.warn(
+      "[legal/benchmarks/recursion] listRecursionEvalSets Source 2 (wasEnabled) failed",
+      "legal",
+      { error: err },
+    );
+    partial = true;
+  } else if (!s2Settlement.value.ok) {
+    logger.warn(
+      "[legal/benchmarks/recursion] listRecursionEvalSets Source 2 (wasEnabled) returned ok:false",
+      "legal",
+      { status: s2Settlement.value.status, error: s2Settlement.value.error },
+    );
+    partial = true;
+  } else {
+    mergeIntoMap(dedupMap, s2Settlement.value.nodes.map((n) => mapEvalSetNode(n, "wasEnabled")));
+  }
+
+  // Source 3 — non-fatal
+  if (s3Settlement.status === "rejected") {
+    const err = s3Settlement.reason instanceof Error
+      ? s3Settlement.reason.message
+      : "DB or graph query failed";
+    logger.warn(
+      "[legal/benchmarks/recursion] listRecursionEvalSets Source 3 (multipleRuns) failed",
+      "legal",
+      { error: err, workspaceId },
+    );
+    partial = true;
+  } else {
+    mergeIntoMap(dedupMap, s3Settlement.value);
+  }
+
+  return {
+    ok: true,
+    nodes: [...dedupMap.values()],
+    ...(partial ? { partial: true } : {}),
+  };
 }
 
 // ── writeBackEvalProjectId ─────────────────────────────────────────────────

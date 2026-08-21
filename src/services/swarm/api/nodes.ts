@@ -419,7 +419,12 @@ export async function searchNodesByAttributes(
   config: JarvisConnectionConfig,
   params: {
     nodeTypes: string[];
-    filters: Array<{ attribute: string; value: string | boolean; comparator: string }>;
+    // NOTE: `comparator` is passed verbatim to Jarvis `/graph/search/attributes`.
+    // `"!=" + null` is a best-effort attempt for "attribute exists" semantics —
+    // if Jarvis rejects it, callers should retry with `comparator: "exists"` and
+    // `value: ""`, or fall back to fetching all nodes and filtering in JS on
+    // `node.properties.<attr> != null`.
+    filters: Array<{ attribute: string; value: string | boolean | null; comparator: string }>;
     includeProperties?: boolean;
     limit?: number;
     timeoutMs?: number;
