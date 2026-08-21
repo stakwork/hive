@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useState, useEffect } from "react";
 import { Loader2, RefreshCw, ChevronDown, ChevronUp, AlertCircle, ExternalLink, TrendingUp, Network, Copy, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent } from "@/components/ui/collapsible";
@@ -14,7 +14,9 @@ import { canReadRunReport } from "@/lib/run-report/types";
 import { rosterSummary, type GraphRubric, type RosterSummary } from "@/lib/harvey-lab/rubric-scoring";
 import { HillClimbChart } from "@/components/legal/HillClimbChart";
 import type { EvalTriggerOutput } from "@/lib/harvey-lab/eval-normalizers";
+import type { SubgraphNode, SubgraphEdge } from "@/lib/harvey-lab/hill-climb-series";
 import type { RecursionEntry } from "@/hooks/useLegalBenchmarkRecursionList";
+import { RecursionGraphPanel } from "@/components/legal/RecursionGraphPanel";
 
 /** Edge types the recursion loop writes — the subgraph query's whole alphabet. */
 const LOOP_EDGE_TYPES =
@@ -37,7 +39,7 @@ function loopSubgraphCypher(evalSetRefId: string): string {
 }
 
 /** Graph Explorer deep link that pre-runs the loop-subgraph Cypher. */
-function loopSubgraphHref(workspaceSlug: string, evalSetRefId: string): string {
+export function loopSubgraphHref(workspaceSlug: string, evalSetRefId: string): string {
   return `/w/${encodeURIComponent(workspaceSlug)}/context/graph?cypher=${encodeURIComponent(loopSubgraphCypher(evalSetRefId))}`;
 }
 
@@ -233,6 +235,15 @@ function RecursionCard({ entry, refetch }: RecursionCardProps) {
   const [copied, setCopied] = useState(false);
   // Chart↔rail hover sync: one shared index, driven from either side.
   const [hoverAttempt, setHoverAttempt] = useState<number | null>(null);
+  // Graph panel state
+  const [graphPanelOpen, setGraphPanelOpen] = useState(false);
+  const [fixChainData, setFixChainData] = useState<{
+    nodes: SubgraphNode[];
+    edges: SubgraphEdge[];
+    partial: boolean;
+  } | null>(null);
+  const [fixChainLoading, setFixChainLoading] = useState(false);
+  const [fixChainError, setFixChainError] = useState<string | null>(null);
   const { workspace, role } = useWorkspace();
   const workspaceSlug = workspace?.slug ?? "";
   const canReadReports = canReadRunReport(role ?? "");
@@ -301,6 +312,45 @@ function RecursionCard({ entry, refetch }: RecursionCardProps) {
     if (baseScore == null || best == null || best <= baseScore) return null;
     return best - baseScore;
   }, [attempts, latest]);
+
+  // Fetch fix-chain data when the graph panel is opened for the first time.
+  useEffect(() => {
+    if (!graphPanelOpen || fixChainData !== null || fixChainLoading) return;
+    if (!entry.refId) return;
+
+    setFixChainLoading(true);
+    setFixChainError(null);
+
+    fetch(
+      `/api/workspaces/openlaw/legal/benchmarks/fix-chain?evalSetRefId=${encodeURIComponent(entry.refId)}`,
+    )
+      .then(async (res) => {
+        if (!res.ok) {
+          const body = await res.json().catch(() => ({}));
+          const msg = (body as { error?: string }).error ?? `Request failed (${res.status})`;
+          setFixChainError(msg);
+        } else {
+          const body = (await res.json()) as {
+            data?: {
+              nodes?: SubgraphNode[];
+              edges?: SubgraphEdge[];
+              partial?: boolean;
+            };
+          };
+          const data = body.data ?? {};
+          setFixChainData({
+            nodes: data.nodes ?? [],
+            edges: data.edges ?? [],
+            partial: data.partial ?? false,
+          });
+        }
+      })
+      .catch((err: unknown) => {
+        const msg = err instanceof Error ? err.message : String(err);
+        setFixChainError(msg);
+      })
+      .finally(() => setFixChainLoading(false));
+  }, [graphPanelOpen, fixChainData, fixChainLoading, entry.refId]);
 
   const handleToggle = async (enabled: boolean) => {
     setToggling(true);
@@ -408,24 +458,26 @@ function RecursionCard({ entry, refetch }: RecursionCardProps) {
         </div>
 
         <div className="flex items-center gap-2 shrink-0">
-          {/* The card's ONE graph affordance: a labeled button (an icon alone
-              read as "share") that renders the whole recursion subgraph —
-              eval set, triggers, outputs, fixes, rubrics — via the ?cypher=
-              deep link. Per-node links (chips, contested popover) stay
-              contextual; this is the launchpad. */}
+          {/* "View graph" toggle — opens the inline timeline/graph panel.
+              The loopSubgraphHref deep link is preserved inside RecursionGraphPanel's
+              header as the power-user escape hatch. */}
           {workspaceSlug && entry.refId && (
-            <a
-              href={loopSubgraphHref(workspaceSlug, entry.refId)}
-              target="_blank"
-              rel="noopener noreferrer"
+            <button
+              type="button"
+              onClick={() => setGraphPanelOpen((v) => !v)}
               className="inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors whitespace-nowrap"
-              aria-label="View this task's recursion subgraph in the Graph Explorer (opens in new tab)"
-              title="Render this task's full recursion subgraph — eval set, triggers, outputs, fixes, rubrics — in the Graph Explorer"
+              aria-label="Toggle recursion subgraph panel"
+              aria-pressed={graphPanelOpen}
               data-testid="card-graph-link"
+              disabled={fixChainLoading}
             >
-              <Network className="h-3.5 w-3.5" />
+              {fixChainLoading ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Network className="h-3.5 w-3.5" />
+              )}
               View graph
-            </a>
+            </button>
           )}
 
           {/* Expand toggle — only when there is data to show */}
@@ -560,6 +612,25 @@ function RecursionCard({ entry, refetch }: RecursionCardProps) {
           )}
         </CollapsibleContent>
       </Collapsible>
+
+      {/* Graph panel — rendered outside the Collapsible so it toggles independently */}
+      {graphPanelOpen && (
+        fixChainError ? (
+          <div className="px-4 pb-4">
+            <p className="text-sm text-destructive">{fixChainError}</p>
+          </div>
+        ) : fixChainData ? (
+          <div className="px-4 pb-4">
+            <RecursionGraphPanel
+              nodes={fixChainData.nodes}
+              edges={fixChainData.edges}
+              partial={fixChainData.partial}
+              evalSetRefId={entry.refId}
+              workspaceSlug={workspaceSlug}
+            />
+          </div>
+        ) : null
+      )}
     </div>
   );
 }

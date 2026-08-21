@@ -59,6 +59,35 @@ vi.mock("@/components/legal/HillClimbChart", () => ({
     ),
 }));
 
+// RecursionGraphPanel — simple stub so we can assert it appears
+vi.mock("@/components/legal/RecursionGraphPanel", () => ({
+  RecursionGraphPanel: ({
+    nodes,
+    edges,
+    partial,
+    evalSetRefId,
+    workspaceSlug,
+  }: {
+    nodes: unknown[];
+    edges: unknown[];
+    partial: boolean;
+    evalSetRefId: string;
+    workspaceSlug: string;
+  }) =>
+    React.createElement(
+      "div",
+      {
+        "data-testid": "recursion-graph-panel",
+        "data-partial": String(partial),
+        "data-eval-set-ref-id": evalSetRefId,
+        "data-workspace-slug": workspaceSlug,
+        "data-node-count": nodes.length,
+        "data-edge-count": edges.length,
+      },
+      "graph-panel",
+    ),
+}));
+
 // useEvalRunHistory mock
 const mockUseEvalRunHistory = vi.fn();
 
@@ -707,5 +736,154 @@ describe("RecursionCard — activity rail", () => {
     );
     fireEvent.click(screen.getByTestId("expand-toggle"));
     expect(screen.getByTestId("activity-rail-empty")).toBeTruthy();
+  });
+});
+
+// ─── "View graph" toggle button + inline panel ─────────────────────────────
+
+describe("RecursionCard — View graph button and inline panel", () => {
+  const mockRefetch = vi.fn();
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockRefetch.mockResolvedValue(undefined);
+    mockHistoryLoaded();
+    mockUseBenchmarkRubrics.mockReturnValue({ rubrics: null });
+  });
+
+  function renderCard(overrides: Partial<{ refId: string; id: string; name: string }> = {}) {
+    const entry = makeEntry(overrides);
+    render(
+      <RecursionList
+        entries={[entry]}
+        isLoading={false}
+        error={null}
+        refetch={mockRefetch}
+      />,
+    );
+  }
+
+  it("renders 'View graph' as a button (not an anchor)", () => {
+    renderCard({ refId: "ref-abc" });
+    const btn = screen.getByTestId("card-graph-link");
+    expect(btn.tagName.toLowerCase()).toBe("button");
+  });
+
+  it("panel is not visible before clicking 'View graph'", () => {
+    renderCard({ refId: "ref-abc" });
+    expect(screen.queryByTestId("recursion-graph-panel")).toBeNull();
+  });
+
+  it("opens the panel when 'View graph' is clicked and fetch succeeds", async () => {
+    vi.mocked(global.fetch).mockResolvedValue({
+      ok: true,
+      json: async () => ({ data: { nodes: [{ ref_id: "n1", node_type: "EvalSet" }], edges: [], partial: false } }),
+    } as Response);
+
+    renderCard({ refId: "ref-abc" });
+    fireEvent.click(screen.getByTestId("card-graph-link"));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("recursion-graph-panel")).toBeTruthy();
+    });
+  });
+
+  it("fetches the fix-chain with the card's evalSetRefId", async () => {
+    vi.mocked(global.fetch).mockResolvedValue({
+      ok: true,
+      json: async () => ({ data: { nodes: [], edges: [], partial: false } }),
+    } as Response);
+
+    renderCard({ refId: "ref-xyz" });
+    fireEvent.click(screen.getByTestId("card-graph-link"));
+
+    await waitFor(() => expect(vi.mocked(global.fetch)).toHaveBeenCalled());
+
+    const [url] = vi.mocked(global.fetch).mock.calls[0];
+    expect(String(url)).toContain("evalSetRefId=ref-xyz");
+    expect(String(url)).toContain("/fix-chain");
+  });
+
+  it("does NOT re-fetch if panel is toggled closed and reopened", async () => {
+    vi.mocked(global.fetch).mockResolvedValue({
+      ok: true,
+      json: async () => ({ data: { nodes: [], edges: [], partial: false } }),
+    } as Response);
+
+    renderCard({ refId: "ref-abc" });
+    const btn = screen.getByTestId("card-graph-link");
+
+    // Open → fetch happens
+    fireEvent.click(btn);
+    await waitFor(() => screen.getByTestId("recursion-graph-panel"));
+
+    // Close (toggle off) then reopen — fetch should NOT be called again
+    fireEvent.click(btn); // close
+    fireEvent.click(btn); // reopen
+    await waitFor(() => screen.getByTestId("recursion-graph-panel"));
+
+    expect(vi.mocked(global.fetch)).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows an error message when the fetch fails", async () => {
+    vi.mocked(global.fetch).mockResolvedValue({
+      ok: false,
+      status: 500,
+      json: async () => ({ error: "Graph walk failed" }),
+    } as Response);
+
+    renderCard({ refId: "ref-abc" });
+    fireEvent.click(screen.getByTestId("card-graph-link"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Graph walk failed")).toBeTruthy();
+    });
+    expect(screen.queryByTestId("recursion-graph-panel")).toBeNull();
+  });
+
+  it("shows an error message when the fetch throws", async () => {
+    vi.mocked(global.fetch).mockRejectedValue(new Error("Network error"));
+
+    renderCard({ refId: "ref-abc" });
+    fireEvent.click(screen.getByTestId("card-graph-link"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Network error")).toBeTruthy();
+    });
+  });
+
+  it("passes partial=true to the panel when the API returns partial: true", async () => {
+    vi.mocked(global.fetch).mockResolvedValue({
+      ok: true,
+      json: async () => ({ data: { nodes: [], edges: [], partial: true } }),
+    } as Response);
+
+    renderCard({ refId: "ref-abc" });
+    fireEvent.click(screen.getByTestId("card-graph-link"));
+
+    await waitFor(() => screen.getByTestId("recursion-graph-panel"));
+    const panel = screen.getByTestId("recursion-graph-panel");
+    expect(panel.getAttribute("data-partial")).toBe("true");
+  });
+
+  it("passes nodes and edges to the panel", async () => {
+    const nodes = [
+      { ref_id: "n1", node_type: "EvalSet" },
+      { ref_id: "n2", node_type: "EvalTrigger" },
+    ];
+    const edges = [{ source: "n1", target: "n2", edge_type: "HAS_BASELINE_TRIGGER" }];
+
+    vi.mocked(global.fetch).mockResolvedValue({
+      ok: true,
+      json: async () => ({ data: { nodes, edges, partial: false } }),
+    } as Response);
+
+    renderCard({ refId: "ref-abc" });
+    fireEvent.click(screen.getByTestId("card-graph-link"));
+
+    await waitFor(() => screen.getByTestId("recursion-graph-panel"));
+    const panel = screen.getByTestId("recursion-graph-panel");
+    expect(panel.getAttribute("data-node-count")).toBe("2");
+    expect(panel.getAttribute("data-edge-count")).toBe("1");
   });
 });
