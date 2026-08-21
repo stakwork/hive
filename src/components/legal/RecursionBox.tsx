@@ -1,16 +1,45 @@
 "use client";
 
 import React, { useMemo, useState } from "react";
-import { Loader2, RefreshCw, ChevronDown, ChevronUp, AlertCircle } from "lucide-react";
+import { Loader2, RefreshCw, ChevronDown, ChevronUp, AlertCircle, ExternalLink, TrendingUp, Network, Copy, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "@/components/ui/collapsible";
-import { useEvalRunHistory } from "@/hooks/useEvalRunHistory";
-import { RecursionActivityRail } from "@/components/legal/RecursionActivityRail";
+import { Collapsible, CollapsibleContent } from "@/components/ui/collapsible";
+import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
+import { useEvalRunHistory, type AttemptRailRow } from "@/hooks/useEvalRunHistory";
+import { RecursionActivityRail, attemptReportHref } from "@/components/legal/RecursionActivityRail";
 import { useBenchmarkRubrics } from "@/hooks/useBenchmarkRubrics";
-import { rosterSummary, type RosterSummary } from "@/lib/harvey-lab/rubric-scoring";
+import { useWorkspace } from "@/hooks/useWorkspace";
+import { graphExplorerHref as graphHref } from "@/components/run-report/NodePeek";
+import { canReadRunReport } from "@/lib/run-report/types";
+import { rosterSummary, type GraphRubric, type RosterSummary } from "@/lib/harvey-lab/rubric-scoring";
 import { HillClimbChart } from "@/components/legal/HillClimbChart";
 import type { EvalTriggerOutput } from "@/lib/harvey-lab/eval-normalizers";
 import type { RecursionEntry } from "@/hooks/useLegalBenchmarkRecursionList";
+
+/** Edge types the recursion loop writes — the subgraph query's whole alphabet. */
+const LOOP_EDGE_TYPES =
+  "HAS_BASELINE_TRIGGER|HAS_TRIGGER|HAS_OUTPUT|HAS_PROPOSED_FIX|DERIVED_FROM|HAS_REQUIREMENT";
+
+/**
+ * Cypher for the card's entire recursion subgraph, anchored on the EvalSet:
+ * every edge reachable over the loop's own edge types, returned as (a, r, b)
+ * rows — the exact shape the explorer's canvas parses into nodes + labeled
+ * edges, so the deep link lands on a fully rendered subgraph instead of a
+ * single focused node. Quotes/backslashes are stripped from the ref rather
+ * than escaped — ref_ids never legitimately contain either.
+ */
+function loopSubgraphCypher(evalSetRefId: string): string {
+  const ref = evalSetRefId.replace(/["'\\]/g, "");
+  return (
+    `MATCH (s {ref_id: "${ref}"})-[:${LOOP_EDGE_TYPES}*0..6]->(a)-[r:${LOOP_EDGE_TYPES}]->(b) ` +
+    `RETURN DISTINCT a, r, b LIMIT 100`
+  );
+}
+
+/** Graph Explorer deep link that pre-runs the loop-subgraph Cypher. */
+function loopSubgraphHref(workspaceSlug: string, evalSetRefId: string): string {
+  return `/w/${encodeURIComponent(workspaceSlug)}/context/graph?cypher=${encodeURIComponent(loopSubgraphCypher(evalSetRefId))}`;
+}
 
 // ─── ScoreBadge ──────────────────────────────────────────────────────────────
 
@@ -20,6 +49,8 @@ function ScoreBadge({
   n_passed,
   n_total,
   roster,
+  contestedRubrics,
+  workspaceSlug,
 }: {
   isLoading: boolean;
   error: string | null;
@@ -27,6 +58,10 @@ function ScoreBadge({
   n_total: number | undefined;
   /** Graph roster summary — enables the "+N contested" annotation. */
   roster: RosterSummary | null;
+  /** The contested EvalRequirement nodes behind the annotation's popover. */
+  contestedRubrics: GraphRubric[];
+  /** Enables per-rubric Graph Explorer links inside the popover. */
+  workspaceSlug: string;
 }) {
   if (isLoading) {
     return (
@@ -72,13 +107,53 @@ function ScoreBadge({
         {n_passed}/{n_total}
       </span>
       {roster && roster.contested > 0 && (
-        <span
-          className="text-xs text-violet-700 dark:text-violet-400 whitespace-nowrap"
-          data-testid="score-contested-annotation"
-          title={`${roster.contested} contested criteria excluded from the score · ${roster.total} total in the rubric roster`}
-        >
-          +{roster.contested} contested
-        </span>
+        <Popover>
+          <PopoverTrigger asChild>
+            <button
+              type="button"
+              className="text-xs text-violet-700 dark:text-violet-400 whitespace-nowrap underline-offset-2 hover:underline"
+              data-testid="score-contested-annotation"
+              title={`${roster.contested} contested criteria excluded from the score · ${roster.total} total in the rubric roster`}
+            >
+              +{roster.contested} contested
+            </button>
+          </PopoverTrigger>
+          <PopoverContent align="start" className="w-80 p-3">
+            <p className="text-xs font-medium mb-0.5">Contested rubrics</p>
+            <p className="text-xs text-muted-foreground mb-2">
+              {roster.contested} of {roster.total} criteria have contested
+              definitions and are excluded from the score.
+            </p>
+            <ul
+              className="flex flex-col gap-1 max-h-48 overflow-y-auto"
+              data-testid="contested-rubric-list"
+            >
+              {contestedRubrics.map((rubric) => (
+                <li
+                  key={rubric.ref_id}
+                  className="flex items-start justify-between gap-2 min-w-0"
+                >
+                  <span className="text-xs min-w-0 break-words">
+                    <span className="font-mono text-muted-foreground mr-1.5">
+                      {rubric.id}
+                    </span>
+                    {rubric.name}
+                  </span>
+                  {workspaceSlug && rubric.ref_id && (
+                    <a
+                      href={graphHref(workspaceSlug, rubric.ref_id)}
+                      className="shrink-0 mt-0.5 text-muted-foreground hover:text-primary transition-colors"
+                      aria-label={`Open rubric ${rubric.id} in Graph Explorer`}
+                      title="Open in Graph Explorer"
+                    >
+                      <ExternalLink className="h-3 w-3" />
+                    </a>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </PopoverContent>
+        </Popover>
       )}
     </span>
   );
@@ -107,6 +182,41 @@ function adjustAttemptsToRoster(
   }));
 }
 
+interface ClimbTarget {
+  key: string;
+  /** Lowercased target kind ("concept", "prompt", …); null when unrecorded */
+  kind: string | null;
+  name: string;
+  /** Live graph ref_id — null suppresses the Graph Explorer link */
+  refId: string | null;
+}
+
+/**
+ * Distinct nodes the recursion loop has edited, from the fix snapshots joined
+ * onto the rail rows — the "what is being climbed" summary. Deduped by live
+ * ref_id (name as fallback) so a concept fixed five times is one chip.
+ */
+function collectClimbTargets(rows: AttemptRailRow[]): ClimbTarget[] {
+  const seen = new Map<string, ClimbTarget>();
+  for (const row of rows) {
+    const fix = row.fixSnapshot;
+    if (!fix) continue;
+    const refId = fix.target_ref?.trim() || null;
+    const name = fix.target_name?.trim() || refId;
+    if (!name) continue;
+    const key = refId ?? `name:${name}`;
+    if (!seen.has(key)) {
+      seen.set(key, {
+        key,
+        kind: fix.target_type?.trim().toLowerCase() || null,
+        name,
+        refId,
+      });
+    }
+  }
+  return [...seen.values()];
+}
+
 // ─── RecursionCard ────────────────────────────────────────────────────────────
 
 interface RecursionCardProps {
@@ -118,6 +228,12 @@ function RecursionCard({ entry, refetch }: RecursionCardProps) {
   const [toggling, setToggling] = useState(false);
   const [toggleError, setToggleError] = useState<string | null>(null);
   const [expanded, setExpanded] = useState(false);
+  const [copied, setCopied] = useState(false);
+  // Chart↔rail hover sync: one shared index, driven from either side.
+  const [hoverAttempt, setHoverAttempt] = useState<number | null>(null);
+  const { workspace, role } = useWorkspace();
+  const workspaceSlug = workspace?.slug ?? "";
+  const canReadReports = canReadRunReport(role ?? "");
 
   // Use entry.refId (EvalSet ref_id) + entry.id (task slug) for eval run history.
   // refId is preferred; slug is the fallback when refId is absent.
@@ -136,10 +252,29 @@ function RecursionCard({ entry, refetch }: RecursionCardProps) {
   // definitions. Null (no roster / loading) leaves attempt counts untouched.
   const { rubrics: graphRubrics } = useBenchmarkRubrics(entry.id);
   const roster = useMemo(() => rosterSummary(graphRubrics), [graphRubrics]);
+  const contestedRubrics = useMemo(
+    () => (graphRubrics ?? []).filter((r) => r.contested),
+    [graphRubrics],
+  );
   const attempts = useMemo(
     () => adjustAttemptsToRoster(rawAttempts, roster),
     [rawAttempts, roster],
   );
+
+  // What the loop is editing — distinct fix targets (concepts, prompts, …)
+  // with their live graph ref_ids, rendered as chips in the expanded section.
+  const climbTargets = useMemo(() => collectClimbTargets(attemptRows), [attemptRows]);
+
+  // Per-dot report links for the chart, resolved through the same helper the
+  // rail's report links use — a dot and its rail row always open the same page.
+  const dotHrefs = useMemo(() => {
+    const hrefs: Array<string | null> = new Array(attempts.length).fill(null);
+    for (const row of attemptRows) {
+      if (row.attemptIndex == null || row.attemptIndex >= hrefs.length) continue;
+      hrefs[row.attemptIndex] = attemptReportHref(row, workspaceSlug, entry.id, canReadReports);
+    }
+    return hrefs;
+  }, [attemptRows, attempts.length, workspaceSlug, entry.id, canReadReports]);
 
   // Headline number: the best score so far (highest bestPassed). Both series
   // builders now emit a monotonic bestPassed — the chart's line only climbs or
@@ -153,6 +288,17 @@ function RecursionCard({ entry, refetch }: RecursionCardProps) {
       return ptBest >= curBest ? pt : best;
     });
   }, [attempts]);
+
+  // Headline climb: best-so-far minus the baseline score. Only a real climb
+  // renders — a flat or regressing series keeps the header quiet.
+  const climbDelta = useMemo(() => {
+    if (attempts.length < 2) return null;
+    const base = attempts.find((a) => a.isBaseline) ?? attempts[0];
+    const baseScore = base.actualPassed ?? base.n_passed ?? null;
+    const best = latest ? (latest.bestPassed ?? latest.n_passed ?? null) : null;
+    if (baseScore == null || best == null || best <= baseScore) return null;
+    return best - baseScore;
+  }, [attempts, latest]);
 
   const handleToggle = async (enabled: boolean) => {
     setToggling(true);
@@ -200,7 +346,19 @@ function RecursionCard({ entry, refetch }: RecursionCardProps) {
               n_passed={latest?.bestPassed ?? latest?.n_passed}
               n_total={latest?.n_total}
               roster={roster}
+              contestedRubrics={contestedRubrics}
+              workspaceSlug={workspaceSlug}
             />
+            {climbDelta != null && (
+              <span
+                className="flex items-center gap-1 text-xs text-green-600 dark:text-green-400 whitespace-nowrap"
+                data-testid="climb-delta"
+                title={`The recursion loop has climbed +${climbDelta} over ${attempts.length} attempts`}
+              >
+                <TrendingUp className="h-3 w-3 shrink-0" />
+                +{climbDelta} from base
+              </span>
+            )}
             {/* A truncated graph walk must be loud: a capped walk renders a
                 flat-looking chart that is indistinguishable from a real
                 plateau, so the warning sits in the always-visible header, not
@@ -216,13 +374,56 @@ function RecursionCard({ entry, refetch }: RecursionCardProps) {
               </span>
             )}
           </div>
-          <span className="text-xs text-muted-foreground truncate">{entry.id}</span>
+          <span className="flex items-center gap-1.5 min-w-0">
+            <span className="text-xs text-muted-foreground truncate">{entry.id}</span>
+            {/* The EvalSet ref_id never renders anywhere on the card — a copy
+                affordance is the cheap fix. "Copied" resets on pointer-leave
+                rather than a timer. */}
+            <button
+              type="button"
+              onClick={() => {
+                void navigator.clipboard?.writeText(entry.refId).then(
+                  () => setCopied(true),
+                  () => {},
+                );
+              }}
+              onMouseLeave={() => setCopied(false)}
+              className="shrink-0 text-muted-foreground/50 hover:text-foreground transition-colors"
+              title={copied ? "Copied!" : `Copy EvalSet ref_id — ${entry.refId}`}
+              aria-label="Copy EvalSet ref_id"
+              data-testid="copy-refid"
+            >
+              {copied ? (
+                <Check className="h-3 w-3 text-green-600 dark:text-green-400" />
+              ) : (
+                <Copy className="h-3 w-3" />
+              )}
+            </button>
+          </span>
           {toggleError && (
             <span className="text-xs text-destructive mt-1">{toggleError}</span>
           )}
         </div>
 
         <div className="flex items-center gap-2 shrink-0">
+          {/* The card's ONE graph affordance: a labeled button (an icon alone
+              read as "share") that renders the whole recursion subgraph —
+              eval set, triggers, outputs, fixes, rubrics — via the ?cypher=
+              deep link. Per-node links (chips, contested popover) stay
+              contextual; this is the launchpad. */}
+          {workspaceSlug && entry.refId && (
+            <a
+              href={loopSubgraphHref(workspaceSlug, entry.refId)}
+              className="inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors whitespace-nowrap"
+              aria-label="View this task's recursion subgraph in the Graph Explorer"
+              title="Render this task's full recursion subgraph — eval set, triggers, outputs, fixes, rubrics — in the Graph Explorer"
+              data-testid="card-graph-link"
+            >
+              <Network className="h-3.5 w-3.5" />
+              View graph
+            </a>
+          )}
+
           {/* Expand toggle — only when there is data to show */}
           {canExpand && (
             <button
@@ -284,13 +485,69 @@ function RecursionCard({ entry, refetch }: RecursionCardProps) {
                   </span>
                 )}
               </p>
+              {/* What the loop is editing: one chip per distinct fix target,
+                  deep-linked to its live node. Only renders when fixes carry
+                  snapshots — concept-driven recursion without ProposedFix rows
+                  has no recorded targets, and an empty label would be noise. */}
+              {climbTargets.length > 0 && (
+                <div
+                  className="flex flex-wrap items-center gap-1.5 mb-3"
+                  data-testid="climb-targets"
+                >
+                  <span className="text-xs text-muted-foreground">climbing:</span>
+                  {climbTargets.map((target) => {
+                    const chipBody = (
+                      <>
+                        {target.kind && (
+                          <span className="font-mono text-[10px] uppercase tracking-wide text-muted-foreground">
+                            {target.kind}
+                          </span>
+                        )}
+                        <span className="max-w-[16rem] truncate">{target.name}</span>
+                      </>
+                    );
+                    return target.refId && workspaceSlug ? (
+                      <a
+                        key={target.key}
+                        href={graphHref(workspaceSlug, target.refId)}
+                        className="inline-flex items-center gap-1.5 rounded-full border bg-background px-2 py-0.5 text-xs transition-colors hover:border-primary/50 hover:text-primary"
+                        title={`Open this ${target.kind ?? "node"} in the Graph Explorer`}
+                        data-testid={`climb-target-${target.key}`}
+                      >
+                        {chipBody}
+                        <ExternalLink className="h-3 w-3 shrink-0 opacity-60" />
+                      </a>
+                    ) : (
+                      <span
+                        key={target.key}
+                        className="inline-flex items-center gap-1.5 rounded-full border bg-background px-2 py-0.5 text-xs"
+                        data-testid={`climb-target-${target.key}`}
+                      >
+                        {chipBody}
+                      </span>
+                    );
+                  })}
+                </div>
+              )}
               {/* Chart ~2/3, activity rail ~1/3; stacked on small screens */}
               <div className="flex flex-col md:flex-row gap-4">
                 <div className="md:basis-2/3 min-w-0">
-                  <HillClimbChart attempts={attempts} height={176} />
+                  <HillClimbChart
+                    attempts={attempts}
+                    height={176}
+                    dotHrefs={dotHrefs}
+                    highlightIndex={hoverAttempt}
+                    onHoverIndexChange={setHoverAttempt}
+                  />
                 </div>
                 <div className="md:basis-1/3 min-w-0">
-                  <RecursionActivityRail rows={attemptRows} partial={partial} taskSlug={entry.id} />
+                  <RecursionActivityRail
+                    rows={attemptRows}
+                    partial={partial}
+                    taskSlug={entry.id}
+                    activeAttemptIndex={hoverAttempt}
+                    onAttemptHover={setHoverAttempt}
+                  />
                 </div>
               </div>
             </div>
