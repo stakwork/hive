@@ -61,7 +61,7 @@ export interface RecursionServiceResult {
   ok: boolean;
   nodes?: RecursionEvalSetEntry[];
   error?: string;
-  /** true when Sources 2 or 3 failed but Source 1 succeeded — callers still get 200 */
+  /** True when one or more non-authoritative sources (2 or 3) failed but Source 1 succeeded. */
   partial?: boolean;
 }
 
@@ -78,36 +78,32 @@ export interface RecursionEvalSetEntry {
    */
   projectId?: number | string | null;
   /**
-   * Why this EvalSet appears in the list. Highest-priority wins on dedup:
-   *   "active"       — recursion=true on the graph node (authoritative)
-   *   "wasEnabled"   — recursionEnabledAt is set, even if recursion is now false
-   *   "multipleRuns" — more than one LEGAL_BENCHMARK_RUNNER StakworkRun in Postgres
+   * Why this EvalSet appears in the list. Priority order for dedup: active > wasEnabled > multipleRuns.
+   * - "active"       — recursion = true on the graph node (Source 1)
+   * - "wasEnabled"   — recursionEnabledAt is set, even if recursion is now false (Source 2)
+   * - "multipleRuns" — more than one LEGAL_BENCHMARK_RUNNER StakworkRun exists for this eval set (Source 3)
    */
   reason?: "active" | "wasEnabled" | "multipleRuns";
 }
 
 // ── listRecursionEvalSets ──────────────────────────────────────────────────
 
-/** Priority order for dedup — lower index = higher priority. */
-const REASON_PRIORITY: RecursionEvalSetEntry["reason"][] = ["active", "wasEnabled", "multipleRuns"];
+/** Priority rank for dedup: lower number = higher priority. */
+const REASON_PRIORITY: Record<NonNullable<RecursionEvalSetEntry["reason"]>, number> = {
+  active: 0,
+  wasEnabled: 1,
+  multipleRuns: 2,
+};
 
-function reasonPriority(r: RecursionEvalSetEntry["reason"]): number {
-  const idx = REASON_PRIORITY.indexOf(r);
-  return idx === -1 ? Infinity : idx;
-}
-
-/** Map a raw JarvisGraphNode to a RecursionEvalSetEntry with a given reason. */
-function mapEvalSetNode(
+/** Map a raw graph node to a `RecursionEvalSetEntry` with the given reason. */
+function toEntry(
   node: { ref_id: string; properties?: Record<string, unknown> },
-  reason: RecursionEvalSetEntry["reason"],
+  reason: NonNullable<RecursionEvalSetEntry["reason"]>,
 ): RecursionEvalSetEntry {
   return {
     ref_id: node.ref_id,
-    // node.properties.id holds the task-slug / node_key; fall back to ref_id
-    // if the property is absent (older node or schema mismatch).
     id: node.properties?.id != null ? String(node.properties.id) : node.ref_id,
     name: node.properties?.name != null ? String(node.properties.name) : "",
-    // project_id attribute may be absent on older nodes or before the schema ships.
     projectId: node.properties?.project_id != null
       ? (node.properties.project_id as number | string)
       : null,
@@ -115,71 +111,135 @@ function mapEvalSetNode(
   };
 }
 
-/** Merge a list of entries into the dedup map, keeping the highest-priority reason. */
-function mergeIntoMap(
-  map: Map<string, RecursionEvalSetEntry>,
-  entries: RecursionEvalSetEntry[],
+/** Merge `incoming` into `acc`, keeping the highest-priority reason per ref_id. */
+function mergeEntries(
+  acc: Map<string, RecursionEvalSetEntry>,
+  incoming: RecursionEvalSetEntry[],
 ): void {
-  for (const entry of entries) {
-    const existing = map.get(entry.ref_id);
-    if (!existing || reasonPriority(entry.reason) < reasonPriority(existing.reason)) {
-      map.set(entry.ref_id, entry);
+  for (const entry of incoming) {
+    const existing = acc.get(entry.ref_id);
+    if (!existing) {
+      acc.set(entry.ref_id, entry);
+    } else {
+      const existingPriority = existing.reason ? REASON_PRIORITY[existing.reason] : Infinity;
+      const incomingPriority = entry.reason ? REASON_PRIORITY[entry.reason] : Infinity;
+      if (incomingPriority < existingPriority) {
+        acc.set(entry.ref_id, entry);
+      }
     }
   }
 }
 
 /**
- * Returns EvalSet nodes that should appear in the Recursion tab, merging three sources:
+ * Returns EvalSet nodes visible under any of three conditions (deduplicated by ref_id):
  *
- *   Source 1 (authoritative): `recursion = true` on the graph node → reason "active"
- *   Source 2 (ever-enabled):  `recursionEnabledAt` is set (even if recursion is now false) → reason "wasEnabled"
- *   Source 3 (multi-run):     more than one LEGAL_BENCHMARK_RUNNER StakworkRun in Postgres
- *                             for the same evalSetId, scoped to `workspaceId` → reason "multipleRuns"
+ *   Source 1 (authoritative) — `recursion = true` on the graph node → reason "active"
+ *   Source 2 (non-fatal)     — `recursionEnabledAt` is set (ever-enabled) → reason "wasEnabled"
+ *   Source 3 (non-fatal)     — more than one LEGAL_BENCHMARK_RUNNER run in Postgres → reason "multipleRuns"
  *
- * Sources 2 and 3 are non-fatal — on failure the endpoint still returns 200 with Source 1
- * results and `partial: true`. Source 1 failure returns `{ ok: false }` as before.
- *
- * `workspaceId` is optional so the existing one-argument call in the recursion cron
- * compiles unchanged; Source 3 is skipped when absent.
+ * `workspaceId` is optional so the existing one-argument call in `legal-recursion-cron.ts`
+ * compiles unchanged. When absent, Source 3 is skipped entirely.
  *
  * NOTE: `searchNodesByAttributes` returns `{ ok: true, nodes: [] }` (not an
- * error) when an attribute is unknown. An empty result therefore cannot be
- * distinguished from "the recursion attribute hasn't shipped to this swarm's
+ * error) when an attribute is unknown. An empty result from Source 1 therefore
+ * cannot be distinguished from "the recursion attribute hasn't shipped to this swarm's
  * schema yet". We log a distinct signal in that case so it can be spotted in
  * production without a code change.
+ *
+ * NOTE on Source 2 comparator: no existing codebase call uses `comparator: "!="` against
+ * Jarvis `/graph/search/attributes` — all confirmed calls use `"="` or `"contains"`.
+ * We attempt `{ comparator: "!=", value: null }` as a best-effort; if Jarvis rejects it,
+ * the settlement resolves to `{ ok: false }` and we fall back to a post-fetch JS filter
+ * on all EvalSet nodes (fetch without the recursionEnabledAt filter, then filter in JS).
  */
 export async function listRecursionEvalSets(
   config: JarvisConnectionConfig,
   workspaceId?: string,
 ): Promise<RecursionServiceResult> {
-  // ── Source 1: recursion = true (authoritative) ───────────────────────────
-  const source1Thunk = async () =>
-    searchNodesByAttributes(config, {
+  // ── Source 1: recursion = true (authoritative) ────────────────────────────
+  const source1 = async (): Promise<RecursionEvalSetEntry[]> => {
+    const result = await searchNodesByAttributes(config, {
       nodeTypes: EVALSET_NODE_LABELS,
       filters: [{ attribute: "recursion", value: true, comparator: "=" }],
       includeProperties: true,
       skipCache: true,
     });
 
-  // ── Source 2: recursionEnabledAt is set (ever-enabled) ──────────────────
-  // Passes `"!=" + null` to Jarvis `/graph/search/attributes` as a best-effort
-  // "attribute exists" filter. If Jarvis rejects this comparator, the result
-  // will be { ok: false } — treated as non-fatal (partial result).
-  const source2Thunk = async () =>
-    searchNodesByAttributes(config, {
+    if (!result.ok) {
+      logger.warn("[legal/benchmarks/recursion] listRecursionEvalSets Source 1 graph query failed", "legal", {
+        status: result.status,
+        error: result.error,
+        endpointMissing: result.endpointMissing,
+      });
+      // Throw so Promise.allSettled captures this as rejected — authoritative failure.
+      throw new Error(result.error ?? "Graph query failed");
+    }
+
+    if (result.nodes.length === 0) {
+      // Distinct signal: zero nodes may indicate the attribute hasn't shipped yet
+      // rather than a genuinely empty result.
+      logger.info(
+        "[legal/benchmarks/recursion] listRecursionEvalSets returned zero nodes — " +
+          "this may indicate the recursion attribute has not yet shipped to this swarm",
+        "legal",
+        { possibleMissingAttribute: true },
+      );
+    }
+
+    return result.nodes.map((n) => toEntry(n, "active"));
+  };
+
+  // ── Source 2: recursionEnabledAt is set (ever-enabled) ───────────────────
+  const source2 = async (): Promise<RecursionEvalSetEntry[]> => {
+    // Best-effort attempt: `comparator: "!="` with `value: null` tells Jarvis to match
+    // nodes where the attribute exists and is non-null. If Jarvis rejects this comparator,
+    // the result will be `{ ok: false }` and we fall back to a post-fetch JS filter.
+    const attemptResult = await searchNodesByAttributes(config, {
       nodeTypes: EVALSET_NODE_LABELS,
       filters: [{ attribute: "recursionEnabledAt", value: null, comparator: "!=" }],
       includeProperties: true,
       skipCache: true,
     });
 
-  // ── Source 3: >1 LEGAL_BENCHMARK_RUNNER runs per evalSetId ──────────────
-  // Only executed when workspaceId is provided; scoped to that workspace to
-  // prevent cross-workspace data leakage (IDOR-safe: workspaceId comes from
-  // the caller's authenticated getWorkspaceSwarmAccess result).
-  const source3Thunk = async (): Promise<RecursionEvalSetEntry[]> => {
-    if (!workspaceId) return [];
+    if (attemptResult.ok) {
+      return attemptResult.nodes
+        .filter((n) => n.properties?.recursionEnabledAt != null)
+        .map((n) => toEntry(n, "wasEnabled"));
+    }
 
+    // Fallback: fetch all EvalSet nodes without the recursionEnabledAt filter,
+    // then filter in JS. This is safe but heavier — only reached when Jarvis
+    // rejects the "!=" comparator (unconfirmed capability on some backends).
+    logger.warn(
+      "[legal/benchmarks/recursion] listRecursionEvalSets Source 2 '!=' comparator rejected by Jarvis — " +
+        "falling back to post-fetch JS filter on all EvalSet nodes",
+      "legal",
+      { status: attemptResult.status, error: attemptResult.error },
+    );
+
+    const fallbackResult = await searchNodesByAttributes(config, {
+      nodeTypes: EVALSET_NODE_LABELS,
+      filters: [],
+      includeProperties: true,
+      skipCache: true,
+    });
+
+    if (!fallbackResult.ok) {
+      throw new Error(fallbackResult.error ?? "Source 2 fallback fetch failed");
+    }
+
+    return fallbackResult.nodes
+      .filter((n) => n.properties?.recursionEnabledAt != null)
+      .map((n) => toEntry(n, "wasEnabled"));
+  };
+
+  // ── Source 3: multiple LEGAL_BENCHMARK_RUNNER runs in Postgres ────────────
+  const source3 = async (): Promise<RecursionEvalSetEntry[]> => {
+    if (!workspaceId) return []; // Skip when no workspaceId — cron one-arg call
+
+    const MULTI_RUN_CAP = 50;
+
+    // Group by evalSetId, keeping only those with more than one run.
     const multiRunGroups = await db.stakworkRun.groupBy({
       by: ["evalSetId"],
       where: {
@@ -191,26 +251,25 @@ export async function listRecursionEvalSets(
       having: { evalSetId: { _count: { gt: 1 } } },
     });
 
-    const ids = multiRunGroups
+    const allIds = multiRunGroups
       .map((g) => g.evalSetId)
       .filter((id): id is string => id != null);
 
-    if (ids.length === 0) return [];
+    if (allIds.length === 0) return [];
 
-    // Cap at 50 to avoid excessive graph round-trips.
-    const CAP = 50;
-    if (ids.length > CAP) {
+    let ids = allIds;
+    if (allIds.length > MULTI_RUN_CAP) {
       logger.warn(
-        `[legal/benchmarks/recursion] Source 3: capping eval set ID resolution at ${CAP}; ${ids.length - CAP} IDs truncated`,
+        `Source 3: capping eval set ID resolution at ${MULTI_RUN_CAP}; ${allIds.length - MULTI_RUN_CAP} IDs truncated`,
         "legal",
         { workspaceId },
       );
+      ids = allIds.slice(0, MULTI_RUN_CAP);
     }
-    const cappedIds = ids.slice(0, CAP);
 
-    // Resolve each evalSetId to an EvalSet graph node.
+    // Resolve each evalSetId to its graph node.
     const batches = await Promise.all(
-      cappedIds.map((id) =>
+      ids.map((id) =>
         searchNodesByAttributes(config, {
           nodeTypes: EVALSET_NODE_LABELS,
           filters: [{ attribute: "id", value: id, comparator: "=" }],
@@ -223,102 +282,70 @@ export async function listRecursionEvalSets(
     const entries: RecursionEvalSetEntry[] = [];
     for (const batch of batches) {
       if (!batch.ok || batch.nodes.length === 0) continue;
+      // Apply the deterministic tie-break to pick one node per id.
       const winnerRefId = selectEvalSetByTieBreak(batch.nodes);
-      const winnerNode = batch.nodes.find((n) => n.ref_id === winnerRefId) ?? batch.nodes[0];
-      entries.push(mapEvalSetNode(winnerNode, "multipleRuns"));
+      const winnerNode = batch.nodes.find((n) => n.ref_id === winnerRefId);
+      if (!winnerNode) continue;
+      // Read id, name, projectId from node.properties — do not use the bare ref_id string.
+      entries.push(toEntry(winnerNode, "multipleRuns"));
     }
+
     return entries;
   };
 
-  // ── Run all three sources concurrently ───────────────────────────────────
-  // Each source is wrapped in an async thunk so synchronous throws are captured
-  // as rejected settlements rather than escaping Promise.allSettled.
+  // ── Run all three sources concurrently ────────────────────────────────────
   const [s1Settlement, s2Settlement, s3Settlement] = await Promise.allSettled([
-    source1Thunk(),
-    source2Thunk(),
-    source3Thunk(),
+    source1(),
+    source2(),
+    source3(),
   ]);
 
-  // Source 1 is authoritative — any failure aborts.
+  // Source 1 is authoritative: any failure aborts.
   if (s1Settlement.status === "rejected") {
     const err = s1Settlement.reason instanceof Error
       ? s1Settlement.reason.message
       : "Graph query failed";
-    logger.warn("[legal/benchmarks/recursion] listRecursionEvalSets Source 1 threw", "legal", {
-      error: err,
-    });
     return { ok: false, error: err };
   }
-  const s1Result = s1Settlement.value;
-  if (!s1Result.ok) {
-    logger.warn("[legal/benchmarks/recursion] listRecursionEvalSets graph query failed", "legal", {
-      status: s1Result.status,
-      error: s1Result.error,
-      endpointMissing: s1Result.endpointMissing,
-    });
-    return { ok: false, error: s1Result.error ?? "Graph query failed" };
-  }
 
-  if (s1Result.nodes.length === 0) {
-    // Distinct signal: zero nodes may indicate the attribute hasn't shipped yet
-    // rather than a genuinely empty result — preserves a breadcrumb for the
-    // known attribute-availability gap.
-    logger.info(
-      "[legal/benchmarks/recursion] listRecursionEvalSets returned zero nodes — " +
-        "this may indicate the recursion attribute has not yet shipped to this swarm",
-      "legal",
-      { possibleMissingAttribute: true },
-    );
-  }
-
-  // ── Dedup map: ref_id → entry, highest-priority reason wins ─────────────
-  const dedupMap = new Map<string, RecursionEvalSetEntry>();
-  mergeIntoMap(dedupMap, s1Result.nodes.map((n) => mapEvalSetNode(n, "active")));
+  const deduped = new Map<string, RecursionEvalSetEntry>();
+  mergeEntries(deduped, s1Settlement.value);
 
   let partial = false;
 
-  // Source 2 — non-fatal
-  if (s2Settlement.status === "rejected") {
-    const err = s2Settlement.reason instanceof Error
-      ? s2Settlement.reason.message
-      : "Graph query failed";
-    logger.warn(
-      "[legal/benchmarks/recursion] listRecursionEvalSets Source 2 (wasEnabled) failed",
-      "legal",
-      { error: err },
-    );
-    partial = true;
-  } else if (!s2Settlement.value.ok) {
-    logger.warn(
-      "[legal/benchmarks/recursion] listRecursionEvalSets Source 2 (wasEnabled) returned ok:false",
-      "legal",
-      { status: s2Settlement.value.status, error: s2Settlement.value.error },
-    );
-    partial = true;
+  if (s2Settlement.status === "fulfilled") {
+    mergeEntries(deduped, s2Settlement.value);
   } else {
-    mergeIntoMap(dedupMap, s2Settlement.value.nodes.map((n) => mapEvalSetNode(n, "wasEnabled")));
+    logger.warn(
+      "[legal/benchmarks/recursion] listRecursionEvalSets Source 2 (wasEnabled) failed — " +
+        "continuing with partial results",
+      "legal",
+      {
+        error: s2Settlement.reason instanceof Error
+          ? s2Settlement.reason.message
+          : String(s2Settlement.reason),
+      },
+    );
+    partial = true;
   }
 
-  // Source 3 — non-fatal
-  if (s3Settlement.status === "rejected") {
-    const err = s3Settlement.reason instanceof Error
-      ? s3Settlement.reason.message
-      : "DB or graph query failed";
+  if (s3Settlement.status === "fulfilled") {
+    mergeEntries(deduped, s3Settlement.value);
+  } else {
     logger.warn(
-      "[legal/benchmarks/recursion] listRecursionEvalSets Source 3 (multipleRuns) failed",
+      "[legal/benchmarks/recursion] listRecursionEvalSets Source 3 (multipleRuns) failed — " +
+        "continuing with partial results",
       "legal",
-      { error: err, workspaceId },
+      {
+        error: s3Settlement.reason instanceof Error
+          ? s3Settlement.reason.message
+          : String(s3Settlement.reason),
+      },
     );
     partial = true;
-  } else {
-    mergeIntoMap(dedupMap, s3Settlement.value);
   }
 
-  return {
-    ok: true,
-    nodes: [...dedupMap.values()],
-    ...(partial ? { partial: true } : {}),
-  };
+  return { ok: true, nodes: [...deduped.values()], ...(partial ? { partial: true } : {}) };
 }
 
 // ── writeBackEvalProjectId ─────────────────────────────────────────────────

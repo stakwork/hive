@@ -4,13 +4,6 @@ export interface RecursionEntry {
   refId: string;
   id: string;   // task-slug
   name: string;
-  /**
-   * Why this EvalSet appears in the list. Highest-priority wins when a node
-   * qualifies under multiple conditions:
-   *   "active"       — recursion=true on the graph node
-   *   "wasEnabled"   — recursionEnabledAt is set, even if recursion is now false
-   *   "multipleRuns" — more than one LEGAL_BENCHMARK_RUNNER run against this evalSetId
-   */
   reason?: "active" | "wasEnabled" | "multipleRuns";
 }
 
@@ -38,10 +31,7 @@ export function useLegalBenchmarkRecursionList(): UseLegalBenchmarkRecursionList
         const body = await res.json().catch(() => ({}));
         throw new Error((body as { error?: string }).error ?? "Failed to fetch recursion entries");
       }
-      const body = (await res.json()) as {
-        success: boolean;
-        data: Array<{ ref_id: string; id: string; name: string; reason?: string }>;
-      };
+      const body = (await res.json()) as { success: boolean; data: Array<{ ref_id: string; id: string; name: string; reason?: string }> };
       const mapped: RecursionEntry[] = (body.data ?? []).map((item) => ({
         refId: item.ref_id,
         id: item.id,
