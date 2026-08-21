@@ -238,7 +238,14 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     // This is sent to the workflow so it can call back to /api/internal/runs/report-bundles
     // to pull individual run report content. The token is bound to the exact runId set and
     // workspaceId, so any modification invalidates it.
-    const bundleSecret = process.env.INTERNAL_BUNDLE_API_SECRET ?? "";
+    //
+    // Fail closed when unconfigured — an empty-string key still produces a deterministic
+    // HMAC that a caller who knows the construction can compute without any secret.
+    const bundleSecret = process.env.INTERNAL_BUNDLE_API_SECRET;
+    if (!bundleSecret) {
+      await db.stakworkRun.deleteMany({ where: { id: consolidatedRun.id } });
+      return NextResponse.json({ error: "Service misconfigured" }, { status: 503 });
+    }
     const sortedRunIds = [...typedRunIds].sort();
     const bundleToken = createHmac("sha256", bundleSecret)
       .update(sortedRunIds.join(",") + ":" + workspaceId)

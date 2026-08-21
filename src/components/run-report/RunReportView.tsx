@@ -74,7 +74,17 @@ export function RunReportView({
   const { timezone } = useUserTimezone();
   const [openDoc, setOpenDoc] = useState<{ docId: string; tokens: string[] } | null>(null);
 
-  const projection = payload.projection;
+  // Narrow BundleProjection → RunReportProjection using the `consolidated`
+  // discriminant. ConsolidatedReportProjection lacks the fields this component
+  // needs (rubricRows, sourceDocs, pageData, etc.); it is rendered by a
+  // separate ConsolidatedReportView and should never reach this component.
+  // Treat a consolidated bundle the same as a missing projection so the
+  // "No report" fallback fires rather than a runtime crash.
+  const rawProjection = payload.projection;
+  const projection =
+    rawProjection && !("consolidated" in rawProjection && rawProjection.consolidated)
+      ? (rawProjection as import("@/lib/run-report/types").RunReportProjection)
+      : null;
   const chain = useMemo(() => (projection ? buildChainModel(projection) : null), [projection]);
 
   // Graph-sourced, so it must not die with the S3 bundle — it renders in the
