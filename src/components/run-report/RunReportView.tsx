@@ -75,7 +75,15 @@ export function RunReportView({
   const [openDoc, setOpenDoc] = useState<{ docId: string; tokens: string[] } | null>(null);
 
   const projection = payload.projection;
-  const chain = useMemo(() => (projection ? buildChainModel(projection) : null), [projection]);
+  // Narrow to RunReportProjection — ConsolidatedReportProjection is rendered by a
+  // separate ConsolidatedReportView component and never reaches RunReportView.
+  // All references below use `runProjection` (the narrowed type) so that
+  // RunReportProjection-specific fields like `sourceDocs`, `rubricRows`, etc.
+  // are type-safe even though `payload.projection` is now `BundleProjection | null`.
+  const runProjection = projection && !("consolidated" in projection && projection.consolidated)
+    ? (projection as import("@/lib/run-report/types").RunReportProjection)
+    : null;
+  const chain = useMemo(() => (runProjection ? buildChainModel(runProjection) : null), [runProjection]);
 
   // Graph-sourced, so it must not die with the S3 bundle — it renders in the
   // "unavailable" state below, which is exactly when a reviewer needs it.
@@ -114,19 +122,22 @@ export function RunReportView({
   }
 
   // ── No report on this run ─────────────────────────────────────────────────
-  if (!payload.hasReport || !projection || !chain) {
+  // Also covers the case where projection is a ConsolidatedReportProjection
+  // (runProjection is null) — that type is rendered by ConsolidatedReportView,
+  // not here.
+  if (!payload.hasReport || !runProjection || !chain) {
     return (
       <StateNotice
         icon={<Info className="h-5 w-5" />}
         title="No report for this run"
-        body="This run didn't produce a report bundle. Enable “Generate Report” before starting a run to capture one."
+        body={'This run didn\'t produce a report bundle. Enable \u201cGenerate Report\u201d before starting a run to capture one.'}
         testId="run-report-state-absent"
       />
     );
   }
 
   const activeDoc = openDoc
-    ? projection.sourceDocs.find((d) => d.id === openDoc.docId) ?? null
+    ? runProjection.sourceDocs.find((d) => d.id === openDoc.docId) ?? null
     : null;
   const onOpenDoc = (docId: string, tokens: string[]) => setOpenDoc({ docId, tokens });
 
@@ -138,7 +149,7 @@ export function RunReportView({
         <div id="run-report-header" className="scroll-mt-6">
           <SectionErrorBoundary>
             <ReportHeader
-              projection={projection}
+              projection={runProjection}
               chain={chain}
               taskTitle={taskTitle}
               timezone={timezone}
@@ -150,7 +161,7 @@ export function RunReportView({
         </div>
         <SectionErrorBoundary>
           <RubricLedger
-            projection={projection}
+            projection={runProjection}
             chain={chain}
             graphRubrics={graphRubrics}
             onOpenDoc={onOpenDoc}
@@ -164,23 +175,23 @@ export function RunReportView({
         <div className="mt-16 pt-4 border-t border-border">
           <Kicker>Debugging context</Kicker>
           <SectionErrorBoundary>
-            <PipelineSection projection={projection} />
+            <PipelineSection projection={runProjection} />
           </SectionErrorBoundary>
           <SectionErrorBoundary>
-            <TracesSection projection={projection} />
+            <TracesSection projection={runProjection} />
           </SectionErrorBoundary>
           <SectionErrorBoundary>
-            <ToolActivitySection projection={projection} />
+            <ToolActivitySection projection={runProjection} />
           </SectionErrorBoundary>
           <SectionErrorBoundary>
-            <ConceptsSection projection={projection} />
+            <ConceptsSection projection={runProjection} />
           </SectionErrorBoundary>
           {fixSnapshotSection}
           <SectionErrorBoundary>
-            <SourcesSection projection={projection} onOpenDoc={onOpenDoc} />
+            <SourcesSection projection={runProjection} onOpenDoc={onOpenDoc} />
           </SectionErrorBoundary>
           <SectionErrorBoundary>
-            <HealthSection projection={projection} />
+            <HealthSection projection={runProjection} />
           </SectionErrorBoundary>
         </div>
       </main>

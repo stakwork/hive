@@ -6,10 +6,15 @@ function project(fixture: unknown) {
   return projectBundle(JSON.stringify(fixture));
 }
 
+import type { RunReportProjection } from "@/lib/run-report/types";
+
 function ok(fixture: unknown) {
   const outcome = project(fixture);
   if (outcome.status !== "ok") throw new Error(`expected ok, got ${outcome.status}`);
-  return outcome;
+  if ("consolidated" in outcome.projection && outcome.projection.consolidated) {
+    throw new Error("expected RunReportProjection, got ConsolidatedReportProjection");
+  }
+  return { ...outcome, projection: outcome.projection as RunReportProjection };
 }
 
 // ── Schema version gate (removed) ────────────────────────────────────────────
@@ -372,5 +377,136 @@ describe("projectBundle — rubric links and timestamps", () => {
     const json = JSON.stringify(projection);
     expect(json).not.toContain("report_url");
     expect(json).not.toContain("reportUrl");
+  });
+});
+
+// ── projectConsolidatedBundle ─────────────────────────────────────────────────
+
+import consolidatedFixture from "@/lib/run-report/fixtures/consolidated-report.fixture.json";
+import type { ConsolidatedReportProjection } from "@/lib/run-report/types";
+
+describe("projectBundle — consolidated bundle dispatch", () => {
+  it("routes consolidated bundles via the consolidated: true discriminant", () => {
+    const outcome = projectBundle(JSON.stringify(consolidatedFixture));
+    expect(outcome.status).toBe("ok");
+    if (outcome.status !== "ok") return;
+    expect((outcome.projection as ConsolidatedReportProjection).consolidated).toBe(true);
+  });
+
+  it("returns status unparseable for invalid JSON", () => {
+    expect(projectBundle("{not valid").status).toBe("unparseable");
+  });
+
+  it("projects rubricMatrix rows with correct structure", () => {
+    const outcome = projectBundle(JSON.stringify(consolidatedFixture));
+    if (outcome.status !== "ok") throw new Error("expected ok");
+    const p = outcome.projection as ConsolidatedReportProjection;
+    expect(p.rubricMatrix.length).toBe(5);
+    const row = p.rubricMatrix[0];
+    expect(row).toHaveProperty("id");
+    expect(row).toHaveProperty("title");
+    expect(Array.isArray(row.results)).toBe(true);
+    expect(row.results.length).toBe(3);
+    expect(row.results[0]).toHaveProperty("runId");
+    expect(row.results[0]).toHaveProperty("passed");
+    expect(row.results[0]).toHaveProperty("verdict");
+  });
+
+  it("rubricDetails contains only criteria where at least one run failed", () => {
+    const outcome = projectBundle(JSON.stringify(consolidatedFixture));
+    if (outcome.status !== "ok") throw new Error("expected ok");
+    const p = outcome.projection as ConsolidatedReportProjection;
+    // crit_001 passes in all 3 runs — must be excluded
+    const ids = p.rubricDetails.map((d) => d.id);
+    expect(ids).not.toContain("crit_001");
+    // All failing criteria present
+    expect(ids).toContain("crit_002");
+    expect(ids).toContain("crit_003");
+    expect(ids).toContain("crit_004");
+    expect(ids).toContain("crit_005");
+  });
+
+  it("sanitizes HTML tags from rubric text fields", () => {
+    const dirtyFixture = {
+      ...consolidatedFixture,
+      rubricMatrix: [
+        {
+          id: "crit_dirty",
+          title: "<b>Bold title</b>",
+          results: [
+            { runId: "run_001", passed: false, verdict: "<em>FAIL</em>" },
+          ],
+        },
+      ],
+      rubricDetails: [
+        {
+          id: "crit_dirty",
+          title: "<b>Bold title</b>",
+          matchCriteria: "<p>Must include <strong>governing law</strong> clause.</p>",
+          perRun: [
+            {
+              runId: "run_001",
+              verdict: "<em>FAIL</em>",
+              reasoning: "<script>alert(1)</script>The agent failed.",
+              judgeFlagReason: "<a href='#'>Review</a>",
+              criterionContested: false,
+            },
+          ],
+        },
+      ],
+    };
+    const outcome = projectBundle(JSON.stringify(dirtyFixture));
+    if (outcome.status !== "ok") throw new Error("expected ok");
+    const p = outcome.projection as ConsolidatedReportProjection;
+    const detail = p.rubricDetails[0];
+    expect(detail.title).not.toContain("<b>");
+    expect(detail.matchCriteria).not.toContain("<p>");
+    expect(detail.matchCriteria).not.toContain("<strong>");
+    expect(detail.perRun[0].verdict).not.toContain("<em>");
+    expect(detail.perRun[0].reasoning).not.toContain("<script>");
+    expect(detail.perRun[0].judgeFlagReason).not.toContain("<a");
+    // text content preserved
+    expect(detail.perRun[0].reasoning).toContain("The agent failed.");
+  });
+
+  it("projects runs[] with correct RunMeta shape", () => {
+    const outcome = projectBundle(JSON.stringify(consolidatedFixture));
+    if (outcome.status !== "ok") throw new Error("expected ok");
+    const p = outcome.projection as ConsolidatedReportProjection;
+    expect(p.runs.length).toBe(3);
+    const run = p.runs[0];
+    expect(typeof run.runId).toBe("string");
+    expect(typeof run.timestamp).toBe("number");
+    expect(typeof run.model).toBe("string");
+    expect(typeof run.score).toBe("number");
+    expect(typeof run.nPassed).toBe("number");
+    expect(typeof run.nTotal).toBe("number");
+  });
+
+  it("projects taskDescription and sourceFileLinks", () => {
+    const outcome = projectBundle(JSON.stringify(consolidatedFixture));
+    if (outcome.status !== "ok") throw new Error("expected ok");
+    const p = outcome.projection as ConsolidatedReportProjection;
+    expect(typeof p.taskDescription).toBe("string");
+    expect(p.taskDescription.length).toBeGreaterThan(0);
+    expect(Array.isArray(p.sourceFileLinks)).toBe(true);
+    expect(p.sourceFileLinks.length).toBe(2);
+    expect(p.sourceFileLinks[0]).toContain("https://");
+  });
+
+  it("caps runs[] at PROJECTION_ARRAY_CAP", () => {
+    const manyRuns = Array.from({ length: PROJECTION_ARRAY_CAP + 10 }, (_, i) => ({
+      runId: `run_${i}`,
+      timestamp: Date.now(),
+      model: "claude-opus-4-5",
+      score: 0.5,
+      nPassed: 1,
+      nTotal: 2,
+    }));
+    const bigFixture = { ...consolidatedFixture, runs: manyRuns, rubricMatrix: [], rubricDetails: [] };
+    const outcome = projectBundle(JSON.stringify(bigFixture));
+    if (outcome.status !== "ok") throw new Error("expected ok");
+    const p = outcome.projection as ConsolidatedReportProjection;
+    expect(p.runs.length).toBeLessThanOrEqual(PROJECTION_ARRAY_CAP);
   });
 });
