@@ -14,6 +14,8 @@ export interface AttemptPoint {
   accepted: boolean;
   /** Display label sourced from series data: "base", "r1", "r2", … */
   label: string;
+  /** Judge notes off the output node — tooltip evidence, never chart marks */
+  judgeNotes: string | null;
 }
 
 interface TooltipState {
@@ -28,6 +30,17 @@ interface HillClimbChartProps {
   attempts: EvalTriggerOutput[];
   /** Visual height of the SVG (px) — defaults to 160 */
   height?: number;
+  /**
+   * Per-attempt report link, indexed like `attempts`; null = no report. When a
+   * hovered column carries one, clicking anywhere in that column (and Enter on
+   * the focused dot) opens it in a new tab. Callers resolve these through the
+   * viewer routes with role gating — never a raw bundle URL.
+   */
+  dotHrefs?: Array<string | null>;
+  /** Externally-driven highlight (rail hover) — draws the crosshair + dot ring */
+  highlightIndex?: number | null;
+  /** Fires with the hovered attempt index (null on leave) for rail sync */
+  onHoverIndexChange?: (index: number | null) => void;
 }
 
 /**
@@ -64,6 +77,11 @@ export function toAttemptPoints(attempts: EvalTriggerOutput[]): AttemptPoint[] {
     // Prefer series-provided label; fall back to "base"/"r{i}" from index
     const label = o.label ?? (isBaseline ? "base" : `r${i}`);
 
+    const judgeNotes =
+      typeof o.judge_notes === "string" && o.judge_notes.trim() !== ""
+        ? o.judge_notes
+        : null;
+
     return {
       actualPassed,
       bestPassed,
@@ -71,6 +89,7 @@ export function toAttemptPoints(attempts: EvalTriggerOutput[]): AttemptPoint[] {
       isBaseline,
       accepted,
       label,
+      judgeNotes,
     };
   });
 }
@@ -112,7 +131,13 @@ function fitYDomain(values: number[], target: number): [number, number] {
   return [yMin, yMax];
 }
 
-export function HillClimbChart({ attempts, height = 160 }: HillClimbChartProps) {
+export function HillClimbChart({
+  attempts,
+  height = 160,
+  dotHrefs,
+  highlightIndex,
+  onHoverIndexChange,
+}: HillClimbChartProps) {
   const clipId = useId();
   const containerRef = useRef<HTMLDivElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
@@ -269,6 +294,7 @@ export function HillClimbChart({ attempts, height = 160 }: HillClimbChartProps) 
 
     setTooltip({ x: tipX, y: tipY, point, meta: dotMeta[idx] });
     setHoverIdx(idx);
+    onHoverIndexChange?.(idx);
   }
 
   function handleMouseEnter(_point: AttemptPoint, idx: number, e: React.MouseEvent<SVGCircleElement>) {
@@ -290,7 +316,32 @@ export function HillClimbChart({ attempts, height = 160 }: HillClimbChartProps) 
   function clearHover() {
     setTooltip(null);
     setHoverIdx(null);
+    onHoverIndexChange?.(null);
   }
+
+  /**
+   * Whole-column click-through: the pointer overlay sits above the dots, so
+   * the click lands here and resolves to the snapped column — same generous
+   * hit target as the crosshair, no 9px-dot precision required.
+   */
+  function handleOverlayClick(e: React.PointerEvent<SVGRectElement> | React.MouseEvent<SVGRectElement>) {
+    const svgEl = svgRef.current;
+    if (!svgEl || !dotHrefs) return;
+    const rect = svgEl.getBoundingClientRect();
+    const px = ((e.clientX - rect.left) / Math.max(rect.width, 1)) * W - MARGIN.left;
+    const idx = Math.min(points.length - 1, Math.max(0, Math.round(xScale.invert(px))));
+    const href = dotHrefs[idx];
+    if (href) window.open(href, "_blank", "noopener,noreferrer");
+  }
+
+  // Rail-driven highlight only counts while the pointer is off the chart —
+  // the chart's own hover always wins.
+  const externalIdx =
+    hoverIdx == null && highlightIndex != null && highlightIndex >= 0 && highlightIndex < points.length
+      ? highlightIndex
+      : null;
+  const crosshairIdx = hoverIdx ?? externalIdx;
+  const hoveredHref = hoverIdx != null ? (dotHrefs?.[hoverIdx] ?? null) : null;
 
   return (
     <div className="relative select-none" data-testid="hill-climb-chart" ref={containerRef}>
@@ -375,11 +426,12 @@ export function HillClimbChart({ attempts, height = 160 }: HillClimbChartProps) 
             </text>
           )}
 
-          {/* Crosshair: snaps to the hovered attempt column */}
-          {hoverIdx != null && (
+          {/* Crosshair: snaps to the hovered attempt column; also lights up
+              for rail-driven highlight so chart and rail read as one surface */}
+          {crosshairIdx != null && (
             <line
-              x1={xScale(hoverIdx)}
-              x2={xScale(hoverIdx)}
+              x1={xScale(crosshairIdx)}
+              x2={xScale(crosshairIdx)}
               y1={0}
               y2={innerH}
               className="stroke-muted-foreground"
@@ -434,6 +486,7 @@ export function HillClimbChart({ attempts, height = 160 }: HillClimbChartProps) 
                       : meta.state === "below"
                         ? " (below best)"
                         : "";
+                const href = dotHrefs?.[i] ?? null;
                 return (
                   <g key={i}>
                     {/* Soft halo marks the achievement — decorative, aria-hidden */}
@@ -448,6 +501,20 @@ export function HillClimbChart({ attempts, height = 160 }: HillClimbChartProps) 
                         data-testid={`halo-${i}`}
                       />
                     )}
+                    {/* Rail-hover ring — mirrors the crosshair on the dot itself */}
+                    {externalIdx === i && (
+                      <circle
+                        cx={xScale(i)}
+                        cy={yScale(pt.actualPassed)}
+                        r={8}
+                        fill="none"
+                        stroke="currentColor"
+                        strokeOpacity={0.45}
+                        strokeWidth={1.5}
+                        aria-hidden="true"
+                        data-testid={`highlight-ring-${i}`}
+                      />
+                    )}
                     <circle
                       cx={xScale(i)}
                       cy={yScale(pt.actualPassed)}
@@ -460,8 +527,19 @@ export function HillClimbChart({ attempts, height = 160 }: HillClimbChartProps) 
                       strokeOpacity={isHollow ? 0.55 : 1}
                       onMouseEnter={(e) => handleMouseEnter(pt, i, e)}
                       onFocus={(e) => handleMouseEnter(pt, i, e as unknown as React.MouseEvent<SVGCircleElement>)}
+                      onKeyDown={
+                        href
+                          ? (e) => {
+                              if (e.key === "Enter" || e.key === " ") {
+                                e.preventDefault();
+                                window.open(href, "_blank", "noopener,noreferrer");
+                              }
+                            }
+                          : undefined
+                      }
                       tabIndex={0}
-                      aria-label={`${pt.label}: ${pt.actualPassed}/${pt.n_total}${stateSuffix}`}
+                      role={href ? "link" : undefined}
+                      aria-label={`${pt.label}: ${pt.actualPassed}/${pt.n_total}${stateSuffix}${href ? " — opens attempt report" : ""}`}
                       data-state={meta.state}
                       data-testid={`dot-${i}`}
                     />
@@ -528,15 +606,18 @@ export function HillClimbChart({ attempts, height = 160 }: HillClimbChartProps) 
             ) : null,
           )}
 
-          {/* Hover overlay: the whole plot is the hit target for the crosshair */}
+          {/* Hover overlay: the whole plot is the hit target for the crosshair
+              and for click-through — a hovered column with a report opens it */}
           <rect
             x={-DOT_CLIP_PAD}
             y={-DOT_CLIP_PAD}
             width={innerW + DOT_CLIP_PAD * 2}
             height={innerH + DOT_CLIP_PAD * 2}
             fill="transparent"
+            style={hoveredHref ? { cursor: "pointer" } : undefined}
             onPointerMove={handleOverlayMove}
             onPointerLeave={clearHover}
+            onClick={handleOverlayClick}
             data-testid="hit-overlay"
           />
         </g>
@@ -575,6 +656,19 @@ export function HillClimbChart({ attempts, height = 160 }: HillClimbChartProps) 
           {tooltip.point.accepted && tooltip.meta?.state === "below" && (
             <div className="text-muted-foreground/60 italic">
               below best · {tooltip.meta.bestBefore}
+            </div>
+          )}
+          {tooltip.point.judgeNotes && (
+            <div
+              className="mt-1 max-w-[220px] text-muted-foreground/80 line-clamp-3 break-words"
+              data-testid="tooltip-judge-notes"
+            >
+              {tooltip.point.judgeNotes}
+            </div>
+          )}
+          {hoveredHref && (
+            <div className="mt-0.5 text-primary" data-testid="tooltip-report-hint">
+              click to open report
             </div>
           )}
         </div>

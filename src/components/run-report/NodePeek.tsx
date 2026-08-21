@@ -46,6 +46,12 @@ export async function fetchNodePeek(
   }
 }
 
+/** Graph Explorer deep link, focused on one node — the one URL shape every
+ * "view in graph" surface shares. */
+export function graphExplorerHref(workspaceSlug: string, refId: string): string {
+  return `/w/${encodeURIComponent(workspaceSlug)}/context/graph?ref_id=${encodeURIComponent(refId)}`;
+}
+
 /**
  * "View in graph" — opens the Graph Explorer focused on this node, which loads
  * it with one hop of neighbors and drops you into walk mode, so the peek is a
@@ -66,7 +72,7 @@ export function ViewInGraphLink({
   if (!workspaceSlug || !refId) return null;
   return (
     <a
-      href={`/w/${encodeURIComponent(workspaceSlug)}/context/graph?ref_id=${encodeURIComponent(refId)}`}
+      href={graphExplorerHref(workspaceSlug, refId)}
       target="_blank"
       rel="noopener noreferrer"
       data-testid="node-peek-view-in-graph"
