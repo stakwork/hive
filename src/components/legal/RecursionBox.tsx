@@ -142,8 +142,10 @@ function ScoreBadge({
                   {workspaceSlug && rubric.ref_id && (
                     <a
                       href={graphHref(workspaceSlug, rubric.ref_id)}
+                      target="_blank"
+                      rel="noopener noreferrer"
                       className="shrink-0 mt-0.5 text-muted-foreground hover:text-primary transition-colors"
-                      aria-label={`Open rubric ${rubric.id} in Graph Explorer`}
+                      aria-label={`Open rubric ${rubric.id} in Graph Explorer (opens in new tab)`}
                       title="Open in Graph Explorer"
                     >
                       <ExternalLink className="h-3 w-3" />
@@ -376,22 +378,22 @@ function RecursionCard({ entry, refetch }: RecursionCardProps) {
           </div>
           <span className="flex items-center gap-1.5 min-w-0">
             <span className="text-xs text-muted-foreground truncate">{entry.id}</span>
-            {/* The EvalSet ref_id never renders anywhere on the card — a copy
-                affordance is the cheap fix. "Copied" resets on pointer-leave
-                rather than a timer. */}
+            {/* Copies the slug it sits next to — copying anything else here
+                reads as a bug. The EvalSet ref_id stays reachable through the
+                View graph URL. "Copied" resets on pointer-leave, no timer. */}
             <button
               type="button"
               onClick={() => {
-                void navigator.clipboard?.writeText(entry.refId).then(
+                void navigator.clipboard?.writeText(entry.id).then(
                   () => setCopied(true),
                   () => {},
                 );
               }}
               onMouseLeave={() => setCopied(false)}
               className="shrink-0 text-muted-foreground/50 hover:text-foreground transition-colors"
-              title={copied ? "Copied!" : `Copy EvalSet ref_id — ${entry.refId}`}
-              aria-label="Copy EvalSet ref_id"
-              data-testid="copy-refid"
+              title={copied ? "Copied!" : "Copy task slug"}
+              aria-label="Copy task slug"
+              data-testid="copy-task-slug"
             >
               {copied ? (
                 <Check className="h-3 w-3 text-green-600 dark:text-green-400" />
@@ -414,8 +416,10 @@ function RecursionCard({ entry, refetch }: RecursionCardProps) {
           {workspaceSlug && entry.refId && (
             <a
               href={loopSubgraphHref(workspaceSlug, entry.refId)}
+              target="_blank"
+              rel="noopener noreferrer"
               className="inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors whitespace-nowrap"
-              aria-label="View this task's recursion subgraph in the Graph Explorer"
+              aria-label="View this task's recursion subgraph in the Graph Explorer (opens in new tab)"
               title="Render this task's full recursion subgraph — eval set, triggers, outputs, fixes, rubrics — in the Graph Explorer"
               data-testid="card-graph-link"
             >
@@ -465,7 +469,7 @@ function RecursionCard({ entry, refetch }: RecursionCardProps) {
           {attempts.length > 0 && (
             <div className="border-t px-4 pt-3 pb-4 bg-muted/20">
               <p className="text-xs text-muted-foreground mb-2">
-                Score per attempt — target: {attempts[0].n_total}
+                {attempts.length} attempt{attempts.length === 1 ? "" : "s"} — target: {attempts[0].n_total}
                 {roster && roster.contested > 0 && (
                   <span
                     className="text-violet-700 dark:text-violet-400"
@@ -510,8 +514,10 @@ function RecursionCard({ entry, refetch }: RecursionCardProps) {
                       <a
                         key={target.key}
                         href={graphHref(workspaceSlug, target.refId)}
+                        target="_blank"
+                        rel="noopener noreferrer"
                         className="inline-flex items-center gap-1.5 rounded-full border bg-background px-2 py-0.5 text-xs transition-colors hover:border-primary/50 hover:text-primary"
-                        title={`Open this ${target.kind ?? "node"} in the Graph Explorer`}
+                        title={`Open this ${target.kind ?? "node"} in the Graph Explorer (opens in new tab)`}
                         data-testid={`climb-target-${target.key}`}
                       >
                         {chipBody}
