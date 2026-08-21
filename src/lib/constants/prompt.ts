@@ -847,6 +847,8 @@ Realms: \`kg\` (the swarm knowledge-graph — HiveFeature/HiveTask/HiveChatMessa
 
 - **\`graph_ontology({ workspace })\`** — Fetch the list of valid KG node types (with descriptions) for a workspace's knowledge graph. **Call this first** before using \`graph_search\` with \`realm: "kg"\` — the returned \`type\` values are the exact strings to pass as the \`type\` filter in \`graph_search\`. This is how you discover the Hive node types (e.g. \`HiveFeature\`, \`HiveTask\`, \`HiveChatMessage\`) and the code node types. Returns \`{ node_types: [{ type, description }] }\`.
 
+- **\`get_ontology_type({ workspace, type })\`** — Fetch the **full schema** for a single KG node type: its attributes with value types, which are required vs optional (including inherited attributes from parent types), the \`node_key\`, and the valid edge/relationship schemas for that type. Returns \`{ type, node_key?, parent?, attributes: [{ name, type, required }], edges: [{ source_type, target_type, edge_type }] }\`. Returns \`{ error }\` on unknown type or unreachable swarm — treat as "unavailable", never as empty.
+
 - **\`graph_get({ urn })\`** — Resolve a single URN to its full node content. Use this when you have a specific URN and need the entity's complete data.
 
 - **\`graph_neighbors({ urn, depth?, edge_type?, node_type? })\`** — Return all adjacent URNs reachable in one hop, each with \`edgeType\`, \`direction\`, and a best-effort \`title\` (a human-readable label — e.g. a feature's title, a file's name, a concept's name). Use the \`title\` to decide which neighbor to follow without having to \`graph_get\` every one. kg neighbors also carry \`node_type\` and \`ref_id\`; \`title\` may be absent for a node type that exposes no recognizable label. Filter kg edges/nodes with \`edge_type\` / \`node_type\`.
@@ -902,7 +904,7 @@ When the four \`propose_*\` tools are present in your toolset, you can propose k
 
 5. **\`"Warning"\` / already-existed is a success.** If an approval result says \`alreadyExisted: true\`, the node or edge already existed — no duplicate was created. Report this to the user as a success ("already existed, no duplicate created"), not as a failure.
 
-6. **Validate types first.** Before calling \`propose_create_node\` or \`propose_create_triplet\`, call \`graph_ontology({ workspace })\` to confirm the \`node_type\` / \`edge_type\` is valid for that workspace. Unknown types are rejected at propose time with a clear error.
+6. **Validate types and shapes before writing.** Before calling \`propose_create_node\`, \`propose_create_triplet\`, or \`propose_create_batch_triplet\`: first call \`graph_ontology({ workspace })\` to confirm the \`node_type\` / \`edge_type\` is valid for that workspace, then call \`get_ontology_type({ workspace, type })\` to learn which attributes the type requires (required vs optional), its \`node_key\`, and its valid edge schemas — so \`node_data\`/\`edge_data\` matches the expected shape before proposing. Jarvis remains the authoritative validator; this step is to self-correct up front and reduce rejected proposals.
 
 7. **Mirror-owned types are not editable.** \`propose_node_edit\` will refuse edits to \`HiveFeature\`, \`HiveTask\`, \`HiveChatMessage\`, \`ErrorIssue\`, \`Initiative\`, \`Milestone\`, and \`Research\` nodes — those are written by sync crons and any edit would be silently reverted on the next pass.
 ` + getGraphWalkDispatchSnippet() + `
