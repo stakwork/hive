@@ -4,6 +4,7 @@ import { Canvas } from "@react-three/fiber";
 import { OrbitControls } from "@react-three/drei";
 import { GraphView, OffscreenIndicators } from "@/graph-viz-kit";
 import type { Graph, ViewState } from "@/graph-viz-kit";
+import { GRAPH_EXPLORER_COLORS } from "./nodeColors";
 
 interface KGCanvasProps {
   graph: Graph;
@@ -26,6 +27,7 @@ export default function KGCanvas({
         viewState={viewState}
         onNodeClick={onNodeClick}
         searchMatches={searchMatches}
+        colorMap={GRAPH_EXPLORER_COLORS}
       />
       <OffscreenIndicators
         graph={graph}

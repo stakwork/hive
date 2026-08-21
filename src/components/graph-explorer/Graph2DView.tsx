@@ -4,6 +4,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { GraphVisualization } from "@/components/graph/GraphVisualization";
 import type { GraphEdge, GraphNode } from "@/components/graph/graphUtils";
 import { GRAPH_EXPLORER_COLORS } from "./nodeColors";
+import { LEGAL_NODE_ICONS, resolveEdgeStyle } from "./legalGraphStyles";
 import type { RawGraph } from "./walkGraph";
 
 /**
@@ -55,7 +56,12 @@ export function Graph2DView({
   );
 
   const edges = useMemo<GraphEdge[]>(
-    () => rawGraph.edges.map((e) => ({ source: e.source, target: e.target })),
+    () =>
+      rawGraph.edges.map((e) => ({
+        source: e.source,
+        target: e.target,
+        label: e.label ?? "",
+      })),
     [rawGraph.edges]
   );
 
@@ -74,6 +80,8 @@ export function Graph2DView({
           height={size.height}
           colorMap={GRAPH_EXPLORER_COLORS}
           onNodeClick={handleNodeClick}
+          iconMap={LEGAL_NODE_ICONS}
+          edgeStyleFn={resolveEdgeStyle}
         />
       )}
     </div>
