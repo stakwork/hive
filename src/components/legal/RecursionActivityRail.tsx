@@ -1,7 +1,8 @@
 "use client";
 
+import { useCallback, useEffect, useRef, useState } from "react";
 import { formatDistanceToNow } from "date-fns";
-import { FileText, Loader2, Repeat } from "lucide-react";
+import { ChevronDown, FileText, Loader2, Repeat } from "lucide-react";
 import { StakworkRunLink } from "@/components/legal/StakworkRunLink";
 import { FixSnapshotDiffControl } from "@/components/legal/FixSnapshotPanel";
 import { useWorkspace } from "@/hooks/useWorkspace";
@@ -190,6 +191,21 @@ export function RecursionActivityRail({
   const workspaceSlug = workspace?.slug ?? "";
   const canReadReports = canReadRunReport(role ?? "");
 
+  // Overflow cue: a long series scrolls inside the capped rail, and a hard
+  // clip at the last visible row reads as "that's all of them". Track whether
+  // rows are hidden below the fold and render a fade + chevron over the clip
+  // edge until the reader scrolls to the bottom.
+  const scrollerRef = useRef<HTMLDivElement>(null);
+  const [moreBelow, setMoreBelow] = useState(false);
+  const updateOverflow = useCallback(() => {
+    const el = scrollerRef.current;
+    if (!el) return;
+    setMoreBelow(el.scrollHeight - el.scrollTop - el.clientHeight > 4);
+  }, []);
+  useEffect(() => {
+    updateOverflow();
+  }, [rows.length, updateOverflow]);
+
   if (rows.length === 0) {
     return (
       <div className="text-xs text-muted-foreground/60 italic py-2" data-testid="activity-rail-empty">
@@ -200,7 +216,14 @@ export function RecursionActivityRail({
 
   return (
     <div className="flex flex-col min-h-0" data-testid="activity-rail">
-      <div className="flex-1 overflow-y-auto max-h-[176px] pr-1" role="list" aria-label="Attempt activity">
+      <div className="relative min-h-0">
+        <div
+          ref={scrollerRef}
+          onScroll={updateOverflow}
+          className="overflow-y-auto max-h-[176px] pr-1"
+          role="list"
+          aria-label="Attempt activity"
+        >
         {/* One shared grid template so every column lines up across rows:
             identity (label + inline status) | relative time | trailing links. */}
         {rows.map((row) => (
@@ -258,6 +281,19 @@ export function RecursionActivityRail({
             </span>
           </div>
         ))}
+        </div>
+        {/* Fade + chevron over the clip edge while rows hide below the fold —
+            decorative (aria-hidden): the scrollbar and scroll behavior are the
+            functional affordance; this makes the cut-off visible. */}
+        {moreBelow && (
+          <div
+            className="pointer-events-none absolute inset-x-0 bottom-0 flex h-8 items-end justify-center bg-gradient-to-t from-card to-transparent"
+            aria-hidden="true"
+            data-testid="rail-more-below"
+          >
+            <ChevronDown className="h-3.5 w-3.5 mb-0.5 text-muted-foreground/70" />
+          </div>
+        )}
       </div>
       {partial && (
         <div
