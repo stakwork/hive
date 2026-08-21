@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { usePathname, useSearchParams } from "next/navigation";
+import { usePathname, useSearchParams, useRouter } from "next/navigation";
 import {
   AddNodeButton,
   SystemCanvas,
@@ -265,6 +265,7 @@ export function OrgCanvasBackground({
   // pathname keeps the URL writer route-agnostic if we ever mount
   // it elsewhere again.
   const pathname = usePathname();
+  const router = useRouter();
   /** Imperative handle for `SystemCanvas`; used to drill into a ref from a URL param. */
   const canvasHandleRef = useRef<SystemCanvasHandle | null>(null);
   /** Stores the `addNode` fn from the render-prop so the canvas context menu can invoke it. */
@@ -977,6 +978,22 @@ export function OrgCanvasBackground({
               },
             ] as NodeContextMenuConfig["items"])
           : []),
+        // Open Plan — jump to a feature's plan chat page
+        {
+          id: "open-plan",
+          label: "Open Plan",
+          match: { categories: ["feature"] as const },
+        },
+        // Stop Planner — only while the feature's planner is running
+        {
+          id: "stop-planner",
+          label: "Stop Planner",
+          match: {
+            when: (node: CanvasNode) =>
+              node.id.startsWith("feature:") &&
+              Boolean(node.customData?.plannerRunning),
+          },
+        },
         // View Details — live nodes (feature, initiative, workspace, research)
         {
           id: "view-details",
@@ -1027,6 +1044,62 @@ export function OrgCanvasBackground({
           handleNodeDelete(node.id, ctx.canvasRef ?? undefined);
           return;
         }
+        if (itemId === "open-plan") {
+          const featureId = node.id.startsWith("feature:")
+            ? node.id.slice("feature:".length)
+            : null;
+          if (!featureId) return;
+          void (async () => {
+            try {
+              const res = await fetch(`/api/features/${featureId}`);
+              if (!res.ok) throw new Error();
+              const slug = (await res.json())?.data?.workspace?.slug;
+              if (!slug) throw new Error();
+              router.push(`/w/${slug}/plan/${featureId}`);
+            } catch {
+              toast.error("Could not open the feature plan");
+            }
+          })();
+          return;
+        }
+        if (itemId === "stop-planner") {
+          const featureId = node.id.startsWith("feature:")
+            ? node.id.slice("feature:".length)
+            : null;
+          if (!featureId) return;
+          void (async () => {
+            try {
+              const fres = await fetch(`/api/features/${featureId}`);
+              if (!fres.ok) throw new Error();
+              const workspaceId = (await fres.json())?.data?.workspaceId;
+              if (!workspaceId) throw new Error();
+              const params = new URLSearchParams({
+                workspaceId,
+                featureId,
+                type: "PLAN_CHAT",
+                limit: "1",
+                includeResult: "true",
+              });
+              const rres = await fetch(`/api/stakwork/runs?${params}`);
+              if (!rres.ok) throw new Error();
+              const run = (await rres.json())?.runs?.find(
+                (r: { decision: string | null }) => r.decision === null,
+              );
+              if (!run) {
+                toast.error("No active planner run to stop");
+                return;
+              }
+              const sres = await fetch(`/api/stakwork/runs/${run.id}/stop`, {
+                method: "POST",
+              });
+              if (!sres.ok) throw new Error();
+              toast.success("Planner stopped");
+            } catch {
+              toast.error("Could not stop the planner");
+            }
+          })();
+          return;
+        }
         if (itemId === "view-details") {
           handleSelectionChange({
             kind: "node",
@@ -1074,6 +1147,7 @@ export function OrgCanvasBackground({
     }),
     [
       currentRef,
+      router,
       startFeatureCreate,
       handleUnpinFeatureFromWorkspace,
       handleNodeDelete,
