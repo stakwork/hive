@@ -13,8 +13,10 @@ export default function GraphExplorerPage() {
   const { canAdmin } = useWorkspaceAccess();
   const searchParams = useSearchParams();
   // Deep link from anywhere that knows a ref_id (e.g. agent-session concept
-  // chips) — open the explorer focused on that node.
+  // chips) — open the explorer focused on that node. `cypher` deep-links a
+  // pre-run query instead (e.g. the recursion card's whole loop subgraph).
   const initialRefId = searchParams.get("ref_id");
+  const initialCypher = searchParams.get("cypher");
 
   if (!canAdmin) {
     return (
@@ -37,7 +39,7 @@ export default function GraphExplorerPage() {
         title="Graph Explorer"
         description="Run read-only Cypher queries against the workspace graph database."
       />
-      <GraphExplorer workspaceSlug={slug} initialRefId={initialRefId} />
+      <GraphExplorer workspaceSlug={slug} initialRefId={initialRefId} initialCypher={initialCypher} />
     </div>
   );
 }
