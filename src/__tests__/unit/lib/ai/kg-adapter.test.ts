@@ -7,7 +7,17 @@
 // @vitest-environment node
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { kgGetNode, kgGetNeighbors, kgGetNodesByRefs, kgSearch, kgGetOntology, kgGetNodesByType } from "@/lib/ai/kg-adapter";
+import {
+  kgGetNode,
+  kgGetNeighbors,
+  kgGetNodesByRefs,
+  kgSearch,
+  kgGetOntology,
+  kgGetNodesByType,
+  kgGetOntologyType,
+  KG_ONTOLOGY_TYPE_SWARM_UNAVAILABLE,
+  KG_ONTOLOGY_TYPE_UNKNOWN,
+} from "@/lib/ai/kg-adapter";
 
 const JARVIS_URL = "https://jarvis.example.com";
 const API_KEY = "test-api-key";
@@ -1048,3 +1058,295 @@ describe("kgGetNodesByType", () => {
   });
 });
 
+
+// ---------------------------------------------------------------------------
+// kgGetOntologyType
+// ---------------------------------------------------------------------------
+
+describe("kgGetOntologyType", () => {
+  /** Minimal representative schema response — includes attributes, inherited_attributes, edges. */
+  const BASE_SCHEMA_RESPONSE = {
+    schemas: [
+      {
+        type: "Concept",
+        domain: "entity",
+        description: "A knowledge-graph concept.",
+        node_key: "name",
+        parent: "Thing",
+        attributes: {
+          name: "string",
+          summary: "?string",
+        },
+        inherited_attributes: {
+          label: "?string",
+          // Declared `name` already in attributes — inherited duplicate should be dropped.
+          name: "string",
+          // Reserved key — must be skipped.
+          is_deleted: false,
+          status: "?string",
+          boost: "?number",
+          algo_score: "?float",
+        },
+      },
+    ],
+    edges: [
+      { source_type: "Concept", target_type: "Concept", edge_type: "RELATED_TO" },
+      { source_type: "HiveFeature", target_type: "Concept", edge_type: "IMPLEMENTS" },
+      // Wildcard source — must be included.
+      { source_type: "*", target_type: "Concept", edge_type: "CITES" },
+      // Wildcard target — must be included.
+      { source_type: "Concept", target_type: "*", edge_type: "MENTIONS" },
+      // Unrelated edge — must NOT be included.
+      { source_type: "HiveFeature", target_type: "HiveTask", edge_type: "HAS_TASK" },
+    ],
+  };
+
+  it("happy path: merges attributes and inherited_attributes into one list", async () => {
+    globalThis.fetch = mockFetch(BASE_SCHEMA_RESPONSE);
+
+    const result = await kgGetOntologyType(JARVIS_URL, API_KEY, "Concept");
+
+    expect(result).not.toBe(KG_ONTOLOGY_TYPE_SWARM_UNAVAILABLE);
+    expect(result).not.toBe(KG_ONTOLOGY_TYPE_UNKNOWN);
+
+    // Cast to schema type for assertions
+    const schema = result as {
+      type: string;
+      node_key: string;
+      parent: string;
+      attributes: Array<{ name: string; type: string; required: boolean }>;
+      edges: Array<{ source_type: string; target_type: string; edge_type: string }>;
+    };
+
+    expect(schema.type).toBe("Concept");
+    expect(schema.node_key).toBe("name");
+    expect(schema.parent).toBe("Thing");
+  });
+
+  it("required-ness: ?-prefix means optional, no prefix means required", async () => {
+    globalThis.fetch = mockFetch(BASE_SCHEMA_RESPONSE);
+
+    const result = await kgGetOntologyType(JARVIS_URL, API_KEY, "Concept");
+    const schema = result as { attributes: Array<{ name: string; type: string; required: boolean }> };
+
+    const nameAttr = schema.attributes.find((a) => a.name === "name");
+    expect(nameAttr).toEqual({ name: "name", type: "string", required: true });
+
+    const summaryAttr = schema.attributes.find((a) => a.name === "summary");
+    expect(summaryAttr).toEqual({ name: "summary", type: "string", required: false });
+  });
+
+  it("inherited_attributes: includes inherited optional field with correct required=false", async () => {
+    globalThis.fetch = mockFetch(BASE_SCHEMA_RESPONSE);
+
+    const result = await kgGetOntologyType(JARVIS_URL, API_KEY, "Concept");
+    const schema = result as { attributes: Array<{ name: string; type: string; required: boolean }> };
+
+    // `label` only in inherited_attributes, ?string → required: false
+    const labelAttr = schema.attributes.find((a) => a.name === "label");
+    expect(labelAttr).toEqual({ name: "label", type: "string", required: false });
+  });
+
+  it("deduplication: declared attribute wins over identically-named inherited attribute", async () => {
+    globalThis.fetch = mockFetch(BASE_SCHEMA_RESPONSE);
+
+    const result = await kgGetOntologyType(JARVIS_URL, API_KEY, "Concept");
+    const schema = result as { attributes: Array<{ name: string; type: string; required: boolean }> };
+
+    // `name` appears in both maps; declared wins, only one entry should appear.
+    const nameAttrs = schema.attributes.filter((a) => a.name === "name");
+    expect(nameAttrs).toHaveLength(1);
+    expect(nameAttrs[0].required).toBe(true); // declared: required
+  });
+
+  it("reserved keys are skipped: is_deleted, status, boost are not surfaced as attributes", async () => {
+    globalThis.fetch = mockFetch(BASE_SCHEMA_RESPONSE);
+
+    const result = await kgGetOntologyType(JARVIS_URL, API_KEY, "Concept");
+    const schema = result as { attributes: Array<{ name: string }> };
+
+    const attrNames = schema.attributes.map((a) => a.name);
+    expect(attrNames).not.toContain("is_deleted");
+    expect(attrNames).not.toContain("status");
+    expect(attrNames).not.toContain("boost");
+  });
+
+  it("reserved algo_* keys are skipped", async () => {
+    globalThis.fetch = mockFetch(BASE_SCHEMA_RESPONSE);
+
+    const result = await kgGetOntologyType(JARVIS_URL, API_KEY, "Concept");
+    const schema = result as { attributes: Array<{ name: string }> };
+
+    const attrNames = schema.attributes.map((a) => a.name);
+    expect(attrNames).not.toContain("algo_score");
+    expect(attrNames.some((n) => n.startsWith("algo_"))).toBe(false);
+  });
+
+  it("non-string attribute values are skipped (e.g. boolean is_deleted)", async () => {
+    globalThis.fetch = mockFetch({
+      schemas: [
+        {
+          type: "Thing",
+          attributes: {
+            name: "string",
+            active: true,    // boolean — skip
+            count: 42,       // number — skip
+            tags: ["a"],     // array — skip
+          },
+          inherited_attributes: {},
+        },
+      ],
+      edges: [],
+    });
+
+    const result = await kgGetOntologyType(JARVIS_URL, API_KEY, "Thing");
+    const schema = result as { attributes: Array<{ name: string }> };
+
+    expect(schema.attributes).toHaveLength(1);
+    expect(schema.attributes[0].name).toBe("name");
+  });
+
+  it("edge filtering: keeps type-matching edges (source or target) and wildcard edges", async () => {
+    globalThis.fetch = mockFetch(BASE_SCHEMA_RESPONSE);
+
+    const result = await kgGetOntologyType(JARVIS_URL, API_KEY, "Concept");
+    const schema = result as { edges: Array<{ source_type: string; target_type: string; edge_type: string }> };
+
+    const edgeTypes = schema.edges.map((e) => e.edge_type);
+    // Type-specific edges
+    expect(edgeTypes).toContain("RELATED_TO");    // Concept → Concept
+    expect(edgeTypes).toContain("IMPLEMENTS");    // HiveFeature → Concept (target matches)
+    // Wildcard source/target
+    expect(edgeTypes).toContain("CITES");         // * → Concept (wildcard source)
+    expect(edgeTypes).toContain("MENTIONS");      // Concept → * (wildcard target)
+    // Unrelated edge must NOT appear
+    expect(edgeTypes).not.toContain("HAS_TASK");  // HiveFeature → HiveTask
+  });
+
+  it("edge filtering: does NOT include edges unrelated to the requested type or wildcards", async () => {
+    globalThis.fetch = mockFetch(BASE_SCHEMA_RESPONSE);
+
+    const result = await kgGetOntologyType(JARVIS_URL, API_KEY, "Concept");
+    const schema = result as { edges: Array<{ source_type: string; target_type: string }> };
+
+    // HiveFeature → HiveTask is unrelated to Concept and has no wildcard
+    const unrelated = schema.edges.filter(
+      (e) => e.source_type === "HiveFeature" && e.target_type === "HiveTask",
+    );
+    expect(unrelated).toHaveLength(0);
+  });
+
+  it("case-insensitive type match: 'concept' resolves to 'Concept' schema entry", async () => {
+    globalThis.fetch = mockFetch(BASE_SCHEMA_RESPONSE);
+
+    const result = await kgGetOntologyType(JARVIS_URL, API_KEY, "concept");
+
+    expect(result).not.toBe(KG_ONTOLOGY_TYPE_SWARM_UNAVAILABLE);
+    expect(result).not.toBe(KG_ONTOLOGY_TYPE_UNKNOWN);
+    const schema = result as { type: string };
+    expect(schema.type).toBe("Concept");
+  });
+
+  it("excludes the wildcard '*' schema entry when looking up '*'", async () => {
+    globalThis.fetch = mockFetch({
+      schemas: [
+        { type: "*", domain: "meta", attributes: {}, inherited_attributes: {} },
+        { type: "Real", domain: "entity", attributes: { id: "string" }, inherited_attributes: {} },
+      ],
+      edges: [],
+    });
+
+    const result = await kgGetOntologyType(JARVIS_URL, API_KEY, "*");
+
+    // The wildcard sentinel type must be excluded — return unknown
+    expect(result).toBe(KG_ONTOLOGY_TYPE_UNKNOWN);
+  });
+
+  it("excludes is_deleted schema entries (returns unknown)", async () => {
+    globalThis.fetch = mockFetch({
+      schemas: [
+        { type: "Ghost", domain: "old", is_deleted: true, attributes: {}, inherited_attributes: {} },
+      ],
+      edges: [],
+    });
+
+    const result = await kgGetOntologyType(JARVIS_URL, API_KEY, "Ghost");
+
+    expect(result).toBe(KG_ONTOLOGY_TYPE_UNKNOWN);
+  });
+
+  it("unknown type returns KG_ONTOLOGY_TYPE_UNKNOWN", async () => {
+    globalThis.fetch = mockFetch({ schemas: [], edges: [] });
+
+    const result = await kgGetOntologyType(JARVIS_URL, API_KEY, "NonExistentType");
+
+    expect(result).toBe(KG_ONTOLOGY_TYPE_UNKNOWN);
+  });
+
+  it("label-only type (not in schemas) returns KG_ONTOLOGY_TYPE_UNKNOWN", async () => {
+    // /v2/schema returns a list that does NOT include the type the caller wants
+    globalThis.fetch = mockFetch({
+      schemas: [{ type: "Other", attributes: {}, inherited_attributes: {} }],
+      edges: [],
+    });
+
+    const result = await kgGetOntologyType(JARVIS_URL, API_KEY, "LabelOnly");
+
+    expect(result).toBe(KG_ONTOLOGY_TYPE_UNKNOWN);
+  });
+
+  it("non-ok HTTP response returns KG_ONTOLOGY_TYPE_SWARM_UNAVAILABLE", async () => {
+    globalThis.fetch = mockFetch(null, false, 503);
+
+    const result = await kgGetOntologyType(JARVIS_URL, API_KEY, "Concept");
+
+    expect(result).toBe(KG_ONTOLOGY_TYPE_SWARM_UNAVAILABLE);
+  });
+
+  it("fetch throw returns KG_ONTOLOGY_TYPE_SWARM_UNAVAILABLE", async () => {
+    globalThis.fetch = mockFetchThrow(new Error("network down"));
+
+    const result = await kgGetOntologyType(JARVIS_URL, API_KEY, "Concept");
+
+    expect(result).toBe(KG_ONTOLOGY_TYPE_SWARM_UNAVAILABLE);
+  });
+
+  it("calls GET /v2/schema with include_attributes and include_edges params", async () => {
+    globalThis.fetch = mockFetch({ schemas: [], edges: [] });
+
+    await kgGetOntologyType(JARVIS_URL, API_KEY, "Concept");
+
+    const calledUrl = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
+    expect(calledUrl).toContain("/v2/schema");
+    expect(calledUrl).toContain("include_attributes=true");
+    expect(calledUrl).toContain("include_edges=true");
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({ headers: { "x-api-token": API_KEY } }),
+    );
+  });
+
+  it("strips trailing slash from jarvisUrl", async () => {
+    globalThis.fetch = mockFetch({ schemas: [], edges: [] });
+
+    await kgGetOntologyType(`${JARVIS_URL}/`, API_KEY, "Concept");
+
+    const calledUrl = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
+    expect(calledUrl).not.toContain("//v2");
+    expect(calledUrl).toContain("/v2/schema");
+  });
+
+  it("swarm and unknown-type failures return distinct sentinel values", async () => {
+    // Swarm unavailable
+    globalThis.fetch = mockFetchThrow();
+    const unreachable = await kgGetOntologyType(JARVIS_URL, API_KEY, "Concept");
+
+    // Unknown type
+    globalThis.fetch = mockFetch({ schemas: [], edges: [] });
+    const unknown = await kgGetOntologyType(JARVIS_URL, API_KEY, "Concept");
+
+    expect(unreachable).toBe(KG_ONTOLOGY_TYPE_SWARM_UNAVAILABLE);
+    expect(unknown).toBe(KG_ONTOLOGY_TYPE_UNKNOWN);
+    expect(unreachable).not.toBe(unknown);
+  });
+});
