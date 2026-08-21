@@ -61,6 +61,9 @@ vi.mock("@/lib/ai/kg-adapter", () => ({
   kgGetNodesByRefs: vi.fn(),
   kgSearch: vi.fn(),
   kgGetOntology: vi.fn(),
+  kgGetOntologyType: vi.fn(),
+  KG_ONTOLOGY_TYPE_SWARM_UNAVAILABLE: "swarm-unavailable",
+  KG_ONTOLOGY_TYPE_UNKNOWN: "unknown-type",
 }));
 
 vi.mock("@/lib/helpers/swarm-access", () => ({
@@ -122,7 +125,16 @@ import { pgNeighbors } from "@/lib/graph-walker";
 import { buildGraphWalkerTools } from "@/lib/ai/graphWalkerTools";
 import { resolveCapabilities } from "@/lib/ai/capabilities";
 import { resolveKgSeam } from "@/lib/urn/resolvers/kg";
-import { kgGetNode, kgGetNeighbors, kgGetNodesByRefs, kgSearch, kgGetOntology } from "@/lib/ai/kg-adapter";
+import {
+  kgGetNode,
+  kgGetNeighbors,
+  kgGetNodesByRefs,
+  kgSearch,
+  kgGetOntology,
+  kgGetOntologyType,
+  KG_ONTOLOGY_TYPE_SWARM_UNAVAILABLE,
+  KG_ONTOLOGY_TYPE_UNKNOWN,
+} from "@/lib/ai/kg-adapter";
 import { getSwarmAccessByWorkspaceId } from "@/lib/helpers/swarm-access";
 
 // ---------------------------------------------------------------------------
@@ -143,6 +155,7 @@ const mockKgGetNeighbors = kgGetNeighbors as ReturnType<typeof vi.fn>;
 const mockKgGetNodesByRefs = kgGetNodesByRefs as ReturnType<typeof vi.fn>;
 const mockKgSearch = kgSearch as ReturnType<typeof vi.fn>;
 const mockKgGetOntology = kgGetOntology as ReturnType<typeof vi.fn>;
+const mockKgGetOntologyType = kgGetOntologyType as ReturnType<typeof vi.fn>;
 const mockGetSwarmAccessByWorkspaceId = getSwarmAccessByWorkspaceId as ReturnType<typeof vi.fn>;
 
 const dbSourceControlOrg = db.sourceControlOrg as {
@@ -1106,6 +1119,142 @@ describe("graph_ontology", () => {
     );
 
     expect(result).toEqual({ domains: [], node_types: [] });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// get_ontology_type
+// ---------------------------------------------------------------------------
+
+describe("get_ontology_type", () => {
+  const SEAM = { jarvisUrl: "https://jarvis.example.com", swarmApiKey: "key-abc" };
+
+  const HAPPY_PATH_SCHEMA = {
+    type: "Concept",
+    node_key: "name",
+    parent: "Thing",
+    attributes: [
+      { name: "name", type: "string", required: true },
+      { name: "summary", type: "string", required: false },
+    ],
+    edges: [
+      { source_type: "Concept", target_type: "Concept", edge_type: "RELATED_TO" },
+      { source_type: "*", target_type: "Concept", edge_type: "CITES" },
+    ],
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    // Default: org resolves, formatUrn returns a synthetic URN, seam resolves OK.
+    dbSourceControlOrg.findUnique.mockResolvedValue({ githubLogin: "test-org" });
+    mockFormatUrn.mockReturnValue("urn:test-org:kg:test-ws:node:x");
+    mockResolveKgSeam.mockResolvedValue(SEAM);
+    mockKgGetOntologyType.mockResolvedValue(HAPPY_PATH_SCHEMA);
+  });
+
+  it("happy path: returns full schema from kgGetOntologyType", async () => {
+    const tools = getTools();
+
+    const result = await tools.get_ontology_type.execute(
+      { workspace: "test-ws", type: "Concept" },
+      {} as never,
+    );
+
+    expect(mockKgGetOntologyType).toHaveBeenCalledWith(
+      SEAM.jarvisUrl,
+      SEAM.swarmApiKey,
+      "Concept",
+    );
+    expect(result).toEqual(HAPPY_PATH_SCHEMA);
+  });
+
+  it("passes workspace and type to resolveKgSeam and kgGetOntologyType", async () => {
+    const tools = getTools();
+
+    await tools.get_ontology_type.execute(
+      { workspace: "my-ws", type: "HiveFeature" },
+      {} as never,
+    );
+
+    expect(mockResolveKgSeam).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({ userId: USER_ID }),
+    );
+    expect(mockKgGetOntologyType).toHaveBeenCalledWith(
+      SEAM.jarvisUrl,
+      SEAM.swarmApiKey,
+      "HiveFeature",
+    );
+  });
+
+  it("swarm unreachable: returns error with 'Swarm unreachable' wording (distinct from unknown type)", async () => {
+    mockKgGetOntologyType.mockResolvedValue(KG_ONTOLOGY_TYPE_SWARM_UNAVAILABLE);
+    const tools = getTools();
+
+    const result = await tools.get_ontology_type.execute(
+      { workspace: "test-ws", type: "Concept" },
+      {} as never,
+    ) as { error: string };
+
+    expect(result.error).toMatch(/Swarm unreachable/i);
+    expect(result.error).not.toMatch(/No registered schema/i);
+  });
+
+  it("unknown type: returns error with 'No registered schema' wording (distinct from swarm unavailable)", async () => {
+    mockKgGetOntologyType.mockResolvedValue(KG_ONTOLOGY_TYPE_UNKNOWN);
+    const tools = getTools();
+
+    const result = await tools.get_ontology_type.execute(
+      { workspace: "test-ws", type: "GhostType" },
+      {} as never,
+    ) as { error: string };
+
+    expect(result.error).toMatch(/No registered schema/i);
+    expect(result.error).not.toMatch(/Swarm unreachable/i);
+  });
+
+  it("swarm and unknown-type error messages are distinct from each other", async () => {
+    const tools = getTools();
+
+    mockKgGetOntologyType.mockResolvedValue(KG_ONTOLOGY_TYPE_SWARM_UNAVAILABLE);
+    const swarmErr = (await tools.get_ontology_type.execute(
+      { workspace: "test-ws", type: "Concept" },
+      {} as never,
+    )) as { error: string };
+
+    mockKgGetOntologyType.mockResolvedValue(KG_ONTOLOGY_TYPE_UNKNOWN);
+    const unknownErr = (await tools.get_ontology_type.execute(
+      { workspace: "test-ws", type: "Concept" },
+      {} as never,
+    )) as { error: string };
+
+    expect(swarmErr.error).not.toBe(unknownErr.error);
+  });
+
+  it("access denied (resolveKgSeam returns null): returns error", async () => {
+    mockResolveKgSeam.mockResolvedValue(null);
+    const tools = getTools();
+
+    const result = await tools.get_ontology_type.execute(
+      { workspace: "test-ws", type: "Concept" },
+      {} as never,
+    ) as { error: string };
+
+    expect(result.error).toMatch(/swarm not configured|access denied/i);
+    expect(mockKgGetOntologyType).not.toHaveBeenCalled();
+  });
+
+  it("org not found: returns error without calling kgGetOntologyType", async () => {
+    dbSourceControlOrg.findUnique.mockResolvedValue(null);
+    const tools = getTools();
+
+    const result = await tools.get_ontology_type.execute(
+      { workspace: "test-ws", type: "Concept" },
+      {} as never,
+    ) as { error: string };
+
+    expect(result.error).toBeDefined();
+    expect(mockKgGetOntologyType).not.toHaveBeenCalled();
   });
 });
 
