@@ -480,6 +480,17 @@ jobs:
             npx prisma migrate resolve --rolled-back "20260224130756_add_tasks_artifact_type" 2>&1 || true
           fi
 
+          echo "Resolving 20260820000000_add_consolidated_run_type..."
+          psql "$DATABASE_URL" -c "DELETE FROM _prisma_migrations WHERE migration_name='20260820000000_add_consolidated_run_type' AND finished_at IS NULL;" 2>/dev/null || true
+          CONSOLIDATED_ENUM=$(psql "$DATABASE_URL" -tAc "SELECT COUNT(*) FROM pg_enum JOIN pg_type ON pg_enum.enumtypid = pg_type.oid WHERE pg_type.typname = 'StakworkRunType' AND pg_enum.enumlabel = 'LEGAL_BENCHMARK_CONSOLIDATED';" 2>/dev/null | tr -d '[:space:]' || echo "0")
+          if [ "$CONSOLIDATED_ENUM" = "1" ]; then
+            echo "  StakworkRunType.LEGAL_BENCHMARK_CONSOLIDATED enum value exists — marking as applied"
+            npx prisma migrate resolve --applied "20260820000000_add_consolidated_run_type" 2>&1 || true
+          else
+            echo "  StakworkRunType.LEGAL_BENCHMARK_CONSOLIDATED enum value absent — rolling back for Prisma to re-run"
+            npx prisma migrate resolve --rolled-back "20260820000000_add_consolidated_run_type" 2>&1 || true
+          fi
+
           # Retry prisma migrate deploy — Neon endpoint may sleep between steps
           for attempt in 1 2 3 4 5; do
             if npx prisma migrate deploy; then
@@ -538,6 +549,13 @@ jobs:
               npx prisma migrate resolve --applied "20260224130756_add_tasks_artifact_type" 2>&1 || true
             else
               npx prisma migrate resolve --rolled-back "20260224130756_add_tasks_artifact_type" 2>&1 || true
+            fi
+            psql "$DATABASE_URL" -c "DELETE FROM _prisma_migrations WHERE migration_name='20260820000000_add_consolidated_run_type' AND finished_at IS NULL;" 2>/dev/null || true
+            CONSOLIDATED_ENUM=$(psql "$DATABASE_URL" -tAc "SELECT COUNT(*) FROM pg_enum JOIN pg_type ON pg_enum.enumtypid = pg_type.oid WHERE pg_type.typname = 'StakworkRunType' AND pg_enum.enumlabel = 'LEGAL_BENCHMARK_CONSOLIDATED';" 2>/dev/null | tr -d '[:space:]' || echo "0")
+            if [ "$CONSOLIDATED_ENUM" = "1" ]; then
+              npx prisma migrate resolve --applied "20260820000000_add_consolidated_run_type" 2>&1 || true
+            else
+              npx prisma migrate resolve --rolled-back "20260820000000_add_consolidated_run_type" 2>&1 || true
             fi
             sleep 15
           done
