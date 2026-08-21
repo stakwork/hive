@@ -6,7 +6,18 @@ import { StakworkRunType } from "@prisma/client";
 export const fetchCache = "force-no-store";
 
 /**
- * Legal Benchmark run types that use a flat Harvey payload shape.
+ * Run types that use the flat Harvey payload shape and require normalization
+ * via `normalizeLegalBenchmarkPayload` before schema validation.
+ *
+ * IMPORTANT: This set governs PAYLOAD SHAPE ONLY. It is deliberately NOT the
+ * authorization set. See TOKEN_VERIFIED_RUN_TYPES in stakwork-run.ts for the
+ * security gates (workspace-mismatch rejection, run_token HMAC verification,
+ * result-merge).
+ *
+ * KNOWN ASYMMETRY: LEGAL_BENCHMARK_RECURSION is token-verified (in
+ * TOKEN_VERIFIED_RUN_TYPES) but is NOT in this set because its webhook uses a
+ * different nested payload shape. Do not "fix" this asymmetry by pointing
+ * security gates at FLAT_PAYLOAD_RUN_TYPES — the sets serve different purposes.
  *
  * TODO(consolidated): Add `StakworkRunType.LEGAL_BENCHMARK_CONSOLIDATED` here
  * ONLY after the Stakwork team confirms that workflow 58345 uses the same
@@ -15,10 +26,13 @@ export const fetchCache = "force-no-store";
  * nested would double-wrap `result` and corrupt `report_url` extraction,
  * potentially persisting the S3 URL inside the result JSON blob.
  */
-const LEGAL_BENCHMARK_TYPES = new Set<string>([
+const FLAT_PAYLOAD_RUN_TYPES = new Set<string>([
   StakworkRunType.LEGAL_BENCHMARK_RUNNER,
   StakworkRunType.LEGAL_BENCHMARK_SCORER,
   StakworkRunType.LEGAL_BENCHMARK_EVAL,
+  // Generic benchmark runner — also uses the flat Harvey payload shape.
+  // LEGAL_BENCHMARK_RUNNER is NOT an alias; both values coexist deliberately.
+  StakworkRunType.BENCHMARK_RUNNER,
 ]);
 
 /**
@@ -120,9 +134,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
     }
 
-    // For Legal Benchmark types: normalize the flat Harvey payload into the
+    // For flat-payload benchmark types: normalize the Harvey payload into the
     // standard { result: {...} } shape before schema validation.
-    const bodyToValidate = LEGAL_BENCHMARK_TYPES.has(type)
+    const bodyToValidate = FLAT_PAYLOAD_RUN_TYPES.has(type)
       ? normalizeLegalBenchmarkPayload(rawBody)
       : rawBody;
 

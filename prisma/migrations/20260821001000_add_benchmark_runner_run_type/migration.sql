@@ -1,0 +1,11 @@
+-- AlterEnum
+-- Adds the generic BENCHMARK_RUNNER type for workspace-agnostic benchmark runs.
+--
+-- IMPORTANT: LEGAL_BENCHMARK_RUNNER is a SEPARATE enum value and stays exactly
+-- as-is. Migrating it onto BENCHMARK_RUNNER is deliberately future work — NOT
+-- an alias, NOT in scope. Do not use BENCHMARK_RUNNER as a shorthand for legal
+-- runs. The discriminator between benchmark domains is result.taskSlug.
+--
+-- StakworkRun has no @@unique constraint; uniqueness is APP-LEVEL ONLY via the
+-- single-active-run guard in the dispatch route (not a concurrency guarantee).
+ALTER TYPE "StakworkRunType" ADD VALUE 'BENCHMARK_RUNNER';
