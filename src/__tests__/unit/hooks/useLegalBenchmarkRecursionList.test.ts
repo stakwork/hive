@@ -155,15 +155,30 @@ describe("useLegalBenchmarkRecursionList", () => {
     try {
       const { result } = renderHook(() => useLegalBenchmarkRecursionList());
       await waitFor(() => expect(result.current.isLoading).toBe(false));
-      expect(vi.mocked(global.fetch)).toHaveBeenCalledTimes(1);
-
-      await act(async () => { vi.advanceTimersByTime(30_000); });
+      // On mount the hook fires two fetches: one to /recursion (enrollment list)
+      // and one to /recursion/summary (one-time summary fetch). Both resolve
+      // before isLoading flips to false.
       expect(vi.mocked(global.fetch)).toHaveBeenCalledTimes(2);
 
       await act(async () => { vi.advanceTimersByTime(30_000); });
+      // Only the /recursion polling interval fires — summary is one-time only.
       expect(vi.mocked(global.fetch)).toHaveBeenCalledTimes(3);
+
+      await act(async () => { vi.advanceTimersByTime(30_000); });
+      expect(vi.mocked(global.fetch)).toHaveBeenCalledTimes(4);
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it("summary fetch goes to /recursion/summary endpoint, not /recursion", async () => {
+    mockFetchSuccess();
+
+    const { result } = renderHook(() => useLegalBenchmarkRecursionList());
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    const calls = vi.mocked(global.fetch).mock.calls.map((c) => c[0] as string);
+    expect(calls).toContain("/api/workspaces/openlaw/legal/benchmarks/recursion");
+    expect(calls).toContain("/api/workspaces/openlaw/legal/benchmarks/recursion/summary");
   });
 });
