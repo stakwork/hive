@@ -3,7 +3,7 @@ import React from "react";
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useSession } from "next-auth/react";
-import { useSearchParams } from "next/navigation";
+import { useSearchParams, useParams } from "next/navigation";
 import { toast } from "sonner";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { useFileDrop } from "@/hooks/useFileDrop";
@@ -85,11 +85,13 @@ async function downloadAllAsZip(states: EditorState[]) {
 
 export default function DocxEditorPage() {
   const { data: session } = useSession();
-  const { slug } = useWorkspace();
+  const { slug: workspaceSlug } = useWorkspace();
+  const routeParams = useParams<{ slug: string }>();
+  const slug = workspaceSlug ?? routeParams?.slug ?? "";
   const currentAuthor = session?.user?.name ?? "Unknown";
 
   // Multi-doc editor state
-  const { docs, activeIndex, openDocumentFromFile, openDocumentFromNodeId, openDocumentFromS3Key, closeDocument, setActiveTab, dispatch } =
+  const { docs, activeIndex, openDocumentFromFile, openDocumentFromNodeId, openDocumentFromS3Key, openDocumentFromUrl, closeDocument, setActiveTab, dispatch } =
     useMultiDocEditor({
       slug,
       onError: (msg) => toast.error(msg),
@@ -109,25 +111,30 @@ export default function DocxEditorPage() {
   // Hidden file input for toolbar "Open"
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // ── URL param: ?nodeId=… ─────────────────────────────────────────────────
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const params = new URLSearchParams(window.location.search);
-    const nodeId = params.get("nodeId");
-    if (nodeId) openDocumentFromNodeId(nodeId);
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // ── URL param: ?s3Key=…&filename=… ───────────────────────────────────────
-  // useSearchParams (not window.location.search) ensures client-side same-route
-  // query-param changes — e.g. clicking a second DOCX attachment — trigger the
-  // effect without requiring a full page remount.
+  // ── URL params — all read via useSearchParams() for reactivity ───────────
+  // Using useSearchParams() (not window.location.search) ensures that
+  // client-side same-route query-param changes trigger the effect without
+  // requiring a full page remount.
   const searchParams = useSearchParams();
+  const nodeIdParam = searchParams.get("nodeId");
   const s3KeyParam = searchParams.get("s3Key");
   const filenameParam = searchParams.get("filename");
+  const urlParam = searchParams.get("url");
+
+  useEffect(() => {
+    if (nodeIdParam) openDocumentFromNodeId(nodeIdParam);
+  }, [nodeIdParam]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (s3KeyParam) openDocumentFromS3Key(s3KeyParam, filenameParam ?? undefined);
   }, [s3KeyParam]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (urlParam) {
+      const proxyPath = `/api/w/${slug}/doc-proxy?url=${encodeURIComponent(urlParam)}${filenameParam ? `&filename=${encodeURIComponent(filenameParam)}` : ""}`;
+      openDocumentFromUrl(proxyPath, filenameParam ?? undefined);
+    }
+  }, [urlParam]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── File drop ────────────────────────────────────────────────────────────
   const handleDrop = useCallback(

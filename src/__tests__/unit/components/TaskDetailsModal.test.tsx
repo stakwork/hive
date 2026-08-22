@@ -55,9 +55,12 @@ vi.mock("@/components/ui/dialog", () => ({
 }));
 
 vi.mock("lucide-react", () => ({
-  FileIcon: () => <svg />,
-  Loader2: () => <svg />,
-  AlertCircle: () => <svg />,
+  FileIcon: () => <svg data-testid="file-icon" />,
+  Loader2: () => <svg data-testid="loader-icon" />,
+  AlertCircle: () => <svg data-testid="alert-icon" />,
+  ExternalLink: () => <svg data-testid="external-link-icon" />,
+  // Check is needed by Checkbox component
+  Check: () => <svg data-testid="check-icon" />,
 }));
 
 vi.mock("@/lib/harvey-lab-tasks", () => ({
@@ -148,5 +151,108 @@ describe("TaskDetailsModal", () => {
     );
 
     expect(queryByTestId("dialog-content")).toBeNull();
+  });
+});
+
+// ─── DOCX editor link tests ───────────────────────────────────────────────────
+
+describe("TaskDetailsModal — DOCX editor link", () => {
+  const docxDocument = {
+    name: "contract.docx",
+    url: "https://github.com/stakwork/harvey-labs/blob/main/tasks/corporate/contract.docx",
+    download_url:
+      "https://raw.githubusercontent.com/stakwork/harvey-labs/main/tasks/corporate/contract.docx",
+  };
+
+  const pdfDocument = {
+    name: "merger_agreement.pdf",
+    url: "https://github.com/stakwork/harvey-labs/blob/main/tasks/corporate/merger.pdf",
+    download_url:
+      "https://raw.githubusercontent.com/stakwork/harvey-labs/main/tasks/corporate/merger.pdf",
+  };
+
+  const taskWithDocs: HarveyTask = {
+    slug: "corporate/review-contract",
+    title: "Review Contract",
+    description: "Review the contract.",
+    workType: "antitrust",
+    taskType: "review",
+    difficulty: "medium",
+    tags: [],
+  };
+
+  beforeEach(() => {
+    // Return a details payload with both docx and non-docx docs
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          title: taskWithDocs.title,
+          instructions: "Review the contract carefully.",
+          criteria: [],
+          documents: [docxDocument, pdfDocument],
+        }),
+      }),
+    );
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("renders an open-in-editor-link for .docx documents", async () => {
+    const { findByTestId } = render(
+      <TaskDetailsModal
+        open={true}
+        onOpenChange={vi.fn()}
+        task={taskWithDocs}
+        slug="openlaw"
+        onRunTask={vi.fn()}
+      />,
+    );
+
+    const editorLink = await findByTestId("open-in-editor-link");
+    expect(editorLink).toBeTruthy();
+  });
+
+  it("editor link href routes through /documents?url= with encoded download_url", async () => {
+    const { findByTestId } = render(
+      <TaskDetailsModal
+        open={true}
+        onOpenChange={vi.fn()}
+        task={taskWithDocs}
+        slug="openlaw"
+        onRunTask={vi.fn()}
+      />,
+    );
+
+    const editorLink = await findByTestId("open-in-editor-link");
+    const href = editorLink.getAttribute("href") ?? "";
+    expect(href).toContain("/w/openlaw/documents?url=");
+    expect(href).toContain(encodeURIComponent(docxDocument.download_url));
+    expect(href).toContain(encodeURIComponent("contract.docx"));
+  });
+
+  it("does NOT render open-in-editor-link for non-.docx files", async () => {
+    const { findAllByTestId, queryByTestId } = render(
+      <TaskDetailsModal
+        open={true}
+        onOpenChange={vi.fn()}
+        task={taskWithDocs}
+        slug="openlaw"
+        onRunTask={vi.fn()}
+      />,
+    );
+
+    // Wait for the docx link to appear (documents loaded)
+    await findAllByTestId("open-in-editor-link");
+
+    // There should be exactly one open-in-editor-link (for .docx only, not .pdf)
+    const allEditorLinks = document.querySelectorAll(
+      '[data-testid="open-in-editor-link"]',
+    );
+    expect(allEditorLinks).toHaveLength(1);
   });
 });
