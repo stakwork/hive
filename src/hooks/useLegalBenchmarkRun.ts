@@ -35,23 +35,20 @@ interface RawRunRow {
 }
 
 /**
- * Fetches and subscribes to a single benchmark run.
+ * Fetch and subscribe to a single benchmark run of any pipeline type.
  *
- * `runId: null` is the "not yet triggered" no-op state — the hook returns
- * `{ run: null, isLoading: false }` immediately with no fetch or Pusher
- * subscription. This allows RecursionCard to call the hook unconditionally
- * (rules of hooks) before a consolidated run has been dispatched.
- *
- * `runType` defaults to `LEGAL_BENCHMARK_RUNNER` so all existing callers
- * receive unchanged behaviour without modification.
+ * `type` defaults to `LEGAL_BENCHMARK_RUNNER` so all existing callers are
+ * backwards-compatible and require no updates.  Pass
+ * `StakworkRunType.LEGAL_BENCHMARK_CONSOLIDATED` from `RecursionCard` to poll
+ * consolidated-report runs; `null` for `runId` no-ops the hook (returns
+ * `{ run: null, isLoading: false, isStale: false }`).
  */
 export function useLegalBenchmarkRun(
   runId: string | null,
-  runType: StakworkRunType = StakworkRunType.LEGAL_BENCHMARK_RUNNER,
+  type: StakworkRunType = StakworkRunType.LEGAL_BENCHMARK_RUNNER,
 ): UseLegalBenchmarkRunResult {
   const { workspace } = useWorkspace();
   const [run, setRun] = useState<LegalBenchmarkRun | null>(null);
-  // When runId is null, isLoading is immediately false — no fetch will occur.
   const [isLoading, setIsLoading] = useState(runId !== null);
   const [isStale, setIsStale] = useState(false);
 
@@ -66,7 +63,7 @@ export function useLegalBenchmarkRun(
       setIsLoading(true);
 
       const res = await fetch(
-        `/api/stakwork/runs?workspaceId=${workspace.id}&type=${runType}&includeResult=true`,
+        `/api/stakwork/runs?workspaceId=${workspace.id}&type=${type}&includeResult=true`,
       );
 
       if (!res.ok) {
@@ -124,7 +121,7 @@ export function useLegalBenchmarkRun(
     } finally {
       setIsLoading(false);
     }
-  }, [workspace?.id, runId, runType]);
+  }, [workspace?.id, runId, type]);
 
   fetchRunRef.current = fetchRun;
 
