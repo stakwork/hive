@@ -13,6 +13,7 @@ import { graphExplorerHref as graphHref } from "@/components/run-report/NodePeek
 import { canReadRunReport } from "@/lib/run-report/types";
 import { rosterSummary, type GraphRubric, type RosterSummary } from "@/lib/harvey-lab/rubric-scoring";
 import { HillClimbChart } from "@/components/legal/HillClimbChart";
+import { RecursionGraphPanel } from "@/components/legal/RecursionGraphPanel";
 import type { EvalTriggerOutput } from "@/lib/harvey-lab/eval-normalizers";
 import type { RecursionEntry } from "@/hooks/useLegalBenchmarkRecursionList";
 
@@ -37,7 +38,7 @@ function loopSubgraphCypher(evalSetRefId: string): string {
 }
 
 /** Graph Explorer deep link that pre-runs the loop-subgraph Cypher. */
-function loopSubgraphHref(workspaceSlug: string, evalSetRefId: string): string {
+export function loopSubgraphHref(workspaceSlug: string, evalSetRefId: string): string {
   return `/w/${encodeURIComponent(workspaceSlug)}/context/graph?cypher=${encodeURIComponent(loopSubgraphCypher(evalSetRefId))}`;
 }
 
@@ -230,6 +231,7 @@ function RecursionCard({ entry, refetch }: RecursionCardProps) {
   const [toggling, setToggling] = useState(false);
   const [toggleError, setToggleError] = useState<string | null>(null);
   const [expanded, setExpanded] = useState(false);
+  const [graphPanelOpen, setGraphPanelOpen] = useState(false);
   const [copied, setCopied] = useState(false);
   // Chart↔rail hover sync: one shared index, driven from either side.
   const [hoverAttempt, setHoverAttempt] = useState<number | null>(null);
@@ -243,6 +245,7 @@ function RecursionCard({ entry, refetch }: RecursionCardProps) {
     attempts: rawAttempts,
     attemptRows,
     partial,
+    subgraphData,
     isLoading: historyLoading,
     error: historyError,
   } = useEvalRunHistory({
@@ -414,18 +417,33 @@ function RecursionCard({ entry, refetch }: RecursionCardProps) {
               deep link. Per-node links (chips, contested popover) stay
               contextual; this is the launchpad. */}
           {workspaceSlug && entry.refId && (
-            <a
-              href={loopSubgraphHref(workspaceSlug, entry.refId)}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors whitespace-nowrap"
-              aria-label="View this task's recursion subgraph in the Graph Explorer (opens in new tab)"
-              title="Render this task's full recursion subgraph — eval set, triggers, outputs, fixes, rubrics — in the Graph Explorer"
-              data-testid="card-graph-link"
-            >
-              <Network className="h-3.5 w-3.5" />
-              View graph
-            </a>
+            <>
+              {/* Fallback deep-link retained until panel is production-validated */}
+              <a
+                href={loopSubgraphHref(workspaceSlug, entry.refId)}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors whitespace-nowrap"
+                aria-label="View this task's recursion subgraph in the Graph Explorer (opens in new tab)"
+                title="Render this task's full recursion subgraph — eval set, triggers, outputs, fixes, rubrics — in the Graph Explorer"
+                data-testid="card-graph-link"
+              >
+                <Network className="h-3.5 w-3.5" />
+                View graph
+              </a>
+              {/* Inline timeline panel toggle */}
+              <button
+                type="button"
+                onClick={() => setGraphPanelOpen((v) => !v)}
+                className="inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors whitespace-nowrap"
+                aria-label={graphPanelOpen ? "Close timeline panel" : "Open inline timeline panel"}
+                title="Show the recursion subgraph as a 2D run-progression timeline"
+                data-testid="card-graph-toggle"
+              >
+                <Network className="h-3.5 w-3.5" />
+                {graphPanelOpen ? "Hide timeline" : "Timeline"}
+              </button>
+            </>
           )}
 
           {/* Expand toggle — only when there is data to show */}
@@ -560,6 +578,19 @@ function RecursionCard({ entry, refetch }: RecursionCardProps) {
           )}
         </CollapsibleContent>
       </Collapsible>
+
+      {/* Inline timeline panel — rendered outside the Collapsible so it toggles
+          independently of the hill-climb chart. Shown only when subgraphData is
+          available (loaded on first expand of the hook's fix-chain fetch). */}
+      {graphPanelOpen && subgraphData && entry.refId && workspaceSlug && (
+        <RecursionGraphPanel
+          nodes={subgraphData.nodes}
+          edges={subgraphData.edges}
+          partial={partial}
+          evalSetRefId={entry.refId}
+          workspaceSlug={workspaceSlug}
+        />
+      )}
     </div>
   );
 }
