@@ -304,7 +304,8 @@ export async function executeScheduledLegalBenchmarkRecursion(): Promise<Recursi
   }
 
   // ── Discover recursion-enabled EvalSets ────────────────────────────────────
-  const listResult = await listRecursionEvalSets(jarvisConfig);
+  // Pass workspaceId so Source 3 (multi-run detection) is included in the results.
+  const listResult = await listRecursionEvalSets(jarvisConfig, openlawWorkspace.id);
   if (!listResult.ok || !listResult.nodes) {
     logger.warn(
       `${LOG_PREFIX} listRecursionEvalSets failed: ${listResult.error ?? "unknown"} — aborting pass`,
