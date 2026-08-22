@@ -154,7 +154,7 @@ export function useLegalBenchmarkRun(
 
   // Pusher subscription — refetch when a STAKWORK_RUN_UPDATE matches our run id.
   useEffect(() => {
-    if (!workspace?.slug) return;
+    if (!workspace?.slug || !runId) return;
 
     let channel: ReturnType<ReturnType<typeof getPusherClient>["subscribe"]> | null =
       null;
