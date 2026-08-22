@@ -606,22 +606,25 @@ export function useEvalRunHistory(input: UseEvalRunHistoryInput): UseEvalRunHist
             const parsed = parseBenchmarkRunResult(run.result);
             return parsed?.taskSlug === taskSlug;
           })
-          .map((run) => ({
-            key: run.id,
-            label: null,
-            attemptIndex: null,
-            timestamp: run.createdAt,
-            score: null,
-            status: run.status ?? null,
-            runType: runTypeById.get(run.id) ?? null,
-            runId: run.id,
-            projectId: run.projectId,
-            hasReport: false,
-            graphReportRef: null,
-            reportPending: false,
-            inFlight: true,
-            fixSnapshot: null,
-          }));
+          .map((run) => {
+            const runType = runTypeById.get(run.id) ?? null;
+            return {
+              key: run.id,
+              label: null,
+              attemptIndex: null,
+              timestamp: run.createdAt,
+              score: null,
+              status: run.status ?? null,
+              runType,
+              runId: run.id,
+              projectId: run.projectId,
+              hasReport: runType === "recursion" && run.status === "COMPLETED",
+              graphReportRef: null,
+              reportPending: false,
+              inFlight: true,
+              fixSnapshot: null,
+            };
+          });
 
         // Mirror the chart: charted rows in dot order first, then rows with no
         // dot yet (in-flight work) chronologically at the end.

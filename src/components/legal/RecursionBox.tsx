@@ -387,7 +387,7 @@ function RecursionCard({ entry, refetch }: RecursionCardProps) {
       //   missing run graph edges if this causes material gaps.
       const runIds = attemptRows
         .filter((r) => {
-          if (r.runType !== "runner") return false;
+          if (r.runType !== "runner" && r.runType !== "recursion") return false;
           if (!r.hasReport) return false;
           if (r.runId === null) {
             console.warn(
