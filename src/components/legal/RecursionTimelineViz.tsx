@@ -2,135 +2,161 @@
 
 import React from "react";
 import type { TimelineLayout, RunColumn } from "@/lib/harvey-lab/timeline-layout";
-import type { SubgraphNode } from "@/lib/harvey-lab/hill-climb-series";
 
 // ── Layout constants ──────────────────────────────────────────────────────────
 
 const COLUMN_WIDTH = 280;
+const LANE_Y = { trigger: 80, output: 200, fix: 340 };
 const NODE_W = 200;
 const NODE_H = 50;
-const LANE_Y = { trigger: 100, output: 230, fix: 370 } as const;
+
+/** X offset for column 0, leaving room for the EvalSet anchor box. */
+const FIRST_COL_X = 320;
 const EVALSET_X = 24;
 const EVALSET_Y = 24;
-const EVALSET_W = 160;
-const EVALSET_H = 40;
-const FIRST_COL_X = 320;
-const SVG_PADDING_BOTTOM = 60;
+const EVALSET_W = 180;
+const EVALSET_H = 44;
 
-// ── Score color helpers ───────────────────────────────────────────────────────
+const ARROW_MARKER_ID = "timeline-arrow";
 
-function scoreColor(scorePct: number | null): string {
+// ── Color helpers ─────────────────────────────────────────────────────────────
+
+function outputStroke(scorePct: number | null): string {
   if (scorePct === null) return "#6b7280"; // neutral gray
-  if (scorePct >= 0.75) return "#16a34a"; // green
-  if (scorePct >= 0.45) return "#d97706"; // amber
-  return "#dc2626"; // red
+  if (scorePct >= 0.75) return "#16a34a";  // green
+  if (scorePct >= 0.45) return "#d97706";  // amber
+  return "#dc2626";                         // red
 }
 
-function scoreFill(scorePct: number | null): string {
-  if (scorePct === null) return "none";
+function outputFill(scorePct: number | null): string {
+  if (scorePct === null) return "#f3f4f6";
   if (scorePct >= 0.75) return "#dcfce7";
   if (scorePct >= 0.45) return "#fef3c7";
   return "#fee2e2";
 }
 
-// ── Node label helper ─────────────────────────────────────────────────────────
+// ── Node helpers ──────────────────────────────────────────────────────────────
 
-function nodeLabel(node: SubgraphNode, fallback: string): string {
-  const name = node.properties?.name;
-  if (typeof name === "string" && name.trim()) return name.trim();
-  return node.node_type ?? fallback;
+function colX(runIndex: number): number {
+  return FIRST_COL_X + runIndex * COLUMN_WIDTH;
 }
 
-// ── Clamp / format helpers ────────────────────────────────────────────────────
-
-function fmtPct(pct: number): string {
-  return `${Math.round(pct * 100)}%`;
+/** Center X of a node box at a given column. */
+function nodeXCenter(runIndex: number): number {
+  return colX(runIndex) + NODE_W / 2;
 }
 
-function fmtDelta(delta: number): string {
-  const pts = Math.round(Math.abs(delta) * 100);
-  return delta >= 0 ? `+${pts} pts` : `−${pts} pts`;
+/** Left edge of a node box. */
+function nodeXLeft(runIndex: number): number {
+  return colX(runIndex);
+}
+
+/** Right edge of a node box. */
+function nodeXRight(runIndex: number): number {
+  return colX(runIndex) + NODE_W;
 }
 
 // ── SVG sub-components ────────────────────────────────────────────────────────
 
-interface NodeBoxProps {
-  x: number;
-  y: number;
-  label: string;
-  sublabel?: string;
-  stroke?: string;
-  fill?: string;
-  strokeDasharray?: string;
-}
-
 function NodeBox({
   x,
   y,
+  w,
+  h,
   label,
   sublabel,
-  stroke = "#6b7280",
-  fill = "none",
-  strokeDasharray,
-}: NodeBoxProps) {
+  stroke,
+  fill,
+  dashed,
+}: {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  label: string;
+  sublabel?: string;
+  stroke: string;
+  fill: string;
+  dashed?: boolean;
+}) {
   return (
     <g>
       <rect
-        x={x - NODE_W / 2}
-        y={y - NODE_H / 2}
-        width={NODE_W}
-        height={NODE_H}
+        x={x}
+        y={y}
+        width={w}
+        height={h}
         rx={6}
         fill={fill}
         stroke={stroke}
         strokeWidth={1.5}
-        strokeDasharray={strokeDasharray}
+        strokeDasharray={dashed ? "4 3" : undefined}
       />
       <text
-        x={x}
-        y={y - (sublabel ? 8 : 0)}
+        x={x + w / 2}
+        y={y + (sublabel ? h / 2 - 5 : h / 2 + 5)}
         textAnchor="middle"
-        dominantBaseline="middle"
         fontSize={11}
-        fontFamily="ui-monospace, SFMono-Regular, monospace"
-        fill={stroke === "none" ? "#374151" : stroke}
+        fill={stroke === "#6b7280" ? "#374151" : "#111827"}
+        fontFamily="ui-monospace, monospace"
+        dominantBaseline="middle"
       >
-        {label.length > 28 ? label.slice(0, 26) + "…" : label}
+        {label}
       </text>
       {sublabel && (
         <text
-          x={x}
-          y={y + 10}
+          x={x + w / 2}
+          y={y + h / 2 + 10}
           textAnchor="middle"
-          dominantBaseline="middle"
-          fontSize={10}
-          fontFamily="ui-sans-serif, system-ui, sans-serif"
+          fontSize={9}
           fill="#6b7280"
+          fontFamily="ui-sans-serif, sans-serif"
+          dominantBaseline="middle"
         >
-          {sublabel.length > 32 ? sublabel.slice(0, 30) + "…" : sublabel}
+          {sublabel}
         </text>
       )}
     </g>
   );
 }
 
-/** Cubic bezier connecting right-edge of (x1,y1) to left-edge of (x2,y2). */
-function BezierEdge({ x1, y1, x2, y2 }: { x1: number; y1: number; x2: number; y2: number }) {
-  const cx1 = x1 + (x2 - x1) * 0.5;
-  const cx2 = x2 - (x2 - x1) * 0.5;
+/** Cubic bezier connecting right edge of src to left edge of target. */
+function BezierArrow({
+  x1,
+  y1,
+  x2,
+  y2,
+  markerId,
+}: {
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
+  markerId: string;
+}) {
+  const cx1 = x1 + (x2 - x1) / 2;
+  const cx2 = x1 + (x2 - x1) / 2;
   return (
     <path
       d={`M ${x1},${y1} C ${cx1},${y1} ${cx2},${y2} ${x2},${y2}`}
       fill="none"
       stroke="#94a3b8"
       strokeWidth={1.5}
-      markerEnd="url(#arrowhead)"
+      markerEnd={`url(#${markerId})`}
     />
   );
 }
 
-/** Straight vertical line from (x,y1) down to (x,y2). */
-function VerticalEdge({ x, y1, y2 }: { x: number; y1: number; y2: number }) {
+/** Straight vertical line. */
+function VerticalLine({
+  x,
+  y1,
+  y2,
+}: {
+  x: number;
+  y1: number;
+  y2: number;
+}) {
   return (
     <line
       x1={x}
@@ -138,242 +164,255 @@ function VerticalEdge({ x, y1, y2 }: { x: number; y1: number; y2: number }) {
       x2={x}
       y2={y2}
       stroke="#94a3b8"
-      strokeWidth={1.5}
-      markerEnd="url(#arrowhead)"
+      strokeWidth={1}
+      strokeDasharray="3 3"
     />
   );
 }
 
-// ── Main component ────────────────────────────────────────────────────────────
+// ── Column renderer ───────────────────────────────────────────────────────────
 
-interface RecursionTimelineVizProps {
+function RunColumnGroup({ col }: { col: RunColumn }) {
+  const { runIndex, trigger, output, proposedFix, scorePct, scoreDelta } = col;
+  const cx = nodeXCenter(runIndex);
+  const lx = nodeXLeft(runIndex);
+
+  const outputStrokeColor = outputStroke(scorePct);
+  const outputFillColor = outputFill(scorePct);
+
+  // Score delta label: suppress when col 0, delta is 0, or scorePct is null
+  const showDelta =
+    runIndex > 0 && scoreDelta !== null && scoreDelta !== 0 && scorePct !== null;
+  const deltaText = showDelta
+    ? scoreDelta! > 0
+      ? `+${Math.round(scoreDelta! * 100)} pts`
+      : `−${Math.round(Math.abs(scoreDelta!) * 100)} pts`
+    : null;
+  const deltaColor =
+    showDelta && scoreDelta! > 0 ? "#16a34a" : "#dc2626";
+
+  return (
+    <g data-column={runIndex}>
+      {/* Run badge */}
+      <text
+        x={cx}
+        y={LANE_Y.trigger - 30}
+        textAnchor="middle"
+        fontSize={11}
+        fontWeight="600"
+        fill="#475569"
+        fontFamily="ui-sans-serif, sans-serif"
+      >
+        Run {runIndex + 1}
+      </text>
+
+      {/* EvalTrigger node (baseline column only) */}
+      {trigger && (
+        <NodeBox
+          x={lx}
+          y={LANE_Y.trigger}
+          w={NODE_W}
+          h={NODE_H}
+          label="EvalTrigger"
+          sublabel={runIndex === 0 ? "baseline" : undefined}
+          stroke="#3b82f6"
+          fill="#eff6ff"
+        />
+      )}
+
+      {/* ProposedFix node (columns 1+) */}
+      {proposedFix && (
+        <NodeBox
+          x={lx}
+          y={LANE_Y.fix}
+          w={NODE_W}
+          h={NODE_H}
+          label="ProposedFix"
+          stroke="#8b5cf6"
+          fill="#f5f3ff"
+        />
+      )}
+
+      {/* EvalTriggerOutput node */}
+      {output && (
+        <>
+          <NodeBox
+            x={lx}
+            y={LANE_Y.output}
+            w={NODE_W}
+            h={NODE_H}
+            label={
+              scorePct !== null
+                ? `${Math.round(scorePct * 100)}%`
+                : "EvalTriggerOutput"
+            }
+            sublabel={
+              scorePct !== null
+                ? "EvalTriggerOutput"
+                : undefined
+            }
+            stroke={outputStrokeColor}
+            fill={outputFillColor}
+          />
+          {/* Score delta label below output node */}
+          {deltaText && (
+            <text
+              x={cx}
+              y={LANE_Y.output + NODE_H + 16}
+              textAnchor="middle"
+              fontSize={10}
+              fill={deltaColor}
+              fontFamily="ui-sans-serif, sans-serif"
+              fontWeight="500"
+            >
+              {deltaText}
+            </text>
+          )}
+        </>
+      )}
+
+      {/* Vertical lines within a column */}
+      {/* Trigger → Output (baseline: HAS_OUTPUT) */}
+      {trigger && output && (
+        <VerticalLine
+          x={cx}
+          y1={LANE_Y.trigger + NODE_H}
+          y2={LANE_Y.output}
+        />
+      )}
+      {/* Fix → Output (PRODUCED_BY) */}
+      {proposedFix && output && (
+        <VerticalLine
+          x={cx}
+          y1={LANE_Y.fix}
+          y2={LANE_Y.output + NODE_H}
+        />
+      )}
+    </g>
+  );
+}
+
+// ── Props ─────────────────────────────────────────────────────────────────────
+
+interface Props {
   layout: TimelineLayout;
+  /** SVG height in pixels (default 480). */
   height?: number;
 }
 
-export function RecursionTimelineViz({ layout, height = 500 }: RecursionTimelineVizProps) {
+// ── Main component ────────────────────────────────────────────────────────────
+
+export function RecursionTimelineViz({ layout, height = 480 }: Props) {
   const { columns, evalSetNode } = layout;
 
   if (columns.length === 0) {
     return (
-      <div className="flex items-center justify-center py-8 text-sm text-muted-foreground">
+      <p className="text-xs text-muted-foreground italic py-4 text-center">
         No timeline data available.
-      </div>
+      </p>
     );
   }
 
-  const svgWidth = FIRST_COL_X + columns.length * COLUMN_WIDTH + 40;
-  const svgHeight = Math.max(
-    height,
-    LANE_Y.fix + NODE_H / 2 + SVG_PADDING_BOTTOM,
-  );
+  const totalWidth = FIRST_COL_X + columns.length * COLUMN_WIDTH + 40;
 
-  // Column center X for a given column index
-  const colX = (idx: number) => FIRST_COL_X + idx * COLUMN_WIDTH + COLUMN_WIDTH / 2;
+  // EvalSet dashed line: right edge of EvalSet box → top-center of col-0 trigger node
+  const evalSetRightX = EVALSET_X + EVALSET_W;
+  const evalSetMidY = EVALSET_Y + EVALSET_H / 2;
+  const col0TriggerTopX = nodeXCenter(0);
+  const col0TriggerTopY = LANE_Y.trigger;
 
   return (
-    <div style={{ overflowX: "auto" }} data-testid="timeline-scroll-container">
+    <div style={{ overflowX: "auto" }}>
       <svg
-        width={svgWidth}
-        height={svgHeight}
-        aria-label="Recursion run progression timeline"
-        data-testid="timeline-svg"
+        width={totalWidth}
+        height={height}
+        aria-label="Recursion timeline"
+        style={{ display: "block" }}
       >
-        {/* ── Arrow marker ───────────────────────────────────────────────── */}
         <defs>
           <marker
-            id="arrowhead"
-            markerWidth={8}
-            markerHeight={6}
-            refX={7}
-            refY={3}
-            orient="auto"
+            id={ARROW_MARKER_ID}
+            viewBox="0 0 10 10"
+            refX="9"
+            refY="5"
+            markerWidth="6"
+            markerHeight="6"
+            orient="auto-start-reverse"
           >
-            <polygon points="0 0, 8 3, 0 6" fill="#94a3b8" />
+            <path d="M 0 0 L 10 5 L 0 10 z" fill="#94a3b8" />
           </marker>
         </defs>
 
-        {/* ── EvalSet node (pinned top-left) ──────────────────────────────── */}
+        {/* EvalSet anchor node */}
         {evalSetNode && (
-          <g data-testid="evalset-node">
-            <rect
+          <>
+            <NodeBox
               x={EVALSET_X}
               y={EVALSET_Y}
-              width={EVALSET_W}
-              height={EVALSET_H}
-              rx={6}
-              fill="none"
-              stroke="#6366f1"
-              strokeWidth={1.5}
-              strokeDasharray="4 3"
+              w={EVALSET_W}
+              h={EVALSET_H}
+              label="EvalSet"
+              stroke="#6b7280"
+              fill="#f9fafb"
+              dashed
             />
-            <text
-              x={EVALSET_X + EVALSET_W / 2}
-              y={EVALSET_Y + EVALSET_H / 2}
-              textAnchor="middle"
-              dominantBaseline="middle"
-              fontSize={11}
-              fontFamily="ui-monospace, SFMono-Regular, monospace"
-              fill="#6366f1"
-            >
-              {nodeLabel(evalSetNode, "EvalSet")}
-            </text>
-            {/* Dashed connector from EvalSet right-edge to column-0 trigger top-center */}
+            {/* Dashed connection from EvalSet → col-0 trigger */}
             {columns[0]?.trigger && (
               <line
-                x1={EVALSET_X + EVALSET_W}
-                y1={EVALSET_Y + EVALSET_H / 2}
-                x2={colX(0)}
-                y2={LANE_Y.trigger - NODE_H / 2}
-                stroke="#6366f1"
+                x1={evalSetRightX}
+                y1={evalSetMidY}
+                x2={col0TriggerTopX}
+                y2={col0TriggerTopY}
+                stroke="#94a3b8"
                 strokeWidth={1}
                 strokeDasharray="4 3"
-                markerEnd="url(#arrowhead)"
               />
             )}
-          </g>
+          </>
         )}
 
-        {/* ── Lane labels ─────────────────────────────────────────────────── */}
-        {(["trigger", "output", "fix"] as const).map((lane) => (
-          <text
-            key={lane}
-            x={8}
-            y={LANE_Y[lane]}
-            dominantBaseline="middle"
-            fontSize={9}
-            fontFamily="ui-sans-serif, system-ui, sans-serif"
-            fill="#9ca3af"
-            textAnchor="start"
-            transform={`rotate(-90, 8, ${LANE_Y[lane]})`}
-          >
-            {lane === "trigger" ? "Trigger" : lane === "output" ? "Output" : "Fix"}
-          </text>
-        ))}
+        {/* Lane labels */}
+        <text x={EVALSET_X} y={LANE_Y.trigger + NODE_H / 2 + 4} fontSize={9} fill="#94a3b8" fontFamily="ui-sans-serif, sans-serif" textAnchor="start">Trigger</text>
+        <text x={EVALSET_X} y={LANE_Y.output + NODE_H / 2 + 4} fontSize={9} fill="#94a3b8" fontFamily="ui-sans-serif, sans-serif" textAnchor="start">Output</text>
+        <text x={EVALSET_X} y={LANE_Y.fix + NODE_H / 2 + 4} fontSize={9} fill="#94a3b8" fontFamily="ui-sans-serif, sans-serif" textAnchor="start">Fix</text>
 
-        {/* ── Columns ─────────────────────────────────────────────────────── */}
-        {columns.map((col: RunColumn, i: number) => {
-          const cx = colX(i);
-          const color = scoreColor(col.scorePct);
-          const fill = scoreFill(col.scorePct);
+        {/* Inter-column bezier edges */}
+        {columns.map((col, i) => {
+          if (i === 0) return null;
+          const prev = columns[i - 1];
+
+          // Source: right edge of prev column's trigger or fix node (whichever exists)
+          const srcNode = prev.trigger ?? prev.proposedFix;
+          const srcY = prev.trigger
+            ? LANE_Y.trigger + NODE_H / 2
+            : LANE_Y.fix + NODE_H / 2;
+          const srcX = nodeXRight(prev.runIndex);
+
+          // Target: left edge of current column's fix node (or trigger for col 0)
+          const tgtNode = col.proposedFix ?? col.trigger;
+          const tgtY = col.proposedFix
+            ? LANE_Y.fix + NODE_H / 2
+            : LANE_Y.trigger + NODE_H / 2;
+          const tgtX = nodeXLeft(col.runIndex);
+
+          if (!srcNode || !tgtNode) return null;
 
           return (
-            <g key={i} data-testid={`timeline-column-${i}`}>
-              {/* Run N badge */}
-              <text
-                x={cx}
-                y={60}
-                textAnchor="middle"
-                dominantBaseline="middle"
-                fontSize={12}
-                fontWeight={600}
-                fontFamily="ui-sans-serif, system-ui, sans-serif"
-                fill="#374151"
-                data-testid={`run-badge-${i}`}
-              >
-                Run {i + 1}
-              </text>
-
-              {/* Trigger node (column 0 only — subsequent columns have no trigger) */}
-              {col.trigger && (
-                <g data-testid={`trigger-node-${i}`}>
-                  <NodeBox
-                    x={cx}
-                    y={LANE_Y.trigger}
-                    label={nodeLabel(col.trigger, "EvalTrigger")}
-                    sublabel="EvalTrigger"
-                    stroke="#3b82f6"
-                  />
-                  {/* Vertical edge: trigger → output */}
-                  {col.output && (
-                    <VerticalEdge
-                      x={cx}
-                      y1={LANE_Y.trigger + NODE_H / 2}
-                      y2={LANE_Y.output - NODE_H / 2}
-                    />
-                  )}
-                </g>
-              )}
-
-              {/* ProposedFix node (columns 1+) */}
-              {col.proposedFix && (
-                <g data-testid={`fix-node-${i}`}>
-                  <NodeBox
-                    x={cx}
-                    y={LANE_Y.fix}
-                    label={nodeLabel(col.proposedFix, "ProposedFix")}
-                    sublabel="ProposedFix"
-                    stroke="#8b5cf6"
-                  />
-                  {/* Vertical edge: fix → output */}
-                  {col.output && (
-                    <VerticalEdge
-                      x={cx}
-                      y1={LANE_Y.fix - NODE_H / 2}
-                      y2={LANE_Y.output + NODE_H / 2}
-                    />
-                  )}
-                </g>
-              )}
-
-              {/* Output node */}
-              {col.output && (
-                <g data-testid={`output-node-${i}`}>
-                  <NodeBox
-                    x={cx}
-                    y={LANE_Y.output}
-                    label={
-                      col.scorePct !== null
-                        ? fmtPct(col.scorePct)
-                        : nodeLabel(col.output, "EvalTriggerOutput")
-                    }
-                    sublabel="EvalTriggerOutput"
-                    stroke={color}
-                    fill={fill}
-                    strokeDasharray={col.scorePct === null ? "4 3" : undefined}
-                  />
-                  {/* Score delta label below output node */}
-                  {i > 0 &&
-                    col.scoreDelta !== null &&
-                    col.scoreDelta !== 0 && (
-                      <text
-                        x={cx}
-                        y={LANE_Y.output + NODE_H / 2 + 16}
-                        textAnchor="middle"
-                        dominantBaseline="middle"
-                        fontSize={11}
-                        fontFamily="ui-sans-serif, system-ui, sans-serif"
-                        fill={col.scoreDelta >= 0 ? "#16a34a" : "#dc2626"}
-                        data-testid={`score-delta-${i}`}
-                      >
-                        {fmtDelta(col.scoreDelta)}
-                      </text>
-                    )}
-                </g>
-              )}
-
-              {/* Inter-column bezier edge (col 0 → col 1, col 1 → col 2, …) */}
-              {i > 0 && (() => {
-                const prev = columns[i - 1];
-                // Source: right edge of previous column's output or fix node
-                const srcY = prev.output ? LANE_Y.output : prev.trigger ? LANE_Y.trigger : LANE_Y.fix;
-                const srcX = colX(i - 1) + NODE_W / 2;
-                // Target: left edge of current column's fix node (or output if no fix)
-                const tgtY = col.proposedFix ? LANE_Y.fix : col.output ? LANE_Y.output : LANE_Y.trigger;
-                const tgtX = cx - NODE_W / 2;
-                return (
-                  <BezierEdge
-                    key={`edge-${i}`}
-                    x1={srcX}
-                    y1={srcY}
-                    x2={tgtX}
-                    y2={tgtY}
-                  />
-                );
-              })()}
-            </g>
+            <BezierArrow
+              key={`edge-${i}`}
+              x1={srcX}
+              y1={srcY}
+              x2={tgtX}
+              y2={tgtY}
+              markerId={ARROW_MARKER_ID}
+            />
           );
         })}
+
+        {/* Render each column */}
+        {columns.map((col) => (
+          <RunColumnGroup key={col.runIndex} col={col} />
+        ))}
       </svg>
     </div>
   );

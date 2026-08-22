@@ -1,248 +1,325 @@
 /**
  * @vitest-environment jsdom
+ *
+ * Snapshot / render tests for RecursionTimelineViz.
+ *
+ * Covers:
+ *   - null scorePct → neutral gray render, no delta label
+ *   - EvalSet dashed connecting edge rendered
+ *   - All three score color thresholds (green/amber/red)
+ *   - Run N badge text rendered for each column
+ *   - scoreDelta label rendered on col > 0 when delta != 0
+ *   - Empty layout renders "No timeline data" message
  */
+
 import React from "react";
 import { describe, it, expect } from "vitest";
 import { render, screen } from "@testing-library/react";
 import { RecursionTimelineViz } from "@/components/legal/RecursionTimelineViz";
-import type { TimelineLayout } from "@/lib/harvey-lab/timeline-layout";
+import type { TimelineLayout, RunColumn } from "@/lib/harvey-lab/timeline-layout";
 import type { SubgraphNode } from "@/lib/harvey-lab/hill-climb-series";
 
 globalThis.React = React;
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
+// ─── Helpers ─────────────────────────────────────────────────────────────────
 
-let _seq = 0;
-const uid = (p = "n") => `${p}-${++_seq}`;
-
-function evalSetNode(ref_id: string): SubgraphNode {
-  return { ref_id, node_type: "EvalSet", date_added_to_graph: "1700000000", properties: { name: "My EvalSet" } };
-}
-function triggerNode(ref_id: string): SubgraphNode {
-  return { ref_id, node_type: "EvalTrigger", date_added_to_graph: "1700001000", properties: {} };
-}
-function outputNode(ref_id: string): SubgraphNode {
-  return { ref_id, node_type: "EvalTriggerOutput", date_added_to_graph: "1700002000", properties: { n_passed: 50, n_total: 100 } };
-}
-function fixNode(ref_id: string): SubgraphNode {
-  return { ref_id, node_type: "ProposedFix", date_added_to_graph: "1700003000", properties: { eval_status: "accepted" } };
+function makeNode(ref_id: string, node_type: string): SubgraphNode {
+  return { ref_id, node_type, properties: {} };
 }
 
-function makeLayout(columns: TimelineLayout["columns"], evalSet?: SubgraphNode): TimelineLayout {
+function makeColumn(overrides: Partial<RunColumn> & { runIndex: number }): RunColumn {
   return {
-    columns,
-    evalSetNode: evalSet ?? evalSetNode(uid("es")),
-    partial: false,
+    trigger: null,
+    output: null,
+    proposedFix: null,
+    scorePct: null,
+    scoreDelta: null,
+    ...overrides,
   };
 }
 
-// ── Tests ─────────────────────────────────────────────────────────────────────
+function makeLayout(columns: RunColumn[], evalSetNode: SubgraphNode | null = null): TimelineLayout {
+  return { columns, evalSetNode, partial: false };
+}
 
-describe("RecursionTimelineViz", () => {
+// ─── Empty layout ─────────────────────────────────────────────────────────────
+
+describe("RecursionTimelineViz — empty layout", () => {
   it("renders 'No timeline data available' when columns is empty", () => {
-    const layout: TimelineLayout = { columns: [], evalSetNode: null, partial: false };
-    render(<RecursionTimelineViz layout={layout} />);
-    expect(screen.getByText(/no timeline data available/i)).toBeTruthy();
+    render(<RecursionTimelineViz layout={makeLayout([])} />);
+    expect(screen.getByText(/no timeline data/i)).toBeTruthy();
   });
+});
 
-  it("renders an SVG for a non-empty layout", () => {
-    const tr = uid("tr");
-    const out = uid("out");
+// ─── Run column badges ────────────────────────────────────────────────────────
+
+describe("RecursionTimelineViz — Run N badges", () => {
+  it("renders 'Run 1' badge for column 0", () => {
     const layout = makeLayout([
-      {
+      makeColumn({
         runIndex: 0,
-        trigger: triggerNode(tr),
-        output: outputNode(out),
-        proposedFix: null,
-        scorePct: 0.50,
-        scoreDelta: null,
-      },
-    ]);
-    render(<RecursionTimelineViz layout={layout} />);
-    expect(screen.getByTestId("timeline-svg")).toBeTruthy();
-  });
-
-  it("renders correct number of run badges", () => {
-    const columns: TimelineLayout["columns"] = [
-      { runIndex: 0, trigger: triggerNode(uid()), output: outputNode(uid()), proposedFix: null, scorePct: 0.5, scoreDelta: null },
-      { runIndex: 1, trigger: null, output: outputNode(uid()), proposedFix: fixNode(uid()), scorePct: 0.6, scoreDelta: 0.1 },
-      { runIndex: 2, trigger: null, output: outputNode(uid()), proposedFix: fixNode(uid()), scorePct: 0.7, scoreDelta: 0.1 },
-    ];
-    render(<RecursionTimelineViz layout={makeLayout(columns)} />);
-    // Each column has a "Run N" badge (1-indexed)
-    expect(screen.getByTestId("run-badge-0").textContent).toBe("Run 1");
-    expect(screen.getByTestId("run-badge-1").textContent).toBe("Run 2");
-    expect(screen.getByTestId("run-badge-2").textContent).toBe("Run 3");
-  });
-
-  it("renders green stroke for scorePct >= 0.75", () => {
-    const tr = uid("tr");
-    const out = uid("out");
-    const { container } = render(
-      <RecursionTimelineViz
-        layout={makeLayout([
-          { runIndex: 0, trigger: triggerNode(tr), output: outputNode(out), proposedFix: null, scorePct: 0.8, scoreDelta: null },
-        ])}
-      />,
-    );
-    // The output node rect should have stroke="#16a34a" (green)
-    const outputNode0 = container.querySelector("[data-testid='output-node-0'] rect");
-    expect(outputNode0?.getAttribute("stroke")).toBe("#16a34a");
-  });
-
-  it("renders amber stroke for scorePct >= 0.45 and < 0.75", () => {
-    const tr = uid("tr");
-    const out = uid("out");
-    const { container } = render(
-      <RecursionTimelineViz
-        layout={makeLayout([
-          { runIndex: 0, trigger: triggerNode(tr), output: outputNode(out), proposedFix: null, scorePct: 0.5, scoreDelta: null },
-        ])}
-      />,
-    );
-    const outputNode0 = container.querySelector("[data-testid='output-node-0'] rect");
-    expect(outputNode0?.getAttribute("stroke")).toBe("#d97706");
-  });
-
-  it("renders red stroke for scorePct < 0.45", () => {
-    const tr = uid("tr");
-    const out = uid("out");
-    const { container } = render(
-      <RecursionTimelineViz
-        layout={makeLayout([
-          { runIndex: 0, trigger: triggerNode(tr), output: outputNode(out), proposedFix: null, scorePct: 0.3, scoreDelta: null },
-        ])}
-      />,
-    );
-    const outputNode0 = container.querySelector("[data-testid='output-node-0'] rect");
-    expect(outputNode0?.getAttribute("stroke")).toBe("#dc2626");
-  });
-
-  it("renders neutral gray stroke and no fill for null scorePct", () => {
-    const tr = uid("tr");
-    const out = uid("out");
-    const { container } = render(
-      <RecursionTimelineViz
-        layout={makeLayout([
-          { runIndex: 0, trigger: triggerNode(tr), output: outputNode(out), proposedFix: null, scorePct: null, scoreDelta: null },
-        ])}
-      />,
-    );
-    const outputRect = container.querySelector("[data-testid='output-node-0'] rect");
-    expect(outputRect?.getAttribute("stroke")).toBe("#6b7280");
-    expect(outputRect?.getAttribute("fill")).toBe("none");
-  });
-
-  it("does NOT render score delta label on column 0", () => {
-    const tr = uid("tr");
-    const out = uid("out");
-    render(
-      <RecursionTimelineViz
-        layout={makeLayout([
-          { runIndex: 0, trigger: triggerNode(tr), output: outputNode(out), proposedFix: null, scorePct: 0.5, scoreDelta: null },
-        ])}
-      />,
-    );
-    expect(screen.queryByTestId("score-delta-0")).toBeNull();
-  });
-
-  it("renders score delta label on column 1+ when delta != 0", () => {
-    render(
-      <RecursionTimelineViz
-        layout={makeLayout([
-          { runIndex: 0, trigger: triggerNode(uid()), output: outputNode(uid()), proposedFix: null, scorePct: 0.5, scoreDelta: null },
-          { runIndex: 1, trigger: null, output: outputNode(uid()), proposedFix: fixNode(uid()), scorePct: 0.7, scoreDelta: 0.2 },
-        ])}
-      />,
-    );
-    const deltaLabel = screen.getByTestId("score-delta-1");
-    expect(deltaLabel).toBeTruthy();
-    expect(deltaLabel.textContent).toMatch(/\+20 pts/);
-  });
-
-  it("does NOT render delta label when delta is 0", () => {
-    render(
-      <RecursionTimelineViz
-        layout={makeLayout([
-          { runIndex: 0, trigger: triggerNode(uid()), output: outputNode(uid()), proposedFix: null, scorePct: 0.5, scoreDelta: null },
-          { runIndex: 1, trigger: null, output: outputNode(uid()), proposedFix: fixNode(uid()), scorePct: 0.5, scoreDelta: 0 },
-        ])}
-      />,
-    );
-    expect(screen.queryByTestId("score-delta-1")).toBeNull();
-  });
-
-  it("renders negative delta label with minus sign", () => {
-    render(
-      <RecursionTimelineViz
-        layout={makeLayout([
-          { runIndex: 0, trigger: triggerNode(uid()), output: outputNode(uid()), proposedFix: null, scorePct: 0.7, scoreDelta: null },
-          { runIndex: 1, trigger: null, output: outputNode(uid()), proposedFix: fixNode(uid()), scorePct: 0.5, scoreDelta: -0.2 },
-        ])}
-      />,
-    );
-    const deltaLabel = screen.getByTestId("score-delta-1");
-    expect(deltaLabel.textContent).toMatch(/−20 pts/);
-  });
-
-  it("renders EvalSet dashed node when evalSetNode is present", () => {
-    const layout: TimelineLayout = {
-      columns: [
-        { runIndex: 0, trigger: triggerNode(uid()), output: outputNode(uid()), proposedFix: null, scorePct: 0.5, scoreDelta: null },
-      ],
-      evalSetNode: evalSetNode(uid("es")),
-      partial: false,
-    };
-    render(<RecursionTimelineViz layout={layout} />);
-    expect(screen.getByTestId("evalset-node")).toBeTruthy();
-  });
-
-  it("omits EvalSet node when evalSetNode is null", () => {
-    const layout: TimelineLayout = {
-      columns: [
-        { runIndex: 0, trigger: triggerNode(uid()), output: outputNode(uid()), proposedFix: null, scorePct: 0.5, scoreDelta: null },
-      ],
-      evalSetNode: null,
-      partial: false,
-    };
-    render(<RecursionTimelineViz layout={layout} />);
-    expect(screen.queryByTestId("evalset-node")).toBeNull();
-  });
-
-  it("renders trigger node for column 0 only", () => {
-    render(
-      <RecursionTimelineViz
-        layout={makeLayout([
-          { runIndex: 0, trigger: triggerNode(uid()), output: outputNode(uid()), proposedFix: null, scorePct: 0.5, scoreDelta: null },
-          { runIndex: 1, trigger: null, output: outputNode(uid()), proposedFix: fixNode(uid()), scorePct: 0.6, scoreDelta: 0.1 },
-        ])}
-      />,
-    );
-    expect(screen.getByTestId("trigger-node-0")).toBeTruthy();
-    expect(screen.queryByTestId("trigger-node-1")).toBeNull();
-  });
-
-  it("renders ProposedFix node for columns 1+", () => {
-    render(
-      <RecursionTimelineViz
-        layout={makeLayout([
-          { runIndex: 0, trigger: triggerNode(uid()), output: outputNode(uid()), proposedFix: null, scorePct: 0.5, scoreDelta: null },
-          { runIndex: 1, trigger: null, output: outputNode(uid()), proposedFix: fixNode(uid()), scorePct: 0.6, scoreDelta: 0.1 },
-        ])}
-      />,
-    );
-    expect(screen.queryByTestId("fix-node-0")).toBeNull();
-    expect(screen.getByTestId("fix-node-1")).toBeTruthy();
-  });
-
-  it("wraps SVG in a horizontally scrollable container", () => {
-    const layout = makeLayout([
-      { runIndex: 0, trigger: triggerNode(uid()), output: outputNode(uid()), proposedFix: null, scorePct: 0.5, scoreDelta: null },
+        trigger: makeNode("trigger-0", "EvalTrigger"),
+        output: makeNode("output-0", "EvalTriggerOutput"),
+        scorePct: 0.8,
+      }),
     ]);
     const { container } = render(<RecursionTimelineViz layout={layout} />);
-    const scrollDiv = container.querySelector("[data-testid='timeline-scroll-container']");
-    expect(scrollDiv).toBeTruthy();
-    // overflowX should be "auto" (set inline)
-    expect((scrollDiv as HTMLElement).style.overflowX).toBe("auto");
+    const svg = container.querySelector("svg");
+    expect(svg?.textContent).toContain("Run 1");
+  });
+
+  it("renders 'Run 2' badge for column 1", () => {
+    const layout = makeLayout([
+      makeColumn({ runIndex: 0, trigger: makeNode("t0", "EvalTrigger"), output: makeNode("o0", "EvalTriggerOutput"), scorePct: 0.5 }),
+      makeColumn({ runIndex: 1, proposedFix: makeNode("fix1", "ProposedFix"), output: makeNode("o1", "EvalTriggerOutput"), scorePct: 0.6, scoreDelta: 0.1 }),
+    ]);
+    const { container } = render(<RecursionTimelineViz layout={layout} />);
+    expect(container.querySelector("svg")?.textContent).toContain("Run 2");
+  });
+
+  it("renders a Run badge for every column", () => {
+    const cols = [0, 1, 2].map((i) =>
+      makeColumn({ runIndex: i, output: makeNode(`o${i}`, "EvalTriggerOutput"), scorePct: 0.5 }),
+    );
+    const { container } = render(<RecursionTimelineViz layout={makeLayout(cols)} />);
+    const svg = container.querySelector("svg");
+    expect(svg?.textContent).toContain("Run 1");
+    expect(svg?.textContent).toContain("Run 2");
+    expect(svg?.textContent).toContain("Run 3");
+  });
+});
+
+// ─── Output colors ────────────────────────────────────────────────────────────
+
+describe("RecursionTimelineViz — output node color thresholds", () => {
+  function renderWithScore(scorePct: number | null) {
+    const col = makeColumn({
+      runIndex: 0,
+      trigger: makeNode("trig", "EvalTrigger"),
+      output: makeNode("out", "EvalTriggerOutput"),
+      scorePct,
+    });
+    return render(<RecursionTimelineViz layout={makeLayout([col])} />);
+  }
+
+  it("green fill (#dcfce7) for scorePct >= 0.75", () => {
+    const { container } = renderWithScore(0.8);
+    const rects = container.querySelectorAll("rect");
+    const fills = Array.from(rects).map((r) => r.getAttribute("fill"));
+    expect(fills).toContain("#dcfce7");
+  });
+
+  it("amber fill (#fef3c7) for scorePct = 0.5 (>= 0.45, < 0.75)", () => {
+    const { container } = renderWithScore(0.5);
+    const rects = container.querySelectorAll("rect");
+    const fills = Array.from(rects).map((r) => r.getAttribute("fill"));
+    expect(fills).toContain("#fef3c7");
+  });
+
+  it("red fill (#fee2e2) for scorePct < 0.45", () => {
+    const { container } = renderWithScore(0.3);
+    const rects = container.querySelectorAll("rect");
+    const fills = Array.from(rects).map((r) => r.getAttribute("fill"));
+    expect(fills).toContain("#fee2e2");
+  });
+
+  it("neutral gray fill (#f3f4f6) for null scorePct", () => {
+    const { container } = renderWithScore(null);
+    const rects = container.querySelectorAll("rect");
+    const fills = Array.from(rects).map((r) => r.getAttribute("fill"));
+    expect(fills).toContain("#f3f4f6");
+  });
+});
+
+// ─── null scorePct: no delta label ───────────────────────────────────────────
+
+describe("RecursionTimelineViz — null scorePct suppresses delta label", () => {
+  it("does not render a pts label when scorePct is null", () => {
+    const layout = makeLayout([
+      makeColumn({ runIndex: 0, output: makeNode("o0", "EvalTriggerOutput"), scorePct: 0.5 }),
+      makeColumn({ runIndex: 1, output: makeNode("o1", "EvalTriggerOutput"), scorePct: null, scoreDelta: null }),
+    ]);
+    const { container } = render(<RecursionTimelineViz layout={layout} />);
+    expect(container.querySelector("svg")?.textContent).not.toMatch(/pts/);
+  });
+});
+
+// ─── Score delta label ────────────────────────────────────────────────────────
+
+describe("RecursionTimelineViz — score delta label", () => {
+  it("renders '+N pts' when scoreDelta > 0 and scorePct is not null", () => {
+    const layout = makeLayout([
+      makeColumn({ runIndex: 0, output: makeNode("o0", "EvalTriggerOutput"), scorePct: 0.5 }),
+      makeColumn({
+        runIndex: 1,
+        proposedFix: makeNode("fix1", "ProposedFix"),
+        output: makeNode("o1", "EvalTriggerOutput"),
+        scorePct: 0.6,
+        scoreDelta: 0.1,
+      }),
+    ]);
+    const { container } = render(<RecursionTimelineViz layout={layout} />);
+    // scoreDelta = 0.10 → +10 pts (Math.round(0.1 * 100))
+    expect(container.querySelector("svg")?.textContent).toContain("+10 pts");
+  });
+
+  it("renders '−N pts' when scoreDelta < 0", () => {
+    const layout = makeLayout([
+      makeColumn({ runIndex: 0, output: makeNode("o0", "EvalTriggerOutput"), scorePct: 0.7 }),
+      makeColumn({
+        runIndex: 1,
+        proposedFix: makeNode("fix1", "ProposedFix"),
+        output: makeNode("o1", "EvalTriggerOutput"),
+        scorePct: 0.5,
+        scoreDelta: -0.2,
+      }),
+    ]);
+    const { container } = render(<RecursionTimelineViz layout={layout} />);
+    expect(container.querySelector("svg")?.textContent).toContain("−20 pts");
+  });
+
+  it("suppresses delta label when delta is 0", () => {
+    const layout = makeLayout([
+      makeColumn({ runIndex: 0, output: makeNode("o0", "EvalTriggerOutput"), scorePct: 0.5 }),
+      makeColumn({
+        runIndex: 1,
+        proposedFix: makeNode("fix1", "ProposedFix"),
+        output: makeNode("o1", "EvalTriggerOutput"),
+        scorePct: 0.5,
+        scoreDelta: 0,
+      }),
+    ]);
+    const { container } = render(<RecursionTimelineViz layout={layout} />);
+    expect(container.querySelector("svg")?.textContent).not.toMatch(/pts/);
+  });
+
+  it("suppresses delta label on column 0 even when delta is provided", () => {
+    // Column 0 should never show a delta
+    const layout = makeLayout([
+      makeColumn({
+        runIndex: 0,
+        output: makeNode("o0", "EvalTriggerOutput"),
+        scorePct: 0.5,
+        scoreDelta: 0.1, // would be unusual but guard against it
+      }),
+    ]);
+    const { container } = render(<RecursionTimelineViz layout={layout} />);
+    // runIndex === 0 → delta suppressed
+    expect(container.querySelector("svg")?.textContent).not.toMatch(/pts/);
+  });
+});
+
+// ─── EvalSet dashed connecting edge ──────────────────────────────────────────
+
+describe("RecursionTimelineViz — EvalSet dashed edge", () => {
+  it("renders a dashed-border rect for the EvalSet node when evalSetNode is present", () => {
+    const evalSetNode = makeNode("evalset-1", "EvalSet");
+    const col0 = makeColumn({
+      runIndex: 0,
+      trigger: makeNode("trig", "EvalTrigger"),
+      output: makeNode("out", "EvalTriggerOutput"),
+      scorePct: 0.8,
+    });
+    const { container } = render(
+      <RecursionTimelineViz layout={makeLayout([col0], evalSetNode)} />,
+    );
+    // The EvalSet node renders as a rect with strokeDasharray
+    const rects = container.querySelectorAll("rect");
+    const dashedRects = Array.from(rects).filter(
+      (r) => r.getAttribute("stroke-dasharray") !== null,
+    );
+    expect(dashedRects.length).toBeGreaterThan(0);
+  });
+
+  it("renders a dashed line from the EvalSet to the column-0 trigger when both exist", () => {
+    const evalSetNode = makeNode("evalset-1", "EvalSet");
+    const col0 = makeColumn({
+      runIndex: 0,
+      trigger: makeNode("trig", "EvalTrigger"),
+      output: makeNode("out", "EvalTriggerOutput"),
+      scorePct: 0.8,
+    });
+    const { container } = render(
+      <RecursionTimelineViz layout={makeLayout([col0], evalSetNode)} />,
+    );
+    // Look for any line with stroke-dasharray (the EvalSet connecting line)
+    const lines = container.querySelectorAll("line");
+    const dashedLines = Array.from(lines).filter(
+      (l) => l.getAttribute("stroke-dasharray") !== null,
+    );
+    expect(dashedLines.length).toBeGreaterThan(0);
+  });
+
+  it("does not render the EvalSet dashed edge when evalSetNode is null", () => {
+    const col0 = makeColumn({
+      runIndex: 0,
+      trigger: makeNode("trig", "EvalTrigger"),
+      output: makeNode("out", "EvalTriggerOutput"),
+      scorePct: 0.8,
+    });
+    const { container } = render(
+      <RecursionTimelineViz layout={makeLayout([col0], null)} />,
+    );
+    // Without evalSetNode, no dashed rect should appear at the EvalSet position
+    const rects = container.querySelectorAll("rect");
+    const dashedRects = Array.from(rects).filter(
+      (r) => r.getAttribute("stroke-dasharray") !== null,
+    );
+    expect(dashedRects.length).toBe(0);
+  });
+});
+
+// ─── Scroll wrapper ───────────────────────────────────────────────────────────
+
+describe("RecursionTimelineViz — horizontal scroll wrapper", () => {
+  it("wraps the SVG in a div with overflowX set", () => {
+    const col0 = makeColumn({
+      runIndex: 0,
+      output: makeNode("o0", "EvalTriggerOutput"),
+      scorePct: 0.5,
+    });
+    const { container } = render(<RecursionTimelineViz layout={makeLayout([col0])} />);
+    const wrapper = container.firstElementChild as HTMLElement;
+    // The outer div should have overflow: auto (or overflowX: auto)
+    expect(wrapper?.style?.overflowX).toBe("auto");
+  });
+});
+
+// ─── Inter-column bezier edges ────────────────────────────────────────────────
+
+describe("RecursionTimelineViz — inter-column bezier edges", () => {
+  it("renders a <path> bezier edge between column 0 and column 1", () => {
+    const layout = makeLayout([
+      makeColumn({
+        runIndex: 0,
+        trigger: makeNode("trig", "EvalTrigger"),
+        output: makeNode("o0", "EvalTriggerOutput"),
+        scorePct: 0.5,
+      }),
+      makeColumn({
+        runIndex: 1,
+        proposedFix: makeNode("fix1", "ProposedFix"),
+        output: makeNode("o1", "EvalTriggerOutput"),
+        scorePct: 0.6,
+        scoreDelta: 0.1,
+      }),
+    ]);
+    const { container } = render(<RecursionTimelineViz layout={layout} />);
+    // At least one <path> with a bezier d attribute (C = cubic bezier command)
+    const paths = container.querySelectorAll("path");
+    const bezierPaths = Array.from(paths).filter((p) => {
+      const d = p.getAttribute("d") ?? "";
+      return d.includes("C");
+    });
+    expect(bezierPaths.length).toBeGreaterThan(0);
+  });
+
+  it("renders an arrowhead marker def in the SVG defs", () => {
+    const layout = makeLayout([
+      makeColumn({ runIndex: 0, trigger: makeNode("t", "EvalTrigger"), output: makeNode("o", "EvalTriggerOutput"), scorePct: 0.5 }),
+    ]);
+    const { container } = render(<RecursionTimelineViz layout={layout} />);
+    const markers = container.querySelectorAll("marker");
+    expect(markers.length).toBeGreaterThan(0);
   });
 });

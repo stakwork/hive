@@ -2,50 +2,64 @@
  * timeline-layout.ts
  *
  * Pure builder: given a subgraph `{ nodes, edges }` rooted at an EvalSet,
- * produces a deterministic column layout for the 2D run-progression timeline.
+ * derives a deterministic 2D column layout for the RecursionTimelineViz.
  *
- * Column derivation:
- *   Column 0 = BaselineTrigger (via locateBaselineTriggerRoot)
- *   Columns 1…N = ProposedFix nodes in BFS visitation order (walkDerivedFromChain)
+ * Column 0  = BaselineTrigger (EvalSet --HAS_BASELINE_TRIGGER--> EvalTrigger)
+ * Columns 1…N = ProposedFix nodes in BFS visitation order following
+ *   DERIVED_FROM edges from the baseline trigger's HAS_PROPOSED_FIX roots.
+ *   When multiple HAS_PROPOSED_FIX edges exist, roots are sorted ascending by
+ *   date_added_to_graph before BFS begins.
  *
- * Lane assignment (case-insensitive):
- *   EvalTrigger       → top lane
+ * Lane assignment (case-insensitive node_type):
+ *   EvalTrigger      → top lane
  *   EvalTriggerOutput → middle lane
- *   ProposedFix       → bottom lane
+ *   ProposedFix      → bottom lane
  *
- * Score computation delegates to normalizeOutput to handle both the explicit
- * property path and the legacy judge_notes parse path.
+ * Score computation delegates to `normalizeOutput` — never reads
+ * `properties.n_passed` / `properties.n_total` directly.
+ *
+ * Note: EvalRequirement / HAS_REQUIREMENT walking is intentionally omitted —
+ * the production route excludes these nodes and the fixture contains none.
  */
 
+import {
+  normalizeOutput,
+  type RawJarvisNode,
+} from "@/lib/harvey-lab/eval-normalizers";
 import {
   locateBaselineTriggerRoot,
   walkDerivedFromChain,
   type SubgraphNode,
   type SubgraphEdge,
 } from "@/lib/harvey-lab/hill-climb-series";
-import { normalizeOutput, type RawJarvisNode } from "@/lib/harvey-lab/eval-normalizers";
 
 // ── Public types ──────────────────────────────────────────────────────────────
 
-export interface RunColumn {
-  /** 0-based column index (Run 1 display label = runIndex + 1) */
+export type RunColumn = {
+  /** 0-based column index; column 0 is always the baseline run. */
   runIndex: number;
+  /** EvalTrigger node for this column (null for ProposedFix columns). */
   trigger: SubgraphNode | null;
+  /** EvalTriggerOutput node associated with this column (null when absent). */
   output: SubgraphNode | null;
+  /** ProposedFix node for columns 1+; null for the baseline column. */
   proposedFix: SubgraphNode | null;
-  /** n_passed / n_total in [0, 1], or null when the output is unresolvable */
+  /** n_passed / n_total from the output node; null when no scoreable output. */
   scorePct: number | null;
-  /** Score delta vs the previous column's scorePct (null for column 0) */
+  /** scorePct − previous column's scorePct; null for column 0. */
   scoreDelta: number | null;
-}
+};
 
-export interface TimelineLayout {
+export type TimelineLayout = {
   columns: RunColumn[];
-  /** The EvalSet node, pinned as an anchor in the visualization */
+  /** The EvalSet root node, if found. */
   evalSetNode: SubgraphNode | null;
-  /** True when the underlying fix-chain walk was capped before completion */
+  /**
+   * True when the graph walk returned a truncated result — mirrors the
+   * fix-chain route's `partial` flag passed by the caller.
+   */
   partial: boolean;
-}
+};
 
 // ── Internal helpers ──────────────────────────────────────────────────────────
 
@@ -55,50 +69,52 @@ function isNodeType(node: SubgraphNode, ...types: string[]): boolean {
 }
 
 /**
- * Resolve an EvalTriggerOutput for a given trigger node via a HAS_OUTPUT edge.
- * Returns the raw SubgraphNode (not normalized) so the caller can store it for
- * rendering and then normalize separately for scoring.
+ * Resolve the raw SubgraphNode for an output associated with a given source node.
+ * For baseline trigger columns: follows HAS_OUTPUT edges from the trigger.
+ * For ProposedFix columns: follows PRODUCED_BY edges from the fix; applies
+ * first-valid-wins when multiple edges exist (mirrors `resolveFixOutput`).
+ *
+ * First-valid-wins for PRODUCED_BY: a target node is "valid" when it has a
+ * non-null `properties` object AND `normalizeOutput` can extract a non-null
+ * n_passed/n_total from it — exactly the same condition `resolveFixOutput` in
+ * hill-climb-series.ts applies before picking an edge target.
+ *
+ * HAS_OUTPUT (baseline trigger) uses a simpler check: just non-null properties,
+ * because the baseline always has a single output edge.
  */
-function resolveOutputForTrigger(
-  triggerNode: SubgraphNode,
+function resolveOutputNode(
+  sourceNode: SubgraphNode,
+  edgeType: "HAS_OUTPUT" | "PRODUCED_BY",
   edges: SubgraphEdge[],
   nodeMap: Map<string, SubgraphNode>,
 ): SubgraphNode | null {
-  const edge = edges.find(
-    (e) => e.source === triggerNode.ref_id && e.edge_type === "HAS_OUTPUT",
+  const candidates = edges.filter(
+    (e) => e.source === sourceNode.ref_id && e.edge_type === edgeType,
   );
-  if (!edge) return null;
-  return nodeMap.get(edge.target) ?? null;
-}
+  for (const edge of candidates) {
+    const target = nodeMap.get(edge.target);
+    if (!target || target.properties == null) continue;
 
-/**
- * Resolve an EvalTriggerOutput for a ProposedFix node via PRODUCED_BY edges.
- * First-valid-wins: picks the first edge whose target exists in the subgraph
- * and has a non-null properties object with valid n_passed/n_total.
- * Mirrors resolveFixOutput in hill-climb-series.ts.
- */
-function resolveOutputForFix(
-  fixNode: SubgraphNode,
-  edges: SubgraphEdge[],
-  nodeMap: Map<string, SubgraphNode>,
-): SubgraphNode | null {
-  const producedByEdges = edges.filter(
-    (e) => e.source === fixNode.ref_id && e.edge_type === "PRODUCED_BY",
-  );
-  for (const e of producedByEdges) {
-    const target = nodeMap.get(e.target);
-    if (target && target.properties != null) {
-      // Require that normalizeOutput succeeds with valid counts
+    if (edgeType === "PRODUCED_BY") {
+      // First-valid-wins: target must have resolvable n_passed/n_total via normalizeOutput.
       const normalized = normalizeOutput(target as RawJarvisNode);
       if (normalized && normalized.n_passed != null && normalized.n_total != null) {
         return target;
       }
+      // Otherwise skip to the next candidate
+      continue;
     }
+
+    // HAS_OUTPUT: single edge, non-null properties suffices
+    return target;
   }
   return null;
 }
 
-/** Compute scorePct from an output SubgraphNode. Returns null on failure. */
+/**
+ * Compute scorePct from a raw output node using normalizeOutput.
+ * Returns null when the output node is absent or lacks n_passed/n_total.
+ */
 function computeScorePct(outputNode: SubgraphNode | null): number | null {
   if (!outputNode) return null;
   const normalized = normalizeOutput(outputNode as RawJarvisNode);
@@ -110,18 +126,17 @@ function computeScorePct(outputNode: SubgraphNode | null): number | null {
 // ── Main builder ──────────────────────────────────────────────────────────────
 
 /**
- * Build a deterministic 2D timeline layout from a recursion subgraph.
+ * Build a deterministic 2D timeline layout from an EvalSet subgraph.
  *
- * @param nodes  - All nodes in the fix-chain subgraph
- * @param edges  - All edges in the fix-chain subgraph
- * @param partial - Whether the underlying walk was capped (forwarded from the API)
+ * The `partial` flag is passed through from the caller — this function has
+ * no knowledge of the walk budget; it operates only on the nodes/edges given.
  */
 export function buildTimelineLayout(
   nodes: SubgraphNode[],
   edges: SubgraphEdge[],
   partial = false,
 ): TimelineLayout {
-  // Index by ref_id for O(1) lookup
+  // Index nodes for O(1) lookup
   const nodeMap = new Map<string, SubgraphNode>();
   for (const n of nodes) {
     nodeMap.set(n.ref_id, n);
@@ -134,16 +149,16 @@ export function buildTimelineLayout(
     return { columns: [], evalSetNode: null, partial };
   }
 
-  // Locate baseline trigger + root fix id
+  // Locate the baseline trigger and root fix
   const baseline = locateBaselineTriggerRoot(evalSetNode.ref_id, nodeMap, edges);
   if (!baseline) {
     return { columns: [], evalSetNode, partial };
   }
 
-  const { baselineTriggerNode } = baseline;
+  const { baselineTriggerNode, rootFixId } = baseline;
 
-  // ── Column 0: baseline trigger ────────────────────────────────────────────
-  const baselineOutputNode = resolveOutputForTrigger(baselineTriggerNode, edges, nodeMap);
+  // ── Column 0: Baseline ────────────────────────────────────────────────────
+  const baselineOutputNode = resolveOutputNode(baselineTriggerNode, "HAS_OUTPUT", edges, nodeMap);
   const baselineScorePct = computeScorePct(baselineOutputNode);
 
   const columns: RunColumn[] = [
@@ -157,57 +172,61 @@ export function buildTimelineLayout(
     },
   ];
 
-  // ── Columns 1…N: ProposedFix BFS chain ───────────────────────────────────
-  // Collect all HAS_PROPOSED_FIX edges from the baseline trigger, sorted by
-  // date_added_to_graph ascending before BFS so that when multiple root edges
-  // exist they are visited in chronological order.
+  // ── Columns 1+: ProposedFix chain ─────────────────────────────────────────
+  if (!rootFixId) {
+    // Baseline-only: no ProposedFix edges
+    return { columns, evalSetNode, partial };
+  }
+
+  // Collect ALL HAS_PROPOSED_FIX edges from the baseline trigger.
+  // Sort roots ascending by date_added_to_graph before BFS.
   const rootFixEdges = edges.filter(
     (e) => e.source === baselineTriggerNode.ref_id && e.edge_type === "HAS_PROPOSED_FIX",
   );
 
-  // Sort root fixes ascending by date_added_to_graph before BFS
   const rootFixNodes = rootFixEdges
     .map((e) => nodeMap.get(e.target))
     .filter((n): n is SubgraphNode => n != null)
     .sort((a, b) => {
-      const ta = Number(a.date_added_to_graph ?? 0);
-      const tb = Number(b.date_added_to_graph ?? 0);
+      const ta = parseFloat(String(a.date_added_to_graph ?? 0));
+      const tb = parseFloat(String(b.date_added_to_graph ?? 0));
       return ta - tb;
     });
 
-  if (rootFixNodes.length > 0) {
-    const sharedVisited = new Set<string>();
-    const fixChain: SubgraphNode[] = [];
-    for (const root of rootFixNodes) {
-      const branch = walkDerivedFromChain(root.ref_id, nodeMap, edges, sharedVisited);
-      fixChain.push(...branch);
+  // BFS over the DERIVED_FROM chain from all sorted roots.
+  // Shared visited set prevents double-counting nodes reachable via multiple roots.
+  const sharedVisited = new Set<string>();
+  const fixChain: SubgraphNode[] = [];
+  for (const rootFixNode of rootFixNodes) {
+    const branch = walkDerivedFromChain(rootFixNode.ref_id, nodeMap, edges, sharedVisited);
+    fixChain.push(...branch);
+  }
+
+  let prevScorePct = baselineScorePct;
+  let colIndex = 1;
+
+  for (const fixNode of fixChain) {
+    if (!isNodeType(fixNode, "ProposedFix")) continue;
+
+    // For ProposedFix columns, output is resolved via PRODUCED_BY (first-valid-wins)
+    const outputNode = resolveOutputNode(fixNode, "PRODUCED_BY", edges, nodeMap);
+    const scorePct = computeScorePct(outputNode);
+    const scoreDelta =
+      scorePct !== null && prevScorePct !== null ? scorePct - prevScorePct : null;
+
+    columns.push({
+      runIndex: colIndex,
+      trigger: null,
+      output: outputNode,
+      proposedFix: fixNode,
+      scorePct,
+      scoreDelta,
+    });
+
+    if (scorePct !== null) {
+      prevScorePct = scorePct;
     }
-
-    let prevScorePct = baselineScorePct;
-
-    for (const fixNode of fixChain) {
-      if (!isNodeType(fixNode, "ProposedFix")) continue;
-
-      const outputNode = resolveOutputForFix(fixNode, edges, nodeMap);
-      const scorePct = computeScorePct(outputNode);
-
-      const scoreDelta =
-        scorePct != null && prevScorePct != null ? scorePct - prevScorePct : null;
-
-      columns.push({
-        runIndex: columns.length,
-        trigger: null,
-        output: outputNode,
-        proposedFix: fixNode,
-        scorePct,
-        scoreDelta,
-      });
-
-      // Only advance prevScorePct when this column produced a real score
-      if (scorePct != null) {
-        prevScorePct = scorePct;
-      }
-    }
+    colIndex++;
   }
 
   return { columns, evalSetNode, partial };
