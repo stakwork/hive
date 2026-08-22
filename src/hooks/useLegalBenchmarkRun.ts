@@ -34,10 +34,25 @@ interface RawRunRow {
   updatedAt: string;
 }
 
-export function useLegalBenchmarkRun(runId: string): UseLegalBenchmarkRunResult {
+/**
+ * Fetches and subscribes to a single benchmark run.
+ *
+ * `runId: null` is the "not yet triggered" no-op state — the hook returns
+ * `{ run: null, isLoading: false }` immediately with no fetch or Pusher
+ * subscription. This allows RecursionCard to call the hook unconditionally
+ * (rules of hooks) before a consolidated run has been dispatched.
+ *
+ * `runType` defaults to `LEGAL_BENCHMARK_RUNNER` so all existing callers
+ * receive unchanged behaviour without modification.
+ */
+export function useLegalBenchmarkRun(
+  runId: string | null,
+  runType: StakworkRunType = StakworkRunType.LEGAL_BENCHMARK_RUNNER,
+): UseLegalBenchmarkRunResult {
   const { workspace } = useWorkspace();
   const [run, setRun] = useState<LegalBenchmarkRun | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  // When runId is null, isLoading is immediately false — no fetch will occur.
+  const [isLoading, setIsLoading] = useState(runId !== null);
   const [isStale, setIsStale] = useState(false);
 
   // Keep refs so async timer / Pusher callbacks always read latest values.
@@ -51,7 +66,7 @@ export function useLegalBenchmarkRun(runId: string): UseLegalBenchmarkRunResult 
       setIsLoading(true);
 
       const res = await fetch(
-        `/api/stakwork/runs?workspaceId=${workspace.id}&type=${StakworkRunType.LEGAL_BENCHMARK_RUNNER}&includeResult=true`,
+        `/api/stakwork/runs?workspaceId=${workspace.id}&type=${runType}&includeResult=true`,
       );
 
       if (!res.ok) {
@@ -109,7 +124,7 @@ export function useLegalBenchmarkRun(runId: string): UseLegalBenchmarkRunResult 
     } finally {
       setIsLoading(false);
     }
-  }, [workspace?.id, runId]);
+  }, [workspace?.id, runId, runType]);
 
   fetchRunRef.current = fetchRun;
 
@@ -142,7 +157,7 @@ export function useLegalBenchmarkRun(runId: string): UseLegalBenchmarkRunResult 
 
   // Pusher subscription — refetch when a STAKWORK_RUN_UPDATE matches our run id.
   useEffect(() => {
-    if (!workspace?.slug) return;
+    if (!workspace?.slug || !runId) return;
 
     let channel: ReturnType<ReturnType<typeof getPusherClient>["subscribe"]> | null =
       null;
