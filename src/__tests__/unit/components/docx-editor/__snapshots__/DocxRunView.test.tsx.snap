@@ -1,0 +1,28 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`DocxRunView — pending deletion (other author) > snapshot: deletion by other author 1`] = `
+<span
+  class="line-through decoration-red-500 text-red-700"
+  data-run-id="snap-del"
+>
+  deleted text
+</span>
+`;
+
+exports[`DocxRunView — pending insertion (current author — own edit) > snapshot: own insertion 1`] = `
+<span
+  class="underline decoration-green-400/50 text-green-600/50"
+  data-run-id="snap-own-ins"
+>
+  my edit
+</span>
+`;
+
+exports[`DocxRunView — pending insertion (other author) > snapshot: insertion by other author 1`] = `
+<span
+  class="underline decoration-green-500 text-green-700"
+  data-run-id="snap-run"
+>
+  inserted text
+</span>
+`;
