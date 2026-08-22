@@ -8,7 +8,6 @@ export const FEATURE_FLAGS = {
   CHAT_CODE_FORMATTING: 'CHAT_CODE_FORMATTING',
   WHITEBOARD_STAKWORK_POSITIONING: 'WHITEBOARD_STAKWORK_POSITIONING',
   TASK_AGENT_MODE: 'TASK_AGENT_MODE',
-  AI_DOC_EDITOR: 'AI_DOC_EDITOR',
 } as const;
 
 export type FeatureFlag = typeof FEATURE_FLAGS[keyof typeof FEATURE_FLAGS];
@@ -37,9 +36,6 @@ export function canAccessFeature(feature: FeatureFlag, userRole?: WorkspaceRole)
     case FEATURE_FLAGS.TASK_AGENT_MODE:
       isEnabled = process.env.NEXT_PUBLIC_FEATURE_TASK_AGENT_MODE === 'true';
       break;
-    case FEATURE_FLAGS.AI_DOC_EDITOR:
-      isEnabled = process.env.NEXT_PUBLIC_FEATURE_AI_DOC_EDITOR === 'true';
-      break;
     default:
       isEnabled = false;
   }
@@ -53,7 +49,6 @@ export function canAccessFeature(feature: FeatureFlag, userRole?: WorkspaceRole)
     [FEATURE_FLAGS.CHAT_CODE_FORMATTING]: [],
     [FEATURE_FLAGS.WHITEBOARD_STAKWORK_POSITIONING]: [],
     [FEATURE_FLAGS.TASK_AGENT_MODE]: [],
-    [FEATURE_FLAGS.AI_DOC_EDITOR]: [],
   };
 
   const allowedRoles = roleRequirements[feature];
@@ -86,9 +81,6 @@ export function canAccessServerFeature(feature: FeatureFlag, userRole?: Workspac
     case FEATURE_FLAGS.TASK_AGENT_MODE:
       isEnabled = process.env.NEXT_PUBLIC_FEATURE_TASK_AGENT_MODE === 'true';
       break;
-    case FEATURE_FLAGS.AI_DOC_EDITOR:
-      isEnabled = process.env.NEXT_PUBLIC_FEATURE_AI_DOC_EDITOR === 'true';
-      break;
     default:
       isEnabled = false;
   }
@@ -102,7 +94,6 @@ export function canAccessServerFeature(feature: FeatureFlag, userRole?: Workspac
     [FEATURE_FLAGS.CHAT_CODE_FORMATTING]: [],
     [FEATURE_FLAGS.WHITEBOARD_STAKWORK_POSITIONING]: [],
     [FEATURE_FLAGS.TASK_AGENT_MODE]: [],
-    [FEATURE_FLAGS.AI_DOC_EDITOR]: [],
   };
 
   const allowedRoles = roleRequirements[feature];

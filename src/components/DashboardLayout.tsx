@@ -65,7 +65,7 @@ export function DashboardLayout({ children, user, isPublicWorkspace = false }: D
   const { workspace, loading, error, isPublicViewer } = useWorkspace();
   const pathname = usePathname();
   const router = useRouter();
-  const isDocumentsPage = pathname.includes("/documents/");
+  const isDocumentsPage = pathname.endsWith("/documents");
   const isFullscreenPage = isDocumentsPage || pathname.includes("/task/") || pathname.includes("/plan/");
   const [workspaceLogoUrl, setWorkspaceLogoUrl] = useState<string | null>(null);
 

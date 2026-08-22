@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { FileIcon, Loader2 } from "lucide-react";
+import { ExternalLink, FileIcon, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -298,6 +298,18 @@ export function TaskDetailsModal({
                               >
                                 {doc.name}
                               </a>
+                              {doc.name.toLowerCase().endsWith(".docx") && (
+                                <a
+                                  href={`/w/${slug}/documents?url=${encodeURIComponent(doc.download_url)}&filename=${encodeURIComponent(doc.name)}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  title="Open in Document Editor"
+                                  className="p-0.5 rounded hover:bg-muted text-muted-foreground hover:text-primary transition-colors shrink-0"
+                                  data-testid="open-in-editor-link"
+                                >
+                                  <ExternalLink className="h-3.5 w-3.5" />
+                                </a>
+                              )}
                               {matchedFile && (
                                 <span className="text-xs text-muted-foreground ml-auto flex-shrink-0">
                                   {formatMB(matchedFile.size)}

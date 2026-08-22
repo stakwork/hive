@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import { ExternalLink } from "lucide-react";
 import type { ConsolidatedReportProjection, RunReportPayload } from "@/lib/run-report/types";
 import { PassFailBadge } from "@/components/run-report/RubricLedger";
 import { SafeMarkdown } from "@/components/run-report/SafeMarkdown";
@@ -60,9 +61,11 @@ function formatRunTimestamp(epochMs: number): string {
 function ConsolidatedHeader({
   taskSlug,
   projection,
+  slug,
 }: {
   taskSlug: string;
   projection: ConsolidatedReportProjection;
+  slug?: string | null;
 }) {
   return (
     <section className="mb-8" data-testid="consolidated-header">
@@ -85,17 +88,32 @@ function ConsolidatedHeader({
           {projection.sourceFileLinks.map((url) => {
             // Display just the filename from the URL path for readability.
             const label = url.split("/").pop() ?? url;
+            const isDocx = label.toLowerCase().endsWith(".docx");
             return (
-              <a
-                key={url}
-                href={url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-1 rounded-full border border-border px-2.5 py-0.5 font-mono text-[10.5px] text-muted-foreground hover:text-primary hover:border-primary/50 transition-colors"
-                data-testid="source-file-link"
-              >
-                📄 {label}
-              </a>
+              <React.Fragment key={url}>
+                <a
+                  href={url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 rounded-full border border-border px-2.5 py-0.5 font-mono text-[10.5px] text-muted-foreground hover:text-primary hover:border-primary/50 transition-colors"
+                  data-testid="source-file-link"
+                >
+                  📄 {label}
+                </a>
+                {isDocx && slug && (
+                  <a
+                    href={`/w/${slug}/documents?url=${encodeURIComponent(url)}&filename=${encodeURIComponent(label)}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    title="Open in Document Editor"
+                    className="inline-flex items-center gap-1 rounded-full border border-primary/40 px-2.5 py-0.5 font-mono text-[10.5px] text-primary hover:bg-primary/10 transition-colors"
+                    data-testid="open-docx-in-editor"
+                  >
+                    <ExternalLink className="h-3 w-3" />
+                    Edit
+                  </a>
+                )}
+              </React.Fragment>
             );
           })}
         </div>
@@ -334,6 +352,7 @@ export function ConsolidatedReportView({
   payload,
   projection,
   taskSlug,
+  workspaceSlug,
 }: ConsolidatedReportViewProps) {
   // Handle load / projection errors.
   if (!payload.hasReport) {
@@ -360,7 +379,7 @@ export function ConsolidatedReportView({
     <div className="max-w-[1200px] mx-auto" data-testid="consolidated-report-view">
       {/* Section 1: Header */}
       <SectionErrorBoundary>
-        <ConsolidatedHeader taskSlug={taskSlug} projection={projection} />
+        <ConsolidatedHeader taskSlug={taskSlug} projection={projection} slug={workspaceSlug} />
       </SectionErrorBoundary>
 
       {/* Section 2: Failed-rubric matrix */}
