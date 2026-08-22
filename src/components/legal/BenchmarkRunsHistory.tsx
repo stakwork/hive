@@ -35,6 +35,8 @@ import { useBenchmarkGraphScoresMap, type GraphScoreRequest } from "@/hooks/useB
 import { computeBenchmarkScore } from "@/lib/harvey-lab/rubric-scoring";
 import { resolveGraphOutputForRun } from "@/lib/harvey-lab/graph-run-score";
 import { LegalBenchmarkResults } from "@/components/legal/LegalBenchmarkResults";
+import { BenchmarkRunAgentLogs } from "@/components/legal/BenchmarkRunAgentLogs";
+import { BenchmarkRunCascade } from "@/components/legal/RunCascade";
 import { StakworkRunLink } from "@/components/legal/StakworkRunLink";
 import { HillClimbChart } from "@/components/legal/HillClimbChart";
 import { WorkflowStatus } from "@prisma/client";
@@ -599,11 +601,11 @@ export function BenchmarkRunsHistory({
                   }}
                   className={[
                     "border-b last:border-0 transition-colors",
-                    // Only manual rows expand — the detail panel renders
-                    // runner criteria, which the cron pipelines don't have.
-                    run.runType === "manual" ? "cursor-pointer hover:bg-muted/30" : "",
+                    // All rows are expandable: manual rows show the full rubric
+                    // panel; non-manual rows show Agents + Traces only.
+                    "cursor-pointer hover:bg-muted/30",
                   ].join(" ")}
-                  onClick={() => run.runType === "manual" && handleToggleExpand(run.id)}
+                  onClick={() => handleToggleExpand(run.id)}
                   data-testid={`run-row-${run.id}`}
                 >
                   <td className="px-4 py-3">
@@ -669,11 +671,18 @@ export function BenchmarkRunsHistory({
                 {expandedRunId === run.id && (
                   <tr className="border-b last:border-0 bg-muted/10">
                     <td colSpan={colSpan} className="px-4 pb-4">
-                      <LegalBenchmarkResults
-                        runId={run.id}
-                        isSuperAdmin={isSuperAdmin}
-                        onReset={handleReset}
-                      />
+                      {run.runType === "manual" ? (
+                        <LegalBenchmarkResults
+                          runId={run.id}
+                          isSuperAdmin={isSuperAdmin}
+                          onReset={handleReset}
+                        />
+                      ) : (
+                        <div className="flex flex-wrap items-start gap-2 empty:hidden">
+                          <BenchmarkRunAgentLogs runId={run.id} />
+                          <BenchmarkRunCascade runId={run.id} runStatus={run.status} />
+                        </div>
+                      )}
                     </td>
                   </tr>
                 )}
