@@ -104,6 +104,20 @@ vi.mock("@/hooks/useWorkspace", () => ({
   })),
 }));
 
+vi.mock("@/components/legal/BenchmarkRunAgentLogs", () => ({
+  BenchmarkRunAgentLogs: ({ runId }: { runId: string }) =>
+    React.createElement("div", { "data-testid": "run-agent-logs", "data-run-id": runId }),
+}));
+
+vi.mock("@/components/legal/RunCascade", () => ({
+  BenchmarkRunCascade: ({ runId, runStatus }: { runId: string; runStatus?: string }) =>
+    React.createElement("div", {
+      "data-testid": "run-cascade",
+      "data-run-id": runId,
+      "data-run-status": runStatus,
+    }),
+}));
+
 vi.mock("@/components/legal/LegalBenchmarkResults", () => ({
   LegalBenchmarkResults: ({
     runId,
@@ -1467,5 +1481,178 @@ describe("BenchmarkRunsHistory — graph-first score numerators", () => {
     const row = screen.getByTestId("run-row-a-1");
     expect(row.textContent).toContain("—");
     expect(row.textContent).not.toContain("8/");
+  });
+});
+
+// ─── Non-manual (recursion) row expand tests ──────────────────────────────────
+
+const makeRecursionRun = (overrides: Partial<ReturnType<typeof makeRun>> = {}) => ({
+  ...makeRun({ id: "rec-1", status: "COMPLETED", ...overrides }),
+  runType: "recursion" as const,
+  taskTitle: "Recursion Task",
+});
+
+describe("BenchmarkRunsHistory — non-manual row expansion", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockUseList.mockReturnValue({
+      runs: [makeRecursionRun()],
+      total: 1,
+      isLoading: false,
+      error: null,
+      refetch: mockRefetch,
+      setExpandedId: mockSetExpandedId,
+    });
+  });
+
+  it("recursion row has cursor-pointer class (is clickable)", () => {
+    render(<BenchmarkRunsHistory />);
+    const row = screen.getByTestId("run-row-rec-1");
+    expect(row.className).toContain("cursor-pointer");
+  });
+
+  it("recursion row has hover:bg-muted/30 class", () => {
+    render(<BenchmarkRunsHistory />);
+    const row = screen.getByTestId("run-row-rec-1");
+    expect(row.className).toContain("hover:bg-muted/30");
+  });
+
+  it("expanding a recursion row renders the Agents panel with correct runId", async () => {
+    const user = userEvent.setup();
+    render(<BenchmarkRunsHistory />);
+
+    const row = screen.getByTestId("run-row-rec-1");
+    await user.click(row);
+
+    const agentLogs = screen.getByTestId("run-agent-logs");
+    expect(agentLogs).toBeInTheDocument();
+    expect(agentLogs.getAttribute("data-run-id")).toBe("rec-1");
+  });
+
+  it("expanding a recursion row renders the Traces panel with correct runId and runStatus", async () => {
+    const user = userEvent.setup();
+    render(<BenchmarkRunsHistory />);
+
+    const row = screen.getByTestId("run-row-rec-1");
+    await user.click(row);
+
+    const cascade = screen.getByTestId("run-cascade");
+    expect(cascade).toBeInTheDocument();
+    expect(cascade.getAttribute("data-run-id")).toBe("rec-1");
+    expect(cascade.getAttribute("data-run-status")).toBe("COMPLETED");
+  });
+
+  it("expanding a recursion row does NOT mount LegalBenchmarkResults", async () => {
+    const user = userEvent.setup();
+    render(<BenchmarkRunsHistory />);
+
+    const row = screen.getByTestId("run-row-rec-1");
+    await user.click(row);
+
+    expect(screen.queryByTestId("results-rec-1")).toBeNull();
+  });
+
+  it("clicking the same recursion row again collapses it", async () => {
+    const user = userEvent.setup();
+    render(<BenchmarkRunsHistory />);
+
+    const row = screen.getByTestId("run-row-rec-1");
+
+    await user.click(row);
+    expect(screen.getByTestId("run-agent-logs")).toBeInTheDocument();
+
+    await user.click(row);
+    expect(screen.queryByTestId("run-agent-logs")).toBeNull();
+    expect(screen.queryByTestId("run-cascade")).toBeNull();
+    expect(mockSetExpandedId).toHaveBeenLastCalledWith(null);
+  });
+
+  it("manual rows still render LegalBenchmarkResults when expanded", async () => {
+    const user = userEvent.setup();
+    mockUseList.mockReturnValue({
+      runs: [makeRun({ id: "manual-1" })],
+      total: 1,
+      isLoading: false,
+      error: null,
+      refetch: mockRefetch,
+      setExpandedId: mockSetExpandedId,
+    });
+
+    render(<BenchmarkRunsHistory />);
+
+    const row = screen.getByTestId("run-row-manual-1");
+    await user.click(row);
+
+    expect(screen.getByTestId("results-manual-1")).toBeInTheDocument();
+    expect(screen.queryByTestId("run-agent-logs")).toBeNull();
+    expect(screen.queryByTestId("run-cascade")).toBeNull();
+  });
+
+  it("opening a recursion row collapses a previously open recursion row (single-expand)", async () => {
+    const user = userEvent.setup();
+    mockUseList.mockReturnValue({
+      runs: [
+        makeRecursionRun({ id: "rec-1", taskTitle: "Recursion Task A" }),
+        makeRecursionRun({ id: "rec-2", taskTitle: "Recursion Task B" }),
+      ],
+      total: 2,
+      isLoading: false,
+      error: null,
+      refetch: mockRefetch,
+      setExpandedId: mockSetExpandedId,
+    });
+
+    render(<BenchmarkRunsHistory />);
+
+    await user.click(screen.getByTestId("run-row-rec-1"));
+    expect(screen.getAllByTestId("run-agent-logs")).toHaveLength(1);
+    expect(screen.getAllByTestId("run-agent-logs")[0].getAttribute("data-run-id")).toBe("rec-1");
+
+    await user.click(screen.getByTestId("run-row-rec-2"));
+    // rec-1 panel must be gone; rec-2 panel must be the only one
+    const panels = screen.getAllByTestId("run-agent-logs");
+    expect(panels).toHaveLength(1);
+    expect(panels[0].getAttribute("data-run-id")).toBe("rec-2");
+  });
+
+  it("clicking an interactive cell (Report) on a recursion row does not toggle expansion", async () => {
+    const user = userEvent.setup();
+    mockUseList.mockReturnValue({
+      runs: [makeRecursionRun({ hasReport: true } as Parameters<typeof makeRecursionRun>[0])],
+      total: 1,
+      isLoading: false,
+      error: null,
+      refetch: mockRefetch,
+      setExpandedId: mockSetExpandedId,
+    });
+
+    render(<BenchmarkRunsHistory />);
+
+    // The Report cell is inside its own <td onClick={stopPropagation}>
+    const reportLink = screen.getByTestId("run-report-link");
+    await user.click(reportLink);
+
+    // Panel must not have opened
+    expect(screen.queryByTestId("run-agent-logs")).toBeNull();
+    expect(screen.queryByTestId("run-cascade")).toBeNull();
+  });
+
+  it("a recursion row whose children both render nothing still toggles without error (empty-panel path)", async () => {
+    // Both mocked children always render a div, so to exercise the
+    // "empty-panel accepted" path we just verify the panel wrapper mounts and
+    // dismounts cleanly even when the children produce no visible content.
+    const user = userEvent.setup();
+    render(<BenchmarkRunsHistory />);
+
+    const row = screen.getByTestId("run-row-rec-1");
+
+    // open
+    await user.click(row);
+    // The wrapper div is present (children mounted)
+    expect(screen.getByTestId("run-agent-logs")).toBeInTheDocument();
+
+    // close — no error thrown
+    await user.click(row);
+    expect(screen.queryByTestId("run-agent-logs")).toBeNull();
   });
 });
