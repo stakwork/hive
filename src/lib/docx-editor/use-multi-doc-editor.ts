@@ -91,6 +91,8 @@ export interface MultiDocEditorHandle {
   openDocumentFromFile: (file: File) => Promise<void>;
   /** Open a document by resolving a graph node ID. */
   openDocumentFromNodeId: (nodeId: string) => Promise<void>;
+  /** Open a document by fetching it via a presigned URL derived from an S3 key. */
+  openDocumentFromS3Key: (s3Key: string, filename?: string) => Promise<void>;
   /** Close the document at the given index. */
   closeDocument: (index: number) => void;
   /** Switch the active tab to the given index. */
@@ -215,6 +217,41 @@ export function useMultiDocEditor(
     [slug, reportError, openDocumentFromFile]
   );
 
+  // ── openDocumentFromS3Key ─────────────────────────────────────────────────
+
+  const openDocumentFromS3Key = useCallback(
+    async (s3Key: string, filename?: string): Promise<void> => {
+      const presignedUrl = `/api/upload/presigned-url?s3Key=${encodeURIComponent(s3Key)}`;
+      let res: Response;
+      try {
+        res = await fetch(presignedUrl);
+      } catch (err) {
+        reportError(
+          `Network error opening document: ${err instanceof Error ? err.message : String(err)}`
+        );
+        return;
+      }
+
+      // Use !res.ok — the endpoint returns 404 for all auth-denied/IDOR cases,
+      // not 401 or 403, so checking specific codes would silently miss auth failures.
+      if (!res.ok) {
+        reportError(`Failed to open document: ${res.status} ${res.statusText}`);
+        return;
+      }
+
+      // fetch() automatically follows the 302 redirect to S3 — do NOT set
+      // redirect: 'manual'; the resolved response body is the blob directly.
+      const blob = await res.blob();
+
+      // s3Key is a bare path (e.g. "uploads/ws/.../ts_rand_report.docx") —
+      // new URL() would throw on it. Use split/pop for safe filename derivation.
+      const derivedFilename = filename ?? s3Key.split("/").pop() ?? "document.docx";
+      const file = new File([blob], derivedFilename, { type: blob.type });
+      await openDocumentFromFile(file);
+    },
+    [reportError, openDocumentFromFile]
+  );
+
   // ── closeDocument ─────────────────────────────────────────────────────────
 
   const closeDocument = useCallback((index: number) => {
@@ -253,6 +290,7 @@ export function useMultiDocEditor(
     activeIndex,
     openDocumentFromFile,
     openDocumentFromNodeId,
+    openDocumentFromS3Key,
     closeDocument,
     setActiveTab,
     dispatch,
