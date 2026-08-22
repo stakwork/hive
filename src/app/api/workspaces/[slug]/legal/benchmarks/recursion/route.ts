@@ -3,6 +3,7 @@ import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 import { getWorkspaceSwarmAccess } from "@/lib/helpers/swarm-access";
 import { getJarvisUrl } from "@/lib/utils/swarm";
 import { listRecursionEvalSets } from "@/services/legal-benchmark-recursion";
+import { logger } from "@/lib/logger";
 
 export const runtime = "nodejs";
 export const fetchCache = "force-no-store";
@@ -46,13 +47,21 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       return handleSwarmAccessError(swarmResult.error);
     }
 
-    const { swarmName, swarmApiKey } = swarmResult.data;
+    const { swarmName, swarmApiKey, workspaceId } = swarmResult.data;
     const jarvisUrl = getJarvisUrl(swarmName);
 
-    const result = await listRecursionEvalSets({ jarvisUrl, apiKey: swarmApiKey });
+    const result = await listRecursionEvalSets({ jarvisUrl, apiKey: swarmApiKey }, workspaceId);
 
     if (!result.ok) {
       return NextResponse.json({ error: "Failed to fetch recursion eval sets" }, { status: 502 });
+    }
+
+    if (result.partial) {
+      logger.warn(
+        "[legal/benchmarks/recursion] listRecursionEvalSets returned partial results for workspace",
+        "legal",
+        { workspaceId },
+      );
     }
 
     return NextResponse.json({ success: true, data: result.nodes ?? [] });
