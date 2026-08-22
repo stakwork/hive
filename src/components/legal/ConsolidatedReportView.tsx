@@ -1,32 +1,51 @@
 "use client";
 
-import React, { useMemo } from "react";
-import type { RunReportPayload, ConsolidatedReportProjection, RubricMatrixRow, RubricDetailBlock, RunMeta } from "@/lib/run-report/types";
-import { SafeMarkdown } from "@/components/run-report/SafeMarkdown";
+import React from "react";
+import type { ConsolidatedReportProjection, RunReportPayload } from "@/lib/run-report/types";
 import { PassFailBadge } from "@/components/run-report/RubricLedger";
+import { SafeMarkdown } from "@/components/run-report/SafeMarkdown";
 import { CriterionMarkers } from "@/components/run-report/CriterionMarkers";
-import { SectionErrorBoundary } from "@/components/run-report/chrome";
+import { SectionErrorBoundary, Kicker, EmptyPanel } from "@/components/run-report/chrome";
 
 /**
- * Cross-run rubric matrix report renderer.
+ * Consolidated cross-run report renderer.
  *
- * Accepts a RunReportPayload whose projection is a ConsolidatedReportProjection
- * (discriminated via `consolidated: true`). Renders:
- *   1. A header with task slug, description, and source-file links.
- *   2. A failed-rubric matrix table (criteria rows × run columns).
- *   3. Per-failing-criterion detail tables with per-run verdict/reasoning.
+ * Renders a rubric-first matrix view comparing pass/fail outcomes across
+ * multiple completed runs for the same task. Three sections:
  *
- * All text content rendered via SafeMarkdown — no dangerouslySetInnerHTML,
- * no raw HTML sinks anywhere in this component.
+ * 1. Header — task slug, description (SafeMarkdown), source-file link chips
+ * 2. Failed-rubric matrix — table: criteria rows × run columns, pass/fail badges
+ *    - Only criteria where at least one run failed appear (already filtered server-side)
+ *    - Criteria sorted alphabetically (deterministic — done server-side in projectConsolidatedBundle)
+ *    - Runs ordered latest-first (timestamp header)
+ *    - Sticky first column for horizontal scroll on small screens
+ * 3. Per-failing-criterion detail tables — columns per run, rows for matchCriteria,
+ *    verdict+reasoning, judgeFlagReason (omitted when all runs have empty string),
+ *    and contested/disputed markers
+ *
+ * SAFETY RULE (matches the rest of this directory):
+ *   No dangerouslySetInnerHTML. No raw HTML sinks. All rubric text goes through
+ *   SafeMarkdown only.
  */
 
 interface ConsolidatedReportViewProps {
+  /**
+   * The raw payload from `loadRunReport`. Used to surface load errors.
+   */
   payload: RunReportPayload;
-  taskTitle: string;
-  workspaceSlug: string;
+  /**
+   * The narrowed `ConsolidatedReportProjection` from `payload.projection`.
+   * Null when the bundle failed to load or project.
+   */
+  projection: ConsolidatedReportProjection | null;
+  /** Task slug — displayed in the header. */
+  taskSlug: string;
+  /** Workspace slug — reserved for future authed graph node fetches. */
+  workspaceSlug?: string | null;
 }
 
-/** Format epoch-ms as a short human-readable timestamp for column headers. */
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
 function formatRunTimestamp(epochMs: number): string {
   return new Date(epochMs).toLocaleDateString(undefined, {
     month: "short",
@@ -36,37 +55,40 @@ function formatRunTimestamp(epochMs: number): string {
   });
 }
 
-// ── ConsolidatedHeader ────────────────────────────────────────────────────────
+// ── Header section ────────────────────────────────────────────────────────────
 
 function ConsolidatedHeader({
-  taskTitle,
+  taskSlug,
   projection,
 }: {
-  taskTitle: string;
+  taskSlug: string;
   projection: ConsolidatedReportProjection;
 }) {
   return (
     <section className="mb-8" data-testid="consolidated-header">
-      <div className="font-mono text-[10px] uppercase tracking-[0.22em] text-muted-foreground/70 mb-1">
-        <span className="text-muted-foreground/40">§ </span>
-        Consolidated Report
-      </div>
-      <h1 className="text-2xl font-semibold tracking-tight mb-3">{taskTitle}</h1>
+      <Kicker>Consolidated Report</Kicker>
+      <h1 className="text-2xl font-semibold tracking-tight mb-1">
+        Cross-run rubric comparison
+      </h1>
+      <p className="font-mono text-xs text-muted-foreground/70 mb-4">
+        {taskSlug}
+      </p>
 
       {projection.taskDescription && (
-        <div className="mb-4 max-w-prose" data-testid="task-description">
+        <div className="mb-4 max-w-[80ch]">
           <SafeMarkdown text={projection.taskDescription} />
         </div>
       )}
 
       {projection.sourceFileLinks.length > 0 && (
-        <div className="flex flex-wrap gap-2" data-testid="source-file-links">
-          {projection.sourceFileLinks.map((href, i) => {
-            const label = href.split("/").pop() ?? href;
+        <div className="flex flex-wrap gap-2">
+          {projection.sourceFileLinks.map((url) => {
+            // Display just the filename from the URL path for readability.
+            const label = url.split("/").pop() ?? url;
             return (
               <a
-                key={i}
-                href={href}
+                key={url}
+                href={url}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="inline-flex items-center gap-1 rounded-full border border-border px-2.5 py-0.5 font-mono text-[10.5px] text-muted-foreground hover:text-primary hover:border-primary/50 transition-colors"
@@ -82,49 +104,46 @@ function ConsolidatedHeader({
   );
 }
 
-// ── FailedRubricMatrix ────────────────────────────────────────────────────────
+// ── Failed-rubric matrix ──────────────────────────────────────────────────────
 
 function FailedRubricMatrix({
-  rubricMatrix,
-  runs,
+  projection,
 }: {
-  rubricMatrix: RubricMatrixRow[];
-  runs: RunMeta[];
+  projection: ConsolidatedReportProjection;
 }) {
-  // Only show criteria where at least one run failed.
-  const failingRows = useMemo(
-    () =>
-      rubricMatrix
-        .filter((row) => row.results.some((r) => !r.passed))
-        .sort((a, b) => a.title.localeCompare(b.title)), // alphabetical, deterministic
-    [rubricMatrix],
-  );
+  // Runs are already latest-first from projectConsolidatedBundle.
+  const runs = projection.runs;
+  // Rubric matrix rows already filtered to "at least one run failed" server-side.
+  // Sorted alphabetically by title server-side; trust that order here.
+  const rows = projection.rubricMatrix;
 
-  if (failingRows.length === 0) {
+  if (rows.length === 0) {
     return (
-      <section className="mb-8" data-testid="rubric-matrix-section">
-        <div className="font-mono text-[10px] uppercase tracking-[0.22em] text-muted-foreground/70 mb-2">
-          <span className="text-muted-foreground/40">§ </span>
-          Rubric Matrix
-        </div>
-        <p className="text-sm text-muted-foreground italic">All criteria passed across all runs.</p>
+      <section className="mb-8" data-testid="consolidated-matrix-empty">
+        <Kicker>Rubric matrix</Kicker>
+        <EmptyPanel label="All criteria passed across all runs — no failures to display." />
       </section>
     );
   }
 
   return (
-    <section className="mb-8" data-testid="rubric-matrix-section">
-      <div className="font-mono text-[10px] uppercase tracking-[0.22em] text-muted-foreground/70 mb-2">
-        <span className="text-muted-foreground/40">§ </span>
-        Rubric Matrix — {failingRows.length} criteria failing in ≥1 run
-      </div>
-      <div className="overflow-x-auto">
+    <section className="mb-8" data-testid="consolidated-matrix">
+      <Kicker>Failed rubrics</Kicker>
+      <h2 className="text-xl font-semibold tracking-tight mb-3">
+        Pass / fail matrix
+      </h2>
+      <p className="text-xs text-muted-foreground mb-3">
+        {rows.length} criteria with at least one failure across {runs.length} runs.
+        Criteria sorted alphabetically; runs ordered latest first.
+      </p>
+      {/* Horizontal scroll container */}
+      <div className="overflow-x-auto rounded-lg border border-border">
         <table className="min-w-full text-sm" data-testid="rubric-matrix-table">
           <thead>
-            <tr className="border-b border-border">
+            <tr className="border-b border-border bg-muted/30">
               {/* Sticky criterion column */}
               <th
-                className="sticky left-0 z-10 bg-black text-left font-mono text-[10px] uppercase tracking-[0.1em] text-muted-foreground/70 px-3 py-2 min-w-[180px] max-w-[240px] whitespace-normal"
+                className="sticky left-0 z-10 bg-muted/30 text-left px-4 py-2.5 font-mono text-[10px] uppercase tracking-[0.1em] text-muted-foreground/70 min-w-[220px] border-r border-border"
                 scope="col"
               >
                 Criterion
@@ -132,40 +151,36 @@ function FailedRubricMatrix({
               {runs.map((run) => (
                 <th
                   key={run.runId}
-                  className="text-center font-mono text-[10px] uppercase tracking-[0.1em] text-muted-foreground/70 px-3 py-2 whitespace-nowrap"
+                  className="text-left px-4 py-2.5 font-mono text-[10px] uppercase tracking-[0.1em] text-muted-foreground/70 min-w-[100px] whitespace-nowrap"
                   scope="col"
-                  title={`Run ${run.runId} · Model: ${run.model}`}
                 >
                   {formatRunTimestamp(run.timestamp)}
-                  <div className="text-[9px] text-muted-foreground/50 mt-0.5 font-normal normal-case tracking-normal">
-                    {run.model || "—"}
-                  </div>
+                  <br />
+                  <span className="text-[9px] text-muted-foreground/50 normal-case tracking-normal">
+                    {run.model}
+                  </span>
                 </th>
               ))}
             </tr>
           </thead>
-          <tbody className="divide-y divide-border/50">
-            {failingRows.map((row) => (
-              <tr key={row.id} className="hover:bg-muted/10 transition-colors">
+          <tbody className="divide-y divide-border/60">
+            {rows.map((row) => (
+              <tr key={row.id} className="hover:bg-muted/10 transition-colors" data-testid="matrix-row">
+                {/* Sticky criterion cell */}
                 <td
-                  className="sticky left-0 z-10 bg-black px-3 py-2 font-mono text-[11px] text-muted-foreground/90 align-top min-w-[180px] max-w-[240px] whitespace-normal"
-                  data-testid={`matrix-criterion-${row.id}`}
+                  className="sticky left-0 z-10 bg-card border-r border-border px-4 py-3 font-mono text-[11px] text-foreground align-top"
+                  data-testid="matrix-criterion-title"
                 >
-                  <span className="text-muted-foreground/40 mr-1">{row.id}</span>
                   {row.title}
                 </td>
                 {runs.map((run) => {
                   const result = row.results.find((r) => r.runId === run.runId);
                   return (
-                    <td
-                      key={run.runId}
-                      className="text-center px-3 py-2 align-middle"
-                      data-testid={`matrix-cell-${row.id}-${run.runId}`}
-                    >
+                    <td key={run.runId} className="px-4 py-3 align-top" data-testid="matrix-cell">
                       {result != null ? (
-                        <PassFailBadge passed={result.passed} />
+                        <PassFailBadge pass={result.passed} />
                       ) : (
-                        <span className="text-muted-foreground/40 font-mono text-[11px]">—</span>
+                        <span className="text-muted-foreground/40 font-mono text-[10px]">—</span>
                       )}
                     </td>
                   );
@@ -179,105 +194,105 @@ function FailedRubricMatrix({
   );
 }
 
-// ── CriterionDetailTable ──────────────────────────────────────────────────────
+// ── Per-criterion detail tables ───────────────────────────────────────────────
 
 function CriterionDetailTable({
-  criterion,
+  detail,
   runs,
 }: {
-  criterion: RubricDetailBlock;
-  runs: RunMeta[];
+  detail: ConsolidatedReportProjection["rubricDetails"][number];
+  runs: ConsolidatedReportProjection["runs"];
 }) {
-  // Omit the Judgement Review row when all runs have an empty judgeFlagReason.
-  const hasJudgeReview = criterion.perRun.some((p) => p.judgeFlagReason.trim() !== "");
+  // Omit the "Judgement Review" row entirely when all runs have empty judgeFlagReason.
+  const hasAnyFlag = detail.perRun.some((p) => p.judgeFlagReason.trim().length > 0);
 
   return (
-    <div className="mb-8" data-testid={`criterion-detail-${criterion.id}`}>
-      <div className="mb-2">
-        <div className="font-mono text-[10px] uppercase tracking-[0.22em] text-muted-foreground/70 mb-1">
-          <span className="text-muted-foreground/40">§ </span>
-          <span className="text-muted-foreground/50">{criterion.id}</span>
-        </div>
-        <div className="text-[15px] font-semibold">
-          <SafeMarkdown text={criterion.title} />
-        </div>
+    <div
+      className="mb-6 rounded-lg border border-border overflow-hidden"
+      data-testid={`criterion-detail-${detail.id}`}
+    >
+      {/* Criterion heading */}
+      <div className="px-4 py-3 border-b border-border bg-muted/20">
+        <span className="font-mono text-[10px] text-muted-foreground/60 mr-2">{detail.id}</span>
+        <span className="text-[13px] font-semibold">
+          <SafeMarkdown text={detail.title} />
+        </span>
       </div>
 
       <div className="overflow-x-auto">
-        <table className="min-w-full text-sm border border-border rounded-lg overflow-hidden">
+        <table className="min-w-full text-sm" data-testid={`criterion-table-${detail.id}`}>
           <thead>
-            <tr className="border-b border-border bg-muted/20">
-              <th
-                className="text-left font-mono text-[10px] uppercase tracking-[0.1em] text-muted-foreground/70 px-3 py-2 min-w-[120px]"
-                scope="col"
-              >
-                Field
+            <tr className="border-b border-border/60 bg-muted/10">
+              <th className="sticky left-0 z-10 bg-muted/10 text-left px-4 py-2 font-mono text-[9px] uppercase tracking-[0.1em] text-muted-foreground/60 min-w-[160px] border-r border-border/60">
+                &nbsp;
               </th>
               {runs.map((run) => (
                 <th
                   key={run.runId}
-                  className="text-left font-mono text-[10px] uppercase tracking-[0.1em] text-muted-foreground/70 px-3 py-2 whitespace-nowrap"
-                  scope="col"
-                  title={`Run ${run.runId} · Model: ${run.model}`}
+                  className="text-left px-4 py-2 font-mono text-[9px] uppercase tracking-[0.1em] text-muted-foreground/60 min-w-[200px] whitespace-nowrap"
                 >
                   {formatRunTimestamp(run.timestamp)}
                 </th>
               ))}
             </tr>
           </thead>
-          <tbody className="divide-y divide-border/50">
-            {/* Match criteria — same for all runs, show once per run column */}
-            <tr className="hover:bg-muted/10 transition-colors">
-              <td className="px-3 py-2 font-mono text-[10px] uppercase tracking-[0.08em] text-muted-foreground/70 align-top">
+          <tbody className="divide-y divide-border/40">
+            {/* Row 1: Match criteria (same for all runs, shown in first data cell) */}
+            <tr data-testid="detail-row-criteria">
+              <td className="sticky left-0 z-10 bg-card border-r border-border/60 px-4 py-3 font-mono text-[9px] uppercase tracking-[0.1em] text-muted-foreground/60 align-top whitespace-nowrap">
                 Match criteria
               </td>
-              {runs.map((run) => {
-                const perRun = criterion.perRun.find((p) => p.runId === run.runId);
-                return (
-                  <td key={run.runId} className="px-3 py-2 text-[12.5px] align-top" data-testid={`detail-match-${criterion.id}-${run.runId}`}>
-                    {perRun ? (
-                      <SafeMarkdown text={criterion.matchCriteria} />
-                    ) : (
-                      <span className="text-muted-foreground/40 font-mono text-[11px]">—</span>
-                    )}
-                  </td>
-                );
-              })}
+              {runs.map((run, i) => (
+                <td key={run.runId} className="px-4 py-3 align-top text-[12px] text-muted-foreground">
+                  {/* matchCriteria is the same per criterion regardless of run — show in first column only */}
+                  {i === 0 ? <SafeMarkdown text={detail.matchCriteria} /> : null}
+                </td>
+              ))}
             </tr>
 
-            {/* Verdict & reasoning */}
-            <tr className="hover:bg-muted/10 transition-colors">
-              <td className="px-3 py-2 font-mono text-[10px] uppercase tracking-[0.08em] text-muted-foreground/70 align-top">
-                Verdict & reasoning
+            {/* Row 2: Verdict + reasoning per run */}
+            <tr data-testid="detail-row-verdict">
+              <td className="sticky left-0 z-10 bg-card border-r border-border/60 px-4 py-3 font-mono text-[9px] uppercase tracking-[0.1em] text-muted-foreground/60 align-top whitespace-nowrap">
+                Verdict
               </td>
               {runs.map((run) => {
-                const perRun = criterion.perRun.find((p) => p.runId === run.runId);
+                const perRun = detail.perRun.find((p) => p.runId === run.runId);
+                if (!perRun) {
+                  return (
+                    <td key={run.runId} className="px-4 py-3 align-top text-muted-foreground/40 font-mono text-[10px]">
+                      —
+                    </td>
+                  );
+                }
                 return (
-                  <td key={run.runId} className="px-3 py-2 text-[12.5px] align-top" data-testid={`detail-verdict-${criterion.id}-${run.runId}`}>
-                    {perRun ? (
-                      <SafeMarkdown text={`${perRun.verdict} — ${perRun.reasoning}`} />
-                    ) : (
-                      <span className="text-muted-foreground/40 font-mono text-[11px]">—</span>
-                    )}
+                  <td key={run.runId} className="px-4 py-3 align-top">
+                    <div className="text-[12px]">
+                      <SafeMarkdown
+                        text={
+                          perRun.reasoning
+                            ? `**${perRun.verdict}** — ${perRun.reasoning}`
+                            : perRun.verdict
+                        }
+                      />
+                    </div>
                   </td>
                 );
               })}
             </tr>
 
-            {/* Judgement Review — omit row if all runs have empty judgeFlagReason */}
-            {hasJudgeReview && (
-              <tr className="hover:bg-muted/10 transition-colors">
-                <td className="px-3 py-2 font-mono text-[10px] uppercase tracking-[0.08em] text-muted-foreground/70 align-top">
+            {/* Row 3: Judgement Review — omitted when all runs have empty judgeFlagReason */}
+            {hasAnyFlag && (
+              <tr data-testid="detail-row-flag">
+                <td className="sticky left-0 z-10 bg-card border-r border-border/60 px-4 py-3 font-mono text-[9px] uppercase tracking-[0.1em] text-muted-foreground/60 align-top whitespace-nowrap">
                   Judgement Review
                 </td>
                 {runs.map((run) => {
-                  const perRun = criterion.perRun.find((p) => p.runId === run.runId);
+                  const perRun = detail.perRun.find((p) => p.runId === run.runId);
+                  const flagText = perRun?.judgeFlagReason ?? "";
                   return (
-                    <td key={run.runId} className="px-3 py-2 text-[12.5px] align-top" data-testid={`detail-judge-${criterion.id}-${run.runId}`}>
-                      {perRun?.judgeFlagReason ? (
-                        <SafeMarkdown text={perRun.judgeFlagReason} />
-                      ) : (
-                        <span className="text-muted-foreground/40 font-mono text-[11px]">—</span>
+                    <td key={run.runId} className="px-4 py-3 align-top text-[12px]">
+                      {flagText ? <SafeMarkdown text={flagText} /> : (
+                        <span className="text-muted-foreground/40 font-mono text-[10px]">—</span>
                       )}
                     </td>
                   );
@@ -285,22 +300,22 @@ function CriterionDetailTable({
               </tr>
             )}
 
-            {/* Status — contested badge; disputed is run-level, not in consolidated bundle */}
-            <tr className="hover:bg-muted/10 transition-colors">
-              <td className="px-3 py-2 font-mono text-[10px] uppercase tracking-[0.08em] text-muted-foreground/70 align-top">
+            {/* Row 4: Status markers (contested only; disputed is run-level, not in consolidated bundle) */}
+            <tr data-testid="detail-row-status">
+              <td className="sticky left-0 z-10 bg-card border-r border-border/60 px-4 py-3 font-mono text-[9px] uppercase tracking-[0.1em] text-muted-foreground/60 align-top whitespace-nowrap">
                 Status
               </td>
               {runs.map((run) => {
-                const perRun = criterion.perRun.find((p) => p.runId === run.runId);
+                const perRun = detail.perRun.find((p) => p.runId === run.runId);
                 return (
-                  <td key={run.runId} className="px-3 py-2 align-top" data-testid={`detail-status-${criterion.id}-${run.runId}`}>
+                  <td key={run.runId} className="px-4 py-3 align-top">
                     {perRun ? (
                       <CriterionMarkers
                         contested={perRun.criterionContested}
                         disputed={false}
                       />
                     ) : (
-                      <span className="text-muted-foreground/40 font-mono text-[11px]">—</span>
+                      <span className="text-muted-foreground/40 font-mono text-[10px]">—</span>
                     )}
                   </td>
                 );
@@ -313,61 +328,63 @@ function CriterionDetailTable({
   );
 }
 
-// ── ConsolidatedReportView ─────────────────────────────────────────────────────
+// ── Root component ────────────────────────────────────────────────────────────
 
 export function ConsolidatedReportView({
   payload,
-  taskTitle,
-  workspaceSlug: _workspaceSlug,
+  projection,
+  taskSlug,
 }: ConsolidatedReportViewProps) {
-  const projection = payload.projection;
-
-  // Narrow to ConsolidatedReportProjection via the discriminant.
-  if (!projection || !("consolidated" in projection) || !projection.consolidated) {
+  // Handle load / projection errors.
+  if (!payload.hasReport) {
     return (
-      <div className="py-12 text-center text-muted-foreground text-sm">
-        {payload.error === "unavailable"
-          ? "The consolidated report could not be loaded — the bundle is unavailable."
-          : payload.error === "url_rejected"
-            ? "The consolidated report URL was rejected by the security guard."
-            : "No consolidated report data available."}
+      <div className="py-16 text-center" data-testid="consolidated-no-report">
+        <p className="text-muted-foreground text-sm">No report bundle available for this run.</p>
       </div>
     );
   }
 
-  const p = projection as ConsolidatedReportProjection;
-
-  // Runs sorted latest-first (the projection contract; re-assert here for safety).
-  const runs = useMemo(
-    () => [...p.runs].sort((a, b) => b.timestamp - a.timestamp),
-    [p.runs],
-  );
-
-  // rubricDetails: only criteria where at least one run failed — already
-  // guaranteed by the projection contract, but filter defensively.
-  const failingDetails = useMemo(
-    () =>
-      p.rubricDetails.filter((d) =>
-        d.perRun.some((r) => r.verdict.toUpperCase() !== "PASS"),
-      ),
-    [p.rubricDetails],
-  );
+  if (payload.error || !projection) {
+    return (
+      <div className="py-16 text-center" data-testid="consolidated-error">
+        <p className="text-destructive text-sm">
+          {payload.error === "url_rejected"
+            ? "Report URL was rejected by the security guard."
+            : "The consolidated report could not be loaded. It may still be generating."}
+        </p>
+      </div>
+    );
+  }
 
   return (
-    <div data-testid="consolidated-report-view">
+    <div className="max-w-[1200px] mx-auto" data-testid="consolidated-report-view">
+      {/* Section 1: Header */}
       <SectionErrorBoundary>
-        <ConsolidatedHeader taskTitle={taskTitle} projection={p} />
+        <ConsolidatedHeader taskSlug={taskSlug} projection={projection} />
       </SectionErrorBoundary>
 
+      {/* Section 2: Failed-rubric matrix */}
       <SectionErrorBoundary>
-        <FailedRubricMatrix rubricMatrix={p.rubricMatrix} runs={runs} />
+        <FailedRubricMatrix projection={projection} />
       </SectionErrorBoundary>
 
-      {failingDetails.map((criterion) => (
-        <SectionErrorBoundary key={criterion.id}>
-          <CriterionDetailTable criterion={criterion} runs={runs} />
-        </SectionErrorBoundary>
-      ))}
+      {/* Section 3: Per-criterion detail tables */}
+      {projection.rubricDetails.length > 0 && (
+        <>
+          <Kicker>Per-criterion detail</Kicker>
+          <h2 className="text-xl font-semibold tracking-tight mb-4">
+            Criterion breakdown
+          </h2>
+          {projection.rubricDetails.map((detail) => (
+            <SectionErrorBoundary key={detail.id}>
+              <CriterionDetailTable
+                detail={detail}
+                runs={projection.runs}
+              />
+            </SectionErrorBoundary>
+          ))}
+        </>
+      )}
     </div>
   );
 }

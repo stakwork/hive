@@ -368,4 +368,47 @@ describe("useLegalBenchmarkRun", () => {
 
     expect(result.current.run).toBeNull();
   });
+
+  // ── type parameter — Step 2 additions ─────────────────────────────────────
+
+  it("uses LEGAL_BENCHMARK_RUNNER by default (backwards-compatible)", async () => {
+    // Called without the second argument — URL must still contain RUNNER.
+    const { result } = renderHook(() => useLegalBenchmarkRun(runId));
+
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false);
+    });
+
+    const url = String(vi.mocked(global.fetch).mock.calls[0][0]);
+    expect(url).toContain("LEGAL_BENCHMARK_RUNNER");
+  });
+
+  it("uses the overridden type in the fetch URL when type is CONSOLIDATED", async () => {
+    const { result } = renderHook(() =>
+      useLegalBenchmarkRun(runId, "LEGAL_BENCHMARK_CONSOLIDATED" as import("@prisma/client").StakworkRunType),
+    );
+
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false);
+    });
+
+    const url = String(vi.mocked(global.fetch).mock.calls[0][0]);
+    expect(url).toContain("LEGAL_BENCHMARK_CONSOLIDATED");
+    expect(url).not.toContain("LEGAL_BENCHMARK_RUNNER");
+  });
+
+  it("no-ops (no fetch, isLoading: false) when runId is null", async () => {
+    vi.clearAllMocks();
+
+    const { result } = renderHook(() => useLegalBenchmarkRun(null));
+
+    // Allow one tick for effects to fire.
+    await new Promise((r) => setTimeout(r, 10));
+
+    // Should not have fetched at all.
+    expect(vi.mocked(global.fetch)).not.toHaveBeenCalled();
+    // isLoading initialised as false when runId is null.
+    expect(result.current.isLoading).toBe(false);
+    expect(result.current.run).toBeNull();
+  });
 });

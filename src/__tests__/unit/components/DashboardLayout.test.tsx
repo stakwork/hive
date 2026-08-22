@@ -6,6 +6,29 @@
  */
 import { describe, it, expect } from "vitest";
 
+// ---------------------------------------------------------------------------
+// Mirror PUBLIC_VIEWER_BLOCKED_SEGMENTS from DashboardLayout.tsx
+// ---------------------------------------------------------------------------
+
+const PUBLIC_VIEWER_BLOCKED_SEGMENTS = [
+  "agent-logs",
+  "calls",
+  "capacity",
+  "janitors",
+  "recommendations",
+  "workflows",
+  "projects",
+  "settings",
+  "graph-admin",
+  "documents",
+] as const;
+
+function isBlockedForPublicViewer(pathname: string): boolean {
+  const match = pathname.match(/^\/w\/[^/]+\/([^/?#]+)/);
+  if (!match) return false;
+  return (PUBLIC_VIEWER_BLOCKED_SEGMENTS as readonly string[]).includes(match[1]);
+}
+
 /** Mirrors the isFullscreenPage logic in DashboardLayout.tsx */
 function isDocumentsPage(pathname: string): boolean {
   return pathname.includes("/documents/");
@@ -80,5 +103,52 @@ describe("DashboardLayout — <main> overflow class", () => {
     const cls = mainClassName("/w/my-workspace");
     expect(cls).toContain("overflow-auto");
     expect(cls).not.toContain("overflow-hidden");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// PUBLIC_VIEWER_BLOCKED_SEGMENTS guard
+// ---------------------------------------------------------------------------
+
+describe("DashboardLayout — PUBLIC_VIEWER_BLOCKED_SEGMENTS", () => {
+  it("blocks the documents route for public viewers", () => {
+    expect(isBlockedForPublicViewer("/w/my-workspace/documents")).toBe(true);
+  });
+
+  it("blocks a documents sub-route for public viewers", () => {
+    expect(isBlockedForPublicViewer("/w/my-workspace/documents/some-doc-id")).toBe(true);
+  });
+
+  it("blocks all declared restricted segments", () => {
+    const blockedPaths = [
+      "/w/slug/agent-logs",
+      "/w/slug/calls",
+      "/w/slug/capacity",
+      "/w/slug/janitors",
+      "/w/slug/recommendations",
+      "/w/slug/workflows",
+      "/w/slug/projects",
+      "/w/slug/settings",
+      "/w/slug/graph-admin",
+      "/w/slug/documents",
+    ];
+    blockedPaths.forEach((path) => {
+      expect(isBlockedForPublicViewer(path)).toBe(true);
+    });
+  });
+
+  it("does NOT block the workspace root for public viewers", () => {
+    expect(isBlockedForPublicViewer("/w/my-workspace")).toBe(false);
+  });
+
+  it("does NOT block non-restricted routes", () => {
+    expect(isBlockedForPublicViewer("/w/my-workspace/features")).toBe(false);
+    expect(isBlockedForPublicViewer("/w/my-workspace/roadmap")).toBe(false);
+    expect(isBlockedForPublicViewer("/w/my-workspace/tasks")).toBe(false);
+  });
+
+  it("does NOT block a path that merely contains a blocked segment as substring", () => {
+    // 'document-library' should not match 'documents'
+    expect(isBlockedForPublicViewer("/w/my-workspace/document-library")).toBe(false);
   });
 });

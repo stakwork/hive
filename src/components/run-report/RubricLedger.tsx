@@ -14,24 +14,31 @@ import {
 import { CriterionMarkers } from "./CriterionMarkers";
 
 /**
- * Reusable pass/fail badge used in the rubric ledger and the consolidated
- * report matrix. Exported so ConsolidatedReportView can share the same
- * styled markup without duplication.
+ * Shared pass/fail badge used in the rubric ledger list rows and in
+ * `ConsolidatedReportView`'s cross-run matrix cells.
+ *
+ * Deliberately minimal — one round dot + text. Styling is consistent with
+ * the DOT map used in `CriterionButton` so the two surfaces read as one system.
  */
-export function PassFailBadge({ passed }: { passed: boolean }) {
-  return passed ? (
+export function PassFailBadge({ pass }: { pass: boolean }) {
+  return (
     <span
-      data-testid="pass-fail-badge-pass"
-      className="inline-flex items-center rounded px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-[0.08em] font-semibold bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30"
+      className={[
+        "inline-flex items-center gap-1 rounded px-1.5 py-0.5",
+        "font-mono text-[10px] uppercase tracking-[0.07em] border",
+        pass
+          ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/40"
+          : "bg-destructive/15 text-destructive border-destructive/45",
+      ].join(" ")}
+      data-testid={pass ? "pass-fail-badge-pass" : "pass-fail-badge-fail"}
     >
-      ✓
-    </span>
-  ) : (
-    <span
-      data-testid="pass-fail-badge-fail"
-      className="inline-flex items-center rounded px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-[0.08em] font-semibold bg-destructive/15 text-destructive border border-destructive/45"
-    >
-      ✗
+      <span
+        className={[
+          "h-1.5 w-1.5 rounded-full",
+          pass ? "bg-emerald-500/70" : "bg-destructive",
+        ].join(" ")}
+      />
+      {pass ? "pass" : "fail"}
     </span>
   );
 }
