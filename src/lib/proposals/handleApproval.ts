@@ -105,6 +105,7 @@ import {
   ArtifactType,
   WorkflowStatus,
   TaskSourceType,
+  TaskStatus,
 } from "@prisma/client";
 import type { PullRequestContent, DiffContent } from "@/lib/chat";
 import { mcpCreatePrompt, mcpUpdatePrompt } from "@/lib/mcp/mcpTools";
@@ -751,6 +752,12 @@ async function approveCodeChange(args: {
           updatedById: userId,
           sourceType: TaskSourceType.SYSTEM,
           mode: "live",
+          // The tasks list hides TODO tasks that are neither agent-mode nor
+          // Stakwork-backed, so at the TODO default the claim only ever showed
+          // in Kanban. IN_PROGRESS is also the honest state: the PR run is in
+          // flight here. pr-monitor / the GitHub webhook carry it to DONE on
+          // merge (or CANCELLED on close) off the PULL_REQUEST artifact below.
+          status: TaskStatus.IN_PROGRESS,
           workflowStatus: WorkflowStatus.COMPLETED,
           stakworkProjectId: null,
           podId: null,
@@ -774,6 +781,21 @@ async function approveCodeChange(args: {
 
       const diffDiffs = unifiedDiffToActionResults(payload.diff, repoName);
       const diffContent: DiffContent = { diffs: diffDiffs };
+
+      // Seed the originating instruction first, so the Task view reads as a
+      // request followed by its result. Absent on proposals stored before
+      // `prompt` joined the payload — those render result-only.
+      if (payload.prompt) {
+        await tx.chatMessage.create({
+          data: {
+            taskId: task.id,
+            message: payload.prompt,
+            role: ChatRole.USER,
+            status: ChatStatus.SENT,
+          },
+          select: { id: true },
+        });
+      }
 
       const msg = await tx.chatMessage.create({
         data: {

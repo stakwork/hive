@@ -45,6 +45,7 @@ vi.mock("@/services/swarm/createPr", async (importOriginal) => {
 });
 
 import {
+  attachPrArtifact,
   completeClaimFromResult,
   markClaimRunFailed,
   reconcileClaim,
@@ -270,5 +271,47 @@ describe("reconcileClaim", () => {
 
     expect(outcome).toBe("already-complete");
     expect(mockReconcilePr).not.toHaveBeenCalled();
+  });
+});
+
+describe("attachPrArtifact", () => {
+  const PR_URL = "https://github.com/acme/widgets/pull/7";
+  const REPO_URL = "https://github.com/acme/widgets";
+
+  it("targets the ASSISTANT message so the PR lands beside its diff", async () => {
+    // A claim Task seeds two messages in one transaction — the USER prompt and
+    // the ASSISTANT diff — so their createdAt can tie. Ordering alone could
+    // hand back the prompt row; the role filter is what makes this decidable.
+    vi.mocked(db.chatMessage.findFirst).mockResolvedValue({
+      id: "msg-assistant",
+      artifacts: [],
+    } as never);
+
+    await attachPrArtifact(TASK_ID, PR_URL, REPO_URL);
+
+    expect(db.chatMessage.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { taskId: TASK_ID, role: "ASSISTANT" },
+      }),
+    );
+    expect(db.artifact.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          messageId: "msg-assistant",
+          type: "PULL_REQUEST",
+        }),
+      }),
+    );
+  });
+
+  it("does not duplicate an artifact the webhook already attached", async () => {
+    vi.mocked(db.chatMessage.findFirst).mockResolvedValue({
+      id: "msg-assistant",
+      artifacts: [{ id: "existing" }],
+    } as never);
+
+    await attachPrArtifact(TASK_ID, PR_URL, REPO_URL);
+
+    expect(db.artifact.create).not.toHaveBeenCalled();
   });
 });

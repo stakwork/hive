@@ -95,7 +95,7 @@ describe("releaseStaleTaskPods", () => {
         deleted: false,
         OR: [
           { podId: { not: null } },
-          { status: "IN_PROGRESS", workflowStatus: { not: "HALTED" } },
+          { status: "IN_PROGRESS", workflowStatus: { not: "HALTED" }, proposalId: null },
         ],
       },
       select: {
@@ -307,10 +307,10 @@ describe("releaseStaleTaskPods", () => {
     const findManyCall = vi.mocked(mockDb.task.findMany).mock.calls[2][0];
     // Should use OR clause to find both:
     // 1. Tasks with pods (any status)
-    // 2. Stale IN_PROGRESS tasks without pods
+    // 2. Stale IN_PROGRESS tasks without pods, excluding code-change claims
     expect(findManyCall?.where?.OR).toEqual([
       { podId: { not: null } },
-      { status: "IN_PROGRESS", workflowStatus: { not: "HALTED" } },
+      { status: "IN_PROGRESS", workflowStatus: { not: "HALTED" }, proposalId: null },
     ]);
 
     vi.useRealTimers();

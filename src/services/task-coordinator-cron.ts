@@ -437,10 +437,17 @@ export async function releaseStaleTaskPods(): Promise<{
         OR: [
           // Tasks with pods (any status) - release pod
           { podId: { not: null } },
-          // IN_PROGRESS tasks without pods - just halt
+          // IN_PROGRESS tasks without pods - just halt.
+          // Code-change claims are exempt: they are created IN_PROGRESS with
+          // workflowStatus COMPLETED (which pr-monitor's fix path needs) and
+          // own no pod, so halting would only clobber that status in the one
+          // case worth preserving - a PR that never reported back, which the
+          // code-change-reconcile cron still expects to recover. proposalId is
+          // written solely by approveCodeChange, so it identifies them exactly.
           {
             status: "IN_PROGRESS",
             workflowStatus: { not: "HALTED" },
+            proposalId: null,
           },
         ],
       },
