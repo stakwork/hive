@@ -1,4 +1,5 @@
 import { DEFAULT_COLORS } from "@/components/graph/graphUtils";
+import { LEGAL_NODE_COLORS } from "./legalGraphStyles";
 
 /**
  * Node-type palette for the Graph Explorer's 2D view.
@@ -13,6 +14,9 @@ import { DEFAULT_COLORS } from "@/components/graph/graphUtils";
  */
 export const GRAPH_EXPLORER_COLORS: Record<string, string> = {
   ...DEFAULT_COLORS,
+  // Legal graph node types — eval recursion and requirement nodes
+  ...LEGAL_NODE_COLORS,
+
 
   // Concept is what you walk here, and amber is already its color everywhere
   // else — the trace rail's diamond chips, the proposal chips. So it takes the
