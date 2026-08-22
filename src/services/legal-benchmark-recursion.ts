@@ -78,6 +78,13 @@ export interface RecursionEvalSetEntry {
    */
   projectId?: number | string | null;
   /**
+   * Whether recursion is currently enabled on this EvalSet node.
+   * Source 1 entries (filtered by recursion=true) are reliably true even when the
+   * property is absent from the serialized bag (via defaultRecursion). Source 2/3
+   * entries fall back to the node's stored recursion property, defaulting to false.
+   */
+  recursion?: boolean;
+  /**
    * Why this EvalSet appears in the list. Priority order for dedup: active > wasEnabled > multipleRuns.
    * - "active"       — recursion = true on the graph node (Source 1)
    * - "wasEnabled"   — recursionEnabledAt is set, even if recursion is now false (Source 2)
@@ -99,6 +106,7 @@ const REASON_PRIORITY: Record<NonNullable<RecursionEvalSetEntry["reason"]>, numb
 function toEntry(
   node: { ref_id: string; properties?: Record<string, unknown> },
   reason: NonNullable<RecursionEvalSetEntry["reason"]>,
+  defaultRecursion?: boolean,
 ): RecursionEvalSetEntry {
   return {
     ref_id: node.ref_id,
@@ -107,6 +115,7 @@ function toEntry(
     projectId: node.properties?.project_id != null
       ? (node.properties.project_id as number | string)
       : null,
+    recursion: (node.properties?.recursion as boolean | undefined) ?? defaultRecursion ?? false,
     reason,
   };
 }
@@ -186,7 +195,7 @@ export async function listRecursionEvalSets(
       );
     }
 
-    return result.nodes.map((n) => toEntry(n, "active"));
+    return result.nodes.map((n) => toEntry(n, "active", true));
   };
 
   // ── Source 2: recursionEnabledAt is set (ever-enabled) ───────────────────
