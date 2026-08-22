@@ -11,7 +11,21 @@ export const dynamic = "force-dynamic";
  * Node objects use `ref_id` + `node_type` to match the real stakgraph response shape.
  * Relationship objects only carry `{ type }` — no `id` or `ref_id`.
  */
-export async function POST() {
+import { buildRecursionCypherFixture, isLegalRecursionQuery } from "../recursion-cypher-fixture";
+
+export async function POST(request: Request) {
+  let query = "";
+  try {
+    const body = await request.json();
+    query = typeof body?.query === "string" ? body.query : "";
+  } catch {
+    // No body or invalid JSON — treat as empty query (returns code-graph fixture)
+  }
+
+  if (isLegalRecursionQuery(query)) {
+    return NextResponse.json(buildRecursionCypherFixture(), { status: 200 });
+  }
+
   return NextResponse.json(
     {
       columns: ["n", "r", "m"],

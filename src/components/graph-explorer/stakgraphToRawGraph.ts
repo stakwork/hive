@@ -1,4 +1,8 @@
 import type { RawEdge, RawNode } from "@/graph-viz-kit";
+import {
+  classifyOutputNodeType,
+  LEGAL_NODE_TYPE_CANONICAL,
+} from "./legalGraphStyles";
 
 /**
  * Returns true if `val` is a stakgraph node-like object.
@@ -33,10 +37,35 @@ export function stakgraphToRawGraph(
     const id = String(obj.ref_id ?? obj.id ?? "");
     if (!id) return "";
     if (!nodeMap.has(id)) {
+      // ── Node-type resolution (precedence order) ────────────────────────
+      let nodeType: string | undefined;
+
+      const rawNodeType = obj.node_type != null ? String(obj.node_type) : undefined;
+
+      if (rawNodeType !== undefined) {
+        const lc = rawNodeType.toLowerCase();
+
+        // 1. BaselineTrigger: labels array takes priority over node_type
+        if (
+          Array.isArray(obj.labels) &&
+          (obj.labels as unknown[]).includes("BaselineTrigger")
+        ) {
+          nodeType = "BaselineTrigger";
+        }
+        // 2. EvalTriggerOutput: classify by eval_status / score ratio
+        else if (lc === "evaltriggeroutput") {
+          nodeType = classifyOutputNodeType(obj);
+        }
+        // 3. Case normalisation for known legal types; fall back to raw string
+        else {
+          nodeType = LEGAL_NODE_TYPE_CANONICAL[lc] ?? rawNodeType;
+        }
+      }
+
       nodeMap.set(id, {
         id,
         label: String(obj.name ?? obj.node_type ?? obj.type ?? id),
-        ...(obj.node_type != null && { nodeType: String(obj.node_type) }),
+        ...(nodeType != null && { nodeType }),
         ...(obj.link != null && { link: String(obj.link) }),
         ...(obj.icon != null && { icon: String(obj.icon) }),
       });

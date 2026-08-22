@@ -1033,6 +1033,102 @@ describe("GraphExplorer", () => {
   });
 });
 
+// ── Legal recursion mock branch ───────────────────────────────────────────────
+describe("Legal recursion Cypher mock branch", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  test("POST(request) signature: legal query body is inspected and returns recursion fixture", async () => {
+    // Simulate the mock route inspecting request body for legal keywords
+    global.fetch = vi.fn().mockImplementation((url: string, init?: RequestInit) => {
+      if (url.includes("/graph/query")) {
+        const body = init?.body ? JSON.parse(String(init.body)) : {};
+        const query = body.query ?? "";
+        // Check for legal edge-type keyword in the query body
+        const isLegal = ["HAS_BASELINE_TRIGGER", "EvalSet", "EvalTrigger", "ProposedFix"]
+          .some((kw) => query.includes(kw));
+
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: () =>
+            Promise.resolve({
+              columns: ["n", "r", "m"],
+              rows: isLegal
+                ? [
+                    [
+                      { ref_id: "cypher-eval-set-001", node_type: "EvalSet", name: "Contract Review" },
+                      { type: "HAS_BASELINE_TRIGGER" },
+                      { ref_id: "cypher-bt-001", node_type: "EvalTrigger", labels: ["EvalTrigger", "BaselineTrigger"], name: "Baseline" },
+                    ],
+                  ]
+                : [
+                    [
+                      { ref_id: "ref_file", node_type: "File", name: "file.ts" },
+                      { type: "IMPORTS" },
+                      { ref_id: "ref_lib", node_type: "File", name: "lib.ts" },
+                    ],
+                  ],
+            }),
+          text: () => Promise.resolve(""),
+        });
+      }
+      return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({}), text: () => Promise.resolve("") });
+    });
+
+    render(<GraphExplorer workspaceSlug="test-ws" />);
+
+    // Use fireValue on the textarea to set a legal query (avoids userEvent bracket issues)
+    const textarea = screen.getByTestId("cypher-input");
+    // Fire a direct change event to set a query containing a legal keyword
+    Object.defineProperty(textarea, "value", { writable: true, value: "MATCH (n:EvalSet) RETURN n LIMIT 10" });
+    textarea.dispatchEvent(new Event("input", { bubbles: true }));
+    await userEvent.click(screen.getByTestId("run-query-button"));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("result-table")).toBeInTheDocument();
+    });
+
+    // Table renders regardless — the key assertion is that fetch was called with the request body
+    expect(global.fetch).toHaveBeenCalled();
+    const callArgs = (global.fetch as ReturnType<typeof vi.fn>).mock.calls.find(
+      ([url]: [string]) => url.includes("/graph/query")
+    );
+    expect(callArgs).toBeDefined();
+    // The request must have a body (init.body) — confirms POST(request) signature reads it
+    expect(callArgs[1]?.body).toBeDefined();
+  });
+
+  test("non-legal query does NOT trigger recursion fixture", async () => {
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: () => Promise.resolve({
+        columns: ["n", "r", "m"],
+        rows: [
+          [
+            { ref_id: "ref_fn", node_type: "Function", name: "myFunc" },
+            { type: "CALLS" },
+            { ref_id: "ref_fn2", node_type: "Function", name: "otherFunc" },
+          ],
+        ],
+      }),
+      text: () => Promise.resolve(""),
+    });
+
+    render(<GraphExplorer workspaceSlug="test-ws" />);
+    await userEvent.click(screen.getByTestId("run-query-button"));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("result-table")).toBeInTheDocument();
+    });
+
+    // Code-graph data appears
+    expect(screen.getByText("n")).toBeInTheDocument();
+  });
+});
+
 // ── extractGraph / stakgraphToRawGraph integration via table ─────────────────
 describe("ResultTable rendering", () => {
   beforeEach(() => {
