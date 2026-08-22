@@ -56,6 +56,7 @@ function ScoreBadge({
   roster,
   contestedRubrics,
   workspaceSlug,
+  onContestedClick,
 }: {
   isLoading: boolean;
   error: string | null;
@@ -67,6 +68,12 @@ function ScoreBadge({
   contestedRubrics: GraphRubric[];
   /** Enables per-rubric Graph Explorer links inside the popover. */
   workspaceSlug: string;
+  /**
+   * Called when the user opens the contested popover. Additive — callers that
+   * don't need lazy rubric loading pass nothing. Used to gate `useBenchmarkRubrics`
+   * behind user interaction rather than mount.
+   */
+  onContestedClick?: () => void;
 }) {
   if (isLoading) {
     return (
@@ -119,6 +126,7 @@ function ScoreBadge({
               className="text-xs text-violet-700 dark:text-violet-400 whitespace-nowrap underline-offset-2 hover:underline"
               data-testid="score-contested-annotation"
               title={`${roster.contested} contested criteria excluded from the score · ${roster.total} total in the rubric roster`}
+              onClick={onContestedClick}
             >
               +{roster.contested} contested
             </button>
@@ -129,36 +137,44 @@ function ScoreBadge({
               {roster.contested} of {roster.total} criteria have contested
               definitions and are excluded from the score.
             </p>
-            <ul
-              className="flex flex-col gap-1 max-h-48 overflow-y-auto"
-              data-testid="contested-rubric-list"
-            >
-              {contestedRubrics.map((rubric) => (
-                <li
-                  key={rubric.ref_id}
-                  className="flex items-start justify-between gap-2 min-w-0"
-                >
-                  <span className="text-xs min-w-0 break-words">
-                    <span className="font-mono text-muted-foreground mr-1.5">
-                      {rubric.id}
+            {/* Loading skeleton when rosterRequested but rubrics not yet loaded */}
+            {contestedRubrics.length === 0 && onContestedClick ? (
+              <div className="flex items-center gap-2 py-2" data-testid="contested-rubric-skeleton">
+                <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />
+                <span className="text-xs text-muted-foreground">Loading rubrics…</span>
+              </div>
+            ) : (
+              <ul
+                className="flex flex-col gap-1 max-h-48 overflow-y-auto"
+                data-testid="contested-rubric-list"
+              >
+                {contestedRubrics.map((rubric) => (
+                  <li
+                    key={rubric.ref_id}
+                    className="flex items-start justify-between gap-2 min-w-0"
+                  >
+                    <span className="text-xs min-w-0 break-words">
+                      <span className="font-mono text-muted-foreground mr-1.5">
+                        {rubric.id}
+                      </span>
+                      {rubric.name}
                     </span>
-                    {rubric.name}
-                  </span>
-                  {workspaceSlug && rubric.ref_id && (
-                    <a
-                      href={graphHref(workspaceSlug, rubric.ref_id)}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="shrink-0 mt-0.5 text-muted-foreground hover:text-primary transition-colors"
-                      aria-label={`Open rubric ${rubric.id} in Graph Explorer (opens in new tab)`}
-                      title="Open in Graph Explorer"
-                    >
-                      <ExternalLink className="h-3 w-3" />
-                    </a>
-                  )}
-                </li>
-              ))}
-            </ul>
+                    {workspaceSlug && rubric.ref_id && (
+                      <a
+                        href={graphHref(workspaceSlug, rubric.ref_id)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="shrink-0 mt-0.5 text-muted-foreground hover:text-primary transition-colors"
+                        aria-label={`Open rubric ${rubric.id} in Graph Explorer (opens in new tab)`}
+                        title="Open in Graph Explorer"
+                      >
+                        <ExternalLink className="h-3 w-3" />
+                      </a>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
           </PopoverContent>
         </Popover>
       )}
@@ -237,6 +253,12 @@ function RecursionCard({ entry, refetch }: RecursionCardProps) {
   const [expanded, setExpanded] = useState(false);
   const [graphPanelOpen, setGraphPanelOpen] = useState(false);
   const [copied, setCopied] = useState(false);
+  /**
+   * Whether the user has opened the contested-rubrics popover at least once.
+   * Gates `useBenchmarkRubrics` so we don't fire 30 on-mount Lambda calls —
+   * full rubric detail is only needed when the popover is opened.
+   */
+  const [rosterRequested, setRosterRequested] = useState(false);
   // Chart↔rail hover sync: one shared index, driven from either side.
   const [hoverAttempt, setHoverAttempt] = useState<number | null>(null);
   const { workspace, role } = useWorkspace();
@@ -250,8 +272,9 @@ function RecursionCard({ entry, refetch }: RecursionCardProps) {
   const [isTriggering, setIsTriggering] = useState(false);
   const [triggerError, setTriggerError] = useState<string | null>(null);
 
-  // Use entry.refId (EvalSet ref_id) + entry.id (task slug) for eval run history.
-  // refId is preferred; slug is the fallback when refId is absent.
+  // ── useEvalRunHistory gated behind `expanded` ─────────────────────────────
+  // While collapsed, pass undefined/empty so the hook is a no-op.
+  // The hook's existing `if (!taskSlug) return` guard handles the no-op case.
   const {
     attempts: rawAttempts,
     attemptRows,
@@ -260,14 +283,41 @@ function RecursionCard({ entry, refetch }: RecursionCardProps) {
     isLoading: historyLoading,
     error: historyError,
   } = useEvalRunHistory({
-    refId: entry.refId,
-    slug: entry.id,
+    refId: expanded ? entry.refId : undefined,
+    slug: expanded ? entry.id : "",
   });
 
+  // ── useBenchmarkRubrics gated behind rosterRequested ─────────────────────
+  // Only fires when the user opens the contested-rubrics popover.
+  // Eliminates 30 on-mount Lambda calls while preserving per-rubric popover
+  // detail on demand.
+  const { rubrics: graphRubrics } = useBenchmarkRubrics(
+    rosterRequested ? entry.id : undefined,
+  );
+
   // Graph-first denominator: the task's EvalRequirement roster minus contested
-  // definitions. Null (no roster / loading) leaves attempt counts untouched.
-  const { rubrics: graphRubrics } = useBenchmarkRubrics(entry.id);
-  const roster = useMemo(() => rosterSummary(graphRubrics), [graphRubrics]);
+  // definitions. When rubrics haven't been requested yet, use summary counts
+  // from the entry to render the badge without a Jarvis call.
+  const roster = useMemo((): RosterSummary | null => {
+    if (graphRubrics !== null) {
+      return rosterSummary(graphRubrics);
+    }
+    // Synthesize from summary data so the "+N contested" badge renders
+    // immediately in the collapsed header without waiting for useBenchmarkRubrics.
+    if (
+      entry.rubricCount != null &&
+      entry.contestedCount != null &&
+      entry.rubricCount > 0
+    ) {
+      return {
+        total: entry.rubricCount,
+        contested: entry.contestedCount,
+        denominator: entry.rubricCount - entry.contestedCount,
+      };
+    }
+    return null;
+  }, [graphRubrics, entry.rubricCount, entry.contestedCount]);
+
   const contestedRubrics = useMemo(
     () => (graphRubrics ?? []).filter((r) => r.contested),
     [graphRubrics],
@@ -292,11 +342,17 @@ function RecursionCard({ entry, refetch }: RecursionCardProps) {
     return hrefs;
   }, [attemptRows, attempts.length, workspaceSlug, entry.id, canReadReports]);
 
+  // ── Score display: summary fallback while history is loading ──────────────
+  // `summaryLatest` comes from the one-time summary fetch on mount; used as
+  // the displayed score while `useEvalRunHistory` is loading (or not yet
+  // triggered because the card is collapsed).
+  const summaryLatest = entry.latestRun ?? null;
+
   // Headline number: the best score so far (highest bestPassed). Both series
   // builders now emit a monotonic bestPassed — the chart's line only climbs or
   // holds, regressions render as hollow "ignored" dots — so the badge always
   // matches the level the line ends at.
-  const latest = useMemo(() => {
+  const historyLatest = useMemo(() => {
     if (attempts.length === 0) return null;
     return attempts.reduce((best, pt) => {
       const ptBest = pt.bestPassed ?? pt.n_passed ?? 0;
@@ -305,24 +361,30 @@ function RecursionCard({ entry, refetch }: RecursionCardProps) {
     });
   }, [attempts]);
 
+  // While history is loading (or the card is collapsed), fall back to summary data.
+  const displayLatest = historyLoading || !expanded ? summaryLatest : historyLatest
+    ? {
+        n_passed: historyLatest.bestPassed ?? historyLatest.n_passed ?? null,
+        n_total: historyLatest.n_total ?? null,
+        runAt: historyLatest.date_added_to_graph ?? null,
+      }
+    : summaryLatest;
+
   // Headline climb: best-so-far minus the baseline score. Only a real climb
   // renders — a flat or regressing series keeps the header quiet.
   const climbDelta = useMemo(() => {
     if (attempts.length < 2) return null;
     const base = attempts.find((a) => a.isBaseline) ?? attempts[0];
     const baseScore = base.actualPassed ?? base.n_passed ?? null;
-    const best = latest ? (latest.bestPassed ?? latest.n_passed ?? null) : null;
+    const best = historyLatest ? (historyLatest.bestPassed ?? historyLatest.n_passed ?? null) : null;
     if (baseScore == null || best == null || best <= baseScore) return null;
     return best - baseScore;
-  }, [attempts, latest]);
+  }, [attempts, historyLatest]);
 
   // ── Consolidated run — seed from run list (survives page refresh) ──────────
   const { runs: allRuns } = useLegalBenchmarkRunList(workspace?.id);
 
   // Find the most recent CONSOLIDATED run for this taskSlug.
-  // `mapSecondary` tags it as "recursion" runType — so we match any "recursion"
-  // tagged row that is PENDING or IN_PROGRESS (no hasReport) as a proxy for
-  // in-flight consolidated runs, to prevent double-dispatch.
   const existingConsolidated = useMemo(() => {
     return allRuns
       .filter(
@@ -379,12 +441,6 @@ function RecursionCard({ entry, refetch }: RecursionCardProps) {
     setIsTriggering(true);
     setTriggerError(null);
     try {
-      // Assemble runIds from attemptRows:
-      // - Only RUNNER-type rows with hasReport=true (Recursion/Eval rows never score)
-      // - Latest-first by timestamp
-      // - Rows with runId: null are off-graph / pre-instrumentation runs; excluded
-      //   with a console.warn. Known limitation: a follow-on task should back-fill
-      //   missing run graph edges if this causes material gaps.
       const runIds = attemptRows
         .filter((r) => {
           if (r.runType !== "runner") return false;
@@ -427,13 +483,22 @@ function RecursionCard({ entry, refetch }: RecursionCardProps) {
     }
   };
 
-  // Button is disabled while triggering or while a consolidated run is in-flight
-  // (no report yet). Prevents double-dispatch.
+  // Button is disabled while triggering or while a consolidated run is in-flight.
   const consolidatedInFlight =
     !!effectiveConsolidatedRunId && !consolidatedRun?.hasReport;
   const canTriggerConsolidated = !isTriggering && !consolidatedInFlight;
 
-  const canExpand = !historyLoading && !historyError && attempts.length > 0;
+  // ── canExpand derivation ───────────────────────────────────────────────────
+  // The original `!historyLoading && !historyError && attempts.length > 0` is
+  // incompatible with gating `useEvalRunHistory` behind `expanded`: while
+  // collapsed, attempts = [] so canExpand is permanently false and the expand
+  // toggle never renders.
+  //
+  // Fix: while collapsed, infer expandability from summary data. While expanded,
+  // use the history state as before.
+  const canExpand = expanded
+    ? (!historyLoading && !historyError && attempts.length > 0)
+    : ((entry.fixChainDepth ?? 0) > 0 || entry.latestRun != null);
 
   return (
     <div className="rounded-lg border bg-card overflow-hidden">
@@ -445,13 +510,14 @@ function RecursionCard({ entry, refetch }: RecursionCardProps) {
               {entry.name || entry.id}
             </span>
             <ScoreBadge
-              isLoading={historyLoading}
-              error={historyError}
-              n_passed={latest?.bestPassed ?? latest?.n_passed}
-              n_total={latest?.n_total}
+              isLoading={false}
+              error={null}
+              n_passed={displayLatest?.n_passed ?? undefined}
+              n_total={displayLatest?.n_total ?? entry.rubricCount ?? undefined}
               roster={roster}
               contestedRubrics={contestedRubrics}
               workspaceSlug={workspaceSlug}
+              onContestedClick={() => setRosterRequested(true)}
             />
             {climbDelta != null && (
               <span
@@ -463,10 +529,6 @@ function RecursionCard({ entry, refetch }: RecursionCardProps) {
                 +{climbDelta} from base
               </span>
             )}
-            {/* A truncated graph walk must be loud: a capped walk renders a
-                flat-looking chart that is indistinguishable from a real
-                plateau, so the warning sits in the always-visible header, not
-                only inside the collapsed chart. */}
             {partial && !historyLoading && !historyError && (
               <span
                 className="flex items-center gap-1 text-xs text-amber-600 dark:text-amber-400"
@@ -480,9 +542,6 @@ function RecursionCard({ entry, refetch }: RecursionCardProps) {
           </div>
           <span className="flex items-center gap-1.5 min-w-0">
             <span className="text-xs text-muted-foreground truncate">{entry.id}</span>
-            {/* Copies the slug it sits next to — copying anything else here
-                reads as a bug. The EvalSet ref_id stays reachable through the
-                View graph URL. "Copied" resets on pointer-leave, no timer. */}
             <button
               type="button"
               onClick={() => {
@@ -515,7 +574,6 @@ function RecursionCard({ entry, refetch }: RecursionCardProps) {
         </div>
 
         <div className="flex items-center gap-2 shrink-0 flex-wrap justify-end">
-          {/* Consolidated report status: spinner while in-flight, link when ready */}
           {consolidatedInFlight && (
             <span
               className="flex items-center gap-1 text-xs text-muted-foreground"
@@ -538,14 +596,8 @@ function RecursionCard({ entry, refetch }: RecursionCardProps) {
             </a>
           )}
 
-          {/* The card's ONE graph affordance: a labeled button (an icon alone
-              read as "share") that renders the whole recursion subgraph —
-              eval set, triggers, outputs, fixes, rubrics — via the ?cypher=
-              deep link. Per-node links (chips, contested popover) stay
-              contextual; this is the launchpad. */}
           {workspaceSlug && entry.refId && (
             <>
-              {/* Fallback deep-link retained until panel is production-validated */}
               <a
                 href={loopSubgraphHref(workspaceSlug, entry.refId)}
                 target="_blank"
@@ -558,7 +610,6 @@ function RecursionCard({ entry, refetch }: RecursionCardProps) {
                 <Network className="h-3.5 w-3.5" />
                 View graph
               </a>
-              {/* Inline timeline panel toggle */}
               <button
                 type="button"
                 onClick={() => setGraphPanelOpen((v) => !v)}
@@ -573,7 +624,8 @@ function RecursionCard({ entry, refetch }: RecursionCardProps) {
             </>
           )}
 
-          {/* Expand toggle — only when there is data to show */}
+          {/* Expand toggle — shown when there is data to show (uses summary data
+              to avoid requiring a Jarvis fetch just to render the toggle). */}
           {canExpand && (
             <button
               onClick={() => setExpanded((v) => !v)}
@@ -589,7 +641,6 @@ function RecursionCard({ entry, refetch }: RecursionCardProps) {
             </button>
           )}
 
-          {/* Consolidated Report trigger button */}
           <Button
             variant="outline"
             size="sm"
@@ -648,10 +699,6 @@ function RecursionCard({ entry, refetch }: RecursionCardProps) {
                   </span>
                 )}
               </p>
-              {/* What the loop is editing: one chip per distinct fix target,
-                  deep-linked to its live node. Only renders when fixes carry
-                  snapshots — concept-driven recursion without ProposedFix rows
-                  has no recorded targets, and an empty label would be noise. */}
               {climbTargets.length > 0 && (
                 <div
                   className="flex flex-wrap items-center gap-1.5 mb-3"
@@ -694,7 +741,6 @@ function RecursionCard({ entry, refetch }: RecursionCardProps) {
                   })}
                 </div>
               )}
-              {/* Chart ~2/3, activity rail ~1/3; stacked on small screens */}
               <div className="flex flex-col md:flex-row gap-4">
                 <div className="md:basis-2/3 min-w-0">
                   <HillClimbChart
@@ -720,9 +766,6 @@ function RecursionCard({ entry, refetch }: RecursionCardProps) {
         </CollapsibleContent>
       </Collapsible>
 
-      {/* Inline timeline panel — rendered outside the Collapsible so it toggles
-          independently of the hill-climb chart. Shown only when subgraphData is
-          available (loaded on first expand of the hook's fix-chain fetch). */}
       {graphPanelOpen && subgraphData && entry.refId && workspaceSlug && (
         <RecursionGraphPanel
           nodes={subgraphData.nodes}

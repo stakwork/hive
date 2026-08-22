@@ -34,6 +34,7 @@ import type { JarvisConnectionConfig, JarvisNode } from "@/types/jarvis";
 import { resolveEvalSetRefIdBySlug } from "@/services/legal-benchmark-recursion";
 import { normalizeOutput, type RawJarvisNode } from "@/lib/harvey-lab/eval-normalizers";
 import type { GraphScoreOutput } from "@/lib/harvey-lab/graph-run-score";
+import { expandEdges } from "@/lib/harvey-lab/jarvis-expand";
 import { logger } from "@/lib/logger";
 
 /**
@@ -51,39 +52,6 @@ export interface TaskGraphOutputsResult {
   /** True when at least one expand failed — callers should not cache. */
   partial: boolean;
   error?: string;
-}
-
-/**
- * Depth-1 edge expand, the same call shape `fetchEvalSetRubrics` uses.
- * Returns the neighbor nodes (root excluded) or null on failure — failures
- * are per-hop, so one dead trigger doesn't blank the whole task.
- */
-async function expandEdges(
-  config: JarvisConnectionConfig,
-  refId: string,
-  edgeTypes: string[],
-): Promise<JarvisNode[] | null> {
-  const edgeType = encodeURIComponent(`[${edgeTypes.map((t) => `'${t}'`).join(",")}]`);
-  const url = `${config.jarvisUrl}/v2/nodes/${encodeURIComponent(refId)}?expand=edges&edge_type=${edgeType}&depth=1`;
-  try {
-    const res = await fetch(url, { headers: { "x-api-token": config.apiKey } });
-    if (!res.ok) {
-      logger.warn(
-        `[legal/benchmarks/graph-scores] Jarvis expand failed status=${res.status}`,
-        "legal",
-        { refId, status: res.status },
-      );
-      return null;
-    }
-    const data = (await res.json()) as { nodes?: JarvisNode[] };
-    return (data?.nodes ?? []).filter((n) => n.ref_id !== refId);
-  } catch (err) {
-    logger.warn("[legal/benchmarks/graph-scores] Jarvis expand threw", "legal", {
-      refId,
-      error: err instanceof Error ? err.message : String(err),
-    });
-    return null;
-  }
 }
 
 function isNodeType(node: JarvisNode, expected: string): boolean {
@@ -162,10 +130,10 @@ export async function fetchTaskGraphOutputs(
   // 1. Set-hosted triggers (recursion re-runs).
   const setTriggerRefs: string[] = [];
   if (evalSetRefId) {
-    const neighbors = await expandEdges(config, evalSetRefId, [
+    const neighbors = await expandEdges(evalSetRefId, [
       "HAS_BASELINE_TRIGGER",
       "HAS_TRIGGER",
-    ]);
+    ], config);
     if (neighbors === null) {
       partial = true;
     } else {
@@ -191,7 +159,7 @@ export async function fetchTaskGraphOutputs(
   const perTrigger = await Promise.all(
     allTriggerRefs.map(async (triggerRef) => ({
       triggerRef,
-      neighbors: await expandEdges(config, triggerRef, ["HAS_OUTPUT"]),
+      neighbors: await expandEdges(triggerRef, ["HAS_OUTPUT"], config),
     })),
   );
   for (const { triggerRef, neighbors } of perTrigger) {
