@@ -70,7 +70,12 @@ import {
 import { isGraphWriteCapabilityEnabledForOrg } from "@/lib/ai/capabilityGates";
 import { getLinkedWorkspacesForInitiative } from "@/lib/canvas/linkedWorkspaces";
 import { sanitizeAndCompleteToolCalls } from "@/lib/ai/message-sanitizer";
-import { getModel, getApiKeyForProvider, type Provider } from "@/lib/ai/provider";
+import {
+  getModel,
+  getApiKeyForProvider,
+  isGatewayReachable,
+  type Provider,
+} from "@/lib/ai/provider";
 import { getProviderOptions } from "aieo";
 // Deep import — see comment in services/task-workflow.ts.
 import { getBifrostForLLM } from "@/services/bifrost/orchestrator";
@@ -1090,13 +1095,33 @@ export async function runCanvasAgent(
   const modelOverride =
     modelName && modelName.startsWith("anthropic/") ? modelName : undefined;
 
+  // Pre-flight the swarm Bifrost gateway. If we can't connect to it
+  // (expired cert / connection refused / timeout), discard the whole
+  // Bifrost bundle and fall back to the default gateway path — the same
+  // route a non-Bifrost workspace takes (default key, no baseUrl, no
+  // custom headers). This rescues the turn when a single swarm is down
+  // instead of failing the whole request. See `isGatewayReachable`.
+  let activeBifrost = bifrost;
+  if (bifrost?.baseUrl && !(await isGatewayReachable(bifrost.baseUrl))) {
+    console.warn(
+      "[runCanvasAgent] Bifrost gateway unreachable; falling back to default gateway",
+      {
+        workspaces: workspaceSlugs,
+        orgId: orgId ?? null,
+        baseUrl: bifrost.baseUrl,
+        agentName: bifrost.agentName,
+      },
+    );
+    activeBifrost = undefined;
+  }
+
   const model = getModel(
     provider,
-    bifrost?.apiKey ?? apiKey,
+    activeBifrost?.apiKey ?? apiKey,
     primarySlug,
     modelOverride,
-    bifrost
-      ? { baseUrl: bifrost.baseUrl, headers: bifrost.headers }
+    activeBifrost
+      ? { baseUrl: activeBifrost.baseUrl, headers: activeBifrost.headers }
       : undefined,
   );
   const resolvedModelId = (model as { modelId?: string })?.modelId ?? "unknown";
@@ -1127,9 +1152,10 @@ export async function runCanvasAgent(
     orgId: orgId ?? null,
     readonly,
     silentPusher,
-    bifrost: bifrost
-      ? { runId: bifrost.runId, agentName: bifrost.agentName }
+    bifrost: activeBifrost
+      ? { runId: activeBifrost.runId, agentName: activeBifrost.agentName }
       : null,
+    bifrostFellBack: !!bifrost && !activeBifrost,
     cacheControl: (providerOptions as { anthropic?: { cacheControl?: unknown } })
       ?.anthropic?.cacheControl ?? null,
   });
