@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -11,7 +11,7 @@ export const dynamic = "force-dynamic";
  * Node objects use `ref_id` + `node_type` to match the real stakgraph response shape.
  * Relationship objects only carry `{ type }` — no `id` or `ref_id`.
  */
-export async function POST() {
+export async function POST(_request: NextRequest) {
   return NextResponse.json(
     {
       columns: ["n", "r", "m"],
