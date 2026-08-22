@@ -93,6 +93,8 @@ export interface MultiDocEditorHandle {
   openDocumentFromNodeId: (nodeId: string) => Promise<void>;
   /** Open a document by fetching it via a presigned URL derived from an S3 key. */
   openDocumentFromS3Key: (s3Key: string, filename?: string) => Promise<void>;
+  /** Open a document by fetching it via a proxy URL. */
+  openDocumentFromUrl: (proxyUrl: string, filename?: string) => Promise<void>;
   /** Close the document at the given index. */
   closeDocument: (index: number) => void;
   /** Switch the active tab to the given index. */
@@ -252,6 +254,47 @@ export function useMultiDocEditor(
     [reportError, openDocumentFromFile]
   );
 
+  // ── openDocumentFromUrl ──────────────────────────────────────────────────
+
+  const openDocumentFromUrl = useCallback(
+    async (proxyUrl: string, filename?: string): Promise<void> => {
+      let res: Response;
+      try {
+        res = await fetch(proxyUrl);
+      } catch (err) {
+        reportError(
+          `Could not retrieve document — the source may be inaccessible`
+        );
+        return;
+      }
+
+      if (!res.ok) {
+        reportError(`Could not retrieve document — the source may be inaccessible`);
+        return;
+      }
+
+      const blob = await res.blob();
+      // Derive filename from the proxy URL's `filename` query param or path.
+      const derivedFilename =
+        filename ??
+        (() => {
+          try {
+            const u = new URL(proxyUrl, "http://localhost");
+            const fnParam = u.searchParams.get("filename");
+            if (fnParam) return decodeURIComponent(fnParam);
+            const parts = u.pathname.split("/");
+            return decodeURIComponent(parts[parts.length - 1] || "document.docx");
+          } catch {
+            return "document.docx";
+          }
+        })();
+
+      const file = new File([blob], derivedFilename, { type: blob.type });
+      await openDocumentFromFile(file);
+    },
+    [reportError, openDocumentFromFile]
+  );
+
   // ── closeDocument ─────────────────────────────────────────────────────────
 
   const closeDocument = useCallback((index: number) => {
@@ -291,6 +334,7 @@ export function useMultiDocEditor(
     openDocumentFromFile,
     openDocumentFromNodeId,
     openDocumentFromS3Key,
+    openDocumentFromUrl,
     closeDocument,
     setActiveTab,
     dispatch,
