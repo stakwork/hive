@@ -243,7 +243,7 @@ describe("listRecursionEvalSets — three-source merge", () => {
   });
 
   test("Dedup: node qualifying under 'wasEnabled' and 'multipleRuns' appears once with reason 'wasEnabled'", async () => {
-    const node = makeNode("ref-dup2");
+    const node = makeNode("ref-dup2", { recursionEnabledAt: 1700000000 });
     mockSearchNodesByAttributes
       .mockResolvedValueOnce({ ok: true, nodes: [] })        // Source 1: not active
       .mockResolvedValueOnce({ ok: true, nodes: [node] })   // Source 2: wasEnabled
