@@ -1,9 +1,11 @@
 "use client";
 
 import React, { memo, useState, useMemo, useCallback } from "react";
+import Link from "next/link";
 import { motion } from "framer-motion";
-import { ChevronDown, ChevronRight, ExternalLink, User, X, Image as ImageIcon, FileIcon } from "lucide-react";
+import { ChevronDown, ChevronRight, Download, ExternalLink, User, X, Image as ImageIcon, FileIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { canAccessFeature, FEATURE_FLAGS } from "@/lib/feature-flags";
 import { ChatMessage as ChatMessageType, Option, FormContent } from "@/lib/chat";
 import { FormArtifact, LongformArtifactPanel, PublishWorkflowArtifact, PublishScriptArtifact, PublishPromptArtifact, PublishSkillArtifact, BountyArtifact } from "../artifacts";
 import { PullRequestArtifact } from "../artifacts/pull-request";
@@ -85,6 +87,8 @@ interface ChatMessageProps {
   taskWorkflowStatus?: string | null;
   /** Pre-publish snapshot of the parent task's chatMessages — forwarded to PublishWorkflowArtifact */
   taskChatMessages?: ChatMessagesSnapshot;
+  /** Workspace slug — used to build the DOCX editor URL for .docx attachments. */
+  workspaceSlug?: string;
 }
 
 // Custom comparison function for React.memo
@@ -119,7 +123,9 @@ function arePropsEqual(prevProps: ChatMessageProps, nextProps: ChatMessageProps)
   // chatMessages reference equality is enough — callers pass the messages state array
   const chatMessagesEqual = prevProps.taskChatMessages === nextProps.taskChatMessages;
 
-  return messageEqual && replyMessageEqual && suggestionsEqual && superAdminEqual && workflowStatusEqual && chatMessagesEqual;
+  const workspaceSlugEqual = prevProps.workspaceSlug === nextProps.workspaceSlug;
+
+  return messageEqual && replyMessageEqual && suggestionsEqual && superAdminEqual && workflowStatusEqual && chatMessagesEqual && workspaceSlugEqual;
 }
 
 export const ChatMessage = memo(function ChatMessage({
@@ -131,6 +137,7 @@ export const ChatMessage = memo(function ChatMessage({
   isSuperAdmin = false,
   taskWorkflowStatus,
   taskChatMessages,
+  workspaceSlug,
 }: ChatMessageProps) {
   const { timezone } = useUserTimezone();
   const [logsExpanded, setLogsExpanded] = useState(false);
@@ -335,6 +342,42 @@ export const ChatMessage = memo(function ChatMessage({
                         className="w-full rounded-lg max-h-48"
                         preload="metadata"
                       />
+                    </div>
+                  );
+                } else if (
+                  mimeType === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
+                  attachment.filename?.toLowerCase().endsWith(".docx")
+                ) {
+                  // DOCX attachment — open-in-editor + download
+                  const editorHref = workspaceSlug
+                    ? `/w/${workspaceSlug}/documents?s3Key=${encodeURIComponent(attachment.path)}&filename=${encodeURIComponent(attachment.filename ?? "")}`
+                    : null;
+                  const showEditorLink = !!editorHref && canAccessFeature(FEATURE_FLAGS.AI_DOC_EDITOR);
+                  return (
+                    <div key={attachment.id} className="relative rounded-lg overflow-hidden border col-span-2">
+                      <div className="flex items-center gap-2 p-3">
+                        <FileIcon className="w-4 h-4 shrink-0 text-muted-foreground" />
+                        <span className="truncate text-xs flex-1 min-w-0">{attachment.filename}</span>
+                        <div className="flex items-center gap-1 shrink-0">
+                          {showEditorLink && editorHref && (
+                            <Link
+                              href={editorHref}
+                              className="p-1 rounded hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
+                              title="Open in Document Editor"
+                            >
+                              <ExternalLink className="w-4 h-4" />
+                            </Link>
+                          )}
+                          <a
+                            href={presignedUrl}
+                            download={attachment.filename}
+                            className="p-1 rounded hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
+                            title="Download"
+                          >
+                            <Download className="w-4 h-4" />
+                          </a>
+                        </div>
+                      </div>
                     </div>
                   );
                 } else {
