@@ -59,6 +59,16 @@ vi.mock("@/components/legal/HillClimbChart", () => ({
     ),
 }));
 
+// RecursionGraphPanel — lightweight placeholder
+vi.mock("@/components/legal/RecursionGraphPanel", () => ({
+  RecursionGraphPanel: ({ evalSetRefId }: { evalSetRefId: string }) =>
+    React.createElement(
+      "div",
+      { "data-testid": "recursion-graph-panel", "data-ref": evalSetRefId },
+      "graph-panel",
+    ),
+}));
+
 // useEvalRunHistory mock
 const mockUseEvalRunHistory = vi.fn();
 
@@ -140,9 +150,19 @@ function makeOutput(n_passed: number, n_total: number, idx = 0) {
   };
 }
 
+const MOCK_SUBGRAPH_DATA = {
+  nodes: [{ ref_id: "evalset-1", node_type: "EvalSet", properties: {} }],
+  edges: [] as { source: string; target: string; edge_type: string }[],
+};
+
 function mockHistoryLoaded(
   attempts: Array<ReturnType<typeof makeOutput> & Record<string, unknown>> = [],
-  extra: { seriesKind?: string; partial?: boolean; attemptRows?: unknown[] } = {},
+  extra: {
+    seriesKind?: string;
+    partial?: boolean;
+    attemptRows?: unknown[];
+    subgraphData?: typeof MOCK_SUBGRAPH_DATA | null;
+  } = {},
 ) {
   mockUseEvalRunHistory.mockReturnValue({
     history: [],
@@ -151,6 +171,7 @@ function mockHistoryLoaded(
     isLoading: false,
     error: null,
     refetch: vi.fn(),
+    subgraphData: MOCK_SUBGRAPH_DATA, // default: subgraph available
     ...extra,
   });
 }
@@ -163,6 +184,7 @@ function mockHistoryLoading() {
     isLoading: true,
     error: null,
     refetch: vi.fn(),
+    subgraphData: null,
   });
 }
 
@@ -174,6 +196,7 @@ function mockHistoryError(msg = "Fetch error") {
     isLoading: false,
     error: msg,
     refetch: vi.fn(),
+    subgraphData: null,
   });
 }
 
@@ -732,5 +755,100 @@ describe("RecursionCard — activity rail", () => {
     );
     fireEvent.click(screen.getByTestId("expand-toggle"));
     expect(screen.getByTestId("activity-rail-empty")).toBeTruthy();
+  });
+});
+
+// ─── Graph-link / timeline-toggle ────────────────────────────────────────────
+
+describe("RecursionCard — graph link and timeline toggle", () => {
+  const mockRefetch = vi.fn();
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockRefetch.mockResolvedValue(undefined);
+    mockHistoryLoaded();
+    mockUseBenchmarkRubrics.mockReturnValue({ rubrics: null });
+    mockFetchOk();
+  });
+
+  function renderCard(overrides: Partial<{ refId: string; id: string; name: string }> = {}) {
+    const entry = makeEntry(overrides);
+    render(
+      <RecursionList
+        entries={[entry]}
+        isLoading={false}
+        error={null}
+        refetch={mockRefetch}
+      />,
+    );
+  }
+
+  it("renders the 'View graph' link as an <a> with data-testid='card-graph-link'", () => {
+    renderCard({ refId: "ref-abc" });
+    const link = screen.getByTestId("card-graph-link");
+    expect(link.tagName.toLowerCase()).toBe("a");
+    expect(link.getAttribute("href")).toContain("/context/graph");
+    expect(link.getAttribute("href")).toContain("ref-abc");
+  });
+
+  it("renders the timeline toggle <button> with data-testid='card-graph-toggle'", () => {
+    renderCard({ refId: "ref-abc" });
+    const btn = screen.getByTestId("card-graph-toggle");
+    expect(btn.tagName.toLowerCase()).toBe("button");
+  });
+
+  it("timeline toggle button has 'Timeline' text initially", () => {
+    renderCard();
+    const btn = screen.getByTestId("card-graph-toggle");
+    expect(btn.textContent).toMatch(/timeline/i);
+  });
+
+  it("clicking the toggle renders the RecursionGraphPanel when subgraphData is available", async () => {
+    renderCard({ refId: "ref-panel-test" });
+
+    expect(screen.queryByTestId("recursion-graph-panel")).toBeNull();
+
+    fireEvent.click(screen.getByTestId("card-graph-toggle"));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("recursion-graph-panel")).toBeTruthy();
+    });
+  });
+
+  it("RecursionGraphPanel receives the evalSetRefId from entry.refId", async () => {
+    renderCard({ refId: "eval-set-xyz" });
+    fireEvent.click(screen.getByTestId("card-graph-toggle"));
+
+    await waitFor(() => {
+      const panel = screen.getByTestId("recursion-graph-panel");
+      expect(panel.getAttribute("data-ref")).toBe("eval-set-xyz");
+    });
+  });
+
+  it("clicking the toggle again hides the panel ('Hide timeline')", async () => {
+    renderCard({ refId: "ref-toggle-test" });
+    const toggleBtn = screen.getByTestId("card-graph-toggle");
+
+    fireEvent.click(toggleBtn);
+    await waitFor(() => expect(screen.getByTestId("recursion-graph-panel")).toBeTruthy());
+
+    fireEvent.click(toggleBtn);
+    await waitFor(() => expect(screen.queryByTestId("recursion-graph-panel")).toBeNull());
+  });
+
+  it("does not render the panel when subgraphData is null", () => {
+    // subgraphData: null simulates the hook before first load completes
+    mockHistoryLoaded([], { subgraphData: null });
+    renderCard({ refId: "ref-null-subgraph" });
+    fireEvent.click(screen.getByTestId("card-graph-toggle"));
+    // Panel must not appear — subgraphData guards the render
+    expect(screen.queryByTestId("recursion-graph-panel")).toBeNull();
+  });
+
+  it("does not render the panel when entry.refId is absent", () => {
+    renderCard({ refId: "" }); // empty refId → loopSubgraphHref guard
+    // With an empty refId the {workspaceSlug && entry.refId && ...} guard prevents rendering
+    expect(screen.queryByTestId("card-graph-link")).toBeNull();
+    expect(screen.queryByTestId("card-graph-toggle")).toBeNull();
   });
 });
