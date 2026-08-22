@@ -5,7 +5,7 @@ import Link from "next/link";
 import { motion } from "framer-motion";
 import { ChevronDown, ChevronRight, Download, ExternalLink, User, X, Image as ImageIcon, FileIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { canAccessFeature, FEATURE_FLAGS } from "@/lib/feature-flags";
+
 import { ChatMessage as ChatMessageType, Option, FormContent } from "@/lib/chat";
 import { FormArtifact, LongformArtifactPanel, PublishWorkflowArtifact, PublishScriptArtifact, PublishPromptArtifact, PublishSkillArtifact, BountyArtifact } from "../artifacts";
 import { PullRequestArtifact } from "../artifacts/pull-request";
@@ -352,7 +352,7 @@ export const ChatMessage = memo(function ChatMessage({
                   const editorHref = workspaceSlug
                     ? `/w/${workspaceSlug}/documents?s3Key=${encodeURIComponent(attachment.path)}&filename=${encodeURIComponent(attachment.filename ?? "")}`
                     : null;
-                  const showEditorLink = !!editorHref && canAccessFeature(FEATURE_FLAGS.AI_DOC_EDITOR);
+                  const showEditorLink = !!editorHref;
                   return (
                     <div key={attachment.id} className="relative rounded-lg overflow-hidden border col-span-2">
                       <div className="flex items-center gap-2 p-3">

@@ -22,6 +22,115 @@ vi.mock("@/lib/docx-engine", () => ({
   createDocx: vi.fn(),
 }));
 
+// ─── openDocumentFromUrl tests ───────────────────────────────────────────────
+
+describe("useMultiDocEditor — openDocumentFromUrl", () => {
+  let fetchSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    fetchSpy = vi.spyOn(globalThis, "fetch");
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  test("success path with explicit filename — opens doc with correct filename", async () => {
+    const fakeBlob = new Blob(["fake docx content"], {
+      type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    });
+    fetchSpy.mockResolvedValueOnce(
+      new Response(fakeBlob, {
+        status: 200,
+        headers: { "Content-Type": fakeBlob.type },
+      })
+    );
+
+    const onError = vi.fn();
+    const { result } = renderHook(() =>
+      useMultiDocEditor({ slug: "ws-1", onError })
+    );
+
+    await act(async () => {
+      await result.current.openDocumentFromUrl(
+        "/api/w/ws-1/doc-proxy?url=https%3A%2F%2Fraw.githubusercontent.com%2Fstakwork%2Fharvey-labs%2Fmain%2Fdoc.docx",
+        "contract.docx"
+      );
+    });
+
+    expect(fetchSpy).toHaveBeenCalledWith(
+      "/api/w/ws-1/doc-proxy?url=https%3A%2F%2Fraw.githubusercontent.com%2Fstakwork%2Fharvey-labs%2Fmain%2Fdoc.docx"
+    );
+
+    expect(result.current.docs).toHaveLength(1);
+    expect(result.current.docs[0].doc.filename).toBe("contract.docx");
+    expect(onError).not.toHaveBeenCalled();
+  });
+
+  test("success path without explicit filename — derives filename from URL", async () => {
+    const fakeBlob = new Blob(["fake docx"], {
+      type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    });
+    fetchSpy.mockResolvedValueOnce(
+      new Response(fakeBlob, { status: 200 })
+    );
+
+    const { result } = renderHook(() => useMultiDocEditor({}));
+
+    await act(async () => {
+      // No explicit filename — hook should derive from URL or use default
+      await result.current.openDocumentFromUrl(
+        "/api/w/ws-1/doc-proxy?url=https%3A%2F%2Fexample.com%2Fdocument.docx"
+      );
+    });
+
+    expect(result.current.docs).toHaveLength(1);
+    // Filename is derived (not empty)
+    expect(result.current.docs[0].doc.filename).toBeTruthy();
+  });
+
+  test("error path — non-2xx response → reportError called, no doc opened", async () => {
+    fetchSpy.mockResolvedValueOnce(
+      new Response(null, { status: 403, statusText: "Forbidden" })
+    );
+
+    const onError = vi.fn();
+    const { result } = renderHook(() =>
+      useMultiDocEditor({ slug: "ws-1", onError })
+    );
+
+    await act(async () => {
+      await result.current.openDocumentFromUrl(
+        "/api/w/ws-1/doc-proxy?url=https%3A%2F%2Fexample.com%2Fsecret.docx",
+        "secret.docx"
+      );
+    });
+
+    expect(onError).toHaveBeenCalledOnce();
+    expect(onError.mock.calls[0][0]).toContain("inaccessible");
+    expect(result.current.docs).toHaveLength(0);
+  });
+
+  test("error path — network failure → reportError called, no doc opened", async () => {
+    fetchSpy.mockRejectedValueOnce(new TypeError("Failed to fetch"));
+
+    const onError = vi.fn();
+    const { result } = renderHook(() =>
+      useMultiDocEditor({ slug: "ws-1", onError })
+    );
+
+    await act(async () => {
+      await result.current.openDocumentFromUrl(
+        "/api/w/ws-1/doc-proxy?url=https%3A%2F%2Fexample.com%2Fdoc.docx"
+      );
+    });
+
+    expect(onError).toHaveBeenCalledOnce();
+    expect(onError.mock.calls[0][0]).toContain("inaccessible");
+    expect(result.current.docs).toHaveLength(0);
+  });
+});
+
 // ─── openDocumentFromS3Key tests ─────────────────────────────────────────────
 
 describe("useMultiDocEditor — openDocumentFromS3Key", () => {
