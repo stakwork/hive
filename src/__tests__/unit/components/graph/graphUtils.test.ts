@@ -6,6 +6,7 @@ import {
   filterValidLinks,
   getConnectedNodeIds,
   addArrowMarker,
+  createLinkElements,
   DEFAULT_COLORS,
   type D3Node,
   type D3Link,
@@ -454,6 +455,76 @@ describe("graphUtils", () => {
 
       const connectedToMiddle = getConnectedNodeIds("node500", validLinks);
       expect(connectedToMiddle.size).toBe(2); // node499 and node501
+    });
+  });
+
+  // ── createLinkElements edge-style tests ──────────────────────────────────
+  // createLinkElements is statically imported at the top of this file.
+
+  describe("createLinkElements — edge style support", () => {
+    let svg: d3.Selection<SVGSVGElement, unknown, null, undefined>;
+    let container: d3.Selection<SVGGElement, unknown, null, undefined>;
+
+    beforeEach(() => {
+      svg = d3.select(document.body).append("svg");
+      container = svg.append("g");
+    });
+
+    afterEach(() => {
+      svg.remove();
+    });
+
+    type Links = d3.SimulationLinkDatum<d3.SimulationNodeDatum>[];
+
+    test("backward-compat: (container, links, true) compiles and returns a selection", () => {
+      const links = [{ source: "a", target: "b" }] as unknown as Links;
+      // Same 3-arg call as GraphVisualizationLayered — must compile and behave unchanged
+      const result = createLinkElements(container, links, true);
+      expect(result).toBeDefined();
+    });
+
+    test("without edgeStyleFn, stroke defaults to #999", () => {
+      const links = [{ source: "a", target: "b" }] as unknown as Links;
+      createLinkElements(container, links);
+      const line = container.select("line").node() as SVGLineElement;
+      expect(line.getAttribute("stroke")).toBe("#999");
+    });
+
+    test("edgeStyleFn: HAS_PROPOSED_FIX gets dashed strokeDasharray", () => {
+      const sourceNode = { id: "a", type: "EvalTrigger", x: 0, y: 0 };
+      const links = [{ source: sourceNode, target: { id: "b", type: "ProposedFix", x: 0, y: 0 }, label: "HAS_PROPOSED_FIX" }] as unknown as Links;
+      const edgeStyleFn = (label: string) => {
+        if (label === "HAS_PROPOSED_FIX") return { stroke: "#a855f7", strokeDasharray: "5,4" };
+        return undefined;
+      };
+      createLinkElements(container, links, false, edgeStyleFn);
+      const line = container.select("line").node() as SVGLineElement;
+      expect(line.getAttribute("stroke")).toBe("#a855f7");
+      expect(line.getAttribute("stroke-dasharray")).toBe("5,4");
+    });
+
+    test("edgeStyleFn: HAS_TRIGGER has no strokeDasharray", () => {
+      const sourceNode = { id: "a", type: "EvalSet", x: 0, y: 0 };
+      const links = [{ source: sourceNode, target: { id: "b", type: "EvalTrigger", x: 0, y: 0 }, label: "HAS_TRIGGER" }] as unknown as Links;
+      const edgeStyleFn = (label: string) => {
+        if (label === "HAS_TRIGGER") return { stroke: "#374151" };
+        return undefined;
+      };
+      createLinkElements(container, links, false, edgeStyleFn);
+      const line = container.select("line").node() as SVGLineElement;
+      expect(line.getAttribute("stroke")).toBe("#374151");
+      // null or empty → no dasharray
+      const da = line.getAttribute("stroke-dasharray");
+      expect(!da || da === "null").toBe(true);
+    });
+
+    test("edgeStyleFn returning undefined → default #999 stroke", () => {
+      const sourceNode = { id: "a", type: "File", x: 0, y: 0 };
+      const links = [{ source: sourceNode, target: { id: "b", type: "File", x: 0, y: 0 }, label: "IMPORTS" }] as unknown as Links;
+      const edgeStyleFn = (_label: string) => undefined;
+      createLinkElements(container, links, false, edgeStyleFn);
+      const line = container.select("line").node() as SVGLineElement;
+      expect(line.getAttribute("stroke")).toBe("#999");
     });
   });
 

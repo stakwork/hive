@@ -169,4 +169,84 @@ describe("stakgraphToRawGraph", () => {
     expect(edges).toHaveLength(1);
     expect(edges[0]).toMatchObject({ source: "abc-123", target: "def-456", label: "CALLS" });
   });
+
+  // ── Legal node-type classification ───────────────────────────────────────
+
+  test("labels array containing 'BaselineTrigger' overrides node_type", () => {
+    const rows = [
+      [
+        {
+          ref_id: "bt-1",
+          name: "Baseline",
+          node_type: "EvalTrigger",
+          labels: ["EvalTrigger", "BaselineTrigger"],
+        },
+      ],
+    ];
+    const { nodes } = stakgraphToRawGraph(["n"], rows);
+    expect(nodes[0].nodeType).toBe("BaselineTrigger");
+  });
+
+  test("labels array without 'BaselineTrigger' falls back to normal resolution", () => {
+    const rows = [
+      [
+        {
+          ref_id: "et-1",
+          name: "Trigger",
+          node_type: "EvalTrigger",
+          labels: ["EvalTrigger"],
+        },
+      ],
+    ];
+    const { nodes } = stakgraphToRawGraph(["n"], rows);
+    expect(nodes[0].nodeType).toBe("EvalTrigger");
+  });
+
+  test("absent labels field falls through to normal resolution gracefully", () => {
+    const rows = [
+      [{ ref_id: "et-2", name: "Trigger", node_type: "EvalTrigger" }],
+    ];
+    const { nodes } = stakgraphToRawGraph(["n"], rows);
+    expect(nodes[0].nodeType).toBe("EvalTrigger");
+  });
+
+  test("EvalTriggerOutput with eval_status='accepted' → nodeType EvalTriggerOutput_pass", () => {
+    const rows = [
+      [{ ref_id: "out-1", name: "Output", node_type: "EvalTriggerOutput", eval_status: "accepted", n_passed: 8, n_total: 8 }],
+    ];
+    const { nodes } = stakgraphToRawGraph(["n"], rows);
+    expect(nodes[0].nodeType).toBe("EvalTriggerOutput_pass");
+  });
+
+  test("EvalTriggerOutput with eval_status='rejected' → nodeType EvalTriggerOutput_fail", () => {
+    const rows = [
+      [{ ref_id: "out-2", name: "Output", node_type: "EvalTriggerOutput", eval_status: "rejected" }],
+    ];
+    const { nodes } = stakgraphToRawGraph(["n"], rows);
+    expect(nodes[0].nodeType).toBe("EvalTriggerOutput_fail");
+  });
+
+  test("EvalTriggerOutput with no eval_status and partial score → EvalTriggerOutput_partial", () => {
+    const rows = [
+      [{ ref_id: "out-3", name: "Output", node_type: "EvalTriggerOutput", n_passed: 5, n_total: 8 }],
+    ];
+    const { nodes } = stakgraphToRawGraph(["n"], rows);
+    expect(nodes[0].nodeType).toBe("EvalTriggerOutput_partial");
+  });
+
+  test("'Evalset' (mixed-case casing variant) normalises to 'EvalSet'", () => {
+    const rows = [
+      [{ ref_id: "es-1", name: "Eval Set", node_type: "Evalset" }],
+    ];
+    const { nodes } = stakgraphToRawGraph(["n"], rows);
+    expect(nodes[0].nodeType).toBe("EvalSet");
+  });
+
+  test("non-legal node types pass through unchanged", () => {
+    const rows = [
+      [{ ref_id: "fn-1", name: "myFunc", node_type: "Function" }],
+    ];
+    const { nodes } = stakgraphToRawGraph(["n"], rows);
+    expect(nodes[0].nodeType).toBe("Function");
+  });
 });

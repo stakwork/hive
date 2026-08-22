@@ -76,7 +76,7 @@ export async function POST(
         const { POST: MockPOST } = await import(
           "@/app/api/mock/graph/query/route"
         );
-        return await MockPOST();
+        return await MockPOST(request);
       }
       const mockUrl = new URL(
         "/api/mock/graph/query",

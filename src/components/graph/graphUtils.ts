@@ -107,7 +107,8 @@ export const createNodeElements = (
   nodes: D3Node[],
   colorMap: Record<string, string> | undefined,
   onNodeClick: ((node: GraphNode) => void) | undefined,
-  dragBehavior: d3.DragBehavior<SVGGElement, D3Node, unknown>
+  dragBehavior: d3.DragBehavior<SVGGElement, D3Node, unknown>,
+  iconMap?: Record<string, string>
 ): d3.Selection<SVGGElement, D3Node, SVGGElement, unknown> => {
   const node = container.append("g")
     .attr("class", "nodes")
@@ -134,6 +135,16 @@ export const createNodeElements = (
     .attr("stroke-width", 2)
     .style("filter", "drop-shadow(1px 1px 2px rgba(0,0,0,0.2))");
 
+  // Add icon overlay (centered inside the circle)
+  if (iconMap) {
+    node.append("text")
+      .attr("text-anchor", "middle")
+      .attr("dominant-baseline", "central")
+      .attr("font-size", "9px")
+      .style("pointer-events", "none")
+      .text(d => iconMap[d.type] ?? "");
+  }
+
   // Add node labels
   node.append("text")
     .text(d => d.name.length > 20 ? `${d.name.slice(0, 20)}...` : d.name)
@@ -158,10 +169,17 @@ export const createNodeElements = (
   return node;
 };
 
+export interface EdgeStyle {
+  stroke: string;
+  strokeDasharray?: string;
+  strokeWidth?: number;
+}
+
 export const createLinkElements = (
   container: d3.Selection<SVGGElement, unknown, null, undefined>,
   links: D3Link[],
-  withArrows = false
+  withArrows = false,
+  edgeStyleFn?: (label: string, sourceType?: string) => EdgeStyle | undefined
 ): d3.Selection<SVGLineElement, D3Link, SVGGElement, unknown> => {
   const link = container.append("g")
     .attr("class", "links")
@@ -169,9 +187,36 @@ export const createLinkElements = (
     .data(links)
     .enter()
     .append("line")
-    .attr("stroke", "#999")
-    .attr("stroke-opacity", 0.6)
-    .attr("stroke-width", 1.5);
+    .attr("stroke-opacity", 0.6);
+
+  if (edgeStyleFn) {
+    link
+      .attr("stroke", d => {
+        const style = edgeStyleFn(
+          String((d as Record<string, unknown>).label ?? ""),
+          (d.source as D3Node).type
+        );
+        return style?.stroke ?? "#999";
+      })
+      .attr("stroke-width", d => {
+        const style = edgeStyleFn(
+          String((d as Record<string, unknown>).label ?? ""),
+          (d.source as D3Node).type
+        );
+        return style?.strokeWidth ?? 1.5;
+      })
+      .attr("stroke-dasharray", d => {
+        const style = edgeStyleFn(
+          String((d as Record<string, unknown>).label ?? ""),
+          (d.source as D3Node).type
+        );
+        return style?.strokeDasharray ?? null;
+      });
+  } else {
+    link
+      .attr("stroke", "#999")
+      .attr("stroke-width", 1.5);
+  }
 
   if (withArrows) {
     link.attr("marker-end", "url(#arrowhead)");

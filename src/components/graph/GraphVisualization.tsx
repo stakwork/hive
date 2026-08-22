@@ -7,6 +7,7 @@ import {
   type GraphEdge,
   type D3Node,
   type D3Link,
+  type EdgeStyle,
   filterValidLinks,
   setupZoom,
   createNodeElements,
@@ -23,6 +24,10 @@ interface GraphVisualizationProps {
   colorMap?: Record<string, string>;
   onNodeClick?: (node: GraphNode) => void;
   className?: string;
+  /** Per-node-type icon (emoji/unicode) rendered inside each circle. */
+  iconMap?: Record<string, string>;
+  /** Per-edge-label stroke style function. */
+  edgeStyleFn?: (label: string, sourceType?: string) => EdgeStyle | undefined;
 }
 
 export function GraphVisualization({
@@ -33,6 +38,8 @@ export function GraphVisualization({
   colorMap,
   onNodeClick,
   className = "",
+  iconMap,
+  edgeStyleFn,
 }: GraphVisualizationProps) {
   const svgRef = useRef<SVGSVGElement | null>(null);
   const simulationRef = useRef<d3.Simulation<D3Node, D3Link> | null>(null);
@@ -86,8 +93,8 @@ export function GraphVisualization({
       });
 
     // Create links and nodes
-    const link = createLinkElements(container, validLinks);
-    const node = createNodeElements(container, d3Nodes, colorMap, onNodeClick, dragBehavior);
+    const link = createLinkElements(container, validLinks, false, edgeStyleFn);
+    const node = createNodeElements(container, d3Nodes, colorMap, onNodeClick, dragBehavior, iconMap);
 
     // Setup hover highlighting
     setupNodeHoverHighlight(node, link, validLinks);
