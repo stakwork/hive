@@ -187,7 +187,7 @@ export function BenchmarkRunsHistory({
   // workspaces 404 the endpoint, the set stays empty, and no badges render.
   const { entries: recursionEntries } = useLegalBenchmarkRecursionList();
   const recursionSlugs = useMemo(
-    () => new Set(recursionEntries.map((e) => e.id)),
+    () => new Map(recursionEntries.map((e) => [e.id, e.reason])),
     [recursionEntries],
   );
 
@@ -532,7 +532,7 @@ export function BenchmarkRunsHistory({
         <TaskProgressCard
           task={selectedTask}
           attempts={chartAttempts}
-          recursionEnabled={recursionSlugs.has(selectedTask.slug)}
+          recursionEnabled={recursionSlugs.get(selectedTask.slug) === "active"}
           workspaceSlug={workspaceSlug ?? ""}
         />
       )}
@@ -611,7 +611,7 @@ export function BenchmarkRunsHistory({
                       <div className="font-medium leading-tight">
                         {run.taskTitle || titleBySlug.get(run.taskSlug) || run.taskSlug || "(Unknown task)"}
                       </div>
-                      {run.taskSlug && recursionSlugs.has(run.taskSlug) && workspaceSlug && (
+                      {run.taskSlug && recursionSlugs.get(run.taskSlug) === "active" && workspaceSlug && (
                         <RecursionEnabledBadge workspaceSlug={workspaceSlug} />
                       )}
                     </div>
