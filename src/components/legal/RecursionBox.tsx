@@ -3,6 +3,7 @@
 import React, { useMemo, useState } from "react";
 import { Loader2, RefreshCw, ChevronDown, ChevronUp, AlertCircle, ExternalLink, TrendingUp, Network, Copy, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
 import { Collapsible, CollapsibleContent } from "@/components/ui/collapsible";
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
 import { useEvalRunHistory, type AttemptRailRow } from "@/hooks/useEvalRunHistory";
@@ -607,22 +608,17 @@ function RecursionCard({ entry, refetch }: RecursionCardProps) {
             )}
           </Button>
 
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => handleToggle(false)}
-            disabled={toggling}
-            className="shrink-0"
-          >
-            {toggling ? (
-              <>
-                <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" />
-                Updating…
-              </>
-            ) : (
-              "Disable"
-            )}
-          </Button>
+          <div className="flex items-center gap-2 shrink-0">
+            {toggling && <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />}
+            <span className="text-xs text-muted-foreground">Recursion</span>
+            <Switch
+              checked={entry.recursion ?? false}
+              onCheckedChange={(v) => handleToggle(v)}
+              disabled={toggling}
+              aria-label={entry.recursion ? "Disable recursion" : "Enable recursion"}
+              data-testid="recursion-toggle"
+            />
+          </div>
         </div>
       </div>
 
