@@ -72,7 +72,7 @@ vi.mock("@/hooks/useLegalBenchmarkRunList", () => ({
 
 // Recursion enrollment list — default: nothing enrolled, no badges.
 const mockUseRecursionList = vi.fn(() => ({
-  entries: [] as Array<{ refId: string; id: string; name: string }>,
+  entries: [] as Array<{ refId: string; id: string; name: string; reason: string }>,
   isLoading: false,
   error: null,
   refetch: vi.fn(),
@@ -1080,7 +1080,7 @@ describe("BenchmarkRunsHistory — recursion badge", () => {
       setExpandedId: mockSetExpandedId,
     });
     mockUseRecursionList.mockReturnValue({
-      entries: [{ refId: "ref-1", id: "antitrust/task-1", name: "Antitrust" }],
+      entries: [{ refId: "ref-1", id: "antitrust/task-1", name: "Antitrust", reason: "active" }],
       isLoading: false,
       error: null,
       refetch: vi.fn(),
@@ -1096,7 +1096,7 @@ describe("BenchmarkRunsHistory — recursion badge", () => {
 
   it("links the badge to the Recursion tab via ?tab=recursion", () => {
     mockUseRecursionList.mockReturnValue({
-      entries: [{ refId: "ref-1", id: "antitrust/task-1", name: "Antitrust" }],
+      entries: [{ refId: "ref-1", id: "antitrust/task-1", name: "Antitrust", reason: "active" }],
       isLoading: false,
       error: null,
       refetch: vi.fn(),
@@ -1112,7 +1112,7 @@ describe("BenchmarkRunsHistory — recursion badge", () => {
 
   it("clicking the badge does not toggle the row expansion", () => {
     mockUseRecursionList.mockReturnValue({
-      entries: [{ refId: "ref-1", id: "antitrust/task-1", name: "Antitrust" }],
+      entries: [{ refId: "ref-1", id: "antitrust/task-1", name: "Antitrust", reason: "active" }],
       isLoading: false,
       error: null,
       refetch: vi.fn(),
