@@ -3,6 +3,7 @@ import React from "react";
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useSession } from "next-auth/react";
+import { useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { useFileDrop } from "@/hooks/useFileDrop";
@@ -88,7 +89,7 @@ export default function DocxEditorPage() {
   const currentAuthor = session?.user?.name ?? "Unknown";
 
   // Multi-doc editor state
-  const { docs, activeIndex, openDocumentFromFile, openDocumentFromNodeId, closeDocument, setActiveTab, dispatch } =
+  const { docs, activeIndex, openDocumentFromFile, openDocumentFromNodeId, openDocumentFromS3Key, closeDocument, setActiveTab, dispatch } =
     useMultiDocEditor({
       slug,
       onError: (msg) => toast.error(msg),
@@ -115,6 +116,18 @@ export default function DocxEditorPage() {
     const nodeId = params.get("nodeId");
     if (nodeId) openDocumentFromNodeId(nodeId);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── URL param: ?s3Key=…&filename=… ───────────────────────────────────────
+  // useSearchParams (not window.location.search) ensures client-side same-route
+  // query-param changes — e.g. clicking a second DOCX attachment — trigger the
+  // effect without requiring a full page remount.
+  const searchParams = useSearchParams();
+  const s3KeyParam = searchParams.get("s3Key");
+  const filenameParam = searchParams.get("filename");
+
+  useEffect(() => {
+    if (s3KeyParam) openDocumentFromS3Key(s3KeyParam, filenameParam ?? undefined);
+  }, [s3KeyParam]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── File drop ────────────────────────────────────────────────────────────
   const handleDrop = useCallback(

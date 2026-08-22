@@ -416,6 +416,7 @@ export function ChatArea({
                   isSuperAdmin={isSuperAdmin}
                   taskWorkflowStatus={workflowStatus}
                   taskChatMessages={messages}
+                  workspaceSlug={workspaceSlug}
                 />
               </React.Fragment>
             );
