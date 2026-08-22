@@ -100,6 +100,31 @@ vi.mock("@/hooks/useWorkspace", () => ({
   useWorkspace: () => ({ workspace: { slug: "openlaw", id: "ws-1" } }),
 }));
 
+// useLegalBenchmarkRunList — RecursionCard uses this to seed in-flight consolidated
+// run state on page refresh. Return empty list by default so existing tests
+// are unaffected and no extra fetch calls fire.
+vi.mock("@/hooks/useLegalBenchmarkRunList", () => ({
+  useLegalBenchmarkRunList: () => ({
+    runs: [],
+    total: 0,
+    isLoading: false,
+    error: null,
+    refetch: vi.fn(),
+    setExpandedId: vi.fn(),
+  }),
+}));
+
+// useLegalBenchmarkRun — RecursionCard calls this to poll the consolidated run
+// status. Return a no-run state by default so existing tests are unaffected.
+vi.mock("@/hooks/useLegalBenchmarkRun", () => ({
+  useLegalBenchmarkRun: () => ({
+    run: null,
+    isLoading: false,
+    isStale: false,
+    refetch: vi.fn(),
+  }),
+}));
+
 global.fetch = vi.fn();
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────

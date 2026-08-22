@@ -72,6 +72,32 @@ vi.mock("@/components/legal/RecursionActivityRail", () => ({
   attemptReportHref: () => null,
 }));
 
+// RecursionGraphPanel — lightweight placeholder (component uses useLegalBenchmarkRunList
+// which is now imported by RecursionBox; mock it to prevent real fetch calls in tests)
+vi.mock("@/components/legal/RecursionGraphPanel", () => ({
+  RecursionGraphPanel: ({ evalSetRefId }: { evalSetRefId: string }) =>
+    React.createElement("div", { "data-testid": "recursion-graph-panel", "data-ref": evalSetRefId }, "graph-panel"),
+}));
+
+// useLegalBenchmarkRunList — RecursionCard uses this to seed in-flight consolidated
+// run state on page refresh. Return empty list by default so existing tests
+// are unaffected and no extra fetch calls fire.
+vi.mock("@/hooks/useLegalBenchmarkRunList", () => ({
+  useLegalBenchmarkRunList: () => ({
+    runs: [],
+    total: 0,
+    isLoading: false,
+    error: null,
+    refetch: vi.fn(),
+    setExpandedId: vi.fn(),
+  }),
+}));
+
+// usePusherChannel — required by useLegalBenchmarkRunList internals; stub it out.
+vi.mock("@/hooks/usePusherChannel", () => ({
+  usePusherChannel: () => null,
+}));
+
 // ─── useLegalBenchmarkRun mock ─────────────────────────────────────────────────
 
 const mockUseLegalBenchmarkRun = vi.fn();
@@ -301,7 +327,7 @@ describe("RecursionCard — consolidated report trigger", () => {
     fireEvent.click(screen.getByTestId("consolidated-report-button"));
 
     await waitFor(() => {
-      expect(screen.getByTestId("consolidated-report-generating")).toBeTruthy();
+      expect(screen.getByTestId("consolidated-generating")).toBeTruthy();
     });
 
     const btn = screen.getByTestId("consolidated-report-button") as HTMLButtonElement;
@@ -323,10 +349,10 @@ describe("RecursionCard — consolidated report trigger", () => {
     fireEvent.click(screen.getByTestId("consolidated-report-button"));
 
     await waitFor(() => {
-      expect(screen.getByTestId("view-consolidated-report-link")).toBeTruthy();
+      expect(screen.getByTestId("consolidated-report-link")).toBeTruthy();
     });
 
-    const link = screen.getByTestId("view-consolidated-report-link") as HTMLAnchorElement;
+    const link = screen.getByTestId("consolidated-report-link") as HTMLAnchorElement;
     expect(link.href).toContain("/w/openlaw/legal/benchmarks/consolidated/consolidated-xyz/report");
     expect(link.target).toBe("_blank");
     expect(link.rel).toContain("noopener");
@@ -386,7 +412,7 @@ describe("RecursionCard — consolidated report trigger", () => {
 
     // console.warn called for the null runId row
     expect(warnSpy).toHaveBeenCalledWith(
-      "[RecursionCard] Excluded null runId from consolidated report payload",
+      "[RecursionCard] Skipping off-graph attempt row with null runId",
       expect.any(Object),
     );
     warnSpy.mockRestore();
@@ -420,7 +446,7 @@ describe("RecursionCard — consolidated report trigger", () => {
     fireEvent.click(screen.getByTestId("consolidated-report-button"));
 
     await waitFor(() => {
-      expect(screen.getByTestId("consolidated-report-generating")).toBeTruthy();
+      expect(screen.getByTestId("consolidated-generating")).toBeTruthy();
     });
 
     const callsBefore = vi.mocked(global.fetch).mock.calls.filter((c) =>

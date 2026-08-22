@@ -11,17 +11,21 @@ import { StakworkRunType } from "@prisma/client";
 import { canReadRunReport } from "@/lib/run-report/types";
 import { loadRunReport } from "@/lib/run-report/load";
 import { ConsolidatedReportView } from "@/components/legal/ConsolidatedReportView";
+import type { ConsolidatedReportProjection } from "@/lib/run-report/types";
 
 /**
- * Deep-linkable consolidated report page.
+ * Deep-linkable consolidated run report page.
  *
- * Mirrors `runs/[runId]/report/page.tsx` exactly, with two differences:
- * 1. IDOR WHERE clause restricts to `type: LEGAL_BENCHMARK_CONSOLIDATED` only —
- *    a RUNNER-type runId for the correct workspace must 404, not render.
- * 2. Renders ConsolidatedReportView instead of RunReportView.
+ * Mirrors `runs/[runId]/report/page.tsx` exactly, with two key differences:
+ * 1. IDOR WHERE clause restricts to `LEGAL_BENCHMARK_CONSOLIDATED` type — a
+ *    RUNNER-type runId must 404, not render. The type gate is in the WHERE
+ *    clause, not a post-fetch check, so it cannot be bypassed.
+ * 2. No `graphRubrics` or `fixSnapshots` fetches — the consolidated projection
+ *    is self-contained and does not use graph-enrichment from the rubric roster.
  *
- * Authorization and bundle-fetch patterns are identical to the sibling page.
- * `reportUrl` never enters the RSC payload or any client prop.
+ * `reportUrl` never enters the RSC payload or any client prop: it is not
+ * selected below, and is additionally unreachable via the global Prisma omit.
+ * Only the sanitized projection crosses the boundary.
  */
 
 export const dynamic = "force-dynamic";
@@ -41,7 +45,10 @@ export default async function ConsolidatedReportPage({ params }: PageProps) {
   // reconstruct a NextRequest from the incoming headers for this server render.
   const headerList = await headers();
   const request = new NextRequest(
-    new URL(`/w/${slug}/legal/benchmarks/consolidated/${runId}/report`, "http://localhost"),
+    new URL(
+      `/w/${slug}/legal/benchmarks/consolidated/${runId}/report`,
+      "http://localhost",
+    ),
     { headers: headerList },
   );
 
@@ -49,14 +56,13 @@ export default async function ConsolidatedReportPage({ params }: PageProps) {
   const member = requireMemberAccess(access);
   if (member instanceof Response) notFound();
 
-  // requireMemberAccess alone admits VIEWER and STAKEHOLDER; consolidated report
-  // bundles carry converted legal source documents and agent transcripts. Same
-  // role gate as the sibling runs report page.
+  // Same role gate as the sibling run report page: source documents and agent
+  // transcripts are not a VIEWER- or STAKEHOLDER-tier artifact.
   if (!canReadRunReport(member.role)) notFound();
   const workspaceId = member.workspaceId;
 
-  // IDOR guard: id, workspaceId AND type=CONSOLIDATED in the WHERE clause.
-  // A runId that belongs to the correct workspace but is a RUNNER type must 404.
+  // IDOR guard: id, workspaceId, AND type must all match. A RUNNER-type runId
+  // must 404 — the type gate is in the WHERE clause, not a post-fetch check.
   const run = await db.stakworkRun.findFirst({
     where: {
       id: runId,
@@ -72,16 +78,22 @@ export default async function ConsolidatedReportPage({ params }: PageProps) {
 
   const payload = await loadRunReport(run.id, run.reportUrl);
 
-  let taskTitle = "Consolidated Report";
+  // Extract taskSlug for the back-link label and the view's task header.
+  let taskSlug = "consolidated report";
   try {
     const parsed = run.result
-      ? (JSON.parse(run.result) as { taskTitle?: string; taskSlug?: string })
+      ? (JSON.parse(run.result) as { taskSlug?: string })
       : null;
-    if (parsed?.taskTitle) taskTitle = parsed.taskTitle;
-    else if (parsed?.taskSlug) taskTitle = `Consolidated Report — ${parsed.taskSlug}`;
+    if (parsed?.taskSlug) taskSlug = parsed.taskSlug;
   } catch {
-    // Malformed result JSON — the default title is fine.
+    // Malformed result JSON — the default label is fine.
   }
+
+  // Narrow to ConsolidatedReportProjection if the bundle loaded successfully.
+  const projection =
+    payload.projection && "consolidated" in payload.projection && payload.projection.consolidated
+      ? (payload.projection as ConsolidatedReportProjection)
+      : null;
 
   return (
     <div
@@ -98,7 +110,8 @@ export default async function ConsolidatedReportPage({ params }: PageProps) {
         </Link>
         <ConsolidatedReportView
           payload={payload}
-          taskTitle={taskTitle}
+          projection={projection}
+          taskSlug={taskSlug}
           workspaceSlug={slug}
         />
       </div>
