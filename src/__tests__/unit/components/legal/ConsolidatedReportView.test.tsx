@@ -451,4 +451,100 @@ describe("ConsolidatedReportView", () => {
     const boundaries = screen.getAllByTestId("section-error-boundary");
     expect(boundaries.length).toBeGreaterThanOrEqual(6);
   });
+
+  // ── DOCX editor pill (workspaceSlug + slug threading) ────────────────────
+
+  it("does NOT render open-docx-in-editor pills when workspaceSlug is omitted", () => {
+    // All fixture sourceFileLinks are .pdf — no docx pills expected even with slug
+    const payload = makePayload(FIXTURE);
+    render(
+      React.createElement(ConsolidatedReportView, {
+        payload,
+        projection: FIXTURE,
+        taskSlug: "corporate/merger-reps",
+        // workspaceSlug intentionally omitted
+      }),
+    );
+    // No DOCX edit pills for non-.docx files
+    const pills = screen.queryAllByTestId("open-docx-in-editor");
+    expect(pills).toHaveLength(0);
+  });
+
+  it("renders open-docx-in-editor pills for .docx sourceFileLinks when workspaceSlug is provided", () => {
+    // Override sourceFileLinks to include a .docx file
+    const projectionWithDocx: typeof FIXTURE = {
+      ...FIXTURE,
+      sourceFileLinks: [
+        "https://raw.githubusercontent.com/stakwork/harvey-labs/main/tasks/corporate/contract.docx",
+        "https://raw.githubusercontent.com/stakwork/harvey-labs/main/tasks/corporate/merger.pdf",
+      ],
+    };
+
+    const payload = makePayload(projectionWithDocx);
+    render(
+      React.createElement(ConsolidatedReportView, {
+        payload,
+        projection: projectionWithDocx,
+        taskSlug: "corporate/merger-reps",
+        workspaceSlug: "openlaw",
+      }),
+    );
+
+    // One DOCX edit pill for contract.docx
+    const pills = screen.getAllByTestId("open-docx-in-editor");
+    expect(pills).toHaveLength(1);
+
+    // Pill href routes through /w/openlaw/documents?url=...
+    const href = pills[0].getAttribute("href") ?? "";
+    expect(href).toContain("/w/openlaw/documents?url=");
+    expect(href).toContain(encodeURIComponent("contract.docx"));
+  });
+
+  it("does NOT render open-docx-in-editor pills for non-.docx sourceFileLinks", () => {
+    // Override sourceFileLinks to include only non-.docx files
+    const projectionPdfOnly: typeof FIXTURE = {
+      ...FIXTURE,
+      sourceFileLinks: [
+        "https://raw.githubusercontent.com/stakwork/harvey-labs/main/tasks/corporate/merger.pdf",
+        "https://raw.githubusercontent.com/stakwork/harvey-labs/main/tasks/corporate/schedule.txt",
+      ],
+    };
+
+    const payload = makePayload(projectionPdfOnly);
+    render(
+      React.createElement(ConsolidatedReportView, {
+        payload,
+        projection: projectionPdfOnly,
+        taskSlug: "corporate/merger-reps",
+        workspaceSlug: "openlaw",
+      }),
+    );
+
+    // No DOCX pills — none of the files are .docx
+    const pills = screen.queryAllByTestId("open-docx-in-editor");
+    expect(pills).toHaveLength(0);
+  });
+
+  it("threads workspaceSlug through to ConsolidatedHeader via the rendered pill href", () => {
+    const projectionWithDocx: typeof FIXTURE = {
+      ...FIXTURE,
+      sourceFileLinks: [
+        "https://raw.githubusercontent.com/stakwork/harvey-labs/main/tasks/corporate/contract.docx",
+      ],
+    };
+
+    const payload = makePayload(projectionWithDocx);
+    render(
+      React.createElement(ConsolidatedReportView, {
+        payload,
+        projection: projectionWithDocx,
+        taskSlug: "corporate/merger-reps",
+        workspaceSlug: "my-workspace",
+      }),
+    );
+
+    const pills = screen.getAllByTestId("open-docx-in-editor");
+    expect(pills).toHaveLength(1);
+    expect(pills[0].getAttribute("href")).toContain("/w/my-workspace/documents");
+  });
 });
