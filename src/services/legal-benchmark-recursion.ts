@@ -191,44 +191,18 @@ export async function listRecursionEvalSets(
 
   // ── Source 2: recursionEnabledAt is set (ever-enabled) ───────────────────
   const source2 = async (): Promise<RecursionEvalSetEntry[]> => {
-    // Best-effort attempt: `comparator: "!="` with `value: null` tells Jarvis to match
-    // nodes where the attribute exists and is non-null. If Jarvis rejects this comparator,
-    // the result will be `{ ok: false }` and we fall back to a post-fetch JS filter.
-    const attemptResult = await searchNodesByAttributes(config, {
+    const result = await searchNodesByAttributes(config, {
       nodeTypes: EVALSET_NODE_LABELS,
       filters: [{ attribute: "recursionEnabledAt", value: null, comparator: "!=" }],
       includeProperties: true,
       skipCache: true,
     });
 
-    if (attemptResult.ok) {
-      return attemptResult.nodes
-        .filter((n) => n.properties?.recursionEnabledAt != null)
-        .map((n) => toEntry(n, "wasEnabled"));
+    if (!result.ok) {
+      throw new Error(result.error ?? "Source 2 graph query failed");
     }
 
-    // Fallback: fetch all EvalSet nodes without the recursionEnabledAt filter,
-    // then filter in JS. This is safe but heavier — only reached when Jarvis
-    // rejects the "!=" comparator (unconfirmed capability on some backends).
-    logger.warn(
-      "[legal/benchmarks/recursion] listRecursionEvalSets Source 2 '!=' comparator rejected by Jarvis — " +
-        "falling back to post-fetch JS filter on all EvalSet nodes",
-      "legal",
-      { status: attemptResult.status, error: attemptResult.error },
-    );
-
-    const fallbackResult = await searchNodesByAttributes(config, {
-      nodeTypes: EVALSET_NODE_LABELS,
-      filters: [],
-      includeProperties: true,
-      skipCache: true,
-    });
-
-    if (!fallbackResult.ok) {
-      throw new Error(fallbackResult.error ?? "Source 2 fallback fetch failed");
-    }
-
-    return fallbackResult.nodes
+    return result.nodes
       .filter((n) => n.properties?.recursionEnabledAt != null)
       .map((n) => toEntry(n, "wasEnabled"));
   };
