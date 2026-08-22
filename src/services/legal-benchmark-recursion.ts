@@ -414,7 +414,6 @@ export async function resolveEvalSetRefIdBySlug(
     nodeTypes: EVALSET_NODE_LABELS,
     filters: [{ attribute: "id", value: taskSlug, comparator: "=" }],
     includeProperties: true,
-    skipCache: true,
   });
 
   if (!searchResult.ok || searchResult.nodes.length === 0) {
