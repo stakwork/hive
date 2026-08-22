@@ -16,7 +16,16 @@ export async function GET(request: NextRequest) {
 
     if (!process.env.STAKWORK_DAILY_RECAP_WORKFLOW_ID) {
       console.log("[DailyRecapCron] STAKWORK_DAILY_RECAP_WORKFLOW_ID not configured, skipping");
-      return NextResponse.json({ success: true, message: "Daily recap cron not configured" });
+      return NextResponse.json({
+        success: true,
+        message: "STAKWORK_DAILY_RECAP_WORKFLOW_ID not configured, skipping",
+        usersProcessed: 0,
+        dispatched: 0,
+        skipped: 0,
+        errorCount: 0,
+        errors: [],
+        timestamp: new Date().toISOString(),
+      });
     }
 
     console.log("[DailyRecapCron] Starting scheduled execution");
