@@ -47,6 +47,8 @@ export interface SubgraphEdge {
   source: string;
   target: string;
   edge_type: string;
+  /** Edge-level properties (e.g. unique_source_id written at Stakwork dispatch) */
+  properties?: Record<string, unknown>;
 }
 
 export interface SubgraphNode {
