@@ -14,6 +14,29 @@ import {
 import { CriterionMarkers } from "./CriterionMarkers";
 
 /**
+ * Reusable pass/fail badge used in the rubric ledger and the consolidated
+ * report matrix. Exported so ConsolidatedReportView can share the same
+ * styled markup without duplication.
+ */
+export function PassFailBadge({ passed }: { passed: boolean }) {
+  return passed ? (
+    <span
+      data-testid="pass-fail-badge-pass"
+      className="inline-flex items-center rounded px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-[0.08em] font-semibold bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30"
+    >
+      ✓
+    </span>
+  ) : (
+    <span
+      data-testid="pass-fail-badge-fail"
+      className="inline-flex items-center rounded px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-[0.08em] font-semibold bg-destructive/15 text-destructive border border-destructive/45"
+    >
+      ✗
+    </span>
+  );
+}
+
+/**
  * Rubric-first review ledger.
  *
  * Master list on the left carries only failed and unscored criteria (the
