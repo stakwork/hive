@@ -9,7 +9,7 @@
  * - Empty / malformed URL rejection
  */
 import { describe, test, expect, beforeEach, afterEach } from "vitest";
-import { validateFileUrl } from "@/app/api/workspaces/[slug]/documents/proxy/route";
+import { validateFileUrl } from "@/lib/docx-proxy/validate-file-url";
 
 // ---------------------------------------------------------------------------
 // Helpers

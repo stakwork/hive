@@ -18,46 +18,11 @@ import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
 import { getSwarmVanityAddress } from "@/lib/constants";
 import { getStakgraphUrl } from "@/lib/utils/stakgraph-url";
+import { validateFileUrl } from "@/lib/docx-proxy/validate-file-url";
 
 export const runtime = "nodejs";
 
 const encryptionService = EncryptionService.getInstance();
-
-// ---------------------------------------------------------------------------
-// SSRF protection
-// ---------------------------------------------------------------------------
-
-/**
- * Validates a raw URL string against the SSRF allowlist.
- *
- * Throws a descriptive Error (not a Response) so the caller can map it to
- * the appropriate HTTP status code.
- */
-export function validateFileUrl(raw: string): URL {
-  let url: URL;
-  try {
-    url = new URL(raw);
-  } catch {
-    throw new Error("Invalid URL");
-  }
-
-  // Protocol must be https — reject http, file, data, ftp, etc.
-  if (url.protocol !== "https:") {
-    throw new Error("Forbidden protocol");
-  }
-
-  // Hostname must be in the operator-configured allowlist.
-  const allowed = (process.env.DOCX_PROXY_ALLOWED_HOSTS ?? "")
-    .split(",")
-    .map((h) => h.trim())
-    .filter(Boolean);
-
-  if (!allowed.includes(url.hostname)) {
-    throw new Error("Hostname not allowlisted");
-  }
-
-  return url;
-}
 
 // ---------------------------------------------------------------------------
 // Graph node resolution (same logic as /documents/node)
