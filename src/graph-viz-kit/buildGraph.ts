@@ -49,6 +49,7 @@ export function buildGraph(nodes: RawNode[], edges: RawEdge[]): Graph {
     degree: adj[i].length,
     ...(node.link != null && { link: node.link }),
     ...(node.icon != null && { icon: node.icon }),
+    ...(node.nodeType != null && { nodeType: node.nodeType }),
     ...(node.status != null && { status: node.status }),
     ...(node.progress != null && { progress: node.progress }),
     ...(node.content != null && { content: node.content }),
