@@ -306,9 +306,8 @@ describe("RecursionCard", () => {
     mockFetchOk();
     renderCard({ refId: "ref-xyz", recursion: true });
 
-    // Toggle is currently ON; clicking it fires onChange with false
-    const toggle = screen.getByTestId("recursion-toggle") as HTMLInputElement;
-    fireEvent.change(toggle, { target: { checked: false } });
+    // Toggle is currently ON; clicking it inverts the controlled checkbox and fires onChange(false)
+    fireEvent.click(screen.getByTestId("recursion-toggle"));
 
     await waitFor(() => expect(vi.mocked(global.fetch)).toHaveBeenCalledOnce());
 
@@ -325,8 +324,8 @@ describe("RecursionCard", () => {
     mockFetchOk();
     renderCard({ refId: "ref-xyz", recursion: false });
 
-    const toggle = screen.getByTestId("recursion-toggle") as HTMLInputElement;
-    fireEvent.change(toggle, { target: { checked: true } });
+    // Toggle is currently OFF; clicking it inverts the controlled checkbox and fires onChange(true)
+    fireEvent.click(screen.getByTestId("recursion-toggle"));
 
     await waitFor(() => expect(vi.mocked(global.fetch)).toHaveBeenCalledOnce());
 
@@ -343,7 +342,7 @@ describe("RecursionCard", () => {
     mockFetchOk();
     renderCard({ recursion: true });
 
-    fireEvent.change(screen.getByTestId("recursion-toggle"), { target: { checked: false } });
+    fireEvent.click(screen.getByTestId("recursion-toggle"));
 
     await waitFor(() => expect(mockRefetch).toHaveBeenCalledOnce());
   });
@@ -352,7 +351,7 @@ describe("RecursionCard", () => {
     mockFetchFail();
     renderCard({ recursion: true });
 
-    fireEvent.change(screen.getByTestId("recursion-toggle"), { target: { checked: false } });
+    fireEvent.click(screen.getByTestId("recursion-toggle"));
 
     await waitFor(() => expect(vi.mocked(global.fetch)).toHaveBeenCalledOnce());
     expect(mockRefetch).not.toHaveBeenCalled();
@@ -362,7 +361,7 @@ describe("RecursionCard", () => {
     mockFetchFail(502, "Graph write failed");
     renderCard({ recursion: true });
 
-    fireEvent.change(screen.getByTestId("recursion-toggle"), { target: { checked: false } });
+    fireEvent.click(screen.getByTestId("recursion-toggle"));
 
     await waitFor(() => screen.getByText("Graph write failed"));
   });
@@ -371,7 +370,7 @@ describe("RecursionCard", () => {
     vi.mocked(global.fetch).mockRejectedValue(new Error("Network down"));
     renderCard({ recursion: true });
 
-    fireEvent.change(screen.getByTestId("recursion-toggle"), { target: { checked: false } });
+    fireEvent.click(screen.getByTestId("recursion-toggle"));
 
     await waitFor(() => screen.getByText("Network down"));
   });
@@ -380,7 +379,7 @@ describe("RecursionCard", () => {
     mockFetchOk();
     renderCard({ recursion: true });
 
-    fireEvent.change(screen.getByTestId("recursion-toggle"), { target: { checked: false } });
+    fireEvent.click(screen.getByTestId("recursion-toggle"));
     await waitFor(() => expect(vi.mocked(global.fetch)).toHaveBeenCalledOnce());
 
     const call = vi.mocked(global.fetch).mock.calls[0];
@@ -394,7 +393,7 @@ describe("RecursionCard", () => {
     vi.mocked(global.fetch).mockReturnValue(new Promise<Response>((r) => { resolveFetch = r; }));
 
     renderCard({ recursion: true });
-    fireEvent.change(screen.getByTestId("recursion-toggle"), { target: { checked: false } });
+    fireEvent.click(screen.getByTestId("recursion-toggle"));
 
     // Toggle should immediately become disabled
     await waitFor(() => {
