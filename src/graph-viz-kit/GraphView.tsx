@@ -35,6 +35,24 @@ interface GraphViewProps {
   onDetailNavigate?: (id: number) => void;
   searchMatches?: Set<number> | null;
   pulses?: Pulse[];
+  /** Optional per-node-type color map (hex strings). Keeps the kit self-contained. */
+  colorMap?: Record<string, string>;
+}
+
+/** Convert a CSS hex color (#rrggbb / #rgb) to normalised 0-1 RGB components. */
+function hexToRgb(hex: string): { r: number; g: number; b: number } | null {
+  const clean = hex.replace("#", "");
+  const full = clean.length === 3
+    ? clean.split("").map((c) => c + c).join("")
+    : clean;
+  if (full.length !== 6) return null;
+  const int = parseInt(full, 16);
+  if (isNaN(int)) return null;
+  return {
+    r: ((int >> 16) & 0xff) / 255,
+    g: ((int >> 8) & 0xff) / 255,
+    b: (int & 0xff) / 255,
+  };
 }
 
 const tmpObj = new THREE.Object3D();
@@ -186,7 +204,7 @@ const _hitPoint = new THREE.Vector3();
 
 const SHOW_HELPERS = process.env.NEXT_PUBLIC_SHOW_HELPERS === "true";
 
-export function GraphView({ graph, viewState, onNodeClick, minimap, whiteboardNodeId, onExitWhiteboard, onDetailNavigate, searchMatches, pulses }: GraphViewProps) {
+export function GraphView({ graph, viewState, onNodeClick, minimap, whiteboardNodeId, onExitWhiteboard, onDetailNavigate, searchMatches, pulses, colorMap }: GraphViewProps) {
   const meshRef = useRef<THREE.InstancedMesh>(null);
   const linesRef = useRef<THREE.LineSegments>(null);
   const highlightLinesRef = useRef<THREE.LineSegments>(null);
@@ -331,7 +349,20 @@ export function GraphView({ graph, viewState, onNodeClick, minimap, whiteboardNo
       d === 0 ? 1.0 : d === 1 ? 0.85 : d === 2 ? 0.35 : 0.15;
 
     // Base color for all nodes — alpha controls depth fading via color multiply
+    // If a colorMap entry exists for this node's type, that hex is used instead.
     const BASE_R = 0.45, BASE_G = 0.85, BASE_B = 0.95;
+
+    /** Resolve the base RGB for a graph node, falling back to the teal default. */
+    const nodeBaseRgb = (node: { nodeType?: string }): { r: number; g: number; b: number } => {
+      if (colorMap && node.nodeType) {
+        const hex = colorMap[node.nodeType];
+        if (hex) {
+          const rgb = hexToRgb(hex);
+          if (rgb) return rgb;
+        }
+      }
+      return { r: BASE_R, g: BASE_G, b: BASE_B };
+    };
 
     if (viewState.mode === "overview") {
       const depthMap = graph.initialDepthMap;
@@ -341,9 +372,10 @@ export function GraphView({ graph, viewState, onNodeClick, minimap, whiteboardNo
 
         scales[i] = depth === 0 ? SELECTED_SCALE : NODE_SCALE;
         const a = alphaByDepth(depth);
-        colors[i3] = BASE_R * a;
-        colors[i3 + 1] = BASE_G * a;
-        colors[i3 + 2] = BASE_B * a;
+        const { r, g, b } = nodeBaseRgb(graph.nodes[i]);
+        colors[i3] = r * a;
+        colors[i3 + 1] = g * a;
+        colors[i3 + 2] = b * a;
         alphas[i] = a;
       }
     } else {
@@ -366,15 +398,16 @@ export function GraphView({ graph, viewState, onNodeClick, minimap, whiteboardNo
 
         scales[i] = relDepth === 0 ? SELECTED_SCALE : NODE_SCALE;
         const a = relDepth === -1 ? 0.3 : alphaByDepth(relDepth);
-        colors[i3] = BASE_R * a;
-        colors[i3 + 1] = BASE_G * a;
-        colors[i3 + 2] = BASE_B * a;
+        const { r, g, b } = nodeBaseRgb(graph.nodes[i]);
+        colors[i3] = r * a;
+        colors[i3 + 1] = g * a;
+        colors[i3 + 2] = b * a;
         alphas[i] = a;
       }
     }
 
     return { positions, scales, colors, alphas };
-  }, [graph, viewState, nodeCount]);
+  }, [graph, viewState, nodeCount, colorMap]);
 
   const { treeEdges, crossEdges, targetEdges } = useMemo(() => {
     let allEdges: GraphEdge[];
