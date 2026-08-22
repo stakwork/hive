@@ -11,6 +11,11 @@ import {
 } from "@/lib/auth/workspace-access";
 import { toPublicUser, redactArtifactContentForPublic } from "@/lib/auth/public-redact";
 import { appendAnswerRow } from "@/services/canvas-planner-forms";
+import { logger } from "@/lib/logger";
+import { resolveRetryMessage } from "./helpers";
+
+/** Minimum seconds between retries on the same feature to prevent abuse. */
+const RETRY_THROTTLE_SECONDS = 10;
 
 export const runtime = "nodejs";
 export const fetchCache = "force-no-store";
@@ -155,8 +160,95 @@ export async function POST(
     }
 
     const body = await request.json();
-    const { message, contextTags = [], sourceWebsocketID, webhook, replyId, history: bodyHistory, isPrototype, attachments = [] as AttachmentRequest[], model, selectedRepositoryIds } = body;
+    const {
+      retry,
+      message,
+      contextTags = [],
+      sourceWebsocketID,
+      webhook,
+      replyId,
+      history: bodyHistory,
+      isPrototype,
+      attachments = [] as AttachmentRequest[],
+      model,
+      selectedRepositoryIds,
+    } = body;
 
+    // ── Retry branch ────────────────────────────────────────────────────────
+    // Checked BEFORE the message/attachments guard so a bare { retry: true }
+    // body isn't rejected by that guard.
+    if (retry === true) {
+      // Reject conflated requests: retry + message in same body is ambiguous.
+      if (message && message.length > 0) {
+        return NextResponse.json(
+          { error: "Cannot combine retry with a message" },
+          { status: 400 },
+        );
+      }
+
+      // Abuse guard: reject rapid retries using the feature's updatedAt as a
+      // proxy for the last status transition (no new column needed). Each
+      // retry re-runs the full planning pipeline, so we throttle independently
+      // of the existing IN_PROGRESS check (which doesn't fire once HALTED).
+      const featureForRetry = await db.feature.findUnique({
+        where: { id: featureId },
+        select: { updatedAt: true },
+      });
+      if (featureForRetry) {
+        const secondsSinceUpdate =
+          (Date.now() - featureForRetry.updatedAt.getTime()) / 1000;
+        if (secondsSinceUpdate < RETRY_THROTTLE_SECONDS) {
+          logger.warn(
+            `[features/chat] retry rate-limited: featureId=${featureId} secondsSinceUpdate=${secondsSinceUpdate.toFixed(1)}`,
+          );
+          return NextResponse.json(
+            { error: "Retry too soon — please wait a moment before retrying" },
+            { status: 429 },
+          );
+        }
+      }
+
+      // Resolve message from chat history scoped strictly to this feature.
+      const history = await db.chatMessage.findMany({
+        where: { featureId },
+        orderBy: { createdAt: "asc" },
+        select: { role: true, message: true },
+      });
+
+      const retryMessage = resolveRetryMessage(history);
+      if (!retryMessage) {
+        logger.warn(
+          `[features/chat] retry found nothing resendable: featureId=${featureId}`,
+        );
+        return NextResponse.json(
+          { error: "Nothing to retry" },
+          { status: 400 },
+        );
+      }
+
+      const { chatMessage, stakworkData } = await sendFeatureChatMessage({
+        featureId,
+        userId: userOrResponse.id,
+        message: retryMessage,
+      });
+
+      const clientMessage = {
+        ...chatMessage,
+        createdBy: chatMessage.createdBy || undefined,
+        contextTags: JSON.parse(chatMessage.contextTags as string) as ContextTag[],
+        artifacts: chatMessage.artifacts.map((artifact) => ({
+          ...artifact,
+          content: artifact.content as unknown,
+        })) as Artifact[],
+      };
+
+      return NextResponse.json(
+        { success: true, message: clientMessage, workflow: stakworkData?.data },
+        { status: 201 },
+      );
+    }
+
+    // ── Normal send branch ──────────────────────────────────────────────────
     if (!message && attachments.length === 0) {
       return NextResponse.json({ error: "Message is required" }, { status: 400 });
     }
