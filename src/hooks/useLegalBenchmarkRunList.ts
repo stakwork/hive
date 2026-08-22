@@ -324,11 +324,13 @@ export function useLegalBenchmarkRunList(
   // Pusher real-time completion detection
   useEffect(() => {
     if (!channel) return;
-    const handleUpdate = (_data: { runId?: string; run_id?: string }) => {
+    const handleUpdate = (_data: { runId?: string; run_id?: string; type?: string }) => {
       // Refetch on any STAKWORK_RUN_UPDATE event on this workspace channel,
-      // regardless of whether the run id is already in the loaded list.
-      // This ensures the header strip updates live even when a brand-new run
-      // fires its first update before the list has had a chance to load it.
+      // regardless of whether the run id is already in the loaded list or
+      // what run type it carries (including LEGAL_BENCHMARK_CONSOLIDATED).
+      // This ensures the RecursionCard's consolidated-run status updates live
+      // even when a brand-new run fires its first update before the list has
+      // had a chance to load it.
       // Visibility deferral is handled inside fetchRuns itself (it early-returns
       // and sets missedUpdateRef while hidden), so this handler's semantics
       // are unchanged — it just may be a no-op while the tab is hidden.
