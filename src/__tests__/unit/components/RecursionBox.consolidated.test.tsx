@@ -148,6 +148,8 @@ function makeEntry(overrides: Partial<{ refId: string; id: string; name: string 
     refId: "ref-abc",
     id: "antitrust/task-1",
     name: "Antitrust Task 1",
+    // Needed so `canExpand=true` while collapsed (expand toggle renders).
+    latestRun: { n_passed: 50, n_total: 74, runAt: "2026-08-18T10:00:00Z" },
     ...overrides,
   };
 }
@@ -176,14 +178,23 @@ function makeAttemptRow(overrides: {
   };
 }
 
-function setupEvalHistory(attemptRows: ReturnType<typeof makeAttemptRow>[] = []) {
+function setupEvalHistory(attemptRows: ReturnType<typeof makeAttemptRow>[] = [makeAttemptRow()]) {
   mockUseEvalRunHistory.mockReturnValue({
     history: [],
     attemptRows,
-    attempts: [],
+    // Provide a matching `attempts` array so `attempts.length > 0` is true
+    // when the card is expanded, which is required to render the button.
+    attempts: attemptRows.map((r) => ({
+      runId: r.runId,
+      n_passed: r.score.passed,
+      n_total: r.score.total,
+      runAt: r.timestamp,
+    })),
     isLoading: false,
     error: null,
     refetch: vi.fn(),
+    partial: false,
+    subgraphData: null,
   });
 }
 
@@ -256,6 +267,10 @@ describe("RecursionCard — consolidated report trigger", () => {
         refetch={mockRefetch}
       />,
     );
+    // The "Consolidated Report" button was moved into the CollapsibleContent
+    // (expanded body) in PR #5137. Expand the card so it is reachable.
+    const toggle = screen.queryByTestId("expand-toggle");
+    if (toggle) fireEvent.click(toggle);
   }
 
   it("renders the 'Consolidated Report' button in the card header", () => {
