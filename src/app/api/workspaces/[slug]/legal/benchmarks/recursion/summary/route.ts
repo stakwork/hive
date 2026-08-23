@@ -27,6 +27,7 @@ import { checkRateLimit, getClientIp } from "@/lib/rate-limit";
 import { listRecursionEvalSets } from "@/services/legal-benchmark-recursion";
 import { fetchRecursionTaskSummary } from "@/services/legal-benchmark-recursion-summary";
 import { logger } from "@/lib/logger";
+import { db } from "@/lib/db";
 
 export const runtime = "nodejs";
 export const fetchCache = "force-no-store";
@@ -174,6 +175,58 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     // Fetch minimal initial-render data for all tasks in parallel.
     // Per-task failures are non-fatal — failed tasks return isDefault: true.
     const data = await fetchRecursionTaskSummary(config, entries);
+
+    // Enrich latestRun.runAt with StakworkRun.updatedAt from Postgres — more
+    // accurate than the graph's date_added_to_graph, which is written by Jarvis
+    // and may lag or differ from the actual Stakwork run completion time.
+    // One batched query across all enrolled EvalSets; per-evalSet we pick the
+    // most recent updatedAt from any LEGAL_BENCHMARK_RUNNER run.
+    try {
+      const evalSetIds = entries
+        .map((e) => e.ref_id)
+        .filter(Boolean);
+
+      if (evalSetIds.length > 0) {
+        const runs = await db.stakworkRun.findMany({
+          where: {
+            workspaceId,
+            evalSetId: { in: evalSetIds },
+            type: "LEGAL_BENCHMARK_RUNNER",
+            status: "COMPLETED",
+          },
+          select: { evalSetId: true, updatedAt: true },
+          orderBy: { updatedAt: "desc" },
+        });
+
+        // Build a map: evalSetId → most recent updatedAt (first occurrence wins
+        // since results are already ordered desc).
+        const latestUpdatedAt = new Map<string, Date>();
+        for (const run of runs) {
+          if (run.evalSetId && !latestUpdatedAt.has(run.evalSetId)) {
+            latestUpdatedAt.set(run.evalSetId, run.updatedAt);
+          }
+        }
+
+        // Overwrite runAt on each summary entry where we have a Postgres timestamp.
+        for (const entry of data) {
+          const updatedAt = latestUpdatedAt.get(entry.refId);
+          if (updatedAt) {
+            if (entry.latestRun) {
+              entry.latestRun.runAt = updatedAt.toISOString();
+            } else {
+              entry.latestRun = { n_passed: null, n_total: null, runAt: updatedAt.toISOString() };
+            }
+          }
+        }
+      }
+    } catch (dbError) {
+      // Non-fatal: fall back to graph-sourced runAt if Postgres is unavailable.
+      logger.warn(
+        "[legal/benchmarks/recursion/summary] Failed to enrich runAt from StakworkRun.updatedAt — falling back to graph timestamps",
+        "legal",
+        { error: dbError instanceof Error ? dbError.message : String(dbError) },
+      );
+    }
 
     const enrollmentPartial = listResult.partial === true;
     const summaryPartial = data.some((e) => e.isDefault);
