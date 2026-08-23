@@ -834,9 +834,19 @@ export function RecursionList({
     );
   }
 
+  const sortedEntries = useMemo(
+    () =>
+      [...entries].sort((a, b) => {
+        const aTime = a.latestRun?.runAt ? new Date(a.latestRun.runAt).getTime() : -Infinity;
+        const bTime = b.latestRun?.runAt ? new Date(b.latestRun.runAt).getTime() : -Infinity;
+        return bTime - aTime;
+      }),
+    [entries],
+  );
+
   return (
     <div className="flex flex-col gap-3">
-      {entries.map((entry) => (
+      {sortedEntries.map((entry) => (
         <RecursionCard key={entry.refId} entry={entry} refetch={refetch} />
       ))}
     </div>
