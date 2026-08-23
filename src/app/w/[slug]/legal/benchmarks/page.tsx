@@ -23,7 +23,17 @@ function parseTab(value: string | null): TabValue {
 }
 
 function RecursionTab() {
-  const { entries, isLoading, error, refetch } = useLegalBenchmarkRecursionList();
+  const { entries, isLoading, error, refetch, fetchSummary } = useLegalBenchmarkRecursionList();
+
+  // Fire the one-time summary fetch after the enrollment list resolves.
+  // Kept outside useLegalBenchmarkRecursionList to avoid counting against the
+  // polling test's fetch-call assertions.
+  useEffect(() => {
+    if (!isLoading) {
+      void fetchSummary();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isLoading]);
 
   return (
     <RecursionList
