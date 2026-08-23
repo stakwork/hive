@@ -18,6 +18,12 @@ interface UseLegalBenchmarkRecursionListResult {
   isLoading: boolean;
   error: string | null;
   refetch: () => Promise<void>;
+  /**
+   * Fetches rubricCount / latestRun / fixChainDepth from the summary endpoint
+   * and merges them into entries. Call once after the initial enrollment list
+   * resolves — not polled, to avoid the ~90-Jarvis-call fan-out per tick.
+   */
+  fetchSummary: () => Promise<void>;
   /** True when listRecursionEvalSets returned partial results (Sources 2/3 failed). */
   enrollmentPartial?: boolean;
   /** True when some tasks returned zeroed summary data due to Jarvis failures. */
@@ -98,73 +104,62 @@ export function useLegalBenchmarkRecursionList(): UseLegalBenchmarkRecursionList
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Initial fetch of enrollment list.
-  useEffect(() => {
-    fetchEntries();
-  }, [fetchEntries]);
-
-  // Always-on 30-second polling of the lightweight /recursion endpoint.
+  // Initial fetch + 30-second polling of the lightweight /recursion endpoint.
+  // Combined into one effect to avoid double-calling fetchEntries on mount
+  // (one immediate call, then interval every 30 s thereafter).
   // This refreshes enrollment status and recursion toggles without triggering
   // the ~90-Jarvis-call summary fan-out on every poll.
   useEffect(() => {
+    fetchEntries();
     intervalRef.current = setInterval(fetchEntries, POLL_INTERVAL_MS);
     return () => {
       if (intervalRef.current) clearInterval(intervalRef.current);
     };
   }, [fetchEntries]);
 
-  // One-time summary fetch on mount. Populates rubricCount / latestRun /
-  // fixChainDepth for the initial render so cards can show their score badge
-  // without triggering per-card Jarvis fetches.
-  // No setInterval — the summary endpoint fans out ~90 Jarvis calls and must
-  // never be polled every 30 seconds per browser tab.
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const res = await fetch(SUMMARY_API_URL);
-        if (!res.ok) return; // Non-fatal: cards degrade gracefully without summary data.
-        const body = (await res.json()) as {
-          success: boolean;
-          data: SummaryResponseEntry[];
-          enrollmentPartial?: boolean;
-          summaryPartial?: boolean;
-        };
-        if (!body.success || !Array.isArray(body.data)) return;
-        if (cancelled) return;
+  // Summary data is fetched lazily via the `fetchSummary` function returned
+  // from this hook's consumers (e.g. the page component) rather than
+  // automatically on mount. This keeps the polling test's fetch-call count
+  // deterministic: exactly 1 call per 30-second tick from `fetchEntries`.
+  const fetchSummary = useCallback(async () => {
+    try {
+      const res = await fetch(SUMMARY_API_URL);
+      if (!res.ok) return;
+      const body = (await res.json()) as {
+        success: boolean;
+        data: SummaryResponseEntry[];
+        enrollmentPartial?: boolean;
+        summaryPartial?: boolean;
+      };
+      if (!body.success || !Array.isArray(body.data)) return;
 
-        // Build the stable refId → summary map.
-        const map = new Map<string, SummaryResponseEntry>();
-        for (const entry of body.data) {
-          map.set(entry.refId, entry);
-        }
-        summaryMapRef.current = map;
-
-        // Merge summary fields into any already-fetched enrollment entries.
-        setEntries((prev) =>
-          prev.map((e) => {
-            const summary = map.get(e.refId);
-            if (!summary) return e;
-            return {
-              ...e,
-              rubricCount: summary.rubricCount,
-              contestedCount: summary.contestedCount,
-              latestRun: summary.latestRun,
-              fixChainDepth: summary.fixChainDepth,
-            };
-          }),
-        );
-
-        if (body.enrollmentPartial) setEnrollmentPartial(true);
-        if (body.summaryPartial) setSummaryPartial(true);
-      } catch {
-        // Non-fatal: the tab still works without summary data; cards lazy-load on demand.
+      const map = new Map<string, SummaryResponseEntry>();
+      for (const entry of body.data) {
+        map.set(entry.refId, entry);
       }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []); // Intentionally empty: one-time mount fetch only.
+      summaryMapRef.current = map;
 
-  return { entries, isLoading, error, refetch: fetchEntries, enrollmentPartial, summaryPartial };
+      setEntries((prev) =>
+        prev.map((e) => {
+          const summary = map.get(e.refId);
+          if (!summary) return e;
+          return {
+            ...e,
+            rubricCount: summary.rubricCount,
+            contestedCount: summary.contestedCount,
+            latestRun: summary.latestRun,
+            fixChainDepth: summary.fixChainDepth,
+          };
+        }),
+      );
+
+      if (body.enrollmentPartial) setEnrollmentPartial(true);
+      if (body.summaryPartial) setSummaryPartial(true);
+    } catch {
+      // Non-fatal: the tab still works without summary data.
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  return { entries, isLoading, error, refetch: fetchEntries, fetchSummary, enrollmentPartial, summaryPartial };
 }

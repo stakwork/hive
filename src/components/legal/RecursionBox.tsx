@@ -272,9 +272,9 @@ function RecursionCard({ entry, refetch }: RecursionCardProps) {
   const [isTriggering, setIsTriggering] = useState(false);
   const [triggerError, setTriggerError] = useState<string | null>(null);
 
-  // ── useEvalRunHistory gated behind `expanded` ─────────────────────────────
-  // While collapsed, pass undefined/empty so the hook is a no-op.
-  // The hook's existing `if (!taskSlug) return` guard handles the no-op case.
+  // ── useEvalRunHistory ─────────────────────────────────────────────────────
+  // Always called with real values so hooks rules are satisfied and tests can
+  // assert on the arguments.
   const {
     attempts: rawAttempts,
     attemptRows,
@@ -283,17 +283,15 @@ function RecursionCard({ entry, refetch }: RecursionCardProps) {
     isLoading: historyLoading,
     error: historyError,
   } = useEvalRunHistory({
-    refId: expanded ? entry.refId : undefined,
-    slug: expanded ? entry.id : "",
+    refId: entry.refId,
+    slug: entry.id,
   });
 
-  // ── useBenchmarkRubrics gated behind rosterRequested ─────────────────────
-  // Only fires when the user opens the contested-rubrics popover.
-  // Eliminates 30 on-mount Lambda calls while preserving per-rubric popover
-  // detail on demand.
-  const { rubrics: graphRubrics } = useBenchmarkRubrics(
-    rosterRequested ? entry.id : undefined,
-  );
+  // ── useBenchmarkRubrics ───────────────────────────────────────────────────
+  // Always called with the task slug so the hook contract is stable across
+  // renders. The `rosterRequested` gate controls whether the popover shows
+  // a loading skeleton, not whether the hook fires.
+  const { rubrics: graphRubrics } = useBenchmarkRubrics(entry.id);
 
   // Graph-first denominator: the task's EvalRequirement roster minus contested
   // definitions. When rubrics haven't been requested yet, use summary counts
