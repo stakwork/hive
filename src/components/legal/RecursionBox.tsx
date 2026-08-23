@@ -362,13 +362,20 @@ function RecursionCard({ entry, refetch }: RecursionCardProps) {
   }, [attempts]);
 
   // While history is loading (or the card is collapsed), fall back to summary data.
-  const displayLatest = historyLoading || !expanded ? summaryLatest : historyLatest
+  // If summaryLatest is null but hook data is already available (race condition on
+  // first load, or in tests that don't set entry.latestRun), use hook data as fallback.
+  const historyDerived = historyLatest
     ? {
         n_passed: historyLatest.bestPassed ?? historyLatest.n_passed ?? null,
         n_total: historyLatest.n_total ?? null,
         runAt: historyLatest.date_added_to_graph ?? null,
       }
-    : summaryLatest;
+    : null;
+  const displayLatest = historyLoading
+    ? summaryLatest
+    : !expanded
+      ? (summaryLatest ?? historyDerived)
+      : (historyDerived ?? summaryLatest);
 
   // Headline climb: best-so-far minus the baseline score. Only a real climb
   // renders — a flat or regressing series keeps the header quiet.
@@ -498,7 +505,7 @@ function RecursionCard({ entry, refetch }: RecursionCardProps) {
   // use the history state as before.
   const canExpand = expanded
     ? (!historyLoading && !historyError && attempts.length > 0)
-    : ((entry.fixChainDepth ?? 0) > 0 || entry.latestRun != null);
+    : ((entry.fixChainDepth ?? 0) > 0 || entry.latestRun != null || rawAttempts.length > 0);
 
   return (
     <div className="rounded-lg border bg-card overflow-hidden">
@@ -510,8 +517,8 @@ function RecursionCard({ entry, refetch }: RecursionCardProps) {
               {entry.name || entry.id}
             </span>
             <ScoreBadge
-              isLoading={false}
-              error={null}
+              isLoading={historyLoading}
+              error={historyError}
               n_passed={displayLatest?.n_passed ?? undefined}
               n_total={displayLatest?.n_total ?? entry.rubricCount ?? undefined}
               roster={roster}
