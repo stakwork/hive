@@ -626,13 +626,11 @@ export function useEvalRunHistory(input: UseEvalRunHistoryInput): UseEvalRunHist
             };
           });
 
-        // Completed/terminal runs, unclaimed by any trigger join — the activity
-        // rail should surface finished attempts too, not just in-flight ones.
-        const completedRows: AttemptRailRow[] = [
-          ...runRows,
-          ...evalRunRows,
-          ...recursionRunRows,
-        ]
+        // Completed/terminal runner/eval runs, unclaimed by any trigger join —
+        // the activity rail should surface finished attempts too, not just
+        // in-flight ones. Recursion terminal runs are excluded: their outcome
+        // already surfaces as a new charted attempt on the next eval cycle.
+        const completedRows: AttemptRailRow[] = [...runRows, ...evalRunRows]
           .filter((run) => {
             if (claimedRunIds.has(run.id)) return false;
             if (NON_TERMINAL_STATUSES.has(run.status ?? "")) return false;
@@ -661,27 +659,27 @@ export function useEvalRunHistory(input: UseEvalRunHistoryInput): UseEvalRunHist
             };
           });
 
-        // Merge all row sources, dedupe by runId, sort newest-first, cap at 10.
-        const allRows = [
-          ...chartedRows,
-          ...unchartedTriggerRows,
-          ...runOnlyRows,
-          ...completedRows,
-        ];
+        // Dedupe across all row sources (runId wins over key).
         const seen = new Set<string>();
-        const deduped = allRows.filter((r) => {
-          const id = r.runId ?? r.key;
-          if (seen.has(id)) return false;
-          seen.add(id);
-          return true;
-        });
-        const railRows = deduped
-          .sort((a, b) => {
-            const ta = a.timestamp ? new Date(a.timestamp).getTime() : 0;
-            const tb = b.timestamp ? new Date(b.timestamp).getTime() : 0;
-            return tb - ta;
-          })
-          .slice(0, 10);
+        const dedupe = <T extends AttemptRailRow>(rows: T[]): T[] =>
+          rows.filter((r) => {
+            const id = r.runId ?? r.key;
+            if (seen.has(id)) return false;
+            seen.add(id);
+            return true;
+          });
+
+        // Sort helper: newest-first within a group.
+        const byTimeDesc = (a: AttemptRailRow, b: AttemptRailRow) => {
+          const ta = a.timestamp ? new Date(a.timestamp).getTime() : 0;
+          const tb = b.timestamp ? new Date(b.timestamp).getTime() : 0;
+          return tb - ta;
+        };
+
+        // Charted rows come first (dot-index order from finalAttempts), then
+        // uncharted/run-only rows newest-first, capped at 10 total.
+        const unchartedRows = [...unchartedTriggerRows, ...runOnlyRows, ...completedRows].sort(byTimeDesc);
+        const railRows = [...dedupe(chartedRows), ...dedupe(unchartedRows)].slice(0, 10);
 
         const acceptedFixCount = hillClimbAttempts.filter((pt) => !pt.isBaseline && pt.accepted === true).length;
         logger.info(
