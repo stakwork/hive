@@ -84,7 +84,7 @@
       "schedule": "0 * * * *"
     },
     {
-      "path": "/api/cron/legal-recursion",
+      "path": "/_disabled_/api/cron/legal-recursion",
       "schedule": "0 */6 * * *"
     }
   ]
