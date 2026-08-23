@@ -450,7 +450,6 @@ function RecursionCard({ entry, refetch }: RecursionCardProps) {
     try {
       const runIds = attemptRows
         .filter((r) => {
-          if (r.runType !== "runner" && r.runType !== "recursion") return false;
           if (!r.hasReport) return false;
           if (r.runId === null) {
             console.warn(

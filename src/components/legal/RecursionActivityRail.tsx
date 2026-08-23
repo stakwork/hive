@@ -277,7 +277,7 @@ export function RecursionActivityRail({
                   {row.score.passed}/{row.score.total}
                 </span>
               )}
-              <StakworkRunLink projectId={row.projectId} isSuperAdmin={isSuperAdmin} />
+              <StakworkRunLink projectId={row.projectId} isSuperAdmin={isSuperAdmin} showForAll={row.projectId != null} />
             </span>
           </div>
         ))}
