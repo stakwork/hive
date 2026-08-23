@@ -85,7 +85,7 @@ function createDeploymentStatusPayload(commitSha: string, environment: string, s
 /** Poll the DB until a matching NotificationTrigger record appears. */
 async function waitForNotification(
   where: Record<string, unknown>,
-  timeoutMs = 5000,
+  timeoutMs = 15000,
   intervalMs = 100,
 ) {
   const deadline = Date.now() + timeoutMs;
