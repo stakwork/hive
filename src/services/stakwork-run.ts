@@ -790,6 +790,33 @@ function extractDiagramData(parsed: unknown): ParsedDiagram {
   throw new Error("Diagram data not found: expected components array in result");
 }
 
+// ── TOKEN_VERIFIED_RUN_TYPES ────────────────────────────────────────────────
+// Run types that require HMAC run_token verification, workspace-mismatch
+// rejection, and result-merge-into-existing-JSON — the three security gates
+// inside processStakworkRunWebhook. Exported so tests can assert set membership
+// without the sets drifting independently.
+//
+// IMPORTANT: LEGAL_BENCHMARK_RUNNER is kept as a SEPARATE enum value and stays
+// exactly as-is. Migrating it onto BENCHMARK_RUNNER is deliberately future
+// work — NOT an alias, NOT in scope. Do not remove legal types from this set
+// on the assumption that BENCHMARK_RUNNER covers them.
+//
+// NOTE: isLegalBenchmarkType (the report_url persistence gate, ~L1007) is a
+// DIFFERENT predicate and is deliberately NOT derived from this set.
+// BENCHMARK_RUNNER has no report_url producer and must never gain report
+// persistence through this set.
+export const TOKEN_VERIFIED_RUN_TYPES = new Set<StakworkRunType>([
+  StakworkRunType.LEGAL_BENCHMARK_RUNNER,
+  StakworkRunType.LEGAL_BENCHMARK_SCORER,
+  StakworkRunType.LEGAL_BENCHMARK_EVAL,
+  StakworkRunType.LEGAL_BENCHMARK_RECURSION,
+  StakworkRunType.LEGAL_BENCHMARK_CONSOLIDATED,
+  // Generic benchmark runner — workspace-agnostic, domain-discriminated by
+  // result.taskSlug. See prisma/migrations/20260821001000_* for scope notes.
+  // LEGAL_BENCHMARK_RUNNER is NOT an alias — both values coexist deliberately.
+  StakworkRunType.BENCHMARK_RUNNER,
+]);
+
 /**
  * Process webhook from Stakwork for AI generation runs
  * Uses atomic updateMany to prevent race conditions
@@ -879,11 +906,7 @@ export async function processStakworkRunWebhook(
   // assert that the resolved run still belongs to the requested workspace.
   // This prevents a projectId collision from targeting a run in a different workspace.
   if (
-    (run.type === StakworkRunType.LEGAL_BENCHMARK_RUNNER ||
-      run.type === StakworkRunType.LEGAL_BENCHMARK_SCORER ||
-      run.type === StakworkRunType.LEGAL_BENCHMARK_EVAL ||
-      run.type === StakworkRunType.LEGAL_BENCHMARK_RECURSION ||
-      run.type === StakworkRunType.LEGAL_BENCHMARK_CONSOLIDATED) &&
+    TOKEN_VERIFIED_RUN_TYPES.has(run.type) &&
     run.workspaceId !== workspace_id
   ) {
     logger.error("[legal-benchmark] Workspace mismatch — rejecting webhook", "stakwork-run", {
@@ -922,17 +945,11 @@ export async function processStakworkRunWebhook(
     }
   }
 
-  // ── Security: run_token verification for Legal Benchmark webhooks ──────
-  // Each LEGAL_BENCHMARK_RUNNER webhook_url embeds a HMAC-SHA256 token over
-  // the runner run id. Verify it before any DB write or Stakwork dispatch.
+  // ── Security: run_token verification for benchmark webhooks ──────────────
+  // Each TOKEN_VERIFIED_RUN_TYPES webhook_url embeds a HMAC-SHA256 token over
+  // the run id. Verify it before any DB write or Stakwork dispatch.
   // This closes the unauthenticated-webhook gap on these endpoints.
-  if (
-    run.type === StakworkRunType.LEGAL_BENCHMARK_RUNNER ||
-    run.type === StakworkRunType.LEGAL_BENCHMARK_SCORER ||
-    run.type === StakworkRunType.LEGAL_BENCHMARK_EVAL ||
-    run.type === StakworkRunType.LEGAL_BENCHMARK_RECURSION ||
-    run.type === StakworkRunType.LEGAL_BENCHMARK_CONSOLIDATED
-  ) {
+  if (TOKEN_VERIFIED_RUN_TYPES.has(run.type)) {
     const { run_token } = queryParams;
     const webhookSecret = process.env.NEXTAUTH_SECRET ?? "";
 
@@ -966,17 +983,13 @@ export async function processStakworkRunWebhook(
     }
   }
 
-  // ── For Legal Benchmark types: merge result into existing JSON ──────────
+  // ── For token-verified benchmark types: merge result into existing JSON ──
   // The runner row was created with correlation data in `result`
   // (taskSlug, taskTitle, evalTriggerRef, etc.). We must merge the
-  // incoming Harvey output into the existing JSON rather than overwrite it,
+  // incoming output into the existing JSON rather than overwrite it,
   // so those correlation fields are never lost.
   if (
-    (run.type === StakworkRunType.LEGAL_BENCHMARK_RUNNER ||
-      run.type === StakworkRunType.LEGAL_BENCHMARK_SCORER ||
-      run.type === StakworkRunType.LEGAL_BENCHMARK_EVAL ||
-      run.type === StakworkRunType.LEGAL_BENCHMARK_RECURSION ||
-      run.type === StakworkRunType.LEGAL_BENCHMARK_CONSOLIDATED) &&
+    TOKEN_VERIFIED_RUN_TYPES.has(run.type) &&
     serializedResult !== null
   ) {
     const incomingFields =
@@ -1181,6 +1194,47 @@ export async function processStakworkRunWebhook(
         });
       }
     }
+    return { runId: run.id, status, dataType };
+  }
+
+  // ── Step 2b-2: BENCHMARK_RUNNER — generic benchmark with score validation ──
+  // Capability object: distinguishes this type's behaviour from legal's without
+  // merging the two domains. The generic name does NOT imply shared behaviour.
+  //
+  //   validateScore:true    — RunnerScoreSchema.safeParse gates score fields
+  //   strictCriteria:true   — raw criteria_results dropped before merge; a
+  //                           failed parse yields NO criteria (not unvalidated)
+  //   writeGraphOutput:false — EvalTriggerOutput graph write is skipped as a
+  //                           clean no-op (no evalTriggerRef in this pipeline)
+  //   legalSideEffects:false — after() Jamie-chat trigger and legal-specific
+  //                            Pusher path do NOT fire for this type
+  if (run.type === StakworkRunType.BENCHMARK_RUNNER) {
+    const benchmarkCapabilities = {
+      validateScore: true,
+      strictCriteria: true,
+      writeGraphOutput: false,
+      legalSideEffects: false,
+    } as const;
+
+    await processBenchmarkRunnerWebhook(run, serializedResult, queryParams.workspace_id, status, benchmarkCapabilities);
+
+    // legalSideEffects:false — broadcast STAKWORK_RUN_UPDATE but do NOT fire
+    // the Jamie-chat after() trigger or any legal-specific side effects.
+    try {
+      const channelName = getWorkspaceChannelName(run.workspace.slug);
+      await pusherServer.trigger(channelName, PUSHER_EVENTS.STAKWORK_RUN_UPDATE, {
+        runId: run.id,
+        type: run.type,
+        status,
+        featureId: run.featureId,
+        timestamp: new Date(),
+      });
+    } catch (pusherError) {
+      logger.error("[benchmark-runner] Pusher trigger failed (non-fatal)", "stakwork-run", { error: String(pusherError) });
+    }
+
+    // legalSideEffects:false — after() Jamie-chat trigger deliberately omitted.
+    // writeGraphOutput:false — EvalTriggerOutput node write deliberately omitted.
     return { runId: run.id, status, dataType };
   }
 
@@ -2629,4 +2683,171 @@ export async function stopStakworkRun(
   }
 
   return updatedRun;
+}
+
+// ── BENCHMARK_RUNNER webhook handler ─────────────────────────────────────────
+
+interface BenchmarkRunnerCapabilities {
+  readonly validateScore: boolean;
+  readonly strictCriteria: boolean;
+  readonly writeGraphOutput: boolean;
+  readonly legalSideEffects: boolean;
+}
+
+/**
+ * Handle the BENCHMARK_RUNNER webhook stage.
+ *
+ * Capability flags discriminate behaviour from the legal pipeline without
+ * merging the two domains — the generic type name does NOT imply shared
+ * behaviour.
+ *
+ * Key differences from processLegalBenchmarkRunnerWebhook:
+ *  - strictCriteria:true — raw criteria_results are dropped from resultJson
+ *    BEFORE the merge so runner-controlled strings never reach the DB
+ *    unvalidated, even when RunnerScoreSchema.safeParse fails.
+ *  - writeGraphOutput:false — no EvalTriggerOutput node (no evalTriggerRef in
+ *    this pipeline); skipped as a clean no-op, never an error.
+ *  - legalSideEffects:false — Jamie-chat after() and report_url persistence
+ *    are not invoked (enforced in both this handler and the caller block).
+ *  - Replay guard — reject the result write when the stored run.result already
+ *    carries criteria_results (run_token is static HMAC; replay risk is real).
+ */
+async function processBenchmarkRunnerWebhook(
+  run: RunWithWorkspace,
+  serializedResult: string | null,
+  _workspaceId: string,
+  mappedStatus: WorkflowStatus,
+  capabilities: BenchmarkRunnerCapabilities,
+): Promise<void> {
+  // Parse the (already merged) result blob
+  let resultJson: Record<string, unknown> = {};
+  try {
+    resultJson = serializedResult ? (JSON.parse(serializedResult) as Record<string, unknown>) : {};
+  } catch {
+    logger.error("[benchmark-runner] Failed to parse serialized result", "stakwork-run", { runId: run.id });
+  }
+
+  // ── Replay guard (BENCHMARK_RUNNER only) ────────────────────────────────
+  // The run_token is a static, non-expiring HMAC over run.id. A replayed
+  // delivery would otherwise rewrite a settled score. Reject if criteria are
+  // already persisted.
+  const existingCriteria = resultJson.criteria_results;
+  if (existingCriteria !== undefined && Array.isArray(existingCriteria) && existingCriteria.length > 0) {
+    logger.warn(
+      "[benchmark-runner] Replay detected — criteria_results already settled, rejecting",
+      "stakwork-run",
+      { runId: run.id, mappedStatus },
+    );
+    return;
+  }
+
+  // ── strictCriteria:true — drop raw criteria_results before merge ─────────
+  // RunnerScoreSchema.safeParse gates only flat score fields; criteria_results
+  // would be re-persisted verbatim from the resultJson spread even on a failed
+  // parse. Drop the raw key so only validated criteria reach the DB.
+  if (capabilities.strictCriteria) {
+    delete resultJson.criteria_results;
+  }
+
+  const outputS3Url = resultJson.output_s3_url as string | undefined;
+  const finalOutput = resultJson.final_output as string | undefined;
+
+  // ── SSRF guard: validate output_s3_url against allowlist ────────────────
+  if (outputS3Url && !isAllowedS3Url(outputS3Url)) {
+    logger.error("[benchmark-runner] output_s3_url rejected (not on allowlist)", "stakwork-run", {
+      runId: run.id,
+      ...safeUrlParts(outputS3Url),
+    });
+    await db.stakworkRun.update({
+      where: { id: run.id },
+      data: { status: WorkflowStatus.FAILED },
+    });
+    return;
+  }
+
+  // ── Zod validation for flat score fields ────────────────────────────────
+  const scoreParseResult = RunnerScoreSchema.safeParse(resultJson);
+  const isTerminal =
+    mappedStatus === WorkflowStatus.COMPLETED || mappedStatus === WorkflowStatus.FAILED;
+
+  let scoreFields: z.infer<typeof RunnerScoreSchema> = {};
+  if (scoreParseResult.success) {
+    scoreFields = scoreParseResult.data;
+    const hasScore = scoreFields.n_passed !== undefined || scoreFields.all_pass !== undefined;
+    if (!hasScore && isTerminal) {
+      logger.error(
+        "[benchmark-runner] Score fields absent on terminal run — possible field-name mismatch",
+        "stakwork-run",
+        { runId: run.id, mappedStatus },
+      );
+    }
+  } else {
+    if (isTerminal) {
+      logger.error(
+        "[benchmark-runner] Score field validation failed on terminal run",
+        "stakwork-run",
+        { runId: run.id, mappedStatus, issues: scoreParseResult.error.issues },
+      );
+    }
+    // strictCriteria:true — a failed parse yields NO criteria (already dropped above).
+    // Mark the run with a validation error note.
+    const existingResult: Record<string, unknown> = {};
+    try {
+      Object.assign(existingResult, run.result ? (JSON.parse(run.result) as Record<string, unknown>) : {});
+    } catch { /* ignore */ }
+    await db.stakworkRun.update({
+      where: { id: run.id },
+      data: {
+        result: JSON.stringify({
+          ...existingResult,
+          ...resultJson,
+          validationError: "score_parse_failed",
+          validationIssues: scoreParseResult.error.issues.map((i) => i.message),
+        }),
+      },
+    });
+    return;
+  }
+
+  // Merge output + validated score fields into persisted result.
+  // criteria_results comes ONLY from scoreParseResult.data (already validated).
+  const mergedResult: Record<string, unknown> = {
+    ...resultJson,
+    ...(finalOutput !== undefined ? { runnerOutputText: finalOutput } : {}),
+    ...(outputS3Url !== undefined ? { runnerOutputUrl: outputS3Url } : {}),
+    // Persist ONLY validated score fields
+    ...(scoreFields.score !== undefined ? { score: scoreFields.score } : {}),
+    ...(scoreFields.max_score !== undefined ? { max_score: scoreFields.max_score } : {}),
+    ...(scoreFields.n_passed !== undefined ? { n_passed: scoreFields.n_passed } : {}),
+    ...(scoreFields.n_total !== undefined ? { n_total: scoreFields.n_total } : {}),
+    ...(scoreFields.pass_rate !== undefined ? { pass_rate: scoreFields.pass_rate } : {}),
+    ...(scoreFields.all_pass !== undefined ? { all_pass: scoreFields.all_pass } : {}),
+    ...(scoreFields.judge_model !== undefined ? { judge_model: scoreFields.judge_model } : {}),
+    // criteria_results only from validated parse — never from raw resultJson
+    ...(scoreFields.criteria_results !== undefined
+      ? { criteria_results: scoreFields.criteria_results }
+      : {}),
+  };
+
+  await db.stakworkRun.update({
+    where: { id: run.id },
+    data: { result: JSON.stringify(mergedResult) },
+  });
+
+  logger.info("[benchmark-runner] Score persisted", "stakwork-run", {
+    runId: run.id,
+    allPass: scoreFields.all_pass,
+    passRate: scoreFields.pass_rate,
+    nPassed: scoreFields.n_passed,
+    nTotal: scoreFields.n_total,
+    writeGraphOutput: capabilities.writeGraphOutput,
+    legalSideEffects: capabilities.legalSideEffects,
+  });
+
+  // writeGraphOutput:false — EvalTriggerOutput graph write deliberately skipped.
+  // No evalTriggerRef in this pipeline; skipping as clean no-op (not an error).
+  if (capabilities.writeGraphOutput) {
+    // Future: add EvalTriggerOutput write here when recursion milestone lands.
+    logger.warn("[benchmark-runner] writeGraphOutput:true not implemented yet", "stakwork-run", { runId: run.id });
+  }
 }

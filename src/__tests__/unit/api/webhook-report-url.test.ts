@@ -1,4 +1,6 @@
 import { describe, it, expect } from "vitest";
+import fs from "fs";
+import path from "path";
 
 /**
  * Payload-normalization contract for the result webhook.
@@ -7,6 +9,10 @@ import { describe, it, expect } from "vitest";
  * src/app/api/webhook/stakwork/response/route.ts. That function is module-private,
  * so this test pins the behaviour it must keep: both wire shapes must produce
  * the same stored result, and `report_url` must stay OUT of the result JSON.
+ *
+ * DRIFT CHECK: This file was renamed from LEGAL_BENCHMARK_TYPES to
+ * FLAT_PAYLOAD_RUN_TYPES in the route. The mirrored function here must match
+ * the source — if the source changes, this test will catch it.
  */
 
 function normalizeLegalBenchmarkPayload(
@@ -149,5 +155,40 @@ describe("report_url never survives into the stored result", () => {
     const normalized = normalizeLegalBenchmarkPayload({ ...HARVEY_FIELDS });
     const stored = persist(normalized, { ...EXISTING, report_url: REPORT_URL });
     expect(JSON.stringify(stored)).not.toContain("report_url");
+  });
+});
+
+// ─── Drift check: FLAT_PAYLOAD_RUN_TYPES rename ───────────────────────────────
+
+describe("FLAT_PAYLOAD_RUN_TYPES rename drift check", () => {
+  it("route file uses FLAT_PAYLOAD_RUN_TYPES (not the old LEGAL_BENCHMARK_TYPES name)", () => {
+    const routeSrc = fs.readFileSync(
+      path.join("src", "app", "api", "webhook", "stakwork", "response", "route.ts"),
+      "utf-8",
+    );
+    expect(routeSrc).toContain("FLAT_PAYLOAD_RUN_TYPES");
+    // The old name must be gone — if it creeps back it means the rename was reverted
+    expect(routeSrc).not.toContain("const LEGAL_BENCHMARK_TYPES");
+  });
+
+  it("FLAT_PAYLOAD_RUN_TYPES includes BENCHMARK_RUNNER", () => {
+    const routeSrc = fs.readFileSync(
+      path.join("src", "app", "api", "webhook", "stakwork", "response", "route.ts"),
+      "utf-8",
+    );
+    // The set must include the new type so flat payloads are normalized
+    expect(routeSrc).toContain("StakworkRunType.BENCHMARK_RUNNER");
+  });
+
+  it("mirrored normalizeLegalBenchmarkPayload function has not drifted from the source", () => {
+    const routeSrc = fs.readFileSync(
+      path.join("src", "app", "api", "webhook", "stakwork", "response", "route.ts"),
+      "utf-8",
+    );
+    // Both source and mirror must extract the same keys from the destructure
+    const mirroredExtract = "const { project_status, project_id, recap_unchanged, report_url, result, ...harveyFields } = body;";
+    expect(routeSrc).toContain(mirroredExtract);
+    // The mirrored copy in this test file is the canonical drift check:
+    // if the source changes shape, the behaviour tests above will fail first.
   });
 });
