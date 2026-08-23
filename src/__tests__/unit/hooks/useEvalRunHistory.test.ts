@@ -594,6 +594,9 @@ describe("useEvalRunHistory — attemptRows", () => {
   });
 
   it("joins a runner run onto its trigger row with chart label and score", async () => {
+    // Timestamp priority: graph write-time beats Postgres updatedAt/createdAt.
+    // The output node has date_added_to_graph "1720000000" → "2024-07-03T09:46:40.000Z".
+    // Even though the run has a later createdAt, graphTime wins.
     const graph = railGraph();
     const { result } = renderRail({
       "fix-chain": makeFixChainResponse(graph.nodes, graph.edges),
@@ -613,7 +616,8 @@ describe("useEvalRunHistory — attemptRows", () => {
     expect(base!.runType).toBe("runner");
     expect(base!.projectId).toBe(77);
     expect(base!.score).toEqual({ passed: 50, total: 74 });
-    expect(base!.timestamp).toBe("2026-08-18T10:00:00.000Z");
+    // Graph write-time wins over run's createdAt (new timestamp priority).
+    expect(base!.timestamp).toBe(new Date(1720000000 * 1000).toISOString());
   });
 
   it("an active eval run outranks a terminal runner run on the same trigger", async () => {
@@ -653,7 +657,10 @@ describe("useEvalRunHistory — attemptRows", () => {
     expect(row!.timestamp).toBe(new Date(1720000000 * 1000).toISOString());
   });
 
-  it("surfaces an in-flight recursion run (no evalTriggerRef by design) as a run-only row", async () => {
+  it("surfaces in-flight AND terminal recursion runs (no evalTriggerRef by design) as rail rows", async () => {
+    // Terminal recursion runs now appear in completedRows alongside runner/eval
+    // runs — they carry no n_passed/n_total so score is null, and hasReport is
+    // false (the recursion webhook never writes it). Both render correctly.
     const graph = railGraph();
     const { result } = renderRail({
       "fix-chain": makeFixChainResponse(graph.nodes, graph.edges),
@@ -664,7 +671,7 @@ describe("useEvalRunHistory — attemptRows", () => {
           runRow("rec-live", { status: "PENDING" }),
           // Different task — must not appear on this card
           runRow("rec-other", { status: "PENDING", result: { taskSlug: "other/task" } }),
-          // Terminal recursion runs are noise — their outcome shows up as new attempts
+          // Terminal recursion runs now appear (score: null, hasReport: false)
           runRow("rec-done", { status: "COMPLETED" }),
         ],
       },
@@ -674,14 +681,19 @@ describe("useEvalRunHistory — attemptRows", () => {
     const keys = result.current.attemptRows.map((r) => r.key);
     expect(keys).toContain("rec-live");
     expect(keys).not.toContain("rec-other");
-    expect(keys).not.toContain("rec-done");
+    // Terminal recursion runs now appear in the rail (spec change)
+    expect(keys).toContain("rec-done");
 
     const live = result.current.attemptRows.find((r) => r.key === "rec-live")!;
     expect(live.label).toBeNull();
     expect(live.runType).toBe("recursion");
     expect(live.inFlight).toBe(true);
-    // Run-only rows sort after the charted rows
-    expect(result.current.attemptRows[result.current.attemptRows.length - 1].key).toBe("rec-live");
+
+    const done = result.current.attemptRows.find((r) => r.key === "rec-done")!;
+    expect(done.runType).toBe("recursion");
+    expect(done.score).toBeNull();
+    expect(done.hasReport).toBe(false);
+    expect(done.inFlight).toBe(false);
   });
 
   it("report pending: completed run with a report requested but no bundle yet", async () => {
