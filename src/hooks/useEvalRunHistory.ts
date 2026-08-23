@@ -626,15 +626,60 @@ export function useEvalRunHistory(input: UseEvalRunHistoryInput): UseEvalRunHist
             };
           });
 
-        // Mirror the chart: charted rows in dot order first, then rows with no
-        // dot yet (in-flight work) chronologically at the end.
-        const unchartedRows = [...unchartedTriggerRows, ...runOnlyRows].sort((a, b) => {
-          if (!a.timestamp && !b.timestamp) return 0;
-          if (!a.timestamp) return 1;
-          if (!b.timestamp) return -1;
-          return new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime();
-        });
-        const railRows = [...chartedRows, ...unchartedRows];
+        // Completed/terminal runner/eval runs, unclaimed by any trigger join —
+        // the activity rail should surface finished attempts too, not just
+        // in-flight ones. Recursion terminal runs are excluded: their outcome
+        // already surfaces as a new charted attempt on the next eval cycle.
+        const completedRows: AttemptRailRow[] = [...runRows, ...evalRunRows]
+          .filter((run) => {
+            if (claimedRunIds.has(run.id)) return false;
+            if (NON_TERMINAL_STATUSES.has(run.status ?? "")) return false;
+            const parsed = parseBenchmarkRunResult(run.result);
+            return parsed?.taskSlug === taskSlug;
+          })
+          .map((run) => {
+            const parsed = parseBenchmarkRunResult(run.result);
+            const passed = parsed?.n_passed;
+            const total = parsed?.n_total;
+            return {
+              key: run.id,
+              label: null,
+              attemptIndex: null,
+              timestamp: run.createdAt,
+              runType: runTypeById.get(run.id) ?? null,
+              runId: run.id,
+              projectId: run.projectId,
+              status: run.status ?? null,
+              inFlight: false,
+              hasReport: run.hasReport === true,
+              graphReportRef: null,
+              reportPending: false,
+              fixSnapshot: null,
+              score: passed != null && total != null ? { passed, total } : null,
+            };
+          });
+
+        // Dedupe across all row sources (runId wins over key).
+        const seen = new Set<string>();
+        const dedupe = <T extends AttemptRailRow>(rows: T[]): T[] =>
+          rows.filter((r) => {
+            const id = r.runId ?? r.key;
+            if (seen.has(id)) return false;
+            seen.add(id);
+            return true;
+          });
+
+        // Sort helper: newest-first within a group.
+        const byTimeDesc = (a: AttemptRailRow, b: AttemptRailRow) => {
+          const ta = a.timestamp ? new Date(a.timestamp).getTime() : 0;
+          const tb = b.timestamp ? new Date(b.timestamp).getTime() : 0;
+          return tb - ta;
+        };
+
+        // Charted rows come first (dot-index order from finalAttempts), then
+        // uncharted/run-only rows newest-first, capped at 10 total.
+        const unchartedRows = [...unchartedTriggerRows, ...runOnlyRows, ...completedRows].sort(byTimeDesc);
+        const railRows = [...dedupe(chartedRows), ...dedupe(unchartedRows)].slice(0, 10);
 
         const acceptedFixCount = hillClimbAttempts.filter((pt) => !pt.isBaseline && pt.accepted === true).length;
         logger.info(
