@@ -190,19 +190,22 @@ describe("RecursionActivityRail", () => {
     expect(screen.queryByTestId("rail-report-trigger-1")).toBeNull();
   });
 
-  it("shows the Stakwork link only for super admins", () => {
-    const { unmount } = render(
-      <RecursionActivityRail rows={[makeRow()]} partial={false} />,
+  it("shows the Stakwork link to all workspace members when projectId is non-null", () => {
+    // Non-admin members see the link with the admin-destination title attribute
+    // so they understand separate credentials may be required.
+    render(<RecursionActivityRail rows={[makeRow()]} partial={false} />);
+    const link = screen.getByText(/View on Stakwork/);
+    expect(link).toBeTruthy();
+    // The closest anchor carries the title attribute
+    const anchor = link.closest("a");
+    expect(anchor?.getAttribute("title")).toBe("View on Stakwork (admin)");
+  });
+
+  it("hides the Stakwork link when projectId is null, regardless of admin status", () => {
+    render(
+      <RecursionActivityRail rows={[makeRow({ projectId: null })]} partial={false} />,
     );
     expect(screen.queryByText(/View on Stakwork/)).toBeNull();
-    unmount();
-
-    mockUseWorkspace.mockReturnValue({
-      workspace: { slug: "openlaw", id: "ws-1" },
-      isSuperAdmin: true,
-    });
-    render(<RecursionActivityRail rows={[makeRow()]} partial={false} />);
-    expect(screen.getByText(/View on Stakwork/)).toBeTruthy();
   });
 
   it("shows the incomplete-list note only when the walk was partial", () => {

@@ -42,6 +42,8 @@ interface StakworkRunRow {
   projectId: number | null;
   result: string | null;
   createdAt: string;
+  /** Already returned by RunResponseRow; preferred over createdAt for timestamps */
+  updatedAt?: string;
   /** WorkflowStatus name — PENDING/IN_PROGRESS/COMPLETED/ERROR/HALTED/FAILED */
   status?: string;
   /** Server-derived, role-gated: this run has a viewable report bundle */
@@ -63,7 +65,7 @@ export interface AttemptRailRow {
   label: string | null;
   /** Index into `attempts` for the matching chart dot (future hover-sync) */
   attemptIndex: number | null;
-  /** ISO timestamp — run.createdAt when joined, graph write-time otherwise */
+  /** ISO timestamp — graph write-time → Postgres updatedAt → Postgres createdAt */
   timestamp: string | null;
   score: { passed: number; total: number } | null;
   /** WorkflowStatus name; null = graph-only row (no run matched) */
@@ -539,7 +541,7 @@ export function useEvalRunHistory(input: UseEvalRunHistoryInput): UseEvalRunHist
             key,
             label: extras.label,
             attemptIndex: extras.attemptIndex,
-            timestamp: statusRun?.createdAt ?? extras.graphTime ?? null,
+            timestamp: extras.graphTime ?? statusRun?.updatedAt ?? statusRun?.createdAt ?? null,
             score: extras.score,
             status: statusRun?.status ?? null,
             runType: statusRun ? (runTypeById.get(statusRun.id) ?? null) : null,
@@ -612,7 +614,7 @@ export function useEvalRunHistory(input: UseEvalRunHistoryInput): UseEvalRunHist
               key: run.id,
               label: null,
               attemptIndex: null,
-              timestamp: run.createdAt,
+              timestamp: run.updatedAt ?? run.createdAt,
               score: null,
               status: run.status ?? null,
               runType,
@@ -626,11 +628,13 @@ export function useEvalRunHistory(input: UseEvalRunHistoryInput): UseEvalRunHist
             };
           });
 
-        // Completed/terminal runner/eval runs, unclaimed by any trigger join —
-        // the activity rail should surface finished attempts too, not just
-        // in-flight ones. Recursion terminal runs are excluded: their outcome
-        // already surfaces as a new charted attempt on the next eval cycle.
-        const completedRows: AttemptRailRow[] = [...runRows, ...evalRunRows]
+        // Completed/terminal runner/eval/recursion runs, unclaimed by any
+        // trigger join — the activity rail should surface all finished
+        // attempts, not just in-flight ones. The existing claimedRunIds check
+        // and final dedup pass prevent duplicates. Recursion rows have no
+        // n_passed/n_total so score is null; hasReport is false (the recursion
+        // webhook never writes it) — both render correctly as "—".
+        const completedRows: AttemptRailRow[] = [...runRows, ...evalRunRows, ...recursionRunRows]
           .filter((run) => {
             if (claimedRunIds.has(run.id)) return false;
             if (NON_TERMINAL_STATUSES.has(run.status ?? "")) return false;
@@ -645,7 +649,7 @@ export function useEvalRunHistory(input: UseEvalRunHistoryInput): UseEvalRunHist
               key: run.id,
               label: null,
               attemptIndex: null,
-              timestamp: run.createdAt,
+              timestamp: run.updatedAt ?? run.createdAt,
               runType: runTypeById.get(run.id) ?? null,
               runId: run.id,
               projectId: run.projectId,
