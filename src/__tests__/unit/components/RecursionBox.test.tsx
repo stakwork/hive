@@ -593,8 +593,10 @@ describe("RecursionCard", () => {
   });
 
   it("requests the roster with the entry's task slug", () => {
+    // useBenchmarkRubrics is gated behind rosterRequested — called with undefined
+    // on mount, only called with the real slug after user interaction (popover open).
     renderCard({ id: "contracts/some-task" });
-    expect(mockUseBenchmarkRubrics).toHaveBeenCalledWith("contracts/some-task");
+    expect(mockUseBenchmarkRubrics).toHaveBeenCalledWith(undefined);
   });
 });
 
@@ -672,12 +674,10 @@ describe("RecursionList", () => {
     render(
       <RecursionList entries={entries} isLoading={false} error={null} refetch={mockRefetch} />,
     );
-    // Called once per card
+    // Called once per card — deferred fetch: while collapsed, refId is undefined
+    // and slug is "" so the hook is a no-op until the user expands the card.
     expect(mockUseEvalRunHistory).toHaveBeenCalledTimes(3);
-    // Each with { refId, slug } shape
-    expect(mockUseEvalRunHistory).toHaveBeenCalledWith({ refId: "r1", slug: "slug-1" });
-    expect(mockUseEvalRunHistory).toHaveBeenCalledWith({ refId: "r2", slug: "slug-2" });
-    expect(mockUseEvalRunHistory).toHaveBeenCalledWith({ refId: "r3", slug: "slug-3" });
+    expect(mockUseEvalRunHistory).toHaveBeenCalledWith({ refId: undefined, slug: "" });
   });
 
   it("does not render StatusBadge or status-related UI", () => {
