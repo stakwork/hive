@@ -648,24 +648,6 @@ function RecursionCard({ entry, refetch }: RecursionCardProps) {
             </button>
           )}
 
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleConsolidatedReport}
-            disabled={!canTriggerConsolidated}
-            className="shrink-0"
-            data-testid="consolidated-report-button"
-          >
-            {isTriggering ? (
-              <>
-                <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" />
-                Generating…
-              </>
-            ) : (
-              "Consolidated Report"
-            )}
-          </Button>
-
           <div className="flex items-center gap-2 shrink-0">
             {toggling && <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />}
             <span className="text-xs text-muted-foreground">Recursion</span>
@@ -767,6 +749,24 @@ function RecursionCard({ entry, refetch }: RecursionCardProps) {
                     onAttemptHover={setHoverAttempt}
                   />
                 </div>
+              </div>
+              <div className="mt-3 flex justify-end">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleConsolidatedReport}
+                  disabled={!canTriggerConsolidated}
+                  data-testid="consolidated-report-button"
+                >
+                  {isTriggering ? (
+                    <>
+                      <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" />
+                      Generating…
+                    </>
+                  ) : (
+                    "Consolidated Report"
+                  )}
+                </Button>
               </div>
             </div>
           )}
