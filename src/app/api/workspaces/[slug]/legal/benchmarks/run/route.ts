@@ -209,8 +209,11 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
           { status: 400 },
         );
       }
+      // The prefix is either a native LlmProvider enum value (anthropic/…) or a
+      // normalized OTHER-provider label (openrouter/… — stored as provider=OTHER
+      // with providerLabel "OpenRouter"). Either way it must map to an env key.
       const provider = m.split("/")[0].toUpperCase();
-      if (!(provider in LlmProvider) || !PROVIDER_API_KEY_ENV_VARS[provider]) {
+      if (!PROVIDER_API_KEY_ENV_VARS[provider]) {
         return NextResponse.json(
           { error: `${label} provider "${provider}" is not supported` },
           { status: 400 },
@@ -232,17 +235,28 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       );
     }
 
-    // DB catalog membership for the pair (mirrors validateModel, provider-aware)
+    // DB catalog membership for the pair (mirrors validateModel, provider-aware).
+    // Providers outside the LlmProvider enum (e.g. OPENROUTER) are stored as
+    // OTHER with a providerLabel; match those rows by the getModelValue()-style
+    // normalized label.
     {
+      const isEnumProvider = pairProvider in LlmProvider;
       const dbModels = await db.llmModel.findMany({
         where: {
           isPublic: true,
-          provider: pairProvider as LlmProvider,
+          provider: isEnumProvider ? (pairProvider as LlmProvider) : LlmProvider.OTHER,
           OR: [{ dateEnd: null }, { dateEnd: { gt: new Date() } }],
         },
-        select: { name: true },
+        select: { name: true, providerLabel: true },
       });
-      const knownNames = dbModels.map((r) => r.name);
+      const matchingModels = isEnumProvider
+        ? dbModels
+        : dbModels.filter(
+            (r) =>
+              (r.providerLabel ?? "").toLowerCase().replace(/\s+/g, "") ===
+              pairProvider.toLowerCase(),
+          );
+      const knownNames = matchingModels.map((r) => r.name);
       for (const [value, label] of [
         [standardModel, "standardModel"],
         [reasoningModel, "reasoningModel"],

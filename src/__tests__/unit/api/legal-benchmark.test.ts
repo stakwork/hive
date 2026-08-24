@@ -1675,9 +1675,11 @@ describe("POST /run — standard/reasoning model pair", () => {
       { name: "gpt-5.2-pro" },
     ]);
     // Per-provider env keys
-    mockGetApiKeyForModel.mockImplementation((m: string) =>
-      String(m).startsWith("openai/") ? "env-openai-key" : "env-anthropic-key",
-    );
+    mockGetApiKeyForModel.mockImplementation((m: string) => {
+      if (String(m).startsWith("openai/")) return "env-openai-key";
+      if (String(m).startsWith("openrouter/")) return "env-openrouter-key";
+      return "env-anthropic-key";
+    });
   });
 
   test("omitted pair defaults to standard/reasoning defaults (provider-prefixed) in vars", async () => {
@@ -1710,6 +1712,62 @@ describe("POST /run — standard/reasoning model pair", () => {
     expect(vars.reasoning_model).toBe("openai/gpt-5.2-pro");
     // apiKey resolved from the pair provider's env key — not the legacy model's provider
     expect(vars.apiKey).toBe("env-openai-key");
+  });
+
+  test("OpenRouter pair (stored as OTHER + providerLabel) validates against the label-matched catalog", async () => {
+    // OpenRouter is not an LlmProvider enum value — rows live under OTHER with
+    // providerLabel "OpenRouter" and 3-section values (openrouter/org/model).
+    // Shared mock also serves the legacy model/judgeModel catalog checks,
+    // so keep the Anthropic defaults present (no providerLabel → filtered out
+    // of the label-matched OTHER lookup anyway).
+    mockDbLlmModelFindMany.mockResolvedValue([
+      { name: "claude-sonnet-5" },
+      { name: "claude-sonnet-4-6" },
+      { name: "stealth/ox-alpha", providerLabel: "OpenRouter" },
+      { name: "acme-model", providerLabel: "Acme" },
+    ]);
+
+    const varsPromise = captureStakworkVarsFromRun();
+    const res = await postRun(
+      makeRunRequest({
+        taskSlug: "task-a",
+        taskTitle: "Task A",
+        standardModel: "openrouter/stealth/ox-alpha",
+        reasoningModel: "openrouter/stealth/ox-alpha",
+      }),
+      { params: Promise.resolve({ slug: "openlaw" }) },
+    );
+    expect(res.status).toBe(201);
+    const vars = await varsPromise;
+    expect(vars.standard_model).toBe("openrouter/stealth/ox-alpha");
+    expect(vars.reasoning_model).toBe("openrouter/stealth/ox-alpha");
+    expect(vars.apiKey).toBe("env-openrouter-key");
+
+    // Catalog queried under the OTHER enum bucket
+    const pairQuery = mockDbLlmModelFindMany.mock.calls.at(-1)?.[0];
+    expect(pairQuery.where.provider).toBe("OTHER");
+  });
+
+  test("returns 400 when an OpenRouter model's label-matched catalog has no such name", async () => {
+    mockDbLlmModelFindMany.mockResolvedValue([
+      { name: "claude-sonnet-5" },
+      { name: "claude-sonnet-4-6" },
+      // Same name exists but under a different OTHER label — must not match
+      { name: "stealth/ox-alpha", providerLabel: "Acme" },
+    ]);
+
+    const res = await postRun(
+      makeRunRequest({
+        taskSlug: "task-a",
+        taskTitle: "Task A",
+        standardModel: "openrouter/stealth/ox-alpha",
+        reasoningModel: "openrouter/stealth/ox-alpha",
+      }),
+      { params: Promise.resolve({ slug: "openlaw" }) },
+    );
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error).toMatch(/model catalog/i);
   });
 
   test("returns 400 when standardModel and reasoningModel are from different providers", async () => {
