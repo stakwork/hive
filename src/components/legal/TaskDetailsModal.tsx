@@ -62,6 +62,20 @@ export interface TaskDetailsModalProps {
   }) => void;
 }
 
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+/**
+ * Provider key used for grouping and env-key lookup. Native enum providers use
+ * the enum value; OTHER models with a providerLabel (e.g. "OpenRouter") use the
+ * label normalized the same way getModelValue() builds the value prefix, so
+ * "openrouter/stealth/ox-alpha" groups under "OPENROUTER".
+ */
+function effectiveProvider(m: LlmModelOption): string {
+  return m.provider === "OTHER" && m.providerLabel
+    ? m.providerLabel.toUpperCase().replace(/\s+/g, "")
+    : m.provider;
+}
+
 // ─── Loading skeleton ─────────────────────────────────────────────────────────
 
 function DetailsSkeleton() {
@@ -128,15 +142,16 @@ export function TaskDetailsModal({
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
         if (cancelled || !data?.models) return;
-        // Only providers with a known API key env var can be dispatched
+        // Only providers with a known API key env var can be dispatched.
+        // OTHER models resolve through their providerLabel (e.g. OpenRouter).
         const usable = (data.models as LlmModelOption[]).filter(
-          (m) => !!PROVIDER_API_KEY_ENV_VARS[m.provider],
+          (m) => !!PROVIDER_API_KEY_ENV_VARS[effectiveProvider(m)],
         );
         setLlmModels(usable);
         if (usable.length === 0) return;
-        const provider = usable.some((m) => m.provider === "ANTHROPIC")
+        const provider = usable.some((m) => effectiveProvider(m) === "ANTHROPIC")
           ? "ANTHROPIC"
-          : usable[0].provider;
+          : effectiveProvider(usable[0]);
         setSelectedProvider(provider);
         applyProviderDefaults(usable, provider);
       })
@@ -150,14 +165,14 @@ export function TaskDetailsModal({
   }, [open]);
 
   const applyProviderDefaults = (models: LlmModelOption[], provider: string) => {
-    const values = models.filter((m) => m.provider === provider).map(getModelValue);
+    const values = models.filter((m) => effectiveProvider(m) === provider).map(getModelValue);
     if (values.length === 0) return;
     setStandardModel(values.includes(DEFAULT_STANDARD_MODEL) ? DEFAULT_STANDARD_MODEL : values[0]);
     setReasoningModel(values.includes(DEFAULT_REASONING_MODEL) ? DEFAULT_REASONING_MODEL : values[0]);
   };
 
-  const providers = Array.from(new Set(llmModels.map((m) => m.provider)));
-  const providerModels = llmModels.filter((m) => m.provider === selectedProvider);
+  const providers = Array.from(new Set(llmModels.map(effectiveProvider)));
+  const providerModels = llmModels.filter((m) => effectiveProvider(m) === selectedProvider);
 
   useEffect(() => {
     if (!open || !task?.slug) {
@@ -447,7 +462,9 @@ export function TaskDetailsModal({
                 <SelectContent>
                   {providers.map((p) => (
                     <SelectItem key={p} value={p} className="text-xs">
-                      {PROVIDER_DISPLAY_LABELS[p] ?? p}
+                      {PROVIDER_DISPLAY_LABELS[p] ??
+                        llmModels.find((m) => effectiveProvider(m) === p)?.providerLabel ??
+                        p}
                     </SelectItem>
                   ))}
                 </SelectContent>
