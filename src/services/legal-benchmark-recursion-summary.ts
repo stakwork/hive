@@ -20,9 +20,17 @@
 import type { JarvisConnectionConfig } from "@/types/jarvis";
 import type { RecursionEvalSetEntry } from "@/services/legal-benchmark-recursion";
 import { fetchEvalSetRubrics } from "@/services/legal-benchmark-rubrics";
+import { batchedAll } from "@/lib/harvey-lab/fix-chain-walker";
 import { expandEdges } from "@/lib/harvey-lab/jarvis-expand";
 import { normalizeOutput, type RawJarvisNode } from "@/lib/harvey-lab/eval-normalizers";
 import { logger } from "@/lib/logger";
+
+// Cap on concurrently-processed tasks. Each task issues up to 2 parallel
+// Jarvis calls (Wave 1), so peak in-flight Jarvis queries ≈ 2× this value.
+// Unbounded Promise.all here fanned out ~90 simultaneous Cypher queries
+// against the workspace's single Neo4j and contributed to memory-pressure
+// crashes on the swarm.
+const TASK_CONCURRENCY = 6;
 
 // ── Public interface ──────────────────────────────────────────────────────────
 
@@ -160,8 +168,8 @@ async function fetchOneTaskSummary(
  *   `RecursionEvalSetEntry` — `listRecursionEvalSets` already resolves these.
  * - `ref_id` is already present on each entry — `resolveEvalSetRefIdBySlug`
  *   is never called.
- * - All tasks run via `Promise.all`; per-task failures never propagate to the
- *   outer promise.
+ * - Tasks run with bounded concurrency (`TASK_CONCURRENCY`); per-task failures
+ *   never propagate to the outer promise.
  *
  * **Log discipline:** `logger.warn` on per-task failure with `{ taskSlug, refId }`
  * only. `config` and all fields derived from it (including `swarmApiKey`) are
@@ -171,8 +179,8 @@ export async function fetchRecursionTaskSummary(
   config: JarvisConnectionConfig,
   entries: RecursionEvalSetEntry[],
 ): Promise<RecursionSummaryEntry[]> {
-  return Promise.all(
-    entries.map(async (entry) => {
+  return batchedAll(
+    entries.map((entry) => async () => {
       try {
         return await fetchOneTaskSummary(config, entry);
       } catch (err) {
@@ -190,5 +198,6 @@ export async function fetchRecursionTaskSummary(
         return makeDefault(entry);
       }
     }),
+    TASK_CONCURRENCY,
   );
 }
