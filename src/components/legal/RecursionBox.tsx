@@ -395,7 +395,7 @@ function RecursionCard({ entry, refetch, allRuns }: RecursionCardProps) {
 
   // Find the most recent CONSOLIDATED run for this taskSlug.
   const existingConsolidated = useMemo(() => {
-    return allRuns
+    return (allRuns ?? [])
       .filter(
         (r) =>
           r.taskSlug === entry.id &&
