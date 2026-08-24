@@ -265,6 +265,7 @@ describe("RecursionCard — consolidated report trigger", () => {
         isLoading={false}
         error={null}
         refetch={mockRefetch}
+        allRuns={[]}
       />,
     );
     // The "Consolidated Report" button was moved into the CollapsibleContent

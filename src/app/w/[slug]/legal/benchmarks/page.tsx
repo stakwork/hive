@@ -9,6 +9,8 @@ import { BenchmarkRunsHistory } from "@/components/legal/BenchmarkRunsHistory";
 import { RecursionList } from "@/components/legal/RecursionBox";
 import { CnhMattersPanel } from "@/components/legal/CnhMattersPanel";
 import { useLegalBenchmarkRecursionList } from "@/hooks/useLegalBenchmarkRecursionList";
+import { useLegalBenchmarkRunList } from "@/hooks/useLegalBenchmarkRunList";
+import { useWorkspace } from "@/hooks/useWorkspace";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 
 type TabValue = "benchmark" | "runs" | "recursion" | "cnh";
@@ -23,7 +25,9 @@ function parseTab(value: string | null): TabValue {
 }
 
 function RecursionTab() {
+  const { workspace } = useWorkspace();
   const { entries, isLoading, error, refetch } = useLegalBenchmarkRecursionList();
+  const { runs } = useLegalBenchmarkRunList(workspace?.id);
 
   return (
     <RecursionList
@@ -31,6 +35,7 @@ function RecursionTab() {
       isLoading={isLoading}
       error={error}
       refetch={refetch}
+      allRuns={runs}
     />
   );
 }
