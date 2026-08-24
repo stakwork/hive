@@ -3337,6 +3337,18 @@ describe("Stakwork Run Service", () => {
   });
 
   describe("stopStakworkRun", () => {
+    beforeEach(() => {
+      mockedDb.stakworkRun.updateMany = vi.fn().mockResolvedValue({ count: 1 });
+    });
+
+    // These tests reassign shared db mocks (updateMany / findUnique). The suite
+    // has no global mock reset, so restore benign defaults to avoid leaking
+    // state into later describe blocks that rely on updateMany returning a count.
+    afterEach(() => {
+      mockedDb.stakworkRun.updateMany = vi.fn().mockResolvedValue({ count: 1 });
+      mockedDb.stakworkRun.findUnique = vi.fn().mockResolvedValue(null);
+    });
+
     test("should stop a stakwork run successfully", async () => {
       const mockRun = {
         id: "run-1",
@@ -3370,8 +3382,13 @@ describe("Stakwork Run Service", () => {
       const result = await stopStakworkRun("run-1", "user-1");
 
       expect(mockStopProject).toHaveBeenCalledWith("12345");
-      expect(db.stakworkRun.update).toHaveBeenCalledWith({
-        where: { id: "run-1" },
+      expect(db.stakworkRun.updateMany).toHaveBeenCalledWith({
+        where: {
+          id: "run-1",
+          status: {
+            in: [WorkflowStatus.PENDING, WorkflowStatus.IN_PROGRESS],
+          },
+        },
         data: {
           status: WorkflowStatus.HALTED,
           result: null,
@@ -3401,6 +3418,7 @@ describe("Stakwork Run Service", () => {
       const mockRun = {
         id: "run-1",
         projectId: "12345",
+        status: WorkflowStatus.IN_PROGRESS,
         workspace: {
           id: "ws-1",
           slug: "test-workspace",
@@ -3421,6 +3439,7 @@ describe("Stakwork Run Service", () => {
       const mockRun = {
         id: "run-1",
         projectId: "12345",
+        status: WorkflowStatus.IN_PROGRESS,
         workspace: {
           id: "ws-1",
           slug: "test-workspace",
@@ -3461,6 +3480,7 @@ describe("Stakwork Run Service", () => {
       const mockRun = {
         id: "run-1",
         projectId: "12345",
+        status: WorkflowStatus.IN_PROGRESS,
         workspace: {
           id: "ws-1",
           slug: "test-workspace",
@@ -3491,7 +3511,7 @@ describe("Stakwork Run Service", () => {
       const result = await stopStakworkRun("run-1", "user-1");
 
       expect(mockStopProject).toHaveBeenCalledWith("12345");
-      expect(db.stakworkRun.update).toHaveBeenCalled();
+      expect(db.stakworkRun.updateMany).toHaveBeenCalled();
       expect(result.status).toBe(WorkflowStatus.HALTED);
     });
 
@@ -3499,6 +3519,7 @@ describe("Stakwork Run Service", () => {
       const mockRun = {
         id: "run-1",
         projectId: "12345",
+        status: WorkflowStatus.IN_PROGRESS,
         workspace: {
           id: "ws-1",
           slug: "test-workspace",
@@ -3533,6 +3554,7 @@ describe("Stakwork Run Service", () => {
       const mockRun = {
         id: "run-1",
         projectId: "12345",
+        status: WorkflowStatus.IN_PROGRESS,
         workspace: {
           id: "ws-1",
           slug: "test-workspace",
@@ -3567,6 +3589,7 @@ describe("Stakwork Run Service", () => {
       const mockRun = {
         id: "run-1",
         projectId: "12345",
+        status: WorkflowStatus.IN_PROGRESS,
         workspace: {
           id: "ws-1",
           slug: "test-workspace",
@@ -3604,6 +3627,7 @@ describe("Stakwork Run Service", () => {
         id: "run-1",
         type: StakworkRunType.ARCHITECTURE,
         projectId: "12345",
+        status: WorkflowStatus.IN_PROGRESS,
         featureId: "feature-1",
         workspace: {
           id: "ws-1",
@@ -3652,6 +3676,7 @@ describe("Stakwork Run Service", () => {
       const mockRun = {
         id: "run-1",
         projectId: "12345",
+        status: WorkflowStatus.IN_PROGRESS,
         result: "Previous result content",
         feedback: "Previous feedback",
         workspace: {
@@ -3681,8 +3706,13 @@ describe("Stakwork Run Service", () => {
 
       await stopStakworkRun("run-1", "user-1");
 
-      expect(db.stakworkRun.update).toHaveBeenCalledWith({
-        where: { id: "run-1" },
+      expect(db.stakworkRun.updateMany).toHaveBeenCalledWith({
+        where: {
+          id: "run-1",
+          status: {
+            in: [WorkflowStatus.PENDING, WorkflowStatus.IN_PROGRESS],
+          },
+        },
         data: {
           status: WorkflowStatus.HALTED,
           result: null,
@@ -3695,6 +3725,7 @@ describe("Stakwork Run Service", () => {
       const mockRun = {
         id: "run-1",
         projectId: "12345",
+        status: WorkflowStatus.IN_PROGRESS,
         type: StakworkRunType.PLAN_CHAT,
         featureId: "feature-1",
         workspace: {
@@ -3747,6 +3778,7 @@ describe("Stakwork Run Service", () => {
       const mockRun = {
         id: "run-1",
         projectId: "12345",
+        status: WorkflowStatus.IN_PROGRESS,
         type: StakworkRunType.DIAGRAM_GENERATION,
         featureId: "feature-1",
         workspace: {
@@ -3779,6 +3811,7 @@ describe("Stakwork Run Service", () => {
       const mockRun = {
         id: "run-1",
         projectId: "12345",
+        status: WorkflowStatus.IN_PROGRESS,
         type: StakworkRunType.PLAN_CHAT,
         featureId: "feature-1",
         workspace: {
@@ -3816,6 +3849,7 @@ describe("Stakwork Run Service", () => {
       const mockRun = {
         id: "run-1",
         projectId: "12345",
+        status: WorkflowStatus.IN_PROGRESS,
         type: StakworkRunType.PLAN_CHAT,
         featureId: "feature-1",
         workspace: {
@@ -3844,6 +3878,85 @@ describe("Stakwork Run Service", () => {
       const result = await stopStakworkRun("run-1", "user-1");
 
       expect(result.status).toBe(WorkflowStatus.HALTED);
+    });
+
+    test("should not clobber a run that is already terminal", async () => {
+      const mockRun = {
+        id: "run-1",
+        projectId: "12345",
+        status: WorkflowStatus.COMPLETED,
+        result: "important result",
+        feedback: "important feedback",
+        workspace: {
+          id: "ws-1",
+          slug: "test-workspace",
+          ownerId: "user-1",
+          deleted: false,
+          members: [{ userId: "user-1", role: "OWNER" }],
+        },
+      };
+
+      mockedDb.stakworkRun.findUnique = vi.fn().mockResolvedValue(mockRun);
+      mockedPusherServer.trigger = vi.fn().mockResolvedValue({});
+
+      const mockStopProject = vi.fn().mockResolvedValue({});
+      mockedStakworkService.mockReturnValue({
+        stopProject: mockStopProject,
+      } as any);
+
+      const result = await stopStakworkRun("run-1", "user-1");
+
+      expect(mockStopProject).not.toHaveBeenCalled();
+      expect(db.stakworkRun.updateMany).not.toHaveBeenCalled();
+      expect(result.status).toBe(WorkflowStatus.COMPLETED);
+      expect(result.result).toBe("important result");
+      expect(result.feedback).toBe("important feedback");
+    });
+
+    test("should not clobber when the run completes during the stop", async () => {
+      const activeRun = {
+        id: "run-1",
+        projectId: "12345",
+        status: WorkflowStatus.IN_PROGRESS,
+        type: StakworkRunType.PLAN_CHAT,
+        featureId: "feature-1",
+        workspace: {
+          id: "ws-1",
+          slug: "test-workspace",
+          ownerId: "user-1",
+          deleted: false,
+          members: [{ userId: "user-1", role: "OWNER" }],
+        },
+        feature: { parentCanvasConversationId: "conv-1" },
+      };
+
+      const completedRun = {
+        ...activeRun,
+        status: WorkflowStatus.COMPLETED,
+        result: "won the race",
+      };
+
+      mockedDb.stakworkRun.findUnique = vi
+        .fn()
+        .mockResolvedValue(completedRun)
+        .mockResolvedValueOnce(activeRun);
+      mockedDb.stakworkRun.updateMany = vi.fn().mockResolvedValue({ count: 0 });
+      mockedDb.feature.updateMany = vi.fn().mockResolvedValue({ count: 0 });
+      mockedPusherServer.trigger = vi.fn().mockResolvedValue({});
+      mockedStakworkService.mockReturnValue({
+        stopProject: vi.fn().mockResolvedValue({}),
+      } as any);
+
+      const result = await stopStakworkRun("run-1", "user-1");
+
+      expect(result.status).toBe(WorkflowStatus.COMPLETED);
+      expect(result.result).toBe("won the race");
+      expect(db.feature.updateMany).not.toHaveBeenCalled();
+      expect(pusherServer.trigger).not.toHaveBeenCalledWith(
+        "workspace-test-workspace",
+        "stakwork-run-update",
+        expect.anything(),
+      );
     });
   });
 

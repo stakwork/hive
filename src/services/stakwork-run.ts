@@ -2540,6 +2540,16 @@ export async function stopStakworkRun(
     throw new Error("Run does not have a projectId - cannot stop");
   }
 
+  // A terminal run (COMPLETED/ERROR/HALTED/FAILED) has nothing to stop, and its
+  // result/feedback must be preserved — bail before touching Stakwork or the row.
+  const ACTIVE_STATUSES: WorkflowStatus[] = [
+    WorkflowStatus.PENDING,
+    WorkflowStatus.IN_PROGRESS,
+  ];
+  if (!ACTIVE_STATUSES.includes(run.status)) {
+    return run;
+  }
+
   // Attempt to stop the Stakwork project (optimistic - don't fail if API errors)
   // stopProject never throws; false means Stakwork refused or the call failed.
   // We still halt locally so the UI reflects the user's intent — but log it
@@ -2559,15 +2569,31 @@ export async function stopStakworkRun(
     // Continue with optimistic update even if Stakwork API fails
   }
 
-  // Optimistically update the run
-  const updatedRun = await db.stakworkRun.update({
-    where: { id: runId },
+  // Optimistically halt the run — guarded so a run that completed underneath us
+  // (between the read above and here) keeps its result/feedback.
+  const { count } = await db.stakworkRun.updateMany({
+    where: { id: runId, status: { in: ACTIVE_STATUSES } },
     data: {
       status: WorkflowStatus.HALTED,
       result: null,
       feedback: null,
     },
   });
+
+  if (count === 0) {
+    const current = await db.stakworkRun.findUnique({ where: { id: runId } });
+    if (!current) {
+      throw new Error("Run not found");
+    }
+    return current;
+  }
+
+  const updatedRun = {
+    ...run,
+    status: WorkflowStatus.HALTED,
+    result: null,
+    feedback: null,
+  };
 
   // Broadcast Pusher event for real-time UI updates
   try {
