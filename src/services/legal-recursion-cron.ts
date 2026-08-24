@@ -66,6 +66,17 @@ export const RECURSION_MAX_ATTEMPTS_KEY = "recursionMaxAttempts";
 /** Shared constant for the plateau-streak limit cap. */
 export const RECURSION_PLATEAU_LIMIT_KEY = "recursionPlateauLimit";
 
+/**
+ * Default max expected sibling ProposedFix nodes per eval run.
+ * A single concept-fix workflow can emit up to 6 siblings; this default
+ * mirrors that current cap. The raw-fix ceiling is effectiveMaxAttempts ×
+ * maxExpectedSiblings, and is tripped when attemptCount alone would not.
+ */
+const DEFAULT_RECURSION_MAX_SIBLINGS = 6;
+
+/** Shared constant for the per-run max-siblings ceiling. */
+export const RECURSION_MAX_SIBLINGS_KEY = "recursionMaxExpectedSiblings";
+
 export interface RecursionCronResult {
   success: boolean;
   entriesProcessed: number;
@@ -345,6 +356,13 @@ export async function executeScheduledLegalBenchmarkRecursion(): Promise<Recursi
   const plateauLimitParsed = plateauLimitRow?.value ? parseInt(plateauLimitRow.value, 10) : DEFAULT_RECURSION_PLATEAU_LIMIT;
   const effectivePlateauLimit = isNaN(plateauLimitParsed) || plateauLimitParsed < 1 ? DEFAULT_RECURSION_PLATEAU_LIMIT : plateauLimitParsed;
 
+  const maxSiblingsRow = await db.platformConfig.findUnique({
+    where: { key: RECURSION_MAX_SIBLINGS_KEY },
+    select: { value: true },
+  });
+  const maxSiblingsParsed = maxSiblingsRow?.value ? parseInt(maxSiblingsRow.value, 10) : DEFAULT_RECURSION_MAX_SIBLINGS;
+  const effectiveMaxSiblings = isNaN(maxSiblingsParsed) || maxSiblingsParsed < 1 ? DEFAULT_RECURSION_MAX_SIBLINGS : maxSiblingsParsed;
+
   // ── Live-status gate — check each EvalSet with a projectId ────────────────
   const running: RecursionEvalSetEntry[] = [];
   const eligible: RecursionEvalSetEntry[] = [];
@@ -508,17 +526,21 @@ export async function executeScheduledLegalBenchmarkRecursion(): Promise<Recursi
 
         const stats = computeAttemptStats(walkResult, evalSet.ref_id, { cutoff });
 
+        // rawFixCeiling compensates for attemptCount being deflated by up to
+        // maxExpectedSiblings× when sibling grouping is applied.
+        const rawFixCeiling = effectiveMaxAttempts * effectiveMaxSiblings;
+
         logger.info(
-          `${LOG_PREFIX} EvalSet ${evalSet.ref_id} attemptCount=${stats.attemptCount} plateauStreak=${stats.plateauStreak} maxAttempts=${effectiveMaxAttempts} plateauLimit=${effectivePlateauLimit}`,
+          `${LOG_PREFIX} EvalSet ${evalSet.ref_id} attemptCount=${stats.attemptCount} rawFixCount=${stats.rawFixCount} plateauStreak=${stats.plateauStreak} maxAttempts=${effectiveMaxAttempts} plateauLimit=${effectivePlateauLimit} rawCeiling=${rawFixCeiling}`,
           "legal",
-          { refId: evalSet.ref_id, attemptCount: stats.attemptCount, plateauStreak: stats.plateauStreak },
+          { refId: evalSet.ref_id, attemptCount: stats.attemptCount, rawFixCount: stats.rawFixCount, plateauStreak: stats.plateauStreak },
         );
 
-        if (stats.attemptCount >= effectiveMaxAttempts) {
+        if (stats.attemptCount >= effectiveMaxAttempts || stats.rawFixCount >= rawFixCeiling) {
           logger.info(
-            `${LOG_PREFIX} EvalSet ${evalSet.ref_id} hit attempt cap (${stats.attemptCount} >= ${effectiveMaxAttempts}) — disabling recursion`,
+            `${LOG_PREFIX} EvalSet ${evalSet.ref_id} hit attempt cap (attemptCount=${stats.attemptCount} >= ${effectiveMaxAttempts} OR rawFixCount=${stats.rawFixCount} >= ${rawFixCeiling}) — disabling recursion`,
             "legal",
-            { refId: evalSet.ref_id, attemptCount: stats.attemptCount, cap: effectiveMaxAttempts },
+            { refId: evalSet.ref_id, attemptCount: stats.attemptCount, rawFixCount: stats.rawFixCount, cap: effectiveMaxAttempts, rawCeiling: rawFixCeiling },
           );
           try {
             await setEvalSetRecursion(jarvisConfig, evalSet.ref_id, false);

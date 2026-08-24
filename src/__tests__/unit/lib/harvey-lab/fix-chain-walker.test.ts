@@ -855,11 +855,11 @@ describe("walkFixChain — hop-depth cap", () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe("walkFixChain — node+edge cap", () => {
-  it("sets partial=true and stops when 500 nodes+edges accumulated", async () => {
+  it("sets partial=true and stops when 3 000 nodes+edges accumulated", async () => {
     // Simulate Jarvis returning a LOT of nodes per hop.
-    // We create a trigger that returns 250 fixes in one shot, plus their edges,
-    // pushing the count over 500.
-    const bigFixList = Array.from({ length: 250 }, (_, i) => ({
+    // We create a trigger that returns 1 500 fixes in one shot, plus their edges
+    // (1 500 nodes + 1 500 edges = 3 000), pushing the count over the 3 000 cap.
+    const bigFixList = Array.from({ length: 1_500 }, (_, i) => ({
       ref_id: `bigfix-${i}`,
       node_type: "ProposedFix",
       date_added_to_graph: `172000${2000 + i}`,
@@ -889,7 +889,7 @@ describe("walkFixChain — node+edge cap", () => {
 
     urlMap.set(`/${TRIGGER_REF}?expand=edges&edge_type=%5B%22HAS_OUTPUT%22%5D`, () => emptyResponse(TRIGGER_REF, "EvalTrigger"));
 
-    // Each fix returns another big batch — this should push us over 500
+    // Each fix returns another big batch — this should push us over 3 000
     globalThis.fetch = makeFetchMockUrl(urlMap, () => ({
       status: "ok",
       nodes: Array.from({ length: 10 }, (_, i) => ({
@@ -905,12 +905,12 @@ describe("walkFixChain — node+edge cap", () => {
       triggerEdgeTypes: ["HAS_BASELINE_TRIGGER"],
     });
 
-    // Should be partial since we exceed 500 nodes+edges
+    // Should be partial since we exceed 3 000 nodes+edges
     expect(result.partial).toBe(true);
     // Should have returned something (not empty)
     expect(result.nodes.length).toBeGreaterThan(0);
     // Total must not massively exceed cap (some overshoot is OK due to batch concurrency)
-    expect(result.nodes.length + result.edges.length).toBeLessThan(1000);
+    expect(result.nodes.length + result.edges.length).toBeLessThan(6_000);
   });
 });
 
@@ -1575,10 +1575,10 @@ describe("walkFixChain — baseline-first traversal", () => {
   });
 
   it("under cap pressure the baseline branch survives and partial is set", async () => {
-    // 12 non-baseline trigger branches, each returning enough neighbours to blow
-    // past NODE_EDGE_CAP (500). The baseline branch is walked first, so it must
-    // come back whole while the new branches are the ones that get truncated.
-    const OTHER_TRIGGERS = Array.from({ length: 12 }, (_, i) => `trigger-bulk-${i}`);
+    // 30 non-baseline trigger branches × 60 outputs each = 3 600 nodes+edges,
+    // which blows past NODE_EDGE_CAP (3 000). The baseline branch is walked
+    // first, so it must come back whole while the bulk branches get truncated.
+    const OTHER_TRIGGERS = Array.from({ length: 30 }, (_, i) => `trigger-bulk-${i}`);
 
     const urlMap = new Map<string, () => unknown>();
 
@@ -1631,7 +1631,7 @@ describe("walkFixChain — baseline-first traversal", () => {
       emptyResponse(FIX1_REF, "ProposedFix"),
     );
 
-    // Each bulk trigger returns 60 filler nodes — 12 × 60 blows the 500 cap.
+    // Each bulk trigger returns 60 filler nodes — 30 × 60 × 2 = 3 600 blows the 3 000 cap.
     for (const triggerRef of OTHER_TRIGGERS) {
       urlMap.set(
         `/${triggerRef}?expand=edges&edge_type=%5B%22HAS_OUTPUT%22%5D`,

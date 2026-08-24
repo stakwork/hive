@@ -635,4 +635,44 @@ describe("computeAttemptStats", () => {
     const stats = computeAttemptStats(sg, evalSetId);
     expect(stats.attemptCount).toBe(2);
   });
+
+  // ── rawFixCount field ─────────────────────────────────────────────────────
+
+  it("rawFixCount equals total ProposedFix nodes (pre-grouping)", () => {
+    // 5 fixes in a linear chain, each with a distinct PRODUCED_BY output → no grouping
+    // rawFixCount should equal attemptCount = 5
+    const sg = buildLinearSubgraph({ nFixes: 5, baselineN: 50, scoresFn: (i) => 51 + i });
+    const stats = computeAttemptStats(sg, "es-1");
+    expect(stats.rawFixCount).toBe(5);
+    expect(stats.attemptCount).toBe(5);
+  });
+
+  it("rawFixCount is present on the returned stats object", () => {
+    const sg = buildLinearSubgraph({ nFixes: 3, baselineN: 50 });
+    const stats = computeAttemptStats(sg, "es-1");
+    // rawFixCount must be defined (not undefined)
+    expect(stats.rawFixCount).toBeDefined();
+    expect(typeof stats.rawFixCount).toBe("number");
+  });
+
+  it("rawFixCount is 0 when no fixes exist", () => {
+    const evalSetId = "es-no-fixes";
+    const sg = buildLinearSubgraph({ evalSetId, nFixes: 0 });
+    const stats = computeAttemptStats(sg, evalSetId);
+    expect(stats.rawFixCount).toBe(0);
+    expect(stats.attemptCount).toBe(0);
+  });
+
+  it("rawFixCount counts unscored fixes (those without PRODUCED_BY edges)", () => {
+    // 2 scored + 3 unscored = 5 total raw fixes
+    const sg = buildLinearSubgraph({
+      nFixes: 2,
+      baselineN: 50,
+      scoresFn: (i) => 55 + i,
+      unscoredCount: 3,
+    });
+    const stats = computeAttemptStats(sg, "es-1");
+    expect(stats.rawFixCount).toBe(5);
+    expect(stats.attemptCount).toBe(5); // no grouping (each fix has unique or no PRODUCED_BY)
+  });
 });

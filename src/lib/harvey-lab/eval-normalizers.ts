@@ -168,12 +168,22 @@ export function sortAttemptsChronologically(
   );
 
   if (allHaveTimestamp) {
-    // Option A: sort by Unix-epoch timestamp string ascending
-    return [...outputs].sort((a, b) => {
-      const ta = parseFloat(a.date_added_to_graph!);
-      const tb = parseFloat(b.date_added_to_graph!);
-      return ta - tb;
-    });
+    // Option A: sort by Unix-epoch timestamp string ascending.
+    // Secondary tiebreak: `originalIndex` (original array position) then `ref_id`
+    // (lexicographic). Equal-timestamp siblings from a single-run fan-out would
+    // otherwise inherit arbitrary raw Jarvis edge order across calls.
+    return outputs
+      .map((o, originalIndex) => ({ o, originalIndex }))
+      .sort((a, b) => {
+        const ta = parseFloat(a.o.date_added_to_graph!);
+        const tb = parseFloat(b.o.date_added_to_graph!);
+        if (ta !== tb) return ta - tb;
+        // Secondary: original array insertion order (stable tiebreak)
+        if (a.originalIndex !== b.originalIndex) return a.originalIndex - b.originalIndex;
+        // Tertiary: ref_id (deterministic cross-call tiebreak)
+        return a.o.ref_id < b.o.ref_id ? -1 : a.o.ref_id > b.o.ref_id ? 1 : 0;
+      })
+      .map(({ o }) => o);
   }
 
   // Option B: sort by id suffix (baseline = -1, reruns by numeric suffix).

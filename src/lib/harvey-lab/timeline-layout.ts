@@ -5,8 +5,13 @@
  * derives a deterministic 2D column layout for the RecursionTimelineViz.
  *
  * Column 0  = BaselineTrigger (EvalSet --HAS_BASELINE_TRIGGER--> EvalTrigger)
- * Columns 1…N = ProposedFix nodes in BFS visitation order following
- *   DERIVED_FROM edges from the baseline trigger's HAS_PROPOSED_FIX roots.
+ * Columns 1…N = One column per sibling GROUP of ProposedFix nodes, in BFS
+ *   visitation order following DERIVED_FROM edges from the baseline trigger's
+ *   HAS_PROPOSED_FIX roots. Siblings sharing the same eval run (identified via
+ *   `reconcileFixGroups`) are merged into ONE column with `siblingFixes`
+ *   attached, so `scoreDelta` is computed against the previous GROUP, not the
+ *   previous sibling.
+ *
  *   When multiple HAS_PROPOSED_FIX edges exist, roots are sorted ascending by
  *   date_added_to_graph before BFS begins.
  *
@@ -32,6 +37,11 @@ import {
   type SubgraphNode,
   type SubgraphEdge,
 } from "@/lib/harvey-lab/hill-climb-series";
+import {
+  buildFixGroupContext,
+  reconcileFixGroups,
+  pickRepresentativeFix,
+} from "@/lib/harvey-lab/fix-group-key";
 
 // ── Public types ──────────────────────────────────────────────────────────────
 
@@ -44,6 +54,12 @@ export type RunColumn = {
   output: SubgraphNode | null;
   /** ProposedFix node for columns 1+; null for the baseline column. */
   proposedFix: SubgraphNode | null;
+  /**
+   * All sibling ProposedFix nodes in this column's group (may be empty for
+   * singleton/null-keyed fixes, or when the group has only one member).
+   * Does NOT include `proposedFix` itself — `proposedFix` is the representative.
+   */
+  siblingFixes: SubgraphNode[];
   /** n_passed / n_total from the output node; null when no scoreable output. */
   scorePct: number | null;
   /** scorePct − previous column's scorePct; null for column 0. */
@@ -149,13 +165,13 @@ export function buildTimelineLayout(
     return { columns: [], evalSetNode: null, partial };
   }
 
-  // Locate the baseline trigger and root fix
+  // Locate the baseline trigger and root fix ids
   const baseline = locateBaselineTriggerRoot(evalSetNode.ref_id, nodeMap, edges);
   if (!baseline) {
     return { columns: [], evalSetNode, partial };
   }
 
-  const { baselineTriggerNode, rootFixId } = baseline;
+  const { baselineTriggerNode, rootFixIds } = baseline;
 
   // ── Column 0: Baseline ────────────────────────────────────────────────────
   const baselineOutputNode = resolveOutputNode(baselineTriggerNode, "HAS_OUTPUT", edges, nodeMap);
@@ -167,49 +183,81 @@ export function buildTimelineLayout(
       trigger: baselineTriggerNode,
       output: baselineOutputNode,
       proposedFix: null,
+      siblingFixes: [],
       scorePct: baselineScorePct,
       scoreDelta: null,
     },
   ];
 
   // ── Columns 1+: ProposedFix chain ─────────────────────────────────────────
-  if (!rootFixId) {
+  if (rootFixIds.length === 0) {
     // Baseline-only: no ProposedFix edges
     return { columns, evalSetNode, partial };
   }
 
-  // Collect ALL HAS_PROPOSED_FIX edges from the baseline trigger.
-  // Sort roots ascending by date_added_to_graph before BFS.
-  const rootFixEdges = edges.filter(
-    (e) => e.source === baselineTriggerNode.ref_id && e.edge_type === "HAS_PROPOSED_FIX",
-  );
-
-  const rootFixNodes = rootFixEdges
-    .map((e) => nodeMap.get(e.target))
-    .filter((n): n is SubgraphNode => n != null)
-    .sort((a, b) => {
-      const ta = parseFloat(String(a.date_added_to_graph ?? 0));
-      const tb = parseFloat(String(b.date_added_to_graph ?? 0));
-      return ta - tb;
-    });
-
-  // BFS over the DERIVED_FROM chain from all sorted roots.
+  // rootFixIds are already sorted by date_added_to_graph then ref_id (from
+  // locateBaselineTriggerRoot). BFS over the DERIVED_FROM chain from all sorted roots.
   // Shared visited set prevents double-counting nodes reachable via multiple roots.
   const sharedVisited = new Set<string>();
   const fixChain: SubgraphNode[] = [];
-  for (const rootFixNode of rootFixNodes) {
-    const branch = walkDerivedFromChain(rootFixNode.ref_id, nodeMap, edges, sharedVisited);
+  for (const rootFixId of rootFixIds) {
+    const branch = walkDerivedFromChain(rootFixId, nodeMap, edges, sharedVisited);
     fixChain.push(...branch);
   }
+
+  // ── Group siblings via reconcileFixGroups ──────────────────────────────────
+  const ctx = buildFixGroupContext(nodes, edges);
+  const proposedFixes = fixChain.filter((n) => isNodeType(n, "ProposedFix"));
+  const groups = reconcileFixGroups(proposedFixes, ctx);
+
+  // Build columns from groups, maintaining BFS visitation order.
+  // Since groups is a Map keyed by canonical key, we need to preserve
+  // the order in which the representative fix first appeared in the chain.
+  // Build an ordered group sequence using the fixChain order.
+  const orderedGroupKeys: string[] = [];
+  const seenGroupMembers = new Set<string>();
+
+  for (const [canonicalKey, siblings] of groups) {
+    // Check if any sibling appears in fixChain (it should — these are all from proposedFixes)
+    const repFix = pickRepresentativeFix(siblings);
+    if (!seenGroupMembers.has(repFix.ref_id)) {
+      orderedGroupKeys.push(canonicalKey);
+      for (const sib of siblings) {
+        seenGroupMembers.add(sib.ref_id);
+      }
+    }
+  }
+
+  // Re-order by first appearance of each group's representative in fixChain
+  const fixChainOrder = new Map<string, number>();
+  fixChain.forEach((n, i) => fixChainOrder.set(n.ref_id, i));
+
+  orderedGroupKeys.sort((a, b) => {
+    const siblingsA = groups.get(a)!;
+    const siblingsB = groups.get(b)!;
+    const repA = pickRepresentativeFix(siblingsA);
+    const repB = pickRepresentativeFix(siblingsB);
+    const idxA = fixChainOrder.get(repA.ref_id) ?? Infinity;
+    const idxB = fixChainOrder.get(repB.ref_id) ?? Infinity;
+    return idxA - idxB;
+  });
 
   let prevScorePct = baselineScorePct;
   let colIndex = 1;
 
-  for (const fixNode of fixChain) {
-    if (!isNodeType(fixNode, "ProposedFix")) continue;
+  for (const canonicalKey of orderedGroupKeys) {
+    const siblings = groups.get(canonicalKey)!;
+
+    // Skip non-ProposedFix nodes (should not happen, but defensive)
+    const proposedSiblings = siblings.filter((n) => isNodeType(n, "ProposedFix"));
+    if (proposedSiblings.length === 0) continue;
+
+    // Representative fix: earliest date_added_to_graph, tie-break ref_id
+    const repFix = pickRepresentativeFix(proposedSiblings);
+    const otherSiblings = proposedSiblings.filter((n) => n.ref_id !== repFix.ref_id);
 
     // For ProposedFix columns, output is resolved via PRODUCED_BY (first-valid-wins)
-    const outputNode = resolveOutputNode(fixNode, "PRODUCED_BY", edges, nodeMap);
+    const outputNode = resolveOutputNode(repFix, "PRODUCED_BY", edges, nodeMap);
     const scorePct = computeScorePct(outputNode);
     const scoreDelta =
       scorePct !== null && prevScorePct !== null ? scorePct - prevScorePct : null;
@@ -218,7 +266,8 @@ export function buildTimelineLayout(
       runIndex: colIndex,
       trigger: null,
       output: outputNode,
-      proposedFix: fixNode,
+      proposedFix: repFix,
+      siblingFixes: otherSiblings,
       scorePct,
       scoreDelta,
     });
