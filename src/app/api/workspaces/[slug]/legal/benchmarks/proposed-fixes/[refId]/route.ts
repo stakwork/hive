@@ -160,7 +160,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
           ],
         },
         result: {
-          string_contains: taskSlug,
+          contains: taskSlug,
         },
       },
       select: { id: true },
