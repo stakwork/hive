@@ -3,7 +3,7 @@
  */
 import React from "react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render } from "@testing-library/react";
+import { render, screen, waitFor, fireEvent, within } from "@testing-library/react";
 
 globalThis.React = React;
 
@@ -53,6 +53,49 @@ vi.mock("@/components/ui/dialog", () => ({
   DialogTitle: ({ children }: { children?: React.ReactNode }) => <h2>{children}</h2>,
   DialogFooter: ({ children }: { children?: React.ReactNode }) => <div data-testid="dialog-footer">{children}</div>,
 }));
+
+// Functional Select mock — SelectItem renders a button wired to onValueChange
+vi.mock("@/components/ui/select", () => {
+  const Ctx = React.createContext<((v: string) => void) | undefined>(undefined);
+  return {
+    Select: ({
+      children,
+      value,
+      onValueChange,
+    }: {
+      children?: React.ReactNode;
+      value?: string;
+      onValueChange?: (v: string) => void;
+    }) => (
+      <Ctx.Provider value={onValueChange}>
+        <div data-testid="select-root" data-value={value}>
+          {children}
+        </div>
+      </Ctx.Provider>
+    ),
+    SelectTrigger: ({
+      children,
+      "data-testid": testId,
+    }: {
+      children?: React.ReactNode;
+      "data-testid"?: string;
+    }) => <div data-testid={testId ?? "select-trigger"}>{children}</div>,
+    SelectValue: ({ placeholder }: { placeholder?: string }) => <span>{placeholder}</span>,
+    SelectContent: ({ children }: { children?: React.ReactNode }) => <div>{children}</div>,
+    SelectItem: ({ children, value }: { children?: React.ReactNode; value?: string }) => {
+      const onValueChange = React.useContext(Ctx);
+      return (
+        <button
+          data-testid="select-item"
+          data-value={value}
+          onClick={() => value !== undefined && onValueChange?.(value)}
+        >
+          {children}
+        </button>
+      );
+    },
+  };
+});
 
 vi.mock("lucide-react", () => ({
   FileIcon: () => <svg data-testid="file-icon" />,
@@ -254,5 +297,146 @@ describe("TaskDetailsModal — DOCX editor link", () => {
       '[data-testid="open-in-editor-link"]',
     );
     expect(allEditorLinks).toHaveLength(1);
+  });
+});
+// ─── Model pair selection ─────────────────────────────────────────────────────
+
+describe("TaskDetailsModal — model pair selection", () => {
+  const MOCK_MODELS = [
+    { id: "m1", name: "claude-sonnet-5", provider: "ANTHROPIC", providerLabel: null, isPlanDefault: false, isTaskDefault: false },
+    { id: "m2", name: "claude-opus-4-6", provider: "ANTHROPIC", providerLabel: null, isPlanDefault: false, isTaskDefault: false },
+    { id: "m3", name: "gpt-5.2", provider: "OPENAI", providerLabel: null, isPlanDefault: false, isTaskDefault: false },
+    { id: "m4", name: "custom-x", provider: "OTHER", providerLabel: "Acme", isPlanDefault: false, isTaskDefault: false },
+  ];
+
+  function stubFetch({ models = MOCK_MODELS, modelsOk = true }: { models?: unknown[]; modelsOk?: boolean } = {}) {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockImplementation((url: string) => {
+        if (String(url) === "/api/llm-models") {
+          return Promise.resolve({ ok: modelsOk, json: async () => ({ models }) });
+        }
+        // task details + size endpoints: not under test here
+        return Promise.resolve({ ok: false, status: 500, json: async () => ({}) });
+      }),
+    );
+  }
+
+  function renderModal(onRunTask = vi.fn()) {
+    render(
+      <TaskDetailsModal
+        open={true}
+        onOpenChange={vi.fn()}
+        task={mockTask}
+        slug="openlaw"
+        onRunTask={onRunTask}
+      />,
+    );
+    return onRunTask;
+  }
+
+  beforeEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("renders provider, standard and reasoning selects once the catalog loads", async () => {
+    stubFetch();
+    renderModal();
+
+    await waitFor(() => {
+      expect(screen.getByTestId("provider-select")).toBeInTheDocument();
+    });
+    expect(screen.getByTestId("standard-model-select")).toBeInTheDocument();
+    expect(screen.getByTestId("reasoning-model-select")).toBeInTheDocument();
+  });
+
+  it("defaults to the Anthropic provider with the default standard/reasoning pair", async () => {
+    stubFetch();
+    renderModal();
+
+    await waitFor(() => {
+      const roots = screen.getAllByTestId("select-root");
+      expect(roots[0]).toHaveAttribute("data-value", "ANTHROPIC");
+      expect(roots[1]).toHaveAttribute("data-value", "anthropic/claude-sonnet-5");
+      expect(roots[2]).toHaveAttribute("data-value", "anthropic/claude-opus-4-6");
+    });
+  });
+
+  it("excludes providers without an API key env mapping (OTHER) from the provider dropdown", async () => {
+    stubFetch();
+    renderModal();
+
+    await waitFor(() => {
+      expect(screen.getByTestId("provider-select")).toBeInTheDocument();
+    });
+
+    const providerRoot = screen.getAllByTestId("select-root")[0];
+    const providerValues = within(providerRoot)
+      .getAllByTestId("select-item")
+      .map((el) => el.getAttribute("data-value"));
+    expect(providerValues).toEqual(["ANTHROPIC", "OPENAI"]);
+  });
+
+  it("filters model options to the selected provider and resets the pair on provider change", async () => {
+    stubFetch();
+    renderModal();
+
+    await waitFor(() => {
+      expect(screen.getByTestId("provider-select")).toBeInTheDocument();
+    });
+
+    // Switch provider to OPENAI
+    const providerRoot = screen.getAllByTestId("select-root")[0];
+    fireEvent.click(within(providerRoot).getAllByTestId("select-item")[1]);
+
+    await waitFor(() => {
+      const roots = screen.getAllByTestId("select-root");
+      expect(roots[0]).toHaveAttribute("data-value", "OPENAI");
+      // Both models reset to the provider's first model
+      expect(roots[1]).toHaveAttribute("data-value", "openai/gpt-5.2");
+      expect(roots[2]).toHaveAttribute("data-value", "openai/gpt-5.2");
+    });
+
+    // Model dropdowns only list OPENAI models
+    const standardRoot = screen.getAllByTestId("select-root")[1];
+    const values = within(standardRoot)
+      .getAllByTestId("select-item")
+      .map((el) => el.getAttribute("data-value"));
+    expect(values).toEqual(["openai/gpt-5.2"]);
+  });
+
+  it("passes the selected pair to onRunTask", async () => {
+    stubFetch();
+    const onRunTask = renderModal();
+
+    await waitFor(() => {
+      expect(screen.getByTestId("provider-select")).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByText("Run Task"));
+
+    expect(onRunTask).toHaveBeenCalledWith({
+      generateJamieChat: false,
+      generateRunReport: false,
+      standardModel: "anthropic/claude-sonnet-5",
+      reasoningModel: "anthropic/claude-opus-4-6",
+    });
+  });
+
+  it("omits the pair from onRunTask when the catalog fetch fails", async () => {
+    stubFetch({ modelsOk: false });
+    const onRunTask = renderModal();
+
+    // Selectors never appear
+    await waitFor(() => {
+      expect(screen.queryByTestId("provider-select")).not.toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByText("Run Task"));
+
+    expect(onRunTask).toHaveBeenCalledWith({
+      generateJamieChat: false,
+      generateRunReport: false,
+    });
   });
 });

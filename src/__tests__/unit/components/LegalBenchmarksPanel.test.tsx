@@ -156,14 +156,33 @@ vi.mock("@/components/legal/TaskDetailsModal", () => ({
     onOpenChange: (o: boolean) => void;
     task: { slug: string; title: string };
     slug: string;
-    onRunTask: () => void;
+    onRunTask: (options?: {
+      generateJamieChat?: boolean;
+      generateRunReport?: boolean;
+      standardModel?: string;
+      reasoningModel?: string;
+    }) => void;
   }) =>
     open
       ? React.createElement(
           "div",
           { "data-testid": "task-details-modal", "data-task-slug": task?.slug, "data-slug": slug },
           React.createElement("p", null, task?.title),
-          React.createElement("button", { onClick: () => { onOpenChange(false); onRunTask(); } }, "Run Task"),
+          React.createElement(
+            "button",
+            {
+              onClick: () => {
+                onOpenChange(false);
+                onRunTask({
+                  generateJamieChat: false,
+                  generateRunReport: false,
+                  standardModel: "anthropic/claude-sonnet-5",
+                  reasoningModel: "anthropic/claude-opus-4-6",
+                });
+              },
+            },
+            "Run Task",
+          ),
           React.createElement("button", { onClick: () => onOpenChange(false) }, "Close"),
         )
       : null,
@@ -368,7 +387,7 @@ describe("LegalBenchmarksPanel", () => {
     expect(screen.getByTestId("legal-benchmark-results")).toHaveAttribute("data-run-id", "run-abc");
   });
 
-  it("handleSelectTask includes model and judgeModel in POST body with defaults", async () => {
+  it("card-launched run omits the model pair from the POST body (route applies defaults)", async () => {
     const user = userEvent.setup();
     vi.stubGlobal("fetch", makeDefaultFetch());
 
@@ -393,8 +412,10 @@ describe("LegalBenchmarksPanel", () => {
     );
     expect(runCall).toBeDefined();
     const body = JSON.parse((runCall![1] as RequestInit).body as string);
-    expect(body.model).toBe("anthropic/claude-sonnet-5");
-    expect(body.judgeModel).toBe("anthropic/claude-sonnet-4-6");
+    expect(body).not.toHaveProperty("standardModel");
+    expect(body).not.toHaveProperty("reasoningModel");
+    expect(body).not.toHaveProperty("model");
+    expect(body).not.toHaveProperty("judgeModel");
   });
 
   it("shows toast.error when POST /run returns 409", async () => {
@@ -677,70 +698,23 @@ describe("LegalBenchmarksPanel", () => {
   });
 
   // ─── Model pickers ────────────────────────────────────────────────────────
+  // Model selection lives in the TaskDetailsModal (provider + standard/reasoning
+  // pair); the panel header no longer renders pickers.
 
-  it("renders Execution Model and Judge Model dropdowns after load", async () => {
+  it("does not render header model pickers", async () => {
     render(React.createElement(LegalBenchmarksPanel));
 
     await waitFor(() => {
-      expect(screen.getByText("Execution Model")).toBeInTheDocument();
-      expect(screen.getByText("Judge Model")).toBeInTheDocument();
+      expect(screen.getAllByText("Select Task").length).toBeGreaterThan(0);
     });
 
-    // Both select triggers should be present
-    expect(screen.getByTestId("execution-model-select")).toBeInTheDocument();
-    expect(screen.getByTestId("judge-model-select")).toBeInTheDocument();
+    expect(screen.queryByText("Execution Model")).not.toBeInTheDocument();
+    expect(screen.queryByText("Judge Model")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("execution-model-select")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("judge-model-select")).not.toBeInTheDocument();
   });
 
-  it("renders only Anthropic models in picker options (not OpenAI)", async () => {
-    render(React.createElement(LegalBenchmarksPanel));
-
-    await waitFor(() => {
-      // claude-sonnet-5 is Anthropic — should appear
-      expect(screen.getAllByText("claude-sonnet-5").length).toBeGreaterThan(0);
-      // gpt-4o is OPENAI — should NOT appear in any SelectItem
-      const gptItems = screen.queryAllByTestId("select-item").filter(
-        (el) => el.textContent === "gpt-4o"
-      );
-      expect(gptItems).toHaveLength(0);
-    });
-  });
-
-  it("defaults selectedModel to anthropic/claude-sonnet-5", async () => {
-    render(React.createElement(LegalBenchmarksPanel));
-
-    await waitFor(() => {
-      const triggers = screen.getAllByTestId("select-root");
-      // First select is Execution Model
-      expect(triggers[0]).toHaveAttribute("data-value", "anthropic/claude-sonnet-5");
-    });
-  });
-
-  it("defaults selectedJudgeModel to anthropic/claude-sonnet-4-6", async () => {
-    render(React.createElement(LegalBenchmarksPanel));
-
-    await waitFor(() => {
-      const triggers = screen.getAllByTestId("select-root");
-      // Second select is Judge Model
-      expect(triggers[1]).toHaveAttribute("data-value", "anthropic/claude-sonnet-4-6");
-    });
-  });
-
-  it("shows judge model info tooltip", async () => {
-    render(React.createElement(LegalBenchmarksPanel));
-
-    await waitFor(() => {
-      expect(screen.getByText("Judge Model")).toBeInTheDocument();
-    });
-
-    // Tooltip content with the workflow note should be present in the DOM
-    const tooltipContents = screen.getAllByTestId("tooltip-content");
-    const judgeTooltip = tooltipContents.find((el) =>
-      el.textContent?.includes("judge_model")
-    );
-    expect(judgeTooltip).toBeDefined();
-  });
-
-  it("TaskDetailsModal onRunTask triggers handleSelectTask with current model state", async () => {
+  it("TaskDetailsModal onRunTask forwards the selected model pair to handleSelectTask", async () => {
     const user = userEvent.setup();
     vi.stubGlobal(
       "fetch",
@@ -771,9 +745,9 @@ describe("LegalBenchmarksPanel", () => {
       );
       expect(runCall).toBeDefined();
       const body = JSON.parse((runCall![1] as RequestInit).body as string);
-      // Modal uses panel's current model state
-      expect(body.model).toBe("anthropic/claude-sonnet-5");
-      expect(body.judgeModel).toBe("anthropic/claude-sonnet-4-6");
+      // Modal-selected pair is forwarded to the run route
+      expect(body.standardModel).toBe("anthropic/claude-sonnet-5");
+      expect(body.reasoningModel).toBe("anthropic/claude-opus-4-6");
     });
   });
 });

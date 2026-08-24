@@ -16,6 +16,22 @@ export const DEFAULT_BENCHMARK_MODEL = "anthropic/claude-sonnet-5";
  */
 export const DEFAULT_JUDGE_MODEL = "anthropic/claude-sonnet-4-6";
 
+/**
+ * Default standard/reasoning model pair for Legal Benchmark runs.
+ * Both must share a provider so a single `apiKey` env credential covers the run.
+ */
+export const DEFAULT_STANDARD_MODEL = "anthropic/claude-sonnet-5";
+export const DEFAULT_REASONING_MODEL = "anthropic/claude-opus-4-6";
+
+/** Human-readable labels for LlmProvider enum values, for provider pickers. */
+export const PROVIDER_DISPLAY_LABELS: Record<string, string> = {
+  ANTHROPIC: "Anthropic",
+  OPENAI: "OpenAI",
+  GOOGLE: "Google",
+  AWS_BEDROCK: "AWS Bedrock",
+  OPENROUTER: "OpenRouter",
+};
+
 // Valid model names that can be passed from frontend
 export type ModelName = "sonnet" | "opus" | "haiku" | "kimi" | "gemini" | "gpt";
 

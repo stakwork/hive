@@ -95,6 +95,16 @@ vi.mock("@/lib/ai/models", () => ({
   isValidModel: mockIsValidModel,
   DEFAULT_BENCHMARK_MODEL: "anthropic/claude-sonnet-5",
   DEFAULT_JUDGE_MODEL: "anthropic/claude-sonnet-4-6",
+  DEFAULT_STANDARD_MODEL: "anthropic/claude-sonnet-5",
+  DEFAULT_REASONING_MODEL: "anthropic/claude-opus-4-6",
+  PROVIDER_API_KEY_ENV_VARS: {
+    ANTHROPIC: "ANTHROPIC_API_KEY",
+    OPENAI: "OPENAI_API_KEY",
+    GOOGLE: "GOOGLE_API_KEY",
+    AWS_BEDROCK: "AWS_BEDROCK_API_KEY",
+    OPENROUTER: "OPENROUTER_API_KEY",
+    OTHER: null,
+  },
 }));
 
 vi.mock("@/lib/vercel/stakwork-token", () => ({
@@ -1166,7 +1176,8 @@ describe("POST /run — Bifrost LLM credential vars in Stakwork payload", () => 
 
     const vars = await varsPromise;
     expect(vars.model).toBe("claude-sonnet-5"); // new default (was claude-opus-4-5)
-    expect(vars.apiKey).toBe("vk-test-key");
+    // apiKey follows the standard/reasoning pair provider's env key; Bifrost is a fallback
+    expect(vars.apiKey).toBe("env-anthropic-key");
     expect(vars.baseUrl).toBe("https://bifrost.example.com/anthropic/v1");
     expect(vars.headers).toEqual({ "x-macaroon": "test-macaroon" });
     expect(vars.tokenReference).toBe("{{HIVE_STAGING}}");
@@ -1188,7 +1199,8 @@ describe("POST /run — Bifrost LLM credential vars in Stakwork payload", () => 
     expect(res.status).toBe(201);
 
     const vars = await varsPromise;
-    expect(vars.apiKey).toBe("vk-test-key");
+    // apiKey follows the standard/reasoning pair provider's env key; Bifrost is a fallback
+    expect(vars.apiKey).toBe("env-anthropic-key");
     expect(vars.baseUrl).toBe("https://bifrost.example.com/anthropic/v1");
     expect(vars).not.toHaveProperty("headers");
     expect(vars.tokenReference).toBe("{{HIVE_STAGING}}");
@@ -1422,7 +1434,8 @@ describe("POST /run — model & judge model selection", () => {
 
     // Confirm apiKey from Bifrost used
     const vars = await varsPromise;
-    expect(vars.apiKey).toBe("bifrost-key-for-chosen-model");
+    // apiKey follows the pair provider's env key; the Bifrost key remains a fallback
+    expect(vars.apiKey).toBe("env-anthropic-key");
   });
 });
 
@@ -1581,6 +1594,7 @@ describe("POST /run — requestedModel and requestedJudgeModel survive webhook m
     mockDbLlmModelFindMany.mockResolvedValue([
       { name: "claude-sonnet-5" },
       { name: "claude-sonnet-4-6" },
+      { name: "claude-opus-4-6" },
     ]);
 
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
@@ -1624,4 +1638,153 @@ describe("POST /run — requestedModel and requestedJudgeModel survive webhook m
     expect(mergedResult.model).toBe("claude-sonnet-different-echo");
   });
 });
+// ═══════════════════════════════════════════════════════════════════════════
+// POST /run — standard/reasoning model pair (provider-constrained)
+// ═══════════════════════════════════════════════════════════════════════════
 
+describe("POST /run — standard/reasoning model pair", () => {
+  function captureStakworkVarsFromRun() {
+    return new Promise<Record<string, string>>((resolve) => {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn().mockImplementation((url: string, opts?: RequestInit) => {
+          if (String(url).includes("task.json") || String(url).includes("contents")) {
+            return Promise.resolve({ ok: false, status: 404 });
+          }
+          const payload = opts?.body ? JSON.parse(opts.body as string) : {};
+          resolve(payload.workflow_params.set_var.attributes.vars);
+          return Promise.resolve({ ok: true, json: async () => ({ data: { project_id: 99 } }) });
+        }),
+      );
+    });
+  }
+
+  beforeEach(() => {
+    (getWorkspaceSwarmAccess as Mock).mockResolvedValue(MOCK_SWARM_ACCESS);
+    setupTransactionMock({ runnerResult: { id: "runner-new" } });
+    mockDbLlmModelFindMany.mockResolvedValue([
+      { name: "claude-sonnet-5" },
+      { name: "claude-sonnet-4-6" },
+      { name: "claude-opus-4-6" },
+      { name: "claude-haiku-4-5" },
+      { name: "gpt-5.2" },
+      { name: "gpt-5.2-pro" },
+    ]);
+    // Per-provider env keys
+    mockGetApiKeyForModel.mockImplementation((m: string) =>
+      String(m).startsWith("openai/") ? "env-openai-key" : "env-anthropic-key",
+    );
+  });
+
+  test("omitted pair defaults to standard=claude-sonnet-5 / reasoning=claude-opus-4-6 (bare) in vars", async () => {
+    const varsPromise = captureStakworkVarsFromRun();
+    const res = await postRun(makeRunRequest({ taskSlug: "task-a", taskTitle: "Task A" }), {
+      params: Promise.resolve({ slug: "openlaw" }),
+    });
+    expect(res.status).toBe(201);
+    const vars = await varsPromise;
+    expect(vars.standard_model).toBe("claude-sonnet-5");
+    expect(vars.reasoning_model).toBe("claude-opus-4-6");
+    expect(vars.apiKey).toBe("env-anthropic-key");
+  });
+
+  test("explicit same-provider pair is stripped to bare names and apiKey follows the pair provider", async () => {
+    const varsPromise = captureStakworkVarsFromRun();
+    const res = await postRun(
+      makeRunRequest({
+        taskSlug: "task-a",
+        taskTitle: "Task A",
+        standardModel: "openai/gpt-5.2",
+        reasoningModel: "openai/gpt-5.2-pro",
+      }),
+      { params: Promise.resolve({ slug: "openlaw" }) },
+    );
+    expect(res.status).toBe(201);
+    const vars = await varsPromise;
+    expect(vars.standard_model).toBe("gpt-5.2");
+    expect(vars.reasoning_model).toBe("gpt-5.2-pro");
+    // apiKey resolved from the pair provider's env key — not the legacy model's provider
+    expect(vars.apiKey).toBe("env-openai-key");
+  });
+
+  test("returns 400 when standardModel and reasoningModel are from different providers", async () => {
+    const res = await postRun(
+      makeRunRequest({
+        taskSlug: "task-a",
+        taskTitle: "Task A",
+        standardModel: "anthropic/claude-sonnet-5",
+        reasoningModel: "openai/gpt-5.2-pro",
+      }),
+      { params: Promise.resolve({ slug: "openlaw" }) },
+    );
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error).toMatch(/same provider/i);
+  });
+
+  test("returns 400 when a pair model is not in the DB catalog", async () => {
+    const res = await postRun(
+      makeRunRequest({
+        taskSlug: "task-a",
+        taskTitle: "Task A",
+        standardModel: "anthropic/claude-sonnet-5",
+        reasoningModel: "anthropic/claude-typo-9999",
+      }),
+      { params: Promise.resolve({ slug: "openlaw" }) },
+    );
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error).toMatch(/model catalog/i);
+  });
+
+  test("returns 400 for an unsupported provider prefix (no env key mapping)", async () => {
+    const res = await postRun(
+      makeRunRequest({
+        taskSlug: "task-a",
+        taskTitle: "Task A",
+        standardModel: "other/custom-model",
+        reasoningModel: "other/custom-model",
+      }),
+      { params: Promise.resolve({ slug: "openlaw" }) },
+    );
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error).toMatch(/not supported/i);
+  });
+
+  test("requestedStandardModel and requestedReasoningModel are persisted as bare names at creation", async () => {
+    const createdRows: Array<{ data: { result: string } }> = [];
+    mockDbTransaction.mockImplementation(async (fn: (tx: unknown) => Promise<unknown>) => {
+      const tx = {
+        stakworkRun: {
+          findFirst: vi.fn().mockResolvedValue(null),
+          create: vi.fn().mockImplementation((args: { data: { result: string } }) => {
+            createdRows.push(args);
+            return Promise.resolve({ id: "runner-new" });
+          }),
+          update: vi.fn().mockResolvedValue({}),
+        },
+      };
+      return fn(tx);
+    });
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ data: { project_id: 99 } }),
+    }));
+
+    const res = await postRun(
+      makeRunRequest({
+        taskSlug: "task-a",
+        taskTitle: "Task A",
+        standardModel: "anthropic/claude-sonnet-5",
+        reasoningModel: "anthropic/claude-opus-4-6",
+      }),
+      { params: Promise.resolve({ slug: "openlaw" }) },
+    );
+    expect(res.status).toBe(201);
+
+    const created = JSON.parse(createdRows[0].data.result) as Record<string, string>;
+    expect(created.requestedStandardModel).toBe("claude-sonnet-5");
+    expect(created.requestedReasoningModel).toBe("claude-opus-4-6");
+  });
+});
