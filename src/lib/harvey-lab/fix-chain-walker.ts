@@ -85,8 +85,22 @@ export interface WalkFixChainOpts {
 /** Maximum BFS hops — a pure cycle guard (not a semantic depth limit). */
 const HOP_DEPTH_CAP = 100;
 
-/** Maximum combined node + edge count — mirrors `KG_SUBGRAPH_CAP` in kg-adapter.ts. */
-const NODE_EDGE_CAP = 500;
+/**
+ * Maximum combined node + edge count before the walk is truncated (`partial: true`).
+ *
+ * Basis: 1 EvalSet + 1-2 EvalTriggers + 1 baseline output + up to 6 sibling
+ * ProposedFix nodes per eval run × up to N eval runs + their outputs + DERIVED_FROM
+ * and PRODUCED_BY edges. The original 500-node cap pre-dates sibling concept fixes;
+ * a 6× fix fan-out exhausts it ~6× sooner, causing silent truncation that breaks
+ * grouping and attempt-count dedup. Raised to 3 000 to accommodate:
+ *   - baseline branch: 1 trigger + 1 output + ~30 fix chain nodes + ~60 edges = ~100
+ *   - up to 20 eval-run cycles × 6 siblings × (1 fix + 1 output + 2 edges) ≈ 2 400
+ *   - overhead for DERIVED_FROM topology and HAS_PROPOSED_FIX parent edges
+ * The wall-clock budget (25 s) and FETCH_CONCURRENCY (10) are already adequate
+ * at this cap because each hop is a bounded Jarvis GET and the cap is checked after
+ * each BFS batch — exhaustion degrades to partial rather than timeout.
+ */
+const NODE_EDGE_CAP = 3_000;
 
 /** Wall-clock budget per `walkFixChain` invocation (ms). */
 const WALL_CLOCK_BUDGET_MS = 25_000;
@@ -408,6 +422,11 @@ export async function walkFixChain(
 
   const step2EdgeTypes = ["HAS_PROPOSED_FIX", "HAS_OUTPUT"];
   const fixEdgeTypes = ["DERIVED_FROM", "PRODUCED_BY"];
+  // NOTE: HAS_PROPOSED_FIX is intentionally absent from fixEdgeTypes.
+  // walkFixes expands ProposedFix nodes; adding HAS_PROPOSED_FIX here would
+  // pull every CriterionResult connected via CriterionResult→ProposedFix edges
+  // into the subgraph, bloating the walk and breaking node-count caps.
+  // The tier-4 guard in fix-group-key.ts depends on this invariant holding.
   const visitedTriggers = new Set<string>();
   const visitedFixes = new Set<string>();
 

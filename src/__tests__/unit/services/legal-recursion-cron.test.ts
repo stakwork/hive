@@ -94,6 +94,7 @@ import {
   RECURSION_MAX_CONCURRENT_KEY,
   RECURSION_MAX_ATTEMPTS_KEY,
   RECURSION_PLATEAU_LIMIT_KEY,
+  RECURSION_MAX_SIBLINGS_KEY,
 } from "@/services/legal-recursion-cron";
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
