@@ -307,6 +307,7 @@ describe("TaskDetailsModal — model pair selection", () => {
     { id: "m2", name: "claude-opus-5", provider: "ANTHROPIC", providerLabel: null, isPlanDefault: false, isTaskDefault: false },
     { id: "m3", name: "gpt-5.2", provider: "OPENAI", providerLabel: null, isPlanDefault: false, isTaskDefault: false },
     { id: "m4", name: "custom-x", provider: "OTHER", providerLabel: "Acme", isPlanDefault: false, isTaskDefault: false },
+    { id: "m5", name: "stealth/ox-alpha", provider: "OTHER", providerLabel: "OpenRouter", isPlanDefault: false, isTaskDefault: false },
   ];
 
   function stubFetch({ models = MOCK_MODELS, modelsOk = true }: { models?: unknown[]; modelsOk?: boolean } = {}) {
@@ -362,7 +363,7 @@ describe("TaskDetailsModal — model pair selection", () => {
     });
   });
 
-  it("excludes providers without an API key env mapping (OTHER) from the provider dropdown", async () => {
+  it("maps OTHER models by providerLabel: OpenRouter included, unmapped labels excluded", async () => {
     stubFetch();
     renderModal();
 
@@ -374,7 +375,33 @@ describe("TaskDetailsModal — model pair selection", () => {
     const providerValues = within(providerRoot)
       .getAllByTestId("select-item")
       .map((el) => el.getAttribute("data-value"));
-    expect(providerValues).toEqual(["ANTHROPIC", "OPENAI"]);
+    // OTHER + providerLabel "OpenRouter" surfaces as OPENROUTER (env key exists);
+    // OTHER + "Acme" has no env key mapping and is excluded
+    expect(providerValues).toEqual(["ANTHROPIC", "OPENAI", "OPENROUTER"]);
+  });
+
+  it("selecting the OpenRouter provider lists its models with getModelValue()-prefixed values", async () => {
+    stubFetch();
+    renderModal();
+
+    await waitFor(() => {
+      expect(screen.getByTestId("provider-select")).toBeInTheDocument();
+    });
+
+    const providerRoot = screen.getAllByTestId("select-root")[0];
+    fireEvent.click(
+      within(providerRoot)
+        .getAllByTestId("select-item")
+        .find((el) => el.getAttribute("data-value") === "OPENROUTER")!,
+    );
+
+    await waitFor(() => {
+      const roots = screen.getAllByTestId("select-root");
+      expect(roots[0]).toHaveAttribute("data-value", "OPENROUTER");
+      // 3-section value: label prefix + org/model id
+      expect(roots[1]).toHaveAttribute("data-value", "openrouter/stealth/ox-alpha");
+      expect(roots[2]).toHaveAttribute("data-value", "openrouter/stealth/ox-alpha");
+    });
   });
 
   it("filters model options to the selected provider and resets the pair on provider change", async () => {
