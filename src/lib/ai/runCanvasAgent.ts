@@ -71,7 +71,7 @@ import { isGraphWriteCapabilityEnabledForOrg } from "@/lib/ai/capabilityGates";
 import { getLinkedWorkspacesForInitiative } from "@/lib/canvas/linkedWorkspaces";
 import { sanitizeAndCompleteToolCalls } from "@/lib/ai/message-sanitizer";
 import { getModel, getApiKeyForProvider, type Provider } from "@/lib/ai/provider";
-import { getProviderOptions } from "aieo";
+import { getProviderOptions, hasApiKeyForProvider, PROVIDERS } from "aieo";
 // Deep import — see comment in services/task-workflow.ts.
 import { getBifrostForLLM } from "@/services/bifrost/orchestrator";
 import {
@@ -259,12 +259,15 @@ export interface RunCanvasAgentOptions {
   messages: ModelMessage[];
   /**
    * Optional model override in `getModelValue()` "provider/name" form
-   * (e.g. "anthropic/claude-opus-4-6"), sourced from the caller's
-   * `User.chatAgentModel` preference. Only Anthropic models are honored
-   * — the canvas agent is Anthropic-only today (provider tools, prompt
-   * caching, etc. are wired to Anthropic), so a non-Anthropic selection
-   * is ignored and the aieo default is used. When omitted/ignored, the
-   * model resolves to aieo's default (sonnet).
+   * (e.g. "anthropic/claude-opus-4-6", "openrouter/stealth/ox-alpha"),
+   * sourced from the caller's `User.chatAgentModel` preference. Any
+   * aieo-supported provider prefix (anthropic/google/openai/openrouter)
+   * with a configured API key is honored — the provider, key, and
+   * provider options all follow the prefix. Anthropic-only features
+   * degrade gracefully off-Anthropic: the `web_search` provider tool is
+   * stripped, and Bifrost routing / prompt caching don't apply. An
+   * unsupported prefix or missing key logs a warning and falls back to
+   * aieo's Anthropic default (sonnet), as does omitting this entirely.
    */
   modelName?: string;
   /**
@@ -679,13 +682,31 @@ export async function runCanvasAgent(
   const primarySlug = workspaceSlugs[0];
   const isPublicViewer = publicViewer !== undefined;
 
-  // Anthropic-only today; model resolution flows through `aieo` (default
-  // `claude-sonnet-4-5`) or the mock model when `USE_MOCKS=true`. The
-  // `getModel` call is deferred until after workspace resolution so we
-  // can thread Bifrost overrides (baseUrl + `x-macaroon` headers) when
-  // the rollout flag is on for the primary workspace — see the
-  // `getBifrostForLLM` call below.
-  const provider: Provider = "anthropic";
+  // Provider is derived from the caller's model preference. `modelName`
+  // is in "provider/name" form; a known aieo provider prefix with a
+  // configured API key switches the whole call (client, key, provider
+  // options) to that provider — e.g. "openrouter/stealth/ox-alpha" runs
+  // through OpenRouter. Anything else falls back to Anthropic (aieo's
+  // default sonnet), LOUDLY: a selected model must never silently
+  // answer as a different one. The `getModel` call is deferred until
+  // after workspace resolution so we can thread Bifrost overrides
+  // (baseUrl + `x-macaroon` headers, Anthropic-only) when the rollout
+  // flag is on for the primary workspace — see `getBifrostForLLM` below.
+  let provider: Provider = "anthropic";
+  if (modelName?.includes("/")) {
+    const prefix = modelName.split("/")[0] as Provider;
+    if (!PROVIDERS.includes(prefix)) {
+      console.warn(
+        `[runCanvasAgent] model "${modelName}" has unsupported provider prefix "${prefix}"; falling back to anthropic default`,
+      );
+    } else if (prefix !== "anthropic" && !hasApiKeyForProvider(prefix)) {
+      console.warn(
+        `[runCanvasAgent] no API key configured for provider "${prefix}" (model "${modelName}"); falling back to anthropic default`,
+      );
+    } else {
+      provider = prefix;
+    }
+  }
   const apiKey = getApiKeyForProvider(provider);
 
   // ------------------------------------------------------------------
@@ -1008,6 +1029,14 @@ export async function runCanvasAgent(
     tools = { ...tools, ...additionalTools };
   }
 
+  // `web_search` (built in askTools/askToolsMulti) is an Anthropic
+  // server-executed provider tool — other providers can't serialize or
+  // run it, so drop it rather than fail the whole request.
+  if (provider !== "anthropic" && "web_search" in tools) {
+    const { web_search: _webSearch, ...rest } = tools;
+    tools = rest;
+  }
+
   // ------------------------------------------------------------------
   // Assemble final message list + sanitize
   // ------------------------------------------------------------------
@@ -1063,8 +1092,10 @@ export async function runCanvasAgent(
   // by user-facing purpose, not by underlying function.
   const agentName = orgId ? "canvas-agent" : "chat-agent";
   const tBifrost = Date.now();
+  // Bifrost VKs and gateway routing are Anthropic-only; a non-Anthropic
+  // model preference goes straight to its own provider endpoint.
   const bifrost =
-    primaryWorkspaceId && primaryUserId
+    provider === "anthropic" && primaryWorkspaceId && primaryUserId
       ? await getBifrostForLLM(
           {
             workspaceId: primaryWorkspaceId,
@@ -1081,14 +1112,16 @@ export async function runCanvasAgent(
     console.log("[runCanvasAgent] timing", { stage: "getBifrostForLLM", ms: 0, skipped: "no primaryWorkspaceId/userId", workspaces: workspaceSlugs, orgId: orgId ?? null });
   }
 
-  // Honor the caller's model preference only when it targets the
-  // Anthropic provider (the canvas agent's only supported provider
-  // today). `modelName` is in "provider/name" form; aieo strips the
-  // prefix and uses the remainder as the model id. A non-Anthropic
-  // selection is ignored so we never pair an OpenAI/Google id with the
-  // hardcoded Anthropic provider/key/tools.
+  // Honor the caller's model preference when it targets the resolved
+  // provider (which was itself derived from the same prefix, so any
+  // supported selection with a configured key passes). `modelName` is
+  // in "provider/name" form; aieo strips the known-provider prefix and
+  // uses the remainder as the model id (multi-segment ids like
+  // "openrouter/stealth/ox-alpha" → "stealth/ox-alpha"). A selection
+  // that failed provider resolution above stays undefined here so we
+  // never pair a foreign model id with the fallback Anthropic client.
   const modelOverride =
-    modelName && modelName.startsWith("anthropic/") ? modelName : undefined;
+    modelName && modelName.startsWith(`${provider}/`) ? modelName : undefined;
 
   const model = getModel(
     provider,
