@@ -1680,19 +1680,19 @@ describe("POST /run — standard/reasoning model pair", () => {
     );
   });
 
-  test("omitted pair defaults to standard=claude-sonnet-5 / reasoning=claude-opus-5 (bare) in vars", async () => {
+  test("omitted pair defaults to standard/reasoning defaults (provider-prefixed) in vars", async () => {
     const varsPromise = captureStakworkVarsFromRun();
     const res = await postRun(makeRunRequest({ taskSlug: "task-a", taskTitle: "Task A" }), {
       params: Promise.resolve({ slug: "openlaw" }),
     });
     expect(res.status).toBe(201);
     const vars = await varsPromise;
-    expect(vars.standard_model).toBe("claude-sonnet-5");
-    expect(vars.reasoning_model).toBe("claude-opus-5");
+    expect(vars.standard_model).toBe("anthropic/claude-sonnet-5");
+    expect(vars.reasoning_model).toBe("anthropic/claude-opus-5");
     expect(vars.apiKey).toBe("env-anthropic-key");
   });
 
-  test("explicit same-provider pair is stripped to bare names and apiKey follows the pair provider", async () => {
+  test("explicit same-provider pair is sent provider-prefixed and apiKey follows the pair provider", async () => {
     const varsPromise = captureStakworkVarsFromRun();
     const res = await postRun(
       makeRunRequest({
@@ -1705,8 +1705,9 @@ describe("POST /run — standard/reasoning model pair", () => {
     );
     expect(res.status).toBe(201);
     const vars = await varsPromise;
-    expect(vars.standard_model).toBe("gpt-5.2");
-    expect(vars.reasoning_model).toBe("gpt-5.2-pro");
+    // Full prefixed form — the workflow routes by the provider segment
+    expect(vars.standard_model).toBe("openai/gpt-5.2");
+    expect(vars.reasoning_model).toBe("openai/gpt-5.2-pro");
     // apiKey resolved from the pair provider's env key — not the legacy model's provider
     expect(vars.apiKey).toBe("env-openai-key");
   });
@@ -1756,7 +1757,7 @@ describe("POST /run — standard/reasoning model pair", () => {
     expect(body.error).toMatch(/not supported/i);
   });
 
-  test("requestedStandardModel and requestedReasoningModel are persisted as bare names at creation", async () => {
+  test("requestedStandardModel and requestedReasoningModel are persisted provider-prefixed at creation", async () => {
     const createdRows: Array<{ data: { result: string } }> = [];
     mockDbTransaction.mockImplementation(async (fn: (tx: unknown) => Promise<unknown>) => {
       const tx = {
@@ -1788,7 +1789,7 @@ describe("POST /run — standard/reasoning model pair", () => {
     expect(res.status).toBe(201);
 
     const created = JSON.parse(createdRows[0].data.result) as Record<string, string>;
-    expect(created.requestedStandardModel).toBe("claude-sonnet-5");
-    expect(created.requestedReasoningModel).toBe("claude-opus-4-6");
+    expect(created.requestedStandardModel).toBe("anthropic/claude-sonnet-5");
+    expect(created.requestedReasoningModel).toBe("anthropic/claude-opus-4-6");
   });
 });

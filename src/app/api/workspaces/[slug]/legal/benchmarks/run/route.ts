@@ -352,8 +352,6 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     // Bare model names for storage (no provider prefix)
     const bareModel = bareModelName(model);
     const bareJudgeModel = bareModelName(judgeModel);
-    const bareStandardModel = bareModelName(standardModel);
-    const bareReasoningModel = bareModelName(reasoningModel);
 
     let runnerRun: { id: string };
 
@@ -395,8 +393,10 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
           //  the webhook merge cannot overwrite them).
           requestedModel: bareModel,
           requestedJudgeModel: bareJudgeModel,
-          requestedStandardModel: bareStandardModel,
-          requestedReasoningModel: bareReasoningModel,
+          // Unlike requestedModel/requestedJudgeModel these keep the provider
+          // prefix — the pair can be non-Anthropic, so the provider matters.
+          requestedStandardModel: standardModel,
+          requestedReasoningModel: reasoningModel,
           // Same clobber-proof guarantee: the runner never emits generateJamieChat,
           // so the completion webhook can read it back and trigger the chat.
           ...(generateJamieChat ? { generateJamieChat: true } : {}),
@@ -486,8 +486,11 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
               secret: swarmSecretAlias,
               model: bareModel,
               judge_model: bareJudgeModel,
-              standard_model: bareStandardModel,
-              reasoning_model: bareReasoningModel,
+              // Provider-prefixed (e.g. "anthropic/claude-sonnet-5",
+              // "openrouter/stealth/ox-alpha") — the workflow routes by the
+              // provider segment; only the legacy model/judge_model vars are bare.
+              standard_model: standardModel,
+              reasoning_model: reasoningModel,
               // Tells the Harvey runner to build a report bundle and return its
               // S3 URL as `report_url` on the completion webhook. The workflow
               // side of this handshake is a separate Stakwork change; until it
@@ -509,11 +512,11 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     // Dispatch-boundary log — helps diagnose bad/unconfirmed model ids without fail-close
     if (!dispatchApiKey || !payload.workflow_params.set_var.attributes.vars.model) {
       console.error(
-        `[legal/benchmarks/run] dispatch warning: resolved apiKey is empty or model is blank — model="${bareModel}" judge_model="${bareJudgeModel}" standard_model="${bareStandardModel}" reasoning_model="${bareReasoningModel}"`,
+        `[legal/benchmarks/run] dispatch warning: resolved apiKey is empty or model is blank — model="${bareModel}" judge_model="${bareJudgeModel}" standard_model="${standardModel}" reasoning_model="${reasoningModel}"`,
       );
     }
     console.log(
-      `[legal/benchmarks/run] dispatching model=${bareModel} judge_model=${bareJudgeModel} standard_model=${bareStandardModel} reasoning_model=${bareReasoningModel} provider=${pairProvider} task_title_source=${taskTitleSource} task_title_len=${resolvedTaskTitle.length}`,
+      `[legal/benchmarks/run] dispatching model=${bareModel} judge_model=${bareJudgeModel} standard_model=${standardModel} reasoning_model=${reasoningModel} provider=${pairProvider} task_title_source=${taskTitleSource} task_title_len=${resolvedTaskTitle.length}`,
     );
 
     const stakworkResponse = await fetch(`${optionalEnvVars.STAKWORK_BASE_URL}/projects`, {
