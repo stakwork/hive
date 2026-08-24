@@ -1592,6 +1592,11 @@ enum StakworkRunType {
   LEGAL_BENCHMARK_RECURSION
   LEGAL_BENCHMARK_CNH_INGEST
   LEGAL_BENCHMARK_CONSOLIDATED
+  // Generic benchmark run type — workspace-agnostic, domain-discriminated by
+  // result.taskSlug. LEGAL_BENCHMARK_RUNNER is a SEPARATE enum value and stays
+  // exactly as-is. Migrating legal onto BENCHMARK_RUNNER is deliberately future
+  // work — NOT an alias, NOT in scope. Do not point any legal code path at this.
+  BENCHMARK_RUNNER
 }
 
 enum StakworkRunDecision {
