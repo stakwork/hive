@@ -15,9 +15,24 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import type { HarveyTask } from "@/lib/harvey-lab-tasks";
 import { WORK_TYPE_STYLES } from "@/lib/harvey-lab-tasks";
 import { formatMB } from "@/lib/utils/format";
+import {
+  getModelValue,
+  DEFAULT_STANDARD_MODEL,
+  DEFAULT_REASONING_MODEL,
+  PROVIDER_API_KEY_ENV_VARS,
+  PROVIDER_DISPLAY_LABELS,
+  type LlmModelOption,
+} from "@/lib/ai/models";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -38,7 +53,13 @@ export interface TaskDetailsModalProps {
   onOpenChange: (open: boolean) => void;
   task: HarveyTask;
   slug: string;
-  onRunTask: (options: { generateJamieChat: boolean; generateRunReport: boolean }) => void;
+  onRunTask: (options: {
+    generateJamieChat: boolean;
+    generateRunReport: boolean;
+    /** Provider-prefixed, e.g. "anthropic/claude-sonnet-5". Omitted when the catalog is unavailable. */
+    standardModel?: string;
+    reasoningModel?: string;
+  }) => void;
 }
 
 // ─── Loading skeleton ─────────────────────────────────────────────────────────
@@ -91,6 +112,52 @@ export function TaskDetailsModal({
   const [generateJamieChat, setGenerateJamieChat] = useState(false);
   // The run report bundle, NOT the Jamie chat.
   const [generateRunReport, setGenerateRunReport] = useState(false);
+
+  // ─── Model selection (standard_model / reasoning_model pair) ───────────────
+  // Both models are constrained to one provider so the run route can resolve a
+  // single provider-correct apiKey from the hive env.
+  const [llmModels, setLlmModels] = useState<LlmModelOption[]>([]);
+  const [selectedProvider, setSelectedProvider] = useState<string>("");
+  const [standardModel, setStandardModel] = useState<string>("");
+  const [reasoningModel, setReasoningModel] = useState<string>("");
+
+  useEffect(() => {
+    if (!open || llmModels.length > 0) return;
+    let cancelled = false;
+    fetch("/api/llm-models")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (cancelled || !data?.models) return;
+        // Only providers with a known API key env var can be dispatched
+        const usable = (data.models as LlmModelOption[]).filter(
+          (m) => !!PROVIDER_API_KEY_ENV_VARS[m.provider],
+        );
+        setLlmModels(usable);
+        if (usable.length === 0) return;
+        const provider = usable.some((m) => m.provider === "ANTHROPIC")
+          ? "ANTHROPIC"
+          : usable[0].provider;
+        setSelectedProvider(provider);
+        applyProviderDefaults(usable, provider);
+      })
+      .catch(() => {
+        /* selectors stay hidden; the run route falls back to defaults */
+      });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
+
+  const applyProviderDefaults = (models: LlmModelOption[], provider: string) => {
+    const values = models.filter((m) => m.provider === provider).map(getModelValue);
+    if (values.length === 0) return;
+    setStandardModel(values.includes(DEFAULT_STANDARD_MODEL) ? DEFAULT_STANDARD_MODEL : values[0]);
+    setReasoningModel(values.includes(DEFAULT_REASONING_MODEL) ? DEFAULT_REASONING_MODEL : values[0]);
+  };
+
+  const providers = Array.from(new Set(llmModels.map((m) => m.provider)));
+  const providerModels = llmModels.filter((m) => m.provider === selectedProvider);
 
   useEffect(() => {
     if (!open || !task?.slug) {
@@ -359,6 +426,74 @@ export function TaskDetailsModal({
           </div>
         </ScrollArea>
 
+        {/* Model selection — provider-constrained standard/reasoning pair */}
+        {llmModels.length > 0 && (
+          <div className="border-t px-6 py-3 shrink-0 flex flex-wrap items-center gap-3">
+            <div className="flex flex-col gap-1 min-w-0">
+              <span className="text-xs text-muted-foreground">Provider</span>
+              <Select
+                value={selectedProvider}
+                onValueChange={(provider) => {
+                  setSelectedProvider(provider);
+                  applyProviderDefaults(llmModels, provider);
+                }}
+              >
+                <SelectTrigger
+                  className="h-7 text-xs px-2 w-auto min-w-[120px]"
+                  data-testid="provider-select"
+                >
+                  <SelectValue placeholder="Provider" />
+                </SelectTrigger>
+                <SelectContent>
+                  {providers.map((p) => (
+                    <SelectItem key={p} value={p} className="text-xs">
+                      {PROVIDER_DISPLAY_LABELS[p] ?? p}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="flex flex-col gap-1 min-w-0">
+              <span className="text-xs text-muted-foreground">Standard Model</span>
+              <Select value={standardModel} onValueChange={setStandardModel}>
+                <SelectTrigger
+                  className="h-7 text-xs px-2 w-auto min-w-[160px] max-w-[220px]"
+                  data-testid="standard-model-select"
+                >
+                  <SelectValue placeholder="Select model" />
+                </SelectTrigger>
+                <SelectContent>
+                  {providerModels.map((m) => (
+                    <SelectItem key={m.id} value={getModelValue(m)} className="text-xs">
+                      {m.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="flex flex-col gap-1 min-w-0">
+              <span className="text-xs text-muted-foreground">Reasoning Model</span>
+              <Select value={reasoningModel} onValueChange={setReasoningModel}>
+                <SelectTrigger
+                  className="h-7 text-xs px-2 w-auto min-w-[160px] max-w-[220px]"
+                  data-testid="reasoning-model-select"
+                >
+                  <SelectValue placeholder="Select model" />
+                </SelectTrigger>
+                <SelectContent>
+                  {providerModels.map((m) => (
+                    <SelectItem key={m.id} value={getModelValue(m)} className="text-xs">
+                      {m.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+        )}
+
         <DialogFooter className="border-t px-6 py-4 gap-2 shrink-0">
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Close
@@ -366,7 +501,12 @@ export function TaskDetailsModal({
           <Button
             onClick={() => {
               onOpenChange(false);
-              onRunTask({ generateJamieChat, generateRunReport });
+              onRunTask({
+                generateJamieChat,
+                generateRunReport,
+                ...(standardModel ? { standardModel } : {}),
+                ...(reasoningModel ? { reasoningModel } : {}),
+              });
             }}
           >
             Run Task

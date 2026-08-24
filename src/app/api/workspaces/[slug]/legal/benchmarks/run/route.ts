@@ -9,7 +9,15 @@ import { getJarvisConfigForWorkspace } from "@/lib/helpers/jarvis-config";
 import { fetchHarveyTaskCriteria, ensureHarveyLabEvalNodes } from "@/lib/harvey-lab/eval-nodes";
 import { addNode, addEdge } from "@/services/swarm/api/nodes";
 import { getBifrostForLLM } from "@/services/bifrost/orchestrator";
-import { getApiKeyForModel, isValidModel, DEFAULT_BENCHMARK_MODEL, DEFAULT_JUDGE_MODEL } from "@/lib/ai/models";
+import {
+  getApiKeyForModel,
+  isValidModel,
+  DEFAULT_BENCHMARK_MODEL,
+  DEFAULT_JUDGE_MODEL,
+  DEFAULT_STANDARD_MODEL,
+  DEFAULT_REASONING_MODEL,
+  PROVIDER_API_KEY_ENV_VARS,
+} from "@/lib/ai/models";
 import { getStakworkTokenReference } from "@/lib/vercel/stakwork-token";
 import { WorkflowStatus, StakworkRunType, LlmProvider } from "@prisma/client";
 
@@ -107,6 +115,8 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       taskTitle?: string;
       model?: string;
       judgeModel?: string;
+      standardModel?: string;
+      reasoningModel?: string;
       generateJamieChat?: boolean;
       generateRunReport?: boolean;
     };
@@ -185,6 +195,66 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     if (modelErr) return modelErr;
     const judgeModelErr = await validateModel(judgeModel, "judgeModel");
     if (judgeModelErr) return judgeModelErr;
+
+    // ── standard_model / reasoning_model pair (new workflow contract) ─────────
+    // Both must come from the same provider so the single `apiKey` set_var,
+    // resolved from that provider's hive env credential, is correct for both.
+    const standardModel = body.standardModel ?? DEFAULT_STANDARD_MODEL;
+    const reasoningModel = body.reasoningModel ?? DEFAULT_REASONING_MODEL;
+
+    const validatePairedModel = (m: unknown, label: string): NextResponse | null => {
+      if (typeof m !== "string" || !isValidModel(m) || !m.includes("/")) {
+        return NextResponse.json(
+          { error: `Invalid ${label}: "${String(m)}"` },
+          { status: 400 },
+        );
+      }
+      const provider = m.split("/")[0].toUpperCase();
+      if (!(provider in LlmProvider) || !PROVIDER_API_KEY_ENV_VARS[provider]) {
+        return NextResponse.json(
+          { error: `${label} provider "${provider}" is not supported` },
+          { status: 400 },
+        );
+      }
+      return null;
+    };
+
+    const standardErr = validatePairedModel(standardModel, "standardModel");
+    if (standardErr) return standardErr;
+    const reasoningErr = validatePairedModel(reasoningModel, "reasoningModel");
+    if (reasoningErr) return reasoningErr;
+
+    const pairProvider = standardModel.split("/")[0].toUpperCase();
+    if (pairProvider !== reasoningModel.split("/")[0].toUpperCase()) {
+      return NextResponse.json(
+        { error: "standardModel and reasoningModel must be from the same provider" },
+        { status: 400 },
+      );
+    }
+
+    // DB catalog membership for the pair (mirrors validateModel, provider-aware)
+    {
+      const dbModels = await db.llmModel.findMany({
+        where: {
+          isPublic: true,
+          provider: pairProvider as LlmProvider,
+          OR: [{ dateEnd: null }, { dateEnd: { gt: new Date() } }],
+        },
+        select: { name: true },
+      });
+      const knownNames = dbModels.map((r) => r.name);
+      for (const [value, label] of [
+        [standardModel, "standardModel"],
+        [reasoningModel, "reasoningModel"],
+      ] as const) {
+        if (!knownNames.includes(bareModelName(value))) {
+          return NextResponse.json(
+            { error: `${label} "${value}" is not in the available model catalog` },
+            { status: 400 },
+          );
+        }
+      }
+    }
     // ─────────────────────────────────────────────────────────────────────────
 
     // ── Bifrost credential resolution (after body parsing + validation) ───────
@@ -202,9 +272,19 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     }
 
     const resolvedApiKey = bifrost?.apiKey ?? getApiKeyForModel(model) ?? "";
-    if (!resolvedApiKey) {
+
+    // The dispatched `apiKey` var must be correct for the standard/reasoning
+    // pair, so resolve it from the pair provider's hive env credential first.
+    // Fall back to the legacy (Bifrost/env) resolution only when the pair
+    // shares the legacy model's provider — a cross-provider fallback would
+    // send a key the runner can't use.
+    const pairEnvApiKey = getApiKeyForModel(standardModel);
+    const dispatchApiKey =
+      pairEnvApiKey ??
+      (model.split("/")[0].toUpperCase() === pairProvider ? resolvedApiKey : "");
+    if (!dispatchApiKey) {
       console.warn(
-        `[legal/benchmarks/run] No API key resolved for model "${model}" — dispatching with empty key (runner may use its own credentials)`,
+        `[legal/benchmarks/run] No API key resolved for standardModel "${standardModel}" — dispatching with empty key (runner may use its own credentials)`,
       );
     }
     // ─────────────────────────────────────────────────────────────────────────
@@ -313,6 +393,10 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
           //  the webhook merge cannot overwrite them).
           requestedModel: bareModel,
           requestedJudgeModel: bareJudgeModel,
+          // Unlike requestedModel/requestedJudgeModel these keep the provider
+          // prefix — the pair can be non-Anthropic, so the provider matters.
+          requestedStandardModel: standardModel,
+          requestedReasoningModel: reasoningModel,
           // Same clobber-proof guarantee: the runner never emits generateJamieChat,
           // so the completion webhook can read it back and trigger the chat.
           ...(generateJamieChat ? { generateJamieChat: true } : {}),
@@ -402,12 +486,17 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
               secret: swarmSecretAlias,
               model: bareModel,
               judge_model: bareJudgeModel,
+              // Provider-prefixed (e.g. "anthropic/claude-sonnet-5",
+              // "openrouter/stealth/ox-alpha") — the workflow routes by the
+              // provider segment; only the legacy model/judge_model vars are bare.
+              standard_model: standardModel,
+              reasoning_model: reasoningModel,
               // Tells the Harvey runner to build a report bundle and return its
               // S3 URL as `report_url` on the completion webhook. The workflow
               // side of this handshake is a separate Stakwork change; until it
               // lands, setting this is simply a no-op.
               generate_report: generateRunReport,
-              apiKey: resolvedApiKey,
+              apiKey: dispatchApiKey,
               baseUrl: bifrost?.baseUrl ?? "",
               ...(bifrost && Object.keys(bifrost.headers).length > 0
                 ? { headers: bifrost.headers }
@@ -421,13 +510,13 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     };
 
     // Dispatch-boundary log — helps diagnose bad/unconfirmed model ids without fail-close
-    if (!resolvedApiKey || !payload.workflow_params.set_var.attributes.vars.model) {
+    if (!dispatchApiKey || !payload.workflow_params.set_var.attributes.vars.model) {
       console.error(
-        `[legal/benchmarks/run] dispatch warning: resolved apiKey is empty or model is blank — model="${bareModel}" judge_model="${bareJudgeModel}"`,
+        `[legal/benchmarks/run] dispatch warning: resolved apiKey is empty or model is blank — model="${bareModel}" judge_model="${bareJudgeModel}" standard_model="${standardModel}" reasoning_model="${reasoningModel}"`,
       );
     }
     console.log(
-      `[legal/benchmarks/run] dispatching model=${bareModel} judge_model=${bareJudgeModel} task_title_source=${taskTitleSource} task_title_len=${resolvedTaskTitle.length}`,
+      `[legal/benchmarks/run] dispatching model=${bareModel} judge_model=${bareJudgeModel} standard_model=${standardModel} reasoning_model=${reasoningModel} provider=${pairProvider} task_title_source=${taskTitleSource} task_title_len=${resolvedTaskTitle.length}`,
     );
 
     const stakworkResponse = await fetch(`${optionalEnvVars.STAKWORK_BASE_URL}/projects`, {
