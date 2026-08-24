@@ -4,9 +4,15 @@
  * Pure computation: given a knowledge-graph subgraph rooted at an EvalSet,
  * derives two stopping-condition metrics for the recursion cron:
  *
- *   - `attemptCount`  — total ProposedFix nodes reachable across ALL
+ *   - `attemptCount`  — number of UNIQUE ProposedFix groups reachable across ALL
  *                        EvalTrigger branches (HAS_BASELINE_TRIGGER and every
- *                        HAS_TRIGGER), regardless of accept/reject/scorability.
+ *                        HAS_TRIGGER). Siblings sharing the same eval run
+ *                        (resolved via `reconcileFixGroups`) count as ONE attempt.
+ *                        Regardless of accept/reject/scorability.
+ *
+ *   - `rawFixCount`   — total ProposedFix nodes reachable (pre-dedup, pre-grouping).
+ *                        Used by the cron for a secondary ceiling check compensating
+ *                        for up-to-6× deflation of `attemptCount`.
  *
  *   - `plateauStreak` — length of the trailing run of attempts (sorted
  *                        chronologically, optionally filtered to those
@@ -20,8 +26,10 @@
  *   - Multi-branch walk uses a SINGLE shared `visited` set across all branches
  *     so a node reachable from two different trigger branches is counted once.
  *   - `attemptCount` is NEVER filtered by cutoff — it always reflects full history.
- *   - Unscored attempts count toward `attemptCount` but neither break nor extend
- *     the `plateauStreak`.
+ *   - Unscored attempts count toward `attemptCount`/`rawFixCount` but neither
+ *     break nor extend the `plateauStreak`.
+ *   - `reconcileFixGroups` merges siblings across all branches before the
+ *     dedup pass so the grouped count accurately represents unique eval runs.
  */
 
 import {
@@ -36,12 +44,33 @@ import {
   type EvalTriggerOutput,
   type RawJarvisNode,
 } from "@/lib/harvey-lab/eval-normalizers";
+import {
+  buildFixGroupContext,
+  reconcileFixGroups,
+  pickRepresentativeFix,
+} from "@/lib/harvey-lab/fix-group-key";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 export interface AttemptStats {
-  /** Total ProposedFix nodes reachable across all trigger branches (full history, no cutoff filter). */
+  /**
+   * Number of unique ProposedFix GROUPS reachable across all trigger branches
+   * (full history, no cutoff filter). Siblings sharing the same eval run are
+   * counted as one attempt. Accepts, rejects, and unscored all count.
+   *
+   * Previously documented as "total ProposedFix nodes reachable…" — that was
+   * accurate before concept-fix sibling grouping. With grouping, this reflects
+   * unique eval-run attempts, not raw node counts.
+   */
   attemptCount: number;
+
+  /**
+   * Total ProposedFix nodes reachable before grouping (raw count). Used by
+   * the cron as a secondary ceiling to compensate for up-to-6× deflation of
+   * `attemptCount` when sibling groups are large.
+   */
+  rawFixCount: number;
+
   /**
    * Length of the trailing run of scored attempts (optionally filtered to those
    * at/after opts.cutoff) that don't exceed the running best.
@@ -155,22 +184,30 @@ interface AttemptRecord {
  *
  * A single shared `visited` set is passed to each `walkDerivedFromChain`
  * call so a node that appears in two branches' chains is counted only once.
+ *
+ * After collection, siblings sharing the same eval run are grouped via
+ * `reconcileFixGroups`. Each group contributes ONE AttemptRecord (using the
+ * representative fix's date and the group's merged score resolution).
+ *
+ * Returns `{ records, rawFixCount }` where:
+ *   - `records` are the grouped attempt records (one per unique eval run)
+ *   - `rawFixCount` is the raw pre-grouping ProposedFix node count
  */
 function collectAllAttempts(
   evalSetRefId: string,
   nodeMap: Map<string, SubgraphNode>,
   edges: SubgraphEdge[],
   baselineNTotal: number | undefined,
-): AttemptRecord[] {
-  const records: AttemptRecord[] = [];
+): { records: AttemptRecord[]; rawFixCount: number } {
   const sharedVisited = new Set<string>();
+  const allFixNodes: SubgraphNode[] = [];
 
   // Find the EvalSet node (may be keyed by evalSetRefId or found by type)
   let evalSetNode = nodeMap.get(evalSetRefId);
   if (!evalSetNode || !isNodeType(evalSetNode, "EvalSet")) {
     evalSetNode = [...nodeMap.values()].find((n) => isNodeType(n, "EvalSet"));
   }
-  if (!evalSetNode) return records;
+  if (!evalSetNode) return { records: [], rawFixCount: 0 };
 
   // Collect all trigger edges (both baseline and rerun triggers)
   const triggerEdgeTypes = ["HAS_BASELINE_TRIGGER", "HAS_TRIGGER"];
@@ -191,7 +228,6 @@ function collectAllAttempts(
 
     // Walk each root's DERIVED_FROM chain, sharing the visited set across all roots
     // and across all triggers so a node reachable via multiple paths is counted once.
-    const fixChain: import("@/lib/harvey-lab/hill-climb-series").SubgraphNode[] = [];
     for (const rootFixEdge of rootFixEdges) {
       const branch = walkDerivedFromChain(
         rootFixEdge.target,
@@ -199,24 +235,44 @@ function collectAllAttempts(
         edges,
         sharedVisited,
       );
-      fixChain.push(...branch);
-    }
-
-    for (const fixNode of fixChain) {
-      if (!isNodeType(fixNode, "ProposedFix")) continue;
-      const resolved = resolveActualPassed(fixNode, edges, nodeMap, baselineNTotal);
-      records.push({
-        actualPassed: resolved?.actualPassed ?? null,
-        date: resolved?.date ?? (
-          fixNode.date_added_to_graph != null
-            ? String(fixNode.date_added_to_graph)
-            : undefined
-        ),
-      });
+      for (const n of branch) {
+        if (isNodeType(n, "ProposedFix")) {
+          allFixNodes.push(n);
+        }
+      }
     }
   }
 
-  return records;
+  const rawFixCount = allFixNodes.length;
+
+  if (rawFixCount === 0) return { records: [], rawFixCount: 0 };
+
+  // Group siblings via reconcileFixGroups using the full subgraph context.
+  // Build context from all nodes/edges (not just the walked fixes) so the
+  // PRODUCED_BY / HAS_PROPOSED_FIX edges are visible for tier resolution.
+  const allNodes = [...nodeMap.values()];
+  const ctx = buildFixGroupContext(allNodes, edges);
+  const groups = reconcileFixGroups(allFixNodes, ctx);
+
+  // One AttemptRecord per group
+  const records: AttemptRecord[] = [];
+
+  for (const [, siblings] of groups) {
+    const repFix = pickRepresentativeFix(siblings);
+    const ts = repFix.date_added_to_graph != null
+      ? String(repFix.date_added_to_graph)
+      : undefined;
+
+    // Resolve score for the representative fix
+    const resolved = resolveActualPassed(repFix, edges, nodeMap, baselineNTotal);
+
+    records.push({
+      actualPassed: resolved?.actualPassed ?? null,
+      date: resolved?.date ?? ts,
+    });
+  }
+
+  return { records, rawFixCount };
 }
 
 // ── Plateau streak computation ─────────────────────────────────────────────────
@@ -265,17 +321,18 @@ function computePlateauStreak(
 // ── Main export ────────────────────────────────────────────────────────────────
 
 /**
- * Compute attempt count and plateau streak for an EvalSet from its subgraph.
+ * Compute attempt count, raw fix count, and plateau streak for an EvalSet from its subgraph.
  *
  * @param subgraph      - The knowledge-graph subgraph returned by kgGetSubgraph
  * @param evalSetRefId  - ref_id of the EvalSet root node
  * @param opts.cutoff   - When provided, only attempts at/after this date
  *                        participate in plateau-streak computation.
- *                        `attemptCount` is NEVER filtered by cutoff.
+ *                        `attemptCount` and `rawFixCount` are NEVER filtered by cutoff.
  *
  * Definitions:
- *   `attemptCount`  — every ProposedFix reachable across all trigger branches
- *                     (accepts, rejects, unscored — all count)
+ *   `attemptCount`  — every unique ProposedFix GROUP reachable across all trigger
+ *                     branches; siblings sharing an eval run count as one
+ *   `rawFixCount`   — total ProposedFix nodes before grouping (pre-dedup)
  *   `plateauStreak` — trailing count of scored attempts (post-cutoff when set)
  *                     that don't beat the running best; unscored attempts are
  *                     transparent (don't break or extend the streak)
@@ -324,10 +381,12 @@ export function computeAttemptStats(
     }
   }
 
-  // Collect all attempt records across all branches
-  const allAttempts = collectAllAttempts(evalSetRefId, nodeMap, edges, baselineNTotal);
+  // Collect all attempt records across all branches, grouped by sibling set
+  const { records: allAttempts, rawFixCount } = collectAllAttempts(
+    evalSetRefId, nodeMap, edges, baselineNTotal,
+  );
 
-  // attemptCount = all records, never filtered by cutoff
+  // attemptCount = grouped records count (unique eval runs), never filtered by cutoff
   const attemptCount = allAttempts.length;
 
   // Sort chronologically for plateau streak computation
@@ -350,7 +409,7 @@ export function computeAttemptStats(
     date: s.date_added_to_graph,
   }));
 
-  // Apply cutoff filter for plateau streak (NOT for attemptCount)
+  // Apply cutoff filter for plateau streak (NOT for attemptCount or rawFixCount)
   const cutoff = opts?.cutoff;
   const streakCandidates = cutoff
     ? sortedPassed.filter((a) => {
@@ -370,5 +429,5 @@ export function computeAttemptStats(
   const initialBest = baselineNPassed ?? 0;
   const plateauStreak = computePlateauStreak(scoredStreakCandidates, initialBest);
 
-  return { attemptCount, plateauStreak };
+  return { attemptCount, rawFixCount, plateauStreak };
 }

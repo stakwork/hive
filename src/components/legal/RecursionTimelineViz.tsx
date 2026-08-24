@@ -173,7 +173,9 @@ function VerticalLine({
 // ── Column renderer ───────────────────────────────────────────────────────────
 
 function RunColumnGroup({ col }: { col: RunColumn }) {
-  const { runIndex, trigger, output, proposedFix, scorePct, scoreDelta } = col;
+  const { runIndex, trigger, output, proposedFix, siblingFixes, scorePct, scoreDelta } = col;
+  // siblingFixes holds the non-representative siblings; +1 for the representative itself
+  const siblingCount = (siblingFixes?.length ?? 0) + (proposedFix ? 1 : 0);
   const cx = nodeXCenter(runIndex);
   const lx = nodeXLeft(runIndex);
 

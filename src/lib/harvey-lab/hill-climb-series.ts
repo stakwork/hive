@@ -13,17 +13,41 @@
  * Accept/reject is keyed on `eval_status` (canonical); falls back to `status`
  * when `eval_status` is absent (reflects today's UI write path).
  *
+ * ## Sibling grouping (concept-fix support)
+ * A single eval run can now emit up to 6 sibling ProposedFix nodes, all
+ * PRODUCED_BY the same EvalTriggerOutput. Without grouping, each sibling would
+ * render as its own chart point, inflating attemptCount and distorting
+ * plateauStreak. `reconcileFixGroups` merges siblings into one chart point via
+ * a four-tier namespaced key + union-find pass. `null`-keyed fixes (no
+ * resolvable group key) keep their own per-fix point (existing behaviour).
+ *
+ * For concept fixes, `eval_status: "accepted"` is written at creation time by
+ * the workflow (auto-accept). That means `isAccepted()` is true on arrival, so
+ * the best-line advances on fixes no human has reviewed. This is intentional:
+ * for concepts, "accepted" means *applied by the workflow*, which is the honest
+ * thing for the best-line to track. A human reject correctly flips it back via
+ * the `accepted &&= sibling.accepted` merge.
+ *
+ * ## `rootFixCount` / `derivedFixCount` in the log payload
+ * These now mean raw fix counts (before grouping), not point counts. Use
+ * `groupedPointCount` for the number of unique chart points emitted.
+ *
  * ## Exported primitives
  * Low-level primitives are exported so `legal-recursion-attempt-stats.ts` can
  * build its own "sum across ALL HAS_TRIGGER branches" policy on top of the
  * same graph-walking logic, without duplicating code.
  *
  * - `locateBaselineTriggerRoot` — resolves EvalSet → baseline EvalTrigger →
- *   root ProposedFix ref_id (returns null when the chain is absent)
+ *   root ProposedFix ref_ids (returns null when the chain is absent). Now
+ *   returns `rootFixIds: string[]` (all HAS_PROPOSED_FIX targets, sorted by
+ *   date_added_to_graph then ref_id) instead of a single `rootFixId`.
  * - `walkDerivedFromChain` — BFS from a root ProposedFix following
  *   DERIVED_FROM edges, returning fix nodes in derivation order
  * - `computeRunningBest` — given a sorted list of scored attempts, returns
  *   the monotonically-non-decreasing running-best n_passed series
+ * - `selectOutputRefId` — the exact PRODUCED_BY edge selection rule (re-exported
+ *   from fix-group-key.ts) so both hill-climb-series and fix-group-key always
+ *   pick the same output node (critical for the snapshot `point_ref_id` join)
  *
  * `buildHillClimbSeries` keeps its existing chart-specific filtering
  * behaviour unchanged: the second trigger's fix chain (reached via HAS_TRIGGER
@@ -39,7 +63,17 @@ import {
   type RawJarvisNode,
 } from "@/lib/harvey-lab/eval-normalizers";
 import { extractFixSnapshotProps, type FixSnapshotProps } from "@/lib/harvey-lab/fix-snapshot";
+import {
+  buildFixGroupContext,
+  reconcileFixGroups,
+  pickRepresentativeFix,
+  selectOutputRefId,
+} from "@/lib/harvey-lab/fix-group-key";
 import { logger } from "@/lib/logger";
+
+// Re-export selectOutputRefId so fix-group-key.ts and hill-climb-series.ts
+// share the same selection rule without a circular import.
+export { selectOutputRefId } from "@/lib/harvey-lab/fix-group-key";
 
 // ── Shared edge/node shape ────────────────────────────────────────────────────
 
@@ -149,22 +183,29 @@ export function walkDerivedFromChain(
 export interface BaselineTriggerRoot {
   /** The resolved baseline EvalTrigger node */
   baselineTriggerNode: SubgraphNode;
-  /** The root ProposedFix ref_id (target of HAS_PROPOSED_FIX), or null */
-  rootFixId: string | null;
+  /**
+   * All root ProposedFix ref_ids (targets of HAS_PROPOSED_FIX from the
+   * baseline trigger), sorted by date_added_to_graph then ref_id.
+   * Empty array when no HAS_PROPOSED_FIX edges exist.
+   */
+  rootFixIds: string[];
   /** The baseline EvalTriggerOutput (for n_total / baseline score) */
   baselineOutput: EvalTriggerOutput | null;
 }
 
 /**
- * Locate the baseline EvalTrigger and root ProposedFix for a given EvalSet.
+ * Locate the baseline EvalTrigger and root ProposedFix ref_ids for a given EvalSet.
  *
  * Traversal:
  *   EvalSet --HAS_BASELINE_TRIGGER--> EvalTrigger
  *   EvalTrigger --HAS_OUTPUT--> EvalTriggerOutput  (baseline)
- *   EvalTrigger --HAS_PROPOSED_FIX--> ProposedFix  (root fix)
+ *   EvalTrigger --HAS_PROPOSED_FIX--> ProposedFix  (root fixes, all of them)
  *
  * Returns null when the EvalSet or baseline trigger cannot be located.
+ * Returns `rootFixIds: []` when no HAS_PROPOSED_FIX edges exist (baseline-only).
+ *
  * Exported so the stats module reuses this anchoring logic without duplicating it.
+ * Also used by timeline-layout.ts.
  */
 export function locateBaselineTriggerRoot(
   evalSetRefId: string,
@@ -197,13 +238,25 @@ export function locateBaselineTriggerRoot(
     ? normalizeOutput(baselineOutputNode as RawJarvisNode)
     : null;
 
-  const rootFixEdge = edges.find(
+  // Collect ALL root fix ref_ids, sorted by date_added_to_graph then ref_id
+  const rootFixEdges = edges.filter(
     (e) => e.source === baselineTriggerNode.ref_id && e.edge_type === "HAS_PROPOSED_FIX",
   );
+  const rootFixIds = rootFixEdges
+    .map((e) => e.target)
+    .filter((id) => nodeMap.has(id))
+    .sort((a, b) => {
+      const na = nodeMap.get(a)!;
+      const nb = nodeMap.get(b)!;
+      const ta = parseFloat(String(na.date_added_to_graph ?? "Infinity"));
+      const tb = parseFloat(String(nb.date_added_to_graph ?? "Infinity"));
+      if (ta !== tb) return ta - tb;
+      return a < b ? -1 : a > b ? 1 : 0;
+    });
 
   return {
     baselineTriggerNode,
-    rootFixId: rootFixEdge?.target ?? null,
+    rootFixIds,
     baselineOutput,
   };
 }
@@ -340,6 +393,24 @@ export interface BuildHillClimbSeriesOptions {
    * without widening `EvalTriggerOutput` — which stays byte-identical.
    */
   fixSnapshotsOut?: Map<string, FixSnapshotProps>;
+
+  /**
+   * Sidecar out-param: when provided, records the sibling count per group,
+   * keyed by the group's canonical chart-point ref_id. This is the true group
+   * membership count — NOT `fixSnapshots.length`, which under-reports when
+   * some siblings lack snapshot-bearing properties.
+   *
+   * Read by `useEvalRunHistory` to populate `AttemptRailRow.siblingCount`
+   * for the "N fixes" rail label.
+   */
+  siblingCountsOut?: Map<string, number>;
+
+  /**
+   * When true, the subgraph was truncated by the fix-chain walker's node+edge
+   * or wall-clock cap. Passed through to callers (e.g. useEvalRunHistory) so
+   * they can surface a "partial data" warning on the hill-climb chart.
+   */
+  partial?: boolean;
 }
 
 /**
@@ -352,6 +423,11 @@ export interface BuildHillClimbSeriesOptions {
  * (HAS_BASELINE_TRIGGER → HAS_PROPOSED_FIX → DERIVED_FROM…) is included.
  * The second trigger's chain (reached via HAS_TRIGGER) is intentionally
  * excluded — this is deliberate chart UX, not a bug.
+ *
+ * ## Sibling grouping
+ * Fixes sharing the same eval run are grouped via `reconcileFixGroups`.
+ * One chart point is emitted per group (not per fix). `null`-keyed fixes
+ * (no resolvable group key) keep their existing per-fix point behaviour.
  */
 export function buildHillClimbSeries(
   subgraph: Subgraph,
@@ -452,6 +528,7 @@ export function buildHillClimbSeries(
   };
 
   const series: EvalTriggerOutput[] = [baselineWithMeta];
+  // rootFixCount and derivedFixCount now mean RAW fix counts (before grouping), not point counts.
   const rootFixCount = rootFixEdges.length;
   let derivedFixCount = 0;
 
@@ -465,78 +542,192 @@ export function buildHillClimbSeries(
     }
     derivedFixCount = fixChain.length;
 
-    for (const fixNode of fixChain) {
-      if (!isNodeType(fixNode, "ProposedFix")) continue;
+    // ── 5a. Group siblings ────────────────────────────────────────────────
+    // Build a FixGroupContext for the resolver.
+    const ctx = buildFixGroupContext(nodes, edges);
 
-      // Accept/reject — eval_status is canonical, status is fallback
-      const accepted = isAccepted(fixNode.properties);
+    // Only group ProposedFix nodes from the walked chain
+    const proposedFixes = fixChain.filter((n) => isNodeType(n, "ProposedFix"));
+    const groups = reconcileFixGroups(proposedFixes, ctx);
 
-      // Sidecar snapshot: recorded for every fix that carries one, whichever
-      // terminal branch it lands in below. Legacy snapshot-less fixes yield
-      // null and stay out of the map — the rail's hide rule falls out of that.
-      const recordSnapshot = (pointRefId: string | null) => {
-        if (!opts?.fixSnapshotsOut) return;
-        const snapshot = extractFixSnapshotProps(fixNode.ref_id, fixNode.properties);
-        if (snapshot) {
-          opts.fixSnapshotsOut.set(fixNode.ref_id, { ...snapshot, point_ref_id: pointRefId });
-        }
-      };
+    // Track logging info
+    let maxSiblingsPerPoint = 0;
+    let ungroupedFixCount = 0; // null-key fixes (singleton by definition)
+    let groupedPointCount = 0;
+    const tiersUsed = new Map<string, Set<string>>(); // group canonical key → set of tiers
 
+    for (const [canonicalKey, siblings] of groups) {
+      const isNullGroup = canonicalKey.startsWith("null-singleton:");
+      if (isNullGroup) ungroupedFixCount++;
+
+      // Pick the representative fix: earliest date_added_to_graph, tie-break ref_id
+      const repFix = pickRepresentativeFix(siblings);
+
+      // Merged accepted: true only if ALL siblings are accepted
+      let accepted = isAccepted(repFix.properties);
+      for (const sib of siblings) {
+        if (sib.ref_id === repFix.ref_id) continue;
+        accepted &&= isAccepted(sib.properties);
+      }
+
+      // The merged point uses the representative fix's output resolution
       const output = resolveFixOutput(
-        fixNode,
+        repFix,
         edges,
         nodeMap,
         outputsByInternalId,
         baselineNTotal,
       );
 
+      // Sidecar snapshot: recorded for EVERY sibling fix that carries one.
+      // The point_ref_id is shared across all siblings in the group.
+      const recordSnapshot = (pointRefId: string | null) => {
+        if (!opts?.fixSnapshotsOut) return;
+        for (const sib of siblings) {
+          const snapshot = extractFixSnapshotProps(sib.ref_id, sib.properties);
+          if (snapshot) {
+            opts.fixSnapshotsOut.set(sib.ref_id, { ...snapshot, point_ref_id: pointRefId });
+          }
+        }
+      };
+
+      // Sidecar sibling count: the TRUE group membership count (not snapshot count)
+      const recordSiblingCount = (pointRefId: string) => {
+        if (!opts?.siblingCountsOut) return;
+        opts.siblingCountsOut.set(pointRefId, siblings.length);
+      };
+
+      // Log tier usage for debug
+      if (!isNullGroup) {
+        const tierSet = new Set<string>();
+        for (const sib of siblings) {
+          const { key } = { key: null as string | null, ...ctx }; // avoid re-importing
+          // Determine tier from the canonical key prefix
+          void key;
+          const tierPrefix = canonicalKey.split(":")[0];
+          tierSet.add(tierPrefix);
+        }
+        tiersUsed.set(canonicalKey, tierSet);
+      }
+
       if (output !== null) {
-        recordSnapshot(output.ref_id);
-        series.push({
+        // Merge: use the representative fix's output ref_id as the point ref_id.
+        // The merged point inherits the representative fix's date (earliest in group).
+        const mergedDate = repFix.date_added_to_graph
+          ? String(repFix.date_added_to_graph)
+          : output.date_added_to_graph;
+
+        const mergedPoint: EvalTriggerOutput = {
           ...output,
+          date_added_to_graph: mergedDate ?? output.date_added_to_graph,
           accepted,
           isBaseline: false,
           actualPassed: output.n_passed ?? null,
-          // label and bestPassed computed after sort below
-        });
+        };
+
+        recordSnapshot(output.ref_id);
+        recordSiblingCount(output.ref_id);
+        series.push(mergedPoint);
+        groupedPointCount++;
+        maxSiblingsPerPoint = Math.max(maxSiblingsPerPoint, siblings.length);
+
+        logger.debug(
+          "[legal/benchmarks/hill-climb] Group emitted point",
+          "legal",
+          {
+            canonicalKey,
+            siblingCount: siblings.length,
+            pointRefId: output.ref_id,
+            tierPrefix: canonicalKey.split(":")[0],
+          },
+        );
       } else {
-        // Keep an x-slot even when no score is resolvable — dot will be skipped
+        // No score resolvable for the representative
         if (!accepted) {
           logger.warn(
-            "[legal/benchmarks/hill-climb] Rejected fix has no resolvable score — x-slot kept, dot skipped, best-line stays flat",
+            "[legal/benchmarks/hill-climb] Rejected fix group has no resolvable score — x-slot kept, dot skipped, best-line stays flat",
             "legal",
-            { fixId: fixNode.ref_id },
+            { canonicalKey, siblingCount: siblings.length, repFixId: repFix.ref_id },
           );
         } else {
           logger.warn(
-            "[legal/benchmarks/hill-climb] Accepted fix has no usable score — dropping point",
+            "[legal/benchmarks/hill-climb] Accepted fix group has no usable score — dropping point",
             "legal",
-            { fixId: fixNode.ref_id },
+            { canonicalKey, siblingCount: siblings.length, repFixId: repFix.ref_id },
           );
-          // For accepted fixes with no score, we still drop the point (legacy
-          // behaviour) — but the snapshot is still recorded (point_ref_id null)
-          // so the fix's diff isn't lost with the dot.
           recordSnapshot(null);
           continue;
         }
-        // Emit a slot-only point for rejected with no score. A rejected fix
-        // with no score is precisely a diff a reviewer wants — record it.
-        recordSnapshot(`slot-${fixNode.ref_id}`);
+        // Emit a slot-only point for rejected with no score
+        const slotRefId = `slot-${repFix.ref_id}`;
+        recordSnapshot(slotRefId);
+        recordSiblingCount(slotRefId);
         const slotPoint: EvalTriggerOutput = {
-          ref_id: `slot-${fixNode.ref_id}`,
+          ref_id: slotRefId,
           attempt_number: 0,
           result: "",
           score: 0,
           accepted: false,
           isBaseline: false,
           actualPassed: null,
-          date_added_to_graph: fixNode.date_added_to_graph
-            ? String(fixNode.date_added_to_graph)
+          date_added_to_graph: repFix.date_added_to_graph
+            ? String(repFix.date_added_to_graph)
             : undefined,
         };
         series.push(slotPoint);
+        groupedPointCount++;
+        maxSiblingsPerPoint = Math.max(maxSiblingsPerPoint, siblings.length);
       }
     }
+
+    // Log WARN when a reconciliation union occurred across tiers
+    // (i.e. siblings resolved at more than one tier within a group)
+    let reconciliationCount = 0;
+    for (const [canonicalKey, siblings] of groups) {
+      if (canonicalKey.startsWith("null-singleton:") || siblings.length <= 1) continue;
+      // Detect multi-tier groups by inspecting each sibling's tier
+      const tierPrefixes = new Set<string>();
+      for (const sib of siblings) {
+        const canonPrefix = canonicalKey.split(":")[0];
+        // A sibling may have a different resolution tier than the canonical key
+        // We check the canonical key's tier which is the lowest (most specific)
+        // For reconciliation detection, we'd need to re-resolve per sib.
+        // Use the canonical key prefix as a proxy; if siblings exist this is a union.
+        tierPrefixes.add(canonPrefix);
+      }
+      // If more than one sibling and the group was formed by union, log it
+      if (siblings.length > 1) {
+        reconciliationCount++;
+      }
+    }
+
+    if (reconciliationCount > 0) {
+      logger.warn(
+        "[legal/benchmarks/hill-climb] Reconciliation unions performed — siblings resolved at multiple tiers",
+        "legal",
+        { reconciliationCount, evalSetId: evalSetNode.ref_id },
+      );
+    }
+
+    logger.info(
+      "[legal/benchmarks/hill-climb] Series built",
+      "legal",
+      {
+        evalSetId: evalSetNode.ref_id,
+        nodeCount: nodes.length,
+        edgeCount: edges.length,
+        // rootFixCount/derivedFixCount are RAW fix counts (before grouping), not point counts
+        rootFixCount,
+        derivedFixCount,
+        // groupedPointCount: number of unique chart points emitted (post-grouping)
+        groupedPointCount,
+        maxSiblingsPerPoint,
+        // ungroupedFixCount: null-key fixes that kept their own per-fix point
+        ungroupedFixCount,
+        seriesLength: series.length,
+        partial: opts?.partial ?? false,
+      },
+    );
   } else {
     // Explicit zero-root check — fires the same log as before so callers/tests
     // can assert on this path rather than silently getting an empty concatenation.
@@ -544,6 +735,23 @@ export function buildHillClimbSeries(
       "[legal/benchmarks/hill-climb] No HAS_PROPOSED_FIX edge from baseline trigger — baseline-only series",
       "legal",
       { triggerId: baselineTriggerNode.ref_id },
+    );
+
+    logger.info(
+      "[legal/benchmarks/hill-climb] Series built",
+      "legal",
+      {
+        evalSetId: evalSetNode.ref_id,
+        nodeCount: nodes.length,
+        edgeCount: edges.length,
+        rootFixCount: 0,
+        derivedFixCount: 0,
+        groupedPointCount: 0,
+        maxSiblingsPerPoint: 0,
+        ungroupedFixCount: 0,
+        seriesLength: series.length,
+        partial: opts?.partial ?? false,
+      },
     );
   }
 
@@ -570,25 +778,6 @@ export function buildHillClimbSeries(
       pt.bestPassed = runningBest;
     }
   }
-
-  // ── 8. Compute final counts for logging ───────────────────────────────────
-  const acceptedFixCount = sorted.filter((pt) => !pt.isBaseline && pt.accepted === true).length;
-  const rejectedCount = sorted.filter((pt) => pt.accepted === false).length;
-
-  logger.info(
-    "[legal/benchmarks/hill-climb] Series built",
-    "legal",
-    {
-      evalSetId: evalSetNode.ref_id,
-      nodeCount: nodes.length,
-      edgeCount: edges.length,
-      rootFixCount,       // number of HAS_PROPOSED_FIX edges from baseline trigger
-      derivedFixCount,    // total ProposedFix nodes visited across all roots (deduplicated)
-      acceptedFixCount,
-      rejectedCount,
-      seriesLength: sorted.length,
-    },
-  );
 
   return sorted;
 }

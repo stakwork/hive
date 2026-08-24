@@ -396,3 +396,96 @@ describe("buildTimelineLayout — recursion fixture", () => {
     }
   });
 });
+
+// ── siblingFixes field ────────────────────────────────────────────────────────
+
+describe("buildTimelineLayout — siblingFixes field", () => {
+  it("baseline column (col 0) always has siblingFixes: []", () => {
+    const es = "es-1";
+    const tr = "tr-1";
+    const out = "out-1";
+    const result = buildTimelineLayout(
+      [
+        { ref_id: es, node_type: "EvalSet", properties: {} },
+        { ref_id: tr, node_type: "EvalTrigger", properties: {} },
+        { ref_id: out, node_type: "EvalTriggerOutput", date_added_to_graph: "1700002000",
+          properties: { n_passed: 50, n_total: 100, result: "pass", score: 0.5 } },
+      ],
+      [
+        { source: es, target: tr, edge_type: "HAS_BASELINE_TRIGGER" },
+        { source: tr, target: out, edge_type: "HAS_OUTPUT" },
+      ],
+    );
+    expect(result.columns[0].siblingFixes).toEqual([]);
+  });
+
+  it("singleton fix column has siblingFixes: [] (no siblings to attach)", () => {
+    const es = "es-2";
+    const tr = "tr-2";
+    const out0 = "out-base";
+    const fix1 = "fix-1";
+    const out1 = "out-fix-1";
+    const result = buildTimelineLayout(
+      [
+        { ref_id: es, node_type: "EvalSet", properties: {} },
+        { ref_id: tr, node_type: "EvalTrigger", properties: {} },
+        { ref_id: out0, node_type: "EvalTriggerOutput", date_added_to_graph: "1700001000",
+          properties: { n_passed: 50, n_total: 100, result: "pass", score: 0.5 } },
+        { ref_id: fix1, node_type: "ProposedFix", date_added_to_graph: "1700002000",
+          properties: { eval_status: "accepted" } },
+        { ref_id: out1, node_type: "EvalTriggerOutput", date_added_to_graph: "1700003000",
+          properties: { n_passed: 60, n_total: 100, result: "pass", score: 0.6 } },
+      ],
+      [
+        { source: es, target: tr, edge_type: "HAS_BASELINE_TRIGGER" },
+        { source: tr, target: out0, edge_type: "HAS_OUTPUT" },
+        { source: tr, target: fix1, edge_type: "HAS_PROPOSED_FIX" },
+        { source: fix1, target: out1, edge_type: "PRODUCED_BY" },
+      ],
+    );
+    expect(result.columns).toHaveLength(2);
+    // Singleton fix: representative is fix1, siblingFixes is empty (no siblings)
+    expect(result.columns[1].proposedFix?.ref_id).toBe(fix1);
+    expect(result.columns[1].siblingFixes).toEqual([]);
+  });
+
+  it("two fixes sharing one PRODUCED_BY output → 1 column with siblingFixes.length === 1", () => {
+    // 2 fixes both PRODUCED_BY the same output → merged into 1 group
+    // proposedFix = representative (earliest date), siblingFixes = [the other one]
+    const es = "es-sibling";
+    const tr = "tr-sibling";
+    const out0 = "out-base-s";
+    const sharedOut = "out-shared";
+    const fix1 = "fix-s1"; // earlier timestamp
+    const fix2 = "fix-s2"; // later timestamp
+    const result = buildTimelineLayout(
+      [
+        { ref_id: es, node_type: "EvalSet", properties: {} },
+        { ref_id: tr, node_type: "EvalTrigger", properties: {} },
+        { ref_id: out0, node_type: "EvalTriggerOutput", date_added_to_graph: "1700001000",
+          properties: { n_passed: 50, n_total: 100, result: "pass", score: 0.5 } },
+        { ref_id: fix1, node_type: "ProposedFix", date_added_to_graph: "1700002000",
+          properties: { eval_status: "accepted" } },
+        { ref_id: fix2, node_type: "ProposedFix", date_added_to_graph: "1700003000",
+          properties: { eval_status: "accepted" } },
+        { ref_id: sharedOut, node_type: "EvalTriggerOutput", date_added_to_graph: "1700004000",
+          properties: { n_passed: 60, n_total: 100, result: "pass", score: 0.6 } },
+      ],
+      [
+        { source: es, target: tr, edge_type: "HAS_BASELINE_TRIGGER" },
+        { source: tr, target: out0, edge_type: "HAS_OUTPUT" },
+        { source: tr, target: fix1, edge_type: "HAS_PROPOSED_FIX" },
+        { source: tr, target: fix2, edge_type: "HAS_PROPOSED_FIX" },
+        { source: fix1, target: sharedOut, edge_type: "PRODUCED_BY" },
+        { source: fix2, target: sharedOut, edge_type: "PRODUCED_BY" },
+      ],
+    );
+    // Both fixes resolve to out:sharedOut → merged into 1 column
+    expect(result.columns).toHaveLength(2); // baseline + 1 merged group
+    const fixCol = result.columns[1];
+    // Representative is fix1 (earlier date), sibling is fix2
+    expect(fixCol.proposedFix?.ref_id).toBe(fix1);
+    expect(fixCol.siblingFixes).toHaveLength(1);
+    expect(fixCol.siblingFixes[0].ref_id).toBe(fix2);
+  });
+});
