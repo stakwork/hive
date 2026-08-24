@@ -304,7 +304,7 @@ describe("TaskDetailsModal — DOCX editor link", () => {
 describe("TaskDetailsModal — model pair selection", () => {
   const MOCK_MODELS = [
     { id: "m1", name: "claude-sonnet-5", provider: "ANTHROPIC", providerLabel: null, isPlanDefault: false, isTaskDefault: false },
-    { id: "m2", name: "claude-opus-4-6", provider: "ANTHROPIC", providerLabel: null, isPlanDefault: false, isTaskDefault: false },
+    { id: "m2", name: "claude-opus-5", provider: "ANTHROPIC", providerLabel: null, isPlanDefault: false, isTaskDefault: false },
     { id: "m3", name: "gpt-5.2", provider: "OPENAI", providerLabel: null, isPlanDefault: false, isTaskDefault: false },
     { id: "m4", name: "custom-x", provider: "OTHER", providerLabel: "Acme", isPlanDefault: false, isTaskDefault: false },
   ];
@@ -358,7 +358,7 @@ describe("TaskDetailsModal — model pair selection", () => {
       const roots = screen.getAllByTestId("select-root");
       expect(roots[0]).toHaveAttribute("data-value", "ANTHROPIC");
       expect(roots[1]).toHaveAttribute("data-value", "anthropic/claude-sonnet-5");
-      expect(roots[2]).toHaveAttribute("data-value", "anthropic/claude-opus-4-6");
+      expect(roots[2]).toHaveAttribute("data-value", "anthropic/claude-opus-5");
     });
   });
 
@@ -419,7 +419,7 @@ describe("TaskDetailsModal — model pair selection", () => {
       generateJamieChat: false,
       generateRunReport: false,
       standardModel: "anthropic/claude-sonnet-5",
-      reasoningModel: "anthropic/claude-opus-4-6",
+      reasoningModel: "anthropic/claude-opus-5",
     });
   });
 

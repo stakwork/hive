@@ -96,7 +96,7 @@ vi.mock("@/lib/ai/models", () => ({
   DEFAULT_BENCHMARK_MODEL: "anthropic/claude-sonnet-5",
   DEFAULT_JUDGE_MODEL: "anthropic/claude-sonnet-4-6",
   DEFAULT_STANDARD_MODEL: "anthropic/claude-sonnet-5",
-  DEFAULT_REASONING_MODEL: "anthropic/claude-opus-4-6",
+  DEFAULT_REASONING_MODEL: "anthropic/claude-opus-5",
   PROVIDER_API_KEY_ENV_VARS: {
     ANTHROPIC: "ANTHROPIC_API_KEY",
     OPENAI: "OPENAI_API_KEY",
@@ -218,6 +218,7 @@ beforeEach(() => {
     { name: "claude-sonnet-5" },
     { name: "claude-sonnet-4-6" },
     { name: "claude-opus-4-6" },
+    { name: "claude-opus-5" },
     { name: "claude-haiku-4-5" },
   ]);
 
@@ -1236,6 +1237,7 @@ describe("POST /run — model & judge model selection", () => {
       { name: "claude-sonnet-5" },
       { name: "claude-sonnet-4-6" },
       { name: "claude-opus-4-6" },
+      { name: "claude-opus-5" },
       { name: "claude-haiku-4-5" },
     ]);
   });
@@ -1595,6 +1597,7 @@ describe("POST /run — requestedModel and requestedJudgeModel survive webhook m
       { name: "claude-sonnet-5" },
       { name: "claude-sonnet-4-6" },
       { name: "claude-opus-4-6" },
+      { name: "claude-opus-5" },
     ]);
 
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
@@ -1666,6 +1669,7 @@ describe("POST /run — standard/reasoning model pair", () => {
       { name: "claude-sonnet-5" },
       { name: "claude-sonnet-4-6" },
       { name: "claude-opus-4-6" },
+      { name: "claude-opus-5" },
       { name: "claude-haiku-4-5" },
       { name: "gpt-5.2" },
       { name: "gpt-5.2-pro" },
@@ -1676,7 +1680,7 @@ describe("POST /run — standard/reasoning model pair", () => {
     );
   });
 
-  test("omitted pair defaults to standard=claude-sonnet-5 / reasoning=claude-opus-4-6 (bare) in vars", async () => {
+  test("omitted pair defaults to standard=claude-sonnet-5 / reasoning=claude-opus-5 (bare) in vars", async () => {
     const varsPromise = captureStakworkVarsFromRun();
     const res = await postRun(makeRunRequest({ taskSlug: "task-a", taskTitle: "Task A" }), {
       params: Promise.resolve({ slug: "openlaw" }),
@@ -1684,7 +1688,7 @@ describe("POST /run — standard/reasoning model pair", () => {
     expect(res.status).toBe(201);
     const vars = await varsPromise;
     expect(vars.standard_model).toBe("claude-sonnet-5");
-    expect(vars.reasoning_model).toBe("claude-opus-4-6");
+    expect(vars.reasoning_model).toBe("claude-opus-5");
     expect(vars.apiKey).toBe("env-anthropic-key");
   });
 

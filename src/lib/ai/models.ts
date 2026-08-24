@@ -21,7 +21,7 @@ export const DEFAULT_JUDGE_MODEL = "anthropic/claude-sonnet-4-6";
  * Both must share a provider so a single `apiKey` env credential covers the run.
  */
 export const DEFAULT_STANDARD_MODEL = "anthropic/claude-sonnet-5";
-export const DEFAULT_REASONING_MODEL = "anthropic/claude-opus-4-6";
+export const DEFAULT_REASONING_MODEL = "anthropic/claude-opus-5";
 
 /** Human-readable labels for LlmProvider enum values, for provider pickers. */
 export const PROVIDER_DISPLAY_LABELS: Record<string, string> = {
