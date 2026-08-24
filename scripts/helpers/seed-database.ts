@@ -2300,6 +2300,173 @@ async function seedLegalBenchmarkRuns() {
   console.log(`✓ Seeded ${total} LEGAL_BENCHMARK_RUNNER StakworkRun rows on dev-mock`);
 }
 
+/**
+ * Seeds BENCHMARK_RUNNER StakworkRun rows for the Workflow Editor Benchmarks
+ * onto the dev-mock workspace so every score-display state is exercisable
+ * in local development without a live Stakwork runner.
+ *
+ * Seed states:
+ *   - 1 PENDING                (dispatch created, runner not yet started)
+ *   - 1 IN_PROGRESS            (runner active)
+ *   - 1 COMPLETED 8/8 all_pass (all criteria pass)
+ *   - 1 COMPLETED 5/8          (3 criteria fail, with verdict:"fail" + reasoning)
+ *   - 1 FAILED                 (runner error)
+ *
+ * Never runs in production. Targets dev-mock only.
+ * Has its own NODE_ENV === "production" bail (not only in the caller).
+ */
+async function seedWorkflowBenchmarkRuns() {
+  if (process.env.NODE_ENV === "production") {
+    console.log("✓ Skipping workflow benchmark seed in production");
+    return;
+  }
+
+  const workspace = await prisma.workspace.findUnique({
+    where: { slug: "dev-mock" },
+  });
+  if (!workspace) {
+    console.log("⚠ dev-mock workspace not found — skipping workflow benchmark seed");
+    return;
+  }
+
+  // Idempotency: skip if we already seeded this workspace
+  const existing = await prisma.stakworkRun.findFirst({
+    where: {
+      workspaceId: workspace.id,
+      type: StakworkRunType.BENCHMARK_RUNNER,
+    },
+  });
+  if (existing) {
+    console.log("✓ Workflow benchmark seed runs already exist on dev-mock — skipping");
+    return;
+  }
+
+  const TASK_SLUG = "wfbench/create-openai-call";
+  const TASK_TITLE = "Create a workflow that calls OpenAI with a prompt";
+  const now = new Date();
+  const t = (daysAgo: number, hoursOffset = 0) =>
+    new Date(now.getTime() - daysAgo * 86_400_000 + hoursOffset * 3_600_000);
+
+  // The 8 criteria from the corpus — used to build realistic criteria_results.
+  const CRITERIA_IDS = [
+    { id: "C-001", title: "Request step exists" },
+    { id: "C-002", title: "URL is the OpenAI chat completions endpoint" },
+    { id: "C-003", title: "HTTP method is POST" },
+    { id: "C-004", title: "Authorization header uses a secret reference" },
+    { id: "C-005", title: "Authorization uses the required authoring form, not the runtime form" },
+    { id: "C-006", title: "Request body contains a known-good model field" },
+    { id: "C-007", title: "Request body messages array includes a user turn with the prompt" },
+    { id: "C-008", title: "Workflow is structurally valid" },
+  ];
+
+  // ── 1. PENDING ────────────────────────────────────────────────────────────
+  await prisma.stakworkRun.create({
+    data: {
+      workspaceId: workspace.id,
+      type: StakworkRunType.BENCHMARK_RUNNER,
+      status: WorkflowStatus.PENDING,
+      webhookUrl: `https://example.com/webhook/benchmark/pending`,
+      dataType: "json",
+      createdAt: t(0, -1),
+      updatedAt: t(0, -1),
+      result: JSON.stringify({ taskSlug: TASK_SLUG, taskTitle: TASK_TITLE }),
+    },
+  });
+
+  // ── 2. IN_PROGRESS ────────────────────────────────────────────────────────
+  await prisma.stakworkRun.create({
+    data: {
+      workspaceId: workspace.id,
+      type: StakworkRunType.BENCHMARK_RUNNER,
+      status: WorkflowStatus.IN_PROGRESS,
+      webhookUrl: `https://example.com/webhook/benchmark/in-progress`,
+      dataType: "json",
+      createdAt: t(0, -2),
+      updatedAt: t(0, -2),
+      result: JSON.stringify({ taskSlug: TASK_SLUG, taskTitle: TASK_TITLE }),
+    },
+  });
+
+  // ── 3. COMPLETED 8/8 (all_pass) ───────────────────────────────────────────
+  await prisma.stakworkRun.create({
+    data: {
+      workspaceId: workspace.id,
+      type: StakworkRunType.BENCHMARK_RUNNER,
+      status: WorkflowStatus.COMPLETED,
+      webhookUrl: `https://example.com/webhook/benchmark/completed-allpass`,
+      dataType: "json",
+      createdAt: t(2, 0),
+      updatedAt: t(2, 1),
+      result: JSON.stringify({
+        taskSlug: TASK_SLUG,
+        taskTitle: TASK_TITLE,
+        n_passed: 8,
+        n_total: 8,
+        all_pass: true,
+        pass_rate: 1.0,
+        judge_model: "claude-sonnet-4-6",
+        criteria_results: CRITERIA_IDS.map((c) => ({
+          id: c.id,
+          title: c.title,
+          verdict: "pass",
+          reasoning: `${c.title} criterion satisfied.`,
+        })),
+      }),
+    },
+  });
+
+  // ── 4. COMPLETED 5/8 (3 failures) ────────────────────────────────────────
+  const failedCriteria = new Set(["C-004", "C-005", "C-007"]);
+  await prisma.stakworkRun.create({
+    data: {
+      workspaceId: workspace.id,
+      type: StakworkRunType.BENCHMARK_RUNNER,
+      status: WorkflowStatus.COMPLETED,
+      webhookUrl: `https://example.com/webhook/benchmark/completed-partial`,
+      dataType: "json",
+      createdAt: t(3, 0),
+      updatedAt: t(3, 1),
+      result: JSON.stringify({
+        taskSlug: TASK_SLUG,
+        taskTitle: TASK_TITLE,
+        n_passed: 5,
+        n_total: 8,
+        all_pass: false,
+        pass_rate: 0.625,
+        judge_model: "claude-sonnet-4-6",
+        criteria_results: CRITERIA_IDS.map((c) => ({
+          id: c.id,
+          title: c.title,
+          verdict: failedCriteria.has(c.id) ? "fail" : "pass",
+          reasoning: failedCriteria.has(c.id)
+            ? `${c.title}: agent output did not satisfy the requirement.`
+            : `${c.title} criterion satisfied.`,
+        })),
+      }),
+    },
+  });
+
+  // ── 5. FAILED ─────────────────────────────────────────────────────────────
+  await prisma.stakworkRun.create({
+    data: {
+      workspaceId: workspace.id,
+      type: StakworkRunType.BENCHMARK_RUNNER,
+      status: WorkflowStatus.FAILED,
+      webhookUrl: `https://example.com/webhook/benchmark/failed`,
+      dataType: "json",
+      createdAt: t(5, 0),
+      updatedAt: t(5, 1),
+      result: JSON.stringify({
+        taskSlug: TASK_SLUG,
+        taskTitle: TASK_TITLE,
+        errorMessage: "Runner workflow timed out before producing a result",
+      }),
+    },
+  });
+
+  console.log("✓ Seeded 5 BENCHMARK_RUNNER StakworkRun rows on dev-mock");
+}
+
 async function main() {
   await prisma.$connect();
 
@@ -2322,6 +2489,7 @@ async function main() {
   await seedVoiceCorrections(users);
   await seedFeatureErrorIssueLink();
   await seedLegalBenchmarkRuns();
+  await seedWorkflowBenchmarkRuns();
 
   console.log("Seed completed.");
 }
