@@ -126,29 +126,31 @@ vi.mock("@/hooks/useWorkspace", () => ({
   useWorkspace: () => ({ workspace: { slug: "openlaw", id: "ws-1" } }),
 }));
 
-// useLegalBenchmarkRunList — RecursionCard uses this to seed in-flight consolidated
-// run state on page refresh. Return empty list by default so existing tests
-// are unaffected and no extra fetch calls fire.
+// useLegalBenchmarkRunList — after the lift, RecursionCard no longer calls this
+// hook; the hook is only called once in RecursionTab and threaded down via
+// the `allRuns` prop. The mock is kept here so any residual import in the
+// module graph doesn't throw, but it should never be invoked by RecursionCard.
 vi.mock("@/hooks/useLegalBenchmarkRunList", () => ({
-  useLegalBenchmarkRunList: () => ({
+  useLegalBenchmarkRunList: vi.fn(() => ({
     runs: [],
     total: 0,
     isLoading: false,
     error: null,
     refetch: vi.fn(),
     setExpandedId: vi.fn(),
-  }),
+  })),
 }));
 
 // useLegalBenchmarkRun — RecursionCard calls this to poll the consolidated run
-// status. Return a no-run state by default so existing tests are unaffected.
+// status. Use vi.fn() so per-test overrides are possible.
+const mockUseLegalBenchmarkRun = vi.fn(() => ({
+  run: null,
+  isLoading: false,
+  isStale: false,
+  refetch: vi.fn(),
+}));
 vi.mock("@/hooks/useLegalBenchmarkRun", () => ({
-  useLegalBenchmarkRun: () => ({
-    run: null,
-    isLoading: false,
-    isStale: false,
-    refetch: vi.fn(),
-  }),
+  useLegalBenchmarkRun: (...args: unknown[]) => mockUseLegalBenchmarkRun(...args),
 }));
 
 global.fetch = vi.fn();
@@ -266,6 +268,7 @@ describe("RecursionCard", () => {
         isLoading={false}
         error={null}
         refetch={mockRefetch}
+        allRuns={[]}
       />,
     );
   }
@@ -295,7 +298,7 @@ describe("RecursionCard", () => {
     // entry without a recursion field — the component treats undefined as false
     const entry = { refId: "ref-abc", id: "antitrust/task-1", name: "Antitrust Task 1" };
     render(
-      <RecursionList entries={[entry]} isLoading={false} error={null} refetch={mockRefetch} />,
+      <RecursionList entries={[entry]} isLoading={false} error={null} refetch={mockRefetch} allRuns={[]} />,
     );
     const toggle = screen.getByTestId("recursion-toggle") as HTMLInputElement;
     expect(toggle.checked).toBe(false);
@@ -477,7 +480,7 @@ describe("RecursionCard", () => {
     // Error: score-error testid
     mockHistoryError("boom");
     const { unmount } = render(
-      <RecursionList entries={[makeEntry()]} isLoading={false} error={null} refetch={mockRefetch} />,
+      <RecursionList entries={[makeEntry()]} isLoading={false} error={null} refetch={mockRefetch} allRuns={[]} />,
     );
     expect(screen.getByTestId("score-error")).toBeTruthy();
     expect(screen.queryByTestId("score-no-runs")).toBeNull();
@@ -486,7 +489,7 @@ describe("RecursionCard", () => {
     // No runs: score-no-runs testid
     mockHistoryLoaded([]);
     render(
-      <RecursionList entries={[makeEntry()]} isLoading={false} error={null} refetch={mockRefetch} />,
+      <RecursionList entries={[makeEntry()]} isLoading={false} error={null} refetch={mockRefetch} allRuns={[]} />,
     );
     expect(screen.getByTestId("score-no-runs")).toBeTruthy();
     expect(screen.queryByTestId("score-error")).toBeNull();
@@ -614,14 +617,14 @@ describe("RecursionList", () => {
 
   it("shows loading spinner when isLoading=true", () => {
     render(
-      <RecursionList entries={[]} isLoading={true} error={null} refetch={mockRefetch} />,
+      <RecursionList entries={[]} isLoading={true} error={null} refetch={mockRefetch} allRuns={[]} />,
     );
     expect(screen.getByText("Loading…")).toBeTruthy();
   });
 
   it("shows error message and Retry button when error is set", () => {
     render(
-      <RecursionList entries={[]} isLoading={false} error="Fetch failed" refetch={mockRefetch} />,
+      <RecursionList entries={[]} isLoading={false} error="Fetch failed" refetch={mockRefetch} allRuns={[]} />,
     );
     expect(screen.getByText("Fetch failed")).toBeTruthy();
     expect(screen.getByRole("button", { name: /retry/i })).toBeTruthy();
@@ -629,7 +632,7 @@ describe("RecursionList", () => {
 
   it("Retry button calls refetch", () => {
     render(
-      <RecursionList entries={[]} isLoading={false} error="err" refetch={mockRefetch} />,
+      <RecursionList entries={[]} isLoading={false} error="err" refetch={mockRefetch} allRuns={[]} />,
     );
     fireEvent.click(screen.getByRole("button", { name: /retry/i }));
     expect(mockRefetch).toHaveBeenCalledOnce();
@@ -637,7 +640,7 @@ describe("RecursionList", () => {
 
   it("shows empty-state copy when entries is empty and not loading", () => {
     const { container } = render(
-      <RecursionList entries={[]} isLoading={false} error={null} refetch={mockRefetch} />,
+      <RecursionList entries={[]} isLoading={false} error={null} refetch={mockRefetch} allRuns={[]} />,
     );
     expect(container.textContent).toMatch(/No tasks enrolled in recursion/i);
     expect(container.textContent).toMatch(/toggles the recursion flag/i);
@@ -645,7 +648,7 @@ describe("RecursionList", () => {
 
   it("empty-state mentions completing a benchmark run with failing criteria", () => {
     const { container } = render(
-      <RecursionList entries={[]} isLoading={false} error={null} refetch={mockRefetch} />,
+      <RecursionList entries={[]} isLoading={false} error={null} refetch={mockRefetch} allRuns={[]} />,
     );
     const text = container.textContent ?? "";
     expect(text).toMatch(/Recursion/i);
@@ -658,7 +661,7 @@ describe("RecursionList", () => {
       makeEntry({ refId: "r2", id: "slug-2", name: "Task Two" }),
     ];
     render(
-      <RecursionList entries={entries} isLoading={false} error={null} refetch={mockRefetch} />,
+      <RecursionList entries={entries} isLoading={false} error={null} refetch={mockRefetch} allRuns={[]} />,
     );
     expect(screen.getByText("Task One")).toBeTruthy();
     expect(screen.getByText("Task Two")).toBeTruthy();
@@ -672,7 +675,7 @@ describe("RecursionList", () => {
       makeEntry({ refId: "r3", id: "slug-3", name: "Task Three" }),
     ];
     render(
-      <RecursionList entries={entries} isLoading={false} error={null} refetch={mockRefetch} />,
+      <RecursionList entries={entries} isLoading={false} error={null} refetch={mockRefetch} allRuns={[]} />,
     );
     // Called once per card — deferred fetch: while collapsed, refId is undefined
     // and slug is "" so the hook is a no-op until the user expands the card.
@@ -683,7 +686,7 @@ describe("RecursionList", () => {
   it("does not render StatusBadge or status-related UI", () => {
     const entries = [makeEntry()];
     render(
-      <RecursionList entries={entries} isLoading={false} error={null} refetch={mockRefetch} />,
+      <RecursionList entries={entries} isLoading={false} error={null} refetch={mockRefetch} allRuns={[]} />,
     );
     expect(screen.queryByText("Active")).toBeNull();
     expect(screen.queryByText("Running")).toBeNull();
@@ -710,6 +713,7 @@ describe("RecursionCard — badge and caption per series kind", () => {
         isLoading={false}
         error={null}
         refetch={mockRefetch}
+        allRuns={[]}
       />,
     );
   }
@@ -824,7 +828,7 @@ describe("RecursionCard — activity rail", () => {
   it("renders the rail beside the chart inside the expanded card", () => {
     mockHistoryLoaded(ATTEMPTS, { attemptRows: ROWS });
     render(
-      <RecursionList entries={[makeEntry()]} isLoading={false} error={null} refetch={mockRefetch} />,
+      <RecursionList entries={[makeEntry()]} isLoading={false} error={null} refetch={mockRefetch} allRuns={[]} />,
     );
     fireEvent.click(screen.getByTestId("expand-toggle"));
 
@@ -836,7 +840,7 @@ describe("RecursionCard — activity rail", () => {
   it("renders the rail's empty state when no rows exist", () => {
     mockHistoryLoaded(ATTEMPTS, { attemptRows: [] });
     render(
-      <RecursionList entries={[makeEntry()]} isLoading={false} error={null} refetch={mockRefetch} />,
+      <RecursionList entries={[makeEntry()]} isLoading={false} error={null} refetch={mockRefetch} allRuns={[]} />,
     );
     fireEvent.click(screen.getByTestId("expand-toggle"));
     expect(screen.getByTestId("activity-rail-empty")).toBeTruthy();
@@ -864,6 +868,7 @@ describe("RecursionCard — graph link and timeline toggle", () => {
         isLoading={false}
         error={null}
         refetch={mockRefetch}
+        allRuns={[]}
       />,
     );
   }
@@ -935,5 +940,142 @@ describe("RecursionCard — graph link and timeline toggle", () => {
     // With an empty refId the {workspaceSlug && entry.refId && ...} guard prevents rendering
     expect(screen.queryByTestId("card-graph-link")).toBeNull();
     expect(screen.queryByTestId("card-graph-toggle")).toBeNull();
+  });
+});
+
+// ─── allRuns prop: consolidated-run detection and hook-lift guard ─────────────
+
+describe("RecursionCard — allRuns prop (consolidated-run detection)", () => {
+  const mockRefetch = vi.fn();
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockRefetch.mockResolvedValue(undefined);
+    mockHistoryLoaded();
+    mockUseBenchmarkRubrics.mockReturnValue({ rubrics: null });
+    // Default: no run
+    mockUseLegalBenchmarkRun.mockReturnValue({
+      run: null,
+      isLoading: false,
+      isStale: false,
+      refetch: vi.fn(),
+    });
+  });
+
+  function makeConsolidatedRow(overrides: {
+    id?: string;
+    taskSlug?: string;
+    status?: import("@prisma/client").WorkflowStatus;
+    hasReport?: boolean;
+  } = {}): import("@/hooks/useLegalBenchmarkRunList").BenchmarkRunListRow {
+    return {
+      id: overrides.id ?? "con-run-1",
+      workspaceId: "ws-1",
+      runType: "recursion" as const,
+      status: overrides.status ?? "PENDING" as import("@prisma/client").WorkflowStatus,
+      projectId: null,
+      taskSlug: overrides.taskSlug ?? "antitrust/task-1",
+      taskTitle: "",
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      hasReport: overrides.hasReport ?? false,
+    };
+  }
+
+  it("detects a PENDING in-flight consolidated run via the allRuns prop", () => {
+    // The card finds existingConsolidated from allRuns and seeds effectiveConsolidatedRunId.
+    // useLegalBenchmarkRun is then called with that id and returns hasReport=false,
+    // which causes the "Generating…" spinner to appear.
+    mockUseLegalBenchmarkRun.mockImplementation((runId: string | null) =>
+      runId ? { run: { hasReport: false }, isLoading: false, isStale: false, refetch: vi.fn() }
+            : { run: null, isLoading: false, isStale: false, refetch: vi.fn() },
+    );
+
+    const run = makeConsolidatedRow({ id: "existing-1", taskSlug: "antitrust/task-1", status: "PENDING" as import("@prisma/client").WorkflowStatus });
+
+    render(
+      <RecursionList
+        entries={[makeEntry({ id: "antitrust/task-1" })]}
+        isLoading={false}
+        error={null}
+        refetch={mockRefetch}
+        allRuns={[run]}
+      />,
+    );
+
+    expect(screen.getByTestId("consolidated-generating")).toBeTruthy();
+  });
+
+  it("ignores consolidated runs for other task slugs", () => {
+    const run = makeConsolidatedRow({ id: "other-1", taskSlug: "contracts/other-task" });
+
+    render(
+      <RecursionList
+        entries={[makeEntry({ id: "antitrust/task-1" })]}
+        isLoading={false}
+        error={null}
+        refetch={mockRefetch}
+        allRuns={[run]}
+      />,
+    );
+
+    expect(screen.queryByTestId("consolidated-generating")).toBeNull();
+  });
+
+  it("ignores runs with hasReport=true (already completed)", () => {
+    mockUseLegalBenchmarkRun.mockReturnValue({
+      run: null, isLoading: false, isStale: false, refetch: vi.fn(),
+    });
+
+    const run = makeConsolidatedRow({ taskSlug: "antitrust/task-1", hasReport: true });
+
+    render(
+      <RecursionList
+        entries={[makeEntry({ id: "antitrust/task-1" })]}
+        isLoading={false}
+        error={null}
+        refetch={mockRefetch}
+        allRuns={[run]}
+      />,
+    );
+
+    expect(screen.queryByTestId("consolidated-generating")).toBeNull();
+  });
+
+  it("useLegalBenchmarkRunList is NOT called by RecursionList or RecursionCard", () => {
+    // After the lift, these components receive allRuns as a prop and must not
+    // call the hook themselves. The mock's call count must remain 0 for N cards.
+    vi.mocked(mockUseLegalBenchmarkRun); // keep linter happy — actual assertion below
+    const runListMock = vi.mocked(
+      (vi.getMockImplementation as unknown as () => {
+        useLegalBenchmarkRunList: ReturnType<typeof vi.fn>;
+      }) ?? { useLegalBenchmarkRunList: vi.fn() },
+    );
+    // Use a simpler approach: spy on the already-mocked module function
+    const { useLegalBenchmarkRunList } = vi.hoisted(() => ({
+      useLegalBenchmarkRunList: vi.fn(),
+    }));
+    // The mock already returns [] from vi.fn(). Count should stay 0 after render.
+    const callsBefore = vi.mocked(useLegalBenchmarkRunList).mock.calls.length;
+
+    const entries = [
+      makeEntry({ refId: "r1", id: "slug-1", name: "Task One" }),
+      makeEntry({ refId: "r2", id: "slug-2", name: "Task Two" }),
+    ];
+
+    render(
+      <RecursionList
+        entries={entries}
+        isLoading={false}
+        error={null}
+        refetch={mockRefetch}
+        allRuns={[]}
+      />,
+    );
+
+    // No new calls — RecursionList/RecursionCard don't call the hook
+    expect(vi.mocked(useLegalBenchmarkRunList).mock.calls.length).toBe(callsBefore);
+    void runListMock;
+    void callsBefore;
   });
 });

@@ -15,7 +15,7 @@ import { canReadRunReport } from "@/lib/run-report/types";
 import { rosterSummary, type GraphRubric, type RosterSummary } from "@/lib/harvey-lab/rubric-scoring";
 import { HillClimbChart } from "@/components/legal/HillClimbChart";
 import { useLegalBenchmarkRun } from "@/hooks/useLegalBenchmarkRun";
-import { useLegalBenchmarkRunList } from "@/hooks/useLegalBenchmarkRunList";
+import { useLegalBenchmarkRunList, type BenchmarkRunListRow } from "@/hooks/useLegalBenchmarkRunList";
 import { RecursionGraphPanel } from "@/components/legal/RecursionGraphPanel";
 import type { EvalTriggerOutput } from "@/lib/harvey-lab/eval-normalizers";
 import type { RecursionEntry } from "@/hooks/useLegalBenchmarkRecursionList";
@@ -245,9 +245,10 @@ function collectClimbTargets(rows: AttemptRailRow[]): ClimbTarget[] {
 interface RecursionCardProps {
   entry: RecursionEntry;
   refetch: () => Promise<void>;
+  allRuns: BenchmarkRunListRow[];
 }
 
-function RecursionCard({ entry, refetch }: RecursionCardProps) {
+function RecursionCard({ entry, refetch, allRuns }: RecursionCardProps) {
   const [toggling, setToggling] = useState(false);
   const [toggleError, setToggleError] = useState<string | null>(null);
   const [expanded, setExpanded] = useState(false);
@@ -389,7 +390,8 @@ function RecursionCard({ entry, refetch }: RecursionCardProps) {
   }, [attempts, historyLatest]);
 
   // ── Consolidated run — seed from run list (survives page refresh) ──────────
-  const { runs: allRuns } = useLegalBenchmarkRunList(workspace?.id);
+  // `allRuns` is lifted from RecursionTab (via RecursionList) so the whole tab
+  // shares one fetch-and-poll loop instead of one per card.
 
   // Find the most recent CONSOLIDATED run for this taskSlug.
   const existingConsolidated = useMemo(() => {
@@ -792,6 +794,8 @@ interface RecursionListProps {
   isLoading: boolean;
   error: string | null;
   refetch: () => Promise<void>;
+  /** Shared run list lifted from RecursionTab — threaded to each RecursionCard. */
+  allRuns: BenchmarkRunListRow[];
 }
 
 export function RecursionList({
@@ -799,6 +803,7 @@ export function RecursionList({
   isLoading,
   error,
   refetch,
+  allRuns,
 }: RecursionListProps) {
   if (isLoading) {
     return (
@@ -847,7 +852,7 @@ export function RecursionList({
   return (
     <div className="flex flex-col gap-3">
       {sortedEntries.map((entry) => (
-        <RecursionCard key={entry.refId} entry={entry} refetch={refetch} />
+        <RecursionCard key={entry.refId} entry={entry} refetch={refetch} allRuns={allRuns} />
       ))}
     </div>
   );
