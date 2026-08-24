@@ -85,10 +85,17 @@ export function useStreamProcessor<T extends BaseStreamingMessage = BaseStreamin
       let debounceTimer: NodeJS.Timeout | null = null;
 
       const buildMessage = (isStreaming: boolean): T => {
+        // Providers that don't enforce `stopSequences` server-side (e.g.
+        // some OpenRouter-hosted models) can leak the "[END_OF_ANSWER]"
+        // turn-end marker into visible text. Strip it here — every derived
+        // view (content, textParts, timeline) is rebuilt from the
+        // accumulated parts on each delta, so a marker split across
+        // chunks self-heals once fully arrived.
+        const stripEndMarker = (s: string) => s.replace(/\[END_OF_ANSWER\]/g, "");
         // Use the tracked order to build arrays in insertion order
         const allTextParts = textPartsOrder.map((id) => ({
           id,
-          content: textParts.get(id) || "",
+          content: stripEndMarker(textParts.get(id) || ""),
         }));
 
         const allReasoningParts = reasoningPartsOrder.map((id) => ({
@@ -122,7 +129,7 @@ export function useStreamProcessor<T extends BaseStreamingMessage = BaseStreamin
 
         return {
           id: messageId,
-          content: textPartsOrder.map((id) => textParts.get(id) || "").join(""),
+          content: stripEndMarker(textPartsOrder.map((id) => textParts.get(id) || "").join("")),
           isStreaming,
           isError: !!error,
           textParts: allTextParts,
