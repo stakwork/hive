@@ -485,6 +485,7 @@ export function Sidebar({ user }: SidebarProps) {
         { icon: Workflow, label: "Workflows", href: "/workflows" },
         { icon: KeyRound, label: "Secrets", href: "/secrets" },
         { icon: ScrollText, label: "Mock Step Outputs", href: "/mock-step-outputs" },
+        { icon: FlaskConical, label: "Workflow Benchmarks", href: "/workflow-benchmarks" },
       ],
     },
   ] : [];
