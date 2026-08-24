@@ -184,11 +184,16 @@ export function messagesFromSteps(
     // attached to the text row as `deferredCheck` metadata.
     const deferredCheck = extractDeferredCheckFromStep(step);
 
-    if (step.text && step.text.trim()) {
+    // Strip the "[END_OF_ANSWER]" turn-end marker before persisting —
+    // providers that don't enforce `stopSequences` server-side (e.g. some
+    // OpenRouter-hosted models) leak it into the step text, and stored
+    // rows feed shared conversations and reloads.
+    const stepText = step.text?.replace(/\[END_OF_ANSWER\]/g, "").trim();
+    if (stepText) {
       const textRow: StoredMessage = {
         id: nextId(),
         role: "assistant",
-        content: step.text,
+        content: stepText,
         timestamp: stepTimestamp,
       };
       if (deferredCheck) {
