@@ -100,6 +100,17 @@ describe("messagesFromSteps", () => {
     expect(rows[2]).toMatchObject({ content: "Here's the answer." });
   });
 
+  test("strips leaked [END_OF_ANSWER] markers from step text", () => {
+    const steps = [
+      { text: "Here's the answer.\n\n[END_OF_ANSWER]" },
+      { text: "[END_OF_ANSWER]" },
+    ];
+    const rows = messagesFromSteps(steps, "turn-1-a");
+    // Marker-only step yields no row; marker suffix is trimmed away.
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ content: "Here's the answer." });
+  });
+
   test("strips control tools and yields nothing for a control-only turn", () => {
     const steps = [
       { toolCalls: [{ toolCallId: "s1", toolName: "stay_silent", input: {} }] },

@@ -182,34 +182,38 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     // One batched query across all enrolled EvalSets; per-evalSet we pick the
     // most recent updatedAt from any LEGAL_BENCHMARK_RUNNER run.
     try {
-      const evalSetIds = entries
-        .map((e) => e.ref_id)
-        .filter(Boolean);
+      const evalSetIds = entries.map((e) => e.ref_id).filter(Boolean);
 
       if (evalSetIds.length > 0) {
-        const runs = await db.stakworkRun.findMany({
-          where: {
-            workspaceId,
-            evalSetId: { in: evalSetIds },
-            type: "LEGAL_BENCHMARK_RUNNER",
-            status: "COMPLETED",
-          },
-          select: { evalSetId: true, updatedAt: true },
-          orderBy: { updatedAt: "desc" },
-        });
+        // LEGAL_BENCHMARK_RUNNER runs store the task identity as taskSlug inside
+        // the result JSON column — evalSetId is never populated for this run type.
+        // Use a raw query to filter and group by the JSON path in one round trip.
+        const taskSlugs = entries.map((e) => e.id).filter(Boolean);
 
-        // Build a map: evalSetId → most recent updatedAt (first occurrence wins
-        // since results are already ordered desc).
+        const rows = await db.$queryRaw<Array<{ task_slug: string; latest_updated_at: Date }>>`
+          SELECT
+            result::json->>'taskSlug' AS task_slug,
+            MAX(updated_at)           AS latest_updated_at
+          FROM stakwork_runs
+          WHERE workspace_id   = ${workspaceId}
+            AND type           = 'LEGAL_BENCHMARK_RUNNER'
+            AND status         = 'COMPLETED'
+            AND result::json->>'taskSlug' = ANY(${taskSlugs}::text[])
+          GROUP BY result::json->>'taskSlug'
+        `;
+
+        // Build map: taskSlug → most recent updatedAt
         const latestUpdatedAt = new Map<string, Date>();
-        for (const run of runs) {
-          if (run.evalSetId && !latestUpdatedAt.has(run.evalSetId)) {
-            latestUpdatedAt.set(run.evalSetId, run.updatedAt);
+        for (const row of rows) {
+          if (row.task_slug) {
+            latestUpdatedAt.set(row.task_slug, row.latest_updated_at);
           }
         }
 
         // Overwrite runAt on each summary entry where we have a Postgres timestamp.
+        // entry.id is the taskSlug for legal benchmark entries.
         for (const entry of data) {
-          const updatedAt = latestUpdatedAt.get(entry.refId);
+          const updatedAt = latestUpdatedAt.get(entry.taskSlug);
           if (updatedAt) {
             if (entry.latestRun) {
               entry.latestRun.runAt = updatedAt.toISOString();
