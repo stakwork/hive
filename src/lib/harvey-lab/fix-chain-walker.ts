@@ -261,7 +261,7 @@ async function fetchNodeForEdgeTypes(
  * Run `tasks` with bounded concurrency of `limit`.
  * Returns results in the same order as `tasks`.
  */
-async function batchedAll<T>(tasks: Array<() => Promise<T>>, limit: number): Promise<T[]> {
+export async function batchedAll<T>(tasks: Array<() => Promise<T>>, limit: number): Promise<T[]> {
   const results: T[] = new Array(tasks.length);
   let nextIdx = 0;
 
