@@ -369,12 +369,15 @@ export type ProposalOutput =
       payload: ConceptCreateProposalPayload;
       rationale?: string;
       /** Render-only labels for the card (workspace + repo the concept
-       *  will be filed under). The approval handler re-resolves the swarm
-       *  from `payload.workspaceId` and does NOT trust this. */
+       *  will be filed under, knowledge kind, person it is about). The
+       *  approval handler re-resolves the swarm from `payload.workspaceId`
+       *  and does NOT trust this. */
       meta?: {
         workspaceName?: string;
         workspaceSlug?: string;
         repo?: string;
+        kind?: string;
+        personName?: string;
       };
     }
   | {
@@ -498,6 +501,19 @@ export interface ConceptUpdateProposalPayload {
  * `repo` ("owner/repo") is optional — when present the concept id is
  * repo-prefixed; when absent the swarm defaults are used.
  */
+/**
+ * Knowledge kind for a new Concept. Maps 1:1 to the workspace-anchor edge
+ * type written at approval (jarvis migration 111):
+ *   preference → PREFERENCE, best_practice → BEST_PRACTICE, gotcha → GOTCHA,
+ *   process → PROCESS, general (or absent) → HAS_CONCEPT.
+ */
+export type ConceptKind =
+  | "preference"
+  | "best_practice"
+  | "gotcha"
+  | "process"
+  | "general";
+
 export interface ConceptCreateProposalPayload {
   workspaceId: string;
   workspaceSlug: string;
@@ -506,6 +522,14 @@ export interface ConceptCreateProposalPayload {
   description?: string;
   repo?: string;
   parent?: string;
+  /** Knowledge kind — selects the workspace-anchor edge type. Absent = general. */
+  kind?: ConceptKind;
+  /**
+   * userId of the workspace member this concept is about (resolved from the
+   * agent's `person` arg at propose time). The approval handler re-resolves
+   * membership and writes a member -PREFERENCE-> Concept edge.
+   */
+  personUserId?: string;
 }
 
 // ─── Graph write proposal payloads ────────────────────────────────────────

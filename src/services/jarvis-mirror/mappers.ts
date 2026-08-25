@@ -21,6 +21,17 @@ export const HIVE_FEATURE = "HiveFeature";
 export const HIVE_TASK = "HiveTask";
 export const HIVE_CHAT_MESSAGE = "HiveChatMessage";
 
+// Workspace anchor node types (jarvis-mirror-cron). One HiveWorkspace per
+// graph plus one HiveWorkspaceMember per human. Walk seeds: general
+// (repo-less) Concepts anchor to the workspace node via typed edges, and
+// per-person preference Concepts anchor to member nodes — see jarvis
+// migration 111 for the edge ontology.
+export const HIVE_WORKSPACE = "HiveWorkspace";
+export const HIVE_WORKSPACE_MEMBER = "HiveWorkspaceMember";
+
+// HiveWorkspace → HiveWorkspaceMember.
+export const EDGE_HAS_MEMBER = "HAS_MEMBER";
+
 // Org-canvas entity node types (canvas-mirror-cron).
 export const HIVE_INITIATIVE = "HiveInitiative";
 export const HIVE_MILESTONE = "HiveMilestone";
@@ -290,6 +301,84 @@ export function chatMessageEdge(m: ChatMessageRow): JarvisEdgePayload | null {
     };
   }
   return null;
+}
+
+// ---------------------------------------------------------------------------
+// Workspace anchor mappers (jarvis-mirror-cron)
+// ---------------------------------------------------------------------------
+
+export interface WorkspaceRow {
+  id: string;
+  name: string;
+  slug?: string | null;
+  description?: string | null;
+  mission?: string | null;
+  createdAt?: Date | null;
+  updatedAt?: Date | null;
+}
+
+/**
+ * Flattened member row. `id` is the WorkspaceMember cuid for real member
+ * rows; the workspace OWNER has no member row (hive forbids one), so the
+ * cron mirrors them with `id` = their user id. `user_id` is set on every
+ * node either way — approval-time member lookups key on it uniformly.
+ */
+export interface WorkspaceMemberMirrorRow {
+  id: string;
+  name: string;
+  userId?: string | null;
+  githubUsername?: string | null;
+  role?: string | null;
+  description?: string | null;
+  joinedAt?: Date | null;
+}
+
+export function workspaceToNode(w: WorkspaceRow): JarvisNodePayload {
+  return {
+    node_type: HIVE_WORKSPACE,
+    node_data: clean({
+      workspace_id: w.id,
+      name: w.name,
+      slug: w.slug,
+      description: w.description,
+      mission: w.mission,
+      created_at: iso(w.createdAt),
+      updated_at: iso(w.updatedAt),
+    }),
+  };
+}
+
+export function memberToNode(m: WorkspaceMemberMirrorRow): JarvisNodePayload {
+  return {
+    node_type: HIVE_WORKSPACE_MEMBER,
+    node_data: clean({
+      member_id: m.id,
+      name: m.name,
+      user_id: m.userId,
+      github_username: m.githubUsername,
+      role: m.role,
+      description: m.description,
+      joined_at: iso(m.joinedAt),
+    }),
+  };
+}
+
+/** HiveWorkspace -HAS_MEMBER-> HiveWorkspaceMember. */
+export function memberEdge(
+  workspace: { id: string; name: string },
+  member: { id: string; name: string },
+): JarvisEdgePayload {
+  return {
+    edge: { edge_type: EDGE_HAS_MEMBER },
+    source: {
+      node_type: HIVE_WORKSPACE,
+      node_data: { workspace_id: workspace.id, name: workspace.name },
+    },
+    target: {
+      node_type: HIVE_WORKSPACE_MEMBER,
+      node_data: { member_id: member.id, name: member.name },
+    },
+  };
 }
 
 // ---------------------------------------------------------------------------

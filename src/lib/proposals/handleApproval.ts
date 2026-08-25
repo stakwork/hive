@@ -120,6 +120,11 @@ import {
   type JarvisEdgeEndpoint,
 } from "@/services/swarm/api/nodes";
 import { findReservedKeyViolation } from "@/lib/proposals/graphWriteValidation";
+import {
+  HIVE_WORKSPACE,
+  HIVE_WORKSPACE_MEMBER,
+} from "@/services/jarvis-mirror/mappers";
+import type { ConceptKind } from "./types";
 
 // ─── Conversation-shape primitives ────────────────────────────────────
 // We accept a permissive `MessageLike` to avoid a runtime dependency
@@ -2284,6 +2289,212 @@ async function findConceptRefById(
   return { ok: true, refId: search.nodes[0].ref_id };
 }
 
+// ── Concept anchor edges (jarvis migration 111) ──────────────────────
+//
+// Every approved Concept is wired into the workspace anchor subgraph so the
+// graph walker can reach it from a walk seed instead of only via search:
+//   - HiveWorkspace -{HAS_CONCEPT|PREFERENCE|BEST_PRACTICE|GOTCHA|PROCESS}-> Concept
+//     (edge type selected by payload.kind; the taxonomy accumulates on the
+//     workspace node as {EDGE_TYPE: count} for the walker)
+//   - HiveWorkspaceMember -APPROVED-> Concept (attribution: the clicker)
+//   - HiveWorkspaceMember -PREFERENCE-> Concept (payload.personUserId —
+//     the member the knowledge is ABOUT)
+//   - Concept -IN_REPO-> Repository (payload.repo, resolved to the ingested
+//     Repository node by name)
+// All are BEST-EFFORT: /v2/edges create-or-merges inline endpoints, so the
+// workspace/member nodes need not exist yet (the jarvis-mirror cron enriches
+// them later by node_key) — but a failure here never fails the approval; the
+// concept itself is the value, anchors are wiring. Failures are logged.
+
+/** payload.kind → workspace-anchor edge type (migration 111). */
+const CONCEPT_KIND_EDGE: Record<ConceptKind, string> = {
+  preference: "PREFERENCE",
+  best_practice: "BEST_PRACTICE",
+  gotcha: "GOTCHA",
+  process: "PROCESS",
+  general: "HAS_CONCEPT",
+};
+
+/**
+ * Inline HiveWorkspaceMember endpoint for a hive user, or null when the user
+ * is not (any longer) part of the workspace. Mirrors the jarvis-mirror cron's
+ * identity scheme: member-row cuid for members, the user id for the OWNER
+ * (who has no member row), same display-name fallback chain.
+ */
+async function memberEndpointForUser(
+  workspaceId: string,
+  userId: string,
+): Promise<JarvisEdgeEndpoint | null> {
+  const member = await db.workspaceMember.findFirst({
+    where: { workspaceId, userId, leftAt: null },
+    select: {
+      id: true,
+      user: {
+        select: {
+          name: true,
+          githubAuth: { select: { githubUsername: true } },
+        },
+      },
+    },
+  });
+  if (member) {
+    return {
+      node_type: HIVE_WORKSPACE_MEMBER,
+      node_data: {
+        member_id: member.id,
+        name:
+          member.user.name ?? member.user.githubAuth?.githubUsername ?? "member",
+        user_id: userId,
+      },
+    };
+  }
+  const workspace = await db.workspace.findUnique({
+    where: { id: workspaceId },
+    select: {
+      ownerId: true,
+      owner: {
+        select: {
+          name: true,
+          githubAuth: { select: { githubUsername: true } },
+        },
+      },
+    },
+  });
+  if (workspace?.ownerId === userId) {
+    return {
+      node_type: HIVE_WORKSPACE_MEMBER,
+      node_data: {
+        member_id: userId,
+        name:
+          workspace.owner.name ??
+          workspace.owner.githubAuth?.githubUsername ??
+          "owner",
+        user_id: userId,
+      },
+    };
+  }
+  return null;
+}
+
+/**
+ * Write the anchor edges for a freshly approved Concept. Best-effort by
+ * design (see the block comment above): every failure is logged and
+ * swallowed so a graph gap can never block a user's "remember this".
+ */
+async function writeConceptAnchorEdges(args: {
+  config: { jarvisUrl: string; apiKey: string };
+  proposalId: string;
+  workspaceId: string;
+  approverUserId: string;
+  conceptTarget: JarvisEdgeEndpoint;
+  kind?: ConceptKind;
+  personUserId?: string;
+  repo?: string;
+}): Promise<void> {
+  const {
+    config,
+    proposalId,
+    workspaceId,
+    approverUserId,
+    conceptTarget,
+    kind,
+    personUserId,
+    repo,
+  } = args;
+
+  const warn = (what: string, detail?: unknown) =>
+    logger.warn(
+      `[handleApproval.writeConceptAnchorEdges] ${what}`,
+      "handleApproval",
+      { proposalId, workspaceId, detail },
+    );
+
+  // Workspace anchor. Inline endpoint create-or-merges the HiveWorkspace
+  // node, so this works even before the mirror cron's first pass.
+  try {
+    const workspace = await db.workspace.findUnique({
+      where: { id: workspaceId },
+      select: { name: true },
+    });
+    if (workspace) {
+      const res = await addEdgeV2(config, {
+        edge: { edge_type: CONCEPT_KIND_EDGE[kind ?? "general"] },
+        source: {
+          node_type: HIVE_WORKSPACE,
+          node_data: { workspace_id: workspaceId, name: workspace.name },
+        },
+        target: conceptTarget,
+      });
+      if (!res.success) warn("workspace anchor edge failed", res.message);
+    }
+  } catch (e) {
+    warn("workspace anchor edge threw", e instanceof Error ? e.message : e);
+  }
+
+  // Approval attribution: member -APPROVED-> Concept.
+  try {
+    const approver = await memberEndpointForUser(workspaceId, approverUserId);
+    if (approver) {
+      const res = await addEdgeV2(config, {
+        edge: { edge_type: "APPROVED" },
+        source: approver,
+        target: conceptTarget,
+      });
+      if (!res.success) warn("APPROVED edge failed", res.message);
+    }
+  } catch (e) {
+    warn("APPROVED edge threw", e instanceof Error ? e.message : e);
+  }
+
+  // Person link: member -PREFERENCE-> Concept (who the knowledge is ABOUT).
+  // Written even when the approver IS the person — APPROVED above is
+  // attribution, not a preference claim.
+  if (personUserId) {
+    try {
+      const person = await memberEndpointForUser(workspaceId, personUserId);
+      if (person) {
+        const res = await addEdgeV2(config, {
+          edge: { edge_type: "PREFERENCE" },
+          source: person,
+          target: conceptTarget,
+        });
+        if (!res.success) warn("person PREFERENCE edge failed", res.message);
+      } else {
+        warn("person no longer a workspace member — PREFERENCE edge skipped", {
+          personUserId,
+        });
+      }
+    } catch (e) {
+      warn("person PREFERENCE edge threw", e instanceof Error ? e.message : e);
+    }
+  }
+
+  // Repo anchor: Concept -IN_REPO-> Repository. The Repository node_key
+  // needs file/start we don't have, so NEVER inline-create — resolve the
+  // stakgraph-ingested node by name ("owner/repo") and skip if absent.
+  if (repo) {
+    try {
+      const search = await searchNodesByAttributes(config, {
+        nodeTypes: ["Repository"],
+        filters: [{ attribute: "name", value: repo, comparator: "=" }],
+        limit: 1,
+      });
+      if (search.ok && search.nodes[0]) {
+        const res = await addEdgeV2(config, {
+          edge: { edge_type: "IN_REPO" },
+          source: conceptTarget,
+          target: { ref_id: search.nodes[0].ref_id },
+        });
+        if (!res.success) warn("IN_REPO edge failed", res.message);
+      } else {
+        warn("Repository node not found — IN_REPO edge skipped", { repo });
+      }
+    } catch (e) {
+      warn("IN_REPO edge threw", e instanceof Error ? e.message : e);
+    }
+  }
+}
+
 /** Mirror of gitree's generateSlug (stakgraph mcp/src/gitree/store/utils.ts). */
 function conceptSlug(name: string): string {
   return name
@@ -2298,8 +2509,17 @@ async function approveConceptCreate(args: {
   proposal: Extract<ProposalOutput, { kind: "conceptCreate" }>;
 }): Promise<HandleApprovalReturn> {
   const { orgId, userId, proposal } = args;
-  const { workspaceId, workspaceSlug, name, documentation, description, repo, parent } =
-    proposal.payload;
+  const {
+    workspaceId,
+    workspaceSlug,
+    name,
+    documentation,
+    description,
+    repo,
+    parent,
+    kind,
+    personUserId,
+  } = proposal.payload;
 
   if (!name || !name.trim()) {
     return { ok: false, error: "Concept name is required.", status: 400 };
@@ -2370,21 +2590,23 @@ async function approveConceptCreate(args: {
     };
   }
 
+  // `alreadyExists` can legitimately come back without a ref_id — hand
+  // addEdgeV2 the inline spec and let it resolve by schema node_key
+  // (same fallback as resolveInlineNode above). Shared by the parent link
+  // and every anchor edge below.
+  const conceptTarget: JarvisEdgeEndpoint = created.ref_id
+    ? { ref_id: created.ref_id }
+    : { node_type: "Concept", node_data: { name: name.trim() } };
+
   if (parentRef) {
     if (created.ref_id && created.ref_id === parentRef) {
       // Merge-by-name landed on the parent itself (same name, different id).
       return { ok: false, error: "A concept cannot be its own parent.", status: 400 };
     }
-    // `alreadyExists` can legitimately come back without a ref_id — hand
-    // addEdgeV2 the inline spec and let it resolve by schema node_key
-    // (same fallback as resolveInlineNode above).
-    const target: JarvisEdgeEndpoint = created.ref_id
-      ? { ref_id: created.ref_id }
-      : { node_type: "Concept", node_data: { name: name.trim() } };
     const edgeResult = await addEdgeV2(config, {
       edge: { edge_type: "PARENT_OF" },
       source: { ref_id: parentRef },
-      target,
+      target: conceptTarget,
     });
     if (!edgeResult.success) {
       // Compensating rollback — but only when THIS call created the node;
@@ -2406,6 +2628,19 @@ async function approveConceptCreate(args: {
       };
     }
   }
+
+  // Anchor the concept in the workspace graph (best-effort — never fails
+  // the approval; see writeConceptAnchorEdges).
+  await writeConceptAnchorEdges({
+    config,
+    proposalId: proposal.proposalId,
+    workspaceId,
+    approverUserId: userId,
+    conceptTarget,
+    kind,
+    personUserId,
+    repo,
+  });
 
   return {
     ok: true,
