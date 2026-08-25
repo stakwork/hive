@@ -85,6 +85,30 @@ async function jarvisRequest({
   }
 }
 
+/**
+ * Jarvis error bodies (node_service.py) carry the actual failure detail in
+ * `status_messages: string[]`, not `message` — e.g. create_or_merge_edge
+ * returns `{ status: "Error", status_messages: [...] }`. Fold both into the
+ * failure string so callers' warnings are self-diagnosing, capped so a
+ * pathological body can't flood logs.
+ */
+const MAX_FAILURE_DETAIL_LEN = 500;
+
+function describeJarvisFailure(
+  fallback: string,
+  body?: { message?: string; status_messages?: string[] },
+): string {
+  const detail = [body?.message, ...(body?.status_messages ?? [])]
+    .filter((m): m is string => typeof m === "string" && m.length > 0)
+    .join("; ");
+  if (!detail) return fallback;
+  const truncated =
+    detail.length > MAX_FAILURE_DETAIL_LEN
+      ? `${detail.slice(0, MAX_FAILURE_DETAIL_LEN)}…`
+      : detail;
+  return `${fallback}: ${truncated}`;
+}
+
 export async function addNode(
   config: JarvisConnectionConfig,
   payload: { node_type: string; node_data: Record<string, unknown> },
@@ -138,7 +162,7 @@ export async function addNode(
 
   return {
     success: false,
-    error: "Node creation returned unexpected status",
+    error: describeJarvisFailure("Node creation returned unexpected status", body),
   };
 }
 
@@ -186,7 +210,10 @@ export async function addEdge(
     return { success: true };
   }
 
-  return { success: false, error: "Edge creation returned unexpected status" };
+  return {
+    success: false,
+    error: describeJarvisFailure("Edge creation returned unexpected status", body),
+  };
 }
 
 /** Shared fetch+parse logic for both bulk-edge functions. */
@@ -216,6 +243,16 @@ async function executeBulkEdgeRequest(
   const errors = (body?.status_messages ?? []).filter((m) =>
     m.toLowerCase().startsWith("error"),
   );
+
+  // Jarvis error bodies set status "Error" but the detail in status_messages
+  // need not start with "error" — without this guard such a response falls
+  // through the filter above and reads as success.
+  if (errors.length === 0 && (body?.status ?? "").toLowerCase() === "error") {
+    return {
+      success: false,
+      errors: [describeJarvisFailure("Bulk edge creation returned status Error", body)],
+    };
+  }
 
   // Silent-no-op detector: jarvis's bulk endpoints report every written OR
   // already-existing edge in `edges`, so a healthy response accounts for the
@@ -333,6 +370,15 @@ export async function addNodeBulk(
   const errors = (body?.status_messages ?? []).filter((m) =>
     m.toLowerCase().startsWith("error"),
   );
+
+  // Same "Error"-status gap as executeBulkEdgeRequest: surface the body's
+  // detail instead of silently succeeding.
+  if (errors.length === 0 && (body?.status ?? "").toLowerCase() === "error") {
+    return {
+      success: false,
+      errors: [describeJarvisFailure("Bulk node creation returned status Error", body)],
+    };
+  }
 
   // Bulk node returns "Warning" when some nodes already existed (without
   // reprocess); treat Success and Warning as non-fatal — only collected
@@ -649,7 +695,7 @@ export async function updateNodeV2(
   }
 
   const body = result.body as
-    | { status?: string; message?: string }
+    | { status?: string; message?: string; status_messages?: string[] }
     | undefined;
 
   // Jarvis `update_node` returns 200 + { status: "fail", message } on failure
@@ -660,7 +706,7 @@ export async function updateNodeV2(
   return {
     success: false,
     status: body?.status,
-    message: body?.message ?? "Node update returned unexpected status",
+    message: describeJarvisFailure("Node update returned unexpected status", body),
   };
 }
 
@@ -709,6 +755,7 @@ export async function addEdgeV2(
     | {
         status?: string;
         message?: string;
+        status_messages?: string[];
         data?: { ref_id?: string };
         edges?: Array<{ ref_id?: string }>;
       }
@@ -725,7 +772,7 @@ export async function addEdgeV2(
   return {
     success: false,
     status: body?.status,
-    message: body?.message ?? "Edge creation returned unexpected status",
+    message: describeJarvisFailure("Edge creation returned unexpected status", body),
   };
 }
 

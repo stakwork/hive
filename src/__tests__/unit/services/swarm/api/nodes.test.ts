@@ -351,7 +351,7 @@ describe("addEdge", () => {
       const result = await addEdge(config, edgePayload);
 
       expect(result.success).toBe(false);
-      expect(result.error).toBeDefined();
+      expect(result.error).toContain("Edge creation failed");
     });
 
     test("returns failure when fetch throws", async () => {
@@ -481,6 +481,25 @@ describe("addEdgeBulk", () => {
       const result = await addEdgeBulk(config, edgeList);
 
       expect(result.errors).toHaveLength(0);
+    });
+
+    test("fails on status 'Error' even when no message starts with 'error'", async () => {
+      // node_service.py error bodies set status "Error" with free-form
+      // status_messages; these must not slip through the error-prefix filter.
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          status: "Error",
+          status_messages: ["Source node not found: Workspace wk-123"],
+        }),
+      });
+
+      const result = await addEdgeBulk(config, edgeList);
+
+      expect(result.success).toBe(false);
+      expect(result.errors).toHaveLength(1);
+      expect(result.errors[0]).toContain("Source node not found: Workspace wk-123");
     });
   });
 
@@ -1125,6 +1144,23 @@ describe("addNodeBulk", () => {
 
     expect(result.success).toBe(false);
     expect(result.errors).toEqual(["Error: invalid node_type for item 1"]);
+  });
+
+  test("fails on status 'Error' even when no message starts with 'error'", async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        status: "Error",
+        status_messages: ["node_type HiveTask not in schema"],
+      }),
+    });
+
+    const result = await addNodeBulk(config, nodes);
+
+    expect(result.success).toBe(false);
+    expect(result.errors).toHaveLength(1);
+    expect(result.errors[0]).toContain("node_type HiveTask not in schema");
   });
 
   test("flags endpointMissing on a 404 (older swarm without v2)", async () => {

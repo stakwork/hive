@@ -20,6 +20,7 @@
  * 13. readNodeByRef: 404 → success=false
  * 14. readNodeByRef: traversal ref_id rejected before fetch
  * 15. Helpers never throw — network errors return { success: false }
+ * 16. Error bodies: status_messages surfaced (truncated) in failure messages
  */
 
 // @vitest-environment node
@@ -81,6 +82,20 @@ describe("updateNodeV2", () => {
 
     expect(result.success).toBe(false);
     expect(result.message).toContain("node_key collision");
+  });
+
+  it("surfaces status_messages from a Jarvis error body", async () => {
+    mockFetch.mockResolvedValue(
+      makeResponse({
+        status: "Error",
+        status_messages: ["Node not found for ref_id abc123"],
+      }),
+    );
+
+    const result = await updateNodeV2(config, "abc123", { name: "x" });
+
+    expect(result.success).toBe(false);
+    expect(result.message).toContain("Node not found for ref_id abc123");
   });
 
   it("URL-encodes the ref_id in the path segment", async () => {
@@ -197,6 +212,51 @@ describe("addEdgeV2", () => {
 
     expect(result.success).toBe(false);
     expect(result.message).toContain("Edge type not found");
+  });
+
+  it("surfaces status_messages from a Jarvis error body", async () => {
+    // node_service.py create_or_merge_edge puts the failure detail in
+    // status_messages, with no `message` field.
+    mockFetch.mockResolvedValue(
+      makeResponse({
+        status: "Error",
+        status_messages: [
+          "Source node not found: Workspace wk-123",
+          "edge_type CONTAINS not in schema",
+        ],
+      }),
+    );
+
+    const result = await addEdgeV2(config, basePayload);
+
+    expect(result.success).toBe(false);
+    expect(result.status).toBe("Error");
+    expect(result.message).toContain("Source node not found: Workspace wk-123");
+    expect(result.message).toContain("edge_type CONTAINS not in schema");
+  });
+
+  it("truncates pathologically long status_messages in the failure message", async () => {
+    mockFetch.mockResolvedValue(
+      makeResponse({
+        status: "Error",
+        status_messages: ["x".repeat(5000)],
+      }),
+    );
+
+    const result = await addEdgeV2(config, basePayload);
+
+    expect(result.success).toBe(false);
+    expect(result.message!.length).toBeLessThan(600);
+    expect(result.message).toContain("…");
+  });
+
+  it("keeps the generic fallback when the error body carries no detail", async () => {
+    mockFetch.mockResolvedValue(makeResponse({ status: "Error" }));
+
+    const result = await addEdgeV2(config, basePayload);
+
+    expect(result.success).toBe(false);
+    expect(result.message).toBe("Edge creation returned unexpected status");
   });
 
   it("hardcodes create_schema_if_missing: false on the wire", async () => {
