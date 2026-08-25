@@ -21,7 +21,7 @@
  * derivation is unit-testable without a DOM or network.
  */
 
-import { resolveContested } from "./eval-normalizers";
+import { resolveContested, resolveJudgeDispute } from "./eval-normalizers";
 
 // ─── Contested-origin types ───────────────────────────────────────────────────
 
@@ -180,6 +180,10 @@ export interface ScorableCriterion {
   title?: string;
   verdict?: string;
   contested?: unknown;
+  /** Judge-dispute fields — absent on runs that never went through the dispute stage. */
+  flagged?: unknown;
+  llm_flag_reason?: unknown;
+  flag_basis?: unknown;
 }
 
 /** Case/whitespace-insensitive join key. */
@@ -373,4 +377,187 @@ export function formatBenchmarkScore(score: BenchmarkScore): {
         ? `+${score.contested} contested · ${score.total} total`
         : null,
   };
+}
+
+// ─── RubricBreakdown ──────────────────────────────────────────────────────────
+
+/**
+ * Full partition breakdown for a benchmark run.
+ *
+ * Invariant (always holds by construction): pass + fail + contested === total
+ *
+ * - `pass`        — criteria that passed, excluding contested ones.
+ * - `fail`        — criteria that did not pass and are not contested. Includes
+ *                   roster criteria absent from the run entirely (unscored ≠ pass).
+ * - `contested`   — criteria whose *definition* is contested (excluded from scoring).
+ * - `total`       — full rubric roster size (graph-sourced when available).
+ * - `disputed`    — count of judge-flagged criteria (overlay, not a summand; always
+ *                   a subset of non-passing criteria). `null` when unknowable — i.e.
+ *                   when `criteria` is absent OR when no criterion carries any of the
+ *                   judge-dispute keys (`flagged`/`llm_flag_reason`/`flag_basis`).
+ *                   A run that never went through the judge-dispute stage has criteria
+ *                   but genuinely absent flag keys and must read unknown, not 0.
+ * - `totalSource` — where `total` came from: the graph roster or the run's data.
+ * - `clamped`     — true when a roster/run mismatch caused `pass` to be clamped or
+ *                   `contested` to be capped at `total`. Surfaced for tests/triage.
+ */
+export interface RubricBreakdown {
+  pass: number;
+  fail: number;
+  contested: number;
+  total: number;
+  disputed: number | null;
+  totalSource: "graph" | "run";
+  clamped: boolean;
+}
+
+export interface RubricBreakdownInput {
+  /** The computed score for this run (from `computeBenchmarkScore`). */
+  score: BenchmarkScore | null;
+  /** Per-criterion results from the run, when available. */
+  criteria?: ScorableCriterion[] | null;
+  /** The task's rubric roster from the graph. */
+  graphRubrics?: GraphRubric[] | null;
+}
+
+/**
+ * Derive the full pass/fail/contested/disputed/total breakdown for one run.
+ *
+ * Returns `null` when `score` is null (no run data) — every consumer keeps
+ * its existing `score === null` fallback rather than computing on NaN.
+ *
+ * ## Partition construction
+ *
+ * The invariant `pass + fail + contested === total` is guaranteed by
+ * construction, not subtraction:
+ *
+ * 1. `total`     = score.total  (graph roster size when available).
+ * 2. `contested` = TRUE UNION of roster-contested + run-recorded-contested,
+ *                  capped at total. This is NOT Math.max (which computeBenchmarkScore
+ *                  uses internally and which can lose run-recorded contested criteria
+ *                  missing from the roster's contested set).
+ * 3. `scorable`  = max(0, total − contested)
+ * 4. `pass`      = min(score.passed, scorable)   — clamped so it never exceeds scorable.
+ * 5. `fail`      = scorable − pass               — always >= 0 by construction.
+ *
+ * ## Disputed
+ *
+ * Disputed is an *overlay* count, never part of the sum. It is `null` when:
+ * - `criteria` is absent, OR
+ * - no criterion in `criteria` carries ANY of the keys `flagged`,
+ *   `llm_flag_reason`, `flag_basis` (key-presence check, not truthiness) —
+ *   a run that never went through judge-dispute has criteria but genuinely
+ *   absent flag fields.
+ *
+ * When knowable, it counts criteria where `resolveJudgeDispute(c).isDispute`
+ * is true, restricted to roster-joined criteria (so it stays a subset of
+ * what we scored), then clamped to `fail + contested` so "always a subset of
+ * non-passing criteria" holds structurally.
+ */
+export function rubricBreakdown(input: RubricBreakdownInput): RubricBreakdown | null {
+  const { score, criteria, graphRubrics } = input;
+  if (score === null) return null;
+
+  const hasRoster = Array.isArray(graphRubrics) && graphRubrics.length > 0;
+  const hasCriteria = Array.isArray(criteria) && criteria.length > 0;
+
+  // ── Step 1: total and totalSource ────────────────────────────────────────
+  const total = score.total;
+  const totalSource = score.source;
+
+  // ── Step 2: true union of contested ──────────────────────────────────────
+  // Build the roster's contested key set (id + name, normalized).
+  const rosterContestedIds = new Set<string>();
+  const rosterContestedTitles = new Set<string>();
+  if (hasRoster) {
+    for (const r of graphRubrics!) {
+      if (!r.contested) continue;
+      const ik = normKey(r.id);
+      const nk = normKey(r.name);
+      if (ik) rosterContestedIds.add(ik);
+      if (nk) rosterContestedTitles.add(nk);
+    }
+  }
+
+  // Count roster-contested entries (the authoritative set).
+  const rosterContested = hasRoster ? graphRubrics!.filter((r) => r.contested).length : 0;
+
+  // Union: start from the roster count, then add run-recorded criteria whose
+  // contested flag is set but whose id/title do NOT appear in the roster's
+  // contested set (they would be double-counted if they do).
+  let unionContested = rosterContested;
+  if (hasCriteria) {
+    for (const c of criteria!) {
+      if (!resolveContested(c)) continue;
+      // Check if this criterion is already covered by the roster's contested set.
+      const idHit = rosterContestedIds.has(normKey(c.id));
+      const titleHit = rosterContestedTitles.has(normKey(c.title));
+      if (!idHit && !titleHit) {
+        // Truly new contested criterion not in the roster — add to union.
+        unionContested += 1;
+      }
+    }
+  }
+
+  // Cap at total and record clamping.
+  let clamped = false;
+  let contested = unionContested;
+  if (contested > total) {
+    contested = total;
+    clamped = true;
+  }
+
+  // ── Step 3–5: scorable / pass / fail ─────────────────────────────────────
+  const scorable = Math.max(0, total - contested);
+  let pass = score.passed;
+  if (pass > scorable) {
+    pass = scorable;
+    clamped = true;
+  }
+  const fail = scorable - pass;
+
+  // ── Disputed ──────────────────────────────────────────────────────────────
+  let disputed: number | null = null;
+
+  if (hasCriteria) {
+    // Key-presence check: is any judge-dispute key present on ANY criterion?
+    const hasDisputeKeys = criteria!.some(
+      (c) =>
+        Object.prototype.hasOwnProperty.call(c, "flagged") ||
+        Object.prototype.hasOwnProperty.call(c, "llm_flag_reason") ||
+        Object.prototype.hasOwnProperty.call(c, "flag_basis"),
+    );
+
+    if (hasDisputeKeys) {
+      // Build a set of normalized keys for roster-present criteria so we can
+      // restrict counting to criteria that join the roster (when a roster exists).
+      const rosterIds = new Set<string>();
+      const rosterTitles = new Set<string>();
+      if (hasRoster) {
+        for (const r of graphRubrics!) {
+          const ik = normKey(r.id);
+          const nk = normKey(r.name);
+          if (ik) rosterIds.add(ik);
+          if (nk) rosterTitles.add(nk);
+        }
+      }
+
+      let disputedCount = 0;
+      for (const c of criteria!) {
+        // When a roster is present, restrict to criteria that appear in it.
+        if (hasRoster) {
+          const idHit = rosterIds.has(normKey(c.id));
+          const titleHit = rosterTitles.has(normKey(c.title));
+          if (!idHit && !titleHit) continue;
+        }
+        const judgeResult = resolveJudgeDispute(c);
+        if (judgeResult?.isDispute) disputedCount += 1;
+      }
+
+      // Clamp: disputed is always a subset of non-passing criteria (fail + contested).
+      disputed = Math.min(disputedCount, fail + contested);
+    }
+  }
+
+  return { pass, fail, contested, total, disputed, totalSource, clamped };
 }
