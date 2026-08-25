@@ -264,7 +264,10 @@ export function getMultiWorkspaceSystemPrompt(
       const repos = ws.repoUrls.join(", ");
       const desc = ws.description ? ` — ${ws.description}` : "";
       const swarmSegment = ws.swarmDomain ? `, swarm: \`${ws.swarmDomain}\`` : "";
-      return `- **${ws.name}** (slug: \`${ws.slug}\`${swarmSegment})${desc}: ${repos}`;
+      // The org's home workspace: org-wide knowledge (concepts that span
+      // workspaces) files here — see the propose_new_concept guidance.
+      const defaultSegment = ws.isOrgDefault ? ", **org default**" : "";
+      return `- **${ws.name}** (slug: \`${ws.slug}\`${swarmSegment}${defaultSegment})${desc}: ${repos}`;
     })
     .join("\n");
 

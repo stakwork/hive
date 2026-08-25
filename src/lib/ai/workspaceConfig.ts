@@ -19,6 +19,31 @@ export type { WorkspaceConfig };
 export const PUBLIC_VIEWER_USER_ID = "__public_viewer__";
 
 /**
+ * Stamp `isOrgDefault` on the config whose workspace is the org's default
+ * (`SourceControlOrg.defaultWorkspaceId`). Mutates in place and returns the
+ * same array. No-op when the org has no default or it isn't in the list.
+ */
+export async function markOrgDefaultWorkspace(
+  configs: WorkspaceConfig[],
+  orgId: string,
+): Promise<WorkspaceConfig[]> {
+  try {
+    const org = await db.sourceControlOrg.findUnique({
+      where: { id: orgId },
+      select: { defaultWorkspaceId: true },
+    });
+    if (org?.defaultWorkspaceId) {
+      for (const cfg of configs) {
+        if (cfg.workspaceId === org.defaultWorkspaceId) cfg.isOrgDefault = true;
+      }
+    }
+  } catch {
+    // Marker is prompt-affordance only — never fail the turn over it.
+  }
+  return configs;
+}
+
+/**
  * Build WorkspaceConfig[] by validating access, fetching swarm credentials,
  * repositories, and GitHub PAT for each workspace.
  * Works for both single and multi-workspace — always takes an array of slugs.

@@ -56,6 +56,7 @@ import {
   buildWorkspaceConfigs,
   buildPublicWorkspaceConfig,
   fetchConceptsForWorkspaces,
+  markOrgDefaultWorkspace,
 } from "@/lib/ai/workspaceConfig";
 import type { CapturedSearchResult, DispatchedResearchIntent } from "@/lib/ai/researchTools";
 import type { DispatchedGraphWalkIntent } from "@/lib/ai/graphWalkDispatchTools";
@@ -795,6 +796,9 @@ export async function runCanvasAgent(
     }
     const tBuildConfigs = Date.now();
     const workspaceConfigs = await buildWorkspaceConfigs(workspaceSlugs, userId);
+    // Mark the org's default workspace so the prompt can point org-wide
+    // knowledge (concepts that span workspaces) at the org's home swarm.
+    if (orgId) await markOrgDefaultWorkspace(workspaceConfigs, orgId);
     console.log("[runCanvasAgent] timing", { stage: "buildWorkspaceConfigs (multi)", ms: Date.now() - tBuildConfigs, workspaces: workspaceSlugs, orgId: orgId ?? null });
     // Cache hit → reuse cached concepts and skip the swarm fetch. The
     // cached concepts still flow into `askToolsMulti` (so the 3+ workspace
