@@ -152,8 +152,11 @@ export function CriterionMarkers({
   }
 
   return (
+    // shrink-0: prevents the badge group from being squeezed by a flex sibling
+    // (e.g. a title span with truncate) in the 240px rail. Change-detector class
+    // — jsdom performs no layout, so containment must be verified manually.
     <span
-      className={`inline-flex items-center gap-1 ${className ?? ""}`}
+      className={`inline-flex items-center gap-1 shrink-0 ${className ?? ""}`}
     >
       {disputed && (
         <Tooltip>
