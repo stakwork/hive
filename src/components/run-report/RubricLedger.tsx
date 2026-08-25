@@ -356,32 +356,6 @@ export function RubricLedger({
     );
   }
 
-  // ── Detail panel: contested block ──────────────────────────────────────────
-  // Mirrors the judge-dispute block pattern. Renders when the selected
-  // criterion is contested — the provenance heading ("Prior Contest" /
-  // "Contested Definition") is the sole non-hover surface for contested
-  // provenance; the full copy lives in the badge tooltip.
-  //
-  // SAFETY: do NOT introduce MarkdownRenderer or MermaidDiagram inside this
-  // block. Any future body text here may be LLM-authored and those components
-  // are HTML sinks (innerHTML / eval paths).
-  function ContestedBlock({ c }: { c: CriterionChain }) {
-    const token = originOf(c);
-    if (!token) return null;
-    const isRosterOnly = token === "roster";
-    return (
-      <div
-        className="rounded border border-violet-500/30 bg-violet-500/[0.05] px-3.5 py-2.5 mb-4"
-        data-testid="run-report-contested-block"
-        data-contested-origin={token}
-      >
-        <div className="font-mono text-[9px] uppercase tracking-[0.12em] text-violet-700 dark:text-violet-400">
-          {isRosterOnly ? "Prior Contest" : "Contested Definition"}
-        </div>
-      </div>
-    );
-  }
-
   return (
     <section id="rubrics" className="scroll-mt-6" data-testid="run-report-section-rubrics">
       <Kicker>Review</Kicker>
@@ -489,11 +463,9 @@ export function RubricLedger({
                 </p>
               )}
 
-              {/* Contested Definition / Prior Contest block — visible body copy
-                  so the rationale is readable without hovering. Mirrors the
-                  judge-dispute block pattern. */}
-              <ContestedBlock c={selected} />
-
+              {/* Contested provenance intentionally has no detail-panel block:
+                  the CONTESTED chip in the header row above carries the
+                  origin-aware label and the rationale tooltip. */}
               {detailDispute && (
                 <div
                   className="rounded border border-amber-500/40 bg-amber-500/[0.06] px-3.5 py-2.5 mb-4"
