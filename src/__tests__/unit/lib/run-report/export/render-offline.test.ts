@@ -317,6 +317,36 @@ describe("renderConsolidatedOffline", () => {
     });
   });
 
+  describe("RubricBreakdownStrip in offline header", () => {
+    it("renders rubric-breakdown-fail chip in the offline header when rubric rows are present", async () => {
+      const payload = makeFullRunPayload();
+      const result = await renderRunOffline({ payload, taskTitle: "Test", context: makeEmptyContext() });
+      // FULL_BUNDLE has rubric rows so rubricBreakdown will compute and the strip renders.
+      expect(result.ok).toBe(true);
+      expect(result.markup).toContain('data-testid="rubric-breakdown-fail"');
+    });
+
+    it("renders rubric-breakdown-pass chip in the offline header", async () => {
+      const payload = makeFullRunPayload();
+      const result = await renderRunOffline({ payload, taskTitle: "Test", context: makeEmptyContext() });
+      expect(result.markup).toContain('data-testid="rubric-breakdown-pass"');
+    });
+
+    it("renders rubric-breakdown-total chip in the offline header (full variant)", async () => {
+      const payload = makeFullRunPayload();
+      const result = await renderRunOffline({ payload, taskTitle: "Test", context: makeEmptyContext() });
+      expect(result.markup).toContain('data-testid="rubric-breakdown-total"');
+    });
+
+    it("does not contain unstyled class names absent from OFFLINE_CSS", async () => {
+      const payload = makeFullRunPayload();
+      const result = await renderRunOffline({ payload, taskTitle: "Test", context: makeEmptyContext() });
+      // inline-flex must be present in OFFLINE_CSS (added in this ticket)
+      // and must appear in the rendered HTML from the strip.
+      expect(result.markup).toContain("inline-flex");
+    });
+  });
+
   describe("Self-containment", () => {
     it("does not render external href= links in the output for offline source files", async () => {
       const projection = consolidatedFixture as ConsolidatedReportProjection;

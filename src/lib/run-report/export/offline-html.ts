@@ -123,6 +123,7 @@ a:hover { opacity: 0.8; }
 .max-w-\\[1200px\\] { max-width: 1200px; }
 .mx-auto { margin-left: auto; margin-right: auto; }
 .min-w-0 { min-width: 0; }
+.inline-flex { display: inline-flex; }
 .flex { display: flex; }
 .flex-1 { flex: 1 1 0%; }
 .flex-col { flex-direction: column; }
