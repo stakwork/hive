@@ -32,8 +32,10 @@ import {
 import { useLegalBenchmarkRecursionList } from "@/hooks/useLegalBenchmarkRecursionList";
 import { useBenchmarkRubricsMap } from "@/hooks/useBenchmarkRubrics";
 import { useBenchmarkGraphScoresMap, type GraphScoreRequest } from "@/hooks/useBenchmarkGraphScores";
-import { computeBenchmarkScore } from "@/lib/harvey-lab/rubric-scoring";
+import { computeBenchmarkScore, rubricBreakdown } from "@/lib/harvey-lab/rubric-scoring";
 import { resolveGraphOutputForRun } from "@/lib/harvey-lab/graph-run-score";
+import { RubricBreakdownStrip } from "@/components/harvey-lab/RubricBreakdownStrip";
+import type { RubricBreakdown } from "@/lib/harvey-lab/rubric-scoring";
 import { LegalBenchmarkResults } from "@/components/legal/LegalBenchmarkResults";
 import { BenchmarkRunAgentLogs } from "@/components/legal/BenchmarkRunAgentLogs";
 import { BenchmarkRunCascade } from "@/components/legal/RunCascade";
@@ -130,6 +132,18 @@ type AdjustedRun = BenchmarkRunListRow & {
    *  - "result"     — flat counts echoed into the result JSON (fallback)
    */
   score_source?: "output-ref" | "criteria" | "graph" | "result";
+  /**
+   * Number of failed criteria derived from `rubricBreakdown`. `null` when the
+   * breakdown is not computable (output-ref path, bail-out paths). Never `0`
+   * when the breakdown was not run — renders as "unknown" in the UI.
+   */
+  n_failed: number | null;
+  /**
+   * Number of disputed (judge-flagged) criteria derived from `rubricBreakdown`.
+   * `null` when unknowable — either the breakdown was not run, or the run never
+   * went through the judge-dispute stage (per-criterion flag keys absent).
+   */
+  n_disputed: number | null;
 };
 
 /**
@@ -151,6 +165,10 @@ function pointerAdjustedRun(
     all_pass: scored ? output.n_passed === output.n_total : run.all_pass,
     judgeNotes: run.judgeNotes ?? output.judge_notes,
     score_source: "output-ref",
+    // output-ref: roster_total is undefined and n_total is the node's own
+    // verbatim denominator — Total is unknown; never fall back to n_total.
+    n_failed: null,
+    n_disputed: null,
   };
 }
 
@@ -376,15 +394,16 @@ export function BenchmarkRunsHistory({
         const nTotal = graphOut?.n_total ?? run.n_total;
         // Without a roster, per-criterion results, or a graph output there is
         // nothing to adjust FROM — leave the run's own numbers untouched.
-        if (!roster && !run.criteria_results?.length && !graphOut) return run;
+        if (!roster && !run.criteria_results?.length && !graphOut) return { ...run, n_failed: null, n_disputed: null };
         const score = computeBenchmarkScore({
           criteriaResults: run.criteria_results,
           nPassed,
           nTotal,
           graphRubrics: roster,
         });
-        if (!score) return run;
+        if (!score) return { ...run, n_failed: null, n_disputed: null };
         const usedCriteria = (run.criteria_results?.length ?? 0) > 0;
+        const bd = rubricBreakdown({ score, criteria: run.criteria_results, graphRubrics: roster });
         return {
           ...run,
           n_passed: score.passed,
@@ -397,6 +416,8 @@ export function BenchmarkRunsHistory({
           roster_total: score.total,
           judgeNotes: run.judgeNotes ?? graphOut?.judge_notes,
           score_source: usedCriteria ? "criteria" : graphOut ? "graph" : "result",
+          n_failed: bd?.fail ?? null,
+          n_disputed: bd?.disputed ?? null,
         };
       }),
     [visibleRuns, rosters, graphOutputs],
@@ -425,9 +446,13 @@ export function BenchmarkRunsHistory({
         const nPassed = graphOut?.n_passed ?? run.n_passed;
         const nTotal = graphOut?.n_total ?? run.n_total;
         // Most loop rows (analysis, fix-proposal) never score — leave them be.
-        if (nPassed == null || nTotal == null) return run;
+        if (nPassed == null || nTotal == null) return { ...run, n_failed: null, n_disputed: null };
         const score = computeBenchmarkScore({ nPassed, nTotal, graphRubrics: roster });
-        if (!score) return run;
+        if (!score) return { ...run, n_failed: null, n_disputed: null };
+        // Pass run.criteria_results into rubricBreakdown so secondary rows report
+        // a real Disputed count when available — but do NOT add criteriaResults to
+        // the computeBenchmarkScore call above, since that would change scores.
+        const bd = rubricBreakdown({ score, criteria: run.criteria_results, graphRubrics: roster });
         return {
           ...run,
           n_passed: score.passed,
@@ -438,6 +463,8 @@ export function BenchmarkRunsHistory({
           roster_total: score.total,
           judgeNotes: run.judgeNotes ?? graphOut?.judge_notes,
           score_source: graphOut ? "graph" : "result",
+          n_failed: bd?.fail ?? null,
+          n_disputed: bd?.disputed ?? null,
         };
       }),
     [secondaryRows, rosters, graphOutputs],
@@ -824,6 +851,27 @@ function ScoreCell({ run }: { run: AdjustedRun }) {
     return <span className="text-muted-foreground">—</span>;
   }
 
+  // Build a synthetic RubricBreakdown for the compact strip.
+  // n_failed / n_disputed are null on paths where the breakdown was not computed
+  // (output-ref, bail-out paths) — the strip renders "—" for unknown fields.
+  // On output-ref rows roster_total is undefined: do not infer Total from n_total.
+  const breakdown: RubricBreakdown | null =
+    run.n_failed !== null &&
+    run.n_passed !== undefined &&
+    run.n_total !== undefined &&
+    run.n_contested !== undefined &&
+    run.roster_total !== undefined
+      ? {
+          pass: run.n_passed,
+          fail: run.n_failed,
+          contested: run.n_contested,
+          total: run.roster_total,
+          disputed: run.n_disputed,
+          totalSource: run.score_source === "result" ? "run" : "graph",
+          clamped: false,
+        }
+      : null;
+
   return (
     <div
       className={run.judgeNotes ? "flex items-center gap-2 cursor-help" : "flex items-center gap-2"}
@@ -842,15 +890,10 @@ function ScoreCell({ run }: { run: AdjustedRun }) {
       >
         {run.all_pass ? "PASS" : "FAIL"}
       </Badge>
-      {run.n_contested ? (
-        <span
-          className="text-xs text-violet-700 dark:text-violet-400 whitespace-nowrap"
-          data-testid="score-cell-contested"
-          title={`${run.n_contested} contested criteria excluded from the score · ${run.roster_total} total in the rubric roster`}
-        >
-          +{run.n_contested} contested
-        </span>
-      ) : null}
+      {/* RubricBreakdownStrip (compact) replaces the old standalone "+N contested" span.
+          The strip's contested chip carries data-testid="rubric-breakdown-contested" which
+          doubles as the "score-cell-contested" anchor — kept for backward-compat test hooks. */}
+      <RubricBreakdownStrip breakdown={breakdown} variant="compact" />
     </div>
   );
 }
