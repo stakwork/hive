@@ -22,6 +22,14 @@ export interface WorkspaceConfig {
   workspaceId: string;
   userId: string;
   members: WorkspaceMemberInfo[];
+  /**
+   * True when this workspace is the organization's default
+   * (`SourceControlOrg.defaultWorkspaceId`). The org's "home" swarm:
+   * org-level canvas entities mirror here (canvas-mirror-cron), and
+   * org-wide Concepts should be filed here. Stamped by
+   * `markOrgDefaultWorkspace` — absent when no org context.
+   */
+  isOrgDefault?: boolean;
   /** GitHub handle of the logged-in user sending this request. Undefined for public-viewer requests. */
   currentUserGithubUsername?: string;
   /**

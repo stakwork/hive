@@ -49,6 +49,7 @@ vi.mock("@/lib/ai/workspaceConfig", () => ({
   ),
   buildPublicWorkspaceConfig: vi.fn(),
   fetchConceptsForWorkspaces: vi.fn(async () => ({})),
+  markOrgDefaultWorkspace: vi.fn(async (configs: unknown[]) => configs),
 }));
 vi.mock("@/lib/ai/connectionTools", () => ({ buildConnectionTools: vi.fn(() => ({})) }));
 vi.mock("@/lib/ai/canvasTools", () => ({ buildCanvasTools: vi.fn(() => ({})) }));

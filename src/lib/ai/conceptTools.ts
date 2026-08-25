@@ -246,7 +246,11 @@ export function buildConceptTools(orgId: string, userId: string): ToolSet {
         "down for later'. First check `list_concepts` (or the workspace's " +
         "`{slug}__list_concepts`) to see whether a relevant concept already " +
         "exists — if so, prefer `propose_concept_update` to extend it " +
-        "instead of creating a duplicate.",
+        "instead of creating a duplicate. For knowledge that applies to the " +
+        "WHOLE organization rather than one workspace, file it in the " +
+        "workspace marked **org default** in the Available Workspaces list " +
+        "(the org's home swarm) — if none is marked, ask the user which " +
+        "workspace should own it.",
       inputSchema: z.object({
         workspaceSlug: z
           .string()
