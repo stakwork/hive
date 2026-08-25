@@ -7,6 +7,7 @@ import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth/nextauth";
 import { resolveWorkspaceAccess, requireMemberAccess } from "@/lib/auth/workspace-access";
 import { RunReportView } from "@/components/run-report/RunReportView";
+import { DownloadReportButton } from "@/components/run-report/DownloadReportButton";
 import { canReadRunReport } from "@/lib/run-report/types";
 import { loadRunReport } from "@/lib/run-report/load";
 import { getJarvisConfigForWorkspace } from "@/lib/helpers/jarvis-config";
@@ -126,13 +127,18 @@ export default async function AttemptReportPage({ params, searchParams }: PagePr
       style={{ "--muted-foreground": "oklch(0.75 0 0)" } as React.CSSProperties}
     >
       <div className="flex-1 overflow-y-auto px-6 py-5">
-        <Link
-          href={`/w/${slug}/legal/benchmarks`}
-          className="inline-flex items-center gap-1 font-mono text-[11px] text-muted-foreground hover:text-foreground mb-5"
-        >
-          <ArrowLeft className="h-3 w-3" />
-          Legal Benchmarks
-        </Link>
+        <div className="flex items-center justify-between mb-5">
+          <Link
+            href={`/w/${slug}/legal/benchmarks`}
+            className="inline-flex items-center gap-1 font-mono text-[11px] text-muted-foreground hover:text-foreground"
+          >
+            <ArrowLeft className="h-3 w-3" />
+            Legal Benchmarks
+          </Link>
+          <DownloadReportButton
+            exportUrl={`/api/workspaces/${slug}/legal/benchmarks/attempts/${refId}/report/export`}
+          />
+        </div>
         <RunReportView
           payload={payload}
           taskTitle={taskTitle}
