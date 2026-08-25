@@ -606,10 +606,8 @@ describe("RubricLedger — origin-aware contested chips (graphRubrics fixture)",
 
   // ── Axes stay separate: roster-contested criterion with passing verdict ─────
 
-  it("a passing criterion that is roster-contested shows no DISPUTED/dispute prose in the contested block", () => {
+  it("a passing criterion that is roster-contested shows no DISPUTED badge", () => {
     // PASS_WITH_CONTESTED has verdict "pass" and criterionContested:true.
-    // Its id C-PASS-CONTESTED is not in the roster → "in-run" origin.
-    // Verify: no dispute prose appears inside the contested block.
     const PASS_ROSTER: RubricRow = {
       ...PASS_WITH_CONTESTED,
       id: "C-CONTESTED", // matches roster id → "both" origin (inRun + roster)
@@ -620,140 +618,43 @@ describe("RubricLedger — origin-aware contested chips (graphRubrics fixture)",
     expect(
       screen.queryByTestId("criterion-disputed-badge"),
     ).not.toBeInTheDocument();
-    // The contested block should not contain the judge-dispute label text
-    const contestedBlock = screen.queryByTestId("run-report-contested-block");
-    if (contestedBlock) {
-      expect(contestedBlock.textContent).not.toMatch(/Judge Dispute/i);
-      expect(contestedBlock.textContent).not.toMatch(/Judge Note/i);
-    }
   });
 
-  // ── Contested Definition / Prior Contest block in the detail panel ─────────
+  // ── Contested provenance: no detail-panel block ────────────────────────────
+  // ContestedBlock was removed: once its body copy moved to the CONTESTED chip
+  // tooltip it rendered as an empty bordered box duplicating the chip's label.
+  // Provenance (origin-aware label + rationale tooltip) lives solely on the
+  // CriterionMarkers chip in the detail-panel header.
 
-  it("detail panel shows a Contested Definition block when selected criterion is 'both'", () => {
+  it("detail panel renders no contested block for a 'both'-origin contested criterion", () => {
     // CONTESTED_ONLY is selected first (non-pass, auto-selected).
     renderLedgerWithRoster([CONTESTED_ONLY]);
     expect(
-      screen.getByTestId("run-report-contested-block"),
-    ).toBeInTheDocument();
-    const block = screen.getByTestId("run-report-contested-block");
-    expect(block.getAttribute("data-contested-origin")).toBe("both");
+      screen.queryByTestId("run-report-contested-block"),
+    ).not.toBeInTheDocument();
+    // The CONTESTED chip still carries provenance (list row + detail header).
+    expect(
+      screen.getAllByTestId("criterion-contested-badge").length,
+    ).toBeGreaterThanOrEqual(1);
   });
 
-  it("detail panel shows Prior Contest block for in-run-only contested criterion", () => {
+  it("detail panel renders no contested block for an in-run-only contested criterion", () => {
     const IN_RUN_ONLY = makeRow({
       id: "C-INRUN-ONLY",
       title: "In-run only contested (no roster match)",
       criterionContested: true,
     });
     renderLedgerWithRoster([IN_RUN_ONLY]);
-    const block = screen.getByTestId("run-report-contested-block");
-    expect(block.getAttribute("data-contested-origin")).toBe("in-run");
-    // Label should be "Contested Definition" not "Prior Contest"
-    expect(block.textContent).toContain("Contested Definition");
-  });
-
-  it("detail panel shows no contested block for a plain fail criterion", () => {
-    renderLedgerWithRoster([PLAIN_FAIL]);
-    // PLAIN_FAIL is not contested → no block
-    // (but the roster-only row exists — detail panel only affects the selected row)
     expect(
       screen.queryByTestId("run-report-contested-block"),
     ).not.toBeInTheDocument();
   });
 
-  it("contested block does not appear for a non-contested criterion even with roster", () => {
-    // C-PLAIN is in the roster but contested:false — should have no chip/block.
+  it("no contested block for a plain fail criterion", () => {
     renderLedgerWithRoster([PLAIN_FAIL]);
-    // PLAIN_FAIL auto-selected; C-PLAIN roster entry is non-contested.
     expect(
       screen.queryByTestId("run-report-contested-block"),
     ).not.toBeInTheDocument();
-  });
-
-  // ── Defect 2 fix: tooltip copy removed from ContestedBlock body ────────────
-
-  it("contested block body does NOT repeat the badge tooltip copy — 'both' origin (defect 2 regression pin)", () => {
-    // The badge tooltip copy that was previously rendered as a <p> must no
-    // longer appear as body text inside the block. The tooltip itself (rendered
-    // via TooltipContent) is a sibling, not a child, of the block element.
-    renderLedgerWithRoster([CONTESTED_ONLY]);
-    // Use getAllByTestId because the tooltip mock may render the content inline;
-    // the contested block is the first element with this testid (the detail panel one).
-    const blocks = screen.getAllByTestId("run-report-contested-block");
-    const block = blocks[0];
-    // These are substrings of the contestedNotice() tooltip for "both" origin.
-    // They must NOT appear as direct body text inside the contested block.
-    expect(block.textContent).not.toContain(
-      "It is excluded from the score on both sides",
-    );
-    expect(block.textContent).not.toContain(
-      "independently flags this criterion as contested",
-    );
-  });
-
-  it("contested block body does NOT repeat the badge tooltip copy — 'in-run' origin (defect 2 regression pin)", () => {
-    // Same assertion for a criterion that is only in-run contested (no roster match).
-    const IN_RUN_ONLY = makeRow({
-      id: "C-INRUN-ONLY",
-      title: "In-run only contested (no roster match)",
-      criterionContested: true,
-    });
-    renderLedgerWithRoster([IN_RUN_ONLY]);
-    const inRunBlock = screen.getByTestId("run-report-contested-block");
-    expect(inRunBlock.textContent).not.toContain(
-      "It is excluded from the score on both sides",
-    );
-    // Heading is still present
-    expect(inRunBlock.textContent).toContain("Contested Definition");
-  });
-
-  it("contested block still renders its provenance heading when tooltip copy is removed", () => {
-    // The heading ("Contested Definition" or "Prior Contest") is the sole
-    // non-hover surface for contested provenance and must remain.
-    renderLedgerWithRoster([CONTESTED_ONLY]);
-    const block = screen.getByTestId("run-report-contested-block");
-    // "both" origin → heading is "Contested Definition"
-    expect(block.textContent).toContain("Contested Definition");
-    expect(block).toBeInTheDocument();
-    expect(block.getAttribute("data-contested-origin")).toBe("both");
-  });
-
-  it("contested block for roster-only origin shows 'Prior Contest' heading only", () => {
-    // Roster-only rows don't have a detail panel, so use a bundle row with
-    // in-run origin. Test the heading text here for completeness.
-    const IN_RUN_ONLY = makeRow({
-      id: "C-INRUN-ONLY",
-      title: "In-run only contested (no roster match)",
-      criterionContested: true,
-    });
-    renderLedgerWithRoster([IN_RUN_ONLY]);
-    const block = screen.getByTestId("run-report-contested-block");
-    expect(block.getAttribute("data-contested-origin")).toBe("in-run");
-    // Heading renders; tooltip copy does not
-    expect(block.textContent).toContain("Contested Definition");
-    expect(block.textContent).not.toContain("excluded from the score");
-  });
-
-  // ── Defect 2 fix: ContestedBlock must not use MarkdownRenderer / MermaidDiagram ──
-
-  it("ContestedBlock renders no markdown/HTML-sink components (MarkdownRenderer / MermaidDiagram)", () => {
-    // These components are HTML sinks (innerHTML / eval paths) and must never
-    // be introduced into ContestedBlock — future LLM-authored content would
-    // create an XSS vector if either component is used there.
-    // We assert by data-testid: neither component exposes one under the block.
-    renderLedgerWithRoster([CONTESTED_ONLY]);
-    const block = screen.getByTestId("run-report-contested-block");
-    // Neither MarkdownRenderer nor MermaidDiagram testids should be children.
-    expect(block.querySelector("[data-testid='markdown-renderer']")).toBeNull();
-    expect(block.querySelector("[data-testid='mermaid-diagram']")).toBeNull();
-    // More broadly: the block should contain no rendered HTML beyond plain text
-    // and the provenance heading div — no <p>, <pre>, <code>, <blockquote>,
-    // or <svg> elements that would indicate a renderer was injected.
-    expect(block.querySelector("p")).toBeNull();
-    expect(block.querySelector("pre")).toBeNull();
-    expect(block.querySelector("svg")).toBeNull();
-    expect(block.querySelector("blockquote")).toBeNull();
   });
 });
 

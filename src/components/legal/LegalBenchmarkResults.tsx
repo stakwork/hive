@@ -20,6 +20,7 @@ import { BenchmarkRunAgentLogs } from "@/components/legal/BenchmarkRunAgentLogs"
 import { BenchmarkRunCascade } from "@/components/legal/RunCascade";
 import { resolveJudgeDispute, resolveContestReason } from "@/lib/harvey-lab/eval-normalizers";
 import { CriterionMarkers } from "@/components/run-report/CriterionMarkers";
+import { SafeMarkdown } from "@/components/run-report/SafeMarkdown";
 import { useBenchmarkRubrics } from "@/hooks/useBenchmarkRubrics";
 import {
   buildContestedIndex,
@@ -498,9 +499,11 @@ export function LegalBenchmarkResults({ runId, onReset, isSuperAdmin = false }: 
                                   <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground/70 mb-1">
                                     {dispute.isDispute ? "Judge Dispute" : "Judge Note"}
                                   </p>
-                                  <p className="text-sm text-muted-foreground">
-                                    {dispute.displayText}
-                                  </p>
+                                  {/* LLM-authored — escaped markdown only, no HTML sinks */}
+                                  <SafeMarkdown
+                                    text={dispute.displayText}
+                                    className="text-sm text-muted-foreground"
+                                  />
                                 </div>
                               );
                             })()}

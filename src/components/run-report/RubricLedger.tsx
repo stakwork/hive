@@ -17,6 +17,7 @@ import {
 } from "@/lib/harvey-lab/rubric-scoring";
 import { scorableFromRubricRow } from "@/lib/run-report/rubric-adapter";
 import { CriterionMarkers } from "./CriterionMarkers";
+import { SafeMarkdown } from "./SafeMarkdown";
 
 /**
  * Shared pass/fail badge used in the rubric ledger list rows and in
@@ -355,32 +356,6 @@ export function RubricLedger({
     );
   }
 
-  // ── Detail panel: contested block ──────────────────────────────────────────
-  // Mirrors the judge-dispute block pattern. Renders when the selected
-  // criterion is contested — the provenance heading ("Prior Contest" /
-  // "Contested Definition") is the sole non-hover surface for contested
-  // provenance; the full copy lives in the badge tooltip.
-  //
-  // SAFETY: do NOT introduce MarkdownRenderer or MermaidDiagram inside this
-  // block. Any future body text here may be LLM-authored and those components
-  // are HTML sinks (innerHTML / eval paths).
-  function ContestedBlock({ c }: { c: CriterionChain }) {
-    const token = originOf(c);
-    if (!token) return null;
-    const isRosterOnly = token === "roster";
-    return (
-      <div
-        className="rounded border border-violet-500/30 bg-violet-500/[0.05] px-3.5 py-2.5 mb-4"
-        data-testid="run-report-contested-block"
-        data-contested-origin={token}
-      >
-        <div className="font-mono text-[9px] uppercase tracking-[0.12em] text-violet-700 dark:text-violet-400">
-          {isRosterOnly ? "Prior Contest" : "Contested Definition"}
-        </div>
-      </div>
-    );
-  }
-
   return (
     <section id="rubrics" className="scroll-mt-6" data-testid="run-report-section-rubrics">
       <Kicker>Review</Kicker>
@@ -488,11 +463,9 @@ export function RubricLedger({
                 </p>
               )}
 
-              {/* Contested Definition / Prior Contest block — visible body copy
-                  so the rationale is readable without hovering. Mirrors the
-                  judge-dispute block pattern. */}
-              <ContestedBlock c={selected} />
-
+              {/* Contested provenance intentionally has no detail-panel block:
+                  the CONTESTED chip in the header row above carries the
+                  origin-aware label and the rationale tooltip. */}
               {detailDispute && (
                 <div
                   className="rounded border border-amber-500/40 bg-amber-500/[0.06] px-3.5 py-2.5 mb-4"
@@ -502,7 +475,9 @@ export function RubricLedger({
                   <div className="font-mono text-[9px] uppercase tracking-[0.12em] text-amber-700 dark:text-amber-400 mb-1">
                     {detailDispute.isDispute ? "Judge Dispute" : "Judge Note"}
                   </div>
-                  <p className="text-[12.5px] whitespace-pre-wrap">{detailDispute.displayText}</p>
+                  {/* Judge notes are LLM-authored markdown — SafeMarkdown per
+                      this directory's rule (escaped text, no HTML sinks). */}
+                  <SafeMarkdown text={detailDispute.displayText} className="text-[12.5px]" />
                   {selected.documentExcerpt && (
                     <blockquote className="mt-2 max-h-40 overflow-y-auto overscroll-contain border-l-2 border-amber-500/40 pl-3 text-[12px] text-muted-foreground whitespace-pre-wrap">
                       {selected.documentExcerpt}
