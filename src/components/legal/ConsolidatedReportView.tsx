@@ -7,6 +7,13 @@ import { PassFailBadge } from "@/components/run-report/RubricLedger";
 import { SafeMarkdown } from "@/components/run-report/SafeMarkdown";
 import { CriterionMarkers } from "@/components/run-report/CriterionMarkers";
 import { SectionErrorBoundary, Kicker, EmptyPanel } from "@/components/run-report/chrome";
+import { resolveContested, resolveContestReason } from "@/lib/harvey-lab/eval-normalizers";
+import {
+  contestedOriginIndex,
+  contestedOrigin,
+  contestedOriginToken,
+  type GraphRubric,
+} from "@/lib/harvey-lab/rubric-scoring";
 
 /**
  * Consolidated cross-run report renderer.
@@ -43,6 +50,13 @@ interface ConsolidatedReportViewProps {
   taskSlug: string;
   /** Workspace slug — reserved for future authed graph node fetches. */
   workspaceSlug?: string | null;
+  /**
+   * Graph rubric roster for the task (EvalSet → EvalRequirement).
+   * When provided, enables origin-aware contested chip rendering
+   * (CONTESTED vs PRIOR CONTEST) in the per-criterion detail tables.
+   * Null when the roster is unavailable or hasn't loaded yet.
+   */
+  graphRubrics?: GraphRubric[] | null;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -217,12 +231,20 @@ function FailedRubricMatrix({
 function CriterionDetailTable({
   detail,
   runs,
+  graphRubrics,
 }: {
   detail: ConsolidatedReportProjection["rubricDetails"][number];
   runs: ConsolidatedReportProjection["runs"];
+  graphRubrics?: GraphRubric[] | null;
 }) {
   // Omit the "Judgement Review" row entirely when all runs have empty judgeFlagReason.
   const hasAnyFlag = detail.perRun.some((p) => p.judgeFlagReason.trim().length > 0);
+
+  // Build the origin index once for all perRun entries in this criterion.
+  // When graphRubrics is null/absent, originIndex.available = false → tokens
+  // degrade to "unknown" (today's undifferentiated CONTESTED chip), never
+  // falsely claiming a roster was consulted.
+  const originIdx = contestedOriginIndex(graphRubrics);
 
   return (
     <div
@@ -325,16 +347,37 @@ function CriterionDetailTable({
               </td>
               {runs.map((run) => {
                 const perRun = detail.perRun.find((p) => p.runId === run.runId);
+                if (!perRun) {
+                  return (
+                    <td key={run.runId} className="px-4 py-3 align-top">
+                      <span className="text-muted-foreground/40 font-mono text-[10px]">—</span>
+                    </td>
+                  );
+                }
+                // Narrow the wire value through resolveContested to get a clean
+                // boolean, then build a minimal ScorableCriterion-shaped object
+                // so contestedOrigin can derive provenance.
+                const isContested = resolveContested({ contested: perRun.criterionContested });
+                const fakeScorableCriterion = {
+                  id: detail.id,
+                  title: detail.title,
+                  contested: isContested,
+                  verdict: perRun.verdict,
+                };
+                const originInfo = isContested
+                  ? contestedOrigin(fakeScorableCriterion, originIdx)
+                  : null;
+                const token = originInfo ? contestedOriginToken(originInfo) : null;
                 return (
                   <td key={run.runId} className="px-4 py-3 align-top">
-                    {perRun ? (
-                      <CriterionMarkers
-                        contested={perRun.criterionContested}
-                        disputed={false}
-                      />
-                    ) : (
-                      <span className="text-muted-foreground/40 font-mono text-[10px]">—</span>
-                    )}
+                    <CriterionMarkers
+                      contested={isContested}
+                      disputed={false}
+                      contestedOrigin={token ?? undefined}
+                      contestedReason={resolveContestReason(fakeScorableCriterion)}
+                      contestedVerdict={perRun.verdict}
+                      contestedMatchedBy={originInfo?.matchedBy}
+                    />
                   </td>
                 );
               })}
@@ -353,6 +396,7 @@ export function ConsolidatedReportView({
   projection,
   taskSlug,
   workspaceSlug,
+  graphRubrics,
 }: ConsolidatedReportViewProps) {
   // Handle load / projection errors.
   if (!payload.hasReport) {
@@ -399,6 +443,7 @@ export function ConsolidatedReportView({
               <CriterionDetailTable
                 detail={detail}
                 runs={projection.runs}
+                graphRubrics={graphRubrics}
               />
             </SectionErrorBoundary>
           ))}

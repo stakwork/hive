@@ -29,7 +29,9 @@ import type { RunReportPayload, RunReportProjection, ConsolidatedReportProjectio
 import type { GraphRubric } from "@/lib/harvey-lab/rubric-scoring";
 import type { FixSnapshotEntry } from "@/types/legal";
 import { buildChainModel } from "@/lib/run-report/chain";
-import { computeBenchmarkScore } from "@/lib/harvey-lab/rubric-scoring";
+import { computeBenchmarkScore, contestedOriginIndex, contestedOrigin, contestedOriginToken } from "@/lib/harvey-lab/rubric-scoring";
+import { contestedNotice } from "@/lib/harvey-lab/contested-copy";
+import { resolveContested, resolveContestReason } from "@/lib/harvey-lab/eval-normalizers";
 import type { PackedDocument } from "./pack-documents";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -602,11 +604,29 @@ function OfflineConsolidatedDocument({
                         Judgement review: {perRun.judgeFlagReason}
                       </p>
                     )}
-                    {perRun.criterionContested && (
-                      <span className="mt-1 inline-flex rounded-full border border-violet-500/40 bg-violet-500/10 px-2 py-0.5 font-mono text-[9.5px] uppercase tracking-[0.07em] text-violet-500">
-                        contested
-                      </span>
-                    )}
+                    {perRun.criterionContested && (() => {
+                      // Compute origin-aware label using the same helpers as the live app.
+                      // `graphRubrics` is not passed into OfflineConsolidatedDocument yet
+                      // (the offline context does not carry it), so the origin index will
+                      // have available=false → token degrades to "unknown" which renders
+                      // exactly today's CONTESTED pill — preserving backward compatibility
+                      // while the slot is wired for future use.
+                      const isContested = resolveContested({ contested: perRun.criterionContested });
+                      if (!isContested) return null;
+                      const emptyOriginIdx = contestedOriginIndex(null);
+                      const fakeScorableCriterion = { id: detail.id, title: detail.title, contested: isContested, verdict: perRun.verdict };
+                      const originInfo = contestedOrigin(fakeScorableCriterion, emptyOriginIdx);
+                      const token = originInfo ? contestedOriginToken(originInfo) : "unknown";
+                      const { label } = contestedNotice({ origin: token ?? "unknown", verdict: perRun.verdict, reason: resolveContestReason(fakeScorableCriterion) });
+                      return (
+                        <span
+                          data-contested-origin={token ?? undefined}
+                          className="mt-1 inline-flex rounded-full border border-violet-500/40 bg-violet-500/10 px-2 py-0.5 font-mono text-[9.5px] uppercase tracking-[0.07em] text-violet-500"
+                        >
+                          {label}
+                        </span>
+                      );
+                    })()}
                   </div>
                 );
               })}
