@@ -9,6 +9,12 @@ import {
   parsePullRequestUrl,
   prNodeKey,
   taskPrEdge,
+  workspaceToNode,
+  memberToNode,
+  memberEdge,
+  HIVE_WORKSPACE,
+  HIVE_WORKSPACE_MEMBER,
+  EDGE_HAS_MEMBER,
   HIVE_FEATURE,
   HIVE_TASK,
   HIVE_CHAT_MESSAGE,
@@ -166,6 +172,71 @@ describe("jarvis-mirror mappers", () => {
       expect(edge.edge.edge_type).toBe(EDGE_RESULTED_IN);
       expect(edge.source_ref_id).toBe("task-ref-1");
       expect(edge.target_ref_id).toBe("pr-ref-abc");
+    });
+  });
+
+  describe("workspace anchor mappers", () => {
+    it("workspaceToNode maps id -> workspace_id and carries description + mission", () => {
+      const node = workspaceToNode({
+        id: "w1",
+        name: "Hive",
+        slug: "hive",
+        description: "AI-first PM toolkit",
+        mission: "harden codebases",
+        createdAt: AT,
+        updatedAt: AT,
+      });
+      expect(node.node_type).toBe(HIVE_WORKSPACE);
+      expect(node.node_data).toEqual({
+        workspace_id: "w1",
+        name: "Hive",
+        slug: "hive",
+        description: "AI-first PM toolkit",
+        mission: "harden codebases",
+        created_at: AT.toISOString(),
+        updated_at: AT.toISOString(),
+      });
+    });
+
+    it("workspaceToNode omits null/undefined fields", () => {
+      const node = workspaceToNode({ id: "w1", name: "Hive", description: null });
+      expect("description" in node.node_data).toBe(false);
+      expect("mission" in node.node_data).toBe(false);
+    });
+
+    it("memberToNode maps id -> member_id (node_key field) with role + description", () => {
+      const node = memberToNode({
+        id: "wm1",
+        name: "alice",
+        userId: "u2",
+        githubUsername: "alice",
+        role: "DEVELOPER",
+        description: "backend focus",
+        joinedAt: AT,
+      });
+      expect(node.node_type).toBe(HIVE_WORKSPACE_MEMBER);
+      expect(node.node_data).toEqual({
+        member_id: "wm1",
+        name: "alice",
+        user_id: "u2",
+        github_username: "alice",
+        role: "DEVELOPER",
+        description: "backend focus",
+        joined_at: AT.toISOString(),
+      });
+    });
+
+    it("memberEdge is HiveWorkspace -HAS_MEMBER-> HiveWorkspaceMember with node_key endpoints", () => {
+      const edge = memberEdge({ id: "w1", name: "Hive" }, { id: "wm1", name: "alice" });
+      expect(edge.edge.edge_type).toBe(EDGE_HAS_MEMBER);
+      expect(edge.source).toEqual({
+        node_type: HIVE_WORKSPACE,
+        node_data: { workspace_id: "w1", name: "Hive" },
+      });
+      expect(edge.target).toEqual({
+        node_type: HIVE_WORKSPACE_MEMBER,
+        node_data: { member_id: "wm1", name: "alice" },
+      });
     });
   });
 });

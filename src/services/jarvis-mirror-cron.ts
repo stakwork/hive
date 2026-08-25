@@ -29,8 +29,12 @@ import {
   chatMessageToNode,
   taskEdge,
   chatMessageEdge,
+  workspaceToNode,
+  memberToNode,
+  memberEdge,
   type JarvisNodePayload,
   type JarvisEdgePayload,
+  type WorkspaceMemberMirrorRow,
 } from "@/services/jarvis-mirror/mappers";
 
 const LOG = "JARVIS_MIRROR";
@@ -48,6 +52,15 @@ export const WORKSPACE_BUDGET_MS = 60_000;
 
 type EntityType = "feature" | "task" | "chat";
 
+/**
+ * Anchor types mirrored WITHOUT a cursor: one HiveWorkspace node plus a
+ * bounded member list per graph, fully re-upserted every run. Cheap, and
+ * self-healing — a description edit lands next pass regardless of any
+ * updatedAt bookkeeping. Not part of EntityType because they never touch
+ * `Workspace.jarvisSyncState`.
+ */
+type AnchorCounts = { workspace: number; member: number };
+
 interface Cursor {
   at: string; // ISO updatedAt of last processed row
   id: string; // id of last processed row
@@ -60,6 +73,7 @@ export interface WorkspaceMirrorResult {
   slug: string;
   skipped?: string;
   counts?: Record<EntityType, number>;
+  anchors?: AnchorCounts;
   capped?: boolean;
   errors?: string[];
 }
@@ -141,6 +155,83 @@ async function pushEdges(
   return ok;
 }
 
+/**
+ * Mirror the workspace anchor node + its member nodes (full upsert, no
+ * cursor — see AnchorCounts). The OWNER has no WorkspaceMember row (hive
+ * forbids one), so they are mirrored as a member node keyed by their user
+ * id; `user_id` is set on every member node, so approval-time lookups
+ * ("which member node is this hive user?") key on it uniformly.
+ */
+async function mirrorWorkspaceAnchors(
+  workspaceId: string,
+  config: JarvisConnectionConfig,
+  errors: string[],
+): Promise<AnchorCounts> {
+  const ws = await db.workspace.findUnique({
+    where: { id: workspaceId },
+    select: {
+      id: true,
+      name: true,
+      slug: true,
+      description: true,
+      mission: true,
+      createdAt: true,
+      updatedAt: true,
+      owner: {
+        select: {
+          id: true,
+          name: true,
+          githubAuth: { select: { githubUsername: true } },
+        },
+      },
+      members: {
+        where: { leftAt: null },
+        select: {
+          id: true,
+          userId: true,
+          role: true,
+          description: true,
+          joinedAt: true,
+          user: {
+            select: {
+              name: true,
+              githubAuth: { select: { githubUsername: true } },
+            },
+          },
+        },
+      },
+    },
+  });
+  if (!ws) return { workspace: 0, member: 0 };
+
+  const memberRows: WorkspaceMemberMirrorRow[] = [
+    {
+      id: ws.owner.id,
+      name: ws.owner.name ?? ws.owner.githubAuth?.githubUsername ?? "owner",
+      userId: ws.owner.id,
+      githubUsername: ws.owner.githubAuth?.githubUsername,
+      role: "OWNER",
+      joinedAt: ws.createdAt,
+    },
+    ...ws.members.map((m) => ({
+      id: m.id,
+      name: m.user.name ?? m.user.githubAuth?.githubUsername ?? "member",
+      userId: m.userId,
+      githubUsername: m.user.githubAuth?.githubUsername,
+      role: m.role,
+      description: m.description,
+      joinedAt: m.joinedAt,
+    })),
+  ];
+
+  const nodes = [workspaceToNode(ws), ...memberRows.map(memberToNode)];
+  const nodesOk = await pushNodes(config, nodes, errors);
+  const edges = memberRows.map((m) => memberEdge(ws, m));
+  const edgesOk = await pushEdges(config, edges, errors);
+  if (!nodesOk || !edgesOk) return { workspace: 0, member: 0 };
+  return { workspace: 1, member: memberRows.length };
+}
+
 /** Mirror a single workspace. Mutates `state` in place with advanced cursors. */
 async function mirrorWorkspace(
   workspace: { id: string; slug: string },
@@ -157,6 +248,13 @@ async function mirrorWorkspace(
   // advance on a completed type, so skipped types simply retry next run.
   const deadline = Date.now() + WORKSPACE_BUDGET_MS;
   const overBudget = () => Date.now() >= deadline;
+
+  // --- Workspace anchor + members (full upsert, no cursor) ---
+  // First: it is the cheapest pass and the anchor node must exist before
+  // concept-approval edge writes can land on it.
+  const anchors = await mirrorWorkspaceAnchors(workspace.id, config, errors);
+
+  if (overBudget()) return { workspaceId: workspace.id, slug: workspace.slug, counts, anchors, capped, errors };
 
   // --- Features ---
   const features = await db.feature.findMany({
@@ -176,7 +274,7 @@ async function mirrorWorkspace(
     }
   }
 
-  if (overBudget()) return { workspaceId: workspace.id, slug: workspace.slug, counts, capped, errors };
+  if (overBudget()) return { workspaceId: workspace.id, slug: workspace.slug, counts, anchors, capped, errors };
 
   // --- Tasks (+ HAS_TASK edges) ---
   const tasks = await db.task.findMany({
@@ -202,7 +300,7 @@ async function mirrorWorkspace(
     }
   }
 
-  if (overBudget()) return { workspaceId: workspace.id, slug: workspace.slug, counts, capped, errors };
+  if (overBudget()) return { workspaceId: workspace.id, slug: workspace.slug, counts, anchors, capped, errors };
 
   // --- Chat messages (+ HAS_MESSAGE edges) ---
   // No direct workspaceId on ChatMessage — reach it via task or feature.
@@ -249,7 +347,7 @@ async function mirrorWorkspace(
     }
   }
 
-  return { workspaceId: workspace.id, slug: workspace.slug, counts, capped, errors };
+  return { workspaceId: workspace.id, slug: workspace.slug, counts, anchors, capped, errors };
 }
 
 /**
@@ -311,8 +409,10 @@ export async function runJarvisMirror(
         });
       }
       const c = result.counts ?? { feature: 0, task: 0, chat: 0 };
+      const a = result.anchors ?? { workspace: 0, member: 0 };
       logger.info(
         `[JARVIS MIRROR] ${ws.slug}: synced feature=${c.feature} task=${c.task} chat=${c.chat}` +
+          ` anchors(ws=${a.workspace} member=${a.member})` +
           `${result.capped ? " (capped)" : ""}`,
         LOG,
       );
