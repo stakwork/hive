@@ -35,4 +35,6 @@ export const GRAPH_EXPLORER_COLORS: Record<string, string> = {
 
   // Agent runs
   AgentSession: "#d946ef",
+  HiveWorkspace: "#eab308",
+  HiveWorkspaceMember: "#38bdf8",
 };
