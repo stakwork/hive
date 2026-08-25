@@ -317,6 +317,28 @@ export function resolveContested(criterion: { contested?: unknown }): boolean {
   return false;
 }
 
+// ─── Contest-reason resolver ──────────────────────────────────────────────────
+
+/**
+ * Resolve the contest-specific reason string for a criterion.
+ *
+ * Returns `null` unconditionally today — no contest-reason wire key exists
+ * anywhere in the codebase and no producer emits one yet. This function is
+ * the SINGLE wire-in point for a future contest-reason field: when a producer
+ * starts emitting a key, add the read here (e.g. `criterion.contest_reason`).
+ *
+ * CALLERS MUST NOT read `judgeFlagReason` / `llm_flag_reason` here. Those
+ * fields belong exclusively to `resolveJudgeDispute` and must stay off the
+ * CONTESTED axis — mixing them would collapse the DISPUTED vs CONTESTED
+ * distinction that the UI surfaces as two separate chip states.
+ */
+export function resolveContestReason(criterion: { [key: string]: unknown }): string | null {
+  // No contest-reason field exists yet. Return null so the reason slot stays
+  // empty and `contestedNotice` omits it cleanly (never emits a placeholder).
+  void criterion; // explicit acknowledgment that the parameter is intentionally unused
+  return null;
+}
+
 // ─── Trigger identity guard ───────────────────────────────────────────────────
 
 /**

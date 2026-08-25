@@ -23,6 +23,143 @@
 
 import { resolveContested } from "./eval-normalizers";
 
+// ─── Contested-origin types ───────────────────────────────────────────────────
+
+/**
+ * Fine-grained origin metadata for a single contested criterion.
+ *
+ * `inRun`          — the run bundle recorded the contested flag via
+ *                    `resolveContested` (the `contested` wire key on the
+ *                    criterion result, independent of the graph roster).
+ * `roster`         — the criterion matched a contested EvalRequirement in the
+ *                    graph roster (by id or title normalization).
+ * `rosterAvailable`— whether a non-empty roster was present when this was
+ *                    computed. When false, `roster` is always false and any
+ *                    in-run signal is downgraded to `"unknown"` by
+ *                    `contestedOriginToken` — roster absence MUST NOT be read
+ *                    as "roster says this criterion is not contested".
+ * `matchedBy`      — which field produced the roster hit, or null when there
+ *                    is no roster hit.
+ */
+export interface ContestedOriginInfo {
+  inRun: boolean;
+  roster: boolean;
+  rosterAvailable: boolean;
+  matchedBy: "id" | "title" | null;
+}
+
+/**
+ * Single token consumed by data- attributes, export columns, and filter
+ * predicates. Null means the criterion is not contested at all.
+ *
+ * "in-run"  — contested only by this run's bundle (no roster confirmation).
+ * "roster"  — contested only in the rubric roster (not flagged in this run's
+ *             bundle).
+ * "both"    — contested in both sources simultaneously.
+ * "unknown" — there is a contested signal but the roster was unavailable, so
+ *             provenance cannot be established. Renders like the legacy
+ *             undifferentiated CONTESTED chip and never claims in-run
+ *             provenance was verified against a missing roster.
+ */
+export type ContestedOriginToken = "in-run" | "roster" | "both" | "unknown";
+
+/**
+ * Collapse a `ContestedOriginInfo` into a single display token.
+ *
+ * IMPORTANT: when `rosterAvailable` is false we can only confirm `inRun`
+ * status — we cannot confirm that the roster would NOT have matched, so we
+ * must not emit `"in-run"` (which would imply a clean roster miss). Instead
+ * we emit `"unknown"` whenever the roster was absent, preserving the
+ * today-is-undifferentiated behaviour as the safe default until the roster
+ * loads.
+ *
+ * Returns null when the criterion is not contested at all (inRun and roster
+ * are both false — the caller should not render a chip).
+ */
+export function contestedOriginToken(info: ContestedOriginInfo): ContestedOriginToken | null {
+  const { inRun, roster, rosterAvailable } = info;
+
+  if (!inRun && !roster) return null;
+
+  // Roster was unavailable — we cannot distinguish in-run from roster-only, so
+  // degrade to "unknown" rather than asserting a provenance we cannot verify.
+  if (!rosterAvailable) return "unknown";
+
+  if (inRun && roster) return "both";
+  if (roster) return "roster";
+  return "in-run";
+}
+
+/**
+ * Build a provenance index for contested rubric definitions, keeping id and
+ * title matches in SEPARATE sets so callers can report which field matched.
+ *
+ * This is intentionally separate from `buildContestedIndex` (which merges both
+ * into one set for the boolean scoring path). Do NOT merge them — scoring must
+ * keep calling `buildContestedIndex` unchanged.
+ *
+ * `available` mirrors the `hasRoster` check in `computeBenchmarkScore`:
+ * true only when rubrics is a non-empty array.
+ */
+export function contestedOriginIndex(rubrics: GraphRubric[] | null | undefined): {
+  ids: Set<string>;
+  titles: Set<string>;
+  available: boolean;
+} {
+  const ids = new Set<string>();
+  const titles = new Set<string>();
+  const available = Array.isArray(rubrics) && rubrics.length > 0;
+
+  if (available) {
+    for (const rubric of rubrics!) {
+      if (!rubric.contested) continue;
+      const idKey = normKey(rubric.id);
+      const nameKey = normKey(rubric.name);
+      if (idKey) ids.add(idKey);
+      if (nameKey) titles.add(nameKey);
+    }
+  }
+
+  return { ids, titles, available };
+}
+
+/**
+ * Compute the full contested-origin info for one criterion.
+ *
+ * Returns null when the criterion is not contested at all (neither roster hit
+ * nor in-run flag). Callers should check for null before rendering any chip.
+ *
+ * `matchedBy` is set to:
+ *   "id"    — the criterion's id normalized onto a contested roster id.
+ *   "title" — only the criterion's title (not id) matched a contested roster
+ *             name. Title collisions with unrelated rubrics are possible; copy
+ *             should be hedged (handled by `contestedNotice`).
+ *   null    — no roster match.
+ */
+export function contestedOrigin(
+  criterion: Pick<ScorableCriterion, "id" | "title" | "contested" | "verdict">,
+  originIndex: ReturnType<typeof contestedOriginIndex>,
+): ContestedOriginInfo | null {
+  const inRun = resolveContested(criterion);
+  const idHit = originIndex.ids.has(normKey(criterion.id));
+  const titleHit = originIndex.titles.has(normKey(criterion.title));
+  const rosterHit = idHit || titleHit;
+  const matchedBy: ContestedOriginInfo["matchedBy"] = idHit
+    ? "id"
+    : titleHit
+      ? "title"
+      : null;
+
+  if (!inRun && !rosterHit) return null;
+
+  return {
+    inRun,
+    roster: rosterHit,
+    rosterAvailable: originIndex.available,
+    matchedBy,
+  };
+}
+
 export type RubricStatus = "PASS" | "FAIL" | "CONTESTED";
 
 /**
