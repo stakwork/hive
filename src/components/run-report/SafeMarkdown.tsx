@@ -3,7 +3,8 @@
 import React from "react";
 
 /**
- * Minimal markdown renderer for bundle prose (agent final answers).
+ * Minimal markdown renderer for LLM-authored prose (agent final answers,
+ * judge notes/disputes in benchmark reports).
  *
  * Everything renders as ESCAPED REACT TEXT per this directory's rule — no
  * dangerouslySetInnerHTML, no MarkdownRenderer/MermaidDiagram (HTML sinks).
@@ -36,7 +37,14 @@ function inline(text: string, key: number): React.ReactNode {
   return parts;
 }
 
-export function SafeMarkdown({ text }: { text: string }) {
+export function SafeMarkdown({
+  text,
+  className = "text-[13px] text-muted-foreground",
+}: {
+  text: string;
+  /** Replaces the default wrapper classes (size + color) when provided. */
+  className?: string;
+}) {
   const out: React.ReactNode[] = [];
   const lines = text.split("\n");
   let list: { ordered: boolean; items: React.ReactNode[] } | null = null;
@@ -116,5 +124,5 @@ export function SafeMarkdown({ text }: { text: string }) {
       </pre>,
     );
   }
-  return <div className="text-[13px] text-muted-foreground">{out}</div>;
+  return <div className={className}>{out}</div>;
 }

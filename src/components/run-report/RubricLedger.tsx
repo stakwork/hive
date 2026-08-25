@@ -17,6 +17,7 @@ import {
 } from "@/lib/harvey-lab/rubric-scoring";
 import { scorableFromRubricRow } from "@/lib/run-report/rubric-adapter";
 import { CriterionMarkers } from "./CriterionMarkers";
+import { SafeMarkdown } from "./SafeMarkdown";
 
 /**
  * Shared pass/fail badge used in the rubric ledger list rows and in
@@ -502,7 +503,9 @@ export function RubricLedger({
                   <div className="font-mono text-[9px] uppercase tracking-[0.12em] text-amber-700 dark:text-amber-400 mb-1">
                     {detailDispute.isDispute ? "Judge Dispute" : "Judge Note"}
                   </div>
-                  <p className="text-[12.5px] whitespace-pre-wrap">{detailDispute.displayText}</p>
+                  {/* Judge notes are LLM-authored markdown — SafeMarkdown per
+                      this directory's rule (escaped text, no HTML sinks). */}
+                  <SafeMarkdown text={detailDispute.displayText} className="text-[12.5px]" />
                   {selected.documentExcerpt && (
                     <blockquote className="mt-2 max-h-40 overflow-y-auto overscroll-contain border-l-2 border-amber-500/40 pl-3 text-[12px] text-muted-foreground whitespace-pre-wrap">
                       {selected.documentExcerpt}

@@ -22,6 +22,7 @@ import {
   FAIL_BADGE_CLASS,
 } from "@/lib/harvey-lab/benchmark-summary";
 import { StakworkRunLink } from "@/components/legal/StakworkRunLink";
+import { SafeMarkdown } from "@/components/run-report/SafeMarkdown";
 import type { BenchmarkRunListRow } from "@/hooks/useLegalBenchmarkRunList";
 import type { BenchmarkRunResult } from "@/types/legal";
 
@@ -175,7 +176,9 @@ function CriteriaDetailsPanel({ run, roster }: CriteriaDetailsPanelProps) {
       </div>
       {run.judgeNotes && (
         <div>
-          <span className="font-medium">Judge notes:</span> {run.judgeNotes}
+          <span className="font-medium">Judge notes:</span>
+          {/* LLM-authored — escaped markdown only, no HTML sinks */}
+          <SafeMarkdown text={run.judgeNotes} className="text-xs" />
         </div>
       )}
       {run.requestedModel && (
