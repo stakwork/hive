@@ -21,6 +21,7 @@
  */
 
 import React from "react";
+globalThis.React = React;
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, within } from "@testing-library/react";
 import { WorkflowStatus } from "@prisma/client";

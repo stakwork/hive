@@ -878,6 +878,7 @@ function ScoreCell({ run }: { run: AdjustedRun }) {
       title={run.judgeNotes}
       aria-label={run.judgeNotes}
       data-score-source={run.score_source}
+      {...(breakdown?.contested ? { "data-testid": "score-cell-contested" } : {})}
     >
       {run.n_passed !== undefined && run.n_total !== undefined && (
         <span className="text-sm tabular-nums">

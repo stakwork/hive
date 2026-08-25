@@ -191,11 +191,14 @@ describe("LegalBenchmarkResults — RubricBreakdownStrip integration", () => {
 
     // The Rubric Details label must count from criteriaResults (3 total), not the roster (4).
     // Confirmed: "2 failed / 3 total" with 0 contested.
-    const collapsibleTrigger = screen.getByTestId("collapsible-trigger");
-    expect(collapsibleTrigger.textContent).toMatch(/2 failed/);
-    expect(collapsibleTrigger.textContent).toMatch(/3 total/);
+    // There are multiple collapsible-trigger elements (section header + per-criterion rows).
+    // The first one is the "Rubric Details (N failed / N total)" section header.
+    const collapsibleTriggers = screen.getAllByTestId("collapsible-trigger");
+    const rubricDetailsHeader = collapsibleTriggers[0];
+    expect(rubricDetailsHeader.textContent).toMatch(/2 failed/);
+    expect(rubricDetailsHeader.textContent).toMatch(/3 total/);
     // No contested annotation since no criteria are contested.
-    expect(collapsibleTrigger.textContent).not.toMatch(/contested/);
+    expect(rubricDetailsHeader.textContent).not.toMatch(/contested/);
   });
 
   it("Run Eval button gate still keys off unevaluatedFailedCount (criteria without cause_type)", () => {
