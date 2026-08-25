@@ -112,7 +112,7 @@ export async function assembleRunExport(
   };
 
   // Pass error branches through with empty enrichment.
-  if (!report.projection || report.projection.consolidated === true) {
+  if (!report.projection || "consolidated" in report.projection) {
     logger.info("[assemble] No valid RunReportProjection — skipping enrichment", LOG_SERVICE, { runId });
     return empty;
   }
@@ -202,7 +202,7 @@ export async function assembleConsolidatedExport(
   };
 
   // Pass error branches through with empty enrichment.
-  if (!report.projection || report.projection.consolidated !== true) {
+  if (!report.projection || !("consolidated" in report.projection)) {
     logger.info("[assemble] No valid ConsolidatedReportProjection — skipping enrichment", LOG_SERVICE, { runId });
     return empty;
   }

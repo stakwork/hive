@@ -16,7 +16,7 @@ import type { RunReportPayload } from "@/lib/run-report/types";
 
 // ── Mocks ─────────────────────────────────────────────────────────────────────
 
-const mockLoadRunReport = vi.fn<Parameters<typeof import("@/lib/run-report/load").loadRunReport>, Promise<RunReportPayload>>();
+const mockLoadRunReport = vi.fn<() => Promise<RunReportPayload>>();
 vi.mock("@/lib/run-report/load", () => ({
   loadRunReport: (...args: unknown[]) => mockLoadRunReport(...(args as Parameters<typeof mockLoadRunReport>)),
 }));
@@ -77,20 +77,20 @@ function makeFullRunPayload(): RunReportPayload {
  */
 function makePayloadWithRefIds(refIds: string[]): RunReportPayload {
   const outcome = projectBundle(JSON.stringify(FULL_BUNDLE));
-  if (outcome.status !== "ok" || outcome.projection.consolidated) {
+  if (outcome.status !== "ok" || "consolidated" in outcome.projection) {
     throw new Error("FULL_BUNDLE fixture failed to project");
   }
   const proj = outcome.projection as RunReportProjection;
-  const syntheticIdentities = refIds.map((id) => ({
-    identityKind: "ref_id" as const,
+  const syntheticIdentities: RunReportProjection["toolActivity"]["nodeIdentities"] = refIds.map((id) => ({
+    canonicalKey: id,
     identity: id,
+    identityKind: "ref_id" as const,
     name: `Node ${id}`,
     nodeType: "Concept",
+    runStatus: "retrieved" as const,
+    runBasis: "tool-class" as const,
     agents: [],
-    total: 1,
-    orderingBasis: "count" as const,
-    readsPerAgent: [],
-    surfacedOnly: false,
+    hasOffScreenEvidence: false,
   }));
   return {
     runId: "run-1",
@@ -366,7 +366,7 @@ describe("assembleConsolidatedExport", () => {
 describe("extractRefIdsFromProjection", () => {
   function makeProjectionWithIdentities(identities: unknown[]): RunReportProjection {
     const outcome = projectBundle(JSON.stringify(FULL_BUNDLE));
-    if (outcome.status !== "ok" || outcome.projection.consolidated) {
+    if (outcome.status !== "ok" || "consolidated" in outcome.projection) {
       throw new Error("fixture projection failed");
     }
     const proj = outcome.projection as RunReportProjection;
@@ -448,7 +448,7 @@ describe("extractRefIdsFromProjection", () => {
 
   it("returns empty array when toolActivity is not present", () => {
     const outcome = projectBundle(JSON.stringify(FULL_BUNDLE));
-    if (outcome.status !== "ok" || outcome.projection.consolidated) {
+    if (outcome.status !== "ok" || "consolidated" in outcome.projection) {
       throw new Error("fixture failed");
     }
     const proj = outcome.projection as RunReportProjection;
