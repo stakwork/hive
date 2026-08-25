@@ -322,21 +322,33 @@ export function resolveContested(criterion: { contested?: unknown }): boolean {
 /**
  * Resolve the contest-specific reason string for a criterion.
  *
- * Returns `null` unconditionally today — no contest-reason wire key exists
- * anywhere in the codebase and no producer emits one yet. This function is
- * the SINGLE wire-in point for a future contest-reason field: when a producer
- * starts emitting a key, add the read here (e.g. `criterion.contest_reason`).
+ * Reads the explicit `contestReason` key ONLY — populated on `GraphRubric`
+ * nodes by `fetchEvalSetRubrics` from `CriterionResult.llm_flag_reason` via
+ * the graph `HAS_CRITERION_RESULT` edge.
  *
- * CALLERS MUST NOT read `judgeFlagReason` / `llm_flag_reason` here. Those
- * fields belong exclusively to `resolveJudgeDispute` and must stay off the
- * CONTESTED axis — mixing them would collapse the DISPUTED vs CONTESTED
- * distinction that the UI surfaces as two separate chip states.
+ * CALLERS MUST NOT point this at `reasoning`, `llm_flag_reason`, or
+ * `judgeFlagReason`. Those fields belong exclusively to `resolveJudgeDispute`
+ * and reading them here would collapse the DISPUTED vs CONTESTED distinction
+ * that the UI surfaces as two separate chip states:
+ *
+ *   • `reasoning`       — judge's pass/fail justification (rendered as the
+ *                         "Judge:" block in the detail panel).
+ *   • `llm_flag_reason` — judge-dispute prose (rendered in the amber Judge
+ *                         Dispute block via `resolveJudgeDispute`).
+ *   • `judgeFlagReason` — same prose mapped by `derive.ts:318-319`.
+ *
+ * `contestReason` is set from the graph roster; the raw bundle criterion
+ * (`LegalBenchmarkResults.tsx`) does NOT carry this field, so there is no
+ * risk of leaking judge prose here even though the parameter type accepts
+ * arbitrary keys.
+ *
+ * Returns the trimmed reason string, or null when absent/empty.
  */
 export function resolveContestReason(criterion: { [key: string]: unknown }): string | null {
-  // No contest-reason field exists yet. Return null so the reason slot stays
-  // empty and `contestedNotice` omits it cleanly (never emits a placeholder).
-  void criterion; // explicit acknowledgment that the parameter is intentionally unused
-  return null;
+  const raw = criterion.contestReason;
+  if (typeof raw !== "string") return null;
+  const trimmed = raw.trim();
+  return trimmed.length > 0 ? trimmed : null;
 }
 
 // ─── Trigger identity guard ───────────────────────────────────────────────────

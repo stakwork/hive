@@ -875,3 +875,106 @@ describe("CriterionMarkers — shrink-0 class change-detector", () => {
     expect(found).toBe(true);
   });
 });
+
+// ─── Contest rationale card — new tests ──────────────────────────────────────
+
+describe("RubricLedger — ContestedBlock rationale rendering", () => {
+  /** GraphRubrics fixture with contestReason on C-001, nothing on C-002 */
+  const RUBRICS_WITH_REASON: GraphRubric[] = [
+    {
+      ref_id: "ref-C-001",
+      id: "C-001",
+      name: "Mock rubric C-001",
+      contested: true,
+      contestReason: "This criterion scope is undefined",
+      contestExcerpt: "Relevant excerpt from the document",
+    },
+    {
+      ref_id: "ref-C-002",
+      id: "C-002",
+      name: "Mock rubric C-002",
+      contested: true,
+      // no contestReason or contestExcerpt
+    },
+  ];
+
+  function makeRowForId(id: string): RubricRow {
+    return makeRow({ id, title: `Criterion ${id}`, criterionContested: true });
+  }
+
+  function renderWithReason(rows: RubricRow[], rubrics = RUBRICS_WITH_REASON) {
+    const projection = makeProjection(rows);
+    const chain = buildChainModel(projection);
+    return render(
+      <RubricLedger
+        projection={projection}
+        chain={chain}
+        graphRubrics={rubrics}
+        onOpenDoc={() => {}}
+      />,
+    );
+  }
+
+  it("renders contestReason prose when rationale is present", () => {
+    renderWithReason([makeRowForId("C-001")]);
+    const block = screen.getByTestId("run-report-contested-block");
+    // The rationale paragraph must appear inside the block
+    const reasonEl = block.querySelector("[data-testid='run-report-contested-reason']");
+    expect(reasonEl).not.toBeNull();
+    expect(reasonEl?.textContent).toContain("This criterion scope is undefined");
+  });
+
+  it("renders excerpt blockquote when both reason and excerpt are present", () => {
+    renderWithReason([makeRowForId("C-001")]);
+    const block = screen.getByTestId("run-report-contested-block");
+    const excerptEl = block.querySelector("[data-testid='run-report-contested-excerpt']");
+    expect(excerptEl).not.toBeNull();
+    expect(excerptEl?.textContent).toContain("Relevant excerpt from the document");
+  });
+
+  it("renders neither reason nor excerpt when absent (C-002)", () => {
+    renderWithReason([makeRowForId("C-002")]);
+    const block = screen.getByTestId("run-report-contested-block");
+    expect(block.querySelector("[data-testid='run-report-contested-reason']")).toBeNull();
+    expect(block.querySelector("[data-testid='run-report-contested-excerpt']")).toBeNull();
+  });
+
+  it("suppresses rationale when byte-equal to judgeFlagReason (dedupe test)", () => {
+    const DUPLICATE_REASON = "This criterion scope is undefined";
+    // Row with judgeFlagReason matching contestReason exactly
+    const rowWithDuplicate = makeRow({
+      id: "C-001",
+      title: "Criterion C-001",
+      criterionContested: true,
+      judgeFlagReason: DUPLICATE_REASON,
+      judgeFlagged: true,
+    });
+    renderWithReason([rowWithDuplicate]);
+    const block = screen.queryByTestId("run-report-contested-block");
+    if (block) {
+      // If block renders, the reason must NOT appear there (would be duplicate)
+      expect(block.querySelector("[data-testid='run-report-contested-reason']")).toBeNull();
+    }
+    // The judge-dispute block still shows it in amber
+    const disputeBlock = screen.queryByTestId("run-report-judge-dispute");
+    if (disputeBlock) {
+      expect(disputeBlock.textContent).toContain(DUPLICATE_REASON);
+    }
+  });
+
+  it("ContestedBlock renders no markdown/HTML-sink components even with rationale", () => {
+    renderWithReason([makeRowForId("C-001")]);
+    const block = screen.getByTestId("run-report-contested-block");
+    expect(block.querySelector("[data-testid='markdown-renderer']")).toBeNull();
+    expect(block.querySelector("[data-testid='mermaid-diagram']")).toBeNull();
+    expect(block.querySelector("svg")).toBeNull();
+    // We now allow <p> and <blockquote> for the rationale — check they are plain text
+    const pEls = block.querySelectorAll("p");
+    const bqEls = block.querySelectorAll("blockquote");
+    for (const el of [...pEls, ...bqEls]) {
+      // Should not contain any child elements (raw HTML sinks use inner elements)
+      const innerEls = el.querySelectorAll("*");
+      expect(innerEls.length).toBe(0);
+    }
+  });
+});

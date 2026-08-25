@@ -269,3 +269,35 @@ describe("contestedNotice — reason slot (forward-compatible)", () => {
     expect(noReason.tooltip).not.toContain("explanation");
   });
 });
+
+// ─── roster branch reason clause (new) ───────────────────────────────────────
+
+describe("contestedNotice — roster branch with reason clause (new)", () => {
+  it("roster branch appends reason when provided", () => {
+    const { tooltip } = contestedNotice({ origin: "roster", reason: "Criterion scope undefined" });
+    expect(tooltip).toContain("previous run");
+    expect(tooltip).toContain("Criterion scope undefined");
+  });
+
+  it("roster branch omits reason cleanly when null", () => {
+    const withReason = contestedNotice({ origin: "roster", reason: "Some reason" });
+    const withoutReason = contestedNotice({ origin: "roster", reason: null });
+    expect(withoutReason.tooltip).not.toContain("Some reason");
+    expect(withoutReason.tooltip.toLowerCase()).toContain("contested");
+  });
+
+  it("roster branch omits reason cleanly when empty string", () => {
+    const withoutReason = contestedNotice({ origin: "roster", reason: "   " });
+    expect(withoutReason.tooltip).not.toContain("   ");
+    // Should be the same as no reason
+    const noReason = contestedNotice({ origin: "roster" });
+    expect(withoutReason.tooltip).toBe(noReason.tooltip);
+  });
+
+  it("roster branch reason appended after the judement clause", () => {
+    const { tooltip } = contestedNotice({ origin: "roster", reason: "My reason", verdict: "fail" });
+    const reasonPos = tooltip.indexOf("My reason");
+    const judgePos = tooltip.indexOf("did not contest");
+    expect(reasonPos).toBeGreaterThan(judgePos);
+  });
+});

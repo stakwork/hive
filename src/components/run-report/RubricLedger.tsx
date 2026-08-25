@@ -5,12 +5,14 @@ import type { RunReportProjection } from "@/lib/run-report/types";
 import { readTraces } from "@/lib/run-report/derive";
 import type { ChainModel, CriterionChain, Hop, HopLink } from "@/lib/run-report/chain";
 import { Kicker, StatusBadge, EmptyPanel } from "./chrome";
-import { resolveJudgeDispute, resolveContestReason } from "@/lib/harvey-lab/eval-normalizers";
+import { resolveJudgeDispute } from "@/lib/harvey-lab/eval-normalizers";
 import {
   buildContestedIndex,
   contestedOriginIndex,
   contestedOrigin,
   contestedOriginToken,
+  contestReasonIndex,
+  contestExcerptIndex,
   isCriterionContested,
   type GraphRubric,
   type ContestedOriginToken,
@@ -189,6 +191,7 @@ function CriterionButton({
   small,
   contested,
   contestedToken,
+  contestedReason,
   onSelect,
 }: {
   c: CriterionChain;
@@ -197,6 +200,12 @@ function CriterionButton({
   contested: boolean;
   /** Origin token for the contested chip — undefined means legacy behaviour. */
   contestedToken?: ContestedOriginToken | null;
+  /**
+   * Contest-reason string from the graph roster, sourced via `contestReasonIndex`.
+   * Rail badges include this in the tooltip so the rationale is accessible
+   * without opening the detail panel.
+   */
+  contestedReason?: string | null;
   onSelect: (id: string) => void;
 }) {
   const dispute = resolveJudgeDispute({
@@ -225,12 +234,14 @@ function CriterionButton({
       <span className={`${small ? "text-[11.5px] text-muted-foreground" : "text-[12px]"} truncate flex-1 min-w-0`}>
         {c.title}
       </span>
+      {/* Rail badge keeps contestedReason so the tooltip surfaces the rationale
+          without needing to open the detail panel. */}
       <CriterionMarkers
         disputed={dispute?.isDispute}
         contested={contested}
         flagBasis={dispute?.flagBasis}
         contestedOrigin={contestedToken}
-        contestedReason={resolveContestReason(c as unknown as Record<string, unknown>)}
+        contestedReason={contestedReason}
         contestedVerdict={c.verdict}
       />
     </button>
@@ -285,8 +296,28 @@ export function RubricLedger({
   // ── Contested indexes ──────────────────────────────────────────────────────
   // Keep buildContestedIndex for the boolean scoring / isCriterionContested path.
   // Add contestedOriginIndex for the origin-aware rendering path.
+  // contestReasonIndex / contestExcerptIndex back the violet rationale card.
   const contestedIndex = useMemo(() => buildContestedIndex(graphRubrics), [graphRubrics]);
   const originIndex = useMemo(() => contestedOriginIndex(graphRubrics), [graphRubrics]);
+  const reasonIdx = useMemo(() => contestReasonIndex(graphRubrics), [graphRubrics]);
+  const excerptIdx = useMemo(() => contestExcerptIndex(graphRubrics), [graphRubrics]);
+
+  /**
+   * Lookup helper: returns the contest reason for a criterion, checked by
+   * normalized id first and then by normalized title.
+   */
+  const reasonFor = (c: { id: string; title: string }): string | null => {
+    const norm = (s: string) => s.trim().toLowerCase();
+    return reasonIdx.get(norm(c.id)) ?? reasonIdx.get(norm(c.title)) ?? null;
+  };
+
+  /**
+   * Lookup helper: returns the contest excerpt for a criterion.
+   */
+  const excerptFor = (c: { id: string; title: string }): string | null => {
+    const norm = (s: string) => s.trim().toLowerCase();
+    return excerptIdx.get(norm(c.id)) ?? excerptIdx.get(norm(c.title)) ?? null;
+  };
 
   /** Whether a chain criterion is contested (boolean, for scoring). */
   const contestedOf = (c: CriterionChain) =>
@@ -356,27 +387,69 @@ export function RubricLedger({
   }
 
   // ── Detail panel: contested block ──────────────────────────────────────────
-  // Mirrors the judge-dispute block pattern. Renders when the selected
+  // Mirrors the judge-dispute block pattern (amber). Renders when the selected
   // criterion is contested — the provenance heading ("Prior Contest" /
   // "Contested Definition") is the sole non-hover surface for contested
-  // provenance; the full copy lives in the badge tooltip.
+  // provenance.
+  //
+  // When a contest rationale is available from the graph (via `contestReasonIndex`),
+  // it is rendered as a violet prose block + scrollable excerpt — mirroring the
+  // amber judge-dispute block (~lines 497-512). The rationale is suppressed when
+  // it is byte-equal (after trim) to `judgeFlagReason`, to prevent the same
+  // prose from appearing in both the amber and the violet blocks on the same row.
   //
   // SAFETY: do NOT introduce MarkdownRenderer or MermaidDiagram inside this
   // block. Any future body text here may be LLM-authored and those components
   // are HTML sinks (innerHTML / eval paths).
-  function ContestedBlock({ c }: { c: CriterionChain }) {
+  function ContestedBlock({
+    c,
+    judgeFlagReason,
+  }: {
+    c: CriterionChain;
+    judgeFlagReason?: string | null;
+  }) {
     const token = originOf(c);
     if (!token) return null;
     const isRosterOnly = token === "roster";
+
+    const reason = reasonFor(c);
+    const excerpt = excerptFor(c);
+    // Suppress rationale when it is byte-equal to judgeFlagReason (after trim),
+    // to avoid printing the same prose in both the amber and violet blocks.
+    const judgeText = typeof judgeFlagReason === "string" ? judgeFlagReason.trim() : "";
+    const displayReason =
+      reason && reason.trim() !== judgeText ? reason.trim() : null;
+    const displayExcerpt = displayReason && excerpt ? excerpt.trim() : null;
+
     return (
       <div
         className="rounded border border-violet-500/30 bg-violet-500/[0.05] px-3.5 py-2.5 mb-4"
         data-testid="run-report-contested-block"
         data-contested-origin={token}
       >
-        <div className="font-mono text-[9px] uppercase tracking-[0.12em] text-violet-700 dark:text-violet-400">
+        {/* Provenance heading — the sole non-hover surface for contested origin. */}
+        <div className="font-mono text-[9px] uppercase tracking-[0.12em] text-violet-700 dark:text-violet-400 mb-1">
           {isRosterOnly ? "Prior Contest" : "Contested Definition"}
         </div>
+        {/* Contest rationale — rendered only when present and not a duplicate
+            of the judge-dispute prose shown in the amber block below.
+            SAFETY: plain text only — MarkdownRenderer / MermaidDiagram are
+            HTML sinks and must never be used here; content is LLM-authored. */}
+        {displayReason && (
+          <>
+            <p className="text-[12.5px] whitespace-pre-wrap" data-testid="run-report-contested-reason">
+              {displayReason}
+            </p>
+            {displayExcerpt && (
+              <blockquote
+                className="mt-2 max-h-40 overflow-y-auto overscroll-contain border-l-2 border-violet-500/40 pl-3 text-[12px] text-muted-foreground whitespace-pre-wrap"
+                data-testid="run-report-contested-excerpt"
+              >
+                {displayExcerpt}
+              </blockquote>
+            )}
+          </>
+        )}
       </div>
     );
   }
@@ -396,6 +469,7 @@ export function RubricLedger({
                 selected={c.id === selected?.id}
                 contested={contestedOf(c)}
                 contestedToken={originOf(c)}
+                contestedReason={reasonFor(c)}
                 onSelect={setSelectedId}
               />
             ))}
@@ -414,6 +488,7 @@ export function RubricLedger({
                     selected={c.id === selected?.id}
                     contested={contestedOf(c)}
                     contestedToken={originOf(c)}
+                    contestedReason={reasonFor(c)}
                     onSelect={setSelectedId}
                   />
                 ))}
@@ -451,12 +526,16 @@ export function RubricLedger({
                 {/* min-w-0 + truncate: consistent with rail rows — prevents the title
                     from pushing CriterionMarkers / StatusBadge outside the panel. */}
                 <h3 className="text-[16px] font-semibold flex-1 min-w-0 truncate">{selected.title}</h3>
+                {/* Detail-panel badge: omit contestedReason here — the
+                    ContestedBlock below already shows the rationale as body
+                    text, so duplicating it in the tooltip is redundant.
+                    Rail badges (CriterionButton) still receive contestedReason
+                    so the tooltip is useful when the card isn't open. */}
                 <CriterionMarkers
                   disputed={detailDispute?.isDispute}
                   contested={contestedOf(selected)}
                   flagBasis={detailDispute?.flagBasis}
                   contestedOrigin={originOf(selected)}
-                  contestedReason={resolveContestReason(selected as unknown as Record<string, unknown>)}
                   contestedVerdict={selected.verdict}
                   contestedMatchedBy={(() => {
                     const info = contestedOrigin(
@@ -490,8 +569,9 @@ export function RubricLedger({
 
               {/* Contested Definition / Prior Contest block — visible body copy
                   so the rationale is readable without hovering. Mirrors the
-                  judge-dispute block pattern. */}
-              <ContestedBlock c={selected} />
+                  judge-dispute block pattern. Pass judgeFlagReason so the
+                  block can suppress duplicate prose already shown in amber. */}
+              <ContestedBlock c={selected} judgeFlagReason={detailDispute?.reason ?? null} />
 
               {detailDispute && (
                 <div

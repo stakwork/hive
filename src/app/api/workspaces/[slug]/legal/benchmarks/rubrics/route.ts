@@ -32,12 +32,22 @@ function handleSwarmAccessError(error: { type: string }) {
 function buildMockRoster(taskSlug: string): { evalSetRefId: string; rubrics: GraphRubric[] } {
   const rubrics: GraphRubric[] = Array.from({ length: 10 }, (_, i) => {
     const id = `C-${String(i + 1).padStart(3, "0")}`;
-    return {
+    const base: GraphRubric = {
       ref_id: `mock-req-${taskSlug}-${id}`,
       id,
       name: `Mock rubric ${id}`,
       contested: i < 2,
     };
+    // Populate contestReason / contestExcerpt on ONLY the first contested entry
+    // (i === 0) so mock mode exercises both the sparse path (reason absent) and
+    // the populated path. The second contested entry (i === 1) deliberately has
+    // no reason. Text follows the "Mock rubric ${id}" convention — do NOT copy
+    // text from the live OpenLaw graph.
+    if (i === 0) {
+      base.contestReason = `Mock contest rationale for ${id}: This criterion's scope is ambiguous in its current form and should be reworded to avoid double-counting.`;
+      base.contestExcerpt = `Mock document excerpt for ${id}: "The contract specifies that the indemnity obligation extends to…"`;
+    }
+    return base;
   });
   return { evalSetRefId: `mock-evalset-${taskSlug}`, rubrics };
 }

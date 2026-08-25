@@ -88,9 +88,14 @@ export function contestedNotice(input: {
         ? "This run's judge did not contest it."
         : "Not judged in this run. Excluded from the score.";
 
+      // Append the contest rationale when one is available, so roster-only
+      // rows (which are non-interactive and have no expandable card) surface
+      // the rationale via the badge tooltip — their only affordance.
+      const reasonClause = hasReason ? `\n\n${trimmedReason}` : "";
+
       return {
         label: "PRIOR CONTEST",
-        tooltip: `${provenanceClause} ${judgementClause}`,
+        tooltip: `${provenanceClause} ${judgementClause}${reasonClause}`,
       };
     }
 

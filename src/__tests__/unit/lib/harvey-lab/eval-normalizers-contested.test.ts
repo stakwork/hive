@@ -133,3 +133,48 @@ describe("resolveContested — truthiness matrix", () => {
     expect(result!.flagBasis).toBeNull();
   });
 });
+
+// ─── resolveContestReason regression pin ─────────────────────────────────────
+// These tests are the durable regression pin for DISPUTED vs CONTESTED separation.
+// resolveContestReason MUST NOT read reasoning, llm_flag_reason, or judgeFlagReason.
+
+import { resolveContestReason } from "@/lib/harvey-lab/eval-normalizers";
+
+describe("resolveContestReason — regression pin (DISPUTED vs CONTESTED)", () => {
+  it("returns null for object carrying 'reasoning' (judge pass/fail prose)", () => {
+    expect(resolveContestReason({ reasoning: "Correctly identified all parties" })).toBeNull();
+  });
+
+  it("returns null for object carrying 'llm_flag_reason' (judge-dispute field)", () => {
+    expect(resolveContestReason({ llm_flag_reason: "The criterion definition is disputed" })).toBeNull();
+  });
+
+  it("returns null for object carrying 'judgeFlagReason' (derive.ts mapped name)", () => {
+    expect(resolveContestReason({ judgeFlagReason: "Contested verdict argument" })).toBeNull();
+  });
+
+  it("returns null for empty object", () => {
+    expect(resolveContestReason({})).toBeNull();
+  });
+
+  it("returns null when contestReason is null", () => {
+    expect(resolveContestReason({ contestReason: null })).toBeNull();
+  });
+
+  it("returns null when contestReason is empty string", () => {
+    expect(resolveContestReason({ contestReason: "   " })).toBeNull();
+  });
+
+  it("returns trimmed string when contestReason is present", () => {
+    expect(resolveContestReason({ contestReason: "  Scope is ambiguous  " })).toBe("Scope is ambiguous");
+  });
+
+  it("contestReason takes precedence — llm_flag_reason on same object does NOT bleed through", () => {
+    // If both fields are present, only contestReason is read.
+    const result = resolveContestReason({
+      contestReason: "Contest argument",
+      llm_flag_reason: "Judge dispute prose",
+    });
+    expect(result).toBe("Contest argument");
+  });
+});

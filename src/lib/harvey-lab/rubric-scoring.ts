@@ -166,12 +166,22 @@ export type RubricStatus = "PASS" | "FAIL" | "CONTESTED";
  * An EvalRequirement node read from the graph, normalized to the fields
  * scoring needs. `id` is the criterion id (node_key, e.g. "C-003");
  * `contested` is the resolved boolean of the node's `contested` attribute.
+ *
+ * `contestReason` and `contestExcerpt` are optional fields populated only for
+ * contested requirements that have a reachable `CriterionResult` node with a
+ * non-empty `llm_flag_reason`. Both are clamped before storage (see
+ * `legal-benchmark-rubrics.ts`) so they are safe to serialize into offline
+ * export bundles.
  */
 export interface GraphRubric {
   ref_id: string;
   id: string;
   name: string;
   contested: boolean;
+  /** Contest-validity argument from graph `CriterionResult.llm_flag_reason`. */
+  contestReason?: string | null;
+  /** Supporting document excerpt from graph `CriterionResult.document_excerpt`. */
+  contestExcerpt?: string | null;
 }
 
 /** Minimal shape of one runner criterion result this module reads. */
@@ -185,6 +195,58 @@ export interface ScorableCriterion {
 /** Case/whitespace-insensitive join key. */
 function normKey(value: string | undefined | null): string {
   return (value ?? "").trim().toLowerCase();
+}
+
+/**
+ * Index of contest-reason strings keyed by normalized criterion id AND name,
+ * mirroring the shape of `contestedOriginIndex` / `buildContestedIndex` and
+ * reusing the same `normKey` helper.
+ *
+ * Only contested rubrics that carry a non-empty `contestReason` are indexed.
+ * Callers look up by normalized criterion id first, then by name. The value is
+ * the trimmed `contestReason` string (never null/empty — absent reasons are
+ * simply not keyed).
+ *
+ * Separate from `buildContestedIndex` so the reason index can be threaded to
+ * UI-only surfaces without touching the scoring path.
+ */
+export function contestReasonIndex(
+  rubrics: GraphRubric[] | null | undefined,
+): Map<string, string> {
+  const index = new Map<string, string>();
+  for (const rubric of rubrics ?? []) {
+    if (!rubric.contested) continue;
+    const reason =
+      typeof rubric.contestReason === "string" ? rubric.contestReason.trim() : "";
+    if (!reason) continue;
+    const idKey = normKey(rubric.id);
+    const nameKey = normKey(rubric.name);
+    if (idKey) index.set(idKey, reason);
+    if (nameKey) index.set(nameKey, reason);
+  }
+  return index;
+}
+
+/**
+ * Index of contest-excerpt strings keyed by normalized criterion id AND name.
+ * Parallel to `contestReasonIndex` — only contested rubrics with a non-empty
+ * `contestExcerpt` are keyed. Callers look up by normalized id first, then name.
+ */
+export function contestExcerptIndex(
+  rubrics: GraphRubric[] | null | undefined,
+): Map<string, string> {
+  const index = new Map<string, string>();
+  for (const rubric of rubrics ?? []) {
+    if (!rubric.contested) continue;
+    const excerpt =
+      typeof rubric.contestExcerpt === "string" ? rubric.contestExcerpt.trim() : "";
+    if (!excerpt) continue;
+    const idKey = normKey(rubric.id);
+    const nameKey = normKey(rubric.name);
+    if (idKey) index.set(idKey, excerpt);
+    if (nameKey) index.set(nameKey, excerpt);
+  }
+  return index;
 }
 
 /**

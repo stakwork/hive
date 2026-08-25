@@ -441,3 +441,71 @@ describe("score regression: origin resolver does not affect computeBenchmarkScor
     expect(rosterSummary(graph)).toEqual(summary);
   });
 });
+
+// ─── contestReasonIndex / contestExcerptIndex ─────────────────────────────────
+
+import { contestReasonIndex, contestExcerptIndex } from "@/lib/harvey-lab/rubric-scoring";
+
+const rubricWithReason = (id: string, reason: string | null, excerpt: string | null = null): GraphRubric => ({
+  ref_id: `ref-${id}`,
+  id,
+  name: `Rubric ${id}`,
+  contested: true,
+  contestReason: reason,
+  contestExcerpt: excerpt,
+});
+
+describe("contestReasonIndex", () => {
+  it("returns empty map for null/undefined/empty rosters", () => {
+    expect(contestReasonIndex(null).size).toBe(0);
+    expect(contestReasonIndex(undefined).size).toBe(0);
+    expect(contestReasonIndex([]).size).toBe(0);
+  });
+
+  it("only indexes contested rubrics with a non-empty contestReason", () => {
+    const rs = [
+      rubricWithReason("C-001", "Definition is ambiguous"),
+      rubricWithReason("C-002", null),
+      { ref_id: "ref-3", id: "C-003", name: "Non-contested", contested: false },
+    ];
+    const idx = contestReasonIndex(rs as GraphRubric[]);
+    expect(idx.has("c-001")).toBe(true);
+    expect(idx.get("c-001")).toBe("Definition is ambiguous");
+    expect(idx.has("c-002")).toBe(false); // null reason
+    expect(idx.has("c-003")).toBe(false); // not contested
+  });
+
+  it("indexes by normalized id AND by normalized name", () => {
+    const rs = [rubricWithReason("C-007", "Scope loop detected")];
+    rs[0].name = "Identify threshold triggers";
+    const idx = contestReasonIndex(rs as GraphRubric[]);
+    expect(idx.has("c-007")).toBe(true);
+    expect(idx.has("identify threshold triggers")).toBe(true);
+    expect(idx.get("c-007")).toBe("Scope loop detected");
+  });
+
+  it("skips entries with empty-string contestReason after trim", () => {
+    const rs = [rubricWithReason("C-010", "   ")];
+    const idx = contestReasonIndex(rs as GraphRubric[]);
+    expect(idx.has("c-010")).toBe(false);
+  });
+});
+
+describe("contestExcerptIndex", () => {
+  it("returns empty map for null/undefined/empty rosters", () => {
+    expect(contestExcerptIndex(null).size).toBe(0);
+    expect(contestExcerptIndex(undefined).size).toBe(0);
+    expect(contestExcerptIndex([]).size).toBe(0);
+  });
+
+  it("only indexes contested rubrics with a non-empty contestExcerpt", () => {
+    const rs = [
+      rubricWithReason("C-001", "Reason", "Excerpt text"),
+      rubricWithReason("C-002", "Reason", null),
+    ];
+    const idx = contestExcerptIndex(rs as GraphRubric[]);
+    expect(idx.has("c-001")).toBe(true);
+    expect(idx.get("c-001")).toBe("Excerpt text");
+    expect(idx.has("c-002")).toBe(false);
+  });
+});
