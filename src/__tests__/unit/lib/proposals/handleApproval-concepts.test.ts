@@ -16,6 +16,9 @@
  *  - edge failure after a fresh create → deleteNode rollback
  *  - edge failure after a merge (alreadyExists) → NO rollback
  *  - addNode failure → error propagated
+ *  - anchor edges (jarvis migration 111): kind → workspace edge type,
+ *    APPROVED from the approver's member node, person PREFERENCE, repo
+ *    IN_REPO — all best-effort (failures never fail the approval)
  */
 
 // @vitest-environment node
@@ -41,7 +44,7 @@ const {
 
 vi.mock("@/lib/db", () => ({
   db: {
-    workspace: { findFirst: vi.fn() },
+    workspace: { findFirst: vi.fn(), findUnique: vi.fn() },
     workspaceMember: { findFirst: vi.fn() },
     initiative: { create: vi.fn(), findFirst: vi.fn() },
     milestone: { findFirst: vi.fn() },
@@ -101,6 +104,8 @@ vi.mock("@/lib/logger", () => ({
 
 // ── Imports (after mocks) ──────────────────────────────────────────────────
 import { handleApproval } from "@/lib/proposals/handleApproval";
+import { db } from "@/lib/db";
+import type { Mock } from "vitest";
 import {
   PROPOSE_NEW_CONCEPT_TOOL,
   PROPOSE_CONCEPT_UPDATE_TOOL,
@@ -117,6 +122,8 @@ function makeMessages(payload: {
   description?: string;
   repo?: string;
   parent?: string;
+  kind?: "preference" | "best_practice" | "gotcha" | "process" | "general";
+  personUserId?: string;
 }) {
   const proposal: ProposalOutput = {
     kind: "conceptCreate",
@@ -163,6 +170,17 @@ beforeEach(() => {
   mockSearchNodesByAttributes.mockResolvedValue({
     ok: true,
     nodes: [{ ref_id: "ref-parent", node_type: "Concept" }],
+  });
+  // Anchor-pass defaults: workspace row exists; the approver ("user-1") has
+  // a member row. Individual tests override to exercise owner/edge cases.
+  (db.workspace.findUnique as Mock).mockResolvedValue({
+    name: "Acme",
+    ownerId: "user-owner",
+    owner: { name: "Owner", githubAuth: { githubUsername: "the-owner" } },
+  });
+  (db.workspaceMember.findFirst as Mock).mockResolvedValue({
+    id: "wm-approver",
+    user: { name: "Approver", githubAuth: { githubUsername: "approver" } },
   });
 });
 
@@ -272,14 +290,19 @@ describe("approveConceptCreate — parent linking", () => {
       { attribute: "id", value: "acme/hive/authentication", comparator: "=" },
     ]);
 
-    expect(mockAddEdgeV2).toHaveBeenCalledOnce();
-    const [, edgePayload] = mockAddEdgeV2.mock.calls[0];
-    expect(edgePayload.edge.edge_type).toBe("PARENT_OF");
+    // Anchor edges (HAS_CONCEPT/APPROVED) also fire — assert on the
+    // PARENT_OF call specifically, and that it precedes the anchors.
+    const parentCalls = mockAddEdgeV2.mock.calls.filter(
+      ([, p]) => p.edge.edge_type === "PARENT_OF",
+    );
+    expect(parentCalls).toHaveLength(1);
+    const [, edgePayload] = parentCalls[0];
     expect(edgePayload.source).toEqual({ ref_id: "ref-parent" });
     expect(edgePayload.target).toEqual({ ref_id: "ref-new" });
+    expect(mockAddEdgeV2.mock.calls[0][1].edge.edge_type).toBe("PARENT_OF");
   });
 
-  it("makes no search and no edge when parent is absent", async () => {
+  it("makes no parent search and no PARENT_OF edge when parent is absent", async () => {
     await approve(
       makeMessages({
         workspaceId: "ws-cuid-1",
@@ -289,8 +312,12 @@ describe("approveConceptCreate — parent linking", () => {
       }),
     );
 
+    // No Concept-id resolution (the only searches allowed are anchor-pass
+    // Repository lookups — none here, since the payload has no repo)...
     expect(mockSearchNodesByAttributes).not.toHaveBeenCalled();
-    expect(mockAddEdgeV2).not.toHaveBeenCalled();
+    // ...and no PARENT_OF edge; anchor edges are separate and expected.
+    const types = mockAddEdgeV2.mock.calls.map(([, p]) => p.edge.edge_type);
+    expect(types).not.toContain("PARENT_OF");
   });
 
   it("returns 400 and never creates the node when the parent is not found", async () => {
@@ -393,6 +420,234 @@ describe("approveConceptCreate — failure handling", () => {
     expect((result as { ok: false; error: string }).error).toContain(
       "schema rejected node_data",
     );
+  });
+});
+
+describe("approveConceptCreate — anchor edges (migration 111)", () => {
+  /** All edges written for a call, as {type, source, target} triples. */
+  function edgeCalls() {
+    return mockAddEdgeV2.mock.calls.map(([, payload]: any[]) => ({
+      type: payload.edge.edge_type,
+      source: payload.source,
+      target: payload.target,
+    }));
+  }
+
+  it("writes HAS_CONCEPT from the workspace node by default, plus APPROVED from the approver", async () => {
+    const result = await approve(
+      makeMessages({
+        workspaceId: "ws-cuid-1",
+        workspaceSlug: "acme",
+        name: "Deployment Runbook",
+        documentation: "# Deploy",
+      }),
+    );
+
+    expect(result.ok).toBe(true);
+    const edges = edgeCalls();
+
+    const anchor = edges.find((e) => e.type === "HAS_CONCEPT");
+    expect(anchor?.source).toEqual({
+      node_type: "HiveWorkspace",
+      node_data: { workspace_id: "ws-cuid-1", name: "Acme" },
+    });
+    // Fresh create → concept addressed by ref_id.
+    expect(anchor?.target).toEqual({ ref_id: "ref-new" });
+
+    const approved = edges.find((e) => e.type === "APPROVED");
+    expect(approved?.source).toEqual({
+      node_type: "HiveWorkspaceMember",
+      node_data: { member_id: "wm-approver", name: "Approver", user_id: "user-1" },
+    });
+    expect(approved?.target).toEqual({ ref_id: "ref-new" });
+  });
+
+  it("maps kind to the typed workspace edge (preference → PREFERENCE)", async () => {
+    await approve(
+      makeMessages({
+        workspaceId: "ws-cuid-1",
+        workspaceSlug: "acme",
+        name: "Evan PR Style",
+        documentation: "# Short PR descriptions",
+        kind: "preference",
+      }),
+    );
+    const types = edgeCalls().map((e) => e.type);
+    expect(types).toContain("PREFERENCE");
+    expect(types).not.toContain("HAS_CONCEPT");
+  });
+
+  it("writes a person PREFERENCE edge from the person's member node", async () => {
+    // First findFirst call resolves the approver, second the person.
+    (db.workspaceMember.findFirst as Mock)
+      .mockResolvedValueOnce({
+        id: "wm-approver",
+        user: { name: "Approver", githubAuth: { githubUsername: "approver" } },
+      })
+      .mockResolvedValueOnce({
+        id: "wm-evan",
+        user: { name: null, githubAuth: { githubUsername: "evanfeenstra" } },
+      });
+
+    await approve(
+      makeMessages({
+        workspaceId: "ws-cuid-1",
+        workspaceSlug: "acme",
+        name: "Evan PR Style",
+        documentation: "# Short PR descriptions",
+        kind: "preference",
+        personUserId: "user-evan",
+      }),
+    );
+
+    const prefs = edgeCalls().filter((e) => e.type === "PREFERENCE");
+    // One from the workspace (kind), one from the person's member node.
+    expect(prefs).toHaveLength(2);
+    const fromMember = prefs.find(
+      (e) => e.source.node_type === "HiveWorkspaceMember",
+    );
+    expect(fromMember?.source.node_data).toEqual({
+      member_id: "wm-evan",
+      name: "evanfeenstra",
+      user_id: "user-evan",
+    });
+  });
+
+  it("falls back to the owner identity when the approver has no member row", async () => {
+    (db.workspaceMember.findFirst as Mock).mockResolvedValue(null);
+
+    await approve(
+      makeMessages({
+        workspaceId: "ws-cuid-1",
+        workspaceSlug: "acme",
+        name: "Runbook",
+        documentation: "# R",
+      }),
+    );
+
+    // approver userId is "user-1" but ownerId is "user-owner" → not the owner
+    // either → APPROVED skipped entirely, approval still fine.
+    expect(edgeCalls().find((e) => e.type === "APPROVED")).toBeUndefined();
+
+    // Now approve as the actual owner.
+    vi.clearAllMocks();
+    mockAddNode.mockResolvedValue({ success: true, ref_id: "ref-new" });
+    mockAddEdgeV2.mockResolvedValue({ success: true });
+    mockResolveGraphJarvis.mockResolvedValue({
+      ok: true,
+      access: {
+        workspaceId: "ws-cuid-1",
+        workspaceSlug: "acme",
+        config: { jarvisUrl: "https://jarvis.example.com:8444", apiKey: "key" },
+      },
+    });
+    (db.workspace.findUnique as Mock).mockResolvedValue({
+      name: "Acme",
+      ownerId: "user-1",
+      owner: { name: "Owner", githubAuth: { githubUsername: "the-owner" } },
+    });
+    (db.workspaceMember.findFirst as Mock).mockResolvedValue(null);
+
+    await approve(
+      makeMessages({
+        workspaceId: "ws-cuid-1",
+        workspaceSlug: "acme",
+        name: "Runbook",
+        documentation: "# R",
+      }),
+    );
+    const approved = edgeCalls().find((e) => e.type === "APPROVED");
+    expect(approved?.source.node_data).toEqual({
+      member_id: "user-1",
+      name: "Owner",
+      user_id: "user-1",
+    });
+  });
+
+  it("resolves the Repository node by name and writes IN_REPO by ref_id", async () => {
+    mockSearchNodesByAttributes.mockImplementation(async (_cfg: unknown, q: any) =>
+      q.nodeTypes[0] === "Repository"
+        ? { ok: true, nodes: [{ ref_id: "ref-repo", node_type: "Repository" }] }
+        : { ok: true, nodes: [{ ref_id: "ref-parent", node_type: "Concept" }] },
+    );
+
+    await approve(
+      makeMessages({
+        workspaceId: "ws-cuid-1",
+        workspaceSlug: "acme",
+        name: "Auth Guide",
+        documentation: "# Auth",
+        repo: "acme/hive",
+      }),
+    );
+
+    const repoSearch = mockSearchNodesByAttributes.mock.calls.find(
+      ([, q]: any[]) => q.nodeTypes[0] === "Repository",
+    );
+    expect(repoSearch?.[1].filters).toEqual([
+      { attribute: "name", value: "acme/hive", comparator: "=" },
+    ]);
+
+    const inRepo = edgeCalls().find((e) => e.type === "IN_REPO");
+    expect(inRepo?.source).toEqual({ ref_id: "ref-new" });
+    expect(inRepo?.target).toEqual({ ref_id: "ref-repo" });
+  });
+
+  it("skips IN_REPO (no failure) when the Repository node is not in the graph", async () => {
+    mockSearchNodesByAttributes.mockImplementation(async (_cfg: unknown, q: any) =>
+      q.nodeTypes[0] === "Repository"
+        ? { ok: true, nodes: [] }
+        : { ok: true, nodes: [{ ref_id: "ref-parent", node_type: "Concept" }] },
+    );
+
+    const result = await approve(
+      makeMessages({
+        workspaceId: "ws-cuid-1",
+        workspaceSlug: "acme",
+        name: "Auth Guide",
+        documentation: "# Auth",
+        repo: "acme/hive",
+      }),
+    );
+
+    expect(result.ok).toBe(true);
+    expect(edgeCalls().find((e) => e.type === "IN_REPO")).toBeUndefined();
+  });
+
+  it("anchor edge failures never fail the approval (best-effort)", async () => {
+    mockAddEdgeV2.mockResolvedValue({ success: false, message: "anchor boom" });
+
+    const result = await approve(
+      makeMessages({
+        workspaceId: "ws-cuid-1",
+        workspaceSlug: "acme",
+        name: "Runbook",
+        documentation: "# R",
+        kind: "gotcha",
+      }),
+    );
+
+    expect(result.ok).toBe(true);
+    expect(mockDeleteNode).not.toHaveBeenCalled();
+  });
+
+  it("addresses the concept by inline node_data when a merge returned no ref_id", async () => {
+    mockAddNode.mockResolvedValue({ success: true, alreadyExists: true });
+
+    await approve(
+      makeMessages({
+        workspaceId: "ws-cuid-1",
+        workspaceSlug: "acme",
+        name: "Existing Concept",
+        documentation: "# E",
+      }),
+    );
+
+    const anchor = edgeCalls().find((e) => e.type === "HAS_CONCEPT");
+    expect(anchor?.target).toEqual({
+      node_type: "Concept",
+      node_data: { name: "Existing Concept" },
+    });
   });
 });
 

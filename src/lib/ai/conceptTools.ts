@@ -67,6 +67,84 @@ function repoSlugFromUrl(url: string): string | null {
   }
 }
 
+/**
+ * Resolve the agent's `person` arg to a workspace human. Matched
+ * case-insensitively against each member's github username and display
+ * name, over active members plus the owner (who has no member row).
+ * Returns the userId (stored in the payload for the approval handler's
+ * member -PREFERENCE-> Concept edge) and a display name for the card.
+ */
+async function resolvePerson(
+  workspaceId: string,
+  person: string,
+): Promise<
+  | { ok: true; userId: string; name: string }
+  | { ok: false; available: string[] }
+> {
+  const [members, workspace] = await Promise.all([
+    db.workspaceMember.findMany({
+      where: { workspaceId, leftAt: null },
+      select: {
+        userId: true,
+        user: {
+          select: {
+            name: true,
+            githubAuth: { select: { githubUsername: true } },
+          },
+        },
+      },
+    }),
+    db.workspace.findUnique({
+      where: { id: workspaceId },
+      select: {
+        owner: {
+          select: {
+            id: true,
+            name: true,
+            githubAuth: { select: { githubUsername: true } },
+          },
+        },
+      },
+    }),
+  ]);
+
+  const people = [
+    ...(workspace?.owner
+      ? [
+          {
+            userId: workspace.owner.id,
+            name: workspace.owner.name,
+            github: workspace.owner.githubAuth?.githubUsername,
+          },
+        ]
+      : []),
+    ...members.map((m) => ({
+      userId: m.userId,
+      name: m.user.name,
+      github: m.user.githubAuth?.githubUsername,
+    })),
+  ];
+
+  const wanted = person.trim().toLowerCase();
+  const match = people.find(
+    (p) =>
+      p.github?.toLowerCase() === wanted || p.name?.toLowerCase() === wanted,
+  );
+  if (!match) {
+    return {
+      ok: false,
+      available: people
+        .map((p) => p.github ?? p.name)
+        .filter((n): n is string => !!n),
+    };
+  }
+  return {
+    ok: true,
+    userId: match.userId,
+    name: match.name ?? match.github ?? "member",
+  };
+}
+
 export function buildConceptTools(orgId: string, userId: string): ToolSet {
   void userId; // carried through the proposal payload for attribution at approval time
 
@@ -214,6 +292,26 @@ export function buildConceptTools(orgId: string, userId: string): ToolSet {
               "concepts are repo-prefixed, e.g. 'owner/repo/slug'; general " +
               "concepts are a bare slug). Omit for a top-level concept.",
           ),
+        kind: z
+          .enum(["preference", "best_practice", "gotcha", "process", "general"])
+          .optional()
+          .describe(
+            "What KIND of knowledge this is — it controls how the concept is " +
+              "anchored in the workspace graph. 'preference' = how a specific " +
+              "person likes things done (pair with `person`); 'best_practice' " +
+              "= how the team agrees things should be done; 'gotcha' = a trap " +
+              "or surprising behavior to watch out for; 'process' = a runbook " +
+              "or how-we-work procedure. Omit (or 'general') for anything else.",
+          ),
+        person: z
+          .string()
+          .optional()
+          .describe(
+            "The workspace member this knowledge is ABOUT (github username or " +
+              "display name) — usually with kind: 'preference', e.g. capturing " +
+              "'Evan likes short PR descriptions'. The concept gets linked to " +
+              "that person in the graph. Omit for team-level knowledge.",
+          ),
         rationale: z
           .string()
           .optional()
@@ -226,6 +324,8 @@ export function buildConceptTools(orgId: string, userId: string): ToolSet {
         description,
         repo,
         parent,
+        kind,
+        person,
         rationale,
       }: {
         workspaceSlug: string;
@@ -234,6 +334,8 @@ export function buildConceptTools(orgId: string, userId: string): ToolSet {
         description?: string;
         repo?: string;
         parent?: string;
+        kind?: "preference" | "best_practice" | "gotcha" | "process" | "general";
+        person?: string;
         rationale?: string;
       }) => {
         try {
@@ -269,6 +371,25 @@ export function buildConceptTools(orgId: string, userId: string): ToolSet {
             resolvedRepo = match;
           }
 
+          // Resolve `person` to a workspace human (github username or display
+          // name, case-insensitive, members + owner). The userId lands in the
+          // payload so the approval handler can write the
+          // member -PREFERENCE-> Concept edge; the display name is card-only.
+          let resolvedPerson: { userId: string; name: string } | undefined;
+          if (person?.trim()) {
+            const found = await resolvePerson(workspace.id, person);
+            if (!found.ok) {
+              return {
+                error:
+                  `'${person}' is not a member of the ${workspace.slug} workspace. ` +
+                  (found.available.length
+                    ? `Members: ${found.available.join(", ")}.`
+                    : "No members found."),
+              };
+            }
+            resolvedPerson = { userId: found.userId, name: found.name };
+          }
+
           return {
             kind: "conceptCreate" as const,
             proposalId: nanoid(),
@@ -280,11 +401,15 @@ export function buildConceptTools(orgId: string, userId: string): ToolSet {
               ...(description && { description }),
               ...(resolvedRepo && { repo: resolvedRepo }),
               ...(parent?.trim() && { parent: parent.trim() }),
+              ...(kind && { kind }),
+              ...(resolvedPerson && { personUserId: resolvedPerson.userId }),
             },
             meta: {
               workspaceName: workspace.name,
               workspaceSlug: workspace.slug,
               ...(resolvedRepo && { repo: resolvedRepo }),
+              ...(kind && { kind }),
+              ...(resolvedPerson && { personName: resolvedPerson.name }),
             },
             ...(rationale && { rationale }),
           };

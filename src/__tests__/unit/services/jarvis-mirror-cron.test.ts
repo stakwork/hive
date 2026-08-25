@@ -28,9 +28,12 @@ function setupDb(opts: {
   features?: any[];
   tasks?: any[];
   messages?: any[];
+  /** Row served to the anchors pass (workspace.findUnique); null skips it. */
+  anchorWorkspace?: any;
 }) {
   (mockedDb.workspace as any) = {
     findMany: vi.fn(async () => opts.workspaces ?? []),
+    findUnique: vi.fn(async () => opts.anchorWorkspace ?? null),
     update: vi.fn(async () => ({})),
   };
   (mockedDb.feature as any) = { findMany: vi.fn(async () => opts.features ?? []) };
@@ -248,5 +251,108 @@ describe("runJarvisMirror", () => {
     expect(res.processed).toBe(3);
     expect(res.results[1].errors?.[0]).toContain("boom");
     expect(res.results[2].counts?.feature).toBe(1);
+  });
+
+  describe("workspace anchors (HiveWorkspace + HiveWorkspaceMember)", () => {
+    const ANCHOR_WS = {
+      id: "w1",
+      name: "Hive",
+      slug: "hive",
+      description: "AI-first PM toolkit",
+      mission: "harden codebases",
+      createdAt: AT,
+      updatedAt: AT,
+      owner: {
+        id: "u-owner",
+        name: "Evan",
+        githubAuth: { githubUsername: "evanfeenstra" },
+      },
+      members: [
+        {
+          id: "wm1",
+          userId: "u2",
+          role: "DEVELOPER",
+          description: "backend focus",
+          joinedAt: AT,
+          // No display name — must fall back to the github username.
+          user: { name: null, githubAuth: { githubUsername: "alice" } },
+        },
+      ],
+    };
+
+    it("upserts the workspace node, the owner-as-member, and member nodes with HAS_MEMBER edges", async () => {
+      setupDb({
+        workspaces: [{ id: "w1", slug: "hive", jarvisSyncState: null }],
+        anchorWorkspace: ANCHOR_WS,
+      });
+
+      const res = await runJarvisMirror();
+
+      expect(res.results[0].anchors).toEqual({ workspace: 1, member: 2 });
+
+      const nodes = mockedAddNodeBulk.mock.calls[0][1] as any[];
+      const wsNode = nodes.find((n) => n.node_type === "HiveWorkspace");
+      expect(wsNode.node_data).toMatchObject({
+        workspace_id: "w1",
+        name: "Hive",
+        slug: "hive",
+        description: "AI-first PM toolkit",
+        mission: "harden codebases",
+      });
+
+      const memberNodes = nodes.filter((n) => n.node_type === "HiveWorkspaceMember");
+      expect(memberNodes).toHaveLength(2);
+      // Owner has no WorkspaceMember row — keyed by their user id, role OWNER.
+      expect(memberNodes[0].node_data).toMatchObject({
+        member_id: "u-owner",
+        user_id: "u-owner",
+        name: "Evan",
+        github_username: "evanfeenstra",
+        role: "OWNER",
+      });
+      // Member display name falls back to the github username.
+      expect(memberNodes[1].node_data).toMatchObject({
+        member_id: "wm1",
+        user_id: "u2",
+        name: "alice",
+        github_username: "alice",
+        role: "DEVELOPER",
+        description: "backend focus",
+      });
+
+      const edges = mockedAddEdgeBulk.mock.calls[0][1] as any[];
+      const memberEdges = edges.filter((e) => e.edge.edge_type === "HAS_MEMBER");
+      expect(memberEdges).toHaveLength(2);
+      expect(memberEdges[0].source.node_data).toEqual({ workspace_id: "w1", name: "Hive" });
+      expect(memberEdges[0].target.node_data).toEqual({ member_id: "u-owner", name: "Evan" });
+      expect(memberEdges[1].target.node_data).toEqual({ member_id: "wm1", name: "alice" });
+    });
+
+    it("anchors never touch jarvisSyncState (full upsert, no cursor)", async () => {
+      setupDb({
+        workspaces: [{ id: "w1", slug: "hive", jarvisSyncState: null }],
+        anchorWorkspace: ANCHOR_WS,
+      });
+      await runJarvisMirror();
+      expect((mockedDb.workspace as any).update).not.toHaveBeenCalled();
+    });
+
+    it("reports zero anchors (with errors) when the node write fails", async () => {
+      mockedAddNodeBulk.mockResolvedValue({ success: false, errors: ["node boom"] });
+      setupDb({
+        workspaces: [{ id: "w1", slug: "hive", jarvisSyncState: null }],
+        anchorWorkspace: ANCHOR_WS,
+      });
+      const res = await runJarvisMirror();
+      expect(res.results[0].anchors).toEqual({ workspace: 0, member: 0 });
+      expect(res.results[0].errors).toContain("node boom");
+    });
+
+    it("skips the anchors pass quietly when the workspace row is gone", async () => {
+      setupDb({ workspaces: [{ id: "w1", slug: "hive", jarvisSyncState: null }] });
+      const res = await runJarvisMirror();
+      expect(res.results[0].anchors).toEqual({ workspace: 0, member: 0 });
+      expect(res.results[0].errors).toEqual([]);
+    });
   });
 });
