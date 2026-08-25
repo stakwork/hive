@@ -22,7 +22,6 @@
  */
 
 import React from "react";
-import { renderToStaticMarkup } from "react-dom/server";
 import { escapeForInlineScript } from "./json-escape";
 import { OfflineViewInGraphLink, OfflineSourceFileLink } from "./offline-adapters";
 import type { OfflineRenderContext } from "./offline-adapters";
@@ -94,8 +93,11 @@ function OfflineStateNotice({
  * require a browser environment (useState, useUserTimezone). All data that
  * the live component would derive from hooks is passed in or computed here.
  */
-export function renderRunOffline(opts: RenderRunOfflineOpts): OfflineRenderResult {
+export async function renderRunOffline(opts: RenderRunOfflineOpts): Promise<OfflineRenderResult> {
   const { payload, taskTitle, graphRubrics, fixSnapshots, context } = opts;
+  // Dynamic import keeps react-dom/server out of the static webpack graph so
+  // Next.js does not reject the module when bundling API routes.
+  const { renderToStaticMarkup } = await import("react-dom/server");
 
   try {
     const markup = renderToStaticMarkup(
@@ -133,10 +135,11 @@ export function renderRunOffline(opts: RenderRunOfflineOpts): OfflineRenderResul
  * ConsolidatedReportView is a client component. We re-implement the static
  * view inline with the same structure but offline-adapted source file links.
  */
-export function renderConsolidatedOffline(
+export async function renderConsolidatedOffline(
   opts: RenderConsolidatedOfflineOpts,
-): OfflineRenderResult {
+): Promise<OfflineRenderResult> {
   const { payload, taskSlug, packedDocuments, context } = opts;
+  const { renderToStaticMarkup } = await import("react-dom/server");
 
   // Build packed URL → entry name map for link rewriting.
   const packedByUrl = new Map(packedDocuments.map((d) => [d.url, d.entryName]));

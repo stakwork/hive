@@ -203,7 +203,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     });
 
     // ── 10. Render offline HTML ───────────────────────────────────────────────
-    const renderResult = renderRunOffline({
+    const renderResult = await renderRunOffline({
       payload: exportPayload.report,
       taskTitle,
       graphRubrics: exportPayload.rubricRoster as import("@/lib/harvey-lab/rubric-scoring").GraphRubric[] | null,

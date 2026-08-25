@@ -140,7 +140,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     });
 
     // ── 8. Render offline HTML ────────────────────────────────────────────────
-    const renderResult = renderConsolidatedOffline({
+    const renderResult = await renderConsolidatedOffline({
       payload: exportPayload.report,
       taskSlug,
       packedDocuments: exportPayload.packedDocuments,

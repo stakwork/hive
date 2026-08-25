@@ -69,14 +69,14 @@ function makeContextWithPeek(refId: string, payload: unknown): OfflineRenderCont
 
 describe("renderRunOffline", () => {
   describe("State branches", () => {
-    it('renders "unavailable" state without throwing', () => {
+    it('renders "unavailable" state without throwing', async () => {
       const payload: RunReportPayload = {
         runId: "r-1",
         hasReport: true,
         error: "unavailable",
         projection: null,
       };
-      const result = renderRunOffline({
+      const result = await renderRunOffline({
         payload,
         taskTitle: "Test",
         context: makeEmptyContext(),
@@ -88,14 +88,14 @@ describe("renderRunOffline", () => {
       expect(result.markup).toMatch(/couldn&#x27;t be loaded|couldn't be loaded/);
     });
 
-    it('renders "url_rejected" state without throwing', () => {
+    it('renders "url_rejected" state without throwing', async () => {
       const payload: RunReportPayload = {
         runId: "r-1",
         hasReport: true,
         error: "url_rejected",
         projection: null,
       };
-      const result = renderRunOffline({
+      const result = await renderRunOffline({
         payload,
         taskTitle: "Test",
         context: makeEmptyContext(),
@@ -105,13 +105,13 @@ describe("renderRunOffline", () => {
       expect(result.markup).toContain("not permitted");
     });
 
-    it('renders "no-report" state when hasReport is false', () => {
+    it('renders "no-report" state when hasReport is false', async () => {
       const payload: RunReportPayload = {
         runId: "r-1",
         hasReport: false,
         projection: null,
       };
-      const result = renderRunOffline({
+      const result = await renderRunOffline({
         payload,
         taskTitle: "Test",
         context: makeEmptyContext(),
@@ -128,38 +128,38 @@ describe("renderRunOffline", () => {
       payload = makeFullRunPayload();
     });
 
-    it("renders the run-report-view container", () => {
-      const result = renderRunOffline({ payload, taskTitle: "Full Test", context: makeEmptyContext() });
+    it("renders the run-report-view container", async () => {
+      const result = await renderRunOffline({ payload, taskTitle: "Full Test", context: makeEmptyContext() });
       expect(result.ok).toBe(true);
       expect(result.markup).toContain('data-testid="run-report-view"');
     });
 
-    it("renders the report header with task title", () => {
-      const result = renderRunOffline({ payload, taskTitle: "Full Test Run", context: makeEmptyContext() });
+    it("renders the report header with task title", async () => {
+      const result = await renderRunOffline({ payload, taskTitle: "Full Test Run", context: makeEmptyContext() });
       expect(result.markup).toContain("Full Test Run");
       expect(result.markup).toContain("run-report-header");
     });
 
-    it("renders rubric ledger rows from the fixture", () => {
-      const result = renderRunOffline({ payload, taskTitle: "Test", context: makeEmptyContext() });
+    it("renders rubric ledger rows from the fixture", async () => {
+      const result = await renderRunOffline({ payload, taskTitle: "Test", context: makeEmptyContext() });
       expect(result.markup).toContain("rubric-ledger");
     });
 
-    it("renders score as pass/fail badge", () => {
-      const result = renderRunOffline({ payload, taskTitle: "Test", context: makeEmptyContext() });
+    it("renders score as pass/fail badge", async () => {
+      const result = await renderRunOffline({ payload, taskTitle: "Test", context: makeEmptyContext() });
       // The header contains criteria passed display
       expect(result.markup).toContain("criteria passed");
     });
 
-    it("renders the offline notice", () => {
-      const result = renderRunOffline({ payload, taskTitle: "Test", context: makeEmptyContext() });
+    it("renders the offline notice", async () => {
+      const result = await renderRunOffline({ payload, taskTitle: "Test", context: makeEmptyContext() });
       expect(result.markup).toContain("Offline export");
     });
   });
 
   describe("Peek handling", () => {
-    it("renders peek container when refId is in the peek map", () => {
-      const result = renderRunOffline({
+    it("renders peek container when refId is in the peek map", async () => {
+      const result = await renderRunOffline({
         payload: { runId: "r-1", hasReport: false, projection: null },
         taskTitle: "Test",
         context: makeContextWithPeek("ref-123", { node: { ref_id: "ref-123", properties: { docs: "test content" } } }),
@@ -169,7 +169,7 @@ describe("renderRunOffline", () => {
       expect(result.ok).toBe(true);
     });
 
-    it("renders with adversarial peek payload containing </script> inert", () => {
+    it("renders with adversarial peek payload containing </script> inert", async () => {
       const adversarialPayload = {
         node: {
           ref_id: "ref-adversarial",
@@ -180,7 +180,7 @@ describe("renderRunOffline", () => {
       };
       // The adversarial payload goes through NodePeekBody which renders as escaped React text.
       // Even if the peek container is rendered, React's escaping makes it safe.
-      const result = renderRunOffline({
+      const result = await renderRunOffline({
         payload: { runId: "r-1", hasReport: false, projection: null },
         taskTitle: "Test",
         context: makeContextWithPeek("ref-adversarial", adversarialPayload),
@@ -195,8 +195,8 @@ describe("renderRunOffline", () => {
 
 describe("renderConsolidatedOffline", () => {
   describe("State branches", () => {
-    it("renders no-report state when hasReport is false", () => {
-      const result = renderConsolidatedOffline({
+    it("renders no-report state when hasReport is false", async () => {
+      const result = await renderConsolidatedOffline({
         payload: { runId: "c-1", hasReport: false, projection: null },
         taskSlug: "test/task",
         packedDocuments: [],
@@ -206,8 +206,8 @@ describe("renderConsolidatedOffline", () => {
       expect(result.markup).toContain("consolidated-no-report");
     });
 
-    it("renders error state for unavailable bundle", () => {
-      const result = renderConsolidatedOffline({
+    it("renders error state for unavailable bundle", async () => {
+      const result = await renderConsolidatedOffline({
         payload: { runId: "c-1", hasReport: true, error: "unavailable", projection: null },
         taskSlug: "test/task",
         packedDocuments: [],
@@ -221,13 +221,13 @@ describe("renderConsolidatedOffline", () => {
   describe("Rendering from consolidated fixture", () => {
     const projection = consolidatedFixture as ConsolidatedReportProjection;
 
-    it("renders the consolidated-report-view container", () => {
+    it("renders the consolidated-report-view container", async () => {
       const payload: RunReportPayload = {
         runId: "c-fixture-1",
         hasReport: true,
         projection,
       };
-      const result = renderConsolidatedOffline({
+      const result = await renderConsolidatedOffline({
         payload,
         taskSlug: "corporate/merger-reps",
         packedDocuments: [],
@@ -237,13 +237,13 @@ describe("renderConsolidatedOffline", () => {
       expect(result.markup).toContain('data-testid="consolidated-report-view"');
     });
 
-    it("renders the consolidated-header section", () => {
+    it("renders the consolidated-header section", async () => {
       const payload: RunReportPayload = {
         runId: "c-fixture-1",
         hasReport: true,
         projection,
       };
-      const result = renderConsolidatedOffline({
+      const result = await renderConsolidatedOffline({
         payload,
         taskSlug: "corporate/merger-reps",
         packedDocuments: [],
@@ -253,13 +253,13 @@ describe("renderConsolidatedOffline", () => {
       expect(result.markup).toContain("corporate/merger-reps");
     });
 
-    it("renders the failed-rubric matrix table", () => {
+    it("renders the failed-rubric matrix table", async () => {
       const payload: RunReportPayload = {
         runId: "c-fixture-1",
         hasReport: true,
         projection,
       };
-      const result = renderConsolidatedOffline({
+      const result = await renderConsolidatedOffline({
         payload,
         taskSlug: "corporate/merger-reps",
         packedDocuments: [],
@@ -269,13 +269,13 @@ describe("renderConsolidatedOffline", () => {
       expect(result.markup).toContain("matrix-row");
     });
 
-    it("renders source-file-links section", () => {
+    it("renders source-file-links section", async () => {
       const payload: RunReportPayload = {
         runId: "c-fixture-1",
         hasReport: true,
         projection,
       };
-      const result = renderConsolidatedOffline({
+      const result = await renderConsolidatedOffline({
         payload,
         taskSlug: "corporate/merger-reps",
         packedDocuments: [],
@@ -284,14 +284,14 @@ describe("renderConsolidatedOffline", () => {
       expect(result.markup).toContain("source-file-links-section");
     });
 
-    it("rewrites source-file links to local documents/ paths when packed", () => {
+    it("rewrites source-file links to local documents/ paths when packed", async () => {
       const sourceUrl = projection.sourceFileLinks[0];
       const payload: RunReportPayload = {
         runId: "c-fixture-1",
         hasReport: true,
         projection,
       };
-      const result = renderConsolidatedOffline({
+      const result = await renderConsolidatedOffline({
         payload,
         taskSlug: "corporate/merger-reps",
         packedDocuments: [{ url: sourceUrl, entryName: "merger_agreement.pdf", bytes: new Uint8Array([1]) }],
@@ -301,13 +301,13 @@ describe("renderConsolidatedOffline", () => {
       expect(result.markup).toContain("documents/merger_agreement.pdf");
     });
 
-    it("renders per-criterion detail tables", () => {
+    it("renders per-criterion detail tables", async () => {
       const payload: RunReportPayload = {
         runId: "c-fixture-1",
         hasReport: true,
         projection,
       };
-      const result = renderConsolidatedOffline({
+      const result = await renderConsolidatedOffline({
         payload,
         taskSlug: "corporate/merger-reps",
         packedDocuments: [],
@@ -318,14 +318,14 @@ describe("renderConsolidatedOffline", () => {
   });
 
   describe("Self-containment", () => {
-    it("does not render external href= links in the output for offline source files", () => {
+    it("does not render external href= links in the output for offline source files", async () => {
       const projection = consolidatedFixture as ConsolidatedReportProjection;
       const payload: RunReportPayload = {
         runId: "c-fixture-1",
         hasReport: true,
         projection,
       };
-      const result = renderConsolidatedOffline({
+      const result = await renderConsolidatedOffline({
         payload,
         taskSlug: "corporate/merger-reps",
         packedDocuments: [], // none packed → all skipped → AvailableOnlineChip
