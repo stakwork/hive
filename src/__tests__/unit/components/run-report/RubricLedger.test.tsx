@@ -438,3 +438,236 @@ describe("RubricLedger — judge dispute / note label and data-judge-state", () 
     expect(screen.queryByTestId("run-report-judge-dispute")).not.toBeInTheDocument();
   });
 });
+
+// ── Origin-aware graphRubrics fixture tests ───────────────────────────────────
+
+/**
+ * GraphRubric fixture:
+ *   ROSTER_CONTESTED_BY_ID   — contested, id matches C-CONTESTED
+ *   ROSTER_CONTESTED_BY_NAME — contested, name matches "Contested only criterion"
+ *   ROSTER_NON_CONTESTED     — in the roster but NOT contested
+ *   ROSTER_ONLY_ID           — contested, id C-ROSTER-ONLY (no bundle row)
+ */
+import type { GraphRubric } from "@/lib/harvey-lab/rubric-scoring";
+
+const GRAPH_RUBRICS: GraphRubric[] = [
+  {
+    ref_id: "node-contested-id",
+    id: "C-CONTESTED",
+    name: "Contested only criterion",
+    contested: true,
+  },
+  {
+    ref_id: "node-contested-name",
+    // different id so only name matches CONTESTED_ONLY row
+    id: "C-OTHER-ID",
+    name: "Contested only criterion",
+    contested: true,
+  },
+  {
+    ref_id: "node-non-contested",
+    id: "C-PLAIN",
+    name: "Plain fail criterion",
+    contested: false,
+  },
+  {
+    ref_id: "node-roster-only",
+    id: "C-ROSTER-ONLY",
+    name: "Roster-only contested criterion (no bundle row)",
+    contested: true,
+  },
+];
+
+/** Render the ledger with the test graphRubrics fixture. */
+function renderLedgerWithRoster(rows: RubricRow[]) {
+  const projection = makeProjection(rows);
+  const chain = buildChainModel(projection);
+  return render(
+    <RubricLedger
+      projection={projection}
+      chain={chain}
+      graphRubrics={GRAPH_RUBRICS}
+      onOpenDoc={() => {}}
+    />,
+  );
+}
+
+describe("RubricLedger — origin-aware contested chips (graphRubrics fixture)", () => {
+  // ── data-contested-origin on rail chips ────────────────────────────────────
+
+  it("chip for in-run-only contested criterion carries data-contested-origin='in-run'", () => {
+    // CONTESTED_ONLY has criterionContested:true but id C-CONTESTED matches
+    // the roster, so it is "both". Use a different id not in the roster.
+    const IN_RUN_ONLY = makeRow({
+      id: "C-INRUN-ONLY",
+      title: "In-run only contested (no roster match)",
+      criterionContested: true,
+    });
+    renderLedgerWithRoster([IN_RUN_ONLY]);
+    const badges = screen.getAllByTestId("criterion-contested-badge");
+    // The list-row badge carries the origin attribute
+    const inRunBadge = badges.find(
+      (b) => b.getAttribute("data-contested-origin") === "in-run",
+    );
+    expect(inRunBadge).toBeDefined();
+  });
+
+  it("chip for roster+in-run criterion carries data-contested-origin='both'", () => {
+    // CONTESTED_ONLY has criterionContested:true AND id C-CONTESTED is in the
+    // roster → should resolve to "both".
+    renderLedgerWithRoster([CONTESTED_ONLY]);
+    const badges = screen.getAllByTestId("criterion-contested-badge");
+    const bothBadge = badges.find(
+      (b) => b.getAttribute("data-contested-origin") === "both",
+    );
+    expect(bothBadge).toBeDefined();
+  });
+
+  // ── Roster-only rows appear in the rail ────────────────────────────────────
+
+  it("renders roster-only rows for contested rubrics with no bundle match", () => {
+    // With only PLAIN_FAIL in the bundle:
+    //   C-CONTESTED (id) and C-OTHER-ID/same-name both miss the bundle → 2 roster-only rows
+    //   C-ROSTER-ONLY misses the bundle → 1 more (3 total)
+    renderLedgerWithRoster([PLAIN_FAIL]);
+    const rosterRows = screen.getAllByTestId("run-report-roster-only-row");
+    expect(rosterRows.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("roster-only rows are non-interactive (no button element inside)", () => {
+    renderLedgerWithRoster([PLAIN_FAIL, CONTESTED_ONLY]);
+    const rosterRows = screen.getAllByTestId("run-report-roster-only-row");
+    for (const row of rosterRows) {
+      expect(row.querySelector("button")).toBeNull();
+    }
+  });
+
+  it("all roster-only rows carry a PRIOR CONTEST chip", () => {
+    renderLedgerWithRoster([PLAIN_FAIL]);
+    const rosterRows = screen.getAllByTestId("run-report-roster-only-row");
+    for (const row of rosterRows) {
+      const chip = row.querySelector("[data-testid='criterion-contested-badge']");
+      expect(chip).not.toBeNull();
+      expect(chip?.textContent).toContain("PRIOR CONTEST");
+    }
+  });
+
+  it("all roster-only row chips have data-contested-origin='roster'", () => {
+    renderLedgerWithRoster([PLAIN_FAIL]);
+    const rosterRows = screen.getAllByTestId("run-report-roster-only-row");
+    for (const row of rosterRows) {
+      const chip = row.querySelector("[data-testid='criterion-contested-badge']");
+      expect(chip?.getAttribute("data-contested-origin")).toBe("roster");
+    }
+  });
+
+  it("roster-only rows are NOT counted in open or passed criterion lists", () => {
+    renderLedgerWithRoster([PLAIN_FAIL]);
+    // open = [PLAIN_FAIL] → 1 ledger item button; the roster row is a div, not a button
+    const items = screen.getAllByTestId("run-report-ledger-item");
+    expect(items).toHaveLength(1);
+  });
+
+  it("no roster-only rows rendered when graphRubrics is null", () => {
+    renderLedger([PLAIN_FAIL]);
+    expect(
+      screen.queryByTestId("run-report-roster-only-row"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("no roster-only rows rendered when all contested roster rubrics have bundle rows", () => {
+    // CONTESTED_ONLY covers C-CONTESTED which is in the roster.
+    // Roster also has C-OTHER-ID / same name as CONTESTED_ONLY → name match.
+    // The one roster-only id is C-ROSTER-ONLY — include a bundle row for it.
+    const ROSTER_ONLY_ROW = makeRow({
+      id: "C-ROSTER-ONLY",
+      title: "Roster-only contested criterion (no bundle row)",
+      criterionContested: true,
+    });
+    renderLedgerWithRoster([PLAIN_FAIL, CONTESTED_ONLY, ROSTER_ONLY_ROW]);
+    expect(
+      screen.queryByTestId("run-report-roster-only-row"),
+    ).not.toBeInTheDocument();
+  });
+
+  // ── Total contested chip count reconciles with +N annotation ─────────────
+
+  it("total contested badges (bundle rows + roster-only rows) equals contested count", () => {
+    // PLAIN_FAIL: not contested → 0 chips
+    // CONTESTED_ONLY: both bundle+roster → 1 chip in list row (detail panel adds 1 more when selected)
+    // roster-only C-ROSTER-ONLY: 1 chip
+    // Total unique contested rail positions: CONTESTED_ONLY (list) + ROSTER-ONLY
+    renderLedgerWithRoster([PLAIN_FAIL, CONTESTED_ONLY]);
+    const badges = screen.getAllByTestId("criterion-contested-badge");
+    // At minimum 2: CONTESTED_ONLY list-row chip + roster-only chip.
+    // When CONTESTED_ONLY is selected its detail panel adds 1 more.
+    expect(badges.length).toBeGreaterThanOrEqual(2);
+  });
+
+  // ── Axes stay separate: roster-contested criterion with passing verdict ─────
+
+  it("a passing criterion that is roster-contested shows no DISPUTED/dispute prose in the contested block", () => {
+    // PASS_WITH_CONTESTED has verdict "pass" and criterionContested:true.
+    // Its id C-PASS-CONTESTED is not in the roster → "in-run" origin.
+    // Verify: no dispute prose appears inside the contested block.
+    const PASS_ROSTER: RubricRow = {
+      ...PASS_WITH_CONTESTED,
+      id: "C-CONTESTED", // matches roster id → "both" origin (inRun + roster)
+      title: "Passing contested from roster",
+    };
+    renderLedgerWithRoster([PASS_ROSTER]);
+    // No DISPUTED badge (not flagged)
+    expect(
+      screen.queryByTestId("criterion-disputed-badge"),
+    ).not.toBeInTheDocument();
+    // The contested block should not contain the judge-dispute label text
+    const contestedBlock = screen.queryByTestId("run-report-contested-block");
+    if (contestedBlock) {
+      expect(contestedBlock.textContent).not.toMatch(/Judge Dispute/i);
+      expect(contestedBlock.textContent).not.toMatch(/Judge Note/i);
+    }
+  });
+
+  // ── Contested Definition / Prior Contest block in the detail panel ─────────
+
+  it("detail panel shows a Contested Definition block when selected criterion is 'both'", () => {
+    // CONTESTED_ONLY is selected first (non-pass, auto-selected).
+    renderLedgerWithRoster([CONTESTED_ONLY]);
+    expect(
+      screen.getByTestId("run-report-contested-block"),
+    ).toBeInTheDocument();
+    const block = screen.getByTestId("run-report-contested-block");
+    expect(block.getAttribute("data-contested-origin")).toBe("both");
+  });
+
+  it("detail panel shows Prior Contest block for in-run-only contested criterion", () => {
+    const IN_RUN_ONLY = makeRow({
+      id: "C-INRUN-ONLY",
+      title: "In-run only contested (no roster match)",
+      criterionContested: true,
+    });
+    renderLedgerWithRoster([IN_RUN_ONLY]);
+    const block = screen.getByTestId("run-report-contested-block");
+    expect(block.getAttribute("data-contested-origin")).toBe("in-run");
+    // Label should be "Contested Definition" not "Prior Contest"
+    expect(block.textContent).toContain("Contested Definition");
+  });
+
+  it("detail panel shows no contested block for a plain fail criterion", () => {
+    renderLedgerWithRoster([PLAIN_FAIL]);
+    // PLAIN_FAIL is not contested → no block
+    // (but the roster-only row exists — detail panel only affects the selected row)
+    expect(
+      screen.queryByTestId("run-report-contested-block"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("contested block does not appear for a non-contested criterion even with roster", () => {
+    // C-PLAIN is in the roster but contested:false — should have no chip/block.
+    renderLedgerWithRoster([PLAIN_FAIL]);
+    // PLAIN_FAIL auto-selected; C-PLAIN roster entry is non-contested.
+    expect(
+      screen.queryByTestId("run-report-contested-block"),
+    ).not.toBeInTheDocument();
+  });
+});

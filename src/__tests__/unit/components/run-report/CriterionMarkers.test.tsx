@@ -219,3 +219,192 @@ describe("CriterionMarkers", () => {
     expect(screen.queryByTestId("criterion-dispute-basis")).not.toBeInTheDocument();
   });
 });
+
+// ── Origin-aware contested chip ───────────────────────────────────────────────
+
+describe("CriterionMarkers — contestedOrigin prop (additive, non-breaking)", () => {
+  // ── data-contested-origin attribute ────────────────────────────────────────
+
+  it("sets data-contested-origin to 'in-run' when contestedOrigin='in-run'", () => {
+    render(<CriterionMarkers contested={true} contestedOrigin="in-run" />);
+    const badge = screen.getByTestId("criterion-contested-badge");
+    expect(badge).toHaveAttribute("data-contested-origin", "in-run");
+  });
+
+  it("sets data-contested-origin to 'roster' when contestedOrigin='roster'", () => {
+    render(<CriterionMarkers contested={true} contestedOrigin="roster" />);
+    const badge = screen.getByTestId("criterion-contested-badge");
+    expect(badge).toHaveAttribute("data-contested-origin", "roster");
+  });
+
+  it("sets data-contested-origin to 'both' when contestedOrigin='both'", () => {
+    render(<CriterionMarkers contested={true} contestedOrigin="both" />);
+    const badge = screen.getByTestId("criterion-contested-badge");
+    expect(badge).toHaveAttribute("data-contested-origin", "both");
+  });
+
+  it("sets data-contested-origin to 'unknown' when contestedOrigin='unknown'", () => {
+    render(<CriterionMarkers contested={true} contestedOrigin="unknown" />);
+    const badge = screen.getByTestId("criterion-contested-badge");
+    expect(badge).toHaveAttribute("data-contested-origin", "unknown");
+  });
+
+  it("does NOT set data-contested-origin when contestedOrigin is absent", () => {
+    render(<CriterionMarkers contested={true} />);
+    const badge = screen.getByTestId("criterion-contested-badge");
+    // When no origin is supplied the attribute should not be present (legacy mode)
+    expect(badge).not.toHaveAttribute("data-contested-origin");
+  });
+
+  it("does NOT set data-contested-origin when contestedOrigin is null", () => {
+    render(<CriterionMarkers contested={true} contestedOrigin={null} />);
+    const badge = screen.getByTestId("criterion-contested-badge");
+    expect(badge).not.toHaveAttribute("data-contested-origin");
+  });
+
+  // ── Label text per origin ──────────────────────────────────────────────────
+
+  it("chip label is 'CONTESTED' for origin in-run", () => {
+    render(<CriterionMarkers contested={true} contestedOrigin="in-run" />);
+    const badge = screen.getByTestId("criterion-contested-badge");
+    expect(badge).toHaveTextContent("CONTESTED");
+  });
+
+  it("chip label is 'PRIOR CONTEST' for origin roster", () => {
+    render(<CriterionMarkers contested={true} contestedOrigin="roster" />);
+    const badge = screen.getByTestId("criterion-contested-badge");
+    expect(badge).toHaveTextContent("PRIOR CONTEST");
+  });
+
+  it("chip label is 'CONTESTED' for origin both", () => {
+    render(<CriterionMarkers contested={true} contestedOrigin="both" />);
+    const badge = screen.getByTestId("criterion-contested-badge");
+    expect(badge).toHaveTextContent("CONTESTED");
+  });
+
+  it("chip label is 'CONTESTED' for origin unknown", () => {
+    render(<CriterionMarkers contested={true} contestedOrigin="unknown" />);
+    const badge = screen.getByTestId("criterion-contested-badge");
+    expect(badge).toHaveTextContent("CONTESTED");
+  });
+
+  // ── 'both' differs from 'in-run' in rendered DOM (not just tooltip) ────────
+
+  it("renders a trailing dot marker ONLY for origin 'both' (not 'in-run')", () => {
+    const { unmount } = render(
+      <CriterionMarkers contested={true} contestedOrigin="both" />,
+    );
+    expect(
+      screen.getByTestId("criterion-contested-both-marker"),
+    ).toBeInTheDocument();
+    unmount();
+
+    render(<CriterionMarkers contested={true} contestedOrigin="in-run" />);
+    expect(
+      screen.queryByTestId("criterion-contested-both-marker"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("renders no trailing dot marker for origin 'roster'", () => {
+    render(<CriterionMarkers contested={true} contestedOrigin="roster" />);
+    expect(
+      screen.queryByTestId("criterion-contested-both-marker"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("renders no trailing dot marker for origin 'unknown'", () => {
+    render(<CriterionMarkers contested={true} contestedOrigin="unknown" />);
+    expect(
+      screen.queryByTestId("criterion-contested-both-marker"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("renders no trailing dot marker when contestedOrigin is absent", () => {
+    render(<CriterionMarkers contested={true} />);
+    expect(
+      screen.queryByTestId("criterion-contested-both-marker"),
+    ).not.toBeInTheDocument();
+  });
+
+  // ── Legacy: existing `contested={true}` cases stay green ──────────────────
+
+  it("still renders CONTESTED chip with no origin prop (legacy mode)", () => {
+    render(<CriterionMarkers contested={true} />);
+    const badge = screen.getByTestId("criterion-contested-badge");
+    expect(badge).toBeInTheDocument();
+    expect(badge).toHaveTextContent("CONTESTED");
+  });
+
+  it("all four existing contested/disputed combinations stay green", () => {
+    // Neither
+    const { unmount: u1 } = render(
+      <CriterionMarkers disputed={false} contested={false} />,
+    );
+    expect(screen.queryByTestId("criterion-contested-badge")).not.toBeInTheDocument();
+    u1();
+
+    // Disputed only
+    const { unmount: u2 } = render(<CriterionMarkers disputed={true} />);
+    expect(screen.queryByTestId("criterion-contested-badge")).not.toBeInTheDocument();
+    u2();
+
+    // Contested only
+    render(<CriterionMarkers contested={true} />);
+    expect(screen.getByTestId("criterion-contested-badge")).toHaveTextContent("CONTESTED");
+  });
+
+  // ── Tooltip contains "contested" in every origin ──────────────────────────
+
+  it("tooltip text contains 'contested' for origin in-run", () => {
+    render(<CriterionMarkers contested={true} contestedOrigin="in-run" />);
+    const tooltips = screen.getAllByTestId("tooltip-content");
+    const contestedTooltip = tooltips.find((el) =>
+      el.textContent?.toLowerCase().includes("contested"),
+    );
+    expect(contestedTooltip).toBeDefined();
+  });
+
+  it("tooltip text contains 'contested' for origin roster", () => {
+    render(<CriterionMarkers contested={true} contestedOrigin="roster" />);
+    const tooltips = screen.getAllByTestId("tooltip-content");
+    const contestedTooltip = tooltips.find((el) =>
+      el.textContent?.toLowerCase().includes("contested"),
+    );
+    expect(contestedTooltip).toBeDefined();
+  });
+
+  it("tooltip text contains 'contested' for origin both", () => {
+    render(<CriterionMarkers contested={true} contestedOrigin="both" />);
+    const tooltips = screen.getAllByTestId("tooltip-content");
+    const contestedTooltip = tooltips.find((el) =>
+      el.textContent?.toLowerCase().includes("contested"),
+    );
+    expect(contestedTooltip).toBeDefined();
+  });
+
+  it("tooltip text contains 'contested' for origin unknown", () => {
+    render(<CriterionMarkers contested={true} contestedOrigin="unknown" />);
+    const tooltips = screen.getAllByTestId("tooltip-content");
+    const contestedTooltip = tooltips.find((el) =>
+      el.textContent?.toLowerCase().includes("contested"),
+    );
+    expect(contestedTooltip).toBeDefined();
+  });
+
+  // ── DISPUTED chip still renders alongside origin-aware CONTESTED chip ──────
+
+  it("DISPUTED chip still renders when both disputed and contestedOrigin='roster' are set", () => {
+    render(
+      <CriterionMarkers
+        disputed={true}
+        contested={true}
+        contestedOrigin="roster"
+      />,
+    );
+    expect(screen.getByTestId("criterion-disputed-badge")).toBeInTheDocument();
+    expect(screen.getByTestId("criterion-contested-badge")).toBeInTheDocument();
+    expect(screen.getByTestId("criterion-contested-badge")).toHaveTextContent(
+      "PRIOR CONTEST",
+    );
+  });
+});
