@@ -1,11 +1,16 @@
 /**
- * Unit tests for the optional `parent` field on `propose_new_concept`.
+ * Unit tests for the optional `parent` and `repo` fields on
+ * `propose_new_concept`.
  *
  * Covers:
  *  - `parent` present → trimmed value emitted in payload
  *  - `parent` absent → key not in payload
  *  - `parent` whitespace-only → key not in payload
  *  - `parent` not mirrored into meta
+ *  - `repo` absent → key not in payload (general concept — NOT defaulted
+ *    to the workspace's primary repo)
+ *  - `repo` present + configured → included in payload and meta
+ *  - `repo` present + unknown → error naming the available repos
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
@@ -108,5 +113,48 @@ describe("propose_new_concept — parent field", () => {
 
     expect(result.kind).toBe("conceptCreate");
     expect(result.meta).not.toHaveProperty("parent");
+  });
+});
+
+describe("propose_new_concept — repo field", () => {
+  it("omits repo when not provided — general concepts are NOT stamped with the primary repo", async () => {
+    const execute = getProposeNewConcept();
+    const result = await execute({
+      workspaceSlug: "acme",
+      name: "Code Review Preferences",
+      documentation: "# Reviews\nAlways squash-merge.",
+    });
+
+    expect(result.kind).toBe("conceptCreate");
+    expect(result.payload).not.toHaveProperty("repo");
+    expect(result.meta).not.toHaveProperty("repo");
+  });
+
+  it("includes an explicitly-chosen configured repo in payload and meta", async () => {
+    const execute = getProposeNewConcept();
+    const result = await execute({
+      workspaceSlug: "acme",
+      name: "Auth Guide",
+      documentation: "# Auth\nHow auth works.",
+      repo: "acme/hive",
+    });
+
+    expect(result.kind).toBe("conceptCreate");
+    expect((result.payload as Record<string, unknown>).repo).toBe("acme/hive");
+    expect((result.meta as Record<string, unknown>).repo).toBe("acme/hive");
+  });
+
+  it("errors on a repo the workspace does not have", async () => {
+    const execute = getProposeNewConcept();
+    const result = await execute({
+      workspaceSlug: "acme",
+      name: "Auth Guide",
+      documentation: "# Auth\nHow auth works.",
+      repo: "acme/other-repo",
+    });
+
+    expect(result.kind).toBeUndefined();
+    expect(result.error).toContain("not configured for this workspace");
+    expect(result.error).toContain("acme/hive");
   });
 });

@@ -108,7 +108,6 @@ import {
 } from "@prisma/client";
 import type { PullRequestContent, DiffContent } from "@/lib/chat";
 import { mcpCreatePrompt, mcpUpdatePrompt } from "@/lib/mcp/mcpTools";
-import { getSwarmAccessByWorkspaceId } from "@/lib/helpers/swarm-access";
 import { logger } from "@/lib/logger";
 import { resolveGraphJarvis } from "@/lib/ai/graphWriteAuth";
 import {
@@ -116,6 +115,8 @@ import {
   updateNodeV2,
   addEdgeV2,
   readNodeByRef,
+  deleteNode,
+  searchNodesByAttributes,
   type JarvisEdgeEndpoint,
 } from "@/services/swarm/api/nodes";
 import { findReservedKeyViolation } from "@/lib/proposals/graphWriteValidation";
@@ -374,10 +375,10 @@ export async function handleApproval(
     });
   }
   if (proposal.kind === "conceptCreate") {
-    return approveConceptCreate({ orgId, proposal });
+    return approveConceptCreate({ orgId, userId, proposal });
   }
   if (proposal.kind === "conceptUpdate") {
-    return approveConceptUpdate({ orgId, proposal });
+    return approveConceptUpdate({ orgId, userId, proposal });
   }
   if (proposal.kind === "graphNodeCreate") {
     return approveGraphNodeCreate({ orgId, userId, proposal });
@@ -2237,52 +2238,66 @@ async function approvePromptUpdate(args: {
 
 // ── Concept approvals ────────────────────────────────────────────────
 //
-// Concepts live on a workspace's swarm (gitree HTTP), not in the Hive DB.
-// The proposal payload carries the workspace cuid (resolved under the org
-// at propose time); we re-verify it belongs to `orgId` (defense-in-depth,
-// matching the feature approval org guard) before reaching the swarm.
-// Both return `landedOn: ""` (no canvas node) + the workspace slug so the
-// card can deep-link to the concept in the learn UI.
+// Concepts live on a workspace's swarm, not in the Hive DB. Both create
+// and update go through the Jarvis API rather than gitree HTTP:
+//  - create (`POST /v2/nodes` + `/v2/edges`) — new Concepts are born with
+//    `Domain_general` labels and queued `text_embeddings` (jarvis
+//    migration 108/110), discoverable by graph_search's semantic half.
+//  - update (`POST /v2/nodes/{ref_id}`) — jarvis rebuilds the `Data_Bank`
+//    search text from the schema's index fields and re-queues embeddings,
+//    which gitree's `saveDocumentation` (`SET f.docs` only) never did:
+//    concepts updated through gitree kept ranking on their OLD body.
+// `node_data.id` carries gitree's slug address so stakgraph's readers
+// (`MATCH (f:Concept {id})`) keep resolving these nodes. The proposal
+// payload carries the workspace cuid (resolved under the org at propose
+// time); `resolveGraphJarvis` re-verifies org + workspace membership.
+// Both return `landedOn: ""` (no canvas node) + the workspace slug so
+// the card can deep-link to the concept in the learn UI.
 
-/** Re-resolve + org-guard the workspace, then return its swarm creds. */
-async function resolveConceptSwarm(
-  orgId: string,
-  workspaceId: string,
+/**
+ * Resolve a Concept's jarvis ref_id from its gitree slug address.
+ * Both writers stamp `id` on the node: gitree's `saveConcept` always has,
+ * and the jarvis create path above passes it in `node_data`.
+ */
+async function findConceptRefById(
+  config: { jarvisUrl: string; apiKey: string },
+  conceptId: string,
 ): Promise<
-  | { ok: true; swarmUrl: string; swarmApiKey: string }
+  | { ok: true; refId: string }
   | { ok: false; error: string; status: number }
 > {
-  const workspace = await db.workspace.findFirst({
-    where: { id: workspaceId, sourceControlOrgId: orgId, deleted: false },
-    select: { id: true },
+  const search = await searchNodesByAttributes(config, {
+    nodeTypes: ["Concept"],
+    filters: [{ attribute: "id", value: conceptId, comparator: "=" }],
+    limit: 1,
   });
-  if (!workspace) {
+  if (!search.ok) {
     return {
       ok: false,
-      error: "Workspace not found in this organization.",
-      status: 403,
+      error: "Could not reach the workspace graph.",
+      status: 502,
     };
   }
-  const swarm = await getSwarmAccessByWorkspaceId(workspaceId);
-  if (!swarm.success) {
-    return {
-      ok: false,
-      error: `The workspace swarm is not available (${swarm.error.type}).`,
-      status: 503,
-    };
+  if (!search.nodes[0]) {
+    return { ok: false, error: `Concept '${conceptId}' not found.`, status: 404 };
   }
-  return {
-    ok: true,
-    swarmUrl: swarm.data.swarmUrl,
-    swarmApiKey: swarm.data.swarmApiKey,
-  };
+  return { ok: true, refId: search.nodes[0].ref_id };
+}
+
+/** Mirror of gitree's generateSlug (stakgraph mcp/src/gitree/store/utils.ts). */
+function conceptSlug(name: string): string {
+  return name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "");
 }
 
 async function approveConceptCreate(args: {
   orgId: string;
+  userId: string;
   proposal: Extract<ProposalOutput, { kind: "conceptCreate" }>;
 }): Promise<HandleApprovalReturn> {
-  const { orgId, proposal } = args;
+  const { orgId, userId, proposal } = args;
   const { workspaceId, workspaceSlug, name, documentation, description, repo, parent } =
     proposal.payload;
 
@@ -2293,43 +2308,103 @@ async function approveConceptCreate(args: {
     return { ok: false, error: "Concept documentation is required.", status: 400 };
   }
 
-  const resolved = await resolveConceptSwarm(orgId, workspaceId);
-  if (!resolved.ok) {
-    return { ok: false, error: resolved.error, status: resolved.status };
+  // gitree's slug address: repo-prefixed when the concept is filed under a
+  // repo, bare slug for general (repo-less) concepts. stakgraph resolves
+  // concepts by this property, so it must land on the node.
+  const slug = conceptSlug(name);
+  if (!slug) {
+    return {
+      ok: false,
+      error: "Concept name must contain alphanumeric characters.",
+      status: 400,
+    };
+  }
+  const conceptId = repo ? `${repo}/${slug}` : slug;
+  const parentId = parent?.trim() || undefined;
+  if (parentId && parentId === conceptId) {
+    return { ok: false, error: "A concept cannot be its own parent.", status: 400 };
   }
 
-  let createdId = "";
-  try {
-    const res = await fetch(`${resolved.swarmUrl}/gitree/create-concept-direct`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-api-token": resolved.swarmApiKey,
-      },
-      body: JSON.stringify({
-        name: name.trim(),
-        documentation,
-        ...(description && { description }),
-        ...(repo && { repo }),
-        ...(parent && { parent }),
-      }),
-    });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) {
-      const msg =
-        (typeof data?.error === "string" && data.error) ||
-        (typeof data?.message === "string" && data.message) ||
-        `Failed to create concept (status ${res.status}).`;
-      return { ok: false, error: msg, status: res.status === 409 ? 409 : 400 };
+  const resolved = await resolveGraphJarvis(orgId, userId, { workspaceId });
+  if (!resolved.ok) {
+    return { ok: false, error: "Workspace not found or access denied.", status: 403 };
+  }
+  const { config } = resolved.access;
+
+  // Resolve the parent BEFORE creating — a bad parent must never leave a
+  // partially-created concept behind (mirrors gitree's createConceptDirect).
+  let parentRef: string | undefined;
+  if (parentId) {
+    const found = await findConceptRefById(config, parentId);
+    if (!found.ok) {
+      return found.status === 404
+        ? { ok: false, error: `Parent concept '${parentId}' not found.`, status: 400 }
+        : found;
     }
-    createdId = data?.concept?.id ?? "";
-  } catch (e) {
+    parentRef = found.refId;
+  }
+
+  // Jarvis create-or-merge (node_key: concept-name — a same-name concept
+  // merges rather than erroring). `docs` is the canonical indexed body
+  // (jarvis migration 106); `documentation` is deprecated and unindexed.
+  const created = await addNode(config, {
+    node_type: "Concept",
+    node_data: {
+      id: conceptId,
+      name: name.trim(),
+      docs: documentation,
+      ...(description && { description }),
+      ...(repo && { repo }),
+    },
+  });
+  if (!created.success) {
     logger.error(
-      "[handleApproval.approveConceptCreate] swarm write failed",
+      "[handleApproval.approveConceptCreate] jarvis node create failed",
       "handleApproval",
-      { proposalId: proposal.proposalId, workspaceSlug, error: String(e) },
+      { proposalId: proposal.proposalId, workspaceSlug, error: created.error },
     );
-    return { ok: false, error: "Could not reach the workspace swarm.", status: 502 };
+    return {
+      ok: false,
+      error: created.error ?? "Failed to create concept.",
+      status: 502,
+    };
+  }
+
+  if (parentRef) {
+    if (created.ref_id && created.ref_id === parentRef) {
+      // Merge-by-name landed on the parent itself (same name, different id).
+      return { ok: false, error: "A concept cannot be its own parent.", status: 400 };
+    }
+    // `alreadyExists` can legitimately come back without a ref_id — hand
+    // addEdgeV2 the inline spec and let it resolve by schema node_key
+    // (same fallback as resolveInlineNode above).
+    const target: JarvisEdgeEndpoint = created.ref_id
+      ? { ref_id: created.ref_id }
+      : { node_type: "Concept", node_data: { name: name.trim() } };
+    const edgeResult = await addEdgeV2(config, {
+      edge: { edge_type: "PARENT_OF" },
+      source: { ref_id: parentRef },
+      target,
+    });
+    if (!edgeResult.success) {
+      // Compensating rollback — but only when THIS call created the node;
+      // never delete a pre-existing concept that a merge landed on.
+      if (created.ref_id && !created.alreadyExists) {
+        const rollback = await deleteNode(config, created.ref_id);
+        if (!rollback.success) {
+          logger.error(
+            "[handleApproval.approveConceptCreate] rollback failed for orphaned concept",
+            "handleApproval",
+            { proposalId: proposal.proposalId, conceptId, refId: created.ref_id },
+          );
+        }
+      }
+      return {
+        ok: false,
+        error: `Concept parent link failed: ${edgeResult.message ?? "unknown error"}`,
+        status: 502,
+      };
+    }
   }
 
   return {
@@ -2338,7 +2413,7 @@ async function approveConceptCreate(args: {
     result: {
       proposalId: proposal.proposalId,
       kind: "conceptCreate",
-      createdEntityId: createdId,
+      createdEntityId: conceptId,
       landedOn: "",
       workspaceSlug,
     },
@@ -2347,9 +2422,10 @@ async function approveConceptCreate(args: {
 
 async function approveConceptUpdate(args: {
   orgId: string;
+  userId: string;
   proposal: Extract<ProposalOutput, { kind: "conceptUpdate" }>;
 }): Promise<HandleApprovalReturn> {
-  const { orgId, proposal } = args;
+  const { orgId, userId, proposal } = args;
   const { workspaceId, workspaceSlug, conceptId, documentation } =
     proposal.payload;
 
@@ -2360,40 +2436,32 @@ async function approveConceptUpdate(args: {
     return { ok: false, error: "Concept documentation is required.", status: 400 };
   }
 
-  const resolved = await resolveConceptSwarm(orgId, workspaceId);
+  const resolved = await resolveGraphJarvis(orgId, userId, { workspaceId });
   if (!resolved.ok) {
-    return { ok: false, error: resolved.error, status: resolved.status };
+    return { ok: false, error: "Workspace not found or access denied.", status: 403 };
+  }
+  const { config } = resolved.access;
+
+  const found = await findConceptRefById(config, conceptId);
+  if (!found.ok) {
+    return found;
   }
 
-  try {
-    const res = await fetch(
-      `${resolved.swarmUrl}/gitree/concepts/${encodeURIComponent(conceptId)}/documentation`,
-      {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-          "x-api-token": resolved.swarmApiKey,
-        },
-        body: JSON.stringify({ documentation }),
-      },
-    );
-    if (res.status === 404) {
-      return { ok: false, error: `Concept '${conceptId}' not found.`, status: 404 };
-    }
-    if (!res.ok) {
-      const data = await res.json().catch(() => ({}));
-      const msg =
-        (data && (data.error as string)) ||
-        `Failed to update concept (status ${res.status}).`;
-      return { ok: false, error: msg, status: 400 };
-    }
-  } catch (e) {
+  // node_type is inferred from the node's labels; jarvis rebuilds Data_Bank
+  // and re-queues text_embeddings from the merged properties, so the new
+  // body is searchable — not just stored.
+  const updated = await updateNodeV2(config, found.refId, { docs: documentation });
+  if (!updated.success) {
     logger.error(
-      "[handleApproval.approveConceptUpdate] swarm write failed",
+      "[handleApproval.approveConceptUpdate] jarvis node update failed",
       "handleApproval",
-      { proposalId: proposal.proposalId, workspaceSlug, conceptId, error: String(e) },
+      { proposalId: proposal.proposalId, workspaceSlug, conceptId, error: updated.message },
     );
-    return { ok: false, error: "Could not reach the workspace swarm.", status: 502 };
+    return {
+      ok: false,
+      error: updated.message ?? "Failed to update concept.",
+      status: 502,
+    };
   }
 
   return {

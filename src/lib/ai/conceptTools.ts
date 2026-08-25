@@ -200,18 +200,19 @@ export function buildConceptTools(orgId: string, userId: string): ToolSet {
           .optional()
           .describe(
             "Optional repository in 'owner/repo' format to file the concept " +
-              "under. Must be one of the workspace's repositories. Omit to " +
-              "use the workspace's primary repository.",
+              "under. Must be one of the workspace's repositories. Set it " +
+              "ONLY when the knowledge is about that specific repo's code; " +
+              "omit for general knowledge — user preferences, process " +
+              "guidelines, conventions that span repos.",
           ),
         parent: z
           .string()
           .optional()
           .describe(
             "Optional id of an existing Concept to file this one under. " +
-              "Prefer the fully-qualified, repo-prefixed id exactly as " +
-              "returned by list_concepts (e.g. 'owner/repo/slug') — a bare " +
-              "'slug' only resolves if it lives under the same repo as the " +
-              "new concept. Omit for a top-level concept.",
+              "Use the id exactly as returned by list_concepts (repo-scoped " +
+              "concepts are repo-prefixed, e.g. 'owner/repo/slug'; general " +
+              "concepts are a bare slug). Omit for a top-level concept.",
           ),
         rationale: z
           .string()
@@ -244,9 +245,11 @@ export function buildConceptTools(orgId: string, userId: string): ToolSet {
             };
           }
 
-          // Resolve the repo the concept is filed under. Build the set of
-          // the workspace's "owner/repo" strings; match the agent's choice
-          // or default to the primary (first) repo.
+          // Validate an explicitly-chosen repo against the workspace's
+          // "owner/repo" set. No repo means a general (repo-less) concept —
+          // deliberately NOT defaulted to the primary repo, so preferences
+          // and process guidelines aren't stamped with a repo they don't
+          // belong to.
           const repoSlugs = workspace.repositories
             .map((r) => repoSlugFromUrl(r.repositoryUrl))
             .filter((r): r is string => !!r);
@@ -264,8 +267,6 @@ export function buildConceptTools(orgId: string, userId: string): ToolSet {
               };
             }
             resolvedRepo = match;
-          } else {
-            resolvedRepo = repoSlugs[0];
           }
 
           return {
