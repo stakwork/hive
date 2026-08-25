@@ -227,7 +227,7 @@ function CriterionButton({
         contested={contested}
         flagBasis={dispute?.flagBasis}
         contestedOrigin={contestedToken}
-        contestedReason={resolveContestReason(c as Record<string, unknown>)}
+        contestedReason={resolveContestReason(c as unknown as Record<string, unknown>)}
         contestedVerdict={c.verdict}
       />
     </button>
@@ -360,7 +360,7 @@ export function RubricLedger({
     const { tooltip } = contestedNotice({
       origin: token,
       verdict: c.verdict,
-      reason: resolveContestReason(c as Record<string, unknown>),
+      reason: resolveContestReason(c as unknown as Record<string, unknown>),
       matchedBy: (() => {
         const info = contestedOrigin(
           { id: c.id, title: c.title, contested: c.criterionContested, verdict: c.verdict },
@@ -457,7 +457,7 @@ export function RubricLedger({
                   contested={contestedOf(selected)}
                   flagBasis={detailDispute?.flagBasis}
                   contestedOrigin={originOf(selected)}
-                  contestedReason={resolveContestReason(selected as Record<string, unknown>)}
+                  contestedReason={resolveContestReason(selected as unknown as Record<string, unknown>)}
                   contestedVerdict={selected.verdict}
                   contestedMatchedBy={(() => {
                     const info = contestedOrigin(
