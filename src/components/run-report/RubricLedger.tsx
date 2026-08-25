@@ -5,12 +5,17 @@ import type { RunReportProjection } from "@/lib/run-report/types";
 import { readTraces } from "@/lib/run-report/derive";
 import type { ChainModel, CriterionChain, Hop, HopLink } from "@/lib/run-report/chain";
 import { Kicker, StatusBadge, EmptyPanel } from "./chrome";
-import { resolveJudgeDispute } from "@/lib/harvey-lab/eval-normalizers";
+import { resolveJudgeDispute, resolveContestReason } from "@/lib/harvey-lab/eval-normalizers";
 import {
   buildContestedIndex,
+  contestedOriginIndex,
+  contestedOrigin,
+  contestedOriginToken,
   isCriterionContested,
   type GraphRubric,
+  type ContestedOriginToken,
 } from "@/lib/harvey-lab/rubric-scoring";
+import { contestedNotice } from "@/lib/harvey-lab/contested-copy";
 import { CriterionMarkers } from "./CriterionMarkers";
 
 /**
@@ -184,12 +189,15 @@ function CriterionButton({
   selected,
   small,
   contested,
+  contestedToken,
   onSelect,
 }: {
   c: CriterionChain;
   selected: boolean;
   small?: boolean;
   contested: boolean;
+  /** Origin token for the contested chip — undefined means legacy behaviour. */
+  contestedToken?: ContestedOriginToken | null;
   onSelect: (id: string) => void;
 }) {
   const dispute = resolveJudgeDispute({
@@ -218,8 +226,39 @@ function CriterionButton({
         disputed={dispute?.isDispute}
         contested={contested}
         flagBasis={dispute?.flagBasis}
+        contestedOrigin={contestedToken}
+        contestedReason={resolveContestReason(c as unknown as Record<string, unknown>)}
+        contestedVerdict={c.verdict}
       />
     </button>
+  );
+}
+
+/**
+ * A non-interactive rail row for a criterion that is contested in the roster
+ * but was never judged (never appeared in the run bundle). These rows must
+ * not affect `selectedId` / `applyHash` logic and are not counted in
+ * `open.length` / `passed.length`.
+ */
+function RosterOnlyRow({ rubric }: { rubric: GraphRubric }) {
+  return (
+    <div
+      className="w-full px-3 py-2 flex items-center gap-2 opacity-70"
+      data-testid="run-report-roster-only-row"
+    >
+      {/* No verdict dot — this criterion was never judged */}
+      <span className="h-2 w-2 rounded-full shrink-0 bg-muted-foreground/20 border border-dashed border-violet-400/40" />
+      <span className="font-mono text-[10.5px] text-muted-foreground/60 min-w-[44px]">
+        {rubric.id}
+      </span>
+      <span className="text-[12px] text-muted-foreground/60 truncate flex-1">
+        {rubric.name}
+      </span>
+      <CriterionMarkers
+        contested={true}
+        contestedOrigin="roster"
+      />
+    </div>
   );
 }
 
@@ -238,14 +277,28 @@ export function RubricLedger({
   // a deterministic run shows the pure scaffold, no empty slots.
   const hasCommentary = readTraces(projection.analysis).length > 0;
 
-  // Contested definitions from the graph roster; the run-recorded flag is the
-  // fallback inside isCriterionContested.
+  // ── Contested indexes ──────────────────────────────────────────────────────
+  // Keep buildContestedIndex for the boolean scoring / isCriterionContested path.
+  // Add contestedOriginIndex for the origin-aware rendering path.
   const contestedIndex = useMemo(() => buildContestedIndex(graphRubrics), [graphRubrics]);
+  const originIndex = useMemo(() => contestedOriginIndex(graphRubrics), [graphRubrics]);
+
+  /** Whether a chain criterion is contested (boolean, for scoring). */
   const contestedOf = (c: CriterionChain) =>
     isCriterionContested(
       { id: c.id, title: c.title, contested: c.criterionContested },
       contestedIndex,
     );
+
+  /** Origin token for a chain criterion (for chip rendering). */
+  const originOf = (c: CriterionChain): ContestedOriginToken | null => {
+    const info = contestedOrigin(
+      { id: c.id, title: c.title, contested: c.criterionContested, verdict: c.verdict },
+      originIndex,
+    );
+    if (!info) return null;
+    return contestedOriginToken(info);
+  };
 
   const [selectedId, setSelectedId] = useState(chain.criteria[0]?.id ?? "");
   const selected = chain.criteria.find((c) => c.id === selectedId) ?? chain.criteria[0];
@@ -269,13 +322,65 @@ export function RubricLedger({
   const open = chain.criteria.filter((c) => c.verdict !== "pass");
   const passed = chain.criteria.filter((c) => c.verdict === "pass");
 
-  if (chain.criteria.length === 0) {
+  // ── Roster-only rows ───────────────────────────────────────────────────────
+  // GraphRubric entries that are contested in the roster but have no matching
+  // bundle row. Match by normalised id first, then name.
+  const rosterOnlyRows = useMemo((): GraphRubric[] => {
+    if (!graphRubrics || graphRubrics.length === 0) return [];
+    const norm = (s: string | undefined | null) => (s ?? "").trim().toLowerCase();
+    // Build sets of ids and titles that appear in the bundle criteria
+    const bundleIds = new Set(chain.criteria.map((c) => norm(c.id)));
+    const bundleTitles = new Set(chain.criteria.map((c) => norm(c.title)));
+    return graphRubrics.filter((r) => {
+      if (!r.contested) return false;
+      // If the rubric is represented in the bundle (by id OR by name), skip it.
+      if (bundleIds.has(norm(r.id))) return false;
+      if (bundleTitles.has(norm(r.name))) return false;
+      return true;
+    });
+  }, [graphRubrics, chain.criteria]);
+
+  if (chain.criteria.length === 0 && rosterOnlyRows.length === 0) {
     return (
       <section id="rubrics" className="scroll-mt-6" data-testid="run-report-section-rubrics">
         <Kicker>Review</Kicker>
         <h2 className="text-2xl font-semibold tracking-tight mb-4">Rubrics</h2>
         <EmptyPanel label="This run is ungraded — the bundle carries no rubric results." />
       </section>
+    );
+  }
+
+  // ── Detail panel: contested block ──────────────────────────────────────────
+  // Mirrors the judge-dispute block pattern. Renders when the selected
+  // criterion is contested — shows the tooltip text as body copy so the
+  // rationale is readable without hovering.
+  function ContestedBlock({ c }: { c: CriterionChain }) {
+    const token = originOf(c);
+    if (!token) return null;
+    const { tooltip } = contestedNotice({
+      origin: token,
+      verdict: c.verdict,
+      reason: resolveContestReason(c as unknown as Record<string, unknown>),
+      matchedBy: (() => {
+        const info = contestedOrigin(
+          { id: c.id, title: c.title, contested: c.criterionContested, verdict: c.verdict },
+          originIndex,
+        );
+        return info?.matchedBy ?? null;
+      })(),
+    });
+    const isRosterOnly = token === "roster";
+    return (
+      <div
+        className="rounded border border-violet-500/30 bg-violet-500/[0.05] px-3.5 py-2.5 mb-4"
+        data-testid="run-report-contested-block"
+        data-contested-origin={token}
+      >
+        <div className="font-mono text-[9px] uppercase tracking-[0.12em] text-violet-700 dark:text-violet-400 mb-1">
+          {isRosterOnly ? "Prior Contest" : "Contested Definition"}
+        </div>
+        <p className="text-[12.5px] whitespace-pre-wrap">{tooltip}</p>
+      </div>
     );
   }
 
@@ -293,6 +398,7 @@ export function RubricLedger({
                 c={c}
                 selected={c.id === selected?.id}
                 contested={contestedOf(c)}
+                contestedToken={originOf(c)}
                 onSelect={setSelectedId}
               />
             ))}
@@ -310,11 +416,27 @@ export function RubricLedger({
                     small
                     selected={c.id === selected?.id}
                     contested={contestedOf(c)}
+                    contestedToken={originOf(c)}
                     onSelect={setSelectedId}
                   />
                 ))}
               </div>
             </details>
+          )}
+
+          {/* Roster-only rows: contested in the graph but never judged this run.
+              Non-interactive — no click handler, not counted in open/passed. */}
+          {rosterOnlyRows.length > 0 && (
+            <div className="mt-2">
+              <div className="font-mono text-[10px] uppercase tracking-[0.08em] text-violet-600/70 dark:text-violet-500/60 px-1 py-1">
+                Prior contest ({rosterOnlyRows.length})
+              </div>
+              <div className="rounded-lg border border-dashed border-violet-400/30 divide-y divide-violet-400/20">
+                {rosterOnlyRows.map((r) => (
+                  <RosterOnlyRow key={r.ref_id || r.id} rubric={r} />
+                ))}
+              </div>
+            </div>
           )}
         </div>
 
@@ -334,6 +456,16 @@ export function RubricLedger({
                   disputed={detailDispute?.isDispute}
                   contested={contestedOf(selected)}
                   flagBasis={detailDispute?.flagBasis}
+                  contestedOrigin={originOf(selected)}
+                  contestedReason={resolveContestReason(selected as unknown as Record<string, unknown>)}
+                  contestedVerdict={selected.verdict}
+                  contestedMatchedBy={(() => {
+                    const info = contestedOrigin(
+                      { id: selected.id, title: selected.title, contested: selected.criterionContested, verdict: selected.verdict },
+                      originIndex,
+                    );
+                    return info?.matchedBy ?? null;
+                  })()}
                 />
                 <StatusBadge
                   kind={selected.verdict === "pass" ? "pass" : selected.verdict === "fail" ? "fail" : "warn"}
@@ -356,6 +488,12 @@ export function RubricLedger({
                   <b className="text-foreground">Judge:</b> {selected.reasoning}
                 </p>
               )}
+
+              {/* Contested Definition / Prior Contest block — visible body copy
+                  so the rationale is readable without hovering. Mirrors the
+                  judge-dispute block pattern. */}
+              <ContestedBlock c={selected} />
+
               {detailDispute && (
                 <div
                   className="rounded border border-amber-500/40 bg-amber-500/[0.06] px-3.5 py-2.5 mb-4"
