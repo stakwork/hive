@@ -29,8 +29,10 @@ import {
   contestedOriginIndex,
   contestedOrigin,
   contestedOriginToken,
+  rubricBreakdown,
 } from "@/lib/harvey-lab/rubric-scoring";
 import { contestedNotice } from "@/lib/harvey-lab/contested-copy";
+import { RubricBreakdownStrip } from "@/components/harvey-lab/RubricBreakdownStrip";
 
 /** Strip provider prefix for display, e.g. "anthropic/claude-sonnet-5" → "claude-sonnet-5" */
 function displayModelName(value: string | undefined): string {
@@ -242,6 +244,7 @@ export function LegalBenchmarkResults({ runId, onReset, isSuperAdmin = false }: 
       graphRubrics,
     });
     const scoreDisplay = score ? formatBenchmarkScore(score) : null;
+    const scoreBd = rubricBreakdown({ score, criteria: criteriaResults, graphRubrics });
     const hasScore = score !== null || typeof allPass === "boolean";
     const hasCriteriaResults = Array.isArray(criteriaResults) && criteriaResults.length > 0;
     // Derive PASS/FAIL only when there is something to derive it FROM —
@@ -375,6 +378,15 @@ export function LegalBenchmarkResults({ runId, onReset, isSuperAdmin = false }: 
           ) : (
             <div className="px-4 py-6 text-center text-sm text-muted-foreground">
               No score available.
+            </div>
+          )}
+          {/* Full breakdown strip: Pass / Fail / Contested / Total + Disputed overlay.
+              Rendered beneath the badge/score line when the breakdown is computable.
+              Where the roster is larger than the run's scored criteria, the Fail
+              bucket includes unscored roster entries — visible in each chip's title. */}
+          {scoreBd && (
+            <div className="px-4 pb-3" data-testid="score-summary-breakdown">
+              <RubricBreakdownStrip breakdown={scoreBd} variant="full" />
             </div>
           )}
         </div>

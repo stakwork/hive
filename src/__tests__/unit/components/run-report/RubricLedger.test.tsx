@@ -875,3 +875,35 @@ describe("CriterionMarkers — shrink-0 class change-detector", () => {
     expect(found).toBe(true);
   });
 });
+
+// ─── scorableFromRubricRow remap ──────────────────────────────────────────────
+// Regression guard: the hand-written remap (judgeFlagged → flagged, etc.) has
+// been replaced by scorableFromRubricRow. Verify the DISPUTED chip still fires
+// for a row with judgeFlagged: true, confirming the remap reaches the render.
+
+describe("RubricLedger — scorableFromRubricRow remap (regression guard)", () => {
+  it("DISPUTED chip renders for a row with judgeFlagged:true (remap reaches render)", () => {
+    // FLAGGED_ONLY carries judgeFlagged:true / judgeFlagReason. If the remap
+    // is broken, resolveJudgeDispute receives the wrong key names and returns
+    // null — no DISPUTED chip would appear.
+    renderLedger([FLAGGED_ONLY]);
+    expect(
+      screen.getAllByTestId("criterion-disputed-badge").length,
+    ).toBeGreaterThan(0);
+  });
+
+  it("no DISPUTED chip when judgeFlagged is absent (remap does not invent keys)", () => {
+    renderLedger([PLAIN_FAIL]);
+    expect(screen.queryByTestId("criterion-disputed-badge")).toBeNull();
+  });
+
+  it("DISPUTED chip for BOTH_FLAGGED_AND_CONTESTED row (remap + CONTESTED)", () => {
+    renderLedger([BOTH_FLAGGED_AND_CONTESTED]);
+    expect(
+      screen.getAllByTestId("criterion-disputed-badge").length,
+    ).toBeGreaterThan(0);
+    expect(
+      screen.getAllByTestId("criterion-contested-badge").length,
+    ).toBeGreaterThan(0);
+  });
+});

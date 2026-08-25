@@ -15,6 +15,7 @@ import {
   type GraphRubric,
   type ContestedOriginToken,
 } from "@/lib/harvey-lab/rubric-scoring";
+import { scorableFromRubricRow } from "@/lib/run-report/rubric-adapter";
 import { CriterionMarkers } from "./CriterionMarkers";
 
 /**
@@ -199,12 +200,11 @@ function CriterionButton({
   contestedToken?: ContestedOriginToken | null;
   onSelect: (id: string) => void;
 }) {
-  const dispute = resolveJudgeDispute({
-    verdict: c.verdict,
-    flagged: c.judgeFlagged,
-    llm_flag_reason: c.judgeFlagReason,
-    flag_basis: c.judgeFlagBasis,
-  });
+  // scorableFromRubricRow maps the run-report field names (judgeFlagged,
+  // judgeFlagReason, judgeFlagBasis, criterionContested) to the wire names
+  // expected by resolveJudgeDispute (flagged, llm_flag_reason, flag_basis).
+  const scorable = scorableFromRubricRow(c as unknown as Parameters<typeof scorableFromRubricRow>[0]);
+  const dispute = resolveJudgeDispute(scorable);
   return (
     <button
       type="button"
