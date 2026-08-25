@@ -793,7 +793,7 @@ describe("LegalBenchmarkResults", () => {
     const lines = copied.split("\n");
     // header + 2 criteria = 3 lines total
     expect(lines).toHaveLength(3);
-    expect(lines[0]).toBe("Verdict\tID\tTitle\tReasoning\tDisputed\tJudge Reason\tContested");
+    expect(lines[0]).toBe("Verdict\tID\tTitle\tReasoning\tDisputed\tJudge Reason\tContested\tContest Origin");
     // no embedded newlines or tabs remain in data rows
     expect(lines[1]).not.toContain("\n");
     expect(lines[2]).not.toContain("\n");
@@ -1032,8 +1032,8 @@ describe("LegalBenchmarkResults", () => {
     const copied: string = writeSpy.mock.calls[0][0];
     const lines = copied.split("\n");
 
-    // header has split Disputed + Judge Reason columns
-    expect(lines[0]).toBe("Verdict\tID\tTitle\tReasoning\tDisputed\tJudge Reason\tContested");
+    // header has split Disputed + Judge Reason columns plus new Contest Origin
+    expect(lines[0]).toBe("Verdict\tID\tTitle\tReasoning\tDisputed\tJudge Reason\tContested\tContest Origin");
     // tabs/newlines in dispute prose are sanitized
     const failRow = lines.find((l) => l.includes("crit-1"));
     expect(failRow).toBeDefined();
@@ -1067,13 +1067,15 @@ describe("LegalBenchmarkResults", () => {
 
     const copied: string = writeSpy.mock.calls[0][0];
     const dataRow = copied.split("\n")[1];
-    // seven tab-separated columns: Verdict ID Title Reasoning Disputed JudgeReason Contested
+    // eight tab-separated columns: Verdict ID Title Reasoning Disputed JudgeReason Contested ContestOrigin
     const cols = dataRow.split("\t");
-    expect(cols).toHaveLength(7);
+    expect(cols).toHaveLength(8);
     // Disputed column blank (not a dispute)
     expect(cols[4]).toBe("");
     // Judge Reason column also blank (no prose)
     expect(cols[5]).toBe("");
+    // Contest Origin column blank (not contested)
+    expect(cols[7]).toBe("");
 
     vi.restoreAllMocks();
   });
@@ -1608,3 +1610,268 @@ describe("LegalBenchmarkResults — model display", () => {
 });
 
 // (EvalRunsBox tests have moved to EvalRunsBox.test.tsx)
+
+// ─── Contested origin tests ────────────────────────────────────────────────────
+// These tests cover the origin-aware contested chip rendering added in T3.
+
+// graphRubrics roster mock — placed at module level (vi.mock hoisting requirement)
+const mockUseBenchmarkRubrics = vi.fn((): { rubrics: import("@/lib/harvey-lab/rubric-scoring").GraphRubric[] | null } => ({ rubrics: null }));
+vi.mock("@/hooks/useBenchmarkRubrics", () => ({
+  useBenchmarkRubrics: (...args: unknown[]) => mockUseBenchmarkRubrics(...args),
+}));
+
+describe("LegalBenchmarkResults — contested origin chips", () => {
+  const onReset = vi.fn();
+
+  // Roster-only criterion: `contested` is falsy in run data so `resolveContested` returns false.
+  // A roster hit alone makes it "roster" origin → PRIOR CONTEST label.
+  function makeRosterOnlyCriterion(id: string, title: string) {
+    return { id, title, verdict: "fail", reasoning: "Contested criterion", contested: false };
+  }
+
+  // In-run criterion: `contested: true` so resolveContested returns true.
+  function makeInRunCriterion(id: string, title: string) {
+    return { id, title, verdict: "fail", reasoning: "Contested criterion", contested: true };
+  }
+
+  function makeRunWithContested(criteriaResults: unknown[]) {
+    return {
+      id: "run-abc",
+      workspaceId: "workspace-123",
+      taskSlug: "antitrust/task-1",
+      taskTitle: "Test",
+      status: "complete" as const,
+      runnerRun: makeRunnerRow({
+        status: "COMPLETED",
+        result: {
+          taskSlug: "antitrust/task-1",
+          taskTitle: "Test",
+          n_passed: 0,
+          n_total: criteriaResults.length,
+          all_pass: false,
+          criteria_results: criteriaResults,
+        },
+      }),
+      scorerRun: null,
+      runnerOutputUrl: null,
+      runnerOutputText: "Output",
+      scoreJson: null,
+      errorMessage: null,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockUseBenchmarkRubrics.mockReturnValue({ rubrics: null });
+    mockUseLegalBenchmarkRun.mockReturnValue({
+      run: makeRunWithContested([]),
+      isLoading: false,
+      isStale: false,
+      refetch: vi.fn(),
+    });
+    mockUseProposedFixes.mockReturnValue({
+      fixes: [],
+      isLoading: false,
+      error: null,
+      refetch: vi.fn(),
+    });
+    mockWorkspaceSlug.value = "openlaw";
+  });
+
+  it("renders 'PRIOR CONTEST' badge label when criterion matches a contested roster entry by id", () => {
+    const graphRubrics = [
+      { ref_id: "r-1", id: "crit-c", name: "Completeness", contested: true },
+      { ref_id: "r-2", id: "crit-u", name: "Uncontested", contested: false },
+    ];
+    mockUseBenchmarkRubrics.mockReturnValue({ rubrics: graphRubrics });
+    mockUseLegalBenchmarkRun.mockReturnValue({
+      run: makeRunWithContested([makeRosterOnlyCriterion("crit-c", "Completeness")]),
+      isLoading: false,
+      isStale: false,
+      refetch: vi.fn(),
+    });
+
+    render(React.createElement(LegalBenchmarkResults, { runId: "run-abc", onReset }));
+
+    // The status badge (Badge component) should show origin-aware label
+    const badges = screen.getAllByTestId("badge");
+    const contestedBadge = badges.find(b => b.textContent === "PRIOR CONTEST");
+    expect(contestedBadge).toBeDefined();
+  });
+
+  it("renders 'CONTESTED' badge label when criterion is in-run contested only (no roster hit)", () => {
+    // graphRubrics available but no match for this criterion's id/title
+    const graphRubrics = [
+      { ref_id: "r-2", id: "crit-other", name: "Other Criterion", contested: true },
+    ];
+    mockUseBenchmarkRubrics.mockReturnValue({ rubrics: graphRubrics });
+    // In-run contested (contested:true wire key) with no roster match
+    mockUseLegalBenchmarkRun.mockReturnValue({
+      run: makeRunWithContested([makeInRunCriterion("crit-c", "Completeness")]),
+      isLoading: false,
+      isStale: false,
+      refetch: vi.fn(),
+    });
+
+    render(React.createElement(LegalBenchmarkResults, { runId: "run-abc", onReset }));
+
+    // Should show CONTESTED (in-run), not PRIOR CONTEST
+    const badges = screen.getAllByTestId("badge");
+    const contestedBadge = badges.find(b => b.textContent === "CONTESTED");
+    expect(contestedBadge).toBeDefined();
+    expect(screen.queryByText("PRIOR CONTEST")).toBeNull();
+  });
+
+  it("renders 'CONTESTED' badge when graphRubrics is null (unknown origin)", () => {
+    mockUseBenchmarkRubrics.mockReturnValue({ rubrics: null });
+    // In-run contested but roster unavailable → unknown → CONTESTED
+    mockUseLegalBenchmarkRun.mockReturnValue({
+      run: makeRunWithContested([makeInRunCriterion("crit-c", "Completeness")]),
+      isLoading: false,
+      isStale: false,
+      refetch: vi.fn(),
+    });
+
+    render(React.createElement(LegalBenchmarkResults, { runId: "run-abc", onReset }));
+
+    // unknown origin → falls back to CONTESTED
+    const badges = screen.getAllByTestId("badge");
+    const contestedBadge = badges.find(b => b.textContent === "CONTESTED");
+    expect(contestedBadge).toBeDefined();
+  });
+
+  it("criterion-contested-note shows 'Prior Contest' label for roster-only origin", () => {
+    const graphRubrics = [
+      { ref_id: "r-1", id: "crit-c", name: "Completeness", contested: true },
+    ];
+    mockUseBenchmarkRubrics.mockReturnValue({ rubrics: graphRubrics });
+    mockUseLegalBenchmarkRun.mockReturnValue({
+      run: makeRunWithContested([makeRosterOnlyCriterion("crit-c", "Completeness")]),
+      isLoading: false,
+      isStale: false,
+      refetch: vi.fn(),
+    });
+
+    render(React.createElement(LegalBenchmarkResults, { runId: "run-abc", onReset }));
+
+    // Expand the criterion row (collapsible-content)
+    const collapsibleContents = screen.getAllByTestId("collapsible-content");
+    // The criterion-contested-note element should be inside and say "Prior Contest"
+    const notes = collapsibleContents.flatMap(c => Array.from(c.querySelectorAll('[data-testid="criterion-contested-note"]')));
+    expect(notes.length).toBeGreaterThan(0);
+    expect(notes[0].textContent).toContain("Prior Contest");
+  });
+
+  it("criterion-contested-note has data-contested-origin='roster' for roster-only", () => {
+    const graphRubrics = [
+      { ref_id: "r-1", id: "crit-c", name: "Completeness", contested: true },
+    ];
+    mockUseBenchmarkRubrics.mockReturnValue({ rubrics: graphRubrics });
+    mockUseLegalBenchmarkRun.mockReturnValue({
+      run: makeRunWithContested([makeRosterOnlyCriterion("crit-c", "Completeness")]),
+      isLoading: false,
+      isStale: false,
+      refetch: vi.fn(),
+    });
+
+    render(React.createElement(LegalBenchmarkResults, { runId: "run-abc", onReset }));
+
+    const collapsibleContents = screen.getAllByTestId("collapsible-content");
+    const notes = collapsibleContents.flatMap(c => Array.from(c.querySelectorAll('[data-testid="criterion-contested-note"]')));
+    expect(notes[0].getAttribute("data-contested-origin")).toBe("roster");
+  });
+
+  it("TSV Contest Origin column is populated for contested criterion", async () => {
+    const user = userEvent.setup();
+    const writeSpy = vi.spyOn(navigator.clipboard, "writeText").mockResolvedValue(undefined);
+
+    const graphRubrics = [
+      { ref_id: "r-1", id: "crit-c", name: "Completeness", contested: true },
+    ];
+    mockUseBenchmarkRubrics.mockReturnValue({ rubrics: graphRubrics });
+    mockUseLegalBenchmarkRun.mockReturnValue({
+      run: makeRunWithContested([makeRosterOnlyCriterion("crit-c", "Completeness")]),
+      isLoading: false,
+      isStale: false,
+      refetch: vi.fn(),
+    });
+
+    render(React.createElement(LegalBenchmarkResults, { runId: "run-abc", onReset }));
+    const copyBtn = screen.getByRole("button", { name: "Copy rubric results" });
+    await user.click(copyBtn);
+
+    const copied: string = writeSpy.mock.calls[0][0];
+    const lines = copied.split("\n");
+
+    // Header has Contest Origin column
+    expect(lines[0]).toContain("Contest Origin");
+    // Data row has the token (roster, in-run, both, or unknown)
+    const dataRow = lines[1];
+    const cols = dataRow.split("\t");
+    // Contest Origin is the last (8th) column
+    expect(cols).toHaveLength(8);
+    // Contested column stays "true"
+    expect(cols[6]).toBe("true");
+    // Contest Origin is "roster" (since this is a roster-only hit)
+    expect(cols[7]).toBe("roster");
+
+    vi.restoreAllMocks();
+  });
+
+  it("TSV Contest Origin column is empty for non-contested criterion", async () => {
+    const user = userEvent.setup();
+    const writeSpy = vi.spyOn(navigator.clipboard, "writeText").mockResolvedValue(undefined);
+
+    mockUseBenchmarkRubrics.mockReturnValue({ rubrics: [{ ref_id: "r-1", id: "other", name: "Other", contested: true }] });
+    mockUseLegalBenchmarkRun.mockReturnValue({
+      run: makeRunWithContested([
+        { id: "crit-a", title: "Accuracy", verdict: "fail", reasoning: "Bad" },
+      ]),
+      isLoading: false,
+      isStale: false,
+      refetch: vi.fn(),
+    });
+
+    render(React.createElement(LegalBenchmarkResults, { runId: "run-abc", onReset }));
+    const copyBtn = screen.getByRole("button", { name: "Copy rubric results" });
+    await user.click(copyBtn);
+
+    const copied: string = writeSpy.mock.calls[0][0];
+    const dataRow = copied.split("\n")[1];
+    const cols = dataRow.split("\t");
+    // Contest Origin empty for non-contested
+    expect(cols[7]).toBe("");
+
+    vi.restoreAllMocks();
+  });
+
+  it("filter matches 'prior' and surfaces PRIOR CONTEST rows", async () => {
+    const user = userEvent.setup();
+
+    const graphRubrics = [
+      { ref_id: "r-1", id: "crit-c", name: "Completeness", contested: true },
+    ];
+    mockUseBenchmarkRubrics.mockReturnValue({ rubrics: graphRubrics });
+    mockUseLegalBenchmarkRun.mockReturnValue({
+      run: makeRunWithContested([
+        makeRosterOnlyCriterion("crit-c", "Completeness"),
+        { id: "crit-a", title: "Accuracy", verdict: "fail", reasoning: "Missing" },
+      ]),
+      isLoading: false,
+      isStale: false,
+      refetch: vi.fn(),
+    });
+
+    render(React.createElement(LegalBenchmarkResults, { runId: "run-abc", onReset }));
+
+    const filterInput = screen.getByTestId("filter-input");
+    await user.type(filterInput, "prior");
+
+    // Completeness (PRIOR CONTEST) should be shown
+    expect(screen.getByText("Completeness")).toBeInTheDocument();
+    // Accuracy (non-contested) should not be shown
+    expect(screen.queryByText("Accuracy")).toBeNull();
+  });
+});

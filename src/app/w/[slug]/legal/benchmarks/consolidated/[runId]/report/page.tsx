@@ -13,6 +13,9 @@ import { loadRunReport } from "@/lib/run-report/load";
 import { ConsolidatedReportView } from "@/components/legal/ConsolidatedReportView";
 import { DownloadReportButton } from "@/components/run-report/DownloadReportButton";
 import type { ConsolidatedReportProjection } from "@/lib/run-report/types";
+import { getJarvisConfigForWorkspace } from "@/lib/helpers/jarvis-config";
+import { fetchTaskRubricRoster } from "@/services/legal-benchmark-rubrics";
+import type { GraphRubric } from "@/lib/harvey-lab/rubric-scoring";
 
 /**
  * Deep-linkable consolidated run report page.
@@ -21,8 +24,9 @@ import type { ConsolidatedReportProjection } from "@/lib/run-report/types";
  * 1. IDOR WHERE clause restricts to `LEGAL_BENCHMARK_CONSOLIDATED` type — a
  *    RUNNER-type runId must 404, not render. The type gate is in the WHERE
  *    clause, not a post-fetch check, so it cannot be bypassed.
- * 2. No `graphRubrics` or `fixSnapshots` fetches — the consolidated projection
- *    is self-contained and does not use graph-enrichment from the rubric roster.
+ * 2. Fetches `graphRubrics` for origin-aware contested chip rendering
+ *    (CONTESTED vs PRIOR CONTEST) in CriterionDetailTable. Strictly non-fatal:
+ *    any failure falls back to the undifferentiated "unknown" chip.
  *
  * `reportUrl` never enters the RSC payload or any client prop: it is not
  * selected below, and is additionally unreachable via the global Prisma omit.
@@ -96,6 +100,22 @@ export default async function ConsolidatedReportPage({ params }: PageProps) {
       ? (payload.projection as ConsolidatedReportProjection)
       : null;
 
+  // Graph rubric roster for origin-aware contested chip rendering
+  // (CONTESTED vs PRIOR CONTEST) in the per-criterion detail tables.
+  // Strictly non-fatal — any failure falls back to the undifferentiated chip.
+  let graphRubrics: GraphRubric[] | null = null;
+  if (taskSlug && taskSlug !== "consolidated report") {
+    try {
+      const jarvisConfig = await getJarvisConfigForWorkspace(workspaceId);
+      if (jarvisConfig) {
+        const rosterResult = await fetchTaskRubricRoster(jarvisConfig, taskSlug);
+        if (rosterResult.ok) graphRubrics = rosterResult.roster?.rubrics ?? null;
+      }
+    } catch {
+      // Graph unreachable — render without origin distinction.
+    }
+  }
+
   return (
     <div
       className="dark flex flex-col h-full bg-black text-white"
@@ -119,6 +139,7 @@ export default async function ConsolidatedReportPage({ params }: PageProps) {
           projection={projection}
           taskSlug={taskSlug}
           workspaceSlug={slug}
+          graphRubrics={graphRubrics}
         />
       </div>
     </div>

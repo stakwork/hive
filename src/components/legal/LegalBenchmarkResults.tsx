@@ -18,7 +18,7 @@ import { StakworkRunLink } from "@/components/legal/StakworkRunLink";
 import { EvalRunsBox } from "@/components/legal/EvalRunsBox";
 import { BenchmarkRunAgentLogs } from "@/components/legal/BenchmarkRunAgentLogs";
 import { BenchmarkRunCascade } from "@/components/legal/RunCascade";
-import { resolveJudgeDispute } from "@/lib/harvey-lab/eval-normalizers";
+import { resolveJudgeDispute, resolveContestReason } from "@/lib/harvey-lab/eval-normalizers";
 import { CriterionMarkers } from "@/components/run-report/CriterionMarkers";
 import { useBenchmarkRubrics } from "@/hooks/useBenchmarkRubrics";
 import {
@@ -26,7 +26,11 @@ import {
   computeBenchmarkScore,
   criterionStatus,
   formatBenchmarkScore,
+  contestedOriginIndex,
+  contestedOrigin,
+  contestedOriginToken,
 } from "@/lib/harvey-lab/rubric-scoring";
+import { contestedNotice } from "@/lib/harvey-lab/contested-copy";
 
 /** Strip provider prefix for display, e.g. "anthropic/claude-sonnet-5" → "claude-sonnet-5" */
 function displayModelName(value: string | undefined): string {
@@ -71,6 +75,9 @@ export function LegalBenchmarkResults({ runId, onReset, isSuperAdmin = false }: 
   // run-local scoring.
   const { rubrics: graphRubrics } = useBenchmarkRubrics(run?.taskSlug);
   const contestedIndex = useMemo(() => buildContestedIndex(graphRubrics), [graphRubrics]);
+  // Origin index: separates id vs title matches for provenance-aware copy.
+  // Built alongside contestedIndex; never touches scoring paths.
+  const originIdx = useMemo(() => contestedOriginIndex(graphRubrics), [graphRubrics]);
 
   const [isOpen, setIsOpen] = useState<boolean>(!allPass);
   const [filterQuery, setFilterQuery] = useState<string>("");
@@ -81,13 +88,28 @@ export function LegalBenchmarkResults({ runId, onReset, isSuperAdmin = false }: 
     const q = filterQuery.toLowerCase();
     const filtered = q
       ? criteriaResults.filter(
-          (c) =>
-            c.id?.toLowerCase().includes(q) ||
-            c.title?.toLowerCase().includes(q) ||
-            c.reasoning?.toLowerCase().includes(q) ||
-            resolveJudgeDispute(c)?.displayText.toLowerCase().includes(q) ||
-            (criterionStatus(c, contestedIndex) === "CONTESTED" &&
-              "contested".includes(q)),
+          (c) => {
+            if (
+              c.id?.toLowerCase().includes(q) ||
+              c.title?.toLowerCase().includes(q) ||
+              c.reasoning?.toLowerCase().includes(q) ||
+              resolveJudgeDispute(c)?.displayText.toLowerCase().includes(q)
+            ) return true;
+            // Match both "contested" (existing) and the resolved chip label
+            // e.g. "prior" / "prior contest" / "roster" for PRIOR CONTEST rows.
+            if (criterionStatus(c, contestedIndex) === "CONTESTED") {
+              if ("contested".includes(q)) return true;
+              const originInfo = contestedOrigin(c, originIdx);
+              if (originInfo) {
+                const token = contestedOriginToken(originInfo);
+                if (token) {
+                  const { label } = contestedNotice({ origin: token });
+                  if (label.toLowerCase().includes(q)) return true;
+                }
+              }
+            }
+            return false;
+          },
         )
       : criteriaResults;
     // Review order: FAIL first, then CONTESTED, passes last.
@@ -96,7 +118,7 @@ export function LegalBenchmarkResults({ runId, onReset, isSuperAdmin = false }: 
       (a, b) =>
         rank[criterionStatus(a, contestedIndex)] - rank[criterionStatus(b, contestedIndex)],
     );
-  }, [criteriaResults, filterQuery, contestedIndex]);
+  }, [criteriaResults, filterQuery, contestedIndex, originIdx]);
 
   const handleCopy = () => {
     if (run?.runnerOutputText) {
@@ -109,10 +131,30 @@ export function LegalBenchmarkResults({ runId, onReset, isSuperAdmin = false }: 
     const sanitize = (s: string) => s.replace(/\t/g, " ").replace(/[\n\r]/g, " ");
     // Split into separate Disputed (boolean) and Judge Reason columns so
     // reviewers can distinguish a flagged dispute from a conceded note.
-    const header = "Verdict\tID\tTitle\tReasoning\tDisputed\tJudge Reason\tContested";
+    // The existing `Contested` column stays unchanged (boolean "true"/"") so
+    // any TSV consumer parsing it is unaffected. A new `Contest Origin` column
+    // appended to the right carries the fine-grained origin token.
+    const header = "Verdict\tID\tTitle\tReasoning\tDisputed\tJudge Reason\tContested\tContest Origin";
     const rows = sortedFiltered.map((c) => {
       const dispute = resolveJudgeDispute(c);
-      return `${sanitize(c.verdict)}\t${sanitize(c.id)}\t${sanitize(c.title)}\t${sanitize(c.reasoning)}\t${dispute?.isDispute ? "true" : ""}\t${sanitize(dispute?.displayText ?? "")}\t${criterionStatus(c, contestedIndex) === "CONTESTED" ? "true" : ""}`;
+      const isContested = criterionStatus(c, contestedIndex) === "CONTESTED";
+      let originTokenStr = "";
+      if (isContested) {
+        const originInfo = contestedOrigin(c, originIdx);
+        if (originInfo) {
+          originTokenStr = contestedOriginToken(originInfo) ?? "";
+        }
+      }
+      return [
+        sanitize(c.verdict),
+        sanitize(c.id),
+        sanitize(c.title),
+        sanitize(c.reasoning),
+        dispute?.isDispute ? "true" : "",
+        sanitize(dispute?.displayText ?? ""),
+        isContested ? "true" : "",
+        originTokenStr,
+      ].join("\t");
     });
     navigator.clipboard.writeText([header, ...rows].join("\n"));
   };
@@ -370,13 +412,29 @@ export function LegalBenchmarkResults({ runId, onReset, isSuperAdmin = false }: 
                   <Input
                     value={filterQuery}
                     onChange={(e) => setFilterQuery(e.target.value)}
-                    placeholder="Filter by ID, title, reasoning, dispute, or contested…"
+                    placeholder="Filter by ID, title, reasoning, dispute, contested, or prior contest…"
                     className="h-8 text-sm"
                   />
                 </div>
                 <div className="divide-y">
                   {sortedFiltered.map((criterion) => {
                     const status = criterionStatus(criterion, contestedIndex);
+                    // Resolve origin for contested criteria — drives badge label and note copy.
+                    const originInfo = status === "CONTESTED"
+                      ? contestedOrigin(criterion, originIdx)
+                      : null;
+                    const originToken = originInfo ? contestedOriginToken(originInfo) : null;
+                    const chipNotice = originToken
+                      ? contestedNotice({
+                          origin: originToken,
+                          verdict: criterion.verdict,
+                          reason: resolveContestReason(criterion),
+                          matchedBy: originInfo?.matchedBy,
+                        })
+                      : null;
+                    // Badge label for the collapsed row: origin-aware when available,
+                    // falls back to "CONTESTED" (today's behaviour) when not.
+                    const contestedBadgeLabel = chipNotice?.label ?? "CONTESTED";
                     return (
                       <Collapsible
                         key={criterion.id}
@@ -394,7 +452,7 @@ export function LegalBenchmarkResults({ runId, onReset, isSuperAdmin = false }: 
                                     : "border-0 bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300 shrink-0"
                               }
                             >
-                              {status === "CONTESTED" ? "CONTESTED" : criterion.verdict}
+                              {status === "CONTESTED" ? contestedBadgeLabel : criterion.verdict}
                             </Badge>
                             <code className="text-xs text-muted-foreground shrink-0">{criterion.id}</code>
                             <span className="truncate">{criterion.title}</span>
@@ -404,6 +462,11 @@ export function LegalBenchmarkResults({ runId, onReset, isSuperAdmin = false }: 
                                 <CriterionMarkers
                                   disputed={d?.isDispute}
                                   flagBasis={d?.flagBasis}
+                                  contested={status === "CONTESTED"}
+                                  contestedOrigin={originToken ?? undefined}
+                                  contestedReason={resolveContestReason(criterion)}
+                                  contestedVerdict={criterion.verdict}
+                                  contestedMatchedBy={originInfo?.matchedBy}
                                 />
                               );
                             })()}
@@ -432,17 +495,21 @@ export function LegalBenchmarkResults({ runId, onReset, isSuperAdmin = false }: 
                                 </div>
                               );
                             })()}
-                            {criterionStatus(criterion, contestedIndex) === "CONTESTED" && (
+                            {status === "CONTESTED" && (
                               <div
                                 data-testid="criterion-contested-note"
+                                data-contested-origin={originToken ?? undefined}
                                 className="mx-4 mb-3 border-l-2 border-violet-500/40 pl-3"
                               >
                                 <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground/70 mb-1">
-                                  Contested Definition
+                                  {originToken === "roster"
+                                    ? "Prior Contest"
+                                    : "Contested Definition"}
                                 </p>
                                 <p className="text-sm text-muted-foreground">
-                                  This criterion&apos;s definition is flagged as broken, so it is
-                                  excluded from the score (recorded verdict: {criterion.verdict || "none"}).
+                                  {chipNotice
+                                    ? chipNotice.tooltip
+                                    : "This criterion\u2019s definition is flagged as broken, so it is excluded from the score."}
                                 </p>
                               </div>
                             )}
