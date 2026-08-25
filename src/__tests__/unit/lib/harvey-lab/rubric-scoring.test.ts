@@ -5,7 +5,11 @@ import {
   computeBenchmarkScore,
   formatBenchmarkScore,
   rosterSummary,
+  contestedOriginIndex,
+  contestedOrigin,
+  contestedOriginToken,
   type GraphRubric,
+  type ContestedOriginInfo,
 } from "@/lib/harvey-lab/rubric-scoring";
 
 const rubric = (id: string, contested = false, name = `Rubric ${id}`): GraphRubric => ({
@@ -205,5 +209,235 @@ describe("computeBenchmarkScore", () => {
   it("formatBenchmarkScore omits the annotation when nothing is contested", () => {
     const score = computeBenchmarkScore({ nPassed: 3, nTotal: 4 })!;
     expect(formatBenchmarkScore(score)).toEqual({ headline: "3/4", annotation: null });
+  });
+});
+
+// ─── contestedOriginIndex ─────────────────────────────────────────────────────
+
+describe("contestedOriginIndex", () => {
+  it("returns available=false and empty sets for null/undefined/empty rosters", () => {
+    expect(contestedOriginIndex(null)).toEqual({ ids: new Set(), titles: new Set(), available: false });
+    expect(contestedOriginIndex(undefined)).toEqual({ ids: new Set(), titles: new Set(), available: false });
+    expect(contestedOriginIndex([])).toEqual({ ids: new Set(), titles: new Set(), available: false });
+  });
+
+  it("indexes contested rubrics into separate id and title sets, normalized", () => {
+    const idx = contestedOriginIndex([
+      rubric("C-001", true, "Signature Block"),
+      rubric("C-002", false, "Date Line"),
+      rubric("C-003", true, "Notary Seal"),
+    ]);
+    expect(idx.available).toBe(true);
+    expect(idx.ids.has("c-001")).toBe(true);
+    expect(idx.ids.has("c-003")).toBe(true);
+    expect(idx.ids.has("c-002")).toBe(false);
+    expect(idx.titles.has("signature block")).toBe(true);
+    expect(idx.titles.has("notary seal")).toBe(true);
+    expect(idx.titles.has("date line")).toBe(false);
+  });
+
+  it("does NOT merge ids and titles into one set (keeps them separate)", () => {
+    // id "C-001" should be in ids, not in titles; name "Signature Block" in titles, not ids
+    const idx = contestedOriginIndex([rubric("C-001", true, "Signature Block")]);
+    expect(idx.ids.has("c-001")).toBe(true);
+    expect(idx.ids.has("signature block")).toBe(false);
+    expect(idx.titles.has("signature block")).toBe(true);
+    expect(idx.titles.has("c-001")).toBe(false);
+  });
+
+  it("marks available=true for a non-empty roster even if no rubric is contested", () => {
+    const idx = contestedOriginIndex([rubric("C-001", false)]);
+    expect(idx.available).toBe(true);
+    expect(idx.ids.size).toBe(0);
+    expect(idx.titles.size).toBe(0);
+  });
+});
+
+// ─── contestedOriginToken ─────────────────────────────────────────────────────
+
+describe("contestedOriginToken", () => {
+  const makeInfo = (overrides: Partial<ContestedOriginInfo>): ContestedOriginInfo => ({
+    inRun: false,
+    roster: false,
+    rosterAvailable: true,
+    matchedBy: null,
+    ...overrides,
+  });
+
+  it("returns null when neither inRun nor roster", () => {
+    expect(contestedOriginToken(makeInfo({ inRun: false, roster: false }))).toBeNull();
+  });
+
+  it("returns 'in-run' when inRun=true, roster=false, rosterAvailable=true", () => {
+    expect(contestedOriginToken(makeInfo({ inRun: true, roster: false, rosterAvailable: true }))).toBe("in-run");
+  });
+
+  it("returns 'roster' when inRun=false, roster=true, rosterAvailable=true", () => {
+    expect(contestedOriginToken(makeInfo({ inRun: false, roster: true, rosterAvailable: true }))).toBe("roster");
+  });
+
+  it("returns 'both' when inRun=true and roster=true, rosterAvailable=true", () => {
+    expect(contestedOriginToken(makeInfo({ inRun: true, roster: true, rosterAvailable: true }))).toBe("both");
+  });
+
+  it("returns 'unknown' when rosterAvailable=false and inRun=true (cannot verify roster miss)", () => {
+    expect(contestedOriginToken(makeInfo({ inRun: true, roster: false, rosterAvailable: false }))).toBe("unknown");
+  });
+
+  it("returns 'unknown' when rosterAvailable=false and roster=true (impossible in practice but defensive)", () => {
+    // roster=true cannot happen when rosterAvailable=false (contestedOrigin guards this),
+    // but the token function itself degrades safely if called with these values directly.
+    expect(contestedOriginToken(makeInfo({ inRun: false, roster: true, rosterAvailable: false }))).toBe("unknown");
+  });
+
+  it("returns 'unknown' when rosterAvailable=false and both are true", () => {
+    expect(contestedOriginToken(makeInfo({ inRun: true, roster: true, rosterAvailable: false }))).toBe("unknown");
+  });
+});
+
+// ─── contestedOrigin ─────────────────────────────────────────────────────────
+
+describe("contestedOrigin", () => {
+  it("returns null when criterion is not contested in any source", () => {
+    const idx = contestedOriginIndex([rubric("C-001", false)]);
+    const c = criterion("C-002", "pass");
+    expect(contestedOrigin(c, idx)).toBeNull();
+  });
+
+  it("roster-only: returns inRun=false, roster=true, matchedBy='id' on id match", () => {
+    const idx = contestedOriginIndex([rubric("C-001", true, "My Rubric")]);
+    const c = criterion("C-001", "fail");
+    const info = contestedOrigin(c, idx);
+    expect(info).not.toBeNull();
+    expect(info!.inRun).toBe(false);
+    expect(info!.roster).toBe(true);
+    expect(info!.rosterAvailable).toBe(true);
+    expect(info!.matchedBy).toBe("id");
+    // Token collapses to "roster"
+    expect(contestedOriginToken(info!)).toBe("roster");
+  });
+
+  it("roster-only via title match: matchedBy='title' when id differs but title normalizes to contested name", () => {
+    // The roster has a rubric with id "uuid-xyz" and name "Rubric C-004".
+    // The criterion has id "C-004" and title "Rubric C-004" — id does NOT match the roster id,
+    // but the title normalizes onto the roster name.
+    const idx = contestedOriginIndex([rubric("uuid-xyz", true, "Rubric C-004")]);
+    const c = criterion("C-004", "fail");
+    // c.title = "Rubric C-004" (from the criterion() factory: title = `Rubric ${id}`)
+    const info = contestedOrigin(c, idx);
+    expect(info).not.toBeNull();
+    expect(info!.roster).toBe(true);
+    expect(info!.matchedBy).toBe("title");
+    expect(info!.inRun).toBe(false);
+    expect(contestedOriginToken(info!)).toBe("roster");
+  });
+
+  it("cross-field collision: criterion title matches a contested rubric's name even though they are unrelated", () => {
+    // A criterion titled "Rubric C-007" collides with an unrelated contested rubric
+    // that happens to have name "Rubric C-007". matchedBy must be "title" (not "id").
+    const idx = contestedOriginIndex([
+      rubric("unrelated-uuid", true, "Rubric C-007"), // contested, unrelated to C-007
+    ]);
+    const c = { id: "C-007", title: "Rubric C-007", verdict: "pass" }; // not in-run-contested
+    const info = contestedOrigin(c, idx);
+    expect(info).not.toBeNull();
+    expect(info!.matchedBy).toBe("title");
+    expect(info!.inRun).toBe(false);
+    expect(info!.roster).toBe(true);
+  });
+
+  it("in-run-only: inRun=true, roster=false when run has contested flag and roster has none", () => {
+    const idx = contestedOriginIndex([rubric("C-002", false)]); // nothing contested
+    const c = criterion("C-001", "fail", { contested: true });
+    const info = contestedOrigin(c, idx);
+    expect(info).not.toBeNull();
+    expect(info!.inRun).toBe(true);
+    expect(info!.roster).toBe(false);
+    expect(info!.matchedBy).toBe(null);
+    expect(contestedOriginToken(info!)).toBe("in-run");
+  });
+
+  it("both: inRun=true and roster=true when run flags contested AND roster marks the criterion", () => {
+    const idx = contestedOriginIndex([rubric("C-001", true)]);
+    const c = criterion("C-001", "fail", { contested: true });
+    const info = contestedOrigin(c, idx);
+    expect(info).not.toBeNull();
+    expect(info!.inRun).toBe(true);
+    expect(info!.roster).toBe(true);
+    expect(info!.matchedBy).toBe("id");
+    expect(contestedOriginToken(info!)).toBe("both");
+  });
+
+  it("roster unavailable (null): in-run criterion tokenizes to 'unknown', never 'in-run'", () => {
+    const idx = contestedOriginIndex(null); // roster not available
+    const c = criterion("C-001", "fail", { contested: true }); // in-run flag present
+    const info = contestedOrigin(c, idx);
+    expect(info).not.toBeNull();
+    expect(info!.inRun).toBe(true);
+    expect(info!.rosterAvailable).toBe(false);
+    // The token must degrade to "unknown" — not "in-run" — because we cannot
+    // confirm the roster would have missed this criterion.
+    expect(contestedOriginToken(info!)).toBe("unknown");
+  });
+
+  it("roster unavailable (empty): same 'unknown' degradation", () => {
+    const idx = contestedOriginIndex([]);
+    const c = criterion("C-001", "fail", { contested: true });
+    const info = contestedOrigin(c, idx);
+    expect(info).not.toBeNull();
+    expect(info!.rosterAvailable).toBe(false);
+    expect(contestedOriginToken(info!)).toBe("unknown");
+  });
+
+  it("roster-hit with a real pass verdict still tokenizes as 'roster'", () => {
+    // A criterion that the roster marks contested but this run's judge returned
+    // a real 'pass' verdict and did NOT flag contested.
+    const idx = contestedOriginIndex([rubric("C-003", true)]);
+    const c = criterion("C-003", "pass"); // no in-run contested flag
+    const info = contestedOrigin(c, idx);
+    expect(info).not.toBeNull();
+    expect(info!.roster).toBe(true);
+    expect(info!.inRun).toBe(false);
+    expect(contestedOriginToken(info!)).toBe("roster");
+  });
+});
+
+// ─── Score regression (pinning) ───────────────────────────────────────────────
+
+describe("score regression: origin resolver does not affect computeBenchmarkScore or rosterSummary", () => {
+  it("computeBenchmarkScore output is byte-identical regardless of origin resolver presence", () => {
+    const contestedIds = ["C-001", "C-002", "C-003"];
+    const graph = roster(10, contestedIds);
+    const criteria = graph.map((r) =>
+      criterion(r.id, contestedIds.includes(r.id) ? "fail" : "pass"),
+    );
+
+    const score = computeBenchmarkScore({ criteriaResults: criteria, graphRubrics: graph });
+    // These values come purely from buildContestedIndex / criterionStatus, not from origin.
+    expect(score).toEqual({
+      passed: 7,
+      denominator: 7,
+      contested: 3,
+      total: 10,
+      allPass: true,
+      source: "graph",
+    });
+
+    // Building the origin index for the same roster should not change these numbers.
+    const _originIdx = contestedOriginIndex(graph);
+    const _origins = criteria.map((c) => contestedOrigin(c, _originIdx));
+    // Re-compute — must be identical.
+    const score2 = computeBenchmarkScore({ criteriaResults: criteria, graphRubrics: graph });
+    expect(score2).toEqual(score);
+  });
+
+  it("rosterSummary output is byte-identical regardless of origin resolver presence", () => {
+    const graph = roster(20, ["C-001", "C-004", "C-007", "C-010"]);
+    const summary = rosterSummary(graph);
+    expect(summary).toEqual({ total: 20, contested: 4, denominator: 16 });
+
+    // Building an origin index must not mutate the roster or alter rosterSummary.
+    const _originIdx = contestedOriginIndex(graph);
+    expect(rosterSummary(graph)).toEqual(summary);
   });
 });
