@@ -29,7 +29,9 @@ import type { RunReportPayload, RunReportProjection, ConsolidatedReportProjectio
 import type { GraphRubric } from "@/lib/harvey-lab/rubric-scoring";
 import type { FixSnapshotEntry } from "@/types/legal";
 import { buildChainModel } from "@/lib/run-report/chain";
-import { computeBenchmarkScore, contestedOriginIndex, contestedOrigin, contestedOriginToken } from "@/lib/harvey-lab/rubric-scoring";
+import { computeBenchmarkScore, rubricBreakdown, contestedOriginIndex, contestedOrigin, contestedOriginToken } from "@/lib/harvey-lab/rubric-scoring";
+import { scorableFromRubricRow } from "@/lib/run-report/rubric-adapter";
+import { RubricBreakdownStrip } from "@/components/harvey-lab/RubricBreakdownStrip";
 import { contestedNotice } from "@/lib/harvey-lab/contested-copy";
 import { resolveContested, resolveContestReason } from "@/lib/harvey-lab/eval-normalizers";
 import type { PackedDocument } from "./pack-documents";
@@ -240,21 +242,22 @@ function OfflineRunReportDocument({
   }
 
   const chain = buildChainModel(runProjection);
+  // Use scorableFromRubricRow to carry judge-dispute fields through to
+  // rubricBreakdown (same adapter used by the live ReportHeader).
+  const scorableCriteria = runProjection.rubricRows.map(scorableFromRubricRow);
   const score = computeBenchmarkScore({
-    criteriaResults: runProjection.rubricRows.map((r) => ({
-      id: r.id,
-      title: r.title,
-      verdict: r.verdict,
-      contested: r.criterionContested,
-    })),
+    criteriaResults: scorableCriteria,
     graphRubrics,
   });
+  const breakdown = rubricBreakdown({ score, criteria: scorableCriteria, graphRubrics });
 
   const passCount = score ? score.passed : runProjection.stats.passCount;
   const denominator = score ? score.denominator : runProjection.stats.rubricCount;
-  const failCount = score
-    ? score.denominator - score.passed
-    : runProjection.stats.failCount;
+  const failCount = breakdown
+    ? breakdown.fail
+    : score
+      ? score.denominator - score.passed
+      : runProjection.stats.failCount;
   const allPassed = score
     ? score.allPass
     : runProjection.stats.failCount === 0 && runProjection.stats.passCount !== null;
@@ -287,6 +290,9 @@ function OfflineRunReportDocument({
               <div className="font-mono text-[10px] uppercase tracking-[0.1em] text-muted-foreground/70 mt-1.5">
                 criteria passed
               </div>
+              {breakdown && (
+                <RubricBreakdownStrip breakdown={breakdown} variant="full" />
+              )}
             </div>
             <div className="flex-1 min-w-[260px]">
               {passCount !== null && (

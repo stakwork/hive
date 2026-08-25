@@ -7,8 +7,11 @@ import type { ChainModel, ConceptPull } from "@/lib/run-report/chain";
 import {
   computeBenchmarkScore,
   formatBenchmarkScore,
+  rubricBreakdown,
   type GraphRubric,
 } from "@/lib/harvey-lab/rubric-scoring";
+import { scorableFromRubricRow } from "@/lib/run-report/rubric-adapter";
+import { RubricBreakdownStrip } from "@/components/harvey-lab/RubricBreakdownStrip";
 import { StatusBadge, Chip, Kicker, MiniHeading } from "./chrome";
 import { NodePeekBody, ViewInGraphLink, fetchNodePeek, type NodePeek } from "./NodePeek";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -160,19 +163,20 @@ export function ReportHeader({
   // Graph-first score: denominator from the task's EvalRequirement roster with
   // contested definitions dropped from both sides. Falls back to bundle-local
   // rubric counts when neither roster nor rubric rows are usable.
+  //
+  // Use scorableFromRubricRow to widen the criterion shape so judge-dispute
+  // fields (judgeFlagged → flagged, etc.) are carried through to rubricBreakdown.
+  const scorableCriteria = projection.rubricRows.map(scorableFromRubricRow);
   const score = computeBenchmarkScore({
-    criteriaResults: projection.rubricRows.map((r) => ({
-      id: r.id,
-      title: r.title,
-      verdict: r.verdict,
-      contested: r.criterionContested,
-    })),
+    criteriaResults: scorableCriteria,
     graphRubrics,
   });
+  const breakdown = rubricBreakdown({ score, criteria: scorableCriteria, graphRubrics });
   const scoreDisplay = score ? formatBenchmarkScore(score) : null;
   const passCount = score ? score.passed : stats.passCount;
   const denominator = score ? score.denominator : stats.rubricCount;
-  const failCount = score ? score.denominator - score.passed : stats.failCount;
+  // Derive failCount from the breakdown when available; fall back to stats.
+  const failCount = breakdown ? breakdown.fail : score ? score.denominator - score.passed : stats.failCount;
   const allPassed = score ? score.allPass : stats.failCount === 0 && stats.passCount !== null;
 
   return (
@@ -207,6 +211,9 @@ export function ReportHeader({
             >
               {scoreDisplay.annotation}
             </div>
+          )}
+          {breakdown && (
+            <RubricBreakdownStrip breakdown={breakdown} variant="full" />
           )}
         </div>
         <div className="flex-1 min-w-[260px]">

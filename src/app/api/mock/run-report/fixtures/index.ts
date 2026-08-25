@@ -15,6 +15,8 @@ import { WITH_TOOL_ACTIVITY } from "./with-tool-activity";
 import { TOOL_ACTIVITY_EDGE_CASES } from "./tool-activity-edge-cases";
 import { WITH_DERIVED_CONCEPTS } from "./with-derived-concepts";
 import { ONTOLOGY_ONLY, ONTOLOGY_WITH_IDENTITIES, NAME_COLLISION, HAS_CONTENT_TRUE, HAS_CONTENT_FALSE, HAS_CONTENT_ABSENT } from "./concept-facts-scenarios";
+import { WITH_JUDGE_DISPUTE } from "./with-judge-dispute";
+import { WITH_UNSCORED_ROSTER } from "./with-unscored-roster";
 
 type Bundle = Record<string, unknown>;
 
@@ -239,6 +241,8 @@ export const RUN_REPORT_FIXTURES = {
   "has-content-true": HAS_CONTENT_TRUE,
   "has-content-false": HAS_CONTENT_FALSE,
   "has-content-absent": HAS_CONTENT_ABSENT,
+  "with-judge-dispute": WITH_JUDGE_DISPUTE,
+  "with-unscored-roster": WITH_UNSCORED_ROSTER,
 } as const;
 
 export type RunReportFixtureName = keyof typeof RUN_REPORT_FIXTURES;
