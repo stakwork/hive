@@ -174,7 +174,8 @@ function makeAttemptRow(overrides: {
     graphReportRef: null,
     reportPending: false,
     inFlight: false,
-    fixSnapshot: null,
+    fixSnapshots: [],
+    siblingCount: 0,
   };
 }
 

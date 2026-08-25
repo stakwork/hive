@@ -58,6 +58,9 @@ export function LegalBenchmarkResults({ runId, onReset, isSuperAdmin = false }: 
     fixes,
     isLoading: fixesLoading,
     refetch: refetchFixes,
+    accept,
+    reject,
+    pendingRefIds,
   } = useProposedFixes(runId);
 
   const allPass = run?.runnerRun?.result?.all_pass;
@@ -464,6 +467,9 @@ export function LegalBenchmarkResults({ runId, onReset, isSuperAdmin = false }: 
           isLoading={fixesLoading}
           refetch={refetchFixes}
           isSuperAdmin={isSuperAdmin}
+          accept={accept}
+          reject={reject}
+          pendingRefIds={pendingRefIds}
         />
 
         <div className="flex justify-end gap-2">
