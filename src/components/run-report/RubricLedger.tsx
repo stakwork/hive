@@ -15,7 +15,6 @@ import {
   type GraphRubric,
   type ContestedOriginToken,
 } from "@/lib/harvey-lab/rubric-scoring";
-import { contestedNotice } from "@/lib/harvey-lab/contested-copy";
 import { CriterionMarkers } from "./CriterionMarkers";
 
 /**
@@ -216,10 +215,14 @@ function CriterionButton({
       data-testid="run-report-ledger-item"
     >
       <span className={`${small ? "h-1.5 w-1.5" : "h-2 w-2"} rounded-full shrink-0 ${DOT[c.verdict]}`} />
-      <span className={`font-mono ${small ? "text-[10px]" : "text-[10.5px]"} text-muted-foreground/80 min-w-[44px]`}>
+      {/* min-w-0 + truncate: prevent id text from overflowing the 240px rail.
+          min-w-[44px] keeps short ids legible; truncate clips long path-style ids. */}
+      <span className={`font-mono ${small ? "text-[10px]" : "text-[10.5px]"} text-muted-foreground/80 min-w-[44px] min-w-0 truncate`}>
         {c.id}
       </span>
-      <span className={`${small ? "text-[11.5px] text-muted-foreground" : "text-[12px]"} truncate flex-1`}>
+      {/* min-w-0 is required alongside truncate: flex children default to
+          min-width:auto and will not shrink below intrinsic text width without it. */}
+      <span className={`${small ? "text-[11.5px] text-muted-foreground" : "text-[12px]"} truncate flex-1 min-w-0`}>
         {c.title}
       </span>
       <CriterionMarkers
@@ -248,10 +251,12 @@ function RosterOnlyRow({ rubric }: { rubric: GraphRubric }) {
     >
       {/* No verdict dot — this criterion was never judged */}
       <span className="h-2 w-2 rounded-full shrink-0 bg-muted-foreground/20 border border-dashed border-violet-400/40" />
-      <span className="font-mono text-[10.5px] text-muted-foreground/60 min-w-[44px]">
+      {/* min-w-0 + truncate: same overflow fix as CriterionButton — prevents long
+          roster ids from pushing the PRIOR CONTEST badge outside the 240px rail. */}
+      <span className="font-mono text-[10.5px] text-muted-foreground/60 min-w-[44px] min-w-0 truncate">
         {rubric.id}
       </span>
-      <span className="text-[12px] text-muted-foreground/60 truncate flex-1">
+      <span className="text-[12px] text-muted-foreground/60 truncate flex-1 min-w-0">
         {rubric.name}
       </span>
       <CriterionMarkers
@@ -352,23 +357,16 @@ export function RubricLedger({
 
   // ── Detail panel: contested block ──────────────────────────────────────────
   // Mirrors the judge-dispute block pattern. Renders when the selected
-  // criterion is contested — shows the tooltip text as body copy so the
-  // rationale is readable without hovering.
+  // criterion is contested — the provenance heading ("Prior Contest" /
+  // "Contested Definition") is the sole non-hover surface for contested
+  // provenance; the full copy lives in the badge tooltip.
+  //
+  // SAFETY: do NOT introduce MarkdownRenderer or MermaidDiagram inside this
+  // block. Any future body text here may be LLM-authored and those components
+  // are HTML sinks (innerHTML / eval paths).
   function ContestedBlock({ c }: { c: CriterionChain }) {
     const token = originOf(c);
     if (!token) return null;
-    const { tooltip } = contestedNotice({
-      origin: token,
-      verdict: c.verdict,
-      reason: resolveContestReason(c as unknown as Record<string, unknown>),
-      matchedBy: (() => {
-        const info = contestedOrigin(
-          { id: c.id, title: c.title, contested: c.criterionContested, verdict: c.verdict },
-          originIndex,
-        );
-        return info?.matchedBy ?? null;
-      })(),
-    });
     const isRosterOnly = token === "roster";
     return (
       <div
@@ -376,10 +374,9 @@ export function RubricLedger({
         data-testid="run-report-contested-block"
         data-contested-origin={token}
       >
-        <div className="font-mono text-[9px] uppercase tracking-[0.12em] text-violet-700 dark:text-violet-400 mb-1">
+        <div className="font-mono text-[9px] uppercase tracking-[0.12em] text-violet-700 dark:text-violet-400">
           {isRosterOnly ? "Prior Contest" : "Contested Definition"}
         </div>
-        <p className="text-[12.5px] whitespace-pre-wrap">{tooltip}</p>
       </div>
     );
   }
@@ -451,7 +448,9 @@ export function RubricLedger({
             <div className="rounded-lg border border-border p-5">
               <div className="flex items-baseline gap-3 mb-2">
                 <span className="font-mono text-[11px] text-muted-foreground/70">{selected.id}</span>
-                <h3 className="text-[16px] font-semibold flex-1">{selected.title}</h3>
+                {/* min-w-0 + truncate: consistent with rail rows — prevents the title
+                    from pushing CriterionMarkers / StatusBadge outside the panel. */}
+                <h3 className="text-[16px] font-semibold flex-1 min-w-0 truncate">{selected.title}</h3>
                 <CriterionMarkers
                   disputed={detailDispute?.isDispute}
                   contested={contestedOf(selected)}

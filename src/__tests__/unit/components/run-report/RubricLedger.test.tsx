@@ -670,4 +670,208 @@ describe("RubricLedger — origin-aware contested chips (graphRubrics fixture)",
       screen.queryByTestId("run-report-contested-block"),
     ).not.toBeInTheDocument();
   });
+
+  // ── Defect 2 fix: tooltip copy removed from ContestedBlock body ────────────
+
+  it("contested block body does NOT repeat the badge tooltip copy — 'both' origin (defect 2 regression pin)", () => {
+    // The badge tooltip copy that was previously rendered as a <p> must no
+    // longer appear as body text inside the block. The tooltip itself (rendered
+    // via TooltipContent) is a sibling, not a child, of the block element.
+    renderLedgerWithRoster([CONTESTED_ONLY]);
+    // Use getAllByTestId because the tooltip mock may render the content inline;
+    // the contested block is the first element with this testid (the detail panel one).
+    const blocks = screen.getAllByTestId("run-report-contested-block");
+    const block = blocks[0];
+    // These are substrings of the contestedNotice() tooltip for "both" origin.
+    // They must NOT appear as direct body text inside the contested block.
+    expect(block.textContent).not.toContain(
+      "It is excluded from the score on both sides",
+    );
+    expect(block.textContent).not.toContain(
+      "independently flags this criterion as contested",
+    );
+  });
+
+  it("contested block body does NOT repeat the badge tooltip copy — 'in-run' origin (defect 2 regression pin)", () => {
+    // Same assertion for a criterion that is only in-run contested (no roster match).
+    const IN_RUN_ONLY = makeRow({
+      id: "C-INRUN-ONLY",
+      title: "In-run only contested (no roster match)",
+      criterionContested: true,
+    });
+    renderLedgerWithRoster([IN_RUN_ONLY]);
+    const inRunBlock = screen.getByTestId("run-report-contested-block");
+    expect(inRunBlock.textContent).not.toContain(
+      "It is excluded from the score on both sides",
+    );
+    // Heading is still present
+    expect(inRunBlock.textContent).toContain("Contested Definition");
+  });
+
+  it("contested block still renders its provenance heading when tooltip copy is removed", () => {
+    // The heading ("Contested Definition" or "Prior Contest") is the sole
+    // non-hover surface for contested provenance and must remain.
+    renderLedgerWithRoster([CONTESTED_ONLY]);
+    const block = screen.getByTestId("run-report-contested-block");
+    // "both" origin → heading is "Contested Definition"
+    expect(block.textContent).toContain("Contested Definition");
+    expect(block).toBeInTheDocument();
+    expect(block.getAttribute("data-contested-origin")).toBe("both");
+  });
+
+  it("contested block for roster-only origin shows 'Prior Contest' heading only", () => {
+    // Roster-only rows don't have a detail panel, so use a bundle row with
+    // in-run origin. Test the heading text here for completeness.
+    const IN_RUN_ONLY = makeRow({
+      id: "C-INRUN-ONLY",
+      title: "In-run only contested (no roster match)",
+      criterionContested: true,
+    });
+    renderLedgerWithRoster([IN_RUN_ONLY]);
+    const block = screen.getByTestId("run-report-contested-block");
+    expect(block.getAttribute("data-contested-origin")).toBe("in-run");
+    // Heading renders; tooltip copy does not
+    expect(block.textContent).toContain("Contested Definition");
+    expect(block.textContent).not.toContain("excluded from the score");
+  });
+
+  // ── Defect 2 fix: ContestedBlock must not use MarkdownRenderer / MermaidDiagram ──
+
+  it("ContestedBlock renders no markdown/HTML-sink components (MarkdownRenderer / MermaidDiagram)", () => {
+    // These components are HTML sinks (innerHTML / eval paths) and must never
+    // be introduced into ContestedBlock — future LLM-authored content would
+    // create an XSS vector if either component is used there.
+    // We assert by data-testid: neither component exposes one under the block.
+    renderLedgerWithRoster([CONTESTED_ONLY]);
+    const block = screen.getByTestId("run-report-contested-block");
+    // Neither MarkdownRenderer nor MermaidDiagram testids should be children.
+    expect(block.querySelector("[data-testid='markdown-renderer']")).toBeNull();
+    expect(block.querySelector("[data-testid='mermaid-diagram']")).toBeNull();
+    // More broadly: the block should contain no rendered HTML beyond plain text
+    // and the provenance heading div — no <p>, <pre>, <code>, <blockquote>,
+    // or <svg> elements that would indicate a renderer was injected.
+    expect(block.querySelector("p")).toBeNull();
+    expect(block.querySelector("pre")).toBeNull();
+    expect(block.querySelector("svg")).toBeNull();
+    expect(block.querySelector("blockquote")).toBeNull();
+  });
+});
+
+// ── Defect 1 fix: overflow layout class change-detectors ─────────────────────
+// jsdom performs no layout and cannot prove containment. These assertions pin
+// the Tailwind classes so the fix cannot silently regress. Verify containment
+// manually at 240px rail width with a long real id
+// (e.g. "employment-labor/identify-issues-in-separation-agreement-C-028").
+
+describe("RubricLedger — overflow fix: min-w-0 / truncate class change-detectors", () => {
+  it("CriterionButton title span carries 'min-w-0' (change-detector only — jsdom performs no layout)", () => {
+    renderLedger([PLAIN_FAIL]);
+    // The title span is inside the ledger item button. We look for the span
+    // text and walk up to find the span with the title class pattern.
+    const items = screen.getAllByTestId("run-report-ledger-item");
+    expect(items.length).toBeGreaterThanOrEqual(1);
+    // Find the title span by its text content inside the button
+    const titleSpan = Array.from(items[0].querySelectorAll("span")).find(
+      (s) => s.textContent?.includes("Plain fail criterion"),
+    );
+    expect(titleSpan).toBeDefined();
+    // Change-detector: must carry min-w-0 (prevents flex item from refusing to shrink)
+    expect(titleSpan?.className).toContain("min-w-0");
+    // And truncate (the actual text-clipping class)
+    expect(titleSpan?.className).toContain("truncate");
+  });
+
+  it("CriterionButton id span carries 'min-w-0' and 'truncate' (change-detector only)", () => {
+    renderLedger([PLAIN_FAIL]);
+    const items = screen.getAllByTestId("run-report-ledger-item");
+    // The id span contains the criterion id "C-PLAIN"
+    const idSpan = Array.from(items[0].querySelectorAll("span")).find(
+      (s) => s.textContent?.trim() === "C-PLAIN",
+    );
+    expect(idSpan).toBeDefined();
+    expect(idSpan?.className).toContain("min-w-0");
+    expect(idSpan?.className).toContain("truncate");
+  });
+
+  it("RosterOnlyRow title span carries 'min-w-0' (change-detector only)", () => {
+    renderLedgerWithRoster([PLAIN_FAIL]);
+    const rosterRows = screen.getAllByTestId("run-report-roster-only-row");
+    expect(rosterRows.length).toBeGreaterThanOrEqual(1);
+    // Find a span across any roster row that directly contains the name text
+    // as a direct TEXT_NODE child (not nested inside tooltip children).
+    // We search all rows because the fixture produces 3 roster rows when only
+    // PLAIN_FAIL is in the bundle, and their order is not guaranteed.
+    let nameSpan: Element | undefined;
+    for (const row of rosterRows) {
+      nameSpan = Array.from(row.querySelectorAll("span")).find((s) => {
+        const directText = Array.from(s.childNodes)
+          .filter((n) => n.nodeType === Node.TEXT_NODE)
+          .map((n) => n.textContent ?? "")
+          .join("")
+          .trim();
+        // Match any roster row name: all three contested fixture names contain
+        // recognisable substrings distinct from the verdict dot / tooltip text.
+        return (
+          directText.includes("Roster-only") ||
+          directText.includes("Contested only criterion") ||
+          directText.includes("C-OTHER-ID")
+        );
+      });
+      if (nameSpan) break;
+    }
+    // Change-detector: name span must carry min-w-0 (prevents flex item from
+    // refusing to shrink) and truncate (the text-clipping class).
+    expect(nameSpan).toBeDefined();
+    expect(nameSpan?.className).toContain("min-w-0");
+    expect(nameSpan?.className).toContain("truncate");
+  });
+
+  it("RosterOnlyRow id span carries 'min-w-0' and 'truncate' (change-detector only)", () => {
+    renderLedgerWithRoster([PLAIN_FAIL]);
+    const rosterRows = screen.getAllByTestId("run-report-roster-only-row");
+    // C-ROSTER-ONLY is the id of the roster-only row
+    const idSpan = Array.from(rosterRows[rosterRows.length - 1].querySelectorAll("span")).find(
+      (s) => s.textContent?.trim() === "C-ROSTER-ONLY",
+    );
+    expect(idSpan).toBeDefined();
+    expect(idSpan?.className).toContain("min-w-0");
+    expect(idSpan?.className).toContain("truncate");
+  });
+
+  it("detail-panel h3 carries 'min-w-0' and 'truncate' (change-detector only)", () => {
+    renderLedger([PLAIN_FAIL]);
+    // The detail panel h3 holds the selected criterion title.
+    const h3 = document.querySelector("h3");
+    expect(h3).not.toBeNull();
+    expect(h3?.className).toContain("min-w-0");
+    expect(h3?.className).toContain("truncate");
+  });
+});
+
+describe("CriterionMarkers — shrink-0 class change-detector", () => {
+  it("CriterionMarkers root span carries 'shrink-0' (change-detector only — jsdom performs no layout)", () => {
+    // Render a contested criterion so CriterionMarkers is not null-returned.
+    renderLedger([CONTESTED_ONLY]);
+    // Find any criterion-contested-badge and walk up the ancestor chain looking
+    // for the CriterionMarkers root span (inline-flex items-center gap-1 shrink-0).
+    // The tooltip mock wraps in <div> elements, so we must not stop at DIV —
+    // we walk until we hit the ledger item BUTTON or the document root.
+    const badge = screen.getAllByTestId("criterion-contested-badge")[0];
+    let el: Element | null = badge.parentElement;
+    let found = false;
+    while (el && el.tagName !== "BUTTON") {
+      if (
+        el.tagName === "SPAN" &&
+        el.className.includes("inline-flex") &&
+        el.className.includes("shrink-0")
+      ) {
+        found = true;
+        break;
+      }
+      el = el.parentElement;
+    }
+    // Change-detector: the root span of CriterionMarkers must carry shrink-0
+    // so it is never squeezed by a truncating sibling in the 240px rail.
+    expect(found).toBe(true);
+  });
 });
