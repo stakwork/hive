@@ -13,8 +13,10 @@ import {
   formatBenchmarkScore,
   criterionStatus,
   buildContestedIndex,
+  rubricBreakdown,
   type GraphRubric,
 } from "@/lib/harvey-lab/rubric-scoring";
+import { RubricBreakdownStrip } from "@/components/harvey-lab/RubricBreakdownStrip";
 import {
   PASS_BADGE_CLASS,
   FAIL_BADGE_CLASS,
@@ -134,7 +136,8 @@ function ScoreCell({ run, rubrics, rubricsLoading }: ScoreCellProps) {
     return <span className="text-muted-foreground">—</span>;
   }
 
-  const { headline, annotation } = formatBenchmarkScore(score);
+  const { headline } = formatBenchmarkScore(score);
+  const bd = rubricBreakdown({ score, criteria: run.criteria_results, graphRubrics: roster });
 
   return (
     <div
@@ -148,14 +151,7 @@ function ScoreCell({ run, rubrics, rubricsLoading }: ScoreCellProps) {
       >
         {score.allPass ? "PASS" : "FAIL"}
       </Badge>
-      {score.contested > 0 && (
-        <span
-          className="text-xs text-violet-700 dark:text-violet-400 whitespace-nowrap"
-          title={`${score.contested} contested criteria excluded from the score · ${score.total} total in the rubric roster`}
-        >
-          {annotation}
-        </span>
-      )}
+      <RubricBreakdownStrip breakdown={bd} variant="compact" />
     </div>
   );
 }
