@@ -40,7 +40,8 @@
     "backfill:prompt-graph": "tsx scripts/backfill-prompt-graph.ts",
     "backfill:prompt-stakwork-id": "tsx scripts/backfill-prompt-reconcile-stakwork-id.ts",
     "test:pr-docs": "tsx scripts/test-pr-docs.ts",
-    "decrypt-json": "tsx scripts/decrypt-json-file.ts"
+    "decrypt-json": "tsx scripts/decrypt-json-file.ts",
+    "generate:workflow-benchmark-tasks": "tsx scripts/generate-workflow-benchmark-tasks.ts"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^3.0.85",

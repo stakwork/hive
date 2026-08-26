@@ -34,3 +34,9 @@ jobs:
 
       - name: Run ESLint
         run: npm run lint
+
+      - name: Regenerate workflow benchmark tasks (expect no diff)
+        run: |
+          npm run generate:workflow-benchmark-tasks
+          git diff --exit-code -- src/lib/workflow-benchmark-tasks.generated.ts || \
+            (echo "::error::src/lib/workflow-benchmark-tasks.generated.ts is out of date — run 'npm run generate:workflow-benchmark-tasks' and commit the result." && exit 1)

@@ -12,11 +12,25 @@
 import { describe, it, expect } from "vitest";
 import {
   WORKFLOW_BENCHMARK_TASKS,
-  CREATE_OPENAI_CALL_TASK,
   TASK_SLUG_RE,
   CORPUS_SLUGS,
   findBenchmarkTask,
 } from "@/lib/workflow-benchmark-tasks";
+
+// The corpus restructure (directory tree + generator) drops the
+// `CREATE_OPENAI_CALL_TASK` named export — the seed task is now resolved
+// through the public lookup like any other corpus task. Preserving it as a
+// module-scope `findBenchmarkTask(...)!` lookup would convert today's
+// compile-time guarantee into a module-load crash on the live dispatch path
+// (`run/route.ts` imports this module), so it is resolved here, test-side,
+// with an explicit definedness check instead of a non-null assertion.
+const CREATE_OPENAI_CALL_TASK = findBenchmarkTask("wfbench/create-openai-call")!;
+
+describe("seed task resolution", () => {
+  it("findBenchmarkTask resolves the seed task by slug", () => {
+    expect(findBenchmarkTask("wfbench/create-openai-call")).toBeDefined();
+  });
+});
 
 // ── Generic corpus invariants ─────────────────────────────────────────────────
 
