@@ -46,6 +46,13 @@ export const REDACTED_KEYS = new Set([
   "presignedurl",
   "download_url",
   "downloadurl",
+  // Workflow Benchmark deterministic-check answer — must never be echoed
+  // back to a browser via includeResult=true, regardless of what the
+  // external runner does on the webhook return leg.
+  "expected_output",
+  "rerun_expected_output",
+  "expectedoutput",
+  "rerunexpectedoutput",
 ]);
 
 /**

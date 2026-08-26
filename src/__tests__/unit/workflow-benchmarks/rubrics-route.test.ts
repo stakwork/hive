@@ -252,15 +252,17 @@ describe("GET /api/workspaces/[slug]/workflow-benchmarks/rubrics — rate limit"
     expect(res.status).toBe(429);
   });
 
-  it("fails OPEN (proceeds) when rate limiter throws", async () => {
-    // Read path — fail-open
+  it("fails CLOSED (503) when rate limiter throws", async () => {
+    // Aligned with the dispatch route's fail-closed posture — a limiter
+    // outage must not leave the Jarvis graph read path unthrottled, now that
+    // this feature grows a second read path (roster-summary) against the
+    // same backend.
     mockCheckRateLimit.mockRejectedValue(new Error("Redis unavailable"));
 
     const { GET } = await import("@/app/api/workspaces/[slug]/workflow-benchmarks/rubrics/route");
     const req = makeRequest(VALID_SLUG, TASK_SLUG);
     const res = await GET(req, { params: Promise.resolve({ slug: VALID_SLUG }) });
-    // Should proceed with 200, not block with 503
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(503);
   });
 });
 
