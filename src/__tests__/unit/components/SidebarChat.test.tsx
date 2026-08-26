@@ -254,6 +254,7 @@ function buildStoreState(messages: typeof SAMPLE_MESSAGE[]) {
       "conv-1": {
         messages,
         isLoading: false,
+        agentTurnsInProgress: 0,
         activeToolCalls: [],
         serverConversationId: null,
       },
@@ -1082,5 +1083,109 @@ describe("SidebarChat — Fork chat button", () => {
 
     expect(startConversationMock).not.toHaveBeenCalled();
     expect(toast.error).toHaveBeenCalled();
+  });
+});
+
+// ── Thinking dots — agentTurnsInProgress gate ──────────────────────────────────
+// Greenfield: existing fixtures hard-code `isLoading: false` with no dot
+// assertions. These target the refcounted `agentTurnsInProgress` gate
+// (dots persist for the full turn lifetime, hidden only while a tool call
+// row is actively executing).
+
+function buildAgentTurnsStoreState(
+  agentTurnsInProgress: number,
+  activeToolCalls: unknown[] = [],
+) {
+  return {
+    activeConversationId: "conv-1",
+    conversations: {
+      "conv-1": {
+        messages: [SAMPLE_MESSAGE],
+        isLoading: false,
+        agentTurnsInProgress,
+        activeToolCalls,
+        serverConversationId: null,
+      },
+    },
+    artifacts: {},
+    dismissedArtifactIds: {},
+    pendingInputDraft: null,
+  } as typeof mockStoreState;
+}
+
+describe("SidebarChat — thinking dots (agentTurnsInProgress gate)", () => {
+  beforeEach(() => {
+    vi.resetModules();
+    mockIsActive = false;
+  });
+
+  afterEach(() => {
+    mockStoreState = {
+      activeConversationId: null,
+      conversations: {},
+      artifacts: {},
+      dismissedArtifactIds: {},
+      pendingInputDraft: null,
+    };
+  });
+
+  it("renders dots when agentTurnsInProgress > 0 and there are no active tool calls", async () => {
+    mockStoreState = buildAgentTurnsStoreState(1, []);
+    const { container } = await renderSidebarChat();
+    expect(container.querySelector("[data-testid='thinking-dots']")).not.toBeNull();
+  });
+
+  it("hides dots when agentTurnsInProgress is 0 (turn settled)", async () => {
+    mockStoreState = buildAgentTurnsStoreState(0, []);
+    const { container } = await renderSidebarChat();
+    expect(container.querySelector("[data-testid='thinking-dots']")).toBeNull();
+  });
+
+  it("hides dots while a tool call is active, even though agentTurnsInProgress > 0", async () => {
+    mockStoreState = buildAgentTurnsStoreState(1, [
+      { id: "tc-1", toolName: "web_search", status: "input-available" },
+    ]);
+    const { container } = await renderSidebarChat();
+    expect(container.querySelector("[data-testid='thinking-dots']")).toBeNull();
+  });
+
+  it("keeps dots visible when a second overlapping turn is still in progress (count === 2)", async () => {
+    mockStoreState = buildAgentTurnsStoreState(2, []);
+    const { container } = await renderSidebarChat();
+    expect(container.querySelector("[data-testid='thinking-dots']")).not.toBeNull();
+  });
+
+  it("cycles the dots on/off as the timeline alternates between text and tool phases, without erroring", async () => {
+    const { SidebarChat } = await import(
+      "@/app/org/[githubLogin]/_components/SidebarChat"
+    );
+
+    // Phase 1: turn in progress, streaming text — dots visible.
+    mockStoreState = buildAgentTurnsStoreState(1, []);
+    const { container, rerender } = render(<SidebarChat githubLogin="test-org" />);
+    expect(container.querySelector("[data-testid='thinking-dots']")).not.toBeNull();
+
+    // Phase 2: a tool call becomes active — dots hidden.
+    act(() => {
+      mockStoreState = buildAgentTurnsStoreState(1, [
+        { id: "tc-1", toolName: "web_search", status: "input-available" },
+      ]);
+      rerender(<SidebarChat githubLogin="test-org" />);
+    });
+    expect(container.querySelector("[data-testid='thinking-dots']")).toBeNull();
+
+    // Phase 3: tool call finishes, back to text streaming — dots visible again.
+    act(() => {
+      mockStoreState = buildAgentTurnsStoreState(1, []);
+      rerender(<SidebarChat githubLogin="test-org" />);
+    });
+    expect(container.querySelector("[data-testid='thinking-dots']")).not.toBeNull();
+
+    // Phase 4: turn settles fully — dots hidden.
+    act(() => {
+      mockStoreState = buildAgentTurnsStoreState(0, []);
+      rerender(<SidebarChat githubLogin="test-org" />);
+    });
+    expect(container.querySelector("[data-testid='thinking-dots']")).toBeNull();
   });
 });

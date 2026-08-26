@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import { FileIcon, GitFork, Loader2, Mic, MicOff, OctagonX, Paperclip, Plus, RefreshCw, Send, Share2, X } from "lucide-react";
 import { useSpeechRecognition } from "@/hooks/useSpeechRecognition";
 import { useControlKeyHold } from "@/hooks/useControlKeyHold";
@@ -95,6 +95,16 @@ export function SidebarChat({ githubLogin }: SidebarChatProps) {
   );
   const isLoading = useCanvasChatStore(
     (s) => (activeId ? s.conversations[activeId]?.isLoading : false) ?? false,
+  );
+  // Refcount of unsettled agent turns in this conversation — unlike
+  // `isLoading` (cleared on the first stream chunk), this stays > 0 for
+  // the full send→finally lifetime of every in-flight turn, so the
+  // thinking dots survive turns that open with a tool call and stay
+  // justified while a second overlapping turn (e.g. a proposal
+  // approval) is still streaming. See `CanvasConversation.agentTurnsInProgress`.
+  const agentTurnsInProgress = useCanvasChatStore(
+    (s) =>
+      (activeId ? s.conversations[activeId]?.agentTurnsInProgress : 0) ?? 0,
   );
   const activeToolCalls = useCanvasChatStore(
     (s) =>
@@ -638,35 +648,39 @@ export function SidebarChat({ githubLogin }: SidebarChatProps) {
               </div>
             );
           })}
-          {isLoading && activeToolCalls.length === 0 && (
-            <motion.div
-              initial={{ opacity: 0, y: 6 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.2 }}
-              className="flex justify-start"
-            >
-              <div className="rounded-2xl px-3 py-2 bg-muted/40 shadow-sm">
-                <div className="flex gap-1 items-center h-4">
-                  <motion.span
-                    animate={{ opacity: [0.3, 1, 0.3] }}
-                    transition={{ duration: 1.2, repeat: Infinity, delay: 0 }}
-                    className="text-sm text-foreground/60"
-                  >.</motion.span>
-                  <motion.span
-                    animate={{ opacity: [0.3, 1, 0.3] }}
-                    transition={{ duration: 1.2, repeat: Infinity, delay: 0.2 }}
-                    className="text-sm text-foreground/60"
-                  >.</motion.span>
-                  <motion.span
-                    animate={{ opacity: [0.3, 1, 0.3] }}
-                    transition={{ duration: 1.2, repeat: Infinity, delay: 0.4 }}
-                    className="text-sm text-foreground/60"
-                  >.</motion.span>
+          <AnimatePresence>
+            {agentTurnsInProgress > 0 && activeToolCalls.length === 0 && (
+              <motion.div
+                key="thinking-dots"
+                data-testid="thinking-dots"
+                initial={{ opacity: 0, y: 6 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.2 }}
+                className="flex justify-start"
+              >
+                <div className="rounded-2xl px-3 py-2 bg-muted/40 shadow-sm">
+                  <div className="flex gap-1 items-center h-4">
+                    <motion.span
+                      animate={{ opacity: [0.3, 1, 0.3] }}
+                      transition={{ duration: 1.2, repeat: Infinity, delay: 0 }}
+                      className="text-sm text-foreground/60"
+                    >.</motion.span>
+                    <motion.span
+                      animate={{ opacity: [0.3, 1, 0.3] }}
+                      transition={{ duration: 1.2, repeat: Infinity, delay: 0.2 }}
+                      className="text-sm text-foreground/60"
+                    >.</motion.span>
+                    <motion.span
+                      animate={{ opacity: [0.3, 1, 0.3] }}
+                      transition={{ duration: 1.2, repeat: Infinity, delay: 0.4 }}
+                      className="text-sm text-foreground/60"
+                    >.</motion.span>
+                  </div>
                 </div>
-              </div>
-            </motion.div>
-          )}
+              </motion.div>
+            )}
+          </AnimatePresence>
           <div ref={messagesEndRef} />
         </div>
       </div>
