@@ -139,8 +139,10 @@ export interface SubAgentRun {
   /**
    * Phase 4: the planner's most recent UNANSWERED clarifying-questions
    * FORM, if any. Set when the latest inbound entry carries
-   * `formQuestions` AND no `user-answered-planner-form` row references
-   * its `plannerMessageId`. `SidebarChat` renders `PlannerFormSlot`
+   * `formQuestions` AND nothing after it answers it — neither a
+   * `user-answered-planner-form` row referencing its `plannerMessageId`
+   * (user answered) nor a later delivered `send_to_feature_planner`
+   * call (the canvas agent answered). `SidebarChat` renders `PlannerFormSlot`
    * from this; the card's pill reads `Waiting for you` while it's set.
    * `undefined` once answered (or when the planner never asked).
    */
@@ -367,7 +369,19 @@ export function getSubAgentRunsFromMessages(
     for (let i = run.messages.length - 1; i >= 0; i--) {
       const m = run.messages[i];
       if (m.direction !== "in" || !m.formQuestions?.length) continue;
-      if (m.plannerMessageId && answeredPlannerMessageIds.has(m.plannerMessageId)) {
+      const answeredByUser =
+        !!m.plannerMessageId && answeredPlannerMessageIds.has(m.plannerMessageId);
+      // The canvas agent can also answer a FORM itself via
+      // `send_to_feature_planner` (the prompt allows it when the answer
+      // is obvious / procedural). That appends a USER-role message to
+      // the planner chat, which the Feature page already counts as the
+      // FORM's answer (`findClarifyingReply`'s later-USER-message
+      // fallback) — so any delivered outbound send after the FORM
+      // dismisses it here too, keeping both surfaces consistent.
+      const answeredByAgent = run.messages.some(
+        (r, j) => j > i && r.direction === "out" && r.status === "sent",
+      );
+      if (answeredByUser || answeredByAgent) {
         // This FORM was answered; an older one can't be "pending" once
         // a newer message exists, so stop at the newest FORM regardless.
         break;
