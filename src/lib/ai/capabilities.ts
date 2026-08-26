@@ -25,10 +25,11 @@
  *   - **Core** capabilities' prompt snippets are emitted up-front in
  *     the agent's system prompt every turn. These are the hot path:
  *     `roadmap` (propose a feature / organize the roadmap), `planner`
- *     (drive it with `send_to_feature_planner`), and `graph_walker`
- *     (walk the knowledge graph / dereference URNs — common enough that
- *     its snippet rides up-front rather than behind `learn_capability`;
- *     ephemeral prompt caching makes the marginal cost a cached read).
+ *     (drive it with `send_to_feature_planner`), `graph_walker`
+ *     (walk the knowledge graph / dereference URNs), and `concepts`
+ *     ("remember this" / "note this down") — all common enough that
+ *     their snippets ride up-front rather than behind `learn_capability`;
+ *     ephemeral prompt caching makes the marginal cost a cached read.
  *   - **Loadable** capabilities (`whiteboard`, `research`,
  *     `connections`, `infra`) are NOT in the up-front prompt. Instead the core
  *     suffix carries a one-line menu, and the agent calls the
@@ -55,9 +56,9 @@
  *
  * The five capabilities:
  *   - `roadmap` (CORE) — propose/organize roadmap structure
- *     (initiatives/milestones/features) + `read_canvas`. Folds in the
- *     loadable trio via `includes` so their tools + the menu are
- *     present whenever roadmap is selected.
+ *     (initiatives/milestones/features) + `read_canvas`. Folds the rest
+ *     of the canvas set in via `includes` so their tools (plus the
+ *     loadable menu) are present whenever roadmap is selected.
  *   - `planner` (CORE) — driving an EXISTING feature's per-feature
  *     planning agent via `send_to_feature_planner`. Usable without
  *     `roadmap`: the motivating surface is the per-feature Plan page.
@@ -301,9 +302,11 @@ export const CAPABILITY_REGISTRY: Record<OrgCapability, CapabilityDefinition> =
         PROPOSE_FEATURE_TOOL,
         PROPOSE_MILESTONE_TOOL,
       ],
-      // Pull the loadable set in so their tools are registered and the
-      // learn_capability menu lists them whenever roadmap is selected
-      // (the org canvas surface always carried all of these). `prompts` is
+      // Pull the rest of the canvas set in so their tools are registered
+      // whenever roadmap is selected (the org canvas surface always
+      // carried all of these) — the loadable ones also get listed in the
+      // learn_capability menu, while `concepts` (core) contributes its
+      // snippet to the up-front suffix. `prompts` is
       // deliberately NOT included: it's org-gated (see its `orgGate`), and
       // `includes` is expanded by the sync resolver which can't run the
       // gate — so it must stay explicitly-selected-only.
@@ -438,15 +441,12 @@ export const CAPABILITY_REGISTRY: Record<OrgCapability, CapabilityDefinition> =
       // runCanvasAgent composes.
       buildTools: (ctx) => buildConceptTools(ctx.orgId, ctx.userId),
       promptSnippet: getConceptsCapabilitySnippet,
-      core: false,
-      menuBlurb:
-        "**concepts** — read, capture, and update workspace knowledge-base " +
-        "concepts: `read_concept_documentation` (read raw markdown, no " +
-        "approval) plus `propose_new_concept` (create from documentation you " +
-        "provide, no codebase analysis) and `propose_concept_update` (edit a " +
-        "concept's documentation, shown as a diff) via human approval. Load " +
-        'when the user says things like "remember this", "note this down", or ' +
-        "asks to create/update a concept.",
+      // CORE: "remember this" / "note this down" is a common, low-ceremony
+      // ask, and behind `learn_capability` the agent rarely recognized it as
+      // a concept write at all — the menu blurb was the only thing steering
+      // it. The snippet rides up-front so the trigger phrasing is always in
+      // the prompt (ephemeral caching makes the marginal cost a cached read).
+      core: true,
       // Not gated: unlike the global prompt library, concepts are per-workspace
       // and every workspace already exposes concept read tools to the agent.
       writeToolNames: [PROPOSE_NEW_CONCEPT_TOOL, PROPOSE_CONCEPT_UPDATE_TOOL],
@@ -633,9 +633,8 @@ function buildLearnCapabilityTool(resolved: readonly OrgCapability[]): ToolSet {
         loadable.join(", ") +
         ". Call this FIRST whenever the user wants to: draw / diagram / " +
         "annotate / re-lay-out the canvas (`whiteboard`), create a saved " +
-        "research writeup (`research`), document a system integration " +
-        "(`connections`), or remember / note / create / update a workspace " +
-        "knowledge-base concept (`concepts`). " +
+        "research writeup (`research`), or document a system integration " +
+        "(`connections`). " +
         "You MUST load a capability before calling any of its tools; if you " +
         "find yourself about to call one of those tools without having loaded " +
         "its capability this turn, call `learn_capability` first. Returns the " +
