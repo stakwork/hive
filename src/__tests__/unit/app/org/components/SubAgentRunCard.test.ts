@@ -233,6 +233,40 @@ describe("getSubAgentRunsFromMessages — Phase 4 pending FORM", () => {
     ]);
     expect(runs[0].pendingForm).toBeUndefined();
   });
+
+  test("canvas agent answers FORM via send_to_feature_planner → pendingForm cleared", () => {
+    const runs = runsFromMessages([
+      inbound("p1", "Which provider?", { hasForm: true, formQuestions: QUESTIONS }),
+      outbound("m1", "Use Stripe — it's already in the brief."),
+    ]);
+    expect(runs[0].pendingForm).toBeUndefined();
+    expect(deriveCardStatus(runs[0]).label).not.toBe("Waiting for you");
+  });
+
+  test("outbound send BEFORE the FORM does not dismiss it", () => {
+    const runs = runsFromMessages([
+      outbound("m1", "proceed?"),
+      inbound("p1", "Which provider?", { hasForm: true, formQuestions: QUESTIONS }),
+    ]);
+    expect(runs[0].pendingForm).toEqual({
+      plannerMessageId: "p1",
+      questions: QUESTIONS,
+    });
+  });
+
+  test("failed outbound send after the FORM does not dismiss it", () => {
+    const failed = outbound("m1", "Use Stripe");
+    failed.toolCalls![0].status = "output-error";
+    failed.toolCalls![0].output = { error: "A planning workflow is already running" };
+    const runs = runsFromMessages([
+      inbound("p1", "Which provider?", { hasForm: true, formQuestions: QUESTIONS }),
+      failed,
+    ]);
+    expect(runs[0].pendingForm).toEqual({
+      plannerMessageId: "p1",
+      questions: QUESTIONS,
+    });
+  });
 });
 
 describe("getSubAgentRunsFromMessages — Start Tasks gating", () => {
