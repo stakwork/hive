@@ -139,7 +139,7 @@ describe("WorkflowBenchmarkRunsHistory", () => {
 
   // ── 2. No score → strip not rendered ──────────────────────────────────────
 
-  it("does not render rubric-breakdown-fail when the run has no score data", () => {
+  it("does not render the breakdown strip when the run has no score data", () => {
     // A completed run with no n_passed / n_total — computeBenchmarkScore returns null.
     const runWithNoScore = makeRun({ n_passed: undefined, n_total: undefined });
 
@@ -162,12 +162,12 @@ describe("WorkflowBenchmarkRunsHistory", () => {
     render(<WorkflowBenchmarkRunsHistory />);
 
     // Strip must be absent — ScoreCell renders a plain dash instead.
-    expect(screen.queryByTestId("rubric-breakdown-fail")).toBeNull();
+    expect(screen.queryByTestId("rubric-breakdown-disputed")).toBeNull();
   });
 
-  // ── 3. Computable breakdown → fail + disputed chips are present ────────────
+  // ── 3. Computable breakdown → disputed tag present, no fail chip ───────────
 
-  it("renders rubric-breakdown-fail and rubric-breakdown-disputed when the breakdown is computable", () => {
+  it("renders rubric-breakdown-disputed and no fail chip when the breakdown is computable", () => {
     const roster: GraphRubric[] = [
       { ref_id: "r1", id: "crit-1", name: "Criterion One", contested: false },
       { ref_id: "r2", id: "crit-2", name: "Criterion Two", contested: false },
@@ -188,7 +188,57 @@ describe("WorkflowBenchmarkRunsHistory", () => {
 
     render(<WorkflowBenchmarkRunsHistory />);
 
-    expect(screen.queryByTestId("rubric-breakdown-fail")).not.toBeNull();
+    expect(screen.queryByTestId("rubric-breakdown-fail")).toBeNull();
     expect(screen.queryByTestId("rubric-breakdown-disputed")).not.toBeNull();
+  });
+
+  // ── 4. PASS badge only on an all-pass run ──────────────────────────────────
+
+  it("renders the green PASS badge on an all-pass run", () => {
+    const roster: GraphRubric[] = [
+      { ref_id: "r1", id: "crit-1", name: "Criterion One", contested: false },
+      { ref_id: "r2", id: "crit-2", name: "Criterion Two", contested: false },
+      { ref_id: "r3", id: "crit-3", name: "Criterion Three", contested: false },
+    ];
+
+    mockUseWorkflowBenchmarkRunList.mockReturnValue({
+      runs: [makeRun({ n_passed: 3, n_total: 3 })],
+      isLoading: false,
+      error: null,
+      setExpandedId: mockSetExpandedId,
+    });
+
+    mockUseWorkflowBenchmarkRubricsMap.mockReturnValue(
+      new Map([["task-slug-a", roster]])
+    );
+
+    render(<WorkflowBenchmarkRunsHistory />);
+
+    expect(screen.getByText("PASS")).toBeInTheDocument();
+  });
+
+  it("renders no PASS or FAIL badge on a non-perfect run", () => {
+    const roster: GraphRubric[] = [
+      { ref_id: "r1", id: "crit-1", name: "Criterion One", contested: false },
+      { ref_id: "r2", id: "crit-2", name: "Criterion Two", contested: false },
+      { ref_id: "r3", id: "crit-3", name: "Criterion Three", contested: false },
+    ];
+
+    // 2 of 3 pass — not all-pass.
+    mockUseWorkflowBenchmarkRunList.mockReturnValue({
+      runs: [makeRun({ n_passed: 2, n_total: 3 })],
+      isLoading: false,
+      error: null,
+      setExpandedId: mockSetExpandedId,
+    });
+
+    mockUseWorkflowBenchmarkRubricsMap.mockReturnValue(
+      new Map([["task-slug-a", roster]])
+    );
+
+    render(<WorkflowBenchmarkRunsHistory />);
+
+    expect(screen.queryByText("PASS")).toBeNull();
+    expect(screen.queryByText("FAIL")).toBeNull();
   });
 });

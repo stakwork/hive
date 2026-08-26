@@ -199,7 +199,7 @@ describe("BenchmarkRunsHistory — ScoreCell breakdown strip", () => {
     expect(screen.queryByTestId("rubric-breakdown-total")).not.toBeInTheDocument();
   });
 
-  it("scoring path: rubric-breakdown-fail is present; score-cell-contested present at most once", () => {
+  it("scoring path: contested chip present, no fail chip; score-cell-contested present at most once", () => {
     const roster = [
       { ref_id: "r1", id: "C-001", name: "Criterion 1", contested: false },
       { ref_id: "r2", id: "C-002", name: "Criterion 2", contested: false },
@@ -227,11 +227,11 @@ describe("BenchmarkRunsHistory — ScoreCell breakdown strip", () => {
 
     render(<BenchmarkRunsHistory />);
 
-    // The breakdown strip (compact) renders a fail chip and contested chip.
-    expect(screen.getByTestId("rubric-breakdown-fail")).toBeInTheDocument();
+    // The breakdown strip (compact) renders the contested chip; the fail chip is gone.
+    expect(screen.queryByTestId("rubric-breakdown-fail")).toBeNull();
     // score-cell-contested maps to the rubric-breakdown-contested testid in the strip.
     // It should appear at most once per row (no duplicate).
     const contestedElements = screen.queryAllByTestId("rubric-breakdown-contested");
-    expect(contestedElements.length).toBeLessThanOrEqual(1);
+    expect(contestedElements.length).toBe(1);
   });
 });

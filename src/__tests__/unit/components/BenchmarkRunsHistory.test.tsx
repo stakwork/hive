@@ -337,7 +337,7 @@ describe("BenchmarkRunsHistory", () => {
     expect(screen.getByText("PASS")).toBeInTheDocument();
   });
 
-  it("renders FAIL badge and score when all_pass=false", () => {
+  it("renders score with no badge when all_pass=false", () => {
     mockUseList.mockReturnValue({
       runs: [makeRun({ status: "COMPLETED", n_passed: 10, n_total: 20, all_pass: false })],
       total: 1,
@@ -348,7 +348,8 @@ describe("BenchmarkRunsHistory", () => {
     });
     render(React.createElement(BenchmarkRunsHistory));
     expect(screen.getByText("10/20")).toBeInTheDocument();
-    expect(screen.getByText("FAIL")).toBeInTheDocument();
+    expect(screen.queryByText("FAIL")).toBeNull();
+    expect(screen.queryByText("PASS")).toBeNull();
   });
 
   it("renders neutral placeholder '—' for in-progress run (no score yet)", () => {
@@ -1232,7 +1233,7 @@ describe("BenchmarkRunsHistory — run types", () => {
 
     const row = screen.getByTestId("run-row-a-1");
     expect(row.textContent).toContain("34/39");
-    expect(row.textContent).toContain("FAIL");
+    expect(row.textContent).not.toContain("FAIL");
     const links = screen.getAllByTestId("run-report-link");
     expect(
       links.some((l) => l.getAttribute("href") === "/w/openlaw/legal/benchmarks/runs/a-1/report"),
@@ -1385,7 +1386,7 @@ describe("BenchmarkRunsHistory — graph-first score numerators", () => {
 
     const row = screen.getByTestId("run-row-r-1");
     expect(row.textContent).toContain("34/39");
-    expect(row.textContent).toContain("FAIL");
+    expect(row.textContent).not.toContain("FAIL");
     expect(scoreSourceOf("run-row-r-1")).toBe("result");
   });
 
