@@ -43,6 +43,10 @@ Schema: `prisma/schema.prisma`
 - **SourceControlOrg / SourceControlToken** — GitHub App installation and per-user encrypted tokens.
 - **StakworkRun / AgentLog** — AI generation run tracking and agent trace logs.
 
+## Generated Files
+
+Any `src/lib/**/*.generated.ts` file (e.g. `src/lib/workflow-benchmark-tasks.generated.ts`, `src/lib/harvey-lab-tasks.ts`) is produced by a `scripts/generate-*.ts` script and overwritten on every regeneration — never hand-edit it. Edit the source directory (or the generator itself) and run the matching `npm run generate:*` script. CI (`lint.yml`) fails if regenerating produces a diff from what's committed.
+
 ## Fundamental Principle
 
 For non-trivial changes, pause and ask: "is there a more elegant way?"

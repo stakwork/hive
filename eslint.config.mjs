@@ -18,6 +18,7 @@ const eslintConfig = [
       "src/generated/prisma/**",
       "src/generated/prisma/runtime/**",
       "src/generated/prisma/wasm*.js",
+      "src/lib/**/*.generated.ts",
     ],
   },
   // Enforce no unused imports
