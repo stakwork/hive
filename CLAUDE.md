@@ -167,3 +167,6 @@ Three automated cron jobs run via Vercel (configured in `vercel.json`, secured w
 
 ### Logging
 Use `logger` from `/src/lib/logger.ts` for structured logging with automatic sensitive data sanitization. Supports LOG_LEVEL env var (ERROR, WARN, INFO, DEBUG).
+
+### Generated Files — DO NOT hand-edit
+Any `src/lib/**/*.generated.ts` file (e.g. `src/lib/harvey-lab-tasks.ts`, `src/lib/workflow-benchmark-tasks.generated.ts`) is produced by a script under `scripts/generate-*.ts` and overwritten on every regeneration. Edit the source directory or the generator instead, then run the corresponding `npm run generate:*` script. CI fails if a regenerate produces a diff from what's committed.
