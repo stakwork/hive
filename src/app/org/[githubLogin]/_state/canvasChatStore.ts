@@ -307,6 +307,18 @@ export interface CanvasConversation {
    * participants in a shared room).
    */
   runActive: boolean;
+  /**
+   * Reference count of unsettled agent turns in this conversation.
+   * Incremented on send, decremented only in the send hook's `finally`
+   * block. A refcount (not a boolean) is required because overlapping
+   * sends are reachable — the composer re-enables once `isLoading`
+   * clears on the first chunk, and `ProposalCard` approve/reject fires
+   * the same send hook behind only an `isPending` guard — so a
+   * first-settling turn must not extinguish the indicator for a
+   * still-streaming second turn. The "Ask Jamie" thinking dots gate on
+   * `agentTurnsInProgress > 0`.
+   */
+  agentTurnsInProgress: number;
   /** Hint context used when building `/api/ask/quick` requests. */
   context: ConversationContext;
 }
@@ -525,6 +537,13 @@ interface CanvasChatState {
   /** Mirror of `setIsLoading` but for the streaming gate. See `CanvasConversation.isStreaming`. */
   setIsStreaming: (conversationId: string, streaming: boolean) => void;
   /**
+   * Adjust the `agentTurnsInProgress` refcount by `delta` (positive on
+   * send, negative in the send hook's `finally`). Clamped at a floor of
+   * 0 so a stray decrement can't wedge the count above reality. See
+   * `CanvasConversation.agentTurnsInProgress`.
+   */
+  bumpAgentTurns: (conversationId: string, delta: number) => void;
+  /**
    * Set the runActive flag for a conversation — driven by local tool-call
    * detection and by the Pusher CANVAS_RUN_ACTIVE event (for non-initiating
    * participants).
@@ -630,6 +649,7 @@ export const useCanvasChatStore = create<CanvasChatState>()(
           isLoading: false,
           isStreaming: false,
           runActive: false,
+          agentTurnsInProgress: 0,
           activeToolCalls: [],
           context,
         };
@@ -862,6 +882,23 @@ export const useCanvasChatStore = create<CanvasChatState>()(
           },
           false,
           "setRunActive",
+        ),
+
+      bumpAgentTurns: (conversationId, delta) =>
+        set(
+          (s) => {
+            const conv = s.conversations[conversationId];
+            if (!conv) return s;
+            const next = Math.max(0, conv.agentTurnsInProgress + delta);
+            return {
+              conversations: {
+                ...s.conversations,
+                [conversationId]: { ...conv, agentTurnsInProgress: next },
+              },
+            };
+          },
+          false,
+          "bumpAgentTurns",
         ),
 
       stopRun: async ({ serverConversationId, orgId, turnId }) => {

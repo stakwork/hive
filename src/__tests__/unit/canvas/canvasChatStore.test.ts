@@ -101,6 +101,52 @@ describe("canvasChatStore — isStreaming", () => {
   });
 });
 
+describe("canvasChatStore — agentTurnsInProgress", () => {
+  beforeEach(freshStore);
+
+  it("initialises agentTurnsInProgress=0 when startConversation is called", () => {
+    const id = useCanvasChatStore.getState().startConversation(baseContext);
+    const conv = useCanvasChatStore.getState().conversations[id];
+    expect(conv.agentTurnsInProgress).toBe(0);
+  });
+
+  it("bumpAgentTurns(+1) then bumpAgentTurns(-1) returns to 0", () => {
+    const id = useCanvasChatStore.getState().startConversation(baseContext);
+    useCanvasChatStore.getState().bumpAgentTurns(id, 1);
+    expect(useCanvasChatStore.getState().conversations[id].agentTurnsInProgress).toBe(1);
+    useCanvasChatStore.getState().bumpAgentTurns(id, -1);
+    expect(useCanvasChatStore.getState().conversations[id].agentTurnsInProgress).toBe(0);
+  });
+
+  it("accumulates across overlapping turns: +1, +1, -1 → 1", () => {
+    const id = useCanvasChatStore.getState().startConversation(baseContext);
+    useCanvasChatStore.getState().bumpAgentTurns(id, 1);
+    useCanvasChatStore.getState().bumpAgentTurns(id, 1);
+    useCanvasChatStore.getState().bumpAgentTurns(id, -1);
+    expect(useCanvasChatStore.getState().conversations[id].agentTurnsInProgress).toBe(1);
+  });
+
+  it("clamps at a floor of 0 on a spurious decrement", () => {
+    const id = useCanvasChatStore.getState().startConversation(baseContext);
+    useCanvasChatStore.getState().bumpAgentTurns(id, -1);
+    expect(useCanvasChatStore.getState().conversations[id].agentTurnsInProgress).toBe(0);
+  });
+
+  it("is a no-op for an unknown conversationId", () => {
+    const before = { ...useCanvasChatStore.getState().conversations };
+    useCanvasChatStore.getState().bumpAgentTurns("nonexistent-id", 1);
+    expect(useCanvasChatStore.getState().conversations).toEqual(before);
+  });
+
+  it("does not mutate other conversations", () => {
+    const id1 = useCanvasChatStore.getState().startConversation(baseContext);
+    const id2 = useCanvasChatStore.getState().startConversation(baseContext);
+    useCanvasChatStore.getState().bumpAgentTurns(id1, 1);
+    expect(useCanvasChatStore.getState().conversations[id1].agentTurnsInProgress).toBe(1);
+    expect(useCanvasChatStore.getState().conversations[id2].agentTurnsInProgress).toBe(0);
+  });
+});
+
 describe("canvasChatStore — pendingDeeplink", () => {
   beforeEach(() => {
     useCanvasChatStore.setState({
