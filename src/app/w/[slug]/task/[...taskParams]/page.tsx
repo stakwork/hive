@@ -150,7 +150,11 @@ export default function TaskChatPage() {
   const [isSubsequentCommit, setIsSubsequentCommit] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
   const [showBountyModal, setShowBountyModal] = useState(false);
-  const [selectedModel, setSelectedModel] = useState<ModelName>("sonnet");
+  // No hardcoded default: when the user hasn't explicitly chosen a model,
+  // `selectedModel` stays undefined so the `model` field is omitted from the
+  // POST /api/tasks body, letting the server fall back to the admin-configured
+  // default model (see getDefaultModel("task") in task-workflow.ts).
+  const [selectedModel, setSelectedModel] = useState<ModelName | undefined>(undefined);
   const [isPrototypeTask, setIsPrototypeTask] = useState(false);
   const [isSavingPlan, setIsSavingPlan] = useState(false);
   const [isReconciling, setIsReconciling] = useState(false);
@@ -959,7 +963,7 @@ export default function TaskChatPage() {
             status: "active",
             workspaceSlug: slug,
             mode: taskMode, // Save the task mode
-            model: model || selectedModel, // Save selected AI model
+            model: model || selectedModel, // Save selected AI model (omitted when unset -> server applies admin default)
             autoMerge: autoMerge || false, // Save auto-merge preference
             repositoryId: repositoryId, // Pass repository ID for multi-repo workspaces
             branch: branch || null, // Pass selected branch

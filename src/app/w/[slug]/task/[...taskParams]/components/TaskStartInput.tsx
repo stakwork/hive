@@ -102,7 +102,7 @@ export function TaskStartInput({
   isLoadingWorkflows = false,
   workflowsError,
   onProjectSelect,
-  selectedModel = "sonnet",
+  selectedModel,
   onModelChange,
 }: TaskStartInputProps) {
   const searchParams = useSearchParams();
@@ -813,7 +813,7 @@ export function TaskStartInput({
                   <SelectTrigger className="w-[120px] h-8 text-xs rounded-lg shadow-sm">
                     <div className="flex items-center gap-2">
                       <Sparkles className="h-4 w-4" />
-                      <span>{selectedModel}</span>
+                      <span>{selectedModel || "Default"}</span>
                     </div>
                   </SelectTrigger>
                   <SelectContent>
