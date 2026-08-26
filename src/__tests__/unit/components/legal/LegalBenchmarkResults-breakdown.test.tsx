@@ -5,7 +5,7 @@
  *
  * Covers:
  * - Full breakdown strip renders when score is available
- * - `Rubric Details` label's failed/total/contested numbers are unchanged
+ * - `Rubric Details` label's passed/total/contested numbers come from criteriaResults
  * - Run Eval button gate still keys off `unevaluatedFailedCount`
  * - Strip absent when run has no criteria results and no graph roster
  */
@@ -150,14 +150,14 @@ describe("LegalBenchmarkResults — RubricBreakdownStrip integration", () => {
 
     // The score-summary-breakdown testid is the wrapper div added in this feature.
     expect(screen.getByTestId("score-summary-breakdown")).toBeInTheDocument();
-    // The breakdown strip's chips should be present.
+    // The breakdown strip's chips should be present — with no fail chip.
     expect(screen.getByTestId("rubric-breakdown-pass")).toBeInTheDocument();
-    expect(screen.getByTestId("rubric-breakdown-fail")).toBeInTheDocument();
     expect(screen.getByTestId("rubric-breakdown-contested")).toBeInTheDocument();
     expect(screen.getByTestId("rubric-breakdown-total")).toBeInTheDocument();
+    expect(screen.queryByTestId("rubric-breakdown-fail")).toBeNull();
   });
 
-  it("Rubric Details label shows failed/total/contested from criteriaResults rows, not roster", () => {
+  it("Rubric Details label shows passed/total/contested from criteriaResults rows, not roster", () => {
     mockUseBenchmarkRubrics.mockReturnValue({
       rubrics: [
         { ref_id: "r1", id: "C-001", name: "Criterion 1", contested: false },
@@ -190,13 +190,14 @@ describe("LegalBenchmarkResults — RubricBreakdownStrip integration", () => {
     render(<LegalBenchmarkResults runId="run-1" onReset={vi.fn()} />);
 
     // The Rubric Details label must count from criteriaResults (3 total), not the roster (4).
-    // Confirmed: "2 failed / 3 total" with 0 contested.
+    // Confirmed: "1 passed / 3 total" with 0 contested.
     // There are multiple collapsible-trigger elements (section header + per-criterion rows).
-    // The first one is the "Rubric Details (N failed / N total)" section header.
+    // The first one is the "Rubric Details (N passed / N total)" section header.
     const collapsibleTriggers = screen.getAllByTestId("collapsible-trigger");
     const rubricDetailsHeader = collapsibleTriggers[0];
-    expect(rubricDetailsHeader.textContent).toMatch(/2 failed/);
+    expect(rubricDetailsHeader.textContent).toMatch(/1 passed/);
     expect(rubricDetailsHeader.textContent).toMatch(/3 total/);
+    expect(rubricDetailsHeader.textContent).not.toMatch(/failed/);
     // No contested annotation since no criteria are contested.
     expect(rubricDetailsHeader.textContent).not.toMatch(/contested/);
   });

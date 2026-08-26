@@ -146,12 +146,11 @@ function ScoreCell({ run, rubrics, rubricsLoading }: ScoreCellProps) {
       title={run.judgeNotes}
     >
       <span className="text-sm tabular-nums font-medium">{headline}</span>
-      <Badge
-        variant="outline"
-        className={score.allPass ? PASS_BADGE_CLASS : FAIL_BADGE_CLASS}
-      >
-        {score.allPass ? "PASS" : "FAIL"}
-      </Badge>
+      {score.allPass && (
+        <Badge variant="outline" className={PASS_BADGE_CLASS}>
+          PASS
+        </Badge>
+      )}
       <RubricBreakdownStrip breakdown={bd} variant="compact" />
     </div>
   );
