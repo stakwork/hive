@@ -145,7 +145,7 @@ describe("renderRunOffline", () => {
       expect(result.markup).toContain("rubric-ledger");
     });
 
-    it("renders score as pass/fail badge", async () => {
+    it("renders the criteria-passed score", async () => {
       const result = await renderRunOffline({ payload, taskTitle: "Test", context: makeEmptyContext() });
       // The header contains criteria passed display
       expect(result.markup).toContain("criteria passed");
@@ -318,12 +318,16 @@ describe("renderConsolidatedOffline", () => {
   });
 
   describe("RubricBreakdownStrip in offline header", () => {
-    it("renders rubric-breakdown-fail chip in the offline header when rubric rows are present", async () => {
+    it("renders no rubric-breakdown-fail chip and no 'N failed' header text", async () => {
       const payload = makeFullRunPayload();
       const result = await renderRunOffline({ payload, taskTitle: "Test", context: makeEmptyContext() });
-      // FULL_BUNDLE has rubric rows so rubricBreakdown will compute and the strip renders.
+      // FULL_BUNDLE has rubric rows so rubricBreakdown computes and the strip renders,
+      // but the rubric-scoring fail chip and the header's "N failed" badge are gone.
       expect(result.ok).toBe(true);
-      expect(result.markup).toContain('data-testid="rubric-breakdown-fail"');
+      expect(result.markup).not.toContain('data-testid="rubric-breakdown-fail"');
+      expect(result.markup).not.toMatch(/\d+ failed/);
+      // FULL_BUNDLE is not an all-pass run, so no all-pass badge either.
+      expect(result.markup).not.toContain("All criteria passed");
     });
 
     it("renders rubric-breakdown-pass chip in the offline header", async () => {

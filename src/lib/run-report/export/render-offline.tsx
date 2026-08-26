@@ -253,11 +253,6 @@ function OfflineRunReportDocument({
 
   const passCount = score ? score.passed : runProjection.stats.passCount;
   const denominator = score ? score.denominator : runProjection.stats.rubricCount;
-  const failCount = breakdown
-    ? breakdown.fail
-    : score
-      ? score.denominator - score.passed
-      : runProjection.stats.failCount;
   const allPassed = score
     ? score.allPass
     : runProjection.stats.failCount === 0 && runProjection.stats.passCount !== null;
@@ -295,16 +290,9 @@ function OfflineRunReportDocument({
               )}
             </div>
             <div className="flex-1 min-w-[260px]">
-              {passCount !== null && (
-                <span
-                  className={[
-                    "inline-flex items-center gap-1.5 rounded-full border px-3 py-1 font-mono text-[10.5px] uppercase tracking-[0.08em]",
-                    allPassed
-                      ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-500"
-                      : "border-destructive/45 bg-destructive/10 text-destructive",
-                  ].join(" ")}
-                >
-                  {allPassed ? "All criteria passed" : `${failCount} failed`}
+              {passCount !== null && allPassed && (
+                <span className="inline-flex items-center gap-1.5 rounded-full border px-3 py-1 font-mono text-[10.5px] uppercase tracking-[0.08em] border-emerald-500/40 bg-emerald-500/10 text-emerald-500">
+                  All criteria passed
                 </span>
               )}
               {goal && (

@@ -6,7 +6,8 @@
  * Acceptance criteria:
  * - When rubricRows are present, rubricBreakdown computes and the strip renders.
  * - When score is null (empty rubricRows), fallback stats are used and NO strip renders.
- * - failCount is derived from breakdown.fail, not score.denominator - score.passed.
+ * - No rubric-scoring fail chip or "N failed" badge renders; an all-pass run gets
+ *   the "All criteria passed" badge, a non-perfect run gets no badge.
  * - {passCount} / {denominator} fraction is preserved unchanged.
  * - run-report-contested-annotation is preserved when annotation exists.
  */
@@ -124,12 +125,12 @@ function renderHeader(
 
 describe("ReportHeader", () => {
   describe("breakdown path (rubricRows present)", () => {
-    it("renders the rubric-breakdown-fail chip when rubric rows are present", () => {
-      renderHeader([
+    it("renders no rubric-breakdown-fail chip even when rubric rows are present", () => {
+      const { queryByTestId } = renderHeader([
         makeRubricRow({ verdict: "pass" }),
         makeRubricRow({ id: "R2", verdict: "fail", passed: false }),
       ]);
-      expect(screen.getByTestId("rubric-breakdown-fail")).toBeDefined();
+      expect(queryByTestId("rubric-breakdown-fail")).toBeNull();
     });
 
     it("renders the rubric-breakdown-pass chip in full variant", () => {
@@ -174,26 +175,23 @@ describe("ReportHeader", () => {
       expect(disputedChip.textContent).toContain("1");
     });
 
-    it("derives failCount from breakdown.fail, not score.denominator - score.passed", () => {
-      // 1 pass + 1 contested + 2 fail = 4 total with graph roster
-      const graphRubrics = [
-        makeGraphRubric("R1", "Criterion 1"),
-        makeGraphRubric("R2", "Criterion 2"),
-        makeGraphRubric("R3", "Criterion 3", true), // contested
-        makeGraphRubric("R4", "Criterion 4"),
-      ];
-      renderHeader(
-        [
-          makeRubricRow({ id: "R1", verdict: "pass" }),
-          makeRubricRow({ id: "R2", verdict: "fail", passed: false }),
-          makeRubricRow({ id: "R3", verdict: "fail", passed: false, criterionContested: true }),
-          makeRubricRow({ id: "R4", verdict: "fail", passed: false }),
-        ],
-        graphRubrics,
-      );
-      // breakdown.fail = scorable(4-1=3) - pass(1) = 2
-      const failBadge = screen.getByTestId("run-report-header").querySelector('[data-testid="rubric-breakdown-fail"]');
-      expect(failBadge?.textContent).toContain("2");
+    it("renders no 'N failed' badge for a non-perfect run", () => {
+      renderHeader([
+        makeRubricRow({ verdict: "pass" }),
+        makeRubricRow({ id: "R2", verdict: "fail", passed: false }),
+      ]);
+      const header = screen.getByTestId("run-report-header");
+      expect(header.textContent).not.toMatch(/\d+ failed/);
+      expect(header.textContent).not.toContain("All criteria passed");
+    });
+
+    it("renders the 'All criteria passed' badge for an all-pass run", () => {
+      renderHeader([
+        makeRubricRow({ verdict: "pass" }),
+        makeRubricRow({ id: "R2", verdict: "pass" }),
+      ]);
+      const header = screen.getByTestId("run-report-header");
+      expect(header.textContent).toContain("All criteria passed");
     });
 
     it("preserves the passCount / denominator fraction display", () => {

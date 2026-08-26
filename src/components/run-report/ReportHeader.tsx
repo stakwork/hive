@@ -175,8 +175,6 @@ export function ReportHeader({
   const scoreDisplay = score ? formatBenchmarkScore(score) : null;
   const passCount = score ? score.passed : stats.passCount;
   const denominator = score ? score.denominator : stats.rubricCount;
-  // Derive failCount from the breakdown when available; fall back to stats.
-  const failCount = breakdown ? breakdown.fail : score ? score.denominator - score.passed : stats.failCount;
   const allPassed = score ? score.allPass : stats.failCount === 0 && stats.passCount !== null;
 
   return (
@@ -217,10 +215,8 @@ export function ReportHeader({
           )}
         </div>
         <div className="flex-1 min-w-[260px]">
-          {passCount !== null && (
-            <StatusBadge kind={allPassed ? "pass" : "fail"}>
-              {allPassed ? "All criteria passed" : `${failCount} failed`}
-            </StatusBadge>
+          {passCount !== null && allPassed && (
+            <StatusBadge kind="pass">All criteria passed</StatusBadge>
           )}
           {goal && <p className="text-[14px] text-muted-foreground max-w-[72ch] mt-2">{goal}</p>}
           {generatedAtMs !== null && (
