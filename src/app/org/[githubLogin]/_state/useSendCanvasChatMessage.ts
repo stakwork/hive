@@ -115,6 +115,7 @@ export function useSendCanvasChatMessage() {
         appendAssistantError,
         markTurnAuthored,
         setServerConversationId,
+        bumpAgentTurns,
       } = useCanvasChatStore.getState();
 
       // Backend-driven persistence id for this turn
@@ -151,6 +152,7 @@ export function useSendCanvasChatMessage() {
       appendUserMessage(conversationId, userMessage);
       setIsLoading(conversationId, true);
       setIsStreaming(conversationId, true);
+      bumpAgentTurns(conversationId, 1);
 
       let firstChunk = true;
       const ctx = conv.context;
@@ -533,6 +535,7 @@ export function useSendCanvasChatMessage() {
       } finally {
         setIsLoading(conversationId, false);
         setIsStreaming(conversationId, false);
+        bumpAgentTurns(conversationId, -1);
         // Always clear runActive on stream end/error (belt + suspenders with Pusher).
         setRunActive(conversationId, false);
       }

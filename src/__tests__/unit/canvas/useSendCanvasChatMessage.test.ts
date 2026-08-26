@@ -55,6 +55,7 @@ interface MockConv {
   messages: Array<{ id: string; role: string; content: string }>;
   isLoading: boolean;
   isStreaming: boolean;
+  agentTurnsInProgress: number;
   activeToolCalls: unknown[];
   context: ConvContext;
 }
@@ -70,6 +71,7 @@ interface MockStoreState {
   appendAssistantError: ReturnType<typeof vi.fn>;
   markTurnAuthored: ReturnType<typeof vi.fn>;
   setServerConversationId: ReturnType<typeof vi.fn>;
+  bumpAgentTurns: ReturnType<typeof vi.fn>;
 }
 
 const baseContext: ConvContext = {
@@ -90,6 +92,7 @@ function buildMockConv(overrides: Partial<MockConv> = {}): MockConv {
     messages: [],
     isLoading: false,
     isStreaming: false,
+    agentTurnsInProgress: 0,
     activeToolCalls: [],
     context: baseContext,
     ...overrides,
@@ -119,6 +122,12 @@ function makeTrackedState(): MockStoreState {
     appendAssistantError: vi.fn(),
     markTurnAuthored: vi.fn(),
     setServerConversationId: vi.fn(),
+    bumpAgentTurns: vi.fn().mockImplementation((id: string, delta: number) => {
+      if (state.conversations[id]) {
+        const next = Math.max(0, state.conversations[id].agentTurnsInProgress + delta);
+        state.conversations[id] = { ...state.conversations[id], agentTurnsInProgress: next };
+      }
+    }),
   };
   return state;
 }
@@ -445,6 +454,175 @@ describe("useSendCanvasChatMessage — isStreaming lifecycle", () => {
     const isStreamingCalls = (mockState.setIsStreaming as ReturnType<typeof vi.fn>).mock.calls;
     expect(isStreamingCalls).toContainEqual(["conv-1", true]);
     expect(isStreamingCalls).toContainEqual(["conv-1", false]);
+  });
+});
+
+describe("useSendCanvasChatMessage — agentTurnsInProgress lifecycle", () => {
+  beforeEach(() => {
+    mockState = makeTrackedState();
+    mockTimeline = [];
+    mockFinalUsage = undefined;
+    resetStreamPromise();
+    vi.clearAllMocks();
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("bumps agentTurnsInProgress to 1 synchronously when send starts", async () => {
+    global.fetch = buildOkFetch();
+
+    const { result } = renderHook(() => useSendCanvasChatMessage());
+
+    let sendPromise: Promise<void>;
+    act(() => {
+      sendPromise = result.current({
+        conversationId: "conv-1",
+        content: "hello",
+      });
+    });
+
+    // bumpAgentTurns(+1) should have been called synchronously before the
+    // await fetch completes.
+    expect(mockState.bumpAgentTurns).toHaveBeenCalledWith("conv-1", 1);
+    expect(mockState.conversations["conv-1"].agentTurnsInProgress).toBe(1);
+
+    resolveStream();
+    await act(async () => { await sendPromise!; });
+  });
+
+  it("decrements agentTurnsInProgress to 0 in finally on successful stream completion", async () => {
+    global.fetch = buildOkFetch();
+
+    const { result } = renderHook(() => useSendCanvasChatMessage());
+
+    resolveStream();
+
+    await act(async () => {
+      await result.current({ conversationId: "conv-1", content: "hello" });
+    });
+
+    const calls = (mockState.bumpAgentTurns as ReturnType<typeof vi.fn>).mock.calls;
+    expect(calls).toContainEqual(["conv-1", 1]);
+    expect(calls).toContainEqual(["conv-1", -1]);
+    // The decrement must be the last bumpAgentTurns call (finally runs last).
+    expect(calls[calls.length - 1]).toEqual(["conv-1", -1]);
+    expect(mockState.conversations["conv-1"].agentTurnsInProgress).toBe(0);
+  });
+
+  it("decrements agentTurnsInProgress to 0 in finally when fetch returns a non-OK status", async () => {
+    global.fetch = buildErrorFetch();
+
+    const { result } = renderHook(() => useSendCanvasChatMessage());
+
+    await act(async () => {
+      await result.current({ conversationId: "conv-1", content: "hello" });
+    });
+
+    const calls = (mockState.bumpAgentTurns as ReturnType<typeof vi.fn>).mock.calls;
+    expect(calls).toContainEqual(["conv-1", 1]);
+    expect(calls[calls.length - 1]).toEqual(["conv-1", -1]);
+    expect(mockState.conversations["conv-1"].agentTurnsInProgress).toBe(0);
+  });
+
+  it("decrements agentTurnsInProgress to 0 in finally when the stream itself throws", async () => {
+    global.fetch = buildOkFetch();
+
+    const { result } = renderHook(() => useSendCanvasChatMessage());
+
+    rejectStream(new Error("stream broke"));
+
+    await act(async () => {
+      await result.current({ conversationId: "conv-1", content: "hello" });
+    });
+
+    const calls = (mockState.bumpAgentTurns as ReturnType<typeof vi.fn>).mock.calls;
+    expect(calls).toContainEqual(["conv-1", 1]);
+    expect(calls[calls.length - 1]).toEqual(["conv-1", -1]);
+    expect(mockState.conversations["conv-1"].agentTurnsInProgress).toBe(0);
+  });
+
+  it("does NOT decrement agentTurnsInProgress on the first chunk", async () => {
+    global.fetch = buildOkFetch();
+
+    const { result } = renderHook(() => useSendCanvasChatMessage());
+
+    // Don't resolve the stream yet — only the first onUpdate chunk fires.
+    let sendPromise: Promise<void>;
+    act(() => {
+      sendPromise = result.current({ conversationId: "conv-1", content: "hello" });
+    });
+
+    // First chunk clears isLoading but must NOT touch agentTurnsInProgress.
+    expect(mockState.conversations["conv-1"].agentTurnsInProgress).toBe(1);
+    const calls = (mockState.bumpAgentTurns as ReturnType<typeof vi.fn>).mock.calls;
+    expect(calls).toEqual([["conv-1", 1]]);
+
+    resolveStream();
+    await act(async () => { await sendPromise!; });
+  });
+
+  it("overlap regression: two interleaved sends keep the count justified until both settle", async () => {
+    global.fetch = buildOkFetch();
+
+    // Independent stream promises for two concurrent turns sharing conv-1.
+    let resolveA: () => void = () => {};
+    let resolveB: () => void = () => {};
+    const streamA = new Promise<void>((res) => { resolveA = res; });
+    const streamB = new Promise<void>((res) => { resolveB = res; });
+
+    // The default mock's processStream shares one module-level
+    // `streamPromise`, which can't represent two independently-settling
+    // concurrent turns — override it for this test only, so each call
+    // resolves against its own promise.
+    let call = 0;
+    const streamingModule = await import("@/lib/streaming");
+    const processStreamSpy = vi
+      .spyOn(streamingModule, "useStreamProcessor")
+      .mockReturnValue({
+        processStream: vi.fn(
+          (
+            _response: Response,
+            _messageId: string,
+            onUpdate: (message: never) => void,
+          ) => {
+            call += 1;
+            const isFirst = call === 1;
+            onUpdate({ timeline: [], isStreaming: true } as never);
+            return (isFirst ? streamA : streamB).then(() => {
+              onUpdate({ timeline: [], isStreaming: false } as never);
+            });
+          },
+        ),
+      } as ReturnType<typeof streamingModule.useStreamProcessor>);
+
+    const { result } = renderHook(() => useSendCanvasChatMessage());
+
+    let sendA: Promise<void>;
+    let sendB: Promise<void>;
+
+    act(() => {
+      sendA = result.current({ conversationId: "conv-1", content: "first turn" });
+    });
+    expect(mockState.conversations["conv-1"].agentTurnsInProgress).toBe(1);
+
+    act(() => {
+      sendB = result.current({ conversationId: "conv-1", content: "second turn" });
+    });
+    expect(mockState.conversations["conv-1"].agentTurnsInProgress).toBe(2);
+
+    // Settle the first turn — count should drop to 1, NOT 0 (dots still justified).
+    resolveA();
+    await act(async () => { await sendA!; });
+    expect(mockState.conversations["conv-1"].agentTurnsInProgress).toBe(1);
+
+    // Settle the second turn — count reaches 0.
+    resolveB();
+    await act(async () => { await sendB!; });
+    expect(mockState.conversations["conv-1"].agentTurnsInProgress).toBe(0);
+
+    processStreamSpy.mockRestore();
   });
 });
 
