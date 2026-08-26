@@ -33,8 +33,6 @@ import { useBenchmarkRubricsMap } from "@/hooks/useBenchmarkRubrics";
 import { useBenchmarkGraphScoresMap, type GraphScoreRequest } from "@/hooks/useBenchmarkGraphScores";
 import { computeBenchmarkScore, rubricBreakdown } from "@/lib/harvey-lab/rubric-scoring";
 import { resolveGraphOutputForRun } from "@/lib/harvey-lab/graph-run-score";
-import { RubricBreakdownStrip } from "@/components/harvey-lab/RubricBreakdownStrip";
-import type { RubricBreakdown } from "@/lib/harvey-lab/rubric-scoring";
 import { LegalBenchmarkResults } from "@/components/legal/LegalBenchmarkResults";
 import { BenchmarkRunAgentLogs } from "@/components/legal/BenchmarkRunAgentLogs";
 import { BenchmarkRunCascade } from "@/components/legal/RunCascade";
@@ -850,34 +848,13 @@ function ScoreCell({ run }: { run: AdjustedRun }) {
     return <span className="text-muted-foreground">—</span>;
   }
 
-  // Build a synthetic RubricBreakdown for the compact strip.
-  // n_failed / n_disputed are null on paths where the breakdown was not computed
-  // (output-ref, bail-out paths) — the strip renders "—" for unknown fields.
-  // On output-ref rows roster_total is undefined: do not infer Total from n_total.
-  const breakdown: RubricBreakdown | null =
-    run.n_failed !== null &&
-    run.n_passed !== undefined &&
-    run.n_total !== undefined &&
-    run.n_contested !== undefined &&
-    run.roster_total !== undefined
-      ? {
-          pass: run.n_passed,
-          fail: run.n_failed,
-          contested: run.n_contested,
-          total: run.roster_total,
-          disputed: run.n_disputed,
-          totalSource: run.score_source === "result" ? "run" : "graph",
-          clamped: false,
-        }
-      : null;
-
   return (
     <div
       className={run.judgeNotes ? "flex items-center gap-2 cursor-help" : "flex items-center gap-2"}
       title={run.judgeNotes}
       aria-label={run.judgeNotes}
       data-score-source={run.score_source}
-      {...(breakdown?.contested ? { "data-testid": "score-cell-contested" } : {})}
+      {...(run.n_contested ? { "data-testid": "score-cell-contested" } : {})}
     >
       {run.n_passed !== undefined && run.n_total !== undefined && (
         <span className="text-sm tabular-nums">
@@ -889,10 +866,6 @@ function ScoreCell({ run }: { run: AdjustedRun }) {
           PASS
         </Badge>
       )}
-      {/* RubricBreakdownStrip (compact) replaces the old standalone "+N contested" span.
-          The strip's contested chip carries data-testid="rubric-breakdown-contested" which
-          doubles as the "score-cell-contested" anchor — kept for backward-compat test hooks. */}
-      <RubricBreakdownStrip breakdown={breakdown} variant="compact" />
     </div>
   );
 }

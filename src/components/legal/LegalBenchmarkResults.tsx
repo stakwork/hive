@@ -381,7 +381,7 @@ export function LegalBenchmarkResults({ runId, onReset, isSuperAdmin = false }: 
               Rendered beneath the badge/score line when the breakdown is computable. */}
           {scoreBd && (
             <div className="px-4 pb-3" data-testid="score-summary-breakdown">
-              <RubricBreakdownStrip breakdown={scoreBd} variant="full" />
+              <RubricBreakdownStrip breakdown={scoreBd} />
             </div>
           )}
         </div>

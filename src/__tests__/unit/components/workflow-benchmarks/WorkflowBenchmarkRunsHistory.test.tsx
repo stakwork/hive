@@ -110,9 +110,9 @@ describe("WorkflowBenchmarkRunsHistory", () => {
     mockUseWorkflowBenchmarkRubricsMap.mockReturnValue(new Map());
   });
 
-  // ── 1. Contested criteria render rubric-breakdown-contested ────────────────
+  // ── 1. Contested criteria render no chip in rows — the report carries it ───
 
-  it("renders rubric-breakdown-contested when the rubric roster has contested entries", () => {
+  it("renders no contested chip even when the rubric roster has contested entries", () => {
     const contestedRoster: GraphRubric[] = [
       { ref_id: "r1", id: "crit-1", name: "Criterion One", contested: true },
       { ref_id: "r2", id: "crit-2", name: "Criterion Two", contested: true },
@@ -132,14 +132,13 @@ describe("WorkflowBenchmarkRunsHistory", () => {
 
     render(<WorkflowBenchmarkRunsHistory />);
 
-    // RubricBreakdownStrip (compact) must render the contested chip because
-    // contested > 0 — this replaces the old ad-hoc annotation span.
-    expect(screen.queryByTestId("rubric-breakdown-contested")).not.toBeNull();
+    // Rows carry no breakdown chips — contested detail lives in the report.
+    expect(screen.queryByTestId("rubric-breakdown-contested")).toBeNull();
   });
 
-  // ── 2. No score → strip not rendered ──────────────────────────────────────
+  // ── 2. No score → dash only ────────────────────────────────────────────────
 
-  it("does not render the breakdown strip when the run has no score data", () => {
+  it("renders no breakdown chips when the run has no score data", () => {
     // A completed run with no n_passed / n_total — computeBenchmarkScore returns null.
     const runWithNoScore = makeRun({ n_passed: undefined, n_total: undefined });
 
@@ -161,13 +160,13 @@ describe("WorkflowBenchmarkRunsHistory", () => {
 
     render(<WorkflowBenchmarkRunsHistory />);
 
-    // Strip must be absent — ScoreCell renders a plain dash instead.
+    // ScoreCell renders a plain dash — no chips.
     expect(screen.queryByTestId("rubric-breakdown-disputed")).toBeNull();
   });
 
-  // ── 3. Computable breakdown → disputed tag present, no fail chip ───────────
+  // ── 3. Computable breakdown → still no chips in rows ───────────────────────
 
-  it("renders rubric-breakdown-disputed and no fail chip when the breakdown is computable", () => {
+  it("renders no disputed tag or fail chip even when the breakdown is computable", () => {
     const roster: GraphRubric[] = [
       { ref_id: "r1", id: "crit-1", name: "Criterion One", contested: false },
       { ref_id: "r2", id: "crit-2", name: "Criterion Two", contested: false },
@@ -189,7 +188,7 @@ describe("WorkflowBenchmarkRunsHistory", () => {
     render(<WorkflowBenchmarkRunsHistory />);
 
     expect(screen.queryByTestId("rubric-breakdown-fail")).toBeNull();
-    expect(screen.queryByTestId("rubric-breakdown-disputed")).not.toBeNull();
+    expect(screen.queryByTestId("rubric-breakdown-disputed")).toBeNull();
   });
 
   // ── 4. PASS badge only on an all-pass run ──────────────────────────────────

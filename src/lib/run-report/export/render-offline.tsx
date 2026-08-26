@@ -286,7 +286,7 @@ function OfflineRunReportDocument({
                 criteria passed
               </div>
               {breakdown && (
-                <RubricBreakdownStrip breakdown={breakdown} variant="full" />
+                <RubricBreakdownStrip breakdown={breakdown} />
               )}
             </div>
             <div className="flex-1 min-w-[260px]">
