@@ -437,7 +437,7 @@ describe("LegalBenchmarkResults", () => {
     expect(screen.getByText("PASS")).toBeInTheDocument();
   });
 
-  it("renders aggregate Score Summary with FAIL badge when all_pass=false", () => {
+  it("renders aggregate Score Summary with no badge when all_pass=false", () => {
     mockUseLegalBenchmarkRun.mockReturnValue({
       run: makeMockRun({
         status: "complete",
@@ -456,7 +456,8 @@ describe("LegalBenchmarkResults", () => {
 
     expect(screen.getByText("Score Summary")).toBeInTheDocument();
     expect(screen.getByText(/10\/20 criteria passed/)).toBeInTheDocument();
-    expect(screen.getByText("FAIL")).toBeInTheDocument();
+    expect(screen.queryByText("FAIL")).toBeNull();
+    expect(screen.queryByText("PASS")).toBeNull();
   });
 
   it("renders 'No score available' placeholder when no score fields present on complete run", () => {
@@ -632,8 +633,8 @@ describe("LegalBenchmarkResults", () => {
     render(React.createElement(LegalBenchmarkResults, { runId: "run-abc", onReset }));
 
     expect(screen.getByText(/Rubric Details/)).toBeInTheDocument();
-    // failedCount = 2, total = 3
-    expect(screen.getByText(/2 failed \/ 3 total/)).toBeInTheDocument();
+    // passedCount = 3 total - 2 failed = 1
+    expect(screen.getByText(/1 passed \/ 3 total/)).toBeInTheDocument();
   });
 
   it("renders failed criteria before passing criteria in list order", () => {
@@ -1144,7 +1145,7 @@ describe("LegalBenchmarkResults", () => {
     expect(screen.queryByText("Completeness")).toBeNull();
   });
 
-  it("score summary, PASS/FAIL badge, and n_passed/n_total are unaffected by disputes", () => {
+  it("score summary and n_passed/n_total are unaffected by disputes", () => {
     const criteriaResults: CriterionFixture[] = [
       {
         id: "crit-1",
@@ -1168,10 +1169,10 @@ describe("LegalBenchmarkResults", () => {
 
     // n_passed/n_total unchanged
     expect(screen.getByText(/1\/3 criteria passed/)).toBeInTheDocument();
-    // FAIL badge unchanged
-    expect(screen.getByText("FAIL")).toBeInTheDocument();
-    // Rubric header count unchanged: 2 failed / 3 total
-    expect(screen.getByText(/2 failed \/ 3 total/)).toBeInTheDocument();
+    // No rubric-scoring FAIL badge renders for a non-perfect run
+    expect(screen.queryByText("FAIL")).toBeNull();
+    // Rubric header count unchanged: 1 passed / 3 total
+    expect(screen.getByText(/1 passed \/ 3 total/)).toBeInTheDocument();
   });
 
   // ─── Run Eval button ──────────────────────────────────────────────────────

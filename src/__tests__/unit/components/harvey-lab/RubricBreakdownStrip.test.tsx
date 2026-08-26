@@ -4,8 +4,8 @@
  * Key acceptance criteria:
  * - renderToStaticMarkup succeeds (proves component stays hook-free)
  * - "—" renders for both null and undefined disputed
- * - full variant: all testids present including rubric-breakdown-total
- * - compact variant: rubric-breakdown-total ABSENT
+ * - full variant: Pass/Contested/Total/Disputed testids present, no fail chip
+ * - compact variant: rubric-breakdown-total ABSENT, no fail chip
  * - null breakdown renders nothing
  * - every class emitted is present in the OFFLINE_CSS allowlist
  */
@@ -110,22 +110,31 @@ describe("RubricBreakdownStrip", () => {
   });
 
   describe("full variant (default)", () => {
-    it("renders all four count chips and the disputed tag", () => {
-      render(<RubricBreakdownStrip breakdown={makeBreakdown({ pass: 3, fail: 2, contested: 1, total: 6, disputed: 1 })} />);
+    it("renders pass/contested/total chips and the disputed tag, and no fail chip", () => {
+      const { queryByTestId } = render(
+        <RubricBreakdownStrip breakdown={makeBreakdown({ pass: 3, fail: 2, contested: 1, total: 6, disputed: 1 })} />
+      );
       expect(screen.getByTestId("rubric-breakdown-pass")).toBeDefined();
-      expect(screen.getByTestId("rubric-breakdown-fail")).toBeDefined();
       expect(screen.getByTestId("rubric-breakdown-contested")).toBeDefined();
       expect(screen.getByTestId("rubric-breakdown-total")).toBeDefined();
       expect(screen.getByTestId("rubric-breakdown-disputed")).toBeDefined();
+      expect(queryByTestId("rubric-breakdown-fail")).toBeNull();
     });
 
     it("shows correct count values", () => {
       render(<RubricBreakdownStrip breakdown={makeBreakdown({ pass: 5, fail: 3, contested: 2, total: 10, disputed: 1 })} />);
       expect(screen.getByTestId("rubric-breakdown-pass").textContent).toContain("5");
-      expect(screen.getByTestId("rubric-breakdown-fail").textContent).toContain("3");
       expect(screen.getByTestId("rubric-breakdown-contested").textContent).toContain("2");
       expect(screen.getByTestId("rubric-breakdown-total").textContent).toContain("10");
       expect(screen.getByTestId("rubric-breakdown-disputed").textContent).toContain("1");
+    });
+
+    it("emits no fail/failed text or destructive styling anywhere in the markup", () => {
+      const markup = renderToStaticMarkup(
+        <RubricBreakdownStrip breakdown={makeBreakdown({ pass: 3, fail: 2, contested: 1, total: 6, disputed: 1 })} />
+      );
+      expect(markup.toLowerCase()).not.toContain("fail");
+      expect(markup).not.toContain("destructive");
     });
 
     it("renders — for null disputed", () => {
@@ -177,21 +186,33 @@ describe("RubricBreakdownStrip", () => {
       expect(queryByTestId("rubric-breakdown-pass")).toBeNull();
     });
 
-    it("still renders fail chip and disputed tag", () => {
-      render(<RubricBreakdownStrip breakdown={makeBreakdown({ fail: 3, disputed: 1 })} variant="compact" />);
-      expect(screen.getByTestId("rubric-breakdown-fail")).toBeDefined();
+    it("renders contested chip and disputed tag, and no fail chip", () => {
+      const { queryByTestId } = render(
+        <RubricBreakdownStrip breakdown={makeBreakdown({ contested: 1, disputed: 1 })} variant="compact" />
+      );
+      expect(screen.getByTestId("rubric-breakdown-contested")).toBeDefined();
+      expect(screen.getByTestId("rubric-breakdown-disputed")).toBeDefined();
+      expect(queryByTestId("rubric-breakdown-fail")).toBeNull();
+    });
+
+    it("renders only the disputed tag when contested is 0", () => {
+      const { queryByTestId } = render(
+        <RubricBreakdownStrip breakdown={makeBreakdown({ contested: 0, disputed: 1 })} variant="compact" />
+      );
+      expect(queryByTestId("rubric-breakdown-contested")).toBeNull();
+      expect(queryByTestId("rubric-breakdown-fail")).toBeNull();
       expect(screen.getByTestId("rubric-breakdown-disputed")).toBeDefined();
     });
 
-    it("carries pass/total/contested in fail chip title", () => {
+    it("carries pass/total/contested in the contested chip title", () => {
       render(
         <RubricBreakdownStrip
           breakdown={makeBreakdown({ pass: 4, fail: 2, contested: 1, total: 7 })}
           variant="compact"
         />
       );
-      const failChip = screen.getByTestId("rubric-breakdown-fail");
-      const title = failChip.getAttribute("title") ?? "";
+      const contestedChip = screen.getByTestId("rubric-breakdown-contested");
+      const title = contestedChip.getAttribute("title") ?? "";
       expect(title).toContain("4 passed");
       expect(title).toContain("1 contested");
       expect(title).toContain("7 total");

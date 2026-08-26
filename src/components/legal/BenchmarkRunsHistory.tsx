@@ -7,7 +7,6 @@ import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import {
   PASS_BADGE_CLASS,
-  FAIL_BADGE_CLASS,
   RUN_LIST_LIMIT,
   SUMMARY_WINDOW,
   WINDOW_OPTIONS,
@@ -885,12 +884,11 @@ function ScoreCell({ run }: { run: AdjustedRun }) {
           {run.n_passed}/{run.n_total}
         </span>
       )}
-      <Badge
-        variant="outline"
-        className={run.all_pass ? PASS_BADGE_CLASS : FAIL_BADGE_CLASS}
-      >
-        {run.all_pass ? "PASS" : "FAIL"}
-      </Badge>
+      {run.all_pass && (
+        <Badge variant="outline" className={PASS_BADGE_CLASS}>
+          PASS
+        </Badge>
+      )}
       {/* RubricBreakdownStrip (compact) replaces the old standalone "+N contested" span.
           The strip's contested chip carries data-testid="rubric-breakdown-contested" which
           doubles as the "score-cell-contested" anchor — kept for backward-compat test hooks. */}

@@ -254,6 +254,7 @@ export function LegalBenchmarkResults({ runId, onReset, isSuperAdmin = false }: 
         : allPass;
     const failedCount =
       criteriaResults?.filter((c) => criterionStatus(c, contestedIndex) === "FAIL").length ?? 0;
+    const passedCount = (criteriaResults?.length ?? 0) - failedCount;
     const contestedCount = score?.contested ?? 0;
 
     // Unified model display precedence
@@ -353,16 +354,14 @@ export function LegalBenchmarkResults({ runId, onReset, isSuperAdmin = false }: 
                   {scoreDisplay.headline} criteria passed
                 </span>
               )}
-              <Badge
-                variant="outline"
-                className={
-                  displayAllPass
-                    ? "border-0 bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300"
-                    : "border-0 bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300"
-                }
-              >
-                {displayAllPass ? "PASS" : "FAIL"}
-              </Badge>
+              {displayAllPass && (
+                <Badge
+                  variant="outline"
+                  className="border-0 bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300"
+                >
+                  PASS
+                </Badge>
+              )}
               {scoreDisplay?.annotation && (
                 <span
                   className="text-xs text-violet-700 dark:text-violet-400"
@@ -378,10 +377,8 @@ export function LegalBenchmarkResults({ runId, onReset, isSuperAdmin = false }: 
               No score available.
             </div>
           )}
-          {/* Full breakdown strip: Pass / Fail / Contested / Total + Disputed overlay.
-              Rendered beneath the badge/score line when the breakdown is computable.
-              Where the roster is larger than the run's scored criteria, the Fail
-              bucket includes unscored roster entries — visible in each chip's title. */}
+          {/* Full breakdown strip: Pass / Contested / Total + Disputed overlay.
+              Rendered beneath the badge/score line when the breakdown is computable. */}
           {scoreBd && (
             <div className="px-4 pb-3" data-testid="score-summary-breakdown">
               <RubricBreakdownStrip breakdown={scoreBd} variant="full" />
@@ -397,7 +394,7 @@ export function LegalBenchmarkResults({ runId, onReset, isSuperAdmin = false }: 
                 <CollapsibleTrigger asChild>
                   <button className="flex items-center justify-between flex-1 px-4 py-3 text-left hover:bg-muted/40 transition-colors">
                     <span className="font-semibold text-sm">
-                      Rubric Details ({failedCount} failed / {criteriaResults!.length} total
+                      Rubric Details ({passedCount} passed / {criteriaResults!.length} total
                       {contestedCount > 0 ? ` · ${contestedCount} contested` : ""})
                     </span>
                     {isOpen ? (
