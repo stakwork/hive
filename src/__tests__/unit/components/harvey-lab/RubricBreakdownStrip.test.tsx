@@ -4,8 +4,7 @@
  * Key acceptance criteria:
  * - renderToStaticMarkup succeeds (proves component stays hook-free)
  * - "—" renders for both null and undefined disputed
- * - full variant: Pass/Contested/Total/Disputed testids present, no fail chip
- * - compact variant: rubric-breakdown-total ABSENT, no fail chip
+ * - Pass/Contested/Total/Disputed testids present, no fail chip
  * - null breakdown renders nothing
  * - every class emitted is present in the OFFLINE_CSS allowlist
  */
@@ -109,7 +108,7 @@ describe("RubricBreakdownStrip", () => {
     expect(() => renderToStaticMarkup(<RubricBreakdownStrip breakdown={breakdown} />)).not.toThrow();
   });
 
-  describe("full variant (default)", () => {
+  describe("chips", () => {
     it("renders pass/contested/total chips and the disputed tag, and no fail chip", () => {
       const { queryByTestId } = render(
         <RubricBreakdownStrip breakdown={makeBreakdown({ pass: 3, fail: 2, contested: 1, total: 6, disputed: 1 })} />
@@ -171,65 +170,11 @@ describe("RubricBreakdownStrip", () => {
     });
   });
 
-  describe("compact variant", () => {
-    it("omits rubric-breakdown-total", () => {
-      const { queryByTestId } = render(
-        <RubricBreakdownStrip breakdown={makeBreakdown()} variant="compact" />
-      );
-      expect(queryByTestId("rubric-breakdown-total")).toBeNull();
-    });
-
-    it("omits rubric-breakdown-pass", () => {
-      const { queryByTestId } = render(
-        <RubricBreakdownStrip breakdown={makeBreakdown()} variant="compact" />
-      );
-      expect(queryByTestId("rubric-breakdown-pass")).toBeNull();
-    });
-
-    it("renders contested chip and disputed tag, and no fail chip", () => {
-      const { queryByTestId } = render(
-        <RubricBreakdownStrip breakdown={makeBreakdown({ contested: 1, disputed: 1 })} variant="compact" />
-      );
-      expect(screen.getByTestId("rubric-breakdown-contested")).toBeDefined();
-      expect(screen.getByTestId("rubric-breakdown-disputed")).toBeDefined();
-      expect(queryByTestId("rubric-breakdown-fail")).toBeNull();
-    });
-
-    it("renders only the disputed tag when contested is 0", () => {
-      const { queryByTestId } = render(
-        <RubricBreakdownStrip breakdown={makeBreakdown({ contested: 0, disputed: 1 })} variant="compact" />
-      );
-      expect(queryByTestId("rubric-breakdown-contested")).toBeNull();
-      expect(queryByTestId("rubric-breakdown-fail")).toBeNull();
-      expect(screen.getByTestId("rubric-breakdown-disputed")).toBeDefined();
-    });
-
-    it("carries pass/total/contested in the contested chip title", () => {
-      render(
-        <RubricBreakdownStrip
-          breakdown={makeBreakdown({ pass: 4, fail: 2, contested: 1, total: 7 })}
-          variant="compact"
-        />
-      );
-      const contestedChip = screen.getByTestId("rubric-breakdown-contested");
-      const title = contestedChip.getAttribute("title") ?? "";
-      expect(title).toContain("4 passed");
-      expect(title).toContain("1 contested");
-      expect(title).toContain("7 total");
-    });
-
-    it("renders — for null disputed in compact mode", () => {
-      render(<RubricBreakdownStrip breakdown={makeBreakdown({ disputed: null })} variant="compact" />);
-      expect(screen.getByTestId("rubric-breakdown-disputed").textContent).toContain("—");
-    });
-  });
-
   describe("OFFLINE_CSS class compliance", () => {
     it("every class emitted by the strip is present in the OFFLINE_CSS allowlist", () => {
       const markup = renderToStaticMarkup(
         <RubricBreakdownStrip
           breakdown={makeBreakdown({ pass: 3, fail: 2, contested: 1, total: 6, disputed: 1 })}
-          variant="full"
         />
       );
 

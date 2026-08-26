@@ -3,21 +3,17 @@
  *
  * Tests for the rubricBreakdown integration in BenchmarkRunsHistory.
  *
- * Covers (per ticket T3 spec):
- * 1. output-ref path → n_failed/n_disputed null; strip renders "—" for Total/Disputed
- * 2. early bail (no roster/criteria/graphOut) → n_failed/n_disputed null
- * 3. !score bail (computeBenchmarkScore returns null) → n_failed/n_disputed null
- * 4–5. secondary-row bails (nPassed null, !score) → n_failed/n_disputed null
- * 6. score-cell-contested testid still present (via strip's contested chip) — not duplicated
- * 7. secondary row with criteria_results reports a real Disputed count
+ * The runs-history rows no longer render the RubricBreakdownStrip — contested
+ * and disputed detail lives in the run report instead. These tests verify that
+ * no strip chips appear in rows on any path, and that the invisible
+ * score-cell-contested data anchor (used to verify contested-exclusion score
+ * derivation) is still applied when the row's score excludes contested criteria.
  *
  * NOTE: Because the adjusted* arrays are internal to the component, we test
  * them indirectly by checking rendered testids on ScoreCell.
  *
  * The `rubricBreakdown` helper and its partition are tested separately in
- * src/__tests__/unit/lib/harvey-lab/rubric-scoring.test.ts. Here we only
- * verify the integration path: that the strip is mounted / not mounted and
- * that the contested testid appears at most once per row.
+ * src/__tests__/unit/lib/harvey-lab/rubric-scoring.test.ts.
  */
 
 import React from "react";
@@ -154,9 +150,7 @@ beforeEach(() => {
 // ─── Tests ───────────────────────────────────────────────────────────────────
 
 describe("BenchmarkRunsHistory — ScoreCell breakdown strip", () => {
-  it("output-ref path: strip renders (n_failed=null, n_disputed=null) — no Total chip", () => {
-    // The output-ref path sets n_failed=null / n_disputed=null, so breakdown=null
-    // and the strip renders nothing (or just the fraction + badge).
+  it("output-ref path: no strip chips render — just the fraction", () => {
     const graphOutputEntry = {
       runId: "run-1",
       matchedBy: "output-ref" as const,
@@ -173,16 +167,14 @@ describe("BenchmarkRunsHistory — ScoreCell breakdown strip", () => {
 
     render(<BenchmarkRunsHistory />);
 
-    // The row should render; score cell shows fraction
+    // The row should render; score cell shows fraction only.
     const row = screen.getByTestId("run-row-run-1");
     expect(row).toBeInTheDocument();
-    // On the output-ref path breakdown=null → strip renders nothing, so
-    // rubric-breakdown-total should NOT be present (compact variant never shows it anyway,
-    // but null breakdown produces nothing at all).
     expect(screen.queryByTestId("rubric-breakdown-total")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("rubric-breakdown-disputed")).not.toBeInTheDocument();
   });
 
-  it("early bail (no roster, no criteria, no graphOut): strip not rendered", () => {
+  it("early bail (no roster, no criteria, no graphOut): no strip chips render", () => {
     // No roster, no criteria, no graphOut → return { ...run, n_failed: null, n_disputed: null }
     defaultMocks({ roster: null, graphOutput: null });
     mockRunList.mockReturnValue({
@@ -194,12 +186,12 @@ describe("BenchmarkRunsHistory — ScoreCell breakdown strip", () => {
     });
 
     render(<BenchmarkRunsHistory />);
-    // No breakdown strip — neither fail nor total chips.
     expect(screen.queryByTestId("rubric-breakdown-fail")).not.toBeInTheDocument();
     expect(screen.queryByTestId("rubric-breakdown-total")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("rubric-breakdown-disputed")).not.toBeInTheDocument();
   });
 
-  it("scoring path: contested chip present, no fail chip; score-cell-contested present at most once", () => {
+  it("scoring path: no strip chips render; score-cell-contested anchor present exactly once", () => {
     const roster = [
       { ref_id: "r1", id: "C-001", name: "Criterion 1", contested: false },
       { ref_id: "r2", id: "C-002", name: "Criterion 2", contested: false },
@@ -227,11 +219,11 @@ describe("BenchmarkRunsHistory — ScoreCell breakdown strip", () => {
 
     render(<BenchmarkRunsHistory />);
 
-    // The breakdown strip (compact) renders the contested chip; the fail chip is gone.
+    // No strip chips in rows — contested/disputed detail lives in the report.
     expect(screen.queryByTestId("rubric-breakdown-fail")).toBeNull();
-    // score-cell-contested maps to the rubric-breakdown-contested testid in the strip.
-    // It should appear at most once per row (no duplicate).
-    const contestedElements = screen.queryAllByTestId("rubric-breakdown-contested");
-    expect(contestedElements.length).toBe(1);
+    expect(screen.queryByTestId("rubric-breakdown-contested")).toBeNull();
+    expect(screen.queryByTestId("rubric-breakdown-disputed")).toBeNull();
+    // The invisible data anchor still marks rows whose score excludes contested criteria.
+    expect(screen.getAllByTestId("score-cell-contested").length).toBe(1);
   });
 });

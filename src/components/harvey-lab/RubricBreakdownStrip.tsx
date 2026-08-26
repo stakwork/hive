@@ -12,16 +12,14 @@
 import React from "react";
 import type { RubricBreakdown } from "@/lib/harvey-lab/rubric-scoring";
 
+/**
+ * Renders Pass + Contested + Total chips plus the Disputed overlay tag.
+ * Report surfaces only (run report header, offline export, LegalBenchmarkResults
+ * score summary) — runs-history rows show just the fraction and an all-pass badge,
+ * leaving contested/disputed detail to the report.
+ */
 export interface RubricBreakdownStripProps {
   breakdown: RubricBreakdown | null;
-  /**
-   * "full"    — renders Pass + Contested + Total chips, plus the Disputed overlay tag.
-   * "compact" — renders the Contested chip (only when contested > 0) and the Disputed tag;
-   *             Pass/Total are carried in the chip title string. Used by Runs tab /
-   *             workflow-benchmarks to avoid duplicating or contradicting the existing
-   *             fraction display.
-   */
-  variant?: "full" | "compact";
 }
 
 /** Render the Disputed overlay tag. `null | undefined` both produce "—". */
@@ -42,7 +40,7 @@ function DisputedTag({ value }: { value: number | null | undefined }) {
   );
 }
 
-export function RubricBreakdownStrip({ breakdown, variant = "full" }: RubricBreakdownStripProps) {
+export function RubricBreakdownStrip({ breakdown }: RubricBreakdownStripProps) {
   if (!breakdown) return null;
 
   const { pass, contested, total, disputed, totalSource } = breakdown;
@@ -52,26 +50,6 @@ export function RubricBreakdownStrip({ breakdown, variant = "full" }: RubricBrea
       ? `${total} total criteria (run-reported — no graph roster was available to verify this count)`
       : `${total} total criteria in the rubric roster (graph-sourced)`;
 
-  if (variant === "compact") {
-    // Compact: Contested chip (when present) + Disputed tag. Pass/Total in title.
-    const compactTitle = `${pass} passed · ${contested} contested · ${total} total${totalSource === "run" ? " (run-reported)" : ""}`;
-    return (
-      <span className="inline-flex flex-wrap items-center gap-2">
-        {contested > 0 && (
-          <span
-            className="inline-flex items-center rounded-full border border-violet-500/40 bg-violet-500/10 px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.07em] text-violet-500"
-            data-testid="rubric-breakdown-contested"
-            title={compactTitle}
-          >
-            +{contested} contested
-          </span>
-        )}
-        <DisputedTag value={disputed} />
-      </span>
-    );
-  }
-
-  // Full variant: Pass + Contested + Total chips + Disputed tag.
   return (
     <div className="flex flex-wrap items-center gap-2 mt-2">
       <span
