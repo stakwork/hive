@@ -13,10 +13,8 @@ import {
   formatBenchmarkScore,
   criterionStatus,
   buildContestedIndex,
-  rubricBreakdown,
   type GraphRubric,
 } from "@/lib/harvey-lab/rubric-scoring";
-import { RubricBreakdownStrip } from "@/components/harvey-lab/RubricBreakdownStrip";
 import {
   PASS_BADGE_CLASS,
   FAIL_BADGE_CLASS,
@@ -138,7 +136,6 @@ function ScoreCell({ run, rubrics, rubricsLoading }: ScoreCellProps) {
   }
 
   const { headline } = formatBenchmarkScore(score);
-  const bd = rubricBreakdown({ score, criteria: run.criteria_results, graphRubrics: roster });
 
   return (
     <div
@@ -151,7 +148,6 @@ function ScoreCell({ run, rubrics, rubricsLoading }: ScoreCellProps) {
           PASS
         </Badge>
       )}
-      <RubricBreakdownStrip breakdown={bd} variant="compact" />
     </div>
   );
 }
