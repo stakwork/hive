@@ -467,7 +467,7 @@ describe("BenchmarkRunsHistory", () => {
 
   // ─── colSpan tests ─────────────────────────────────────────────────────────
 
-  it("expanded row colSpan is 7 for non-super-admin (Task + Type + Started + Runner Status + Score + Chat + Report)", async () => {
+  it("expanded row colSpan is 9 for non-super-admin (Task + Type + Started + Runner Status + Score + Contested + Disputed + Chat + Report)", async () => {
     const user = userEvent.setup();
     render(React.createElement(BenchmarkRunsHistory));
 
@@ -475,10 +475,10 @@ describe("BenchmarkRunsHistory", () => {
     await user.click(row);
 
     const expandedCell = screen.getByTestId("results-runner-1").closest("td")!;
-    expect(expandedCell.getAttribute("colspan")).toBe("7");
+    expect(expandedCell.getAttribute("colspan")).toBe("9");
   });
 
-  it("expanded row colSpan is 8 for super-admin (adds Stakwork column)", async () => {
+  it("expanded row colSpan is 10 for super-admin (adds Stakwork column)", async () => {
     const { useWorkspace } = await import("@/hooks/useWorkspace");
     (useWorkspace as ReturnType<typeof vi.fn>).mockReturnValue({
       workspace: { id: WORKSPACE_ID, slug: WORKSPACE_SLUG },
@@ -492,7 +492,7 @@ describe("BenchmarkRunsHistory", () => {
     await user.click(row);
 
     const expandedCell = screen.getByTestId("results-runner-1").closest("td")!;
-    expect(expandedCell.getAttribute("colspan")).toBe("8");
+    expect(expandedCell.getAttribute("colspan")).toBe("10");
   });
 
   // ─── Existing interaction tests ────────────────────────────────────────────
@@ -754,7 +754,7 @@ describe("BenchmarkRunsHistory", () => {
     expect(screen.queryByTestId("model-sub-line")).toBeNull();
   });
 
-  it("model sub-line does not affect colSpan (non-super-admin still 5)", async () => {
+  it("model sub-line does not affect colSpan (non-super-admin still 9)", async () => {
     mockUseList.mockReturnValue({
       runs: [makeRun({
         requestedModel: "anthropic/claude-sonnet-5",
@@ -774,7 +774,7 @@ describe("BenchmarkRunsHistory", () => {
     await user.click(row);
 
     const expandedCell = screen.getByTestId("results-runner-1").closest("td")!;
-    expect(expandedCell.getAttribute("colspan")).toBe("7");
+    expect(expandedCell.getAttribute("colspan")).toBe("9");
   });
 
   // ─── Chat column tests ─────────────────────────────────────────────────────
