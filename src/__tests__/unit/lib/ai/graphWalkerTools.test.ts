@@ -70,6 +70,15 @@ vi.mock("@/lib/helpers/swarm-access", () => ({
   getSwarmAccessByWorkspaceId: vi.fn(),
 }));
 
+// `graph_query` (added later in this file's subject module) delegates to the
+// shared T1 service; mocking it here keeps the heavy transitive graph
+// (@/services/workspace → SwarmService, encryption helpers) out of this suite.
+vi.mock("@/services/graph/query", () => ({
+  runWorkspaceGraphQuery: vi.fn(),
+  GRAPH_QUERY_TIMEOUT_MS: 30_000,
+  GRAPH_QUERY_MAX_LENGTH: 4096,
+}));
+
 vi.mock("@/lib/logger", () => ({
   logger: {
     error: vi.fn(),

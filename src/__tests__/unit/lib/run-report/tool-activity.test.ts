@@ -97,6 +97,7 @@ describe("TOOL_CLASS — verified names", () => {
   it("graph_get → retrieval", () => expect(TOOL_CLASS.graph_get).toBe("retrieval"));
   it("graph_neighbors → retrieval", () => expect(TOOL_CLASS.graph_neighbors).toBe("retrieval"));
   it("graph_ontology → none", () => expect(TOOL_CLASS.graph_ontology).toBe("none"));
+  it("graph_query → retrieval", () => expect(TOOL_CLASS.graph_query).toBe("retrieval"));
 });
 
 describe("TOOL_CLASS — inferred names (harness-side, review on first real bundle)", () => {
