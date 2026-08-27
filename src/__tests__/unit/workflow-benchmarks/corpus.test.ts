@@ -4,7 +4,7 @@
  * Asserts:
  *   - Corpus invariants (slug, criteria count, baseline completeness)
  *   - Criterion wording: required/rejected literal forms named explicitly
- *   - Seed task specifics: no baseline, 8 criteria with unique ids
+ *   - Seed task specifics: no baseline, 10 criteria with unique ids
  *   - TASK_SLUG_RE: namespaced slug matches the regex
  *   - Slice 2 secret cleanup: `expectedSecrets` is fully removed; C-004 and
  *     C-005 narrowed to SHAPE-ONLY secret checks using generic placeholders;
@@ -173,13 +173,13 @@ describe("CREATE_OPENAI_CALL_TASK (seed task)", () => {
     expect(task.slug).toBe("wfbench/create-openai-call");
   });
 
-  it("has exactly 8 criteria", () => {
-    expect(task.criteria.length).toBe(8);
+  it("has exactly 10 criteria (8 original + input-name C-009 + run-output C-010)", () => {
+    expect(task.criteria.length).toBe(10);
   });
 
-  it("criterion ids are C-001 through C-008", () => {
+  it("criterion ids are C-001 through C-010", () => {
     const ids = task.criteria.map((c) => c.id);
-    for (let i = 1; i <= 8; i++) {
+    for (let i = 1; i <= 10; i++) {
       const expected = `C-${String(i).padStart(3, "0")}`;
       expect(ids).toContain(expected);
     }
@@ -461,9 +461,9 @@ describe("intent-statement rewrite & provider-agnostic criteria audit", () => {
   });
 
   describe("wfbench/create-openai-call — audit table applied (7 rewritten, C-008 verbatim)", () => {
-    it("still has exactly 8 criteria with unchanged ids C-001..C-008", () => {
+    it("has ids C-001..C-010 (audit-table C-001..C-008 unchanged; C-009 input-name and C-010 run-output appended)", () => {
       const task = CREATE_OPENAI_CALL_TASK;
-      expect(task.criteria.length).toBe(8);
+      expect(task.criteria.length).toBe(10);
       expect(task.criteria.map((c) => c.id)).toEqual([
         "C-001",
         "C-002",
@@ -473,6 +473,8 @@ describe("intent-statement rewrite & provider-agnostic criteria audit", () => {
         "C-006",
         "C-007",
         "C-008",
+        "C-009",
+        "C-010",
       ]);
     });
 
@@ -529,7 +531,7 @@ describe("intent-statement rewrite & provider-agnostic criteria audit", () => {
     const task = findBenchmarkTask("wfbench/generate-capital-city")!;
     const all = () => task.criteria.map((c) => c.match_criteria).join("\n\n");
 
-    it("roster is non-empty and ids remain contiguous C-001..C-009", () => {
+    it("roster is non-empty and ids remain contiguous C-001..C-011", () => {
       expect(task.criteria.length).toBeGreaterThan(0);
       expect(task.criteria.map((c) => c.id)).toEqual([
         "C-001",
@@ -541,6 +543,8 @@ describe("intent-statement rewrite & provider-agnostic criteria audit", () => {
         "C-007",
         "C-008",
         "C-009",
+        "C-010",
+        "C-011",
       ]);
     });
 
@@ -679,9 +683,13 @@ describe("INPUT block injection", () => {
     expect(instr.split(INPUT_BLOCK_SENTENCE).length - 1).toBe(1);
   });
 
-  it("the seed task (no workflow_input) has NO INPUT block appended", () => {
-    expect(CREATE_OPENAI_CALL_TASK.instructions).not.toContain(INPUT_BLOCK_HEADING);
-    expect(CREATE_OPENAI_CALL_TASK.instructions).not.toContain(INPUT_BLOCK_SENTENCE);
+  it("create-openai-call (now input-declaring) also ends in an exactly-shaped injected INPUT block", () => {
+    const instr = CREATE_OPENAI_CALL_TASK.instructions;
+    const rendered = renderInputBlock(CREATE_OPENAI_CALL_TASK.workflow_input!);
+    expect(instr).toBe(`${authoredInstructionsOf(CREATE_OPENAI_CALL_TASK)}\n\n${rendered}`);
+    // The heading/sentence appear exactly ONCE (no hand-authored duplicate shipped).
+    expect(instr.split(INPUT_BLOCK_HEADING).length - 1).toBe(1);
+    expect(instr.split(INPUT_BLOCK_SENTENCE).length - 1).toBe(1);
   });
 
   it("checkNoHandAuthoredInputBlock rejects instructions that already contain the heading", () => {

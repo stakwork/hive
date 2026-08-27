@@ -160,6 +160,9 @@ export async function ensureWorkflowBenchmarkEvalNodes(
         desirable_cases: [criterion.match_criteria],
         undesirable_cases: [],
         corpus: CORPUS_MARKER,
+        // Which evidence the criterion judges: the static workflow JSON
+        // ("workflow") or the executed workflow's run output ("output").
+        evaluates: criterion.evaluates ?? "workflow",
       },
     }));
 

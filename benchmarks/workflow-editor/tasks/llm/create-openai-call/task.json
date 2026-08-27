@@ -1,6 +1,9 @@
 {
   "title": "Create a workflow that sends a prompt to an LLM",
   "instructions": "Create a workflow that sends a user-supplied prompt to an LLM and returns the model's response.",
+  "workflow_input": {
+    "prompt": "In one sentence, explain why the sky is blue."
+  },
   "criteria": [
     {
       "id": "C-001",
@@ -41,6 +44,17 @@
       "id": "C-008",
       "title": "Workflow is structurally valid",
       "match_criteria": "The workflow JSON satisfies all three structural requirements: (1) there is at least one connection whose source is \"start\" (or the workflow has a designated start node/step); (2) every step is reachable via an unbroken chain of connections from start (no orphaned steps); (3) there is at least one edge whose target is \"system.succeed\" (or the equivalent terminal node), ensuring the workflow can reach a successful completion state. A workflow missing any one of these three is structurally invalid and fails this criterion."
+    },
+    {
+      "id": "C-009",
+      "title": "Workflow accepts a caller-supplied input named exactly `prompt`",
+      "match_criteria": "The workflow declares and consumes a caller-supplied workflow input named exactly `prompt`, and the artifact's behavior (the request built in C-007) is driven by that input's value rather than a literal. This is assessed at the artifact level: PASS if the produced workflow JSON references an input/variable named `prompt` and uses it to build the request. FAIL if the workflow hard-codes the prompt text directly in the request body with no `prompt` input reference, or if it declares the input under any other name (e.g. `query`, `userPrompt`) — a rerun supplies the value under the name `prompt` and cannot drive a workflow that reads a different name."
+    },
+    {
+      "id": "C-010",
+      "title": "The run output is a plausible LLM response to the supplied prompt",
+      "match_criteria": "Judged against the RUN OUTPUT produced by executing the workflow with the supplied `prompt` input — not against the workflow JSON. There is no single correct answer; what is asserted is that the output reads as a plausible LLM-generated response to the supplied prompt: coherent text that is responsive to what the prompt asked. PASS: coherent generated text addressing the prompt. FAIL: the output is empty, an error message or stack-trace payload, raw request/response scaffolding with no generated text, a verbatim echo of the prompt with no answer, or content unresponsive to the prompt.",
+      "evaluates": "output"
     }
   ]
 }
