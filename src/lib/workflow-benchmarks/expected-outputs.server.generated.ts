@@ -16,5 +16,10 @@
  */
 
 export const EXPECTED_OUTPUTS: Readonly<Record<string, string>> = {
+  "wfbench/gaia-asian-monarchy-coastline": "12",
+  "wfbench/gaia-lego-wikipedia-images": "13",
+  "wfbench/gaia-mercedes-sosa-albums": "3",
+  "wfbench/gaia-survivor-may-winner": "Michele Fitzgerald",
+  "wfbench/gaia-yankees-1977-at-bats": "519",
   "wfbench/generate-capital-city": "Cardiff",
 };
