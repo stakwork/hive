@@ -62,13 +62,15 @@ vi.mock("@/components/ui/select", () => {
       children,
       value,
       onValueChange,
+      disabled,
     }: {
       children?: React.ReactNode;
       value?: string;
       onValueChange?: (v: string) => void;
+      disabled?: boolean;
     }) => (
-      <Ctx.Provider value={onValueChange}>
-        <div data-testid="select-root" data-value={value}>
+      <Ctx.Provider value={disabled ? undefined : onValueChange}>
+        <div data-testid="select-root" data-value={value} aria-disabled={disabled ? "true" : undefined}>
           {children}
         </div>
       </Ctx.Provider>
@@ -76,10 +78,16 @@ vi.mock("@/components/ui/select", () => {
     SelectTrigger: ({
       children,
       "data-testid": testId,
+      disabled,
     }: {
       children?: React.ReactNode;
       "data-testid"?: string;
-    }) => <div data-testid={testId ?? "select-trigger"}>{children}</div>,
+      disabled?: boolean;
+    }) => (
+      <div data-testid={testId ?? "select-trigger"} aria-disabled={disabled ? "true" : undefined}>
+        {children}
+      </div>
+    ),
     SelectValue: ({ placeholder }: { placeholder?: string }) => <span>{placeholder}</span>,
     SelectContent: ({ children }: { children?: React.ReactNode }) => <div>{children}</div>,
     SelectItem: ({ children, value }: { children?: React.ReactNode; value?: string }) => {
@@ -128,6 +136,21 @@ const mockTask: HarveyTask = {
   difficulty: "hard",
   tags: ["antitrust", "merger"],
 };
+
+/**
+ * Shared LlmModel catalog fixture for the model-selection suites.
+ * Includes claude-sonnet-4-6 (DEFAULT_JUDGE_MODEL) so a default-resolution
+ * assertion exercises the real default rather than the fallback branch;
+ * judge-fallback variants are derived by filtering this array.
+ */
+const MOCK_MODELS = [
+  { id: "m1", name: "claude-sonnet-5", provider: "ANTHROPIC", providerLabel: null, isPlanDefault: false, isTaskDefault: false },
+  { id: "m1b", name: "claude-sonnet-4-6", provider: "ANTHROPIC", providerLabel: null, isPlanDefault: false, isTaskDefault: false },
+  { id: "m2", name: "claude-opus-5", provider: "ANTHROPIC", providerLabel: null, isPlanDefault: false, isTaskDefault: false },
+  { id: "m3", name: "gpt-5.2", provider: "OPENAI", providerLabel: null, isPlanDefault: false, isTaskDefault: false },
+  { id: "m4", name: "custom-x", provider: "OTHER", providerLabel: "Acme", isPlanDefault: false, isTaskDefault: false },
+  { id: "m5", name: "stealth/ox-alpha", provider: "OTHER", providerLabel: "OpenRouter", isPlanDefault: false, isTaskDefault: false },
+];
 
 // ─── Tests ────────────────────────────────────────────────────────────────────
 
@@ -302,14 +325,6 @@ describe("TaskDetailsModal — DOCX editor link", () => {
 // ─── Model pair selection ─────────────────────────────────────────────────────
 
 describe("TaskDetailsModal — model pair selection", () => {
-  const MOCK_MODELS = [
-    { id: "m1", name: "claude-sonnet-5", provider: "ANTHROPIC", providerLabel: null, isPlanDefault: false, isTaskDefault: false },
-    { id: "m2", name: "claude-opus-5", provider: "ANTHROPIC", providerLabel: null, isPlanDefault: false, isTaskDefault: false },
-    { id: "m3", name: "gpt-5.2", provider: "OPENAI", providerLabel: null, isPlanDefault: false, isTaskDefault: false },
-    { id: "m4", name: "custom-x", provider: "OTHER", providerLabel: "Acme", isPlanDefault: false, isTaskDefault: false },
-    { id: "m5", name: "stealth/ox-alpha", provider: "OTHER", providerLabel: "OpenRouter", isPlanDefault: false, isTaskDefault: false },
-  ];
-
   function stubFetch({ models = MOCK_MODELS, modelsOk = true }: { models?: unknown[]; modelsOk?: boolean } = {}) {
     vi.stubGlobal(
       "fetch",
@@ -447,6 +462,7 @@ describe("TaskDetailsModal — model pair selection", () => {
       generateRunReport: false,
       standardModel: "anthropic/claude-sonnet-5",
       reasoningModel: "anthropic/claude-opus-5",
+      judgeModel: "anthropic/claude-sonnet-4-6",
     });
   });
 
@@ -464,6 +480,170 @@ describe("TaskDetailsModal — model pair selection", () => {
     expect(onRunTask).toHaveBeenCalledWith({
       generateJamieChat: false,
       generateRunReport: false,
+    });
+  });
+});
+
+// ─── Judge model selection ────────────────────────────────────────────────────
+
+describe("TaskDetailsModal — judge model selection", () => {
+  function stubFetch({ models = MOCK_MODELS, modelsOk = true }: { models?: unknown[]; modelsOk?: boolean } = {}) {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockImplementation((url: string) => {
+        if (String(url) === "/api/llm-models") {
+          return Promise.resolve({ ok: modelsOk, json: async () => ({ models }) });
+        }
+        return Promise.resolve({ ok: false, status: 500, json: async () => ({}) });
+      }),
+    );
+  }
+
+  function renderModal(onRunTask = vi.fn()) {
+    render(
+      <TaskDetailsModal
+        open={true}
+        onOpenChange={vi.fn()}
+        task={mockTask}
+        slug="openlaw"
+        onRunTask={onRunTask}
+      />,
+    );
+    return onRunTask;
+  }
+
+  beforeEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("renders the judge select as the fourth control and defaults to anthropic/claude-sonnet-4-6", async () => {
+    stubFetch();
+    renderModal();
+
+    await waitFor(() => {
+      expect(screen.getByTestId("provider-select")).toBeInTheDocument();
+    });
+    expect(screen.getByTestId("judge-model-select")).toBeInTheDocument();
+
+    const roots = screen.getAllByTestId("select-root");
+    expect(roots).toHaveLength(4);
+    // Positional contract: 0=provider, 1=standard, 2=reasoning, 3=judge
+    expect(roots[0]).toHaveAttribute("data-value", "ANTHROPIC");
+    expect(roots[1]).toHaveAttribute("data-value", "anthropic/claude-sonnet-5");
+    expect(roots[2]).toHaveAttribute("data-value", "anthropic/claude-opus-5");
+    expect(roots[3]).toHaveAttribute("data-value", "anthropic/claude-sonnet-4-6");
+  });
+
+  it("falls back silently to the first Anthropic entry when DEFAULT_JUDGE_MODEL is absent from the catalog", async () => {
+    stubFetch({
+      models: MOCK_MODELS.filter((m) => m.name !== "claude-sonnet-4-6"),
+    });
+    renderModal();
+
+    await waitFor(() => {
+      expect(screen.getByTestId("judge-model-select")).toBeInTheDocument();
+    });
+
+    const roots = screen.getAllByTestId("select-root");
+    expect(roots[3]).toHaveAttribute("data-value", "anthropic/claude-sonnet-5");
+    // No notice is warranted for the fallback — the select displays what resolved.
+    expect(screen.queryByTestId("judge-model-warning")).not.toBeInTheDocument();
+  });
+
+  it("lists only raw-ANTHROPIC models as judge options (OTHER + Anthropic-normalising label excluded)", async () => {
+    // OTHER + providerLabel "Anthropic" would normalise to ANTHROPIC under
+    // effectiveProvider, but the run route's validateModel queries the raw enum
+    // and would reject such a value — so it must not appear in judge options.
+    stubFetch({
+      models: MOCK_MODELS.map((m) =>
+        m.id === "m4" ? { ...m, providerLabel: "Anthropic" } : m,
+      ),
+    });
+    renderModal();
+
+    await waitFor(() => {
+      expect(screen.getByTestId("judge-model-select")).toBeInTheDocument();
+    });
+
+    const judgeRoot = screen.getAllByTestId("select-root")[3];
+    const judgeValues = within(judgeRoot)
+      .getAllByTestId("select-item")
+      .map((el) => el.getAttribute("data-value"));
+    expect(judgeValues).toEqual([
+      "anthropic/claude-sonnet-5",
+      "anthropic/claude-sonnet-4-6",
+      "anthropic/claude-opus-5",
+    ]);
+  });
+
+  it("judge selection is not reset when the Provider dropdown switches to OPENAI/OPENROUTER", async () => {
+    stubFetch();
+    renderModal();
+
+    await waitFor(() => {
+      expect(screen.getByTestId("provider-select")).toBeInTheDocument();
+    });
+
+    // Pick a specific judge first
+    const judgeRootBefore = screen.getAllByTestId("select-root")[3];
+    fireEvent.click(
+      within(judgeRootBefore)
+        .getAllByTestId("select-item")
+        .find((el) => el.getAttribute("data-value") === "anthropic/claude-opus-5")!,
+    );
+    await waitFor(() => {
+      expect(screen.getAllByTestId("select-root")[3]).toHaveAttribute(
+        "data-value",
+        "anthropic/claude-opus-5",
+      );
+    });
+
+    // Switch the standard/reasoning pair's provider
+    const providerRoot = screen.getAllByTestId("select-root")[0];
+    fireEvent.click(
+      within(providerRoot)
+        .getAllByTestId("select-item")
+        .find((el) => el.getAttribute("data-value") === "OPENAI")!,
+    );
+
+    await waitFor(() => {
+      expect(screen.getAllByTestId("select-root")[0]).toHaveAttribute("data-value", "OPENAI");
+    });
+
+    // Judge survives the provider switch (UI invariant only — a cross-provider
+    // run may still fail downstream credential resolution; not asserted here).
+    expect(screen.getAllByTestId("select-root")[3]).toHaveAttribute(
+      "data-value",
+      "anthropic/claude-opus-5",
+    );
+  });
+
+  it("disables the judge select with an inline warning when the catalog has zero Anthropic models", async () => {
+    stubFetch({
+      models: [
+        { id: "m3", name: "gpt-5.2", provider: "OPENAI", providerLabel: null, isPlanDefault: false, isTaskDefault: false },
+        { id: "m5", name: "stealth/ox-alpha", provider: "OTHER", providerLabel: "OpenRouter", isPlanDefault: false, isTaskDefault: false },
+      ],
+    });
+    const onRunTask = renderModal();
+
+    await waitFor(() => {
+      expect(screen.getByTestId("provider-select")).toBeInTheDocument();
+    });
+
+    const judgeRoot = screen.getAllByTestId("select-root")[3];
+    expect(judgeRoot).toHaveAttribute("aria-disabled", "true");
+    expect(screen.getByTestId("judge-model-warning")).toHaveTextContent(
+      "No Anthropic models in catalog",
+    );
+
+    // judgeModel was never set → omitted; the route applies its own default
+    fireEvent.click(screen.getByText("Run Task"));
+    expect(onRunTask).toHaveBeenCalledWith({
+      generateJamieChat: false,
+      generateRunReport: false,
+      standardModel: "openai/gpt-5.2",
+      reasoningModel: "openai/gpt-5.2",
     });
   });
 });

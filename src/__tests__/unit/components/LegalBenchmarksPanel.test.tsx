@@ -161,6 +161,7 @@ vi.mock("@/components/legal/TaskDetailsModal", () => ({
       generateRunReport?: boolean;
       standardModel?: string;
       reasoningModel?: string;
+      judgeModel?: string;
     }) => void;
   }) =>
     open
@@ -178,6 +179,7 @@ vi.mock("@/components/legal/TaskDetailsModal", () => ({
                   generateRunReport: false,
                   standardModel: "anthropic/claude-sonnet-5",
                   reasoningModel: "anthropic/claude-opus-4-6",
+                  judgeModel: "anthropic/claude-sonnet-4-6",
                 });
               },
             },
@@ -745,9 +747,10 @@ describe("LegalBenchmarksPanel", () => {
       );
       expect(runCall).toBeDefined();
       const body = JSON.parse((runCall![1] as RequestInit).body as string);
-      // Modal-selected pair is forwarded to the run route
+      // Modal-selected pair + Anthropic-only judge are forwarded to the run route
       expect(body.standardModel).toBe("anthropic/claude-sonnet-5");
       expect(body.reasoningModel).toBe("anthropic/claude-opus-4-6");
+      expect(body.judgeModel).toBe("anthropic/claude-sonnet-4-6");
     });
   });
 });
