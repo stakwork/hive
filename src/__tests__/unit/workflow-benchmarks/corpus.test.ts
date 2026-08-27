@@ -13,6 +13,12 @@
  *   - workflow_input / expected_output contract (Slice 1): value types, INPUT
  *     block injection presence/position, rejection of a hand-authored block,
  *     index/map agreement, declared input keys referenced in criteria
+ *   - Intent-statement rewrite (follow-up correction): `instructions` are
+ *     ONE-LINE intents with no endpoint URL / secret name / model name /
+ *     structural requirement; no criterion anywhere pins a value the prose no
+ *     longer states (`OPENAI_STAKWORK_MAIN_KEY`, `api.openai.com`,
+ *     named OpenAI models); C-001..C-003 and C-006 carry their re-aligned,
+ *     mechanism-free semantics; C-008 remains VERBATIM
  *
  * NOTE: whether an LLM judge actually enforces any criterion's wording is NOT
  * verifiable in this repo (the judge lives in Stakwork's pipeline) — these
@@ -50,6 +56,35 @@ import {
 // (`run/route.ts` imports this module), so it is resolved here, test-side,
 // with an explicit definedness check instead of a non-null assertion.
 const CREATE_OPENAI_CALL_TASK = findBenchmarkTask("wfbench/create-openai-call")!;
+
+/**
+ * Recovers the AUTHORED instructions (what the corpus author typed in
+ * `task.json`) from the emitted task by stripping the generator-injected
+ * INPUT block. The index intentionally stores the post-injection string, so
+ * intent-shape assertions must peel the injected suffix back off first.
+ */
+function authoredInstructionsOf(task: {
+  instructions: string;
+  workflow_input?: Record<string, string>;
+}): string {
+  if (!task.workflow_input) return task.instructions;
+  const suffix = `\n\n${renderInputBlock(task.workflow_input)}`;
+  expect(
+    task.instructions.endsWith(suffix),
+    "emitted instructions must end with exactly the rendered INPUT block",
+  ).toBe(true);
+  return task.instructions.slice(0, task.instructions.length - suffix.length);
+}
+
+/** Proxy markers for spec-style content that an authored intent must NOT carry. */
+const FORBIDDEN_IN_AUTHORED_INTENT: Array<[string, RegExp]> = [
+  ["endpoint URL", /https?:\/\//],
+  ["secret reference authoring form", /%%/],
+  ["runtime secret form", /\{\{/],
+  ["named model", /gpt-\d|omni-\d|text-davinci/i],
+  ["structural requirement (start/terminal wiring)", /system\.succeed|start connection/i],
+  ["prose requirements list", /^Requirements:/m],
+];
 
 describe("seed task resolution", () => {
   it("findBenchmarkTask resolves the seed task by slug", () => {
@@ -154,18 +189,27 @@ describe("CREATE_OPENAI_CALL_TASK (seed task)", () => {
     expect(task.baseline).toBeUndefined();
   });
 
-  // NOTE: the instructions-contains-OPENAI_STAKWORK_MAIN_KEY assertion is
-  // deliberately RETAINED (Slice 2). It reads `instructions` prose — not the
-  // removed `expectedSecrets` field and not any criterion body — and after
-  // the narrowing it is one of the very few remaining secret-hygiene checks
-  // in the suite: the agent still needs to be told which real secret the
-  // produced workflow must reference.
-  it("instructions explicitly name OPENAI_STAKWORK_MAIN_KEY", () => {
-    expect(task.instructions).toContain("OPENAI_STAKWORK_MAIN_KEY");
+  // NOTE: the instructions are now a ONE-LINE intent statement. The old
+  // assertions that instructions NAME a secret / enumerate body fields were
+  // dropped with that rewrite — an agent following pure intent cannot know a
+  // specific secret name, so naming one would make every credential criterion
+  // telepathy. See "intent-statement prose" describe below.
+  it("instructions are authored as a single-line intent statement", () => {
+    const authored = authoredInstructionsOf(task);
+    expect(authored).not.toContain("\n");
+    expect(authored.trim().length).toBeGreaterThan(40);
+    expect(authored.trim()).toBe(authored);
   });
 
-  it("instructions are non-empty and substantive", () => {
-    expect(task.instructions.length).toBeGreaterThan(100);
+  it("authored instructions carry no endpoint, secret, model or structural requirement", () => {
+    const authored = authoredInstructionsOf(task);
+    for (const [label, re] of FORBIDDEN_IN_AUTHORED_INTENT) {
+      expect(
+        re.test(authored),
+        `authored instructions must not state ${label}: "${authored}"`,
+      ).toBe(false);
+    }
+    expect(authored).not.toContain("OPENAI_STAKWORK_MAIN_KEY");
   });
 });
 
@@ -378,6 +422,169 @@ describe("C-008 — Workflow is structurally valid", () => {
   });
 });
 
+// ── Intent-statement rewrite: rubric re-alignment (follow-up correction) ─────
+
+/**
+ * Both tasks' authored `instructions` are now ONE-LINE intents, so every
+ * criterion was audited: none may pin a value the prose no longer states.
+ * On the seed task C-001..C-007 were rewritten (C-004/C-005 only minimally —
+ * the shape-only wording shipped in the secret-cleanup slice was already
+ * intent-compatible); C-008 structural validity kept VERBATIM. On
+ * generate-capital-city the input-name and structural-validity criteria were
+ * already correct and stand verbatim; everything else was re-authored against
+ * the narrowed prose.
+ *
+ * Same caveat as everywhere else in this file: whether an external LLM judge
+ * enforces this wording is unverifiable here — these assertions are about
+ * criterion STRINGS only.
+ */
+describe("intent-statement rewrite & provider-agnostic criteria audit", () => {
+  const byId = (slug: string, id: string) =>
+    findBenchmarkTask(slug)!.criteria.find((x) => x.id === id)!;
+
+  it("no criterion anywhere pins the real secret, the OpenAI endpoint, or a hard-coded model", () => {
+    for (const t of WORKFLOW_BENCHMARK_TASKS) {
+      for (const criterion of t.criteria) {
+        const label = `${t.slug}::${criterion.id}`;
+        expect(criterion.match_criteria, `${label} pins the real secret`).not.toContain(
+          "OPENAI_STAKWORK_MAIN_KEY",
+        );
+        expect(criterion.match_criteria, `${label} pins an endpoint URL`).not.toContain(
+          "api.openai.com",
+        );
+        expect(criterion.match_criteria, `${label} pins a model name`).not.toMatch(
+          /gpt-\d|text-davinci|omni-\d/i,
+        );
+        expect(criterion.title, `${label} pins a provider`).not.toContain("OpenAI");
+      }
+    }
+  });
+
+  describe("wfbench/create-openai-call — audit table applied (7 rewritten, C-008 verbatim)", () => {
+    it("still has exactly 8 criteria with unchanged ids C-001..C-008", () => {
+      const task = CREATE_OPENAI_CALL_TASK;
+      expect(task.criteria.length).toBe(8);
+      expect(task.criteria.map((c) => c.id)).toEqual([
+        "C-001",
+        "C-002",
+        "C-003",
+        "C-004",
+        "C-005",
+        "C-006",
+        "C-007",
+        "C-008",
+      ]);
+    });
+
+    it("C-001 — broadened to artifact level: Request step OR equivalent provider/skill step", () => {
+      const m = byId("wfbench/create-openai-call", "C-001").match_criteria;
+      expect(m).toContain("LLM provider");
+      expect(m).toContain("Request step or an equivalent provider/skill step");
+      // No longer telegraphs a concrete step type spelling.
+      expect(m).not.toMatch(/type '(request|http_request)'/);
+    });
+
+    it("C-002 — provider-agnostic chat/completions target; specific provider unasserted", () => {
+      const m = byId("wfbench/create-openai-call", "C-002").match_criteria;
+      expect(m).toContain("chat/completions endpoint");
+      expect(m).toContain("specific provider is not asserted");
+      expect(m).not.toContain("https://");
+      expect(m).not.toContain("attributes.url");
+    });
+
+    it("C-003 — conditional: verb asserted ONLY when an HTTP request step performs the call", () => {
+      const m = byId("wfbench/create-openai-call", "C-003").match_criteria;
+      expect(m.toUpperCase()).toContain("CONDITIONAL");
+      expect(m).toContain("POST");
+      expect(m).toContain("(GET, PUT, PATCH, DELETE)");
+      expect(m).toContain("Not applicable");
+      expect(m).toContain("provider/skill step");
+    });
+
+    it("C-006 — repurposed to ANY non-empty model/deployment identifier, family unasserted", () => {
+      const criterion = byId("wfbench/create-openai-call", "C-006");
+      expect(criterion.title).not.toContain("OpenAI");
+      expect(criterion.match_criteria).toContain("non-empty string");
+      expect(criterion.match_criteria).toContain("No specific provider or model family");
+      expect(criterion.match_criteria).toMatch(/FAIL:/);
+    });
+
+    it("C-007 — artifact-level wiring assertion; provider request-body schema no longer asserted", () => {
+      const m = byId("wfbench/create-openai-call", "C-007").match_criteria;
+      expect(m).toContain("not hard-coded");
+      expect(m).toContain("request-body schema");
+      expect(m).toContain("is not asserted");
+      expect(m).toContain("[#(step_id).output.variable_name]");
+    });
+
+    it("C-008 — KEPT VERBATIM: genuine structural correctness", () => {
+      const m = byId("wfbench/create-openai-call", "C-008").match_criteria;
+      expect(m).toContain('"start"');
+      expect(m).toContain("no orphaned steps");
+      expect(m).toContain('"system.succeed"');
+    });
+  });
+
+  describe("wfbench/generate-capital-city — roster covers the four required categories", () => {
+    const task = findBenchmarkTask("wfbench/generate-capital-city")!;
+    const all = () => task.criteria.map((c) => c.match_criteria).join("\n\n");
+
+    it("roster is non-empty and ids remain contiguous C-001..C-009", () => {
+      expect(task.criteria.length).toBeGreaterThan(0);
+      expect(task.criteria.map((c) => c.id)).toEqual([
+        "C-001",
+        "C-002",
+        "C-003",
+        "C-004",
+        "C-005",
+        "C-006",
+        "C-007",
+        "C-008",
+        "C-009",
+      ]);
+    });
+
+    it("input-name criterion: `country`, hard-coded Wales FAILS, other names FAIL", () => {
+      const matches = task.criteria.filter((c) => c.match_criteria.includes("`country`"));
+      expect(matches.length).toBeGreaterThanOrEqual(1);
+      const joined = matches.map((m) => m.match_criteria).join("\n");
+      expect(joined).toContain('"Wales"');
+      expect(joined.toLowerCase()).toContain("fail");
+    });
+
+    it("structural-validity criterion present and unweakened", () => {
+      const structural = task.criteria.filter((c) => c.match_criteria.includes("system.succeed"));
+      expect(structural.length).toBe(1);
+      const m = structural[0].match_criteria;
+      expect(m).toContain('"start"');
+      expect(m).toContain("no orphaned steps");
+      expect(m).toContain("unbroken chain");
+    });
+
+    it("exactly two shape-only secret criteria (credential hygiene + reference form)", () => {
+      const secretCriteria = task.criteria.filter((c) =>
+        c.match_criteria.includes("%%SOME_SECRET_NAME%%"),
+      );
+      expect(secretCriteria.map((c) => c.id)).toEqual(["C-004", "C-005"]);
+    });
+
+    it("LLM-provider-call criterion present, mechanism-free and endpoint-free everywhere", () => {
+      const m = byId("wfbench/generate-capital-city", "C-001").match_criteria;
+      expect(m).toContain("LLM provider");
+      expect(m).toContain("provider/skill step");
+      expect(all()).not.toContain("api.openai.com");
+      expect(all()).not.toContain("https://");
+    });
+
+    it("country-reach criterion: value drives the call, never a fixed literal", () => {
+      const m = task.criteria.find((c) => c.id === "C-007")!.match_criteria;
+      expect(m).toContain("`country`");
+      expect(m).toContain("not just one");
+      expect(m).toContain('"Wales"');
+    });
+  });
+});
+
 // ── workflow_input / expected_output contract (Slice 1) ────────────────────────
 
 const CAPITAL_CITY_TASK = findBenchmarkTask("wfbench/generate-capital-city")!;
@@ -386,6 +593,23 @@ describe("generate-capital-city (self-verifying input-contract task)", () => {
   it("is resolvable and declares workflow_input", () => {
     expect(CAPITAL_CITY_TASK).toBeDefined();
     expect(CAPITAL_CITY_TASK.workflow_input).toEqual({ country: "Wales" });
+  });
+
+  it("instructions are authored as a single-line intent statement", () => {
+    const authored = authoredInstructionsOf(CAPITAL_CITY_TASK);
+    expect(authored).not.toContain("\n");
+    expect(authored.trim()).toBe(authored);
+    expect(authored.length).toBeGreaterThan(40);
+  });
+
+  it("authored instructions carry no endpoint, secret, model or structural requirement", () => {
+    const authored = authoredInstructionsOf(CAPITAL_CITY_TASK);
+    for (const [label, re] of FORBIDDEN_IN_AUTHORED_INTENT) {
+      expect(
+        re.test(authored),
+        `authored instructions must not state ${label}: "${authored}"`,
+      ).toBe(false);
+    }
   });
 
   it("does NOT carry expected_output on the emitted index type (server-boundary only)", () => {
@@ -431,27 +655,28 @@ describe("workflow_input value types", () => {
 });
 
 describe("INPUT block injection", () => {
-  it("the generator appended the INPUT block heading + sentence to generate-capital-city's instructions", () => {
-    expect(CAPITAL_CITY_TASK.instructions).toContain(INPUT_BLOCK_HEADING);
-    expect(CAPITAL_CITY_TASK.instructions).toContain(INPUT_BLOCK_SENTENCE);
-  });
-
-  it("the INPUT block appears AFTER the authored content, separated by a blank line", () => {
-    const headingIndex = CAPITAL_CITY_TASK.instructions.indexOf(INPUT_BLOCK_HEADING);
-    expect(headingIndex).toBeGreaterThan(0);
-    // Position is pinned: appended at the very end, under its own heading.
-    const before = CAPITAL_CITY_TASK.instructions.slice(0, headingIndex);
-    expect(before.endsWith("\n\n")).toBe(true);
-    // Nothing should follow the block's last declared key line except
-    // whitespace — the block is the tail of the string.
+  it("generate-capital-city's instructions end in an EXACTLY-shaped injected INPUT block", () => {
+    const instr = CAPITAL_CITY_TASK.instructions;
     const rendered = renderInputBlock(CAPITAL_CITY_TASK.workflow_input!);
-    expect(CAPITAL_CITY_TASK.instructions.endsWith(rendered)).toBe(true);
-  });
 
-  it("declares each workflow_input key in backticked form under the heading", () => {
-    for (const key of Object.keys(CAPITAL_CITY_TASK.workflow_input ?? {})) {
-      expect(CAPITAL_CITY_TASK.instructions).toContain(`\`${key}\``);
-    }
+    // Position: appended at the very end, separated from authored content by
+    // exactly one blank line — nothing follows the last bullet.
+    expect(instr, "emitted instructions must be `authored` + blank line + INPUT block").toBe(
+      `${authoredInstructionsOf(CAPITAL_CITY_TASK)}\n\n${rendered}`,
+    );
+
+    // Exact structure: heading -> blank -> sentence -> blank -> backticked bullets.
+    const lines = rendered.split("\n");
+    expect(lines[0]).toBe(INPUT_BLOCK_HEADING);
+    expect(lines[1]).toBe("");
+    expect(lines[2]).toBe(INPUT_BLOCK_SENTENCE);
+    expect(lines[3]).toBe("");
+    const keys = Object.keys(CAPITAL_CITY_TASK.workflow_input!);
+    expect(lines.slice(4)).toEqual(keys.map((k) => `- \`${k}\``));
+
+    // The heading/sentence appear exactly ONCE (no hand-authored duplicate shipped).
+    expect(instr.split(INPUT_BLOCK_HEADING).length - 1).toBe(1);
+    expect(instr.split(INPUT_BLOCK_SENTENCE).length - 1).toBe(1);
   });
 
   it("the seed task (no workflow_input) has NO INPUT block appended", () => {
