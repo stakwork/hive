@@ -50,6 +50,18 @@
             "id": "C-009",
             "title": "Workflow is structurally valid",
             "match_criteria": "The workflow JSON satisfies all three structural requirements: (1) there is at least one connection whose source is \"start\" (or the workflow has a designated start node/step); (2) every step is reachable via an unbroken chain of connections from start (no orphaned steps); (3) there is at least one edge whose target is \"system.succeed\" (or the equivalent terminal node), ensuring the workflow can reach a successful completion state. A workflow missing any one of these three is structurally invalid and fails this criterion."
+        },
+        {
+            "id": "C-010",
+            "title": "The run output is a valid capital city",
+            "match_criteria": "Judged against the RUN OUTPUT produced by executing the workflow with the supplied `country` input — not against the workflow JSON. PASS: the output names a real capital city — the bare city name or a short sentence containing one; casing and surrounding phrasing are not asserted. FAIL: the output is empty, an error message or stack-trace payload, raw request/response scaffolding with no answer, or text that names no capital city.",
+            "evaluates": "output"
+        },
+        {
+            "id": "C-011",
+            "title": "The run output is the capital of the supplied country",
+            "match_criteria": "Judged against the RUN OUTPUT produced by executing the workflow with the supplied `country` input — not against the workflow JSON. PASS: the capital named in the output is the capital of the country supplied via the `country` input (for `country` = \"Wales\", that is Cardiff); exact formatting is not asserted, and a short sentence containing the correct capital passes. FAIL: the output names a different city (including a non-capital city of the right country, or the capital of a different country), or no city at all.",
+            "evaluates": "output"
         }
     ]
 }

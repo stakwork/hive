@@ -17,7 +17,7 @@ type RouteParams = { params: Promise<{ slug: string }> };
 
 /**
  * Build a mock rubric roster from corpus criteria.
- * 8 rubrics, none contested, ids matching the corpus "C-00N" shape.
+ * One rubric per criterion, none contested, ids matching the corpus "C-00N" shape.
  */
 function buildMockRoster(
   taskSlug: string,
