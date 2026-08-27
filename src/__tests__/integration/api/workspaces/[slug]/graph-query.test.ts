@@ -290,4 +290,76 @@ describe("POST /api/workspaces/[slug]/graph/query", () => {
       await db.user.delete({ where: { id: owner.id } });
     }
   });
+
+  // ── Literal-stripping write guard ──────────────────────────────────────────
+
+  test("returns 200 for a read query whose string literal contains a write keyword", async () => {
+    const originalUseMocks = process.env.USE_MOCKS;
+    process.env.USE_MOCKS = "true";
+
+    const owner = await createTestUser();
+    const workspace = await createTestWorkspace({ ownerId: owner.id });
+
+    getMockedSession().mockResolvedValue(createAuthenticatedSession(owner));
+
+    try {
+      const response = await callRoute(workspace.slug, {
+        query: "MATCH (n) WHERE n.name CONTAINS 'delete' RETURN n LIMIT 5",
+      });
+
+      // Was a false-positive 403 before the guard learned to strip literals
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(Array.isArray(data.rows)).toBe(true);
+    } finally {
+      process.env.USE_MOCKS = originalUseMocks;
+      await db.workspace.delete({ where: { id: workspace.id } });
+      await db.user.delete({ where: { id: owner.id } });
+    }
+  });
+
+  // ── Local query length cap ────────────────────────────────────────────────
+
+  test("returns 400 with the length message for a query over 4096 characters", async () => {
+    const owner = await createTestUser();
+    const workspace = await createTestWorkspace({ ownerId: owner.id });
+
+    getMockedSession().mockResolvedValue(createAuthenticatedSession(owner));
+
+    const longQuery = "MATCH (n) WHERE n.path STARTS WITH '" + "a".repeat(4200) + "'";
+
+    try {
+      const response = await callRoute(workspace.slug, { query: longQuery });
+
+      expect(response.status).toBe(400);
+      const data = await response.json();
+      expect(data.message).toBe("query is too long (max 4096 characters)");
+    } finally {
+      await db.workspace.delete({ where: { id: workspace.id } });
+      await db.user.delete({ where: { id: owner.id } });
+    }
+  });
+
+  // ── Not-configured status contract ────────────────────────────────────────
+
+  test("not-configured swarm returns exactly 400 (Graph Explorer keys setNotConfigured off this)", async () => {
+    const owner = await createTestUser();
+    const slug = generateUniqueSlug("no-swarm-exact-400");
+    const workspace = await createTestWorkspace({ ownerId: owner.id, slug });
+
+    getMockedSession().mockResolvedValue(createAuthenticatedSession(owner));
+
+    try {
+      const response = await callRoute(slug, {
+        query: "MATCH (n) RETURN n LIMIT 5",
+      });
+
+      expect(response.status).toBe(400);
+      const data = await response.json();
+      expect(data.message).toBe("Graph DB not configured for this workspace");
+    } finally {
+      await db.workspace.delete({ where: { id: workspace.id } });
+      await db.user.delete({ where: { id: owner.id } });
+    }
+  });
 });
