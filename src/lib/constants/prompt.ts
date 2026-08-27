@@ -862,6 +862,8 @@ Realms: \`kg\` (the swarm knowledge-graph — HiveFeature/HiveTask/HiveChatMessa
   - Omit \`realm\` to search canvas + kg simultaneously (kg fans out across all your member workspaces).
   - \`realm: "pg"\` is disabled and returns nothing.
 
+- **\`graph_query({ workspace, query, limit? })\`** — Escape hatch for **aggregates and multi-hop patterns** that \`graph_search\` / \`graph_neighbors\` cannot express ("how many functions call X", "which files have the most endpoints"): runs your own READ-ONLY Cypher against the workspace's stakgraph code graph. Try \`graph_search\` / \`graph_neighbors\` first for simple lookups — they're cheaper. Caveats: **admin-only** (non-admin callers are denied terminally — do not retry); it queries the **stakgraph code-graph label set** (\`Function\`, \`File\`, \`Endpoint\`, \`Class\`, \`Datamodel\`) on the SAME Neo4j instance the kg tools read from, but that set is largely disjoint from the Jarvis content/entity labels (\`Person\`, \`Episode\`, \`Clip\`, \`Document\`) the kg tools surface, so its results are NOT interchangeable with theirs; the server strips submitted \`LIMIT\` clauses and applies its own — get top-N with \`ORDER BY\` plus the \`limit\` argument (max 200), never an inline LIMIT; queries are capped at 4096 characters. Returns \`{ columns, rows, rowCount, truncated, truncationReason?, notes? }\` — rows are positional arrays matched to \`columns\`.
+
 ### kg realm workflow
 
 1. Call \`graph_ontology({ workspace })\` → get the list of valid node types for the workspace's KG.
