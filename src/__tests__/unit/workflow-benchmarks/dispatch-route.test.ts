@@ -15,8 +15,8 @@
  *   - Malformed active-run rows: block within the staleness window, ignored past
  *     it, and are NEVER written to (their owning taskSlug is unknown)
  *   - Dispatch payload: BENCHMARK_RUNNER type; no credentials; baseline conditional;
- *     workflow_input_json / rerun_expected_output conditional (absent for the
- *     no-input seed task, present for generate-capital-city)
+ *     workflow_input_json / rerun_expected_output conditional (both tasks now
+ *     declare workflow_input; only generate-capital-city has expected_output)
  *   - Dispatch-boundary log carries inputKeys / hasExpectedOutput
  *   - Env: missing workflow ID → 503
  *   - HMAC secret hardening: missing/short NEXTAUTH_SECRET → 503, never a token
@@ -439,7 +439,7 @@ describe("POST /api/workspaces/[slug]/workflow-benchmarks/run — dispatch paylo
     expect(Object.prototype.hasOwnProperty.call(vars, "baseline_workflow_version_id")).toBe(false);
   });
 
-  it("seed task vars do NOT contain workflow_input_json or rerun_expected_output (no-input task)", async () => {
+  it("seed task vars contain workflow_input_json (a string, {prompt}) but NO rerun_expected_output (no expected_output declared)", async () => {
     const { POST } = await import("@/app/api/workspaces/[slug]/workflow-benchmarks/run/route");
     const req = makeRequest(VALID_SLUG, { taskSlug: TASK_SLUG });
     await POST(req, { params: Promise.resolve({ slug: VALID_SLUG }) });
@@ -451,8 +451,10 @@ describe("POST /api/workspaces/[slug]/workflow-benchmarks/run — dispatch paylo
     const body = JSON.parse(lastFetchCall![1].body as string);
     const vars = body.workflow_params?.set_var?.attributes?.vars ?? {};
 
-    // Absent fields must emit NO key at all — never null/empty.
-    expect(Object.prototype.hasOwnProperty.call(vars, WORKFLOW_INPUT_VAR)).toBe(false);
+    expect(typeof vars[WORKFLOW_INPUT_VAR]).toBe("string");
+    expect(Object.keys(JSON.parse(vars[WORKFLOW_INPUT_VAR]))).toEqual(["prompt"]);
+
+    // An absent field must emit NO key at all — never null/empty.
     expect(Object.prototype.hasOwnProperty.call(vars, RERUN_EXPECTED_OUTPUT_VAR)).toBe(false);
   });
 
@@ -584,7 +586,7 @@ describe("POST /api/workspaces/[slug]/workflow-benchmarks/run — dispatch log f
     setupHappyPath();
   });
 
-  it("logs inputKeys=[] and hasExpectedOutput=false for the no-input seed task", async () => {
+  it("logs inputKeys=['prompt'] and hasExpectedOutput=false for the seed task", async () => {
     const { logger } = await import("@/lib/logger");
     const { POST } = await import("@/app/api/workspaces/[slug]/workflow-benchmarks/run/route");
     const req = makeRequest(VALID_SLUG, { taskSlug: TASK_SLUG });
@@ -594,7 +596,7 @@ describe("POST /api/workspaces/[slug]/workflow-benchmarks/run — dispatch log f
     const dispatchCall = infoCalls.find((c) => String(c[0]).includes("dispatching task="));
     expect(dispatchCall).toBeDefined();
     const metadata = dispatchCall![2] as Record<string, unknown>;
-    expect(metadata.inputKeys).toEqual([]);
+    expect(metadata.inputKeys).toEqual(["prompt"]);
     expect(metadata.hasExpectedOutput).toBe(false);
   });
 

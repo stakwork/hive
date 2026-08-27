@@ -275,13 +275,13 @@ describe("GET /api/workspaces/[slug]/workflow-benchmarks/rubrics — mock roster
     // Ensure isDevelopmentMode() returns true for these tests
   });
 
-  it("mock roster is corpus-derived: 8 rubrics, none contested", async () => {
+  it("mock roster is corpus-derived: 10 rubrics, none contested", async () => {
     // We can't easily toggle NODE_ENV in tests, but we can verify the logic
     // by checking that the real mock roster function (if called) would return
-    // 8 rubrics matching the corpus.
+    // 10 rubrics matching the corpus.
     const { WORKFLOW_BENCHMARK_TASKS } = await import("@/lib/workflow-benchmark-tasks");
     const task = WORKFLOW_BENCHMARK_TASKS.find((t) => t.slug === TASK_SLUG);
-    expect(task?.criteria.length).toBe(8);
+    expect(task?.criteria.length).toBe(10);
     // All criteria should be non-contested (no `contested` flag in corpus)
     // — this confirms the mock roster would have 0 contested
     expect(task?.criteria.every((c) => !("contested" in c))).toBe(true);

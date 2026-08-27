@@ -303,7 +303,9 @@ function renderTaskLiteral(task: WorkflowBenchmarkTask): string {
   const criteriaLines = task.criteria
     .map(
       (c) =>
-        `      { id: ${JSON.stringify(c.id)}, title: ${JSON.stringify(c.title)}, match_criteria: ${JSON.stringify(c.match_criteria)} },`,
+        `      { id: ${JSON.stringify(c.id)}, title: ${JSON.stringify(c.title)}, match_criteria: ${JSON.stringify(c.match_criteria)}${
+          c.evaluates !== undefined ? `, evaluates: ${JSON.stringify(c.evaluates)}` : ""
+        } },`,
     )
     .join("\n");
 
