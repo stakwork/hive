@@ -63,7 +63,7 @@ prisma/
 Key configs:
 - `next.config.ts`: standalone output, remote image patterns.
 - `vitest.config.ts`: unit vs integration suite selection via `TEST_SUITE`.
-- `tailwind.config.js`, `postcss.config.mjs` for styles.
+- `postcss.config.mjs` for styles (Tailwind v4 config lives in `src/app/globals.css`).
 
 ---
 
