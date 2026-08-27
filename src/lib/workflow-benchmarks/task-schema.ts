@@ -42,10 +42,26 @@
  *
  *   - `title`         — display title shown in the UI task list.
  *
- *   - `instructions`  — plain-English instruction sent verbatim to the
- *                       Workflow Editor agent. Must name every referenced
- *                       secret explicitly (in the `%%AUTHORING_FORM%%` below)
- *                       so criteria test instruction-following, not telepathy.
+ *   - `instructions`  — a ONE-LINE intent statement: what the produced
+ *                       workflow is FOR ("send a user-supplied prompt to an
+ *                       LLM and return the model's response"). Deliberately
+ *                       NOTHING else — no endpoint URL, no secret name, no
+ *                       model name, no body-field enumeration, no structural
+ *                       requirements. Criteria must never pin a value the
+ *                       intent does not state; they assert either universal
+ *                       properties of a correct artifact (structural validity,
+ *                      credential hygiene) or capability implied by the intent
+ *                      itself (the supplied value actually reaches the model
+ *                      call). Declared input key names are NOT typed into this
+ *                      field by hand — `workflow_input` declares them and the
+ *                      generator injects the INPUT block mechanically.
+ *
+ *   What `wfbench/create-openai-call` therefore tests: given ONLY an intent,
+ *   does the agent produce a structurally valid workflow that makes a
+ *   provider call, references its credential in the correct `%%AUTHORING%%`
+ *   form below, and leaks no plaintext secret. It is not an
+ *   instruction-following test — the days of instructing exact endpoint,
+ *   model and header are gone on purpose.
  *
  *   - `criteria`      — behavioural criteria evaluated by the LLM judge. Each
  *                       asserts the artifact (output shape), never the
@@ -222,11 +238,13 @@ export const taskSourceSchema = z.object({
     .string()
     .min(1)
     .describe(
-      "Plain-English instruction sent verbatim to the Workflow Editor agent. " +
-        "NOTE: when `workflow_input` is declared, the `instructions` an author " +
-        "writes here is NOT byte-identical to what the agent ultimately " +
-        "receives — the generator appends an INPUT block (see " +
-        "INPUT_BLOCK_SENTENCE) under its own heading at the end.",
+      "ONE-LINE intent statement — what the produced workflow is FOR, and " +
+        "nothing else: no endpoint URL, secret name, model name, body-field " +
+        "enumeration or structural requirement. When `workflow_input` is " +
+        "declared, the `instructions` an author writes here is NOT " +
+        "byte-identical to what the agent ultimately receives — the generator " +
+        "appends an INPUT block (see INPUT_BLOCK_SENTENCE) under its own " +
+        "heading at the end.",
     ),
   criteria: z
     .array(criterionSchema)
@@ -268,12 +286,16 @@ export interface WorkflowBenchmarkTask {
   /** Display title shown in the UI task list. */
   title: string;
   /**
-   * Plain-English instruction sent verbatim to the Workflow Editor agent.
-   * Must name every referenced secret explicitly (in the `%%AUTHORING_FORM%%`)
-   * so criteria test instruction-following, not telepathy. Every `%%…%%`
-   * token here is generate-time validated for well-formedness, and the whole
-   * string is scanned against live-credential shapes — see
-   * `checkSecretReferenceForm` / `checkNoCredentialShapedContent`.
+   * ONE-LINE intent statement sent to the Workflow Editor agent — what the
+   * produced workflow is FOR, and nothing else: no endpoint URL, no secret
+   * name, no model name, no body-field enumeration, no structural
+   * requirements. Criteria must never pin a value this intent does not state.
+   * Declared inputs are injected at the end by the generator (`workflow_input`
+   * -> INPUT block), so when inputs exist this string is not byte-identical
+   * to what the agent receives. Every `%%…%%` token here is generate-time
+   * validated for well-formedness, and the whole string is scanned against
+   * live-credential shapes — see `checkSecretReferenceForm` /
+   * `checkNoCredentialShapedContent`.
    */
   instructions: string;
   /** Behavioural criteria evaluated by the LLM judge. */
@@ -343,8 +365,17 @@ type _AssertTaskShapeMatchesSchema = Expect<
 export const INPUT_BLOCK_HEADING = "## Workflow Inputs";
 
 /**
- * Declaration sentence the generator writes under `INPUT_BLOCK_HEADING`,
- * followed by each declared `workflow_input` key in backticked form. Read by
+ * Declaration sentence the generator writes under `INPUT_BLOCK_HEADING`.
+ * The complete injected block is exactly:
+ *
+ *     ## Workflow Inputs
+ *
+ *     Declare each of the following as a caller-supplied workflow input, using these exact names:
+ *
+ *     - `country`
+ *
+ * i.e. heading, blank line, this sentence, blank line, then each declared
+ * `workflow_input` key as a backticked bullet list item (`- \`key\``). Read by
  * the Workflow Editor agent at build time — it is the ONLY channel telling the
  * agent what input key names to declare in the produced workflow. If the agent
  * invents its own names, the rerunner's payload matches nothing: the workflow
