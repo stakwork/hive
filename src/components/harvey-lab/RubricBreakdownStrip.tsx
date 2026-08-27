@@ -15,8 +15,8 @@ import type { RubricBreakdown } from "@/lib/harvey-lab/rubric-scoring";
 /**
  * Renders Pass + Contested + Total chips plus the Disputed overlay tag.
  * Report surfaces only (run report header, offline export, LegalBenchmarkResults
- * score summary) — runs-history rows show just the fraction and an all-pass badge,
- * leaving contested/disputed detail to the report.
+ * score summary) — runs-history rows carry their own dedicated Contested and
+ * Disputed count columns instead of this strip.
  */
 export interface RubricBreakdownStripProps {
   breakdown: RubricBreakdown | null;

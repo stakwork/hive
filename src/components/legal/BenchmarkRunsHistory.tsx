@@ -521,8 +521,9 @@ export function BenchmarkRunsHistory({
     );
   }
 
-  // colSpan: Task + Started + Runner Status + Score + Chat + Report + (Stakwork if super admin)
-  const colSpan = isSuperAdmin ? 8 : 7;
+  // colSpan: Task + Type + Started + Runner Status + Score + Contested +
+  // Disputed + Chat + Report + (Stakwork if super admin)
+  const colSpan = isSuperAdmin ? 10 : 9;
 
   return (
     <div className="space-y-3">
@@ -599,6 +600,22 @@ export function BenchmarkRunsHistory({
               <th className="text-left px-4 py-3 font-medium text-muted-foreground">Started</th>
               <th className="text-left px-4 py-3 font-medium text-muted-foreground">Runner Status</th>
               <th className="text-left px-4 py-3 font-medium text-muted-foreground">Score</th>
+              <th className="text-left px-4 py-3 font-medium text-muted-foreground">
+                <span
+                  className="cursor-help"
+                  title="Criteria whose definition is flagged as broken. They are excluded from both sides of the score, which is why the denominator can be smaller than the full rubric roster."
+                >
+                  Contested
+                </span>
+              </th>
+              <th className="text-left px-4 py-3 font-medium text-muted-foreground">
+                <span
+                  className="cursor-help"
+                  title="Verdicts the judge itself flagged for review. Always non-passing criteria — each one is potential score upside."
+                >
+                  Disputed
+                </span>
+              </th>
               <th className="text-left px-4 py-3 font-medium text-muted-foreground">Chat</th>
               <th className="text-left px-4 py-3 font-medium text-muted-foreground">Report</th>
               {isSuperAdmin && (
@@ -673,6 +690,12 @@ export function BenchmarkRunsHistory({
                         their run row; ScoreCell renders its own dash when no
                         score landed (older rows, fix-proposal stage). */}
                     <ScoreCell run={run} />
+                  </td>
+                  <td className="px-4 py-3">
+                    <ContestedCountCell run={run} />
+                  </td>
+                  <td className="px-4 py-3">
+                    <DisputedCountCell run={run} />
                   </td>
                   <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
                     {run.runType === "manual" ? (
@@ -867,6 +890,84 @@ function ScoreCell({ run }: { run: AdjustedRun }) {
         </Badge>
       )}
     </div>
+  );
+}
+
+function hasScoreData(run: AdjustedRun): boolean {
+  const isActive =
+    run.status === WorkflowStatus.PENDING || run.status === WorkflowStatus.IN_PROGRESS;
+  return !isActive && typeof run.all_pass === "boolean";
+}
+
+/** `n_contested` is undefined on output-ref/bail-out rows — unknown, not zero. */
+function ContestedCountCell({ run }: { run: AdjustedRun }) {
+  if (!hasScoreData(run)) {
+    return <span className="text-muted-foreground/60">—</span>;
+  }
+  if (run.n_contested === undefined) {
+    return (
+      <span
+        className="text-xs text-muted-foreground/60 cursor-help"
+        title="Contested exclusions are unknown for this run — its score was recorded without roster adjustment."
+        data-testid="contested-cell-unknown"
+      >
+        n/a
+      </span>
+    );
+  }
+  if (run.n_contested === 0) {
+    return (
+      <span className="text-muted-foreground/60" data-testid="contested-cell-zero">
+        —
+      </span>
+    );
+  }
+  return (
+    <Badge
+      variant="outline"
+      className="border-0 bg-violet-500/15 text-violet-700 dark:text-violet-400 cursor-help tabular-nums"
+      title={`Contested criterion definitions: ${run.n_contested}${
+        run.roster_total != null ? ` of ${run.roster_total}` : ""
+      }. Excluded from both sides of the score — the denominator already reflects this.`}
+      data-testid="contested-cell-count"
+    >
+      {run.n_contested}
+    </Badge>
+  );
+}
+
+/** `n_disputed` is null when the run never went through judge-dispute — unknown, not zero. */
+function DisputedCountCell({ run }: { run: AdjustedRun }) {
+  if (!hasScoreData(run)) {
+    return <span className="text-muted-foreground/60">—</span>;
+  }
+  if (run.n_disputed === null) {
+    return (
+      <span
+        className="text-xs text-muted-foreground/60 cursor-help"
+        title="Disputes were never evaluated for this run — unknown, not zero."
+        data-testid="disputed-cell-unknown"
+      >
+        n/a
+      </span>
+    );
+  }
+  if (run.n_disputed === 0) {
+    return (
+      <span className="text-muted-foreground/60" data-testid="disputed-cell-zero">
+        —
+      </span>
+    );
+  }
+  return (
+    <Badge
+      variant="outline"
+      className="border-0 bg-amber-500/15 text-amber-700 dark:text-amber-400 cursor-help tabular-nums"
+      title={`Judge-disputed verdicts: ${run.n_disputed}. All non-passing — the score could rise by up to ${run.n_disputed} if they resolve to pass.`}
+      data-testid="disputed-cell-count"
+    >
+      {run.n_disputed}
+    </Badge>
   );
 }
 
