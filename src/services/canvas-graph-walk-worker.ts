@@ -312,7 +312,7 @@ export async function runGraphWalkSubAgent(
             `synthesized text answer.\n\n` +
             `Task title: ${title}\n\n` +
             `Instructions:\n${prompt}\n\n` +
-            `Use the graph_walker tools (graph_ontology, graph_search, graph_get, graph_neighbors) ` +
+            `Use the graph_walker tools (graph_ontology, graph_search, graph_get, graph_neighbors, graph_query) ` +
             `to gather the information needed. Then call ${FINALIZE_TOOL} with a clear, well-structured ` +
             `answer covering everything found. Be efficient — avoid redundant traversals. ` +
             `You are on a strict time budget (see the [TIME BUDGET] notes). ` +

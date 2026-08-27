@@ -29,6 +29,7 @@ import {
   getModelValue,
   DEFAULT_STANDARD_MODEL,
   DEFAULT_REASONING_MODEL,
+  DEFAULT_JUDGE_MODEL,
   PROVIDER_API_KEY_ENV_VARS,
   PROVIDER_DISPLAY_LABELS,
   type LlmModelOption,
@@ -59,6 +60,10 @@ export interface TaskDetailsModalProps {
     /** Provider-prefixed, e.g. "anthropic/claude-sonnet-5". Omitted when the catalog is unavailable. */
     standardModel?: string;
     reasoningModel?: string;
+    /** Anthropic-only, provider-prefixed, e.g. "anthropic/claude-sonnet-4-6".
+     *  Omitted when the catalog is unavailable or has no Anthropic models —
+     *  the run route then applies its own DEFAULT_JUDGE_MODEL. */
+    judgeModel?: string;
   }) => void;
 }
 
@@ -134,6 +139,10 @@ export function TaskDetailsModal({
   const [selectedProvider, setSelectedProvider] = useState<string>("");
   const [standardModel, setStandardModel] = useState<string>("");
   const [reasoningModel, setReasoningModel] = useState<string>("");
+  // Judge model: Anthropic-only by the run route's contract, independent of
+  // the standard/reasoning pair's Provider select. Never reset by
+  // applyProviderDefaults or provider changes.
+  const [judgeModel, setJudgeModel] = useState<string>("");
 
   useEffect(() => {
     if (!open || llmModels.length > 0) return;
@@ -148,6 +157,18 @@ export function TaskDetailsModal({
           (m) => !!PROVIDER_API_KEY_ENV_VARS[effectiveProvider(m)],
         );
         setLlmModels(usable);
+        // Initialise the judge model here, off the local `usable` array —
+        // llmModels state has not flushed yet at this point. Judge models are
+        // Anthropic-only by the run route's contract (raw provider enum, NOT
+        // effectiveProvider: validateModel queries LlmProvider.ANTHROPIC
+        // directly, so OTHER + providerLabel:"Anthropic" rows would be 400'd).
+        const anthropicModels = usable.filter((m) => m.provider === "ANTHROPIC");
+        const judgeValues = anthropicModels.map(getModelValue);
+        setJudgeModel(
+          judgeValues.includes(DEFAULT_JUDGE_MODEL)
+            ? DEFAULT_JUDGE_MODEL
+            : (judgeValues[0] ?? ""),
+        );
         if (usable.length === 0) return;
         const provider = usable.some((m) => effectiveProvider(m) === "ANTHROPIC")
           ? "ANTHROPIC"
@@ -173,6 +194,11 @@ export function TaskDetailsModal({
 
   const providers = Array.from(new Set(llmModels.map(effectiveProvider)));
   const providerModels = llmModels.filter((m) => effectiveProvider(m) === selectedProvider);
+  // Judge options: raw provider-enum filter — NOT effectiveProvider. The run
+  // route's validateModel requires provider LlmProvider.ANTHROPIC + an
+  // anthropic/ prefix, so this list is independent of the Provider select and
+  // can never offer a value the route would reject.
+  const judgeModels = llmModels.filter((m) => m.provider === "ANTHROPIC");
 
   useEffect(() => {
     if (!open || !task?.slug) {
@@ -508,6 +534,51 @@ export function TaskDetailsModal({
                 </SelectContent>
               </Select>
             </div>
+
+            {/* Judge model — Anthropic-only, deliberately scoped OUTSIDE the
+                Provider select (the grader is Anthropic regardless of which
+                provider executes the pair). Rendered LAST in the row: existing
+                tests index selects positionally provider/standard/reasoning. */}
+            <div className="flex flex-col gap-1 min-w-0">
+              <span className="text-xs text-muted-foreground">Judge Model (Anthropic)</span>
+              {judgeModels.length > 0 ? (
+                <Select value={judgeModel} onValueChange={setJudgeModel}>
+                  <SelectTrigger
+                    className="h-7 text-xs px-2 w-auto min-w-[160px] max-w-[220px]"
+                    data-testid="judge-model-select"
+                  >
+                    <SelectValue placeholder="Select judge model" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {judgeModels.map((m) => (
+                      <SelectItem key={m.id} value={getModelValue(m)} className="text-xs">
+                        {m.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              ) : (
+                // Catalog non-empty but zero raw-ANTHROPIC rows: the route's
+                // DEFAULT_JUDGE_MODEL would fail its own DB membership check,
+                // so surface it instead of rendering an empty picker.
+                <Select disabled>
+                  <SelectTrigger
+                    className="h-7 text-xs px-2 w-auto min-w-[160px] max-w-[220px]"
+                    data-testid="judge-model-select"
+                  >
+                    <SelectValue placeholder="No Anthropic models" />
+                  </SelectTrigger>
+                </Select>
+              )}
+              {judgeModels.length === 0 && (
+                <span
+                  className="text-xs text-muted-foreground whitespace-nowrap"
+                  data-testid="judge-model-warning"
+                >
+                  No Anthropic models in catalog — judge scoring will fail
+                </span>
+              )}
+            </div>
           </div>
         )}
 
@@ -523,6 +594,7 @@ export function TaskDetailsModal({
                 generateRunReport,
                 ...(standardModel ? { standardModel } : {}),
                 ...(reasoningModel ? { reasoningModel } : {}),
+                ...(judgeModel ? { judgeModel } : {}),
               });
             }}
           >
