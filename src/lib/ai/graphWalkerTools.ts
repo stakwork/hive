@@ -51,6 +51,7 @@ import {
 } from "./kg-adapter";
 import { getSwarmAccessByWorkspaceId } from "@/lib/helpers/swarm-access";
 import { getJarvisUrl } from "@/lib/utils/swarm";
+import { logger } from "@/lib/logger";
 
 /**
  * Verify that the URN's embedded org (a githubLogin) maps to the same
@@ -88,6 +89,39 @@ const PG_DISABLED_MESSAGE =
   "pg realm is disabled — Hive features, tasks, and chat messages now live in " +
   "the kg realm as HiveFeature / HiveTask / HiveChatMessage nodes. Use " +
   'graph_search with realm: "kg" (and graph_ontology to discover node types).';
+
+// ---------------------------------------------------------------------------
+// Namespace validation (graph_search, kg arm)
+// ---------------------------------------------------------------------------
+
+/**
+ * Conservative shape cap for caller-supplied Jarvis namespaces.
+ */
+const NAMESPACE_MAX_LENGTH = 200;
+const NAMESPACE_PATTERN = /^[A-Za-z0-9._-]+$/;
+
+/**
+ * Caller-supplied Jarvis namespace, validated at the tool boundary.
+ *
+ * Shape-only: Hive has no namespace-enumeration surface, so membership cannot
+ * be checked here — only that the value is non-empty after trim, within the
+ * length cap, and drawn from a conservative charset (this also keeps a
+ * free-text field out of the query string unchecked). A malformed value is
+ * rejected with an agent-visible zod error rather than silently degrading to
+ * an empty result; a well-formed-but-wrong namespace legitimately returns zero
+ * matches (visible to operators via the kg-adapter logs).
+ */
+const namespaceSchema = z
+  .string()
+  .trim()
+  .max(NAMESPACE_MAX_LENGTH)
+  .refine((v) => v.length > 0, {
+    message: "namespace cannot be empty or whitespace-only",
+  })
+  .refine((v) => NAMESPACE_PATTERN.test(v), {
+    message:
+      "namespace may only contain letters, digits, and '.', '_', '-' characters",
+  });
 
 // ---------------------------------------------------------------------------
 // Internal types
@@ -757,6 +791,7 @@ async function searchKg(
     inputQ,
     outputQ,
     domains,
+    namespace,
   }: {
     orgId: string;
     urnOrg: string;
@@ -767,9 +802,10 @@ async function searchKg(
     inputQ?: string;
     outputQ?: string;
     domains?: string;
+    namespace?: string;
   },
 ): Promise<SearchResult[]> {
-  const opts = { type, limit, inputQ, outputQ, domains };
+  const opts = { type, limit, inputQ, outputQ, domains, namespace };
 
   if (workspace) {
     // Single-workspace path — synthetic URN for IDOR guard
@@ -809,10 +845,20 @@ async function searchKg(
     select: { id: true, slug: true },
   });
 
+  type KgFanoutArmOutcome = "ok" | "no-swarm" | "rejected";
+
+  interface KgFanoutArmResult {
+    workspace: string;
+    outcome: KgFanoutArmOutcome;
+    results: SearchResult[];
+  }
+
   const settled = await Promise.allSettled(
-    workspaces.map(async (ws) => {
+    workspaces.map(async (ws): Promise<KgFanoutArmResult> => {
       const access = await getSwarmAccessByWorkspaceId(ws.id);
-      if (!access.success || !access.data.swarmName) return [] as SearchResult[];
+      if (!access.success || !access.data.swarmName) {
+        return { workspace: ws.slug, outcome: "no-swarm", results: [] };
+      }
       // kg realm talks to Jarvis (:8444), not stakgraph (:3355).
       const jarvisUrl = getJarvisUrl(access.data.swarmName);
       const hits = await kgSearch(
@@ -821,28 +867,65 @@ async function searchKg(
         query,
         opts,
       );
-      return hits.map((hit) => ({
-        urn: formatUrn({
-          realm: "kg",
-          org: urnOrg,
-          workspace: ws.slug,
+      return {
+        workspace: ws.slug,
+        outcome: "ok",
+        results: hits.map((hit) => ({
+          urn: formatUrn({
+            realm: "kg",
+            org: urnOrg,
+            workspace: ws.slug,
+            type: hit.node_type,
+            id: hit.ref_id,
+          }),
           type: hit.node_type,
-          id: hit.ref_id,
-        }),
-        type: hit.node_type,
-        title: hit.name,
-        realm: "kg" as const,
-        ...(hit.description ? { description: hit.description } : {}),
-        edges: hit.edges,
-      }));
+          title: hit.name,
+          realm: "kg" as const,
+          ...(hit.description ? { description: hit.description } : {}),
+          edges: hit.edges,
+        })),
+      };
     }),
   );
 
+  // Promise.allSettled is fully resolved before the merge loop runs, so every
+  // arm's outcome (ok / no-swarm / rejected) is already in hand here.
+  const arms: KgFanoutArmResult[] = settled.map((result, i) =>
+    result.status === "fulfilled"
+      ? result.value
+      : { workspace: workspaces[i].slug, outcome: "rejected", results: [] },
+  );
+
+  const nsLabel = namespace ?? "<none>";
+  const logContext = "ai:graphWalkerTools:searchKg.fanout";
   const merged: SearchResult[] = [];
-  for (const result of settled) {
-    if (result.status === "fulfilled") {
-      merged.push(...result.value);
-      if (merged.length >= limit) break;
+  for (const arm of arms) {
+    // Merge with the global cap; count this arm's contribution AFTER
+    // truncation — its raw pre-merge count can overstate what the agent
+    // actually received.
+    let contributed = 0;
+    while (
+      contributed < arm.results.length &&
+      merged.length < limit
+    ) {
+      merged.push(arm.results[contributed]);
+      contributed++;
+    }
+    // One operator-facing line per workspace. Broadcasting one namespace
+    // across per-swarm partitions legitimately zeroes most arms — surface that
+    // in logs rather than inventing a `note` field on the agent's payload
+    // (the { results } return contract is shared with every other search arm).
+    // Metadata carries outcome shape only — never swarm keys or query text.
+    const metadata = {
+      namespace: nsLabel,
+      workspace: arm.workspace,
+      outcome: arm.outcome,
+      contributed,
+    };
+    if (arm.outcome === "rejected") {
+      logger.warn("graph_search kg fan-out arm failed", logContext, metadata);
+    } else {
+      logger.info("graph_search kg fan-out arm", logContext, metadata);
     }
   }
   return merged.slice(0, limit);
@@ -865,6 +948,8 @@ export function buildGraphWalkerTools(
         "including an `edges` map ({EDGE_TYPE: count}) showing how connected the " +
         "node is and which relationship types graph_neighbors can traverse next. " +
         "The `pg` realm is DISABLED (its entities now live in the kg). " +
+        "Note: URNs obtained from a namespaced graph_search are dereferenced here WITHOUT that " +
+        "namespace filter (this tool does not yet accept namespace), so the resolved node can sit outside the originally-requested partition. " +
         "Use this when you have a specific URN and need the entity's data.",
       inputSchema: z.object({
         urn: z.string().describe(
@@ -912,7 +997,9 @@ export function buildGraphWalkerTools(
         "For `kg` URNs, calls Jarvis v2 with optional edge_type / node_type filters (kg-specific, ignored by other realms); " +
         "each kg neighbor also carries an `edges` map ({EDGE_TYPE: count}) of its OWN relationships, " +
         "showing how connected it is and which edge types you can hop along next. " +
-        "The `pg` realm is DISABLED (its entities now live in the kg).",
+        "The `pg` realm is DISABLED (its entities now live in the kg). " +
+        "Note: URNs obtained from a namespaced graph_search are expanded here WITHOUT that namespace filter " +
+        "(this tool does not yet accept namespace), so a neighbor can fall outside the originally-requested partition.",
       inputSchema: z.object({
         urn: z.string().describe("Canonical URN of the node to expand."),
         depth: z
@@ -1014,7 +1101,8 @@ export function buildGraphWalkerTools(
         "Read-only. Call this FIRST before using `graph_search` with `realm: \"kg\"` — " +
         "the returned `type` values are the exact strings to pass as the `type` filter, " +
         "and the `domains` values are the exact strings for the `domains` filter. " +
-        "This avoids guessing node type names blind.",
+        "This avoids guessing node type names blind. " +
+        "The ontology is GLOBAL across namespaces: a listed type may have zero instances inside any particular namespace.",
       inputSchema: z.object({
         workspace: z.string().describe("Workspace slug whose KG ontology to fetch."),
       }),
@@ -1118,6 +1206,11 @@ export function buildGraphWalkerTools(
         "Default (no realm) searches canvas + kg (kg fanned out across all " +
         "member workspaces). " +
         "For kg: provide `workspace` to search one workspace, or omit to fan-out across all member workspaces. " +
+        "An optional `namespace` narrows the kg arm to one Jarvis data partition " +
+        "(a workspace's home swarm may hold several partitions). It is a QUERY FILTER ONLY — " +
+        "not an access-control boundary; workspace access rules are enforced independently and unchanged. " +
+        "Hive has no way to enumerate namespaces: pass one ONLY when the user explicitly supplies it, and never guess. " +
+        "Note that each kg hit's `edges` connectivity map is aggregated across namespaces, so it can advertise hops outside the requested partition. " +
         "`input_q` / `output_q` add semantic retrievers scoped to node input/output " +
         "schemas (e.g. find Workflows by what they consume or produce), fused with " +
         "`query` into one ranked result set.",
@@ -1164,6 +1257,13 @@ export function buildGraphWalkerTools(
             "kg realm only: comma-separated domain filter, e.g. 'entity' or " +
               "'content,entity'. Call graph_ontology to see valid domains.",
           ),
+        namespace: namespaceSchema
+          .optional()
+          .describe(
+            "kg realm only: Jarvis data-partition filter, e.g. 'team-alpha'. " +
+              "A query filter that scopes results to one partition — NOT an access-control boundary. " +
+              "Use ONLY a namespace explicitly supplied by the user; Hive cannot enumerate namespaces, so never guess one.",
+          ),
         limit: z
           .number()
           .int()
@@ -1180,6 +1280,7 @@ export function buildGraphWalkerTools(
         input_q,
         output_q,
         domains,
+        namespace,
         limit = 20,
       }: {
         query: string;
@@ -1189,6 +1290,8 @@ export function buildGraphWalkerTools(
         input_q?: string;
         output_q?: string;
         domains?: string;
+        /** Validated (trimmed/charset-checked) by the inputSchema. kg realm only — the canvas arm ignores it. */
+        namespace?: string;
         limit?: number;
       }) => {
         const arms: Promise<SearchResult[]>[] = [];
@@ -1229,6 +1332,7 @@ export function buildGraphWalkerTools(
               inputQ: input_q,
               outputQ: output_q,
               domains,
+              namespace,
             }),
           );
         }
