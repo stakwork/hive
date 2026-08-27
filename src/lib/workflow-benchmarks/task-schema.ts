@@ -43,19 +43,14 @@
  *   - `title`         — display title shown in the UI task list.
  *
  *   - `instructions`  — plain-English instruction sent verbatim to the
- *                       Workflow Editor agent. Must name every entry in
- *                       `expectedSecrets` explicitly so C-004-style criteria
- *                       test instruction-following, not telepathy.
+ *                       Workflow Editor agent. Must name every referenced
+ *                       secret explicitly (in the `%%AUTHORING_FORM%%` below)
+ *                       so criteria test instruction-following, not telepathy.
  *
  *   - `criteria`      — behavioural criteria evaluated by the LLM judge. Each
  *                       asserts the artifact (output shape), never the
  *                       mechanism (which builder step produced it). An agent
  *                       that inlines a value directly must still pass.
- *
- *   - `expectedSecrets` — secret names the instructions must reference by
- *                       name. Carried here as corpus data rather than prose
- *                       buried inside a criterion that an LLM judge has to
- *                       parse.
  *
  *   - `baseline`      — OPTIONAL. Absent on CREATE-flavour tasks (the agent
  *                       builds from nothing). EDIT-flavour tasks pin a
@@ -75,6 +70,27 @@
  * These three forms are named explicitly inside the criterion bodies so a
  * judge has a copy-comparable string, not prose to interpret.
  *
+ * Two generate-time invariants police secret handling MECHANICALLY (moving
+ * authoring from type-checked TS to hand-written JSON makes a pasted-in live
+ * credential strictly more likely, and hand-written `task.json` has no
+ * compiler to catch it):
+ *
+ *   - Every `%%…%%` token in `instructions` must match `^%%[A-Z0-9_]+%%$`
+ *     exactly — a malformed or unterminated reference fails the generate
+ *     step instead of reaching the external LLM judge undetected. See
+ *     `checkSecretReferenceForm`.
+ *   - Neither `instructions` nor any `workflow_input` value may carry text
+ *     matching a known live-credential shape — reusing `TOKEN_SHAPES` from
+ *     `src/lib/run-report/redact.ts` rather than keeping a second pattern
+ *     list that would drift from the redactor's. A well-formed
+ *     `%%[A-Z0-9_]+%%` reference is explicitly allowed and never flagged.
+ *     See `checkNoCredentialShapedContent`.
+ *
+ * Scoping asymmetry, deliberate: both invariants scan `instructions` and
+ * `workflow_input` only — NOT criterion bodies — because criteria
+ * legitimately quote malformed/runtime examples (`{{ … }}`, lowercase
+ * names) verbatim to teach the judge what to reject.
+ *
  * ─────────────────────────────────────────────────────────────────────────────
  * Adding a task
  * ─────────────────────────────────────────────────────────────────────────────
@@ -88,6 +104,9 @@
  */
 
 import { z } from "zod";
+// Pure-JS module (no Node builtins, no side effects) — safe to import into
+// this client-reachable file. See the header note below on bundle safety.
+import { TOKEN_SHAPES } from "../run-report/redact";
 
 /**
  * Allowed slug characters — mirrors the legal dispatch route's TASK_SLUG_RE.
@@ -212,12 +231,6 @@ export const taskSourceSchema = z.object({
   criteria: z
     .array(criterionSchema)
     .describe("Behavioural criteria evaluated by the LLM judge."),
-  expectedSecrets: z
-    .array(z.string())
-    .describe(
-      "Secret names that must appear in `instructions` and whose presence in " +
-        "the workflow output criteria tests assertion-by-name.",
-    ),
   baseline: baselineSchema.optional(),
   workflow_input: workflowInputSchema.optional(),
   expected_output: expectedOutputSchema.optional(),
@@ -256,19 +269,15 @@ export interface WorkflowBenchmarkTask {
   title: string;
   /**
    * Plain-English instruction sent verbatim to the Workflow Editor agent.
-   * Must name every entry in `expectedSecrets` explicitly so C-004-style
-   * criteria test instruction-following, not telepathy.
+   * Must name every referenced secret explicitly (in the `%%AUTHORING_FORM%%`)
+   * so criteria test instruction-following, not telepathy. Every `%%…%%`
+   * token here is generate-time validated for well-formedness, and the whole
+   * string is scanned against live-credential shapes — see
+   * `checkSecretReferenceForm` / `checkNoCredentialShapedContent`.
    */
   instructions: string;
   /** Behavioural criteria evaluated by the LLM judge. */
   criteria: WorkflowBenchmarkCriterion[];
-  /**
-   * Secret names that must appear in `instructions` and whose presence in the
-   * workflow output criteria tests assertion-by-name rather than resolution.
-   * Carried here as corpus data so criteria can reference the array without
-   * embedding the string in prose.
-   */
-  expectedSecrets: string[];
   /**
    * OPTIONAL baseline for EDIT-flavour tasks. Absent on CREATE tasks.
    * When present, BOTH fields are required — a partial baseline is invalid.
@@ -593,6 +602,129 @@ function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
+// ── Secret-handling invariants (Slice 2) ────────────────────────────────────
+
+/**
+ * Well-formed authoring-form secret reference: paired %% around ONE OR MORE
+ * uppercase letters / digits / underscores — nothing else.
+ *
+ * This is the machine-checked contract behind criteria like C-005 ("reference
+ * form"). It is deliberately strict: lowercase names (`%%my-secret%%`),
+ * surrounding whitespace (`%% NAME %%`), empty tokens (`%%%%`) and any other
+ * garbage inside a %%…%% pair all fail, so a hand-typo in a secret reference
+ * is a build error rather than an undetected prompt defect handed to an
+ * external LLM judge (who cannot verify resolution semantics anyway).
+ *
+ * Scope note: a lone single-% spelling (%NAME%) is NOT detectable here —
+ * paired-token scanning only sees complete %%…%% groups, and blanket
+ * %-counting would false-positive on prose like "reply with 90% confidence".
+ * That case stays with the C-005 criterion wording (judge-side).
+ */
+const WELL_FORMED_SECRET_REFERENCE_RE = /^%%[A-Z0-9_]+%%$/;
+/** Scan pattern for candidate %%…%% tokens inside a larger text blob. */
+const SECRET_REFERENCE_TOKEN_SCAN_RE = /%%[^%]*%%/g;
+
+/**
+ * Every `%%…%%` token found in a task's `instructions` must match
+ * `^%%[A-Z0-9_]+%%$` exactly. Also rejects an unbalanced number of %%
+ * markers (a partially-deleted token), which paired extraction alone would
+ * silently pass.
+ *
+ * Scope: `instructions` ONLY. Criterion bodies are exempt — they quote
+ * malformed/runtime spellings verbatim to teach the judge what to reject
+ * (see the schema-header note on scoping asymmetry). Error messages never
+ * echo the offending token.
+ */
+export function checkSecretReferenceForm(
+  task: InvariantCheckableTask,
+  filePath: string,
+): InvariantViolation | null {
+  const instructions = task.instructions;
+  if (typeof instructions !== "string") return null;
+
+  const markerCount = instructions.split("%%").length - 1;
+  if (markerCount % 2 !== 0) {
+    return violation(
+      "secret-reference-form",
+      "instructions contain an unbalanced number of %% markers — every secret " +
+        "reference must be a complete %%SECRET_NAME%% token matching ^%%[A-Z0-9_]+%%$ " +
+        "(the offending region is deliberately not echoed)",
+      [filePath],
+    );
+  }
+
+  SECRET_REFERENCE_TOKEN_SCAN_RE.lastIndex = 0;
+  const tokens = instructions.match(SECRET_REFERENCE_TOKEN_SCAN_RE) ?? [];
+  const malformedCount = tokens.filter(
+    (token) => !WELL_FORMED_SECRET_REFERENCE_RE.test(token),
+  ).length;
+  if (malformedCount > 0) {
+    return violation(
+      "secret-reference-form",
+      `${malformedCount} %%…%% token(s) in instructions are malformed — every one must ` +
+        `match ^%%[A-Z0-9_]+%%$ exactly (uppercase letters, digits, underscores; ` +
+        `the offending token(s) are deliberately not echoed)`,
+      [filePath],
+    );
+  }
+  return null;
+}
+
+/**
+ * True when the text matches one of the shared TOKEN_SHAPES from
+ * `run-report/redact.ts`, AFTER first stripping well-formed `%%[A-Z0-9_]+%%`
+ * reference tokens — those are the sanctioned way to name a secret and must
+ * never trip this check as a false positive.
+ */
+export function matchesCredentialShape(value: string): boolean {
+  const scrubbed = value.replace(/%%[A-Z0-9_]+%%/g, "");
+  return TOKEN_SHAPES.some((pattern) => {
+    // Shared module-level /g regexes — reset before each scan.
+    pattern.lastIndex = 0;
+    return pattern.test(scrubbed);
+  });
+}
+
+/**
+ * No part of a task that ships outward may carry text shaped like a LIVE
+ * credential. Hand-written JSON makes a pasted-in real key strictly more
+ * likely than typed TS did, and both `workflow_input` (by design) and
+ * `instructions` reach the browser/agent, so a shape match here hard-fails
+ * generation. Reuses TOKEN_SHAPES from run-report/redact.ts rather than a
+ * second list.
+ *
+ * The matched value is NEVER included in the violation message — echoing it
+ * would put the credential into generator output/logs.
+ */
+export function checkNoCredentialShapedContent(
+  task: InvariantCheckableTask,
+  filePath: string,
+): InvariantViolation | null {
+  if (typeof task.instructions === "string" && matchesCredentialShape(task.instructions)) {
+    return violation(
+      "no-credential-shaped-content",
+      "instructions contain text matching a live-credential shape (matched value " +
+        "deliberately not echoed) — reference secrets as %%SOME_SECRET_NAME%% instead",
+      [filePath],
+    );
+  }
+
+  if (task.workflow_input !== undefined && typeof task.workflow_input === "object") {
+    for (const [key, value] of Object.entries(task.workflow_input)) {
+      if (typeof value === "string" && matchesCredentialShape(value)) {
+        return violation(
+          "no-credential-shaped-content",
+          `workflow_input value for key "${key}" matches a live-credential shape (value ` +
+            "deliberately not echoed) — workflow_input ships to the browser; keep only " +
+            "benign sample values here",
+          [filePath],
+        );
+      }
+    }
+  }
+  return null;
+}
+
 /**
  * Runs every per-task invariant (excludes cross-file slug uniqueness, which
  * needs the whole-tree entry list) against a single task + its file path.
@@ -619,6 +751,10 @@ export function checkTaskInvariants(
   if (handAuthoredInputBlockViolation) violations.push(handAuthoredInputBlockViolation);
   const inputKeysReferencedViolation = checkInputKeysReferencedInCriteria(task, filePath);
   if (inputKeysReferencedViolation) violations.push(inputKeysReferencedViolation);
+  const secretReferenceFormViolation = checkSecretReferenceForm(task, filePath);
+  if (secretReferenceFormViolation) violations.push(secretReferenceFormViolation);
+  const credentialShapedContentViolation = checkNoCredentialShapedContent(task, filePath);
+  if (credentialShapedContentViolation) violations.push(credentialShapedContentViolation);
   return violations;
 }
 
