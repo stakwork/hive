@@ -52,6 +52,17 @@ import {
 import { getSwarmAccessByWorkspaceId } from "@/lib/helpers/swarm-access";
 import { getJarvisUrl } from "@/lib/utils/swarm";
 import { logger } from "@/lib/logger";
+import { checkRateLimit } from "@/lib/rate-limit";
+import {
+  MCP_FIELD_CHAR_CAP,
+  MCP_TOTAL_CHAR_BUDGET,
+  truncateField,
+} from "./mcpResult";
+import {
+  GRAPH_QUERY_MAX_LENGTH,
+  runWorkspaceGraphQuery,
+  type GraphQueryMeta,
+} from "@/services/graph/query";
 
 /**
  * Verify that the URN's embedded org (a githubLogin) maps to the same
@@ -932,6 +943,144 @@ async function searchKg(
 }
 
 // ---------------------------------------------------------------------------
+// graph_query output shaping
+// ---------------------------------------------------------------------------
+
+/**
+ * Terminal admin-denial message for `graph_query`.
+ *
+ * Deliberately self-evidently NON-retryable: fanout/cron paths
+ * (`canvas-graph-walk-worker`, `canvas-agent-autoturn`) can reach this tool
+ * without an admin user, and retries against a permanently-403ing call waste
+ * turns. Exported so tests can pin the exact phrasing.
+ */
+export const GRAPH_QUERY_FORBIDDEN_MESSAGE =
+  "Forbidden: graph_query requires workspace admin or owner role for the acting user. " +
+  "This will not succeed on retry — use graph_search or graph_neighbors instead.";
+
+/** Shaped success payload returned to the model by `graph_query`. */
+interface ShapedGraphQuerySuccess {
+  columns: unknown[];
+  rows: unknown[];
+  /** Number of rows actually present in `rows` (post-truncation). */
+  rowCount: number;
+  truncated: boolean;
+  truncationReason?: string;
+  notes?: string[];
+}
+
+/**
+ * Recursively shorten long string leaves (`truncateField`) so one wide cell
+ * cannot dominate the budget. Mirrors the per-hit field pass in
+ * `capMcpResult`, generalized to arbitrary row cells (scalars, arrays, node
+ * objects) instead of flat hit objects.
+ */
+function truncateStringsDeep(
+  value: unknown,
+  cap: number,
+): { value: unknown; clipped: boolean } {
+  if (typeof value === "string") {
+    if (value.length > cap) {
+      return { value: truncateField(value, cap), clipped: true };
+    }
+    return { value, clipped: false };
+  }
+  if (Array.isArray(value)) {
+    let clipped = false;
+    const out: unknown[] = value.map((item) => {
+      const res = truncateStringsDeep(item, cap);
+      clipped = clipped || res.clipped;
+      return res.value;
+    });
+    return { value: out, clipped };
+  }
+  if (value !== null && typeof value === "object") {
+    let clipped = false;
+    const source = value as Record<string, unknown>;
+    const out: Record<string, unknown> = {};
+    for (const key of Object.keys(source)) {
+      const res = truncateStringsDeep(source[key], cap);
+      clipped = clipped || res.clipped;
+      out[key] = res.value;
+    }
+    return { value: out, clipped };
+  }
+  return { value, clipped: false };
+}
+
+/**
+ * Cap upstream `{ columns, rows }` data to the shared MCP payload machinery —
+ * `MCP_FIELD_CHAR_CAP` per-field shortening first, then drop trailing rows
+ * while the serialized payload exceeds `MCP_TOTAL_CHAR_BUDGET` (the same
+ * two-phase pattern `capMcpResult` applies to hit arrays). Never throws.
+ *
+ * Upstream Cypher results carry POSITIONAL row arrays; `columns` must be
+ * echoed alongside them or the rows are uninterpretable to the model.
+ */
+export function shapeGraphQueryResult(
+  data: unknown,
+  meta: GraphQueryMeta,
+): ShapedGraphQuerySuccess {
+  const record =
+    data !== null && typeof data === "object"
+      ? (data as Record<string, unknown>)
+      : {};
+  const columns = Array.isArray(record.columns) ? record.columns : [];
+  const rawRows = Array.isArray(record.rows) ? record.rows : [];
+
+  // Phase 1 — shorten over-long string leaves.
+  const fieldPass = rawRows.map((row) =>
+    truncateStringsDeep(row, MCP_FIELD_CHAR_CAP),
+  );
+  const fieldsClipped = fieldPass.some(({ clipped }) => clipped);
+  let rows = fieldPass.map(({ value }) => value);
+
+  // Phase 2 — drop trailing rows until under the total budget.
+  const serializedSize = (rs: unknown[]) =>
+    JSON.stringify({ columns, rows: rs }).length;
+  let droppedRows = 0;
+  while (rows.length > 0 && serializedSize(rows) > MCP_TOTAL_CHAR_BUDGET) {
+    rows = rows.slice(0, -1);
+    droppedRows += 1;
+  }
+
+  const truncated = fieldsClipped || droppedRows > 0;
+
+  const reasons: string[] = [];
+  if (fieldsClipped) {
+    reasons.push(
+      `individual fields were shortened to fit the ${MCP_FIELD_CHAR_CAP}-char field cap`,
+    );
+  }
+  if (droppedRows > 0) {
+    reasons.push(
+      `${droppedRows} trailing ${droppedRows === 1 ? "row" : "rows"} dropped to stay under the ${MCP_TOTAL_CHAR_BUDGET}-char result budget`,
+    );
+    if (rawRows.length > 0 && rows.length === 0) {
+      reasons.push("every upstream row was omitted");
+    }
+  }
+
+  const notes: string[] = [];
+  if (meta.limitRewritten) {
+    notes.push(
+      "The server stripped the LIMIT clause(s) from your query (including inner WITH … LIMIT stages) " +
+        "and applied its own based on the limit argument. To express top-N results, use ORDER BY plus " +
+        "this tool's limit argument instead of an inline LIMIT.",
+    );
+  }
+
+  return {
+    columns,
+    rows,
+    rowCount: rows.length,
+    truncated,
+    ...(reasons.length > 0 ? { truncationReason: reasons.join("; ") } : {}),
+    ...(notes.length > 0 ? { notes } : {}),
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Public factory
 // ---------------------------------------------------------------------------
 
@@ -1339,6 +1488,106 @@ export function buildGraphWalkerTools(
 
         const results = (await Promise.all(arms)).flat();
         return { results };
+      },
+    }),
+
+    graph_query: tool({
+      description:
+        "Run a READ-ONLY Cypher query against a workspace's stakgraph code graph. " +
+        "This is the escape hatch for AGGREGATES and MULTI-HOP PATTERNS that graph_search / " +
+        "graph_neighbors cannot express (e.g. 'how many functions call X', 'which files have " +
+        "the most endpoints') — prefer graph_search / graph_neighbors FIRST for simple lookups; " +
+        "they are cheaper. ADMIN-ONLY: requires the workspace admin/owner role for the acting " +
+        "user; non-admin callers are denied terminally (do not retry). Queries the stakgraph CODE " +
+        "graph (Function, File, Endpoint, Class, Datamodel): the SAME Neo4j instance the kg tools " +
+        "(graph_search / graph_neighbors / graph_get) read from, but a LARGELY DISJOINT LABEL SET " +
+        "from the Jarvis content/entity view (Person, Episode, Clip, Document) those tools surface — " +
+        "results are NOT interchangeable between the two. Write operations are blocked. The server " +
+        "strips any inline LIMIT clause from your query and applies its own based on the limit " +
+        "argument (max 200), so express top-N with ORDER BY plus limit rather than an inline LIMIT. " +
+        "Query text is capped at 4096 characters.",
+      inputSchema: z.object({
+        workspace: z.string().describe(
+          "Required workspace slug to run the query against — credentials resolve from " +
+            "that workspace's Swarm row.",
+        ),
+        query: z.string().max(GRAPH_QUERY_MAX_LENGTH).describe(
+          "Read-only Cypher to run (max 4096 characters). Mutating statements " +
+            "(CREATE/MERGE/SET/DELETE/…) are rejected locally before reaching the database.",
+        ),
+        limit: z.number().int().min(1).max(200).default(50).describe(
+          "Max rows to return (1–200, default 50). The server enforces this LIMIT itself " +
+            "after stripping inline LIMIT clauses.",
+        ),
+      }),
+      execute: async ({
+        workspace,
+        query,
+        limit,
+      }: {
+        workspace: string;
+        query: string;
+        limit?: number;
+      }) => {
+        try {
+          // 1) Org-context guard — the named slug must belong to THIS session's
+          // source-control org. Prevents pulling in a cross-org workspace whose
+          // slug the acting user happens to administer. Runs before anything else.
+          const ws = await db.workspace.findFirst({
+            where: {
+              slug: workspace,
+              deleted: false,
+              sourceControlOrgId: orgId,
+            },
+            select: { id: true },
+          });
+          if (!ws) {
+            return { error: "workspace not found or access denied" };
+          }
+
+          // 2) Rate limit before credential access / upstream work
+          // (mirrors the 20 req/60s fix-chain guard).
+          const rl = await checkRateLimit(`graph_query:${orgId}:${userId}`, 20, 60);
+          if (!rl.allowed) {
+            return {
+              error: `Rate limit exceeded — retry in ${rl.retryAfter ?? 60}s`,
+            };
+          }
+
+          // 3) Shared service — the AUTHORITATIVE membership+admin gate
+          // (validateWorkspaceAccess(slug, userId, true)), identical denial
+          // semantics to the admin HTTP route. Do not weaken/bypass/duplicate it.
+          const result = await runWorkspaceGraphQuery({
+            slug: workspace,
+            userId,
+            query,
+            limit,
+          });
+
+          if (!result.ok) {
+            logger.warn("[graph_query] service failure", "ai:graphWalkerTools:graph_query", {
+              slug: workspace,
+              userId,
+              status: result.status,
+            });
+            if (result.status === 403) {
+              // Terminal, self-evidently non-retryable — see
+              // GRAPH_QUERY_FORBIDDEN_MESSAGE doc above.
+              return { error: GRAPH_QUERY_FORBIDDEN_MESSAGE };
+            }
+            return { error: `${result.message} (status ${result.status})` };
+          }
+
+          // 4) Bound the payload to the shared MCP budget before returning.
+          return shapeGraphQueryResult(result.data, result.meta);
+        } catch (error) {
+          // Never throw — every failure funnels into { error } for the model.
+          const message = error instanceof Error ? error.message : String(error);
+          logger.error("[graph_query] unexpected failure", "ai:graphWalkerTools:graph_query", {
+            error: message,
+          });
+          return { error: `graph_query failed unexpectedly: ${message}` };
+        }
       },
     }),
   };
