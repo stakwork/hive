@@ -790,6 +790,16 @@ function extractDiagramData(parsed: unknown): ParsedDiagram {
   throw new Error("Diagram data not found: expected components array in result");
 }
 
+/**
+ * Minimum acceptable length (bytes, as a UTF-8 string) for NEXTAUTH_SECRET
+ * before webhook run_token verification trusts it. Mirrors the dispatch
+ * route's signing-side check
+ * (src/app/api/workspaces/[slug]/workflow-benchmarks/run/route.ts) — a
+ * missing or short secret must never silently verify against an empty/weak
+ * key.
+ */
+const MIN_RUN_TOKEN_SECRET_LENGTH = 32;
+
 // ── TOKEN_VERIFIED_RUN_TYPES ────────────────────────────────────────────────
 // Run types that require HMAC run_token verification, workspace-mismatch
 // rejection, and result-merge-into-existing-JSON — the three security gates
@@ -951,7 +961,21 @@ export async function processStakworkRunWebhook(
   // This closes the unauthenticated-webhook gap on these endpoints.
   if (TOKEN_VERIFIED_RUN_TYPES.has(run.type)) {
     const { run_token } = queryParams;
-    const webhookSecret = process.env.NEXTAUTH_SECRET ?? "";
+
+    // A missing or too-short NEXTAUTH_SECRET must NEVER silently fall back to
+    // an empty/weak key that would make run_token trivially forgeable by
+    // anyone who can guess or observe a run id. Reject outright — mirrors the
+    // dispatch route's 503 posture at signing time (see
+    // src/app/api/workspaces/[slug]/workflow-benchmarks/run/route.ts).
+    const webhookSecret = process.env.NEXTAUTH_SECRET;
+    if (!webhookSecret || webhookSecret.length < MIN_RUN_TOKEN_SECRET_LENGTH) {
+      logger.error(
+        "[legal-benchmark] NEXTAUTH_SECRET missing or too short — rejecting webhook verification",
+        "stakwork-run",
+        { runId: run.id, type: run.type },
+      );
+      throw new Error("Unauthorized: invalid run token");
+    }
 
     // Determine the root runner run id — for scorer webhooks, resolve via siblingRunId
     let rootRunId: string = run.id;

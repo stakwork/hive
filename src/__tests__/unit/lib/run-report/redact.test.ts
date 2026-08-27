@@ -110,6 +110,31 @@ describe("redactSensitiveKeys — key set", () => {
     expect(out).not.toContain("s3://");
     expect(out).not.toContain("cdn.example.com");
   });
+
+  it("covers the Workflow Benchmark expected-answer keys (all four spellings)", () => {
+    for (const key of [
+      "expected_output",
+      "rerun_expected_output",
+      "expectedoutput",
+      "rerunexpectedoutput",
+    ]) {
+      expect(REDACTED_KEYS.has(key)).toBe(true);
+    }
+  });
+
+  it("redacts an echoed expected_output / rerun_expected_output from a webhook-shaped payload", () => {
+    // Simulates the BENCHMARK_RUNNER webhook return leg: an external runner
+    // echoing the deterministic answer back in its response body must not
+    // have it survive into a client-served result blob.
+    const out = JSON.stringify(
+      redactSensitiveKeys({
+        criteria_results: [{ id: "C-001", passed: true }],
+        expected_output: "Cardiff",
+        rerun_expected_output: "Cardiff",
+      }),
+    );
+    expect(out).not.toContain("Cardiff");
+  });
 });
 
 describe("token-shape pass — scoped, not global", () => {

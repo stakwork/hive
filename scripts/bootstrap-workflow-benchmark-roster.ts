@@ -9,7 +9,7 @@
  * removed from the corpus but still in the graph, which inflate the denominator).
  *
  * Usage:
- *   npx ts-node --project tsconfig.scripts.json scripts/bootstrap-workflow-benchmark-roster.ts
+ *   npx tsx scripts/bootstrap-workflow-benchmark-roster.ts
  *
  * Requires: NEXTAUTH_URL workspace slug environment pointing at a configured
  * workspace with Jarvis access. The script resolves Jarvis config via the

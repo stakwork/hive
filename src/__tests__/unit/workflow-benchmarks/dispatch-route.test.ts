@@ -6,17 +6,39 @@
  *   - Authorization (canWrite required; 404 not 403)
  *   - Rate limit (fail-closed: 503 on limiter error)
  *   - Body validation (only taskSlug; unknown slug → 400)
- *   - Single-active-run guard (409 on fresh active; mark-stale + proceed on stale)
- *   - Single-active-run scoped by taskSlug (different taskSlug doesn't block)
- *   - Dispatch payload: BENCHMARK_RUNNER type; no credentials; baseline conditional
+ *   - Single-active-run guard (409 on fresh active; mark-stale + proceed on stale),
+ *     via a BOUNDED findMany scan (newest-first, capped) — not findFirst, because
+ *     taskSlug lives inside serialized `result` JSON and a single-row findFirst
+ *     cannot express "the other task's row sorts first"
+ *   - Single-active-run scoped by taskSlug (different taskSlug doesn't block, even
+ *     when it sorts ahead of same-task rows)
+ *   - Malformed active-run rows: block within the staleness window, ignored past
+ *     it, and are NEVER written to (their owning taskSlug is unknown)
+ *   - Dispatch payload: BENCHMARK_RUNNER type; no credentials; baseline conditional;
+ *     workflow_input_json / rerun_expected_output conditional (absent for the
+ *     no-input seed task, present for generate-capital-city)
+ *   - Dispatch-boundary log carries inputKeys / hasExpectedOutput
  *   - Env: missing workflow ID → 503
+ *   - HMAC secret hardening: missing/short NEXTAUTH_SECRET → 503, never a token
+ *     signed with an empty/weak key
  *   - Webhook URL + reportUrl never leaked in response
  *   - rosterUpsert non-fatal
+ *
+ * NOTE: judge-side (LLM) scoring behavior for any criterion is NOT verifiable
+ * in this repo — these tests assert dispatch-route mechanics only.
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { NextRequest } from "next/server";
 import { StakworkRunType, WorkflowStatus } from "@prisma/client";
+import {
+  WORKFLOW_BENCHMARK_TASKS,
+  WORKFLOW_INPUT_VAR,
+  RERUN_EXPECTED_OUTPUT_VAR,
+} from "@/lib/workflow-benchmark-tasks";
+
+/** A secret long enough to pass the dispatch route's MIN_RUN_TOKEN_SECRET_LENGTH gate. */
+const VALID_TEST_SECRET = "a".repeat(32);
 
 // ── Stable mock references ────────────────────────────────────────────────────
 
@@ -110,7 +132,7 @@ const USER_ID = "user-123";
 const WORKSPACE_ID = "ws-abc";
 const RUN_ID = "run-xyz";
 
-function setupHappyPath(opts?: { activeRun?: unknown; staleRun?: unknown }) {
+function setupHappyPath(opts?: { activeRuns?: unknown[] }) {
   mockGetMiddlewareContext.mockReturnValue({});
   mockRequireAuth.mockReturnValue({ id: USER_ID });
   mockValidateWorkspaceAccess.mockResolvedValue({
@@ -129,11 +151,14 @@ function setupHappyPath(opts?: { activeRun?: unknown; staleRun?: unknown }) {
   mockCheckRateLimit.mockResolvedValue({ allowed: true });
   mockEnsureWorkflowBenchmarkEvalNodes.mockResolvedValue({ evalSetRef: "ref-1", requirementRefs: [] });
 
-  // Transaction: no active run by default
+  // Transaction: no active runs by default. The route scans via a BOUNDED
+  // findMany (newest-first) — not findFirst — because taskSlug lives inside
+  // serialized `result` JSON and a single-row findFirst cannot express
+  // "the other task's row sorts first".
   mockDbTransaction.mockImplementation(async (fn: (tx: unknown) => unknown) => {
     const tx = {
       stakworkRun: {
-        findFirst: vi.fn().mockResolvedValue(opts?.staleRun ?? opts?.activeRun ?? null),
+        findMany: vi.fn().mockResolvedValue(opts?.activeRuns ?? []),
         update: vi.fn().mockResolvedValue({}),
         create: vi.fn().mockResolvedValue({ id: RUN_ID }),
       },
@@ -151,7 +176,7 @@ function setupHappyPath(opts?: { activeRun?: unknown; staleRun?: unknown }) {
 
   process.env.STAKWORK_WORKFLOW_BENCHMARK_WORKFLOW_ID = "12345";
   process.env.NEXTAUTH_URL = "https://hive.example.com";
-  process.env.NEXTAUTH_SECRET = "test-secret";
+  process.env.NEXTAUTH_SECRET = VALID_TEST_SECRET;
 }
 
 // ── Feature gate tests ────────────────────────────────────────────────────────
@@ -351,7 +376,7 @@ describe("POST /api/workspaces/[slug]/workflow-benchmarks/run — dispatch paylo
     mockDbTransaction.mockImplementation(async (fn: (tx: unknown) => unknown) => {
       const tx = {
         stakworkRun: {
-          findFirst: vi.fn().mockResolvedValue(null),
+          findMany: vi.fn().mockResolvedValue([]),
           update: vi.fn().mockResolvedValue({}),
           create: vi.fn().mockImplementation(({ data }: { data: { type: string } }) => {
             createdType = data.type;
@@ -414,7 +439,7 @@ describe("POST /api/workspaces/[slug]/workflow-benchmarks/run — dispatch paylo
     expect(Object.prototype.hasOwnProperty.call(vars, "baseline_workflow_version_id")).toBe(false);
   });
 
-  it("vars always present: task_slug, task_title, instructions, criteria, run_id, webhook_url, graph_base_url", async () => {
+  it("seed task vars do NOT contain workflow_input_json or rerun_expected_output (no-input task)", async () => {
     const { POST } = await import("@/app/api/workspaces/[slug]/workflow-benchmarks/run/route");
     const req = makeRequest(VALID_SLUG, { taskSlug: TASK_SLUG });
     await POST(req, { params: Promise.resolve({ slug: VALID_SLUG }) });
@@ -426,13 +451,62 @@ describe("POST /api/workspaces/[slug]/workflow-benchmarks/run — dispatch paylo
     const body = JSON.parse(lastFetchCall![1].body as string);
     const vars = body.workflow_params?.set_var?.attributes?.vars ?? {};
 
-    expect(vars.task_slug).toBe(TASK_SLUG);
-    expect(typeof vars.task_title).toBe("string");
-    expect(typeof vars.instructions).toBe("string");
-    expect(typeof vars.criteria).toBe("string");
-    expect(typeof vars.run_id).toBe("string");
-    expect(typeof vars.webhook_url).toBe("string");
-    expect(typeof vars.graph_base_url).toBe("string");
+    // Absent fields must emit NO key at all — never null/empty.
+    expect(Object.prototype.hasOwnProperty.call(vars, WORKFLOW_INPUT_VAR)).toBe(false);
+    expect(Object.prototype.hasOwnProperty.call(vars, RERUN_EXPECTED_OUTPUT_VAR)).toBe(false);
+  });
+
+  it("generate-capital-city vars contain workflow_input_json (parses back to the source object) and a RAW (non-JSON-encoded) rerun_expected_output", async () => {
+    const capitalCityTask = WORKFLOW_BENCHMARK_TASKS.find(
+      (t) => t.slug === "wfbench/generate-capital-city",
+    );
+    expect(capitalCityTask).toBeDefined();
+    expect(capitalCityTask!.workflow_input).toEqual({ country: "Wales" });
+
+    const { POST } = await import("@/app/api/workspaces/[slug]/workflow-benchmarks/run/route");
+    const req = makeRequest(VALID_SLUG, { taskSlug: "wfbench/generate-capital-city" });
+    const res = await POST(req, { params: Promise.resolve({ slug: VALID_SLUG }) });
+    expect(res.status).toBe(201);
+
+    const lastFetchCall = mockFetch.mock.calls.find(
+      (c: unknown[]) => (c[0] as string)?.includes("projects"),
+    );
+    expect(lastFetchCall).toBeDefined();
+    const body = JSON.parse(lastFetchCall![1].body as string);
+    const vars = body.workflow_params?.set_var?.attributes?.vars ?? {};
+
+    expect(typeof vars[WORKFLOW_INPUT_VAR]).toBe("string");
+    expect(JSON.parse(vars[WORKFLOW_INPUT_VAR])).toEqual({ country: "Wales" });
+
+    // RAW string — never JSON.stringify'd. A double-encoded value would be
+    // the string `"Cardiff"` (with literal quote characters), not `Cardiff`.
+    expect(vars[RERUN_EXPECTED_OUTPUT_VAR]).toBe("Cardiff");
+    expect(vars[RERUN_EXPECTED_OUTPUT_VAR]).not.toBe('"Cardiff"');
+  });
+
+  it("vars always present, for EVERY corpus task: task_slug, task_title, instructions, criteria, run_id, webhook_url, graph_base_url", async () => {
+    for (const task of WORKFLOW_BENCHMARK_TASKS) {
+      mockFetch.mockClear();
+      const { POST } = await import("@/app/api/workspaces/[slug]/workflow-benchmarks/run/route");
+      const req = makeRequest(VALID_SLUG, { taskSlug: task.slug });
+      const res = await POST(req, { params: Promise.resolve({ slug: VALID_SLUG }) });
+      expect(res.status).toBe(201);
+
+      const lastFetchCall = mockFetch.mock.calls.find(
+        (c: unknown[]) => (c[0] as string)?.includes("projects"),
+      );
+      expect(lastFetchCall).toBeDefined();
+      const body = JSON.parse(lastFetchCall![1].body as string);
+      const vars = body.workflow_params?.set_var?.attributes?.vars ?? {};
+
+      expect(vars.task_slug).toBe(task.slug);
+      expect(typeof vars.task_title).toBe("string");
+      expect(typeof vars.instructions).toBe("string");
+      expect(typeof vars.criteria).toBe("string");
+      expect(typeof vars.run_id).toBe("string");
+      expect(typeof vars.webhook_url).toBe("string");
+      expect(typeof vars.graph_base_url).toBe("string");
+    }
   });
 
   it("response body contains run_id but NOT webhookUrl or reportUrl", async () => {
@@ -448,7 +522,162 @@ describe("POST /api/workspaces/[slug]/workflow-benchmarks/run — dispatch paylo
   });
 });
 
+describe("POST /api/workspaces/[slug]/workflow-benchmarks/run — hive-namespaced roster observability", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    setupHappyPath();
+  });
+
+  it("persists rosterUpsertOutcome and criteriaFingerprint under a `hive` key in the final result write", async () => {
+    let finalUpdateData: Record<string, unknown> | undefined;
+    mockDbStakworkRunUpdate.mockImplementation((args: { data: Record<string, unknown> }) => {
+      if (args.data && Object.prototype.hasOwnProperty.call(args.data, "status")) {
+        finalUpdateData = args.data;
+      }
+      return {};
+    });
+
+    const { POST } = await import("@/app/api/workspaces/[slug]/workflow-benchmarks/run/route");
+    const req = makeRequest(VALID_SLUG, { taskSlug: TASK_SLUG });
+    const res = await POST(req, { params: Promise.resolve({ slug: VALID_SLUG }) });
+    expect(res.status).toBe(201);
+
+    expect(finalUpdateData).toBeDefined();
+    const result = JSON.parse(finalUpdateData!.result as string) as Record<string, unknown>;
+    expect(result.hive).toBeDefined();
+    const hive = result.hive as Record<string, unknown>;
+    expect(hive.rosterUpsertOutcome).toBe("ok");
+    expect(typeof hive.criteriaFingerprint).toBe("string");
+  });
+
+  it("a runner-supplied bare `rosterUpsertOutcome` field on the run row cannot clobber the hive-namespaced one", async () => {
+    // Simulate a pre-existing result blob (e.g. from a prior partial write)
+    // carrying a bare top-level field of the same name as a Correction 6 sanity check.
+    mockDbStakworkRunFindUnique.mockResolvedValue({
+      result: JSON.stringify({ taskSlug: TASK_SLUG, rosterUpsertOutcome: "should-not-leak-here" }),
+    });
+
+    let finalUpdateData: Record<string, unknown> | undefined;
+    mockDbStakworkRunUpdate.mockImplementation((args: { data: Record<string, unknown> }) => {
+      if (args.data && Object.prototype.hasOwnProperty.call(args.data, "status")) {
+        finalUpdateData = args.data;
+      }
+      return {};
+    });
+
+    const { POST } = await import("@/app/api/workspaces/[slug]/workflow-benchmarks/run/route");
+    const req = makeRequest(VALID_SLUG, { taskSlug: TASK_SLUG });
+    await POST(req, { params: Promise.resolve({ slug: VALID_SLUG }) });
+
+    const result = JSON.parse(finalUpdateData!.result as string) as Record<string, unknown>;
+    // The namespaced value must be the route's own computed outcome, not the
+    // pre-existing bare field.
+    expect((result.hive as Record<string, unknown>).rosterUpsertOutcome).toBe("ok");
+  });
+});
+
+// ── Dispatch-boundary log fields ──────────────────────────────────────────────
+
+describe("POST /api/workspaces/[slug]/workflow-benchmarks/run — dispatch log fields", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    setupHappyPath();
+  });
+
+  it("logs inputKeys=[] and hasExpectedOutput=false for the no-input seed task", async () => {
+    const { logger } = await import("@/lib/logger");
+    const { POST } = await import("@/app/api/workspaces/[slug]/workflow-benchmarks/run/route");
+    const req = makeRequest(VALID_SLUG, { taskSlug: TASK_SLUG });
+    await POST(req, { params: Promise.resolve({ slug: VALID_SLUG }) });
+
+    const infoCalls = (logger.info as unknown as ReturnType<typeof vi.fn>).mock.calls;
+    const dispatchCall = infoCalls.find((c) => String(c[0]).includes("dispatching task="));
+    expect(dispatchCall).toBeDefined();
+    const metadata = dispatchCall![2] as Record<string, unknown>;
+    expect(metadata.inputKeys).toEqual([]);
+    expect(metadata.hasExpectedOutput).toBe(false);
+  });
+
+  it("logs inputKeys=['country'] and hasExpectedOutput=true for generate-capital-city", async () => {
+    const { logger } = await import("@/lib/logger");
+    const { POST } = await import("@/app/api/workspaces/[slug]/workflow-benchmarks/run/route");
+    const req = makeRequest(VALID_SLUG, { taskSlug: "wfbench/generate-capital-city" });
+    await POST(req, { params: Promise.resolve({ slug: VALID_SLUG }) });
+
+    const infoCalls = (logger.info as unknown as ReturnType<typeof vi.fn>).mock.calls;
+    const dispatchCall = infoCalls.find((c) => String(c[0]).includes("dispatching task="));
+    expect(dispatchCall).toBeDefined();
+    const metadata = dispatchCall![2] as Record<string, unknown>;
+    expect(metadata.inputKeys).toEqual(["country"]);
+    expect(metadata.hasExpectedOutput).toBe(true);
+  });
+});
+
+// ── HMAC secret hardening ─────────────────────────────────────────────────────
+
+describe("POST /api/workspaces/[slug]/workflow-benchmarks/run — run_token secret hardening", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    setupHappyPath();
+  });
+
+  it("returns 503 when NEXTAUTH_SECRET is unset", async () => {
+    delete process.env.NEXTAUTH_SECRET;
+
+    const { POST } = await import("@/app/api/workspaces/[slug]/workflow-benchmarks/run/route");
+    const req = makeRequest(VALID_SLUG, { taskSlug: TASK_SLUG });
+    const res = await POST(req, { params: Promise.resolve({ slug: VALID_SLUG }) });
+    expect(res.status).toBe(503);
+
+    process.env.NEXTAUTH_SECRET = VALID_TEST_SECRET;
+  });
+
+  it("returns 503 when NEXTAUTH_SECRET is shorter than the minimum length", async () => {
+    process.env.NEXTAUTH_SECRET = "too-short";
+
+    const { POST } = await import("@/app/api/workspaces/[slug]/workflow-benchmarks/run/route");
+    const req = makeRequest(VALID_SLUG, { taskSlug: TASK_SLUG });
+    const res = await POST(req, { params: Promise.resolve({ slug: VALID_SLUG }) });
+    expect(res.status).toBe(503);
+
+    process.env.NEXTAUTH_SECRET = VALID_TEST_SECRET;
+  });
+
+  it("does not create a run row when the secret is missing (never signs with an empty key)", async () => {
+    delete process.env.NEXTAUTH_SECRET;
+
+    let createCalled = false;
+    mockDbTransaction.mockImplementation(async (fn: (tx: unknown) => unknown) => {
+      const tx = {
+        stakworkRun: {
+          findMany: vi.fn().mockResolvedValue([]),
+          update: vi.fn().mockResolvedValue({}),
+          create: vi.fn().mockImplementation(() => {
+            createCalled = true;
+            return { id: RUN_ID };
+          }),
+        },
+      };
+      return fn(tx);
+    });
+
+    const { POST } = await import("@/app/api/workspaces/[slug]/workflow-benchmarks/run/route");
+    const req = makeRequest(VALID_SLUG, { taskSlug: TASK_SLUG });
+    await POST(req, { params: Promise.resolve({ slug: VALID_SLUG }) });
+
+    expect(createCalled).toBe(false);
+
+    process.env.NEXTAUTH_SECRET = VALID_TEST_SECRET;
+  });
+});
+
 // ── Single-active-run guard ───────────────────────────────────────────────────
+//
+// The guard scans via a BOUNDED findMany (newest-first, capped at
+// ACTIVE_RUN_SCAN_LIMIT) rather than findFirst, because taskSlug lives inside
+// serialized `result` JSON and cannot be filtered in SQL. A single-row
+// findFirst mock cannot express "the other task's row sorts first" — the
+// actual defect this rewrite fixes — so every case here uses findMany.
 
 describe("POST /api/workspaces/[slug]/workflow-benchmarks/run — active run guard", () => {
   beforeEach(() => {
@@ -467,7 +696,7 @@ describe("POST /api/workspaces/[slug]/workflow-benchmarks/run — active run gua
     mockDbTransaction.mockImplementation(async (fn: (tx: unknown) => unknown) => {
       const tx = {
         stakworkRun: {
-          findFirst: vi.fn().mockResolvedValue(freshRun),
+          findMany: vi.fn().mockResolvedValue([freshRun]),
           update: vi.fn().mockResolvedValue({}),
           create: vi.fn().mockResolvedValue({ id: RUN_ID }),
         },
@@ -481,7 +710,13 @@ describe("POST /api/workspaces/[slug]/workflow-benchmarks/run — active run gua
     expect(res.status).toBe(409);
   });
 
-  it("does NOT block when an active run exists for a DIFFERENT taskSlug", async () => {
+  it("does NOT block when an active run exists for a DIFFERENT taskSlug, even when it sorts FIRST (newest)", async () => {
+    // The other-task row is placed first in the returned array — a
+    // single-row findFirst mock structurally cannot express this ordering,
+    // which is exactly the defect the findMany rewrite fixes: a naive
+    // "take the first row" guard would wrongly treat this as a non-match
+    // and fall through correctly here, but would wrongly treat a
+    // same-task row sorting second as invisible in the old implementation.
     const otherTaskRun = {
       id: "other-run",
       result: JSON.stringify({ taskSlug: "wfbench/other-task" }), // different slug
@@ -491,7 +726,7 @@ describe("POST /api/workspaces/[slug]/workflow-benchmarks/run — active run gua
     mockDbTransaction.mockImplementation(async (fn: (tx: unknown) => unknown) => {
       const tx = {
         stakworkRun: {
-          findFirst: vi.fn().mockResolvedValue(otherTaskRun),
+          findMany: vi.fn().mockResolvedValue([otherTaskRun]),
           update: vi.fn().mockResolvedValue({}),
           create: vi.fn().mockResolvedValue({ id: RUN_ID }),
         },
@@ -506,6 +741,37 @@ describe("POST /api/workspaces/[slug]/workflow-benchmarks/run — active run gua
     expect(res.status).toBe(201);
   });
 
+  it("blocks on a same-task active run even when a different-task row sorts ahead of it", async () => {
+    const otherTaskRun = {
+      id: "other-run",
+      result: JSON.stringify({ taskSlug: "wfbench/other-task" }),
+      updatedAt: new Date(),
+    };
+    const sameTaskRun = {
+      id: "same-task-run",
+      result: JSON.stringify({ taskSlug: TASK_SLUG }),
+      updatedAt: new Date(Date.now() - 1000), // slightly older, still fresh
+    };
+
+    mockDbTransaction.mockImplementation(async (fn: (tx: unknown) => unknown) => {
+      const tx = {
+        stakworkRun: {
+          // other-task row sorts first (newer) — a findFirst-based guard
+          // would have returned only this row and missed the collision.
+          findMany: vi.fn().mockResolvedValue([otherTaskRun, sameTaskRun]),
+          update: vi.fn().mockResolvedValue({}),
+          create: vi.fn().mockResolvedValue({ id: RUN_ID }),
+        },
+      };
+      return fn(tx);
+    });
+
+    const { POST } = await import("@/app/api/workspaces/[slug]/workflow-benchmarks/run/route");
+    const req = makeRequest(VALID_SLUG, { taskSlug: TASK_SLUG });
+    const res = await POST(req, { params: Promise.resolve({ slug: VALID_SLUG }) });
+    expect(res.status).toBe(409);
+  });
+
   it("marks a stale run FAILED and proceeds to create a new one", async () => {
     const staleDate = new Date(Date.now() - 31 * 60 * 1000); // 31 minutes ago
     const staleRun = {
@@ -518,7 +784,7 @@ describe("POST /api/workspaces/[slug]/workflow-benchmarks/run — active run gua
     mockDbTransaction.mockImplementation(async (fn: (tx: unknown) => unknown) => {
       const tx = {
         stakworkRun: {
-          findFirst: vi.fn().mockResolvedValue(staleRun),
+          findMany: vi.fn().mockResolvedValue([staleRun]),
           update: vi.fn().mockImplementation(() => {
             stalledRunMarkedFailed = true;
             return {};
@@ -535,6 +801,90 @@ describe("POST /api/workspaces/[slug]/workflow-benchmarks/run — active run gua
 
     expect(stalledRunMarkedFailed).toBe(true);
     expect(res.status).toBe(201);
+  });
+
+  it("a malformed active run row (unparseable result JSON) BLOCKS within the staleness window", async () => {
+    const malformedRun = {
+      id: "malformed-run",
+      result: "{not valid json",
+      updatedAt: new Date(), // fresh
+    };
+
+    mockDbTransaction.mockImplementation(async (fn: (tx: unknown) => unknown) => {
+      const tx = {
+        stakworkRun: {
+          findMany: vi.fn().mockResolvedValue([malformedRun]),
+          update: vi.fn().mockResolvedValue({}),
+          create: vi.fn().mockResolvedValue({ id: RUN_ID }),
+        },
+      };
+      return fn(tx);
+    });
+
+    const { POST } = await import("@/app/api/workspaces/[slug]/workflow-benchmarks/run/route");
+    const req = makeRequest(VALID_SLUG, { taskSlug: TASK_SLUG });
+    const res = await POST(req, { params: Promise.resolve({ slug: VALID_SLUG }) });
+    expect(res.status).toBe(409);
+  });
+
+  it("a malformed active run row past the staleness window is IGNORED (does not block)", async () => {
+    const staleMalformedRun = {
+      id: "malformed-stale-run",
+      result: "{not valid json",
+      updatedAt: new Date(Date.now() - 31 * 60 * 1000), // 31 minutes ago — stale
+    };
+
+    const updateSpy = vi.fn().mockResolvedValue({});
+    mockDbTransaction.mockImplementation(async (fn: (tx: unknown) => unknown) => {
+      const tx = {
+        stakworkRun: {
+          findMany: vi.fn().mockResolvedValue([staleMalformedRun]),
+          update: updateSpy,
+          create: vi.fn().mockResolvedValue({ id: RUN_ID }),
+        },
+      };
+      return fn(tx);
+    });
+
+    const { POST } = await import("@/app/api/workspaces/[slug]/workflow-benchmarks/run/route");
+    const req = makeRequest(VALID_SLUG, { taskSlug: TASK_SLUG });
+    const res = await POST(req, { params: Promise.resolve({ slug: VALID_SLUG }) });
+    expect(res.status).toBe(201);
+  });
+
+  it("a malformed active run row is NEVER written to (not stale-marked), even past staleness", async () => {
+    const staleMalformedRun = {
+      id: "malformed-stale-run",
+      result: "{not valid json",
+      updatedAt: new Date(Date.now() - 31 * 60 * 1000),
+    };
+
+    const updateCalls: unknown[] = [];
+    mockDbTransaction.mockImplementation(async (fn: (tx: unknown) => unknown) => {
+      const tx = {
+        stakworkRun: {
+          findMany: vi.fn().mockResolvedValue([staleMalformedRun]),
+          update: vi.fn().mockImplementation((args: unknown) => {
+            updateCalls.push(args);
+            return {};
+          }),
+          create: vi.fn().mockResolvedValue({ id: RUN_ID }),
+        },
+      };
+      return fn(tx);
+    });
+
+    const { POST } = await import("@/app/api/workspaces/[slug]/workflow-benchmarks/run/route");
+    const req = makeRequest(VALID_SLUG, { taskSlug: TASK_SLUG });
+    await POST(req, { params: Promise.resolve({ slug: VALID_SLUG }) });
+
+    // The malformed row's id must never appear as an update target within
+    // the transaction — its owning taskSlug is unknown, so writing to it
+    // could let a dispatch for task A mutate task B's run row.
+    const wroteToMalformedRow = updateCalls.some(
+      (call) => (call as { where?: { id?: string } })?.where?.id === "malformed-stale-run",
+    );
+    expect(wroteToMalformedRow).toBe(false);
   });
 });
 

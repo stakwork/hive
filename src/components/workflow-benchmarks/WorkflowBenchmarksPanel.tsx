@@ -125,6 +125,30 @@ function TaskCard({ task, workspaceSlug }: TaskCardProps) {
                 </div>
               </div>
             )}
+
+            {/*
+              Inputs — only shown when the task declares workflow_input.
+              Read-only so an operator can see what a run will be launched
+              with before pressing Run. The expected answer is intentionally
+              NEVER rendered here — it is structurally absent from this
+              client module after the server-boundary split (see
+              expected-outputs.server.generated.ts), not withheld by
+              discipline.
+            */}
+            {task.workflow_input != null && Object.keys(task.workflow_input).length > 0 && (
+              <div>
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">
+                  Inputs (read-only)
+                </p>
+                <div className="text-xs text-muted-foreground space-y-0.5 font-mono">
+                  {Object.entries(task.workflow_input).map(([key, value]) => (
+                    <div key={key}>
+                      {key}: {value}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         )}
 

@@ -1,6 +1,7 @@
 #!/usr/bin/env npx tsx
 /**
- * Regenerates src/lib/workflow-benchmark-tasks.generated.ts from the
+ * Regenerates src/lib/workflow-benchmark-tasks.generated.ts AND
+ * src/lib/workflow-benchmarks/expected-outputs.server.generated.ts from the
  * benchmarks/workflow-editor/tasks/ directory tree.
  *
  * The directory IS the taxonomy: a task's grouping is simply where its
@@ -13,17 +14,26 @@
  * local filesystem instead) and minus LABEL_OVERRIDES/label() (no category
  * field here).
  *
+ * Two transforms are applied to authored `task.json` source on the way to the
+ * emitted index (everything else is a pure JSON.stringify pass-through):
+ *   1. When `workflow_input` is declared, an INPUT block is appended to
+ *      `instructions` (see task-schema.ts's INPUT_BLOCK_HEADING/SENTENCE).
+ *   2. `expected_output`, when declared, is routed to the SEPARATE
+ *      server-boundary `expected-outputs.server.generated.ts` map and
+ *      omitted from the client-imported index entirely.
+ *
  * Usage:
  *   npx tsx scripts/generate-workflow-benchmark-tasks.ts
  */
 
-import { readdirSync, readFileSync, writeFileSync } from "fs";
+import { readdirSync, readFileSync, writeFileSync, mkdirSync } from "fs";
 import { join, relative, resolve, sep } from "path";
 import {
   taskSourceSchema,
   checkTaskInvariants,
   checkSlugUniqueness,
   checkSlugFormat,
+  renderInputBlock,
   type WorkflowBenchmarkTask,
   type WorkflowBenchmarkTaskSource,
 } from "../src/lib/workflow-benchmarks/task-schema";
@@ -171,6 +181,12 @@ function validateTaskSource(absPath: string): WorkflowBenchmarkTaskSource {
 
 export interface GenerateResult {
   tasks: WorkflowBenchmarkTask[];
+  /**
+   * slug -> expected_output, for tasks that declared one. NEVER emitted into
+   * the client-imported index — routed to a separate server-boundary module
+   * by `main` (see `renderExpectedOutputsModule`).
+   */
+  expectedOutputs: Record<string, string>;
   /** Number of task.json files processed. */
   fileCount: number;
   /** Number of distinct grouping directories (diagnostics only). */
@@ -214,26 +230,64 @@ export function generateWorkflowBenchmarkTasks(rootDir: string): GenerateResult 
     throw new Error(`[${v.invariant}] ${v.message} (${v.filePaths.join(", ")})`);
   }
 
-  // ── Pass 4: per-task invariants (ids unique, non-empty criteria, baseline) ──
+  // ── Pass 4: per-task invariants (ids unique, non-empty criteria, baseline,
+  //            workflow_input value types, no hand-authored INPUT block,
+  //            declared input keys referenced in criteria) ───────────────────
   const tasks: WorkflowBenchmarkTask[] = [];
+  const expectedOutputs: Record<string, string> = {};
   for (const { source, slug, file } of parsed) {
-    const task: WorkflowBenchmarkTask = { slug, ...source };
-    const violations = checkTaskInvariants(task, file.absPath);
+    // Run invariants against the SOURCE (pre-injection instructions) so
+    // checkNoHandAuthoredInputBlock sees exactly what the author wrote, and
+    // checkInputKeysReferencedInCriteria sees the authored criteria.
+    const checkable = { slug, ...source };
+    const violations = checkTaskInvariants(checkable, file.absPath);
     if (violations.length > 0) {
       const v = violations[0];
       throw new Error(`[${v.invariant}] ${v.message} (${v.filePaths.join(", ")})`);
     }
+
+    // ── INPUT block injection: append to instructions when workflow_input is
+    //    declared. The generator is a pure pass-through for every other field
+    //    — see task-schema.ts header. Only two transforms exist: this one and
+    //    expected_output routing (below).
+    const instructions =
+      source.workflow_input !== undefined
+        ? `${source.instructions}\n\n${renderInputBlock(source.workflow_input)}`
+        : source.instructions;
+
+    // expected_output is routed to the server-boundary map, never emitted
+    // into the index (Omit<WorkflowBenchmarkTaskSource, "expected_output">).
+    const { expected_output, ...rest } = source;
+    if (expected_output !== undefined) {
+      expectedOutputs[slug] = expected_output;
+    }
+
+    const task: WorkflowBenchmarkTask = { slug, ...rest, instructions };
     tasks.push(task);
   }
 
   // Deterministic ordering for stable diffs.
   tasks.sort((a, b) => a.slug.localeCompare(b.slug));
 
+  // ── Bidirectional index/map agreement ────────────────────────────────────
+  // Every map key must exist in the index, and every task that declared
+  // expected_output must have a map entry. A missing entry would silently
+  // degrade a task from deterministic to judge-only scoring at dispatch time.
+  const indexSlugs = new Set(tasks.map((t) => t.slug));
+  for (const slug of Object.keys(expectedOutputs)) {
+    if (!indexSlugs.has(slug)) {
+      throw new Error(
+        `[expected-output-index-agreement] expected_output map has slug "${slug}" with no ` +
+          `corresponding task in the index`,
+      );
+    }
+  }
+
   const directoryCount = new Set(
     discovered.map((f) => directoryFromPath(f.relPath)),
   ).size;
 
-  return { tasks, fileCount: discovered.length, directoryCount };
+  return { tasks, expectedOutputs, fileCount: discovered.length, directoryCount };
 }
 
 // ── Rendering ─────────────────────────────────────────────────────────────────
@@ -257,6 +311,11 @@ function renderTaskLiteral(task: WorkflowBenchmarkTask): string {
       ? `\n    baseline: { workflow_id: ${JSON.stringify(task.baseline.workflow_id)}, workflow_version_id: ${JSON.stringify(task.baseline.workflow_version_id)} },`
       : "";
 
+  const workflowInputLine =
+    task.workflow_input !== undefined
+      ? `\n    workflow_input: ${JSON.stringify(task.workflow_input)},`
+      : "";
+
   return `  {
     slug: ${JSON.stringify(task.slug)},
     title: ${JSON.stringify(task.title)},
@@ -264,7 +323,7 @@ function renderTaskLiteral(task: WorkflowBenchmarkTask): string {
     criteria: [
 ${criteriaLines}
     ],
-    expectedSecrets: ${JSON.stringify(task.expectedSecrets)},${baselineLine}
+    expectedSecrets: ${JSON.stringify(task.expectedSecrets)},${baselineLine}${workflowInputLine}
   },`;
 }
 
@@ -287,6 +346,10 @@ export function renderModule(tasks: WorkflowBenchmarkTask[]): string {
  * Source: benchmarks/workflow-editor/tasks/{dir}/{task-slug}/task.json
  * Regenerated by: scripts/generate-workflow-benchmark-tasks.ts
  * (npm run generate:workflow-benchmark-tasks)
+ *
+ * expected_output is deliberately NOT part of this index — see
+ * ./workflow-benchmarks/expected-outputs.server.generated.ts (server-boundary
+ * only; never imported by client-reachable code).
  */
 
 import type { WorkflowBenchmarkTask } from "./workflow-benchmarks/task-schema";
@@ -294,6 +357,49 @@ import type { WorkflowBenchmarkTask } from "./workflow-benchmarks/task-schema";
 export const WORKFLOW_BENCHMARK_TASKS: WorkflowBenchmarkTask[] = [
 ${taskLines}
 ];
+`;
+}
+
+/**
+ * Renders the server-boundary expected-outputs module: a `slug -> answer`
+ * map. Every value is emitted via JSON.stringify, same escaping discipline as
+ * `renderModule` — a slug or answer containing a backtick or `${` must never
+ * inject into this template.
+ *
+ * BOUNDARY: this file must never be imported by a "use client" module or
+ * anything under src/components/**, directly or transitively — see the
+ * import-boundary test in
+ * src/__tests__/unit/lib/workflow-benchmarks/expected-outputs-boundary.test.ts.
+ * Do NOT add the `server-only` npm package (see task-schema.ts header /
+ * architecture doc) — it is not installed and would break vitest-based unit
+ * tests that transitively import the dispatch route.
+ */
+export function renderExpectedOutputsModule(expectedOutputs: Record<string, string>): string {
+  const entries = Object.keys(expectedOutputs)
+    .sort()
+    .map((slug) => `  ${JSON.stringify(slug)}: ${JSON.stringify(expectedOutputs[slug])},`)
+    .join("\n");
+
+  return `/**
+ * Workflow Editor Benchmark — expected rerun answers. AUTO-GENERATED. DO NOT EDIT.
+ *
+ * ══════════════════════════════════════════════════════════════════════════
+ * SERVER-BOUNDARY ONLY. This file must NEVER be imported by a "use client"
+ * module or anything under src/components/**, directly or transitively.
+ * It carries the deterministic rerun answer for each corpus task that
+ * declares one — that value must never reach the browser. Enforced by a
+ * static import-boundary unit test, not by the (unused, would-break-tests)
+ * "server-only" package. See src/lib/workflow-benchmarks/task-schema.ts for
+ * the full rationale.
+ * ══════════════════════════════════════════════════════════════════════════
+ *
+ * Source: benchmarks/workflow-editor/tasks/{dir}/{task-slug}/task.json (expected_output field)
+ * Regenerated by: scripts/generate-workflow-benchmark-tasks.ts
+ */
+
+export const EXPECTED_OUTPUTS: Readonly<Record<string, string>> = {
+${entries}
+};
 `;
 }
 
@@ -307,12 +413,24 @@ ${taskLines}
  *                   `mkdtemp` directory instead.
  */
 export function main(rootDir: string = DEFAULT_ROOT_DIR, outDir: string = DEFAULT_OUT_DIR): void {
-  const { tasks, fileCount, directoryCount } = generateWorkflowBenchmarkTasks(rootDir);
+  const { tasks, expectedOutputs, fileCount, directoryCount } =
+    generateWorkflowBenchmarkTasks(rootDir);
+
   const output = renderModule(tasks);
   const outPath = join(outDir, "workflow-benchmark-tasks.generated.ts");
   writeFileSync(outPath, output, "utf-8");
+
+  const expectedOutputsDir = join(outDir, "workflow-benchmarks");
+  mkdirSync(expectedOutputsDir, { recursive: true });
+  const expectedOutputsOutput = renderExpectedOutputsModule(expectedOutputs);
+  const expectedOutputsPath = join(expectedOutputsDir, "expected-outputs.server.generated.ts");
+  writeFileSync(expectedOutputsPath, expectedOutputsOutput, "utf-8");
+
   console.log(
     `Wrote ${outPath} — ${tasks.length} tasks across ${directoryCount} directories (${fileCount} files processed)`,
+  );
+  console.log(
+    `Wrote ${expectedOutputsPath} — ${Object.keys(expectedOutputs).length} expected outputs`,
   );
 }
 
