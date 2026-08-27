@@ -10,10 +10,11 @@
  * TS-source formatting differs from the old hand-written file.
  *
  * This is a migration-acceptance artifact, not a permanent regression guard.
- * Later slices (workflow_input/expected_output, expectedSecrets removal) are
- * expected to legitimately mutate the corpus's data shape and will need to
- * re-baseline this fixture in their own commit, with the JSON diff reviewed
- * as the change record. The ongoing guard against unreviewed drift is the
+ * Slices legitimately mutating corpus data are expected to re-baseline this
+ * fixture in their own commit, with the JSON diff reviewed as the change
+ * record — which has happened twice so far: workflow_input/expected_output
+ * (input contract) and expectedSecrets removal + C-004/C-005 narrowing
+ * (secret cleanup). The ongoing guard against unreviewed drift is the
  * separate "regenerate produces no diff" CI check, which does not decay.
  */
 

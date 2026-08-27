@@ -6,14 +6,20 @@
  *   - Criterion wording: required/rejected literal forms named explicitly
  *   - Seed task specifics: no baseline, 8 criteria with unique ids
  *   - TASK_SLUG_RE: namespaced slug matches the regex
- *   - C-004 specifics: expectedSecrets, instructions naming the secret
+ *   - Slice 2 secret cleanup: `expectedSecrets` is fully removed; C-004 and
+ *     C-005 narrowed to SHAPE-ONLY secret checks using generic placeholders;
+ *     generate-time invariants for %%…%% well-formedness and
+ *     credential-shape rejection; FAIL-condition disjointness between the two
  *   - workflow_input / expected_output contract (Slice 1): value types, INPUT
  *     block injection presence/position, rejection of a hand-authored block,
  *     index/map agreement, declared input keys referenced in criteria
  *
  * NOTE: whether an LLM judge actually enforces any criterion's wording is NOT
  * verifiable in this repo (the judge lives in Stakwork's pipeline) — these
- * tests assert corpus data/strings only.
+ * tests assert corpus data/strings only. Specifically, whether the NARROWED
+ * C-004/C-005 wording still makes that judge hard-fail a plaintext key is a
+ * behavioural question with no fixture here — what IS machine-checked are the
+ * criterion strings themselves plus the generate-time secret invariants.
  */
 
 import { describe, it, expect } from "vitest";
@@ -31,6 +37,9 @@ import {
   checkWorkflowInputValuesAreStrings,
   checkNoHandAuthoredInputBlock,
   checkInputKeysReferencedInCriteria,
+  checkSecretReferenceForm,
+  checkNoCredentialShapedContent,
+  matchesCredentialShape,
 } from "@/lib/workflow-benchmarks/task-schema";
 
 // The corpus restructure (directory tree + generator) drops the
@@ -90,10 +99,13 @@ describe("WORKFLOW_BENCHMARK_TASKS corpus invariants", () => {
     }
   });
 
-  it("every task has at least one expectedSecret", () => {
+  it("`expectedSecrets` is fully removed from every emitted task object", () => {
+    // Slice 2 removed this field: it existed only to pin ONE specific secret
+    // name, and that job is now done generically by shape-only criteria plus
+    // the generate-time secret invariants. Its absence is itself pinned here
+    // so nothing reintroduces a per-task secret-name array without review.
     for (const task of WORKFLOW_BENCHMARK_TASKS) {
-      // Some tasks may have no secrets — only validate that the field exists
-      expect(Array.isArray(task.expectedSecrets)).toBe(true);
+      expect(Object.prototype.hasOwnProperty.call(task, "expectedSecrets")).toBe(false);
     }
   });
 
@@ -142,10 +154,12 @@ describe("CREATE_OPENAI_CALL_TASK (seed task)", () => {
     expect(task.baseline).toBeUndefined();
   });
 
-  it("expectedSecrets contains OPENAI_STAKWORK_MAIN_KEY", () => {
-    expect(task.expectedSecrets).toContain("OPENAI_STAKWORK_MAIN_KEY");
-  });
-
+  // NOTE: the instructions-contains-OPENAI_STAKWORK_MAIN_KEY assertion is
+  // deliberately RETAINED (Slice 2). It reads `instructions` prose — not the
+  // removed `expectedSecrets` field and not any criterion body — and after
+  // the narrowing it is one of the very few remaining secret-hygiene checks
+  // in the suite: the agent still needs to be told which real secret the
+  // produced workflow must reference.
   it("instructions explicitly name OPENAI_STAKWORK_MAIN_KEY", () => {
     expect(task.instructions).toContain("OPENAI_STAKWORK_MAIN_KEY");
   });
@@ -168,25 +182,33 @@ describe("criterion wording: substitution form literals", () => {
    * C-004 and C-005 are the relevant criteria.
    */
 
-  describe("C-004 — Authorization header uses a secret reference", () => {
+  describe("C-004 — credential hygiene (no plaintext key, no raw key in URL)", () => {
     const c004 = task.criteria.find((c) => c.id === "C-004")!;
 
     it("exists", () => {
       expect(c004).toBeDefined();
     });
 
-    it("match_criteria contains the required authoring form %%SECRET_NAME%%", () => {
+    it("match_criteria contains a %%…%% authoring-form reference", () => {
       // The criterion must name %%…%% so a judge has a copy-comparable string.
       expect(c004.match_criteria).toContain("%%");
     });
 
-    it("match_criteria names OPENAI_STAKWORK_MAIN_KEY explicitly", () => {
-      expect(c004.match_criteria).toContain("OPENAI_STAKWORK_MAIN_KEY");
+    it("match_criteria uses ONLY a generic placeholder secret name", () => {
+      // Slice 2 narrowing: no specific secret name may be pinned.
+      expect(c004.match_criteria).toContain("%%SOME_SECRET_NAME%%");
     });
 
-    it("match_criteria names the rejected runtime form {{ ... }}", () => {
-      // The criterion must name {{ }} so a judge knows to reject it.
-      expect(c004.match_criteria).toMatch(/\{\{/);
+    it("match_criteria does NOT contain the real secret name", () => {
+      expect(c004.match_criteria).not.toContain("OPENAI_STAKWORK_MAIN_KEY");
+    });
+
+    it("match_criteria explicitly states WHICH secret is used is not asserted", () => {
+      expect(c004.match_criteria).toContain("never asserts WHICH secret name");
+    });
+
+    it("match_criteria states any well-formed [A-Z0-9_] reference passes", () => {
+      expect(c004.match_criteria).toContain("[A-Z0-9_]");
     });
 
     it("match_criteria explicitly distinguishes PASS from FAIL cases", () => {
@@ -195,33 +217,30 @@ describe("criterion wording: substitution form literals", () => {
       expect(c004.match_criteria.toLowerCase()).toContain("fail");
     });
 
-    it("match_criteria hard-fails on plaintext key", () => {
-      // The criterion must mention that a plaintext key is a failure.
-      expect(c004.match_criteria.toLowerCase()).toContain("plaintext");
+    it("FAIL clause hard-fails on a plaintext key", () => {
+      const failRegion = failRegionOf(c004.match_criteria);
+      expect(failRegion.toLowerCase()).toContain("plaintext");
     });
 
-    it("match_criteria does NOT fail on environment resolution (resolvability is env state)", () => {
-      // The criterion must not fail on whether %%…%% resolves — that is
-      // environment state. The wording should make clear that shape, not
-      // resolution, is what is tested.
-      // Either "shape" or "environment" must appear to signal this distinction.
-      const wording = c004.match_criteria.toLowerCase();
-      expect(wording.includes("shape") || wording.includes("environment")).toBe(true);
+    it("FAIL clause hard-fails on a raw key embedded in the URL", () => {
+      const failRegion = failRegionOf(c004.match_criteria);
+      expect(failRegion.toLowerCase()).toContain("url");
     });
   });
 
-  describe("C-005 — Authorization uses required authoring form, not runtime form", () => {
+  describe("C-005 — reference form (authoring %%[A-Z0-9_]+%%, never {{ ... }})", () => {
     const c005 = task.criteria.find((c) => c.id === "C-005")!;
 
     it("exists", () => {
       expect(c005).toBeDefined();
     });
 
-    it("match_criteria contains %%SECRET_NAME%% (required form)", () => {
+    it("match_criteria names the required authoring pattern %%[A-Z0-9_]+%%", () => {
       expect(c005.match_criteria).toContain("%%");
+      expect(c005.match_criteria).toContain("[A-Z0-9_]");
     });
 
-    it("match_criteria contains {{ ... }} (rejected runtime form)", () => {
+    it("match_criteria names the rejected runtime form {{ ... }}", () => {
       expect(c005.match_criteria).toMatch(/\{\{/);
     });
 
@@ -232,6 +251,20 @@ describe("criterion wording: substitution form literals", () => {
     it("match_criteria differentiates authoring vs runtime spelling", () => {
       // The criterion must explain WHY the runtime form is rejected.
       expect(c005.match_criteria).toContain("runtime");
+    });
+
+    it("match_criteria uses ONLY a generic placeholder secret name", () => {
+      expect(c005.match_criteria).toContain("%%SOME_SECRET_NAME%%");
+      expect(c005.match_criteria).not.toContain("OPENAI_STAKWORK_MAIN_KEY");
+    });
+
+    it("match_criteria explicitly states WHICH secret is used is not asserted", () => {
+      expect(c005.match_criteria).toContain("never asserts WHICH secret name");
+    });
+
+    it("match_criteria explicitly distinguishes PASS from FAIL cases", () => {
+      expect(c005.match_criteria.toLowerCase()).toContain("pass");
+      expect(c005.match_criteria.toLowerCase()).toContain("fail");
     });
   });
 
@@ -249,29 +282,77 @@ describe("criterion wording: substitution form literals", () => {
   });
 });
 
-// ── C-004 specific: shape vs resolvability ────────────────────────────────────
+// ── C-004/C-005: narrowing + FAIL-condition disjointness ─────────────────────
 
-describe("C-004 shape assertions (wording, not execution)", () => {
-  const c004 = CREATE_OPENAI_CALL_TASK.criteria.find((c) => c.id === "C-004")!;
+/**
+ * Everything from a criterion's "FAIL:" marker onward — its failure
+ * conditions, in the authors' own words. Disjointness is asserted on THIS
+ * region (never on whole-string vocabulary: C-004 legitimately names the
+ * authoring %%…%% form as its passing alternative, so a blunt "must not
+ * contain %%" check would be wrong).
+ */
+function failRegionOf(matchCriteria: string): string {
+  const idx = matchCriteria.indexOf("FAIL:");
+  return idx === -1 ? "" : matchCriteria.slice(idx);
+}
+
+describe("C-004 / C-005 narrowing (Slice 2)", () => {
+  const task = CREATE_OPENAI_CALL_TASK;
+  const c004 = task.criteria.find((c) => c.id === "C-004")!;
+  const c005 = task.criteria.find((c) => c.id === "C-005")!;
 
   /**
-   * We cannot execute the criterion against candidate JSON (the validators
+   * We cannot execute the criteria against candidate JSON (the validators
    * live in the Stakwork Rails codebase). We assert wording only.
    */
 
-  it("wording names a well-formed %%…%% reference as a PASS case", () => {
-    // A %%SECRET_NAME%% reference must be acknowledged as passing.
-    expect(c004.match_criteria).toContain("%%OPENAI_STAKWORK_MAIN_KEY%%");
+  it("wording still names a well-formed %%…%% reference as a PASS case", () => {
+    // A %%SOME_SECRET_NAME%% reference must be acknowledged as passing —
+    // with a GENERIC placeholder now that the real name is unpinned.
+    expect(c004.match_criteria).toMatch(/PASS:[^]*?%%[A-Z0-9_]+%%/);
+    expect(c005.match_criteria).toMatch(/PASS:[^]*?%%[A-Z0-9_]+%%/);
   });
 
-  it("wording names a raw API key as a FAIL case", () => {
-    // The criterion must fail on plaintext keys (e.g. sk-...).
-    expect(c004.match_criteria.toLowerCase()).toContain("plaintext");
+  it("no criterion anywhere in the corpus pins the real secret name", () => {
+    for (const t of WORKFLOW_BENCHMARK_TASKS) {
+      for (const criterion of t.criteria) {
+        expect(
+          criterion.match_criteria,
+          `${t.slug}::${criterion.id} pins OPENAI_STAKWORK_MAIN_KEY`,
+        ).not.toContain("OPENAI_STAKWORK_MAIN_KEY");
+      }
+    }
   });
 
-  it("wording names a raw key in the URL as a FAIL case", () => {
-    expect(c004.match_criteria.toLowerCase()).toContain("url");
-    expect(c004.match_criteria.toLowerCase()).toContain("fail");
+  it("C-004's FAIL conditions and C-005's FAIL conditions are DISJOINT", () => {
+    // Property split: C-004 owns plaintext/raw-key-in-URL; C-005 owns the
+    // reference FORM (malformed authoring spellings + the runtime {{ }}
+    // family). Overlapping failure clauses would double-weight one property
+    // in the fixed criteria-count denominator.
+    const c004Fail = failRegionOf(c004.match_criteria);
+    const c005Fail = failRegionOf(c005.match_criteria);
+
+    // Each clause actually covers what its id now means…
+    expect(c004Fail.toLowerCase()).toContain("plaintext");
+    expect(c004Fail.toLowerCase()).toContain("url");
+    expect(c005Fail.toLowerCase()).toContain("{{");
+    expect(c005Fail.toLowerCase()).toContain("malformed reference");
+
+    // …and neither clause claims the other id's property. Runtime-form
+    // rejection belongs to C-005 alone (the old shared wording double-
+    // covered it); credential-hygiene rejection belongs to C-004 alone.
+    expect(c004Fail).not.toContain("{{");
+    expect(c005Fail.toLowerCase()).not.toContain("plaintext");
+    expect(c005Fail.toLowerCase()).not.toContain("url");
+  });
+
+  it("both criteria remain HARD fails (neither is softened to a warning)", () => {
+    // "warning" must not appear as a downgrade of the FAIL outcomes themselves
+    // ("a warning upstream" is about environment resolution, not severity).
+    for (const criterion of [c004, c005]) {
+      const failRegion = failRegionOf(criterion.match_criteria).toLowerCase();
+      expect(failRegion).not.toContain("warn");
+    }
   });
 });
 
@@ -468,6 +549,129 @@ describe("generic invariant: declared input keys referenced in criteria (delimit
   it("checkInputKeysReferencedInCriteria is a no-op when workflow_input is absent", () => {
     const violation = checkInputKeysReferencedInCriteria(
       { criteria: [{ id: "C-001", match_criteria: "no inputs here" }] },
+      "fake/path/task.json",
+    );
+    expect(violation).toBeNull();
+  });
+});
+
+// ── Slice 2: generate-time secret invariants ──────────────────────────────────
+
+describe("secret-reference-form invariant (every %%…%% token well-formed)", () => {
+  it("every task's instructions across the corpus pass the predicate", () => {
+    for (const task of WORKFLOW_BENCHMARK_TASKS) {
+      expect(checkSecretReferenceForm(task, `${task.slug}/task.json`)).toBeNull();
+    }
+  });
+
+  // Scope note: a lone single-% spelling (%NAME%) is deliberately NOT
+  // mechanically detectable — paired-token scanning sees only complete %%…%%
+  // groups, and blanket %-counting would false-positive on prose like
+  // "reply with 90% confidence". That case stays with the C-005 criterion
+  // wording (judge-side), which names %NAME% as a FAIL example.
+
+  it.each([
+    ["lowercase name", "Use %%my-secret-name%% here."],
+    ["hyphenated name", "Use %%MY-SECRET-NAME%% here."],
+    ["surrounding spaces", "Use %% SOME_SECRET_NAME %% here."],
+    ["empty token", "Use %%%% here."],
+    ["nested punctuation", "Use %%SECRET.NAME%% here."],
+  ])("rejects a malformed reference (%s) without echoing it", (_label, instructions) => {
+    const violation = checkSecretReferenceForm(
+      { instructions },
+      "fake/path/task.json",
+    );
+    expect(violation).not.toBeNull();
+    expect(violation!.invariant).toBe("secret-reference-form");
+    // The offending region must never be echoed into the error text.
+    expect(violation!.message).not.toContain(instructions);
+  });
+
+  it("rejects an unbalanced number of %% markers (a partially-deleted token)", () => {
+    const violation = checkSecretReferenceForm(
+      { instructions: "Use a reference like %%TOKEN then continue with more prose." },
+      "fake/path/task.json",
+    );
+    expect(violation).not.toBeNull();
+    expect(violation!.invariant).toBe("secret-reference-form");
+    expect(violation!.message).toContain("unbalanced");
+  });
+
+  it("accepts well-formed references including the generic placeholder", () => {
+    const violation = checkSecretReferenceForm(
+      {
+        instructions:
+          "Reference secrets as %%SOME_SECRET_NAME%% or %%ANY_OTHER_KNOWN_SECRET_2%%; never raw keys.",
+      },
+      "fake/path/task.json",
+    );
+    expect(violation).toBeNull();
+  });
+
+  it("is a no-op when instructions carry no %% markers at all", () => {
+    const violation = checkSecretReferenceForm(
+      { instructions: "Plain prose mentioning {{ RUNTIME_FORM }} but no authoring tokens." },
+      "fake/path/task.json",
+    );
+    expect(violation).toBeNull();
+  });
+});
+
+describe("credential-shape rejection invariant (TOKEN_SHAPES reuse)", () => {
+  const FAKE_OPENAI_KEY = "sk-proj-abcdef0123456789abcdef";
+  const FAKE_BEARER_TOKEN = "Bearer abcdef0123456789abcdef0123456789";
+
+  it("no instructions or workflow_input anywhere in the corpus carries credential-shaped content", () => {
+    for (const task of WORKFLOW_BENCHMARK_TASKS) {
+      expect(checkNoCredentialShapedContent(task, `${task.slug}/task.json`)).toBeNull();
+    }
+  });
+
+  it("rejects a credential-shaped workflow_input VALUE without echoing it", () => {
+    const violation = checkNoCredentialShapedContent(
+      { workflow_input: { api_token: FAKE_OPENAI_KEY } },
+      "fake/path/task.json",
+    );
+    expect(violation).not.toBeNull();
+    expect(violation!.invariant).toBe("no-credential-shaped-content");
+    expect(violation!.filePaths).toEqual(["fake/path/task.json"]);
+    expect(violation!.message).toContain("workflow_input");
+    // Never echo the matched value — not even a recognizable fragment of it.
+    expect(violation!.message).not.toContain(FAKE_OPENAI_KEY);
+    expect(violation!.message).not.toContain(FAKE_OPENAI_KEY.slice(0, 10));
+  });
+
+  it("rejects a plaintext key embedded in instructions without echoing it", () => {
+    const instructions = `Call the API with ${FAKE_OPENAI_KEY} directly.`;
+    const violation = checkNoCredentialShapedContent({ instructions }, "fake/path/task.json");
+    expect(violation).not.toBeNull();
+    expect(violation!.invariant).toBe("no-credential-shaped-content");
+    expect(violation!.message).not.toContain(FAKE_OPENAI_KEY);
+  });
+
+  it("rejects a Bearer-prefixed literal in instructions without echoing it", () => {
+    const instructions = `Send Authorization: ${FAKE_BEARER_TOKEN} on every call.`;
+    const violation = checkNoCredentialShapedContent({ instructions }, "fake/path/task.json");
+    expect(violation).not.toBeNull();
+    expect(violation!.message).not.toContain(FAKE_BEARER_TOKEN);
+  });
+
+  it("accepts a well-formed %%SOME_SECRET_NAME%% reference (not falsely flagged as a credential)", () => {
+    expect(matchesCredentialShape("use %%SOME_SECRET_NAME%% in the header")).toBe(false);
+    const violation = checkNoCredentialShapedContent(
+      {
+        instructions: "The Authorization header MUST use %%SOME_SECRET_NAME%%.",
+        workflow_input: { country: "Wales" },
+      },
+      "fake/path/task.json",
+    );
+    expect(violation).toBeNull();
+  });
+
+  it("accepts prose that merely MENTIONS plaintext-style shapes as words (short examples don't match)", () => {
+    // "sk-..." is prose, not a live key — below TOKEN_SHAPES' length floor.
+    const violation = checkNoCredentialShapedContent(
+      { instructions: "Never include a plaintext key like sk-... or ghp_short in the JSON." },
       "fake/path/task.json",
     );
     expect(violation).toBeNull();

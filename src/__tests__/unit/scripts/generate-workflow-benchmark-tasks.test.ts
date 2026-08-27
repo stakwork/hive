@@ -63,7 +63,6 @@ function validTaskSource(overrides: Record<string, unknown> = {}): Record<string
       { id: "C-001", title: "First check", match_criteria: "It must do the thing." },
       { id: "C-002", title: "Second check", match_criteria: "It must also do the other thing." },
     ],
-    expectedSecrets: ["A_SECRET"],
     ...overrides,
   };
 }
@@ -290,6 +289,62 @@ describe("generateWorkflowBenchmarkTasks — validation failures", () => {
     writeTask(root, "llm", "has a space", validTaskSource());
 
     expect(() => generateWorkflowBenchmarkTasks(root)).toThrow(/slug-format/);
+  });
+
+  test("throws for a credential-shaped workflow_input value, never echoing the value", () => {
+    const root = makeTempRoot();
+    const secret = "sk-proj-abcdef0123456789abcdef";
+    const filePath = writeTask(
+      root,
+      "llm",
+      "leaky-input",
+      validTaskSource({
+        workflow_input: { api_token: secret },
+        // Keep every OTHER invariant green so no-credential-shaped-content is
+        // the first (and therefore reported) violation.
+        criteria: [
+          { id: "C-001", title: "Uses token", match_criteria: "Must use the `api_token` input." },
+          { id: "C-002", title: "Second", match_criteria: "It must do the other thing." },
+        ],
+      }),
+    );
+
+    let caught: Error | null = null;
+    try {
+      generateWorkflowBenchmarkTasks(root);
+    } catch (err) {
+      caught = err as Error;
+    }
+    expect(caught).not.toBeNull();
+    expect(caught!.message).toContain(filePath);
+    expect(caught!.message).toContain("no-credential-shaped-content");
+    expect(caught!.message).not.toContain(secret);
+  });
+
+  test("throws for a malformed %%…%% token in instructions", () => {
+    const root = makeTempRoot();
+    writeTask(
+      root,
+      "llm",
+      "bad-token",
+      validTaskSource({ instructions: "Use the %%lowercase-secret%% reference." }),
+    );
+
+    expect(() => generateWorkflowBenchmarkTasks(root)).toThrow(/secret-reference-form/);
+  });
+
+  test("throws for credential-shaped text in instructions", () => {
+    const root = makeTempRoot();
+    writeTask(
+      root,
+      "llm",
+      "leaky-instructions",
+      validTaskSource({
+        instructions: "Do the thing with Bearer abcdef0123456789abcdef0123456789.",
+      }),
+    );
+
+    expect(() => generateWorkflowBenchmarkTasks(root)).toThrow(/no-credential-shaped-content/);
   });
 });
 
