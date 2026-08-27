@@ -189,6 +189,7 @@ export function LegalBenchmarksPanel({ className }: { className?: string }) {
       generateRunReport?: boolean;
       standardModel?: string;
       reasoningModel?: string;
+      judgeModel?: string;
     },
   ) => {
     const res = await fetch(`/api/workspaces/${slug}/legal/benchmarks/run`, {
@@ -201,6 +202,9 @@ export function LegalBenchmarksPanel({ className }: { className?: string }) {
         // the pair and the run route applies its defaults.
         ...(options?.standardModel ? { standardModel: options.standardModel } : {}),
         ...(options?.reasoningModel ? { reasoningModel: options.reasoningModel } : {}),
+        // Anthropic-only judge model (route validates + applies its own default
+        // when omitted); card-launched runs continue to omit it.
+        ...(options?.judgeModel ? { judgeModel: options.judgeModel } : {}),
         generateJamieChat: options?.generateJamieChat === true,
         generateRunReport: options?.generateRunReport === true,
       }),

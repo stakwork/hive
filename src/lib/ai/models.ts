@@ -158,7 +158,9 @@ export function setPlanRepoPreference(workspaceSlug: string, ids: string[]): voi
  * Ensures a model identifier has a provider prefix (e.g. "anthropic/").
  * If the model string already contains "/", it is returned unchanged.
  * Otherwise, "anthropic/" is prepended.
- * Do NOT apply this to judge models — they can be cross-provider.
+ * Judge models are Anthropic-only — the benchmark run route enforces an
+ * anthropic/ prefix on `judgeModel` regardless of the pair's provider, so bare
+ * judge ids are normalized by this helper too.
  */
 export function ensureProviderPrefix(modelId: string): string {
   return modelId.includes("/") ? modelId : `anthropic/${modelId}`;
