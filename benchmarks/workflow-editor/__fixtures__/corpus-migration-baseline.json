@@ -21,13 +21,13 @@
       },
       {
         "id": "C-004",
-        "title": "Authorization header uses a secret reference",
-        "match_criteria": "The Request step's Authorization header value derives from a secret reference in the authoring form %%SECRET_NAME%% (e.g. %%OPENAI_STAKWORK_MAIN_KEY%%). PASS: the Authorization header contains %%OPENAI_STAKWORK_MAIN_KEY%% or a Bearer token whose value is %%OPENAI_STAKWORK_MAIN_KEY%%. FAIL: the Authorization header contains a plaintext API key (e.g. sk-...), a raw key embedded directly in the URL, or the rejected runtime form {{ OPENAI_STAKWORK_MAIN_KEY }}. This criterion asserts the SHAPE of the reference, not whether the secret resolves in a given environment — an unresolved %%SECRET%% in the output is a warning upstream, never a failure here."
+        "title": "Authorization header contains no plaintext credential",
+        "match_criteria": "The Request step's Authorization header value must not embed live credential material of any kind. PASS: the Authorization value is a secret reference in the authoring form %%SOME_SECRET_NAME%% — optionally Bearer-wrapped, provided the wrapped token is itself a %%SOME_SECRET_NAME%%-form reference rather than a literal string. Any well-formed %%[A-Z0-9_]+%% name passes; this criterion never asserts WHICH secret name is used. FAIL: the Authorization header contains a plaintext API key (for example a literal beginning sk-) or a raw key embedded directly in the URL query string or path."
       },
       {
         "id": "C-005",
-        "title": "Authorization uses the required authoring form, not the runtime form",
-        "match_criteria": "The Authorization header's secret reference is in the authoring form %%SECRET_NAME%% and not in the rejected runtime form {{ SECRET_NAME }}. The authoring form %%…%% and the runtime form {{ … }} are two spellings of the same secret-substitution mechanism; %%…%% is required in authored workflow JSON. PASS: %%OPENAI_STAKWORK_MAIN_KEY%% appears in the Authorization header. FAIL: {{ OPENAI_STAKWORK_MAIN_KEY }} or {{ OPENAI_STAKWORK_MAIN_KEY | default: '' }} or any bare {{ … }} variant appears in the Authorization header."
+        "title": "Secret references use the required authoring form",
+        "match_criteria": "The Authorization header's secret reference must use the required authoring form %%[A-Z0-9_]+%% — uppercase letters, digits and underscores between paired %% markers — and never the rejected runtime form {{ SOME_SECRET_NAME }}. The authoring form %%…%% and the runtime form {{ … }} are two spellings of the same secret-substitution mechanism; %%…%% is required in authored workflow JSON. This criterion asserts only the SHAPE of the reference: it never asserts WHICH secret name is used, and an unresolved %%SOME_SECRET_NAME%% is a warning upstream, never a failure here. PASS: a well-formed reference such as %%SOME_SECRET_NAME%% appears in the Authorization header. FAIL: any malformed reference — a lowercase or hyphenated name such as %%my-secret-name%%, surrounding spaces such as %% NAME %%, or a single-percent variant such as %NAME% — or the rejected runtime form {{ SOME_SECRET_NAME }}, including defaulted variants such as {{ SOME_SECRET_NAME | default: '' }}, appears in the Authorization header."
       },
       {
         "id": "C-006",
@@ -44,9 +44,6 @@
         "title": "Workflow is structurally valid",
         "match_criteria": "The workflow JSON satisfies all three structural requirements: (1) there is at least one connection whose source is \"start\" (or the workflow has a designated start node/step); (2) every step is reachable via an unbroken chain of connections from start (no orphaned steps); (3) there is at least one edge whose target is \"system.succeed\" (or the equivalent terminal node), ensuring the workflow can reach a successful completion state. A workflow missing any one of these three is structurally invalid and fails this criterion."
       }
-    ],
-    "expectedSecrets": [
-      "OPENAI_STAKWORK_MAIN_KEY"
     ]
   },
   {
@@ -71,13 +68,13 @@
       },
       {
         "id": "C-004",
-        "title": "Authorization header uses a secret reference",
-        "match_criteria": "The Request step's Authorization header value derives from a secret reference in the authoring form %%SECRET_NAME%% (e.g. %%OPENAI_STAKWORK_MAIN_KEY%%). PASS: the Authorization header contains %%OPENAI_STAKWORK_MAIN_KEY%% or a Bearer token whose value is %%OPENAI_STAKWORK_MAIN_KEY%%. FAIL: the Authorization header contains a plaintext API key (e.g. sk-...), a raw key embedded directly in the URL, or the rejected runtime form {{ OPENAI_STAKWORK_MAIN_KEY }}. This criterion asserts the SHAPE of the reference, not whether the secret resolves in a given environment — an unresolved %%SECRET%% in the output is a warning upstream, never a failure here."
+        "title": "Authorization header contains no plaintext credential",
+        "match_criteria": "The Request step's Authorization header value must not embed live credential material of any kind. PASS: the Authorization value is a secret reference in the authoring form %%SOME_SECRET_NAME%% — optionally Bearer-wrapped, provided the wrapped token is itself a %%SOME_SECRET_NAME%%-form reference rather than a literal string. Any well-formed %%[A-Z0-9_]+%% name passes; this criterion never asserts WHICH secret name is used. FAIL: the Authorization header contains a plaintext API key (for example a literal beginning sk-) or a raw key embedded directly in the URL query string or path."
       },
       {
         "id": "C-005",
-        "title": "Authorization uses the required authoring form, not the runtime form",
-        "match_criteria": "The Authorization header's secret reference is in the authoring form %%SECRET_NAME%% and not in the rejected runtime form {{ SECRET_NAME }}. The authoring form %%…%% and the runtime form {{ … }} are two spellings of the same secret-substitution mechanism; %%…%% is required in authored workflow JSON. PASS: %%OPENAI_STAKWORK_MAIN_KEY%% appears in the Authorization header. FAIL: {{ OPENAI_STAKWORK_MAIN_KEY }} or {{ OPENAI_STAKWORK_MAIN_KEY | default: '' }} or any bare {{ … }} variant appears in the Authorization header."
+        "title": "Secret references use the required authoring form",
+        "match_criteria": "The Authorization header's secret reference must use the required authoring form %%[A-Z0-9_]+%% — uppercase letters, digits and underscores between paired %% markers — and never the rejected runtime form {{ SOME_SECRET_NAME }}. The authoring form %%…%% and the runtime form {{ … }} are two spellings of the same secret-substitution mechanism; %%…%% is required in authored workflow JSON. This criterion asserts only the SHAPE of the reference: it never asserts WHICH secret name is used, and an unresolved %%SOME_SECRET_NAME%% is a warning upstream, never a failure here. PASS: a well-formed reference such as %%SOME_SECRET_NAME%% appears in the Authorization header. FAIL: any malformed reference — a lowercase or hyphenated name such as %%my-secret-name%%, surrounding spaces such as %% NAME %%, or a single-percent variant such as %NAME% — or the rejected runtime form {{ SOME_SECRET_NAME }}, including defaulted variants such as {{ SOME_SECRET_NAME | default: '' }}, appears in the Authorization header."
       },
       {
         "id": "C-006",
@@ -99,9 +96,6 @@
         "title": "Workflow is structurally valid",
         "match_criteria": "The workflow JSON satisfies all three structural requirements: (1) there is at least one connection whose source is \"start\" (or the workflow has a designated start node/step); (2) every step is reachable via an unbroken chain of connections from start (no orphaned steps); (3) there is at least one edge whose target is \"system.succeed\" (or the equivalent terminal node), ensuring the workflow can reach a successful completion state. A workflow missing any one of these three is structurally invalid and fails this criterion."
       }
-    ],
-    "expectedSecrets": [
-      "OPENAI_STAKWORK_MAIN_KEY"
     ],
     "workflow_input": {
       "country": "Wales"

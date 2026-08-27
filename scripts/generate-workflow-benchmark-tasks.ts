@@ -232,7 +232,8 @@ export function generateWorkflowBenchmarkTasks(rootDir: string): GenerateResult 
 
   // ── Pass 4: per-task invariants (ids unique, non-empty criteria, baseline,
   //            workflow_input value types, no hand-authored INPUT block,
-  //            declared input keys referenced in criteria) ───────────────────
+  //            declared input keys referenced in criteria, %%…%% token
+  //            well-formedness, no credential-shaped content) ─────────────────
   const tasks: WorkflowBenchmarkTask[] = [];
   const expectedOutputs: Record<string, string> = {};
   for (const { source, slug, file } of parsed) {
@@ -322,8 +323,7 @@ function renderTaskLiteral(task: WorkflowBenchmarkTask): string {
     instructions: ${JSON.stringify(task.instructions)},
     criteria: [
 ${criteriaLines}
-    ],
-    expectedSecrets: ${JSON.stringify(task.expectedSecrets)},${baselineLine}${workflowInputLine}
+    ],${baselineLine}${workflowInputLine}
   },`;
 }
 
