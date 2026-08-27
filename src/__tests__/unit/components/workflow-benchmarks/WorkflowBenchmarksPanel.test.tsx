@@ -31,7 +31,6 @@ const { WITH_INPUT_TASK, NO_INPUT_TASK } = vi.hoisted(() => ({
     title: "Answer a capital city",
     instructions: "Do the thing.\n\n## Workflow Inputs\n\nDeclare... \n\n- `country`",
     criteria: [{ id: "C-001", title: "Uses country", match_criteria: "References `country`." }],
-    expectedSecrets: ["OPENAI_STAKWORK_MAIN_KEY"],
     workflow_input: { country: "Wales" },
   },
   NO_INPUT_TASK: {
@@ -39,7 +38,6 @@ const { WITH_INPUT_TASK, NO_INPUT_TASK } = vi.hoisted(() => ({
     title: "Create an OpenAI call",
     instructions: "Do the other thing.",
     criteria: [{ id: "C-001", title: "Has a step", match_criteria: "Has a request step." }],
-    expectedSecrets: ["OPENAI_STAKWORK_MAIN_KEY"],
   },
 }));
 
