@@ -38,6 +38,7 @@
 import { db } from "@/lib/db";
 import { Prisma } from "@prisma/client";
 import type { Priority, WorkflowStatus } from "@prisma/client";
+import { ATTENTION_TYPE_ORDER } from "./typeMeta";
 
 /** A single item in the top-attention list. */
 export interface AttentionItem {
@@ -89,13 +90,9 @@ const HALTED_STATUSES: WorkflowStatus[] = ["HALTED", "FAILED", "ERROR"];
 const PLAN_QUESTION_STATUSES: WorkflowStatus[] = ["PENDING", "IN_PROGRESS"];
 const READY_REVIEW_STATUSES: WorkflowStatus[] = ["COMPLETED"];
 
-/** Type-bucket order — earlier buckets win on dedupe + sort ties. */
-const TYPE_ORDER: Record<AttentionItem["type"], number> = {
-  halted: 0,
-  "awaiting-reply": 1,
-  "plan-question": 2,
-  "ready-to-review": 3,
-};
+// Type-bucket order (earlier buckets win on dedupe + sort ties) is
+// `ATTENTION_TYPE_ORDER`, imported from `./typeMeta` — the canonical,
+// client-safe copy. Do not re-declare a private ordering here.
 
 /**
  * Resolve the workspaces inside `githubLogin` that `userId` can see.
@@ -555,7 +552,7 @@ function isOnCanvas(item: AttentionItem): boolean {
  * HIGH feature in an initiative the user is actively tracking.
  */
 function compareItems(a: AttentionItem, b: AttentionItem): number {
-  const t = TYPE_ORDER[a.type] - TYPE_ORDER[b.type];
+  const t = ATTENTION_TYPE_ORDER[a.type] - ATTENTION_TYPE_ORDER[b.type];
   if (t !== 0) return t;
   const oa = isOnCanvas(a) ? 0 : 1;
   const ob = isOnCanvas(b) ? 0 : 1;

@@ -37,9 +37,27 @@ export interface AttentionTypeMeta {
 }
 
 /**
- * Canonical per-type metadata. Order matches `TYPE_ORDER` in
- * `topItems.ts` (halted first, ready-to-review last) but ordering
- * here has no runtime effect — consumers key by `type`.
+ * Canonical type-bucket ordering: earlier buckets rank higher when
+ * consumers sort attention items by type. This is the single source
+ * of truth — `topItems.ts` imports it for its server-side ranking,
+ * and client-side consumers (e.g. the org-canvas Live Now panel)
+ * import it instead of re-declining a private copy that could drift.
+ *
+ * Kept here (rather than in `topItems.ts`, which imports `db` and
+ * Prisma) so client bundles can consume the ordering without pulling
+ * server-only modules into the client graph.
+ */
+export const ATTENTION_TYPE_ORDER: Record<AttentionItem["type"], number> = {
+  halted: 0,
+  "awaiting-reply": 1,
+  "plan-question": 2,
+  "ready-to-review": 3,
+};
+
+/**
+ * Canonical per-type metadata. Key order matches `ATTENTION_TYPE_ORDER`
+ * above (halted first, ready-to-review last) but ordering here has no
+ * runtime effect — consumers key by `type`.
  */
 export const ATTENTION_TYPE_META: Record<
   AttentionItem["type"],
