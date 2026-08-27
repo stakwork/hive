@@ -7,6 +7,20 @@
 // @vitest-environment node
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
+
+// ---------------------------------------------------------------------------
+// Module mocks — declared before imports (vitest hoists these)
+// ---------------------------------------------------------------------------
+
+vi.mock("@/lib/logger", () => ({
+  logger: {
+    error: vi.fn(),
+    warn: vi.fn(),
+    info: vi.fn(),
+    debug: vi.fn(),
+  },
+}));
+
 import {
   kgGetNode,
   kgGetNeighbors,
@@ -18,6 +32,12 @@ import {
   KG_ONTOLOGY_TYPE_SWARM_UNAVAILABLE,
   KG_ONTOLOGY_TYPE_UNKNOWN,
 } from "@/lib/ai/kg-adapter";
+import { logger } from "@/lib/logger";
+
+// Typed aliases for the mocked logger methods.
+const mockLoggerWarn = logger.warn as unknown as ReturnType<typeof vi.fn>;
+const mockLoggerInfo = logger.info as unknown as ReturnType<typeof vi.fn>;
+const mockLoggerDebug = logger.debug as unknown as ReturnType<typeof vi.fn>;
 
 const JARVIS_URL = "https://jarvis.example.com";
 const API_KEY = "test-api-key";
@@ -166,6 +186,39 @@ describe("kgGetNode", () => {
     globalThis.fetch = mockFetchThrow();
     const result = await kgGetNode(JARVIS_URL, API_KEY, "any-ref");
     expect(result).toBeNull();
+  });
+
+  it("normalizes a trailing-slash jarvisUrl to exactly one slash before the path (regression)", async () => {
+    const raw = {
+      ref_id: "node-abc",
+      node_type: "Function",
+      name: "myFunction",
+      properties: {},
+    };
+    globalThis.fetch = mockFetch(raw);
+
+    await kgGetNode(`${JARVIS_URL}/`, API_KEY, "node-abc");
+
+    // The base's trailing slash must be stripped — never a double slash.
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      `${JARVIS_URL}/v2/nodes/node-abc?limit=1`,
+      expect.objectContaining({ headers: { "x-api-token": API_KEY } }),
+    );
+  });
+
+  it("keeps exactly ?limit=1 when nothing else is appended (no trailing slash on base)", async () => {
+    globalThis.fetch = mockFetch({
+      ref_id: "node-abc",
+      node_type: "Function",
+      name: "myFunction",
+      properties: {},
+    });
+
+    await kgGetNode(JARVIS_URL, API_KEY, "node-abc");
+
+    const [calledUrl] = (globalThis.fetch as ReturnType<typeof vi.fn>).mock
+      .calls[0];
+    expect(calledUrl).toBe(`${JARVIS_URL}/v2/nodes/node-abc?limit=1`);
   });
 });
 
@@ -781,6 +834,162 @@ describe("kgSearch", () => {
 
     const results = await kgSearch(JARVIS_URL, API_KEY, "auth");
     expect(results[0].description).toHaveLength(300);
+  });
+
+  // -------------------------------------------------------------------------
+  // namespace option
+  // -------------------------------------------------------------------------
+
+  describe("namespace option", () => {
+    it("forwards namespace into the /v2/nodes query string when supplied", async () => {
+      globalThis.fetch = mockFetch({ nodes: [] });
+
+      await kgSearch(JARVIS_URL, API_KEY, "doThing", { namespace: "team-alpha" });
+
+      const calledUrl = (globalThis.fetch as ReturnType<typeof vi.fn>).mock
+        .calls[0][0] as string;
+      expect(new URL(calledUrl).searchParams.get("namespace")).toBe("team-alpha");
+    });
+
+    it("emits NO namespace param when omitted (byte-identical request)", async () => {
+      globalThis.fetch = mockFetch({ nodes: [] });
+
+      await kgSearch(JARVIS_URL, API_KEY, "doThing");
+
+      const calledUrl = (globalThis.fetch as ReturnType<typeof vi.fn>).mock
+        .calls[0][0] as string;
+      const sp = new URL(calledUrl).searchParams;
+      expect(sp.has("namespace")).toBe(false);
+      // Existing params untouched by the feature.
+      expect(sp.get("q")).toBe("doThing");
+      expect(sp.get("limit")).toBe("20");
+      expect(sp.get("include_edge_counts")).toBe("true");
+    });
+
+    it("treats a blank/whitespace-only namespace as omitted (no namespace param)", async () => {
+      globalThis.fetch = mockFetch({ nodes: [] });
+
+      await kgSearch(JARVIS_URL, API_KEY, "doThing", { namespace: "   " });
+
+      const calledUrl = (globalThis.fetch as ReturnType<typeof vi.fn>).mock
+        .calls[0][0] as string;
+      expect(new URL(calledUrl).searchParams.has("namespace")).toBe(false);
+    });
+
+    it("leaves existing params (q/type/domains/limit/include_edge_counts) unchanged alongside namespace", async () => {
+      globalThis.fetch = mockFetch({ nodes: [] });
+
+      await kgSearch(JARVIS_URL, API_KEY, "func", {
+        type: "Function",
+        domains: "entity",
+        limit: 7,
+        namespace: "ns1",
+      });
+
+      const sp = new URL(
+        (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0][0] as string,
+      ).searchParams;
+      expect(sp.get("namespace")).toBe("ns1");
+      expect(sp.get("q")).toBe("func");
+      expect(sp.get("type")).toBe("Function");
+      expect(sp.get("domains")).toBe("entity");
+      expect(sp.get("limit")).toBe("7");
+      expect(sp.get("include_edge_counts")).toBe("true");
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // query-outcome logging
+  // -------------------------------------------------------------------------
+
+  describe("query-outcome logging", () => {
+    beforeEach(() => {
+      vi.clearAllMocks();
+    });
+
+    it("warns with status + applied namespace on !res.ok and still returns []", async () => {
+      globalThis.fetch = mockFetch(null, false, 503);
+
+      const results = await kgSearch(JARVIS_URL, API_KEY, "auth", {
+        namespace: "prod-ns",
+      });
+
+      expect(results).toEqual([]);
+      expect(mockLoggerWarn).toHaveBeenCalledTimes(1);
+      expect(mockLoggerWarn).toHaveBeenCalledWith(
+        expect.stringContaining("rejected"),
+        "kg-adapter:kgSearch",
+        expect.objectContaining({ status: 503, namespace: "prod-ns" }),
+      );
+      // A rejection must NOT also produce a success debug line — the two
+      // outcomes stay distinguishable.
+      expect(mockLoggerDebug).not.toHaveBeenCalled();
+    });
+
+    it('logs "<none>" for the applied namespace when none was supplied (!res.ok path)', async () => {
+      globalThis.fetch = mockFetch(null, false, 404);
+
+      await kgSearch(JARVIS_URL, API_KEY, "auth");
+
+      expect(mockLoggerWarn).toHaveBeenCalledWith(
+        expect.any(String),
+        "kg-adapter:kgSearch",
+        expect.objectContaining({ status: 404, namespace: "<none>" }),
+      );
+    });
+
+    it("emits a debug line with count 0 + applied namespace on a 200-with-zero-rows response", async () => {
+      globalThis.fetch = mockFetch({ nodes: [] });
+
+      const results = await kgSearch(JARVIS_URL, API_KEY, "auth", {
+        namespace: "empty-partition",
+      });
+
+      expect(results).toEqual([]);
+      expect(mockLoggerDebug).toHaveBeenCalledTimes(1);
+      expect(mockLoggerDebug).toHaveBeenCalledWith(
+        expect.any(String),
+        "kg-adapter:kgSearch",
+        expect.objectContaining({ count: 0, namespace: "empty-partition" }),
+      );
+      // Zero rows is success-shaped — no warn line may fire for it.
+      expect(mockLoggerWarn).not.toHaveBeenCalled();
+    });
+
+    it("warns with a timeout-specific message when fetch throws an AbortError", async () => {
+      const abortError = new Error("The operation was aborted");
+      abortError.name = "AbortError";
+      globalThis.fetch = mockFetchThrow(abortError);
+
+      const results = await kgSearch(JARVIS_URL, API_KEY, "auth", {
+        namespace: "prod-ns",
+      });
+
+      expect(results).toEqual([]);
+      expect(mockLoggerWarn).toHaveBeenCalledTimes(1);
+      expect(mockLoggerWarn).toHaveBeenCalledWith(
+        expect.stringContaining("timed out"),
+        "kg-adapter:kgSearch",
+        expect.objectContaining({
+          timeoutMs: expect.any(Number),
+          namespace: "prod-ns",
+        }),
+      );
+    });
+
+    it("warns differently for a generic throw than for an abort (distinguishable catch paths)", async () => {
+      globalThis.fetch = mockFetchThrow(new Error("Network error"));
+
+      await kgSearch(JARVIS_URL, API_KEY, "auth");
+
+      expect(mockLoggerWarn).toHaveBeenCalledTimes(1);
+      const [message, , metadata] = mockLoggerWarn.mock.calls[0];
+      // Distinct from the AbortError branch: no "timed out" phrasing and no
+      // timeoutMs field; carries the underlying error name instead.
+      expect(message).not.toContain("timed out");
+      expect(metadata).toMatchObject({ errorType: "Error", namespace: "<none>" });
+      expect((metadata as { timeoutMs?: number }).timeoutMs).toBeUndefined();
+    });
   });
 });
 
