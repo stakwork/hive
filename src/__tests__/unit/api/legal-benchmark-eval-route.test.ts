@@ -123,6 +123,9 @@ const WORKSPACE_ID = "ws-1";
 const SOURCE_RUN_ID = "runner-run-1";
 const EVAL_RUN_ID = "eval-run-1";
 
+// Webhook run_token verification rejects secrets shorter than 32 chars
+const TEST_WEBHOOK_SECRET = "test-secret-0123456789-0123456789";
+
 const MOCK_SWARM_ACCESS = {
   success: true,
   data: {
@@ -207,7 +210,7 @@ function makeEvalRequest(runId = SOURCE_RUN_ID, slug = "openlaw") {
 function makeRunToken(runId: string): string {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const { createHmac } = require("crypto") as typeof import("crypto");
-  return createHmac("sha256", "test-secret").update(runId).digest("hex");
+  return createHmac("sha256", TEST_WEBHOOK_SECRET).update(runId).digest("hex");
 }
 
 // ─── URL-aware fetch stub ─────────────────────────────────────────────────────
@@ -274,7 +277,7 @@ describe("POST /api/workspaces/[slug]/legal/benchmarks/runs/[runId]/eval", () =>
   beforeEach(() => {
     vi.resetAllMocks(); // clear implementations AND call history
     process.env.NEXTAUTH_URL = "http://localhost:3000";
-    process.env.NEXTAUTH_SECRET = "test-secret";
+    process.env.NEXTAUTH_SECRET = TEST_WEBHOOK_SECRET;
     setupDefaultRouteMocks();
   });
 
@@ -920,7 +923,7 @@ function makeSourceRunForWebhook() {
 describe("processLegalBenchmarkEvalWebhook (via processStakworkRunWebhook)", () => {
   beforeEach(() => {
     vi.resetAllMocks();
-    process.env.NEXTAUTH_SECRET = "test-secret";
+    process.env.NEXTAUTH_SECRET = TEST_WEBHOOK_SECRET;
 
     mockPusherTrigger.mockResolvedValue(undefined);
     mockDbStakworkRunUpdate.mockResolvedValue({});

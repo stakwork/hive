@@ -3,9 +3,6 @@
     "slug": "wfbench/create-openai-call",
     "title": "Create a workflow that calls OpenAI with a prompt",
     "instructions": "Create a Stakwork workflow that calls the OpenAI chat completions API with a user-supplied prompt.\n\nRequirements:\n- Use a single Request step to POST to the OpenAI chat completions API endpoint (https://api.openai.com/v1/chat/completions).\n- The Authorization header MUST use the secret reference %%OPENAI_STAKWORK_MAIN_KEY%% in the authoring form — do NOT use a raw API key or the runtime form {{ OPENAI_STAKWORK_MAIN_KEY }}.\n- The request body must include a \"model\" field (e.g. \"gpt-4o\") and a \"messages\" field containing an array with at least one user message whose \"content\" is the prompt input.\n- The prompt input should be referenced using the step-output form [#(step_id).output.variable_name] or as a workflow variable.\n- The workflow must have a valid start connection and an edge into system.succeed.\n- Do not include any plaintext API keys in the workflow JSON.",
-    "expectedSecrets": [
-      "OPENAI_STAKWORK_MAIN_KEY"
-    ],
     "criteria": [
       {
         "id": "C-001",
@@ -47,6 +44,67 @@
         "title": "Workflow is structurally valid",
         "match_criteria": "The workflow JSON satisfies all three structural requirements: (1) there is at least one connection whose source is \"start\" (or the workflow has a designated start node/step); (2) every step is reachable via an unbroken chain of connections from start (no orphaned steps); (3) there is at least one edge whose target is \"system.succeed\" (or the equivalent terminal node), ensuring the workflow can reach a successful completion state. A workflow missing any one of these three is structurally invalid and fails this criterion."
       }
+    ],
+    "expectedSecrets": [
+      "OPENAI_STAKWORK_MAIN_KEY"
     ]
+  },
+  {
+    "slug": "wfbench/generate-capital-city",
+    "title": "Create a workflow that answers a country's capital city",
+    "instructions": "Create a Stakwork workflow that accepts a country name as a caller-supplied input and returns that country's capital city by calling an LLM.\n\nRequirements:\n- Use a single Request step to POST to the OpenAI chat completions API endpoint (https://api.openai.com/v1/chat/completions).\n- The Authorization header MUST use the secret reference %%OPENAI_STAKWORK_MAIN_KEY%% in the authoring form — do NOT use a raw API key or the runtime form {{ OPENAI_STAKWORK_MAIN_KEY }}.\n- The request body must include a \"model\" field (e.g. \"gpt-4o\") and a \"messages\" field containing an array with at least one user message whose \"content\" asks for the capital city of the caller-supplied `country` input, and instructs the model to reply with ONLY the city name.\n- The workflow must accept a caller-supplied workflow input named exactly `country` and use it (do not hard-code a specific country such as \"Wales\" anywhere in the workflow, and do not read the value under any other input name).\n- The workflow must have a valid start connection and an edge into system.succeed.\n- Do not include any plaintext API keys in the workflow JSON.\n\n## Workflow Inputs\n\nDeclare each of the following as a caller-supplied workflow input, using these exact names:\n\n- `country`",
+    "criteria": [
+      {
+        "id": "C-001",
+        "title": "Request step exists",
+        "match_criteria": "The workflow JSON contains at least one step with a type that corresponds to an HTTP Request step (e.g. type 'request', 'http_request', or equivalent). The step must be present in the workflow's steps or nodes array."
+      },
+      {
+        "id": "C-002",
+        "title": "URL is the OpenAI chat completions endpoint",
+        "match_criteria": "The Request step's attributes.url (or equivalent URL field) is exactly \"https://api.openai.com/v1/chat/completions\" or a reference that resolves to it. A URL pointing to any other endpoint fails this criterion."
+      },
+      {
+        "id": "C-003",
+        "title": "HTTP method is POST",
+        "match_criteria": "The Request step's attributes.method (or equivalent method field) is \"post\" or \"POST\". Any other method value (GET, PUT, PATCH, DELETE) fails this criterion."
+      },
+      {
+        "id": "C-004",
+        "title": "Authorization header uses a secret reference",
+        "match_criteria": "The Request step's Authorization header value derives from a secret reference in the authoring form %%SECRET_NAME%% (e.g. %%OPENAI_STAKWORK_MAIN_KEY%%). PASS: the Authorization header contains %%OPENAI_STAKWORK_MAIN_KEY%% or a Bearer token whose value is %%OPENAI_STAKWORK_MAIN_KEY%%. FAIL: the Authorization header contains a plaintext API key (e.g. sk-...), a raw key embedded directly in the URL, or the rejected runtime form {{ OPENAI_STAKWORK_MAIN_KEY }}. This criterion asserts the SHAPE of the reference, not whether the secret resolves in a given environment — an unresolved %%SECRET%% in the output is a warning upstream, never a failure here."
+      },
+      {
+        "id": "C-005",
+        "title": "Authorization uses the required authoring form, not the runtime form",
+        "match_criteria": "The Authorization header's secret reference is in the authoring form %%SECRET_NAME%% and not in the rejected runtime form {{ SECRET_NAME }}. The authoring form %%…%% and the runtime form {{ … }} are two spellings of the same secret-substitution mechanism; %%…%% is required in authored workflow JSON. PASS: %%OPENAI_STAKWORK_MAIN_KEY%% appears in the Authorization header. FAIL: {{ OPENAI_STAKWORK_MAIN_KEY }} or {{ OPENAI_STAKWORK_MAIN_KEY | default: '' }} or any bare {{ … }} variant appears in the Authorization header."
+      },
+      {
+        "id": "C-006",
+        "title": "Request body contains a known-good model field",
+        "match_criteria": "The request body (in attributes.body, attributes.payload, or an equivalent field) contains a \"model\" key whose value is a recognized OpenAI model name (e.g. \"gpt-4o\", \"gpt-4-turbo\", \"gpt-3.5-turbo\", \"gpt-4o-mini\"). The value must be a non-empty string. A missing model field or an empty string fails this criterion."
+      },
+      {
+        "id": "C-007",
+        "title": "Request body messages array asks for the capital of the caller-supplied country",
+        "match_criteria": "The request body contains a \"messages\" field whose value is an array containing at least one object with \"role\": \"user\" and a non-empty \"content\" field that asks for the capital city of a country, where the country value is a reference to the `country` workflow input (e.g. a step-output reference in the form [#(step_id).output.variable_name] or a direct workflow variable reference to `country`), not a literal hard-coded country name. FAIL: the messages array is absent, empty, contains no user-role entry, the user entry has empty content, or the content hard-codes a specific country name (e.g. \"Wales\") instead of referencing the `country` input."
+      },
+      {
+        "id": "C-008",
+        "title": "Workflow accepts a caller-supplied input named exactly `country`",
+        "match_criteria": "The workflow declares and consumes a caller-supplied workflow input named exactly `country`, and the artifact's behavior (the request built in C-007) is driven by that input's value rather than a literal. This is assessed at the artifact level: PASS if the produced workflow JSON references an input/variable named `country` and uses it to build the request. FAIL if the workflow hard-codes a specific country (e.g. \"Wales\") directly in the request body with no `country` input reference, or if it declares the input under any other name (e.g. `nation`, `countryName`) — a rerun supplies the value under the name `country` and cannot drive a workflow that reads a different name."
+      },
+      {
+        "id": "C-009",
+        "title": "Workflow is structurally valid",
+        "match_criteria": "The workflow JSON satisfies all three structural requirements: (1) there is at least one connection whose source is \"start\" (or the workflow has a designated start node/step); (2) every step is reachable via an unbroken chain of connections from start (no orphaned steps); (3) there is at least one edge whose target is \"system.succeed\" (or the equivalent terminal node), ensuring the workflow can reach a successful completion state. A workflow missing any one of these three is structurally invalid and fails this criterion."
+      }
+    ],
+    "expectedSecrets": [
+      "OPENAI_STAKWORK_MAIN_KEY"
+    ],
+    "workflow_input": {
+      "country": "Wales"
+    }
   }
 ]
