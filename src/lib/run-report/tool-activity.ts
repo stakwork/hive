@@ -87,11 +87,14 @@ function identityKindOf(key: string): IdentityKind {
  */
 export const TOOL_CLASS: Record<string, "surfacing" | "retrieval" | "none"> = {
   // ── Verified against src/lib/ai/graphWalkerTools.ts ────────────────────────
-  // These are the ONLY four tool keys that file defines.
+  // Read/traversal tools that file registers directly (get_ontology_type lives
+  // in the inferred block below for historical reasons).
   graph_search: "surfacing",
   graph_get: "retrieval",
   graph_neighbors: "retrieval",
   graph_ontology: "none",
+  // Escape-hatch Cypher runner (admin-gated, read-only) — emits row data.
+  graph_query: "retrieval",
 
   // ── INFERRED — harness-side names NOT present in this repo ────────────────
   // Review against the first real bundle and delete or correct as needed.
