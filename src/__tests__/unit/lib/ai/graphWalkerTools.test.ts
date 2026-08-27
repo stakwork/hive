@@ -70,6 +70,15 @@ vi.mock("@/lib/helpers/swarm-access", () => ({
   getSwarmAccessByWorkspaceId: vi.fn(),
 }));
 
+vi.mock("@/lib/logger", () => ({
+  logger: {
+    error: vi.fn(),
+    warn: vi.fn(),
+    info: vi.fn(),
+    debug: vi.fn(),
+  },
+}));
+
 // For capabilities.ts — mock all capability tool builders so importing
 // capabilities.ts doesn't pull in heavy deps.
 vi.mock("@/lib/ai/canvasTools", () => ({ buildCanvasTools: vi.fn(() => ({})) }));
@@ -136,6 +145,7 @@ import {
   KG_ONTOLOGY_TYPE_UNKNOWN,
 } from "@/lib/ai/kg-adapter";
 import { getSwarmAccessByWorkspaceId } from "@/lib/helpers/swarm-access";
+import { logger } from "@/lib/logger";
 
 // ---------------------------------------------------------------------------
 // Typed mock aliases
@@ -157,6 +167,10 @@ const mockKgSearch = kgSearch as ReturnType<typeof vi.fn>;
 const mockKgGetOntology = kgGetOntology as ReturnType<typeof vi.fn>;
 const mockKgGetOntologyType = kgGetOntologyType as ReturnType<typeof vi.fn>;
 const mockGetSwarmAccessByWorkspaceId = getSwarmAccessByWorkspaceId as ReturnType<typeof vi.fn>;
+const mockLoggerWarn = logger.warn as unknown as ReturnType<typeof vi.fn>;
+const mockLoggerInfo = logger.info as unknown as ReturnType<typeof vi.fn>;
+
+const KG_FANOUT_LOG_CONTEXT = "ai:graphWalkerTools:searchKg.fanout";
 
 const dbSourceControlOrg = db.sourceControlOrg as {
   findUnique: ReturnType<typeof vi.fn>;
@@ -1021,6 +1035,233 @@ describe("buildGraphWalkerTools", () => {
       expect(dbResearch.findMany).not.toHaveBeenCalled();
       expect(dbConnection.findMany).not.toHaveBeenCalled();
       expect(dbQueryRaw).not.toHaveBeenCalled();
+    });
+
+    // -----------------------------------------------------------------------
+    // namespace forwarding
+    // -----------------------------------------------------------------------
+
+    describe("namespace forwarding", () => {
+      beforeEach(() => {
+        vi.clearAllMocks();
+        dbSourceControlOrg.findUnique.mockResolvedValue({ githubLogin: "myorg" });
+        dbWorkspace.findMany.mockResolvedValue([]);
+        dbCanvas.findMany.mockResolvedValue([]);
+        mockFormatUrn.mockImplementation(
+          (p: { realm: string; org: string; workspace?: string; type: string; id: string }) =>
+            `urn:${p.org}:${p.realm}:${p.workspace ? p.workspace + ":" : ""}${p.type}:${p.id}`,
+        );
+      });
+
+      it("forwards namespace into searchKg opts on the single-workspace path", async () => {
+        mockResolveKgSeam.mockResolvedValue({
+          workspace: "my-ws",
+          swarmUrl: "https://jarvis.example.com",
+          jarvisUrl: "https://jarvis.example.com",
+          swarmApiKey: "key-kg",
+        });
+        mockKgSearch.mockResolvedValue([
+          { ref_id: "n1", node_type: "Function", name: "doThing" },
+        ]);
+
+        const tools = getTools();
+        await tools.graph_search.execute(
+          { query: "doThing", realm: "kg", workspace: "my-ws", namespace: "team-alpha" },
+          {} as never,
+        );
+
+        expect(mockKgSearch).toHaveBeenCalledWith(
+          "https://jarvis.example.com",
+          "key-kg",
+          "doThing",
+          expect.objectContaining({ namespace: "team-alpha" }),
+        );
+      });
+
+      it("omits namespace from searchKg opts when not supplied (both paths)", async () => {
+        mockResolveKgSeam.mockResolvedValue({
+          workspace: "my-ws",
+          jarvisUrl: "https://jarvis.example.com",
+          swarmApiKey: "key-kg",
+        });
+        mockKgSearch.mockResolvedValue([]);
+
+        const tools = getTools();
+        await tools.graph_search.execute(
+          { query: "q", realm: "kg", workspace: "my-ws" },
+          {} as never,
+        );
+
+        const opts = mockKgSearch.mock.calls[0][3] as Record<string, unknown>;
+        // The key exists (opts is built as a literal, like inputQ/outputQ
+        // before it) but carries no value — the adapter emits no namespace
+        // param for undefined/blank. Behaviour-level absence is asserted in
+        // kg-adapter.test.ts.
+        expect(opts.namespace).toBeUndefined();
+        expect(opts.inputQ).toBeUndefined();
+        expect(opts.outputQ).toBeUndefined();
+      });
+
+      it("fan-out: forwards namespace into every kgSearch opts and logs one outcome line per workspace (ok / no-swarm / rejected)", async () => {
+        dbWorkspace.findMany.mockResolvedValue([
+          { id: "ws-a", slug: "workspace-a" },
+          { id: "ws-b", slug: "workspace-b" },
+          { id: "ws-c", slug: "workspace-c" },
+        ]);
+        // ws-a has a reachable swarm; ws-b has none configured; ws-c's access
+        // lookup throws (rejected arm via Promise.allSettled).
+        mockGetSwarmAccessByWorkspaceId
+          .mockResolvedValueOnce({
+            success: true,
+            data: { swarmName: "swarm-a", swarmApiKey: "key-a" },
+          })
+          .mockResolvedValueOnce({ success: false, error: { type: "SWARM_NOT_CONFIGURED" } })
+          .mockRejectedValueOnce(new Error("db exploded"));
+        mockKgSearch.mockResolvedValue([
+          { ref_id: "hf-1", node_type: "HiveFeature", name: "Auth system" },
+        ]);
+
+        const tools = getTools();
+        await tools.graph_search.execute(
+          { query: "auth system", realm: "kg", namespace: "tenant-x" },
+          {} as never,
+        );
+
+        // Only ws-a reaches kgSearch, and it carries the namespace.
+        expect(mockKgSearch).toHaveBeenCalledTimes(1);
+        expect(mockKgSearch).toHaveBeenCalledWith(
+          expect.any(String),
+          expect.any(String),
+          "auth system",
+          expect.objectContaining({ namespace: "tenant-x" }),
+        );
+
+        // One log line per workspace carrying namespace + outcome + post-slice
+        // contribution.
+        const fanoutInfo = mockLoggerInfo.mock.calls.filter((c) => c[1] === KG_FANOUT_LOG_CONTEXT);
+        const fanoutWarn = mockLoggerWarn.mock.calls.filter((c) => c[1] === KG_FANOUT_LOG_CONTEXT);
+        expect(fanoutInfo.length + fanoutWarn.length).toBe(3);
+
+        interface FanoutMeta {
+          namespace: string;
+          workspace: string;
+          outcome: string;
+          contributed: number;
+        }
+        const byWs = new Map<string, FanoutMeta>();
+        for (const call of [...fanoutInfo, ...fanoutWarn]) {
+          byWs.set(call[2].workspace, call[2]);
+        }
+        expect(byWs.get("workspace-a")).toMatchObject({
+          namespace: "tenant-x",
+          outcome: "ok",
+          contributed: 1,
+        });
+        expect(byWs.get("workspace-b")).toMatchObject({
+          namespace: "tenant-x",
+          outcome: "no-swarm",
+          contributed: 0,
+        });
+        expect(byWs.get("workspace-c")).toMatchObject({
+          namespace: "tenant-x",
+          outcome: "rejected",
+          contributed: 0,
+        });
+        // The rejected arm escalates to warn; ok/no-swarm stay at info.
+        expect(fanoutWarn.some((c) => c[2].outcome === "rejected")).toBe(true);
+        expect(fanoutInfo.some((c) => c[2].outcome === "ok")).toBe(true);
+        expect(fanoutInfo.some((c) => c[2].outcome === "no-swarm")).toBe(true);
+      });
+
+      it("keeps the fan-out return shape exactly { results } (no added note/diagnostic field)", async () => {
+        dbWorkspace.findMany.mockResolvedValue([
+          { id: "ws-a", slug: "workspace-a" },
+          { id: "ws-c", slug: "workspace-c" },
+        ]);
+        mockGetSwarmAccessByWorkspaceId
+          .mockResolvedValueOnce({
+            success: true,
+            data: { swarmName: "swarm-a", swarmApiKey: "key-a" },
+          })
+          .mockRejectedValueOnce(new Error("boom"));
+        mockKgSearch.mockResolvedValue([
+          { ref_id: "n1", node_type: "File", name: "f.ts" },
+        ]);
+
+        const tools = getTools();
+        const result = (await tools.graph_search.execute(
+          { query: "q", realm: "kg", namespace: "ns-x" },
+          {} as never,
+        )) as Record<string, unknown>;
+
+        expect(Object.keys(result)).toEqual(["results"]);
+        expect(Array.isArray(result.results)).toBe(true);
+      });
+
+      it("rejects malformed namespaces at the input schema boundary (agent-visible error)", () => {
+        const tools = getTools();
+        const schema = tools.graph_search.inputSchema;
+
+        const malformed = [
+          "",                       // empty
+          "   ",                    // empty after trim
+          "bad namespace!",         // disallowed chars
+          "ns/$secret",             // query-string injection attempt
+          `${"x".repeat(201)}`,     // over length cap
+        ];
+        for (const ns of malformed) {
+          expect(schema.safeParse({ query: "q", namespace: ns }).success).toBe(false);
+        }
+        // None may reach the adapter.
+        expect(mockKgSearch).not.toHaveBeenCalled();
+
+        // A well-formed value parses — and is trimmed by the schema itself.
+        const parsed = schema.safeParse({
+          query: "q",
+          namespace: "  team.alpha-1_x  ",
+        });
+        expect(parsed.success).toBe(true);
+        if (parsed.success) {
+          expect(parsed.data.namespace).toBe("team.alpha-1_x");
+        }
+      });
+
+      it("documents the caveats in tool descriptions (filter-not-boundary, global ontology, unscoped deref/expand)", () => {
+        const tools = getTools();
+
+        expect(tools.graph_get.description).toContain(
+          "dereferenced here WITHOUT that",
+        );
+        expect(tools.graph_neighbors.description).toContain(
+          "expanded here WITHOUT that namespace filter",
+        );
+        expect(tools.graph_ontology.description).toContain(
+          "GLOBAL across namespaces",
+        );
+        expect(tools.graph_search.description).toContain(
+          "not an access-control boundary",
+        );
+        expect(tools.graph_search.description).toContain(
+          "ONLY when the user explicitly supplies it",
+        );
+      });
+
+      it("does not expose namespace on graph_get or graph_neighbors schemas (out of scope)", () => {
+        const tools = getTools();
+        const getShape = Object.keys(
+          (tools.graph_get.inputSchema as { shape?: Record<string, unknown> }).shape ?? {},
+        );
+        const neighborsShape = Object.keys(
+          (tools.graph_neighbors.inputSchema as { shape?: Record<string, unknown> }).shape ?? {},
+        );
+        const searchShape = Object.keys(
+          (tools.graph_search.inputSchema as { shape?: Record<string, unknown> }).shape ?? {},
+        );
+        expect(getShape).not.toContain("namespace");
+        expect(neighborsShape).not.toContain("namespace");
+        // graph_search DOES carry it.
+        expect(searchShape).toContain("namespace");
+      });
     });
   });
 });
