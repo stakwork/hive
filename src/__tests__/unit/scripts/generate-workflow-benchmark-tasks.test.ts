@@ -507,6 +507,16 @@ describe("generateWorkflowBenchmarkTasks — INPUT block injection", () => {
 
     const expectedSuffix = `\n\n${renderInputBlock({ country: "Wales" })}`;
     expect(task.instructions).toBe(`${source.instructions as string}${expectedSuffix}`);
+
+    // Exact structure — not mere presence: heading, blank line, sentence,
+    // blank line, then one backticked bullet list item per declared key.
+    const [heading, blankAfterHeading, sentence, blankAfterSentence, bullet] =
+      renderInputBlock({ country: "Wales" }).split("\n");
+    expect(heading).toBe(INPUT_BLOCK_HEADING);
+    expect(blankAfterHeading).toBe("");
+    expect(sentence).toBe(INPUT_BLOCK_SENTENCE);
+    expect(blankAfterSentence).toBe("");
+    expect(bullet).toBe("- `country`");
   });
 
   test("does NOT append an INPUT block when workflow_input is absent", () => {

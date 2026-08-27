@@ -1,0 +1,65 @@
+/**
+ * Offline report CSS entry point.
+ *
+ * This file is the sole input to `scripts/build-offline-css.mjs`, which runs
+ * it through the project's real PostCSS pipeline (postcss.config.mjs:
+ * @tailwindcss/postcss + autoprefixer — the exact same plugins/versions used
+ * by `next build`) to produce `offline-report.css`. That generated, gitignored
+ * file is read at request time by `offline-html.ts`'s `getOfflineCss()` and
+ * inlined into the offline export's <style> block.
+ *
+ * Do NOT hand-copy tokens/utilities here. This file's only job is to:
+ *   1. Pull in the real `@theme`/oklch tokens from globals.css via @import.
+ *   2. Force class-based `dark:` compilation (see rationale below) — scoped
+ *      to this file only, never touching globals.css or the live app.
+ *   3. Declare the exact set of files Tailwind should scan for utility class
+ *      usage, so the generated bundle is purged to just what the offline
+ *      render path actually emits.
+ */
+
+/* ── Real design tokens (oklch, Tailwind v4 @theme) ─────────────────────────── */
+@import "../../../app/globals.css";
+
+/*
+ * ── Dark-mode compilation override (offline bundle only) ───────────────────
+ *
+ * globals.css declares no `@custom-variant dark`, so Tailwind v4 compiles all
+ * `dark:` utilities to `@media (prefers-color-scheme: dark)`. The offline
+ * document forces `class="dark"` on <html>/<body> and never toggles it
+ * (assembleOfflineHtml in offline-html.ts), so a reader whose OS/browser
+ * reports light mode would silently lose every `dark:`-prefixed utility used
+ * across the offline render path (render-offline.tsx, RubricLedger.tsx,
+ * CriterionMarkers.tsx, chrome.tsx, etc.) if we didn't override this here.
+ *
+ * This selector-based variant is scoped to offline.entry.css ONLY — it must
+ * never be added to globals.css, which intentionally stays media-query-based
+ * for the live app's OS-driven theming.
+ */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/*
+ * ── @source: traced render-time file set ────────────────────────────────────
+ *
+ * Deliberately NOT a `src/components/run-report/**` directory glob — that
+ * would both pull in classes from sections never rendered offline
+ * (PipelineSection, TracesSection, ToolActivitySection, ConceptsSection,
+ * HealthSection, DocumentViewerModal.tsx, Gantt.tsx, ...) and miss real
+ * transitive dependencies (CriterionMarkers.tsx, ui/tooltip.tsx).
+ *
+ * This list is the actual import graph reachable from render-offline.tsx's
+ * render functions and offline-adapters.tsx, verified via a static import
+ * walk (see the accompanying structural test in
+ * src/__tests__/unit/lib/run-report/export/offline-entry-css-sources.test.ts,
+ * which fails CI if a future addition to the offline render path isn't added
+ * here too).
+ */
+@source "./offline-html.ts";
+@source "./render-offline.tsx";
+@source "./offline-adapters.tsx";
+@source "../../../components/harvey-lab/RubricBreakdownStrip.tsx";
+@source "../../../components/run-report/NodePeek.tsx";
+@source "../../../components/run-report/chrome.tsx";
+@source "../../../components/run-report/SafeMarkdown.tsx";
+@source "../../../components/run-report/RubricLedger.tsx";
+@source "../../../components/run-report/CriterionMarkers.tsx";
+@source "../../../components/ui/tooltip.tsx";
