@@ -7,6 +7,13 @@
  *   - Seed task specifics: no baseline, 8 criteria with unique ids
  *   - TASK_SLUG_RE: namespaced slug matches the regex
  *   - C-004 specifics: expectedSecrets, instructions naming the secret
+ *   - workflow_input / expected_output contract (Slice 1): value types, INPUT
+ *     block injection presence/position, rejection of a hand-authored block,
+ *     index/map agreement, declared input keys referenced in criteria
+ *
+ * NOTE: whether an LLM judge actually enforces any criterion's wording is NOT
+ * verifiable in this repo (the judge lives in Stakwork's pipeline) — these
+ * tests assert corpus data/strings only.
  */
 
 import { describe, it, expect } from "vitest";
@@ -16,6 +23,15 @@ import {
   CORPUS_SLUGS,
   findBenchmarkTask,
 } from "@/lib/workflow-benchmark-tasks";
+import { EXPECTED_OUTPUTS } from "@/lib/workflow-benchmarks/expected-outputs.server.generated";
+import {
+  INPUT_BLOCK_HEADING,
+  INPUT_BLOCK_SENTENCE,
+  renderInputBlock,
+  checkWorkflowInputValuesAreStrings,
+  checkNoHandAuthoredInputBlock,
+  checkInputKeysReferencedInCriteria,
+} from "@/lib/workflow-benchmarks/task-schema";
 
 // The corpus restructure (directory tree + generator) drops the
 // `CREATE_OPENAI_CALL_TASK` named export — the seed task is now resolved
@@ -278,5 +294,182 @@ describe("C-008 — Workflow is structurally valid", () => {
 
   it("match_criteria mentions an unbroken chain", () => {
     expect(c008.match_criteria.toLowerCase()).toContain("unbroken");
+  });
+});
+
+// ── workflow_input / expected_output contract (Slice 1) ────────────────────────
+
+const CAPITAL_CITY_TASK = findBenchmarkTask("wfbench/generate-capital-city")!;
+
+describe("generate-capital-city (self-verifying input-contract task)", () => {
+  it("is resolvable and declares workflow_input", () => {
+    expect(CAPITAL_CITY_TASK).toBeDefined();
+    expect(CAPITAL_CITY_TASK.workflow_input).toEqual({ country: "Wales" });
+  });
+
+  it("does NOT carry expected_output on the emitted index type (server-boundary only)", () => {
+    expect(Object.prototype.hasOwnProperty.call(CAPITAL_CITY_TASK, "expected_output")).toBe(
+      false,
+    );
+  });
+
+  it("has a criterion naming `country` in delimited (backticked) form", () => {
+    const hasDelimitedReference = CAPITAL_CITY_TASK.criteria.some((c) =>
+      /`country`/.test(c.match_criteria),
+    );
+    expect(hasDelimitedReference).toBe(true);
+  });
+});
+
+describe("workflow_input value types", () => {
+  it("every declared workflow_input value across the corpus is a string", () => {
+    for (const task of WORKFLOW_BENCHMARK_TASKS) {
+      if (task.workflow_input === undefined) continue;
+      for (const [key, value] of Object.entries(task.workflow_input)) {
+        expect(typeof value, `workflow_input.${key} on ${task.slug}`).toBe("string");
+      }
+    }
+  });
+
+  it("checkWorkflowInputValuesAreStrings rejects a non-string value fixture", () => {
+    const violation = checkWorkflowInputValuesAreStrings(
+      { workflow_input: { country: 5 as unknown as string } },
+      "fake/path/task.json",
+    );
+    expect(violation).not.toBeNull();
+    expect(violation!.invariant).toBe("workflow-input-values-are-strings");
+  });
+
+  it("checkWorkflowInputValuesAreStrings accepts an all-string fixture", () => {
+    const violation = checkWorkflowInputValuesAreStrings(
+      { workflow_input: { country: "Wales" } },
+      "fake/path/task.json",
+    );
+    expect(violation).toBeNull();
+  });
+});
+
+describe("INPUT block injection", () => {
+  it("the generator appended the INPUT block heading + sentence to generate-capital-city's instructions", () => {
+    expect(CAPITAL_CITY_TASK.instructions).toContain(INPUT_BLOCK_HEADING);
+    expect(CAPITAL_CITY_TASK.instructions).toContain(INPUT_BLOCK_SENTENCE);
+  });
+
+  it("the INPUT block appears AFTER the authored content, separated by a blank line", () => {
+    const headingIndex = CAPITAL_CITY_TASK.instructions.indexOf(INPUT_BLOCK_HEADING);
+    expect(headingIndex).toBeGreaterThan(0);
+    // Position is pinned: appended at the very end, under its own heading.
+    const before = CAPITAL_CITY_TASK.instructions.slice(0, headingIndex);
+    expect(before.endsWith("\n\n")).toBe(true);
+    // Nothing should follow the block's last declared key line except
+    // whitespace — the block is the tail of the string.
+    const rendered = renderInputBlock(CAPITAL_CITY_TASK.workflow_input!);
+    expect(CAPITAL_CITY_TASK.instructions.endsWith(rendered)).toBe(true);
+  });
+
+  it("declares each workflow_input key in backticked form under the heading", () => {
+    for (const key of Object.keys(CAPITAL_CITY_TASK.workflow_input ?? {})) {
+      expect(CAPITAL_CITY_TASK.instructions).toContain(`\`${key}\``);
+    }
+  });
+
+  it("the seed task (no workflow_input) has NO INPUT block appended", () => {
+    expect(CREATE_OPENAI_CALL_TASK.instructions).not.toContain(INPUT_BLOCK_HEADING);
+    expect(CREATE_OPENAI_CALL_TASK.instructions).not.toContain(INPUT_BLOCK_SENTENCE);
+  });
+
+  it("checkNoHandAuthoredInputBlock rejects instructions that already contain the heading", () => {
+    const violation = checkNoHandAuthoredInputBlock(
+      { instructions: `Some prose.\n\n${INPUT_BLOCK_HEADING}\n\nDeclare it yourself.` },
+      "fake/path/task.json",
+    );
+    expect(violation).not.toBeNull();
+    expect(violation!.invariant).toBe("no-hand-authored-input-block");
+  });
+
+  it("checkNoHandAuthoredInputBlock rejects instructions that already contain the sentence", () => {
+    const violation = checkNoHandAuthoredInputBlock(
+      { instructions: `Some prose. ${INPUT_BLOCK_SENTENCE} \`country\`` },
+      "fake/path/task.json",
+    );
+    expect(violation).not.toBeNull();
+  });
+
+  it("checkNoHandAuthoredInputBlock accepts plain prose with no block markers", () => {
+    const violation = checkNoHandAuthoredInputBlock(
+      { instructions: "Some ordinary instructions with no input block." },
+      "fake/path/task.json",
+    );
+    expect(violation).toBeNull();
+  });
+});
+
+describe("expected_output index/map agreement", () => {
+  it("generate-capital-city has a server-boundary map entry equal to its authored answer", () => {
+    expect(EXPECTED_OUTPUTS["wfbench/generate-capital-city"]).toBe("Cardiff");
+  });
+
+  it("the seed task (no expected_output) has NO map entry", () => {
+    expect(Object.prototype.hasOwnProperty.call(EXPECTED_OUTPUTS, "wfbench/create-openai-call")).toBe(
+      false,
+    );
+  });
+
+  it("every map key corresponds to a real corpus slug (index -> map direction)", () => {
+    for (const slug of Object.keys(EXPECTED_OUTPUTS)) {
+      expect(CORPUS_SLUGS.has(slug)).toBe(true);
+    }
+  });
+
+  it("the map never appears anywhere on the emitted WorkflowBenchmarkTask objects", () => {
+    for (const task of WORKFLOW_BENCHMARK_TASKS) {
+      expect(Object.prototype.hasOwnProperty.call(task, "expected_output")).toBe(false);
+    }
+  });
+});
+
+describe("generic invariant: declared input keys referenced in criteria (delimited form)", () => {
+  it("checkInputKeysReferencedInCriteria passes for generate-capital-city", () => {
+    const violation = checkInputKeysReferencedInCriteria(
+      {
+        workflow_input: CAPITAL_CITY_TASK.workflow_input,
+        criteria: CAPITAL_CITY_TASK.criteria,
+      },
+      "fake/path/task.json",
+    );
+    expect(violation).toBeNull();
+  });
+
+  it("checkInputKeysReferencedInCriteria rejects a task whose criteria never name the key in delimited form", () => {
+    const violation = checkInputKeysReferencedInCriteria(
+      {
+        workflow_input: { country: "Wales" },
+        criteria: [
+          { id: "C-001", match_criteria: "This talks about the country capital but never delimits it." },
+        ],
+      },
+      "fake/path/task.json",
+    );
+    expect(violation).not.toBeNull();
+    expect(violation!.invariant).toBe("input-keys-referenced-in-criteria");
+  });
+
+  it("checkInputKeysReferencedInCriteria accepts a bare double-quoted reference too", () => {
+    const violation = checkInputKeysReferencedInCriteria(
+      {
+        workflow_input: { country: "Wales" },
+        criteria: [{ id: "C-001", match_criteria: 'References "country" explicitly.' }],
+      },
+      "fake/path/task.json",
+    );
+    expect(violation).toBeNull();
+  });
+
+  it("checkInputKeysReferencedInCriteria is a no-op when workflow_input is absent", () => {
+    const violation = checkInputKeysReferencedInCriteria(
+      { criteria: [{ id: "C-001", match_criteria: "no inputs here" }] },
+      "fake/path/task.json",
+    );
+    expect(violation).toBeNull();
   });
 });

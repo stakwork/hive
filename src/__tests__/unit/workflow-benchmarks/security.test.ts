@@ -143,6 +143,82 @@ describe("No stale WORKFLOW_BENCHMARK_RUNNER identifier in source files", () => 
   });
 });
 
+// ── run_token HMAC secret hardening ───────────────────────────────────────────
+
+describe("processStakworkRunWebhook — run_token secret hardening", () => {
+  it("rejects verification when NEXTAUTH_SECRET is unset for a TOKEN_VERIFIED_RUN_TYPES run", async () => {
+    vi.resetModules();
+    const originalSecret = process.env.NEXTAUTH_SECRET;
+    delete process.env.NEXTAUTH_SECRET;
+
+    vi.doMock("@/lib/db", () => ({
+      db: {
+        stakworkRun: {
+          findFirst: vi.fn().mockResolvedValue({
+            id: "run-1",
+            type: "BENCHMARK_RUNNER",
+            workspaceId: "ws-1",
+            result: null,
+            workspace: { slug: "stakwork" },
+          }),
+        },
+      },
+    }));
+
+    const { processStakworkRunWebhook } = await import("@/services/stakwork-run");
+
+    await expect(
+      processStakworkRunWebhook(
+        { result: { n_passed: 1 }, project_status: "completed" },
+        { type: "BENCHMARK_RUNNER", workspace_id: "ws-1", run_id: "run-1", run_token: "anything" },
+      ),
+    ).rejects.toThrow("Unauthorized: invalid run token");
+
+    if (originalSecret !== undefined) {
+      process.env.NEXTAUTH_SECRET = originalSecret;
+    }
+    vi.doUnmock("@/lib/db");
+    vi.resetModules();
+  });
+
+  it("rejects verification when NEXTAUTH_SECRET is shorter than 32 bytes", async () => {
+    vi.resetModules();
+    const originalSecret = process.env.NEXTAUTH_SECRET;
+    process.env.NEXTAUTH_SECRET = "short-secret";
+
+    vi.doMock("@/lib/db", () => ({
+      db: {
+        stakworkRun: {
+          findFirst: vi.fn().mockResolvedValue({
+            id: "run-1",
+            type: "BENCHMARK_RUNNER",
+            workspaceId: "ws-1",
+            result: null,
+            workspace: { slug: "stakwork" },
+          }),
+        },
+      },
+    }));
+
+    const { processStakworkRunWebhook } = await import("@/services/stakwork-run");
+
+    await expect(
+      processStakworkRunWebhook(
+        { result: { n_passed: 1 }, project_status: "completed" },
+        { type: "BENCHMARK_RUNNER", workspace_id: "ws-1", run_id: "run-1", run_token: "anything" },
+      ),
+    ).rejects.toThrow("Unauthorized: invalid run token");
+
+    if (originalSecret !== undefined) {
+      process.env.NEXTAUTH_SECRET = originalSecret;
+    } else {
+      delete process.env.NEXTAUTH_SECRET;
+    }
+    vi.doUnmock("@/lib/db");
+    vi.resetModules();
+  });
+});
+
 // ── Seed safety ───────────────────────────────────────────────────────────────
 
 describe("seedWorkflowBenchmarkRuns — seed safety", () => {

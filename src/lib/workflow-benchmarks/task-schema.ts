@@ -11,6 +11,13 @@
  * test suite both import from here rather than re-implementing these rules, so
  * the two can't silently drift.
  *
+ * IMPORTANT — client-bundle safety: this module is imported (for `TASK_SLUG_RE`
+ * and types) by `src/lib/workflow-benchmark-tasks.ts`, which is in turn imported
+ * by the client ("use client") `WorkflowBenchmarksPanel.tsx`. Never import a
+ * Node built-in (e.g. `crypto`) at this module's top level — see
+ * `criteriaFingerprint` below, which deliberately uses a plain-JS string hash
+ * instead of `node:crypto` for exactly this reason.
+ *
  * ─────────────────────────────────────────────────────────────────────────────
  * Authoring conventions
  * ─────────────────────────────────────────────────────────────────────────────
@@ -143,6 +150,50 @@ export const baselineSchema = z
   );
 
 /**
+ * `workflow_input` — named input values the produced workflow consumes on
+ * rerun. Read by TWO consumers: the Workflow Editor agent at build time (via
+ * the INPUT block the generator appends to `instructions` — see
+ * `INPUT_BLOCK_SENTENCE` below) and the Stakwork rerunner (workflow 58313) at
+ * rerun time (via the `workflow_input_json` dispatch var). String-only in v1:
+ * `set_var` vars land as strings on the wire, so a number would silently
+ * change type across the round trip — zod enforces this at generate time,
+ * and `checkWorkflowInputValuesAreStrings` re-asserts it as a runtime
+ * predicate for hand-constructed fixtures that bypass zod entirely.
+ *
+ * Independently optional from `expected_output` — declaring one does not
+ * require the other, though in practice a task with no way to check its
+ * answer gains little from declaring inputs at all.
+ */
+const workflowInputSchema = z
+  .record(z.string(), z.string())
+  .describe(
+    "Named input values the produced workflow consumes on rerun. Every key " +
+      "must appear verbatim in the INPUT block the generator injects into " +
+      "`instructions` (never hand-authored) and in at least one criterion's " +
+      "match_criteria, in backticked or quoted delimited form.",
+  );
+
+/**
+ * `expected_output` — the deterministic answer for a rerun check (e.g.
+ * `{ country: "Wales" }` → `"Cardiff"`). Authored alongside `workflow_input`
+ * in the same `task.json` for single-file authoring, but the generator
+ * routes it to a SEPARATE server-boundary module
+ * (`expected-outputs.server.generated.ts`) and OMITS it from the client-
+ * imported index — see `WorkflowBenchmarkTask` below, which is
+ * `Omit<WorkflowBenchmarkTaskSource, "expected_output">`. Never add this
+ * field back to the index type; `WorkflowBenchmarksPanel.tsx` imports the
+ * whole index and ships it to the browser.
+ */
+const expectedOutputSchema = z
+  .string()
+  .min(1)
+  .describe(
+    "Deterministic rerun answer, e.g. \"Cardiff\". Server-boundary only — " +
+      "routed to expected-outputs.server.generated.ts, never emitted into " +
+      "the client-imported index.",
+  );
+
+/**
  * Authoring shape read from `task.json`. Does NOT include `slug` — the slug
  * is derived by the generator from the leaf directory name, never authored.
  */
@@ -152,7 +203,11 @@ export const taskSourceSchema = z.object({
     .string()
     .min(1)
     .describe(
-      "Plain-English instruction sent verbatim to the Workflow Editor agent.",
+      "Plain-English instruction sent verbatim to the Workflow Editor agent. " +
+        "NOTE: when `workflow_input` is declared, the `instructions` an author " +
+        "writes here is NOT byte-identical to what the agent ultimately " +
+        "receives — the generator appends an INPUT block (see " +
+        "INPUT_BLOCK_SENTENCE) under its own heading at the end.",
     ),
   criteria: z
     .array(criterionSchema)
@@ -164,6 +219,8 @@ export const taskSourceSchema = z.object({
         "the workflow output criteria tests assertion-by-name.",
     ),
   baseline: baselineSchema.optional(),
+  workflow_input: workflowInputSchema.optional(),
+  expected_output: expectedOutputSchema.optional(),
 });
 
 export type WorkflowBenchmarkTaskSource = z.infer<typeof taskSourceSchema>;
@@ -222,6 +279,23 @@ export interface WorkflowBenchmarkTask {
     workflow_id: number;
     workflow_version_id: number;
   };
+  /**
+   * Named input values the produced workflow consumes on rerun, e.g.
+   * `{ country: "Wales" }`. Independently optional from `expected_output`.
+   * Client-visible (part of the index) BY DESIGN — operators should see what
+   * a run will be launched with before pressing Run. Never put credentials
+   * or customer-derived values here — this field ships to the browser.
+   */
+  workflow_input?: Record<string, string>;
+  /**
+   * DELIBERATELY ABSENT from this emitted/index type. `expected_output` is
+   * authored in the same `task.json` but the generator routes it to
+   * `expected-outputs.server.generated.ts` (a slug -> answer map) rather than
+   * here, so the deterministic rerun answer never reaches the client bundle
+   * — `WorkflowBenchmarksPanel.tsx` imports this whole type and ships it to
+   * the browser. See `WorkflowBenchmarkTaskSource` for the authoring shape
+   * that DOES carry it.
+   */
 }
 
 // ── Compile-time mutual-assignability assertion ─────────────────────────────
@@ -243,8 +317,44 @@ type Equal<X, Y> =
 type Resolve<T> = { [K in keyof T]: T[K] };
 
 type _AssertTaskShapeMatchesSchema = Expect<
-  Equal<Resolve<WorkflowBenchmarkTask>, Resolve<WorkflowBenchmarkTaskSource & { slug: string }>>
+  Equal<
+    Resolve<WorkflowBenchmarkTask>,
+    Resolve<Omit<WorkflowBenchmarkTaskSource, "expected_output"> & { slug: string }>
+  >
 >;
+
+// ── INPUT block injection (Slice 1) ─────────────────────────────────────────
+
+/**
+ * Heading the generator writes above the injected INPUT block, at the end of
+ * `instructions`, separated from any existing content by a blank line. Pinned
+ * here (not inline in the generator) so both the generator and tests reference
+ * the exact same string.
+ */
+export const INPUT_BLOCK_HEADING = "## Workflow Inputs";
+
+/**
+ * Declaration sentence the generator writes under `INPUT_BLOCK_HEADING`,
+ * followed by each declared `workflow_input` key in backticked form. Read by
+ * the Workflow Editor agent at build time — it is the ONLY channel telling the
+ * agent what input key names to declare in the produced workflow. If the agent
+ * invents its own names, the rerunner's payload matches nothing: the workflow
+ * runs, reports success, and nothing errors.
+ */
+export const INPUT_BLOCK_SENTENCE =
+  "Declare each of the following as a caller-supplied workflow input, using these exact names:";
+
+/**
+ * Builds the full INPUT block (heading + sentence + backticked keys) exactly
+ * as the generator appends it to `instructions`. Exported so both the
+ * generator and tests construct/assert against the identical string — and so
+ * `checkNoHandAuthoredInputBlock` can detect an author having typed one by hand.
+ */
+export function renderInputBlock(workflowInput: Record<string, string>): string {
+  const keys = Object.keys(workflowInput);
+  const keyLines = keys.map((k) => `- \`${k}\``).join("\n");
+  return `${INPUT_BLOCK_HEADING}\n\n${INPUT_BLOCK_SENTENCE}\n\n${keyLines}`;
+}
 
 // ── Invariant predicates (pure; shared by generator + tests) ────────────────
 
@@ -276,8 +386,10 @@ function violation(
  */
 export interface InvariantCheckableTask {
   slug?: unknown;
+  instructions?: unknown;
   criteria?: Array<{ id?: unknown; match_criteria?: unknown }>;
   baseline?: { workflow_id?: unknown; workflow_version_id?: unknown } | undefined;
+  workflow_input?: Record<string, unknown> | undefined;
 }
 
 /** Slug matches TASK_SLUG_RE. */
@@ -390,6 +502,98 @@ export function checkBaselineCompleteness(
 }
 
 /**
+ * Every `workflow_input` value must be a string. Zod already enforces this
+ * at parse time for anything routed through `taskSourceSchema`, but this
+ * predicate re-asserts it at runtime so hand-constructed fixtures that
+ * bypass zod entirely (the negative-fixture table) are still caught, and so
+ * the generator and tests share one definition.
+ */
+export function checkWorkflowInputValuesAreStrings(
+  task: InvariantCheckableTask,
+  filePath: string,
+): InvariantViolation | null {
+  if (task.workflow_input === undefined) return null;
+  const nonStringKeys = Object.entries(task.workflow_input)
+    .filter(([, v]) => typeof v !== "string")
+    .map(([k]) => k);
+  if (nonStringKeys.length > 0) {
+    return violation(
+      "workflow-input-values-are-strings",
+      `workflow_input value(s) are not strings: ${nonStringKeys.join(", ")}`,
+      [filePath],
+    );
+  }
+  return null;
+}
+
+/**
+ * Rejects a `task.json` whose authored `instructions` already contains a
+ * hand-written version of the INPUT block. The block is INJECTED by the
+ * generator from the declared `workflow_input` keys — an author typing one
+ * by hand would either double up (confusing the agent with two blocks) or
+ * silently diverge from the generator's canonical wording. Detected by
+ * presence of the fixed heading, which an author has no legitimate reason
+ * to write themselves.
+ */
+export function checkNoHandAuthoredInputBlock(
+  task: InvariantCheckableTask,
+  filePath: string,
+): InvariantViolation | null {
+  const instructions = task.instructions;
+  if (typeof instructions !== "string") return null;
+  if (instructions.includes(INPUT_BLOCK_HEADING) || instructions.includes(INPUT_BLOCK_SENTENCE)) {
+    return violation(
+      "no-hand-authored-input-block",
+      `instructions already contain a hand-authored INPUT block (heading "${INPUT_BLOCK_HEADING}" or the ` +
+        `injection sentence) — the generator injects this block itself; remove the hand-written version`,
+      [filePath],
+    );
+  }
+  return null;
+}
+
+/**
+ * Every task declaring `workflow_input` must have at least one criterion
+ * whose `match_criteria` names each declared key in DELIMITED form —
+ * backticked (`` `country` ``) or double-quoted (`"country"`). A bare
+ * substring match (`match_criteria.includes("country")`) would false-pass on
+ * incidental prose like "the country capital" without the criterion actually
+ * asserting anything about the input mechanism, which is exactly the false
+ * positive this predicate exists to prevent.
+ */
+export function checkInputKeysReferencedInCriteria(
+  task: InvariantCheckableTask,
+  filePath: string,
+): InvariantViolation | null {
+  if (task.workflow_input === undefined) return null;
+  const keys = Object.keys(task.workflow_input);
+  const criteria = task.criteria ?? [];
+  const allMatchCriteria = criteria
+    .map((c) => (typeof c.match_criteria === "string" ? c.match_criteria : ""))
+    .join("\n");
+
+  const missing = keys.filter((key) => {
+    const backticked = new RegExp("`" + escapeRegExp(key) + "`");
+    const quoted = new RegExp('"' + escapeRegExp(key) + '"');
+    return !backticked.test(allMatchCriteria) && !quoted.test(allMatchCriteria);
+  });
+
+  if (missing.length > 0) {
+    return violation(
+      "input-keys-referenced-in-criteria",
+      `workflow_input key(s) not named in delimited (backticked or quoted) form in any ` +
+        `criterion's match_criteria: ${missing.join(", ")}`,
+      [filePath],
+    );
+  }
+  return null;
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/**
  * Runs every per-task invariant (excludes cross-file slug uniqueness, which
  * needs the whole-tree entry list) against a single task + its file path.
  * Used by both the generator (pre-emit) and tests (against fixtures).
@@ -409,5 +613,45 @@ export function checkTaskInvariants(
   if (criteriaViolation) violations.push(criteriaViolation);
   const baselineViolation = checkBaselineCompleteness(task, filePath);
   if (baselineViolation) violations.push(baselineViolation);
+  const workflowInputStringsViolation = checkWorkflowInputValuesAreStrings(task, filePath);
+  if (workflowInputStringsViolation) violations.push(workflowInputStringsViolation);
+  const handAuthoredInputBlockViolation = checkNoHandAuthoredInputBlock(task, filePath);
+  if (handAuthoredInputBlockViolation) violations.push(handAuthoredInputBlockViolation);
+  const inputKeysReferencedViolation = checkInputKeysReferencedInCriteria(task, filePath);
+  if (inputKeysReferencedViolation) violations.push(inputKeysReferencedViolation);
   return violations;
+}
+
+// ── Criteria fingerprint (Correction 6) ─────────────────────────────────────
+
+/**
+ * Deterministic hash of a task's criteria (id + title + match_criteria for
+ * each, in order). Computed AT DISPATCH TIME by the run route — never
+ * emitted into the generated index — so that two runs of the same slug
+ * scored against different rubric text are distinguishable after the fact
+ * by anyone querying the run record (`result.hive.criteriaFingerprint`).
+ *
+ * Write-only provenance: nothing in this codebase currently reads it back
+ * for comparison/triage. Surfacing it in the UI is an explicit follow-up,
+ * out of scope here.
+ *
+ * Deliberately NOT `node:crypto` — this module is imported transitively by
+ * the client bundle (see file header) and a top-level `crypto` import would
+ * break under bundlers that don't polyfill it. A simple deterministic
+ * string hash is sufficient for a provenance tag, not a security boundary.
+ */
+export function criteriaFingerprint(
+  criteria: Array<{ id: string; title: string; match_criteria: string }>,
+): string {
+  const input = criteria
+    .map((c) => `${c.id}\u0000${c.title}\u0000${c.match_criteria}`)
+    .join("\u0001");
+
+  // FNV-1a 32-bit — deterministic, dependency-free, no Node builtins.
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < input.length; i++) {
+    hash ^= input.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return (hash >>> 0).toString(16).padStart(8, "0");
 }

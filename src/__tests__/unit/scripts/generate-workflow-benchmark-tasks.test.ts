@@ -29,8 +29,14 @@ import {
   directoryFromPath,
   generateWorkflowBenchmarkTasks,
   renderModule,
+  renderExpectedOutputsModule,
   main,
 } from "../../../../scripts/generate-workflow-benchmark-tasks";
+import {
+  INPUT_BLOCK_HEADING,
+  INPUT_BLOCK_SENTENCE,
+  renderInputBlock,
+} from "@/lib/workflow-benchmarks/task-schema";
 
 // ── Test fixture helpers ──────────────────────────────────────────────────────
 
@@ -364,5 +370,229 @@ describe("main() with injectable rootDir/outDir", () => {
     const contents = readFileSync(outPath, "utf-8");
     expect(contents).toContain("wfbench/create-openai-call");
     expect(contents).toContain("auto-generated file. DO NOT EDIT.");
+  });
+
+  test("also writes the expected-outputs server-boundary module under outDir/workflow-benchmarks", () => {
+    const root = makeTempRoot();
+    writeTask(
+      root,
+      "llm",
+      "capital-task",
+      validTaskSource({
+        workflow_input: { country: "Wales" },
+        expected_output: "Cardiff",
+        criteria: [
+          { id: "C-001", title: "Uses country", match_criteria: "Must reference `country`." },
+        ],
+      }),
+    );
+    const outDir = makeTempRoot();
+
+    main(root, outDir);
+
+    const expectedOutputsPath = join(
+      outDir,
+      "workflow-benchmarks",
+      "expected-outputs.server.generated.ts",
+    );
+    const contents = readFileSync(expectedOutputsPath, "utf-8");
+    expect(contents).toContain("SERVER-BOUNDARY ONLY");
+    expect(contents).toContain('"wfbench/capital-task": "Cardiff"');
+
+    // And the answer must NOT appear in the index module. (The header
+    // comment legitimately mentions the field name in prose explaining the
+    // routing, so we assert the ANSWER VALUE is absent and that the field
+    // never appears as an object key, not that the string never appears at
+    // all.)
+    const indexPath = join(outDir, "workflow-benchmark-tasks.generated.ts");
+    const indexContents = readFileSync(indexPath, "utf-8");
+    expect(indexContents).not.toContain("Cardiff");
+    expect(indexContents).not.toMatch(/\bexpected_output\s*:/);
+  });
+});
+
+// ── INPUT block injection ───────────────────────────────────────────────────
+
+describe("generateWorkflowBenchmarkTasks — INPUT block injection", () => {
+  test("appends the INPUT block to instructions when workflow_input is declared", () => {
+    const root = makeTempRoot();
+    writeTask(
+      root,
+      "llm",
+      "with-input",
+      validTaskSource({
+        workflow_input: { country: "Wales" },
+        criteria: [
+          { id: "C-001", title: "Uses country", match_criteria: "Must reference `country`." },
+        ],
+      }),
+    );
+
+    const { tasks } = generateWorkflowBenchmarkTasks(root);
+    const task = tasks[0];
+
+    expect(task.instructions).toContain(INPUT_BLOCK_HEADING);
+    expect(task.instructions).toContain(INPUT_BLOCK_SENTENCE);
+    expect(task.instructions).toContain("`country`");
+  });
+
+  test("the injected block is appended at the END, separated from prior content by a blank line", () => {
+    const root = makeTempRoot();
+    const source = validTaskSource({
+      instructions: "Do the thing with %%A_SECRET%%.",
+      workflow_input: { country: "Wales" },
+      criteria: [
+        { id: "C-001", title: "Uses country", match_criteria: "Must reference `country`." },
+      ],
+    });
+    writeTask(root, "llm", "with-input", source);
+
+    const { tasks } = generateWorkflowBenchmarkTasks(root);
+    const task = tasks[0];
+
+    const expectedSuffix = `\n\n${renderInputBlock({ country: "Wales" })}`;
+    expect(task.instructions).toBe(`${source.instructions as string}${expectedSuffix}`);
+  });
+
+  test("does NOT append an INPUT block when workflow_input is absent", () => {
+    const root = makeTempRoot();
+    writeTask(root, "llm", "no-input", validTaskSource());
+
+    const { tasks } = generateWorkflowBenchmarkTasks(root);
+    const task = tasks[0];
+
+    expect(task.instructions).not.toContain(INPUT_BLOCK_HEADING);
+    expect(task.instructions).not.toContain(INPUT_BLOCK_SENTENCE);
+  });
+
+  test("rejects a task.json whose authored instructions already contain a hand-written INPUT block", () => {
+    const root = makeTempRoot();
+    const filePath = writeTask(
+      root,
+      "llm",
+      "hand-authored-block",
+      validTaskSource({
+        instructions: `Some prose.\n\n${INPUT_BLOCK_HEADING}\n\n${INPUT_BLOCK_SENTENCE}\n\n- \`country\``,
+        workflow_input: { country: "Wales" },
+        criteria: [
+          { id: "C-001", title: "Uses country", match_criteria: "Must reference `country`." },
+        ],
+      }),
+    );
+
+    expect(() => generateWorkflowBenchmarkTasks(root)).toThrow(/no-hand-authored-input-block/);
+    try {
+      generateWorkflowBenchmarkTasks(root);
+    } catch (err) {
+      expect((err as Error).message).toContain(filePath);
+    }
+  });
+
+  test("rejects a task declaring workflow_input with a non-string value", () => {
+    const root = makeTempRoot();
+    writeTask(
+      root,
+      "llm",
+      "bad-input-type",
+      validTaskSource({
+        // zod's taskSourceSchema requires string values, so this fails at
+        // the schema-parse stage (before invariants even run).
+        workflow_input: { country: 5 },
+        criteria: [
+          { id: "C-001", title: "Uses country", match_criteria: "Must reference `country`." },
+        ],
+      }),
+    );
+
+    expect(() => generateWorkflowBenchmarkTasks(root)).toThrow(/Schema validation failed/);
+  });
+
+  test("rejects a task declaring workflow_input whose key is never referenced in any criterion's match_criteria (delimited form)", () => {
+    const root = makeTempRoot();
+    writeTask(
+      root,
+      "llm",
+      "unreferenced-input",
+      validTaskSource({
+        workflow_input: { country: "Wales" },
+        criteria: [
+          {
+            id: "C-001",
+            title: "Vague",
+            match_criteria: "Talks about the country capital but never delimits the key.",
+          },
+        ],
+      }),
+    );
+
+    expect(() => generateWorkflowBenchmarkTasks(root)).toThrow(
+      /input-keys-referenced-in-criteria/,
+    );
+  });
+});
+
+// ── expected_output routing + index/map agreement ───────────────────────────
+
+describe("generateWorkflowBenchmarkTasks — expected_output routing", () => {
+  test("routes expected_output to the expectedOutputs map, omitting it from the emitted task", () => {
+    const root = makeTempRoot();
+    writeTask(
+      root,
+      "llm",
+      "with-answer",
+      validTaskSource({
+        workflow_input: { country: "Wales" },
+        expected_output: "Cardiff",
+        criteria: [
+          { id: "C-001", title: "Uses country", match_criteria: "Must reference `country`." },
+        ],
+      }),
+    );
+
+    const { tasks, expectedOutputs } = generateWorkflowBenchmarkTasks(root);
+
+    expect(expectedOutputs["wfbench/with-answer"]).toBe("Cardiff");
+    expect(Object.prototype.hasOwnProperty.call(tasks[0], "expected_output")).toBe(false);
+  });
+
+  test("a task with no expected_output has no entry in the map", () => {
+    const root = makeTempRoot();
+    writeTask(root, "llm", "no-answer", validTaskSource());
+
+    const { expectedOutputs } = generateWorkflowBenchmarkTasks(root);
+    expect(Object.prototype.hasOwnProperty.call(expectedOutputs, "wfbench/no-answer")).toBe(false);
+  });
+});
+
+describe("renderExpectedOutputsModule", () => {
+  test("emits a slug -> answer map via JSON.stringify (escaping round-trip)", async () => {
+    const tricky = {
+      "wfbench/tricky": 'Answer with `backtick` and ${template} and "quotes".',
+    };
+    const rendered = renderExpectedOutputsModule(tricky);
+
+    expect(rendered).toContain("SERVER-BOUNDARY ONLY");
+    expect(rendered).toContain(JSON.stringify(tricky["wfbench/tricky"]));
+
+    const outDir = makeTempRoot();
+    const outPath = join(outDir, "rendered-expected-outputs.generated.ts");
+    writeFileSync(outPath, rendered, "utf-8");
+    const mod = (await import(outPath)) as { EXPECTED_OUTPUTS: Record<string, string> };
+    expect(mod.EXPECTED_OUTPUTS).toEqual(tricky);
+  });
+
+  test("escapes a slug containing a backtick or template expression safely", async () => {
+    // Slugs are generator-derived from directory names, but the render
+    // function itself must never trust a string enough to interpolate it
+    // raw — assert JSON.stringify is used for keys too (Correction 4).
+    const weird = { "wfbench/weird`slug": "value" };
+    const rendered = renderExpectedOutputsModule(weird);
+    expect(rendered).toContain(JSON.stringify("wfbench/weird`slug"));
+
+    const outDir = makeTempRoot();
+    const outPath = join(outDir, "rendered-weird.generated.ts");
+    writeFileSync(outPath, rendered, "utf-8");
+    const mod = (await import(outPath)) as { EXPECTED_OUTPUTS: Record<string, string> };
+    expect(mod.EXPECTED_OUTPUTS).toEqual(weird);
   });
 });
