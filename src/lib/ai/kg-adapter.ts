@@ -9,6 +9,11 @@
  */
 
 import type { NeighborResult } from "@/lib/graph-walker";
+// Deliberate runtime dependency: kg reads previously collapsed failures to
+// null/[] silently. Operator-facing outcome lines (rejected vs zero-match vs
+// timeout) now go through the structured logger — see kgSearch/kgGetNode/
+// kgGetNeighbors.
+import { logger } from "@/lib/logger";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -117,6 +122,20 @@ function authHeaders(swarmApiKey: string): Record<string, string> {
 }
 
 /**
+ * Append `namespace=…` to Jarvis query params — but ONLY when the caller
+ * supplied a value that is non-empty after `trim()`. This helper is the single
+ * home for the "absent/blank means unchanged behaviour" guarantee: without a
+ * namespace, params are left untouched so the outgoing URL is byte-identical
+ * to the unscoped request. Jarvis applies `n.namespace = $namespace` as a hard
+ * Cypher filter on its search pipelines, read from the query string.
+ */
+function appendNamespace(params: URLSearchParams, namespace?: string): void {
+  const trimmed = namespace?.trim();
+  if (!trimmed) return;
+  params.set("namespace", trimmed);
+}
+
+/**
  * Node types that must never surface in graph-walker search or neighbor
  * expansion. These are internal / low-signal types (hint nodes, agent memory,
  * media clips, transcript turns) that pollute results without helping the
@@ -125,6 +144,32 @@ function authHeaders(swarmApiKey: string): Record<string, string> {
  * budget. Case-insensitive.
  */
 const EXCLUDED_NODE_TYPES = ["Hint", "Memory", "Clip", "Turn"];
+
+/**
+ * Warn for a kg read whose fetch THREW — distinguishing an abort timeout
+ * (`kgFetch` aborts at KG_FETCH_TIMEOUT_MS) from other transport errors.
+ * Metadata carries outcome shape only: never URLs (they carry query text),
+ * swarm API keys, or node payloads. `namespace` (the applied partition filter,
+ * or "<none>") is passed by callers that scope their reads; unscoped callers
+ * omit it.
+ */
+function logKgReadThrew(
+  context: string,
+  err: unknown,
+  namespace?: string,
+): void {
+  const isAbort = err instanceof Error && err.name === "AbortError";
+  const metadata = {
+    errorType: err instanceof Error ? err.name : typeof err,
+    ...(isAbort ? { timeoutMs: KG_FETCH_TIMEOUT_MS } : {}),
+    ...(namespace !== undefined ? { namespace } : {}),
+  };
+  if (isAbort) {
+    logger.warn("kg read timed out", context, metadata);
+  } else {
+    logger.warn("kg read request threw", context, metadata);
+  }
+}
 
 /** fetch with an abort timeout so a slow/overloaded swarm fails fast. */
 async function kgFetch(url: string, swarmApiKey: string): Promise<Response> {
@@ -280,9 +325,19 @@ export async function kgGetNode(
   try {
     // limit=1 keeps Jarvis from materializing the node's whole neighborhood
     // (which OOMs Neo4j for hub nodes). We only read the node itself here.
-    const url = `${jarvisUrl}/v2/nodes/${encodeURIComponent(refId)}?limit=1`;
+    // Build the query string with `limit` set FIRST so it stays exactly
+    // `?limit=1` when nothing else is appended, and normalize the base so a
+    // trailing-slash jarvisUrl doesn't emit a double slash.
+    const params = new URLSearchParams({ limit: "1" });
+    const base = jarvisUrl.replace(/\/$/, "");
+    const url = `${base}/v2/nodes/${encodeURIComponent(refId)}?${params.toString()}`;
     const res = await kgFetch(url, swarmApiKey);
-    if (!res.ok) return null;
+    if (!res.ok) {
+      logger.warn("kg get-node request rejected", "kg-adapter:kgGetNode", {
+        status: res.status,
+      });
+      return null;
+    }
     const data = (await res.json()) as
       | JarvisNode
       | { nodes?: JarvisNode[] };
@@ -305,7 +360,8 @@ export async function kgGetNode(
       node.edges = await fetchConnectionCounts(jarvisUrl, swarmApiKey, refId);
     }
     return node;
-  } catch {
+  } catch (err) {
+    logKgReadThrew("kg-adapter:kgGetNode", err);
     return null;
   }
 }
@@ -435,7 +491,12 @@ export async function kgGetNeighbors(
     }
     const url = `${jarvisUrl}/v2/nodes/${encodeURIComponent(refId)}?${params.toString()}`;
     const res = await kgFetch(url, swarmApiKey);
-    if (!res.ok) return { neighbors: [], reachable: false };
+    if (!res.ok) {
+      logger.warn("kg neighbors request rejected", "kg-adapter:kgGetNeighbors", {
+        status: res.status,
+      });
+      return { neighbors: [], reachable: false };
+    }
 
     const data = (await res.json()) as JarvisExpandEdgesResponse;
 
@@ -512,7 +573,8 @@ export async function kgGetNeighbors(
     }
 
     return { neighbors, reachable: true, ...(root ? { root } : {}) };
-  } catch {
+  } catch (err) {
+    logKgReadThrew("kg-adapter:kgGetNeighbors", err);
     return { neighbors: [], reachable: false };
   }
 }
@@ -749,6 +811,17 @@ export interface KgSearchOpts {
   outputQ?: string;
   /** Comma-separated domain filter (e.g. "entity" or "content,entity"). */
   domains?: string;
+  /**
+   * Optional Jarvis data-partition filter — Jarvis applies
+   * `n.namespace = $namespace` (read from the query string) as a hard Cypher
+   * predicate on its search pipelines. Absent/blank ⇒ params untouched ⇒ the
+   * request is byte-identical to the unscoped one. This is a QUERY FILTER, not
+   * an access boundary: the inline `include_edge_counts` aggregation and the
+   * `/connection-counts` endpoint are NOT namespace-scoped, so a hit's `edges`
+   * map may advertise hops in other partitions. Callers must hold normal swarm
+   * access regardless.
+   */
+  namespace?: string;
 }
 
 /** A search hit: node summary plus description and connectivity map. */
@@ -791,6 +864,10 @@ export async function kgSearch(
   opts?: KgSearchOpts,
 ): Promise<KgSearchHit[]> {
   if (!query && !opts?.inputQ && !opts?.outputQ) return [];
+  // The applied partition, derived from the wire format AFTER appendNamespace
+  // (so "<none>" tracks exactly what was sent on the URL) and read from the
+  // catch block if the fetch throws.
+  let namespaceApplied = "<none>";
   try {
     const params = new URLSearchParams({
       limit: String(opts?.limit ?? 20),
@@ -802,12 +879,22 @@ export async function kgSearch(
     if (opts?.outputQ) params.set("output_q", opts.outputQ);
     if (opts?.type) params.set("type", opts.type);
     if (opts?.domains) params.set("domains", opts.domains);
+    // Scope to one Jarvis data partition. Absent/blank leaves params
+    // untouched — see appendNamespace for the single home of that guarantee.
+    appendNamespace(params, opts?.namespace);
+    namespaceApplied = params.get("namespace") ?? "<none>";
     const url = `${jarvisUrl.replace(/\/$/, "")}/v2/nodes?${params.toString()}`;
     const res = await kgFetch(url, swarmApiKey);
-    if (!res.ok) return [];
+    if (!res.ok) {
+      logger.warn("kg search request rejected", "kg-adapter:kgSearch", {
+        status: res.status,
+        namespace: namespaceApplied,
+      });
+      return [];
+    }
     const data = (await res.json()) as JarvisNode[] | { nodes?: JarvisNode[] };
     const nodes = Array.isArray(data) ? data : (data?.nodes ?? []);
-    return nodes
+    const hits = nodes
       .filter(
         (n) =>
           n.ref_id &&
@@ -827,7 +914,19 @@ export async function kgSearch(
           edges: (n as { edges?: Record<string, number> }).edges ?? {},
         };
       });
-  } catch {
+    // A Cypher namespace filter that matches nothing comes back as
+    // HTTP-200-with-zero-rows — it never reaches the !res.ok branch above, so
+    // this debug line is what makes a wrong-but-well-formed namespace
+    // legible to operators. Metadata is outcome shape only: status/count/
+    // namespace — never query text, node payloads, or swarm keys.
+    logger.debug(
+      "kg search response received",
+      "kg-adapter:kgSearch",
+      { count: hits.length, namespace: namespaceApplied },
+    );
+    return hits;
+  } catch (err) {
+    logKgReadThrew("kg-adapter:kgSearch", err, namespaceApplied);
     return [];
   }
 }
