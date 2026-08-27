@@ -42,6 +42,10 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
+# generated offline-report CSS bundle (built via `npm run build:offline-css`,
+# wired as prebuild/predev — see scripts/build-offline-css.mjs)
+/src/lib/run-report/export/offline-report.css
+
 /src/generated/prisma
 
 # Cursor

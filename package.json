@@ -3,8 +3,11 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "predev": "npm run build:offline-css",
     "dev": "next dev --turbopack",
+    "prebuild": "npm run build:offline-css",
     "build": "NODE_OPTIONS='--max-old-space-size=6144' next build",
+    "build:offline-css": "node scripts/build-offline-css.mjs",
     "postinstall": "prisma generate",
     "start": "next start",
     "lint": "eslint ./src --max-warnings=999",

@@ -9,10 +9,24 @@
  * - viewer.js is inlined
  * - CSP meta tag is present
  * - Title is sanitized (CR/LF/quote-injection → clean header)
+ *
+ * getOfflineCss() reads the build-time-generated, gitignored
+ * offline-report.css (see src/lib/run-report/export/offline.entry.css +
+ * scripts/build-offline-css.mjs). The unit-test CI job runs `vitest run`
+ * directly — it never runs `npm run build`/`prebuild` — so that file will not
+ * exist unless we generate it ourselves here first.
  */
 
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeAll } from "vitest";
+import { execFileSync } from "child_process";
+import { join } from "path";
 import { assembleOfflineHtml } from "@/lib/run-report/export/offline-html";
+
+beforeAll(() => {
+  execFileSync("node", [join(process.cwd(), "scripts/build-offline-css.mjs")], {
+    stdio: "pipe",
+  });
+}, 60_000);
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -176,11 +190,19 @@ describe("assembleOfflineHtml", () => {
       expect(indexHtml.trimStart()).toMatch(/^<!DOCTYPE html>/i);
     });
 
-    it("includes a <style> block with dark theme CSS", () => {
+    it("includes a <style> block with the generated offline report CSS", () => {
       const { indexHtml } = assembleOfflineHtml("<div>test</div>", null, "Test");
       expect(indexHtml).toMatch(/<style>/i);
-      // Dark background
-      expect(indexHtml).toContain("background-color: #000");
+      // The CSS is now sourced from the build-time-generated
+      // offline-report.css (see offline.entry.css / scripts/build-offline-css.mjs)
+      // rather than a hand-written literal color string, so we assert on the
+      // structural presence of Tailwind's `.bg-black` utility (used by the
+      // dark document body) rather than a specific hex/HSL literal.
+      const styleMatch = indexHtml.match(/<style>([\s\S]*?)<\/style>/i);
+      expect(styleMatch).not.toBeNull();
+      const styleContent = styleMatch?.[1] ?? "";
+      expect(styleContent.length).toBeGreaterThan(0);
+      expect(styleContent).toContain(".bg-black");
     });
 
     it("includes a CSP meta tag", () => {
