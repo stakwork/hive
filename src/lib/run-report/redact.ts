@@ -69,8 +69,13 @@ const REDACTED = "[REDACTED]";
 /**
  * Token-shaped value patterns. Applied ONLY to trace/config string fields —
  * see `redactTokenShapes`. Never applied to document bodies.
+ *
+ * EXPORTED (read-only) for reuse by the workflow-benchmark corpus validator
+ * (`src/lib/workflow-benchmarks/task-schema.ts`), whose generate-time
+ * credential-shape invariant matches this same list rather than keeping a
+ * second hand-copied set of patterns — two copies would drift.
  */
-const TOKEN_SHAPES: RegExp[] = [
+export const TOKEN_SHAPES: RegExp[] = [
   /\bsk-[A-Za-z0-9_-]{16,}\b/g,
   /\bAKIA[0-9A-Z]{16}\b/g,
   /\bASIA[0-9A-Z]{16}\b/g,
