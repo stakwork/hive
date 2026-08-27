@@ -176,11 +176,19 @@ describe("assembleOfflineHtml", () => {
       expect(indexHtml.trimStart()).toMatch(/^<!DOCTYPE html>/i);
     });
 
-    it("includes a <style> block with dark theme CSS", () => {
+    it("includes a <style> block with the generated offline report CSS", () => {
       const { indexHtml } = assembleOfflineHtml("<div>test</div>", null, "Test");
       expect(indexHtml).toMatch(/<style>/i);
-      // Dark background
-      expect(indexHtml).toContain("background-color: #000");
+      // The CSS is now sourced from the build-time-generated
+      // offline-report.css (see offline.entry.css / scripts/build-offline-css.mjs)
+      // rather than a hand-written literal color string, so we assert on the
+      // structural presence of Tailwind's `.bg-black` utility (used by the
+      // dark document body) rather than a specific hex/HSL literal.
+      const styleMatch = indexHtml.match(/<style>([\s\S]*?)<\/style>/i);
+      expect(styleMatch).not.toBeNull();
+      const styleContent = styleMatch?.[1] ?? "";
+      expect(styleContent.length).toBeGreaterThan(0);
+      expect(styleContent).toContain(".bg-black");
     });
 
     it("includes a CSP meta tag", () => {
