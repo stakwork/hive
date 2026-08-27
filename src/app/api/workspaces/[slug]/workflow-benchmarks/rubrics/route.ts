@@ -76,7 +76,11 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       );
     }
 
-    // ── Step 4: Rate limit — fail-OPEN (read path) ────────────────────────────
+    // ── Step 4: Rate limit — fail CLOSED (503) ────────────────────────────────
+    // Aligned with the dispatch route's posture (run/route.ts Step 4). This
+    // route grows a second read path (rubric roster) against the same Jarvis
+    // graph backend that step 12's roster-summary batch endpoint also hits,
+    // so a limiter outage should not leave that backend unthrottled.
     try {
       const rl = await checkRateLimit(`benchmark-rubrics:${userId}`, 60, 60);
       if (!rl.allowed) {
@@ -86,11 +90,14 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
         );
       }
     } catch {
-      // fail-open: log but do not block reads
       logger.warn(
-        "[workflow-benchmarks/rubrics] Rate limit check failed (fail-open)",
+        "[workflow-benchmarks/rubrics] Rate limit service unavailable (fail-closed)",
         "workflow-benchmarks",
         { userId, taskSlug },
+      );
+      return NextResponse.json(
+        { error: "Rate limit service unavailable" },
+        { status: 503 },
       );
     }
 
