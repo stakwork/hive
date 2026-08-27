@@ -149,6 +149,16 @@ export const criterionSchema = z.object({
       "Behavioural assertion evaluated by the LLM judge. Asserts the artifact " +
         "(output shape), never the mechanism.",
     ),
+  evaluates: z
+    .enum(["workflow", "output"])
+    .optional()
+    .describe(
+      'Which evidence this criterion judges. "workflow" (the default when ' +
+        "absent) — the static workflow JSON the agent produced. \"output\" — " +
+        "the run output produced by executing that workflow with the task's " +
+        "`workflow_input`; requires the task to declare `workflow_input` " +
+        "(enforced by checkOutputCriteriaRequireWorkflowInput).",
+    ),
 });
 
 /**
@@ -269,6 +279,16 @@ export interface WorkflowBenchmarkCriterion {
    * step produced it). An agent that inlines a value directly must still pass.
    */
   match_criteria: string;
+  /**
+   * Which evidence this criterion judges. `"workflow"` (the default when
+   * absent) — the static workflow JSON. `"output"` — the run output produced
+   * by executing the workflow with the task's `workflow_input`. Sits in the
+   * same `criteria` array as workflow criteria: one roster, one denominator.
+   * A task may only declare `"output"` criteria when it declares
+   * `workflow_input` — there is otherwise nothing to execute the workflow
+   * with (checkOutputCriteriaRequireWorkflowInput).
+   */
+  evaluates?: "workflow" | "output";
 }
 
 export interface WorkflowBenchmarkTask {
@@ -427,7 +447,7 @@ function violation(
 export interface InvariantCheckableTask {
   slug?: unknown;
   instructions?: unknown;
-  criteria?: Array<{ id?: unknown; match_criteria?: unknown }>;
+  criteria?: Array<{ id?: unknown; match_criteria?: unknown; evaluates?: unknown }>;
   baseline?: { workflow_id?: unknown; workflow_version_id?: unknown } | undefined;
   workflow_input?: Record<string, unknown> | undefined;
 }
@@ -633,6 +653,51 @@ function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
+/**
+ * A criterion with `evaluates: "output"` is judged against the run output of
+ * the executed workflow — so the task must declare `workflow_input`, or there
+ * is nothing to execute the workflow with and the criterion is unevaluable by
+ * construction. Values other than "workflow"/"output" are rejected here for
+ * hand-constructed fixtures that bypass zod (zod already rejects them at
+ * parse time).
+ */
+export function checkOutputCriteriaRequireWorkflowInput(
+  task: InvariantCheckableTask,
+  filePath: string,
+): InvariantViolation | null {
+  const criteria = task.criteria ?? [];
+  const badValueIds = criteria
+    .filter(
+      (c) =>
+        c.evaluates !== undefined &&
+        c.evaluates !== "workflow" &&
+        c.evaluates !== "output",
+    )
+    .map((c) => String(c.id ?? "<unknown id>"));
+  if (badValueIds.length > 0) {
+    return violation(
+      "output-criteria-require-workflow-input",
+      `criterion(s) with invalid \`evaluates\` value (must be "workflow" or "output"): ${badValueIds.join(", ")}`,
+      [filePath],
+    );
+  }
+
+  const outputIds = criteria
+    .filter((c) => c.evaluates === "output")
+    .map((c) => String(c.id ?? "<unknown id>"));
+  const hasWorkflowInput =
+    task.workflow_input !== undefined && Object.keys(task.workflow_input).length > 0;
+  if (outputIds.length > 0 && !hasWorkflowInput) {
+    return violation(
+      "output-criteria-require-workflow-input",
+      `criterion(s) with evaluates: "output" (${outputIds.join(", ")}) but no declared ` +
+        "workflow_input — there is nothing to execute the workflow with",
+      [filePath],
+    );
+  }
+  return null;
+}
+
 // ── Secret-handling invariants (Slice 2) ────────────────────────────────────
 
 /**
@@ -786,6 +851,8 @@ export function checkTaskInvariants(
   if (secretReferenceFormViolation) violations.push(secretReferenceFormViolation);
   const credentialShapedContentViolation = checkNoCredentialShapedContent(task, filePath);
   if (credentialShapedContentViolation) violations.push(credentialShapedContentViolation);
+  const outputCriteriaViolation = checkOutputCriteriaRequireWorkflowInput(task, filePath);
+  if (outputCriteriaViolation) violations.push(outputCriteriaViolation);
   return violations;
 }
 
@@ -808,10 +875,22 @@ export function checkTaskInvariants(
  * string hash is sufficient for a provenance tag, not a security boundary.
  */
 export function criteriaFingerprint(
-  criteria: Array<{ id: string; title: string; match_criteria: string }>,
+  criteria: Array<{
+    id: string;
+    title: string;
+    match_criteria: string;
+    evaluates?: "workflow" | "output";
+  }>,
 ): string {
+  // `evaluates` is hashed only when present, so fingerprints of untagged
+  // (pre-existing) criteria are unchanged by the field's introduction — but a
+  // criterion switching evidence class IS a rubric change and must re-hash.
   const input = criteria
-    .map((c) => `${c.id}\u0000${c.title}\u0000${c.match_criteria}`)
+    .map(
+      (c) =>
+        `${c.id}\u0000${c.title}\u0000${c.match_criteria}` +
+        (c.evaluates !== undefined ? `\u0000${c.evaluates}` : ""),
+    )
     .join("\u0001");
 
   // FNV-1a 32-bit — deterministic, dependency-free, no Node builtins.
