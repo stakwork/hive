@@ -1,16 +1,18 @@
 import { authOptions } from "@/lib/auth/nextauth";
-import { getSwarmVanityAddress } from "@/lib/constants";
-import { db } from "@/lib/db";
-import { EncryptionService } from "@/lib/encryption";
-import { getStakgraphUrl } from "@/lib/utils/stakgraph-url";
-import { validateWorkspaceAccess } from "@/services/workspace";
+import { runWorkspaceGraphQuery } from "@/services/graph/query";
 import { getServerSession } from "next-auth/next";
 import { NextRequest, NextResponse } from "next/server";
 
 export const runtime = "nodejs";
 
-const WRITE_KEYWORDS_RE = /\b(CREATE|MERGE|SET|DELETE|REMOVE|DROP)\b/i;
-
+/**
+ * Thin HTTP wrapper over `runWorkspaceGraphQuery` (src/services/graph/query.ts).
+ *
+ * Keeps only session auth and body parsing; the access/admin gates, query
+ * validation, write guard, mock handling, swarm resolution, timeout, and
+ * upstream forwarding all live in the shared service so a follow-on agent
+ * tool can reuse the same authorization path.
+ */
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ slug: string }> },
@@ -34,128 +36,26 @@ export async function POST(
       );
     }
 
-    // Validate workspace access
-    const access = await validateWorkspaceAccess(slug, userId, true);
-    if (!access.hasAccess) {
-      return NextResponse.json(
-        { success: false, message: "Workspace not found or access denied" },
-        { status: 404 },
-      );
-    }
-
-    // Role gate — admins and owners only
-    if (!access.canAdmin) {
-      return NextResponse.json(
-        { success: false, message: "Forbidden: admin access required" },
-        { status: 403 },
-      );
-    }
-
-    // Parse request body
+    // Parse request body. A malformed body still surfaces as the pre-refactor
+    // 500 via the catch below; every well-formed request takes the service
+    // path where gate order is unchanged.
     const body = await request.json();
     const { query, limit } = body as { query?: string; limit?: number };
 
-    if (!query || typeof query !== "string") {
-      return NextResponse.json(
-        { success: false, message: "query is required" },
-        { status: 400 },
-      );
-    }
+    const result = await runWorkspaceGraphQuery({ slug, userId, query, limit });
 
-    // Read-only guard — block write keywords
-    if (WRITE_KEYWORDS_RE.test(query)) {
-      return NextResponse.json(
-        { success: false, message: "Write operations are not permitted" },
-        { status: 403 },
-      );
-    }
-
-    // Mock fallback
-    if (process.env.USE_MOCKS === "true") {
-      if (process.env.NODE_ENV === "test") {
-        const { POST: MockPOST } = await import(
-          "@/app/api/mock/graph/query/route"
-        );
-        return await MockPOST(request);
+    if (!result.ok) {
+      const payload: Record<string, unknown> = {
+        success: false,
+        message: result.message,
+      };
+      if ("details" in result) {
+        payload.details = result.details;
       }
-      const mockUrl = new URL(
-        "/api/mock/graph/query",
-        request.nextUrl.origin,
-      );
-      const mockRes = await fetch(mockUrl.toString(), {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ query, limit }),
-      });
-      const mockData = await mockRes.json();
-      return NextResponse.json(mockData, { status: mockRes.status });
+      return NextResponse.json(payload, { status: result.status });
     }
 
-    // Resolve workspace to get swarm
-    const workspace = await db.workspace.findFirst({
-      where: { slug, deleted: false },
-      select: { id: true },
-    });
-
-    if (!workspace) {
-      return NextResponse.json(
-        { success: false, message: "Workspace not found" },
-        { status: 404 },
-      );
-    }
-
-    const swarm = await db.swarm.findUnique({
-      where: { workspaceId: workspace.id },
-    });
-
-    if (!swarm) {
-      return NextResponse.json(
-        { success: false, message: "Graph DB not configured for this workspace" },
-        { status: 400 },
-      );
-    }
-
-    if (!swarm.swarmUrl || !swarm.swarmApiKey) {
-      return NextResponse.json(
-        { success: false, message: "Graph DB not configured for this workspace" },
-        { status: 400 },
-      );
-    }
-
-    const encryptionService = EncryptionService.getInstance();
-
-    let apiKey = encryptionService.decryptField("swarmApiKey", swarm.swarmApiKey);
-
-    if (process.env.CUSTOM_SWARM_API_KEY) {
-      apiKey = process.env.CUSTOM_SWARM_API_KEY;
-    }
-
-    const stakgraphUrl = getStakgraphUrl(getSwarmVanityAddress(swarm.name));
-
-    // Forward to stakgraph Cypher endpoint
-    const apiResult = await fetch(`${stakgraphUrl}/api/hive/query`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-api-token": apiKey,
-      },
-      body: JSON.stringify({
-        language: "cypher",
-        query,
-        limit: limit ?? 100,
-      }),
-    });
-
-    if (!apiResult.ok) {
-      const data = await apiResult.json().catch(() => ({}));
-      return NextResponse.json(
-        { success: false, message: "Query failed", details: data },
-        { status: apiResult.status },
-      );
-    }
-
-    const data = await apiResult.json();
-    return NextResponse.json(data, { status: 200 });
+    return NextResponse.json(result.data, { status: 200 });
   } catch {
     return NextResponse.json(
       { success: false, message: "Internal server error" },
