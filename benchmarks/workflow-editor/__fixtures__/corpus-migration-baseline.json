@@ -62,13 +62,13 @@
   },
   {
     "slug": "wfbench/gaia-asian-monarchy-coastline",
-    "title": "Answer a research question that counts entities satisfying two constraints",
-    "instructions": "Create a workflow that answers a caller-supplied research question by consulting publicly available sources and returns only the final answer.\n\n## Workflow Inputs\n\nDeclare each of the following as a caller-supplied workflow input, using these exact names:\n\n- `question`",
+    "title": "Count countries satisfying several constraints",
+    "instructions": "Create a workflow that answers a caller-supplied question requiring countries to be counted against several political and geographic constraints.\n\n## Workflow Inputs\n\nDeclare each of the following as a caller-supplied workflow input, using these exact names:\n\n- `question`",
     "criteria": [
       {
         "id": "C-001",
-        "title": "Performs an outbound call to retrieve information",
-        "match_criteria": "The workflow performs at least one outbound call to an external source in order to obtain the information the question asks for — a web search API, a page fetch, or an LLM/skill step capable of consulting external sources, whether via an HTTP Request step or an equivalent provider/skill step of the builder environment. PASS: at least one step, of whatever type, demonstrably sends data out and would receive information back. FAIL: no step contacts any external source (e.g. the workflow returns a hard-coded string, or relies solely on a model's unaided recall with no retrieval step of any kind)."
+        "title": "Consults an external source to obtain the answer",
+        "match_criteria": "The workflow performs at least one outbound call to an external source in order to obtain the information the question asks for — a web search API, a page fetch, or an LLM/skill step capable of consulting external sources. PASS: at least one step demonstrably sends data out and would receive information back. FAIL: no step contacts any external source (e.g. the workflow returns a hard-coded string, or relies solely on a model's unaided recall with no retrieval step of any kind)."
       },
       {
         "id": "C-002",
@@ -77,34 +77,29 @@
       },
       {
         "id": "C-003",
-        "title": "The caller-supplied question reaches the retrieval call, un-hard-coded",
-        "match_criteria": "The caller-supplied `question` value genuinely reaches the step that performs retrieval or answering, and is not hard-coded: wherever that step's input payload is assembled, the question arrives by reference to the declared input — [#(step_id).output.variable_name] step-output form or equivalent variable wiring — so the workflow answers ANY question it is supplied, not just one. The request-body schema (field names, message-array shapes) is not asserted. FAIL: the question value never enters the call, or it is replaced with a fixed literal, or the workflow would return the same answer regardless of the question supplied."
+        "title": "Authorization headers contain no plaintext credential",
+        "match_criteria": "On every step that makes an outbound call, the Authorization header value must not embed live credential material of any kind. PASS: the Authorization value is a secret reference in the authoring form %%SOME_SECRET_NAME%% — optionally Bearer-wrapped, provided the wrapped token is itself a %%SOME_SECRET_NAME%%-form reference rather than a literal string. Any well-formed %%[A-Z0-9_]+%% name passes; this criterion never asserts WHICH secret name is used. FAIL: an Authorization header contains a plaintext API key (for example a literal beginning sk-) or a raw key embedded directly in the URL query string or path."
       },
       {
         "id": "C-004",
-        "title": "Authorization header contains no plaintext credential",
-        "match_criteria": "On whatever step makes an outbound call, the Authorization header value must not embed live credential material of any kind. PASS: the Authorization value is a secret reference in the authoring form %%SOME_SECRET_NAME%% — optionally Bearer-wrapped, provided the wrapped token is itself a %%SOME_SECRET_NAME%%-form reference rather than a literal string. Any well-formed %%[A-Z0-9_]+%% name passes; this criterion never asserts WHICH secret name is used. FAIL: the Authorization header contains a plaintext API key (for example a literal beginning sk-) or a raw key embedded directly in the URL query string or path."
+        "title": "Secret references use the required authoring form",
+        "match_criteria": "Every secret reference in the produced workflow must use the required authoring form %%[A-Z0-9_]+%% — uppercase letters, digits and underscores between paired %% markers — and never the rejected runtime form {{ SOME_SECRET_NAME }}. The authoring form %%…%% and the runtime form {{ … }} are two spellings of the same secret-substitution mechanism; %%…%% is required in authored workflow JSON. This criterion asserts only the SHAPE of the reference: it never asserts WHICH secret name is used, and an unresolved %%SOME_SECRET_NAME%% is a warning upstream, never a failure here. FAIL: any malformed reference — a lowercase or hyphenated name such as %%my-secret-name%%, surrounding spaces such as %% NAME %%, or a single-percent variant such as %NAME% — or the rejected runtime form {{ SOME_SECRET_NAME }}, including defaulted variants such as {{ SOME_SECRET_NAME | default: '' }}."
       },
       {
         "id": "C-005",
-        "title": "Secret references use the required authoring form",
-        "match_criteria": "Any secret reference on the steps performing outbound calls must use the required authoring form %%[A-Z0-9_]+%% — uppercase letters, digits and underscores between paired %% markers — and never the rejected runtime form {{ SOME_SECRET_NAME }}. The authoring form %%…%% and the runtime form {{ … }} are two spellings of the same secret-substitution mechanism; %%…%% is required in authored workflow JSON. This criterion asserts only the SHAPE of the reference: it never asserts WHICH secret name is used, and an unresolved %%SOME_SECRET_NAME%% is a warning upstream, never a failure here. FAIL: any malformed reference — a lowercase or hyphenated name such as %%my-secret-name%%, surrounding spaces such as %% NAME %%, or a single-percent variant such as %NAME% — or the rejected runtime form {{ SOME_SECRET_NAME }}, including defaulted variants such as {{ SOME_SECRET_NAME | default: '' }}."
-      },
-      {
-        "id": "C-006",
         "title": "Workflow is structurally valid",
         "match_criteria": "The workflow JSON satisfies all three structural requirements: (1) there is at least one connection whose source is \"start\" (or the workflow has a designated start node/step); (2) every step is reachable via an unbroken chain of connections from start (no orphaned steps); (3) there is at least one edge whose target is \"system.succeed\" (or the equivalent terminal node), ensuring the workflow can reach a successful completion state. A workflow missing any one of these three is structurally invalid and fails this criterion."
       },
       {
-        "id": "C-007",
+        "id": "C-006",
         "title": "The run output is a direct answer, not scaffolding",
-        "match_criteria": "Judged against the RUN OUTPUT produced by executing the workflow with the supplied `question` input — not against the workflow JSON. PASS: the output is a direct answer to the question asked — the bare value or a short sentence containing it; casing and surrounding phrasing are not asserted. FAIL: the output is empty, an error message or stack-trace payload, raw request/response scaffolding with no answer extracted, a verbatim echo of the question, a refusal, or a statement that the answer could not be determined.",
+        "match_criteria": "Judged against the RUN OUTPUT produced by executing the workflow — not against the workflow JSON. PASS: the output is a direct answer to the question asked — the bare value or a short sentence containing it; casing and surrounding phrasing are not asserted. FAIL: the output is empty, an error message or stack-trace payload, raw request/response scaffolding with no answer extracted, a verbatim echo of the question, a refusal, or a statement that the answer could not be determined.",
         "evaluates": "output"
       },
       {
-        "id": "C-008",
+        "id": "C-007",
         "title": "The run output states the correct answer",
-        "match_criteria": "Judged against the RUN OUTPUT produced by executing the workflow with the supplied `question` input — not against the workflow JSON. The reference answer is supplied to the judge alongside this task; it is deliberately not restated here, so that the corpus index shipped to the browser carries no answer key. PASS: the answer conveyed by the output matches that reference answer. Exact formatting is not asserted: a short sentence containing the correct value passes, as do differences in casing, surrounding punctuation, or an equivalent spelling of the same value. A numeric answer must match the reference number exactly; a named answer must name the same entity. FAIL: the output states a different value, hedges between several candidate values without committing to the correct one, or names no answer at all.",
+        "match_criteria": "Judged against the RUN OUTPUT produced by executing the workflow — not against the workflow JSON. The reference answer is supplied to the judge alongside this task; it is deliberately not restated here, so that the corpus index shipped to the browser carries no answer key. PASS: the answer conveyed by the output matches that reference answer. Exact formatting is not asserted: a short sentence containing the correct value passes, as do differences in casing, surrounding punctuation, or an equivalent spelling of the same value. A numeric answer must match the reference number exactly; a list answer must contain the same items; a named answer must name the same entity. FAIL: the output states a different value, hedges between several candidate values without committing to the correct one, or names no answer at all.",
         "evaluates": "output"
       }
     ],
@@ -113,14 +108,14 @@
     }
   },
   {
-    "slug": "wfbench/gaia-lego-wikipedia-images",
-    "title": "Answer a research question that counts elements on a specific source page",
-    "instructions": "Create a workflow that answers a caller-supplied research question by consulting publicly available sources and returns only the final answer.\n\n## Workflow Inputs\n\nDeclare each of the following as a caller-supplied workflow input, using these exact names:\n\n- `question`",
+    "slug": "wfbench/gaia-babylonian-numeral",
+    "title": "Convert a historical numeral into its decimal value",
+    "instructions": "Create a workflow that converts a number written in a historical numeral system into its decimal value.\n\n## Workflow Inputs\n\nDeclare each of the following as a caller-supplied workflow input, using these exact names:\n\n- `question`",
     "criteria": [
       {
         "id": "C-001",
-        "title": "Performs an outbound call to retrieve information",
-        "match_criteria": "The workflow performs at least one outbound call to an external source in order to obtain the information the question asks for — a web search API, a page fetch, or an LLM/skill step capable of consulting external sources, whether via an HTTP Request step or an equivalent provider/skill step of the builder environment. PASS: at least one step, of whatever type, demonstrably sends data out and would receive information back. FAIL: no step contacts any external source (e.g. the workflow returns a hard-coded string, or relies solely on a model's unaided recall with no retrieval step of any kind)."
+        "title": "Derives the answer by reasoning, not by retrieval",
+        "match_criteria": "The question is self-contained — everything needed to answer it appears in the `question` text itself — so the workflow must reach the answer by working the problem through, typically via an LLM/skill step or a code step. PASS: the workflow routes the `question` into a step that can reason over or compute from it and returns what that step produces. This criterion does not forbid an outbound search, but a workflow that merely searches the web for the literal question text and returns a snippet, without any step that works the problem, FAILS."
       },
       {
         "id": "C-002",
@@ -129,18 +124,65 @@
       },
       {
         "id": "C-003",
-        "title": "The caller-supplied question reaches the retrieval call, un-hard-coded",
-        "match_criteria": "The caller-supplied `question` value genuinely reaches the step that performs retrieval or answering, and is not hard-coded: wherever that step's input payload is assembled, the question arrives by reference to the declared input — [#(step_id).output.variable_name] step-output form or equivalent variable wiring — so the workflow answers ANY question it is supplied, not just one. The request-body schema (field names, message-array shapes) is not asserted. FAIL: the question value never enters the call, or it is replaced with a fixed literal, or the workflow would return the same answer regardless of the question supplied."
+        "title": "Authorization headers contain no plaintext credential",
+        "match_criteria": "On every step that makes an outbound call, the Authorization header value must not embed live credential material of any kind. PASS: the Authorization value is a secret reference in the authoring form %%SOME_SECRET_NAME%% — optionally Bearer-wrapped, provided the wrapped token is itself a %%SOME_SECRET_NAME%%-form reference rather than a literal string. Any well-formed %%[A-Z0-9_]+%% name passes; this criterion never asserts WHICH secret name is used. FAIL: an Authorization header contains a plaintext API key (for example a literal beginning sk-) or a raw key embedded directly in the URL query string or path."
       },
       {
         "id": "C-004",
-        "title": "Authorization header contains no plaintext credential",
-        "match_criteria": "On whatever step makes an outbound call, the Authorization header value must not embed live credential material of any kind. PASS: the Authorization value is a secret reference in the authoring form %%SOME_SECRET_NAME%% — optionally Bearer-wrapped, provided the wrapped token is itself a %%SOME_SECRET_NAME%%-form reference rather than a literal string. Any well-formed %%[A-Z0-9_]+%% name passes; this criterion never asserts WHICH secret name is used. FAIL: the Authorization header contains a plaintext API key (for example a literal beginning sk-) or a raw key embedded directly in the URL query string or path."
+        "title": "Secret references use the required authoring form",
+        "match_criteria": "Every secret reference in the produced workflow must use the required authoring form %%[A-Z0-9_]+%% — uppercase letters, digits and underscores between paired %% markers — and never the rejected runtime form {{ SOME_SECRET_NAME }}. The authoring form %%…%% and the runtime form {{ … }} are two spellings of the same secret-substitution mechanism; %%…%% is required in authored workflow JSON. This criterion asserts only the SHAPE of the reference: it never asserts WHICH secret name is used, and an unresolved %%SOME_SECRET_NAME%% is a warning upstream, never a failure here. FAIL: any malformed reference — a lowercase or hyphenated name such as %%my-secret-name%%, surrounding spaces such as %% NAME %%, or a single-percent variant such as %NAME% — or the rejected runtime form {{ SOME_SECRET_NAME }}, including defaulted variants such as {{ SOME_SECRET_NAME | default: '' }}."
+      },
+      {
+        "id": "C-005",
+        "title": "Workflow is structurally valid",
+        "match_criteria": "The workflow JSON satisfies all three structural requirements: (1) there is at least one connection whose source is \"start\" (or the workflow has a designated start node/step); (2) every step is reachable via an unbroken chain of connections from start (no orphaned steps); (3) there is at least one edge whose target is \"system.succeed\" (or the equivalent terminal node), ensuring the workflow can reach a successful completion state. A workflow missing any one of these three is structurally invalid and fails this criterion."
+      },
+      {
+        "id": "C-006",
+        "title": "The run output is a direct answer, not scaffolding",
+        "match_criteria": "Judged against the RUN OUTPUT produced by executing the workflow — not against the workflow JSON. PASS: the output is a direct answer to the question asked — the bare value or a short sentence containing it; casing and surrounding phrasing are not asserted. FAIL: the output is empty, an error message or stack-trace payload, raw request/response scaffolding with no answer extracted, a verbatim echo of the question, a refusal, or a statement that the answer could not be determined.",
+        "evaluates": "output"
+      },
+      {
+        "id": "C-007",
+        "title": "The run output states the correct answer",
+        "match_criteria": "Judged against the RUN OUTPUT produced by executing the workflow — not against the workflow JSON. The reference answer is supplied to the judge alongside this task; it is deliberately not restated here, so that the corpus index shipped to the browser carries no answer key. PASS: the answer conveyed by the output matches that reference answer. Exact formatting is not asserted: a short sentence containing the correct value passes, as do differences in casing, surrounding punctuation, or an equivalent spelling of the same value. A numeric answer must match the reference number exactly; a list answer must contain the same items; a named answer must name the same entity. FAIL: the output states a different value, hedges between several candidate values without committing to the correct one, or names no answer at all.",
+        "evaluates": "output"
+      }
+    ],
+    "workflow_input": {
+      "question": "Consider the following symbols: 𒐜  𒐐𒐚\n\nThis is a number written using the Mesopotamian/Babylonian number system and represented with Sumerian cuneiform. Convert this number into Arabic numerals as a decimal number."
+    }
+  },
+  {
+    "slug": "wfbench/gaia-bird-species-on-camera",
+    "title": "Count simultaneous subjects on screen in a video",
+    "instructions": "Create a workflow that answers a caller-supplied question about what appears on screen in a supplied video.\n\n## Workflow Inputs\n\nDeclare each of the following as a caller-supplied workflow input, using these exact names:\n\n- `question`\n- `video_url`",
+    "criteria": [
+      {
+        "id": "C-001",
+        "title": "Obtains the video's content rather than reasoning from its address",
+        "match_criteria": "The workflow obtains the actual content of the video identified by the supplied address — its transcript, its captions, its audio track, sampled frames, or an equivalent representation retrieved through a video-capable model or skill step — so that the answer derives from the video itself. PASS: at least one step retrieves or interprets video content. FAIL: the workflow reasons only about the URL string or the video's title/metadata, or answers from the question's wording alone."
+      },
+      {
+        "id": "C-002",
+        "title": "Workflow accepts a caller-supplied input named exactly `video_url`",
+        "match_criteria": "The workflow declares and consumes a caller-supplied workflow input named exactly `video_url`, and fetches the video from that value rather than from a hard-coded address. PASS if the produced workflow JSON references an input/variable named `video_url` and uses it as the location of the video it retrieves. FAIL if the video's address is embedded as a fixed literal, or the input is declared under any other name — a rerun supplies the value under the name `video_url` and cannot drive a workflow that reads a different name."
+      },
+      {
+        "id": "C-003",
+        "title": "Workflow accepts a caller-supplied input named exactly `question`",
+        "match_criteria": "The workflow declares and consumes a caller-supplied workflow input named exactly `question`, and the artifact's behavior is driven by that input's value rather than a literal. This is assessed at the artifact level: PASS if the produced workflow JSON references an input/variable named `question` and uses it to build the request. FAIL if the workflow embeds the question text directly with no `question` input reference, or declares the input under any other name (e.g. `query`, `prompt`, `userQuestion`) — a rerun supplies the value under the name `question` and cannot drive a workflow that reads a different name."
+      },
+      {
+        "id": "C-004",
+        "title": "Authorization headers contain no plaintext credential",
+        "match_criteria": "On every step that makes an outbound call, the Authorization header value must not embed live credential material of any kind. PASS: the Authorization value is a secret reference in the authoring form %%SOME_SECRET_NAME%% — optionally Bearer-wrapped, provided the wrapped token is itself a %%SOME_SECRET_NAME%%-form reference rather than a literal string. Any well-formed %%[A-Z0-9_]+%% name passes; this criterion never asserts WHICH secret name is used. FAIL: an Authorization header contains a plaintext API key (for example a literal beginning sk-) or a raw key embedded directly in the URL query string or path."
       },
       {
         "id": "C-005",
         "title": "Secret references use the required authoring form",
-        "match_criteria": "Any secret reference on the steps performing outbound calls must use the required authoring form %%[A-Z0-9_]+%% — uppercase letters, digits and underscores between paired %% markers — and never the rejected runtime form {{ SOME_SECRET_NAME }}. The authoring form %%…%% and the runtime form {{ … }} are two spellings of the same secret-substitution mechanism; %%…%% is required in authored workflow JSON. This criterion asserts only the SHAPE of the reference: it never asserts WHICH secret name is used, and an unresolved %%SOME_SECRET_NAME%% is a warning upstream, never a failure here. FAIL: any malformed reference — a lowercase or hyphenated name such as %%my-secret-name%%, surrounding spaces such as %% NAME %%, or a single-percent variant such as %NAME% — or the rejected runtime form {{ SOME_SECRET_NAME }}, including defaulted variants such as {{ SOME_SECRET_NAME | default: '' }}."
+        "match_criteria": "Every secret reference in the produced workflow must use the required authoring form %%[A-Z0-9_]+%% — uppercase letters, digits and underscores between paired %% markers — and never the rejected runtime form {{ SOME_SECRET_NAME }}. The authoring form %%…%% and the runtime form {{ … }} are two spellings of the same secret-substitution mechanism; %%…%% is required in authored workflow JSON. This criterion asserts only the SHAPE of the reference: it never asserts WHICH secret name is used, and an unresolved %%SOME_SECRET_NAME%% is a warning upstream, never a failure here. FAIL: any malformed reference — a lowercase or hyphenated name such as %%my-secret-name%%, surrounding spaces such as %% NAME %%, or a single-percent variant such as %NAME% — or the rejected runtime form {{ SOME_SECRET_NAME }}, including defaulted variants such as {{ SOME_SECRET_NAME | default: '' }}."
       },
       {
         "id": "C-006",
@@ -150,13 +192,235 @@
       {
         "id": "C-007",
         "title": "The run output is a direct answer, not scaffolding",
-        "match_criteria": "Judged against the RUN OUTPUT produced by executing the workflow with the supplied `question` input — not against the workflow JSON. PASS: the output is a direct answer to the question asked — the bare value or a short sentence containing it; casing and surrounding phrasing are not asserted. FAIL: the output is empty, an error message or stack-trace payload, raw request/response scaffolding with no answer extracted, a verbatim echo of the question, a refusal, or a statement that the answer could not be determined.",
+        "match_criteria": "Judged against the RUN OUTPUT produced by executing the workflow — not against the workflow JSON. PASS: the output is a direct answer to the question asked — the bare value or a short sentence containing it; casing and surrounding phrasing are not asserted. FAIL: the output is empty, an error message or stack-trace payload, raw request/response scaffolding with no answer extracted, a verbatim echo of the question, a refusal, or a statement that the answer could not be determined.",
         "evaluates": "output"
       },
       {
         "id": "C-008",
         "title": "The run output states the correct answer",
-        "match_criteria": "Judged against the RUN OUTPUT produced by executing the workflow with the supplied `question` input — not against the workflow JSON. The reference answer is supplied to the judge alongside this task; it is deliberately not restated here, so that the corpus index shipped to the browser carries no answer key. PASS: the answer conveyed by the output matches that reference answer. Exact formatting is not asserted: a short sentence containing the correct value passes, as do differences in casing, surrounding punctuation, or an equivalent spelling of the same value. A numeric answer must match the reference number exactly; a named answer must name the same entity. FAIL: the output states a different value, hedges between several candidate values without committing to the correct one, or names no answer at all.",
+        "match_criteria": "Judged against the RUN OUTPUT produced by executing the workflow — not against the workflow JSON. The reference answer is supplied to the judge alongside this task; it is deliberately not restated here, so that the corpus index shipped to the browser carries no answer key. PASS: the answer conveyed by the output matches that reference answer. Exact formatting is not asserted: a short sentence containing the correct value passes, as do differences in casing, surrounding punctuation, or an equivalent spelling of the same value. A numeric answer must match the reference number exactly; a list answer must contain the same items; a named answer must name the same entity. FAIL: the output states a different value, hedges between several candidate values without committing to the correct one, or names no answer at all.",
+        "evaluates": "output"
+      }
+    ],
+    "workflow_input": {
+      "question": "In the video https://www.youtube.com/watch?v=L1vXCYZAYYM, what is the highest number of bird species to be on camera simultaneously?",
+      "video_url": "https://www.youtube.com/watch?v=L1vXCYZAYYM"
+    }
+  },
+  {
+    "slug": "wfbench/gaia-calculus-study-pages",
+    "title": "Extract spoken page numbers from a recording",
+    "instructions": "Create a workflow that transcribes a supplied audio recording and reports the page numbers named in it.\n\n## Workflow Inputs\n\nDeclare each of the following as a caller-supplied workflow input, using these exact names:\n\n- `question`\n- `audio_url`",
+    "criteria": [
+      {
+        "id": "C-001",
+        "title": "Transcribes or interprets the retrieved audio",
+        "match_criteria": "The workflow submits the retrieved audio itself to a step capable of turning speech into text or otherwise interpreting audio content — a speech-to-text service, an audio-capable model, or an equivalent skill step — so that the answer derives from what is spoken in the recording. PASS: the audio bytes (or a reference such a service can resolve) are passed into such a step. FAIL: the workflow only handles the recording's address as text, or answers from the question's wording alone without the audio ever reaching an interpreting step."
+      },
+      {
+        "id": "C-002",
+        "title": "The audio recording is retrieved with an authenticated request",
+        "match_criteria": "The workflow retrieves the audio recording from the address supplied in `audio_url` using a request that carries an Authorization header, because the host serving it refuses unauthenticated requests. PASS: a step fetches the `audio_url` value and attaches an Authorization header whose value is a %%[A-Z0-9_]+%%-form secret reference. This criterion never asserts WHICH secret name is used, nor which step type performs the fetch. FAIL: the fetch carries no Authorization header at all, or the workflow never retrieves the resource and instead reasons about the address alone."
+      },
+      {
+        "id": "C-003",
+        "title": "Workflow accepts a caller-supplied input named exactly `audio_url`",
+        "match_criteria": "The workflow declares and consumes a caller-supplied workflow input named exactly `audio_url`, and fetches the audio recording from that value rather than from a hard-coded address. PASS if the produced workflow JSON references an input/variable named `audio_url` and uses it as the location of the audio recording it retrieves. FAIL if the audio recording's address is embedded as a fixed literal, or the input is declared under any other name — a rerun supplies the value under the name `audio_url` and cannot drive a workflow that reads a different name."
+      },
+      {
+        "id": "C-004",
+        "title": "Workflow accepts a caller-supplied input named exactly `question`",
+        "match_criteria": "The workflow declares and consumes a caller-supplied workflow input named exactly `question`, and the artifact's behavior is driven by that input's value rather than a literal. This is assessed at the artifact level: PASS if the produced workflow JSON references an input/variable named `question` and uses it to build the request. FAIL if the workflow embeds the question text directly with no `question` input reference, or declares the input under any other name (e.g. `query`, `prompt`, `userQuestion`) — a rerun supplies the value under the name `question` and cannot drive a workflow that reads a different name."
+      },
+      {
+        "id": "C-005",
+        "title": "Authorization headers contain no plaintext credential",
+        "match_criteria": "On every step that makes an outbound call, the Authorization header value must not embed live credential material of any kind. PASS: the Authorization value is a secret reference in the authoring form %%SOME_SECRET_NAME%% — optionally Bearer-wrapped, provided the wrapped token is itself a %%SOME_SECRET_NAME%%-form reference rather than a literal string. Any well-formed %%[A-Z0-9_]+%% name passes; this criterion never asserts WHICH secret name is used. FAIL: an Authorization header contains a plaintext API key (for example a literal beginning sk-) or a raw key embedded directly in the URL query string or path."
+      },
+      {
+        "id": "C-006",
+        "title": "Secret references use the required authoring form",
+        "match_criteria": "Every secret reference in the produced workflow must use the required authoring form %%[A-Z0-9_]+%% — uppercase letters, digits and underscores between paired %% markers — and never the rejected runtime form {{ SOME_SECRET_NAME }}. The authoring form %%…%% and the runtime form {{ … }} are two spellings of the same secret-substitution mechanism; %%…%% is required in authored workflow JSON. This criterion asserts only the SHAPE of the reference: it never asserts WHICH secret name is used, and an unresolved %%SOME_SECRET_NAME%% is a warning upstream, never a failure here. FAIL: any malformed reference — a lowercase or hyphenated name such as %%my-secret-name%%, surrounding spaces such as %% NAME %%, or a single-percent variant such as %NAME% — or the rejected runtime form {{ SOME_SECRET_NAME }}, including defaulted variants such as {{ SOME_SECRET_NAME | default: '' }}."
+      },
+      {
+        "id": "C-007",
+        "title": "Workflow is structurally valid",
+        "match_criteria": "The workflow JSON satisfies all three structural requirements: (1) there is at least one connection whose source is \"start\" (or the workflow has a designated start node/step); (2) every step is reachable via an unbroken chain of connections from start (no orphaned steps); (3) there is at least one edge whose target is \"system.succeed\" (or the equivalent terminal node), ensuring the workflow can reach a successful completion state. A workflow missing any one of these three is structurally invalid and fails this criterion."
+      },
+      {
+        "id": "C-008",
+        "title": "The run output is a direct answer, not scaffolding",
+        "match_criteria": "Judged against the RUN OUTPUT produced by executing the workflow — not against the workflow JSON. PASS: the output is a direct answer to the question asked — the bare value or a short sentence containing it; casing and surrounding phrasing are not asserted. FAIL: the output is empty, an error message or stack-trace payload, raw request/response scaffolding with no answer extracted, a verbatim echo of the question, a refusal, or a statement that the answer could not be determined.",
+        "evaluates": "output"
+      },
+      {
+        "id": "C-009",
+        "title": "The run output states the correct answer",
+        "match_criteria": "Judged against the RUN OUTPUT produced by executing the workflow — not against the workflow JSON. The reference answer is supplied to the judge alongside this task; it is deliberately not restated here, so that the corpus index shipped to the browser carries no answer key. PASS: the answer conveyed by the output matches that reference answer. Exact formatting is not asserted: a short sentence containing the correct value passes, as do differences in casing, surrounding punctuation, or an equivalent spelling of the same value. A numeric answer must match the reference number exactly; a list answer must contain the same items; a named answer must name the same entity. FAIL: the output states a different value, hedges between several candidate values without committing to the correct one, or names no answer at all.",
+        "evaluates": "output"
+      }
+    ],
+    "workflow_input": {
+      "question": "Hi, I was out sick from my classes on Friday, so I'm trying to figure out what I need to study for my Calculus mid-term next week. My friend from class sent me an audio recording of Professor Willowbrook giving out the recommended reading for the test, but my headphones are broken :(\n\nCould you please listen to the recording for me and tell me the page numbers I'm supposed to go over? I've attached a file called Homework.mp3 that has the recording. Please provide just the page numbers as a comma-delimited list. And please provide the list in ascending order.",
+      "audio_url": "https://huggingface.co/datasets/gaia-benchmark/GAIA/resolve/main/2023/validation/1f975693-876d-457b-a649-393859e79bf3.mp3"
+    }
+  },
+  {
+    "slug": "wfbench/gaia-chess-winning-move",
+    "title": "Read a chess position from an image and choose a move",
+    "instructions": "Create a workflow that answers a caller-supplied question about a chess position shown in a supplied image.\n\n## Workflow Inputs\n\nDeclare each of the following as a caller-supplied workflow input, using these exact names:\n\n- `question`\n- `image_url`",
+    "criteria": [
+      {
+        "id": "C-001",
+        "title": "Performs image understanding on the retrieved image",
+        "match_criteria": "The workflow submits the retrieved image itself to a step capable of interpreting image content — a vision-capable model, an OCR service, or an equivalent skill step — so that the answer derives from what the image depicts. PASS: the image bytes (or a reference a vision service can resolve) are passed into such a step. FAIL: the workflow only handles the image's address or filename as text, or answers from the question's wording alone without the image ever reaching an interpreting step."
+      },
+      {
+        "id": "C-002",
+        "title": "The image is retrieved with an authenticated request",
+        "match_criteria": "The workflow retrieves the image from the address supplied in `image_url` using a request that carries an Authorization header, because the host serving it refuses unauthenticated requests. PASS: a step fetches the `image_url` value and attaches an Authorization header whose value is a %%[A-Z0-9_]+%%-form secret reference. This criterion never asserts WHICH secret name is used, nor which step type performs the fetch. FAIL: the fetch carries no Authorization header at all, or the workflow never retrieves the resource and instead reasons about the address alone."
+      },
+      {
+        "id": "C-003",
+        "title": "Workflow accepts a caller-supplied input named exactly `image_url`",
+        "match_criteria": "The workflow declares and consumes a caller-supplied workflow input named exactly `image_url`, and fetches the image from that value rather than from a hard-coded address. PASS if the produced workflow JSON references an input/variable named `image_url` and uses it as the location of the image it retrieves. FAIL if the image's address is embedded as a fixed literal, or the input is declared under any other name — a rerun supplies the value under the name `image_url` and cannot drive a workflow that reads a different name."
+      },
+      {
+        "id": "C-004",
+        "title": "Workflow accepts a caller-supplied input named exactly `question`",
+        "match_criteria": "The workflow declares and consumes a caller-supplied workflow input named exactly `question`, and the artifact's behavior is driven by that input's value rather than a literal. This is assessed at the artifact level: PASS if the produced workflow JSON references an input/variable named `question` and uses it to build the request. FAIL if the workflow embeds the question text directly with no `question` input reference, or declares the input under any other name (e.g. `query`, `prompt`, `userQuestion`) — a rerun supplies the value under the name `question` and cannot drive a workflow that reads a different name."
+      },
+      {
+        "id": "C-005",
+        "title": "Authorization headers contain no plaintext credential",
+        "match_criteria": "On every step that makes an outbound call, the Authorization header value must not embed live credential material of any kind. PASS: the Authorization value is a secret reference in the authoring form %%SOME_SECRET_NAME%% — optionally Bearer-wrapped, provided the wrapped token is itself a %%SOME_SECRET_NAME%%-form reference rather than a literal string. Any well-formed %%[A-Z0-9_]+%% name passes; this criterion never asserts WHICH secret name is used. FAIL: an Authorization header contains a plaintext API key (for example a literal beginning sk-) or a raw key embedded directly in the URL query string or path."
+      },
+      {
+        "id": "C-006",
+        "title": "Secret references use the required authoring form",
+        "match_criteria": "Every secret reference in the produced workflow must use the required authoring form %%[A-Z0-9_]+%% — uppercase letters, digits and underscores between paired %% markers — and never the rejected runtime form {{ SOME_SECRET_NAME }}. The authoring form %%…%% and the runtime form {{ … }} are two spellings of the same secret-substitution mechanism; %%…%% is required in authored workflow JSON. This criterion asserts only the SHAPE of the reference: it never asserts WHICH secret name is used, and an unresolved %%SOME_SECRET_NAME%% is a warning upstream, never a failure here. FAIL: any malformed reference — a lowercase or hyphenated name such as %%my-secret-name%%, surrounding spaces such as %% NAME %%, or a single-percent variant such as %NAME% — or the rejected runtime form {{ SOME_SECRET_NAME }}, including defaulted variants such as {{ SOME_SECRET_NAME | default: '' }}."
+      },
+      {
+        "id": "C-007",
+        "title": "Workflow is structurally valid",
+        "match_criteria": "The workflow JSON satisfies all three structural requirements: (1) there is at least one connection whose source is \"start\" (or the workflow has a designated start node/step); (2) every step is reachable via an unbroken chain of connections from start (no orphaned steps); (3) there is at least one edge whose target is \"system.succeed\" (or the equivalent terminal node), ensuring the workflow can reach a successful completion state. A workflow missing any one of these three is structurally invalid and fails this criterion."
+      },
+      {
+        "id": "C-008",
+        "title": "The run output is a direct answer, not scaffolding",
+        "match_criteria": "Judged against the RUN OUTPUT produced by executing the workflow — not against the workflow JSON. PASS: the output is a direct answer to the question asked — the bare value or a short sentence containing it; casing and surrounding phrasing are not asserted. FAIL: the output is empty, an error message or stack-trace payload, raw request/response scaffolding with no answer extracted, a verbatim echo of the question, a refusal, or a statement that the answer could not be determined.",
+        "evaluates": "output"
+      },
+      {
+        "id": "C-009",
+        "title": "The run output states the correct answer",
+        "match_criteria": "Judged against the RUN OUTPUT produced by executing the workflow — not against the workflow JSON. The reference answer is supplied to the judge alongside this task; it is deliberately not restated here, so that the corpus index shipped to the browser carries no answer key. PASS: the answer conveyed by the output matches that reference answer. Exact formatting is not asserted: a short sentence containing the correct value passes, as do differences in casing, surrounding punctuation, or an equivalent spelling of the same value. A numeric answer must match the reference number exactly; a list answer must contain the same items; a named answer must name the same entity. FAIL: the output states a different value, hedges between several candidate values without committing to the correct one, or names no answer at all.",
+        "evaluates": "output"
+      }
+    ],
+    "workflow_input": {
+      "question": "Review the chess position provided in the image. It is black's turn. Provide the correct next move for black which guarantees a win. Please provide your response in algebraic notation.",
+      "image_url": "https://huggingface.co/datasets/gaia-benchmark/GAIA/resolve/main/2023/validation/cca530fc-4052-43b2-b130-b30968d8aa44.png"
+    }
+  },
+  {
+    "slug": "wfbench/gaia-green-polygon-area",
+    "title": "Compute a geometric quantity from a labelled diagram",
+    "instructions": "Create a workflow that computes a geometric quantity from a labelled diagram in a supplied image.\n\n## Workflow Inputs\n\nDeclare each of the following as a caller-supplied workflow input, using these exact names:\n\n- `question`\n- `image_url`",
+    "criteria": [
+      {
+        "id": "C-001",
+        "title": "Performs image understanding on the retrieved image",
+        "match_criteria": "The workflow submits the retrieved image itself to a step capable of interpreting image content — a vision-capable model, an OCR service, or an equivalent skill step — so that the answer derives from what the image depicts. PASS: the image bytes (or a reference a vision service can resolve) are passed into such a step. FAIL: the workflow only handles the image's address or filename as text, or answers from the question's wording alone without the image ever reaching an interpreting step."
+      },
+      {
+        "id": "C-002",
+        "title": "The image is retrieved with an authenticated request",
+        "match_criteria": "The workflow retrieves the image from the address supplied in `image_url` using a request that carries an Authorization header, because the host serving it refuses unauthenticated requests. PASS: a step fetches the `image_url` value and attaches an Authorization header whose value is a %%[A-Z0-9_]+%%-form secret reference. This criterion never asserts WHICH secret name is used, nor which step type performs the fetch. FAIL: the fetch carries no Authorization header at all, or the workflow never retrieves the resource and instead reasons about the address alone."
+      },
+      {
+        "id": "C-003",
+        "title": "Workflow accepts a caller-supplied input named exactly `image_url`",
+        "match_criteria": "The workflow declares and consumes a caller-supplied workflow input named exactly `image_url`, and fetches the image from that value rather than from a hard-coded address. PASS if the produced workflow JSON references an input/variable named `image_url` and uses it as the location of the image it retrieves. FAIL if the image's address is embedded as a fixed literal, or the input is declared under any other name — a rerun supplies the value under the name `image_url` and cannot drive a workflow that reads a different name."
+      },
+      {
+        "id": "C-004",
+        "title": "Workflow accepts a caller-supplied input named exactly `question`",
+        "match_criteria": "The workflow declares and consumes a caller-supplied workflow input named exactly `question`, and the artifact's behavior is driven by that input's value rather than a literal. This is assessed at the artifact level: PASS if the produced workflow JSON references an input/variable named `question` and uses it to build the request. FAIL if the workflow embeds the question text directly with no `question` input reference, or declares the input under any other name (e.g. `query`, `prompt`, `userQuestion`) — a rerun supplies the value under the name `question` and cannot drive a workflow that reads a different name."
+      },
+      {
+        "id": "C-005",
+        "title": "Authorization headers contain no plaintext credential",
+        "match_criteria": "On every step that makes an outbound call, the Authorization header value must not embed live credential material of any kind. PASS: the Authorization value is a secret reference in the authoring form %%SOME_SECRET_NAME%% — optionally Bearer-wrapped, provided the wrapped token is itself a %%SOME_SECRET_NAME%%-form reference rather than a literal string. Any well-formed %%[A-Z0-9_]+%% name passes; this criterion never asserts WHICH secret name is used. FAIL: an Authorization header contains a plaintext API key (for example a literal beginning sk-) or a raw key embedded directly in the URL query string or path."
+      },
+      {
+        "id": "C-006",
+        "title": "Secret references use the required authoring form",
+        "match_criteria": "Every secret reference in the produced workflow must use the required authoring form %%[A-Z0-9_]+%% — uppercase letters, digits and underscores between paired %% markers — and never the rejected runtime form {{ SOME_SECRET_NAME }}. The authoring form %%…%% and the runtime form {{ … }} are two spellings of the same secret-substitution mechanism; %%…%% is required in authored workflow JSON. This criterion asserts only the SHAPE of the reference: it never asserts WHICH secret name is used, and an unresolved %%SOME_SECRET_NAME%% is a warning upstream, never a failure here. FAIL: any malformed reference — a lowercase or hyphenated name such as %%my-secret-name%%, surrounding spaces such as %% NAME %%, or a single-percent variant such as %NAME% — or the rejected runtime form {{ SOME_SECRET_NAME }}, including defaulted variants such as {{ SOME_SECRET_NAME | default: '' }}."
+      },
+      {
+        "id": "C-007",
+        "title": "Workflow is structurally valid",
+        "match_criteria": "The workflow JSON satisfies all three structural requirements: (1) there is at least one connection whose source is \"start\" (or the workflow has a designated start node/step); (2) every step is reachable via an unbroken chain of connections from start (no orphaned steps); (3) there is at least one edge whose target is \"system.succeed\" (or the equivalent terminal node), ensuring the workflow can reach a successful completion state. A workflow missing any one of these three is structurally invalid and fails this criterion."
+      },
+      {
+        "id": "C-008",
+        "title": "The run output is a direct answer, not scaffolding",
+        "match_criteria": "Judged against the RUN OUTPUT produced by executing the workflow — not against the workflow JSON. PASS: the output is a direct answer to the question asked — the bare value or a short sentence containing it; casing and surrounding phrasing are not asserted. FAIL: the output is empty, an error message or stack-trace payload, raw request/response scaffolding with no answer extracted, a verbatim echo of the question, a refusal, or a statement that the answer could not be determined.",
+        "evaluates": "output"
+      },
+      {
+        "id": "C-009",
+        "title": "The run output states the correct answer",
+        "match_criteria": "Judged against the RUN OUTPUT produced by executing the workflow — not against the workflow JSON. The reference answer is supplied to the judge alongside this task; it is deliberately not restated here, so that the corpus index shipped to the browser carries no answer key. PASS: the answer conveyed by the output matches that reference answer. Exact formatting is not asserted: a short sentence containing the correct value passes, as do differences in casing, surrounding punctuation, or an equivalent spelling of the same value. A numeric answer must match the reference number exactly; a list answer must contain the same items; a named answer must name the same entity. FAIL: the output states a different value, hedges between several candidate values without committing to the correct one, or names no answer at all.",
+        "evaluates": "output"
+      }
+    ],
+    "workflow_input": {
+      "question": "What is the area of the green polygon in the attached file? The numbers in purple represent the lengths of the side they are next to.",
+      "image_url": "https://huggingface.co/datasets/gaia-benchmark/GAIA/resolve/main/2023/validation/6359a0b1-8f7b-499b-9336-840f9ab90688.png"
+    }
+  },
+  {
+    "slug": "wfbench/gaia-lego-wikipedia-images",
+    "title": "Count elements within a specific encyclopedia article",
+    "instructions": "Create a workflow that answers a caller-supplied question about how many elements of a given kind appear in a specific encyclopedia article.\n\n## Workflow Inputs\n\nDeclare each of the following as a caller-supplied workflow input, using these exact names:\n\n- `question`",
+    "criteria": [
+      {
+        "id": "C-001",
+        "title": "Consults an external source to obtain the answer",
+        "match_criteria": "The workflow performs at least one outbound call to an external source in order to obtain the information the question asks for — a web search API, a page fetch, or an LLM/skill step capable of consulting external sources. PASS: at least one step demonstrably sends data out and would receive information back. FAIL: no step contacts any external source (e.g. the workflow returns a hard-coded string, or relies solely on a model's unaided recall with no retrieval step of any kind)."
+      },
+      {
+        "id": "C-002",
+        "title": "Workflow accepts a caller-supplied input named exactly `question`",
+        "match_criteria": "The workflow declares and consumes a caller-supplied workflow input named exactly `question`, and the artifact's behavior is driven by that input's value rather than a literal. This is assessed at the artifact level: PASS if the produced workflow JSON references an input/variable named `question` and uses it to build the request. FAIL if the workflow embeds the question text directly with no `question` input reference, or declares the input under any other name (e.g. `query`, `prompt`, `userQuestion`) — a rerun supplies the value under the name `question` and cannot drive a workflow that reads a different name."
+      },
+      {
+        "id": "C-003",
+        "title": "Authorization headers contain no plaintext credential",
+        "match_criteria": "On every step that makes an outbound call, the Authorization header value must not embed live credential material of any kind. PASS: the Authorization value is a secret reference in the authoring form %%SOME_SECRET_NAME%% — optionally Bearer-wrapped, provided the wrapped token is itself a %%SOME_SECRET_NAME%%-form reference rather than a literal string. Any well-formed %%[A-Z0-9_]+%% name passes; this criterion never asserts WHICH secret name is used. FAIL: an Authorization header contains a plaintext API key (for example a literal beginning sk-) or a raw key embedded directly in the URL query string or path."
+      },
+      {
+        "id": "C-004",
+        "title": "Secret references use the required authoring form",
+        "match_criteria": "Every secret reference in the produced workflow must use the required authoring form %%[A-Z0-9_]+%% — uppercase letters, digits and underscores between paired %% markers — and never the rejected runtime form {{ SOME_SECRET_NAME }}. The authoring form %%…%% and the runtime form {{ … }} are two spellings of the same secret-substitution mechanism; %%…%% is required in authored workflow JSON. This criterion asserts only the SHAPE of the reference: it never asserts WHICH secret name is used, and an unresolved %%SOME_SECRET_NAME%% is a warning upstream, never a failure here. FAIL: any malformed reference — a lowercase or hyphenated name such as %%my-secret-name%%, surrounding spaces such as %% NAME %%, or a single-percent variant such as %NAME% — or the rejected runtime form {{ SOME_SECRET_NAME }}, including defaulted variants such as {{ SOME_SECRET_NAME | default: '' }}."
+      },
+      {
+        "id": "C-005",
+        "title": "Workflow is structurally valid",
+        "match_criteria": "The workflow JSON satisfies all three structural requirements: (1) there is at least one connection whose source is \"start\" (or the workflow has a designated start node/step); (2) every step is reachable via an unbroken chain of connections from start (no orphaned steps); (3) there is at least one edge whose target is \"system.succeed\" (or the equivalent terminal node), ensuring the workflow can reach a successful completion state. A workflow missing any one of these three is structurally invalid and fails this criterion."
+      },
+      {
+        "id": "C-006",
+        "title": "The run output is a direct answer, not scaffolding",
+        "match_criteria": "Judged against the RUN OUTPUT produced by executing the workflow — not against the workflow JSON. PASS: the output is a direct answer to the question asked — the bare value or a short sentence containing it; casing and surrounding phrasing are not asserted. FAIL: the output is empty, an error message or stack-trace payload, raw request/response scaffolding with no answer extracted, a verbatim echo of the question, a refusal, or a statement that the answer could not be determined.",
+        "evaluates": "output"
+      },
+      {
+        "id": "C-007",
+        "title": "The run output states the correct answer",
+        "match_criteria": "Judged against the RUN OUTPUT produced by executing the workflow — not against the workflow JSON. The reference answer is supplied to the judge alongside this task; it is deliberately not restated here, so that the corpus index shipped to the browser carries no answer key. PASS: the answer conveyed by the output matches that reference answer. Exact formatting is not asserted: a short sentence containing the correct value passes, as do differences in casing, surrounding punctuation, or an equivalent spelling of the same value. A numeric answer must match the reference number exactly; a list answer must contain the same items; a named answer must name the same entity. FAIL: the output states a different value, hedges between several candidate values without committing to the correct one, or names no answer at all.",
         "evaluates": "output"
       }
     ],
@@ -165,14 +429,14 @@
     }
   },
   {
-    "slug": "wfbench/gaia-mercedes-sosa-albums",
-    "title": "Answer a research question about an artist's studio album count",
-    "instructions": "Create a workflow that answers a caller-supplied research question by consulting publicly available sources and returns only the final answer.\n\n## Workflow Inputs\n\nDeclare each of the following as a caller-supplied workflow input, using these exact names:\n\n- `question`",
+    "slug": "wfbench/gaia-logic-equivalence",
+    "title": "Identify the non-equivalent propositional-logic statement",
+    "instructions": "Create a workflow that solves a caller-supplied propositional-logic problem and returns the answer.\n\n## Workflow Inputs\n\nDeclare each of the following as a caller-supplied workflow input, using these exact names:\n\n- `question`",
     "criteria": [
       {
         "id": "C-001",
-        "title": "Performs an outbound call to retrieve information",
-        "match_criteria": "The workflow performs at least one outbound call to an external source in order to obtain the information the question asks for — a web search API, a page fetch, or an LLM/skill step capable of consulting external sources, whether via an HTTP Request step or an equivalent provider/skill step of the builder environment. PASS: at least one step, of whatever type, demonstrably sends data out and would receive information back. FAIL: no step contacts any external source (e.g. the workflow returns a hard-coded string, or relies solely on a model's unaided recall with no retrieval step of any kind)."
+        "title": "Derives the answer by reasoning, not by retrieval",
+        "match_criteria": "The question is self-contained — everything needed to answer it appears in the `question` text itself — so the workflow must reach the answer by working the problem through, typically via an LLM/skill step or a code step. PASS: the workflow routes the `question` into a step that can reason over or compute from it and returns what that step produces. This criterion does not forbid an outbound search, but a workflow that merely searches the web for the literal question text and returns a snippet, without any step that works the problem, FAILS."
       },
       {
         "id": "C-002",
@@ -181,34 +445,134 @@
       },
       {
         "id": "C-003",
-        "title": "The caller-supplied question reaches the retrieval call, un-hard-coded",
-        "match_criteria": "The caller-supplied `question` value genuinely reaches the step that performs retrieval or answering, and is not hard-coded: wherever that step's input payload is assembled, the question arrives by reference to the declared input — [#(step_id).output.variable_name] step-output form or equivalent variable wiring — so the workflow answers ANY question it is supplied, not just one. The request-body schema (field names, message-array shapes) is not asserted. FAIL: the question value never enters the call, or it is replaced with a fixed literal, or the workflow would return the same answer regardless of the question supplied."
+        "title": "Authorization headers contain no plaintext credential",
+        "match_criteria": "On every step that makes an outbound call, the Authorization header value must not embed live credential material of any kind. PASS: the Authorization value is a secret reference in the authoring form %%SOME_SECRET_NAME%% — optionally Bearer-wrapped, provided the wrapped token is itself a %%SOME_SECRET_NAME%%-form reference rather than a literal string. Any well-formed %%[A-Z0-9_]+%% name passes; this criterion never asserts WHICH secret name is used. FAIL: an Authorization header contains a plaintext API key (for example a literal beginning sk-) or a raw key embedded directly in the URL query string or path."
       },
       {
         "id": "C-004",
-        "title": "Authorization header contains no plaintext credential",
-        "match_criteria": "On whatever step makes an outbound call, the Authorization header value must not embed live credential material of any kind. PASS: the Authorization value is a secret reference in the authoring form %%SOME_SECRET_NAME%% — optionally Bearer-wrapped, provided the wrapped token is itself a %%SOME_SECRET_NAME%%-form reference rather than a literal string. Any well-formed %%[A-Z0-9_]+%% name passes; this criterion never asserts WHICH secret name is used. FAIL: the Authorization header contains a plaintext API key (for example a literal beginning sk-) or a raw key embedded directly in the URL query string or path."
+        "title": "Secret references use the required authoring form",
+        "match_criteria": "Every secret reference in the produced workflow must use the required authoring form %%[A-Z0-9_]+%% — uppercase letters, digits and underscores between paired %% markers — and never the rejected runtime form {{ SOME_SECRET_NAME }}. The authoring form %%…%% and the runtime form {{ … }} are two spellings of the same secret-substitution mechanism; %%…%% is required in authored workflow JSON. This criterion asserts only the SHAPE of the reference: it never asserts WHICH secret name is used, and an unresolved %%SOME_SECRET_NAME%% is a warning upstream, never a failure here. FAIL: any malformed reference — a lowercase or hyphenated name such as %%my-secret-name%%, surrounding spaces such as %% NAME %%, or a single-percent variant such as %NAME% — or the rejected runtime form {{ SOME_SECRET_NAME }}, including defaulted variants such as {{ SOME_SECRET_NAME | default: '' }}."
       },
       {
         "id": "C-005",
-        "title": "Secret references use the required authoring form",
-        "match_criteria": "Any secret reference on the steps performing outbound calls must use the required authoring form %%[A-Z0-9_]+%% — uppercase letters, digits and underscores between paired %% markers — and never the rejected runtime form {{ SOME_SECRET_NAME }}. The authoring form %%…%% and the runtime form {{ … }} are two spellings of the same secret-substitution mechanism; %%…%% is required in authored workflow JSON. This criterion asserts only the SHAPE of the reference: it never asserts WHICH secret name is used, and an unresolved %%SOME_SECRET_NAME%% is a warning upstream, never a failure here. FAIL: any malformed reference — a lowercase or hyphenated name such as %%my-secret-name%%, surrounding spaces such as %% NAME %%, or a single-percent variant such as %NAME% — or the rejected runtime form {{ SOME_SECRET_NAME }}, including defaulted variants such as {{ SOME_SECRET_NAME | default: '' }}."
-      },
-      {
-        "id": "C-006",
         "title": "Workflow is structurally valid",
         "match_criteria": "The workflow JSON satisfies all three structural requirements: (1) there is at least one connection whose source is \"start\" (or the workflow has a designated start node/step); (2) every step is reachable via an unbroken chain of connections from start (no orphaned steps); (3) there is at least one edge whose target is \"system.succeed\" (or the equivalent terminal node), ensuring the workflow can reach a successful completion state. A workflow missing any one of these three is structurally invalid and fails this criterion."
       },
       {
-        "id": "C-007",
+        "id": "C-006",
         "title": "The run output is a direct answer, not scaffolding",
-        "match_criteria": "Judged against the RUN OUTPUT produced by executing the workflow with the supplied `question` input — not against the workflow JSON. PASS: the output is a direct answer to the question asked — the bare value or a short sentence containing it; casing and surrounding phrasing are not asserted. FAIL: the output is empty, an error message or stack-trace payload, raw request/response scaffolding with no answer extracted, a verbatim echo of the question, a refusal, or a statement that the answer could not be determined.",
+        "match_criteria": "Judged against the RUN OUTPUT produced by executing the workflow — not against the workflow JSON. PASS: the output is a direct answer to the question asked — the bare value or a short sentence containing it; casing and surrounding phrasing are not asserted. FAIL: the output is empty, an error message or stack-trace payload, raw request/response scaffolding with no answer extracted, a verbatim echo of the question, a refusal, or a statement that the answer could not be determined.",
         "evaluates": "output"
       },
       {
-        "id": "C-008",
+        "id": "C-007",
         "title": "The run output states the correct answer",
-        "match_criteria": "Judged against the RUN OUTPUT produced by executing the workflow with the supplied `question` input — not against the workflow JSON. The reference answer is supplied to the judge alongside this task; it is deliberately not restated here, so that the corpus index shipped to the browser carries no answer key. PASS: the answer conveyed by the output matches that reference answer. Exact formatting is not asserted: a short sentence containing the correct value passes, as do differences in casing, surrounding punctuation, or an equivalent spelling of the same value. A numeric answer must match the reference number exactly; a named answer must name the same entity. FAIL: the output states a different value, hedges between several candidate values without committing to the correct one, or names no answer at all.",
+        "match_criteria": "Judged against the RUN OUTPUT produced by executing the workflow — not against the workflow JSON. The reference answer is supplied to the judge alongside this task; it is deliberately not restated here, so that the corpus index shipped to the browser carries no answer key. PASS: the answer conveyed by the output matches that reference answer. Exact formatting is not asserted: a short sentence containing the correct value passes, as do differences in casing, surrounding punctuation, or an equivalent spelling of the same value. A numeric answer must match the reference number exactly; a list answer must contain the same items; a named answer must name the same entity. FAIL: the output states a different value, hedges between several candidate values without committing to the correct one, or names no answer at all.",
+        "evaluates": "output"
+      }
+    ],
+    "workflow_input": {
+      "question": "¬(A ∧ B) ↔ (¬A ∨ ¬B)\n¬(A ∨ B) ↔ (¬A ∧ ¬B)\n(A → B) ↔ (¬B → ¬A)\n(A → B) ↔ (¬A ∨ B)\n(¬A → B) ↔ (A ∨ ¬B)\n¬(A → B) ↔ (A ∧ ¬B)\n\nWhich of the above is not logically equivalent to the rest? Provide the full statement that doesn't fit."
+    }
+  },
+  {
+    "slug": "wfbench/gaia-mall-vendor-finances",
+    "title": "Compute an aggregate from spreadsheet financial records",
+    "instructions": "Create a workflow that computes an aggregate from financial records held in a supplied spreadsheet.\n\n## Workflow Inputs\n\nDeclare each of the following as a caller-supplied workflow input, using these exact names:\n\n- `question`\n- `spreadsheet_url`",
+    "criteria": [
+      {
+        "id": "C-001",
+        "title": "Parses the retrieved spreadsheet's cell data",
+        "match_criteria": "The workflow reads the actual cell data out of the retrieved spreadsheet — via a parsing step, a spreadsheet/skill step, a code step, or a model step capable of consuming the file's contents — so that the answer derives from the rows and columns it holds. PASS: the file's contents are parsed or passed into a step that can read them. FAIL: the workflow only handles the file's address as text, or fabricates figures without the file's contents ever reaching a step that reads them."
+      },
+      {
+        "id": "C-002",
+        "title": "The spreadsheet is retrieved with an authenticated request",
+        "match_criteria": "The workflow retrieves the spreadsheet from the address supplied in `spreadsheet_url` using a request that carries an Authorization header, because the host serving it refuses unauthenticated requests. PASS: a step fetches the `spreadsheet_url` value and attaches an Authorization header whose value is a %%[A-Z0-9_]+%%-form secret reference. This criterion never asserts WHICH secret name is used, nor which step type performs the fetch. FAIL: the fetch carries no Authorization header at all, or the workflow never retrieves the resource and instead reasons about the address alone."
+      },
+      {
+        "id": "C-003",
+        "title": "Workflow accepts a caller-supplied input named exactly `spreadsheet_url`",
+        "match_criteria": "The workflow declares and consumes a caller-supplied workflow input named exactly `spreadsheet_url`, and fetches the spreadsheet from that value rather than from a hard-coded address. PASS if the produced workflow JSON references an input/variable named `spreadsheet_url` and uses it as the location of the spreadsheet it retrieves. FAIL if the spreadsheet's address is embedded as a fixed literal, or the input is declared under any other name — a rerun supplies the value under the name `spreadsheet_url` and cannot drive a workflow that reads a different name."
+      },
+      {
+        "id": "C-004",
+        "title": "Workflow accepts a caller-supplied input named exactly `question`",
+        "match_criteria": "The workflow declares and consumes a caller-supplied workflow input named exactly `question`, and the artifact's behavior is driven by that input's value rather than a literal. This is assessed at the artifact level: PASS if the produced workflow JSON references an input/variable named `question` and uses it to build the request. FAIL if the workflow embeds the question text directly with no `question` input reference, or declares the input under any other name (e.g. `query`, `prompt`, `userQuestion`) — a rerun supplies the value under the name `question` and cannot drive a workflow that reads a different name."
+      },
+      {
+        "id": "C-005",
+        "title": "Authorization headers contain no plaintext credential",
+        "match_criteria": "On every step that makes an outbound call, the Authorization header value must not embed live credential material of any kind. PASS: the Authorization value is a secret reference in the authoring form %%SOME_SECRET_NAME%% — optionally Bearer-wrapped, provided the wrapped token is itself a %%SOME_SECRET_NAME%%-form reference rather than a literal string. Any well-formed %%[A-Z0-9_]+%% name passes; this criterion never asserts WHICH secret name is used. FAIL: an Authorization header contains a plaintext API key (for example a literal beginning sk-) or a raw key embedded directly in the URL query string or path."
+      },
+      {
+        "id": "C-006",
+        "title": "Secret references use the required authoring form",
+        "match_criteria": "Every secret reference in the produced workflow must use the required authoring form %%[A-Z0-9_]+%% — uppercase letters, digits and underscores between paired %% markers — and never the rejected runtime form {{ SOME_SECRET_NAME }}. The authoring form %%…%% and the runtime form {{ … }} are two spellings of the same secret-substitution mechanism; %%…%% is required in authored workflow JSON. This criterion asserts only the SHAPE of the reference: it never asserts WHICH secret name is used, and an unresolved %%SOME_SECRET_NAME%% is a warning upstream, never a failure here. FAIL: any malformed reference — a lowercase or hyphenated name such as %%my-secret-name%%, surrounding spaces such as %% NAME %%, or a single-percent variant such as %NAME% — or the rejected runtime form {{ SOME_SECRET_NAME }}, including defaulted variants such as {{ SOME_SECRET_NAME | default: '' }}."
+      },
+      {
+        "id": "C-007",
+        "title": "Workflow is structurally valid",
+        "match_criteria": "The workflow JSON satisfies all three structural requirements: (1) there is at least one connection whose source is \"start\" (or the workflow has a designated start node/step); (2) every step is reachable via an unbroken chain of connections from start (no orphaned steps); (3) there is at least one edge whose target is \"system.succeed\" (or the equivalent terminal node), ensuring the workflow can reach a successful completion state. A workflow missing any one of these three is structurally invalid and fails this criterion."
+      },
+      {
+        "id": "C-008",
+        "title": "The run output is a direct answer, not scaffolding",
+        "match_criteria": "Judged against the RUN OUTPUT produced by executing the workflow — not against the workflow JSON. PASS: the output is a direct answer to the question asked — the bare value or a short sentence containing it; casing and surrounding phrasing are not asserted. FAIL: the output is empty, an error message or stack-trace payload, raw request/response scaffolding with no answer extracted, a verbatim echo of the question, a refusal, or a statement that the answer could not be determined.",
+        "evaluates": "output"
+      },
+      {
+        "id": "C-009",
+        "title": "The run output states the correct answer",
+        "match_criteria": "Judged against the RUN OUTPUT produced by executing the workflow — not against the workflow JSON. The reference answer is supplied to the judge alongside this task; it is deliberately not restated here, so that the corpus index shipped to the browser carries no answer key. PASS: the answer conveyed by the output matches that reference answer. Exact formatting is not asserted: a short sentence containing the correct value passes, as do differences in casing, surrounding punctuation, or an equivalent spelling of the same value. A numeric answer must match the reference number exactly; a list answer must contain the same items; a named answer must name the same entity. FAIL: the output states a different value, hedges between several candidate values without committing to the correct one, or names no answer at all.",
+        "evaluates": "output"
+      }
+    ],
+    "workflow_input": {
+      "question": "The attached file contains a list of vendors in the Liminal Springs mall, along with each vendor’s monthly revenue and the rent they pay the mall. I want you to find the vendor that makes the least money, relative to the rent it pays. Then, tell me what is listed in the “type” column for that vendor.",
+      "spreadsheet_url": "https://huggingface.co/datasets/gaia-benchmark/GAIA/resolve/main/2023/validation/076c8171-9b3b-49b9-a477-244d2a532826.xlsx"
+    }
+  },
+  {
+    "slug": "wfbench/gaia-mercedes-sosa-albums",
+    "title": "Answer a discography question from encyclopedic sources",
+    "instructions": "Create a workflow that answers a caller-supplied question about a musician's discography by consulting encyclopedic sources.\n\n## Workflow Inputs\n\nDeclare each of the following as a caller-supplied workflow input, using these exact names:\n\n- `question`",
+    "criteria": [
+      {
+        "id": "C-001",
+        "title": "Consults an external source to obtain the answer",
+        "match_criteria": "The workflow performs at least one outbound call to an external source in order to obtain the information the question asks for — a web search API, a page fetch, or an LLM/skill step capable of consulting external sources. PASS: at least one step demonstrably sends data out and would receive information back. FAIL: no step contacts any external source (e.g. the workflow returns a hard-coded string, or relies solely on a model's unaided recall with no retrieval step of any kind)."
+      },
+      {
+        "id": "C-002",
+        "title": "Workflow accepts a caller-supplied input named exactly `question`",
+        "match_criteria": "The workflow declares and consumes a caller-supplied workflow input named exactly `question`, and the artifact's behavior is driven by that input's value rather than a literal. This is assessed at the artifact level: PASS if the produced workflow JSON references an input/variable named `question` and uses it to build the request. FAIL if the workflow embeds the question text directly with no `question` input reference, or declares the input under any other name (e.g. `query`, `prompt`, `userQuestion`) — a rerun supplies the value under the name `question` and cannot drive a workflow that reads a different name."
+      },
+      {
+        "id": "C-003",
+        "title": "Authorization headers contain no plaintext credential",
+        "match_criteria": "On every step that makes an outbound call, the Authorization header value must not embed live credential material of any kind. PASS: the Authorization value is a secret reference in the authoring form %%SOME_SECRET_NAME%% — optionally Bearer-wrapped, provided the wrapped token is itself a %%SOME_SECRET_NAME%%-form reference rather than a literal string. Any well-formed %%[A-Z0-9_]+%% name passes; this criterion never asserts WHICH secret name is used. FAIL: an Authorization header contains a plaintext API key (for example a literal beginning sk-) or a raw key embedded directly in the URL query string or path."
+      },
+      {
+        "id": "C-004",
+        "title": "Secret references use the required authoring form",
+        "match_criteria": "Every secret reference in the produced workflow must use the required authoring form %%[A-Z0-9_]+%% — uppercase letters, digits and underscores between paired %% markers — and never the rejected runtime form {{ SOME_SECRET_NAME }}. The authoring form %%…%% and the runtime form {{ … }} are two spellings of the same secret-substitution mechanism; %%…%% is required in authored workflow JSON. This criterion asserts only the SHAPE of the reference: it never asserts WHICH secret name is used, and an unresolved %%SOME_SECRET_NAME%% is a warning upstream, never a failure here. FAIL: any malformed reference — a lowercase or hyphenated name such as %%my-secret-name%%, surrounding spaces such as %% NAME %%, or a single-percent variant such as %NAME% — or the rejected runtime form {{ SOME_SECRET_NAME }}, including defaulted variants such as {{ SOME_SECRET_NAME | default: '' }}."
+      },
+      {
+        "id": "C-005",
+        "title": "Workflow is structurally valid",
+        "match_criteria": "The workflow JSON satisfies all three structural requirements: (1) there is at least one connection whose source is \"start\" (or the workflow has a designated start node/step); (2) every step is reachable via an unbroken chain of connections from start (no orphaned steps); (3) there is at least one edge whose target is \"system.succeed\" (or the equivalent terminal node), ensuring the workflow can reach a successful completion state. A workflow missing any one of these three is structurally invalid and fails this criterion."
+      },
+      {
+        "id": "C-006",
+        "title": "The run output is a direct answer, not scaffolding",
+        "match_criteria": "Judged against the RUN OUTPUT produced by executing the workflow — not against the workflow JSON. PASS: the output is a direct answer to the question asked — the bare value or a short sentence containing it; casing and surrounding phrasing are not asserted. FAIL: the output is empty, an error message or stack-trace payload, raw request/response scaffolding with no answer extracted, a verbatim echo of the question, a refusal, or a statement that the answer could not be determined.",
+        "evaluates": "output"
+      },
+      {
+        "id": "C-007",
+        "title": "The run output states the correct answer",
+        "match_criteria": "Judged against the RUN OUTPUT produced by executing the workflow — not against the workflow JSON. The reference answer is supplied to the judge alongside this task; it is deliberately not restated here, so that the corpus index shipped to the browser carries no answer key. PASS: the answer conveyed by the output matches that reference answer. Exact formatting is not asserted: a short sentence containing the correct value passes, as do differences in casing, surrounding punctuation, or an equivalent spelling of the same value. A numeric answer must match the reference number exactly; a list answer must contain the same items; a named answer must name the same entity. FAIL: the output states a different value, hedges between several candidate values without committing to the correct one, or names no answer at all.",
         "evaluates": "output"
       }
     ],
@@ -217,14 +581,130 @@
     }
   },
   {
-    "slug": "wfbench/gaia-survivor-may-winner",
-    "title": "Answer a research question that filters a roster of people by birth month",
-    "instructions": "Create a workflow that answers a caller-supplied research question by consulting publicly available sources and returns only the final answer.\n\n## Workflow Inputs\n\nDeclare each of the following as a caller-supplied workflow input, using these exact names:\n\n- `question`",
+    "slug": "wfbench/gaia-pie-shopping-list",
+    "title": "Extract requested ingredients from a spoken recording",
+    "instructions": "Create a workflow that transcribes a supplied audio recording and extracts the items a caller asks about.\n\n## Workflow Inputs\n\nDeclare each of the following as a caller-supplied workflow input, using these exact names:\n\n- `question`\n- `audio_url`",
     "criteria": [
       {
         "id": "C-001",
-        "title": "Performs an outbound call to retrieve information",
-        "match_criteria": "The workflow performs at least one outbound call to an external source in order to obtain the information the question asks for — a web search API, a page fetch, or an LLM/skill step capable of consulting external sources, whether via an HTTP Request step or an equivalent provider/skill step of the builder environment. PASS: at least one step, of whatever type, demonstrably sends data out and would receive information back. FAIL: no step contacts any external source (e.g. the workflow returns a hard-coded string, or relies solely on a model's unaided recall with no retrieval step of any kind)."
+        "title": "Transcribes or interprets the retrieved audio",
+        "match_criteria": "The workflow submits the retrieved audio itself to a step capable of turning speech into text or otherwise interpreting audio content — a speech-to-text service, an audio-capable model, or an equivalent skill step — so that the answer derives from what is spoken in the recording. PASS: the audio bytes (or a reference such a service can resolve) are passed into such a step. FAIL: the workflow only handles the recording's address as text, or answers from the question's wording alone without the audio ever reaching an interpreting step."
+      },
+      {
+        "id": "C-002",
+        "title": "The audio recording is retrieved with an authenticated request",
+        "match_criteria": "The workflow retrieves the audio recording from the address supplied in `audio_url` using a request that carries an Authorization header, because the host serving it refuses unauthenticated requests. PASS: a step fetches the `audio_url` value and attaches an Authorization header whose value is a %%[A-Z0-9_]+%%-form secret reference. This criterion never asserts WHICH secret name is used, nor which step type performs the fetch. FAIL: the fetch carries no Authorization header at all, or the workflow never retrieves the resource and instead reasons about the address alone."
+      },
+      {
+        "id": "C-003",
+        "title": "Workflow accepts a caller-supplied input named exactly `audio_url`",
+        "match_criteria": "The workflow declares and consumes a caller-supplied workflow input named exactly `audio_url`, and fetches the audio recording from that value rather than from a hard-coded address. PASS if the produced workflow JSON references an input/variable named `audio_url` and uses it as the location of the audio recording it retrieves. FAIL if the audio recording's address is embedded as a fixed literal, or the input is declared under any other name — a rerun supplies the value under the name `audio_url` and cannot drive a workflow that reads a different name."
+      },
+      {
+        "id": "C-004",
+        "title": "Workflow accepts a caller-supplied input named exactly `question`",
+        "match_criteria": "The workflow declares and consumes a caller-supplied workflow input named exactly `question`, and the artifact's behavior is driven by that input's value rather than a literal. This is assessed at the artifact level: PASS if the produced workflow JSON references an input/variable named `question` and uses it to build the request. FAIL if the workflow embeds the question text directly with no `question` input reference, or declares the input under any other name (e.g. `query`, `prompt`, `userQuestion`) — a rerun supplies the value under the name `question` and cannot drive a workflow that reads a different name."
+      },
+      {
+        "id": "C-005",
+        "title": "Authorization headers contain no plaintext credential",
+        "match_criteria": "On every step that makes an outbound call, the Authorization header value must not embed live credential material of any kind. PASS: the Authorization value is a secret reference in the authoring form %%SOME_SECRET_NAME%% — optionally Bearer-wrapped, provided the wrapped token is itself a %%SOME_SECRET_NAME%%-form reference rather than a literal string. Any well-formed %%[A-Z0-9_]+%% name passes; this criterion never asserts WHICH secret name is used. FAIL: an Authorization header contains a plaintext API key (for example a literal beginning sk-) or a raw key embedded directly in the URL query string or path."
+      },
+      {
+        "id": "C-006",
+        "title": "Secret references use the required authoring form",
+        "match_criteria": "Every secret reference in the produced workflow must use the required authoring form %%[A-Z0-9_]+%% — uppercase letters, digits and underscores between paired %% markers — and never the rejected runtime form {{ SOME_SECRET_NAME }}. The authoring form %%…%% and the runtime form {{ … }} are two spellings of the same secret-substitution mechanism; %%…%% is required in authored workflow JSON. This criterion asserts only the SHAPE of the reference: it never asserts WHICH secret name is used, and an unresolved %%SOME_SECRET_NAME%% is a warning upstream, never a failure here. FAIL: any malformed reference — a lowercase or hyphenated name such as %%my-secret-name%%, surrounding spaces such as %% NAME %%, or a single-percent variant such as %NAME% — or the rejected runtime form {{ SOME_SECRET_NAME }}, including defaulted variants such as {{ SOME_SECRET_NAME | default: '' }}."
+      },
+      {
+        "id": "C-007",
+        "title": "Workflow is structurally valid",
+        "match_criteria": "The workflow JSON satisfies all three structural requirements: (1) there is at least one connection whose source is \"start\" (or the workflow has a designated start node/step); (2) every step is reachable via an unbroken chain of connections from start (no orphaned steps); (3) there is at least one edge whose target is \"system.succeed\" (or the equivalent terminal node), ensuring the workflow can reach a successful completion state. A workflow missing any one of these three is structurally invalid and fails this criterion."
+      },
+      {
+        "id": "C-008",
+        "title": "The run output is a direct answer, not scaffolding",
+        "match_criteria": "Judged against the RUN OUTPUT produced by executing the workflow — not against the workflow JSON. PASS: the output is a direct answer to the question asked — the bare value or a short sentence containing it; casing and surrounding phrasing are not asserted. FAIL: the output is empty, an error message or stack-trace payload, raw request/response scaffolding with no answer extracted, a verbatim echo of the question, a refusal, or a statement that the answer could not be determined.",
+        "evaluates": "output"
+      },
+      {
+        "id": "C-009",
+        "title": "The run output states the correct answer",
+        "match_criteria": "Judged against the RUN OUTPUT produced by executing the workflow — not against the workflow JSON. The reference answer is supplied to the judge alongside this task; it is deliberately not restated here, so that the corpus index shipped to the browser carries no answer key. PASS: the answer conveyed by the output matches that reference answer. Exact formatting is not asserted: a short sentence containing the correct value passes, as do differences in casing, surrounding punctuation, or an equivalent spelling of the same value. A numeric answer must match the reference number exactly; a list answer must contain the same items; a named answer must name the same entity. FAIL: the output states a different value, hedges between several candidate values without committing to the correct one, or names no answer at all.",
+        "evaluates": "output"
+      }
+    ],
+    "workflow_input": {
+      "question": "Hi, I'm making a pie but I could use some help with my shopping list. I have everything I need for the crust, but I'm not sure about the filling. I got the recipe from my friend Aditi, but she left it as a voice memo and the speaker on my phone is buzzing so I can't quite make out what she's saying. Could you please listen to the recipe and list all of the ingredients that my friend described? I only want the ingredients for the filling, as I have everything I need to make my favorite pie crust. I've attached the recipe as Strawberry pie.mp3.\n\nIn your response, please only list the ingredients, not any measurements. So if the recipe calls for \"a pinch of salt\" or \"two cups of ripe strawberries\" the ingredients on the list would be \"salt\" and \"ripe strawberries\".\n\nPlease format your response as a comma separated list of ingredients. Also, please alphabetize the ingredients.",
+      "audio_url": "https://huggingface.co/datasets/gaia-benchmark/GAIA/resolve/main/2023/validation/99c9cc74-fdc8-46c6-8f8d-3ce2d3bfeea3.mp3"
+    }
+  },
+  {
+    "slug": "wfbench/gaia-rental-store-inventory",
+    "title": "Answer an inventory question from spreadsheet records",
+    "instructions": "Create a workflow that answers a caller-supplied question about records held in a supplied spreadsheet.\n\n## Workflow Inputs\n\nDeclare each of the following as a caller-supplied workflow input, using these exact names:\n\n- `question`\n- `spreadsheet_url`",
+    "criteria": [
+      {
+        "id": "C-001",
+        "title": "Parses the retrieved spreadsheet's cell data",
+        "match_criteria": "The workflow reads the actual cell data out of the retrieved spreadsheet — via a parsing step, a spreadsheet/skill step, a code step, or a model step capable of consuming the file's contents — so that the answer derives from the rows and columns it holds. PASS: the file's contents are parsed or passed into a step that can read them. FAIL: the workflow only handles the file's address as text, or fabricates figures without the file's contents ever reaching a step that reads them."
+      },
+      {
+        "id": "C-002",
+        "title": "The spreadsheet is retrieved with an authenticated request",
+        "match_criteria": "The workflow retrieves the spreadsheet from the address supplied in `spreadsheet_url` using a request that carries an Authorization header, because the host serving it refuses unauthenticated requests. PASS: a step fetches the `spreadsheet_url` value and attaches an Authorization header whose value is a %%[A-Z0-9_]+%%-form secret reference. This criterion never asserts WHICH secret name is used, nor which step type performs the fetch. FAIL: the fetch carries no Authorization header at all, or the workflow never retrieves the resource and instead reasons about the address alone."
+      },
+      {
+        "id": "C-003",
+        "title": "Workflow accepts a caller-supplied input named exactly `spreadsheet_url`",
+        "match_criteria": "The workflow declares and consumes a caller-supplied workflow input named exactly `spreadsheet_url`, and fetches the spreadsheet from that value rather than from a hard-coded address. PASS if the produced workflow JSON references an input/variable named `spreadsheet_url` and uses it as the location of the spreadsheet it retrieves. FAIL if the spreadsheet's address is embedded as a fixed literal, or the input is declared under any other name — a rerun supplies the value under the name `spreadsheet_url` and cannot drive a workflow that reads a different name."
+      },
+      {
+        "id": "C-004",
+        "title": "Workflow accepts a caller-supplied input named exactly `question`",
+        "match_criteria": "The workflow declares and consumes a caller-supplied workflow input named exactly `question`, and the artifact's behavior is driven by that input's value rather than a literal. This is assessed at the artifact level: PASS if the produced workflow JSON references an input/variable named `question` and uses it to build the request. FAIL if the workflow embeds the question text directly with no `question` input reference, or declares the input under any other name (e.g. `query`, `prompt`, `userQuestion`) — a rerun supplies the value under the name `question` and cannot drive a workflow that reads a different name."
+      },
+      {
+        "id": "C-005",
+        "title": "Authorization headers contain no plaintext credential",
+        "match_criteria": "On every step that makes an outbound call, the Authorization header value must not embed live credential material of any kind. PASS: the Authorization value is a secret reference in the authoring form %%SOME_SECRET_NAME%% — optionally Bearer-wrapped, provided the wrapped token is itself a %%SOME_SECRET_NAME%%-form reference rather than a literal string. Any well-formed %%[A-Z0-9_]+%% name passes; this criterion never asserts WHICH secret name is used. FAIL: an Authorization header contains a plaintext API key (for example a literal beginning sk-) or a raw key embedded directly in the URL query string or path."
+      },
+      {
+        "id": "C-006",
+        "title": "Secret references use the required authoring form",
+        "match_criteria": "Every secret reference in the produced workflow must use the required authoring form %%[A-Z0-9_]+%% — uppercase letters, digits and underscores between paired %% markers — and never the rejected runtime form {{ SOME_SECRET_NAME }}. The authoring form %%…%% and the runtime form {{ … }} are two spellings of the same secret-substitution mechanism; %%…%% is required in authored workflow JSON. This criterion asserts only the SHAPE of the reference: it never asserts WHICH secret name is used, and an unresolved %%SOME_SECRET_NAME%% is a warning upstream, never a failure here. FAIL: any malformed reference — a lowercase or hyphenated name such as %%my-secret-name%%, surrounding spaces such as %% NAME %%, or a single-percent variant such as %NAME% — or the rejected runtime form {{ SOME_SECRET_NAME }}, including defaulted variants such as {{ SOME_SECRET_NAME | default: '' }}."
+      },
+      {
+        "id": "C-007",
+        "title": "Workflow is structurally valid",
+        "match_criteria": "The workflow JSON satisfies all three structural requirements: (1) there is at least one connection whose source is \"start\" (or the workflow has a designated start node/step); (2) every step is reachable via an unbroken chain of connections from start (no orphaned steps); (3) there is at least one edge whose target is \"system.succeed\" (or the equivalent terminal node), ensuring the workflow can reach a successful completion state. A workflow missing any one of these three is structurally invalid and fails this criterion."
+      },
+      {
+        "id": "C-008",
+        "title": "The run output is a direct answer, not scaffolding",
+        "match_criteria": "Judged against the RUN OUTPUT produced by executing the workflow — not against the workflow JSON. PASS: the output is a direct answer to the question asked — the bare value or a short sentence containing it; casing and surrounding phrasing are not asserted. FAIL: the output is empty, an error message or stack-trace payload, raw request/response scaffolding with no answer extracted, a verbatim echo of the question, a refusal, or a statement that the answer could not be determined.",
+        "evaluates": "output"
+      },
+      {
+        "id": "C-009",
+        "title": "The run output states the correct answer",
+        "match_criteria": "Judged against the RUN OUTPUT produced by executing the workflow — not against the workflow JSON. The reference answer is supplied to the judge alongside this task; it is deliberately not restated here, so that the corpus index shipped to the browser carries no answer key. PASS: the answer conveyed by the output matches that reference answer. Exact formatting is not asserted: a short sentence containing the correct value passes, as do differences in casing, surrounding punctuation, or an equivalent spelling of the same value. A numeric answer must match the reference number exactly; a list answer must contain the same items; a named answer must name the same entity. FAIL: the output states a different value, hedges between several candidate values without committing to the correct one, or names no answer at all.",
+        "evaluates": "output"
+      }
+    ],
+    "workflow_input": {
+      "question": "The attached spreadsheet shows the inventory for a movie and video game rental store in Seattle, Washington. What is the title of the oldest Blu-Ray recorded in this spreadsheet? Return it as appearing in the spreadsheet.",
+      "spreadsheet_url": "https://huggingface.co/datasets/gaia-benchmark/GAIA/resolve/main/2023/validation/32102e3e-d12a-4209-9163-7b3a104efe5d.xlsx"
+    }
+  },
+  {
+    "slug": "wfbench/gaia-survivor-may-winner",
+    "title": "Identify a television contestant matching a biographical filter",
+    "instructions": "Create a workflow that answers a caller-supplied question identifying which contestant of a television series matches a biographical criterion.\n\n## Workflow Inputs\n\nDeclare each of the following as a caller-supplied workflow input, using these exact names:\n\n- `question`",
+    "criteria": [
+      {
+        "id": "C-001",
+        "title": "Consults an external source to obtain the answer",
+        "match_criteria": "The workflow performs at least one outbound call to an external source in order to obtain the information the question asks for — a web search API, a page fetch, or an LLM/skill step capable of consulting external sources. PASS: at least one step demonstrably sends data out and would receive information back. FAIL: no step contacts any external source (e.g. the workflow returns a hard-coded string, or relies solely on a model's unaided recall with no retrieval step of any kind)."
       },
       {
         "id": "C-002",
@@ -233,34 +713,29 @@
       },
       {
         "id": "C-003",
-        "title": "The caller-supplied question reaches the retrieval call, un-hard-coded",
-        "match_criteria": "The caller-supplied `question` value genuinely reaches the step that performs retrieval or answering, and is not hard-coded: wherever that step's input payload is assembled, the question arrives by reference to the declared input — [#(step_id).output.variable_name] step-output form or equivalent variable wiring — so the workflow answers ANY question it is supplied, not just one. The request-body schema (field names, message-array shapes) is not asserted. FAIL: the question value never enters the call, or it is replaced with a fixed literal, or the workflow would return the same answer regardless of the question supplied."
+        "title": "Authorization headers contain no plaintext credential",
+        "match_criteria": "On every step that makes an outbound call, the Authorization header value must not embed live credential material of any kind. PASS: the Authorization value is a secret reference in the authoring form %%SOME_SECRET_NAME%% — optionally Bearer-wrapped, provided the wrapped token is itself a %%SOME_SECRET_NAME%%-form reference rather than a literal string. Any well-formed %%[A-Z0-9_]+%% name passes; this criterion never asserts WHICH secret name is used. FAIL: an Authorization header contains a plaintext API key (for example a literal beginning sk-) or a raw key embedded directly in the URL query string or path."
       },
       {
         "id": "C-004",
-        "title": "Authorization header contains no plaintext credential",
-        "match_criteria": "On whatever step makes an outbound call, the Authorization header value must not embed live credential material of any kind. PASS: the Authorization value is a secret reference in the authoring form %%SOME_SECRET_NAME%% — optionally Bearer-wrapped, provided the wrapped token is itself a %%SOME_SECRET_NAME%%-form reference rather than a literal string. Any well-formed %%[A-Z0-9_]+%% name passes; this criterion never asserts WHICH secret name is used. FAIL: the Authorization header contains a plaintext API key (for example a literal beginning sk-) or a raw key embedded directly in the URL query string or path."
+        "title": "Secret references use the required authoring form",
+        "match_criteria": "Every secret reference in the produced workflow must use the required authoring form %%[A-Z0-9_]+%% — uppercase letters, digits and underscores between paired %% markers — and never the rejected runtime form {{ SOME_SECRET_NAME }}. The authoring form %%…%% and the runtime form {{ … }} are two spellings of the same secret-substitution mechanism; %%…%% is required in authored workflow JSON. This criterion asserts only the SHAPE of the reference: it never asserts WHICH secret name is used, and an unresolved %%SOME_SECRET_NAME%% is a warning upstream, never a failure here. FAIL: any malformed reference — a lowercase or hyphenated name such as %%my-secret-name%%, surrounding spaces such as %% NAME %%, or a single-percent variant such as %NAME% — or the rejected runtime form {{ SOME_SECRET_NAME }}, including defaulted variants such as {{ SOME_SECRET_NAME | default: '' }}."
       },
       {
         "id": "C-005",
-        "title": "Secret references use the required authoring form",
-        "match_criteria": "Any secret reference on the steps performing outbound calls must use the required authoring form %%[A-Z0-9_]+%% — uppercase letters, digits and underscores between paired %% markers — and never the rejected runtime form {{ SOME_SECRET_NAME }}. The authoring form %%…%% and the runtime form {{ … }} are two spellings of the same secret-substitution mechanism; %%…%% is required in authored workflow JSON. This criterion asserts only the SHAPE of the reference: it never asserts WHICH secret name is used, and an unresolved %%SOME_SECRET_NAME%% is a warning upstream, never a failure here. FAIL: any malformed reference — a lowercase or hyphenated name such as %%my-secret-name%%, surrounding spaces such as %% NAME %%, or a single-percent variant such as %NAME% — or the rejected runtime form {{ SOME_SECRET_NAME }}, including defaulted variants such as {{ SOME_SECRET_NAME | default: '' }}."
-      },
-      {
-        "id": "C-006",
         "title": "Workflow is structurally valid",
         "match_criteria": "The workflow JSON satisfies all three structural requirements: (1) there is at least one connection whose source is \"start\" (or the workflow has a designated start node/step); (2) every step is reachable via an unbroken chain of connections from start (no orphaned steps); (3) there is at least one edge whose target is \"system.succeed\" (or the equivalent terminal node), ensuring the workflow can reach a successful completion state. A workflow missing any one of these three is structurally invalid and fails this criterion."
       },
       {
-        "id": "C-007",
+        "id": "C-006",
         "title": "The run output is a direct answer, not scaffolding",
-        "match_criteria": "Judged against the RUN OUTPUT produced by executing the workflow with the supplied `question` input — not against the workflow JSON. PASS: the output is a direct answer to the question asked — the bare value or a short sentence containing it; casing and surrounding phrasing are not asserted. FAIL: the output is empty, an error message or stack-trace payload, raw request/response scaffolding with no answer extracted, a verbatim echo of the question, a refusal, or a statement that the answer could not be determined.",
+        "match_criteria": "Judged against the RUN OUTPUT produced by executing the workflow — not against the workflow JSON. PASS: the output is a direct answer to the question asked — the bare value or a short sentence containing it; casing and surrounding phrasing are not asserted. FAIL: the output is empty, an error message or stack-trace payload, raw request/response scaffolding with no answer extracted, a verbatim echo of the question, a refusal, or a statement that the answer could not be determined.",
         "evaluates": "output"
       },
       {
-        "id": "C-008",
+        "id": "C-007",
         "title": "The run output states the correct answer",
-        "match_criteria": "Judged against the RUN OUTPUT produced by executing the workflow with the supplied `question` input — not against the workflow JSON. The reference answer is supplied to the judge alongside this task; it is deliberately not restated here, so that the corpus index shipped to the browser carries no answer key. PASS: the answer conveyed by the output matches that reference answer. Exact formatting is not asserted: a short sentence containing the correct value passes, as do differences in casing, surrounding punctuation, or an equivalent spelling of the same value. A numeric answer must match the reference number exactly; a named answer must name the same entity. FAIL: the output states a different value, hedges between several candidate values without committing to the correct one, or names no answer at all.",
+        "match_criteria": "Judged against the RUN OUTPUT produced by executing the workflow — not against the workflow JSON. The reference answer is supplied to the judge alongside this task; it is deliberately not restated here, so that the corpus index shipped to the browser carries no answer key. PASS: the answer conveyed by the output matches that reference answer. Exact formatting is not asserted: a short sentence containing the correct value passes, as do differences in casing, surrounding punctuation, or an equivalent spelling of the same value. A numeric answer must match the reference number exactly; a list answer must contain the same items; a named answer must name the same entity. FAIL: the output states a different value, hedges between several candidate values without committing to the correct one, or names no answer at all.",
         "evaluates": "output"
       }
     ],
@@ -269,34 +744,34 @@
     }
   },
   {
-    "slug": "wfbench/gaia-yankees-1977-at-bats",
-    "title": "Answer a research question requiring a two-step baseball statistics lookup",
-    "instructions": "Create a workflow that answers a caller-supplied research question by consulting publicly available sources and returns only the final answer.\n\n## Workflow Inputs\n\nDeclare each of the following as a caller-supplied workflow input, using these exact names:\n\n- `question`",
+    "slug": "wfbench/gaia-tealc-spoken-response",
+    "title": "Recover a line of spoken dialogue from a video",
+    "instructions": "Create a workflow that answers a caller-supplied question about spoken dialogue in a supplied video.\n\n## Workflow Inputs\n\nDeclare each of the following as a caller-supplied workflow input, using these exact names:\n\n- `question`\n- `video_url`",
     "criteria": [
       {
         "id": "C-001",
-        "title": "Performs an outbound call to retrieve information",
-        "match_criteria": "The workflow performs at least one outbound call to an external source in order to obtain the information the question asks for — a web search API, a page fetch, or an LLM/skill step capable of consulting external sources, whether via an HTTP Request step or an equivalent provider/skill step of the builder environment. PASS: at least one step, of whatever type, demonstrably sends data out and would receive information back. FAIL: no step contacts any external source (e.g. the workflow returns a hard-coded string, or relies solely on a model's unaided recall with no retrieval step of any kind)."
+        "title": "Obtains the video's content rather than reasoning from its address",
+        "match_criteria": "The workflow obtains the actual content of the video identified by the supplied address — its transcript, its captions, its audio track, sampled frames, or an equivalent representation retrieved through a video-capable model or skill step — so that the answer derives from the video itself. PASS: at least one step retrieves or interprets video content. FAIL: the workflow reasons only about the URL string or the video's title/metadata, or answers from the question's wording alone."
       },
       {
         "id": "C-002",
+        "title": "Workflow accepts a caller-supplied input named exactly `video_url`",
+        "match_criteria": "The workflow declares and consumes a caller-supplied workflow input named exactly `video_url`, and fetches the video from that value rather than from a hard-coded address. PASS if the produced workflow JSON references an input/variable named `video_url` and uses it as the location of the video it retrieves. FAIL if the video's address is embedded as a fixed literal, or the input is declared under any other name — a rerun supplies the value under the name `video_url` and cannot drive a workflow that reads a different name."
+      },
+      {
+        "id": "C-003",
         "title": "Workflow accepts a caller-supplied input named exactly `question`",
         "match_criteria": "The workflow declares and consumes a caller-supplied workflow input named exactly `question`, and the artifact's behavior is driven by that input's value rather than a literal. This is assessed at the artifact level: PASS if the produced workflow JSON references an input/variable named `question` and uses it to build the request. FAIL if the workflow embeds the question text directly with no `question` input reference, or declares the input under any other name (e.g. `query`, `prompt`, `userQuestion`) — a rerun supplies the value under the name `question` and cannot drive a workflow that reads a different name."
       },
       {
-        "id": "C-003",
-        "title": "The caller-supplied question reaches the retrieval call, un-hard-coded",
-        "match_criteria": "The caller-supplied `question` value genuinely reaches the step that performs retrieval or answering, and is not hard-coded: wherever that step's input payload is assembled, the question arrives by reference to the declared input — [#(step_id).output.variable_name] step-output form or equivalent variable wiring — so the workflow answers ANY question it is supplied, not just one. The request-body schema (field names, message-array shapes) is not asserted. FAIL: the question value never enters the call, or it is replaced with a fixed literal, or the workflow would return the same answer regardless of the question supplied."
-      },
-      {
         "id": "C-004",
-        "title": "Authorization header contains no plaintext credential",
-        "match_criteria": "On whatever step makes an outbound call, the Authorization header value must not embed live credential material of any kind. PASS: the Authorization value is a secret reference in the authoring form %%SOME_SECRET_NAME%% — optionally Bearer-wrapped, provided the wrapped token is itself a %%SOME_SECRET_NAME%%-form reference rather than a literal string. Any well-formed %%[A-Z0-9_]+%% name passes; this criterion never asserts WHICH secret name is used. FAIL: the Authorization header contains a plaintext API key (for example a literal beginning sk-) or a raw key embedded directly in the URL query string or path."
+        "title": "Authorization headers contain no plaintext credential",
+        "match_criteria": "On every step that makes an outbound call, the Authorization header value must not embed live credential material of any kind. PASS: the Authorization value is a secret reference in the authoring form %%SOME_SECRET_NAME%% — optionally Bearer-wrapped, provided the wrapped token is itself a %%SOME_SECRET_NAME%%-form reference rather than a literal string. Any well-formed %%[A-Z0-9_]+%% name passes; this criterion never asserts WHICH secret name is used. FAIL: an Authorization header contains a plaintext API key (for example a literal beginning sk-) or a raw key embedded directly in the URL query string or path."
       },
       {
         "id": "C-005",
         "title": "Secret references use the required authoring form",
-        "match_criteria": "Any secret reference on the steps performing outbound calls must use the required authoring form %%[A-Z0-9_]+%% — uppercase letters, digits and underscores between paired %% markers — and never the rejected runtime form {{ SOME_SECRET_NAME }}. The authoring form %%…%% and the runtime form {{ … }} are two spellings of the same secret-substitution mechanism; %%…%% is required in authored workflow JSON. This criterion asserts only the SHAPE of the reference: it never asserts WHICH secret name is used, and an unresolved %%SOME_SECRET_NAME%% is a warning upstream, never a failure here. FAIL: any malformed reference — a lowercase or hyphenated name such as %%my-secret-name%%, surrounding spaces such as %% NAME %%, or a single-percent variant such as %NAME% — or the rejected runtime form {{ SOME_SECRET_NAME }}, including defaulted variants such as {{ SOME_SECRET_NAME | default: '' }}."
+        "match_criteria": "Every secret reference in the produced workflow must use the required authoring form %%[A-Z0-9_]+%% — uppercase letters, digits and underscores between paired %% markers — and never the rejected runtime form {{ SOME_SECRET_NAME }}. The authoring form %%…%% and the runtime form {{ … }} are two spellings of the same secret-substitution mechanism; %%…%% is required in authored workflow JSON. This criterion asserts only the SHAPE of the reference: it never asserts WHICH secret name is used, and an unresolved %%SOME_SECRET_NAME%% is a warning upstream, never a failure here. FAIL: any malformed reference — a lowercase or hyphenated name such as %%my-secret-name%%, surrounding spaces such as %% NAME %%, or a single-percent variant such as %NAME% — or the rejected runtime form {{ SOME_SECRET_NAME }}, including defaulted variants such as {{ SOME_SECRET_NAME | default: '' }}."
       },
       {
         "id": "C-006",
@@ -306,13 +781,61 @@
       {
         "id": "C-007",
         "title": "The run output is a direct answer, not scaffolding",
-        "match_criteria": "Judged against the RUN OUTPUT produced by executing the workflow with the supplied `question` input — not against the workflow JSON. PASS: the output is a direct answer to the question asked — the bare value or a short sentence containing it; casing and surrounding phrasing are not asserted. FAIL: the output is empty, an error message or stack-trace payload, raw request/response scaffolding with no answer extracted, a verbatim echo of the question, a refusal, or a statement that the answer could not be determined.",
+        "match_criteria": "Judged against the RUN OUTPUT produced by executing the workflow — not against the workflow JSON. PASS: the output is a direct answer to the question asked — the bare value or a short sentence containing it; casing and surrounding phrasing are not asserted. FAIL: the output is empty, an error message or stack-trace payload, raw request/response scaffolding with no answer extracted, a verbatim echo of the question, a refusal, or a statement that the answer could not be determined.",
         "evaluates": "output"
       },
       {
         "id": "C-008",
         "title": "The run output states the correct answer",
-        "match_criteria": "Judged against the RUN OUTPUT produced by executing the workflow with the supplied `question` input — not against the workflow JSON. The reference answer is supplied to the judge alongside this task; it is deliberately not restated here, so that the corpus index shipped to the browser carries no answer key. PASS: the answer conveyed by the output matches that reference answer. Exact formatting is not asserted: a short sentence containing the correct value passes, as do differences in casing, surrounding punctuation, or an equivalent spelling of the same value. A numeric answer must match the reference number exactly; a named answer must name the same entity. FAIL: the output states a different value, hedges between several candidate values without committing to the correct one, or names no answer at all.",
+        "match_criteria": "Judged against the RUN OUTPUT produced by executing the workflow — not against the workflow JSON. The reference answer is supplied to the judge alongside this task; it is deliberately not restated here, so that the corpus index shipped to the browser carries no answer key. PASS: the answer conveyed by the output matches that reference answer. Exact formatting is not asserted: a short sentence containing the correct value passes, as do differences in casing, surrounding punctuation, or an equivalent spelling of the same value. A numeric answer must match the reference number exactly; a list answer must contain the same items; a named answer must name the same entity. FAIL: the output states a different value, hedges between several candidate values without committing to the correct one, or names no answer at all.",
+        "evaluates": "output"
+      }
+    ],
+    "workflow_input": {
+      "question": "Examine the video at https://www.youtube.com/watch?v=1htKBjuUWec.\n\nWhat does Teal'c say in response to the question \"Isn't that hot?\"",
+      "video_url": "https://www.youtube.com/watch?v=1htKBjuUWec"
+    }
+  },
+  {
+    "slug": "wfbench/gaia-yankees-1977-at-bats",
+    "title": "Answer a historical baseball statistics question",
+    "instructions": "Create a workflow that answers a caller-supplied question about historical baseball statistics by consulting a sports reference source.\n\n## Workflow Inputs\n\nDeclare each of the following as a caller-supplied workflow input, using these exact names:\n\n- `question`",
+    "criteria": [
+      {
+        "id": "C-001",
+        "title": "Consults an external source to obtain the answer",
+        "match_criteria": "The workflow performs at least one outbound call to an external source in order to obtain the information the question asks for — a web search API, a page fetch, or an LLM/skill step capable of consulting external sources. PASS: at least one step demonstrably sends data out and would receive information back. FAIL: no step contacts any external source (e.g. the workflow returns a hard-coded string, or relies solely on a model's unaided recall with no retrieval step of any kind)."
+      },
+      {
+        "id": "C-002",
+        "title": "Workflow accepts a caller-supplied input named exactly `question`",
+        "match_criteria": "The workflow declares and consumes a caller-supplied workflow input named exactly `question`, and the artifact's behavior is driven by that input's value rather than a literal. This is assessed at the artifact level: PASS if the produced workflow JSON references an input/variable named `question` and uses it to build the request. FAIL if the workflow embeds the question text directly with no `question` input reference, or declares the input under any other name (e.g. `query`, `prompt`, `userQuestion`) — a rerun supplies the value under the name `question` and cannot drive a workflow that reads a different name."
+      },
+      {
+        "id": "C-003",
+        "title": "Authorization headers contain no plaintext credential",
+        "match_criteria": "On every step that makes an outbound call, the Authorization header value must not embed live credential material of any kind. PASS: the Authorization value is a secret reference in the authoring form %%SOME_SECRET_NAME%% — optionally Bearer-wrapped, provided the wrapped token is itself a %%SOME_SECRET_NAME%%-form reference rather than a literal string. Any well-formed %%[A-Z0-9_]+%% name passes; this criterion never asserts WHICH secret name is used. FAIL: an Authorization header contains a plaintext API key (for example a literal beginning sk-) or a raw key embedded directly in the URL query string or path."
+      },
+      {
+        "id": "C-004",
+        "title": "Secret references use the required authoring form",
+        "match_criteria": "Every secret reference in the produced workflow must use the required authoring form %%[A-Z0-9_]+%% — uppercase letters, digits and underscores between paired %% markers — and never the rejected runtime form {{ SOME_SECRET_NAME }}. The authoring form %%…%% and the runtime form {{ … }} are two spellings of the same secret-substitution mechanism; %%…%% is required in authored workflow JSON. This criterion asserts only the SHAPE of the reference: it never asserts WHICH secret name is used, and an unresolved %%SOME_SECRET_NAME%% is a warning upstream, never a failure here. FAIL: any malformed reference — a lowercase or hyphenated name such as %%my-secret-name%%, surrounding spaces such as %% NAME %%, or a single-percent variant such as %NAME% — or the rejected runtime form {{ SOME_SECRET_NAME }}, including defaulted variants such as {{ SOME_SECRET_NAME | default: '' }}."
+      },
+      {
+        "id": "C-005",
+        "title": "Workflow is structurally valid",
+        "match_criteria": "The workflow JSON satisfies all three structural requirements: (1) there is at least one connection whose source is \"start\" (or the workflow has a designated start node/step); (2) every step is reachable via an unbroken chain of connections from start (no orphaned steps); (3) there is at least one edge whose target is \"system.succeed\" (or the equivalent terminal node), ensuring the workflow can reach a successful completion state. A workflow missing any one of these three is structurally invalid and fails this criterion."
+      },
+      {
+        "id": "C-006",
+        "title": "The run output is a direct answer, not scaffolding",
+        "match_criteria": "Judged against the RUN OUTPUT produced by executing the workflow — not against the workflow JSON. PASS: the output is a direct answer to the question asked — the bare value or a short sentence containing it; casing and surrounding phrasing are not asserted. FAIL: the output is empty, an error message or stack-trace payload, raw request/response scaffolding with no answer extracted, a verbatim echo of the question, a refusal, or a statement that the answer could not be determined.",
+        "evaluates": "output"
+      },
+      {
+        "id": "C-007",
+        "title": "The run output states the correct answer",
+        "match_criteria": "Judged against the RUN OUTPUT produced by executing the workflow — not against the workflow JSON. The reference answer is supplied to the judge alongside this task; it is deliberately not restated here, so that the corpus index shipped to the browser carries no answer key. PASS: the answer conveyed by the output matches that reference answer. Exact formatting is not asserted: a short sentence containing the correct value passes, as do differences in casing, surrounding punctuation, or an equivalent spelling of the same value. A numeric answer must match the reference number exactly; a list answer must contain the same items; a named answer must name the same entity. FAIL: the output states a different value, hedges between several candidate values without committing to the correct one, or names no answer at all.",
         "evaluates": "output"
       }
     ],

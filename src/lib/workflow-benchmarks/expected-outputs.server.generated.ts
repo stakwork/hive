@@ -17,9 +17,19 @@
 
 export const EXPECTED_OUTPUTS: Readonly<Record<string, string>> = {
   "wfbench/gaia-asian-monarchy-coastline": "12",
+  "wfbench/gaia-babylonian-numeral": "536",
+  "wfbench/gaia-bird-species-on-camera": "3",
+  "wfbench/gaia-calculus-study-pages": "132, 133, 134, 197, 245",
+  "wfbench/gaia-chess-winning-move": "Rd5",
+  "wfbench/gaia-green-polygon-area": "39",
   "wfbench/gaia-lego-wikipedia-images": "13",
+  "wfbench/gaia-logic-equivalence": "(¬A → B) ↔ (A ∨ ¬B)",
+  "wfbench/gaia-mall-vendor-finances": "Finance",
   "wfbench/gaia-mercedes-sosa-albums": "3",
+  "wfbench/gaia-pie-shopping-list": "cornstarch, freshly squeezed lemon juice, granulated sugar, pure vanilla extract, ripe strawberries",
+  "wfbench/gaia-rental-store-inventory": "Time-Parking 2: Parallel Universe",
   "wfbench/gaia-survivor-may-winner": "Michele Fitzgerald",
+  "wfbench/gaia-tealc-spoken-response": "Extremely",
   "wfbench/gaia-yankees-1977-at-bats": "519",
   "wfbench/generate-capital-city": "Cardiff",
 };

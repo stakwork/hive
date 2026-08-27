@@ -1,15 +1,15 @@
 {
-  "title": "Answer a historical baseball statistics question",
-  "instructions": "Create a workflow that answers a caller-supplied question about historical baseball statistics by consulting a sports reference source.",
+  "title": "Convert a historical numeral into its decimal value",
+  "instructions": "Create a workflow that converts a number written in a historical numeral system into its decimal value.",
   "workflow_input": {
-    "question": "How many at bats did the Yankee with the most walks in the 1977 regular season have that same season?"
+    "question": "Consider the following symbols: 𒐜  𒐐𒐚\n\nThis is a number written using the Mesopotamian/Babylonian number system and represented with Sumerian cuneiform. Convert this number into Arabic numerals as a decimal number."
   },
-  "expected_output": "519",
+  "expected_output": "536",
   "criteria": [
     {
       "id": "C-001",
-      "title": "Consults an external source to obtain the answer",
-      "match_criteria": "The workflow performs at least one outbound call to an external source in order to obtain the information the question asks for — a web search API, a page fetch, or an LLM/skill step capable of consulting external sources. PASS: at least one step demonstrably sends data out and would receive information back. FAIL: no step contacts any external source (e.g. the workflow returns a hard-coded string, or relies solely on a model's unaided recall with no retrieval step of any kind)."
+      "title": "Derives the answer by reasoning, not by retrieval",
+      "match_criteria": "The question is self-contained — everything needed to answer it appears in the `question` text itself — so the workflow must reach the answer by working the problem through, typically via an LLM/skill step or a code step. PASS: the workflow routes the `question` into a step that can reason over or compute from it and returns what that step produces. This criterion does not forbid an outbound search, but a workflow that merely searches the web for the literal question text and returns a snippet, without any step that works the problem, FAILS."
     },
     {
       "id": "C-002",
