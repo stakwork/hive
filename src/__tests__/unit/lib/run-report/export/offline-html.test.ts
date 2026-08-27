@@ -9,10 +9,24 @@
  * - viewer.js is inlined
  * - CSP meta tag is present
  * - Title is sanitized (CR/LF/quote-injection → clean header)
+ *
+ * getOfflineCss() reads the build-time-generated, gitignored
+ * offline-report.css (see src/lib/run-report/export/offline.entry.css +
+ * scripts/build-offline-css.mjs). The unit-test CI job runs `vitest run`
+ * directly — it never runs `npm run build`/`prebuild` — so that file will not
+ * exist unless we generate it ourselves here first.
  */
 
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeAll } from "vitest";
+import { execFileSync } from "child_process";
+import { join } from "path";
 import { assembleOfflineHtml } from "@/lib/run-report/export/offline-html";
+
+beforeAll(() => {
+  execFileSync("node", [join(process.cwd(), "scripts/build-offline-css.mjs")], {
+    stdio: "pipe",
+  });
+}, 60_000);
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
