@@ -9,6 +9,15 @@
  * Idempotent: each insertion checks for an existing row by title /
  * predicate first. Safe to re-run.
  *
+ * Live Now fixtures: each workspace also gets (a) one feature with
+ * `workflowStatus: IN_PROGRESS` and clean children (no tasks, no
+ * FAILED/ERROR) so the projected node reports `plannerRunning: true`
+ * — the "Planner working" running row; (b) one HALTED task whose
+ * parent feature is anchored to an initiative (exercises the
+ * focusable `feature:<id>` deep-link path of the Live Now panel); and
+ * (c) one HALTED task whose parent feature is loose (no initiative —
+ * resolves to a `ws:` ref / link fallback).
+ *
  * Usage:
  *   npx tsx scripts/backfill-attention-showcase.ts --userId <id>
  *   npx tsx scripts/backfill-attention-showcase.ts --email you@example.com
@@ -19,6 +28,7 @@ import {
   ArtifactType,
   FeaturePriority,
   FeatureStatus,
+  InitiativeStatus,
   PrismaClient,
   Priority,
   TaskSourceType,
@@ -96,6 +106,24 @@ interface ShowcaseVariant {
     fields: Array<{ name: string; type: string; required: boolean; label: string; options?: string[] }>;
   };
   feature: { title: string; brief: string; requirements: string; assistantMessage: string };
+  /**
+   * Live Now fixtures (see file header): planner-running feature,
+   * initiative-anchored attention task, loose-feature attention task.
+   */
+  plannerFeature: { title: string; brief: string };
+  anchored: {
+    initiativeName: string;
+    featureTitle: string;
+    featureBrief: string;
+    taskTitle: string;
+    taskDescription: string;
+  };
+  loose: {
+    featureTitle: string;
+    featureBrief: string;
+    taskTitle: string;
+    taskDescription: string;
+  };
 }
 
 const VARIANTS: ShowcaseVariant[] = [
@@ -143,6 +171,28 @@ const VARIANTS: ShowcaseVariant[] = [
       assistantMessage:
         "I started a draft of the new onboarding flow. Quick question before I keep going: do we want to support a fourth 'team setup' step for org accounts, or keep it strictly 3 steps for everyone?",
     },
+    plannerFeature: {
+      title: "Plan realtime collaboration rollout",
+      brief:
+        "Scope the multiplayer editing rollout across the org canvas and whiteboards before build starts.",
+    },
+    anchored: {
+      initiativeName: "Q3 Platform Reliability",
+      featureTitle: "Harden workspace provisioning retries",
+      featureBrief:
+        "Make workspace provisioning resilient to cold-starting swarms with bounded retries and clear failure states.",
+      taskTitle: "Fix flaky workspace-provision retry loop",
+      taskDescription:
+        "Provisioning retries fail intermittently when the swarm is cold-starting; agent halted awaiting a restart-window decision.",
+    },
+    loose: {
+      featureTitle: "Template gallery for new workspaces",
+      featureBrief:
+        "Curated starting templates so new workspaces begin with a useful skeleton instead of a blank canvas.",
+      taskTitle: "Audit gallery metadata for missing previews",
+      taskDescription:
+        "Several templates render without preview thumbnails; agent halted awaiting asset decisions.",
+    },
   },
   {
     halted: {
@@ -188,6 +238,28 @@ const VARIANTS: ShowcaseVariant[] = [
       assistantMessage:
         "I sketched the data model for the team dashboard. One open question before I scaffold the UI: should the time-range default be the last 7 days or the current calendar month?",
     },
+    plannerFeature: {
+      title: "Plan granular API-key permissions",
+      brief:
+        "Scope API keys per resource and action instead of workspace-wide admin, before the enterprise audit.",
+    },
+    anchored: {
+      initiativeName: "Developer Experience Overhaul",
+      featureTitle: "Inline diff review for agent PRs",
+      featureBrief:
+        "Review agent-produced PRs in place with streaming diff hydration and per-file commenting.",
+      taskTitle: "Speed up diff hydration on large PRs",
+      taskDescription:
+        "Diff hydration times out past ~2k changed files; agent halted pending a chunking strategy.",
+    },
+    loose: {
+      featureTitle: "Keyboard-first task triage board",
+      featureBrief:
+        "Triaging the backlog without leaving the keyboard: filter, assign, and archive via shortcuts.",
+      taskTitle: "Persist triage filter state across reloads",
+      taskDescription:
+        "Filter state resets on refresh; agent halted awaiting confirmation of expected persistence scope.",
+    },
   },
   {
     halted: {
@@ -232,6 +304,28 @@ const VARIANTS: ShowcaseVariant[] = [
         "Keyboard-only navigation, fuzzy match across workspaces/tasks/features, recent-pages list per user.",
       assistantMessage:
         "I outlined the command palette's command registry shape. Before I commit to the structure: do we want plugins to register commands, or keep it a closed in-app list for v1?",
+    },
+    plannerFeature: {
+      title: "Plan cross-workspace dependency graph",
+      brief:
+        "Visualize and enforce cross-workspace feature dependencies with cycle detection on approval.",
+    },
+    anchored: {
+      initiativeName: "Billing & Usage Accuracy",
+      featureTitle: "Usage alerts before plan limits",
+      featureBrief:
+        "Warn workspaces as they approach plan limits with configurable thresholds and digest emails.",
+      taskTitle: "Reconcile usage counters after failed ingest",
+      taskDescription:
+        "Usage counters drifted after an ingest outage; agent halted awaiting a decision on backfill.",
+    },
+    loose: {
+      featureTitle: "Saved board layout presets",
+      featureBrief:
+        "Named layout presets for the whiteboard so teams can jump between planning geometries.",
+      taskTitle: "Migrate legacy board presets to new schema",
+      taskDescription:
+        "Migration halts on presets with custom backgrounds; needs a fallback mapping.",
     },
   },
 ];
@@ -575,9 +669,10 @@ Streamed the row-set instead of materializing it. The previous endpoint hit a 60
 
 async function backfillWorkspace(
   userId: string,
-  workspaceId: string,
+  ws: { id: string; sourceControlOrgId: string | null },
   variantIndex: number,
 ) {
+  const workspaceId = ws.id;
   // Cycle through variants by workspace index. With 3 variants
   // defined and N workspaces, the modulo wraps cleanly — orgs with
   // 4+ workspaces will see one variant repeat, which is fine: cards
@@ -745,6 +840,158 @@ async function backfillWorkspace(
     });
     console.log(`  + ASSISTANT msg on awaiting-reply feature`);
   }
+
+  // ── LIVE NOW FIXTURES ────────────────────────────────────────────
+  // See file header. (a) planner-running feature; (b) initiative-
+  // anchored attention task; (c) loose-feature attention task.
+
+  // (a) Planner-working feature: workflowStatus IN_PROGRESS with clean
+  // children (no tasks at all — so no FAILED/ERROR child can force
+  // plannerRunning false, and agentsRunningCount stays 0). The
+  // projector emits `plannerRunning: true` on the node, and
+  // `useFeatureLiveState` seeds it → "Planner working" running row.
+  // No chat messages either, so it does NOT double as awaiting-reply.
+  const existingPlanner = await db.feature.findFirst({
+    where: { workspaceId, title: variant.plannerFeature.title, deleted: false },
+    select: { id: true },
+  });
+  if (!existingPlanner) {
+    await db.feature.create({
+      data: {
+        title: variant.plannerFeature.title,
+        brief: variant.plannerFeature.brief,
+        status: FeatureStatus.PLANNED,
+        priority: FeaturePriority.HIGH,
+        workspaceId,
+        createdById: userId,
+        updatedById: userId,
+        assigneeId: userId,
+        workflowStatus: WorkflowStatus.IN_PROGRESS,
+        workflowStartedAt: new Date(),
+      },
+      select: { id: true },
+    });
+    console.log(`  + planner-running feature (IN_PROGRESS, no tasks): ${variant.plannerFeature.title}`);
+  }
+
+  // (b) Initiative-anchored attention task: initiative → feature →
+  // HALTED task. Resolves to `initiative:<id>` / `feature:<featureId>`
+  // client-side — the fully focusable Live Now row path.
+  if (!ws.sourceControlOrgId) {
+    console.log(`  ! skipping initiative-anchored fixture: workspace has no sourceControlOrg`);
+  } else {
+    let initiative = await db.initiative.findFirst({
+      where: { orgId: ws.sourceControlOrgId, name: variant.anchored.initiativeName },
+      select: { id: true },
+    });
+    if (!initiative) {
+      initiative = await db.initiative.create({
+        data: {
+          orgId: ws.sourceControlOrgId,
+          name: variant.anchored.initiativeName,
+          status: InitiativeStatus.ACTIVE,
+          assigneeId: userId,
+        },
+        select: { id: true },
+      });
+      console.log(`  + initiative: ${variant.anchored.initiativeName}`);
+    }
+
+    let anchoredFeature = await db.feature.findFirst({
+      where: { workspaceId, title: variant.anchored.featureTitle, deleted: false },
+      select: { id: true },
+    });
+    if (!anchoredFeature) {
+      anchoredFeature = await db.feature.create({
+        data: {
+          title: variant.anchored.featureTitle,
+          brief: variant.anchored.featureBrief,
+          status: FeatureStatus.PLANNED,
+          priority: FeaturePriority.MEDIUM,
+          workspaceId,
+          createdById: userId,
+          updatedById: userId,
+          assigneeId: userId,
+          initiativeId: initiative.id,
+        },
+        select: { id: true },
+      });
+      console.log(`  + initiative-anchored feature: ${variant.anchored.featureTitle}`);
+    }
+
+    const existingAnchoredTask = await db.task.findFirst({
+      where: { workspaceId, title: variant.anchored.taskTitle, deleted: false },
+      select: { id: true },
+    });
+    if (!existingAnchoredTask) {
+      await db.task.create({
+        data: {
+          title: variant.anchored.taskTitle,
+          description: variant.anchored.taskDescription,
+          workspaceId,
+          createdById: userId,
+          updatedById: userId,
+          assigneeId: userId,
+          status: TaskStatus.IN_PROGRESS,
+          workflowStatus: WorkflowStatus.HALTED,
+          sourceType: TaskSourceType.USER,
+          priority: Priority.HIGH,
+          featureId: anchoredFeature.id,
+        },
+      });
+      console.log(`  + anchored HALTED task: ${variant.anchored.taskTitle}`);
+    }
+  }
+
+  // (c) Loose-feature attention task: feature with NO initiative (and
+  // no milestone) → `mostSpecificRef` resolves to `ws:<workspaceId>`
+  // client-side, which is unverifiable pinning → the Live Now panel's
+  // focus-then-link-fallback path.
+  let looseFeature = await db.feature.findFirst({
+    where: { workspaceId, title: variant.loose.featureTitle, deleted: false },
+    select: { id: true },
+  });
+  if (!looseFeature) {
+    looseFeature = await db.feature.create({
+      data: {
+        title: variant.loose.featureTitle,
+        brief: variant.loose.featureBrief,
+        status: FeatureStatus.PLANNED,
+        priority: FeaturePriority.MEDIUM,
+        workspaceId,
+        createdById: userId,
+        updatedById: userId,
+        assigneeId: userId,
+        // initiativeId/milestoneId deliberately unset — this is the
+        // "loose feature" fixture.
+      },
+      select: { id: true },
+    });
+    console.log(`  + loose feature (no initiative): ${variant.loose.featureTitle}`);
+  }
+
+  const existingLooseTask = await db.task.findFirst({
+    where: { workspaceId, title: variant.loose.taskTitle, deleted: false },
+    select: { id: true },
+  });
+  if (!existingLooseTask) {
+    await db.task.create({
+      data: {
+        title: variant.loose.taskTitle,
+        description: variant.loose.taskDescription,
+        workspaceId,
+        createdById: userId,
+        updatedById: userId,
+        assigneeId: userId,
+        status: TaskStatus.IN_PROGRESS,
+        workflowStatus: WorkflowStatus.HALTED,
+        sourceType: TaskSourceType.USER,
+        priority: Priority.MEDIUM,
+        featureId: looseFeature.id,
+      },
+    });
+    console.log(`  + loose-feature HALTED task: ${variant.loose.taskTitle}`);
+  }
 }
 
 async function main() {
@@ -761,7 +1008,7 @@ async function main() {
         { members: { some: { userId: user.id, leftAt: null } } },
       ],
     },
-    select: { id: true, slug: true, name: true },
+    select: { id: true, slug: true, name: true, sourceControlOrgId: true },
   });
 
   console.log(`Found ${workspaces.length} workspaces: ${workspaces.map((w) => w.slug).join(", ")}`);
@@ -773,7 +1020,7 @@ async function main() {
   for (let i = 0; i < workspaces.length; i++) {
     const ws = workspaces[i];
     console.log(`\n→ ${ws.slug} (${ws.name}) [variant ${i % VARIANTS.length}]`);
-    await backfillWorkspace(user.id, ws.id, i);
+    await backfillWorkspace(user.id, ws, i);
   }
 
   console.log(`\nDone.`);
