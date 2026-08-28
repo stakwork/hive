@@ -6,6 +6,7 @@ import {
   MilestoneStatus,
   PodState,
   PoolState,
+  Prisma,
   RepositoryStatus,
   SourceControlOrgType,
   SwarmStatus,
@@ -13,8 +14,53 @@ import {
 import { seedMockData, seedPublicMockWorkspace } from "./mockSeedData";
 import { slugify } from "./slugify";
 
-// Mock GitHub user ID counter (starts high to avoid conflicts)
-let mockGitHubIdCounter = 100000;
+// Mock GitHub ids must be stable across server restarts: SourceControlOrg is
+// upserted by githubLogin but created with githubInstallationId, which is
+// unique in the DB. An id from an in-memory counter changes between runs and
+// can collide with a row persisted by a previous process, so sign-in for a
+// new mock username fails with P2002 (surfaced as NextAuth AccessDenied).
+// Ids are therefore derived from the mock username, mapped into [1e9, 2e9):
+// inside Postgres INT4 range and clear of real installation ids and the
+// fixed MOCK_ORG_INSTALLATION_ID.
+const MOCK_ID_RANGE_START = 1_000_000_000;
+const MOCK_ID_RANGE_SIZE = 1_000_000_000;
+
+function fnv1aHash(seed: string): number {
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < seed.length; i++) {
+    hash ^= seed.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193) >>> 0;
+  }
+  return hash;
+}
+
+export function deriveMockInstallationId(githubLogin: string): number {
+  return MOCK_ID_RANGE_START + (fnv1aHash(`installation:${githubLogin}`) % MOCK_ID_RANGE_SIZE);
+}
+
+export function deriveMockGitHubUserId(githubLogin: string): string {
+  return String(MOCK_ID_RANGE_START + (fnv1aHash(`user:${githubLogin}`) % MOCK_ID_RANGE_SIZE));
+}
+
+/**
+ * Returns an installation id that is safe to create for `githubLogin`: the
+ * derived id, or the next free one when a different login already holds it
+ * (a hash collision between two mock usernames — rare, but it would
+ * reproduce the exact P2002 sign-in failure the derived ids exist to
+ * prevent). Idempotent for a login whose org row already exists.
+ */
+export async function resolveMockInstallationId(tx: Prisma.TransactionClient, githubLogin: string): Promise<number> {
+  let candidate = deriveMockInstallationId(githubLogin);
+  for (let attempt = 0; attempt < 1000; attempt++) {
+    const holder = await tx.sourceControlOrg.findUnique({
+      where: { githubInstallationId: candidate },
+      select: { githubLogin: true },
+    });
+    if (!holder || holder.githubLogin === githubLogin) return candidate;
+    candidate = candidate + 1 < MOCK_ID_RANGE_START + MOCK_ID_RANGE_SIZE ? candidate + 1 : MOCK_ID_RANGE_START;
+  }
+  throw new Error(`Unable to allocate a mock installation id for ${githubLogin}`);
+}
 
 /**
  * Ensures a mock workspace and a completed swarm exist for a given user.
@@ -50,8 +96,7 @@ export async function ensureMockWorkspaceForUser(
   const mockGitHubUsername = user?.name?.toLowerCase().replace(/\s+/g, "-")
     || user?.email?.split("@")[0]
     || "mock-user";
-  const mockGitHubUserId = String(mockGitHubIdCounter++);
-  const mockInstallationId = mockGitHubIdCounter++;
+  const mockGitHubUserId = deriveMockGitHubUserId(mockGitHubUsername);
 
   // Create encrypted tokens for mock (optional - gracefully handle if encryption not available)
   let encryptedPoolApiKey: string | null = null;
@@ -102,6 +147,7 @@ export async function ensureMockWorkspaceForUser(
     });
 
     // 2. Create SourceControlOrg (represents the GitHub org/user that has the app installed)
+    const mockInstallationId = await resolveMockInstallationId(tx, mockGitHubUsername);
     const sourceControlOrg = await tx.sourceControlOrg.upsert({
       where: { githubLogin: mockGitHubUsername },
       create: {
@@ -249,8 +295,7 @@ export async function ensureStakworkMockWorkspace(
 
   // Generate mock GitHub username from user's name or email (stakwork-specific)
   const mockGitHubUsername = `${user?.name?.toLowerCase().replace(/\s+/g, "-") || user?.email?.split("@")[0] || "mock-user"}-stakwork`;
-  const mockGitHubUserId = String(mockGitHubIdCounter++);
-  const mockInstallationId = mockGitHubIdCounter++;
+  const mockGitHubUserId = deriveMockGitHubUserId(mockGitHubUsername);
 
   // Create encrypted tokens for mock (optional - gracefully handle if encryption not available)
   let encryptedPoolApiKey: string | null = null;
@@ -297,6 +342,7 @@ export async function ensureStakworkMockWorkspace(
     });
 
     // 2. Create SourceControlOrg (represents the GitHub org/user that has the app installed)
+    const mockInstallationId = await resolveMockInstallationId(tx, mockGitHubUsername);
     const sourceControlOrg = await tx.sourceControlOrg.upsert({
       where: { githubLogin: mockGitHubUsername },
       create: {
