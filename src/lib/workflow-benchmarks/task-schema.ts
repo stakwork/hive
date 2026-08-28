@@ -26,9 +26,11 @@
  * correctly structured workflow JSON from a plain-English instruction. Each
  * task lives at `benchmarks/workflow-editor/tasks/{dir}/{task-slug}/task.json`.
  * The directory tree IS the taxonomy: a task's grouping is simply where its
- * file sits. There is no category field, no closed union of directory names,
- * and the parent directory chain is never recorded as data or asserted against
- * a list — see `taskSlugFromPath` in the generator.
+ * file sits. The generator emits the grouping directory verbatim as `section`
+ * (UI grouping only — never authored in task.json, never asserted against a
+ * closed union of names, and deliberately excluded from the slug so a
+ * `git mv` between directories never changes a task's identity — see
+ * `taskSlugFromPath` in the generator).
  *
  * Each `task.json` carries:
  *
@@ -303,6 +305,15 @@ export interface WorkflowBenchmarkTask {
    *       The `wfbench/` prefix prevents collision with other domains.
    */
   slug: string;
+  /**
+   * Grouping directory the task.json sits under, emitted verbatim from
+   * `benchmarks/workflow-editor/tasks/{section}/{task-slug}/task.json`.
+   * UI grouping only — never load-bearing: the slug deliberately excludes it
+   * (so `git mv` between directories never changes a task's identity), no
+   * closed union of section names exists anywhere, and it is derived by the
+   * generator, never authored in task.json.
+   */
+  section: string;
   /** Display title shown in the UI task list. */
   title: string;
   /**
@@ -370,7 +381,12 @@ type Resolve<T> = { [K in keyof T]: T[K] };
 type _AssertTaskShapeMatchesSchema = Expect<
   Equal<
     Resolve<WorkflowBenchmarkTask>,
-    Resolve<Omit<WorkflowBenchmarkTaskSource, "expected_output"> & { slug: string }>
+    Resolve<
+      Omit<WorkflowBenchmarkTaskSource, "expected_output"> & {
+        slug: string;
+        section: string;
+      }
+    >
   >
 >;
 

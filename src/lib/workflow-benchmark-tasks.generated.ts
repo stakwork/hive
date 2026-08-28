@@ -15,6 +15,7 @@ import type { WorkflowBenchmarkTask } from "./workflow-benchmarks/task-schema";
 export const WORKFLOW_BENCHMARK_TASKS: WorkflowBenchmarkTask[] = [
   {
     slug: "wfbench/create-openai-call",
+    section: "llm",
     title: "Create a workflow that sends a prompt to an LLM",
     instructions: "Create a workflow that sends a user-supplied prompt to an LLM and returns the model's response.\n\n## Workflow Inputs\n\nDeclare each of the following as a caller-supplied workflow input, using these exact names:\n\n- `prompt`",
     criteria: [
@@ -33,6 +34,7 @@ export const WORKFLOW_BENCHMARK_TASKS: WorkflowBenchmarkTask[] = [
   },
   {
     slug: "wfbench/gaia-asian-monarchy-coastline",
+    section: "research",
     title: "Count countries satisfying several constraints",
     instructions: "Create a workflow that answers a caller-supplied question requiring countries to be counted against several political and geographic constraints.\n\n## Workflow Inputs\n\nDeclare each of the following as a caller-supplied workflow input, using these exact names:\n\n- `question`",
     criteria: [
@@ -48,6 +50,7 @@ export const WORKFLOW_BENCHMARK_TASKS: WorkflowBenchmarkTask[] = [
   },
   {
     slug: "wfbench/gaia-babylonian-numeral",
+    section: "reasoning",
     title: "Convert a historical numeral into its decimal value",
     instructions: "Create a workflow that converts a number written in a historical numeral system into its decimal value.\n\n## Workflow Inputs\n\nDeclare each of the following as a caller-supplied workflow input, using these exact names:\n\n- `question`",
     criteria: [
@@ -63,6 +66,7 @@ export const WORKFLOW_BENCHMARK_TASKS: WorkflowBenchmarkTask[] = [
   },
   {
     slug: "wfbench/gaia-bird-species-on-camera",
+    section: "video",
     title: "Count simultaneous subjects on screen in a video",
     instructions: "Create a workflow that answers a caller-supplied question about what appears on screen in a supplied video.\n\n## Workflow Inputs\n\nDeclare each of the following as a caller-supplied workflow input, using these exact names:\n\n- `question`\n- `video_url`",
     criteria: [
@@ -79,6 +83,7 @@ export const WORKFLOW_BENCHMARK_TASKS: WorkflowBenchmarkTask[] = [
   },
   {
     slug: "wfbench/gaia-calculus-study-pages",
+    section: "audio",
     title: "Extract spoken page numbers from a recording",
     instructions: "Create a workflow that transcribes a supplied audio recording and reports the page numbers named in it.\n\n## Workflow Inputs\n\nDeclare each of the following as a caller-supplied workflow input, using these exact names:\n\n- `question`\n- `audio_url`",
     criteria: [
@@ -96,6 +101,7 @@ export const WORKFLOW_BENCHMARK_TASKS: WorkflowBenchmarkTask[] = [
   },
   {
     slug: "wfbench/gaia-chess-winning-move",
+    section: "vision",
     title: "Read a chess position from an image and choose a move",
     instructions: "Create a workflow that answers a caller-supplied question about a chess position shown in a supplied image.\n\n## Workflow Inputs\n\nDeclare each of the following as a caller-supplied workflow input, using these exact names:\n\n- `question`\n- `image_url`",
     criteria: [
@@ -113,6 +119,7 @@ export const WORKFLOW_BENCHMARK_TASKS: WorkflowBenchmarkTask[] = [
   },
   {
     slug: "wfbench/gaia-green-polygon-area",
+    section: "vision",
     title: "Compute a geometric quantity from a labelled diagram",
     instructions: "Create a workflow that computes a geometric quantity from a labelled diagram in a supplied image.\n\n## Workflow Inputs\n\nDeclare each of the following as a caller-supplied workflow input, using these exact names:\n\n- `question`\n- `image_url`",
     criteria: [
@@ -130,6 +137,7 @@ export const WORKFLOW_BENCHMARK_TASKS: WorkflowBenchmarkTask[] = [
   },
   {
     slug: "wfbench/gaia-lego-wikipedia-images",
+    section: "research",
     title: "Count elements within a specific encyclopedia article",
     instructions: "Create a workflow that answers a caller-supplied question about how many elements of a given kind appear in a specific encyclopedia article.\n\n## Workflow Inputs\n\nDeclare each of the following as a caller-supplied workflow input, using these exact names:\n\n- `question`",
     criteria: [
@@ -145,6 +153,7 @@ export const WORKFLOW_BENCHMARK_TASKS: WorkflowBenchmarkTask[] = [
   },
   {
     slug: "wfbench/gaia-logic-equivalence",
+    section: "reasoning",
     title: "Identify the non-equivalent propositional-logic statement",
     instructions: "Create a workflow that solves a caller-supplied propositional-logic problem and returns the answer.\n\n## Workflow Inputs\n\nDeclare each of the following as a caller-supplied workflow input, using these exact names:\n\n- `question`",
     criteria: [
@@ -160,6 +169,7 @@ export const WORKFLOW_BENCHMARK_TASKS: WorkflowBenchmarkTask[] = [
   },
   {
     slug: "wfbench/gaia-mall-vendor-finances",
+    section: "spreadsheet",
     title: "Compute an aggregate from spreadsheet financial records",
     instructions: "Create a workflow that computes an aggregate from financial records held in a supplied spreadsheet.\n\n## Workflow Inputs\n\nDeclare each of the following as a caller-supplied workflow input, using these exact names:\n\n- `question`\n- `spreadsheet_url`",
     criteria: [
@@ -177,6 +187,7 @@ export const WORKFLOW_BENCHMARK_TASKS: WorkflowBenchmarkTask[] = [
   },
   {
     slug: "wfbench/gaia-mercedes-sosa-albums",
+    section: "research",
     title: "Answer a discography question from encyclopedic sources",
     instructions: "Create a workflow that answers a caller-supplied question about a musician's discography by consulting encyclopedic sources.\n\n## Workflow Inputs\n\nDeclare each of the following as a caller-supplied workflow input, using these exact names:\n\n- `question`",
     criteria: [
@@ -192,6 +203,7 @@ export const WORKFLOW_BENCHMARK_TASKS: WorkflowBenchmarkTask[] = [
   },
   {
     slug: "wfbench/gaia-pie-shopping-list",
+    section: "audio",
     title: "Extract requested ingredients from a spoken recording",
     instructions: "Create a workflow that transcribes a supplied audio recording and extracts the items a caller asks about.\n\n## Workflow Inputs\n\nDeclare each of the following as a caller-supplied workflow input, using these exact names:\n\n- `question`\n- `audio_url`",
     criteria: [
@@ -209,6 +221,7 @@ export const WORKFLOW_BENCHMARK_TASKS: WorkflowBenchmarkTask[] = [
   },
   {
     slug: "wfbench/gaia-rental-store-inventory",
+    section: "spreadsheet",
     title: "Answer an inventory question from spreadsheet records",
     instructions: "Create a workflow that answers a caller-supplied question about records held in a supplied spreadsheet.\n\n## Workflow Inputs\n\nDeclare each of the following as a caller-supplied workflow input, using these exact names:\n\n- `question`\n- `spreadsheet_url`",
     criteria: [
@@ -226,6 +239,7 @@ export const WORKFLOW_BENCHMARK_TASKS: WorkflowBenchmarkTask[] = [
   },
   {
     slug: "wfbench/gaia-survivor-may-winner",
+    section: "research",
     title: "Identify a television contestant matching a biographical filter",
     instructions: "Create a workflow that answers a caller-supplied question identifying which contestant of a television series matches a biographical criterion.\n\n## Workflow Inputs\n\nDeclare each of the following as a caller-supplied workflow input, using these exact names:\n\n- `question`",
     criteria: [
@@ -241,6 +255,7 @@ export const WORKFLOW_BENCHMARK_TASKS: WorkflowBenchmarkTask[] = [
   },
   {
     slug: "wfbench/gaia-tealc-spoken-response",
+    section: "video",
     title: "Recover a line of spoken dialogue from a video",
     instructions: "Create a workflow that answers a caller-supplied question about spoken dialogue in a supplied video.\n\n## Workflow Inputs\n\nDeclare each of the following as a caller-supplied workflow input, using these exact names:\n\n- `question`\n- `video_url`",
     criteria: [
@@ -257,6 +272,7 @@ export const WORKFLOW_BENCHMARK_TASKS: WorkflowBenchmarkTask[] = [
   },
   {
     slug: "wfbench/gaia-yankees-1977-at-bats",
+    section: "research",
     title: "Answer a historical baseball statistics question",
     instructions: "Create a workflow that answers a caller-supplied question about historical baseball statistics by consulting a sports reference source.\n\n## Workflow Inputs\n\nDeclare each of the following as a caller-supplied workflow input, using these exact names:\n\n- `question`",
     criteria: [
@@ -272,6 +288,7 @@ export const WORKFLOW_BENCHMARK_TASKS: WorkflowBenchmarkTask[] = [
   },
   {
     slug: "wfbench/generate-capital-city",
+    section: "llm",
     title: "Create a workflow that answers a country's capital city",
     instructions: "Create a workflow that accepts a country name as a caller-supplied input and returns that country's capital city.\n\n## Workflow Inputs\n\nDeclare each of the following as a caller-supplied workflow input, using these exact names:\n\n- `country`",
     criteria: [
