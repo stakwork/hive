@@ -6,10 +6,17 @@
  *   2. Each entry has a non-empty colorHex and iconName.
  *   3. `SVG_PATHS` covers all `iconName` values referenced by the metadata.
  *   4. Each SVG path set has at least one non-empty path and a non-empty viewBox.
+ *   5. `ATTENTION_TYPE_ORDER` matches the documented ranking and is the
+ *      single source of truth consumed by `topItems.ts`.
+ *   6. `typeMeta.ts` stays client-safe: its import of `topItems.ts` is
+ *      type-only, so no Prisma/db code can leak into the client bundle.
  */
 import { describe, test, expect } from "vitest";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import {
   ATTENTION_TYPE_META,
+  ATTENTION_TYPE_ORDER,
   SVG_PATHS,
 } from "@/services/attention/typeMeta";
 import type { AttentionItem } from "@/services/attention/topItems";
@@ -85,5 +92,72 @@ describe("SVG_PATHS", () => {
     const at = SVG_PATHS["alert-triangle"].paths.join();
     const mcq = SVG_PATHS["message-circle-question"].paths.join();
     expect(at).not.toBe(mcq);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// ATTENTION_TYPE_ORDER — canonical client-safe ranking
+// ---------------------------------------------------------------------------
+
+describe("ATTENTION_TYPE_ORDER", () => {
+  test("covers exactly the four signal types", () => {
+    expect(Object.keys(ATTENTION_TYPE_ORDER).sort()).toEqual(
+      [...ALL_TYPES].sort(),
+    );
+  });
+
+  test("matches the documented ranking (halted: 0 … ready-to-review: 3)", () => {
+    expect(ATTENTION_TYPE_ORDER).toEqual({
+      halted: 0,
+      "awaiting-reply": 1,
+      "plan-question": 2,
+      "ready-to-review": 3,
+    });
+  });
+
+  test("values are strictly increasing across the canonical key order", () => {
+    const values = Object.values(ATTENTION_TYPE_ORDER);
+    for (let i = 1; i < values.length; i += 1) {
+      expect(values[i]).toBeGreaterThan(values[i - 1]);
+    }
+  });
+
+  test("order covers the same key set as ATTENTION_TYPE_META (one source of truth)", () => {
+    expect(Object.keys(ATTENTION_TYPE_ORDER).sort()).toEqual(
+      Object.keys(ATTENTION_TYPE_META).sort(),
+    );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Client-safety (architecture conformance)
+// ---------------------------------------------------------------------------
+
+describe("typeMeta.ts client-safety", () => {
+  const typeMetaPath = fileURLToPath(
+    new URL("../../../services/attention/typeMeta.ts", import.meta.url),
+  );
+  const topItemsPath = fileURLToPath(
+    new URL("../../../services/attention/topItems.ts", import.meta.url),
+  );
+
+  test("typeMeta.ts imports AttentionItem from topItems.ts type-only (erased at compile time)", () => {
+    const source = readFileSync(typeMetaPath, "utf8");
+    expect(source).toMatch(/import type \{ AttentionItem \} from "\.\/topItems";/);
+  });
+
+  test("typeMeta.ts has no server-only imports (no @/lib/db, no @prisma/client)", () => {
+    const source = readFileSync(typeMetaPath, "utf8");
+    expect(source).not.toMatch(/from "@\/lib\/db"/);
+    expect(source).not.toMatch(/from "@prisma\/client"/);
+  });
+
+  test("topItems.ts consumes ATTENTION_TYPE_ORDER from typeMeta.ts instead of a private copy", () => {
+    const source = readFileSync(topItemsPath, "utf8");
+    expect(source).toMatch(
+      /import \{ ATTENTION_TYPE_ORDER \} from "\.\/typeMeta";/,
+    );
+    // The old private ordering must not be re-declared.
+    expect(source).not.toMatch(/const TYPE_ORDER/);
   });
 });
