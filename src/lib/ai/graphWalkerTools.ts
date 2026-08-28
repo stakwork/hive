@@ -109,7 +109,7 @@ const PG_DISABLED_MESSAGE =
  * Conservative shape cap for caller-supplied Jarvis namespaces.
  */
 const NAMESPACE_MAX_LENGTH = 200;
-const NAMESPACE_PATTERN = /^[A-Za-z0-9._-]+$/;
+const NAMESPACE_PATTERN = /^[A-Za-z0-9._/-]+$/;
 
 /**
  * Caller-supplied Jarvis namespace, validated at the tool boundary.
@@ -131,7 +131,7 @@ const namespaceSchema = z
   })
   .refine((v) => NAMESPACE_PATTERN.test(v), {
     message:
-      "namespace may only contain letters, digits, and '.', '_', '-' characters",
+      "namespace may only contain letters, digits, and '.', '_', '-', '/' characters",
   });
 
 // ---------------------------------------------------------------------------
@@ -1410,8 +1410,8 @@ export function buildGraphWalkerTools(
           .optional()
           .describe(
             "kg realm only: Jarvis data-partition filter, e.g. 'team-alpha'. " +
-              "A query filter that scopes results to one partition — NOT an access-control boundary. " +
-              "Use ONLY a namespace explicitly supplied by the user; Hive cannot enumerate namespaces, so never guess one.",
+              "Use only a namespace the user supplied — never guess one. " +
+              "Allowed characters: letters, digits, '.', '_', '-', '/'.",
           ),
         limit: z
           .number()
