@@ -5,8 +5,45 @@ import { Loader2, ChevronDown, ChevronRight, CheckCircle2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { WORKFLOW_BENCHMARK_TASKS, type WorkflowBenchmarkTask } from "@/lib/workflow-benchmark-tasks";
+
+// ─── Section grouping ─────────────────────────────────────────────────────────
+
+/**
+ * Display names for sections whose directory name isn't just
+ * capitalized ("llm" → "LLM"). Every other section falls back to a plain
+ * capitalization of the directory name — the taxonomy is open, so a new
+ * directory needs no entry here to render.
+ */
+const SECTION_LABELS: Record<string, string> = { llm: "LLM" };
+
+function sectionLabel(section: string): string {
+  return SECTION_LABELS[section] ?? section.charAt(0).toUpperCase() + section.slice(1);
+}
+
+interface TaskSection {
+  section: string;
+  tasks: WorkflowBenchmarkTask[];
+}
+
+/**
+ * The corpus grouped by its `section` field (the grouping directory each
+ * task.json sits under), sections sorted alphabetically. Static — the corpus
+ * is a build-time import, so this is computed once at module level.
+ */
+const TASK_SECTIONS: TaskSection[] = (() => {
+  const bySection = new Map<string, WorkflowBenchmarkTask[]>();
+  for (const task of WORKFLOW_BENCHMARK_TASKS) {
+    const list = bySection.get(task.section) ?? [];
+    list.push(task);
+    bySection.set(task.section, list);
+  }
+  return [...bySection.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([section, tasks]) => ({ section, tasks }));
+})();
 
 // ─── Task Card ────────────────────────────────────────────────────────────────
 
@@ -192,6 +229,10 @@ export function WorkflowBenchmarksPanel() {
   const { workspace } = useWorkspace();
   const slug = workspace?.slug;
 
+  const [selectedSection, setSelectedSection] = useState<string>(
+    TASK_SECTIONS[0]?.section ?? "",
+  );
+
   if (!slug) {
     return (
       <div className="flex items-center justify-center py-12 text-muted-foreground text-sm">
@@ -201,21 +242,65 @@ export function WorkflowBenchmarksPanel() {
     );
   }
 
+  const currentSection = TASK_SECTIONS.find((s) => s.section === selectedSection);
+
   return (
-    <div className="space-y-4 max-w-3xl">
-      <div>
-        <p className="text-sm text-muted-foreground">
-          {WORKFLOW_BENCHMARK_TASKS.length}{" "}
-          {WORKFLOW_BENCHMARK_TASKS.length === 1 ? "task" : "tasks"} in the corpus.
-          Click a task to expand its instructions and criteria, then press{" "}
-          <strong>Run Benchmark</strong> to dispatch a scored run.
-        </p>
+    <div className="flex h-full min-h-0 overflow-hidden rounded-lg border">
+      {/* Left column — section list (mirrors LegalBenchmarksPanel's practice-area rail) */}
+      <div className="w-60 shrink-0 border-r flex flex-col">
+        <div className="px-3 py-3 border-b flex items-center justify-between gap-2">
+          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+            Sections
+          </p>
+          <Badge variant="secondary" className="text-xs shrink-0">
+            {WORKFLOW_BENCHMARK_TASKS.length}
+          </Badge>
+        </div>
+        <ScrollArea className="flex-1 min-h-0">
+          <div className="p-2 space-y-0.5">
+            {TASK_SECTIONS.map(({ section, tasks }) => (
+              <button
+                key={section}
+                onClick={() => setSelectedSection(section)}
+                className={`w-full flex items-center justify-between gap-2 rounded-md px-2 py-1.5 text-sm text-left transition-colors ${
+                  selectedSection === section
+                    ? "bg-accent text-accent-foreground font-medium"
+                    : "text-muted-foreground hover:bg-accent/50 hover:text-foreground"
+                }`}
+              >
+                <span className="truncate">{sectionLabel(section)}</span>
+                <Badge variant="secondary" className="text-xs shrink-0">
+                  {tasks.length}
+                </Badge>
+              </button>
+            ))}
+          </div>
+        </ScrollArea>
       </div>
 
-      <div className="space-y-3">
-        {WORKFLOW_BENCHMARK_TASKS.map((task) => (
-          <TaskCard key={task.slug} task={task} workspaceSlug={slug} />
-        ))}
+      {/* Right panel — selected section's tasks */}
+      <div className="flex-1 flex flex-col overflow-hidden min-h-0">
+        <div className="px-4 py-3 border-b flex items-baseline gap-2">
+          <p className="text-sm font-medium">
+            {currentSection ? sectionLabel(currentSection.section) : "No section"}
+          </p>
+          <p className="text-xs text-muted-foreground">
+            {currentSection?.tasks.length ?? 0}{" "}
+            {currentSection?.tasks.length === 1 ? "task" : "tasks"}
+          </p>
+          {currentSection && (
+            <p className="ml-auto font-mono text-xs text-muted-foreground">
+              tasks/{currentSection.section}/
+            </p>
+          )}
+        </div>
+        <ScrollArea className="flex-1 min-h-0">
+          <div className="p-4 space-y-3 max-w-3xl">
+            {currentSection?.tasks.map((task) => (
+              <TaskCard key={task.slug} task={task} workspaceSlug={slug} />
+            ))}
+          </div>
+        </ScrollArea>
       </div>
     </div>
   );
