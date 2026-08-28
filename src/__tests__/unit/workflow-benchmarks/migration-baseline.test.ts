@@ -12,10 +12,12 @@
  * This is a migration-acceptance artifact, not a permanent regression guard.
  * Slices legitimately mutating corpus data are expected to re-baseline this
  * fixture in their own commit, with the JSON diff reviewed as the change
- * record — which has happened three times so far: workflow_input/expected_output
+ * record — which has happened four times so far: workflow_input/expected_output
  * (input contract), expectedSecrets removal + C-004/C-005 narrowing (secret
- * cleanup), and the one-line intent-statement rewrite of both tasks'
- * `instructions` plus its rubric re-alignment. The ongoing guard against
+ * cleanup), the one-line intent-statement rewrite of both tasks'
+ * `instructions` plus its rubric re-alignment, and the `section` field
+ * addition (grouping directory emitted for the sidebar UI). The ongoing
+ * guard against
  * unreviewed drift is the
  * separate "regenerate produces no diff" CI check, which does not decay.
  */

@@ -7,7 +7,7 @@
  *                            Harvey's category-inclusive `slugFromPath` —
  *                            these tests are written fresh, not copied, and
  *                            pin the OPPOSITE behaviour of the Harvey suite)
- *  - directoryFromPath     — diagnostics-only grouping path
+ *  - directoryFromPath     — grouping path, emitted as each task's `section`
  *  - generateWorkflowBenchmarkTasks — full walk+validate+assemble pipeline:
  *      schema validation, invariant enforcement, symlink rejection,
  *      path-traversal rejection, slug-collision detection (naming both
@@ -151,17 +151,29 @@ describe("generateWorkflowBenchmarkTasks — happy path", () => {
     ]);
   });
 
-  test("moving a task.json between directories does not change its derived slug", () => {
+  test("emits the grouping directory verbatim as each task's section", () => {
+    const root = makeTempRoot();
+    writeTask(root, "llm", "aaa-task", validTaskSource());
+    writeTask(root, "vision", "zzz-task", validTaskSource());
+
+    const { tasks } = generateWorkflowBenchmarkTasks(root);
+
+    expect(tasks.map((t) => t.section)).toEqual(["llm", "vision"]);
+  });
+
+  test("moving a task.json between directories changes its section but never its slug", () => {
     const root = makeTempRoot();
     writeTask(root, "llm", "create-openai-call", validTaskSource());
-    const before = generateWorkflowBenchmarkTasks(root).tasks[0].slug;
+    const before = generateWorkflowBenchmarkTasks(root).tasks[0];
 
     // Simulate `git mv llm/create-openai-call some-other-dir/create-openai-call`
     rmSync(join(root, "llm"), { recursive: true, force: true });
     writeTask(root, "some-other-dir", "create-openai-call", validTaskSource());
-    const after = generateWorkflowBenchmarkTasks(root).tasks[0].slug;
+    const after = generateWorkflowBenchmarkTasks(root).tasks[0];
 
-    expect(after).toBe(before);
+    expect(after.slug).toBe(before.slug);
+    expect(before.section).toBe("llm");
+    expect(after.section).toBe("some-other-dir");
   });
 
   test("regenerating twice in a row produces the same rendered module (no diff)", () => {

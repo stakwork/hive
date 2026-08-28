@@ -5,9 +5,10 @@
  * benchmarks/workflow-editor/tasks/ directory tree.
  *
  * The directory IS the taxonomy: a task's grouping is simply where its
- * task.json sits. There is no category field, no closed union of directory
- * names, and the grouping directory is never emitted as data — only used for
- * diagnostics (summary log line, collision error messages).
+ * task.json sits. There is no closed union of directory names — the grouping
+ * directory is emitted verbatim as each task's `section` (UI grouping only;
+ * the slug deliberately excludes it, so a `git mv` between directories never
+ * changes a task's identity).
  *
  * Ported from scripts/generate-harvey-lab-tasks.ts, minus all GitHub-fetching
  * logic (ghFetch/TreeResponse/truncation guard/GITHUB_TOKEN — this walks the
@@ -70,9 +71,10 @@ export function taskSlugFromPath(relPath: string): string {
 }
 
 /**
- * Diagnostics-only grouping directory chain for a task.json, relative to the
- * tasks root and excluding the leaf directory. NEVER emitted as data — used
- * only for the summary log line and slug-collision error messages.
+ * Grouping directory chain for a task.json, relative to the tasks root and
+ * excluding the leaf directory. Emitted verbatim as the task's `section` (UI
+ * grouping only — the slug deliberately excludes it); also used for the
+ * summary log line and slug-collision error messages.
  *
  * @param relPath - task.json path relative to the tasks root, posix-separated.
  */
@@ -263,7 +265,12 @@ export function generateWorkflowBenchmarkTasks(rootDir: string): GenerateResult 
       expectedOutputs[slug] = expected_output;
     }
 
-    const task: WorkflowBenchmarkTask = { slug, ...rest, instructions };
+    const task: WorkflowBenchmarkTask = {
+      slug,
+      section: directoryFromPath(file.relPath),
+      ...rest,
+      instructions,
+    };
     tasks.push(task);
   }
 
@@ -321,6 +328,7 @@ function renderTaskLiteral(task: WorkflowBenchmarkTask): string {
 
   return `  {
     slug: ${JSON.stringify(task.slug)},
+    section: ${JSON.stringify(task.section)},
     title: ${JSON.stringify(task.title)},
     instructions: ${JSON.stringify(task.instructions)},
     criteria: [

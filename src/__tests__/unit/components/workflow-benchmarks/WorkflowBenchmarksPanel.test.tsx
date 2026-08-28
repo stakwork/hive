@@ -5,6 +5,9 @@
  * Unit tests for WorkflowBenchmarksPanel.
  *
  * Covers:
+ *   - Section sidebar rendered from the tasks' `section` field, with counts,
+ *     first section (alphabetical) auto-selected
+ *   - Clicking a section switches the visible task list
  *   - Inputs block rendered when a task declares workflow_input
  *   - Inputs block omitted entirely when a task declares none
  *   - The expected answer is never rendered (structurally absent from this
@@ -25,9 +28,10 @@ vi.mock("@/hooks/useWorkspace", () => ({
   useWorkspace: () => mockUseWorkspace(),
 }));
 
-const { WITH_INPUT_TASK, NO_INPUT_TASK } = vi.hoisted(() => ({
+const { WITH_INPUT_TASK, NO_INPUT_TASK, VISION_TASK } = vi.hoisted(() => ({
   WITH_INPUT_TASK: {
     slug: "wfbench/generate-capital-city",
+    section: "llm",
     title: "Answer a capital city",
     instructions: "Do the thing.\n\n## Workflow Inputs\n\nDeclare... \n\n- `country`",
     criteria: [{ id: "C-001", title: "Uses country", match_criteria: "References `country`." }],
@@ -35,14 +39,22 @@ const { WITH_INPUT_TASK, NO_INPUT_TASK } = vi.hoisted(() => ({
   },
   NO_INPUT_TASK: {
     slug: "wfbench/create-openai-call",
+    section: "llm",
     title: "Create an OpenAI call",
     instructions: "Do the other thing.",
     criteria: [{ id: "C-001", title: "Has a step", match_criteria: "Has a request step." }],
   },
+  VISION_TASK: {
+    slug: "wfbench/gaia-chess-winning-move",
+    section: "vision",
+    title: "Choose a chess move",
+    instructions: "Read the board.",
+    criteria: [{ id: "C-001", title: "Reads image", match_criteria: "Consumes the image." }],
+  },
 }));
 
 vi.mock("@/lib/workflow-benchmark-tasks", () => ({
-  WORKFLOW_BENCHMARK_TASKS: [WITH_INPUT_TASK, NO_INPUT_TASK],
+  WORKFLOW_BENCHMARK_TASKS: [WITH_INPUT_TASK, NO_INPUT_TASK, VISION_TASK],
 }));
 
 vi.stubGlobal("fetch", vi.fn());
@@ -50,16 +62,32 @@ vi.stubGlobal("fetch", vi.fn());
 import { WorkflowBenchmarksPanel } from "@/components/workflow-benchmarks/WorkflowBenchmarksPanel";
 
 describe("WorkflowBenchmarksPanel", () => {
-  it("renders both task cards", () => {
+  it("renders the section sidebar with per-section counts and auto-selects the first section", () => {
     render(<WorkflowBenchmarksPanel />);
+
+    // Sections sorted alphabetically: llm (displayed "LLM") before vision.
+    expect(screen.getByRole("button", { name: /LLM/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Vision/ })).toBeInTheDocument();
+
+    // First section auto-selected — its two cards visible, vision's not.
     expect(screen.getByText("Answer a capital city")).toBeInTheDocument();
     expect(screen.getByText("Create an OpenAI call")).toBeInTheDocument();
+    expect(screen.queryByText("Choose a chess move")).not.toBeInTheDocument();
+  });
+
+  it("switches the visible task list when a section is clicked", () => {
+    render(<WorkflowBenchmarksPanel />);
+    fireEvent.click(screen.getByRole("button", { name: /Vision/ }));
+
+    expect(screen.getByText("Choose a chess move")).toBeInTheDocument();
+    expect(screen.queryByText("Answer a capital city")).not.toBeInTheDocument();
+    expect(screen.queryByText("Create an OpenAI call")).not.toBeInTheDocument();
   });
 
   it("shows an Inputs block with key/value pairs when the task declares workflow_input, after expanding", () => {
     render(<WorkflowBenchmarksPanel />);
     const expandButtons = screen.getAllByLabelText("Expand task details");
-    // First card corresponds to WITH_INPUT_TASK
+    // First card in the auto-selected llm section corresponds to WITH_INPUT_TASK
     fireEvent.click(expandButtons[0]);
 
     expect(screen.getByText("Inputs (read-only)")).toBeInTheDocument();
