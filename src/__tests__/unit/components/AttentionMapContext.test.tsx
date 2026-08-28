@@ -83,6 +83,7 @@ vi.mock("@/lib/pusher", () => ({
 
 import {
   AttentionMapProvider,
+  useAttentionMapContext,
   useAttentionType,
 } from "@/app/org/[githubLogin]/connections/AttentionMapContext";
 import { usePusherChannel } from "@/hooks/usePusherChannel";
@@ -410,5 +411,105 @@ describe("AttentionMapProvider + useAttentionType", () => {
     await flushPromises();
     // No crash; badge reflects the polled state
     expect(result.current).toBe("halted");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Context value: items + lastUpdatedAt + memoized identity stability
+// ---------------------------------------------------------------------------
+
+describe("AttentionMapProvider context value (items / lastUpdatedAt)", () => {
+  test("exposes the full pre-ranked items array and a lastUpdatedAt > 0 after a successful fetch", async () => {
+    const items = [
+      makeItem("feature", "feat-a", "halted"),
+      makeItem("task", "task-b", "plan-question"),
+    ];
+    const wrapper = makeWrapper(items);
+
+    const { result } = renderHook(() => useAttentionMapContext(), { wrapper });
+    await flushPromises();
+
+    expect(result.current.items).toEqual(items);
+    expect(result.current.lastUpdatedAt).toBeGreaterThan(0);
+    // getAttentionType still works alongside the new fields.
+    expect(result.current.getAttentionType("feature", "feat-a")).toBe("halted");
+  });
+
+  test("memoized value identity is stable across renders that don't trigger a refresh", async () => {
+    const items = [makeItem("feature", "feat-1", "halted")];
+    const wrapper = makeWrapper(items);
+
+    const { result, rerender } = renderHook(() => useAttentionMapContext(), {
+      wrapper,
+    });
+    await flushPromises();
+
+    const valueAfterFetch = result.current;
+    expect(valueAfterFetch.items).toEqual(items);
+
+    // Re-render the tree (no refresh triggered): the context value must
+    // keep its identity so badge consumers don't re-render.
+    rerender();
+    rerender();
+    expect(result.current).toBe(valueAfterFetch);
+  });
+
+  test("identity changes only when a refresh lands (30s interval poll)", async () => {
+    vi.useFakeTimers();
+    const items1 = [makeItem("feature", "feat-1", "halted")];
+    const wrapper = makeWrapper(items1);
+
+    const { result } = renderHook(() => useAttentionMapContext(), { wrapper });
+    await act(async () => { await Promise.resolve(); });
+
+    const first = result.current;
+    expect(first.items).toEqual(items1);
+
+    // 30s poll → new fetch with different data → new value identity.
+    const items2 = [
+      makeItem("feature", "feat-1", "halted"),
+      makeItem("task", "task-2", "ready-to-review"),
+    ];
+    (global.fetch as Mock).mockResolvedValue({
+      ok: true,
+      json: async () => ({ items: items2 }),
+    });
+
+    await act(async () => {
+      vi.advanceTimersByTime(30_000);
+      await Promise.resolve();
+    });
+
+    expect(result.current).not.toBe(first);
+    expect(result.current.items).toEqual(items2);
+    expect(result.current.lastUpdatedAt).toBeGreaterThanOrEqual(first.lastUpdatedAt);
+  });
+
+  test("a failed refresh keeps the previous value identity (no re-render churn)", async () => {
+    const items = [makeItem("task", "task-9", "halted")];
+    (global.fetch as Mock)
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ items }) })
+      .mockResolvedValueOnce({ ok: false });
+
+    vi.useFakeTimers();
+    const wrapper = function Wrapper({ children }: { children: React.ReactNode }) {
+      return (
+        <AttentionMapProvider githubLogin="my-org" visibleWorkspaceSlugs={["ws-alpha"]}>
+          {children}
+        </AttentionMapProvider>
+      );
+    };
+
+    const { result } = renderHook(() => useAttentionMapContext(), { wrapper });
+    await act(async () => { await Promise.resolve(); });
+
+    const first = result.current;
+    await act(async () => {
+      vi.advanceTimersByTime(30_000);
+      await Promise.resolve();
+    });
+
+    // Fetch failed → map untouched → identity unchanged.
+    expect(result.current).toBe(first);
   });
 });

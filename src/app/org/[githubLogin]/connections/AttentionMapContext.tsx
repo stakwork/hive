@@ -88,11 +88,39 @@ interface AttentionMapContextValue {
     entityKind: "feature" | "task",
     entityId: string,
   ) => AttentionItem["type"] | null;
+  /**
+   * The full attention feed, in the server's pre-ranked order (the
+   * map is built by inserting fetch results in order, and Map
+   * iteration preserves insertion order). Derived inside the same
+   * memo as `getAttentionType` so the whole value shares one identity
+   * that changes only on the 30s-poll / Pusher-debounced refresh
+   * cadence — badge consumers never re-render more often than that.
+   */
+  readonly items: readonly AttentionItem[];
+  /**
+   * Wall-clock ms timestamp of the last successful refresh. 0 until
+   * the first successful fetch. A Pusher event can trail reality by
+   * up to ~30s (2s trailing debounce + 30s interval poll as the
+   * staleness net), so freshness-sensitive consumers (e.g. the Live
+   * Now panel's "updated Ns ago" footer) should display this rather
+   * than imply hard realtime.
+   */
+  lastUpdatedAt: number;
 }
 
-const AttentionMapContext = createContext<AttentionMapContextValue>({
+// Module-level frozen empty array so the default context value's
+// `items` identity is stable across renders.
+const EMPTY_ITEMS: readonly AttentionItem[] = Object.freeze([]);
+
+const DEFAULT_CONTEXT_VALUE: AttentionMapContextValue = {
   getAttentionType: () => null,
-});
+  items: EMPTY_ITEMS,
+  lastUpdatedAt: 0,
+};
+
+const AttentionMapContext = createContext<AttentionMapContextValue>(
+  DEFAULT_CONTEXT_VALUE,
+);
 
 // ---------------------------------------------------------------------------
 // Hook for leaf consumers
@@ -110,6 +138,21 @@ export function useAttentionType(
 ): AttentionItem["type"] | null {
   const ctx = useContext(AttentionMapContext);
   return ctx.getAttentionType(entityKind, entityId);
+}
+
+/**
+ * Returns the full attention-map context value (`getAttentionType` +
+ * `items` + `lastUpdatedAt`). The value's identity changes only on
+ * the refresh cadence (Pusher-debounced or 30s poll) — never on
+ * unrelated parent re-renders — because everything is derived inside
+ * a single memo.
+ *
+ * Consumers that only need a single entity's type should prefer
+ * `useAttentionType`; this hook is for aggregate consumers such as
+ * the Live Now panel.
+ */
+export function useAttentionMapContext(): AttentionMapContextValue {
+  return useContext(AttentionMapContext);
 }
 
 // ---------------------------------------------------------------------------
@@ -210,6 +253,11 @@ export function AttentionMapProvider({
     Map<AttentionMapKey, AttentionItem>
   >(new Map());
 
+  // Wall-clock ms of the last successful refresh (0 until the first
+  // one). Batched with the map update so the context value identity
+  // changes exactly once per refresh.
+  const [lastUpdatedAt, setLastUpdatedAt] = useState(0);
+
   // Debounce timer ref — reset on every event so a burst collapses
   // into a single re-fetch.
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -221,6 +269,7 @@ export function AttentionMapProvider({
   const fetchAndUpdate = useCallback(async () => {
     if (visibleWorkspaceSlugs.length === 0) {
       setAttentionMap(new Map());
+      setLastUpdatedAt(Date.now());
       return;
     }
     try {
@@ -239,6 +288,7 @@ export function AttentionMapProvider({
         map.set(key, item);
       }
       setAttentionMap(map);
+      setLastUpdatedAt(Date.now());
     } catch {
       // Silently absorb — the existing map stays valid; the 30s poll
       // will retry.
@@ -314,10 +364,19 @@ export function AttentionMapProvider({
     [attentionMap],
   );
 
-  const contextValue = useMemo<AttentionMapContextValue>(
-    () => ({ getAttentionType }),
-    [getAttentionType],
-  );
+  // Everything the value exposes is derived inside this single memo so
+  // the whole context value shares one identity. `getAttentionType` (a
+  // useCallback keyed on `attentionMap`) already changes exactly when a
+  // refresh lands; `attentionMap` + `lastUpdatedAt` are listed for
+  // exhaustiveness but change on precisely the same cadence, so badge
+  // consumers never re-render more often than the refresh itself.
+  const contextValue = useMemo<AttentionMapContextValue>(() => {
+    // Map iteration preserves insertion order — the fetch response is
+    // server-ranked, so `items` is the pre-ranked feed, not map-hash
+    // order.
+    const items: AttentionItem[] = Array.from(attentionMap.values());
+    return { getAttentionType, items, lastUpdatedAt };
+  }, [getAttentionType, attentionMap, lastUpdatedAt]);
 
   return (
     <AttentionMapContext.Provider value={contextValue}>
