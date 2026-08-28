@@ -486,6 +486,32 @@ describe("successToast option", () => {
     expect(toast.success).toHaveBeenLastCalledWith("Plan agent stopped");
   });
 
+  it("does not POST a stop when the resolved run is already terminal", async () => {
+    const stopFetch = vi.fn().mockResolvedValue({ ok: true, json: async () => ({}) });
+    vi.mocked(global.fetch).mockImplementation((url: string | URL | Request) => {
+      if (typeof url === "string" && url.includes("/stop")) {
+        return stopFetch();
+      }
+      return Promise.resolve({
+        ok: true,
+        json: async () => ({ runs: [makeRun("COMPLETED")] }),
+      } as Response);
+    });
+
+    const { result } = renderHook(() =>
+      useStakworkGeneration({ featureId: "feature-123", type: "PLAN_CHAT", enabled: true })
+    );
+
+    await waitFor(() => expect(result.current.querying).toBe(false));
+    await waitFor(() => expect(result.current.latestRun).not.toBeNull());
+
+    await act(async () => {
+      await result.current.stopRun();
+    });
+
+    expect(stopFetch).not.toHaveBeenCalled();
+  });
+
   it("exposes querying in the return value", async () => {
     const { result } = renderHook(() =>
       useStakworkGeneration({ featureId: "feature-123", type: "PLAN_CHAT", enabled: true })

@@ -1089,7 +1089,8 @@ export function OrgCanvasBackground({
               const rres = await fetch(`/api/stakwork/runs?${params}`);
               if (!rres.ok) throw new Error();
               const run = (await rres.json())?.runs?.find(
-                (r: { decision: string | null }) => r.decision === null,
+                (r: { status: string }) =>
+                  r.status === "IN_PROGRESS" || r.status === "PENDING",
               );
               if (!run) {
                 toast.error("No active planner run to stop");

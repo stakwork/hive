@@ -161,6 +161,11 @@ export function useStakworkGeneration({
 
   const stopRun = useCallback(async () => {
     if (!latestRun?.id || isStopping) return;
+    // Only an active run can be stopped — never POST a stop for a terminal run,
+    // which would otherwise ask the server to halt an already-finished run.
+    if (latestRun.status !== "IN_PROGRESS" && latestRun.status !== "PENDING") {
+      return;
+    }
 
     try {
       setIsStopping(true);
@@ -180,7 +185,7 @@ export function useStakworkGeneration({
     } finally {
       setIsStopping(false);
     }
-  }, [latestRun?.id, isStopping, queryLatestRun, successToast]);
+  }, [latestRun?.id, latestRun?.status, isStopping, queryLatestRun, successToast]);
 
   return {
     latestRun,
