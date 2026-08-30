@@ -73,6 +73,7 @@ describe("POST /api/chat/response — plan artifact notifications", () => {
       ownerId: owner.id,
       name: "Test Workspace",
       slug: "test-ws-chat-notif",
+      sphinxEnabled: true,
     });
     feature = await db.feature.create({
       data: {

@@ -49,6 +49,7 @@ describe("FEATURE_COMPLETED notification", () => {
       ownerId: owner.id,
       name: "Test Workspace",
       slug: "test-ws-feat-complete",
+      sphinxEnabled: true,
     });
 
     await db.workspaceMember.create({

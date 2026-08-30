@@ -34,6 +34,7 @@ export interface CreateTestWorkspaceOptions {
   stakworkApiKey?: string | null;
   sourceControlOrgId?: string | null;
   repositoryDraft?: string | null;
+  sphinxEnabled?: boolean;
   /** If true, return existing workspace if slug matches */
   idempotent?: boolean;
 }
@@ -76,6 +77,7 @@ export async function createTestWorkspace(
       stakworkApiKey: options.stakworkApiKey ?? null,
       sourceControlOrgId: options.sourceControlOrgId ?? null,
       repositoryDraft: options.repositoryDraft ?? null,
+      sphinxEnabled: options.sphinxEnabled ?? false,
     },
   });
 }
