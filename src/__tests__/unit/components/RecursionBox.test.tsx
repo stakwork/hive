@@ -972,6 +972,7 @@ describe("RecursionCard — allRuns prop (consolidated-run detection)", () => {
       id: overrides.id ?? "con-run-1",
       workspaceId: "ws-1",
       runType: "recursion" as const,
+      pipeline: "LEGAL_BENCHMARK_CONSOLIDATED" as import("@prisma/client").StakworkRunType,
       status: overrides.status ?? "PENDING" as import("@prisma/client").WorkflowStatus,
       projectId: null,
       taskSlug: overrides.taskSlug ?? "antitrust/task-1",
