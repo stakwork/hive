@@ -393,16 +393,19 @@ function RecursionCard({ entry, refetch, allRuns }: RecursionCardProps) {
   // `allRuns` is lifted from RecursionTab (via RecursionList) so the whole tab
   // shares one fetch-and-poll loop instead of one per card.
 
-  // Find the most recent CONSOLIDATED run for this taskSlug.
+  // Most recent CONSOLIDATED run for this task, any status — seeds
+  // effectiveConsolidatedRunId so a refresh shows either "Generating…" for an
+  // in-flight run, or the "View Consolidated Report" link for a completed one.
+  // Filtering on `pipeline` (not `runType`) is required: `runType` collapses
+  // EVAL/RECURSION/CONSOLIDATED down to the same "recursion" string, so it
+  // cannot by itself distinguish a consolidated-report run from an unrelated
+  // analysis/fix-proposal run for the same task.
   const existingConsolidated = useMemo(() => {
     return (allRuns ?? [])
       .filter(
         (r) =>
           r.taskSlug === entry.id &&
-          r.runType === "recursion" &&
-          (r.status === WorkflowStatus.PENDING ||
-            r.status === WorkflowStatus.IN_PROGRESS) &&
-          !r.hasReport,
+          r.pipeline === StakworkRunType.LEGAL_BENCHMARK_CONSOLIDATED,
       )
       .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0] ?? null;
   }, [allRuns, entry.id]);
