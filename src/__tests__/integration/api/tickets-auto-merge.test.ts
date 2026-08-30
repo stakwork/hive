@@ -1,15 +1,17 @@
 /**
- * Integration tests for the auto-merge gate on PATCH /api/tickets/[ticketId]
+ * Integration tests for the auto-merge gate on:
+ *   - PATCH /api/tickets/[ticketId]
+ *   - POST  /api/features/[featureId]/tickets  (canvasAutonomousTurns path)
  *
- * These tests hit a real test database and mock only the GitHub API layer
- * (getOctokitForWorkspace + checkRepoAllowsAutoMerge).
+ * Tests hit a real test database and mock only the GitHub API layer.
  */
 import { describe, test, expect, beforeEach, afterEach, vi } from "vitest";
 import { PATCH } from "@/app/api/tickets/[ticketId]/route";
+import { POST } from "@/app/api/features/[featureId]/tickets/route";
 import { db } from "@/lib/db";
 import { createTestUser, createTestWorkspace } from "@/__tests__/support/fixtures";
 import { createTestRepository } from "@/__tests__/support/factories/repository.factory";
-import { createAuthenticatedPatchRequest } from "@/__tests__/support/helpers";
+import { createAuthenticatedPatchRequest, createAuthenticatedPostRequest } from "@/__tests__/support/helpers";
 import { resetDatabase } from "@/__tests__/support/utilities/database";
 
 // ── Mock the GitHub helpers so no real network calls are made ──────────────
@@ -28,9 +30,23 @@ vi.mock("@/lib/github", async (importOriginal) => {
   };
 });
 
+// resolveAutoMergeDefault imports getOctokitForWorkspace directly from pr-monitor
+// (not the barrel), so we need to intercept it there too.
+vi.mock("@/lib/github/pr-monitor", async (importOriginal) => {
+  const original = await importOriginal<typeof import("@/lib/github/pr-monitor")>();
+  return {
+    ...original,
+    getOctokitForWorkspace: (...args: unknown[]) =>
+      mockGetOctokitForWorkspace(...args),
+  };
+});
+
 // ── Helpers ────────────────────────────────────────────────────────────────
 
-const MOCK_OCTOKIT = { rest: {} } as never;
+// MOCK_OCTOKIT needs rest.repos.get because checkRepoAllowsAutoMerge is called
+// directly (same-file) inside resolveAutoMergeDefault and reads that method.
+const mockReposGet = vi.fn();
+const MOCK_OCTOKIT = { rest: { repos: { get: mockReposGet } } } as never;
 
 async function setupTicket(
   options: { repositoryUrl?: string; allowAutoMerge?: boolean } = {}
@@ -302,5 +318,198 @@ describe("PATCH /api/tickets/[ticketId] — auto-merge gate", () => {
       select: { autoMerge: true },
     });
     expect(dbTask?.autoMerge).toBe(false);
+  });
+});
+
+// ── POST /api/features/[featureId]/tickets — canvasAutonomousTurns path ───
+
+async function setupFeatureWithRepo(options: {
+  canvasAutonomousTurns?: boolean;
+  repositoryUrl?: string;
+  allowAutoMerge?: boolean;
+} = {}) {
+  const user = await createTestUser();
+
+  // Update user to set canvasAutonomousTurns preference
+  if (options.canvasAutonomousTurns !== undefined) {
+    await db.user.update({
+      where: { id: user.id },
+      data: { canvasAutonomousTurns: options.canvasAutonomousTurns },
+    });
+  }
+
+  const workspace = await createTestWorkspace({
+    ownerId: user.id,
+    slug: `ws-ct-${Date.now()}`,
+  });
+
+  const feature = await db.feature.create({
+    data: {
+      title: "Auto-merge test feature",
+      workspaceId: workspace.id,
+      createdById: user.id,
+      updatedById: user.id,
+    },
+  });
+
+  const repo = await createTestRepository({
+    workspaceId: workspace.id,
+    repositoryUrl: options.repositoryUrl ?? "https://github.com/owner/automerge-repo",
+    name: "automerge-repo",
+  });
+
+  if (options.allowAutoMerge) {
+    await db.repository.update({
+      where: { id: repo.id },
+      data: { allowAutoMerge: true },
+    });
+  }
+
+  return { user, workspace, feature, repo };
+}
+
+describe("POST /api/features/[featureId]/tickets — canvasAutonomousTurns auto-merge", () => {
+  beforeEach(async () => {
+    await resetDatabase();
+    vi.clearAllMocks();
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  test("sets autoMerge: true when canvasAutonomousTurns is true and GitHub allows auto-merge", async () => {
+    const { user, feature, repo } = await setupFeatureWithRepo({
+      canvasAutonomousTurns: true,
+      repositoryUrl: "https://github.com/owner/automerge-repo",
+    });
+
+    mockGetOctokitForWorkspace.mockResolvedValue(MOCK_OCTOKIT);
+    // checkRepoAllowsAutoMerge is called same-file inside resolveAutoMergeDefault,
+    // so the barrel mock has no effect there. Mock the underlying octokit call instead.
+    mockReposGet.mockResolvedValue({ data: { allow_auto_merge: true } });
+
+    const request = createAuthenticatedPostRequest(
+      `http://localhost:3000/api/features/${feature.id}/tickets`,
+      { title: "Auto-merge task", repositoryId: repo.id },
+      user
+    );
+
+    const response = await POST(request, {
+      params: Promise.resolve({ featureId: feature.id }),
+    });
+
+    expect(response.status).toBe(201);
+    const body = await response.json();
+    expect(body.success).toBe(true);
+    expect(body.data.autoMerge).toBe(true);
+
+    // Verify persisted in DB
+    const dbTask = await db.task.findUnique({
+      where: { id: body.data.id },
+      select: { autoMerge: true },
+    });
+    expect(dbTask?.autoMerge).toBe(true);
+
+    // Verify the repo cache was set
+    const dbRepo = await db.repository.findUnique({
+      where: { id: repo.id },
+      select: { allowAutoMerge: true },
+    });
+    expect(dbRepo?.allowAutoMerge).toBe(true);
+  });
+
+  test("sets autoMerge: false when canvasAutonomousTurns is false", async () => {
+    const { user, feature, repo } = await setupFeatureWithRepo({
+      canvasAutonomousTurns: false,
+      repositoryUrl: "https://github.com/owner/automerge-repo",
+    });
+
+    const request = createAuthenticatedPostRequest(
+      `http://localhost:3000/api/features/${feature.id}/tickets`,
+      { title: "No auto-merge task", repositoryId: repo.id },
+      user
+    );
+
+    const response = await POST(request, {
+      params: Promise.resolve({ featureId: feature.id }),
+    });
+
+    expect(response.status).toBe(201);
+    const body = await response.json();
+    expect(body.data.autoMerge).toBe(false);
+
+    // GitHub should NOT have been called
+    expect(mockGetOctokitForWorkspace).not.toHaveBeenCalled();
+    expect(mockCheckRepoAllowsAutoMerge).not.toHaveBeenCalled();
+  });
+
+  test("uses cached allowAutoMerge: true without calling GitHub", async () => {
+    const { user, feature, repo } = await setupFeatureWithRepo({
+      canvasAutonomousTurns: true,
+      allowAutoMerge: true,
+    });
+
+    const request = createAuthenticatedPostRequest(
+      `http://localhost:3000/api/features/${feature.id}/tickets`,
+      { title: "Cached auto-merge task", repositoryId: repo.id },
+      user
+    );
+
+    const response = await POST(request, {
+      params: Promise.resolve({ featureId: feature.id }),
+    });
+
+    expect(response.status).toBe(201);
+    const body = await response.json();
+    expect(body.data.autoMerge).toBe(true);
+
+    // No GitHub call needed — cache hit
+    expect(mockGetOctokitForWorkspace).not.toHaveBeenCalled();
+    expect(mockCheckRepoAllowsAutoMerge).not.toHaveBeenCalled();
+  });
+
+  test("honours explicit autoMerge: false even when canvasAutonomousTurns is true", async () => {
+    const { user, feature, repo } = await setupFeatureWithRepo({
+      canvasAutonomousTurns: true,
+    });
+
+    const request = createAuthenticatedPostRequest(
+      `http://localhost:3000/api/features/${feature.id}/tickets`,
+      { title: "Explicit false task", repositoryId: repo.id, autoMerge: false },
+      user
+    );
+
+    const response = await POST(request, {
+      params: Promise.resolve({ featureId: feature.id }),
+    });
+
+    expect(response.status).toBe(201);
+    const body = await response.json();
+    expect(body.data.autoMerge).toBe(false);
+
+    // resolveAutoMergeDefault must NOT be called (explicit override)
+    expect(mockGetOctokitForWorkspace).not.toHaveBeenCalled();
+    expect(mockCheckRepoAllowsAutoMerge).not.toHaveBeenCalled();
+  });
+
+  test("sets autoMerge: false when canvasAutonomousTurns is true but no repositoryId", async () => {
+    const { user, feature } = await setupFeatureWithRepo({
+      canvasAutonomousTurns: true,
+    });
+
+    const request = createAuthenticatedPostRequest(
+      `http://localhost:3000/api/features/${feature.id}/tickets`,
+      { title: "No repo task" },
+      user
+    );
+
+    const response = await POST(request, {
+      params: Promise.resolve({ featureId: feature.id }),
+    });
+
+    expect(response.status).toBe(201);
+    const body = await response.json();
+    expect(body.data.autoMerge).toBe(false);
   });
 });
