@@ -2260,9 +2260,25 @@ async function approvePromptUpdate(args: {
 // the card can deep-link to the concept in the learn UI.
 
 /**
- * Resolve a Concept's jarvis ref_id from its gitree slug address.
- * Both writers stamp `id` on the node: gitree's `saveConcept` always has,
- * and the jarvis create path above passes it in `node_data`.
+ * Resolve a Concept's jarvis ref_id from whatever identifier the agent has.
+ *
+ * Matches the same three addresses gitree's `getConcept` does
+ * (`WHERE f.id = $id OR f.node_key = $rawId OR f.ref_id = $rawId`), and for
+ * the same reason: `list_concepts` / `read_concept_documentation` read
+ * through gitree, whose `nodeToConcept` falls back to `node_key`/`ref_id`
+ * when a node has no `id` property. Resolving on `id` alone made every such
+ * concept readable but not updatable — the agent would be handed a body by
+ * `read_concept_documentation` and then get a 404 from
+ * `propose_concept_update` for the very id it was just given.
+ *
+ * Not every Concept carries `id`: gitree's `saveConcept` stamps it and the
+ * jarvis create path above passes it in `node_data`, but concepts created
+ * through other jarvis writers have only `node_key`.
+ *
+ * Jarvis ANDs `search_filters`, so the alternatives are tried in sequence,
+ * cheapest-first. `readNodeByRef` is last because it only applies when the
+ * caller passed a bare ref_id (its `isSafeRefId` guard rejects slug
+ * addresses like "owner/repo/slug" without issuing a request).
  */
 async function findConceptRefById(
   config: { jarvisUrl: string; apiKey: string },
@@ -2271,22 +2287,38 @@ async function findConceptRefById(
   | { ok: true; refId: string }
   | { ok: false; error: string; status: number }
 > {
-  const search = await searchNodesByAttributes(config, {
-    nodeTypes: ["Concept"],
-    filters: [{ attribute: "id", value: conceptId, comparator: "=" }],
-    limit: 1,
-  });
-  if (!search.ok) {
+  let reachedGraph = false;
+
+  for (const attribute of ["id", "node_key"]) {
+    const search = await searchNodesByAttributes(config, {
+      nodeTypes: ["Concept"],
+      filters: [{ attribute, value: conceptId, comparator: "=" }],
+      limit: 1,
+    });
+    if (search.ok) {
+      reachedGraph = true;
+      if (search.nodes[0]) {
+        return { ok: true, refId: search.nodes[0].ref_id };
+      }
+    }
+  }
+
+  // Bare ref_id — what gitree hands back for a concept with no `id`.
+  const byRef = await readNodeByRef(config, conceptId);
+  if (byRef.success && byRef.node_type === "Concept") {
+    return { ok: true, refId: conceptId };
+  }
+
+  // Only report "not found" if the graph actually answered; otherwise the
+  // lookups failed for transport reasons and a 404 would be a lie.
+  if (!reachedGraph) {
     return {
       ok: false,
       error: "Could not reach the workspace graph.",
       status: 502,
     };
   }
-  if (!search.nodes[0]) {
-    return { ok: false, error: `Concept '${conceptId}' not found.`, status: 404 };
-  }
-  return { ok: true, refId: search.nodes[0].ref_id };
+  return { ok: false, error: `Concept '${conceptId}' not found.`, status: 404 };
 }
 
 // ── Concept anchor edges (jarvis migration 111) ──────────────────────
