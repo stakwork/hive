@@ -64,12 +64,6 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       );
     }
 
-    // IDOR guard: the handler loaded `members` filtered by userId but
-    // never checked `members.length` or `ownerId`, so any signed-in
-    // user could read workflow_version nodes (including raw
-    // workflow_json) from any workspace slug via the victim's
-    // decrypted swarmApiKey. Require active ownership or membership
-    // before decrypting credentials or calling the graph API.
     const isOwner = workspace.ownerId === userId;
     const isMember = workspace.members.length > 0;
     if (!isOwner && !isMember) {
