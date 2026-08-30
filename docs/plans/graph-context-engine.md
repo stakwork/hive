@@ -52,12 +52,17 @@ user utterance / new task
         ▼
    context block handed to the consuming agent
 
-   [loop A] OUTCOME COUNTING — on each outcome event (profile.outcomeEvent),
-            increment `weight` on the edges along task → artifact → leaves;
-            recency decay so the walk prefers recently-reinforced paths.
+   [loop A] OUTCOME COUNTING — on each outcome event (profile.outcomeEvents),
+            increment `weight` on the edges along task → artifact → leaves,
+            scaled by outcome magnitude; recency decay so the walk prefers
+            recently-reinforced paths.
    [loop B] USAGE LOGGING — every query logged (query text, seeds, returned
             refs, consumer, task id); joined later against outcome events to
             yield precision@k, ranking labels, and merge candidates.
+   [loop C] TRACE INGESTION — the agent's journey (searches, reads, acts,
+            reverts) mapped to a closed verb vocabulary and joined to
+            outcomes by task ref; wrong turns and dead ends become labels
+            (see "the trace stream", below).
 ```
 
 No trained model in v1. Learning happens in the graph (edge weights), and
@@ -140,8 +145,8 @@ graph where:
    seedable layer (lexicon) to the deliverable layer (leaves) — otherwise
    the walk ranks the lexicon and never reaches evidence. Path length and
    edge names don't matter; reachability does.
-5. **An outcome event exists** (or the deployment accepts degraded mode —
-   see below).
+5. **At least one outcome event exists** (or the deployment accepts
+   degraded mode — see below).
 
 Ingestion — parsing, chunking, entity/relation extraction, embedding — is
 explicitly out of scope for the engine. Deterministic extraction (ASTs, git)
@@ -151,16 +156,27 @@ a domain honors it is its own pipeline's problem.
 
 ## The outcome event: the real generality test
 
-Everything adaptive in this design — edge weights (loop A), labels (loop B),
-and the eval harness — hangs on one domain-native fact: **an unambiguous,
-machine-readable event that links a task to the exact leaves it actually
-used.** In the code domain this is the merged PR: free, frequent, and
-adversary-proof ("labels that can't argue back").
+Everything adaptive in this design — edge weights (loop A), labels (loops B
+and C), and the eval harness — hangs on one domain-native fact: **an
+unambiguous, machine-readable event that links a task to the exact leaves it
+actually used.** In the code domain this is the merged PR: free, frequent,
+and adversary-proof ("labels that can't argue back").
 
-A domain profile must declare its outcome event as:
+A domain is not one flow. Code today runs chat → plan → task → PR → merged;
+the same deployment will run others (ingest documents → build workflow →
+evaluate against a legal benchmark, and flows nobody has named yet). A
+profile therefore declares outcome events **plural** — one per flow — and
+each may carry a **magnitude** (default 1): merged-or-not is binary, a
+benchmark evaluation is a score. Loop A scales its increments by magnitude,
+so a graded outcome teaches proportionally — a workflow that benchmarks at
+0.3 barely reinforces the paths that built it. The engine never knows which
+flow produced an event; it joins everything by task ref.
+
+A domain profile must declare each outcome event as:
 
 ```
 (task node) ──outcome artifact──> (set of leaf nodes actually touched/used)
+                                   [+ optional magnitude of the outcome]
 ```
 
 The strength of a domain's outcome event determines how much of this design
@@ -175,6 +191,97 @@ it gets:
 
 State this degradation honestly per deployment. A domain without an outcome
 event has not broken the engine — it has opted out of the learning half.
+
+## The trace stream: the journey, generalized
+
+Outcome events record what a task *ended as*. They erase the journey — and
+the journey is where the other half of the learning signal lives: which
+paths found the evidence quickly, which reads were dead ends, which acts got
+reverted. Everything wrong-turn-shaped is here and nowhere else. Two label
+gaps in an outcomes-only design make traces mandatory, not nice-to-have:
+
+- **Essential read-only context scores as a miss.** The interface being
+  implemented, the callers of the changed function, the controlling
+  precedent — crucial to *understanding*, absent from the outcome diff.
+  Outcomes-only labels train the system to predict the diff, not to
+  assemble what the agent needed to know.
+- **Wrong turns are invisible.** Loop B's "retrieved ∧ not touched" covers
+  only the engine's own suggestions. The agent's self-directed exploration
+  — opened and abandoned, tried and reverted — never becomes a label.
+
+The generalization principle is the same one the rest of the engine runs
+on: **the engine never learns what a flow is.** Chat → plan → task → PR →
+merged is one flow; ingest documents → build workflow → evaluate against
+benchmark is another; next quarter's is a third. The engine sees none of
+them. It sees a timestamped event stream per task, joined to outcome events
+by task ref. Flow shape is emergent from the stream, never declared; stage
+names are opaque strings used only in reporting. If engine code ever
+branches on a stage name, that's the same bug as a domain node type in
+engine source.
+
+The profile maps domain-native events into a canonical record:
+
+```ts
+interface TraceRecord {
+  taskRef: NodeRef;        // joins stream ↔ outcomes
+  actorRef?: ActorRef;     // same opacity as bias seeds
+  ts: Timestamp;
+  verb: TraceVerb;         // closed vocabulary, below
+  refs: NodeRef[];         // graph nodes the event touched
+  queryText?: string;      // for search verbs
+  provenance: "retrieval" | "self";  // engine-suggested vs. found alone
+  stage?: string;          // opaque ("plan", "workflow-build"); reporting only
+}
+```
+
+The verb vocabulary is the only trace semantics the engine owns — five
+verbs, chosen because every flow we can name reduces to them:
+
+| Verb      | Meaning                                                  |
+| --------- | -------------------------------------------------------- |
+| `search`  | actor looked for something (query text, hits)             |
+| `inspect` | actor consumed a node's content                           |
+| `act`     | actor did work on/with a node                             |
+| `revert`  | actor undid a prior act — the purest wrong-turn marker    |
+| `cite`    | a node was referenced in an artifact                      |
+
+Mapping is the profile's problem. Code: file read → inspect, grep →
+search, edit → act, revert/re-edit-to-original → revert, in-PR-diff →
+cite. Legal workflow-building: document opened → inspect, clause added to
+workflow → act, workflow step deleted → revert, cited in output → cite. An
+event with no honest mapping is dropped, not forced. Trace refs must
+resolve to graph nodes; unresolvable events are dropped and *counted* —
+resolution rate is a trace-health metric, exactly parallel to seed hit
+rate.
+
+**Provenance is mandatory, and it is the confound-breaker.** Labels from
+engine-retrieved nodes are partly self-fulfilling: agents touch what you
+show them, so "retrieved ∧ used" flatters the incumbent ranking and loop A
+compounds it — a rich-get-richer loop that hub damping (a degree
+correction) does not touch. `self`-provenance positives — nodes the agent
+had to find on its own that ended up used — are uncontaminated by that
+bias, and they are precisely the engine's recall gap: the list of things it
+should have retrieved and didn't. Highest-value supervision in the system.
+
+What the engine derives, domain-blindly, from stream ⋈ outcome:
+
+- **Read-positives** — inspect ∧ later act/cite on the same ref, on a task
+  with a positive outcome. Repairs the read-only-context label gap.
+- **Dead-end negatives** — inspect ∧ (reverted, or never referenced again)
+  on a task with a positive outcome. Failed tasks yield no dead-end
+  labels: when the task went nowhere, every step is suspect.
+- **Path cost** — trace events elapsed between task start and first
+  inspect of an eventually-used node. Time-to-context: the thing retrieval
+  exists to reduce.
+- **Recall gap** — eventually-used ∧ provenance=self.
+
+Trace quality degrades honestly, same posture as outcome events:
+
+| Trace quality                            | What you get                    |
+| ---------------------------------------- | ------------------------------- |
+| Tool-level traces (instrumented agent sessions) | Full loop C: read-positives, dead-ends, path cost, recall gap |
+| Artifact-level only (no tool log)        | Read-positives via cite; no dead-ends, no path cost |
+| None                                     | Loops A/B unchanged — the pre-trace design is the floor, not a wreck |
 
 ## The domain profile
 
@@ -198,12 +305,21 @@ interface DomainProfile {
   // Prose rendering of the package for the consuming agent.
   template: (pkg: Package) => string;
 
-  // The domain's "merged PR": how to detect an outcome and enumerate the
-  // leaves it touched. Drives loop A, loop B joins, and the eval harness.
-  outcomeEvent: {
+  // The domain's "merged PR"s — one per flow (chat→plan→PR→merged,
+  // ingest→workflow→benchmark, ...). Each detects an outcome, enumerates
+  // the leaves it touched, and optionally grades it. Drives loop A,
+  // loop B/C joins, and the eval harness.
+  outcomeEvents: Array<{
     detect: OutcomeDetector;              // e.g. edge type + status predicate
     touchedLeaves: (artifact) => NodeRef[];
-  };
+    magnitude?: (artifact) => number;     // default 1; e.g. benchmark score
+  }>;
+
+  // Map domain-native agent events (tool calls, session logs, workflow
+  // edits) into canonical TraceRecords ("the trace stream", above).
+  // Return null to drop an event that has no honest mapping. Optional —
+  // a domain without instrumented traces keeps loops A/B only.
+  traceIngest?: (event: DomainEvent) => TraceRecord | null;
 
   // Node-status predicate for dropping dead/deprecated entries at package
   // time (statuses are domain words; the predicate keeps them out of engine).
@@ -268,8 +384,14 @@ through one point.
 - **Leaves:** `File`, `Function`.
 - **Buckets:** ~10 files, ~3 concepts, ~3 exemplar PRs (task titles via
   `RESULTED_IN`).
+- **Flows:** chat → plan → task → PR → merged (today's); more will come.
 - **Outcome event:** PR merged → `MODIFIES` edges enumerate touched files.
   Dense, free, machine-readable — the best outcome event of the three.
+  Binary magnitude.
+- **Traces:** agent sessions already persist tool calls, so the richest
+  trace source of the three is sitting in the database. Mapping: file
+  read → inspect, grep → search, edit → act, git revert /
+  re-edit-to-original → revert, in-PR-diff → cite.
 - **Altitude views:** Jamie (features + summaries), planner (features +
   repos + entry points + exemplar PRs), Goose (paths, functions, concepts).
 
@@ -284,10 +406,17 @@ through one point.
 - **Leaves:** `Chunk`/`Clause`, `Document`.
 - **Buckets:** ~10 chunks/clauses, ~3 entities with roles, ~3 similar past
   matters with their filings as exemplars.
-- **Outcome event:** filed brief/executed agreement → documents and clauses
-  it cites/incorporates. Sparser and laggier than PR merges — expect slow
-  weight convergence; documents-cited-in-shipped-drafts is a reasonable
-  proxy event to densify it. Attorney relevance marks work but cost labor.
+- **Flows:** matter → draft → filed brief; and ingest documents → build
+  workflow → evaluate against legal benchmark.
+- **Outcome events:** filed brief/executed agreement → documents and
+  clauses it cites/incorporates — sparse and laggy, expect slow weight
+  convergence; documents-cited-in-shipped-drafts is a reasonable proxy
+  event to densify it. The benchmark flow is the better learning signal:
+  dense, machine-readable, and *graded* — `magnitude` = benchmark score,
+  so loop A reinforcement is proportional to how well the workflow
+  actually evaluated. Attorney relevance marks work but cost labor.
+- **Traces:** document opened → inspect, clause added to workflow → act,
+  workflow step deleted → revert, cited in output → cite.
 - **Altitude views:** partner (matters + one-line postures), associate
   (clauses + exemplar filings), drafting agent (chunk text + citations).
 - **Where it strains (say so):** noisy extraction → the entity-resolution
@@ -300,16 +429,19 @@ through one point.
 - **Leaves:** `KBArticle`, `RunbookStep`, past `Ticket` resolutions.
 - **Outcome event:** ticket resolved → articles/runbooks actually linked in
   the resolution. Dense and machine-readable — nearly as good as merges.
+- **Traces:** article viewed during resolution → inspect, runbook step
+  executed → act, escalation/reassignment → revert.
 
 ## Learning loops (engine-side, profile-driven)
 
 ### Loop A — outcome counting
 
-On each `profile.outcomeEvent`, increment `weight` along the edges from the
-task through the artifact to its touched leaves; bump derived
-lexicon→leaf support counts. Recency decay at read time or via a periodic
-decay pass. A pattern seen twice stays noise; seen fifty times, it dominates
-the walk. Zero training infrastructure.
+On each event from `profile.outcomeEvents`, increment `weight` along the
+edges from the task through the artifact to its touched leaves, scaled by
+the outcome's magnitude; bump derived lexicon→leaf support counts. Recency
+decay at read time or via a periodic decay pass. A pattern seen twice stays
+noise; seen fifty times, it dominates the walk. Zero training
+infrastructure.
 
 ### Loop B — usage logging
 
@@ -318,6 +450,24 @@ consumer, task id, profile id. Joined against later outcome events it
 yields, for free: precision@k time series, ranking labels for the future
 re-ranker, and merge candidates for the lexicon (always co-retrieved, never
 co-used). Ship with the first query the engine ever serves.
+
+### Loop C — trace ingestion
+
+`profile.traceIngest` maps domain events into `graph_context_traces` —
+same logging substrate and phase as loop B's table; they ship together.
+The derivations from "the trace stream" then feed the rest of the system:
+
+- **Into loop A:** increments extend beyond outcome-touched leaves to
+  trace-confirmed reads, verb-weighted (cite > act > inspect) and scaled
+  by outcome magnitude. Dead ends do NOT decrement weights in v1 —
+  penalties risk punishing legitimate exploration noise, so dead-end
+  labels go to the re-ranker and the harness first; edge penalties are a
+  harness-gated experiment.
+- **Into the re-ranker:** read-positives and dead-end negatives join the
+  loop B triples. Self-provenance positives are recall labels, not
+  ranking labels — they feed the embedding-retriever fine-tune.
+- **Into the harness:** time-to-context, dead-end rate, self-discovery
+  rate (see success metrics).
 
 ## Evaluation harness (generalized)
 
@@ -357,6 +507,10 @@ Join `graph_context_queries` against later outcome events to produce
 - **Missed positives** (touched but never retrieved) can't be ranking
   labels, but log them: they measure recall ceiling and feed the embedding
   retriever fine-tune later.
+- **Trace-derived labels (loop C):** read-positives add the essential
+  read-only context that outcome diffs miss; dead-end negatives add
+  process-level wrong turns no diff can express. Weight self-provenance
+  positives highest — they're free of retrieval-position bias.
 - Supplement with harness pairs for tasks that predate logging (the code
   domain starts with ~1,000+).
 
@@ -373,6 +527,8 @@ into per-domain systems:
 - query↔candidate embedding similarity
 - hop distance from nearest seed; max/sum edge weight along best path
 - candidate outcome count and recency (loop A state)
+- candidate read-positive and dead-end counts, recency-decayed (loop C
+  state)
 - candidate degree percentile (hubness — lets the model learn its own
   damping)
 - node type and incoming edge types **as text embeddings**, not categorical
@@ -419,6 +575,10 @@ engine flag day.
 
 - **No domain types in engine code.** Grep-enforceable: `HiveFeature`,
   `Clause`, `File` appear only under `profiles/`.
+- **No flow schema in the engine.** chat→plan→PR→merged and
+  ingest→workflow→benchmark are the same five trace verbs joined by task
+  ref; the engine could not name a stage if asked. A new flow is a
+  profile mapping plus an outcome event — never an engine change.
 - **No LLM-judged labels.** Outcome events and retrieved-vs-used are the
   only supervision; they can't argue back.
 - **No always-in-context corpus dumps.** Retrieval-first; corpus size stops
@@ -474,10 +634,14 @@ fallback wherever per-query PPR misses the latency budget.
 3. Engine + `profiles/code.ts` — port of the org-context plan, measured
    against the harness. MCP tool exposure. Ambient corpus map replaces
    the flat all-names dump.
-4. Loop B usage logging, including actor refs (ship with 3).
-5. Loop A outcome weights + hub damping defaults (first measurable ranking
-   upgrade; verify damping doesn't regress code-domain metrics). Bias
-   seeds ("who is asking") A/B'd on the harness in the same phase.
+4. Loop B usage logging + loop C trace ingestion — one logging substrate,
+   including actor refs and retrieval/self provenance (ship with 3). Code
+   profile's `traceIngest` maps the already-persisted agent session tool
+   calls; trace resolution rate measured from day one.
+5. Loop A outcome weights (magnitude-scaled, trace-extended) + hub damping
+   defaults (first measurable ranking upgrade; verify damping doesn't
+   regress code-domain metrics). Bias seeds ("who is asking") A/B'd on the
+   harness in the same phase.
 6. Second profile (legal or support) against a real corpus — the proof the
    engine is actually domain-blind. Expect this to flush hidden couplings;
    budget for it.
@@ -491,5 +655,12 @@ fallback wherever per-query PPR misses the latency budget.
   lexicon node directly (lexicon health, per domain)
 - hub escape rate: % of packages where a top-k slot is occupied by a node in
   the graph's top-percentile degree (should fall as damping/weights tune)
+- time-to-context: median trace events between task start and first inspect
+  of an eventually-used node (should fall as retrieval improves)
+- dead-end rate: dead-end inspects per successful task (should fall)
+- self-discovery rate: % of eventually-used nodes with provenance=self —
+  the recall gap made visible; should fall as retrieval improves
+- trace resolution rate: % of trace events whose refs resolve to graph
+  nodes (trace health, per domain — parallel to seed hit rate)
 - retrieval latency budget: < 1s end-to-end (seed + walk + package), any
   domain
