@@ -6,10 +6,11 @@
  * write tools, mirroring the prompt tools but workspace-scoped:
  *   - `propose_new_concept`     — emit an approvable card to create a new
  *     concept directly (name + documentation), no agentic codebase
- *     analysis. Backed by `POST /gitree/create-concept-direct`.
+ *     analysis. Approval writes the node via the jarvis API (`addNode`,
+ *     body in `docs` — see handleApproval's approveConceptCreate).
  *   - `propose_concept_update`  — emit an approvable card with a
- *     before/after diff of a concept's documentation. Backed by
- *     `PUT /gitree/concepts/:id/documentation`.
+ *     before/after diff of a concept's documentation. Approval writes via
+ *     jarvis `updateNodeV2` after resolving the concept's ref_id.
  *
  * Both are workspace-scoped (like `propose_feature`): the agent works in
  * `workspaceSlug`s, the tool resolves the slug → workspace cuid under the
