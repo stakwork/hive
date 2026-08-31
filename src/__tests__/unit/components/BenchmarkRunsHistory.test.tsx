@@ -271,10 +271,12 @@ describe("BenchmarkRunsHistory", () => {
     );
   });
 
-  it("renders Runner Status column header and Score column header", () => {
+  it("renders Runner Status column header and Passed/Failed/Total column headers", () => {
     render(React.createElement(BenchmarkRunsHistory));
     expect(screen.getByText("Runner Status")).toBeInTheDocument();
-    expect(screen.getByText("Score")).toBeInTheDocument();
+    expect(screen.getByText("Passed")).toBeInTheDocument();
+    expect(screen.getByText("Failed")).toBeInTheDocument();
+    expect(screen.getByText("Total")).toBeInTheDocument();
   });
 
   it("shows COMPLETED badge for a completed run", () => {
@@ -323,7 +325,7 @@ describe("BenchmarkRunsHistory", () => {
 
   // ─── Score column tests ────────────────────────────────────────────────────
 
-  it("renders PASS badge and score when all_pass=true and n_passed/n_total present", () => {
+  it("renders passed and total values when n_passed/n_total present", () => {
     mockUseList.mockReturnValue({
       runs: [makeRun({ status: "COMPLETED", n_passed: 72, n_total: 74, all_pass: true })],
       total: 1,
@@ -333,11 +335,11 @@ describe("BenchmarkRunsHistory", () => {
       setExpandedId: mockSetExpandedId,
     });
     render(React.createElement(BenchmarkRunsHistory));
-    expect(screen.getByText("72/74")).toBeInTheDocument();
-    expect(screen.getByText("PASS")).toBeInTheDocument();
+    expect(screen.getByTestId("passed-cell-count")).toHaveTextContent("72");
+    expect(screen.getByTestId("total-cell-count")).toHaveTextContent("74");
   });
 
-  it("renders score with no badge when all_pass=false", () => {
+  it("renders passed and total values with no PASS/FAIL text when all_pass=false", () => {
     mockUseList.mockReturnValue({
       runs: [makeRun({ status: "COMPLETED", n_passed: 10, n_total: 20, all_pass: false })],
       total: 1,
@@ -347,7 +349,8 @@ describe("BenchmarkRunsHistory", () => {
       setExpandedId: mockSetExpandedId,
     });
     render(React.createElement(BenchmarkRunsHistory));
-    expect(screen.getByText("10/20")).toBeInTheDocument();
+    expect(screen.getByTestId("passed-cell-count")).toHaveTextContent("10");
+    expect(screen.getByTestId("total-cell-count")).toHaveTextContent("20");
     expect(screen.queryByText("FAIL")).toBeNull();
     expect(screen.queryByText("PASS")).toBeNull();
   });
@@ -398,39 +401,9 @@ describe("BenchmarkRunsHistory", () => {
   });
 
   // ─── judgeNotes / ScoreCell tooltip tests ─────────────────────────────────
-
-  it("ScoreCell has title, aria-label, and cursor-help class when COMPLETED with judgeNotes", () => {
-    const judgeNotes = "72/74 criteria passed. Judge: gpt-4";
-    mockUseList.mockReturnValue({
-      runs: [makeRun({ status: "COMPLETED", n_passed: 72, n_total: 74, all_pass: true, judgeNotes })],
-      total: 1,
-      isLoading: false,
-      error: null,
-      refetch: mockRefetch,
-      setExpandedId: mockSetExpandedId,
-    });
-    render(React.createElement(BenchmarkRunsHistory));
-    const scoreDiv = screen.getByText("72/74").closest("div")!;
-    expect(scoreDiv.getAttribute("title")).toBe(judgeNotes);
-    expect(scoreDiv.getAttribute("aria-label")).toBe(judgeNotes);
-    expect(scoreDiv.classList.contains("cursor-help")).toBe(true);
-  });
-
-  it("ScoreCell has no title or aria-label when judgeNotes is undefined for COMPLETED row", () => {
-    mockUseList.mockReturnValue({
-      runs: [makeRun({ status: "COMPLETED", n_passed: 72, n_total: 74, all_pass: true, judgeNotes: undefined })],
-      total: 1,
-      isLoading: false,
-      error: null,
-      refetch: mockRefetch,
-      setExpandedId: mockSetExpandedId,
-    });
-    render(React.createElement(BenchmarkRunsHistory));
-    const scoreDiv = screen.getByText("72/74").closest("div")!;
-    expect(scoreDiv.getAttribute("title")).toBeNull();
-    expect(scoreDiv.getAttribute("aria-label")).toBeNull();
-    expect(scoreDiv.classList.contains("cursor-help")).toBe(false);
-  });
+  // The combined-score tooltip lived on the removed ScoreCell; judgeNotes no
+  // longer renders an inline tooltip, so only the "no title anywhere" cases
+  // (PENDING/IN_PROGRESS, which never had one) remain relevant here.
 
   it("ScoreCell renders no title or aria-label for PENDING run", () => {
     mockUseList.mockReturnValue({
@@ -467,7 +440,7 @@ describe("BenchmarkRunsHistory", () => {
 
   // ─── colSpan tests ─────────────────────────────────────────────────────────
 
-  it("expanded row colSpan is 9 for non-super-admin (Task + Type + Started + Runner Status + Score + Contested + Disputed + Chat + Report)", async () => {
+  it("expanded row colSpan is 11 for non-super-admin (Task + Type + Started + Runner Status + Passed + Failed + Contested + Disputed + Total + Chat + Report)", async () => {
     const user = userEvent.setup();
     render(React.createElement(BenchmarkRunsHistory));
 
@@ -475,10 +448,10 @@ describe("BenchmarkRunsHistory", () => {
     await user.click(row);
 
     const expandedCell = screen.getByTestId("results-runner-1").closest("td")!;
-    expect(expandedCell.getAttribute("colspan")).toBe("9");
+    expect(expandedCell.getAttribute("colspan")).toBe("11");
   });
 
-  it("expanded row colSpan is 10 for super-admin (adds Stakwork column)", async () => {
+  it("expanded row colSpan is 12 for super-admin (adds Stakwork column)", async () => {
     const { useWorkspace } = await import("@/hooks/useWorkspace");
     (useWorkspace as ReturnType<typeof vi.fn>).mockReturnValue({
       workspace: { id: WORKSPACE_ID, slug: WORKSPACE_SLUG },
@@ -492,7 +465,7 @@ describe("BenchmarkRunsHistory", () => {
     await user.click(row);
 
     const expandedCell = screen.getByTestId("results-runner-1").closest("td")!;
-    expect(expandedCell.getAttribute("colspan")).toBe("10");
+    expect(expandedCell.getAttribute("colspan")).toBe("12");
   });
 
   // ─── Existing interaction tests ────────────────────────────────────────────
@@ -754,7 +727,7 @@ describe("BenchmarkRunsHistory", () => {
     expect(screen.queryByTestId("model-sub-line")).toBeNull();
   });
 
-  it("model sub-line does not affect colSpan (non-super-admin still 9)", async () => {
+  it("model sub-line does not affect colSpan (non-super-admin still 11)", async () => {
     mockUseList.mockReturnValue({
       runs: [makeRun({
         requestedModel: "anthropic/claude-sonnet-5",
@@ -774,7 +747,7 @@ describe("BenchmarkRunsHistory", () => {
     await user.click(row);
 
     const expandedCell = screen.getByTestId("results-runner-1").closest("td")!;
-    expect(expandedCell.getAttribute("colspan")).toBe("9");
+    expect(expandedCell.getAttribute("colspan")).toBe("11");
   });
 
   // ─── Chat column tests ─────────────────────────────────────────────────────
@@ -899,7 +872,7 @@ describe("BenchmarkRunsHistory", () => {
     expect(screen.getAllByText("—").length).toBeGreaterThan(0);
   });
 
-  it("judgeNotes tooltip still reflects judge model (no divergence from sub-line)", () => {
+  it("sub-line judge model matches requestedJudgeModel independent of the score cells", () => {
     const judgeModel = "claude-sonnet-4-6";
     const judgeNotes = `5/5 criteria passed. Judge: ${judgeModel}`;
     mockUseList.mockReturnValue({
@@ -924,8 +897,8 @@ describe("BenchmarkRunsHistory", () => {
     const subLine = screen.getByTestId("model-sub-line");
     expect(subLine.textContent).toContain(judgeModel);
 
-    const scoreDiv = screen.getByText("5/5").closest("div")!;
-    expect(scoreDiv.getAttribute("title")).toBe(judgeNotes);
+    expect(screen.getByTestId("passed-cell-count")).toHaveTextContent("5");
+    expect(screen.getByTestId("total-cell-count")).toHaveTextContent("5");
   });
 
   // ─── Task filter + hill-climb chart tests ─────────────────────────────────
@@ -1232,7 +1205,8 @@ describe("BenchmarkRunsHistory — run types", () => {
     render(<BenchmarkRunsHistory />);
 
     const row = screen.getByTestId("run-row-a-1");
-    expect(row.textContent).toContain("34/39");
+    expect(row.querySelector('[data-testid="passed-cell-count"]')).toHaveTextContent("34");
+    expect(row.querySelector('[data-testid="total-cell-count"]')).toHaveTextContent("39");
     expect(row.textContent).not.toContain("FAIL");
     const links = screen.getAllByTestId("run-report-link");
     expect(
@@ -1359,10 +1333,10 @@ describe("BenchmarkRunsHistory — graph-first score numerators", () => {
 
     const row = screen.getByTestId("run-row-r-1");
     // Graph numerator 8/10 against the roster denominator (10 - 2 contested)
-    expect(row.textContent).toContain("8/8");
-    expect(row.textContent).toContain("PASS");
+    expect(row.querySelector('[data-testid="passed-cell-count"]')).toHaveTextContent("8");
+    expect(row.querySelector('[data-testid="total-cell-count"]')).toHaveTextContent("8");
     expect(scoreSourceOf("run-row-r-1")).toBe("graph");
-    expect(screen.getByTestId("score-cell-contested")).toBeInTheDocument();
+    expect(screen.getByTestId("contested-cell-count")).toBeInTheDocument();
   });
 
   it("falls back to the result-table score when no graph output joins", () => {
@@ -1385,7 +1359,8 @@ describe("BenchmarkRunsHistory — graph-first score numerators", () => {
     render(<BenchmarkRunsHistory />);
 
     const row = screen.getByTestId("run-row-r-1");
-    expect(row.textContent).toContain("34/39");
+    expect(row.querySelector('[data-testid="passed-cell-count"]')).toHaveTextContent("34");
+    expect(row.querySelector('[data-testid="total-cell-count"]')).toHaveTextContent("39");
     expect(row.textContent).not.toContain("FAIL");
     expect(scoreSourceOf("run-row-r-1")).toBe("result");
   });
@@ -1410,7 +1385,8 @@ describe("BenchmarkRunsHistory — graph-first score numerators", () => {
     render(<BenchmarkRunsHistory />);
 
     const row = screen.getByTestId("run-row-m-1");
-    expect(row.textContent).toContain("60/74");
+    expect(row.querySelector('[data-testid="passed-cell-count"]')).toHaveTextContent("60");
+    expect(row.querySelector('[data-testid="total-cell-count"]')).toHaveTextContent("74");
     expect(scoreSourceOf("run-row-m-1")).toBe("graph");
     // The hook was asked for this task's trigger ref (the requirement-hosted
     // trigger only the row knows about).
@@ -1447,9 +1423,10 @@ describe("BenchmarkRunsHistory — graph-first score numerators", () => {
 
     const row = screen.getByTestId("run-row-m-1");
     // Node counts verbatim: NOT contested-adjusted, NOT the result-column 50/74
-    expect(row.textContent).toContain("9/10");
+    expect(row.querySelector('[data-testid="passed-cell-count"]')).toHaveTextContent("9");
+    expect(row.querySelector('[data-testid="total-cell-count"]')).toHaveTextContent("10");
     expect(scoreSourceOf("run-row-m-1")).toBe("output-ref");
-    expect(screen.queryByTestId("score-cell-contested")).toBeNull();
+    expect(screen.queryByTestId("contested-cell-count")).toBeNull();
     // The pointer was requested from the graph-scores hook
     expect(mockGraphScoresMapHook).toHaveBeenCalledWith([
       { taskSlug: TASK, triggerRefs: ["trig-1"], outputRefs: ["out-9"] },
