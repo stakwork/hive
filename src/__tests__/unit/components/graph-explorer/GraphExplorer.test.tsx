@@ -1,5 +1,5 @@
 import React from "react";
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 
@@ -1030,6 +1030,160 @@ describe("GraphExplorer", () => {
     await waitFor(() => expect(screen.getByTestId("focus-notice-state")).toBeInTheDocument());
     expect(screen.getByTestId("focus-notice-state")).toHaveTextContent(/didn't read any concepts/);
     expect(screen.queryByTestId("focus-error-state")).not.toBeInTheDocument();
+  });
+});
+
+// ── Live search: auto re-run on filter/query change ──────────────────────────
+describe("GraphExplorer live search", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.restoreAllMocks();
+  });
+
+  // ── (a) Toggling a type filter with an existing query auto-re-runs search ──
+  test("toggling a node-type filter with an existing query auto-re-runs search", async () => {
+    const fetchMock = makeRoutedFetch([
+      NODE_TYPES_ROUTE,
+      { match: "/graph/nodes/search", ok: true, status: 200, body: MOCK_SEARCH_RESULTS },
+    ]);
+    global.fetch = fetchMock;
+
+    render(<GraphExplorer workspaceSlug="test-ws" />);
+    await waitFor(() => expect(urlsFor(fetchMock, "/graph/node-types")).toHaveLength(1));
+
+    await userEvent.type(screen.getByTestId("search-input"), "processData");
+    await userEvent.click(screen.getByTestId("search-button"));
+    await waitFor(() => expect(urlsFor(fetchMock, "/graph/nodes/search")).toHaveLength(1));
+
+    // Toggling a filter with a query already present should re-fire on its own —
+    // no second click on the Search button.
+    await userEvent.click(screen.getByTestId("node-type-filter-button"));
+    await waitFor(() => screen.getByTestId("node-type-filter-option-Function"));
+    await userEvent.click(screen.getByTestId("node-type-filter-option-Function"));
+
+    await waitFor(() => expect(urlsFor(fetchMock, "/graph/nodes/search")).toHaveLength(2));
+    expect(urlsFor(fetchMock, "/graph/nodes/search")[1]).toContain(
+      `types=${encodeURIComponent("Concept,Function")}`,
+    );
+  });
+
+  // ── (b) Typing debounces before firing ────────────────────────────────────
+  test("typing in the query box debounces before firing", async () => {
+    vi.useFakeTimers();
+    try {
+      const fetchMock = makeRoutedFetch([
+        NODE_TYPES_ROUTE,
+        { match: "/graph/nodes/search", ok: true, status: 200, body: MOCK_SEARCH_RESULTS },
+      ]);
+      global.fetch = fetchMock;
+
+      render(<GraphExplorer workspaceSlug="test-ws" />);
+      const input = screen.getByTestId("search-input");
+
+      fireEvent.change(input, { target: { value: "p" } });
+      await act(async () => {
+        vi.advanceTimersByTime(100);
+      });
+      fireEvent.change(input, { target: { value: "pr" } });
+      await act(async () => {
+        vi.advanceTimersByTime(100);
+      });
+      fireEvent.change(input, { target: { value: "pro" } });
+
+      // Still inside the quiet window — no request fired yet.
+      expect(urlsFor(fetchMock, "/graph/nodes/search")).toHaveLength(0);
+
+      await act(async () => {
+        vi.advanceTimersByTime(300);
+      });
+
+      // Only the settled value fires, and only once.
+      expect(urlsFor(fetchMock, "/graph/nodes/search")).toHaveLength(1);
+      expect(urlsFor(fetchMock, "/graph/nodes/search")[0]).toContain("q=pro");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  // ── (c) Empty query doesn't fetch on filter change ────────────────────────
+  test("an empty query does not trigger a fetch when toggling a filter", async () => {
+    const fetchMock = makeRoutedFetch([NODE_TYPES_ROUTE]);
+    global.fetch = fetchMock;
+
+    render(<GraphExplorer workspaceSlug="test-ws" />);
+    await waitFor(() => expect(urlsFor(fetchMock, "/graph/node-types")).toHaveLength(1));
+
+    await userEvent.click(screen.getByTestId("node-type-filter-button"));
+    await waitFor(() => screen.getByTestId("node-type-filter-option-Function"));
+    await userEvent.click(screen.getByTestId("node-type-filter-option-Function"));
+    await userEvent.keyboard("{Escape}");
+
+    // No query text was ever entered — the filter click must not fetch.
+    expect(urlsFor(fetchMock, "/graph/nodes/search")).toHaveLength(0);
+  });
+
+  // ── (d) Stale/out-of-order responses don't clobber newer results ─────────
+  test("a slow, superseded search response does not overwrite a newer one", async () => {
+    const respond = (body: unknown) => ({
+      ok: true,
+      status: 200,
+      json: () => Promise.resolve(body),
+      text: () => Promise.resolve(""),
+    });
+
+    let releaseFirst: (() => void) | undefined;
+    let searchCallCount = 0;
+
+    global.fetch = vi.fn().mockImplementation((url: string) => {
+      if (url.includes("/graph/node-types")) return Promise.resolve(respond(MOCK_NODE_TYPES));
+      if (url.includes("/graph/nodes/search")) {
+        searchCallCount += 1;
+        if (searchCallCount === 1) {
+          // The first (stale) request hangs until explicitly released.
+          return new Promise((resolve) => {
+            releaseFirst = () =>
+              resolve(
+                respond({
+                  results: [
+                    { ref_id: "stale-1", node_type: "Concept", name: "StaleResult", description: "" },
+                  ],
+                }),
+              );
+          });
+        }
+        // Every later request resolves immediately with fresh results.
+        return Promise.resolve(
+          respond({
+            results: [
+              { ref_id: "fresh-1", node_type: "Concept", name: "FreshResult", description: "" },
+            ],
+          }),
+        );
+      }
+      return Promise.resolve(respond({}));
+    });
+
+    render(<GraphExplorer workspaceSlug="test-ws" />);
+    await userEvent.type(screen.getByTestId("search-input"), "processData");
+    await userEvent.click(screen.getByTestId("search-button"));
+    await waitFor(() => expect(searchCallCount).toBe(1));
+
+    // Toggling a filter while the first request is still in flight fires a
+    // second, faster request that should win.
+    await userEvent.click(screen.getByTestId("node-type-filter-button"));
+    await waitFor(() => screen.getByTestId("node-type-filter-option-Function"));
+    await userEvent.click(screen.getByTestId("node-type-filter-option-Function"));
+
+    await waitFor(() => expect(screen.getByText("FreshResult")).toBeInTheDocument());
+
+    // Now let the stale first request resolve — it must not clobber the fresh
+    // results that are already on screen.
+    releaseFirst?.();
+    await waitFor(() => expect(searchCallCount).toBeGreaterThanOrEqual(2));
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(screen.getByText("FreshResult")).toBeInTheDocument();
+    expect(screen.queryByText("StaleResult")).not.toBeInTheDocument();
   });
 });
 
