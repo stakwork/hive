@@ -333,7 +333,8 @@ describe("BenchmarkRunsHistory", () => {
       setExpandedId: mockSetExpandedId,
     });
     render(React.createElement(BenchmarkRunsHistory));
-    expect(screen.getByText("72/74")).toBeInTheDocument();
+    expect(screen.getByTestId("passed-cell-count").textContent).toBe("72");
+    expect(screen.getByTestId("total-cell-count").textContent).toBe("74");
     expect(screen.getByText("PASS")).toBeInTheDocument();
   });
 
@@ -347,7 +348,8 @@ describe("BenchmarkRunsHistory", () => {
       setExpandedId: mockSetExpandedId,
     });
     render(React.createElement(BenchmarkRunsHistory));
-    expect(screen.getByText("10/20")).toBeInTheDocument();
+    expect(screen.getByTestId("passed-cell-count").textContent).toBe("10");
+    expect(screen.getByTestId("total-cell-count").textContent).toBe("20");
     expect(screen.queryByText("FAIL")).toBeNull();
     expect(screen.queryByText("PASS")).toBeNull();
   });
@@ -467,7 +469,7 @@ describe("BenchmarkRunsHistory", () => {
 
   // ─── colSpan tests ─────────────────────────────────────────────────────────
 
-  it("expanded row colSpan is 9 for non-super-admin (Task + Type + Started + Runner Status + Score + Contested + Disputed + Chat + Report)", async () => {
+  it("expanded row colSpan is 11 for non-super-admin (Task + Type + Started + Runner Status + Passed + Failed + Contested + Disputed + Total + Chat + Report)", async () => {
     const user = userEvent.setup();
     render(React.createElement(BenchmarkRunsHistory));
 
@@ -475,7 +477,7 @@ describe("BenchmarkRunsHistory", () => {
     await user.click(row);
 
     const expandedCell = screen.getByTestId("results-runner-1").closest("td")!;
-    expect(expandedCell.getAttribute("colspan")).toBe("9");
+    expect(expandedCell.getAttribute("colspan")).toBe("11");
   });
 
   it("expanded row colSpan is 10 for super-admin (adds Stakwork column)", async () => {
@@ -492,7 +494,7 @@ describe("BenchmarkRunsHistory", () => {
     await user.click(row);
 
     const expandedCell = screen.getByTestId("results-runner-1").closest("td")!;
-    expect(expandedCell.getAttribute("colspan")).toBe("10");
+    expect(expandedCell.getAttribute("colspan")).toBe("12");
   });
 
   // ─── Existing interaction tests ────────────────────────────────────────────
@@ -774,7 +776,7 @@ describe("BenchmarkRunsHistory", () => {
     await user.click(row);
 
     const expandedCell = screen.getByTestId("results-runner-1").closest("td")!;
-    expect(expandedCell.getAttribute("colspan")).toBe("9");
+    expect(expandedCell.getAttribute("colspan")).toBe("11");
   });
 
   // ─── Chat column tests ─────────────────────────────────────────────────────
@@ -1232,7 +1234,8 @@ describe("BenchmarkRunsHistory — run types", () => {
     render(<BenchmarkRunsHistory />);
 
     const row = screen.getByTestId("run-row-a-1");
-    expect(row.textContent).toContain("34/39");
+    expect(row.querySelector('[data-testid="passed-cell-count"]')?.textContent).toBe("34");
+    expect(row.querySelector('[data-testid="total-cell-count"]')?.textContent).toBe("39");
     expect(row.textContent).not.toContain("FAIL");
     const links = screen.getAllByTestId("run-report-link");
     expect(
@@ -1359,10 +1362,11 @@ describe("BenchmarkRunsHistory — graph-first score numerators", () => {
 
     const row = screen.getByTestId("run-row-r-1");
     // Graph numerator 8/10 against the roster denominator (10 - 2 contested)
-    expect(row.textContent).toContain("8/8");
+    expect(row.querySelector('[data-testid="passed-cell-count"]')?.textContent).toBe("8");
+    expect(row.querySelector('[data-testid="total-cell-count"]')?.textContent).toBe("8");
     expect(row.textContent).toContain("PASS");
     expect(scoreSourceOf("run-row-r-1")).toBe("graph");
-    expect(screen.getByTestId("score-cell-contested")).toBeInTheDocument();
+    expect(screen.getByTestId("contested-cell-count")).toBeInTheDocument();
   });
 
   it("falls back to the result-table score when no graph output joins", () => {
@@ -1385,7 +1389,8 @@ describe("BenchmarkRunsHistory — graph-first score numerators", () => {
     render(<BenchmarkRunsHistory />);
 
     const row = screen.getByTestId("run-row-r-1");
-    expect(row.textContent).toContain("34/39");
+    expect(row.querySelector('[data-testid="passed-cell-count"]')?.textContent).toBe("34");
+    expect(row.querySelector('[data-testid="total-cell-count"]')?.textContent).toBe("39");
     expect(row.textContent).not.toContain("FAIL");
     expect(scoreSourceOf("run-row-r-1")).toBe("result");
   });
@@ -1410,7 +1415,8 @@ describe("BenchmarkRunsHistory — graph-first score numerators", () => {
     render(<BenchmarkRunsHistory />);
 
     const row = screen.getByTestId("run-row-m-1");
-    expect(row.textContent).toContain("60/74");
+    expect(row.querySelector('[data-testid="passed-cell-count"]')?.textContent).toBe("60");
+    expect(row.querySelector('[data-testid="total-cell-count"]')?.textContent).toBe("74");
     expect(scoreSourceOf("run-row-m-1")).toBe("graph");
     // The hook was asked for this task's trigger ref (the requirement-hosted
     // trigger only the row knows about).
@@ -1447,9 +1453,10 @@ describe("BenchmarkRunsHistory — graph-first score numerators", () => {
 
     const row = screen.getByTestId("run-row-m-1");
     // Node counts verbatim: NOT contested-adjusted, NOT the result-column 50/74
-    expect(row.textContent).toContain("9/10");
+    expect(row.querySelector('[data-testid="passed-cell-count"]')?.textContent).toBe("9");
+    expect(row.querySelector('[data-testid="total-cell-count"]')?.textContent).toBe("10");
     expect(scoreSourceOf("run-row-m-1")).toBe("output-ref");
-    expect(screen.queryByTestId("score-cell-contested")).toBeNull();
+    expect(screen.queryByTestId("contested-cell-count")).toBeNull();
     // The pointer was requested from the graph-scores hook
     expect(mockGraphScoresMapHook).toHaveBeenCalledWith([
       { taskSlug: TASK, triggerRefs: ["trig-1"], outputRefs: ["out-9"] },

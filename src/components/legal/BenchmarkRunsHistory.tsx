@@ -523,7 +523,7 @@ export function BenchmarkRunsHistory({
 
   // colSpan: Task + Type + Started + Runner Status + Score + Contested +
   // Disputed + Chat + Report + (Stakwork if super admin)
-  const colSpan = isSuperAdmin ? 10 : 9;
+  const colSpan = isSuperAdmin ? 12 : 11;
 
   return (
     <div className="space-y-3">
