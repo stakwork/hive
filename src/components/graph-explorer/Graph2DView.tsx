@@ -2,6 +2,7 @@
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { GraphVisualization } from "@/components/graph/GraphVisualization";
+import { GraphLegend } from "./GraphLegend";
 import type { GraphEdge, GraphNode } from "@/components/graph/graphUtils";
 import { GRAPH_EXPLORER_COLORS } from "./nodeColors";
 import { LEGAL_NODE_ICONS, resolveEdgeStyle } from "./legalGraphStyles";
@@ -71,18 +72,21 @@ export function Graph2DView({
   );
 
   return (
-    <div ref={containerRef} className="h-full w-full" data-testid="graph-2d-view">
+    <div ref={containerRef} className="relative h-full w-full" data-testid="graph-2d-view">
       {size && nodes.length > 0 && (
-        <GraphVisualization
-          nodes={nodes}
-          edges={edges}
-          width={size.width}
-          height={size.height}
-          colorMap={GRAPH_EXPLORER_COLORS}
-          onNodeClick={handleNodeClick}
-          iconMap={LEGAL_NODE_ICONS}
-          edgeStyleFn={resolveEdgeStyle}
-        />
+        <>
+          <GraphVisualization
+            nodes={nodes}
+            edges={edges}
+            width={size.width}
+            height={size.height}
+            colorMap={GRAPH_EXPLORER_COLORS}
+            onNodeClick={handleNodeClick}
+            iconMap={LEGAL_NODE_ICONS}
+            edgeStyleFn={resolveEdgeStyle}
+          />
+          <GraphLegend nodes={nodes} colorMap={GRAPH_EXPLORER_COLORS} />
+        </>
       )}
     </div>
   );
