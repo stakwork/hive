@@ -662,40 +662,96 @@ export function GraphExplorer({ workspaceSlug, initialRefId, initialCypher }: Gr
   }, []);
 
   // ── Semantic search (Jarvis hybrid keyword + vector) ──────────────────────
+  /** Guards against a slow search response overwriting a newer one. */
+  const searchRequestRef = useRef(0);
+
   const runSearch = useCallback(async () => {
-    if (!searchQuery.trim()) return;
+    const q = searchQuery.trim();
+    if (!q) return;
+    const requestId = ++searchRequestRef.current;
     setSearchLoading(true);
     setSearchError(null);
     setSearchResults([]);
     setSearched(true);
 
     try {
-      const params = new URLSearchParams({ q: searchQuery.trim(), limit: "25" });
+      const params = new URLSearchParams({ q, limit: "25" });
       if (selectedTypes.length > 0) params.set("types", selectedTypes.join(","));
 
       const res = await fetch(
         `/api/workspaces/${workspaceSlug}/graph/nodes/search?${params.toString()}`
       );
+      // A newer search superseded this one while it was in flight — drop it.
+      if (requestId !== searchRequestRef.current) return;
+
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
+        if (requestId !== searchRequestRef.current) return;
         setSearchError((data as { message?: string }).message || `Search failed (${res.status})`);
         return;
       }
       const data: GraphSearchResponse = await res.json();
+      if (requestId !== searchRequestRef.current) return;
       setSearchResults(Array.isArray(data?.results) ? data.results : []);
     } catch (err) {
+      if (requestId !== searchRequestRef.current) return;
       setSearchError(err instanceof Error ? err.message : "Search failed");
     } finally {
-      setSearchLoading(false);
+      if (requestId === searchRequestRef.current) setSearchLoading(false);
     }
   }, [searchQuery, selectedTypes, workspaceSlug]);
+
+  /** Pending debounced auto-search timer, cleared before any direct trigger. */
+  const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** Previous `selectedTypes` reference, used to tell a filter click apart from typing. */
+  const prevSelectedTypesRef = useRef(selectedTypes);
+
+  const clearPendingSearch = useCallback(() => {
+    if (searchDebounceRef.current) {
+      clearTimeout(searchDebounceRef.current);
+      searchDebounceRef.current = null;
+    }
+  }, []);
+
+  /** Manual trigger (Search button / Enter): cancels any pending debounce so it can't double-fire. */
+  const triggerSearch = useCallback(() => {
+    clearPendingSearch();
+    void runSearch();
+  }, [clearPendingSearch, runSearch]);
+
+  /**
+   * Live search: re-runs automatically whenever the type filter or the query
+   * text changes, as long as there's a query to search for. A filter toggle is
+   * a discrete click, so it re-runs immediately; free-typing is debounced so
+   * we don't fire a request per keystroke.
+   */
+  useEffect(() => {
+    const typesChanged = prevSelectedTypesRef.current !== selectedTypes;
+    prevSelectedTypesRef.current = selectedTypes;
+
+    clearPendingSearch();
+
+    if (!searchQuery.trim()) return;
+
+    if (typesChanged) {
+      void runSearch();
+      return;
+    }
+
+    searchDebounceRef.current = setTimeout(() => {
+      searchDebounceRef.current = null;
+      void runSearch();
+    }, 300);
+
+    return () => clearPendingSearch();
+  }, [selectedTypes, searchQuery, runSearch, clearPendingSearch]);
 
   const typeFilterLabel = typeFilterLabelFor(selectedTypes);
 
   const handleSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Enter") {
       e.preventDefault();
-      runSearch();
+      triggerSearch();
     }
   };
 
@@ -774,7 +830,7 @@ export function GraphExplorer({ workspaceSlug, initialRefId, initialCypher }: Gr
           <Button
             data-testid="search-button"
             variant="secondary"
-            onClick={runSearch}
+            onClick={triggerSearch}
             disabled={searchLoading || !searchQuery.trim()}
           >
             {searchLoading ? (
