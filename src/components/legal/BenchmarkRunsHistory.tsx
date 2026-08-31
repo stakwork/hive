@@ -308,11 +308,16 @@ export function BenchmarkRunsHistory({
 
   // Cron-pipeline rows shown alongside (or instead of) the manual window when
   // the type filter asks for them. Operational only — no scores, no windowing.
+  // Explicit allow-list (rather than `!== "manual"`) so only eval/recursion-
+  // pipeline rows are eligible here: manual rows go through their own path
+  // above, and "consolidated" rows are deliberately excluded — they flow
+  // through the merged `runs` list solely for the Recursion tab's Pusher
+  // tracking and must never render as their own row in this table.
   const secondaryRows = useMemo(
     () =>
       runs.filter(
         (r) =>
-          r.runType !== "manual" &&
+          r.runType === "recursion" &&
           (!selectedTask || r.taskSlug === selectedTask.slug),
       ),
     [runs, selectedTask],
