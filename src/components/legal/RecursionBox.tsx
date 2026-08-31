@@ -393,13 +393,18 @@ function RecursionCard({ entry, refetch, allRuns }: RecursionCardProps) {
   // `allRuns` is lifted from RecursionTab (via RecursionList) so the whole tab
   // shares one fetch-and-poll loop instead of one per card.
 
-  // Find the most recent CONSOLIDATED run for this taskSlug.
+  // Find the most recent CONSOLIDATED run for this taskSlug. Consolidated
+  // rows are tagged "consolidated" (distinct from the "recursion" loop tag)
+  // by useLegalBenchmarkRunList specifically so they stay invisible in the
+  // Runs tab table — but this card still needs to find them here, in the
+  // same merged `allRuns` list, to seed in-flight/completed status after a
+  // page refresh.
   const existingConsolidated = useMemo(() => {
     return (allRuns ?? [])
       .filter(
         (r) =>
           r.taskSlug === entry.id &&
-          r.runType === "recursion" &&
+          r.runType === "consolidated" &&
           (r.status === WorkflowStatus.PENDING ||
             r.status === WorkflowStatus.IN_PROGRESS) &&
           !r.hasReport,
