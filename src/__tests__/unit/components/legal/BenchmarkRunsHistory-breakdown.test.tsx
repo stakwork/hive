@@ -76,8 +76,8 @@ vi.mock("@/components/legal/HillClimbChart", () => ({
 }));
 
 vi.mock("@/components/ui/badge", () => ({
-  Badge: ({ children, className }: { children?: React.ReactNode; className?: string }) => (
-    <span data-testid="badge" className={className}>{children}</span>
+  Badge: ({ children, className, ...rest }: { children?: React.ReactNode; className?: string; [key: string]: unknown }) => (
+    <span data-testid="badge" className={className} {...rest}>{children}</span>
   ),
 }));
 
