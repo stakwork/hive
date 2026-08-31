@@ -6,7 +6,6 @@ import { ExternalLink, Loader2, Repeat } from "lucide-react";
 import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import {
-  PASS_BADGE_CLASS,
   RUN_LIST_LIMIT,
   SUMMARY_WINDOW,
   WINDOW_OPTIONS,
@@ -599,7 +598,8 @@ export function BenchmarkRunsHistory({
               </th>
               <th className="text-left px-4 py-3 font-medium text-muted-foreground">Started</th>
               <th className="text-left px-4 py-3 font-medium text-muted-foreground">Runner Status</th>
-              <th className="text-left px-4 py-3 font-medium text-muted-foreground">Score</th>
+              <th className="text-left px-4 py-3 font-medium text-muted-foreground">Passed</th>
+              <th className="text-left px-4 py-3 font-medium text-muted-foreground">Failed</th>
               <th className="text-left px-4 py-3 font-medium text-muted-foreground">
                 <span
                   className="cursor-help"
@@ -616,6 +616,7 @@ export function BenchmarkRunsHistory({
                   Disputed
                 </span>
               </th>
+              <th className="text-left px-4 py-3 font-medium text-muted-foreground">Total</th>
               <th className="text-left px-4 py-3 font-medium text-muted-foreground">Chat</th>
               <th className="text-left px-4 py-3 font-medium text-muted-foreground">Report</th>
               {isSuperAdmin && (
@@ -687,15 +688,21 @@ export function BenchmarkRunsHistory({
                   </td>
                   <td className="px-4 py-3">
                     {/* Recursion re-runs now report post-fix scores back onto
-                        their run row; ScoreCell renders its own dash when no
+                        their run row; PassedCountCell renders its own dash when no
                         score landed (older rows, fix-proposal stage). */}
-                    <ScoreCell run={run} />
+                    <PassedCountCell run={run} />
+                  </td>
+                  <td className="px-4 py-3">
+                    <FailedCountCell run={run} />
                   </td>
                   <td className="px-4 py-3">
                     <ContestedCountCell run={run} />
                   </td>
                   <td className="px-4 py-3">
                     <DisputedCountCell run={run} />
+                  </td>
+                  <td className="px-4 py-3">
+                    <TotalCountCell run={run} />
                   </td>
                   <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
                     {run.runType === "manual" ? (
@@ -862,41 +869,80 @@ function ChatCell({ run }: { run: BenchmarkRunListRow }) {
   return <span className="text-muted-foreground">—</span>;
 }
 
-function ScoreCell({ run }: { run: AdjustedRun }) {
-  const isActive =
-    run.status === WorkflowStatus.PENDING || run.status === WorkflowStatus.IN_PROGRESS;
-
-  // Neutral placeholder for in-progress runs and terminal runs with no score data.
-  if (isActive || typeof run.all_pass !== "boolean") {
-    return <span className="text-muted-foreground">—</span>;
-  }
-
-  return (
-    <div
-      className={run.judgeNotes ? "flex items-center gap-2 cursor-help" : "flex items-center gap-2"}
-      title={run.judgeNotes}
-      aria-label={run.judgeNotes}
-      data-score-source={run.score_source}
-      {...(run.n_contested ? { "data-testid": "score-cell-contested" } : {})}
-    >
-      {run.n_passed !== undefined && run.n_total !== undefined && (
-        <span className="text-sm tabular-nums">
-          {run.n_passed}/{run.n_total}
-        </span>
-      )}
-      {run.all_pass && (
-        <Badge variant="outline" className={PASS_BADGE_CLASS}>
-          PASS
-        </Badge>
-      )}
-    </div>
-  );
-}
-
 function hasScoreData(run: AdjustedRun): boolean {
   const isActive =
     run.status === WorkflowStatus.PENDING || run.status === WorkflowStatus.IN_PROGRESS;
   return !isActive && typeof run.all_pass === "boolean";
+}
+
+/** `n_passed` is undefined on rows with no score data. */
+function PassedCountCell({ run }: { run: AdjustedRun }) {
+  if (!hasScoreData(run)) {
+    return <span className="text-muted-foreground/60">—</span>;
+  }
+  if (run.n_passed === undefined) {
+    return (
+      <span
+        className="text-xs text-muted-foreground/60 cursor-help"
+        title="Passed count is unknown for this run — its score was recorded without roster adjustment."
+        data-testid="passed-cell-unknown"
+      >
+        n/a
+      </span>
+    );
+  }
+  if (run.n_passed === 0) {
+    return (
+      <span className="text-muted-foreground/60" data-testid="passed-cell-zero">
+        —
+      </span>
+    );
+  }
+  return (
+    <Badge
+      variant="outline"
+      className="border-0 bg-violet-500/15 text-violet-700 dark:text-violet-400 cursor-help tabular-nums"
+      title={`Passed criteria: ${run.n_passed}`}
+      data-testid="passed-cell-count"
+    >
+      {run.n_passed}
+    </Badge>
+  );
+}
+
+/** `n_failed` is null when the breakdown is not computable — unknown, not zero. */
+function FailedCountCell({ run }: { run: AdjustedRun }) {
+  if (!hasScoreData(run)) {
+    return <span className="text-muted-foreground/60">—</span>;
+  }
+  if (run.n_failed === null) {
+    return (
+      <span
+        className="text-xs text-muted-foreground/60 cursor-help"
+        title="Failed count is unknown for this run — its score was recorded without a rubric breakdown."
+        data-testid="failed-cell-unknown"
+      >
+        n/a
+      </span>
+    );
+  }
+  if (run.n_failed === 0) {
+    return (
+      <span className="text-muted-foreground/60" data-testid="failed-cell-zero">
+        —
+      </span>
+    );
+  }
+  return (
+    <Badge
+      variant="outline"
+      className="border-0 bg-violet-500/15 text-violet-700 dark:text-violet-400 cursor-help tabular-nums"
+      title={`Failed criteria: ${run.n_failed}`}
+      data-testid="failed-cell-count"
+    >
+      {run.n_failed}
+    </Badge>
+  );
 }
 
 /** `n_contested` is undefined on output-ref/bail-out rows — unknown, not zero. */
@@ -967,6 +1013,42 @@ function DisputedCountCell({ run }: { run: AdjustedRun }) {
       data-testid="disputed-cell-count"
     >
       {run.n_disputed}
+    </Badge>
+  );
+}
+
+/** `n_total` falls back to `roster_total` when the row's own denominator is unset. */
+function TotalCountCell({ run }: { run: AdjustedRun }) {
+  if (!hasScoreData(run)) {
+    return <span className="text-muted-foreground/60">—</span>;
+  }
+  const total = run.n_total ?? run.roster_total;
+  if (total === undefined) {
+    return (
+      <span
+        className="text-xs text-muted-foreground/60 cursor-help"
+        title="Total is unknown for this run — its score was recorded without roster adjustment."
+        data-testid="total-cell-unknown"
+      >
+        n/a
+      </span>
+    );
+  }
+  if (total === 0) {
+    return (
+      <span className="text-muted-foreground/60" data-testid="total-cell-zero">
+        —
+      </span>
+    );
+  }
+  return (
+    <Badge
+      variant="outline"
+      className="border-0 bg-violet-500/15 text-violet-700 dark:text-violet-400 cursor-help tabular-nums"
+      title={`Total criteria: ${total}`}
+      data-testid="total-cell-count"
+    >
+      {total}
     </Badge>
   );
 }
