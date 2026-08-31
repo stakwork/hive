@@ -408,7 +408,7 @@ function RecursionCard({ entry, refetch, allRuns }: RecursionCardProps) {
       .filter(
         (r) =>
           r.taskSlug === entry.id &&
-          r.runType === "recursion" &&
+          r.runType === "consolidated" &&
           (r.status === WorkflowStatus.PENDING ||
             r.status === WorkflowStatus.IN_PROGRESS) &&
           !r.hasReport,
