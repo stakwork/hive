@@ -54,6 +54,18 @@ import {
   deriveFeatureSnapshots,
   decorateNodesWithLiveState,
 } from "./useFeatureLiveState";
+import { useAttentionMapContext } from "./AttentionMapContext";
+import { useLiveNowItems } from "./useLiveNowItems";
+import { LiveNowPanel } from "./LiveNowPanel";
+import { runDeeplinkNavigation } from "./deeplinkNavigation";
+
+/**
+ * Cross-scope deep-link navigation lives in `./deeplinkNavigation` (a
+ * leaf module so it stays unit-testable without mounting the canvas).
+ * Re-exported here so the canvas component remains the single public
+ * symbol home for everything that consumes `pendingDeeplink`.
+ */
+export { runDeeplinkNavigation } from "./deeplinkNavigation";
 
 /**
  * Full-screen interactive system-canvas background for the Connections page.
@@ -531,29 +543,54 @@ export function OrgCanvasBackground({
     [currentRef, root],
   );
 
-  // ── Canvas deeplink chip navigation ────────────────────────────────
+  // ── Canvas deeplink navigation (chat chips + Live Now panel) ───────
   // Consumes `pendingDeeplink` from the chat store. When the user clicks
-  // a `CanvasDeeplinkChip` in chat, the store slot is set; this effect
-  // fires, navigates to the correct sub-canvas (if needed), then pans
-  // and zooms to the target node. `clearDeeplink()` is always called in
-  // `finally` so the slot is never stuck.
+  // a `CanvasDeeplinkChip` in chat — or a row in the Live Now panel —
+  // the store slot is set; this effect hands the request to the shared
+  // `runDeeplinkNavigation` helper, which performs the cross-scope jump
+  // (climb to root → drill in → focus zoom) and never throws.
+  // `clearDeeplink()` is always called in `finally` so the slot is
+  // never stuck.
   const pendingDeeplink = useCanvasChatStore((s) => s.pendingDeeplink);
   const clearDeeplink = useCanvasChatStore((s) => s.clearDeeplink);
 
+  /**
+   * Resolves a canvas ref to its data AT CALL TIME, reading the live
+   * refs — not a render closure — so the post-navigation scroll sees
+   * the LANDED canvas. `runDeeplinkNavigation` calls this after the
+   * drill-in promise resolves, by which point this component's
+   * `currentRef` state may still hold the pre-navigation scope.
+   */
+  const getDeeplinkCanvasData = useCallback(
+    (ref: string) => (ref ? subCanvasesRef.current[ref] : rootRef.current),
+    [rootRef, subCanvasesRef],
+  );
+
+  /**
+   * The navigation is async while `pendingDeeplink` stays set until the
+   * `finally` below. Mid-flight breadcrumb updates change `currentRef`
+   * and would re-run this effect against the still-set slot — the guard
+   * keeps that re-run from re-entering the navigation (a second
+   * `navigateToRoot` / duplicate breadcrumb push).
+   */
+  const deeplinkInFlightRef = useRef(false);
+
   useEffect(() => {
     if (!pendingDeeplink || !canvasHandleRef.current) return;
+    if (deeplinkInFlightRef.current) return;
+    deeplinkInFlightRef.current = true;
     const handle = canvasHandleRef.current;
-    const { nodeId, canvasRef } = pendingDeeplink;
-
-    const doNavigate =
-      canvasRef && canvasRef !== currentRef
-        ? handle
-            .zoomIntoNode(canvasRef, { durationMs: 300 })
-            .then(() => scrollToNode(nodeId))
-        : Promise.resolve().then(() => scrollToNode(nodeId));
-
-    void doNavigate.finally(() => clearDeeplink());
-  }, [pendingDeeplink, currentRef, scrollToNode, clearDeeplink]);
+    void runDeeplinkNavigation({
+      handle,
+      currentRef,
+      target: pendingDeeplink,
+      getCanvasData: getDeeplinkCanvasData,
+      containerWidth: canvasContainerRef.current?.clientWidth ?? 0,
+    }).finally(() => {
+      deeplinkInFlightRef.current = false;
+      clearDeeplink();
+    });
+  }, [pendingDeeplink, currentRef, clearDeeplink, getDeeplinkCanvasData]);
 
   // Initial drill-in from `?canvas=<ref>`. Runs once after the root
   // canvas has loaded — `zoomIntoNode` requires the projected node
@@ -814,6 +851,47 @@ export function OrgCanvasBackground({
   );
   const { liveByFeatureId, binders: featureLiveBinders } =
     useFeatureLiveState(featureSeeds);
+
+  // ── Live Now panel inputs ──────────────────────────────────────────
+  // The panel is strictly a second client-side read of state this
+  // component already tracks: the attention feed (from
+  // `AttentionMapContext`, mounted by `OrgCanvasView`) and the
+  // `liveByFeatureId` map above. No new fetch, poll, or subscription.
+  //
+  // `useLiveNowItems` resolves each attention row's canvas ref from the
+  // item's FKs, but running-only rows carry no title/ref — those come
+  // from the optional metadata maps below, scanned off the same loaded
+  // canvases (root + subCanvases) that seeded `featureSeeds`. One pass,
+  // first canvas seen wins (same precedence as the seeds scan).
+  const { items: attentionItems, lastUpdatedAt: attentionUpdatedAt } =
+    useAttentionMapContext();
+
+  const liveNowFeatureMeta = useMemo(() => {
+    const titles = new Map<string, string>();
+    const refs = new Map<string, string>();
+    const scan = (data: CanvasData | null | undefined, ref: string) => {
+      for (const node of data?.nodes ?? []) {
+        if (node.category !== "feature" || !node.id.startsWith("feature:")) {
+          continue;
+        }
+        const featureId = node.id.slice("feature:".length);
+        if (!titles.has(featureId)) {
+          titles.set(featureId, node.text ?? "");
+          refs.set(featureId, ref);
+        }
+      }
+    };
+    scan(root, "");
+    for (const [ref, data] of Object.entries(subCanvases)) scan(data, ref);
+    return { titles, refs };
+  }, [root, subCanvases]);
+
+  const liveNow = useLiveNowItems({
+    items: attentionItems,
+    liveByFeatureId,
+    featureTitles: liveNowFeatureMeta.titles,
+    featureRefs: liveNowFeatureMeta.refs,
+  });
 
   const canvasForRender = useMemo<CanvasData>(
     () =>
@@ -1344,7 +1422,20 @@ export function OrgCanvasBackground({
           entries={hiddenLive ?? []}
           onRestore={handleRestoreLive}
         />
-
+        {/*
+         * Live Now panel — stacked directly beneath the restore pill
+         * (which owns `top:16, right:16, zIndex:25`). Renders nothing
+         * at all when nothing needs attention / is running, so the
+         * steady-state stays zero chrome. Read-only lens over the
+         * attention feed + live agent state already tracked above;
+         * row clicks dispatch `pendingDeeplink` commands through the
+         * chat store, consumed by the hardened effect up top.
+         */}
+        <LiveNowPanel
+          rows={liveNow.rows}
+          overflowCount={liveNow.overflowCount}
+          lastUpdatedAt={attentionUpdatedAt}
+        />
 
         {/*
          * Deep-link load overlay. When the page loads with a `?canvas=`
