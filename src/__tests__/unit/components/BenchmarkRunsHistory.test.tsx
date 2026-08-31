@@ -840,7 +840,11 @@ describe("BenchmarkRunsHistory", () => {
       setExpandedId: mockSetExpandedId,
     });
     render(React.createElement(BenchmarkRunsHistory));
-    expect(screen.getByText("Failed")).toBeInTheDocument();
+    const failedMatches = screen.getAllByText("Failed");
+    expect(failedMatches.length).toBeGreaterThan(0);
+    expect(
+      failedMatches.some((el) => el.className.includes("text-destructive")),
+    ).toBe(true);
   });
 
   it("shows dash (not Pending) for a FAILED run with generateJamieChat (report will never fire)", () => {
