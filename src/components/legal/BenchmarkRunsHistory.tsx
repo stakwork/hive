@@ -313,7 +313,14 @@ export function BenchmarkRunsHistory({
     () =>
       runs.filter(
         (r) =>
-          r.runType !== "manual" &&
+          // Allow-list, not deny-list: only "recursion"-tagged rows (the
+          // LEGAL_BENCHMARK_EVAL / LEGAL_BENCHMARK_RECURSION loop) surface
+          // here. "manual" rows have their own path via manualRuns/manualRows,
+          // and "consolidated" rows (LEGAL_BENCHMARK_CONSOLIDATED) are
+          // excluded from both — they never render as their own row in this
+          // table, even though they still flow through the hook's merged
+          // `runs` list for the Recursion tab's Pusher-driven status tracking.
+          r.runType === "recursion" &&
           (!selectedTask || r.taskSlug === selectedTask.slug),
       ),
     [runs, selectedTask],

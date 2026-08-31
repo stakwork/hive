@@ -8,16 +8,23 @@ import { getWorkspaceChannelName, PUSHER_EVENTS } from "@/lib/pusher";
 
 /**
  * Display name per StakworkRun pipeline:
- *  - "manual"    — LEGAL_BENCHMARK_RUNNER: a human clicked Run; scored
- *  - "recursion" — the automated loop, covering BOTH cron pipelines:
- *                  LEGAL_BENCHMARK_EVAL (failure analysis; writes cause
- *                  annotations onto the source run) and
- *                  LEGAL_BENCHMARK_RECURSION (the fix-proposal step).
- *                  Analysis is an internal stage of the loop, not a category
- *                  an operator distinguishes — neither pipeline ever scores;
- *                  re-scored attempts land graph-side (Recursion tab).
+ *  - "manual"       — LEGAL_BENCHMARK_RUNNER: a human clicked Run; scored
+ *  - "recursion"    — the automated loop, covering BOTH cron pipelines:
+ *                     LEGAL_BENCHMARK_EVAL (failure analysis; writes cause
+ *                     annotations onto the source run) and
+ *                     LEGAL_BENCHMARK_RECURSION (the fix-proposal step).
+ *                     Analysis is an internal stage of the loop, not a category
+ *                     an operator distinguishes — neither pipeline ever scores;
+ *                     re-scored attempts land graph-side (Recursion tab).
+ *  - "consolidated" — LEGAL_BENCHMARK_CONSOLIDATED: the cross-run "Consolidated
+ *                     Report" comparison. Tagged distinctly from "recursion" so
+ *                     BenchmarkRunsHistory's allow-list filter excludes it from
+ *                     the Runs tab table entirely, while still flowing through
+ *                     this hook's merged `runs` list/Pusher subscription so the
+ *                     Recursion tab's RecursionCard can seed in-flight/completed
+ *                     consolidated-report status after a page refresh.
  */
-export type BenchmarkRunType = "manual" | "recursion";
+export type BenchmarkRunType = "manual" | "recursion" | "consolidated";
 
 export interface BenchmarkRunListRow {
   id: string;
@@ -227,9 +234,12 @@ export function useLegalBenchmarkRunList(
         // CONSOLIDATED rows are merged so Pusher updates for them flow through
         // the existing channel subscription without new polling logic, enabling
         // RecursionCard to surface in-flight / completed consolidated report
-        // status after a page refresh. They are not surfaced in the Runs tab
-        // table — the runType tag keeps them invisible there.
-        ...rawConsolidatedRows.map((r) => mapSecondary(r, "recursion")),
+        // status after a page refresh. They are tagged "consolidated" — a tag
+        // distinct from "recursion" — specifically so BenchmarkRunsHistory's
+        // allow-list filter excludes them from ever rendering as their own row
+        // in the Runs tab table, while remaining in this merged list (and thus
+        // reachable by RecursionCard/allRuns) for the Recursion tab's seeding.
+        ...rawConsolidatedRows.map((r) => mapSecondary(r, "consolidated")),
       ].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
       runsRef.current = merged;
