@@ -51,6 +51,7 @@ import {
 import type { CanvasScopeHint } from "@/lib/constants/prompt";
 import { getCanvasSystemPrompt } from "@/lib/ai/canvas-system-prompt";
 import { askTools, listConcepts, createHasEndMarkerCondition } from "@/lib/ai/askTools";
+import { isConceptSeedingEnabled } from "@/lib/ai/concepts";
 import { askToolsMulti } from "@/lib/ai/askToolsMulti";
 import {
   buildWorkspaceConfigs,
@@ -786,6 +787,14 @@ export async function runCanvasAgent(
   let firstTokenLogged = false;
   const toolCallStartTimes = new Map<string, number>();
 
+  // Concept pre-seeding master switch (CANVAS_CONCEPT_SEEDING, off by
+  // default). When off, both branches below skip the up-front swarm
+  // concept fetch, ignore any per-conversation concept cache, emit no
+  // pre-seeded `list_concepts` pairs into the prefix (the prompt
+  // builders check the same flag), and leave `cacheableConcepts` empty
+  // so callers never persist a concept cache.
+  const conceptSeedingEnabled = isConceptSeedingEnabled();
+
   if (isMultiWorkspace) {
     // Multi-workspace mode is auth-only — public-viewer requests are
     // rejected by the caller before reaching here. The non-null
@@ -805,9 +814,13 @@ export async function runCanvasAgent(
     // cached concepts still flow into `askToolsMulti` (so the 3+ workspace
     // `read_concepts_for_repo` tool keeps working) AND into the prefix
     // builder below.
-    const multiCacheHit = !!cachedConcepts?.conceptsByWorkspace;
+    const multiCacheHit =
+      conceptSeedingEnabled && !!cachedConcepts?.conceptsByWorkspace;
     let conceptsByWorkspace: Record<string, Record<string, unknown>[]>;
-    if (multiCacheHit) {
+    if (!conceptSeedingEnabled) {
+      conceptsByWorkspace = {};
+      console.log("[runCanvasAgent] timing", { stage: "fetchConceptsForWorkspaces (multi)", ms: 0, skipped: "seeding disabled", workspaces: workspaceSlugs, orgId: orgId ?? null });
+    } else if (multiCacheHit) {
       conceptsByWorkspace = cachedConcepts!.conceptsByWorkspace!;
       console.log("[runCanvasAgent] timing", { stage: "fetchConceptsForWorkspaces (multi)", ms: 0, skipped: "cache hit", workspaces: workspaceSlugs, orgId: orgId ?? null });
     } else {
@@ -816,7 +829,11 @@ export async function runCanvasAgent(
       console.log("[runCanvasAgent] timing", { stage: "fetchConceptsForWorkspaces (multi)", ms: Date.now() - tConcepts, workspaces: workspaceSlugs, orgId: orgId ?? null });
     }
 
-    tools = askToolsMulti(workspaceConfigs, apiKey, conceptsByWorkspace, {
+    // With seeding off there is no pre-fetched catalog, so pass
+    // `undefined` — this keeps `{slug}__read_concepts_for_repo` (which
+    // serves that catalog) unregistered, matching the prompt's
+    // untrimmed tool lines.
+    tools = askToolsMulti(workspaceConfigs, apiKey, conceptSeedingEnabled ? conceptsByWorkspace : undefined, {
       conversationId: currentCanvasConversationId,
       turnId,
       cancellation,
@@ -903,7 +920,9 @@ export async function runCanvasAgent(
     console.log("[runCanvasAgent] timing", { stage: "getCanvasSystemPrompt (multi)", ms: tPrefixMessages - tSystemPrompt, workspaces: workspaceSlugs, orgId: orgId ?? null });
     console.log("[runCanvasAgent] timing", { stage: "getMultiWorkspacePrefixMessages (multi)", ms: Date.now() - tPrefixMessages, workspaces: workspaceSlugs, orgId: orgId ?? null });
     cacheHit = multiCacheHit;
-    cacheableConcepts = { conceptsByWorkspace };
+    // Empty when seeding is off — `hasConcepts({})` is false, so callers
+    // never persist a concept cache while the feature is disabled.
+    cacheableConcepts = conceptSeedingEnabled ? { conceptsByWorkspace } : {};
     primarySwarmUrl = workspaceConfigs[0].swarmUrl;
     primarySwarmApiKey = workspaceConfigs[0].swarmApiKey;
     primaryWorkspaceId = workspaceConfigs[0].workspaceId;
@@ -936,8 +955,11 @@ export async function runCanvasAgent(
     // multi-workspace path's `fetchConceptsForWorkspaces`, which
     // already swallows per-workspace failures.
     // Cache hit → reuse cached concepts and skip the swarm fetch.
-    const singleCacheHit = !!cachedConcepts?.concepts;
-    if (singleCacheHit) {
+    const singleCacheHit = conceptSeedingEnabled && !!cachedConcepts?.concepts;
+    if (!conceptSeedingEnabled) {
+      features = [];
+      console.log("[runCanvasAgent] timing", { stage: "listConcepts (single)", ms: 0, skipped: "seeding disabled", workspaces: workspaceSlugs, orgId: orgId ?? null });
+    } else if (singleCacheHit) {
       features = cachedConcepts!.concepts!;
       console.log("[runCanvasAgent] timing", { stage: "listConcepts (single)", ms: 0, skipped: "cache hit", workspaces: workspaceSlugs, orgId: orgId ?? null });
     } else {
@@ -955,7 +977,8 @@ export async function runCanvasAgent(
       features = (concepts.concepts as Record<string, unknown>[]) || [];
     }
     cacheHit = singleCacheHit;
-    cacheableConcepts = { concepts: features };
+    // Empty when seeding is off — see the multi-workspace branch above.
+    cacheableConcepts = conceptSeedingEnabled ? { concepts: features } : {};
 
     // Single-workspace + orgId: an org-scope caller (e.g. the org-MCP
     // `org_agent` tool, or the org SidebarChat for an org that
