@@ -33,6 +33,7 @@ const {
   mockAddEdgeV2,
   mockDeleteNode,
   mockSearchNodesByAttributes,
+  mockReadNodeByRef,
 } = vi.hoisted(() => ({
   mockResolveGraphJarvis: vi.fn(),
   mockAddNode: vi.fn(),
@@ -40,6 +41,7 @@ const {
   mockAddEdgeV2: vi.fn(),
   mockDeleteNode: vi.fn(),
   mockSearchNodesByAttributes: vi.fn(),
+  mockReadNodeByRef: vi.fn(),
 }));
 
 vi.mock("@/lib/db", () => ({
@@ -67,7 +69,7 @@ vi.mock("@/services/swarm/api/nodes", () => ({
   addNode: mockAddNode,
   updateNodeV2: mockUpdateNodeV2,
   addEdgeV2: mockAddEdgeV2,
-  readNodeByRef: vi.fn(),
+  readNodeByRef: mockReadNodeByRef,
   deleteNode: mockDeleteNode,
   searchNodesByAttributes: mockSearchNodesByAttributes,
 }));
@@ -171,6 +173,9 @@ beforeEach(() => {
     ok: true,
     nodes: [{ ref_id: "ref-parent", node_type: "Concept" }],
   });
+  // findConceptRefById's last resort. Default to a miss so the `id` /
+  // `node_key` searches remain the resolving step in existing tests.
+  mockReadNodeByRef.mockResolvedValue({ success: false, message: "not found" });
   // Anchor-pass defaults: workspace row exists; the approver ("user-1") has
   // a member row. Individual tests override to exercise owner/edge cases.
   (db.workspace.findUnique as Mock).mockResolvedValue({
@@ -693,6 +698,95 @@ describe("approveConceptUpdate — jarvis update path", () => {
     expect(result.ok).toBe(false);
     expect((result as { ok: false; error: string }).error).toContain(
       "Concept 'acme/hive/nonexistent' not found",
+    );
+    expect(mockUpdateNodeV2).not.toHaveBeenCalled();
+  });
+
+  it("resolves a concept by node_key when it carries no id", async () => {
+    // gitree's nodeToConcept falls back to node_key, so this is an id the
+    // read tools legitimately hand the agent.
+    mockSearchNodesByAttributes.mockImplementation(
+      async (_config: unknown, params: { filters: Array<{ attribute: string }> }) =>
+        params.filters[0]?.attribute === "node_key"
+          ? { ok: true, nodes: [{ ref_id: "ref-by-node-key", node_type: "Concept" }] }
+          : { ok: true, nodes: [] },
+    );
+
+    const result = await approve(
+      makeUpdateMessages({
+        workspaceId: "ws-cuid-1",
+        workspaceSlug: "acme",
+        conceptId: "concept-authguide",
+        documentation: "# A\nDetails.",
+      }),
+    );
+
+    expect(result.ok).toBe(true);
+    expect(mockUpdateNodeV2).toHaveBeenCalledWith(expect.anything(), "ref-by-node-key", {
+      docs: "# A\nDetails.",
+    });
+  });
+
+  it("resolves a concept by bare ref_id when neither id nor node_key match", async () => {
+    // The read→update dead end: read_concept_documentation serves a body for
+    // a ref_id-addressed concept, so propose_concept_update must accept it.
+    mockSearchNodesByAttributes.mockResolvedValue({ ok: true, nodes: [] });
+    mockReadNodeByRef.mockResolvedValue({
+      success: true,
+      node_type: "Concept",
+      properties: { name: "Auth Guide" },
+    });
+
+    const result = await approve(
+      makeUpdateMessages({
+        workspaceId: "ws-cuid-1",
+        workspaceSlug: "acme",
+        conceptId: "d2047c31-8dfc-438b-b464-4635b7e04bf0",
+        documentation: "# A\nDetails.",
+      }),
+    );
+
+    expect(result.ok).toBe(true);
+    expect(mockUpdateNodeV2).toHaveBeenCalledWith(
+      expect.anything(),
+      "d2047c31-8dfc-438b-b464-4635b7e04bf0",
+      { docs: "# A\nDetails." },
+    );
+  });
+
+  it("does not treat a non-Concept ref_id as a match", async () => {
+    mockSearchNodesByAttributes.mockResolvedValue({ ok: true, nodes: [] });
+    mockReadNodeByRef.mockResolvedValue({ success: true, node_type: "Feature" });
+
+    const result = await approve(
+      makeUpdateMessages({
+        workspaceId: "ws-cuid-1",
+        workspaceSlug: "acme",
+        conceptId: "ref-of-a-feature",
+        documentation: "# A\nDetails.",
+      }),
+    );
+
+    expect(result.ok).toBe(false);
+    expect((result as { ok: false; error: string }).error).toContain("not found");
+    expect(mockUpdateNodeV2).not.toHaveBeenCalled();
+  });
+
+  it("reports 502 rather than 404 when the graph is unreachable", async () => {
+    mockSearchNodesByAttributes.mockResolvedValue({ ok: false, nodes: [], status: 503 });
+
+    const result = await approve(
+      makeUpdateMessages({
+        workspaceId: "ws-cuid-1",
+        workspaceSlug: "acme",
+        conceptId: "acme/hive/auth-guide",
+        documentation: "# A\nDetails.",
+      }),
+    );
+
+    expect(result.ok).toBe(false);
+    expect((result as { ok: false; error: string }).error).toContain(
+      "Could not reach the workspace graph",
     );
     expect(mockUpdateNodeV2).not.toHaveBeenCalled();
   });

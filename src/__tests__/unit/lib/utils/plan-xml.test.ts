@@ -39,5 +39,50 @@ describe("parsePlanXml", () => {
       const xml = `<plan><brief>no chips here</brief></plan>`;
       expect(parsePlanXml(xml).nextSteps).toBeUndefined();
     });
+
+    it("ignores an echoed earlier copy of the message + chip block", () => {
+      // A doubled block used to render as [A, B, C, A]: six matches clamped to four.
+      const block = `<message>Anything missing, or shall I move to requirements?</message>
+<next_step>Looks good, on to requirements</next_step>
+<next_step>Keep it read-only telemetry</next_step>
+<next_step>Add automated cleanup too</next_step>`;
+      expect(parsePlanXml(`${block}\n\n${block}`).nextSteps).toEqual([
+        "Looks good, on to requirements",
+        "Keep it read-only telemetry",
+        "Add automated cleanup too",
+      ]);
+    });
+
+    it("keeps the latest turn's chips when an earlier message carries stale ones", () => {
+      const xml = `<message>Earlier turn</message>
+<next_step>Old chip one</next_step>
+<next_step>Old chip two</next_step>
+
+<message>Latest turn</message>
+<next_step>Fresh chip one</next_step>
+<next_step>Fresh chip two</next_step>`;
+      expect(parsePlanXml(xml).nextSteps).toEqual(["Fresh chip one", "Fresh chip two"]);
+    });
+
+    it("reads the whole document when the payload has no message wrapper", () => {
+      const xml = `<plan><architecture>x</architecture></plan>
+<next_step>Only chip</next_step>`;
+      expect(parsePlanXml(xml).nextSteps).toEqual(["Only chip"]);
+    });
+
+    it("dedupes repeats within a turn, ignoring case and whitespace", () => {
+      const xml = `<next_step>Looks good, on to requirements</next_step>
+<next_step>looks good,  on to   requirements</next_step>
+<next_step>Keep it read-only telemetry</next_step>`;
+      expect(parsePlanXml(xml).nextSteps).toEqual([
+        "Looks good, on to requirements",
+        "Keep it read-only telemetry",
+      ]);
+    });
+
+    it("clamps to 4 after deduping, so repeats never crowd out real chips", () => {
+      const xml = `<next_step>chip 0</next_step><next_step>chip 0</next_step><next_step>chip 1</next_step><next_step>chip 2</next_step><next_step>chip 3</next_step><next_step>chip 4</next_step>`;
+      expect(parsePlanXml(xml).nextSteps).toEqual(["chip 0", "chip 1", "chip 2", "chip 3"]);
+    });
   });
 });
