@@ -50,6 +50,24 @@ export function shouldTrimConceptsToIds(workspaces: WorkspaceConfig[]): boolean 
 }
 
 /**
+ * Master switch for concept PRE-SEEDING, OFF by default. When disabled:
+ *   - the up-front swarm concept fetch (`listConcepts` /
+ *     `fetchConceptsForWorkspaces`) is skipped entirely,
+ *   - the prompt prefix carries NO synthetic `list_concepts`
+ *     tool-call/tool-result pairs,
+ *   - the per-conversation concept cache is neither read nor written,
+ *   - `{slug}__read_concepts_for_repo` is not registered (it serves the
+ *     pre-fetched catalog, which no longer exists).
+ * The live concept tools (`list_concepts` / `learn_concept`) stay
+ * registered either way — the agent can still fetch concepts on demand.
+ *
+ * Set CANVAS_CONCEPT_SEEDING=true to restore the pre-seeding behavior.
+ */
+export function isConceptSeedingEnabled(): boolean {
+  return process.env.CANVAS_CONCEPT_SEEDING === "true";
+}
+
+/**
  * Hard cap on how many concepts we seed into the canvas-chat context per
  * workspace. Concept catalogs can grow unbounded as repos are indexed;
  * without a ceiling a single workspace could balloon the pre-seeded
