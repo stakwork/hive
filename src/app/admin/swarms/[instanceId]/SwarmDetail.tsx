@@ -17,6 +17,7 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
+import HostStorageCard from "./HostStorageCard";
 
 interface Container {
   name: string;
@@ -385,6 +386,9 @@ export default function SwarmDetail({ instanceId, swarmUrl, name }: SwarmDetailP
           </div>
         </CardContent>
       </Card>
+
+      {/* Host Storage Card */}
+      <HostStorageCard instanceId={instanceId} />
 
       {/* Logs Dialog */}
       <Dialog open={logsDialog !== null} onOpenChange={(open) => !open && setLogsDialog(null)}>
