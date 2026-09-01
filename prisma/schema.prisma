@@ -920,6 +920,7 @@ model Feature {
   isFastTrack         Boolean               @default(false) @map("is_fast_track")
   planUpdatedAt       DateTime?             @map("plan_updated_at")
   model               String?
+  verifyCallbackKey   String?               @map("verify_callback_key")
   milestoneId         String?               @map("milestone_id")
   initiativeId        String?               @map("initiative_id")
   // Cuids of features that must reach completion before this feature
