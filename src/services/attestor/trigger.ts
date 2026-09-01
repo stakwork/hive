@@ -43,7 +43,7 @@ export async function startVerification(featureId: string, userId: string): Prom
 
   if (customStakLinkUrl) {
     controlUrl = customStakLinkUrl;
-    frontendUrl = customStakLinkUrl;
+    frontendUrl = process.env.VERIFY_APP_URL ?? process.env.NEXTAUTH_URL ?? customStakLinkUrl;
     podStatus = "local";
   } else {
     if (!feature.workspace.swarm) {
@@ -117,12 +117,20 @@ export async function startVerification(featureId: string, userId: string): Prom
     console.error("[attestor] Failed to resolve Bifrost credentials (non-fatal):", error);
   }
 
-  const model: VerifyModel = {
-    apiKey: bifrost?.apiKey ?? process.env.ANTHROPIC_API_KEY ?? "",
-    provider: "anthropic",
-    model: "claude-3-7-sonnet-latest",
-    ...(bifrost?.baseUrl ? { host: bifrost.baseUrl } : {}),
-  };
+  const openrouterKey = process.env.OPENROUTER_API_KEY;
+  const model: VerifyModel = openrouterKey
+    ? {
+        apiKey: openrouterKey,
+        provider: "openai",
+        model: "openai/gpt-4o",
+        host: "https://openrouter.ai/api/v1",
+      }
+    : {
+        apiKey: bifrost?.apiKey ?? process.env.ANTHROPIC_API_KEY ?? "",
+        provider: "anthropic",
+        model: "claude-3-7-sonnet-latest",
+        ...(bifrost?.baseUrl ? { host: bifrost.baseUrl } : {}),
+      };
 
   const baseUrl = process.env.NEXTAUTH_URL || "http://localhost:3000";
   const responseUrl = `${baseUrl}/api/features/${featureId}/verify/callback`;
