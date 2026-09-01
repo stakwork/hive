@@ -95,6 +95,21 @@ describe("SuggestionChips", () => {
     expect(mockOnSelect).toHaveBeenNthCalledWith(2, "Option B");
   });
 
+  test("renders a repeated suggestion without a duplicate React key", () => {
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+    render(
+      <SuggestionChips
+        suggestions={["Looks good", "Go for it", "Looks good"]}
+        onSelect={mockOnSelect}
+      />
+    );
+    expect(screen.getAllByRole("button")).toHaveLength(3);
+    expect(
+      consoleError.mock.calls.some((call) => String(call[0]).includes("same key"))
+    ).toBe(false);
+    consoleError.mockRestore();
+  });
+
   test("renders with two suggestions", () => {
     render(
       <SuggestionChips
