@@ -209,6 +209,7 @@ model SourceControlOrg {
   researches           Research[]
   automations          Automation[]
   urnEdges             UrnEdge[]
+  mcpServers           OrgMcpServer[]
   // Keyset cursors for canvas-mirror-cron (per-entity {at,id} + canvas watermarks).
   // Mirrors Workspace.jarvisSyncState — staggered schedule so writes don't race.
   jarvisSyncState      Json?                @map("jarvis_sync_state")
@@ -216,6 +217,29 @@ model SourceControlOrg {
   @@index([githubLogin])
   @@index([githubInstallationId])
   @@map("source_control_orgs")
+}
+
+// External MCP server registered for an org's canvas agent (Jamie).
+// The agent connects over HTTP at run start, discovers the server's
+// tools, and merges them (namespaced `{name}_{tool}`) into its toolset.
+// `headers` is an encrypted JSON object (Record<string,string>) — full
+// request headers for auth, write-only through the API. `toolFilter`
+// is an allowlist of tool names; empty means "all tools".
+model OrgMcpServer {
+  id                 String           @id @default(cuid())
+  sourceControlOrgId String           @map("source_control_org_id")
+  name               String
+  url                String
+  headers            String?
+  toolFilter         String[]         @default([]) @map("tool_filter")
+  enabled            Boolean          @default(true)
+  createdAt          DateTime         @default(now()) @map("created_at")
+  updatedAt          DateTime         @updatedAt @map("updated_at")
+  sourceControlOrg   SourceControlOrg @relation(fields: [sourceControlOrgId], references: [id], onDelete: Cascade)
+
+  @@unique([sourceControlOrgId, name])
+  @@index([sourceControlOrgId])
+  @@map("org_mcp_servers")
 }
 
 model SourceControlToken {
