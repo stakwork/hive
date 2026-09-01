@@ -41,7 +41,8 @@ export type EncryptableField =
   | "macaroonOrgPrivkey"
   | "macaroonUserPrivkey"
   | "secretValue"
-  | "discordBotToken";
+  | "discordBotToken"
+  | "mcpHeaders";
 
 export interface EncryptionError extends Error {
   code: "ENCRYPTION_FAILED" | "DECRYPTION_FAILED" | "INVALID_KEY" | "INVALID_DATA";
