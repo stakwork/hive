@@ -39,5 +39,56 @@ describe("parsePlanXml", () => {
       const xml = `<plan><brief>no chips here</brief></plan>`;
       expect(parsePlanXml(xml).nextSteps).toBeUndefined();
     });
+
+    it("drops repeats when the payload echoes the whole message + chip block", () => {
+      // A doubled block used to render as [A, B, C, A]: six matches clamped to four.
+      const block = `<message>Anything missing, or shall I move to requirements?</message>
+<next_step>Looks good, on to requirements</next_step>
+<next_step>Keep it read-only telemetry</next_step>
+<next_step>Add automated cleanup too</next_step>`;
+      expect(parsePlanXml(`${block}\n\n${block}`).nextSteps).toEqual([
+        "Looks good, on to requirements",
+        "Keep it read-only telemetry",
+        "Add automated cleanup too",
+      ]);
+    });
+
+    it("keeps the trailing block when an earlier block carries stale chips", () => {
+      const xml = `<message>Earlier turn</message>
+<next_step>Old chip one</next_step>
+<next_step>Old chip two</next_step>
+
+<message>Latest turn</message>
+<next_step>Fresh chip one</next_step>
+<next_step>Fresh chip two</next_step>`;
+      expect(parsePlanXml(xml).nextSteps).toEqual(["Fresh chip one", "Fresh chip two"]);
+    });
+
+    it("dedupes repeats inside a single block, ignoring case and whitespace", () => {
+      const xml = `<next_step>Looks good, on to requirements</next_step>
+<next_step>looks good,  on to   requirements</next_step>
+<next_step>Keep it read-only telemetry</next_step>`;
+      expect(parsePlanXml(xml).nextSteps).toEqual([
+        "Looks good, on to requirements",
+        "Keep it read-only telemetry",
+      ]);
+    });
+
+    it("clamps to 4 after deduping, so repeats never crowd out real chips", () => {
+      const xml = `<next_step>chip 0</next_step><next_step>chip 0</next_step><next_step>chip 1</next_step><next_step>chip 2</next_step><next_step>chip 3</next_step><next_step>chip 4</next_step>`;
+      expect(parsePlanXml(xml).nextSteps).toEqual(["chip 0", "chip 1", "chip 2", "chip 3"]);
+    });
+
+    it("falls back to the last block with content when the trailing block is blank", () => {
+      const xml = `<next_step>Move on</next_step>
+
+<next_step>   </next_step>`;
+      expect(parsePlanXml(xml).nextSteps).toEqual(["Move on"]);
+    });
+
+    it("treats tags separated only by whitespace as one block", () => {
+      const xml = `<next_step>One</next_step>\n\n  \n<next_step>Two</next_step>`;
+      expect(parsePlanXml(xml).nextSteps).toEqual(["One", "Two"]);
+    });
   });
 });
