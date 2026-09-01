@@ -151,6 +151,15 @@ function makeErrorResponse(status = 500, error = "Internal server error") {
 import SwarmDetail from "@/app/admin/swarms/[instanceId]/SwarmDetail";
 import { toast } from "sonner";
 
+// HostStorageCard is its own component with its own suite; mocked here so the
+// SwarmDetail tests stay scoped to the containers/actions behaviour (its
+// on-mount storage GET would otherwise become mockFetch's first call).
+vi.mock("@/app/admin/swarms/[instanceId]/HostStorageCard", () => ({
+  default: ({ instanceId }: { instanceId: string }) => (
+    <div data-testid="host-storage-card-mock" data-instance-id={instanceId} />
+  ),
+}));
+
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
@@ -192,6 +201,17 @@ describe("SwarmDetail", () => {
 
       const body = JSON.parse(mockFetch.mock.calls[0][1].body as string);
       expect(body.swarmUrl).toBe("https://swarm-node-2.sphinx.chat");
+    });
+
+    it("renders the Host Storage card for the instance", async () => {
+      mockFetch.mockResolvedValueOnce(makeListContainersResponse());
+
+      render(<SwarmDetail instanceId="i-abc" />);
+
+      await waitFor(() => expect(mockFetch).toHaveBeenCalled());
+
+      const card = screen.getByTestId("host-storage-card-mock");
+      expect(card).toHaveAttribute("data-instance-id", "i-abc");
     });
 
     it("shows loading spinner while fetching", () => {

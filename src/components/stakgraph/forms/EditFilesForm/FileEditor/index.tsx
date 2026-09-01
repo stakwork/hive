@@ -4,6 +4,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { RotateCcw } from "lucide-react";
 import React from "react";
 import { FileIcon } from "../FileIcon";
+import { formatBytes } from "@/lib/utils/format";
 
 interface FileEditorProps {
   name: string;
@@ -12,14 +13,6 @@ interface FileEditorProps {
   originalValue: string;
   onChange: (value: string) => void;
 }
-
-const formatBytes = (bytes: number) => {
-  if (bytes === 0) return "0 B";
-  const k = 1024;
-  const sizes = ["B", "KB", "MB"];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + " " + sizes[i];
-};
 
 const getFileStats = (content: string) => {
   const lines = content.split("\n").length;
