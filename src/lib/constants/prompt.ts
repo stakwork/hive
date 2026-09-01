@@ -1,6 +1,6 @@
 import { ModelMessage } from "ai";
 import { WorkspaceConfig, WorkspaceMemberInfo } from "@/lib/ai/types";
-import { shouldTrimConceptsToIds, MAX_SEEDED_CONCEPTS_PER_WORKSPACE } from "@/lib/ai/concepts";
+import { shouldTrimConceptsToIds, MAX_SEEDED_CONCEPTS_PER_WORKSPACE, isConceptSeedingEnabled } from "@/lib/ai/concepts";
 import { buildPromptCategorySection } from "@/app/org/[githubLogin]/connections/canvas-categories";
 import { jamieName } from "@/lib/constants/jamie";
 
@@ -127,33 +127,42 @@ export function getQuickAskPrefixMessages(
       CANVAS_SCOPE_POINTER
     : baseSystem;
 
+  // Concept pre-seeding is env-gated (see `isConceptSeedingEnabled`).
+  // When off, the prefix is just the system prompt — the agent calls
+  // `list_concepts` live if it wants the catalog.
+  const seededConceptMessages: ModelMessage[] = isConceptSeedingEnabled()
+    ? [
+        {
+          role: "assistant",
+          content: [
+            {
+              type: "tool-call",
+              toolCallId: "list-1",
+              toolName: "list_concepts",
+              input: {},
+            },
+          ],
+        },
+        {
+          role: "tool",
+          content: [
+            {
+              type: "tool-result",
+              toolCallId: "list-1",
+              toolName: "list_concepts",
+              output: {
+                type: "json",
+                value: concepts.slice(0, MAX_SEEDED_CONCEPTS_PER_WORKSPACE) as any,
+              },
+            },
+          ],
+        },
+      ]
+    : [];
+
   return [
     { role: "system", content: systemContent },
-    {
-      role: "assistant",
-      content: [
-        {
-          type: "tool-call",
-          toolCallId: "list-1",
-          toolName: "list_concepts",
-          input: {},
-        },
-      ],
-    },
-    {
-      role: "tool",
-      content: [
-        {
-          type: "tool-result",
-          toolCallId: "list-1",
-          toolName: "list_concepts",
-          output: {
-            type: "json",
-            value: concepts.slice(0, MAX_SEEDED_CONCEPTS_PER_WORKSPACE) as any,
-          },
-        },
-      ],
-    },
+    ...seededConceptMessages,
     ...(clueMsgs || []),
   ];
 }
@@ -277,8 +286,11 @@ export function getMultiWorkspaceSystemPrompt(
   // true the agent will see only repo-prefixed concept IDs in the pre-seeded
   // `list_concepts` results, and a `{slug}__read_concepts_for_repo` tool is
   // available to fetch `{id,name,description}` for a chosen repo before
-  // falling through to `learn_concept` for full docs.
-  const trimmed = shouldTrimConceptsToIds(workspaces);
+  // falling through to `learn_concept` for full docs. Trim mode only
+  // exists when pre-seeding is on at all — with seeding disabled there
+  // are no pre-seeded results to trim and `read_concepts_for_repo` is
+  // not registered, so we must advertise the untrimmed tool lines.
+  const trimmed = isConceptSeedingEnabled() && shouldTrimConceptsToIds(workspaces);
 
   const conceptToolLines = trimmed
     ? `- \`{workspace}__list_concepts\` - List features/concepts from that codebase. **With 3+ workspaces you'll see only concept IDs here** (token economy). IDs are repo-prefixed like \`owner/repo/slug\`.
@@ -1016,14 +1028,16 @@ export function getMultiWorkspacePrefixMessages(
   canvasSystemPrompt: string = DEFAULT_CANVAS_SYSTEM_PROMPT,
   userTimezone?: string,
 ): ModelMessage[] {
-  // Build pre-filled tool calls for each workspace's concepts
+  // Build pre-filled tool calls for each workspace's concepts. Concept
+  // pre-seeding is env-gated (see `isConceptSeedingEnabled`); when off,
+  // no synthetic pairs are emitted at all.
   const toolCalls: ModelMessage[] = [];
 
   // Shared with `askToolsMulti` so the seeding shape and the
   // `{slug}__read_concepts_for_repo` tool registration always agree.
   const trimToIds = shouldTrimConceptsToIds(workspaces);
 
-  for (const ws of workspaces) {
+  for (const ws of isConceptSeedingEnabled() ? workspaces : []) {
     const concepts = conceptsByWorkspace[ws.slug] || [];
     const output = trimToIds
       ? concepts.map((c) => c.id)
