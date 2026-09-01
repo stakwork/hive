@@ -73,16 +73,24 @@ export async function getEligibleWorkspaces() {
 
 /**
  * Fetch jlist from a pod's control endpoint
+ *
+ * The control port authenticates with the pod password, so callers must pass
+ * it through (same as /validate_frontend and /diff) - otherwise the pod's
+ * process list has to stay publicly readable.
  */
 export async function fetchPodJlist(
-  podId: string
+  podId: string,
+  password: string | null
 ): Promise<JlistProcess[] | null> {
   const jlistUrl = `https://${podId}-15552.workspaces.sphinx.chat/jlist`;
 
   try {
     const response = await fetch(jlistUrl, {
       method: "GET",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        ...(password ? { Authorization: `Bearer ${password}` } : {}),
+      },
       signal: AbortSignal.timeout(10000),
     });
 
@@ -642,7 +650,22 @@ export async function executePodRepairRuns(): Promise<PodRepairCronResult> {
           workspace.swarm.poolApiKey
         );
 
-        const jlist = await fetchPodJlist(pod.subdomain);
+        // Pod details give us the control-port password (and port mappings
+        // for the frontend check below). Prefer the password from the pool
+        // listing, same as /validate_frontend and the repair trigger use.
+        let podDetails;
+        try {
+          podDetails = await getPodDetails(pod.subdomain);
+        } catch (error) {
+          console.warn(
+            `[PodRepairCron] Could not get pod details for ${pod.subdomain}:`,
+            error
+          );
+          podDetails = null;
+        }
+        const podPassword = pod.password || podDetails?.password || null;
+
+        const jlist = await fetchPodJlist(pod.subdomain, podPassword);
         if (!jlist) {
           console.log(
             `[PodRepairCron] jlist not available for ${workspace.slug}/${pod.subdomain} - calling staklink-start`
@@ -679,17 +702,6 @@ export async function executePodRepairRuns(): Promise<PodRepairCronResult> {
         }
 
         // Check frontend availability
-        let podDetails;
-        try {
-          podDetails = await getPodDetails(pod.subdomain);
-        } catch (error) {
-          console.warn(
-            `[PodRepairCron] Could not get pod details for ${pod.subdomain}:`,
-            error
-          );
-          podDetails = null;
-        }
-
         let frontendError: string | null = null;
         if (podDetails?.portMappings) {
           const frontendCheck = await checkFrontendAvailable(
