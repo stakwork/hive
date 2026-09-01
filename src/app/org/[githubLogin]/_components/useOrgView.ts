@@ -10,7 +10,8 @@ export type OrgView =
   | "workspaces"
   | "members"
   | "schematic"
-  | "graph";
+  | "graph"
+  | "settings";
 
 /**
  * Map the current pathname to a logical view id. Used by `OrgShell` to
@@ -29,6 +30,7 @@ export function useOrgView(githubLogin: string): OrgView {
   if (pathname.startsWith(`${base}/members`)) return "members";
   if (pathname.startsWith(`${base}/schematic`)) return "schematic";
   if (pathname.startsWith(`${base}/graph`)) return "graph";
+  if (pathname.startsWith(`${base}/settings`)) return "settings";
   return "canvas";
 }
 

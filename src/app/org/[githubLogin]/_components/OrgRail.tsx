@@ -8,6 +8,7 @@ import {
   Users,
   GitBranch,
   Workflow,
+  Settings,
   type LucideIcon,
 } from "lucide-react";
 import {
@@ -36,6 +37,7 @@ const ITEMS: RailItem[] = [
   { view: "members", label: "Members", icon: Users, path: "/members" },
   { view: "schematic", label: "Schematic", icon: GitBranch, path: "/schematic" },
   { view: "graph", label: "Graph", icon: Workflow, path: "/graph" },
+  { view: "settings", label: "Settings", icon: Settings, path: "/settings" },
 ];
 
 interface OrgRailProps {
