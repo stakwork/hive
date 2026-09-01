@@ -69,6 +69,7 @@ import {
   type OrgCapability,
 } from "@/lib/ai/capabilities";
 import { isGraphWriteCapabilityEnabledForOrg } from "@/lib/ai/capabilityGates";
+import { connectExternalMcpTools } from "@/lib/ai/externalMcpTools";
 import { getLinkedWorkspacesForInitiative } from "@/lib/canvas/linkedWorkspaces";
 import { sanitizeAndCompleteToolCalls } from "@/lib/ai/message-sanitizer";
 import { getModel, getApiKeyForProvider, type Provider } from "@/lib/ai/provider";
@@ -1015,6 +1016,28 @@ export async function runCanvasAgent(
     primaryRepoUrls = ws.repoUrls ?? [];
   }
 
+  // ------------------------------------------------------------------
+  // External MCP servers (admin-registered per org). Connected up-front
+  // because streamText fixes the toolset at call start; each connect is
+  // bounded by MCP_CLIENT_TIMEOUT_MS and a failed server is skipped.
+  // Skipped entirely on readonly runs: external tools are opaque — we
+  // can't tell reads from writes, so readonly means none at all.
+  // Clients stay open for the whole stream; closed in onFinish/onError.
+  // ------------------------------------------------------------------
+  let externalMcpCleanup: (() => Promise<void>) | undefined;
+  if (orgId && !readonly) {
+    const tExternalMcp = Date.now();
+    const externalMcp = await connectExternalMcpTools(orgId);
+    externalMcpCleanup = externalMcp.closeAll;
+    const externalCount = Object.keys(externalMcp.tools).length;
+    if (externalCount > 0) {
+      // External tools spread FIRST so a name collision with a built-in
+      // resolves in the built-in's favor.
+      tools = { ...externalMcp.tools, ...tools };
+      console.log("[runCanvasAgent] timing", { stage: "connectExternalMcpTools", ms: Date.now() - tExternalMcp, tools: externalCount, workspaces: workspaceSlugs, orgId });
+    }
+  }
+
   if (readonly) {
     // Strip set derived from the composed capabilities — a tool family
     // we never merged contributes nothing, so the strip always matches
@@ -1356,6 +1379,9 @@ export async function runCanvasAgent(
           : {}),
         usage,
       });
+      // Close external MCP clients — the loop is over, no more tool
+      // calls can arrive. Idempotent (onError may have closed already).
+      void externalMcpCleanup?.();
       if (hooks?.onFinish) {
         await hooks.onFinish({
           usage,
@@ -1390,6 +1416,9 @@ export async function runCanvasAgent(
       // records the failure. Token totals are omitted: they may be
       // unreliable on a torn stream, and `/end` accumulates them.
       sessionIngest?.end({ status: "error", errorMessage: message });
+      // Stream errors are terminal for the turn — release external MCP
+      // clients here too (idempotent with the onFinish close).
+      void externalMcpCleanup?.();
       // Caller hook runs last; its failures must not disturb the
       // stream's own error handling.
       try {
