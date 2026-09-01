@@ -417,8 +417,37 @@ describe("runCanvasAgent — stage-timing logs", () => {
 
   // -------------------------------------------------------------------------
   // 8. Cache-hit path logs `skipped: "cache hit"` instead of a fetch time
+  //    (only reachable with CANVAS_CONCEPT_SEEDING on — the cache is
+  //    ignored while seeding is disabled).
   // -------------------------------------------------------------------------
   it("logs skipped=cache-hit for listConcepts when concepts cache is supplied", async () => {
+    vi.stubEnv("CANVAS_CONCEPT_SEEDING", "true");
+    try {
+      mockStreamText.mockImplementation(makeStreamResult([]));
+
+      await runCanvasAgent(
+        baseOpts({
+          cachedConcepts: {
+            concepts: [{ id: "c1", name: "Auth" }],
+          },
+        }),
+      );
+
+      const conceptLog = timingLogs().find((l) => l.stage === "listConcepts (single)");
+      expect(conceptLog).toBeDefined();
+      expect(conceptLog!.skipped).toBe("cache hit");
+      // ms is 0 on a cache hit, not a real measurement.
+      expect(conceptLog!.ms).toBe(0);
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
+  // -------------------------------------------------------------------------
+  // 9. Seeding disabled (the default): the swarm fetch is skipped and any
+  //    supplied concept cache is ignored.
+  // -------------------------------------------------------------------------
+  it("logs skipped=seeding-disabled for listConcepts by default, even with a cache", async () => {
     mockStreamText.mockImplementation(makeStreamResult([]));
 
     await runCanvasAgent(
@@ -431,8 +460,7 @@ describe("runCanvasAgent — stage-timing logs", () => {
 
     const conceptLog = timingLogs().find((l) => l.stage === "listConcepts (single)");
     expect(conceptLog).toBeDefined();
-    expect(conceptLog!.skipped).toBe("cache hit");
-    // ms is 0 on a cache hit, not a real measurement.
+    expect(conceptLog!.skipped).toBe("seeding disabled");
     expect(conceptLog!.ms).toBe(0);
   });
 });
