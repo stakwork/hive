@@ -1,0 +1,26 @@
+{
+  "host_visible": true,
+  "source": "node_exporter",
+  "collected_at": 1730000000,
+  "cached": false,
+  "filesystems": [
+    {
+      "mount": "/",
+      "device": "/dev/nvme0n1p1",
+      "fstype": "ext4",
+      "total_bytes": 0,
+      "used_bytes": 0,
+      "free_bytes": 0,
+      "describes_host": true
+    }
+  ],
+  "docker_root_dir": "/var/lib/docker",
+  "docker_root_filesystem": "/",
+  "volumes": [
+    { "name": "neo4j.sphinx", "size_bytes": 0, "size_known": true }
+  ],
+  "neo4j": { "volumes": ["neo4j.sphinx"], "size_bytes": 0, "size_known": true },
+  "errors": [
+    { "collector": "volumes", "reason": "docker df timed out after 8s" }
+  ]
+}
