@@ -5,32 +5,22 @@
  */
 
 /**
- * Suggestion chips belong to the turn that just landed, and that turn's tags
- * sit at the end of the document. When an agent payload echoes an earlier
- * `<message>…</message><next_step>…` block, a naive document-wide scan pulls
- * the echoed chips in too — and because the list is capped, the echo can push
- * the real chips out (a doubled 3-tag block renders as A, B, C, A).
+ * Suggestion chips belong to the turn that just landed, so they are the tags
+ * following the last `<message>`. A payload sometimes echoes an earlier
+ * `<message>…</message><next_step>…` block; a document-wide scan then mixes
+ * both turns together, and since the list is capped the echo pushes real chips
+ * out — a doubled 3-tag block rendered as A, B, C, A.
  *
- * So: group the tags into contiguous runs — a run breaks on anything other
- * than whitespace between two tags — keep the last run that carries content,
- * and drop repeats within it.
+ * `lastIndexOf` returns -1 for a payload with no message wrapper, slicing from
+ * 0: the whole document, which is the right scope for that shape. Repeats are
+ * dropped either way, so an echo without a wrapper collapses too.
  */
 function extractNextSteps(xml: string): string[] {
-  const runs: string[][] = [];
-  let previousEnd = -1;
-
-  for (const match of xml.matchAll(/<next_step>([\s\S]*?)<\/next_step>/g)) {
-    const start = match.index ?? 0;
-    const isContiguous = previousEnd >= 0 && xml.slice(previousEnd, start).trim() === "";
-    if (!isContiguous) runs.push([]);
-    runs[runs.length - 1].push(match[1].trim());
-    previousEnd = start + match[0].length;
-  }
-
-  const trailingRun = runs.findLast((run) => run.some(Boolean)) ?? [];
-
+  const currentTurn = xml.slice(xml.lastIndexOf("</message>") + 1);
   const seen = new Set<string>();
-  return trailingRun
+
+  return [...currentTurn.matchAll(/<next_step>([\s\S]*?)<\/next_step>/g)]
+    .map((m) => m[1].trim())
     .filter((step) => {
       if (!step) return false;
       const key = step.replace(/\s+/g, " ").toLowerCase();
