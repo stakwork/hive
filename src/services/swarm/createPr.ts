@@ -19,8 +19,9 @@
  * ## Transport
  *
  * Plain `fetch` via the same pattern as `initiateRun` in `askTools.ts`.
- * `swarmCmdRequest`/`getSwarmCmdJwt` are NOT used — that path may set
- * `NODE_TLS_REJECT_UNAUTHORIZED=0` process-wide (`SWARM_CMD_ALLOW_INSECURE`)
+ * `swarmCmdRequest`/`getSwarmCmdJwt` are NOT used — when
+ * `SWARM_CMD_ALLOW_INSECURE` is set they deliberately disable certificate
+ * verification for the swarm request itself (per-request undici dispatcher),
  * and a PAT must never ride an unverified TLS connection.
  *
  * ## Fidelity
