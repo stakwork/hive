@@ -36,6 +36,7 @@ import {
   ResearchRunCard,
   getResearchRunsFromMessages,
 } from "./ResearchRunCard";
+import { HtmlPageCard, getHtmlPagesFromMessages } from "./HtmlPageCard";
 import { PlannerFormSlot } from "./PlannerFormSlot";
 import { StartTasksSlot } from "./StartTasksSlot";
 import { DeferredCheckCard } from "./DeferredCheckCard";
@@ -355,6 +356,21 @@ export function SidebarChat({ githubLogin }: SidebarChatProps) {
     return byAnchor;
   }, [messages]);
 
+  // Group saved/updated HTML pages by their anchor message, mirroring the
+  // researchRunsByAnchor pattern. Derived from the timeline's tool calls —
+  // canvas artifacts aren't persisted by autosave, so the tool output is
+  // the only source that survives reload / share / live-sync.
+  const htmlPagesByAnchor = useMemo(() => {
+    const pages = getHtmlPagesFromMessages(messages, githubLogin);
+    const byAnchor = new Map<string, typeof pages>();
+    for (const page of pages) {
+      const existing = byAnchor.get(page.anchorMessageId);
+      if (existing) existing.push(page);
+      else byAnchor.set(page.anchorMessageId, [page]);
+    }
+    return byAnchor;
+  }, [messages, githubLogin]);
+
   // Render the SubAgentRunCard(s) anchored to a message. Extracted so it
   // can render under BOTH a normal message AND a suppressed fan-out
   // message (an inbound planner reply / form-answer — whose bubble is
@@ -521,6 +537,7 @@ export function SidebarChat({ githubLogin }: SidebarChatProps) {
             // round-trip through autosave / share. See
             // `docs/plans/canvas-agent-manages-planners.md` Phase 2.
             const researchRuns = researchRunsByAnchor.get(message.id);
+            const htmlPages = htmlPagesByAnchor.get(message.id);
 
             if (
               message.source?.kind === "planner" ||
@@ -641,6 +658,15 @@ export function SidebarChat({ githubLogin }: SidebarChatProps) {
                     <ResearchRunCard
                       key={run.researchId}
                       run={run}
+                      githubLogin={githubLogin}
+                    />
+                  ))}
+                {htmlPages &&
+                  htmlPages.length > 0 &&
+                  htmlPages.map((page) => (
+                    <HtmlPageCard
+                      key={page.slug}
+                      page={page}
                       githubLogin={githubLogin}
                     />
                   ))}

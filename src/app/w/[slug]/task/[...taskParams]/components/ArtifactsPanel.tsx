@@ -6,7 +6,8 @@ import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { ArrowLeft, Sparkles, Loader2 } from "lucide-react";
 import { toast } from "sonner";
-import { Artifact, ArtifactType } from "@/lib/chat";
+import { Artifact, ArtifactType, HtmlContent } from "@/lib/chat";
+import { HtmlArtifactFrame } from "@/components/html-artifact/HtmlArtifactFrame";
 import { CodeArtifactPanel, BrowserArtifactPanel, GraphArtifactPanel, WorkflowArtifactPanel, DiffArtifactPanel } from "../artifacts";
 import { PlanArtifactPanel, PlanData, SectionHighlights } from "@/app/w/[slug]/plan/[featureId]/components/PlanArtifact";
 import { CompactTasksList } from "@/components/features/CompactTasksList";
@@ -169,6 +170,9 @@ export function ArtifactsPanel({
     ...publishScriptArtifacts,
   ];
   const diffArtifacts = artifacts.filter((a) => a.type === "DIFF");
+  // HTML artifacts are pointer-only; the frame fetches bytes through the
+  // authenticated task-scoped body proxy, so we need a taskId to render them.
+  const htmlArtifacts = taskId ? artifacts.filter((a) => a.type === "HTML") : [];
 
   const hasFeature = !!feature && !!featureId && !!onFeatureUpdate;
   const hasTasks = !!(feature?.phases?.[0]?.tasks && feature.phases[0].tasks.length > 0);
@@ -336,8 +340,9 @@ export function ArtifactsPanel({
     if (diffArtifacts.length > 0) tabs.push("DIFF");
     if (codeArtifacts.length > 0) tabs.push("CODE");
     if (ideArtifacts.length > 0) tabs.push("IDE");
+    if (htmlArtifacts.length > 0) tabs.push("HTML");
     return tabs;
-  }, [planData, hasFeature, showTasksTab, showVerifyTab, agentLogs.length, streamingLog, codeArtifacts.length, browserArtifacts.length, ideArtifacts.length, graphArtifacts.length, workflowTabArtifacts.length, diffArtifacts.length]);
+  }, [planData, hasFeature, showTasksTab, showVerifyTab, agentLogs.length, streamingLog, codeArtifacts.length, browserArtifacts.length, ideArtifacts.length, graphArtifacts.length, workflowTabArtifacts.length, diffArtifacts.length, htmlArtifacts.length]);
 
   // Auto-select first tab, or fall back when active tab is removed
   // Guard: don't reset during active generation to prevent TASKS tab from disappearing
@@ -514,6 +519,15 @@ export function ArtifactsPanel({
           {diffArtifacts.length > 0 && (
             <div className="h-full" hidden={activeTab !== "DIFF"}>
               <DiffArtifactPanel artifacts={diffArtifacts} />
+            </div>
+          )}
+          {htmlArtifacts.length > 0 && (
+            <div className="h-full" hidden={activeTab !== "HTML"}>
+              <HtmlArtifactFrame
+                source={{ taskId: taskId!, artifactId: htmlArtifacts[htmlArtifacts.length - 1].id }}
+                title={(htmlArtifacts[htmlArtifacts.length - 1].content as HtmlContent | undefined)?.title}
+                className="h-full w-full"
+              />
             </div>
           )}
         </motion.div>

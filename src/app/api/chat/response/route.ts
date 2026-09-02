@@ -11,7 +11,9 @@ import {
   type IDEContent,
   type BrowserContent,
   type WorkflowContent,
+  type HtmlContent,
 } from "@/lib/chat";
+import { validateHtmlArtifactsForIngest } from "@/lib/helpers/html-artifact-ingest";
 import { pusherServer, getTaskChannelName, getFeatureChannelName, getWorkspaceChannelName, PUSHER_EVENTS } from "@/lib/pusher";
 import { EncryptionService } from "@/lib/encryption";
 import { processScreenshotUpload, processRecordingUpload } from "@/lib/screenshot-upload";
@@ -85,6 +87,20 @@ export async function POST(request: NextRequest) {
       taskMode = task.mode;
     }
 
+    // HTML artifacts are pointer-only and must reference an S3 object owned
+    // by this task/feature's org. Ingest is deliberately NOT a second writer:
+    // it can neither store raw markup nor point across tenants, and it will
+    // not create the HtmlPage row (Jamie's save_html is the only writer).
+    const htmlArtifacts = artifacts.filter((a) => a?.type === ArtifactType.HTML);
+    let normalizedHtmlPointers = new Map<number, HtmlContent>();
+    if (htmlArtifacts.length > 0) {
+      const guarded = await validateHtmlArtifactsForIngest(artifacts, { taskId, featureId });
+      if (!guarded.ok) {
+        return NextResponse.json({ error: guarded.error }, { status: guarded.status });
+      }
+      normalizedHtmlPointers = guarded.pointers;
+    }
+
     const chatMessage = await db.chatMessage.create({
       data: {
         taskId,
@@ -100,9 +116,11 @@ export async function POST(request: NextRequest) {
         ...(usage?.cacheReadTokens ? { cacheReadTokens: usage.cacheReadTokens } : {}),
         ...(usage?.cacheWriteTokens ? { cacheWriteTokens: usage.cacheWriteTokens } : {}),
         artifacts: {
-          create: artifacts.map((artifact: ArtifactRequest) => ({
+          create: artifacts.map((artifact: ArtifactRequest, index: number) => ({
             type: artifact.type,
-            content: artifact.content as Prisma.InputJsonValue | undefined,
+            // HTML artifacts persist only the validated allowlisted pointer.
+            content: (normalizedHtmlPointers.get(index) ??
+              artifact.content) as Prisma.InputJsonValue | undefined,
             icon: artifact.icon,
           })),
         },
