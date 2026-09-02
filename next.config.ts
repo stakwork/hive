@@ -48,6 +48,7 @@ const nextConfig: NextConfig = {
   outputFileTracingIncludes: {
     "/**": [
       "src/lib/run-report/export/offline-report.css",
+      "src/lib/run-report/export/viewer.js",
       "src/lib/legal-cascade/export/cascade-offline.css",
       "src/lib/legal-cascade/export/cascade-offline.js",
     ],

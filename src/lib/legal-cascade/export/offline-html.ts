@@ -17,7 +17,7 @@
  */
 
 import { readFileSync } from "fs";
-import { join } from "path";
+import { resolveGeneratedArtifact } from "@/lib/run-report/export/generated-artifact";
 import { escapeForInlineScript } from "@/lib/run-report/export/json-escape";
 import type { CascadeExportPayload } from "./payload";
 
@@ -25,31 +25,53 @@ import type { CascadeExportPayload } from "./payload";
 
 const cache = new Map<string, string>();
 
+/** Project-relative home of the generated artifacts (also their traced path). */
+const ARTIFACT_DIR = "src/lib/legal-cascade/export";
+
+/** Thrown when the page bundle is missing: a document without it is blank. */
+export class CascadeBundleMissingError extends Error {
+  constructor(path: string) {
+    super(
+      `The trace export bundle is not built on this server (looked for ${path}). ` +
+        "Run `npm run build:offline-bundle` (wired as prebuild/predev).",
+    );
+    this.name = "CascadeBundleMissingError";
+  }
+}
+
 /**
- * Reads a generated, gitignored artifact next to this file, once. A missing
- * artifact is logged loudly (the export still returns a document — unstyled
- * or inert — rather than throwing) so the failure is visible, not silent.
+ * Reads a generated, gitignored artifact once. Resolved from the project
+ * root (where Next's output file tracing puts it in production) with the
+ * source directory as a fallback — never from `__dirname`, which points at
+ * the compiled chunk inside a server bundle, not at this file.
  */
-function readGenerated(name: string, buildHint: string): string {
+function readGenerated(name: string): { content: string; path: string } {
   const cached = cache.get(name);
-  if (cached !== undefined) return cached;
-  const path = join(__dirname, name);
+  const path = resolveGeneratedArtifact(ARTIFACT_DIR, name, __dirname);
+  if (cached !== undefined) return { content: cached, path };
   let content = "";
   try {
     content = readFileSync(path, "utf8");
-  } catch (err) {
-    console.warn(
-      `[cascade-offline-html] Failed to read generated ${name} at "${path}". ` +
-        `Run \`${buildHint}\` (wired as prebuild/predev) to generate it.`,
-      err,
-    );
+    cache.set(name, content);
+  } catch {
+    // Not cached: a later build of the artifact should be picked up.
   }
-  cache.set(name, content);
-  return content;
+  return { content, path };
 }
 
+/**
+ * The stylesheet. A missing bundle is logged loudly but the export still
+ * returns a working (unstyled) document.
+ */
 export function getCascadeOfflineCss(): string {
-  return readGenerated("cascade-offline.css", "npm run build:offline-css");
+  const { content, path } = readGenerated("cascade-offline.css");
+  if (!content) {
+    console.warn(
+      `[cascade-offline-html] Failed to read generated cascade-offline.css at "${path}". ` +
+        "The export will render unstyled. Run `npm run build:offline-css` (wired as prebuild/predev).",
+    );
+  }
+  return content;
 }
 
 /**
@@ -58,10 +80,9 @@ export function getCascadeOfflineCss(): string {
  * tag early. `<\/script` is the same value in both JS strings and regexes.
  */
 export function getCascadeOfflineBundle(): string {
-  return readGenerated("cascade-offline.js", "npm run build:offline-bundle").replace(
-    /<\/script/gi,
-    "<\\/script",
-  );
+  const { content, path } = readGenerated("cascade-offline.js");
+  if (!content) throw new CascadeBundleMissingError(path);
+  return content.replace(/<\/script/gi, "<\\/script");
 }
 
 /** Test seam: forget cached artifacts so a rebuilt file is re-read. */

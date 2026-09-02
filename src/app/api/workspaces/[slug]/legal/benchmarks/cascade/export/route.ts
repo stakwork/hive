@@ -1,7 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { resolveCascadeAccess } from "@/lib/legal-cascade/server";
 import { assembleCascadeExport } from "@/lib/legal-cascade/export/assemble";
-import { assembleCascadeOfflineHtml } from "@/lib/legal-cascade/export/offline-html";
+import {
+  assembleCascadeOfflineHtml,
+  CascadeBundleMissingError,
+} from "@/lib/legal-cascade/export/offline-html";
 import { buildContentDisposition } from "@/lib/run-report/export/content-disposition";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { logger } from "@/lib/logger";
@@ -64,6 +67,10 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     });
   } catch (error) {
     logger.error("Cascade export failed", LOG_SERVICE, { error: String(error) });
+    // A document without its bundle is a blank page — refuse to serve one.
+    if (error instanceof CascadeBundleMissingError) {
+      return NextResponse.json({ error: error.message }, { status: 500, headers: NO_STORE });
+    }
     return NextResponse.json(
       { error: "Failed to build trace export" },
       { status: 502, headers: NO_STORE },

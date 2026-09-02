@@ -26,8 +26,11 @@
  */
 
 import { readFileSync } from "fs";
-import { join } from "path";
 import { escapeForInlineScript } from "./json-escape";
+import { resolveGeneratedArtifact } from "./generated-artifact";
+
+/** Project-relative home of this module's artifacts (also their traced path). */
+const ARTIFACT_DIR = "src/lib/run-report/export";
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -37,8 +40,7 @@ let cachedViewerScript: string | null = null;
 function getViewerScript(): string {
   if (cachedViewerScript !== null) return cachedViewerScript;
   try {
-    // Path relative to this file's location at build/run time.
-    const scriptPath = join(__dirname, "viewer.js");
+    const scriptPath = resolveGeneratedArtifact(ARTIFACT_DIR, "viewer.js", __dirname);
     cachedViewerScript = readFileSync(scriptPath, "utf8");
   } catch {
     // Fallback: empty enhancement (the report still renders, just no toggle).
@@ -69,7 +71,7 @@ let cachedOfflineCss: string | null = null;
  */
 function getOfflineCss(): string {
   if (cachedOfflineCss !== null) return cachedOfflineCss;
-  const cssPath = join(__dirname, "offline-report.css");
+  const cssPath = resolveGeneratedArtifact(ARTIFACT_DIR, "offline-report.css", __dirname);
   try {
     cachedOfflineCss = readFileSync(cssPath, "utf8");
   } catch (err) {
