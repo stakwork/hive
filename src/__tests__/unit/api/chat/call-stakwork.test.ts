@@ -206,13 +206,15 @@ const TestHelpers = {
     );
 
     const fetchCall = mockFetch.mock.calls[0];
-    const payload = JSON.parse(fetchCall[1]?.body as string);
+    const _rawPayload = JSON.parse(fetchCall[1]?.body as string);
+    const payload = (_rawPayload && typeof _rawPayload === 'object' && 'project' in _rawPayload) ? _rawPayload.project : _rawPayload;
     expect(payload.workflow_id).toBe(workflowId);
   },
 
   expectFetchCalledWithVarsContaining: (expectedVars: Record<string, unknown>) => {
     const fetchCall = mockFetch.mock.calls[0];
-    const payload = JSON.parse(fetchCall[1]?.body as string);
+    const _rawPayload = JSON.parse(fetchCall[1]?.body as string);
+    const payload = (_rawPayload && typeof _rawPayload === 'object' && 'project' in _rawPayload) ? _rawPayload.project : _rawPayload;
     const vars = payload.workflow_params.set_var.attributes.vars;
 
     Object.entries(expectedVars).forEach(([key, value]) => {
@@ -500,7 +502,8 @@ describe("callStakwork Function Unit Tests", () => {
       await POST(request);
 
       const fetchCall = mockFetch.mock.calls[0];
-      const payload = JSON.parse(fetchCall[1]?.body as string);
+      const _rawPayload = JSON.parse(fetchCall[1]?.body as string);
+      const payload = (_rawPayload && typeof _rawPayload === 'object' && 'project' in _rawPayload) ? _rawPayload.project : _rawPayload;
       expect(payload.webhook_url).toBe("http://localhost:3000/api/stakwork/webhook?task_id=test-task-id");
     });
 
@@ -719,7 +722,8 @@ describe("callStakwork Function Unit Tests", () => {
       await POST(request);
 
       const fetchCall = mockFetch.mock.calls[0];
-      const payload = JSON.parse(fetchCall[1]?.body as string);
+      const _rawPayload = JSON.parse(fetchCall[1]?.body as string);
+      const payload = (_rawPayload && typeof _rawPayload === 'object' && 'project' in _rawPayload) ? _rawPayload.project : _rawPayload;
 
       expect(payload).toMatchObject({
         name: expect.stringMatching(/^hive-task-/),
@@ -745,7 +749,8 @@ describe("callStakwork Function Unit Tests", () => {
       await POST(request);
 
       const fetchCall = mockFetch.mock.calls[0];
-      const payload = JSON.parse(fetchCall[1]?.body as string);
+      const _rawPayload = JSON.parse(fetchCall[1]?.body as string);
+      const payload = (_rawPayload && typeof _rawPayload === 'object' && 'project' in _rawPayload) ? _rawPayload.project : _rawPayload;
 
       expect(payload.name).toBe("hive-task-test-task-id");
     });
@@ -757,7 +762,8 @@ describe("callStakwork Function Unit Tests", () => {
       await POST(request);
 
       const fetchCall = mockFetch.mock.calls[0];
-      const payload = JSON.parse(fetchCall[1]?.body as string);
+      const _rawPayload = JSON.parse(fetchCall[1]?.body as string);
+      const payload = (_rawPayload && typeof _rawPayload === 'object' && 'project' in _rawPayload) ? _rawPayload.project : _rawPayload;
 
       expect(payload.workflow_params).toHaveProperty("set_var");
       expect(payload.workflow_params.set_var).toHaveProperty("attributes");
