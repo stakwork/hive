@@ -685,21 +685,25 @@ When to reach for these:
  */
 /**
  * HTML pages capability — org-scoped shareable HTML artifacts:
- * save_html, update_html. Jamie synthesizes one page after research.
+ * save_html, update_html (full replace or targeted edits), get_html.
+ * Jamie synthesizes one page after research.
  */
 export function getHtmlPagesCapabilitySnippet(): string {
   return `
 
 ## HTML Artifact Tools
 
-You have two tools for **HTML page** artifacts — a shareable HTML document stored in S3 with only a pointer in the database. Org members open it at \`/org/{githubLogin}/h/{slug}\`. These tools are yours alone; never expect a sub-agent (repo_agent, research sub-agent) to save HTML.
+You have three tools for **HTML page** artifacts — a shareable HTML document stored in S3 with only a pointer in the database. Org members open it at \`/org/{githubLogin}/h/{slug}\`. These tools are yours alone; never expect a sub-agent (repo_agent, research sub-agent) to save HTML.
 
-- \`save_html\` — Create a new HTML page. Required: \`slug\` (short kebab-case, unique in the org), \`title\`, \`html\` (a complete HTML document). Returns \`{ slug, id, sharePath }\` where \`sharePath\` is \`/org/{githubLogin}/h/{slug}\`. Give the user that path so they can share it with the team.
-- \`update_html\` — Replace the HTML of an existing page (same slug, same S3 object). Required: \`slug\`, \`html\`. Returns \`{ slug, status: "updated" }\`.
+- \`save_html\` — Create a new HTML page. Required: \`slug\` (short kebab-case, unique in the org, e.g. \`hive-vs-workspaces-story\`), \`title\`, \`html\` (a complete HTML document). Returns \`{ slug, id, sharePath }\` where \`sharePath\` is \`/org/{githubLogin}/h/{slug}\`. Give the user that path so they can share it with the team.
+- \`update_html\` — Patch an existing page (same slug, same S3 object, same share URL — none of those ever change). Supply **either** \`html\` (a complete replacement document) **or** \`edits\` (targeted find/replace: \`[{ oldStr, newStr, replaceAll? }]\`), never both. Prefer \`edits\` for anything short of a full rewrite — it's cheaper and doesn't risk the model silently dropping or rewording unrelated parts of the page. \`oldStr\` must match the page's current HTML **exactly**, including whitespace; a non-matching or ambiguous (multiple-occurrence, no \`replaceAll\`) edit fails the *entire* update and writes nothing — use \`get_html\` to see the real current text before retrying. Returns \`{ slug, status: "updated", updatedAt }\`.
+- \`get_html\` — Read a page's current HTML by slug (capped at 256KB; an over-cap page returns an error telling you to edit without a full read, or replace wholesale, rather than a truncated body). Use this before writing \`edits\` so \`oldStr\` is built from real, current text instead of a guess.
 
 **Canonical flow:** research repo A, research repo B (via \`repo_agent\` / research tools), then **you** synthesize **one** HTML story from both and call \`save_html\` once. Do **not** save one page per repo. Do **not** dump raw HTML into chat — save it, then mention the share URL.
 
-When the user asks to "create an artifact so I can share with the team", write the HTML in this turn and call \`save_html\`. Link the share path in your reply as a relative URL.`;
+When the user asks to "create an artifact so I can share with the team", write the HTML in this turn and call \`save_html\`. Link the share path in your reply as a relative URL.
+
+**Editing an existing page:** for a small, targeted change (fix a typo, tweak a number, change a link), call \`get_html\` to see the current text, then \`update_html\` with \`edits\` built from that exact text — don't regenerate and re-upload the whole document for a one-line change. Reserve \`update_html\`'s \`html\` field for genuine rewrites.`;
 }
 
 export function getConnectionsCapabilitySnippet(): string {
