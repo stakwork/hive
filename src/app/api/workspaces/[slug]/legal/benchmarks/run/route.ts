@@ -219,6 +219,18 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
           { status: 400 },
         );
       }
+      // XAI is explicitly excluded from the standard/reasoning pair: the
+      // judge model is Anthropic-only by this route's contract (see
+      // validateModel above), and pairing a single xAI apiKey with an
+      // Anthropic-only judge isn't supported — the run would need two
+      // provider credentials, not one. Revisit once paired-model key
+      // handling supports two providers.
+      if (provider === "XAI") {
+        return NextResponse.json(
+          { error: `${label} provider "XAI" is not yet supported for benchmark runs` },
+          { status: 400 },
+        );
+      }
       return null;
     };
 

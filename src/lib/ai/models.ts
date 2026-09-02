@@ -30,6 +30,7 @@ export const PROVIDER_DISPLAY_LABELS: Record<string, string> = {
   GOOGLE: "Google",
   AWS_BEDROCK: "AWS Bedrock",
   OPENROUTER: "OpenRouter",
+  XAI: "xAI",
 };
 
 // Valid model names that can be passed from frontend
@@ -60,13 +61,21 @@ export function isValidModel(model: unknown): model is string {
   return false;
 }
 
-// Map LlmProvider enum values to their API key environment variables
+// Map LlmProvider enum values to their API key environment variables.
+//
+// For the providers aieo knows about (anthropic/google/openai/openrouter/xai)
+// these MUST match the env vars aieo's own key lookup reads — aieo is the
+// source of truth for provider routing, and `runCanvasAgent` resolves keys
+// through it directly. This file is imported by client components, so it
+// can't import aieo itself; `models-aieo-parity.test.ts` guards the two
+// tables against drifting apart. AWS_BEDROCK/OTHER are hive-only.
 export const PROVIDER_API_KEY_ENV_VARS: Record<string, string | null> = {
   ANTHROPIC: "ANTHROPIC_API_KEY",
   OPENAI: "OPENAI_API_KEY",
   GOOGLE: "GOOGLE_API_KEY",
   AWS_BEDROCK: "AWS_BEDROCK_API_KEY",
   OPENROUTER: "OPENROUTER_API_KEY",
+  XAI: "XAI_API_KEY",
   OTHER: null,
 };
 

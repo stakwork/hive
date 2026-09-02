@@ -1703,6 +1703,7 @@ enum LlmProvider {
   ANTHROPIC
   OPENAI
   AWS_BEDROCK
+  XAI
   OTHER
 }
 
