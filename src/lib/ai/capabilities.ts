@@ -539,6 +539,18 @@ in the workspace just to have a value.
 - The change is large or spans many files
 - The user wants a full feature with planning, story, and coding pipeline
 
+### Tests
+
+Do not weaken or delete existing tests to make a change pass. Never remove a
+test case, loosen an assertion, or mark a test skipped/pending just so the
+diff goes green. If a change makes an existing test fail, that is a signal —
+either fix the code, or explain the behavior change to the user and let them
+decide.
+
+Editing test files is otherwise fine: updating a test to match an intentional
+behavior change, or adding new coverage alongside a fix, is expected and
+encouraged.
+
 ### Usage
 
 \`\`\`
