@@ -39,12 +39,22 @@ export interface AuditClaim {
   reasoning: string;
 }
 
+export type AuditEvidenceKind = "screenshot" | "http" | "log" | "timing" | "dom" | "note";
+
+export interface AuditEvidence {
+  id: string;
+  kind: AuditEvidenceKind;
+  summary: string;
+  data: string;
+}
+
 export interface AuditVerdict {
   taskId: string;
   overall: AuditOverall;
   claims: AuditClaim[];
   observations: string[];
   summary: string;
+  evidence?: AuditEvidence[];
   startedAt: string;
   finishedAt: string;
   error?: string;
