@@ -134,15 +134,6 @@ vi.mock("@/components/legal/LegalBenchmarkResults", () => ({
     ),
 }));
 
-vi.mock("@/components/legal/StakworkRunLink", () => ({
-  StakworkRunLink: ({ projectId }: { projectId: number | null; isSuperAdmin: boolean }) =>
-    React.createElement(
-      "a",
-      { href: `https://jobs.stakwork.com/admin/projects/${projectId}`, "data-testid": "stakwork-link" },
-      "View on Stakwork",
-    ),
-}));
-
 // Radix Select doesn't work in jsdom — minimal clickable stand-in
 let selectOnValueChange: ((value: string) => void) | null = null;
 
@@ -271,10 +262,13 @@ describe("BenchmarkRunsHistory", () => {
     );
   });
 
-  it("renders Runner Status column header and Score column header", () => {
+  it("renders Runner Status column header and Pass/Total column headers (no Fail header)", () => {
     render(React.createElement(BenchmarkRunsHistory));
     expect(screen.getByText("Runner Status")).toBeInTheDocument();
-    expect(screen.getByText("Score")).toBeInTheDocument();
+    expect(screen.getByText("Pass")).toBeInTheDocument();
+    expect(screen.getByText("Total")).toBeInTheDocument();
+    expect(screen.queryByText("Score")).toBeNull();
+    expect(screen.queryByText("Fail")).toBeNull();
   });
 
   it("shows COMPLETED badge for a completed run", () => {
@@ -321,9 +315,9 @@ describe("BenchmarkRunsHistory", () => {
     expect(screen.getByText("PENDING")).toBeInTheDocument();
   });
 
-  // ─── Score column tests ────────────────────────────────────────────────────
+  // ─── Pass/Total column tests ───────────────────────────────────────────────
 
-  it("renders PASS badge and score when all_pass=true and n_passed/n_total present", () => {
+  it("renders Pass but no PASS badge and Total '—' when there is no graph roster, even when all_pass=true (bail-out path)", () => {
     mockUseList.mockReturnValue({
       runs: [makeRun({ status: "COMPLETED", n_passed: 72, n_total: 74, all_pass: true })],
       total: 1,
@@ -333,11 +327,15 @@ describe("BenchmarkRunsHistory", () => {
       setExpandedId: mockSetExpandedId,
     });
     render(React.createElement(BenchmarkRunsHistory));
-    expect(screen.getByText("72/74")).toBeInTheDocument();
-    expect(screen.getByText("PASS")).toBeInTheDocument();
+    expect(screen.getByText("72")).toBeInTheDocument();
+    // No roster_total was assigned on the bail-out path, so Total is a dash
+    // and the PASS badge — which requires a numeric roster_total — never
+    // renders, regardless of the (ignored) all_pass flag.
+    expect(screen.queryByText("PASS")).toBeNull();
+    expect(screen.queryByText("72/74")).toBeNull();
   });
 
-  it("renders score with no badge when all_pass=false", () => {
+  it("renders Pass with no badge when all_pass=false", () => {
     mockUseList.mockReturnValue({
       runs: [makeRun({ status: "COMPLETED", n_passed: 10, n_total: 20, all_pass: false })],
       total: 1,
@@ -347,9 +345,10 @@ describe("BenchmarkRunsHistory", () => {
       setExpandedId: mockSetExpandedId,
     });
     render(React.createElement(BenchmarkRunsHistory));
-    expect(screen.getByText("10/20")).toBeInTheDocument();
+    expect(screen.getByText("10")).toBeInTheDocument();
     expect(screen.queryByText("FAIL")).toBeNull();
     expect(screen.queryByText("PASS")).toBeNull();
+    expect(screen.queryByText("10/20")).toBeNull();
   });
 
   it("renders neutral placeholder '—' for in-progress run (no score yet)", () => {
@@ -362,7 +361,7 @@ describe("BenchmarkRunsHistory", () => {
       setExpandedId: mockSetExpandedId,
     });
     render(React.createElement(BenchmarkRunsHistory));
-    // Both the Score and Report cells render '—'
+    // Pass, Total, and Report cells all render '—'
     expect(screen.getAllByText("—").length).toBeGreaterThan(0);
     expect(screen.queryByText("PASS")).toBeNull();
     expect(screen.queryByText("FAIL")).toBeNull();
@@ -397,9 +396,9 @@ describe("BenchmarkRunsHistory", () => {
     expect(screen.getAllByText("—").length).toBeGreaterThan(0);
   });
 
-  // ─── judgeNotes / ScoreCell tooltip tests ─────────────────────────────────
+  // ─── judgeNotes / PassCell tooltip tests ──────────────────────────────────
 
-  it("ScoreCell has title, aria-label, and cursor-help class when COMPLETED with judgeNotes", () => {
+  it("PassCell has title, aria-label, and cursor-help class when COMPLETED with judgeNotes", () => {
     const judgeNotes = "72/74 criteria passed. Judge: gpt-4";
     mockUseList.mockReturnValue({
       runs: [makeRun({ status: "COMPLETED", n_passed: 72, n_total: 74, all_pass: true, judgeNotes })],
@@ -410,13 +409,13 @@ describe("BenchmarkRunsHistory", () => {
       setExpandedId: mockSetExpandedId,
     });
     render(React.createElement(BenchmarkRunsHistory));
-    const scoreDiv = screen.getByText("72/74").closest("div")!;
-    expect(scoreDiv.getAttribute("title")).toBe(judgeNotes);
-    expect(scoreDiv.getAttribute("aria-label")).toBe(judgeNotes);
-    expect(scoreDiv.classList.contains("cursor-help")).toBe(true);
+    const passDiv = screen.getByText("72").closest("div")!;
+    expect(passDiv.getAttribute("title")).toBe(judgeNotes);
+    expect(passDiv.getAttribute("aria-label")).toBe(judgeNotes);
+    expect(passDiv.classList.contains("cursor-help")).toBe(true);
   });
 
-  it("ScoreCell has no title or aria-label when judgeNotes is undefined for COMPLETED row", () => {
+  it("PassCell has no title or aria-label when judgeNotes is undefined for COMPLETED row", () => {
     mockUseList.mockReturnValue({
       runs: [makeRun({ status: "COMPLETED", n_passed: 72, n_total: 74, all_pass: true, judgeNotes: undefined })],
       total: 1,
@@ -426,13 +425,13 @@ describe("BenchmarkRunsHistory", () => {
       setExpandedId: mockSetExpandedId,
     });
     render(React.createElement(BenchmarkRunsHistory));
-    const scoreDiv = screen.getByText("72/74").closest("div")!;
-    expect(scoreDiv.getAttribute("title")).toBeNull();
-    expect(scoreDiv.getAttribute("aria-label")).toBeNull();
-    expect(scoreDiv.classList.contains("cursor-help")).toBe(false);
+    const passDiv = screen.getByText("72").closest("div")!;
+    expect(passDiv.getAttribute("title")).toBeNull();
+    expect(passDiv.getAttribute("aria-label")).toBeNull();
+    expect(passDiv.classList.contains("cursor-help")).toBe(false);
   });
 
-  it("ScoreCell renders no title or aria-label for PENDING run", () => {
+  it("PassCell renders no title or aria-label for PENDING run", () => {
     mockUseList.mockReturnValue({
       runs: [makeRun({ status: "PENDING", judgeNotes: undefined })],
       total: 1,
@@ -449,7 +448,7 @@ describe("BenchmarkRunsHistory", () => {
     }
   });
 
-  it("ScoreCell renders no title or aria-label for IN_PROGRESS run", () => {
+  it("PassCell renders no title or aria-label for IN_PROGRESS run", () => {
     mockUseList.mockReturnValue({
       runs: [makeRun({ status: "IN_PROGRESS", judgeNotes: undefined })],
       total: 1,
@@ -475,10 +474,10 @@ describe("BenchmarkRunsHistory", () => {
     await user.click(row);
 
     const expandedCell = screen.getByTestId("results-runner-1").closest("td")!;
-    expect(expandedCell.getAttribute("colspan")).toBe("9");
+    expect(expandedCell.getAttribute("colspan")).toBe("10");
   });
 
-  it("expanded row colSpan is 10 for super-admin (adds Stakwork column)", async () => {
+  it("expanded row colSpan is 11 for super-admin (adds Stakwork column)", async () => {
     const { useWorkspace } = await import("@/hooks/useWorkspace");
     (useWorkspace as ReturnType<typeof vi.fn>).mockReturnValue({
       workspace: { id: WORKSPACE_ID, slug: WORKSPACE_SLUG },
@@ -492,18 +491,18 @@ describe("BenchmarkRunsHistory", () => {
     await user.click(row);
 
     const expandedCell = screen.getByTestId("results-runner-1").closest("td")!;
-    expect(expandedCell.getAttribute("colspan")).toBe("10");
+    expect(expandedCell.getAttribute("colspan")).toBe("11");
   });
 
   // ─── Existing interaction tests ────────────────────────────────────────────
 
   it("does NOT show Stakwork column for non-super-admin", () => {
     render(React.createElement(BenchmarkRunsHistory));
-    expect(screen.queryByTestId("stakwork-link")).toBeNull();
     expect(screen.queryByText("Stakwork")).toBeNull();
+    expect(screen.queryByTitle("View on Stakwork (admin)")).toBeNull();
   });
 
-  it("shows Stakwork column and link for super-admin", async () => {
+  it("shows Stakwork column and icon-only link for super-admin", async () => {
     const { useWorkspace } = await import("@/hooks/useWorkspace");
     (useWorkspace as ReturnType<typeof vi.fn>).mockReturnValue({
       workspace: { id: WORKSPACE_ID, slug: WORKSPACE_SLUG },
@@ -511,7 +510,10 @@ describe("BenchmarkRunsHistory", () => {
     });
 
     render(React.createElement(BenchmarkRunsHistory));
-    expect(screen.getByTestId("stakwork-link")).toBeInTheDocument();
+    const link = screen.getByTitle("View on Stakwork (admin)");
+    expect(link).toBeInTheDocument();
+    expect(link.getAttribute("aria-label")).toBe("View on Stakwork (admin)");
+    expect(link.getAttribute("href")).toContain("jobs.stakwork.com/admin/projects/");
   });
 
   it("shows empty state message when there are no runs", () => {
@@ -754,7 +756,7 @@ describe("BenchmarkRunsHistory", () => {
     expect(screen.queryByTestId("model-sub-line")).toBeNull();
   });
 
-  it("model sub-line does not affect colSpan (non-super-admin still 9)", async () => {
+  it("model sub-line does not affect colSpan (non-super-admin still 10)", async () => {
     mockUseList.mockReturnValue({
       runs: [makeRun({
         requestedModel: "anthropic/claude-sonnet-5",
@@ -774,7 +776,7 @@ describe("BenchmarkRunsHistory", () => {
     await user.click(row);
 
     const expandedCell = screen.getByTestId("results-runner-1").closest("td")!;
-    expect(expandedCell.getAttribute("colspan")).toBe("9");
+    expect(expandedCell.getAttribute("colspan")).toBe("10");
   });
 
   // ─── Chat column tests ─────────────────────────────────────────────────────
@@ -784,7 +786,7 @@ describe("BenchmarkRunsHistory", () => {
     expect(screen.getByText("Chat")).toBeInTheDocument();
   });
 
-  it("renders 'View Chat' link when jamieChatPath is present", () => {
+  it("renders icon-only 'View Chat' link when jamieChatPath is present", () => {
     mockUseList.mockReturnValue({
       runs: [makeRun({
         generateJamieChat: true,
@@ -802,9 +804,12 @@ describe("BenchmarkRunsHistory", () => {
     expect(link).toBeInTheDocument();
     expect(link.getAttribute("href")).toBe("/org/stakwork?chat=conv-123");
     expect(link.getAttribute("target")).toBe("_blank");
+    expect(link.getAttribute("title")).toBe("View Chat");
+    expect(link.getAttribute("aria-label")).toBe("View Chat");
+    expect(link.textContent).not.toBe("View Chat");
   });
 
-  it("renders 'View Report' link with correct attributes when hasReport is true", () => {
+  it("renders icon-only 'View Report' link with correct attributes when hasReport is true", () => {
     const run = makeRun({ hasReport: true });
     mockUseList.mockReturnValue({
       runs: [run],
@@ -823,7 +828,8 @@ describe("BenchmarkRunsHistory", () => {
     expect(link.getAttribute("target")).toBe("_blank");
     expect(link.getAttribute("rel")).toBe("noopener noreferrer");
     expect(link.getAttribute("aria-label")).toBe("View Report (opens in new tab)");
-    expect(link.textContent).toBe("View Report");
+    expect(link.getAttribute("title")).toBe("View Report (opens in new tab)");
+    expect(link.textContent).not.toBe("View Report");
   });
 
   it("clicking 'View Report' link does not expand the row", async () => {
@@ -928,8 +934,8 @@ describe("BenchmarkRunsHistory", () => {
     const subLine = screen.getByTestId("model-sub-line");
     expect(subLine.textContent).toContain(judgeModel);
 
-    const scoreDiv = screen.getByText("5/5").closest("div")!;
-    expect(scoreDiv.getAttribute("title")).toBe(judgeNotes);
+    const passDiv = screen.getByText("5").closest("div")!;
+    expect(passDiv.getAttribute("title")).toBe(judgeNotes);
   });
 
   // ─── Task filter + hill-climb chart tests ─────────────────────────────────
@@ -1236,7 +1242,9 @@ describe("BenchmarkRunsHistory — run types", () => {
     render(<BenchmarkRunsHistory />);
 
     const row = screen.getByTestId("run-row-a-1");
-    expect(row.textContent).toContain("34/39");
+    // Bail-out path (no roster mocked): Pass shows n_passed, Total is a dash.
+    expect(row.textContent).toContain("34");
+    expect(row.textContent).not.toContain("34/39");
     expect(row.textContent).not.toContain("FAIL");
     const links = screen.getAllByTestId("run-report-link");
     expect(
@@ -1362,8 +1370,10 @@ describe("BenchmarkRunsHistory — graph-first score numerators", () => {
     render(<BenchmarkRunsHistory />);
 
     const row = screen.getByTestId("run-row-r-1");
-    // Graph numerator 8/10 against the roster denominator (10 - 2 contested)
-    expect(row.textContent).toContain("8/8");
+    // Graph numerator 8 passed; Total is the full 10-rubric roster (not the
+    // 8-after-exclusion denominator); PASS because remaining = 10 - 2 = 8 === 8.
+    expect(row.textContent).toContain("8");
+    expect(row.textContent).toContain("10");
     expect(row.textContent).toContain("PASS");
     expect(scoreSourceOf("run-row-r-1")).toBe("graph");
     expect(screen.getByTestId("score-cell-contested")).toBeInTheDocument();
@@ -1389,7 +1399,9 @@ describe("BenchmarkRunsHistory — graph-first score numerators", () => {
     render(<BenchmarkRunsHistory />);
 
     const row = screen.getByTestId("run-row-r-1");
-    expect(row.textContent).toContain("34/39");
+    // No roster mocked — bail-out path: Pass shows n_passed, Total is a dash.
+    expect(row.textContent).toContain("34");
+    expect(row.textContent).not.toContain("34/39");
     expect(row.textContent).not.toContain("FAIL");
     expect(scoreSourceOf("run-row-r-1")).toBe("result");
   });
@@ -1414,7 +1426,9 @@ describe("BenchmarkRunsHistory — graph-first score numerators", () => {
     render(<BenchmarkRunsHistory />);
 
     const row = screen.getByTestId("run-row-m-1");
-    expect(row.textContent).toContain("60/74");
+    // No roster mocked — bail-out path: Pass shows the graph numerator, Total is a dash.
+    expect(row.textContent).toContain("60");
+    expect(row.textContent).not.toContain("60/74");
     expect(scoreSourceOf("run-row-m-1")).toBe("graph");
     // The hook was asked for this task's trigger ref (the requirement-hosted
     // trigger only the row knows about).
@@ -1450,14 +1464,65 @@ describe("BenchmarkRunsHistory — graph-first score numerators", () => {
     render(<BenchmarkRunsHistory />);
 
     const row = screen.getByTestId("run-row-m-1");
-    // Node counts verbatim: NOT contested-adjusted, NOT the result-column 50/74
-    expect(row.textContent).toContain("9/10");
+    // Node counts verbatim: NOT contested-adjusted, NOT the result-column 50/74.
+    // Output-ref path never sets roster_total, so Total is a dash and no PASS.
+    expect(row.textContent).toContain("9");
+    expect(row.textContent).not.toContain("9/10");
     expect(scoreSourceOf("run-row-m-1")).toBe("output-ref");
     expect(screen.queryByTestId("score-cell-contested")).toBeNull();
+    expect(screen.queryByText("PASS")).toBeNull();
     // The pointer was requested from the graph-scores hook
     expect(mockGraphScoresMapHook).toHaveBeenCalledWith([
       { taskSlug: TASK, triggerRefs: ["trig-1"], outputRefs: ["out-9"] },
     ]);
+  });
+
+  it("PASS never shows for a fully-contested roster (remaining === 0)", () => {
+    const fullyContestedRoster = Array.from({ length: 10 }, (_, i) => ({
+      ref_id: `req-${i}`,
+      id: `C-${i}`,
+      name: `Rubric ${i}`,
+      contested: true,
+    }));
+    mockUseList.mockReturnValue({
+      runs: [makeRun({ id: "m-1", taskSlug: TASK, status: "COMPLETED", n_passed: 0, n_total: 10, all_pass: false })],
+      total: 1,
+      isLoading: false,
+      error: null,
+      refetch: mockRefetch,
+      setExpandedId: mockSetExpandedId,
+    });
+    mockRubricsMapHook.mockImplementation(() => new Map([[TASK, fullyContestedRoster]]));
+
+    render(<BenchmarkRunsHistory />);
+
+    const row = screen.getByTestId("run-row-m-1");
+    // roster_total (10) === n_contested (10) → remaining is 0 → never PASS.
+    expect(row.textContent).toContain("10");
+    expect(screen.queryByText("PASS")).toBeNull();
+  });
+
+  it("Total still shows the roster length when all_pass is missing/null on an otherwise-scored row", () => {
+    mockUseList.mockReturnValue({
+      runs: [
+        {
+          ...makeRun({ id: "m-1", taskSlug: TASK, status: "COMPLETED", n_passed: 8, n_total: 10 }),
+          all_pass: undefined,
+        },
+      ],
+      total: 1,
+      isLoading: false,
+      error: null,
+      refetch: mockRefetch,
+      setExpandedId: mockSetExpandedId,
+    });
+    mockRubricsMapHook.mockImplementation(() => new Map([[TASK, roster]]));
+
+    render(<BenchmarkRunsHistory />);
+
+    const row = screen.getByTestId("run-row-m-1");
+    // Total is not gated on hasScoreData/all_pass — the roster size (10) still shows.
+    expect(row.textContent).toContain("10");
   });
 
   it("keeps analysis rows scoreless even when the task has graph outputs", () => {

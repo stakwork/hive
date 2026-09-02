@@ -36,7 +36,6 @@ import { resolveGraphOutputForRun } from "@/lib/harvey-lab/graph-run-score";
 import { LegalBenchmarkResults } from "@/components/legal/LegalBenchmarkResults";
 import { BenchmarkRunAgentLogs } from "@/components/legal/BenchmarkRunAgentLogs";
 import { BenchmarkRunCascade } from "@/components/legal/RunCascade";
-import { StakworkRunLink } from "@/components/legal/StakworkRunLink";
 import { HillClimbChart } from "@/components/legal/HillClimbChart";
 import { WorkflowStatus } from "@prisma/client";
 import type { EvalTriggerOutput } from "@/lib/harvey-lab/eval-normalizers";
@@ -415,7 +414,10 @@ export function BenchmarkRunsHistory({
           all_pass:
             typeof run.all_pass === "boolean" || graphOut ? score.allPass : run.all_pass,
           n_contested: score.contested,
-          roster_total: score.total,
+          // Total only ever reflects a real graph rubric roster — never the
+          // scorable-denominator/criteria-length fallback computeBenchmarkScore
+          // uses when no roster was loaded.
+          roster_total: Array.isArray(roster) && roster.length > 0 ? score.total : undefined,
           judgeNotes: run.judgeNotes ?? graphOut?.judge_notes,
           score_source: usedCriteria ? "criteria" : graphOut ? "graph" : "result",
           n_failed: bd?.fail ?? null,
@@ -462,7 +464,9 @@ export function BenchmarkRunsHistory({
           all_pass:
             typeof run.all_pass === "boolean" || graphOut ? score.allPass : run.all_pass,
           n_contested: score.contested,
-          roster_total: score.total,
+          // Total only ever reflects a real graph rubric roster — see the
+          // matching comment in adjustedRuns above.
+          roster_total: Array.isArray(roster) && roster.length > 0 ? score.total : undefined,
           judgeNotes: run.judgeNotes ?? graphOut?.judge_notes,
           score_source: graphOut ? "graph" : "result",
           n_failed: bd?.fail ?? null,
@@ -526,9 +530,9 @@ export function BenchmarkRunsHistory({
     );
   }
 
-  // colSpan: Task + Type + Started + Runner Status + Score + Contested +
+  // colSpan: Task + Type + Started + Runner Status + Pass + Total + Contested +
   // Disputed + Chat + Report + (Stakwork if super admin)
-  const colSpan = isSuperAdmin ? 10 : 9;
+  const colSpan = isSuperAdmin ? 11 : 10;
 
   return (
     <div className="space-y-3">
@@ -604,11 +608,12 @@ export function BenchmarkRunsHistory({
               </th>
               <th className="text-left px-4 py-3 font-medium text-muted-foreground">Started</th>
               <th className="text-left px-4 py-3 font-medium text-muted-foreground">Runner Status</th>
-              <th className="text-left px-4 py-3 font-medium text-muted-foreground">Score</th>
+              <th className="text-left px-4 py-3 font-medium text-muted-foreground">Pass</th>
+              <th className="text-left px-4 py-3 font-medium text-muted-foreground">Total</th>
               <th className="text-left px-4 py-3 font-medium text-muted-foreground">
                 <span
                   className="cursor-help"
-                  title="Criteria whose definition is flagged as broken. They are excluded from both sides of the score, which is why the denominator can be smaller than the full rubric roster."
+                  title="Criteria whose definition is flagged as broken. They are excluded from the PASS identity; Total still shows the full rubric roster."
                 >
                   Contested
                 </span>
@@ -692,9 +697,12 @@ export function BenchmarkRunsHistory({
                   </td>
                   <td className="px-4 py-3">
                     {/* Recursion re-runs now report post-fix scores back onto
-                        their run row; ScoreCell renders its own dash when no
+                        their run row; PassCell renders its own dash when no
                         score landed (older rows, fix-proposal stage). */}
-                    <ScoreCell run={run} />
+                    <PassCell run={run} />
+                  </td>
+                  <td className="px-4 py-3">
+                    <TotalCell run={run} />
                   </td>
                   <td className="px-4 py-3">
                     <ContestedCountCell run={run} />
@@ -716,7 +724,18 @@ export function BenchmarkRunsHistory({
                   </td>
                   {isSuperAdmin && (
                     <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
-                      <StakworkRunLink projectId={run.projectId} isSuperAdmin={isSuperAdmin} />
+                      {run.projectId != null && (
+                        <a
+                          href={`https://jobs.stakwork.com/admin/projects/${run.projectId}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          title="View on Stakwork (admin)"
+                          aria-label="View on Stakwork (admin)"
+                          className="inline-flex items-center text-muted-foreground hover:text-foreground"
+                        >
+                          <ExternalLink className="h-3 w-3" />
+                        </a>
+                      )}
                     </td>
                   )}
                 </tr>
@@ -802,13 +821,14 @@ function ReportCell({ run, slug }: { run: BenchmarkRunListRow; slug?: string }) 
     return (
       <a
         href={`/w/${slug}/legal/benchmarks/runs/${run.id}/report`}
-        className="inline-flex items-center gap-1 text-primary hover:underline whitespace-nowrap"
+        className="inline-flex items-center gap-1 text-primary whitespace-nowrap"
         data-testid="run-report-link"
         target="_blank"
         rel="noopener noreferrer"
+        title="View Report (opens in new tab)"
         aria-label="View Report (opens in new tab)"
       >
-        View Report
+        <ExternalLink className="h-3 w-3" />
       </a>
     );
   }
@@ -839,10 +859,11 @@ function ChatCell({ run }: { run: BenchmarkRunListRow }) {
         href={run.jamieChatPath}
         target="_blank"
         rel="noopener noreferrer"
-        className="inline-flex items-center gap-1 text-primary hover:underline whitespace-nowrap"
+        className="inline-flex items-center gap-1 text-primary whitespace-nowrap"
         data-testid="report-chat-link"
+        title="View Chat"
+        aria-label="View Chat"
       >
-        View Chat
         <ExternalLink className="h-3 w-3" />
       </a>
     );
@@ -867,12 +888,35 @@ function ChatCell({ run }: { run: BenchmarkRunListRow }) {
   return <span className="text-muted-foreground">—</span>;
 }
 
-function ScoreCell({ run }: { run: AdjustedRun }) {
+function hasScoreData(run: AdjustedRun): boolean {
   const isActive =
     run.status === WorkflowStatus.PENDING || run.status === WorkflowStatus.IN_PROGRESS;
+  return !isActive && typeof run.all_pass === "boolean";
+}
 
-  // Neutral placeholder for in-progress runs and terminal runs with no score data.
-  if (isActive || typeof run.all_pass !== "boolean") {
+/**
+ * PASS identity derived strictly from the graph rubric roster — never from
+ * `run.all_pass` (which can be stale/runner-echoed). A row passes iff its
+ * passed count exactly fills the roster minus contested (broken-definition)
+ * criteria, and that remainder is greater than zero — a fully contested
+ * roster is never PASS. An unknown (`n/a`) contested count blocks the badge
+ * rather than being treated as zero; disputed count never factors in.
+ */
+function isRosterPass(run: AdjustedRun): boolean {
+  if (
+    typeof run.roster_total !== "number" ||
+    typeof run.n_passed !== "number" ||
+    typeof run.n_contested !== "number"
+  ) {
+    return false;
+  }
+  const remaining = run.roster_total - run.n_contested;
+  if (remaining <= 0) return false;
+  return run.n_passed === remaining;
+}
+
+function PassCell({ run }: { run: AdjustedRun }) {
+  if (!hasScoreData(run) || typeof run.n_passed !== "number") {
     return <span className="text-muted-foreground">—</span>;
   }
 
@@ -884,12 +928,8 @@ function ScoreCell({ run }: { run: AdjustedRun }) {
       data-score-source={run.score_source}
       {...(run.n_contested ? { "data-testid": "score-cell-contested" } : {})}
     >
-      {run.n_passed !== undefined && run.n_total !== undefined && (
-        <span className="text-sm tabular-nums">
-          {run.n_passed}/{run.n_total}
-        </span>
-      )}
-      {run.all_pass && (
+      <span className="text-sm tabular-nums">{run.n_passed}</span>
+      {isRosterPass(run) && (
         <Badge variant="outline" className={PASS_BADGE_CLASS}>
           PASS
         </Badge>
@@ -898,10 +938,17 @@ function ScoreCell({ run }: { run: AdjustedRun }) {
   );
 }
 
-function hasScoreData(run: AdjustedRun): boolean {
-  const isActive =
-    run.status === WorkflowStatus.PENDING || run.status === WorkflowStatus.IN_PROGRESS;
-  return !isActive && typeof run.all_pass === "boolean";
+/**
+ * The full graph rubric roster size. Independent of `hasScoreData`/`all_pass`
+ * — an in-progress run with an already-loaded roster still shows its Total
+ * while Pass stays a dash. Never falls back to `n_total` (which can be a
+ * verbatim node total or a scorable-denominator fallback, not the roster).
+ */
+function TotalCell({ run }: { run: AdjustedRun }) {
+  if (typeof run.roster_total !== "number") {
+    return <span className="text-muted-foreground">—</span>;
+  }
+  return <span className="text-sm tabular-nums">{run.roster_total}</span>;
 }
 
 /** `n_contested` is undefined on output-ref/bail-out rows — unknown, not zero. */
@@ -931,9 +978,11 @@ function ContestedCountCell({ run }: { run: AdjustedRun }) {
     <Badge
       variant="outline"
       className="border-0 bg-violet-500/15 text-violet-700 dark:text-violet-400 cursor-help tabular-nums"
-      title={`Contested criterion definitions: ${run.n_contested}${
-        run.roster_total != null ? ` of ${run.roster_total}` : ""
-      }. Excluded from both sides of the score — the denominator already reflects this.`}
+      title={
+        run.roster_total != null
+          ? `Contested criterion definitions: ${run.n_contested} of ${run.roster_total}. Excluded from the PASS identity.`
+          : `Contested criterion definitions: ${run.n_contested}.`
+      }
       data-testid="contested-cell-count"
     >
       {run.n_contested}
