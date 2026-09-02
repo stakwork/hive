@@ -42,9 +42,12 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
-# generated offline-report CSS bundle (built via `npm run build:offline-css`,
-# wired as prebuild/predev — see scripts/build-offline-css.mjs)
+# generated offline export bundles (built via `npm run build:offline`,
+# wired as prebuild/predev — see scripts/build-offline-css.mjs and
+# scripts/build-cascade-bundle.mjs)
 /src/lib/run-report/export/offline-report.css
+/src/lib/legal-cascade/export/cascade-offline.css
+/src/lib/legal-cascade/export/cascade-offline.js
 
 /src/generated/prisma
 

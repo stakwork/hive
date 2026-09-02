@@ -36,6 +36,13 @@ export interface PeekPrefetchResult {
   skipped: string[];
 }
 
+export interface PeekPrefetchOptions {
+  /** Overrides MAX_PEEK_IDS for callers with a different budget (cascade export). */
+  maxIds?: number;
+  /** Overrides PHASE_BUDGET_MS. */
+  budgetMs?: number;
+}
+
 // ── Main export ──────────────────────────────────────────────────────────────
 
 /**
@@ -49,14 +56,18 @@ export interface PeekPrefetchResult {
  */
 export async function prefetchNodePeeks(
   refIds: string[],
-  swarmAccess: WorkspaceSwarmAccess,
+  swarmAccess: Pick<WorkspaceSwarmAccess, "swarmName" | "swarmApiKey">,
+  options: PeekPrefetchOptions = {},
 ): Promise<PeekPrefetchResult> {
+  const maxIds = options.maxIds ?? MAX_PEEK_IDS;
+  const budgetMs = options.budgetMs ?? PHASE_BUDGET_MS;
+
   // ── Deduplicate ────────────────────────────────────────────────────────────
   const unique = Array.from(new Set(refIds.filter((id) => id && id.trim().length > 0)));
 
-  // ── Hard cap: at most MAX_PEEK_IDS fetches per export ─────────────────────
-  const admitted = unique.slice(0, MAX_PEEK_IDS);
-  const capped = unique.slice(MAX_PEEK_IDS); // everything beyond the cap is skipped
+  // ── Hard cap: at most maxIds fetches per export ───────────────────────────
+  const admitted = unique.slice(0, maxIds);
+  const capped = unique.slice(maxIds); // everything beyond the cap is skipped
 
   const peeks = new Map<string, NodePeek>();
   const skipped: string[] = [...capped];
@@ -69,7 +80,7 @@ export async function prefetchNodePeeks(
   const jarvisUrl = getJarvisUrl(swarmName);
 
   // ── Phase budget: absolute wall-clock deadline for the whole phase ─────────
-  const phaseDeadline = Date.now() + PHASE_BUDGET_MS;
+  const phaseDeadline = Date.now() + budgetMs;
 
   // ── Bounded concurrency: simple semaphore (no new dependency) ─────────────
   // Work through the admitted list, launching at most MAX_CONCURRENCY fetches
