@@ -573,6 +573,83 @@ describe("Admin LLM Models API", () => {
       const data = await response.json();
       expect(data.model.provider).toBe("XAI");
     });
+
+    it("should accept a slash-containing name on POST when provider is OTHER (OpenRouter)", async () => {
+      const request = createAuthenticatedPostRequest(
+        "/api/admin/llm-models",
+        superAdminUser,
+        {
+          name: "stealth/ox-alpha",
+          provider: "OTHER",
+          providerLabel: "OpenRouter",
+          inputPricePer1M: 1,
+          outputPricePer1M: 2,
+        },
+      );
+      const { POST } = await import("@/app/api/admin/llm-models/route");
+      const response = await POST(request);
+
+      expect(response.status).not.toBe(400);
+      const data = await response.json();
+      expect(data.model.name).toBe("stealth/ox-alpha");
+    });
+
+    it("should accept a slash-containing name on PATCH of an existing OTHER/OpenRouter model without resending provider", async () => {
+      const model = await createTestLlmModel({
+        name: "stealth/ox-alpha-existing",
+        provider: "OTHER",
+        providerLabel: "OpenRouter",
+      });
+      const request = createAuthenticatedPatchRequest(
+        `/api/admin/llm-models/${model.id}`,
+        { name: "x-ai/grok-4" },
+        superAdminUser,
+      );
+      const { PATCH } = await import("@/app/api/admin/llm-models/[id]/route");
+      const response = await PATCH(request, {
+        params: Promise.resolve({ id: model.id }),
+      });
+
+      expect(response.status).not.toBe(400);
+      const data = await response.json();
+      expect(data.model.name).toBe("x-ai/grok-4");
+    });
+
+    it("should reject an invalid slash-containing name on POST even when provider is OTHER", async () => {
+      const request = createAuthenticatedPostRequest(
+        "/api/admin/llm-models",
+        superAdminUser,
+        {
+          name: "stealth//ox",
+          provider: "OTHER",
+          providerLabel: "OpenRouter",
+          inputPricePer1M: 1,
+          outputPricePer1M: 2,
+        },
+      );
+      const { POST } = await import("@/app/api/admin/llm-models/route");
+      const response = await POST(request);
+
+      expect(response.status).toBe(400);
+    });
+
+    it("should reject a name with a space in one of its segments on POST when provider is OTHER", async () => {
+      const request = createAuthenticatedPostRequest(
+        "/api/admin/llm-models",
+        superAdminUser,
+        {
+          name: "stealth/ox alpha",
+          provider: "OTHER",
+          providerLabel: "OpenRouter",
+          inputPricePer1M: 1,
+          outputPricePer1M: 2,
+        },
+      );
+      const { POST } = await import("@/app/api/admin/llm-models/route");
+      const response = await POST(request);
+
+      expect(response.status).toBe(400);
+    });
   });
 
   describe("Duplicate name conflict", () => {
