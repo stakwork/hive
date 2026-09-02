@@ -13,14 +13,25 @@ import { LlmProvider, Prisma } from "@prisma/client";
  * to a different provider's key (e.g. an `XAI` row named
  * "anthropic/claude-x"). No slashes, and only characters that make
  * sense in a model id / display label.
+ *
+ * `OTHER`/OpenRouter rows are the one exception: OpenRouter model ids
+ * are themselves `vendor/model` (e.g. "stealth/ox-alpha"), and
+ * `getModelValue()` prefixes them with `providerLabel/` (e.g.
+ * "openrouter/stealth/ox-alpha"), so `name` needs to allow one or more
+ * `/`-delimited safe segments there. First-class providers still
+ * forbid `/` in `name` entirely, since `getApiKeyForModel` keys off
+ * the first path segment.
  */
 const SAFE_NAME_RE = /^[A-Za-z0-9._:-]+$/;
+const SAFE_NAME_WITH_SLASHES_RE = /^[A-Za-z0-9._:-]+(\/[A-Za-z0-9._:-]+)*$/;
 
 function validateNameFields(
   name: unknown,
   providerLabel: unknown,
+  provider: unknown,
 ): NextResponse | null {
-  if (typeof name === "string" && !SAFE_NAME_RE.test(name)) {
+  const nameRe = provider === "OTHER" ? SAFE_NAME_WITH_SLASHES_RE : SAFE_NAME_RE;
+  if (typeof name === "string" && !nameRe.test(name)) {
     return NextResponse.json(
       { error: "name must match ^[A-Za-z0-9._:-]+$ (no slashes)" },
       { status: 400 },
@@ -88,7 +99,7 @@ export async function POST(request: NextRequest) {
             { status: 400 }
           );
         }
-        const nameErr = validateNameFields(item.name, item.providerLabel);
+        const nameErr = validateNameFields(item.name, item.providerLabel, item.provider);
         if (nameErr) return nameErr;
       }
 
@@ -147,7 +158,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const nameErr = validateNameFields(name, providerLabel);
+    const nameErr = validateNameFields(name, providerLabel, provider);
     if (nameErr) return nameErr;
 
     // The default-flip (clear the existing default, then create the new
