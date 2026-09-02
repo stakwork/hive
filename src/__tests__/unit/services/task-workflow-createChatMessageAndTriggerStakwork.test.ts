@@ -321,7 +321,8 @@ describe("createChatMessageAndTriggerStakwork", () => {
       );
 
       const call = mockFetch.mock.calls[0];
-      const body = JSON.parse(call[1].body);
+      const _rawBody = JSON.parse(call[1].body);
+      const body = (_rawBody && typeof _rawBody === 'object' && 'project' in _rawBody) ? _rawBody.project : _rawBody;
       expect(body.workflow_id).toBeDefined();
       expect(body.webhook_url).toContain("/api/stakwork/webhook");
     });
@@ -356,7 +357,8 @@ describe("createChatMessageAndTriggerStakwork", () => {
 
         // Assert
         const call = mockFetch.mock.calls[0];
-        const body = JSON.parse(call[1].body);
+        const _rawBody = JSON.parse(call[1].body);
+        const body = (_rawBody && typeof _rawBody === 'object' && 'project' in _rawBody) ? _rawBody.project : _rawBody;
         expect(body.workflow_id).toBeDefined();
         
         if (mode === "live") {
@@ -599,7 +601,8 @@ describe("createChatMessageAndTriggerStakwork", () => {
       // Assert - Feature context should be included in the Stakwork API call
       expect(mockFetch).toHaveBeenCalled();
       const call = mockFetch.mock.calls[0];
-      const body = JSON.parse(call[1].body);
+      const _rawBody = JSON.parse(call[1].body);
+      const body = (_rawBody && typeof _rawBody === 'object' && 'project' in _rawBody) ? _rawBody.project : _rawBody;
       expect(body.workflow_params.set_var.attributes.vars.featureContext).toEqual(featureContext);
     });
   });
