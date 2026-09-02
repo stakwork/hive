@@ -10,7 +10,6 @@ export interface BuildDeckPod {
 
 function resolveAppUrl(pod?: BuildDeckPod): string {
   return (
-    process.env.CUSTOM_STAKLINK_URL ||
     process.env.VERIFY_APP_URL ||
     pod?.appUrl ||
     process.env.NEXTAUTH_URL ||

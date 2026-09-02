@@ -12,16 +12,15 @@ function buildModel(): AuditModel {
   if (process.env.OPENROUTER_API_KEY) {
     return {
       apiKey: process.env.OPENROUTER_API_KEY,
-      provider: "openai",
-      model: "openai/gpt-4o",
-      host: "https://openrouter.ai/api/v1",
+      provider: "openrouter",
+      model: process.env.AUDIT_MODEL || "openrouter/openai/gpt-4o",
     };
   }
 
   return {
     apiKey: process.env.ANTHROPIC_API_KEY ?? "",
     provider: "anthropic",
-    model: "claude-3-7-sonnet-latest",
+    model: process.env.AUDIT_MODEL || "claude-3-7-sonnet-latest",
   };
 }
 
