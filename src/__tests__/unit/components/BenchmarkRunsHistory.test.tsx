@@ -29,6 +29,7 @@ const makeRun = (overrides: Partial<{
   generateJamieChat: boolean;
   jamieChatStatus: string;
   jamieChatPath: string;
+  generateRunReport: boolean;
   hasReport: boolean;
 }> = {}) => ({
   id: "runner-1",
@@ -48,6 +49,7 @@ const makeRun = (overrides: Partial<{
   generateJamieChat: undefined as boolean | undefined,
   jamieChatStatus: undefined as string | undefined,
   jamieChatPath: undefined as string | undefined,
+  generateRunReport: undefined as boolean | undefined,
   hasReport: undefined as boolean | undefined,
   ...overrides,
 });
@@ -262,13 +264,29 @@ describe("BenchmarkRunsHistory", () => {
     );
   });
 
-  it("renders Runner Status column header and Pass/Total column headers (no Fail header)", () => {
+  it("renders Runner Status column header and Pass/Fail/Total column headers", () => {
     render(React.createElement(BenchmarkRunsHistory));
     expect(screen.getByText("Runner Status")).toBeInTheDocument();
     expect(screen.getByText("Pass")).toBeInTheDocument();
+    expect(screen.getByText("Fail")).toBeInTheDocument();
     expect(screen.getByText("Total")).toBeInTheDocument();
     expect(screen.queryByText("Score")).toBeNull();
-    expect(screen.queryByText("Fail")).toBeNull();
+  });
+
+  it("renders the score column headers in order Pass, Fail, Contested, Disputed, Total", () => {
+    render(React.createElement(BenchmarkRunsHistory));
+    const headers = Array.from(document.querySelectorAll("thead th")).map(
+      (th) => th.textContent?.trim(),
+    );
+    const scoreHeaders = headers.filter((h) =>
+      ["Pass", "Fail", "Contested", "Disputed", "Total"].includes(h ?? ""),
+    );
+    expect(scoreHeaders).toEqual(["Pass", "Fail", "Contested", "Disputed", "Total"]);
+  });
+
+  it("does NOT render a Chat column header", () => {
+    render(React.createElement(BenchmarkRunsHistory));
+    expect(screen.queryByText("Chat")).toBeNull();
   });
 
   it("shows COMPLETED badge for a completed run", () => {
@@ -466,7 +484,7 @@ describe("BenchmarkRunsHistory", () => {
 
   // ─── colSpan tests ─────────────────────────────────────────────────────────
 
-  it("expanded row colSpan is 9 for non-super-admin (Task + Type + Started + Runner Status + Score + Contested + Disputed + Chat + Report)", async () => {
+  it("expanded row colSpan is 10 for non-super-admin (Task + Type + Started + Runner Status + Pass + Fail + Contested + Disputed + Total + Report)", async () => {
     const user = userEvent.setup();
     render(React.createElement(BenchmarkRunsHistory));
 
@@ -779,14 +797,11 @@ describe("BenchmarkRunsHistory", () => {
     expect(expandedCell.getAttribute("colspan")).toBe("10");
   });
 
-  // ─── Chat column tests ─────────────────────────────────────────────────────
+  // ─── Chat column removal ───────────────────────────────────────────────────
+  // The Chat column/link were removed from this table (Jamie chat data and
+  // generation are unaffected — see useLegalBenchmarkRunList.ts).
 
-  it("renders Chat column header", () => {
-    render(React.createElement(BenchmarkRunsHistory));
-    expect(screen.getByText("Chat")).toBeInTheDocument();
-  });
-
-  it("renders icon-only 'View Chat' link when jamieChatPath is present", () => {
+  it("does NOT render the report-chat-link even when jamieChatPath is present", () => {
     mockUseList.mockReturnValue({
       runs: [makeRun({
         generateJamieChat: true,
@@ -800,13 +815,7 @@ describe("BenchmarkRunsHistory", () => {
       setExpandedId: mockSetExpandedId,
     });
     render(React.createElement(BenchmarkRunsHistory));
-    const link = screen.getByTestId("report-chat-link");
-    expect(link).toBeInTheDocument();
-    expect(link.getAttribute("href")).toBe("/org/stakwork?chat=conv-123");
-    expect(link.getAttribute("target")).toBe("_blank");
-    expect(link.getAttribute("title")).toBe("View Chat");
-    expect(link.getAttribute("aria-label")).toBe("View Chat");
-    expect(link.textContent).not.toBe("View Chat");
+    expect(screen.queryByTestId("report-chat-link")).toBeNull();
   });
 
   it("renders icon-only 'View Report' link with correct attributes when hasReport is true", () => {
@@ -850,8 +859,10 @@ describe("BenchmarkRunsHistory", () => {
   });
 
   it("shows Pending spinner when report requested but not yet written", () => {
+    // Keyed off generateRunReport (ReportCell's own field) — generateJamieChat
+    // no longer drives any visible UI in this table now that Chat is removed.
     mockUseList.mockReturnValue({
-      runs: [makeRun({ status: "IN_PROGRESS", generateJamieChat: true })],
+      runs: [makeRun({ status: "IN_PROGRESS", generateRunReport: true })],
       total: 1,
       isLoading: false,
       error: null,
@@ -861,23 +872,6 @@ describe("BenchmarkRunsHistory", () => {
     render(React.createElement(BenchmarkRunsHistory));
     expect(screen.getByText("Pending")).toBeInTheDocument();
     expect(screen.queryByTestId("report-chat-link")).toBeNull();
-  });
-
-  it("shows 'Failed' when jamieChatStatus is failed", () => {
-    mockUseList.mockReturnValue({
-      runs: [makeRun({ generateJamieChat: true, jamieChatStatus: "failed" })],
-      total: 1,
-      isLoading: false,
-      error: null,
-      refetch: mockRefetch,
-      setExpandedId: mockSetExpandedId,
-    });
-    render(React.createElement(BenchmarkRunsHistory));
-    const failedMatches = screen.getAllByText("Failed");
-    expect(failedMatches.length).toBeGreaterThan(0);
-    expect(
-      failedMatches.some((el) => el.className.includes("text-destructive")),
-    ).toBe(true);
   });
 
   it("shows dash (not Pending) for a FAILED run with generateJamieChat (report will never fire)", () => {
@@ -1551,6 +1545,100 @@ describe("BenchmarkRunsHistory — graph-first score numerators", () => {
     const row = screen.getByTestId("run-row-a-1");
     expect(row.textContent).toContain("—");
     expect(row.textContent).not.toContain("8/");
+  });
+
+  // ─── Fail column ───────────────────────────────────────────────────────────
+
+  it("renders the computed Fail count (fail-cell-count) when a rubric breakdown is computed", () => {
+    // roster has 10 entries, 2 contested → scorable 8; n_passed 8 → fail 0.
+    // Use 6 passed instead so fail is a clearly non-zero, non-clamped number.
+    mockUseList.mockReturnValue({
+      runs: [makeRun({ id: "m-1", taskSlug: TASK, status: "COMPLETED", n_passed: 6, n_total: 10, all_pass: false })],
+      total: 1,
+      isLoading: false,
+      error: null,
+      refetch: mockRefetch,
+      setExpandedId: mockSetExpandedId,
+    });
+    mockRubricsMapHook.mockImplementation(() => new Map([[TASK, roster]]));
+
+    render(<BenchmarkRunsHistory />);
+
+    const row = screen.getByTestId("run-row-m-1");
+    const failCell = row.querySelector('[data-testid="fail-cell-count"]');
+    expect(failCell).toBeInTheDocument();
+    // scorable = 10 - 2 contested = 8; pass = 6; fail = 8 - 6 = 2.
+    expect(failCell?.textContent).toBe("2");
+  });
+
+  it("renders n/a (fail-cell-unknown), never 0, for an output-ref pointer row (n_failed === null)", () => {
+    const manualWithPointer = {
+      ...makeRun({ id: "m-1", taskSlug: TASK, status: "COMPLETED", n_passed: 50, n_total: 74, all_pass: false }),
+      evalTriggerRef: "trig-1",
+      evalOutputRef: "out-9",
+    };
+    mockUseList.mockReturnValue({
+      runs: [manualWithPointer],
+      total: 1,
+      isLoading: false,
+      error: null,
+      refetch: mockRefetch,
+      setExpandedId: mockSetExpandedId,
+    });
+    mockRubricsMapHook.mockImplementation(() => new Map([[TASK, roster]]));
+    mockGraphScoresMapHook.mockImplementation(
+      () =>
+        new Map([
+          [TASK, [graphOutput({ ref_id: "out-9", triggerRef: undefined, n_passed: 9, n_total: 10 })]],
+        ]),
+    );
+
+    render(<BenchmarkRunsHistory />);
+
+    const row = screen.getByTestId("run-row-m-1");
+    const unknownCell = row.querySelector('[data-testid="fail-cell-unknown"]');
+    expect(unknownCell).toBeInTheDocument();
+    expect(unknownCell?.textContent).toBe("n/a");
+    expect(row.querySelector('[data-testid="fail-cell-count"]')).toBeNull();
+  });
+
+  it("renders the muted dash for Fail when the row has no score data (in-progress run)", () => {
+    mockUseList.mockReturnValue({
+      runs: [makeRun({ id: "m-1", taskSlug: TASK, status: "IN_PROGRESS" })],
+      total: 1,
+      isLoading: false,
+      error: null,
+      refetch: mockRefetch,
+      setExpandedId: mockSetExpandedId,
+    });
+    mockRubricsMapHook.mockImplementation(() => new Map([[TASK, roster]]));
+
+    render(<BenchmarkRunsHistory />);
+
+    const row = screen.getByTestId("run-row-m-1");
+    expect(row.querySelector('[data-testid="fail-cell-count"]')).toBeNull();
+    expect(row.querySelector('[data-testid="fail-cell-unknown"]')).toBeNull();
+  });
+
+  it("renders 0 (never a negative number) for Fail on a clamped row (pass exceeds scorable)", () => {
+    // n_passed (10) exceeds scorable (10 - 2 contested = 8) — rubricBreakdown
+    // clamps pass to 8, so fail = 8 - 8 = 0, never negative.
+    mockUseList.mockReturnValue({
+      runs: [makeRun({ id: "m-1", taskSlug: TASK, status: "COMPLETED", n_passed: 10, n_total: 10, all_pass: true })],
+      total: 1,
+      isLoading: false,
+      error: null,
+      refetch: mockRefetch,
+      setExpandedId: mockSetExpandedId,
+    });
+    mockRubricsMapHook.mockImplementation(() => new Map([[TASK, roster]]));
+
+    render(<BenchmarkRunsHistory />);
+
+    const row = screen.getByTestId("run-row-m-1");
+    const failCell = row.querySelector('[data-testid="fail-cell-count"]');
+    expect(failCell).toBeInTheDocument();
+    expect(failCell?.textContent).toBe("0");
   });
 });
 

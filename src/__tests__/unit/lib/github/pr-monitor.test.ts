@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { mergeBaseBranch, rebaseOntoBaseBranch, triggerAgentModeFix, triggerLiveModeFix, createPrLogger, monitorSinglePR, claimPRFixInProgress } from "@/lib/github/pr-monitor";
+import { mergeBaseBranch, rebaseOntoBaseBranch, triggerAgentModeFix, triggerLiveModeFix, createPrLogger, monitorSinglePR, claimPRFixInProgress, buildFixPrompt, type PRCheckResult } from "@/lib/github/pr-monitor";
 import type { Octokit } from "@octokit/rest";
 import { ChatRole, ChatStatus } from "@prisma/client";
 
@@ -84,6 +84,30 @@ vi.mock("@/lib/github/pr-ci", () => ({
     summary: "Tests failed",
     failedChecks: ["test"],
     failedCheckLogs: {},
+  }),
+  // Real implementation - buildFixPrompt (used throughout this file, e.g. via
+  // monitorSinglePR) depends on it, and several tests here assert on the
+  // resulting prompt/log content, so it should behave like production.
+  inferFailedCommand: vi.fn((checkName: string, logs: string) => {
+    const commands: string[] = [];
+    const seen = new Set<string>();
+    for (const line of logs.split("\n")) {
+      const match = line.match(/(?:##\[group\]|::group::)Run (.+)$/);
+      if (match) {
+        const cmd = match[1].trim();
+        if (cmd && !seen.has(cmd)) {
+          seen.add(cmd);
+          commands.push(cmd);
+        }
+      }
+    }
+    if (commands.length > 0) return commands;
+    const trimmed = checkName.trim();
+    const prefixes = ["npm", "yarn", "pnpm", "npx", "pytest", "flake8", "eslint", "black", "ruff", "cargo", "go", "python", "make"];
+    if (prefixes.some((p) => trimmed === p || trimmed.startsWith(`${p} `)) || / run /.test(trimmed)) {
+      return [trimmed];
+    }
+    return null;
   }),
 }));
 vi.mock("@/services/task-workflow", () => ({
@@ -1202,6 +1226,92 @@ describe("PR Monitor - Branch Update Operations", () => {
         },
       });
     });
+  });
+});
+
+describe("buildFixPrompt — verify-before-push instructions", () => {
+  function makeCheckResult(overrides: Partial<PRCheckResult> = {}): PRCheckResult {
+    return {
+      artifactId: "artifact-1",
+      taskId: "task-1",
+      prNumber: 42,
+      owner: "test-owner",
+      repo: "test-repo",
+      state: "ci_failure",
+      mergeable: null,
+      ciStatus: "failure",
+      prState: "open",
+      merged: false,
+      headBranch: "feature-branch",
+      baseBranch: "main",
+      ...overrides,
+    };
+  }
+
+  it("names the inferred command for a single failed check and instructs an exact local re-run", () => {
+    const result = makeCheckResult({
+      failedChecks: ["Lint"],
+      failedCheckLogs: {
+        Lint: "Failed steps: Lint\n\n### Failed Step: Lint\n##[group]Run npm run lint\n12:3  error  no-undef\n##[error]Process completed with exit code 1",
+      },
+    });
+
+    const prompt = buildFixPrompt(result);
+
+    expect(prompt).toContain("`npm run lint`");
+    expect(prompt).toContain("Re-run that exact command locally");
+    expect(prompt).toContain("before finishing");
+  });
+
+  it("lists a separate command per failed check when several checks fail", () => {
+    const result = makeCheckResult({
+      failedChecks: ["Lint", "Test"],
+      failedCheckLogs: {
+        Lint: "### Failed Step: Lint\n##[group]Run npm run lint\nerror here",
+        Test: "### Failed Step: Test\n##[group]Run pytest -q\nFAILED tests/test_foo.py::test_bar",
+      },
+    });
+
+    const prompt = buildFixPrompt(result);
+
+    expect(prompt).toContain("`npm run lint`");
+    expect(prompt).toContain("`pytest -q`");
+    expect(prompt).toContain('"Lint" failed running');
+    expect(prompt).toContain('"Test" failed running');
+  });
+
+  it("falls back to naming the check/step and identify-from-logs instructions when no command can be inferred", () => {
+    const result = makeCheckResult({
+      failedChecks: ["build (ubuntu-latest)"],
+      failedCheckLogs: {
+        "build (ubuntu-latest)": "### Failed Step: Build Docker image\n##[group]Build Docker image\n##[error]buildx failed",
+      },
+    });
+
+    const prompt = buildFixPrompt(result);
+
+    expect(prompt).toContain('"build (ubuntu-latest)"');
+    expect(prompt).toContain("could not be inferred");
+    expect(prompt).toContain("Identify the command CI ran");
+    expect(prompt).toContain("Build Docker image");
+  });
+
+  it("still includes the Playwright timeout note alongside the verify instructions", () => {
+    const result = makeCheckResult({
+      failedChecks: ["e2e"],
+      failedCheckLogs: { e2e: "##[group]Run npx playwright test\n##[error]Timeout 30000ms exceeded" },
+    });
+
+    const prompt = buildFixPrompt(result);
+
+    expect(prompt).toContain("playwright timeouts");
+    expect(prompt).toContain("`npx playwright test`");
+  });
+
+  it("does not add verify instructions for the conflict state", () => {
+    const result = makeCheckResult({ state: "conflict" });
+    const prompt = buildFixPrompt(result);
+    expect(prompt).not.toContain("Before finishing, verify your fix");
   });
 });
 
