@@ -4,7 +4,7 @@ import React from "react";
 import { ArtifactType } from "@/lib/chat";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { Monitor, Network, FileCode, Code2, Terminal, ClipboardList, ListChecks, ShieldCheck, ScrollText } from "lucide-react";
+import { Monitor, Network, FileCode, Code2, Terminal, ClipboardList, ListChecks, ShieldCheck, ScrollText, Globe } from "lucide-react";
 import { PiGraphFill } from "react-icons/pi";
 import { cn } from "@/lib/utils";
 
@@ -24,6 +24,7 @@ const VISUAL_ARTIFACTS: ArtifactButton[] = [
   { type: "BROWSER", icon: Monitor, label: "Live Preview" },
   { type: "GRAPH", icon: PiGraphFill, label: "Graph" },
   { type: "WORKFLOW", icon: Network, label: "Workflow" },
+  { type: "HTML", icon: Globe, label: "Page" },
 ];
 
 const CODE_ARTIFACTS: ArtifactButton[] = [
