@@ -55,7 +55,7 @@ const COOLDOWN_KEY_PREFIX = "admin:swarms:host-storage:";
  * authenticating — this is the SSRF guard that keeps a tampered `swarmUrl` DB
  * row from receiving our credentials or pointing us at internal infrastructure.
  */
-const ALLOWED_SWARM_HOST_SUFFIXES = [".sphinx.chat"];
+export const ALLOWED_SWARM_HOST_SUFFIXES = [".sphinx.chat"];
 
 export type HostStorageReadOutcome =
   | "fresh"
@@ -122,7 +122,7 @@ function result(
   return { outcome, reasonCode, cached: false };
 }
 
-function isAbortErrorLike(error: unknown): boolean {
+export function isAbortErrorLike(error: unknown): boolean {
   return (
     (error instanceof Error && error.name === "AbortError") ||
     (typeof error === "object" && error !== null && (error as { code?: unknown }).code === "ABORT_ERR")
@@ -135,7 +135,7 @@ function isAbortErrorLike(error: unknown): boolean {
  * plaintext or corrupt stored password must surface as DECRYPT_FAILED, never
  * become a normal-looking failed login against the swarm.
  */
-function isEncryptedEnvelope(stored: string): boolean {
+export function isEncryptedEnvelope(stored: string): boolean {
   try {
     return isEncrypted(JSON.parse(stored));
   } catch {
@@ -144,7 +144,7 @@ function isEncryptedEnvelope(stored: string): boolean {
 }
 
 /** Parse a swarm URL from the DB row down to its hostname (http(s) only). */
-function resolveSwarmHost(swarmUrl: string): string | null {
+export function resolveSwarmHost(swarmUrl: string): string | null {
   try {
     const url = new URL(swarmUrl);
     if (url.protocol !== "https:" && url.protocol !== "http:") return null;
@@ -154,7 +154,7 @@ function resolveSwarmHost(swarmUrl: string): string | null {
   }
 }
 
-function isAllowedSwarmHost(hostname: string): boolean {
+export function isAllowedSwarmHost(hostname: string): boolean {
   return ALLOWED_SWARM_HOST_SUFFIXES.some((suffix) => hostname.endsWith(suffix));
 }
 
