@@ -58,6 +58,22 @@ export class SwarmCmdConfigError extends Error {
 }
 
 /**
+ * Thrown by `getSwarmCmdJwt` when the swarm login responds with a non-OK
+ * HTTP status. Carries only the numeric `status` — never the swarm's raw
+ * response body/text, which must not leak to callers (it can contain
+ * arbitrary upstream error content).
+ */
+export class SwarmAuthError extends Error {
+  readonly status: number;
+
+  constructor(status: number) {
+    super(`Swarm login failed (${status})`);
+    this.name = "SwarmAuthError";
+    this.status = status;
+  }
+}
+
+/**
  * Parse a swarm URL for the cmd API. `Swarm.swarmUrl` is free-text nullable, so
  * it is validated here rather than letting `new URL()` throw synchronously.
  * Returns null when the value is not a parseable http(s) URL.
@@ -154,7 +170,7 @@ export async function getSwarmCmdJwt(
     }
 
     if (!res.ok) {
-      throw new Error(`Swarm login failed (${res.status}): ${rawText || res.statusText}`);
+      throw new SwarmAuthError(res.status);
     }
 
     const jwt = data.token ?? data.jwt ?? data.access_token;
