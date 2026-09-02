@@ -53,6 +53,7 @@ vi.mock('@/lib/constants/prompt', () => ({
   getPlannerCapabilitySnippet: vi.fn(() => ''),
   getResearchCapabilitySnippet: vi.fn(() => ''),
   getConnectionsCapabilitySnippet: vi.fn(() => ''),
+  getHtmlPagesCapabilitySnippet: vi.fn(() => ''),
   getGraphWalkerCapabilitySnippet: vi.fn(() => ''),
   getInfraCapabilitySnippet: vi.fn(() => ''),
   getWorkflowsCapabilitySnippet: vi.fn(() => ''),

@@ -310,6 +310,101 @@ describe("appendTurnMessages", () => {
 // deferredCheck population from schedule_check tool results
 // ─────────────────────────────────────────────────────────────────────────────
 
+describe("messagesFromSteps — HTML tool input redaction", () => {
+  test("redacts html and body from save_html input, leaving pointer output", () => {
+    const html = "<!DOCTYPE html><html><body>secret</body></html>";
+    const steps = [
+      {
+        toolCalls: [
+          {
+            toolCallId: "tc-html",
+            toolName: "save_html",
+            input: { slug: "story", title: "Story", html, body: html },
+          },
+        ],
+        toolResults: [
+          {
+            toolCallId: "tc-html",
+            output: {
+              slug: "story",
+              id: "page-1",
+              sharePath: "/org/acme/h/story",
+            },
+          },
+        ],
+      },
+    ];
+
+    const rows = messagesFromSteps(steps, "t-");
+    const input = rows[0].toolCalls?.[0].input as Record<string, unknown>;
+    expect(input.slug).toBe("story");
+    expect(input.title).toBe("Story");
+    expect(input.html).toEqual({
+      redacted: true,
+      bytes: Buffer.byteLength(html, "utf8"),
+    });
+    expect(input.body).toEqual({
+      redacted: true,
+      bytes: Buffer.byteLength(html, "utf8"),
+    });
+    expect(rows[0].toolCalls?.[0].output).toEqual({
+      slug: "story",
+      id: "page-1",
+      sharePath: "/org/acme/h/story",
+    });
+  });
+
+  test("redacts html from update_html input", () => {
+    const html = "<html>revised</html>";
+    const steps = [
+      {
+        toolCalls: [
+          {
+            toolCallId: "tc-upd",
+            toolName: "update_html",
+            input: { slug: "story", html },
+          },
+        ],
+        toolResults: [
+          {
+            toolCallId: "tc-upd",
+            output: { slug: "story", status: "updated" },
+          },
+        ],
+      },
+    ];
+
+    const rows = messagesFromSteps(steps, "t-");
+    const input = rows[0].toolCalls?.[0].input as Record<string, unknown>;
+    expect(input.html).toEqual({
+      redacted: true,
+      bytes: Buffer.byteLength(html, "utf8"),
+    });
+    expect(input.slug).toBe("story");
+  });
+
+  test("does not redact unrelated tool inputs", () => {
+    const steps = [
+      {
+        toolCalls: [
+          {
+            toolCallId: "tc1",
+            toolName: "save_research",
+            input: { slug: "x", title: "X", html: "not-html-tool" },
+          },
+        ],
+        toolResults: [{ toolCallId: "tc1", output: { slug: "x" } }],
+      },
+    ];
+    const rows = messagesFromSteps(steps, "t-");
+    expect(rows[0].toolCalls?.[0].input).toEqual({
+      slug: "x",
+      title: "X",
+      html: "not-html-tool",
+    });
+  });
+});
+
 describe("messagesFromSteps — deferredCheck population", () => {
   test("attaches deferredCheck to the text row when schedule_check succeeds", () => {
     const steps = [
