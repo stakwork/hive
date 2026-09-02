@@ -89,6 +89,10 @@ describe("askTools", () => {
       expect(tools).toHaveProperty("web_search");
       // logs_agent requires workspaceAuth — must NOT be present without it
       expect(tools).not.toHaveProperty("logs_agent");
+      // HTML artifact tools are canvas-only; repo_agent / askTools must never
+      // receive them (sub-agents are not HTML writers).
+      expect(tools).not.toHaveProperty("save_html");
+      expect(tools).not.toHaveProperty("update_html");
     });
 
     it("includes logs_agent when workspaceAuth is provided", () => {

@@ -130,6 +130,27 @@ type StepLike = {
 
 const NO_STRIP: ReadonlySet<string> = new Set();
 
+const HTML_BODY_TOOLS = new Set(["save_html", "update_html"]);
+
+/**
+ * Strip HTML bodies from persisted tool-call input. SharedConversation
+ * messages must not store the page — only a redaction marker + byte length.
+ */
+export function redactHtmlToolInput(toolName: string, input: unknown): unknown {
+  if (!HTML_BODY_TOOLS.has(toolName)) return input;
+  if (!input || typeof input !== "object" || Array.isArray(input)) return input;
+  const record = input as Record<string, unknown>;
+  const next: Record<string, unknown> = { ...record };
+  for (const field of ["html", "body"] as const) {
+    if (!(field in next)) continue;
+    const value = next[field];
+    const bytes =
+      typeof value === "string" ? Buffer.byteLength(value, "utf8") : 0;
+    next[field] = { redacted: true, bytes };
+  }
+  return next;
+}
+
 /**
  * Reconstruct the agent's output as `CanvasChatMessage`-shaped rows from
  * the finished stream's `steps`. Mirrors the client-side timeline split
@@ -221,7 +242,7 @@ export function messagesFromSteps(
         return {
           id: tc.toolCallId,
           toolName: tc.toolName,
-          input: tc.input,
+          input: redactHtmlToolInput(tc.toolName, tc.input),
           output,
           status:
             output === undefined
