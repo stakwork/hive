@@ -530,8 +530,8 @@ export function BenchmarkRunsHistory({
     );
   }
 
-  // colSpan: Task + Type + Started + Runner Status + Pass + Total + Contested +
-  // Disputed + Chat + Report + (Stakwork if super admin)
+  // colSpan: Task + Type + Started + Runner Status + Pass + Fail + Contested +
+  // Disputed + Total + Report + (Stakwork if super admin)
   const colSpan = isSuperAdmin ? 11 : 10;
 
   return (
@@ -626,7 +626,6 @@ export function BenchmarkRunsHistory({
                   Disputed
                 </span>
               </th>
-              <th className="text-left px-4 py-3 font-medium text-muted-foreground">Chat</th>
               <th className="text-left px-4 py-3 font-medium text-muted-foreground">Report</th>
               {isSuperAdmin && (
                 <th className="text-left px-4 py-3 font-medium text-muted-foreground">Stakwork</th>
@@ -709,13 +708,6 @@ export function BenchmarkRunsHistory({
                   </td>
                   <td className="px-4 py-3">
                     <DisputedCountCell run={run} />
-                  </td>
-                  <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
-                    {run.runType === "manual" ? (
-                      <ChatCell run={run} />
-                    ) : (
-                      <span className="text-muted-foreground/60">—</span>
-                    )}
                   </td>
                   <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
                     {/* Report bundles land on recursion rows too (reportUrl
@@ -809,9 +801,10 @@ function TaskProgressCard({
 
 /**
  * The run report bundle — the nine-section report built from the Harvey
- * runner's S3 output. A DIFFERENT artifact from the Jamie chat next door: this
- * one is produced by the runner itself and rendered natively by Hive, while the
- * chat is an org-canvas conversation written afterwards by the canvas agent.
+ * runner's S3 output. Produced by the runner itself and rendered natively by
+ * Hive. (The Jamie chat — an org-canvas conversation written afterwards by
+ * the canvas agent — is a separate artifact; its data is still generated and
+ * fetched, but this table no longer renders a column for it.)
  *
  * `hasReport` is derived server-side from the presence of the persisted
  * projection — never from the bundle URL, which does not reach this component.
@@ -837,46 +830,6 @@ function ReportCell({ run, slug }: { run: BenchmarkRunListRow; slug?: string }) 
   // completion webhook is fetching the bundle right now. A FAILED run can still
   // deliver a report, so it is not excluded here (unlike the chat).
   if (run.generateRunReport) {
-    return (
-      <span className="inline-flex items-center gap-1 text-xs text-muted-foreground whitespace-nowrap">
-        <Loader2 className="h-3 w-3 animate-spin" />
-        Pending
-      </span>
-    );
-  }
-
-  return <span className="text-muted-foreground">—</span>;
-}
-
-/**
- * The Jamie chat produced by `generateBenchmarkJamieChat` — an org-canvas
- * conversation. Distinct from the run report bundle, which has its own column.
- */
-function ChatCell({ run }: { run: BenchmarkRunListRow }) {
-  if (run.jamieChatPath) {
-    return (
-      <a
-        href={run.jamieChatPath}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="inline-flex items-center gap-1 text-primary whitespace-nowrap"
-        data-testid="report-chat-link"
-        title="View Chat"
-        aria-label="View Chat"
-      >
-        <ExternalLink className="h-3 w-3" />
-      </a>
-    );
-  }
-
-  if (run.jamieChatStatus === "failed") {
-    return <span className="text-xs text-destructive">Failed</span>;
-  }
-
-  // Requested but not yet started/written (run still executing, or the
-  // completion webhook is generating the chat right now). A FAILED run
-  // never triggers a chat, so fall through to the dash instead.
-  if (run.generateJamieChat && run.status !== WorkflowStatus.FAILED) {
     return (
       <span className="inline-flex items-center gap-1 text-xs text-muted-foreground whitespace-nowrap">
         <Loader2 className="h-3 w-3 animate-spin" />
