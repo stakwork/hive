@@ -25,6 +25,7 @@ vi.mock("@/lib/ai/connectionTools", () => ({ buildConnectionTools: vi.fn(() => (
 vi.mock("@/lib/ai/canvasTools", () => ({ buildCanvasTools: vi.fn(() => ({})) }));
 vi.mock("@/lib/ai/initiativeTools", () => ({ buildInitiativeTools: vi.fn(() => ({})) }));
 vi.mock("@/lib/ai/researchTools", () => ({ buildResearchTools: vi.fn(() => ({})) }));
+vi.mock("@/lib/ai/htmlArtifactTools", () => ({ buildHtmlArtifactTools: vi.fn(() => ({})) }));
 vi.mock("@/lib/ai/infraTools", () => ({ buildInfraTools: vi.fn(() => ({})) }));
 vi.mock("@/lib/canvas/linkedWorkspaces", () => ({ getLinkedWorkspacesForInitiative: vi.fn(() => []) }));
 vi.mock("@/lib/ai/message-sanitizer", () => ({ sanitizeAndCompleteToolCalls: vi.fn(async (msgs: unknown) => msgs) }));
@@ -41,6 +42,7 @@ vi.mock("@/lib/constants/prompt", () => ({
   getWhiteboardCapabilitySnippet: vi.fn(() => ""),
   getPlannerCapabilitySnippet: vi.fn(() => ""),
   getResearchCapabilitySnippet: vi.fn(() => ""),
+  getHtmlPagesCapabilitySnippet: vi.fn(() => ""),
   getConnectionsCapabilitySnippet: vi.fn(() => ""),
   getGraphWalkerCapabilitySnippet: vi.fn(() => ""),
   getInfraCapabilitySnippet: vi.fn(() => ""),
@@ -68,6 +70,8 @@ describe("filterReadonly", () => {
     update_research: makeFakeTool(),
     save_connection: makeFakeTool(),
     update_connection: makeFakeTool(),
+    save_html: makeFakeTool(),
+    update_html: makeFakeTool(),
     propose_initiative: makeFakeTool(),
     propose_feature: makeFakeTool(),
     propose_milestone: makeFakeTool(),
@@ -93,6 +97,8 @@ describe("filterReadonly", () => {
     expect(result).not.toHaveProperty("dispatch_research");
     expect(result).not.toHaveProperty("update_research");
     expect(result).not.toHaveProperty("save_connection");
+    expect(result).not.toHaveProperty("save_html");
+    expect(result).not.toHaveProperty("update_html");
     expect(result).not.toHaveProperty("propose_initiative");
     expect(result).not.toHaveProperty("propose_feature");
     expect(result).not.toHaveProperty("propose_milestone");
@@ -116,6 +122,8 @@ describe("filterReadonly", () => {
     expect(result).not.toHaveProperty("update_canvas");
     expect(result).not.toHaveProperty("patch_canvas");
     expect(result).not.toHaveProperty("save_connection");
+    expect(result).not.toHaveProperty("save_html");
+    expect(result).not.toHaveProperty("update_html");
     expect(result).not.toHaveProperty("propose_initiative");
     expect(result).not.toHaveProperty("propose_feature");
     expect(result).not.toHaveProperty("propose_milestone");
@@ -133,6 +141,8 @@ describe("filterReadonly", () => {
     // write tools still stripped
     expect(result).not.toHaveProperty("update_research");
     expect(result).not.toHaveProperty("save_research");
+    expect(result).not.toHaveProperty("save_html");
+    expect(result).not.toHaveProperty("update_html");
   });
 
   test("empty keepWriteToolNames behaves same as absent", () => {
