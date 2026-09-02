@@ -180,6 +180,15 @@ describe("save_html / update_html", () => {
       id: "page-1",
       sharePath: "/org/acme/h/team-story",
     });
+    // `shareRef` is a bearer secret for a not-yet-shipped public link —
+    // it must never appear in a tool return shape.
+    expect(result).not.toHaveProperty("shareRef");
+
+    const createArgs = (db.htmlPage.create as ReturnType<typeof vi.fn>).mock
+      .calls[0][0] as { select?: Record<string, unknown> };
+    if (createArgs.select) {
+      expect(createArgs.select).not.toHaveProperty("shareRef");
+    }
   });
 
   test("save_html duplicate slug returns structured error, does not throw", async () => {
@@ -248,6 +257,14 @@ describe("save_html / update_html", () => {
       }),
     );
     expect(result).toEqual({ slug: "team-story", status: "updated" });
+    // Same bearer-secret guarantee applies to update_html's return shape.
+    expect(result).not.toHaveProperty("shareRef");
+
+    const updateArgs = (db.htmlPage.update as ReturnType<typeof vi.fn>).mock
+      .calls[0][0] as { select?: Record<string, unknown> };
+    if (updateArgs.select) {
+      expect(updateArgs.select).not.toHaveProperty("shareRef");
+    }
   });
 
   test("update_html rejects a foreign s3Key on the existing row", async () => {
