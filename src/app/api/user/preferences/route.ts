@@ -4,6 +4,34 @@ import { authOptions } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
 import { logger } from "@/lib/logger";
 import { isValidTimezone } from "@/lib/automations/schedule";
+import { getModelValue } from "@/lib/ai/models";
+
+/**
+ * Re-validate a stored `chatAgentModel` preference against the live,
+ * public, unexpired catalog. A preference persisted before a provider
+ * cutover (e.g. a user on `openrouter/grok-*` before xAI was onboarded
+ * directly) has no re-validation on read otherwise, so it would keep
+ * routing through the old provider forever even after an admin adds
+ * the new one — defeating the point of the cutover. Falls back to the
+ * admin-configured default (`null` → inherit) when the stored value no
+ * longer matches any catalog row.
+ */
+async function revalidateChatAgentModel(stored: string | null): Promise<string | null> {
+  if (!stored) return stored;
+  const [prefix, ...rest] = stored.split("/");
+  if (!prefix || rest.length === 0) return null;
+  const namePart = rest.join("/");
+  const candidates = await db.llmModel.findMany({
+    where: {
+      name: namePart,
+      isPublic: true,
+      OR: [{ dateEnd: null }, { dateEnd: { gt: new Date() } }],
+    },
+    select: { id: true, name: true, provider: true, providerLabel: true, isPlanDefault: true, isTaskDefault: true },
+  });
+  const stillValid = candidates.some((m) => getModelValue(m) === stored);
+  return stillValid ? stored : null;
+}
 
 /**
  * Authenticated user's UI preferences. Currently:
@@ -30,9 +58,11 @@ export async function GET() {
     return NextResponse.json({ error: "User not found" }, { status: 404 });
   }
 
+  const chatAgentModel = await revalidateChatAgentModel(user.chatAgentModel);
+
   return NextResponse.json({
     canvasAutonomousTurns: user.canvasAutonomousTurns,
-    chatAgentModel: user.chatAgentModel,
+    chatAgentModel,
     timezone: user.timezone ?? "UTC",
     dailyRecapEnabled: user.dailyRecapEnabled,
     voiceLearningEnabled: user.voiceLearningEnabled,

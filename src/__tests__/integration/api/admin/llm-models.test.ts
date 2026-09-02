@@ -462,5 +462,204 @@ describe("Admin LLM Models API", () => {
 
       expect(response.status).toBe(401);
     });
+
+    it("should return 403 when token-authenticated PATCH tries to set isPublic", async () => {
+      const model = await createTestLlmModel({ name: "sync-patch-isPublic-blocked", provider: "OPENAI" });
+      const request = createPatchRequestWithApiToken(
+        `/api/admin/llm-models/${model.id}`,
+        TEST_API_TOKEN,
+        { isPublic: true },
+      );
+      const { PATCH } = await import("@/app/api/admin/llm-models/[id]/route");
+      const response = await PATCH(request, {
+        params: Promise.resolve({ id: model.id }),
+      });
+
+      expect(response.status).toBe(403);
+      const dbRecord = await db.llmModel.findUnique({ where: { id: model.id } });
+      expect(dbRecord?.isPublic).toBe(false);
+    });
+
+    it("should return 403 when token-authenticated PATCH tries to set isPlanDefault or isTaskDefault", async () => {
+      const model = await createTestLlmModel({ name: "sync-patch-defaults-blocked", provider: "OPENAI" });
+      const request = createPatchRequestWithApiToken(
+        `/api/admin/llm-models/${model.id}`,
+        TEST_API_TOKEN,
+        { isPlanDefault: true, isTaskDefault: true },
+      );
+      const { PATCH } = await import("@/app/api/admin/llm-models/[id]/route");
+      const response = await PATCH(request, {
+        params: Promise.resolve({ id: model.id }),
+      });
+
+      expect(response.status).toBe(403);
+    });
+
+    it("should allow a SUPER_ADMIN session to set isPublic/isPlanDefault/isTaskDefault", async () => {
+      const model = await createTestLlmModel({ name: "session-patch-defaults-allowed", provider: "OPENAI" });
+      const request = createAuthenticatedPatchRequest(
+        `/api/admin/llm-models/${model.id}`,
+        { isPublic: true, isPlanDefault: true },
+        superAdminUser,
+      );
+      const { PATCH } = await import("@/app/api/admin/llm-models/[id]/route");
+      const response = await PATCH(request, {
+        params: Promise.resolve({ id: model.id }),
+      });
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.model.isPublic).toBe(true);
+      expect(data.model.isPlanDefault).toBe(true);
+    });
+  });
+
+  describe("name/providerLabel validation", () => {
+    it("should reject a name containing a slash on POST", async () => {
+      const request = createAuthenticatedPostRequest(
+        "/api/admin/llm-models",
+        superAdminUser,
+        { name: "anthropic/claude-x", provider: "XAI", inputPricePer1M: 1, outputPricePer1M: 2 },
+      );
+      const { POST } = await import("@/app/api/admin/llm-models/route");
+      const response = await POST(request);
+
+      expect(response.status).toBe(400);
+    });
+
+    it("should reject a name containing a slash on PATCH", async () => {
+      const model = await createTestLlmModel({ name: "safe-name-model", provider: "OPENAI" });
+      const request = createAuthenticatedPatchRequest(
+        `/api/admin/llm-models/${model.id}`,
+        { name: "openai/gpt-x" },
+        superAdminUser,
+      );
+      const { PATCH } = await import("@/app/api/admin/llm-models/[id]/route");
+      const response = await PATCH(request, {
+        params: Promise.resolve({ id: model.id }),
+      });
+
+      expect(response.status).toBe(400);
+    });
+
+    it("should reject a providerLabel containing a slash", async () => {
+      const request = createAuthenticatedPostRequest(
+        "/api/admin/llm-models",
+        superAdminUser,
+        {
+          name: "custom-model",
+          provider: "OTHER",
+          providerLabel: "Foo/Bar",
+          inputPricePer1M: 1,
+          outputPricePer1M: 2,
+        },
+      );
+      const { POST } = await import("@/app/api/admin/llm-models/route");
+      const response = await POST(request);
+
+      expect(response.status).toBe(400);
+    });
+
+    it("should accept a valid XAI model name", async () => {
+      const request = createAuthenticatedPostRequest(
+        "/api/admin/llm-models",
+        superAdminUser,
+        { name: "grok-4", provider: "XAI", inputPricePer1M: 3, outputPricePer1M: 15 },
+      );
+      const { POST } = await import("@/app/api/admin/llm-models/route");
+      const response = await POST(request);
+
+      expect(response.status).toBe(201);
+      const data = await response.json();
+      expect(data.model.provider).toBe("XAI");
+    });
+  });
+
+  describe("Duplicate name conflict", () => {
+    it("should return 409 with the existing row's id when creating a duplicate name", async () => {
+      const existing = await createTestLlmModel({ name: "dup-model", provider: "OPENAI" });
+
+      const request = createAuthenticatedPostRequest(
+        "/api/admin/llm-models",
+        superAdminUser,
+        { name: "dup-model", provider: "ANTHROPIC", inputPricePer1M: 1, outputPricePer1M: 2 },
+      );
+      const { POST } = await import("@/app/api/admin/llm-models/route");
+      const response = await POST(request);
+
+      expect(response.status).toBe(409);
+      const data = await response.json();
+      expect(data.existingId).toBe(existing.id);
+    });
+  });
+
+  describe("Default-flip atomicity", () => {
+    it("should leave exactly one isPlanDefault: true row after sequential flips", async () => {
+      const first = await createTestLlmModel({ name: "default-flip-a", provider: "OPENAI", isPlanDefault: true } as never);
+
+      const request = createAuthenticatedPostRequest(
+        "/api/admin/llm-models",
+        superAdminUser,
+        {
+          name: "default-flip-b",
+          provider: "ANTHROPIC",
+          inputPricePer1M: 1,
+          outputPricePer1M: 2,
+          isPlanDefault: true,
+        },
+      );
+      const { POST } = await import("@/app/api/admin/llm-models/route");
+      await POST(request);
+
+      const defaults = await db.llmModel.findMany({
+        where: { isPlanDefault: true, id: { in: [first.id] } },
+      });
+      // The original row should have had its default cleared by the
+      // transactional flip triggered by the new row's create.
+      expect(defaults).toHaveLength(0);
+
+      const allDefaults = await db.llmModel.findMany({ where: { isPlanDefault: true } });
+      const relevant = allDefaults.filter((m) => ["default-flip-a", "default-flip-b"].includes(m.name));
+      expect(relevant).toHaveLength(1);
+      expect(relevant[0].name).toBe("default-flip-b");
+    });
+  });
+
+  describe("Sync-revert regression (provider/providerLabel excluded from batch-upsert update)", () => {
+    beforeEach(() => {
+      process.env.API_TOKEN = TEST_API_TOKEN;
+    });
+
+    it("should leave provider unchanged on batch upsert of an existing XAI row, while still updating pricing", async () => {
+      await createTestLlmModel({
+        name: "grok-sync-model",
+        provider: "XAI",
+        inputPricePer1M: 3.0,
+        outputPricePer1M: 15.0,
+      });
+
+      // Simulate the nightly sync workflow re-classifying the row to OTHER —
+      // this must NOT stick; only pricing should update.
+      const request = createRequestWithApiToken("/api/admin/llm-models", TEST_API_TOKEN, {
+        models: [
+          {
+            name: "grok-sync-model",
+            provider: "OTHER",
+            providerLabel: "OpenRouter",
+            inputPricePer1M: 9.99,
+            outputPricePer1M: 29.99,
+          },
+        ],
+      });
+      const { POST } = await import("@/app/api/admin/llm-models/route");
+      const response = await POST(request);
+      expect(response.status).toBe(201);
+
+      const dbRecord = await db.llmModel.findUnique({ where: { name: "grok-sync-model" } });
+      expect(dbRecord?.provider).toBe("XAI");
+      expect(dbRecord?.providerLabel).toBeNull();
+      expect(dbRecord?.inputPricePer1M).toBe(9.99);
+      expect(dbRecord?.outputPricePer1M).toBe(29.99);
+    });
   });
 });
