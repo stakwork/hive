@@ -582,7 +582,7 @@ describe("POST /api/chat/message", () => {
 
       expect(fetchCall).toBeTruthy();
 
-      const body = JSON.parse(fetchCall![1]!.body as string);
+      const body = JSON.parse(fetchCall![1]!.body as string).project;
       expect(body.workflow_params.set_var.attributes.vars).toMatchObject({
         alias: "testuser",
         username: "testuser",
@@ -616,7 +616,7 @@ describe("POST /api/chat/message", () => {
 
       const fetchCall = mockFetch.mock.calls.find((call) => call[0].toString().includes("stakwork"));
 
-      const body = JSON.parse(fetchCall![1]!.body as string);
+      const body = JSON.parse(fetchCall![1]!.body as string).project;
       expect(body.workflow_id).toBe(parseInt(expectedWorkflowId));
     });
   });

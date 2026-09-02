@@ -709,7 +709,7 @@ describe("POST /api/chat/message - callStakwork Unit Tests", () => {
       await POST(request);
 
       const fetchCall = mockFetch.mock.calls[0];
-      const requestBody = JSON.parse(fetchCall[1].body as string);
+      const requestBody = JSON.parse(fetchCall[1].body as string).project;
 
       expect(requestBody.workflow_id).toBe(101); // First workflow ID
     });
@@ -728,7 +728,7 @@ describe("POST /api/chat/message - callStakwork Unit Tests", () => {
       await POST(request);
 
       const fetchCall = mockFetch.mock.calls[0];
-      const requestBody = JSON.parse(fetchCall[1].body as string);
+      const requestBody = JSON.parse(fetchCall[1].body as string).project;
 
       expect(requestBody.workflow_id).toBe(103); // Third workflow ID
     });
@@ -747,7 +747,7 @@ describe("POST /api/chat/message - callStakwork Unit Tests", () => {
       await POST(request);
 
       const fetchCall = mockFetch.mock.calls[0];
-      const requestBody = JSON.parse(fetchCall[1].body as string);
+      const requestBody = JSON.parse(fetchCall[1].body as string).project;
 
       expect(requestBody.workflow_id).toBe(103); // Third workflow ID
     });
@@ -766,7 +766,7 @@ describe("POST /api/chat/message - callStakwork Unit Tests", () => {
       await POST(request);
 
       const fetchCall = mockFetch.mock.calls[0];
-      const requestBody = JSON.parse(fetchCall[1].body as string);
+      const requestBody = JSON.parse(fetchCall[1].body as string).project;
 
       expect(requestBody.workflow_id).toBe(102); // Second workflow ID (default)
     });
@@ -784,7 +784,7 @@ describe("POST /api/chat/message - callStakwork Unit Tests", () => {
       await POST(request);
 
       const fetchCall = mockFetch.mock.calls[0];
-      const requestBody = JSON.parse(fetchCall[1].body as string);
+      const requestBody = JSON.parse(fetchCall[1].body as string).project;
 
       expect(requestBody.workflow_id).toBe(102); // Second workflow ID (default)
     });
@@ -850,7 +850,7 @@ describe("POST /api/chat/message - callStakwork Unit Tests", () => {
       await POST(request);
 
       const fetchCall = mockFetch.mock.calls[0];
-      const requestBody = JSON.parse(fetchCall[1].body as string);
+      const requestBody = JSON.parse(fetchCall[1].body as string).project;
       const vars = requestBody.workflow_params.set_var.attributes.vars;
 
       expect(vars).toMatchObject({
@@ -919,7 +919,7 @@ describe("POST /api/chat/message - callStakwork Unit Tests", () => {
       expect(s3Service.generatePresignedDownloadUrl).toHaveBeenCalledWith("uploads/test/file.pdf");
 
       const fetchCall = mockFetch.mock.calls[0];
-      const requestBody = JSON.parse(fetchCall[1].body as string);
+      const requestBody = JSON.parse(fetchCall[1].body as string).project;
       const vars = requestBody.workflow_params.set_var.attributes.vars;
 
       expect(vars.attachments).toEqual(["https://s3.test.com/presigned-url"]);
@@ -948,7 +948,7 @@ describe("POST /api/chat/message - callStakwork Unit Tests", () => {
       expect(vi.mocked(getBaseUrl)).toHaveBeenCalledWith();
 
       const fetchCall = mockFetch.mock.calls[0];
-      const requestBody = JSON.parse(fetchCall[1].body as string);
+      const requestBody = JSON.parse(fetchCall[1].body as string).project;
       const vars = requestBody.workflow_params.set_var.attributes.vars;
 
       expect(vars.webhookUrl).toBe("https://production.example.com/api/chat/response");
@@ -969,7 +969,7 @@ describe("POST /api/chat/message - callStakwork Unit Tests", () => {
       await POST(request);
 
       const fetchCall = mockFetch.mock.calls[0];
-      const requestBody = JSON.parse(fetchCall[1].body as string);
+      const requestBody = JSON.parse(fetchCall[1].body as string).project;
       const vars = requestBody.workflow_params.set_var.attributes.vars;
 
       expect(vars.webhookUrl).toBe("https://custom-webhook.example.com");
@@ -990,7 +990,7 @@ describe("POST /api/chat/message - callStakwork Unit Tests", () => {
       await POST(request);
 
       const fetchCall = mockFetch.mock.calls[0];
-      const requestBody = JSON.parse(fetchCall[1].body as string);
+      const requestBody = JSON.parse(fetchCall[1].body as string).project;
 
       expect(requestBody.webhook_url).toBe(`http://localhost:3000/api/stakwork/webhook?task_id=${mockTaskId}`);
     });
@@ -1012,7 +1012,7 @@ describe("POST /api/chat/message - callStakwork Unit Tests", () => {
       expect(vi.mocked(transformSwarmUrlToRepo2Graph)).toHaveBeenCalledWith("https://test-swarm.com/api");
 
       const fetchCall = mockFetch.mock.calls[0];
-      const requestBody = JSON.parse(fetchCall[1].body as string);
+      const requestBody = JSON.parse(fetchCall[1].body as string).project;
       const vars = requestBody.workflow_params.set_var.attributes.vars;
 
       expect(vars.repo2graph_url).toBe("https://custom-graph.com:3355");
@@ -1404,7 +1404,7 @@ describe("POST /api/chat/message - callStakwork Unit Tests", () => {
       await POST(request);
 
       const fetchCall = mockFetch.mock.calls[0];
-      const requestBody = JSON.parse(fetchCall[1].body as string);
+      const requestBody = JSON.parse(fetchCall[1].body as string).project;
       const vars = requestBody.workflow_params.set_var.attributes.vars;
 
       expect(vars.runBuild).toBe(false);
@@ -1427,7 +1427,7 @@ describe("POST /api/chat/message - callStakwork Unit Tests", () => {
       await POST(request);
 
       const fetchCall = mockFetch.mock.calls[0];
-      const requestBody = JSON.parse(fetchCall[1].body as string);
+      const requestBody = JSON.parse(fetchCall[1].body as string).project;
       const vars = requestBody.workflow_params.set_var.attributes.vars;
 
       expect(vars.runTestSuite).toBe(false);
@@ -1450,7 +1450,7 @@ describe("POST /api/chat/message - callStakwork Unit Tests", () => {
       await POST(request);
 
       const fetchCall = mockFetch.mock.calls[0];
-      const requestBody = JSON.parse(fetchCall[1].body as string);
+      const requestBody = JSON.parse(fetchCall[1].body as string).project;
       const vars = requestBody.workflow_params.set_var.attributes.vars;
 
       expect(vars.autoMergePr).toBe(true);
@@ -1473,7 +1473,7 @@ describe("POST /api/chat/message - callStakwork Unit Tests", () => {
       await POST(request);
 
       const fetchCall = mockFetch.mock.calls[0];
-      const requestBody = JSON.parse(fetchCall[1].body as string);
+      const requestBody = JSON.parse(fetchCall[1].body as string).project;
       const vars = requestBody.workflow_params.set_var.attributes.vars;
 
       expect(vars.runBuild).toBe(false);
@@ -1557,7 +1557,7 @@ describe("POST /api/chat/message - callStakwork Unit Tests", () => {
       ]);
 
       const fetchCall = mockFetch.mock.calls[0];
-      const requestBody = JSON.parse(fetchCall[1].body as string);
+      const requestBody = JSON.parse(fetchCall[1].body as string).project;
       const vars = requestBody.workflow_params.set_var.attributes.vars;
 
       expect(vars.contextTags).toEqual([
@@ -1679,7 +1679,7 @@ describe("POST /api/chat/message - callStakwork Unit Tests", () => {
       expect(s3Service.generatePresignedDownloadUrl).toHaveBeenCalledWith("uploads/file2.jpg");
 
       const fetchCall = mockFetch.mock.calls[0];
-      const requestBody = JSON.parse(fetchCall[1].body as string);
+      const requestBody = JSON.parse(fetchCall[1].body as string).project;
       const vars = requestBody.workflow_params.set_var.attributes.vars;
 
       expect(vars.attachments).toEqual(["https://s3.test.com/file1.pdf", "https://s3.test.com/file2.jpg"]);
