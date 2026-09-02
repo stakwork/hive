@@ -1995,11 +1995,6 @@ model HtmlPage {
   uploadedAt  DateTime         @default(now()) @map("uploaded_at")
   orgId       String           @map("org_id")
   createdBy   String           @map("created_by")
-  /// Server-generated bearer secret for a future public address. This is a
-  /// new pattern — not SharedConversation, which uses the row's cuid `id`
-  /// plus `isShared`. Null means no public link. Never returned to clients
-  /// or tools; mint/clear helpers are the only writers.
-  shareRef    String?          @unique @map("share_ref")
   org         SourceControlOrg @relation(fields: [orgId], references: [id], onDelete: Cascade)
   createdAt   DateTime         @default(now()) @map("created_at")
   updatedAt   DateTime         @updatedAt @map("updated_at")
