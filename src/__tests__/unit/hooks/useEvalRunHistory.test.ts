@@ -800,3 +800,114 @@ describe("useEvalRunHistory — attemptRows", () => {
     expect(keys).toEqual(["output-base", "output-r1", "eval-live"]);
   });
 });
+
+// ─── Graph-stamped Stakwork project id (unique_source_id) ────────────────────
+
+describe("useEvalRunHistory — unique_source_id join", () => {
+  const EVAL_SET_REF = "ref-usid-001";
+  const TASK_SLUG = "antitrust/task-1";
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    mockBuildHillClimbSeries.mockReset();
+  });
+
+  /** Concept-pipeline shape: no identity fields, unique_source_id on the output node. */
+  function conceptGraph(uniqueSourceId?: string | number) {
+    return {
+      nodes: [
+        makeTriggerNode("trigger-c1", false),
+        {
+          ref_id: "output-c1",
+          node_type: "EvalTriggerOutput",
+          date_added_to_graph: "1720000000",
+          properties: {
+            result: "partial",
+            score: 70 / 71,
+            n_passed: 70,
+            n_total: 71,
+            ...(uniqueSourceId != null ? { unique_source_id: uniqueSourceId } : {}),
+          },
+        },
+      ],
+      edges: [
+        { source: EVAL_SET_REF, target: "trigger-c1", edge_type: "HAS_TRIGGER" },
+        { source: "trigger-c1", target: "output-c1", edge_type: "HAS_OUTPUT" },
+      ],
+    };
+  }
+
+  function renderUsid(routes: Record<string, unknown>) {
+    mockBuildHillClimbSeries.mockReturnValue([]);
+    mockFetch(routes);
+    return renderHook(() => useEvalRunHistory({ refId: EVAL_SET_REF, slug: TASK_SLUG }));
+  }
+
+  it("does NOT wear a run's status via the graph-stamped project id", async () => {
+    // The stamp is the CHILD re-runner's project id; hive run rows carry the
+    // PARENT orchestrator's. A projectId match is coincidence, never identity —
+    // so only the Stakwork link may use the stamp.
+    const graph = conceptGraph("152583201");
+    const { result } = renderUsid({
+      "fix-chain": makeFixChainResponse(graph.nodes, graph.edges),
+      "type=LEGAL_BENCHMARK_RUNNER": { runs: [] },
+      "type=LEGAL_BENCHMARK_EVAL": { runs: [] },
+      "type=LEGAL_BENCHMARK_RECURSION": {
+        runs: [
+          {
+            id: "rec-run-1",
+            projectId: 152583201,
+            status: "COMPLETED",
+            createdAt: "2026-08-19T10:00:00.000Z",
+            hasReport: true,
+            result: JSON.stringify({ taskSlug: TASK_SLUG, recursionId: "r-1" }),
+          },
+        ],
+      },
+    });
+    await waitFor(() => expect(result.current.isLoading).toBe(false), { timeout: 5000 });
+
+    const row = result.current.attemptRows.find((r) => r.key === "output-c1")!;
+    expect(row.status).toBeNull();
+    expect(row.runId).toBeNull();
+    expect(row.hasReport).toBe(false);
+    // …but the lineage link survives
+    expect(row.projectId).toBe(152583201);
+  });
+
+  it("keeps the Stakwork link from the graph when no run row exists at all", async () => {
+    const graph = conceptGraph(152583201);
+    const { result } = renderUsid({
+      "fix-chain": makeFixChainResponse(graph.nodes, graph.edges),
+      "type=LEGAL_BENCHMARK_RUNNER": { runs: [] },
+      "type=LEGAL_BENCHMARK_EVAL": { runs: [] },
+      "type=LEGAL_BENCHMARK_RECURSION": { runs: [] },
+    });
+    await waitFor(() => expect(result.current.isLoading).toBe(false), { timeout: 5000 });
+
+    const row = result.current.attemptRows.find((r) => r.key === "output-c1")!;
+    expect(row.status).toBeNull();
+    expect(row.runId).toBeNull();
+    expect(row.hasReport).toBe(false);
+    // The graph-stamped project id still powers the super-admin link
+    expect(row.projectId).toBe(152583201);
+  });
+
+  it("reads unique_source_id from edge properties when nodes lack it", async () => {
+    const graph = conceptGraph(undefined);
+    graph.edges[1] = {
+      ...graph.edges[1],
+      properties: { unique_source_id: "99887766" },
+    } as (typeof graph.edges)[number] & { properties: Record<string, unknown> };
+    const { result } = renderUsid({
+      "fix-chain": makeFixChainResponse(graph.nodes, graph.edges),
+      "type=LEGAL_BENCHMARK_RUNNER": { runs: [] },
+      "type=LEGAL_BENCHMARK_EVAL": { runs: [] },
+      "type=LEGAL_BENCHMARK_RECURSION": { runs: [] },
+    });
+    await waitFor(() => expect(result.current.isLoading).toBe(false), { timeout: 5000 });
+
+    const row = result.current.attemptRows.find((r) => r.key === "output-c1")!;
+    expect(row.projectId).toBe(99887766);
+  });
+});
