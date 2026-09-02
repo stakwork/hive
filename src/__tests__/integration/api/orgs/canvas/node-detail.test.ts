@@ -267,4 +267,31 @@ describe("GET /api/orgs/[githubLogin]/canvas/node/[liveId]", () => {
     const res = await GET(request, { params: makeParams(githubLogin, liveId) });
     expect(res.status).toBe(404);
   });
+
+  it("returns 404 for an authenticated user who is not a member of any workspace under the org (resolveAuthorizedOrgId swap)", async () => {
+    // This route now resolves org authorization via `resolveAuthorizedOrgId`
+    // instead of `validateUserBelongsToOrg` + a separate org lookup. A
+    // signed-in user with no owning/member workspace under the org must
+    // still 404 — same as a genuinely unknown org — never leaking that
+    // the org (or the node) exists.
+    const owner = await createTestUser();
+    createdUserIds.push(owner.id);
+    const outsider = await createTestUser();
+    createdUserIds.push(outsider.id);
+
+    const githubLogin = `org-${generateUniqueId()}`;
+    const org = await createOrg(githubLogin);
+    createdOrgIds.push(org.id);
+
+    const ws = await createWorkspaceInOrg(owner.id, org.id);
+    createdWorkspaceIds.push(ws.id);
+
+    const liveId = `ws:${ws.id}`;
+    const request = createAuthenticatedGetRequest(
+      `http://localhost:3000/api/orgs/${githubLogin}/canvas/node/${encodeURIComponent(liveId)}`,
+      outsider,
+    );
+    const res = await GET(request, { params: makeParams(githubLogin, liveId) });
+    expect(res.status).toBe(404);
+  });
 });

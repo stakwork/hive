@@ -2,6 +2,8 @@
  * Org-scoped HTML page storage. Postgres holds an S3 pointer only;
  * the HTML body lives in S3 under `orgs/{orgId}/canvas/...`.
  */
+import crypto from "crypto";
+import { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import { getS3Service } from "@/services/s3";
 
@@ -123,6 +125,23 @@ export type HtmlPageRecord = {
   updatedAt: Date;
 };
 
+// Every row read in this file must select explicitly and omit
+// `shareRef` — it is a bearer secret for a not-yet-shipped public
+// link (see the schema comment on `HtmlPage.shareRef`). Never widen
+// this to a bare `findUnique`/`findFirst` with no `select`, which
+// would silently start returning the secret to every caller.
+const HTML_PAGE_RECORD_SELECT = {
+  id: true,
+  slug: true,
+  title: true,
+  s3Key: true,
+  size: true,
+  contentType: true,
+  uploadedAt: true,
+  orgId: true,
+  createdBy: true,
+} as const;
+
 /**
  * Authenticated (not presigned) body read. Loads the row scoped to
  * `orgId` + `slug`, verifies the stored key belongs to that org, and
@@ -135,6 +154,7 @@ export async function getHtmlPageBytes(
 ): Promise<{ page: HtmlPageRecord; bytes: Buffer } | null> {
   const page = await db.htmlPage.findUnique({
     where: { orgId_slug: { orgId, slug } },
+    select: HTML_PAGE_RECORD_SELECT,
   });
   if (!page || page.orgId !== orgId) {
     return null;
@@ -152,5 +172,85 @@ export async function getHtmlPageBytes(
     return { page, bytes };
   } catch {
     return null;
+  }
+}
+
+const SHARE_REF_BYTES = 24;
+const SHARE_REF_MINT_MAX_ATTEMPTS = 5;
+
+export class HtmlPageNotFoundError extends Error {
+  constructor(id: string) {
+    super(`No HtmlPage ${id} found for this org`);
+    this.name = "HtmlPageNotFoundError";
+  }
+}
+
+/**
+ * Mint a fresh, non-guessable public address for an `HtmlPage` row and
+ * persist it. Server-only — never called from a tool or from client
+ * input. Not wired into any route this round; the column stays `null`
+ * on all live data until a public link is actually shipped.
+ *
+ * `orgId` is required and the update is scoped to `{ id, orgId }` —
+ * never a bare `{ id }` — so a future caller can't mint (or overwrite)
+ * a public address on a row belonging to a different org by passing an
+ * `id` it doesn't own. Throws `HtmlPageNotFoundError` when the row
+ * doesn't exist under that org (`updateMany` count === 0) rather than
+ * silently no-oping.
+ *
+ * Retries a bounded number of times on a unique-constraint collision
+ * (`P2002` on `shareRef`), which is astronomically unlikely at 24
+ * random bytes but handled defensively rather than assumed away.
+ */
+export async function mintHtmlPageShareRef(id: string, orgId: string): Promise<string> {
+  for (let attempt = 0; attempt < SHARE_REF_MINT_MAX_ATTEMPTS; attempt++) {
+    const shareRef = crypto.randomBytes(SHARE_REF_BYTES).toString("base64url");
+    try {
+      const { count } = await db.htmlPage.updateMany({
+        where: { id, orgId },
+        data: { shareRef },
+      });
+      if (count === 0) {
+        throw new HtmlPageNotFoundError(id);
+      }
+      return shareRef;
+    } catch (e) {
+      if (e instanceof HtmlPageNotFoundError) {
+        throw e;
+      }
+      const isCollision =
+        e instanceof Prisma.PrismaClientKnownRequestError &&
+        e.code === "P2002" &&
+        Array.isArray(e.meta?.target) &&
+        (e.meta.target as string[]).includes("share_ref");
+      if (!isCollision) {
+        throw e;
+      }
+      // Collision on `shareRef` itself — retry with a freshly generated
+      // value. Any other constraint failure (e.g. bad `id`) rethrows.
+    }
+  }
+  throw new Error(
+    `Failed to mint a unique shareRef for HtmlPage ${id} after ${SHARE_REF_MINT_MAX_ATTEMPTS} attempts`,
+  );
+}
+
+/**
+ * Revoke an `HtmlPage`'s public address by clearing `shareRef` back to
+ * `null`. Server-only, symmetric with `mintHtmlPageShareRef`.
+ *
+ * `orgId` is required and the update is scoped to `{ id, orgId }` for
+ * the same reason as `mintHtmlPageShareRef`: a bare `{ id }` would let
+ * a caller revoke (or, combined with a bad `id` guess, no-op against)
+ * another org's row. Throws `HtmlPageNotFoundError` when the row isn't
+ * found under that org.
+ */
+export async function clearHtmlPageShareRef(id: string, orgId: string): Promise<void> {
+  const { count } = await db.htmlPage.updateMany({
+    where: { id, orgId },
+    data: { shareRef: null },
+  });
+  if (count === 0) {
+    throw new HtmlPageNotFoundError(id);
   }
 }

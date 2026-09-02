@@ -234,6 +234,15 @@ describe("save_html", () => {
       id: "page-1",
       sharePath: `/org/acme/h/${SLUG}`,
     });
+    // `shareRef` is a bearer secret for a not-yet-shipped public link —
+    // it must never appear in a tool return shape.
+    expect(result).not.toHaveProperty("shareRef");
+
+    const createArgs = (db.htmlPage.create as ReturnType<typeof vi.fn>).mock
+      .calls[0][0] as { select?: Record<string, unknown> };
+    if (createArgs.select) {
+      expect(createArgs.select).not.toHaveProperty("shareRef");
+    }
   });
 
   test("duplicate slug returns structured error, does not throw", async () => {
@@ -309,11 +318,28 @@ describe("update_html", () => {
       S3_KEY,
       "<html>revised</html>",
     );
+    expect(db.htmlPage.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { orgId_slug: { orgId: ORG_ID, slug: SLUG } },
+        data: expect.objectContaining({
+          size: Buffer.byteLength("<html>revised</html>", "utf8"),
+          contentType: HTML_CONTENT_TYPE,
+        }),
+      }),
+    );
     expect(result).toEqual({
       slug: SLUG,
       status: "updated",
       updatedAt: "2024-06-01T00:00:00.000Z",
     });
+    // Same bearer-secret guarantee applies to update_html's return shape.
+    expect(result).not.toHaveProperty("shareRef");
+
+    const updateArgs = (db.htmlPage.update as ReturnType<typeof vi.fn>).mock
+      .calls[0][0] as { select?: Record<string, unknown> };
+    if (updateArgs.select) {
+      expect(updateArgs.select).not.toHaveProperty("shareRef");
+    }
   });
 
   test("edits mode patches only the matched fragment", async () => {
