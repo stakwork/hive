@@ -10,16 +10,27 @@ import { Prisma } from "@prisma/client";
  * in `src/lib/ai/models.ts`), and `getApiKeyForModel` derives the
  * credential from the *first* path segment. An unconstrained `name`
  * containing a `/` could make a row declared as one provider resolve
- * to a different provider's key. Kept in sync with the sibling
- * validator in `../route.ts`.
+ * to a different provider's key.
+ *
+ * `OTHER`/OpenRouter rows are the one exception: OpenRouter model ids
+ * are themselves `vendor/model` (e.g. "stealth/ox-alpha"), and
+ * `getModelValue()` prefixes them with `providerLabel/` (e.g.
+ * "openrouter/stealth/ox-alpha"), so `name` needs to allow one or more
+ * `/`-delimited safe segments there. First-class providers still
+ * forbid `/` in `name` entirely, since `getApiKeyForModel` keys off
+ * the first path segment. Kept in sync with the sibling validator in
+ * `../route.ts`.
  */
 const SAFE_NAME_RE = /^[A-Za-z0-9._:-]+$/;
+const SAFE_NAME_WITH_SLASHES_RE = /^[A-Za-z0-9._:-]+(\/[A-Za-z0-9._:-]+)*$/;
 
 function validateNameFields(
   name: unknown,
   providerLabel: unknown,
+  provider: unknown,
 ): NextResponse | null {
-  if (typeof name === "string" && !SAFE_NAME_RE.test(name)) {
+  const nameRe = provider === "OTHER" ? SAFE_NAME_WITH_SLASHES_RE : SAFE_NAME_RE;
+  if (typeof name === "string" && !nameRe.test(name)) {
     return NextResponse.json(
       { error: "name must match ^[A-Za-z0-9._:-]+$ (no slashes)" },
       { status: 400 },
@@ -96,7 +107,12 @@ export async function PATCH(
 
     const { name, provider, providerLabel, inputPricePer1M, outputPricePer1M, cacheReadPer1MToken, cacheWritePer1MToken, dateStart, dateEnd, isPlanDefault, isTaskDefault, isPublic } = body;
 
-    const nameErr = validateNameFields(name, providerLabel);
+    // `provider` isn't always resent on a partial PATCH (e.g. renaming an
+    // OpenRouter model's `name`) — fall back to the existing row's
+    // provider so slash-containing OTHER names keep validating correctly
+    // without requiring the caller to also resend `provider`.
+    const effectiveProvider = provider !== undefined ? provider : existing.provider;
+    const nameErr = validateNameFields(name, providerLabel, effectiveProvider);
     if (nameErr) return nameErr;
 
     // Atomic: clearing the existing default and applying this row's
