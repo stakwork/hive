@@ -297,8 +297,7 @@ const TestHelpers = {
 
   expectStakworkCalledWithVars: (expectedVars: Record<string, unknown>) => {
     const fetchCall = mockFetch.mock.calls[0];
-    const _rawPayload = JSON.parse(fetchCall[1]?.body as string);
-    const payload = (_rawPayload && typeof _rawPayload === 'object' && 'project' in _rawPayload) ? _rawPayload.project : _rawPayload;
+    const payload = JSON.parse(fetchCall[1]?.body as string);
     const vars = payload.workflow_params.set_var.attributes.vars;
 
     Object.entries(expectedVars).forEach(([key, value]) => {
@@ -312,8 +311,7 @@ const TestHelpers = {
     vars?: Record<string, unknown>;
   }) => {
     const fetchCall = mockFetch.mock.calls[0];
-    const _rawPayload = JSON.parse(fetchCall[1]?.body as string);
-    const payload = (_rawPayload && typeof _rawPayload === 'object' && 'project' in _rawPayload) ? _rawPayload.project : _rawPayload;
+    const payload = JSON.parse(fetchCall[1]?.body as string);
 
     if (expectedPayload.workflow_id !== undefined) {
       expect(payload.workflow_id).toBe(expectedPayload.workflow_id);
@@ -703,8 +701,7 @@ describe("createChatMessageAndTriggerStakwork (via sendMessageToStakwork)", () =
       });
 
       const fetchCall = mockFetch.mock.calls[0];
-      const _rawPayload = JSON.parse(fetchCall[1]?.body as string);
-      const payload = (_rawPayload && typeof _rawPayload === 'object' && 'project' in _rawPayload) ? _rawPayload.project : _rawPayload;
+      const payload = JSON.parse(fetchCall[1]?.body as string);
 
       expect(payload.webhook_url).toBe(
         "http://localhost:3000/api/stakwork/webhook?task_id=test-task-id"
@@ -732,8 +729,7 @@ describe("createChatMessageAndTriggerStakwork (via sendMessageToStakwork)", () =
       });
 
       const fetchCall = mockFetch.mock.calls[0];
-      const _rawPayload = JSON.parse(fetchCall[1]?.body as string);
-      const payload = (_rawPayload && typeof _rawPayload === 'object' && 'project' in _rawPayload) ? _rawPayload.project : _rawPayload;
+      const payload = JSON.parse(fetchCall[1]?.body as string);
       expect(payload.workflow_id).toBe(123); // First ID in "123,456,789" for live mode
     });
 
@@ -1032,8 +1028,7 @@ describe("createChatMessageAndTriggerStakwork (via createTaskWithStakworkWorkflo
       });
 
       const fetchCall = mockFetch.mock.calls[0];
-      const _rawPayload = JSON.parse(fetchCall[1]?.body as string);
-      const payload = (_rawPayload && typeof _rawPayload === 'object' && 'project' in _rawPayload) ? _rawPayload.project : _rawPayload;
+      const payload = JSON.parse(fetchCall[1]?.body as string);
       expect(payload.workflow_id).toBe(123); // First ID in "123,456,789" for live mode
       TestHelpers.expectStakworkCalledWithVars({
         taskMode: "live",
@@ -1053,8 +1048,7 @@ describe("createChatMessageAndTriggerStakwork (via createTaskWithStakworkWorkflo
       });
 
       const fetchCall = mockFetch.mock.calls[0];
-      const _rawPayload = JSON.parse(fetchCall[1]?.body as string);
-      const payload = (_rawPayload && typeof _rawPayload === 'object' && 'project' in _rawPayload) ? _rawPayload.project : _rawPayload;
+      const payload = JSON.parse(fetchCall[1]?.body as string);
       expect(payload.workflow_id).toBe(456); // Second ID for default mode
       TestHelpers.expectStakworkCalledWithVars({
         taskMode: "default",
@@ -1075,8 +1069,7 @@ describe("createChatMessageAndTriggerStakwork (via createTaskWithStakworkWorkflo
       });
 
       const fetchCall = mockFetch.mock.calls[0];
-      const _rawPayload = JSON.parse(fetchCall[1]?.body as string);
-      const payload = (_rawPayload && typeof _rawPayload === 'object' && 'project' in _rawPayload) ? _rawPayload.project : _rawPayload;
+      const payload = JSON.parse(fetchCall[1]?.body as string);
       expect(payload.workflow_id).toBe(789); // Third ID for unit mode
     });
 
@@ -1094,8 +1087,7 @@ describe("createChatMessageAndTriggerStakwork (via createTaskWithStakworkWorkflo
       });
 
       const fetchCall = mockFetch.mock.calls[0];
-      const _rawPayload = JSON.parse(fetchCall[1]?.body as string);
-      const payload = (_rawPayload && typeof _rawPayload === 'object' && 'project' in _rawPayload) ? _rawPayload.project : _rawPayload;
+      const payload = JSON.parse(fetchCall[1]?.body as string);
       expect(payload.workflow_id).toBe(789); // Third ID for integration mode
     });
   });
@@ -1509,8 +1501,7 @@ describe("Feature Context Integration", () => {
       });
 
       const fetchCall = mockFetch.mock.calls[0];
-      const _rawPayload = JSON.parse(fetchCall[1]?.body as string);
-      const payload = (_rawPayload && typeof _rawPayload === 'object' && 'project' in _rawPayload) ? _rawPayload.project : _rawPayload;
+      const payload = JSON.parse(fetchCall[1]?.body as string);
       const vars = payload.workflow_params.set_var.attributes.vars;
 
       expect(vars.featureContext).toBeUndefined();
@@ -1946,8 +1937,7 @@ describe("generateChatTitle Parameter Handling", () => {
     });
 
     const fetchCall = mockFetch.mock.calls[0];
-    const _rawPayload = JSON.parse(fetchCall[1]?.body as string);
-    const payload = (_rawPayload && typeof _rawPayload === 'object' && 'project' in _rawPayload) ? _rawPayload.project : _rawPayload;
+    const payload = JSON.parse(fetchCall[1]?.body as string);
     const vars = payload.workflow_params.set_var.attributes.vars;
 
     expect(vars.generateChatTitle).toBeUndefined();
@@ -2200,8 +2190,7 @@ describe("Feature Context Integration", () => {
       });
 
       const fetchCall = mockFetch.mock.calls[0];
-      const _rawPayload = JSON.parse(fetchCall[1]?.body as string);
-      const payload = (_rawPayload && typeof _rawPayload === 'object' && 'project' in _rawPayload) ? _rawPayload.project : _rawPayload;
+      const payload = JSON.parse(fetchCall[1]?.body as string);
       const vars = payload.workflow_params.set_var.attributes.vars;
 
       expect(vars.featureContext).toBeUndefined();
@@ -2636,8 +2625,7 @@ describe("generateChatTitle Parameter Handling", () => {
     });
 
     const fetchCall = mockFetch.mock.calls[0];
-    const _rawPayload = JSON.parse(fetchCall[1]?.body as string);
-    const payload = (_rawPayload && typeof _rawPayload === 'object' && 'project' in _rawPayload) ? _rawPayload.project : _rawPayload;
+    const payload = JSON.parse(fetchCall[1]?.body as string);
     const vars = payload.workflow_params.set_var.attributes.vars;
 
     expect(vars.generateChatTitle).toBeUndefined();
@@ -2794,8 +2782,7 @@ describe("callStakworkAPI - Direct Unit Tests", () => {
       await callStakworkAPI(params);
 
       const fetchCall = mockFetch.mock.calls[0];
-      const _rawPayload = JSON.parse(fetchCall[1]?.body as string);
-      const payload = (_rawPayload && typeof _rawPayload === 'object' && 'project' in _rawPayload) ? _rawPayload.project : _rawPayload;
+      const payload = JSON.parse(fetchCall[1]?.body as string);
       expect(payload.name).toBe("hive-task-test-task-id");
     });
 
@@ -2817,8 +2804,7 @@ describe("callStakworkAPI - Direct Unit Tests", () => {
       await callStakworkAPI(params);
 
       const fetchCall = mockFetch.mock.calls[0];
-      const _rawPayload = JSON.parse(fetchCall[1]?.body as string);
-      const payload = (_rawPayload && typeof _rawPayload === 'object' && 'project' in _rawPayload) ? _rawPayload.project : _rawPayload;
+      const payload = JSON.parse(fetchCall[1]?.body as string);
       expect(payload.name).toBe(`hive-plan-${featureId}`);
     });
 
@@ -3104,8 +3090,7 @@ describe("callStakworkAPI - Direct Unit Tests", () => {
       const body = fetchCall[1]?.body as string;
       
       expect(() => JSON.parse(body)).not.toThrow();
-      const _rawPayload = JSON.parse(body);
-      const payload = (_rawPayload && typeof _rawPayload === "object" && "project" in _rawPayload) ? _rawPayload.project : _rawPayload;
+      const payload = JSON.parse(body);
       expect(payload).toHaveProperty("workflow_id");
       expect(payload).toHaveProperty("workflow_params");
     });
@@ -4891,8 +4876,7 @@ describe("startTaskWorkflow with includeHistory", () => {
       });
 
       const fetchCall = mockFetch.mock.calls[0];
-      const _rawPayload = JSON.parse(fetchCall[1]?.body as string);
-      const payload = (_rawPayload && typeof _rawPayload === 'object' && 'project' in _rawPayload) ? _rawPayload.project : _rawPayload;
+      const payload = JSON.parse(fetchCall[1]?.body as string);
       const vars = payload.workflow_params.set_var.attributes.vars;
 
       expect(vars).not.toHaveProperty("podId");
@@ -4939,8 +4923,7 @@ describe("startTaskWorkflow - featureId forwarding", () => {
     });
 
     const fetchCall = mockFetch.mock.calls[0];
-    const _rawPayload = JSON.parse(fetchCall[1]?.body as string);
-    const payload = (_rawPayload && typeof _rawPayload === 'object' && 'project' in _rawPayload) ? _rawPayload.project : _rawPayload;
+    const payload = JSON.parse(fetchCall[1]?.body as string);
     const vars = payload.workflow_params.set_var.attributes.vars;
 
     expect(vars.featureId).toBe("feature-123");
@@ -4971,8 +4954,7 @@ describe("startTaskWorkflow - featureId forwarding", () => {
     });
 
     const fetchCall = mockFetch.mock.calls[0];
-    const _rawPayload = JSON.parse(fetchCall[1]?.body as string);
-    const payload = (_rawPayload && typeof _rawPayload === 'object' && 'project' in _rawPayload) ? _rawPayload.project : _rawPayload;
+    const payload = JSON.parse(fetchCall[1]?.body as string);
     const vars = payload.workflow_params.set_var.attributes.vars;
 
     expect(vars).not.toHaveProperty("featureId");
