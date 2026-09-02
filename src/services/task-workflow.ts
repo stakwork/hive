@@ -853,15 +853,14 @@ export async function callStakworkAPI(params: {
   // tuning of ttlSeconds / maxCostUsd / maxSteps is intentionally
   // deferred to a follow-up so this initial wiring stays small.
   //
-  // xAI bypass: `reconcileBifrostVK` derives the `baseUrl` provider
-  // suffix from the model prefix and falls back to anthropic for any
-  // prefix it doesn't recognize, and `DEFAULT_PROVIDERS` doesn't list
-  // "xai" — so routing an `xai/*` selection through Bifrost today would
-  // mint a VK pointed at the wrong provider (or error). Skip the
-  // Bifrost call entirely for xai/* and fall through to the direct
-  // `vars.apiKey` (XAI_API_KEY) resolved above. Remove this bypass once
-  // an `aieo` version with an xAI gateway path AND a Bifrost-side xAI
-  // provider config both exist — until then this trades away per-agent
+  // xAI bypass: the Bifrost VK provider allow-list (`DEFAULT_PROVIDERS`)
+  // doesn't list "xai" and the swarm gateways have no xai provider key
+  // configured, so routing an `xai/*` selection through Bifrost today
+  // would fail. Skip the Bifrost call entirely for xai/* and fall
+  // through to the direct `vars.apiKey` (XAI_API_KEY) resolved above.
+  // Remove this bypass once the gateways carry an xai key and
+  // `DEFAULT_PROVIDERS` lists it (aieo already maps xai onto the
+  // /openai/v1 gateway path) — until then this trades away per-agent
   // cost attribution / macaroon observability for Grok runs only.
   const isXaiModel = effectiveModel?.startsWith("xai/") ?? false;
   const bifrost = isXaiModel

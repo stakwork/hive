@@ -362,14 +362,14 @@ async function createAgentSession(
     }
   }
 
-  // xAI bypass: the Bifrost VK reconciler falls back to anthropic's
-  // provider suffix for any model prefix it doesn't recognize, and its
-  // provider allow-list doesn't include xai — routing an xai/* session
-  // through Bifrost today would mint a VK pointed at the wrong
-  // provider. Skip the call for xai/* and use the direct XAI_API_KEY
-  // resolved above instead. Remove once an `aieo` gateway path + a
-  // Bifrost-side xai provider config both exist (see
-  // src/services/task-workflow.ts for the matching bypass).
+  // xAI bypass: the Bifrost VK provider allow-list (DEFAULT_PROVIDERS in
+  // src/services/bifrost/constants.ts) doesn't include xai, and the
+  // swarm gateways have no xai provider key configured — routing an
+  // xai/* session through Bifrost today would fail. Skip the call for
+  // xai/* and use the direct XAI_API_KEY resolved above instead. Remove
+  // once the gateways carry an xai key and DEFAULT_PROVIDERS lists it
+  // (aieo already maps xai onto the /openai/v1 gateway path). See
+  // src/services/task-workflow.ts for the matching bypass.
   const isXaiModel = effectiveModel?.startsWith("xai/") ?? false;
 
   // Bifrost routing for the goose-side LLM calls. When the rollout
