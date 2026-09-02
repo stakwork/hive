@@ -32,9 +32,22 @@ function createGetRequest(token?: string) {
 describe("GET /api/llm-models - Integration Tests", () => {
   let seededModels: LlmModel[] = [];
   let testUser: User;
+  const originalXaiKey = process.env.XAI_API_KEY;
+  const originalAnthropicKey = process.env.ANTHROPIC_API_KEY;
+  const originalOpenaiKey = process.env.OPENAI_API_KEY;
+  const originalGoogleKey = process.env.GOOGLE_API_KEY;
 
   beforeEach(async () => {
     process.env.API_TOKEN = VALID_API_TOKEN;
+    // The provider-key-availability filter (isProviderKeyConfigured) means
+    // every pre-existing test that seeds OPENAI/ANTHROPIC/GOOGLE models
+    // needs those providers "configured" to see them in the response —
+    // mirroring production, where these are always set. Only the new
+    // "Provider key availability filter" tests below manipulate these
+    // per-case.
+    process.env.OPENAI_API_KEY = "test-openai-key";
+    process.env.ANTHROPIC_API_KEY = "test-anthropic-key";
+    process.env.GOOGLE_API_KEY = "test-google-key";
 
     testUser = await createTestUser();
 
@@ -79,6 +92,10 @@ describe("GET /api/llm-models - Integration Tests", () => {
     });
     await db.user.deleteMany({ where: { id: testUser.id } });
     seededModels = [];
+    if (originalXaiKey === undefined) delete process.env.XAI_API_KEY;
+    else process.env.XAI_API_KEY = originalXaiKey;
+    if (originalAnthropicKey === undefined) delete process.env.ANTHROPIC_API_KEY;
+    else process.env.ANTHROPIC_API_KEY = originalAnthropicKey;
   });
 
   describe("Authentication", () => {
@@ -281,6 +298,60 @@ describe("GET /api/llm-models - Integration Tests", () => {
       expect(claude).toBeDefined();
       expect(claude.provider).toBe("ANTHROPIC");
       expect(claude.providerLabel).toBe("Anthropic");
+    });
+  });
+
+  describe("Provider key availability filter", () => {
+    test("excludes an XAI model when XAI_API_KEY is not set", async () => {
+      delete process.env.XAI_API_KEY;
+      const xaiModel = await createTestLlmModel({
+        name: "grok-4",
+        provider: "XAI",
+        inputPricePer1M: 3.0,
+        outputPricePer1M: 15.0,
+        dateEnd: null,
+        isPublic: true,
+      });
+      seededModels.push(xaiModel);
+
+      const request = createGetRequest(VALID_API_TOKEN);
+      const response = await GET(request as any);
+      const data = await response.json();
+      const returnedIds = data.models.map((m: { id: string }) => m.id);
+
+      expect(returnedIds).not.toContain(xaiModel.id);
+    });
+
+    test("includes an XAI model when XAI_API_KEY is set", async () => {
+      process.env.XAI_API_KEY = "test-xai-key";
+      const xaiModel = await createTestLlmModel({
+        name: "grok-4-set",
+        provider: "XAI",
+        inputPricePer1M: 3.0,
+        outputPricePer1M: 15.0,
+        dateEnd: null,
+        isPublic: true,
+      });
+      seededModels.push(xaiModel);
+
+      const request = createGetRequest(VALID_API_TOKEN);
+      const response = await GET(request as any);
+      const data = await response.json();
+      const returnedIds = data.models.map((m: { id: string }) => m.id);
+
+      expect(returnedIds).toContain(xaiModel.id);
+    });
+
+    test("does not affect an existing provider's models when its key is set (regression)", async () => {
+      process.env.ANTHROPIC_API_KEY = "test-anthropic-key";
+
+      const request = createGetRequest(VALID_API_TOKEN);
+      const response = await GET(request as any);
+      const data = await response.json();
+      const returnedIds = data.models.map((m: { id: string }) => m.id);
+      const claudeModel = seededModels.find((m) => m.name === "claude-3-5-sonnet")!;
+
+      expect(returnedIds).toContain(claudeModel.id);
     });
   });
 });
