@@ -1,5 +1,5 @@
 import { db } from "@/lib/db";
-import { ArtifactType } from "@prisma/client";
+import { ArtifactType, ChatRole } from "@prisma/client";
 import type { Deck } from "./types";
 
 export interface BuildDeckPod {
@@ -40,6 +40,34 @@ function renderFeatureContext(feature: {
 
   sections.push("=== END CONTEXT ONLY ===");
   return sections.join("\n\n");
+}
+
+async function loadEarliestUserAsks(taskId: string): Promise<string[]> {
+  const messages = await db.chatMessage.findMany({
+    where: { taskId, role: ChatRole.USER },
+    orderBy: { createdAt: "asc" },
+    take: 2,
+    select: { message: true },
+  });
+
+  return messages
+    .map((m) => (m.message ?? "").trim())
+    .filter((m) => m.length > 0);
+}
+
+function assembleTaskPrompt(title: string, description: string | null, asks: string[]): string {
+  const parts: string[] = [title.trim()];
+
+  const trimmedDescription = description?.trim();
+  if (trimmedDescription) {
+    parts.push(`Description:\n${trimmedDescription}`);
+  }
+
+  if (asks.length > 0) {
+    parts.push(`Original request:\n${asks.join("\n\n")}`);
+  }
+
+  return parts.join("\n\n");
 }
 
 async function loadDiffFromArtifacts(taskId: string): Promise<string | null> {
@@ -113,9 +141,12 @@ export async function buildDeck(taskId: string, pod?: BuildDeckPod): Promise<Dec
 
   const featureContext = task.feature ? renderFeatureContext(task.feature) : "";
 
+  const asks = await loadEarliestUserAsks(taskId);
+  const prompt = assembleTaskPrompt(task.title, task.description, asks);
+
   return {
     task: {
-      prompt: task.title,
+      prompt,
       description: task.description ?? "",
     },
     diff,
