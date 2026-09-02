@@ -139,7 +139,7 @@ export async function startAudit(taskId: string, userId: string): Promise<StartA
 
   await db.task.update({
     where: { id: taskId },
-    data: { workflowStatus: WorkflowStatus.IN_PROGRESS },
+    data: { workflowStatus: WorkflowStatus.IN_PROGRESS, workflowStartedAt: new Date() },
   });
 
   console.log(`[auditor:trigger] Audit dispatched for task ${taskId} by user ${userId}`);
