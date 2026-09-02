@@ -55,6 +55,7 @@ vi.mock("@/lib/ai/connectionTools", () => ({ buildConnectionTools: vi.fn(() => (
 vi.mock("@/lib/ai/canvasTools", () => ({ buildCanvasTools: vi.fn(() => ({})) }));
 vi.mock("@/lib/ai/initiativeTools", () => ({ buildInitiativeTools: vi.fn(() => ({})) }));
 vi.mock("@/lib/ai/researchTools", () => ({ buildResearchTools: vi.fn(() => ({})) }));
+vi.mock("@/lib/ai/htmlArtifactTools", () => ({ buildHtmlArtifactTools: vi.fn(() => ({})) }));
 vi.mock("@/lib/ai/infraTools", () => ({ buildInfraTools: vi.fn(() => ({})) }));
 vi.mock("@/lib/ai/graphWalkerTools", () => ({
   buildGraphWalkerTools: vi.fn(() => ({ graph_get: {}, graph_search: {} })),
@@ -109,6 +110,7 @@ vi.mock("@/lib/constants/prompt", () => ({
   getPlannerCapabilitySnippet: vi.fn(() => ""),
   getResearchCapabilitySnippet: vi.fn(() => ""),
   getConnectionsCapabilitySnippet: vi.fn(() => ""),
+  getHtmlPagesCapabilitySnippet: vi.fn(() => ""),
   getGraphWalkerCapabilitySnippet: vi.fn(() => ""),
   getInfraCapabilitySnippet: vi.fn(() => ""),
   getWorkflowsCapabilitySnippet: vi.fn(() => ""),

@@ -89,6 +89,7 @@ import {
   isCodeChangeCapabilityEnabledForOrg,
 } from "@/lib/ai/capabilityGates";
 import { buildCodeChangeTools } from "@/lib/ai/codeChangeTools";
+import { buildHtmlArtifactTools } from "@/lib/ai/htmlArtifactTools";
 import {
   buildResearchTools,
   type CapturedSearchResult,
@@ -112,6 +113,7 @@ import {
   getConceptsCapabilitySnippet,
   getConnectionsCapabilitySnippet,
   getGraphWalkerCapabilitySnippet,
+  getHtmlPagesCapabilitySnippet,
   getInfraCapabilitySnippet,
   getPlannerCapabilitySnippet,
   getPromptsCapabilitySnippet,
@@ -127,6 +129,7 @@ export type OrgCapability =
   | "whiteboard"
   | "research"
   | "connections"
+  | "html_pages"
   | "graph_walker"
   | "infra"
   | "prompts"
@@ -263,6 +266,7 @@ export const ALL_CAPABILITIES: readonly OrgCapability[] = [
   "whiteboard",
   "research",
   "connections",
+  "html_pages",
   "graph_walker",
   "infra",
   "prompts",
@@ -310,7 +314,7 @@ export const CAPABILITY_REGISTRY: Record<OrgCapability, CapabilityDefinition> =
       // deliberately NOT included: it's org-gated (see its `orgGate`), and
       // `includes` is expanded by the sync resolver which can't run the
       // gate — so it must stay explicitly-selected-only.
-      includes: ["whiteboard", "research", "connections", "graph_walker", "infra", "concepts"],
+      includes: ["whiteboard", "research", "connections", "html_pages", "graph_walker", "infra", "concepts"],
     },
     planner: {
       buildTools: (ctx) =>
@@ -377,6 +381,17 @@ export const CAPABILITY_REGISTRY: Record<OrgCapability, CapabilityDefinition> =
         "`save_connection` / `update_connection`. Load when documenting an " +
         "integration between systems/workspaces.",
       writeToolNames: ["save_connection", "update_connection"],
+    },
+    html_pages: {
+      buildTools: (ctx) => buildHtmlArtifactTools(ctx.orgId, ctx.userId),
+      promptSnippet: getHtmlPagesCapabilitySnippet,
+      core: false,
+      menuBlurb:
+        "**html_pages** — save a shareable HTML page artifact for this org " +
+        "(`save_html` / `update_html`). Load when the user asks you to " +
+        "create an artifact they can share with the team. Research first, " +
+        "then synthesize ONE HTML story — do not save one page per repo.",
+      writeToolNames: ["save_html", "update_html"],
     },
     graph_walker: {
       buildTools: (ctx) => ({
@@ -633,8 +648,8 @@ function buildLearnCapabilityTool(resolved: readonly OrgCapability[]): ToolSet {
         loadable.join(", ") +
         ". Call this FIRST whenever the user wants to: draw / diagram / " +
         "annotate / re-lay-out the canvas (`whiteboard`), create a saved " +
-        "research writeup (`research`), or document a system integration " +
-        "(`connections`). " +
+        "research writeup (`research`), document a system integration " +
+        "(`connections`), or save a shareable HTML page (`html_pages`). " +
         "You MUST load a capability before calling any of its tools; if you " +
         "find yourself about to call one of those tools without having loaded " +
         "its capability this turn, call `learn_capability` first. Returns the " +
