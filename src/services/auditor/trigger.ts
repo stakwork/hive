@@ -19,18 +19,18 @@ async function buildModel(): Promise<AuditModel> {
     }
   }
 
-  if (process.env.OPENROUTER_API_KEY) {
+  if (process.env.ANTHROPIC_API_KEY) {
     return {
-      apiKey: process.env.OPENROUTER_API_KEY,
-      provider: "openrouter",
-      model: "openrouter/openai/gpt-4o",
+      apiKey: process.env.ANTHROPIC_API_KEY,
+      provider: "anthropic",
+      model: "anthropic/claude-opus-5",
     };
   }
 
   return {
-    apiKey: process.env.ANTHROPIC_API_KEY ?? "",
-    provider: "anthropic",
-    model: "anthropic/claude-sonnet-4-6",
+    apiKey: process.env.OPENROUTER_API_KEY ?? "",
+    provider: "openrouter",
+    model: "openrouter/anthropic/claude-opus-4.8",
   };
 }
 
