@@ -339,13 +339,30 @@ describe("callStakworkAPI", () => {
 
     test("uses webhook URL when provided (for FORM artifact continuation)", async () => {
       const { config } = await import("@/config/env");
-      const webhookUrl = "https://stakwork.example.com/webhook/continue/abc123";
+      // Must be same-origin as STAKWORK_BASE_URL — callStakworkAPI only
+      // honors a caller-supplied `webhook` override when its origin
+      // matches, since that URL receives the Stakwork API key and the
+      // resolved provider LLM key (see isAllowedStakworkWebhook).
+      const webhookUrl = `${config.STAKWORK_BASE_URL}/webhook/continue/abc123`;
       mockFetch.mockResolvedValueOnce(createSuccessResponse() as any);
 
       await callStakworkAPI(createTestParams({ webhook: webhookUrl }));
 
       expect(mockFetch).toHaveBeenCalledWith(
         webhookUrl,
+        expect.any(Object)
+      );
+    });
+
+    test("falls back to /projects endpoint when webhook has a different origin than STAKWORK_BASE_URL", async () => {
+      const { config } = await import("@/config/env");
+      const foreignWebhookUrl = "https://attacker.example.com/webhook/continue/abc123";
+      mockFetch.mockResolvedValueOnce(createSuccessResponse() as any);
+
+      await callStakworkAPI(createTestParams({ webhook: foreignWebhookUrl }));
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        `${config.STAKWORK_BASE_URL}/projects`,
         expect.any(Object)
       );
     });

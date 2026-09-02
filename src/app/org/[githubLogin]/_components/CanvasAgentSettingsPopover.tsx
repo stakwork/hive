@@ -70,7 +70,8 @@ export function CanvasAgentSettingsPopover({
     };
   }, []);
 
-  // Load the available models for the picker.
+  // Load the available models for the picker. /api/llm-models already
+  // filters out providers whose API key isn't configured server-side.
   useEffect(() => {
     let cancelled = false;
     fetch("/api/llm-models")
