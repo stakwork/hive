@@ -6,7 +6,6 @@ import { ExternalLink, Loader2, Repeat } from "lucide-react";
 import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import {
-  PASS_BADGE_CLASS,
   RUN_LIST_LIMIT,
   SUMMARY_WINDOW,
   WINDOW_OPTIONS,
@@ -526,9 +525,9 @@ export function BenchmarkRunsHistory({
     );
   }
 
-  // colSpan: Task + Type + Started + Runner Status + Score + Contested +
-  // Disputed + Chat + Report + (Stakwork if super admin)
-  const colSpan = isSuperAdmin ? 10 : 9;
+  // colSpan: Task + Type + Started + Runner Status + Passed + Failed +
+  // Contested + Disputed + Total + Chat + Report + (Stakwork if super admin)
+  const colSpan = isSuperAdmin ? 12 : 11;
 
   return (
     <div className="space-y-3">
@@ -604,7 +603,8 @@ export function BenchmarkRunsHistory({
               </th>
               <th className="text-left px-4 py-3 font-medium text-muted-foreground">Started</th>
               <th className="text-left px-4 py-3 font-medium text-muted-foreground">Runner Status</th>
-              <th className="text-left px-4 py-3 font-medium text-muted-foreground">Score</th>
+              <th className="text-left px-4 py-3 font-medium text-muted-foreground">Passed</th>
+              <th className="text-left px-4 py-3 font-medium text-muted-foreground">Failed</th>
               <th className="text-left px-4 py-3 font-medium text-muted-foreground">
                 <span
                   className="cursor-help"
@@ -621,6 +621,7 @@ export function BenchmarkRunsHistory({
                   Disputed
                 </span>
               </th>
+              <th className="text-left px-4 py-3 font-medium text-muted-foreground">Total</th>
               <th className="text-left px-4 py-3 font-medium text-muted-foreground">Chat</th>
               <th className="text-left px-4 py-3 font-medium text-muted-foreground">Report</th>
               {isSuperAdmin && (
@@ -690,17 +691,20 @@ export function BenchmarkRunsHistory({
                   <td className="px-4 py-3">
                     <RunnerStatusBadge status={run.status} />
                   </td>
+                  <td className="px-4 py-3" data-score-source={run.score_source}>
+                    <PassedCountCell run={run} />
+                  </td>
                   <td className="px-4 py-3">
-                    {/* Recursion re-runs now report post-fix scores back onto
-                        their run row; ScoreCell renders its own dash when no
-                        score landed (older rows, fix-proposal stage). */}
-                    <ScoreCell run={run} />
+                    <FailedCountCell run={run} />
                   </td>
                   <td className="px-4 py-3">
                     <ContestedCountCell run={run} />
                   </td>
                   <td className="px-4 py-3">
                     <DisputedCountCell run={run} />
+                  </td>
+                  <td className="px-4 py-3">
+                    <TotalCountCell run={run} />
                   </td>
                   <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
                     {run.runType === "manual" ? (
@@ -867,37 +871,6 @@ function ChatCell({ run }: { run: BenchmarkRunListRow }) {
   return <span className="text-muted-foreground">—</span>;
 }
 
-function ScoreCell({ run }: { run: AdjustedRun }) {
-  const isActive =
-    run.status === WorkflowStatus.PENDING || run.status === WorkflowStatus.IN_PROGRESS;
-
-  // Neutral placeholder for in-progress runs and terminal runs with no score data.
-  if (isActive || typeof run.all_pass !== "boolean") {
-    return <span className="text-muted-foreground">—</span>;
-  }
-
-  return (
-    <div
-      className={run.judgeNotes ? "flex items-center gap-2 cursor-help" : "flex items-center gap-2"}
-      title={run.judgeNotes}
-      aria-label={run.judgeNotes}
-      data-score-source={run.score_source}
-      {...(run.n_contested ? { "data-testid": "score-cell-contested" } : {})}
-    >
-      {run.n_passed !== undefined && run.n_total !== undefined && (
-        <span className="text-sm tabular-nums">
-          {run.n_passed}/{run.n_total}
-        </span>
-      )}
-      {run.all_pass && (
-        <Badge variant="outline" className={PASS_BADGE_CLASS}>
-          PASS
-        </Badge>
-      )}
-    </div>
-  );
-}
-
 function hasScoreData(run: AdjustedRun): boolean {
   const isActive =
     run.status === WorkflowStatus.PENDING || run.status === WorkflowStatus.IN_PROGRESS;
@@ -972,6 +945,114 @@ function DisputedCountCell({ run }: { run: AdjustedRun }) {
       data-testid="disputed-cell-count"
     >
       {run.n_disputed}
+    </Badge>
+  );
+}
+
+/** `n_passed` counts passing criteria. Undefined/null only in extreme bail-out paths. */
+function PassedCountCell({ run }: { run: AdjustedRun }) {
+  if (!hasScoreData(run)) {
+    return <span className="text-muted-foreground/60">—</span>;
+  }
+  if (run.n_passed === undefined || run.n_passed === null) {
+    return (
+      <span
+        className="text-xs text-muted-foreground/60 cursor-help"
+        title="Passed count is unknown for this run — its score was recorded without a numerator."
+        data-testid="passed-cell-unknown"
+      >
+        n/a
+      </span>
+    );
+  }
+  if (run.n_passed === 0) {
+    return (
+      <span className="text-muted-foreground/60" data-testid="passed-cell-zero">
+        —
+      </span>
+    );
+  }
+  return (
+    <Badge
+      variant="outline"
+      className="border-0 bg-violet-500/15 text-violet-700 dark:text-violet-400 cursor-help tabular-nums"
+      title={`Passing criteria: ${run.n_passed}${
+        run.n_total != null ? ` of ${run.n_total}` : ""
+      }.`}
+      data-testid="passed-cell-count"
+    >
+      {run.n_passed}
+    </Badge>
+  );
+}
+
+/** `n_failed` is null (not undefined) when the breakdown was never computed — unknown, not zero. */
+function FailedCountCell({ run }: { run: AdjustedRun }) {
+  if (!hasScoreData(run)) {
+    return <span className="text-muted-foreground/60">—</span>;
+  }
+  if (run.n_failed === null) {
+    return (
+      <span
+        className="text-xs text-muted-foreground/60 cursor-help"
+        title="Failed count is unknown for this run — the rubric breakdown was never computed."
+        data-testid="failed-cell-unknown"
+      >
+        n/a
+      </span>
+    );
+  }
+  if (run.n_failed === 0) {
+    return (
+      <span className="text-muted-foreground/60" data-testid="failed-cell-zero">
+        —
+      </span>
+    );
+  }
+  return (
+    <Badge
+      variant="outline"
+      className="border-0 bg-violet-500/15 text-violet-700 dark:text-violet-400 cursor-help tabular-nums"
+      title={`Failing criteria: ${run.n_failed}.`}
+      data-testid="failed-cell-count"
+    >
+      {run.n_failed}
+    </Badge>
+  );
+}
+
+/** Total denominator — the run's own n_total, falling back to the graph roster's total. */
+function TotalCountCell({ run }: { run: AdjustedRun }) {
+  if (!hasScoreData(run)) {
+    return <span className="text-muted-foreground/60">—</span>;
+  }
+  const total = run.n_total ?? run.roster_total;
+  if (total === undefined || total === null) {
+    return (
+      <span
+        className="text-xs text-muted-foreground/60 cursor-help"
+        title="Total is unknown for this run — no denominator was recorded or derivable from the roster."
+        data-testid="total-cell-unknown"
+      >
+        n/a
+      </span>
+    );
+  }
+  if (total === 0) {
+    return (
+      <span className="text-muted-foreground/60" data-testid="total-cell-zero">
+        —
+      </span>
+    );
+  }
+  return (
+    <Badge
+      variant="outline"
+      className="border-0 bg-violet-500/15 text-violet-700 dark:text-violet-400 cursor-help tabular-nums"
+      title={`Total rubric criteria: ${total}.`}
+      data-testid="total-cell-count"
+    >
+      {total}
     </Badge>
   );
 }

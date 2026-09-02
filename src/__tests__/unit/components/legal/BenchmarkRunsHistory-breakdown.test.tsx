@@ -6,7 +6,7 @@
  * The runs-history rows no longer render the RubricBreakdownStrip — contested
  * and disputed detail lives in the run report instead. These tests verify that
  * no strip chips appear in rows on any path, and that the invisible
- * score-cell-contested data anchor (used to verify contested-exclusion score
+ * contested-cell-count data anchor (used to verify contested-exclusion score
  * derivation) is still applied when the row's score excludes contested criteria.
  *
  * NOTE: Because the adjusted* arrays are internal to the component, we test
@@ -191,7 +191,7 @@ describe("BenchmarkRunsHistory — ScoreCell breakdown strip", () => {
     expect(screen.queryByTestId("rubric-breakdown-disputed")).not.toBeInTheDocument();
   });
 
-  it("scoring path: no strip chips render; score-cell-contested anchor present exactly once", () => {
+  it("scoring path: no strip chips render; contested-cell-count anchor present exactly once", () => {
     const roster = [
       { ref_id: "r1", id: "C-001", name: "Criterion 1", contested: false },
       { ref_id: "r2", id: "C-002", name: "Criterion 2", contested: false },
@@ -224,6 +224,6 @@ describe("BenchmarkRunsHistory — ScoreCell breakdown strip", () => {
     expect(screen.queryByTestId("rubric-breakdown-contested")).toBeNull();
     expect(screen.queryByTestId("rubric-breakdown-disputed")).toBeNull();
     // The invisible data anchor still marks rows whose score excludes contested criteria.
-    expect(screen.getAllByTestId("score-cell-contested").length).toBe(1);
+    expect(screen.getAllByTestId("contested-cell-count").length).toBe(1);
   });
 });
