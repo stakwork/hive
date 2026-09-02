@@ -15,8 +15,10 @@
 import { describe, it, expect, beforeAll } from "vitest";
 import { execFileSync } from "child_process";
 import { join } from "path";
+import { renameSync, existsSync } from "fs";
 import {
   assembleCascadeOfflineHtml,
+  CascadeBundleMissingError,
   resetCascadeOfflineCache,
   sanitizeTitle,
 } from "@/lib/legal-cascade/export/offline-html";
@@ -109,6 +111,23 @@ describe("assembleCascadeOfflineHtml", () => {
     expect(parsed.meta.runId).toBe("run-1");
     expect(parsed.model.summary.agents).toBe(2);
     expect(parsed.peeks["onto-1"]).toEqual(hostile.peeks["onto-1"]);
+  });
+
+  it("refuses to build a document when the bundle is missing, and recovers once it exists", () => {
+    const bundlePath = join(process.cwd(), "src/lib/legal-cascade/export/cascade-offline.js");
+    const parked = `${bundlePath}.parked`;
+    renameSync(bundlePath, parked);
+    resetCascadeOfflineCache();
+    try {
+      expect(() => assembleCascadeOfflineHtml(payload(), "Run trace")).toThrow(
+        CascadeBundleMissingError,
+      );
+    } finally {
+      renameSync(parked, bundlePath);
+    }
+    expect(existsSync(bundlePath)).toBe(true);
+    // Not cached as empty — the rebuilt artifact is picked up without a restart.
+    expect(assembleCascadeOfflineHtml(payload(), "Run trace")).toContain("cascade-root");
   });
 
   it("sanitizes the title", () => {

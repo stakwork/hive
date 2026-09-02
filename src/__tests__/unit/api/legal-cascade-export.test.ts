@@ -24,15 +24,19 @@ vi.mock("@/lib/legal-cascade/server", () => ({
 vi.mock("@/lib/legal-cascade/export/assemble", () => ({
   assembleCascadeExport: mockAssembleCascadeExport,
 }));
-vi.mock("@/lib/legal-cascade/export/offline-html", () => ({
-  assembleCascadeOfflineHtml: mockAssembleHtml,
-}));
+vi.mock("@/lib/legal-cascade/export/offline-html", async () => {
+  const actual = await vi.importActual<typeof import("@/lib/legal-cascade/export/offline-html")>(
+    "@/lib/legal-cascade/export/offline-html",
+  );
+  return { ...actual, assembleCascadeOfflineHtml: mockAssembleHtml };
+});
 vi.mock("@/lib/rate-limit", () => ({ checkRateLimit: mockRateLimit }));
 vi.mock("@/lib/logger", () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }));
 
 import { GET } from "@/app/api/workspaces/[slug]/legal/benchmarks/cascade/export/route";
+import { CascadeBundleMissingError } from "@/lib/legal-cascade/export/offline-html";
 
 const ACCESS = {
   userId: "user-1",
@@ -100,6 +104,17 @@ describe("GET cascade/export", () => {
       expect.objectContaining({ meta: expect.objectContaining({ runId: "run-1" }) }),
       "Run trace · run-1",
     );
+  });
+
+  it("answers 500 with a clear message instead of a blank document when the bundle is missing", async () => {
+    mockAssembleHtml.mockImplementation(() => {
+      throw new CascadeBundleMissingError("/srv/src/lib/legal-cascade/export/cascade-offline.js");
+    });
+    const res = await call();
+    expect(res.status).toBe(500);
+    const body = await res.json();
+    expect(body.error).toMatch(/trace export bundle is not built/i);
+    expect(res.headers.get("Content-Type")).toMatch(/json/);
   });
 
   it("answers 502 JSON when assembly fails", async () => {
