@@ -4,23 +4,33 @@ import { EncryptionService } from "@/lib/encryption";
 import { claimPodAndGetFrontend, updatePodRepositories, POD_PORTS } from "@/lib/pods";
 import { WorkflowStatus } from "@prisma/client";
 import { buildDeck } from "./deck";
+import { getDefaultModel, getApiKeyForModel } from "@/lib/ai/models";
 import type { AuditModel, AuditJobBody, StartAuditResult } from "./types";
 
 const encryptionService = EncryptionService.getInstance();
 
-function buildModel(): AuditModel {
+async function buildModel(): Promise<AuditModel> {
+  const registryModel = process.env.AUDIT_MODEL || (await getDefaultModel("task"));
+  if (registryModel) {
+    const apiKey = getApiKeyForModel(registryModel);
+    if (apiKey) {
+      const provider = registryModel.includes("/") ? registryModel.split("/")[0] : undefined;
+      return { apiKey, provider, model: registryModel };
+    }
+  }
+
   if (process.env.OPENROUTER_API_KEY) {
     return {
       apiKey: process.env.OPENROUTER_API_KEY,
       provider: "openrouter",
-      model: process.env.AUDIT_MODEL || "openrouter/openai/gpt-4o",
+      model: "openrouter/openai/gpt-4o",
     };
   }
 
   return {
     apiKey: process.env.ANTHROPIC_API_KEY ?? "",
     provider: "anthropic",
-    model: process.env.AUDIT_MODEL || "claude-3-7-sonnet-latest",
+    model: "anthropic/claude-sonnet-4-6",
   };
 }
 
@@ -86,7 +96,7 @@ export async function startAudit(taskId: string, userId: string): Promise<StartA
     appUrl: frontendUrl,
   });
 
-  const model = buildModel();
+  const model = await buildModel();
 
   const callbackApiKey = crypto.randomBytes(32).toString("hex");
   const encryptedCallbackKey = encryptionService.encryptField("auditCallbackKey", callbackApiKey);
