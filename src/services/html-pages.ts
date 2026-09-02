@@ -140,6 +140,7 @@ const HTML_PAGE_RECORD_SELECT = {
   uploadedAt: true,
   orgId: true,
   createdBy: true,
+  updatedAt: true,
 } as const;
 
 /**
