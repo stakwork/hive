@@ -697,7 +697,22 @@ export async function runCanvasAgent(
   // flag is on for the primary workspace — see `getBifrostForLLM` below.
   let provider: Provider = "anthropic";
   if (modelName?.includes("/")) {
-    const prefix = modelName.split("/")[0] as Provider;
+    const rawPrefix = modelName.split("/")[0];
+    // aieo (^0.1.34, the pinned version) has no "xai" entry in `PROVIDERS`
+    // — it's not just an unconfigured key, the provider itself doesn't
+    // exist on this path yet. Falling through to the generic branch
+    // below would silently answer a Grok selection as Anthropic, which
+    // is exactly the failure mode this feature must not have. Fail
+    // loudly instead. `CanvasAgentSettingsPopover` excludes xai/* rows
+    // from the picker, so this should only fire on a stale/tampered
+    // `chatAgentModel` preference. Remove this guard once `aieo` (or its
+    // replacement) supports xai — see the "Add xAI" feature notes.
+    if (rawPrefix === "xai") {
+      throw new Error(
+        `runCanvasAgent: model "${modelName}" is not available on this path — xAI/Grok is not yet supported by the canvas agent's LLM SDK (aieo). Choose a different model.`,
+      );
+    }
+    const prefix = rawPrefix as Provider;
     if (!PROVIDERS.includes(prefix)) {
       console.warn(
         `[runCanvasAgent] model "${modelName}" has unsupported provider prefix "${prefix}"; falling back to anthropic default`,

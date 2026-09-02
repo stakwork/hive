@@ -7,7 +7,7 @@ import { buildFeatureContext } from "@/services/task-coordinator";
 import { EncryptionService } from "@/lib/encryption";
 import { updateTaskWorkflowStatus } from "@/lib/helpers/workflow-status";
 import { getStakworkTokenReference } from "@/lib/vercel/stakwork-token";
-import { getApiKeyForModel, getDefaultModel } from "@/lib/ai/models";
+import { getApiKeyForModel, getDefaultModel, PROVIDER_API_KEY_ENV_VARS } from "@/lib/ai/models";
 import { fetchChatHistory } from "@/lib/helpers/chat-history";
 import { isDevelopmentMode } from "@/lib/runtime";
 import type { McpServerConfig } from "@/services/mcpServers";
@@ -25,6 +25,33 @@ const encryptionService = EncryptionService.getInstance();
 // platform function maxDuration so the request fails fast (and the claim is
 // rolled back) instead of being killed mid-flight and stranding the task.
 const STAKWORK_REQUEST_TIMEOUT_MS = 30_000;
+
+/**
+ * Guards the caller-controlled `webhook` override used to continue an
+ * existing Stakwork project (as opposed to starting a new one at
+ * `${STAKWORK_BASE_URL}/projects`). This value ultimately becomes the
+ * URL `callStakworkAPI` POSTs the Stakwork API key AND the resolved
+ * provider LLM key to — an unvalidated value would let a caller
+ * redirect that request (and both secrets) to an arbitrary host.
+ *
+ * Only same-origin-as-`STAKWORK_BASE_URL` URLs are accepted. This
+ * mirrors the allowlist spirit of `src/lib/run-report/url-guard.ts`
+ * but is deliberately simpler: `webhook` has exactly one legitimate
+ * destination (continuing a Stakwork project), so origin equality is
+ * the whole check — no bucket/region pattern matching needed.
+ */
+function isAllowedStakworkWebhook(webhook: string | undefined): boolean {
+  if (!webhook) return false;
+  let webhookUrl: URL;
+  let baseUrl: URL;
+  try {
+    webhookUrl = new URL(webhook);
+    baseUrl = new URL(config.STAKWORK_BASE_URL);
+  } catch {
+    return false;
+  }
+  return webhookUrl.origin === baseUrl.origin;
+}
 
 /**
  * Create a task and immediately trigger Stakwork workflow
@@ -825,17 +852,31 @@ export async function callStakworkAPI(params: {
   // the orchestrator's defaults are tuned for chat turns — caller
   // tuning of ttlSeconds / maxCostUsd / maxSteps is intentionally
   // deferred to a follow-up so this initial wiring stays small.
-  const bifrost = await getBifrostForLLM(
-    { workspaceId, workspaceSlug, userId },
-    {
-      agentName: mode === "plan_mode" ? "plan-agent" : "coding-agent",
-      // Pass the selected model so the Bifrost VK reconciler resolves
-      // the correct provider suffix on `baseUrl` (e.g. `/genai/v1beta`
-      // for google/* models). Without this it defaults to anthropic
-      // and Google/OpenAI models get routed to the wrong provider.
-      model: effectiveModel ?? undefined,
-    },
-  );
+  //
+  // xAI bypass: `reconcileBifrostVK` derives the `baseUrl` provider
+  // suffix from the model prefix and falls back to anthropic for any
+  // prefix it doesn't recognize, and `DEFAULT_PROVIDERS` doesn't list
+  // "xai" — so routing an `xai/*` selection through Bifrost today would
+  // mint a VK pointed at the wrong provider (or error). Skip the
+  // Bifrost call entirely for xai/* and fall through to the direct
+  // `vars.apiKey` (XAI_API_KEY) resolved above. Remove this bypass once
+  // an `aieo` version with an xAI gateway path AND a Bifrost-side xAI
+  // provider config both exist — until then this trades away per-agent
+  // cost attribution / macaroon observability for Grok runs only.
+  const isXaiModel = effectiveModel?.startsWith("xai/") ?? false;
+  const bifrost = isXaiModel
+    ? undefined
+    : await getBifrostForLLM(
+        { workspaceId, workspaceSlug, userId },
+        {
+          agentName: mode === "plan_mode" ? "plan-agent" : "coding-agent",
+          // Pass the selected model so the Bifrost VK reconciler resolves
+          // the correct provider suffix on `baseUrl` (e.g. `/genai/v1beta`
+          // for google/* models). Without this it defaults to anthropic
+          // and Google/OpenAI models get routed to the wrong provider.
+          model: effectiveModel ?? undefined,
+        },
+      );
   if (bifrost) {
     vars.apiKey = bifrost.apiKey;
     vars.baseUrl = bifrost.baseUrl;
@@ -852,15 +893,41 @@ export async function callStakworkAPI(params: {
   // route for this dispatch. Look for "[callStakworkAPI] model routing"
   // in Vercel logs (filter by /api/chat/message). `baseUrl` should carry
   // the model's provider suffix (e.g. /genai/v1beta for google/* models).
+  //
+  // Deliberately excludes any substring of the resolved key — a prior
+  // version logged `vars.apiKey.slice(0, 7)` as `apiKeyPrefix`, which
+  // for a short fixed-prefix key (e.g. xAI's `xai-...`) is real key
+  // material, not a discriminator. `providerKeySet` (derived from the
+  // model prefix) replaces the Google-only `googleKeySet` so a missing
+  // key is visible for any provider, not just Google.
+  const routingProvider = effectiveModel?.includes("/") ? effectiveModel.split("/")[0].toUpperCase() : null;
+  const routingEnvVar = routingProvider ? PROVIDER_API_KEY_ENV_VARS[routingProvider] : null;
   console.log("[callStakworkAPI] model routing", {
     taskId,
     mode,
     effectiveModel,
     bifrostActive: Boolean(bifrost),
     baseUrl: vars.baseUrl,
-    apiKeyPrefix: typeof vars.apiKey === "string" ? vars.apiKey.slice(0, 7) : null,
-    googleKeySet: Boolean(process.env.GOOGLE_API_KEY),
+    providerKeySet: routingEnvVar ? Boolean(process.env[routingEnvVar]) : null,
   });
+
+  // A prefixed model whose provider maps to a real env var but resolved
+  // to no key anywhere (not from `getApiKeyForModel` above, not from
+  // Bifrost) means the dispatch is about to go out key-less. Log which
+  // env var is missing — name + boolean only, never the value — so this
+  // is diagnosable in Vercel logs without leaking secret material. This
+  // is a log-only change; control flow is unaffected and any subsequent
+  // `{ error }` this function returns must stay generic ("model
+  // provider not configured") with no env-var names in the HTTP response.
+  if (routingEnvVar && !vars.apiKey) {
+    console.error("[callStakworkAPI] model provider key missing", {
+      taskId,
+      mode,
+      effectiveModel,
+      envVar: routingEnvVar,
+      envVarSet: Boolean(process.env[routingEnvVar]),
+    });
+  }
 
   // Get workflow ID (replicating workflow selection logic)
   const stakworkWorkflowIds = config.STAKWORK_WORKFLOW_ID.split(",");
@@ -902,8 +969,25 @@ export async function callStakworkAPI(params: {
   };
 
   // Make Stakwork API call (replicating fetch call from chat/message route)
-  // If webhook is provided, use it to continue existing workflow; otherwise start new project
-  const stakworkURL = webhook || `${config.STAKWORK_BASE_URL}/projects`;
+  // If webhook is provided, use it to continue existing workflow; otherwise start new project.
+  //
+  // `webhook` arrives on a caller-controlled request body (see
+  // /api/chat/message and the roadmap feature-chat dispatcher) and this
+  // request carries `Authorization: Token token=${STAKWORK_API_KEY}` plus
+  // `vars.apiKey` (the resolved provider LLM key) in its body — an
+  // unvalidated `webhook` value lets any caller redirect that fetch to an
+  // attacker-chosen host and exfiltrate both secrets. Only accept it when
+  // its origin matches `STAKWORK_BASE_URL`; anything else falls back to
+  // the default `/projects` endpoint (silently — same behavior as if
+  // `webhook` had been omitted) with a warning logged for visibility.
+  const stakworkURL = isAllowedStakworkWebhook(webhook)
+    ? webhook!
+    : `${config.STAKWORK_BASE_URL}/projects`;
+  if (webhook && webhook !== stakworkURL) {
+    console.warn("[callStakworkAPI] rejected webhook URL with non-Stakwork origin; using default", {
+      taskId,
+    });
+  }
 
   try {
     const response = await fetch(stakworkURL, {

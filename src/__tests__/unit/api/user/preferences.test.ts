@@ -13,12 +13,16 @@ vi.mock("@/lib/auth/nextauth", () => ({
 
 const mockUserFindUnique = vi.fn();
 const mockUserUpdate = vi.fn();
+const mockLlmModelFindMany = vi.fn();
 
 vi.mock("@/lib/db", () => ({
   db: {
     user: {
       findUnique: (...args: unknown[]) => mockUserFindUnique(...args),
       update: (...args: unknown[]) => mockUserUpdate(...args),
+    },
+    llmModel: {
+      findMany: (...args: unknown[]) => mockLlmModelFindMany(...args),
     },
   },
 }));
@@ -109,6 +113,56 @@ describe("GET /api/user/preferences", () => {
 
     const res = await GET();
     expect(res.status).toBe(401);
+  });
+
+  test("falls back to null chatAgentModel when the stored preference no longer matches any catalog row", async () => {
+    mockUserFindUnique.mockResolvedValue({
+      canvasAutonomousTurns: false,
+      chatAgentModel: "openrouter/grok-4",
+      timezone: "UTC",
+      dailyRecapEnabled: true,
+    });
+    mockLlmModelFindMany.mockResolvedValue([]);
+
+    const res = await GET();
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body.chatAgentModel).toBeNull();
+  });
+
+  test("keeps chatAgentModel when it still matches a public, unexpired catalog row", async () => {
+    mockUserFindUnique.mockResolvedValue({
+      canvasAutonomousTurns: false,
+      chatAgentModel: "xai/grok-4",
+      timezone: "UTC",
+      dailyRecapEnabled: true,
+    });
+    mockLlmModelFindMany.mockResolvedValue([
+      { id: "m1", name: "grok-4", provider: "XAI", providerLabel: null, isPlanDefault: false, isTaskDefault: false },
+    ]);
+
+    const res = await GET();
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body.chatAgentModel).toBe("xai/grok-4");
+  });
+
+  test("passes null through unchanged (no catalog lookup needed)", async () => {
+    mockUserFindUnique.mockResolvedValue({
+      canvasAutonomousTurns: false,
+      chatAgentModel: null,
+      timezone: "UTC",
+      dailyRecapEnabled: true,
+    });
+
+    const res = await GET();
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body.chatAgentModel).toBeNull();
+    expect(mockLlmModelFindMany).not.toHaveBeenCalled();
   });
 });
 
