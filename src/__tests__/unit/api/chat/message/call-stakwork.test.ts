@@ -588,7 +588,8 @@ describe("callStakwork Function - Chat Message Processing", () => {
 
         // Verify context tags were passed to Stakwork API
         const fetchCall = mockFetch.mock.calls[0];
-        const requestBody = JSON.parse(fetchCall[1].body as string);
+        const _rawRequestBody = JSON.parse(fetchCall[1].body as string);
+        const requestBody = (_rawRequestBody && typeof _rawRequestBody === 'object' && 'project' in _rawRequestBody) ? _rawRequestBody.project : _rawRequestBody;
         const vars = requestBody.workflow_params.set_var.attributes.vars;
 
         expect(vars.contextTags).toEqual(contextTags);
@@ -1027,7 +1028,8 @@ describe("callStakwork Function - Chat Message Processing", () => {
         await POST(request);
 
         const fetchCall = mockFetch.mock.calls[0];
-        const requestBody = JSON.parse(fetchCall[1].body as string);
+        const _rawRequestBody = JSON.parse(fetchCall[1].body as string);
+        const requestBody = (_rawRequestBody && typeof _rawRequestBody === 'object' && 'project' in _rawRequestBody) ? _rawRequestBody.project : _rawRequestBody;
 
         expect(requestBody.workflow_id).toBe(101); // First ID from "101,102,103"
       });
@@ -1048,7 +1050,8 @@ describe("callStakwork Function - Chat Message Processing", () => {
         await POST(request);
 
         const fetchCall = mockFetch.mock.calls[0];
-        const requestBody = JSON.parse(fetchCall[1].body as string);
+        const _rawRequestBody = JSON.parse(fetchCall[1].body as string);
+        const requestBody = (_rawRequestBody && typeof _rawRequestBody === 'object' && 'project' in _rawRequestBody) ? _rawRequestBody.project : _rawRequestBody;
 
         expect(requestBody.workflow_id).toBe(103); // Third ID from "101,102,103"
       });
@@ -1069,7 +1072,8 @@ describe("callStakwork Function - Chat Message Processing", () => {
         await POST(request);
 
         const fetchCall = mockFetch.mock.calls[0];
-        const requestBody = JSON.parse(fetchCall[1].body as string);
+        const _rawRequestBody = JSON.parse(fetchCall[1].body as string);
+        const requestBody = (_rawRequestBody && typeof _rawRequestBody === 'object' && 'project' in _rawRequestBody) ? _rawRequestBody.project : _rawRequestBody;
 
         expect(requestBody.workflow_id).toBe(102); // Second ID from "101,102,103"
       });
@@ -1239,7 +1243,8 @@ describe("callStakwork Function - Chat Message Processing", () => {
         await POST(request);
 
         const fetchCall = mockFetch.mock.calls[0];
-        const requestBody = JSON.parse(fetchCall[1].body as string);
+        const _rawRequestBody = JSON.parse(fetchCall[1].body as string);
+        const requestBody = (_rawRequestBody && typeof _rawRequestBody === 'object' && 'project' in _rawRequestBody) ? _rawRequestBody.project : _rawRequestBody;
         const vars = requestBody.workflow_params.set_var.attributes.vars;
 
         expect(vars).toMatchObject({
@@ -1309,7 +1314,8 @@ describe("callStakwork Function - Chat Message Processing", () => {
         await POST(request);
 
         const fetchCall = mockFetch.mock.calls[0];
-        const requestBody = JSON.parse(fetchCall[1].body as string);
+        const _rawRequestBody = JSON.parse(fetchCall[1].body as string);
+        const requestBody = (_rawRequestBody && typeof _rawRequestBody === 'object' && 'project' in _rawRequestBody) ? _rawRequestBody.project : _rawRequestBody;
 
         expect(requestBody.webhook_url).toBe(
           `http://localhost:3000/api/stakwork/webhook?task_id=${mockTaskId}`
@@ -1386,7 +1392,8 @@ describe("callStakwork Function - Chat Message Processing", () => {
         expect(mockS3Service.generatePresignedDownloadUrl).toHaveBeenCalledWith("uploads/file2.jpg");
 
         const fetchCall = mockFetch.mock.calls[0];
-        const requestBody = JSON.parse(fetchCall[1].body as string);
+        const _rawRequestBody = JSON.parse(fetchCall[1].body as string);
+        const requestBody = (_rawRequestBody && typeof _rawRequestBody === 'object' && 'project' in _rawRequestBody) ? _rawRequestBody.project : _rawRequestBody;
         const vars = requestBody.workflow_params.set_var.attributes.vars;
 
         expect(vars.attachments).toEqual([
