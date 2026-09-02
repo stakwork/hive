@@ -207,6 +207,7 @@ model SourceControlOrg {
   canvases             Canvas[]
   initiatives          Initiative[]
   researches           Research[]
+  htmlPages            HtmlPage[]
   automations          Automation[]
   urnEdges             UrnEdge[]
   mcpServers           OrgMcpServer[]
@@ -1375,6 +1376,7 @@ enum ArtifactType {
   PUBLISH_SCRIPT
   PUBLISH_PROMPT
   PUBLISH_SKILL
+  HTML
 }
 
 enum UserRole {
@@ -1977,6 +1979,28 @@ model Research {
   @@index([orgId])
   @@index([initiativeId])
   @@map("researches")
+}
+
+/// Org-scoped HTML page artifact. Body lives in S3; this row is a pointer
+/// (slug + s3Key) so Canvas Chat and plan/task ArtifactType.HTML can share
+/// one object. No HTML body column and no public URL.
+model HtmlPage {
+  id          String           @id @default(cuid())
+  slug        String
+  title       String
+  s3Key       String           @map("s3_key")
+  size        Int
+  contentType String           @default("text/html; charset=utf-8") @map("content_type")
+  uploadedAt  DateTime         @default(now()) @map("uploaded_at")
+  orgId       String           @map("org_id")
+  createdBy   String           @map("created_by")
+  org         SourceControlOrg @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  createdAt   DateTime         @default(now()) @map("created_at")
+  updatedAt   DateTime         @updatedAt @map("updated_at")
+
+  @@unique([orgId, slug])
+  @@index([orgId])
+  @@map("html_pages")
 }
 
 model Milestone {
