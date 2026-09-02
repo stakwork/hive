@@ -23,13 +23,14 @@ import {
 import { Switch } from "@/components/ui/switch";
 import type { LlmModel, LlmProvider } from "@prisma/client";
 
-const PROVIDERS: LlmProvider[] = ["GOOGLE", "ANTHROPIC", "OPENAI", "AWS_BEDROCK", "OTHER"];
+const PROVIDERS: LlmProvider[] = ["GOOGLE", "ANTHROPIC", "OPENAI", "AWS_BEDROCK", "XAI", "OTHER"];
 
 const PROVIDER_LABELS: Record<LlmProvider, string> = {
   GOOGLE: "Google",
   ANTHROPIC: "Anthropic",
   OPENAI: "OpenAI",
   AWS_BEDROCK: "AWS Bedrock",
+  XAI: "xAI",
   OTHER: "Other",
 };
 

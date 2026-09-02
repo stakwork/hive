@@ -30,6 +30,7 @@ export const PROVIDER_DISPLAY_LABELS: Record<string, string> = {
   GOOGLE: "Google",
   AWS_BEDROCK: "AWS Bedrock",
   OPENROUTER: "OpenRouter",
+  XAI: "xAI",
 };
 
 // Valid model names that can be passed from frontend
@@ -67,6 +68,10 @@ export const PROVIDER_API_KEY_ENV_VARS: Record<string, string | null> = {
   GOOGLE: "GOOGLE_API_KEY",
   AWS_BEDROCK: "AWS_BEDROCK_API_KEY",
   OPENROUTER: "OPENROUTER_API_KEY",
+  // Direct xAI credential — Grok models resolve to `xai/<name>` and use
+  // this key instead of routing through OpenRouter. See the "Add xAI"
+  // feature notes for the Bifrost/canvas-agent gaps this doesn't cover yet.
+  XAI: "XAI_API_KEY",
   OTHER: null,
 };
 

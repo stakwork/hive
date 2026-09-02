@@ -70,13 +70,22 @@ export function CanvasAgentSettingsPopover({
     };
   }, []);
 
-  // Load the available models for the picker.
+  // Load the available models for the picker. xAI/Grok rows are excluded
+  // here specifically (not just left to the server-side key filter) —
+  // `aieo` (the canvas agent's LLM SDK, ^0.1.34) has no xai provider
+  // entry yet, so `runCanvasAgent` throws a visible error rather than
+  // silently answering as Anthropic if one is selected. Hiding it from
+  // this picker means users never hit that error in the first place.
+  // Remove this filter once aieo supports xai — see the "Add xAI"
+  // feature notes.
   useEffect(() => {
     let cancelled = false;
     fetch("/api/llm-models")
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
-        if (!cancelled && data?.models) setModels(data.models);
+        if (!cancelled && data?.models) {
+          setModels((data.models as LlmModelOption[]).filter((m) => m.provider !== "XAI"));
+        }
       })
       .catch(() => {
         /* leave empty; picker stays hidden until a retry */

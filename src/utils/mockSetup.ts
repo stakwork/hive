@@ -1026,6 +1026,20 @@ export async function ensureMockLlmModels(): Promise<void> {
       inputPricePer1M: 3,
       outputPricePer1M: 15,
     },
+    {
+      // xAI/Grok — exercises "users pick it from the existing model
+      // dropdowns" for the new direct-provider path before production.
+      // Like the Anthropic rows above, this must be a real xAI model id
+      // since it's threaded straight through as the model id. Note this
+      // row is still subject to the `/api/llm-models` env-key filter
+      // (see isProviderKeyConfigured in src/app/api/llm-models/route.ts)
+      // — it only appears in pickers when `XAI_API_KEY` is also set in
+      // this environment, same as any other provider.
+      name: "grok-4",
+      provider: LlmProvider.XAI,
+      inputPricePer1M: 3,
+      outputPricePer1M: 15,
+    },
   ];
 
   for (const m of models) {
