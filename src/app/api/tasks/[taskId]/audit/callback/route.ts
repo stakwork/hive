@@ -10,8 +10,6 @@ export const fetchCache = "force-no-store";
 
 const encryptionService = EncryptionService.getInstance();
 
-const MAX_EVIDENCE_ARTIFACTS = 20;
-
 export async function POST(request: NextRequest, { params }: { params: Promise<{ taskId: string }> }) {
   try {
     const { taskId } = await params;
@@ -73,28 +71,6 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
     const evidence = Array.isArray(verdict.evidence) ? verdict.evidence : [];
 
-    const evidenceArtifacts = evidence.slice(0, MAX_EVIDENCE_ARTIFACTS).map((item) => {
-      if (item.kind === "screenshot") {
-        return {
-          type: ArtifactType.LONGFORM,
-          content: {
-            title: item.summary || "Screenshot",
-            text: `![screenshot](data:image/png;base64,${item.data ?? ""})`,
-          } as unknown as Prisma.InputJsonValue,
-          icon: "image",
-        };
-      }
-
-      return {
-        type: ArtifactType.LONGFORM,
-        content: {
-          title: item.summary ? `${item.kind}: ${item.summary}` : item.kind,
-          text: "```\n" + (item.data ?? "") + "\n```",
-        } as unknown as Prisma.InputJsonValue,
-        icon: "logs",
-      };
-    });
-
     await db.chatMessage.create({
       data: {
         taskId,
@@ -117,7 +93,6 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
               } as unknown as Prisma.InputJsonValue,
               icon: "verify",
             },
-            ...evidenceArtifacts,
           ],
         },
       },
