@@ -17,7 +17,8 @@
  */
 
 import { readFileSync } from "fs";
-import { resolveGeneratedArtifact } from "@/lib/run-report/export/generated-artifact";
+import { join } from "path";
+import { firstExistingPath } from "@/lib/run-report/export/generated-artifact";
 import { escapeForInlineScript } from "@/lib/run-report/export/json-escape";
 import type { CascadeExportPayload } from "./payload";
 
@@ -25,8 +26,27 @@ import type { CascadeExportPayload } from "./payload";
 
 const cache = new Map<string, string>();
 
-/** Project-relative home of the generated artifacts (also their traced path). */
-const ARTIFACT_DIR = "src/lib/legal-cascade/export";
+type ArtifactName = "cascade-offline.css" | "cascade-offline.js";
+
+/**
+ * Candidate locations per artifact, spelled out as literals at each call so
+ * Next's file tracer resolves them to exactly these files (see
+ * firstExistingPath for why a parameterised join must not be used).
+ */
+function artifactPath(name: ArtifactName): string {
+  switch (name) {
+    case "cascade-offline.css":
+      return firstExistingPath(
+        join(process.cwd(), "src/lib/legal-cascade/export/cascade-offline.css"),
+        join(__dirname, "cascade-offline.css"),
+      );
+    case "cascade-offline.js":
+      return firstExistingPath(
+        join(process.cwd(), "src/lib/legal-cascade/export/cascade-offline.js"),
+        join(__dirname, "cascade-offline.js"),
+      );
+  }
+}
 
 /** Thrown when the page bundle is missing: a document without it is blank. */
 export class CascadeBundleMissingError extends Error {
@@ -42,12 +62,12 @@ export class CascadeBundleMissingError extends Error {
 /**
  * Reads a generated, gitignored artifact once. Resolved from the project
  * root (where Next's output file tracing puts it in production) with the
- * source directory as a fallback — never from `__dirname`, which points at
- * the compiled chunk inside a server bundle, not at this file.
+ * source directory as a fallback — never from `__dirname` alone, which
+ * points at the compiled chunk inside a server bundle, not at this file.
  */
-function readGenerated(name: string): { content: string; path: string } {
+function readGenerated(name: ArtifactName): { content: string; path: string } {
   const cached = cache.get(name);
-  const path = resolveGeneratedArtifact(ARTIFACT_DIR, name, __dirname);
+  const path = artifactPath(name);
   if (cached !== undefined) return { content: cached, path };
   let content = "";
   try {
