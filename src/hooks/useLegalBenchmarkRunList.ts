@@ -61,6 +61,9 @@ export interface BenchmarkRunListRow {
   requestedModel?: string;
   /** Operator-chosen judge model (bare name). Absent on legacy runs. */
   requestedJudgeModel?: string;
+  // The Legal Benchmark runs table no longer renders a Chat column — these
+  // fields are parsed and retained deliberately (chat data/generation still
+  // happen), not dead code.
   /** Operator checked "Jamie Chat" at run creation (legacy key name) */
   generateJamieChat?: boolean;
   /** Jamie chat lifecycle: "generating" | "completed" | "failed" */
