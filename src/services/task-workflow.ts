@@ -991,7 +991,7 @@ export async function callStakworkAPI(params: {
   try {
     const response = await fetch(stakworkURL, {
       method: "POST",
-      body: JSON.stringify({ project: stakworkPayload }),
+      body: JSON.stringify(stakworkPayload),
       headers: {
         Authorization: `Token token=${config.STAKWORK_API_KEY}`,
         "Content-Type": "application/json",
