@@ -530,8 +530,8 @@ export function BenchmarkRunsHistory({
     );
   }
 
-  // colSpan: Task + Type + Started + Runner Status + Pass + Total + Contested +
-  // Disputed + Chat + Report + (Stakwork if super admin)
+  // colSpan: Task + Type + Started + Runner Status + Pass + Fail + Contested +
+  // Disputed + Total + Report + (Stakwork if super admin)
   const colSpan = isSuperAdmin ? 11 : 10;
 
   return (
@@ -609,7 +609,14 @@ export function BenchmarkRunsHistory({
               <th className="text-left px-4 py-3 font-medium text-muted-foreground">Started</th>
               <th className="text-left px-4 py-3 font-medium text-muted-foreground">Runner Status</th>
               <th className="text-left px-4 py-3 font-medium text-muted-foreground">Pass</th>
-              <th className="text-left px-4 py-3 font-medium text-muted-foreground">Total</th>
+              <th className="text-left px-4 py-3 font-medium text-muted-foreground">
+                <span
+                  className="cursor-help"
+                  title="Criteria scored and not passed. Contested definitions are excluded from this count."
+                >
+                  Fail
+                </span>
+              </th>
               <th className="text-left px-4 py-3 font-medium text-muted-foreground">
                 <span
                   className="cursor-help"
@@ -626,7 +633,7 @@ export function BenchmarkRunsHistory({
                   Disputed
                 </span>
               </th>
-              <th className="text-left px-4 py-3 font-medium text-muted-foreground">Chat</th>
+              <th className="text-left px-4 py-3 font-medium text-muted-foreground">Total</th>
               <th className="text-left px-4 py-3 font-medium text-muted-foreground">Report</th>
               {isSuperAdmin && (
                 <th className="text-left px-4 py-3 font-medium text-muted-foreground">Stakwork</th>
@@ -702,7 +709,7 @@ export function BenchmarkRunsHistory({
                     <PassCell run={run} />
                   </td>
                   <td className="px-4 py-3">
-                    <TotalCell run={run} />
+                    <FailCell run={run} />
                   </td>
                   <td className="px-4 py-3">
                     <ContestedCountCell run={run} />
@@ -710,12 +717,8 @@ export function BenchmarkRunsHistory({
                   <td className="px-4 py-3">
                     <DisputedCountCell run={run} />
                   </td>
-                  <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
-                    {run.runType === "manual" ? (
-                      <ChatCell run={run} />
-                    ) : (
-                      <span className="text-muted-foreground/60">—</span>
-                    )}
+                  <td className="px-4 py-3">
+                    <TotalCell run={run} />
                   </td>
                   <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
                     {/* Report bundles land on recursion rows too (reportUrl
@@ -809,9 +812,10 @@ function TaskProgressCard({
 
 /**
  * The run report bundle — the nine-section report built from the Harvey
- * runner's S3 output. A DIFFERENT artifact from the Jamie chat next door: this
- * one is produced by the runner itself and rendered natively by Hive, while the
- * chat is an org-canvas conversation written afterwards by the canvas agent.
+ * runner's S3 output. Produced by the runner itself and rendered natively by
+ * Hive. (The Jamie chat — an org-canvas conversation written afterwards by
+ * the canvas agent — is a separate artifact; its data is still generated and
+ * fetched, but this table no longer renders a column for it.)
  *
  * `hasReport` is derived server-side from the presence of the persisted
  * projection — never from the bundle URL, which does not reach this component.
@@ -837,46 +841,6 @@ function ReportCell({ run, slug }: { run: BenchmarkRunListRow; slug?: string }) 
   // completion webhook is fetching the bundle right now. A FAILED run can still
   // deliver a report, so it is not excluded here (unlike the chat).
   if (run.generateRunReport) {
-    return (
-      <span className="inline-flex items-center gap-1 text-xs text-muted-foreground whitespace-nowrap">
-        <Loader2 className="h-3 w-3 animate-spin" />
-        Pending
-      </span>
-    );
-  }
-
-  return <span className="text-muted-foreground">—</span>;
-}
-
-/**
- * The Jamie chat produced by `generateBenchmarkJamieChat` — an org-canvas
- * conversation. Distinct from the run report bundle, which has its own column.
- */
-function ChatCell({ run }: { run: BenchmarkRunListRow }) {
-  if (run.jamieChatPath) {
-    return (
-      <a
-        href={run.jamieChatPath}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="inline-flex items-center gap-1 text-primary whitespace-nowrap"
-        data-testid="report-chat-link"
-        title="View Chat"
-        aria-label="View Chat"
-      >
-        <ExternalLink className="h-3 w-3" />
-      </a>
-    );
-  }
-
-  if (run.jamieChatStatus === "failed") {
-    return <span className="text-xs text-destructive">Failed</span>;
-  }
-
-  // Requested but not yet started/written (run still executing, or the
-  // completion webhook is generating the chat right now). A FAILED run
-  // never triggers a chat, so fall through to the dash instead.
-  if (run.generateJamieChat && run.status !== WorkflowStatus.FAILED) {
     return (
       <span className="inline-flex items-center gap-1 text-xs text-muted-foreground whitespace-nowrap">
         <Loader2 className="h-3 w-3 animate-spin" />
@@ -935,6 +899,46 @@ function PassCell({ run }: { run: AdjustedRun }) {
         </Badge>
       )}
     </div>
+  );
+}
+
+/**
+ * Failed-criteria count, threaded straight from `AdjustedRun.n_failed`
+ * (computed once in `rubricBreakdown`, never recomputed here). Two accepted
+ * divergences from neighbouring cells, left as-is deliberately:
+ *  (a) The visible columns need not sum to Total. `n_failed` is
+ *      `scorable − pass` against a TRUE UNION of contested criteria, while
+ *      `ContestedCountCell` renders `score.contested` =
+ *      `Math.max(rosterContested, contestedInRun)` — a strictly smaller set
+ *      on some rows (rubric-scoring.ts). Pass + Fail + Contested can land
+ *      short of Total.
+ *  (b) On rows where `rubricBreakdown` clamps `pass` to `scorable`
+ *      (rubric-scoring.ts), Fail shows `0` while `PassCell` renders the
+ *      *unclamped* `run.n_passed` — so Pass can visibly exceed
+ *      `Total − Contested`. `PassCell` is intentionally left alone here;
+ *      changing what Pass renders would alter displayed scores, which is out
+ *      of scope. Reconciling the two contested sets is a follow-up in
+ *      rubric-scoring.ts, not part of this cell.
+ */
+function FailCell({ run }: { run: AdjustedRun }) {
+  if (!hasScoreData(run)) {
+    return <span className="text-muted-foreground/60">—</span>;
+  }
+  if (typeof run.n_failed !== "number") {
+    return (
+      <span
+        className="text-xs text-muted-foreground/60 cursor-help"
+        title="Failure count is unknown for this run — its score was recorded without a rubric breakdown."
+        data-testid="fail-cell-unknown"
+      >
+        n/a
+      </span>
+    );
+  }
+  return (
+    <span className="text-sm tabular-nums" data-testid="fail-cell-count">
+      {run.n_failed}
+    </span>
   );
 }
 
