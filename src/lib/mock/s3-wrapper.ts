@@ -71,6 +71,14 @@ export class S3MockWrapper {
   }
 
   /**
+   * Check whether a key is already in mock storage. Unlike `getFile` /
+   * `getObject`, this does NOT auto-create a missing object.
+   */
+  fileExists(key: string): boolean {
+    return s3MockState.fileExists(key);
+  }
+
+  /**
    * Store an object in mock S3 storage
    */
   async putObject(
