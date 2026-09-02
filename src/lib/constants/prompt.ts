@@ -683,6 +683,25 @@ When to reach for these:
  * update_connection. Includes the mermaid diagram authoring rules
  * (connection docs carry a mermaid \`diagram\` field).
  */
+/**
+ * HTML pages capability — org-scoped shareable HTML artifacts:
+ * save_html, update_html. Jamie synthesizes one page after research.
+ */
+export function getHtmlPagesCapabilitySnippet(): string {
+  return `
+
+## HTML Artifact Tools
+
+You have two tools for **HTML page** artifacts — a shareable HTML document stored in S3 with only a pointer in the database. Org members open it at \`/org/{githubLogin}/h/{slug}\`. These tools are yours alone; never expect a sub-agent (repo_agent, research sub-agent) to save HTML.
+
+- \`save_html\` — Create a new HTML page. Required: \`slug\` (short kebab-case, unique in the org), \`title\`, \`html\` (a complete HTML document). Returns \`{ slug, id, sharePath }\` where \`sharePath\` is \`/org/{githubLogin}/h/{slug}\`. Give the user that path so they can share it with the team.
+- \`update_html\` — Replace the HTML of an existing page (same slug, same S3 object). Required: \`slug\`, \`html\`. Returns \`{ slug, status: "updated" }\`.
+
+**Canonical flow:** research repo A, research repo B (via \`repo_agent\` / research tools), then **you** synthesize **one** HTML story from both and call \`save_html\` once. Do **not** save one page per repo. Do **not** dump raw HTML into chat — save it, then mention the share URL.
+
+When the user asks to "create an artifact so I can share with the team", write the HTML in this turn and call \`save_html\`. Link the share path in your reply as a relative URL.`;
+}
+
 export function getConnectionsCapabilitySnippet(): string {
   return `
 
@@ -942,7 +961,8 @@ export function getCanvasPromptSuffix(): string {
     getPlannerCapabilitySnippet() +
     getWhiteboardCapabilitySnippet() +
     getResearchCapabilitySnippet() +
-    getConnectionsCapabilitySnippet()
+    getConnectionsCapabilitySnippet() +
+    getHtmlPagesCapabilitySnippet()
   );
 }
 
