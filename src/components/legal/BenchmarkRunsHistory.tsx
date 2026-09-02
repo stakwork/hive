@@ -609,7 +609,14 @@ export function BenchmarkRunsHistory({
               <th className="text-left px-4 py-3 font-medium text-muted-foreground">Started</th>
               <th className="text-left px-4 py-3 font-medium text-muted-foreground">Runner Status</th>
               <th className="text-left px-4 py-3 font-medium text-muted-foreground">Pass</th>
-              <th className="text-left px-4 py-3 font-medium text-muted-foreground">Total</th>
+              <th className="text-left px-4 py-3 font-medium text-muted-foreground">
+                <span
+                  className="cursor-help"
+                  title="Criteria scored and not passed. Contested definitions are excluded from this count."
+                >
+                  Fail
+                </span>
+              </th>
               <th className="text-left px-4 py-3 font-medium text-muted-foreground">
                 <span
                   className="cursor-help"
@@ -626,6 +633,7 @@ export function BenchmarkRunsHistory({
                   Disputed
                 </span>
               </th>
+              <th className="text-left px-4 py-3 font-medium text-muted-foreground">Total</th>
               <th className="text-left px-4 py-3 font-medium text-muted-foreground">Report</th>
               {isSuperAdmin && (
                 <th className="text-left px-4 py-3 font-medium text-muted-foreground">Stakwork</th>
@@ -701,13 +709,16 @@ export function BenchmarkRunsHistory({
                     <PassCell run={run} />
                   </td>
                   <td className="px-4 py-3">
-                    <TotalCell run={run} />
+                    <FailCell run={run} />
                   </td>
                   <td className="px-4 py-3">
                     <ContestedCountCell run={run} />
                   </td>
                   <td className="px-4 py-3">
                     <DisputedCountCell run={run} />
+                  </td>
+                  <td className="px-4 py-3">
+                    <TotalCell run={run} />
                   </td>
                   <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
                     {/* Report bundles land on recursion rows too (reportUrl
@@ -888,6 +899,46 @@ function PassCell({ run }: { run: AdjustedRun }) {
         </Badge>
       )}
     </div>
+  );
+}
+
+/**
+ * Failed-criteria count, threaded straight from `AdjustedRun.n_failed`
+ * (computed once in `rubricBreakdown`, never recomputed here). Two accepted
+ * divergences from neighbouring cells, left as-is deliberately:
+ *  (a) The visible columns need not sum to Total. `n_failed` is
+ *      `scorable − pass` against a TRUE UNION of contested criteria, while
+ *      `ContestedCountCell` renders `score.contested` =
+ *      `Math.max(rosterContested, contestedInRun)` — a strictly smaller set
+ *      on some rows (rubric-scoring.ts). Pass + Fail + Contested can land
+ *      short of Total.
+ *  (b) On rows where `rubricBreakdown` clamps `pass` to `scorable`
+ *      (rubric-scoring.ts), Fail shows `0` while `PassCell` renders the
+ *      *unclamped* `run.n_passed` — so Pass can visibly exceed
+ *      `Total − Contested`. `PassCell` is intentionally left alone here;
+ *      changing what Pass renders would alter displayed scores, which is out
+ *      of scope. Reconciling the two contested sets is a follow-up in
+ *      rubric-scoring.ts, not part of this cell.
+ */
+function FailCell({ run }: { run: AdjustedRun }) {
+  if (!hasScoreData(run)) {
+    return <span className="text-muted-foreground/60">—</span>;
+  }
+  if (typeof run.n_failed !== "number") {
+    return (
+      <span
+        className="text-xs text-muted-foreground/60 cursor-help"
+        title="Failure count is unknown for this run — its score was recorded without a rubric breakdown."
+        data-testid="fail-cell-unknown"
+      >
+        n/a
+      </span>
+    );
+  }
+  return (
+    <span className="text-sm tabular-nums" data-testid="fail-cell-count">
+      {run.n_failed}
+    </span>
   );
 }
 
