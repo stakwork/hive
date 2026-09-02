@@ -1998,6 +1998,16 @@ model HtmlPage {
   org         SourceControlOrg @relation(fields: [orgId], references: [id], onDelete: Cascade)
   createdAt   DateTime         @default(now()) @map("created_at")
   updatedAt   DateTime         @updatedAt @map("updated_at")
+  // Server-generated bearer secret for a future public (non-membership-
+  // gated) link. Unlike `SharedConversation` — which has no dedicated
+  // secret column and instead exposes its own cuid `id` plus an
+  // `isShared` flag — `HtmlPage` needs an address that is NEVER the
+  // model-chosen, guessable `slug`. This is a new pattern for this
+  // codebase, not a reuse of an existing one. `null` means "no public
+  // link exists"; minted via `mintHtmlPageShareRef`, revoked via
+  // `clearHtmlPageShareRef`. Not wired into any route yet — exclude it
+  // from every select/return shape until a public route is built.
+  shareRef    String?          @unique @map("share_ref")
 
   @@unique([orgId, slug])
   @@index([orgId])

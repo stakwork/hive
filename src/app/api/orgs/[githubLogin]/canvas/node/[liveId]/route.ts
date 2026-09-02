@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
-import { db } from "@/lib/db";
+import { resolveAuthorizedOrgId } from "@/lib/auth/org-access";
 import { loadNodeDetail } from "@/services/orgs/nodeDetail";
-import { validateUserBelongsToOrg } from "@/services/workspace";
 
 /**
  * Detail endpoint for a single live canvas node.
@@ -23,6 +22,15 @@ import { validateUserBelongsToOrg } from "@/services/workspace";
  *
  * 404 covers both "entity doesn't exist" and "entity exists in a
  * different org" — never leak existence across org boundaries.
+ *
+ * Authorization goes through `resolveAuthorizedOrgId` (the same helper
+ * used by the HTML body proxy and the org-resource CRUD routes) rather
+ * than `validateUserBelongsToOrg` + a separate org lookup — this is a
+ * live-id read surface that will soon serve HTML page detail
+ * (`html:<cuid>`), so standardizing here keeps the whole HTML route
+ * family on one convention instead of growing the split further.
+ * `requireAdmin` is `false`: any member can read a live node's detail
+ * today, same as `validateUserBelongsToOrg` allowed.
  *
  * The actual lookup logic lives in `@/services/orgs/nodeDetail` so the
  * canvas-chat agent can reuse it via `read_initiative` /
@@ -50,23 +58,16 @@ export async function GET(
   }
   const [, kind, id] = match;
 
-  const org = await db.sourceControlOrg.findUnique({
-    where: { githubLogin },
-    select: { id: true },
-  });
-  if (!org) {
-    return NextResponse.json({ error: "Organization not found" }, { status: 404 });
-  }
-
-  const isMember = await validateUserBelongsToOrg(githubLogin, userOrResponse.id);
-  if (!isMember) {
-    // Return 404 rather than 403 to avoid leaking existence of org content
-    // to non-members — consistent with the cross-org guard in loadNodeDetail.
+  const orgId = await resolveAuthorizedOrgId(githubLogin, userOrResponse.id, /* requireAdmin */ false);
+  if (!orgId) {
+    // Covers both "org doesn't exist" and "user isn't a member" — return
+    // 404 rather than 403 to avoid leaking existence of org content to
+    // non-members, consistent with the cross-org guard in loadNodeDetail.
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
   try {
-    const detail = await loadNodeDetail(kind, id, org.id);
+    const detail = await loadNodeDetail(kind, id, orgId);
     if (!detail) {
       return NextResponse.json({ error: "Node not found" }, { status: 404 });
     }
