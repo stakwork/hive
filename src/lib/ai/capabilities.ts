@@ -387,11 +387,18 @@ export const CAPABILITY_REGISTRY: Record<OrgCapability, CapabilityDefinition> =
       promptSnippet: getHtmlPagesCapabilitySnippet,
       core: false,
       menuBlurb:
-        "**html_pages** — save a shareable HTML page artifact for this org " +
-        "(`save_html` / `update_html`). Load when the user asks you to " +
-        "create an artifact they can share with the team. Research first, " +
-        "then synthesize ONE HTML story — do not save one page per repo.",
-      writeToolNames: ["save_html", "update_html"],
+        "**html_pages** — save, patch, and read a shareable HTML page " +
+        "artifact for this org (`save_html` / `update_html` / `get_html`). " +
+        "Load when the user asks you to create an artifact they can share " +
+        "with the team. Research first, then synthesize ONE HTML story — " +
+        "do not save one page per repo.",
+      // "Write" here really means "strip in readonly mode" (see the
+      // `writeToolNames` field comment above) — `get_html` returns the
+      // full page body, so a readonly sub-agent must not keep it: without
+      // this a readonly run could read a page via `get_html` and launder
+      // it into Postgres through e.g. `update_research`'s `content`
+      // field, defeating the S3-pointer-only guarantee.
+      writeToolNames: ["save_html", "update_html", "get_html"],
     },
     graph_walker: {
       buildTools: (ctx) => ({
