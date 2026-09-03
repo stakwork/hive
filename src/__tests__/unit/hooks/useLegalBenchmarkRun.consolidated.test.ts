@@ -1,16 +1,14 @@
 /**
  * @vitest-environment jsdom
  *
- * Tests for the additions made to useLegalBenchmarkRun:
+ * Tests for useLegalBenchmarkRun:
  *  1. null runId — no-op: isLoading=false, run=null, no fetch, no Pusher sub
- *  2. optional runType param — fetch URL contains the overridden type value;
- *     default remains LEGAL_BENCHMARK_RUNNER.
+ *  2. the fetched row — LEGAL_BENCHMARK_RUNNER query shape and hasReport mapping
  */
 
 import { renderHook, waitFor, act } from "@testing-library/react";
 import { vi, describe, it, expect, beforeEach, afterEach } from "vitest";
 import { useLegalBenchmarkRun } from "@/hooks/useLegalBenchmarkRun";
-import { StakworkRunType } from "@prisma/client";
 
 // ─── Mocks ────────────────────────────────────────────────────────────────────
 
@@ -111,7 +109,7 @@ describe("useLegalBenchmarkRun — null runId (no-op state)", () => {
   });
 });
 
-describe("useLegalBenchmarkRun — optional runType param", () => {
+describe("useLegalBenchmarkRun — fetched row", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     setupFetch();
@@ -121,7 +119,7 @@ describe("useLegalBenchmarkRun — optional runType param", () => {
     vi.clearAllMocks();
   });
 
-  it("defaults to LEGAL_BENCHMARK_RUNNER type in fetch URL", async () => {
+  it("queries LEGAL_BENCHMARK_RUNNER rows for the workspace with results included", async () => {
     renderHook(() => useLegalBenchmarkRun("run-xyz"));
 
     await waitFor(() => {
@@ -129,51 +127,7 @@ describe("useLegalBenchmarkRun — optional runType param", () => {
     });
 
     const url = String(vi.mocked(global.fetch).mock.calls[0][0]);
-    expect(url).toContain("LEGAL_BENCHMARK_RUNNER");
-    expect(url).not.toContain("CONSOLIDATED");
-  });
-
-  it("uses overridden runType in fetch URL when CONSOLIDATED is passed", async () => {
-    setupFetch({ type: "LEGAL_BENCHMARK_CONSOLIDATED" });
-
-    renderHook(() =>
-      useLegalBenchmarkRun("run-xyz", StakworkRunType.LEGAL_BENCHMARK_CONSOLIDATED),
-    );
-
-    await waitFor(() => {
-      expect(global.fetch).toHaveBeenCalledOnce();
-    });
-
-    const url = String(vi.mocked(global.fetch).mock.calls[0][0]);
-    expect(url).toContain("LEGAL_BENCHMARK_CONSOLIDATED");
-    expect(url).not.toContain("LEGAL_BENCHMARK_RUNNER");
-  });
-
-  it("uses overridden runType RECURSION in fetch URL", async () => {
-    setupFetch({ type: "LEGAL_BENCHMARK_RECURSION" });
-
-    renderHook(() =>
-      useLegalBenchmarkRun("run-xyz", StakworkRunType.LEGAL_BENCHMARK_RECURSION),
-    );
-
-    await waitFor(() => {
-      expect(global.fetch).toHaveBeenCalledOnce();
-    });
-
-    const url = String(vi.mocked(global.fetch).mock.calls[0][0]);
-    expect(url).toContain("LEGAL_BENCHMARK_RECURSION");
-  });
-
-  it("existing callers with just runId string get RUNNER behaviour unchanged", async () => {
-    // Simulate an existing caller passing only the runId (no type).
-    renderHook(() => useLegalBenchmarkRun("run-xyz"));
-
-    await waitFor(() => {
-      expect(global.fetch).toHaveBeenCalledOnce();
-    });
-
-    const url = String(vi.mocked(global.fetch).mock.calls[0][0]);
-    expect(url).toContain("LEGAL_BENCHMARK_RUNNER");
+    expect(url).toContain("type=LEGAL_BENCHMARK_RUNNER");
     expect(url).toContain("workspace-123");
     expect(url).toContain("includeResult=true");
   });

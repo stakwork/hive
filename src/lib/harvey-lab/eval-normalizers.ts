@@ -60,6 +60,17 @@ export type RawJarvisNode = {
 };
 
 /**
+ * Convert a Jarvis `date_added_to_graph` epoch-seconds stamp (number or
+ * numeric string) to ISO; null when absent or unparseable.
+ */
+export function graphEpochToIso(raw: number | string | null | undefined): string | null {
+  if (raw == null || raw === "") return null;
+  const seconds = typeof raw === "number" ? raw : parseFloat(raw);
+  if (!Number.isFinite(seconds) || seconds <= 0) return null;
+  return new Date(seconds * 1000).toISOString();
+}
+
+/**
  * Parse n_passed/n_total from judge_notes as a fallback for older hive-written nodes
  * whose properties don't carry these fields.
  * Format: "{n_passed}/{n_total} criteria passed…"
