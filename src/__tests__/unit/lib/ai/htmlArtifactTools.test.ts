@@ -1,44 +1,57 @@
 /**
- * Unit tests for save_html / update_html.
+ * Unit tests for save_html / update_html / get_html.
  *
  * Coverage:
  *   - save_html creates a pointer-only HtmlPage row + S3 object
  *   - duplicate slug returns a structured { error }, not a throw
- *   - update_html overwrites the same s3Key (no new key)
+ *   - update_html: full-replace mode, targeted-edits mode, both/neither
+ *     rejected, mismatched edit writes nothing, compare-and-swap on a
+ *     concurrent write writes nothing
+ *   - get_html: happy path, over-cap refusal, cross-org/missing both
+ *     return the identical not-found shape
+ *   - slug format is enforced on all three tools
  *   - orgId / userId come from the closure, never tool args
  *   - foreign / malformed s3Key is rejected
- *   - html_pages write tools are registered; research.writeToolNames
- *     does not include them
+ *   - html_pages write tools are registered (incl. get_html); research's
+ *     writeToolNames does not include them
  */
 
 import { describe, test, expect, vi, beforeEach } from "vitest";
 import { Prisma } from "@prisma/client";
 
-const putObject = vi.fn(async () => undefined);
-const generateOrgUploadPath = vi.fn(
-  (orgId: string, filename: string) =>
-    `orgs/${orgId}/canvas/123_${filename}`,
-);
-const validateFileSize = vi.fn((size: number) => size <= 10 * 1024 * 1024);
-const getObject = vi.fn();
-const fileExists = vi.fn(() => true);
-
-vi.mock("@/services/s3", () => ({
-  getS3Service: () => ({
-    putObject,
-    generateOrgUploadPath,
-    validateFileSize,
-    getObject,
-    fileExists,
-  }),
-}));
+vi.mock("@/services/html-pages", () => {
+  class HtmlPageSizeError extends Error {
+    constructor() {
+      super("HTML exceeds the 10MB size limit");
+      this.name = "HtmlPageSizeError";
+    }
+  }
+  class HtmlPageKeyError extends Error {
+    constructor(message = "s3Key is not owned by this org") {
+      super(message);
+      this.name = "HtmlPageKeyError";
+    }
+  }
+  return {
+    HTML_CONTENT_TYPE: "text/html; charset=utf-8",
+    HtmlPageSizeError,
+    HtmlPageKeyError,
+    isOrgOwnedS3Key: vi.fn(
+      (orgId: string, s3Key: string) =>
+        typeof s3Key === "string" && s3Key.startsWith(`orgs/${orgId}/`),
+    ),
+    putHtmlPageObject: vi.fn(),
+    overwriteHtmlPageObject: vi.fn(),
+    getHtmlPageBytes: vi.fn(),
+    assertHtmlSize: vi.fn(),
+  };
+});
 
 vi.mock("@/lib/db", () => ({
   db: {
     sourceControlOrg: { findUnique: vi.fn() },
     htmlPage: {
       create: vi.fn(),
-      findUnique: vi.fn(),
       update: vi.fn(),
     },
     $transaction: vi.fn(),
@@ -99,47 +112,99 @@ vi.mock("@/lib/ai/capabilityGates", () => ({
 }));
 
 import { db } from "@/lib/db";
-import { buildHtmlArtifactTools } from "@/lib/ai/htmlArtifactTools";
+import { buildHtmlArtifactTools, GET_HTML_MAX_BYTES } from "@/lib/ai/htmlArtifactTools";
 import {
   CAPABILITY_REGISTRY,
   ALL_CAPABILITIES,
   composeWriteToolNames,
 } from "@/lib/ai/capabilities";
-import { HTML_CONTENT_TYPE } from "@/services/html-pages";
+import {
+  HTML_CONTENT_TYPE,
+  getHtmlPageBytes,
+  overwriteHtmlPageObject,
+  putHtmlPageObject,
+  isOrgOwnedS3Key,
+  assertHtmlSize,
+  HtmlPageSizeError,
+} from "@/services/html-pages";
 
 const ORG_ID = "org-1";
 const USER_ID = "user-1";
 const HTML = "<!DOCTYPE html><html><body>hi</body></html>";
+const SLUG = "team-story";
+const S3_KEY = `orgs/${ORG_ID}/canvas/123_${SLUG}.html`;
+const READ_UPDATED_AT = new Date("2024-01-01T00:00:00.000Z");
 
 type ExecTool = { execute: (args: unknown) => Promise<unknown> };
+type SchemaTool = { inputSchema: { safeParse: (v: unknown) => { success: boolean } } };
 
 function tools(orgId = ORG_ID, userId = USER_ID) {
   return buildHtmlArtifactTools(orgId, userId);
 }
 
-describe("save_html / update_html", () => {
+/** Default: transaction runs the callback against a tx whose updateMany succeeds (count 1). */
+function mockCasSuccess() {
+  (db.$transaction as ReturnType<typeof vi.fn>).mockImplementation(
+    async (cb: (tx: { htmlPage: { updateMany: () => Promise<{ count: number }> } }) => Promise<number>) =>
+      cb({ htmlPage: { updateMany: async () => ({ count: 1 }) } }),
+  );
+}
+
+/** Simulate a concurrent write racing the CAS: updateMany matches zero rows. */
+function mockCasConflict() {
+  (db.$transaction as ReturnType<typeof vi.fn>).mockImplementation(
+    async (cb: (tx: { htmlPage: { updateMany: () => Promise<{ count: number }> } }) => Promise<number>) =>
+      cb({ htmlPage: { updateMany: async () => ({ count: 0 }) } }),
+  );
+}
+
+function mockExistingPage(overrides: Partial<{
+  slug: string;
+  s3Key: string;
+  updatedAt: Date;
+  bytes: string;
+}> = {}) {
+  const page = {
+    id: "page-1",
+    slug: overrides.slug ?? SLUG,
+    title: "Team Story",
+    s3Key: overrides.s3Key ?? S3_KEY,
+    size: 100,
+    contentType: HTML_CONTENT_TYPE,
+    uploadedAt: new Date(),
+    orgId: ORG_ID,
+    createdBy: USER_ID,
+    updatedAt: overrides.updatedAt ?? READ_UPDATED_AT,
+  };
+  (getHtmlPageBytes as ReturnType<typeof vi.fn>).mockResolvedValue({
+    page,
+    bytes: Buffer.from(overrides.bytes ?? HTML, "utf8"),
+  });
+  return page;
+}
+
+describe("save_html", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    generateOrgUploadPath.mockImplementation(
-      (orgId: string, filename: string) => `orgs/${orgId}/canvas/123_${filename}`,
+    (isOrgOwnedS3Key as ReturnType<typeof vi.fn>).mockImplementation(
+      (orgId: string, s3Key: string) => s3Key.startsWith(`orgs/${orgId}/`),
     );
-    validateFileSize.mockImplementation((size: number) => size <= 10 * 1024 * 1024);
-    putObject.mockResolvedValue(undefined);
+    (putHtmlPageObject as ReturnType<typeof vi.fn>).mockResolvedValue({
+      s3Key: S3_KEY,
+      size: Buffer.byteLength(HTML, "utf8"),
+    });
     (db.sourceControlOrg.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({
       githubLogin: "acme",
     });
     (db.htmlPage.create as ReturnType<typeof vi.fn>).mockResolvedValue({
       id: "page-1",
-      slug: "team-story",
+      slug: SLUG,
     });
-    (db.$transaction as ReturnType<typeof vi.fn>).mockImplementation(
-      async (fn: (tx: typeof db) => Promise<unknown>) => fn(db),
-    );
   });
 
-  test("save_html uploads S3 object and creates a pointer-only row", async () => {
+  test("uploads S3 object and creates a pointer-only row", async () => {
     const result = await (tools().save_html as ExecTool).execute({
-      slug: "team-story",
+      slug: SLUG,
       title: "Team Story",
       html: HTML,
       orgId: "attacker-org",
@@ -147,23 +212,13 @@ describe("save_html / update_html", () => {
       s3Key: "orgs/other/canvas/evil.html",
     });
 
-    expect(generateOrgUploadPath).toHaveBeenCalledWith(ORG_ID, "team-story.html");
-    expect(putObject).toHaveBeenCalledWith(
-      `orgs/${ORG_ID}/canvas/123_team-story.html`,
-      expect.any(Buffer),
-      HTML_CONTENT_TYPE,
-    );
-    const uploaded = putObject.mock.calls[0][1] as Buffer;
-    expect(uploaded.toString("utf8")).toBe(HTML);
-
+    expect(putHtmlPageObject).toHaveBeenCalledWith(ORG_ID, HTML, `${SLUG}.html`);
     expect(db.htmlPage.create).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
-          slug: "team-story",
+          slug: SLUG,
           title: "Team Story",
-          s3Key: `orgs/${ORG_ID}/canvas/123_team-story.html`,
-          size: Buffer.byteLength(HTML, "utf8"),
-          contentType: HTML_CONTENT_TYPE,
+          s3Key: S3_KEY,
           orgId: ORG_ID,
           createdBy: USER_ID,
         }),
@@ -173,12 +228,11 @@ describe("save_html / update_html", () => {
       .calls[0][0].data as Record<string, unknown>;
     expect(createData).not.toHaveProperty("html");
     expect(createData).not.toHaveProperty("body");
-    expect(createData).not.toHaveProperty("url");
 
     expect(result).toEqual({
-      slug: "team-story",
+      slug: SLUG,
       id: "page-1",
-      sharePath: "/org/acme/h/team-story",
+      sharePath: `/org/acme/h/${SLUG}`,
     });
     // `shareRef` is a bearer secret for a not-yet-shipped public link —
     // it must never appear in a tool return shape.
@@ -191,7 +245,7 @@ describe("save_html / update_html", () => {
     }
   });
 
-  test("save_html duplicate slug returns structured error, does not throw", async () => {
+  test("duplicate slug returns structured error, does not throw", async () => {
     const err = new Prisma.PrismaClientKnownRequestError("Unique constraint", {
       code: "P2002",
       clientVersion: "test",
@@ -199,7 +253,7 @@ describe("save_html / update_html", () => {
     (db.htmlPage.create as ReturnType<typeof vi.fn>).mockRejectedValue(err);
 
     const result = await (tools().save_html as ExecTool).execute({
-      slug: "team-story",
+      slug: SLUG,
       title: "Team Story",
       html: HTML,
     });
@@ -210,53 +264,74 @@ describe("save_html / update_html", () => {
     });
   });
 
-  test("save_html refuses oversize HTML", async () => {
-    validateFileSize.mockReturnValue(false);
+  test("refuses oversize HTML", async () => {
+    (putHtmlPageObject as ReturnType<typeof vi.fn>).mockRejectedValue(
+      new HtmlPageSizeError(),
+    );
     const result = await (tools().save_html as ExecTool).execute({
       slug: "big",
       title: "Big",
       html: HTML,
     });
-    expect(putObject).not.toHaveBeenCalled();
+    expect(db.htmlPage.create).not.toHaveBeenCalled();
     expect(result).toEqual({ error: "HTML exceeds the 10MB size limit" });
   });
 
-  test("update_html overwrites the same s3Key and updates the row", async () => {
-    const existingKey = `orgs/${ORG_ID}/canvas/123_team-story.html`;
-    (db.htmlPage.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({
-      id: "page-1",
-      slug: "team-story",
-      s3Key: existingKey,
-      orgId: ORG_ID,
+  test("slug schema rejects non-kebab-case and path-traversal input", () => {
+    const schema = (tools().save_html as unknown as SchemaTool).inputSchema;
+    expect(schema.safeParse({ slug: SLUG, title: "t", html: HTML }).success).toBe(true);
+    expect(schema.safeParse({ slug: "Bad_Slug", title: "t", html: HTML }).success).toBe(false);
+    expect(schema.safeParse({ slug: "../evil", title: "t", html: HTML }).success).toBe(false);
+    expect(schema.safeParse({ slug: "has spaces", title: "t", html: HTML }).success).toBe(false);
+    expect(schema.safeParse({ slug: "a".repeat(65), title: "t", html: HTML }).success).toBe(false);
+  });
+});
+
+describe("update_html", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    (isOrgOwnedS3Key as ReturnType<typeof vi.fn>).mockImplementation(
+      (orgId: string, s3Key: string) => s3Key.startsWith(`orgs/${orgId}/`),
+    );
+    (assertHtmlSize as ReturnType<typeof vi.fn>).mockImplementation(() => undefined);
+    (overwriteHtmlPageObject as ReturnType<typeof vi.fn>).mockResolvedValue({
+      size: Buffer.byteLength("<html>revised</html>", "utf8"),
     });
     (db.htmlPage.update as ReturnType<typeof vi.fn>).mockResolvedValue({
-      id: "page-1",
+      updatedAt: new Date("2024-06-01T00:00:00.000Z"),
     });
+    mockCasSuccess();
+  });
+
+  test("full-replace mode overwrites the same s3Key and returns updatedAt", async () => {
+    mockExistingPage();
 
     const result = await (tools().update_html as ExecTool).execute({
-      slug: "team-story",
+      slug: SLUG,
       html: "<html>revised</html>",
       orgId: "attacker-org",
       s3Key: "orgs/other/canvas/evil.html",
     });
 
-    expect(putObject).toHaveBeenCalledTimes(1);
-    expect(putObject).toHaveBeenCalledWith(
-      existingKey,
-      expect.any(Buffer),
-      HTML_CONTENT_TYPE,
+    expect(overwriteHtmlPageObject).toHaveBeenCalledWith(
+      ORG_ID,
+      S3_KEY,
+      "<html>revised</html>",
     );
-    expect(generateOrgUploadPath).not.toHaveBeenCalled();
     expect(db.htmlPage.update).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { orgId_slug: { orgId: ORG_ID, slug: "team-story" } },
+        where: { orgId_slug: { orgId: ORG_ID, slug: SLUG } },
         data: expect.objectContaining({
           size: Buffer.byteLength("<html>revised</html>", "utf8"),
           contentType: HTML_CONTENT_TYPE,
         }),
       }),
     );
-    expect(result).toEqual({ slug: "team-story", status: "updated" });
+    expect(result).toEqual({
+      slug: SLUG,
+      status: "updated",
+      updatedAt: "2024-06-01T00:00:00.000Z",
+    });
     // Same bearer-secret guarantee applies to update_html's return shape.
     expect(result).not.toHaveProperty("shareRef");
 
@@ -267,25 +342,103 @@ describe("save_html / update_html", () => {
     }
   });
 
-  test("update_html rejects a foreign s3Key on the existing row", async () => {
-    (db.htmlPage.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({
-      id: "page-1",
-      slug: "team-story",
-      s3Key: "orgs/other-org/canvas/stolen.html",
-      orgId: ORG_ID,
-    });
+  test("edits mode patches only the matched fragment", async () => {
+    mockExistingPage({ bytes: "<body>hello</body>" });
 
     const result = await (tools().update_html as ExecTool).execute({
-      slug: "team-story",
+      slug: SLUG,
+      edits: [{ oldStr: "hello", newStr: "goodbye" }],
+    });
+
+    expect(overwriteHtmlPageObject).toHaveBeenCalledWith(
+      ORG_ID,
+      S3_KEY,
+      "<body>goodbye</body>",
+    );
+    expect(result).toMatchObject({ slug: SLUG, status: "updated" });
+  });
+
+  test("rejects when both html and edits are present", async () => {
+    mockExistingPage();
+    const result = await (tools().update_html as ExecTool).execute({
+      slug: SLUG,
+      html: HTML,
+      edits: [{ oldStr: "a", newStr: "b" }],
+    });
+    expect(result).toEqual({
+      error: "Pass either `html` (full replacement) or `edits` (targeted find/replace), not both and not neither.",
+    });
+    expect(overwriteHtmlPageObject).not.toHaveBeenCalled();
+  });
+
+  test("rejects when neither html nor edits are present", async () => {
+    mockExistingPage();
+    const result = await (tools().update_html as ExecTool).execute({ slug: SLUG });
+    expect(result).toEqual({
+      error: "Pass either `html` (full replacement) or `edits` (targeted find/replace), not both and not neither.",
+    });
+    expect(overwriteHtmlPageObject).not.toHaveBeenCalled();
+  });
+
+  test("mismatched edit fails closed: writes nothing, s3Key untouched", async () => {
+    mockExistingPage({ bytes: "<body>hello</body>" });
+
+    const result = await (tools().update_html as ExecTool).execute({
+      slug: SLUG,
+      edits: [{ oldStr: "nonexistent-fragment", newStr: "x" }],
+    });
+
+    expect(result).toMatchObject({
+      error: expect.stringMatching(/not found in the page/i),
+    });
+    expect(overwriteHtmlPageObject).not.toHaveBeenCalled();
+    expect(db.htmlPage.update).not.toHaveBeenCalled();
+  });
+
+  test("ambiguous edit without replaceAll fails closed", async () => {
+    mockExistingPage({ bytes: "foo bar foo" });
+
+    const result = await (tools().update_html as ExecTool).execute({
+      slug: SLUG,
+      edits: [{ oldStr: "foo", newStr: "baz" }],
+    });
+
+    expect(result).toMatchObject({
+      error: expect.stringMatching(/matched 2 times/i),
+    });
+    expect(overwriteHtmlPageObject).not.toHaveBeenCalled();
+  });
+
+  test("stale updatedAt (concurrent write) aborts the CAS and writes nothing", async () => {
+    mockExistingPage();
+    mockCasConflict();
+
+    const result = await (tools().update_html as ExecTool).execute({
+      slug: SLUG,
+      html: "<html>revised</html>",
+    });
+
+    expect(result).toMatchObject({
+      error: expect.stringMatching(/updated by someone else/i),
+    });
+    expect(overwriteHtmlPageObject).not.toHaveBeenCalled();
+  });
+
+  test("rejects a foreign s3Key on the existing row", async () => {
+    mockExistingPage({ s3Key: "orgs/other-org/canvas/stolen.html" });
+    (isOrgOwnedS3Key as ReturnType<typeof vi.fn>).mockReturnValue(false);
+
+    const result = await (tools().update_html as ExecTool).execute({
+      slug: SLUG,
       html: HTML,
     });
 
-    expect(putObject).not.toHaveBeenCalled();
+    expect(overwriteHtmlPageObject).not.toHaveBeenCalled();
     expect(result).toEqual({ error: "Failed to update HTML page." });
   });
 
-  test("update_html returns structured error when slug is missing in this org", async () => {
-    (db.htmlPage.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(null);
+  test("returns not-found shape when slug is missing in this org", async () => {
+    (getHtmlPageBytes as ReturnType<typeof vi.fn>).mockResolvedValue(null);
     const result = await (tools().update_html as ExecTool).execute({
       slug: "missing",
       html: HTML,
@@ -294,17 +447,130 @@ describe("save_html / update_html", () => {
       error: 'No HTML page found with slug "missing".',
     });
   });
+
+  test("slug schema rejects non-kebab-case input", () => {
+    const schema = (tools().update_html as unknown as SchemaTool).inputSchema;
+    expect(schema.safeParse({ slug: "Bad Slug", html: HTML }).success).toBe(false);
+    expect(schema.safeParse({ slug: "../evil", html: HTML }).success).toBe(false);
+  });
+});
+
+describe("get_html", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  test("happy path returns body under cap", async () => {
+    mockExistingPage({ bytes: "<html>ok</html>" });
+
+    const result = await (tools().get_html as ExecTool).execute({ slug: SLUG });
+
+    expect(result).toEqual({
+      slug: SLUG,
+      html: "<html>ok</html>",
+      size: Buffer.byteLength("<html>ok</html>", "utf8"),
+    });
+  });
+
+  test("over-cap returns actionable error, not truncated bytes", async () => {
+    const big = "a".repeat(GET_HTML_MAX_BYTES + 1);
+    mockExistingPage({ bytes: big });
+
+    const result = await (tools().get_html as ExecTool).execute({ slug: SLUG });
+
+    expect(result).toMatchObject({
+      error: expect.stringMatching(/over the .* read limit/i),
+    });
+    expect(result).not.toHaveProperty("html");
+  });
+
+  test("cross-org and missing slug return the identical not-found shape", async () => {
+    (getHtmlPageBytes as ReturnType<typeof vi.fn>).mockResolvedValue(null);
+
+    const missing = await (tools().get_html as ExecTool).execute({ slug: "missing" });
+    const crossOrg = await (tools().get_html as ExecTool).execute({ slug: "other-orgs-page" });
+
+    expect(missing).toEqual({ error: 'No HTML page found with slug "missing".' });
+    expect(crossOrg).toEqual({ error: 'No HTML page found with slug "other-orgs-page".' });
+  });
+
+  test("slug schema rejects non-kebab-case and oversize input", () => {
+    const schema = (tools().get_html as unknown as SchemaTool).inputSchema;
+    expect(schema.safeParse({ slug: SLUG }).success).toBe(true);
+    expect(schema.safeParse({ slug: "Bad Slug" }).success).toBe(false);
+    expect(schema.safeParse({ slug: "a".repeat(65) }).success).toBe(false);
+  });
+});
+
+describe("logging never leaks the applyExactEdits error string", () => {
+  test("mismatched-edit console.log calls carry only the fixed reason code, never the error/snippet", async () => {
+    mockExistingPage({ bytes: "<body>hello world, this is a fairly long fragment to snippet</body>" });
+    (assertHtmlSize as ReturnType<typeof vi.fn>).mockImplementation(() => undefined);
+    mockCasSuccess();
+
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => undefined);
+
+    const result = (await (tools().update_html as ExecTool).execute({
+      slug: SLUG,
+      edits: [{ oldStr: "this text does not exist in the page at all", newStr: "x" }],
+    })) as { error: string };
+
+    // The model-facing error DOES contain the snippet — that's expected and fine.
+    expect(result.error).toMatch(/not found in the page/i);
+
+    // But nothing logged to console.log may contain that error string or its
+    // snippet — logs must stay pointer-only (slug + byte counts + reason code).
+    for (const call of logSpy.mock.calls) {
+      const serialized = JSON.stringify(call);
+      expect(serialized).not.toContain("this text does not exist");
+      expect(serialized).not.toContain(result.error);
+    }
+    // The reason code IS expected to appear in the structured log line.
+    const htmlToolLog = logSpy.mock.calls.find(
+      (call) => call[0] === "[htmlArtifactTools] update_html",
+    );
+    expect(htmlToolLog?.[1]).toMatchObject({ reason: "edit_mismatch" });
+
+    logSpy.mockRestore();
+  });
+
+  test("ambiguous-edit console.log calls carry only the fixed reason code, never the error/snippet", async () => {
+    mockExistingPage({ bytes: "foo bar foo baz foo qux" });
+    mockCasSuccess();
+
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => undefined);
+
+    const result = (await (tools().update_html as ExecTool).execute({
+      slug: SLUG,
+      edits: [{ oldStr: "foo", newStr: "zzz" }],
+    })) as { error: string };
+
+    expect(result.error).toMatch(/matched \d+ times/i);
+
+    for (const call of logSpy.mock.calls) {
+      const serialized = JSON.stringify(call);
+      expect(serialized).not.toContain(result.error);
+    }
+    const htmlToolLog = logSpy.mock.calls.find(
+      (call) => call[0] === "[htmlArtifactTools] update_html",
+    );
+    expect(htmlToolLog?.[1]).toMatchObject({ reason: "edit_ambiguous" });
+
+    logSpy.mockRestore();
+  });
 });
 
 describe("html_pages capability registration", () => {
-  test("html_pages writeToolNames are save_html and update_html", () => {
+  test("html_pages writeToolNames include save_html, update_html, get_html", () => {
     expect(CAPABILITY_REGISTRY.html_pages.writeToolNames).toEqual([
       "save_html",
       "update_html",
+      "get_html",
     ]);
     expect(CAPABILITY_REGISTRY.html_pages.core).toBe(false);
     expect(CAPABILITY_REGISTRY.research.writeToolNames).not.toContain("save_html");
     expect(CAPABILITY_REGISTRY.research.writeToolNames).not.toContain("update_html");
+    expect(CAPABILITY_REGISTRY.research.writeToolNames).not.toContain("get_html");
   });
 
   test("ALL_CAPABILITIES includes html_pages; composeWriteToolNames includes the tools", () => {
@@ -312,10 +578,11 @@ describe("html_pages capability registration", () => {
     const names = composeWriteToolNames(ALL_CAPABILITIES);
     expect(names.has("save_html")).toBe(true);
     expect(names.has("update_html")).toBe(true);
+    expect(names.has("get_html")).toBe(true);
     expect([...composeWriteToolNames(["html_pages"])].sort()).toEqual([
+      "get_html",
       "save_html",
       "update_html",
     ]);
   });
-
 });
