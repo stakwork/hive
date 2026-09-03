@@ -78,6 +78,7 @@ export async function buildWorkspaceConfigs(
   // whole batch) so the PAT can be resolved per *org* below rather than
   // per workspace. `validateWorkspaceAccess` already loads the row but its
   // DTO is browser-facing, so it stays narrow (see `fetchWorkspaceRecords`).
+  const tPhase1 = Date.now();
   const [identity, accessSettled, orgRows] = await Promise.all([
     resolveGithubIdentity(userId),
     Promise.allSettled(
@@ -88,6 +89,7 @@ export async function buildWorkspaceConfigs(
       select: { slug: true, sourceControlOrgId: true },
     }),
   ]);
+  console.log("[buildWorkspaceConfigs] timing", { stage: "phase1 access+identity+orgMap", ms: Date.now() - tPhase1, workspaces: slugs });
   const orgIdBySlug = new Map(orgRows.map((r) => [r.slug, r.sourceControlOrgId]));
 
   const accessible = (i: number) => {
@@ -110,6 +112,7 @@ export async function buildWorkspaceConfigs(
   // Phase 2: for every slug that cleared its access check, fan out the
   // four remaining reads — they only need `workspace.id`, so nothing
   // among them depends on anything else.
+  const tPhase2 = Date.now();
   const recordsSettled = await Promise.allSettled(
     slugs.map((slug, i) => {
       const access = accessSettled[i];
@@ -132,6 +135,7 @@ export async function buildWorkspaceConfigs(
       return fetchWorkspaceRecords(access.value.workspace.id, pat);
     })
   );
+  console.log("[buildWorkspaceConfigs] timing", { stage: "phase2 swarm+repos+members+pat", ms: Date.now() - tPhase2, orgs: new Set(orgIds).size, workspaces: slugs });
 
   // Guards run per slug in the original nested order (access → swarm →
   // repos → PAT), so the error that surfaces is the same one the serial
