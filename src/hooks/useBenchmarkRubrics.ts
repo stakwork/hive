@@ -22,6 +22,22 @@ import type { GraphRubric } from "@/lib/harvey-lab/rubric-scoring";
  *  - Any other error → transient — do not cache.
  */
 
+/**
+ * Whether a task's roster read is still in flight.
+ *
+ * Rosters resolve one task at a time, so an ABSENT key means "not back yet"
+ * and a key holding `null` means "resolved, and the graph has no roster".
+ * Every consumer that distinguishes loading from absent must go through this
+ * rather than re-deriving it — a whole-map test like `size === 0` is wrong
+ * once the map fills in progressively.
+ */
+export function isRosterPending(
+  rosters: Map<string, GraphRubric[] | null>,
+  taskSlug: string,
+): boolean {
+  return Boolean(taskSlug) && !rosters.has(taskSlug);
+}
+
 // ─── Generic factory ─────────────────────────────────────────────────────────
 
 type EndpointFn = (workspaceSlug: string) => string;
@@ -116,18 +132,6 @@ export function createBenchmarkRubricsHook(endpointFn: EndpointFn) {
       let cancelled = false;
       const slugs = slugKey.split("\n");
 
-      // Drop slugs that left the view but keep the ones already resolved —
-      // a missing key means "still loading", so rebuilding the map from
-      // scratch would flash resolved rows back to loading on a window change.
-      setRosters((prev) => {
-        if (prev.size === 0) return prev;
-        const kept = new Map<string, GraphRubric[] | null>();
-        for (const slug of slugs) {
-          if (prev.has(slug)) kept.set(slug, prev.get(slug)!);
-        }
-        return kept.size === prev.size ? prev : kept;
-      });
-
       // Each roster is merged in as it lands rather than through one
       // Promise.all: a task's Total paints as soon as its own graph read
       // returns, instead of every row waiting on the slowest one.
@@ -174,11 +178,7 @@ export interface UseBenchmarkRubricsResult {
 /**
  * Fetch rosters for a set of task slugs (the runs table's distinct tasks).
  * Returns a map keyed by task slug; entries are absent until resolved and
- * `null` when no roster exists.
- *
- * Resolution is per slug, so the map fills in progressively — callers can
- * treat "key absent" as still-loading and "key present, value null" as
- * definitively no roster.
+ * `null` when no roster exists — see `isRosterPending`.
  */
 export const useBenchmarkRubricsMap = legalHooks.useBenchmarkRubricsMap;
 

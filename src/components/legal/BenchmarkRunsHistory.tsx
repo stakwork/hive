@@ -5,6 +5,7 @@ import { formatDistanceToNow } from "date-fns";
 import { ExternalLink, Loader2, Repeat } from "lucide-react";
 import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
+import { Spinner } from "@/components/ui/spinner";
 import {
   PASS_BADGE_CLASS,
   RUN_LIST_LIMIT,
@@ -29,9 +30,9 @@ import {
   type BenchmarkRunType,
 } from "@/hooks/useLegalBenchmarkRunList";
 import { useLegalBenchmarkRecursionList } from "@/hooks/useLegalBenchmarkRecursionList";
-import { useBenchmarkRubricsMap } from "@/hooks/useBenchmarkRubrics";
+import { isRosterPending, useBenchmarkRubricsMap } from "@/hooks/useBenchmarkRubrics";
 import { useBenchmarkGraphScoresMap, type GraphScoreRequest } from "@/hooks/useBenchmarkGraphScores";
-import { computeBenchmarkScore, rubricBreakdown } from "@/lib/harvey-lab/rubric-scoring";
+import { computeBenchmarkScore, rubricBreakdown, type GraphRubric } from "@/lib/harvey-lab/rubric-scoring";
 import { resolveGraphOutputForRun } from "@/lib/harvey-lab/graph-run-score";
 import { LegalBenchmarkResults } from "@/components/legal/LegalBenchmarkResults";
 import { BenchmarkRunAgentLogs } from "@/components/legal/BenchmarkRunAgentLogs";
@@ -109,6 +110,9 @@ function resolveModelDisplay(run: BenchmarkRunListRow) {
 
 export type RunListHookResult = ReturnType<typeof useLegalBenchmarkRunList>;
 
+/** taskSlug → rubric roster; absent while that task's read is in flight. */
+type RosterMap = ReturnType<typeof useBenchmarkRubricsMap>;
+
 /**
  * A run row after graph-first score adjustment: n_passed/n_total/all_pass are
  * rewritten to the contested-excluded score (denominator = graph roster minus
@@ -119,13 +123,6 @@ type AdjustedRun = BenchmarkRunListRow & {
   n_contested?: number;
   /** Full rubric roster size before contested exclusion. */
   roster_total?: number;
-  /**
-   * The task's roster is still in flight, so Total is unknown rather than
-   * absent — the cell spins instead of showing a dash it would hold for a
-   * second. Only ever true for rows that carry the score inputs a Total
-   * needs; an unscored row keeps its dash however the roster resolves.
-   */
-  roster_pending?: boolean;
   /**
    * Where the score came from:
    *  - "output-ref" — the row's stored EvalTriggerOutput pointer: the node is
@@ -148,6 +145,18 @@ type AdjustedRun = BenchmarkRunListRow & {
    */
   n_disputed: number | null;
 };
+
+/**
+ * Total only ever reflects a real graph rubric roster — never the
+ * scorable-denominator/criteria-length fallback `computeBenchmarkScore` uses
+ * when no roster was loaded.
+ */
+function rosterTotalOf(
+  roster: GraphRubric[] | null,
+  score: { total: number },
+): number | undefined {
+  return Array.isArray(roster) && roster.length > 0 ? score.total : undefined;
+}
 
 /**
  * Verbatim score from a row's own EvalTriggerOutput node, used when the row
@@ -387,9 +396,6 @@ export function BenchmarkRunsHistory({
     () =>
       visibleRuns.map((run) => {
         const roster = rosters.get(run.taskSlug) ?? null;
-        // Absent key = not resolved yet (the map fills in per task); a
-        // resolved-but-empty roster is `null` and must not keep spinning.
-        const rosterLoading = Boolean(run.taskSlug) && !rosters.has(run.taskSlug);
         const match = resolveGraphOutputForRun(run, graphOutputs.get(run.taskSlug));
         // A stored evalOutputRef pointer is authoritative for BOTH numbers —
         // the node is used verbatim, no roster overlay.
@@ -403,23 +409,16 @@ export function BenchmarkRunsHistory({
         const graphOut = match?.output ?? null;
         const nPassed = graphOut?.n_passed ?? run.n_passed;
         const nTotal = graphOut?.n_total ?? run.n_total;
-        // A Total can only ever land for a row that carries score inputs, so
-        // only those rows are allowed to spin while the roster loads.
-        const rosterPending =
-          rosterLoading &&
-          (Boolean(run.criteria_results?.length) ||
-            (typeof nPassed === "number" && typeof nTotal === "number"));
         // Without a roster, per-criterion results, or a graph output there is
         // nothing to adjust FROM — leave the run's own numbers untouched.
-        if (!roster && !run.criteria_results?.length && !graphOut)
-          return { ...run, roster_pending: rosterPending, n_failed: null, n_disputed: null };
+        if (!roster && !run.criteria_results?.length && !graphOut) return { ...run, n_failed: null, n_disputed: null };
         const score = computeBenchmarkScore({
           criteriaResults: run.criteria_results,
           nPassed,
           nTotal,
           graphRubrics: roster,
         });
-        if (!score) return { ...run, roster_pending: rosterPending, n_failed: null, n_disputed: null };
+        if (!score) return { ...run, n_failed: null, n_disputed: null };
         const usedCriteria = (run.criteria_results?.length ?? 0) > 0;
         const bd = rubricBreakdown({ score, criteria: run.criteria_results, graphRubrics: roster });
         return {
@@ -431,11 +430,7 @@ export function BenchmarkRunsHistory({
           all_pass:
             typeof run.all_pass === "boolean" || graphOut ? score.allPass : run.all_pass,
           n_contested: score.contested,
-          // Total only ever reflects a real graph rubric roster — never the
-          // scorable-denominator/criteria-length fallback computeBenchmarkScore
-          // uses when no roster was loaded.
-          roster_total: Array.isArray(roster) && roster.length > 0 ? score.total : undefined,
-          roster_pending: rosterPending,
+          roster_total: rosterTotalOf(roster, score),
           judgeNotes: run.judgeNotes ?? graphOut?.judge_notes,
           score_source: usedCriteria ? "criteria" : graphOut ? "graph" : "result",
           n_failed: bd?.fail ?? null,
@@ -460,7 +455,6 @@ export function BenchmarkRunsHistory({
     () =>
       secondaryRows.map((run) => {
         const roster = rosters.get(run.taskSlug) ?? null;
-        const rosterLoading = Boolean(run.taskSlug) && !rosters.has(run.taskSlug);
         const match = resolveGraphOutputForRun(run, graphOutputs.get(run.taskSlug));
         if (match?.matchedBy === "output-ref") {
           return pointerAdjustedRun(run, match.output);
@@ -471,7 +465,7 @@ export function BenchmarkRunsHistory({
         // Most loop rows (analysis, fix-proposal) never score — leave them be.
         if (nPassed == null || nTotal == null) return { ...run, n_failed: null, n_disputed: null };
         const score = computeBenchmarkScore({ nPassed, nTotal, graphRubrics: roster });
-        if (!score) return { ...run, roster_pending: rosterLoading, n_failed: null, n_disputed: null };
+        if (!score) return { ...run, n_failed: null, n_disputed: null };
         // Pass run.criteria_results into rubricBreakdown so secondary rows report
         // a real Disputed count when available — but do NOT add criteriaResults to
         // the computeBenchmarkScore call above, since that would change scores.
@@ -483,10 +477,7 @@ export function BenchmarkRunsHistory({
           all_pass:
             typeof run.all_pass === "boolean" || graphOut ? score.allPass : run.all_pass,
           n_contested: score.contested,
-          // Total only ever reflects a real graph rubric roster — see the
-          // matching comment in adjustedRuns above.
-          roster_total: Array.isArray(roster) && roster.length > 0 ? score.total : undefined,
-          roster_pending: rosterLoading,
+          roster_total: rosterTotalOf(roster, score),
           judgeNotes: run.judgeNotes ?? graphOut?.judge_notes,
           score_source: graphOut ? "graph" : "result",
           n_failed: bd?.fail ?? null,
@@ -738,7 +729,7 @@ export function BenchmarkRunsHistory({
                     <DisputedCountCell run={run} />
                   </td>
                   <td className="px-4 py-3">
-                    <TotalCell run={run} />
+                    <TotalCell run={run} rosters={rosters} />
                   </td>
                   <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
                     {/* Report bundles land on recursion rows too (reportUrl
@@ -972,23 +963,24 @@ function FailCell({ run }: { run: AdjustedRun }) {
  * score-bearing row spins until its own task resolves — the dash is reserved
  * for "resolved, no roster".
  */
-function TotalCell({ run }: { run: AdjustedRun }) {
-  if (typeof run.roster_total !== "number") {
-    if (run.roster_pending) {
-      return (
-        <span
-          className="inline-flex text-muted-foreground"
-          title="Loading rubric roster…"
-          aria-label="Loading rubric roster"
-          data-testid="total-cell-loading"
-        >
-          <Loader2 className="h-3 w-3 animate-spin" />
-        </span>
-      );
-    }
-    return <span className="text-muted-foreground">—</span>;
+function TotalCell({ run, rosters }: { run: AdjustedRun; rosters: RosterMap }) {
+  if (typeof run.roster_total === "number") {
+    return <span className="text-sm tabular-nums">{run.roster_total}</span>;
   }
-  return <span className="text-sm tabular-nums">{run.roster_total}</span>;
+  // A pointer row is scored verbatim from its own node and never consults a
+  // roster, so it never waits on one.
+  const scoreBearing =
+    run.score_source !== "output-ref" &&
+    (Boolean(run.criteria_results?.length) ||
+      (typeof run.n_passed === "number" && typeof run.n_total === "number"));
+  if (scoreBearing && isRosterPending(rosters, run.taskSlug)) {
+    return (
+      <span title="Loading rubric roster…" data-testid="total-cell-loading">
+        <Spinner className="size-3 text-muted-foreground" />
+      </span>
+    );
+  }
+  return <span className="text-muted-foreground">—</span>;
 }
 
 /** `n_contested` is undefined on output-ref/bail-out rows — unknown, not zero. */
