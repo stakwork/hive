@@ -40,9 +40,16 @@ interface HtmlArtifactFrameProps {
   source: HtmlArtifactSource;
   title?: string;
   className?: string;
+  /**
+   * Optional cache-buster. `update_html` returns `updatedAt`; keying
+   * the fetch effect on it (in addition to `source`) re-fetches fresh
+   * bytes after a successful patch so an already-open frame or
+   * sidebar card doesn't keep showing a stale blob.
+   */
+  updatedAt?: string;
 }
 
-export function HtmlArtifactFrame({ source, title, className }: HtmlArtifactFrameProps) {
+export function HtmlArtifactFrame({ source, title, className, updatedAt }: HtmlArtifactFrameProps) {
   const [blobUrl, setBlobUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -99,7 +106,7 @@ export function HtmlArtifactFrame({ source, title, className }: HtmlArtifactFram
       cancelled = true;
       revoke();
     };
-  }, [url]);
+  }, [url, updatedAt]);
 
   if (loading) {
     return (

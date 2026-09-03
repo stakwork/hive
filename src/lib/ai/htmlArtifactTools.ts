@@ -39,6 +39,7 @@ import {
   putHtmlPageObject,
 } from "@/services/html-pages";
 import { applyExactEdits, type TextEdit } from "@/services/text-edits";
+import { notifyCanvasesUpdatedByLogin, ROOT_REF } from "@/lib/canvas";
 
 /** Cap on edits per `update_html` call — mirrors `MAX_PROMPT_EDITS`. */
 export const MAX_HTML_EDITS = 50;
@@ -216,6 +217,16 @@ export function buildHtmlArtifactTools(orgId: string, userId: string): ToolSet {
             success: true,
             mode: "replace",
           });
+
+          // Fire-and-forget: a Pusher hiccup must not fail the
+          // save. Matches the research-created posture — the new
+          // card appears on the root canvas live, without a reload.
+          void notifyCanvasesUpdatedByLogin(
+            githubLogin,
+            [ROOT_REF],
+            "html-created",
+            { slug: page.slug, htmlPageId: page.id },
+          );
 
           return {
             slug: page.slug,
@@ -477,6 +488,16 @@ export function buildHtmlArtifactTools(orgId: string, userId: string): ToolSet {
             mode,
             editCount,
           });
+
+          const githubLogin = await githubLoginForOrg(orgId);
+          if (githubLogin) {
+            void notifyCanvasesUpdatedByLogin(
+              githubLogin,
+              [ROOT_REF],
+              "html-updated",
+              { slug: page.slug, htmlPageId: page.id },
+            );
+          }
 
           return {
             slug: page.slug,

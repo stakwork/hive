@@ -38,6 +38,9 @@ import {
   RESEARCH_ROOT_ROW_STEP,
   RESEARCH_ROOT_ROW_X0,
   RESEARCH_ROOT_ROW_Y,
+  HTML_ROOT_ROW_STEP,
+  HTML_ROOT_ROW_X0,
+  HTML_ROOT_ROW_Y,
   TIMELINE_COL_W,
   TIMELINE_COL_X0,
   WORKSPACE_ROW_STEP,
@@ -1014,10 +1017,81 @@ export const researchProjector: Projector = {
   },
 };
 
+// ---------------------------------------------------------------------------
+// HTML-page projector — emits `html:<id>` cards for `HtmlPage` rows.
+//
+// Root canvas only. Initiative-canvas placement needs an `initiativeId`
+// column `HtmlPage` does not have yet; that work is a separate ticket
+// and must not be silently added here. Workspaces and other sub-canvases
+// don't render HTML cards — the category isn't user-creatable, and
+// `categoryAllowedOnScope` never offers `html` in the `+` menu.
+//
+// Capped at HTML_LIMIT and ordered by `updatedAt desc`, mirroring
+// RESEARCH_LIMIT. An uncapped projector floods the root canvas payload
+// for an org with hundreds of pages.
+//
+// `customData` carries `slug` and `title` only. `s3Key` is an internal
+// storage pointer and `shareRef` is a bearer secret for a not-yet-
+// shipped public link — neither may ride the projector payload, which
+// is broadcast on the org Pusher channel.
+// ---------------------------------------------------------------------------
+
+const HTML_LIMIT = 25;
+
+function defaultHtmlRootPosition(index: number): { x: number; y: number } {
+  return {
+    x: HTML_ROOT_ROW_X0 + index * HTML_ROOT_ROW_STEP,
+    y: HTML_ROOT_ROW_Y,
+  };
+}
+
+function buildHtmlPageNode(
+  page: { id: string; slug: string; title: string },
+  pos: { x: number; y: number },
+): CanvasNode {
+  return {
+    id: `html:${page.id}`,
+    type: "text",
+    category: "html",
+    text: page.title,
+    x: pos.x,
+    y: pos.y,
+    customData: {
+      slug: page.slug,
+      title: page.title,
+    },
+  };
+}
+
+export const htmlPageProjector: Projector = {
+  async project(scope: Scope, orgId: string): Promise<ProjectionResult> {
+    if (scope.kind !== "root") return { nodes: [] };
+
+    const rows = await db.htmlPage.findMany({
+      where: { orgId },
+      orderBy: { updatedAt: "desc" },
+      take: HTML_LIMIT,
+      select: {
+        id: true,
+        slug: true,
+        title: true,
+        // Intentionally omit s3Key and shareRef — see the projector
+        // comment above. A bare findMany with no select would leak
+        // the bearer secret onto the org channel.
+      },
+    });
+    const nodes = rows.map((r, index) =>
+      buildHtmlPageNode(r, defaultHtmlRootPosition(index)),
+    );
+    return { nodes };
+  },
+};
+
 export const PROJECTORS: Projector[] = [
   rootProjector,
   workspaceProjector,
   initiativeProjector,
   milestoneTimelineProjector,
   researchProjector,
+  htmlPageProjector,
 ];
