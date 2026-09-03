@@ -435,6 +435,10 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
     ) {
       return;
     }
+    // `html:` nodes are not deep-linked via `?r=` (research-only).
+    // Clicking an html card is a normal live-id selection that
+    // `NodeDetail` → `HtmlArtifactFrame` handles after the
+    // node-detail fetch; no synthetic node is needed here.
     let cancelled = false;
     fetch(`/api/orgs/${githubLogin}/research`)
       .then((r) => (r.ok ? r.json() : null))
@@ -608,6 +612,10 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
           searchParams.get("r") &&
           !selection.node.id.startsWith("research:")
         ) {
+          // html: (and every other non-research live id) correctly
+          // fall through here: selecting an HTML card while a
+          // `?r=` deep-link is active should drop the research
+          // param, same as clicking a workspace or note.
           setUrlResearchSlug(null);
         }
         return;

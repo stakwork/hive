@@ -141,6 +141,11 @@ interface DedupeResult {
 }
 
 function dedupeAuthoredResearch(nodes: CanvasNode[]): DedupeResult {
+  // HTML pages (`html:<id>`, category `html`) are projected live with
+  // `userCreatable: false` — there is no authored-placeholder swap, so
+  // they never enter this function's authored-research branch. No
+  // `dedupeAuthoredHtml` equivalent is needed.
+  //
   // Index live research nodes by trimmed text. A live research node
   // with empty text shouldn't exist (the projector always sets text
   // from `Research.topic`, which is required), but guard anyway.

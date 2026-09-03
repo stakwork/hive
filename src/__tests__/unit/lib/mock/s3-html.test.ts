@@ -3,9 +3,12 @@
  * fileExists — getFile auto-creates absent keys.
  */
 
+import fs from "node:fs";
+import path from "node:path";
 import { describe, test, expect, beforeEach } from "vitest";
 import { s3MockState } from "@/lib/mock/s3-state";
 import { S3MockWrapper } from "@/lib/mock/s3-wrapper";
+import { htmlPageFixtureS3Key } from "@/lib/mock/html-fixtures";
 
 describe("mock S3 HTML fixtures", () => {
   beforeEach(() => {
@@ -28,6 +31,24 @@ describe("mock S3 HTML fixtures", () => {
     const auto = s3MockState.getFile(key);
     expect(auto).toBeDefined();
     expect(s3MockState.fileExists(key)).toBe(true);
+  });
+
+  test("fileExists hydrates a matching on-disk HTML fixture into the in-memory map", () => {
+    const orgId = "org-fixture-1";
+    const key = htmlPageFixtureS3Key(orgId, "hive-vs-workspaces.html");
+    const wrapper = new S3MockWrapper();
+    expect(s3MockState.fileExists(key)).toBe(false);
+    expect(wrapper.fileExists(key)).toBe(true);
+    const onDisk = fs.readFileSync(
+      path.join(process.cwd(), "src/lib/mock/fixtures/html/hive-vs-workspaces.html"),
+    );
+    expect(s3MockState.getFile(key).buffer.equals(onDisk)).toBe(true);
+  });
+
+  test("fileExists does not hydrate a non-fixture basename", () => {
+    const wrapper = new S3MockWrapper();
+    const key = htmlPageFixtureS3Key("org-fixture-1", "not-a-real-fixture.html");
+    expect(wrapper.fileExists(key)).toBe(false);
   });
 
   test("S3MockWrapper.putObject stores explicit text/html and fileExists reports it", async () => {

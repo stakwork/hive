@@ -20,6 +20,8 @@ import {
   MILESTONE_W,
   RESEARCH_H,
   RESEARCH_W,
+  HTML_H,
+  HTML_W,
   SERVICE_H,
   SERVICE_W,
   SMALL_W,
@@ -91,6 +93,11 @@ const ACCENT = {
   // hue family, which is fine: research cards aren't projected onto
   // milestone canvases so the two never sit side-by-side.
   research: "#34d399",
+  // Rose — chosen for `html` cards so they sit next to research
+  // without colliding on hue. Emerald is already claimed by research;
+  // rose reads as "authored artifact / document" and stays distinct
+  // from note amber, decision purple, and initiative violet.
+  html: "#fb7185",
   // Lighter sky-cyan for `service` ops cards. Same family as the
   // workspace teal (`#22d3ee`) — services are the runtime surface
   // beneath a workspace, so the two reading as kin is a feature, not
@@ -1226,6 +1233,11 @@ function isResearchInFlight(node: CanvasNode): boolean {
   // actively researching; an authored node is just a text input.
   // The id-prefix check is the discriminator: live ids carry
   // `research:` (set by the projector); authored ids don't.
+  //
+  // `html:` nodes fall through here as false — HTML pages have no
+  // in-flight spinner (they're created complete via `save_html`).
+  // An explicit sibling branch isn't needed; this helper is
+  // research-only.
   if (!node.id.startsWith("research:")) return false;
   // For live rows: in-flight until `update_research` lands content.
   // The projector derives `customData.status` from `content !== null`
@@ -1296,6 +1308,34 @@ function renderResearchingBadge(ctx: SlotContext): React.ReactNode {
     ),
   );
 }
+
+const htmlCategory: CategoryDefinition = {
+  ...baseCard,
+  defaultWidth: HTML_W,
+  defaultHeight: HTML_H,
+  type: "text",
+  // HTML pages are DB rows (live ids are `html:<cuid>`). Hide the
+  // canvas trash button so "delete from canvas" isn't confused with
+  // "delete the page" — hidden lives go through the per-canvas
+  // hidden list; real deletion is not exposed from the canvas.
+  hideToolbarDelete: true,
+  stroke: hexAlpha(ACCENT.html, 0.35),
+  fill: hexAlpha(ACCENT.html, 0.05),
+  slots: {
+    topEdge: {
+      kind: "color",
+      extent: "full",
+      color: hexAlpha(ACCENT.html, 0.4),
+    },
+    header: { kind: "text", value: "HTML", color: ACCENT.html },
+    body: {
+      kind: "text",
+      value: (ctx: SlotContext) => ctx.node.text ?? "",
+      fontWeight: 600,
+      fontSize: (ctx: SlotContext) => Math.round(ctx.theme.node.fontSize * 1.1),
+    },
+  },
+} as CategoryDefinition;
 
 const researchCategory: CategoryDefinition = {
   ...baseCard,
@@ -1368,6 +1408,7 @@ const CATEGORY_DEFINITIONS: Record<string, CategoryDefinition> = {
   note:       accentNote(ACCENT.note, "NOTE"),
   decision:   accentNote(ACCENT.decision, "DECISION"),
   research:   researchCategory,
+  html:       htmlCategory,
 };
 
 // ---------------------------------------------------------------------------
