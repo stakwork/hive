@@ -35,6 +35,8 @@ import {
   appendTurnMessages,
   fetchStoredConversationMessages,
   normalizeStoredAttachments,
+  redactHtmlToolInput,
+  redactHtmlToolOutput,
 } from "@/services/canvas-turn-persistence";
 
 const queryRaw = db.$queryRaw as ReturnType<typeof vi.fn>;
@@ -401,6 +403,144 @@ describe("messagesFromSteps — HTML tool input redaction", () => {
       slug: "x",
       title: "X",
       html: "not-html-tool",
+    });
+  });
+
+  test("redacts edits[].oldStr/newStr fragments on update_html's targeted-edit input", () => {
+    const oldStr = "<body>a verbatim fragment of the stored page</body>";
+    const newStr = "<body>the replacement fragment</body>";
+    const steps = [
+      {
+        toolCalls: [
+          {
+            toolCallId: "tc-edit",
+            toolName: "update_html",
+            input: {
+              slug: "story",
+              edits: [{ oldStr, newStr }, { oldStr: "second", newStr: "" }],
+            },
+          },
+        ],
+        toolResults: [
+          {
+            toolCallId: "tc-edit",
+            output: { slug: "story", status: "updated", updatedAt: "2024-01-01T00:00:00.000Z" },
+          },
+        ],
+      },
+    ];
+
+    const rows = messagesFromSteps(steps, "t-");
+    const input = rows[0].toolCalls?.[0].input as { edits: Array<Record<string, unknown>> };
+
+    expect(input.edits[0].oldStr).toEqual({
+      redacted: true,
+      bytes: Buffer.byteLength(oldStr, "utf8"),
+    });
+    expect(input.edits[0].newStr).toEqual({
+      redacted: true,
+      bytes: Buffer.byteLength(newStr, "utf8"),
+    });
+    expect(input.edits[1].oldStr).toEqual({ redacted: true, bytes: 6 });
+    expect(input.edits[1].newStr).toEqual({ redacted: true, bytes: 0 });
+
+    // No raw page fragment survives anywhere in the persisted row.
+    const serialized = JSON.stringify(rows[0]);
+    expect(serialized).not.toContain("verbatim fragment");
+    expect(serialized).not.toContain("replacement fragment");
+  });
+
+  test("redacts get_html output — the tool's return value IS the page", () => {
+    const html = "<!DOCTYPE html><html><body>the live page body</body></html>";
+    const steps = [
+      {
+        toolCalls: [
+          {
+            toolCallId: "tc-get",
+            toolName: "get_html",
+            input: { slug: "story" },
+          },
+        ],
+        toolResults: [
+          {
+            toolCallId: "tc-get",
+            output: { slug: "story", html, size: Buffer.byteLength(html, "utf8") },
+          },
+        ],
+      },
+    ];
+
+    const rows = messagesFromSteps(steps, "t-");
+    const output = rows[0].toolCalls?.[0].output as Record<string, unknown>;
+
+    expect(output.slug).toBe("story");
+    expect(output.size).toBe(Buffer.byteLength(html, "utf8"));
+    expect(output.html).toEqual({
+      redacted: true,
+      bytes: Buffer.byteLength(html, "utf8"),
+    });
+
+    const serialized = JSON.stringify(rows[0]);
+    expect(serialized).not.toContain("the live page body");
+  });
+
+  test("does not redact get_html's input (just { slug }, nothing to redact)", () => {
+    const steps = [
+      {
+        toolCalls: [
+          { toolCallId: "tc-get", toolName: "get_html", input: { slug: "story" } },
+        ],
+        toolResults: [
+          { toolCallId: "tc-get", output: { slug: "story", html: "<p>x</p>", size: 8 } },
+        ],
+      },
+    ];
+    const rows = messagesFromSteps(steps, "t-");
+    expect(rows[0].toolCalls?.[0].input).toEqual({ slug: "story" });
+  });
+
+  test("does not redact save_html/update_html output — it's pointer metadata only, not a body", () => {
+    const steps = [
+      {
+        toolCalls: [
+          { toolCallId: "tc1", toolName: "save_html", input: { slug: "x", title: "X", html: "<p/>" } },
+        ],
+        toolResults: [
+          { toolCallId: "tc1", output: { slug: "x", id: "page-1", sharePath: "/org/acme/h/x" } },
+        ],
+      },
+    ];
+    const rows = messagesFromSteps(steps, "t-");
+    expect(rows[0].toolCalls?.[0].output).toEqual({
+      slug: "x",
+      id: "page-1",
+      sharePath: "/org/acme/h/x",
+    });
+  });
+});
+
+describe("redactHtmlToolInput / redactHtmlToolOutput — HTML_BODY_TOOLS membership", () => {
+  test("get_html is a member of the tool set both redactors act on", () => {
+    // Membership is exercised indirectly (HTML_BODY_TOOLS isn't exported),
+    // via each redactor's no-op-outside-the-set behavior.
+    const redactedOutput = redactHtmlToolOutput("get_html", { html: "secret" });
+    expect(redactedOutput).toEqual({ html: { redacted: true, bytes: 6 } });
+
+    const untouchedOutput = redactHtmlToolOutput("some_other_tool", { html: "secret" });
+    expect(untouchedOutput).toEqual({ html: "secret" });
+
+    const redactedInput = redactHtmlToolInput("get_html", { slug: "x" });
+    expect(redactedInput).toEqual({ slug: "x" }); // no html/body/edits field present — no-op
+
+    const untouchedInput = redactHtmlToolInput("some_other_tool", { html: "secret" });
+    expect(untouchedInput).toEqual({ html: "secret" });
+  });
+
+  test("redactHtmlToolOutput no-ops on non-object output (e.g. an error string shape is still an object, but a bare string/number is passed through)", () => {
+    expect(redactHtmlToolOutput("get_html", "not-an-object")).toBe("not-an-object");
+    expect(redactHtmlToolOutput("get_html", undefined)).toBe(undefined);
+    expect(redactHtmlToolOutput("get_html", { error: "No HTML page found" })).toEqual({
+      error: "No HTML page found",
     });
   });
 });

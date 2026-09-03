@@ -130,23 +130,86 @@ type StepLike = {
 
 const NO_STRIP: ReadonlySet<string> = new Set();
 
-const HTML_BODY_TOOLS = new Set(["save_html", "update_html"]);
+/**
+ * Tools whose input and/or output can carry a raw HTML page body.
+ * `get_html`'s OUTPUT is the page (its input is just `{ slug }`, which
+ * needs no redaction); `save_html`/`update_html`'s INPUT can carry the
+ * page (`html`, and now `edits[].oldStr`/`newStr` fragments), while
+ * their output is just pointer metadata. Both redactors below no-op on
+ * a tool name outside this set, so adding `get_html` here is what makes
+ * its output redaction (and `HTML_BODY_FIELDS`) apply to it at all.
+ */
+const HTML_BODY_TOOLS = new Set(["save_html", "update_html", "get_html"]);
+
+/** Field names, on either input or output, that may hold a raw HTML body. */
+const HTML_BODY_FIELDS = ["html", "body"] as const;
+
+function redactStringField(bytes: number): { redacted: true; bytes: number } {
+  return { redacted: true, bytes };
+}
+
+/** Redact a single `edits[]` entry's `oldStr`/`newStr` — both are verbatim fragments of the stored page. */
+function redactEditEntry(entry: unknown): unknown {
+  if (!entry || typeof entry !== "object" || Array.isArray(entry)) return entry;
+  const record = entry as Record<string, unknown>;
+  const next: Record<string, unknown> = { ...record };
+  for (const field of ["oldStr", "newStr"] as const) {
+    const value = next[field];
+    if (typeof value === "string") {
+      next[field] = redactStringField(Buffer.byteLength(value, "utf8"));
+    }
+  }
+  return next;
+}
 
 /**
  * Strip HTML bodies from persisted tool-call input. SharedConversation
  * messages must not store the page — only a redaction marker + byte length.
+ *
+ * Covers two shapes for `save_html`/`update_html`/`get_html`:
+ *   - top-level `html`/`body` string fields (full-replace `update_html`,
+ *     `save_html`);
+ *   - an `edits[]` array (`update_html`'s targeted-edit mode) — each
+ *     entry's `oldStr`/`newStr` is a verbatim fragment of the stored
+ *     page and must be redacted the same way the whole-body fields are.
  */
 export function redactHtmlToolInput(toolName: string, input: unknown): unknown {
   if (!HTML_BODY_TOOLS.has(toolName)) return input;
   if (!input || typeof input !== "object" || Array.isArray(input)) return input;
   const record = input as Record<string, unknown>;
   const next: Record<string, unknown> = { ...record };
-  for (const field of ["html", "body"] as const) {
+  for (const field of HTML_BODY_FIELDS) {
     if (!(field in next)) continue;
     const value = next[field];
     const bytes =
       typeof value === "string" ? Buffer.byteLength(value, "utf8") : 0;
-    next[field] = { redacted: true, bytes };
+    next[field] = redactStringField(bytes);
+  }
+  if (Array.isArray(next.edits)) {
+    next.edits = next.edits.map(redactEditEntry);
+  }
+  return next;
+}
+
+/**
+ * Strip HTML bodies from persisted tool-call OUTPUT. Symmetric to
+ * `redactHtmlToolInput` — `get_html`'s return value IS the page
+ * (`{ slug, html, size }`), so the moment that tool exists, leaving
+ * `output` unredacted in `messagesFromSteps` would violate the
+ * S3-pointer-only guarantee just as surely as an unredacted input would.
+ * Keyed on the same `HTML_BODY_FIELDS` list as the input redactor.
+ */
+export function redactHtmlToolOutput(toolName: string, output: unknown): unknown {
+  if (!HTML_BODY_TOOLS.has(toolName)) return output;
+  if (!output || typeof output !== "object" || Array.isArray(output)) return output;
+  const record = output as Record<string, unknown>;
+  const next: Record<string, unknown> = { ...record };
+  for (const field of HTML_BODY_FIELDS) {
+    if (!(field in next)) continue;
+    const value = next[field];
+    const bytes =
+      typeof value === "string" ? Buffer.byteLength(value, "utf8") : 0;
+    next[field] = redactStringField(bytes);
   }
   return next;
 }
@@ -234,7 +297,8 @@ export function messagesFromSteps(
       .filter((tc) => !stripToolNames.has(tc.toolName))
       .map((tc) => {
         const r = resultByCallId.get(tc.toolCallId);
-        const output = r ? (r.output ?? r.result) : undefined;
+        const rawOutput = r ? (r.output ?? r.result) : undefined;
+        const output = redactHtmlToolOutput(tc.toolName, rawOutput);
         const isError =
           !!output &&
           typeof output === "object" &&
