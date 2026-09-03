@@ -83,7 +83,14 @@ const mockUseRecursionList = vi.fn(() => ({
 // Graph-first scoring hooks — defaults mirror their real failure mode in
 // jsdom (fetch fails → empty maps → result-table fallback), so every
 // pre-existing test renders exactly as before these mocks existed.
-const mockRubricsMapHook = vi.fn((_slugs: string[]) => new Map());
+/**
+ * Resolved-with-no-roster — what the real hook produces once a jsdom fetch
+ * failure settles. An ABSENT key means "still loading" (the map fills in per
+ * task), which is a different rendering: Total spins instead of dashing.
+ */
+const resolvedEmptyRosters = (slugs: string[]) =>
+  new Map<string, unknown[] | null>(slugs.map((slug) => [slug, null]));
+const mockRubricsMapHook = vi.fn((slugs: string[]) => resolvedEmptyRosters(slugs));
 const mockGraphScoresMapHook = vi.fn((_requests: unknown[]) => new Map());
 
 vi.mock("@/hooks/useBenchmarkRubrics", () => ({
@@ -227,6 +234,7 @@ const { BenchmarkRunsHistory } = await import(
 describe("BenchmarkRunsHistory", () => {
   beforeEach(async () => {
     vi.clearAllMocks();
+    mockRubricsMapHook.mockImplementation(resolvedEmptyRosters);
     mockUseList.mockReturnValue({
       runs: [makeRun()],
       total: 1,
@@ -351,6 +359,40 @@ describe("BenchmarkRunsHistory", () => {
     // renders, regardless of the (ignored) all_pass flag.
     expect(screen.queryByText("PASS")).toBeNull();
     expect(screen.queryByText("72/74")).toBeNull();
+  });
+
+  it("Total spins while the task's roster is still in flight", () => {
+    mockUseList.mockReturnValue({
+      runs: [makeRun({ status: "COMPLETED", n_passed: 72, n_total: 74, all_pass: true })],
+      total: 1,
+      isLoading: false,
+      error: null,
+      refetch: mockRefetch,
+      setExpandedId: mockSetExpandedId,
+    });
+    // An absent key is the loading signal — rosters resolve one task at a time.
+    mockRubricsMapHook.mockImplementation(() => new Map());
+    render(React.createElement(BenchmarkRunsHistory));
+    expect(screen.getByTestId("total-cell-loading")).toBeInTheDocument();
+    // The spinner replaces Total only — Pass still renders its own number.
+    expect(screen.getByText("72")).toBeInTheDocument();
+  });
+
+  it("Total does not spin for a row that carries no score inputs", () => {
+    mockUseList.mockReturnValue({
+      runs: [
+        makeRun({ status: "IN_PROGRESS", n_passed: undefined, n_total: undefined, all_pass: undefined }),
+      ],
+      total: 1,
+      isLoading: false,
+      error: null,
+      refetch: mockRefetch,
+      setExpandedId: mockSetExpandedId,
+    });
+    mockRubricsMapHook.mockImplementation(() => new Map());
+    render(React.createElement(BenchmarkRunsHistory));
+    // No roster can ever give this row a Total, so it dashes immediately.
+    expect(screen.queryByTestId("total-cell-loading")).toBeNull();
   });
 
   it("renders Pass with no badge when all_pass=false", () => {
@@ -1330,7 +1372,7 @@ describe("BenchmarkRunsHistory — graph-first score numerators", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    mockRubricsMapHook.mockImplementation(() => new Map());
+    mockRubricsMapHook.mockImplementation(resolvedEmptyRosters);
     mockGraphScoresMapHook.mockImplementation(() => new Map());
     mockUseRecursionList.mockReturnValue({
       entries: [],
