@@ -63,7 +63,7 @@ export type VerifyOutcome = "works" | "broken" | "unknown";
 
 export interface VerifyEvidence {
   id: string;
-  kind: "screenshot" | "http" | "log" | "timing" | "dom" | "note";
+  kind: "screenshot" | "http" | "log" | "timing" | "dom" | "network" | "console" | "db" | "note";
   summary: string;
   data: string;
 }
