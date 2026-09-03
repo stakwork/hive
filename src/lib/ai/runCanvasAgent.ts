@@ -138,11 +138,13 @@ async function mergeSphinxTools(
     readonly: boolean;
     silentPusher: boolean;
     publicViewer: boolean;
-    workspaceConfigs: Array<Pick<WorkspaceConfig, "workspaceId" | "slug">>;
+    workspaceConfigs: Array<
+      Pick<WorkspaceConfig, "workspaceId" | "slug" | "currentUserGithubUsername">
+    >;
     currentCanvasRef?: string;
   },
 ): Promise<ToolSet> {
-  const target = await resolveSphinxToolTarget({
+  const targets = await resolveSphinxToolTarget({
     readonly: args.readonly,
     silentPusher: args.silentPusher,
     userId: args.userId,
@@ -150,15 +152,20 @@ async function mergeSphinxTools(
     workspaceConfigs: args.workspaceConfigs,
     currentCanvasRef: args.currentCanvasRef,
   });
-  if (!target || !args.userId) {
+  if (targets.length === 0 || !args.userId) {
     return tools;
   }
+  // Same acting user across every bound target — take the first
+  // non-empty GitHub handle among the conversation's workspace configs.
+  const actorLabel = args.workspaceConfigs.find(
+    (c) => typeof c.currentUserGithubUsername === "string" && c.currentUserGithubUsername,
+  )?.currentUserGithubUsername;
   return {
     ...tools,
     ...buildSphinxTools({
       userId: args.userId,
-      workspaceId: target.workspaceId,
-      workspaceSlug: target.workspaceSlug,
+      targets,
+      actorLabel,
     }),
   };
 }
