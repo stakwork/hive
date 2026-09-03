@@ -46,6 +46,17 @@ vi.mock("@/components/ui/button", () => ({
   ),
 }));
 
+vi.mock("@/components/ui/checkbox", () => ({
+  Checkbox: ({ checked, onCheckedChange, ...props }: any) => (
+    <input
+      type="checkbox"
+      checked={!!checked}
+      onChange={() => onCheckedChange?.(!checked)}
+      {...props}
+    />
+  ),
+}));
+
 vi.mock("@/lib/utils", () => ({
   cn: (...classes: (string | boolean | undefined)[]) => classes.filter(Boolean).join(" "),
 }));
@@ -823,5 +834,81 @@ describe("LearnSidebar — concept proposals", () => {
     const items = screen.getAllByTestId("learn-proposal-item");
     expect(items[1].className).toContain("bg-muted/60");
     expect(items[0].className).not.toContain("bg-muted/60");
+  });
+
+  it("does not render selection checkboxes when canWrite is false", () => {
+    render(<LearnSidebar {...defaultProps} proposals={pendingProposals} />);
+    expect(screen.queryByTestId("learn-proposal-checkbox")).toBeNull();
+    expect(screen.queryByTestId("learn-proposal-select-all")).toBeNull();
+  });
+
+  it("renders per-row checkboxes and select-all when canWrite is true", () => {
+    render(
+      <LearnSidebar
+        {...defaultProps}
+        proposals={pendingProposals}
+        canWrite
+        selectedIds={[]}
+        onToggleProposal={vi.fn()}
+        onToggleAll={vi.fn()}
+      />
+    );
+    expect(screen.getByTestId("learn-proposal-select-all")).toBeTruthy();
+    expect(screen.getAllByTestId("learn-proposal-checkbox")).toHaveLength(3);
+  });
+
+  it("row click still opens the detail panel when checkboxes are shown", () => {
+    const onProposalClick = vi.fn();
+    render(
+      <LearnSidebar
+        {...defaultProps}
+        proposals={pendingProposals}
+        canWrite
+        onProposalClick={onProposalClick}
+      />
+    );
+    fireEvent.click(screen.getAllByTestId("learn-proposal-item")[1]);
+    expect(onProposalClick).toHaveBeenCalledWith(pendingProposals[1]);
+  });
+
+  it("select-all is checked only when the first 25 pending rows are selected", () => {
+    const many = Array.from({ length: 26 }, (_, i) => ({
+      ...pendingProposals[0],
+      id: `proposal-${i}`,
+      name: `Concept ${i}`,
+    }));
+    const first25 = many.slice(0, 25).map((p) => p.id);
+    const onToggleAll = vi.fn();
+    render(
+      <LearnSidebar
+        {...defaultProps}
+        proposals={many}
+        canWrite
+        selectedIds={first25}
+        onToggleAll={onToggleAll}
+      />
+    );
+    const selectAll = screen.getByTestId("learn-proposal-select-all") as HTMLInputElement;
+    expect(selectAll.checked).toBe(true);
+    expect(selectAll.title).toBe("Select all pending (25 max)");
+    fireEvent.click(selectAll);
+    expect(onToggleAll).toHaveBeenCalled();
+  });
+
+  it("checkbox toggle does not open the proposal", () => {
+    const onProposalClick = vi.fn();
+    const onToggleProposal = vi.fn();
+    render(
+      <LearnSidebar
+        {...defaultProps}
+        proposals={pendingProposals}
+        canWrite
+        onProposalClick={onProposalClick}
+        onToggleProposal={onToggleProposal}
+      />
+    );
+    fireEvent.click(screen.getAllByTestId("learn-proposal-checkbox")[0]);
+    expect(onToggleProposal).toHaveBeenCalledWith(pendingProposals[0].id);
+    expect(onProposalClick).not.toHaveBeenCalled();
   });
 });

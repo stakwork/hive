@@ -27,6 +27,7 @@ import {
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
+import { Checkbox } from "@/components/ui/checkbox";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { useDebounce } from "@/hooks/useDebounce";
 import { UsageDisplay } from "./UsageDisplay";
@@ -41,6 +42,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { toast } from "sonner";
 import {
+  BULK_PROPOSAL_DECISION_CAP,
   conceptProposalLabel,
   type ConceptProposal,
 } from "@/types/concept-proposals";
@@ -91,6 +93,12 @@ interface LearnSidebarProps {
   pendingProposalConceptIds?: Set<string>;
   onProposalClick?: (proposal: ConceptProposal) => void;
   isProposalsLoading?: boolean;
+  /** DEVELOPER+ only — selection controls stay hidden otherwise. */
+  canWrite?: boolean;
+  selectedIds?: string[];
+  onToggleProposal?: (id: string) => void;
+  onToggleAll?: () => void;
+  bulkActions?: React.ReactNode;
 }
 
 const EMPTY_CONCEPT_ID_SET: Set<string> = new Set();
@@ -119,6 +127,11 @@ export function LearnSidebar({
   pendingProposalConceptIds = EMPTY_CONCEPT_ID_SET,
   onProposalClick,
   isProposalsLoading = false,
+  canWrite = false,
+  selectedIds = [],
+  onToggleProposal,
+  onToggleAll,
+  bulkActions,
 }: LearnSidebarProps) {
   const { timezone } = useUserTimezone();
   const { workspace, isPublicViewer } = useWorkspace();
@@ -733,26 +746,43 @@ export function LearnSidebar({
             receive proposals, so it's hidden for them too). */}
         {(isProposalsLoading || proposals.length > 0) && (
           <div data-testid="learn-proposals-section">
-            <Button
-              variant="ghost"
-              className="w-full justify-between p-2 h-auto"
-              onClick={() => setIsProposalsExpanded(!isProposalsExpanded)}
-              data-testid="learn-proposals-header"
-            >
-              <div className="flex items-center gap-2">
-                <GitPullRequest className="h-4 w-4" />
-                <span className="font-medium">Proposals</span>
-                <Badge variant="secondary" className="ml-1">
-                  {proposals.length}
-                </Badge>
-              </div>
-              <ChevronDown
-                className={cn(
-                  "h-4 w-4 transition-transform",
-                  isProposalsExpanded && "rotate-180"
-                )}
-              />
-            </Button>
+            <div className="flex items-center gap-1">
+              {canWrite && !isProposalsLoading && proposals.length > 0 && (
+                <Checkbox
+                  data-testid="learn-proposal-select-all"
+                  checked={
+                    proposals.length > 0 &&
+                    proposals
+                      .slice(0, BULK_PROPOSAL_DECISION_CAP)
+                      .every((proposal) => selectedIds.includes(proposal.id))
+                  }
+                  onCheckedChange={() => onToggleAll?.()}
+                  aria-label="Select all pending (25 max)"
+                  title="Select all pending (25 max)"
+                  className="ml-2 shrink-0"
+                />
+              )}
+              <Button
+                variant="ghost"
+                className="w-full justify-between p-2 h-auto"
+                onClick={() => setIsProposalsExpanded(!isProposalsExpanded)}
+                data-testid="learn-proposals-header"
+              >
+                <div className="flex items-center gap-2">
+                  <GitPullRequest className="h-4 w-4" />
+                  <span className="font-medium">Proposals</span>
+                  <Badge variant="secondary" className="ml-1">
+                    {proposals.length}
+                  </Badge>
+                </div>
+                <ChevronDown
+                  className={cn(
+                    "h-4 w-4 transition-transform",
+                    isProposalsExpanded && "rotate-180"
+                  )}
+                />
+              </Button>
+            </div>
 
             <AnimatePresence>
               {isProposalsExpanded && (
@@ -784,49 +814,60 @@ export function LearnSidebar({
                             );
                         const source = proposal.source.trim();
                         return (
-                          <button
-                            key={proposal.id}
-                            data-testid="learn-proposal-item"
-                            onClick={() => onProposalClick?.(proposal)}
-                            className={cn(
-                              "w-full text-left p-2 rounded-md text-sm transition-colors flex items-start gap-2",
-                              isActive
-                                ? "bg-muted/60 font-medium"
-                                : "bg-muted/30 hover:bg-muted/50"
+                          <div key={proposal.id} className="flex items-start gap-1">
+                            {canWrite && (
+                              <Checkbox
+                                data-testid="learn-proposal-checkbox"
+                                checked={selectedIds.includes(proposal.id)}
+                                onCheckedChange={() => onToggleProposal?.(proposal.id)}
+                                onClick={(event) => event.stopPropagation()}
+                                aria-label={`Select ${conceptProposalLabel(proposal)}`}
+                                className="mt-2.5 ml-2 shrink-0"
+                              />
                             )}
-                          >
-                            <Badge
-                              variant="outline"
-                              className="flex-shrink-0 text-[10px] uppercase"
-                            >
-                              {proposal.action}
-                            </Badge>
-                            <div className="min-w-0 flex-1 flex flex-col">
-                              <span className="truncate">
-                                {conceptProposalLabel(proposal)}
-                              </span>
-                              {(recency || source) && (
-                                <div className="flex items-center gap-1.5 min-w-0 text-xs text-muted-foreground">
-                                  {recency && (
-                                    <span
-                                      className="flex-shrink-0"
-                                      data-testid="learn-proposal-recency"
-                                    >
-                                      {recency}
-                                    </span>
-                                  )}
-                                  {source && (
-                                    <span
-                                      className="truncate"
-                                      data-testid="learn-proposal-source"
-                                    >
-                                      {source}
-                                    </span>
-                                  )}
-                                </div>
+                            <button
+                              data-testid="learn-proposal-item"
+                              onClick={() => onProposalClick?.(proposal)}
+                              className={cn(
+                                "w-full text-left p-2 rounded-md text-sm transition-colors flex items-start gap-2",
+                                isActive
+                                  ? "bg-muted/60 font-medium"
+                                  : "bg-muted/30 hover:bg-muted/50"
                               )}
-                            </div>
-                          </button>
+                            >
+                              <Badge
+                                variant="outline"
+                                className="flex-shrink-0 text-[10px] uppercase"
+                              >
+                                {proposal.action}
+                              </Badge>
+                              <div className="min-w-0 flex-1 flex flex-col">
+                                <span className="truncate">
+                                  {conceptProposalLabel(proposal)}
+                                </span>
+                                {(recency || source) && (
+                                  <div className="flex items-center gap-1.5 min-w-0 text-xs text-muted-foreground">
+                                    {recency && (
+                                      <span
+                                        className="flex-shrink-0"
+                                        data-testid="learn-proposal-recency"
+                                      >
+                                        {recency}
+                                      </span>
+                                    )}
+                                    {source && (
+                                      <span
+                                        className="truncate"
+                                        data-testid="learn-proposal-source"
+                                      >
+                                        {source}
+                                      </span>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+                            </button>
+                          </div>
                         );
                       })
                     )}
@@ -837,6 +878,8 @@ export function LearnSidebar({
           </div>
         )}
       </div>
+
+      {bulkActions}
 
       {/* Process Repository Section - pinned to bottom (hidden for public viewers; the underlying actions require write access) */}
       {!isPublicViewer && (
