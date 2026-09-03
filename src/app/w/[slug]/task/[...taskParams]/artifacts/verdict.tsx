@@ -18,6 +18,9 @@ import {
   Clock,
   FileText,
   StickyNote,
+  Network,
+  Bug,
+  Database,
 } from "lucide-react";
 
 type BadgeVariant = "default" | "destructive" | "secondary";
@@ -37,6 +40,9 @@ const KIND_ICON: Record<VerifyContent["evidence"][number]["kind"], typeof Camera
   log: Terminal,
   timing: Clock,
   dom: FileText,
+  network: Network,
+  console: Bug,
+  db: Database,
   note: StickyNote,
 };
 
