@@ -21,7 +21,9 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 // Mirrors runCanvasAgent-timing.test.ts.
 // ---------------------------------------------------------------------------
 vi.mock("@/lib/db", () => ({
-  db: { workspace: { findFirst: vi.fn(async () => null) } },
+  db: {
+    workspace: { findFirst: vi.fn(async () => null), findMany: vi.fn(async () => []) },
+  },
 }));
 vi.mock("@/lib/pusher", () => ({
   pusherServer: { trigger: vi.fn() },

@@ -17,7 +17,9 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 // Module mocks — must come before any import that transitively loads them.
 // ---------------------------------------------------------------------------
 vi.mock("@/lib/db", () => ({
-  db: { workspace: { findFirst: vi.fn(async () => null) } },
+  db: {
+    workspace: { findFirst: vi.fn(async () => null), findMany: vi.fn(async () => []) },
+  },
 }));
 vi.mock("@/lib/pusher", () => ({
   pusherServer: { trigger: vi.fn() },
