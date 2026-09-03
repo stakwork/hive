@@ -43,6 +43,16 @@ vi.mock('ai', () => ({
 vi.mock('@/lib/ai/provider', () => ({
   getModel: vi.fn(),
   getApiKeyForProvider: vi.fn(() => 'test-api-key'),
+  WEB_SEARCH_TOOL_NAME: 'web_search',
+  createWebSearch: vi.fn(() => ({
+    tool: { description: 'mock web_search', execute: vi.fn() },
+    backend: 'anthropic',
+    native: true,
+    results: [],
+    capture: vi.fn(),
+    promptSnippet: '',
+    formatOutput: (markdown: string) => ({ content: markdown, converted: 0, skipped: 0 }),
+  })),
 }));
 
 // Mock the AI tools

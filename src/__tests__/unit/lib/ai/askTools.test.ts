@@ -77,7 +77,7 @@ describe("askTools", () => {
   });
 
   describe("factory function", () => {
-    it("returns object with all 7 base tools (no workspaceAuth)", () => {
+    it("returns object with all 6 base tools (no workspaceAuth)", () => {
       const tools = askTools(mockSwarmUrl, mockSwarmApiKey, [mockRepoUrl], mockPat, mockApiKey);
 
       expect(tools).toHaveProperty("list_concepts");
@@ -86,7 +86,9 @@ describe("askTools", () => {
       expect(tools).toHaveProperty("recent_contributions");
       expect(tools).toHaveProperty("repo_agent");
       expect(tools).toHaveProperty("search_logs");
-      expect(tools).toHaveProperty("web_search");
+      // web_search is NOT built here — runCanvasAgent registers one handle
+      // for the whole run so the backend follows the run's provider.
+      expect(tools).not.toHaveProperty("web_search");
       // logs_agent requires workspaceAuth — must NOT be present without it
       expect(tools).not.toHaveProperty("logs_agent");
       // HTML artifact tools are canvas-only; repo_agent / askTools must never
@@ -117,16 +119,12 @@ describe("askTools", () => {
       expect(repo).toBe("test-repo");
     });
 
-    it("calls getProviderTool for web_search", () => {
-      mockGetProviderTool.mockReturnValue({
-        description: "Mock web search",
-        parameters: {},
-        execute: vi.fn(),
-      });
-
+    it("does not build a web_search provider tool", () => {
       askTools(mockSwarmUrl, mockSwarmApiKey, [mockRepoUrl], mockPat, mockApiKey);
 
-      expect(mockGetProviderTool).toHaveBeenCalledWith("anthropic", mockApiKey, "webSearch");
+      // Previously askTools hardcoded getProviderTool("anthropic", ...),
+      // which is why non-Anthropic runs lost web search entirely.
+      expect(mockGetProviderTool).not.toHaveBeenCalled();
     });
   });
 
@@ -696,22 +694,6 @@ describe("askTools", () => {
       warnSpy.mockRestore();
       errorSpy.mockRestore();
       vi.useRealTimers();
-    });
-  });
-
-  describe("web_search tool", () => {
-    it("returns web_search tool from provider", () => {
-      const mockWebSearchTool = {
-        description: "Search the web",
-        parameters: { query: "string" },
-        execute: vi.fn(),
-      };
-
-      mockGetProviderTool.mockReturnValue(mockWebSearchTool);
-
-      const tools = askTools(mockSwarmUrl, mockSwarmApiKey, [mockRepoUrl], mockPat, mockApiKey);
-
-      expect(tools.web_search).toEqual(mockWebSearchTool);
     });
   });
 
