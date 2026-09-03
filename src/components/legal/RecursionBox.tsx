@@ -14,12 +14,11 @@ import { graphExplorerHref as graphHref } from "@/components/run-report/NodePeek
 import { canReadRunReport } from "@/lib/run-report/types";
 import { rosterSummary, type GraphRubric, type RosterSummary } from "@/lib/harvey-lab/rubric-scoring";
 import { HillClimbChart } from "@/components/legal/HillClimbChart";
-import { useLegalBenchmarkRun } from "@/hooks/useLegalBenchmarkRun";
-import { useLegalBenchmarkRunList, type BenchmarkRunListRow } from "@/hooks/useLegalBenchmarkRunList";
+import type { BenchmarkRunListRow } from "@/hooks/useLegalBenchmarkRunList";
 import { RecursionGraphPanel } from "@/components/legal/RecursionGraphPanel";
 import type { EvalTriggerOutput } from "@/lib/harvey-lab/eval-normalizers";
 import type { RecursionEntry } from "@/hooks/useLegalBenchmarkRecursionList";
-import { StakworkRunType, WorkflowStatus } from "@prisma/client";
+import { WorkflowStatus } from "@prisma/client";
 
 /** Edge types the recursion loop writes — the subgraph query's whole alphabet. */
 const LOOP_EDGE_TYPES =
@@ -395,7 +394,7 @@ function RecursionCard({ entry, refetch, allRuns }: RecursionCardProps) {
 
   // Find the most recent CONSOLIDATED run for this taskSlug.
   const existingConsolidated = useMemo(() => {
-    return (allRuns ?? [])
+    return allRuns
       .filter(
         (r) =>
           r.taskSlug === entry.id &&
@@ -410,11 +409,13 @@ function RecursionCard({ entry, refetch, allRuns }: RecursionCardProps) {
   // Seed state from the run list on first render so refreshing doesn't lose the run.
   const effectiveConsolidatedRunId = consolidatedRunId ?? existingConsolidated?.id ?? null;
 
-  // Poll the consolidated run's status.
-  const { run: consolidatedRun } = useLegalBenchmarkRun(
-    effectiveConsolidatedRunId,
-    StakworkRunType.LEGAL_BENCHMARK_CONSOLIDATED,
-  );
+  // The run's live row comes from the shared list, which already carries
+  // CONSOLIDATED rows and refetches on every STAKWORK_RUN_UPDATE — the card
+  // never issues its own /api/stakwork/runs request. Until a trigger in this
+  // session, that row is the seeded in-flight one.
+  const consolidatedRun = consolidatedRunId
+    ? (allRuns.find((r) => r.id === consolidatedRunId) ?? null)
+    : existingConsolidated;
 
   const handleToggle = async (enabled: boolean) => {
     setToggling(true);
@@ -787,6 +788,17 @@ function RecursionCard({ entry, refetch, allRuns }: RecursionCardProps) {
   );
 }
 
+/**
+ * List-order key: when the EvalSet was added to the graph, i.e. when the task
+ * was first requested. Nodes that predate the timestamp fall back to their
+ * latest run time; entries with neither sink to the bottom.
+ */
+function entryRecencyMs(entry: RecursionEntry): number {
+  const iso = entry.dateAddedToGraph ?? entry.latestRun?.runAt;
+  const ms = iso ? Date.parse(iso) : NaN;
+  return Number.isFinite(ms) ? ms : 0;
+}
+
 // ─── RecursionList ────────────────────────────────────────────────────────────
 
 interface RecursionListProps {
@@ -805,6 +817,13 @@ export function RecursionList({
   refetch,
   allRuns,
 }: RecursionListProps) {
+  // Newest first. Declared before the early returns so the hook count is the
+  // same on every render.
+  const sortedEntries = useMemo(
+    () => [...entries].sort((a, b) => entryRecencyMs(b) - entryRecencyMs(a)),
+    [entries],
+  );
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-12 text-muted-foreground">
@@ -838,16 +857,6 @@ export function RecursionList({
       </div>
     );
   }
-
-  const sortedEntries = useMemo(
-    () =>
-      [...entries].sort((a, b) => {
-        const aTime = a.latestRun?.runAt ? new Date(a.latestRun.runAt).getTime() : -Infinity;
-        const bTime = b.latestRun?.runAt ? new Date(b.latestRun.runAt).getTime() : -Infinity;
-        return bTime - aTime;
-      }),
-    [entries],
-  );
 
   return (
     <div className="flex flex-col gap-3">
