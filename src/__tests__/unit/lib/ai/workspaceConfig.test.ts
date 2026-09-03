@@ -8,8 +8,10 @@ const {
   mockDbRepositoryFindMany,
   mockDbWorkspaceMemberFindMany,
   mockDbWorkspaceFindFirst,
+  mockDbWorkspaceFindMany,
   mockGetGithubUsernameAndPAT,
   mockResolveGithubIdentity,
+  mockResolveSourceControlPATsForOrgs,
   mockDecryptField,
 } = vi.hoisted(() => ({
   mockValidateWorkspaceAccess: vi.fn(),
@@ -17,8 +19,10 @@ const {
   mockDbRepositoryFindMany: vi.fn(),
   mockDbWorkspaceMemberFindMany: vi.fn(),
   mockDbWorkspaceFindFirst: vi.fn(),
+  mockDbWorkspaceFindMany: vi.fn(),
   mockGetGithubUsernameAndPAT: vi.fn(),
   mockResolveGithubIdentity: vi.fn(),
+  mockResolveSourceControlPATsForOrgs: vi.fn(),
   mockDecryptField: vi.fn(),
 }));
 
@@ -31,13 +35,14 @@ vi.mock("@/lib/db", () => ({
     swarm: { findFirst: mockDbSwarmFindFirst },
     repository: { findMany: mockDbRepositoryFindMany },
     workspaceMember: { findMany: mockDbWorkspaceMemberFindMany },
-    workspace: { findFirst: mockDbWorkspaceFindFirst },
+    workspace: { findFirst: mockDbWorkspaceFindFirst, findMany: mockDbWorkspaceFindMany },
   },
 }));
 
 vi.mock("@/lib/auth/nextauth", () => ({
   getGithubUsernameAndPAT: mockGetGithubUsernameAndPAT,
   resolveGithubIdentity: mockResolveGithubIdentity,
+  resolveSourceControlPATsForOrgs: mockResolveSourceControlPATsForOrgs,
 }));
 
 vi.mock("@/lib/encryption", () => ({
@@ -61,12 +66,28 @@ import { buildWorkspaceConfigs, buildPublicWorkspaceConfig } from "@/lib/ai/work
 const SLUG = "my-workspace";
 const USER_ID = "user-123";
 const WORKSPACE_ID = "ws-cuid-001";
+const ORG_ID = "org-cuid-001";
+
+/**
+ * Map every slug in the batch to `orgId` (null = no source control org →
+ * per-workspace OAuth fallback). Override per test for mixed batches.
+ */
+function setWorkspaceOrgs(orgOf: (slug: string) => string | null) {
+  mockDbWorkspaceFindMany.mockImplementation(async ({ where }: { where: { slug: { in: string[] } } }) =>
+    where.slug.in.map((slug) => ({ slug, sourceControlOrgId: orgOf(slug) }))
+  );
+}
 
 function setupDefaultMocks(githubUsername = "alice", swarmName: string | null = "swarm38") {
   mockValidateWorkspaceAccess.mockResolvedValue({
     hasAccess: true,
     workspace: { id: WORKSPACE_ID, name: "My Workspace", description: null },
   });
+
+  setWorkspaceOrgs(() => ORG_ID);
+  mockResolveSourceControlPATsForOrgs.mockResolvedValue(
+    new Map([[ORG_ID, { token: "ghp_test", username: githubUsername }]])
+  );
 
   mockDbSwarmFindFirst.mockResolvedValue({
     swarmUrl: "https://swarm.example.com:3333",
@@ -138,10 +159,9 @@ describe("buildWorkspaceConfigs", () => {
   it("sets currentUserGithubUsername to undefined when username is null", async () => {
     setupDefaultMocks();
     // Override: username is null (GitHub profile found but no username)
-    mockGetGithubUsernameAndPAT.mockResolvedValue({
-      token: "ghp_test",
-      username: null,
-    });
+    mockResolveSourceControlPATsForOrgs.mockResolvedValue(
+      new Map([[ORG_ID, { token: "ghp_test", username: null }]])
+    );
 
     const configs = await buildWorkspaceConfigs([SLUG], USER_ID);
 
@@ -263,14 +283,90 @@ describe("buildWorkspaceConfigs — multi-slug concurrency", () => {
     expect(mockResolveGithubIdentity).toHaveBeenCalledTimes(1);
     expect(mockResolveGithubIdentity).toHaveBeenCalledWith(USER_ID);
 
-    // ...and it's handed to each per-workspace PAT lookup so those skip
-    // the re-read.
-    expect(mockGetGithubUsernameAndPAT).toHaveBeenCalledTimes(SLUGS.length);
-    for (const slug of SLUGS) {
-      expect(mockGetGithubUsernameAndPAT).toHaveBeenCalledWith(USER_ID, slug, {
-        username: "alice",
-      });
-    }
+    // ...and it's handed to the batched PAT lookup so that skips the
+    // re-read too.
+    expect(mockResolveSourceControlPATsForOrgs).toHaveBeenCalledWith(
+      USER_ID,
+      expect.any(Array),
+      { username: "alice" }
+    );
+  });
+
+  it("resolves the source-control PAT once per org, not once per workspace", async () => {
+    setupDefaultMocks();
+
+    const configs = await buildWorkspaceConfigs(SLUGS, USER_ID);
+
+    // All three slugs share one org → one token read, zero per-workspace
+    // lookups. This was 2 reads + 1 decrypt per slug before.
+    expect(mockResolveSourceControlPATsForOrgs).toHaveBeenCalledTimes(1);
+    expect(mockResolveSourceControlPATsForOrgs).toHaveBeenCalledWith(
+      USER_ID,
+      [ORG_ID, ORG_ID, ORG_ID],
+      { username: "alice" }
+    );
+    expect(mockGetGithubUsernameAndPAT).not.toHaveBeenCalled();
+    expect(configs.map((c) => c.pat)).toEqual(["ghp_test", "ghp_test", "ghp_test"]);
+  });
+
+  it("reads the slug → org map in one query alongside the access checks", async () => {
+    setupDefaultMocks();
+
+    await buildWorkspaceConfigs(SLUGS, USER_ID);
+
+    expect(mockDbWorkspaceFindMany).toHaveBeenCalledTimes(1);
+    expect(mockDbWorkspaceFindMany).toHaveBeenCalledWith({
+      where: { slug: { in: SLUGS } },
+      select: { slug: true, sourceControlOrgId: true },
+    });
+  });
+
+  it("falls back to the per-workspace lookup only for slugs with no source control org", async () => {
+    setupDefaultMocks();
+    setWorkspaceOrgs((slug) => (slug === "beta" ? null : ORG_ID));
+    mockGetGithubUsernameAndPAT.mockResolvedValue({ token: "ghp_oauth", username: "alice" });
+
+    const configs = await buildWorkspaceConfigs(SLUGS, USER_ID);
+
+    expect(mockResolveSourceControlPATsForOrgs).toHaveBeenCalledWith(
+      USER_ID,
+      [ORG_ID, ORG_ID],
+      { username: "alice" }
+    );
+    expect(mockGetGithubUsernameAndPAT).toHaveBeenCalledTimes(1);
+    expect(mockGetGithubUsernameAndPAT).toHaveBeenCalledWith(USER_ID, "beta", { username: "alice" });
+    expect(configs.map((c) => c.pat)).toEqual(["ghp_test", "ghp_oauth", "ghp_test"]);
+  });
+
+  it("fails the slug whose org has no token for this user", async () => {
+    setupDefaultMocks();
+    setWorkspaceOrgs((slug) => (slug === "beta" ? "org-other" : ORG_ID));
+    // Only ORG_ID has a token; "org-other" is absent from the map.
+
+    await expect(buildWorkspaceConfigs(SLUGS, USER_ID)).rejects.toMatchObject({
+      kind: "not_found",
+      message: "GitHub PAT not found for workspace: beta",
+    });
+  });
+
+  it("does not resolve org tokens for slugs that failed the access check", async () => {
+    setupDefaultMocks();
+    setWorkspaceOrgs((slug) => (slug === "gamma" ? "org-denied" : ORG_ID));
+    mockValidateWorkspaceAccess.mockImplementation(async (slug: string) =>
+      slug === "gamma"
+        ? { hasAccess: false, workspace: null }
+        : { hasAccess: true, workspace: { id: `ws-${slug}`, name: slug, description: null } }
+    );
+
+    await expect(buildWorkspaceConfigs(SLUGS, USER_ID)).rejects.toMatchObject({
+      kind: "forbidden",
+      message: "Access denied for workspace: gamma",
+    });
+    expect(mockResolveSourceControlPATsForOrgs).toHaveBeenCalledWith(
+      USER_ID,
+      [ORG_ID, ORG_ID],
+      { username: "alice" }
+    );
   });
 
   it("issues a workspace's swarm, repo, member and PAT reads concurrently", async () => {
@@ -297,8 +393,8 @@ describe("buildWorkspaceConfigs — multi-slug concurrency", () => {
       gate([{ repositoryUrl: "https://github.com/owner/repo" }])
     );
     mockDbWorkspaceMemberFindMany.mockImplementation(() => gate([]));
-    mockGetGithubUsernameAndPAT.mockImplementation(() =>
-      gate({ token: "ghp_test", username: "alice" })
+    mockResolveSourceControlPATsForOrgs.mockImplementation(() =>
+      gate(new Map([[ORG_ID, { token: "ghp_test", username: "alice" }]]))
     );
 
     const configs = await buildWorkspaceConfigs([SLUG], USER_ID);
@@ -316,6 +412,7 @@ describe("buildWorkspaceConfigs — multi-slug concurrency", () => {
       message: `GitHub PAT not found for workspace: ${SLUG}`,
     });
     expect(mockGetGithubUsernameAndPAT).not.toHaveBeenCalled();
+    expect(mockResolveSourceControlPATsForOrgs).not.toHaveBeenCalled();
   });
 });
 

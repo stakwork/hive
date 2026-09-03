@@ -293,6 +293,7 @@ export async function POST(request: NextRequest) {
     let convertedMessages: ModelMessage[];
 
     if (isServerHistoryMode) {
+      const tHistory = Date.now();
       const memberAccess = await validateWorkspaceAccess(primarySlug, userId!);
       if (!memberAccess.hasAccess) {
         throw forbiddenError("Access denied for workspace");
@@ -316,6 +317,7 @@ export async function POST(request: NextRequest) {
       if (!stored) {
         throw validationError("Conversation not found or access denied");
       }
+      console.log("[quick-ask] timing", { stage: "loadConversationHistory", ms: Date.now() - tHistory, messages: stored.length, workspaces: slugs, orgId: orgId ?? null });
       convertedMessages = [
         ...toModelMessages(stored),
         { role: "user", content: body.message.trim() } as ModelMessage,
@@ -340,7 +342,9 @@ export async function POST(request: NextRequest) {
 
     // Rewrite relative image-attachment URLs to absolute signed S3 URLs
     // the AI SDK can actually download (see `resolveMessageImageUrls`).
+    const tImages = Date.now();
     await resolveMessageImageUrls(convertedMessages);
+    console.log("[quick-ask] timing", { stage: "resolveMessageImageUrls", ms: Date.now() - tImages, workspaces: slugs, orgId: orgId ?? null });
 
     // Org-membership gating for any request that carries an orgId
     // (canvas chat, single- or multi-workspace). Validated here so
@@ -349,11 +353,13 @@ export async function POST(request: NextRequest) {
     // buildDeferredCheckTools) to prevent IDOR: an unauthenticated or
     // non-member caller could otherwise associate DB rows with an arbitrary org.
     if (orgId) {
+      const tOrgGate = Date.now();
       const orgBelongsToCaller = await validateUserBelongsToOrg(
         orgId,
         userId!,
         "id",
       );
+      console.log("[quick-ask] timing", { stage: "validateUserBelongsToOrg", ms: Date.now() - tOrgGate, workspaces: slugs, orgId });
       if (!orgBelongsToCaller) {
         throw forbiddenError("Access denied for the specified organization");
       }
@@ -369,12 +375,14 @@ export async function POST(request: NextRequest) {
     // row. For public viewers that means the next request's budget
     // gate sees one turn's worth less of recorded usage; acceptable
     // softness for the very first send of a session.
+    const tAttribution = Date.now();
     const tokenAttributionRowId = await resolveTokenAttributionRowId({
       conversationId,
       userId,
       workspaceSlug: primarySlug,
       anonymousId: publicAnonymousId,
     });
+    console.log("[quick-ask] timing", { stage: "resolveTokenAttributionRowId", ms: Date.now() - tAttribution, matched: tokenAttributionRowId != null, workspaces: slugs, orgId: orgId ?? null });
 
     // Org-canvas prompt-prefix cache. The prefix (system prompt + the
     // pre-seeded `list_concepts` results) is identical turn-to-turn for a
@@ -404,12 +412,14 @@ export async function POST(request: NextRequest) {
     // gear). Threaded into `runCanvasAgent`, which only honors Anthropic
     // selections today. Null/absent → aieo default. Public viewers have
     // no user row, so they always get the default.
+    const tUserPrefs = Date.now();
     const userPrefs = userId
       ? await db.user.findUnique({
           where: { id: userId },
           select: { chatAgentModel: true, timezone: true },
         })
       : null;
+    console.log("[quick-ask] timing", { stage: "loadUserPrefs", ms: Date.now() - tUserPrefs, skipped: !userId, workspaces: slugs, orgId: orgId ?? null });
     const chatAgentModel = userPrefs?.chatAgentModel ?? undefined;
     const userTimezone = userPrefs?.timezone ?? "UTC";
 
@@ -518,6 +528,11 @@ export async function POST(request: NextRequest) {
         null;
 
       const tAgent = Date.now();
+      // Everything the route did before handing off to the agent: auth,
+      // history load, org gate, attribution, prompt cache, user prefs,
+      // user-message persist. Subtract from `setup-to-stream` to get the
+      // agent's own share.
+      console.log("[quick-ask] timing", { stage: "route-pre-agent-setup", ms: tAgent - t0, workspaces: slugs, orgId: orgId ?? null });
       const {
         result,
         primarySwarmUrl,

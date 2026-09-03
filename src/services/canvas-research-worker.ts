@@ -249,6 +249,10 @@ export async function runResearchSubAgent(
       keepWriteToolNames: [FINALIZE_TOOL],
       silentPusher: true,
       currentCanvasConversationId: conversationId,
+      // The writeup reaches us through a tool call, not the stream, so
+      // cite tags can be rewritten server-side before they're persisted.
+      // Interactive chat leaves this off — see `webSearchCitations`.
+      webSearchCitations: true,
       prepareStep: buildBudgetPrepareStep(Date.now(), { slug, researchId }),
       // End the loop as soon as the doc is written — the worker's sole
       // job is one `update_research` call. Fires only AFTER the write, so
