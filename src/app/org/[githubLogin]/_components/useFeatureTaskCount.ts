@@ -17,9 +17,27 @@ interface PrArtifactView {
   };
 }
 
+/** Raw task shape on GET /api/features/{id} — fields StartTasksSlot needs. */
+interface FeatureTaskPayload {
+  id?: string | null;
+  title?: string | null;
+  status?: string | null;
+  autoMerge?: boolean | null;
+  model?: string | null;
+  mode?: string | null;
+  /** Presence-only; StartTasksSlot hides auto-merge when `!!workflowTask`. */
+  workflowTask?: unknown;
+  prArtifact?: PrArtifactView | null;
+}
+
 export interface TaskView {
+  id: string;
   title: string;
   status: "TODO" | "IN_PROGRESS" | "DONE" | "CANCELLED" | "BLOCKED";
+  autoMerge: boolean;
+  model: string | null;
+  mode: string | null;
+  workflowTask: unknown;
   prArtifact?: {
     url: string;
     status: "IN_PROGRESS" | "DONE" | "CANCELLED";
@@ -38,18 +56,14 @@ export interface TaskCounts {
 
 export interface FeatureTasksResponse {
   data?: {
+    /** Slug lives on GET `include.workspace`, not on TASK_SELECT / TaskView. */
+    workspace?: {
+      slug?: string | null;
+    };
     phases?: {
-      tasks?: {
-        title?: string | null;
-        status?: string | null;
-        prArtifact?: PrArtifactView | null;
-      }[];
+      tasks?: FeatureTaskPayload[];
     }[];
-    tasks?: {
-      title?: string | null;
-      status?: string | null;
-      prArtifact?: PrArtifactView | null;
-    }[];
+    tasks?: FeatureTaskPayload[];
   } | null;
 }
 
@@ -62,14 +76,15 @@ export function buildTaskList(
   feature: NonNullable<FeatureTasksResponse["data"]>,
 ): TaskView[] {
   const out: TaskView[] = [];
-  const push = (t: {
-    title?: string | null;
-    status?: string | null;
-    prArtifact?: PrArtifactView | null;
-  }) => {
+  const push = (t: FeatureTaskPayload) => {
     out.push({
+      id: t.id ?? "",
       title: t.title?.trim() || "Untitled task",
       status: (t.status as TaskView["status"]) ?? "TODO",
+      autoMerge: t.autoMerge ?? false,
+      model: t.model ?? null,
+      mode: t.mode ?? null,
+      workflowTask: t.workflowTask ?? null,
       prArtifact: t.prArtifact
         ? {
             url: t.prArtifact.content.url,

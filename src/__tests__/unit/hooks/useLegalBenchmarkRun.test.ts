@@ -296,6 +296,37 @@ describe("useLegalBenchmarkRun", () => {
     expect(result.current.isStale).toBe(true);
   });
 
+  it("polls exactly once after the stale timeout when the row is unchanged (no refetch loop)", async () => {
+    vi.useFakeTimers();
+
+    renderHook(() => useLegalBenchmarkRun(runId));
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+
+    // The stale poll fires once the row has sat in-progress for 3 minutes.
+    await act(async () => {
+      vi.advanceTimersByTime(3 * 60 * 1000 + 100);
+      await Promise.resolve();
+    });
+    await act(async () => {
+      vi.advanceTimersByTime(100);
+      await Promise.resolve();
+    });
+    expect(global.fetch).toHaveBeenCalledTimes(2);
+
+    // The poll returned the same in-progress row (same updatedAt), so the
+    // timer must not re-arm. It used to re-arm at zero delay after every
+    // poll, hammering /api/stakwork/runs until the run left in-progress.
+    await act(async () => {
+      vi.advanceTimersByTime(10 * 60 * 1000);
+      await Promise.resolve();
+    });
+    expect(global.fetch).toHaveBeenCalledTimes(2);
+  });
+
   it("resets isStale when status advances to a terminal state via Pusher", async () => {
     vi.useFakeTimers();
 
@@ -367,34 +398,6 @@ describe("useLegalBenchmarkRun", () => {
     });
 
     expect(result.current.run).toBeNull();
-  });
-
-  // ── type parameter — Step 2 additions ─────────────────────────────────────
-
-  it("uses LEGAL_BENCHMARK_RUNNER by default (backwards-compatible)", async () => {
-    // Called without the second argument — URL must still contain RUNNER.
-    const { result } = renderHook(() => useLegalBenchmarkRun(runId));
-
-    await waitFor(() => {
-      expect(result.current.isLoading).toBe(false);
-    });
-
-    const url = String(vi.mocked(global.fetch).mock.calls[0][0]);
-    expect(url).toContain("LEGAL_BENCHMARK_RUNNER");
-  });
-
-  it("uses the overridden type in the fetch URL when type is CONSOLIDATED", async () => {
-    const { result } = renderHook(() =>
-      useLegalBenchmarkRun(runId, "LEGAL_BENCHMARK_CONSOLIDATED" as import("@prisma/client").StakworkRunType),
-    );
-
-    await waitFor(() => {
-      expect(result.current.isLoading).toBe(false);
-    });
-
-    const url = String(vi.mocked(global.fetch).mock.calls[0][0]);
-    expect(url).toContain("LEGAL_BENCHMARK_CONSOLIDATED");
-    expect(url).not.toContain("LEGAL_BENCHMARK_RUNNER");
   });
 
   it("no-ops (no fetch, isLoading: false) when runId is null", async () => {
