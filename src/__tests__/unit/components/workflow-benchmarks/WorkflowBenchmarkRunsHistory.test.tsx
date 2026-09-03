@@ -142,7 +142,7 @@ describe("WorkflowBenchmarkRunsHistory", () => {
     // A completed run with no n_passed / n_total — computeBenchmarkScore returns null.
     const runWithNoScore = makeRun({ n_passed: undefined, n_total: undefined });
 
-    // Roster IS present so rubricsLoading stays false and we reach the score branch.
+    // The task's roster has resolved, so the cell reaches the score branch.
     const roster: GraphRubric[] = [
       { ref_id: "r1", id: "crit-1", name: "Criterion One", contested: false },
     ];
