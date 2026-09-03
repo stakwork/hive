@@ -12,7 +12,9 @@ import { describe, test, expect } from "vitest";
 // We only import the exported helper — no side-effectful module graph.
 // filterReadonly is exported from runCanvasAgent but we want to test it
 // without instantiating the full agent. Mock the heavy deps first.
-vi.mock("@/lib/db", () => ({ db: {} }));
+vi.mock("@/lib/db", () => ({
+  db: { workspace: { findFirst: vi.fn(async () => null) } },
+}));
 vi.mock("@/lib/pusher", () => ({ pusherServer: { trigger: vi.fn() }, getWorkspaceChannelName: vi.fn(), PUSHER_EVENTS: {} }));
 vi.mock("@/lib/ai/askTools", () => ({ askTools: vi.fn(), listConcepts: vi.fn(), createHasEndMarkerCondition: vi.fn() }));
 vi.mock("@/lib/ai/askToolsMulti", () => ({ askToolsMulti: vi.fn() }));
@@ -83,6 +85,7 @@ describe("filterReadonly", () => {
     read_research: makeFakeTool(),
     web_search: makeFakeTool(),
     list_concepts: makeFakeTool(),
+    send_sphinx_message: makeFakeTool(),
   };
 
   test("strips all READONLY_STRIP_TOOL_NAMES when keepWriteToolNames is absent", () => {
@@ -105,6 +108,8 @@ describe("filterReadonly", () => {
     expect(result).not.toHaveProperty("assign_feature_to_initiative");
     expect(result).not.toHaveProperty("assign_feature_to_workspace");
     expect(result).not.toHaveProperty("unassign_feature_from_workspace");
+    // send_sphinx_message is not a capability writeToolName; always strip it.
+    expect(result).not.toHaveProperty("send_sphinx_message");
     // Read tools kept
     expect(result).toHaveProperty("list_research");
     expect(result).toHaveProperty("read_research");
@@ -149,5 +154,13 @@ describe("filterReadonly", () => {
     const resultNoKeep = filterReadonly(tools);
     const resultEmptyKeep = filterReadonly(tools, []);
     expect(Object.keys(resultNoKeep).sort()).toEqual(Object.keys(resultEmptyKeep).sort());
+  });
+
+  test("send_sphinx_message is always stripped from a readonly org toolset", () => {
+    const orgStrip = new Set(["update_canvas", "save_research", "send_sphinx_message"]);
+    const result = filterReadonly(tools, undefined, orgStrip);
+    expect(result).not.toHaveProperty("send_sphinx_message");
+    expect(result).toHaveProperty("list_research");
+    expect(result).toHaveProperty("web_search");
   });
 });

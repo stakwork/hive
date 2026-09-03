@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { formatPRSummaryMessage, getMergedPRsForRepo, MergedPR, RepoPRs } from "@/lib/sphinx/daily-pr-summary";
+import { formatPRSummaryMessage, getMergedPRsForRepo, sendToSphinx, MergedPR, RepoPRs } from "@/lib/sphinx/daily-pr-summary";
 
 function makePR(index: number): MergedPR {
   return {
@@ -53,6 +53,36 @@ describe("getMergedPRsForRepo", () => {
     const result = await getMergedPRsForRepo("org/repo", "test-token");
 
     expect(result).toHaveLength(35);
+  });
+});
+
+describe("sendToSphinx", () => {
+  beforeEach(() => {
+    vi.stubGlobal("fetch", vi.fn());
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("forwards an optional AbortSignal to fetch and omits it when absent", async () => {
+    const mockFetch = vi.mocked(fetch);
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({ success: true, message_id: "m-1" }),
+    } as Response);
+
+    const config = { chatPubkey: "pk", botId: "bot", botSecret: "secret" };
+    await sendToSphinx(config, "hello");
+    expect(mockFetch.mock.calls[0][1]).toEqual(
+      expect.objectContaining({ signal: undefined }),
+    );
+
+    const signal = AbortSignal.timeout(10_000);
+    await sendToSphinx(config, "hello", signal);
+    expect(mockFetch.mock.calls[1][1]).toEqual(
+      expect.objectContaining({ signal }),
+    );
   });
 });
 

@@ -81,6 +81,12 @@ import {
   startCanvasSessionIngest,
   type CanvasSessionIngest,
 } from "@/services/stakgraph-session-ingest";
+import {
+  buildSphinxTools,
+  resolveSphinxToolTarget,
+  SEND_SPHINX_MESSAGE_TOOL,
+} from "@/lib/ai/sphinxTools";
+import type { WorkspaceConfig } from "@/lib/ai/types";
 import { getWorkspaceChannelName, PUSHER_EVENTS, pusherServer } from "@/lib/pusher";
 import { parseGithubOwnerRepo } from "@/utils/repositoryParser";
 
@@ -108,7 +114,8 @@ export function filterReadonly(
   keepWriteToolNames?: string[],
   stripToolNames?: ReadonlySet<string>,
 ): ToolSet {
-  const strip = stripToolNames ?? getDefaultReadonlyStrip();
+  const strip = new Set(stripToolNames ?? getDefaultReadonlyStrip());
+  strip.add(SEND_SPHINX_MESSAGE_TOOL);
   const out: ToolSet = {};
   for (const [name, def] of Object.entries(tools)) {
     if (strip.has(name)) {
@@ -118,6 +125,42 @@ export function filterReadonly(
     out[name] = def;
   }
   return out;
+}
+
+/**
+ * Merge `send_sphinx_message` when the in-scope workspace is Sphinx-connected.
+ * Destination is bound at merge time; the model never chooses a workspace.
+ */
+async function mergeSphinxTools(
+  tools: ToolSet,
+  args: {
+    userId: string | null;
+    readonly: boolean;
+    silentPusher: boolean;
+    publicViewer: boolean;
+    workspaceConfigs: Array<Pick<WorkspaceConfig, "workspaceId" | "slug">>;
+    currentCanvasRef?: string;
+  },
+): Promise<ToolSet> {
+  const target = await resolveSphinxToolTarget({
+    readonly: args.readonly,
+    silentPusher: args.silentPusher,
+    userId: args.userId,
+    publicViewer: args.publicViewer,
+    workspaceConfigs: args.workspaceConfigs,
+    currentCanvasRef: args.currentCanvasRef,
+  });
+  if (!target || !args.userId) {
+    return tools;
+  }
+  return {
+    ...tools,
+    ...buildSphinxTools({
+      userId: args.userId,
+      workspaceId: target.workspaceId,
+      workspaceSlug: target.workspaceSlug,
+    }),
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -861,6 +904,15 @@ export async function runCanvasAgent(
       };
     }
 
+    tools = await mergeSphinxTools(tools, {
+      userId,
+      readonly,
+      silentPusher,
+      publicViewer: isPublicViewer,
+      workspaceConfigs,
+      currentCanvasRef: scope?.currentCanvasRef,
+    });
+
     features = [];
     for (const ws of workspaceConfigs) {
       features.push(...(conceptsByWorkspace[ws.slug] || []));
@@ -1009,6 +1061,18 @@ export async function runCanvasAgent(
       };
     }
 
+    // Do not gate Sphinx merge on `orgId` — a one-workspace org canvas
+    // (and dashboard chat) never pass orgId. Destination is the bound
+    // workspace, not an org-level tribe.
+    tools = await mergeSphinxTools(tools, {
+      userId,
+      readonly,
+      silentPusher,
+      publicViewer: isPublicViewer,
+      workspaceConfigs: [ws],
+      currentCanvasRef: scope?.currentCanvasRef,
+    });
+
     canvasScope = orgId ? buildScopeHint(scope, []) : undefined;
 
     // Scope-free by design — see the multi-workspace branch above.
@@ -1064,11 +1128,15 @@ export async function runCanvasAgent(
   if (readonly) {
     // Strip set derived from the composed capabilities — a tool family
     // we never merged contributes nothing, so the strip always matches
-    // what's actually present.
+    // what's actually present. `send_sphinx_message` is not a registered
+    // capability, so always union it in explicitly.
+    const capabilityStrip = orgId
+      ? composeWriteToolNames(orgCapabilities)
+      : getDefaultReadonlyStrip();
     tools = filterReadonly(
       tools,
       keepWriteToolNames,
-      orgId ? composeWriteToolNames(orgCapabilities) : undefined,
+      new Set([...capabilityStrip, SEND_SPHINX_MESSAGE_TOOL]),
     );
   }
 
