@@ -4,6 +4,8 @@
 import React from "react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor, fireEvent } from "@testing-library/react";
+import type { RecursionEntry } from "@/hooks/useLegalBenchmarkRecursionList";
+import { makeConsolidatedRunRow } from "@/__tests__/support/factories";
 
 globalThis.React = React;
 
@@ -141,23 +143,11 @@ vi.mock("@/hooks/useLegalBenchmarkRunList", () => ({
   })),
 }));
 
-// useLegalBenchmarkRun — RecursionCard calls this to poll the consolidated run
-// status. Use vi.fn() so per-test overrides are possible.
-const mockUseLegalBenchmarkRun = vi.fn(() => ({
-  run: null,
-  isLoading: false,
-  isStale: false,
-  refetch: vi.fn(),
-}));
-vi.mock("@/hooks/useLegalBenchmarkRun", () => ({
-  useLegalBenchmarkRun: (...args: unknown[]) => mockUseLegalBenchmarkRun(...args),
-}));
-
 global.fetch = vi.fn();
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-function makeEntry(overrides: Partial<{ refId: string; id: string; name: string; recursion: boolean }> = {}) {
+function makeEntry(overrides: Partial<RecursionEntry> = {}): RecursionEntry {
   return {
     refId: "ref-abc",
     id: "antitrust/task-1",
@@ -655,6 +645,37 @@ describe("RecursionList", () => {
     expect(text).toMatch(/failing criteria/i);
   });
 
+  it("orders cards by when the EvalSet was added to the graph, newest first", () => {
+    const entries = [
+      makeEntry({ refId: "r-old", id: "slug-old", name: "Oldest Task", dateAddedToGraph: "2024-01-01T00:00:00.000Z" }),
+      makeEntry({ refId: "r-new", id: "slug-new", name: "Newest Task", dateAddedToGraph: "2026-08-01T00:00:00.000Z" }),
+      makeEntry({ refId: "r-mid", id: "slug-mid", name: "Middle Task", dateAddedToGraph: "2025-06-01T00:00:00.000Z" }),
+    ];
+    render(
+      <RecursionList entries={entries} isLoading={false} error={null} refetch={mockRefetch} allRuns={[]} />,
+    );
+    const names = screen.getAllByText(/Task$/).map((el) => el.textContent);
+    expect(names).toEqual(["Newest Task", "Middle Task", "Oldest Task"]);
+  });
+
+  it("falls back to the latest run time without a graph timestamp; entries with neither sink", () => {
+    const entries = [
+      makeEntry({ refId: "r-none", id: "slug-none", name: "Undated Task" }),
+      makeEntry({
+        refId: "r-run",
+        id: "slug-run",
+        name: "Ran Task",
+        latestRun: { n_passed: 1, n_total: 2, runAt: "2026-08-01T00:00:00.000Z" },
+      }),
+      makeEntry({ refId: "r-graph", id: "slug-graph", name: "Stamped Task", dateAddedToGraph: "2025-08-24T00:00:00.000Z" }),
+    ];
+    render(
+      <RecursionList entries={entries} isLoading={false} error={null} refetch={mockRefetch} allRuns={[]} />,
+    );
+    const names = screen.getAllByText(/Task$/).map((el) => el.textContent);
+    expect(names).toEqual(["Ran Task", "Stamped Task", "Undated Task"]);
+  });
+
   it("renders a card per entry", () => {
     const entries = [
       makeEntry({ refId: "r1", id: "slug-1", name: "Task One" }),
@@ -953,46 +974,13 @@ describe("RecursionCard — allRuns prop (consolidated-run detection)", () => {
     mockRefetch.mockResolvedValue(undefined);
     mockHistoryLoaded();
     mockUseBenchmarkRubrics.mockReturnValue({ rubrics: null });
-    // Default: no run
-    mockUseLegalBenchmarkRun.mockReturnValue({
-      run: null,
-      isLoading: false,
-      isStale: false,
-      refetch: vi.fn(),
-    });
   });
 
-  function makeConsolidatedRow(overrides: {
-    id?: string;
-    taskSlug?: string;
-    status?: import("@prisma/client").WorkflowStatus;
-    hasReport?: boolean;
-  } = {}): import("@/hooks/useLegalBenchmarkRunList").BenchmarkRunListRow {
-    return {
-      id: overrides.id ?? "con-run-1",
-      workspaceId: "ws-1",
-      runType: "consolidated" as const,
-      pipeline: "LEGAL_BENCHMARK_CONSOLIDATED" as import("@prisma/client").StakworkRunType,
-      status: overrides.status ?? "PENDING" as import("@prisma/client").WorkflowStatus,
-      projectId: null,
-      taskSlug: overrides.taskSlug ?? "antitrust/task-1",
-      taskTitle: "",
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      hasReport: overrides.hasReport ?? false,
-    };
-  }
-
   it("detects a PENDING in-flight consolidated run via the allRuns prop", () => {
-    // The card finds existingConsolidated from allRuns and seeds effectiveConsolidatedRunId.
-    // useLegalBenchmarkRun is then called with that id and returns hasReport=false,
-    // which causes the "Generating…" spinner to appear.
-    mockUseLegalBenchmarkRun.mockImplementation((runId: string | null) =>
-      runId ? { run: { hasReport: false }, isLoading: false, isStale: false, refetch: vi.fn() }
-            : { run: null, isLoading: false, isStale: false, refetch: vi.fn() },
-    );
-
-    const run = makeConsolidatedRow({ id: "existing-1", taskSlug: "antitrust/task-1", status: "PENDING" as import("@prisma/client").WorkflowStatus });
+    // The card finds existingConsolidated in allRuns, seeds
+    // effectiveConsolidatedRunId from it, and reads the same row back for its
+    // status — no report yet, so the "Generating…" spinner appears.
+    const run = makeConsolidatedRunRow({ id: "existing-1", taskSlug: "antitrust/task-1" });
 
     render(
       <RecursionList
@@ -1008,7 +996,7 @@ describe("RecursionCard — allRuns prop (consolidated-run detection)", () => {
   });
 
   it("ignores consolidated runs for other task slugs", () => {
-    const run = makeConsolidatedRow({ id: "other-1", taskSlug: "contracts/other-task" });
+    const run = makeConsolidatedRunRow({ id: "other-1", taskSlug: "contracts/other-task" });
 
     render(
       <RecursionList
@@ -1024,11 +1012,7 @@ describe("RecursionCard — allRuns prop (consolidated-run detection)", () => {
   });
 
   it("ignores runs with hasReport=true (already completed)", () => {
-    mockUseLegalBenchmarkRun.mockReturnValue({
-      run: null, isLoading: false, isStale: false, refetch: vi.fn(),
-    });
-
-    const run = makeConsolidatedRow({ taskSlug: "antitrust/task-1", hasReport: true });
+    const run = makeConsolidatedRunRow({ taskSlug: "antitrust/task-1", hasReport: true });
 
     render(
       <RecursionList
@@ -1046,7 +1030,6 @@ describe("RecursionCard — allRuns prop (consolidated-run detection)", () => {
   it("useLegalBenchmarkRunList is NOT called by RecursionList or RecursionCard", () => {
     // After the lift, these components receive allRuns as a prop and must not
     // call the hook themselves. The mock's call count must remain 0 for N cards.
-    vi.mocked(mockUseLegalBenchmarkRun); // keep linter happy — actual assertion below
     const runListMock = vi.mocked(
       (vi.getMockImplementation as unknown as () => {
         useLegalBenchmarkRunList: ReturnType<typeof vi.fn>;

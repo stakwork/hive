@@ -25,6 +25,9 @@ export * from "./github-permissions.factory";
 // UI testing factory (React Flow nodes)
 export * from "./graphFactory";
 
+// Legal benchmark run-list rows (in-memory, for component tests)
+export * from "./benchmark-run-list-row.factory";
+
 // Whiteboard factories
 export * from "./whiteboard-message.factory";
 

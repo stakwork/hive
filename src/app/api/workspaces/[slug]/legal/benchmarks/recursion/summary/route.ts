@@ -59,7 +59,7 @@ function buildMockSummaryData() {
       recursion: true,
       rubricCount: 10,
       contestedCount: 1,
-      latestRun: { n_passed: 7, n_total: 9, runAt: "1700000000" },
+      latestRun: { n_passed: 7, n_total: 9, runAt: "2023-11-14T22:13:20.000Z" },
       fixChainDepth: 3,
       isDefault: false,
     },
