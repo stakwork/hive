@@ -22,7 +22,7 @@ import type { RecursionEvalSetEntry } from "@/services/legal-benchmark-recursion
 import { fetchEvalSetRubrics } from "@/services/legal-benchmark-rubrics";
 import { batchedAll } from "@/lib/harvey-lab/fix-chain-walker";
 import { expandEdges } from "@/lib/harvey-lab/jarvis-expand";
-import { normalizeOutput, type RawJarvisNode } from "@/lib/harvey-lab/eval-normalizers";
+import { graphEpochToIso, normalizeOutput, type RawJarvisNode } from "@/lib/harvey-lab/eval-normalizers";
 import { logger } from "@/lib/logger";
 
 // Cap on concurrently-processed tasks. Each task issues up to 2 parallel
@@ -42,6 +42,7 @@ export interface RecursionSummaryEntry {
   recursion: boolean;
   rubricCount: number;
   contestedCount: number;
+  /** `runAt` is ISO — the graph's epoch stamp is converted at this boundary. */
   latestRun: { n_passed: number | null; n_total: number | null; runAt: string | null } | null;
   fixChainDepth: number;
   /** True when any per-task fetch fell back to zeros. */
@@ -136,7 +137,7 @@ async function fetchOneTaskSummary(
           latestRun = {
             n_passed: normalized.n_passed ?? null,
             n_total: normalized.n_total ?? null,
-            runAt: normalized.date_added_to_graph ?? null,
+            runAt: graphEpochToIso(normalized.date_added_to_graph),
           };
         }
       }

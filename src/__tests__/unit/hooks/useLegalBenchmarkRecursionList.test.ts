@@ -70,6 +70,21 @@ describe("useLegalBenchmarkRecursionList", () => {
     expect(result.current.entries[2].reason).toBe("multipleRuns");
   });
 
+  it("maps dateAddedToGraph from the API response, defaulting to null", async () => {
+    const addedAt = "2025-08-24T01:46:40.000Z";
+    const dataWithTimestamps = [
+      { ref_id: "ref-1", id: "tax/task-1", name: "Tax Task 1", dateAddedToGraph: addedAt },
+      { ref_id: "ref-2", id: "contracts/task-2", name: "Contracts Task 2" },
+    ];
+    mockFetchSuccess(dataWithTimestamps);
+
+    const { result } = renderHook(() => useLegalBenchmarkRecursionList());
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    expect(result.current.entries[0].dateAddedToGraph).toBe(addedAt);
+    expect(result.current.entries[1].dateAddedToGraph).toBeNull();
+  });
+
   it("sets reason to undefined when not present in API response", async () => {
     // MOCK_API_DATA does not have a reason field
     mockFetchSuccess(MOCK_API_DATA);

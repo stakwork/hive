@@ -14,6 +14,7 @@ import {
   searchNodesByAttributes,
   updateNode,
 } from "@/services/swarm/api/nodes";
+import { graphEpochToIso } from "@/lib/harvey-lab/eval-normalizers";
 import { logger } from "@/lib/logger";
 import { db } from "@/lib/db";
 import { StakworkRunType } from "@prisma/client";
@@ -91,6 +92,12 @@ export interface RecursionEvalSetEntry {
    * - "multipleRuns" — more than one LEGAL_BENCHMARK_RUNNER StakworkRun exists for this eval set (Source 3)
    */
   reason?: "active" | "wasEnabled" | "multipleRuns";
+  /**
+   * ISO timestamp of when the EvalSet node was added to the graph — its
+   * top-level `date_added_to_graph`, converted at this boundary. Null when
+   * the node predates the field.
+   */
+  dateAddedToGraph?: string | null;
 }
 
 // ── listRecursionEvalSets ──────────────────────────────────────────────────
@@ -104,7 +111,7 @@ const REASON_PRIORITY: Record<NonNullable<RecursionEvalSetEntry["reason"]>, numb
 
 /** Map a raw graph node to a `RecursionEvalSetEntry` with the given reason. */
 function toEntry(
-  node: { ref_id: string; properties?: Record<string, unknown> },
+  node: { ref_id: string; date_added_to_graph?: number | string; properties?: Record<string, unknown> },
   reason: NonNullable<RecursionEvalSetEntry["reason"]>,
   defaultRecursion?: boolean,
 ): RecursionEvalSetEntry {
@@ -117,6 +124,7 @@ function toEntry(
       : null,
     recursion: (node.properties?.recursion as boolean | undefined) ?? defaultRecursion ?? false,
     reason,
+    dateAddedToGraph: graphEpochToIso(node.date_added_to_graph),
   };
 }
 

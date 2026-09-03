@@ -264,7 +264,7 @@ describe("fetchRecursionTaskSummary", () => {
       expect(result.latestRun).toEqual({
         n_passed: 6,
         n_total: 10,
-        runAt: "1700000050",
+        runAt: "2023-11-14T22:14:10.000Z",
       });
     });
   });
