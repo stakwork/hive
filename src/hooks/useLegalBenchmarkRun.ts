@@ -35,25 +35,16 @@ interface RawRunRow {
 }
 
 /**
- * Fetch and subscribe to a single benchmark run of any pipeline type.
- *
- * `type` defaults to `LEGAL_BENCHMARK_RUNNER` so all existing callers are
- * backwards-compatible and require no updates.  Pass
- * `StakworkRunType.LEGAL_BENCHMARK_CONSOLIDATED` from `RecursionCard` to poll
- * consolidated-report runs; `null` for `runId` no-ops the hook (returns
- * `{ run: null, isLoading: false, isStale: false }`).
+ * Fetch and subscribe to a single LEGAL_BENCHMARK_RUNNER run. `null` for
+ * `runId` no-ops the hook (returns `{ run: null, isLoading: false, isStale: false }`).
  */
-export function useLegalBenchmarkRun(
-  runId: string | null,
-  type: StakworkRunType = StakworkRunType.LEGAL_BENCHMARK_RUNNER,
-): UseLegalBenchmarkRunResult {
+export function useLegalBenchmarkRun(runId: string | null): UseLegalBenchmarkRunResult {
   const { workspace } = useWorkspace();
   const [run, setRun] = useState<LegalBenchmarkRun | null>(null);
   const [isLoading, setIsLoading] = useState(runId !== null);
   const [isStale, setIsStale] = useState(false);
 
-  // Keep refs so async timer / Pusher callbacks always read latest values.
-  const runRef = useRef<LegalBenchmarkRun | null>(null);
+  // Ref so the timer / Pusher callbacks always call the latest fetcher.
   const fetchRunRef = useRef<(() => Promise<void>) | undefined>(undefined);
 
   const fetchRun = useCallback(async () => {
@@ -63,7 +54,7 @@ export function useLegalBenchmarkRun(
       setIsLoading(true);
 
       const res = await fetch(
-        `/api/stakwork/runs?workspaceId=${workspace.id}&type=${type}&includeResult=true`,
+        `/api/stakwork/runs?workspaceId=${workspace.id}&type=${StakworkRunType.LEGAL_BENCHMARK_RUNNER}&includeResult=true`,
       );
 
       if (!res.ok) {
@@ -76,7 +67,6 @@ export function useLegalBenchmarkRun(
       const rawRunner = rawRunnerRuns.find((r) => r.id === runId);
 
       if (!rawRunner) {
-        runRef.current = null;
         setRun(null);
         return;
       }
@@ -114,14 +104,13 @@ export function useLegalBenchmarkRun(
         updatedAt: runnerRow.updatedAt,
       };
 
-      runRef.current = legalRun;
       setRun(legalRun);
     } catch (error) {
       console.error("Error fetching legal benchmark run:", error);
     } finally {
       setIsLoading(false);
     }
-  }, [workspace?.id, runId, type]);
+  }, [workspace?.id, runId]);
 
   fetchRunRef.current = fetchRun;
 
@@ -132,22 +121,34 @@ export function useLegalBenchmarkRun(
   }, [workspace?.id, runId, fetchRun]);
 
   // Stale timeout: after 3 minutes with an in-progress status, poll once.
-  // If still in-progress after the poll, mark stale. Resets when status leaves in-progress.
+  // If still in-progress after the poll, mark stale. Resets when the run
+  // leaves in-progress. Same guard as useStakworkGeneration's hasFiredPollRef.
+  //
+  // The guard is keyed on the row version (id + updatedAt), not on the effect
+  // firing: every fetch stores a fresh `run` object, so without it a run
+  // already past the threshold re-armed a zero-delay poll on every re-render —
+  // an unbounded refetch loop.
+  const polledRowRef = useRef<string | null>(null);
+
   useEffect(() => {
     if (!run || !IN_PROGRESS_STATUSES.has(run.status)) {
       setIsStale(false);
+      polledRowRef.current = null;
+      return;
+    }
+
+    const rowVersion = `${run.id}:${run.updatedAt}`;
+    if (polledRowRef.current === rowVersion) {
+      // Already polled this row version and it is still in progress.
+      setIsStale(true);
       return;
     }
 
     const elapsed = Date.now() - new Date(run.updatedAt).getTime();
-    const remaining = Math.max(0, STALE_RUN_TIMEOUT_MS - elapsed);
-
-    const timer = setTimeout(async () => {
-      await fetchRunRef.current?.();
-      if (runRef.current && IN_PROGRESS_STATUSES.has(runRef.current.status)) {
-        setIsStale(true);
-      }
-    }, remaining);
+    const timer = setTimeout(() => {
+      polledRowRef.current = rowVersion;
+      void fetchRunRef.current?.();
+    }, Math.max(0, STALE_RUN_TIMEOUT_MS - elapsed));
 
     return () => clearTimeout(timer);
   }, [run]);

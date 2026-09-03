@@ -16,6 +16,7 @@ import { useWorkspace } from "@/hooks/useWorkspace";
 import { parseBenchmarkRunResult } from "@/types/legal";
 import type { EvalRunHistoryEntry } from "@/types/legal";
 import {
+  graphEpochToIso,
   normalizeOutput,
   triggerHasIdentity,
   sortAttemptsChronologically,
@@ -103,14 +104,6 @@ export interface AttemptRailRow {
 }
 
 const NON_TERMINAL_STATUSES = new Set(["PENDING", "IN_PROGRESS"]);
-
-/** Convert a Jarvis epoch-seconds string to ISO; null when unparseable. */
-function graphEpochToIso(raw: string | undefined): string | null {
-  if (!raw) return null;
-  const seconds = parseFloat(raw);
-  if (!Number.isFinite(seconds) || seconds <= 0) return null;
-  return new Date(seconds * 1000).toISOString();
-}
 
 /**
  * Pick the run that carries a trigger's current status. An active run beats a
