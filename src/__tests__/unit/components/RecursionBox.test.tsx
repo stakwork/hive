@@ -237,6 +237,8 @@ function mockFetchFail(status = 500, error = "Graph error") {
 // ─── Component under test ──────────────────────────────────────────────────────
 
 import { RecursionList } from "@/components/legal/RecursionBox";
+import { formatDistanceToNow } from "date-fns";
+import { graphEpochToIso } from "@/lib/harvey-lab/eval-normalizers";
 
 // ─── RecursionCard (via RecursionList) ────────────────────────────────────────
 
@@ -712,6 +714,170 @@ describe("RecursionList", () => {
     expect(screen.queryByText("Active")).toBeNull();
     expect(screen.queryByText("Running")).toBeNull();
     expect(screen.queryByText("Inactive")).toBeNull();
+  });
+});
+
+// ─── Relative enrollment / last-run times ────────────────────────────────────
+
+describe("RecursionCard — relative enrollment and last-run times", () => {
+  const mockRefetch = vi.fn();
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockRefetch.mockResolvedValue(undefined);
+    mockHistoryLoaded();
+    mockUseBenchmarkRubrics.mockReturnValue({ rubrics: null });
+  });
+
+  function renderEntries(entries: RecursionEntry[]) {
+    render(
+      <RecursionList
+        entries={entries}
+        isLoading={false}
+        error={null}
+        refetch={mockRefetch}
+        allRuns={[]}
+      />,
+    );
+  }
+
+  it("shows original-task relative time from dateAddedToGraph, distinct from last recursion", () => {
+    renderEntries([
+      makeEntry({
+        dateAddedToGraph: "2024-01-15T00:00:00.000Z",
+        latestRun: { n_passed: 1, n_total: 2, runAt: "2024-06-01T00:00:00.000Z" },
+      }),
+    ]);
+
+    const enrollment = screen.getByTestId("original-enrollment-time");
+    expect(enrollment.textContent).toMatch(/^Original task · /);
+    expect(enrollment.textContent).toMatch(/ago/);
+    expect(enrollment.textContent).not.toMatch(/Last recursion/);
+    expect(enrollment.getAttribute("title")).toBeNull();
+
+    const lastRun = screen.getByTestId("last-recursion-time");
+    expect(lastRun.textContent).toMatch(/^Last recursion · /);
+    expect(lastRun.textContent).toMatch(/ago/);
+    expect(lastRun.textContent).not.toMatch(/Original task/);
+  });
+
+  it("shows last-recursion relative time from latestRun.runAt while collapsed", () => {
+    renderEntries([
+      makeEntry({
+        latestRun: { n_passed: 3, n_total: 5, runAt: "2024-06-01T00:00:00.000Z" },
+      }),
+    ]);
+
+    expect(screen.queryByTestId("original-enrollment-time")).toBeNull();
+    const lastRun = screen.getByTestId("last-recursion-time");
+    expect(lastRun.textContent).toMatch(/^Last recursion · /);
+    expect(lastRun.textContent).toMatch(/ago/);
+    expect(lastRun.textContent).not.toMatch(/\d{4}-\d{2}-\d{2}/);
+    expect(lastRun.textContent).not.toMatch(/\d{1,2}:\d{2}/);
+    expect(screen.queryByTestId("expand-toggle")).toBeTruthy();
+    expect(screen.queryByTestId("hill-climb-chart")).toBeNull();
+  });
+
+  it("expanded card uses max converted attempt date_added_to_graph over latestRun.runAt", async () => {
+    const olderRunAt = "2024-01-01T00:00:00.000Z";
+    mockHistoryLoaded([
+      makeOutput(28, 42, 0),
+      makeOutput(34, 42, 1),
+      makeOutput(20, 42, 2),
+    ]);
+    renderEntries([
+      makeEntry({
+        dateAddedToGraph: "2023-12-01T00:00:00.000Z",
+        latestRun: { n_passed: 34, n_total: 42, runAt: olderRunAt },
+      }),
+    ]);
+
+    fireEvent.click(screen.getByTestId("expand-toggle"));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("hill-climb-chart")).toBeTruthy();
+    });
+
+    const newestEpoch = String(1720000000 + 2 * 86400);
+    const newestIso = graphEpochToIso(newestEpoch);
+    expect(newestIso).toBeTruthy();
+    const expected = formatDistanceToNow(new Date(newestIso!), { addSuffix: true });
+
+    const lastRun = screen.getByTestId("last-recursion-time");
+    expect(lastRun.textContent).toBe(`Last recursion · ${expected}`);
+    expect(lastRun.textContent).toMatch(/ago/);
+
+    const fallbackExpected = formatDistanceToNow(new Date(olderRunAt), { addSuffix: true });
+    expect(lastRun.textContent).not.toBe(`Last recursion · ${fallbackExpected}`);
+  });
+
+  it("omits each label independently when its stamp is missing, empty, or unparseable", () => {
+    expect(() => {
+      renderEntries([
+        makeEntry({
+          refId: "r-bad",
+          id: "slug-bad",
+          name: "Bad Stamps Task",
+          dateAddedToGraph: "not-a-date",
+          latestRun: { n_passed: 1, n_total: 2, runAt: "totally-invalid" },
+        }),
+      ]);
+    }).not.toThrow();
+
+    expect(screen.queryByTestId("original-enrollment-time")).toBeNull();
+    expect(screen.queryByTestId("last-recursion-time")).toBeNull();
+  });
+
+  it("omits enrollment when dateAddedToGraph is empty and does not fall back to latestRun", () => {
+    renderEntries([
+      makeEntry({
+        dateAddedToGraph: "",
+        latestRun: { n_passed: 1, n_total: 2, runAt: "2024-06-01T00:00:00.000Z" },
+      }),
+    ]);
+
+    expect(screen.queryByTestId("original-enrollment-time")).toBeNull();
+    expect(screen.getByTestId("last-recursion-time").textContent).toMatch(/Last recursion · .*ago/);
+  });
+
+  it("converts leftover epoch latestRun.runAt instead of throwing Invalid Date", () => {
+    expect(() => {
+      renderEntries([
+        makeEntry({
+          latestRun: { n_passed: 7, n_total: 10, runAt: "1700000000" },
+        }),
+      ]);
+    }).not.toThrow();
+
+    const lastRun = screen.getByTestId("last-recursion-time");
+    expect(lastRun.textContent).toMatch(/^Last recursion · /);
+    expect(lastRun.textContent).toMatch(/ago/);
+    expect(lastRun.textContent).not.toMatch(/1700000000/);
+    expect(lastRun.textContent).not.toMatch(/\d{4}-\d{2}-\d{2}/);
+  });
+
+  it("falls back to latestRun.runAt when expanded attempts have no convertible stamp", async () => {
+    mockHistoryLoaded([
+      { ...makeOutput(28, 42, 0), date_added_to_graph: "not-an-epoch" },
+    ]);
+    renderEntries([
+      makeEntry({
+        latestRun: { n_passed: 28, n_total: 42, runAt: "2024-06-01T00:00:00.000Z" },
+      }),
+    ]);
+
+    fireEvent.click(screen.getByTestId("expand-toggle"));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("hill-climb-chart")).toBeTruthy();
+    });
+
+    const expected = formatDistanceToNow(new Date("2024-06-01T00:00:00.000Z"), {
+      addSuffix: true,
+    });
+    expect(screen.getByTestId("last-recursion-time").textContent).toBe(
+      `Last recursion · ${expected}`,
+    );
   });
 });
 

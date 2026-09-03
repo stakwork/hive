@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useMemo, useState } from "react";
+import { formatDistanceToNow } from "date-fns";
 import { Loader2, RefreshCw, ChevronDown, ChevronUp, AlertCircle, ExternalLink, TrendingUp, Network, Copy, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
@@ -16,7 +17,7 @@ import { rosterSummary, type GraphRubric, type RosterSummary } from "@/lib/harve
 import { HillClimbChart } from "@/components/legal/HillClimbChart";
 import type { BenchmarkRunListRow } from "@/hooks/useLegalBenchmarkRunList";
 import { RecursionGraphPanel } from "@/components/legal/RecursionGraphPanel";
-import type { EvalTriggerOutput } from "@/lib/harvey-lab/eval-normalizers";
+import { graphEpochToIso, type EvalTriggerOutput } from "@/lib/harvey-lab/eval-normalizers";
 import type { RecursionEntry } from "@/hooks/useLegalBenchmarkRecursionList";
 import { WorkflowStatus } from "@prisma/client";
 
@@ -248,6 +249,39 @@ function collectClimbTargets(rows: AttemptRailRow[]): ClimbTarget[] {
   return [...seen.values()];
 }
 
+/**
+ * Convert a graph/summary timestamp to epoch milliseconds.
+ * Never returns NaN — callers may pass the result straight to
+ * `formatDistanceToNow(new Date(ms))`. date-fns v4 throws RangeError on
+ * Invalid Date, so unparseable input must omit rather than throw.
+ *
+ * Numeric values (and numeric strings) are Jarvis Unix-epoch seconds and
+ * go through `graphEpochToIso`. Non-numeric strings are Date.parse'd as
+ * ISO. Empty / null / still-unparseable → null (omit the label).
+ */
+function parseStampMs(raw: number | string | null | undefined): number | null {
+  if (raw == null || raw === "") return null;
+
+  const asEpochSeconds =
+    typeof raw === "number" ||
+    (typeof raw === "string" && raw.trim() !== "" && Number.isFinite(Number(raw)));
+
+  if (asEpochSeconds) {
+    const iso = graphEpochToIso(raw);
+    if (!iso) return null;
+    const ms = Date.parse(iso);
+    return Number.isFinite(ms) ? ms : null;
+  }
+
+  if (typeof raw !== "string") return null;
+  const ms = Date.parse(raw);
+  return Number.isFinite(ms) ? ms : null;
+}
+
+function relativeTimeLabel(ms: number): string {
+  return formatDistanceToNow(new Date(ms), { addSuffix: true });
+}
+
 // ─── RecursionCard ────────────────────────────────────────────────────────────
 
 interface RecursionCardProps {
@@ -385,6 +419,30 @@ function RecursionCard({ entry, refetch, allRuns }: RecursionCardProps) {
     : !expanded
       ? (summaryLatest ?? historyDerived)
       : (historyDerived ?? summaryLatest);
+
+  // Original enrollment: EvalSet dateAddedToGraph only — never latestRun.runAt.
+  const enrollmentMs = parseStampMs(entry.dateAddedToGraph);
+
+  // Most recent recursion: max converted attempt date_added_to_graph while
+  // expanded; collapsed cards keep history gated so they use latestRun.runAt.
+  const lastRecursionMs = useMemo(() => {
+    if (expanded) {
+      let maxMs: number | null = null;
+      for (const pt of attempts) {
+        const iso = graphEpochToIso(pt.date_added_to_graph);
+        if (!iso) continue;
+        const ms = Date.parse(iso);
+        if (!Number.isFinite(ms)) continue;
+        if (maxMs == null || ms > maxMs) maxMs = ms;
+      }
+      if (maxMs != null) return maxMs;
+    }
+    return parseStampMs(entry.latestRun?.runAt);
+  }, [expanded, attempts, entry.latestRun?.runAt]);
+
+  const enrollmentRelative = enrollmentMs != null ? relativeTimeLabel(enrollmentMs) : null;
+  const lastRecursionRelative =
+    lastRecursionMs != null ? relativeTimeLabel(lastRecursionMs) : null;
 
   // Headline climb: best-so-far minus the baseline score. Only a real climb
   // renders — a flat or regressing series keeps the header quiet.
@@ -581,6 +639,20 @@ function RecursionCard({ entry, refetch, allRuns }: RecursionCardProps) {
               )}
             </button>
           </span>
+          {(enrollmentRelative || lastRecursionRelative) && (
+            <div className="flex items-center gap-x-3 gap-y-0.5 flex-wrap text-xs text-muted-foreground">
+              {enrollmentRelative && (
+                <span data-testid="original-enrollment-time">
+                  Original task · {enrollmentRelative}
+                </span>
+              )}
+              {lastRecursionRelative && (
+                <span data-testid="last-recursion-time">
+                  Last recursion · {lastRecursionRelative}
+                </span>
+              )}
+            </div>
+          )}
           {toggleError && (
             <span className="text-xs text-destructive mt-1">{toggleError}</span>
           )}
