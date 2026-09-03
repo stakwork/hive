@@ -274,13 +274,9 @@ describe("runCanvasAgent — send_sphinx_message merge", () => {
   });
 
   it("drops VIEWER-only workspaces on org-root scope but still merges the writable one", async () => {
-    mockFindMany.mockResolvedValue([
-      { id: "cuid-alpha", slug: "alpha" },
-      { id: "cuid-beta", slug: "beta" },
-    ]);
-    mockValidateWorkspaceAccessById.mockImplementation(async (workspaceId: string) => ({
-      canWrite: workspaceId === "cuid-alpha",
-    }));
+    // Write access is part of the findMany predicate, so the VIEWER-only
+    // workspace (beta) never comes back from the query.
+    mockFindMany.mockResolvedValue([{ id: "cuid-alpha", slug: "alpha" }]);
 
     await runCanvasAgent(
       opts({

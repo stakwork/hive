@@ -27,8 +27,19 @@ import { checkRateLimit } from "@/lib/rate-limit";
 import { sendToSphinx } from "@/lib/sphinx/daily-pr-summary";
 import { validateWorkspaceAccessById } from "@/services/workspace";
 import { ROOT_REF } from "@/lib/canvas/scope";
+import { WORKSPACE_PERMISSION_LEVELS } from "@/lib/constants";
+import { WorkspaceRole } from "@prisma/client";
 
 export const SEND_SPHINX_MESSAGE_TOOL = "send_sphinx_message";
+
+// Same threshold as `validateWorkspaceAccessById().canWrite`.
+const SPHINX_WRITABLE_ROLES = (
+  Object.keys(WORKSPACE_PERMISSION_LEVELS) as WorkspaceRole[]
+).filter(
+  (role) =>
+    WORKSPACE_PERMISSION_LEVELS[role] >=
+    WORKSPACE_PERMISSION_LEVELS[WorkspaceRole.DEVELOPER],
+);
 
 const MESSAGE_MAX_LENGTH = 2000;
 const RATE_LIMIT_MAX = 5;
@@ -100,6 +111,11 @@ export async function resolveSphinxToolTarget(
     return [];
   }
 
+  // One round trip: Sphinx-connected AND writable by the caller (owner, or
+  // an active member at DEVELOPER+). This runs on every org-root canvas
+  // turn, so it must not fan out per workspace — the previous serial
+  // `validateWorkspaceAccessById` loop cost ~4s across 8 workspaces.
+  // `execute` re-validates `canWrite` per target before decrypt or send.
   const connectedRows = await db.workspace.findMany({
     where: {
       id: { in: candidates.map((c) => c.workspaceId) },
@@ -108,19 +124,24 @@ export async function resolveSphinxToolTarget(
       sphinxChatPubkey: { not: null },
       sphinxBotId: { not: null },
       sphinxBotSecret: { not: null },
+      OR: [
+        { ownerId: userId },
+        {
+          members: {
+            some: { userId, leftAt: null, role: { in: SPHINX_WRITABLE_ROLES } },
+          },
+        },
+      ],
     },
     select: { id: true, slug: true },
   });
   const connectedById = new Map(connectedRows.map((row) => [row.id, row]));
 
+  // Preserve candidate (conversation) order — findMany order is unspecified.
   const targets: SphinxToolTarget[] = [];
   for (const candidate of candidates) {
     const row = connectedById.get(candidate.workspaceId);
     if (!row) continue;
-
-    const access = await validateWorkspaceAccessById(candidate.workspaceId, userId);
-    if (!access.canWrite) continue;
-
     targets.push({ workspaceId: row.id, workspaceSlug: row.slug });
   }
 
