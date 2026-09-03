@@ -3,12 +3,19 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { useWorkspace } from "@/hooks/useWorkspace";
+import { WorkspaceRole, hasRoleLevel } from "@/lib/auth/roles";
 import { LearnSidebar } from "./LearnSidebar";
 import { LearnDocViewer } from "./LearnDocViewer";
 import { DiagramViewer } from "./DiagramViewer";
 import { CreateDiagramModal } from "./CreateDiagramModal";
 import { ConceptProposalReviewCard } from "./ConceptProposalReviewCard";
+import { BulkProposalActions } from "./BulkProposalActions";
 import {
+  reconcileBulkSelection,
+  useBulkProposalDecisions,
+} from "../hooks/useBulkProposalDecisions";
+import {
+  BULK_PROPOSAL_DECISION_CAP,
   derivePendingProposalConceptIds,
   type ConceptProposal,
 } from "@/types/concept-proposals";
@@ -51,7 +58,9 @@ export function LearnViewer({ workspaceSlug }: LearnViewerProps) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const { isPublicViewer } = useWorkspace();
+  const { isPublicViewer, role, hasAccess } = useWorkspace();
+  const canWrite =
+    Boolean(hasAccess && role && hasRoleLevel(role, WorkspaceRole.DEVELOPER));
 
   const [docs, setDocs] = useState<Doc[]>([]);
   const [concepts, setConcepts] = useState<Concept[]>([]);
@@ -59,6 +68,13 @@ export function LearnViewer({ workspaceSlug }: LearnViewerProps) {
   const [proposals, setProposals] = useState<ConceptProposal[]>([]);
   const [activeItem, setActiveItem] = useState<ActiveItem | null>(null);
   const [selectedProposal, setSelectedProposal] = useState<ConceptProposal | null>(null);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const {
+    submitting: bulkSubmitting,
+    results: bulkResults,
+    lastAction: bulkLastAction,
+    submit: submitBulk,
+  } = useBulkProposalDecisions(workspaceSlug);
   const [isDocsLoading, setIsDocsLoading] = useState(true);
   const [isConceptsLoading, setIsConceptsLoading] = useState(true);
   const [isDiagramsLoading, setIsDiagramsLoading] = useState(true);
@@ -93,21 +109,24 @@ export function LearnViewer({ workspaceSlug }: LearnViewerProps) {
     return [];
   };
 
-  const refreshProposals = async () => {
-    if (isPublicViewer) return;
+  const refreshProposals = async (): Promise<ConceptProposal[]> => {
+    if (isPublicViewer) return [];
     try {
       const response = await fetch(
         `/api/learnings/concepts/proposals?workspace=${encodeURIComponent(workspaceSlug)}&status=pending`
       );
       if (response.ok) {
         const data = await response.json();
-        setProposals(Array.isArray(data?.proposals) ? data.proposals : []);
+        const next: ConceptProposal[] = Array.isArray(data?.proposals) ? data.proposals : [];
+        setProposals(next);
+        return next;
       }
     } catch (error) {
       console.error("Failed to fetch proposals:", error);
     } finally {
       setIsProposalsLoading(false);
     }
+    return [];
   };
 
   // Proposals are member-only (the proxy rejects public viewers), so don't
@@ -324,6 +343,47 @@ export function LearnViewer({ workspaceSlug }: LearnViewerProps) {
     refreshProposals();
   };
 
+  const handleToggleProposal = (id: string) => {
+    setSelectedIds((prev) =>
+      prev.includes(id) ? prev.filter((selected) => selected !== id) : [...prev, id],
+    );
+  };
+
+  const handleToggleAll = () => {
+    const capIds = proposals.slice(0, BULK_PROPOSAL_DECISION_CAP).map((p) => p.id);
+    const allSelected = capIds.every((id) => selectedIds.includes(id));
+    setSelectedIds(allSelected ? [] : capIds);
+  };
+
+  const handleBulkDecide = async (action: "accept" | "reject") => {
+    const results = await submitBulk(action, selectedIds);
+    if (!results) return;
+
+    const succeeded = results.filter((r) => r.ok);
+    const succeededIds = new Set(succeeded.map((r) => r.id));
+    const created = succeeded.find((r) => r.createdConceptId);
+    const createdName = created
+      ? (proposals.find((p) => p.id === created.id)?.name ?? created.createdConceptId)
+      : undefined;
+
+    if (selectedProposal && succeededIds.has(selectedProposal.id)) {
+      setSelectedProposal(null);
+    }
+
+    const [freshProposals] = await Promise.all([refreshProposals(), refreshConcepts()]);
+    setSelectedIds((prev) =>
+      reconcileBulkSelection(
+        prev,
+        results,
+        freshProposals.map((p) => p.id),
+      ),
+    );
+
+    if (created?.createdConceptId) {
+      handleConceptClick(created.createdConceptId, createdName ?? created.createdConceptId, "");
+    }
+  };
+
   const handleDiagramCreated = async () => {
     setIsDiagramsLoading(true);
     const fresh = await fetchDiagrams();
@@ -461,6 +521,22 @@ export function LearnViewer({ workspaceSlug }: LearnViewerProps) {
         pendingProposalConceptIds={pendingProposalConceptIds}
         onProposalClick={handleProposalClick}
         isProposalsLoading={isProposalsLoading}
+        canWrite={canWrite}
+        selectedIds={selectedIds}
+        onToggleProposal={handleToggleProposal}
+        onToggleAll={handleToggleAll}
+        bulkActions={
+          canWrite ? (
+            <BulkProposalActions
+              selectedCount={selectedIds.length}
+              submitting={bulkSubmitting}
+              results={bulkResults}
+              lastAction={bulkLastAction}
+              onAccept={() => handleBulkDecide("accept")}
+              onReject={() => handleBulkDecide("reject")}
+            />
+          ) : null
+        }
       />
 
       <CreateDiagramModal
