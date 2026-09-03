@@ -57,6 +57,17 @@ function assertSize(s3: ReturnType<typeof getS3Service>, size: number): void {
 }
 
 /**
+ * Public wrapper around the size ceiling so callers that need to
+ * validate a byte length *before* touching S3 (e.g. `update_html`'s
+ * compare-and-swap, which must know a write will succeed before it
+ * commits the DB half of the CAS) don't have to reconstruct the S3
+ * service themselves.
+ */
+export function assertHtmlSize(size: number): void {
+  assertSize(getS3Service(), size);
+}
+
+/**
  * Upload a new HTML object. Org id is taken from the caller (never a
  * tool argument). Forces `Content-Type: text/html; charset=utf-8`.
  */
@@ -105,6 +116,13 @@ export type HtmlPageRecord = {
   uploadedAt: Date;
   orgId: string;
   createdBy: string;
+  /**
+   * Row-level last-write clock (Prisma `@updatedAt`). Callers that patch
+   * a page (`update_html`'s edits path) capture this at read time and
+   * pass it back as a compare-and-swap guard, so a concurrent write
+   * that lands in between is detected instead of silently lost.
+   */
+  updatedAt: Date;
 };
 
 // Every row read in this file must select explicitly and omit
@@ -122,6 +140,7 @@ const HTML_PAGE_RECORD_SELECT = {
   uploadedAt: true,
   orgId: true,
   createdBy: true,
+  updatedAt: true,
 } as const;
 
 /**
