@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { config } from "@/config/env";
-import { getSwarmConfig } from "@/app/api/learnings/utils";
+import { getSwarmConfig, decideProposal } from "@/app/api/learnings/utils";
 import {
   resolveWorkspaceAccess,
   requireMemberAccess,
@@ -77,26 +77,16 @@ export async function POST(
       apiKey = swarmConfig.decryptedSwarmApiKey;
     }
 
-    const upstream = `${base}/gitree/proposals/${encodeURIComponent(id)}/reject`;
-
-    const response = await fetch(upstream, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-api-token": apiKey,
-      },
-      body: JSON.stringify({
-        decidedBy: ok.userId,
-        ...(reason !== undefined && { reason }),
-      }),
+    const result = await decideProposal({
+      id,
+      action: "reject",
+      base,
+      apiKey,
+      decidedBy: ok.userId,
+      extraBody: reason !== undefined ? { reason } : undefined,
     });
 
-    // Guard the parse: a non-JSON upstream body (proxy 502 HTML, empty 204)
-    // must not collapse the real status into a generic 500.
-    const body = await response
-      .json()
-      .catch(() => ({ error: `Upstream returned a non-JSON response (status ${response.status})` }));
-    return NextResponse.json(body, { status: response.status });
+    return NextResponse.json(result.body, { status: result.status });
   } catch (error) {
     console.error("Proposal reject proxy error:", error);
     return NextResponse.json({ error: "Failed to reject proposal" }, { status: 500 });
