@@ -20,7 +20,9 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 // Module mocks — must come before any import that transitively loads them.
 // Mirrors runCanvasAgent-timing.test.ts.
 // ---------------------------------------------------------------------------
-vi.mock("@/lib/db", () => ({ db: {} }));
+vi.mock("@/lib/db", () => ({
+  db: { workspace: { findFirst: vi.fn(async () => null) } },
+}));
 vi.mock("@/lib/pusher", () => ({
   pusherServer: { trigger: vi.fn() },
   getWorkspaceChannelName: vi.fn(() => "ch"),
