@@ -22,9 +22,11 @@ export const ROOT_REF = "";
  * `parseScope` branch — milestones live on the initiative canvas and
  * are not drillable; tasks don't project on the org canvas at all.
  * `research:` is the same kind of leaf — the doc opens in the right
- * panel, not on a sub-canvas. Listing the prefixes here is what makes
- * the splitter strip authored fields off these nodes on save (DB rows
- * are never authored).
+ * panel, not on a sub-canvas. `html:` is the same kind of leaf for
+ * shareable HTML pages (root canvas only; the page opens in the
+ * locked `HtmlArtifactFrame`, not on a sub-canvas). Listing the
+ * prefixes here is what makes the splitter strip authored fields off
+ * these nodes on save (DB rows are never authored).
  */
 const LIVE_ID_PREFIXES = [
   "ws:",
@@ -34,6 +36,7 @@ const LIVE_ID_PREFIXES = [
   "milestone:",
   "task:",
   "research:",
+  "html:",
 ] as const;
 
 /** True iff `id` is prefixed with a known live-id kind. */

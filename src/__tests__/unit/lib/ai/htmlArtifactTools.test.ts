@@ -47,6 +47,11 @@ vi.mock("@/services/html-pages", () => {
   };
 });
 
+vi.mock("@/lib/canvas", () => ({
+  notifyCanvasesUpdatedByLogin: vi.fn(async () => {}),
+  ROOT_REF: "",
+}));
+
 vi.mock("@/lib/db", () => ({
   db: {
     sourceControlOrg: { findUnique: vi.fn() },
@@ -112,6 +117,7 @@ vi.mock("@/lib/ai/capabilityGates", () => ({
 }));
 
 import { db } from "@/lib/db";
+import { notifyCanvasesUpdatedByLogin, ROOT_REF } from "@/lib/canvas";
 import { buildHtmlArtifactTools, GET_HTML_MAX_BYTES } from "@/lib/ai/htmlArtifactTools";
 import {
   CAPABILITY_REGISTRY,
@@ -229,6 +235,12 @@ describe("save_html", () => {
     expect(createData).not.toHaveProperty("html");
     expect(createData).not.toHaveProperty("body");
 
+    expect(notifyCanvasesUpdatedByLogin).toHaveBeenCalledWith(
+      "acme",
+      [ROOT_REF],
+      "html-created",
+      { slug: SLUG, htmlPageId: "page-1" },
+    );
     expect(result).toEqual({
       slug: SLUG,
       id: "page-1",
@@ -243,6 +255,18 @@ describe("save_html", () => {
     if (createArgs.select) {
       expect(createArgs.select).not.toHaveProperty("shareRef");
     }
+  });
+
+  test("does not fan out CANVAS_UPDATED when save_html fails", async () => {
+    (putHtmlPageObject as ReturnType<typeof vi.fn>).mockRejectedValue(
+      new Error("s3 down"),
+    );
+    await (tools().save_html as ExecTool).execute({
+      slug: SLUG,
+      title: "Team Story",
+      html: HTML,
+    });
+    expect(notifyCanvasesUpdatedByLogin).not.toHaveBeenCalled();
   });
 
   test("duplicate slug returns structured error, does not throw", async () => {
@@ -300,6 +324,9 @@ describe("update_html", () => {
     (db.htmlPage.update as ReturnType<typeof vi.fn>).mockResolvedValue({
       updatedAt: new Date("2024-06-01T00:00:00.000Z"),
     });
+    (db.sourceControlOrg.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({
+      githubLogin: "acme",
+    });
     mockCasSuccess();
   });
 
@@ -326,6 +353,12 @@ describe("update_html", () => {
           contentType: HTML_CONTENT_TYPE,
         }),
       }),
+    );
+    expect(notifyCanvasesUpdatedByLogin).toHaveBeenCalledWith(
+      "acme",
+      [ROOT_REF],
+      "html-updated",
+      { slug: SLUG, htmlPageId: "page-1" },
     );
     expect(result).toEqual({
       slug: SLUG,
@@ -393,6 +426,7 @@ describe("update_html", () => {
     });
     expect(overwriteHtmlPageObject).not.toHaveBeenCalled();
     expect(db.htmlPage.update).not.toHaveBeenCalled();
+    expect(notifyCanvasesUpdatedByLogin).not.toHaveBeenCalled();
   });
 
   test("ambiguous edit without replaceAll fails closed", async () => {

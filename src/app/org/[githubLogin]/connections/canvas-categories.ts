@@ -383,6 +383,35 @@ export const CATEGORY_REGISTRY: CategorySpec[] = [
       },
     ],
   },
+  {
+    id: "html",
+    agentDescription:
+      "a rose HTML-page card — a shareable standalone HTML artifact Jamie saved with save_html",
+    // HTML pages are projected from the `HtmlPage` Prisma table
+    // (id prefix `html:`) and created exclusively via the `save_html`
+    // tool — never from the canvas `+` menu. There is no authored-
+    // placeholder swap (unlike research), so no `dedupeAuthoredResearch`
+    // equivalent is needed in `io.ts`.
+    //
+    // Root canvas only this round. Initiative-canvas placement needs
+    // an `initiativeId` column HtmlPage does not have yet.
+    agentWritable: false,
+    userCreatable: false,
+    promptGuidance:
+      "Projected from the `HtmlPage` Prisma model — one `html:<id>` node per row, on the org root canvas only. Created exclusively via `save_html` (then patched via `update_html`); do NOT emit `html` category nodes via `update_canvas` / `patch_canvas`. Clicking a card opens the locked sandboxed viewer in the right panel. The on-canvas label is the page `title`.",
+    customDataKeys: [
+      {
+        key: "slug",
+        description:
+          "kebab-case identifier unique within the org. Used to fetch the page body through the authenticated proxy; never a public address.",
+      },
+      {
+        key: "title",
+        description:
+          "polished title set by `save_html`. Also the on-canvas card label (`node.text`).",
+      },
+    ],
+  },
 ];
 
 // ---------------------------------------------------------------------------
@@ -439,8 +468,8 @@ export function buildPromptCategorySection(): string {
  * permissive default — only `userCreatable: false` is enforced.
  *
  * Hard rules (always enforced regardless of scope):
- *   - Categories with `userCreatable: false` (workspaces, repositories
- *     today) never appear in any `+` menu.
+ *   - Categories with `userCreatable: false` (workspaces, repositories,
+ *     html pages today) never appear in any `+` menu.
  *
  * Scope-specific rules:
  *   - `initiative` is only offered on root. It's an org-level entity;
@@ -477,6 +506,14 @@ export function categoryAllowedOnScope(
   // small until there's a demand for it.
   if (categoryId === "research") {
     return ref === "" || ref.startsWith("initiative:");
+  }
+  // `html` is projected onto the root canvas only and is never
+  // user-creatable (`userCreatable: false` already returned false
+  // above). Kept explicit so a future initiative-canvas ticket that
+  // flips `userCreatable` still has a documented scope rule to
+  // extend, rather than falling through to the default "allow".
+  if (categoryId === "html") {
+    return ref === "";
   }
   // `service` is an ops-infra annotation card. It lives on a
   // workspace sub-canvas (`ws:<id>`) — the workspace's ops surface,

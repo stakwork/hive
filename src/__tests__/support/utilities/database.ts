@@ -93,6 +93,7 @@ export async function resetDatabase() {
     try { await db.agentLog.deleteMany(); } catch { /* table may not exist */ }
     try { await db.stakworkRun.deleteMany(); } catch { /* table may not exist */ }
     try { await db.whiteboard.deleteMany(); } catch { /* table may not exist */ }
+    try { await db.htmlPage.deleteMany(); } catch { /* table may not exist */ }
     await db.phase.deleteMany();
     await db.feature.deleteMany();
     await db.repository.deleteMany();
