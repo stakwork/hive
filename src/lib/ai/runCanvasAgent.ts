@@ -888,6 +888,7 @@ export async function runCanvasAgent(
       };
     }
 
+    const tSphinxMerge = Date.now();
     tools = await mergeSphinxTools(tools, {
       userId,
       readonly,
@@ -896,6 +897,7 @@ export async function runCanvasAgent(
       workspaceConfigs,
       currentCanvasRef: scope?.currentCanvasRef,
     });
+    console.log("[runCanvasAgent] timing", { stage: "mergeSphinxTools (multi)", ms: Date.now() - tSphinxMerge, merged: SEND_SPHINX_MESSAGE_TOOL in tools, workspaces: workspaceSlugs, orgId: orgId ?? null });
 
     features = [];
     for (const ws of workspaceConfigs) {
@@ -914,10 +916,12 @@ export async function runCanvasAgent(
     ) {
       const initiativeId = scope.currentCanvasRef.slice("initiative:".length);
       if (initiativeId) {
+        const tLinked = Date.now();
         linkedWorkspaces = await getLinkedWorkspacesForInitiative(
           orgId,
           initiativeId,
         );
+        console.log("[runCanvasAgent] timing", { stage: "getLinkedWorkspacesForInitiative", ms: Date.now() - tLinked, linked: linkedWorkspaces.length, workspaces: workspaceSlugs, orgId });
       }
     }
 
@@ -1048,6 +1052,7 @@ export async function runCanvasAgent(
     // Do not gate Sphinx merge on `orgId` — a one-workspace org canvas
     // (and dashboard chat) never pass orgId. Destination is the bound
     // workspace, not an org-level tribe.
+    const tSphinxMergeSingle = Date.now();
     tools = await mergeSphinxTools(tools, {
       userId,
       readonly,
@@ -1056,6 +1061,7 @@ export async function runCanvasAgent(
       workspaceConfigs: [ws],
       currentCanvasRef: scope?.currentCanvasRef,
     });
+    console.log("[runCanvasAgent] timing", { stage: "mergeSphinxTools (single)", ms: Date.now() - tSphinxMergeSingle, merged: SEND_SPHINX_MESSAGE_TOOL in tools, workspaces: workspaceSlugs, orgId: orgId ?? null });
 
     canvasScope = orgId ? buildScopeHint(scope, []) : undefined;
 
@@ -1101,11 +1107,13 @@ export async function runCanvasAgent(
     const externalMcp = await connectExternalMcpTools(orgId);
     externalMcpCleanup = externalMcp.closeAll;
     const externalCount = Object.keys(externalMcp.tools).length;
+    // Logged even when nothing came back — the handshake cost is paid
+    // either way, and a slow zero-tool connect should still be visible.
+    console.log("[runCanvasAgent] timing", { stage: "connectExternalMcpTools", ms: Date.now() - tExternalMcp, tools: externalCount, workspaces: workspaceSlugs, orgId });
     if (externalCount > 0) {
       // External tools spread FIRST so a name collision with a built-in
       // resolves in the built-in's favor.
       tools = { ...externalMcp.tools, ...tools };
-      console.log("[runCanvasAgent] timing", { stage: "connectExternalMcpTools", ms: Date.now() - tExternalMcp, tools: externalCount, workspaces: workspaceSlugs, orgId });
     }
   }
 

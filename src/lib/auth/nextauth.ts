@@ -797,7 +797,7 @@ export const authOptions: NextAuthOptions = {
   secret: process.env.NEXTAUTH_SECRET,
 };
 
-interface GithubUsernameAndPAT {
+export interface GithubUsernameAndPAT {
   username: string;
   token: string;
 }
@@ -988,4 +988,49 @@ export async function getGithubUsernameAndPAT(
     console.error(`[getGithubUsernameAndPAT] Failed to decrypt source control token for userId: ${userId}, sourceControlOrgId: ${workspace.sourceControlOrg.id}`, error);
     return null;
   }
+}
+
+/**
+ * Batch form of the source-control-org branch of `getGithubUsernameAndPAT`.
+ *
+ * A PAT is keyed by `(userId, sourceControlOrgId)`, not by workspace — the
+ * per-workspace lookup only uses the workspace to *find* the org. Multi-
+ * workspace callers whose slugs share an org (every org-canvas turn) were
+ * re-reading and re-decrypting the same token row once per slug; this
+ * resolves each distinct org once, in a single read.
+ *
+ * Returns only the orgs that have a decryptable token — a missing entry
+ * means "no PAT", same as the `null` from the per-workspace form.
+ */
+export async function resolveSourceControlPATsForOrgs(
+  userId: string,
+  sourceControlOrgIds: string[],
+  identity: GithubIdentity,
+): Promise<Map<string, GithubUsernameAndPAT>> {
+  const result = new Map<string, GithubUsernameAndPAT>();
+  const orgIds = Array.from(new Set(sourceControlOrgIds));
+  if (orgIds.length === 0) {
+    return result;
+  }
+
+  const rows = await db.sourceControlToken.findMany({
+    where: { userId, sourceControlOrgId: { in: orgIds } },
+    select: { sourceControlOrgId: true, token: true },
+  });
+
+  const encryptionService = EncryptionService.getInstance();
+  for (const row of rows) {
+    if (!row.token) continue;
+    try {
+      result.set(row.sourceControlOrgId, {
+        username: identity.username,
+        token: encryptionService.decryptField("source_control_token", row.token),
+      });
+    } catch (error) {
+      console.error(`[getGithubUsernameAndPAT] Failed to decrypt source control token for userId: ${userId}, sourceControlOrgId: ${row.sourceControlOrgId}`, error);
+    }
+  }
+
+  console.log(`[getGithubUsernameAndPAT] Resolved source control tokens for user: ${identity.username}, orgs: ${result.size}/${orgIds.length}`);
+  return result;
 }
