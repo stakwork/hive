@@ -31,6 +31,10 @@ const WS_B = { workspaceId: "cuid-b", slug: "beta" };
 const CONNECTED_ROW_A = { id: "cuid-a", slug: "alpha" };
 const CONNECTED_ROW_B = { id: "cuid-b", slug: "beta" };
 
+// Connection + write-access are folded into the single findMany so the
+// resolve step is one round trip regardless of workspace count.
+const WRITABLE_ROLES = ["DEVELOPER", "PM", "ADMIN", "OWNER"];
+
 function scopedPredicate(ids: string[]) {
   return expect.objectContaining({
     where: expect.objectContaining({
@@ -40,6 +44,18 @@ function scopedPredicate(ids: string[]) {
       sphinxChatPubkey: { not: null },
       sphinxBotId: { not: null },
       sphinxBotSecret: { not: null },
+      OR: [
+        { ownerId: USER_ID },
+        {
+          members: {
+            some: {
+              userId: USER_ID,
+              leftAt: null,
+              role: { in: expect.arrayContaining(WRITABLE_ROLES) },
+            },
+          },
+        },
+      ],
     }),
   });
 }
@@ -48,9 +64,53 @@ describe("resolveSphinxToolTarget", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     (db.workspace.findMany as ReturnType<typeof vi.fn>).mockResolvedValue([CONNECTED_ROW_A]);
-    (validateWorkspaceAccessById as ReturnType<typeof vi.fn>).mockResolvedValue({
-      canWrite: true,
+  });
+
+  it("resolves in a single query — never calls validateWorkspaceAccessById", async () => {
+    (db.workspace.findMany as ReturnType<typeof vi.fn>).mockResolvedValue([
+      CONNECTED_ROW_A,
+      CONNECTED_ROW_B,
+    ]);
+
+    await resolveSphinxToolTarget({
+      userId: USER_ID,
+      workspaceConfigs: [WS_A, WS_B],
+      currentCanvasRef: "",
     });
+
+    expect(db.workspace.findMany).toHaveBeenCalledTimes(1);
+    expect(validateWorkspaceAccessById).not.toHaveBeenCalled();
+  });
+
+  it("excludes VIEWER and STAKEHOLDER from the writable-role predicate", async () => {
+    await resolveSphinxToolTarget({
+      userId: USER_ID,
+      workspaceConfigs: [WS_A],
+    });
+
+    const call = (db.workspace.findMany as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    const roles: string[] = call.where.OR[1].members.some.role.in;
+    expect(roles).not.toContain("VIEWER");
+    expect(roles).not.toContain("STAKEHOLDER");
+    expect(roles.sort()).toEqual([...WRITABLE_ROLES].sort());
+  });
+
+  it("preserves conversation order even when the DB returns rows out of order", async () => {
+    (db.workspace.findMany as ReturnType<typeof vi.fn>).mockResolvedValue([
+      CONNECTED_ROW_B,
+      CONNECTED_ROW_A,
+    ]);
+
+    const result = await resolveSphinxToolTarget({
+      userId: USER_ID,
+      workspaceConfigs: [WS_A, WS_B],
+      currentCanvasRef: "",
+    });
+
+    expect(result).toEqual([
+      { workspaceId: "cuid-a", workspaceSlug: "alpha" },
+      { workspaceId: "cuid-b", workspaceSlug: "beta" },
+    ]);
   });
 
   it("returns [] when no in-scope workspace is Sphinx-connected", async () => {
@@ -127,14 +187,10 @@ describe("resolveSphinxToolTarget", () => {
     expect(db.workspace.findMany).toHaveBeenCalledWith(scopedPredicate(["cuid-a", "cuid-b"]));
   });
 
-  it("drops VIEWER-only workspaces at resolve on org-root scope", async () => {
-    (db.workspace.findMany as ReturnType<typeof vi.fn>).mockResolvedValue([
-      CONNECTED_ROW_A,
-      CONNECTED_ROW_B,
-    ]);
-    (validateWorkspaceAccessById as ReturnType<typeof vi.fn>).mockImplementation(
-      async (workspaceId: string) => ({ canWrite: workspaceId === "cuid-a" }),
-    );
+  it("drops VIEWER-only workspaces at resolve on org-root scope (DB filters them out)", async () => {
+    // The write gate lives in the query predicate; a VIEWER-only
+    // workspace simply doesn't come back from findMany.
+    (db.workspace.findMany as ReturnType<typeof vi.fn>).mockResolvedValue([CONNECTED_ROW_A]);
 
     const result = await resolveSphinxToolTarget({
       userId: USER_ID,
@@ -143,13 +199,11 @@ describe("resolveSphinxToolTarget", () => {
     });
 
     expect(result).toEqual([{ workspaceId: "cuid-a", workspaceSlug: "alpha" }]);
+    expect(db.workspace.findMany).toHaveBeenCalledWith(scopedPredicate(["cuid-a", "cuid-b"]));
   });
 
-  it("includes an owner with no WorkspaceMember row on org-root scope", async () => {
+  it("includes an owner with no WorkspaceMember row on org-root scope via the ownerId branch", async () => {
     (db.workspace.findMany as ReturnType<typeof vi.fn>).mockResolvedValue([CONNECTED_ROW_A]);
-    (validateWorkspaceAccessById as ReturnType<typeof vi.fn>).mockResolvedValue({
-      canWrite: true,
-    });
 
     const result = await resolveSphinxToolTarget({
       userId: USER_ID,
@@ -158,6 +212,8 @@ describe("resolveSphinxToolTarget", () => {
     });
 
     expect(result).toEqual([{ workspaceId: "cuid-a", workspaceSlug: "alpha" }]);
+    const call = (db.workspace.findMany as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(call.where.OR).toContainEqual({ ownerId: USER_ID });
   });
 
   it("never queries a Sphinx workspace outside the conversation on org-root scope", async () => {
