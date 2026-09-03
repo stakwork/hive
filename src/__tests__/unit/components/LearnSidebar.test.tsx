@@ -23,6 +23,7 @@ vi.mock("@/app/w/[slug]/learn/components/CreateConceptModal", () => ({
 
 vi.mock("@/lib/date-utils", () => ({
   formatRelativeOrDate: (d: string) => d,
+  formatRelativeOrDateInTz: (d: string) => d,
 }));
 
 // Minimal mocks for UI deps
@@ -732,6 +733,43 @@ describe("LearnSidebar — concept proposals", () => {
     expect(items[2].textContent).toContain(
       "stakwork/hive/auth → stakwork/hive/tasks"
     );
+    items.forEach((item, i) => {
+      expect(
+        item.querySelector('[data-testid="learn-proposal-recency"]')?.textContent
+      ).toBe(pendingProposals[i].createdAt);
+      expect(
+        item.querySelector('[data-testid="learn-proposal-source"]')?.textContent
+      ).toBe(pendingProposals[i].source);
+    });
+  });
+
+  it("omits source when empty or whitespace-only, but still shows recency", () => {
+    const emptySourceProposal = {
+      ...pendingProposals[0],
+      id: "proposal-empty-source",
+      source: "",
+    };
+    const whitespaceSourceProposal = {
+      ...pendingProposals[0],
+      id: "proposal-whitespace-source",
+      source: "   ",
+    };
+    render(
+      <LearnSidebar
+        {...defaultProps}
+        proposals={[emptySourceProposal, whitespaceSourceProposal]}
+      />
+    );
+    const items = screen.getAllByTestId("learn-proposal-item");
+    expect(items).toHaveLength(2);
+    items.forEach((item) => {
+      expect(
+        item.querySelector('[data-testid="learn-proposal-recency"]')
+      ).toBeTruthy();
+      expect(
+        item.querySelector('[data-testid="learn-proposal-source"]')
+      ).toBeNull();
+    });
   });
 
   it("collapses and re-expands on header click", () => {

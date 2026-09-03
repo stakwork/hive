@@ -16,6 +16,12 @@ export interface HtmlPageRun {
   /** Human-readable failure reason, when the tool returned one. */
   error?: string;
   anchorMessageId: string;
+  /**
+   * ISO timestamp from a successful `update_html`. Passed through to
+   * `HtmlArtifactFrame` so a patch re-fetches fresh bytes instead of
+   * keeping the blob from the original `save_html`.
+   */
+  updatedAt?: string;
 }
 
 function buildSharePath(githubLogin: string, slug: string): string {
@@ -52,6 +58,7 @@ export function getHtmlPagesFromMessages(
         sharePath?: string;
         status?: string;
         error?: string;
+        updatedAt?: string;
       };
 
       const slug = output.slug ?? input.slug;
@@ -77,6 +84,7 @@ export function getHtmlPagesFromMessages(
         status,
         error: errorText,
         anchorMessageId: message.id,
+        updatedAt: output.updatedAt ?? previous?.updatedAt,
       });
     }
   });
@@ -185,6 +193,7 @@ export function HtmlPageCard({
                 <HtmlArtifactFrame
                   source={{ githubLogin, slug: page.slug }}
                   title={page.title}
+                  updatedAt={page.updatedAt}
                   className="h-full w-full"
                 />
               </div>

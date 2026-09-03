@@ -46,8 +46,13 @@ const createdWorkspaceIds: string[] = [];
 const createdUserIds: string[] = [];
 const createdInitiativeIds: string[] = [];
 const createdMilestoneIds: string[] = [];
+const createdHtmlPageIds: string[] = [];
 
 afterEach(async () => {
+  if (createdHtmlPageIds.length > 0) {
+    await db.htmlPage.deleteMany({ where: { id: { in: createdHtmlPageIds } } });
+    createdHtmlPageIds.length = 0;
+  }
   if (createdMilestoneIds.length > 0) {
     await db.milestone.deleteMany({ where: { id: { in: createdMilestoneIds } } });
     createdMilestoneIds.length = 0;
@@ -265,6 +270,81 @@ describe("GET /api/orgs/[githubLogin]/canvas/node/[liveId]", () => {
       user,
     );
     const res = await GET(request, { params: makeParams(githubLogin, liveId) });
+    expect(res.status).toBe(404);
+  });
+
+  it("returns html page detail with slug in extras for a live html: id", async () => {
+    const user = await createTestUser();
+    createdUserIds.push(user.id);
+    const githubLogin = `org-${generateUniqueId()}`;
+    const org = await createOrg(githubLogin);
+    createdOrgIds.push(org.id);
+
+    const ws = await createWorkspaceInOrg(user.id, org.id);
+    createdWorkspaceIds.push(ws.id);
+
+    const page = await db.htmlPage.create({
+      data: {
+        orgId: org.id,
+        slug: "hive-vs-workspaces",
+        title: "Hive vs Workspaces",
+        s3Key: `orgs/${org.id}/canvas/hive-vs-workspaces.html`,
+        size: 128,
+        contentType: "text/html; charset=utf-8",
+        createdBy: user.id,
+      },
+    });
+    createdHtmlPageIds.push(page.id);
+
+    const liveId = `html:${page.id}`;
+    const request = createAuthenticatedGetRequest(
+      `http://localhost:3000/api/orgs/${githubLogin}/canvas/node/${encodeURIComponent(liveId)}`,
+      user,
+    );
+    const res = await GET(request, { params: makeParams(githubLogin, liveId) });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.kind).toBe("html");
+    expect(body.id).toBe(page.id);
+    expect(body.name).toBe("Hive vs Workspaces");
+    expect(body.extras.slug).toBe("hive-vs-workspaces");
+    expect(body.extras).not.toHaveProperty("shareRef");
+    expect(body.extras).not.toHaveProperty("s3Key");
+  });
+
+  it("returns 404 when looking up an html: id that belongs to a different org (cross-org guard)", async () => {
+    const user = await createTestUser();
+    createdUserIds.push(user.id);
+
+    const githubLoginA = `org-a-${generateUniqueId()}`;
+    const orgA = await createOrg(githubLoginA);
+    createdOrgIds.push(orgA.id);
+    const wsA = await createWorkspaceInOrg(user.id, orgA.id);
+    createdWorkspaceIds.push(wsA.id);
+
+    const githubLoginB = `org-b-${generateUniqueId()}`;
+    const orgB = await createOrg(githubLoginB);
+    createdOrgIds.push(orgB.id);
+
+    const page = await db.htmlPage.create({
+      data: {
+        orgId: orgB.id,
+        slug: "other-org-page",
+        title: "Other Org Page",
+        s3Key: `orgs/${orgB.id}/canvas/other-org-page.html`,
+        size: 64,
+        contentType: "text/html; charset=utf-8",
+        createdBy: user.id,
+      },
+    });
+    createdHtmlPageIds.push(page.id);
+
+    const liveId = `html:${page.id}`;
+    const request = createAuthenticatedGetRequest(
+      `http://localhost:3000/api/orgs/${githubLoginA}/canvas/node/${encodeURIComponent(liveId)}`,
+      user,
+    );
+    const res = await GET(request, { params: makeParams(githubLoginA, liveId) });
     expect(res.status).toBe(404);
   });
 

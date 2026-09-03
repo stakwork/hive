@@ -1,5 +1,11 @@
+import fs from "node:fs";
+import path from "node:path";
 import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
+import {
+  HTML_PAGE_FIXTURES,
+  htmlPageFixtureS3Key,
+} from "@/lib/mock/html-fixtures";
 import {
   InitiativeStatus,
   LlmProvider,
@@ -489,6 +495,7 @@ export async function ensureMockOrgData(userId: string): Promise<void> {
     }
     await ensureMockConnectionData(existing.id, userId);
     await ensureMockOrgInitiatives(existing.id, userId);
+    await ensureMockHtmlPages(existing.id, userId);
     return;
   }
 
@@ -641,6 +648,7 @@ export async function ensureMockOrgData(userId: string): Promise<void> {
 
   await ensureMockConnectionData(workspace.orgId, userId);
   await ensureMockOrgInitiatives(workspace.orgId, userId);
+  await ensureMockHtmlPages(workspace.orgId, userId);
 }
 
 async function ensureMockConnectionData(orgId: string, userId: string): Promise<void> {
@@ -781,6 +789,46 @@ async function ensureMockConnectionData(orgId: string, userId: string): Promise<
  * Idempotent: bails when initiatives already exist for this org. Safe
  * to call on every sign-in.
  */
+/**
+ * Seed 4 HtmlPage rows onto the mock-org so the root canvas has a
+ * visible HTML-page row (fewer than two cards makes geometry and
+ * styling unverifiable). `s3Key` matches a fixture filename so the
+ * mock S3 wrapper can lazily hydrate bytes from
+ * `src/lib/mock/fixtures/html/` — the in-memory map is process-local
+ * and a standalone seed cannot put bodies where the Next server sees
+ * them. `shareRef` is left null (no public link).
+ *
+ * Idempotent: bails when any HtmlPage already exists for this org.
+ */
+async function ensureMockHtmlPages(orgId: string, userId: string): Promise<void> {
+  const existingCount = await db.htmlPage.count({ where: { orgId } });
+  if (existingCount > 0) return;
+
+  const fixtureDir = path.join(process.cwd(), "src/lib/mock/fixtures/html");
+
+  for (const fixture of HTML_PAGE_FIXTURES) {
+    const s3Key = htmlPageFixtureS3Key(orgId, fixture.filename);
+    let size = 0;
+    try {
+      size = fs.statSync(path.join(fixtureDir, fixture.filename)).size;
+    } catch {
+      // Size is informational; the body proxy reads bytes from S3
+      // (or the fixture-hydrated mock map), not this column.
+    }
+    await db.htmlPage.create({
+      data: {
+        slug: fixture.slug,
+        title: fixture.title,
+        s3Key,
+        size,
+        contentType: "text/html; charset=utf-8",
+        orgId,
+        createdBy: userId,
+      },
+    });
+  }
+}
+
 async function ensureMockOrgInitiatives(
   orgId: string,
   userId: string,

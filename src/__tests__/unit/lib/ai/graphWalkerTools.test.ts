@@ -29,6 +29,7 @@ vi.mock("@/lib/db", () => ({
     workspace: { findMany: vi.fn() },
     repository: { findMany: vi.fn() },
     research: { findMany: vi.fn() },
+    htmlPage: { findMany: vi.fn() },
     connection: { findMany: vi.fn() },
     $queryRaw: vi.fn(),
   },

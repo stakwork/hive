@@ -1072,7 +1072,7 @@ export function OrgCanvasBackground({
               Boolean(node.customData?.plannerRunning),
           },
         },
-        // View Details — live nodes (feature, initiative, workspace, research)
+        // View Details — live nodes (feature, initiative, workspace, research, html)
         {
           id: "view-details",
           label: "View Details",
