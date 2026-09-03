@@ -29,7 +29,12 @@ vi.mock("@/lib/auth/workspace-access", async () => {
 // ── Swarm config mock ─────────────────────────────────────────────────────────
 // All four proxy routes import getSwarmConfig from "@/app/api/learnings/utils"
 // (changed from relative paths so vi.mock resolution works).
-vi.mock("@/app/api/learnings/utils", () => ({ getSwarmConfig: vi.fn() }));
+vi.mock("@/app/api/learnings/utils", async () => {
+  const actual = await vi.importActual<typeof import("@/app/api/learnings/utils")>(
+    "@/app/api/learnings/utils",
+  );
+  return { ...actual, getSwarmConfig: vi.fn() };
+});
 
 import { resolveWorkspaceAccess } from "@/lib/auth/workspace-access";
 import { getSwarmConfig } from "@/app/api/learnings/utils";
