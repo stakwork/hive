@@ -1,4 +1,4 @@
-import { getGithubUsernameAndPAT } from '@/lib/auth/nextauth';
+import { getGithubUsernameAndPAT, resolveSourceControlPATsForOrgs } from '@/lib/auth/nextauth';
 import { db } from '@/lib/db';
 import { EncryptionService } from '@/lib/encryption';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -23,6 +23,7 @@ vi.mock('@/lib/db', () => ({
     },
     sourceControlToken: {
       findUnique: vi.fn(),
+      findMany: vi.fn(),
     },
   },
 }));
@@ -595,5 +596,77 @@ describe('getGithubUsernameAndPAT', () => {
       const tokenForWebhook = result?.token;
       expect(tokenForWebhook).toBe('decrypted_webhook_pat');
     });
+  });
+});
+
+describe('resolveSourceControlPATsForOrgs', () => {
+  const userId = 'user-123';
+  const identity = { username: 'alice' };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    (EncryptionService.getInstance as any).mockReturnValue({
+      decryptField: vi.fn((_field: string, value: string) => value.replace('encrypted_', 'decrypted_')),
+    });
+  });
+
+  it('returns an empty map without querying when given no org ids', async () => {
+    const result = await resolveSourceControlPATsForOrgs(userId, [], identity);
+
+    expect(result.size).toBe(0);
+    expect(db.sourceControlToken.findMany).not.toHaveBeenCalled();
+  });
+
+  it('dedupes org ids and reads every token in a single query', async () => {
+    (db.sourceControlToken.findMany as any).mockResolvedValue([
+      { sourceControlOrgId: 'org-a', token: 'encrypted_a' },
+      { sourceControlOrgId: 'org-b', token: 'encrypted_b' },
+    ]);
+
+    const result = await resolveSourceControlPATsForOrgs(
+      userId,
+      ['org-a', 'org-a', 'org-b', 'org-a'],
+      identity,
+    );
+
+    expect(db.sourceControlToken.findMany).toHaveBeenCalledTimes(1);
+    expect(db.sourceControlToken.findMany).toHaveBeenCalledWith({
+      where: { userId, sourceControlOrgId: { in: ['org-a', 'org-b'] } },
+      select: { sourceControlOrgId: true, token: true },
+    });
+    expect(result.get('org-a')).toEqual({ username: 'alice', token: 'decrypted_a' });
+    expect(result.get('org-b')).toEqual({ username: 'alice', token: 'decrypted_b' });
+  });
+
+  it('omits orgs with no token row (caller treats a missing entry as no PAT)', async () => {
+    (db.sourceControlToken.findMany as any).mockResolvedValue([
+      { sourceControlOrgId: 'org-a', token: 'encrypted_a' },
+    ]);
+
+    const result = await resolveSourceControlPATsForOrgs(userId, ['org-a', 'org-b'], identity);
+
+    expect(result.has('org-a')).toBe(true);
+    expect(result.has('org-b')).toBe(false);
+  });
+
+  it('skips an org whose token fails to decrypt instead of failing the batch', async () => {
+    (db.sourceControlToken.findMany as any).mockResolvedValue([
+      { sourceControlOrgId: 'org-a', token: 'encrypted_a' },
+      { sourceControlOrgId: 'org-bad', token: 'corrupt' },
+    ]);
+    (EncryptionService.getInstance as any).mockReturnValue({
+      decryptField: vi.fn((_field: string, value: string) => {
+        if (value === 'corrupt') throw new Error('bad ciphertext');
+        return value.replace('encrypted_', 'decrypted_');
+      }),
+    });
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    const result = await resolveSourceControlPATsForOrgs(userId, ['org-a', 'org-bad'], identity);
+
+    expect(result.get('org-a')?.token).toBe('decrypted_a');
+    expect(result.has('org-bad')).toBe(false);
+    expect(consoleError).toHaveBeenCalled();
+    consoleError.mockRestore();
   });
 });

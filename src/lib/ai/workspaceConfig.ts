@@ -1,5 +1,10 @@
 import { forbiddenError, notFoundError } from "@/types/errors";
-import { getGithubUsernameAndPAT, resolveGithubIdentity, type GithubIdentity } from "@/lib/auth/nextauth";
+import {
+  getGithubUsernameAndPAT,
+  resolveGithubIdentity,
+  resolveSourceControlPATsForOrgs,
+  type GithubUsernameAndPAT,
+} from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
 import { validateWorkspaceAccess } from "@/services/workspace";
@@ -68,12 +73,39 @@ export async function buildWorkspaceConfigs(
   // deterministic: `Promise.all` rejects with whichever slug failed
   // *first in time*, while the serial loop always reported the first
   // failure in *slug order*. We reproduce the latter below.
-  const [identity, accessSettled] = await Promise.all([
+  //
+  // The slug → source-control-org map is read here too (one query for the
+  // whole batch) so the PAT can be resolved per *org* below rather than
+  // per workspace. `validateWorkspaceAccess` already loads the row but its
+  // DTO is browser-facing, so it stays narrow (see `fetchWorkspaceRecords`).
+  const [identity, accessSettled, orgRows] = await Promise.all([
     resolveGithubIdentity(userId),
     Promise.allSettled(
       slugs.map((slug) => validateWorkspaceAccess(slug, userId, true))
     ),
+    db.workspace.findMany({
+      where: { slug: { in: slugs } },
+      select: { slug: true, sourceControlOrgId: true },
+    }),
   ]);
+  const orgIdBySlug = new Map(orgRows.map((r) => [r.slug, r.sourceControlOrgId]));
+
+  const accessible = (i: number) => {
+    const access = accessSettled[i];
+    return access.status === "fulfilled" && access.value.hasAccess && !!access.value.workspace;
+  };
+
+  // One PAT read for every org represented in the batch. On an org canvas
+  // all slugs share one org, so this collapses N token reads + decrypts
+  // into one. Started here so it overlaps with the phase-2 reads below.
+  const orgIds = slugs
+    .filter((_, i) => accessible(i))
+    .map((slug) => orgIdBySlug.get(slug))
+    .filter((id): id is string => !!id);
+  const patByOrg: Promise<Map<string, GithubUsernameAndPAT>> =
+    identity && orgIds.length > 0
+      ? resolveSourceControlPATsForOrgs(userId, orgIds, identity)
+      : Promise.resolve(new Map());
 
   // Phase 2: for every slug that cleared its access check, fan out the
   // four remaining reads — they only need `workspace.id`, so nothing
@@ -84,7 +116,20 @@ export async function buildWorkspaceConfigs(
       if (access.status === "rejected" || !access.value.hasAccess || !access.value.workspace) {
         return Promise.resolve(null);
       }
-      return fetchWorkspaceRecords(slug, userId, access.value.workspace.id, identity);
+      // A null identity means the user has no GitHub username at all, so
+      // no token lookup can succeed — skip the query and let the PAT guard
+      // in `assembleWorkspaceConfig` report it.
+      let pat: Promise<GithubUsernameAndPAT | null>;
+      const orgId = orgIdBySlug.get(slug);
+      if (!identity) {
+        pat = Promise.resolve(null);
+      } else if (orgId) {
+        pat = patByOrg.then((m) => m.get(orgId) ?? null);
+      } else {
+        // No source control org → the per-workspace form's OAuth fallback.
+        pat = getGithubUsernameAndPAT(userId, slug, identity);
+      }
+      return fetchWorkspaceRecords(access.value.workspace.id, pat);
     })
   );
 
@@ -118,10 +163,8 @@ export async function buildWorkspaceConfigs(
 type WorkspaceRecords = Awaited<ReturnType<typeof fetchWorkspaceRecords>>;
 
 async function fetchWorkspaceRecords(
-  slug: string,
-  userId: string,
   workspaceId: string,
-  identity: GithubIdentity | null
+  pat: Promise<GithubUsernameAndPAT | null>
 ) {
   // These re-read rows that `validateWorkspaceAccess` already loaded:
   // `getWorkspaceBySlug` includes `swarm` and `repositories`, then maps
@@ -139,10 +182,7 @@ async function fetchWorkspaceRecords(
       where: { workspaceId },
       orderBy: { createdAt: "asc" },
     }),
-    // A null identity means the user has no GitHub username at all, so
-    // the per-workspace token lookup cannot succeed — skip the query and
-    // let the PAT guard below report it.
-    identity ? getGithubUsernameAndPAT(userId, slug, identity) : Promise.resolve(null),
+    pat,
     // Fetch workspace members (name, github username, role, description).
     // `orderBy` is load-bearing: this roster is rendered near the top of
     // the cached system prompt, and `lastAccessedAt` writes churn these
