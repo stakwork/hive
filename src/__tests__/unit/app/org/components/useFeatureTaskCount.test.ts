@@ -65,6 +65,51 @@ describe("buildTaskList", () => {
     const list = buildTaskList({ tasks: [{ title: "T" }] });
     expect(list[0].status).toBe("TODO");
   });
+
+  test("passes through id, autoMerge, model, mode, and workflowTask", () => {
+    const list = buildTaskList({
+      phases: [
+        {
+          tasks: [
+            {
+              id: "phased-1",
+              title: "Phased",
+              status: "TODO",
+              autoMerge: true,
+              model: "anthropic/claude-sonnet-4",
+              mode: "live",
+              workflowTask: { id: "wt-1" },
+            },
+          ],
+        },
+      ],
+      tasks: [
+        {
+          id: "top-1",
+          title: "Top-level",
+          status: "TODO",
+        },
+      ],
+    });
+
+    expect(list).toHaveLength(2);
+    expect(list[0]).toMatchObject({
+      id: "phased-1",
+      title: "Phased",
+      autoMerge: true,
+      model: "anthropic/claude-sonnet-4",
+      mode: "live",
+      workflowTask: { id: "wt-1" },
+    });
+    expect(list[1]).toMatchObject({
+      id: "top-1",
+      title: "Top-level",
+      autoMerge: false,
+      model: null,
+      mode: null,
+      workflowTask: null,
+    });
+  });
 });
 
 describe("countTasks", () => {
