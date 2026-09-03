@@ -9,10 +9,17 @@ import { config } from "@/config/env";
 
 // Re-export types
 export type { Provider } from "aieo";
+export type { WebSearchHandle, WebSearchResult } from "aieo";
+export { WEB_SEARCH_TOOL_NAME, linkifyCitations, stripCitations } from "aieo";
 
 import {
   type Provider,
   type ProviderTool,
+  type CreateWebSearchOptions,
+  type WebSearchHandle,
+  type WebSearchResult,
+  createWebSearch as createWebSearchAieo,
+  stripCitations,
   getModel as getModelAieo,
   getProviderTool as getProviderToolAieo,
   getApiKeyForProvider as getApiKeyForProviderAieo
@@ -138,4 +145,54 @@ export function getProviderTool(
 
   // Otherwise, use the real aieo implementation
   return getProviderToolAieo(provider, apiKey, toolName as ProviderTool) as any;
+}
+
+/**
+ * Build the run's `web_search` tool with mock support.
+ *
+ * Delegates to aieo, which keeps Anthropic on its native server-executed
+ * tool and hands every other provider an Exa-backed shim of the same
+ * name and result shape. Callers register `handle.tool` under
+ * `WEB_SEARCH_TOOL_NAME`, feed `handle.capture` from `onStepFinish`, and
+ * read `handle.results` for the flat citation list — identical on both
+ * paths, so nothing downstream branches on the provider.
+ *
+ * `citations` defaults to false: the model gets no citation
+ * instructions and `formatOutput` strips any `<cite>` markup it emits
+ * anyway. Interactive chat wants that — its text is STREAMED, so a cite
+ * tag would reach the UI as raw markup before anything could rewrite it.
+ * Only non-streaming surfaces that render source links (the research
+ * worker, whose output lands in a doc via a tool call) should turn it on.
+ */
+export function createWebSearch(
+  opts: Omit<CreateWebSearchOptions, "apiKey"> & { apiKey: string },
+): WebSearchHandle {
+  // Mock mode returns a handle shaped like the real one so the agent
+  // loop is exercised end-to-end without reaching Anthropic or Exa.
+  // Mirrors getProviderTool's mock branch (see USE_REAL_LLM above).
+  if (config.USE_MOCKS && !USE_REAL_LLM && opts.provider === "anthropic") {
+    const results: WebSearchResult[] = [];
+    return {
+      tool: {
+        description: "Mock web_search tool",
+        parameters: {},
+        execute: async (params: unknown) => {
+          console.log("[Mock] web_search tool called with:", params);
+          return { result: "Mock tool result", mocked: true };
+        },
+      },
+      backend: "anthropic",
+      native: true,
+      results,
+      capture: () => {},
+      promptSnippet: "",
+      formatOutput: (markdown: string) => ({
+        content: stripCitations(markdown),
+        converted: 0,
+        skipped: 0,
+      }),
+    };
+  }
+
+  return createWebSearchAieo(opts);
 }

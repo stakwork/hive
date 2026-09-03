@@ -91,6 +91,16 @@ vi.mock("@/lib/ai/message-sanitizer", () => ({
 vi.mock("@/lib/ai/provider", () => ({
   getModel: vi.fn(() => ({ modelId: "mock-model" })),
   getApiKeyForProvider: vi.fn(() => "api-key"),
+  WEB_SEARCH_TOOL_NAME: "web_search",
+  createWebSearch: vi.fn(() => ({
+    tool: { description: "mock web_search", execute: vi.fn() },
+    backend: "anthropic",
+    native: true,
+    results: [],
+    capture: vi.fn(),
+    promptSnippet: "",
+    formatOutput: (markdown: string) => ({ content: markdown, converted: 0, skipped: 0 }),
+  })),
 }));
 vi.mock("aieo", () => ({ getProviderOptions: vi.fn(() => ({})) }));
 vi.mock("@/services/bifrost/orchestrator", () => ({
@@ -264,13 +274,9 @@ describe("runCanvasAgent — send_sphinx_message merge", () => {
   });
 
   it("drops VIEWER-only workspaces on org-root scope but still merges the writable one", async () => {
-    mockFindMany.mockResolvedValue([
-      { id: "cuid-alpha", slug: "alpha" },
-      { id: "cuid-beta", slug: "beta" },
-    ]);
-    mockValidateWorkspaceAccessById.mockImplementation(async (workspaceId: string) => ({
-      canWrite: workspaceId === "cuid-alpha",
-    }));
+    // Write access is part of the findMany predicate, so the VIEWER-only
+    // workspace (beta) never comes back from the query.
+    mockFindMany.mockResolvedValue([{ id: "cuid-alpha", slug: "alpha" }]);
 
     await runCanvasAgent(
       opts({

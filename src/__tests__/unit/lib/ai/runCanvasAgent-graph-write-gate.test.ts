@@ -87,6 +87,16 @@ vi.mock("@/lib/ai/message-sanitizer", () => ({
 vi.mock("@/lib/ai/provider", () => ({
   getModel: vi.fn(() => ({ modelId: "mock-model" })),
   getApiKeyForProvider: vi.fn(() => "api-key"),
+  WEB_SEARCH_TOOL_NAME: "web_search",
+  createWebSearch: vi.fn(() => ({
+    tool: { description: "mock web_search", execute: vi.fn() },
+    backend: "anthropic",
+    native: true,
+    results: [],
+    capture: vi.fn(),
+    promptSnippet: "",
+    formatOutput: (markdown: string) => ({ content: markdown, converted: 0, skipped: 0 }),
+  })),
 }));
 vi.mock("aieo", () => ({ getProviderOptions: vi.fn(() => ({})) }));
 vi.mock("@/services/bifrost/orchestrator", () => ({

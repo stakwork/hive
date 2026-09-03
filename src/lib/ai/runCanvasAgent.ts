@@ -59,7 +59,7 @@ import {
   fetchConceptsForWorkspaces,
   markOrgDefaultWorkspace,
 } from "@/lib/ai/workspaceConfig";
-import type { CapturedSearchResult, DispatchedResearchIntent } from "@/lib/ai/researchTools";
+import type { DispatchedResearchIntent } from "@/lib/ai/researchTools";
 import type { DispatchedGraphWalkIntent } from "@/lib/ai/graphWalkDispatchTools";
 import {
   ALL_CAPABILITIES,
@@ -73,7 +73,13 @@ import { isGraphWriteCapabilityEnabledForOrg } from "@/lib/ai/capabilityGates";
 import { connectExternalMcpTools } from "@/lib/ai/externalMcpTools";
 import { getLinkedWorkspacesForInitiative } from "@/lib/canvas/linkedWorkspaces";
 import { sanitizeAndCompleteToolCalls } from "@/lib/ai/message-sanitizer";
-import { getModel, getApiKeyForProvider, type Provider } from "@/lib/ai/provider";
+import {
+  getModel,
+  getApiKeyForProvider,
+  createWebSearch,
+  WEB_SEARCH_TOOL_NAME,
+  type Provider,
+} from "@/lib/ai/provider";
 import { getProviderOptions, hasApiKeyForProvider, PROVIDERS } from "aieo";
 // Deep import — see comment in services/task-workflow.ts.
 import { getBifrostForLLM } from "@/services/bifrost/orchestrator";
@@ -377,7 +383,7 @@ export interface RunCanvasAgentOptions {
    *
    * **Important:** the spared tool must be one of the *internally-wired*
    * tools (built inside `runCanvasAgent` with shared closures like
-   * `capturedWebSearchResults`). Passing an external tool name here that
+   * `webSearch.results`). Passing an external tool name here that
    * is NOT in the internal toolset is a no-op — the tool is already
    * absent; nothing is restored.
    */
@@ -404,7 +410,7 @@ export interface RunCanvasAgentOptions {
    * Mutable collector for `dispatch_research` intents. When provided, the
    * internally-wired `dispatch_research` tool will push each dispatched
    * intent here so the caller's `after()` block can schedule workers.
-   * Sibling pattern to `capturedWebSearchResults`.
+   * Sibling pattern to `dispatchedGraphWalks`.
    */
   dispatchedResearch?: DispatchedResearchIntent[];
   /**
@@ -414,6 +420,18 @@ export interface RunCanvasAgentOptions {
    * graph-walk workers. Sibling pattern to `dispatchedResearch`.
    */
   dispatchedGraphWalks?: DispatchedGraphWalkIntent[];
+  /**
+   * Ask the model to cite `web_search` results as `<cite index="N">` tags
+   * so `update_research` can linkify them. Defaults to false.
+   *
+   * Leave it off for anything that STREAMS its text to a UI: the tags
+   * would reach the client as raw markup mid-stream, before any
+   * server-side rewrite could run. Only non-streaming surfaces whose
+   * output lands via a tool call (the research worker) should set it —
+   * and note Claude honors the instruction unreliably even then, so
+   * treat links as best-effort. See aieo's `npm run cite-rate`.
+   */
+  webSearchCitations?: boolean;
   /**
    * Sink for the sub-agent's synthesized graph-walk answer. Only
    * meaningful in a graph-walk sub-agent context (set by the worker);
@@ -551,53 +569,6 @@ function extractConceptIdsFromStep(contents: unknown): string[] {
     }
   }
   return conceptIds;
-}
-
-/**
- * Walk a step's tool-result entries for `web_search` outputs and
- * append each `{ url, title }` (in order) to `target`. Order is
- * load-bearing: Anthropic's `<cite index="N-M">` tags reference this
- * flat list 1-indexed across the whole turn.
- *
- * Tolerates two AI-SDK result shapes (`result` vs `output`) and any
- * non-array body silently — adapters vary across versions.
- */
-function captureWebSearchResultsFromStep(
-  contents: unknown,
-  target: CapturedSearchResult[],
-): void {
-  if (!Array.isArray(contents)) return;
-  for (const content of contents) {
-    if (content?.type !== "tool-result") continue;
-    const toolName: string = content.toolName || "";
-    if (toolName !== "web_search") continue;
-    const body = content.output ?? content.result ?? null;
-    const results = Array.isArray(body) ? body : null;
-    if (!results) {
-      console.log(
-        `[runCanvasAgent] web_search tool-result had non-array body; skipping`,
-        { keys: body && typeof body === "object" ? Object.keys(body) : typeof body },
-      );
-      continue;
-    }
-    let added = 0;
-    for (const r of results) {
-      if (
-        r &&
-        typeof r === "object" &&
-        typeof (r as { url?: unknown }).url === "string"
-      ) {
-        target.push({
-          url: (r as CapturedSearchResult).url,
-          title: (r as CapturedSearchResult).title,
-        });
-        added++;
-      }
-    }
-    console.log(
-      `[runCanvasAgent] captured ${added} web_search results from this step (total now ${target.length})`,
-    );
-  }
 }
 
 /**
@@ -804,10 +775,16 @@ export async function runCanvasAgent(
     string,
     { prompt_id: string; prompt_version_id: string | null }
   > = {};
-  // Per-call web_search capture, used by `update_research`'s execute
-  // closure to linkify Anthropic `<cite index="N-M">` tags. Empty
-  // (and unused) when no org-tool branch is built.
-  const capturedWebSearchResults: CapturedSearchResult[] = [];
+  // Per-run web_search handle. Owns the tool itself (native on
+  // Anthropic, Exa-backed shim elsewhere), the ordered result list
+  // `update_research` cites into, and the citation treatment applied to
+  // written-up text. Built here — after provider/apiKey resolution,
+  // before either tool branch — so both branches register the same one.
+  const webSearch = createWebSearch({
+    provider,
+    apiKey,
+    citations: !!opts.webSearchCitations,
+  });
 
   // Turn-level cancellation flag, shared with the repo_agent tool
   // executes (via AskToolsContext). When the user stops a run, the
@@ -901,7 +878,7 @@ export async function runCanvasAgent(
           userId,
           currentCanvasConversationId,
           chatAgentModel: modelName,
-          capturedWebSearchResults,
+          webSearch,
           dispatchedResearch,
           dispatchedGraphWalks,
           graphWalkAnswerSink,
@@ -911,6 +888,7 @@ export async function runCanvasAgent(
       };
     }
 
+    const tSphinxMerge = Date.now();
     tools = await mergeSphinxTools(tools, {
       userId,
       readonly,
@@ -919,6 +897,7 @@ export async function runCanvasAgent(
       workspaceConfigs,
       currentCanvasRef: scope?.currentCanvasRef,
     });
+    console.log("[runCanvasAgent] timing", { stage: "mergeSphinxTools (multi)", ms: Date.now() - tSphinxMerge, merged: SEND_SPHINX_MESSAGE_TOOL in tools, workspaces: workspaceSlugs, orgId: orgId ?? null });
 
     features = [];
     for (const ws of workspaceConfigs) {
@@ -937,10 +916,12 @@ export async function runCanvasAgent(
     ) {
       const initiativeId = scope.currentCanvasRef.slice("initiative:".length);
       if (initiativeId) {
+        const tLinked = Date.now();
         linkedWorkspaces = await getLinkedWorkspacesForInitiative(
           orgId,
           initiativeId,
         );
+        console.log("[runCanvasAgent] timing", { stage: "getLinkedWorkspacesForInitiative", ms: Date.now() - tLinked, linked: linkedWorkspaces.length, workspaces: workspaceSlugs, orgId });
       }
     }
 
@@ -1058,7 +1039,7 @@ export async function runCanvasAgent(
           userId,
           currentCanvasConversationId,
           chatAgentModel: modelName,
-          capturedWebSearchResults,
+          webSearch,
           dispatchedResearch,
           dispatchedGraphWalks,
           graphWalkAnswerSink,
@@ -1071,6 +1052,7 @@ export async function runCanvasAgent(
     // Do not gate Sphinx merge on `orgId` — a one-workspace org canvas
     // (and dashboard chat) never pass orgId. Destination is the bound
     // workspace, not an org-level tribe.
+    const tSphinxMergeSingle = Date.now();
     tools = await mergeSphinxTools(tools, {
       userId,
       readonly,
@@ -1079,6 +1061,7 @@ export async function runCanvasAgent(
       workspaceConfigs: [ws],
       currentCanvasRef: scope?.currentCanvasRef,
     });
+    console.log("[runCanvasAgent] timing", { stage: "mergeSphinxTools (single)", ms: Date.now() - tSphinxMergeSingle, merged: SEND_SPHINX_MESSAGE_TOOL in tools, workspaces: workspaceSlugs, orgId: orgId ?? null });
 
     canvasScope = orgId ? buildScopeHint(scope, []) : undefined;
 
@@ -1124,11 +1107,13 @@ export async function runCanvasAgent(
     const externalMcp = await connectExternalMcpTools(orgId);
     externalMcpCleanup = externalMcp.closeAll;
     const externalCount = Object.keys(externalMcp.tools).length;
+    // Logged even when nothing came back — the handshake cost is paid
+    // either way, and a slow zero-tool connect should still be visible.
+    console.log("[runCanvasAgent] timing", { stage: "connectExternalMcpTools", ms: Date.now() - tExternalMcp, tools: externalCount, workspaces: workspaceSlugs, orgId });
     if (externalCount > 0) {
       // External tools spread FIRST so a name collision with a built-in
       // resolves in the built-in's favor.
       tools = { ...externalMcp.tools, ...tools };
-      console.log("[runCanvasAgent] timing", { stage: "connectExternalMcpTools", ms: Date.now() - tExternalMcp, tools: externalCount, workspaces: workspaceSlugs, orgId });
     }
   }
 
@@ -1154,12 +1139,23 @@ export async function runCanvasAgent(
     tools = { ...tools, ...additionalTools };
   }
 
-  // `web_search` (built in askTools/askToolsMulti) is an Anthropic
-  // server-executed provider tool — other providers can't serialize or
-  // run it, so drop it rather than fail the whole request.
-  if (provider !== "anthropic" && "web_search" in tools) {
-    const { web_search: _webSearch, ...rest } = tools;
-    tools = rest;
+  // `web_search` is registered LAST so it survives the readonly strip
+  // (searching the web reads nothing of ours) and can't be shadowed by
+  // a caller's `additionalTools`.
+  //
+  // This used to be the opposite: askTools built an Anthropic-only
+  // provider tool and we DELETED it off-Anthropic, so every non-Anthropic
+  // model silently lost web search. The handle now picks the backend —
+  // native on Anthropic, Exa-backed shim elsewhere — and both speak the
+  // same tool name and result shape. `tool` is undefined only when the
+  // chosen backend has no key configured (e.g. no EXA_API_KEY on a
+  // non-Anthropic run), in which case we drop it as before.
+  if (webSearch.tool) {
+    tools = { ...tools, [WEB_SEARCH_TOOL_NAME]: webSearch.tool };
+  } else {
+    console.warn(
+      `[runCanvasAgent] no web_search backend for provider "${provider}"; continuing without it`,
+    );
   }
 
   // ------------------------------------------------------------------
@@ -1375,7 +1371,7 @@ export async function runCanvasAgent(
       // route's `onStepFinish` was a sync arrow function. We do NOT
       // want to add the Pusher round-trip (50-200ms) to every agent
       // step's wall-clock time.
-      captureWebSearchResultsFromStep(sf.content, capturedWebSearchResults);
+      webSearch.capture(sf.content);
       if (!silentPusher) {
         maybeHighlightLearnedConcept(sf.content, primarySlug, features);
       }
