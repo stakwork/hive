@@ -2,7 +2,6 @@ import { StopCondition, tool, ToolSet, ModelMessage } from "ai";
 import { z } from "zod";
 import { RepoAnalyzer } from "gitsee/server";
 import { parseOwnerRepo } from "./utils";
-import { getProviderTool } from "@/lib/ai/provider";
 import { createMCPClient } from "@ai-sdk/mcp";
 import { withMcpTimeout, isMcpTimeout } from './mcpTimeout';
 import {
@@ -353,6 +352,9 @@ export interface AskToolsContext {
   cancellation?: { requested: boolean };
 }
 
+// `apiKey` is retained for call-signature compatibility; it was only used to
+// build the Anthropic `web_search` provider tool, which `runCanvasAgent` now
+// registers once for the whole run (see `createWebSearch`).
 export function askTools(swarmUrl: string, swarmApiKey: string, repoUrls: string[], pat: string, apiKey: string, workspaceAuth?: WorkspaceAuth, context?: AskToolsContext) {
   // Build a map of repo URLs to their parsed owner/repo for multi-repo support
   const repoMap = repoUrls.map((url) => ({
@@ -361,7 +363,6 @@ export function askTools(swarmUrl: string, swarmApiKey: string, repoUrls: string
   }));
   const isMultiRepo = repoUrls.length > 1;
 
-  const web_search = getProviderTool("anthropic", apiKey, "webSearch");
   const baseTools = {
     list_concepts: tool({
       description:
@@ -599,7 +600,6 @@ Example queries:
         }
       },
     }),
-    web_search,
   };
   // Gated to the "stakwork" workspace only — searches Jarvis Workflow nodes.
   const isStakwork = workspaceAuth?.workspaceSlug === "stakwork";
