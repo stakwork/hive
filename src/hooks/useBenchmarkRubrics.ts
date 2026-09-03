@@ -116,15 +116,27 @@ export function createBenchmarkRubricsHook(endpointFn: EndpointFn) {
       let cancelled = false;
       const slugs = slugKey.split("\n");
 
-      (async () => {
-        const entries = await Promise.all(
-          slugs.map(async (taskSlug) => {
-            const roster = await fetchRoster(workspaceSlug, taskSlug, endpointFn);
-            return [taskSlug, roster] as const;
-          }),
-        );
-        if (!cancelled) setRosters(new Map(entries));
-      })();
+      // Drop slugs that left the view but keep the ones already resolved —
+      // a missing key means "still loading", so rebuilding the map from
+      // scratch would flash resolved rows back to loading on a window change.
+      setRosters((prev) => {
+        if (prev.size === 0) return prev;
+        const kept = new Map<string, GraphRubric[] | null>();
+        for (const slug of slugs) {
+          if (prev.has(slug)) kept.set(slug, prev.get(slug)!);
+        }
+        return kept.size === prev.size ? prev : kept;
+      });
+
+      // Each roster is merged in as it lands rather than through one
+      // Promise.all: a task's Total paints as soon as its own graph read
+      // returns, instead of every row waiting on the slowest one.
+      for (const taskSlug of slugs) {
+        fetchRoster(workspaceSlug, taskSlug, endpointFn).then((roster) => {
+          if (cancelled) return;
+          setRosters((prev) => new Map(prev).set(taskSlug, roster));
+        });
+      }
 
       return () => {
         cancelled = true;
@@ -163,6 +175,10 @@ export interface UseBenchmarkRubricsResult {
  * Fetch rosters for a set of task slugs (the runs table's distinct tasks).
  * Returns a map keyed by task slug; entries are absent until resolved and
  * `null` when no roster exists.
+ *
+ * Resolution is per slug, so the map fills in progressively — callers can
+ * treat "key absent" as still-loading and "key present, value null" as
+ * definitively no roster.
  */
 export const useBenchmarkRubricsMap = legalHooks.useBenchmarkRubricsMap;
 
