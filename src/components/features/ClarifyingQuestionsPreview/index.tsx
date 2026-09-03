@@ -176,12 +176,19 @@ export function ClarifyingQuestionsPreview({
   );
 
   const [currentIndex, setCurrentIndex] = useState(0);
+  const [answers, setAnswers] = useState<Record<number, Answer>>({});
+  const [showReview, setShowReview] = useState(false);
+  const submitButtonRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    if (showReview) {
+      submitButtonRef.current?.focus();
+    }
+  }, [showReview]);
 
   if (validQuestions.length === 0) {
     return null;
   }
-  const [answers, setAnswers] = useState<Record<number, Answer>>({});
-  const [showReview, setShowReview] = useState(false);
 
   const totalSteps = validQuestions.length;
   const currentStep = currentIndex + 1;
@@ -268,14 +275,6 @@ export function ClarifyingQuestionsPreview({
       handleNext();
     }
   };
-
-  const submitButtonRef = useRef<HTMLButtonElement>(null);
-
-  useEffect(() => {
-    if (showReview) {
-      submitButtonRef.current?.focus();
-    }
-  }, [showReview]);
 
   const getSelectedColor = (
     question: ClarifyingQuestion,

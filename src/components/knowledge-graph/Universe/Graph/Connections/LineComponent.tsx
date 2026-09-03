@@ -23,7 +23,7 @@ type LineComponentProps = {
 }
 
 
-const _LineComponent = (props: LineComponentProps) => {
+const LineComponentBase = (props: LineComponentProps) => {
   const lineRef = useRef<Line2 | null>(null)
   const groupRef = useRef<Group | null>(null)
   const nodesNormalized = useDataStore((s) => s.nodesNormalized)
@@ -126,6 +126,6 @@ const _LineComponent = (props: LineComponentProps) => {
   )
 }
 
-_LineComponent.displayName = 'LineComponent'
+LineComponentBase.displayName = 'LineComponent'
 
-export const LineComponent = memo(_LineComponent)
+export const LineComponent = memo(LineComponentBase)
