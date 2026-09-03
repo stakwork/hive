@@ -48,6 +48,7 @@ vi.mock(
       { id: "note",       label: "Note",       agentWritable: true  },
       { id: "decision",   label: "Decision",   agentWritable: true  },
       { id: "research",   label: "Research",   agentWritable: false },
+      { id: "html",       label: "HTML",       agentWritable: false },
     ];
     return { CATEGORY_REGISTRY };
   },

@@ -209,6 +209,42 @@ export async function loadNodeDetail(
         },
       };
     }
+    case "html": {
+      // HtmlPage rows belong to the org directly. Live ids
+      // (`html:<cuid>`) travel through `?canvas=` URLs and Pusher
+      // payloads, which are not otherwise org-scoped, so the
+      // `orgId` predicate is the IDOR boundary — a bare
+      // `findUnique({ where: { id } })` would let any authenticated
+      // member of any org read another org's page title and slug by
+      // guessing the live id. Cross-org and missing both return
+      // null (404 upstream).
+      //
+      // `shareRef` is a bearer secret and `s3Key` is an internal
+      // storage pointer — neither belongs in `extras`, which is
+      // serialized straight to the browser.
+      const page = await db.htmlPage.findFirst({
+        where: { id, orgId },
+        select: {
+          id: true,
+          slug: true,
+          title: true,
+          createdAt: true,
+          updatedAt: true,
+        },
+      });
+      if (!page) return null;
+      return {
+        kind: "html",
+        id: page.id,
+        name: page.title,
+        description: null,
+        extras: {
+          slug: page.slug,
+          createdAt: page.createdAt,
+          updatedAt: page.updatedAt,
+        },
+      };
+    }
     case "research": {
       // Research rows belong to the org directly (no workspace
       // intermediary), and an optional `initiativeId` scopes them to

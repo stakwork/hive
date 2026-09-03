@@ -7,7 +7,42 @@
  * Used when USE_MOCKS=true is set in environment configuration.
  */
 
+import fs from "node:fs";
+import path from "node:path";
 import { s3MockState } from './s3-state';
+
+/**
+ * On-disk HTML fixtures. The in-memory mock map is process-local and
+ * has no persistence, so a seed script cannot put bytes where the
+ * Next server will find them. Instead, the first `fileExists` /
+ * `getObject` for a deterministic `orgs/{orgId}/canvas/{filename}`
+ * key hydrates from this directory when `{filename}` matches a
+ * fixture file.
+ */
+const HTML_FIXTURE_DIR = path.join(process.cwd(), "src/lib/mock/fixtures/html");
+
+const HTML_FIXTURE_BASENAME = /^[a-z0-9]+(?:-[a-z0-9]+)*\.html$/;
+
+function hydrateHtmlFixture(key: string): void {
+  if (s3MockState.fileExists(key)) return;
+  const parts = key.split("/");
+  // Seeded keys are `orgs/{orgId}/canvas/{filename}`. Reject anything
+  // else (including path-traversal basenames) so we never read outside
+  // the fixture directory.
+  if (parts.length !== 4 || parts[0] !== "orgs" || parts[2] !== "canvas") {
+    return;
+  }
+  const basename = parts[3];
+  if (!HTML_FIXTURE_BASENAME.test(basename)) return;
+  const fixturePath = path.join(HTML_FIXTURE_DIR, basename);
+  try {
+    if (!fs.existsSync(fixturePath)) return;
+    const buffer = fs.readFileSync(fixturePath);
+    s3MockState.storeFile(key, buffer, "text/html; charset=utf-8");
+  } catch {
+    // Best-effort: a missing or unreadable fixture stays missing.
+  }
+}
 
 export class S3MockWrapper {
   private readonly maxFileSize = 10 * 1024 * 1024; // 10MB
@@ -66,15 +101,19 @@ export class S3MockWrapper {
    * Get an object from mock S3 storage
    */
   async getObject(key: string): Promise<Buffer> {
+    hydrateHtmlFixture(key);
     const file = s3MockState.getFile(key);
     return file.buffer;
   }
 
   /**
    * Check whether a key is already in mock storage. Unlike `getFile` /
-   * `getObject`, this does NOT auto-create a missing object.
+   * `getObject`, this does NOT auto-create a missing object. HTML
+   * fixture keys are an exception: a matching on-disk fixture is
+   * hydrated into the map first so seeded HtmlPage rows resolve.
    */
   fileExists(key: string): boolean {
+    hydrateHtmlFixture(key);
     return s3MockState.fileExists(key);
   }
 

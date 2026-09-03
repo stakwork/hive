@@ -181,6 +181,19 @@ describe("HtmlArtifactFrame", () => {
     expect(createObjectURL).not.toHaveBeenCalled();
   });
 
+  test("re-fetches when updatedAt changes", async () => {
+    const { rerender } = render(
+      <HtmlArtifactFrame source={ORG_SOURCE} updatedAt="2024-01-01T00:00:00.000Z" />,
+    );
+    await findIframe();
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+
+    rerender(
+      <HtmlArtifactFrame source={ORG_SOURCE} updatedAt="2024-06-01T00:00:00.000Z" />,
+    );
+    await waitFor(() => expect(mockFetch).toHaveBeenCalledTimes(2));
+  });
+
   test("falls back to a generic message for a non-Error rejection", async () => {
     mockFetch.mockRejectedValue("boom");
     render(<HtmlArtifactFrame source={ORG_SOURCE} />);

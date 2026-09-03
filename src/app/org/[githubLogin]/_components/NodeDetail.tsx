@@ -10,6 +10,7 @@ import type { WorkflowStatus } from "@/lib/chat";
 import { FeaturePlanChat } from "./FeaturePlanChat";
 import { TaskChat } from "./TaskChat";
 import { ResearchViewer } from "./ResearchViewer";
+import { HtmlArtifactFrame } from "@/components/html-artifact/HtmlArtifactFrame";
 import type { OrgMemberResponse } from "@/types/workspace";
 import {
   Select,
@@ -197,6 +198,38 @@ export function LiveNodeBody({
         content={detail.description}
         githubLogin={githubLogin}
       />
+    );
+  }
+
+  // HTML pages own their entire body — the sandboxed iframe is
+  // the viewer, and `slug` only exists on the fetched detail
+  // (not on the canvas node), so we wait for the fetch above
+  // rather than short-circuiting on the live-id prefix.
+  if (detail.kind === "html") {
+    const extras = (detail.extras ?? {}) as Record<string, unknown>;
+    const slug = String(extras.slug ?? "");
+    const updatedAt =
+      extras.updatedAt instanceof Date
+        ? extras.updatedAt.toISOString()
+        : typeof extras.updatedAt === "string"
+          ? extras.updatedAt
+          : undefined;
+    if (!slug) {
+      return (
+        <p className="text-sm text-muted-foreground">
+          This page is missing a slug.
+        </p>
+      );
+    }
+    return (
+      <div className="h-full min-h-[24rem]">
+        <HtmlArtifactFrame
+          source={{ githubLogin, slug }}
+          title={detail.name}
+          updatedAt={updatedAt}
+          className="h-full min-h-[24rem] rounded-md border"
+        />
+      </div>
     );
   }
 

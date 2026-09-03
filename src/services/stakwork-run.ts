@@ -1323,8 +1323,8 @@ export async function processStakworkRunWebhook(
 
   // ── Step 2f: LEGAL_BENCHMARK_CONSOLIDATED — mark completed, broadcast ───────
   // report_url is already persisted by the atomic updateMany above.
-  // Broadcast STAKWORK_RUN_UPDATE so the RecursionCard's useLegalBenchmarkRun
-  // subscription fires and the "View Consolidated Report" link surfaces.
+  // Broadcast STAKWORK_RUN_UPDATE so the Recursion tab's shared run list
+  // refetches and the RecursionCard's "View Consolidated Report" link surfaces.
   // Unlike RECURSION (Step 2e), CONSOLIDATED needs no secondary dispatch.
   if (run.type === StakworkRunType.LEGAL_BENCHMARK_CONSOLIDATED) {
     try {

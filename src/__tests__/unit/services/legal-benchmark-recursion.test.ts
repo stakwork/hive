@@ -85,6 +85,22 @@ describe("listRecursionEvalSets — three-source merge", () => {
     expect(entry?.reason).toBe("active");
   });
 
+  test("Source 1: dateAddedToGraph comes from the node's top-level date_added_to_graph", async () => {
+    const stamped = { ...makeNode("ref-stamped"), date_added_to_graph: 1756000000 };
+    const unstamped = makeNode("ref-unstamped");
+    mockSearchNodesByAttributes
+      .mockResolvedValueOnce({ ok: true, nodes: [stamped, unstamped] })  // Source 1
+      .mockResolvedValueOnce({ ok: true, nodes: [] });                    // Source 2
+    vi.mocked(db.stakworkRun.groupBy).mockResolvedValue([]);
+
+    const result = await listRecursionEvalSets(CONFIG, WORKSPACE_ID);
+
+    expect(result.nodes?.find((n) => n.ref_id === "ref-stamped")?.dateAddedToGraph).toBe(
+      new Date(1756000000 * 1000).toISOString(),
+    );
+    expect(result.nodes?.find((n) => n.ref_id === "ref-unstamped")?.dateAddedToGraph).toBeNull();
+  });
+
   test("Source 1 failure returns { ok: false } (authoritative)", async () => {
     mockSearchNodesByAttributes.mockResolvedValueOnce({ ok: false, nodes: [], error: "Jarvis down" });
     // Source 2 + 3 would still run but result should still be failure
