@@ -7,10 +7,11 @@ import { Badge } from "@/components/ui/badge";
 import { WorkflowStatus } from "@prisma/client";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { useWorkflowBenchmarkRunList } from "@/hooks/useWorkflowBenchmarkRunList";
-import { isRosterPending, useWorkflowBenchmarkRubricsMap } from "@/hooks/useBenchmarkRubrics";
+import { useWorkflowBenchmarkRubricsMap } from "@/hooks/useBenchmarkRubrics";
 import {
   computeBenchmarkScore,
   formatBenchmarkScore,
+  isRosterPending,
   criterionStatus,
   buildContestedIndex,
   type GraphRubric,

@@ -30,9 +30,14 @@ import {
   type BenchmarkRunType,
 } from "@/hooks/useLegalBenchmarkRunList";
 import { useLegalBenchmarkRecursionList } from "@/hooks/useLegalBenchmarkRecursionList";
-import { isRosterPending, useBenchmarkRubricsMap } from "@/hooks/useBenchmarkRubrics";
+import { useBenchmarkRubricsMap } from "@/hooks/useBenchmarkRubrics";
 import { useBenchmarkGraphScoresMap, type GraphScoreRequest } from "@/hooks/useBenchmarkGraphScores";
-import { computeBenchmarkScore, rubricBreakdown, type GraphRubric } from "@/lib/harvey-lab/rubric-scoring";
+import {
+  computeBenchmarkScore,
+  isRosterPending,
+  rubricBreakdown,
+  type GraphRubric,
+} from "@/lib/harvey-lab/rubric-scoring";
 import { resolveGraphOutputForRun } from "@/lib/harvey-lab/graph-run-score";
 import { LegalBenchmarkResults } from "@/components/legal/LegalBenchmarkResults";
 import { BenchmarkRunAgentLogs } from "@/components/legal/BenchmarkRunAgentLogs";

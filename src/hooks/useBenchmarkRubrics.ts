@@ -22,22 +22,6 @@ import type { GraphRubric } from "@/lib/harvey-lab/rubric-scoring";
  *  - Any other error → transient — do not cache.
  */
 
-/**
- * Whether a task's roster read is still in flight.
- *
- * Rosters resolve one task at a time, so an ABSENT key means "not back yet"
- * and a key holding `null` means "resolved, and the graph has no roster".
- * Every consumer that distinguishes loading from absent must go through this
- * rather than re-deriving it — a whole-map test like `size === 0` is wrong
- * once the map fills in progressively.
- */
-export function isRosterPending(
-  rosters: Map<string, GraphRubric[] | null>,
-  taskSlug: string,
-): boolean {
-  return Boolean(taskSlug) && !rosters.has(taskSlug);
-}
-
 // ─── Generic factory ─────────────────────────────────────────────────────────
 
 type EndpointFn = (workspaceSlug: string) => string;
@@ -178,7 +162,7 @@ export interface UseBenchmarkRubricsResult {
 /**
  * Fetch rosters for a set of task slugs (the runs table's distinct tasks).
  * Returns a map keyed by task slug; entries are absent until resolved and
- * `null` when no roster exists — see `isRosterPending`.
+ * `null` when no roster exists — see `isRosterPending` in rubric-scoring.
  */
 export const useBenchmarkRubricsMap = legalHooks.useBenchmarkRubricsMap;
 
