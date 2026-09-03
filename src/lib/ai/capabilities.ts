@@ -92,9 +92,9 @@ import { buildCodeChangeTools } from "@/lib/ai/codeChangeTools";
 import { buildHtmlArtifactTools } from "@/lib/ai/htmlArtifactTools";
 import {
   buildResearchTools,
-  type CapturedSearchResult,
   type DispatchedResearchIntent,
 } from "@/lib/ai/researchTools";
+import type { WebSearchHandle } from "@/lib/ai/provider";
 import {
   PROPOSE_FEATURE_TOOL,
   PROPOSE_INITIATIVE_TOOL,
@@ -140,7 +140,7 @@ export type OrgCapability =
 /**
  * Everything a capability's `buildTools` may need. Mirrors the
  * arguments `runCanvasAgent` used to thread into the four factories
- * directly; the mutable collectors (`capturedWebSearchResults`,
+ * directly; the mutable collectors (`webSearch.results`,
  * `dispatchedResearch`) are per-call closures owned by the caller.
  */
 export interface CapabilityContext {
@@ -163,7 +163,13 @@ export interface CapabilityContext {
    * `Feature.model` is not already set (e.g. features not created via canvas).
    */
   chatAgentModel?: string;
-  capturedWebSearchResults: CapturedSearchResult[];
+  /**
+   * The run's `web_search` handle (from `createWebSearch`). Carries the
+   * ordered result list `update_research` cites into and the citation
+   * treatment for written-up text — which differs by backend, so tools
+   * must go through the handle rather than formatting text themselves.
+   */
+  webSearch: WebSearchHandle;
   dispatchedResearch?: DispatchedResearchIntent[];
   dispatchedGraphWalks?: DispatchedGraphWalkIntent[];
   graphWalkAnswerSink?: { answer: string | null };
@@ -351,7 +357,7 @@ export const CAPABILITY_REGISTRY: Record<OrgCapability, CapabilityDefinition> =
         buildResearchTools(
           ctx.orgId,
           ctx.userId,
-          ctx.capturedWebSearchResults,
+          ctx.webSearch,
           ctx.dispatchedResearch,
           ctx.currentCanvasConversationId,
         ),
