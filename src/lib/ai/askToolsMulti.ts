@@ -11,7 +11,6 @@ import { getBifrostForLLM } from "@/services/bifrost/orchestrator";
 import { shouldTrimConceptsToIds } from "./concepts";
 import { RepoAnalyzer } from "gitsee/server";
 import { parseOwnerRepo } from "./utils";
-import { getProviderTool } from "@/lib/ai/provider";
 import {
   mcpListFeatures,
   mcpReadFeature,
@@ -29,6 +28,11 @@ type AnyTool = Tool<any, any>;
 
 export function askToolsMulti(
   workspaces: WorkspaceConfig[],
+  /**
+   * Retained for call-signature compatibility. It was only used to build the
+   * Anthropic `web_search` provider tool, which `runCanvasAgent` now registers
+   * once for the whole run (see `createWebSearch`).
+   */
   apiKey: string,
   /**
    * Pre-fetched concepts per workspace (keyed by slug). When provided AND
@@ -684,12 +688,6 @@ export function askToolsMulti(
     if (LEGAL_SLUGS.includes(ws.slug)) {
       Object.assign(allTools, buildCourtlistenerTools(ws.slug));
     }
-  }
-
-  // Shared tools (not workspace-specific)
-  const web_search = getProviderTool("anthropic", apiKey, "webSearch");
-  if (web_search) {
-    allTools["web_search"] = web_search;
   }
 
   return allTools as ToolSet;
