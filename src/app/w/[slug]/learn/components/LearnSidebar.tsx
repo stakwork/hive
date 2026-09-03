@@ -774,13 +774,22 @@ export function LearnSidebar({
                       proposals.map((proposal) => {
                         const itemKey = `proposal-${proposal.id}`;
                         const isActive = activeItemKey === itemKey;
+                        const recency = Number.isNaN(
+                          new Date(proposal.createdAt).getTime()
+                        )
+                          ? null
+                          : formatRelativeOrDateInTz(
+                              proposal.createdAt,
+                              timezone
+                            );
+                        const source = proposal.source.trim();
                         return (
                           <button
                             key={proposal.id}
                             data-testid="learn-proposal-item"
                             onClick={() => onProposalClick?.(proposal)}
                             className={cn(
-                              "w-full text-left p-2 rounded-md text-sm transition-colors flex items-center gap-2",
+                              "w-full text-left p-2 rounded-md text-sm transition-colors flex items-start gap-2",
                               isActive
                                 ? "bg-muted/60 font-medium"
                                 : "bg-muted/30 hover:bg-muted/50"
@@ -792,9 +801,31 @@ export function LearnSidebar({
                             >
                               {proposal.action}
                             </Badge>
-                            <span className="truncate">
-                              {conceptProposalLabel(proposal)}
-                            </span>
+                            <div className="min-w-0 flex-1 flex flex-col">
+                              <span className="truncate">
+                                {conceptProposalLabel(proposal)}
+                              </span>
+                              {(recency || source) && (
+                                <div className="flex items-center gap-1.5 min-w-0 text-xs text-muted-foreground">
+                                  {recency && (
+                                    <span
+                                      className="flex-shrink-0"
+                                      data-testid="learn-proposal-recency"
+                                    >
+                                      {recency}
+                                    </span>
+                                  )}
+                                  {source && (
+                                    <span
+                                      className="truncate"
+                                      data-testid="learn-proposal-source"
+                                    >
+                                      {source}
+                                    </span>
+                                  )}
+                                </div>
+                              )}
+                            </div>
                           </button>
                         );
                       })
