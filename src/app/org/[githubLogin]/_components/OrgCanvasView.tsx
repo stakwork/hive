@@ -247,6 +247,7 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
   // JOIN someone else's shared room — rather than starting a fresh one.
   const sharedChatId = searchParams.get("chat");
   const [chatInitialMessages, setChatInitialMessages] = useState<CanvasChatMessage[] | null>(null);
+  const [chatInitialTitle, setChatInitialTitle] = useState<string | null>(null);
   const [chatLoadComplete, setChatLoadComplete] = useState(false);
 
   const setUrlSlug = useCallback(
@@ -333,6 +334,9 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
             timestamp: new Date(m.timestamp as unknown as string),
           }));
           setChatInitialMessages(seeded);
+        }
+        if (typeof data?.title === "string") {
+          setChatInitialTitle(data.title);
         }
       })
       .catch(() => {})
@@ -866,6 +870,7 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
       sharedChatId ?? undefined,
       ephemeralSeedCount,
       joinServerConversationId,
+      chatInitialTitle,
     );
 
     setConversationStarted(true);
