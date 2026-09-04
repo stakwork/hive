@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse, after } from "next/server";
+import { randomUUID } from "crypto";
 import { validationError, serverError, forbiddenError, isApiError } from "@/types/errors";
 import { validateUserBelongsToOrg, validateWorkspaceAccess } from "@/services/workspace";
 import { ModelMessage, createUIMessageStream, createUIMessageStreamResponse } from "ai";
@@ -615,6 +616,44 @@ export async function POST(request: NextRequest) {
                   sf.totalUsage as Parameters<typeof normalizeTokenUsage>[0],
                 );
                 writerRef.write({ type: "data-usage", data: cumulativeUsage });
+              }
+
+              // Detect a verification verdict (submit_verdict from the verify
+              // MCP tools) and emit it as a chat artifact for the display.
+              for (const part of (sf.content ?? []) as Array<Record<string, unknown>>) {
+                if (
+                  part?.type !== "tool-result" ||
+                  typeof part.toolName !== "string" ||
+                  !(part.toolName === "submit_verdict" || part.toolName.endsWith("_submit_verdict"))
+                ) {
+                  continue;
+                }
+                let verdict: unknown = part.output ?? part.result;
+                if (typeof verdict === "string") {
+                  try {
+                    verdict = JSON.parse(verdict);
+                  } catch {
+                    /* leave as-is */
+                  }
+                }
+                const wrapped = verdict as { content?: Array<{ type?: string; text?: string }> };
+                if (Array.isArray(wrapped?.content)) {
+                  const t = wrapped.content.find((c) => c?.type === "text")?.text;
+                  if (t) {
+                    try {
+                      verdict = JSON.parse(t);
+                    } catch {
+                      /* keep */
+                    }
+                  }
+                }
+                const v = verdict as { overall?: unknown; claims?: unknown };
+                if (v && typeof v === "object" && "overall" in v && "claims" in v) {
+                  writerRef.write({
+                    type: "data-artifact",
+                    data: { id: randomUUID(), type: "VERIFY", data: verdict },
+                  });
+                }
               }
             },
             onFinish: async ({

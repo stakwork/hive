@@ -18,6 +18,7 @@ export type StreamEventType =
   | "start"
   | "finish"
   | "data-usage"
+  | "data-artifact"
   | "error";
 
 export type ToolCallStatus =
@@ -152,6 +153,12 @@ export interface UsageUpdateEvent extends BaseStreamEvent {
   data: TokenUsage;
 }
 
+/** A chat artifact (e.g. a verification verdict) emitted mid-stream by the server. */
+export interface ArtifactEvent extends BaseStreamEvent {
+  type: "data-artifact";
+  data: { id: string; type: string; data: unknown };
+}
+
 export type StreamEvent =
   | TextStartEvent
   | TextDeltaEvent
@@ -169,6 +176,7 @@ export type StreamEvent =
   | StartEvent
   | FinishEvent
   | UsageUpdateEvent
+  | ArtifactEvent
   | ErrorEvent;
 
 // Generic streaming message structure
@@ -213,6 +221,8 @@ export interface BaseStreamingMessage {
   error?: string;
   /** Per-turn aggregated token usage, populated from the `finish` SSE event. */
   usage?: TokenUsage;
+  /** Chat artifacts (e.g. verification verdicts) emitted mid-stream via `data-artifact`. */
+  artifacts?: Array<{ id: string; type: string; data: unknown }>;
 }
 
 // Tool processor function type
