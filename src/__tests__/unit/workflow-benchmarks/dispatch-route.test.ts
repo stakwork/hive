@@ -915,16 +915,16 @@ describe("POST /api/workspaces/[slug]/workflow-benchmarks/run — dispatch failu
   });
 });
 
-// ── runner toggle: vein ──────────────────────────────────────────────────────
-// ADDITIVE: an absent `runner` is stakwork (every test above). `runner: "vein"`
-// sends the same task to the workspace swarm's vein lab (stakgraph :3355,
+// ── runner toggle: strut ──────────────────────────────────────────────────────
+// ADDITIVE: an absent `runner` is stakwork (every test above). `runner: "strut"`
+// sends the same task to the workspace swarm's strut lab (stakgraph :3355,
 // `wfbench-run`) instead of creating a Stakwork project.
 
-describe("POST /api/workspaces/[slug]/workflow-benchmarks/run — runner=vein", () => {
+describe("POST /api/workspaces/[slug]/workflow-benchmarks/run — runner=strut", () => {
   const SWARM_KEY = "swarm-api-key";
-  const VEIN_RUN_ID = "1788554443025";
+  const STRUT_RUN_ID = "1788554443025";
 
-  function setupVein() {
+  function setupStrut() {
     setupHappyPath();
     mockGetWorkspaceSwarmAccess.mockResolvedValue({
       success: true,
@@ -935,12 +935,12 @@ describe("POST /api/workspaces/[slug]/workflow-benchmarks/run — runner=vein", 
         swarmName: "swarm",
       },
     });
-    mockFetch.mockResolvedValue({ ok: true, json: async () => ({ runId: VEIN_RUN_ID }) });
+    mockFetch.mockResolvedValue({ ok: true, json: async () => ({ runId: STRUT_RUN_ID }) });
   }
 
   beforeEach(() => {
     vi.clearAllMocks();
-    setupVein();
+    setupStrut();
   });
 
   it("rejects an unknown runner with 400 before any DB write", async () => {
@@ -952,12 +952,12 @@ describe("POST /api/workspaces/[slug]/workflow-benchmarks/run — runner=vein", 
     expect(mockFetch).not.toHaveBeenCalled();
   });
 
-  it("dispatches to the swarm's vein lab with the swarm API key, never to Stakwork", async () => {
+  it("dispatches to the swarm's strut lab with the swarm API key, never to Stakwork", async () => {
     const { POST } = await import("@/app/api/workspaces/[slug]/workflow-benchmarks/run/route");
-    const req = makeRequest(VALID_SLUG, { taskSlug: TASK_SLUG, runner: "vein" });
+    const req = makeRequest(VALID_SLUG, { taskSlug: TASK_SLUG, runner: "strut" });
     const res = await POST(req, { params: Promise.resolve({ slug: VALID_SLUG }) });
     expect(res.status).toBe(201);
-    expect(await res.json()).toEqual({ run_id: RUN_ID, runner: "vein" });
+    expect(await res.json()).toEqual({ run_id: RUN_ID, runner: "strut" });
 
     expect(mockFetch).toHaveBeenCalledTimes(1);
     const [url, init] = mockFetch.mock.calls[0] as [string, RequestInit];
@@ -981,15 +981,15 @@ describe("POST /api/workspaces/[slug]/workflow-benchmarks/run — runner=vein", 
     expect(JSON.stringify(body)).not.toContain("jarvis-api-key");
   });
 
-  it("does not require STAKWORK_WORKFLOW_BENCHMARK_WORKFLOW_ID for a vein run", async () => {
+  it("does not require STAKWORK_WORKFLOW_BENCHMARK_WORKFLOW_ID for a strut run", async () => {
     delete process.env.STAKWORK_WORKFLOW_BENCHMARK_WORKFLOW_ID;
     const { POST } = await import("@/app/api/workspaces/[slug]/workflow-benchmarks/run/route");
-    const req = makeRequest(VALID_SLUG, { taskSlug: TASK_SLUG, runner: "vein" });
+    const req = makeRequest(VALID_SLUG, { taskSlug: TASK_SLUG, runner: "strut" });
     const res = await POST(req, { params: Promise.resolve({ slug: VALID_SLUG }) });
     expect(res.status).toBe(201);
   });
 
-  it("stores runner + vein run id/url on the row and leaves projectId null", async () => {
+  it("stores runner + strut run id/url on the row and leaves projectId null", async () => {
     let createdResult: Record<string, unknown> = {};
     mockDbTransaction.mockImplementation(async (fn: (tx: unknown) => unknown) => {
       const tx = {
@@ -1011,18 +1011,18 @@ describe("POST /api/workspaces/[slug]/workflow-benchmarks/run — runner=vein", 
     });
 
     const { POST } = await import("@/app/api/workspaces/[slug]/workflow-benchmarks/run/route");
-    const req = makeRequest(VALID_SLUG, { taskSlug: TASK_SLUG, runner: "vein" });
+    const req = makeRequest(VALID_SLUG, { taskSlug: TASK_SLUG, runner: "strut" });
     await POST(req, { params: Promise.resolve({ slug: VALID_SLUG }) });
 
-    // The initial row already says vein (visible mid-flight in the history).
-    expect(createdResult.runner).toBe("vein");
+    // The initial row already says strut (visible mid-flight in the history).
+    expect(createdResult.runner).toBe("strut");
     expect(updateData).toBeDefined();
     expect(updateData!.projectId).toBeNull();
     const merged = JSON.parse(updateData!.result!);
-    expect(merged.runner).toBe("vein");
-    expect(merged.veinRunId).toBe(VEIN_RUN_ID);
-    expect(merged.veinRunUrl).toBe(
-      `https://swarm.example.com:3355/lab/?wf=wfbench-run&run=${VEIN_RUN_ID}`,
+    expect(merged.runner).toBe("strut");
+    expect(merged.strutRunId).toBe(STRUT_RUN_ID);
+    expect(merged.strutRunUrl).toBe(
+      `https://swarm.example.com:3355/lab/?wf=wfbench-run&run=${STRUT_RUN_ID}`,
     );
     expect(merged.projectId).toBeUndefined();
   });
@@ -1059,13 +1059,13 @@ describe("POST /api/workspaces/[slug]/workflow-benchmarks/run — runner=vein", 
       data: { workspaceId: WORKSPACE_ID, swarmUrl: "https://swarm.example.com/api" },
     });
     const { POST } = await import("@/app/api/workspaces/[slug]/workflow-benchmarks/run/route");
-    const req = makeRequest(VALID_SLUG, { taskSlug: TASK_SLUG, runner: "vein" });
+    const req = makeRequest(VALID_SLUG, { taskSlug: TASK_SLUG, runner: "strut" });
     const res = await POST(req, { params: Promise.resolve({ slug: VALID_SLUG }) });
     expect(res.status).toBe(503);
     expect(mockDbTransaction).not.toHaveBeenCalled();
   });
 
-  it("returns 502 and cleans up the run row on vein dispatch failure", async () => {
+  it("returns 502 and cleans up the run row on strut dispatch failure", async () => {
     mockFetch.mockResolvedValue({ ok: false, status: 500, json: async () => ({}) });
     let deletedId: string | undefined;
     mockDbStakworkRunDelete.mockImplementation(({ where }: { where: { id: string } }) => {
@@ -1073,7 +1073,7 @@ describe("POST /api/workspaces/[slug]/workflow-benchmarks/run — runner=vein", 
       return {};
     });
     const { POST } = await import("@/app/api/workspaces/[slug]/workflow-benchmarks/run/route");
-    const req = makeRequest(VALID_SLUG, { taskSlug: TASK_SLUG, runner: "vein" });
+    const req = makeRequest(VALID_SLUG, { taskSlug: TASK_SLUG, runner: "strut" });
     const res = await POST(req, { params: Promise.resolve({ slug: VALID_SLUG }) });
     expect(res.status).toBe(502);
     expect(deletedId).toBe(RUN_ID);

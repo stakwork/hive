@@ -59,9 +59,9 @@ function TaskCard({ task, workspaceSlug }: TaskCardProps) {
   const [runId, setRunId] = useState<string | null>(null);
   const [runError, setRunError] = useState<string | null>(null);
   // Where to execute: Stakwork (the default, unchanged) or the workspace
-  // swarm's vein lab. Only sent when vein is chosen, so the default request
+  // swarm's strut lab. Only sent when strut is chosen, so the default request
   // is byte-identical to before.
-  const [runner, setRunner] = useState<"stakwork" | "vein">("stakwork");
+  const [runner, setRunner] = useState<"stakwork" | "strut">("stakwork");
 
   const handleRun = async () => {
     setIsRunning(true);
@@ -75,7 +75,7 @@ function TaskCard({ task, workspaceSlug }: TaskCardProps) {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             taskSlug: task.slug,
-            ...(runner === "vein" ? { runner } : {}),
+            ...(runner === "strut" ? { runner } : {}),
           }),
         },
       );
@@ -206,7 +206,7 @@ function TaskCard({ task, workspaceSlug }: TaskCardProps) {
             value={runner}
             // Radix clears the value when the active item is clicked again;
             // keep the last choice instead of leaving the toggle blank.
-            onValueChange={(v) => { if (v === "vein" || v === "stakwork") setRunner(v); }}
+            onValueChange={(v) => { if (v === "strut" || v === "stakwork") setRunner(v); }}
             disabled={isRunning}
             aria-label="Benchmark runner"
             data-testid={`wf-runner-toggle-${task.slug}`}
@@ -214,8 +214,8 @@ function TaskCard({ task, workspaceSlug }: TaskCardProps) {
             <ToggleGroupItem value="stakwork" className="h-8 px-2.5 text-xs" aria-label="Run on Stakwork">
               Stakwork
             </ToggleGroupItem>
-            <ToggleGroupItem value="vein" className="h-8 px-2.5 text-xs" aria-label="Run on vein">
-              vein
+            <ToggleGroupItem value="strut" className="h-8 px-2.5 text-xs" aria-label="Run on strut">
+              strut
             </ToggleGroupItem>
           </ToggleGroup>
           <Button

@@ -25,22 +25,22 @@ import { SafeMarkdown } from "@/components/run-report/SafeMarkdown";
 import type { BenchmarkRunListRow } from "@/hooks/useLegalBenchmarkRunList";
 import type { BenchmarkRunResult } from "@/types/legal";
 
-// ─── vein run link ────────────────────────────────────────────────────────────
+// ─── strut run link ────────────────────────────────────────────────────────────
 
-/** The vein lab UI for a run executed by the vein runner — the counterpart
+/** The strut lab UI for a run executed by the strut runner — the counterpart
  *  of StakworkRunLink (there is no Stakwork project for these rows). */
-function VeinRunLink({ url }: { url: string | undefined }) {
+function StrutRunLink({ url }: { url: string | undefined }) {
   if (!url) return null;
   return (
     <a
       href={url}
-      title="View on vein (lab)"
+      title="View on strut (lab)"
       target="_blank"
       rel="noopener noreferrer"
       className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground"
     >
       <ExternalLink className="h-3.5 w-3.5" />
-      View on vein
+      View on strut
     </a>
   );
 }
@@ -377,13 +377,13 @@ export function WorkflowBenchmarkRunsHistory() {
                         {run.taskSlug && (
                           <div className="font-mono text-xs text-muted-foreground mt-0.5 flex items-center gap-1.5">
                             {run.taskSlug}
-                            {run.runner === "vein" && (
+                            {run.runner === "strut" && (
                               <Badge
                                 variant="outline"
                                 className="h-4 px-1 text-[10px] font-sans"
-                                title="Executed by the vein runner"
+                                title="Executed by the strut runner"
                               >
-                                vein
+                                strut
                               </Badge>
                             )}
                           </div>
@@ -415,8 +415,8 @@ export function WorkflowBenchmarkRunsHistory() {
                   {/* Stakwork admin link — super-admin only */}
                   {isSuperAdmin && (
                     <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
-                      {run.runner === "vein" ? (
-                        <VeinRunLink url={run.veinRunUrl} />
+                      {run.runner === "strut" ? (
+                        <StrutRunLink url={run.strutRunUrl} />
                       ) : (
                         <StakworkRunLink
                           projectId={run.projectId}

@@ -70,8 +70,8 @@ type RunRow = {
   criteria_results?: undefined;
   judgeNotes?: undefined;
   requestedModel?: undefined;
-  runner?: "vein";
-  veinRunUrl?: string;
+  runner?: "strut";
+  strutRunUrl?: string;
 };
 
 /** Minimal completed run with a passing n_passed/n_total score. */
@@ -114,10 +114,10 @@ describe("WorkflowBenchmarkRunsHistory", () => {
 
   // ── 1. Contested criteria render no chip in rows — the report carries it ───
 
-  it("tags a vein-runner row with a vein badge; stakwork rows carry no badge", () => {
+  it("tags a strut-runner row with a strut badge; stakwork rows carry no badge", () => {
     mockUseWorkflowBenchmarkRunList.mockReturnValue({
       runs: [
-        makeRun({ id: "run-vein", taskSlug: "wfbench/x", runner: "vein", veinRunUrl: "https://swarm.example.com:3355/lab/?wf=wfbench-run&run=1" }),
+        makeRun({ id: "run-strut", taskSlug: "wfbench/x", runner: "strut", strutRunUrl: "https://swarm.example.com:3355/lab/?wf=wfbench-run&run=1" }),
         makeRun({ id: "run-stak", taskSlug: "wfbench/y" }),
       ],
       isLoading: false,
@@ -125,10 +125,10 @@ describe("WorkflowBenchmarkRunsHistory", () => {
       setExpandedId: mockSetExpandedId,
     });
     render(<WorkflowBenchmarkRunsHistory />);
-    const veinRow = screen.getByTestId("wf-run-row-run-vein");
-    expect(within(veinRow).getByText("vein")).toBeInTheDocument();
+    const strutRow = screen.getByTestId("wf-run-row-run-strut");
+    expect(within(strutRow).getByText("strut")).toBeInTheDocument();
     const stakRow = screen.getByTestId("wf-run-row-run-stak");
-    expect(within(stakRow).queryByText("vein")).toBeNull();
+    expect(within(stakRow).queryByText("strut")).toBeNull();
   });
 
   it("renders no contested chip even when the rubric roster has contested entries", () => {

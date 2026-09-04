@@ -43,8 +43,8 @@ const MIN_RUN_TOKEN_SECRET_LENGTH = 32;
  * JSON-parsed inside the transaction on every dispatch.
  */
 /** Where a benchmark run executes. Absent in a request body = "stakwork". */
-type BenchmarkRunner = "stakwork" | "vein";
-const BENCHMARK_RUNNERS: ReadonlySet<string> = new Set<BenchmarkRunner>(["stakwork", "vein"]);
+type BenchmarkRunner = "stakwork" | "strut";
+const BENCHMARK_RUNNERS: ReadonlySet<string> = new Set<BenchmarkRunner>(["stakwork", "strut"]);
 
 const ACTIVE_RUN_SCAN_LIMIT = 25;
 
@@ -105,14 +105,14 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
 
     const { taskSlug } = body;
     // Runner toggle — ADDITIVE. Absent means stakwork (every existing caller);
-    // "vein" dispatches the same task to the workspace swarm's vein lab
+    // "strut" dispatches the same task to the workspace swarm's strut lab
     // (stakgraph :3355, `wfbench-run` — the 58313 twin) instead of a Stakwork
     // project. Roster upsert, webhook URL/HMAC, receiver and scoring are
-    // shared: the vein harness posts the same flat score body.
+    // shared: the strut harness posts the same flat score body.
     const runner: BenchmarkRunner = body.runner === undefined ? "stakwork" : (body.runner as BenchmarkRunner);
     if (!BENCHMARK_RUNNERS.has(runner)) {
       return NextResponse.json(
-        { error: 'runner must be "stakwork" or "vein"' },
+        { error: 'runner must be "stakwork" or "strut"' },
         { status: 400 },
       );
     }
@@ -131,9 +131,9 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: "Not found" }, { status: 404 });
     }
     const { workspaceId, swarmUrl, swarmApiKey } = swarmResult.data;
-    if (runner === "vein" && (!swarmUrl || !swarmApiKey)) {
+    if (runner === "strut" && (!swarmUrl || !swarmApiKey)) {
       return NextResponse.json(
-        { error: "Swarm not configured for the vein runner" },
+        { error: "Swarm not configured for the strut runner" },
         { status: 503 },
       );
     }
@@ -291,12 +291,12 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
             status: WorkflowStatus.PENDING,
             webhookUrl: placeholder,
             userId,
-            // `runner` is written ONLY for vein rows — absent means stakwork, so
+            // `runner` is written ONLY for strut rows — absent means stakwork, so
             // existing rows and readers are untouched.
             result: JSON.stringify({
               taskSlug,
               taskTitle: task.title,
-              ...(runner === "vein" ? { runner } : {}),
+              ...(runner === "strut" ? { runner } : {}),
             }),
           },
           select: { id: true },
@@ -410,18 +410,18 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
 
     // ── Step 16/17/18: Dispatch ───────────────────────────────────────────────
     let projectId: number | undefined;
-    let veinRunId: string | undefined;
-    let veinRunUrl: string | undefined;
+    let strutRunId: string | undefined;
+    let strutRunUrl: string | undefined;
 
-    if (runner === "vein") {
-      // The workspace swarm's stakgraph (:3355) mounts the vein lab at /lab;
+    if (runner === "strut") {
+      // The workspace swarm's stakgraph (:3355) mounts the strut lab at /lab;
       // `wfbench-run` is the Workflow Editor Benchmark harness there. Same
       // task fields as the Stakwork set_var vars, as the workflow's `input`
       // (criteria as the array, workflow_input as the object — the harness
       // accepts both encodings). Auth is the swarm API key as x-api-token,
       // the same way every other Hive → stakgraph call authenticates.
       const labBase = transformSwarmUrlToRepo2Graph(swarmUrl);
-      const veinInput: Record<string, unknown> = {
+      const strutInput: Record<string, unknown> = {
         task_slug: task.slug,
         task_title: task.title,
         instructions: task.instructions,
@@ -430,24 +430,24 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
         ...(expectedOutput !== undefined ? { [RERUN_EXPECTED_OUTPUT_VAR]: expectedOutput } : {}),
         webhook_url: webhookUrl,
       };
-      const veinResponse = await fetch(`${labBase}/lab/workflows/wfbench-run/run`, {
+      const strutResponse = await fetch(`${labBase}/lab/workflows/wfbench-run/run`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           "x-api-token": swarmApiKey,
         },
-        body: JSON.stringify({ input: veinInput }),
+        body: JSON.stringify({ input: strutInput }),
       });
-      if (!veinResponse.ok) {
+      if (!strutResponse.ok) {
         await db.stakworkRun.delete({ where: { id: run.id } });
         return NextResponse.json(
-          { error: "Failed to dispatch job to vein" },
+          { error: "Failed to dispatch job to strut" },
           { status: 502 },
         );
       }
-      const veinData = (await veinResponse.json().catch(() => ({}))) as { runId?: unknown };
-      veinRunId = typeof veinData?.runId === "string" && veinData.runId ? veinData.runId : undefined;
-      veinRunUrl = veinRunId ? `${labBase}/lab/?wf=wfbench-run&run=${encodeURIComponent(veinRunId)}` : undefined;
+      const strutData = (await strutResponse.json().catch(() => ({}))) as { runId?: unknown };
+      strutRunId = typeof strutData?.runId === "string" && strutData.runId ? strutData.runId : undefined;
+      strutRunUrl = strutRunId ? `${labBase}/lab/?wf=wfbench-run&run=${encodeURIComponent(strutRunId)}` : undefined;
     } else {
       const stakworkResponse = await fetch(`${optionalEnvVars.STAKWORK_BASE_URL}/projects`, {
         method: "POST",
@@ -492,12 +492,12 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     if (projectId !== undefined) {
       mergedResult.projectId = projectId;
     }
-    if (runner === "vein") {
-      // vein has no Stakwork project: the lab runId is the run's identity and
+    if (runner === "strut") {
+      // strut has no Stakwork project: the lab runId is the run's identity and
       // the lab UI is its admin link (rendered in place of the Stakwork one).
-      mergedResult.runner = "vein";
-      if (veinRunId !== undefined) mergedResult.veinRunId = veinRunId;
-      if (veinRunUrl !== undefined) mergedResult.veinRunUrl = veinRunUrl;
+      mergedResult.runner = "strut";
+      if (strutRunId !== undefined) mergedResult.strutRunId = strutRunId;
+      if (strutRunUrl !== undefined) mergedResult.strutRunUrl = strutRunUrl;
     }
     // Roster reconciliation observability, namespaced under `hive` so a
     // runner-supplied field of the same bare name can never clobber it (the

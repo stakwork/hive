@@ -124,7 +124,7 @@ describe("WorkflowBenchmarksPanel", () => {
     render(<WorkflowBenchmarksPanel />);
     const toggle = screen.getAllByTestId(/^wf-runner-toggle-/)[0];
     expect(within(toggle).getByLabelText("Run on Stakwork")).toHaveAttribute("data-state", "on");
-    expect(within(toggle).getByLabelText("Run on vein")).toHaveAttribute("data-state", "off");
+    expect(within(toggle).getByLabelText("Run on strut")).toHaveAttribute("data-state", "off");
 
     fireEvent.click(screen.getAllByText("Run Benchmark")[0]);
     await waitFor(() => expect(fetchMock).toHaveBeenCalled());
@@ -132,20 +132,20 @@ describe("WorkflowBenchmarksPanel", () => {
     expect(JSON.parse(init.body as string)).toEqual({ taskSlug: WITH_INPUT_TASK.slug });
   });
 
-  it("choosing vein sends runner: \"vein\" with the same taskSlug", async () => {
+  it("choosing strut sends runner: \"strut\" with the same taskSlug", async () => {
     const fetchMock = vi.mocked(fetch);
     fetchMock.mockClear();
-    fetchMock.mockResolvedValue({ ok: true, json: async () => ({ run_id: "run-2", runner: "vein" }) } as Response);
+    fetchMock.mockResolvedValue({ ok: true, json: async () => ({ run_id: "run-2", runner: "strut" }) } as Response);
     render(<WorkflowBenchmarksPanel />);
     const toggle = screen.getAllByTestId(/^wf-runner-toggle-/)[0];
-    fireEvent.click(within(toggle).getByLabelText("Run on vein"));
-    expect(within(toggle).getByLabelText("Run on vein")).toHaveAttribute("data-state", "on");
+    fireEvent.click(within(toggle).getByLabelText("Run on strut"));
+    expect(within(toggle).getByLabelText("Run on strut")).toHaveAttribute("data-state", "on");
 
     fireEvent.click(screen.getAllByText("Run Benchmark")[0]);
     await waitFor(() => expect(fetchMock).toHaveBeenCalled());
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     expect(url).toBe("/api/workspaces/stakwork/workflow-benchmarks/run");
-    expect(JSON.parse(init.body as string)).toEqual({ taskSlug: WITH_INPUT_TASK.slug, runner: "vein" });
+    expect(JSON.parse(init.body as string)).toEqual({ taskSlug: WITH_INPUT_TASK.slug, runner: "strut" });
   });
 
   it("shows a loading state when the workspace is not yet resolved", () => {
