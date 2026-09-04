@@ -3,7 +3,7 @@
  */
 import React from "react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 
 globalThis.React = React;
 import { WorkflowBenchmarkRunsHistory } from "@/components/workflow-benchmarks/WorkflowBenchmarkRunsHistory";
@@ -70,6 +70,8 @@ type RunRow = {
   criteria_results?: undefined;
   judgeNotes?: undefined;
   requestedModel?: undefined;
+  runner?: "strut";
+  strutRunUrl?: string;
 };
 
 /** Minimal completed run with a passing n_passed/n_total score. */
@@ -111,6 +113,23 @@ describe("WorkflowBenchmarkRunsHistory", () => {
   });
 
   // ── 1. Contested criteria render no chip in rows — the report carries it ───
+
+  it("tags a strut-runner row with a strut badge; stakwork rows carry no badge", () => {
+    mockUseWorkflowBenchmarkRunList.mockReturnValue({
+      runs: [
+        makeRun({ id: "run-strut", taskSlug: "wfbench/x", runner: "strut", strutRunUrl: "https://swarm.example.com:3355/lab/?wf=wfbench-run&run=1" }),
+        makeRun({ id: "run-stak", taskSlug: "wfbench/y" }),
+      ],
+      isLoading: false,
+      error: null,
+      setExpandedId: mockSetExpandedId,
+    });
+    render(<WorkflowBenchmarkRunsHistory />);
+    const strutRow = screen.getByTestId("wf-run-row-run-strut");
+    expect(within(strutRow).getByText("strut")).toBeInTheDocument();
+    const stakRow = screen.getByTestId("wf-run-row-run-stak");
+    expect(within(stakRow).queryByText("strut")).toBeNull();
+  });
 
   it("renders no contested chip even when the rubric roster has contested entries", () => {
     const contestedRoster: GraphRubric[] = [
