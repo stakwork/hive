@@ -23,6 +23,7 @@ vi.mock("@/lib/logger", () => ({
 
 import {
   kgGetNode,
+  normalizeAncestors,
   kgGetNeighbors,
   kgGetNodesByRefs,
   kgSearch,
@@ -173,6 +174,115 @@ describe("kgGetNode", () => {
     const result = await kgGetNode(JARVIS_URL, API_KEY, "n");
 
     expect(result?.edges).toBeUndefined();
+    expect(globalThis.fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("includeAncestors: fetches /ancestors (PARENT_OF, in) and attaches the DAG nearest-first", async () => {
+    const node = { ref_id: "leaf", node_type: "Concept", name: "Leaf", properties: {} };
+    const ancestors = {
+      ref_id: "leaf",
+      edge_type: "PARENT_OF",
+      direction: "in",
+      max_depth: 10,
+      ancestors: [
+        { ref_id: "mid-a", name: "Mid A", node_type: "Concept", depth: 1, parents: ["root"] },
+        { ref_id: "mid-b", name: "Mid B", node_type: "Concept", depth: 1, parents: ["root"] },
+        { ref_id: "root", name: "Law", node_type: "Concept", depth: 2, parents: [] },
+      ],
+    };
+    globalThis.fetch = vi.fn().mockImplementation((url: string) =>
+      Promise.resolve({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve(url.includes("/ancestors") ? ancestors : node),
+      }),
+    );
+
+    const result = await kgGetNode(JARVIS_URL, API_KEY, "leaf", {
+      includeEdgeCounts: false,
+      includeAncestors: true,
+    });
+
+    expect(result?.ancestors?.map((a) => a.ref_id)).toEqual(["mid-a", "mid-b", "root"]);
+    expect(result?.ancestors?.[0]).toEqual({
+      ref_id: "mid-a",
+      name: "Mid A",
+      node_type: "Concept",
+      depth: 1,
+      parents: ["root"],
+    });
+    expect(result?.ancestors?.[2].parents).toEqual([]);
+    expect(result?.edges).toBeUndefined();
+    const urls = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls.map(
+      (c) => c[0] as string,
+    );
+    const anUrl = urls.find((u) => u.includes("/v2/nodes/leaf/ancestors"));
+    expect(anUrl).toBeDefined();
+    expect(anUrl).toContain("edge_type=PARENT_OF");
+    expect(anUrl).toContain("direction=in");
+    expect(anUrl).toContain("max_depth=10");
+  });
+
+  it("includeAncestors: omits the field when the node has no parents, on 404, or on error", async () => {
+    const node = { ref_id: "n", node_type: "File", name: "f", properties: {} };
+    const cases: Array<(url: string) => Promise<unknown>> = [
+      // empty list
+      (url) =>
+        Promise.resolve({
+          ok: true,
+          status: 200,
+          json: () => Promise.resolve(url.includes("/ancestors") ? { ancestors: [] } : node),
+        }),
+      // older Jarvis without the endpoint
+      (url) =>
+        url.includes("/ancestors")
+          ? Promise.resolve({ ok: false, status: 404, json: () => Promise.resolve({}) })
+          : Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(node) }),
+      // network error
+      (url) =>
+        url.includes("/ancestors")
+          ? Promise.reject(new Error("boom"))
+          : Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(node) }),
+    ];
+    for (const impl of cases) {
+      globalThis.fetch = vi.fn().mockImplementation(impl);
+      const result = await kgGetNode(JARVIS_URL, API_KEY, "n", { includeAncestors: true });
+      expect(result?.ref_id).toBe("n");
+      expect(result?.ancestors).toBeUndefined();
+    }
+  });
+
+  it("includeEdgeCounts + includeAncestors fire both side lookups", async () => {
+    const node = { ref_id: "n", node_type: "Concept", name: "N", properties: {} };
+    globalThis.fetch = vi.fn().mockImplementation((url: string) =>
+      Promise.resolve({
+        ok: true,
+        status: 200,
+        json: () =>
+          Promise.resolve(
+            url.includes("/ancestors")
+              ? { ancestors: [{ ref_id: "p", name: "P", node_type: "Concept", depth: 1, parents: [] }] }
+              : url.includes("/connection-counts")
+                ? { counts: [{ edge_type: "PARENT_OF", target_type: "Concept", count: 1 }] }
+                : node,
+          ),
+      }),
+    );
+
+    const result = await kgGetNode(JARVIS_URL, API_KEY, "n", {
+      includeEdgeCounts: true,
+      includeAncestors: true,
+    });
+
+    expect(result?.edges).toEqual({ PARENT_OF: 1 });
+    expect(result?.ancestors?.map((a) => a.ref_id)).toEqual(["p"]);
+    expect(globalThis.fetch).toHaveBeenCalledTimes(3);
+  });
+
+  it("does not fetch ancestors by default", async () => {
+    globalThis.fetch = mockFetch({ ref_id: "n", node_type: "File", properties: {} });
+    const result = await kgGetNode(JARVIS_URL, API_KEY, "n");
+    expect(result?.ancestors).toBeUndefined();
     expect(globalThis.fetch).toHaveBeenCalledTimes(1);
   });
 
@@ -1557,5 +1667,49 @@ describe("kgGetOntologyType", () => {
     expect(unreachable).toBe(KG_ONTOLOGY_TYPE_SWARM_UNAVAILABLE);
     expect(unknown).toBe(KG_ONTOLOGY_TYPE_UNKNOWN);
     expect(unreachable).not.toBe(unknown);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// normalizeAncestors
+// ---------------------------------------------------------------------------
+
+describe("normalizeAncestors", () => {
+  it("returns [] for missing, non-array, or empty ancestors", () => {
+    expect(normalizeAncestors(undefined)).toEqual([]);
+    expect(normalizeAncestors({})).toEqual([]);
+    expect(normalizeAncestors({ ancestors: null })).toEqual([]);
+    expect(normalizeAncestors({ ancestors: "nope" })).toEqual([]);
+    expect(normalizeAncestors({ ancestors: [] })).toEqual([]);
+  });
+
+  it("drops malformed rows, dedupes ref_ids, and coerces bad fields to safe defaults", () => {
+    const out = normalizeAncestors({
+      ancestors: [
+        null,
+        { name: "no ref" },
+        { ref_id: "", name: "empty ref" },
+        { ref_id: "x", name: 42, node_type: null, depth: "abc", parents: "root" },
+        { ref_id: "x", name: "dup", depth: 1, parents: [] },
+        { ref_id: "y", name: "Y", node_type: "Claim", depth: 0, parents: ["p", 7, "", null] },
+      ],
+    });
+    expect(out).toEqual([
+      { ref_id: "x", name: "", node_type: "unknown", depth: 1, parents: [] },
+      { ref_id: "y", name: "Y", node_type: "Claim", depth: 1, parents: ["p"] },
+    ]);
+  });
+
+  it("truncates at the cap (nearest first) and clamps long names to the label cap", () => {
+    const rows = Array.from({ length: 10 }, (_, i) => ({
+      ref_id: `a${i}`,
+      name: i === 0 ? "x".repeat(500) : `A${i}`,
+      node_type: "Concept",
+      depth: i + 1,
+      parents: [],
+    }));
+    const out = normalizeAncestors({ ancestors: rows }, 3);
+    expect(out.map((a) => a.ref_id)).toEqual(["a0", "a1", "a2"]);
+    expect(out[0].name.length).toBe(160);
   });
 });
