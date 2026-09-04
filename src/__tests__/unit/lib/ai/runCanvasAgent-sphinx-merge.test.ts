@@ -9,10 +9,39 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
+type ConnectedRow = {
+  id: string;
+  slug: string;
+  name: string;
+  sphinxChatPubkey: string;
+  swarm: { name: string } | null;
+};
+
+function connectedRow(
+  slug: string,
+  swarmName: string | null = `swarm-${slug}`,
+): ConnectedRow {
+  return {
+    id: `cuid-${slug}`,
+    slug,
+    name: slug,
+    sphinxChatPubkey: `pubkey-${slug}`,
+    swarm: swarmName ? { name: swarmName } : null,
+  };
+}
+
+function expectedTarget(slug: string, swarmName: string | null = `swarm-${slug}`) {
+  return {
+    workspaceId: `cuid-${slug}`,
+    workspaceSlug: slug,
+    sphinxChatPubkey: `pubkey-${slug}`,
+    workspaceName: slug,
+    ...(swarmName ? { swarmDomain: `${swarmName}.sphinx.chat` } : {}),
+  };
+}
+
 const { mockFindMany } = vi.hoisted(() => ({
-  mockFindMany: vi.fn<(...args: unknown[]) => Promise<Array<{ id: string; slug: string }>>>(
-    async () => [],
-  ),
+  mockFindMany: vi.fn<(...args: unknown[]) => Promise<ConnectedRow[]>>(async () => []),
 }));
 
 const { mockValidateWorkspaceAccessById } = vi.hoisted(() => ({
@@ -177,7 +206,7 @@ describe("runCanvasAgent — send_sphinx_message merge", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
-    mockFindMany.mockResolvedValue([{ id: "cuid-alpha", slug: "alpha" }]);
+    mockFindMany.mockResolvedValue([connectedRow("alpha")]);
     mockValidateWorkspaceAccessById.mockResolvedValue({ canWrite: true });
   });
 
@@ -190,7 +219,7 @@ describe("runCanvasAgent — send_sphinx_message merge", () => {
 
     expect(buildSphinxTools).toHaveBeenCalledWith({
       userId: "user-1",
-      targets: [{ workspaceId: "cuid-alpha", workspaceSlug: "alpha" }],
+      targets: [expectedTarget("alpha")],
       actorLabel: undefined,
     });
     expect(toolNames()).toContain("send_sphinx_message");
@@ -250,10 +279,7 @@ describe("runCanvasAgent — send_sphinx_message merge", () => {
   });
 
   it("merges every writable connected conversation workspace on org-root scope (currentCanvasRef === '')", async () => {
-    mockFindMany.mockResolvedValue([
-      { id: "cuid-alpha", slug: "alpha" },
-      { id: "cuid-beta", slug: "beta" },
-    ]);
+    mockFindMany.mockResolvedValue([connectedRow("alpha"), connectedRow("beta")]);
 
     await runCanvasAgent(
       opts({
@@ -264,10 +290,7 @@ describe("runCanvasAgent — send_sphinx_message merge", () => {
 
     expect(buildSphinxTools).toHaveBeenCalledWith({
       userId: "user-1",
-      targets: [
-        { workspaceId: "cuid-alpha", workspaceSlug: "alpha" },
-        { workspaceId: "cuid-beta", workspaceSlug: "beta" },
-      ],
+      targets: [expectedTarget("alpha"), expectedTarget("beta")],
       actorLabel: undefined,
     });
     expect(toolNames()).toContain("send_sphinx_message");
@@ -276,7 +299,7 @@ describe("runCanvasAgent — send_sphinx_message merge", () => {
   it("drops VIEWER-only workspaces on org-root scope but still merges the writable one", async () => {
     // Write access is part of the findMany predicate, so the VIEWER-only
     // workspace (beta) never comes back from the query.
-    mockFindMany.mockResolvedValue([{ id: "cuid-alpha", slug: "alpha" }]);
+    mockFindMany.mockResolvedValue([connectedRow("alpha")]);
 
     await runCanvasAgent(
       opts({
@@ -287,7 +310,7 @@ describe("runCanvasAgent — send_sphinx_message merge", () => {
 
     expect(buildSphinxTools).toHaveBeenCalledWith({
       userId: "user-1",
-      targets: [{ workspaceId: "cuid-alpha", workspaceSlug: "alpha" }],
+      targets: [expectedTarget("alpha")],
       actorLabel: undefined,
     });
   });
@@ -307,7 +330,7 @@ describe("runCanvasAgent — send_sphinx_message merge", () => {
   });
 
   it("scopes findMany to conversation workspace ids on org-root scope", async () => {
-    mockFindMany.mockResolvedValue([{ id: "cuid-alpha", slug: "alpha" }]);
+    mockFindMany.mockResolvedValue([connectedRow("alpha")]);
 
     await runCanvasAgent(
       opts({
@@ -326,7 +349,7 @@ describe("runCanvasAgent — send_sphinx_message merge", () => {
   });
 
   it("merges for multi-workspace only when currentCanvasRef is ws:<id> of a connected conversation workspace", async () => {
-    mockFindMany.mockResolvedValue([{ id: "cuid-alpha", slug: "alpha" }]);
+    mockFindMany.mockResolvedValue([connectedRow("alpha")]);
 
     await runCanvasAgent(
       opts({
@@ -337,7 +360,7 @@ describe("runCanvasAgent — send_sphinx_message merge", () => {
 
     expect(buildSphinxTools).toHaveBeenCalledWith({
       userId: "user-1",
-      targets: [{ workspaceId: "cuid-alpha", workspaceSlug: "alpha" }],
+      targets: [expectedTarget("alpha")],
       actorLabel: undefined,
     });
     expect(toolNames()).toContain("send_sphinx_message");
@@ -364,7 +387,7 @@ describe("runCanvasAgent — send_sphinx_message merge", () => {
 
     expect(buildSphinxTools).toHaveBeenCalledWith({
       userId: "user-1",
-      targets: [{ workspaceId: "cuid-alpha", workspaceSlug: "alpha" }],
+      targets: [expectedTarget("alpha")],
       actorLabel: "tom",
     });
   });
