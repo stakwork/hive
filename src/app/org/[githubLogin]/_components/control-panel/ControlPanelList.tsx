@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import { ChevronDown, ChevronRight, FileText, Loader2, MessageCircle, Search, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Kbd } from "@/components/ui/kbd";
+import { jamieName } from "@/lib/constants/jamie";
 import { formatAge } from "@/lib/date-utils";
 import { cn } from "@/lib/utils";
 import type { ControlPanelItem, ControlPanelItemKind, ControlPanelItemState } from "@/types/control-panel";
@@ -15,19 +16,54 @@ import { CONTROL_PANEL_PAGE } from "./useControlPanelItems";
 /** A row that changes place slides there rather than jumping (a sent message bubbles its chat up). */
 const ROW_MOVE = { layout: { duration: 0.35, ease: "easeInOut" } } as const;
 
-const KIND_ICON: Record<ControlPanelItemKind, typeof MessageCircle> = {
-  chat: MessageCircle,
-  plan: FileText,
+/** Kind is icon and colour: a Jamie chat is sky, the plan it spawned violet (the violet a plan artifact pill wears). */
+const KIND: Record<ControlPanelItemKind, { Icon: typeof MessageCircle; className: string }> = {
+  chat: { Icon: MessageCircle, className: "text-sky-500" },
+  plan: { Icon: FileText, className: "text-violet-500" },
 };
 
 /**
- * One dot, three meanings: amber and pulsing while an agent or planner
- * is working, an amber ring while the thread waits on you, grey when
- * nothing is happening. Chats are never "done", so there is no tick.
+ * Row geometry, in pixels, from the row's classes: `py-2.5`, the icon's
+ * `mt-0.5`, a chat's `h-4` icon, a plan's `h-3.5` one, `gap-2` between the
+ * chevron (`w-4`) and count (`w-3`) columns. A chat's icon follows those
+ * columns; its plans start under its title, hanging off a guide that runs
+ * down the chat icon's centre to a tick at each plan.
+ */
+const ROW_PAD_Y = 10;
+const ICON_TOP = 2;
+const CHAT_ICON = 16;
+const PLAN_ICON = 14;
+const CHAT_ROW_PAD = 8;
+const CHAT_ICON_LEFT = CHAT_ROW_PAD + 16 + 8 + 12 + 8;
+const GUIDE_LEFT = CHAT_ICON_LEFT + CHAT_ICON / 2;
+const PLAN_ROW_PAD = CHAT_ICON_LEFT + CHAT_ICON + 8;
+const ICON_CENTER_TOP = ROW_PAD_Y + ICON_TOP + PLAN_ICON / 2;
+/** A breath below the chat icon, where its stem starts. */
+const STEM_TOP = ROW_PAD_Y + ICON_TOP + CHAT_ICON + 2;
+
+/**
+ * One dot, four meanings: amber and pulsing while an agent or planner
+ * is working, an amber ring while the thread waits on you, a green
+ * filled dot when a plan is done, grey when nothing is happening.
+ * Chats never emit "done"; only plans can reach the green state.
  */
 export function StateDot({ state, className }: { state: ControlPanelItemState; className?: string }) {
-  const tone = state === "running" ? "working" : NEEDS_YOU_STATES.has(state) ? "waiting" : "idle";
-  const label = tone === "working" ? "Agent working" : tone === "waiting" ? "Waiting on you" : "Nothing happening";
+  const tone =
+    state === "running"
+      ? "working"
+      : state === "done"
+        ? "done"
+        : NEEDS_YOU_STATES.has(state)
+          ? "waiting"
+          : "idle";
+  const label =
+    tone === "working"
+      ? "Agent working"
+      : tone === "waiting"
+        ? "Waiting on you"
+        : tone === "done"
+          ? "Done"
+          : "Nothing happening";
   return (
     <span
       role="img"
@@ -37,6 +73,7 @@ export function StateDot({ state, className }: { state: ControlPanelItemState; c
         "inline-block h-2 w-2 shrink-0 rounded-full",
         tone === "working" && "animate-pulse bg-amber-500",
         tone === "waiting" && "border-2 border-amber-500 bg-transparent",
+        tone === "done" && "bg-green-500",
         tone === "idle" && "bg-muted-foreground/40",
         className,
       )}
@@ -103,7 +140,10 @@ export function ControlPanelList({
   const [searchOpen, setSearchOpen] = useState(false);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
 
-  const firstVisible = groups.flatMap((g) => g.rows).find((r) => !(r.parentKey && !expandedKeys.has(r.parentKey)));
+  const firstVisible = useMemo(
+    () => groups.flatMap((g) => g.rows).find((r) => !(r.parentKey && !expandedKeys.has(r.parentKey))),
+    [groups, expandedKeys],
+  );
   // Rows only move when their order does; framer measures them only then.
   const rowOrder = useMemo(() => groups.flatMap((g) => g.rows.map((r) => r.item.key)).join("|"), [groups]);
 
@@ -186,7 +226,9 @@ export function ControlPanelList({
             </div>
           ) : !firstVisible ? (
             <p className="px-4 py-8 text-center text-sm text-muted-foreground">
-              {totalCount === 0 ? "Nothing yet. Start a Jamie chat and it lands here." : "No chats or plans match."}
+              {totalCount === 0
+                ? `Nothing yet. Start a ${jamieName} chat and it lands here.`
+                : "No chats or plans match."}
             </p>
           ) : (
             groups.flatMap((group) => [
@@ -196,13 +238,14 @@ export function ControlPanelList({
               >
                 {group.label}
               </h3>,
-              ...group.rows.map(({ item, depth, parentKey, childCount, latestAt }) => {
+              ...group.rows.map(({ item, depth, parentKey, childCount, latestAt }, i) => {
                 if (parentKey && !expandedKeys.has(parentKey)) return null;
-                const Icon = KIND_ICON[item.kind];
+                const { Icon, className: kindClass } = KIND[item.kind];
                 const focused = item.key === focusedKey;
                 const cursor = item.key === cursorKey;
                 const collapsible = (childCount ?? 0) > 0;
                 const collapsed = collapsible && !expandedKeys.has(item.key);
+                const lastChild = group.rows[i + 1]?.parentKey !== parentKey;
                 const meta = [item.workspaceName, item.sinceYou].filter(Boolean).join(" · ");
                 return (
                   <motion.div
@@ -221,13 +264,35 @@ export function ControlPanelList({
                       }
                     }}
                     aria-current={focused ? "true" : undefined}
-                    style={{ paddingLeft: depth > 0 ? 46 : 8 }}
+                    style={{ paddingLeft: depth > 0 ? PLAN_ROW_PAD : CHAT_ROW_PAD }}
                     className={cn(
-                      "flex w-full cursor-pointer items-start gap-2 border-b py-2.5 pr-3 text-left outline-none transition-colors",
+                      "relative flex w-full cursor-pointer items-start gap-2 border-b py-2.5 pr-3 text-left outline-none transition-colors",
                       focused ? "bg-muted" : "hover:bg-muted/60",
                       cursor && "ring-1 ring-inset ring-ring",
                     )}
                   >
+                    {/* The tree: a stem from an open chat's icon, a guide down its plans, a tick into each. */}
+                    {collapsible && !collapsed && (
+                      <span
+                        aria-hidden
+                        className="absolute bottom-0 w-px bg-border"
+                        style={{ left: GUIDE_LEFT, top: STEM_TOP }}
+                      />
+                    )}
+                    {depth > 0 && (
+                      <>
+                        <span
+                          aria-hidden
+                          className="absolute top-0 w-px bg-border"
+                          style={{ left: GUIDE_LEFT, ...(lastChild ? { height: ICON_CENTER_TOP } : { bottom: 0 }) }}
+                        />
+                        <span
+                          aria-hidden
+                          className="absolute h-px bg-border"
+                          style={{ left: GUIDE_LEFT, width: PLAN_ROW_PAD - GUIDE_LEFT - 6, top: ICON_CENTER_TOP }}
+                        />
+                      </>
+                    )}
                     {collapsible ? (
                       <button
                         type="button"
@@ -253,13 +318,7 @@ export function ControlPanelList({
                         {collapsed ? childCount : ""}
                       </span>
                     )}
-                    <Icon
-                      className={cn(
-                        "mt-0.5 shrink-0",
-                        depth > 0 ? "h-3.5 w-3.5" : "h-4 w-4",
-                        focused ? "text-foreground" : "text-muted-foreground",
-                      )}
-                    />
+                    <Icon className={cn("mt-0.5 shrink-0", depth > 0 ? "h-3.5 w-3.5" : "h-4 w-4", kindClass)} />
                     <div className="min-w-0 flex-1">
                       <div
                         className={cn(
