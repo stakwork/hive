@@ -39,10 +39,15 @@ function featureStatusLabel(status: string): string {
   return (FEATURE_STATUS_LABELS as Record<string, string>)[status] ?? status;
 }
 
-/** Derive a plan's control panel state. Precedence: done → halted → question → awaiting reply → review → running → status. */
+/**
+ * Derive a plan's control panel state. Precedence: done → halted →
+ * question (only if not running) → awaiting-reply (only if not running) →
+ * review → running → status.
+ */
 export function derivePlanState(input: PlanStateInput): DerivedState {
   const { status, workflowStatus, tasks, lastMessage } = input;
   const run = deriveFeatureRunState(workflowStatus, tasks);
+  const isRunning = run.plannerRunning || run.agentsRunningCount > 0;
 
   if (status === "COMPLETED" || status === "CANCELLED") {
     return { state: "done", label: featureStatusLabel(status) };
@@ -50,16 +55,16 @@ export function derivePlanState(input: PlanStateInput): DerivedState {
   if (status === "ERROR" || (workflowStatus && HALTED_WORKFLOW.has(workflowStatus)) || run.hasErrorTask) {
     return { state: "halted", label: "Halted" };
   }
-  if (lastMessage?.role === "ASSISTANT" && lastMessage.hasForm) {
+  if (!isRunning && lastMessage?.role === "ASSISTANT" && lastMessage.hasForm) {
     return { state: "question", label: "Question waiting" };
   }
-  if (lastMessage?.role === "ASSISTANT" && tasks.length === 0) {
+  if (!isRunning && lastMessage?.role === "ASSISTANT" && tasks.length === 0) {
     return { state: "awaiting-reply", label: "Awaiting your reply" };
   }
   if (workflowStatus === "COMPLETED") {
     return { state: "review", label: "Ready to review" };
   }
-  if (run.plannerRunning || run.agentsRunningCount > 0) {
+  if (isRunning) {
     return { state: "running", label: formatRunningLabel(run) };
   }
   return { state: "none", label: featureStatusLabel(status) };
