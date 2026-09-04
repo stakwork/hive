@@ -114,6 +114,19 @@ describe("listRecursionEvalSets — dispatch vs list", () => {
     expect(result.nodes?.find((n) => n.ref_id === "ref-unstamped")?.dateAddedToGraph).toBeNull();
   });
 
+  test("dispatch: millisecond date_added_to_graph maps to 2026, not year ~58000", async () => {
+    const msStamp = 1788527805693;
+    const stamped = { ...makeNode("ref-ms", { recursion: true }), date_added_to_graph: msStamp };
+    mockSearchNodesByAttributes.mockResolvedValueOnce({ ok: true, nodes: [stamped] });
+
+    const result = await listRecursionEvalSets(CONFIG, "dispatch");
+
+    const dateAddedToGraph = result.nodes?.find((n) => n.ref_id === "ref-ms")?.dateAddedToGraph;
+    expect(dateAddedToGraph).toBe(new Date(msStamp).toISOString());
+    expect(new Date(dateAddedToGraph!).getUTCFullYear()).toBe(2026);
+    expect(dateAddedToGraph).not.toBe(new Date(msStamp * 1000).toISOString());
+  });
+
   test("dispatch: true-query failure returns { ok: false }", async () => {
     mockSearchNodesByAttributes.mockResolvedValueOnce({ ok: false, nodes: [], error: "Jarvis down" });
 

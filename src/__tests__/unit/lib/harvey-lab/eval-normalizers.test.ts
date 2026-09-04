@@ -73,4 +73,17 @@ describe("graphEpochToIso", () => {
     const iso = graphEpochToIso(1e12 + 1);
     expect(iso).toBe(new Date(1e12 + 1).toISOString());
   });
+
+  it("returns null for an ISO-like string (not a 1970 date via parseFloat prefix)", () => {
+    expect(graphEpochToIso("2024-07-03T00:00:00.000Z")).toBeNull();
+  });
+
+  it("returns null for a numeric-prefixed garbage string", () => {
+    expect(graphEpochToIso("1720000000abc")).toBeNull();
+  });
+
+  it("returns null for a finite out-of-range value without throwing", () => {
+    expect(() => graphEpochToIso(1e16)).not.toThrow();
+    expect(graphEpochToIso(1e16)).toBeNull();
+  });
 });
