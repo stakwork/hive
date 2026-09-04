@@ -3,12 +3,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
 import { useShallow } from "zustand/react/shallow";
-import { generateTitle } from "@/lib/ai/conversationHelpers";
 import {
   buildArchivedRows,
   buildControlPanelGroups,
   matchesControlPanelQuery,
   resolveControlPanelLists,
+  unlistedOnStageChatTitle,
   visibleControlPanelItems,
   type ActiveChatSnapshot,
 } from "@/services/orgs/control-panel-state";
@@ -102,6 +102,7 @@ export function useControlPanel(githubLogin: string, enabled: boolean): ControlP
         lastReply: !conv.isStreaming && last?.role === "assistant" ? last.content : null,
         hasMessages: conv.messages.length > 0,
         isStreaming: conv.isStreaming,
+        title: conv.title,
       };
     }),
   );
@@ -158,7 +159,7 @@ export function useControlPanel(githubLogin: string, enabled: boolean): ControlP
   const chatOnStage = focus.kind === "chat";
   const { displayItems, displayArchivedItems } = useMemo(() => {
     const conv = activeChat ? useCanvasChatStore.getState().conversations[activeChat.localId] : undefined;
-    const title = activeChat?.hasMessages && conv ? generateTitle(conv.messages) : "New chat";
+    const title = activeChat ? unlistedOnStageChatTitle(activeChat, conv?.messages) : "New chat";
     return resolveControlPanelLists(items, archivedItems, activeChat, {
       chatOnStage,
       startedAt: newChatStartedAtRef.current,

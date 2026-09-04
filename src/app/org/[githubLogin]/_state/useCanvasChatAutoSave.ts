@@ -209,13 +209,28 @@ export function useCanvasChatAutoSave({ githubLogin }: AutoSaveArgs) {
           mapped,
         );
 
+        const store = useCanvasChatStore.getState();
+
+        // Title can land independently of messages (LLM title after the
+        // first turn). Apply even when the merge is a no-op so a
+        // title-only Pusher nudge isn't dropped. Do not adopt a first-turn
+        // generateTitle() placeholder onto a still-null store title — that
+        // would replace the "Ask Jamie" chrome fallback before the real
+        // LLM title arrives. Reopened / shared / forked slots seed title
+        // at startConversation, so legacy truncations still display.
+        const fetchedTitle = typeof body.title === "string" ? body.title : null;
+        const adoptTitle =
+          body.settings?.titleSource === "llm" || now.title != null;
+        if (adoptTitle && fetchedTitle !== now.title) {
+          store.setConversationTitle(conversationId, fetchedTitle);
+        }
+
         if (
           merged.added.length === 0 &&
           !reconciled.changed &&
           !reconciledAr.changed
         )
           return; // in sync
-        const store = useCanvasChatStore.getState();
         store.setConversationMessages(conversationId, reconciledAr.messages);
 
         // The user is looking at this chat (only the active conv is

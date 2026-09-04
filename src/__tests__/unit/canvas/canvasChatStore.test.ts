@@ -226,3 +226,48 @@ describe("canvasChatStore — pendingDeeplink", () => {
     expect(dl?.label).toBe("Second");
   });
 });
+
+describe("canvasChatStore — conversation title", () => {
+  beforeEach(freshStore);
+
+  it("seeds title as null when startConversation omits the 6th arg", () => {
+    const id = useCanvasChatStore.getState().startConversation(baseContext);
+    expect(useCanvasChatStore.getState().conversations[id].title).toBeNull();
+  });
+
+  it("seeds title from startConversation's 6th arg", () => {
+    const id = useCanvasChatStore.getState().startConversation(
+      baseContext,
+      [],
+      undefined,
+      0,
+      "srv-1",
+      "Auth token refresh",
+    );
+    expect(useCanvasChatStore.getState().conversations[id].title).toBe("Auth token refresh");
+    expect(useCanvasChatStore.getState().conversations[id].serverConversationId).toBe("srv-1");
+  });
+
+  it("setConversationTitle updates the right conversation", () => {
+    const id1 = useCanvasChatStore.getState().startConversation(baseContext);
+    const id2 = useCanvasChatStore.getState().startConversation(baseContext);
+    useCanvasChatStore.getState().setConversationTitle(id1, "Auth token refresh");
+    expect(useCanvasChatStore.getState().conversations[id1].title).toBe("Auth token refresh");
+    expect(useCanvasChatStore.getState().conversations[id2].title).toBeNull();
+  });
+
+  it("clearActiveConversation resets title to null", () => {
+    const id = useCanvasChatStore.getState().startConversation(
+      baseContext,
+      [],
+      undefined,
+      0,
+      "srv-1",
+      "Auth token refresh",
+    );
+    useCanvasChatStore.getState().setActiveConversation(id);
+    useCanvasChatStore.getState().clearActiveConversation();
+    expect(useCanvasChatStore.getState().conversations[id].title).toBeNull();
+    expect(useCanvasChatStore.getState().conversations[id].serverConversationId).toBeNull();
+  });
+});
