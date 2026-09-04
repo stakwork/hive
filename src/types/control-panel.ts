@@ -36,10 +36,14 @@ export interface ControlPanelItem {
   unread: boolean;
   /** Plans only: the Jamie chat this plan was spawned from, when any. */
   parentChatId?: string | null;
+  /** Chats only: when the owner archived this chat (null / omitted = active). */
+  archivedAt?: string | null;
 }
 
 export interface ControlPanelResponse {
   items: ControlPanelItem[];
+  /** Archived chats (and their nested plans). Empty when none. */
+  archivedItems: ControlPanelItem[];
   /** Chats are the spine: how many are listed, and how many the user has in this org. */
   chats: { shown: number; total: number };
 }
