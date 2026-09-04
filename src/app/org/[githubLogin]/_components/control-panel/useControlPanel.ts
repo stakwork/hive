@@ -19,9 +19,6 @@ import type { ControlPanelStageProps } from "./ControlPanelStage";
 import { useControlPanelItems } from "./useControlPanelItems";
 import { focusNodeIdOf, type ControlPanelFocus } from "./types";
 
-/** Stable empty set so "nothing collapsed" never changes identity between renders. */
-const EMPTY_KEYS: ReadonlySet<string> = new Set();
-
 function focusFromParams(params: URLSearchParams): ControlPanelFocus {
   const plan = params.get("plan");
   if (plan) return { kind: "plan", id: plan };
@@ -59,9 +56,10 @@ export function useControlPanel(githubLogin: string, enabled: boolean): ControlP
   const [query, setQuery] = useState("");
   const [focus, setFocus] = useState<ControlPanelFocus>(() => focusFromParams(searchParams));
   const [cursorKey, setCursorKey] = useState<string | null>(null);
-  const [collapsedKeys, setCollapsedKeys] = useState<Set<string>>(() => new Set());
-  const toggleCollapse = useCallback((key: string) => {
-    setCollapsedKeys((prev) => {
+  // Chats start collapsed: the row is the chat, its plans open on demand.
+  const [expandedKeys, setExpandedKeys] = useState<Set<string>>(() => new Set());
+  const toggleExpanded = useCallback((key: string) => {
+    setExpandedKeys((prev) => {
       const next = new Set(prev);
       if (next.has(key)) next.delete(key);
       else next.add(key);
@@ -187,17 +185,23 @@ export function useControlPanel(githubLogin: string, enabled: boolean): ControlP
     () => buildControlPanelGroups(displayItems, (item) => matchesControlPanelQuery(item, query)),
     [displayItems, query],
   );
-  // A search is asking to see matches, so it overrides any collapsed
-  // chat; otherwise the user's collapse state holds.
-  const effectiveCollapsed = query ? EMPTY_KEYS : collapsedKeys;
+  // A search is asking to see matches, so every chat with a match opens;
+  // otherwise what the user opened holds.
+  const effectiveExpanded = useMemo(
+    () =>
+      query
+        ? new Set(groups.flatMap((g) => g.rows.filter((r) => (r.childCount ?? 0) > 0).map((r) => r.item.key)))
+        : expandedKeys,
+    [query, groups, expandedKeys],
+  );
 
   // Rows the keyboard can land on: collapsed chats hide their plans.
   const visible = useMemo(
     () =>
       groups.flatMap((g) =>
-        g.rows.filter((r) => !(r.parentKey && effectiveCollapsed.has(r.parentKey))).map((r) => r.item),
+        g.rows.filter((r) => !(r.parentKey && !effectiveExpanded.has(r.parentKey))).map((r) => r.item),
       ),
-    [groups, effectiveCollapsed],
+    [groups, effectiveExpanded],
   );
 
   useEffect(() => {
@@ -261,8 +265,8 @@ export function useControlPanel(githubLogin: string, enabled: boolean): ControlP
       loading,
       query,
       onQueryChange: setQuery,
-      collapsedKeys: effectiveCollapsed,
-      onToggleCollapse: toggleCollapse,
+      expandedKeys: effectiveExpanded,
+      onToggleExpanded: toggleExpanded,
       cursorKey,
       focusedKey,
       onOpen,
