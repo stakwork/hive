@@ -28,8 +28,41 @@ const USER_ID = "user-1";
 const WS_A = { workspaceId: "cuid-a", slug: "alpha" };
 const WS_B = { workspaceId: "cuid-b", slug: "beta" };
 
-const CONNECTED_ROW_A = { id: "cuid-a", slug: "alpha" };
-const CONNECTED_ROW_B = { id: "cuid-b", slug: "beta" };
+type ConnectedRow = {
+  id: string;
+  slug: string;
+  name: string;
+  sphinxChatPubkey: string;
+  swarm: { name: string } | null;
+};
+
+const CONNECTED_ROW_A: ConnectedRow = {
+  id: "cuid-a",
+  slug: "alpha",
+  name: "Alpha",
+  sphinxChatPubkey: "pubkey-a",
+  swarm: { name: "swarm38" },
+};
+const CONNECTED_ROW_B: ConnectedRow = {
+  id: "cuid-b",
+  slug: "beta",
+  name: "Beta",
+  sphinxChatPubkey: "pubkey-b",
+  swarm: { name: "swarm39" },
+};
+
+function asTarget(row: ConnectedRow) {
+  return {
+    workspaceId: row.id,
+    workspaceSlug: row.slug,
+    sphinxChatPubkey: row.sphinxChatPubkey,
+    workspaceName: row.name,
+    ...(row.swarm?.name ? { swarmDomain: `${row.swarm.name}.sphinx.chat` } : {}),
+  };
+}
+
+const TARGET_A = asTarget(CONNECTED_ROW_A);
+const TARGET_B = asTarget(CONNECTED_ROW_B);
 
 // Connection + write-access are folded into the single findMany so the
 // resolve step is one round trip regardless of workspace count.
@@ -57,6 +90,13 @@ function scopedPredicate(ids: string[]) {
         },
       ],
     }),
+    select: {
+      id: true,
+      slug: true,
+      name: true,
+      sphinxChatPubkey: true,
+      swarm: { select: { name: true } },
+    },
   });
 }
 
@@ -107,10 +147,7 @@ describe("resolveSphinxToolTarget", () => {
       currentCanvasRef: "",
     });
 
-    expect(result).toEqual([
-      { workspaceId: "cuid-a", workspaceSlug: "alpha" },
-      { workspaceId: "cuid-b", workspaceSlug: "beta" },
-    ]);
+    expect(result).toEqual([TARGET_A, TARGET_B]);
   });
 
   it("returns [] when no in-scope workspace is Sphinx-connected", async () => {
@@ -180,11 +217,29 @@ describe("resolveSphinxToolTarget", () => {
       currentCanvasRef: "",
     });
 
-    expect(result).toEqual([
-      { workspaceId: "cuid-a", workspaceSlug: "alpha" },
-      { workspaceId: "cuid-b", workspaceSlug: "beta" },
-    ]);
+    expect(result).toEqual([TARGET_A, TARGET_B]);
     expect(db.workspace.findMany).toHaveBeenCalledWith(scopedPredicate(["cuid-a", "cuid-b"]));
+  });
+
+  it("omits swarmDomain when the workspace has no swarm row", async () => {
+    (db.workspace.findMany as ReturnType<typeof vi.fn>).mockResolvedValue([
+      { ...CONNECTED_ROW_A, swarm: null },
+    ]);
+
+    const result = await resolveSphinxToolTarget({
+      userId: USER_ID,
+      workspaceConfigs: [WS_A],
+    });
+
+    expect(result).toEqual([
+      {
+        workspaceId: "cuid-a",
+        workspaceSlug: "alpha",
+        sphinxChatPubkey: "pubkey-a",
+        workspaceName: "Alpha",
+      },
+    ]);
+    expect(result[0]).not.toHaveProperty("swarmDomain");
   });
 
   it("drops VIEWER-only workspaces at resolve on org-root scope (DB filters them out)", async () => {
@@ -198,7 +253,7 @@ describe("resolveSphinxToolTarget", () => {
       currentCanvasRef: "",
     });
 
-    expect(result).toEqual([{ workspaceId: "cuid-a", workspaceSlug: "alpha" }]);
+    expect(result).toEqual([TARGET_A]);
     expect(db.workspace.findMany).toHaveBeenCalledWith(scopedPredicate(["cuid-a", "cuid-b"]));
   });
 
@@ -211,7 +266,7 @@ describe("resolveSphinxToolTarget", () => {
       currentCanvasRef: "",
     });
 
-    expect(result).toEqual([{ workspaceId: "cuid-a", workspaceSlug: "alpha" }]);
+    expect(result).toEqual([TARGET_A]);
     const call = (db.workspace.findMany as ReturnType<typeof vi.fn>).mock.calls[0][0];
     expect(call.where.OR).toContainEqual({ ownerId: USER_ID });
   });
@@ -284,7 +339,7 @@ describe("resolveSphinxToolTarget", () => {
       workspaceConfigs: [WS_A],
     });
 
-    expect(result).toEqual([{ workspaceId: "cuid-a", workspaceSlug: "alpha" }]);
+    expect(result).toEqual([TARGET_A]);
     expect(db.workspace.findMany).toHaveBeenCalledWith(scopedPredicate(["cuid-a"]));
   });
 
@@ -295,7 +350,7 @@ describe("resolveSphinxToolTarget", () => {
       currentCanvasRef: "ws:cuid-a",
     });
 
-    expect(result).toEqual([{ workspaceId: "cuid-a", workspaceSlug: "alpha" }]);
+    expect(result).toEqual([TARGET_A]);
     expect(db.workspace.findMany).toHaveBeenCalledWith(scopedPredicate(["cuid-a"]));
   });
 });

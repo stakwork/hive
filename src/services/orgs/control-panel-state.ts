@@ -205,6 +205,159 @@ function dayLabel(date: Date, now: Date): string {
 }
 
 /**
+ * Pull a chat and the plans nested under it out of a flat item list.
+ * Used by the optimistic archive/restore move so nested plans follow
+ * the parent instead of hanging in the other collection.
+ */
+export function takeChatFamily(
+  items: ControlPanelItem[],
+  chatId: string,
+): { family: ControlPanelItem[]; rest: ControlPanelItem[] } {
+  const family: ControlPanelItem[] = [];
+  const rest: ControlPanelItem[] = [];
+  for (const item of items) {
+    if ((item.kind === "chat" && item.id === chatId) || (item.kind === "plan" && item.parentChatId === chatId)) {
+      family.push(item);
+    } else {
+      rest.push(item);
+    }
+  }
+  return { family, rest };
+}
+
+function orderChatFamily(family: ControlPanelItem[]): ControlPanelItem[] {
+  const chat = family.find((item) => item.kind === "chat");
+  const plans = family.filter((item) => item.kind === "plan");
+  return chat ? [chat, ...plans] : family;
+}
+
+/**
+ * Optimistic archive: drop the chat and its nested plans from Active
+ * and insert them at the top of Archive (newest `archivedAt` first).
+ */
+export function moveChatToArchive(
+  items: ControlPanelItem[],
+  archivedItems: ControlPanelItem[],
+  chatId: string,
+  archivedAt: string,
+): { items: ControlPanelItem[]; archivedItems: ControlPanelItem[] } {
+  const { family, rest } = takeChatFamily(items, chatId);
+  if (family.length === 0) return { items, archivedItems };
+  const stamped = family.map((item) => (item.kind === "chat" ? { ...item, archivedAt } : item));
+  const { rest: archivedRest } = takeChatFamily(archivedItems, chatId);
+  return { items: rest, archivedItems: [...orderChatFamily(stamped), ...archivedRest] };
+}
+
+/**
+ * Optimistic restore: drop the chat and its nested plans from Archive
+ * and insert them at the top of Active.
+ */
+export function moveChatToActive(
+  items: ControlPanelItem[],
+  archivedItems: ControlPanelItem[],
+  chatId: string,
+): { items: ControlPanelItem[]; archivedItems: ControlPanelItem[] } {
+  const { family, rest } = takeChatFamily(archivedItems, chatId);
+  if (family.length === 0) return { items, archivedItems };
+  const stamped = family.map((item) => (item.kind === "chat" ? { ...item, archivedAt: null } : item));
+  const { rest: itemsRest } = takeChatFamily(items, chatId);
+  return { items: [...orderChatFamily(stamped), ...itemsRest], archivedItems: rest };
+}
+
+/**
+ * Place the on-stage chat into Active or Archive without re-injecting an
+ * archived chat into the active list. Overlay live store data onto whichever
+ * row already holds it; only a brand-new chat (in neither list) is prepended
+ * into Active.
+ */
+export function resolveControlPanelLists(
+  items: ControlPanelItem[],
+  archivedItems: ControlPanelItem[],
+  activeChat: ActiveChatSnapshot | null,
+  opts: { chatOnStage: boolean; startedAt: string; titleForNew: string },
+): { displayItems: ControlPanelItem[]; displayArchivedItems: ControlPanelItem[] } {
+  if (!activeChat) {
+    return { displayItems: items, displayArchivedItems: archivedItems };
+  }
+  const key = `chat:${activeChat.serverId ?? activeChat.localId}`;
+  if (items.some((item) => item.key === key)) {
+    return {
+      displayItems: items.map((item) => (item.key === key ? overlayActiveChat(item, activeChat) : item)),
+      displayArchivedItems: archivedItems,
+    };
+  }
+  if (archivedItems.some((item) => item.key === key)) {
+    return {
+      displayItems: items,
+      displayArchivedItems: archivedItems.map((item) =>
+        item.key === key ? overlayActiveChat(item, activeChat) : item,
+      ),
+    };
+  }
+  if (!activeChat.hasMessages && !opts.chatOnStage) {
+    return { displayItems: items, displayArchivedItems: archivedItems };
+  }
+  return {
+    displayItems: [activeChatItem(activeChat, opts.startedAt, opts.titleForNew), ...items],
+    displayArchivedItems: archivedItems,
+  };
+}
+
+/**
+ * Archive is a flat list of chats sorted by `archivedAt` desc, with each
+ * chat's plans nested directly beneath it. Do not run this through
+ * `buildControlPanelGroups` — that pipeline day-buckets rows and only
+ * nests a plan whose parent is in the same array.
+ */
+export function buildArchivedRows(items: ControlPanelItem[]): ControlPanelRow[] {
+  const chats = items.filter((item) => item.kind === "chat");
+  const chatIds = new Set(chats.map((item) => item.id));
+  const childrenByChat = new Map<string, ControlPanelItem[]>();
+  for (const item of items) {
+    if (item.kind === "plan" && item.parentChatId && chatIds.has(item.parentChatId)) {
+      const list = childrenByChat.get(item.parentChatId) ?? [];
+      list.push(item);
+      childrenByChat.set(item.parentChatId, list);
+    }
+  }
+  const sortedChats = [...chats].sort((a, b) => {
+    const byArchived = (b.archivedAt ?? "").localeCompare(a.archivedAt ?? "");
+    return byArchived !== 0 ? byArchived : b.lastActivityAt.localeCompare(a.lastActivityAt);
+  });
+  const rows: ControlPanelRow[] = [];
+  for (const chat of sortedChats) {
+    const children = sortControlPanelItems(childrenByChat.get(chat.id) ?? []);
+    rows.push({
+      item: chat,
+      depth: 0,
+      childCount: children.length,
+      latestAt: chat.archivedAt ?? chat.lastActivityAt,
+    });
+    for (const child of children) {
+      rows.push({ item: child, depth: 1, parentKey: chat.key, latestAt: child.lastActivityAt });
+    }
+  }
+  return rows;
+}
+
+/** Rows the keyboard can land on. Collapsed chats hide their plans; a collapsed Archive is skipped entirely. */
+export function visibleControlPanelItems(
+  groups: ControlPanelGroup[],
+  archivedRows: ControlPanelRow[],
+  expandedKeys: ReadonlySet<string>,
+  archivedExpanded: boolean,
+): ControlPanelItem[] {
+  const fromGroups = groups.flatMap((g) =>
+    g.rows.filter((r) => !(r.parentKey && !expandedKeys.has(r.parentKey))).map((r) => r.item),
+  );
+  if (!archivedExpanded) return fromGroups;
+  const fromArchive = archivedRows
+    .filter((r) => !(r.parentKey && !expandedKeys.has(r.parentKey)))
+    .map((r) => r.item);
+  return [...fromGroups, ...fromArchive];
+}
+
+/**
  * Turn the flat item list into the control panel's list: Jamie chats
  * are the rows, and the plans a chat spawned nest under it. A plan
  * whose chat is not listed is left out. Everything is grouped by the

@@ -2,14 +2,24 @@
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "framer-motion";
-import { ChevronDown, ChevronRight, FileText, Loader2, MessageCircle, Search, X } from "lucide-react";
+import {
+  Archive,
+  ArchiveRestore,
+  ChevronDown,
+  ChevronRight,
+  FileText,
+  Loader2,
+  MessageCircle,
+  Search,
+  X,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Kbd } from "@/components/ui/kbd";
 import { jamieName } from "@/lib/constants/jamie";
 import { formatAge } from "@/lib/date-utils";
 import { cn } from "@/lib/utils";
 import type { ControlPanelItem, ControlPanelItemKind, ControlPanelItemState } from "@/types/control-panel";
-import { NEEDS_YOU_STATES, type ControlPanelGroup } from "@/services/orgs/control-panel-state";
+import { NEEDS_YOU_STATES, type ControlPanelGroup, type ControlPanelRow } from "@/services/orgs/control-panel-state";
 import { ActionTip } from "../ActionTip";
 import { CONTROL_PANEL_PAGE } from "./useControlPanelItems";
 
@@ -113,6 +123,157 @@ export interface ControlPanelListProps {
   /** Chats the user has beyond the ones listed. */
   remaining: number;
   onShowMore: () => void;
+  /** Flat archived chats (plans nested under their parent). Outside day grouping. */
+  archivedRows: ControlPanelRow[];
+  archivedExpanded: boolean;
+  onToggleArchived: () => void;
+  onArchive: (item: ControlPanelItem) => void;
+  onRestore: (item: ControlPanelItem) => void;
+}
+
+function PanelRow({
+  item,
+  depth,
+  parentKey,
+  childCount,
+  latestAt,
+  lastChild,
+  expandedKeys,
+  onToggleExpanded,
+  cursorKey,
+  focusedKey,
+  onOpen,
+  rowOrder,
+  action,
+}: {
+  item: ControlPanelItem;
+  depth: number;
+  parentKey?: string;
+  childCount?: number;
+  latestAt: string;
+  lastChild: boolean;
+  expandedKeys: ReadonlySet<string>;
+  onToggleExpanded: (key: string) => void;
+  cursorKey: string | null;
+  focusedKey: string | null;
+  onOpen: (item: ControlPanelItem) => void;
+  rowOrder: string;
+  action?: { label: string; Icon: typeof Archive; onClick: (item: ControlPanelItem) => void };
+}) {
+  if (parentKey && !expandedKeys.has(parentKey)) return null;
+  const { Icon, className: kindClass } = KIND[item.kind];
+  const ActionIcon = action?.Icon;
+  const focused = item.key === focusedKey;
+  const cursor = item.key === cursorKey;
+  const collapsible = (childCount ?? 0) > 0;
+  const collapsed = collapsible && !expandedKeys.has(item.key);
+  const meta = [item.workspaceName, item.sinceYou].filter(Boolean).join(" · ");
+  return (
+    <motion.div
+      key={item.key}
+      layout="position"
+      layoutDependency={rowOrder}
+      transition={ROW_MOVE}
+      role="button"
+      tabIndex={0}
+      data-panel-key={item.key}
+      onClick={() => onOpen(item)}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onOpen(item);
+        }
+      }}
+      aria-current={focused ? "true" : undefined}
+      style={{ paddingLeft: depth > 0 ? PLAN_ROW_PAD : CHAT_ROW_PAD }}
+      className={cn(
+        "group relative flex w-full cursor-pointer items-start gap-2 border-b py-2.5 pr-3 text-left outline-none transition-colors",
+        focused ? "bg-muted" : "hover:bg-muted/60",
+        cursor && "ring-1 ring-inset ring-ring",
+      )}
+    >
+      {/* The tree: a stem from an open chat's icon, a guide down its plans, a tick into each. */}
+      {collapsible && !collapsed && (
+        <span aria-hidden className="absolute bottom-0 w-px bg-border" style={{ left: GUIDE_LEFT, top: STEM_TOP }} />
+      )}
+      {depth > 0 && (
+        <>
+          <span
+            aria-hidden
+            className="absolute top-0 w-px bg-border"
+            style={{ left: GUIDE_LEFT, ...(lastChild ? { height: ICON_CENTER_TOP } : { bottom: 0 }) }}
+          />
+          <span
+            aria-hidden
+            className="absolute h-px bg-border"
+            style={{ left: GUIDE_LEFT, width: PLAN_ROW_PAD - GUIDE_LEFT - 6, top: ICON_CENTER_TOP }}
+          />
+        </>
+      )}
+      {collapsible ? (
+        <button
+          type="button"
+          aria-label={collapsed ? "Show plans" : "Hide plans"}
+          aria-expanded={!collapsed}
+          onClick={(e) => {
+            e.stopPropagation();
+            onToggleExpanded(item.key);
+          }}
+          className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground"
+        >
+          {collapsed ? <ChevronRight className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+        </button>
+      ) : (
+        depth === 0 && <span className="w-4 shrink-0" aria-hidden />
+      )}
+      {/* Every chat row reserves the same slot for the count, so titles line up. */}
+      {depth === 0 && (
+        <span
+          className="mt-0.5 w-3 shrink-0 text-[10px] tabular-nums leading-4 text-muted-foreground"
+          title={collapsed ? `${childCount} plans` : undefined}
+        >
+          {collapsed ? childCount : ""}
+        </span>
+      )}
+      <Icon className={cn("mt-0.5 shrink-0", depth > 0 ? "h-3.5 w-3.5" : "h-4 w-4", kindClass)} />
+      <div className="min-w-0 flex-1">
+        <div
+          className={cn(
+            "truncate",
+            depth > 0 ? "text-[13px]" : "text-sm",
+            (item.unread || focused) && "font-semibold",
+          )}
+        >
+          {item.title}
+        </div>
+        <div className="truncate text-xs text-muted-foreground">{meta}</div>
+      </div>
+      <div className="flex shrink-0 items-start gap-1">
+        {item.kind === "chat" && action && ActionIcon && (
+          <ActionTip label={action.label}>
+            <button
+              type="button"
+              aria-label={action.label}
+              onClick={(e) => {
+                e.stopPropagation();
+                e.preventDefault();
+                action.onClick(item);
+              }}
+              className="mt-0.5 flex h-5 w-5 items-center justify-center rounded text-muted-foreground opacity-0 transition-opacity hover:bg-muted hover:text-foreground group-hover:opacity-100 group-focus-within:opacity-100 focus:opacity-100"
+            >
+              <ActionIcon className="h-3.5 w-3.5" />
+            </button>
+          </ActionTip>
+        )}
+        <div className="flex w-14 shrink-0 flex-col items-end gap-1.5">
+          <span className="text-xs tabular-nums text-muted-foreground">
+            {formatAge(Date.now() - Date.parse(latestAt))}
+          </span>
+          <StateDot state={item.state} />
+        </div>
+      </div>
+    </motion.div>
+  );
 }
 
 /**
@@ -120,7 +281,8 @@ export interface ControlPanelListProps {
  * from a chat nested under it (collapsed until opened), all grouped by the day of
  * their newest activity. One row per thread with a "since you" line, a
  * time column and a state dot; a "Show N more" at the end when the org
- * has more chats than are listed. New chat lives in the chat's own
+ * has more chats than are listed. Archived chats live in a flat section
+ * at the bottom, outside day grouping. New chat lives in the chat's own
  * actions in the bar across the divider (`n` here does the same).
  */
 export function ControlPanelList({
@@ -136,6 +298,11 @@ export function ControlPanelList({
   onOpen,
   remaining,
   onShowMore,
+  archivedRows,
+  archivedExpanded,
+  onToggleArchived,
+  onArchive,
+  onRestore,
 }: ControlPanelListProps) {
   const [searchOpen, setSearchOpen] = useState(false);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
@@ -144,8 +311,20 @@ export function ControlPanelList({
     () => groups.flatMap((g) => g.rows).find((r) => !(r.parentKey && !expandedKeys.has(r.parentKey))),
     [groups, expandedKeys],
   );
+  const archivedChatCount = useMemo(
+    () => archivedRows.filter((r) => r.item.kind === "chat").length,
+    [archivedRows],
+  );
+  const bothEmpty = totalCount === 0 && archivedChatCount === 0;
   // Rows only move when their order does; framer measures them only then.
-  const rowOrder = useMemo(() => groups.flatMap((g) => g.rows.map((r) => r.item.key)).join("|"), [groups]);
+  const rowOrder = useMemo(
+    () =>
+      [
+        ...groups.flatMap((g) => g.rows.map((r) => r.item.key)),
+        ...archivedRows.map((r) => r.item.key),
+      ].join("|"),
+    [groups, archivedRows],
+  );
 
   // Real DOM focus follows the keyboard cursor, so the browser's own
   // focus ring never lingers on the last clicked row — unless the user
@@ -168,6 +347,15 @@ export function ControlPanelList({
   const closeSearch = () => {
     onQueryChange("");
     setSearchOpen(false);
+  };
+
+  const rowProps = {
+    expandedKeys,
+    onToggleExpanded,
+    cursorKey,
+    focusedKey,
+    onOpen,
+    rowOrder,
   };
 
   return (
@@ -220,139 +408,92 @@ export function ControlPanelList({
 
       <div className="relative min-h-0 flex-1">
         <motion.div layoutScroll className="h-full overflow-y-auto pb-8">
-          {loading && totalCount === 0 ? (
+          {loading && bothEmpty ? (
             <div className="flex items-center justify-center py-10 text-muted-foreground">
               <Loader2 className="h-4 w-4 animate-spin" />
             </div>
-          ) : !firstVisible ? (
+          ) : bothEmpty ? (
             <p className="px-4 py-8 text-center text-sm text-muted-foreground">
-              {totalCount === 0
-                ? `Nothing yet. Start a ${jamieName} chat and it lands here.`
-                : "No chats or plans match."}
+              {`Nothing yet. Start a ${jamieName} chat and it lands here.`}
             </p>
           ) : (
-            groups.flatMap((group) => [
-              <h3
-                key={`day:${group.key}`}
-                className="sticky top-0 z-10 border-b bg-background/95 px-3 pb-1 pt-2.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground backdrop-blur"
-              >
-                {group.label}
-              </h3>,
-              ...group.rows.map(({ item, depth, parentKey, childCount, latestAt }, i) => {
-                if (parentKey && !expandedKeys.has(parentKey)) return null;
-                const { Icon, className: kindClass } = KIND[item.kind];
-                const focused = item.key === focusedKey;
-                const cursor = item.key === cursorKey;
-                const collapsible = (childCount ?? 0) > 0;
-                const collapsed = collapsible && !expandedKeys.has(item.key);
-                const lastChild = group.rows[i + 1]?.parentKey !== parentKey;
-                const meta = [item.workspaceName, item.sinceYou].filter(Boolean).join(" · ");
-                return (
-                  <motion.div
-                    key={item.key}
-                    layout="position"
-                    layoutDependency={rowOrder}
-                    transition={ROW_MOVE}
-                    role="button"
-                    tabIndex={0}
-                    data-panel-key={item.key}
-                    onClick={() => onOpen(item)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" || e.key === " ") {
-                        e.preventDefault();
-                        onOpen(item);
-                      }
-                    }}
-                    aria-current={focused ? "true" : undefined}
-                    style={{ paddingLeft: depth > 0 ? PLAN_ROW_PAD : CHAT_ROW_PAD }}
-                    className={cn(
-                      "relative flex w-full cursor-pointer items-start gap-2 border-b py-2.5 pr-3 text-left outline-none transition-colors",
-                      focused ? "bg-muted" : "hover:bg-muted/60",
-                      cursor && "ring-1 ring-inset ring-ring",
-                    )}
+            <>
+              {!firstVisible && totalCount > 0 ? (
+                <p className="px-4 py-8 text-center text-sm text-muted-foreground">No chats or plans match.</p>
+              ) : firstVisible ? (
+                groups.flatMap((group) => [
+                  <h3
+                    key={`day:${group.key}`}
+                    className="sticky top-0 z-10 border-b bg-background/95 px-3 pb-1 pt-2.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground backdrop-blur"
                   >
-                    {/* The tree: a stem from an open chat's icon, a guide down its plans, a tick into each. */}
-                    {collapsible && !collapsed && (
-                      <span
-                        aria-hidden
-                        className="absolute bottom-0 w-px bg-border"
-                        style={{ left: GUIDE_LEFT, top: STEM_TOP }}
+                    {group.label}
+                  </h3>,
+                  ...group.rows.map(({ item, depth, parentKey, childCount, latestAt }, i) => (
+                    <PanelRow
+                      key={item.key}
+                      item={item}
+                      depth={depth}
+                      parentKey={parentKey}
+                      childCount={childCount}
+                      latestAt={latestAt}
+                      lastChild={group.rows[i + 1]?.parentKey !== parentKey}
+                      action={{ label: "Archive", Icon: Archive, onClick: onArchive }}
+                      {...rowProps}
+                    />
+                  )),
+                ])
+              ) : null}
+              {firstVisible && remaining > 0 && (
+                <button
+                  type="button"
+                  onClick={onShowMore}
+                  className="w-full px-3 py-2.5 text-center text-xs text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground"
+                >
+                  Show {Math.min(remaining, CONTROL_PANEL_PAGE)} more
+                </button>
+              )}
+
+              <section data-testid="control-panel-archive">
+                <button
+                  type="button"
+                  aria-expanded={archivedExpanded}
+                  aria-label={archivedExpanded ? "Hide archive" : "Show archive"}
+                  onClick={onToggleArchived}
+                  className="sticky top-0 z-10 flex w-full items-center gap-2 border-y bg-background/95 px-3 py-2 text-left text-[10px] font-medium uppercase tracking-wide text-muted-foreground backdrop-blur hover:text-foreground"
+                >
+                  {archivedExpanded ? (
+                    <ChevronDown className="h-3.5 w-3.5" />
+                  ) : (
+                    <ChevronRight className="h-3.5 w-3.5" />
+                  )}
+                  Archive
+                  {archivedChatCount > 0 && (
+                    <span className="tabular-nums text-muted-foreground/80">{archivedChatCount}</span>
+                  )}
+                </button>
+                {archivedExpanded &&
+                  (archivedChatCount === 0 ? (
+                    <p className="px-4 py-6 text-center text-sm text-muted-foreground">No archived chats</p>
+                  ) : (
+                    archivedRows.map(({ item, depth, parentKey, childCount, latestAt }, i) => (
+                      <PanelRow
+                        key={item.key}
+                        item={item}
+                        depth={depth}
+                        parentKey={parentKey}
+                        childCount={childCount}
+                        latestAt={latestAt}
+                        lastChild={archivedRows[i + 1]?.parentKey !== parentKey}
+                        action={{ label: "Restore", Icon: ArchiveRestore, onClick: onRestore }}
+                        {...rowProps}
                       />
-                    )}
-                    {depth > 0 && (
-                      <>
-                        <span
-                          aria-hidden
-                          className="absolute top-0 w-px bg-border"
-                          style={{ left: GUIDE_LEFT, ...(lastChild ? { height: ICON_CENTER_TOP } : { bottom: 0 }) }}
-                        />
-                        <span
-                          aria-hidden
-                          className="absolute h-px bg-border"
-                          style={{ left: GUIDE_LEFT, width: PLAN_ROW_PAD - GUIDE_LEFT - 6, top: ICON_CENTER_TOP }}
-                        />
-                      </>
-                    )}
-                    {collapsible ? (
-                      <button
-                        type="button"
-                        aria-label={collapsed ? "Show plans" : "Hide plans"}
-                        aria-expanded={!collapsed}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onToggleExpanded(item.key);
-                        }}
-                        className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground"
-                      >
-                        {collapsed ? <ChevronRight className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
-                      </button>
-                    ) : (
-                      depth === 0 && <span className="w-4 shrink-0" aria-hidden />
-                    )}
-                    {/* Every chat row reserves the same slot for the count, so titles line up. */}
-                    {depth === 0 && (
-                      <span
-                        className="mt-0.5 w-3 shrink-0 text-[10px] tabular-nums leading-4 text-muted-foreground"
-                        title={collapsed ? `${childCount} plans` : undefined}
-                      >
-                        {collapsed ? childCount : ""}
-                      </span>
-                    )}
-                    <Icon className={cn("mt-0.5 shrink-0", depth > 0 ? "h-3.5 w-3.5" : "h-4 w-4", kindClass)} />
-                    <div className="min-w-0 flex-1">
-                      <div
-                        className={cn(
-                          "truncate",
-                          depth > 0 ? "text-[13px]" : "text-sm",
-                          (item.unread || focused) && "font-semibold",
-                        )}
-                      >
-                        {item.title}
-                      </div>
-                      <div className="truncate text-xs text-muted-foreground">{meta}</div>
-                    </div>
-                    <div className="flex w-14 shrink-0 flex-col items-end gap-1.5">
-                      <span className="text-xs tabular-nums text-muted-foreground">
-                        {formatAge(Date.now() - Date.parse(latestAt))}
-                      </span>
-                      <StateDot state={item.state} />
-                    </div>
-                  </motion.div>
-                );
-              }),
-            ])
-          )}
-          {firstVisible && remaining > 0 && (
-            <button
-              type="button"
-              onClick={onShowMore}
-              className="w-full px-3 py-2.5 text-center text-xs text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground"
-            >
-              Show {Math.min(remaining, CONTROL_PANEL_PAGE)} more
-            </button>
+                    ))
+                  ))}
+              </section>
+            </>
           )}
         </motion.div>
-        {firstVisible && (
+        {(firstVisible || archivedChatCount > 0) && (
           <div
             aria-hidden
             className="pointer-events-none absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-background to-transparent"
