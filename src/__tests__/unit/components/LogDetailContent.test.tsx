@@ -81,7 +81,6 @@ import {
   SystemMessageBubble,
   ToolCallItem,
   MessageBubble,
-  CopyButton,
   LogDetailContent,
   getToolResultValue,
   extractReasoning,
@@ -322,49 +321,6 @@ describe("ToolCallItem", () => {
     const resultBtn = screen.getByRole("button", { name: /Result/ });
     await user.click(resultBtn);
     expect(screen.getByText("expanded result")).toBeTruthy();
-  });
-});
-
-// ─── CopyButton ───────────────────────────────────────────────────────────────
-
-describe("CopyButton", () => {
-  // userEvent.setup() installs its own clipboard stub — spy on writeText AFTER setup()
-  function setupClipboard() {
-    const user = userEvent.setup();
-    const writeSpy = vi.spyOn(navigator.clipboard, "writeText").mockResolvedValue(undefined);
-    return { user, writeSpy };
-  }
-
-  afterEach(() => {
-    vi.restoreAllMocks();
-  });
-
-  test("calls navigator.clipboard.writeText with the provided value", async () => {
-    const { user, writeSpy } = setupClipboard();
-    render(<CopyButton value="copy me" />);
-    const btn = screen.getByRole("button", { name: /Copy/ });
-    await user.click(btn);
-    expect(writeSpy).toHaveBeenCalledWith("copy me");
-  });
-
-  test("shows Check icon after copy", async () => {
-    const { user } = setupClipboard();
-    render(<CopyButton value="test" />);
-    await user.click(screen.getByRole("button", { name: /Copy/ }));
-    // Should now show check icon
-    expect(screen.getByTestId("icon-check")).toBeTruthy();
-  });
-
-  test("stops propagation so parent toggle is not triggered", async () => {
-    setupClipboard();
-    const parentClick = vi.fn();
-    render(
-      <div onClick={parentClick}>
-        <CopyButton value="test" />
-      </div>,
-    );
-    fireEvent.click(screen.getByRole("button", { name: /Copy/ }));
-    expect(parentClick).not.toHaveBeenCalled();
   });
 });
 

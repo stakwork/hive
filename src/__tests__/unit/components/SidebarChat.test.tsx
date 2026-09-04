@@ -10,6 +10,7 @@
 import React from "react";
 import { describe, it, expect, vi, beforeEach, afterEach, beforeAll } from "vitest";
 import { render, screen, act, fireEvent } from "@testing-library/react";
+import { jamieName } from "@/lib/constants/jamie";
 
 // jsdom does not implement scrollIntoView — install a no-op globally so
 // the SidebarChat scroll effect never throws. Scroll behaviour tests
@@ -770,7 +771,7 @@ describe("SidebarChat — DailyRecapCard placement", () => {
     const { container } = render(<SidebarChat githubLogin="test-org" />);
 
     const card = container.querySelector("[data-testid='daily-recap-card']");
-    const placeholder = screen.getByText("Ask the agent about anything on this canvas.");
+    const placeholder = screen.getByText(`Message ${jamieName}`);
 
     expect(card).not.toBeNull();
     // card should come before placeholder in the DOM
