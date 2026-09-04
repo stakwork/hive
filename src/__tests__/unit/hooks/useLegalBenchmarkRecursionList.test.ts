@@ -57,8 +57,7 @@ describe("useLegalBenchmarkRecursionList", () => {
   it("maps reason field from API response when present", async () => {
     const dataWithReason = [
       { ref_id: "ref-1", id: "tax/task-1", name: "Tax Task 1", reason: "active" },
-      { ref_id: "ref-2", id: "contracts/task-2", name: "Contracts Task 2", reason: "wasEnabled" },
-      { ref_id: "ref-3", id: "antitrust/task-3", name: "Antitrust Task 3", reason: "multipleRuns" },
+      { ref_id: "ref-2", id: "contracts/task-2", name: "Contracts Task 2" },
     ];
     mockFetchSuccess(dataWithReason);
 
@@ -66,8 +65,7 @@ describe("useLegalBenchmarkRecursionList", () => {
     await waitFor(() => expect(result.current.isLoading).toBe(false));
 
     expect(result.current.entries[0].reason).toBe("active");
-    expect(result.current.entries[1].reason).toBe("wasEnabled");
-    expect(result.current.entries[2].reason).toBe("multipleRuns");
+    expect(result.current.entries[1].reason).toBeUndefined();
   });
 
   it("maps dateAddedToGraph from the API response, defaulting to null", async () => {

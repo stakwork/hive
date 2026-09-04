@@ -14,7 +14,7 @@
  *      error). The summary endpoint fans out ~90 Jarvis calls per request, so
  *      fail-open during Redis unavailability recreates the stampede server-side.
  *   4. getWorkspaceSwarmAccess — validates workspace membership + swarm.
- *      workspaceId forwarded to listRecursionEvalSets to preserve Source 3.
+ *      workspaceId used for runAt SQL enrichment (not as a list selector).
  *
  * Gated to the `openlaw` workspace only.
  */
@@ -67,7 +67,6 @@ function buildMockSummaryData() {
       taskSlug: "mock-task-2",
       refId: "mock-evalset-ref-2",
       name: "Mock Task 2",
-      reason: "wasEnabled",
       recursion: false,
       rubricCount: 5,
       contestedCount: 0,
@@ -126,8 +125,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     }
 
     // Step 4: Workspace swarm access (validates workspace membership + swarm).
-    // workspaceId forwarded to listRecursionEvalSets so Source 3 (multi-run
-    // history) is included — omitting it silently disables Source 3 without error.
+    // workspaceId is used for runAt SQL enrichment, not as a list selector.
     const swarmResult = await getWorkspaceSwarmAccess(slug, userId);
     if (!swarmResult.success) {
       return handleSwarmAccessError(swarmResult.error);
@@ -151,10 +149,8 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       });
     }
 
-    // Fetch all enrolled EvalSets (listRecursionEvalSets already deduplicates
-    // across three sources and returns each entry's ref_id — no per-card slug
-    // resolution needed).
-    const listResult = await listRecursionEvalSets(config, workspaceId);
+    // Fetch EvalSets where recursion is set (true or false).
+    const listResult = await listRecursionEvalSets(config, "list");
 
     if (!listResult.ok) {
       return NextResponse.json(
@@ -232,7 +228,6 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       );
     }
 
-    const enrollmentPartial = listResult.partial === true;
     const summaryPartial = data.some((e) => e.isDefault);
 
     logger.info(
@@ -240,7 +235,6 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       "legal",
       {
         summaryCount: data.length,
-        enrollmentPartial,
         summaryPartial,
       },
     );
@@ -248,7 +242,6 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     return NextResponse.json({
       success: true,
       data,
-      ...(enrollmentPartial ? { enrollmentPartial: true } : {}),
       ...(summaryPartial ? { summaryPartial: true } : {}),
     });
   } catch (error) {

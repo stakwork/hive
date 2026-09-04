@@ -7,9 +7,9 @@
  *   - Rate limit fires before getWorkspaceSwarmAccess (verify call order)
  *   - Rate limit key includes userId
  *   - 503 + Retry-After: 60 on Redis error (fail-closed — not 200)
- *   - workspaceId forwarded to listRecursionEvalSets
+ *   - listRecursionEvalSets called with "list" (workspaceId used for runAt enrichment only)
  *   - USE_MOCKS fixture response
- *   - enrollmentPartial and summaryPartial independently propagated
+ *   - summaryPartial independently propagated
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { NextRequest } from "next/server";
@@ -97,7 +97,6 @@ beforeEach(() => {
   mockListRecursionEvalSets.mockResolvedValue({
     ok: true,
     nodes: [],
-    partial: false,
   });
   mockFetchRecursionTaskSummary.mockResolvedValue([]);
 });
@@ -186,9 +185,9 @@ describe("GET /api/workspaces/[slug]/legal/benchmarks/recursion/summary", () => 
     expect(res.status).toBe(503);
   });
 
-  // ── workspaceId forwarded ───────────────────────────────────────────────
+  // ── list mode ───────────────────────────────────────────────────────────
 
-  it("forwards workspaceId from swarm access to listRecursionEvalSets", async () => {
+  it("calls listRecursionEvalSets with list mode, not workspaceId", async () => {
     mockGetWorkspaceSwarmAccess.mockResolvedValue({
       success: true,
       data: { ...SWARM_DATA, workspaceId: "specific-workspace-id" },
@@ -198,26 +197,15 @@ describe("GET /api/workspaces/[slug]/legal/benchmarks/recursion/summary", () => 
 
     expect(mockListRecursionEvalSets).toHaveBeenCalledWith(
       expect.anything(),
+      "list",
+    );
+    expect(mockListRecursionEvalSets).not.toHaveBeenCalledWith(
+      expect.anything(),
       "specific-workspace-id",
     );
   });
 
   // ── Partial flags ───────────────────────────────────────────────────────
-
-  it("includes enrollmentPartial: true when listRecursionEvalSets returns partial", async () => {
-    mockListRecursionEvalSets.mockResolvedValue({
-      ok: true,
-      nodes: [],
-      partial: true,
-    });
-
-    const res = await GET(makeRequest(), makeParams("openlaw"));
-    const body = await res.json();
-
-    expect(res.status).toBe(200);
-    expect(body.enrollmentPartial).toBe(true);
-    expect(body.summaryPartial).toBeUndefined(); // no tasks → no summary failures
-  });
 
   it("includes summaryPartial: true when some tasks return isDefault: true", async () => {
     const summaryData = [
@@ -260,47 +248,6 @@ describe("GET /api/workspaces/[slug]/legal/benchmarks/recursion/summary", () => 
     expect(body.enrollmentPartial).toBeUndefined();
   });
 
-  it("enrollmentPartial and summaryPartial can both be present independently", async () => {
-    mockListRecursionEvalSets.mockResolvedValue({
-      ok: true,
-      nodes: [{ ref_id: "ref-1", id: "task-1", name: "Task 1" }],
-      partial: true, // enrollment partial
-    });
-    mockFetchRecursionTaskSummary.mockResolvedValue([
-      {
-        taskSlug: "task-1",
-        refId: "ref-1",
-        name: "Task 1",
-        reason: "active",
-        recursion: true,
-        rubricCount: 0,
-        contestedCount: 0,
-        latestRun: null,
-        fixChainDepth: 0,
-        isDefault: true, // summary partial
-      },
-    ]);
-
-    const res = await GET(makeRequest(), makeParams("openlaw"));
-    const body = await res.json();
-
-    expect(body.enrollmentPartial).toBe(true);
-    expect(body.summaryPartial).toBe(true);
-  });
-
-  it("omits enrollmentPartial when enrollment is complete", async () => {
-    mockListRecursionEvalSets.mockResolvedValue({
-      ok: true,
-      nodes: [],
-      partial: false,
-    });
-
-    const res = await GET(makeRequest(), makeParams("openlaw"));
-    const body = await res.json();
-
-    expect(body.enrollmentPartial).toBeUndefined();
-  });
-
   it("omits summaryPartial when all tasks succeeded", async () => {
     mockListRecursionEvalSets.mockResolvedValue({
       ok: true,
@@ -340,6 +287,8 @@ describe("GET /api/workspaces/[slug]/legal/benchmarks/recursion/summary", () => 
     expect(body.success).toBe(true);
     expect(Array.isArray(body.data)).toBe(true);
     expect(body.data.length).toBeGreaterThan(0);
+    expect(body.data[1].recursion).toBe(false);
+    expect(body.data[1].reason).toBeUndefined();
     // fetchRecursionTaskSummary must NOT be called for mock mode
     expect(mockFetchRecursionTaskSummary).not.toHaveBeenCalled();
   });
