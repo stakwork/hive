@@ -211,10 +211,10 @@ function TaskCard({ task, workspaceSlug }: TaskCardProps) {
             aria-label="Benchmark runner"
             data-testid={`wf-runner-toggle-${task.slug}`}
           >
-            <ToggleGroupItem value="stakwork" className="h-8 px-2.5 text-xs" aria-label="Run on Stakwork">
+            <ToggleGroupItem value="stakwork" className="h-8 px-2.5 text-xs data-[state=on]:bg-primary data-[state=on]:text-primary-foreground data-[state=on]:border-primary" aria-label="Run on Stakwork">
               Stakwork
             </ToggleGroupItem>
-            <ToggleGroupItem value="strut" className="h-8 px-2.5 text-xs" aria-label="Run on strut">
+            <ToggleGroupItem value="strut" className="h-8 px-2.5 text-xs data-[state=on]:bg-primary data-[state=on]:text-primary-foreground data-[state=on]:border-primary" aria-label="Run on strut">
               strut
             </ToggleGroupItem>
           </ToggleGroup>
