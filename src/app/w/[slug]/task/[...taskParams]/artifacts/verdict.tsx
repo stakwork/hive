@@ -55,6 +55,39 @@ export function isAuditVerdict(content: unknown): content is VerifyContent {
   );
 }
 
+export function VerdictPill({ artifact }: { artifact: Artifact }) {
+  const content = artifact.content as VerifyContent;
+  const [open, setOpen] = useState(false);
+  const outcome = OUTCOME[content.overall] ?? OUTCOME.unknown;
+  const Icon = outcome.icon;
+  const evidenceCount = content.evidence?.length ?? 0;
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className={`inline-flex items-center gap-1.5 rounded-full border ${outcome.border} bg-card px-2.5 py-0.5 text-[11px] font-medium hover:bg-muted/60 transition-colors`}
+        title="View audit details"
+      >
+        <Icon className={`size-3.5 ${outcome.color}`} />
+        <span className={outcome.color}>{outcome.label}</span>
+        {evidenceCount > 0 && <span className="text-muted-foreground">· {evidenceCount} evidence</span>}
+      </button>
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="max-h-[80vh] max-w-2xl overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Icon className={`size-5 ${outcome.color}`} />
+              Audit — {outcome.label}
+            </DialogTitle>
+          </DialogHeader>
+          <VerdictArtifact artifact={artifact} />
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
+
 export function VerdictArtifact({ artifact }: { artifact: Artifact }) {
   const content = artifact.content as VerifyContent;
   const [claimsOpen, setClaimsOpen] = useState(false);
