@@ -75,6 +75,10 @@ export interface BenchmarkRunListRow {
   generateRunReport?: boolean;
   /** This run has a report bundle. Derived server-side from reportUrl. */
   hasReport?: boolean;
+  /** Where the run executed. Absent = Stakwork; "strut" = the swarm's strut lab. */
+  runner?: "strut";
+  /** strut lab UI link (runner === "strut" only). */
+  strutRunUrl?: string;
 }
 
 interface UseLegalBenchmarkRunListResult {

@@ -24,6 +24,12 @@ export interface BenchmarkRunResult {
   evalOutputRef?: string;
   /** Project ID returned by Stakwork on runner dispatch */
   runnerProjectId?: number;
+  /** Where the run executed. Absent = Stakwork; "strut" = the swarm's strut lab (wfbench-run). */
+  runner?: "strut";
+  /** strut lab run id (the run's identity when runner === "strut"; there is no Stakwork project). */
+  strutRunId?: string;
+  /** strut lab UI link for the run — rendered in place of the Stakwork admin link. */
+  strutRunUrl?: string;
   /** S3 URL of the runner's output document */
   runnerOutputUrl?: string;
   /** Plain-text runner output */
