@@ -168,8 +168,7 @@ export function useControlPanel(githubLogin: string, enabled: boolean): ControlP
         changeFocus({ kind: "plan", id: item.id });
         return;
       }
-      // The chat on stage needs no fetch — re-opening it would swap in a
-      // new slot and drop a reply in flight.
+      // The chat on stage is already open — nothing to fetch or switch.
       if (item.id === activeServerConversationId || item.id === activeLocalId) {
         changeFocus({ kind: "chat" });
         return;

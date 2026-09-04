@@ -10,6 +10,13 @@
  * never re-save what the server already holds
  * (`ephemeralSeedCount = messages.length`).
  *
+ * A conversation this tab already holds is switched to, never fetched
+ * into a second slot: its reply may still be streaming into the slot it
+ * has, and the live-sync skips the server rows of turns this tab authored
+ * on the assumption they are on screen — a fresh copy would show
+ * "No reply yet" for good. The live-sync catches the slot up on
+ * activation.
+ *
  * Returns `true` when the conversation is now active, `false` on any
  * failure (callers leave their own UI state untouched in that case).
  */
@@ -85,6 +92,34 @@ function fallbackContext(githubLogin: string, workspaceSlugs: string[] = []): Co
   };
 }
 
+/** Mirror `conversationId` into `?chat=` (no-op when it is already there). */
+function setChatParam(conversationId: string): void {
+  const params = new URLSearchParams(window.location.search);
+  if (params.get("chat") === conversationId) return;
+  params.set("chat", conversationId);
+  window.history.replaceState(null, "", `${window.location.pathname}?${params.toString()}`);
+}
+
+function markSeen(githubLogin: string, conversationId: string): void {
+  void fetch(`/api/orgs/${githubLogin}/chat/conversations/${conversationId}/seen`, { method: "POST" }).catch(() => {});
+}
+
+/**
+ * The slot already holding `conversationId`, if any. Should a tab hold
+ * two (opens from before slots were reused), the fuller one wins — it is
+ * the one with the reply in flight.
+ */
+function openSlotFor(conversationId: string): string | null {
+  const { conversations } = useCanvasChatStore.getState();
+  let best: { id: string; size: number } | null = null;
+  for (const conv of Object.values(conversations)) {
+    if (conv.serverConversationId !== conversationId) continue;
+    const size = conv.messages?.length ?? 0;
+    if (!best || size >= best.size) best = { id: conv.id, size };
+  }
+  return best?.id ?? null;
+}
+
 function dropChatParam(): void {
   if (typeof window === "undefined") return;
   const params = new URLSearchParams(window.location.search);
@@ -99,6 +134,15 @@ export async function openOrgConversation(
   conversationId: string,
   opts: OpenOrgConversationOptions = {},
 ): Promise<boolean> {
+  const held = openSlotFor(conversationId);
+  if (held) {
+    const store = useCanvasChatStore.getState();
+    if (store.activeConversationId !== held) store.setActiveConversation(held);
+    if (opts.syncUrl && typeof window !== "undefined") setChatParam(conversationId);
+    if (opts.markSeen) markSeen(githubLogin, conversationId);
+    return true;
+  }
+
   try {
     const res = await fetch(`/api/orgs/${githubLogin}/chat/conversations/${conversationId}`);
     if (!res.ok) return false;
@@ -120,20 +164,10 @@ export async function openOrgConversation(
     if (opts.syncUrl && typeof window !== "undefined") {
       // The isActive guard handles two rapid opens resolving out of order.
       const isActive = useCanvasChatStore.getState().activeConversationId === newId;
-      if (isActive) {
-        const params = new URLSearchParams(window.location.search);
-        if (params.get("chat") !== conversationId) {
-          params.set("chat", conversationId);
-          window.history.replaceState(null, "", `${window.location.pathname}?${params.toString()}`);
-        }
-      }
+      if (isActive) setChatParam(conversationId);
     }
 
-    if (opts.markSeen) {
-      void fetch(`/api/orgs/${githubLogin}/chat/conversations/${conversationId}/seen`, { method: "POST" }).catch(
-        () => {},
-      );
-    }
+    if (opts.markSeen) markSeen(githubLogin, conversationId);
 
     return true;
   } catch {
