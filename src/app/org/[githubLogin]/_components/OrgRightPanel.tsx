@@ -15,13 +15,7 @@ import type { ConnectionData } from "../connections/types";
 import type { InternalEdge } from "../connections/OrgCanvasBackground";
 import { useAutomationInbox, type InboxRun } from "../_state/useAutomationInbox";
 import { formatRelativeTime } from "./CanvasHistoryPopover";
-import {
-  ControlPanelBriefing,
-  PlanStage,
-  focusForAttentionItem,
-  taskNodeFor,
-  type ControlPanelStageProps,
-} from "./control-panel/ControlPanelStage";
+import { PlanStage, taskNodeFor, type ControlPanelStageProps } from "./control-panel/ControlPanelStage";
 import type { ControlPanelFocus } from "./control-panel/types";
 import { ActionTip } from "./ActionTip";
 
@@ -101,7 +95,7 @@ interface OrgRightPanelProps {
   selectedNodesInternalEdges: InternalEdge[];
   /**
    * Control panel mode: this panel is the stage. The tab strip gives way
-   * to the briefing, and what shows follows the control panel's focus —
+   * to the stage's tabs, and what shows follows the control panel's focus —
    * the Jamie chat (the same mounted `<SidebarChat>`, so switching views
    * never remounts it) or a plan/task through `NodeDetail`, as the
    * Details tab renders a canvas node.
@@ -123,7 +117,7 @@ interface OrgRightPanelProps {
  * the chat itself renders headerless) and the canvas ⇄ control panel toggle on
  * the right. In control panel mode (`controlPanel` set) the same panel is the
  * stage: Chat and Details follow, and set, what is on stage; Connections and
- * the inbox badge step aside; the briefing sits under the bar; a plan is the
+ * the inbox badge step aside; a plan is the
  * real plan page.
  *
  * **All three tabs stay mounted.** Inactive tabs are hidden via the
@@ -323,13 +317,6 @@ export function OrgRightPanel({
           </ActionTip>
         </div>
       </div>
-      {stage && (
-        <ControlPanelBriefing
-          githubLogin={githubLogin}
-          onOpen={(item) => stage.onFocusChange(focusForAttentionItem(item))}
-          className="mx-3 mt-3 shrink-0"
-        />
-      )}
 
       <div className="flex-1 min-h-0 relative">
         {/* Chat tab — always mounted, hidden when inactive. */}
