@@ -812,6 +812,7 @@ export async function POST(request: NextRequest) {
               rows,
               idPrefix: assistantPrefix,
               reason: "user-turn",
+              turnId: turnIdStr ?? undefined,
             });
           } catch (err) {
             console.error("❌ [quick-ask] Turn persist failed:", err);
@@ -831,6 +832,7 @@ export async function POST(request: NextRequest) {
               rows: [errorRow],
               idPrefix: assistantPrefix,
               reason: "user-turn",
+              turnId: turnIdStr ?? undefined,
             }).catch(() => {});
           }
         });
