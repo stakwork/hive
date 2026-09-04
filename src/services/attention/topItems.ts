@@ -105,7 +105,7 @@ const READY_REVIEW_STATUSES: WorkflowStatus[] = ["COMPLETED"];
  * workspace shouldn't surface attention items in the intro card).
  * `null` / `undefined` means "no slug filter."
  */
-async function getAccessibleWorkspaces(
+export async function getAccessibleWorkspaces(
   githubLogin: string,
   userId: string,
   allowedSlugs?: string[] | null,
@@ -117,10 +117,7 @@ async function getAccessibleWorkspaces(
     where: {
       deleted: false,
       sourceControlOrg: { githubLogin },
-      OR: [
-        { ownerId: userId },
-        { members: { some: { userId, leftAt: null } } },
-      ],
+      OR: [{ ownerId: userId }, { members: { some: { userId, leftAt: null } } }],
       ...(allowedSlugs ? { slug: { in: allowedSlugs } } : {}),
     },
     select: { id: true, slug: true, name: true },
@@ -132,10 +129,7 @@ async function getAccessibleWorkspaces(
  * Collect halted/failed/errored items owned by the user across
  * `workspaces`. Returns one `AttentionItem` per row.
  */
-async function fetchHalted(
-  workspaces: Workspace[],
-  userId: string,
-): Promise<AttentionItem[]> {
+async function fetchHalted(workspaces: Workspace[], userId: string): Promise<AttentionItem[]> {
   if (workspaces.length === 0) return [];
   const wsIds = workspaces.map((w) => w.id);
   const wsById = new Map(workspaces.map((w) => [w.id, w]));
@@ -251,10 +245,7 @@ async function fetchHalted(
  * `services/roadmap/features.ts:92`. Scoped per workspace so we can
  * tag each row with the workspace it belongs to.
  */
-async function fetchAwaitingReply(
-  workspaces: Workspace[],
-  userId: string,
-): Promise<AttentionItem[]> {
+async function fetchAwaitingReply(workspaces: Workspace[], userId: string): Promise<AttentionItem[]> {
   if (workspaces.length === 0) return [];
   const wsIds = workspaces.map((w) => w.id);
   const wsById = new Map(workspaces.map((w) => [w.id, w]));
@@ -323,10 +314,7 @@ async function fetchAwaitingReply(
  * IN_PROGRESS workflow status to mirror
  * `tasks/notifications-count/route.ts:60`.
  */
-async function fetchPlanQuestions(
-  workspaces: Workspace[],
-  userId: string,
-): Promise<AttentionItem[]> {
+async function fetchPlanQuestions(workspaces: Workspace[], userId: string): Promise<AttentionItem[]> {
   if (workspaces.length === 0) return [];
   const wsIds = workspaces.map((w) => w.id);
   const wsById = new Map(workspaces.map((w) => [w.id, w]));
@@ -337,10 +325,7 @@ async function fetchPlanQuestions(
       deleted: false,
       archived: false,
       workflowStatus: { in: PLAN_QUESTION_STATUSES },
-      OR: [
-        { createdById: userId },
-        { assigneeId: userId },
-      ],
+      OR: [{ createdById: userId }, { assigneeId: userId }],
     },
     select: {
       id: true,
@@ -405,10 +390,7 @@ async function fetchPlanQuestions(
  * reject — `workflowStatus = COMPLETED`. Same shape as `fetchHalted`
  * but a different status filter and type tag.
  */
-async function fetchReadyToReview(
-  workspaces: Workspace[],
-  userId: string,
-): Promise<AttentionItem[]> {
+async function fetchReadyToReview(workspaces: Workspace[], userId: string): Promise<AttentionItem[]> {
   if (workspaces.length === 0) return [];
   const wsIds = workspaces.map((w) => w.id);
   const wsById = new Map(workspaces.map((w) => [w.id, w]));
@@ -602,11 +584,7 @@ export async function getTopAttentionItems(args: {
 }): Promise<{ items: AttentionItem[]; total: number }> {
   const { githubLogin, userId, limit = 3, allowedWorkspaceSlugs } = args;
 
-  const workspaces = await getAccessibleWorkspaces(
-    githubLogin,
-    userId,
-    allowedWorkspaceSlugs,
-  );
+  const workspaces = await getAccessibleWorkspaces(githubLogin, userId, allowedWorkspaceSlugs);
   if (workspaces.length === 0) return { items: [], total: 0 };
 
   const results = await Promise.allSettled([

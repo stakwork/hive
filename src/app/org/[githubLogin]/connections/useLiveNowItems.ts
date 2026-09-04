@@ -86,6 +86,7 @@
  * and an empty `canvasRef` (focus then degrades to the current canvas).
  */
 import { useMemo } from "react";
+import { formatRunningLabel } from "@/lib/canvas/feature-live-state";
 import type { AttentionItem } from "@/services/attention/topItems";
 import { ATTENTION_TYPE_META, ATTENTION_TYPE_ORDER } from "@/services/attention/typeMeta";
 import { mostSpecificRef } from "@/lib/canvas/feature-projection";
@@ -203,18 +204,7 @@ export function isRunningOverlayActive(overlay: FeatureLiveOverlay | undefined):
   return Boolean(overlay && (overlay.plannerRunning || overlay.agentsRunningCount > 0));
 }
 
-/**
- * Label for a live overlay: "Planner working", "N agents running"
- * (pluralized), or both joined when a planner runs alongside agents.
- */
-export function formatRunningLabel(running: LiveNowRunningState): string {
-  const parts: string[] = [];
-  if (running.plannerRunning) parts.push("Planner working");
-  if (running.agentsRunningCount > 0) {
-    parts.push(running.agentsRunningCount === 1 ? "1 agent running" : `${running.agentsRunningCount} agents running`);
-  }
-  return parts.join(" · ");
-}
+export { formatRunningLabel };
 
 /** Which labeled group a row belongs to ("Needs you" vs "Running"). */
 export function liveNowGroupOf(row: LiveNowRow): LiveNowGroup {

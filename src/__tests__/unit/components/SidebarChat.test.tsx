@@ -40,9 +40,7 @@ let mockStoreState = {
 };
 
 vi.mock("@/app/org/[githubLogin]/_state/canvasChatStore", () => ({
-  useCanvasChatStore: vi.fn((selector: (s: unknown) => unknown) =>
-    selector(mockStoreState),
-  ),
+  useCanvasChatStore: vi.fn((selector: (s: unknown) => unknown) => selector(mockStoreState)),
 }));
 
 vi.mock("@/app/org/[githubLogin]/_state/useSendCanvasChatMessage", () => ({
@@ -96,12 +94,8 @@ vi.mock("@/components/ui/button", () => ({
 
 vi.mock("@/components/ui/tooltip", () => ({
   Tooltip: ({ children }: { children: React.ReactNode }) => <>{children}</>,
-  TooltipContent: ({ children }: { children: React.ReactNode }) => (
-    <div>{children}</div>
-  ),
-  TooltipProvider: ({ children }: { children: React.ReactNode }) => (
-    <>{children}</>
-  ),
+  TooltipContent: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+  TooltipProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
   TooltipTrigger: ({
     children,
     asChild,
@@ -109,8 +103,7 @@ vi.mock("@/components/ui/tooltip", () => ({
   }: {
     children: React.ReactNode;
     asChild?: boolean;
-  } & React.HTMLAttributes<HTMLSpanElement>) =>
-    asChild ? <>{children}</> : <span {...rest}>{children}</span>,
+  } & React.HTMLAttributes<HTMLSpanElement>) => (asChild ? <>{children}</> : <span {...rest}>{children}</span>),
 }));
 
 vi.mock("@/hooks/useSpeechRecognition", () => ({
@@ -197,17 +190,20 @@ vi.mock("framer-motion", () => ({
       children?: React.ReactNode;
     }) => <span {...props}>{children}</span>,
   },
-  AnimatePresence: ({ children }: { children: React.ReactNode }) => (
-    <>{children}</>
-  ),
+  AnimatePresence: ({ children }: { children: React.ReactNode }) => <>{children}</>,
 }));
 
 // Lazy import AFTER all mocks are set up
 async function renderSidebarChat() {
-  const { SidebarChat } = await import(
-    "@/app/org/[githubLogin]/_components/SidebarChat"
-  );
+  const { SidebarChat } = await import("@/app/org/[githubLogin]/_components/SidebarChat");
   return render(<SidebarChat githubLogin="test-org" />);
+}
+
+// The header's actions (activity dot, Share, Fork, New chat) live in
+// `SidebarChatActions`, which the org page places in its own bar.
+async function renderSidebarChatActions() {
+  const { SidebarChatActions } = await import("@/app/org/[githubLogin]/_components/SidebarChat");
+  return render(<SidebarChatActions githubLogin="test-org" />);
 }
 
 describe("SidebarChat — activity indicator", () => {
@@ -218,16 +214,14 @@ describe("SidebarChat — activity indicator", () => {
 
   it("does not render pulsing dot when isActive is false", async () => {
     mockIsActive = false;
-    await renderSidebarChat();
+    await renderSidebarChatActions();
     expect(screen.queryByLabelText("agent active")).toBeNull();
-    expect(screen.getByText("Ask Jamie")).toBeDefined();
   });
 
   it("renders pulsing dot when isActive is true", async () => {
     mockIsActive = true;
-    await renderSidebarChat();
+    await renderSidebarChatActions();
     expect(screen.getByLabelText("agent active")).toBeDefined();
-    expect(screen.getByText("Ask Jamie")).toBeDefined();
   });
 });
 
@@ -247,7 +241,7 @@ const SECOND_MESSAGE = {
   createdAt: new Date().toISOString(),
 };
 
-function buildStoreState(messages: typeof SAMPLE_MESSAGE[]) {
+function buildStoreState(messages: (typeof SAMPLE_MESSAGE)[]) {
   return {
     activeConversationId: "conv-1",
     conversations: {
@@ -294,9 +288,7 @@ describe("SidebarChat — scroll behaviour", () => {
   });
 
   it("suppresses auto-scroll after user scrolls up", async () => {
-    const { SidebarChat } = await import(
-      "@/app/org/[githubLogin]/_components/SidebarChat"
-    );
+    const { SidebarChat } = await import("@/app/org/[githubLogin]/_components/SidebarChat");
     const { container, rerender } = render(<SidebarChat githubLogin="test-org" />);
 
     // Find the scroll container (the overflow-y-auto div)
@@ -311,8 +303,12 @@ describe("SidebarChat — scroll behaviour", () => {
     // The initial auto-scroll effect sets isProgrammaticScrollRef.current = true.
     // The first scroll event consumes that flag (early-return) so it doesn't
     // change userScrolledUp. The second event is the real "user scrolled up".
-    act(() => { fireEvent.scroll(scrollEl); }); // consume programmatic flag
-    act(() => { fireEvent.scroll(scrollEl); }); // actual user scroll-up
+    act(() => {
+      fireEvent.scroll(scrollEl);
+    }); // consume programmatic flag
+    act(() => {
+      fireEvent.scroll(scrollEl);
+    }); // actual user scroll-up
 
     // Clear call count after scroll-triggered re-render
     scrollIntoViewMock.mockClear();
@@ -338,8 +334,12 @@ describe("SidebarChat — scroll behaviour", () => {
     Object.defineProperty(scrollEl, "scrollTop", { value: 0, configurable: true, writable: true });
 
     // First event consumes the programmatic flag; second is the real user scroll-up
-    act(() => { fireEvent.scroll(scrollEl); });
-    act(() => { fireEvent.scroll(scrollEl); });
+    act(() => {
+      fireEvent.scroll(scrollEl);
+    });
+    act(() => {
+      fireEvent.scroll(scrollEl);
+    });
 
     // "Latest response…" button should appear
     expect(screen.getByText("Latest response…")).toBeDefined();
@@ -395,15 +395,17 @@ describe("SidebarChat — drag-guard scroll behaviour", () => {
   });
 
   it("click (mousedown → mouseup, no move) does NOT suppress auto-scroll", async () => {
-    const { SidebarChat } = await import(
-      "@/app/org/[githubLogin]/_components/SidebarChat"
-    );
+    const { SidebarChat } = await import("@/app/org/[githubLogin]/_components/SidebarChat");
     const { container, rerender } = render(<SidebarChat githubLogin="test-org" />);
     const scrollEl = container.querySelector(".overflow-y-auto") as HTMLElement;
 
     // Simulate a click: mousedown then mouseup with no mousemove
-    act(() => { fireEvent.mouseDown(scrollEl); });
-    act(() => { fireEvent.mouseUp(window); });
+    act(() => {
+      fireEvent.mouseDown(scrollEl);
+    });
+    act(() => {
+      fireEvent.mouseUp(window);
+    });
 
     scrollIntoViewMock.mockClear();
 
@@ -417,15 +419,17 @@ describe("SidebarChat — drag-guard scroll behaviour", () => {
   });
 
   it("drag (mousedown → mousemove) suppresses auto-scroll", async () => {
-    const { SidebarChat } = await import(
-      "@/app/org/[githubLogin]/_components/SidebarChat"
-    );
+    const { SidebarChat } = await import("@/app/org/[githubLogin]/_components/SidebarChat");
     const { container, rerender } = render(<SidebarChat githubLogin="test-org" />);
     const scrollEl = container.querySelector(".overflow-y-auto") as HTMLElement;
 
     // Simulate a drag: mousedown then mousemove
-    act(() => { fireEvent.mouseDown(scrollEl); });
-    act(() => { fireEvent.mouseMove(scrollEl); });
+    act(() => {
+      fireEvent.mouseDown(scrollEl);
+    });
+    act(() => {
+      fireEvent.mouseMove(scrollEl);
+    });
 
     scrollIntoViewMock.mockClear();
 
@@ -439,20 +443,24 @@ describe("SidebarChat — drag-guard scroll behaviour", () => {
   });
 
   it("resumes auto-scroll after mouseup on window ends the drag", async () => {
-    const { SidebarChat } = await import(
-      "@/app/org/[githubLogin]/_components/SidebarChat"
-    );
+    const { SidebarChat } = await import("@/app/org/[githubLogin]/_components/SidebarChat");
     const { container, rerender } = render(<SidebarChat githubLogin="test-org" />);
     const scrollEl = container.querySelector(".overflow-y-auto") as HTMLElement;
 
     // Start a drag
-    act(() => { fireEvent.mouseDown(scrollEl); });
-    act(() => { fireEvent.mouseMove(scrollEl); });
+    act(() => {
+      fireEvent.mouseDown(scrollEl);
+    });
+    act(() => {
+      fireEvent.mouseMove(scrollEl);
+    });
 
     scrollIntoViewMock.mockClear();
 
     // Release mouse on window
-    act(() => { fireEvent.mouseUp(window); });
+    act(() => {
+      fireEvent.mouseUp(window);
+    });
 
     // Trigger re-render — drag ended, scroll should resume
     act(() => {
@@ -464,20 +472,24 @@ describe("SidebarChat — drag-guard scroll behaviour", () => {
   });
 
   it("blur on window resets drag flag and resumes auto-scroll", async () => {
-    const { SidebarChat } = await import(
-      "@/app/org/[githubLogin]/_components/SidebarChat"
-    );
+    const { SidebarChat } = await import("@/app/org/[githubLogin]/_components/SidebarChat");
     const { container, rerender } = render(<SidebarChat githubLogin="test-org" />);
     const scrollEl = container.querySelector(".overflow-y-auto") as HTMLElement;
 
     // Start a drag
-    act(() => { fireEvent.mouseDown(scrollEl); });
-    act(() => { fireEvent.mouseMove(scrollEl); });
+    act(() => {
+      fireEvent.mouseDown(scrollEl);
+    });
+    act(() => {
+      fireEvent.mouseMove(scrollEl);
+    });
 
     scrollIntoViewMock.mockClear();
 
     // Blur window (e.g. user alt-tabs while dragging)
-    act(() => { fireEvent.blur(window); });
+    act(() => {
+      fireEvent.blur(window);
+    });
 
     // Trigger re-render — flag reset, scroll should resume
     act(() => {
@@ -489,20 +501,24 @@ describe("SidebarChat — drag-guard scroll behaviour", () => {
   });
 
   it("visibilitychange on document resets drag flag and resumes auto-scroll", async () => {
-    const { SidebarChat } = await import(
-      "@/app/org/[githubLogin]/_components/SidebarChat"
-    );
+    const { SidebarChat } = await import("@/app/org/[githubLogin]/_components/SidebarChat");
     const { container, rerender } = render(<SidebarChat githubLogin="test-org" />);
     const scrollEl = container.querySelector(".overflow-y-auto") as HTMLElement;
 
     // Start a drag
-    act(() => { fireEvent.mouseDown(scrollEl); });
-    act(() => { fireEvent.mouseMove(scrollEl); });
+    act(() => {
+      fireEvent.mouseDown(scrollEl);
+    });
+    act(() => {
+      fireEvent.mouseMove(scrollEl);
+    });
 
     scrollIntoViewMock.mockClear();
 
     // Tab switch mid-drag
-    act(() => { fireEvent(document, new Event("visibilitychange")); });
+    act(() => {
+      fireEvent(document, new Event("visibilitychange"));
+    });
 
     // Trigger re-render — flag reset, scroll should resume
     act(() => {
@@ -514,15 +530,17 @@ describe("SidebarChat — drag-guard scroll behaviour", () => {
   });
 
   it("activeId change resets drag flag so new conversation scrolls to bottom", async () => {
-    const { SidebarChat } = await import(
-      "@/app/org/[githubLogin]/_components/SidebarChat"
-    );
+    const { SidebarChat } = await import("@/app/org/[githubLogin]/_components/SidebarChat");
     const { container, rerender } = render(<SidebarChat githubLogin="test-org" />);
     const scrollEl = container.querySelector(".overflow-y-auto") as HTMLElement;
 
     // Start a drag in conversation conv-1
-    act(() => { fireEvent.mouseDown(scrollEl); });
-    act(() => { fireEvent.mouseMove(scrollEl); });
+    act(() => {
+      fireEvent.mouseDown(scrollEl);
+    });
+    act(() => {
+      fireEvent.mouseMove(scrollEl);
+    });
 
     scrollIntoViewMock.mockClear();
 
@@ -552,9 +570,7 @@ describe("SidebarChat — drag-guard scroll behaviour", () => {
   });
 
   it("selection guard (hasSelection) suppresses auto-scroll without drag", async () => {
-    const { SidebarChat } = await import(
-      "@/app/org/[githubLogin]/_components/SidebarChat"
-    );
+    const { SidebarChat } = await import("@/app/org/[githubLogin]/_components/SidebarChat");
     const { rerender } = render(<SidebarChat githubLogin="test-org" />);
 
     // Stub getSelection to return a non-collapsed selection
@@ -576,9 +592,7 @@ describe("SidebarChat — drag-guard scroll behaviour", () => {
   });
 
   it("StreamScrollIndicator manual scroll fires scrollIntoView even during a drag", async () => {
-    const { SidebarChat } = await import(
-      "@/app/org/[githubLogin]/_components/SidebarChat"
-    );
+    const { SidebarChat } = await import("@/app/org/[githubLogin]/_components/SidebarChat");
     const { container } = render(<SidebarChat githubLogin="test-org" />);
     const scrollEl = container.querySelector(".overflow-y-auto") as HTMLElement;
 
@@ -587,12 +601,20 @@ describe("SidebarChat — drag-guard scroll behaviour", () => {
     Object.defineProperty(scrollEl, "clientHeight", { value: 300, configurable: true });
     Object.defineProperty(scrollEl, "scrollTop", { value: 0, configurable: true, writable: true });
 
-    act(() => { fireEvent.scroll(scrollEl); }); // consume programmatic flag
-    act(() => { fireEvent.scroll(scrollEl); }); // trigger userScrolledUp = true
+    act(() => {
+      fireEvent.scroll(scrollEl);
+    }); // consume programmatic flag
+    act(() => {
+      fireEvent.scroll(scrollEl);
+    }); // trigger userScrolledUp = true
 
     // Start a drag
-    act(() => { fireEvent.mouseDown(scrollEl); });
-    act(() => { fireEvent.mouseMove(scrollEl); });
+    act(() => {
+      fireEvent.mouseDown(scrollEl);
+    });
+    act(() => {
+      fireEvent.mouseMove(scrollEl);
+    });
 
     scrollIntoViewMock.mockClear();
 
@@ -600,7 +622,9 @@ describe("SidebarChat — drag-guard scroll behaviour", () => {
     const latestBtn = screen.queryByText("Latest response…");
     expect(latestBtn).not.toBeNull();
 
-    act(() => { fireEvent.click(latestBtn!); });
+    act(() => {
+      fireEvent.click(latestBtn!);
+    });
 
     // The manual path (StreamScrollIndicator onLatestClick) calls scrollIntoView directly
     expect(scrollIntoViewMock).toHaveBeenCalledWith({ behavior: "smooth" });
@@ -637,15 +661,20 @@ describe("SidebarChat — handleClear strips ?chat= param", () => {
     } as typeof mockStoreState;
 
     // Patch getState on the mock so handleClear can call useCanvasChatStore.getState()
-    const { useCanvasChatStore } = await import(
-      "@/app/org/[githubLogin]/_state/canvasChatStore"
-    );
+    const { useCanvasChatStore } = await import("@/app/org/[githubLogin]/_state/canvasChatStore");
     (useCanvasChatStore as unknown as { getState: () => unknown }).getState = () => ({
       activeConversationId: "old-conv",
       conversations: {
-        "old-conv": { context: { orgId: "o1", githubLogin: "test-org" } },
+        "old-conv": {
+          context: { orgId: "o1", githubLogin: "test-org" },
+          serverConversationId: null,
+          // A chat with a message is "touched": New chat starts a fresh slot
+          // rather than reusing this one.
+          messages: [{ id: "m1", role: "user", content: "hi" }],
+        },
       },
       startConversation: startConversationMock,
+      setPendingInputDraft: vi.fn(),
     });
 
     replaceStateSpy = vi.spyOn(window.history, "replaceState");
@@ -667,12 +696,11 @@ describe("SidebarChat — handleClear strips ?chat= param", () => {
     window.history.replaceState(null, "", "/?chat=abc");
     replaceStateSpy.mockClear();
 
-    const { SidebarChat } = await import(
-      "@/app/org/[githubLogin]/_components/SidebarChat"
-    );
-    render(<SidebarChat githubLogin="test-org" />);
+    await renderSidebarChatActions();
 
-    await act(async () => { fireEvent.click(screen.getByTitle("New chat")); });
+    await act(async () => {
+      fireEvent.click(screen.getByLabelText("New chat"));
+    });
 
     // startConversation was called before replaceState
     expect(startConversationMock).toHaveBeenCalledTimes(1);
@@ -687,12 +715,11 @@ describe("SidebarChat — handleClear strips ?chat= param", () => {
     window.history.replaceState(null, "", "/?chat=abc&c=foo");
     replaceStateSpy.mockClear();
 
-    const { SidebarChat } = await import(
-      "@/app/org/[githubLogin]/_components/SidebarChat"
-    );
-    render(<SidebarChat githubLogin="test-org" />);
+    await renderSidebarChatActions();
 
-    await act(async () => { fireEvent.click(screen.getByTitle("New chat")); });
+    await act(async () => {
+      fireEvent.click(screen.getByLabelText("New chat"));
+    });
 
     const [, , url] = replaceStateSpy.mock.calls[replaceStateSpy.mock.calls.length - 1] as [unknown, unknown, string];
     expect(url).not.toMatch(/chat=/);
@@ -705,12 +732,11 @@ describe("SidebarChat — handleClear strips ?chat= param", () => {
     window.history.replaceState(null, "", "/?chat=xyz");
     replaceStateSpy.mockClear();
 
-    const { SidebarChat } = await import(
-      "@/app/org/[githubLogin]/_components/SidebarChat"
-    );
-    render(<SidebarChat githubLogin="test-org" />);
+    await renderSidebarChatActions();
 
-    await act(async () => { fireEvent.click(screen.getByTitle("New chat")); });
+    await act(async () => {
+      fireEvent.click(screen.getByLabelText("New chat"));
+    });
 
     // Exactly one replaceState call from handleClear (stripping the chat param)
     expect(replaceStateSpy).toHaveBeenCalledTimes(1);
@@ -732,9 +758,7 @@ describe("SidebarChat — DailyRecapCard placement", () => {
   });
 
   it("renders exactly one DailyRecapCard on initial load with no messages", async () => {
-    const { SidebarChat } = await import(
-      "@/app/org/[githubLogin]/_components/SidebarChat"
-    );
+    const { SidebarChat } = await import("@/app/org/[githubLogin]/_components/SidebarChat");
     render(<SidebarChat githubLogin="test-org" />);
 
     const cards = screen.getAllByTestId("daily-recap-card");
@@ -742,9 +766,7 @@ describe("SidebarChat — DailyRecapCard placement", () => {
   });
 
   it("renders DailyRecapCard before the empty-state placeholder in DOM order", async () => {
-    const { SidebarChat } = await import(
-      "@/app/org/[githubLogin]/_components/SidebarChat"
-    );
+    const { SidebarChat } = await import("@/app/org/[githubLogin]/_components/SidebarChat");
     const { container } = render(<SidebarChat githubLogin="test-org" />);
 
     const card = container.querySelector("[data-testid='daily-recap-card']");
@@ -752,9 +774,7 @@ describe("SidebarChat — DailyRecapCard placement", () => {
 
     expect(card).not.toBeNull();
     // card should come before placeholder in the DOM
-    expect(
-      card!.compareDocumentPosition(placeholder) & Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy();
+    expect(card!.compareDocumentPosition(placeholder) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
   it("renders exactly one DailyRecapCard when messages are present", async () => {
@@ -763,9 +783,7 @@ describe("SidebarChat — DailyRecapCard placement", () => {
       conversations: {
         "conv-1": {
           id: "conv-1",
-          messages: [
-            { id: "m1", role: "user", content: [{ type: "text", text: "hello" }] },
-          ],
+          messages: [{ id: "m1", role: "user", content: [{ type: "text", text: "hello" }] }],
           activeToolCalls: [],
           isLoading: false,
           streamingArtifacts: {},
@@ -776,9 +794,7 @@ describe("SidebarChat — DailyRecapCard placement", () => {
       pendingInputDraft: null,
     };
 
-    const { SidebarChat } = await import(
-      "@/app/org/[githubLogin]/_components/SidebarChat"
-    );
+    const { SidebarChat } = await import("@/app/org/[githubLogin]/_components/SidebarChat");
     render(<SidebarChat githubLogin="test-org" />);
 
     const cards = screen.getAllByTestId("daily-recap-card");
@@ -824,9 +840,7 @@ describe("SidebarChat — Fork chat button", () => {
     startConversationMock = vi.fn().mockReturnValue("new-fork-conv-id");
 
     // Patch getState so handleFork can read the active conversation context
-    const { useCanvasChatStore } = await import(
-      "@/app/org/[githubLogin]/_state/canvasChatStore"
-    );
+    const { useCanvasChatStore } = await import("@/app/org/[githubLogin]/_state/canvasChatStore");
     (useCanvasChatStore as unknown as { getState: () => unknown }).getState = () => ({
       activeConversationId: "conv-1",
       conversations: {
@@ -879,11 +893,8 @@ describe("SidebarChat — Fork chat button", () => {
 
   it("renders the Fork chat button in the toolbar", async () => {
     mockStoreState = withServerConversation();
-    const { SidebarChat } = await import(
-      "@/app/org/[githubLogin]/_components/SidebarChat"
-    );
-    render(<SidebarChat githubLogin="test-org" />);
-    expect(screen.getByTitle("Fork chat")).toBeTruthy();
+    await renderSidebarChatActions();
+    expect(screen.getByLabelText("Fork chat")).toBeTruthy();
   });
 
   it("is disabled when there is no serverConversationId (empty conversation)", async () => {
@@ -904,35 +915,26 @@ describe("SidebarChat — Fork chat button", () => {
       pendingInputDraft: null,
     } as typeof mockStoreState;
 
-    const { SidebarChat } = await import(
-      "@/app/org/[githubLogin]/_components/SidebarChat"
-    );
-    render(<SidebarChat githubLogin="test-org" />);
+    await renderSidebarChatActions();
 
-    const forkBtn = screen.getByTitle("Fork chat");
+    const forkBtn = screen.getByLabelText("Fork chat");
     expect((forkBtn as HTMLButtonElement).disabled).toBe(true);
   });
 
   it("is disabled while the conversation is streaming", async () => {
     mockStoreState = withServerConversation({ isStreaming: true });
 
-    const { SidebarChat } = await import(
-      "@/app/org/[githubLogin]/_components/SidebarChat"
-    );
-    render(<SidebarChat githubLogin="test-org" />);
+    await renderSidebarChatActions();
 
-    const forkBtn = screen.getByTitle("Fork chat");
+    const forkBtn = screen.getByLabelText("Fork chat");
     expect((forkBtn as HTMLButtonElement).disabled).toBe(true);
   });
 
   it("is enabled when serverConversationId exists and not streaming", async () => {
     mockStoreState = withServerConversation();
-    const { SidebarChat } = await import(
-      "@/app/org/[githubLogin]/_components/SidebarChat"
-    );
-    render(<SidebarChat githubLogin="test-org" />);
+    await renderSidebarChatActions();
 
-    const forkBtn = screen.getByTitle("Fork chat");
+    const forkBtn = screen.getByLabelText("Fork chat");
     expect((forkBtn as HTMLButtonElement).disabled).toBe(false);
   });
 
@@ -941,32 +943,24 @@ describe("SidebarChat — Fork chat button", () => {
     window.history.replaceState(null, "", "/?canvas=root");
     replaceStateSpy.mockClear();
 
-    const { SidebarChat } = await import(
-      "@/app/org/[githubLogin]/_components/SidebarChat"
-    );
-    render(<SidebarChat githubLogin="test-org" />);
+    await renderSidebarChatActions();
 
     await act(async () => {
-      fireEvent.click(screen.getByTitle("Fork chat"));
+      fireEvent.click(screen.getByLabelText("Fork chat"));
     });
 
     // 1. GET was called first
-    expect(fetchMock).toHaveBeenCalledWith(
-      "/api/orgs/test-org/chat/conversations/srv-1",
-    );
+    expect(fetchMock).toHaveBeenCalledWith("/api/orgs/test-org/chat/conversations/srv-1");
 
     // 2. POST was called second (create fork)
-    const postCall = fetchMock.mock.calls.find(
-      (c) => c[1]?.method === "POST",
-    );
+    const postCall = fetchMock.mock.calls.find((c) => c[1]?.method === "POST");
     expect(postCall).toBeTruthy();
     expect(postCall![0]).toBe("/api/orgs/test-org/chat/conversations");
 
     // 3. store.startConversation was called with forkedFromShareId = "srv-1",
     //    ephemeralSeedCount = 2 (two messages), serverConversationId = "fork-srv-1"
     expect(startConversationMock).toHaveBeenCalledTimes(1);
-    const [, hydrated, forkedFromShareId, ephemeralSeedCount, serverConvId] =
-      startConversationMock.mock.calls[0];
+    const [, hydrated, forkedFromShareId, ephemeralSeedCount, serverConvId] = startConversationMock.mock.calls[0];
     expect(forkedFromShareId).toBe("srv-1");
     expect(ephemeralSeedCount).toBe(2);
     expect(serverConvId).toBe("fork-srv-1");
@@ -975,12 +969,7 @@ describe("SidebarChat — Fork chat button", () => {
 
     // 4. replaceState was called with the fork id in ?chat=
     expect(replaceStateSpy).toHaveBeenCalled();
-    const [, , url] =
-      replaceStateSpy.mock.calls[replaceStateSpy.mock.calls.length - 1] as [
-        unknown,
-        unknown,
-        string,
-      ];
+    const [, , url] = replaceStateSpy.mock.calls[replaceStateSpy.mock.calls.length - 1] as [unknown, unknown, string];
     expect(url).toMatch(/chat=fork-srv-1/);
   });
 
@@ -989,21 +978,13 @@ describe("SidebarChat — Fork chat button", () => {
     window.history.replaceState(null, "", "/?canvas=init-abc");
     replaceStateSpy.mockClear();
 
-    const { SidebarChat } = await import(
-      "@/app/org/[githubLogin]/_components/SidebarChat"
-    );
-    render(<SidebarChat githubLogin="test-org" />);
+    await renderSidebarChatActions();
 
     await act(async () => {
-      fireEvent.click(screen.getByTitle("Fork chat"));
+      fireEvent.click(screen.getByLabelText("Fork chat"));
     });
 
-    const [, , url] =
-      replaceStateSpy.mock.calls[replaceStateSpy.mock.calls.length - 1] as [
-        unknown,
-        unknown,
-        string,
-      ];
+    const [, , url] = replaceStateSpy.mock.calls[replaceStateSpy.mock.calls.length - 1] as [unknown, unknown, string];
     expect(url).toMatch(/canvas=init-abc/);
     expect(url).toMatch(/chat=fork-srv-1/);
   });
@@ -1026,20 +1007,16 @@ describe("SidebarChat — Fork chat button", () => {
         resolveFork = () =>
           resolve({
             ok: true,
-            json: () =>
-              Promise.resolve({ id: "fork-srv-slow", title: "Fork", lastMessageAt: null }),
+            json: () => Promise.resolve({ id: "fork-srv-slow", title: "Fork", lastMessageAt: null }),
           } as Response);
       });
     });
     vi.stubGlobal("fetch", slowFetch);
 
     mockStoreState = withServerConversation();
-    const { SidebarChat } = await import(
-      "@/app/org/[githubLogin]/_components/SidebarChat"
-    );
-    render(<SidebarChat githubLogin="test-org" />);
+    await renderSidebarChatActions();
 
-    const forkBtn = screen.getByTitle("Fork chat");
+    const forkBtn = screen.getByLabelText("Fork chat");
 
     // First click — fork in-flight
     fireEvent.click(forkBtn);
@@ -1070,15 +1047,12 @@ describe("SidebarChat — Fork chat button", () => {
     vi.stubGlobal("fetch", failFetch);
 
     mockStoreState = withServerConversation();
-    const { SidebarChat } = await import(
-      "@/app/org/[githubLogin]/_components/SidebarChat"
-    );
-    render(<SidebarChat githubLogin="test-org" />);
+    await renderSidebarChatActions();
 
     const { toast } = await import("sonner");
 
     await act(async () => {
-      fireEvent.click(screen.getByTitle("Fork chat"));
+      fireEvent.click(screen.getByLabelText("Fork chat"));
     });
 
     expect(startConversationMock).not.toHaveBeenCalled();
@@ -1092,10 +1066,7 @@ describe("SidebarChat — Fork chat button", () => {
 // (dots persist for the full turn lifetime, hidden only while a tool call
 // row is actively executing).
 
-function buildAgentTurnsStoreState(
-  agentTurnsInProgress: number,
-  activeToolCalls: unknown[] = [],
-) {
+function buildAgentTurnsStoreState(agentTurnsInProgress: number, activeToolCalls: unknown[] = []) {
   return {
     activeConversationId: "conv-1",
     conversations: {
@@ -1142,9 +1113,7 @@ describe("SidebarChat — thinking dots (agentTurnsInProgress gate)", () => {
   });
 
   it("hides dots while a tool call is active, even though agentTurnsInProgress > 0", async () => {
-    mockStoreState = buildAgentTurnsStoreState(1, [
-      { id: "tc-1", toolName: "web_search", status: "input-available" },
-    ]);
+    mockStoreState = buildAgentTurnsStoreState(1, [{ id: "tc-1", toolName: "web_search", status: "input-available" }]);
     const { container } = await renderSidebarChat();
     expect(container.querySelector("[data-testid='thinking-dots']")).toBeNull();
   });
@@ -1156,9 +1125,7 @@ describe("SidebarChat — thinking dots (agentTurnsInProgress gate)", () => {
   });
 
   it("cycles the dots on/off as the timeline alternates between text and tool phases, without erroring", async () => {
-    const { SidebarChat } = await import(
-      "@/app/org/[githubLogin]/_components/SidebarChat"
-    );
+    const { SidebarChat } = await import("@/app/org/[githubLogin]/_components/SidebarChat");
 
     // Phase 1: turn in progress, streaming text — dots visible.
     mockStoreState = buildAgentTurnsStoreState(1, []);

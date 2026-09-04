@@ -7,17 +7,14 @@ export function formatDaySeparatorLabel(date: string | Date): string {
   const now = new Date();
 
   // Compare calendar days in local time
-  const toMidnight = (dt: Date) =>
-    new Date(dt.getFullYear(), dt.getMonth(), dt.getDate()).getTime();
+  const toMidnight = (dt: Date) => new Date(dt.getFullYear(), dt.getMonth(), dt.getDate()).getTime();
 
-  const diffDays = Math.round(
-    (toMidnight(now) - toMidnight(d)) / (1000 * 60 * 60 * 24)
-  );
+  const diffDays = Math.round((toMidnight(now) - toMidnight(d)) / (1000 * 60 * 60 * 24));
 
-  if (diffDays === 0) return 'Today';
-  if (diffDays === 1) return 'Yesterday';
+  if (diffDays === 0) return "Today";
+  if (diffDays === 1) return "Yesterday";
 
-  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 }
 
 /**
@@ -26,11 +23,7 @@ export function formatDaySeparatorLabel(date: string | Date): string {
 export function isSameCalendarDay(a: string | Date, b: string | Date): boolean {
   const da = new Date(a);
   const db = new Date(b);
-  return (
-    da.getFullYear() === db.getFullYear() &&
-    da.getMonth() === db.getMonth() &&
-    da.getDate() === db.getDate()
-  );
+  return da.getFullYear() === db.getFullYear() && da.getMonth() === db.getMonth() && da.getDate() === db.getDate();
 }
 
 /**
@@ -49,34 +42,34 @@ export function formatRelativeOrDate(date: string | Date): string {
 
   // Less than 1 minute
   if (diffSeconds < 60) {
-    return 'Just now';
+    return "Just now";
   }
 
   // Less than 1 hour
   if (diffMinutes < 60) {
-    return diffMinutes === 1 ? '1 min ago' : `${diffMinutes} mins ago`;
+    return diffMinutes === 1 ? "1 min ago" : `${diffMinutes} mins ago`;
   }
 
   // Less than 24 hours
   if (diffHours < 24) {
-    return diffHours === 1 ? '1 hr ago' : `${diffHours} hrs ago`;
+    return diffHours === 1 ? "1 hr ago" : `${diffHours} hrs ago`;
   }
 
   // Yesterday
   if (diffDays === 1) {
-    return 'Yesterday';
+    return "Yesterday";
   }
 
   // 2 days ago
   if (diffDays === 2) {
-    return '2 days ago';
+    return "2 days ago";
   }
 
   // More than 2 days ago - show date only
-  return dateObj.toLocaleDateString('en-US', {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
+  return dateObj.toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
   });
 }
 
@@ -102,7 +95,7 @@ export function isRelativeFormat(date: string | Date): boolean {
   const now = new Date();
   const diffMs = now.getTime() - dateObj.getTime();
   const diffHours = diffMs / (1000 * 60 * 60);
-  
+
   // Include dates from 0 to just under 48 hours
   // At exactly 48 hours or more, return false (use absolute format)
   return diffHours >= 0 && diffHours <= 48;
@@ -130,10 +123,7 @@ function getTzAbbrev(date: Date, timezone: string): string {
  * Helper: extract { year, month, day } in the given IANA timezone.
  * Month is 1-based.
  */
-function zonedYmdLocal(
-  date: Date,
-  timezone: string,
-): { year: number; month: number; day: number } {
+function zonedYmdLocal(date: Date, timezone: string): { year: number; month: number; day: number } {
   try {
     const dtf = new Intl.DateTimeFormat("en-US", {
       timeZone: timezone,
@@ -142,8 +132,7 @@ function zonedYmdLocal(
       day: "2-digit",
     });
     const parts = dtf.formatToParts(date);
-    const get = (type: string) =>
-      Number(parts.find((p) => p.type === type)?.value ?? "0");
+    const get = (type: string) => Number(parts.find((p) => p.type === type)?.value ?? "0");
     return { year: get("year"), month: get("month"), day: get("day") };
   } catch {
     return zonedYmdLocal(date, "UTC");
@@ -156,11 +145,7 @@ function zonedYmdLocal(
  *
  * Falls back to UTC on any invalid timezone string.
  */
-export function formatInUserTz(
-  date: string | Date,
-  timezone: string,
-  options?: Intl.DateTimeFormatOptions,
-): string {
+export function formatInUserTz(date: string | Date, timezone: string, options?: Intl.DateTimeFormatOptions): string {
   const d = new Date(date);
   const safeZone = (() => {
     try {
@@ -192,10 +177,7 @@ export function formatInUserTz(
  *
  * Falls back to UTC on any invalid timezone string.
  */
-export function formatRelativeOrDateInTz(
-  date: string | Date,
-  timezone: string,
-): string {
+export function formatRelativeOrDateInTz(date: string | Date, timezone: string): string {
   const dateObj = new Date(date);
   const now = new Date();
   const diffMs = now.getTime() - dateObj.getTime();
@@ -237,10 +219,7 @@ export function formatRelativeOrDateInTz(
  *
  * Falls back to UTC on any invalid timezone string.
  */
-export function formatDaySeparatorLabelInTz(
-  date: string | Date,
-  timezone: string,
-): string {
+export function formatDaySeparatorLabelInTz(date: string | Date, timezone: string): string {
   const d = new Date(date);
   const now = new Date();
 
@@ -280,12 +259,12 @@ export function formatDaySeparatorLabelInTz(
 export function formatDuration(hours: number | null | undefined): string {
   // Handle null, undefined, and negative values
   if (hours == null || hours < 0) {
-    return '—';
+    return "—";
   }
 
   // Handle zero
   if (hours === 0) {
-    return '0h';
+    return "0h";
   }
 
   // Less than 24 hours: format as hours
@@ -296,4 +275,21 @@ export function formatDuration(hours: number | null | undefined): string {
   // 24 hours or more: format as days
   const days = hours / 24;
   return `${days.toFixed(1)}d`;
+}
+
+/** Compact age for a list row: "just now", "5m ago", "3h ago", "yesterday", "4d ago", "2w ago", "3mo ago". */
+export function formatAge(ms: number): string {
+  const sec = Math.floor(ms / 1000);
+  if (sec < 60) return "just now";
+  const min = Math.floor(sec / 60);
+  if (min < 60) return `${min}m ago`;
+  const hr = Math.floor(min / 60);
+  if (hr < 24) return `${hr}h ago`;
+  const day = Math.floor(hr / 24);
+  if (day === 1) return "yesterday";
+  if (day < 7) return `${day}d ago`;
+  const wk = Math.floor(day / 7);
+  if (wk < 5) return `${wk}w ago`;
+  const mo = Math.floor(day / 30);
+  return `${mo}mo ago`;
 }

@@ -9,13 +9,9 @@
  * the cost of a few extra no-op calls — a cost we're happy to pay.
  */
 import { db } from "@/lib/db";
+import { deriveFeatureRunState } from "./feature-live-state";
 import type { CanvasEdge, CanvasLane, CanvasNode } from "system-canvas";
-import type {
-  Projector,
-  ProjectionResult,
-  ProjectorContext,
-  Scope,
-} from "./types";
+import type { Projector, ProjectionResult, ProjectorContext, Scope } from "./types";
 import {
   INITIATIVE_ROW_STEP,
   INITIATIVE_ROW_X0,
@@ -119,9 +115,7 @@ function defaultLooseFeatureInitiativePosition(index: number): { x: number; y: n
  * once the user drags it, the position rides through
  * `Canvas.data.positions[feature:<id>]` and this default is ignored.
  */
-function defaultAssignedFeatureWorkspacePosition(
-  index: number,
-): { x: number; y: number } {
+function defaultAssignedFeatureWorkspacePosition(index: number): { x: number; y: number } {
   return {
     x: LOOSE_FEATURE_WS_ROW_X0 + index * LOOSE_FEATURE_WS_ROW_STEP,
     y: LOOSE_FEATURE_WS_ROW_Y,
@@ -153,33 +147,19 @@ function buildFeatureNode(
   const taskCount = tasks.length;
   const taskDone = tasks.filter((t) => t.status === "DONE").length;
 
-  // `plannerRunning`: true ONLY when workflowStatus === "IN_PROGRESS".
-  // Deliberately excludes "PENDING" (the Prisma schema default) so a
-  // brand-new, never-started feature never false-positives as "running."
-  // Forced false when any child task has FAILED/ERROR — that's the same
-  // halt condition `updateFeatureStatusFromTasks` recognises, and a
-  // feature sitting on a stale IN_PROGRESS read with broken tasks should
-  // not pulse indefinitely.
-  const hasErrorTask = tasks.some(
-    (t) => t.workflowStatus === "FAILED" || t.workflowStatus === "ERROR",
-  );
-  const plannerRunning =
-    !hasErrorTask && feature.workflowStatus === "IN_PROGRESS";
+  // `plannerRunning` / `agentsRunningCount`: the canonical running
+  // predicate lives in `deriveFeatureRunState` (feature-live-state.ts)
+  // so the canvas and the org control panel agree on what "running" means —
+  // planner only on IN_PROGRESS (never the PENDING default), forced
+  // false by a FAILED/ERROR child task; agents on IN_PROGRESS, or
+  // agent-mode PENDING. See the helper for the full rationale.
+  const { plannerRunning, agentsRunningCount } = deriveFeatureRunState(feature.workflowStatus, tasks);
 
   // `agentTasks`: per-task `{id, workflowStatus}[]` array preserved
   // (not collapsed to a count) so the client-side incremental merger
   // can upsert a single incoming event by `taskId` without losing the
-  // others. "In-flight" mirrors TaskCard.tsx's established convention:
-  //   - workflowStatus === "IN_PROGRESS", OR
-  //   - mode === "agent" AND workflowStatus === "PENDING"
-  //     (agent-mode tasks are active from PENDING until completion)
-  // Non-agent PENDING tasks sit in the default state and are NOT counted.
+  // others.
   const agentTasks = tasks.map((t) => ({ id: t.id, workflowStatus: t.workflowStatus }));
-  const agentsRunningCount = tasks.filter(
-    (t) =>
-      t.workflowStatus === "IN_PROGRESS" ||
-      (t.mode === "agent" && t.workflowStatus === "PENDING"),
-  ).length;
 
   return {
     id: `feature:${feature.id}`,
@@ -275,11 +255,7 @@ export const rootProjector: Projector = {
 // ---------------------------------------------------------------------------
 
 export const workspaceProjector: Projector = {
-  async project(
-    scope: Scope,
-    orgId: string,
-    context?: ProjectorContext,
-  ): Promise<ProjectionResult> {
+  async project(scope: Scope, orgId: string, context?: ProjectorContext): Promise<ProjectionResult> {
     if (scope.kind !== "workspace") return { nodes: [] };
 
     // Guard: the workspace must belong to the org we were asked about.
@@ -365,9 +341,7 @@ export const workspaceProjector: Projector = {
       for (const id of assignedIds) {
         const f = byId.get(id);
         if (!f) continue;
-        nodes.push(
-          buildFeatureNode(f, defaultAssignedFeatureWorkspacePosition(slot)),
-        );
+        nodes.push(buildFeatureNode(f, defaultAssignedFeatureWorkspacePosition(slot)));
         slot += 1;
       }
 
@@ -420,9 +394,7 @@ export const workspaceProjector: Projector = {
             // user has to re-pin once. Acceptable.
             const data = row.data as Record<string, unknown>;
             const currentList = Array.isArray(data.assignedFeatures)
-              ? (data.assignedFeatures as unknown[]).filter(
-                  (v): v is string => typeof v === "string",
-                )
+              ? (data.assignedFeatures as unknown[]).filter((v): v is string => typeof v === "string")
               : [];
             // Re-compute the survivors from the CURRENT persisted
             // list (not from our snapshot's `assignedIds`), so
@@ -441,12 +413,7 @@ export const workspaceProjector: Projector = {
               where: { orgId_ref: { orgId, ref: workspaceRef } },
               data: { data: nextData as never },
             });
-            console.log(
-              "[canvas/workspaceProjector] cleaned up",
-              stalePinIds.length,
-              "stale pin(s) on",
-              workspaceRef,
-            );
+            console.log("[canvas/workspaceProjector] cleaned up", stalePinIds.length, "stale pin(s) on", workspaceRef);
             // Avoid the variable being marked unused when no stale
             // ids carry through — `survivingIds` is informational
             // only; the actual cleaned list is recomputed above
@@ -456,10 +423,7 @@ export const workspaceProjector: Projector = {
             // Non-fatal — the stale id stays in the list, the
             // projector still doesn't render a card for it, and
             // the next read tries again.
-            console.error(
-              "[canvas/workspaceProjector] stale-pin cleanup failed:",
-              e,
-            );
+            console.error("[canvas/workspaceProjector] stale-pin cleanup failed:", e);
           }
         })();
       }
@@ -514,10 +478,7 @@ export const initiativeProjector: Projector = {
       // initiative reads as "behind", which is wrong; "no milestones
       // yet" in the secondary slot is more honest.
       const customData: Record<string, unknown> = {
-        secondary:
-          total === 0
-            ? "no milestones yet"
-            : `${done}/${total} milestone${total === 1 ? "" : "s"}`,
+        secondary: total === 0 ? "no milestones yet" : `${done}/${total} milestone${total === 1 ? "" : "s"}`,
       };
       if (total > 0) {
         customData.primary = `${Math.round((done / total) * 100)}%`;
@@ -697,10 +658,7 @@ export const milestoneTimelineProjector: Projector = {
       // grow per-agent identity surfacing, this becomes the badge's
       // accessibility label / hover detail rather than the visible
       // count.
-      const agentCount = features.reduce(
-        (sum, f) => sum + (f._count?.tasks ?? 0),
-        0,
-      );
+      const agentCount = features.reduce((sum, f) => sum + (f._count?.tasks ?? 0), 0);
 
       // Union of "humans involved" across linked features. v1 scope:
       // assignee + createdBy per feature (skipping nulls). Dedup by
@@ -708,10 +666,7 @@ export const milestoneTimelineProjector: Projector = {
       // same feature only appears once. Cap the visible portion at 3
       // and surface the overflow count separately so the renderer can
       // draw a "+N" pill when the team is larger than the stack fits.
-      const involvedById = new Map<
-        string,
-        { id: string; name: string | null; image: string | null }
-      >();
+      const involvedById = new Map<string, { id: string; name: string | null; image: string | null }>();
       for (const f of features) {
         if (f.assignee) involvedById.set(f.assignee.id, f.assignee);
         if (f.createdBy && !involvedById.has(f.createdBy.id)) {
@@ -736,9 +691,7 @@ export const milestoneTimelineProjector: Projector = {
         );
       }
       if (featureCount > 0) {
-        footerParts.push(
-          `${featureDone}/${featureCount} feature${featureCount === 1 ? "" : "s"}`,
-        );
+        footerParts.push(`${featureDone}/${featureCount} feature${featureCount === 1 ? "" : "s"}`);
       }
 
       return {
@@ -827,9 +780,7 @@ export const milestoneTimelineProjector: Projector = {
     // `LOOSE_FEATURE_LIMIT`) silently doesn't get an edge.
     const projectedFeatureIds = new Set(features.map((f) => f.id));
     features.forEach((f, index) => {
-      nodes.push(
-        buildFeatureNode(f, defaultLooseFeatureInitiativePosition(index)),
-      );
+      nodes.push(buildFeatureNode(f, defaultLooseFeatureInitiativePosition(index)));
       // Synthetic membership edge: feature → milestone. The id is
       // prefixed `synthetic:` so `splitCanvas` filters it on save —
       // these never round-trip into the authored blob (DB membership
@@ -978,9 +929,7 @@ export const researchProjector: Projector = {
           content: true,
         },
       });
-      const nodes = rows.map((r, index) =>
-        buildResearchNode(r, defaultResearchRootPosition(index)),
-      );
+      const nodes = rows.map((r, index) => buildResearchNode(r, defaultResearchRootPosition(index)));
       return { nodes };
     }
 
@@ -1007,9 +956,7 @@ export const researchProjector: Projector = {
           content: true,
         },
       });
-      const nodes = rows.map((r, index) =>
-        buildResearchNode(r, defaultResearchInitiativePosition(index)),
-      );
+      const nodes = rows.map((r, index) => buildResearchNode(r, defaultResearchInitiativePosition(index)));
       return { nodes };
     }
 
@@ -1080,9 +1027,7 @@ export const htmlPageProjector: Projector = {
         // the bearer secret onto the org channel.
       },
     });
-    const nodes = rows.map((r, index) =>
-      buildHtmlPageNode(r, defaultHtmlRootPosition(index)),
-    );
+    const nodes = rows.map((r, index) => buildHtmlPageNode(r, defaultHtmlRootPosition(index)));
     return { nodes };
   },
 };

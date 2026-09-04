@@ -4,26 +4,34 @@ import { useEffect, useState } from "react";
 import type { CanvasEdge, CanvasNode } from "system-canvas";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
-import { MousePointerClick } from "lucide-react";
-import {
-  Popover,
-  PopoverTrigger,
-  PopoverContent,
-} from "@/components/ui/popover";
+import { ChevronLeft, Layers, MousePointerClick, Network } from "lucide-react";
+import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
 import { NodeDetail } from "./NodeDetail";
 import { MultiNodeDetail } from "./MultiNodeDetail";
 import { ConnectionsListBody } from "./ConnectionsListBody";
-import { SidebarChat } from "./SidebarChat";
+import { SidebarChat, SidebarChatActions } from "./SidebarChat";
 import { ConnectionViewer } from "../connections/ConnectionViewer";
 import type { ConnectionData } from "../connections/types";
 import type { InternalEdge } from "../connections/OrgCanvasBackground";
-import {
-  useAutomationInbox,
-  type InboxRun,
-} from "../_state/useAutomationInbox";
+import { useAutomationInbox, type InboxRun } from "../_state/useAutomationInbox";
 import { formatRelativeTime } from "./CanvasHistoryPopover";
+import {
+  ControlPanelBriefing,
+  PlanStage,
+  focusForAttentionItem,
+  taskNodeFor,
+  type ControlPanelStageProps,
+} from "./control-panel/ControlPanelStage";
+import type { ControlPanelFocus } from "./control-panel/types";
+import { ActionTip } from "./ActionTip";
 
 type Tab = "chat" | "details" | "connections";
+
+/** The plan/task on (or last on) the control panel's stage, with the workspace its page needs. */
+interface StageDetail {
+  focus: ControlPanelFocus;
+  workspace: { id: string; slug: string } | null;
+}
 
 interface OrgRightPanelProps {
   githubLogin: string;
@@ -91,6 +99,16 @@ interface OrgRightPanelProps {
   linkedConnectionIds: Set<string>;
   selectedNodes: CanvasNode[];
   selectedNodesInternalEdges: InternalEdge[];
+  /**
+   * Control panel mode: this panel is the stage. The tab strip gives way
+   * to the briefing, and what shows follows the control panel's focus —
+   * the Jamie chat (the same mounted `<SidebarChat>`, so switching views
+   * never remounts it) or a plan/task through `NodeDetail`, as the
+   * Details tab renders a canvas node.
+   */
+  controlPanel?: ControlPanelStageProps;
+  /** Switch the org page to the control panel (the chat grows into its stage). */
+  onOpenControlPanel: () => void;
 }
 
 /**
@@ -100,6 +118,13 @@ interface OrgRightPanelProps {
  *   agent's home base on the canvas page.
  * - **Details** — node summary. Auto-selected when a node is clicked.
  * - **Connections** — the connection-doc list.
+ *
+ * One bar in both views: tabs on the left, the chat's actions (`SidebarChatActions`,
+ * the chat itself renders headerless) and the canvas ⇄ control panel toggle on
+ * the right. In control panel mode (`controlPanel` set) the same panel is the
+ * stage: Chat and Details follow, and set, what is on stage; Connections and
+ * the inbox badge step aside; the briefing sits under the bar; a plan is the
+ * real plan page.
  *
  * **All three tabs stay mounted.** Inactive tabs are hidden via the
  * `hidden` attribute rather than unmounted. This is load-bearing for
@@ -128,6 +153,8 @@ export function OrgRightPanel({
   onUnlinkConnectionFromEdge,
   onCreateConnectionForEdge,
   linkedConnectionIds,
+  controlPanel,
+  onOpenControlPanel,
 }: OrgRightPanelProps) {
   // Default to Chat — the canvas's primary agent surface. Auto-flip
   // to Details when the user clicks a node, to Connections when a
@@ -157,6 +184,36 @@ export function OrgRightPanel({
 
   const { count, runs, openRun } = useAutomationInbox(githubLogin, { chatReady });
 
+  // On the control panel what shows follows its focus, not the tabs. The
+  // last plan/task on stage stays mounted (hidden) while the chat is up —
+  // as the Details tab keeps a canvas node — so flipping back is instant,
+  // and the Details tab brings it back.
+  const stage = controlPanel ?? null;
+  const stageFocus = stage?.focus ?? null;
+  const focusedItem = stage?.focusedItem ?? null;
+  const currentDetail: StageDetail | null =
+    stageFocus && stageFocus.kind !== "chat"
+      ? {
+          focus: stageFocus,
+          workspace:
+            focusedItem?.workspaceId && focusedItem.workspaceSlug
+              ? { id: focusedItem.workspaceId, slug: focusedItem.workspaceSlug }
+              : null,
+        }
+      : null;
+  const [lastDetail, setLastDetail] = useState<StageDetail | null>(null);
+  useEffect(() => {
+    if (!stageFocus) setLastDetail(null);
+    else if (currentDetail) setLastDetail((prev) => (prev?.focus === currentDetail.focus ? prev : currentDetail));
+    // `currentDetail` is derived from these two.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stageFocus, focusedItem]);
+  const detail = currentDetail ?? lastDetail;
+  const detailPlanId = detail?.focus.kind === "plan" ? detail.focus.id : null;
+  const detailTaskNode = detail ? taskNodeFor(detail.focus) : null;
+  const backToPlanId = detail?.focus.kind === "task" ? (detail.focus.planId ?? null) : null;
+  const activeTab: Tab = stage ? (stageFocus?.kind === "chat" ? "chat" : "details") : tab;
+
   const handleRunClick = async (run: InboxRun) => {
     setInboxOpen(false);
     await openRun(run);
@@ -176,27 +233,19 @@ export function OrgRightPanel({
   };
 
   return (
-    <div className="h-full w-full flex flex-col border-l bg-background">
-      <div className="flex items-stretch border-b text-sm">
-        {/* Chat tab — restructured as a sibling pair to avoid nesting a
-            Radix PopoverTrigger (interactive) inside a <button> (invalid
-            HTML content model). The tab-switch button and the inbox badge
-            button are siblings inside a flex wrapper. */}
-        <div className="flex-1 flex items-stretch">
-          <button
-            onClick={() => setTab("chat")}
-            className={cn(
-              "flex-1 px-3 py-2.5 font-medium transition-colors flex items-center justify-center gap-1.5",
-              "border-b-2 -mb-[1px]",
-              tab === "chat"
-                ? "border-foreground text-foreground"
-                : "border-transparent text-muted-foreground hover:text-foreground",
-            )}
-          >
-            Chat
-          </button>
-
-          {count > 0 && (
+    <div className={cn("h-full w-full flex flex-col bg-background", !stage && "border-l")}>
+      {/* One bar for both views: tabs on the left, the chat's actions and
+          the view toggle on the right, the same height as the control
+          panel's list header across the divider — so switching views only
+          swaps what sits beside the tabs and nothing jumps. */}
+      <div className="flex h-11 shrink-0 items-stretch border-b text-sm">
+        <div className="flex items-stretch pl-1">
+          <TabButton
+            label="Chat"
+            isActive={activeTab === "chat"}
+            onClick={() => (stage ? stage.onFocusChange({ kind: "chat" }) : setTab("chat"))}
+          />
+          {!stage && count > 0 && (
             <Popover open={inboxOpen} onOpenChange={setInboxOpen}>
               <PopoverTrigger asChild>
                 <button
@@ -204,9 +253,7 @@ export function OrgRightPanel({
                   className={cn(
                     "flex items-center px-1.5 py-2.5 border-b-2 -mb-[1px] border-transparent",
                     "transition-colors",
-                    chatReady
-                      ? "cursor-pointer hover:text-foreground"
-                      : "opacity-50 cursor-not-allowed",
+                    chatReady ? "cursor-pointer hover:text-foreground" : "opacity-50 cursor-not-allowed",
                   )}
                   aria-label={`${count} unseen automation run${count !== 1 ? "s" : ""}`}
                 >
@@ -215,11 +262,7 @@ export function OrgRightPanel({
                   </Badge>
                 </button>
               </PopoverTrigger>
-              <PopoverContent
-                align="end"
-                side="bottom"
-                className="w-72 p-0 overflow-hidden"
-              >
+              <PopoverContent align="end" side="bottom" className="w-72 p-0 overflow-hidden">
                 <div className="px-3 py-2 border-b">
                   <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
                     Unseen automation runs
@@ -232,12 +275,8 @@ export function OrgRightPanel({
                         className="w-full text-left px-3 py-2.5 hover:bg-muted transition-colors"
                         onClick={() => handleRunClick(run)}
                       >
-                        <p className="text-sm font-medium truncate">
-                          {run.automationName}
-                        </p>
-                        <p className="text-xs text-muted-foreground mt-0.5">
-                          {formatRelativeTime(run.lastRunAt)}
-                        </p>
+                        <p className="text-sm font-medium truncate">{run.automationName}</p>
+                        <p className="text-xs text-muted-foreground mt-0.5">{formatRelativeTime(run.lastRunAt)}</p>
                       </button>
                     </li>
                   ))}
@@ -245,43 +284,99 @@ export function OrgRightPanel({
               </PopoverContent>
             </Popover>
           )}
+          <TabButton
+            label="Details"
+            isActive={activeTab === "details"}
+            onClick={() => {
+              if (!stage) setTab("details");
+              else if (detail) stage.onFocusChange(detail.focus);
+            }}
+            disabled={stage ? !detail : !selectedNode && selectedNodes.length < 2}
+          />
+          {!stage && (
+            <TabButton
+              label="Connections"
+              isActive={activeTab === "connections"}
+              onClick={() => setTab("connections")}
+              trailing={
+                <Badge variant="secondary" className="ml-1">
+                  {connections.length}
+                </Badge>
+              }
+            />
+          )}
         </div>
-
-        <TabButton
-          label="Details"
-          isActive={tab === "details"}
-          onClick={() => setTab("details")}
-          disabled={!selectedNode && selectedNodes.length < 2}
-        />
-        <TabButton
-          label="Connections"
-          isActive={tab === "connections"}
-          onClick={() => setTab("connections")}
-          trailing={
-            <Badge variant="secondary" className="ml-1">
-              {connections.length}
-            </Badge>
-          }
-        />
+        <div className="ml-auto flex items-center gap-1 pr-2">
+          {/* Kept mounted: its settings popover and activity hook fetch on mount. */}
+          <div className={cn("flex items-center", activeTab !== "chat" && "hidden")}>
+            <SidebarChatActions githubLogin={githubLogin} hideHistory={!!stage} />
+          </div>
+          <ActionTip label={stage ? "Canvas" : "Control panel"}>
+            <button
+              type="button"
+              onClick={stage ? stage.onExit : onOpenControlPanel}
+              aria-label={stage ? "Canvas" : "Control panel"}
+              className="p-1.5 rounded text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+            >
+              {stage ? <Network className="h-4 w-4" /> : <Layers className="h-4 w-4" />}
+            </button>
+          </ActionTip>
+        </div>
       </div>
+      {stage && (
+        <ControlPanelBriefing
+          githubLogin={githubLogin}
+          onOpen={(item) => stage.onFocusChange(focusForAttentionItem(item))}
+          className="mx-3 mt-3 shrink-0"
+        />
+      )}
 
       <div className="flex-1 min-h-0 relative">
         {/* Chat tab — always mounted, hidden when inactive. */}
-        <TabBody hidden={tab !== "chat"}>
-          {chatReady ? (
-            <SidebarChat githubLogin={githubLogin} />
-          ) : (
-            <ChatLoadingState />
-          )}
+        <TabBody hidden={activeTab !== "chat"}>
+          {chatReady ? <SidebarChat githubLogin={githubLogin} /> : <ChatLoadingState />}
         </TabBody>
 
         {/* Details tab — also kept mounted so node-detail fetches
-            don't restart when the user flips back. */}
-        <TabBody hidden={tab !== "details"}>
-          {selectedNode ? (
+            don't restart when the user flips back. On the control panel
+            it is what is on stage: a plan is the real plan page; a task
+            renders as on the canvas, with a way back up to its plan. */}
+        <TabBody hidden={activeTab !== "details"}>
+          {stage && detailPlanId ? (
+            <PlanStage
+              featureId={detailPlanId}
+              workspace={detail?.workspace ?? null}
+              onBack={() => stage.onFocusChange({ kind: "chat" })}
+            />
+          ) : stage && detailTaskNode ? (
+            <div className="flex h-full flex-col">
+              {backToPlanId && (
+                <button
+                  type="button"
+                  onClick={() => stage.onFocusChange({ kind: "plan", id: backToPlanId })}
+                  className="flex shrink-0 items-center gap-1 border-b px-4 py-2 text-left text-xs text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground"
+                >
+                  <ChevronLeft className="h-3.5 w-3.5" />
+                  Back to plan
+                </button>
+              )}
+              <div className="min-h-0 flex-1">
+                <NodeDetail
+                  key={detailTaskNode.id}
+                  node={detailTaskNode}
+                  githubLogin={githubLogin}
+                  onSwitchToChat={() => stage.onFocusChange({ kind: "chat" })}
+                />
+              </div>
+            </div>
+          ) : selectedNode ? (
             <NodeDetail node={selectedNode} githubLogin={githubLogin} onSwitchToChat={() => setTab("chat")} />
           ) : selectedNodes.length >= 2 ? (
-            <MultiNodeDetail nodes={selectedNodes} internalEdges={selectedNodesInternalEdges} githubLogin={githubLogin} />
+            <MultiNodeDetail
+              nodes={selectedNodes}
+              internalEdges={selectedNodesInternalEdges}
+              githubLogin={githubLogin}
+            />
           ) : (
             <EmptyDetailsHint />
           )}
@@ -299,7 +394,7 @@ export function OrgRightPanel({
             click. We pass `onUnlink` only in that case (active
             connection id matches the edge's customData.connectionId)
             so list-driven opens render Back-only. */}
-        <TabBody hidden={tab !== "connections"}>
+        <TabBody hidden={activeTab !== "connections"}>
           <div className="absolute inset-0">
             <div hidden={!!activeConnection} className={activeConnection ? "" : "absolute inset-0"}>
               <ConnectionsListBody
@@ -322,8 +417,7 @@ export function OrgRightPanel({
                   connection={activeConnection}
                   onBack={onConnectionClose}
                   onUnlink={
-                    selectedEdge &&
-                    edgeLinksToConnection(selectedEdge.edge, activeConnection.id)
+                    selectedEdge && edgeLinksToConnection(selectedEdge.edge, activeConnection.id)
                       ? onUnlinkConnectionFromEdge
                       : undefined
                   }
@@ -356,13 +450,7 @@ function edgeLinksToConnection(edge: CanvasEdge, connectionId: string): boolean 
  * via Tailwind classes — the `hidden` attribute also short-circuits
  * the accessibility tree.
  */
-function TabBody({
-  hidden,
-  children,
-}: {
-  hidden: boolean;
-  children: React.ReactNode;
-}) {
+function TabBody({ hidden, children }: { hidden: boolean; children: React.ReactNode }) {
   return (
     <div hidden={hidden} className={hidden ? "" : "absolute inset-0"}>
       {children}
@@ -388,7 +476,7 @@ function TabButton({
       onClick={onClick}
       disabled={disabled}
       className={cn(
-        "flex-1 px-3 py-2.5 font-medium transition-colors flex items-center justify-center gap-1.5",
+        "px-4 py-2.5 font-medium transition-colors flex items-center justify-center gap-1.5",
         "border-b-2 -mb-[1px]",
         isActive
           ? "border-foreground text-foreground"
@@ -416,8 +504,7 @@ function EmptyDetailsHint() {
       <MousePointerClick className="h-6 w-6 mb-3 opacity-60" />
       <p className="text-sm">Click a node to see details.</p>
       <p className="text-xs mt-2 opacity-70">
-        Workspaces, initiatives, milestones, and notes all show their
-        summary here.
+        Workspaces, initiatives, milestones, and notes all show their summary here.
       </p>
     </div>
   );
