@@ -3,12 +3,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
 import { useShallow } from "zustand/react/shallow";
-import { generateTitle } from "@/lib/ai/conversationHelpers";
 import {
   activeChatItem,
   buildControlPanelGroups,
   matchesControlPanelQuery,
   overlayActiveChat,
+  unlistedOnStageChatTitle,
   type ActiveChatSnapshot,
 } from "@/services/orgs/control-panel-state";
 import type { ControlPanelItem } from "@/types/control-panel";
@@ -90,6 +90,7 @@ export function useControlPanel(githubLogin: string, enabled: boolean): ControlP
         lastReply: !conv.isStreaming && last?.role === "assistant" ? last.content : null,
         hasMessages: conv.messages.length > 0,
         isStreaming: conv.isStreaming,
+        title: conv.title,
       };
     }),
   );
@@ -149,9 +150,8 @@ export function useControlPanel(githubLogin: string, enabled: boolean): ControlP
       return items.map((item) => (item.key === activeChatKey ? overlayActiveChat(item, activeChat) : item));
     }
     if (!activeChat.hasMessages && !chatOnStage) return items;
-    // The server titles a chat from its first user message.
     const conv = useCanvasChatStore.getState().conversations[activeChat.localId];
-    const title = activeChat.hasMessages && conv ? generateTitle(conv.messages) : "New chat";
+    const title = unlistedOnStageChatTitle(activeChat, conv?.messages);
     return [activeChatItem(activeChat, newChatStartedAtRef.current, title), ...items];
   }, [items, activeChat, activeChatKey, chatOnStage]);
 

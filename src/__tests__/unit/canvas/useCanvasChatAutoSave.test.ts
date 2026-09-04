@@ -33,6 +33,7 @@ type ConvState = {
       isLoading: boolean;
       isStreaming: boolean;
       serverConversationId: string | null;
+      title: string | null;
       context: ConvContext;
     }
   >;
@@ -40,6 +41,7 @@ type ConvState = {
   locallyAuthoredTurnIds: Set<string>;
   setServerConversationId: (conversationId: string, serverId: string) => void;
   setConversationMessages: (conversationId: string, messages: Msg[]) => void;
+  setConversationTitle: (conversationId: string, title: string | null) => void;
 };
 
 function makeStore(initial?: Partial<ConvState>) {
@@ -65,6 +67,16 @@ function makeStore(initial?: Partial<ConvState>) {
           [conversationId]: {
             ...s.conversations[conversationId],
             messages,
+          },
+        },
+      })),
+    setConversationTitle: (conversationId, title) =>
+      set((s) => ({
+        conversations: {
+          ...s.conversations,
+          [conversationId]: {
+            ...s.conversations[conversationId],
+            title,
           },
         },
       })),
@@ -164,6 +176,7 @@ function makeConv(
     isLoading: boolean;
     isStreaming: boolean;
     serverConversationId: string | null;
+    title: string | null;
   }> = {},
 ) {
   return {
@@ -171,15 +184,16 @@ function makeConv(
     isLoading: false,
     isStreaming: false,
     serverConversationId: null,
+    title: null as string | null,
     context: baseContext,
     ...overrides,
   };
 }
 
-function fetchReturning(messages: Msg[]) {
+function fetchReturning(messages: Msg[], extras: Record<string, unknown> = {}) {
   return vi.fn().mockResolvedValue({
     ok: true,
-    json: () => Promise.resolve({ messages }),
+    json: () => Promise.resolve({ messages, ...extras }),
   });
 }
 
@@ -495,5 +509,97 @@ describe("useCanvasChatAutoSave (live-sync)", () => {
       (m) => m.id,
     );
     expect(ids).toContain("planner-recon");
+  });
+
+  it("applies an LLM title on a title-only nudge with no message delta", async () => {
+    _store.setState({
+      activeConversationId: "conv-1",
+      conversations: {
+        "conv-1": makeConv({
+          messages: [makeMsg("user", "m1"), makeMsg("assistant", "a1")],
+          serverConversationId: "server-1",
+          title: null,
+        }),
+      },
+    });
+
+    global.fetch = fetchReturning(
+      [makeMsg("user", "m1"), makeMsg("assistant", "a1")],
+      { title: "Auth token refresh", settings: { titleSource: "llm" } },
+    );
+
+    renderHook(() => useCanvasChatAutoSave({ githubLogin: "my-org" }));
+    act(() => {
+      _store.setState((s) => ({ ...s }));
+    });
+    await act(async () => {
+      fakePusher.fire("canvas-conversation-updated");
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const conv = _store.getState().conversations["conv-1"];
+    expect(conv.title).toBe("Auth token refresh");
+    expect(conv.messages.map((m) => m.id)).toEqual(["m1", "a1"]);
+  });
+
+  it("does not clobber a null store title with a non-LLM placeholder", async () => {
+    _store.setState({
+      activeConversationId: "conv-1",
+      conversations: {
+        "conv-1": makeConv({
+          messages: [makeMsg("user", "m1")],
+          serverConversationId: "server-1",
+          title: null,
+        }),
+      },
+    });
+
+    global.fetch = fetchReturning([makeMsg("user", "m1")], {
+      title: "How does the auth middleware work",
+      settings: {},
+    });
+
+    renderHook(() => useCanvasChatAutoSave({ githubLogin: "my-org" }));
+    act(() => {
+      _store.setState((s) => ({ ...s }));
+    });
+    await act(async () => {
+      fakePusher.fire("canvas-conversation-updated");
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(_store.getState().conversations["conv-1"].title).toBeNull();
+  });
+
+  it("adopts a fetched title when the store already has one (legacy / reopened)", async () => {
+    _store.setState({
+      activeConversationId: "conv-1",
+      conversations: {
+        "conv-1": makeConv({
+          messages: [makeMsg("user", "m1")],
+          serverConversationId: "server-1",
+          title: "Old truncation",
+        }),
+      },
+    });
+
+    global.fetch = fetchReturning([makeMsg("user", "m1")], {
+      title: "Legacy truncation",
+      settings: {},
+    });
+
+    renderHook(() => useCanvasChatAutoSave({ githubLogin: "my-org" }));
+    act(() => {
+      _store.setState((s) => ({ ...s }));
+    });
+    await act(async () => {
+      fakePusher.fire("canvas-conversation-updated");
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(_store.getState().conversations["conv-1"].title).toBe("Legacy truncation");
   });
 });

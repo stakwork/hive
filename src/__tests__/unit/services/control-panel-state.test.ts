@@ -20,6 +20,7 @@ import {
   derivePlanState,
   matchesControlPanelQuery,
   overlayActiveChat,
+  unlistedOnStageChatTitle,
   previewLine,
   sortControlPanelItems,
 } from "@/services/orgs/control-panel-state";
@@ -197,6 +198,7 @@ describe("search, ordering and the chat on stage", () => {
     lastReply: null,
     hasMessages: false,
     isStreaming: false,
+    title: null,
   };
   const startedAt = "2026-09-04T09:00:00.000Z";
 
@@ -266,6 +268,29 @@ describe("search, ordering and the chat on stage", () => {
     expect(
       overlayActiveChat(server, { ...fresh, serverId: "srv-1", hasMessages: true, isStreaming: true }),
     ).toMatchObject({ state: "running", sinceYou: "Jamie is replying" });
+    // Store title wins so the live list row updates without a refetch.
+    expect(
+      overlayActiveChat(server, {
+        ...fresh,
+        serverId: "srv-1",
+        hasMessages: true,
+        title: "Auth token refresh",
+      }).title,
+    ).toBe("Auth token refresh");
+  });
+
+  test("unlisted on-stage row prefers store title over generateTitle", () => {
+    const messages = [{ role: "user", content: "How does the auth middleware work when tokens expire?" }];
+    expect(
+      unlistedOnStageChatTitle(
+        { ...fresh, hasMessages: true, title: "Auth token refresh" },
+        messages,
+      ),
+    ).toBe("Auth token refresh");
+    expect(unlistedOnStageChatTitle({ ...fresh, hasMessages: true, title: null }, messages)).toBe(
+      "How does the auth middleware work when tokens expire?",
+    );
+    expect(unlistedOnStageChatTitle(fresh, [])).toBe("New chat");
   });
 
   test("previewLine collapses whitespace and cuts long text with an ellipsis", () => {

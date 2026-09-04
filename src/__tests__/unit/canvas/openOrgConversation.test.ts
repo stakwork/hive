@@ -14,8 +14,8 @@ const context: ConversationContext = {
   selectedNodeIds: [],
 };
 
-const serverConversation = (messages: unknown[]) =>
-  new Response(JSON.stringify({ messages, settings: {} }), { status: 200 });
+const serverConversation = (messages: unknown[], extras: Record<string, unknown> = {}) =>
+  new Response(JSON.stringify({ messages, settings: {}, ...extras }), { status: 200 });
 
 const userMessage = (id: string) => ({
   id,
@@ -66,10 +66,13 @@ describe("openOrgConversation", () => {
 
   it("fetches a conversation the tab does not hold into a new slot", async () => {
     fetchMock.mockResolvedValueOnce(
-      serverConversation([
-        { id: "u1", role: "user", content: "hi", timestamp: "2026-09-04T10:00:00Z" },
-        { id: "a1", role: "assistant", content: "hello", timestamp: "2026-09-04T10:00:01Z" },
-      ]),
+      serverConversation(
+        [
+          { id: "u1", role: "user", content: "hi", timestamp: "2026-09-04T10:00:00Z" },
+          { id: "a1", role: "assistant", content: "hello", timestamp: "2026-09-04T10:00:01Z" },
+        ],
+        { title: "Auth token refresh" },
+      ),
     );
 
     const opened = await openOrgConversation("acme", "srv-new", { syncUrl: true });
@@ -81,8 +84,20 @@ describe("openOrgConversation", () => {
     expect(active).not.toBeNull();
     expect(state.conversations[active!].serverConversationId).toBe("srv-new");
     expect(state.conversations[active!].messages.map((m) => m.id)).toEqual(["u1", "a1"]);
+    expect(state.conversations[active!].title).toBe("Auth token refresh");
     expect(state.ephemeralSeedCounts[active!]).toBe(2);
     expect(new URLSearchParams(window.location.search).get("chat")).toBe("srv-new");
+  });
+
+  it("does not overwrite a held slot's title on reopen", async () => {
+    const store = useCanvasChatStore.getState();
+    const held = store.startConversation(context, [userMessage("u1")], undefined, 1, "srv-a", "Held title");
+    store.startConversation(context, [], undefined, 0, "srv-b");
+
+    await openOrgConversation("acme", "srv-a");
+
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(useCanvasChatStore.getState().conversations[held].title).toBe("Held title");
   });
 
   it("returns false and leaves the store alone when the fetch fails", async () => {

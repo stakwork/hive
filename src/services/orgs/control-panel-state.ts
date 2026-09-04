@@ -10,6 +10,7 @@
  * "created or assigned". Running comes from the same predicate the
  * canvas projector uses (`deriveFeatureRunState`).
  */
+import { generateTitle } from "@/lib/ai/conversationHelpers";
 import { deriveFeatureRunState, formatRunningLabel } from "@/lib/canvas/feature-live-state";
 import { FEATURE_STATUS_LABELS } from "@/types/roadmap";
 import type { ControlPanelItem, ControlPanelItemState } from "@/types/control-panel";
@@ -100,12 +101,28 @@ export interface ActiveChatSnapshot {
   lastReply: string | null;
   hasMessages: boolean;
   isStreaming: boolean;
+  /** Store title when set (LLM / seeded); null while still generating. */
+  title: string | null;
 }
 
 function sinceYouOf(chat: ActiveChatSnapshot): string {
   if (chat.isStreaming) return "Jamie is replying";
   if (chat.lastReply) return previewLine(chat.lastReply);
   return chat.hasMessages ? "No reply yet" : "Empty chat";
+}
+
+/**
+ * Label for an unlisted on-stage chat row. Prefer the store title (LLM /
+ * seeded) so the live list does not stay stuck on a truncated first
+ * message until the next list refetch.
+ */
+export function unlistedOnStageChatTitle(
+  chat: ActiveChatSnapshot,
+  messages: unknown[] | undefined,
+): string {
+  if (chat.title) return chat.title;
+  if (chat.hasMessages && messages) return generateTitle(messages);
+  return "New chat";
 }
 
 /**
@@ -145,6 +162,7 @@ export function overlayActiveChat(item: ControlPanelItem, chat: ActiveChatSnapsh
     lastActivityAt: storeAhead ? chat.lastMessageAt! : item.lastActivityAt,
     state: chat.isStreaming ? "running" : item.state,
     sinceYou: chat.isStreaming || storeAhead ? sinceYouOf(chat) : item.sinceYou,
+    title: chat.title || item.title,
   };
 }
 
