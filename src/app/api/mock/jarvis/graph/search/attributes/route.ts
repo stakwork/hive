@@ -12,8 +12,9 @@ import {
  * With USE_MOCKS routing getJarvisUrl at the local mock Jarvis, this endpoint
  * lets attribute searches resolve instead of dead-ending. It answers the one
  * query the legal-benchmark UI needs to boot: the recursion tab's EvalSet
- * listing (`recursion = true`), returning one entry per fixture scenario so
- * the activity rail exercises every fix-chain shape. Every other query gets a
+ * listing (`recursion = true` / `recursion = false`), returning live-on
+ * fixtures for true and a distinct live-off set for false so the tab can
+ * exercise “listed but not dispatched.” Every other query gets a
  * successful empty result — callers already treat empty as a graceful state,
  * and an empty success beats a transport error that renders as a failure.
  *
@@ -26,7 +27,7 @@ interface SearchAttributesBody {
   search_filters?: Array<{ attribute?: string; value?: unknown; comparator?: string }>;
 }
 
-/** The four fixture EvalSets, shaped as `listRecursionEvalSets` expects:
+/** Live-on fixture EvalSets (`recursion: true`), shaped as `listRecursionEvalSets` expects:
  *  `properties.id` is the task-slug, `name` the card title. */
 const RECURSION_EVALSETS = [
   {
@@ -55,6 +56,21 @@ const RECURSION_EVALSETS = [
   },
 ];
 
+/** Live-off fixtures: `recursion: false` with leftover `recursionEnabledAt` so the
+ *  Recursion tab under USE_MOCKS can exercise “listed but not dispatched.” */
+const DISABLED_RECURSION_EVALSETS = [
+  {
+    ref_id: "mock-evalset-disabled-001",
+    node_type: "EvalSet",
+    properties: {
+      id: "mock-task-disabled",
+      name: "Disabled Recursion EvalSet",
+      recursion: false,
+      recursionEnabledAt: 1700000000,
+    },
+  },
+];
+
 export async function POST(req: NextRequest): Promise<NextResponse> {
   let body: SearchAttributesBody = {};
   try {
@@ -67,10 +83,18 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   const filters = body.search_filters ?? [];
 
   const wantsEvalSets = nodeTypes.some((t) => t === "evalset");
-  const wantsRecursion = filters.some((f) => f.attribute === "recursion");
+  const recursionFilter = filters.find((f) => f.attribute === "recursion");
 
-  if (wantsEvalSets && wantsRecursion) {
-    return NextResponse.json({ status: "success", nodes: RECURSION_EVALSETS }, { status: 200 });
+  if (wantsEvalSets && recursionFilter) {
+    if (recursionFilter.value === false) {
+      return NextResponse.json(
+        { status: "success", nodes: DISABLED_RECURSION_EVALSETS },
+        { status: 200 },
+      );
+    }
+    if (recursionFilter.value === true) {
+      return NextResponse.json({ status: "success", nodes: RECURSION_EVALSETS }, { status: 200 });
+    }
   }
 
   return NextResponse.json({ status: "success", nodes: [] }, { status: 200 });

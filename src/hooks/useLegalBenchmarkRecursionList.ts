@@ -22,8 +22,6 @@ interface UseLegalBenchmarkRecursionListResult {
   isLoading: boolean;
   error: string | null;
   refetch: () => Promise<void>;
-  /** True when listRecursionEvalSets returned partial results (Sources 2/3 failed). */
-  enrollmentPartial?: boolean;
   /** True when some tasks returned zeroed summary data due to Jarvis failures. */
   summaryPartial?: boolean;
 }
@@ -50,7 +48,6 @@ export function useLegalBenchmarkRecursionList(): UseLegalBenchmarkRecursionList
   const [entries, setEntries] = useState<RecursionEntry[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [enrollmentPartial, setEnrollmentPartial] = useState<boolean | undefined>(undefined);
   const [summaryPartial, setSummaryPartial] = useState<boolean | undefined>(undefined);
 
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -127,7 +124,6 @@ export function useLegalBenchmarkRecursionList(): UseLegalBenchmarkRecursionList
         const body = (await res.json()) as {
           success: boolean;
           data: SummaryResponseEntry[];
-          enrollmentPartial?: boolean;
           summaryPartial?: boolean;
         };
         if (!body.success || !Array.isArray(body.data)) return;
@@ -155,7 +151,6 @@ export function useLegalBenchmarkRecursionList(): UseLegalBenchmarkRecursionList
           }),
         );
 
-        if (body.enrollmentPartial) setEnrollmentPartial(true);
         if (body.summaryPartial) setSummaryPartial(true);
       } catch {
         // Non-fatal: the tab still works without summary data; cards lazy-load on demand.
@@ -166,5 +161,5 @@ export function useLegalBenchmarkRecursionList(): UseLegalBenchmarkRecursionList
     };
   }, []); // Intentionally empty: one-time mount fetch only.
 
-  return { entries, isLoading, error, refetch: fetchEntries, enrollmentPartial, summaryPartial };
+  return { entries, isLoading, error, refetch: fetchEntries, summaryPartial };
 }
