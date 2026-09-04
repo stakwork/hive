@@ -7,7 +7,7 @@ import { estimateTokens } from "@/lib/utils/token-estimate";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { Loader2, User, Bot, Wrench, Code2, ChevronDown, ChevronRight, Copy, Check, Flag, Waypoints, AlertTriangle, Share2 } from "lucide-react";
+import { Loader2, User, Bot, Wrench, Code2, ChevronDown, ChevronRight, Flag, Waypoints, AlertTriangle, Share2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { MarkdownRenderer } from "@/components/MarkdownRenderer";
 import { cn } from "@/lib/utils";
@@ -21,6 +21,7 @@ import type {
 } from "@/lib/utils/agent-log-stats";
 import type { SessionReflection, ReflectedConcept } from "@/types/agent-logs";
 import { TurnTokenUsage } from "@/components/agent-logs/TurnTokenUsage";
+import { CopyButton } from "@/components/ui/copy-button";
 
 export interface LogDetailContentProps {
   conversation: ParsedMessage[] | null;
@@ -121,46 +122,6 @@ export function getToolResultValue(output: ToolResultContent["output"]): string 
   } catch {
     return String(output);
   }
-}
-
-// ---------------------------------------------------------------------------
-// CopyButton — icon-only, swaps to Check for 1.5 s after click
-// ---------------------------------------------------------------------------
-
-export function CopyButton({ value, className }: { value: string; className?: string }) {
-  const [copied, setCopied] = useState(false);
-
-  function handleClick(e: React.MouseEvent) {
-    e.stopPropagation();
-    navigator.clipboard.writeText(value).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
-    });
-  }
-
-  return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <button
-          onClick={handleClick}
-          className={cn(
-            "shrink-0 text-muted-foreground hover:text-foreground transition-colors p-0.5 rounded",
-            className,
-          )}
-          aria-label="Copy"
-        >
-          {copied ? (
-            <Check className="w-3 h-3 text-green-500" />
-          ) : (
-            <Copy className="w-3 h-3" />
-          )}
-        </button>
-      </TooltipTrigger>
-      <TooltipContent side="top">
-        <p className="text-xs">{copied ? "Copied!" : "Copy"}</p>
-      </TooltipContent>
-    </Tooltip>
-  );
 }
 
 // ---------------------------------------------------------------------------
