@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import { ChevronDown, ChevronRight, FileText, Loader2, MessageCircle, Search, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -21,13 +21,28 @@ const KIND_ICON: Record<ControlPanelItemKind, typeof MessageCircle> = {
 };
 
 /**
- * One dot, three meanings: amber and pulsing while an agent or planner
- * is working, an amber ring while the thread waits on you, grey when
- * nothing is happening. Chats are never "done", so there is no tick.
+ * One dot, four meanings: amber and pulsing while an agent or planner
+ * is working, an amber ring while the thread waits on you, a green
+ * filled dot when a plan is done, grey when nothing is happening.
+ * Chats never emit "done"; only plans can reach the green state.
  */
 export function StateDot({ state, className }: { state: ControlPanelItemState; className?: string }) {
-  const tone = state === "running" ? "working" : NEEDS_YOU_STATES.has(state) ? "waiting" : "idle";
-  const label = tone === "working" ? "Agent working" : tone === "waiting" ? "Waiting on you" : "Nothing happening";
+  const tone =
+    state === "running"
+      ? "working"
+      : state === "done"
+        ? "done"
+        : NEEDS_YOU_STATES.has(state)
+          ? "waiting"
+          : "idle";
+  const label =
+    tone === "working"
+      ? "Agent working"
+      : tone === "waiting"
+        ? "Waiting on you"
+        : tone === "done"
+          ? "Done"
+          : "Nothing happening";
   return (
     <span
       role="img"
@@ -37,6 +52,7 @@ export function StateDot({ state, className }: { state: ControlPanelItemState; c
         "inline-block h-2 w-2 shrink-0 rounded-full",
         tone === "working" && "animate-pulse bg-amber-500",
         tone === "waiting" && "border-2 border-amber-500 bg-transparent",
+        tone === "done" && "bg-green-500",
         tone === "idle" && "bg-muted-foreground/40",
         className,
       )}

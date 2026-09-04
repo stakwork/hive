@@ -3,8 +3,9 @@
  * (`src/services/orgs/control-panel-state.ts`).
  *
  * Covered:
- *   - Plan state precedence: done → halted → question → awaiting reply →
- *     review → running → plain status.
+ *   - Plan state precedence: done → halted → question (only if not
+ *     running) → awaiting-reply (only if not running) → review →
+ *     running → plain status.
  *   - Running labels: planner only, agents only, both.
  *   - Search, newest-activity ordering, the stand-in row for the chat
  *     on stage, and the one-line preview.
@@ -98,6 +99,38 @@ describe("derivePlanState", () => {
         lastMessage: userText,
       }).state,
     ).toBe("review");
+  });
+
+  test("review still beats a live child task on a completed workflow", () => {
+    expect(
+      derivePlanState({
+        status: "IN_PROGRESS",
+        workflowStatus: "COMPLETED",
+        tasks: [{ status: "TODO", workflowStatus: "IN_PROGRESS" }],
+        lastMessage: userText,
+      }).state,
+    ).toBe("review");
+  });
+
+  test("IN_PROGRESS with an assistant last message is running, not awaiting-reply", () => {
+    const result = derivePlanState({
+      status: "IN_PROGRESS",
+      workflowStatus: "IN_PROGRESS",
+      tasks: [],
+      lastMessage: assistantText,
+    });
+    expect(result).toEqual({ state: "running", label: "Planner working" });
+  });
+
+  test("IN_PROGRESS with a leftover assistant FORM is running, not a question", () => {
+    const result = derivePlanState({
+      status: "IN_PROGRESS",
+      workflowStatus: "IN_PROGRESS",
+      tasks: [],
+      lastMessage: assistantForm,
+    });
+    expect(result.state).toBe("running");
+    expect(result.label).toBe("Planner working");
   });
 
   test("running labels: planner, agents, both", () => {
