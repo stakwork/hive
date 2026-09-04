@@ -65,9 +65,9 @@ export interface ControlPanelListProps {
   loading: boolean;
   query: string;
   onQueryChange: (query: string) => void;
-  /** Chats whose nested plans are hidden. */
-  collapsedKeys: ReadonlySet<string>;
-  onToggleCollapse: (key: string) => void;
+  /** Chats whose nested plans are showing; everything else is collapsed. */
+  expandedKeys: ReadonlySet<string>;
+  onToggleExpanded: (key: string) => void;
   /** Keyboard cursor (↑↓ / j k). */
   cursorKey: string | null;
   /** The thread currently on stage. */
@@ -80,7 +80,7 @@ export interface ControlPanelListProps {
 
 /**
  * The control panel column: Jamie chats as the spine, a plan spawned
- * from a chat nested under it (collapsible), all grouped by the day of
+ * from a chat nested under it (collapsed until opened), all grouped by the day of
  * their newest activity. One row per thread with a "since you" line, a
  * time column and a state dot; a "Show N more" at the end when the org
  * has more chats than are listed. New chat lives in the chat's own
@@ -92,8 +92,8 @@ export function ControlPanelList({
   loading,
   query,
   onQueryChange,
-  collapsedKeys,
-  onToggleCollapse,
+  expandedKeys,
+  onToggleExpanded,
   cursorKey,
   focusedKey,
   onOpen,
@@ -103,7 +103,7 @@ export function ControlPanelList({
   const [searchOpen, setSearchOpen] = useState(false);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
 
-  const firstVisible = groups.flatMap((g) => g.rows).find((r) => !(r.parentKey && collapsedKeys.has(r.parentKey)));
+  const firstVisible = groups.flatMap((g) => g.rows).find((r) => !(r.parentKey && !expandedKeys.has(r.parentKey)));
   // Rows only move when their order does; framer measures them only then.
   const rowOrder = useMemo(() => groups.flatMap((g) => g.rows.map((r) => r.item.key)).join("|"), [groups]);
 
@@ -197,12 +197,12 @@ export function ControlPanelList({
                 {group.label}
               </h3>,
               ...group.rows.map(({ item, depth, parentKey, childCount, latestAt }) => {
-                if (parentKey && collapsedKeys.has(parentKey)) return null;
+                if (parentKey && !expandedKeys.has(parentKey)) return null;
                 const Icon = KIND_ICON[item.kind];
                 const focused = item.key === focusedKey;
                 const cursor = item.key === cursorKey;
                 const collapsible = (childCount ?? 0) > 0;
-                const collapsed = collapsible && collapsedKeys.has(item.key);
+                const collapsed = collapsible && !expandedKeys.has(item.key);
                 const meta = [item.workspaceName, item.sinceYou].filter(Boolean).join(" · ");
                 return (
                   <motion.div
@@ -221,7 +221,7 @@ export function ControlPanelList({
                       }
                     }}
                     aria-current={focused ? "true" : undefined}
-                    style={{ paddingLeft: depth > 0 ? 34 : 8 }}
+                    style={{ paddingLeft: depth > 0 ? 46 : 8 }}
                     className={cn(
                       "flex w-full cursor-pointer items-start gap-2 border-b py-2.5 pr-3 text-left outline-none transition-colors",
                       focused ? "bg-muted" : "hover:bg-muted/60",
@@ -235,7 +235,7 @@ export function ControlPanelList({
                         aria-expanded={!collapsed}
                         onClick={(e) => {
                           e.stopPropagation();
-                          onToggleCollapse(item.key);
+                          onToggleExpanded(item.key);
                         }}
                         className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground"
                       >
@@ -243,6 +243,15 @@ export function ControlPanelList({
                       </button>
                     ) : (
                       depth === 0 && <span className="w-4 shrink-0" aria-hidden />
+                    )}
+                    {/* Every chat row reserves the same slot for the count, so titles line up. */}
+                    {depth === 0 && (
+                      <span
+                        className="mt-0.5 w-3 shrink-0 text-[10px] tabular-nums leading-4 text-muted-foreground"
+                        title={collapsed ? `${childCount} plans` : undefined}
+                      >
+                        {collapsed ? childCount : ""}
+                      </span>
                     )}
                     <Icon
                       className={cn(
