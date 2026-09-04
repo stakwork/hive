@@ -246,9 +246,10 @@ function collectClimbTargets(rows: AttemptRailRow[]): ClimbTarget[] {
  * `formatDistanceToNow(new Date(ms))`. date-fns v4 throws RangeError on
  * Invalid Date, so unparseable input must omit rather than throw.
  *
- * Numeric values (and numeric strings) are Jarvis Unix-epoch seconds and
- * go through `graphEpochToIso`. Non-numeric strings are Date.parse'd as
- * ISO. Empty / null / still-unparseable → null (omit the label).
+ * Numeric values (and numeric strings) go through `graphEpochToIso`, which
+ * treats values above `1e12` as epoch milliseconds and `1e12` and below as
+ * legacy Unix epoch seconds. Non-numeric strings are Date.parse'd as ISO.
+ * Empty / null / still-unparseable → null (omit the label).
  */
 function parseStampMs(raw: number | string | null | undefined): number | null {
   if (raw == null || raw === "") return null;
