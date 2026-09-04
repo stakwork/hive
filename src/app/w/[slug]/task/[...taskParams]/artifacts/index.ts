@@ -10,4 +10,4 @@ export { PublishScriptArtifact } from "./publish-script";
 export { PublishPromptArtifact } from "./publish-prompt";
 export { PublishSkillArtifact } from "./publish-skill";
 export { BountyArtifact } from "./bounty";
-export { VerdictArtifact, isAuditVerdict } from "./verdict";
+export { VerdictArtifact, VerdictPill, isAuditVerdict } from "./verdict";
