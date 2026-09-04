@@ -88,6 +88,11 @@ function liveEntries(runs: Record<string, ActiveRunEntry>): Record<string, Activ
   return live;
 }
 
+/** How many runs on a conversation are live (not stale), from its raw `activeRuns` JSON. No I/O. */
+export function countLiveRuns(raw: unknown): number {
+  return Object.keys(liveEntries(parseDoc(raw).runs ?? {})).length;
+}
+
 // ---------------------------------------------------------------------------
 // Mutations (all transactional)
 // ---------------------------------------------------------------------------
@@ -147,10 +152,7 @@ export async function setActiveRun(
  * Remove a single run entry from the map (called in the execute `finally`).
  * If this was the last run, optionally broadcast the run-ended state.
  */
-export async function clearActiveRun(
-  conversationId: string,
-  requestId: string,
-): Promise<{ wasLast: boolean }> {
+export async function clearActiveRun(conversationId: string, requestId: string): Promise<{ wasLast: boolean }> {
   return db.$transaction(async (tx) => {
     const row = await tx.sharedConversation.findUnique({
       where: { id: conversationId },
@@ -180,9 +182,7 @@ export async function clearActiveRun(
  * Set `abortRequested: true` on every active (non-stale) run entry.
  * Returns the list of entries so the caller can proxy the abort to each swarm.
  */
-export async function requestAbortForAllRuns(
-  conversationId: string,
-): Promise<ActiveRunEntry[]> {
+export async function requestAbortForAllRuns(conversationId: string): Promise<ActiveRunEntry[]> {
   return db.$transaction(async (tx) => {
     const row = await tx.sharedConversation.findUnique({
       where: { id: conversationId },
@@ -221,10 +221,7 @@ export async function requestAbortForAllRuns(
  * Check whether a specific run has been flagged for abort.
  * Lock-free — a slightly stale read is acceptable (next poll catches it).
  */
-export async function isAbortRequestedForRun(
-  conversationId: string,
-  requestId: string,
-): Promise<boolean> {
+export async function isAbortRequestedForRun(conversationId: string, requestId: string): Promise<boolean> {
   const row = await db.sharedConversation.findUnique({
     where: { id: conversationId },
     select: { activeRuns: true },
@@ -239,9 +236,7 @@ export async function isAbortRequestedForRun(
 /**
  * Return all live active run entries for a conversation (for the abort endpoint).
  */
-export async function getActiveRuns(
-  conversationId: string,
-): Promise<ActiveRunEntry[]> {
+export async function getActiveRuns(conversationId: string): Promise<ActiveRunEntry[]> {
   const row = await db.sharedConversation.findUnique({
     where: { id: conversationId },
     select: { activeRuns: true },
@@ -270,10 +265,7 @@ export async function hasActiveRuns(conversationId: string): Promise<boolean> {
  * before the run's request_id has been registered (start race).
  * The intent is keyed to `turnId` so only the matching run consumes it.
  */
-export async function setPendingAbortIntent(
-  conversationId: string,
-  turnId: string,
-): Promise<void> {
+export async function setPendingAbortIntent(conversationId: string, turnId: string): Promise<void> {
   await db.$transaction(async (tx) => {
     const row = await tx.sharedConversation.findUnique({
       where: { id: conversationId },
@@ -306,9 +298,7 @@ export async function setPendingAbortIntent(
  * Check if any entries in the map are already all marked abortRequested
  * (used for the idempotent short-circuit in the abort endpoint).
  */
-export async function areAllRunsAlreadyAborted(
-  conversationId: string,
-): Promise<boolean> {
+export async function areAllRunsAlreadyAborted(conversationId: string): Promise<boolean> {
   const runs = await getActiveRuns(conversationId);
   if (runs.length === 0) return false;
   return runs.every((r) => r.abortRequested === true);

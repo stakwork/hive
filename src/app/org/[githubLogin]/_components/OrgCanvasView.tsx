@@ -1,37 +1,23 @@
 "use client";
 
-import {
-  useEffect,
-  useLayoutEffect,
-  useMemo,
-  useState,
-  useCallback,
-  useRef,
-} from "react";
+import { useEffect, useLayoutEffect, useMemo, useState, useCallback, useRef } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
+import { AnimatePresence, motion } from "framer-motion";
 import type { CanvasEdge, CanvasNode, EdgeUpdate } from "system-canvas";
 import type { ImperativePanelHandle } from "react-resizable-panels";
 import { useWorkspace } from "@/hooks/useWorkspace";
-import {
-  OrgCanvasBackground,
-  type SelectionWithLabels,
-  type InternalEdge,
-} from "../connections/OrgCanvasBackground";
+import { OrgCanvasBackground, type SelectionWithLabels, type InternalEdge } from "../connections/OrgCanvasBackground";
 import type { HiddenLiveEntry } from "../connections/HiddenLivePill";
 import type { ConnectionData } from "../connections/types";
 import { OrgRightPanel } from "./OrgRightPanel";
-import {
-  useCanvasChatStore,
-  type CanvasChatMessage,
-} from "../_state/canvasChatStore";
+import { useCanvasChatStore, type CanvasChatMessage } from "../_state/canvasChatStore";
 import { useCanvasChatAutoSave } from "../_state/useCanvasChatAutoSave";
 import { useSubAgentStatusRefresh } from "../_state/useSubAgentStatusRefresh";
-import {
-  ResizableHandle,
-  ResizablePanel,
-  ResizablePanelGroup,
-} from "@/components/ui/resizable";
+import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
 import { AttentionMapProvider } from "../connections/AttentionMapContext";
+import { cn } from "@/lib/utils";
+import { ControlPanelList } from "./control-panel/ControlPanelList";
+import { useControlPanel } from "./control-panel/useControlPanel";
 
 /**
  * Sidebar layout sizes (percent of container width).
@@ -47,6 +33,19 @@ const SIDEBAR_DEFAULT_SIZE = 24;
 const SIDEBAR_MIN_SIZE = 16;
 const SIDEBAR_MAX_SIZE = 80;
 const SIDEBAR_EXPANDED_SIZE = 60;
+
+/**
+ * The org page's other view: the control panel (Jamie chats on the
+ * left, the thread on stage to the right), toggled from the end of the
+ * right panel's bar and deep-linked as `?view=control-panel`. Switching
+ * grows the chat panel to the stage's width while the canvas gives way
+ * to the list; coming back shrinks it to the width it had. The stage
+ * width is never persisted as the sidebar's layout (see `panelStorage`).
+ */
+type OrgPageMode = "canvas" | "control-panel";
+const CONTROL_PANEL_STAGE_SIZE = 72;
+/** Programmatic panel resizes animate; a drag must not (the handle turns it off while held). */
+const PANEL_TRANSITION = "transition-[flex-grow] duration-300 ease-in-out";
 
 /** Strip the `ws:` prefix from a live workspace id. */
 function stripWsPrefix(liveId: string): string {
@@ -67,6 +66,13 @@ interface OrgCanvasViewProps {
  *   2. Fixed-width tabbed right panel (`OrgRightPanel`) on the right
  *      with three tabs — **Chat** (`SidebarChat`, default landing
  *      tab), **Details**, **Connections**.
+ *
+ * Or, with `?view=control-panel`, the control panel: the same panel
+ * group, with the chat list in the left panel instead of the canvas and
+ * the right panel — the same mounted one — grown into the stage. So the
+ * switch is one motion and the chat never remounts. Its state lives in
+ * `useControlPanel`; this component keeps owning the chat lifecycle and
+ * the attention feed for both views.
  *
  * This component owns the canvas chat *lifecycle*: starting the
  * active conversation in the store, keeping its `context` up to
@@ -107,6 +113,39 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
    */
   const [panelWidth, setPanelWidth] = useState(384);
 
+  const [mode, setMode] = useState<OrgPageMode>(() =>
+    searchParams.get("view") === "control-panel" ? "control-panel" : "canvas",
+  );
+  const modeRef = useRef(mode);
+  /** Sidebar width before it grew into the stage; restored on the way back. */
+  const preStageSizeRef = useRef<number | null>(null);
+  /** While the divider is held the panels must follow the pointer, not ease. */
+  const [dragging, setDragging] = useState(false);
+  // The panel library persists every layout; on the control panel the
+  // right panel is stage-wide, and that must not become the sidebar's
+  // remembered width.
+  const panelStorage = useMemo(
+    () => ({
+      getItem: (name: string) => {
+        try {
+          return localStorage.getItem(name);
+        } catch {
+          return null;
+        }
+      },
+      setItem: (name: string, value: string) => {
+        if (modeRef.current !== "canvas") return;
+        try {
+          localStorage.setItem(name, value);
+        } catch {
+          // Storage unavailable — the layout just won't persist.
+        }
+      },
+    }),
+    [],
+  );
+  const controlPanel = useControlPanel(githubLogin, mode === "control-panel");
+
   // Sync `panelWidth` to the panel's actual rendered width on mount,
   // before the browser paints. Two paths land it at the right value:
   //
@@ -118,7 +157,7 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
   //   2. A `ResizeObserver` on the container catches subsequent
   //      viewport resizes (window resize, devtools open, etc.) so
   //      `rightInset` stays correct without depending on the panel
-  //      itself changing size. 
+  //      itself changing size.
   //
   // `useLayoutEffect` (vs `useEffect`) so the canvas's `rightInset`
   // is correct on the very first commit, eliminating the visible
@@ -143,9 +182,7 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
 
   const [workspaces, setWorkspaces] = useState<{ id: string; slug: string; isDefault?: boolean }[]>([]);
   const [loadingWorkspaces, setLoadingWorkspaces] = useState(true);
-  const [hiddenWorkspaceIds, setHiddenWorkspaceIds] = useState<Set<string>>(
-    () => new Set(),
-  );
+  const [hiddenWorkspaceIds, setHiddenWorkspaceIds] = useState<Set<string>>(() => new Set());
   const [hiddenInitialized, setHiddenInitialized] = useState(false);
   const [connections, setConnections] = useState<ConnectionData[]>([]);
   const [loadingConnections, setLoadingConnections] = useState(true);
@@ -159,9 +196,7 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
    * `OrgCanvasBackground` (which owns the canvas blobs) so the
    * sidebar can render a small "linked" dot on those rows.
    */
-  const [linkedConnectionIds, setLinkedConnectionIds] = useState<Set<string>>(
-    () => new Set(),
-  );
+  const [linkedConnectionIds, setLinkedConnectionIds] = useState<Set<string>>(() => new Set());
   /**
    * The edge the user has currently selected on the canvas, paired
    * with the canvas ref it lives on AND the resolved human labels
@@ -196,12 +231,7 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
    * an effect; null when the canvas is unmounted.
    */
   const edgePatchHandleRef = useRef<
-    | ((
-        edgeId: string,
-        patch: EdgeUpdate,
-        canvasRef: string | undefined,
-      ) => void)
-    | null
+    ((edgeId: string, patch: EdgeUpdate, canvasRef: string | undefined) => void) | null
   >(null);
   /**
    * Human-readable breadcrumb for the canvas the user is currently
@@ -216,10 +246,8 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
   // as our server row, so we RESUME our own chat after a reload — or
   // JOIN someone else's shared room — rather than starting a fresh one.
   const sharedChatId = searchParams.get("chat");
-  const [chatInitialMessages, setChatInitialMessages] =
-    useState<CanvasChatMessage[] | null>(null);
+  const [chatInitialMessages, setChatInitialMessages] = useState<CanvasChatMessage[] | null>(null);
   const [chatLoadComplete, setChatLoadComplete] = useState(false);
-
 
   const setUrlSlug = useCallback(
     (slug: string | null) => {
@@ -268,14 +296,12 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
       .then((res) => res.json())
       .then((data) => {
         const list = Array.isArray(data)
-          ? data.map(
-              (ws: { id: string; slug: string; isDefault?: boolean }) => ({
-                id: ws.id,
-                slug: ws.slug,
-                // Needed by the default-first sort in `chatWorkspaceSlugs`.
-                isDefault: ws.isDefault,
-              }),
-            )
+          ? data.map((ws: { id: string; slug: string; isDefault?: boolean }) => ({
+              id: ws.id,
+              slug: ws.slug,
+              // Needed by the default-first sort in `chatWorkspaceSlugs`.
+              isDefault: ws.isDefault,
+            }))
           : [];
         setWorkspaces(list);
       })
@@ -302,9 +328,7 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
           // The DB stores `timestamp` as an ISO string; rehydrate to
           // Date so future consumers (artifacts, telemetry) get a
           // real Date instance.
-          const seeded: CanvasChatMessage[] = (
-            data.messages as CanvasChatMessage[]
-          ).map((m) => ({
+          const seeded: CanvasChatMessage[] = (data.messages as CanvasChatMessage[]).map((m) => ({
             ...m,
             timestamp: new Date(m.timestamp as unknown as string),
           }));
@@ -321,9 +345,7 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
   }, [sharedChatId, githubLogin]);
 
   const handleHiddenChange = useCallback((entries: HiddenLiveEntry[]) => {
-    const ids = new Set(
-      entries.filter((e) => e.kind === "ws").map((e) => stripWsPrefix(e.id)),
-    );
+    const ids = new Set(entries.filter((e) => e.kind === "ws").map((e) => stripWsPrefix(e.id)));
     setHiddenWorkspaceIds(ids);
     setHiddenInitialized(true);
   }, []);
@@ -336,7 +358,6 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
         .map((ws) => ws.slug),
     [workspaces, hiddenWorkspaceIds],
   );
-
 
   const fetchConnections = useCallback(async () => {
     try {
@@ -366,28 +387,31 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
    * user can manually drag if needed. We retry once on the next
    * frame to catch the common case where the ref lands a tick later.
    */
-  const openConnection = useCallback((connection: ConnectionData) => {
-    const expand = () => {
-      const panel = sidebarPanelRef.current;
-      if (!panel) return false;
-      const current = panel.getSize();
-      if (preExpandSizeRef.current === null) {
-        preExpandSizeRef.current = current;
+  const openConnection = useCallback(
+    (connection: ConnectionData) => {
+      const expand = () => {
+        const panel = sidebarPanelRef.current;
+        if (!panel) return false;
+        const current = panel.getSize();
+        if (preExpandSizeRef.current === null) {
+          preExpandSizeRef.current = current;
+        }
+        if (current < SIDEBAR_EXPANDED_SIZE) {
+          panel.resize(SIDEBAR_EXPANDED_SIZE);
+        }
+        return true;
+      };
+      if (!expand()) {
+        // Panel not yet mounted (deep-link path) — try again next frame.
+        requestAnimationFrame(() => {
+          expand();
+        });
       }
-      if (current < SIDEBAR_EXPANDED_SIZE) {
-        panel.resize(SIDEBAR_EXPANDED_SIZE);
-      }
-      return true;
-    };
-    if (!expand()) {
-      // Panel not yet mounted (deep-link path) — try again next frame.
-      requestAnimationFrame(() => {
-        expand();
-      });
-    }
-    setActiveConnection(connection);
-    setUrlSlug(connection.slug);
-  }, [setUrlSlug]);
+      setActiveConnection(connection);
+      setUrlSlug(connection.slug);
+    },
+    [setUrlSlug],
+  );
 
   useEffect(() => {
     fetchConnections().then((list) => {
@@ -430,8 +454,7 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
     if (
       selectedNode &&
       selectedNode.id.startsWith("research:") &&
-      (selectedNode as { customData?: { slug?: string } }).customData?.slug ===
-        slug
+      (selectedNode as { customData?: { slug?: string } }).customData?.slug === slug
     ) {
       return;
     }
@@ -550,15 +573,11 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
    * `updateEdge` which spreads `{...edge, ...patch}` and preserves
    * `customData`. So the field exists on user-authored edges.
    */
-  const readEdgeConnectionId = useCallback(
-    (edge: CanvasEdge): string | null => {
-      const cd = (edge as { customData?: { connectionId?: unknown } })
-        .customData;
-      const id = cd?.connectionId;
-      return typeof id === "string" && id.length > 0 ? id : null;
-    },
-    [],
-  );
+  const readEdgeConnectionId = useCallback((edge: CanvasEdge): string | null => {
+    const cd = (edge as { customData?: { connectionId?: unknown } }).customData;
+    const id = cd?.connectionId;
+    return typeof id === "string" && id.length > 0 ? id : null;
+  }, []);
 
   /**
    * Single selection-change handler. The lib's `onSelectionChange`
@@ -608,10 +627,7 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
         // Real canvas-driven node click overrides any active
         // research deep-link unless the user clicked the same
         // research card the link pointed at.
-        if (
-          searchParams.get("r") &&
-          !selection.node.id.startsWith("research:")
-        ) {
+        if (searchParams.get("r") && !selection.node.id.startsWith("research:")) {
           // html: (and every other non-research live id) correctly
           // fall through here: selecting an HTML card while a
           // `?r=` deep-link is active should drop the research
@@ -672,11 +688,7 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
       const patch: EdgeUpdate = {
         ...({ customData: { connectionId: connection.id } } as EdgeUpdate),
       };
-      edgePatchHandleRef.current?.(
-        selectedEdge.edge.id,
-        patch,
-        selectedEdge.canvasRef,
-      );
+      edgePatchHandleRef.current?.(selectedEdge.edge.id, patch, selectedEdge.canvasRef);
       // Update our local copy of the edge so future reads off
       // `selectedEdge` see the link too — without this, an unlink
       // immediately after a link would target the stale customData.
@@ -706,11 +718,7 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
     const patch: EdgeUpdate = {
       ...({ customData: {} } as EdgeUpdate),
     };
-    edgePatchHandleRef.current?.(
-      selectedEdge.edge.id,
-      patch,
-      selectedEdge.canvasRef,
-    );
+    edgePatchHandleRef.current?.(selectedEdge.edge.id, patch, selectedEdge.canvasRef);
     setSelectedEdge({
       ...selectedEdge,
       edge: {
@@ -748,16 +756,74 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
     setCurrentCanvasBreadcrumb(breadcrumb);
   }, []);
 
+  // ─── Canvas ⇄ control panel ─────────────────────────────────────────
+  const writeViewParam = useCallback(
+    (next: OrgPageMode) => {
+      // `history.replaceState` (NOT `router.replace`) — see `setUrlSlug`.
+      const params = new URLSearchParams(window.location.search);
+      if (next === "control-panel") {
+        params.set("view", "control-panel");
+      } else {
+        params.delete("view");
+        params.delete("plan");
+        params.delete("task");
+      }
+      const qs = params.toString();
+      window.history.replaceState(null, "", `${pathname}${qs ? `?${qs}` : ""}`);
+    },
+    [pathname],
+  );
+
+  // The chat panel grows into the stage while the canvas gives way to
+  // the list — one motion, nothing on the right remounts.
+  const openControlPanel = useCallback(() => {
+    modeRef.current = "control-panel";
+    const panel = sidebarPanelRef.current;
+    if (panel) {
+      preStageSizeRef.current = panel.getSize();
+      panel.resize(CONTROL_PANEL_STAGE_SIZE);
+    }
+    setMode("control-panel");
+    writeViewParam("control-panel");
+  }, [writeViewParam]);
+
+  const closeControlPanel = useCallback(() => {
+    modeRef.current = "canvas";
+    const prior = preStageSizeRef.current;
+    preStageSizeRef.current = null;
+    if (prior !== null) sidebarPanelRef.current?.resize(prior);
+    setMode("canvas");
+    writeViewParam("canvas");
+  }, [writeViewParam]);
+
+  // Landing on `?view=control-panel`: the layout restored is the sidebar's,
+  // so grow into the stage from it (and remember it for the way back).
+  useLayoutEffect(() => {
+    if (modeRef.current !== "control-panel") return;
+    const panel = sidebarPanelRef.current;
+    if (!panel) return;
+    preStageSizeRef.current = panel.getSize();
+    panel.resize(CONTROL_PANEL_STAGE_SIZE);
+  }, []);
+
   // ─── Canvas chat conversation lifecycle ─────────────────────────────
   // Start the active conversation once everything we need is loaded.
   // Subsequent canvas-scope changes (drilling in, selecting a node)
   // update the conversation's `context` rather than recreating it.
   const [conversationStarted, setConversationStarted] = useState(false);
   const currentCanvasRef = searchParams.get("canvas") ?? "";
-  const chatReady =
-    !loadingWorkspaces &&
-    hiddenInitialized &&
-    chatLoadComplete;
+  // The hidden-workspace list comes from the canvas; landing straight on
+  // the control panel has no canvas to report it, so don't wait for it.
+  const chatReady = !loadingWorkspaces && (hiddenInitialized || mode === "control-panel") && chatLoadComplete;
+
+  // What "this" means to Jamie: the canvas selection, or — on the
+  // control panel — the plan/task on stage, exactly like a canvas click.
+  const panelFocusNodeId = controlPanel.focusNodeId;
+  const contextNodeId = mode === "control-panel" ? panelFocusNodeId : (selectedNode?.id ?? null);
+  const contextNodeIds = useMemo(
+    () => (mode === "control-panel" ? (panelFocusNodeId ? [panelFocusNodeId] : []) : selectedNodes.map((n) => n.id)),
+    [mode, panelFocusNodeId, selectedNodes],
+  );
 
   useEffect(() => {
     if (!chatReady || conversationStarted) return;
@@ -767,8 +833,7 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
     // preloaded room nor attention items exist, seed is empty and we land
     // in today's
     // "Ask the agent…" empty state.
-    let seedMessages: CanvasChatMessage[] | undefined =
-      chatInitialMessages ?? undefined;
+    let seedMessages: CanvasChatMessage[] | undefined = chatInitialMessages ?? undefined;
     let ephemeralSeedCount = 0;
 
     // Resume / join, never fork. When the URL carries `?chat=<id>` we
@@ -794,8 +859,8 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
         githubLogin,
         currentCanvasRef,
         currentCanvasBreadcrumb,
-        selectedNodeId: selectedNode?.id ?? null,
-        selectedNodeIds: selectedNodes.map((n) => n.id),
+        selectedNodeId: contextNodeId,
+        selectedNodeIds: contextNodeIds,
       },
       seedMessages,
       sharedChatId ?? undefined,
@@ -821,8 +886,8 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
       githubLogin,
       currentCanvasRef,
       currentCanvasBreadcrumb,
-      selectedNodeId: selectedNode?.id ?? null,
-      selectedNodeIds: selectedNodes.map((n) => n.id),
+      selectedNodeId: contextNodeId,
+      selectedNodeIds: contextNodeIds,
     });
   }, [
     conversationStarted,
@@ -832,8 +897,8 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
     githubLogin,
     currentCanvasRef,
     currentCanvasBreadcrumb,
-    selectedNode?.id,
-    selectedNodes,
+    contextNodeId,
+    contextNodeIds,
   ]);
 
   // Mount auto-save (write-through to `chat_conversations`). Lives at
@@ -843,28 +908,43 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
   useSubAgentStatusRefresh({ githubLogin });
 
   return (
-    <AttentionMapProvider
-      githubLogin={githubLogin}
-      visibleWorkspaceSlugs={chatWorkspaceSlugs}
-    >
-    <div ref={containerRef} className="relative flex h-full w-full overflow-hidden">
-      <OrgCanvasBackground
-        githubLogin={githubLogin}
-        // Inset the canvas's right edge by the dynamic panel width so
-        // canvas chrome (FAB, etc.) stays outside the sidebar.
-        rightInset={panelWidth}
-        orgName={orgName}
-        onHiddenChange={handleHiddenChange}
-        onSelectionChange={handleSelectionChange}
-        edgePatchHandleRef={edgePatchHandleRef}
-        onCanvasBreadcrumbChange={handleCanvasBreadcrumbChange}
-        onLinkedConnectionIdsChange={setLinkedConnectionIds}
-      />
+    <AttentionMapProvider githubLogin={githubLogin} visibleWorkspaceSlugs={chatWorkspaceSlugs}>
+      <div ref={containerRef} className="relative flex h-full w-full overflow-hidden">
+        {/* The canvas, under the panel group. On the control panel it fades
+          out behind the list and is unmounted. */}
+        <AnimatePresence initial={false}>
+          {mode === "canvas" && (
+            <motion.div
+              key="canvas"
+              className="absolute inset-0 flex"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.25 }}
+            >
+              <OrgCanvasBackground
+                githubLogin={githubLogin}
+                // Inset the canvas's right edge by the dynamic panel width so
+                // canvas chrome (FAB, etc.) stays outside the sidebar.
+                rightInset={panelWidth}
+                orgName={orgName}
+                onHiddenChange={handleHiddenChange}
+                onSelectionChange={handleSelectionChange}
+                edgePatchHandleRef={edgePatchHandleRef}
+                onCanvasBreadcrumbChange={handleCanvasBreadcrumbChange}
+                onLinkedConnectionIdsChange={setLinkedConnectionIds}
+              />
+            </motion.div>
+          )}
+        </AnimatePresence>
 
-      {/* Resizable sidebar overlay — sits at z-20, absolutely
+        {/* Resizable sidebar overlay — sits at z-20, absolutely
           positioned to cover the right portion of the canvas.
           The left filler panel is transparent; only the right
-          ResizablePanel renders visible content.
+          ResizablePanel renders visible content. On the control panel
+          the same group is the layout: the left panel hosts the chat
+          list and the right panel — the same mounted one — is the
+          stage, so switching views only resizes.
 
           Stable `id`s on the group + every panel are required
           whenever `autoSaveId` is set: the library persists layout
@@ -873,63 +953,83 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
           ids, `useId()` generates a fresh id per mount that doesn't
           match the stored layout, the lookup throws "No group
           element found for id" and the canvas crashes. */}
-      <div className="absolute inset-0 z-20 pointer-events-none">
-        <ResizablePanelGroup
-          id="org-right-panel-group"
-          direction="horizontal"
-          autoSaveId="org-right-panel"
-          className="h-full w-full"
-        >
-          {/* Left filler — transparent, lets canvas receive events */}
-          <ResizablePanel
-            id="org-right-panel-filler"
-            order={1}
-            defaultSize={100 - SIDEBAR_DEFAULT_SIZE}
-            className="pointer-events-none"
-          />
-
-          <ResizableHandle
-            withHandle
-            className="pointer-events-auto"
-          />
-
-          {/* Right panel — the visible sidebar */}
-          <ResizablePanel
-            ref={sidebarPanelRef}
-            id="org-right-panel-sidebar"
-            order={2}
-            defaultSize={SIDEBAR_DEFAULT_SIZE}
-            minSize={SIDEBAR_MIN_SIZE}
-            maxSize={SIDEBAR_MAX_SIZE}
-            className="pointer-events-auto"
-            onResize={(percent) => {
-              const containerWidth = containerRef.current?.offsetWidth ?? 1600;
-              setPanelWidth(Math.round((percent / 100) * containerWidth));
-            }}
+        <div className="absolute inset-0 z-20 pointer-events-none">
+          <ResizablePanelGroup
+            id="org-right-panel-group"
+            direction="horizontal"
+            autoSaveId="org-right-panel"
+            storage={panelStorage}
+            className="h-full w-full"
           >
-            <OrgRightPanel
-              githubLogin={githubLogin}
-              selectedNode={selectedNode}
-              selectedNodes={selectedNodes}
-              selectedNodesInternalEdges={selectedNodesInternalEdges}
-              chatReady={chatReady && conversationStarted}
-              connections={connections}
-              activeConnection={activeConnection}
-              onConnectionClick={handleConnectionClick}
-              onConnectionClose={handleBack}
-              onConnectionCreated={handleConnectionCreated}
-              onConnectionDeleted={handleConnectionDeleted}
-              isLoading={loadingConnections}
-              selectedEdge={selectedEdge}
-              onLinkConnectionToEdge={handleLinkConnectionToEdge}
-              onUnlinkConnectionFromEdge={handleUnlinkConnectionFromEdge}
-              onCreateConnectionForEdge={handleCreateConnectionForEdge}
-              linkedConnectionIds={linkedConnectionIds}
-            />
-          </ResizablePanel>
-        </ResizablePanelGroup>
+            {/* Left: transparent over the canvas, or the chat list */}
+            <ResizablePanel
+              id="org-right-panel-filler"
+              order={1}
+              defaultSize={100 - SIDEBAR_DEFAULT_SIZE}
+              className={cn(
+                mode === "canvas" ? "pointer-events-none" : "pointer-events-auto",
+                !dragging && PANEL_TRANSITION,
+              )}
+            >
+              <AnimatePresence initial={false}>
+                {mode === "control-panel" && (
+                  <motion.div
+                    key="list"
+                    className="h-full w-full bg-background"
+                    initial={{ opacity: 0, x: -24 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    exit={{ opacity: 0, x: -24 }}
+                    transition={{ duration: 0.25, ease: "easeOut" }}
+                  >
+                    <ControlPanelList {...controlPanel.list} />
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </ResizablePanel>
+
+            <ResizableHandle withHandle className="pointer-events-auto" onDragging={setDragging} />
+
+            {/* Right panel — the visible sidebar, and the stage */}
+            <ResizablePanel
+              ref={sidebarPanelRef}
+              id="org-right-panel-sidebar"
+              order={2}
+              defaultSize={SIDEBAR_DEFAULT_SIZE}
+              minSize={SIDEBAR_MIN_SIZE}
+              maxSize={SIDEBAR_MAX_SIZE}
+              className={cn("pointer-events-auto", !dragging && PANEL_TRANSITION)}
+              onResize={(percent) => {
+                const containerWidth = containerRef.current?.offsetWidth ?? 1600;
+                setPanelWidth(Math.round((percent / 100) * containerWidth));
+              }}
+            >
+              <OrgRightPanel
+                githubLogin={githubLogin}
+                selectedNode={selectedNode}
+                selectedNodes={selectedNodes}
+                selectedNodesInternalEdges={selectedNodesInternalEdges}
+                chatReady={chatReady && conversationStarted}
+                connections={connections}
+                activeConnection={activeConnection}
+                onConnectionClick={handleConnectionClick}
+                onConnectionClose={handleBack}
+                onConnectionCreated={handleConnectionCreated}
+                onConnectionDeleted={handleConnectionDeleted}
+                isLoading={loadingConnections}
+                selectedEdge={selectedEdge}
+                onLinkConnectionToEdge={handleLinkConnectionToEdge}
+                onUnlinkConnectionFromEdge={handleUnlinkConnectionFromEdge}
+                onCreateConnectionForEdge={handleCreateConnectionForEdge}
+                linkedConnectionIds={linkedConnectionIds}
+                controlPanel={
+                  mode === "control-panel" ? { ...controlPanel.stage, onExit: closeControlPanel } : undefined
+                }
+                onOpenControlPanel={openControlPanel}
+              />
+            </ResizablePanel>
+          </ResizablePanelGroup>
+        </div>
       </div>
-    </div>
     </AttentionMapProvider>
   );
 }
