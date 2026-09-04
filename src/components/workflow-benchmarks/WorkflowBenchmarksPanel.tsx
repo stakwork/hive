@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { WORKFLOW_BENCHMARK_TASKS, type WorkflowBenchmarkTask } from "@/lib/workflow-benchmark-tasks";
 
@@ -57,6 +58,10 @@ function TaskCard({ task, workspaceSlug }: TaskCardProps) {
   const [isRunning, setIsRunning] = useState(false);
   const [runId, setRunId] = useState<string | null>(null);
   const [runError, setRunError] = useState<string | null>(null);
+  // Where to execute: Stakwork (the default, unchanged) or the workspace
+  // swarm's strut lab. Only sent when strut is chosen, so the default request
+  // is byte-identical to before.
+  const [runner, setRunner] = useState<"stakwork" | "strut">("stakwork");
 
   const handleRun = async () => {
     setIsRunning(true);
@@ -68,7 +73,10 @@ function TaskCard({ task, workspaceSlug }: TaskCardProps) {
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ taskSlug: task.slug }),
+          body: JSON.stringify({
+            taskSlug: task.slug,
+            ...(runner === "strut" ? { runner } : {}),
+          }),
         },
       );
       if (!res.ok) {
@@ -191,6 +199,25 @@ function TaskCard({ task, workspaceSlug }: TaskCardProps) {
 
         {/* Run trigger */}
         <div className="flex items-center gap-3 flex-wrap pt-1">
+          <ToggleGroup
+            type="single"
+            size="sm"
+            variant="outline"
+            value={runner}
+            // Radix clears the value when the active item is clicked again;
+            // keep the last choice instead of leaving the toggle blank.
+            onValueChange={(v) => { if (v === "strut" || v === "stakwork") setRunner(v); }}
+            disabled={isRunning}
+            aria-label="Benchmark runner"
+            data-testid={`wf-runner-toggle-${task.slug}`}
+          >
+            <ToggleGroupItem value="stakwork" className="h-8 px-2.5 text-xs" aria-label="Run on Stakwork">
+              Stakwork
+            </ToggleGroupItem>
+            <ToggleGroupItem value="strut" className="h-8 px-2.5 text-xs" aria-label="Run on strut">
+              strut
+            </ToggleGroupItem>
+          </ToggleGroup>
           <Button
             size="sm"
             variant="outline"
