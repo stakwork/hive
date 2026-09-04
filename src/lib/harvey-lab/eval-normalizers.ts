@@ -60,14 +60,23 @@ export type RawJarvisNode = {
 };
 
 /**
- * Convert a Jarvis `date_added_to_graph` epoch-seconds stamp (number or
- * numeric string) to ISO; null when absent or unparseable.
+ * Convert a Jarvis `date_added_to_graph` epoch stamp (number or numeric
+ * string) to ISO; null when absent or unparseable.
+ *
+ * The field may be epoch **milliseconds** (canonical Jarvis writes, e.g.
+ * `int(time.time() * 1000)`) or legacy epoch **seconds** (older writes).
+ * Mirrors Jarvis `TimeFormatter.epoch_value_to_ms` in
+ * `jarvis-backend/api/helper/time_formatter.py`: values greater than `1e12`
+ * are treated as already-milliseconds (epoch-seconds does not reach `1e12`
+ * until year ~33k), everything else is treated as legacy seconds and
+ * multiplied by 1000.
  */
 export function graphEpochToIso(raw: number | string | null | undefined): string | null {
   if (raw == null || raw === "") return null;
-  const seconds = typeof raw === "number" ? raw : parseFloat(raw);
-  if (!Number.isFinite(seconds) || seconds <= 0) return null;
-  return new Date(seconds * 1000).toISOString();
+  const value = typeof raw === "number" ? raw : parseFloat(raw);
+  if (!Number.isFinite(value) || value <= 0) return null;
+  const ms = value > 1e12 ? value : value * 1000;
+  return new Date(ms).toISOString();
 }
 
 /**
